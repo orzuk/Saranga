@@ -31,6 +31,7 @@ import requests  # pip install requests
 
 import networkx as nx  # For drawing
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 
 
 
@@ -180,24 +181,42 @@ class PaperParser:
     # canonical mapping from LaTeX environment names to "kind"
     BASE_ENV_KIND_MAP = {
         "theorem": "theorem",
+        "Theorem": "theorem",      # NEW
         "thm": "theorem",
+
         "lemma": "lemma",
+        "Lemma": "lemma",          # NEW
         "lem": "lemma",
+
         "proposition": "proposition",
+        "Proposition": "proposition",   # NEW
         "prop": "proposition",
+
         "corollary": "corollary",
+        "Corollary": "corollary",       # NEW
         "cor": "corollary",
+
         "claim": "claim",
+        "Claim": "claim",               # NEW
+
         "definition": "definition",
+        "Definition": "definition",     # NEW
         "defn": "definition",
-        "proof": "proof",
+
+        "proof": "proof",               # environment version
+        "Proof": "proof",               # NEW (rare)
+
         "algorithm": "algorithm",
         "algorithm*": "algorithm",
+
         "table": "table",
+
         # common variants
         "theo": "theorem",
         "conjecture": "conjecture",
+        "Conjecture": "conjecture",     # NEW
     }
+
 
     THEOREM_LIKE_KINDS = {"theorem", "lemma", "proposition", "corollary", "claim", "conjecture"}
 
@@ -242,6 +261,74 @@ class PaperParser:
 
             # IMPORTANT: use a function so 'body' is used literally (backslashes ok)
             text = macro_use_pattern.sub(lambda _: body, text)
+
+        return text
+
+
+    def _normalize_simple_ref_macros(self, text: str) -> str:
+        """
+        Detect simple 1-argument \\newcommand/\\renewcommand macros that
+        only wrap a \\ref/\\eqref/\\autoref, and rewrite their uses to the
+        underlying standard ref command.
+
+        Examples it will catch:
+
+            \\newcommand{\\eq}[1]{(\\ref{#1})}
+            \\newcommand{\\Eq}[1]{Equation~\\eqref{#1}}
+            \\renewcommand{\\thmref}[1]{Theorem~\\ref{#1}}
+
+        After this pass:
+
+            \\eq{lbl}    -> \\ref{lbl}
+            \\Eq{lbl}    -> \\eqref{lbl}
+            \\thmref{t1} -> \\ref{t1}
+
+        (we don't preserve the surrounding English words, we just normalise
+        the reference part so later regexes see \\ref/\\eqref.)
+        """
+        # Find 1-arg newcommand/renewcommand with a body
+        cmd_pat = re.compile(
+            r"\\(?:re)?newcommand\*?\s*{\\([A-Za-z@]+)}\s*\[(\d+)\]\s*{([^}]*)}",
+            flags=re.DOTALL,
+        )
+
+        ref_macros: Dict[str, str] = {}  # name -> 'ref' | 'eqref' | 'autoref'
+
+        def strip_and_collect(m: re.Match) -> str:
+            name = m.group(1)
+            nargs = int(m.group(2))
+            body = m.group(3)
+
+            if nargs != 1:
+                # leave definition as-is for other passes
+                return m.group(0)
+
+            if r"\eqref{#1}" in body:
+                ref_macros[name] = "eqref"
+                return ""  # remove definition
+            elif r"\autoref{#1}" in body:
+                ref_macros[name] = "autoref"
+                return ""
+            elif r"\ref{#1}" in body:
+                ref_macros[name] = "ref"
+                return ""
+            else:
+                # not a simple ref wrapper
+                return m.group(0)
+
+        # 1) Remove the ref-wrapper macro definitions, record mapping
+        text = cmd_pat.sub(strip_and_collect, text)
+
+        # 2) Rewrite uses of those macros
+        for name, kind in ref_macros.items():
+            # match \name{something}
+            use_pat = re.compile(rf"\\{name}\{{([^}}]+)\}}")
+            if kind == "eqref":
+                text = use_pat.sub(r"\\eqref{\1}", text)
+            elif kind == "autoref":
+                text = use_pat.sub(r"\\autoref{\1}", text)
+            else:  # 'ref'
+                text = use_pat.sub(r"\\ref{\1}", text)
 
         return text
 
@@ -310,7 +397,11 @@ class PaperParser:
 
         # At the top level, after all includes are inlined, expand macros
         if depth == 0:
+            # 1) normalise simple ref macros (1-arg wrappers)
+            text = self._normalize_simple_ref_macros(text)
+            # 2) expand 0-arg macros like \be -> \begin{equation}
             text = self._expand_macros(text)
+
 
         return text
 
@@ -482,31 +573,71 @@ class PaperParser:
             lines.append(line)
         return "\n".join(lines)
 
-    def _parse_newtheorem(self, text: str):
+    def _parse_newtheorem(self, text: str) -> None:
         """
-        Parse \\newtheorem{env}{Theorem} and similar to extend env_kind_map.
-        We just map env -> 'theorem'/'lemma'/... based on the second argument.
+        Parse \\newtheorem definitions and populate env_kind_map.
+
+        Handles both:
+            \newtheorem{theorem}{Theorem}
+            \newtheorem{lemma}[theorem]{\sc Lemma\rm}
+
+        and classifies environments by the printed name (the second argument),
+        so that envs like 'thm' or 'Theorem' also get mapped to 'theorem'.
         """
+        # Start from a sensible base
+        base_map = {
+            "theorem": "theorem",
+            "Theorem": "theorem",
+            "thm": "theorem",
+            "lemma": "lemma",
+            "Lemma": "lemma",
+            "proposition": "proposition",
+            "Proposition": "proposition",
+            "corollary": "corollary",
+            "Corollary": "corollary",
+            "claim": "claim",
+            "Claim": "claim",
+            "conclusion": "conclusion",
+            "Conclusion": "conclusion",
+            "definition": "definition",
+            "Definition": "definition",
+            "remark": "remark",
+            "Remark": "remark",
+            "example": "example",
+            "Example": "example",
+        }
+        self.env_kind_map = dict(base_map)
+
+        # \newtheorem{env}[counter]{Printed Name}
         pattern = re.compile(
-            r"\\newtheorem\s*{(?P<env>[^}]+)}\s*{(?P<name>[^}]+)}",
-            flags=re.IGNORECASE,
+            r"\\newtheorem\s*{([^}]+)}(?:\[[^\]]+\])?\s*{([^}]+)}",
+            flags=re.DOTALL,
         )
-        for m in pattern.finditer(text):
-            env = m.group("env").strip()
-            name = m.group("name").strip().lower()
-            # crude mapping: if name contains 'lemma' -> lemma, etc.
-            if "lemma" in name:
-                self.env_kind_map[env] = "lemma"
-            elif "theorem" in name:
-                self.env_kind_map[env] = "theorem"
-            elif "corollary" in name:
-                self.env_kind_map[env] = "corollary"
-            elif "proposition" in name:
-                self.env_kind_map[env] = "proposition"
-            elif "definition" in name:
-                self.env_kind_map[env] = "definition"
-            elif "claim" in name:
-                self.env_kind_map[env] = "claim"
+
+        for env_name, printed in pattern.findall(text):
+            env_name = env_name.strip()
+            # Normalize printed name by stripping non-letters
+            printed_clean = re.sub(r"[^a-z]", "", printed.lower())
+
+            kind = None
+            for candidate in [
+                "theorem",
+                "lemma",
+                "proposition",
+                "corollary",
+                "definition",
+                "remark",
+                "example",
+                "claim",
+                "conclusion",
+            ]:
+                if candidate in printed_clean:
+                    kind = candidate
+                    break
+
+            if kind:
+                self.env_kind_map[env_name] = kind
+
 
     @staticmethod
     def _clean_latex_to_text(latex: str) -> str:
@@ -558,14 +689,21 @@ class PaperParser:
     # ---- theorem-like ----
 
     def _extract_theorem_like(self, text: str) -> List[TheoremLike]:
-        env_names = [env for env, kind in self.env_kind_map.items() if kind in self.THEOREM_LIKE_KINDS]
+        # envs whose kind is one of the canonical theorem-like kinds
+        env_names = [
+            env for env, kind in self.env_kind_map.items()
+            if kind in self.THEOREM_LIKE_KINDS
+        ]
         print(f"[DEBUG] theorem-like env_names: {env_names}")
 
         if not env_names:
             return []
 
+        # find all \begin{env} ... \end{env} occurrences
         found = self._extract_envs(text, env_names)
         print(f"[DEBUG] found {len(found)} theorem-like environments")
+
+        # counters per kind: theorem, lemma, proposition, ...
         counters: Dict[str, int] = {k: 0 for k in self.THEOREM_LIKE_KINDS}
         objects: List[TheoremLike] = []
 
@@ -574,7 +712,9 @@ class PaperParser:
             counters.setdefault(kind, 0)
             counters[kind] += 1
             idx = counters[kind]
-            obj_id = kind[0].upper() + str(idx)  # e.g. T1, L2, C3
+
+            # ID: T1, L2, P3, C4, ...
+            obj_id = kind[0].upper() + str(idx)
 
             label, _ = self._extract_label_and_name(body)
             clean_text = self._clean_latex_to_text(body)
@@ -595,6 +735,7 @@ class PaperParser:
             objects.append(obj)
 
         return objects
+
 
     @staticmethod
     def _split_assumptions_statement(text: str) -> Tuple[str, str]:
@@ -669,27 +810,71 @@ class PaperParser:
     # ---- proofs ----
 
     def _extract_proofs(self, text: str) -> List[Proof]:
-        env_names = ["proof"]
-        found = self._extract_envs(text, env_names)
+        proofs: List[Proof] = []
         idx = 0
-        objects: List[Proof] = []
 
-        for env_name, opt_name, body in found:
+        # --- A. Standard \begin{proof}...\end{proof} (if present) ---
+        env_pattern = re.compile(
+            r"\\begin{proof}(?P<body>.*?)\\end{proof}",
+            flags=re.DOTALL,
+        )
+        for m in env_pattern.finditer(text):
+            body = m.group("body")
+            label, name = self._extract_label_and_name(body)
+            clean = self._clean_latex_to_text(body)
             idx += 1
-            obj_id = "P" + str(idx)
-            label, _ = self._extract_label_and_name(body)
-            clean_text = self._clean_latex_to_text(body)
-            obj = Proof(
-                id=obj_id,
+            proofs.append(
+                Proof(
+                    id=f"P{idx}",
+                    kind="proof",
+                    index=idx,
+                    label=label,
+                    name=name,
+                    raw_latex=m.group(0),
+                    clean_text=clean,
+                    parent_id=None,  # will be set in _link_proofs_to_theorems
+                )
+            )
+
+        # --- B. Textual proofs: \noindent{\sc Proof ...}: ... ---
+        # Pattern: \noindent{\sc <header>}:(body ...)
+        text_proof_pattern = re.compile(
+            r"\\noindent\s*{\s*\\sc\s*([^}]*)}\s*:(?P<body>.*?)"
+            r"(?=(\\noindent\s*{\s*\\sc)|\\section\b|\\subsection\b|"
+            r"\\begin{[A-Za-z]+}|\\end{document})",
+            flags=re.DOTALL,
+        )
+
+        for m in text_proof_pattern.finditer(text):
+            header = m.group(1)           # e.g. "Proof of Theorem~\ref{T22VII18.1}"
+            body = m.group("body")
+            raw = text[m.start():m.end()]
+
+            label, name = self._extract_label_and_name(raw)
+            clean = self._clean_latex_to_text(raw)
+
+            idx += 1
+            proof = Proof(
+                id=f"P{idx}",
                 kind="proof",
                 index=idx,
                 label=label,
-                name=opt_name.strip() if opt_name else None,
-                raw_latex=body,
-                clean_text=clean_text,
+                name=name,
+                raw_latex=raw,
+                clean_text=clean,
+                parent_id=None,  # to be filled
             )
-            objects.append(obj)
-        return objects
+
+            # Try to capture the theorem label from the header, e.g. \ref{T22VII18.1}
+            mref = re.search(r"\\ref{([^}]+)}", header)
+            if mref:
+                # We'll use this in _link_proofs_to_theorems
+                proof._target_theorem_label = mref.group(1)  # type: ignore[attr-defined]
+
+            proofs.append(proof)
+
+        return proofs
+
 
     # ---- algorithms ----
 
@@ -811,75 +996,133 @@ class PaperParser:
         # crude sort by id prefix then index
         return sorted(graph.objects.values(), key=lambda o: (o.kind, o.index))
 
-    def _link_proofs_to_theorems(self, graph: PaperGraph):
-        """Link each proof to the nearest preceding theorem-like object in doc order (heuristic)."""
-        ordered = self._sort_objects_by_occurrence(graph)
-        last_thm_id: Optional[str] = None
-        for obj in ordered:
-            if isinstance(obj, TheoremLike):
-                last_thm_id = obj.id
-            elif isinstance(obj, Proof):
-                obj.parent_id = last_thm_id
+    def _link_proofs_to_theorems(self, graph: PaperGraph) -> None:
+        """
+        Set proof.parent_id for each Proof object.
+
+        Strategy:
+        1. If the proof has a header-derived label (e.g. Proof of Theorem~\ref{...}),
+           link to that theorem-like object.
+        2. Otherwise, link to the nearest preceding theorem-like by index.
+        """
+        # Build label -> theorem-like id map
+        label_to_theorem_id: Dict[str, str] = {}
+        for obj in graph.objects.values():
+            if isinstance(obj, TheoremLike) and getattr(obj, "label", None):
+                label_to_theorem_id[obj.label] = obj.id
+
+        # Collect proofs and theorem-like objects, sorted by index
+        proofs = [o for o in graph.objects.values() if isinstance(o, Proof)]
+        theorems = [o for o in graph.objects.values() if isinstance(o, TheoremLike)]
+        theorems_sorted = sorted(theorems, key=lambda t: t.index)
+
+        for proof in proofs:
+            # 1. Try header-based label: proof._target_theorem_label
+            target_from_header = getattr(proof, "_target_theorem_label", None)
+            if target_from_header and target_from_header in label_to_theorem_id:
+                proof.parent_id = label_to_theorem_id[target_from_header]
+                continue
+
+            # 2. Fallback: nearest preceding theorem-like by index
+            prev_candidates = [t for t in theorems_sorted if t.index <= proof.index]
+            if prev_candidates:
+                parent = prev_candidates[-1]
+                proof.parent_id = parent.id
 
     def _build_relations(self, graph: PaperGraph):
         """
         Build relations between objects using:
-        - \ref{label} patterns in theorem statements and proofs
+        - \ref/\eqref/\autoref{label} patterns in theorem statements and proofs
         - phrase heuristics for 'special case of', 'generalization of'
+        - equations belonging to parent environments
         """
         # mapping label -> id
         label_to_id: Dict[str, str] = {}
         for obj in graph.objects.values():
-            if obj.label:
+            if getattr(obj, "label", None):
                 label_to_id[obj.label] = obj.id
+
+        # generic reference pattern (ref / eqref / autoref)
+        ref_pattern = re.compile(r"\\(?:ref|eqref|autoref)\{([^}]+)\}")
 
         # 1. References inside proofs -> "used_in_proof"
         for obj in graph.objects.values():
             if not isinstance(obj, Proof):
                 continue
-            refs = re.findall(r"\\(ref|eqref){([^}]*)}", obj.raw_latex)
-            for _, label in refs:
+            raw = getattr(obj, "raw_latex", "") or ""
+            for label in ref_pattern.findall(raw):
                 target_id = label_to_id.get(label)
                 if target_id and obj.parent_id:
-                    graph.add_relation(source_id=target_id, target_id=obj.parent_id, relation_type="used_in_proof")
+                    graph.add_relation(
+                        source_id=target_id,
+                        target_id=obj.parent_id,
+                        relation_type="used_in_proof",
+                    )
 
         # 2. References inside theorem-like statements -> "uses"
         for obj in graph.objects.values():
             if not isinstance(obj, TheoremLike):
                 continue
-            refs = re.findall(r"\\(ref|eqref){([^}]*)}", obj.raw_latex)
-            for _, label in refs:
+            raw = getattr(obj, "raw_latex", "") or ""
+            for label in ref_pattern.findall(raw):
                 target_id = label_to_id.get(label)
                 if target_id:
-                    graph.add_relation(source_id=target_id, target_id=obj.id, relation_type="uses")
+                    graph.add_relation(
+                        source_id=target_id,
+                        target_id=obj.id,
+                        relation_type="uses",
+                    )
 
         # 3. Definitions used anywhere -> "uses_definition"
+        #    Allow ref/eqref/autoref after "Definition"
+        def_pat = re.compile(r"Definition~?\\(?:ref|eqref|autoref)\{([^}]+)\}")
         for obj in graph.objects.values():
             if isinstance(obj, Definition):
                 continue
-            refs = re.findall(r"Definition~?\\ref{([^}]*)}", obj.raw_latex)
-            for label in refs:
+            raw = getattr(obj, "raw_latex", "") or ""
+            for label in def_pat.findall(raw):
                 target_id = label_to_id.get(label)
                 if target_id:
-                    graph.add_relation(source_id=target_id, target_id=obj.id, relation_type="uses_definition")
+                    graph.add_relation(
+                        source_id=target_id,
+                        target_id=obj.id,
+                        relation_type="uses_definition",
+                    )
 
         # 4. Heuristic: special case / generalization phrasing
+        spec_pat = re.compile(
+            r"special case of .*?\\(?:ref|eqref|autoref)\{([^}]+)\}",
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        gen_pat = re.compile(
+            r"generalization of .*?\\(?:ref|eqref|autoref)\{([^}]+)\}",
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+
         for obj in graph.objects.values():
-            for m in re.finditer(r"special case of .*?\\ref{([^}]*)}", obj.raw_latex, flags=re.IGNORECASE | re.DOTALL):
+            raw = getattr(obj, "raw_latex", "") or ""
+            for m in spec_pat.finditer(raw):
                 label = m.group(1)
                 target_id = label_to_id.get(label)
                 if target_id:
-                    graph.add_relation(source_id=obj.id, target_id=target_id, relation_type="special_case_of")
-            for m in re.finditer(r"generalization of .*?\\ref{([^}]*)}", obj.raw_latex, flags=re.IGNORECASE | re.DOTALL):
+                    graph.add_relation(
+                        source_id=obj.id,
+                        target_id=target_id,
+                        relation_type="special_case_of",
+                    )
+            for m in gen_pat.finditer(raw):
                 label = m.group(1)
                 target_id = label_to_id.get(label)
                 if target_id:
-                    graph.add_relation(source_id=obj.id, target_id=target_id, relation_type="generalization_of")
+                    graph.add_relation(
+                        source_id=obj.id,
+                        target_id=target_id,
+                        relation_type="generalization_of",
+                    )
 
         # 5. Equations belonging to a parent object (theorem/definition/proof/algorithm)
         for obj in graph.objects.values():
             if isinstance(obj, Equation) and obj.parent_id:
-                # direction is your choice; here: equation -> parent
                 graph.add_relation(
                     source_id=obj.id,
                     target_id=obj.parent_id,
@@ -1014,39 +1257,32 @@ def paper_to_network(
     node_label_attr: str = "id",
     include_kinds: Optional[List[str]] = None,
     include_relation_types: Optional[List[str]] = None,
-    figsize: Tuple[int, int] = (10, 8),
+    figsize: Tuple[int, int] = (12, 8),
 ) -> nx.DiGraph:
     """
     Build and draw a network of math objects in a paper.
 
-    Parameters
-    ----------
-    paper : PaperGraph | str | Path
-        Either a PaperGraph object, or a path to a JSON file generated by
-        math_paper_parser.py (with graph.to_dict()).
-    out_png : str
-        Path to save the output image (e.g. 'paper_graph.png').
-    node_label_attr : {'id', 'label', 'name'}
-        Which attribute to use as node label on the plot.
-    include_kinds : list[str] or None
-        If given, only include nodes whose obj.kind is in this list
-        (e.g. ['theorem', 'lemma', 'definition']).
-    include_relation_types : list[str] or None
-        If given, only include edges whose relation_type is in this list
-        (e.g. ['used_in_proof', 'uses_definition']).
-    figsize : (int, int)
-        Matplotlib figure size.
+    Layout:
+      - All equations on the RIGHT side
+      - All other objects on the LEFT side
+      -> effectively a two-sided (almost bipartite) graph.
 
-    Returns
-    -------
-    G : networkx.DiGraph
-        The constructed directed graph.
+    Node colors:
+      - theorem / lemma / proposition / corollary: shades of red/orange
+      - definition: green
+      - proof: purple
+      - algorithm: grey
+      - table: brown
+      - equation: blue
+      - anything else: lightgrey
+
+    Edges:
+      - directed, drawn with arrows, direction is as stored in the PaperGraph.
     """
     # 1. Ensure we have a PaperGraph object
     if isinstance(paper, PaperGraph):
         graph = paper
     else:
-        # assume it's a JSON file path
         p = Path(paper)
         data = json.loads(p.read_text(encoding="utf-8"))
         graph = PaperGraph.from_dict(data)
@@ -1054,48 +1290,138 @@ def paper_to_network(
     # 2. Build networkx graph
     G = nx.DiGraph()
 
-    # Optionally limit node kinds
+    # Add nodes with attributes (kind, label, name)
     for obj_id, obj in graph.objects.items():
         if include_kinds is not None and obj.kind not in include_kinds:
             continue
-        G.add_node(obj_id, kind=obj.kind, label=obj.label, name=obj.name)
+        G.add_node(
+            obj_id,
+            kind=obj.kind,
+            label=getattr(obj, "label", None),
+            name=getattr(obj, "name", None),
+        )
 
-    # Optionally limit edge types and ensure endpoints exist in G
+    # Add edges with relation types, applying filter if needed
     for rel in graph.relations:
         if include_relation_types is not None and rel.relation_type not in include_relation_types:
             continue
         if rel.source_id in G.nodes and rel.target_id in G.nodes:
             G.add_edge(rel.source_id, rel.target_id, relation=rel.relation_type)
 
-    # 3. Prepare labels
-    # Choose what to show on the plot: id / label / name
-    node_labels = {}
+    # If there are no nodes, nothing to draw
+    if len(G.nodes) == 0:
+        print("[WARN] paper_to_network: graph has no nodes, nothing to draw.")
+        return G
+
+    # 3. Prepare labels: id / label / name
+    node_labels: Dict[str, str] = {}
     for node in G.nodes:
         obj = graph.objects[node]
-        if node_label_attr == "label" and obj.label:
+        if node_label_attr == "label" and getattr(obj, "label", None):
             node_labels[node] = obj.label
-        elif node_label_attr == "name" and obj.name:
+        elif node_label_attr == "name" and getattr(obj, "name", None):
             node_labels[node] = obj.name
         else:
-            node_labels[node] = obj.id  # fallback
+            node_labels[node] = obj.id
 
-    # 4. Draw with matplotlib
+    # 4. Compute a two-sided layout:
+    #    - left side: non-equations
+    #    - right side: equations only
+    equation_nodes = [n for n, d in G.nodes(data=True) if d.get("kind") == "equation"]
+    other_nodes = [n for n in G.nodes if n not in equation_nodes]
+
+    n_other = max(len(other_nodes), 1)
+    n_eq = max(len(equation_nodes), 1)
+
+    pos: Dict[str, Tuple[float, float]] = {}
+
+    # left column x=0.0
+    if len(other_nodes) == 1:
+        pos[other_nodes[0]] = (0.0, 0.0)
+    else:
+        for i, node in enumerate(sorted(other_nodes)):
+            y = 1.0 - 2.0 * i / (n_other - 1)  # spread in [-1,1]
+            pos[node] = (0.0, y)
+
+    # right column x=1.0
+    if len(equation_nodes) == 1:
+        pos[equation_nodes[0]] = (1.0, 0.0)
+    else:
+        for j, node in enumerate(sorted(equation_nodes)):
+            y = 1.0 - 2.0 * j / (n_eq - 1)  # spread in [-1,1]
+            pos[node] = (1.0, y)
+
+    # 5. Colors by kind
+    kind_color_map = {
+        "theorem": "red",
+        "lemma": "orangered",
+        "proposition": "darkred",
+        "corollary": "salmon",
+        "definition": "green",
+        "proof": "purple",
+        "algorithm": "grey",
+        "table": "saddlebrown",
+        "equation": "royalblue",
+    }
+
+    node_colors = []
+    for node, data in G.nodes(data=True):
+        kind = data.get("kind")
+        node_colors.append(kind_color_map.get(kind, "lightgrey"))
+
+    # 6. Draw with matplotlib
     plt.figure(figsize=figsize)
-    # layout: spring_layout is generic and decent for small graphs
-    pos = nx.spring_layout(G, k=0.7, iterations=50)
 
-    nx.draw_networkx_nodes(G, pos, node_size=800)
-    nx.draw_networkx_edges(G, pos, arrows=True, arrowstyle="->")
-    nx.draw_networkx_labels(G, pos, labels=node_labels, font_size=8)
+    # Draw nodes
+    nx.draw_networkx_nodes(
+        G,
+        pos,
+        node_color=node_colors,
+        node_size=800,
+    )
+
+    # Draw directed edges with arrows
+    nx.draw_networkx_edges(
+        G,
+        pos,
+        arrows=True,
+        arrowstyle="->",
+        arrowsize=15,
+        connectionstyle="arc3,rad=0.1",  # slight curvature so overlapping edges are visible
+    )
+
+    # Draw labels
+    nx.draw_networkx_labels(
+        G,
+        pos,
+        labels=node_labels,
+        font_size=8,
+    )
 
     plt.axis("off")
+
+    # 7. Legend: only for kinds that actually appear
+    used_kinds = sorted({data.get("kind") for _, data in G.nodes(data=True)})
+    legend_handles = []
+    for k in used_kinds:
+        color = kind_color_map.get(k, "lightgrey")
+        label = k
+        legend_handles.append(mpatches.Patch(color=color, label=label))
+    if legend_handles:
+        plt.legend(
+            handles=legend_handles,
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.05),
+            ncol=min(len(legend_handles), 4),
+            frameon=False,
+        )
+
     plt.tight_layout()
-    plt.savefig(out_png, dpi=300)
+    plt.savefig(out_png, dpi=300, bbox_inches="tight")
     plt.close()
 
     print(f"[INFO] Saved paper graph visualization to {out_png}")
     return G
-
 
 
 # ---------------------------------------------------------------------
