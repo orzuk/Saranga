@@ -4,6 +4,10 @@
 Helper module to fetch arXiv abstracts or metadata using a unified interface.
 Includes detailed debug prints to trace API queries and responses.
 """
+
+
+import subprocess
+
 import os
 import re
 import json
@@ -1159,82 +1163,123 @@ def fetch_arxiv_batch(
 
 
 
-def fetch_arxiv_source(arxiv_id: str, dest_dir: str | Path) -> Path:
+
+def fetch_arxiv_source(arxiv_id: str, dest_dir: Path, verbose: bool = False) -> Path:
     """
-    Download arXiv source (tar.gz or single-file TeX) into dest_dir.
-    Returns path to the main .tex file.
+    Download arXiv source into dest_dir and return path to the main .tex file.
+    Handles:
+        - normal .tar.gz source
+        - .tar without gzip
+        - raw .tex mislabeled as gzip or tar
     """
-    dest_dir = Path(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    # CLEAN extraction dir (remove old extracted junk)
+    # Clean directory from previous attempts
     for p in dest_dir.iterdir():
         if p.is_file():
             p.unlink()
         else:
             shutil.rmtree(p)
 
-    # -------- DOWNLOAD ----------
+    # -----------------------
+    # 1. Download file
+    # -----------------------
     url = f"https://arxiv.org/e-print/{arxiv_id}"
-    print(f"[INFO] Downloading arXiv source {arxiv_id} from {url}")
+    if verbose:
+        print(f"[INFO] Downloading {arxiv_id} from {url}")
 
     resp = requests.get(url, timeout=60)
     resp.raise_for_status()
     raw = resp.content
 
-    content_type = resp.headers.get("Content-Type", "").lower()
+    # Save initial bytes
+    gz_path = dest_dir / f"{arxiv_id}.tar.gz"
+    gz_path.write_bytes(raw)
 
-    # If it's PDF → no source available
-    if "pdf" in content_type:
-        raise RuntimeError(f"No TeX source available (PDF only): {arxiv_id}")
+    # -----------------------
+    # 2. Try GZIP decompress
+    # -----------------------
+    try:
+        if verbose:
+            print("[DEBUG] Attempting gzip decompression…")
 
-    # Identify if gzip tarball (magic: 1f 8b)
-    is_gzip = raw[:2] == b"\x1f\x8b"
+        decompressed = gzip.decompress(raw)
+        if verbose:
+            print("[DEBUG] gzip decompression succeeded.")
 
-    # If gzip/tarball → save and extract
-    if is_gzip:
-        tar_path = dest_dir / f"{arxiv_id}.tar.gz"
-        tar_path.write_bytes(raw)
-
-        try:
-            with tarfile.open(tar_path, "r:gz") as tf:
-                tf.extractall(dest_dir)
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to extract tar.gz archive for {arxiv_id}: {e}"
-            )
-
-    else:
-        # Otherwise: treat as a single .tex file
+    except Exception:
+        # → Not gzip; maybe raw tex
+        if verbose:
+            print("[DEBUG] gzip failed → treat as raw tex.")
         tex_path = dest_dir / f"{arxiv_id}.tex"
         tex_path.write_bytes(raw)
         return tex_path
 
-    # -------- FIND .tex FILES ---------
+    # -----------------------
+    # 3. After gzip: tar or raw tex?
+    # -----------------------
+    # Heuristic: tar headers contain "ustar" or other magic bits.
+    if b"ustar" not in decompressed[:500] and not tarfile.is_tarfile(gz_path):
+        # Probably raw tex mislabeled as gzip
+        if verbose:
+            print("[DEBUG] gzip output is not a tar → treat as raw tex.")
+        tex_path = dest_dir / f"{arxiv_id}.tex"
+        tex_path.write_bytes(decompressed)
+        return tex_path
+
+    # -----------------------
+    # 4. Try to extract tar
+    # -----------------------
+    tar_path = dest_dir / f"{arxiv_id}.tar"
+    tar_path.write_bytes(decompressed)
+
+    if verbose:
+        print("[DEBUG] Attempting tar extraction…")
+
+    try:
+        with tarfile.open(tar_path, "r:") as tf:
+            tf.extractall(dest_dir)
+    except Exception:
+        # Fallback: system tar
+        if verbose:
+            print("[WARN] Python tar failed → trying system `tar`.")
+        try:
+            subprocess.run(
+                ["tar", "-xf", str(tar_path), "-C", str(dest_dir)],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        except Exception as e2:
+            raise RuntimeError(
+                f"Failed to extract tar archive for {arxiv_id}: {e2}"
+            )
+
+    # -----------------------
+    # 5. Find .tex files
+    # -----------------------
     tex_files = list(dest_dir.rglob("*.tex"))
     if not tex_files:
-        raise RuntimeError(f"No .tex found in {dest_dir} after fetch/extract")
+        raise RuntimeError(f"No .tex found in {dest_dir} after extracting {arxiv_id}")
 
-    # Prefer files with \begin{document}
+    # Prefer file with \begin{document}
     doc_candidates = []
     for p in tex_files:
-        try:
-            txt = p.read_text(encoding="utf-8", errors="ignore")
-        except Exception:
-            continue
+        txt = p.read_text(errors="ignore")
         if "\\begin{document}" in txt:
             doc_candidates.append(p)
 
     candidates = doc_candidates if doc_candidates else tex_files
 
-    # Prefer arxiv_id.tex
+    # Prefer id.tex
     for p in candidates:
-        if p.name == f"{arxiv_id}.tex":
+        if p.name.startswith(arxiv_id):
             return p
 
-    # Return largest .tex file
+    # Otherwise largest file
     candidates.sort(key=lambda p: p.stat().st_size, reverse=True)
     return candidates[0]
+
 
 
 
