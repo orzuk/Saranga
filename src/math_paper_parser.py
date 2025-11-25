@@ -202,6 +202,10 @@ class PaperParser:
         "definition": "definition",
         "Definition": "definition",     # NEW
         "defn": "definition",
+        "dfn": "definition",
+        "Def": "definition",
+        "Defn": "definition",
+
 
         "proof": "proof",               # environment version
         "Proof": "proof",               # NEW (rare)
@@ -781,31 +785,74 @@ class PaperParser:
     # ---- definitions ----
 
     def _extract_definitions(self, text: str) -> List[Definition]:
+        """Extract Definition objects.
+
+        1. Primary: environments whose kind is 'definition' according to env_kind_map
+           (e.g. \begin{definition}, \begin{defn}, or anything introduced via \newtheorem).
+        2. Fallback: textual 'Definition X.Y.' patterns when no environment is used.
+        """
+        # --- A. Environment-based definitions ---
         env_names = [env for env, kind in self.env_kind_map.items() if kind == "definition"]
-        if not env_names:
-            return []
-
-        found = self._extract_envs(text, env_names)
-        idx = 0
         objects: List[Definition] = []
+        idx = 0
 
-        for env_name, opt_name, body in found:
+        if env_names:
+            found = self._extract_envs(text, env_names)
+            for env_name, opt_name, body in found:
+                idx += 1
+                obj_id = "D" + str(idx)
+                label, _ = self._extract_label_and_name(body)
+                clean_text = self._clean_latex_to_text(body)
+                objects.append(
+                    Definition(
+                        id=obj_id,
+                        kind="definition",
+                        index=idx,
+                        label=label,
+                        name=opt_name.strip() if opt_name else None,
+                        raw_latex=body,
+                        clean_text=clean_text,
+                        env_name=env_name,
+                    )
+                )
+
+        # --- B. Textual 'Definition 2.1.' style definitions as fallback ---
+        # Pattern:
+        #   Definition 2.1. <text...>
+        # We stop the body at:
+        #   - next "Definition k.l."
+        #   - or next \begin{...}, \section, \subsection, or \end{document}
+        definition_text_pattern = re.compile(
+            r"(?:^|\n)\s*(?:\\noindent\s*)?"
+            r"(?:\\textbf\{)?Definition\s+([0-9]+(?:\.[0-9]+)*)\.?(?:\})?\s*"
+            r"(?P<body>.*?)"
+            r"(?=(?:^|\n)\s*(?:\\noindent\s*)?(?:\\textbf\{)?Definition\s+[0-9]|"
+            r"\\begin\{|\\section\b|\\subsection\b|\\end{document})",
+            flags=re.DOTALL,
+        )
+
+        for m in definition_text_pattern.finditer(text):
             idx += 1
             obj_id = "D" + str(idx)
-            label, _ = self._extract_label_and_name(body)
+            number = m.group(1)
+            body = m.group("body")
+            name = f"Definition {number}"
             clean_text = self._clean_latex_to_text(body)
-            obj = Definition(
-                id=obj_id,
-                kind="definition",
-                index=idx,
-                label=label,
-                name=opt_name.strip() if opt_name else None,
-                raw_latex=body,
-                clean_text=clean_text,
-                env_name=env_name,
+            objects.append(
+                Definition(
+                    id=obj_id,
+                    kind="definition_textual",
+                    index=idx,
+                    label=None,
+                    name=name,
+                    raw_latex=body,
+                    clean_text=clean_text,
+                    env_name="textual",
+                )
             )
-            objects.append(obj)
+
         return objects
+
 
     # ---- proofs ----
 
