@@ -1152,82 +1152,80 @@ def fetch_arxiv_batch(
     return results
 
 
+
 def fetch_arxiv_source(arxiv_id: str, dest_dir: str | Path | None = None) -> Path:
     """
-    Download arXiv source tarball for arxiv_id and return the path to the main .tex file.
-
-    If dest_dir is provided:
-        - download directly into dest_dir
-        - extract tarball in dest_dir
-    If dest_dir is None:
-        - fallback to old behavior, using a temporary directory
-
-    Main .tex selection:
-        1. prefer files containing \begin{document}
-        2. prefer a file named <arxiv_id>.tex
-        3. otherwise choose the largest .tex file
+    Download arXiv source. Handle BOTH tar archives and single-file TeX sources.
     """
-    # Normalize dest_dir
+    # Normalize dest dir
     if dest_dir is not None:
         dest_dir = Path(dest_dir)
         dest_dir.mkdir(parents=True, exist_ok=True)
         work_dir = dest_dir
     else:
-        # fallback to tmp directory
         work_dir = Path(tempfile.mkdtemp(prefix=f"arxiv_{arxiv_id}_"))
 
-    # Download location
-    tar_path = work_dir / f"{arxiv_id}.tar"
-
-    # ---- Download source ----
     url = f"https://arxiv.org/e-print/{arxiv_id}"
     print(f"[INFO] Downloading arXiv source {arxiv_id} from {url}")
     resp = requests.get(url, timeout=60)
     resp.raise_for_status()
 
-    content_type = resp.headers.get("Content-Type", "")
-    if "pdf" in content_type.lower() or "html" in content_type.lower():
+    content_type = resp.headers.get("Content-Type", "").lower()
+
+    # If the content is PDF → no source
+    if "pdf" in content_type:
         raise RuntimeError(
-            f"arXiv source for {arxiv_id} does not appear to be available "
-            f"(Content-Type: {content_type})."
+            f"No TeX source available for {arxiv_id} (got PDF instead)."
         )
 
-    tar_path.write_bytes(resp.content)
+    # Determine whether this is a tarball or a plain .tex file
+    raw = resp.content
 
-    # ---- Extract tar archive ----
-    try:
-        with tarfile.open(tar_path, "r:*") as tf:
-            tf.extractall(work_dir)
-    except tarfile.ReadError as e:
-        snippet = resp.content[:200].decode("latin1", errors="replace")
-        raise RuntimeError(
-            f"Could not open arXiv source for {arxiv_id} as tar: {e}\n"
-            f"First 200 bytes:\n{snippet}"
-        ) from e
+    # Gzip magic number: 1F 8B
+    is_gzip = raw[:2] == b"\x1f\x8b"
+    # Ustar header for tar
+    is_ustar = b"ustar" in raw[:500]
 
-    # ---- Find tex files ----
+    if is_gzip or is_ustar:
+        # ---- TARFILE CASE ----
+        tar_path = work_dir / f"{arxiv_id}.tar"
+        tar_path.write_bytes(raw)
+        try:
+            with tarfile.open(tar_path, "r:*") as tf:
+                tf.extractall(work_dir)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to extract tar archive for {arxiv_id}: {e}"
+            )
+    else:
+        # ---- SINGLE-TEX CASE ----
+        tex_path = work_dir / f"{arxiv_id}.tex"
+        tex_path.write_bytes(raw)
+        return tex_path
+
+    # ---- Now find tex files in extracted tar ----
     tex_files = list(work_dir.rglob("*.tex"))
     if not tex_files:
-        raise RuntimeError(f"No .tex files found in arXiv source for {arxiv_id}")
+        raise RuntimeError(f"No .tex files found in extracted source for {arxiv_id}")
 
-    # ---- Prefer files containing \begin{document} ----
+    # Prefer files containing \begin{document}
     doc_candidates = []
     for p in tex_files:
         try:
             text = p.read_text(encoding="utf-8", errors="ignore")
-        except Exception:
+        except:
             continue
         if "\\begin{document}" in text:
             doc_candidates.append(p)
 
     candidates = doc_candidates if doc_candidates else tex_files
 
-    # ---- Prefer <arxiv_id>.tex ----
+    # Prefer <id>.tex
     for p in candidates:
         if p.name == f"{arxiv_id}.tex":
             return p
 
-    # ---- Otherwise choose the largest .tex file ----
+    # Otherwise largest file
     candidates.sort(key=lambda p: p.stat().st_size, reverse=True)
     return candidates[0]
 
