@@ -24,7 +24,7 @@ from urllib.parse import urlencode
 from email.utils import parsedate_to_datetime
 from typing import Iterator, Dict, List, Union, Optional, Any, Tuple
 from requests.exceptions import HTTPError, RequestException
-
+from pathlib import Path
 import pandas as pd
 import tables
 
