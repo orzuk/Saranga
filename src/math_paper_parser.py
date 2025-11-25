@@ -1309,22 +1309,21 @@ def paper_to_network(
     """
     Build and draw a network of math objects in a paper.
 
-    Layout:
-      - All equations on the RIGHT side
-      - All other objects on the LEFT side
-      -> effectively a two-sided (almost bipartite) graph.
+    Layout logic:
+      - "Interesting" nodes (everything except:
+            * completely isolated equations
+            * "orphan" proofs)
+        are laid out with a force-directed (spring) layout to keep edges short.
+      - Isolated equation nodes are drawn in a tight vertical column
+        on the far RIGHT.
+      - Orphan proofs (proofs not connected to any theorem/lemma/...)
+        are drawn in a vertical column on the far LEFT.
+      - Equations that are connected to theorems/proofs/etc participate
+        in the spring layout so they sit close to the objects that use them.
 
-    Node colors:
-      - theorem / lemma / proposition / corollary: shades of red/orange
-      - definition: green
-      - proof: purple
-      - algorithm: grey
-      - table: brown
-      - equation: blue
-      - anything else: lightgrey
-
-    Edges:
-      - directed, drawn with arrows, direction is as stored in the PaperGraph.
+    Visual tweaks:
+      - Equation nodes are smaller than the other kinds.
+      - Other node kinds keep their previous colors.
     """
     # 1. Ensure we have a PaperGraph object
     if isinstance(paper, PaperGraph):
@@ -1371,34 +1370,78 @@ def paper_to_network(
         else:
             node_labels[node] = obj.id
 
-    # 4. Compute a two-sided layout:
-    #    - left side: non-equations
-    #    - right side: equations only
+    # 4. Identify special node sets
     equation_nodes = [n for n, d in G.nodes(data=True) if d.get("kind") == "equation"]
-    other_nodes = [n for n in G.nodes if n not in equation_nodes]
+    proof_nodes = [n for n, d in G.nodes(data=True) if d.get("kind") == "proof"]
 
-    n_other = max(len(other_nodes), 1)
-    n_eq = max(len(equation_nodes), 1)
+    # 4a. Equations not connected to anything (degree 0) -> right column
+    isolated_equations = [n for n in equation_nodes if G.degree(n) == 0]
+    eq_connected = [n for n in equation_nodes if n not in isolated_equations]
+
+    # 4b. Orphan proofs: proofs not connected to any theorem/lemma/...
+    statement_kinds = {
+        "theorem",
+        "lemma",
+        "proposition",
+        "corollary",
+        "claim",
+        "conjecture",
+    }
+    orphan_proofs: List[str] = []
+    for p in proof_nodes:
+        neighbors = set(G.predecessors(p)) | set(G.successors(p))
+        if not any(G.nodes[n].get("kind") in statement_kinds for n in neighbors):
+            orphan_proofs.append(p)
+
+    # Nodes that will be placed with the automatic (spring) layout:
+    nodes_for_spring = [
+        n for n in G.nodes if n not in isolated_equations and n not in orphan_proofs
+    ]
 
     pos: Dict[str, Tuple[float, float]] = {}
 
-    # left column x=0.0
-    if len(other_nodes) == 1:
-        pos[other_nodes[0]] = (0.0, 0.0)
-    else:
-        for i, node in enumerate(sorted(other_nodes)):
-            y = 1.0 - 2.0 * i / (n_other - 1)  # spread in [-1,1]
-            pos[node] = (0.0, y)
+    # 5. Spring layout for the main part of the graph
+    if nodes_for_spring:
+        H = G.subgraph(nodes_for_spring).copy()
+        pos_main = nx.spring_layout(H, seed=42)
 
-    # right column x=1.0
-    if len(equation_nodes) == 1:
-        pos[equation_nodes[0]] = (1.0, 0.0)
-    else:
-        for j, node in enumerate(sorted(equation_nodes)):
-            y = 1.0 - 2.0 * j / (n_eq - 1)  # spread in [-1,1]
-            pos[node] = (1.0, y)
+        # Normalize and scale positions so they occupy most of the canvas
+        xs = [xy[0] for xy in pos_main.values()]
+        ys = [xy[1] for xy in pos_main.values()]
+        max_abs = max(
+            max((abs(x) for x in xs), default=1.0),
+            max((abs(y) for y in ys), default=1.0),
+        )
+        scale = 1.5 / max_abs  # a bit bigger than [-1,1]
+        for n, (x, y) in pos_main.items():
+            pos[n] = (x * scale, y * scale)
 
-    # 5. Colors by kind
+    # 6. Place orphan proofs in a left column (x ~ -3)
+    if orphan_proofs:
+        m = max(len(orphan_proofs) - 1, 1)
+        for i, n in enumerate(sorted(orphan_proofs)):
+            y = 1.5 - 3.0 * i / m  # spread vertically in roughly [-1.5,1.5]
+            pos[n] = (-3.0, y)
+
+    # 7. Place isolated equations in a right column (x ~ +3)
+    if isolated_equations:
+        m = max(len(isolated_equations) - 1, 1)
+        for i, n in enumerate(sorted(isolated_equations)):
+            y = 1.5 - 3.0 * i / m
+            pos[n] = (3.0, y)
+
+    # Safety: if for some reason pos is still empty (very degenerate graph),
+    # fall back to a trivial layout.
+    if not pos:
+        if len(G.nodes) == 1:
+            only = next(iter(G.nodes))
+            pos[only] = (0.0, 0.0)
+        else:
+            pos_tmp = nx.spring_layout(G, seed=42)
+            for n, (x, y) in pos_tmp.items():
+                pos[n] = (x, y)
+
+    # 8. Colors & sizes by kind
     kind_color_map = {
         "theorem": "red",
         "lemma": "orangered",
@@ -1411,12 +1454,21 @@ def paper_to_network(
         "equation": "royalblue",
     }
 
-    node_colors = []
+    node_colors: List[str] = []
+    node_sizes: List[float] = []
+
     for node, data in G.nodes(data=True):
         kind = data.get("kind")
-        node_colors.append(kind_color_map.get(kind, "lightgrey"))
+        color = kind_color_map.get(kind, "lightgrey")
+        node_colors.append(color)
 
-    # 6. Draw with matplotlib
+        # Equations smaller than everything else
+        if kind == "equation":
+            node_sizes.append(200.0)
+        else:
+            node_sizes.append(800.0)
+
+    # 9. Draw
     plt.figure(figsize=figsize)
 
     # Draw nodes
@@ -1424,7 +1476,7 @@ def paper_to_network(
         G,
         pos,
         node_color=node_colors,
-        node_size=800,
+        node_size=node_sizes,
     )
 
     # Draw directed edges with arrows
@@ -1447,7 +1499,7 @@ def paper_to_network(
 
     plt.axis("off")
 
-    # 7. Legend: only for kinds that actually appear
+    # 10. Legend: only for kinds that actually appear
     used_kinds = sorted({data.get("kind") for _, data in G.nodes(data=True)})
     legend_handles = []
     for k in used_kinds:
@@ -1469,6 +1521,7 @@ def paper_to_network(
 
     print(f"[INFO] Saved paper graph visualization to {out_png}")
     return G
+
 
 
 # ---------------------------------------------------------------------

@@ -22,7 +22,7 @@ from urllib.error import HTTPError
 from collections import Counter
 from urllib.parse import urlencode
 from email.utils import parsedate_to_datetime
-from typing import Iterator, Dict, List, Union, Optional, Any
+from typing import Iterator, Dict, List, Union, Optional, Any, Tuple
 from requests.exceptions import HTTPError, RequestException
 
 import pandas as pd
