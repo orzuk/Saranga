@@ -25,7 +25,13 @@ from email.utils import parsedate_to_datetime
 from typing import Iterator, Dict, List, Union, Optional, Any, Tuple
 from requests.exceptions import HTTPError, RequestException
 from pathlib import Path
-import tempfile
+
+
+import shutil
+from pathlib import Path
+
+
+
 
 import pandas as pd
 import tables
@@ -1153,81 +1159,83 @@ def fetch_arxiv_batch(
 
 
 
-def fetch_arxiv_source(arxiv_id: str, dest_dir: str | Path | None = None) -> Path:
+def fetch_arxiv_source(arxiv_id: str, dest_dir: str | Path) -> Path:
     """
-    Download arXiv source. Handle BOTH tar archives and single-file TeX sources.
+    Download arXiv source (tar.gz or single-file TeX) into dest_dir.
+    Returns path to the main .tex file.
     """
-    # Normalize dest dir
-    if dest_dir is not None:
-        dest_dir = Path(dest_dir)
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        work_dir = dest_dir
-    else:
-        work_dir = Path(tempfile.mkdtemp(prefix=f"arxiv_{arxiv_id}_"))
+    dest_dir = Path(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
 
+    # CLEAN extraction dir (remove old extracted junk)
+    for p in dest_dir.iterdir():
+        if p.is_file():
+            p.unlink()
+        else:
+            shutil.rmtree(p)
+
+    # -------- DOWNLOAD ----------
     url = f"https://arxiv.org/e-print/{arxiv_id}"
     print(f"[INFO] Downloading arXiv source {arxiv_id} from {url}")
+
     resp = requests.get(url, timeout=60)
     resp.raise_for_status()
+    raw = resp.content
 
     content_type = resp.headers.get("Content-Type", "").lower()
 
-    # If the content is PDF → no source
+    # If it's PDF → no source available
     if "pdf" in content_type:
-        raise RuntimeError(
-            f"No TeX source available for {arxiv_id} (got PDF instead)."
-        )
+        raise RuntimeError(f"No TeX source available (PDF only): {arxiv_id}")
 
-    # Determine whether this is a tarball or a plain .tex file
-    raw = resp.content
-
-    # Gzip magic number: 1F 8B
+    # Identify if gzip tarball (magic: 1f 8b)
     is_gzip = raw[:2] == b"\x1f\x8b"
-    # Ustar header for tar
-    is_ustar = b"ustar" in raw[:500]
 
-    if is_gzip or is_ustar:
-        # ---- TARFILE CASE ----
-        tar_path = work_dir / f"{arxiv_id}.tar"
+    # If gzip/tarball → save and extract
+    if is_gzip:
+        tar_path = dest_dir / f"{arxiv_id}.tar.gz"
         tar_path.write_bytes(raw)
+
         try:
-            with tarfile.open(tar_path, "r:*") as tf:
-                tf.extractall(work_dir)
+            with tarfile.open(tar_path, "r:gz") as tf:
+                tf.extractall(dest_dir)
         except Exception as e:
             raise RuntimeError(
-                f"Failed to extract tar archive for {arxiv_id}: {e}"
+                f"Failed to extract tar.gz archive for {arxiv_id}: {e}"
             )
+
     else:
-        # ---- SINGLE-TEX CASE ----
-        tex_path = work_dir / f"{arxiv_id}.tex"
+        # Otherwise: treat as a single .tex file
+        tex_path = dest_dir / f"{arxiv_id}.tex"
         tex_path.write_bytes(raw)
         return tex_path
 
-    # ---- Now find tex files in extracted tar ----
-    tex_files = list(work_dir.rglob("*.tex"))
+    # -------- FIND .tex FILES ---------
+    tex_files = list(dest_dir.rglob("*.tex"))
     if not tex_files:
-        raise RuntimeError(f"No .tex files found in extracted source for {arxiv_id}")
+        raise RuntimeError(f"No .tex found in {dest_dir} after fetch/extract")
 
-    # Prefer files containing \begin{document}
+    # Prefer files with \begin{document}
     doc_candidates = []
     for p in tex_files:
         try:
-            text = p.read_text(encoding="utf-8", errors="ignore")
-        except:
+            txt = p.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
             continue
-        if "\\begin{document}" in text:
+        if "\\begin{document}" in txt:
             doc_candidates.append(p)
 
     candidates = doc_candidates if doc_candidates else tex_files
 
-    # Prefer <id>.tex
+    # Prefer arxiv_id.tex
     for p in candidates:
         if p.name == f"{arxiv_id}.tex":
             return p
 
-    # Otherwise largest file
+    # Return largest .tex file
     candidates.sort(key=lambda p: p.stat().st_size, reverse=True)
     return candidates[0]
+
 
 
 def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir: Path, verbose=False):
