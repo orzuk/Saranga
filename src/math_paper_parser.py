@@ -33,6 +33,9 @@ import networkx as nx  # For drawing
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
+from extract_arxiv_funcs import resolve_source_to_tex_local_first
+from config import FULL_PAPERS_DIR
+
 
 
 # ---------------------------------------------------------------------
@@ -1181,122 +1184,32 @@ class PaperParser:
 # ---------------------------------------------------------------------
 
 
-ARXIV_ID_RE = re.compile(r"^(?:arXiv:)?(\d{4}\.\d{4,5})(v\d+)?$")
 
-
-def is_arxiv_id(s: str) -> Optional[str]:
-    """Return normalized arXiv id (without version) if s looks like one, else None."""
-    m = ARXIV_ID_RE.match(s.strip())
-    if m:
-        return m.group(1)
-    return None
-
-
-def extract_arxiv_id_from_url(url: str) -> Optional[str]:
+# NEW: minimal wrapper – delegates everything to extract_arxiv_funcs
+def resolve_source_to_tex(source: str):
     """
-    Very simple arXiv URL parser.
-    Supports e.g.:
-      https://arxiv.org/abs/2101.12345
-      https://arxiv.org/pdf/2101.12345.pdf
-      https://arxiv.org/src/2101.12345v1
-    """
-    m = re.search(r"(\d{4}\.\d{4,5})(v\d+)?", url)
-    if m:
-        return m.group(1)
-    return None
-
-
-def fetch_arxiv_source(arxiv_id: str) -> Path:
-    """
-    Download arXiv source tarball to a temp dir and return path to the main .tex file.
-
-    Strategy:
-    - download https://arxiv.org/e-print/<id> (source tarball)
-    - if content-type looks like PDF/HTML -> likely no source; raise
-    - extract to tempdir
-    - identify candidate main .tex files:
-        * those containing '\\begin{document}'
-        * if none, fall back to previous 'largest .tex' heuristic
-    - among candidates, prefer file named <id>.tex if it exists, else
-      just take the first candidate.
-    """
-    url = f"https://arxiv.org/e-print/{arxiv_id}"
-    tmpdir = Path(tempfile.mkdtemp(prefix=f"arxiv_{arxiv_id}_"))
-    tar_path = tmpdir / "source.tar"
-    print(f"[INFO] Downloading arXiv source {arxiv_id} from {url}")
-    resp = requests.get(url, timeout=60)
-    resp.raise_for_status()
-
-    content_type = resp.headers.get("Content-Type", "")
-    if "pdf" in content_type.lower() or "html" in content_type.lower():
-        raise RuntimeError(
-            f"arXiv source for {arxiv_id} does not appear to be available "
-            f"(Content-Type: {content_type}). Try a different paper with TeX source."
-        )
-
-    tar_path.write_bytes(resp.content)
-
-    try:
-        with tarfile.open(tar_path, "r:*") as tf:
-            tf.extractall(tmpdir)
-    except tarfile.ReadError as e:
-        snippet = resp.content[:200].decode("latin1", errors="replace")
-        raise RuntimeError(
-            f"Could not open arXiv source for {arxiv_id} as a tar archive: {e}\n"
-            f"First 200 bytes:\n{snippet}\n"
-            f"This usually means the TeX source is not publicly available for this paper."
-        ) from e
-
-    tex_files = list(tmpdir.rglob("*.tex"))
-    if not tex_files:
-        raise RuntimeError(f"No .tex files found in arXiv source for {arxiv_id}")
-
-    # Prefer .tex files that actually contain \begin{document}
-    doc_candidates = []
-    for p in tex_files:
-        try:
-            text = p.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            continue
-        if "\\begin{document}" in text:
-            doc_candidates.append(p)
-
-    candidates = doc_candidates if doc_candidates else tex_files
-
-    # Prefer <id>.tex if present among candidates
-    for p in candidates:
-        if p.name == f"{arxiv_id}.tex":
-            return p
-
-    # Otherwise choose the largest among candidates
-    candidates.sort(key=lambda p: p.stat().st_size, reverse=True)
-    return candidates[0]
-
-
-def resolve_source_to_tex(source: str) -> Tuple[Path, str]:
-    """
-    Resolve an input string to a local .tex Path and a paper_id.
-
-    Cases:
-    - existing local path -> use it, paper_id = stem
-    - arxiv id like '2101.12345' or 'arXiv:2101.12345' -> download
-    - arxiv URL -> extract ID -> download
+    Very thin wrapper for CLI usage only.
+    If source is a local .tex file, use it.
+    Otherwise treat as arXiv ID and defer to resolve_source_to_tex_local_first().
     """
     p = Path(source)
     if p.exists() and p.is_file():
         return p, p.stem
 
-    # maybe arxiv id
-    arxiv_id = is_arxiv_id(source)
-    if not arxiv_id and source.startswith("http"):
-        arxiv_id = extract_arxiv_id_from_url(source)
+    # treat as arXiv ID or URL (extract in funcs)
+    from extract_arxiv_funcs import normalize_arxiv_id
+    base_id = normalize_arxiv_id(source)
 
-    if arxiv_id:
-        tex_path = fetch_arxiv_source(arxiv_id)
-        return tex_path, arxiv_id
+    # fetch metadata only when called directly:
+    from extract_arxiv_funcs import fetch_arxiv_metadata
+    md = fetch_arxiv_metadata([base_id + "v1"])[base_id + "v1"]
 
-    raise FileNotFoundError(f"Cannot resolve source '{source}' as local file or arXiv id/url")
-
+    return resolve_source_to_tex_local_first(
+        base_id=base_id,
+        meta=md,
+        full_papers_dir=Path(FULL_PAPERS_DIR),
+        verbose=False,
+    )
 
 def paper_to_network(
     paper: Union[PaperGraph, str, Path],

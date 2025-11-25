@@ -35,13 +35,12 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-import tempfile
 from config import FULL_PAPERS_DIR, LOCAL_FIRST
-from extract_arxiv_funcs import get_tex_path_from_local_or_fetch
 
 from math_paper_parser import PaperParser, resolve_source_to_tex, paper_to_network
 # THIS is your infra for IDs + metadata + local HDF5 snapshot:
-from extract_arxiv_funcs import fetch_arxiv_batch
+from extract_arxiv_funcs import fetch_arxiv_batch, resolve_source_to_tex_local_first
+
 
 
 def compute_date_range(
@@ -69,6 +68,7 @@ def compute_date_range(
     return start_date.isoformat(), end_date.isoformat()
 
 
+
 def run_batch(
     start_date: Optional[str],
     end_date: Optional[str],
@@ -84,15 +84,16 @@ def run_batch(
         f"(start={start_date}, end={end_date}, category={category}, regex_id={regex_id})"
     )
 
-    # Use your existing infrastructure to get IDs + metadata (no sources here!)
-    # formats='metadata' → fast local metadata via JSONL + HDF5, no PDF/source downloads.
+    # ------------------------------------------------------------
+    # 1. FETCH METADATA ONCE (no source downloading)
+    # ------------------------------------------------------------
     data = fetch_arxiv_batch(
         regex_id=regex_id,
         start_date=start_date,
         end_date=end_date,
         category=category,
         formats="metadata",
-        output_dir=None,     # don't save any PDFs/sources here
+        output_dir=None,
         verbose=verbose,
     )
 
@@ -103,59 +104,51 @@ def run_batch(
         print("[WARN] No papers matched the filters. Nothing to do.")
         return
 
-    # Collapse versioned IDs ("2309.00543v1") → base IDs ("2309.00543").
+    # ------------------------------------------------------------
+    # 2. COLLAPSE VERSIONED → BASE IDs (latest metadata kept)
+    # ------------------------------------------------------------
     base_to_meta: Dict[str, Dict[str, Any]] = {}
     for vid, entry in data.items():
         base_id = vid.split("v")[0]
-        md = entry.get("metadata", entry)  # depending on how you call fetch_arxiv_batch
-        # Keep the "latest" metadata per base_id (arbitrary here; doesn't matter much)
+        md = entry.get("metadata", entry)
         base_to_meta[base_id] = md
 
     print(f"[INFO] Collapsed to {len(base_to_meta)} unique base IDs.")
 
-    # Sort by created/published date if available, so "top_k" is somewhat meaningful
-    def extract_date(md: Dict[str, Any]) -> datetime:
-        # Try a few keys inside metadata
-        for key in ("published", "created", "versions"):
-            val = md.get(key)
-            if not val:
-                continue
-            if key == "versions":
-                # typical arXiv JSON: versions[0]['created'] = "Tue, 1 Jan 2019 00:00:00 GMT"
+    # ------------------------------------------------------------
+    # 3. SORT BY DATE (published / created)
+    # ------------------------------------------------------------
+    def extract_date(md: dict) -> datetime:
+        for key in ("published", "created"):
+            if md.get(key):
                 try:
-                    created_full = val[0].get("created", "")
-                    # we only need YYYY-MM-DD, but we'll parse robustly later if you want
-                    # here: naive fallback: split on comma and space
-                    # but we can just ignore and fallback if parsing fails
+                    return datetime.strptime(str(md[key])[:10], "%Y-%m-%d")
                 except Exception:
-                    continue
-            # For "published" or "created", we might have ISO or RFC-style; we'll try first 10 chars
-            s = str(val)[:10]
-            try:
-                return datetime.strptime(s, "%Y-%m-%d")
-            except Exception:
-                continue
-        # fallback: very old date
+                    pass
         return datetime(1970, 1, 1)
 
     items = list(base_to_meta.items())
-    items.sort(key=lambda kv: extract_date(kv[1]), reverse=True)  # newest first
+    items.sort(key=lambda kv: extract_date(kv[1]), reverse=True)
 
-    if top_k is not None and top_k > 0 and len(items) > top_k:
+    if top_k and top_k > 0:
         items = items[:top_k]
 
     print(f"[INFO] Will process {len(items)} base IDs after top_k filter.")
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # ------------------------------------------------------------
+    # 4. MAIN LOOP: resolve tex → parse → save JSON/PNG
+    # ------------------------------------------------------------
     for i, (base_id, md) in enumerate(items, start=1):
         print(f"\n[INFO] ({i}/{len(items)}) Processing {base_id}")
 
-        # --- Step 1: get LaTeX source (local full_papers tree first, then arXiv) ---
+        # ---------- STEP 1: GET LOCAL OR FETCHED TEX ----------
         try:
-            tex_path, inferred_id = get_tex_path_from_local_or_fetch(
+            tex_path, versioned_id = resolve_source_to_tex_local_first(
                 base_id=base_id,
-                md=md,
+                meta=md,
+                full_papers_dir=out_dir,
                 verbose=verbose,
             )
             print(f"[INFO]   Resolved source -> {tex_path}")
@@ -163,43 +156,41 @@ def run_batch(
             print(f"[WARN]   Could not resolve source for {base_id}: {e}")
             continue
 
-
-        # --- Step 2: parse with PaperParser ---
+        # ---------- STEP 2: PARSE ----------
         try:
-            parser = PaperParser(paper_id=inferred_id)
+            parser = PaperParser(paper_id=versioned_id)
             graph = parser.parse_file(tex_path)
         except Exception as e:
             print(f"[WARN]   Failed to parse {base_id}: {e}")
             continue
 
-        # --- Step 3: choose output subdirectories based on publication date ---
+        # ---------- STEP 3: DETERMINE OUTPUT DIR (same YYYY/MM/DD as tex) ----------
         pub_raw = md.get("published") or md.get("created")
         if pub_raw:
-            date_str = str(pub_raw)[:10]  # 'YYYY-MM-DD'
+            date_str = str(pub_raw)[:10]
             try:
                 year, month, day = date_str.split("-")
-            except ValueError:
+            except Exception:
                 year, month, day = ("unknown", "unknown", "unknown")
         else:
             year, month, day = ("unknown", "unknown", "unknown")
 
         base_day_dir = out_dir / year / month / day
 
-        # JSON
+        # ---------- STEP 4: WRITE JSON ----------
         json_dir = base_day_dir / "json"
         json_dir.mkdir(parents=True, exist_ok=True)
-        json_path = json_dir / f"{inferred_id}.json"
-        json_path.write_text(
-            json.dumps(graph.to_dict(), indent=2),
-            encoding="utf-8",
-        )
+        json_path = json_dir / f"{versioned_id}.json"
+
+        json_path.write_text(json.dumps(graph.to_dict(), indent=2), encoding="utf-8")
         print(f"[OK]   Saved graph for {base_id} -> {json_path}")
 
-        # --- Step 4: draw and save graph if requested ---
+        # ---------- STEP 5: DRAW PNG ----------
         if draw_graphs:
             png_dir = base_day_dir / "png"
             png_dir.mkdir(parents=True, exist_ok=True)
-            out_png = png_dir / f"{inferred_id}.png"
+            out_png = png_dir / f"{versioned_id}.png"
+
             try:
                 paper_to_network(
                     paper=graph,
@@ -214,6 +205,8 @@ def run_batch(
                 print(f"[OK]   Saved PNG for {base_id} -> {out_png}")
             except Exception as e:
                 print(f"[WARN] Could not draw network for {base_id}: {e}")
+
+    print("[INFO] Done.")
 
 
 

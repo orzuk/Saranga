@@ -25,6 +25,8 @@ from email.utils import parsedate_to_datetime
 from typing import Iterator, Dict, List, Union, Optional, Any, Tuple
 from requests.exceptions import HTTPError, RequestException
 from pathlib import Path
+import tempfile
+
 import pandas as pd
 import tables
 
@@ -32,6 +34,28 @@ from config import *
 import pickle
 import h5py
 
+
+ARXIV_ID_RE = re.compile(r"^(?:arXiv:)?(\d{4}\.\d{4,5})(v\d+)?$")
+URL_ID_RE = re.compile(r"(\d{4}\.\d{4,5})(v\d+)?")
+
+def normalize_arxiv_id(s: str) -> str:
+    """
+    Accepts:
+        - '2101.12345'
+        - 'arXiv:2101.12345'
+        - 'https://arxiv.org/abs/2101.12345v2'
+    Returns base ID: '2101.12345'
+    """
+    s = s.strip()
+    m = ARXIV_ID_RE.match(s)
+    if m:
+        return m.group(1)
+
+    m = URL_ID_RE.search(s)
+    if m:
+        return m.group(1)
+
+    raise ValueError(f"Cannot parse arXiv ID from: {s}")
 
 
 def meta_data_full_to_hdf5(
@@ -1128,71 +1152,132 @@ def fetch_arxiv_batch(
     return results
 
 
-def get_tex_path_from_local_or_fetch(
-    base_id: str,
-    md: Dict[str, Any],
-    verbose: bool = False,
-) -> Tuple[Path, str]:
+
+
+# in math_paper_parser.py (or a utils module)
+
+
+def fetch_arxiv_source(arxiv_id: str) -> Path:
     """
-    For a base arXiv id like '1901.11269' and its metadata `md`:
-      - determine a preferred versioned id (e.g. '1901.11269v2')
-      - use fetch_arxiv_batch(formats=['metadata','source']) with output_dir=FULL_PAPERS_DIR
-      - this will:
-          * read existing /full_papers/YYYY/MM/DD/tex/<id>.tex if present, OR
-          * download the source tarball, unpack it, and write <id>.tex there
-      - return (Path_to_tex, versioned_id)
+    Download arXiv source tarball to a temp dir and return path to the main .tex file.
+
+    Strategy:
+    - download https://arxiv.org/e-print/<id> (source tarball)
+    - if content-type looks like PDF/HTML -> likely no source; raise
+    - extract to tempdir
+    - identify candidate main .tex files:
+        * those containing '\\begin{document}'
+        * if none, fall back to previous 'largest .tex' heuristic
+    - among candidates, prefer file named <id>.tex if it exists, else
+      just take the first candidate.
     """
-    # Decide which version to use (latest version from metadata if available)
-    versions = md.get("versions") or []
-    version_suffix = ""
-    if isinstance(versions, list) and versions:
-        last = versions[-1]
-        ver = last.get("version")  # e.g. 'v1'
-        if isinstance(ver, str):
-            version_suffix = ver
+    url = f"https://arxiv.org/e-print/{arxiv_id}"
+    tmpdir = Path(tempfile.mkdtemp(prefix=f"arxiv_{arxiv_id}_"))
+    tar_path = tmpdir / "source.tar"
+    print(f"[INFO] Downloading arXiv source {arxiv_id} from {url}")
+    resp = requests.get(url, timeout=60)
+    resp.raise_for_status()
 
-    versioned_id = base_id + version_suffix if version_suffix else base_id
+    content_type = resp.headers.get("Content-Type", "")
+    if "pdf" in content_type.lower() or "html" in content_type.lower():
+        raise RuntimeError(
+            f"arXiv source for {arxiv_id} does not appear to be available "
+            f"(Content-Type: {content_type}). Try a different paper with TeX source."
+        )
 
-    if verbose:
-        print(f"[DEBUG] get_tex_path_from_local_or_fetch: base_id={base_id}, "
-              f"versioned_id={versioned_id}")
+    tar_path.write_bytes(resp.content)
 
-    # If you ever want to bypass the local/full_papers logic:
-    if not LOCAL_FIRST:
-        tex_path, inferred_id = resolve_source_to_tex(versioned_id)
-        return tex_path, inferred_id
+    try:
+        with tarfile.open(tar_path, "r:*") as tf:
+            tf.extractall(tmpdir)
+    except tarfile.ReadError as e:
+        snippet = resp.content[:200].decode("latin1", errors="replace")
+        raise RuntimeError(
+            f"Could not open arXiv source for {arxiv_id} as a tar archive: {e}\n"
+            f"First 200 bytes:\n{snippet}\n"
+            f"This usually means the TeX source is not publicly available for this paper."
+        ) from e
 
-    # Ask your existing infra to give us the LaTeX "source" and save it in FULL_PAPERS_DIR
-    data = fetch_arxiv_batch(
-        regex_id=f"^{versioned_id}$",
-        start_date=None,
-        end_date=None,
-        category=None,
-        formats=["metadata", "source"],
-        output_dir=FULL_PAPERS_DIR,
-        verbose=verbose,
-    )
-    if not data:
-        raise RuntimeError(f"fetch_arxiv_batch returned no entry for {versioned_id}")
+    tex_files = list(tmpdir.rglob("*.tex"))
+    if not tex_files:
+        raise RuntimeError(f"No .tex files found in arXiv source for {arxiv_id}")
 
-    # There is only one entry because regex_id is a single ID
-    _, entry = next(iter(data.items()))
+    # Prefer .tex files that actually contain \begin{document}
+    doc_candidates = []
+    for p in tex_files:
+        try:
+            text = p.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if "\\begin{document}" in text:
+            doc_candidates.append(p)
 
-    # Preferred: use the path that fetch_arxiv_batch wrote
-    source_path = entry.get("source_path")
-    if source_path:
+    candidates = doc_candidates if doc_candidates else tex_files
+
+    # Prefer <id>.tex if present among candidates
+    for p in candidates:
+        if p.name == f"{arxiv_id}.tex":
+            return p
+
+    # Otherwise choose the largest among candidates
+    candidates.sort(key=lambda p: p.stat().st_size, reverse=True)
+    return candidates[0]
+
+
+def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir: Path, verbose=False):
+    """
+    Local-first resolver:
+      1. Determine the latest version from metadata.
+      2. Determine correct year/month/day directory from metadata.
+      3. Look for tex in full_papers/<year>/<month>/<day>/tex/<id>.tex
+      4. If missing → fetch_arxiv_source to that directory.
+    Returns: (Path to tex file, versioned_id)
+    """
+
+    # --- 1. Determine version ---
+    versions = meta.get("versions", [])
+    if versions:
+        version_tag = versions[-1].get("version", "v1")
+    else:
+        version_tag = "v1"
+
+    versioned_id = f"{base_id}{version_tag}"
+
+    # --- 2. Determine date directory ---
+    pub = meta.get("published") or meta.get("created") or ""
+    pub_date = str(pub)[:10]  # 'YYYY-MM-DD'
+    try:
+        year, month, day = pub_date.split("-")
+    except ValueError:
+        year, month, day = ("unknown", "unknown", "unknown")
+
+    # build tex directory path
+    tex_dir = full_papers_dir / year / month / day / "tex"
+    tex_dir.mkdir(parents=True, exist_ok=True)
+
+    tex_path = tex_dir / f"{versioned_id}.tex"
+
+    # --- 3. Local-first check ---
+    if tex_path.exists():
         if verbose:
-            print(f"[DEBUG] Using source_path from batch: {source_path}")
-        return Path(source_path), versioned_id
+            print(f"[DEBUG] Using local TEX: {tex_path}")
+        return tex_path, versioned_id
 
-    # Fallback: if for some reason source_path is missing but we have lines
-    src_lines = entry.get("source")
-    if not src_lines:
-        raise RuntimeError(f"No source found for {versioned_id}")
-
-    tmpdir = Path(tempfile.mkdtemp(prefix=f"paper_{versioned_id}_"))
-    tex_path = tmpdir / f"{versioned_id}.tex"
-    tex_path.write_text("\n".join(src_lines), encoding="utf-8")
+    # --- 4. If missing -> fetch directly from arXiv ---
     if verbose:
-        print(f"[DEBUG] Wrote temporary tex file at {tex_path}")
+        print(f"[DEBUG] Local TEX missing. Fetching source for {versioned_id} into {tex_dir}")
+
+    try:
+        fetch_arxiv_source(versioned_id, str(tex_dir))   # writes .tar.gz and .tex
+    except Exception as e:
+        raise RuntimeError(f"fetch_arxiv_source failed for {versioned_id}: {e}")
+
+    # now check again for the .tex file
+    if not tex_path.exists():
+        # sometimes source has multiple .tex, so find largest .tex
+        tex_files = sorted(tex_dir.glob(f"{versioned_id}*.tex"), key=lambda p: p.stat().st_size, reverse=True)
+        if tex_files:
+            return tex_files[0], versioned_id
+        raise FileNotFoundError(f"No .tex found in {tex_dir} after fetching")
+
     return tex_path, versioned_id
