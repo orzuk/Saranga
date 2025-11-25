@@ -1161,6 +1161,25 @@ def fetch_arxiv_batch(
 
     return results
 
+# Helper
+def find_main_tex(root: Path, arxiv_id: str) -> Optional[Path]:
+    all_tex = list(root.rglob("*.tex"))
+    if not all_tex:
+        return None
+
+    # 1. exact arXiv id
+    for f in all_tex:
+        if arxiv_id in f.name:
+            return f
+
+    # 2. common names
+    common = ["main.tex", "paper.tex", "ms.tex", "article.tex"]
+    for f in all_tex:
+        if f.name in common:
+            return f
+
+    # 3. fallback: largest file
+    return max(all_tex, key=lambda p: p.stat().st_size)
 
 
 
@@ -1256,29 +1275,41 @@ def fetch_arxiv_source(arxiv_id: str, dest_dir: Path, verbose: bool = False) -> 
             )
 
     # -----------------------
-    # 5. Find .tex files
+    # 5. Find .tex files (recursive)
     # -----------------------
     tex_files = list(dest_dir.rglob("*.tex"))
     if not tex_files:
         raise RuntimeError(f"No .tex found in {dest_dir} after extracting {arxiv_id}")
 
-    # Prefer file with \begin{document}
+    # 5a. Prefer files containing \begin{document}
     doc_candidates = []
     for p in tex_files:
-        txt = p.read_text(errors="ignore")
-        if "\\begin{document}" in txt:
-            doc_candidates.append(p)
+        try:
+            txt = p.read_text(errors="ignore")
+            if "\\begin{document}" in txt:
+                doc_candidates.append(p)
+        except Exception:
+            continue
 
     candidates = doc_candidates if doc_candidates else tex_files
 
-    # Prefer id.tex
+    # Normalize arxiv ID (drop version)
+    base_id = arxiv_id.split("v")[0]
+
+    # 5b. Prefer file that contains arxiv_id or base_id anywhere in filename
     for p in candidates:
-        if p.name.startswith(arxiv_id):
+        name = p.name.lower()
+        if arxiv_id.lower() in name or base_id.lower() in name:
             return p
 
-    # Otherwise largest file
-    candidates.sort(key=lambda p: p.stat().st_size, reverse=True)
-    return candidates[0]
+    # 5c. Common main filename heuristics
+    common_main = {"main.tex", "paper.tex", "ms.tex", "article.tex"}
+    for p in candidates:
+        if p.name in common_main:
+            return p
+
+    # 5d. Fallback: largest .tex file
+    return max(candidates, key=lambda p: p.stat().st_size)
 
 
 
