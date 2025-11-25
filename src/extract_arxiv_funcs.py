@@ -1327,7 +1327,7 @@ def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir:
         print(f"[DEBUG] Local TEX missing. Fetching source for {versioned_id} into {tex_dir}")
 
     try:
-        fetch_arxiv_source(versioned_id, str(tex_dir))   # writes .tar.gz and .tex
+        fetch_arxiv_source(versioned_id, tex_dir)   # writes .tar.gz and .tex
     except Exception as e:
         raise RuntimeError(f"fetch_arxiv_source failed for {versioned_id}: {e}")
 
