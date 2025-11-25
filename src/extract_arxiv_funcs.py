@@ -1152,28 +1152,35 @@ def fetch_arxiv_batch(
     return results
 
 
-
-
-# in math_paper_parser.py (or a utils module)
-
-
-def fetch_arxiv_source(arxiv_id: str) -> Path:
+def fetch_arxiv_source(arxiv_id: str, dest_dir: str | Path | None = None) -> Path:
     """
-    Download arXiv source tarball to a temp dir and return path to the main .tex file.
+    Download arXiv source tarball for arxiv_id and return the path to the main .tex file.
 
-    Strategy:
-    - download https://arxiv.org/e-print/<id> (source tarball)
-    - if content-type looks like PDF/HTML -> likely no source; raise
-    - extract to tempdir
-    - identify candidate main .tex files:
-        * those containing '\\begin{document}'
-        * if none, fall back to previous 'largest .tex' heuristic
-    - among candidates, prefer file named <id>.tex if it exists, else
-      just take the first candidate.
+    If dest_dir is provided:
+        - download directly into dest_dir
+        - extract tarball in dest_dir
+    If dest_dir is None:
+        - fallback to old behavior, using a temporary directory
+
+    Main .tex selection:
+        1. prefer files containing \begin{document}
+        2. prefer a file named <arxiv_id>.tex
+        3. otherwise choose the largest .tex file
     """
+    # Normalize dest_dir
+    if dest_dir is not None:
+        dest_dir = Path(dest_dir)
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        work_dir = dest_dir
+    else:
+        # fallback to tmp directory
+        work_dir = Path(tempfile.mkdtemp(prefix=f"arxiv_{arxiv_id}_"))
+
+    # Download location
+    tar_path = work_dir / f"{arxiv_id}.tar"
+
+    # ---- Download source ----
     url = f"https://arxiv.org/e-print/{arxiv_id}"
-    tmpdir = Path(tempfile.mkdtemp(prefix=f"arxiv_{arxiv_id}_"))
-    tar_path = tmpdir / "source.tar"
     print(f"[INFO] Downloading arXiv source {arxiv_id} from {url}")
     resp = requests.get(url, timeout=60)
     resp.raise_for_status()
@@ -1182,44 +1189,45 @@ def fetch_arxiv_source(arxiv_id: str) -> Path:
     if "pdf" in content_type.lower() or "html" in content_type.lower():
         raise RuntimeError(
             f"arXiv source for {arxiv_id} does not appear to be available "
-            f"(Content-Type: {content_type}). Try a different paper with TeX source."
+            f"(Content-Type: {content_type})."
         )
 
     tar_path.write_bytes(resp.content)
 
+    # ---- Extract tar archive ----
     try:
         with tarfile.open(tar_path, "r:*") as tf:
-            tf.extractall(tmpdir)
+            tf.extractall(work_dir)
     except tarfile.ReadError as e:
         snippet = resp.content[:200].decode("latin1", errors="replace")
         raise RuntimeError(
-            f"Could not open arXiv source for {arxiv_id} as a tar archive: {e}\n"
-            f"First 200 bytes:\n{snippet}\n"
-            f"This usually means the TeX source is not publicly available for this paper."
+            f"Could not open arXiv source for {arxiv_id} as tar: {e}\n"
+            f"First 200 bytes:\n{snippet}"
         ) from e
 
-    tex_files = list(tmpdir.rglob("*.tex"))
+    # ---- Find tex files ----
+    tex_files = list(work_dir.rglob("*.tex"))
     if not tex_files:
         raise RuntimeError(f"No .tex files found in arXiv source for {arxiv_id}")
 
-    # Prefer .tex files that actually contain \begin{document}
+    # ---- Prefer files containing \begin{document} ----
     doc_candidates = []
     for p in tex_files:
         try:
             text = p.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
+        except Exception:
             continue
         if "\\begin{document}" in text:
             doc_candidates.append(p)
 
     candidates = doc_candidates if doc_candidates else tex_files
 
-    # Prefer <id>.tex if present among candidates
+    # ---- Prefer <arxiv_id>.tex ----
     for p in candidates:
         if p.name == f"{arxiv_id}.tex":
             return p
 
-    # Otherwise choose the largest among candidates
+    # ---- Otherwise choose the largest .tex file ----
     candidates.sort(key=lambda p: p.stat().st_size, reverse=True)
     return candidates[0]
 
