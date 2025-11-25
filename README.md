@@ -1,6 +1,6 @@
-# ArXivAnalysis
+# Authomatics
 
-Scripts and code for downloading and parsing arXiv papers meta-data and data
+Scripts and code for downloading and parsing arXiv papers meta-data and data, and representing and connecting between different mathematical concepts
 
 ## ArXiv Data Extraction
 
@@ -46,9 +46,9 @@ else:
    ```bash
    ```
 
-git clone https://github.com/orzuk/ArXivAnalysis.git
+git clone https://github.com/orzuk/Authomathics
 
-cd ArXivAnalysis/src
+cd Authomathics/src
 
 ````
 2. Ensure `extract_arxiv_data.py` is executable (on Unix):
