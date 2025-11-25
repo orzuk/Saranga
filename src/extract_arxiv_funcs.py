@@ -1126,3 +1126,73 @@ def fetch_arxiv_batch(
         results[aid] = entry
 
     return results
+
+
+def get_tex_path_from_local_or_fetch(
+    base_id: str,
+    md: Dict[str, Any],
+    verbose: bool = False,
+) -> Tuple[Path, str]:
+    """
+    For a base arXiv id like '1901.11269' and its metadata `md`:
+      - determine a preferred versioned id (e.g. '1901.11269v2')
+      - use fetch_arxiv_batch(formats=['metadata','source']) with output_dir=FULL_PAPERS_DIR
+      - this will:
+          * read existing /full_papers/YYYY/MM/DD/tex/<id>.tex if present, OR
+          * download the source tarball, unpack it, and write <id>.tex there
+      - return (Path_to_tex, versioned_id)
+    """
+    # Decide which version to use (latest version from metadata if available)
+    versions = md.get("versions") or []
+    version_suffix = ""
+    if isinstance(versions, list) and versions:
+        last = versions[-1]
+        ver = last.get("version")  # e.g. 'v1'
+        if isinstance(ver, str):
+            version_suffix = ver
+
+    versioned_id = base_id + version_suffix if version_suffix else base_id
+
+    if verbose:
+        print(f"[DEBUG] get_tex_path_from_local_or_fetch: base_id={base_id}, "
+              f"versioned_id={versioned_id}")
+
+    # If you ever want to bypass the local/full_papers logic:
+    if not LOCAL_FIRST:
+        tex_path, inferred_id = resolve_source_to_tex(versioned_id)
+        return tex_path, inferred_id
+
+    # Ask your existing infra to give us the LaTeX "source" and save it in FULL_PAPERS_DIR
+    data = fetch_arxiv_batch(
+        regex_id=f"^{versioned_id}$",
+        start_date=None,
+        end_date=None,
+        category=None,
+        formats=["metadata", "source"],
+        output_dir=FULL_PAPERS_DIR,
+        verbose=verbose,
+    )
+    if not data:
+        raise RuntimeError(f"fetch_arxiv_batch returned no entry for {versioned_id}")
+
+    # There is only one entry because regex_id is a single ID
+    _, entry = next(iter(data.items()))
+
+    # Preferred: use the path that fetch_arxiv_batch wrote
+    source_path = entry.get("source_path")
+    if source_path:
+        if verbose:
+            print(f"[DEBUG] Using source_path from batch: {source_path}")
+        return Path(source_path), versioned_id
+
+    # Fallback: if for some reason source_path is missing but we have lines
+    src_lines = entry.get("source")
+    if not src_lines:
+        raise RuntimeError(f"No source found for {versioned_id}")
+
+    tmpdir = Path(tempfile.mkdtemp(prefix=f"paper_{versioned_id}_"))
+    tex_path = tmpdir / f"{versioned_id}.tex"
+    tex_path.write_text("\n".join(src_lines), encoding="utf-8")
+    if verbose:
+        print(f"[DEBUG] Wrote temporary tex file at {tex_path}")
+    return tex_path, versioned_id

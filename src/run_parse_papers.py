@@ -35,12 +35,11 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from math_paper_parser import (
-    PaperParser,
-    resolve_source_to_tex,
-    paper_to_network,
-)
+import tempfile
+from config import FULL_PAPERS_DIR, LOCAL_FIRST
+from extract_arxiv_funcs import get_tex_path_from_local_or_fetch
 
+from math_paper_parser import PaperParser, resolve_source_to_tex, paper_to_network
 # THIS is your infra for IDs + metadata + local HDF5 snapshot:
 from extract_arxiv_funcs import fetch_arxiv_batch
 
@@ -152,13 +151,18 @@ def run_batch(
     for i, (base_id, md) in enumerate(items, start=1):
         print(f"\n[INFO] ({i}/{len(items)}) Processing {base_id}")
 
-        # --- Step 1: get LaTeX source via math_paper_parser's own logic ---
+        # --- Step 1: get LaTeX source (local full_papers tree first, then arXiv) ---
         try:
-            tex_path, inferred_id = resolve_source_to_tex(base_id)
+            tex_path, inferred_id = get_tex_path_from_local_or_fetch(
+                base_id=base_id,
+                md=md,
+                verbose=verbose,
+            )
             print(f"[INFO]   Resolved source -> {tex_path}")
         except Exception as e:
             print(f"[WARN]   Could not resolve source for {base_id}: {e}")
             continue
+
 
         # --- Step 2: parse with PaperParser ---
         try:
@@ -168,22 +172,49 @@ def run_batch(
             print(f"[WARN]   Failed to parse {base_id}: {e}")
             continue
 
-        # --- Step 3: save JSON ---
-        json_path = out_dir / f"{inferred_id}.json"
-        json_path.write_text(json.dumps(graph.to_dict(), indent=2), encoding="utf-8")
-        print(
-            f"[OK]   Saved graph for {base_id} -> {json_path.name} "
-            f"({len(graph.objects)} objects, {len(graph.relations)} relations)"
-        )
-
-        # --- Step 4: optionally draw network figure ---
-        if draw_graphs:
-            png_path = out_dir / f"{inferred_id}.png"
+        # --- Step 3: choose output subdirectories based on publication date ---
+        pub_raw = md.get("published") or md.get("created")
+        if pub_raw:
+            date_str = str(pub_raw)[:10]  # 'YYYY-MM-DD'
             try:
-                paper_to_network(json_path, str(png_path))
-                print(f"[OK]   Saved network plot -> {png_path.name}")
+                year, month, day = date_str.split("-")
+            except ValueError:
+                year, month, day = ("unknown", "unknown", "unknown")
+        else:
+            year, month, day = ("unknown", "unknown", "unknown")
+
+        base_day_dir = out_dir / year / month / day
+
+        # JSON
+        json_dir = base_day_dir / "json"
+        json_dir.mkdir(parents=True, exist_ok=True)
+        json_path = json_dir / f"{inferred_id}.json"
+        json_path.write_text(
+            json.dumps(graph.to_dict(), indent=2),
+            encoding="utf-8",
+        )
+        print(f"[OK]   Saved graph for {base_id} -> {json_path}")
+
+        # --- Step 4: draw and save graph if requested ---
+        if draw_graphs:
+            png_dir = base_day_dir / "png"
+            png_dir.mkdir(parents=True, exist_ok=True)
+            out_png = png_dir / f"{inferred_id}.png"
+            try:
+                paper_to_network(
+                    paper=graph,
+                    out_png=str(out_png),
+                    node_label_attr="id",
+                    include_kinds=[
+                        "theorem", "lemma", "proposition", "corollary",
+                        "definition", "proof", "equation",
+                    ],
+                    include_relation_types=None,
+                )
+                print(f"[OK]   Saved PNG for {base_id} -> {out_png}")
             except Exception as e:
-                print(f"[WARN]   Failed to draw network for {base_id}: {e}")
+                print(f"[WARN] Could not draw network for {base_id}: {e}")
+
 
 
 def main():
@@ -239,8 +270,12 @@ def main():
     parser.add_argument(
         "--out-dir",
         type=str,
-        default="parsed_papers",
-        help="Directory to store per-paper JSON (and optionally PNG) outputs.",
+        default=FULL_PAPERS_DIR,
+        help=(
+            "Root directory for outputs. "
+            "Defaults to FULL_PAPERS_DIR from config.py "
+            "(.../arxiv_data/full_papers)."
+        ),
     )
     parser.add_argument(
         "--draw-graphs",
