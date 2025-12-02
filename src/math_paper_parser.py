@@ -1184,6 +1184,17 @@ class PaperParser:
 # ---------------------------------------------------------------------
 
 
+def flatten_tex_file(input_path: Path, output_path: Path, max_depth: int = 5) -> None:
+    """
+    Read a LaTeX file, recursively inline \input/\include, expand simple macros,
+    and write the result to output_path. Keeps the full preamble+document.
+    """
+    parser = PaperParser(paper_id=output_path.stem)
+    text = input_path.read_text(encoding="utf-8", errors="ignore")
+    flat = parser._expand_inputs(text, base_dir=input_path.parent, max_depth=max_depth)
+    output_path.write_text(flat, encoding="utf-8")
+
+
 
 # NEW: minimal wrapper – delegates everything to extract_arxiv_funcs
 def resolve_source_to_tex(source: str):

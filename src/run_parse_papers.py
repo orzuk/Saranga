@@ -30,6 +30,7 @@ Example usages (from repo root):
 
 import argparse
 import json
+import csv
 import sys
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -37,7 +38,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from config import FULL_PAPERS_DIR, LOCAL_FIRST
 
-from math_paper_parser import PaperParser, resolve_source_to_tex, paper_to_network
+from math_paper_parser import PaperParser, resolve_source_to_tex, paper_to_network, flatten_tex_file
 # THIS is your infra for IDs + metadata + local HDF5 snapshot:
 from extract_arxiv_funcs import fetch_arxiv_batch, resolve_source_to_tex_local_first
 
@@ -152,9 +153,26 @@ def run_batch(
                 verbose=verbose,
             )
             print(f"[INFO]   Resolved source -> {tex_path}")
+
+            # Optional: write a flattened canonical file as well
+            flattened_path = tex_path.with_name(f"{versioned_id}_flattened.tex")
+            flatten_tex_file(tex_path, flattened_path)
+            canonical_tex_for_storage = flattened_path
+
         except Exception as e:
-            print(f"[WARN]   Could not resolve source for {base_id}: {e}")
-            continue
+            status = f"FETCH_ERROR: {e}"
+        else:
+            try:
+                graph = parser.parse_file(tex_path)
+                status = "OK"
+            except Exception as e:
+                status = f"PARSE_ERROR: {e}"
+
+        # log to a CSV
+        with open(f"{out_dir}/status_log.csv", "a") as f:
+            writer = csv.writer(f)
+            writer.writerow([base_id, versioned_id, status])
+
 
         # ---------- STEP 2: PARSE ----------
         try:

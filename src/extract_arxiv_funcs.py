@@ -1314,14 +1314,17 @@ def fetch_arxiv_source(arxiv_id: str, dest_dir: Path, verbose: bool = False) -> 
 
 
 
-def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir: Path, verbose=False):
+
+# at top of file you already import shutil, pathlib, etc. (shutil is present)
+
+def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir: Path, verbose: bool = False):
     """
     Local-first resolver:
       1. Determine the latest version from metadata.
       2. Determine correct year/month/day directory from metadata.
-      3. Look for tex in full_papers/<year>/<month>/<day>/tex/<id>.tex
-      4. If missing → fetch_arxiv_source to that directory.
-    Returns: (Path to tex file, versioned_id)
+      3. Look for tex in full_papers/<year>/<month>/<day>/tex/<versioned_id>.tex
+      4. If missing → fetch_arxiv_source to that directory and use the main .tex it returns.
+    Returns: (Path to canonical tex file, versioned_id)
     """
 
     # --- 1. Determine version ---
@@ -1358,16 +1361,50 @@ def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir:
         print(f"[DEBUG] Local TEX missing. Fetching source for {versioned_id} into {tex_dir}")
 
     try:
-        fetch_arxiv_source(versioned_id, tex_dir)   # writes .tar.gz and .tex
+        # IMPORTANT: this returns the path to the main .tex file in the unpacked source
+        main_tex = fetch_arxiv_source(versioned_id, tex_dir, verbose=verbose)
     except Exception as e:
         raise RuntimeError(f"fetch_arxiv_source failed for {versioned_id}: {e}")
 
-    # now check again for the .tex file
+    # --- 5. Canonicalise the main tex file ---
+    if main_tex is not None:
+        main_tex = Path(main_tex)
+        if main_tex.exists():
+            if verbose:
+                print(f"[DEBUG] fetch_arxiv_source resolved main TEX -> {main_tex}")
+            # Prefer to have a canonical <versioned_id>.tex
+            if main_tex.resolve() != tex_path.resolve():
+                try:
+                    shutil.copy(main_tex, tex_path)
+                    if verbose:
+                        print(f"[DEBUG] Copied main TEX {main_tex.name} -> {tex_path.name}")
+                except OSError as e:
+                    if verbose:
+                        print(f"[WARN] Failed to copy main TEX {main_tex} to {tex_path}: {e}")
+                    # fallback: just use the actual main_tex path
+                    tex_path = main_tex
+            else:
+                tex_path = main_tex
+        else:
+            # main_tex path is bogus → fall back to generic search below
+            main_tex = None
+
+    # --- 6. Very defensive fallback: any *.tex in tex_dir ---
     if not tex_path.exists():
-        # sometimes source has multiple .tex, so find largest .tex
-        tex_files = sorted(tex_dir.glob(f"{versioned_id}*.tex"), key=lambda p: p.stat().st_size, reverse=True)
+        tex_files = sorted(
+            tex_dir.rglob("*.tex"),
+            key=lambda p: p.stat().st_size,
+            reverse=True,
+        )
         if tex_files:
-            return tex_files[0], versioned_id
-        raise FileNotFoundError(f"No .tex found in {tex_dir} after fetching")
+            tex_path = tex_files[0]
+            if verbose:
+                print(
+                    f"[WARN] No canonical {versioned_id}.tex, "
+                    f"using largest TEX file {tex_path.name}"
+                )
+        else:
+            raise FileNotFoundError(f"No .tex found in {tex_dir} after fetching")
 
     return tex_path, versioned_id
+
