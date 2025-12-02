@@ -26,7 +26,10 @@ import tempfile
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any, Union
-from pyvis.network import Network
+try:
+    from pyvis.network import Network
+except Exception as e:
+    print(f"[WARN] Could not load pyvis for interactive network html plot: {e}")
 
 
 import requests  # pip install requests
