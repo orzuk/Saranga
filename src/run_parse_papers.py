@@ -213,11 +213,11 @@ def run_batch(
                 paper_to_network(
                     paper=graph,
                     out_png=str(out_png),
-                    node_label_attr="id",
+                    node_label_attr="label", # "id",
                     include_kinds=[
                         "theorem", "lemma", "proposition", "corollary",
-                        "definition", "proof", "equation",
-                    ],
+                        "definition", "proof"], #  "equation",
+                    figsize=(16, 10),
                     include_relation_types=None,
                 )
                 print(f"[OK]   Saved PNG for {base_id} -> {out_png}")

@@ -26,6 +26,8 @@ import tempfile
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any, Union
+from pyvis.network import Network
+
 
 import requests  # pip install requests
 
@@ -787,17 +789,22 @@ class PaperParser:
 
     # ---- definitions ----
 
+    # ---- definitions ----
+
     def _extract_definitions(self, text: str) -> List[Definition]:
         """Extract Definition objects.
 
-        1. Primary: environments whose kind is 'definition' according to env_kind_map
-           (e.g. \begin{definition}, \begin{defn}, or anything introduced via \newtheorem).
-        2. Fallback: textual 'Definition X.Y.' patterns when no environment is used.
+        Sources:
+        1. Environments whose kind is 'definition' according to env_kind_map
+           (e.g. \\begin{definition}, \\begin{defn}, or anything introduced via \\newtheorem).
+        2. Textual 'Definition 2.1.' style headings.
+        3. Inline definitions of the form 'Define ... .' or 'We define ... .'
         """
-        # --- A. Environment-based definitions ---
-        env_names = [env for env, kind in self.env_kind_map.items() if kind == "definition"]
         objects: List[Definition] = []
         idx = 0
+
+        # --- A. Environment-based definitions ---------------------------------
+        env_names = [env for env, kind in self.env_kind_map.items() if kind == "definition"]
 
         if env_names:
             found = self._extract_envs(text, env_names)
@@ -819,12 +826,12 @@ class PaperParser:
                     )
                 )
 
-        # --- B. Textual 'Definition 2.1.' style definitions as fallback ---
+        # --- B. Textual 'Definition 2.1.' style definitions -------------------
         # Pattern:
         #   Definition 2.1. <text...>
         # We stop the body at:
         #   - next "Definition k.l."
-        #   - or next \begin{...}, \section, \subsection, or \end{document}
+        #   - or next \\begin{...}, \\section, \\subsection, or \\end{document}
         definition_text_pattern = re.compile(
             r"(?:^|\n)\s*(?:\\noindent\s*)?"
             r"(?:\\textbf\{)?Definition\s+([0-9]+(?:\.[0-9]+)*)\.?(?:\})?\s*"
@@ -854,39 +861,85 @@ class PaperParser:
                 )
             )
 
-        return objects
-
-
-    # ---- proofs ----
-
-    def _extract_proofs(self, text: str) -> List[Proof]:
-        proofs: List[Proof] = []
-        idx = 0
-
-        # --- A. Standard \begin{proof}...\end{proof} (if present) ---
-        env_pattern = re.compile(
-            r"\\begin{proof}(?P<body>.*?)\\end{proof}",
-            flags=re.DOTALL,
+        # --- C. Inline 'Define ... .' / 'We define ... .' ---------------------
+        # Conservative heuristic:
+        #   (We )Define <body>.
+        # at the beginning of a line / paragraph.
+        inline_pattern = re.compile(
+            r"(?:^|\n)\s*(?:\\noindent\s*)?(?:We\s+)?[Dd]efine\s+(?P<body>[^\.]+)\.",
+            flags=re.MULTILINE,
         )
-        for m in env_pattern.finditer(text):
-            body = m.group("body")
-            label, name = self._extract_label_and_name(body)
-            clean = self._clean_latex_to_text(body)
+
+        for m in inline_pattern.finditer(text):
             idx += 1
-            proofs.append(
-                Proof(
-                    id=f"P{idx}",
-                    kind="proof",
+            obj_id = "D" + str(idx)
+            raw = m.group(0)              # full matched sentence
+            body = m.group("body")
+            clean_text = self._clean_latex_to_text(body)
+            objects.append(
+                Definition(
+                    id=obj_id,
+                    kind="definition_inline",
                     index=idx,
-                    label=label,
-                    name=name,
-                    raw_latex=m.group(0),
-                    clean_text=clean,
-                    parent_id=None,  # will be set in _link_proofs_to_theorems
+                    label=None,
+                    name=None,
+                    raw_latex=raw,
+                    clean_text=clean_text,
+                    env_name="inline",
                 )
             )
 
-        # --- B. Textual proofs: \noindent{\sc Proof ...}: ... ---
+        return objects
+
+
+
+    # ---- proofs ----
+    # ---- proofs ----
+
+    def _extract_proofs(self, text: str) -> List[Proof]:
+        """Extract proofs (environment-based and textual)."""
+        proofs: List[Proof] = []
+        idx = 0
+
+        # --- A. Standard \begin{proof}...\end{proof} (with optional header) ---
+        env_pattern = re.compile(
+            r"\\begin{proof}(?:\[(?P<opt>[^\]]*)\])?(?P<body>.*?)\\end{proof}",
+            flags=re.DOTALL,
+        )
+        for m in env_pattern.finditer(text):
+            header_opt = m.group("opt") or ""
+            body = m.group("body")
+            raw = m.group(0)
+
+            label, name = self._extract_label_and_name(body)
+            clean = self._clean_latex_to_text(body)
+
+            idx += 1
+            proof = Proof(
+                id=f"P{idx}",
+                kind="proof",
+                index=idx,
+                label=label,
+                name=name,
+                raw_latex=raw,
+                clean_text=clean,
+                parent_id=None,  # will be set in _link_proofs_to_theorems
+            )
+
+            # Try to capture a theorem label from the optional header, e.g.
+            # \begin{proof}[Proof of Theorem~\ref{thm:main}]
+            # or more generally any \ref / \eqref / \autoref in the header.
+            mref = re.search(r"\\(?:ref|eqref|autoref){([^}]+)}", header_opt)
+            if not mref:
+                # fallback: plain \ref in the body header line, if any
+                mref = re.search(r"\\(?:ref|eqref|autoref){([^}]+)}", body[:300])
+            if mref:
+                # will be consumed in _link_proofs_to_theorems
+                proof._target_theorem_label = mref.group(1)  # type: ignore[attr-defined]
+
+            proofs.append(proof)
+
+        # --- B. Textual proofs: \noindent{\sc Proof ...}: ... -----------------
         # Pattern: \noindent{\sc <header>}:(body ...)
         text_proof_pattern = re.compile(
             r"\\noindent\s*{\s*\\sc\s*([^}]*)}\s*:(?P<body>.*?)"
@@ -912,18 +965,18 @@ class PaperParser:
                 name=name,
                 raw_latex=raw,
                 clean_text=clean,
-                parent_id=None,  # to be filled
+                parent_id=None,  # to be filled in _link_proofs_to_theorems
             )
 
             # Try to capture the theorem label from the header, e.g. \ref{T22VII18.1}
-            mref = re.search(r"\\ref{([^}]+)}", header)
+            mref = re.search(r"\\(?:ref|eqref|autoref){([^}]+)}", header)
             if mref:
-                # We'll use this in _link_proofs_to_theorems
                 proof._target_theorem_label = mref.group(1)  # type: ignore[attr-defined]
 
             proofs.append(proof)
 
         return proofs
+
 
 
     # ---- algorithms ----
@@ -1079,10 +1132,12 @@ class PaperParser:
                 parent = prev_candidates[-1]
                 proof.parent_id = parent.id
 
+
     def _build_relations(self, graph: PaperGraph):
         """
         Build relations between objects using:
-        - \ref/\eqref/\autoref{label} patterns in theorem statements and proofs
+        - proof.parent_id  -> 'proof_of'
+        - \\ref/\\eqref/\\autoref{label} patterns in theorem statements and proofs
         - phrase heuristics for 'special case of', 'generalization of'
         - equations belonging to parent environments
         """
@@ -1095,14 +1150,27 @@ class PaperParser:
         # generic reference pattern (ref / eqref / autoref)
         ref_pattern = re.compile(r"\\(?:ref|eqref|autoref)\{([^}]+)\}")
 
+        # 0. Proof -> theorem/lemma/etc. : "proof_of"
+        for obj in graph.objects.values():
+            if isinstance(obj, Proof) and obj.parent_id:
+                graph.add_relation(
+                    source_id=obj.id,
+                    target_id=obj.parent_id,
+                    relation_type="proof_of",
+                )
+
         # 1. References inside proofs -> "used_in_proof"
+        #    If a proof of T uses object X (referenced by label),
+        #    we create edge X --used_in_proof--> T.
         for obj in graph.objects.values():
             if not isinstance(obj, Proof):
                 continue
             raw = getattr(obj, "raw_latex", "") or ""
+            if not obj.parent_id:
+                continue
             for label in ref_pattern.findall(raw):
                 target_id = label_to_id.get(label)
-                if target_id and obj.parent_id:
+                if target_id:
                     graph.add_relation(
                         source_id=target_id,
                         target_id=obj.parent_id,
@@ -1110,6 +1178,7 @@ class PaperParser:
                     )
 
         # 2. References inside theorem-like statements -> "uses"
+        #    If theorem T refers to object X, we add X --uses--> T.
         for obj in graph.objects.values():
             if not isinstance(obj, TheoremLike):
                 continue
@@ -1124,7 +1193,7 @@ class PaperParser:
                     )
 
         # 3. Definitions used anywhere -> "uses_definition"
-        #    Allow ref/eqref/autoref after "Definition"
+        #    Allow ref/eqref/autoref after the word "Definition".
         def_pat = re.compile(r"Definition~?\\(?:ref|eqref|autoref)\{([^}]+)\}")
         for obj in graph.objects.values():
             if isinstance(obj, Definition):
@@ -1179,6 +1248,7 @@ class PaperParser:
                     relation_type="in_environment_of",
                 )
 
+
 # ---------------------------------------------------------------------
 # Input resolution: local path / arXiv ID / URL
 # ---------------------------------------------------------------------
@@ -1221,6 +1291,8 @@ def resolve_source_to_tex(source: str):
         full_papers_dir=Path(FULL_PAPERS_DIR),
         verbose=False,
     )
+
+
 
 def paper_to_network(
     paper: Union[PaperGraph, str, Path],
@@ -1368,7 +1440,7 @@ def paper_to_network(
     # 8. Colors & sizes by kind
     kind_color_map = {
         "theorem": "red",
-        "lemma": "orangered",
+        "lemma": "orange",
         "proposition": "darkred",
         "corollary": "salmon",
         "definition": "green",
@@ -1446,6 +1518,34 @@ def paper_to_network(
     print(f"[INFO] Saved paper graph visualization to {out_png}")
     return G
 
+
+def paper_to_interactive_html(paper: Dict[str, Any], out_html: str) -> None:
+    net = Network(height="800px", width="100%", directed=True)
+    objects = paper["objects"]
+    relations = paper["relations"]
+
+    for oid, obj in objects.items():
+        kind = obj.get("kind", "unknown")
+        short = obj.get("label") or oid
+        if isinstance(short, str) and len(short) > 40:
+            short = short[:37] + "..."
+
+        # full text for hover
+        title = obj.get("clean_text") or obj.get("raw_latex") or ""
+        net.add_node(
+            oid,
+            label=short,
+            title=title,   # appears on hover
+            group=kind,
+        )
+
+    for rel in relations:
+        src = rel["source"]
+        tgt = rel["target"]
+        if src in objects and tgt in objects:
+            net.add_edge(src, tgt, title=rel.get("relation_type"))
+
+    net.show(out_html)
 
 
 # ---------------------------------------------------------------------
