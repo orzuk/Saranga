@@ -20,28 +20,32 @@ Example usages (from repo root):
 
   # explicit date range, any math category, draw graphs as PNGs
   python run_parse_papers.py \
-      --start 2025-01-01 \
-      --end   2025-01-31 \
+      --start 2019-01-01 \
+      --end   2019-01-31 \
       --category math.PR \
-      --top-k 10 \
-      --out-dir parsed_math_jan2025 \
-      --draw-graphs
+      --top-k 20 \
+      --out-dir parsed_math_pr_2019_01 \
+      --draw-graphs \
+      --verbose
 """
 
 import argparse
 import json
 import csv
-import sys
 from pathlib import Path
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
-from config import FULL_PAPERS_DIR, LOCAL_FIRST
+from config import FULL_PAPERS_DIR
 
-from math_paper_parser import PaperParser, resolve_source_to_tex, paper_to_network, flatten_tex_file
-# THIS is your infra for IDs + metadata + local HDF5 snapshot:
-from extract_arxiv_funcs import fetch_arxiv_batch, resolve_source_to_tex_local_first
+# Import from your parser module
+from math_paper_parser import PaperParser, paper_to_network
 
+# Your arXiv infra
+from extract_arxiv_funcs import (
+    fetch_arxiv_batch,
+    resolve_source_to_tex_local_first,
+)
 
 
 def compute_date_range(
@@ -67,7 +71,6 @@ def compute_date_range(
     start_date = today - timedelta(days=days)
     end_date = today
     return start_date.isoformat(), end_date.isoformat()
-
 
 
 def run_batch(
@@ -153,36 +156,34 @@ def run_batch(
                 verbose=verbose,
             )
             print(f"[INFO]   Resolved source -> {tex_path}")
-
-            # Optional: write a flattened canonical file as well
-            flattened_path = tex_path.with_name(f"{versioned_id}_flattened.tex")
-            flatten_tex_file(tex_path, flattened_path)
-            canonical_tex_for_storage = flattened_path
-
         except Exception as e:
             status = f"FETCH_ERROR: {e}"
-        else:
-            try:
-                graph = parser.parse_file(tex_path)
-                status = "OK"
-            except Exception as e:
-                status = f"PARSE_ERROR: {e}"
-
-        # log to a CSV
-        with open(f"{out_dir}/status_log.csv", "a") as f:
-            writer = csv.writer(f)
-            writer.writerow([base_id, versioned_id, status])
-
+            print(f"[WARN]   Failed to fetch/resolve source for {base_id}: {e}")
+            # log fetch failure and continue to next paper
+            with open(out_dir / "status_log.csv", "a", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([base_id, "", status])
+            continue
 
         # ---------- STEP 2: PARSE ----------
         try:
             parser = PaperParser(paper_id=versioned_id)
             graph = parser.parse_file(tex_path)
+            status = "OK"
         except Exception as e:
+            status = f"PARSE_ERROR: {e}"
             print(f"[WARN]   Failed to parse {base_id}: {e}")
+            with open(out_dir / "status_log.csv", "a", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([base_id, versioned_id, status])
             continue
 
-        # ---------- STEP 3: DETERMINE OUTPUT DIR (same YYYY/MM/DD as tex) ----------
+        # If we got here, both fetch + parse succeeded, log success
+        with open(out_dir / "status_log.csv", "a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([base_id, versioned_id, status])
+
+        # ---------- STEP 3: DETERMINE OUTPUT DIR (same YYYY/MM/DD as metadata) ----------
         pub_raw = md.get("published") or md.get("created")
         if pub_raw:
             date_str = str(pub_raw)[:10]
@@ -213,9 +214,19 @@ def run_batch(
                 paper_to_network(
                     paper=graph,
                     out_png=str(out_png),
-                    node_label_attr="label", # "id",
-                    include_kinds=["theorem", "lemma", "proposition", "corollary",
-                        "definition", "proof"], #  "equation",
+                    node_label_attr="label",  # or "id" / "name"
+                    include_kinds=[
+                        "theorem",
+                        "lemma",
+                        "proposition",
+                        "corollary",
+                        "definition",
+                        "proof",
+                        "proposition",
+                        "conjecture",
+                        "claim",
+                        "problem",
+                    ],
                     figsize=(16, 10),
                     include_relation_types=None,
                 )
@@ -224,7 +235,6 @@ def run_batch(
                 print(f"[WARN] Could not draw network for {base_id}: {e}")
 
     print("[INFO] Done.")
-
 
 
 def main():
@@ -283,8 +293,7 @@ def main():
         default=FULL_PAPERS_DIR,
         help=(
             "Root directory for outputs. "
-            "Defaults to FULL_PAPERS_DIR from config.py "
-            "(.../arxiv_data/full_papers)."
+            "Defaults to FULL_PAPERS_DIR from config.py."
         ),
     )
     parser.add_argument(
