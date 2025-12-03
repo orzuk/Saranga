@@ -17,6 +17,8 @@ Features:
 - Can print a summary AND dump structured output to JSON
 """
 
+
+import os
 from __future__ import annotations
 import re
 import argparse
@@ -38,7 +40,9 @@ import networkx as nx  # For drawing
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
-from extract_arxiv_funcs import resolve_source_to_tex_local_first
+from extract_arxiv_funcs import normalize_arxiv_id, fetch_arxiv_metadata, resolve_source_to_tex_local_first
+
+
 from config import FULL_PAPERS_DIR
 
 
@@ -232,10 +236,40 @@ class PaperParser:
 
     THEOREM_LIKE_KINDS = {"theorem", "lemma", "proposition", "corollary", "claim", "conjecture"}
 
-    def __init__(self, paper_id: Optional[str] = None):
+    from pathlib import Path
+    from typing import Optional, List, Union
+
+    # put this replacing your current __init__ and parse_file in class PaperParser:
+
+    def __init__(
+            self,
+            paper_id: Optional[str] = None,
+            definition_mode: str = "both",  # 'manual', 'llm', or 'both'
+            llm_model: str = "gpt-4o-mini",
+            llm_chunk_chars: int = 8000,
+    ):
+        """
+        Parameters
+        ----------
+        paper_id : Optional[str]
+            Identifier for this paper.
+        definition_mode : {'manual', 'llm', 'both'}
+            - 'manual': only use rule-based extraction.
+            - 'llm'   : only use LLM-based extraction.
+            - 'both'  : use both and merge (default).
+        llm_model : str
+            Model name for LLM extraction (if used).
+        llm_chunk_chars : int
+            Max characters per chunk when calling the LLM.
+        """
         self.paper_id = paper_id or "paper"
+        self.definition_mode = definition_mode
+        self.llm_model = llm_model
+        self.llm_chunk_chars = llm_chunk_chars
+
         # these will be updated with \newtheorem info
         self.env_kind_map = dict(self.BASE_ENV_KIND_MAP)
+
 
 
     def _expand_macros(self, text: str) -> str:
@@ -530,7 +564,6 @@ class PaperParser:
         return all_eqs
 
 
-
     # ------------------ public entry point ---------------------------
 
     def parse_file(self, path: str | Path) -> PaperGraph:
@@ -553,7 +586,37 @@ class PaperParser:
 
         # Extract core environments
         theorem_like = self._extract_theorem_like(text)
-        definitions = self._extract_definitions(text)
+
+        # ---- Definitions: manual, LLM, or both ----
+        manual_defs: List[Definition] = []
+        llm_defs: List[Definition] = []
+
+        if self.definition_mode in ("manual", "both"):
+            manual_defs = self._extract_definitions_manual(text)
+
+        if self.definition_mode in ("llm", "both"):
+            try:
+                llm_defs = self._extract_definitions_llm(
+                    text,
+                    llm_type="openai",
+                    provider="hosted",
+                    chunk_chars=self.llm_chunk_chars,
+                    model=self.llm_model,
+                )
+            except Exception as e:  # noqa: BLE001
+                print(
+                    f"[WARN] parse_file: LLM definition extraction failed with error {e}; "
+                    "continuing with manual definitions only."
+                )
+                llm_defs = []
+
+        if self.definition_mode == "manual":
+            definitions = manual_defs
+        elif self.definition_mode == "llm":
+            definitions = llm_defs
+        else:  # 'both'
+            definitions = self._merge_definitions(manual_defs, llm_defs)
+
         proofs = self._extract_proofs(text)
         algorithms = self._extract_algorithms(text)
         tables = self._extract_tables(text)
@@ -562,14 +625,18 @@ class PaperParser:
         containers: List[MathObject] = theorem_like + definitions + proofs + algorithms
         equations = self._extract_equations(text, containers)
 
+        # Register all objects in the PaperGraph
         for obj in theorem_like + definitions + proofs + algorithms + tables + equations:
             obj.paper_id = self.paper_id
             graph.add_object(obj)
 
+        # Linking and relations
         self._link_proofs_to_theorems(graph)
         self._build_relations(graph)
 
         return graph
+
+
 
     # ------------------ low-level helpers ---------------------------
 
@@ -790,36 +857,56 @@ class PaperParser:
 
         return " ".join(assumptions_sentences), " ".join(statement_sentences)
 
-    # ---- definitions ----
 
     # ---- definitions ----
 
-    def _extract_definitions(self, text: str) -> List[Definition]:
-        """Extract Definition objects.
+    # put these helpers and functions inside class PaperParser:
 
-        Sources:
-        1. Environments whose kind is 'definition' according to env_kind_map
-           (e.g. \\begin{definition}, \\begin{defn}, or anything introduced via \\newtheorem).
-        2. Textual 'Definition 2.1.' style headings.
-        3. Inline definitions of the form 'Define ... .' or 'We define ... .'
+    @staticmethod
+    def _normalize_inline_text(text: str, max_len: int = 80) -> str:
+        """
+        Simple cleaner for inline/short texts:
+        - collapse whitespace
+        - strip leading/trailing punctuation
+        - optionally truncate.
+        """
+        text = re.sub(r"\s+", " ", text)
+        text = text.strip(" \t\n\r.,;:()[]{}")
+        if len(text) > max_len:
+            text = text[: max_len - 3] + "..."
+        return text
+
+    def _extract_definitions_manual(self, text: str) -> List[Definition]:
+        """
+        Extract Definition objects using only heuristic / rule-based methods.
+
+        Covers:
+        A. Definition environments defined via \\newtheorem (env_kind_map=='definition').
+        B. Textual 'Definition 2.1.' style markers.
+        C. Inline definitions in sentences such as:
+             - 'We define X as ...'
+             - 'We also define X to be ...'
+             - 'X is defined as ...'
+             - 'X is defined to be ...'
+        For (C) we create a Definition whose name attempts to include the symbol X
+        and whose body is that sentence (possibly including an equation).
         """
         objects: List[Definition] = []
         idx = 0
 
-        # --- A. Environment-based definitions ---------------------------------
+        # --- A. Environment-based definitions: \begin{definition}...\end{definition} ---
         env_names = [env for env, kind in self.env_kind_map.items() if kind == "definition"]
-
         if env_names:
-            found = self._extract_envs(text, env_names)
-            for env_name, opt_name, body in found:
+            env_defs = self._extract_envs(text, env_names)
+            for env_name, opt_name, body in env_defs:
                 idx += 1
-                obj_id = "D" + str(idx)
+                obj_id = f"D{idx}"
                 label, _ = self._extract_label_and_name(body)
                 clean_text = self._clean_latex_to_text(body)
                 objects.append(
                     Definition(
                         id=obj_id,
-                        kind="definition",
+                        kind="definition",  # canonical kind
                         index=idx,
                         label=label,
                         name=opt_name.strip() if opt_name else None,
@@ -829,12 +916,7 @@ class PaperParser:
                     )
                 )
 
-        # --- B. Textual 'Definition 2.1.' style definitions -------------------
-        # Pattern:
-        #   Definition 2.1. <text...>
-        # We stop the body at:
-        #   - next "Definition k.l."
-        #   - or next \\begin{...}, \\section, \\subsection, or \\end{document}
+        # --- B. Textual 'Definition 2.1.' style definitions as fallback ---
         definition_text_pattern = re.compile(
             r"(?:^|\n)\s*(?:\\noindent\s*)?"
             r"(?:\\textbf\{)?Definition\s+([0-9]+(?:\.[0-9]+)*)\.?(?:\})?\s*"
@@ -846,15 +928,15 @@ class PaperParser:
 
         for m in definition_text_pattern.finditer(text):
             idx += 1
-            obj_id = "D" + str(idx)
             number = m.group(1)
             body = m.group("body")
+            obj_id = f"D{idx}"
             name = f"Definition {number}"
             clean_text = self._clean_latex_to_text(body)
             objects.append(
                 Definition(
                     id=obj_id,
-                    kind="definition_textual",
+                    kind="definition",
                     index=idx,
                     label=None,
                     name=name,
@@ -864,39 +946,351 @@ class PaperParser:
                 )
             )
 
-        # --- C. Inline 'Define ... .' / 'We define ... .' ---------------------
-        # Conservative heuristic:
-        #   (We )Define <body>.
-        # at the beginning of a line / paragraph.
-        inline_pattern = re.compile(
-            r"(?:^|\n)\s*(?:\\noindent\s*)?(?:We\s+)?[Dd]efine\s+(?P<body>[^\.]+)\.",
-            flags=re.MULTILINE,
+        # --- C. Inline textual definitions -------------------------------
+        # We search for definitional sentences of two main patterns.
+        #
+        # Pattern C1: "We (also) define X as/by/to be ..." (case insensitive)
+        inline_define_pattern = re.compile(
+            r"(?P<full>"
+            r"(?:We\s+)?(?:also\s+)?define\s+"
+            r"(?P<name>[^.]{1,80}?)"  # up to next punctuation-ish but bounded
+            r"\s*(?:as|by|to\s+be|:=|=)"
+            r"[^.]*\.)",
+            flags=re.IGNORECASE | re.DOTALL,
         )
 
-        for m in inline_pattern.finditer(text):
+        # Pattern C2: "X is defined as/to be ..." (case insensitive)
+        inline_defined_as_pattern = re.compile(
+            r"(?P<full>"
+            r"(?P<name>[^.]{1,80}?)"
+            r"\s+is\s+defined\s+"
+            r"(?:as|to\s+be)\s"
+            r"[^.]*\.)",
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+
+        def extract_name_hint(raw_name: str) -> str:
+            # Try to keep the main symbol if there's inline math
+            raw_name = raw_name.strip()
+            m_math = re.search(r"\$(.+?)\$", raw_name)
+            if m_math:
+                return self._normalize_inline_text(m_math.group(1), max_len=80)
+            # Otherwise plain text hint
+            return self._normalize_inline_text(self._clean_latex_to_text(raw_name), max_len=80)
+
+        # Helper to add an inline definition match
+        def add_inline_definition(match: re.Match, source: str):
+            nonlocal idx, objects
+            full = match.group("full")
+            name_raw = match.group("name")
+
+            name_hint = extract_name_hint(name_raw)
+            clean_text = self._clean_latex_to_text(full)
             idx += 1
-            obj_id = "D" + str(idx)
-            raw = m.group(0)              # full matched sentence
-            body = m.group("body")
-            clean_text = self._clean_latex_to_text(body)
+            obj_id = f"D{idx}"
             objects.append(
                 Definition(
                     id=obj_id,
-                    kind="definition_inline",
+                    kind="definition",
                     index=idx,
                     label=None,
-                    name=None,
-                    raw_latex=raw,
+                    name=name_hint or None,
+                    raw_latex=full,
                     clean_text=clean_text,
-                    env_name="inline",
+                    env_name=source,
                 )
             )
 
+        for m in inline_define_pattern.finditer(text):
+            add_inline_definition(m, "inline_define")
+
+        for m in inline_defined_as_pattern.finditer(text):
+            add_inline_definition(m, "inline_defined_as")
+
+        print(f"[INFO] _extract_definitions_manual: found {len(objects)} definitions (all kinds).")
         return objects
 
+    # Optional thin wrapper so older code using _extract_definitions still works:
+    def _extract_definitions(self, text: str) -> List[Definition]:
+        """
+        Backwards-compatible wrapper; currently just calls the manual extractor.
+        The new parse_file uses _extract_definitions_manual / _extract_definitions_llm
+        with merging logic, but this wrapper keeps external uses working.
+        """
+        return self._extract_definitions_manual(text)
 
 
-    # ---- proofs ----
+
+    def _extract_definitions_llm(
+        self,
+        text: str,
+        llm_type: str = "openai",
+        provider: str = "hosted",
+        chunk_chars: int = 8000,
+        base_prompt: Optional[str] = None,
+        model: str = "gpt-4o-mini",
+    ) -> List[Definition]:
+        """
+        Use an LLM to extract definitions directly from LaTeX text.
+
+        - Currently only supports llm_type='openai', provider='hosted'.
+        - Requires: `pip install openai` and env var OPENAI_API_KEY set.
+        - Returns a list of Definition objects with *temporary* ids and indices
+          (id='' and index=0). Final ids are assigned in _merge_definitions.
+
+        Parameters
+        ----------
+        text : str
+            LaTeX document body.
+        llm_type : str
+            'openai' or other (only 'openai' implemented).
+        provider : str
+            'hosted' or 'local' (only 'hosted' implemented).
+        chunk_chars : int
+            Maximum number of characters per chunk to send to the LLM.
+        base_prompt : Optional[str]
+            Optional custom system/user prompt template. If None, a default
+            prompt tailored for math definitions is used.
+        model : str
+            LLM model name (e.g. 'gpt-4o-mini').
+
+        Returns
+        -------
+        List[Definition]
+        """
+        # If user asked for something we don't implement yet, just bail safely.
+        if llm_type != "openai" or provider != "hosted":
+            print(
+                f"[WARN] _extract_definitions_llm: llm_type={llm_type}, "
+                f"provider={provider} not implemented (returning empty list)."
+            )
+            return []
+
+        try:
+            import openai  # type: ignore[import]
+        except ImportError:
+            print(
+                "[WARN] _extract_definitions_llm: openai package not installed. "
+                "Run `pip install openai` and set OPENAI_API_KEY."
+            )
+            return []
+
+        if not os.getenv("OPENAI_API_KEY"):
+            print(
+                "[WARN] _extract_definitions_llm: OPENAI_API_KEY not set; "
+                "skipping LLM extraction."
+            )
+            return []
+
+        # Default prompt if user didn't supply one
+        if base_prompt is None:
+            base_prompt = (
+                "You are a LaTeX-aware mathematical text parser.\n\n"
+                "Task: From the following LaTeX fragment, extract ONLY *definitions*:\n"
+                "places where the authors introduce a new mathematical object, "
+                "notation, or concept. Include both formal 'Definition' style text "
+                "and informal sentences like 'We define...', 'Let X be...', "
+                "'is defined as', etc.\n\n"
+                "For each definition, return a JSON object with fields:\n"
+                "  - raw_latex: exact LaTeX snippet for the definition (one or a few sentences).\n"
+                "  - short_name: very short label (1–6 words) or symbol, e.g. 'Toeplitz matrix T_phi'.\n"
+                "  - clean_text: plain English explanation (no LaTeX commands, but you may keep math symbols).\n"
+                "  - anchor: a short diagnostic string (first 60–80 characters of the definition).\n\n"
+                "Return a *pure JSON array* of such objects, with no extra text before or after.\n"
+            )
+
+        client = openai.ChatCompletion
+
+        def call_llm(chunk_text: str) -> List[dict]:
+            """
+            Call OpenAI chat completion on a single chunk,
+            parse the returned JSON array (if any).
+            """
+            try:
+                response = client.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": "You extract structured data from LaTeX."},
+                        {
+                            "role": "user",
+                            "content": base_prompt
+                                       + "\n\n```latex\n"
+                                       + chunk_text
+                                       + "\n```",
+                        },
+                    ],
+                    temperature=0.1,
+                )
+            except Exception as e:  # noqa: BLE001
+                print(f"[WARN] _extract_definitions_llm: OpenAI API error: {e}")
+                return []
+
+            try:
+                text_out = response["choices"][0]["message"]["content"]
+            except Exception as e:  # noqa: BLE001
+                print(f"[WARN] _extract_definitions_llm: unexpected response format: {e}")
+                return []
+
+            # Try to locate JSON in output; strip any surrounding junk
+            text_out = text_out.strip()
+            # Some models sometimes wrap JSON with markdown fences – try to remove them
+            if text_out.startswith("```"):
+                text_out = re.sub(r"^```[a-zA-Z]*\s*", "", text_out)
+                text_out = re.sub(r"```$", "", text_out).strip()
+
+            try:
+                data = json.loads(text_out)
+            except json.JSONDecodeError:
+                print(
+                    "[WARN] _extract_definitions_llm: model output not valid JSON; "
+                    "skipping this chunk."
+                )
+                return []
+
+            if not isinstance(data, list):
+                print(
+                    "[WARN] _extract_definitions_llm: model output is not a JSON array; "
+                    "skipping this chunk."
+                )
+                return []
+
+            return data
+
+        # --- Chunk the text and call the LLM on each chunk ---
+        llm_defs: List[Definition] = []
+        start = 0
+        chunk_index = 0
+
+        while start < len(text):
+            end = min(len(text), start + chunk_chars)
+            chunk = text[start:end]
+            chunk_index += 1
+            print(f"[DEBUG] _extract_definitions_llm: processing chunk {chunk_index}")
+
+            json_defs = call_llm(chunk)
+            for d in json_defs:
+                raw = d.get("raw_latex") or ""
+                short_name = d.get("short_name") or ""
+                clean = d.get("clean_text") or ""
+                anchor = d.get("anchor") or ""
+
+                # simple safety cleaning
+                raw = str(raw)
+                short_name = str(short_name)
+                clean = str(clean)
+                anchor = str(anchor)
+
+                # Create Definition with temporary id/index; will be filled later.
+                def_obj = Definition(
+                    id="",
+                    kind="definition",          # keep canonical 'definition' kind
+                    index=0,
+                    label=None,
+                    name=short_name.strip() or None,
+                    raw_latex=raw,
+                    clean_text=clean.strip() or anchor.strip() or "",
+                    env_name="llm",
+                )
+                llm_defs.append(def_obj)
+
+            start = end
+
+        print(f"[INFO] _extract_definitions_llm: collected {len(llm_defs)} LLM definitions.")
+        return llm_defs
+
+
+    # put this inside class PaperParser:
+
+    @staticmethod
+    def _jaccard_similarity(a: str, b: str) -> float:
+        """
+        Simple word-level Jaccard similarity between two short texts.
+        """
+
+        def to_set(s: str) -> set[str]:
+            s = s.lower()
+            s = re.sub(r"[^\w\s]", " ", s)
+            tokens = [t for t in s.split() if t]
+            return set(tokens)
+
+        A = to_set(a)
+        B = to_set(b)
+        if not A or not B:
+            return 0.0
+        return len(A & B) / len(A | B)
+
+    def _merge_definitions(
+            self,
+            manual_defs: List[Definition],
+            llm_defs: List[Definition],
+            similarity_threshold: float = 0.7,
+    ) -> List[Definition]:
+        """
+        Merge manual and LLM-derived definitions with de-duplication.
+
+        Strategy:
+        - Start from all manual_defs (trusted more).
+        - For each llm_def, compare against manual_defs using:
+            * name equality / substring
+            * clean_text containment
+            * Jaccard similarity on clean_text
+          If any of these indicate high overlap, we skip the llm_def.
+        - Otherwise we add the llm_def as new.
+        - Finally we *renumber* all definitions D1, D2, ... consistently.
+
+        Returns
+        -------
+        List[Definition]  (with fresh id/index values)
+        """
+        merged: List[Definition] = []
+
+        # Copy manual definitions first
+        for d in manual_defs:
+            merged.append(d)
+
+        def is_duplicate(candidate: Definition, existing: List[Definition]) -> bool:
+            for d in existing:
+                # Compare names
+                name1 = (candidate.name or "").lower()
+                name2 = (d.name or "").lower()
+                if name1 and name2:
+                    if name1 == name2:
+                        return True
+                    if len(name1) > 5 and (name1 in name2 or name2 in name1):
+                        return True
+
+                # Compare clean_text
+                c1 = candidate.clean_text or ""
+                c2 = d.clean_text or ""
+                if not c1 or not c2:
+                    continue
+                if len(c1) > 20 and c1 in c2:
+                    return True
+                if len(c2) > 20 and c2 in c1:
+                    return True
+
+                sim = self._jaccard_similarity(c1, c2)
+                if sim >= similarity_threshold:
+                    return True
+
+            return False
+
+        for llm_def in llm_defs:
+            if is_duplicate(llm_def, merged):
+                continue
+            merged.append(llm_def)
+
+        # Final renumbering: D1, D2, ...
+        for idx, d in enumerate(merged, start=1):
+            d.index = idx
+            d.id = f"D{idx}"
+
+        print(
+            f"[INFO] _merge_definitions: {len(manual_defs)} manual + "
+            f"{len(llm_defs)} LLM -> {len(merged)} merged."
+        )
+        return merged
+
     # ---- proofs ----
 
     def _extract_proofs(self, text: str) -> List[Proof]:
@@ -1139,10 +1533,10 @@ class PaperParser:
     def _build_relations(self, graph: PaperGraph):
         """
         Build relations between objects using:
-        - proof.parent_id  -> 'proof_of'
-        - \\ref/\\eqref/\\autoref{label} patterns in theorem statements and proofs
+        - \ref/\eqref/\autoref{label} patterns in theorem statements and proofs
         - phrase heuristics for 'special case of', 'generalization of'
         - equations belonging to parent environments
+        - NEW: name-based heuristic for definitions (including inline/LLM ones)
         """
         # mapping label -> id
         label_to_id: Dict[str, str] = {}
@@ -1153,27 +1547,14 @@ class PaperParser:
         # generic reference pattern (ref / eqref / autoref)
         ref_pattern = re.compile(r"\\(?:ref|eqref|autoref)\{([^}]+)\}")
 
-        # 0. Proof -> theorem/lemma/etc. : "proof_of"
-        for obj in graph.objects.values():
-            if isinstance(obj, Proof) and obj.parent_id:
-                graph.add_relation(
-                    source_id=obj.id,
-                    target_id=obj.parent_id,
-                    relation_type="proof_of",
-                )
-
         # 1. References inside proofs -> "used_in_proof"
-        #    If a proof of T uses object X (referenced by label),
-        #    we create edge X --used_in_proof--> T.
         for obj in graph.objects.values():
             if not isinstance(obj, Proof):
                 continue
             raw = getattr(obj, "raw_latex", "") or ""
-            if not obj.parent_id:
-                continue
             for label in ref_pattern.findall(raw):
                 target_id = label_to_id.get(label)
-                if target_id:
+                if target_id and obj.parent_id:
                     graph.add_relation(
                         source_id=target_id,
                         target_id=obj.parent_id,
@@ -1181,7 +1562,6 @@ class PaperParser:
                     )
 
         # 2. References inside theorem-like statements -> "uses"
-        #    If theorem T refers to object X, we add X --uses--> T.
         for obj in graph.objects.values():
             if not isinstance(obj, TheoremLike):
                 continue
@@ -1195,8 +1575,7 @@ class PaperParser:
                         relation_type="uses",
                     )
 
-        # 3. Definitions used anywhere -> "uses_definition"
-        #    Allow ref/eqref/autoref after the word "Definition".
+        # 3. Definitions used anywhere -> "uses_definition" via explicit Definition~\ref
         def_pat = re.compile(r"Definition~?\\(?:ref|eqref|autoref)\{([^}]+)\}")
         for obj in graph.objects.values():
             if isinstance(obj, Definition):
@@ -1251,6 +1630,42 @@ class PaperParser:
                     relation_type="in_environment_of",
                 )
 
+        # 6. NEW: name-based heuristic for inline/LLM/manual definitions.
+        #    If a Definition has a reasonably short 'name', and that name
+        #    appears in the LaTeX of another object, add 'uses_definition'.
+        definition_objs = [
+            o for o in graph.objects.values() if isinstance(o, Definition)
+        ]
+
+        for d_obj in definition_objs:
+            name = (d_obj.name or "").strip()
+            if not name:
+                continue
+            # avoid very long names; we only want compact symbols/phrases
+            if len(name) > 60:
+                continue
+
+            # crude escape for regex search
+            pattern = re.escape(name)
+
+            for other in graph.objects.values():
+                if other.id == d_obj.id:
+                    continue
+                if isinstance(other, Definition):
+                    continue
+
+                raw = getattr(other, "raw_latex", "") or ""
+                if not raw:
+                    continue
+
+                if re.search(pattern, raw):
+                    graph.add_relation(
+                        source_id=d_obj.id,
+                        target_id=other.id,
+                        relation_type="uses_definition",
+                    )
+
+
 
 # ---------------------------------------------------------------------
 # Input resolution: local path / arXiv ID / URL
@@ -1281,11 +1696,9 @@ def resolve_source_to_tex(source: str):
         return p, p.stem
 
     # treat as arXiv ID or URL (extract in funcs)
-    from extract_arxiv_funcs import normalize_arxiv_id
     base_id = normalize_arxiv_id(source)
 
     # fetch metadata only when called directly:
-    from extract_arxiv_funcs import fetch_arxiv_metadata
     md = fetch_arxiv_metadata([base_id + "v1"])[base_id + "v1"]
 
     return resolve_source_to_tex_local_first(

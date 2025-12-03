@@ -214,8 +214,7 @@ def run_batch(
                     paper=graph,
                     out_png=str(out_png),
                     node_label_attr="label", # "id",
-                    include_kinds=[
-                        "theorem", "lemma", "proposition", "corollary",
+                    include_kinds=["theorem", "lemma", "proposition", "corollary",
                         "definition", "proof"], #  "equation",
                     figsize=(16, 10),
                     include_relation_types=None,
