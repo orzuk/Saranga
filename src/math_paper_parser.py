@@ -9,7 +9,7 @@ Features:
 - Downloads arXiv source tarball automatically when needed
 - Extracts:
     - definitions
-    - theorems / lemmas / propositions / corollaries / claims / conjectures
+    - theorems / lemmas / propositions / corollaries / claims / conjectures / problems
     - proofs
     - algorithms
     - tables
@@ -17,7 +17,6 @@ Features:
 - Can print a summary AND dump structured output to JSON
 """
 from __future__ import annotations
-
 
 import os
 import re
@@ -28,11 +27,11 @@ import tempfile
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any, Union
+
 try:
     from pyvis.network import Network
 except Exception as e:
     print(f"[WARN] Could not load pyvis for interactive network html plot: {e}")
-
 
 import requests  # pip install requests
 
@@ -40,11 +39,13 @@ import networkx as nx  # For drawing
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
-from extract_arxiv_funcs import normalize_arxiv_id, fetch_arxiv_metadata, resolve_source_to_tex_local_first
-
+from extract_arxiv_funcs import (
+    normalize_arxiv_id,
+    fetch_arxiv_metadata,
+    resolve_source_to_tex_local_first,
+)
 
 from config import FULL_PAPERS_DIR
-
 
 
 # ---------------------------------------------------------------------
@@ -64,6 +65,7 @@ class MathObject:
     clean_text: str           # LaTeX stripped of markup (best-effort)
     paper_id: Optional[str] = None  # optional arxiv id etc.
 
+
 @dataclass
 class Equation(MathObject):
     """Equation or displayed math block."""
@@ -72,13 +74,34 @@ class Equation(MathObject):
     parent_id: Optional[str] = None    # id of theorem/definition/proof/etc. containing it (if any)
 
 
-
 @dataclass
 class TheoremLike(MathObject):
     """Theorem-like object with assumptions and statement split heuristically."""
     env_name: str = ""        # actual LaTeX env name e.g. 'theorem', 'lemma'
     assumptions: str = ""     # heuristic: 'Let/Suppose/Assume' sentences
     statement: str = ""       # rest of the text
+
+
+@dataclass
+class Problem(TheoremLike):
+    """
+    Mathematical problem / RHP / optimisation problem.
+
+    Additional semantic fields are currently left mostly empty (None),
+    but the structure is there for future use.
+    """
+    problem_type: Optional[str] = None     # e.g. "RHP", "optimization", "other"
+    constraints: Optional[str] = None      # textual description of constraints
+    objective: Optional[str] = None        # optimisation objective, if any
+    existence_known: Optional[bool] = None
+    uniqueness_known: Optional[bool] = None
+    complexity: Optional[str] = None       # e.g. "polynomial time", "NP-hard", etc.
+
+
+@dataclass
+class Conjecture(TheoremLike):
+    """Conjecture object; same structure as TheoremLike but separate class."""
+    pass
 
 
 @dataclass
@@ -142,6 +165,7 @@ class PaperGraph:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to plain-JSON-serializable dict."""
+
         def obj_to_dict(o: MathObject) -> Dict[str, Any]:
             d = asdict(o)
             d["__class__"] = o.__class__.__name__
@@ -159,6 +183,8 @@ class PaperGraph:
         cls_map = {
             "MathObject": MathObject,
             "TheoremLike": TheoremLike,
+            "Problem": Problem,
+            "Conjecture": Conjecture,
             "Definition": Definition,
             "Proof": Proof,
             "Algorithm": Algorithm,
@@ -193,60 +219,63 @@ class PaperParser:
     # canonical mapping from LaTeX environment names to "kind"
     BASE_ENV_KIND_MAP = {
         "theorem": "theorem",
-        "Theorem": "theorem",      # NEW
+        "Theorem": "theorem",
         "thm": "theorem",
 
         "lemma": "lemma",
-        "Lemma": "lemma",          # NEW
+        "Lemma": "lemma",
         "lem": "lemma",
 
         "proposition": "proposition",
-        "Proposition": "proposition",   # NEW
+        "Proposition": "proposition",
         "prop": "proposition",
 
         "corollary": "corollary",
-        "Corollary": "corollary",       # NEW
+        "Corollary": "corollary",
         "cor": "corollary",
 
         "claim": "claim",
-        "Claim": "claim",               # NEW
+        "Claim": "claim",
 
         "definition": "definition",
-        "Definition": "definition",     # NEW
+        "Definition": "definition",
         "defn": "definition",
         "dfn": "definition",
         "Def": "definition",
         "Defn": "definition",
 
-
-        "proof": "proof",               # environment version
-        "Proof": "proof",               # NEW (rare)
+        "proof": "proof",
+        "Proof": "proof",
 
         "algorithm": "algorithm",
         "algorithm*": "algorithm",
 
         "table": "table",
 
-        # common variants
         "theo": "theorem",
         "conjecture": "conjecture",
-        "Conjecture": "conjecture",     # NEW
+        "Conjecture": "conjecture",
+
+        "problem": "problem",
+        "Problem": "problem",
     }
 
-
-    THEOREM_LIKE_KINDS = {"theorem", "lemma", "proposition", "corollary", "claim", "conjecture"}
-
-    from pathlib import Path
-    from typing import Optional, List, Union
-
-    # put this replacing your current __init__ and parse_file in class PaperParser:
+    THEOREM_LIKE_KINDS = {
+        "theorem",
+        "lemma",
+        "proposition",
+        "corollary",
+        "claim",
+        "conjecture",
+        "problem",
+    }
 
     def __init__(
-            self,
-            paper_id: Optional[str] = None,
-            definition_mode: str = "both",  # 'manual', 'llm', or 'both'
-            llm_model: str = "gpt-4o-mini",
-            llm_chunk_chars: int = 8000,
+        self,
+        paper_id: Optional[str] = None,
+        definition_mode: str = "both",  # 'manual', 'llm', or 'both'
+        llm_model: str = "gpt-4o-mini",
+        llm_chunk_chars: int = 8000,
     ):
         """
         Parameters
@@ -270,7 +299,9 @@ class PaperParser:
         # these will be updated with \newtheorem info
         self.env_kind_map = dict(self.BASE_ENV_KIND_MAP)
 
-
+    # ------------------------------------------------------------------
+    # Macro / input expansion
+    # ------------------------------------------------------------------
 
     def _expand_macros(self, text: str) -> str:
         """
@@ -310,29 +341,12 @@ class PaperParser:
 
         return text
 
-
     def _normalize_simple_ref_macros(self, text: str) -> str:
         """
         Detect simple 1-argument \\newcommand/\\renewcommand macros that
         only wrap a \\ref/\\eqref/\\autoref, and rewrite their uses to the
         underlying standard ref command.
-
-        Examples it will catch:
-
-            \\newcommand{\\eq}[1]{(\\ref{#1})}
-            \\newcommand{\\Eq}[1]{Equation~\\eqref{#1}}
-            \\renewcommand{\\thmref}[1]{Theorem~\\ref{#1}}
-
-        After this pass:
-
-            \\eq{lbl}    -> \\ref{lbl}
-            \\Eq{lbl}    -> \\eqref{lbl}
-            \\thmref{t1} -> \\ref{t1}
-
-        (we don't preserve the surrounding English words, we just normalise
-        the reference part so later regexes see \\ref/\\eqref.)
         """
-        # Find 1-arg newcommand/renewcommand with a body
         cmd_pat = re.compile(
             r"\\(?:re)?newcommand\*?\s*{\\([A-Za-z@]+)}\s*\[(\d+)\]\s*{([^}]*)}",
             flags=re.DOTALL,
@@ -378,7 +392,6 @@ class PaperParser:
 
         return text
 
-
     def _expand_inputs(self, text: str, base_dir: Path, depth: int = 0, max_depth: int = 5) -> str:
         """
         Recursively expand \input{...} and \include{...} commands by inlining
@@ -402,7 +415,7 @@ class PaperParser:
             cmd = m.group(1)
             fname = m.group(2).strip()
 
-            # NEW: ignore includes that are clearly macro arguments, like {#1}
+            # ignore includes that are clearly macro arguments, like {#1}
             if "#" in fname:
                 print(f"[WARN] Skipping macro-like \\{cmd}{{{fname}}} (looks like an argument, not a file)")
                 text = text[: m.start()] + "" + text[m.end():]
@@ -430,7 +443,6 @@ class PaperParser:
                     print(f"[WARN] Failed to read included file {inc_path}")
                     included = ""
                 else:
-                    # recursively expand inputs inside the included file
                     included = self._expand_inputs(
                         included_raw,
                         base_dir=inc_path.parent,
@@ -448,25 +460,19 @@ class PaperParser:
             # 2) expand 0-arg macros like \be -> \begin{equation}
             text = self._expand_macros(text)
 
-
         return text
 
-    # ---- equations ----
+    # ------------------------------------------------------------------
+    # Equations
+    # ------------------------------------------------------------------
 
     def _extract_equations_from_body(self, body: str, parent_id: Optional[str]) -> List[Equation]:
         """
         Extract equation-like displays inside a given LaTeX body.
-
-        We look for:
-          - \\begin{equation}, equation*, align, align*, gather, multline, etc.
-          - $$ ... $$
-          - \\[ ... \\]
-
-        parent_id: id of the containing object (theorem/definition/proof/algorithm), or None.
         """
         equations: List[Equation] = []
 
-        # 1) Environment-based displays: equation, align, gather, multline
+        # 1) Environment-based displays
         env_pattern = re.compile(
             r"\\begin{(?P<env>equation\*?|align\*?|gather\*?|multline\*?)}(?P<body>.*?)\\end{\1}",
             flags=re.DOTALL,
@@ -482,7 +488,7 @@ class PaperParser:
                 index=0,
                 label=label,
                 name=None,
-                raw_latex=m.group(0),  # full environment
+                raw_latex=m.group(0),
                 clean_text=clean_text,
                 env_name=env_name,
                 display_type="env",
@@ -535,10 +541,7 @@ class PaperParser:
     def _extract_equations(self, full_text: str, containers: List[MathObject]) -> List[Equation]:
         """
         Extract equations from inside theorem/definition/proof/algorithm bodies,
-        and optionally from the full document (top-level equations).
-
-        For now we focus on equations inside containers, since those
-        are the most semantically relevant.
+        and from the full document (top-level equations).
         """
         all_eqs: List[Equation] = []
         eq_idx = 0
@@ -552,8 +555,7 @@ class PaperParser:
                 eq.index = eq_idx
                 all_eqs.append(eq)
 
-        # 2) (optional) top-level equations in the full text, with no parent
-        # Uncomment if you want them:
+        # 2) top-level equations in the full text, with no parent
         top_eqs = self._extract_equations_from_body(full_text, parent_id=None)
         for eq in top_eqs:
             eq_idx += 1
@@ -563,8 +565,9 @@ class PaperParser:
 
         return all_eqs
 
-
-    # ------------------ public entry point ---------------------------
+    # ------------------------------------------------------------------
+    # Public entry point
+    # ------------------------------------------------------------------
 
     def parse_file(self, path: str | Path) -> PaperGraph:
         path = Path(path)
@@ -578,14 +581,14 @@ class PaperParser:
         if m:
             text = m.group(1)
 
-        # 3) Now do normal preprocessing & parsing
+        # 3) Strip comments and parse \newtheorem
         text = self._strip_comments(text)
         self._parse_newtheorem(text)
 
         graph = PaperGraph(paper_id=self.paper_id)
 
-        # Extract core environments
-        theorem_like = self._extract_theorem_like(text)
+        # ---- Theorem-like objects (including propositions, problems, conjectures) ----
+        theorem_like: List[TheoremLike] = self._extract_theorem_like(text)
 
         # ---- Definitions: manual, LLM, or both ----
         manual_defs: List[Definition] = []
@@ -636,16 +639,15 @@ class PaperParser:
 
         return graph
 
-
-
-    # ------------------ low-level helpers ---------------------------
+    # ------------------------------------------------------------------
+    # Low-level helpers
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _strip_comments(text: str) -> str:
         """Remove LaTeX comments (%) except escaped \%."""
         lines = []
         for line in text.splitlines():
-            # remove unescaped %
             m = re.search(r"(?<!\\)%", line)
             if m:
                 line = line[: m.start()]
@@ -655,13 +657,6 @@ class PaperParser:
     def _parse_newtheorem(self, text: str) -> None:
         """
         Parse \\newtheorem definitions and populate env_kind_map.
-
-        Handles both:
-            \newtheorem{theorem}{Theorem}
-            \newtheorem{lemma}[theorem]{\sc Lemma\rm}
-
-        and classifies environments by the printed name (the second argument),
-        so that envs like 'thm' or 'Theorem' also get mapped to 'theorem'.
         """
         # Start from a sensible base
         base_map = {
@@ -684,6 +679,10 @@ class PaperParser:
             "Remark": "remark",
             "example": "example",
             "Example": "example",
+            "problem": "problem",
+            "Problem": "problem",
+            "conjecture": "conjecture",
+            "Conjecture": "conjecture",
         }
         self.env_kind_map = dict(base_map)
 
@@ -695,7 +694,6 @@ class PaperParser:
 
         for env_name, printed in pattern.findall(text):
             env_name = env_name.strip()
-            # Normalize printed name by stripping non-letters
             printed_clean = re.sub(r"[^a-z]", "", printed.lower())
 
             kind = None
@@ -709,6 +707,8 @@ class PaperParser:
                 "example",
                 "claim",
                 "conclusion",
+                "problem",
+                "conjecture",
             ]:
                 if candidate in printed_clean:
                     kind = candidate
@@ -717,20 +717,15 @@ class PaperParser:
             if kind:
                 self.env_kind_map[env_name] = kind
 
-
     @staticmethod
     def _clean_latex_to_text(latex: str) -> str:
         """Best-effort LaTeX -> plain text cleaner (keeps math markers)."""
-        # remove common formatting commands
         latex = re.sub(r"\\(textbf|textit|emph|mathrm|mathbf|mathit|text)\s*{([^}]*)}", r"\2", latex)
-        # replace math with [MATH] tokens
         latex = re.sub(r"\$\$(.*?)\$\$", " [MATH] ", latex, flags=re.DOTALL)
         latex = re.sub(r"\$(.*?)\$", " [MATH] ", latex, flags=re.DOTALL)
         latex = re.sub(r"\\\[(.*?)\\\]", " [MATH] ", latex, flags=re.DOTALL)
         latex = re.sub(r"\\begin{equation\*?}(.*?)\\end{equation\*?}", " [MATH] ", latex, flags=re.DOTALL)
-        # remove LaTeX commands
         latex = re.sub(r"\\[a-zA-Z]+\*?(?:\[[^\]]*\])?(?:{[^}]*})?", "", latex)
-        # remove multiple spaces/newlines
         latex = re.sub(r"\s+", " ", latex)
         return latex.strip()
 
@@ -741,7 +736,9 @@ class PaperParser:
         label = label_match.group(1).strip() if label_match else None
         return label, None
 
-    # ------------------ environment extraction ----------------------
+    # ------------------------------------------------------------------
+    # Generic environment extraction
+    # ------------------------------------------------------------------
 
     def _extract_envs(self, text: str, env_names: List[str]) -> List[Tuple[str, str, str]]:
         """
@@ -765,10 +762,12 @@ class PaperParser:
             results.append((env, opt, body))
         return results
 
-    # ---- theorem-like ----
+    # ------------------------------------------------------------------
+    # Theorem-like extraction (theorem / lemma / proposition / corollary /
+    # claim / conjecture / problem)
+    # ------------------------------------------------------------------
 
     def _extract_theorem_like(self, text: str) -> List[TheoremLike]:
-        # envs whose kind is one of the canonical theorem-like kinds
         env_names = [
             env for env, kind in self.env_kind_map.items()
             if kind in self.THEOREM_LIKE_KINDS
@@ -778,11 +777,9 @@ class PaperParser:
         if not env_names:
             return []
 
-        # find all \begin{env} ... \end{env} occurrences
         found = self._extract_envs(text, env_names)
         print(f"[DEBUG] found {len(found)} theorem-like environments")
 
-        # counters per kind: theorem, lemma, proposition, ...
         counters: Dict[str, int] = {k: 0 for k in self.THEOREM_LIKE_KINDS}
         objects: List[TheoremLike] = []
 
@@ -792,38 +789,63 @@ class PaperParser:
             counters[kind] += 1
             idx = counters[kind]
 
-            # ID: T1, L2, P3, C4, ...
+            # ID prefix: T (theorem), L (lemma), P (proposition/problem/proof is different),
+            # C (corollary/claim/conjecture), etc. For simplicity keep first letter.
             obj_id = kind[0].upper() + str(idx)
 
             label, _ = self._extract_label_and_name(body)
             clean_text = self._clean_latex_to_text(body)
             assumptions, statement = self._split_assumptions_statement(clean_text)
 
-            obj = TheoremLike(
-                id=obj_id,
-                kind=kind,
-                index=idx,
-                label=label,
-                name=opt_name.strip() if opt_name else None,
-                raw_latex=body,
-                clean_text=clean_text,
-                env_name=env_name,
-                assumptions=assumptions,
-                statement=statement,
-            )
+            # Specialised classes for some kinds
+            if kind == "problem":
+                obj: TheoremLike = Problem(
+                    id=obj_id,
+                    kind=kind,
+                    index=idx,
+                    label=label,
+                    name=opt_name.strip() if opt_name else None,
+                    raw_latex=body,
+                    clean_text=clean_text,
+                    env_name=env_name,
+                    assumptions=assumptions,
+                    statement=statement,
+                )
+            elif kind == "conjecture":
+                obj = Conjecture(
+                    id=obj_id,
+                    kind=kind,
+                    index=idx,
+                    label=label,
+                    name=opt_name.strip() if opt_name else None,
+                    raw_latex=body,
+                    clean_text=clean_text,
+                    env_name=env_name,
+                    assumptions=assumptions,
+                    statement=statement,
+                )
+            else:
+                obj = TheoremLike(
+                    id=obj_id,
+                    kind=kind,
+                    index=idx,
+                    label=label,
+                    name=opt_name.strip() if opt_name else None,
+                    raw_latex=body,
+                    clean_text=clean_text,
+                    env_name=env_name,
+                    assumptions=assumptions,
+                    statement=statement,
+                )
+
             objects.append(obj)
 
         return objects
-
 
     @staticmethod
     def _split_assumptions_statement(text: str) -> Tuple[str, str]:
         """
         Very heuristic split of assumptions vs statement.
-
-        We treat initial sentences starting with 'Let', 'Suppose', 'Assume', 'Given'
-        as assumptions, and if we see 'Then', 'Hence', 'Therefore' starting a sentence,
-        we split there.
         """
         sentences = re.split(r"(?<=[.!?])\s+", text)
         assumptions_sentences = []
@@ -857,18 +879,14 @@ class PaperParser:
 
         return " ".join(assumptions_sentences), " ".join(statement_sentences)
 
-
-    # ---- definitions ----
-
-    # put these helpers and functions inside class PaperParser:
+    # ------------------------------------------------------------------
+    # Definitions (manual + optional LLM)
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _normalize_inline_text(text: str, max_len: int = 80) -> str:
         """
-        Simple cleaner for inline/short texts:
-        - collapse whitespace
-        - strip leading/trailing punctuation
-        - optionally truncate.
+        Simple cleaner for inline/short texts.
         """
         text = re.sub(r"\s+", " ", text)
         text = text.strip(" \t\n\r.,;:()[]{}")
@@ -880,21 +898,17 @@ class PaperParser:
         """
         Extract Definition objects using only heuristic / rule-based methods.
 
-        Covers:
+        Includes:
         A. Definition environments defined via \\newtheorem (env_kind_map=='definition').
         B. Textual 'Definition 2.1.' style markers.
-        C. Inline definitions in sentences such as:
-             - 'We define X as ...'
-             - 'We also define X to be ...'
-             - 'X is defined as ...'
-             - 'X is defined to be ...'
-        For (C) we create a Definition whose name attempts to include the symbol X
-        and whose body is that sentence (possibly including an equation).
+        C1. Inline 'We define X as/by/to be ...'.
+        C2. Inline 'X is defined as/to be ...'.
+        C3. Inline 'Let X be ...' (for things like 'Let \\phi be a p×p matrix-valued function...').
         """
         objects: List[Definition] = []
         idx = 0
 
-        # --- A. Environment-based definitions: \begin{definition}...\end{definition} ---
+        # --- A. Environment-based definitions ---
         env_names = [env for env, kind in self.env_kind_map.items() if kind == "definition"]
         if env_names:
             env_defs = self._extract_envs(text, env_names)
@@ -906,7 +920,7 @@ class PaperParser:
                 objects.append(
                     Definition(
                         id=obj_id,
-                        kind="definition",  # canonical kind
+                        kind="definition",
                         index=idx,
                         label=label,
                         name=opt_name.strip() if opt_name else None,
@@ -916,7 +930,7 @@ class PaperParser:
                     )
                 )
 
-        # --- B. Textual 'Definition 2.1.' style definitions as fallback ---
+        # --- B. Textual 'Definition 2.1.' style definitions ---
         definition_text_pattern = re.compile(
             r"(?:^|\n)\s*(?:\\noindent\s*)?"
             r"(?:\\textbf\{)?Definition\s+([0-9]+(?:\.[0-9]+)*)\.?(?:\})?\s*"
@@ -947,19 +961,18 @@ class PaperParser:
             )
 
         # --- C. Inline textual definitions -------------------------------
-        # We search for definitional sentences of two main patterns.
-        #
-        # Pattern C1: "We (also) define X as/by/to be ..." (case insensitive)
+
+        # C1: "We (also) define X as/by/to be ..." (case insensitive)
         inline_define_pattern = re.compile(
             r"(?P<full>"
             r"(?:We\s+)?(?:also\s+)?define\s+"
-            r"(?P<name>[^.]{1,80}?)"  # up to next punctuation-ish but bounded
+            r"(?P<name>[^.]{1,80}?)"
             r"\s*(?:as|by|to\s+be|:=|=)"
             r"[^.]*\.)",
             flags=re.IGNORECASE | re.DOTALL,
         )
 
-        # Pattern C2: "X is defined as/to be ..." (case insensitive)
+        # C2: "X is defined as/to be ..." (case insensitive)
         inline_defined_as_pattern = re.compile(
             r"(?P<full>"
             r"(?P<name>[^.]{1,80}?)"
@@ -969,16 +982,24 @@ class PaperParser:
             flags=re.IGNORECASE | re.DOTALL,
         )
 
+        # C3: "Let X be ..." used for defining an object.
+        # Example: "Let \\phi be a p×p matrix-valued function that has Fourier series expansion..."
+        inline_let_pattern = re.compile(
+            r"(?P<full>"
+            r"(?:Let|let)\s+"
+            r"(?P<name>(?:\$[^$]+\$|[A-Za-z0-9\\_]+))"
+            r"[^.]{0,200}?"          # up to some descriptive text
+            r"\s+be\s+[^.]*\.)",
+            flags=re.DOTALL,
+        )
+
         def extract_name_hint(raw_name: str) -> str:
-            # Try to keep the main symbol if there's inline math
             raw_name = raw_name.strip()
             m_math = re.search(r"\$(.+?)\$", raw_name)
             if m_math:
                 return self._normalize_inline_text(m_math.group(1), max_len=80)
-            # Otherwise plain text hint
             return self._normalize_inline_text(self._clean_latex_to_text(raw_name), max_len=80)
 
-        # Helper to add an inline definition match
         def add_inline_definition(match: re.Match, source: str):
             nonlocal idx, objects
             full = match.group("full")
@@ -1007,19 +1028,19 @@ class PaperParser:
         for m in inline_defined_as_pattern.finditer(text):
             add_inline_definition(m, "inline_defined_as")
 
+        for m in inline_let_pattern.finditer(text):
+            add_inline_definition(m, "inline_let")
+
         print(f"[INFO] _extract_definitions_manual: found {len(objects)} definitions (all kinds).")
         return objects
 
-    # Optional thin wrapper so older code using _extract_definitions still works:
+    # Backwards-compatible wrapper
     def _extract_definitions(self, text: str) -> List[Definition]:
-        """
-        Backwards-compatible wrapper; currently just calls the manual extractor.
-        The new parse_file uses _extract_definitions_manual / _extract_definitions_llm
-        with merging logic, but this wrapper keeps external uses working.
-        """
         return self._extract_definitions_manual(text)
 
-
+    # ------------------------------------------------------------------
+    # LLM-based definitions
+    # ------------------------------------------------------------------
 
     def _extract_definitions_llm(
         self,
@@ -1032,33 +1053,7 @@ class PaperParser:
     ) -> List[Definition]:
         """
         Use an LLM to extract definitions directly from LaTeX text.
-
-        - Currently only supports llm_type='openai', provider='hosted'.
-        - Requires: `pip install openai` and env var OPENAI_API_KEY set.
-        - Returns a list of Definition objects with *temporary* ids and indices
-          (id='' and index=0). Final ids are assigned in _merge_definitions.
-
-        Parameters
-        ----------
-        text : str
-            LaTeX document body.
-        llm_type : str
-            'openai' or other (only 'openai' implemented).
-        provider : str
-            'hosted' or 'local' (only 'hosted' implemented).
-        chunk_chars : int
-            Maximum number of characters per chunk to send to the LLM.
-        base_prompt : Optional[str]
-            Optional custom system/user prompt template. If None, a default
-            prompt tailored for math definitions is used.
-        model : str
-            LLM model name (e.g. 'gpt-4o-mini').
-
-        Returns
-        -------
-        List[Definition]
         """
-        # If user asked for something we don't implement yet, just bail safely.
         if llm_type != "openai" or provider != "hosted":
             print(
                 f"[WARN] _extract_definitions_llm: llm_type={llm_type}, "
@@ -1082,7 +1077,6 @@ class PaperParser:
             )
             return []
 
-        # Default prompt if user didn't supply one
         if base_prompt is None:
             base_prompt = (
                 "You are a LaTeX-aware mathematical text parser.\n\n"
@@ -1099,13 +1093,9 @@ class PaperParser:
                 "Return a *pure JSON array* of such objects, with no extra text before or after.\n"
             )
 
-        client = openai.ChatCompletion
+        client = openai.ChatCompletion  # type: ignore[attr-defined]
 
         def call_llm(chunk_text: str) -> List[dict]:
-            """
-            Call OpenAI chat completion on a single chunk,
-            parse the returned JSON array (if any).
-            """
             try:
                 response = client.create(
                     model=model,
@@ -1113,10 +1103,7 @@ class PaperParser:
                         {"role": "system", "content": "You extract structured data from LaTeX."},
                         {
                             "role": "user",
-                            "content": base_prompt
-                                       + "\n\n```latex\n"
-                                       + chunk_text
-                                       + "\n```",
+                            "content": base_prompt + "\n\n```latex\n" + chunk_text + "\n```",
                         },
                     ],
                     temperature=0.1,
@@ -1131,9 +1118,7 @@ class PaperParser:
                 print(f"[WARN] _extract_definitions_llm: unexpected response format: {e}")
                 return []
 
-            # Try to locate JSON in output; strip any surrounding junk
             text_out = text_out.strip()
-            # Some models sometimes wrap JSON with markdown fences – try to remove them
             if text_out.startswith("```"):
                 text_out = re.sub(r"^```[a-zA-Z]*\s*", "", text_out)
                 text_out = re.sub(r"```$", "", text_out).strip()
@@ -1156,7 +1141,6 @@ class PaperParser:
 
             return data
 
-        # --- Chunk the text and call the LLM on each chunk ---
         llm_defs: List[Definition] = []
         start = 0
         chunk_index = 0
@@ -1174,16 +1158,14 @@ class PaperParser:
                 clean = d.get("clean_text") or ""
                 anchor = d.get("anchor") or ""
 
-                # simple safety cleaning
                 raw = str(raw)
                 short_name = str(short_name)
                 clean = str(clean)
                 anchor = str(anchor)
 
-                # Create Definition with temporary id/index; will be filled later.
                 def_obj = Definition(
                     id="",
-                    kind="definition",          # keep canonical 'definition' kind
+                    kind="definition",
                     index=0,
                     label=None,
                     name=short_name.strip() or None,
@@ -1197,9 +1179,6 @@ class PaperParser:
 
         print(f"[INFO] _extract_definitions_llm: collected {len(llm_defs)} LLM definitions.")
         return llm_defs
-
-
-    # put this inside class PaperParser:
 
     @staticmethod
     def _jaccard_similarity(a: str, b: str) -> float:
@@ -1220,37 +1199,21 @@ class PaperParser:
         return len(A & B) / len(A | B)
 
     def _merge_definitions(
-            self,
-            manual_defs: List[Definition],
-            llm_defs: List[Definition],
-            similarity_threshold: float = 0.7,
+        self,
+        manual_defs: List[Definition],
+        llm_defs: List[Definition],
+        similarity_threshold: float = 0.7,
     ) -> List[Definition]:
         """
         Merge manual and LLM-derived definitions with de-duplication.
-
-        Strategy:
-        - Start from all manual_defs (trusted more).
-        - For each llm_def, compare against manual_defs using:
-            * name equality / substring
-            * clean_text containment
-            * Jaccard similarity on clean_text
-          If any of these indicate high overlap, we skip the llm_def.
-        - Otherwise we add the llm_def as new.
-        - Finally we *renumber* all definitions D1, D2, ... consistently.
-
-        Returns
-        -------
-        List[Definition]  (with fresh id/index values)
         """
         merged: List[Definition] = []
 
-        # Copy manual definitions first
         for d in manual_defs:
             merged.append(d)
 
         def is_duplicate(candidate: Definition, existing: List[Definition]) -> bool:
             for d in existing:
-                # Compare names
                 name1 = (candidate.name or "").lower()
                 name2 = (d.name or "").lower()
                 if name1 and name2:
@@ -1259,7 +1222,6 @@ class PaperParser:
                     if len(name1) > 5 and (name1 in name2 or name2 in name1):
                         return True
 
-                # Compare clean_text
                 c1 = candidate.clean_text or ""
                 c2 = d.clean_text or ""
                 if not c1 or not c2:
@@ -1280,7 +1242,6 @@ class PaperParser:
                 continue
             merged.append(llm_def)
 
-        # Final renumbering: D1, D2, ...
         for idx, d in enumerate(merged, start=1):
             d.index = idx
             d.id = f"D{idx}"
@@ -1291,14 +1252,16 @@ class PaperParser:
         )
         return merged
 
-    # ---- proofs ----
+    # ------------------------------------------------------------------
+    # Proofs
+    # ------------------------------------------------------------------
 
     def _extract_proofs(self, text: str) -> List[Proof]:
         """Extract proofs (environment-based and textual)."""
         proofs: List[Proof] = []
         idx = 0
 
-        # --- A. Standard \begin{proof}...\end{proof} (with optional header) ---
+        # A. Standard \begin{proof}...\end{proof}
         env_pattern = re.compile(
             r"\\begin{proof}(?:\[(?P<opt>[^\]]*)\])?(?P<body>.*?)\\end{proof}",
             flags=re.DOTALL,
@@ -1320,24 +1283,18 @@ class PaperParser:
                 name=name,
                 raw_latex=raw,
                 clean_text=clean,
-                parent_id=None,  # will be set in _link_proofs_to_theorems
+                parent_id=None,
             )
 
-            # Try to capture a theorem label from the optional header, e.g.
-            # \begin{proof}[Proof of Theorem~\ref{thm:main}]
-            # or more generally any \ref / \eqref / \autoref in the header.
             mref = re.search(r"\\(?:ref|eqref|autoref){([^}]+)}", header_opt)
             if not mref:
-                # fallback: plain \ref in the body header line, if any
                 mref = re.search(r"\\(?:ref|eqref|autoref){([^}]+)}", body[:300])
             if mref:
-                # will be consumed in _link_proofs_to_theorems
                 proof._target_theorem_label = mref.group(1)  # type: ignore[attr-defined]
 
             proofs.append(proof)
 
-        # --- B. Textual proofs: \noindent{\sc Proof ...}: ... -----------------
-        # Pattern: \noindent{\sc <header>}:(body ...)
+        # B. Textual proofs: \noindent{\sc Proof ...}: ...
         text_proof_pattern = re.compile(
             r"\\noindent\s*{\s*\\sc\s*([^}]*)}\s*:(?P<body>.*?)"
             r"(?=(\\noindent\s*{\s*\\sc)|\\section\b|\\subsection\b|"
@@ -1346,7 +1303,7 @@ class PaperParser:
         )
 
         for m in text_proof_pattern.finditer(text):
-            header = m.group(1)           # e.g. "Proof of Theorem~\ref{T22VII18.1}"
+            header = m.group(1)
             body = m.group("body")
             raw = text[m.start():m.end()]
 
@@ -1362,10 +1319,9 @@ class PaperParser:
                 name=name,
                 raw_latex=raw,
                 clean_text=clean,
-                parent_id=None,  # to be filled in _link_proofs_to_theorems
+                parent_id=None,
             )
 
-            # Try to capture the theorem label from the header, e.g. \ref{T22VII18.1}
             mref = re.search(r"\\(?:ref|eqref|autoref){([^}]+)}", header)
             if mref:
                 proof._target_theorem_label = mref.group(1)  # type: ignore[attr-defined]
@@ -1374,9 +1330,9 @@ class PaperParser:
 
         return proofs
 
-
-
-    # ---- algorithms ----
+    # ------------------------------------------------------------------
+    # Algorithms
+    # ------------------------------------------------------------------
 
     def _extract_algorithms(self, text: str) -> List[Algorithm]:
         env_names = ["algorithm", "algorithm*"]
@@ -1408,9 +1364,7 @@ class PaperParser:
     @staticmethod
     def _parse_algorithm_steps(body: str) -> List[Dict[str, Any]]:
         """
-        Very rough parser for algorithm pseudo-code:
-        - split by lines
-        - tag lines starting with 'for', 'while', 'if' (after trimming LaTeX)
+        Very rough parser for algorithm pseudo-code.
         """
         steps = []
         for line in body.splitlines():
@@ -1433,7 +1387,9 @@ class PaperParser:
             steps.append({"type": step_type, "text": text})
         return steps
 
-    # ---- tables ----
+    # ------------------------------------------------------------------
+    # Tables
+    # ------------------------------------------------------------------
 
     def _extract_tables(self, text: str) -> List[TableObject]:
         """Extract \\begin{table} bodies and parse internal tabular as cells."""
@@ -1489,11 +1445,13 @@ class PaperParser:
                 rows.append(cols)
         return rows
 
-    # ------------------ linking & relations -------------------------
+    # ------------------------------------------------------------------
+    # Linking & relations
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _sort_objects_by_occurrence(graph: PaperGraph) -> List[MathObject]:
-        # crude sort by id prefix then index
+        # crude sort by kind then index
         return sorted(graph.objects.values(), key=lambda o: (o.kind, o.index))
 
     def _link_proofs_to_theorems(self, graph: PaperGraph) -> None:
@@ -1501,34 +1459,43 @@ class PaperParser:
         Set proof.parent_id for each Proof object.
 
         Strategy:
-        1. If the proof has a header-derived label (e.g. Proof of Theorem~\ref{...}),
-           link to that theorem-like object.
-        2. Otherwise, link to the nearest preceding theorem-like by index.
+        1. If the proof has a header-derived label, link to that theorem-like object.
+        2. Otherwise, try the first \ref / \eqref / \autoref inside the proof body
+           that points to a theorem-like.
+        3. If all fails, link to the nearest preceding theorem-like by index.
         """
-        # Build label -> theorem-like id map
         label_to_theorem_id: Dict[str, str] = {}
         for obj in graph.objects.values():
             if isinstance(obj, TheoremLike) and getattr(obj, "label", None):
                 label_to_theorem_id[obj.label] = obj.id
 
-        # Collect proofs and theorem-like objects, sorted by index
         proofs = [o for o in graph.objects.values() if isinstance(o, Proof)]
         theorems = [o for o in graph.objects.values() if isinstance(o, TheoremLike)]
         theorems_sorted = sorted(theorems, key=lambda t: t.index)
 
+        ref_pattern = re.compile(r"\\(?:ref|eqref|autoref)\{([^}]+)\}")
+
         for proof in proofs:
-            # 1. Try header-based label: proof._target_theorem_label
+            # 1. header-based label
             target_from_header = getattr(proof, "_target_theorem_label", None)
             if target_from_header and target_from_header in label_to_theorem_id:
                 proof.parent_id = label_to_theorem_id[target_from_header]
                 continue
 
-            # 2. Fallback: nearest preceding theorem-like by index
+            # 2. first ref in the proof body that points to a theorem-like
+            raw = getattr(proof, "raw_latex", "") or ""
+            m = ref_pattern.search(raw)
+            if m:
+                lbl = m.group(1)
+                if lbl in label_to_theorem_id:
+                    proof.parent_id = label_to_theorem_id[lbl]
+                    continue
+
+            # 3. nearest preceding theorem-like by index
             prev_candidates = [t for t in theorems_sorted if t.index <= proof.index]
             if prev_candidates:
                 parent = prev_candidates[-1]
                 proof.parent_id = parent.id
-
 
     def _build_relations(self, graph: PaperGraph):
         """
@@ -1536,18 +1503,16 @@ class PaperParser:
         - \ref/\eqref/\autoref{label} patterns in theorem statements and proofs
         - phrase heuristics for 'special case of', 'generalization of'
         - equations belonging to parent environments
-        - NEW: name-based heuristic for definitions (including inline/LLM ones)
+        - name-based heuristic for definitions
         """
-        # mapping label -> id
         label_to_id: Dict[str, str] = {}
         for obj in graph.objects.values():
             if getattr(obj, "label", None):
                 label_to_id[obj.label] = obj.id
 
-        # generic reference pattern (ref / eqref / autoref)
         ref_pattern = re.compile(r"\\(?:ref|eqref|autoref)\{([^}]+)\}")
 
-        # 1. References inside proofs -> "used_in_proof"
+        # 1. References inside proofs -> 'used_in_proof' edges
         for obj in graph.objects.values():
             if not isinstance(obj, Proof):
                 continue
@@ -1561,7 +1526,7 @@ class PaperParser:
                         relation_type="used_in_proof",
                     )
 
-        # 2. References inside theorem-like statements -> "uses"
+        # 2. References inside theorem-like statements -> 'uses'
         for obj in graph.objects.values():
             if not isinstance(obj, TheoremLike):
                 continue
@@ -1575,7 +1540,7 @@ class PaperParser:
                         relation_type="uses",
                     )
 
-        # 3. Definitions used anywhere -> "uses_definition" via explicit Definition~\ref
+        # 3. Explicit "Definition~\ref{...}" -> uses_definition
         def_pat = re.compile(r"Definition~?\\(?:ref|eqref|autoref)\{([^}]+)\}")
         for obj in graph.objects.values():
             if isinstance(obj, Definition):
@@ -1590,7 +1555,7 @@ class PaperParser:
                         relation_type="uses_definition",
                     )
 
-        # 4. Heuristic: special case / generalization phrasing
+        # 4. Heuristic: "special case of ..." / "generalization of ..."
         spec_pat = re.compile(
             r"special case of .*?\\(?:ref|eqref|autoref)\{([^}]+)\}",
             flags=re.IGNORECASE | re.DOTALL,
@@ -1621,7 +1586,7 @@ class PaperParser:
                         relation_type="generalization_of",
                     )
 
-        # 5. Equations belonging to a parent object (theorem/definition/proof/algorithm)
+        # 5. Equations belonging to a parent object
         for obj in graph.objects.values():
             if isinstance(obj, Equation) and obj.parent_id:
                 graph.add_relation(
@@ -1630,34 +1595,19 @@ class PaperParser:
                     relation_type="in_environment_of",
                 )
 
-        # 6. NEW: name-based heuristic for inline/LLM/manual definitions.
-        #    If a Definition has a reasonably short 'name', and that name
-        #    appears in the LaTeX of another object, add 'uses_definition'.
-        definition_objs = [
-            o for o in graph.objects.values() if isinstance(o, Definition)
-        ]
-
+        # 6. Name-based heuristic for definitions: if definition.name appears in obj.raw_latex
+        definition_objs = [o for o in graph.objects.values() if isinstance(o, Definition)]
         for d_obj in definition_objs:
             name = (d_obj.name or "").strip()
-            if not name:
+            if not name or len(name) > 60:
                 continue
-            # avoid very long names; we only want compact symbols/phrases
-            if len(name) > 60:
-                continue
-
-            # crude escape for regex search
             pattern = re.escape(name)
-
             for other in graph.objects.values():
-                if other.id == d_obj.id:
+                if other.id == d_obj.id or isinstance(other, Definition):
                     continue
-                if isinstance(other, Definition):
-                    continue
-
                 raw = getattr(other, "raw_latex", "") or ""
                 if not raw:
                     continue
-
                 if re.search(pattern, raw):
                     graph.add_relation(
                         source_id=d_obj.id,
@@ -1665,11 +1615,9 @@ class PaperParser:
                         relation_type="uses_definition",
                     )
 
-
-
-# ---------------------------------------------------------------------
-# Input resolution: local path / arXiv ID / URL
-# ---------------------------------------------------------------------
+    # ---------------------------------------------------------------------
+    # Input resolution: local path / arXiv ID / URL
+    # ---------------------------------------------------------------------
 
 
 def flatten_tex_file(input_path: Path, output_path: Path, max_depth: int = 5) -> None:
@@ -1683,8 +1631,6 @@ def flatten_tex_file(input_path: Path, output_path: Path, max_depth: int = 5) ->
     output_path.write_text(flat, encoding="utf-8")
 
 
-
-# NEW: minimal wrapper – delegates everything to extract_arxiv_funcs
 def resolve_source_to_tex(source: str):
     """
     Very thin wrapper for CLI usage only.
@@ -1695,10 +1641,7 @@ def resolve_source_to_tex(source: str):
     if p.exists() and p.is_file():
         return p, p.stem
 
-    # treat as arXiv ID or URL (extract in funcs)
     base_id = normalize_arxiv_id(source)
-
-    # fetch metadata only when called directly:
     md = fetch_arxiv_metadata([base_id + "v1"])[base_id + "v1"]
 
     return resolve_source_to_tex_local_first(
@@ -1708,6 +1651,10 @@ def resolve_source_to_tex(source: str):
         verbose=False,
     )
 
+
+# ---------------------------------------------------------------------
+# Network drawing
+# ---------------------------------------------------------------------
 
 
 def paper_to_network(
@@ -1720,24 +1667,7 @@ def paper_to_network(
 ) -> nx.DiGraph:
     """
     Build and draw a network of math objects in a paper.
-
-    Layout logic:
-      - "Interesting" nodes (everything except:
-            * completely isolated equations
-            * "orphan" proofs)
-        are laid out with a force-directed (spring) layout to keep edges short.
-      - Isolated equation nodes are drawn in a tight vertical column
-        on the far RIGHT.
-      - Orphan proofs (proofs not connected to any theorem/lemma/...)
-        are drawn in a vertical column on the far LEFT.
-      - Equations that are connected to theorems/proofs/etc participate
-        in the spring layout so they sit close to the objects that use them.
-
-    Visual tweaks:
-      - Equation nodes are smaller than the other kinds.
-      - Other node kinds keep their previous colors.
     """
-    # 1. Ensure we have a PaperGraph object
     if isinstance(paper, PaperGraph):
         graph = paper
     else:
@@ -1745,10 +1675,8 @@ def paper_to_network(
         data = json.loads(p.read_text(encoding="utf-8"))
         graph = PaperGraph.from_dict(data)
 
-    # 2. Build networkx graph
     G = nx.DiGraph()
 
-    # Add nodes with attributes (kind, label, name)
     for obj_id, obj in graph.objects.items():
         if include_kinds is not None and obj.kind not in include_kinds:
             continue
@@ -1759,19 +1687,16 @@ def paper_to_network(
             name=getattr(obj, "name", None),
         )
 
-    # Add edges with relation types, applying filter if needed
     for rel in graph.relations:
         if include_relation_types is not None and rel.relation_type not in include_relation_types:
             continue
         if rel.source_id in G.nodes and rel.target_id in G.nodes:
             G.add_edge(rel.source_id, rel.target_id, relation=rel.relation_type)
 
-    # If there are no nodes, nothing to draw
     if len(G.nodes) == 0:
         print("[WARN] paper_to_network: graph has no nodes, nothing to draw.")
         return G
 
-    # 3. Prepare labels: id / label / name
     node_labels: Dict[str, str] = {}
     for node in G.nodes:
         obj = graph.objects[node]
@@ -1782,15 +1707,12 @@ def paper_to_network(
         else:
             node_labels[node] = obj.id
 
-    # 4. Identify special node sets
     equation_nodes = [n for n, d in G.nodes(data=True) if d.get("kind") == "equation"]
     proof_nodes = [n for n, d in G.nodes(data=True) if d.get("kind") == "proof"]
 
-    # 4a. Equations not connected to anything (degree 0) -> right column
     isolated_equations = [n for n in equation_nodes if G.degree(n) == 0]
     eq_connected = [n for n in equation_nodes if n not in isolated_equations]
 
-    # 4b. Orphan proofs: proofs not connected to any theorem/lemma/...
     statement_kinds = {
         "theorem",
         "lemma",
@@ -1798,6 +1720,7 @@ def paper_to_network(
         "corollary",
         "claim",
         "conjecture",
+        "problem",
     }
     orphan_proofs: List[str] = []
     for p in proof_nodes:
@@ -1805,45 +1728,38 @@ def paper_to_network(
         if not any(G.nodes[n].get("kind") in statement_kinds for n in neighbors):
             orphan_proofs.append(p)
 
-    # Nodes that will be placed with the automatic (spring) layout:
     nodes_for_spring = [
         n for n in G.nodes if n not in isolated_equations and n not in orphan_proofs
     ]
 
     pos: Dict[str, Tuple[float, float]] = {}
 
-    # 5. Spring layout for the main part of the graph
     if nodes_for_spring:
         H = G.subgraph(nodes_for_spring).copy()
         pos_main = nx.spring_layout(H, seed=42)
 
-        # Normalize and scale positions so they occupy most of the canvas
         xs = [xy[0] for xy in pos_main.values()]
         ys = [xy[1] for xy in pos_main.values()]
         max_abs = max(
             max((abs(x) for x in xs), default=1.0),
             max((abs(y) for y in ys), default=1.0),
         )
-        scale = 1.5 / max_abs  # a bit bigger than [-1,1]
+        scale = 1.5 / max_abs
         for n, (x, y) in pos_main.items():
             pos[n] = (x * scale, y * scale)
 
-    # 6. Place orphan proofs in a left column (x ~ -3)
     if orphan_proofs:
         m = max(len(orphan_proofs) - 1, 1)
         for i, n in enumerate(sorted(orphan_proofs)):
-            y = 1.5 - 3.0 * i / m  # spread vertically in roughly [-1.5,1.5]
+            y = 1.5 - 3.0 * i / m
             pos[n] = (-3.0, y)
 
-    # 7. Place isolated equations in a right column (x ~ +3)
     if isolated_equations:
         m = max(len(isolated_equations) - 1, 1)
         for i, n in enumerate(sorted(isolated_equations)):
             y = 1.5 - 3.0 * i / m
             pos[n] = (3.0, y)
 
-    # Safety: if for some reason pos is still empty (very degenerate graph),
-    # fall back to a trivial layout.
     if not pos:
         if len(G.nodes) == 1:
             only = next(iter(G.nodes))
@@ -1853,13 +1769,15 @@ def paper_to_network(
             for n, (x, y) in pos_tmp.items():
                 pos[n] = (x, y)
 
-    # 8. Colors & sizes by kind
     kind_color_map = {
         "theorem": "red",
         "lemma": "orange",
         "proposition": "darkred",
         "corollary": "salmon",
+        "claim": "pink",
         "definition": "green",
+        "problem": "darkblue",
+        "conjecture": "magenta",
         "proof": "purple",
         "algorithm": "grey",
         "table": "saddlebrown",
@@ -1873,17 +1791,13 @@ def paper_to_network(
         kind = data.get("kind")
         color = kind_color_map.get(kind, "lightgrey")
         node_colors.append(color)
-
-        # Equations smaller than everything else
         if kind == "equation":
             node_sizes.append(200.0)
         else:
             node_sizes.append(800.0)
 
-    # 9. Draw
     plt.figure(figsize=figsize)
 
-    # Draw nodes
     nx.draw_networkx_nodes(
         G,
         pos,
@@ -1891,17 +1805,15 @@ def paper_to_network(
         node_size=node_sizes,
     )
 
-    # Draw directed edges with arrows
     nx.draw_networkx_edges(
         G,
         pos,
         arrows=True,
         arrowstyle="->",
         arrowsize=15,
-        connectionstyle="arc3,rad=0.1",  # slight curvature so overlapping edges are visible
+        connectionstyle="arc3,rad=0.1",
     )
 
-    # Draw labels
     nx.draw_networkx_labels(
         G,
         pos,
@@ -1911,7 +1823,6 @@ def paper_to_network(
 
     plt.axis("off")
 
-    # 10. Legend: only for kinds that actually appear
     used_kinds = sorted({data.get("kind") for _, data in G.nodes(data=True)})
     legend_handles = []
     for k in used_kinds:
@@ -1946,12 +1857,11 @@ def paper_to_interactive_html(paper: Dict[str, Any], out_html: str) -> None:
         if isinstance(short, str) and len(short) > 40:
             short = short[:37] + "..."
 
-        # full text for hover
         title = obj.get("clean_text") or obj.get("raw_latex") or ""
         net.add_node(
             oid,
             label=short,
-            title=title,   # appears on hover
+            title=title,
             group=kind,
         )
 
@@ -1970,7 +1880,9 @@ def paper_to_interactive_html(paper: Dict[str, Any], out_html: str) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Parse a LaTeX file / arXiv paper and extract math objects + relations.")
+    parser = argparse.ArgumentParser(
+        description="Parse a LaTeX file / arXiv paper and extract math objects + relations."
+    )
     parser.add_argument(
         "source",
         type=str,
@@ -1996,7 +1908,6 @@ def main():
     pp = PaperParser(paper_id=paper_id)
     graph = pp.parse_file(tex_path)
 
-    # summary
     print(f"Parsed paper_id={graph.paper_id} from {tex_path}")
     kinds_count: Dict[str, int] = {}
     for obj in graph.objects.values():
@@ -2023,19 +1934,28 @@ def main():
         out_path.write_text(json.dumps(graph.to_dict(), indent=2), encoding="utf-8")
         print(f"\n[INFO] Saved structured output to {out_path}")
 
-    # --- draw network and save to PNG ---
     try:
         out_png = f"{paper_id}_graph.png"
         paper_to_network(
             paper=graph,
             out_png=out_png,
-            node_label_attr="id",  # or 'label' / 'name'
-            include_kinds=["theorem", "lemma", "proposition", "corollary", "definition", "proof",  "equation"],
-            include_relation_types=None,  # or e.g. ["used_in_proof", "uses_definition"]
+            node_label_attr="id",
+            include_kinds=[
+                "theorem",
+                "lemma",
+                "proposition",
+                "corollary",
+                "claim",
+                "conjecture",
+                "problem",
+                "definition",
+                "proof",
+                "equation",
+            ],
+            include_relation_types=None,
         )
     except Exception as e:
         print(f"[WARN] Could not draw network: {e}")
-
 
 
 if __name__ == "__main__":

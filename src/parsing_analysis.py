@@ -1,287 +1,203 @@
 #!/usr/bin/env python3
-"""
-parsing_analysis.py
-
-Post-processing analysis for parsed math papers (JSONs produced by math_paper_parser).
-
-Features (per-paper):
-- Count objects by kind (theorem, lemma, definition, proof, equation, etc.)
-- Count edges and edges by relation_type
-- Count isolated nodes and isolated nodes by kind
-- Count "orphan proofs" (proofs not connected to any theorem-like object)
-
-Global (across all papers):
-- Print summary statistics (means, medians) for key kinds
-- Produce simple plots:
-    * Histogram of #objects of each kind per paper
-    * Histogram of #edges per paper
-    * Bar plot of total #edges by relation_type
-
-Usage:
-    python parsing_analysis.py /path/to/full_papers/json_root \
-        --out-dir /path/to/analysis_plots
-"""
-
-import argparse
 import json
+import argparse
+import csv
 from pathlib import Path
 from collections import Counter, defaultdict
-from statistics import mean, median
 
-import matplotlib.pyplot as plt
-import networkx as nx
-
-from math_paper_parser import PaperGraph
-
-
-# --------------------------------------------------------------------
-# Helpers to build NetworkX and analyze one paper
-# --------------------------------------------------------------------
-
-
-def build_networkx(pg: PaperGraph) -> nx.DiGraph:
-    """
-    Build a simple NetworkX DiGraph from a PaperGraph.
-    Nodes: math object IDs, with 'kind' attribute.
-    Edges: relations, with 'relation' attribute = relation_type.
-    """
-    G = nx.DiGraph()
-    # nodes
-    for oid, obj in pg.objects.items():
-        G.add_node(oid, kind=obj.kind)
-    # edges
-    for rel in pg.relations:
-        if rel.source_id in pg.objects and rel.target_id in pg.objects:
-            G.add_edge(rel.source_id, rel.target_id, relation=rel.relation_type)
-    return G
+from math_paper_parser import PaperGraph, TheoremLike, Proof
 
 
 def analyze_graph(pg: PaperGraph) -> dict:
     """
     Return a dict with diagnostic stats for one parsed paper.
+
+    Orphan proofs: Proofs whose `parent_id` is None or not a theorem-like id.
+    Orphan theorems: Theorem-like objects with no proof pointing to them via parent_id.
     """
-    G = build_networkx(pg)
+    objects = list(pg.objects.values())
+    relations = pg.relations
 
-    # Object kinds (theorem, lemma, definition, proof, equation, etc.)
-    kinds = Counter(obj.kind for obj in pg.objects.values())
+    # --- basic counts ---
+    kinds = Counter(obj.kind for obj in objects)
+    rel_types = Counter(r.relation_type for r in relations)
 
-    # Edges and relation types
-    num_edges = G.number_of_edges()
-    edge_types = Counter(nx.get_edge_attributes(G, "relation").values())
+    # --- isolated objects: no relation touching them at all ---
+    ids_with_edges = set()
+    for r in relations:
+        ids_with_edges.add(r.source_id)
+        ids_with_edges.add(r.target_id)
+    isolated_ids = [obj_id for obj_id in pg.objects.keys() if obj_id not in ids_with_edges]
 
-    # Degree stats / isolated nodes
-    deg = dict(G.degree())
-    isolated_nodes = [n for n, d in deg.items() if d == 0]
-    iso_by_kind = Counter(pg.objects[n].kind for n in isolated_nodes)
+    # --- theorem-like + proofs ---
+    theorems = [o for o in objects if isinstance(o, TheoremLike)]
+    proofs = [o for o in objects if isinstance(o, Proof)]
 
-    # Orphan proofs = proofs not connected to any theorem/lemma/...
-    statement_kinds = {
-        "theorem",
-        "lemma",
-        "proposition",
-        "corollary",
-        "claim",
-        "conjecture",
-    }
+    theorem_ids = {t.id for t in theorems}
+    theorem_has_proof = {t.id: False for t in theorems}
+
     orphan_proofs = []
-    for n, data in G.nodes(data=True):
-        if data.get("kind") != "proof":
-            continue
-        nbrs = set(G.predecessors(n)) | set(G.successors(n))
-        if not any(G.nodes[m].get("kind") in statement_kinds for m in nbrs):
-            orphan_proofs.append(n)
+    for p in proofs:
+        parent = getattr(p, "parent_id", None)
+        # If the parent is a theorem-like object (by id), mark it as having a proof
+        if parent in theorem_ids:
+            theorem_has_proof[parent] = True
+        else:
+            orphan_proofs.append(p.id)
 
-    return {
-        "num_objects": len(pg.objects),
+    orphan_theorems = [tid for tid, has in theorem_has_proof.items() if not has]
+
+    stats = {
+        "paper_id": pg.paper_id,
+        "num_objects": len(objects),
         "kinds": dict(kinds),
-        "num_edges": num_edges,
-        "edge_types": dict(edge_types),
-        "num_isolated": len(isolated_nodes),
-        "isolated_by_kind": dict(iso_by_kind),
+        "num_relations": len(relations),
+        "relations_by_type": dict(rel_types),
+        "num_isolated_objects": len(isolated_ids),
+        "isolated_object_ids": isolated_ids,
+        "num_theorems": len(theorems),
+        "num_proofs": len(proofs),
         "num_orphan_proofs": len(orphan_proofs),
-        "orphan_proofs": orphan_proofs,
+        "orphan_proof_ids": orphan_proofs,
+        "num_orphan_theorems": len(orphan_theorems),
+        "orphan_theorem_ids": orphan_theorems,
     }
+    return stats
 
 
-# --------------------------------------------------------------------
-# Aggregation and plotting
-# --------------------------------------------------------------------
+def load_papergraph_from_json(path: Path) -> PaperGraph:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return PaperGraph.from_dict(data)
 
 
-def aggregate_stats(rows):
+def flatten_rows_for_csv(rows: list[dict]) -> tuple[list[dict], list[str]]:
     """
-    Build global summary statistics from the per-paper rows.
+    Take list of analysis dicts and flatten into CSV-ready rows.
+
+    - Expands 'kinds' into columns kind_<kind>
+    - Expands 'relations_by_type' into columns rel_<type>
+    - Keeps key meta columns (paper_id, num_*, orphan_* ids as semicolon-joined strings)
     """
-    if not rows:
-        return {}
-
-    # collect all kinds that appear anywhere
-    all_kinds = sorted({k for r in rows for k in r["kinds"].keys()})
-
-    per_kind_counts = {k: [] for k in all_kinds}
-    edges_per_paper = []
-    isolated_per_paper = []
-    orphan_proofs_per_paper = []
-    total_edge_types = Counter()
-
+    # Collect all possible kinds and relation types across all papers
+    all_kinds = set()
+    all_rel_types = set()
     for r in rows:
-        edges_per_paper.append(r["num_edges"])
-        isolated_per_paper.append(r["num_isolated"])
-        orphan_proofs_per_paper.append(r["num_orphan_proofs"])
-        total_edge_types.update(r["edge_types"])
-        for k in all_kinds:
-            per_kind_counts[k].append(r["kinds"].get(k, 0))
+        all_kinds.update(r.get("kinds", {}).keys())
+        all_rel_types.update(r.get("relations_by_type", {}).keys())
 
-    summary = {
-        "all_kinds": all_kinds,
-        "per_kind_counts": per_kind_counts,
-        "edges_per_paper": edges_per_paper,
-        "isolated_per_paper": isolated_per_paper,
-        "orphan_proofs_per_paper": orphan_proofs_per_paper,
-        "total_edge_types": dict(total_edge_types),
-    }
+    all_kinds = sorted(all_kinds)
+    all_rel_types = sorted(all_rel_types)
 
-    # Add simple descriptive stats (mean / median) for readability
-    summary["per_kind_stats"] = {
-        k: {
-            "mean": mean(vals),
-            "median": median(vals),
+    flat_rows = []
+    for r in rows:
+        fr = {
+            "paper_id": r["paper_id"],
+            "num_objects": r["num_objects"],
+            "num_relations": r["num_relations"],
+            "num_isolated_objects": r["num_isolated_objects"],
+            "num_theorems": r["num_theorems"],
+            "num_proofs": r["num_proofs"],
+            "num_orphan_proofs": r["num_orphan_proofs"],
+            "num_orphan_theorems": r["num_orphan_theorems"],
+            # join IDs so they fit in a single CSV cell
+            "orphan_proof_ids": ";".join(r.get("orphan_proof_ids", [])),
+            "orphan_theorem_ids": ";".join(r.get("orphan_theorem_ids", [])),
+            "isolated_object_ids": ";".join(r.get("isolated_object_ids", [])),
         }
-        for k, vals in per_kind_counts.items()
-    }
-    summary["edges_stats"] = {
-        "mean": mean(edges_per_paper),
-        "median": median(edges_per_paper),
-    }
 
-    return summary
+        # add kind_<kind> columns
+        kinds = r.get("kinds", {})
+        for k in all_kinds:
+            fr[f"kind_{k}"] = kinds.get(k, 0)
 
+        # add rel_<type> columns
+        rels = r.get("relations_by_type", {})
+        for t in all_rel_types:
+            fr[f"rel_{t}"] = rels.get(t, 0)
 
-def make_plots(rows, summary, out_dir: Path):
-    """
-    Produce plots and save them as PNGs.
-    """
-    out_dir.mkdir(parents=True, exist_ok=True)
+        flat_rows.append(fr)
 
-    all_kinds = summary["all_kinds"]
-    per_kind_counts = summary["per_kind_counts"]
-    edges_per_paper = summary["edges_per_paper"]
-    total_edge_types = summary["total_edge_types"]
+    # Column order
+    base_cols = [
+        "paper_id",
+        "num_objects",
+        "num_relations",
+        "num_isolated_objects",
+        "num_theorems",
+        "num_proofs",
+        "num_orphan_proofs",
+        "num_orphan_theorems",
+        "orphan_proof_ids",
+        "orphan_theorem_ids",
+        "isolated_object_ids",
+    ]
+    kind_cols = [f"kind_{k}" for k in all_kinds]
+    rel_cols = [f"rel_{t}" for t in all_rel_types]
+    fieldnames = base_cols + kind_cols + rel_cols
 
-    num_papers = len(rows)
-
-    # 1. Histogram of counts per kind per paper
-    for kind in all_kinds:
-        vals = per_kind_counts[kind]
-        plt.figure()
-        plt.hist(vals, bins=20, edgecolor="black")
-        plt.title(f"Distribution of #{kind} per paper (n={num_papers})")
-        plt.xlabel(f"#{kind} in paper")
-        plt.ylabel("Number of papers")
-        plt.tight_layout()
-        plt.savefig(out_dir / f"hist_{kind}_per_paper.png", dpi=200)
-        plt.close()
-
-    # 2. Histogram of #edges per paper
-    plt.figure()
-    plt.hist(edges_per_paper, bins=20, edgecolor="black")
-    plt.title(f"Distribution of #edges per paper (n={num_papers})")
-    plt.xlabel("#edges in paper graph")
-    plt.ylabel("Number of papers")
-    plt.tight_layout()
-    plt.savefig(out_dir / "hist_edges_per_paper.png", dpi=200)
-    plt.close()
-
-    # 3. Bar plot of edge types summed across all papers
-    if total_edge_types:
-        labels = list(total_edge_types.keys())
-        counts = [total_edge_types[k] for k in labels]
-        plt.figure(figsize=(max(6, len(labels) * 0.8), 4))
-        plt.bar(range(len(labels)), counts)
-        plt.xticks(range(len(labels)), labels, rotation=45, ha="right")
-        plt.ylabel("Total number of edges")
-        plt.title("Total edges by relation_type (all papers)")
-        plt.tight_layout()
-        plt.savefig(out_dir / "bar_edge_types.png", dpi=200)
-        plt.close()
+    return flat_rows, fieldnames
 
 
-# --------------------------------------------------------------------
-# CLI
-# --------------------------------------------------------------------
+def main(json_dir: str, out_csv: str | None):
+    json_path = Path(json_dir)
+    if not json_path.is_dir():
+        raise SystemExit(f"{json_dir} is not a directory")
 
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Analyze parsed paper graphs (JSON) and produce summary stats + plots."
-    )
-    parser.add_argument(
-        "root_dir",
-        type=str,
-        help="Directory under which *.json PaperGraph files live (searched recursively).",
-    )
-    parser.add_argument(
-        "--out-dir",
-        type=str,
-        default=None,
-        help="Directory to save analysis plots (default: ROOT_DIR/analysis_plots).",
-    )
-    args = parser.parse_args()
-
-    root = Path(args.root_dir)
-    out_dir = Path(args.out_dir) if args.out_dir else root / "analysis_plots"
+    json_files = sorted(json_path.glob("*.json"))
+    if not json_files:
+        raise SystemExit(f"No JSON files found in {json_dir}")
 
     rows = []
-    for json_path in sorted(root.rglob("*.json")):
-        paper_id = json_path.stem
-        try:
-            data = json.loads(json_path.read_text(encoding="utf-8"))
-        except Exception as e:
-            print(f"[WARN] Failed to read {json_path}: {e}")
-            continue
 
+    for jf in json_files:
         try:
-            pg = PaperGraph.from_dict(data)
+            pg = load_papergraph_from_json(jf)
         except Exception as e:
-            print(f"[WARN] Failed to reconstruct PaperGraph for {json_path}: {e}")
+            print(f"[WARN] Failed to load {jf}: {e}")
             continue
 
         stats = analyze_graph(pg)
-        stats["paper_id"] = paper_id
         rows.append(stats)
 
-    if not rows:
-        print("[INFO] No JSON PaperGraph files found, nothing to analyze.")
-        return
+        # crude on-screen summary
+        print(f"\n=== {stats['paper_id']} ===")
+        print("  #objects:", stats["num_objects"])
+        print("  kinds:", stats["kinds"])
+        print("  #relations:", stats["num_relations"],
+              "   relations_by_type:", stats["relations_by_type"])
+        print("  #isolated objects:", stats["num_isolated_objects"])
+        print("  #theorems:", stats["num_theorems"],
+              "  #proofs:", stats["num_proofs"])
+        print("  #orphan proofs:", stats["num_orphan_proofs"],
+              "  ids:", stats["orphan_proof_ids"])
+        print("  #orphan theorems:", stats["num_orphan_theorems"],
+              "  ids:", stats["orphan_theorem_ids"])
 
-    # Per-paper printout (compact)
-    for r in rows:
-        print("\n=== ", r["paper_id"], " ===")
-        print("Kinds:", r["kinds"])
-        print(
-            "Edges:", r["num_edges"],
-            "| Isolated:", r["num_isolated"],
-            "| Orphan proofs:", r["num_orphan_proofs"],
-        )
-        print("Edge types:", r["edge_types"])
-        print("Isolated by kind:", r["isolated_by_kind"])
+    print(f"\n[INFO] Analyzed {len(rows)} papers.")
 
-    # Global summary + plots
-    summary = aggregate_stats(rows)
-
-    print("\n=== GLOBAL SUMMARY ===")
-    print("Total papers:", len(rows))
-    print("Mean / median #edges per paper:", summary["edges_stats"])
-    print("Mean / median #objects per kind:")
-    for k, stats in summary["per_kind_stats"].items():
-        print(f"  {k:15s} mean={stats['mean']:.2f}  median={stats['median']:.2f}")
-
-    print("\nTotal edges by relation_type:", summary["total_edge_types"])
-
-    print(f"\n[INFO] Saving plots to: {out_dir}")
-    make_plots(rows, summary, out_dir)
-    print("[INFO] Done.")
+    if out_csv:
+        flat_rows, fieldnames = flatten_rows_for_csv(rows)
+        out_path = Path(out_csv)
+        with out_path.open("w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for r in flat_rows:
+                writer.writerow(r)
+        print(f"[INFO] Wrote CSV summary to {out_path}")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        description="Post-processing analysis for parsed arXiv papers (JSON -> stats + CSV)."
+    )
+    parser.add_argument(
+        "json_dir",
+        help="Directory containing *.json files produced by math_paper_parser / run_parse_papers.py",
+    )
+    parser.add_argument(
+        "--out-csv",
+        default=None,
+        help="Path to CSV file for paper-level statistics (optional).",
+    )
+    args = parser.parse_args()
+    main(args.json_dir, args.out_csv)
