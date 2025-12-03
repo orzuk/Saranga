@@ -16,10 +16,10 @@ Features:
 - Builds a relation graph
 - Can print a summary AND dump structured output to JSON
 """
+from __future__ import annotations
 
 
 import os
-from __future__ import annotations
 import re
 import argparse
 import json
