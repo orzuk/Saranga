@@ -50,9 +50,6 @@ except Exception as e:
 
 import requests  # pip install requests
 
-import networkx as nx  # For drawing
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 
 from extract_arxiv_funcs import (
     normalize_arxiv_id,
@@ -1180,10 +1177,15 @@ class PaperParser:
              a) Use proof._target_theorem_label if present (from proof header).
              b) Otherwise, look for \\ref/\\eqref/\\autoref in the proof body and
                 use the first label that matches a theorem-like object.
-          3. If found, set proof.parent_id = theorem_id.
+          3. As a fallback, if still unresolved, attach the proof to the
+             nearest previous theorem-like object in document order.
+          4. If found, set proof.parent_id = theorem_id and also
+             proof._parent_link_source = one of:
+                 'header_label', 'body_ref', 'prev_theorem_like'.
 
-        Relation edges (proof -> theorem, 'proves') are added later in
-        _build_relations based on proof.parent_id.
+        Later, _build_relations() will add structural 'has_part' edges
+        theorem -> proof using this parent_id, and logical 'uses' edges
+        based on references in the proof body.
         """
         # 1. label -> theorem-like object id
         label_to_theorem_id: Dict[str, str] = {}
@@ -1191,25 +1193,25 @@ class PaperParser:
             if obj.kind in self.THEOREM_LIKE_KINDS and getattr(obj, "label", None):
                 label_to_theorem_id[obj.label] = obj_id  # type: ignore[arg-type]
 
-        if not label_to_theorem_id:
-            return
-
         # pattern for \ref{label}, \eqref{label}, \autoref{label}
         ref_pattern = re.compile(r"\\(?:ref|eqref|autoref)\{([^}]+)\}")
 
         linked_count = 0
 
+        # --- pass 1: header label + body ref ---
         for obj in graph.objects.values():
             if obj.kind != "proof":
                 continue
 
             parent_id: Optional[str] = getattr(obj, "parent_id", None)
+            parent_source: Optional[str] = getattr(obj, "_parent_link_source", None)
 
             # (a) From header-based target label: proof._target_theorem_label
             if parent_id is None:
                 target_label = getattr(obj, "_target_theorem_label", None)
                 if target_label and target_label in label_to_theorem_id:
                     parent_id = label_to_theorem_id[target_label]
+                    parent_source = "header_label"
 
             # (b) From first \ref/\eqref/\autoref in the proof body
             if parent_id is None:
@@ -1218,11 +1220,33 @@ class PaperParser:
                     lbl = m.group(1)
                     if lbl in label_to_theorem_id:
                         parent_id = label_to_theorem_id[lbl]
+                        parent_source = "body_ref"
                         break
 
             if parent_id is not None:
                 setattr(obj, "parent_id", parent_id)
+                setattr(obj, "_parent_link_source", parent_source or "unknown")
                 linked_count += 1
+
+        # --- pass 2: fallback to previous theorem-like in document order ---
+        # Use insertion order of graph.objects as a proxy for document order.
+        last_thm_id: Optional[str] = None
+        for obj_id, obj in graph.objects.items():
+            if obj.kind in self.THEOREM_LIKE_KINDS:
+                last_thm_id = obj_id
+                continue
+
+            if obj.kind != "proof":
+                continue
+
+            # only link proofs that still have no parent_id
+            parent_id = getattr(obj, "parent_id", None)
+            if parent_id is not None or last_thm_id is None:
+                continue
+
+            setattr(obj, "parent_id", last_thm_id)
+            setattr(obj, "_parent_link_source", "prev_theorem_like")
+            linked_count += 1
 
         if linked_count:
             print(f"[INFO] _link_proofs_to_theorems: linked {linked_count} proofs to theorems.")
@@ -1233,18 +1257,29 @@ class PaperParser:
 
     def _build_relations(self, graph: PaperGraph) -> None:
         """
-        Populate graph.relations with Relation objects describing links between
-        the extracted math objects.
+        Populate graph.relations with links between the extracted math objects,
+        using the new relation ontology.
 
-        Currently we add:
-          - 'proves'           : proof -> theorem-like object (if parent_id set)
-          - 'contains_equation': container (thm/def/proof/alg) -> equation
-          - 'refers_to'        : any object -> another object mentioned via
-                                 \\ref/\\eqref/\\autoref in its raw_latex
+        We currently add:
+
+          1. Structural 'has_part' edges:
+             - theorem-like / definition / algorithm -> proof/equation
+               (based on parent_id + roles, with confidence depending on how
+               the parent_id was inferred).
+
+          2. Logical 'uses' edges with confidence:
+             - any object -> another object it references via \ref/\eqref/\autoref
+               in its raw_latex (confidence=1.0).
+
+          3. Optional low-confidence 'uses' edges from theorems/proofs to
+             definitions inferred via keyword overlap in the natural language
+             text (confidence≈0.3). These are clearly marked in metadata.
         """
-        relations: List[Relation] = list(graph.relations)  # start from any existing ones
 
-        # For deduplication
+        # Start from any existing relations (should usually be empty).
+        relations: List[Relation] = list(graph.relations)
+
+        # For deduplication (by (source, target, type))
         existing: set[tuple[str, str, str]] = {
             (r.source_id, r.target_id, r.relation_type) for r in relations
         }
@@ -1256,37 +1291,75 @@ class PaperParser:
             if lbl:
                 label_to_id[lbl] = obj_id
 
-        # 2. 'proves' edges: proof -> theorem-like (via parent_id)
-        proves_count = 0
+        # ------------------------------------------------------------------
+        # 2. Structural 'has_part' edges
+        #    (a) theorem-like / other containers have_part their proofs
+        #    (b) containers have_part their equations
+        # ------------------------------------------------------------------
+
+        has_part_proof_count = 0
+        has_part_equation_count = 0
+
+        # (a) theorem-like has_part proof (via proof.parent_id)
         for obj in graph.objects.values():
             if obj.kind != "proof":
                 continue
+
             parent_id = getattr(obj, "parent_id", None)
             if not parent_id:
                 continue
-            key = (obj.id, parent_id, "proves")
-            if key not in existing:
-                relations.append(Relation(source_id=obj.id, target_id=parent_id, relation_type="proves"))
-                existing.add(key)
-                proves_count += 1
 
-        # 3. 'contains_equation' edges: container -> equation (via Equation.parent_id)
-        contains_count = 0
+            key = (parent_id, obj.id, "has_part")
+            if key in existing:
+                continue
+
+            parent_source = getattr(obj, "_parent_link_source", None)
+            if parent_source in ("header_label", "body_ref"):
+                confidence = 1.0
+            elif parent_source == "prev_theorem_like":
+                confidence = 0.5
+            else:
+                confidence = 0.8
+
+            graph.add_has_part(
+                whole_id=parent_id,
+                part_id=obj.id,
+                metadata={
+                    "role": "proof_of",
+                    "parent_link_source": parent_source,
+                    "confidence": confidence,
+                },
+            )
+            existing.add(key)
+            has_part_proof_count += 1
+
+        # (b) container has_part equation (via Equation.parent_id)
         for obj in graph.objects.values():
             if not isinstance(obj, Equation):
                 continue
+
             parent_id = getattr(obj, "parent_id", None)
             if not parent_id:
                 continue
-            key = (parent_id, obj.id, "contains_equation")
-            if key not in existing:
-                relations.append(Relation(source_id=parent_id, target_id=obj.id, relation_type="contains_equation"))
-                existing.add(key)
-                contains_count += 1
 
-        # 4. 'refers_to' edges: any object -> another object with matching label
+            key = (parent_id, obj.id, "has_part")
+            if key in existing:
+                continue
+
+            graph.add_has_part(
+                whole_id=parent_id,
+                part_id=obj.id,
+                metadata={"role": "equation_in", "confidence": 1.0},
+            )
+            existing.add(key)
+            has_part_equation_count += 1
+
+        # ------------------------------------------------------------------
+        # 3. Logical 'uses' edges from explicit \ref / \eqref / \autoref
+        # ------------------------------------------------------------------
+
         ref_pattern = re.compile(r"\\(?:ref|eqref|autoref)\{([^}]+)\}")
-        refers_count = 0
+        uses_ref_count = 0
 
         for obj in graph.objects.values():
             raw = getattr(obj, "raw_latex", "")
@@ -1298,215 +1371,106 @@ class PaperParser:
                 target_id = label_to_id.get(lbl)
                 if not target_id or target_id == obj.id:
                     continue
-                key = (obj.id, target_id, "refers_to")
-                if key not in existing:
-                    relations.append(
-                        Relation(
-                            source_id=obj.id,
-                            target_id=target_id,
-                            relation_type="refers_to",
-                        )
+
+                key = (obj.id, target_id, "uses")
+                if key in existing:
+                    continue
+
+                graph.add_uses(
+                    user_id=obj.id,
+                    used_id=target_id,
+                    metadata={
+                        "ref_label": lbl,
+                        "source": "latex_ref",
+                        "confidence": 1.0,
+                    },
+                )
+                existing.add(key)
+                uses_ref_count += 1
+
+        # ------------------------------------------------------------------
+        # 4. Low-confidence 'uses' edges from theorems/proofs to definitions
+        #    via keyword overlap in natural language text.
+        #
+        #    This is a very rough heuristic, clearly marked as such.
+        # ------------------------------------------------------------------
+
+        # Prepare definition keyword sets
+        def _keyword_set(text: str) -> set:
+            text = text.lower()
+            words = re.findall(r"[a-zA-Z]+", text)
+            stopwords = {
+                "the", "a", "an", "and", "or", "of", "in", "for", "to",
+                "is", "are", "be", "we", "this", "that", "such", "by",
+                "with", "let", "denote", "define", "definition",
+            }
+            return {w for w in words if len(w) >= 5 and w not in stopwords}
+
+        definitions: Dict[str, Definition] = {
+            obj.id: obj
+            for obj in graph.objects.values()
+            if obj.kind == "definition"
+        }
+
+        if definitions:
+            def_keywords: Dict[str, set] = {}
+            for def_id, def_obj in definitions.items():
+                txt = getattr(def_obj, "clean_text", "") or getattr(def_obj, "raw_latex", "")
+                def_keywords[def_id] = _keyword_set(txt)
+
+            # Candidates that might use definitions: theorem-like + proofs
+            theorem_ids = [
+                obj.id
+                for obj in graph.objects.values()
+                if obj.kind in self.THEOREM_LIKE_KINDS
+            ]
+            proof_ids = [
+                obj.id
+                for obj in graph.objects.values()
+                if obj.kind == "proof"
+            ]
+
+            uses_kw_count = 0
+            for user_id in theorem_ids + proof_ids:
+                obj = graph.objects[user_id]
+                txt = getattr(obj, "clean_text", "") or getattr(obj, "raw_latex", "")
+                kw = _keyword_set(txt)
+                if not kw:
+                    continue
+
+                for def_id, def_kw in def_keywords.items():
+                    if not def_kw:
+                        continue
+                    common = kw & def_kw
+                    if len(common) < 2:
+                        continue
+
+                    key = (user_id, def_id, "uses")
+                    if key in existing:
+                        continue
+
+                    graph.add_uses(
+                        user_id=user_id,
+                        used_id=def_id,
+                        metadata={
+                            "source": "keyword_overlap",
+                            "confidence": 0.3,
+                            "keywords": sorted(list(common))[:5],
+                        },
                     )
                     existing.add(key)
-                    refers_count += 1
+                    uses_kw_count += 1
 
-        graph.relations = relations
+        # Replace graph.relations with the accumulated ones
+        graph.relations = relations + graph.relations[len(relations):]
 
-        if proves_count or contains_count or refers_count:
+        total_uses_kw = locals().get("uses_kw_count", 0)
+        if has_part_proof_count or has_part_equation_count or uses_ref_count or total_uses_kw:
             print(
                 "[INFO] _build_relations: "
-                f"added {proves_count} 'proves', "
-                f"{contains_count} 'contains_equation', "
-                f"{refers_count} 'refers_to' relations."
+                f"added {has_part_proof_count} 'has_part' (proof) edges, "
+                f"{has_part_equation_count} 'has_part' (equation) edges, "
+                f"{uses_ref_count} 'uses' (ref) edges, "
+                f"{total_uses_kw} 'uses' (keyword) edges."
             )
 
-
-
-def paper_to_network(
-    paper: Union["PaperGraph", str, Path],
-    out_png: str,
-    node_label_attr: str = "id",
-    include_kinds: Optional[List[str]] = None,
-    include_relation_types: Optional[List[str]] = None,
-    figsize: Tuple[int, int] = (12, 8),
-) -> nx.DiGraph:
-    """
-    Build and draw a network of math objects in a paper and save it as a PNG.
-
-    Parameters
-    ----------
-    paper : PaperGraph | str | Path
-        Either:
-          - a PaperGraph instance; or
-          - path to a JSON file produced by PaperGraph.to_dict().
-    out_png : str
-        Path to the PNG file to write.
-    node_label_attr : {'id', 'label', 'name'}
-        Which attribute to use for node labels.
-    include_kinds : list[str] or None
-        If given, only include objects whose .kind is in this list.
-    include_relation_types : list[str] or None
-        If given, only include relations whose .relation_type is in this list.
-    figsize : (w, h)
-        Figure size in inches.
-    """
-    # ---- 1. Load / normalize PaperGraph ----
-    if isinstance(paper, PaperGraph):
-        graph = paper
-    else:
-        p = Path(paper)
-        data = json.loads(p.read_text(encoding="utf-8"))
-        # If you’re using math_classes.PaperGraph with from_dict:
-        try:
-            graph = PaperGraph.from_dict(data)  # type: ignore[attr-defined]
-        except AttributeError:
-            # Old-style PaperGraph with no from_dict: assume dict structure
-            graph = PaperGraph(paper_id=data.get("paper_id", "paper"))
-            for obj_id, od in data.get("objects", {}).items():
-                # minimal reconstruction; if you have math_classes you won't hit this.
-                kind = od.get("kind", "object")
-                raw_latex = od.get("raw_latex", "")
-                clean_text = od.get("clean_text", "")
-                label = od.get("label")
-                name = od.get("name")
-                index = od.get("index", 0)
-                graph.objects[obj_id] = MathObject(
-                    id=obj_id,
-                    kind=kind,
-                    index=index,
-                    label=label,
-                    name=name,
-                    raw_latex=raw_latex,
-                    clean_text=clean_text,
-                )
-            for r in data.get("relations", []):
-                graph.relations.append(
-                    Relation(
-                        source_id=r["source_id"],
-                        target_id=r["target_id"],
-                        relation_type=r["relation_type"],
-                    )
-                )
-
-    objects = graph.objects
-
-    # ---- 2. Build a directed graph ----
-    G = nx.DiGraph()
-
-    # nodes
-    for obj_id, obj in objects.items():
-        if include_kinds is not None and obj.kind not in include_kinds:
-            continue
-        G.add_node(
-            obj_id,
-            kind=obj.kind,
-        )
-
-    # edges
-    for rel in graph.relations:
-        src = getattr(rel, "source_id", getattr(rel, "source", None))
-        tgt = getattr(rel, "target_id", getattr(rel, "target", None))
-        rtype = getattr(rel, "relation_type", None)
-
-        if src is None or tgt is None:
-            continue
-        if src not in G.nodes or tgt not in G.nodes:
-            # skip relations involving filtered-out nodes
-            continue
-        if include_relation_types is not None and rtype not in include_relation_types:
-            continue
-
-        G.add_edge(src, tgt, relation_type=rtype)
-
-    if G.number_of_nodes() == 0:
-        print("[WARN] paper_to_network: no nodes to draw (check include_kinds filter).")
-        return G
-
-    # ---- 3. Layout ----
-    pos = nx.spring_layout(G, seed=42)
-
-    # ---- 4. Colors & labels ----
-    kind_color_map: Dict[str, str] = {
-        "theorem": "red",
-        "lemma": "orange",
-        "proposition": "darkred",
-        "corollary": "salmon",
-        "claim": "pink",
-        "definition": "green",
-        "problem": "darkblue",
-        "conjecture": "magenta",
-        "proof": "purple",
-        "algorithm": "brown",
-        "table": "gray",
-        "equation": "black",
-    }
-
-    # group nodes by kind
-    kinds_present = sorted({d.get("kind", "other") for _, d in G.nodes(data=True)})
-
-    plt.figure(figsize=figsize)
-
-    for kind in kinds_present:
-        nodes_of_kind = [n for n, d in G.nodes(data=True) if d.get("kind") == kind]
-        if not nodes_of_kind:
-            continue
-        color = kind_color_map.get(kind, "lightgray")
-        nx.draw_networkx_nodes(
-            G,
-            pos,
-            nodelist=nodes_of_kind,
-            node_color=color,
-            node_size=400,
-            alpha=0.9,
-        )
-
-    nx.draw_networkx_edges(
-        G,
-        pos,
-        arrowstyle="->",
-        arrowsize=10,
-        alpha=0.4,
-    )
-
-    # labels
-    node_labels: Dict[str, str] = {}
-    for node in G.nodes():
-        obj = objects.get(node)
-        if obj is None:
-            node_labels[node] = node
-            continue
-
-        if node_label_attr == "label" and getattr(obj, "label", None):
-            node_labels[node] = obj.label  # type: ignore[assignment]
-        elif node_label_attr == "name" and getattr(obj, "name", None):
-            node_labels[node] = obj.name  # type: ignore[assignment]
-        else:
-            node_labels[node] = obj.id
-
-    nx.draw_networkx_labels(
-        G,
-        pos,
-        labels=node_labels,
-        font_size=8,
-    )
-
-    # legend
-    legend_handles = []
-    for kind in kinds_present:
-        color = kind_color_map.get(kind, "lightgray")
-        legend_handles.append(mpatches.Patch(color=color, label=kind))
-    if legend_handles:
-        plt.legend(
-            handles=legend_handles,
-            fontsize=8,
-            loc="best",
-            frameon=True,
-        )
-
-    plt.axis("off")
-    plt.tight_layout()
-    plt.savefig(out_png, bbox_inches="tight")
-    plt.close()
-
-    print(f"[INFO] paper_to_network: saved figure to {out_png}")
-    return G

@@ -39,7 +39,8 @@ from typing import Any, Dict, Optional, Tuple
 from config import FULL_PAPERS_DIR
 
 # Import from your parser module
-from math_paper_parser import PaperParser, paper_to_network
+from math_paper_parser import PaperParser
+from paper_plot_utils import paper_to_network  
 
 # Your arXiv infra
 from extract_arxiv_funcs import (
