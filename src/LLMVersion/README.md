@@ -9,4 +9,4 @@ python3 run_parse_papers.py \
 
 The API functionality, as a proof of concept, parses only definitions, while the rest of the objects are still being parsed manually.
 
-added the definition argument to be able to choose wether we want the definitions to be parsed by llm, manual or both (--definition manual or --definition both).
+added the definition argument to be able to choose whether we want the definitions to be parsed by llm, manual or both (--definition manual or --definition both).
