@@ -12,7 +12,7 @@ import re
 import argparse
 import sys
 from collections import Counter
-from extract_arxiv_data import fetch_arxiv_batch
+from extract_arxiv_funcs import fetch_arxiv_batch
 
 # Optional word-cloud support
 try:
@@ -33,7 +33,6 @@ def analyze_category(category, start_date, end_date,
         end_date=end_date,
         category=category,
         formats='abstract',
-        batch_size=batch_size,
         output_dir=None,
         verbose=True
     )

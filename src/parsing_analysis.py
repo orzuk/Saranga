@@ -5,7 +5,7 @@ import csv
 from pathlib import Path
 from collections import Counter, defaultdict
 
-from math_paper_parser import PaperGraph, TheoremLike, Proof
+from math_classes import PaperGraph, TheoremLike, Proof
 
 
 def analyze_graph(pg: PaperGraph) -> dict:
