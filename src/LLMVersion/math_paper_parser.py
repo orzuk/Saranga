@@ -22,11 +22,13 @@ from __future__ import annotations
 import os
 import re
 import argparse
+import requests
 import json
 import tarfile
 import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any, Union
+from openai import OpenAI
 
 # NOTE: dataclasses are now in math_classes.py
 from math_classes import (
@@ -133,6 +135,7 @@ class PaperParser:
             definition_mode: str = "both",  # 'manual', 'llm', or 'both'
             llm_model: str = "gpt-4o-mini",
             llm_chunk_chars: int = 8000,
+            llm_provider: str = "openai",
     ):
         """
         Parameters
@@ -152,6 +155,7 @@ class PaperParser:
         self.definition_mode = definition_mode
         self.llm_model = llm_model
         self.llm_chunk_chars = llm_chunk_chars
+        self.llm_provider = llm_provider
 
         # these will be updated with \newtheorem info
         self.env_kind_map = dict(self.BASE_ENV_KIND_MAP)
@@ -906,11 +910,25 @@ class PaperParser:
             chunk_chars: int = 8000,
             model: str = "claude-sonnet-4-20250514",
     ) -> List[Definition]:
-        """LLM-based definition extraction using Anthropic's API."""
-        if llm_type != "anthropic":
-            print(f"[WARN] llm_type='{llm_type}' not supported. Only 'anthropic' is implemented.")
+        actual_provider = getattr(self, 'llm_provider', llm_type)
+
+        if actual_provider == "openai":
+            return self._extract_definitions_openai(text, chunk_chars, model)
+        elif actual_provider == "anthropic":
+            return self._extract_definitions_anthropic(text, chunk_chars, model)
+        elif actual_provider == "huggingface":  # ADD THIS
+            return self._extract_definitions_huggingface(text, chunk_chars, model)
+        else:
+            print(f"[WARN] llm_provider='{actual_provider}' not supported.")
             return []
 
+    def _extract_definitions_anthropic(
+            self,
+            text: str,
+            chunk_chars: int,
+            model: str,
+    ) -> List[Definition]:
+        """Anthropic-specific extraction."""
         try:
             import anthropic
         except ImportError:
@@ -924,7 +942,7 @@ class PaperParser:
 
         client = anthropic.Anthropic(api_key=api_key)
         chunks = self._chunk_text(text, chunk_chars)
-        print(f"[INFO] _extract_definitions_llm: processing {len(chunks)} chunks with {model}")
+        print(f"[INFO] _extract_definitions_anthropic: processing {len(chunks)} chunks with {model}")
 
         all_definitions: List[Definition] = []
         idx = 0
@@ -936,41 +954,140 @@ class PaperParser:
             try:
                 message = client.messages.create(
                     model=model,
-                    max_tokens=4000,
-                    temperature=0,
-                    messages=[{"role": "user", "content": prompt}]
+                    max_tokens=4096,
+                    messages=[{"role": "user", "content": prompt}],
                 )
-
-                response_text = ""
-                for block in message.content:
-                    if block.type == "text":
-                        response_text += block.text
-
+                response_text = message.content[0].text
                 definitions_data = self._parse_llm_response(response_text)
 
                 for def_data in definitions_data:
                     idx += 1
-                    obj_id = f"DLLM{idx}"
                     all_definitions.append(
                         Definition(
-                            id=obj_id,
+                            id=f"D{idx}",
                             kind="definition",
                             index=idx,
                             label=def_data.get("label"),
                             name=def_data.get("name"),
                             raw_latex=def_data.get("raw_latex", ""),
                             clean_text=def_data.get("clean_text", ""),
-                            env_name="llm_extracted",
+                            env_name=None,
                         )
                     )
-
-                print(f"[INFO] Chunk {chunk_idx}: extracted {len(definitions_data)} definitions")
-
             except Exception as e:
-                print(f"[ERROR] Failed to process chunk {chunk_idx}: {e}")
-                continue
+                print(f"[ERROR] Anthropic API call failed for chunk {chunk_idx}: {e}")
 
-        print(f"[INFO] _extract_definitions_llm: found {len(all_definitions)} definitions total.")
+        print(f"[INFO] _extract_definitions_anthropic: found {len(all_definitions)} definitions total.")
+        return all_definitions
+
+    def _extract_definitions_openai(
+            self,
+            text: str,
+            chunk_chars: int,
+            model: str,
+    ) -> List[Definition]:
+        """OpenAI-specific extraction."""
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            print("[ERROR] OPENAI_API_KEY environment variable not set.")
+            return []
+
+        client = OpenAI(api_key=api_key)
+        chunks = self._chunk_text(text, chunk_chars)
+        print(f"[INFO] _extract_definitions_openai: processing {len(chunks)} chunks with {model}")
+
+        all_definitions: List[Definition] = []
+        idx = 0
+
+        for chunk_idx, chunk in enumerate(chunks, 1):
+            print(f"[INFO] Processing chunk {chunk_idx}/{len(chunks)}...")
+            prompt = self._create_definition_extraction_prompt(chunk)
+
+            try:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=4096,
+                )
+                response_text = response.choices[0].message.content
+                definitions_data = self._parse_llm_response(response_text)
+
+                for def_data in definitions_data:
+                    idx += 1
+                    all_definitions.append(
+                        Definition(
+                            id=f"D{idx}",
+                            kind="definition",
+                            index=idx,
+                            label=def_data.get("label"),
+                            name=def_data.get("name"),
+                            raw_latex=def_data.get("raw_latex", ""),
+                            clean_text=def_data.get("clean_text", ""),
+                            env_name=None,
+                        )
+                    )
+            except Exception as e:
+                print(f"[ERROR] OpenAI API call failed for chunk {chunk_idx}: {e}")
+
+        print(f"[INFO] _extract_definitions_openai: found {len(all_definitions)} definitions total.")
+        return all_definitions
+
+    def _extract_definitions_huggingface(
+            self,
+            text: str,
+            chunk_chars: int,
+            model: str,
+    ) -> List[Definition]:
+        """Extract definitions using Hugging Face's OpenAI-compatible API."""
+        api_key = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_API_KEY")
+        if not api_key:
+            print("[ERROR] HF_TOKEN or HUGGINGFACE_API_KEY environment variable not set.")
+            return []
+
+        client = OpenAI(
+            base_url="https://router.huggingface.co/v1",
+            api_key=api_key,
+        )
+
+        chunks = self._chunk_text(text, chunk_chars)
+        print(f"[INFO] _extract_definitions_huggingface: processing {len(chunks)} chunks with {model}")
+
+        all_definitions: List[Definition] = []
+        idx = 0
+
+        for chunk_index, chunk in enumerate(chunks, 1):
+            print(f"[INFO] Processing chunk {chunk_index}/{len(chunks)} with Hugging Face API")
+            prompt = self._create_definition_extraction_prompt(chunk)
+
+            try:
+                completion = client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=2000,
+                    temperature=0.3
+                )
+
+                response_text = completion.choices[0].message.content
+                definitions_data = self._parse_llm_response(response_text)
+
+                for def_data in definitions_data:
+                    idx += 1
+                    all_definitions.append(
+                        Definition(
+                            id=f"D{idx}",
+                            kind="definition",
+                            index=idx,
+                            label=def_data.get("label"),
+                            name=def_data.get("name") or def_data.get("term"),
+                            raw_latex=def_data.get("raw_latex", ""),
+                            clean_text=def_data.get("clean_text") or def_data.get("definition", ""),
+                            env_name=None,
+                        )
+                    )
+            except Exception as e:
+                print(f"[ERROR] Hugging Face API call failed for chunk {chunk_index}: {e}")
+
+        print(f"[INFO] _extract_definitions_huggingface: found {len(all_definitions)} definitions total.")
         return all_definitions
 
     @staticmethod
