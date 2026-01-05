@@ -8,6 +8,27 @@ Use the `--definition-mode` argument to choose your parsing strategy:
 - `llm` - LLM API extraction only
 - `both` - Combines both methods for best coverage
 
+## Command Line Arguments
+
+--start, --end: Date range for arXiv papers (YYYY-MM-DD format)
+--days: Alternative to start/end; fetch papers from last N days
+--category, -c: Filter by arXiv category (e.g., math.PR, math.DG)
+--regex-id: Filter papers by ID pattern (e.g., "^2501\\.00685")
+--top-k: Limit number of papers to process (default: 20, use ≤0 for no limit)
+--out-dir: Output directory (defaults to FULL_PAPERS_DIR from config.py)
+--draw-graphs: Generate network visualization PNGs
+--verbose: Enable detailed logging
+
+
+--definition-mode: Extraction method:
+manual: Pattern-based extraction only (default)
+llm: LLM-based extraction only
+both: Combine both methods
+
+--llm-provider: Choose provider: anthropic, openai, or huggingface
+--llm-model: Model name (default: claude-sonnet-4-20250514)
+--llm-chunk-chars: Max characters per LLM chunk (default: 8000)
+
 ## Usage Examples
 
 ### Anthropic Claude
