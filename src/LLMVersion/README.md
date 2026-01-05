@@ -10,6 +10,7 @@ Use the `--definition-mode` argument to choose your parsing strategy:
 
 ## Command Line Arguments
 
+```bash
 --start, --end: Date range for arXiv papers (YYYY-MM-DD format)
 --days: Alternative to start/end; fetch papers from last N days
 --category, -c: Filter by arXiv category (e.g., math.PR, math.DG)
@@ -28,6 +29,7 @@ both: Combine both methods
 --llm-provider: Choose provider: anthropic, openai, or huggingface
 --llm-model: Model name (default: claude-sonnet-4-20250514)
 --llm-chunk-chars: Max characters per LLM chunk (default: 8000)
+```
 
 ## Usage Examples
 
