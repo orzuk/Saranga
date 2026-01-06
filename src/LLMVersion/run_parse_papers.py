@@ -85,6 +85,7 @@ def run_batch(
         definition_mode: str = "manual",
         llm_model: str = "claude-sonnet-4-20250514",
         llm_chunk_chars: int = 8000,
+        llm_provider: str = "anthropic",
 ) -> None:
     print(
         f"[INFO] Fetching arXiv IDs via fetch_arxiv_batch "
@@ -178,6 +179,7 @@ def run_batch(
                 definition_mode=definition_mode,
                 llm_model=llm_model,
                 llm_chunk_chars=llm_chunk_chars,
+                llm_provider=llm_provider,
             )
             graph = parser.parse_file(tex_path)
             status = "OK"
@@ -337,6 +339,13 @@ def main():
         help="Anthropic model to use for LLM extraction (if enabled).",
     )
     parser.add_argument(
+        "--llm-provider",
+        type=str,
+        default="anthropic",
+        choices=["anthropic", "openai", "huggingface"],
+        help="LLM provider: 'anthropic' (Claude) or 'openai' (GPT) or huggingface",
+    )
+    parser.add_argument(
         "--llm-chunk-chars",
         type=int,
         default=8000,
@@ -366,6 +375,7 @@ def main():
         definition_mode=args.definition_mode,
         llm_model=args.llm_model,
         llm_chunk_chars=args.llm_chunk_chars,
+        llm_provider=args.llm_provider,
     )
 
     print("[INFO] Done.")
