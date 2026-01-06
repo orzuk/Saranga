@@ -74,6 +74,8 @@ python3 run_parse_papers.py \
 Parsing 1707.07938v2:
 
 anthropic sonnet 4.0 - 20cents
+
 openai 4o mini - 10cents
+
 huggingface - 4cents
 
