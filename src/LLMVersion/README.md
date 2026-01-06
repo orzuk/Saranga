@@ -71,4 +71,9 @@ python3 run_parse_papers.py \
 
 ## Cost Considerations
 
-Parsing a single paper (2501.00685) costs approximately **$0.70** using the Anthropic Claude API. For batch parsing.
+Parsing 1707.07938v2:
+
+anthropic sonnet 4.0 - 20cents
+openai 4o mini - 10cents
+huggingface - 4cents
+
