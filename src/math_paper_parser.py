@@ -134,6 +134,7 @@ class PaperParser:
         definition_mode: str = "both",  # 'manual', 'llm', or 'both'
         llm_model: str = "gpt-4o-mini",
         llm_chunk_chars: int = 8000,
+        extract_inline_let: bool = False,  # Whether to extract "Let X be..." as definitions
     ):
         """
         Parameters
@@ -148,9 +149,13 @@ class PaperParser:
             Model name for LLM extraction (if used).
         llm_chunk_chars : int
             Max characters per chunk when calling the LLM.
+        extract_inline_let : bool
+            If True, extract "Let X be..." patterns as definitions.
+            Default False (these are often just variable introductions, not real definitions).
         """
         self.paper_id = paper_id or "paper"
         self.definition_mode = definition_mode
+        self.extract_inline_let = extract_inline_let
         self.llm_model = llm_model
         self.llm_chunk_chars = llm_chunk_chars
 
@@ -840,7 +845,18 @@ class PaperParser:
             flags=re.IGNORECASE | re.DOTALL,
         )
 
-        # C3: "Let X be ..." used for defining an object.
+        # C3: "We say/call X is/to be ..." - explicit definitional language
+        inline_we_say_pattern = re.compile(
+            r"(?P<full>"
+            r"(?:We\s+)?(?:say|call)\s+(?:that\s+)?"
+            r"(?P<name>[^.]{1,60}?)"
+            r"\s+(?:is|to\s+be|are)\s+"
+            r"[^.]*\.)",
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+
+        # C4: "Let X be ..." - only when it's a real definition (contains definitional keywords)
+        # Filter out simple variable intros like "Let m,n be integers"
         inline_let_pattern = re.compile(
             r"(?P<full>"
             r"(?:Let|let)\s+"
@@ -848,6 +864,14 @@ class PaperParser:
             r"[^.]{0,200}?"
             r"\s+be\s+[^.]*\.)",
             flags=re.DOTALL,
+        )
+
+        # Keywords that indicate a real definition vs just variable introduction
+        definition_keywords = re.compile(
+            r"\b(set|function|map|mapping|sequence|matrix|space|operator|"
+            r"define|denote|notation|collection|family|class|group|ring|field|"
+            r"graph|path|tree|partition|permutation|morphism|homomorphism)\b",
+            flags=re.IGNORECASE
         )
 
         def extract_name_hint(raw_name: str) -> str:
@@ -885,8 +909,17 @@ class PaperParser:
         for m in inline_defined_as_pattern.finditer(text):
             add_inline_definition(m, "inline_defined_as")
 
+        # C3: "We say/call X is..." - explicit definitional language
+        for m in inline_we_say_pattern.finditer(text):
+            add_inline_definition(m, "inline_we_say")
+
+        # C4: "Let X be ..." - only when it contains definitional keywords
+        # This filters out simple variable intros like "Let m,n be integers"
         for m in inline_let_pattern.finditer(text):
-            add_inline_definition(m, "inline_let")
+            full_text = m.group("full")
+            # Only treat as definition if it contains definitional keywords
+            if definition_keywords.search(full_text):
+                add_inline_definition(m, "inline_let")
 
         print(f"[INFO] _extract_definitions_manual: found {len(objects)} definitions (all kinds).")
         return objects
