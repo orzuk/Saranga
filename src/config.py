@@ -1,6 +1,67 @@
-# Set paths for papers data
+# Set paths for project data and code
 import sys
 import os
+from pathlib import Path
+
+# =============================================================================
+# MASTER DIRECTORIES (platform-specific, only these change between environments)
+# =============================================================================
+
+if sys.platform.lower().startswith('win'):
+    # Running on Windows/PyCharm
+    DATA_DIR = Path('C:/Datasets/Authomathics_data')
+    CODE_DIR = Path('C:/Code/Github/Authomathics')
+else:
+    # Running on *nix – decide between WSL-mount vs cluster
+    wsl_data = Path('/mnt/c/Datasets/Authomathics_data')
+    wsl_code = Path('/mnt/c/Code/Github/Authomathics')
+
+    cluster_data = Path('/sci/labs/orzuk/orzuk/projects/Authomathics')
+    cluster_code = Path('/sci/labs/orzuk/orzuk/github/Authomathics')
+
+    home_data = Path.home() / 'Datasets' / 'Authomathics_data'
+    home_code = Path.home() / 'Code' / 'Authomathics'
+
+    if cluster_code.exists():
+        # Cluster takes priority if it exists
+        DATA_DIR = cluster_data
+        CODE_DIR = cluster_code
+    elif wsl_data.exists() or wsl_code.exists():
+        DATA_DIR = wsl_data
+        CODE_DIR = wsl_code
+    else:
+        DATA_DIR = home_data
+        CODE_DIR = home_code
+
+# =============================================================================
+# RELATIVE PATHS (same across all environments)
+# =============================================================================
+
+# Code directories
+SCRIPTS_DIR = CODE_DIR / 'scripts'
+SRC_DIR = CODE_DIR / 'src'
+
+# Data subdirectories
+ARXIV_DIR = DATA_DIR / 'arxiv'
+PROOFWIKI_DIR = DATA_DIR / 'proofwiki'
+WIKIDATA_DIR = DATA_DIR / 'wikidata'
+
+# ArXiv data files
+ARXIV_IDS_FILE = ARXIV_DIR / 'arxiv_ids_all_min_max.json'
+ARXIV_META_DATA = ARXIV_DIR / 'arxiv-metadata-oai-snapshot.json'
+ARXIV_META_DATA_COMPACT = ARXIV_DIR / 'arxiv-metadata-oai-snapshot-compact.pkl'
+ARXIV_META_DATA_HDF5 = ARXIV_DIR / 'arxiv-metadata-oai-snapshot-compact.h5'
+FULL_PAPERS_DIR = ARXIV_DIR / 'full_papers'
+
+# ProofWiki data files
+PROOFWIKI_CORPUS = PROOFWIKI_DIR / 'proofwiki_corpus.json'
+
+# Wikidata data files
+WIKIDATA_REGISTRY = WIKIDATA_DIR / 'concept_registry.json'
+
+# =============================================================================
+# API ENDPOINTS
+# =============================================================================
 
 # ArXiv API endpoint and XML namespaces for query mode
 ATOM_URL = 'http://export.arxiv.org/api/query'
@@ -8,39 +69,24 @@ NS = {'atom': 'http://www.w3.org/2005/Atom',
     'opensearch': 'http://a9.com/-/spec/opensearch/1.1/'}
 ARXIV_NS = {'arxiv': 'http://arxiv.org/schemas/atom'}
 
-
-SCRIPTS_DIR = './scripts'
-SRC_DIR = './src'
-
-if sys.platform.lower().startswith('win'):
-    # Running on Windows/PyCharm
-    DATA_DIR = 'C:/Datasets/big_data_project_52017/arxiv_data'
-else:
-    # Running on *nix – decide between your WSL‐mount vs cluster
-    # 1) Check for your local WSL path
-    wsl_path = '/mnt/c/Datasets/big_data_project_52017/arxiv_data'
-    # 2) Check for your cluster path
-    cluster_path = '/sci/labs/orzuk/orzuk/teaching/big_data_project_52017/2024_25/arxiv_data'
-    # 3) If neither exists, fall back to your home‐dir layout
-    home_path = os.path.expanduser('~/Datasets/big_data_project_52017/arxiv_data')
-
-    if os.path.exists(wsl_path):
-        DATA_DIR = wsl_path
-    elif os.path.exists(cluster_path):
-        DATA_DIR = cluster_path
-    else:
-        DATA_DIR = home_path
-
-# Make sure it really points somewhere valid:
-if not os.path.isdir(DATA_DIR):
-    raise RuntimeError(f"DATA_DIR not found: {DATA_DIR}")
-
-print("Using DATA_DIR =", DATA_DIR)
-
-ARXIV_IDS_FILE = DATA_DIR + "/arxiv_ids_all_min_max.json"
-ARXIV_META_DATA = DATA_DIR + '/arxiv-metadata-oai-snapshot.json'
-ARXIV_META_DATA_COMPACT = DATA_DIR + '/arxiv-metadata-oai-snapshot-compact.pkl'
-ARXIV_META_DATA_HDF5 = DATA_DIR + '/arxiv-metadata-oai-snapshot-compact.h5'
-FULL_PAPERS_DIR = DATA_DIR + '/full_papers'
+# =============================================================================
+# OPTIONS
+# =============================================================================
 
 LOCAL_FIRST = True  # Try to find papers data/meta-data locally first. If can't find, then crawl arxiv website.
+
+# =============================================================================
+# INITIALIZATION
+# =============================================================================
+
+def ensure_data_dirs():
+    """Create data directories if they don't exist."""
+    for d in [DATA_DIR, ARXIV_DIR, PROOFWIKI_DIR, WIKIDATA_DIR]:
+        d.mkdir(parents=True, exist_ok=True)
+
+# Create directories on import (optional - can comment out if you want manual control)
+# ensure_data_dirs()
+
+# Print active configuration
+print(f"CODE_DIR = {CODE_DIR}")
+print(f"DATA_DIR = {DATA_DIR}")
