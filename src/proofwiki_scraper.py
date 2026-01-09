@@ -159,6 +159,40 @@ def get_definitions_by_topic(topic_keywords: List[str], limit: int = 200) -> Lis
     return filtered
 
 
+def get_definitions_by_category(topic: str, limit: int = 200) -> List[dict]:
+    """
+    Get definition pages from category 'Definitions/{topic}' in namespace 102.
+    This is more accurate than keyword filtering.
+    """
+    category = f"Definitions/{topic}"
+    params = {
+        "action": "query",
+        "list": "categorymembers",
+        "cmtitle": f"Category:{category}",
+        "cmnamespace": 102,  # Definition namespace
+        "cmlimit": min(limit, 500),
+        "format": "json",
+    }
+
+    all_pages = []
+    continue_token = None
+
+    while len(all_pages) < limit:
+        if continue_token:
+            params["cmcontinue"] = continue_token
+
+        data = api_request(params)
+        batch = data.get("query", {}).get("categorymembers", [])
+        all_pages.extend(batch)
+
+        if "continue" in data:
+            continue_token = data["continue"].get("cmcontinue")
+        else:
+            break
+
+    return all_pages[:limit]
+
+
 def get_category_members(category: str, namespace: int = 0, limit: int = 500) -> List[dict]:
     """
     Get all pages in a category (handles pagination).
@@ -492,10 +526,18 @@ TOPIC_KEYWORDS = {
 
 def scrape_definitions_for_topic(topic: str, limit: int = 100) -> List[MathItem]:
     """Scrape definition pages for a specific topic."""
-    keywords = TOPIC_KEYWORDS.get(topic, [topic.lower().replace("_", " ")])
+    # Convert topic format: "Graph_Theory" -> "Graph Theory"
+    topic_name = topic.replace("_", " ")
 
-    print(f"  Fetching definitions with keywords: {keywords[:5]}...")
-    pages = get_definitions_by_topic(keywords, limit=limit * 2)
+    # First try category-based approach (more accurate)
+    print(f"  Fetching definitions from 'Definitions/{topic_name}' category...")
+    pages = get_definitions_by_category(topic_name, limit=limit)
+
+    # If no results, fall back to keyword search
+    if not pages:
+        keywords = TOPIC_KEYWORDS.get(topic, [topic.lower().replace("_", " ")])
+        print(f"  Falling back to keyword search: {keywords[:5]}...")
+        pages = get_definitions_by_topic(keywords, limit=limit * 2)
 
     items = []
     for page in pages[:limit]:
