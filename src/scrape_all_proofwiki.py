@@ -198,15 +198,15 @@ def main():
         "--limit",
         "-l",
         type=int,
-        default=200,
-        help="Max items per topic (default: 200)",
+        default=10000,
+        help="Max items per topic (default: 10000 = practically unlimited)",
     )
     parser.add_argument(
         "--depth",
         "-d",
         type=int,
-        default=2,
-        help="Max subcategory depth (default: 2)",
+        default=3,
+        help="Max subcategory depth (default: 3)",
     )
     parser.add_argument(
         "--out-dir",
@@ -223,6 +223,11 @@ def main():
         "--combined",
         action="store_true",
         help="Also create a combined JSON with all topics",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-scrape topics even if output file exists (default: skip existing)",
     )
 
     args = parser.parse_args()
@@ -272,8 +277,29 @@ def main():
     # Scrape each topic
     all_results = []
     total_items = 0
+    skipped = 0
 
     for i, topic in enumerate(topics, 1):
+        safe_name = topic.lower().replace(" ", "_").replace("/", "_")
+        topic_file = out_dir / f"{safe_name}.json"
+
+        # Skip if already exists (incremental mode)
+        if topic_file.exists() and not args.force:
+            print(f"\n[{i}/{len(topics)}] SKIP {topic} (already exists: {topic_file.name})")
+            # Load existing data for summary
+            try:
+                existing = json.loads(topic_file.read_text())
+                all_results.append({
+                    "topic": topic,
+                    "item_count": existing.get("metadata", {}).get("item_count", len(existing.get("items", []))),
+                    "items": existing.get("items", []),
+                })
+                total_items += all_results[-1]["item_count"]
+            except:
+                pass
+            skipped += 1
+            continue
+
         print(f"\n[{i}/{len(topics)}] Processing {topic}...")
 
         try:
@@ -282,9 +308,6 @@ def main():
             total_items += result["item_count"]
 
             # Save individual topic file
-            safe_name = topic.lower().replace(" ", "_").replace("/", "_")
-            topic_file = out_dir / f"{safe_name}.json"
-
             output = {
                 "schema": "authomathics.proofwiki_topic.v1",
                 "metadata": {
@@ -311,8 +334,10 @@ def main():
     print(f"\n{'='*60}")
     print(f"SCRAPING COMPLETE")
     print(f"{'='*60}")
-    print(f"Topics scraped: {len(all_results)}")
-    print(f"Total items: {total_items}")
+    print(f"Topics requested: {len(topics)}")
+    print(f"Topics skipped (already done): {skipped}")
+    print(f"Topics scraped this run: {len(topics) - skipped}")
+    print(f"Total items (all topics): {total_items}")
     print(f"Output directory: {out_dir}")
 
     # Create combined file if requested
