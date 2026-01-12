@@ -242,6 +242,7 @@ class TableObject(MathObject):
     """
     Table with parsed cells (best-effort).
     """
+    env_name: Optional[str] = None  # e.g. "table", "tabular", "longtable"
     caption: Optional[str] = None
     cells: List[List[str]] = field(default_factory=list)  # rows x columns
 

@@ -1,8 +1,13 @@
-# ===== File: extract_arxiv_data.py =====
 #!/usr/bin/env python3
 """
-Helper module to fetch arXiv abstracts or metadata using a unified interface.
-Includes detailed debug prints to trace API queries and responses.
+extract_arxiv_funcs.py
+
+Core library for fetching arXiv papers and metadata.
+Provides functions for:
+- Listing/filtering arXiv IDs by date, category, author, title
+- Fetching metadata from local HDF5 index or remote API
+- Downloading LaTeX source, PDF, and HTML
+- Local-first caching with remote fallback
 """
 
 
@@ -84,7 +89,7 @@ def meta_data_full_to_hdf5(
       - created    : fixed-length ASCII "YYYY-MM-DD"
       - authors    : variable-length UTF-8 strings
       - title      : variable-length UTF-8 strings
-l
+
     This version uses a loop over column definitions instead of manual repetition.
     """
 
@@ -292,7 +297,7 @@ def meta_data_full_to_compact(src_path=ARXIV_META_DATA,
         pickle.dump(combined, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     if verbose:
-        print(f"[build] Wrote combined pickle with {len(compact_index):,} entries to '{combined_dest}'")
+        print(f"[build] Wrote combined pickle with {len(compact_index):,} entries to '{dest_path}'")
 
 
 
@@ -372,6 +377,123 @@ def load_meta_data_hdf5(
 
     return result
 
+
+def iter_meta_data_hdf5(
+    hdf5_path: str = ARXIV_META_DATA_HDF5,
+    cols: Optional[List[str]] = None,
+    chunk_size: int = 10_000
+) -> Iterator[Tuple[str, Dict[str, Any]]]:
+    """
+    Memory-efficient generator that yields (base_id, record_dict) tuples.
+
+    Reads HDF5 data in chunks to avoid loading entire dataset into memory.
+    Useful for processing 2M+ records without memory issues.
+
+    Parameters
+    ----------
+    hdf5_path : str
+        Path to the HDF5 file.
+    cols : list of str, optional
+        Which columns to read. If None, loads all columns.
+    chunk_size : int
+        Number of records to load per chunk (default 10,000).
+
+    Yields
+    ------
+    (base_id, record_dict) : tuple
+        Each record as a (key, value) pair.
+    """
+    if not os.path.exists(hdf5_path):
+        raise FileNotFoundError(f"No such file: {hdf5_path}")
+
+    valid_cols = {"offset", "categories", "created", "authors", "title"}
+    if cols is None:
+        cols_to_load = list(valid_cols)
+    else:
+        cols_to_load = [c for c in cols if c in valid_cols]
+
+    with h5py.File(hdf5_path, "r") as h5f:
+        total = h5f["base_id"].shape[0]
+
+        for start in range(0, total, chunk_size):
+            end = min(start + chunk_size, total)
+
+            # Read chunk of base_ids
+            base_ids_chunk = h5f["base_id"][start:end]
+
+            # Read chunks of requested columns
+            col_chunks = {}
+            for col in cols_to_load:
+                col_chunks[col] = h5f[col][start:end]
+
+            # Yield records one at a time
+            for i in range(end - start):
+                base_id = base_ids_chunk[i]
+                if isinstance(base_id, bytes):
+                    base_id = base_id.decode("utf-8")
+
+                entry = {}
+                for col in cols_to_load:
+                    val = col_chunks[col][i]
+                    if isinstance(val, (bytes, bytearray)):
+                        try:
+                            val = val.decode("utf-8")
+                        except:
+                            val = val.decode("ascii", errors="ignore")
+                    entry[col] = val
+
+                yield base_id, entry
+
+
+def load_meta_data_hdf5_by_ids(
+    base_ids: List[str],
+    hdf5_path: str = ARXIV_META_DATA_HDF5,
+    cols: Optional[List[str]] = None
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Load metadata for specific base_ids only, using index lookup.
+
+    Much more efficient than load_meta_data_hdf5() when you only need
+    a small subset of the 2M+ records.
+
+    Parameters
+    ----------
+    base_ids : list of str
+        The specific arXiv IDs to load.
+    hdf5_path : str
+        Path to the HDF5 file.
+    cols : list of str, optional
+        Which columns to read. If None, loads all columns.
+
+    Returns
+    -------
+    Dict mapping base_id -> record dict (only for IDs that were found).
+    """
+    if not os.path.exists(hdf5_path):
+        raise FileNotFoundError(f"No such file: {hdf5_path}")
+
+    if not base_ids:
+        return {}
+
+    valid_cols = {"offset", "categories", "created", "authors", "title"}
+    if cols is None:
+        cols_to_load = list(valid_cols)
+    else:
+        cols_to_load = [c for c in cols if c in valid_cols]
+
+    wanted = set(base_ids)
+    result: Dict[str, Dict[str, Any]] = {}
+
+    # Stream through in chunks to find matching IDs
+    for base_id, entry in iter_meta_data_hdf5(hdf5_path, cols=cols_to_load):
+        if base_id in wanted:
+            result[base_id] = entry
+            wanted.discard(base_id)
+            # Early exit if we found all requested IDs
+            if not wanted:
+                break
+
+    return result
 
 
 def load_meta_data_compact(
@@ -862,9 +984,16 @@ def fetch_arxiv_metadata(
           verbose=True
       )
     """
-    # 1) Load only the "offset" column from HDF5 via our loader
-    #    (returns { base_id: { "offset": <int> }, … })
-    offsets_dict = load_meta_data_hdf5(hdf5_path, cols=["offset"])
+    # 1) Extract base_ids from versioned_ids and load only those offsets
+    base_ids_needed = []
+    for vid in versioned_ids:
+        if "v" in vid:
+            base_ids_needed.append(vid.rsplit("v", 1)[0])
+        else:
+            base_ids_needed.append(vid)
+
+    # Use efficient lookup for just the IDs we need (instead of loading all 2M+)
+    offsets_dict = load_meta_data_hdf5_by_ids(base_ids_needed, hdf5_path, cols=["offset"])
 
     results: Dict[str, Dict[str, Any]] = {}
 
