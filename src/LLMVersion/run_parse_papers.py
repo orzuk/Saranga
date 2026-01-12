@@ -212,7 +212,17 @@ def run_batch(
         # ---------- STEP 4: WRITE JSON ----------
         json_dir = base_day_dir / "json"
         json_dir.mkdir(parents=True, exist_ok=True)
-        json_path = json_dir / f"{versioned_id}.json"
+
+        # Determine JSON suffix
+        if definition_mode == "manual":
+            suffix = "manual"
+        elif definition_mode == "llm":
+            suffix = llm_model.replace('/', '-')  # sanitize slashes for filename
+        elif definition_mode == "both":
+            suffix = f"{llm_model}+manual"
+
+        json_filename = f"{versioned_id}_{suffix}.json"
+        json_path = json_dir / json_filename
 
         json_path.write_text(json.dumps(graph.to_dict(), indent=2), encoding="utf-8")
         print(f"[OK]   Saved graph for {base_id} -> {json_path}")
