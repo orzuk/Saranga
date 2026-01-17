@@ -40,7 +40,7 @@ chmod +x run_pipeline.sh
 
 
 
-Parser Info:
+## Parser Info:
 
 Use the `--definition-mode` argument to choose your parsing strategy:
 
@@ -48,7 +48,7 @@ Use the `--definition-mode` argument to choose your parsing strategy:
 - `llm` - LLM API extraction only
 - `both` - Combines both methods for best coverage
 
-## Command Line Arguments
+Command Line Arguments
 
 ```bash
 --start, --end: Date range for arXiv papers (YYYY-MM-DD format)
@@ -71,7 +71,7 @@ both: Combine both methods
 --llm-chunk-chars: Max characters per LLM chunk (default: 8000)
 ```
 
-## Usage Examples
+Usage Examples
 
 ### Anthropic Claude
 ```bash
