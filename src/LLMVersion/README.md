@@ -1,6 +1,46 @@
-Adjusted `run_parse_papers.py` and `math_paper_parser.py` to support multiple LLM providers for parsing.
+## Pipeline Usage
 
 
+The pipeline extracts definitions from papers using HuggingFace, Anthropic, OpenAI and manual and then evaluate their results according to the golden standard.
+
+1) Extracts definitions/lemmas/theorem etc.. to jsons for each model and manual mode.
+2) merge all definitions from all methods into a csv file named definitions.csv
+3) gold standars need to be defined the same way as in Gold_Standard.csv - then it merges the definitions csv with the gold standard csv to form MergedGoldAndDef.csv
+4) the evaluation process compares extracted definitions from each provider (HuggingFace, Anthropic, OpenAI, Manual) against gold standard definitions using Jaccard similarity with a configurable threshold (default 0.7), calculating precision, recall, and F1 scores for each method. It outputs two CSV files: a detailed match report showing similarity scores for each individual definition (detailed_matches.csv), and a summary report with overall performance metrics (TP/FP/FN, precision, recall, F1) per provider and paper (evaluation_results.csv).
+
+
+Examples of usage:
+
+Run the pipeline with default settings:
+```bash
+./run_pipeline.sh
+```
+
+Customize parameters using named arguments:
+```bash
+./run_pipeline.sh --paper-id 2208.03112 --threshold 0.8
+```
+
+**Available arguments to adjust in the pipeline bash:**
+- `--paper-id`: ArXiv paper ID (default: 2208.03112)
+- `--out-dir`: Output directory (default: .)
+- `--threshold`: Evaluation threshold (default: 0.7)
+- `--gold-csv`: Gold standard CSV file (default: Gold_Standard.csv)
+- `--definitions-csv`: Definitions CSV file (default: definitions.csv)
+- `--merged-csv`: Merged output CSV file (default: MergedGoldAndDef.csv)
+
+**First time setup:**
+```bash
+chmod +x run_pipeline.sh
+```
+
+
+
+
+
+
+
+Parser Info:
 
 Use the `--definition-mode` argument to choose your parsing strategy:
 
