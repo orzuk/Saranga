@@ -11,7 +11,7 @@ Run the pipeline with default settings:
 ```
 Customize parameters using named arguments:
 ```bash
-./run_pipeline.sh --paper-id 2208.03112 --threshold 0.8
+./run_pipeline.sh --paper-id 2208.03112 --threshold 0.8 --prompt-file custom_prompt.txt
 ```
 **Available arguments to adjust in the pipeline bash:**
 - `--paper-id`: ArXiv paper ID (default: 2208.03112)
