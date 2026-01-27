@@ -7,6 +7,7 @@ THRESHOLD="0.7"
 GOLD_CSV="Gold_Standard.csv"
 DEFINITIONS_CSV="definitions.csv"
 MERGED_CSV="MergedGoldAndDef.csv"
+PROMPT_FILE=""
 
 # API Keys
 HF_TOKEN="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"
@@ -22,6 +23,7 @@ while [[ $# -gt 0 ]]; do
         --gold-csv) GOLD_CSV="$2"; shift 2 ;;
         --definitions-csv) DEFINITIONS_CSV="$2"; shift 2 ;;
         --merged-csv) MERGED_CSV="$2"; shift 2 ;;
+        --prompt-file) PROMPT_FILE="$2"; shift 2 ;;
         *) echo "Unknown argument: $1"; exit 1 ;;
     esac
 done
@@ -35,7 +37,8 @@ python3 run_parse_papers.py \
     --out-dir "${OUT_DIR}" \
     --definition-mode llm \
     --llm-provider huggingface \
-    --llm-model "Qwen/Qwen2.5-7B-Instruct"
+    --llm-model "Qwen/Qwen2.5-7B-Instruct" \
+    --prompt-file "${PROMPT_FILE}"
 
 # Anthropic
 export ANTHROPIC_API_KEY
@@ -44,7 +47,8 @@ python3 run_parse_papers.py \
     --out-dir "${OUT_DIR}" \
     --definition-mode llm \
     --llm-provider anthropic \
-    --llm-model claude-sonnet-4-20250514
+    --llm-model claude-sonnet-4-20250514 \
+    --prompt-file "${PROMPT_FILE}"
 
 # OpenAI
 export OPENAI_API_KEY
@@ -53,7 +57,8 @@ python3 run_parse_papers.py \
     --out-dir "${OUT_DIR}" \
     --definition-mode llm \
     --llm-provider openai \
-    --llm-model gpt-4o
+    --llm-model gpt-4o \
+    --prompt-file "${PROMPT_FILE}"
 
 # Manual
 python3 run_parse_papers.py \

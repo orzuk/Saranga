@@ -134,9 +134,10 @@ class PaperParser:
             paper_id: Optional[str] = None,
             definition_mode: str = "both",  # 'manual', 'llm', or 'both'
             llm_model: str = "gpt-4o-mini",
-            llm_chunk_chars: int = 8000,
+            llm_chunk_chars: int = 30000,
             llm_provider: str = "openai",
             extract_inline_let: bool = False,
+            custom_prompt_file: Optional[str] = None,
     ):
         """
         Parameters
@@ -158,6 +159,7 @@ class PaperParser:
         self.llm_chunk_chars = llm_chunk_chars
         self.llm_provider = llm_provider
         self.extract_inline_let = extract_inline_let
+        self.custom_prompt_file = custom_prompt_file
 
         # these will be updated with \newtheorem info
         self.env_kind_map = dict(self.BASE_ENV_KIND_MAP)
@@ -937,7 +939,7 @@ class PaperParser:
             text: str,
             llm_type: str = "anthropic",
             provider: str = "hosted",
-            chunk_chars: int = 8000,
+            chunk_chars: int = 30000,
             model: str = "claude-sonnet-4-20250514",
     ) -> List[Definition]:
         actual_provider = getattr(self, 'llm_provider', llm_type)
@@ -1145,9 +1147,18 @@ class PaperParser:
 
         return chunks
 
-    @staticmethod
-    def _create_definition_extraction_prompt(latex_chunk: str) -> str:
-        """Create a prompt for Claude to extract definitions."""
+    def _create_definition_extraction_prompt(self, latex_chunk: str) -> str:
+        """Create a prompt for LLM to extract definitions.
+        """
+
+        # if prompt file is available:
+        if self.custom_prompt_file and Path(self.custom_prompt_file).exists():
+            template = Path(self.custom_prompt_file).read_text()
+            print("Using Prompt from file:", self.custom_prompt_file)
+            return template.replace("{latex_chunk}", latex_chunk)
+
+        # otherwise use default prompt
+        print("Using Default Prompt Template - No custom prompt file provided.")
         prompt = f"""You are analyzing a mathematical paper written in LaTeX. Extract ALL mathematical definitions.
 
 Definition forms:
