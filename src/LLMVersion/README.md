@@ -7,11 +7,11 @@ The pipeline extracts definitions from papers using HuggingFace, Anthropic, Open
 Examples of usage:
 Run the pipeline with default settings:
 ```bash
-./run_pipeline.sh
+./evaluation_pipeline.sh
 ```
 Customize parameters using named arguments:
 ```bash
-./run_pipeline.sh --paper-id 2208.03112 --threshold 0.8 --prompt-file custom_prompt.txt
+./evaluation_pipeline.sh --paper-id 2208.03112 --threshold 0.8 --prompt-file custom_prompt.txt
 ```
 **Available arguments to adjust in the pipeline bash:**
 - `--paper-id`: ArXiv paper ID (default: 2208.03112)
@@ -24,7 +24,7 @@ Customize parameters using named arguments:
 
 **First time setup:**
 ```bash
-chmod +x run_pipeline.sh
+chmod +x evaluation_pipeline.sh
 ```
 ## Parser Info:
 Use the `--definition-mode` argument to choose your parsing strategy:
