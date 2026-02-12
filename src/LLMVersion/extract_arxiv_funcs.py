@@ -1161,6 +1161,7 @@ def fetch_arxiv_batch(
 #        if verbose:
 #            print(f"[DEBUG] Processing {aid} for formats: {formats}")
 
+        safe_aid = aid.replace("/", "_")  # old-format IDs: "acc-phys/9411001v1" → "acc-phys_9411001v1"
         entry: Dict[str, Any] = {}
 
         # Include metadata & abstract if needed
@@ -1175,9 +1176,9 @@ def fetch_arxiv_batch(
                 continue
             if output_dir:
                 if res == 'source':
-                    filename = f"{aid}.tex"
+                    filename = f"{safe_aid}.tex"
                 else:
-                    filename = f"{aid}.{ext_map[res]}"
+                    filename = f"{safe_aid}.{ext_map[res]}"
                 local_path = os.path.join(output_dirs[res][aid], filename)
                 if os.path.isfile(local_path):  # Found file locally
                     # Extract locally (different for different formats)
@@ -1266,9 +1267,9 @@ def fetch_arxiv_batch(
                 if res in ('pdf', 'html', 'source') and output_dir: # save locally if needed
                     os.makedirs(output_dirs[res][aid], exist_ok=True)
                     if res == 'source':
-                        filename = f"{aid}.tex"
+                        filename = f"{safe_aid}.tex"
                     else:
-                        filename = f"{aid}.{ext_map[res]}"
+                        filename = f"{safe_aid}.{ext_map[res]}"
                     path = os.path.join(output_dirs[res][aid], filename)
                     if res == 'source':
                         if entry.get('source') is None:  # Couldn't fetch source
