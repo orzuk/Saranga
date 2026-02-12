@@ -112,7 +112,7 @@ python3 prompt_optimizer.py \
     --paper-id 2208.03112 \
     --provider anthropic \
     --model claude-sonnet-4-20250514 \
-    --iterations 3
+    --iterations 3 \
     --initial-prompt custom_prompt.txt
 ```
 
