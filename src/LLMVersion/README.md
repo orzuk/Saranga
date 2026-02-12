@@ -113,6 +113,7 @@ python3 prompt_optimizer.py \
     --provider anthropic \
     --model claude-sonnet-4-20250514 \
     --iterations 3
+    --initial-prompt prompt.txt
 ```
 
 Via the pipeline (runs optimization before the main extraction):
