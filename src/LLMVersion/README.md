@@ -103,6 +103,33 @@ LaTeX text:
 Respond ONLY with valid JSON.
 ```
 
+## Prompt Optimization
+The pipeline includes an optional iterative prompt optimization loop (`prompt_optimizer.py`). It extracts definitions with the current prompt, evaluates against the gold standard, analyzes errors (FP/FN/near-misses), and feeds them to a meta-LLM to produce an improved prompt. This repeats for N iterations, keeping the best prompt by F1.
+
+Standalone usage:
+```bash
+python3 prompt_optimizer.py \
+    --paper-id 2208.03112 \
+    --provider anthropic \
+    --model claude-sonnet-4-20250514 \
+    --iterations 3
+```
+
+Via the pipeline (runs optimization before the main extraction):
+```bash
+./evaluation_pipeline.sh --optimize-prompt --opt-iterations 3 --opt-provider anthropic
+```
+
+Additional pipeline arguments for optimization:
+- `--optimize-prompt`: Enable prompt optimization before extraction
+- `--opt-iterations`: Number of optimization iterations (default: 3)
+- `--opt-provider`: LLM provider for extraction during optimization (default: anthropic)
+- `--opt-model`: Model for extraction during optimization (default: claude-sonnet-4-20250514)
+- `--opt-meta-provider`: LLM provider for the meta-optimization call (default: anthropic)
+- `--opt-meta-model`: Model for meta-optimization (default: claude-sonnet-4-20250514)
+
+Outputs: `optimization_history.json` (per-iteration metrics and prompts) and `optimized_prompt_{provider}.txt` (best prompt).
+
 ## Cost Considerations
 Parsing 1707.07938v2:
 anthropic sonnet 4.0 - 20cents
