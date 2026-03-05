@@ -84,8 +84,9 @@ def run_batch(
         verbose: bool,
         definition_mode: str = "manual",
         llm_model: str = "claude-sonnet-4-20250514",
-        llm_chunk_chars: int = 8000,
+        llm_chunk_chars: int = 30000,
         llm_provider: str = "anthropic",
+        prompt_file: Optional[str] = None,
 ) -> None:
     print(
         f"[INFO] Fetching arXiv IDs via fetch_arxiv_batch "
@@ -180,6 +181,7 @@ def run_batch(
                 llm_model=llm_model,
                 llm_chunk_chars=llm_chunk_chars,
                 llm_provider=llm_provider,
+                custom_prompt_file=prompt_file,
             )
             graph = parser.parse_file(tex_path)
             status = "OK"
@@ -212,7 +214,17 @@ def run_batch(
         # ---------- STEP 4: WRITE JSON ----------
         json_dir = base_day_dir / "json"
         json_dir.mkdir(parents=True, exist_ok=True)
-        json_path = json_dir / f"{versioned_id}.json"
+
+        # Determine JSON suffix
+        if definition_mode == "manual":
+            suffix = "manual"
+        elif definition_mode == "llm":
+            suffix = llm_model.replace('/', '-')  # sanitize slashes for filename
+        elif definition_mode == "both":
+            suffix = f"{llm_model}+manual"
+
+        json_filename = f"{versioned_id}_{suffix}.json"
+        json_path = json_dir / json_filename
 
         json_path.write_text(json.dumps(graph.to_dict(), indent=2), encoding="utf-8")
         print(f"[OK]   Saved graph for {base_id} -> {json_path}")
@@ -348,8 +360,14 @@ def main():
     parser.add_argument(
         "--llm-chunk-chars",
         type=int,
-        default=8000,
+        default=30000,
         help="Max characters per chunk when using LLM extraction.",
+    )
+    parser.add_argument(
+        "--prompt-file",
+        type=str,
+        default=None,
+        help="Path to custom prompt template file (use {latex_chunk} as placeholder)",
     )
 
     args = parser.parse_args()
@@ -376,6 +394,7 @@ def main():
         llm_model=args.llm_model,
         llm_chunk_chars=args.llm_chunk_chars,
         llm_provider=args.llm_provider,
+        prompt_file=args.prompt_file,
     )
 
     print("[INFO] Done.")
