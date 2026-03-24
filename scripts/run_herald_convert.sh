@@ -4,7 +4,7 @@
 #SBATCH --time=02:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=2
-#SBATCH --partition=quick
+#SBATCH --partition=glacier
 
 source /sci/labs/orzuk/orzuk/authomathics-venv/bin/activate
 
