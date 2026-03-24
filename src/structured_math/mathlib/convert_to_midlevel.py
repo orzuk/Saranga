@@ -155,7 +155,6 @@ def load_herald_statements(limit: Optional[int] = None) -> dict:
         )
         if m:
             name = m.group(1)
-            # Also try without _extracted suffix for matching
             clean_name = name.replace('_extracted', '')
             name2nl[clean_name] = entry['informal_statement']
             if name != clean_name:
@@ -167,6 +166,41 @@ def load_herald_statements(limit: Optional[int] = None) -> dict:
 
     print(f"  Loaded {len(name2nl)} Herald NL statements")
     return name2nl
+
+
+def build_herald_matcher(herald_nl: dict, all_full_names: list) -> dict:
+    """
+    Match Herald short names to LeanDojo full names.
+    Herald uses 'foo_bar' while LeanDojo uses 'Namespace.foo_bar'.
+    Build a map: full_name -> NL description.
+    """
+    # Index: short suffix -> list of full names
+    suffix_to_full = defaultdict(list)
+    for fn in all_full_names:
+        # Last component after the last dot
+        suffix = fn.rsplit('.', 1)[-1] if '.' in fn else fn
+        suffix_to_full[suffix].append(fn)
+
+    matched = {}
+    ambiguous = 0
+    for herald_name, nl_text in herald_nl.items():
+        clean = herald_name.replace('_extracted', '')
+        # Try exact match first
+        if clean in {fn for fn in all_full_names}:
+            matched[clean] = nl_text
+            continue
+        # Try suffix match
+        candidates = suffix_to_full.get(clean, [])
+        if len(candidates) == 1:
+            matched[candidates[0]] = nl_text
+        elif len(candidates) > 1:
+            # Ambiguous — assign to all (better than none)
+            for c in candidates:
+                matched[c] = nl_text
+            ambiguous += 1
+
+    print(f"  Herald matcher: {len(matched)} matched ({ambiguous} ambiguous suffix matches)")
+    return matched
 
 
 def load_herald_proofs(limit: Optional[int] = None) -> dict:
@@ -257,8 +291,23 @@ def convert_mathlib(leandojo_dir: str, output_dir: str,
     herald_proofs = {}
     if use_herald:
         print("Loading Herald data...")
-        herald_nl = load_herald_statements(limit=limit)
-        herald_proofs = load_herald_proofs(limit=limit)
+        raw_herald_nl = load_herald_statements(limit=limit)
+        raw_herald_proofs = load_herald_proofs(limit=limit)
+
+        # Match Herald short names to LeanDojo full names
+        all_full_names = list(name2premise.keys())
+        herald_nl = build_herald_matcher(raw_herald_nl, all_full_names)
+        herald_proofs_matched = build_herald_matcher(
+            {k: json.dumps(v) for k, v in raw_herald_proofs.items()}, all_full_names
+        )
+        # Convert back from JSON strings
+        herald_proofs = {}
+        for fn, v_str in herald_proofs_matched.items():
+            try:
+                herald_proofs[fn] = json.loads(v_str)
+            except:
+                pass
+        print(f"  Herald proofs matched: {len(herald_proofs)}")
 
     # Build objects
     print("Converting to mid-level representation...")
@@ -395,8 +444,8 @@ def convert_mathlib(leandojo_dir: str, output_dir: str,
         'definitions': counters['definition'],
         'proofs': counters['proof'],
         'relations': len(unique_relations),
-        'herald_nl_matched': sum(1 for ie in index_entries if herald_nl.get(ie['name'])),
-        'herald_proofs_matched': sum(1 for t in theorems if herald_proofs.get(t['full_name'])),
+        'herald_nl_matched': len(herald_nl),
+        'herald_proofs_matched': len(herald_proofs),
     }
 
     # Write output
