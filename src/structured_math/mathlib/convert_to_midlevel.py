@@ -425,8 +425,7 @@ def convert_mathlib(leandojo_dir: str, output_dir: str,
                 clean_text=nl_text or code,
                 paper_id='mathlib4',
                 env_name=kind,
-                assumptions='',  # Would need Lean type parsing to extract
-                statement=nl_text or code,
+                statement_text=nl_text or code,
             )
 
         objects[our_id] = obj
