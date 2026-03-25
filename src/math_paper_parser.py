@@ -31,6 +31,7 @@ from typing import Dict, List, Optional, Tuple, Any, Union
 # NOTE: dataclasses are now in math_classes.py
 from math_classes import (
     MathObject,
+    Span,
     Equation,
     TheoremLike,
     Problem,
@@ -41,7 +42,10 @@ from math_classes import (
     TableObject,
     Relation,
     PaperGraph,
+    Concept,
+    REL_MENTIONS_CONCEPT
 )
+
 
 try:
     from pyvis.network import Network
@@ -129,42 +133,87 @@ class PaperParser:
     }
 
     def __init__(
-        self,
-        paper_id: Optional[str] = None,
-        definition_mode: str = "both",  # 'manual', 'llm', or 'both'
-        llm_model: str = "gpt-4o-mini",
-        llm_chunk_chars: int = 8000,
-        extract_inline_let: bool = False,  # Whether to extract "Let X be..." as definitions
+            self,
+            paper_id: Optional[str] = None,
+            definition_mode: str = "both",  # 'manual', 'llm', or 'both'
+            llm_model: str = "gpt-4o-mini",
+            llm_chunk_chars: int = 8000,
+            extract_inline_let: bool = False,
+
+            # NEW: concept registry grounding
+            concept_registry_path: Optional[str] = None,
+            enable_grounding: bool = False,
+            grounding_min_term_len: int = 4,
     ):
-        """
-        Parameters
-        ----------
-        paper_id : Optional[str]
-            Identifier for this paper.
-        definition_mode : {'manual', 'llm', 'both'}
-            - 'manual': only use rule-based extraction.
-            - 'llm'   : only use LLM-based extraction.
-            - 'both'  : use both and merge (default).
-        llm_model : str
-            Model name for LLM extraction (if used).
-        llm_chunk_chars : int
-            Max characters per chunk when calling the LLM.
-        extract_inline_let : bool
-            If True, extract "Let X be..." patterns as definitions.
-            Default False (these are often just variable introductions, not real definitions).
-        """
         self.paper_id = paper_id or "paper"
         self.definition_mode = definition_mode
         self.extract_inline_let = extract_inline_let
         self.llm_model = llm_model
         self.llm_chunk_chars = llm_chunk_chars
 
-        # these will be updated with \newtheorem info
         self.env_kind_map = dict(self.BASE_ENV_KIND_MAP)
+
+        # --- NEW: grounding config
+        self.concept_registry_path = concept_registry_path
+        self.enable_grounding = enable_grounding
+        self.grounding_min_term_len = grounding_min_term_len
+
+        self._concept_registry = None
+        if self.enable_grounding and self.concept_registry_path:
+            try:
+                from concept_registry_wikidata import ConceptRegistry
+                self._concept_registry = ConceptRegistry.load(self.concept_registry_path)
+            except Exception as e:
+                print(f"[WARN] Could not load concept registry '{self.concept_registry_path}': {e}")
+                self._concept_registry = None
+
 
     # ------------------------------------------------------------------
     # Macro / input expansion
     # ------------------------------------------------------------------
+
+    def _extract_assumptions_conclusions_from_statement(self, clean_text: str):
+        """
+        Best-effort B-level split:
+          - assumptions: leading 'Let/Assume/Suppose/If' clauses
+          - conclusion: remainder or 'then' part
+
+        Returns: (assumptions_spans, conclusions_spans)
+        """
+        if not clean_text:
+            return [], []
+
+        txt = " ".join(clean_text.split())
+        low = txt.lower()
+
+        # Common “assumption introducers”
+        starters = ("assume ", "suppose ", "let ", "if ")
+        has_intro = low.startswith(starters)
+
+        if not has_intro:
+            # no obvious split
+            return [], []
+
+        # Prefer splitting on “ then ” if present
+        then_idx = low.find(" then ")
+        if then_idx != -1:
+            a = txt[:then_idx].strip()
+            c = txt[then_idx + len(" then "):].strip()
+            a_spans = [Span(kind="assumption", text=a)] if a else []
+            c_spans = [Span(kind="conclusion", text=c)] if c else []
+            return a_spans, c_spans
+
+        # Otherwise: heuristic split on first period
+        dot = txt.find(".")
+        if dot != -1 and dot < max(120, len(txt) // 3):
+            a = txt[:dot + 1].strip()
+            c = txt[dot + 1:].strip()
+            a_spans = [Span(kind="assumption", text=a)] if a else []
+            c_spans = [Span(kind="conclusion", text=c)] if c else []
+            return a_spans, c_spans
+
+        # fallback: treat whole thing as assumption-ish
+        return [Span(kind="assumption", text=txt)], []
 
     def _expand_macros(self, text: str) -> str:
         """
@@ -671,8 +720,8 @@ class PaperParser:
                     raw_latex=body,
                     clean_text=clean_text,
                     env_name=env_name,
-                    assumptions=assumptions,
-                    statement=statement,
+                    assumptions_text=assumptions,
+                    statement_text=statement,
                 )
             elif kind == "conjecture":
                 obj = Conjecture(
@@ -684,8 +733,8 @@ class PaperParser:
                     raw_latex=body,
                     clean_text=clean_text,
                     env_name=env_name,
-                    assumptions=assumptions,
-                    statement=statement,
+                    assumptions_text=assumptions,
+                    statement_text=statement,
                 )
             else:
                 obj = TheoremLike(
@@ -697,9 +746,11 @@ class PaperParser:
                     raw_latex=body,
                     clean_text=clean_text,
                     env_name=env_name,
-                    assumptions=assumptions,
-                    statement=statement,
+                    assumptions_text=assumptions,
+                    statement_text=statement,
                 )
+
+            obj.assumptions, obj.conclusions = self._extract_assumptions_conclusions_from_statement(obj.clean_text)
 
             objects.append(obj)
 
@@ -1051,6 +1102,8 @@ class PaperParser:
                 if m:
                     # Not a dataclass field; just an auxiliary attribute.
                     setattr(proof, "_target_theorem_label", m.group(1))
+
+            proof.assumptions, proof.conclusions = self._extract_assumptions_conclusions_from_statement(proof.clean_text)
 
             objects.append(proof)
 

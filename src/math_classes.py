@@ -108,13 +108,13 @@ class TheoremLike(MathObject):
     for finer structure later.
     """
     env_name: str = ""        # actual LaTeX env name e.g. 'theorem', 'lemma'
-    assumptions: str = ""     # heuristic assumptions text ("Let / Suppose / Assume ...")
-    statement: str = ""       # heuristic statement text ("Then ...")
+    assumptions_text: str = ""     # heuristic assumptions text ("Let / Suppose / Assume ...")
+    statement_text: str = ""       # heuristic statement text ("Then ...")
 
-    # Optional finer structure (currently not populated by the heuristic parser,
-    # but available for future LLM / rule-based enrichments).
-    assumption_spans: List[Span] = field(default_factory=list)
-    statement_spans: List[Span] = field(default_factory=list)
+    # Finer structure populated by _extract_assumptions_conclusions_from_statement
+    assumptions: List[Span] = field(default_factory=list)
+    conclusions: List[Span] = field(default_factory=list)
+
 
 
 @dataclass
@@ -179,6 +179,9 @@ class Proof(MathObject):
     parent_id: Optional[str] = None
     strategy_tags: List[str] = field(default_factory=list)    # e.g. ["induction", "by contradiction"]
     steps: List[Span] = field(default_factory=list)
+
+    assumptions: List[Span] = field(default_factory=list)
+    conclusions: List[Span] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------
@@ -268,6 +271,13 @@ REL_GENERALIZES = "generalizes"    # conceptual: A generalizes B (more general �
 REL_RELATED_TO = "related_to"      # conceptual (usually symmetric, weak)
 REL_EQUIVALENT_TO = "equivalent_to"  # conceptual, symmetric equivalence
 
+REL_MENTIONS_CONCEPT = "mentions_concept"   # object mentions a known registry concept
+REL_GROUNDED_TO = "grounded_to"            # stronger form of mentions_concept (disambiguated)
+
+# Optional: if you later want internal “B-level” subnodes, you can add:
+REL_HAS_ASSUMPTION = "has_assumption"
+REL_HAS_CONCLUSION = "has_conclusion"
+
 # Simple mapping from relation_type to a coarse category
 RELATION_CATEGORY_MAP: Dict[str, str] = {
     REL_USES: "logical",
@@ -278,6 +288,18 @@ RELATION_CATEGORY_MAP: Dict[str, str] = {
     REL_RELATED_TO: "conceptual",
     REL_EQUIVALENT_TO: "conceptual",
 }
+
+@dataclass
+class Concept(MathObject):
+    """
+    External/registry concept (typically Wikidata-backed).
+    Stored as a node so papers can link to shared concepts across papers.
+    Note: callers should pass kind="concept" when constructing.
+    """
+    external_ids: Dict[str, str] = field(default_factory=dict)  # e.g. {"wikidata": "Q12345"}
+    aliases: List[str] = field(default_factory=list)
+    description: Optional[str] = None
+    registry_source: Optional[str] = "wikidata"
 
 
 def infer_relation_category(relation_type: str) -> str:

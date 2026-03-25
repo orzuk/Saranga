@@ -858,7 +858,7 @@ def list_arxiv_ids_local(
 
 
 # Compute the directory where we store the full articles
-def arxiv_dates_and_format_to_dir(ids, dates, format, output_dir = DATA_DIR + '/full_papers'):
+def arxiv_dates_and_format_to_dir(ids, dates, format, output_dir = DATA_DIR / 'full_papers'):
 #    print('format_to_dir: ids: ', ids, 'dates: ', dates, 'format: ', format)
     if format in ['source', 'latex']:
         format = 'tex'  # change dir
@@ -1057,7 +1057,7 @@ def fetch_arxiv_batch(
     author=None,
     title=None,
     formats="metadata", #     batch_size: int   = 200,
-    output_dir: str = DATA_DIR + '/full_papers', # default: save in tree,  None, # don't save output
+    output_dir = DATA_DIR / 'full_papers', # default: save in tree,  None, # don't save output
     force_update: bool = False,
     verbose: bool     = False
 ) -> Dict[str, Dict[str, Any]]:
@@ -1146,7 +1146,7 @@ def fetch_arxiv_batch(
     if output_dir: # Not None
         output_dirs = {res: None for res in formats}  # Create empty dict
         for res in formats:
-            if output_dir == DATA_DIR + '/full_papers': # Default place to store all in a tree structure
+            if output_dir == DATA_DIR / 'full_papers': # Default place to store all in a tree structure
                 output_dirs[res] = arxiv_dates_and_format_to_dir([id for id in id_meta],
                                                                  [id_meta[m]['published'][:10] for m in id_meta], res, output_dir)
             else:

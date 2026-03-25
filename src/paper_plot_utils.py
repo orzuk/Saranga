@@ -304,10 +304,15 @@ def paper_to_network(
         edges_by_type.setdefault(rtype, []).append((u, v))
 
     edge_styles = {
-        "uses": dict(color="gray", style="solid", width=1.8, alpha=0.7),
-        "has_part": dict(color="black", style="dotted", width=1.5, alpha=0.7),
-        "follows_from": dict(color="tab:blue", style="solid", width=2.0, alpha=0.8),
+        "uses": dict(color="tab:blue", style="solid", width=2.0, alpha=0.8),
+        "depends_on": dict(color="tab:purple", style="solid", width=2.0, alpha=0.8),
+        "follows_from": dict(color="tab:green", style="dashed", width=2.0, alpha=0.8),
+        "has_part": dict(color="tab:gray", style="dotted", width=1.5, alpha=0.7),
+        "related_to": dict(color="tab:orange", style="dashed", width=2.0, alpha=0.8),
         "generalizes": dict(color="tab:red", style="dashdot", width=2.0, alpha=0.8),
+
+        # NEW
+        "mentions_concept": dict(color="black", style="dotted", width=1.2, alpha=0.6),
     }
 
     for rtype, edge_list in edges_by_type.items():
