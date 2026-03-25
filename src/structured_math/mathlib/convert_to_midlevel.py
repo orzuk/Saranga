@@ -133,36 +133,54 @@ def extract_dependencies_from_tactics(traced_tactics: list) -> list:
 # Herald loading
 # ============================================================================
 
-def load_herald_statements(limit: Optional[int] = None) -> dict:
+def load_herald_statements(limit: Optional[int] = None,
+                           local_path: Optional[str] = None) -> dict:
     """
-    Load Herald NL statements from HuggingFace.
+    Load Herald NL statements from local JSONL or HuggingFace.
     Returns dict mapping cleaned theorem name -> informal_statement.
     """
-    from datasets import load_dataset
-
-    print("  Loading Herald statements from HuggingFace...")
-    ds = load_dataset('FrenzyMath/Herald_statements', split='train',
-                       streaming=True)
-
     name2nl = {}
     count = 0
-    for entry in ds:
-        formal = entry['formal_statement']
-        # Extract theorem name: "theorem NAME_extracted ..." or "def NAME_extracted ..."
-        m = re.search(
-            r'(?:theorem|def|lemma|instance|class|structure|abbrev)\s+(\S+?)(?:_extracted)?\s',
-            formal
-        )
-        if m:
-            name = m.group(1)
-            clean_name = name.replace('_extracted', '')
-            name2nl[clean_name] = entry['informal_statement']
-            if name != clean_name:
-                name2nl[name] = entry['informal_statement']
 
-        count += 1
-        if limit and count >= limit:
-            break
+    if local_path and os.path.exists(local_path):
+        print(f"  Loading Herald statements from {local_path}...")
+        with open(local_path) as f:
+            for line in f:
+                entry = json.loads(line)
+                formal = entry['formal_statement']
+                m = re.search(
+                    r'(?:theorem|def|lemma|instance|class|structure|abbrev)\s+(\S+?)(?:_extracted)?\s',
+                    formal
+                )
+                if m:
+                    name = m.group(1)
+                    clean_name = name.replace('_extracted', '')
+                    name2nl[clean_name] = entry['informal_statement']
+                    if name != clean_name:
+                        name2nl[name] = entry['informal_statement']
+                count += 1
+                if limit and count >= limit:
+                    break
+    else:
+        from datasets import load_dataset
+        print("  Loading Herald statements from HuggingFace...")
+        ds = load_dataset('FrenzyMath/Herald_statements', split='train',
+                           streaming=True)
+        for entry in ds:
+            formal = entry['formal_statement']
+            m = re.search(
+                r'(?:theorem|def|lemma|instance|class|structure|abbrev)\s+(\S+?)(?:_extracted)?\s',
+                formal
+            )
+            if m:
+                name = m.group(1)
+                clean_name = name.replace('_extracted', '')
+                name2nl[clean_name] = entry['informal_statement']
+                if name != clean_name:
+                    name2nl[name] = entry['informal_statement']
+            count += 1
+            if limit and count >= limit:
+                break
 
     print(f"  Loaded {len(name2nl)} Herald NL statements")
     return name2nl
@@ -181,12 +199,13 @@ def build_herald_matcher(herald_nl: dict, all_full_names: list) -> dict:
         suffix = fn.rsplit('.', 1)[-1] if '.' in fn else fn
         suffix_to_full[suffix].append(fn)
 
+    full_name_set = set(all_full_names)
     matched = {}
     ambiguous = 0
     for herald_name, nl_text in herald_nl.items():
         clean = herald_name.replace('_extracted', '')
         # Try exact match first
-        if clean in {fn for fn in all_full_names}:
+        if clean in full_name_set:
             matched[clean] = nl_text
             continue
         # Try suffix match
@@ -203,30 +222,46 @@ def build_herald_matcher(herald_nl: dict, all_full_names: list) -> dict:
     return matched
 
 
-def load_herald_proofs(limit: Optional[int] = None) -> dict:
+def load_herald_proofs(limit: Optional[int] = None,
+                       local_path: Optional[str] = None) -> dict:
     """
-    Load Herald NL proofs from HuggingFace.
+    Load Herald NL proofs from local JSONL or HuggingFace.
     Returns dict mapping theorem name -> {informal_theorem, informal_proof}.
     """
-    from datasets import load_dataset
-
-    print("  Loading Herald proofs from HuggingFace...")
-    ds = load_dataset('FrenzyMath/Herald_proofs', split='train',
-                       streaming=True)
-
     name2proof = {}
     count = 0
-    for entry in ds:
-        name = entry.get('name', '')
-        if name:
-            clean_name = name.replace('_extracted', '')
-            name2proof[clean_name] = {
-                'informal_theorem': entry.get('informal_theorem', ''),
-                'informal_proof': entry.get('informal_proof', ''),
-            }
-        count += 1
-        if limit and count >= limit:
-            break
+
+    if local_path and os.path.exists(local_path):
+        print(f"  Loading Herald proofs from {local_path}...")
+        with open(local_path) as f:
+            for line in f:
+                entry = json.loads(line)
+                name = entry.get('name', '')
+                if name:
+                    clean_name = name.replace('_extracted', '')
+                    name2proof[clean_name] = {
+                        'informal_theorem': entry.get('informal_theorem', ''),
+                        'informal_proof': entry.get('informal_proof', ''),
+                    }
+                count += 1
+                if limit and count >= limit:
+                    break
+    else:
+        from datasets import load_dataset
+        print("  Loading Herald proofs from HuggingFace...")
+        ds = load_dataset('FrenzyMath/Herald_proofs', split='train',
+                           streaming=True)
+        for entry in ds:
+            name = entry.get('name', '')
+            if name:
+                clean_name = name.replace('_extracted', '')
+                name2proof[clean_name] = {
+                    'informal_theorem': entry.get('informal_theorem', ''),
+                    'informal_proof': entry.get('informal_proof', ''),
+                }
+            count += 1
+            if limit and count >= limit:
+                break
 
     print(f"  Loaded {len(name2proof)} Herald NL proofs")
     return name2proof
@@ -265,7 +300,8 @@ def classify_lean_kind(full_name: str, code: str, decl_kind: str) -> str:
 # ============================================================================
 
 def convert_mathlib(leandojo_dir: str, output_dir: str,
-                    use_herald: bool = False, limit: Optional[int] = None):
+                    use_herald: bool = False, herald_dir: Optional[str] = None,
+                    limit: Optional[int] = None):
     """
     Convert LeanDojo + optional Herald data to Automath mid-level JSON.
     """
@@ -291,22 +327,48 @@ def convert_mathlib(leandojo_dir: str, output_dir: str,
     herald_proofs = {}
     if use_herald:
         print("Loading Herald data...")
-        raw_herald_nl = load_herald_statements(limit=limit)
-        raw_herald_proofs = load_herald_proofs(limit=limit)
+        # Determine local file paths
+        stmt_path = os.path.join(herald_dir, 'herald_statements.jsonl') if herald_dir else None
+        proof_path = os.path.join(herald_dir, 'herald_proofs.jsonl') if herald_dir else None
 
-        # Match Herald short names to LeanDojo full names
+        raw_herald_nl = load_herald_statements(limit=limit, local_path=stmt_path)
+        raw_herald_proofs = load_herald_proofs(limit=limit, local_path=proof_path)
+
         all_full_names = list(name2premise.keys())
-        herald_nl = build_herald_matcher(raw_herald_nl, all_full_names)
+
+        # PRIMARY: Use Herald proofs' informal_theorem as NL descriptions.
+        # Proof names are qualified and match LeanDojo at ~90%.
+        print("  Matching Herald proofs to LeanDojo (primary NL source)...")
         herald_proofs_matched = build_herald_matcher(
             {k: json.dumps(v) for k, v in raw_herald_proofs.items()}, all_full_names
         )
-        # Convert back from JSON strings
         herald_proofs = {}
         for fn, v_str in herald_proofs_matched.items():
             try:
                 herald_proofs[fn] = json.loads(v_str)
             except:
                 pass
+
+        # Extract NL descriptions from matched proofs' informal_theorem
+        herald_nl_from_proofs = {}
+        for fn, pdata in herald_proofs.items():
+            nl = pdata.get('informal_theorem', '')
+            if nl:
+                herald_nl_from_proofs[fn] = nl
+
+        # SECONDARY: Use Herald statements for remaining unmatched theorems.
+        # Statement names are short/unqualified, matched via suffix.
+        print("  Matching Herald statements to LeanDojo (secondary NL source)...")
+        herald_nl_from_stmts = build_herald_matcher(raw_herald_nl, all_full_names)
+
+        # Merge: proofs take priority, statements fill gaps
+        herald_nl = {}
+        herald_nl.update(herald_nl_from_stmts)
+        herald_nl.update(herald_nl_from_proofs)  # overwrites with better-matched data
+
+        print(f"  Herald NL descriptions: {len(herald_nl_from_proofs)} from proofs, "
+              f"{len(herald_nl_from_stmts)} from statements, "
+              f"{len(herald_nl)} total unique (merged)")
         print(f"  Herald proofs matched: {len(herald_proofs)}")
 
     # Build objects
@@ -437,6 +499,8 @@ def convert_mathlib(leandojo_dir: str, output_dir: str,
             unique_relations.append(r)
 
     # Stats
+    herald_nl_from_proofs_count = len(herald_nl_from_proofs) if use_herald else 0
+    herald_nl_from_stmts_count = len(herald_nl_from_stmts) if use_herald else 0
     stats = {
         'source': 'mathlib4',
         'total_objects': len(objects),
@@ -445,6 +509,8 @@ def convert_mathlib(leandojo_dir: str, output_dir: str,
         'proofs': counters['proof'],
         'relations': len(unique_relations),
         'herald_nl_matched': len(herald_nl),
+        'herald_nl_from_proofs': herald_nl_from_proofs_count,
+        'herald_nl_from_stmts': herald_nl_from_stmts_count,
         'herald_proofs_matched': len(herald_proofs),
     }
 
@@ -488,14 +554,18 @@ def main():
     parser.add_argument('--output-dir', required=True,
                         help='Output directory')
     parser.add_argument('--herald', action='store_true',
-                        help='Also load Herald NL descriptions from HuggingFace')
+                        help='Also load Herald NL descriptions')
+    parser.add_argument('--herald-dir', type=str, default=None,
+                        help='Directory with local herald_statements.jsonl and herald_proofs.jsonl '
+                             '(falls back to HuggingFace if not provided)')
     parser.add_argument('--limit', type=int, default=None,
                         help='Limit entries (for testing)')
 
     args = parser.parse_args()
     convert_mathlib(
         args.leandojo_dir, args.output_dir,
-        use_herald=args.herald, limit=args.limit
+        use_herald=args.herald, herald_dir=args.herald_dir,
+        limit=args.limit
     )
 
 

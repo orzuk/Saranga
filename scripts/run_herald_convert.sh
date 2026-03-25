@@ -14,4 +14,5 @@ cd /sci/labs/orzuk/orzuk/github/Authomathics
 python src/structured_math/mathlib/convert_to_midlevel.py \
   --leandojo-dir $DATA_DIR/mathlib/raw/leandojo_benchmark_4 \
   --output-dir $DATA_DIR/mathlib/midlevel_with_herald \
-  --herald
+  --herald \
+  --herald-dir $DATA_DIR/mathlib/raw
