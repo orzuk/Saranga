@@ -18,6 +18,7 @@ from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
+matplotlib.rcParams['mathtext.fontset'] = 'cm'  # Computer Modern for math
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.patches import FancyBboxPatch
@@ -148,7 +149,7 @@ def merge_proofs(nodes, edges):
 
 
 # ── Drawing ─────────────────────────────────────────────────────────────────
-def draw_dag(nodes_raw, edges_raw, out_path, figsize=None):
+def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None):
     """Main entry: draw a layered DAG from student-format nodes/edges."""
 
     nodes, edges, proof_map = merge_proofs(nodes_raw, edges_raw)
@@ -228,6 +229,14 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None):
                 if n_proof > 0:
                     h += n_proof * LINE_H + PADDING  # proof section
                 h += PADDING
+            elif ntype == "algorithm" and (n.get("input") or n.get("output")):
+                # Algorithm with input/output compartments
+                in_lines = [_shorten(x, 50) for x in (n.get("input") or ["(none)"])]
+                out_lines = [_shorten(x, 50) for x in (n.get("output") or ["(none)"])]
+                h = HEADER_H + PADDING
+                h += len(in_lines) * LINE_H + PADDING
+                h += len(out_lines) * LINE_H + PADDING
+                h += PADDING
             else:
                 # Simple box: header + statement (max 2 lines)
                 stmt = _shorten(n.get("statement", ""), 70)
@@ -264,11 +273,11 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None):
         ax.annotate(
             "", xy=(x1, y1), xytext=(x0, y0),
             arrowprops=dict(
-                arrowstyle="-|>",
+                arrowstyle="-|>,head_length=0.6,head_width=0.3",
                 color="#7F8C8D",
-                lw=1.2,
+                lw=1.8,
                 connectionstyle="arc3,rad=0.08" if abs(x0 - x1) > 0.5 else "arc3,rad=0",
-                shrinkA=2, shrinkB=2,
+                shrinkA=3, shrinkB=3,
             ),
         )
 
@@ -305,7 +314,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None):
         )
         ax.add_patch(header_rect)
         ax.text(bx + bw / 2, cursor_y - HEADER_H / 2, header_text,
-                ha="center", va="center", fontsize=8, fontweight="bold",
+                ha="center", va="center", fontsize=8.5, fontweight="bold",
                 color="white")
         cursor_y -= HEADER_H + PADDING
 
@@ -327,11 +336,11 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None):
 
             # Assumptions
             ax.text(bx + PADDING, cursor_y, "Assume:",
-                    ha="left", va="top", fontsize=7, fontweight="bold", color="#555")
+                    ha="left", va="top", fontsize=7.5, fontweight="bold", color="#555")
             cursor_y -= LINE_H * 0.7
             for line in a_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=6.5, color="#333",
+                        ha="left", va="top", fontsize=7, color="#333",
                         fontstyle="italic")
                 cursor_y -= LINE_H
 
@@ -343,11 +352,11 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None):
 
             # Conclusions
             ax.text(bx + PADDING, cursor_y, "Conclude:",
-                    ha="left", va="top", fontsize=7, fontweight="bold", color="#555")
+                    ha="left", va="top", fontsize=7.5, fontweight="bold", color="#555")
             cursor_y -= LINE_H * 0.7
             for line in c_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=6.5, color="#333")
+                        ha="left", va="top", fontsize=7, color="#333")
                 cursor_y -= LINE_H
 
             # Proof strategy (if merged)
@@ -359,9 +368,32 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None):
                 for ps in proof_strategies:
                     if ps:
                         ax.text(bx + PADDING, cursor_y, _shorten(f"Proof: {ps}", 50),
-                                ha="left", va="top", fontsize=6.5,
+                                ha="left", va="top", fontsize=7,
                                 color="#777", fontstyle="italic")
                         cursor_y -= LINE_H
+
+        elif ntype == "algorithm" and (n.get("input") or n.get("output")):
+            # Algorithm with input/output
+            in_lines = [_shorten(x, 50) for x in (n.get("input") or ["(none)"])]
+            out_lines = [_shorten(x, 50) for x in (n.get("output") or ["(none)"])]
+
+            ax.text(bx + PADDING, cursor_y, "Input:",
+                    ha="left", va="top", fontsize=7.5, fontweight="bold", color="#555")
+            cursor_y -= LINE_H * 0.7
+            for line in in_lines:
+                ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
+                        ha="left", va="top", fontsize=7, color="#333")
+                cursor_y -= LINE_H
+            cursor_y -= PADDING * 0.3
+            ax.plot([bx + 0.15, bx + bw - 0.15], [cursor_y + PADDING * 0.2] * 2,
+                    color=colors["header"], lw=0.5, alpha=0.4)
+            ax.text(bx + PADDING, cursor_y, "Output:",
+                    ha="left", va="top", fontsize=7.5, fontweight="bold", color="#555")
+            cursor_y -= LINE_H * 0.7
+            for line in out_lines:
+                ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
+                        ha="left", va="top", fontsize=7, color="#333")
+                cursor_y -= LINE_H
 
         else:
             # Simple box: just statement text (max 2 lines)
@@ -371,28 +403,33 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None):
                 stmt_lines = [""]
             for line in stmt_lines:
                 ax.text(bx + PADDING, cursor_y, line,
-                        ha="left", va="top", fontsize=6.5, color="#333")
+                        ha="left", va="top", fontsize=7, color="#333")
                 cursor_y -= LINE_H
 
     # ── Legend ──
     legend_handles = []
-    for ntype, colors in NODE_COLORS.items():
+    for ntype, cols in NODE_COLORS.items():
         if any(node_data[nid].get("type") == ntype for nid in node_data):
             legend_handles.append(
-                mpatches.Patch(facecolor=colors["body"], edgecolor=colors["header"],
+                mpatches.Patch(facecolor=cols["body"], edgecolor=cols["header"],
                                linewidth=1.5, label=ntype.title())
             )
     legend_handles.append(
-        plt.Line2D([0], [0], color="#7F8C8D", lw=1.5, marker=">",
-                   markersize=6, label="depends on (A→B)")
+        plt.Line2D([0], [0], color="#7F8C8D", lw=2, marker=">",
+                   markersize=8, label="A supports B")
     )
-    ax.legend(handles=legend_handles, loc="upper right", fontsize=8,
-              framealpha=0.9, title="Node types")
+    ax.legend(handles=legend_handles, loc="upper right", fontsize=10,
+              frameon=False, title="Node types", title_fontsize=11)
 
-    # ── Title ──
-    meta = {}  # will be set from caller
-    title = "Knowledge Graph (DAG)"
-    ax.set_title(title, fontsize=13, fontweight="bold", pad=15)
+    # ── Title (from metadata if available) ──
+    if metadata and metadata.get("chapter_title"):
+        ch = metadata.get("chapter", "")
+        title = f"Chapter {ch}: {metadata['chapter_title']} — Knowledge Graph"
+    elif metadata and metadata.get("title"):
+        title = f"{metadata['title']} — Knowledge Graph"
+    else:
+        title = "Knowledge Graph (DAG)"
+    ax.set_title(title, fontsize=14, fontweight="bold", pad=15)
 
     ax.autoscale()
     ax.margins(0.05)
@@ -422,7 +459,8 @@ def main():
         print("Error: No 'nodes' found in JSON.")
         sys.exit(1)
 
-    n_nodes, n_edges = draw_dag(nodes, edges, output_path)
+    metadata = data.get("metadata", {})
+    n_nodes, n_edges = draw_dag(nodes, edges, output_path, metadata=metadata)
     print(f"DAG saved to {output_path}  ({n_nodes} display nodes, {n_edges} edges)")
 
 
