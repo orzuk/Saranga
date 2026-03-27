@@ -34,6 +34,9 @@ NODE_COLORS = {
     "algorithm":   {"header": "#D4AC0D", "body": "#FFF9C4"},
     "equation":    {"header": "#5DADE2", "body": "#D4E6F1"},
     "proposition": {"header": "#C0392B", "body": "#FADBD8"},
+    "proof":       {"header": "#566573", "body": "#D5D8DC"},
+    "proof_step":  {"header": "#839192", "body": "#E8E8E8"},
+    "claim":       {"header": "#BA4A00", "body": "#F6DDCC"},
 }
 DEFAULT_COLOR = {"header": "#566573", "body": "#EAECEE"}
 PROOF_COLOR = "#D5D8DC"
@@ -71,24 +74,28 @@ def _wrap(text, width=38):
 
 
 def _shorten(text, maxlen=80):
-    """Shorten text, but never cut inside a $...$ math expression."""
+    """Shorten text, never cutting inside a $...$ math expression.
+
+    If cutting would land inside an equation, drop the equation entirely
+    rather than showing a partial formula.
+    """
     if not text:
         return ""
     text = _sanitize_math(text)
     if len(text) <= maxlen:
         return text
-    # Find a safe cut point: not inside $...$
     cut = maxlen - 3
     # Count $ signs before cut point; if odd, we're inside math
     n_dollars = text[:cut].count("$")
     if n_dollars % 2 == 1:
-        # Inside math — extend to closing $
-        next_dollar = text.find("$", cut)
-        if next_dollar != -1 and next_dollar < len(text):
-            cut = next_dollar + 1
-            if cut >= len(text):
-                return text
-    return text[:cut] + "..."
+        # Inside math — find the opening $ of this equation and cut before it
+        # Walk backwards from cut to find the last unmatched $
+        last_dollar = text.rfind("$", 0, cut)
+        if last_dollar > 0:
+            cut = last_dollar  # cut before the equation starts
+        else:
+            cut = maxlen - 3  # fallback
+    return text[:cut].rstrip() + "..."
 
 
 # ── DAG computation ─────────────────────────────────────────────────────────
@@ -186,10 +193,21 @@ def merge_proofs(nodes, edges):
 
 
 # ── Drawing ─────────────────────────────────────────────────────────────────
-def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None):
-    """Main entry: draw a layered DAG from student-format nodes/edges."""
+def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
+             resolution="standard"):
+    """Main entry: draw a layered DAG from student-format nodes/edges.
 
-    nodes, edges, proof_map = merge_proofs(nodes_raw, edges_raw)
+    resolution:
+      "standard" — collapse proofs into theorem boxes, hide equations/proof_steps
+      "full"     — show all nodes including proofs, equations, proof_steps as separate nodes
+    """
+    if resolution == "full":
+        # Full resolution: no merging, show everything
+        nodes = list(nodes_raw)
+        edges = list(edges_raw)
+        proof_map = {}
+    else:
+        nodes, edges, proof_map = merge_proofs(nodes_raw, edges_raw)
     depth = compute_dag_depth(nodes, edges)
 
     # Group by depth level
@@ -503,12 +521,17 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None):
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
 def main():
-    if len(sys.argv) < 2:
-        print(__doc__)
-        sys.exit(1)
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("input", help="Input JSON annotation file")
+    parser.add_argument("output", nargs="?", default=None, help="Output PNG (default: input with .png)")
+    parser.add_argument("--resolution", choices=["standard", "full"], default="standard",
+                        help="standard: collapse proofs, hide equations. full: show all nodes.")
+    args = parser.parse_args()
 
-    input_path = Path(sys.argv[1])
-    output_path = Path(sys.argv[2]) if len(sys.argv) > 2 else input_path.with_suffix(".png")
+    input_path = Path(args.input)
+    output_path = Path(args.output) if args.output else input_path.with_suffix(".png")
 
     with open(input_path, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -521,8 +544,9 @@ def main():
         sys.exit(1)
 
     metadata = data.get("metadata", {})
-    n_nodes, n_edges = draw_dag(nodes, edges, output_path, metadata=metadata)
-    print(f"DAG saved to {output_path}  ({n_nodes} display nodes, {n_edges} edges)")
+    n_nodes, n_edges = draw_dag(nodes, edges, output_path, metadata=metadata,
+                                resolution=args.resolution)
+    print(f"DAG saved to {output_path}  ({n_nodes} display nodes, {n_edges} edges, resolution={args.resolution})")
 
 
 if __name__ == "__main__":
