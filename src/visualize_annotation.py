@@ -167,12 +167,14 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None):
     max_width = max(len(v) for v in levels.values()) if levels else 1
 
     # ── Box dimensions ──
-    BOX_W = 4.0
-    BOX_GAP_X = 1.0
-    LEVEL_GAP_Y = 3.5
-    HEADER_H = 0.55
-    LINE_H = 0.32
-    PADDING = 0.15
+    BOX_W = 3.2
+    BOX_GAP_X = 0.8
+    LEVEL_GAP_Y = 4.5
+    HEADER_H = 0.45
+    LINE_H = 0.28
+    PADDING = 0.10
+    WRAP_WIDTH = 28
+    MAX_LINES_PER_SECTION = 3  # truncate long assumption/conclusion lists
 
     # Compute box heights and positions
     node_pos = {}     # id -> (cx, cy) center of box
@@ -203,14 +205,18 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None):
 
                 assume_lines = []
                 for a in assumptions:
-                    assume_lines.extend(_wrap(a, 36))
+                    assume_lines.append(_shorten(a, 50))
+                if len(assume_lines) > MAX_LINES_PER_SECTION:
+                    assume_lines = assume_lines[:MAX_LINES_PER_SECTION] + [f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more"]
                 conclude_lines = []
                 for c in conclusions:
-                    conclude_lines.extend(_wrap(c, 36))
+                    conclude_lines.append(_shorten(c, 50))
+                if len(conclude_lines) > MAX_LINES_PER_SECTION:
+                    conclude_lines = conclude_lines[:MAX_LINES_PER_SECTION] + [f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more"]
                 proof_lines = []
                 for ps in proof_strategies:
                     if ps:
-                        proof_lines.extend(_wrap(f"Proof: {ps}", 36))
+                        proof_lines.append(_shorten(f"Proof: {ps}", 50))
 
                 n_assume = max(len(assume_lines), 1)
                 n_conclude = max(len(conclude_lines), 1)
@@ -223,19 +229,19 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None):
                     h += n_proof * LINE_H + PADDING  # proof section
                 h += PADDING
             else:
-                # Simple box: header + statement
-                stmt = _shorten(n.get("statement", ""), 120)
-                stmt_lines = _wrap(stmt, 36)
+                # Simple box: header + statement (max 2 lines)
+                stmt = _shorten(n.get("statement", ""), 70)
+                stmt_lines = _wrap(stmt, WRAP_WIDTH)[:2]
                 n_stmt = max(len(stmt_lines), 1)
                 h = HEADER_H + n_stmt * LINE_H + 2 * PADDING
 
             node_pos[nid] = (cx, cy_top - h / 2)
             node_rect[nid] = (cx - BOX_W / 2, cy_top - h, BOX_W, h)
 
-    # ── Figure ──
+    # ── Figure ── (auto-size based on content)
     if figsize is None:
-        fw = max(max_width * (BOX_W + BOX_GAP_X) + 2, 14)
-        fh = max((max_depth + 1) * LEVEL_GAP_Y + 3, 10)
+        fw = max(max_width * (BOX_W + BOX_GAP_X) + 4, 16)
+        fh = max((max_depth + 1) * LEVEL_GAP_Y + 4, 12)
         figsize = (fw, fh)
 
     fig, ax = plt.subplots(1, 1, figsize=figsize)
@@ -299,74 +305,73 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None):
         )
         ax.add_patch(header_rect)
         ax.text(bx + bw / 2, cursor_y - HEADER_H / 2, header_text,
-                ha="center", va="center", fontsize=7, fontweight="bold",
+                ha="center", va="center", fontsize=8, fontweight="bold",
                 color="white")
         cursor_y -= HEADER_H + PADDING
 
         if ntype in ("theorem", "lemma", "corollary", "proposition"):
-            # Assumptions
+            # Rebuild truncated lines (matching height computation)
             assumptions = n.get("assumptions", [])
-            assume_lines = []
-            for a in assumptions:
-                assume_lines.extend(_wrap(a, 36))
-            if not assume_lines:
-                assume_lines = ["(none)"]
+            a_lines = [_shorten(a, 50) for a in assumptions]
+            if len(a_lines) > MAX_LINES_PER_SECTION:
+                a_lines = a_lines[:MAX_LINES_PER_SECTION] + [f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more"]
+            if not a_lines:
+                a_lines = ["(none)"]
 
+            conclusions = n.get("conclusions", [])
+            c_lines = [_shorten(c, 50) for c in conclusions]
+            if len(c_lines) > MAX_LINES_PER_SECTION:
+                c_lines = c_lines[:MAX_LINES_PER_SECTION] + [f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more"]
+            if not c_lines:
+                c_lines = ["(none)"]
+
+            # Assumptions
             ax.text(bx + PADDING, cursor_y, "Assume:",
-                    ha="left", va="top", fontsize=6, fontweight="bold", color="#555")
-            cursor_y -= LINE_H * 0.6
-            for line in assume_lines:
-                ax.text(bx + PADDING + 0.15, cursor_y, f"  {line}",
-                        ha="left", va="top", fontsize=5.5, color="#333",
+                    ha="left", va="top", fontsize=7, fontweight="bold", color="#555")
+            cursor_y -= LINE_H * 0.7
+            for line in a_lines:
+                ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
+                        ha="left", va="top", fontsize=6.5, color="#333",
                         fontstyle="italic")
                 cursor_y -= LINE_H
 
-            cursor_y -= PADDING * 0.5
+            cursor_y -= PADDING * 0.3
 
             # Divider line
-            ax.plot([bx + 0.2, bx + bw - 0.2], [cursor_y + PADDING * 0.3] * 2,
+            ax.plot([bx + 0.15, bx + bw - 0.15], [cursor_y + PADDING * 0.2] * 2,
                     color=colors["header"], lw=0.5, alpha=0.4)
 
             # Conclusions
-            conclusions = n.get("conclusions", [])
-            conclude_lines = []
-            for c in conclusions:
-                conclude_lines.extend(_wrap(c, 36))
-            if not conclude_lines:
-                conclude_lines = ["(none)"]
-
             ax.text(bx + PADDING, cursor_y, "Conclude:",
-                    ha="left", va="top", fontsize=6, fontweight="bold", color="#555")
-            cursor_y -= LINE_H * 0.6
-            for line in conclude_lines:
-                ax.text(bx + PADDING + 0.15, cursor_y, f"  {line}",
-                        ha="left", va="top", fontsize=5.5, color="#333")
+                    ha="left", va="top", fontsize=7, fontweight="bold", color="#555")
+            cursor_y -= LINE_H * 0.7
+            for line in c_lines:
+                ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
+                        ha="left", va="top", fontsize=6.5, color="#333")
                 cursor_y -= LINE_H
 
             # Proof strategy (if merged)
             proof_strategies = n.get("proof_info", [])
             if proof_strategies:
-                cursor_y -= PADDING * 0.3
-                ax.plot([bx + 0.2, bx + bw - 0.2], [cursor_y + PADDING * 0.2] * 2,
+                cursor_y -= PADDING * 0.2
+                ax.plot([bx + 0.15, bx + bw - 0.15], [cursor_y + PADDING * 0.1] * 2,
                         color="#999", lw=0.5, alpha=0.4)
                 for ps in proof_strategies:
                     if ps:
-                        plines = _wrap(f"Proof: {ps}", 36)
-                        for line in plines:
-                            ax.text(bx + PADDING, cursor_y, line,
-                                    ha="left", va="top", fontsize=5.5,
-                                    color="#777", fontstyle="italic")
-                            cursor_y -= LINE_H
+                        ax.text(bx + PADDING, cursor_y, _shorten(f"Proof: {ps}", 50),
+                                ha="left", va="top", fontsize=6.5,
+                                color="#777", fontstyle="italic")
+                        cursor_y -= LINE_H
 
         else:
-            # Simple box: just statement text
-            stmt = _shorten(n.get("statement", ""), 120)
-            stmt_lines = _wrap(stmt, 36)
+            # Simple box: just statement text (max 2 lines)
+            stmt = _shorten(n.get("statement", ""), 70)
+            stmt_lines = _wrap(stmt, WRAP_WIDTH)[:2]
             if not stmt_lines:
                 stmt_lines = [""]
             for line in stmt_lines:
                 ax.text(bx + PADDING, cursor_y, line,
-                        ha="left", va="top", fontsize=5.5, color="#333")
+                        ha="left", va="top", fontsize=6.5, color="#333")
                 cursor_y -= LINE_H
 
     # ── Legend ──
