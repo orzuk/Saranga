@@ -47,11 +47,23 @@ def _wrap(text, width=38):
 
 
 def _shorten(text, maxlen=80):
+    """Shorten text, but never cut inside a $...$ math expression."""
     if not text:
         return ""
     if len(text) <= maxlen:
         return text
-    return text[:maxlen - 3] + "..."
+    # Find a safe cut point: not inside $...$
+    cut = maxlen - 3
+    # Count $ signs before cut point; if odd, we're inside math
+    n_dollars = text[:cut].count("$")
+    if n_dollars % 2 == 1:
+        # Inside math — extend to closing $
+        next_dollar = text.find("$", cut)
+        if next_dollar != -1 and next_dollar < len(text):
+            cut = next_dollar + 1
+            if cut >= len(text):
+                return text
+    return text[:cut] + "..."
 
 
 # ── DAG computation ─────────────────────────────────────────────────────────
@@ -168,8 +180,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None):
     max_width = max(len(v) for v in levels.values()) if levels else 1
 
     # ── Box dimensions ──
-    BOX_W = 3.2
-    BOX_GAP_X = 0.8
+    BOX_W = 3.5
+    BOX_GAP_X = 0.7
     LEVEL_GAP_Y = 4.5
     HEADER_H = 0.45
     LINE_H = 0.28
@@ -273,9 +285,9 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None):
         ax.annotate(
             "", xy=(x1, y1), xytext=(x0, y0),
             arrowprops=dict(
-                arrowstyle="-|>,head_length=0.6,head_width=0.3",
-                color="#7F8C8D",
-                lw=1.8,
+                arrowstyle="-|>,head_length=0.8,head_width=0.4",
+                color="#666666",
+                lw=2.0,
                 connectionstyle="arc3,rad=0.08" if abs(x0 - x1) > 0.5 else "arc3,rad=0",
                 shrinkA=3, shrinkB=3,
             ),
@@ -336,11 +348,11 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None):
 
             # Assumptions
             ax.text(bx + PADDING, cursor_y, "Assume:",
-                    ha="left", va="top", fontsize=7.5, fontweight="bold", color="#555")
+                    ha="left", va="top", fontsize=8, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
             for line in a_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=7, color="#333",
+                        ha="left", va="top", fontsize=7.5, color="#222",
                         fontstyle="italic")
                 cursor_y -= LINE_H
 
@@ -352,11 +364,11 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None):
 
             # Conclusions
             ax.text(bx + PADDING, cursor_y, "Conclude:",
-                    ha="left", va="top", fontsize=7.5, fontweight="bold", color="#555")
+                    ha="left", va="top", fontsize=8, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
             for line in c_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=7, color="#333")
+                        ha="left", va="top", fontsize=7.5, color="#222")
                 cursor_y -= LINE_H
 
             # Proof strategy (if merged)
@@ -368,8 +380,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None):
                 for ps in proof_strategies:
                     if ps:
                         ax.text(bx + PADDING, cursor_y, _shorten(f"Proof: {ps}", 50),
-                                ha="left", va="top", fontsize=7,
-                                color="#777", fontstyle="italic")
+                                ha="left", va="top", fontsize=7.5,
+                                color="#444", fontstyle="italic")
                         cursor_y -= LINE_H
 
         elif ntype == "algorithm" and (n.get("input") or n.get("output")):
@@ -378,21 +390,21 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None):
             out_lines = [_shorten(x, 50) for x in (n.get("output") or ["(none)"])]
 
             ax.text(bx + PADDING, cursor_y, "Input:",
-                    ha="left", va="top", fontsize=7.5, fontweight="bold", color="#555")
+                    ha="left", va="top", fontsize=8, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
             for line in in_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=7, color="#333")
+                        ha="left", va="top", fontsize=7.5, color="#222")
                 cursor_y -= LINE_H
             cursor_y -= PADDING * 0.3
             ax.plot([bx + 0.15, bx + bw - 0.15], [cursor_y + PADDING * 0.2] * 2,
                     color=colors["header"], lw=0.5, alpha=0.4)
             ax.text(bx + PADDING, cursor_y, "Output:",
-                    ha="left", va="top", fontsize=7.5, fontweight="bold", color="#555")
+                    ha="left", va="top", fontsize=8, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
             for line in out_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=7, color="#333")
+                        ha="left", va="top", fontsize=7.5, color="#222")
                 cursor_y -= LINE_H
 
         else:
@@ -403,7 +415,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None):
                 stmt_lines = [""]
             for line in stmt_lines:
                 ax.text(bx + PADDING, cursor_y, line,
-                        ha="left", va="top", fontsize=7, color="#333")
+                        ha="left", va="top", fontsize=7.5, color="#222")
                 cursor_y -= LINE_H
 
     # ── Legend ──
@@ -415,11 +427,11 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None):
                                linewidth=1.5, label=ntype.title())
             )
     legend_handles.append(
-        plt.Line2D([0], [0], color="#7F8C8D", lw=2, marker=">",
-                   markersize=8, label="A supports B")
+        plt.Line2D([0], [0], color="#666666", lw=2.5, marker=">",
+                   markersize=10, label="A supports B")
     )
-    ax.legend(handles=legend_handles, loc="upper right", fontsize=10,
-              frameon=False, title="Node types", title_fontsize=11)
+    ax.legend(handles=legend_handles, loc="upper right", fontsize=11,
+              frameon=False, title="Node types", title_fontsize=12)
 
     # ── Title (from metadata if available) ──
     if metadata and metadata.get("chapter_title"):
