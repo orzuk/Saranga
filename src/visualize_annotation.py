@@ -55,6 +55,12 @@ _LATEX_FIXES = {
     r"\text": r"\mathrm",
     r"\operatorname": r"\mathrm",
     r"\binom": r"\mathrm{C}",
+    r"\pmod": r"\mathrm{mod}",
+    r"\mod": r"\mathrm{mod}",
+    r"\lceil": r"\lfloor", r"\rceil": r"\rfloor",
+    r"\lVert": r"\|", r"\rVert": r"\|",
+    r"\triangleq": r"=",
+    r"\coloneqq": r":=",
     r"\lfloor": r"\lfloor", r"\rfloor": r"\rfloor",  # these are fine
 }
 
