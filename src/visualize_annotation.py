@@ -205,88 +205,108 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None):
     max_width = max(len(v) for v in levels.values()) if levels else 1
 
     # ── Box dimensions ──
-    BOX_W = 3.5
-    BOX_GAP_X = 0.7
-    LEVEL_GAP_Y = 4.5
+    MIN_BOX_W = 3.0
+    MAX_BOX_W = 6.0
+    BOX_GAP_X = 0.5
+    LEVEL_GAP_Y = 5.0
     HEADER_H = 0.45
     LINE_H = 0.28
     PADDING = 0.10
-    WRAP_WIDTH = 28
-    MAX_LINES_PER_SECTION = 3  # truncate long assumption/conclusion lists
+    CHARS_PER_UNIT = 12  # approx chars per unit of box width
+    MAX_LINES_PER_SECTION = 3
 
-    # Compute box heights and positions
-    node_pos = {}     # id -> (cx, cy) center of box
-    node_rect = {}    # id -> (x, y, w, h) bounding rect
-    node_data = {}    # id -> node dict
+    def _content_lines(n):
+        """Get all content text lines for a node (for width estimation)."""
+        ntype = n.get("type", "")
+        lines = []
+        name = n.get("name") or ""
+        lines.append(f"{n['id']}: {name}" if name else n['id'])
+        if ntype in ("theorem", "lemma", "corollary", "proposition"):
+            for a in (n.get("assumptions") or [])[:MAX_LINES_PER_SECTION]:
+                lines.append(_shorten(a, 100))
+            for c in (n.get("conclusions") or [])[:MAX_LINES_PER_SECTION]:
+                lines.append(_shorten(c, 100))
+            for ps in (n.get("proof_info") or []):
+                if ps: lines.append(_shorten(f"Proof: {ps}", 100))
+        elif ntype == "algorithm" and (n.get("input") or n.get("output")):
+            for x in (n.get("input") or []): lines.append(_shorten(x, 100))
+            for x in (n.get("output") or []): lines.append(_shorten(x, 100))
+        else:
+            lines.append(_shorten(n.get("statement", ""), 150))
+        return lines
+
+    # ── First pass: compute each node's ideal width ──
+    node_width = {}
+    node_data = {}
+    for n in nodes:
+        nid = n["id"]
+        node_data[nid] = n
+        content = _content_lines(n)
+        max_line = max(len(line) for line in content) if content else 10
+        w = max(MIN_BOX_W, min(MAX_BOX_W, max_line / CHARS_PER_UNIT))
+        node_width[nid] = w
+
+    # ── Second pass: compute heights and positions ──
+    node_pos = {}
+    node_rect = {}
 
     for d in range(max_depth + 1):
         row = levels.get(d, [])
-        n_in_row = len(row)
-        row_width = n_in_row * BOX_W + (n_in_row - 1) * BOX_GAP_X
-        start_x = -row_width / 2
+        # Compute row width using actual node widths
+        row_width = sum(node_width[n["id"]] for n in row) + max(0, len(row) - 1) * BOX_GAP_X
+        x_cursor = -row_width / 2
 
-        for i, n in enumerate(row):
+        for n in row:
             nid = n["id"]
-            node_data[nid] = n
-            cx = start_x + i * (BOX_W + BOX_GAP_X) + BOX_W / 2
+            w = node_width[nid]
+            wrap_w = max(20, int(w * CHARS_PER_UNIT))
             cy_top = -d * LEVEL_GAP_Y
-
-            # Compute height
             ntype = n.get("type", "")
-            colors = NODE_COLORS.get(ntype, DEFAULT_COLOR)
 
             if ntype in ("theorem", "lemma", "corollary", "proposition"):
-                # Compound box: header + assumptions + conclusions + optional proof
                 assumptions = n.get("assumptions", [])
                 conclusions = n.get("conclusions", [])
                 proof_strategies = n.get("proof_info", [])
 
-                assume_lines = []
-                for a in assumptions:
-                    assume_lines.append(_shorten(a, 70))
+                assume_lines = [_shorten(a, 100) for a in assumptions]
                 if len(assume_lines) > MAX_LINES_PER_SECTION:
                     assume_lines = assume_lines[:MAX_LINES_PER_SECTION] + [f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more"]
-                conclude_lines = []
-                for c in conclusions:
-                    conclude_lines.append(_shorten(c, 70))
+                conclude_lines = [_shorten(c, 100) for c in conclusions]
                 if len(conclude_lines) > MAX_LINES_PER_SECTION:
                     conclude_lines = conclude_lines[:MAX_LINES_PER_SECTION] + [f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more"]
-                proof_lines = []
-                for ps in proof_strategies:
-                    if ps:
-                        proof_lines.append(_shorten(f"Proof: {ps}", 70))
+                proof_lines = [_shorten(f"Proof: {ps}", 100) for ps in proof_strategies if ps]
 
                 n_assume = max(len(assume_lines), 1)
                 n_conclude = max(len(conclude_lines), 1)
                 n_proof = len(proof_lines)
 
                 h = HEADER_H + PADDING
-                h += n_assume * LINE_H + PADDING  # assume section
-                h += n_conclude * LINE_H + PADDING  # conclude section
+                h += n_assume * LINE_H + PADDING
+                h += n_conclude * LINE_H + PADDING
                 if n_proof > 0:
-                    h += n_proof * LINE_H + PADDING  # proof section
+                    h += n_proof * LINE_H + PADDING
                 h += PADDING
             elif ntype == "algorithm" and (n.get("input") or n.get("output")):
-                # Algorithm with input/output compartments
-                in_lines = [_shorten(x, 70) for x in (n.get("input") or ["(none)"])]
-                out_lines = [_shorten(x, 70) for x in (n.get("output") or ["(none)"])]
+                in_lines = [_shorten(x, 100) for x in (n.get("input") or ["(none)"])]
+                out_lines = [_shorten(x, 100) for x in (n.get("output") or ["(none)"])]
                 h = HEADER_H + PADDING
                 h += len(in_lines) * LINE_H + PADDING
                 h += len(out_lines) * LINE_H + PADDING
                 h += PADDING
             else:
-                # Simple box: header + statement (max 3 lines)
-                stmt = _shorten(n.get("statement", ""), 120)
-                stmt_lines = _wrap(stmt, WRAP_WIDTH)[:3]
+                stmt = _shorten(n.get("statement", ""), 150)
+                stmt_lines = _wrap(stmt, wrap_w)[:3]
                 n_stmt = max(len(stmt_lines), 1)
                 h = HEADER_H + n_stmt * LINE_H + 2 * PADDING
 
-            node_pos[nid] = (cx, cy_top - h / 2)
-            node_rect[nid] = (cx - BOX_W / 2, cy_top - h, BOX_W, h)
+            node_pos[nid] = (x_cursor + w / 2, cy_top - h / 2)
+            node_rect[nid] = (x_cursor, cy_top - h, w, h)
+            x_cursor += w + BOX_GAP_X
 
     # ── Figure ── (auto-size based on content)
     if figsize is None:
-        fw = max(max_width * (BOX_W + BOX_GAP_X) + 4, 16)
+        avg_w = sum(node_width.values()) / max(len(node_width), 1)
+        fw = max(max_width * (avg_w + BOX_GAP_X) + 4, 16)
         fh = max((max_depth + 1) * LEVEL_GAP_Y + 4, 12)
         figsize = (fw, fh)
 
@@ -433,9 +453,10 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None):
                 cursor_y -= LINE_H
 
         else:
-            # Simple box: just statement text (max 2 lines)
-            stmt = _shorten(n.get("statement", ""), 70)
-            stmt_lines = _wrap(stmt, WRAP_WIDTH)[:2]
+            # Simple box: just statement text (max 3 lines)
+            dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT))
+            stmt = _shorten(n.get("statement", ""), 150)
+            stmt_lines = _wrap(stmt, dyn_wrap)[:3]
             if not stmt_lines:
                 stmt_lines = [""]
             for line in stmt_lines:
