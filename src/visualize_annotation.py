@@ -243,18 +243,18 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None):
 
                 assume_lines = []
                 for a in assumptions:
-                    assume_lines.append(_shorten(a, 50))
+                    assume_lines.append(_shorten(a, 70))
                 if len(assume_lines) > MAX_LINES_PER_SECTION:
                     assume_lines = assume_lines[:MAX_LINES_PER_SECTION] + [f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more"]
                 conclude_lines = []
                 for c in conclusions:
-                    conclude_lines.append(_shorten(c, 50))
+                    conclude_lines.append(_shorten(c, 70))
                 if len(conclude_lines) > MAX_LINES_PER_SECTION:
                     conclude_lines = conclude_lines[:MAX_LINES_PER_SECTION] + [f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more"]
                 proof_lines = []
                 for ps in proof_strategies:
                     if ps:
-                        proof_lines.append(_shorten(f"Proof: {ps}", 50))
+                        proof_lines.append(_shorten(f"Proof: {ps}", 70))
 
                 n_assume = max(len(assume_lines), 1)
                 n_conclude = max(len(conclude_lines), 1)
@@ -268,16 +268,16 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None):
                 h += PADDING
             elif ntype == "algorithm" and (n.get("input") or n.get("output")):
                 # Algorithm with input/output compartments
-                in_lines = [_shorten(x, 50) for x in (n.get("input") or ["(none)"])]
-                out_lines = [_shorten(x, 50) for x in (n.get("output") or ["(none)"])]
+                in_lines = [_shorten(x, 70) for x in (n.get("input") or ["(none)"])]
+                out_lines = [_shorten(x, 70) for x in (n.get("output") or ["(none)"])]
                 h = HEADER_H + PADDING
                 h += len(in_lines) * LINE_H + PADDING
                 h += len(out_lines) * LINE_H + PADDING
                 h += PADDING
             else:
-                # Simple box: header + statement (max 2 lines)
-                stmt = _shorten(n.get("statement", ""), 70)
-                stmt_lines = _wrap(stmt, WRAP_WIDTH)[:2]
+                # Simple box: header + statement (max 3 lines)
+                stmt = _shorten(n.get("statement", ""), 120)
+                stmt_lines = _wrap(stmt, WRAP_WIDTH)[:3]
                 n_stmt = max(len(stmt_lines), 1)
                 h = HEADER_H + n_stmt * LINE_H + 2 * PADDING
 
@@ -358,14 +358,14 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None):
         if ntype in ("theorem", "lemma", "corollary", "proposition"):
             # Rebuild truncated lines (matching height computation)
             assumptions = n.get("assumptions", [])
-            a_lines = [_shorten(a, 50) for a in assumptions]
+            a_lines = [_shorten(a, 70) for a in assumptions]
             if len(a_lines) > MAX_LINES_PER_SECTION:
                 a_lines = a_lines[:MAX_LINES_PER_SECTION] + [f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more"]
             if not a_lines:
                 a_lines = ["(none)"]
 
             conclusions = n.get("conclusions", [])
-            c_lines = [_shorten(c, 50) for c in conclusions]
+            c_lines = [_shorten(c, 70) for c in conclusions]
             if len(c_lines) > MAX_LINES_PER_SECTION:
                 c_lines = c_lines[:MAX_LINES_PER_SECTION] + [f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more"]
             if not c_lines:
@@ -404,15 +404,15 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None):
                         color="#999", lw=0.5, alpha=0.4)
                 for ps in proof_strategies:
                     if ps:
-                        ax.text(bx + PADDING, cursor_y, _shorten(f"Proof: {ps}", 50),
+                        ax.text(bx + PADDING, cursor_y, _shorten(f"Proof: {ps}", 70),
                                 ha="left", va="top", fontsize=7.5,
                                 color="#444", fontstyle="italic")
                         cursor_y -= LINE_H
 
         elif ntype == "algorithm" and (n.get("input") or n.get("output")):
             # Algorithm with input/output
-            in_lines = [_shorten(x, 50) for x in (n.get("input") or ["(none)"])]
-            out_lines = [_shorten(x, 50) for x in (n.get("output") or ["(none)"])]
+            in_lines = [_shorten(x, 70) for x in (n.get("input") or ["(none)"])]
+            out_lines = [_shorten(x, 70) for x in (n.get("output") or ["(none)"])]
 
             ax.text(bx + PADDING, cursor_y, "Input:",
                     ha="left", va="top", fontsize=8, fontweight="bold", color="#333")
