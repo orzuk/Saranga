@@ -40,6 +40,30 @@ PROOF_COLOR = "#D5D8DC"
 
 
 # ── Text helpers ────────────────────────────────────────────────────────────
+# LaTeX commands not supported by matplotlib mathtext — replace with equivalents
+_LATEX_FIXES = {
+    r"\iff": r"\Leftrightarrow",
+    r"\implies": r"\Rightarrow",
+    r"\Pr": r"\mathrm{Pr}",
+    r"\boldsymbol": r"\mathbf",
+    r"\big|": "|", r"\Big|": "|", r"\bigg|": "|",
+    r"\big(": "(", r"\Big(": "(", r"\big)": ")", r"\Big)": ")",
+    r"\left|": "|", r"\right|": "|",
+    r"\text": r"\mathrm",
+    r"\operatorname": r"\mathrm",
+    r"\binom": r"\mathrm{C}",
+    r"\lfloor": r"\lfloor", r"\rfloor": r"\rfloor",  # these are fine
+}
+
+def _sanitize_math(text):
+    """Replace unsupported LaTeX commands with matplotlib-compatible equivalents."""
+    if not text:
+        return text
+    for old, new in _LATEX_FIXES.items():
+        text = text.replace(old, new)
+    return text
+
+
 def _wrap(text, width=38):
     if not text:
         return []
@@ -50,6 +74,7 @@ def _shorten(text, maxlen=80):
     """Shorten text, but never cut inside a $...$ math expression."""
     if not text:
         return ""
+    text = _sanitize_math(text)
     if len(text) <= maxlen:
         return text
     # Find a safe cut point: not inside $...$
@@ -445,7 +470,10 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None):
 
     ax.autoscale()
     ax.margins(0.05)
-    plt.tight_layout()
+    try:
+        plt.tight_layout()
+    except Exception:
+        pass  # tight_layout can fail on complex math; savefig still works
     plt.savefig(str(out_path), dpi=150, bbox_inches="tight", facecolor="white")
     plt.close(fig)
 
