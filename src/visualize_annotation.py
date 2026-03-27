@@ -1,0 +1,425 @@
+#!/usr/bin/env python3
+"""Visualize a student annotation JSON as a DAG knowledge graph.
+
+Usage:
+    python visualize_annotation.py annotation.json [output.png]
+
+Produces a layered DAG visualization with:
+  - Topological depth for vertical positioning (foundations at top, results at bottom)
+  - Compound boxes for theorems/lemmas showing assumptions and conclusions
+  - Proof strategy collapsed into the parent theorem's box
+  - Color-coded by node type
+"""
+import json
+import sys
+import textwrap
+from collections import defaultdict
+from pathlib import Path
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.patches import FancyBboxPatch
+import networkx as nx
+
+
+# ── Colors ──────────────────────────────────────────────────────────────────
+NODE_COLORS = {
+    "definition":  {"header": "#27AE60", "body": "#D5F5E3"},
+    "theorem":     {"header": "#C0392B", "body": "#FADBD8"},
+    "lemma":       {"header": "#E67E22", "body": "#FDEBD0"},
+    "corollary":   {"header": "#8E44AD", "body": "#E8DAEF"},
+    "algorithm":   {"header": "#D4AC0D", "body": "#FFF9C4"},
+    "equation":    {"header": "#5DADE2", "body": "#D4E6F1"},
+    "proposition": {"header": "#C0392B", "body": "#FADBD8"},
+}
+DEFAULT_COLOR = {"header": "#566573", "body": "#EAECEE"}
+PROOF_COLOR = "#D5D8DC"
+
+
+# ── Text helpers ────────────────────────────────────────────────────────────
+def _wrap(text, width=38):
+    if not text:
+        return []
+    return textwrap.wrap(text, width=width)
+
+
+def _shorten(text, maxlen=80):
+    if not text:
+        return ""
+    if len(text) <= maxlen:
+        return text
+    return text[:maxlen - 3] + "..."
+
+
+# ── DAG computation ─────────────────────────────────────────────────────────
+def compute_dag_depth(nodes, edges):
+    """Compute longest-path depth for each node. Roots = depth 0."""
+    adj = defaultdict(list)
+    in_deg = defaultdict(int)
+    node_ids = {n["id"] for n in nodes}
+
+    for e in edges:
+        s, t = e["source"], e["target"]
+        if s in node_ids and t in node_ids:
+            adj[s].append(t)
+            in_deg[t] += 0  # ensure exists
+            in_deg[s] += 0
+
+    # recount
+    in_deg = defaultdict(int)
+    for e in edges:
+        s, t = e["source"], e["target"]
+        if s in node_ids and t in node_ids:
+            in_deg[t] += 1
+
+    depth = {nid: 0 for nid in node_ids}
+    queue = [nid for nid in node_ids if in_deg[nid] == 0]
+
+    while queue:
+        nid = queue.pop(0)
+        for tgt in adj[nid]:
+            depth[tgt] = max(depth[tgt], depth[nid] + 1)
+            in_deg[tgt] -= 1
+            if in_deg[tgt] == 0:
+                queue.append(tgt)
+
+    return depth
+
+
+def _section_sort_key(node):
+    """Sort by section number, then by ID."""
+    sec = node.get("section", "99")
+    try:
+        parts = [float(x) for x in sec.split(".")]
+    except ValueError:
+        parts = [99]
+    return (parts, node["id"])
+
+
+# ── Merge proofs into parent theorems ───────────────────────────────────────
+def merge_proofs(nodes, edges):
+    """Collapse proof nodes into their parent theorem.
+
+    Returns:
+      display_nodes: list of non-proof nodes, each with optional 'proof_info'
+      display_edges: edges with proof endpoints redirected to theorem
+      proof_map: {proof_id: theorem_id}
+    """
+    node_by_id = {n["id"]: n for n in nodes}
+    proof_map = {}  # proof_id -> theorem_id
+
+    for n in nodes:
+        if n["type"] == "proof" and n.get("proves"):
+            target_id = n["proves"]
+            if target_id in node_by_id:
+                proof_map[n["id"]] = target_id
+
+    # Attach proof info to parent theorem
+    display_nodes = []
+    for n in nodes:
+        if n["id"] in proof_map:
+            # Attach to parent
+            parent_id = proof_map[n["id"]]
+            parent = node_by_id[parent_id]
+            if "proof_info" not in parent:
+                parent["proof_info"] = []
+            parent["proof_info"].append(n.get("proof_strategy", ""))
+            continue
+        display_nodes.append(n)
+
+    # Redirect edges: replace proof_id with its theorem_id
+    display_edges = []
+    seen = set()
+    for e in edges:
+        s = proof_map.get(e["source"], e["source"])
+        t = proof_map.get(e["target"], e["target"])
+        if s == t:
+            continue  # skip self-loops from merging
+        key = (s, t)
+        if key not in seen:
+            display_edges.append({"source": s, "target": t,
+                                  "type": e.get("type", ""),
+                                  "note": e.get("note", "")})
+            seen.add(key)
+
+    return display_nodes, display_edges, proof_map
+
+
+# ── Drawing ─────────────────────────────────────────────────────────────────
+def draw_dag(nodes_raw, edges_raw, out_path, figsize=None):
+    """Main entry: draw a layered DAG from student-format nodes/edges."""
+
+    nodes, edges, proof_map = merge_proofs(nodes_raw, edges_raw)
+    depth = compute_dag_depth(nodes, edges)
+
+    # Group by depth level
+    levels = defaultdict(list)
+    for n in nodes:
+        levels[depth[n["id"]]].append(n)
+
+    # Sort within each level by section
+    for d in levels:
+        levels[d].sort(key=_section_sort_key)
+
+    max_depth = max(levels.keys()) if levels else 0
+    max_width = max(len(v) for v in levels.values()) if levels else 1
+
+    # ── Box dimensions ──
+    BOX_W = 4.0
+    BOX_GAP_X = 1.0
+    LEVEL_GAP_Y = 3.5
+    HEADER_H = 0.55
+    LINE_H = 0.32
+    PADDING = 0.15
+
+    # Compute box heights and positions
+    node_pos = {}     # id -> (cx, cy) center of box
+    node_rect = {}    # id -> (x, y, w, h) bounding rect
+    node_data = {}    # id -> node dict
+
+    for d in range(max_depth + 1):
+        row = levels.get(d, [])
+        n_in_row = len(row)
+        row_width = n_in_row * BOX_W + (n_in_row - 1) * BOX_GAP_X
+        start_x = -row_width / 2
+
+        for i, n in enumerate(row):
+            nid = n["id"]
+            node_data[nid] = n
+            cx = start_x + i * (BOX_W + BOX_GAP_X) + BOX_W / 2
+            cy_top = -d * LEVEL_GAP_Y
+
+            # Compute height
+            ntype = n.get("type", "")
+            colors = NODE_COLORS.get(ntype, DEFAULT_COLOR)
+
+            if ntype in ("theorem", "lemma", "corollary", "proposition"):
+                # Compound box: header + assumptions + conclusions + optional proof
+                assumptions = n.get("assumptions", [])
+                conclusions = n.get("conclusions", [])
+                proof_strategies = n.get("proof_info", [])
+
+                assume_lines = []
+                for a in assumptions:
+                    assume_lines.extend(_wrap(a, 36))
+                conclude_lines = []
+                for c in conclusions:
+                    conclude_lines.extend(_wrap(c, 36))
+                proof_lines = []
+                for ps in proof_strategies:
+                    if ps:
+                        proof_lines.extend(_wrap(f"Proof: {ps}", 36))
+
+                n_assume = max(len(assume_lines), 1)
+                n_conclude = max(len(conclude_lines), 1)
+                n_proof = len(proof_lines)
+
+                h = HEADER_H + PADDING
+                h += n_assume * LINE_H + PADDING  # assume section
+                h += n_conclude * LINE_H + PADDING  # conclude section
+                if n_proof > 0:
+                    h += n_proof * LINE_H + PADDING  # proof section
+                h += PADDING
+            else:
+                # Simple box: header + statement
+                stmt = _shorten(n.get("statement", ""), 120)
+                stmt_lines = _wrap(stmt, 36)
+                n_stmt = max(len(stmt_lines), 1)
+                h = HEADER_H + n_stmt * LINE_H + 2 * PADDING
+
+            node_pos[nid] = (cx, cy_top - h / 2)
+            node_rect[nid] = (cx - BOX_W / 2, cy_top - h, BOX_W, h)
+
+    # ── Figure ──
+    if figsize is None:
+        fw = max(max_width * (BOX_W + BOX_GAP_X) + 2, 14)
+        fh = max((max_depth + 1) * LEVEL_GAP_Y + 3, 10)
+        figsize = (fw, fh)
+
+    fig, ax = plt.subplots(1, 1, figsize=figsize)
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+    # ── Draw edges first (behind boxes) ──
+    for e in edges:
+        src, tgt = e["source"], e["target"]
+        if src not in node_rect or tgt not in node_rect:
+            continue
+        sx, sy_bottom, sw, sh = node_rect[src]
+        tx, ty_bottom, tw, th = node_rect[tgt]
+
+        x0 = sx + sw / 2
+        y0 = sy_bottom  # bottom of source
+        x1 = tx + tw / 2
+        y1 = ty_bottom + th  # top of target
+
+        ax.annotate(
+            "", xy=(x1, y1), xytext=(x0, y0),
+            arrowprops=dict(
+                arrowstyle="-|>",
+                color="#7F8C8D",
+                lw=1.2,
+                connectionstyle="arc3,rad=0.08" if abs(x0 - x1) > 0.5 else "arc3,rad=0",
+                shrinkA=2, shrinkB=2,
+            ),
+        )
+
+    # ── Draw boxes ──
+    for nid, (bx, by, bw, bh) in node_rect.items():
+        n = node_data[nid]
+        ntype = n.get("type", "")
+        colors = NODE_COLORS.get(ntype, DEFAULT_COLOR)
+
+        # Main box background
+        rect = FancyBboxPatch(
+            (bx, by), bw, bh,
+            boxstyle="round,pad=0.05",
+            facecolor=colors["body"],
+            edgecolor=colors["header"],
+            linewidth=1.5,
+        )
+        ax.add_patch(rect)
+
+        cursor_y = by + bh  # start from top
+
+        # Header
+        name_str = n.get("name") or ""
+        header_text = f"{nid}"
+        if name_str:
+            header_text += f": {_shorten(name_str, 30)}"
+
+        header_rect = FancyBboxPatch(
+            (bx, cursor_y - HEADER_H), bw, HEADER_H,
+            boxstyle="round,pad=0.05",
+            facecolor=colors["header"],
+            edgecolor=colors["header"],
+            linewidth=0,
+        )
+        ax.add_patch(header_rect)
+        ax.text(bx + bw / 2, cursor_y - HEADER_H / 2, header_text,
+                ha="center", va="center", fontsize=7, fontweight="bold",
+                color="white")
+        cursor_y -= HEADER_H + PADDING
+
+        if ntype in ("theorem", "lemma", "corollary", "proposition"):
+            # Assumptions
+            assumptions = n.get("assumptions", [])
+            assume_lines = []
+            for a in assumptions:
+                assume_lines.extend(_wrap(a, 36))
+            if not assume_lines:
+                assume_lines = ["(none)"]
+
+            ax.text(bx + PADDING, cursor_y, "Assume:",
+                    ha="left", va="top", fontsize=6, fontweight="bold", color="#555")
+            cursor_y -= LINE_H * 0.6
+            for line in assume_lines:
+                ax.text(bx + PADDING + 0.15, cursor_y, f"  {line}",
+                        ha="left", va="top", fontsize=5.5, color="#333",
+                        fontstyle="italic")
+                cursor_y -= LINE_H
+
+            cursor_y -= PADDING * 0.5
+
+            # Divider line
+            ax.plot([bx + 0.2, bx + bw - 0.2], [cursor_y + PADDING * 0.3] * 2,
+                    color=colors["header"], lw=0.5, alpha=0.4)
+
+            # Conclusions
+            conclusions = n.get("conclusions", [])
+            conclude_lines = []
+            for c in conclusions:
+                conclude_lines.extend(_wrap(c, 36))
+            if not conclude_lines:
+                conclude_lines = ["(none)"]
+
+            ax.text(bx + PADDING, cursor_y, "Conclude:",
+                    ha="left", va="top", fontsize=6, fontweight="bold", color="#555")
+            cursor_y -= LINE_H * 0.6
+            for line in conclude_lines:
+                ax.text(bx + PADDING + 0.15, cursor_y, f"  {line}",
+                        ha="left", va="top", fontsize=5.5, color="#333")
+                cursor_y -= LINE_H
+
+            # Proof strategy (if merged)
+            proof_strategies = n.get("proof_info", [])
+            if proof_strategies:
+                cursor_y -= PADDING * 0.3
+                ax.plot([bx + 0.2, bx + bw - 0.2], [cursor_y + PADDING * 0.2] * 2,
+                        color="#999", lw=0.5, alpha=0.4)
+                for ps in proof_strategies:
+                    if ps:
+                        plines = _wrap(f"Proof: {ps}", 36)
+                        for line in plines:
+                            ax.text(bx + PADDING, cursor_y, line,
+                                    ha="left", va="top", fontsize=5.5,
+                                    color="#777", fontstyle="italic")
+                            cursor_y -= LINE_H
+
+        else:
+            # Simple box: just statement text
+            stmt = _shorten(n.get("statement", ""), 120)
+            stmt_lines = _wrap(stmt, 36)
+            if not stmt_lines:
+                stmt_lines = [""]
+            for line in stmt_lines:
+                ax.text(bx + PADDING, cursor_y, line,
+                        ha="left", va="top", fontsize=5.5, color="#333")
+                cursor_y -= LINE_H
+
+    # ── Legend ──
+    legend_handles = []
+    for ntype, colors in NODE_COLORS.items():
+        if any(node_data[nid].get("type") == ntype for nid in node_data):
+            legend_handles.append(
+                mpatches.Patch(facecolor=colors["body"], edgecolor=colors["header"],
+                               linewidth=1.5, label=ntype.title())
+            )
+    legend_handles.append(
+        plt.Line2D([0], [0], color="#7F8C8D", lw=1.5, marker=">",
+                   markersize=6, label="depends on (A→B)")
+    )
+    ax.legend(handles=legend_handles, loc="upper right", fontsize=8,
+              framealpha=0.9, title="Node types")
+
+    # ── Title ──
+    meta = {}  # will be set from caller
+    title = "Knowledge Graph (DAG)"
+    ax.set_title(title, fontsize=13, fontweight="bold", pad=15)
+
+    ax.autoscale()
+    ax.margins(0.05)
+    plt.tight_layout()
+    plt.savefig(str(out_path), dpi=150, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+
+    return len(nodes), len(edges)
+
+
+# ── CLI ─────────────────────────────────────────────────────────────────────
+def main():
+    if len(sys.argv) < 2:
+        print(__doc__)
+        sys.exit(1)
+
+    input_path = Path(sys.argv[1])
+    output_path = Path(sys.argv[2]) if len(sys.argv) > 2 else input_path.with_suffix(".png")
+
+    with open(input_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    nodes = data.get("nodes", [])
+    edges = data.get("edges", [])
+
+    if not nodes:
+        print("Error: No 'nodes' found in JSON.")
+        sys.exit(1)
+
+    n_nodes, n_edges = draw_dag(nodes, edges, output_path)
+    print(f"DAG saved to {output_path}  ({n_nodes} display nodes, {n_edges} edges)")
+
+
+if __name__ == "__main__":
+    main()
