@@ -507,8 +507,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         plt.Line2D([0], [0], color="#666666", lw=2.5, marker=">",
                    markersize=10, label="A supports B")
     )
-    ax.legend(handles=legend_handles, loc="upper right", fontsize=11,
-              frameon=False, title="Node types", title_fontsize=12)
+    ax.legend(handles=legend_handles, loc="upper right", fontsize=13,
+              frameon=False, title="Node types", title_fontsize=14)
 
     # ── Title (from metadata if available) ──
     if metadata and metadata.get("chapter_title"):
@@ -518,7 +518,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         title = f"{metadata['title']} — Knowledge Graph"
     else:
         title = "Knowledge Graph (DAG)"
-    ax.set_title(title, fontsize=14, fontweight="bold", pad=15)
+    ax.set_title(title, fontsize=16, fontweight="bold", pad=15)
 
     ax.autoscale()
     ax.margins(0.05)
@@ -673,7 +673,13 @@ function showDetail(nodeId) {{
   }}
   if (d.proof_info && d.proof_info.length > 0) {{
     h += '<div class="detail-section"><h4>Proof Strategy</h4>';
-    d.proof_info.forEach(function(p) {{ h += '<div style="font-size:13px;font-style:italic;">' + esc(typeof p === 'string' ? p : JSON.stringify(p)) + '</div>'; }});
+    d.proof_info.forEach(function(p) {{
+      if (Array.isArray(p)) {{
+        p.forEach(function(item) {{ h += '<div style="font-size:13px;font-style:italic;">&bull; ' + esc(item) + '</div>'; }});
+      }} else {{
+        h += '<div style="font-size:13px;font-style:italic;">' + esc(p) + '</div>';
+      }}
+    }});
     h += '</div>';
   }}
   if (d.input && d.input.length > 0) {{
