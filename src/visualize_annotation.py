@@ -29,14 +29,14 @@ import networkx as nx
 NODE_COLORS = {
     "definition":  {"header": "#27AE60", "body": "#D5F5E3"},
     "theorem":     {"header": "#C0392B", "body": "#FADBD8"},
-    "lemma":       {"header": "#E67E22", "body": "#FDEBD0"},
-    "corollary":   {"header": "#8E44AD", "body": "#E8DAEF"},
-    "algorithm":   {"header": "#D4AC0D", "body": "#FFF9C4"},
-    "equation":    {"header": "#5DADE2", "body": "#D4E6F1"},
-    "proposition": {"header": "#C0392B", "body": "#FADBD8"},
+    "lemma":       {"header": "#D35400", "body": "#FAE5D3"},
+    "corollary":   {"header": "#943126", "body": "#F2D7D5"},
+    "algorithm":   {"header": "#2471A3", "body": "#D4E6F1"},
+    "equation":    {"header": "#5DADE2", "body": "#EBF5FB"},
+    "proposition": {"header": "#B03A2E", "body": "#FADBD8"},
     "proof":       {"header": "#566573", "body": "#D5D8DC"},
     "proof_step":  {"header": "#839192", "body": "#E8E8E8"},
-    "claim":       {"header": "#BA4A00", "body": "#F6DDCC"},
+    "claim":       {"header": "#E74C3C", "body": "#FDEDEC"},
 }
 DEFAULT_COLOR = {"header": "#566573", "body": "#EAECEE"}
 PROOF_COLOR = "#D5D8DC"
@@ -200,7 +200,7 @@ def merge_proofs(nodes, edges):
 
 # ── Drawing ─────────────────────────────────────────────────────────────────
 def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
-             resolution="standard"):
+             resolution="standard", show_legend=True):
     """Main entry: draw a layered DAG from student-format nodes/edges.
 
     resolution:
@@ -360,9 +360,9 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         ax.annotate(
             "", xy=(x1, y1), xytext=(x0, y0),
             arrowprops=dict(
-                arrowstyle="-|>,head_length=0.8,head_width=0.4",
-                color="#666666",
-                lw=2.0,
+                arrowstyle="-|>,head_length=1.0,head_width=0.5",
+                color="#555555",
+                lw=2.5,
                 connectionstyle="arc3,rad=0.08" if abs(x0 - x1) > 0.5 else "arc3,rad=0",
                 shrinkA=3, shrinkB=3,
             ),
@@ -402,7 +402,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         )
         ax.add_patch(header_rect)
         ax.text(bx + bw / 2, cursor_y - HEADER_H / 2, header_text,
-                ha="center", va="center", fontsize=10, fontweight="bold",
+                ha="center", va="center", fontsize=12, fontweight="bold",
                 color="white")
         cursor_y -= HEADER_H + PADDING
 
@@ -424,11 +424,11 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
 
             # Assumptions
             ax.text(bx + PADDING, cursor_y, "Assume:",
-                    ha="left", va="top", fontsize=9.5, fontweight="bold", color="#333")
+                    ha="left", va="top", fontsize=11, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
             for line in a_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=9, color="#222",
+                        ha="left", va="top", fontsize=10.5, color="#222",
                         fontstyle="italic")
                 cursor_y -= LINE_H
 
@@ -440,11 +440,11 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
 
             # Conclusions
             ax.text(bx + PADDING, cursor_y, "Conclude:",
-                    ha="left", va="top", fontsize=9.5, fontweight="bold", color="#333")
+                    ha="left", va="top", fontsize=11, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
             for line in c_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=9, color="#222")
+                        ha="left", va="top", fontsize=10.5, color="#222")
                 cursor_y -= LINE_H
 
             # Proof strategy (if merged)
@@ -456,7 +456,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 for ps in proof_strategies:
                     if ps:
                         ax.text(bx + PADDING, cursor_y, _shorten(f"Proof: {ps}", 70),
-                                ha="left", va="top", fontsize=9,
+                                ha="left", va="top", fontsize=10.5,
                                 color="#444", fontstyle="italic")
                         cursor_y -= LINE_H
 
@@ -466,21 +466,21 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             out_lines = [_shorten(x, 70) for x in (n.get("output") or ["(none)"])]
 
             ax.text(bx + PADDING, cursor_y, "Input:",
-                    ha="left", va="top", fontsize=9.5, fontweight="bold", color="#333")
+                    ha="left", va="top", fontsize=11, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
             for line in in_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=9, color="#222")
+                        ha="left", va="top", fontsize=10.5, color="#222")
                 cursor_y -= LINE_H
             cursor_y -= PADDING * 0.3
             ax.plot([bx + 0.15, bx + bw - 0.15], [cursor_y + PADDING * 0.2] * 2,
                     color=colors["header"], lw=0.5, alpha=0.4)
             ax.text(bx + PADDING, cursor_y, "Output:",
-                    ha="left", va="top", fontsize=9.5, fontweight="bold", color="#333")
+                    ha="left", va="top", fontsize=11, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
             for line in out_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=9, color="#222")
+                        ha="left", va="top", fontsize=10.5, color="#222")
                 cursor_y -= LINE_H
 
         else:
@@ -492,23 +492,24 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 stmt_lines = [""]
             for line in stmt_lines:
                 ax.text(bx + PADDING, cursor_y, line,
-                        ha="left", va="top", fontsize=9, color="#222")
+                        ha="left", va="top", fontsize=10.5, color="#222")
                 cursor_y -= LINE_H
 
     # ── Legend ──
-    legend_handles = []
-    for ntype, cols in NODE_COLORS.items():
-        if any(node_data[nid].get("type") == ntype for nid in node_data):
-            legend_handles.append(
-                mpatches.Patch(facecolor=cols["body"], edgecolor=cols["header"],
-                               linewidth=1.5, label=ntype.title())
-            )
-    legend_handles.append(
-        plt.Line2D([0], [0], color="#666666", lw=2.5, marker=">",
-                   markersize=10, label="A supports B")
-    )
-    ax.legend(handles=legend_handles, loc="upper right", fontsize=13,
-              frameon=False, title="Node types", title_fontsize=14)
+    if show_legend:
+        legend_handles = []
+        for ntype, cols in NODE_COLORS.items():
+            if any(node_data[nid].get("type") == ntype for nid in node_data):
+                legend_handles.append(
+                    mpatches.Patch(facecolor=cols["body"], edgecolor=cols["header"],
+                                   linewidth=1.5, label=ntype.title())
+                )
+        legend_handles.append(
+            plt.Line2D([0], [0], color="#666666", lw=2.5, marker=">",
+                       markersize=10, label="A supports B")
+        )
+        ax.legend(handles=legend_handles, loc="upper right", fontsize=13,
+                  frameon=False, title="Node types", title_fontsize=14)
 
     # ── Title (from metadata if available) ──
     if metadata and metadata.get("chapter_title"):
@@ -518,7 +519,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         title = f"{metadata['title']} — Knowledge Graph"
     else:
         title = "Knowledge Graph (DAG)"
-    ax.set_title(title, fontsize=16, fontweight="bold", pad=15)
+    ax.set_title(title, fontsize=18, fontweight="bold", pad=15)
 
     ax.autoscale()
     ax.margins(0.05)
@@ -639,9 +640,9 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
 <div class="legend">
   <div class="legend-item"><div class="legend-color" style="background:#D5F5E3;border-color:#27AE60;"></div>Definition</div>
   <div class="legend-item"><div class="legend-color" style="background:#FADBD8;border-color:#C0392B;"></div>Theorem</div>
-  <div class="legend-item"><div class="legend-color" style="background:#FDEBD0;border-color:#E67E22;"></div>Lemma</div>
-  <div class="legend-item"><div class="legend-color" style="background:#E8DAEF;border-color:#8E44AD;"></div>Corollary</div>
-  <div class="legend-item"><div class="legend-color" style="background:#FFF9C4;border-color:#D4AC0D;"></div>Algorithm</div>
+  <div class="legend-item"><div class="legend-color" style="background:#FAE5D3;border-color:#D35400;"></div>Lemma</div>
+  <div class="legend-item"><div class="legend-color" style="background:#F2D7D5;border-color:#943126;"></div>Corollary</div>
+  <div class="legend-item"><div class="legend-color" style="background:#D4E6F1;border-color:#2471A3;"></div>Algorithm</div>
   <div class="legend-item" style="margin-left:12px;"><span style="font-size:18px;color:#555;">&#8594;</span> A supports B</div>
 </div>
 <div id="main">
@@ -767,8 +768,17 @@ def main():
 
     # Generate interactive HTML if requested
     if args.html:
-        svg_path = str(output_path).replace('.png', '.svg')
+        # Generate SVG without legend (legend is in the HTML bar)
+        svg_only_path = str(output_path).replace('.png', '_nolegend.svg')
+        draw_dag(nodes, edges, svg_only_path.replace('.svg', '.png'), metadata=metadata,
+                 resolution=args.resolution, show_legend=False)
+        svg_path = svg_only_path
         n_html = generate_interactive_html(data, svg_path, args.html)
+        # Clean up temp files
+        import os
+        for tmp in [svg_only_path, svg_only_path.replace('.svg', '.png')]:
+            if os.path.exists(tmp):
+                os.remove(tmp)
         print(f"Interactive HTML saved to {args.html}  ({n_html} clickable nodes)")
 
 
