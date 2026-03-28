@@ -402,7 +402,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         )
         ax.add_patch(header_rect)
         ax.text(bx + bw / 2, cursor_y - HEADER_H / 2, header_text,
-                ha="center", va="center", fontsize=8.5, fontweight="bold",
+                ha="center", va="center", fontsize=10, fontweight="bold",
                 color="white")
         cursor_y -= HEADER_H + PADDING
 
@@ -424,11 +424,11 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
 
             # Assumptions
             ax.text(bx + PADDING, cursor_y, "Assume:",
-                    ha="left", va="top", fontsize=8, fontweight="bold", color="#333")
+                    ha="left", va="top", fontsize=9.5, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
             for line in a_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=7.5, color="#222",
+                        ha="left", va="top", fontsize=9, color="#222",
                         fontstyle="italic")
                 cursor_y -= LINE_H
 
@@ -440,11 +440,11 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
 
             # Conclusions
             ax.text(bx + PADDING, cursor_y, "Conclude:",
-                    ha="left", va="top", fontsize=8, fontweight="bold", color="#333")
+                    ha="left", va="top", fontsize=9.5, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
             for line in c_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=7.5, color="#222")
+                        ha="left", va="top", fontsize=9, color="#222")
                 cursor_y -= LINE_H
 
             # Proof strategy (if merged)
@@ -456,7 +456,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 for ps in proof_strategies:
                     if ps:
                         ax.text(bx + PADDING, cursor_y, _shorten(f"Proof: {ps}", 70),
-                                ha="left", va="top", fontsize=7.5,
+                                ha="left", va="top", fontsize=9,
                                 color="#444", fontstyle="italic")
                         cursor_y -= LINE_H
 
@@ -466,21 +466,21 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             out_lines = [_shorten(x, 70) for x in (n.get("output") or ["(none)"])]
 
             ax.text(bx + PADDING, cursor_y, "Input:",
-                    ha="left", va="top", fontsize=8, fontweight="bold", color="#333")
+                    ha="left", va="top", fontsize=9.5, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
             for line in in_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=7.5, color="#222")
+                        ha="left", va="top", fontsize=9, color="#222")
                 cursor_y -= LINE_H
             cursor_y -= PADDING * 0.3
             ax.plot([bx + 0.15, bx + bw - 0.15], [cursor_y + PADDING * 0.2] * 2,
                     color=colors["header"], lw=0.5, alpha=0.4)
             ax.text(bx + PADDING, cursor_y, "Output:",
-                    ha="left", va="top", fontsize=8, fontweight="bold", color="#333")
+                    ha="left", va="top", fontsize=9.5, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
             for line in out_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=7.5, color="#222")
+                        ha="left", va="top", fontsize=9, color="#222")
                 cursor_y -= LINE_H
 
         else:
@@ -492,7 +492,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 stmt_lines = [""]
             for line in stmt_lines:
                 ax.text(bx + PADDING, cursor_y, line,
-                        ha="left", va="top", fontsize=7.5, color="#222")
+                        ha="left", va="top", fontsize=9, color="#222")
                 cursor_y -= LINE_H
 
     # ── Legend ──
@@ -606,19 +606,23 @@ def generate_interactive_html(data, svg_path, html_path):
 body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #fafafa; }}
 #header {{ background: #2c3e50; color: white; padding: 10px 24px; display: flex; align-items: center; justify-content: space-between; }}
 #header h1 {{ margin: 0; font-size: 18px; }}
+#header .hint {{ font-size: 12px; color: #aaa; font-style: italic; margin-left: 12px; }}
 #controls button {{ padding: 6px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; background: #34495e; color: white; margin-left: 8px; }}
 #controls button:hover {{ background: #4a6785; }}
-#main {{ display: flex; height: calc(100vh - 44px); }}
+.legend {{ display: flex; gap: 14px; flex-wrap: wrap; padding: 8px 24px; background: #f5f5f5; border-bottom: 1px solid #eee; }}
+.legend-item {{ display: flex; align-items: center; gap: 5px; font-size: 12px; }}
+.legend-color {{ width: 16px; height: 16px; border-radius: 3px; border: 1.5px solid #777; }}
+#main {{ display: flex; height: calc(100vh - 82px); }}
 #svg-container {{ flex: 1; overflow: auto; padding: 10px; }}
 #svg-container svg {{ max-width: 100%; height: auto; }}
 #detail-panel {{ width: 0; overflow-y: auto; background: white; border-left: 1px solid #ddd; transition: width 0.3s; }}
 #detail-panel.open {{ width: 380px; padding: 16px; }}
 .detail-section {{ margin-bottom: 12px; }}
-.detail-section h4 {{ margin: 0 0 4px; color: #555; font-size: 11px; text-transform: uppercase; }}
-.step-item {{ background: #f0f0f0; border-left: 3px solid #839192; padding: 5px 8px; font-size: 11px; margin-bottom: 3px; border-radius: 0 3px 3px 0; }}
-.step-arrow {{ text-align: center; color: #aaa; font-size: 12px; }}
-.eq-item {{ background: #d4e6f1; border-left: 3px solid #5dade2; padding: 5px 8px; font-size: 11px; margin-bottom: 3px; border-radius: 0 3px 3px 0; }}
-.orphan-item {{ background: #fef9e7; border-left: 3px solid #f39c12; padding: 5px 8px; font-size: 11px; margin-bottom: 3px; }}
+.detail-section h4 {{ margin: 0 0 6px; color: #444; font-size: 13px; text-transform: uppercase; }}
+.step-item {{ background: #f0f0f0; border-left: 3px solid #839192; padding: 6px 10px; font-size: 13px; margin-bottom: 4px; border-radius: 0 3px 3px 0; }}
+.step-arrow {{ text-align: center; color: #aaa; font-size: 14px; }}
+.eq-item {{ background: #d4e6f1; border-left: 3px solid #5dade2; padding: 6px 10px; font-size: 13px; margin-bottom: 4px; border-radius: 0 3px 3px 0; }}
+.orphan-item {{ background: #fef9e7; border-left: 3px solid #f39c12; padding: 6px 10px; font-size: 13px; margin-bottom: 4px; }}
 #orphan-panel {{ position: fixed; bottom: 16px; right: 16px; background: white; border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); max-width: 350px; max-height: 400px; overflow-y: auto; display: none; padding: 12px; z-index: 100; }}
 #orphan-toggle {{ position: fixed; bottom: 16px; right: 16px; background: #f39c12; color: white; border: none; border-radius: 20px; padding: 8px 16px; cursor: pointer; font-size: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); z-index: 101; display: {"block" if js_orphans else "none"}; }}
 /* Hover effect on clickable node rects */
@@ -627,10 +631,18 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
 </head>
 <body>
 <div id="header">
-  <h1>{_esc(title)}</h1>
+  <h1>{_esc(title)}<span class="hint">— click nodes for detailed description</span></h1>
   <div id="controls">
     <button onclick="resetView()">Reset</button>
   </div>
+</div>
+<div class="legend">
+  <div class="legend-item"><div class="legend-color" style="background:#D5F5E3;border-color:#27AE60;"></div>Definition</div>
+  <div class="legend-item"><div class="legend-color" style="background:#FADBD8;border-color:#C0392B;"></div>Theorem</div>
+  <div class="legend-item"><div class="legend-color" style="background:#FDEBD0;border-color:#E67E22;"></div>Lemma</div>
+  <div class="legend-item"><div class="legend-color" style="background:#E8DAEF;border-color:#8E44AD;"></div>Corollary</div>
+  <div class="legend-item"><div class="legend-color" style="background:#FFF9C4;border-color:#D4AC0D;"></div>Algorithm</div>
+  <div class="legend-item" style="margin-left:12px;"><span style="font-size:18px;color:#555;">&#8594;</span> A supports B</div>
 </div>
 <div id="main">
   <div id="svg-container">{svg_content}</div>
@@ -646,22 +658,22 @@ function showDetail(nodeId) {{
   var panel = document.getElementById("detail-panel");
   var d = DETAILS[nodeId];
   if (!d) return;
-  var h = '<h3 style="margin:0 0 8px;">' + esc(nodeId) + ': ' + esc(d.name || d.type) + '</h3>';
-  h += '<div style="font-size:11px;color:#888;margin-bottom:8px;">' + d.type + (d.section ? ' (Sec ' + d.section + ')' : '') + '</div>';
-  if (d.statement) h += '<div class="detail-section"><h4>Statement</h4><div style="font-size:12px;">' + esc(d.statement) + '</div></div>';
+  var h = '<h3 style="margin:0 0 8px;font-size:16px;">' + esc(nodeId) + ': ' + esc(d.name || d.type) + '</h3>';
+  h += '<div style="font-size:12px;color:#888;margin-bottom:10px;">' + d.type + (d.section ? ' (Sec ' + d.section + ')' : '') + '</div>';
+  if (d.statement) h += '<div class="detail-section"><h4>Statement</h4><div style="font-size:14px;">' + esc(d.statement) + '</div></div>';
   if (d.assumptions && d.assumptions.length > 0) {{
     h += '<div class="detail-section"><h4>Assumptions</h4>';
-    d.assumptions.forEach(function(a) {{ h += '<div style="font-size:11px;padding:1px 0 1px 8px;">&bull; ' + esc(a) + '</div>'; }});
+    d.assumptions.forEach(function(a) {{ h += '<div style="font-size:13px;padding:2px 0 2px 10px;">&bull; ' + esc(a) + '</div>'; }});
     h += '</div>';
   }}
   if (d.conclusions && d.conclusions.length > 0) {{
     h += '<div class="detail-section"><h4>Conclusions</h4>';
-    d.conclusions.forEach(function(c) {{ h += '<div style="font-size:11px;padding:1px 0 1px 8px;">&bull; ' + esc(c) + '</div>'; }});
+    d.conclusions.forEach(function(c) {{ h += '<div style="font-size:13px;padding:2px 0 2px 10px;">&bull; ' + esc(c) + '</div>'; }});
     h += '</div>';
   }}
   if (d.proof_info && d.proof_info.length > 0) {{
     h += '<div class="detail-section"><h4>Proof Strategy</h4>';
-    d.proof_info.forEach(function(p) {{ h += '<div style="font-size:11px;font-style:italic;">' + esc(typeof p === 'string' ? p : JSON.stringify(p)) + '</div>'; }});
+    d.proof_info.forEach(function(p) {{ h += '<div style="font-size:13px;font-style:italic;">' + esc(typeof p === 'string' ? p : JSON.stringify(p)) + '</div>'; }});
     h += '</div>';
   }}
   if (d.input && d.input.length > 0) {{
