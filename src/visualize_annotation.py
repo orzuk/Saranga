@@ -922,7 +922,7 @@ function showGhostDetail(nameOrEl) {{
   refs.forEach(function(nid) {{
     var d = DETAILS[nid];
     var label = d ? (nid + ': ' + (d.name || d.type)) : nid;
-    h += '<div style="font-size:13px;padding:2px 0 2px 10px;cursor:pointer;color:#2471A3;" onclick="showDetail(\'' + nid + '\')">&bull; ' + esc(label) + '</div>';
+    h += '<div style="font-size:13px;padding:2px 0 2px 10px;cursor:pointer;color:#2471A3;" data-nid="' + nid + '" onclick="showDetail(this.dataset.nid)">&bull; ' + esc(label) + '</div>';
   }});
   h += '</div>';
   panel.innerHTML = h;
