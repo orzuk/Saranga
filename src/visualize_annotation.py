@@ -686,9 +686,7 @@ function showDetail(nodeId) {{
 
   // Statement + inline statement equations
   if (d.statement) {{
-    h += '<div class="detail-section"><h4>Statement</h4><div style="font-size:14px;">' + esc(d.statement);
-    eqsByCtx.statement.forEach(function(e) {{ h += eqTag(e); }});
-    h += '</div>';
+    h += '<div class="detail-section"><h4>Statement</h4><div style="font-size:14px;">' + esc(d.statement) + '</div>';
     eqsByCtx.statement.forEach(function(e) {{ h += eqBlock(e); }});
     h += '</div>';
   }}
