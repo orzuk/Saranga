@@ -361,8 +361,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         ax.annotate(
             "", xy=(x1, y1), xytext=(x0, y0),
             arrowprops=dict(
-                arrowstyle="-|>,head_length=1.0,head_width=0.5",
-                color="#555555",
+                arrowstyle="-|>,head_length=1.2,head_width=0.6",
+                color="#333333",
                 lw=2.5,
                 connectionstyle="arc3,rad=0.08" if abs(x0 - x1) > 0.5 else "arc3,rad=0",
                 shrinkA=3, shrinkB=3,
@@ -976,7 +976,9 @@ function drawGhostEdges() {{
   marker.setAttribute("orient", "auto");
   var path = document.createElementNS(overlayNS, "path");
   path.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
-  path.setAttribute("fill", "#555");
+  path.setAttribute("fill", "none");
+  path.setAttribute("stroke", "#777");
+  path.setAttribute("stroke-width", "1.5");
   marker.appendChild(path);
   defs.appendChild(marker);
   overlaySvg.appendChild(defs);
@@ -1009,8 +1011,8 @@ function drawGhostEdges() {{
       line.setAttribute("y1", y1);
       line.setAttribute("x2", x2);
       line.setAttribute("y2", y2);
-      line.setAttribute("stroke", "#555");
-      line.setAttribute("stroke-width", "2.5");
+      line.setAttribute("stroke", "#777");
+      line.setAttribute("stroke-width", "2");
       line.setAttribute("stroke-dasharray", "8,5");
       line.setAttribute("marker-end", "url(#ghost-arrow)");
       overlaySvg.appendChild(line);
