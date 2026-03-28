@@ -725,10 +725,10 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
 #orphan-toggle {{ display: none; }}
 /* Hover effect on clickable node rects */
 [id^="node_"]:hover {{ filter: brightness(0.90); }}
-.ghost-node {{ display: inline-block; margin: 4px 6px; padding: 5px 12px; background: #F2E6D9; border: 1.5px solid #795548; border-radius: 5px; font-size: 12px; color: #4E342E; cursor: pointer; vertical-align: top; white-space: normal; max-width: 180px; }}
-.ghost-node:hover {{ background: #E8D5C4; }}
-.ghost-node .ghost-label {{ font-weight: bold; font-size: 11px; }}
-.ghost-node .ghost-refs {{ font-size: 10px; color: #888; margin-top: 2px; }}
+.ghost-node {{ display: inline-block; margin: 4px 8px; padding: 8px 14px; background: #E0E0E0; border: 1.5px solid #757575; border-radius: 5px; font-size: 13px; color: #333; cursor: pointer; vertical-align: top; white-space: normal; max-width: 220px; }}
+.ghost-node:hover {{ background: #BDBDBD; }}
+.ghost-node .ghost-label {{ font-weight: bold; font-size: 13px; }}
+.ghost-node .ghost-refs {{ font-size: 11px; color: #666; margin-top: 3px; }}
 </style>
 </head>
 <body>
@@ -748,9 +748,9 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
   <div class="legend-item"><div class="legend-color" style="background:#F2D7D5;border-color:#943126;"></div>Corollary</div>
   <div class="legend-item"><div class="legend-color" style="background:#D4E6F1;border-color:#2471A3;"></div>Algorithm</div>
   <div class="legend-item" style="margin-left:12px;"><span style="font-size:18px;color:#555;">&#8594;</span> A supports B</div>
-  <div class="legend-item" style="margin-left:12px;"><button onclick="toggleGhosts()" style="padding:3px 10px;border:1.5px solid #795548;border-radius:4px;background:#F2E6D9;cursor:pointer;font-size:11px;color:#795548;">Show external dependencies</button></div>
+  <div class="legend-item" style="margin-left:12px;"><button onclick="toggleGhosts()" id="ghost-btn" style="padding:4px 12px;border:1.5px solid #757575;border-radius:4px;background:#E0E0E0;cursor:pointer;font-size:12px;color:#333;">Show external dependencies</button></div>
 </div>
-<div id="ghost-strip" style="display:none;padding:8px 24px;background:#FAF0E6;border-bottom:1px solid #D7CCC8;overflow-x:auto;white-space:nowrap;">
+<div id="ghost-strip" style="display:none;padding:10px 24px;background:#F5F5F5;border-bottom:1px solid #BDBDBD;overflow-x:auto;white-space:nowrap;">
 </div>
 <div id="main">
   <div id="svg-container">{svg_content}</div>
@@ -892,6 +892,7 @@ function toggleGhosts() {{
   var strip = document.getElementById("ghost-strip");
   if (strip.style.display === "none") {{
     strip.style.display = "block";
+    document.getElementById("ghost-btn").textContent = "Hide external dependencies";
     // Populate ghost nodes
     var h = "";
     var names = Object.keys(GHOSTS);
@@ -901,15 +902,19 @@ function toggleGhosts() {{
       names.sort();
       names.forEach(function(name) {{
         var refs = GHOSTS[name];
-        h += '<div class="ghost-node" onclick="showGhostDetail(this.dataset.name)" data-name="' + esc(name) + '">';
+        h += '<div class="ghost-node" id="ghost-' + name.replace(/[^a-zA-Z0-9]/g, '_') + '" onclick="showGhostDetail(this.dataset.name)" data-name="' + esc(name) + '">';
         h += '<div class="ghost-label">' + esc(name) + '</div>';
-        h += '<div class="ghost-refs">used by ' + refs.length + ' node' + (refs.length > 1 ? 's' : '') + '</div>';
+        h += '<div class="ghost-refs">&#8594; ' + refs.join(', ') + '</div>';
         h += '</div>';
       }});
     }}
     strip.innerHTML = h;
+    // Draw dashed edges from ghost nodes to DAG nodes
+    drawGhostEdges();
   }} else {{
     strip.style.display = "none";
+    document.getElementById("ghost-btn").textContent = "Show external dependencies";
+    removeGhostEdges();
   }}
 }}
 function showGhostDetail(nameOrEl) {{
@@ -927,6 +932,51 @@ function showGhostDetail(nameOrEl) {{
   h += '</div>';
   panel.innerHTML = h;
   panel.className = "open";
+}}
+
+function drawGhostEdges() {{
+  removeGhostEdges();
+  var svgContainer = document.getElementById("svg-container");
+  var svgEl = svgContainer.querySelector("svg");
+  if (!svgEl) return;
+  var overlay = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  overlay.id = "ghost-edges-overlay";
+  svgEl.appendChild(overlay);
+
+  var svgRect = svgEl.getBoundingClientRect();
+  var names = Object.keys(GHOSTS);
+  names.forEach(function(name) {{
+    var ghostEl = document.getElementById("ghost-" + name.replace(/[^a-zA-Z0-9]/g, "_"));
+    if (!ghostEl) return;
+    var ghostRect = ghostEl.getBoundingClientRect();
+    var ghostCx = ghostRect.left + ghostRect.width / 2 - svgRect.left;
+    var ghostCy = ghostRect.bottom - svgRect.top;
+
+    var refs = GHOSTS[name];
+    refs.forEach(function(nid) {{
+      var nodeEl = svgEl.querySelector('[id="node_' + nid + '"]');
+      if (!nodeEl) return;
+      var nodeRect = nodeEl.getBoundingClientRect();
+      var nodeCx = nodeRect.left + nodeRect.width / 2 - svgRect.left;
+      var nodeCy = nodeRect.top - svgRect.top;
+
+      var line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", ghostCx);
+      line.setAttribute("y1", ghostCy);
+      line.setAttribute("x2", nodeCx);
+      line.setAttribute("y2", nodeCy);
+      line.setAttribute("stroke", "#999");
+      line.setAttribute("stroke-width", "1.5");
+      line.setAttribute("stroke-dasharray", "6,4");
+      line.setAttribute("opacity", "0.6");
+      overlay.appendChild(line);
+    }});
+  }});
+}}
+
+function removeGhostEdges() {{
+  var overlay = document.getElementById("ghost-edges-overlay");
+  if (overlay) overlay.remove();
 }}
 
 function toggleEqPanel(el) {{
