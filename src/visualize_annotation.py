@@ -740,8 +740,8 @@ function showDetail(nodeId) {{
     var orphanEqs = d.equations.filter(function(e) {{ return !e.context || e.context === 'orphan'; }});
     // Inline equations were already shown with proof steps above; show orphans as collapsible
     if (orphanEqs.length > 0) {{
-      h += '<div class="detail-section"><h4 style="cursor:pointer;" onclick="var el=document.getElementById(\'orphan-eqs-' + nodeId + '\'); el.style.display=el.style.display===\'none\'?\'block\':\'none\';">Unplaced Equations (' + orphanEqs.length + ') &#9660;</h4>';
-      h += '<div id="orphan-eqs-' + nodeId + '" style="display:none;">';
+      h += '<div class="detail-section"><h4 style="cursor:pointer;" onclick="toggleEqPanel(this)">Unplaced Equations (' + orphanEqs.length + ') &#9660;</h4>';
+      h += '<div style="display:none;">';
       orphanEqs.forEach(function(e) {{
         h += '<div class="eq-item"><strong>' + e.id + '</strong> (Sec ' + e.section + '): ' + esc(e.statement) + '</div>';
       }});
@@ -764,6 +764,10 @@ function toggleOrphans() {{
   document.getElementById("orphan-list").innerHTML = h;
   p.style.display = "block";
   if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([p]).catch(function(){{}});
+}}
+function toggleEqPanel(el) {{
+  var panel = el.nextElementSibling;
+  if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
 }}
 function esc(t) {{ return t ? t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;") : ""; }}
 
