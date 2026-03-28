@@ -587,11 +587,10 @@ def generate_interactive_html(data, svg_path, html_path):
 
     # Make node rects clickable by adding onclick via regex
     import re
-    svg_content = re.sub(
-        r'id="node_([^"]+)"',
-        r'id="node_\1" onclick="showDetail(\'\1\')" style="cursor:pointer;"',
-        svg_content
-    )
+    def _add_onclick(m):
+        nid = m.group(1)
+        return 'id="node_' + nid + '" onclick="showDetail(\'' + nid + '\')" style="cursor:pointer;"'
+    svg_content = re.sub(r'id="node_([^"]+)"', _add_onclick, svg_content)
 
     details_json = _json.dumps(js_details, ensure_ascii=True)
     orphans_json = _json.dumps(js_orphans, ensure_ascii=True)
