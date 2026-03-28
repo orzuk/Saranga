@@ -44,14 +44,15 @@ def classify_and_merge(nodes, edges):
     base_types = {"definition", "theorem", "lemma", "corollary", "proposition",
                   "algorithm", "proof", "claim"}
 
-    # Merge proofs
+    # Merge proofs (reset proof_info first to avoid duplication across calls)
     proof_map = {}
+    for n in nodes:
+        if n.get("type") != "proof" and n["id"] in node_by_id:
+            node_by_id[n["id"]]["proof_info"] = []
     for n in nodes:
         if n.get("type") == "proof" and n.get("proves") and n["proves"] in node_by_id:
             proof_map[n["id"]] = n["proves"]
             parent = node_by_id[n["proves"]]
-            if "proof_info" not in parent:
-                parent["proof_info"] = []
             if n.get("proof_strategy"):
                 parent["proof_info"].append(n["proof_strategy"])
 
