@@ -615,8 +615,8 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
 .legend-item {{ display: flex; align-items: center; gap: 5px; font-size: 12px; }}
 .legend-color {{ width: 16px; height: 16px; border-radius: 3px; border: 1.5px solid #777; }}
 #main {{ display: flex; height: calc(100vh - 82px); }}
-#svg-container {{ flex: 1; overflow: auto; padding: 10px; }}
-#svg-container svg {{ max-width: 100%; height: auto; }}
+#svg-container {{ flex: 1; overflow: auto; padding: 10px; cursor: grab; }}
+#svg-container svg {{ transform-origin: 0 0; }}
 #detail-panel {{ width: 0; overflow-y: auto; background: white; border-left: 1px solid #ddd; transition: width 0.3s; }}
 #detail-panel.open {{ width: 380px; padding: 16px; }}
 .detail-section {{ margin-bottom: 12px; }}
@@ -636,6 +636,9 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
   <h1>{_esc(title)}<span class="hint">— click nodes for detailed description</span></h1>
   <div id="controls">
     <button onclick="resetView()">Reset</button>
+    <button onclick="zoomIn()">Zoom +</button>
+    <button onclick="zoomOut()">Zoom -</button>
+    <button onclick="zoomFit()">Fit</button>
   </div>
 </div>
 <div class="legend">
@@ -727,6 +730,23 @@ function toggleOrphans() {{
   if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([p]).catch(function(){{}});
 }}
 function esc(t) {{ return t ? t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;") : ""; }}
+
+var currentZoom = 1.0;
+var svgEl = document.querySelector("#svg-container svg");
+function applyZoom() {{
+  if (svgEl) svgEl.style.transform = "scale(" + currentZoom + ")";
+}}
+function zoomIn() {{ currentZoom = Math.min(currentZoom * 1.3, 5.0); applyZoom(); }}
+function zoomOut() {{ currentZoom = Math.max(currentZoom / 1.3, 0.2); applyZoom(); }}
+function zoomFit() {{ currentZoom = 1.0; applyZoom(); }}
+
+// Mouse wheel zoom on the SVG container
+document.getElementById("svg-container").addEventListener("wheel", function(e) {{
+  e.preventDefault();
+  if (e.deltaY < 0) {{ currentZoom = Math.min(currentZoom * 1.1, 5.0); }}
+  else {{ currentZoom = Math.max(currentZoom / 1.1, 0.2); }}
+  applyZoom();
+}}, {{passive: false}});
 </script>
 </body>
 </html>"""
