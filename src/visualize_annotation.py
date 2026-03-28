@@ -496,6 +496,74 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                         ha="left", va="top", fontsize=10.5, color="#222")
                 cursor_y -= LINE_H
 
+    # ── Ghost nodes (external dependencies) drawn in the SVG but hidden ──
+    from link_to_foundation import build_foundation_index, link_paper
+    _fg_index = build_foundation_index(None)
+    _fg_matches = link_paper(nodes_raw, _fg_index, min_term_len=5)
+
+    # Separate Case 2: references in proof steps (not base nodes)
+    _base_ids = set(node_data.keys())
+    _ghost_map = {}  # foundation_name -> set of base node IDs that reference it
+    for m in _fg_matches:
+        if m["node_id"] not in _base_ids:
+            # Find parent base node
+            parent = m["node_id"]
+            for nr in nodes_raw:
+                if nr["id"] == parent and nr.get("proves") and nr["proves"] in _base_ids:
+                    parent = nr["proves"]
+                    break
+            if parent in _base_ids:
+                _ghost_map.setdefault(m["foundation_name"], set()).add(parent)
+    _ghost_map = {k: list(v) for k, v in _ghost_map.items()}
+
+    if _ghost_map and node_rect:
+        # Position ghost nodes in a row ABOVE the top layer
+        all_tops = [by + bh for (bx, by, bw, bh) in node_rect.values()]
+        ghost_y_top = max(all_tops) + LEVEL_GAP_Y * 0.8
+        ghost_w = MIN_BOX_W * 0.8
+        ghost_h = HEADER_H + LINE_H * 0.5
+        ghost_names = sorted(_ghost_map.keys())
+        total_ghost_w = len(ghost_names) * ghost_w + (len(ghost_names) - 1) * BOX_GAP_X * 0.5
+        ghost_start_x = -total_ghost_w / 2
+
+        ghost_rects = {}  # name -> (x, y, w, h)
+        for gi, gname in enumerate(ghost_names):
+            gx = ghost_start_x + gi * (ghost_w + BOX_GAP_X * 0.5)
+            gy = ghost_y_top
+
+            # Draw ghost node box (hidden initially via gid prefix)
+            grect = FancyBboxPatch(
+                (gx, gy - ghost_h), ghost_w, ghost_h,
+                boxstyle="round,pad=0.05",
+                facecolor="#E0E0E0", edgecolor="#888888",
+                linewidth=1.0, linestyle="dashed",
+                gid=f"ghost_box_{gi}",
+            )
+            ax.add_patch(grect)
+            # Label
+            short_name = gname if len(gname) <= 20 else gname[:17] + "..."
+            ax.text(gx + ghost_w / 2, gy - ghost_h / 2, short_name,
+                    ha="center", va="center", fontsize=9, color="#444",
+                    fontstyle="italic", gid=f"ghost_text_{gi}")
+
+            ghost_rects[gname] = (gx, gy - ghost_h, ghost_w, ghost_h)
+
+            # Draw dashed edges to target nodes
+            for target_id in _ghost_map[gname]:
+                if target_id in node_rect:
+                    tx, ty, tw, th = node_rect[target_id]
+                    ax.annotate(
+                        "", xy=(tx + tw / 2, ty + th), xytext=(gx + ghost_w / 2, gy - ghost_h),
+                        arrowprops=dict(
+                            arrowstyle="-|>,head_length=0.8,head_width=0.35",
+                            color="#999999", lw=1.5,
+                            linestyle="dashed",
+                            connectionstyle="arc3,rad=0.05",
+                            shrinkA=3, shrinkB=3,
+                        ),
+                        gid=f"ghost_edge_{gi}_{target_id}",
+                    )
+
     # ── Misc/Orphan equations box ──
     # Count orphan equations from the FULL node list (before filtering)
     all_eq_nodes = [n for n in nodes_raw if n.get("type") == "equation"]
@@ -890,31 +958,31 @@ function toggleOrphans() {{
 // Ghost nodes (external dependencies)
 function toggleGhosts() {{
   var strip = document.getElementById("ghost-strip");
-  if (strip.style.display === "none") {{
+  var svgEl = document.querySelector("#svg-container svg");
+  var ghostEls = svgEl ? svgEl.querySelectorAll('[id^="ghost_"]') : [];
+  var showing = strip.style.display !== "none";
+  if (!showing) {{
     strip.style.display = "block";
     document.getElementById("ghost-btn").textContent = "Hide external dependencies";
-    // Populate ghost nodes
+    // Show ghost SVG elements
+    ghostEls.forEach(function(el) {{ el.style.display = ""; }});
+    // Populate ghost strip (for clicking)
     var h = "";
     var names = Object.keys(GHOSTS);
-    if (names.length === 0) {{
-      h = '<span style="color:#888;font-size:12px;">No external dependencies detected.</span>';
-    }} else {{
-      names.sort();
-      names.forEach(function(name) {{
-        var refs = GHOSTS[name];
-        h += '<div class="ghost-node" id="ghost-' + name.replace(/[^a-zA-Z0-9]/g, '_') + '" onclick="showGhostDetail(this.dataset.name)" data-name="' + esc(name) + '">';
-        h += '<div class="ghost-label">' + esc(name) + '</div>';
-        h += '<div class="ghost-refs">&#8594; ' + refs.join(', ') + '</div>';
-        h += '</div>';
-      }});
-    }}
-    strip.innerHTML = h;
-    // Draw dashed edges from ghost nodes to DAG nodes
-    drawGhostEdges();
+    names.sort();
+    names.forEach(function(name) {{
+      var refs = GHOSTS[name];
+      h += '<div class="ghost-node" onclick="showGhostDetail(this.dataset.name)" data-name="' + esc(name) + '">';
+      h += '<div class="ghost-label">' + esc(name) + '</div>';
+      h += '<div class="ghost-refs">&#8594; ' + refs.join(', ') + '</div>';
+      h += '</div>';
+    }});
+    strip.innerHTML = names.length > 0 ? h : '<span style="color:#888;">No external dependencies.</span>';
   }} else {{
     strip.style.display = "none";
     document.getElementById("ghost-btn").textContent = "Show external dependencies";
-    removeGhostEdges();
+    // Hide ghost SVG elements
+    ghostEls.forEach(function(el) {{ el.style.display = "none"; }});
   }}
 }}
 function showGhostDetail(nameOrEl) {{
@@ -934,102 +1002,21 @@ function showGhostDetail(nameOrEl) {{
   panel.className = "open";
 }}
 
-function drawGhostEdges() {{
-  removeGhostEdges();
-  // Draw edges as absolutely positioned HTML divs (not SVG) to avoid coordinate issues
-  var container = document.getElementById("svg-container");
-  var svgEl = container.querySelector("svg");
-  if (!svgEl) return;
-
-  var edgeDiv = document.createElement("div");
-  edgeDiv.id = "ghost-edges-overlay";
-  edgeDiv.style.position = "absolute";
-  edgeDiv.style.top = "0";
-  edgeDiv.style.left = "0";
-  edgeDiv.style.width = "100%";
-  edgeDiv.style.height = "100%";
-  edgeDiv.style.pointerEvents = "none";
-  edgeDiv.style.zIndex = "10";
-  container.style.position = "relative";
-  container.appendChild(edgeDiv);
-
-  // Create an SVG overlay matching the container
-  var overlayNS = "http://www.w3.org/2000/svg";
-  var overlaySvg = document.createElementNS(overlayNS, "svg");
-  overlaySvg.style.position = "absolute";
-  overlaySvg.style.top = "0";
-  overlaySvg.style.left = "0";
-  overlaySvg.style.width = "100%";
-  overlaySvg.style.height = container.scrollHeight + "px";
-  overlaySvg.style.pointerEvents = "none";
-  overlaySvg.style.overflow = "visible";
-
-  // Add arrowhead marker
-  var defs = document.createElementNS(overlayNS, "defs");
-  var marker = document.createElementNS(overlayNS, "marker");
-  marker.setAttribute("id", "ghost-arrow");
-  marker.setAttribute("viewBox", "0 0 10 10");
-  marker.setAttribute("refX", "10");
-  marker.setAttribute("refY", "5");
-  marker.setAttribute("markerWidth", "8");
-  marker.setAttribute("markerHeight", "8");
-  marker.setAttribute("orient", "auto");
-  var path = document.createElementNS(overlayNS, "path");
-  path.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
-  path.setAttribute("fill", "none");
-  path.setAttribute("stroke", "#777");
-  path.setAttribute("stroke-width", "1.5");
-  marker.appendChild(path);
-  defs.appendChild(marker);
-  overlaySvg.appendChild(defs);
-
-  edgeDiv.appendChild(overlaySvg);
-
-  var containerRect = container.getBoundingClientRect();
-  var scrollLeft = container.scrollLeft;
-  var scrollTop = container.scrollTop;
-
-  var names = Object.keys(GHOSTS);
-  names.forEach(function(name) {{
-    var ghostEl = document.getElementById("ghost-" + name.replace(/[^a-zA-Z0-9]/g, "_"));
-    if (!ghostEl) return;
-    var ghostRect = ghostEl.getBoundingClientRect();
-    var x1 = ghostRect.left + ghostRect.width / 2 - containerRect.left + scrollLeft;
-    var y1 = ghostRect.bottom - containerRect.top + scrollTop;
-
-    var refs = GHOSTS[name];
-    refs.forEach(function(nid) {{
-      // Find the node rect in SVG using the gid
-      var nodeGroup = svgEl.querySelector('[id="node_' + nid + '"]');
-      if (!nodeGroup) return;
-      var nodeRect = nodeGroup.getBoundingClientRect();
-      var x2 = nodeRect.left + nodeRect.width / 2 - containerRect.left + scrollLeft;
-      var y2 = nodeRect.top - containerRect.top + scrollTop;
-
-      var line = document.createElementNS(overlayNS, "line");
-      line.setAttribute("x1", x1);
-      line.setAttribute("y1", y1);
-      line.setAttribute("x2", x2);
-      line.setAttribute("y2", y2);
-      line.setAttribute("stroke", "#777");
-      line.setAttribute("stroke-width", "2");
-      line.setAttribute("stroke-dasharray", "8,5");
-      line.setAttribute("marker-end", "url(#ghost-arrow)");
-      overlaySvg.appendChild(line);
-    }});
-  }});
-}}
-
-function removeGhostEdges() {{
-  var overlay = document.getElementById("ghost-edges-overlay");
-  if (overlay) overlay.parentNode.removeChild(overlay);
-}}
 
 function toggleEqPanel(el) {{
   var panel = el.nextElementSibling;
   if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
 }}
 function esc(t) {{ return t ? t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;") : ""; }}
+
+// Hide ghost elements on load
+(function() {{
+  var svgEl = document.querySelector("#svg-container svg");
+  if (svgEl) {{
+    var ghostEls = svgEl.querySelectorAll('[id^="ghost_"]');
+    ghostEls.forEach(function(el) {{ el.style.display = "none"; }});
+  }}
+}})();
 
 var currentZoom = 1.0;
 var svgEl = document.querySelector("#svg-container svg");
