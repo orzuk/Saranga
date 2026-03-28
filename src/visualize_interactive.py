@@ -115,11 +115,15 @@ def generate_html(data, output_path):
 
     base_nodes, base_edges, step_chains, eq_map, orphan_eqs = classify_and_merge(nodes, edges)
 
+    # Compute topological depth for consistent layering with PNG
+    from visualize_annotation import compute_dag_depth
+    node_depths = compute_dag_depth(base_nodes, base_edges)
+
     ch = metadata.get("chapter", "")
     ch_title = metadata.get("chapter_title", "")
     title = f"Chapter {ch}: {ch_title}" if ch_title else "Knowledge Graph"
 
-    # Build JS data — simple labels, detail in separate object
+    # Build JS data
     js_nodes_list = []
     js_details = {}
     for n in base_nodes:
@@ -135,8 +139,33 @@ def generate_html(data, output_path):
         # Build compound HTML label (like the PNG but with LaTeX stripped)
         import re as _re2
         def _strip_latex(t):
+            """Remove $...$ and clean up LaTeX commands to readable text."""
             if not t: return ""
-            return _re2.sub(r'\$([^$]*)\$', lambda m: m.group(1).replace('\\\\','').replace('\\',''), str(t))
+            import re as _r
+            # Extract content inside $...$, strip LaTeX commands
+            def _clean_math(m):
+                s = m.group(1)
+                # Remove common LaTeX commands but keep content
+                s = _r.sub(r'\\mathbb\{([^}]+)\}', r'\1', s)
+                s = _r.sub(r'\\mathbf\{([^}]+)\}', r'\1', s)
+                s = _r.sub(r'\\mathrm\{([^}]+)\}', r'\1', s)
+                s = _r.sub(r'\\text\{([^}]+)\}', r'\1', s)
+                s = _r.sub(r'\\operatorname\{([^}]+)\}', r'\1', s)
+                s = s.replace('\\leq', '<=').replace('\\geq', '>=')
+                s = s.replace('\\to', '->').replace('\\rightarrow', '->')
+                s = s.replace('\\Leftrightarrow', '<=>').replace('\\Rightarrow', '=>')
+                s = s.replace('\\in', 'in').replace('\\infty', 'inf')
+                s = s.replace('\\ldots', '...').replace('\\cdot', '*')
+                s = s.replace('\\sigma', 'sigma').replace('\\epsilon', 'eps')
+                s = s.replace('\\beta', 'beta').replace('\\lambda', 'lambda')
+                s = s.replace('\\sqrt', 'sqrt').replace('\\frac', '')
+                s = s.replace('\\sum', 'sum').replace('\\prod', 'prod')
+                s = s.replace('\\sim', '~').replace('\\pm', '+/-')
+                s = _r.sub(r'\\[a-zA-Z]+', '', s)  # remove remaining commands
+                s = s.replace('{','').replace('}','')
+                s = _r.sub(r'\s+', ' ', s).strip()
+                return s
+            return _r.sub(r'\$([^$]*)\$', _clean_math, str(t))
 
         label_parts = [f'<div style="background:{colors["border"]};color:white;padding:3px 8px;font-weight:bold;font-size:11px;border-radius:3px 3px 0 0;text-align:center;">{escape(label)}</div>']
 
@@ -181,6 +210,7 @@ def generate_html(data, output_path):
             "type": n.get("type", ""),
             "bg": colors["bg"],
             "border": colors["border"],
+            "rank": node_depths.get(n["id"], 0),
         })
 
         js_details[n["id"]] = {
@@ -280,6 +310,10 @@ try {
     rankdir: "TB", ranksep: 50, nodesep: 25, marginx: 20, marginy: 20
   });
 
+  // Build rank lookup
+  var nodeRank = {};
+  NODES.forEach(function(n) { nodeRank[n.id] = n.rank; });
+
   NODES.forEach(function(n) {
     var opts = {
       label: n.label,
@@ -301,9 +335,11 @@ try {
   });
 
   EDGES.forEach(function(e) {
+    var rankDiff = (nodeRank[e.target] || 0) - (nodeRank[e.source] || 0);
     g.setEdge(e.source, e.target, {
-      style: "stroke: #7f8c8d; stroke-width: 2px;",
-      arrowheadStyle: "fill: #7f8c8d; stroke: #7f8c8d;"
+      style: "stroke: #555; stroke-width: 2px;",
+      arrowheadStyle: "fill: #555; stroke: #555;",
+      minlen: Math.max(rankDiff, 1)
     });
   });
 
@@ -344,6 +380,14 @@ try {
     var nodeId = d3.select(this).attr("data-node-id");
     if (nodeId) showDetail(nodeId);
   });
+
+  // Render MathJax in SVG foreignObject labels
+  if (window.MathJax && MathJax.typesetPromise) {
+    var fos = document.querySelectorAll("svg foreignObject");
+    if (fos.length > 0) {
+      MathJax.typesetPromise(Array.from(fos)).catch(function(e) { console.log("MathJax SVG:", e); });
+    }
+  }
 
   console.log("SARANGA graph rendered: " + g.nodeCount() + " nodes, " + g.edgeCount() + " edges");
 
