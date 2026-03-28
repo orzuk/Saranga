@@ -666,17 +666,47 @@ function showDetail(nodeId) {{
   if (!d) return;
   var h = '<h3 style="margin:0 0 8px;font-size:16px;">' + esc(nodeId) + ': ' + esc(d.name || d.type) + '</h3>';
   h += '<div style="font-size:12px;color:#888;margin-bottom:10px;">' + d.type + (d.section ? ' (Sec ' + d.section + ')' : '') + '</div>';
-  if (d.statement) h += '<div class="detail-section"><h4>Statement</h4><div style="font-size:14px;">' + esc(d.statement) + '</div></div>';
-  if (d.assumptions && d.assumptions.length > 0) {{
+  // Pre-build equation maps by context
+  var eqsByCtx = {{statement:[], assumption:[], conclusion:[], orphan:[]}};
+  var eqsByStep = {{}};
+  if (d.equations) {{
+    d.equations.forEach(function(e) {{
+      if (e.parent_step) {{
+        if (!eqsByStep[e.parent_step]) eqsByStep[e.parent_step] = [];
+        eqsByStep[e.parent_step].push(e);
+      }} else if (e.context && eqsByCtx[e.context]) {{
+        eqsByCtx[e.context].push(e);
+      }} else {{
+        eqsByCtx.orphan.push(e);
+      }}
+    }});
+  }}
+  var eqTag = function(e) {{ return '<span style="color:#2471A3;font-size:11px;"> (' + e.id + ')</span>'; }};
+  var eqBlock = function(e) {{ return '<div style="margin:2px 0 2px 12px;padding:3px 8px;background:#EBF5FB;border-left:2px solid #5DADE2;font-size:12px;">' + esc(e.id) + ': ' + esc(e.statement) + '</div>'; }};
+
+  // Statement + inline statement equations
+  if (d.statement) {{
+    h += '<div class="detail-section"><h4>Statement</h4><div style="font-size:14px;">' + esc(d.statement);
+    eqsByCtx.statement.forEach(function(e) {{ h += eqTag(e); }});
+    h += '</div>';
+    eqsByCtx.statement.forEach(function(e) {{ h += eqBlock(e); }});
+    h += '</div>';
+  }}
+  // Assumptions + inline assumption equations
+  if ((d.assumptions && d.assumptions.length > 0) || eqsByCtx.assumption.length > 0) {{
     h += '<div class="detail-section"><h4>Assumptions</h4>';
-    d.assumptions.forEach(function(a) {{ h += '<div style="font-size:13px;padding:2px 0 2px 10px;">&bull; ' + esc(a) + '</div>'; }});
+    if (d.assumptions) d.assumptions.forEach(function(a) {{ h += '<div style="font-size:13px;padding:2px 0 2px 10px;">&bull; ' + esc(a) + '</div>'; }});
+    eqsByCtx.assumption.forEach(function(e) {{ h += eqBlock(e); }});
     h += '</div>';
   }}
-  if (d.conclusions && d.conclusions.length > 0) {{
+  // Conclusions + inline conclusion equations
+  if ((d.conclusions && d.conclusions.length > 0) || eqsByCtx.conclusion.length > 0) {{
     h += '<div class="detail-section"><h4>Conclusions</h4>';
-    d.conclusions.forEach(function(c) {{ h += '<div style="font-size:13px;padding:2px 0 2px 10px;">&bull; ' + esc(c) + '</div>'; }});
+    if (d.conclusions) d.conclusions.forEach(function(c) {{ h += '<div style="font-size:13px;padding:2px 0 2px 10px;">&bull; ' + esc(c) + '</div>'; }});
+    eqsByCtx.conclusion.forEach(function(e) {{ h += eqBlock(e); }});
     h += '</div>';
   }}
+  // Proof strategy
   if (d.proof_info && d.proof_info.length > 0) {{
     h += '<div class="detail-section"><h4>Proof Strategy</h4>';
     d.proof_info.forEach(function(p) {{
@@ -688,65 +718,38 @@ function showDetail(nodeId) {{
     }});
     h += '</div>';
   }}
+  // Algorithm input/output
   if (d.input && d.input.length > 0) {{
     h += '<div class="detail-section"><h4>Input</h4>';
-    d.input.forEach(function(x) {{ h += '<div style="font-size:11px;">&bull; ' + esc(x) + '</div>'; }});
+    d.input.forEach(function(x) {{ h += '<div style="font-size:13px;">&bull; ' + esc(x) + '</div>'; }});
     h += '</div>';
   }}
   if (d.output && d.output.length > 0) {{
     h += '<div class="detail-section"><h4>Output</h4>';
-    d.output.forEach(function(x) {{ h += '<div style="font-size:11px;">&bull; ' + esc(x) + '</div>'; }});
+    d.output.forEach(function(x) {{ h += '<div style="font-size:13px;">&bull; ' + esc(x) + '</div>'; }});
     h += '</div>';
   }}
+  // Proof steps with inline equations
   if (d.steps && d.steps.length > 0) {{
-    // Build map of equations by parent_step
-    var eqsByStep = {{}};
-    if (d.equations) {{
-      d.equations.forEach(function(e) {{
-        if (e.parent_step) {{
-          if (!eqsByStep[e.parent_step]) eqsByStep[e.parent_step] = [];
-          eqsByStep[e.parent_step].push(e);
-        }}
-      }});
-    }}
     h += '<div class="detail-section"><h4>Proof Steps (' + d.steps.length + ')</h4>';
     d.steps.forEach(function(s, i) {{
       h += '<div class="step-item"><strong>' + s.id + '</strong>: ' + esc(s.statement);
-      // Show inline equations for this step
       if (eqsByStep[s.id]) {{
-        eqsByStep[s.id].forEach(function(e) {{
-          h += '<div style="margin:3px 0 0 12px;padding:3px 8px;background:#EBF5FB;border-left:2px solid #5DADE2;font-size:12px;">' + esc(e.id) + ': ' + esc(e.statement) + '</div>';
-        }});
+        eqsByStep[s.id].forEach(function(e) {{ h += eqBlock(e); }});
       }}
       h += '</div>';
       if (i < d.steps.length - 1) h += '<div class="step-arrow">&#8595;</div>';
     }});
     h += '</div>';
   }}
-  // Also show equations tagged to conclusion/assumption/statement
-  if (d.equations) {{
-    var contextEqs = d.equations.filter(function(e) {{ return e.context && e.context !== 'orphan' && !e.parent_step; }});
-    if (contextEqs.length > 0) {{
-      h += '<div class="detail-section"><h4>Key Equations</h4>';
-      contextEqs.forEach(function(e) {{
-        h += '<div class="eq-item"><strong>' + e.id + '</strong> (' + (e.context || '') + '): ' + esc(e.statement) + '</div>';
-      }});
-      h += '</div>';
-    }}
-  }}
-  // Show equations inline with their context, or as collapsible orphans
-  if (d.equations && d.equations.length > 0) {{
-    var inlineEqs = d.equations.filter(function(e) {{ return e.context && e.context !== 'orphan'; }});
-    var orphanEqs = d.equations.filter(function(e) {{ return !e.context || e.context === 'orphan'; }});
-    // Inline equations were already shown with proof steps above; show orphans as collapsible
-    if (orphanEqs.length > 0) {{
-      h += '<div class="detail-section"><h4 style="cursor:pointer;" onclick="toggleEqPanel(this)">Unplaced Equations (' + orphanEqs.length + ') &#9660;</h4>';
-      h += '<div style="display:none;">';
-      orphanEqs.forEach(function(e) {{
-        h += '<div class="eq-item"><strong>' + e.id + '</strong> (Sec ' + e.section + '): ' + esc(e.statement) + '</div>';
-      }});
-      h += '</div></div>';
-    }}
+  // Orphan equations (collapsible)
+  if (eqsByCtx.orphan.length > 0) {{
+    h += '<div class="detail-section"><h4 style="cursor:pointer;" onclick="toggleEqPanel(this)">Unplaced Equations (' + eqsByCtx.orphan.length + ') &#9660;</h4>';
+    h += '<div style="display:none;">';
+    eqsByCtx.orphan.forEach(function(e) {{
+      h += '<div class="eq-item"><strong>' + e.id + '</strong> (Sec ' + e.section + '): ' + esc(e.statement) + '</div>';
+    }});
+    h += '</div></div>';
   }}
   panel.innerHTML = h;
   panel.className = "open";
