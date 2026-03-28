@@ -132,9 +132,52 @@ def generate_html(data, output_path):
         if len(label) > 40:
             label = label[:37] + "..."
 
+        # Build compound HTML label (like the PNG but with LaTeX stripped)
+        import re as _re2
+        def _strip_latex(t):
+            if not t: return ""
+            return _re2.sub(r'\$([^$]*)\$', lambda m: m.group(1).replace('\\\\','').replace('\\',''), str(t))
+
+        label_parts = [f'<div style="background:{colors["border"]};color:white;padding:3px 8px;font-weight:bold;font-size:11px;border-radius:3px 3px 0 0;text-align:center;">{escape(label)}</div>']
+
+        ntype = n.get("type", "")
+        if ntype in ("theorem", "lemma", "corollary", "proposition"):
+            assumptions = n.get("assumptions", [])
+            conclusions = n.get("conclusions", [])
+            if assumptions:
+                label_parts.append('<div style="padding:2px 6px;font-size:9px;color:#555;font-weight:bold;">Assume:</div>')
+                for a in assumptions[:3]:
+                    label_parts.append(f'<div style="padding:0 6px 1px 10px;font-size:9px;color:#333;font-style:italic;">&#8226; {escape(_strip_latex(_short(a, 55)))}</div>')
+                if len(assumptions) > 3:
+                    label_parts.append(f'<div style="padding:0 10px;font-size:8px;color:#888;">+{len(assumptions)-3} more</div>')
+            label_parts.append(f'<hr style="margin:1px 4px;border:none;border-top:1px solid {colors["border"]}40;">')
+            if conclusions:
+                label_parts.append('<div style="padding:2px 6px;font-size:9px;color:#555;font-weight:bold;">Conclude:</div>')
+                for c in conclusions[:3]:
+                    label_parts.append(f'<div style="padding:0 6px 1px 10px;font-size:9px;color:#333;">&#8226; {escape(_strip_latex(_short(c, 55)))}</div>')
+            pi = n.get("proof_info", [])
+            if pi:
+                label_parts.append(f'<hr style="margin:1px 4px;border:none;border-top:1px solid #ccc;">')
+                for p in pi[:2]:
+                    pt = p if isinstance(p, str) else str(p)
+                    if pt:
+                        label_parts.append(f'<div style="padding:1px 6px;font-size:8px;color:#666;font-style:italic;">Proof: {escape(_strip_latex(_short(pt, 45)))}</div>')
+        elif ntype == "algorithm" and (n.get("input") or n.get("output")):
+            for x in (n.get("input") or [])[:2]:
+                label_parts.append(f'<div style="padding:1px 6px;font-size:9px;">In: {escape(_strip_latex(_short(x, 50)))}</div>')
+            for x in (n.get("output") or [])[:2]:
+                label_parts.append(f'<div style="padding:1px 6px;font-size:9px;">Out: {escape(_strip_latex(_short(x, 50)))}</div>')
+        else:
+            stmt = n.get("statement", "")
+            if stmt:
+                label_parts.append(f'<div style="padding:3px 6px;font-size:9px;color:#333;">{escape(_strip_latex(_short(stmt, 80)))}</div>')
+
+        compound_label = "".join(label_parts)
+
         js_nodes_list.append({
             "id": n["id"],
-            "label": label,
+            "label": compound_label,
+            "labelType": "html",
             "type": n.get("type", ""),
             "bg": colors["bg"],
             "border": colors["border"],
@@ -238,11 +281,23 @@ try {
   });
 
   NODES.forEach(function(n) {
-    g.setNode(n.id, {
+    var opts = {
       label: n.label,
       style: "fill: " + n.bg + "; stroke: " + n.border + "; stroke-width: 2px;",
-      paddingLeft: 10, paddingRight: 10, paddingTop: 6, paddingBottom: 6
-    });
+    };
+    if (n.labelType === "html") {
+      opts.labelType = "html";
+      opts.paddingLeft = 0;
+      opts.paddingRight = 0;
+      opts.paddingTop = 0;
+      opts.paddingBottom = 0;
+    } else {
+      opts.paddingLeft = 10;
+      opts.paddingRight = 10;
+      opts.paddingTop = 6;
+      opts.paddingBottom = 6;
+    }
+    g.setNode(n.id, opts);
   });
 
   EDGES.forEach(function(e) {
