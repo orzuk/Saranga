@@ -901,7 +901,7 @@ function toggleGhosts() {{
       names.sort();
       names.forEach(function(name) {{
         var refs = GHOSTS[name];
-        h += '<div class="ghost-node" onclick="showGhostDetail(\'' + esc(name).replace(/'/g, "\\\\'") + '\')">';
+        h += '<div class="ghost-node" onclick="showGhostDetail(this.dataset.name)" data-name="' + esc(name) + '">';
         h += '<div class="ghost-label">' + esc(name) + '</div>';
         h += '<div class="ghost-refs">used by ' + refs.length + ' node' + (refs.length > 1 ? 's' : '') + '</div>';
         h += '</div>';
@@ -912,7 +912,8 @@ function toggleGhosts() {{
     strip.style.display = "none";
   }}
 }}
-function showGhostDetail(name) {{
+function showGhostDetail(nameOrEl) {{
+  var name = (typeof nameOrEl === 'string') ? nameOrEl : nameOrEl;
   var panel = document.getElementById("detail-panel");
   var refs = GHOSTS[name] || [];
   var h = '<h3 style="margin:0 0 8px;font-size:16px;">' + esc(name) + '</h3>';
