@@ -369,7 +369,7 @@ def generate_html(data, output_path):
   <div id="orphan-list"></div>
 </div>
 
-<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="https://d3js.org/d3.v5.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dagre-d3@0.6.4/dist/dagre-d3.min.js"></script>
 <script>
 const NODES = {json.dumps(js_nodes)};
@@ -418,36 +418,26 @@ svg.attr("width", Math.max(graphWidth, 800));
 svg.attr("height", Math.max(graphHeight, 600));
 
 // Zoom
-const zoom = d3.zoom().on("zoom", (event) => {{
-  svgGroup.attr("transform", event.transform);
+const zoom = d3.zoom().on("zoom", () => {{
+  svgGroup.attr("transform", d3.event.transform);
 }});
 svg.call(zoom);
 
-// Tooltips
+// Tooltips — dagre-d3 stores the DOM element on g.node(id).elem after render
 NODES.forEach(n => {{
-  const nodeEl = d3.select(`[id="${{n.id}}"]`);
-  if (nodeEl.node()) {{
-    nodeEl.select("rect")
-      .append("title")
+  const nd = g.node(n.id);
+  if (nd && nd.elem) {{
+    d3.select(nd.elem)
+      .attr("data-node-id", n.id)
+      .insert("title", ":first-child")
       .text(n.tooltip.replace(/\\\\n/g, "\\n"));
   }}
 }});
 
-// Click handler
-svg.selectAll("g.node").on("click", function(event) {{
-  const nodeId = d3.select(this).attr("id") || this.id;
-  // Find the node ID from the element
-  const clickedId = g.nodes().find(nid => {{
-    const nd = g.node(nid);
-    return nd && nd.id === nodeId;
-  }}) || nodeId;
-  showDetail(clickedId);
-}});
-
-// For dagre-d3, node IDs are set on the group element
-svg.selectAll("g.node").each(function() {{
-  const el = d3.select(this);
-  // dagre-d3 sets the node id in the class or data
+// Click handler — use data-node-id set during tooltip phase
+svg.selectAll("g.node").on("click", function() {{
+  const nodeId = d3.select(this).attr("data-node-id");
+  if (nodeId) showDetail(nodeId);
 }});
 
 function showDetail(nodeId) {{
