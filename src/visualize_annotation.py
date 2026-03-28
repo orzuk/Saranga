@@ -374,13 +374,14 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         ntype = n.get("type", "")
         colors = NODE_COLORS.get(ntype, DEFAULT_COLOR)
 
-        # Main box background
+        # Main box background (gid for SVG click handling)
         rect = FancyBboxPatch(
             (bx, by), bw, bh,
             boxstyle="round,pad=0.05",
             facecolor=colors["body"],
             edgecolor=colors["header"],
             linewidth=1.5,
+            gid=f"node_{nid}",
         )
         ax.add_patch(rect)
 
@@ -526,9 +527,193 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
     except Exception:
         pass  # tight_layout can fail on complex math; savefig still works
     plt.savefig(str(out_path), dpi=150, bbox_inches="tight", facecolor="white")
+
+    # Also save SVG if requested (for interactive HTML)
+    svg_path = str(out_path).replace('.png', '.svg') if str(out_path).endswith('.png') else None
+    if svg_path:
+        # Set gid on each node rectangle for click handling
+        for nid, (bx, by, bw, bh) in node_rect.items():
+            # The FancyBboxPatch was already added; we tag it via node_rect for the HTML wrapper
+            pass
+        plt.savefig(svg_path, format='svg', bbox_inches="tight", facecolor="white")
+
     plt.close(fig)
 
-    return len(nodes), len(edges)
+    return len(nodes), len(edges), node_rect, node_data
+
+
+def generate_interactive_html(data, svg_path, html_path):
+    """Wrap an SVG figure in an interactive HTML page with click-to-expand detail panel."""
+    from visualize_interactive import classify_and_merge
+    import json as _json
+    from html import escape as _esc
+
+    nodes = data.get("nodes", [])
+    edges = data.get("edges", [])
+    metadata = data.get("metadata", {})
+
+    base_nodes, base_edges, step_chains, eq_map, orphan_eqs = classify_and_merge(nodes, edges)
+
+    # Build detail data
+    js_details = {}
+    for n in base_nodes:
+        nid = n["id"]
+        js_details[nid] = {
+            "name": n.get("name", ""),
+            "type": n.get("type", ""),
+            "section": n.get("section", ""),
+            "statement": n.get("statement", ""),
+            "assumptions": n.get("assumptions", []),
+            "conclusions": n.get("conclusions", []),
+            "proof_info": n.get("proof_info", []),
+            "input": n.get("input", []),
+            "output": n.get("output", []),
+            "steps": [{"id": s["id"], "statement": s.get("statement","")}
+                      for s in step_chains.get(nid, [])],
+            "equations": [{"id": e["id"], "statement": e.get("statement",""), "section": e.get("section","")}
+                          for e in eq_map.get(nid, [])],
+        }
+
+    js_orphans = [{"id": e["id"], "statement": e.get("statement",""), "section": e.get("section","")}
+                  for e in orphan_eqs]
+
+    ch = metadata.get("chapter", "")
+    ch_title = metadata.get("chapter_title", "")
+    title = f"Chapter {ch}: {ch_title}" if ch_title else "Knowledge Graph"
+
+    # Read SVG content
+    with open(svg_path, "r", encoding="utf-8") as f:
+        svg_content = f.read()
+
+    # Make node rects clickable by adding onclick via regex
+    import re
+    svg_content = re.sub(
+        r'id="node_([^"]+)"',
+        r'id="node_\1" onclick="showDetail(\'\1\')" style="cursor:pointer;"',
+        svg_content
+    )
+
+    details_json = _json.dumps(js_details, ensure_ascii=True)
+    orphans_json = _json.dumps(js_orphans, ensure_ascii=True)
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>{_esc(title)}</title>
+<script>MathJax = {{tex: {{inlineMath: [['$','$']]}}, startup: {{typeset: false}}}};</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+<style>
+body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #fafafa; }}
+#header {{ background: #2c3e50; color: white; padding: 10px 24px; display: flex; align-items: center; justify-content: space-between; }}
+#header h1 {{ margin: 0; font-size: 18px; }}
+#controls button {{ padding: 6px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; background: #34495e; color: white; margin-left: 8px; }}
+#controls button:hover {{ background: #4a6785; }}
+#main {{ display: flex; height: calc(100vh - 44px); }}
+#svg-container {{ flex: 1; overflow: auto; padding: 10px; }}
+#svg-container svg {{ max-width: 100%; height: auto; }}
+#detail-panel {{ width: 0; overflow-y: auto; background: white; border-left: 1px solid #ddd; transition: width 0.3s; }}
+#detail-panel.open {{ width: 380px; padding: 16px; }}
+.detail-section {{ margin-bottom: 12px; }}
+.detail-section h4 {{ margin: 0 0 4px; color: #555; font-size: 11px; text-transform: uppercase; }}
+.step-item {{ background: #f0f0f0; border-left: 3px solid #839192; padding: 5px 8px; font-size: 11px; margin-bottom: 3px; border-radius: 0 3px 3px 0; }}
+.step-arrow {{ text-align: center; color: #aaa; font-size: 12px; }}
+.eq-item {{ background: #d4e6f1; border-left: 3px solid #5dade2; padding: 5px 8px; font-size: 11px; margin-bottom: 3px; border-radius: 0 3px 3px 0; }}
+.orphan-item {{ background: #fef9e7; border-left: 3px solid #f39c12; padding: 5px 8px; font-size: 11px; margin-bottom: 3px; }}
+#orphan-panel {{ position: fixed; bottom: 16px; right: 16px; background: white; border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); max-width: 350px; max-height: 400px; overflow-y: auto; display: none; padding: 12px; z-index: 100; }}
+#orphan-toggle {{ position: fixed; bottom: 16px; right: 16px; background: #f39c12; color: white; border: none; border-radius: 20px; padding: 8px 16px; cursor: pointer; font-size: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); z-index: 101; display: {"block" if js_orphans else "none"}; }}
+/* Hover effect on clickable node rects */
+[id^="node_"]:hover {{ filter: brightness(0.90); }}
+</style>
+</head>
+<body>
+<div id="header">
+  <h1>{_esc(title)}</h1>
+  <div id="controls">
+    <button onclick="resetView()">Reset</button>
+  </div>
+</div>
+<div id="main">
+  <div id="svg-container">{svg_content}</div>
+  <div id="detail-panel"></div>
+</div>
+<button id="orphan-toggle" onclick="toggleOrphans()">{len(js_orphans)} orphan eq{"s" if len(js_orphans) != 1 else ""}</button>
+<div id="orphan-panel"><h3>Unconnected Equations</h3><div id="orphan-list"></div></div>
+<script>
+var DETAILS = {details_json};
+var ORPHANS = {orphans_json};
+
+function showDetail(nodeId) {{
+  var panel = document.getElementById("detail-panel");
+  var d = DETAILS[nodeId];
+  if (!d) return;
+  var h = '<h3 style="margin:0 0 8px;">' + esc(nodeId) + ': ' + esc(d.name || d.type) + '</h3>';
+  h += '<div style="font-size:11px;color:#888;margin-bottom:8px;">' + d.type + (d.section ? ' (Sec ' + d.section + ')' : '') + '</div>';
+  if (d.statement) h += '<div class="detail-section"><h4>Statement</h4><div style="font-size:12px;">' + esc(d.statement) + '</div></div>';
+  if (d.assumptions && d.assumptions.length > 0) {{
+    h += '<div class="detail-section"><h4>Assumptions</h4>';
+    d.assumptions.forEach(function(a) {{ h += '<div style="font-size:11px;padding:1px 0 1px 8px;">&bull; ' + esc(a) + '</div>'; }});
+    h += '</div>';
+  }}
+  if (d.conclusions && d.conclusions.length > 0) {{
+    h += '<div class="detail-section"><h4>Conclusions</h4>';
+    d.conclusions.forEach(function(c) {{ h += '<div style="font-size:11px;padding:1px 0 1px 8px;">&bull; ' + esc(c) + '</div>'; }});
+    h += '</div>';
+  }}
+  if (d.proof_info && d.proof_info.length > 0) {{
+    h += '<div class="detail-section"><h4>Proof Strategy</h4>';
+    d.proof_info.forEach(function(p) {{ h += '<div style="font-size:11px;font-style:italic;">' + esc(typeof p === 'string' ? p : JSON.stringify(p)) + '</div>'; }});
+    h += '</div>';
+  }}
+  if (d.input && d.input.length > 0) {{
+    h += '<div class="detail-section"><h4>Input</h4>';
+    d.input.forEach(function(x) {{ h += '<div style="font-size:11px;">&bull; ' + esc(x) + '</div>'; }});
+    h += '</div>';
+  }}
+  if (d.output && d.output.length > 0) {{
+    h += '<div class="detail-section"><h4>Output</h4>';
+    d.output.forEach(function(x) {{ h += '<div style="font-size:11px;">&bull; ' + esc(x) + '</div>'; }});
+    h += '</div>';
+  }}
+  if (d.steps && d.steps.length > 0) {{
+    h += '<div class="detail-section"><h4>Proof Steps (' + d.steps.length + ')</h4>';
+    d.steps.forEach(function(s, i) {{
+      h += '<div class="step-item"><strong>' + s.id + '</strong>: ' + esc(s.statement) + '</div>';
+      if (i < d.steps.length - 1) h += '<div class="step-arrow">&#8595;</div>';
+    }});
+    h += '</div>';
+  }}
+  if (d.equations && d.equations.length > 0) {{
+    h += '<div class="detail-section"><h4>Equations (' + d.equations.length + ')</h4>';
+    d.equations.forEach(function(e) {{
+      h += '<div class="eq-item"><strong>' + e.id + '</strong> (Sec ' + e.section + '): ' + esc(e.statement) + '</div>';
+    }});
+    h += '</div>';
+  }}
+  panel.innerHTML = h;
+  panel.className = "open";
+  if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([panel]).catch(function(){{}});
+}}
+function resetView() {{
+  document.getElementById("detail-panel").className = "";
+  document.getElementById("detail-panel").innerHTML = "";
+}}
+function toggleOrphans() {{
+  var p = document.getElementById("orphan-panel");
+  if (p.style.display === "block") {{ p.style.display = "none"; return; }}
+  var h = "";
+  ORPHANS.forEach(function(e) {{ h += '<div class="orphan-item"><strong>' + e.id + '</strong> (Sec ' + e.section + '): ' + esc(e.statement) + '</div>'; }});
+  document.getElementById("orphan-list").innerHTML = h;
+  p.style.display = "block";
+  if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([p]).catch(function(){{}});
+}}
+function esc(t) {{ return t ? t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;") : ""; }}
+</script>
+</body>
+</html>"""
+
+    Path(html_path).write_text(html, encoding="utf-8")
+    return len(base_nodes)
 
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
@@ -540,6 +725,8 @@ def main():
     parser.add_argument("output", nargs="?", default=None, help="Output PNG (default: input with .png)")
     parser.add_argument("--resolution", choices=["standard", "full"], default="standard",
                         help="standard: collapse proofs, hide equations. full: show all nodes.")
+    parser.add_argument("--html", default=None,
+                        help="Also generate interactive HTML (wrapping the SVG with click-to-expand)")
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -556,9 +743,16 @@ def main():
         sys.exit(1)
 
     metadata = data.get("metadata", {})
-    n_nodes, n_edges = draw_dag(nodes, edges, output_path, metadata=metadata,
-                                resolution=args.resolution)
+    result = draw_dag(nodes, edges, output_path, metadata=metadata,
+                      resolution=args.resolution)
+    n_nodes, n_edges = result[0], result[1]
     print(f"DAG saved to {output_path}  ({n_nodes} display nodes, {n_edges} edges, resolution={args.resolution})")
+
+    # Generate interactive HTML if requested
+    if args.html:
+        svg_path = str(output_path).replace('.png', '.svg')
+        n_html = generate_interactive_html(data, svg_path, args.html)
+        print(f"Interactive HTML saved to {args.html}  ({n_html} clickable nodes)")
 
 
 if __name__ == "__main__":
