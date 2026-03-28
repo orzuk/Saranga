@@ -609,6 +609,41 @@ def generate_interactive_html(data, svg_path, html_path):
 
     base_nodes, base_edges, step_chains, eq_map, orphan_eqs = classify_and_merge(nodes, edges)
 
+    # Foundation graph linking
+    from link_to_foundation import build_foundation_index, link_paper, WELL_KNOWN
+    index = build_foundation_index(None)  # built-in index only
+    matches = link_paper(nodes, index)
+
+    # Separate Case 1 (repeat: node exists) vs Case 2 (ghost: referenced but no node)
+    base_ids = {n["id"] for n in base_nodes}
+    case1_matches = {}  # node_id -> list of foundation names
+    case2_ghosts = {}   # foundation_name -> list of node_ids that reference it
+    for m in matches:
+        if m["node_id"] in base_ids:
+            # Case 1: existing node matches foundation
+            case1_matches.setdefault(m["node_id"], []).append(m["foundation_name"])
+        else:
+            # Case 2: match in a proof step or equation, not a base node
+            # Find which base node this proof step belongs to
+            parent = m["node_id"]
+            # Check if it's a proof step — find its parent theorem
+            for n in nodes:
+                if n["id"] == parent and n.get("parent_proof"):
+                    # Find which theorem the proof proves
+                    for n2 in nodes:
+                        if n2["id"] == n["parent_proof"] and n2.get("proves"):
+                            parent = n2["proves"]
+                            break
+                    break
+                if n["id"] == parent and n.get("proves"):
+                    parent = n["proves"]
+                    break
+            if parent in base_ids:
+                case2_ghosts.setdefault(m["foundation_name"], set()).add(parent)
+
+    # Convert sets to lists for JSON
+    case2_ghosts = {k: list(v) for k, v in case2_ghosts.items()}
+
     # Build detail data
     js_details = {}
     for n in base_nodes:
@@ -648,8 +683,15 @@ def generate_interactive_html(data, svg_path, html_path):
         return 'id="node_' + nid + '" onclick="showDetail(\'' + nid + '\')" style="cursor:pointer;"'
     svg_content = re.sub(r'id="node_([^"]+)"', _add_onclick, svg_content)
 
+    # Add foundation links to detail data
+    for nid, fnames in case1_matches.items():
+        if nid in js_details:
+            js_details[nid]["foundation_links"] = list(set(fnames))
+
     details_json = _json.dumps(js_details, ensure_ascii=True)
     orphans_json = _json.dumps(js_orphans, ensure_ascii=True)
+    ghosts_json = _json.dumps(case2_ghosts, ensure_ascii=True)
+    case1_json = _json.dumps(case1_matches, ensure_ascii=True)
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -683,6 +725,10 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
 #orphan-toggle {{ display: none; }}
 /* Hover effect on clickable node rects */
 [id^="node_"]:hover {{ filter: brightness(0.90); }}
+.ghost-node {{ display: inline-block; margin: 4px 6px; padding: 5px 12px; background: #F2E6D9; border: 1.5px solid #795548; border-radius: 5px; font-size: 12px; color: #4E342E; cursor: pointer; vertical-align: top; white-space: normal; max-width: 180px; }}
+.ghost-node:hover {{ background: #E8D5C4; }}
+.ghost-node .ghost-label {{ font-weight: bold; font-size: 11px; }}
+.ghost-node .ghost-refs {{ font-size: 10px; color: #888; margin-top: 2px; }}
 </style>
 </head>
 <body>
@@ -702,6 +748,9 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
   <div class="legend-item"><div class="legend-color" style="background:#F2D7D5;border-color:#943126;"></div>Corollary</div>
   <div class="legend-item"><div class="legend-color" style="background:#D4E6F1;border-color:#2471A3;"></div>Algorithm</div>
   <div class="legend-item" style="margin-left:12px;"><span style="font-size:18px;color:#555;">&#8594;</span> A supports B</div>
+  <div class="legend-item" style="margin-left:12px;"><button onclick="toggleGhosts()" style="padding:3px 10px;border:1.5px solid #795548;border-radius:4px;background:#F2E6D9;cursor:pointer;font-size:11px;color:#795548;">Show external dependencies</button></div>
+</div>
+<div id="ghost-strip" style="display:none;padding:8px 24px;background:#FAF0E6;border-bottom:1px solid #D7CCC8;overflow-x:auto;white-space:nowrap;">
 </div>
 <div id="main">
   <div id="svg-container">{svg_content}</div>
@@ -712,6 +761,8 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
 <script>
 var DETAILS = {details_json};
 var ORPHANS = {orphans_json};
+var GHOSTS = {ghosts_json};
+var CASE1 = {case1_json};
 
 function showDetail(nodeId) {{
   var panel = document.getElementById("detail-panel");
@@ -731,7 +782,11 @@ function showDetail(nodeId) {{
   var d = DETAILS[nodeId];
   if (!d) return;
   var h = '<h3 style="margin:0 0 8px;font-size:16px;">' + esc(nodeId) + ': ' + esc(d.name || d.type) + '</h3>';
-  h += '<div style="font-size:12px;color:#888;margin-bottom:10px;">' + d.type + (d.section ? ' (Sec ' + d.section + ')' : '') + '</div>';
+  h += '<div style="font-size:12px;color:#888;margin-bottom:4px;">' + d.type + (d.section ? ' (Sec ' + d.section + ')' : '') + '</div>';
+  // Foundation graph link badge (Case 1: known result)
+  if (d.foundation_links && d.foundation_links.length > 0) {{
+    h += '<div style="display:inline-block;padding:2px 8px;background:#E3F2FD;border:1px solid #2471A3;border-radius:3px;font-size:11px;color:#2471A3;margin-bottom:8px;">&#128218; Known result: ' + d.foundation_links.map(esc).join(', ') + '</div>';
+  }}
   // Pre-build equation maps by context
   var eqsByCtx = {{statement:[], assumption:[], conclusion:[], orphan:[]}};
   var eqsByStep = {{}};
@@ -832,6 +887,47 @@ function toggleOrphans() {{
   p.style.display = "block";
   if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([p]).catch(function(){{}});
 }}
+// Ghost nodes (external dependencies)
+function toggleGhosts() {{
+  var strip = document.getElementById("ghost-strip");
+  if (strip.style.display === "none") {{
+    strip.style.display = "block";
+    // Populate ghost nodes
+    var h = "";
+    var names = Object.keys(GHOSTS);
+    if (names.length === 0) {{
+      h = '<span style="color:#888;font-size:12px;">No external dependencies detected.</span>';
+    }} else {{
+      names.sort();
+      names.forEach(function(name) {{
+        var refs = GHOSTS[name];
+        h += '<div class="ghost-node" onclick="showGhostDetail(\'' + esc(name).replace(/'/g, "\\\\'") + '\')">';
+        h += '<div class="ghost-label">' + esc(name) + '</div>';
+        h += '<div class="ghost-refs">used by ' + refs.length + ' node' + (refs.length > 1 ? 's' : '') + '</div>';
+        h += '</div>';
+      }});
+    }}
+    strip.innerHTML = h;
+  }} else {{
+    strip.style.display = "none";
+  }}
+}}
+function showGhostDetail(name) {{
+  var panel = document.getElementById("detail-panel");
+  var refs = GHOSTS[name] || [];
+  var h = '<h3 style="margin:0 0 8px;font-size:16px;">' + esc(name) + '</h3>';
+  h += '<div style="font-size:12px;color:#795548;margin-bottom:10px;">External dependency (from Foundation Graph)</div>';
+  h += '<div class="detail-section"><h4>Referenced by</h4>';
+  refs.forEach(function(nid) {{
+    var d = DETAILS[nid];
+    var label = d ? (nid + ': ' + (d.name || d.type)) : nid;
+    h += '<div style="font-size:13px;padding:2px 0 2px 10px;cursor:pointer;color:#2471A3;" onclick="showDetail(\'' + nid + '\')">&bull; ' + esc(label) + '</div>';
+  }});
+  h += '</div>';
+  panel.innerHTML = h;
+  panel.className = "open";
+}}
+
 function toggleEqPanel(el) {{
   var panel = el.nextElementSibling;
   if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
