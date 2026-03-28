@@ -5,13 +5,11 @@ Usage:
     python visualize_interactive.py annotation.json [output.html]
 
 Produces a standalone HTML file with:
-  - Layered DAG layout (dagre) with compound theorem boxes
-  - Click theorem → expand proof steps + related equations
-  - Click definition → highlight all theorems that use it
-  - Hover → full statement tooltip
-  - Toggle buttons: show equations, show proof steps, reset
-  - Orphan/miscellaneous equations in a collapsible side panel
-  - Zoom and pan support
+  - Layered DAG layout (dagre-d3)
+  - Click node → side panel shows details, proof steps, equations
+  - Hover → tooltip
+  - Zoom and pan
+  - Orphan equations in collapsible panel
 """
 import json
 import sys
@@ -20,334 +18,187 @@ from html import escape
 
 
 NODE_COLORS = {
-    "definition":  {"bg": "#D5F5E3", "border": "#27AE60", "header": "#27AE60"},
-    "theorem":     {"bg": "#FADBD8", "border": "#C0392B", "header": "#C0392B"},
-    "lemma":       {"bg": "#FDEBD0", "border": "#E67E22", "header": "#E67E22"},
-    "corollary":   {"bg": "#E8DAEF", "border": "#8E44AD", "header": "#8E44AD"},
-    "proposition": {"bg": "#FADBD8", "border": "#C0392B", "header": "#C0392B"},
-    "algorithm":   {"bg": "#FFF9C4", "border": "#D4AC0D", "header": "#D4AC0D"},
-    "proof":       {"bg": "#D5D8DC", "border": "#566573", "header": "#566573"},
-    "equation":    {"bg": "#D4E6F1", "border": "#5DADE2", "header": "#5DADE2"},
-    "proof_step":  {"bg": "#E8E8E8", "border": "#839192", "header": "#839192"},
-    "claim":       {"bg": "#F6DDCC", "border": "#BA4A00", "header": "#BA4A00"},
+    "definition":  {"bg": "#D5F5E3", "border": "#27AE60"},
+    "theorem":     {"bg": "#FADBD8", "border": "#C0392B"},
+    "lemma":       {"bg": "#FDEBD0", "border": "#E67E22"},
+    "corollary":   {"bg": "#E8DAEF", "border": "#8E44AD"},
+    "proposition": {"bg": "#FADBD8", "border": "#C0392B"},
+    "algorithm":   {"bg": "#FFF9C4", "border": "#D4AC0D"},
+    "proof":       {"bg": "#D5D8DC", "border": "#566573"},
+    "equation":    {"bg": "#D4E6F1", "border": "#5DADE2"},
+    "proof_step":  {"bg": "#E8E8E8", "border": "#839192"},
+    "claim":       {"bg": "#F6DDCC", "border": "#BA4A00"},
 }
-DEFAULT_COLOR = {"bg": "#EAECEE", "border": "#566573", "header": "#566573"}
+DEFAULT_COLOR = {"bg": "#EAECEE", "border": "#566573"}
 
 
-def classify_nodes(nodes, edges):
-    """Classify nodes into base (always shown), proof steps, equations, and orphans."""
+def _short(text, maxlen=60):
+    if not text or len(text) <= maxlen:
+        return text or ""
+    return text[:maxlen-3] + "..."
+
+
+def classify_and_merge(nodes, edges):
+    """Merge proofs into parent theorems. Separate equations/proof_steps."""
     node_by_id = {n["id"]: n for n in nodes}
+    base_types = {"definition", "theorem", "lemma", "corollary", "proposition",
+                  "algorithm", "proof", "claim"}
 
-    # Find which nodes are targets/sources of edges
+    # Merge proofs
+    proof_map = {}
+    for n in nodes:
+        if n.get("type") == "proof" and n.get("proves") and n["proves"] in node_by_id:
+            proof_map[n["id"]] = n["proves"]
+            parent = node_by_id[n["proves"]]
+            if "proof_info" not in parent:
+                parent["proof_info"] = []
+            if n.get("proof_strategy"):
+                parent["proof_info"].append(n["proof_strategy"])
+
+    # Classify
+    base_nodes, proof_steps, equations, orphan_eqs = [], [], [], []
     has_edge = set()
     for e in edges:
         has_edge.add(e["source"])
         has_edge.add(e["target"])
 
-    base_types = {"definition", "theorem", "lemma", "corollary", "proposition",
-                  "algorithm", "proof", "claim"}
-
-    base_nodes = []
-    proof_steps = []
-    equations = []
-    orphan_equations = []
-
     for n in nodes:
-        ntype = n.get("type", "")
-        nid = n["id"]
-        if ntype == "proof_step":
+        if n["id"] in proof_map:
+            continue  # merged into parent
+        if n["type"] == "proof_step":
             proof_steps.append(n)
-        elif ntype == "equation":
-            if nid in has_edge:
+        elif n["type"] == "equation":
+            if n["id"] in has_edge:
                 equations.append(n)
             else:
-                orphan_equations.append(n)
-        elif ntype in base_types:
-            base_nodes.append(n)
+                orphan_eqs.append(n)
         else:
             base_nodes.append(n)
 
-    return base_nodes, proof_steps, equations, orphan_equations
-
-
-def make_node_label_html(node):
-    """Create HTML label for a node in the DAG."""
-    ntype = node.get("type", "")
-    colors = NODE_COLORS.get(ntype, DEFAULT_COLOR)
-    nid = escape(node["id"])
-    name = escape(node.get("name") or "")
-    header = f"{nid}: {name}" if name else nid
-
-    parts = [f'<div style="background:{colors["header"]};color:white;padding:4px 8px;'
-             f'font-weight:bold;font-size:12px;border-radius:4px 4px 0 0;">{header}</div>']
-
-    if ntype in ("theorem", "lemma", "corollary", "proposition"):
-        # Assumptions
-        assumptions = node.get("assumptions", [])
-        if assumptions:
-            parts.append('<div style="padding:3px 6px;font-size:10px;color:#555;font-weight:bold;">Assume:</div>')
-            for a in assumptions[:4]:
-                parts.append(f'<div style="padding:1px 6px 1px 12px;font-size:10px;font-style:italic;color:#333;">'
-                             f'&bull; {escape(_short(a, 60))}</div>')
-            if len(assumptions) > 4:
-                parts.append(f'<div style="padding:1px 12px;font-size:9px;color:#888;">... +{len(assumptions)-4} more</div>')
-
-        # Divider
-        parts.append(f'<hr style="margin:2px 4px;border:none;border-top:1px solid {colors["border"]}40;">')
-
-        # Conclusions
-        conclusions = node.get("conclusions", [])
-        if conclusions:
-            parts.append('<div style="padding:3px 6px;font-size:10px;color:#555;font-weight:bold;">Conclude:</div>')
-            for c in conclusions[:4]:
-                parts.append(f'<div style="padding:1px 6px 1px 12px;font-size:10px;color:#333;">'
-                             f'&bull; {escape(_short(c, 60))}</div>')
-
-        # Proof strategy (if available from merged proof)
-        proof_info = node.get("proof_info", [])
-        if not proof_info and node.get("proof_strategy"):
-            proof_info = [node["proof_strategy"]]
-        if proof_info:
-            parts.append(f'<hr style="margin:2px 4px;border:none;border-top:1px solid #ccc;">')
-            for ps in proof_info:
-                ps_text = ps if isinstance(ps, str) else str(ps)
-                if ps_text:
-                    parts.append(f'<div style="padding:2px 6px;font-size:9px;color:#666;font-style:italic;">'
-                                 f'Proof: {escape(_short(ps_text, 50))}</div>')
-
-    elif ntype == "algorithm" and (node.get("input") or node.get("output")):
-        inputs = node.get("input", [])
-        outputs = node.get("output", [])
-        if inputs:
-            parts.append('<div style="padding:3px 6px;font-size:10px;color:#555;font-weight:bold;">Input:</div>')
-            for x in inputs:
-                parts.append(f'<div style="padding:1px 12px;font-size:10px;">&bull; {escape(_short(x, 60))}</div>')
-        if outputs:
-            parts.append(f'<hr style="margin:2px 4px;border:none;border-top:1px solid {colors["border"]}40;">')
-            parts.append('<div style="padding:3px 6px;font-size:10px;color:#555;font-weight:bold;">Output:</div>')
-            for x in outputs:
-                parts.append(f'<div style="padding:1px 12px;font-size:10px;">&bull; {escape(_short(x, 60))}</div>')
-    else:
-        stmt = node.get("statement", "")
-        if stmt:
-            parts.append(f'<div style="padding:4px 6px;font-size:10px;color:#333;">{escape(_short(stmt, 100))}</div>')
-
-    return "".join(parts)
-
-
-def _short(text, maxlen=80):
-    if not text:
-        return ""
-    # Don't cut inside $...$
-    if len(text) <= maxlen:
-        return text
-    cut = maxlen - 3
-    if text[:cut].count("$") % 2 == 1:
-        last = text.rfind("$", 0, cut)
-        if last > 0:
-            cut = last
-    return text[:cut].rstrip() + "..."
-
-
-def make_tooltip(node):
-    """Full tooltip text for hover."""
-    parts = [f"ID: {node['id']}"]
-    parts.append(f"Type: {node.get('type', '?')}")
-    if node.get("name"):
-        parts.append(f"Name: {node['name']}")
-    if node.get("section"):
-        parts.append(f"Section: {node['section']}")
-    if node.get("statement"):
-        parts.append(f"Statement: {node['statement']}")
-    if node.get("assumptions"):
-        parts.append(f"Assumptions: {'; '.join(node['assumptions'])}")
-    if node.get("conclusions"):
-        parts.append(f"Conclusions: {'; '.join(node['conclusions'])}")
-    if node.get("proof_strategy"):
-        parts.append(f"Proof strategy: {node['proof_strategy']}")
-    if node.get("proves"):
-        parts.append(f"Proves: {node['proves']}")
-    return "\\n".join(parts)
-
-
-def merge_proofs_for_display(nodes, edges):
-    """Collapse proof nodes into their parent theorem (for base view)."""
-    node_by_id = {n["id"]: n for n in nodes}
-    proof_map = {}
-    for n in nodes:
-        if n.get("type") == "proof" and n.get("proves"):
-            target = n["proves"]
-            if target in node_by_id:
-                proof_map[n["id"]] = target
-
-    display_nodes = []
-    for n in nodes:
-        if n["id"] in proof_map:
-            parent_id = proof_map[n["id"]]
-            parent = node_by_id[parent_id]
-            if "proof_info" not in parent:
-                parent["proof_info"] = []
-            if n.get("proof_strategy"):
-                parent["proof_info"].append(n["proof_strategy"])
-            continue
-        display_nodes.append(n)
-
-    display_edges = []
+    # Redirect edges
+    base_ids = {n["id"] for n in base_nodes}
+    base_edges = []
     seen = set()
     for e in edges:
         s = proof_map.get(e["source"], e["source"])
         t = proof_map.get(e["target"], e["target"])
-        if s == t:
+        if s == t or s not in base_ids or t not in base_ids:
             continue
         key = (s, t)
         if key not in seen:
-            display_edges.append({"source": s, "target": t,
-                                  "type": e.get("type", "uses"),
-                                  "note": e.get("note", "")})
+            base_edges.append({"source": s, "target": t})
             seen.add(key)
 
-    return display_nodes, display_edges, proof_map
+    # Proof step chains per theorem
+    step_chains = {}
+    for ps in proof_steps:
+        parent = ps.get("parent_proof", "")
+        thm_id = proof_map.get(parent, parent)
+        step_chains.setdefault(thm_id, []).append(ps)
+
+    # Equations per parent
+    eq_map = {}
+    for eq in equations:
+        for e in edges:
+            if e["source"] == eq["id"] and e["target"] in base_ids:
+                eq_map.setdefault(e["target"], []).append(eq)
+            if e["target"] == eq["id"] and e["source"] in base_ids:
+                eq_map.setdefault(e["source"], []).append(eq)
+
+    return base_nodes, base_edges, step_chains, eq_map, orphan_eqs
 
 
 def generate_html(data, output_path):
-    """Generate the interactive HTML file."""
-    all_nodes = data.get("nodes", [])
-    all_edges = data.get("edges", [])
+    nodes = data.get("nodes", [])
+    edges = data.get("edges", [])
     metadata = data.get("metadata", {})
 
-    # Classify nodes
-    base_nodes_raw, proof_steps, equations, orphan_equations = classify_nodes(all_nodes, all_edges)
+    base_nodes, base_edges, step_chains, eq_map, orphan_eqs = classify_and_merge(nodes, edges)
 
-    # Merge proofs into theorems for base view
-    base_nodes, base_edges, proof_map = merge_proofs_for_display(base_nodes_raw, all_edges)
-
-    # Filter base edges to only reference base node IDs
-    base_ids = {n["id"] for n in base_nodes}
-    base_edges = [e for e in base_edges if e["source"] in base_ids and e["target"] in base_ids]
-
-    # Build proof step chains per proof
-    proof_step_chains = {}
-    for ps in proof_steps:
-        parent = ps.get("parent_proof", "")
-        # Map parent proof to its theorem
-        thm_id = proof_map.get(parent, parent)
-        if thm_id not in proof_step_chains:
-            proof_step_chains[thm_id] = []
-        proof_step_chains[thm_id].append(ps)
-
-    # Build equation associations
-    eq_by_parent = {}
-    for eq in equations:
-        # Find which theorem/def this equation connects to via edges
-        connected_to = set()
-        for e in all_edges:
-            if e["source"] == eq["id"] and e["target"] in base_ids:
-                connected_to.add(e["target"])
-            if e["target"] == eq["id"] and e["source"] in base_ids:
-                connected_to.add(e["source"])
-        for tid in connected_to:
-            if tid not in eq_by_parent:
-                eq_by_parent[tid] = []
-            eq_by_parent[tid].append(eq)
-
-    # Title
     ch = metadata.get("chapter", "")
     ch_title = metadata.get("chapter_title", "")
     title = f"Chapter {ch}: {ch_title}" if ch_title else "Knowledge Graph"
 
-    # Build node data for JavaScript
-    js_nodes = []
+    # Build JS data — simple labels, detail in separate object
+    js_nodes_list = []
+    js_details = {}
     for n in base_nodes:
         colors = NODE_COLORS.get(n.get("type", ""), DEFAULT_COLOR)
-        label_html = make_node_label_html(n)
-        tooltip = make_tooltip(n)
-        has_steps = n["id"] in proof_step_chains
-        has_eqs = n["id"] in eq_by_parent
-        js_nodes.append({
+        name = n.get("name") or ""
+        label = f"{n['id']}: {name}" if name else n["id"]
+        if len(label) > 35:
+            label = label[:32] + "..."
+
+        js_nodes_list.append({
             "id": n["id"],
-            "label": label_html,
-            "tooltip": tooltip,
+            "label": label,
             "type": n.get("type", ""),
             "bg": colors["bg"],
             "border": colors["border"],
-            "hasSteps": has_steps,
-            "hasEqs": has_eqs,
         })
 
-    # Build proof step data
-    js_proof_steps = {}
-    for thm_id, steps in proof_step_chains.items():
-        js_proof_steps[thm_id] = [{
-            "id": s["id"],
-            "statement": s.get("statement", ""),
-            "parent_proof": s.get("parent_proof", ""),
-        } for s in steps]
+        js_details[n["id"]] = {
+            "name": name,
+            "type": n.get("type", ""),
+            "section": n.get("section", ""),
+            "statement": n.get("statement", ""),
+            "assumptions": n.get("assumptions", []),
+            "conclusions": n.get("conclusions", []),
+            "proof_info": n.get("proof_info", []),
+            "input": n.get("input", []),
+            "output": n.get("output", []),
+            "steps": [{"id": s["id"], "statement": s.get("statement","")} for s in step_chains.get(n["id"], [])],
+            "equations": [{"id": e["id"], "statement": e.get("statement",""), "section": e.get("section","")} for e in eq_map.get(n["id"], [])],
+        }
 
-    # Build equation data
-    js_equations = {}
-    for parent_id, eqs in eq_by_parent.items():
-        js_equations[parent_id] = [{
-            "id": e["id"],
-            "statement": e.get("statement", ""),
-            "section": e.get("section", ""),
-        } for e in eqs]
+    js_orphans = [{"id": e["id"], "statement": e.get("statement",""), "section": e.get("section","")} for e in orphan_eqs]
 
-    # Orphan equations
-    js_orphans = [{
-        "id": e["id"],
-        "statement": e.get("statement", ""),
-        "section": e.get("section", ""),
-    } for e in orphan_equations]
+    # Serialize data to JSON strings (properly escaped for embedding in HTML)
+    nodes_json = json.dumps(js_nodes_list, ensure_ascii=True)
+    edges_json = json.dumps([{"source": e["source"], "target": e["target"]} for e in base_edges], ensure_ascii=True)
+    details_json = json.dumps(js_details, ensure_ascii=True)
+    orphans_json = json.dumps(js_orphans, ensure_ascii=True)
 
-    html = f"""<!DOCTYPE html>
+    # Build HTML as plain string concatenation (NOT f-string) to avoid brace issues
+    html_parts = []
+    html_parts.append(f"""<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
-<title>{escape(title)} — Knowledge Graph</title>
+<title>{escape(title)}</title>
 <style>
-  body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; padding: 0; background: #fafafa; }}
-  #header {{ background: #2c3e50; color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; }}
-  #header h1 {{ margin: 0; font-size: 18px; }}
-  #controls {{ display: flex; gap: 8px; }}
-  #controls button {{ padding: 6px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; background: #34495e; color: white; }}
-  #controls button:hover {{ background: #4a6785; }}
-  #controls button.active {{ background: #2980b9; }}
-  #main {{ display: flex; height: calc(100vh - 48px); }}
-  #graph-container {{ flex: 1; overflow: auto; position: relative; }}
-  #graph-container svg {{ display: block; margin: 20px auto; }}
-  .node rect {{ cursor: pointer; rx: 5; ry: 5; }}
-  .node:hover rect {{ filter: brightness(0.95); }}
-  .edgePath path {{ stroke: #7f8c8d; stroke-width: 1.5px; fill: none; }}
-  .edgePath marker {{ fill: #7f8c8d; }}
-  #detail-panel {{ width: 0; overflow-y: auto; background: white; border-left: 1px solid #ddd;
-                   transition: width 0.3s; padding: 0; }}
-  #detail-panel.open {{ width: 380px; padding: 16px; }}
-  #detail-panel h3 {{ margin: 0 0 12px 0; color: #2c3e50; font-size: 15px; }}
-  .detail-section {{ margin-bottom: 16px; }}
-  .detail-section h4 {{ margin: 0 0 6px 0; color: #555; font-size: 12px; text-transform: uppercase; }}
-  .step-chain {{ display: flex; flex-direction: column; gap: 4px; }}
-  .step-item {{ background: #f0f0f0; border-left: 3px solid #839192; padding: 6px 10px; font-size: 11px; border-radius: 0 4px 4px 0; }}
-  .step-arrow {{ text-align: center; color: #aaa; font-size: 14px; }}
-  .eq-item {{ background: #d4e6f1; border-left: 3px solid #5dade2; padding: 6px 10px; font-size: 11px; border-radius: 0 4px 4px 0; margin-bottom: 4px; }}
-  .orphan-item {{ background: #fef9e7; border-left: 3px solid #f39c12; padding: 6px 10px; font-size: 11px; border-radius: 0 4px 4px 0; margin-bottom: 4px; }}
-  #orphan-panel {{ position: fixed; bottom: 16px; right: 16px; background: white; border: 1px solid #ddd;
-                   border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); max-width: 350px; max-height: 400px;
-                   overflow-y: auto; display: none; padding: 12px; z-index: 100; }}
-  #orphan-toggle {{ position: fixed; bottom: 16px; right: 16px; background: #f39c12; color: white;
-                    border: none; border-radius: 20px; padding: 8px 16px; cursor: pointer; font-size: 12px;
-                    box-shadow: 0 2px 6px rgba(0,0,0,0.2); z-index: 101; display: {'block' if js_orphans else 'none'}; }}
-  .legend {{ display: flex; gap: 12px; flex-wrap: wrap; padding: 8px 24px; background: #f5f5f5; border-bottom: 1px solid #eee; }}
-  .legend-item {{ display: flex; align-items: center; gap: 4px; font-size: 11px; }}
-  .legend-color {{ width: 14px; height: 14px; border-radius: 3px; border: 1px solid #999; }}
-  .clickable-hint {{ font-size: 10px; color: #888; padding: 2px 6px; }}
+body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #fafafa; }}
+#header {{ background: #2c3e50; color: white; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; }}
+#header h1 {{ margin: 0; font-size: 18px; }}
+#controls button {{ padding: 6px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; background: #34495e; color: white; margin-left: 8px; }}
+#controls button:hover {{ background: #4a6785; }}
+#main {{ display: flex; height: calc(100vh - 80px); }}
+#graph-container {{ flex: 1; overflow: auto; }}
+svg {{ display: block; }}
+.node rect {{ cursor: pointer; rx: 5; ry: 5; }}
+.node:hover rect {{ filter: brightness(0.90); }}
+.edgePath path {{ stroke: #555; stroke-width: 2px; fill: none; }}
+.edgePath marker path {{ fill: #555; stroke: none; }}
+#detail-panel {{ width: 0; overflow-y: auto; background: white; border-left: 1px solid #ddd; transition: width 0.3s; }}
+#detail-panel.open {{ width: 380px; padding: 16px; }}
+.detail-section {{ margin-bottom: 12px; }}
+.detail-section h4 {{ margin: 0 0 4px; color: #555; font-size: 11px; text-transform: uppercase; }}
+.step-item {{ background: #f0f0f0; border-left: 3px solid #839192; padding: 5px 8px; font-size: 11px; margin-bottom: 3px; border-radius: 0 3px 3px 0; }}
+.step-arrow {{ text-align: center; color: #aaa; font-size: 12px; }}
+.eq-item {{ background: #d4e6f1; border-left: 3px solid #5dade2; padding: 5px 8px; font-size: 11px; margin-bottom: 3px; border-radius: 0 3px 3px 0; }}
+.orphan-item {{ background: #fef9e7; border-left: 3px solid #f39c12; padding: 5px 8px; font-size: 11px; margin-bottom: 3px; }}
+#orphan-panel {{ position: fixed; bottom: 16px; right: 16px; background: white; border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); max-width: 350px; max-height: 400px; overflow-y: auto; display: none; padding: 12px; z-index: 100; }}
+#orphan-toggle {{ position: fixed; bottom: 16px; right: 16px; background: #f39c12; color: white; border: none; border-radius: 20px; padding: 8px 16px; cursor: pointer; font-size: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); z-index: 101; display: {"block" if js_orphans else "none"}; }}
+.legend {{ display: flex; gap: 12px; flex-wrap: wrap; padding: 6px 24px; background: #f5f5f5; border-bottom: 1px solid #eee; }}
+.legend-item {{ display: flex; align-items: center; gap: 4px; font-size: 11px; }}
+.legend-color {{ width: 12px; height: 12px; border-radius: 2px; border: 1px solid #999; }}
 </style>
 </head>
 <body>
 <div id="header">
-  <h1>{escape(title)} — Knowledge Graph</h1>
+  <h1>{escape(title)}</h1>
   <div id="controls">
     <button onclick="resetView()">Reset View</button>
-    <button id="btn-steps" onclick="toggleAllSteps()">Show All Proof Steps</button>
   </div>
 </div>
 <div class="legend">
@@ -356,181 +207,192 @@ def generate_html(data, output_path):
   <div class="legend-item"><div class="legend-color" style="background:#FDEBD0;border-color:#E67E22;"></div>Lemma</div>
   <div class="legend-item"><div class="legend-color" style="background:#E8DAEF;border-color:#8E44AD;"></div>Corollary</div>
   <div class="legend-item"><div class="legend-color" style="background:#FFF9C4;border-color:#D4AC0D;"></div>Algorithm</div>
-  <div class="legend-item"><div class="legend-color" style="background:#D4E6F1;border-color:#5DADE2;"></div>Equation</div>
-  <div class="legend-item" style="margin-left:20px;font-style:italic;color:#888;">Click a node for details. Hover for full statement.</div>
+  <div class="legend-item" style="margin-left:auto;color:#888;font-style:italic;">Click a node for details</div>
 </div>
 <div id="main">
   <div id="graph-container"></div>
   <div id="detail-panel"></div>
 </div>
-<button id="orphan-toggle" onclick="toggleOrphans()">{len(js_orphans)} orphan equation{'s' if len(js_orphans) != 1 else ''}</button>
-<div id="orphan-panel">
-  <h3>Unconnected Equations</h3>
-  <div id="orphan-list"></div>
-</div>
+<button id="orphan-toggle" onclick="toggleOrphans()">{len(js_orphans)} orphan eq{'s' if len(js_orphans) != 1 else ''}</button>
+<div id="orphan-panel"><h3>Unconnected Equations</h3><div id="orphan-list"></div></div>
+""")
 
+    # JavaScript as a separate string to avoid f-string brace conflicts
+    js_code = """
 <script src="https://d3js.org/d3.v5.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dagre-d3@0.6.4/dist/dagre-d3.min.js"></script>
+<script>MathJax = {tex: {inlineMath: [['$','$']]}, startup: {typeset: false}};</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
 <script>
-const NODES = {json.dumps(js_nodes)};
-const EDGES = {json.dumps([dict(source=e["source"], target=e["target"], type=e.get("type","")) for e in base_edges])};
-const PROOF_STEPS = {json.dumps(js_proof_steps)};
-const EQUATIONS = {json.dumps(js_equations)};
-const ORPHANS = {json.dumps(js_orphans)};
+var NODES = """ + nodes_json + """;
+var EDGES = """ + edges_json + """;
+var DETAILS = """ + details_json + """;
+var ORPHANS = """ + orphans_json + """;
 
-// Build graph
-const g = new dagreD3.graphlib.Graph().setGraph({{
-  rankdir: "TB",
-  ranksep: 60,
-  nodesep: 30,
-  marginx: 20,
-  marginy: 20,
-}});
+try {
+  var g = new dagreD3.graphlib.Graph().setGraph({
+    rankdir: "TB", ranksep: 50, nodesep: 25, marginx: 20, marginy: 20
+  });
 
-NODES.forEach(n => {{
-  g.setNode(n.id, {{
-    labelType: "html",
-    label: n.label,
-    style: `fill: ${{n.bg}}; stroke: ${{n.border}}; stroke-width: 2px;`,
-    padding: 0,
-    id: n.id,
-  }});
-}});
+  NODES.forEach(function(n) {
+    g.setNode(n.id, {
+      label: n.label,
+      style: "fill: " + n.bg + "; stroke: " + n.border + "; stroke-width: 2px;",
+      paddingLeft: 10, paddingRight: 10, paddingTop: 6, paddingBottom: 6
+    });
+  });
 
-EDGES.forEach(e => {{
-  g.setEdge(e.source, e.target, {{
-    style: "stroke: #7f8c8d; stroke-width: 1.5px;",
-    arrowheadStyle: "fill: #7f8c8d",
-    curve: d3.curveBasis,
-  }});
-}});
+  EDGES.forEach(function(e) {
+    g.setEdge(e.source, e.target, {
+      style: "stroke: #7f8c8d; stroke-width: 2px;",
+      arrowheadStyle: "fill: #7f8c8d; stroke: #7f8c8d;"
+    });
+  });
 
-// Render
-const svg = d3.select("#graph-container").append("svg");
-const svgGroup = svg.append("g");
-const render = new dagreD3.render();
-render(svgGroup, g);
+  var svg = d3.select("#graph-container").append("svg")
+    .attr("width", 1200)
+    .attr("height", 800);
+  var svgGroup = svg.append("g");
 
-// Size SVG
-const graphWidth = g.graph().width + 40;
-const graphHeight = g.graph().height + 40;
-svg.attr("width", Math.max(graphWidth, 800));
-svg.attr("height", Math.max(graphHeight, 600));
+  var render = new dagreD3.render();
+  render(svgGroup, g);
 
-// Zoom
-const zoom = d3.zoom().on("zoom", () => {{
-  svgGroup.attr("transform", d3.event.transform);
-}});
-svg.call(zoom);
+  // Resize SVG to fit graph
+  var gw = g.graph().width + 80;
+  var gh = g.graph().height + 80;
+  svg.attr("width", Math.max(gw, 800));
+  svg.attr("height", Math.max(gh, 600));
 
-// Tooltips — dagre-d3 stores the DOM element on g.node(id).elem after render
-NODES.forEach(n => {{
-  const nd = g.node(n.id);
-  if (nd && nd.elem) {{
-    d3.select(nd.elem)
-      .attr("data-node-id", n.id)
-      .insert("title", ":first-child")
-      .text(n.tooltip.replace(/\\\\n/g, "\\n"));
-  }}
-}});
+  // Center
+  var xOffset = (Math.max(gw, 800) - g.graph().width) / 2;
+  svgGroup.attr("transform", "translate(" + xOffset + ", 40)");
 
-// Click handler — use data-node-id set during tooltip phase
-svg.selectAll("g.node").on("click", function() {{
-  const nodeId = d3.select(this).attr("data-node-id");
-  if (nodeId) showDetail(nodeId);
-}});
+  // Zoom
+  var zoom = d3.zoom().on("zoom", function() {
+    svgGroup.attr("transform", d3.event.transform);
+  });
+  svg.call(zoom);
 
-function showDetail(nodeId) {{
-  const panel = document.getElementById("detail-panel");
-  const node = NODES.find(n => n.id === nodeId);
-  if (!node) return;
+  // Set data attributes for click handling
+  NODES.forEach(function(n) {
+    var nd = g.node(n.id);
+    if (nd && nd.elem) {
+      d3.select(nd.elem).attr("data-node-id", n.id);
+    }
+  });
 
-  let html = `<h3>${{node.id}}: ${{node.type}}</h3>`;
+  // Click handler
+  svg.selectAll("g.node").on("click", function() {
+    var nodeId = d3.select(this).attr("data-node-id");
+    if (nodeId) showDetail(nodeId);
+  });
 
-  // Proof steps
-  const steps = PROOF_STEPS[nodeId];
-  if (steps && steps.length > 0) {{
-    html += `<div class="detail-section"><h4>Proof Steps (${{steps.length}})</h4><div class="step-chain">`;
-    steps.forEach((s, i) => {{
-      html += `<div class="step-item"><strong>${{s.id}}</strong>: ${{escapeHtml(s.statement)}}</div>`;
-      if (i < steps.length - 1) html += `<div class="step-arrow">&#8595;</div>`;
-    }});
-    html += `</div></div>`;
-  }}
+  console.log("SARANGA graph rendered: " + g.nodeCount() + " nodes, " + g.edgeCount() + " edges");
 
-  // Equations
-  const eqs = EQUATIONS[nodeId];
-  if (eqs && eqs.length > 0) {{
-    html += `<div class="detail-section"><h4>Related Equations (${{eqs.length}})</h4>`;
-    eqs.forEach(e => {{
-      html += `<div class="eq-item"><strong>${{e.id}}</strong> (Sec ${{e.section}}): ${{escapeHtml(e.statement)}}</div>`;
-    }});
-    html += `</div>`;
-  }}
+} catch(err) {
+  console.error("SARANGA render error:", err);
+  document.getElementById("graph-container").innerHTML =
+    '<div style="color:red;padding:20px;"><h3>Render Error</h3><pre>' + err.message + '</pre></div>';
+}
 
-  if (!steps && !eqs) {{
-    html += `<div style="color:#888;font-size:12px;margin-top:8px;">No proof steps or equations linked to this node.</div>`;
-  }}
+function showDetail(nodeId) {
+  var panel = document.getElementById("detail-panel");
+  var d = DETAILS[nodeId];
+  if (!d) return;
 
-  panel.innerHTML = html;
-  panel.classList.add("open");
-}}
+  var h = '<h3 style="margin:0 0 8px;">' + esc(nodeId) + ': ' + esc(d.name || d.type) + '</h3>';
+  h += '<div style="font-size:11px;color:#888;margin-bottom:8px;">' + d.type + (d.section ? ' (Sec ' + d.section + ')' : '') + '</div>';
 
-function resetView() {{
-  document.getElementById("detail-panel").classList.remove("open");
+  if (d.statement) {
+    h += '<div class="detail-section"><h4>Statement</h4><div style="font-size:12px;">' + esc(d.statement) + '</div></div>';
+  }
+  if (d.assumptions && d.assumptions.length > 0) {
+    h += '<div class="detail-section"><h4>Assumptions</h4>';
+    d.assumptions.forEach(function(a) { h += '<div style="font-size:11px;padding:1px 0 1px 8px;">&bull; ' + esc(a) + '</div>'; });
+    h += '</div>';
+  }
+  if (d.conclusions && d.conclusions.length > 0) {
+    h += '<div class="detail-section"><h4>Conclusions</h4>';
+    d.conclusions.forEach(function(c) { h += '<div style="font-size:11px;padding:1px 0 1px 8px;">&bull; ' + esc(c) + '</div>'; });
+    h += '</div>';
+  }
+  if (d.proof_info && d.proof_info.length > 0) {
+    h += '<div class="detail-section"><h4>Proof Strategy</h4>';
+    d.proof_info.forEach(function(p) { h += '<div style="font-size:11px;font-style:italic;">' + esc(typeof p === 'string' ? p : JSON.stringify(p)) + '</div>'; });
+    h += '</div>';
+  }
+  if (d.input && d.input.length > 0) {
+    h += '<div class="detail-section"><h4>Input</h4>';
+    d.input.forEach(function(x) { h += '<div style="font-size:11px;">&bull; ' + esc(x) + '</div>'; });
+    h += '</div>';
+  }
+  if (d.output && d.output.length > 0) {
+    h += '<div class="detail-section"><h4>Output</h4>';
+    d.output.forEach(function(x) { h += '<div style="font-size:11px;">&bull; ' + esc(x) + '</div>'; });
+    h += '</div>';
+  }
+  if (d.steps && d.steps.length > 0) {
+    h += '<div class="detail-section"><h4>Proof Steps (' + d.steps.length + ')</h4>';
+    d.steps.forEach(function(s, i) {
+      h += '<div class="step-item"><strong>' + s.id + '</strong>: ' + esc(s.statement) + '</div>';
+      if (i < d.steps.length - 1) h += '<div class="step-arrow">&#8595;</div>';
+    });
+    h += '</div>';
+  }
+  if (d.equations && d.equations.length > 0) {
+    h += '<div class="detail-section"><h4>Equations (' + d.equations.length + ')</h4>';
+    d.equations.forEach(function(e) {
+      h += '<div class="eq-item"><strong>' + e.id + '</strong> (Sec ' + e.section + '): ' + esc(e.statement) + '</div>';
+    });
+    h += '</div>';
+  }
+
+  panel.innerHTML = h;
+  panel.className = "open";
+  if (window.MathJax && MathJax.typesetPromise) {
+    MathJax.typesetPromise([panel]).catch(function(err) { console.log("MathJax error:", err); });
+  }
+}
+
+function resetView() {
+  document.getElementById("detail-panel").className = "";
   document.getElementById("detail-panel").innerHTML = "";
-  svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity);
-}}
+}
 
-function toggleAllSteps() {{
-  const btn = document.getElementById("btn-steps");
-  // For now just show the detail panel with all steps
-  const panel = document.getElementById("detail-panel");
-  let html = "<h3>All Proof Steps</h3>";
-  for (const [thmId, steps] of Object.entries(PROOF_STEPS)) {{
-    html += `<div class="detail-section"><h4>${{thmId}} (${{steps.length}} steps)</h4><div class="step-chain">`;
-    steps.forEach((s, i) => {{
-      html += `<div class="step-item"><strong>${{s.id}}</strong>: ${{escapeHtml(s.statement)}}</div>`;
-      if (i < steps.length - 1) html += `<div class="step-arrow">&#8595;</div>`;
-    }});
-    html += `</div></div>`;
-  }});
-  panel.innerHTML = html;
-  panel.classList.add("open");
-}}
-
-function toggleOrphans() {{
-  const panel = document.getElementById("orphan-panel");
-  if (panel.style.display === "block") {{
+function toggleOrphans() {
+  var panel = document.getElementById("orphan-panel");
+  if (panel.style.display === "block") {
     panel.style.display = "none";
-  }} else {{
-    let html = "";
-    ORPHANS.forEach(e => {{
-      html += `<div class="orphan-item"><strong>${{e.id}}</strong> (Sec ${{e.section}}): ${{escapeHtml(e.statement)}}</div>`;
-    }});
-    document.getElementById("orphan-list").innerHTML = html;
+  } else {
+    var h = "";
+    ORPHANS.forEach(function(e) {
+      h += '<div class="orphan-item"><strong>' + e.id + '</strong> (Sec ' + e.section + '): ' + esc(e.statement) + '</div>';
+    });
+    document.getElementById("orphan-list").innerHTML = h;
     panel.style.display = "block";
-  }}
-}}
+  }
+}
 
-function escapeHtml(text) {{
+function esc(text) {
   if (!text) return "";
-  return text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-}}
+  // Escape HTML but preserve $ and \\ for MathJax rendering
+  return text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
 </script>
 </body>
-</html>"""
+</html>
+"""
 
-    Path(output_path).write_text(html, encoding="utf-8")
-    return len(base_nodes), len(base_edges), len(proof_steps), len(equations), len(orphan_equations)
+    html_parts.append(js_code)
+    Path(output_path).write_text("".join(html_parts), encoding="utf-8")
+    return len(base_nodes), len(base_edges), len(step_chains), len(eq_map), len(orphan_eqs)
 
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("input", help="Input JSON annotation file")
-    parser.add_argument("output", nargs="?", default=None, help="Output HTML file")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("input", help="Input JSON")
+    parser.add_argument("output", nargs="?", default=None, help="Output HTML")
     args = parser.parse_args()
 
     input_path = Path(args.input)
@@ -541,8 +403,7 @@ def main():
 
     n_base, n_edges, n_steps, n_eqs, n_orphans = generate_html(data, output_path)
     print(f"Interactive HTML saved to {output_path}")
-    print(f"  Base nodes: {n_base}, Edges: {n_edges}")
-    print(f"  Proof steps: {n_steps}, Equations: {n_eqs}, Orphan equations: {n_orphans}")
+    print(f"  Base nodes: {n_base}, Edges: {n_edges}, Steps: {n_steps}, Eqs: {n_eqs}, Orphans: {n_orphans}")
 
 
 if __name__ == "__main__":
