@@ -29,7 +29,7 @@ import networkx as nx
 NODE_COLORS = {
     "definition":  {"header": "#27AE60", "body": "#D5F5E3"},
     "theorem":     {"header": "#C0392B", "body": "#FADBD8"},
-    "lemma":       {"header": "#D35400", "body": "#FAE5D3"},
+    "lemma":       {"header": "#D35400", "body": "#F5CBA7"},
     "corollary":   {"header": "#943126", "body": "#F2D7D5"},
     "algorithm":   {"header": "#2471A3", "body": "#D4E6F1"},
     "equation":    {"header": "#5DADE2", "body": "#EBF5FB"},
@@ -167,15 +167,16 @@ def merge_proofs(nodes, edges):
             if target_id in node_by_id:
                 proof_map[n["id"]] = target_id
 
-    # Attach proof info to parent theorem
+    # Attach proof info to parent theorem (reset first to avoid duplication on repeated calls)
+    for n in nodes:
+        if n.get("type") != "proof":
+            node_by_id[n["id"]]["proof_info"] = []
+
     display_nodes = []
     for n in nodes:
         if n["id"] in proof_map:
-            # Attach to parent
             parent_id = proof_map[n["id"]]
             parent = node_by_id[parent_id]
-            if "proof_info" not in parent:
-                parent["proof_info"] = []
             parent["proof_info"].append(n.get("proof_strategy", ""))
             continue
         display_nodes.append(n)
@@ -640,7 +641,7 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
 <div class="legend">
   <div class="legend-item"><div class="legend-color" style="background:#D5F5E3;border-color:#27AE60;"></div>Definition</div>
   <div class="legend-item"><div class="legend-color" style="background:#FADBD8;border-color:#C0392B;"></div>Theorem</div>
-  <div class="legend-item"><div class="legend-color" style="background:#FAE5D3;border-color:#D35400;"></div>Lemma</div>
+  <div class="legend-item"><div class="legend-color" style="background:#F5CBA7;border-color:#D35400;"></div>Lemma</div>
   <div class="legend-item"><div class="legend-color" style="background:#F2D7D5;border-color:#943126;"></div>Corollary</div>
   <div class="legend-item"><div class="legend-color" style="background:#D4E6F1;border-color:#2471A3;"></div>Algorithm</div>
   <div class="legend-item" style="margin-left:12px;"><span style="font-size:18px;color:#555;">&#8594;</span> A supports B</div>
