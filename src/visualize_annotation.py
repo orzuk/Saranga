@@ -213,7 +213,13 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         edges = list(edges_raw)
         proof_map = {}
     else:
+        # Standard: collapse proofs AND filter out equations/proof_steps
         nodes, edges, proof_map = merge_proofs(nodes_raw, edges_raw)
+        hidden_types = {"equation", "proof_step"}
+        hidden_ids = {n["id"] for n in nodes if n.get("type") in hidden_types}
+        nodes = [n for n in nodes if n.get("type") not in hidden_types]
+        edges = [e for e in edges
+                 if e["source"] not in hidden_ids and e["target"] not in hidden_ids]
     depth = compute_dag_depth(nodes, edges)
 
     # Group by depth level
