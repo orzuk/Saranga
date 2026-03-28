@@ -572,7 +572,8 @@ def generate_interactive_html(data, svg_path, html_path):
             "output": n.get("output", []),
             "steps": [{"id": s["id"], "statement": s.get("statement","")}
                       for s in step_chains.get(nid, [])],
-            "equations": [{"id": e["id"], "statement": e.get("statement",""), "section": e.get("section","")}
+            "equations": [{"id": e["id"], "statement": e.get("statement",""), "section": e.get("section",""),
+                          "context": e.get("context",""), "parent_step": e.get("parent_step","")}
                           for e in eq_map.get(nid, [])],
         }
 
@@ -698,19 +699,54 @@ function showDetail(nodeId) {{
     h += '</div>';
   }}
   if (d.steps && d.steps.length > 0) {{
+    // Build map of equations by parent_step
+    var eqsByStep = {{}};
+    if (d.equations) {{
+      d.equations.forEach(function(e) {{
+        if (e.parent_step) {{
+          if (!eqsByStep[e.parent_step]) eqsByStep[e.parent_step] = [];
+          eqsByStep[e.parent_step].push(e);
+        }}
+      }});
+    }}
     h += '<div class="detail-section"><h4>Proof Steps (' + d.steps.length + ')</h4>';
     d.steps.forEach(function(s, i) {{
-      h += '<div class="step-item"><strong>' + s.id + '</strong>: ' + esc(s.statement) + '</div>';
+      h += '<div class="step-item"><strong>' + s.id + '</strong>: ' + esc(s.statement);
+      // Show inline equations for this step
+      if (eqsByStep[s.id]) {{
+        eqsByStep[s.id].forEach(function(e) {{
+          h += '<div style="margin:3px 0 0 12px;padding:3px 8px;background:#EBF5FB;border-left:2px solid #5DADE2;font-size:12px;">' + esc(e.id) + ': ' + esc(e.statement) + '</div>';
+        }});
+      }}
+      h += '</div>';
       if (i < d.steps.length - 1) h += '<div class="step-arrow">&#8595;</div>';
     }});
     h += '</div>';
   }}
+  // Also show equations tagged to conclusion/assumption/statement
+  if (d.equations) {{
+    var contextEqs = d.equations.filter(function(e) {{ return e.context && e.context !== 'orphan' && !e.parent_step; }});
+    if (contextEqs.length > 0) {{
+      h += '<div class="detail-section"><h4>Key Equations</h4>';
+      contextEqs.forEach(function(e) {{
+        h += '<div class="eq-item"><strong>' + e.id + '</strong> (' + (e.context || '') + '): ' + esc(e.statement) + '</div>';
+      }});
+      h += '</div>';
+    }}
+  }}
+  // Show equations inline with their context, or as collapsible orphans
   if (d.equations && d.equations.length > 0) {{
-    h += '<div class="detail-section"><h4>Equations (' + d.equations.length + ')</h4>';
-    d.equations.forEach(function(e) {{
-      h += '<div class="eq-item"><strong>' + e.id + '</strong> (Sec ' + e.section + '): ' + esc(e.statement) + '</div>';
-    }});
-    h += '</div>';
+    var inlineEqs = d.equations.filter(function(e) {{ return e.context && e.context !== 'orphan'; }});
+    var orphanEqs = d.equations.filter(function(e) {{ return !e.context || e.context === 'orphan'; }});
+    // Inline equations were already shown with proof steps above; show orphans as collapsible
+    if (orphanEqs.length > 0) {{
+      h += '<div class="detail-section"><h4 style="cursor:pointer;" onclick="var el=document.getElementById(\'orphan-eqs-' + nodeId + '\'); el.style.display=el.style.display===\'none\'?\'block\':\'none\';">Unplaced Equations (' + orphanEqs.length + ') &#9660;</h4>';
+      h += '<div id="orphan-eqs-' + nodeId + '" style="display:none;">';
+      orphanEqs.forEach(function(e) {{
+        h += '<div class="eq-item"><strong>' + e.id + '</strong> (Sec ' + e.section + '): ' + esc(e.statement) + '</div>';
+      }});
+      h += '</div></div>';
+    }}
   }}
   panel.innerHTML = h;
   panel.className = "open";
