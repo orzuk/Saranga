@@ -936,47 +936,91 @@ function showGhostDetail(nameOrEl) {{
 
 function drawGhostEdges() {{
   removeGhostEdges();
-  var svgContainer = document.getElementById("svg-container");
-  var svgEl = svgContainer.querySelector("svg");
+  // Draw edges as absolutely positioned HTML divs (not SVG) to avoid coordinate issues
+  var container = document.getElementById("svg-container");
+  var svgEl = container.querySelector("svg");
   if (!svgEl) return;
-  var overlay = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  overlay.id = "ghost-edges-overlay";
-  svgEl.appendChild(overlay);
 
-  var svgRect = svgEl.getBoundingClientRect();
+  var edgeDiv = document.createElement("div");
+  edgeDiv.id = "ghost-edges-overlay";
+  edgeDiv.style.position = "absolute";
+  edgeDiv.style.top = "0";
+  edgeDiv.style.left = "0";
+  edgeDiv.style.width = "100%";
+  edgeDiv.style.height = "100%";
+  edgeDiv.style.pointerEvents = "none";
+  edgeDiv.style.zIndex = "10";
+  container.style.position = "relative";
+  container.appendChild(edgeDiv);
+
+  // Create an SVG overlay matching the container
+  var overlayNS = "http://www.w3.org/2000/svg";
+  var overlaySvg = document.createElementNS(overlayNS, "svg");
+  overlaySvg.style.position = "absolute";
+  overlaySvg.style.top = "0";
+  overlaySvg.style.left = "0";
+  overlaySvg.style.width = "100%";
+  overlaySvg.style.height = container.scrollHeight + "px";
+  overlaySvg.style.pointerEvents = "none";
+  overlaySvg.style.overflow = "visible";
+
+  // Add arrowhead marker
+  var defs = document.createElementNS(overlayNS, "defs");
+  var marker = document.createElementNS(overlayNS, "marker");
+  marker.setAttribute("id", "ghost-arrow");
+  marker.setAttribute("viewBox", "0 0 10 10");
+  marker.setAttribute("refX", "10");
+  marker.setAttribute("refY", "5");
+  marker.setAttribute("markerWidth", "8");
+  marker.setAttribute("markerHeight", "8");
+  marker.setAttribute("orient", "auto");
+  var path = document.createElementNS(overlayNS, "path");
+  path.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
+  path.setAttribute("fill", "#555");
+  marker.appendChild(path);
+  defs.appendChild(marker);
+  overlaySvg.appendChild(defs);
+
+  edgeDiv.appendChild(overlaySvg);
+
+  var containerRect = container.getBoundingClientRect();
+  var scrollLeft = container.scrollLeft;
+  var scrollTop = container.scrollTop;
+
   var names = Object.keys(GHOSTS);
   names.forEach(function(name) {{
     var ghostEl = document.getElementById("ghost-" + name.replace(/[^a-zA-Z0-9]/g, "_"));
     if (!ghostEl) return;
     var ghostRect = ghostEl.getBoundingClientRect();
-    var ghostCx = ghostRect.left + ghostRect.width / 2 - svgRect.left;
-    var ghostCy = ghostRect.bottom - svgRect.top;
+    var x1 = ghostRect.left + ghostRect.width / 2 - containerRect.left + scrollLeft;
+    var y1 = ghostRect.bottom - containerRect.top + scrollTop;
 
     var refs = GHOSTS[name];
     refs.forEach(function(nid) {{
-      var nodeEl = svgEl.querySelector('[id="node_' + nid + '"]');
-      if (!nodeEl) return;
-      var nodeRect = nodeEl.getBoundingClientRect();
-      var nodeCx = nodeRect.left + nodeRect.width / 2 - svgRect.left;
-      var nodeCy = nodeRect.top - svgRect.top;
+      // Find the node rect in SVG using the gid
+      var nodeGroup = svgEl.querySelector('[id="node_' + nid + '"]');
+      if (!nodeGroup) return;
+      var nodeRect = nodeGroup.getBoundingClientRect();
+      var x2 = nodeRect.left + nodeRect.width / 2 - containerRect.left + scrollLeft;
+      var y2 = nodeRect.top - containerRect.top + scrollTop;
 
-      var line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      line.setAttribute("x1", ghostCx);
-      line.setAttribute("y1", ghostCy);
-      line.setAttribute("x2", nodeCx);
-      line.setAttribute("y2", nodeCy);
-      line.setAttribute("stroke", "#999");
-      line.setAttribute("stroke-width", "1.5");
-      line.setAttribute("stroke-dasharray", "6,4");
-      line.setAttribute("opacity", "0.6");
-      overlay.appendChild(line);
+      var line = document.createElementNS(overlayNS, "line");
+      line.setAttribute("x1", x1);
+      line.setAttribute("y1", y1);
+      line.setAttribute("x2", x2);
+      line.setAttribute("y2", y2);
+      line.setAttribute("stroke", "#555");
+      line.setAttribute("stroke-width", "2.5");
+      line.setAttribute("stroke-dasharray", "8,5");
+      line.setAttribute("marker-end", "url(#ghost-arrow)");
+      overlaySvg.appendChild(line);
     }});
   }});
 }}
 
 function removeGhostEdges() {{
   var overlay = document.getElementById("ghost-edges-overlay");
-  if (overlay) overlay.remove();
+  if (overlay) overlay.parentNode.removeChild(overlay);
 }}
 
 function toggleEqPanel(el) {{
