@@ -307,7 +307,7 @@ var ORPHANS = """ + orphans_json + """;
 
 try {
   var g = new dagreD3.graphlib.Graph().setGraph({
-    rankdir: "TB", ranksep: 50, nodesep: 25, marginx: 20, marginy: 20
+    rankdir: "TB", ranksep: 70, nodesep: 15, marginx: 20, marginy: 20, ranker: "tight-tree"
   });
 
   // Build rank lookup
