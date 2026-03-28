@@ -124,10 +124,13 @@ def generate_html(data, output_path):
     js_details = {}
     for n in base_nodes:
         colors = NODE_COLORS.get(n.get("type", ""), DEFAULT_COLOR)
+        import re as _re
         name = n.get("name") or ""
-        label = f"{n['id']}: {name}" if name else n["id"]
-        if len(label) > 35:
-            label = label[:32] + "..."
+        # Strip $...$ LaTeX from label — math renders in the detail panel via MathJax
+        clean_name = _re.sub(r'\$[^$]*\$', lambda m: m.group(0).strip('$').replace('\\\\', '').replace('\\', ''), name)
+        label = f"{n['id']}: {clean_name}" if clean_name else n["id"]
+        if len(label) > 40:
+            label = label[:37] + "..."
 
         js_nodes_list.append({
             "id": n["id"],
@@ -286,32 +289,6 @@ try {
     var nodeId = d3.select(this).attr("data-node-id");
     if (nodeId) showDetail(nodeId);
   });
-
-  // Render MathJax in node labels
-  if (window.MathJax && MathJax.typesetPromise) {
-    // dagre-d3 puts labels in <g class="label"><g><text>...</text></g></g>
-    // We need to replace text nodes containing $ with MathJax-rendered HTML
-    svg.selectAll("g.node g.label").each(function() {
-      var textEl = d3.select(this).select("text");
-      var txt = textEl.text();
-      if (txt && txt.indexOf("$") >= 0) {
-        // Replace the text element with a foreignObject containing MathJax-able HTML
-        var parent = this;
-        var bbox = textEl.node().getBBox();
-        textEl.remove();
-        var fo = d3.select(parent).append("foreignObject")
-          .attr("x", bbox.x - 5)
-          .attr("y", bbox.y - 2)
-          .attr("width", bbox.width + 40)
-          .attr("height", bbox.height + 10);
-        fo.append("xhtml:div")
-          .style("font-size", "13px")
-          .style("text-align", "center")
-          .html(txt);
-      }
-    });
-    MathJax.typesetPromise([document.querySelector("svg")]).catch(function(e) { console.log("MathJax SVG error:", e); });
-  }
 
   console.log("SARANGA graph rendered: " + g.nodeCount() + " nodes, " + g.edgeCount() + " edges");
 
