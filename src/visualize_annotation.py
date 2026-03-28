@@ -520,8 +520,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         # Position ghost nodes in a row ABOVE the top layer
         all_tops = [by + bh for (bx, by, bw, bh) in node_rect.values()]
         ghost_y_top = max(all_tops) + LEVEL_GAP_Y * 0.8
-        ghost_w = MIN_BOX_W
-        ghost_h = HEADER_H + LINE_H
+        ghost_w = MIN_BOX_W * 1.1
+        ghost_h = HEADER_H + LINE_H * 1.5 + PADDING
         ghost_names = sorted(_ghost_map.keys())
         total_ghost_w = len(ghost_names) * ghost_w + (len(ghost_names) - 1) * BOX_GAP_X * 0.5
         ghost_start_x = -total_ghost_w / 2
@@ -531,38 +531,53 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             gx = ghost_start_x + gi * (ghost_w + BOX_GAP_X * 0.5)
             gy = ghost_y_top
 
-            # Draw ghost node box (hidden initially via gid prefix)
+            # Draw ghost node box with header (like regular nodes)
             grect = FancyBboxPatch(
                 (gx, gy - ghost_h), ghost_w, ghost_h,
                 boxstyle="round,pad=0.05",
-                facecolor="#E0E0E0", edgecolor="#888888",
-                linewidth=1.0, linestyle="dashed",
+                facecolor="#E8E8E8", edgecolor="#777777",
+                linewidth=1.5, linestyle="dashed",
                 gid=f"ghost_box_{gi}",
             )
             ax.add_patch(grect)
-            # Label
+            # Header bar
+            gheader = FancyBboxPatch(
+                (gx, gy - HEADER_H), ghost_w, HEADER_H,
+                boxstyle="round,pad=0.05",
+                facecolor="#777777", edgecolor="#777777",
+                linewidth=0,
+                gid=f"ghost_header_{gi}",
+            )
+            ax.add_patch(gheader)
+            # Name in header
             short_name = gname if len(gname) <= 22 else gname[:19] + "..."
-            ax.text(gx + ghost_w / 2, gy - ghost_h / 2, short_name,
-                    ha="center", va="center", fontsize=10.5, color="#333",
-                    fontstyle="italic", gid=f"ghost_text_{gi}")
+            ax.text(gx + ghost_w / 2, gy - HEADER_H / 2, short_name,
+                    ha="center", va="center", fontsize=10, fontweight="bold",
+                    color="white", gid=f"ghost_text_{gi}")
+            # References below header
+            refs_str = "→ " + ", ".join(_ghost_map[gname])
+            ax.text(gx + ghost_w / 2, gy - HEADER_H - LINE_H * 0.7, refs_str,
+                    ha="center", va="center", fontsize=8.5, color="#555",
+                    gid=f"ghost_refs_{gi}")
 
             ghost_rects[gname] = (gx, gy - ghost_h, ghost_w, ghost_h)
 
             # Draw dashed edges to target nodes
-            for target_id in _ghost_map[gname]:
+            from matplotlib.patches import FancyArrowPatch
+            for ti, target_id in enumerate(_ghost_map[gname]):
                 if target_id in node_rect:
                     tx, ty, tw, th = node_rect[target_id]
-                    ax.annotate(
-                        "", xy=(tx + tw / 2, ty + th), xytext=(gx + ghost_w / 2, gy - ghost_h),
-                        arrowprops=dict(
-                            arrowstyle="-|>,head_length=0.8,head_width=0.35",
-                            color="#999999", lw=1.5,
-                            linestyle="dashed",
-                            connectionstyle="arc3,rad=0.05",
-                            shrinkA=3, shrinkB=3,
-                        ),
-                        gid=f"ghost_edge_{gi}_{target_id}",
+                    arrow = FancyArrowPatch(
+                        (gx + ghost_w / 2, gy - ghost_h),
+                        (tx + tw / 2, ty + th),
+                        arrowstyle="-|>,head_length=0.8,head_width=0.35",
+                        color="#999999", lw=1.5,
+                        linestyle="dashed",
+                        connectionstyle="arc3,rad=0.05",
+                        shrinkA=3, shrinkB=3,
+                        gid=f"ghost_edge_{gi}_{ti}",
                     )
+                    ax.add_patch(arrow)
 
     # ── Misc/Orphan equations box ──
     # Count orphan equations from the FULL node list (before filtering)
@@ -1006,8 +1021,9 @@ function esc(t) {{ return t ? t.replace(/&/g,"&amp;").replace(/</g,"&lt;").repla
 window.addEventListener("load", function() {{
   var svgEl = document.querySelector("#svg-container svg");
   if (svgEl) {{
-    var ghostEls = svgEl.querySelectorAll('[id^="ghost_"]');
-    ghostEls.forEach(function(el) {{ el.style.display = "none"; }});
+    // Hide all ghost elements (boxes, headers, text, refs, edges)
+    var all = svgEl.querySelectorAll('[id^="ghost_"]');
+    all.forEach(function(el) {{ el.style.display = "none"; }});
   }}
 }});
 
