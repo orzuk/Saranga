@@ -496,6 +496,55 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                         ha="left", va="top", fontsize=10.5, color="#222")
                 cursor_y -= LINE_H
 
+    # ── Misc/Orphan equations box ──
+    # Count orphan equations from the FULL node list (before filtering)
+    all_eq_nodes = [n for n in nodes_raw if n.get("type") == "equation"]
+    orphan_eqs = [n for n in all_eq_nodes if n.get("context") == "orphan" or not n.get("context")]
+    # Also count equations not connected to any displayed node
+    displayed_ids = set(node_data.keys())
+    edge_targets = set()
+    for e in edges_raw:
+        if e["source"] in displayed_ids:
+            edge_targets.add(e["target"])
+        if e["target"] in displayed_ids:
+            edge_targets.add(e["source"])
+    truly_orphan = [n for n in all_eq_nodes if n["id"] not in edge_targets and n["id"] not in displayed_ids]
+    n_orphan = len(set(n["id"] for n in orphan_eqs + truly_orphan))
+
+    if n_orphan > 0 and node_rect:
+        # Position: bottom-right of the DAG
+        all_bottoms = [by for (bx, by, bw, bh) in node_rect.values()]
+        all_rights = [bx + bw for (bx, by, bw, bh) in node_rect.values()]
+        misc_y = min(all_bottoms) - LEVEL_GAP_Y * 0.7
+        misc_x = max(all_rights) - MAX_BOX_W
+        misc_w = MAX_BOX_W
+        misc_h = HEADER_H + LINE_H + 2 * PADDING
+
+        misc_rect = FancyBboxPatch(
+            (misc_x, misc_y), misc_w, misc_h,
+            boxstyle="round,pad=0.05",
+            facecolor="#F2E6D9",
+            edgecolor="#795548",
+            linewidth=1.5,
+            gid="node___orphan__",
+        )
+        ax.add_patch(misc_rect)
+
+        header_rect = FancyBboxPatch(
+            (misc_x, misc_y + misc_h - HEADER_H), misc_w, HEADER_H,
+            boxstyle="round,pad=0.05",
+            facecolor="#795548",
+            edgecolor="#795548",
+            linewidth=0,
+        )
+        ax.add_patch(header_rect)
+        ax.text(misc_x + misc_w / 2, misc_y + misc_h - HEADER_H / 2,
+                f"Misc ({n_orphan} equations)",
+                ha="center", va="center", fontsize=12, fontweight="bold", color="white")
+        ax.text(misc_x + misc_w / 2, misc_y + PADDING + LINE_H / 2,
+                "Unconnected equations",
+                ha="center", va="center", fontsize=10.5, color="#555")
+
     # ── Legend ──
     if show_legend:
         legend_handles = []
@@ -627,7 +676,7 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
 .eq-item {{ background: #d4e6f1; border-left: 3px solid #5dade2; padding: 6px 10px; font-size: 13px; margin-bottom: 4px; border-radius: 0 3px 3px 0; }}
 .orphan-item {{ background: #fef9e7; border-left: 3px solid #f39c12; padding: 6px 10px; font-size: 13px; margin-bottom: 4px; }}
 #orphan-panel {{ position: fixed; bottom: 16px; right: 16px; background: white; border: 1px solid #ddd; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); max-width: 350px; max-height: 400px; overflow-y: auto; display: none; padding: 12px; z-index: 100; }}
-#orphan-toggle {{ position: fixed; bottom: 16px; right: 16px; background: #f39c12; color: white; border: none; border-radius: 20px; padding: 8px 16px; cursor: pointer; font-size: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); z-index: 101; display: {"block" if js_orphans else "none"}; }}
+#orphan-toggle {{ display: none; }}
 /* Hover effect on clickable node rects */
 [id^="node_"]:hover {{ filter: brightness(0.90); }}
 </style>
@@ -662,6 +711,19 @@ var ORPHANS = {orphans_json};
 
 function showDetail(nodeId) {{
   var panel = document.getElementById("detail-panel");
+  // Special case: orphan/misc node
+  if (nodeId === '__orphan__') {{
+    var h = '<h3 style="margin:0 0 8px;font-size:16px;">Misc: Unconnected Equations</h3>';
+    h += '<div style="font-size:12px;color:#888;margin-bottom:10px;">Equations not linked to any theorem or proof step</div>';
+    ORPHANS.forEach(function(e) {{
+      h += '<div class="eq-item"><strong>' + e.id + '</strong> (Sec ' + e.section + '): ' + esc(e.statement) + '</div>';
+    }});
+    if (ORPHANS.length === 0) h += '<div style="color:#888;">No orphan equations.</div>';
+    panel.innerHTML = h;
+    panel.className = "open";
+    if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([panel]).catch(function(){{}});
+    return;
+  }}
   var d = DETAILS[nodeId];
   if (!d) return;
   var h = '<h3 style="margin:0 0 8px;font-size:16px;">' + esc(nodeId) + ': ' + esc(d.name || d.type) + '</h3>';
