@@ -512,13 +512,17 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
     n_orphan = len(set(n["id"] for n in orphan_eqs + truly_orphan))
 
     if n_orphan > 0 and node_rect:
-        # Position: bottom-right of the DAG
-        all_bottoms = [by for (bx, by, bw, bh) in node_rect.values()]
-        all_rights = [bx + bw for (bx, by, bw, bh) in node_rect.values()]
-        misc_y = min(all_bottoms) - LEVEL_GAP_Y * 0.7
-        misc_x = max(all_rights) - MAX_BOX_W
+        # Position: same height as the bottom layer, to the right
         misc_w = MAX_BOX_W
         misc_h = HEADER_H + LINE_H + 2 * PADDING
+        all_bottoms = [by for (bx, by, bw, bh) in node_rect.values()]
+        all_rights = [bx + bw for (bx, by, bw, bh) in node_rect.values()]
+        # Find the bottom-most row's top position
+        bottom_y = min(all_bottoms)
+        bottom_tops = [by + bh for (bx, by, bw, bh) in node_rect.values() if abs(by - bottom_y) < LEVEL_GAP_Y * 0.3]
+        misc_top = max(bottom_tops) if bottom_tops else min(all_bottoms) + 1.0
+        misc_y = misc_top - misc_h
+        misc_x = max(all_rights) + BOX_GAP_X
 
         misc_rect = FancyBboxPatch(
             (misc_x, misc_y), misc_w, misc_h,
