@@ -520,8 +520,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         # Position ghost nodes in a row ABOVE the top layer
         all_tops = [by + bh for (bx, by, bw, bh) in node_rect.values()]
         ghost_y_top = max(all_tops) + LEVEL_GAP_Y * 0.8
-        ghost_w = MIN_BOX_W * 0.8
-        ghost_h = HEADER_H + LINE_H * 0.5
+        ghost_w = MIN_BOX_W
+        ghost_h = HEADER_H + LINE_H
         ghost_names = sorted(_ghost_map.keys())
         total_ghost_w = len(ghost_names) * ghost_w + (len(ghost_names) - 1) * BOX_GAP_X * 0.5
         ghost_start_x = -total_ghost_w / 2
@@ -541,9 +541,9 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             )
             ax.add_patch(grect)
             # Label
-            short_name = gname if len(gname) <= 20 else gname[:17] + "..."
+            short_name = gname if len(gname) <= 22 else gname[:19] + "..."
             ax.text(gx + ghost_w / 2, gy - ghost_h / 2, short_name,
-                    ha="center", va="center", fontsize=9, color="#444",
+                    ha="center", va="center", fontsize=10.5, color="#333",
                     fontstyle="italic", gid=f"ghost_text_{gi}")
 
             ghost_rects[gname] = (gx, gy - ghost_h, ghost_w, ghost_h)
@@ -818,8 +818,6 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
   <div class="legend-item" style="margin-left:12px;"><span style="font-size:18px;color:#555;">&#8594;</span> A supports B</div>
   <div class="legend-item" style="margin-left:12px;"><button onclick="toggleGhosts()" id="ghost-btn" style="padding:4px 12px;border:1.5px solid #757575;border-radius:4px;background:#E0E0E0;cursor:pointer;font-size:12px;color:#333;">Show external dependencies</button></div>
 </div>
-<div id="ghost-strip" style="display:none;padding:10px 24px;background:#F5F5F5;border-bottom:1px solid #BDBDBD;overflow-x:auto;white-space:nowrap;">
-</div>
 <div id="main">
   <div id="svg-container">{svg_content}</div>
   <div id="detail-panel"></div>
@@ -832,8 +830,17 @@ var ORPHANS = {orphans_json};
 var GHOSTS = {ghosts_json};
 var CASE1 = {case1_json};
 
+var _lastDetailNode = null;
 function showDetail(nodeId) {{
   var panel = document.getElementById("detail-panel");
+  // Toggle: click same node again to close
+  if (_lastDetailNode === nodeId && panel.className === "open") {{
+    panel.className = "";
+    panel.innerHTML = "";
+    _lastDetailNode = null;
+    return;
+  }}
+  _lastDetailNode = nodeId;
   // Special case: orphan/misc node
   if (nodeId === '__orphan__') {{
     var h = '<h3 style="margin:0 0 8px;font-size:16px;">Misc: Unconnected Equations</h3>';
@@ -957,31 +964,17 @@ function toggleOrphans() {{
 }}
 // Ghost nodes (external dependencies)
 function toggleGhosts() {{
-  var strip = document.getElementById("ghost-strip");
   var svgEl = document.querySelector("#svg-container svg");
   var ghostEls = svgEl ? svgEl.querySelectorAll('[id^="ghost_"]') : [];
-  var showing = strip.style.display !== "none";
-  if (!showing) {{
-    strip.style.display = "block";
-    document.getElementById("ghost-btn").textContent = "Hide external dependencies";
-    // Show ghost SVG elements
+  var btn = document.getElementById("ghost-btn");
+  var isShowing = btn.dataset.showing === "1";
+  if (!isShowing) {{
+    btn.dataset.showing = "1";
+    btn.textContent = "Hide external dependencies";
     ghostEls.forEach(function(el) {{ el.style.display = ""; }});
-    // Populate ghost strip (for clicking)
-    var h = "";
-    var names = Object.keys(GHOSTS);
-    names.sort();
-    names.forEach(function(name) {{
-      var refs = GHOSTS[name];
-      h += '<div class="ghost-node" onclick="showGhostDetail(this.dataset.name)" data-name="' + esc(name) + '">';
-      h += '<div class="ghost-label">' + esc(name) + '</div>';
-      h += '<div class="ghost-refs">&#8594; ' + refs.join(', ') + '</div>';
-      h += '</div>';
-    }});
-    strip.innerHTML = names.length > 0 ? h : '<span style="color:#888;">No external dependencies.</span>';
   }} else {{
-    strip.style.display = "none";
-    document.getElementById("ghost-btn").textContent = "Show external dependencies";
-    // Hide ghost SVG elements
+    btn.dataset.showing = "0";
+    btn.textContent = "Show external dependencies";
     ghostEls.forEach(function(el) {{ el.style.display = "none"; }});
   }}
 }}
@@ -1009,14 +1002,14 @@ function toggleEqPanel(el) {{
 }}
 function esc(t) {{ return t ? t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;") : ""; }}
 
-// Hide ghost elements on load
-(function() {{
+// Hide ghost elements on load (wait for SVG to render)
+window.addEventListener("load", function() {{
   var svgEl = document.querySelector("#svg-container svg");
   if (svgEl) {{
     var ghostEls = svgEl.querySelectorAll('[id^="ghost_"]');
     ghostEls.forEach(function(el) {{ el.style.display = "none"; }});
   }}
-}})();
+}});
 
 var currentZoom = 1.0;
 var svgEl = document.querySelector("#svg-container svg");
