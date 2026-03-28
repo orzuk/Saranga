@@ -287,6 +287,32 @@ try {
     if (nodeId) showDetail(nodeId);
   });
 
+  // Render MathJax in node labels
+  if (window.MathJax && MathJax.typesetPromise) {
+    // dagre-d3 puts labels in <g class="label"><g><text>...</text></g></g>
+    // We need to replace text nodes containing $ with MathJax-rendered HTML
+    svg.selectAll("g.node g.label").each(function() {
+      var textEl = d3.select(this).select("text");
+      var txt = textEl.text();
+      if (txt && txt.indexOf("$") >= 0) {
+        // Replace the text element with a foreignObject containing MathJax-able HTML
+        var parent = this;
+        var bbox = textEl.node().getBBox();
+        textEl.remove();
+        var fo = d3.select(parent).append("foreignObject")
+          .attr("x", bbox.x - 5)
+          .attr("y", bbox.y - 2)
+          .attr("width", bbox.width + 40)
+          .attr("height", bbox.height + 10);
+        fo.append("xhtml:div")
+          .style("font-size", "13px")
+          .style("text-align", "center")
+          .html(txt);
+      }
+    });
+    MathJax.typesetPromise([document.querySelector("svg")]).catch(function(e) { console.log("MathJax SVG error:", e); });
+  }
+
   console.log("SARANGA graph rendered: " + g.nodeCount() + " nodes, " + g.edgeCount() + " edges");
 
 } catch(err) {
