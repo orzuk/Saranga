@@ -1,5 +1,6 @@
 import csv
 import argparse
+import re
 
 def add_gold_standard_to_csv(input_csv='definitions.csv', gold_csv='Gold_Standard.csv', output_csv='definitions_with_gold.csv'):
     """Add Gold Standard columns from a separate CSV to the definitions CSV."""
@@ -7,7 +8,7 @@ def add_gold_standard_to_csv(input_csv='definitions.csv', gold_csv='Gold_Standar
     # Load gold standard data
     gold_data = {}
     try:
-        with open(gold_csv, 'r', encoding='utf-8-sig') as f:  # utf-8-sig handles BOM
+        with open(gold_csv, 'r', encoding='utf-8-sig', errors='replace') as f:  # utf-8-sig handles BOM
             reader = csv.DictReader(f)
             # Strip whitespace from fieldnames
             reader.fieldnames = [name.strip() for name in reader.fieldnames]
@@ -15,8 +16,8 @@ def add_gold_standard_to_csv(input_csv='definitions.csv', gold_csv='Gold_Standar
             for row in reader:
                 # Strip whitespace from keys and values
                 row = {k.strip(): v for k, v in row.items()}
-                paper_id = row['paper_id'].strip()
-                
+                paper_id = row['paper_id'].strip().replace('_', '.')
+
                 if paper_id not in gold_data:
                     gold_data[paper_id] = []
                 gold_data[paper_id].append({
@@ -29,7 +30,7 @@ def add_gold_standard_to_csv(input_csv='definitions.csv', gold_csv='Gold_Standar
         return
     
     # Read input CSV
-    with open(input_csv, 'r', encoding='utf-8-sig') as f:
+    with open(input_csv, 'r', encoding='utf-8-sig', errors='replace') as f:
         reader = csv.DictReader(f)
         reader.fieldnames = [name.strip() for name in reader.fieldnames]
         headers = reader.fieldnames
@@ -52,9 +53,10 @@ def add_gold_standard_to_csv(input_csv='definitions.csv', gold_csv='Gold_Standar
         
         new_row = {'paper_id': paper_id}
         
-        if paper_id in gold_data and gold_index < len(gold_data[paper_id]):
-            new_row['Gold_Standard_raw_latex'] = gold_data[paper_id][gold_index]['raw_latex']
-            new_row['Gold_Standard_clean_text'] = gold_data[paper_id][gold_index]['clean_text']
+        gold_key = re.sub(r'v\d+$', '', paper_id) if paper_id not in gold_data else paper_id
+        if gold_key in gold_data and gold_index < len(gold_data[gold_key]):
+            new_row['Gold_Standard_raw_latex'] = gold_data[gold_key][gold_index]['raw_latex']
+            new_row['Gold_Standard_clean_text'] = gold_data[gold_key][gold_index]['clean_text']
         else:
             new_row['Gold_Standard_raw_latex'] = ''
             new_row['Gold_Standard_clean_text'] = ''

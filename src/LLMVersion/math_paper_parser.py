@@ -62,6 +62,129 @@ from config import FULL_PAPERS_DIR
 
 
 # ---------------------------------------------------------------------
+# Structure type configuration for LLM extraction
+# ---------------------------------------------------------------------
+
+STRUCTURE_TYPE_CONFIG = {
+    "definition": {
+        "description": "mathematical definitions",
+        "forms": [
+            r"\begin{definition}...\end{definition}",
+            '"Definition 2.1. ..."',
+            '"We define X as/to be ...", "X is defined as ...", "Let X be ..."',
+            "Implicit definitions with new notation",
+        ],
+        "json_fields": ["name", "raw_latex", "clean_text", "label"],
+        "dataclass": "Definition",
+        "id_prefix": "D",
+    },
+    "theorem": {
+        "description": "mathematical theorems",
+        "forms": [
+            r"\begin{theorem}...\end{theorem}",
+            '"Theorem 2.1. ..."',
+            "Formally stated theorems with assumptions and conclusions",
+        ],
+        "json_fields": ["name", "raw_latex", "clean_text", "label", "assumptions", "statement"],
+        "dataclass": "TheoremLike",
+        "id_prefix": "T",
+    },
+    "lemma": {
+        "description": "mathematical lemmas",
+        "forms": [
+            r"\begin{lemma}...\end{lemma}",
+            '"Lemma 2.1. ..."',
+        ],
+        "json_fields": ["name", "raw_latex", "clean_text", "label", "assumptions", "statement"],
+        "dataclass": "TheoremLike",
+        "id_prefix": "L",
+    },
+    "proposition": {
+        "description": "mathematical propositions",
+        "forms": [
+            r"\begin{proposition}...\end{proposition}",
+            '"Proposition 2.1. ..."',
+        ],
+        "json_fields": ["name", "raw_latex", "clean_text", "label", "assumptions", "statement"],
+        "dataclass": "TheoremLike",
+        "id_prefix": "P",
+    },
+    "corollary": {
+        "description": "mathematical corollaries",
+        "forms": [
+            r"\begin{corollary}...\end{corollary}",
+            '"Corollary 2.1. ..."',
+        ],
+        "json_fields": ["name", "raw_latex", "clean_text", "label", "assumptions", "statement"],
+        "dataclass": "TheoremLike",
+        "id_prefix": "C",
+    },
+    "claim": {
+        "description": "mathematical claims",
+        "forms": [
+            r"\begin{claim}...\end{claim}",
+            '"Claim 2.1. ..."',
+        ],
+        "json_fields": ["name", "raw_latex", "clean_text", "label", "assumptions", "statement"],
+        "dataclass": "TheoremLike",
+        "id_prefix": "Cl",
+    },
+    "conjecture": {
+        "description": "mathematical conjectures",
+        "forms": [
+            r"\begin{conjecture}...\end{conjecture}",
+            '"Conjecture 2.1. ..."',
+        ],
+        "json_fields": ["name", "raw_latex", "clean_text", "label", "assumptions", "statement"],
+        "dataclass": "Conjecture",
+        "id_prefix": "Cj",
+    },
+    "problem": {
+        "description": "mathematical problems",
+        "forms": [
+            r"\begin{problem}...\end{problem}",
+            '"Problem 2.1. ..."',
+        ],
+        "json_fields": ["name", "raw_latex", "clean_text", "label", "assumptions", "statement"],
+        "dataclass": "Problem",
+        "id_prefix": "Pr",
+    },
+    "proof": {
+        "description": "mathematical proofs",
+        "forms": [
+            r"\begin{proof}...\end{proof}",
+            '"Proof. ..."',
+        ],
+        "json_fields": ["name", "raw_latex", "clean_text", "label"],
+        "dataclass": "Proof",
+        "id_prefix": "R",
+    },
+    "algorithm": {
+        "description": "algorithms and pseudocode",
+        "forms": [
+            r"\begin{algorithm}...\end{algorithm}",
+            r"\begin{algorithmic}...\end{algorithmic}",
+            "Pseudocode blocks with Input/Output and numbered steps",
+        ],
+        "json_fields": ["name", "raw_latex", "clean_text", "label"],
+        "dataclass": "Algorithm",
+        "id_prefix": "A",
+    },
+    "table": {
+        "description": "tables",
+        "forms": [
+            r"\begin{table}...\end{table}",
+            r"\begin{tabular}...\end{tabular}",
+            r"\begin{longtable}...\end{longtable}",
+        ],
+        "json_fields": ["name", "raw_latex", "clean_text", "label"],
+        "dataclass": "TableObject",
+        "id_prefix": "Tb",
+    },
+}
+
+
+# ---------------------------------------------------------------------
 # Parser
 # ---------------------------------------------------------------------
 
@@ -138,6 +261,7 @@ class PaperParser:
             llm_provider: str = "openai",
             extract_inline_let: bool = False,
             custom_prompt_file: Optional[str] = None,
+            structure_types: Optional[List[str]] = None,
     ):
         """
         Parameters
@@ -152,6 +276,8 @@ class PaperParser:
             Model name for LLM extraction (if used).
         llm_chunk_chars : int
             Max characters per chunk when calling the LLM.
+        structure_types : List[str], optional
+            Which structure types to extract via LLM (default: ["definition"]).
         """
         self.paper_id = paper_id or "paper"
         self.definition_mode = definition_mode
@@ -160,6 +286,7 @@ class PaperParser:
         self.llm_provider = llm_provider
         self.extract_inline_let = extract_inline_let
         self.custom_prompt_file = custom_prompt_file
+        self.structure_types = structure_types or ["definition"]
 
         # these will be updated with \newtheorem info
         self.env_kind_map = dict(self.BASE_ENV_KIND_MAP)
@@ -420,9 +547,12 @@ class PaperParser:
                 eq.index = eq_idx
                 all_eqs.append(eq)
 
-        # 2) top-level equations in the full text, with no parent
+        # 2) top-level (orphan) equations in the full text, with no parent
+        contained_latex = {eq.raw_latex for eq in all_eqs}
         top_eqs = self._extract_equations_from_body(full_text, parent_id=None)
         for eq in top_eqs:
+            if eq.raw_latex in contained_latex:
+                continue
             eq_idx += 1
             eq.id = f"E{eq_idx}"
             eq.index = eq_idx
@@ -452,42 +582,81 @@ class PaperParser:
 
         graph = PaperGraph(paper_id=self.paper_id)
 
-        # ---- Theorem-like objects (including propositions, problems, conjectures) ----
+        # ---- Theorem-like objects (manual, always runs) ----
         theorem_like: List[TheoremLike] = self._extract_theorem_like(text)
 
-        # ---- Definitions: manual, LLM, or both ----
+        # ---- Definitions: manual extraction ----
         manual_defs: List[Definition] = []
-        llm_defs: List[Definition] = []
-
         if self.definition_mode in ("manual", "both"):
             manual_defs = self._extract_definitions_manual(text)
 
-        if self.definition_mode in ("llm", "both"):
-            try:
-                llm_defs = self._extract_definitions_llm(
-                    text,
-                    llm_type="anthropic",
-                    provider="hosted",
-                    chunk_chars=self.llm_chunk_chars,
-                    model=self.llm_model,
-                )
-            except Exception as e:  # noqa: BLE001
-                print(
-                    f"[WARN] parse_file: LLM definition extraction failed with error {e}; "
-                    "continuing with manual definitions only."
-                )
-                llm_defs = []
+        # ---- LLM extraction for each requested structure type ----
+        definitions: List[Definition] = manual_defs
+        llm_extracted: Dict[str, List[MathObject]] = {}
 
-        if self.definition_mode == "manual":
-            definitions = manual_defs
-        elif self.definition_mode == "llm":
-            definitions = llm_defs
-        else:  # 'both'
-            definitions = self._merge_definitions(manual_defs, llm_defs)
+        if self.definition_mode in ("llm", "both"):
+            for stype in self.structure_types:
+                try:
+                    llm_objs = self._extract_objects_llm(
+                        text,
+                        structure_type=stype,
+                        chunk_chars=self.llm_chunk_chars,
+                        model=self.llm_model,
+                    )
+                    llm_extracted[stype] = llm_objs
+                except Exception as e:  # noqa: BLE001
+                    print(
+                        f"[WARN] parse_file: LLM {stype} extraction failed with error {e}; "
+                        "continuing without LLM results for this type."
+                    )
+                    llm_extracted[stype] = []
+
+            # Merge definitions
+            if "definition" in self.structure_types:
+                llm_defs = llm_extracted.get("definition", [])
+                if self.definition_mode == "llm":
+                    definitions = llm_defs
+                else:  # 'both'
+                    definitions = self._merge_definitions(manual_defs, llm_defs)
+
+            # Merge/replace theorem-like types
+            for stype in self.structure_types:
+                if stype == "definition" or stype not in self.THEOREM_LIKE_KINDS:
+                    continue
+                llm_objs = llm_extracted.get(stype, [])
+                if self.definition_mode == "llm":
+                    # Pure LLM: replace regex results entirely
+                    theorem_like = [t for t in theorem_like if t.kind != stype] + llm_objs
+                elif llm_objs:
+                    manual_of_kind = [t for t in theorem_like if t.kind == stype]
+                    merged = self._merge_objects(manual_of_kind, llm_objs)
+                    theorem_like = [t for t in theorem_like if t.kind != stype] + merged
 
         proofs = self._extract_proofs(text)
         algorithms = self._extract_algorithms(text)
         tables = self._extract_tables(text)
+
+        # Merge/replace proof, algorithm, table when LLM was used
+        if self.definition_mode in ("llm", "both"):
+            for stype, regex_var in [("proof", proofs), ("algorithm", algorithms), ("table", tables)]:
+                if stype not in self.structure_types:
+                    continue
+                llm_objs = llm_extracted.get(stype, [])
+                if self.definition_mode == "llm":
+                    # Pure LLM: replace regex results entirely
+                    if stype == "proof":
+                        proofs = llm_objs
+                    elif stype == "algorithm":
+                        algorithms = llm_objs
+                    elif stype == "table":
+                        tables = llm_objs
+                elif llm_objs:
+                    if stype == "proof":
+                        proofs = self._merge_objects(proofs, llm_objs)
+                    elif stype == "algorithm":
+                        algorithms = self._merge_objects(algorithms, llm_objs)
+                    elif stype == "table":
+                        tables = self._merge_objects(tables, llm_objs)
 
         # equations inside theorem/definition/proof/algorithm bodies
         containers: List[MathObject] = theorem_like + definitions + proofs + algorithms
@@ -931,9 +1100,149 @@ class PaperParser:
         return self._extract_definitions_manual(text)
 
     # ------------------------------------------------------------------
-    # LLM-based definitions (stub implementation)
+    # LLM client helpers
     # ------------------------------------------------------------------
 
+    def _create_llm_client(self, provider: str):
+        """Create LLM client for the given provider. Returns (client, provider_type)."""
+        if provider == "anthropic":
+            try:
+                import anthropic
+            except ImportError:
+                print("[ERROR] anthropic package not installed. Run: pip install anthropic")
+                return None, None
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+            if not api_key:
+                print("[ERROR] ANTHROPIC_API_KEY environment variable not set.")
+                return None, None
+            return anthropic.Anthropic(api_key=api_key), "anthropic"
+
+        elif provider == "openai":
+            api_key = os.environ.get("OPENAI_API_KEY")
+            if not api_key:
+                print("[ERROR] OPENAI_API_KEY environment variable not set.")
+                return None, None
+            return OpenAI(api_key=api_key), "openai_compat"
+
+        elif provider == "huggingface":
+            api_key = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_API_KEY")
+            if not api_key:
+                print("[ERROR] HF_TOKEN or HUGGINGFACE_API_KEY environment variable not set.")
+                return None, None
+            return OpenAI(base_url="https://router.huggingface.co/v1", api_key=api_key), "openai_compat"
+
+        else:
+            print(f"[WARN] llm_provider='{provider}' not supported.")
+            return None, None
+
+    @staticmethod
+    def _call_llm_api(client, provider_type: str, model: str, prompt: str) -> str:
+        """Send prompt to LLM and return response text."""
+        if provider_type == "anthropic":
+            message = client.messages.create(
+                model=model,
+                max_tokens=16384,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return message.content[0].text
+        else:  # openai_compat (OpenAI + HuggingFace)
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=16384,
+            )
+            return response.choices[0].message.content
+
+    @staticmethod
+    def _build_math_object(data: Dict[str, Any], structure_type: str, idx: int) -> MathObject:
+        """Build the appropriate MathObject subclass from LLM response data."""
+        config = STRUCTURE_TYPE_CONFIG.get(structure_type, STRUCTURE_TYPE_CONFIG["definition"])
+        id_prefix = config["id_prefix"]
+        dataclass_name = config["dataclass"]
+
+        common = dict(
+            id=f"{id_prefix}{idx}",
+            kind=structure_type,
+            index=idx,
+            label=data.get("label"),
+            name=data.get("name") or data.get("term"),
+            raw_latex=data.get("raw_latex", ""),
+            clean_text=data.get("clean_text") or data.get("definition", ""),
+        )
+
+        if not common["clean_text"]:
+            print(f"[DEBUG] clean_text not produced for {structure_type} due to token output savings")
+
+        if dataclass_name == "Definition":
+            return Definition(**common, env_name=None)
+        elif dataclass_name in ("TheoremLike", "Conjecture", "Problem"):
+            extra = dict(
+                env_name=None,
+                assumptions=data.get("assumptions", ""),
+                statement=data.get("statement", ""),
+            )
+            if dataclass_name == "Conjecture":
+                return Conjecture(**common, **extra)
+            elif dataclass_name == "Problem":
+                return Problem(**common, **extra)
+            else:
+                return TheoremLike(**common, **extra)
+        elif dataclass_name == "Proof":
+            return Proof(**common)
+        elif dataclass_name == "Algorithm":
+            return Algorithm(**common)
+        elif dataclass_name == "TableObject":
+            return TableObject(**common)
+        else:
+            return MathObject(**common)
+
+    # ------------------------------------------------------------------
+    # Unified LLM-based extraction
+    # ------------------------------------------------------------------
+
+    def _extract_objects_llm(
+            self,
+            text: str,
+            structure_type: str = "definition",
+            chunk_chars: int = 30000,
+            model: str = "claude-sonnet-4-20250514",
+    ) -> List[MathObject]:
+        """Unified LLM extraction for any structure type."""
+        client, provider_type = self._create_llm_client(self.llm_provider)
+        if client is None:
+            return []
+
+        chunks = self._chunk_text(text, chunk_chars)
+        print(
+            f"[INFO] _extract_objects_llm({structure_type}): "
+            f"processing {len(chunks)} chunks with {model} via {self.llm_provider}"
+        )
+
+        all_objects: List[MathObject] = []
+        idx = 0
+
+        for chunk_idx, chunk in enumerate(chunks, 1):
+            print(f"[INFO] Processing chunk {chunk_idx}/{len(chunks)}...")
+            prompt = self._create_extraction_prompt(chunk, structure_type)
+
+            try:
+                response_text = self._call_llm_api(client, provider_type, model, prompt)
+                objects_data = self._parse_llm_response(response_text)
+
+                for obj_data in objects_data:
+                    idx += 1
+                    obj = self._build_math_object(obj_data, structure_type, idx)
+                    all_objects.append(obj)
+            except Exception as e:
+                print(f"[ERROR] LLM API call failed for chunk {chunk_idx}: {e}")
+
+        print(
+            f"[INFO] _extract_objects_llm({structure_type}): "
+            f"found {len(all_objects)} {structure_type}(s) total."
+        )
+        return all_objects
+
+    # Backward-compatible wrapper
     def _extract_definitions_llm(
             self,
             text: str,
@@ -942,185 +1251,12 @@ class PaperParser:
             chunk_chars: int = 30000,
             model: str = "claude-sonnet-4-20250514",
     ) -> List[Definition]:
-        actual_provider = getattr(self, 'llm_provider', llm_type)
-
-        if actual_provider == "openai":
-            return self._extract_definitions_openai(text, chunk_chars, model)
-        elif actual_provider == "anthropic":
-            return self._extract_definitions_anthropic(text, chunk_chars, model)
-        elif actual_provider == "huggingface":  # ADD THIS
-            return self._extract_definitions_huggingface(text, chunk_chars, model)
-        else:
-            print(f"[WARN] llm_provider='{actual_provider}' not supported.")
-            return []
-
-    def _extract_definitions_anthropic(
-            self,
-            text: str,
-            chunk_chars: int,
-            model: str,
-    ) -> List[Definition]:
-        """Anthropic-specific extraction."""
-        try:
-            import anthropic
-        except ImportError:
-            print("[ERROR] anthropic package not installed. Run: pip install anthropic")
-            return []
-
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
-            print("[ERROR] ANTHROPIC_API_KEY environment variable not set.")
-            return []
-
-        client = anthropic.Anthropic(api_key=api_key)
-        chunks = self._chunk_text(text, chunk_chars)
-        print(f"[INFO] _extract_definitions_anthropic: processing {len(chunks)} chunks with {model}")
-
-        all_definitions: List[Definition] = []
-        idx = 0
-
-        for chunk_idx, chunk in enumerate(chunks, 1):
-            print(f"[INFO] Processing chunk {chunk_idx}/{len(chunks)}...")
-            prompt = self._create_definition_extraction_prompt(chunk)
-
-            try:
-                message = client.messages.create(
-                    model=model,
-                    max_tokens=4096,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-                response_text = message.content[0].text
-                definitions_data = self._parse_llm_response(response_text)
-
-                for def_data in definitions_data:
-                    idx += 1
-                    all_definitions.append(
-                        Definition(
-                            id=f"D{idx}",
-                            kind="definition",
-                            index=idx,
-                            label=def_data.get("label"),
-                            name=def_data.get("name"),
-                            raw_latex=def_data.get("raw_latex", ""),
-                            clean_text=def_data.get("clean_text", ""),
-                            env_name=None,
-                        )
-                    )
-            except Exception as e:
-                print(f"[ERROR] Anthropic API call failed for chunk {chunk_idx}: {e}")
-
-        print(f"[INFO] _extract_definitions_anthropic: found {len(all_definitions)} definitions total.")
-        return all_definitions
-
-    def _extract_definitions_openai(
-            self,
-            text: str,
-            chunk_chars: int,
-            model: str,
-    ) -> List[Definition]:
-        """OpenAI-specific extraction."""
-        api_key = os.environ.get("OPENAI_API_KEY")
-        if not api_key:
-            print("[ERROR] OPENAI_API_KEY environment variable not set.")
-            return []
-
-        client = OpenAI(api_key=api_key)
-        chunks = self._chunk_text(text, chunk_chars)
-        print(f"[INFO] _extract_definitions_openai: processing {len(chunks)} chunks with {model}")
-
-        all_definitions: List[Definition] = []
-        idx = 0
-
-        for chunk_idx, chunk in enumerate(chunks, 1):
-            print(f"[INFO] Processing chunk {chunk_idx}/{len(chunks)}...")
-            prompt = self._create_definition_extraction_prompt(chunk)
-
-            try:
-                response = client.chat.completions.create(
-                    model=model,
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=4096,
-                )
-                response_text = response.choices[0].message.content
-                definitions_data = self._parse_llm_response(response_text)
-
-                for def_data in definitions_data:
-                    idx += 1
-                    all_definitions.append(
-                        Definition(
-                            id=f"D{idx}",
-                            kind="definition",
-                            index=idx,
-                            label=def_data.get("label"),
-                            name=def_data.get("name"),
-                            raw_latex=def_data.get("raw_latex", ""),
-                            clean_text=def_data.get("clean_text", ""),
-                            env_name=None,
-                        )
-                    )
-            except Exception as e:
-                print(f"[ERROR] OpenAI API call failed for chunk {chunk_idx}: {e}")
-
-        print(f"[INFO] _extract_definitions_openai: found {len(all_definitions)} definitions total.")
-        return all_definitions
-
-    def _extract_definitions_huggingface(
-            self,
-            text: str,
-            chunk_chars: int,
-            model: str,
-    ) -> List[Definition]:
-        """Extract definitions using Hugging Face's OpenAI-compatible API."""
-        api_key = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_API_KEY")
-        if not api_key:
-            print("[ERROR] HF_TOKEN or HUGGINGFACE_API_KEY environment variable not set.")
-            return []
-
-        client = OpenAI(
-            base_url="https://router.huggingface.co/v1",
-            api_key=api_key,
+        """Extract definitions via LLM. Delegates to _extract_objects_llm."""
+        objects = self._extract_objects_llm(
+            text, structure_type="definition",
+            chunk_chars=chunk_chars, model=model,
         )
-
-        chunks = self._chunk_text(text, chunk_chars)
-        print(f"[INFO] _extract_definitions_huggingface: processing {len(chunks)} chunks with {model}")
-
-        all_definitions: List[Definition] = []
-        idx = 0
-
-        for chunk_index, chunk in enumerate(chunks, 1):
-            print(f"[INFO] Processing chunk {chunk_index}/{len(chunks)} with Hugging Face API")
-            prompt = self._create_definition_extraction_prompt(chunk)
-
-            try:
-                completion = client.chat.completions.create(
-                    model=model,
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=2000,
-                    temperature=0.3
-                )
-
-                response_text = completion.choices[0].message.content
-                definitions_data = self._parse_llm_response(response_text)
-
-                for def_data in definitions_data:
-                    idx += 1
-                    all_definitions.append(
-                        Definition(
-                            id=f"D{idx}",
-                            kind="definition",
-                            index=idx,
-                            label=def_data.get("label"),
-                            name=def_data.get("name") or def_data.get("term"),
-                            raw_latex=def_data.get("raw_latex", ""),
-                            clean_text=def_data.get("clean_text") or def_data.get("definition", ""),
-                            env_name=None,
-                        )
-                    )
-            except Exception as e:
-                print(f"[ERROR] Hugging Face API call failed for chunk {chunk_index}: {e}")
-
-        print(f"[INFO] _extract_definitions_huggingface: found {len(all_definitions)} definitions total.")
-        return all_definitions
+        return [o for o in objects if isinstance(o, Definition)]
 
     @staticmethod
     def _chunk_text(text: str, chunk_size: int) -> List[str]:
@@ -1147,40 +1283,41 @@ class PaperParser:
 
         return chunks
 
-    def _create_definition_extraction_prompt(self, latex_chunk: str) -> str:
-        """Create a prompt for LLM to extract definitions.
-        """
+    def _create_extraction_prompt(self, latex_chunk: str, structure_type: str = "definition") -> str:
+        """Create a prompt for LLM to extract the given structure type."""
 
-        # if prompt file is available:
+        # 1. Custom prompt file (user-provided, overrides everything)
         if self.custom_prompt_file and Path(self.custom_prompt_file).exists():
             template = Path(self.custom_prompt_file).read_text()
             print("Using Prompt from file:", self.custom_prompt_file)
             return template.replace("{latex_chunk}", latex_chunk)
 
-        # otherwise use default prompt
-        print("Using Default Prompt Template - No custom prompt file provided.")
-        prompt = f"""You are analyzing a mathematical paper written in LaTeX. Extract ALL mathematical definitions.
+        # 2. Per-type prompt file in prompts/ directory
+        script_dir = Path(__file__).parent
+        type_prompt = script_dir / "prompts" / f"{structure_type}_prompt.txt"
+        if type_prompt.exists():
+            template = type_prompt.read_text()
+            print(f"Using Prompt from file: {type_prompt}")
+            return template.replace("{latex_chunk}", latex_chunk)
 
-Definition forms:
-1. \\begin{{definition}}...\\end{{definition}}
-2. "Definition 2.1. ..."
-3. "We define X as/to be ...", "X is defined as ...", "Let X be ..."
-4. Implicit definitions with new notation
+        # 3. Built-in default from STRUCTURE_TYPE_CONFIG
+        config = STRUCTURE_TYPE_CONFIG.get(structure_type, STRUCTURE_TYPE_CONFIG["definition"])
+        forms_text = "\n".join(f"{i+1}. {form}" for i, form in enumerate(config["forms"]))
+        fields_list = "\n".join(f"- {f}: ..." for f in config["json_fields"])
+        json_example = ", ".join(f'"{f}": "..."' for f in config["json_fields"])
 
-For each definition, extract:
-- name: Short descriptive name
-- raw_latex: Original LaTeX text (preserve ALL math notation)
-- clean_text: Human-readable version (keep [MATH] for formulas)
-- label: Any \\label{{...}} or null
+        print(f"Using Default Prompt Template for {structure_type}")
+        prompt = f"""You are analyzing a mathematical paper written in LaTeX. Extract ALL {config['description']}.
+
+{structure_type.capitalize()} forms:
+{forms_text}
+
+For each {structure_type}, extract:
+{fields_list}
 
 Return JSON array:
 [
-  {{
-    "name": "descriptive name",
-    "raw_latex": "original LaTeX",
-    "clean_text": "readable text",
-    "label": "label or null"
-  }}
+  {{{{{json_example}}}}}
 ]
 
 LaTeX text:
@@ -1190,17 +1327,33 @@ LaTeX text:
 Respond ONLY with JSON array."""
         return prompt
 
+    # Backward-compatible wrapper
+    def _create_definition_extraction_prompt(self, latex_chunk: str) -> str:
+        """Create a prompt for LLM to extract definitions."""
+        return self._create_extraction_prompt(latex_chunk, structure_type="definition")
+
     @staticmethod
     def _parse_llm_response(response_text: str) -> List[Dict[str, Any]]:
         """Parse Claude's JSON response."""
         response_text = response_text.strip()
+        # Strip markdown code fences (possibly with preamble text before them)
         if response_text.startswith("```json"):
             response_text = response_text[7:]
-        if response_text.startswith("```"):
+        elif response_text.startswith("```"):
             response_text = response_text[3:]
+        elif "```json" in response_text:
+            response_text = response_text.split("```json", 1)[1]
+        elif "```" in response_text and "[" in response_text:
+            response_text = response_text.split("```", 1)[1]
         if response_text.endswith("```"):
             response_text = response_text[:-3]
         response_text = response_text.strip()
+
+        # Fallback: locate the outermost JSON array directly
+        if not response_text.startswith("["):
+            start = response_text.find("[")
+            if start != -1:
+                response_text = response_text[start:]
 
         try:
             definitions = json.loads(response_text)
@@ -1252,6 +1405,29 @@ Respond ONLY with JSON array."""
 
         merged = list(manual_defs)
         for d in llm_defs:
+            key = (d.clean_text.strip().lower(), (d.name or "").strip().lower())
+            if key not in seen:
+                merged.append(d)
+                seen.add(key)
+
+        return merged
+
+    def _merge_objects(
+            self,
+            manual_objs: List[MathObject],
+            llm_objs: List[MathObject],
+    ) -> List[MathObject]:
+        """Merge manual and LLM-extracted objects, avoiding duplicates."""
+        if not llm_objs:
+            return manual_objs
+
+        seen = set(
+            (d.clean_text.strip().lower(), (d.name or "").strip().lower())
+            for d in manual_objs
+        )
+
+        merged = list(manual_objs)
+        for d in llm_objs:
             key = (d.clean_text.strip().lower(), (d.name or "").strip().lower())
             if key not in seen:
                 merged.append(d)
@@ -1311,6 +1487,36 @@ Respond ONLY with JSON array."""
                     # Not a dataclass field; just an auxiliary attribute.
                     setattr(proof, "_target_theorem_label", m.group(1))
 
+            objects.append(proof)
+
+        # --- Inline proofs: \par\noindent\emph{Proof} (no formal environment) ---
+        # Collect raw_latex from environment-based proofs to avoid duplicates.
+        env_bodies = {p.raw_latex for p in objects}
+
+        inline_proof_pattern = re.compile(
+            r'\\par\s*\\noindent\s*\\emph\{Proof\}\s*\.?\s*(?:\\newline)?\s*'
+            r'(.*?)'
+            r'(?=\\begin\{|\\par\s*\\noindent\s*\\emph\{|\\section|\\subsection|\\end\{document\}|\Z)',
+            re.DOTALL
+        )
+
+        for match in inline_proof_pattern.finditer(text):
+            body = match.group(1).strip()
+            if not body or body in env_bodies:
+                continue
+            idx += 1
+            obj_id = f"R{idx}"
+            label, _ = self._extract_label_and_name(body)
+            clean_text = self._clean_latex_to_text(body)
+            proof = Proof(
+                id=obj_id,
+                kind="proof",
+                index=idx,
+                label=label,
+                name=None,
+                raw_latex=body,
+                clean_text=clean_text,
+            )
             objects.append(proof)
 
         if objects:
@@ -1388,8 +1594,6 @@ Respond ONLY with JSON array."""
                 raw_latex=body,
                 clean_text=clean_text,
                 env_name=env_name,
-                input_signature=input_sig,
-                output_signature=output_sig,
             )
             objects.append(alg)
 

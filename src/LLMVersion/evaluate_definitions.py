@@ -67,7 +67,7 @@ def evaluate_definitions(input_csv, output_csv='evaluation_results.csv',
     """Evaluate each method's definitions against gold standard"""
     
     # Read the merged CSV
-    with open(input_csv, 'r', encoding='utf-8') as f:
+    with open(input_csv, 'r', encoding='utf-8', errors='replace') as f:
         reader = csv.DictReader(f)
         headers = reader.fieldnames
         rows = list(reader)
@@ -116,6 +116,21 @@ def evaluate_definitions(input_csv, output_csv='evaluation_results.csv',
             
             if not provider_defs:
                 print(f"  {provider}: No definitions found")
+                if gold_standards:
+                    fn = len(gold_standards)
+                    summary_results.append({
+                        'paper_id': paper_id,
+                        'provider': provider,
+                        'num_gold_standards': len(gold_standards),
+                        'num_extracted': 0,
+                        'true_positives': 0,
+                        'false_positives': 0,
+                        'false_negatives': fn,
+                        'precision': '0.000',
+                        'recall': '0.000',
+                        'f1_score': '0.000'
+                    })
+                    print(f"    TP: 0, FP: 0, FN: {fn}, Precision: 0.000, Recall: 0.000, F1: 0.000")
                 continue
             
             print(f"  {provider}: {len(provider_defs)} definitions")

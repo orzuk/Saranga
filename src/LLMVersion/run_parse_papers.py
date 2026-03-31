@@ -31,6 +31,7 @@ Example usages:
 import argparse
 import json
 import csv
+import glob as globmod
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Tuple
@@ -73,6 +74,19 @@ def compute_date_range(
     return start_date.isoformat(), end_date.isoformat()
 
 
+def _find_local_tex(paper_id: str) -> Optional[Tuple[str, str]]:
+    """Search FULL_PAPERS_DIR for an already-cached .tex file matching paper_id.
+    Returns (tex_path, versioned_id) or None."""
+    import os
+    pattern = os.path.join(FULL_PAPERS_DIR, "**", f"{paper_id}*.tex")
+    matches = globmod.glob(pattern, recursive=True)
+    if not matches:
+        return None
+    tex_path = matches[0]
+    versioned_id = Path(tex_path).stem
+    return tex_path, versioned_id
+
+
 def run_batch(
         start_date: Optional[str],
         end_date: Optional[str],
@@ -87,6 +101,7 @@ def run_batch(
         llm_chunk_chars: int = 30000,
         llm_provider: str = "anthropic",
         prompt_file: Optional[str] = None,
+        structure_types: Optional[list] = None,
 ) -> None:
     print(
         f"[INFO] Fetching arXiv IDs via fetch_arxiv_batch "
@@ -97,7 +112,73 @@ def run_batch(
         print(f"[INFO] LLM definition extraction enabled (mode={definition_mode}, model={llm_model})")
 
     # ------------------------------------------------------------
-    # 1. FETCH METADATA ONCE (no source downloading)
+    # 1. TRY LOCAL .TEX FILES FIRST (avoids arXiv API entirely)
+    # ------------------------------------------------------------
+    # If regex_id looks like a specific paper ID (e.g. "^1210.4634"),
+    # check if we already have the .tex file locally.
+    local_items = []
+    if regex_id:
+        import re
+        # Strip regex anchors to extract plain paper ID
+        plain_id = regex_id.lstrip('^').rstrip('$')
+        # Check if it's a simple paper ID (not a complex regex)
+        if re.fullmatch(r'[\d.]+(?:v\d+)?', plain_id):
+            local = _find_local_tex(plain_id)
+            if local:
+                tex_path, versioned_id = local
+                base_id = versioned_id.split("v")[0]
+                local_items = [(base_id, tex_path, versioned_id)]
+                print(f"[INFO] Found local .tex for {plain_id}: {tex_path}")
+
+    if local_items:
+        # Skip arXiv API — process local files directly
+        out_dir.mkdir(parents=True, exist_ok=True)
+        print(f"[INFO] Will process {len(local_items)} papers from local .tex files.")
+
+        for i, (base_id, tex_path, versioned_id) in enumerate(local_items, start=1):
+            print(f"\n[INFO] ({i}/{len(local_items)}) Processing {base_id}")
+            print(f"[INFO]   Resolved source -> {tex_path}")
+
+            try:
+                parser = PaperParser(
+                    paper_id=versioned_id,
+                    definition_mode=definition_mode,
+                    llm_model=llm_model,
+                    llm_chunk_chars=llm_chunk_chars,
+                    llm_provider=llm_provider,
+                    custom_prompt_file=prompt_file,
+                    structure_types=structure_types,
+                )
+                graph = parser.parse_file(tex_path)
+            except Exception as e:
+                print(f"[WARN]   parse_file failed for {base_id}: {e}")
+                continue
+
+            # Save JSON into json/ subdir so definitions_from_json_to_csv.py glob finds it
+            if definition_mode == "manual":
+                suffix = "manual"
+            elif definition_mode == "llm":
+                suffix = llm_provider
+            else:
+                suffix = f"{llm_provider}+manual"
+            json_dir = out_dir / "json"
+            json_dir.mkdir(parents=True, exist_ok=True)
+            json_name = f"{versioned_id}_{suffix}.json"
+            json_path = json_dir / json_name
+            json_path.write_text(json.dumps(graph.to_dict(), indent=2), encoding="utf-8")
+            print(f"[OK]   Saved {json_path}")
+
+            if draw_graphs:
+                try:
+                    png_path = out_dir / f"{versioned_id}_graph.png"
+                    paper_to_network(graph, save_to_file=str(png_path))
+                    print(f"[INFO]   Wrote {png_path}")
+                except Exception as e:
+                    print(f"[WARN]   Graph failed for {base_id}: {e}")
+        return
+
+    # ------------------------------------------------------------
+    # 1b. FETCH METADATA via arXiv API (fallback)
     # ------------------------------------------------------------
     data = fetch_arxiv_batch(
         regex_id=regex_id,
@@ -182,6 +263,7 @@ def run_batch(
                 llm_chunk_chars=llm_chunk_chars,
                 llm_provider=llm_provider,
                 custom_prompt_file=prompt_file,
+                structure_types=structure_types,
             )
             graph = parser.parse_file(tex_path)
             status = "OK"
@@ -369,6 +451,12 @@ def main():
         default=None,
         help="Path to custom prompt template file (use {latex_chunk} as placeholder)",
     )
+    parser.add_argument(
+        "--structure-types",
+        type=str,
+        default="definition",
+        help="Comma-separated structure types to extract via LLM (default: definition)",
+    )
 
     args = parser.parse_args()
     print(f"[DEBUG] Parsed args: {args}")
@@ -380,6 +468,8 @@ def main():
     )
 
     top_k = args.top_k if args.top_k and args.top_k > 0 else None
+
+    structure_types = [s.strip() for s in args.structure_types.split(",")]
 
     run_batch(
         start_date=start_date,
@@ -395,6 +485,7 @@ def main():
         llm_chunk_chars=args.llm_chunk_chars,
         llm_provider=args.llm_provider,
         prompt_file=args.prompt_file,
+        structure_types=structure_types,
     )
 
     print("[INFO] Done.")

@@ -4,39 +4,40 @@ import argparse
 from pathlib import Path
 from glob import glob
 
-def extract_definitions_to_csv(out_dir='.', paper_ids=None, output_csv='definitions.csv'):
-    """Extract definitions from all provider JSONs for one or more papers into CSV."""
-    
+def extract_definitions_to_csv(out_dir='.', paper_ids=None, output_csv='definitions.csv',
+                               structure_type='definition'):
+    """Extract objects of a given structure type from all provider JSONs into CSV."""
+
     if paper_ids is None:
         paper_ids = ['2501.00685']
-    
+
     all_data = {}
-    
+
     for paper_id in paper_ids:
         # Find all JSON files matching the paper_id pattern
-        pattern = f"{out_dir}/**/json/{paper_id}v*_*.json"
+        pattern = f"{out_dir}/**/json/{paper_id}*_*.json"
         files = sorted(glob(pattern, recursive=True))
-        
+
         if not files:
             print(f"No JSON files found for paper {paper_id}")
             continue
-        
+
         print(f"Found {len(files)} files for {paper_id}: {[Path(f).name for f in files]}")
-        
-        # Load definitions from each file
+
+        # Load objects from each file
         for f in files:
             fname = Path(f).name
             with open(f) as file:
                 content = json.load(file)
                 objects = content.get('objects', {})
-                defs = [obj for obj in objects.values() if obj.get('kind') == 'definition']
-                
+                defs = [obj for obj in objects.values() if obj.get('kind') == structure_type]
+
                 # Key: (paper_id, provider)
                 provider = fname.split('_', 1)[1].rsplit('.', 1)[0]
                 all_data[(paper_id, provider)] = defs
-    
+
     if not all_data:
-        print("No definitions found")
+        print(f"No {structure_type}s found")
         return
     
     max_len = max(len(v) for v in all_data.values())
@@ -74,14 +75,22 @@ def extract_definitions_to_csv(out_dir='.', paper_ids=None, output_csv='definiti
                         row.extend(['', ''])
                 w.writerow(row)
     
-    print(f"Saved definitions from {len(papers)} papers to {output_csv}")
+    print(f"Saved {structure_type}s from {len(papers)} papers to {output_csv}")
+
+
+# Backward-compatible alias
+extract_objects_to_csv = extract_definitions_to_csv
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Extract definitions from parsed papers to CSV")
+    parser = argparse.ArgumentParser(description="Extract objects from parsed papers to CSV")
     parser.add_argument('--paper-id', type=str, action='append', help='Paper ID (can be used multiple times)')
     parser.add_argument('--out-dir', type=str, default='.', help='Output directory where JSONs are stored')
     parser.add_argument('--output-csv', type=str, default='definitions.csv', help='Output CSV filename')
-    
+    parser.add_argument('--structure-type', type=str, default='definition',
+                        help='Structure type to extract (default: definition)')
+
     args = parser.parse_args()
-    
-    extract_definitions_to_csv(args.out_dir, args.paper_id, args.output_csv)
+
+    extract_definitions_to_csv(args.out_dir, args.paper_id, args.output_csv,
+                               structure_type=args.structure_type)
