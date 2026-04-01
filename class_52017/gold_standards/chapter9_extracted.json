@@ -1,0 +1,1194 @@
+{
+  "metadata": {
+    "source": "Foundations of Data Science, Blum-Hopcroft-Kannan (2020)",
+    "chapter": 9,
+    "chapter_title": "Topic Models, NMF, HMMs, and Graphical Models",
+    "sections": "9.1-9.21",
+    "annotator": "Claude Opus 4.6 (1M context)",
+    "date": "2026-03-27"
+  },
+  "nodes": [
+    {
+      "id": "D9.1",
+      "type": "definition",
+      "name": "Document Generation Process",
+      "section": "9.1",
+      "statement": "Given a distribution $\\mathcal{D}$ over topic mixtures and a $d \\times r$ term-topic matrix $B$, generate a $d \\times n$ term-document matrix $A$: for each document $j$, pick column $j$ of $C$ from $\\mathcal{D}$, inducing $P(:,j) = B C(:,j)$. Then draw $m$ terms i.i.d. from the multinomial with probability vector $P(:,j)$, setting $a_{ij}$ to the fraction of times term $i$ appears."
+    },
+    {
+      "id": "D9.2",
+      "type": "definition",
+      "name": "Clustering Problem",
+      "section": "9.2",
+      "statement": "Given $A$ generated under the Pure Topic and Separability assumptions with $r$ topics, partition documents $\\{1,\\ldots,n\\}$ into $r$ clusters $T_1,\\ldots,T_r$, one per topic. Approximate version: allow at most $\\varepsilon n$ misclustered documents."
+    },
+    {
+      "id": "D9.3",
+      "type": "definition",
+      "name": "Anchor Term",
+      "section": "9.4",
+      "statement": "For each topic $l = 1,\\ldots,r$, there is an index $i_l$ such that $b_{i_l, l} \\neq 0$ and $b_{i_l, l'} = 0$ for all $l' \\neq l$."
+    },
+    {
+      "id": "D9.4",
+      "type": "definition",
+      "name": "Pure Topic Assumption",
+      "section": "9.2",
+      "statement": "Each document is purely on a single topic: each column $j$ of $C$ has a single entry equal to 1 and the rest 0."
+    },
+    {
+      "id": "D9.5",
+      "type": "definition",
+      "name": "Separability Assumption",
+      "section": "9.2",
+      "statement": "The sets of terms occurring in different topics are disjoint: for each row $i$ of $B$, there is a unique column $l$ with $b_{il} \\neq 0$."
+    },
+    {
+      "id": "D9.6",
+      "type": "definition",
+      "name": "Latent Dirichlet Allocation (LDA)",
+      "section": "9.6",
+      "statement": "Columns of $C$ are drawn i.i.d. from the Dirichlet distribution with concentration parameter $\\mu \\in (0,1)$: density of $\\mathbf{v}$ proportional to $\\prod_{l=1}^r v_l^{\\mu - 1}$, with $v_l \\geq 0$ and $\\sum_l v_l = 1$."
+    },
+    {
+      "id": "D9.7",
+      "type": "definition",
+      "name": "Dominant Admixture Model assumptions",
+      "section": "9.7",
+      "statement": "Parameters $\\alpha, \\beta, \\rho, \\delta \\in (0, 0.4)$ with $\\beta + \\rho \\leq (1-3\\delta)\\alpha$. (1) Primary Topic: partition $[n] = T_1 \\cup \\cdots \\cup T_r$ with $c_{lj} \\geq \\alpha$ for $j \\in T_l$ and $c_{lj} \\leq \\beta$ for $j \\notin T_l$. (2) Pure Document: for each $l$, some $j$ has $c_{lj} \\geq 1 - \\delta$. (3) Catchword: for each $l$, some term $i$ with $b_{il'} \\leq \\rho b_{il}$ for $l' \\neq l$ and $b_{il} \\geq \\mu = c \\log(10nd/\\delta)/(m \\alpha^2 \\delta^2)$."
+    },
+    {
+      "id": "D9.8",
+      "type": "definition",
+      "name": "Hidden Markov Model (HMM)",
+      "section": "9.10",
+      "statement": "A finite set of states with initial distribution $\\alpha$, transition probabilities $a_{ij}$ from state $i$ to $j$, and output distribution $p(O, i)$ giving the probability of symbol $O$ in state $i$. At each step, the HMM transitions to a new state and emits a symbol."
+    },
+    {
+      "id": "D9.9",
+      "type": "definition",
+      "name": "Bayesian (Belief) Network",
+      "section": "9.12",
+      "statement": "A directed acyclic graph where vertices are random variables. The joint probability factors as $p(x_1,\\ldots,x_n) = \\prod_{i=1}^n p(x_i \\mid \\text{parents of } x_i)$."
+    },
+    {
+      "id": "D9.10",
+      "type": "definition",
+      "name": "Markov Random Field",
+      "section": "9.13",
+      "statement": "An undirected graph with an associated function that factorizes into functions of the cliques: $f(x_1,\\ldots,x_n) = \\prod_{\\text{clique } C} f_C(x_C)$. The Ising model is the special case $f = \\exp(c \\sum_{i \\sim j} |x_i - x_j|)$."
+    },
+    {
+      "id": "D9.11",
+      "type": "definition",
+      "name": "Factor Graph",
+      "section": "9.14",
+      "statement": "A bipartite graph with variable nodes and factor nodes, where $f(\\mathbf{x}) = \\prod_{\\alpha} f_{\\alpha}(\\mathbf{x}_{\\alpha})$ and each factor $f_{\\alpha}$ depends on a small subset $\\mathbf{x}_{\\alpha}$ of variables. An edge connects a variable to a factor if the factor depends on that variable."
+    },
+    {
+      "id": "E9.1",
+      "type": "equation",
+      "name": "Topic model factorization",
+      "section": "9.1",
+      "context": "statement",
+      "parent_step": "",
+      "statement": "$P = B C$"
+    },
+    {
+      "id": "E9.2",
+      "type": "equation",
+      "name": "Expected value of term-document entry",
+      "section": "9.1",
+      "context": "statement",
+      "parent_step": "",
+      "statement": "$E(a_{ij} \\mid P) = p_{ij}$"
+    },
+    {
+      "id": "E9.3",
+      "type": "equation",
+      "name": "Noisy topic model",
+      "section": "9.1",
+      "context": "statement",
+      "parent_step": "",
+      "statement": "$A = B C + N$"
+    },
+    {
+      "id": "E9.4",
+      "type": "equation",
+      "name": "Catchword high/low structure of $P$",
+      "section": "9.7",
+      "context": "statement",
+      "parent_step": "",
+      "statement": "$P$ has rows for catchwords showing $H$ entries for documents in the catchword's topic and $L$ entries otherwise."
+    },
+    {
+      "id": "E9.5",
+      "type": "equation",
+      "name": "Parameter constraint",
+      "section": "9.8",
+      "context": "assumption",
+      "parent_step": "",
+      "statement": "$\\beta + \\rho \\leq (1 - 3\\delta)\\alpha$"
+    },
+    {
+      "id": "E9.6",
+      "type": "equation",
+      "name": "Primary Topic weight bounds",
+      "section": "9.8",
+      "context": "assumption",
+      "parent_step": "",
+      "statement": "$c_{lj} \\geq \\alpha$ for $j \\in T_l$ and $c_{lj} \\leq \\beta$ for $j \\notin T_l$"
+    },
+    {
+      "id": "E9.7",
+      "type": "equation",
+      "name": "Catchword frequency bounds",
+      "section": "9.8",
+      "context": "assumption",
+      "parent_step": "",
+      "statement": "$b_{il'} \\leq \\rho \\, b_{il}$ for $l' \\neq l$, and $b_{il} \\geq \\mu$ where $\\mu = c \\log(10nd/\\delta)/(m \\alpha^2 \\delta^2)$"
+    },
+    {
+      "id": "E9.8",
+      "type": "equation",
+      "name": "Dominant topic index",
+      "section": "9.8",
+      "context": "statement",
+      "parent_step": "",
+      "statement": "$l(i) = \\arg\\max_{l'=1}^{r} b_{il'}$"
+    },
+    {
+      "id": "E9.9",
+      "type": "equation",
+      "name": "Catchword $p_{ij}$ upper bound off-topic",
+      "section": "9.8",
+      "context": "proof_step",
+      "parent_step": "PS9.8.1",
+      "statement": "$p_{ij} = b_{il} c_{lj} + \\sum_{l' \\neq l} b_{il'} c_{l'j} \\leq b_{il}(\\beta + \\rho) \\leq b_{il} \\alpha (1 - 3\\delta)$"
+    },
+    {
+      "id": "E9.10",
+      "type": "equation",
+      "name": "Noncatchword $p_{ij_0}$ lower bound",
+      "section": "9.8",
+      "context": "proof_step",
+      "parent_step": "PS9.7.2",
+      "statement": "$b_{il} \\geq p_{ij_0} \\geq \\mu(1 - 3\\delta)$"
+    },
+    {
+      "id": "E9.11",
+      "type": "equation",
+      "name": "Noncatchword $a_{ij_1}$ lower bound",
+      "section": "9.8",
+      "context": "proof_step",
+      "parent_step": "PS9.7.2",
+      "statement": "$a_{i,j_1} \\geq b_{il}(1 - 3\\delta/2)$"
+    },
+    {
+      "id": "E9.12",
+      "type": "equation",
+      "name": "Noncatchword max $a_{ij}$ lower bound",
+      "section": "9.8",
+      "context": "proof_step",
+      "parent_step": "PS9.7.3",
+      "statement": "$a \\geq b_{il}(1 - 3\\delta/2)$"
+    },
+    {
+      "id": "E9.13",
+      "type": "equation",
+      "name": "Selection criterion for quasi-catchword",
+      "section": "9.9",
+      "context": "statement",
+      "parent_step": "",
+      "statement": "$g(i(l), l) \\geq (1 - \\delta/2)\\mu$ and $g(i(l), l') \\leq (1 - 2\\delta)\\alpha \\, g(i(l), l)$ for all $l' \\neq l$"
+    },
+    {
+      "id": "E9.14",
+      "type": "equation",
+      "name": "Quasi-catchword ratio bound (9.15)",
+      "section": "9.9",
+      "context": "proof_step",
+      "parent_step": "PS9.11.1",
+      "statement": "$\\rho_i = \\max(b_{il}, b_{il'}) < b_{il'}/\\alpha$"
+    },
+    {
+      "id": "E9.15",
+      "type": "equation",
+      "name": "$p_{ij}$ bound on $W_{l'}$ (9.16)",
+      "section": "9.9",
+      "context": "proof_step",
+      "parent_step": "PS9.11.2",
+      "statement": "$p_{ij} \\leq b_{il'}(1 - \\delta/4 + \\delta/(4\\alpha))$ for $j \\in W_{l'}$"
+    },
+    {
+      "id": "E9.16",
+      "type": "equation",
+      "name": "$p_{ij}$ lower bound on $W_{l'}$ (9.17)",
+      "section": "9.9",
+      "context": "proof_step",
+      "parent_step": "PS9.11.2",
+      "statement": "$p_{ij} \\geq b_{il'} c_{l'j} \\geq b_{il'}(1 - \\delta/4)$ for $j \\in W_{l'}$"
+    },
+    {
+      "id": "E9.17",
+      "type": "equation",
+      "name": "$a_{ij}$ lower bound on $W_{l'}$ (9.18)",
+      "section": "9.9",
+      "context": "proof_step",
+      "parent_step": "PS9.11.2",
+      "statement": "$a_{ij} \\geq b_{il'}(1 - 3\\delta/4)$ for $j \\in W_{l'}$"
+    },
+    {
+      "id": "E9.18",
+      "type": "equation",
+      "name": "$g(i,l')$ lower bound (9.19)",
+      "section": "9.9",
+      "context": "proof_step",
+      "parent_step": "PS9.11.2",
+      "statement": "$g(i, l') \\geq b_{il'}(1 - 3\\delta/4)$"
+    },
+    {
+      "id": "E9.19",
+      "type": "equation",
+      "name": "$g(i,l)$ upper bound (9.20)",
+      "section": "9.9",
+      "context": "proof_step",
+      "parent_step": "PS9.11.3",
+      "statement": "$g(i, l) \\leq b_{il'}(1 + 5\\delta/6)/\\alpha$"
+    },
+    {
+      "id": "E9.20",
+      "type": "equation",
+      "name": "Average of nearly-pure columns approximates $B$ (9.21)",
+      "section": "9.9",
+      "context": "proof_step",
+      "parent_step": "PS9.13.1",
+      "statement": "$\\left\\| \\frac{1}{|R_l|} \\sum_{j \\in R_l} \\mathbf{p}_{\\cdot,j} - \\mathbf{b}_{\\cdot,l} \\right\\|_1 \\leq 2\\delta$"
+    },
+    {
+      "id": "E9.21",
+      "type": "equation",
+      "name": "Noise averaging bound (9.22)",
+      "section": "9.9",
+      "context": "proof_step",
+      "parent_step": "PS9.13.2",
+      "statement": "$\\left\\| \\frac{1}{|R_l|} \\sum_{j \\in R_l} \\mathbf{v}_{\\cdot,j} \\right\\|_1 \\leq 2\\delta$"
+    },
+    {
+      "id": "E9.22",
+      "type": "equation",
+      "name": "Bounded Difference tail (9.23)",
+      "section": "9.9",
+      "context": "proof_step",
+      "parent_step": "PS9.13.3",
+      "statement": "$\\mathrm{Pr}(|x - E(x)| > \\delta) \\leq 2 \\exp(-\\delta^2 \\delta m n / 8)$"
+    },
+    {
+      "id": "E9.23",
+      "type": "equation",
+      "name": "Dirichlet marginal density",
+      "section": "9.6",
+      "context": "conclusion",
+      "parent_step": "",
+      "statement": "$q(y) = \\frac{\\Gamma(r\\mu+1)}{\\Gamma(\\mu)\\Gamma((r-1)\\mu+1)} y^{\\mu-1}(1-y)^{(r-1)\\mu}$"
+    },
+    {
+      "id": "E9.24",
+      "type": "equation",
+      "name": "Primary topic probability lower bound",
+      "section": "9.6",
+      "context": "conclusion",
+      "parent_step": "",
+      "statement": "$\\mathrm{Pr}(y_1 \\geq 1-\\zeta) \\geq \\frac{0.85 \\mu \\zeta^{(r-1)\\mu+1}}{(r-1)\\mu+1}$"
+    },
+    {
+      "id": "E9.25",
+      "type": "equation",
+      "name": "HMM forward recursion",
+      "section": "9.10",
+      "context": "statement",
+      "parent_step": "",
+      "statement": "$\\mathrm{Pr}(O_0 O_1 \\cdots O_t, i) = \\sum_j \\mathrm{Pr}(O_0 O_1 \\cdots O_{t-1}, j) \\, a_{ij} \\, p(O_{t+1}, i)$"
+    },
+    {
+      "id": "E9.26",
+      "type": "equation",
+      "name": "Baum-Welch transition re-estimation",
+      "section": "9.10",
+      "context": "statement",
+      "parent_step": "",
+      "statement": "$\\bar{a}_{ij} = \\frac{\\sum_{t=1}^{T-1} \\delta_t(i,j)}{\\sum_{t=1}^{T-1} s_t(i)}$"
+    },
+    {
+      "id": "E9.27",
+      "type": "equation",
+      "name": "Bayesian network joint factorization",
+      "section": "9.12",
+      "context": "statement",
+      "parent_step": "",
+      "statement": "$p(x_1, x_2, \\ldots, x_n) = \\prod_{i=1}^{n} p(x_i \\mid \\text{parents of } x_i)$"
+    },
+    {
+      "id": "E9.28",
+      "type": "equation",
+      "name": "Ising model energy",
+      "section": "9.13",
+      "context": "statement",
+      "parent_step": "",
+      "statement": "$f(x_1, x_2, \\ldots, x_n) = \\exp(c \\sum_{i \\sim j} |x_i - x_j|)$"
+    },
+    {
+      "id": "E9.29",
+      "type": "equation",
+      "name": "Gibbs measure for Ising model",
+      "section": "9.21",
+      "context": "assumption",
+      "parent_step": "",
+      "statement": "$p(x_1, \\ldots, x_n) = \\frac{1}{Z} \\exp(\\beta \\sum_{(i,j) \\in E} x_i x_j)$"
+    },
+    {
+      "id": "E9.30",
+      "type": "equation",
+      "name": "Root spin probability for height-one tree",
+      "section": "9.21",
+      "context": "proof_step",
+      "parent_step": "PS9.5r.1",
+      "statement": "$q = \\frac{[p e^{2\\beta} + 1 - p]^d}{[p e^{2\\beta} + 1 - p]^d + [p + (1-p) e^{2\\beta}]^d}$"
+    },
+    {
+      "id": "E9.31",
+      "type": "equation",
+      "name": "Phase transition condition",
+      "section": "9.21",
+      "context": "proof_step",
+      "parent_step": "PS9.5r.3",
+      "statement": "$\\frac{d(e^{2\\beta} - 1)}{1 + e^{2\\beta}} = 1$"
+    },
+    {
+      "id": "E9.32",
+      "type": "equation",
+      "name": "Phase transition value of $\\beta$",
+      "section": "9.21",
+      "context": "conclusion",
+      "parent_step": "",
+      "statement": "$\\beta_0 = \\frac{1}{2} \\ln \\frac{d+1}{d-1}$"
+    },
+    {
+      "id": "E9.33",
+      "type": "equation",
+      "name": "Loop message product",
+      "section": "9.18",
+      "context": "statement",
+      "parent_step": "",
+      "statement": "$m_1' = M_n D_1 M_{n-1} D_n \\cdots M_2 D_3 M_1 D_2 \\, m_1$"
+    },
+    {
+      "id": "E9.34",
+      "type": "equation",
+      "name": "MWM constraint factor",
+      "section": "9.19",
+      "context": "statement",
+      "parent_step": "",
+      "statement": "$-\\lambda |(\\sum_i c_{i2}) - 1| - \\lambda |(\\sum_j c_{1j}) - 1| + w_{12} c_{12}$"
+    },
+    {
+      "id": "L9.1",
+      "type": "lemma",
+      "name": "Idealized topic clustering",
+      "section": "9.2",
+      "statement": "Under Pure Topic and Separability assumptions, if $n_l m \\geq \\frac{2}{\\gamma}(d \\ln 2 + \\ln \\frac{1}{\\delta})$, then w.p. $\\geq 1 - \\delta$ the largest connected component in $S_l$ has probability mass $\\geq 1 - \\gamma$, so a new random document of topic $l$ is misclustered with probability $\\leq \\varepsilon = \\gamma^m$.",
+      "assumptions": ["Pure Topic Assumption", "Separability Assumption", "$n_l m \\geq \\frac{2}{\\gamma}(d \\ln 2 + \\ln \\frac{1}{\\delta})$"],
+      "conclusions": ["Largest connected component in $S_l$ has probability mass $\\geq 1 - \\gamma$", "Misclustering probability for a new document $\\leq \\gamma^m$"]
+    },
+    {
+      "id": "L9.2",
+      "type": "lemma",
+      "name": "NMF column-sum reduction",
+      "section": "9.3",
+      "statement": "If $A$ has nonneg. entries and columns summing to 1, finding $A = BC$ with conditions (1) $A=BC$, (2) $B,C \\geq 0$, (3) columns of $B$ and $C$ sum to 1, reduces to NMF (conditions (1) and (2) only).",
+      "assumptions": ["$A$ nonneg. with columns summing to 1"],
+      "conclusions": ["Conditions (1)+(2) imply condition (3) after rescaling"]
+    },
+    {
+      "id": "P9.2",
+      "type": "proof",
+      "name": null,
+      "section": "9.3",
+      "proves": "L9.2",
+      "statement": "Rescale columns of $B$ to sum to 1 and adjust rows of $C$ correspondingly. Then $\\sum_i a_{ij} = \\sum_{i,l} b_{il} c_{lj} = \\sum_l c_{lj} = 1$.",
+      "proof_strategy": "column rescaling"
+    },
+    {
+      "id": "L9.3",
+      "type": "lemma",
+      "name": "NMF reformulation with $2r^2$ unknowns",
+      "section": "9.3",
+      "statement": "If $A$ has rank $r$, the NMF problem can be formulated with $2r^2$ unknowns. Hence exact NMF is solvable in polynomial time when $r$ is constant.",
+      "assumptions": ["$A$ has rank $r$"],
+      "conclusions": ["NMF reduces to a problem in $2r^2$ unknowns", "Solvable in poly time for constant $r$ via the Theory of Reals"]
+    },
+    {
+      "id": "P9.3",
+      "type": "proof",
+      "name": null,
+      "section": "9.3",
+      "proves": "L9.3",
+      "statement": "Row space of $C$ equals row space of $A$, so $C = S A_1$ and $B = A_2 T$ for $r \\times r$ matrices $S, T$. The problem becomes $A = A_2 T S A_1$ with nonnegativity on $SA_1$ and $A_2 T$.",
+      "proof_strategy": "express $B$ and $C$ via bases of $A$'s row and column spaces"
+    },
+    {
+      "id": "R9.1",
+      "type": "theorem",
+      "name": "NMF is NP-hard",
+      "formal": false,
+      "section": "9.3",
+      "statement": "The Nonnegative Matrix Factorization problem is NP-hard in general.",
+      "assumptions": ["General NMF instance"],
+      "conclusions": ["No polynomial-time algorithm unless P = NP"]
+    },
+    {
+      "id": "L9.4",
+      "type": "lemma",
+      "name": "Marginal of Dirichlet distribution",
+      "section": "9.6",
+      "statement": "If $\\mathbf{y} = (y_1,\\ldots,y_r)$ has Dirichlet distribution with parameter $\\mu \\in (0,1]$, then the marginal density of $y_1$ is $q(y) = \\frac{\\Gamma(r\\mu+1)}{\\Gamma(\\mu)\\Gamma((r-1)\\mu+1)} y^{\\mu-1}(1-y)^{(r-1)\\mu}$.",
+      "assumptions": ["$\\mathbf{y}$ Dirichlet with concentration $\\mu \\in (0,1]$"],
+      "conclusions": ["$q(y) = \\frac{\\Gamma(r\\mu+1)}{\\Gamma(\\mu)\\Gamma((r-1)\\mu+1)} y^{\\mu-1}(1-y)^{(r-1)\\mu}$"]
+    },
+    {
+      "id": "P9.4",
+      "type": "proof",
+      "name": null,
+      "section": "9.6",
+      "proves": "L9.4",
+      "statement": "Integrate out $y_2,\\ldots,y_r$ with the substitution $z_l = y_l/(1-y)$. The integral becomes independent of $y$, giving $q(y) = c y^{\\mu-1}(1-y)^{(r-1)\\mu}$. Normalize using the Beta function.",
+      "proof_strategy": "change of variables and normalization"
+    },
+    {
+      "id": "L9.5",
+      "type": "lemma",
+      "name": "Dirichlet primary topic weight",
+      "section": "9.6",
+      "statement": "For Dirichlet with $\\mu \\in (0,1)$ and $\\zeta \\in (0,1)$: $\\mathrm{Pr}(y_1 \\geq 1-\\zeta) \\geq \\frac{0.85\\mu \\zeta^{(r-1)\\mu+1}}{(r-1)\\mu+1}$. For $\\mu = 1/r$: $\\mathrm{Pr}(y_1 \\geq 1-\\zeta) \\geq 0.4\\zeta^2/r$. For $\\zeta < 0.5$: $\\mathrm{Pr}(\\max_l y_l \\geq 1-\\zeta) \\geq 0.4\\zeta^2$.",
+      "assumptions": ["Dirichlet with $\\mu \\in (0,1)$", "$\\zeta \\in (0,1)$"],
+      "conclusions": ["$\\mathrm{Pr}(\\max_l y_l \\geq 1-\\zeta) \\geq 0.4\\zeta^2$ when $\\mu=1/r$, $\\zeta < 0.5$"]
+    },
+    {
+      "id": "P9.5",
+      "type": "proof",
+      "name": null,
+      "section": "9.6",
+      "proves": "L9.5",
+      "statement": "Since $\\mu < 1$, $y^{\\mu-1} > 1$ for $y < 1$, so $q(y) \\geq c(1-y)^{(r-1)\\mu}$. Integrate from $1-\\zeta$ to 1. Bound $c$ using $\\Gamma(\\mu) \\leq 1/\\mu$. For the third part, use mutual exclusivity of $\\{y_l > 1-\\zeta\\}$ when $\\zeta < 0.5$.",
+      "proof_strategy": "lower bound density and integrate, mutual exclusivity"
+    },
+    {
+      "id": "L9.6",
+      "type": "lemma",
+      "name": "Hoeffding-Chernoff for term frequencies",
+      "section": "9.8",
+      "statement": "$\\mathrm{Pr}(|a_{ij} - p_{ij}| \\geq \\delta \\alpha \\max(p_{ij}, \\mu)/4) \\leq \\delta/(10nd)$. Hence w.p. $\\geq 1-\\delta/10$, $|a_{ij} - p_{ij}| \\leq \\delta \\alpha \\max(\\mu, p_{ij})/4$ for all $i,j$ simultaneously.",
+      "assumptions": ["$a_{ij}$ is average of $m$ i.i.d. Bernoulli($p_{ij}$) trials", "$\\mu = c\\log(10nd/\\delta)/(m\\alpha^2\\delta^2)$"],
+      "conclusions": ["$|a_{ij} - p_{ij}| \\leq \\delta \\alpha \\max(\\mu, p_{ij})/4$ for all $i,j$ w.h.p."]
+    },
+    {
+      "id": "P9.6",
+      "type": "proof",
+      "name": null,
+      "section": "9.8",
+      "proves": "L9.6",
+      "statement": "Apply Hoeffding-Chernoff: $\\mathrm{Pr}(|a_{ij}-p_{ij}| \\geq \\Delta) \\leq 2\\exp(-cm\\min(\\Delta^2/p_{ij}, \\Delta))$. Plug in $\\Delta = \\alpha\\delta\\max(p_{ij},\\mu)/4$. Union bound over $nd$ pairs.",
+      "proof_strategy": "Hoeffding-Chernoff + union bound"
+    },
+    {
+      "id": "A9.1",
+      "type": "algorithm",
+      "name": "Primary Topic Classification",
+      "section": "9.8",
+      "statement": "(1) Compute thresholds $\\mu_i = \\alpha(1-\\delta)\\max_j a_{ij}$. (2) Threshold: set $\\hat{a}_{ij}=1$ if $a_{ij} \\geq \\mu_i$ and $\\mu_i \\geq \\mu\\alpha(1-5\\delta/2)$, else 0. (3) Pruning: if $R_i = \\{j: \\hat{a}_{ij}=1\\}$ strictly contains another nonempty $R_{i'}$, set row $i$ of $\\hat{A}$ to zero.",
+      "input": ["Term-document matrix $A$", "Parameters $\\alpha, \\delta, \\mu$"],
+      "output": ["Sets $R_i$ partitioning documents by primary topic"]
+    },
+    {
+      "id": "T9.7",
+      "type": "theorem",
+      "name": "Primary topic classification correctness",
+      "section": "9.8",
+      "statement": "After the algorithm, each nonempty $R_i = T_{l(i)}$ where $l(i) = \\arg\\max_{l'} b_{il'}$.",
+      "assumptions": ["Dominant Admixture Model assumptions (D9.7)", "Hoeffding-Chernoff concentration (L9.6)"],
+      "conclusions": ["Each nonempty $R_i$ equals $T_{l(i)}$"]
+    },
+    {
+      "id": "P9.7",
+      "type": "proof",
+      "name": null,
+      "section": "9.8",
+      "proves": "T9.7",
+      "statement": "For catchwords, Lemma 9.8 gives $R_i = T_l$. For noncatchwords, either $R_i = \\emptyset$ or $T_{l(i)} \\subseteq R_i$; if $T_{l(i)} \\subsetneq R_i$, pruning removes row $i$ since some catchword already yields $R_{i_0} = T_{l(i)}$.",
+      "proof_strategy": "catchword case (L9.8) + pruning handles noncatchwords"
+    },
+    {
+      "id": "L9.8",
+      "type": "lemma",
+      "name": "Catchword implies correct $R_i$",
+      "section": "9.8",
+      "statement": "If $i$ is a catchword for topic $l$, then $R_i = T_l$.",
+      "assumptions": ["$i$ is a catchword for topic $l$", "Dominant Admixture Model assumptions"],
+      "conclusions": ["$R_i = T_l$"]
+    },
+    {
+      "id": "P9.8",
+      "type": "proof",
+      "name": null,
+      "section": "9.8",
+      "proves": "L9.8",
+      "statement": "Three claims: (Claim 9.1) for catchword $i$ of topic $l$, $p_{ij} \\in [b_{il}\\alpha, b_{il}]$ for $j \\in T_l$ and $p_{ij} \\leq b_{il}\\alpha(1-3\\delta)$ for $j \\notin T_l$. (Claim 9.2) same gap holds for $a_{ij}$ by Lemma 9.6. (Claim 9.3) $\\mu_i$ falls between the high and low values.",
+      "proof_strategy": "separation of $p_{ij}$ values + concentration + threshold placement"
+    },
+    {
+      "id": "CL9.1",
+      "type": "lemma",
+      "name": "Catchword separates $p_{ij}$",
+      "formal": false,
+      "section": "9.8",
+      "statement": "For catchword $i$ of topic $l$: $b_{il}\\alpha \\leq p_{ij} \\leq b_{il}$ for $j \\in T_l$, and $p_{ij} \\leq b_{il}\\alpha(1-3\\delta)$ for $j \\notin T_l$.",
+      "assumptions": ["$i$ catchword for $l$", "Primary Topic and Catchword assumptions"],
+      "conclusions": ["Gap of factor $(1-3\\delta)$ between $p_{ij}$ for $j \\in T_l$ vs $j \\notin T_l$"]
+    },
+    {
+      "id": "CL9.2",
+      "type": "lemma",
+      "name": "Catchword separates $a_{ij}$",
+      "formal": false,
+      "section": "9.8",
+      "statement": "W.p. $\\geq 1-\\delta/10$, for every catchword $i$ of topic $l$: $a_{ij} \\geq b_{il}\\alpha(1-\\delta/4)$ for $j \\in T_l$ and $a_{ij} \\leq b_{il}\\alpha(1-11\\delta/4)$ for $j \\notin T_l$.",
+      "assumptions": ["$i$ catchword for $l$", "Lemma 9.6 concentration"],
+      "conclusions": ["Observable gap in $a_{ij}$ between $T_l$ and $[n] \\setminus T_l$"]
+    },
+    {
+      "id": "CL9.3",
+      "type": "lemma",
+      "name": "Threshold placement",
+      "formal": false,
+      "section": "9.8",
+      "statement": "W.p. $\\geq 1-\\delta$, for every catchword $i$ of topic $l$: $\\mu_i \\in ((1-5\\delta/2)b_{il}\\alpha, \\; b_{il}\\alpha(1-\\delta/2))$.",
+      "assumptions": ["$i$ catchword for $l$", "Pure Document assumption", "Lemma 9.6"],
+      "conclusions": ["$\\mu_i$ separates $a_{ij}$ for $j \\in T_l$ from $j \\notin T_l$"]
+    },
+    {
+      "id": "L9.9",
+      "type": "lemma",
+      "name": "Existence of $i(l)$ in step 2",
+      "section": "9.9",
+      "statement": "For each topic $l$, there exists $i(l)$ satisfying $g(i(l), l) \\geq (1-\\delta/2)\\mu$ and $g(i(l), l') \\leq (1-2\\delta)\\alpha g(i(l), l)$ for all $l' \\neq l$.",
+      "assumptions": ["Catchword assumption", "Lemma 9.6"],
+      "conclusions": ["Step 2 of the term-topic recovery algorithm is feasible"]
+    },
+    {
+      "id": "P9.9",
+      "type": "proof",
+      "name": null,
+      "section": "9.9",
+      "proves": "L9.9",
+      "statement": "Let $i$ be a catchword for $l$. For $j \\in W_l$, $a_{ij} \\geq b_{il}(1-\\delta/2)$ so $g(i,l) \\geq (1-\\delta/2)\\mu$. For $j \\notin T_l$, $a_{ij} \\leq b_{il}\\alpha(1-5\\delta/2)$ by Claim 9.2, so $g(i,l') \\leq b_{il}\\alpha(1-5\\delta/2)$.",
+      "proof_strategy": "verify catchword satisfies criterion"
+    },
+    {
+      "id": "L9.10",
+      "type": "lemma",
+      "name": "$\\rho_i$ lower bound",
+      "section": "9.9",
+      "statement": "$\\rho_i = \\max_{k=1}^r b_{ik} \\geq (1 - 3\\delta/4)\\mu$.",
+      "assumptions": ["$i = i(l)$ satisfies selection criterion (9.14)"],
+      "conclusions": ["$\\rho_i \\geq (1-3\\delta/4)\\mu$"]
+    },
+    {
+      "id": "L9.11",
+      "type": "lemma",
+      "name": "Quasi-catchword property",
+      "formal": false,
+      "section": "9.9",
+      "statement": "If $i$ satisfies the selection criterion (9.14) for topic $l$, then $b_{ik} \\leq \\alpha b_{il}$ for all $k \\neq l$.",
+      "assumptions": ["$i$ satisfies criterion (9.14) for $l$"],
+      "conclusions": ["$i$ acts essentially like a catchword for $l$"]
+    },
+    {
+      "id": "P9.11",
+      "type": "proof",
+      "name": null,
+      "section": "9.9",
+      "proves": "L9.11",
+      "statement": "Suppose not: let $l' = \\arg\\max_{k \\neq l} b_{ik}$ with $b_{il'} > \\alpha b_{il}$. Then $\\rho_i < b_{il'}/\\alpha$ (9.15). Using $p_{ij} \\geq b_{il'}(1-\\delta/4)$ on $W_{l'}$ (9.17) and Lemma 9.6, get $g(i,l') \\geq b_{il'}(1-3\\delta/4)$ (9.19). But $g(i,l) \\leq b_{il'}(1+5\\delta/6)/\\alpha$ (9.20). Then $g(i,l') \\leq g(i,l)\\alpha(1-2\\delta) \\leq b_{il'}(1-\\delta)$, contradicting (9.19).",
+      "proof_strategy": "contradiction via incompatible upper/lower bounds on $g(i,l')$"
+    },
+    {
+      "id": "L9.12",
+      "type": "lemma",
+      "name": "Pure documents in $R_l$",
+      "section": "9.9",
+      "statement": "For each $j \\in R_l$ (the top-$\\delta n/4$ documents by $a_{i(l),j}$), $c_{lj} \\geq 1 - 2\\delta$.",
+      "assumptions": ["Dominant Admixture Model assumptions", "Lemma 9.11"],
+      "conclusions": ["All documents in $R_l$ are nearly pure for topic $l$"]
+    },
+    {
+      "id": "P9.12",
+      "type": "proof",
+      "name": null,
+      "section": "9.9",
+      "proves": "L9.12",
+      "statement": "For $j$ with $c_{lj} < 1 - 2\\delta$, show $a_{ij} < b_{il}(1-\\delta)$ using Lemma 9.11, while for $j \\in W_l$, $a_{ij} \\geq b_{il}(1-\\delta)$. So no impure document enters $R_l$.",
+      "proof_strategy": "separation argument via quasi-catchword bound"
+    },
+    {
+      "id": "T9.13",
+      "type": "theorem",
+      "name": "Term-topic matrix recovery",
+      "section": "9.9",
+      "statement": "Under the Dominant Admixture Model with $n \\geq cd/(m\\delta^3)$ and $m \\geq c/\\delta^2$, the algorithm returns $\\hat{\\mathbf{b}}_{\\cdot,l}$ satisfying $\\|\\mathbf{b}_{\\cdot,l} - \\hat{\\mathbf{b}}_{\\cdot,l}\\|_1 \\leq 6\\delta$ for all $l$.",
+      "assumptions": ["Dominant Admixture Model assumptions (D9.7) + Assumption (4)", "$n \\geq cd/(m\\delta^3)$", "$m \\geq c/\\delta^2$"],
+      "conclusions": ["$\\|\\mathbf{b}_{\\cdot,l} - \\hat{\\mathbf{b}}_{\\cdot,l}\\|_1 \\leq 6\\delta$ for all $l$"]
+    },
+    {
+      "id": "P9.13",
+      "type": "proof",
+      "name": null,
+      "section": "9.9",
+      "proves": "T9.13",
+      "statement": "By Lemma 9.12, each $j \\in R_l$ has $c_{lj} \\geq 1-2\\delta$, so $\\|\\frac{1}{|R_l|}\\sum_{j \\in R_l} \\mathbf{p}_{\\cdot,j} - \\mathbf{b}_{\\cdot,l}\\|_1 \\leq 2\\delta$. For the noise term $\\|\\frac{1}{|R_l|}\\sum_{j \\in R_l} \\mathbf{v}_{\\cdot,j}\\|_1$, bound $E(x) \\leq \\delta$ via Jensen + Cauchy-Schwarz, then apply the Bounded Difference Inequality and union bound over all $\\binom{n}{\\delta n/4}$ subsets.",
+      "proof_strategy": "triangle inequality + bounded differences + union bound"
+    },
+    {
+      "id": "A9.2",
+      "type": "algorithm",
+      "name": "HMM Forward Algorithm (output sequence probability)",
+      "section": "9.10",
+      "statement": "Compute $\\mathrm{Pr}(O_0, i) = \\alpha(i) p(O_0, i)$. For $t=1$ to $T$: $\\mathrm{Pr}(O_0 \\cdots O_t, i) = \\sum_j \\mathrm{Pr}(O_0 \\cdots O_{t-1}, j) a_{ij} p(O_{t+1}, i)$. Return $\\sum_i \\mathrm{Pr}(O_0 \\cdots O_T, i)$.",
+      "input": ["HMM parameters $(\\alpha, a_{ij}, p(O,i))$", "Output sequence $O_0 O_1 \\cdots O_T$"],
+      "output": ["Probability of the output sequence"]
+    },
+    {
+      "id": "A9.3",
+      "type": "algorithm",
+      "name": "Viterbi Algorithm (most likely state sequence)",
+      "section": "9.10",
+      "statement": "Like the Forward Algorithm but replace summation with maximization: for each state $i$ and time $t$, compute the probability of the most likely state sequence producing $O_0 \\cdots O_t$ ending in $i$, tracking the argmax. Trace back from $T$ to recover the sequence. Time $O(n^2 T)$, space $O(nT)$.",
+      "input": ["HMM parameters", "Output sequence $O_0 O_1 \\cdots O_T$"],
+      "output": ["Most likely sequence of states"]
+    },
+    {
+      "id": "A9.4",
+      "type": "algorithm",
+      "name": "Baum-Welch (HMM parameter estimation)",
+      "section": "9.10",
+      "statement": "Given initial estimates of $a_{ij}$ and $b_j(O_k)$, iteratively: compute $\\delta_t(i,j) = \\alpha_t(i) a_{ij} b_j(O_{t+1}) \\beta_{t+1}(j)/p(O)$ and $s_t(i) = \\sum_j \\delta_t(i,j)$. Update $\\bar{a}_{ij} = \\sum_t \\delta_t(i,j)/\\sum_t s_t(i)$ and $\\bar{b}_j(O_k) = \\sum_{t: O_t=O_k} s_t(j)/\\sum_t s_t(j)$. Converges to a local optimum.",
+      "input": ["Number of states $n$", "Output sequence $O_1 \\cdots O_T$ with $T \\gg n$"],
+      "output": ["Locally optimal HMM parameters $a_{ij}, b_j(O_k)$"]
+    },
+    {
+      "id": "A9.5",
+      "type": "algorithm",
+      "name": "Tree message passing (marginalization / MAP)",
+      "section": "9.15",
+      "statement": "For a factor graph that is a tree rooted at $x_1$: leaves send 1. Each variable node sends to its parent the product of incoming messages with all variables except its own summed out. Each factor node sends the product of its factor and incoming children messages. The root obtains $\\sum_{x_2,\\ldots,x_n} f(\\mathbf{x})$ as a function of $x_1$. For MAP, replace sums by max.",
+      "input": ["Factor graph that is a tree", "Factors $f_{\\alpha}$"],
+      "output": ["Marginal $f(x_1) = \\sum_{\\mathbf{x} \\setminus x_1} \\prod_{\\alpha} f_{\\alpha}(\\mathbf{x}_{\\alpha})$, or MAP assignment"]
+    },
+    {
+      "id": "R9.2",
+      "type": "theorem",
+      "name": "Tree message passing correctness",
+      "formal": false,
+      "section": "9.15",
+      "statement": "When the factor graph is a tree, the message passing algorithm correctly computes all marginals (with a second root-to-leaf pass) or the MAP assignment.",
+      "assumptions": ["Factor graph is a tree"],
+      "conclusions": ["Exact marginalization or MAP in time linear in the tree size"]
+    },
+    {
+      "id": "R9.3",
+      "type": "theorem",
+      "name": "Single-cycle MAP correctness",
+      "formal": false,
+      "section": "9.17",
+      "statement": "For a graphical model whose factor graph has a single cycle, if the message passing algorithm converges, it converges to the correct MAP assignment (assuming all potentials are nonzero).",
+      "assumptions": ["Factor graph with a single cycle", "All potentials nonzero", "Algorithm converges"],
+      "conclusions": ["Converged assignment is the MAP assignment"]
+    },
+    {
+      "id": "L9.14",
+      "type": "lemma",
+      "name": "Unrolled tree equivalence",
+      "section": "9.19",
+      "statement": "If the tree obtained by unrolling the bipartite constraint graph to depth $k$, then the messages to the root equal the messages in the constraint graph after $k$ iterations.",
+      "assumptions": ["Constraint graph unrolled to depth $k$"],
+      "conclusions": ["Messages at root of tree = messages after $k$ iterations of belief propagation"]
+    },
+    {
+      "id": "R9.4",
+      "type": "theorem",
+      "name": "Belief propagation finds unique MWM",
+      "formal": false,
+      "section": "9.19",
+      "statement": "If the maximum weight matching in a complete bipartite graph is unique, then the belief propagation algorithm on the associated factor graph converges to the correct MWM.",
+      "assumptions": ["Complete bipartite graph with unique MWM"],
+      "conclusions": ["Belief propagation converges to the MWM"]
+    },
+    {
+      "id": "P9.14",
+      "type": "proof",
+      "name": null,
+      "section": "9.19",
+      "proves": "R9.4",
+      "statement": "Unroll to a depth-$k$ tree (Lemma 9.14). If the tree matching $\\Lambda$ disagrees with the MWM $\\Pi$, an alternating path of length $2k$ maps to $\\geq k/n$ cycles. Each cycle swap gains $\\geq \\varepsilon$ (uniqueness gap). The leftover path costs $\\leq 2w^*$. For large $k$: gain $k\\varepsilon/n - 2w^* > 0$, contradicting optimality of $\\Lambda$.",
+      "proof_strategy": "unrolling + alternating path argument + uniqueness gap"
+    },
+    {
+      "id": "R9.5",
+      "type": "theorem",
+      "name": "Ising model phase transition on trees",
+      "formal": false,
+      "section": "9.21",
+      "statement": "For the Ising model on a regular tree of degree $d$, the phase transition occurs at $\\beta_0 = \\frac{1}{2}\\ln\\frac{d+1}{d-1}$. For $\\beta > \\beta_0$, the root spin is correlated with the leaf majority; for $\\beta < \\beta_0$, the root spin probability is $1/2$ regardless of leaves.",
+      "assumptions": ["Ising model on a $d$-regular tree"],
+      "conclusions": ["Phase transition at $\\beta_0 = \\frac{1}{2}\\ln\\frac{d+1}{d-1}$"]
+    },
+    {
+      "id": "A9.6",
+      "type": "algorithm",
+      "name": "NMF with Anchor Terms",
+      "section": "9.4",
+      "statement": "Given $A = BC$ with anchor terms: for each row $i$, solve the LP to check if row $i$ is a nonneg. linear combination of other rows. Remove such rows from $A$ and $B$ to get $\\hat{A} = \\hat{B}C$ with $\\hat{B}$ diagonal. Set $C = \\hat{A}$, $\\hat{B}=I$, and restore removed rows to recover $B$.",
+      "input": ["$d \\times n$ nonneg. matrix $A$ with rank $r$", "Each topic has an anchor term"],
+      "output": ["Nonneg. factors $B$ ($d \\times r$) and $C$ ($r \\times n$) with $A = BC$"]
+    },
+    {
+      "id": "A9.7",
+      "type": "algorithm",
+      "name": "Term-topic matrix recovery",
+      "section": "9.9",
+      "statement": "Given primary topic partition $T_1,\\ldots,T_r$: (1) For each $l,i$, compute $g(i,l)$ as the $(1-\\delta/4)$-fractile of $\\{a_{ij}: j \\in T_l\\}$. (2) Choose $i(l)$ with $g(i(l),l) \\geq (1-\\delta/2)\\mu$ and $g(i(l),l') \\leq (1-2\\delta)\\alpha g(i(l),l)$ for $l' \\neq l$. (3) Let $R_l$ be the $\\delta n/4$ documents with highest $a_{i(l),j}$. (4) Return $\\tilde{B}_{\\cdot,l} = \\frac{1}{|R_l|}\\sum_{j \\in R_l} A_{\\cdot,j}$.",
+      "input": ["Term-document matrix $A$", "Primary topic partition $T_1,\\ldots,T_r$"],
+      "output": ["Approximate term-topic matrix $\\tilde{B}$"]
+    },
+    {
+      "id": "PS9.2.1",
+      "type": "proof_step",
+      "parent_proof": "P9.2",
+      "section": "9.3",
+      "statement": "Given $A = BC$ with $B, C \\geq 0$, rescale each column of $B$ by a positive factor so that its entries sum to 1, and divide the corresponding row of $C$ by the same factor."
+    },
+    {
+      "id": "PS9.2.2",
+      "type": "proof_step",
+      "parent_proof": "P9.2",
+      "section": "9.3",
+      "statement": "After rescaling, $\\sum_i a_{ij} = \\sum_{i,l} b_{il} c_{lj} = \\sum_l c_{lj} (\\sum_i b_{il}) = \\sum_l c_{lj} = 1$, so columns of $C$ also sum to 1."
+    },
+    {
+      "id": "PS9.3.1",
+      "type": "proof_step",
+      "parent_proof": "P9.3",
+      "section": "9.3",
+      "statement": "Since $A = BC$, each row of $A$ is a linear combination of rows of $C$; since $\\mathrm{rank}(A) = r$, the row spaces of $A$ and $C$ coincide."
+    },
+    {
+      "id": "PS9.3.2",
+      "type": "proof_step",
+      "parent_proof": "P9.3",
+      "section": "9.3",
+      "statement": "Choose $r$ independent rows of $A$ to form $A_1$ and $r$ independent columns to form $A_2$. Write $C = S A_1$ and $B = A_2 T$ for unknown $r \\times r$ matrices $S, T$."
+    },
+    {
+      "id": "PS9.3.3",
+      "type": "proof_step",
+      "parent_proof": "P9.3",
+      "section": "9.3",
+      "statement": "NMF becomes: find $S, T$ such that $A = A_2 T S A_1$, $(S A_1)_{ij} \\geq 0$, and $(A_2 T)_{kl} \\geq 0$. This has $2r^2$ unknowns; solvable in time $\\exp(O(r^2))$ via the Theory of Reals."
+    },
+    {
+      "id": "PS9.4.1",
+      "type": "proof_step",
+      "parent_proof": "P9.4",
+      "section": "9.6",
+      "statement": "Write the marginal $q(y) = \\frac{1}{g(\\mu)} y^{\\mu-1} \\int (y_2 \\cdots y_r)^{\\mu-1} \\, dy_2 \\cdots dy_r$ with $y_2 + \\cdots + y_r = 1-y$."
+    },
+    {
+      "id": "PS9.4.2",
+      "type": "proof_step",
+      "parent_proof": "P9.4",
+      "section": "9.6",
+      "statement": "Substitute $z_l = y_l/(1-y)$ so that the integral becomes $(1-y)^{(r-1)\\mu}$ times a constant independent of $y$."
+    },
+    {
+      "id": "PS9.4.3",
+      "type": "proof_step",
+      "parent_proof": "P9.4",
+      "section": "9.6",
+      "statement": "Conclude $q(y) = c \\, y^{\\mu-1}(1-y)^{(r-1)\\mu}$ and determine $c = \\Gamma(r\\mu+1)/(\\Gamma(\\mu)\\Gamma((r-1)\\mu+1))$ by normalization."
+    },
+    {
+      "id": "PS9.5.1",
+      "type": "proof_step",
+      "parent_proof": "P9.5",
+      "section": "9.6",
+      "statement": "Since $\\mu < 1$, $y^{\\mu-1} > 1$ for $y \\in (0,1)$, so $q(y) \\geq c(1-y)^{(r-1)\\mu}$."
+    },
+    {
+      "id": "PS9.5.2",
+      "type": "proof_step",
+      "parent_proof": "P9.5",
+      "section": "9.6",
+      "statement": "Integrate: $\\int_{1-\\zeta}^1 q(y) dy \\geq c \\zeta^{(r-1)\\mu+1}/((r-1)\\mu+1)$."
+    },
+    {
+      "id": "PS9.5.3",
+      "type": "proof_step",
+      "parent_proof": "P9.5",
+      "section": "9.6",
+      "statement": "Lower bound $c$ using $\\Gamma(\\mu) \\leq 1/\\mu$ and $\\Gamma(r\\mu+1) \\geq 0.85$ to get $\\mathrm{Pr}(y_1 \\geq 1-\\zeta) \\geq 0.85\\mu\\zeta^{(r-1)\\mu+1}/((r-1)\\mu+1)$."
+    },
+    {
+      "id": "PS9.5.4",
+      "type": "proof_step",
+      "parent_proof": "P9.5",
+      "section": "9.6",
+      "statement": "For $\\mu = 1/r$: $(r-1)\\mu+1 < 2$ so $\\zeta^{(r-1)\\mu+1}/((r-1)\\mu+1) \\geq \\zeta^2/2$, giving $\\mathrm{Pr}(y_1 \\geq 1-\\zeta) \\geq 0.4\\zeta^2/r$."
+    },
+    {
+      "id": "PS9.5.5",
+      "type": "proof_step",
+      "parent_proof": "P9.5",
+      "section": "9.6",
+      "statement": "For $\\zeta < 0.5$, the events $\\{y_l > 1-\\zeta\\}$ are mutually exclusive (at most one $y_l > 1/2$), so $\\mathrm{Pr}(\\max_l y_l \\geq 1-\\zeta) = r \\cdot \\mathrm{Pr}(y_1 \\geq 1-\\zeta) \\geq 0.4\\zeta^2$."
+    },
+    {
+      "id": "PS9.6.1",
+      "type": "proof_step",
+      "parent_proof": "P9.6",
+      "section": "9.8",
+      "statement": "Apply Hoeffding-Chernoff: $\\mathrm{Pr}(|a_{ij} - p_{ij}| \\geq \\Delta) \\leq 2\\exp(-cm\\min(\\Delta^2/p_{ij}, \\Delta))$."
+    },
+    {
+      "id": "PS9.6.2",
+      "type": "proof_step",
+      "parent_proof": "P9.6",
+      "section": "9.8",
+      "statement": "Plug in $\\Delta = \\alpha\\delta\\max(p_{ij},\\mu)/4$. The choice of $\\mu = c\\log(10nd/\\delta)/(m\\alpha^2\\delta^2)$ ensures each probability $\\leq \\delta/(10nd)$."
+    },
+    {
+      "id": "PS9.6.3",
+      "type": "proof_step",
+      "parent_proof": "P9.6",
+      "section": "9.8",
+      "statement": "Union bound over $nd$ pairs $(i,j)$ gives failure probability $\\leq \\delta/10$."
+    },
+    {
+      "id": "PS9.8.1",
+      "type": "proof_step",
+      "parent_proof": "P9.8",
+      "section": "9.8",
+      "statement": "Claim 9.1: For catchword $i$ of topic $l$ and $j \\in T_l$, $p_{ij} = \\sum_{l'} b_{il'} c_{l'j} \\in [b_{il}\\alpha, b_{il}]$. For $j \\notin T_l$, $p_{ij} \\leq b_{il}(\\beta+\\rho) \\leq b_{il}\\alpha(1-3\\delta)$."
+    },
+    {
+      "id": "PS9.8.2",
+      "type": "proof_step",
+      "parent_proof": "P9.8",
+      "section": "9.8",
+      "statement": "Claim 9.2: By Lemma 9.6, $a_{ij} \\geq b_{il}\\alpha(1-\\delta/4)$ for $j \\in T_l$ and $a_{ij} \\leq b_{il}\\alpha(1-11\\delta/4)$ for $j \\notin T_l$."
+    },
+    {
+      "id": "PS9.8.3",
+      "type": "proof_step",
+      "parent_proof": "P9.8",
+      "section": "9.8",
+      "statement": "Claim 9.3: Using the pure document $j_0$ for topic $l$, show $\\mu_i \\in ((1-5\\delta/2)b_{il}\\alpha, \\, b_{il}\\alpha(1-\\delta/2))$, so $\\mu_i$ separates in-topic from off-topic $a_{ij}$ values."
+    },
+    {
+      "id": "PS9.7.1",
+      "type": "proof_step",
+      "parent_proof": "P9.7",
+      "section": "9.8",
+      "statement": "For catchwords: Lemma 9.8 gives $R_i = T_l$. Each topic has at least one catchword, so all $T_l$ are discovered."
+    },
+    {
+      "id": "PS9.7.2",
+      "type": "proof_step",
+      "parent_proof": "P9.7",
+      "section": "9.8",
+      "statement": "For noncatchwords: if $\\mu_i < \\mu\\alpha(1-5\\delta/2)$ then $R_i = \\emptyset$. Otherwise, show $p_{ij_0} \\geq a(1-\\delta/2)$ and $b_{il} \\geq \\mu(1-3\\delta)$ using Lemma 9.6."
+    },
+    {
+      "id": "PS9.7.3",
+      "type": "proof_step",
+      "parent_proof": "P9.7",
+      "section": "9.8",
+      "statement": "For all $j \\in T_l$, $a_{ij} \\geq a(1-\\delta)\\alpha = \\mu_i$, so $T_l \\subseteq R_i$. If $T_l \\subsetneq R_i$, pruning removes row $i$ since some catchword $i_0$ has $R_{i_0} = T_l \\subset R_i$."
+    },
+    {
+      "id": "PS9.11.1",
+      "type": "proof_step",
+      "parent_proof": "P9.11",
+      "section": "9.9",
+      "statement": "Assume for contradiction $b_{il'} > \\alpha b_{il}$ for some $l' \\neq l$. Then $\\rho_i < b_{il'}/\\alpha$ by (9.15)."
+    },
+    {
+      "id": "PS9.11.2",
+      "type": "proof_step",
+      "parent_proof": "P9.11",
+      "section": "9.9",
+      "statement": "For $j \\in W_{l'}$: $p_{ij} \\geq b_{il'}(1-\\delta/4)$ by (9.17). By Lemma 9.6 and Lemma 9.10, $a_{ij} \\geq b_{il'}(1-3\\delta/4)$, so $g(i,l') \\geq b_{il'}(1-3\\delta/4)$ by (9.19)."
+    },
+    {
+      "id": "PS9.11.3",
+      "type": "proof_step",
+      "parent_proof": "P9.11",
+      "section": "9.9",
+      "statement": "Since $p_{ij} \\leq \\rho_i$ for all $j$, $g(i,l) \\leq b_{il'}(1+5\\delta/6)/\\alpha$ by (9.20). The selection criterion gives $g(i,l') \\leq g(i,l)\\alpha(1-2\\delta) \\leq b_{il'}(1-\\delta)$, contradicting (9.19)."
+    },
+    {
+      "id": "PS9.12.1",
+      "type": "proof_step",
+      "parent_proof": "P9.12",
+      "section": "9.9",
+      "statement": "For $j$ with $c_{lj} < 1-2\\delta$: $p_{ij} \\leq b_{il}(1-2\\delta) + 2\\delta\\alpha b_{il} \\leq b_{il}(1-1.2\\delta)$ by Lemma 9.11, so $a_{ij} < b_{il}(1-\\delta)$."
+    },
+    {
+      "id": "PS9.12.2",
+      "type": "proof_step",
+      "parent_proof": "P9.12",
+      "section": "9.9",
+      "statement": "For $j \\in W_l$: $p_{ij} \\geq b_{il}(1-\\delta/4)$ implies $a_{ij} \\geq b_{il}(1-\\delta) \\geq g(i,l)$. So no impure document has $a_{ij} \\geq g(i,l)$, hence $R_l \\subseteq \\{j: c_{lj} \\geq 1-2\\delta\\}$."
+    },
+    {
+      "id": "PS9.13.1",
+      "type": "proof_step",
+      "parent_proof": "P9.13",
+      "section": "9.9",
+      "statement": "By Lemma 9.12, for each $j \\in R_l$, $c_{lj} \\geq 1-2\\delta$, so $P_{\\cdot,j} = (1-\\gamma)B_{\\cdot,l} + \\mathbf{v}$ with $\\|\\mathbf{v}\\|_1 \\leq 2\\delta$. Thus $\\|\\frac{1}{|R_l|}\\sum_{j \\in R_l} \\mathbf{p}_{\\cdot,j} - \\mathbf{b}_{\\cdot,l}\\|_1 \\leq 2\\delta$."
+    },
+    {
+      "id": "PS9.13.2",
+      "type": "proof_step",
+      "parent_proof": "P9.13",
+      "section": "9.9",
+      "statement": "Define $x = \\frac{1}{|R|}\\|\\sum_{j \\in R} \\mathbf{v}_{\\cdot,j}\\|_1$. Bound $E(x) \\leq \\delta$ using Jensen, independence, Cauchy-Schwarz, $E(v_{ij}^2) = p_{ij}/m$, and $n \\geq cd/(m\\delta^3)$."
+    },
+    {
+      "id": "PS9.13.3",
+      "type": "proof_step",
+      "parent_proof": "P9.13",
+      "section": "9.9",
+      "statement": "Changing one of the $m|R|$ random terms changes $x$ by $\\leq 1/(m|R|)$, so Bounded Difference Inequality gives $\\mathrm{Pr}(|x - E(x)| > \\delta) \\leq 2\\exp(-\\delta^2\\delta mn/8)$."
+    },
+    {
+      "id": "PS9.13.4",
+      "type": "proof_step",
+      "parent_proof": "P9.13",
+      "section": "9.9",
+      "statement": "Union bound over $\\binom{n}{\\delta n/4} \\leq \\exp(c\\delta n)$ subsets: $\\mathrm{Pr}(\\exists R: x \\geq 2\\delta) \\leq 2\\exp(-c\\delta^3 mn + c\\delta n) \\leq \\delta$ since $m \\geq c/\\delta^2$."
+    },
+    {
+      "id": "PS9.14.1",
+      "type": "proof_step",
+      "parent_proof": "P9.14",
+      "section": "9.19",
+      "statement": "Unroll the constraint graph to a depth-$k$ tree. By Lemma 9.14, the tree messages equal the loopy graph messages after $k$ iterations."
+    },
+    {
+      "id": "PS9.14.2",
+      "type": "proof_step",
+      "parent_proof": "P9.14",
+      "section": "9.19",
+      "statement": "If the tree matching $\\Lambda$ disagrees with MWM $\\Pi$ at the root, there is an alternating path of length $2k$ consisting of edges in $\\Pi$ and $\\Lambda$."
+    },
+    {
+      "id": "PS9.14.3",
+      "type": "proof_step",
+      "parent_proof": "P9.14",
+      "section": "9.19",
+      "statement": "Map the path to the bipartite graph: it decomposes into $m \\geq k/n$ cycles plus a leftover simple path. Each cycle swap gains $\\geq \\varepsilon$ (uniqueness gap)."
+    },
+    {
+      "id": "PS9.14.4",
+      "type": "proof_step",
+      "parent_proof": "P9.14",
+      "section": "9.19",
+      "statement": "Total gain $\\geq k\\varepsilon/n - 2w^*$. For large $k$ this is positive, contradicting optimality of $\\Lambda$. So $\\Lambda$ must agree with $\\Pi$ at each root."
+    },
+    {
+      "id": "PS9.5r.1",
+      "type": "proof_step",
+      "parent_proof": "P9.5r",
+      "section": "9.21",
+      "statement": "For a height-one tree of degree $d$ with leaf spin probability $p$, compute: $\\mathrm{Pr}(\\text{root} = +1) \\propto e^{-d\\beta}[pe^{2\\beta} + 1-p]^d$ and $\\mathrm{Pr}(\\text{root} = -1) \\propto e^{-d\\beta}[p + (1-p)e^{2\\beta}]^d$."
+    },
+    {
+      "id": "PS9.5r.2",
+      "type": "proof_step",
+      "parent_proof": "P9.5r",
+      "section": "9.21",
+      "statement": "So $q = [pe^{2\\beta}+1-p]^d / ([pe^{2\\beta}+1-p]^d + [p+(1-p)e^{2\\beta}]^d)$. Compute $\\partial q/\\partial p|_{p=1/2} = d(e^{2\\beta}-1)/(1+e^{2\\beta})$."
+    },
+    {
+      "id": "PS9.5r.3",
+      "type": "proof_step",
+      "parent_proof": "P9.5r",
+      "section": "9.21",
+      "statement": "Set $\\partial q/\\partial p|_{p=1/2} = 1$: solving $d(e^{2\\beta}-1)/(1+e^{2\\beta}) = 1$ gives $e^{2\\beta} = (d+1)/(d-1)$, so $\\beta_0 = \\frac{1}{2}\\ln\\frac{d+1}{d-1}$."
+    },
+    {
+      "id": "PS9.5r.4",
+      "type": "proof_step",
+      "parent_proof": "P9.5r",
+      "section": "9.21",
+      "statement": "Show $q$ is monotone increasing in $p$ by writing $q = 1/(1+B/A)$ where $A$ increases and $B$ decreases in $p$. Iteration of the height-one map gives the phase transition."
+    },
+    {
+      "id": "P9.5r",
+      "type": "proof",
+      "name": null,
+      "section": "9.21",
+      "proves": "R9.5",
+      "statement": "Compute root spin probability for height-one tree, take the derivative at $p=1/2$, set it to 1, and solve for $\\beta$. Monotonicity of $q$ in $p$ ensures iteration converges.",
+      "proof_strategy": "height-one recursion + derivative at fixed point + monotonicity"
+    }
+  ],
+  "edges": [
+    {"source": "D9.4", "target": "L9.1", "type": "uses", "note": "Pure Topic Assumption required"},
+    {"source": "D9.5", "target": "L9.1", "type": "uses", "note": "Separability Assumption required"},
+    {"source": "D9.1", "target": "D9.2", "type": "uses", "note": "clustering defined for the document generation process"},
+    {"source": "D9.4", "target": "D9.2", "type": "uses"},
+    {"source": "D9.5", "target": "D9.2", "type": "uses"},
+    {"source": "L9.1", "target": "D9.2", "type": "uses", "note": "lemma solves approximate clustering under pure topic model"},
+    {"source": "P9.2", "target": "L9.2", "type": "proves"},
+    {"source": "P9.3", "target": "L9.3", "type": "proves"},
+    {"source": "L9.2", "target": "L9.3", "type": "uses", "note": "reduction to NMF used before reformulation"},
+    {"source": "L9.3", "target": "R9.1", "type": "uses", "note": "NP-hardness motivates constant-$r$ result"},
+    {"source": "D9.3", "target": "A9.6", "type": "uses", "note": "anchor term assumption enables the algorithm"},
+    {"source": "L9.2", "target": "A9.6", "type": "uses", "note": "column-sum normalization"},
+    {"source": "D9.6", "target": "L9.4", "type": "uses"},
+    {"source": "P9.4", "target": "L9.4", "type": "proves"},
+    {"source": "L9.4", "target": "L9.5", "type": "uses", "note": "uses marginal density form"},
+    {"source": "P9.5", "target": "L9.5", "type": "proves"},
+    {"source": "L9.5", "target": "D9.7", "type": "uses", "note": "LDA motivates primary topic and pure document assumptions"},
+    {"source": "D9.7", "target": "A9.1", "type": "uses"},
+    {"source": "L9.6", "target": "A9.1", "type": "uses", "note": "concentration guarantees thresholding works"},
+    {"source": "P9.6", "target": "L9.6", "type": "proves"},
+    {"source": "D9.7", "target": "T9.7", "type": "uses"},
+    {"source": "L9.8", "target": "T9.7", "type": "uses", "note": "catchword case is the core"},
+    {"source": "P9.7", "target": "T9.7", "type": "proves"},
+    {"source": "A9.1", "target": "T9.7", "type": "uses", "note": "theorem proves algorithm correctness"},
+    {"source": "CL9.1", "target": "L9.8", "type": "uses"},
+    {"source": "CL9.2", "target": "L9.8", "type": "uses"},
+    {"source": "CL9.3", "target": "L9.8", "type": "uses"},
+    {"source": "P9.8", "target": "L9.8", "type": "proves"},
+    {"source": "L9.6", "target": "CL9.2", "type": "uses"},
+    {"source": "CL9.1", "target": "CL9.2", "type": "uses"},
+    {"source": "L9.6", "target": "CL9.3", "type": "uses"},
+    {"source": "D9.7", "target": "CL9.1", "type": "uses"},
+    {"source": "T9.7", "target": "L9.9", "type": "uses", "note": "primary topic partition known"},
+    {"source": "L9.6", "target": "L9.9", "type": "uses"},
+    {"source": "P9.9", "target": "L9.9", "type": "proves"},
+    {"source": "L9.9", "target": "A9.7", "type": "uses", "note": "ensures step 2 is feasible"},
+    {"source": "L9.6", "target": "L9.10", "type": "uses"},
+    {"source": "L9.10", "target": "L9.11", "type": "uses"},
+    {"source": "L9.11", "target": "L9.12", "type": "uses"},
+    {"source": "L9.9", "target": "L9.11", "type": "uses", "note": "criterion (9.14) implies quasi-catchword"},
+    {"source": "P9.11", "target": "L9.11", "type": "proves"},
+    {"source": "P9.12", "target": "L9.12", "type": "proves"},
+    {"source": "L9.12", "target": "T9.13", "type": "uses"},
+    {"source": "P9.13", "target": "T9.13", "type": "proves"},
+    {"source": "T9.7", "target": "A9.7", "type": "uses", "note": "needs primary topic partition"},
+    {"source": "A9.7", "target": "T9.13", "type": "uses", "note": "theorem proves algorithm correctness"},
+    {"source": "D9.8", "target": "A9.2", "type": "uses"},
+    {"source": "D9.8", "target": "A9.3", "type": "uses"},
+    {"source": "A9.2", "target": "A9.3", "type": "uses", "note": "Viterbi modifies the forward algorithm"},
+    {"source": "A9.2", "target": "A9.4", "type": "uses", "note": "forward/backward probabilities used in E-step"},
+    {"source": "D9.8", "target": "A9.4", "type": "uses"},
+    {"source": "D9.9", "target": "D9.11", "type": "uses", "note": "Bayesian networks are a special case"},
+    {"source": "D9.10", "target": "D9.11", "type": "uses", "note": "MRFs generalized by factor graphs"},
+    {"source": "D9.11", "target": "A9.5", "type": "uses"},
+    {"source": "D9.11", "target": "R9.2", "type": "uses"},
+    {"source": "A9.5", "target": "R9.2", "type": "uses"},
+    {"source": "R9.2", "target": "R9.3", "type": "uses", "note": "extends tree result to single cycle"},
+    {"source": "D9.11", "target": "L9.14", "type": "uses"},
+    {"source": "L9.14", "target": "R9.4", "type": "uses"},
+    {"source": "P9.14", "target": "R9.4", "type": "proves"},
+    {"source": "R9.2", "target": "R9.4", "type": "uses", "note": "unrolled tree is a tree, so tree algorithm is correct"},
+    {"source": "D9.10", "target": "R9.5", "type": "uses", "note": "Ising model is a Markov random field"},
+    {"source": "R9.2", "target": "R9.5", "type": "uses", "note": "exact computation on tree used for iteration"},
+    {"source": "P9.5r", "target": "R9.5", "type": "proves"},
+
+    {"source": "E9.1", "target": "D9.1", "type": "uses", "note": "$P=BC$ is the core factorization"},
+    {"source": "E9.1", "target": "E9.2", "type": "uses", "note": "expectation of $A$ given $P=BC$"},
+    {"source": "E9.1", "target": "E9.3", "type": "uses", "note": "noise form of topic model"},
+    {"source": "E9.3", "target": "L9.2", "type": "uses", "note": "NMF setup"},
+    {"source": "E9.3", "target": "L9.3", "type": "uses"},
+    {"source": "E9.5", "target": "D9.7", "type": "uses", "note": "parameter constraint"},
+    {"source": "E9.6", "target": "D9.7", "type": "uses", "note": "primary topic condition"},
+    {"source": "E9.7", "target": "D9.7", "type": "uses", "note": "catchword condition"},
+    {"source": "E9.8", "target": "T9.7", "type": "uses", "note": "defines $l(i)$ used in theorem"},
+    {"source": "E9.9", "target": "CL9.1", "type": "uses", "note": "key bound on off-topic $p_{ij}$"},
+    {"source": "E9.6", "target": "CL9.1", "type": "uses"},
+    {"source": "E9.7", "target": "CL9.1", "type": "uses"},
+    {"source": "E9.13", "target": "L9.9", "type": "uses", "note": "selection criterion"},
+    {"source": "E9.13", "target": "L9.11", "type": "uses"},
+    {"source": "E9.14", "target": "P9.11", "type": "uses"},
+    {"source": "E9.15", "target": "P9.11", "type": "uses"},
+    {"source": "E9.16", "target": "P9.11", "type": "uses"},
+    {"source": "E9.17", "target": "P9.11", "type": "uses"},
+    {"source": "E9.18", "target": "P9.11", "type": "uses"},
+    {"source": "E9.19", "target": "P9.11", "type": "uses"},
+    {"source": "E9.20", "target": "T9.13", "type": "uses", "note": "bias bound on averaged columns"},
+    {"source": "E9.21", "target": "T9.13", "type": "uses", "note": "noise bound on averaged columns"},
+    {"source": "E9.22", "target": "P9.13", "type": "uses", "note": "Bounded Difference tail bound"},
+    {"source": "E9.23", "target": "L9.4", "type": "uses", "note": "marginal density formula"},
+    {"source": "E9.24", "target": "L9.5", "type": "uses", "note": "primary topic probability"},
+    {"source": "E9.25", "target": "A9.2", "type": "uses", "note": "forward recursion"},
+    {"source": "E9.26", "target": "A9.4", "type": "uses", "note": "re-estimation formula"},
+    {"source": "E9.27", "target": "D9.9", "type": "uses", "note": "factorization property"},
+    {"source": "E9.28", "target": "D9.10", "type": "uses", "note": "Ising energy function"},
+    {"source": "E9.29", "target": "R9.5", "type": "uses", "note": "Gibbs measure"},
+    {"source": "E9.30", "target": "R9.5", "type": "uses", "note": "root probability formula"},
+    {"source": "E9.31", "target": "R9.5", "type": "uses", "note": "phase transition equation"},
+    {"source": "E9.32", "target": "R9.5", "type": "uses", "note": "critical $\\beta$ value"},
+    {"source": "E9.33", "target": "R9.3", "type": "uses", "note": "loop message matrix product"},
+    {"source": "E9.34", "target": "R9.4", "type": "uses", "note": "MWM factor structure"},
+
+    {"source": "PS9.2.1", "target": "PS9.2.2", "type": "next_step"},
+    {"source": "PS9.3.1", "target": "PS9.3.2", "type": "next_step"},
+    {"source": "PS9.3.2", "target": "PS9.3.3", "type": "next_step"},
+    {"source": "PS9.4.1", "target": "PS9.4.2", "type": "next_step"},
+    {"source": "PS9.4.2", "target": "PS9.4.3", "type": "next_step"},
+    {"source": "PS9.5.1", "target": "PS9.5.2", "type": "next_step"},
+    {"source": "PS9.5.2", "target": "PS9.5.3", "type": "next_step"},
+    {"source": "PS9.5.3", "target": "PS9.5.4", "type": "next_step"},
+    {"source": "PS9.5.4", "target": "PS9.5.5", "type": "next_step"},
+    {"source": "PS9.6.1", "target": "PS9.6.2", "type": "next_step"},
+    {"source": "PS9.6.2", "target": "PS9.6.3", "type": "next_step"},
+    {"source": "PS9.8.1", "target": "PS9.8.2", "type": "next_step"},
+    {"source": "PS9.8.2", "target": "PS9.8.3", "type": "next_step"},
+    {"source": "PS9.7.1", "target": "PS9.7.2", "type": "next_step"},
+    {"source": "PS9.7.2", "target": "PS9.7.3", "type": "next_step"},
+    {"source": "PS9.11.1", "target": "PS9.11.2", "type": "next_step"},
+    {"source": "PS9.11.2", "target": "PS9.11.3", "type": "next_step"},
+    {"source": "PS9.12.1", "target": "PS9.12.2", "type": "next_step"},
+    {"source": "PS9.13.1", "target": "PS9.13.2", "type": "next_step"},
+    {"source": "PS9.13.2", "target": "PS9.13.3", "type": "next_step"},
+    {"source": "PS9.13.3", "target": "PS9.13.4", "type": "next_step"},
+    {"source": "PS9.14.1", "target": "PS9.14.2", "type": "next_step"},
+    {"source": "PS9.14.2", "target": "PS9.14.3", "type": "next_step"},
+    {"source": "PS9.14.3", "target": "PS9.14.4", "type": "next_step"},
+    {"source": "PS9.5r.1", "target": "PS9.5r.2", "type": "next_step"},
+    {"source": "PS9.5r.2", "target": "PS9.5r.3", "type": "next_step"},
+    {"source": "PS9.5r.3", "target": "PS9.5r.4", "type": "next_step"},
+
+    {"source": "PS9.8.2", "target": "L9.6", "type": "uses", "note": "concentration bound for $a_{ij}$"},
+    {"source": "PS9.8.3", "target": "L9.6", "type": "uses", "note": "concentration for threshold"},
+    {"source": "PS9.7.3", "target": "L9.8", "type": "uses", "note": "catchword gives $R_{i_0} = T_l$ for pruning"},
+    {"source": "PS9.11.2", "target": "L9.6", "type": "uses"},
+    {"source": "PS9.11.2", "target": "L9.10", "type": "uses"},
+    {"source": "PS9.12.1", "target": "L9.11", "type": "uses"},
+    {"source": "PS9.13.1", "target": "L9.12", "type": "uses"},
+    {"source": "PS9.14.1", "target": "L9.14", "type": "uses"}
+  ]
+}

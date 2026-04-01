@@ -1,0 +1,841 @@
+{
+  "metadata": {
+    "source": "Foundations of Data Science, Blum-Hopcroft-Kannan (2020)",
+    "chapter": 4,
+    "chapter_title": "Random Walks and Markov Chains",
+    "sections": "4.1-4.8",
+    "annotator": "Claude (auto-extracted, enhanced)",
+    "date": "2026-03-27",
+    "enhancements": ["equations", "proof_steps"]
+  },
+  "nodes": [
+    {
+      "id": "D4.1",
+      "type": "definition",
+      "name": "Epsilon-mixing time",
+      "section": "4.4",
+      "statement": "Fix $\\varepsilon > 0$. The $\\varepsilon$-mixing time of a Markov chain is the minimum integer $t$ such that for any starting distribution $\\mathbf{p}$, the $\\ell_1$ distance between the $t$-step running average $\\mathbf{a}(t)$ and the stationary distribution is at most $\\varepsilon$."
+    },
+    {
+      "id": "D4.2",
+      "type": "definition",
+      "name": "Normalized conductance of a subset",
+      "section": "4.4",
+      "statement": "For a subset $S$ of vertices with stationary mass $\\pi(S) = \\sum_{x \\in S} \\pi_x$, the normalized conductance is $\\Phi(S) = \\frac{\\sum_{(x,y) \\in (S,\\bar{S})} \\pi_x p_{xy}}{\\min(\\pi(S), \\pi(\\bar{S}))}$."
+    },
+    {
+      "id": "D4.3",
+      "type": "definition",
+      "name": "Normalized conductance of a Markov chain",
+      "section": "4.4",
+      "statement": "The normalized conductance of the Markov chain is $\\Phi = \\min_{S \\subset V, S \\neq \\emptyset} \\Phi(S)$."
+    },
+    {
+      "id": "L4.1",
+      "type": "lemma",
+      "name": "Rank of augmented transition matrix",
+      "section": "4.1",
+      "statement": "Let $P$ be the transition probability matrix for a connected Markov chain. The $n \\times (n+1)$ matrix $A = [P - I, \\mathbf{1}]$ has rank $n$.",
+      "assumptions": ["$P$ is the transition matrix of a connected Markov chain on $n$ states"],
+      "conclusions": ["The matrix $[P - I, \\mathbf{1}]$ has rank $n$"]
+    },
+    {
+      "id": "P4.1",
+      "type": "proof",
+      "name": null,
+      "section": "4.1",
+      "proves": "L4.1",
+      "statement": "Show $(\\mathbf{1}, 0)$ is one solution to $A\\mathbf{x} = \\mathbf{0}$. Assume a perpendicular second solution exists; connectedness forces a contradiction on the sign of $\\alpha$.",
+      "proof_strategy": "contradiction via max/min argument on connected graph"
+    },
+    {
+      "id": "T4.2",
+      "type": "theorem",
+      "name": "Fundamental Theorem of Markov Chains",
+      "section": "4.1",
+      "statement": "For a connected Markov chain there is a unique probability vector $\\pi$ satisfying $\\pi P = \\pi$. For any starting distribution, $\\lim_{t \\to \\infty} \\mathbf{a}(t) = \\pi$.",
+      "assumptions": ["Markov chain is connected (strongly connected directed graph)"],
+      "conclusions": ["Unique stationary distribution $\\pi$ with $\\pi P = \\pi$", "The running average $\\mathbf{a}(t) \\to \\pi$ for any initial distribution"]
+    },
+    {
+      "id": "P4.2",
+      "type": "proof",
+      "name": null,
+      "section": "4.1",
+      "proves": "T4.2",
+      "statement": "Show $\\mathbf{a}(t)P - \\mathbf{a}(t) = \\frac{1}{t}(\\mathbf{p}(t) - \\mathbf{p}(0)) \\to \\mathbf{0}$. Use Lemma 4.1 to invert a submatrix of $[P-I, \\mathbf{1}]$ and extract the limit $\\pi = [\\mathbf{0},1]B^{-1}$.",
+      "proof_strategy": "telescoping + invertibility from Lemma 4.1"
+    },
+    {
+      "id": "L4.3",
+      "type": "lemma",
+      "name": "Detailed balance implies stationarity",
+      "section": "4.1",
+      "statement": "For a random walk on a strongly connected graph with edge probabilities, if $\\pi_x p_{xy} = \\pi_y p_{yx}$ for all $x, y$ and $\\sum_x \\pi_x = 1$, then $\\pi$ is the stationary distribution.",
+      "assumptions": ["Strongly connected graph with edge probabilities", "$\\pi_x p_{xy} = \\pi_y p_{yx}$ for all $x, y$", "$\\sum_x \\pi_x = 1$"],
+      "conclusions": ["$\\pi$ is the unique stationary distribution"]
+    },
+    {
+      "id": "P4.3",
+      "type": "proof",
+      "name": null,
+      "section": "4.1",
+      "proves": "L4.3",
+      "statement": "Sum the detailed balance equation over $y$ to get $\\pi P = \\pi$. Uniqueness follows from Theorem 4.2.",
+      "proof_strategy": "sum detailed balance, invoke uniqueness"
+    },
+    {
+      "id": "Prop4.4",
+      "type": "proposition",
+      "name": "Total variation as positive part",
+      "section": "4.2",
+      "statement": "For probability distributions $\\mathbf{p}$ and $\\mathbf{q}$: $\\|\\mathbf{p} - \\mathbf{q}\\|_1 = 2\\sum_i (p_i - q_i)^+ = 2\\sum_i (q_i - p_i)^+$.",
+      "assumptions": ["$\\mathbf{p}$ and $\\mathbf{q}$ are probability distributions"],
+      "conclusions": ["$\\|\\mathbf{p} - \\mathbf{q}\\|_1 = 2\\sum_i (p_i - q_i)^+$"]
+    },
+    {
+      "id": "A4.1",
+      "type": "algorithm",
+      "name": "Metropolis-Hastings algorithm",
+      "section": "4.2.1",
+      "statement": "Given target distribution $\\mathbf{p}$ on states and connected undirected graph $G$ with max degree $r$: at state $i$ pick neighbor $j$ with prob $1/r$; move to $j$ with prob $\\min(1, p_j/p_i)$. Transition prob is $p_{ij} = \\frac{1}{r}\\min(1, p_j/p_i)$.",
+      "input": ["Target distribution $\\mathbf{p}$", "Connected undirected graph $G$ on states"],
+      "output": ["Markov chain with stationary distribution $\\mathbf{p}$"]
+    },
+    {
+      "id": "A4.2",
+      "type": "algorithm",
+      "name": "Gibbs sampling",
+      "section": "4.2.2",
+      "statement": "Given target distribution $p(\\mathbf{x})$ with $\\mathbf{x} = (x_1, \\ldots, x_d)$: randomly choose coordinate $i$, resample $x_i$ from conditional $p(x_i \\mid x_{-i})$. Transition prob $p_{\\mathbf{x}\\mathbf{y}} = \\frac{1}{d} p(y_1 \\mid x_2, \\ldots, x_d)$ when $\\mathbf{x}, \\mathbf{y}$ differ in coordinate 1.",
+      "input": ["Target distribution $p(\\mathbf{x})$ on $\\mathbf{x} = (x_1, \\ldots, x_d)$"],
+      "output": ["Markov chain with stationary distribution $p(\\mathbf{x})$"]
+    },
+    {
+      "id": "T4.5",
+      "type": "theorem",
+      "name": "Mixing time bound via conductance",
+      "section": "4.4",
+      "statement": "The $\\varepsilon$-mixing time of a random walk on an undirected graph is $O(\\ln(1/\\pi_{\\min}) / (\\Phi^2 \\varepsilon^3))$ where $\\pi_{\\min}$ is the minimum stationary probability.",
+      "assumptions": ["Random walk on a connected undirected graph", "$\\Phi$ is the normalized conductance", "$\\pi_{\\min}$ is the minimum stationary probability"],
+      "conclusions": ["$\\varepsilon$-mixing time is $O(\\ln(1/\\pi_{\\min}) / (\\Phi^2 \\varepsilon^3))$"]
+    },
+    {
+      "id": "P4.5",
+      "type": "proof",
+      "name": null,
+      "section": "4.4",
+      "proves": "T4.5",
+      "statement": "Define $v_i = a_i/\\pi_i$ sorted decreasingly. Group heavy states into groups $G_t$. Bound $\\|\\mathbf{a} - \\pi\\|_1$ via area under step function $g$. Use probability flow argument (Lemma 4.6) to bound each group's contribution.",
+      "proof_strategy": "probability flow + grouping of heavy states"
+    },
+    {
+      "id": "L4.6",
+      "type": "lemma",
+      "name": "Flow bound per group",
+      "section": "4.4",
+      "statement": "With groups $G_1, \\ldots, G_r$ of heavy states defined in Theorem 4.5: $\\pi(G_1 \\cup \\cdots \\cup G_r)(u_t - u_{t+1}) \\leq \\frac{8}{t \\Phi \\varepsilon}$.",
+      "assumptions": ["Groups $G_t$ as defined in the proof of Theorem 4.5", "Connected undirected graph with conductance $\\Phi$"],
+      "conclusions": ["$\\pi(G_1 \\cup \\cdots \\cup G_r)(u_t - u_{t+1}) \\leq 8/(t \\Phi \\varepsilon)$"]
+    },
+    {
+      "id": "P4.6",
+      "type": "proof",
+      "name": null,
+      "section": "4.4",
+      "proves": "L4.6",
+      "statement": "Reckon net probability loss from heavy set $A = \\{1,\\ldots,k\\}$ in two ways: (1) telescoping gives $\\leq 2/t$, (2) net-flow$(i,j) = \\pi_j p_{ji}(v_i - v_j) \\geq 0$. Combine with conductance lower bound to get $v_k - v_{l+1} \\leq 8/(t\\varepsilon\\Phi\\gamma_k)$.",
+      "proof_strategy": "dual reckoning of probability flow"
+    },
+    {
+      "id": "L4.7",
+      "type": "lemma",
+      "name": "Hitting time of a path",
+      "section": "4.6",
+      "statement": "The expected time for a random walk from one end of a path of $n$ vertices to reach the other end is $(n-1)^2 = \\Theta(n^2)$.",
+      "assumptions": ["Path graph on $n$ vertices", "Walk starts at vertex 1"],
+      "conclusions": ["$h_{1,n} = (n-1)^2$"]
+    },
+    {
+      "id": "P4.7",
+      "type": "proof",
+      "name": null,
+      "section": "4.6",
+      "proves": "L4.7",
+      "statement": "Derive recurrence $h_{i,i+1} = 2 + h_{i-1,i}$ with $h_{1,2}=1$. Solve to get $h_{i,i+1} = 2i-1$. Sum: $h_{1,n} = \\sum_{i=1}^{n-1}(2i-1) = (n-1)^2$.",
+      "proof_strategy": "recurrence relation"
+    },
+    {
+      "id": "L4.8",
+      "type": "lemma",
+      "name": "Expected visits on a path",
+      "section": "4.6",
+      "statement": "For a random walk from vertex 1 to vertex $n$ on a path, the expected time at vertex $i$ is $t(i) = n-1$ for $i=1$, $t(i) = 2(n-i)$ for $2 \\leq i \\leq n-1$, and $t(n) = 1$.",
+      "assumptions": ["Path graph on $n$ vertices", "Walk from vertex 1 to vertex $n$"],
+      "conclusions": ["$t(1) = n-1$, $t(i) = 2(n-i)$ for $2 \\leq i \\leq n-1$, $t(n) = 1$"]
+    },
+    {
+      "id": "P4.8",
+      "type": "proof",
+      "name": null,
+      "section": "4.6",
+      "proves": "L4.8",
+      "statement": "Use $t(i) = \\frac{1}{2}[t(i-1) + t(i+1)]$ for interior vertices. Solve recurrence $t(i+1) = 2t(i) - t(i-1)$ with $t(n) = 1$, $t(n-1) = 2$. Verify total time is $(n-1)^2 + 1$.",
+      "proof_strategy": "recurrence relation"
+    },
+    {
+      "id": "T4.9",
+      "type": "theorem",
+      "name": "Commute time equals $2mr_{xy}$",
+      "section": "4.6",
+      "statement": "For a connected undirected graph with unit edge weights, commute$(x,y) = h_{xy} + h_{yx} = 2m r_{xy}$ where $m$ is the number of edges and $r_{xy}$ is the effective resistance.",
+      "assumptions": ["Connected undirected graph with unit resistances", "$m$ edges, effective resistance $r_{xy}$ between $x$ and $y$"],
+      "conclusions": ["commute$(x,y) = 2m r_{xy}$"]
+    },
+    {
+      "id": "P4.9",
+      "type": "proof",
+      "name": null,
+      "section": "4.6",
+      "proves": "T4.9",
+      "statement": "Inject current $d_i$ at each vertex $i$, extract $2m$ at $j$. Show voltage $v_{ij}$ satisfies same harmonic equation as hitting time $h_{ij}$. Superpose forward and reversed setups to get commute$(i,j) = 2m r_{ij}$.",
+      "proof_strategy": "harmonic function identification + superposition"
+    },
+    {
+      "id": "C4.10",
+      "type": "corollary",
+      "name": "Commute time for adjacent vertices",
+      "section": "4.6",
+      "statement": "If vertices $x$ and $y$ are connected by an edge, then $h_{xy} + h_{yx} \\leq 2m$.",
+      "assumptions": ["$x$ and $y$ are adjacent in a connected graph with $m$ edges"],
+      "conclusions": ["$h_{xy} + h_{yx} \\leq 2m$"]
+    },
+    {
+      "id": "P4.10",
+      "type": "proof",
+      "name": null,
+      "section": "4.6",
+      "proves": "C4.10",
+      "statement": "Adjacent vertices have effective resistance $r_{xy} \\leq 1$. Apply Theorem 4.9.",
+      "proof_strategy": "direct application of Theorem 4.9"
+    },
+    {
+      "id": "C4.11",
+      "type": "corollary",
+      "name": "Commute time upper bound",
+      "section": "4.6",
+      "statement": "For vertices $x$ and $y$ in an $n$-vertex graph, commute$(x,y) \\leq n^3$.",
+      "assumptions": ["Connected graph on $n$ vertices"],
+      "conclusions": ["commute$(x,y) \\leq n^3$"]
+    },
+    {
+      "id": "P4.11",
+      "type": "proof",
+      "name": null,
+      "section": "4.6",
+      "proves": "C4.11",
+      "statement": "By Theorem 4.9, commute$(x,y) = 2m r_{xy}$. Path of length $\\leq n$ gives $r_{xy} \\leq n$. Since $m \\leq \\binom{n}{2}$, we get commute$(x,y) \\leq n^3$.",
+      "proof_strategy": "bound $m$ and $r_{xy}$ separately"
+    },
+    {
+      "id": "T4.12",
+      "type": "theorem",
+      "name": "Cover time upper bound",
+      "section": "4.6",
+      "statement": "For a connected graph $G$ with $n$ vertices and $m$ edges, the cover time is at most $4m(n-1)$.",
+      "assumptions": ["Connected graph $G$ with $n$ vertices and $m$ edges"],
+      "conclusions": ["cover$(G) \\leq 4m(n-1)$"]
+    },
+    {
+      "id": "P4.12",
+      "type": "proof",
+      "name": null,
+      "section": "4.6",
+      "proves": "T4.12",
+      "statement": "Take a DFS spanning tree $T$. Each of its $n-1$ edges is traversed twice. By Corollary 4.10, $h_{xy} \\leq 2m$ for each tree edge. Total $\\leq 2(n-1) \\cdot 2m = 4m(n-1)$.",
+      "proof_strategy": "DFS tree traversal + Corollary 4.10"
+    },
+    {
+      "id": "T4.13",
+      "type": "theorem",
+      "name": "Cover time via effective resistance",
+      "section": "4.6",
+      "statement": "For undirected graph $G$ with $m$ edges: $m \\, r_{\\mathrm{eff}}(G) \\leq \\mathrm{cover}(G) \\leq 6e \\, m \\, r_{\\mathrm{eff}}(G) \\ln n + n$, where $r_{\\mathrm{eff}}(G) = \\max_{x,y} r_{xy}$.",
+      "assumptions": ["Connected undirected graph $G$ with $m$ edges and $n$ vertices"],
+      "conclusions": ["$m \\, r_{\\mathrm{eff}}(G) \\leq \\mathrm{cover}(G) \\leq 6e \\, m \\, r_{\\mathrm{eff}}(G) \\ln n + n$"]
+    },
+    {
+      "id": "P4.13",
+      "type": "proof",
+      "name": null,
+      "section": "4.6",
+      "proves": "T4.13",
+      "statement": "Lower bound: $m r_{\\mathrm{eff}} = \\frac{1}{2}$commute$(u,v) \\leq$ cover$(G)$. Upper bound: by Markov's inequality, prob of not reaching $y$ in $2e m r_{\\mathrm{eff}}$ steps is $\\leq 1/e$. After $6e m r_{\\mathrm{eff}} \\ln n$ steps, each vertex missed with prob $\\leq 1/n^3$. Remaining vertices cost $\\leq n$ in expectation.",
+      "proof_strategy": "lower bound by commute time, upper bound by Markov inequality + union bound"
+    },
+    {
+      "id": "E4.1",
+      "type": "equation",
+      "name": "One-step transition rule",
+      "section": "4.0",
+      "statement": "$\\mathbf{p}(t) P = \\mathbf{p}(t+1)$",
+      "context": "statement",
+      "parent_step": ""
+    },
+    {
+      "id": "E4.2",
+      "type": "equation",
+      "name": "Running average distribution",
+      "section": "4.1",
+      "statement": "$\\mathbf{a}(t) = \\frac{1}{t}(\\mathbf{p}(0) + \\mathbf{p}(1) + \\cdots + \\mathbf{p}(t-1))$",
+      "context": "statement",
+      "parent_step": ""
+    },
+    {
+      "id": "E4.3",
+      "type": "equation",
+      "name": "MCMC estimation error bound (Eq 4.2)",
+      "section": "4.2",
+      "statement": "$|\\sum_i f_i p_i - E(\\gamma)| \\leq f_{\\max} \\|\\mathbf{p} - \\mathbf{a}(t)\\|_1$",
+      "context": "statement",
+      "parent_step": ""
+    },
+    {
+      "id": "E4.4",
+      "type": "equation",
+      "name": "Metropolis-Hastings transition probability",
+      "section": "4.2.1",
+      "statement": "$p_{ij} = \\frac{1}{r} \\min(1, p_j / p_i)$",
+      "context": "statement",
+      "parent_step": ""
+    },
+    {
+      "id": "E4.5",
+      "type": "equation",
+      "name": "Metropolis-Hastings detailed balance verification",
+      "section": "4.2.1",
+      "statement": "$p_i p_{ij} = \\frac{p_i}{r} \\min(1, p_j / p_i) = \\frac{1}{r} \\min(p_i, p_j) = p_j p_{ji}$",
+      "context": "conclusion",
+      "parent_step": ""
+    },
+    {
+      "id": "E4.6",
+      "type": "equation",
+      "name": "Gibbs sampling transition probability",
+      "section": "4.2.2",
+      "statement": "$p_{\\mathbf{x}\\mathbf{y}} = \\frac{1}{d} p(y_1 \\mid x_2, x_3, \\ldots, x_d)$",
+      "context": "statement",
+      "parent_step": ""
+    },
+    {
+      "id": "E4.7",
+      "type": "equation",
+      "name": "Gibbs detailed balance verification",
+      "section": "4.2.2",
+      "statement": "$p(\\mathbf{x}) p_{\\mathbf{x}\\mathbf{y}} = \\frac{1}{d} \\frac{p(\\mathbf{x}) p(\\mathbf{y})}{p(x_2, x_3, \\ldots, x_d)} = p(\\mathbf{y}) p_{\\mathbf{y}\\mathbf{x}}$",
+      "context": "conclusion",
+      "parent_step": ""
+    },
+    {
+      "id": "E4.8",
+      "type": "equation",
+      "name": "Stationary distribution of weighted undirected walk",
+      "section": "4.4",
+      "statement": "$\\pi_x = w_x / w_{\\mathrm{total}}$ where $w_x = \\sum_y w_{xy}$ and $w_{\\mathrm{total}} = \\sum_{x'} w_{x'}$",
+      "context": "statement",
+      "parent_step": ""
+    },
+    {
+      "id": "E4.9",
+      "type": "equation",
+      "name": "L1 distance via heavy states (Eq 4.3)",
+      "section": "4.4",
+      "statement": "$\\|\\mathbf{a} - \\pi\\|_1 = 2 \\sum_{i=1}^{i_0} (v_i - 1) \\pi_i = 2 \\sum_{i \\geq i_0+1} (1 - v_i) \\pi_i$",
+      "context": "proof_step",
+      "parent_step": "PS4.5.2"
+    },
+    {
+      "id": "E4.10",
+      "type": "equation",
+      "name": "Area under g equals grouped sum (Eq 4.6)",
+      "section": "4.4",
+      "statement": "$\\int_0^{\\gamma_{i_0}} g(x) dx = \\sum_{t=1}^{r} \\pi(G_1 \\cup G_2 \\cup \\ldots \\cup G_t)(u_t - u_{t+1})$",
+      "context": "proof_step",
+      "parent_step": "PS4.5.3"
+    },
+    {
+      "id": "E4.11",
+      "type": "equation",
+      "name": "Net flow between ordered states",
+      "section": "4.4",
+      "statement": "$\\mathrm{net\\text{-}flow}(i, j) = \\pi_i p_{ij} v_i - \\pi_j p_{ji} v_j = \\pi_j p_{ji}(v_i - v_j) \\geq 0$",
+      "context": "proof_step",
+      "parent_step": "PS4.6.2"
+    },
+    {
+      "id": "E4.12",
+      "type": "equation",
+      "name": "Key bound from flow (Eq 4.10)",
+      "section": "4.4",
+      "statement": "$v_k - v_{l+1} \\leq \\frac{8}{t \\varepsilon \\Phi \\gamma_k}$",
+      "context": "proof_step",
+      "parent_step": "PS4.6.4"
+    },
+    {
+      "id": "E4.13",
+      "type": "equation",
+      "name": "Hitting time recurrence on a path",
+      "section": "4.6",
+      "statement": "$h_{i,i+1} = 2 + h_{i-1,i}$ with solution $h_{i,i+1} = 2i - 1$",
+      "context": "proof_step",
+      "parent_step": "PS4.7.1"
+    },
+    {
+      "id": "E4.14",
+      "type": "equation",
+      "name": "Hitting time of path by summation",
+      "section": "4.6",
+      "statement": "$h_{1,n} = \\sum_{i=1}^{n-1} (2i - 1) = (n-1)^2$",
+      "context": "proof_step",
+      "parent_step": "PS4.7.2"
+    },
+    {
+      "id": "E4.15",
+      "type": "equation",
+      "name": "Expected visits recurrence on a path",
+      "section": "4.6",
+      "statement": "$t(i+1) = 2t(i) - t(i-1)$ with $t(n) = 1$, $t(n-1) = 2$",
+      "context": "proof_step",
+      "parent_step": "PS4.8.1"
+    },
+    {
+      "id": "E4.16",
+      "type": "equation",
+      "name": "Ohm's law for edge current",
+      "section": "4.5",
+      "statement": "$i_{xy} = (v_x - v_y) c_{xy}$",
+      "context": "statement",
+      "parent_step": ""
+    },
+    {
+      "id": "E4.17",
+      "type": "equation",
+      "name": "Voltage as harmonic function",
+      "section": "4.5",
+      "statement": "$v_x = \\sum_y v_y p_{xy}$",
+      "context": "statement",
+      "parent_step": ""
+    },
+    {
+      "id": "E4.18",
+      "type": "equation",
+      "name": "Voltage equals hitting time (Eq 4.11 vs 4.12)",
+      "section": "4.6",
+      "statement": "$v_{ij} = 1 + \\sum_{k\\ \\mathrm{adj\\ to}\\ i} \\frac{1}{d_i} v_{kj}$ matches $h_{ij} = \\sum_{k\\ \\mathrm{adj\\ to}\\ i} \\frac{1}{d_i}(1 + h_{kj})$",
+      "context": "proof_step",
+      "parent_step": "PS4.9.2"
+    },
+    {
+      "id": "E4.19",
+      "type": "equation",
+      "name": "Commute time by superposition",
+      "section": "4.6",
+      "statement": "$\\mathrm{commute}(i,j) = h_{ij} + h_{ji} = 2m r_{ij}$",
+      "context": "proof_step",
+      "parent_step": "PS4.9.4"
+    },
+    {
+      "id": "E4.20",
+      "type": "equation",
+      "name": "Escape probability formula",
+      "section": "4.5",
+      "statement": "$p_{\\mathrm{escape}} = c_{\\mathrm{eff}} / c_a$",
+      "context": "statement",
+      "parent_step": ""
+    },
+    {
+      "id": "E4.21",
+      "type": "equation",
+      "name": "Current as net edge traversal frequency",
+      "section": "4.5",
+      "statement": "$i_{xy} = u_x p_{xy} - u_y p_{yx}$",
+      "context": "statement",
+      "parent_step": ""
+    },
+    {
+      "id": "E4.22",
+      "type": "equation",
+      "name": "Cover time DFS bound",
+      "section": "4.6",
+      "statement": "$\\mathrm{cover}(z, G) \\leq \\sum_{(x,y) \\in T, (y,x) \\in T} h_{xy} \\leq 4m(n-1)$",
+      "context": "proof_step",
+      "parent_step": "PS4.12.2"
+    },
+    {
+      "id": "E4.23",
+      "type": "equation",
+      "name": "Pagerank equation",
+      "section": "4.8",
+      "statement": "$\\mathbf{p} = \\frac{\\alpha}{n}(1, 1, \\ldots, 1)[I - (1 - \\alpha) A]^{-1}$",
+      "context": "statement",
+      "parent_step": ""
+    },
+    {
+      "id": "PS4.1.1",
+      "type": "proof_step",
+      "parent_proof": "P4.1",
+      "section": "4.1",
+      "statement": "Each row of $P$ sums to 1, so each row of $P - I$ sums to 0; hence $\\mathbf{x} = (\\mathbf{1}, 0)$ satisfies $A\\mathbf{x} = \\mathbf{0}$."
+    },
+    {
+      "id": "PS4.1.2",
+      "type": "proof_step",
+      "parent_proof": "P4.1",
+      "section": "4.1",
+      "statement": "Assume for contradiction a second solution $(\\mathbf{x}, \\alpha)$ perpendicular to $(\\mathbf{1}, 0)$; then $(P - I)\\mathbf{x} + \\alpha \\mathbf{1} = \\mathbf{0}$, so $x_i = \\sum_j p_{ij} x_j + \\alpha$."
+    },
+    {
+      "id": "PS4.1.3",
+      "type": "proof_step",
+      "parent_proof": "P4.1",
+      "section": "4.1",
+      "statement": "Let $S$ be the set where $x_i$ attains its maximum. Since $\\mathbf{x} \\perp \\mathbf{1}$, some $x_i < 0$, so $\\bar{S} \\neq \\emptyset$. Connectedness gives $x_k \\in S$ adjacent to $x_l \\in \\bar{S}$ with $x_l < x_k$."
+    },
+    {
+      "id": "PS4.1.4",
+      "type": "proof_step",
+      "parent_proof": "P4.1",
+      "section": "4.1",
+      "statement": "Then $x_k > \\sum_j p_{kj} x_j$ forces $\\alpha > 0$. The same argument on the minimum set $T$ forces $\\alpha < 0$; contradiction."
+    },
+    {
+      "id": "PS4.2.1",
+      "type": "proof_step",
+      "parent_proof": "P4.2",
+      "section": "4.1",
+      "statement": "Telescope: $\\mathbf{a}(t) P - \\mathbf{a}(t) = \\frac{1}{t}[\\mathbf{p}(1) + \\cdots + \\mathbf{p}(t)] - \\frac{1}{t}[\\mathbf{p}(0) + \\cdots + \\mathbf{p}(t-1)] = \\frac{1}{t}(\\mathbf{p}(t) - \\mathbf{p}(0))$."
+    },
+    {
+      "id": "PS4.2.2",
+      "type": "proof_step",
+      "parent_proof": "P4.2",
+      "section": "4.1",
+      "statement": "Define $\\mathbf{b}(t) = \\mathbf{a}(t)P - \\mathbf{a}(t)$. Each component of $\\mathbf{b}(t)$ satisfies $|\\mathbf{b}(t)| \\leq 2/t \\to 0$."
+    },
+    {
+      "id": "PS4.2.3",
+      "type": "proof_step",
+      "parent_proof": "P4.2",
+      "section": "4.1",
+      "statement": "By Lemma 4.1, $A = [P - I, \\mathbf{1}]$ has rank $n$. The $n \\times n$ submatrix $B$ (all columns except the first) is invertible."
+    },
+    {
+      "id": "PS4.2.4",
+      "type": "proof_step",
+      "parent_proof": "P4.2",
+      "section": "4.1",
+      "statement": "Let $\\mathbf{c}(t)$ be $\\mathbf{b}(t)$ with the first entry removed. Then $\\mathbf{a}(t) B = [\\mathbf{c}(t), 1]$, giving $\\mathbf{a}(t) = [\\mathbf{c}(t), 1] B^{-1} \\to [\\mathbf{0}, 1] B^{-1} = \\pi$."
+    },
+    {
+      "id": "PS4.3.1",
+      "type": "proof_step",
+      "parent_proof": "P4.3",
+      "section": "4.1",
+      "statement": "Sum detailed balance $\\pi_x p_{xy} = \\pi_y p_{yx}$ over $y$: $\\pi_x = \\sum_y \\pi_y p_{yx}$, hence $\\pi = \\pi P$."
+    },
+    {
+      "id": "PS4.3.2",
+      "type": "proof_step",
+      "parent_proof": "P4.3",
+      "section": "4.1",
+      "statement": "By the Fundamental Theorem (T4.2), the stationary distribution is unique, so $\\pi$ is the unique stationary distribution."
+    },
+    {
+      "id": "PS4.5.1",
+      "type": "proof_step",
+      "parent_proof": "P4.5",
+      "section": "4.4",
+      "statement": "Set $t = c \\ln(1/\\pi_{\\min})/(\\Phi^2 \\varepsilon^3)$. Define $v_i = a_i / \\pi_i$ and sort states so $v_1 \\geq v_2 \\geq \\cdots$. States with $v_i > 1$ are 'heavy'."
+    },
+    {
+      "id": "PS4.5.2",
+      "type": "proof_step",
+      "parent_proof": "P4.5",
+      "section": "4.4",
+      "statement": "By Proposition 4.4: $\\|\\mathbf{a} - \\pi\\|_1 = 2 \\sum_{i=1}^{i_0} (v_i - 1) \\pi_i = \\int_0^{\\gamma_{i_0}} f(x) dx$ where $f(x) = v_i - 1$ on $[\\gamma_{i-1}, \\gamma_i)$."
+    },
+    {
+      "id": "PS4.5.3",
+      "type": "proof_step",
+      "parent_proof": "P4.5",
+      "section": "4.4",
+      "statement": "Divide heavy states into groups $G_1, G_2, \\ldots, G_r$. Define step function $g(x) = u_t - 1$ on each group, with $g \\geq f$. Then $\\int f \\leq \\int g = \\sum_t \\pi(G_1 \\cup \\cdots \\cup G_t)(u_t - u_{t+1})$."
+    },
+    {
+      "id": "PS4.5.4",
+      "type": "proof_step",
+      "parent_proof": "P4.5",
+      "section": "4.4",
+      "statement": "Apply Lemma 4.6 to each term: $\\pi(G_1 \\cup \\cdots \\cup G_t)(u_t - u_{t+1}) \\leq 8/(t \\Phi \\varepsilon)$."
+    },
+    {
+      "id": "PS4.5.5",
+      "type": "proof_step",
+      "parent_proof": "P4.5",
+      "section": "4.4",
+      "statement": "Bound number of groups: $r \\leq \\ln(1/\\pi_1)/(\\varepsilon \\Phi / 2) + 2$. Sum over groups to get $\\sum_t \\leq \\varepsilon/2$, proving $\\|\\mathbf{a} - \\pi\\|_1 \\leq \\varepsilon$."
+    },
+    {
+      "id": "PS4.6.1",
+      "type": "proof_step",
+      "parent_proof": "P4.6",
+      "section": "4.4",
+      "statement": "For group $G_t = \\{k, \\ldots, l\\}$, set $A = \\{1, \\ldots, k\\}$. Net probability loss from $A$ in one step: $\\sum_{i=1}^k (a_i - (\\mathbf{a}P)_i) \\leq 2/t$ (by the telescoping from the proof of T4.2)."
+    },
+    {
+      "id": "PS4.6.2",
+      "type": "proof_step",
+      "parent_proof": "P4.6",
+      "section": "4.4",
+      "statement": "Reckon the same loss via flows: $\\mathrm{net\\text{-}flow}(i,j) = \\pi_j p_{ji}(v_i - v_j) \\geq 0$ for $i < j$, so net flow from $A$ to $\\{k+1, \\ldots, l\\}$ is non-negative."
+    },
+    {
+      "id": "PS4.6.3",
+      "type": "proof_step",
+      "parent_proof": "P4.6",
+      "section": "4.4",
+      "statement": "Net loss from $A$ is at least $(v_k - v_{l+1}) \\sum_{i \\leq k, j > l} \\pi_j p_{ji}$. From (4.9): $(v_k - v_{l+1}) \\sum_{i \\leq k, j > l} \\pi_j p_{ji} \\leq 2/t$."
+    },
+    {
+      "id": "PS4.6.4",
+      "type": "proof_step",
+      "parent_proof": "P4.6",
+      "section": "4.4",
+      "statement": "By conductance definition and (4.8): $\\sum_{i \\leq k, j > l} \\pi_j p_{ji} \\geq \\varepsilon \\Phi \\gamma_k / 4$. Substituting: $v_k - v_{l+1} \\leq 8/(t \\varepsilon \\Phi \\gamma_k)$."
+    },
+    {
+      "id": "PS4.7.1",
+      "type": "proof_step",
+      "parent_proof": "P4.7",
+      "section": "4.6",
+      "statement": "Base case: $h_{1,2} = 1$. For $2 \\leq i \\leq n-1$: $h_{i,i+1} = \\frac{1}{2} + \\frac{1}{2}(1 + h_{i-1,i} + h_{i,i+1})$, giving $h_{i,i+1} = 2 + h_{i-1,i}$."
+    },
+    {
+      "id": "PS4.7.2",
+      "type": "proof_step",
+      "parent_proof": "P4.7",
+      "section": "4.6",
+      "statement": "Solve recurrence: $h_{i,i+1} = 2i - 1$. Sum: $h_{1,n} = \\sum_{i=1}^{n-1}(2i-1) = 2 \\cdot \\frac{n(n-1)}{2} - (n-1) = (n-1)^2$."
+    },
+    {
+      "id": "PS4.8.1",
+      "type": "proof_step",
+      "parent_proof": "P4.8",
+      "section": "4.6",
+      "statement": "Boundary: $t(n) = 1$, $t(n-1) = 2$. Interior recurrence for $3 \\leq i < n-1$: $t(i) = \\frac{1}{2}[t(i-1) + t(i+1)]$, so $t(i+1) = 2t(i) - t(i-1)$."
+    },
+    {
+      "id": "PS4.8.2",
+      "type": "proof_step",
+      "parent_proof": "P4.8",
+      "section": "4.6",
+      "statement": "Solution $t(i) = 2(n-i)$ for $2 \\leq i \\leq n-1$, $t(1) = n-1$, $t(n) = 1$. Verify: total $= (n-1) + 2(1 + 2 + \\cdots + (n-2)) + 1 = (n-1)^2 + 1$."
+    },
+    {
+      "id": "PS4.9.1",
+      "type": "proof_step",
+      "parent_proof": "P4.9",
+      "section": "4.6",
+      "statement": "Inject current $d_i$ at each vertex $i$, extract $2m$ at $j$. Kirchhoff's law gives $d_i = \\sum_{k\\ \\mathrm{adj}\\ i}(v_{ij} - v_{kj})$, so $v_{ij} = 1 + \\sum_k \\frac{1}{d_i} v_{kj}$."
+    },
+    {
+      "id": "PS4.9.2",
+      "type": "proof_step",
+      "parent_proof": "P4.9",
+      "section": "4.6",
+      "statement": "Hitting time satisfies the same equation: $h_{ij} = \\sum_k \\frac{1}{d_i}(1 + h_{kj})$. So $v_{ij} - h_{ij}$ is harmonic with value 0 at boundary $j$; hence $v_{ij} = h_{ij}$."
+    },
+    {
+      "id": "PS4.9.3",
+      "type": "proof_step",
+      "parent_proof": "P4.9",
+      "section": "4.6",
+      "statement": "Extract current at $i$ instead of $j$ and reverse: voltage $v_{ij}$ in this new setup equals $h_{ji}$. Superpose both setups: all internal currents cancel except $2m$ in at $i$, out at $j$."
+    },
+    {
+      "id": "PS4.9.4",
+      "type": "proof_step",
+      "parent_proof": "P4.9",
+      "section": "4.6",
+      "statement": "By linearity, the superposed voltage $v_{ij} = h_{ij} + h_{ji} = \\mathrm{commute}(i,j)$. Since $2m$ amps flow through effective resistance $r_{ij}$: $\\mathrm{commute}(i,j) = 2m r_{ij}$."
+    },
+    {
+      "id": "PS4.10.1",
+      "type": "proof_step",
+      "parent_proof": "P4.10",
+      "section": "4.6",
+      "statement": "If $x, y$ are adjacent, the direct edge provides a path of resistance 1, so $r_{xy} \\leq 1$. By Theorem 4.9: $h_{xy} + h_{yx} = 2m r_{xy} \\leq 2m$."
+    },
+    {
+      "id": "PS4.11.1",
+      "type": "proof_step",
+      "parent_proof": "P4.11",
+      "section": "4.6",
+      "statement": "Any path from $x$ to $y$ has length $\\leq n$, so $r_{xy} \\leq n$. Number of edges $m \\leq \\binom{n}{2}$. By T4.9: $\\mathrm{commute}(x,y) = 2m r_{xy} \\leq 2 \\binom{n}{2} n \\leq n^3$."
+    },
+    {
+      "id": "PS4.12.1",
+      "type": "proof_step",
+      "parent_proof": "P4.12",
+      "section": "4.6",
+      "statement": "Run DFS from vertex $z$ to get spanning tree $T$ with $n-1$ edges. The DFS visits all vertices, traversing each tree edge twice."
+    },
+    {
+      "id": "PS4.12.2",
+      "type": "proof_step",
+      "parent_proof": "P4.12",
+      "section": "4.6",
+      "statement": "Each tree edge $(x,y)$ has $h_{xy} + h_{yx} \\leq 2m$ by Corollary 4.10. Total: $\\mathrm{cover}(z, G) \\leq \\sum_{\\mathrm{tree\\ edges}} (h_{xy} + h_{yx}) \\leq (n-1) \\cdot 2m \\cdot 2 = 4m(n-1)$."
+    },
+    {
+      "id": "PS4.13.1",
+      "type": "proof_step",
+      "parent_proof": "P4.13",
+      "section": "4.6",
+      "statement": "Lower bound: Let $u, v$ maximize $r_{xy}$. Then $m r_{\\mathrm{eff}} = \\frac{1}{2} \\mathrm{commute}(u,v) \\leq \\max(h_{uv}, h_{vu}) \\leq \\mathrm{cover}(G)$."
+    },
+    {
+      "id": "PS4.13.2",
+      "type": "proof_step",
+      "parent_proof": "P4.13",
+      "section": "4.6",
+      "statement": "Upper bound: For any $x, y$, $h_{xy} \\leq 2m r_{\\mathrm{eff}}$. By Markov's inequality, prob of not reaching $y$ in $2e m r_{\\mathrm{eff}}$ steps $\\leq 1/e$."
+    },
+    {
+      "id": "PS4.13.3",
+      "type": "proof_step",
+      "parent_proof": "P4.13",
+      "section": "4.6",
+      "statement": "After $6e m r_{\\mathrm{eff}} \\ln n$ steps (= $3 \\ln n$ independent segments), each vertex missed with prob $\\leq (1/e)^{3 \\ln n} = 1/n^3$."
+    },
+    {
+      "id": "PS4.13.4",
+      "type": "proof_step",
+      "parent_proof": "P4.13",
+      "section": "4.6",
+      "statement": "Expected cost of unvisited vertices: $\\sum_v (1/n^3) \\cdot n^3 = n$ (using C4.11 for each). Total: $\\mathrm{cover}(G) \\leq 6e m r_{\\mathrm{eff}} \\ln n + n$."
+    }
+  ],
+  "edges": [
+    {"source": "P4.1",    "target": "L4.1",    "type": "proves"},
+    {"source": "L4.1",    "target": "T4.2",    "type": "uses",          "note": "invertibility of submatrix yields limit"},
+    {"source": "P4.2",    "target": "T4.2",    "type": "proves"},
+    {"source": "T4.2",    "target": "L4.3",    "type": "uses",          "note": "uniqueness of stationary distribution"},
+    {"source": "P4.3",    "target": "L4.3",    "type": "proves"},
+    {"source": "L4.3",    "target": "A4.1",    "type": "uses",          "note": "detailed balance verifies Metropolis-Hastings stationarity"},
+    {"source": "L4.3",    "target": "A4.2",    "type": "uses",          "note": "detailed balance verifies Gibbs stationarity"},
+    {"source": "D4.2",    "target": "D4.3",    "type": "uses"},
+    {"source": "D4.1",    "target": "T4.5",    "type": "uses"},
+    {"source": "D4.3",    "target": "T4.5",    "type": "uses"},
+    {"source": "Prop4.4", "target": "T4.5",    "type": "uses",          "note": "reduces $\\ell_1$ distance to positive-part sum"},
+    {"source": "L4.6",    "target": "T4.5",    "type": "uses",          "note": "bounds each group contribution"},
+    {"source": "P4.5",    "target": "T4.5",    "type": "proves"},
+    {"source": "P4.6",    "target": "L4.6",    "type": "proves"},
+    {"source": "T4.2",    "target": "L4.6",    "type": "uses",          "note": "telescoping bound from Fundamental Theorem proof"},
+    {"source": "P4.7",    "target": "L4.7",    "type": "proves"},
+    {"source": "P4.8",    "target": "L4.8",    "type": "proves"},
+    {"source": "L4.3",    "target": "T4.9",    "type": "uses",          "note": "stationary distribution of electrical network walk"},
+    {"source": "P4.9",    "target": "T4.9",    "type": "proves"},
+    {"source": "T4.9",    "target": "C4.10",   "type": "follows_from",  "note": "effective resistance $\\leq 1$ for adjacent vertices"},
+    {"source": "P4.10",   "target": "C4.10",   "type": "proves"},
+    {"source": "T4.9",    "target": "C4.11",   "type": "follows_from",  "note": "bound $m \\leq \\binom{n}{2}$ and $r_{xy} \\leq n$"},
+    {"source": "P4.11",   "target": "C4.11",   "type": "proves"},
+    {"source": "C4.10",   "target": "T4.12",   "type": "uses",          "note": "bounds hitting time per DFS tree edge"},
+    {"source": "P4.12",   "target": "T4.12",   "type": "proves"},
+    {"source": "T4.9",    "target": "T4.13",   "type": "uses",          "note": "commute time formula for lower and upper bounds"},
+    {"source": "C4.11",   "target": "T4.13",   "type": "uses",          "note": "bounds expected time for unvisited vertices"},
+    {"source": "P4.13",   "target": "T4.13",   "type": "proves"},
+
+    {"source": "E4.1",    "target": "E4.2",    "type": "uses",          "note": "$\\mathbf{a}(t)$ defined from $\\mathbf{p}(t)$"},
+    {"source": "E4.2",    "target": "T4.2",    "type": "uses",          "note": "running average is the object whose limit is $\\pi$"},
+    {"source": "E4.2",    "target": "E4.3",    "type": "uses",          "note": "MCMC error depends on $\\|\\mathbf{p} - \\mathbf{a}(t)\\|_1$"},
+    {"source": "E4.4",    "target": "A4.1",    "type": "uses",          "note": "explicit transition probability of MH"},
+    {"source": "E4.5",    "target": "A4.1",    "type": "uses",          "note": "verifies detailed balance for MH"},
+    {"source": "L4.3",    "target": "E4.5",    "type": "uses",          "note": "detailed balance criterion applied"},
+    {"source": "E4.6",    "target": "A4.2",    "type": "uses",          "note": "explicit transition probability of Gibbs"},
+    {"source": "E4.7",    "target": "A4.2",    "type": "uses",          "note": "verifies detailed balance for Gibbs"},
+    {"source": "L4.3",    "target": "E4.7",    "type": "uses",          "note": "detailed balance criterion applied"},
+    {"source": "L4.3",    "target": "E4.8",    "type": "uses",          "note": "detailed balance gives $\\pi_x \\propto w_x$"},
+    {"source": "Prop4.4", "target": "E4.9",    "type": "uses",          "note": "rewrites $\\ell_1$ as sum over heavy states"},
+    {"source": "E4.9",    "target": "E4.10",   "type": "uses",          "note": "area under step function bounds the sum"},
+    {"source": "E4.11",   "target": "E4.12",   "type": "uses",          "note": "net flow inequality produces the key bound"},
+    {"source": "E4.12",   "target": "L4.6",    "type": "uses",          "note": "Eq 4.10 is the conclusion of Lemma 4.6"},
+    {"source": "E4.13",   "target": "E4.14",   "type": "uses",          "note": "recurrence summed to get $h_{1,n}$"},
+    {"source": "E4.14",   "target": "L4.7",    "type": "uses",          "note": "summation formula proves the lemma"},
+    {"source": "E4.15",   "target": "L4.8",    "type": "uses",          "note": "recurrence yields the visit-time formula"},
+    {"source": "E4.16",   "target": "E4.17",   "type": "uses",          "note": "Ohm + Kirchhoff yield harmonic property of voltages"},
+    {"source": "E4.17",   "target": "T4.9",    "type": "uses",          "note": "voltage harmonic = hitting time harmonic"},
+    {"source": "E4.18",   "target": "T4.9",    "type": "uses",          "note": "matching harmonic equations for $v_{ij}$ and $h_{ij}$"},
+    {"source": "E4.19",   "target": "T4.9",    "type": "uses",          "note": "final commute time formula"},
+    {"source": "E4.20",   "target": "T4.13",   "type": "uses",          "note": "escape probability connects conductance to walks"},
+    {"source": "E4.21",   "target": "T4.9",    "type": "uses",          "note": "current as net traversal frequency"},
+    {"source": "E4.22",   "target": "T4.12",   "type": "uses",          "note": "DFS bound on cover time"},
+
+    {"source": "PS4.1.1", "target": "PS4.1.2", "type": "next_step"},
+    {"source": "PS4.1.2", "target": "PS4.1.3", "type": "next_step"},
+    {"source": "PS4.1.3", "target": "PS4.1.4", "type": "next_step"},
+    {"source": "PS4.1.4", "target": "L4.1",    "type": "proves"},
+
+    {"source": "PS4.2.1", "target": "PS4.2.2", "type": "next_step"},
+    {"source": "PS4.2.2", "target": "PS4.2.3", "type": "next_step"},
+    {"source": "PS4.2.3", "target": "PS4.2.4", "type": "next_step"},
+    {"source": "L4.1",    "target": "PS4.2.3", "type": "uses",          "note": "rank $n$ implies $B$ invertible"},
+    {"source": "PS4.2.4", "target": "T4.2",    "type": "proves"},
+
+    {"source": "PS4.3.1", "target": "PS4.3.2", "type": "next_step"},
+    {"source": "T4.2",    "target": "PS4.3.2", "type": "uses",          "note": "uniqueness from Fundamental Theorem"},
+    {"source": "PS4.3.2", "target": "L4.3",    "type": "proves"},
+
+    {"source": "PS4.5.1", "target": "PS4.5.2", "type": "next_step"},
+    {"source": "Prop4.4", "target": "PS4.5.2", "type": "uses",          "note": "positive-part decomposition"},
+    {"source": "PS4.5.2", "target": "PS4.5.3", "type": "next_step"},
+    {"source": "PS4.5.3", "target": "PS4.5.4", "type": "next_step"},
+    {"source": "L4.6",    "target": "PS4.5.4", "type": "uses",          "note": "flow bound per group"},
+    {"source": "PS4.5.4", "target": "PS4.5.5", "type": "next_step"},
+    {"source": "PS4.5.5", "target": "T4.5",    "type": "proves"},
+
+    {"source": "PS4.6.1", "target": "PS4.6.2", "type": "next_step"},
+    {"source": "PS4.6.2", "target": "PS4.6.3", "type": "next_step"},
+    {"source": "PS4.6.3", "target": "PS4.6.4", "type": "next_step"},
+    {"source": "D4.3",    "target": "PS4.6.4", "type": "uses",          "note": "conductance lower-bounds flow out of $A$"},
+    {"source": "PS4.6.4", "target": "L4.6",    "type": "proves"},
+
+    {"source": "PS4.7.1", "target": "PS4.7.2", "type": "next_step"},
+    {"source": "PS4.7.2", "target": "L4.7",    "type": "proves"},
+
+    {"source": "PS4.8.1", "target": "PS4.8.2", "type": "next_step"},
+    {"source": "PS4.8.2", "target": "L4.8",    "type": "proves"},
+
+    {"source": "PS4.9.1", "target": "PS4.9.2", "type": "next_step"},
+    {"source": "PS4.9.2", "target": "PS4.9.3", "type": "next_step"},
+    {"source": "PS4.9.3", "target": "PS4.9.4", "type": "next_step"},
+    {"source": "PS4.9.4", "target": "T4.9",    "type": "proves"},
+
+    {"source": "PS4.10.1","target": "C4.10",   "type": "proves"},
+    {"source": "T4.9",    "target": "PS4.10.1","type": "uses"},
+
+    {"source": "PS4.11.1","target": "C4.11",   "type": "proves"},
+    {"source": "T4.9",    "target": "PS4.11.1","type": "uses"},
+
+    {"source": "PS4.12.1","target": "PS4.12.2","type": "next_step"},
+    {"source": "C4.10",   "target": "PS4.12.2","type": "uses",          "note": "each tree edge commute $\\leq 2m$"},
+    {"source": "PS4.12.2","target": "T4.12",   "type": "proves"},
+
+    {"source": "PS4.13.1","target": "PS4.13.2","type": "next_step"},
+    {"source": "T4.9",    "target": "PS4.13.1","type": "uses",          "note": "commute time formula for lower bound"},
+    {"source": "PS4.13.2","target": "PS4.13.3","type": "next_step"},
+    {"source": "PS4.13.3","target": "PS4.13.4","type": "next_step"},
+    {"source": "C4.11",   "target": "PS4.13.4","type": "uses",          "note": "bounds cost of unvisited vertices"},
+    {"source": "PS4.13.4","target": "T4.13",   "type": "proves"}
+  ]
+}
