@@ -51,9 +51,9 @@ DEFAULT_MANUAL_GOLD_DIR = os.path.join(CLUSTER_PKG, "examples")
 TRAIN_CHAPTERS = [2, 3, 4, 5, 6, 7, 8, 9, 10]
 TEST_CHAPTERS = [11, 12]
 
-# Paper splits (when papers are added)
-TRAIN_PAPERS = [1, 2, 3, 4, 5]
-TEST_PAPERS = [6, 7, 8, 9, 10]
+# Paper splits
+TRAIN_PAPERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+TEST_PAPERS = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
 
 # Add scripts dir to path for imports
 sys.path.insert(0, os.path.join(CLUSTER_PKG, "scripts"))
@@ -112,7 +112,8 @@ def run_extractor(extractor_path, input_path, output_path, model):
         return False
 
 
-def evaluate_one(extracted_path, gold_path, threshold=DEFAULT_THRESHOLD):
+def evaluate_one(extracted_path, gold_path, threshold=DEFAULT_THRESHOLD,
+                 flipped_credit=0.5):
     """Evaluate one extracted file against gold. Returns dict of metrics or None."""
     try:
         ext_nodes, ext_edges = load_annotation(extracted_path)
@@ -125,9 +126,11 @@ def evaluate_one(extracted_path, gold_path, threshold=DEFAULT_THRESHOLD):
         ext_nodes, gold_nodes, threshold)
     node_m = compute_metrics(len(node_matches), len(unmatched_ext), len(unmatched_gld))
 
-    matched_edges, unmatched_ext_e, unmatched_gld_e = match_edges(
-        ext_edges, gold_edges, id_map)
-    edge_m = compute_metrics(len(matched_edges), len(unmatched_ext_e), len(unmatched_gld_e))
+    matched_edges, flipped_edges, unmatched_ext_e, unmatched_gld_e = match_edges(
+        ext_edges, gold_edges, id_map, flipped_credit=flipped_credit)
+    edge_m = compute_metrics(len(matched_edges), len(unmatched_ext_e), len(unmatched_gld_e),
+                             partial_tp=len(flipped_edges),
+                             partial_weight=flipped_credit)
 
     combined = (node_m["f1"] + edge_m["f1"]) / 2
 
@@ -262,8 +265,10 @@ Examples:
     # Behavior
     parser.add_argument("--force-extract", action="store_true",
                         help="Re-extract even if output JSON already exists")
-    parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD,
-                        help=f"Jaccard threshold for node matching (default: {DEFAULT_THRESHOLD})")
+    parser.add_argument("--node-sim-threshold", type=float, default=DEFAULT_THRESHOLD,
+                        help=f"Minimum Jaccard similarity between node texts to count as a match (default: {DEFAULT_THRESHOLD})")
+    parser.add_argument("--flipped-edge-credit", type=float, default=0.5,
+                        help="Partial credit for edges with correct endpoints but reversed direction (default: 0.5)")
 
     # Paths
     parser.add_argument("--chapters-dir", default=DEFAULT_CHAPTERS_DIR,
@@ -354,7 +359,9 @@ Examples:
                 print(f"    No output found: {out_path}")
                 continue
 
-            metrics = evaluate_one(out_path, gold_path, threshold=args.threshold)
+            metrics = evaluate_one(out_path, gold_path,
+                                      threshold=args.node_sim_threshold,
+                                      flipped_credit=args.flipped_edge_credit)
             if metrics:
                 row = {
                     "document": doc_label,

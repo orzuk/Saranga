@@ -1,171 +1,200 @@
-# Authomatics
+# Authomathics
 
-Scripts and code for downloading and parsing arXiv papers meta-data and data, and representing and connecting between different mathematical concepts
-
-## ArXiv Data Extraction
-
-The script **`extract_arxiv_data.py`** can: 
-
-* **List and cache** all ArXiv IDs via OAI‑PMH
-* **Fetch** metadata, PDFs, LaTeX source, and HTML abstracts for ArXiv papers
-
-The script adapts automatically to your environment:
-
-1. **Command‑line mode (Linux/Unix/SLURM)**
-
-   * Use subcommands and flags to list IDs or fetch papers.
-2. **Example mode (Windows/PyCharm)**
-
-   * When run on Windows, it executes a built‑in example for a single paper ID.
+Tools for downloading, parsing, and structuring mathematical knowledge from arXiv papers and textbooks. Extracts knowledge graphs (definitions, theorems, lemmas, proofs, and their dependencies) from LaTeX sources, links them to a foundation of well-known results, and provides visualization and evaluation tools.
 
 ---
 
+## Overview
+
+| Tool | What it does |
+|------|-------------|
+| `extract_arxiv_data.py` | Download metadata, PDFs, LaTeX source, and HTML from arXiv |
+| `validate_annotation.py` | Validate knowledge graph JSONs (DAG check, field checks, edge integrity) |
+| `visualize_annotation.py` | Generate PNG/SVG DAG visualizations and interactive HTML |
+| `visualize_interactive.py` | Generate standalone interactive HTML with dagre-d3 layout |
+| `link_to_foundation.py` | Link paper nodes to well-known math results (Markov, Cauchy-Schwarz, ...) |
+| `evaluate_extraction.py` | Evaluate extracted JSON against gold standard (precision/recall/F1) |
+| `run_evaluation.py` | Full pipeline: extract + evaluate across documents x models |
+| `run_all_evaluations.py` | Batch evaluation: compare multiple extractors + student submissions |
+
+---
+
+## Quick Start
+
+```bash
+git clone https://github.com/orzuk/Authomathics
+cd Authomathics/src
+```
+
 ### Prerequisites
 
-* Python 3.6+
-* No external dependencies (uses only Python standard library).
-* A `config.py` file defining `DATA_DIR` (the cache directory).
+- Python 3.8+
+- `pip install matplotlib networkx` (for visualization)
+- Optional: `pip install huggingface_hub` (for LLM extraction via HuggingFace)
 
-Example `config.py`:
+---
+
+## Knowledge Graph Extraction & Evaluation
+
+### Validate annotations
+
+Check that a JSON annotation is structurally correct (DAG property, required fields, edge references):
+
+```bash
+# Single file
+python validate_annotation.py annotation.json
+
+# Entire directory
+python validate_annotation.py papers/gold/
+
+# Glob pattern
+python validate_annotation.py 'papers/gold/paper*.json'
+```
+
+### Visualize annotations
+
+Generate PNG DAG images:
+
+```bash
+python visualize_annotation.py papers/gold/
+```
+
+Generate interactive HTML (with foundation graph links, click-to-expand detail panel):
+
+```bash
+# Both PNG + HTML
+python visualize_annotation.py --html papers/gold/
+
+# HTML only (faster, no PNG)
+python visualize_annotation.py --html-only papers/gold/
+```
+
+### Link to foundation knowledge
+
+Find connections between paper nodes and well-known mathematical results:
+
+```bash
+python link_to_foundation.py --paper-json paper1_gold.json --output paper1_linked.json
+```
+
+### Evaluate extraction quality
+
+Compare an extracted JSON against a gold standard:
+
+```bash
+python evaluate_extraction.py --extracted output.json --gold gold.json
+python evaluate_extraction.py --extracted output.json --gold gold.json --node-sim-threshold 0.7
+python evaluate_extraction.py --extracted output.json --gold gold.json --flipped-edge-credit 0.5
+```
+
+**Flags:**
+- `--node-sim-threshold` (default: 0.5) — minimum Jaccard similarity between node texts to count as a match
+- `--flipped-edge-credit` (default: 0.5) — partial credit for edges with correct endpoints but reversed direction
+
+### Run full evaluation pipeline
+
+Evaluate an extractor across all documents and models:
+
+```bash
+cd class_52017/instructor_only
+
+# Single extractor
+python run_evaluation.py --extractor ../cluster_package/scripts/annotate_chapter.py --doc-type both --split both
+
+# See all options
+python run_evaluation.py --help
+```
+
+### Batch evaluation (compare extractors + students)
+
+```bash
+# Compare baseline vs solution
+python run_all_evaluations.py \
+  --extractors baseline:../cluster_package/scripts/annotate_chapter.py \
+               solution:annotate_chapter_solution.py
+
+# Add student submissions
+python run_all_evaluations.py \
+  --extractors baseline:../cluster_package/scripts/annotate_chapter.py \
+  --students-dir ../StudentsSolutions
+
+# Students only, papers, test split
+python run_all_evaluations.py \
+  --students-dir ../StudentsSolutions \
+  --doc-type papers --split test
+```
+
+**Student directory structure:**
+```
+StudentsSolutions/
+  john_doe_02345134/
+    annotate_chapter_student.py
+  jane_smith_98765432/
+    annotate_chapter_student.py
+```
+
+Output: per-extractor CSVs + combined `all_results.csv` + printed leaderboard.
+
+---
+
+## ArXiv Data Extraction
+
+Fetch metadata, PDFs, LaTeX source, and HTML abstracts from arXiv:
+
+```bash
+# Single paper
+python extract_arxiv_data.py --id '2309.00543v1' --formats metadata pdf html source --verbose
+
+# Multiple papers by date range and category
+python extract_arxiv_data.py --start 2023-09-01 --end 2023-09-01 --category stat.ML --formats metadata source --output-dir out --verbose
+```
+
+### Configuration
+
+Create a `config.py` file in `src/`:
 
 ```python
-# config.py
 import sys
 if 'win' in sys.platform:
-    DATA_DIR = 'C:/Datasets/big_data_project_52017/arxiv_data'
+    DATA_DIR = 'C:/Datasets/arxiv_data'
 else:
     DATA_DIR = '/path/to/arxiv_data'
 ```
 
----
+### Windows/PyCharm mode
 
-### Installation
-
-1. Clone this repo:
-
-   ```bash
-   ```
-
-git clone https://github.com/orzuk/Authomathics
-
-cd Authomathics/src
-
-````
-2. Ensure `extract_arxiv_data.py` is executable (on Unix):
-```bash
-chmod +x extract_arxiv_data.py
-````
-
-3. Create or update `config.py` next to the script.
-
----
-
-### Usage: Command‑line Mode
-
-
-#### 1. Fetch paper data
-
-Fetch one paper by its id: 
+When run on Windows without arguments, the script runs a built-in example:
 
 ```bash
-./python extract_arxiv_data.py --id '2309.00543v1' --formats metadata pdf html source --verbose
-
-
-* `--what`:
-
-  * `metadata`: title, abstract, authors, categories, published date, ...
-  * `pdf`: raw PDF bytes
-  * `html`: html file
-  * `source`: LaTeX source `.tex` file
-
-The script prints:
-
-
-```text
->>> filter_ids_by_regex: loaded 2744465 IDs
->>> filter_ids_by_regex: 1 bases, 1 versioned IDs
-[DEBUG] 1 base IDs, 1 versioned IDs to process
-[DEBUG] Fetching metadata for all versioned IDs via local JSONL + HDF5 offsets…
-[fetch_arxiv_metadata] Loaded metadata for '2309.00543v1' (offset=3299592092)
-[DEBUG] Processing 2309.00543v1 for formats: ['html', 'source', 'pdf', 'metadata']
-[DEBUG] Downloading html for 2309.00543v1 from https://arxiv.org/abs/2309.00543v1
-[DEBUG] Downloading source for 2309.00543v1 from https://arxiv.org/e-print/2309.00543v1
-[DEBUG] Downloading pdf for 2309.00543v1 from https://arxiv.org/pdf/2309.00543v1.pdf
-=== 2309.00543v1 ===
-Title: Curating Naturally Adversarial Datasets for Learning-Enabled Medical
-  Cyber-Physical Systems
-Authors: S, y, d, n, e, y,  , P, u, g, h, ,,  , I, v, a, n,  , R, u, c, h, k, i, n, ,,  , I, n, s, u, p,  , L, e, e, ,,  , J, a, m, e, s,  , W, e, i, m, e, r
-Abstract (first 3 lines):
-     Deep learning models have shown promising predictive accuracy for time-series
-   healthcare applications. However, ensuring the robustness of these models is
-   vital for building trustworthy AI systems. Existing research predominantly
-PDF (first 50 bytes):
-b'%PDF-1.5\n%\x8f\n12 0 obj\n<< /Filter /FlateDecode /Leng'
-
-HTML (first 5 lines):
-   <!DOCTYPE html>
-   <html lang="en">
-
-   <head>  <title>[2309.00543v1] Curating Naturally Adversarial Datasets for Trustworthy AI in Healthcare</title>
-     <meta name="viewport" content="width=device-width, initial-scale=1">
-
-LaTeX source (first 5 lines):
-   %File: anonymous-submission-latex-2024.tex
-   \documentclass[letterpaper]{article} % DO NOT CHANGE THIS
-   \usepackage{aaai24}  % DO NOT CHANGE THIS
-   \usepackage{times}  % DO NOT CHANGE THIS
-   \usepackage{helvet}  % DO NOT CHANGE THIS
-```
-
-
-Fetch multiple papers by dates, categories ...
-```bash
-./python extract_arxiv_data.py --start 2023-09-01 --end   2023-09-01 --category stat.ML --formats metadata pdf html source --output-dir out --verbose
-
-
----
-
-### Usage: Example Mode (Windows/PyCharm)
-
-When run on Windows (detected via `sys.platform`), the script automatically:
-
-1. Downloads **metadata** for `2104.00001v1`, prints the Python `dict` with its fields.
-2. Downloads **LaTeX source**, lists `.tex` files, and prints the first 5 lines.
-3. Downloads **PDF**, prints its type, size, and header bytes.
-4. Fetches the **HTML** abstract page and prints the first 5 lines of the HTML.
-
-```bash
-# Simply run:
 python extract_arxiv_data.py
 ```
 
-You’ll see output such as:
+### SLURM integration
 
-```
-=== Example mode: processing 2104.00001v1 ===
-[METADATA] Format: Python dict with fields:
-  id: 2104.00001v1
-  title: …
-  abstract: …
-[SOURCE] bytes type: <class 'bytes'> size: 209439
-First five lines of ms_v1.tex
-\documentclass{article}
-…
-[PDF] bytes type: <class 'bytes'> size: 437388
-PDF header bytes: b'%PDF-1.4'…
-# [HTML] Fetched HTML page, first five lines:
-<!DOCTYPE html>
-<html lang="en">
-…
-```
+See `scripts/fetch_arxiv_papers_metadata.sh` for a batch job example.
 
 ---
 
-### Integration with SLURM
+## Project Structure
 
-See usage example in the scripts directory   **`fetch_arxiv_papers_metadata.sh`**:
-You may change the filter, format etc. 
+```
+src/
+  extract_arxiv_data.py        # ArXiv data fetcher
+  validate_annotation.py       # JSON validation
+  visualize_annotation.py      # PNG/SVG/HTML DAG visualization
+  visualize_interactive.py     # Standalone dagre-d3 HTML visualization
+  link_to_foundation.py        # Foundation knowledge linker
+  evaluate_extraction.py       # Gold standard evaluation
+  foundation_linker.py         # OOP foundation linker (NaturalProofs, Mathlib)
+  math_classes.py              # Data model (PaperGraph, Relation, Concept)
 
-
----
-
+class_52017/
+  instructor_only/
+    run_evaluation.py           # Single-extractor evaluation pipeline
+    run_all_evaluations.py      # Batch evaluation + leaderboard
+    annotate_chapter_solution.py # Instructor solution extractor
+  cluster_package/
+    scripts/                    # Student-facing scripts
+    papers/gold/                # Gold standard JSONs for 20 papers
+    chapters/                   # Textbook chapter .tex files
+```

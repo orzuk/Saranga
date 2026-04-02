@@ -99,9 +99,10 @@ def evaluate_one(extracted_path, gold_path, threshold=DEFAULT_THRESHOLD):
         ext_nodes, gold_nodes, threshold)
     node_m = compute_metrics(len(node_matches), len(unmatched_ext), len(unmatched_gld))
 
-    matched_edges, unmatched_ext_e, unmatched_gld_e = match_edges(
+    matched_edges, flipped_edges, unmatched_ext_e, unmatched_gld_e = match_edges(
         ext_edges, gold_edges, id_map)
-    edge_m = compute_metrics(len(matched_edges), len(unmatched_ext_e), len(unmatched_gld_e))
+    edge_m = compute_metrics(len(matched_edges), len(unmatched_ext_e), len(unmatched_gld_e),
+                             partial_tp=len(flipped_edges))
 
     combined = (node_m["f1"] + edge_m["f1"]) / 2
 
