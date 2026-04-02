@@ -135,7 +135,7 @@ class PaperParser:
     def __init__(
             self,
             paper_id: Optional[str] = None,
-            definition_mode: str = "both",  # 'manual', 'llm', or 'both'
+            extraction_mode: str = "both",  # 'manual', 'llm', or 'both'
             llm_model: str = "gpt-4o-mini",
             llm_chunk_chars: int = 8000,
             extract_inline_let: bool = False,
@@ -146,7 +146,7 @@ class PaperParser:
             grounding_min_term_len: int = 4,
     ):
         self.paper_id = paper_id or "paper"
-        self.definition_mode = definition_mode
+        self.extraction_mode = extraction_mode
         self.extract_inline_let = extract_inline_let
         self.llm_model = llm_model
         self.llm_chunk_chars = llm_chunk_chars
@@ -506,10 +506,10 @@ class PaperParser:
         manual_defs: List[Definition] = []
         llm_defs: List[Definition] = []
 
-        if self.definition_mode in ("manual", "both"):
+        if self.extraction_mode in ("manual", "both"):
             manual_defs = self._extract_definitions_manual(text)
 
-        if self.definition_mode in ("llm", "both"):
+        if self.extraction_mode in ("llm", "both"):
             try:
                 llm_defs = self._extract_definitions_llm(
                     text,
@@ -525,9 +525,9 @@ class PaperParser:
                 )
                 llm_defs = []
 
-        if self.definition_mode == "manual":
+        if self.extraction_mode == "manual":
             definitions = manual_defs
-        elif self.definition_mode == "llm":
+        elif self.extraction_mode == "llm":
             definitions = llm_defs
         else:  # 'both'
             definitions = self._merge_definitions(manual_defs, llm_defs)
@@ -996,7 +996,7 @@ class PaperParser:
         Stub for LLM-based definition extraction.
 
         Right now we don't actually call any LLM here; we just return an empty list.
-        This keeps the pipeline working when definition_mode is 'both' or 'llm'
+        This keeps the pipeline working when extraction_mode is 'both' or 'llm'
         without crashing, and you can later plug in a real implementation.
         """
         # If you later want real LLM extraction, implement it here.

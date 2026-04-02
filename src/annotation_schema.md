@@ -1,0 +1,237 @@
+# Annotation JSON Schema
+
+Unified format for mathematical knowledge graph annotations.
+Used by all extractors (baseline, LLM, student submissions) and evaluation tools.
+
+## Top-level structure
+
+```json
+{
+  "metadata": { ... },
+  "nodes": [ ... ],
+  "edges": [ ... ]
+}
+```
+
+### `metadata` (optional)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `title` | string | Paper/chapter title |
+| `paper_num` | int | Paper number in the course dataset |
+| `paper_id` | string | arXiv ID (e.g., `"0711.0189"`) |
+| `sections` | string | Section range covered |
+| `annotator` | string | Who/what produced this annotation |
+
+---
+
+## Nodes
+
+Each node is a mathematical object. Required fields are marked with **R**, optional with **O**.
+
+### Common fields (all node types)
+
+| Field | Req | Type | Description |
+|-------|-----|------|-------------|
+| `id` | **R** | string | Unique identifier. Convention: `<type_letter>P<paper>.<seq>` (e.g., `DP1.1`, `TP3.2`) or simple `T1`, `D2` |
+| `type` | **R** | string | One of the types below |
+| `name` | **R** | string or null | Descriptive name (e.g., "Markov's Inequality") |
+| `section` | O | string | Section number (e.g., `"3.1"`) |
+| `statement` | **R** | string | Clean 1-3 sentence summary |
+| `raw_latex` | O | string | Original LaTeX source |
+| `clean_text` | O | string | LaTeX with math replaced by `[MATH]` |
+| `label` | O | string | LaTeX `\label{...}` value |
+| `env_name` | O | string | LaTeX environment name (e.g., `"theorem"`, `"definition"`) |
+| `index` | O | int | Running index per type (1-based) |
+| `spans` | O | list | Fine-grained semantic spans (see below) |
+
+### Node types
+
+| Type | Description |
+|------|-------------|
+| `definition` | Mathematical definition |
+| `theorem` | Theorem |
+| `lemma` | Lemma |
+| `corollary` | Corollary |
+| `proposition` | Proposition |
+| `proof` | Proof of a theorem/lemma/etc. |
+| `algorithm` | Algorithm or pseudocode |
+| `equation` | Key equation |
+| `example` | Worked example |
+| `remark` | Remark or note |
+| `conjecture` | Open conjecture |
+| `problem` | Mathematical problem |
+| `claim` | Claim (typically inside a proof) |
+
+### Extra fields by type
+
+**Theorems, lemmas, corollaries, propositions, conjectures:**
+
+| Field | Req | Type | Description |
+|-------|-----|------|-------------|
+| `assumptions` | O | list of strings | Conditions / hypotheses |
+| `conclusions` | O | list of strings | What the theorem concludes |
+| `assumption_spans` | O | list of Span | Fine-grained assumption structure |
+| `statement_spans` | O | list of Span | Fine-grained statement structure |
+
+**Proofs:**
+
+| Field | Req | Type | Description |
+|-------|-----|------|-------------|
+| `proves` | **R** | string | ID of the theorem/lemma this proves |
+| `proof_strategy` | O | string | Short tag: `"contradiction"`, `"induction"`, `"direct"`, etc. |
+| `strategy_tags` | O | list of strings | Multiple strategy tags |
+| `steps` | O | list of Span | Proof step decomposition |
+
+**Definitions:**
+
+| Field | Req | Type | Description |
+|-------|-----|------|-------------|
+| `definiendum` | O | Span | The thing being defined |
+| `genus` | O | Span | What category it belongs to (e.g., "is a matrix") |
+| `differentia` | O | list of Span | Distinguishing conditions |
+
+**Algorithms:**
+
+| Field | Req | Type | Description |
+|-------|-----|------|-------------|
+| `input` | O | list of strings | Input description |
+| `output` | O | list of strings | Output description |
+| `input_params` | O | list of AlgoParam | Structured input parameters |
+| `output_params` | O | list of AlgoParam | Structured output parameters |
+| `steps` | O | list | Algorithm steps |
+
+### Span object (optional substructure)
+
+```json
+{
+  "kind": "assumption",
+  "text": "Let X be a random variable",
+  "start": 42,
+  "end": 71
+}
+```
+
+---
+
+## Edges
+
+Each edge represents a dependency or relationship between nodes.
+
+| Field | Req | Type | Description |
+|-------|-----|------|-------------|
+| `source` | **R** | string | ID of the supporting/source node |
+| `target` | **R** | string | ID of the dependent/target node |
+| `type` | O | string | Relationship type (default: `"dependency"`) |
+| `note` | O | string | Free-text annotation about this edge |
+| `confidence` | O | float | Confidence score (0-1) |
+
+**Edge direction convention:** an edge from A to B means "B depends on A" or "A supports B".
+
+### Edge types
+
+| Type | Category | Description |
+|------|----------|-------------|
+| `dependency` | logical | Generic dependency (default if `type` omitted) |
+| `uses` | logical | A uses result/definition B |
+| `proves` | logical | Proof A proves theorem B |
+| `follows_from` | logical | A follows from B |
+| `generalizes` | conceptual | A generalizes B |
+| `equivalent_to` | conceptual | A is equivalent to B (symmetric) |
+| `grounded_to` | external | Paper node linked to a known result in foundation graph |
+
+Extractors may output just `{"source": "A", "target": "B"}` (no type) for generic dependencies. More specific types earn higher evaluation scores.
+
+---
+
+## Student-facing (minimal) vs. research (full) format
+
+The same JSON schema is used for both. The difference is which optional fields are populated:
+
+**Student (minimal):** `id`, `type`, `name`, `statement`, `section`, `assumptions`, `conclusions`, `proves`, `proof_strategy`, plus edges with `source` and `target`.
+
+**Research (full):** All of the above plus `raw_latex`, `clean_text`, `label`, `env_name`, `spans`, `definiendum`, `confidence`, edge `type`, etc.
+
+To strip a full annotation to student format:
+
+```python
+from annotation_utils import strip_to_student_format
+student_json = strip_to_student_format(full_json)
+```
+
+---
+
+## Example: minimal (student) annotation
+
+```json
+{
+  "metadata": {"title": "Example Paper"},
+  "nodes": [
+    {
+      "id": "D1.1",
+      "type": "definition",
+      "name": "Graph Laplacian",
+      "section": "2.1",
+      "statement": "The graph Laplacian is L = D - W."
+    },
+    {
+      "id": "T1.1",
+      "type": "theorem",
+      "name": "Properties of L",
+      "section": "2.2",
+      "statement": "L is positive semi-definite with smallest eigenvalue 0.",
+      "assumptions": ["G is an undirected weighted graph"],
+      "conclusions": ["L is positive semi-definite", "Smallest eigenvalue is 0"]
+    },
+    {
+      "id": "P1.1",
+      "type": "proof",
+      "name": "Proof of Properties of L",
+      "section": "2.2",
+      "proves": "T1.1",
+      "proof_strategy": "direct computation"
+    }
+  ],
+  "edges": [
+    {"source": "D1.1", "target": "T1.1"},
+    {"source": "D1.1", "target": "P1.1"}
+  ]
+}
+```
+
+## Example: full (research) annotation
+
+```json
+{
+  "metadata": {"title": "Example Paper", "paper_id": "0711.0189"},
+  "nodes": [
+    {
+      "id": "D1.1",
+      "type": "definition",
+      "name": "Graph Laplacian",
+      "section": "2.1",
+      "statement": "The graph Laplacian is L = D - W.",
+      "raw_latex": "\\begin{definition}[Graph Laplacian]\nThe \\emph{graph Laplacian} is $L = D - W$.\n\\end{definition}",
+      "clean_text": "The graph Laplacian is [MATH].",
+      "label": "def:laplacian",
+      "env_name": "definition"
+    },
+    {
+      "id": "T1.1",
+      "type": "theorem",
+      "name": "Properties of L",
+      "section": "2.2",
+      "statement": "L is positive semi-definite with smallest eigenvalue 0.",
+      "assumptions": ["G is an undirected weighted graph"],
+      "conclusions": ["L is positive semi-definite", "Smallest eigenvalue is 0"],
+      "raw_latex": "\\begin{theorem}...",
+      "label": "thm:laplacian-props",
+      "env_name": "theorem"
+    }
+  ],
+  "edges": [
+    {"source": "D1.1", "target": "T1.1", "type": "uses", "confidence": 0.95},
+    {"source": "D1.1", "target": "P1.1", "type": "uses"}
+  ]
+}
+```

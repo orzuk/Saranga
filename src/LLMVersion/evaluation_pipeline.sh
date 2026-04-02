@@ -80,7 +80,7 @@ for pid in "${PAPER_IDS[@]}"; do
     python3 run_parse_papers.py \
         --regex-id "${REGEX_ID}" \
         --out-dir "${OUT_DIR}" \
-        --definition-mode llm \
+        --extraction-mode llm \
         --llm-provider huggingface \
         --llm-model "Qwen/Qwen2.5-7B-Instruct" \
         --prompt-file "${PROMPT_FILE}" \
@@ -91,7 +91,7 @@ for pid in "${PAPER_IDS[@]}"; do
     python3 run_parse_papers.py \
         --regex-id "${REGEX_ID}" \
         --out-dir "${OUT_DIR}" \
-        --definition-mode llm \
+        --extraction-mode llm \
         --llm-provider anthropic \
         --llm-model claude-sonnet-4-20250514 \
         --prompt-file "${PROMPT_FILE}" \
@@ -102,7 +102,7 @@ for pid in "${PAPER_IDS[@]}"; do
     python3 run_parse_papers.py \
         --regex-id "${REGEX_ID}" \
         --out-dir "${OUT_DIR}" \
-        --definition-mode llm \
+        --extraction-mode llm \
         --llm-provider openai \
         --llm-model gpt-4o \
         --prompt-file "${PROMPT_FILE}" \
@@ -112,7 +112,7 @@ for pid in "${PAPER_IDS[@]}"; do
     python3 run_parse_papers.py \
         --regex-id "${REGEX_ID}" \
         --out-dir "${OUT_DIR}" \
-        --definition-mode manual \
+        --extraction-mode manual \
         --structure-types "${STRUCTURE_TYPE}"
 done
 

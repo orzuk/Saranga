@@ -255,7 +255,7 @@ class PaperParser:
     def __init__(
             self,
             paper_id: Optional[str] = None,
-            definition_mode: str = "both",  # 'manual', 'llm', or 'both'
+            extraction_mode: str = "both",  # 'manual', 'llm', or 'both'
             llm_model: str = "gpt-4o-mini",
             llm_chunk_chars: int = 30000,
             llm_provider: str = "openai",
@@ -268,7 +268,7 @@ class PaperParser:
         ----------
         paper_id : Optional[str]
             Identifier for this paper.
-        definition_mode : {'manual', 'llm', 'both'}
+        extraction_mode : {'manual', 'llm', 'both'}
             - 'manual': only use rule-based extraction.
             - 'llm'   : only use LLM-based extraction.
             - 'both'  : use both and merge (default).
@@ -280,7 +280,7 @@ class PaperParser:
             Which structure types to extract via LLM (default: ["definition"]).
         """
         self.paper_id = paper_id or "paper"
-        self.definition_mode = definition_mode
+        self.extraction_mode = extraction_mode
         self.llm_model = llm_model
         self.llm_chunk_chars = llm_chunk_chars
         self.llm_provider = llm_provider
@@ -587,14 +587,14 @@ class PaperParser:
 
         # ---- Definitions: manual extraction ----
         manual_defs: List[Definition] = []
-        if self.definition_mode in ("manual", "both"):
+        if self.extraction_mode in ("manual", "both"):
             manual_defs = self._extract_definitions_manual(text)
 
         # ---- LLM extraction for each requested structure type ----
         definitions: List[Definition] = manual_defs
         llm_extracted: Dict[str, List[MathObject]] = {}
 
-        if self.definition_mode in ("llm", "both"):
+        if self.extraction_mode in ("llm", "both"):
             for stype in self.structure_types:
                 try:
                     llm_objs = self._extract_objects_llm(
@@ -614,7 +614,7 @@ class PaperParser:
             # Merge definitions
             if "definition" in self.structure_types:
                 llm_defs = llm_extracted.get("definition", [])
-                if self.definition_mode == "llm":
+                if self.extraction_mode == "llm":
                     definitions = llm_defs
                 else:  # 'both'
                     definitions = self._merge_definitions(manual_defs, llm_defs)
@@ -624,7 +624,7 @@ class PaperParser:
                 if stype == "definition" or stype not in self.THEOREM_LIKE_KINDS:
                     continue
                 llm_objs = llm_extracted.get(stype, [])
-                if self.definition_mode == "llm":
+                if self.extraction_mode == "llm":
                     # Pure LLM: replace regex results entirely
                     theorem_like = [t for t in theorem_like if t.kind != stype] + llm_objs
                 elif llm_objs:
@@ -637,12 +637,12 @@ class PaperParser:
         tables = self._extract_tables(text)
 
         # Merge/replace proof, algorithm, table when LLM was used
-        if self.definition_mode in ("llm", "both"):
+        if self.extraction_mode in ("llm", "both"):
             for stype, regex_var in [("proof", proofs), ("algorithm", algorithms), ("table", tables)]:
                 if stype not in self.structure_types:
                     continue
                 llm_objs = llm_extracted.get(stype, [])
-                if self.definition_mode == "llm":
+                if self.extraction_mode == "llm":
                     # Pure LLM: replace regex results entirely
                     if stype == "proof":
                         proofs = llm_objs

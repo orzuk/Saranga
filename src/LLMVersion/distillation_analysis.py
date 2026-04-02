@@ -739,7 +739,7 @@ def validate_rules(paper_ids: List[str], structure_type: str,
         try:
             parser = PaperParser(
                 paper_id=versioned_id,
-                definition_mode='manual',
+                extraction_mode='manual',
                 structure_types=[structure_type],
             )
             graph = parser.parse_file(tex_path)

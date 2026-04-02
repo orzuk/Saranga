@@ -289,7 +289,7 @@ class PromptOptimizer:
         # Parse with PaperParser
         parser = PaperParser(
             paper_id=versioned_id,
-            definition_mode="llm",
+            extraction_mode="llm",
             llm_model=self.model,
             llm_provider=self.provider,
             custom_prompt_file=prompt_file,

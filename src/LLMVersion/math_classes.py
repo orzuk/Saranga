@@ -570,6 +570,129 @@ class PaperGraph:
             "relations": [asdict(r) for r in self.relations],
         }
 
+    def to_unified_dict(self, include_research_fields: bool = True) -> Dict[str, Any]:
+        """
+        Convert to the unified annotation format (see annotation_schema.md).
+
+        Maps internal field names to the unified schema:
+          - objects dict → nodes list
+          - kind → type
+          - parent_id → proves (for proofs)
+          - source_id/target_id → source/target
+          - relation_type → type (on edges)
+          - assumptions string → assumptions list (single-element)
+
+        Parameters
+        ----------
+        include_research_fields : bool
+            If True, include optional research fields (raw_latex, clean_text,
+            label, env_name, spans, etc.). If False, output student-minimal format.
+        """
+        # --- Map edge type names ---
+        EDGE_TYPE_MAP = {
+            "uses": "uses",
+            "depends_on": "dependency",
+            "follows_from": "follows_from",
+            "has_part": "dependency",
+            "generalizes": "generalizes",
+            "related_to": "dependency",
+            "equivalent_to": "equivalent_to",
+        }
+
+        nodes = []
+        for obj in self.objects.values():
+            node: Dict[str, Any] = {
+                "id": obj.id,
+                "type": obj.kind,
+                "name": obj.name,
+                "statement": getattr(obj, "clean_text", "") or getattr(obj, "raw_latex", ""),
+            }
+
+            # Section (not currently tracked, but placeholder)
+            # node["section"] = ...
+
+            # Type-specific fields
+            if isinstance(obj, TheoremLike):
+                assumptions_str = getattr(obj, "assumptions", "")
+                if assumptions_str:
+                    node["assumptions"] = [assumptions_str]
+                else:
+                    node["assumptions"] = []
+                statement_str = getattr(obj, "statement", "")
+                if statement_str:
+                    node["conclusions"] = [statement_str]
+
+            if isinstance(obj, Proof):
+                node["proves"] = obj.parent_id or ""
+                if obj.strategy_tags:
+                    node["proof_strategy"] = obj.strategy_tags[0]
+                    node["strategy_tags"] = obj.strategy_tags
+
+            if isinstance(obj, Algorithm):
+                if obj.input_params:
+                    node["input"] = [f"{p.name}: {p.description or p.type or ''}" for p in obj.input_params]
+                if obj.output_params:
+                    node["output"] = [f"{p.name}: {p.description or p.type or ''}" for p in obj.output_params]
+
+            # Research-only fields
+            if include_research_fields:
+                node["raw_latex"] = obj.raw_latex
+                node["clean_text"] = obj.clean_text
+                if obj.label:
+                    node["label"] = obj.label
+                if hasattr(obj, "env_name") and getattr(obj, "env_name", ""):
+                    node["env_name"] = obj.env_name
+                if obj.index:
+                    node["index"] = obj.index
+                if obj.spans:
+                    node["spans"] = [asdict(s) for s in obj.spans]
+
+                # Definition-specific research fields
+                if isinstance(obj, Definition):
+                    if obj.definiendum:
+                        node["definiendum"] = asdict(obj.definiendum)
+                    if obj.genus:
+                        node["genus"] = asdict(obj.genus)
+                    if obj.differentia:
+                        node["differentia"] = [asdict(s) for s in obj.differentia]
+
+                # Proof steps
+                if isinstance(obj, Proof) and obj.steps:
+                    node["steps"] = [asdict(s) for s in obj.steps]
+
+                # TheoremLike spans
+                if isinstance(obj, TheoremLike):
+                    if obj.assumption_spans:
+                        node["assumption_spans"] = [asdict(s) for s in obj.assumption_spans]
+                    if obj.statement_spans:
+                        node["statement_spans"] = [asdict(s) for s in obj.statement_spans]
+
+            nodes.append(node)
+
+        edges = []
+        for r in self.relations:
+            edge: Dict[str, Any] = {
+                "source": r.source_id,
+                "target": r.target_id,
+            }
+            mapped_type = EDGE_TYPE_MAP.get(r.relation_type, r.relation_type)
+            if mapped_type and mapped_type != "dependency":
+                edge["type"] = mapped_type
+            if include_research_fields and r.metadata.get("confidence"):
+                edge["confidence"] = r.metadata["confidence"]
+            edges.append(edge)
+
+        result: Dict[str, Any] = {
+            "metadata": {"paper_id": self.paper_id},
+            "nodes": nodes,
+            "edges": edges,
+        }
+        return result
+
+    def to_student_dict(self) -> Dict[str, Any]:
+        """Convenience: output in student-minimal unified format."""
+        return self.to_unified_dict(include_research_fields=False)
+
     @staticmethod
     def from_dict(d: Dict[str, Any]) -> "PaperGraph":
         """

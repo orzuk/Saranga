@@ -51,7 +51,7 @@ chmod +x evaluation_pipeline.sh
 ```
 
 ## Parser Info
-Use the `--definition-mode` argument to choose your parsing strategy:
+Use the `--extraction-mode` argument to choose the extraction strategy:
 - `manual` — Pattern-based extraction (default, no API key needed)
 - `llm` — LLM API extraction only
 - `both` — Combines both methods for best coverage
@@ -66,7 +66,7 @@ Use the `--definition-mode` argument to choose your parsing strategy:
 --out-dir               Output directory (defaults to FULL_PAPERS_DIR from config.py)
 --draw-graphs           Generate network visualization PNGs
 --verbose               Enable detailed logging
---definition-mode       Extraction method: manual (default), llm, or both
+--extraction-mode       Extraction method: manual (default), llm, or both
 --llm-provider          Choose provider: anthropic, openai, or huggingface
 --llm-model             Model name (default: claude-sonnet-4-20250514)
 --llm-chunk-chars       Max characters per LLM chunk (default: 30000)
@@ -82,7 +82,7 @@ export ANTHROPIC_API_KEY="your-key"
 python3 run_parse_papers.py \
     --regex-id "^2501\.00685" \
     --out-dir . \
-    --definition-mode llm \
+    --extraction-mode llm \
     --llm-provider anthropic \
     --llm-model claude-sonnet-4-20250514
 ```
@@ -93,7 +93,7 @@ export ANTHROPIC_API_KEY="your-key"
 python3 run_parse_papers.py \
     --regex-id "^2501\.00685" \
     --out-dir . \
-    --definition-mode llm \
+    --extraction-mode llm \
     --llm-provider anthropic \
     --structure-types theorem
 ```
@@ -103,7 +103,7 @@ python3 run_parse_papers.py \
 python3 run_parse_papers.py \
     --regex-id "^2501\.00685" \
     --out-dir . \
-    --definition-mode llm \
+    --extraction-mode llm \
     --llm-provider openai \
     --llm-model gpt-4o \
     --structure-types "definition,theorem,lemma"
@@ -115,7 +115,7 @@ export OPENAI_API_KEY="your-key"
 python3 run_parse_papers.py \
     --regex-id "^2501\.00685" \
     --out-dir . \
-    --definition-mode llm \
+    --extraction-mode llm \
     --llm-provider openai \
     --llm-model gpt-4o
 ```
@@ -126,7 +126,7 @@ export HF_TOKEN="your-token"
 python3 run_parse_papers.py \
     --regex-id "^2501\.00685" \
     --out-dir . \
-    --definition-mode llm \
+    --extraction-mode llm \
     --llm-provider huggingface \
     --llm-model "Qwen/Qwen2.5-7B-Instruct"
 ```
@@ -136,7 +136,7 @@ python3 run_parse_papers.py \
 python3 run_parse_papers.py \
     --regex-id "^2501\.00685" \
     --out-dir . \
-    --definition-mode llm \
+    --extraction-mode llm \
     --llm-provider anthropic \
     --prompt-file my_custom_prompt.txt
 ```

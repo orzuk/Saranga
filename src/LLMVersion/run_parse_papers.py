@@ -11,13 +11,13 @@ Example usages:
   python run_parse_papers.py \
       --regex-id "^2501\\.00685" \
       --out-dir . \
-      --definition-mode llm
+      --extraction-mode llm
 
   # Combined manual + LLM extraction
   python run_parse_papers.py \
       --regex-id "^2501\\.00685" \
       --out-dir . \
-      --definition-mode both
+      --extraction-mode both
 
   # Last 30 days, math.PR, up to 20 papers, with LLM
   python run_parse_papers.py \
@@ -25,7 +25,7 @@ Example usages:
       --days 30 \
       --top-k 20 \
       --out-dir parsed_math_pr_30d \
-      --definition-mode both
+      --extraction-mode both
 """
 
 import argparse
@@ -96,7 +96,7 @@ def run_batch(
         out_dir: Path,
         draw_graphs: bool,
         verbose: bool,
-        definition_mode: str = "manual",
+        extraction_mode: str = "manual",
         llm_model: str = "claude-sonnet-4-20250514",
         llm_chunk_chars: int = 30000,
         llm_provider: str = "anthropic",
@@ -108,8 +108,8 @@ def run_batch(
         f"(start={start_date}, end={end_date}, category={category}, regex_id={regex_id})"
     )
 
-    if definition_mode in ("llm", "both"):
-        print(f"[INFO] LLM definition extraction enabled (mode={definition_mode}, model={llm_model})")
+    if extraction_mode in ("llm", "both"):
+        print(f"[INFO] LLM extraction enabled (mode={extraction_mode}, model={llm_model})")
 
     # ------------------------------------------------------------
     # 1. TRY LOCAL .TEX FILES FIRST (avoids arXiv API entirely)
@@ -142,7 +142,7 @@ def run_batch(
             try:
                 parser = PaperParser(
                     paper_id=versioned_id,
-                    definition_mode=definition_mode,
+                    extraction_mode=extraction_mode,
                     llm_model=llm_model,
                     llm_chunk_chars=llm_chunk_chars,
                     llm_provider=llm_provider,
@@ -155,9 +155,9 @@ def run_batch(
                 continue
 
             # Save JSON into json/ subdir so definitions_from_json_to_csv.py glob finds it
-            if definition_mode == "manual":
+            if extraction_mode == "manual":
                 suffix = "manual"
-            elif definition_mode == "llm":
+            elif extraction_mode == "llm":
                 suffix = llm_provider
             else:
                 suffix = f"{llm_provider}+manual"
@@ -258,7 +258,7 @@ def run_batch(
         try:
             parser = PaperParser(
                 paper_id=versioned_id,
-                definition_mode=definition_mode,
+                extraction_mode=extraction_mode,
                 llm_model=llm_model,
                 llm_chunk_chars=llm_chunk_chars,
                 llm_provider=llm_provider,
@@ -298,11 +298,11 @@ def run_batch(
         json_dir.mkdir(parents=True, exist_ok=True)
 
         # Determine JSON suffix
-        if definition_mode == "manual":
+        if extraction_mode == "manual":
             suffix = "manual"
-        elif definition_mode == "llm":
+        elif extraction_mode == "llm":
             suffix = llm_model.replace('/', '-')  # sanitize slashes for filename
-        elif definition_mode == "both":
+        elif extraction_mode == "both":
             suffix = f"{llm_model}+manual"
 
         json_filename = f"{versioned_id}_{suffix}.json"
@@ -415,14 +415,14 @@ def main():
 
     # LLM-related options
     parser.add_argument(
-        "--definition-mode",
+        "--extraction-mode",
         type=str,
         default="manual",
         choices=["manual", "llm", "both"],
         help=(
-            "Definition extraction mode: "
+            "Extraction mode for all structure types: "
             "'manual' (pattern-based, default), "
-            "'llm' (Anthropic API), "
+            "'llm' (LLM API), "
             "'both' (combines both methods)."
         ),
     )
@@ -480,7 +480,7 @@ def main():
         out_dir=Path(args.out_dir),
         draw_graphs=args.draw_graphs,
         verbose=args.verbose,
-        definition_mode=args.definition_mode,
+        extraction_mode=args.extraction_mode,
         llm_model=args.llm_model,
         llm_chunk_chars=args.llm_chunk_chars,
         llm_provider=args.llm_provider,
