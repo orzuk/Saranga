@@ -79,11 +79,12 @@ def find_gold(chapter_num, golds_dir, manual_gold_dir):
 
 
 def find_paper_gold(paper_num, papers_dir):
-    """Find gold standard JSON for a paper."""
-    for pattern in [f"paper{paper_num}_gold.json", f"paper{paper_num}.json"]:
-        path = os.path.join(papers_dir, pattern)
-        if os.path.exists(path):
-            return path
+    """Find gold standard JSON for a paper. Checks gold/ subdir first, then root."""
+    for subdir in ["gold", ""]:
+        for pattern in [f"paper{paper_num}_gold.json", f"paper{paper_num}.json"]:
+            path = os.path.join(papers_dir, subdir, pattern)
+            if os.path.exists(path):
+                return path
     return None
 
 
@@ -94,9 +95,14 @@ def find_paper_tex(paper_num, papers_dir):
 
 
 def run_extractor(extractor_path, input_path, output_path, model):
-    """Run an extractor script and return success status."""
-    cmd = [sys.executable, extractor_path, input_path, "-o", output_path, "--model", model]
+    """Run an extractor script and return success status. Prints progress line."""
     print(f"    Extracting with {model.split('/')[-1]}...", end=" ", flush=True)
+    return run_extractor_inner(extractor_path, input_path, output_path, model)
+
+
+def run_extractor_inner(extractor_path, input_path, output_path, model):
+    """Run an extractor script and return success status (no progress prefix)."""
+    cmd = [sys.executable, extractor_path, input_path, "-o", output_path, "--model", model]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
         if result.returncode == 0 and os.path.exists(output_path):
@@ -318,13 +324,21 @@ Examples:
             gold = find_paper_gold(pnum, args.papers_dir)
             if tex and gold:
                 documents.append((f"paper{pnum}", split, tex, gold))
-            # Papers without tex or gold are silently skipped
+            else:
+                missing = []
+                if not tex:
+                    missing.append("tex")
+                if not gold:
+                    missing.append("gold")
+                print(f"  Warning: paper {pnum} missing {' and '.join(missing)}, skipping")
 
     if not documents:
         print("No documents found to evaluate. Check paths and --split/--doc-type flags.")
         sys.exit(1)
 
-    print(f"Documents: {len(documents)}")
+    print(f"\nDocuments ({len(documents)}):")
+    for i, (label, split, tex, gold) in enumerate(documents, 1):
+        print(f"  {i:>2}. {label} ({split}) — {os.path.basename(tex)}")
     print(f"Models:    {len(args.models)}")
     print(f"Total runs: {len(documents) * len(args.models)}")
     print()
@@ -338,8 +352,13 @@ Examples:
 
     # Run extraction + evaluation
     results = []
-    for doc_label, split, tex_path, gold_path in documents:
+    total_docs = len(documents)
+    total_runs = total_docs * len(args.models)
+    run_num = 0
+    for doc_idx, (doc_label, split, tex_path, gold_path) in enumerate(documents, 1):
+        print(f"\n[{doc_idx}/{total_docs}] {doc_label} ({split}) — {os.path.basename(tex_path)}")
         for model in args.models:
+            run_num += 1
             model_short = model.split("/")[-1]
             out_name = f"{doc_label}_{model_short}.json"
             out_path = os.path.join(outdir, out_name)
@@ -347,12 +366,13 @@ Examples:
             # Extract if needed
             if args.extractor:
                 if args.force_extract or not os.path.exists(out_path):
-                    success = run_extractor(args.extractor, tex_path, out_path, model)
+                    print(f"  [{run_num}/{total_runs}] Extracting with {model_short}...", end=" ", flush=True)
+                    success = run_extractor_inner(args.extractor, tex_path, out_path, model)
                     if not success:
                         print(f"    Skipping evaluation (extraction failed)")
                         continue
                 else:
-                    print(f"  {doc_label} / {model_short}: using existing {out_name}")
+                    print(f"  [{run_num}/{total_runs}] {model_short}: using existing {out_name}")
 
             # Evaluate
             if not os.path.exists(out_path):
