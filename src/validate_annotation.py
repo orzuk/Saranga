@@ -149,12 +149,8 @@ def compute_depth(adj, nodes, in_deg_orig):
     return depth
 
 
-def main():
-    if len(sys.argv) < 2:
-        print(__doc__)
-        sys.exit(1)
-
-    path = Path(sys.argv[1])
+def validate_file(path: Path, verbose: bool = True) -> tuple[int, int, int, int]:
+    """Validate a single JSON file. Returns (nodes, edges, errors, warnings)."""
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
@@ -162,23 +158,90 @@ def main():
 
     error_count = sum(1 for m in messages if m.startswith("ERROR"))
     warn_count = sum(1 for m in messages if m.startswith("WARNING"))
-    info_count = sum(1 for m in messages if m.startswith("INFO"))
-
-    for msg in messages:
-        print(msg)
-
-    print(f"\n{'='*50}")
     n_nodes = len(data.get("nodes", []))
     n_edges = len(data.get("edges", []))
-    print(f"Summary: {n_nodes} nodes, {n_edges} edges, "
-          f"{error_count} errors, {warn_count} warnings")
 
-    if error_count == 0:
-        print("PASSED: Annotation is structurally valid.")
-    else:
-        print("FAILED: Fix errors above before proceeding.")
+    if verbose:
+        for msg in messages:
+            print(msg)
+        print(f"\n{'='*50}")
+        print(f"Summary: {n_nodes} nodes, {n_edges} edges, "
+              f"{error_count} errors, {warn_count} warnings")
+        if error_count == 0:
+            print("PASSED: Annotation is structurally valid.")
+        else:
+            print("FAILED: Fix errors above before proceeding.")
 
-    sys.exit(1 if error_count > 0 else 0)
+    return n_nodes, n_edges, error_count, warn_count
+
+
+def resolve_paths(args: list[str]) -> list[Path]:
+    """Resolve a list of paths/globs/directories to JSON files."""
+    import glob
+    files = []
+    for arg in args:
+        p = Path(arg)
+        if p.is_dir():
+            files.extend(sorted(p.glob("*.json")))
+        elif "*" in arg or "?" in arg:
+            files.extend(sorted(Path(m) for m in glob.glob(arg)))
+        elif p.is_file():
+            files.append(p)
+        else:
+            print(f"WARNING: '{arg}' not found, skipping.")
+    return files
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python validate_annotation.py <file.json | directory | glob-pattern> ...")
+        print("Examples:")
+        print("  python validate_annotation.py annotation.json")
+        print("  python validate_annotation.py papers/gold/")
+        print("  python validate_annotation.py 'papers/gold/paper*.json'")
+        print("  python validate_annotation.py file1.json file2.json file3.json")
+        sys.exit(1)
+
+    files = resolve_paths(sys.argv[1:])
+
+    if not files:
+        print("No JSON files found.")
+        sys.exit(1)
+
+    # Single file: verbose output
+    if len(files) == 1:
+        _, _, errors, _ = validate_file(files[0], verbose=True)
+        sys.exit(1 if errors > 0 else 0)
+
+    # Multiple files: summary table
+    total_nodes, total_edges, total_errors, total_warnings = 0, 0, 0, 0
+    results = []
+
+    for f in files:
+        try:
+            n, e, errs, warns = validate_file(f, verbose=False)
+            status = "PASS" if errs == 0 else "FAIL"
+            results.append((f.name, n, e, errs, warns, status))
+            total_nodes += n
+            total_edges += e
+            total_errors += errs
+            total_warnings += warns
+        except Exception as ex:
+            results.append((f.name, 0, 0, 1, 0, f"ERROR: {ex}"))
+            total_errors += 1
+
+    # Print table
+    print(f"\n{'File':<35} {'Nodes':>6} {'Edges':>6} {'Errors':>7} {'Warns':>6} {'Status':>6}")
+    print("-" * 72)
+    for name, n, e, errs, warns, status in results:
+        print(f"{name:<35} {n:>6} {e:>6} {errs:>7} {warns:>6} {status:>6}")
+    print("-" * 72)
+    print(f"{'TOTAL':<35} {total_nodes:>6} {total_edges:>6} {total_errors:>7} {total_warnings:>6}")
+    print(f"\n{len(files)} files validated: "
+          f"{sum(1 for r in results if r[5] == 'PASS')} passed, "
+          f"{sum(1 for r in results if r[5] != 'PASS')} failed.")
+
+    sys.exit(1 if total_errors > 0 else 0)
 
 
 if __name__ == "__main__":

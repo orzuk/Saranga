@@ -64,12 +64,23 @@ _LATEX_FIXES = {
     r"\lfloor": r"\lfloor", r"\rfloor": r"\rfloor",  # these are fine
 }
 
+# Regex-based fixes: commands like \ge that are prefixes of valid commands (\geq)
+# Must use regex with word boundary to avoid breaking \geq -> \geqq
+import re as _re
+_LATEX_REGEX_FIXES = [
+    (_re.compile(r'\\ge(?!q)'), r'\\geq'),
+    (_re.compile(r'\\le(?!q|ft)'), r'\\leq'),
+    (_re.compile(r'\\ne(?!g|wcommand)'), r'\\neq'),
+]
+
 def _sanitize_math(text):
     """Replace unsupported LaTeX commands with matplotlib-compatible equivalents."""
     if not text:
         return text
     for old, new in _LATEX_FIXES.items():
         text = text.replace(old, new)
+    for pattern, repl in _LATEX_REGEX_FIXES:
+        text = pattern.sub(repl, text)
     return text
 
 
@@ -177,6 +188,7 @@ def merge_proofs(nodes, edges):
         if n["id"] in proof_map:
             parent_id = proof_map[n["id"]]
             parent = node_by_id[parent_id]
+            parent.setdefault("proof_info", [])
             parent["proof_info"].append(n.get("proof_strategy", ""))
             continue
         display_nodes.append(n)
@@ -1052,51 +1064,91 @@ document.getElementById("svg-container").addEventListener("wheel", function(e) {
 
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
+def resolve_paths(args_list):
+    """Resolve a list of paths/globs/directories to JSON files."""
+    import glob as _glob
+    files = []
+    for arg in args_list:
+        p = Path(arg)
+        if p.is_dir():
+            files.extend(sorted(p.glob("*.json")))
+        elif "*" in arg or "?" in arg:
+            files.extend(sorted(Path(m) for m in _glob.glob(arg)))
+        elif p.is_file():
+            files.append(p)
+        else:
+            print(f"WARNING: '{arg}' not found, skipping.")
+    return files
+
+
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("input", help="Input JSON annotation file")
-    parser.add_argument("output", nargs="?", default=None, help="Output PNG (default: input with .png)")
+    parser = argparse.ArgumentParser(
+        description="Visualize knowledge graph annotation(s) as DAG images.",
+        epilog="Examples:\n"
+               "  python visualize_annotation.py annotation.json\n"
+               "  python visualize_annotation.py papers/gold/\n"
+               "  python visualize_annotation.py 'papers/gold/paper*.json'\n",
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("input", nargs="+", help="JSON file(s), directory, or glob pattern")
+    parser.add_argument("-o", "--output", default=None, help="Output PNG path (single file only)")
     parser.add_argument("--resolution", choices=["standard", "full"], default="standard",
                         help="standard: collapse proofs, hide equations. full: show all nodes.")
-    parser.add_argument("--html", default=None,
-                        help="Also generate interactive HTML (wrapping the SVG with click-to-expand)")
+    parser.add_argument("--html", action="store_true",
+                        help="Also generate interactive HTML for each file")
+    parser.add_argument("--html-only", action="store_true",
+                        help="Generate only interactive HTML (no PNG)")
     args = parser.parse_args()
 
-    input_path = Path(args.input)
-    output_path = Path(args.output) if args.output else input_path.with_suffix(".png")
-
-    with open(input_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    nodes = data.get("nodes", [])
-    edges = data.get("edges", [])
-
-    if not nodes:
-        print("Error: No 'nodes' found in JSON.")
+    files = resolve_paths(args.input)
+    if not files:
+        print("No JSON files found.")
         sys.exit(1)
 
-    metadata = data.get("metadata", {})
-    result = draw_dag(nodes, edges, output_path, metadata=metadata,
-                      resolution=args.resolution)
-    n_nodes, n_edges = result[0], result[1]
-    print(f"DAG saved to {output_path}  ({n_nodes} display nodes, {n_edges} edges, resolution={args.resolution})")
+    do_html = args.html or args.html_only
+    do_png = not args.html_only
 
-    # Generate interactive HTML if requested
-    if args.html:
-        # Generate SVG without legend (legend is in the HTML bar)
-        svg_only_path = str(output_path).replace('.png', '_nolegend.svg')
-        draw_dag(nodes, edges, svg_only_path.replace('.svg', '.png'), metadata=metadata,
-                 resolution=args.resolution, show_legend=False)
-        svg_path = svg_only_path
-        n_html = generate_interactive_html(data, svg_path, args.html)
-        # Clean up temp files
-        import os
-        for tmp in [svg_only_path, svg_only_path.replace('.svg', '.png')]:
-            if os.path.exists(tmp):
-                os.remove(tmp)
-        print(f"Interactive HTML saved to {args.html}  ({n_html} clickable nodes)")
+    for i, input_path in enumerate(files):
+        if len(files) > 1:
+            print(f"\n[{i+1}/{len(files)}] {input_path.name}")
+
+        if args.output and len(files) == 1:
+            output_path = Path(args.output)
+        else:
+            output_path = input_path.with_suffix(".png")
+
+        with open(input_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        nodes = data.get("nodes", [])
+        edges = data.get("edges", [])
+
+        if not nodes:
+            print(f"  WARNING: No 'nodes' found in {input_path.name}, skipping.")
+            continue
+
+        metadata = data.get("metadata", {})
+
+        if do_png:
+            result = draw_dag(nodes, edges, output_path, metadata=metadata,
+                              resolution=args.resolution)
+            n_nodes, n_edges = result[0], result[1]
+            print(f"  -> {output_path} ({n_nodes} nodes, {n_edges} edges)")
+
+        if do_html:
+            import os
+            svg_only_path = str(output_path).replace('.png', '_nolegend.svg')
+            draw_dag(nodes, edges, svg_only_path.replace('.svg', '.png'), metadata=metadata,
+                     resolution=args.resolution, show_legend=False)
+            html_path = input_path.with_suffix(".html")
+            n_html = generate_interactive_html(data, svg_only_path, str(html_path))
+            for tmp in [svg_only_path, svg_only_path.replace('.svg', '.png')]:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+            print(f"  -> {html_path} ({n_html} clickable nodes)")
+
+    if len(files) > 1:
+        print(f"\nDone: {len(files)} graphs generated.")
 
 
 if __name__ == "__main__":

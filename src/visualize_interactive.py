@@ -53,6 +53,7 @@ def classify_and_merge(nodes, edges):
         if n.get("type") == "proof" and n.get("proves") and n["proves"] in node_by_id:
             proof_map[n["id"]] = n["proves"]
             parent = node_by_id[n["proves"]]
+            parent.setdefault("proof_info", [])
             if n.get("proof_strategy"):
                 parent["proof_info"].append(n["proof_strategy"])
 
@@ -491,22 +492,58 @@ function esc(text) {
     return len(base_nodes), len(base_edges), len(step_chains), len(eq_map), len(orphan_eqs)
 
 
+def resolve_paths(args_list):
+    """Resolve a list of paths/globs/directories to JSON files."""
+    import glob
+    files = []
+    for arg in args_list:
+        p = Path(arg)
+        if p.is_dir():
+            files.extend(sorted(p.glob("*.json")))
+        elif "*" in arg or "?" in arg:
+            files.extend(sorted(Path(m) for m in glob.glob(arg)))
+        elif p.is_file():
+            files.append(p)
+        else:
+            print(f"WARNING: '{arg}' not found, skipping.")
+    return files
+
+
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("input", help="Input JSON")
-    parser.add_argument("output", nargs="?", default=None, help="Output HTML")
+    parser = argparse.ArgumentParser(
+        description="Generate interactive HTML visualization(s) of knowledge graph(s).",
+        epilog="Examples:\n"
+               "  python visualize_interactive.py annotation.json\n"
+               "  python visualize_interactive.py papers/gold/\n"
+               "  python visualize_interactive.py 'papers/gold/paper*.json'\n",
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("input", nargs="+", help="JSON file(s), directory, or glob pattern")
+    parser.add_argument("-o", "--output", default=None, help="Output HTML (single file only)")
     args = parser.parse_args()
 
-    input_path = Path(args.input)
-    output_path = Path(args.output) if args.output else input_path.with_suffix(".html")
+    files = resolve_paths(args.input)
+    if not files:
+        print("No JSON files found.")
+        sys.exit(1)
 
-    with open(input_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    for i, input_path in enumerate(files):
+        if len(files) > 1:
+            print(f"[{i+1}/{len(files)}] {input_path.name}")
 
-    n_base, n_edges, n_steps, n_eqs, n_orphans = generate_html(data, output_path)
-    print(f"Interactive HTML saved to {output_path}")
-    print(f"  Base nodes: {n_base}, Edges: {n_edges}, Steps: {n_steps}, Eqs: {n_eqs}, Orphans: {n_orphans}")
+        if args.output and len(files) == 1:
+            output_path = Path(args.output)
+        else:
+            output_path = input_path.with_suffix(".html")
+
+        with open(input_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        n_base, n_edges, n_steps, n_eqs, n_orphans = generate_html(data, output_path)
+        print(f"  -> {output_path} ({n_base} nodes, {n_edges} edges)")
+
+    if len(files) > 1:
+        print(f"\nDone: {len(files)} HTML files generated.")
 
 
 if __name__ == "__main__":
