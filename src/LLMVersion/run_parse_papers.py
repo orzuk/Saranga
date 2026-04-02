@@ -165,7 +165,7 @@ def run_batch(
             json_dir.mkdir(parents=True, exist_ok=True)
             json_name = f"{versioned_id}_{suffix}.json"
             json_path = json_dir / json_name
-            json_path.write_text(json.dumps(graph.to_dict(), indent=2), encoding="utf-8")
+            json_path.write_text(json.dumps(graph.to_unified_dict(), indent=2), encoding="utf-8")
             print(f"[OK]   Saved {json_path}")
 
             if draw_graphs:
@@ -308,7 +308,7 @@ def run_batch(
         json_filename = f"{versioned_id}_{suffix}.json"
         json_path = json_dir / json_filename
 
-        json_path.write_text(json.dumps(graph.to_dict(), indent=2), encoding="utf-8")
+        json_path.write_text(json.dumps(graph.to_unified_dict(), indent=2), encoding="utf-8")
         print(f"[OK]   Saved graph for {base_id} -> {json_path}")
 
         # ---------- STEP 5: DRAW PNG ----------
