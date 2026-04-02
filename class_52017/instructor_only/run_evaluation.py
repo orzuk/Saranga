@@ -102,19 +102,23 @@ def run_extractor(extractor_path, input_path, output_path, model):
 
 def run_extractor_inner(extractor_path, input_path, output_path, model):
     """Run an extractor script and return success status (no progress prefix)."""
+    import time
     cmd = [sys.executable, extractor_path, input_path, "-o", output_path, "--model", model]
+    t0 = time.time()
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        elapsed = time.time() - t0
         if result.returncode == 0 and os.path.exists(output_path):
-            print("OK")
+            print(f"OK ({elapsed:.0f}s)")
             return True
         else:
-            print("FAILED")
+            print(f"FAILED ({elapsed:.0f}s)")
             if result.stderr:
                 print(f"      stderr: {result.stderr[:200]}")
             return False
     except subprocess.TimeoutExpired:
-        print("TIMEOUT")
+        elapsed = time.time() - t0
+        print(f"TIMEOUT ({elapsed:.0f}s)")
         return False
 
 
