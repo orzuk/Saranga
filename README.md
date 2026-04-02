@@ -11,7 +11,6 @@ Tools for downloading, parsing, and structuring mathematical knowledge from arXi
 | `extract_arxiv_data.py` | Download metadata, PDFs, LaTeX source, and HTML from arXiv |
 | `validate_annotation.py` | Validate knowledge graph JSONs (DAG check, field checks, edge integrity) |
 | `visualize_annotation.py` | Generate PNG/SVG DAG visualizations and interactive HTML |
-| `visualize_interactive.py` | Generate standalone interactive HTML with dagre-d3 layout |
 | `link_to_foundation.py` | Link paper nodes to well-known math results (Markov, Cauchy-Schwarz, ...) |
 | `evaluate_extraction.py` | Evaluate extracted JSON against gold standard (precision/recall/F1) |
 | `run_evaluation.py` | Full pipeline: extract + evaluate across documents x models |
@@ -182,7 +181,6 @@ src/
   extract_arxiv_data.py        # ArXiv data fetcher
   validate_annotation.py       # JSON validation
   visualize_annotation.py      # PNG/SVG/HTML DAG visualization
-  visualize_interactive.py     # Standalone dagre-d3 HTML visualization
   link_to_foundation.py        # Foundation knowledge linker
   evaluate_extraction.py       # Gold standard evaluation
   foundation_linker.py         # OOP foundation linker (NaturalProofs, Mathlib)

@@ -692,9 +692,73 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
     return len(nodes), len(edges), node_rect, node_data
 
 
+def _classify_and_merge(nodes, edges):
+    """Merge proofs into parent theorems. Separate equations/proof_steps."""
+    node_by_id = {n["id"]: n for n in nodes}
+
+    proof_map = {}
+    for n in nodes:
+        if n.get("type") != "proof" and n["id"] in node_by_id:
+            node_by_id[n["id"]]["proof_info"] = []
+    for n in nodes:
+        if n.get("type") == "proof" and n.get("proves") and n["proves"] in node_by_id:
+            proof_map[n["id"]] = n["proves"]
+            parent = node_by_id[n["proves"]]
+            parent.setdefault("proof_info", [])
+            if n.get("proof_strategy"):
+                parent["proof_info"].append(n["proof_strategy"])
+
+    base_nodes, proof_steps, equations, orphan_eqs = [], [], [], []
+    has_edge = set()
+    for e in edges:
+        has_edge.add(e["source"])
+        has_edge.add(e["target"])
+
+    for n in nodes:
+        if n["id"] in proof_map:
+            continue
+        if n["type"] == "proof_step":
+            proof_steps.append(n)
+        elif n["type"] == "equation":
+            if n["id"] in has_edge:
+                equations.append(n)
+            else:
+                orphan_eqs.append(n)
+        else:
+            base_nodes.append(n)
+
+    base_ids = {n["id"] for n in base_nodes}
+    base_edges = []
+    seen = set()
+    for e in edges:
+        s = proof_map.get(e["source"], e["source"])
+        t = proof_map.get(e["target"], e["target"])
+        if s == t or s not in base_ids or t not in base_ids:
+            continue
+        key = (s, t)
+        if key not in seen:
+            base_edges.append({"source": s, "target": t})
+            seen.add(key)
+
+    step_chains = {}
+    for ps in proof_steps:
+        parent = ps.get("parent_proof", "")
+        thm_id = proof_map.get(parent, parent)
+        step_chains.setdefault(thm_id, []).append(ps)
+
+    eq_map = {}
+    for eq in equations:
+        for e in edges:
+            if e["source"] == eq["id"] and e["target"] in base_ids:
+                eq_map.setdefault(e["target"], []).append(eq)
+            if e["target"] == eq["id"] and e["source"] in base_ids:
+                eq_map.setdefault(e["source"], []).append(eq)
+
+    return base_nodes, base_edges, step_chains, eq_map, orphan_eqs
+
+
 def generate_interactive_html(data, svg_path, html_path):
     """Wrap an SVG figure in an interactive HTML page with click-to-expand detail panel."""
-    from visualize_interactive import classify_and_merge
     import json as _json
     from html import escape as _esc
 
@@ -702,7 +766,7 @@ def generate_interactive_html(data, svg_path, html_path):
     edges = data.get("edges", [])
     metadata = data.get("metadata", {})
 
-    base_nodes, base_edges, step_chains, eq_map, orphan_eqs = classify_and_merge(nodes, edges)
+    base_nodes, base_edges, step_chains, eq_map, orphan_eqs = _classify_and_merge(nodes, edges)
 
     # Foundation graph linking
     from link_to_foundation import build_foundation_index, link_paper, WELL_KNOWN
