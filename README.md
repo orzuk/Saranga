@@ -174,6 +174,22 @@ See `scripts/fetch_arxiv_papers_metadata.sh` for a batch job example.
 
 ---
 
+## Textbook (PDF to LaTeX)
+
+The BHK textbook (*Foundations of Data Science*, Blum-Hopcroft-Kannan 2020) was converted from PDF to structured LaTeX using [Mathpix](https://mathpix.com/) OCR, then post-processed and split into per-chapter `.tex` files:
+
+```bash
+# 1. Convert PDF to raw LaTeX via Mathpix (external service, ~$0.01/page)
+#    Upload book PDF at https://mathpix.com/ → download .tex output
+
+# 2. Post-process: add theorem environments + split into chapters
+python src/structured_math/books/mathpix_to_thm_env.py --split-chapters raw_mathpix_output.tex -o BHK_chapters/
+```
+
+This produces per-chapter files: `chapterN.tex` (with preamble), `chapterN_body.tex` (body only), and `chapterN_bib.tex` (bibliographic notes).
+
+---
+
 ## Project Structure
 
 ```
@@ -185,6 +201,10 @@ src/
   evaluate_extraction.py       # Gold standard evaluation
   foundation_linker.py         # OOP foundation linker (NaturalProofs, Mathlib)
   math_classes.py              # Data model (PaperGraph, Relation, Concept)
+  annotation_schema.md         # Unified JSON annotation format spec
+  annotation_utils.py          # Format conversion utilities
+  structured_math/books/
+    mathpix_to_thm_env.py      # Mathpix OCR post-processing + chapter splitting
 
 class_52017/
   instructor_only/
