@@ -692,33 +692,8 @@ class PaperParser:
         """
         Parse \\newtheorem definitions and populate env_kind_map.
         """
-        # Start from a sensible base
-        base_map = {
-            "theorem": "theorem",
-            "Theorem": "theorem",
-            "thm": "theorem",
-            "lemma": "lemma",
-            "Lemma": "lemma",
-            "proposition": "proposition",
-            "Proposition": "proposition",
-            "corollary": "corollary",
-            "Corollary": "corollary",
-            "claim": "claim",
-            "Claim": "claim",
-            "conclusion": "conclusion",
-            "Conclusion": "conclusion",
-            "definition": "definition",
-            "Definition": "definition",
-            "remark": "remark",
-            "Remark": "remark",
-            "example": "example",
-            "Example": "example",
-            "problem": "problem",
-            "Problem": "problem",
-            "conjecture": "conjecture",
-            "Conjecture": "conjecture",
-        }
-        self.env_kind_map = dict(base_map)
+        # Start from BASE_ENV_KIND_MAP (which has all aliases like defn, dfn, lem, etc.)
+        self.env_kind_map = dict(self.BASE_ENV_KIND_MAP)
 
         # \newtheorem{env}[counter]{Printed Name}
         pattern = re.compile(
@@ -996,13 +971,21 @@ class PaperParser:
 
         # --- C. Inline textual definitions -------------------------------
 
+        # Mask out text inside definition environments (Parts A & B)
+        # so inline patterns don't re-match and truncate inside them.
+        inline_text = text
+        for obj in objects:
+            raw = obj.raw_latex
+            if raw:
+                inline_text = inline_text.replace(raw, " " * len(raw), 1)
+
         # C1: "We (also) define X as/by/to be ..." (case insensitive)
         inline_define_pattern = re.compile(
             r"(?P<full>"
             r"(?:We\s+)?(?:also\s+)?define\s+"
             r"(?P<name>[^.]{1,80}?)"
             r"\s*(?:as|by|to\s+be|:=|=)"
-            r"[^.]*\.)",
+            r"(?:\\\[.*?\\\]|\$\$.*?\$\$|[^.])*\.)",
             flags=re.IGNORECASE | re.DOTALL,
         )
 
@@ -1012,7 +995,7 @@ class PaperParser:
             r"(?P<name>[^.]{1,80}?)"
             r"\s+is\s+defined\s+"
             r"(?:as|to\s+be)\s"
-            r"[^.]*\.)",
+            r"(?:\\\[.*?\\\]|\$\$.*?\$\$|[^.])*\.)",
             flags=re.IGNORECASE | re.DOTALL,
         )
 
@@ -1022,7 +1005,7 @@ class PaperParser:
             r"(?:We\s+)?(?:say|call)\s+(?:that\s+)?"
             r"(?P<name>[^.]{1,60}?)"
             r"\s+(?:is|to\s+be|are)\s+"
-            r"[^.]*\.)",
+            r"(?:\\\[.*?\\\]|\$\$.*?\$\$|[^.])*\.)",
             flags=re.IGNORECASE | re.DOTALL,
         )
 
@@ -1033,7 +1016,7 @@ class PaperParser:
             r"(?:Let|let)\s+"
             r"(?P<name>(?:\$[^$]+\$|[A-Za-z0-9\\_]+))"
             r"[^.]{0,200}?"
-            r"\s+be\s+[^.]*\.)",
+            r"\s+be\s+(?:\\\[.*?\\\]|\$\$.*?\$\$|[^.])*\.)",
             flags=re.DOTALL,
         )
 
@@ -1074,19 +1057,19 @@ class PaperParser:
                 )
             )
 
-        for m in inline_define_pattern.finditer(text):
+        for m in inline_define_pattern.finditer(inline_text):
             add_inline_definition(m, "inline_define")
 
-        for m in inline_defined_as_pattern.finditer(text):
+        for m in inline_defined_as_pattern.finditer(inline_text):
             add_inline_definition(m, "inline_defined_as")
 
         # C3: "We say/call X is..." - explicit definitional language
-        for m in inline_we_say_pattern.finditer(text):
+        for m in inline_we_say_pattern.finditer(inline_text):
             add_inline_definition(m, "inline_we_say")
 
         # C4: "Let X be ..." - only when it contains definitional keywords
         # This filters out simple variable intros like "Let m,n be integers"
-        for m in inline_let_pattern.finditer(text):
+        for m in inline_let_pattern.finditer(inline_text):
             full_text = m.group("full")
             # Only treat as definition if it contains definitional keywords
             if definition_keywords.search(full_text):

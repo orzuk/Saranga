@@ -29,8 +29,8 @@ def extract_definitions_to_csv(out_dir='.', paper_ids=None, output_csv='definiti
             fname = Path(f).name
             with open(f) as file:
                 content = json.load(file)
-                objects = content.get('objects', {})
-                defs = [obj for obj in objects.values() if obj.get('kind') == structure_type]
+                nodes = content.get('nodes', [])
+                defs = [obj for obj in nodes if obj.get('type') == structure_type]
 
                 # Key: (paper_id, provider)
                 provider = fname.split('_', 1)[1].rsplit('.', 1)[0]
