@@ -19,7 +19,9 @@
 #SBATCH --mem=32G
 #SBATCH --cpus-per-task=4
 
-set -euo pipefail
+# Strict mode: catch undefined variables and pipefailures, but NOT set -e
+# (set -e is fragile around the python-detection block below).
+set -uo pipefail
 
 # ----------------------------------------------------------------------------
 # Configurable parameters (override via sbatch --export)
@@ -51,38 +53,47 @@ REPO_ROOT=${REPO_ROOT:-/sci/labs/orzuk/orzuk/github/Authomathics}
 #   sbatch scripts/parse_math_co_cluster.sh
 # SLURM inherits VIRTUAL_ENV from the submitting shell, so the venv stays
 # active inside the job.
-_find_python_in_bin() {
-    local bindir="$1"
-    for candidate in python python3; do
-        if [ -x "$bindir/$candidate" ]; then
-            echo "$bindir/$candidate"
-            return 0
-        fi
-    done
-    local found
-    found=$(ls "$bindir"/python3.* 2>/dev/null | sort -V | tail -n 1)
-    if [ -n "$found" ] && [ -x "$found" ]; then
-        echo "$found"
-        return 0
-    fi
-    return 1
-}
-
 if [ -z "${PYTHON:-}" ]; then
-    _try=""
+    PYTHON=""
+
+    # Try $VIRTUAL_ENV/bin
     if [ -n "${VIRTUAL_ENV:-}" ]; then
-        _try=$(_find_python_in_bin "$VIRTUAL_ENV/bin")
+        for _cand in "$VIRTUAL_ENV/bin/python" "$VIRTUAL_ENV/bin/python3"; do
+            if [ -x "$_cand" ]; then
+                PYTHON="$_cand"
+                break
+            fi
+        done
+        if [ -z "$PYTHON" ]; then
+            for _cand in "$VIRTUAL_ENV"/bin/python3.*; do
+                if [ -x "$_cand" ]; then
+                    PYTHON="$_cand"
+                    break
+                fi
+            done
+        fi
     fi
-    if [ -z "$_try" ] && [ -n "${CONDA_PREFIX:-}" ]; then
-        _try=$(_find_python_in_bin "$CONDA_PREFIX/bin")
+
+    # Fall back to $CONDA_PREFIX/bin
+    if [ -z "$PYTHON" ] && [ -n "${CONDA_PREFIX:-}" ]; then
+        for _cand in "$CONDA_PREFIX/bin/python" "$CONDA_PREFIX/bin/python3"; do
+            if [ -x "$_cand" ]; then
+                PYTHON="$_cand"
+                break
+            fi
+        done
     fi
-    if [ -n "$_try" ]; then
-        PYTHON="$_try"
-    elif command -v python3 >/dev/null 2>&1; then
-        PYTHON="python3"
-    elif command -v python >/dev/null 2>&1; then
-        PYTHON="python"
-    else
+
+    # Fall back to PATH
+    if [ -z "$PYTHON" ]; then
+        if command -v python3 >/dev/null 2>&1; then
+            PYTHON="python3"
+        elif command -v python >/dev/null 2>&1; then
+            PYTHON="python"
+        fi
+    fi
+
+    if [ -z "$PYTHON" ]; then
         echo "ERROR: no python interpreter found. Set PYTHON env var or install python."
         exit 1
     fi

@@ -15,7 +15,10 @@
 #   sbatch --export=TOP_K=5 scripts/parse_math_co_cluster.sh
 #
 
-set -euo pipefail
+# Strict mode: catch undefined variables and pipefailures, but NOT set -e
+# (set -e is fragile around command substitution and the python-detection
+# block below; explicit error handling is used instead).
+set -uo pipefail
 
 CATEGORY=${CATEGORY:-math.CO}
 TOP_K=${TOP_K:-5}
@@ -28,48 +31,55 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Pick a Python interpreter. Priority:
 #   1. $PYTHON env var (explicit override)
-#   2. $VIRTUAL_ENV/bin/python (set by `source venv/bin/activate`)
-#   3. $CONDA_PREFIX/bin/python (set by conda activate)
-#   4. python3 on PATH
-#   5. python on PATH
+#   2. $VIRTUAL_ENV/bin/{python,python3,python3.X}
+#   3. $CONDA_PREFIX/bin/{python,python3}
+#   4. python3 / python on PATH
 #
 # Recommended: activate your venv before running.
 #   source /sci/labs/orzuk/$USER/venvs/your-venv/bin/activate
 #   ./scripts/parse_smoke_test.sh
-_find_python_in_bin() {
-    # Given a bin/ directory, return the path to the first existing python
-    # interpreter in it (python, then python3, then python3.X for any X).
-    local bindir="$1"
-    for candidate in python python3; do
-        if [ -x "$bindir/$candidate" ]; then
-            echo "$bindir/$candidate"
-            return 0
-        fi
-    done
-    local found
-    found=$(ls "$bindir"/python3.* 2>/dev/null | sort -V | tail -n 1)
-    if [ -n "$found" ] && [ -x "$found" ]; then
-        echo "$found"
-        return 0
-    fi
-    return 1
-}
-
 if [ -z "${PYTHON:-}" ]; then
-    _try=""
+    PYTHON=""
+
+    # Try $VIRTUAL_ENV/bin
     if [ -n "${VIRTUAL_ENV:-}" ]; then
-        _try=$(_find_python_in_bin "$VIRTUAL_ENV/bin")
+        for _cand in "$VIRTUAL_ENV/bin/python" "$VIRTUAL_ENV/bin/python3"; do
+            if [ -x "$_cand" ]; then
+                PYTHON="$_cand"
+                break
+            fi
+        done
+        if [ -z "$PYTHON" ]; then
+            # Try any python3.X in the venv bin (glob; expands to literal if no match)
+            for _cand in "$VIRTUAL_ENV"/bin/python3.*; do
+                if [ -x "$_cand" ]; then
+                    PYTHON="$_cand"
+                    break
+                fi
+            done
+        fi
     fi
-    if [ -z "$_try" ] && [ -n "${CONDA_PREFIX:-}" ]; then
-        _try=$(_find_python_in_bin "$CONDA_PREFIX/bin")
+
+    # Fall back to $CONDA_PREFIX/bin
+    if [ -z "$PYTHON" ] && [ -n "${CONDA_PREFIX:-}" ]; then
+        for _cand in "$CONDA_PREFIX/bin/python" "$CONDA_PREFIX/bin/python3"; do
+            if [ -x "$_cand" ]; then
+                PYTHON="$_cand"
+                break
+            fi
+        done
     fi
-    if [ -n "$_try" ]; then
-        PYTHON="$_try"
-    elif command -v python3 >/dev/null 2>&1; then
-        PYTHON="python3"
-    elif command -v python >/dev/null 2>&1; then
-        PYTHON="python"
-    else
+
+    # Fall back to PATH
+    if [ -z "$PYTHON" ]; then
+        if command -v python3 >/dev/null 2>&1; then
+            PYTHON="python3"
+        elif command -v python >/dev/null 2>&1; then
+            PYTHON="python"
+        fi
+    fi
+
+    if [ -z "$PYTHON" ]; then
         echo "ERROR: no python interpreter found. Set PYTHON env var or install python."
         exit 1
     fi
