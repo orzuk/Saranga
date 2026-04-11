@@ -29,6 +29,14 @@ START_DATE=${START_DATE:-}
 END_DATE=${END_DATE:-}
 HTML=${HTML:-0}
 
+# Normalize OUT_DIR to an absolute path right now, BEFORE we cd anywhere.
+# Otherwise a relative OUT_DIR like "./smoke_test_out" would resolve relative
+# to the repo's src/ directory after the `cd "$REPO_ROOT/src"` below, putting
+# outputs one level deeper than the user expected.
+if [[ "$OUT_DIR" != /* ]]; then
+    OUT_DIR="$PWD/$OUT_DIR"
+fi
+
 # Resolve repo root from this script's location
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"

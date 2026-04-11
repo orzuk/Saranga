@@ -117,10 +117,30 @@ def _parse_operations(ops_arg: str) -> List[str]:
 # HELPERS
 # =============================================================================
 
+def _looks_like_paper_graph(path: Path) -> bool:
+    """Fast content check: does this JSON file look like a unified paper graph?
+
+    Parsing tarball-extracted source trees picks up stray JSON files
+    (author-included READMEs, metadata files, etc.) via rglob. We only want
+    real paper graphs — ones that have a 'nodes' or 'objects' top-level key
+    matching the unified schema (see annotation_schema.md).
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return False
+    if not isinstance(data, dict):
+        return False
+    return ("nodes" in data) or ("objects" in data)
+
+
 def _list_jsons(out_dir: str) -> List[Path]:
     """Find all knowledge-graph JSON files under out_dir.
 
-    Excludes pipeline-internal files (status logs, reports, config).
+    Excludes pipeline-internal report files and stray JSONs that don't
+    match the unified schema (e.g. a stray 00README.json extracted from
+    an arXiv source tarball).
     """
     out_path = Path(out_dir)
     if not out_path.exists():
@@ -130,8 +150,12 @@ def _list_jsons(out_dir: str) -> List[Path]:
         "status_log.csv",
         "validate_report.csv",
         "evaluation_results.csv",
+        "anomalies_report.csv",
     }
-    return [p for p in all_jsons if p.name not in excluded_names]
+    return [
+        p for p in all_jsons
+        if p.name not in excluded_names and _looks_like_paper_graph(p)
+    ]
 
 
 # =============================================================================

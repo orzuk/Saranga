@@ -314,9 +314,13 @@ def detect_anomalies_for_paper(paper_id: str, data: Dict[str, Any]) -> List[Anom
 # --- batch driver -------------------------------------------------------------
 
 def detect_anomalies_in_dir(out_dir: str, verbose: bool = False) -> Tuple[List[AnomalyRecord], int, int]:
-    """Walk out_dir for JSON files and run all rules on each.
+    """Walk out_dir for paper-graph JSON files and run all rules on each.
 
     Returns (records_list, n_json_files_scanned, n_papers_flagged).
+
+    Skips stray JSONs that don't look like unified paper graphs (e.g. a
+    README.json extracted from an arXiv source tarball). A file is considered
+    a paper graph if it parses as a dict with a 'nodes' or 'objects' key.
     """
     out_path = Path(out_dir)
     if not out_path.exists():
@@ -326,22 +330,42 @@ def detect_anomalies_in_dir(out_dir: str, verbose: bool = False) -> Tuple[List[A
         "status_log.csv", "validate_report.csv", "anomalies_report.csv",
         "evaluation_results.csv",
     }
-    json_paths = sorted(out_path.rglob("*.json"))
-    json_paths = [p for p in json_paths if p.name not in excluded]
+    candidate_paths = sorted(out_path.rglob("*.json"))
+    candidate_paths = [p for p in candidate_paths if p.name not in excluded]
+
+    # First pass: filter to only files that look like paper graphs.
+    # We parse once here, reuse the parsed data in the main loop below to
+    # avoid double-parsing.
+    json_paths_with_data: List[Tuple[Path, Dict[str, Any]]] = []
+    n_skipped_stray = 0
+    for p in candidate_paths:
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            # JSON parse failures are themselves an anomaly worth recording.
+            # We'll turn this into a record later; for now carry a sentinel.
+            json_paths_with_data.append((p, {"__parse_error__": str(e)}))
+            continue
+        if not isinstance(data, dict):
+            n_skipped_stray += 1
+            continue
+        if "nodes" not in data and "objects" not in data:
+            n_skipped_stray += 1
+            continue
+        json_paths_with_data.append((p, data))
 
     if verbose:
-        print(f"[anomalies] scanning {len(json_paths)} JSON files in {out_dir}")
+        print(f"[anomalies] scanning {len(json_paths_with_data)} paper-graph JSON files "
+              f"in {out_dir} (skipped {n_skipped_stray} stray JSONs)")
 
     all_records: List[AnomalyRecord] = []
     n_flagged = 0
-    for jp in json_paths:
-        try:
-            with open(jp, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except Exception as e:
+    for jp, data in json_paths_with_data:
+        if "__parse_error__" in data:
             all_records.append((jp.stem, "A", "json_parse_error", "high",
-                                str(e), "valid JSON",
-                                f"Failed to parse {jp.name}: {e}"))
+                                data["__parse_error__"], "valid JSON",
+                                f"Failed to parse {jp.name}: {data['__parse_error__']}"))
             n_flagged += 1
             continue
 
