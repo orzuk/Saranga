@@ -24,6 +24,10 @@ CATEGORY=${CATEGORY:-math.CO}
 TOP_K=${TOP_K:-5}
 OUT_DIR=${OUT_DIR:-./smoke_test_out}
 EXTRACTION_MODE=${EXTRACTION_MODE:-manual}
+OPERATIONS=${OPERATIONS:-parse}
+START_DATE=${START_DATE:-}
+END_DATE=${END_DATE:-}
+HTML=${HTML:-0}
 
 # Resolve repo root from this script's location
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -88,9 +92,13 @@ fi
 echo "===================================================="
 echo "Authomathics smoke test"
 echo "===================================================="
+echo "  OPERATIONS      = $OPERATIONS"
 echo "  CATEGORY        = $CATEGORY"
 echo "  TOP_K           = $TOP_K"
+echo "  START_DATE      = ${START_DATE:-<none>}"
+echo "  END_DATE        = ${END_DATE:-<none>}"
 echo "  EXTRACTION_MODE = $EXTRACTION_MODE"
+echo "  HTML            = $HTML"
 echo "  OUT_DIR         = $OUT_DIR"
 echo "  REPO_ROOT       = $REPO_ROOT"
 echo "  PYTHON          = $PYTHON"
@@ -99,13 +107,27 @@ echo
 
 cd "$REPO_ROOT/src"
 
-"$PYTHON" run_pipeline.py \
-    --operations parse \
-    --category "$CATEGORY" \
-    --top-k "$TOP_K" \
-    --extraction-mode "$EXTRACTION_MODE" \
-    --out-dir "$OUT_DIR" \
+# Build the command line with only the flags that apply
+CMD=(
+    "$PYTHON" run_pipeline.py
+    --operations "$OPERATIONS"
+    --category "$CATEGORY"
+    --top-k "$TOP_K"
+    --extraction-mode "$EXTRACTION_MODE"
+    --out-dir "$OUT_DIR"
     --verbose
+)
+if [ -n "$START_DATE" ]; then
+    CMD+=(--start "$START_DATE")
+fi
+if [ -n "$END_DATE" ]; then
+    CMD+=(--end "$END_DATE")
+fi
+if [ "$HTML" = "1" ]; then
+    CMD+=(--html)
+fi
+
+"${CMD[@]}"
 
 RC=$?
 
