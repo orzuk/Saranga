@@ -1121,7 +1121,15 @@ def fetch_arxiv_batch(
 
     if verbose:
         print("[DEBUG] Fetching metadata for all versioned IDs via local JSONL + HDF5 offsets…")
-        print("IDS After Filtering:", ids_with_ver, "\n Columns needed:", needed)
+        _n_ids = len(ids_with_ver)
+        _preview = 100
+        if _n_ids <= _preview:
+            print(f"IDS After Filtering ({_n_ids} total):", ids_with_ver,
+                  "\n Columns needed:", needed)
+        else:
+            print(f"IDS After Filtering (showing first {_preview} of {_n_ids}):",
+                  list(ids_with_ver)[:_preview], f"... [+{_n_ids - _preview} more]",
+                  "\n Columns needed:", needed)
     all_meta = fetch_arxiv_metadata(versioned_ids = ids_with_ver, verbose = verbose, columns=needed)
     # No further date/category/author/title checks needed: filter_ids_by_regex already did them.
     id_meta = all_meta.copy()
@@ -1129,7 +1137,13 @@ def fetch_arxiv_batch(
     # ─── Early return if only metadata was requested ──────────────────────
     if formats == ['metadata']:
         if verbose:
-            print(f"[DEBUG] Returning all titles: {[id_meta[m]['title'] for m in id_meta]} ")
+            _titles = [id_meta[m].get('title', '') for m in id_meta]
+            _n_titles = len(_titles)
+            if _n_titles <= 20:
+                print(f"[DEBUG] Returning {_n_titles} titles: {_titles}")
+            else:
+                print(f"[DEBUG] Returning {_n_titles} titles (showing first 20):",
+                      _titles[:20], f"... [+{_n_titles - 20} more]")
 
         id_meta = {
             outer_key: {'metadata': inner_dict}
