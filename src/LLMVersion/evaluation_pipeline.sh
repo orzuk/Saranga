@@ -69,7 +69,7 @@ fi
 
 # --- Extraction: loop over each paper × each provider ---
 # Now invokes the unified pipeline (src/run_pipeline.py) for the parse
-# operation. The pipeline internally delegates to run_parse_papers.py.
+# operation. The pipeline internally delegates to parse_batch.py.
 # This shell script lives in src/LLMVersion/; RUN_PIPELINE resolves to
 # src/run_pipeline.py (one directory up).
 RUN_PIPELINE="$(cd "$(dirname "$0")/.." && pwd)/run_pipeline.py"

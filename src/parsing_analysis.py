@@ -198,7 +198,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "json_dir",
-        help="Directory containing *.json files produced by run_pipeline.py (or LLMVersion/run_parse_papers.py)",
+        help="Directory containing *.json files produced by run_pipeline.py (or LLMVersion/parse_batch.py)",
     )
     parser.add_argument(
         "--out-csv",

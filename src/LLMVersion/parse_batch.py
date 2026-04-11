@@ -1,31 +1,45 @@
 #!/usr/bin/env python3
 """
-Batch runner for math_paper_parser on many arXiv papers, with LLM support.
+Batch parse: library module for running math_paper_parser across many arXiv
+papers, with optional LLM support.
 
-Example usages:
+This file is the INTERNAL extraction-engine module. The recommended
+user-facing CLI is `src/run_pipeline.py --operations parse ...`, which
+invokes this module via subprocess. Direct invocation is still supported
+for specialized workflows (evaluation_pipeline.sh, prompt_optimizer.py,
+standalone debugging).
 
-  # Basic usage with specific arXiv ID
-  python run_parse_papers.py --regex-id "^2501\\.00685" --out-dir .
+Public functions:
+    run_batch(...)           - main filter + fetch + parse + save loop
+    compute_date_range(...)  - date range helper
+    _find_local_tex(...)     - local cache lookup helper
 
-  # With LLM definition extraction
-  python run_parse_papers.py \
+Example direct invocations (legacy, still supported):
+
+  python LLMVersion/parse_batch.py --regex-id "^2501\\.00685" --out-dir .
+
+  python LLMVersion/parse_batch.py \
       --regex-id "^2501\\.00685" \
       --out-dir . \
       --extraction-mode llm
 
-  # Combined manual + LLM extraction
-  python run_parse_papers.py \
+  python LLMVersion/parse_batch.py \
       --regex-id "^2501\\.00685" \
       --out-dir . \
       --extraction-mode both
 
-  # Last 30 days, math.PR, up to 20 papers, with LLM
-  python run_parse_papers.py \
+  python LLMVersion/parse_batch.py \
       --category math.PR \
       --days 30 \
       --top-k 20 \
       --out-dir parsed_math_pr_30d \
       --extraction-mode both
+
+Preferred (unified pipeline):
+
+  python src/run_pipeline.py --operations parse \
+      --category math.PR --days 30 --top-k 20 \
+      --out-dir parsed_math_pr_30d --extraction-mode both
 """
 
 import argparse

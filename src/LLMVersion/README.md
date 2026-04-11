@@ -7,7 +7,7 @@ extraction (Anthropic Claude, OpenAI GPT, HuggingFace).
 > **User-facing entry point:** `src/run_pipeline.py` (one directory up) is
 > the recommended CLI for all operations (parse, validate, visualize, link,
 > evaluate, …). It internally invokes the extractor in this directory.
-> The scripts here — `run_parse_papers.py`, `evaluation_pipeline.sh`,
+> The scripts here — `parse_batch.py`, `evaluation_pipeline.sh`,
 > `prompt_optimizer.py`, `distillation_analysis.py` — are building blocks
 > that `run_pipeline.py` composes. Invoking them directly still works for
 > specialized workflows (prompt optimization, distillation analysis,
@@ -32,7 +32,7 @@ The pipeline is parameterized by structure type. Supported types:
 - `table` — tables
 - `equation` (orphan) — display equations not contained within any named environment (theorem, definition, proof, etc.). These are extracted via manual regex only (no LLM needed) and identified by `parent_id=None`.
 
-Pass `--structure-types` (comma-separated) to `src/run_pipeline.py --operations parse ...` or to `run_parse_papers.py` directly, or `--structure-type` (single) to other scripts.
+Pass `--structure-types` (comma-separated) to `src/run_pipeline.py --operations parse ...` or to `parse_batch.py` directly, or `--structure-type` (single) to other scripts.
 
 ### Pipeline Examples
 
@@ -73,7 +73,7 @@ Use the `--extraction-mode` argument to choose the extraction strategy:
 - `both` — Combines both methods for best coverage
 
 ### Command Line Arguments
-Shared by both `src/run_pipeline.py` (recommended) and `run_parse_papers.py` (direct invocation):
+Shared by both `src/run_pipeline.py` (recommended) and `parse_batch.py` (direct invocation):
 ```
 --start, --end          Date range for arXiv papers (YYYY-MM-DD format)
 --days                  Alternative to start/end; fetch papers from last N days
@@ -95,7 +95,7 @@ Shared by both `src/run_pipeline.py` (recommended) and `run_parse_papers.py` (di
 ### Usage Examples
 
 > **Recommended**: use `src/run_pipeline.py` with `--operations parse ...`.
-> The examples below show the `run_parse_papers.py` form for reference and
+> The examples below show the `parse_batch.py` form for reference and
 > for users who want to invoke the extractor directly (e.g. from within
 > `evaluation_pipeline.sh`, `prompt_optimizer.py`, or standalone debugging).
 
@@ -170,11 +170,11 @@ python3 src/run_pipeline.py \
     --prompt-file my_custom_prompt.txt
 ```
 
-#### Direct invocation of run_parse_papers.py (legacy)
+#### Direct invocation of parse_batch.py (legacy)
 The underlying extractor can still be invoked directly for specialized
 workflows (e.g., inside `evaluation_pipeline.sh` or the prompt optimizer).
-All flags above also work with `run_parse_papers.py` (just drop the
-`--operations parse` and use `python3 run_parse_papers.py`) — but new
+All flags above also work with `parse_batch.py` (just drop the
+`--operations parse` and use `python3 parse_batch.py`) — but new
 code should prefer the unified `src/run_pipeline.py` interface.
 
 Example `my_custom_prompt.txt`:

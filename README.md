@@ -40,7 +40,7 @@ A single orchestrator that filters arXiv papers by metadata, then runs one or mo
 | Operation | What it does | Input → Output |
 |---|---|---|
 | `download` | Fetch LaTeX source / PDF / metadata from arXiv | arXiv ID → local cache |
-| `parse` | Run the extraction engine (delegates to `src/LLMVersion/run_parse_papers.py` via subprocess — this isolates LLMVersion's module cache from the orchestrator process) | `.tex` → unified JSON |
+| `parse` | Run the extraction engine (delegates to `src/LLMVersion/parse_batch.py` via subprocess — this isolates LLMVersion's module cache from the orchestrator process) | `.tex` → unified JSON |
 | `validate` | DAG acyclicity + schema check | JSON → validation report CSV |
 | `visualize` | Render PNG + interactive HTML knowledge graphs | JSON → PNG + HTML |
 | `link` | Augment JSON with foundation-graph links (Wikidata / NaturalProofs / Mathlib) | JSON → JSON with links |
@@ -163,7 +163,7 @@ The unified JSON schema on disk (`{metadata, nodes, edges}`) is the interface be
 
 The LLMVersion subdirectory is the active extraction engine:
 
-- `src/LLMVersion/run_parse_papers.py` — core extractor; LaTeX → unified JSON
+- `src/LLMVersion/parse_batch.py` — core extractor; LaTeX → unified JSON
 - `src/LLMVersion/math_paper_parser.py` — heuristic + LLM-based parser, 11 structure types
 - `src/LLMVersion/math_classes.py` — data model (shared with src/ tools)
 - `src/LLMVersion/prompts/` — per-node-type LLM prompts
@@ -303,7 +303,7 @@ Authomathics/
 │   ├── extract_all_chapters.py        # BHK chapter batch extractor
 │   │
 │   ├── LLMVersion/                    # ★ Active extraction engine (Yaron Otmazgin)
-│   │   ├── run_parse_papers.py        # Core extractor
+│   │   ├── parse_batch.py        # Core extractor
 │   │   ├── math_paper_parser.py       # Heuristic + LLM parser
 │   │   ├── math_classes.py            # ★ Single source of truth for the data model
 │   │   ├── prompt_optimizer.py        # Iterative prompt tuning
@@ -349,7 +349,7 @@ Authomathics/
 arXiv API ──► fetch_arxiv_batch ──► local tex cache
                                          │
                                          ▼
-                          LLMVersion/run_parse_papers.py
+                          LLMVersion/parse_batch.py
                            (manual regex / LLM / both)
                                          │
                                          ▼

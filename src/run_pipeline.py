@@ -9,7 +9,7 @@ Operations:
   download     : fetch LaTeX source / PDF / metadata from arXiv (wraps
                  extract_arxiv_data.py logic in src/)
   parse        : tex -> JSON (mid-level knowledge graph)
-                 Delegates via subprocess to LLMVersion/run_parse_papers.py.
+                 Delegates via subprocess to LLMVersion/parse_batch.py.
                  Subprocess isolation is intentional: LLMVersion/ has its
                  own copies of config.py, paper_plot_utils.py, and
                  extract_arxiv_funcs.py that differ from the src/ versions.
@@ -54,7 +54,7 @@ Examples:
       --html
 
 Design notes:
-  * The `parse` operation runs Yaron's extractor (LLMVersion/run_parse_papers.py)
+  * The `parse` operation runs Yaron's extractor (LLMVersion/parse_batch.py)
     as a subprocess. This isolates LLMVersion's `math_classes` namespace from
     src/'s `math_classes` namespace, which prevents field-name conflicts.
   * All other operations import directly from src/ tools, which all share the
@@ -169,18 +169,18 @@ def op_download(args) -> None:
 # =============================================================================
 
 def op_parse(args) -> None:
-    """Run Yaron's extractor (LLMVersion/run_parse_papers.py) as a subprocess.
+    """Run Yaron's extractor (LLMVersion/parse_batch.py) as a subprocess.
 
     Subprocess isolation keeps LLMVersion's math_classes namespace from
     colliding with src/'s math_classes namespace in the same Python process.
     """
-    script = _LLMVERSION_DIR / "run_parse_papers.py"
+    script = _LLMVERSION_DIR / "parse_batch.py"
     if not script.exists():
         print(f"[pipeline] parse: ERROR: cannot find {script}")
         sys.exit(1)
 
     cmd = [sys.executable, str(script)]
-    # filter args (shared CLI names between run_pipeline.py and run_parse_papers.py)
+    # filter args (shared CLI names between run_pipeline.py and parse_batch.py)
     if args.start_date:
         cmd += ["--start", args.start_date]
     if args.end_date:
@@ -439,7 +439,7 @@ def main():
         ),
     )
 
-    # --- filter args (shared with Yaron's run_parse_papers.py) ---
+    # --- filter args (shared with Yaron's parse_batch.py) ---
     parser.add_argument("--start", dest="start_date", type=str, default=None,
                         help="Start date YYYY-MM-DD (submission date).")
     parser.add_argument("--end", dest="end_date", type=str, default=None,
