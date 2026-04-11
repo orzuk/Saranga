@@ -25,6 +25,10 @@ Operations:
                  Uses src/link_to_foundation.py.
   evaluate     : JSON -> precision/recall/F1 against a gold standard
                  Uses src/evaluate_annotation.py / evaluate_extraction.py.
+  anomalies    : JSON -> anomalies_report.csv flagging structural / content
+                 weirdness for manual review (uses src/anomaly_detection.py).
+                 Useful for catching extraction failures and feeding them
+                 back to the regex-tuning / distillation loop.
   cross_paper  : (future, Phase 3) cross-paper relationship detection
 
 Examples:
@@ -92,6 +96,7 @@ KNOWN_OPERATIONS = [
     "visualize",
     "link",
     "evaluate",
+    "anomalies",
     "cross_paper",
 ]
 
@@ -403,6 +408,44 @@ def op_evaluate(args) -> None:
 
 
 # =============================================================================
+# OPERATION: anomalies (JSON -> anomalies_report.csv)
+# =============================================================================
+
+def op_anomalies(args) -> None:
+    """Run anomaly detection on all JSONs under out_dir. Writes report CSV.
+
+    Flags papers with structural / content-wise weirdness for manual review.
+    Categories: A (extraction failed), B (structural oddity), C (content oddity).
+    Category D (distribution-level) is planned for a future pass.
+    """
+    try:
+        from anomaly_detection import detect_anomalies_in_dir, write_anomalies_report
+    except ImportError as e:
+        print(f"[pipeline] anomalies: cannot import anomaly_detection: {e}")
+        return
+
+    records, n_scanned, n_flagged = detect_anomalies_in_dir(
+        args.out_dir, verbose=args.verbose
+    )
+
+    report_path = Path(args.out_dir) / "anomalies_report.csv"
+    write_anomalies_report(records, str(report_path))
+
+    print(f"[pipeline] anomalies: scanned {n_scanned} papers, flagged {n_flagged} "
+          f"({len(records)} total anomaly records)")
+    print(f"[pipeline] anomalies: report -> {report_path}")
+
+    # Severity breakdown for quick visibility
+    from collections import Counter
+    sev_counts = Counter(r[3] for r in records)
+    if sev_counts:
+        print(f"[pipeline] anomalies: severity breakdown — "
+              f"high={sev_counts.get('high', 0)}, "
+              f"medium={sev_counts.get('medium', 0)}, "
+              f"low={sev_counts.get('low', 0)}")
+
+
+# =============================================================================
 # OPERATION: cross_paper (future, Phase 3)
 # =============================================================================
 
@@ -516,6 +559,7 @@ def main():
         "visualize": op_visualize,
         "link": op_link,
         "evaluate": op_evaluate,
+        "anomalies": op_anomalies,
         "cross_paper": op_cross_paper,
     }
 
