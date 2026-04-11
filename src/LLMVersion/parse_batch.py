@@ -194,6 +194,13 @@ def run_batch(
     # ------------------------------------------------------------
     # 1b. FETCH METADATA via arXiv API (fallback)
     # ------------------------------------------------------------
+    # Pass top_k with a small headroom factor so the downstream sort-by-date
+    # in run_batch has some wiggle room. Sorting by ID (done inside
+    # fetch_arxiv_batch) is a close approximation of "newest first" but not
+    # identical to sorting by the official 'published' date, so we pull
+    # ~3x top_k candidates here and let run_batch pick the true top_k
+    # after it has real metadata.
+    _prefetch_k = (top_k * 3) if (top_k and top_k > 0) else None
     data = fetch_arxiv_batch(
         regex_id=regex_id,
         start_date=start_date,
@@ -202,6 +209,7 @@ def run_batch(
         formats="metadata",
         output_dir=None,
         verbose=verbose,
+        top_k=_prefetch_k,
     )
 
     if verbose:
