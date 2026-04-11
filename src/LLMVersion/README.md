@@ -1,5 +1,21 @@
+# LLMVersion: Extraction Engine for Authomathics
+
+This directory is the extraction engine: LaTeX → unified JSON. It produces
+knowledge graphs via pattern-based (manual) extraction and/or LLM-based
+extraction (Anthropic Claude, OpenAI GPT, HuggingFace).
+
+> **User-facing entry point:** `src/run_pipeline.py` (one directory up) is
+> the recommended CLI for all operations (parse, validate, visualize, link,
+> evaluate, …). It internally invokes the extractor in this directory.
+> The scripts here — `run_parse_papers.py`, `evaluation_pipeline.sh`,
+> `prompt_optimizer.py`, `distillation_analysis.py` — are building blocks
+> that `run_pipeline.py` composes. Invoking them directly still works for
+> specialized workflows (prompt optimization, distillation analysis,
+> evaluation-pipeline orchestration) but new code should prefer
+> `src/run_pipeline.py` as the unified interface.
+
 ## Pipeline Usage
-The pipeline extracts mathematical structures (definitions, theorems, lemmas, etc.) from LaTeX papers using HuggingFace, Anthropic, OpenAI and manual methods, then evaluates results against a gold standard.
+The extraction engine produces mathematical structures (definitions, theorems, lemmas, etc.) from LaTeX papers using HuggingFace, Anthropic, OpenAI, and manual methods, then evaluates results against a gold standard.
 
 1) Extracts structures to JSONs for each model and manual mode.
 2) Merges all extracted objects from all methods into a CSV file (e.g. `definitions.csv`).
@@ -16,7 +32,7 @@ The pipeline is parameterized by structure type. Supported types:
 - `table` — tables
 - `equation` (orphan) — display equations not contained within any named environment (theorem, definition, proof, etc.). These are extracted via manual regex only (no LLM needed) and identified by `parent_id=None`.
 
-Pass `--structure-types` (comma-separated) to `run_parse_papers.py`, or `--structure-type` (single) to other scripts.
+Pass `--structure-types` (comma-separated) to `src/run_pipeline.py --operations parse ...` or to `run_parse_papers.py` directly, or `--structure-type` (single) to other scripts.
 
 ### Pipeline Examples
 
@@ -56,7 +72,8 @@ Use the `--extraction-mode` argument to choose the extraction strategy:
 - `llm` — LLM API extraction only
 - `both` — Combines both methods for best coverage
 
-### Command Line Arguments (`run_parse_papers.py`)
+### Command Line Arguments
+Shared by both `src/run_pipeline.py` (recommended) and `run_parse_papers.py` (direct invocation):
 ```
 --start, --end          Date range for arXiv papers (YYYY-MM-DD format)
 --days                  Alternative to start/end; fetch papers from last N days
@@ -64,7 +81,6 @@ Use the `--extraction-mode` argument to choose the extraction strategy:
 --regex-id              Filter papers by ID pattern (e.g., "^2501\\.00685")
 --top-k                 Limit number of papers to process (default: 20, use <=0 for no limit)
 --out-dir               Output directory (defaults to FULL_PAPERS_DIR from config.py)
---draw-graphs           Generate network visualization PNGs
 --verbose               Enable detailed logging
 --extraction-mode       Extraction method: manual (default), llm, or both
 --llm-provider          Choose provider: anthropic, openai, or huggingface
@@ -74,12 +90,20 @@ Use the `--extraction-mode` argument to choose the extraction strategy:
 --structure-types       Comma-separated structure types to extract via LLM (default: definition)
 ```
 
+`src/run_pipeline.py` also takes `--operations parse,validate,visualize,link,evaluate` to chain post-processing steps after extraction in a single invocation.
+
 ### Usage Examples
 
-#### Extract definitions (default)
+> **Recommended**: use `src/run_pipeline.py` with `--operations parse ...`.
+> The examples below show the `run_parse_papers.py` form for reference and
+> for users who want to invoke the extractor directly (e.g. from within
+> `evaluation_pipeline.sh`, `prompt_optimizer.py`, or standalone debugging).
+
+#### Extract definitions (default, via unified pipeline)
 ```bash
 export ANTHROPIC_API_KEY="your-key"
-python3 run_parse_papers.py \
+python3 src/run_pipeline.py \
+    --operations parse \
     --regex-id "^2501\.00685" \
     --out-dir . \
     --extraction-mode llm \
@@ -90,7 +114,8 @@ python3 run_parse_papers.py \
 #### Extract theorems via LLM
 ```bash
 export ANTHROPIC_API_KEY="your-key"
-python3 run_parse_papers.py \
+python3 src/run_pipeline.py \
+    --operations parse \
     --regex-id "^2501\.00685" \
     --out-dir . \
     --extraction-mode llm \
@@ -100,7 +125,8 @@ python3 run_parse_papers.py \
 
 #### Extract multiple structure types at once
 ```bash
-python3 run_parse_papers.py \
+python3 src/run_pipeline.py \
+    --operations parse \
     --regex-id "^2501\.00685" \
     --out-dir . \
     --extraction-mode llm \
@@ -112,7 +138,8 @@ python3 run_parse_papers.py \
 #### OpenAI
 ```bash
 export OPENAI_API_KEY="your-key"
-python3 run_parse_papers.py \
+python3 src/run_pipeline.py \
+    --operations parse \
     --regex-id "^2501\.00685" \
     --out-dir . \
     --extraction-mode llm \
@@ -123,7 +150,8 @@ python3 run_parse_papers.py \
 #### HuggingFace
 ```bash
 export HF_TOKEN="your-token"
-python3 run_parse_papers.py \
+python3 src/run_pipeline.py \
+    --operations parse \
     --regex-id "^2501\.00685" \
     --out-dir . \
     --extraction-mode llm \
@@ -133,13 +161,21 @@ python3 run_parse_papers.py \
 
 #### Custom Prompt Example
 ```bash
-python3 run_parse_papers.py \
+python3 src/run_pipeline.py \
+    --operations parse \
     --regex-id "^2501\.00685" \
     --out-dir . \
     --extraction-mode llm \
     --llm-provider anthropic \
     --prompt-file my_custom_prompt.txt
 ```
+
+#### Direct invocation of run_parse_papers.py (legacy)
+The underlying extractor can still be invoked directly for specialized
+workflows (e.g., inside `evaluation_pipeline.sh` or the prompt optimizer).
+All flags above also work with `run_parse_papers.py` (just drop the
+`--operations parse` and use `python3 run_parse_papers.py`) — but new
+code should prefer the unified `src/run_pipeline.py` interface.
 
 Example `my_custom_prompt.txt`:
 ```

@@ -10,8 +10,13 @@ Operations:
                  extract_arxiv_data.py logic in src/)
   parse        : tex -> JSON (mid-level knowledge graph)
                  Delegates via subprocess to LLMVersion/run_parse_papers.py.
-                 Subprocess isolation avoids namespace collisions between
-                 src/math_classes and LLMVersion/math_classes.
+                 Subprocess isolation is intentional: LLMVersion/ has its
+                 own copies of config.py, paper_plot_utils.py, and
+                 extract_arxiv_funcs.py that differ from the src/ versions.
+                 Running the extractor as a subprocess with cwd=LLMVersion/
+                 ensures it resolves its own local modules, not the src/
+                 ones, and keeps its module cache isolated from this
+                 orchestrator process.
   validate     : JSON -> DAG acyclicity + schema validation report
                  Uses src/validate_annotation.py.
   visualize    : JSON -> PNG + interactive HTML

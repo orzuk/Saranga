@@ -40,7 +40,7 @@ A single orchestrator that filters arXiv papers by metadata, then runs one or mo
 | Operation | What it does | Input → Output |
 |---|---|---|
 | `download` | Fetch LaTeX source / PDF / metadata from arXiv | arXiv ID → local cache |
-| `parse` | Run the extraction engine (delegates to `src/LLMVersion/run_parse_papers.py` via subprocess) | `.tex` → unified JSON |
+| `parse` | Run the extraction engine (delegates to `src/LLMVersion/run_parse_papers.py` via subprocess — this isolates LLMVersion's module cache from the orchestrator process) | `.tex` → unified JSON |
 | `validate` | DAG acyclicity + schema check | JSON → validation report CSV |
 | `visualize` | Render PNG + interactive HTML knowledge graphs | JSON → PNG + HTML |
 | `link` | Augment JSON with foundation-graph links (Wikidata / NaturalProofs / Mathlib) | JSON → JSON with links |
