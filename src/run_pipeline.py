@@ -541,6 +541,18 @@ def main():
 
     args = parser.parse_args()
 
+    # Normalize out_dir to an absolute path BEFORE dispatching to any operation.
+    # Reason: op_parse runs parse_batch.py as a subprocess with cwd=LLMVersion/,
+    # so a relative --out-dir would resolve relative to LLMVersion/ in the
+    # subprocess but relative to src/ (or wherever the parent runs from) in
+    # all other operations. Making it absolute means every operation sees the
+    # same path regardless of cwd.
+    args.out_dir = str(Path(args.out_dir).resolve())
+    # Also ensure the directory exists so operations that only read (like
+    # anomalies running standalone on a pre-existing output dir) don't crash
+    # while writing their report files.
+    Path(args.out_dir).mkdir(parents=True, exist_ok=True)
+
     try:
         operations = _parse_operations(args.operations)
     except ValueError as e:
