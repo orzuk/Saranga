@@ -27,15 +27,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Pick a Python interpreter. Priority:
-#   1. $PYTHON env var (explicit override, e.g. PYTHON=/path/to/venv/bin/python)
-#   2. python3 on PATH (activate your venv first)
+#   1. $PYTHON env var (explicit override)
+#   2. $VIRTUAL_ENV/bin/python (set by `source venv/bin/activate`)
+#   3. $CONDA_PREFIX/bin/python (set by conda activate)
+#   4. python3 on PATH
+#   5. python on PATH
 #
-# Recommended usage on the cluster: activate your project's venv, then run.
-#   source /sci/labs/orzuk/$USER/venvs/authomathics-venv/bin/activate
+# Recommended: activate your venv before running.
+#   source /sci/labs/orzuk/$USER/venvs/your-venv/bin/activate
 #   ./scripts/parse_smoke_test.sh
-# Or override directly:
-#   PYTHON=/path/to/python ./scripts/parse_smoke_test.sh
-PYTHON=${PYTHON:-python3}
+if [ -z "${PYTHON:-}" ]; then
+    if [ -n "${VIRTUAL_ENV:-}" ] && [ -x "$VIRTUAL_ENV/bin/python" ]; then
+        PYTHON="$VIRTUAL_ENV/bin/python"
+    elif [ -n "${CONDA_PREFIX:-}" ] && [ -x "$CONDA_PREFIX/bin/python" ]; then
+        PYTHON="$CONDA_PREFIX/bin/python"
+    elif command -v python3 >/dev/null 2>&1; then
+        PYTHON="python3"
+    elif command -v python >/dev/null 2>&1; then
+        PYTHON="python"
+    else
+        echo "ERROR: no python interpreter found. Set PYTHON env var or install python."
+        exit 1
+    fi
+fi
 
 echo "===================================================="
 echo "Authomathics smoke test"

@@ -42,16 +42,29 @@ REPO_ROOT=${REPO_ROOT:-/sci/labs/orzuk/orzuk/github/Authomathics}
 
 # Python interpreter. Priority:
 #   1. $PYTHON env var (via sbatch --export=PYTHON=/path/to/python)
-#   2. python3 on PATH (SLURM job inherits the submitting shell's
-#      environment, so activate your venv BEFORE sbatch)
+#   2. $VIRTUAL_ENV/bin/python (if venv is activated in the submitting shell)
+#   3. $CONDA_PREFIX/bin/python (if conda env is active in submitting shell)
+#   4. python3 / python on PATH
 #
 # Recommended workflow on the cluster:
-#   source /sci/labs/orzuk/$USER/venvs/authomathics-venv/bin/activate
+#   source /sci/labs/orzuk/$USER/venvs/your-venv/bin/activate
 #   sbatch scripts/parse_math_co_cluster.sh
-# Or override explicitly:
-#   sbatch --export=PYTHON=/sci/labs/orzuk/$USER/venvs/authomathics-venv/bin/python \
-#          scripts/parse_math_co_cluster.sh
-PYTHON=${PYTHON:-python3}
+# SLURM inherits VIRTUAL_ENV from the submitting shell, so the venv stays
+# active inside the job.
+if [ -z "${PYTHON:-}" ]; then
+    if [ -n "${VIRTUAL_ENV:-}" ] && [ -x "$VIRTUAL_ENV/bin/python" ]; then
+        PYTHON="$VIRTUAL_ENV/bin/python"
+    elif [ -n "${CONDA_PREFIX:-}" ] && [ -x "$CONDA_PREFIX/bin/python" ]; then
+        PYTHON="$CONDA_PREFIX/bin/python"
+    elif command -v python3 >/dev/null 2>&1; then
+        PYTHON="python3"
+    elif command -v python >/dev/null 2>&1; then
+        PYTHON="python"
+    else
+        echo "ERROR: no python interpreter found. Set PYTHON env var or install python."
+        exit 1
+    fi
+fi
 
 # ----------------------------------------------------------------------------
 # Preflight
