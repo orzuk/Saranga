@@ -37,9 +37,21 @@ STRUCTURE_TYPES=${STRUCTURE_TYPES:-"definition,theorem,lemma,proposition,corolla
 # Where the outputs land
 OUT_DIR=${OUT_DIR:-/sci/labs/orzuk/orzuk/projects/Authomathics/arxiv/parsed_${CATEGORY//./_}_${EXTRACTION_MODE}_${TOP_K}}
 
-# Code + python env
+# Code
 REPO_ROOT=${REPO_ROOT:-/sci/labs/orzuk/orzuk/github/Authomathics}
-PYTHON=${PYTHON:-/sci/labs/orzuk/orzuk/software/miniforge3/envs/pymol-env/bin/python}
+
+# Python interpreter. Priority:
+#   1. $PYTHON env var (via sbatch --export=PYTHON=/path/to/python)
+#   2. python3 on PATH (SLURM job inherits the submitting shell's
+#      environment, so activate your venv BEFORE sbatch)
+#
+# Recommended workflow on the cluster:
+#   source /sci/labs/orzuk/$USER/venvs/authomathics-venv/bin/activate
+#   sbatch scripts/parse_math_co_cluster.sh
+# Or override explicitly:
+#   sbatch --export=PYTHON=/sci/labs/orzuk/$USER/venvs/authomathics-venv/bin/python \
+#          scripts/parse_math_co_cluster.sh
+PYTHON=${PYTHON:-python3}
 
 # ----------------------------------------------------------------------------
 # Preflight

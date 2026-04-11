@@ -26,6 +26,17 @@ EXTRACTION_MODE=${EXTRACTION_MODE:-manual}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Pick a Python interpreter. Priority:
+#   1. $PYTHON env var (explicit override, e.g. PYTHON=/path/to/venv/bin/python)
+#   2. python3 on PATH (activate your venv first)
+#
+# Recommended usage on the cluster: activate your project's venv, then run.
+#   source /sci/labs/orzuk/$USER/venvs/authomathics-venv/bin/activate
+#   ./scripts/parse_smoke_test.sh
+# Or override directly:
+#   PYTHON=/path/to/python ./scripts/parse_smoke_test.sh
+PYTHON=${PYTHON:-python3}
+
 echo "===================================================="
 echo "Authomathics smoke test"
 echo "===================================================="
@@ -34,12 +45,13 @@ echo "  TOP_K           = $TOP_K"
 echo "  EXTRACTION_MODE = $EXTRACTION_MODE"
 echo "  OUT_DIR         = $OUT_DIR"
 echo "  REPO_ROOT       = $REPO_ROOT"
+echo "  PYTHON          = $PYTHON"
 echo "===================================================="
 echo
 
 cd "$REPO_ROOT/src"
 
-python3 run_pipeline.py \
+"$PYTHON" run_pipeline.py \
     --operations parse \
     --category "$CATEGORY" \
     --top-k "$TOP_K" \

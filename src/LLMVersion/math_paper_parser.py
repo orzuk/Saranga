@@ -28,7 +28,10 @@ import tarfile
 import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any, Union
-from openai import OpenAI
+
+# NOTE: The OpenAI package is imported lazily inside _get_llm_client() below,
+# so that manual-mode extraction works on machines without the openai package.
+# Same pattern as the anthropic import.
 
 # NOTE: dataclasses are now in math_classes.py
 from math_classes import (
@@ -1105,6 +1108,11 @@ class PaperParser:
             return anthropic.Anthropic(api_key=api_key), "anthropic"
 
         elif provider == "openai":
+            try:
+                from openai import OpenAI
+            except ImportError:
+                print("[ERROR] openai package not installed. Run: pip install openai")
+                return None, None
             api_key = os.environ.get("OPENAI_API_KEY")
             if not api_key:
                 print("[ERROR] OPENAI_API_KEY environment variable not set.")
@@ -1112,6 +1120,11 @@ class PaperParser:
             return OpenAI(api_key=api_key), "openai_compat"
 
         elif provider == "huggingface":
+            try:
+                from openai import OpenAI
+            except ImportError:
+                print("[ERROR] openai package not installed (required for HF router). Run: pip install openai")
+                return None, None
             api_key = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_API_KEY")
             if not api_key:
                 print("[ERROR] HF_TOKEN or HUGGINGFACE_API_KEY environment variable not set.")
