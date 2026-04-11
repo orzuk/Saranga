@@ -51,11 +51,33 @@ REPO_ROOT=${REPO_ROOT:-/sci/labs/orzuk/orzuk/github/Authomathics}
 #   sbatch scripts/parse_math_co_cluster.sh
 # SLURM inherits VIRTUAL_ENV from the submitting shell, so the venv stays
 # active inside the job.
+_find_python_in_bin() {
+    local bindir="$1"
+    for candidate in python python3; do
+        if [ -x "$bindir/$candidate" ]; then
+            echo "$bindir/$candidate"
+            return 0
+        fi
+    done
+    local found
+    found=$(ls "$bindir"/python3.* 2>/dev/null | sort -V | tail -n 1)
+    if [ -n "$found" ] && [ -x "$found" ]; then
+        echo "$found"
+        return 0
+    fi
+    return 1
+}
+
 if [ -z "${PYTHON:-}" ]; then
-    if [ -n "${VIRTUAL_ENV:-}" ] && [ -x "$VIRTUAL_ENV/bin/python" ]; then
-        PYTHON="$VIRTUAL_ENV/bin/python"
-    elif [ -n "${CONDA_PREFIX:-}" ] && [ -x "$CONDA_PREFIX/bin/python" ]; then
-        PYTHON="$CONDA_PREFIX/bin/python"
+    _try=""
+    if [ -n "${VIRTUAL_ENV:-}" ]; then
+        _try=$(_find_python_in_bin "$VIRTUAL_ENV/bin")
+    fi
+    if [ -z "$_try" ] && [ -n "${CONDA_PREFIX:-}" ]; then
+        _try=$(_find_python_in_bin "$CONDA_PREFIX/bin")
+    fi
+    if [ -n "$_try" ]; then
+        PYTHON="$_try"
     elif command -v python3 >/dev/null 2>&1; then
         PYTHON="python3"
     elif command -v python >/dev/null 2>&1; then
