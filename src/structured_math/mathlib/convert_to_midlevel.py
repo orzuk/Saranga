@@ -38,9 +38,9 @@ from pathlib import Path
 from collections import defaultdict
 from typing import Optional, Dict, List
 
-# Add repo root to path
+# Resolve math_classes from src/LLMVersion/ (single source of truth)
 REPO_ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(REPO_ROOT / 'src'))
+sys.path.insert(0, str(REPO_ROOT / 'src' / 'LLMVersion'))
 
 from math_classes import (
     TheoremLike, Definition, Proof, Relation, PaperGraph
@@ -415,6 +415,7 @@ def convert_mathlib(leandojo_dir: str, output_dir: str,
             )
         else:
             counters['theorem'] += 1
+            _concl = nl_text or code
             obj = TheoremLike(
                 id=our_id,
                 kind=kind if kind in ('theorem', 'lemma', 'axiom') else 'theorem',
@@ -425,7 +426,7 @@ def convert_mathlib(leandojo_dir: str, output_dir: str,
                 clean_text=nl_text or code,
                 paper_id='mathlib4',
                 env_name=kind,
-                statement_text=nl_text or code,
+                conclusions=[_concl] if _concl else [],
             )
 
         objects[our_id] = obj

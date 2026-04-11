@@ -98,18 +98,21 @@ class Equation(MathObject):
 @dataclass
 class TheoremLike(MathObject):
     """
-    Theorem-like object with an assumptions/statement split (heuristic).
+    Theorem-like object with an assumptions/conclusions split (heuristic).
 
     'kind' is one of: 'theorem', 'lemma', 'proposition', 'corollary',
                       'claim', 'conjecture', 'problem'.
 
-    For compatibility with existing code, we keep 'assumptions' and
-    'statement' as plain strings, and optionally also provide Span lists
-    for finer structure later.
+    'assumptions' is a list of hypothesis strings ("Let X be...", "Suppose Y...").
+    'conclusions' is a list of conclusion strings ("Then f has a fixed point").
+    Both are lists so that multi-part hypotheses and multi-part conclusions can
+    be represented without collapsing into a single string.
+
+    Field names match the unified JSON schema documented in annotation_schema.md.
     """
     env_name: str = ""        # actual LaTeX env name e.g. 'theorem', 'lemma'
-    assumptions: str = ""     # heuristic assumptions text ("Let / Suppose / Assume ...")
-    statement: str = ""       # heuristic statement text ("Then ...")
+    assumptions: List[str] = field(default_factory=list)   # hypotheses
+    conclusions: List[str] = field(default_factory=list)   # conclusions / "Then ..."
 
     # Optional finer structure (currently not populated by the heuristic parser,
     # but available for future LLM / rule-based enrichments).
@@ -268,6 +271,14 @@ REL_GENERALIZES = "generalizes"    # conceptual: A generalizes B (more general �
 REL_RELATED_TO = "related_to"      # conceptual (usually symmetric, weak)
 REL_EQUIVALENT_TO = "equivalent_to"  # conceptual, symmetric equivalence
 
+# Concept grounding (Wikidata / external registries)
+REL_MENTIONS_CONCEPT = "mentions_concept"   # object mentions a known registry concept
+REL_GROUNDED_TO = "grounded_to"             # stronger form: disambiguated concept link
+
+# Fine-grained assumption/conclusion edges (used by enriched proof structures)
+REL_HAS_ASSUMPTION = "has_assumption"
+REL_HAS_CONCLUSION = "has_conclusion"
+
 # Simple mapping from relation_type to a coarse category
 RELATION_CATEGORY_MAP: Dict[str, str] = {
     REL_USES: "logical",
@@ -277,13 +288,30 @@ RELATION_CATEGORY_MAP: Dict[str, str] = {
     REL_GENERALIZES: "conceptual",
     REL_RELATED_TO: "conceptual",
     REL_EQUIVALENT_TO: "conceptual",
+    REL_MENTIONS_CONCEPT: "conceptual",
+    REL_GROUNDED_TO: "external",
+    REL_HAS_ASSUMPTION: "structural",
+    REL_HAS_CONCLUSION: "structural",
 }
+
+
+@dataclass
+class Concept(MathObject):
+    """
+    External/registry concept (typically Wikidata-backed).
+    Stored as a node so papers can link to shared concepts across papers.
+    Note: callers should pass kind="concept" when constructing.
+    """
+    external_ids: Dict[str, str] = field(default_factory=dict)  # e.g. {"wikidata": "Q12345"}
+    aliases: List[str] = field(default_factory=list)
+    description: Optional[str] = None
+    registry_source: Optional[str] = "wikidata"
 
 
 def infer_relation_category(relation_type: str) -> str:
     """
     Given a relation_type string, return a coarse category:
-    'logical', 'structural', 'conceptual', or 'other'.
+    'logical', 'structural', 'conceptual', 'external', or 'other'.
 
     This is used as a default when adding relations.
     """
@@ -580,7 +608,8 @@ class PaperGraph:
           - parent_id → proves (for proofs)
           - source_id/target_id → source/target
           - relation_type → type (on edges)
-          - assumptions string → assumptions list (single-element)
+          - assumptions: List[str] → JSON "assumptions" list (pass-through)
+          - conclusions: List[str] → JSON "conclusions" list (pass-through)
 
         Parameters
         ----------
@@ -613,14 +642,10 @@ class PaperGraph:
 
             # Type-specific fields
             if isinstance(obj, TheoremLike):
-                assumptions_str = getattr(obj, "assumptions", "")
-                if assumptions_str:
-                    node["assumptions"] = [assumptions_str]
-                else:
-                    node["assumptions"] = []
-                statement_str = getattr(obj, "statement", "")
-                if statement_str:
-                    node["conclusions"] = [statement_str]
+                # assumptions and conclusions are now List[str] at the Python level,
+                # matching the JSON schema. Pass through directly.
+                node["assumptions"] = list(getattr(obj, "assumptions", []) or [])
+                node["conclusions"] = list(getattr(obj, "conclusions", []) or [])
 
             if isinstance(obj, Proof):
                 node["proves"] = obj.parent_id or ""

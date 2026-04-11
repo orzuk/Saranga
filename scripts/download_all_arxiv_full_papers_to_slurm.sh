@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Usage: `./download_all_arxiv_full_papers_to_slurm.sh`
-SCRIPT_DIR="/sci/labs/orzuk/orzuk/github/ArXivAnalysis/scripts"
+SCRIPT_DIR="/sci/labs/orzuk/orzuk/github/Authomathics/scripts"
 JOB_SCRIPT="${SCRIPT_DIR}/download_one_month_arxiv_papers.sh"
 
 START_YEAR=1991
