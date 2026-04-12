@@ -93,6 +93,28 @@ def load_all_items(data_dir):
 
 
 
+# Non-mathematical English phrases that ProofWiki happens to define.
+# These are not math concepts — they're writing conventions.
+# (Real math concepts like "upper bound" or "linearly independent" are kept;
+# IDF filtering handles their over-frequency at linking time.)
+_NON_MATH_PHRASES = {
+    "with respect to", "right hand side", "left hand side",
+    "sufficiently large", "sufficiently small",
+    "without loss of generality", "it follows that",
+    "if and only if", "such that", "there exists",
+    "for all", "given that", "provided that",
+    "on the other hand", "in particular", "more precisely",
+    "that is", "namely", "in other words",
+    "vice versa", "a fortiori", "mutatis mutandis",
+    "necessary condition", "sufficient condition",
+    "necessary and sufficient", "necessary and sufficient condition",
+    "trivially", "obviously", "clearly",
+    "by definition", "by convention", "by assumption",
+    "by hypothesis", "by induction", "by contradiction",
+    "well-defined", "well defined",
+}
+
+
 def filter_items(items, verbose=False):
     """Apply filtering rules. Returns (kept, dropped_with_reasons)."""
     kept = []
@@ -143,15 +165,19 @@ def filter_items(items, verbose=False):
             dropped["too_long"].append(title)
             continue
 
-        # Rule 6: Drop all definition-type entries.
-        # Definitions are vocabulary ("Finite Set", "Adjacency Matrix"), not
-        # named results. Foundation linking should connect to theorems/lemmas,
-        # not to terminology. Named concepts that matter (Cauchy, Markov, etc.)
-        # are already covered by theorem-type entries and WELL_KNOWN.
+        # Rule 6: Drop non-mathematical phrases that ProofWiki defines but aren't
+        # real math concepts (English writing phrases like "With Respect To").
+        # Real definitions (even generic ones like "Upper Bound") are kept —
+        # IDF filtering in the linking step handles over-common terms.
         item_type = item.get("type", "")
         if item_type == "definition" or title.startswith("Definition:"):
-            dropped["definition"].append(title)
-            continue
+            name_part = title
+            if title.startswith("Definition:"):
+                name_part = title[len("Definition:"):]
+            name_lower = name_part.strip().lower()
+            if name_lower in _NON_MATH_PHRASES:
+                dropped["non_math_phrase"].append(title)
+                continue
 
         kept.append(item)
 

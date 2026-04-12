@@ -392,7 +392,8 @@ def op_link(args) -> None:
     downstream operations (stats, anomalies) can count them.
     """
     try:
-        from link_to_foundation import build_foundation_index, link_paper, _build_automaton
+        from link_to_foundation import (build_foundation_index, link_paper,
+                                          _build_automaton, compute_idf, filter_by_idf)
     except ImportError as e:
         print(f"[pipeline] link: cannot import link_to_foundation: {e}")
         return
@@ -442,8 +443,10 @@ def op_link(args) -> None:
         print(f"[pipeline] link: pyahocorasick not installed, using slow regex fallback")
 
     n_total = len(json_paths)
-    n_linked = 0
-    total_matches = 0
+
+    # ── Pass 1: match all papers, collect per-paper matches ──
+    per_paper = []  # list of (json_path, data_dict, matches_list)
+    all_matches_flat = []  # for IDF computation
 
     for i, jp in enumerate(json_paths, start=1):
         try:
@@ -451,27 +454,61 @@ def op_link(args) -> None:
                 data = json.load(f)
 
             nodes = data.get("nodes", [])
-            edges = data.get("edges", [])
 
             # Remove any previous foundation edges (re-linking is idempotent)
-            edges = [e for e in edges
-                     if e.get("type") not in ("grounded_to", "mentions_concept")]
+            data["edges"] = [e for e in data.get("edges", [])
+                             if e.get("type") not in ("grounded_to", "mentions_concept")]
 
-            # Run foundation matching (Aho-Corasick if available, else regex)
+            # Run foundation matching
             matches = link_paper(nodes, index, min_term_len=5,
                                  automaton=automaton, term_map=term_map)
 
-            # Add matches as grounded_to edges
-            seen = set()  # deduplicate (node_id, foundation_name)
+            # Tag each match with paper index (for IDF computation)
             for m in matches:
+                m["_paper_idx"] = i
+
+            per_paper.append((jp, data, matches))
+            all_matches_flat.extend(matches)
+
+        except Exception as e:
+            print(f"[pipeline] link: {jp.name}: FAILED reading: {e}")
+
+    # ── IDF filtering: drop terms appearing in >10% of papers ──
+    idf_scores = compute_idf(all_matches_flat, n_total)
+    max_df_frac = 0.10
+    _, dropped_terms = filter_by_idf(all_matches_flat, idf_scores,
+                                      max_df_frac=max_df_frac)
+    if dropped_terms:
+        print(f"[pipeline] link: IDF filter (df>{max_df_frac:.0%}): "
+              f"dropping {len(dropped_terms)} over-common terms:")
+        for term in sorted(dropped_terms,
+                           key=lambda t: -idf_scores[t]["df"])[:20]:
+            s = idf_scores[term]
+            print(f"    {s['df']:>4} papers ({s['df_frac']:.0%}): {term}")
+        if len(dropped_terms) > 20:
+            print(f"    ... and {len(dropped_terms) - 20} more")
+
+    # ── Pass 2: write filtered edges back to each paper ──
+    n_linked = 0
+    total_matches = 0
+
+    for jp, data, matches in per_paper:
+        try:
+            edges = data["edges"]
+            seen = set()
+            for m in matches:
+                if m["foundation_name"] in dropped_terms:
+                    continue
                 key = (m["node_id"], m["foundation_name"])
                 if key in seen:
                     continue
                 seen.add(key)
+                # Use edge type based on foundation entry type
+                edge_type = "grounded_to"
                 edges.append({
                     "source": m["foundation_name"],
                     "target": m["node_id"],
-                    "type": "grounded_to",
+                    "type": edge_type,
                     "note": f"matched term: {m['matched_term']}",
                 })
 
@@ -480,18 +517,12 @@ def op_link(args) -> None:
                 n_linked += 1
                 total_matches += n_new
 
-            # Write back in-place
             data["edges"] = edges
             with open(jp, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
 
-            if args.verbose:
-                paper_id = jp.stem.replace("_manual", "").replace("_claude", "")
-                print(f"[pipeline] link: {paper_id} [{i}/{n_total}] "
-                      f"{n_new} foundation links added")
-
         except Exception as e:
-            print(f"[pipeline] link: {jp.name}: FAILED: {e}")
+            print(f"[pipeline] link: {jp.name}: FAILED writing: {e}")
 
     print(f"[pipeline] link: {n_linked}/{n_total} papers linked, "
           f"{total_matches} total foundation edges added")

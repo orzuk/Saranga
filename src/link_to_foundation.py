@@ -331,6 +331,63 @@ def link_paper(nodes, index, min_term_len=5, automaton=None, term_map=None):
     return matches
 
 
+def compute_idf(all_matches, n_papers):
+    """Compute IDF (inverse document frequency) for each foundation term.
+
+    Args:
+        all_matches: list of match dicts from link_paper, across all papers.
+            Each has 'node_id' and 'foundation_name'.
+        n_papers: total number of papers in the corpus.
+
+    Returns:
+        dict: foundation_name -> {"df": int, "df_frac": float, "idf": float}
+        where df = number of papers containing the term,
+        df_frac = df/n_papers, idf = log(n_papers/df).
+    """
+    import math
+
+    # Group matches by paper (use node_id prefix as paper identifier)
+    # In practice, caller should pass per-paper match lists; here we use
+    # a simpler approach: each unique (paper_file, foundation_name) pair counts once.
+    # Since we don't have paper_file in matches, we rely on the caller.
+    # This function takes paper_term_counts: {term: set_of_paper_indices}.
+
+    term_papers = defaultdict(set)
+    for m in all_matches:
+        paper_id = m.get("_paper_idx", m.get("node_id", "").split("_")[0])
+        term_papers[m["foundation_name"]].add(paper_id)
+
+    idf = {}
+    for term, papers in term_papers.items():
+        df = len(papers)
+        idf[term] = {
+            "df": df,
+            "df_frac": df / n_papers if n_papers > 0 else 0,
+            "idf": math.log(n_papers / df) if df > 0 and n_papers > 0 else 0,
+        }
+    return idf
+
+
+def filter_by_idf(matches, idf_scores, max_df_frac=0.10):
+    """Remove matches for terms that appear in too many papers.
+
+    Args:
+        matches: list of match dicts from link_paper.
+        idf_scores: output of compute_idf.
+        max_df_frac: maximum document frequency fraction (default 10%).
+            Terms matching more than this fraction of papers are dropped.
+
+    Returns:
+        (kept_matches, dropped_terms): kept matches and set of dropped term names.
+    """
+    dropped_terms = {
+        term for term, scores in idf_scores.items()
+        if scores["df_frac"] > max_df_frac
+    }
+    kept = [m for m in matches if m["foundation_name"] not in dropped_terms]
+    return kept, dropped_terms
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
