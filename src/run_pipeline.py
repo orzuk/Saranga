@@ -376,9 +376,15 @@ def op_visualize(args) -> None:
 # =============================================================================
 
 def op_link(args) -> None:
-    """Augment JSONs with foundation-graph links (Wikidata / NaturalProofs / Mathlib)."""
+    """Augment JSONs IN-PLACE with foundation-graph links.
+
+    Uses the same build_foundation_index + link_paper functions that the
+    interactive HTML visualization uses (ghost nodes). Adds matched
+    foundation entries as 'grounded_to' edges in the JSON, so that
+    downstream operations (stats, anomalies) can count them.
+    """
     try:
-        import link_to_foundation  # noqa
+        from link_to_foundation import build_foundation_index, link_paper
     except ImportError as e:
         print(f"[pipeline] link: cannot import link_to_foundation: {e}")
         return
@@ -388,25 +394,68 @@ def op_link(args) -> None:
         print(f"[pipeline] link: no JSON files found under {args.out_dir}")
         return
 
-    print(f"[pipeline] link: linking {len(json_paths)} JSON files to foundation graph")
-    print(f"[pipeline] link: NOTE: link_to_foundation does not expose a single function;")
-    print(f"[pipeline] link: for now, invoke it as a subprocess per file. Batch-friendly")
-    print(f"[pipeline] link: wrapping is a post-NeurIPS TODO.")
+    # Build the foundation index once (shared across all papers)
+    print(f"[pipeline] link: building foundation index...")
+    try:
+        index = build_foundation_index(None)  # None = use built-in well-known terms
+        print(f"[pipeline] link: index has {len(index)} searchable terms")
+    except Exception as e:
+        print(f"[pipeline] link: failed to build foundation index: {e}")
+        return
 
-    for jp in json_paths:
+    n_total = len(json_paths)
+    n_linked = 0
+    total_matches = 0
+
+    for i, jp in enumerate(json_paths, start=1):
         try:
-            out_path = jp.with_name(jp.stem + "_linked.json")
-            cmd = [
-                sys.executable,
-                str(_SRC_DIR / "link_to_foundation.py"),
-                "--paper-json", str(jp),
-                "--output", str(out_path),
-            ]
+            with open(jp, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            nodes = data.get("nodes", [])
+            edges = data.get("edges", [])
+
+            # Remove any previous foundation edges (re-linking is idempotent)
+            edges = [e for e in edges
+                     if e.get("type") not in ("grounded_to", "mentions_concept")]
+
+            # Run foundation matching
+            matches = link_paper(nodes, index, min_term_len=5)
+
+            # Add matches as grounded_to edges
+            seen = set()  # deduplicate (node_id, foundation_name)
+            for m in matches:
+                key = (m["node_id"], m["foundation_name"])
+                if key in seen:
+                    continue
+                seen.add(key)
+                edges.append({
+                    "source": m["foundation_name"],
+                    "target": m["node_id"],
+                    "type": "grounded_to",
+                    "note": f"matched term: {m['matched_term']}",
+                })
+
+            n_new = len(seen)
+            if n_new > 0:
+                n_linked += 1
+                total_matches += n_new
+
+            # Write back in-place
+            data["edges"] = edges
+            with open(jp, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+
             if args.verbose:
-                print(f"[pipeline] link: {jp.name} -> {out_path.name}")
-            subprocess.run(cmd, check=False)
+                paper_id = jp.stem.replace("_manual", "").replace("_claude", "")
+                print(f"[pipeline] link: {paper_id} [{i}/{n_total}] "
+                      f"{n_new} foundation links added")
+
         except Exception as e:
             print(f"[pipeline] link: {jp.name}: FAILED: {e}")
+
+    print(f"[pipeline] link: {n_linked}/{n_total} papers linked, "
+          f"{total_matches} total foundation edges added")
 
 
 # =============================================================================
