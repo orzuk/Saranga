@@ -128,15 +128,18 @@ def build_foundation_index(foundation_paths=None):
             if not title or len(title) < 5:
                 continue
 
-            # Normalize: strip leading articles for deduplication
+            # Normalize: strip leading articles, possessives, for deduplication
             key = title.strip().lower()
-            for prefix in ("the ", "a ", "an "):
+            for prefix in ("the ", "a ", "an ", "definition:", "definition: "):
                 if key.startswith(prefix):
                     key = key[len(prefix):]
                     break
+            # Strip possessives: "Markov's" → "markov", "Ramsey's" → "ramsey"
+            # This ensures "Markov's inequality" and "Markov inequality" match
+            key = re.sub(r"'s\b", "", key)
+            key = key.strip()
 
-            # Skip very short/generic terms after normalization (e.g., "set",
-            # "number of permutations" → likely a formula name, not a theorem)
+            # Skip single-word terms after normalization
             words = [w for w in key.split() if len(w) > 2]
             if len(words) < 2:
                 continue
@@ -199,6 +202,8 @@ def link_paper(nodes, index, min_term_len=5, automaton=None, term_map=None):
                 texts.extend([str(x) for x in node[field]])
 
         search_text = " ".join(texts).lower()
+        # Strip possessives in search text too, matching the index normalization
+        search_text = re.sub(r"'s\b", "", search_text)
         if not search_text:
             continue
 
@@ -210,6 +215,13 @@ def link_paper(nodes, index, min_term_len=5, automaton=None, term_map=None):
             for end_pos, term in automaton.iter(search_text):
                 if term in seen_terms:
                     continue
+                # Word-boundary check: ensure we matched a whole word/phrase,
+                # not a substring (e.g., "stein" inside "einstein")
+                start_pos = end_pos - len(term) + 1
+                if start_pos > 0 and search_text[start_pos - 1].isalnum():
+                    continue  # not a word boundary on the left
+                if end_pos + 1 < len(search_text) and search_text[end_pos + 1].isalnum():
+                    continue  # not a word boundary on the right
                 seen_terms.add(term)
                 entry = term_map[term]
                 node_matches.append({
@@ -225,8 +237,12 @@ def link_paper(nodes, index, min_term_len=5, automaton=None, term_map=None):
             for term, entry in index.items():
                 if len(term) < min_term_len:
                     continue
-                if re.search(r'\b' + re.escape(term) if not any(c in term for c in '.*+?') else term,
-                             search_text):
+                # Use word boundaries for literal terms; regex terms (.*+?) used as-is
+                if any(c in term for c in '.*+?'):
+                    pattern = term
+                else:
+                    pattern = r'\b' + re.escape(term) + r'\b'
+                if re.search(pattern, search_text):
                     node_matches.append({
                         "node_id": node["id"],
                         "node_type": node.get("type", ""),
