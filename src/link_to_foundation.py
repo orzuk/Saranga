@@ -22,7 +22,9 @@ from pathlib import Path
 from collections import defaultdict
 
 
-# Built-in index of well-known mathematical results (fallback if no foundation JSON)
+# Built-in index of well-known mathematical results (fallback if no foundation JSON).
+# These are single-word or abbreviation entries that wouldn't survive the
+# ≥2-word filter in the clean foundation index.
 WELL_KNOWN = {
     "markov": {"name": "Markov's Inequality", "field": "probability"},
     "chebyshev": {"name": "Chebyshev's Inequality", "field": "probability"},
@@ -79,6 +81,42 @@ WELL_KNOWN = {
     "prufer": {"name": "Prufer Sequence", "field": "graph theory"},
 }
 
+# Abbreviation aliases: map common abbreviations to their full foundation names.
+# These are added to the index so that papers using "CLT" match "Central Limit Theorem".
+ALIASES = {
+    "clt": {"name": "Central Limit Theorem", "field": "probability"},
+    "lln": {"name": "Law of Large Numbers", "field": "probability"},
+    "slln": {"name": "Strong Law of Large Numbers", "field": "probability"},
+    "wlln": {"name": "Weak Law of Large Numbers", "field": "probability"},
+    "svd": {"name": "Singular Value Decomposition", "field": "linear algebra"},
+    "nmf": {"name": "Non-Negative Matrix Factorization", "field": "linear algebra"},
+    "nnmf": {"name": "Non-Negative Matrix Factorization", "field": "linear algebra"},
+    "am-gm": {"name": "AM-GM Inequality", "field": "analysis"},
+    "am gm": {"name": "AM-GM Inequality", "field": "analysis"},
+    "lda": {"name": "Latent Dirichlet Allocation", "field": "topic models"},
+    "hmm": {"name": "Hidden Markov Model", "field": "sequence models"},
+    "hmms": {"name": "Hidden Markov Model", "field": "sequence models"},
+    "pca": {"name": "Principal Component Analysis", "field": "linear algebra"},
+    "iff": {"name": "If and Only If", "field": "logic"},
+    "wlog": {"name": "Without Loss of Generality", "field": "logic"},
+    "rhs": {"name": "Right-Hand Side", "field": "general"},
+    "lhs": {"name": "Left-Hand Side", "field": "general"},
+    "ode": {"name": "Ordinary Differential Equation", "field": "analysis"},
+    "pde": {"name": "Partial Differential Equation", "field": "analysis"},
+    "iid": {"name": "Independent and Identically Distributed", "field": "probability"},
+    "i.i.d": {"name": "Independent and Identically Distributed", "field": "probability"},
+    "mgf": {"name": "Moment Generating Function", "field": "probability"},
+    "pdf": {"name": "Probability Density Function", "field": "probability"},
+    "cdf": {"name": "Cumulative Distribution Function", "field": "probability"},
+    "dag": {"name": "Directed Acyclic Graph", "field": "graph theory"},
+    "bfs": {"name": "Breadth-First Search", "field": "algorithms"},
+    "dfs": {"name": "Depth-First Search", "field": "algorithms"},
+    "mle": {"name": "Maximum Likelihood Estimation", "field": "statistics"},
+    "map estimate": {"name": "Maximum a Posteriori Estimation", "field": "statistics"},
+    "kl divergence": {"name": "Kullback-Leibler Divergence", "field": "information theory"},
+    "em algorithm": {"name": "Expectation-Maximization Algorithm", "field": "statistics"},
+}
+
 
 def build_foundation_index(foundation_paths=None):
     """Build a name index from foundation data.
@@ -95,6 +133,7 @@ def build_foundation_index(foundation_paths=None):
         - Nested dict: {"dataset": {"theorems": [...], "definitions": [...], "others": [...]}}
     """
     index = dict(WELL_KNOWN)  # start with built-in
+    index.update(ALIASES)     # add abbreviation aliases
 
     if foundation_paths is None:
         foundation_paths = []
@@ -188,6 +227,17 @@ def _build_automaton(index, min_term_len=5):
             continue
         A.add_word(term, term)
         term_map[term] = entry
+        # Also add hyphen↔space variant so "cauchy-schwarz" matches "cauchy schwarz"
+        if '-' in term:
+            alt = term.replace('-', ' ')
+            if alt not in term_map:
+                A.add_word(alt, alt)
+                term_map[alt] = entry
+        elif ' ' in term:
+            alt = term.replace(' ', '-')
+            if alt not in term_map:
+                A.add_word(alt, alt)
+                term_map[alt] = entry
     A.make_automaton()
     return A, term_map
 
@@ -213,8 +263,21 @@ def link_paper(nodes, index, min_term_len=5, automaton=None, term_map=None):
                 texts.extend([str(x) for x in node[field]])
 
         search_text = " ".join(texts).lower()
-        # Strip possessives in search text too, matching the index normalization
-        search_text = re.sub(r"'s\b", "", search_text)
+        # Normalize search text to match index conventions:
+        # 1. Strip possessives ("Markov's" → "markov")
+        search_text = re.sub(r"['']s\b", "", search_text)
+        # 2. Strip common LaTeX commands (keep the content)
+        search_text = re.sub(r'\\(?:mathrm|mathbb|mathcal|operatorname|text|textit|textbf|emph)\s*\{([^}]*)\}', r'\1', search_text)
+        search_text = re.sub(r'\\(?:cite|ref|label|eqref)\s*\{[^}]*\}', ' ', search_text)
+        search_text = re.sub(r'\\[a-zA-Z]+', ' ', search_text)  # remaining commands
+        search_text = re.sub(r'[{}$\\]', ' ', search_text)       # braces and dollar signs
+        # 3. Normalize hyphens: add space-variant so "cauchy-schwarz" also matches "cauchy schwarz"
+        #    We expand "x-y" to "x-y x y" so both forms are searchable
+        hyphenated = re.findall(r'\b(\w+(?:-\w+)+)\b', search_text)
+        for h in hyphenated:
+            search_text += " " + h.replace("-", " ")
+        # 4. Collapse whitespace
+        search_text = re.sub(r'\s+', ' ', search_text).strip()
         if not search_text:
             continue
 
