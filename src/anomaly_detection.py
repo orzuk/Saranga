@@ -385,7 +385,7 @@ def detect_anomalies_in_dir(out_dir: str, verbose: bool = False) -> Tuple[List[A
                 for r in records:
                     print(f"[anomalies] {r[0]} [{r[1]}.{r[2]}] sev={r[3]}: {r[6]}")
 
-    return all_records, len(json_paths), n_flagged
+    return all_records, len(json_paths_with_data), n_flagged
 
 
 def write_anomalies_report(records: List[AnomalyRecord], out_path: str) -> None:

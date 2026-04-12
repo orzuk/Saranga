@@ -29,12 +29,19 @@ START_DATE=${START_DATE:-}
 END_DATE=${END_DATE:-}
 HTML=${HTML:-0}
 
-# Normalize OUT_DIR to an absolute path right now, BEFORE we cd anywhere.
-# Otherwise a relative OUT_DIR like "./smoke_test_out" would resolve relative
-# to the repo's src/ directory after the `cd "$REPO_ROOT/src"` below, putting
-# outputs one level deeper than the user expected.
+# Normalize OUT_DIR to an absolute, clean path right now, BEFORE we cd
+# anywhere. Otherwise a relative OUT_DIR like "./smoke_test_out" would
+# resolve relative to the repo's src/ directory after the `cd "$REPO_ROOT/src"`
+# below, putting outputs one level deeper than the user expected.
 if [[ "$OUT_DIR" != /* ]]; then
-    OUT_DIR="$PWD/$OUT_DIR"
+    if command -v realpath >/dev/null 2>&1; then
+        # realpath -m allows non-existent target paths (we may be creating
+        # the output dir fresh). Produces a clean absolute path.
+        OUT_DIR="$(realpath -m "$OUT_DIR")"
+    else
+        # Fallback: strip any leading "./" and prepend $PWD
+        OUT_DIR="$PWD/${OUT_DIR#./}"
+    fi
 fi
 
 # Resolve repo root from this script's location
