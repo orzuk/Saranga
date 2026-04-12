@@ -235,6 +235,8 @@ def op_parse(args) -> None:
     if args.prompt_file:
         cmd += ["--prompt-file", args.prompt_file]
     cmd += ["--structure-types", args.structure_types]
+    if args.tex_dir:
+        cmd += ["--tex-dir", args.tex_dir]
 
     print(f"[pipeline] parse: running LLMVersion extractor as subprocess")
     print(f"[pipeline] parse: cmd = {' '.join(cmd)}")
@@ -594,6 +596,10 @@ def main():
                         default="definition,theorem,lemma,proposition,corollary,"
                                 "claim,conjecture,problem,proof,algorithm,equation",
                         help="Comma-separated structure types to extract.")
+    parser.add_argument("--tex-dir", type=str, default=None,
+                        help="Directory to search for local .tex files instead of "
+                             "the default FULL_PAPERS_DIR from config. Useful when "
+                             "tex sources live in a non-standard location.")
 
     # --- visualize operation args ---
     parser.add_argument("--resolution", choices=["standard", "full"], default="standard",

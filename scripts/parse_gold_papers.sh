@@ -23,6 +23,7 @@ OPERATIONS=${OPERATIONS:-parse,validate,anomalies,stats,visualize}
 EXTRACTION_MODE=${EXTRACTION_MODE:-manual}
 HTML=${HTML:-1}
 OUT_DIR=${OUT_DIR:-./gold_paper_output}
+TEX_DIR=${TEX_DIR:-}
 
 # Normalize OUT_DIR to absolute
 if [[ "$OUT_DIR" != /* ]]; then
@@ -50,6 +51,14 @@ PAPER_IDS=(
 # Resolve paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Auto-detect TEX_DIR if not set by the user
+if [ -z "$TEX_DIR" ]; then
+    _default_tex="$REPO_ROOT/src/LLMVersion/full_papers"
+    if [ -d "$_default_tex" ]; then
+        TEX_DIR="$_default_tex"
+    fi
+fi
 
 # Python detection (same logic as other scripts)
 if [ -z "${PYTHON:-}" ]; then
@@ -98,11 +107,16 @@ if [[ "$OPERATIONS" == *"parse"* ]]; then
         pid="${PAPER_IDS[$i]}"
         n=$((i + 1))
         echo "[gold] parse: $pid [$n/${#PAPER_IDS[@]}]"
+        _TEX_FLAG=()
+        if [ -n "$TEX_DIR" ]; then
+            _TEX_FLAG=(--tex-dir "$TEX_DIR")
+        fi
         "$PYTHON" run_pipeline.py \
             --operations parse \
             --regex-id "^${pid}" \
             --extraction-mode "$EXTRACTION_MODE" \
-            --out-dir "$OUT_DIR" 2>&1 | grep -E "^\[OK\]|^\[WARN\]|^\[INFO\] _(extract|build|link)" || true
+            --out-dir "$OUT_DIR" \
+            "${_TEX_FLAG[@]}" 2>&1 | grep -E "^\[OK\]|^\[WARN\]|^\[INFO\] _(extract|build|link)" || true
     done
     echo "[gold] parse done."
     echo

@@ -88,30 +88,24 @@ def compute_date_range(
     return start_date.isoformat(), end_date.isoformat()
 
 
-def _find_local_tex(paper_id: str) -> Optional[Tuple[str, str]]:
-    """Search for an already-cached .tex file matching paper_id.
+def _find_local_tex(paper_id: str, tex_dir: str = None) -> Optional[Tuple[str, str]]:
+    """Search for a cached .tex file matching paper_id in a single directory.
 
-    Looks in multiple locations:
-      1. FULL_PAPERS_DIR (main data cache, from config.py)
-      2. LLMVersion/full_papers/ (gold-standard tex files committed to git)
+    Args:
+        paper_id: arxiv paper ID (e.g. '1210.4634' or '1210.4634v1')
+        tex_dir:  directory to search (default: FULL_PAPERS_DIR from config)
 
     Returns (tex_path, versioned_id) or None.
     """
     import os
-    search_dirs = [FULL_PAPERS_DIR]
-    # Also search the git-committed gold-standard tex files in LLMVersion/
-    _llmv_papers = os.path.join(os.path.dirname(os.path.abspath(__file__)), "full_papers")
-    if os.path.isdir(_llmv_papers) and _llmv_papers != FULL_PAPERS_DIR:
-        search_dirs.append(_llmv_papers)
-
-    for search_dir in search_dirs:
-        pattern = os.path.join(search_dir, "**", f"{paper_id}*.tex")
-        matches = globmod.glob(pattern, recursive=True)
-        if matches:
-            tex_path = matches[0]
-            versioned_id = Path(tex_path).stem
-            return tex_path, versioned_id
-    return None
+    search_dir = tex_dir or FULL_PAPERS_DIR
+    pattern = os.path.join(search_dir, "**", f"{paper_id}*.tex")
+    matches = globmod.glob(pattern, recursive=True)
+    if not matches:
+        return None
+    tex_path = matches[0]
+    versioned_id = Path(tex_path).stem
+    return tex_path, versioned_id
 
 
 def run_batch(
@@ -127,6 +121,7 @@ def run_batch(
         llm_model: str = "claude-sonnet-4-20250514",
         llm_chunk_chars: int = 30000,
         llm_provider: str = "anthropic",
+        tex_dir: Optional[str] = None,
         prompt_file: Optional[str] = None,
         structure_types: Optional[list] = None,
 ) -> None:
@@ -150,7 +145,7 @@ def run_batch(
         plain_id = regex_id.lstrip('^').rstrip('$')
         # Check if it's a simple paper ID (not a complex regex)
         if re.fullmatch(r'[\d.]+(?:v\d+)?', plain_id):
-            local = _find_local_tex(plain_id)
+            local = _find_local_tex(plain_id, tex_dir=tex_dir)
             if local:
                 tex_path, versioned_id = local
                 base_id = versioned_id.split("v")[0]
@@ -492,6 +487,14 @@ def main():
         default="definition",
         help="Comma-separated structure types to extract via LLM (default: definition)",
     )
+    parser.add_argument(
+        "--tex-dir",
+        type=str,
+        default=None,
+        help="Directory to search for local .tex files (default: FULL_PAPERS_DIR "
+             "from config). Use this to point at a non-standard location, e.g. "
+             "src/LLMVersion/full_papers/ for Yaron's gold-standard papers.",
+    )
 
     args = parser.parse_args()
     print(f"[DEBUG] Parsed args: {args}")
@@ -521,6 +524,7 @@ def main():
         llm_provider=args.llm_provider,
         prompt_file=args.prompt_file,
         structure_types=structure_types,
+        tex_dir=args.tex_dir,
     )
 
     print("[INFO] Done.")
