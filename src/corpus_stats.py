@@ -67,6 +67,8 @@ STAT_COLUMNS = [
     "dag_acyclic", "dag_depth",
     "n_has_part_edges", "n_uses_edges", "n_keyword_edges",
     "n_orphan_proofs", "n_isolated_nodes",
+    "n_foundation_edges", "n_grounded_to", "n_mentions_concept",
+    "n_distinct_foundation_targets",
 ]
 
 
@@ -205,6 +207,28 @@ def compute_paper_stats(paper_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         1 for n in nodes
         if n.get("id") and n["id"] not in connected
     )
+
+    # Foundation graph links
+    # These are populated by the `link` operation (link_to_foundation.py).
+    # If `link` hasn't been run, all counts are 0 — which is informative.
+    FOUNDATION_EDGE_TYPES = {"grounded_to", "mentions_concept"}
+    foundation_targets = set()
+    n_grounded = 0
+    n_mentions = 0
+    for e in edges:
+        etype = e.get("type") or ""
+        if etype in FOUNDATION_EDGE_TYPES:
+            t = e.get("target")
+            if t:
+                foundation_targets.add(t)
+            if etype == "grounded_to":
+                n_grounded += 1
+            elif etype == "mentions_concept":
+                n_mentions += 1
+    stats["n_foundation_edges"] = n_grounded + n_mentions
+    stats["n_grounded_to"] = n_grounded
+    stats["n_mentions_concept"] = n_mentions
+    stats["n_distinct_foundation_targets"] = len(foundation_targets)
 
     # DAG properties
     if _HAS_NETWORKX and n_nodes > 0:
@@ -346,6 +370,16 @@ def print_summary(stats_list: List[Dict[str, Any]]) -> None:
     print(f"  DAG depth:        max={max_depth}, avg={avg_depth:.1f}")
     print(_line("Orphan proofs:    ", "n_orphan_proofs"))
     print(_line("Isolated nodes:   ", "n_isolated_nodes"))
+    # Foundation graph links (populated by the `link` operation)
+    n_found = _total("n_foundation_edges")
+    n_targets = _total("n_distinct_foundation_targets")
+    if n_found > 0:
+        print(f"  Foundation links:  {n_found:>8,}   (avg {_avg('n_foundation_edges'):.1f})")
+        print(f"    grounded_to:     {_total('n_grounded_to'):>8,}")
+        print(f"    mentions_concept:{_total('n_mentions_concept'):>8,}")
+        print(f"    distinct targets:{n_targets:>8,}")
+    else:
+        print(f"  Foundation links:         0   (run --operations link to populate)")
 
 
 # --- standalone CLI -----------------------------------------------------------
