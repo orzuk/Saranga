@@ -1,0 +1,716 @@
+% Template for ICIP-2023 paper; to be used with:
+%          spconf.sty  - ICASSP/ICIP LaTeX style file, and
+%          IEEEbib.bst - IEEE bibliography style file.
+% --------------------------------------------------------------------------
+\documentclass{article}
+\usepackage{spconf,amsmath,graphicx}
+
+% Example definitions.
+% --------------------
+\def\x{{\mathbf x}}
+\def\L{{\cal L}}
+\input{TS-SSL-macro}
+
+% Title.
+% ------
+\title{KD-FixMatch: Knowledge Distillation Siamese Neural Networks}
+%
+% Single address.
+% ---------------
+\name{
+    Chien-Chih Wang, Shaoyuan Xu, Jinmiao Fu, Yang Liu, Bryan Wang
+}
+\address{
+    \{ccwang, shaoyux, jinmiaof, yliuu, brywan\}@amazon.com \\
+    Amazon Inc.
+}
+
+%
+% For example:
+% ------------
+%\address{School\\
+%	Department\\
+%	Address}
+%
+% Two addresses (uncomment and modify for two-address case).
+% ----------------------------------------------------------
+%\twoauthors
+%  {A. Author-one, B. Author-two\sthanks{Thanks to XYZ agency for funding.}}
+%	{School A-B\\
+%	Department A-B\\
+%	Address A-B}
+%  {C. Author-three, D. Author-four\sthanks{The fourth author performed the work
+%	while at ...}}
+%	{School C-D\\
+%	Department C-D\\
+%	Address C-D}
+%
+\begin{document}
+%\ninept
+%
+\maketitle
+%
+\begin{comment}
+\begin{abstract}
+	Learning from large-scale high-quality labeled data is one of the primary keys to the success of deep neural networks.
+    However, the lack of labeled data is still a fundamental challenge for deep learning problems because data labeling is time-consuming and non-scalable.
+    Semi-supervised learning (SSL) is a technique to leverage additional unlabeled data when labeled data is limited.
+    {\sl FixMatch} \cite{KS20a}, one of the widely used SSL algorithms, is constructed based on a Siamese Neural Network (SNN) and trains identical weight-sharing teacher and student networks simultaneously.
+    However, it suffers performance degradation when the pseudo labels have heavy label noise in the early training stage.
+    We propose an algorithm called {\sl KD-FixMatch}, which leverages both sequential and simultaneous teacher-student training.
+    First, we train an outer SNN using the labeled and unlabeled data.
+    Then, the well-trained outer SNN distills knowledge by generating pseudo labels for the unlabeled data, from which we then carefully select a subset of trusted pseudo labels by deep embedding clustering and high confident sampling.
+    Finally, we train an inner SNN with not only the labeled and unlabeled data but also the selected unlabeled data with trusted pseudo labels.
+    Compared to {\sl FixMatch}, {\sl KD-FixMatch} has a better starting point, thus resulting in better model performance.
+    From our experiments on four public data sets, the results show that {\sl KD-FixMatch} outperforms {\sl FixMatch} for all the cases.
+\end{abstract}
+\end{comment}
+
+\begin{abstract}
+	%Learning from large-scale high-quality labeled data is a crucial factor in the success of deep neural networks.
+	%However, data labeling is a time-consuming and unscalable task, which often results in the shortage of labeled data.
+	%To address this challenge, semi-supervised learning (SSL) is employed to leverage additional unlabeled data.
+	%One of the popular SSL algorithms, {\sl FixMatch} \cite{KS20a}, is based on a Siamese Neural Network (SNN) that trains identical weight-sharing teacher and student networks simultaneously.
+	%However, it is prone to performance degradation when the pseudo labels are heavily noisy in the early training stage.
+	%To overcome this limitation, we propose {\sl KD-FixMatch}, an algorithm that combines sequential and simultaneous teacher-student training.
+	%We first train an outer SNN using labeled and unlabeled data.
+	%The well-trained outer SNN then distills knowledge by generating pseudo labels for the unlabeled data, from which a subset of trusted pseudo labels is carefully selected using deep embedding clustering and high-confidence sampling.
+	%Finally, an inner SNN is trained with not only labeled and unlabeled data but also the selected unlabeled data with trusted pseudo labels.
+	Semi-supervised learning (SSL) has become a crucial approach in deep learning as a way to address the challenge of limited labeled data.
+    The success of deep neural networks heavily relies on the availability of large-scale high-quality labeled data.
+    However, the process of data labeling is time-consuming and unscalable, leading to shortages in labeled data.
+    SSL aims to tackle this problem by leveraging additional unlabeled data in the training process.
+    One of the popular SSL algorithms, {\sl FixMatch} \cite{KS20a}, trains identical weight-sharing teacher and student networks simultaneously using a siamese neural network (SNN).
+    However, it is prone to performance degradation when the pseudo labels are heavily noisy in the early training stage.
+    We present {\sl KD-FixMatch}, a novel SSL algorithm that addresses the limitations of {\sl FixMatch} by incorporating knowledge distillation.
+    The algorithm utilizes a combination of sequential and simultaneous training of SNNs to enhance performance and reduce performance degradation.
+    Firstly, an outer SNN is trained using labeled and unlabeled data. After that, the network of the well-trained outer SNN generates pseudo labels for the unlabeled data, from which
+    a subset of unlabeled data with trusted pseudo labels is then carefully created through high-confidence sampling and deep embedding clustering.
+    %The unlabeled data with pseudo labels is then carefully selected through high-confidence sampling and deep embedding clustering, creating a subset of unlabeled data with trusted pseudo labels.
+    Finally, an inner SNN is trained with the labeled data, the unlabeled data, and the subset of unlabeled data with trusted pseudo labels.
+	Experiments on four public data sets demonstrate that {\sl KD-FixMatch} outperforms {\sl FixMatch} in all cases.
+	Our results indicate that {\sl KD-FixMatch} has a better training starting point that leads to improved model performance compared to {\sl FixMatch}.
+\end{abstract}
+%
+\begin{keywords}
+semi-supervised learning, knowledge distillation, siamese neural networks, high-confidence sampling, deep embedding clustering
+\end{keywords}
+%
+\section{Introduction}
+\label{sec:intro}
+
+%Large-scale high-quality labeled data is the key to tremendous success of supervised deep learning models in many fields \cite{RG15a, SR15a, JC17a, JD18a}.
+Large-scale high-quality labeled data is the key to the tremendous success of supervised deep learning models in many fields.
+However, collecting labeled data remains a significant challenge, as the process of data labeling is time-consuming and resource-intensive.
+This is particularly evident in tasks such as detecting product image defects in e-commerce, where high-quality labeled data is essential for accurate predictions and customer satisfaction.
+The numbers of defective and non-defective images are sometimes extremely unbalanced and thus
+it is necessary to label a large number of randomly selected images in order to collect sufficient high-quality labeled images for supervised learning.
+
+\begin{comment}
+However, limited labeled data is still a fundamental challenge to train deep neural networks (DNNs) because data labeling is exceedingly resource consuming.
+For example, building a supervised deep learning model for detecting product image defects on e-commerce websites,
+which has significant impacts on customers' decisions, requires a lot of high-quality labeled data.
+Unfortunately, the data for defective and non-defective images is extremely unbalanced and
+we need to label a large number of randomly selected images in order to collect enough defective labeled images for supervised learning.
+\end{comment}
+
+%Comparing to labeled data, it is more convenient to collect large-scale unlabeled data.
+%For example, the product images uploaded by the sellers can be directly used as unlabeled data without labeling.
+%Fortunately,
+%SSL utilizes the information from both labeled and unlabeled data in the learning process, which can either improve the model performance with same amount of labeled data,
+%or reach on-par results with much less labeled data.
+
+Recently, \cite{KS20a} came up with a widely used SSL algorithm called {\sl FixMatch}, which trains an SNN with limited labeled and extra unlabeled data,
+and achieved significant improvement comparing to traditional supervised learning methods.
+However, despite the superiority and success of {\sl FixMatch}, it has a noticeable disadvantage.
+It trains the teacher and the student in an SNN simultaneously and since the pseudo labels generated by the teacher in the early stage may not be correct, using them directly may introduce large amount of label noise.
+Therefore, we propose a modified {\sl FixMatch} called {\sl KD-FixMatch}, which trains an outer and an inner SNN sequentially.
+Our proposed method improves upon {\sl FixMatch} because an outer SNN will be first trained with labeled and unlabeled data and thus
+the percentage of label noise in the pseudo labels generated by the network of the well-trained outer SNN would be lower than that of the teacher in {\sl FixMatch}, especially in the early stage.
+Our main contributions are summarized as follows:
+\vspace{-2.0mm}
+\begin{enumerate}[1.]
+    %\vspace{3.0mm}
+    \item
+        In {\sl KD-FixMatch}, the outer SNN is first well-trained and its network serves as a teacher for the inner SNN.
+        Thus, we have a better training starting point than direcly applying {\sl FixMatch} algorithm to the inner SNN.
+    \vspace{-2.0mm}
+    \item
+        Unlike self-training \cite{DY95a,DM06a} or Noisy Student \cite{QX20a}, where its neural network is re-trained multiple times when its pseudo labels are required to be updated,
+        we only need to train each of the outer and inner SNN once.
+    \vspace{-2.0mm}
+    \item
+        {\sl KD-FixMatch} outperforms {\sl FixMatch} in our experiments
+        although the time complexity of {\sl KD-FixMatch} is more than two times that of {\sl FixMatch}.
+        %\footnote{
+        %    For {\sl KD-FixMatch}, the three main procedures are to firstly train an outer SNN with labeled and unlabeled data,
+        %    secondly generate pseudo labels for the unlabeled data using the well-trained outer SNN, and lastly train an inner SNN using
+        %    not only the labeled and unlabeled data but also the unlabeled data with trusted pseudo labels.
+        %}
+    \vspace{-2.0mm}
+\end{enumerate}
+
+\section{RELATION TO PRIOR WORK}
+\label{sec:related-works}
+
+%SSL has recently become a popular research topic \cite{KS20a,QX20a,AO18a,DB19a,HP21a,BZ21a,KN21a,DL22a,WC22a}
+\begin{comment}
+SSL has recently become a popular research topic \cite{KS20a,QX20a,AO18a,DB19a,BZ21a,WC22a}
+due to its capability to significantly improve the model performance by leveraging a large-scale unlabeled data when the labeled data is limited.
+\end{comment}
+%However, SSL can only achieve satisfactory results when the distributions of the labeled and unlabeled data are similar \cite{AO18a,XY21a}.
+%which often observed in the well-organized and well-annotated public data sets.
+%For real-world applications, SSL model may not be better, even worse, than the model trained only with the labeled data by supervised learning methods
+%if the distributions of the labeled and unlabeled data are very different.
+SSL has gained significant attention in recent years as a method to overcome the challenge of limited labeled data.
+%By incorporating large-scale unlabeled data, SSL has shown to enhance the performance of deep neural networks, as demonstrated in various studies \cite{KS20a,QX20a,AO18a,DB19a,BZ21a,WC22a}.
+By incorporating large-scale unlabeled data, SSL has shown to enhance the performance of deep neural networks, as demonstrated in various studies \cite{KS20a,QX20a,DB19a,BZ21a,WC22a}.
+
+%\subsection{Self-training}
+%\label{subsec:self-training}
+
+%Self-training, which is also called self-labeling or self-teaching, is a straightforward SSL algorithm.
+%Firstly, we train a model based on the initial labeled data.
+%Secondly, the well-trained model generates pseudo labels for the unlabeled data. After that, we only pick the unlabeled data with highly confident pseudo labels and add them to the initial labeled data to form a new labeled data.
+%Lastly, we use the new labeled data to train a new model and perform this procedure iteratively.
+%However, one of the drawbacks of self-training is time-consuming.
+
+\subsection{Teacher-Student Sequential Training}
+\label{subsec:KD}
+
+\begin{comment}
+Knowledge distillation \cite{GH15a} is a famous model compression algorithm which aims to distill the knowledge from a larger pre-trained model to another smaller model.
+The main idea is to first train a large pre-trained model with limited labeled data to serve as the teacher model.
+Then, the teacher model generates pseudo labels for the unlabeled data.
+As a result, a smaller model (student model) using both the limited labeled data and the unlabeled data with pseudo labels performs better than using only the limited labeled data \cite{GH15a}.
+
+Noisy Student \cite{QX20a} proposes an SSL algorithm inspired by knowledge distillation using an equal-or-larger student model.
+As we have an equal-or-larger student model, noises such as dropout, stochastic depth, and data augmentation can be included in the student's training, and therefore
+the student model generalizes better than the teacher \cite{QX20a}.
+%In addition, when the teacher model's and student model's architectures are the same,
+%Noisy Student can be considered as a form of self-training
+%because student model with noises is expected to outperform the teacher model and this student model will be used to generate pseudo labels for the next student model.
+%\par It is reasonable to generate the pseudo labels for the unlabeled data using a well-trained teacher because label noise can be reduced.
+Furthermore, in \cite{QX20a}, once the student is found to be better than the teacher, the pseudo labels are updated by the current student,
+and a new student is re-initialized. This procedure is then repeated several times.
+Unfortunately, there exists a main drawback which is that, we need to wait until the teacher is well-trained in order to
+generate highly confident pseudo labels for the student's training.
+\end{comment}
+
+Knowledge distillation \cite{GH15a} is a well-known model compression technique that transfers knowledge from a pre-trained, larger teacher model to a smaller student model.
+By using the teacher to generate pseudo labels for the unlabeled data, the student trained on both labeled data and pseudo-labeled data performs better than when trained solely on the limited labeled data \cite{GH15a}.
+
+Noisy Student \cite{QX20a} takes inspiration from knowledge distillation and uses a student model that is equal to or larger than the teacher model.
+This allows for the inclusion of noise-inducing techniques such as dropout, stochastic depth, and data augmentation in the student's training, resulting in better generalization compared to the teacher \cite{QX20a}.
+In Noisy Student, once the student is found to be better than the teacher, the pseudo labels are updated by the current student,
+and a new student is re-initialized. This procedure is then repeated several times.
+However, this approach requires waiting for the teacher to be well-trained before generating highly confident pseudo labels for the student's training.
+
+
+\subsection{Teacher-Student Simultaneous Training}
+\label{subsec:TS-simultaneous}
+
+Besides the aforementioned sequential methods, the simultaneous training method is also an alternative option \cite{KS20a,HP21a,AT17a}.
+We take {\sl FixMatch} \cite{KS20a} as an example.
+The core neural network architecture for {\sl FixMatch} is SNN which consists of two identical weight-sharing classifier networks, a teacher and a student.
+See Figure \ref{fig:SNN-explain}.
+\begin{figure}[t]
+    \begin{center}
+    \includegraphics[scale=0.21]{figs/my-fixmatch-v2.png}
+    \end{center}
+    \vspace{-5mm}
+    \caption{An example of SNN for {\sl FixMatch}.
+        %A standard neural network, $f_{\btheta}$, with the softmax output layer is provided.
+        %For an input image, we first applied weakly and strongly augmentations on the input image, respectively.
+        %Then, the weakly and strongly augmented images are feed into $f_{\btheta}$, respectively.
+        %When the input of $f_{\btheta}$ is the weakly augmented image, $f_{\btheta}$ is considered as a teacher
+        %and its softmax output is the pseudo label of the input image.
+        %Conversely, $f_{\btheta}$ is considered as a student when the input of $f_{\btheta}$ is the strongly augmented image.
+        %In order to reduce noise label problem, {\sl FixMatch} only trust the maximum value of the pseudo label that is greater than or equal to a pre-defined threshold, $\tau$.
+        %Lastly, when the trusted pseudo label is selected, the loss function, $\xi_{\text{in}}$, calculates the distance between the softmax output of the strongly augmented image and the trusted pseudo label and
+        %back-propagation is applied to update the weights in $f_{\btheta}$.
+    }
+\label{fig:SNN-explain}
+\end{figure}
+
+\par Assume that $f_{\btheta}$ is a standard neural network with softmax output layer,
+$\btheta \in \Re^n$ is a long vector, $\ell$ is the number of training examples, $K$ is the number of the classes, and $n$ is the total number of the parameters of $f_{\btheta}$.
+We define the optimization problem for {\sl FixMatch} to be
+\begin{equation}
+\label{fixmatch-obj}
+    \min_{\btheta}\ f(\btheta), \text{where}\ f(\btheta) = 
+    \frac{1}{2C} \btheta^T \btheta + 
+    \frac{1}{\ell} \sum_{i=1}^\ell \xi(\btheta;\bx^i,\by^i)
+\end{equation}
+$C > 0$ is the parameter to avoid overfitting by regularization, $\bx^i$ is the $i$th input image, and $\by^i$ is the label vector of $\bx^i$.
+In addition, if $\bx^i$ belongs to the $s$th class, the label vector, $\by^i$, is $[\underbrace{0, \ldots, 0}_{s-1}, 1, 0, \ldots, 0]^T \in \Re^K$.
+%\begin{equation*}
+%    \by^i = [\underbrace{0, \ldots, 0}_{s-1}, 1, 0, \ldots, 0]^T \in \Re^K.
+%\end{equation*}
+However, training examples for SSL consists of both a set of the labeled data, $S_l$, and a set of the unlabeled data, $S_u$.
+Label vectors for the unlabeled data are not available.
+Therefore, {\sl FixMatch} uses teacher inside SNN to generate pseudo labels as label vectors for $\bx^i, i \in S_u$  
+and then the loss function, $\xi$, in \eqref{fixmatch-obj} can be defined as follows:
+\begin{equation}
+\label{fixmatch-loss}
+    \xi(\btheta;\bx^i,\by^i) = 
+    \begin{cases}
+        \xi_l\left(\by^i, f_{\btheta}(\bx^i_{w})\right) & \text{if}\ \ i \in S_{l},\\
+        \lambda_u \xi_u(\hat{\by}^i, f_{\btheta}(\bx^i_{s})) & \text{if}\ \ i \in S_{u},
+    \end{cases}
+    %\left(
+    %\underbrace{\sum_{i \in B_{l}} \xi_l\left(\by^i, f_{\btheta}(\bx^i_{w})\right)}_{\text{labeled loss}} 
+    %+ \underbrace{\sum_{j \in B_{u}} \xi_u\left(\overbrace{f_{\btheta}(\bx^j_{w})}^{\text{teacher}}, \overbrace{f_{\btheta}(\bx^j_{s})}^{\text{student}}\right)}_{\text{unlabeled loss}}
+    %\right),
+\end{equation}
+where $\hat{\by}^i$ is the pseudo label vector of $\bx^i, i \in S_u$, $\lambda_u$ is a pre-defined parameter, $\bx^i_w$ is the weakly augmented image of $\bx^i$, $\bx^i_s$ is the strongly augmented image of $\bx^i$,
+$\xi_l$ is a loss function for the labeled data, and $\xi_u$ is a loss function for the unlabeled data.
+
+\par In \cite{KS20a}, $\xi_l$ in \eqref{fixmatch-loss} is the standard cross-entropy (CE) function to measure the difference between $f_{\btheta}(\bx^i_{w})$ and its label vector $\by^i$.
+For $\xi_u$ in \eqref{fixmatch-loss},
+when the input of $f_{\btheta}$ is $\bx^i_w$, $f_{\btheta}$ is considered as the teacher and
+$f_{\btheta}(\bx^i_{w})$ is $\hat{\by}^i$ of $\bx^i$.
+Conversely, $f_{\btheta}$ is considered as the student when the input of $f_{\btheta}$ is $\bx^i_s$.
+However, in order to reduce label noise, we only choose the highly confident pseudo labels whose maximum value are greater than or equal to a pre-defined threshold $\tau > 0$
+and thus $\xi_u$ in \eqref{fixmatch-loss} can be defined as follows:
+\begin{equation}
+\label{fixmatch-filter}
+    %\xi_u\left(f_{\btheta}(\bx^j_{w}), f_{\btheta}(\bx^j_{s})\right) =
+    \mathbb{1}(\max(\hat{\by}^i) \geq \tau )
+      \xi_{u}(\text{OHL}(\hat{\by}^i), f_{\btheta}(\bx^i_{s})),
+\end{equation}
+where $\mathbb{1}$ is an indicator function and OHL is a function mapping a softmax pseudo label vector to its one-hot label vector.
+After the loss function, $\xi$, in \eqref{fixmatch-obj} is prepared, back-propagation is applied to update the weights in $f_{\btheta}$ and thus
+both teacher and student are updated simultaneously by minimizing \eqref{fixmatch-obj}.
+
+For the method where teacher and student are trained simultaneously, there is no need to wait for the teacher's training procedure to complete before the student's can begin.
+However, in the early stage, heavy label noise or insufficient correct pseudo labels
+generated by the immature teacher may affect the generalization ability of the student model.
+
+\section{Proposed Algorithm}
+\label{sec:proposed-alg}
+
+We propose an algorithm called {\sl KD-FixMatch}, which contains an outer SNN, $f^{\text{outer}}$, and an inner SNN, $f^{\text{inner}}$.
+The goal is not only to use teacher-student sequential training to fix label noise problem in the early stage,
+but also to incorporate teacher-student simultaneous training such as {\sl FixMatch}.
+%We first initialize an outer SNN and train it with the labeled and unlabeled data by using back-propagation to solve \eqref{fixmatch-obj}.
+%Then, the well-trained outer SNN generates the pseudo labels for the unlabeled data before inner SNN training.
+%However, the well-trained outer SNN is not perfect. Therefore, we provide a strategy
+%to choose a trusted subset from the pseudo labels in order to reduce label noise.
+
+%Furthermore, during the inner SNN's training, the conflict may arise when both the well-trained outer SNN and inner SNN provide their own trusted pseudo labels for the same unlabeled image.
+%Intuitively, our inner SNN has better generalization ability than the well-trained outer SNN
+%because it has the additional unlabeled data with trusted pseudo labels in the early stage.
+%Therefore, in Section \ref{subsec:heuristic-teacher-student}, we propose heuristics to resolve the conflict.
+%In addition, some past SSL works \cite{WC22a} mentioned that robust loss functions may be helpful in case of noisy pseudo labels and we introduce them in Section \ref{subsec:robust-loss}.
+%Finally, we summarize our proposed algorithm in Section \ref{subsec:dual-TS}.
+
+\subsection{Trusted Pseudo Label Selection}
+\label{subsec:outer-trust-selection}
+
+After the outer SNN is well-trained, it generates pseudo labels for the unlabeled data.
+Due to the imperfection of the outer SNN, we need to choose a subset of trusted pseudo labels to reduce label noise.
+Otherwise, it may affect inner SNN's model performance.
+
+Similar to \eqref{fixmatch-filter}, we first choose a pre-defined threshold, $\tau^{\text{select}}$, and choose the pseudo labels whose maximum value is greater than or equal to $\tau^{\text{select}}$.
+Then, we extract the latent representations\footnote{
+The representations are derived from the layer before the last layer.
+}
+of the unlabeled data which has passed the $\tau^{\text{select}}$ selection.
+We do a deep embedding clustering \cite{JX16a, XY21a} on the representations and
+choose the unlabeled data whose clustering results are consistent with their predicted class.\footnote{
+    The predicted class is the index of the maximum value of $\hat{\by}^i$.    
+}
+Finally, the indices of the chosen unlabeled data form $T_u$.
+
+\subsection{Merging Conflict Pseudo Labels}
+\label{subsec:heuristic-teacher-student}
+
+From Section \ref{subsec:outer-trust-selection}, $T_u$ is determined.
+However, our inner SNN also generates pseudo labels for the unlabeled data during its training process.
+Following \eqref{fixmatch-filter}, we choose the pseudo labels whose maximum value is greater than or equal to
+a pre-defined threshold, $\tau^{\text{inner}} > 0$, to be inner SNN's trusted pseudo labels.
+Therefore, conflicts may arise when both the outer and inner SNN provide their own trusted pseudo labels for the same image.
+%In some past teacher-student works \cite{DM06a,QX20a}, pseudo labels are re-generated when their student model is better than their teacher model.
+%After that, a new student model will be re-initialized and then re-trained with the newly generated pseudo labels.
+%This is deemed reasonable, as it is expected that we can obtain a better resulting model if we have better pseudo labels.
+%Unfortunately, it is time-consuming and non-practical.
+Heuristic \ref{lst:heuristic} is proposed to determine the pseudo label vector, $\hat{\by}^i$, in \eqref{fixmatch-filter} for the unlabeled data which has conflict pusedo labels.
+The main idea is that
+the inner SNN intuitively has better generalization ability than the outer SNN since it has more reliable pseudo labels in the early stage.
+%Comparing to the past works, by using Heuristic \ref{lst:heuristic}, our proposed algorithm only needs to run inner SNN training once.
+\begin{heuristic}[t]
+    \uIf{$\max\left(f^{\text{inner}}_{\btheta}(\bx^i_{w})\right) \geq \tau^{\text{inner}}$}{
+        $\hat{\by}^i \leftarrow f^{\text{inner}}_{\btheta}(\bx^i_{w})$  
+  }
+    \uElseIf{$i \in T_u$}{
+        $\hat{\by}^i \leftarrow \by^{i,\text{outer}}$
+  }
+  \Else{
+        $\hat{\by}^i \leftarrow \bzero$
+  }
+\caption{Merging Conflict Pseudo Labels}
+\label{lst:heuristic}
+\end{heuristic}
+
+\subsection{Robust Loss Functions}
+\label{subsec:robust-loss}
+
+Label noise is one of the major problems for SSL since teacher model is not perfect.
+In other words, there exist noisy labels among the pseudo labels generated by the teacher.
+\cite{WC22a} mentioned that robust loss functions may be helpful in case of noisy pseudo labels.
+The widely used loss functions in robust learning is symmetric loss functions \cite{NM13a,AG17a} which has been proven to be robust to noisy labels.
+However, there are some constraints for symmetric loss functions.
+
+Assume that $f$ is a standard neural network with softmax output layer.
+From \cite{AG17a}, a loss function $\xi$ is called symmetric if it satisfies
+%\begin{equation*}
+%\label{robust-loss-def}
+$\sum_{k=1}^K \xi(f(\bx), \be_k) = M,\ \forall \bx \in X,\ \forall f,$
+%\end{equation*}
+where $K$ is the number of classes, $X$ is the feature space, 
+$f$ is a function mapping an input $\bx$ to a softmax output $\by$, $M$ is a constant value, and
+%\begin{equation*}
+$\be_k = [\underbrace{0, \ldots, 0}_{k-1}, 1, 0, \ldots, 0]^T \in \Re^K$.
+%\end{equation*}
+
+Mean absolute error (MAE) \cite{CJW85a}, symmetric cross-entropy (SCE) \cite{YW19a}, and normalized cross-entropy (NCE) \cite{XM20a} are examples of robust loss functions.
+
+\subsection{Knowledge Distillation Siamese Neural Networks}
+\label{subsec:dual-TS}
+
+%After $f^{\text{inner}}$, $T_u$, $\xi^{\text{inner}}_l$, $\xi^{\text{inner}}_u$, $\tau^{\text{inner}}$ are determined, 
+We initialize an inner SNN and then train it with not only the labeled and unlabeled data but also the unlabeled data with trusted pseudo labels, $(\bx^i, \hat{\by}^i), i \in T_u$.
+For the inner SNN, the optimization problem and loss functions are the same as \eqref{fixmatch-obj}, \eqref{fixmatch-loss}, and \eqref{fixmatch-filter} except that
+we substitute $f$, $C$, $\xi_l$, $\lambda_u$, $\xi_u$, and $\tau$  with $f^{\text{inner}}$, $C^{\text{inner}}$, $\xi^{\text{inner}}_l$, $\lambda^{\text{inner}}_u$, $\xi^{\text{inner}}_u$, and $\tau^{\text{inner}}$, respectively.
+%In addition, we use Heuristic \ref{lst:heuristic} to determine $\hat{\by}^i, i \in T_u$ for \eqref{fixmatch-loss} and \eqref{fixmatch-filter}.
+%Furthermore, we can not only use CE function but also robust loss functions mentioned in Section \ref{subsec:robust-loss} \cite{WC22a} for $\xi^{\text{inner}}_u$.
+A summary of our proposed algorithm is in Algorithm \ref{alg:os-fixmatch}.
+
+\setcounter{algocf}{0}
+\begin{algorithm}[t]
+%\SetAlgoNoLine
+    Given a labeled data, $S_l$, and an unlabeled data, $S_u$\;
+    1: Initialize an outer SNN, $f^{\text{outer}}$, and train it with $S_l$ and $S_u$ by using back-propagation to
+    solve \eqref{fixmatch-obj}\;
+    2: Generate pseudo labels for $S_u$ using the well-trained $f^{\text{outer}}$\;
+    3: Select a trusted index subset $T_u$ from $S_u$\; 
+    4: Choose CE or a robust loss function to be $\xi^{\text{inner}}_u$\;
+    5: Initialize an inner SNN, $f^{\text{inner}}$, and train it with not only the labeled and unlabeled data but also the unlabeled data with trusted pseudo labels, $(\bx^i, \hat{\by}^i), i \in T_u$\;
+    6: Return the well-trained $f^{\text{inner}}$\;
+    \caption{KD-FixMatch}
+\label{alg:os-fixmatch}
+\end{algorithm}
+
+\section{Experiments}
+\label{sec:exps}
+
+The main objective in this section is to compare our proposed algorithm with other methods.
+For a fair comparison, we implement all of the methods using {\sl Tensorflow 2.3.0}.
+%In order to check the correctness of our implementation,
+%we run the experiments in \cite{KS20a} using our implementation and derive the similar or competitive results. See Appendix A.
+\EB0 \cite{MT19a} pre-trained on {\sf ImageNet}\footnote{
+Pre-trained models are derived from \url{https://www.tensorflow.org/api_docs/python/tf/keras/applications}.
+}
+is chosen for all of the experiments and
+\SNNEB0 is an SNN which consists of two identical weight-sharing \EB0.
+We compare the following five methods:
+\footnote{
+    Due to the space limitation, for robust loss functions, we only use SCE for our experiments.
+    The formula of SCE is $\alpha \times \text{CE} + \beta \times \text{RCE}$ and
+    RCE stands for reverse cross-entropy.
+    Assume that $H(\bq, \bp)$ is a standard CE function given two distributions, $\bq$ (ground truth distribution) and $\bp$ (distribution from the softmax neural network output),
+    RCE can be defined as: $H(\bp, \bq)$.
+}
+%and the details of the used parameters are shown in Appendix F.
+(a) {\sl Baseline}: \EB0 is trained with only the labeled data by solving \eqref{fixmatch-obj} with CE loss function;
+(b) {\sl FixMatch}: \SNNEB0 is trained with the labeled and unlabeled data by solving \eqref{fixmatch-obj} with \eqref{fixmatch-loss} and \eqref{fixmatch-filter} and both $\xi_l$ and $\xi_u$ are CE functions;
+(c) {\sl KD-FixMatch-CE}: an outer and an inner \SNNEB0 are trained using Algorithm \ref{alg:os-fixmatch} with the labeled and unlabeled data 
+        and both $\xi_l$ and $\xi_u$ for outer and inner \SNNEB0 are CE functions;
+(d) {\sl KD-FixMatch-SCE-1.0-0.01}: the same as {\sl KD-FixMatch-CE} except that
+        $\xi_u$ for inner \SNNEB0 is an SCE function with $\alpha = 1.0$ and $\beta = 0.01$; and
+(e) {\sl KD-FixMatch-SCE-1.0-0.1}: the same as {\sl KD-FixMatch-CE} except that
+        $\xi_u$ for inner \SNNEB0 is an SCE function with $\alpha = 1.0$ and $\beta = 0.1$.
+For the labeled training data in all of our experiments, we follow the sampling strategy mentioned in \cite{KS20a} to choose an equal number of images from each class in order to avoid model bias.
+%An example of such bias can be that our resulting model is prone to predict the negative class if the number of the negative training data is much larger than the positive training data.
+
+For all the experiments, Adam \cite{DK14a} optimizer is used and the exponential decay rates for $1$st and $2$nd moment estimates are $0.9$ and $0.999$, respectively.
+Batch size is set to $128$.\footnote{
+Except for {\sl Baseline}, $64$ labeled and $64$ unlabeled images are in a batch.
+}
+The initial learning rate is $7\mathrm{e}{-5}$ and the learning rate scheduler mentioned in Section $5.2$ of \cite{MT19a} is applied.
+We set $1/C$ in \eqref{fixmatch-obj} to be $5\mathrm{e}{-4}$ except that $1\mathrm{e}{-3}$ for {\sf CIFAR100}.
+For weak augmentation, we follow the method in Section 2.3 of \cite{KS20a}.
+For strong augmentation, we follow RandAugment implementation in \cite{EC20a}.
+%\footnote{
+%    See \url{https://github.com/kekmodel/FixMatch-pytorch/blob/98cedd6ffca4813fe6d744f695bee52beaf0faf7/dataset/cifar.py} and \url{https://github.com/kekmodel/FixMatch-pytorch/blob/master/dataset/randaugment.py}.
+%}
+Following \cite{KS20a}, we set $\tau$ in \eqref{fixmatch-filter} to be $0.95$ and $\lambda_u$ be $1$.
+Also, we set $\tau^{\text{select}}$ and $\tau^{\text{inner}}$ to be $0.80$ and $0.95$, respectively.
+For inference, we follow \cite{KS20a} to use the maintained exponential moving average of the trained parameters.
+The decay is set to be $0.9999$ and num\_updates be $10$.
+\footnote{
+    See \url{https://github.com/petewarden/tensorflow_makefile/blob/master/tensorflow/python/training/moving_averages.py}.
+}
+
+\subsection{Experiments on Four Public Data Sets}
+\label{subsec:exp-public}
+
+In this subsection, we conduct our experiments on four public data sets: {\sf SVHN} \cite{YN11a}, {\sf CIFAR10/100} \cite{AK09a}, and {\sf FOOD101} \cite{LB14a}.
+In order to mimic the practical use, we randomly split the training data from their official websites into original training data ($80\%$) and original validation data ($20\%$) for our experiments.
+The unlabeled data from the official websites is not used. Instead, we follow \cite{KS20a} to ignore the labels in the original training data and deem it as unlabeled data.
+All of these four data sets are publicly available
+%\footnote{
+%{\sf SVHN}: \url{http://ufldl.stanford.edu/housenumbers/},
+%{\sf CIFAR10/100}: \url{https://www.cs.toronto.edu/~kriz/cifar.html}, and
+%{\sf FOOD101}: \url{https://data.vision.ee.ethz.ch/cvl/datasets_extra/food-101/}.
+%}
+and the summary is in Table \ref{table:data-statistic}.
+\begin{table}[t]
+    \centering
+    \resizebox{0.85\columnwidth}{!}{%
+        \begin{tabular}{l c c c c}
+        \hline
+            & \#class & \#train & \#validation & \#test \T\B \\
+        \hline
+            {\sf CIFAR10} & 10 & 40,000 & 10,000 & 10,000 \T\B\\
+        \hline
+            {\sf SVHN} & 10 & 58,606 & 14,651 & 26,032 \T\B\\
+        \hline
+            {\sf CIFAR100} & 100 & 40,000 & 10,000 & 10,000 \T\B\\
+        \hline
+            {\sf FOOD101} & 101 & 60,600 & 15,150 & 25,250 \T\B\\
+        \hline
+        \end{tabular}
+    }
+    \caption{Summary of four public data sets.
+        \#class is the number of classes, \#train
+        is the number of the train data, \#validation is the number of the validation data,
+        \#test is the number of the test data.
+    }
+\label{table:data-statistic}
+\end{table}
+
+%Assume that we need to sample a total of $\ell$ training images from the original training data.
+%Following \cite{KS20a}, from the original training data, we randomly sample $\floor*{\frac{\ell}{K}}$ images from each of the $K$ classes.\footnote{
+%    When $\ell$ is not divisible by $K$, if the remainder is $r$, we randomly sample $r$ images from the non-selected original training data.
+%}
+%We take {\sf CIFAR10} using $400$ labeled images as an example. The number of total labeled images is $400$ and we randomly sample $40$ images from each of the $10$ classes.
+From Table \ref{table:exp0}, we observe that:
+(a) {\sl FixMatch} is better than {\sl Baseline} for all the cases.
+This is as expected because, comparing to {\sl Baseline}, {\sl FixMatch} leverages an additional unlabeled data;
+(b) {\sl KD-FixMatch} is better than {\sl FixMatch} for all the cases.
+The reason is that {\sl KD-FixMatch} has a better starting point than {\sl FixMatch};
+(c) Comparing to {\sl FixMatch}, the more labeled data we use, the less improvements we have for {\sl KD-FixMatch}.
+The possible reason is that when {\sl FixMatch} has a large enough initial labeled data it has a good starting point to reach the result competitive to {\sl KD-FixMatch}; and
+(d) {\sl KD-FixMatch-SCE} has slightly better model performance than {\sl KD-FixMatch-CE} in most of the cases even without grid search for the two parameters, $(\alpha, \beta)$.
+The possible reason is that the robust loss function, SCE, is applied.
+\input{exp0}
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+In this paper, we have proposed an SSL algorithm, {\sl KD-FixMatch}, which is an improved version of {\sl FixMatch} that utilizes knowledge distillation.
+Based on our experiments, {\sl KD-FixMatch} outperforms {\sl FixMatch} and {\sl Baseline} on four public data sets.
+Interestingly, despite the absence of the parameter selection for SCE (robust loss function), the performance of {\sl KD-FixMatch-SCE} is slightly better than {\sl KD-FixMatch-CE} in most of the cases.
+
+\begin{comment}
+\section{Formatting your paper}
+\label{sec:format}
+
+All printed material, including text, illustrations, and charts, must be kept
+within a print area of 7 inches (178 mm) wide by 9 inches (229 mm) high. Do
+not write or print anything outside the print area. The top margin must be 1
+inch (25 mm), except for the title page, and the left margin must be 0.75 inch
+(19 mm).  All {\it text} must be in a two-column format. Columns are to be 3.39
+inches (86 mm) wide, with a 0.24 inch (6 mm) space between them. Text must be
+fully justified.
+
+\section{PAGE TITLE SECTION}
+\label{sec:pagestyle}
+
+The paper title (on the first page) should begin 1.38 inches (35 mm) from the
+top edge of the page, centered, completely capitalized, and in Times 14-point,
+boldface type.  The authors' name(s) and affiliation(s) appear below the title
+in capital and lower case letters.  Papers with multiple authors and
+affiliations may require two or more lines for this information. Please note
+that papers should not be submitted blind; include the authors' names on the
+PDF.
+
+\section{TYPE-STYLE AND FONTS}
+\label{sec:typestyle}
+
+To achieve the best rendering both in printed proceedings and electronic proceedings, we
+strongly encourage you to use Times-Roman font.  In addition, this will give
+the proceedings a more uniform look.  Use a font that is no smaller than nine
+point type throughout the paper, including figure captions.
+
+In nine point type font, capital letters are 2 mm high.  {\bf If you use the
+smallest point size, there should be no more than 3.2 lines/cm (8 lines/inch)
+vertically.}  This is a minimum spacing; 2.75 lines/cm (7 lines/inch) will make
+the paper much more readable.  Larger type sizes require correspondingly larger
+vertical spacing.  Please do not double-space your paper.  TrueType or
+Postscript Type 1 fonts are preferred.
+
+The first paragraph in each section should not be indented, but all the
+following paragraphs within the section should be indented as these paragraphs
+demonstrate.
+
+\section{MAJOR HEADINGS}
+\label{sec:majhead}
+
+Major headings, for example, "1. Introduction", should appear in all capital
+letters, bold face if possible, centered in the column, with one blank line
+before, and one blank line after. Use a period (".") after the heading number,
+not a colon.
+
+\subsection{Subheadings}
+\label{ssec:subhead}
+
+Subheadings should appear in lower case (initial word capitalized) in
+boldface.  They should start at the left margin on a separate line.
+ 
+\subsubsection{Sub-subheadings}
+\label{sssec:subsubhead}
+
+Sub-subheadings, as in this paragraph, are discouraged. However, if you
+must use them, they should appear in lower case (initial word
+capitalized) and start at the left margin on a separate line, with paragraph
+text beginning on the following line.  They should be in italics.
+
+\section{PRINTING YOUR PAPER}
+\label{sec:print}
+
+Print your properly formatted text on high-quality, 8.5 x 11-inch white printer
+paper. A4 paper is also acceptable, but please leave the extra 0.5 inch (12 mm)
+empty at the BOTTOM of the page and follow the top and left margins as
+specified.  If the last page of your paper is only partially filled, arrange
+the columns so that they are evenly balanced if possible, rather than having
+one long column.
+
+In LaTeX, to start a new column (but not a new page) and help balance the
+last-page column lengths, you can use the command ``$\backslash$pagebreak'' as
+demonstrated on this page (see the LaTeX source below).
+
+\section{PAGE NUMBERING}
+\label{sec:page}
+
+Please do {\bf not} paginate your paper.  Page numbers, session numbers, and
+conference identification will be inserted when the paper is included in the
+proceedings.
+
+\section{ILLUSTRATIONS, GRAPHS, AND PHOTOGRAPHS}
+\label{sec:illust}
+
+Illustrations must appear within the designated margins.  They may span the two
+columns.  If possible, position illustrations at the top of columns, rather
+than in the middle or at the bottom.  Caption and number every illustration.
+All halftone illustrations must be clear black and white prints.  Colors may be
+used, but they should be selected so as to be readable when printed on a
+black-only printer.
+
+Since there are many ways, often incompatible, of including images (e.g., with
+experimental results) in a LaTeX document, below is an example of how to do
+this \cite{Lamp86}.
+
+\section{FOOTNOTES}
+\label{sec:foot}
+
+Use footnotes sparingly (or not at all!) and place them at the bottom of the
+column on the page on which they are referenced. Use Times 9-point type,
+single-spaced. To help your readers, avoid using footnotes altogether and
+include necessary peripheral observations in the text (within parentheses, if
+you prefer, as in this sentence).
+
+% Below is an example of how to insert images. Delete the ``\vspace'' line,
+% uncomment the preceding line ``\centerline...'' and replace ``imageX.ps''
+% with a suitable PostScript file name.
+% -------------------------------------------------------------------------
+\begin{figure}[htb]
+
+\begin{minipage}[b]{1.0\linewidth}
+  \centering
+  \centerline{\includegraphics[width=8.5cm]{image1}}
+%  \vspace{2.0cm}
+  \centerline{(a) Result 1}\medskip
+\end{minipage}
+%
+\begin{minipage}[b]{.48\linewidth}
+  \centering
+  \centerline{\includegraphics[width=4.0cm]{image3}}
+%  \vspace{1.5cm}
+  \centerline{(b) Results 3}\medskip
+\end{minipage}
+\hfill
+\begin{minipage}[b]{0.48\linewidth}
+  \centering
+  \centerline{\includegraphics[width=4.0cm]{image4}}
+%  \vspace{1.5cm}
+  \centerline{(c) Result 4}\medskip
+\end{minipage}
+%
+\caption{Example of placing a figure with experimental results.}
+\label{fig:res}
+%
+\end{figure}
+
+
+% To start a new column (but not a new page) and help balance the last-page
+% column length use \vfill\pagebreak.
+% -------------------------------------------------------------------------
+%\vfill
+%\pagebreak
+
+\section{COPYRIGHT FORMS}
+\label{sec:copyright}
+
+You must submit your fully completed, signed IEEE electronic copyright release
+form when you submit your paper. We {\bf must} have this form before your paper
+can be published in the proceedings.
+
+\section{RELATION TO PRIOR WORK}
+\label{sec:prior}
+
+The text of the paper should contain discussions on how the paper's
+contributions are related to prior work in the field. It is important
+to put new work in  context, to give credit to foundational work, and
+to provide details associated with the previous work that have appeared
+in the literature. This discussion may be a separate, numbered section
+or it may appear elsewhere in the body of the manuscript, but it must
+be present.
+
+You should differentiate what is new and how your work expands on
+or takes a different path from the prior studies. An example might
+read something to the effect: "The work presented here has focused
+on the formulation of the ABC algorithm, which takes advantage of
+non-uniform time-frequency domain analysis of data. The work by
+Smith and Cohen \cite{Lamp86} considers only fixed time-domain analysis and
+the work by Jones et al \cite{C2} takes a different approach based on
+fixed frequency partitioning. While the present study is related
+to recent approaches in time-frequency analysis [3-5], it capitalizes
+on a new feature space, which was not considered in these earlier
+studies."
+
+\vfill\pagebreak
+
+\section{REFERENCES}
+\label{sec:refs}
+
+List and number all bibliographical references at the end of the
+paper. The references can be numbered in alphabetic order or in
+order of appearance in the document. When referring to them in
+the text, type the corresponding reference number in square
+brackets as shown at the end of this sentence \cite{C2}. An
+additional final page (the fifth page, in most cases) is
+allowed, but must contain only references to the prior
+literature.
+\end{comment}
+
+% References should be produced using the bibtex program from suitable
+% BiBTeX files (here: strings, refs, manuals). The IEEEbib.bst bibliography
+% style file from IEEE produces unsorted bibliography list.
+% -------------------------------------------------------------------------
+\bibliographystyle{IEEEbib}
+\bibliography{sdp}
+
+\end{document}
