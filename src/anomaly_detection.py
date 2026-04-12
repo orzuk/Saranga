@@ -62,7 +62,7 @@ EXPECTED_TYPES = {"theorem", "definition", "proof", "equation"}
 # Tuple layout: (paper_id, category, rule, severity, value, threshold, message)
 AnomalyRecord = Tuple[str, str, str, str, str, str, str]
 
-_SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
+_SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2, "none": 9}
 
 
 # --- schema compatibility helper ---------------------------------------------
@@ -308,6 +308,13 @@ def detect_anomalies_for_paper(paper_id: str, data: Dict[str, Any]) -> List[Anom
     # corpus medians/percentiles in a second pass, flag outliers in a third pass.
     # Deferred to post-NeurIPS.
 
+    # If no anomalies at all, emit a PASS record so the CSV is a complete
+    # inventory of every scanned paper (not just the flagged ones).
+    if not results:
+        results.append((paper_id, "-", "pass", "none",
+                        f"{n_nodes}/{n_edges}", "-",
+                        f"Clean: {n_nodes} nodes, {n_edges} edges, no anomalies"))
+
     return results
 
 
@@ -378,11 +385,13 @@ def detect_anomalies_in_dir(out_dir: str, verbose: bool = False) -> Tuple[List[A
         )
 
         records = detect_anomalies_for_paper(paper_id, data)
-        if records:
+        has_real_anomaly = any(r[3] != "none" for r in records)
+        if has_real_anomaly:
             n_flagged += 1
-            all_records.extend(records)
-            if verbose:
-                for r in records:
+        all_records.extend(records)
+        if verbose:
+            for r in records:
+                if r[3] != "none":  # skip PASS rows in verbose output
                     print(f"[anomalies] {r[0]} [{r[1]}.{r[2]}] sev={r[3]}: {r[6]}")
 
     return all_records, len(json_paths_with_data), n_flagged
