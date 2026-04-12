@@ -392,7 +392,7 @@ def op_link(args) -> None:
     downstream operations (stats, anomalies) can count them.
     """
     try:
-        from link_to_foundation import build_foundation_index, link_paper
+        from link_to_foundation import build_foundation_index, link_paper, _build_automaton
     except ImportError as e:
         print(f"[pipeline] link: cannot import link_to_foundation: {e}")
         return
@@ -428,6 +428,13 @@ def op_link(args) -> None:
         print(f"[pipeline] link: failed to build foundation index: {e}")
         return
 
+    # Build Aho-Corasick automaton for fast multi-pattern matching
+    automaton, term_map = _build_automaton(index, min_term_len=5)
+    if automaton:
+        print(f"[pipeline] link: using Aho-Corasick (fast, single-pass)")
+    else:
+        print(f"[pipeline] link: pyahocorasick not installed, using slow regex fallback")
+
     n_total = len(json_paths)
     n_linked = 0
     total_matches = 0
@@ -444,8 +451,9 @@ def op_link(args) -> None:
             edges = [e for e in edges
                      if e.get("type") not in ("grounded_to", "mentions_concept")]
 
-            # Run foundation matching
-            matches = link_paper(nodes, index, min_term_len=5)
+            # Run foundation matching (Aho-Corasick if available, else regex)
+            matches = link_paper(nodes, index, min_term_len=5,
+                                 automaton=automaton, term_map=term_map)
 
             # Add matches as grounded_to edges
             seen = set()  # deduplicate (node_id, foundation_name)

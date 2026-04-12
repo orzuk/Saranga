@@ -142,9 +142,37 @@ def build_foundation_index(foundation_paths=None):
     return index
 
 
-def link_paper(nodes, index, min_term_len=5):
-    """Find matches between paper nodes and foundation index."""
+def _build_automaton(index, min_term_len=5):
+    """Build an Aho-Corasick automaton from the foundation index.
+
+    Returns (automaton, term_to_entry_map) or (None, None) if pyahocorasick
+    is not installed (falls back to slow per-term regex in link_paper).
+    """
+    try:
+        import ahocorasick
+    except ImportError:
+        return None, None
+
+    A = ahocorasick.Automaton()
+    term_map = {}  # normalized_term -> entry
+    for term, entry in index.items():
+        if len(term) < min_term_len:
+            continue
+        A.add_word(term, term)
+        term_map[term] = entry
+    A.make_automaton()
+    return A, term_map
+
+
+def link_paper(nodes, index, min_term_len=5, automaton=None, term_map=None):
+    """Find matches between paper nodes and foundation index.
+
+    If automaton + term_map are provided (from _build_automaton), uses
+    Aho-Corasick for O(text_length) matching across all terms simultaneously.
+    Otherwise falls back to O(n_terms × text_length) per-term regex search.
+    """
     matches = []
+    use_ac = automaton is not None and term_map is not None
 
     for node in nodes:
         # Build searchable text
@@ -161,12 +189,15 @@ def link_paper(nodes, index, min_term_len=5):
             continue
 
         node_matches = []
-        for term, entry in index.items():
-            if len(term) < min_term_len:
-                continue
-            # Use regex for terms with special chars
-            if re.search(r'\b' + re.escape(term) if not any(c in term for c in '.*+?') else term,
-                         search_text):
+
+        if use_ac:
+            # Single-pass Aho-Corasick: find all matching terms at once
+            seen_terms = set()
+            for end_pos, term in automaton.iter(search_text):
+                if term in seen_terms:
+                    continue
+                seen_terms.add(term)
+                entry = term_map[term]
                 node_matches.append({
                     "node_id": node["id"],
                     "node_type": node.get("type", ""),
@@ -175,6 +206,21 @@ def link_paper(nodes, index, min_term_len=5):
                     "foundation_name": entry["name"],
                     "foundation_field": entry.get("field", ""),
                 })
+        else:
+            # Fallback: per-term regex search (slow for large indices)
+            for term, entry in index.items():
+                if len(term) < min_term_len:
+                    continue
+                if re.search(r'\b' + re.escape(term) if not any(c in term for c in '.*+?') else term,
+                             search_text):
+                    node_matches.append({
+                        "node_id": node["id"],
+                        "node_type": node.get("type", ""),
+                        "node_name": node.get("name", ""),
+                        "matched_term": term,
+                        "foundation_name": entry["name"],
+                        "foundation_field": entry.get("field", ""),
+                    })
 
         matches.extend(node_matches)
 
