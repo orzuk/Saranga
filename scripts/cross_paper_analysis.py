@@ -104,32 +104,35 @@ def find_top_terms_per_cluster(mat, labels, paper_ids, all_terms, top_k=10):
     return cluster_profiles
 
 
-def compute_similarities(mat_normed, paper_ids, top_k=50):
-    """Compute top-k most similar paper pairs by cosine similarity."""
-    # Cosine similarity = dot product of L2-normalized vectors
-    sim = mat_normed @ mat_normed.T
-    # Zero out diagonal
-    np.fill_diagonal(sim, 0)
+def compute_similarities(papers, paper_ids, top_k=50, min_shared=3):
+    """Compute top-k most similar paper pairs by shared foundation terms.
 
-    # Find top-k pairs
+    Ranks by number of shared terms (weighted by IDF), filtering out
+    trivial pairs that share fewer than min_shared terms.
+    """
+    # Build sets for fast intersection
+    paper_termsets = {pid: set(papers[pid].keys()) for pid in paper_ids}
+
     pairs = []
     n = len(paper_ids)
-    # Get flat indices of top similarities
-    flat = sim.ravel()
-    top_flat = np.argsort(flat)[::-1][:top_k * 2]  # *2 because symmetric
-    seen = set()
-    for idx in top_flat:
-        i, j = divmod(idx, n)
-        if i >= j:
-            continue  # skip duplicates and diagonal
-        key = (min(i, j), max(i, j))
-        if key in seen:
-            continue
-        seen.add(key)
-        pairs.append((paper_ids[i], paper_ids[j], sim[i, j]))
-        if len(pairs) >= top_k:
-            break
-    return pairs
+    for i in range(n):
+        for j in range(i + 1, n):
+            pid_a, pid_b = paper_ids[i], paper_ids[j]
+            shared = paper_termsets[pid_a] & paper_termsets[pid_b]
+            n_shared = len(shared)
+            if n_shared < min_shared:
+                continue
+            # Jaccard similarity
+            union = paper_termsets[pid_a] | paper_termsets[pid_b]
+            jaccard = n_shared / len(union) if union else 0
+            # IDF-weighted overlap: sum of IDF for shared terms
+            idf_sum = sum(min(papers[pid_a].get(t, 0), papers[pid_b].get(t, 0))
+                          for t in shared)
+            pairs.append((pid_a, pid_b, n_shared, jaccard, idf_sum, sorted(shared)))
+
+    # Sort by number of shared terms (primary), then IDF sum (secondary)
+    pairs.sort(key=lambda x: (-x[2], -x[4]))
+    return pairs[:top_k]
 
 
 def fetch_citations_s2(paper_ids, output_path=None, api_key=None):
@@ -202,7 +205,8 @@ def fetch_citations_s2(paper_ids, output_path=None, api_key=None):
 def find_hidden_connections(similar_pairs, citations, top_k=30):
     """Find paper pairs that are similar but don't cite each other."""
     hidden = []
-    for pid_a, pid_b, sim in similar_pairs:
+    for tup in similar_pairs:
+        pid_a, pid_b = tup[0], tup[1]
         # Check if A cites B or B cites A
         refs_a = set(citations.get(pid_a, {}).get("references", []))
         refs_b = set(citations.get(pid_b, {}).get("references", []))
@@ -213,7 +217,7 @@ def find_hidden_connections(similar_pairs, citations, top_k=30):
         b_cites_a = pid_a in refs_b or pid_a in cits_b
 
         if not a_cites_b and not b_cites_a:
-            hidden.append((pid_a, pid_b, sim))
+            hidden.append(tup)
         if len(hidden) >= top_k:
             break
     return hidden
@@ -229,20 +233,33 @@ def main():
                         help="Pre-fetched citations JSON (skip API calls)")
     parser.add_argument("--s2-api-key", default=None, help="Semantic Scholar API key (faster)")
     parser.add_argument("--n-clusters", type=int, default=8)
+    parser.add_argument("--min-shared", type=int, default=3,
+                        help="Minimum shared foundation terms for a pair to count")
     parser.add_argument("--top-k-pairs", type=int, default=100)
     args = parser.parse_args()
 
     # ── Load foundation edges ──
     print("Loading foundation edges...")
-    papers = load_foundation_edges(args.out_dir)
-    print(f"  {len(papers)} papers with foundation links")
+    papers_all = load_foundation_edges(args.out_dir)
+    print(f"  {len(papers_all)} papers with foundation links")
+
+    # Filter to papers with enough terms for meaningful comparison
+    min_terms = 5
+    papers = {pid: terms for pid, terms in papers_all.items() if len(terms) >= min_terms}
+    print(f"  {len(papers)} papers with >= {min_terms} specific foundation terms")
+
+    # Show distribution
+    term_counts = sorted([len(t) for t in papers_all.values()])
+    print(f"  Foundation terms per paper: "
+          f"min={term_counts[0]}, median={term_counts[len(term_counts)//2]}, "
+          f"max={term_counts[-1]}, mean={sum(term_counts)/len(term_counts):.1f}")
 
     if len(papers) < 10:
-        print("ERROR: too few papers with foundation links")
+        print("ERROR: too few papers with enough foundation links")
         sys.exit(1)
 
     # ── Build TF-IDF matrix ──
-    print("Building TF-IDF matrix...")
+    print("\nBuilding TF-IDF matrix...")
     mat, mat_normed, paper_ids, all_terms = build_tfidf_matrix(papers)
     print(f"  Matrix: {mat.shape[0]} papers x {mat.shape[1]} terms")
     print(f"  Non-zero entries: {(mat > 0).sum()} ({100*(mat > 0).mean():.1f}% dense)")
@@ -270,26 +287,26 @@ def main():
 
     # ── Compute similarities ──
     print(f"\n{'='*60}")
-    print(f"TOP SIMILAR PAPER PAIRS (by foundation fingerprint)")
+    print(f"TOP SIMILAR PAPER PAIRS (by shared foundation terms, min {args.min_shared} shared)")
     print(f"{'='*60}")
 
-    similar_pairs = compute_similarities(mat_normed, paper_ids, top_k=args.top_k_pairs)
-    print(f"\n  Top 20 most similar pairs:")
-    for pid_a, pid_b, sim in similar_pairs[:20]:
-        # Show shared terms
-        terms_a = set(papers[pid_a].keys())
-        terms_b = set(papers[pid_b].keys())
-        shared = terms_a & terms_b
-        shared_sorted = sorted(shared, key=lambda t: -papers[pid_a].get(t, 0))[:5]
-        shared_str = ", ".join(shared_sorted)
-        print(f"    sim={sim:.3f}  {pid_a} <-> {pid_b}  "
-              f"({len(shared)} shared: {shared_str})")
+    similar_pairs = compute_similarities(papers, paper_ids,
+                                          top_k=args.top_k_pairs,
+                                          min_shared=args.min_shared)
+    print(f"\n  Found {len(similar_pairs)} pairs with >= {args.min_shared} shared terms")
+    print(f"\n  Top 30 most similar pairs:")
+    for pid_a, pid_b, n_shared, jaccard, idf_sum, shared_terms in similar_pairs[:30]:
+        top5 = shared_terms[:5]
+        more = f" +{len(shared_terms)-5} more" if len(shared_terms) > 5 else ""
+        print(f"    {n_shared:>2} shared (J={jaccard:.2f})  {pid_a} <-> {pid_b}")
+        print(f"       {', '.join(top5)}{more}")
 
     # Save similarities
     sim_file = Path(args.out_dir) / "paper_similarities.json"
     with open(sim_file, "w") as f:
-        json.dump([{"paper_a": a, "paper_b": b, "similarity": round(s, 4)}
-                   for a, b, s in similar_pairs], f, indent=2)
+        json.dump([{"paper_a": a, "paper_b": b, "n_shared": ns,
+                     "jaccard": round(j, 4), "shared_terms": st}
+                   for a, b, ns, j, _, st in similar_pairs], f, indent=2)
     print(f"\n  Saved to {sim_file}")
 
     # ── Part B: Hidden connections (if citations available) ──
@@ -312,20 +329,18 @@ def main():
 
         hidden = find_hidden_connections(similar_pairs, citations, top_k=30)
         print(f"\n  Found {len(hidden)} similar-but-uncited pairs (of top {len(similar_pairs)}):")
-        for pid_a, pid_b, sim in hidden[:20]:
-            terms_a = set(papers[pid_a].keys())
-            terms_b = set(papers[pid_b].keys())
-            shared = terms_a & terms_b
-            shared_sorted = sorted(shared, key=lambda t: -papers[pid_a].get(t, 0))[:5]
-            shared_str = ", ".join(shared_sorted)
-            print(f"    sim={sim:.3f}  {pid_a} <-> {pid_b}  "
-                  f"({len(shared)} shared: {shared_str})")
+        for pid_a, pid_b, n_shared, jaccard, idf_sum, shared_terms in hidden[:20]:
+            top5 = shared_terms[:5]
+            more = f" +{len(shared_terms)-5} more" if len(shared_terms) > 5 else ""
+            print(f"    {n_shared:>2} shared (J={jaccard:.2f})  {pid_a} <-> {pid_b}")
+            print(f"       {', '.join(top5)}{more}")
 
         # Save hidden connections
         hidden_file = Path(args.out_dir) / "hidden_connections.json"
         with open(hidden_file, "w") as f:
-            json.dump([{"paper_a": a, "paper_b": b, "similarity": round(s, 4)}
-                       for a, b, s in hidden], f, indent=2)
+            json.dump([{"paper_a": a, "paper_b": b, "n_shared": ns,
+                         "jaccard": round(j, 4), "shared_terms": st}
+                       for a, b, ns, j, _, st in hidden], f, indent=2)
         print(f"\n  Saved to {hidden_file}")
     else:
         print("\n  [skip Part B] No citation data. Use --fetch-citations or --citations-json")
