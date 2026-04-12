@@ -311,44 +311,62 @@ def op_visualize(args) -> None:
         print(f"[pipeline] visualize: no JSON files found under {args.out_dir}")
         return
 
-    print(f"[pipeline] visualize: drawing {len(json_paths)} graphs (resolution={args.resolution})")
+    n_total = len(json_paths)
+    print(f"[pipeline] visualize: drawing {n_total} graphs (resolution={args.resolution})")
 
     import os
+    import io
+    import contextlib
+
     n_ok = 0
-    for jp in json_paths:
+    for i, jp in enumerate(json_paths, start=1):
+        # Extract paper_id from filename for progress display
+        paper_id = jp.stem.replace("_manual", "").replace("_anthropic", "") \
+                          .replace("_openai", "").replace("_huggingface", "")
+
         try:
             with open(jp, "r", encoding="utf-8") as f:
                 data = json.load(f)
             nodes = data.get("nodes", [])
             edges = data.get("edges", [])
             if not nodes:
-                if args.verbose:
-                    print(f"[pipeline] visualize: {jp.name}: no nodes, skipping")
+                print(f"[pipeline] visualize: {paper_id} [{i}/{n_total}] skipped (no nodes)")
                 continue
             metadata = data.get("metadata", {})
 
+            what = []  # track what we're generating
+
+            # Suppress noisy library output (e.g. "Index has N searchable terms")
+            # by capturing stdout during draw_dag / generate_interactive_html calls
             png_path = jp.with_suffix(".png")
             if not args.html_only:
-                draw_dag(nodes, edges, str(png_path), metadata=metadata,
-                         resolution=args.resolution)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    draw_dag(nodes, edges, str(png_path), metadata=metadata,
+                             resolution=args.resolution)
+                what.append("PNG")
 
             if args.html or args.html_only:
                 svg_only = str(png_path).replace(".png", "_nolegend.svg")
                 tmp_png = svg_only.replace(".svg", ".png")
-                draw_dag(nodes, edges, tmp_png, metadata=metadata,
-                         resolution=args.resolution, show_legend=False)
-                html_path = jp.with_suffix(".html")
-                generate_interactive_html(data, svg_only, str(html_path))
+                with contextlib.redirect_stdout(io.StringIO()):
+                    draw_dag(nodes, edges, tmp_png, metadata=metadata,
+                             resolution=args.resolution, show_legend=False)
+                    html_path = jp.with_suffix(".html")
+                    generate_interactive_html(data, svg_only, str(html_path))
                 for tmp in [svg_only, tmp_png]:
                     if os.path.exists(tmp):
                         os.remove(tmp)
+                what.append("HTML")
+
             n_ok += 1
+            print(f"[pipeline] visualize: {paper_id} [{i}/{n_total}] "
+                  f"{'+'.join(what)} ({len(nodes)} nodes, {len(edges)} edges)")
         except Exception as e:
-            print(f"[pipeline] visualize: {jp.name}: FAILED: {e}")
+            print(f"[pipeline] visualize: {paper_id} [{i}/{n_total}] FAILED: {e}")
             if args.verbose:
                 traceback.print_exc()
 
-    print(f"[pipeline] visualize: {n_ok} graphs rendered")
+    print(f"[pipeline] visualize: {n_ok}/{n_total} graphs rendered successfully")
 
 
 # =============================================================================
