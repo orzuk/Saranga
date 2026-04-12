@@ -81,13 +81,16 @@ WELL_KNOWN = {
 
 
 def build_foundation_index(foundation_paths=None):
-    """Build a name index from one or more NaturalProofs JSON files.
+    """Build a name index from foundation data.
 
     Args:
         foundation_paths: single path (str), list of paths, or None.
+            If a path points to clean_foundation.json (from clean_foundation.py),
+            loads the pre-built index directly. Otherwise parses raw NaturalProofs.
             If None, only the built-in WELL_KNOWN dict (53 terms) is used.
 
-    Handles two NaturalProofs formats:
+    Handles three formats:
+        - Clean foundation: {"index": {"term": {"name": ...}, ...}}
         - Flat list: {"dataset": [{"title": ...}, ...]}
         - Nested dict: {"dataset": {"theorems": [...], "definitions": [...], "others": [...]}}
     """
@@ -107,15 +110,25 @@ def build_foundation_index(foundation_paths=None):
         with open(fp) as f:
             data = json.load(f)
 
-        # Extract the item list(s) from the dataset
+        # Check if this is a clean_foundation.json (pre-built index)
+        if "index" in data and isinstance(data["index"], dict):
+            clean_index = data["index"]
+            n_added = 0
+            for key, entry in clean_index.items():
+                if key not in index:
+                    index[key] = entry
+                    n_added += 1
+            print(f"[link] Loaded {n_added} terms from clean index {fp.name} "
+                  f"({len(clean_index)} entries)")
+            continue
+
+        # Raw NaturalProofs format
         ds = data if isinstance(data, list) else data.get("dataset", data.get("theorems", []))
 
         items = []
         if isinstance(ds, list):
-            # Flat list format
             items = ds
         elif isinstance(ds, dict):
-            # Nested dict format: {"theorems": [...], "definitions": [...], ...}
             for category_name, category_items in ds.items():
                 if isinstance(category_items, list):
                     items.extend(category_items)
@@ -134,8 +147,6 @@ def build_foundation_index(foundation_paths=None):
                 if key.startswith(prefix):
                     key = key[len(prefix):]
                     break
-            # Strip possessives: "Markov's" → "markov", "Ramsey's" → "ramsey"
-            # This ensures "Markov's inequality" and "Markov inequality" match
             key = re.sub(r"'s\b", "", key)
             key = key.strip()
 
@@ -144,7 +155,7 @@ def build_foundation_index(foundation_paths=None):
             if len(words) < 2:
                 continue
 
-            if key not in index:  # don't overwrite well-known or earlier entries
+            if key not in index:
                 index[key] = {
                     "name": title,
                     "id": item.get("id", ""),

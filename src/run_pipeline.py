@@ -411,11 +411,17 @@ def op_link(args) -> None:
 
     foundation_paths = []
     if data_dir and data_dir.exists():
-        # NaturalProofs: ProofWiki, Stacks, Trench
-        np_dir = data_dir / "naturalproofs" / "raw"
-        if np_dir.exists():
-            for np_file in sorted(np_dir.glob("naturalproofs_*.json")):
-                foundation_paths.append(str(np_file))
+        # Prefer clean_foundation.json (deduplicated, filtered) if available
+        clean_path = data_dir / "naturalproofs" / "clean_foundation.json"
+        if clean_path.exists():
+            foundation_paths.append(str(clean_path))
+            print(f"[pipeline] link: using clean foundation index: {clean_path}")
+        else:
+            # Fallback: raw NaturalProofs files
+            np_dir = data_dir / "naturalproofs" / "raw"
+            if np_dir.exists():
+                for np_file in sorted(np_dir.glob("naturalproofs_*.json")):
+                    foundation_paths.append(str(np_file))
     if not foundation_paths:
         print(f"[pipeline] link: no foundation files found under {data_dir}; "
               f"using built-in 53 well-known terms only")
