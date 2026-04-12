@@ -185,8 +185,24 @@ def deduplicate(items, verbose=False):
             final.append(group[0])
             continue
 
-        # Different titles — check content similarity
-        # Compare all pairs
+        # Check if titles differ only by trivial prefixes ("The ", "Definition:")
+        # or whitespace — if so, they're the same object regardless of content
+        def _core_title(t):
+            t = t.strip().lower()
+            for pfx in ("the ", "a ", "an ", "definition:", "definition: "):
+                if t.startswith(pfx):
+                    t = t[len(pfx):]
+            return re.sub(r'\s+', ' ', t).strip()
+
+        core_titles = set(_core_title(t) for t in unique_titles)
+        if len(core_titles) == 1:
+            # Same core title — trivial variant, merge
+            best = max(group, key=lambda x: len(str(x.get("contents", []))))
+            merge_log.append((key, unique_titles, "trivial_variant"))
+            final.append(best)
+            continue
+
+        # Different core titles — check content similarity
         contents_list = [item.get("contents", []) for item in group]
         all_similar = True
         for i in range(len(group)):
@@ -201,7 +217,7 @@ def deduplicate(items, verbose=False):
         if all_similar:
             # Same mathematical content — merge, keep the one with richest content
             best = max(group, key=lambda x: len(str(x.get("contents", []))))
-            merge_log.append((key, unique_titles, f"content_similar"))
+            merge_log.append((key, unique_titles, "content_similar"))
             final.append(best)
         else:
             # Genuinely different results — keep all
