@@ -125,17 +125,31 @@ def build_foundation_index(foundation_paths=None):
             if not isinstance(item, dict):
                 continue
             title = item.get("title", "") or item.get("name", "")
-            if title and len(title) >= 5:
-                key = title.strip().lower()
-                if key not in index:  # don't overwrite well-known entries
-                    index[key] = {
-                        "name": title,
-                        "id": item.get("id", ""),
-                        "type": item.get("type", ""),
-                        "field": item.get("categories", [""])[0] if item.get("categories") else "",
-                        "source": str(fp.stem),
-                    }
-                    n_added += 1
+            if not title or len(title) < 5:
+                continue
+
+            # Normalize: strip leading articles for deduplication
+            key = title.strip().lower()
+            for prefix in ("the ", "a ", "an "):
+                if key.startswith(prefix):
+                    key = key[len(prefix):]
+                    break
+
+            # Skip very short/generic terms after normalization (e.g., "set",
+            # "number of permutations" → likely a formula name, not a theorem)
+            words = [w for w in key.split() if len(w) > 2]
+            if len(words) < 2:
+                continue
+
+            if key not in index:  # don't overwrite well-known or earlier entries
+                index[key] = {
+                    "name": title,
+                    "id": item.get("id", ""),
+                    "type": item.get("type", ""),
+                    "field": item.get("categories", [""])[0] if item.get("categories") else "",
+                    "source": str(fp.stem),
+                }
+                n_added += 1
         print(f"[link] Loaded {n_added} terms from {fp.name} ({len(items)} items total)")
 
     print(f"[link] Index has {len(index)} searchable terms")
