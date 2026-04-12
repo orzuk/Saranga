@@ -268,23 +268,29 @@ def print_summary(stats_list: List[Dict[str, Any]]) -> None:
     max_depth = max(depths) if depths else 0
     avg_depth = sum(depths) / len(depths) if depths else 0
 
+    def _line(label, key):
+        return f"  {label}{_total(key):>8,}   (avg {_avg(key):.1f})"
+
     print(f"[stats] ========== Corpus Summary ({n} papers) ==========")
-    print(f"  Total nodes:      {_total('n_nodes'):>8,}   (avg {_avg('n_nodes'):.1f} per paper)")
-    print(f"  Total edges:      {_total('n_edges'):>8,}   (avg {_avg('n_edges'):.1f} per paper)")
-    print(f"  Theorem-like:     {_total('n_theorem_like'):>8,}   (avg {_avg('n_theorem_like'):.1f})")
-    print(f"    theorems:       {_total('n_theorems'):>8,}")
-    print(f"    lemmas:         {_total('n_lemmas'):>8,}")
-    print(f"    propositions:   {_total('n_propositions'):>8,}")
-    print(f"    corollaries:    {_total('n_corollaries'):>8,}")
-    print(f"  Definitions:      {_total('n_definitions'):>8,}")
-    print(f"  Proofs:           {_total('n_proofs'):>8,}")
-    print(f"  Equations:        {_total('n_equations'):>8,}")
-    print(f"  Algorithms:       {_total('n_algorithms'):>8,}")
-    print(f"  Tables:           {_total('n_tables'):>8,}")
+    print(_line("Total nodes:      ", "n_nodes"))
+    print(_line("Total edges:      ", "n_edges"))
+    print(_line("Theorem-like:     ", "n_theorem_like"))
+    print(_line("  theorems:       ", "n_theorems"))
+    print(_line("  lemmas:         ", "n_lemmas"))
+    print(_line("  propositions:   ", "n_propositions"))
+    print(_line("  corollaries:    ", "n_corollaries"))
+    print(_line("  claims:         ", "n_claims"))
+    print(_line("  conjectures:    ", "n_conjectures"))
+    print(_line("  problems:       ", "n_problems"))
+    print(_line("Definitions:      ", "n_definitions"))
+    print(_line("Proofs:           ", "n_proofs"))
+    print(_line("Equations:        ", "n_equations"))
+    print(_line("Algorithms:       ", "n_algorithms"))
+    print(_line("Tables:           ", "n_tables"))
     print(f"  DAG acyclic:      {acyclic_count}/{n} ({100*acyclic_count/n:.0f}%)")
     print(f"  DAG depth:        max={max_depth}, avg={avg_depth:.1f}")
-    print(f"  Orphan proofs:    {_total('n_orphan_proofs'):>8,}")
-    print(f"  Isolated nodes:   {_total('n_isolated_nodes'):>8,}")
+    print(_line("Orphan proofs:    ", "n_orphan_proofs"))
+    print(_line("Isolated nodes:   ", "n_isolated_nodes"))
 
 
 # --- standalone CLI -----------------------------------------------------------
