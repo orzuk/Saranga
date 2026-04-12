@@ -60,6 +60,10 @@ STAT_COLUMNS = [
     "n_conjectures", "n_problems", "n_definitions", "n_proofs", "n_algorithms",
     "n_equations", "n_tables", "n_other",
     "n_theorem_like",
+    "n_thm_with_assumptions", "n_thm_with_conclusions",
+    "n_thm_with_both", "n_thm_with_neither",
+    "total_assumptions", "total_conclusions",
+    "avg_assumptions_per_thm", "avg_conclusions_per_thm",
     "dag_acyclic", "dag_depth",
     "n_has_part_edges", "n_uses_edges", "n_keyword_edges",
     "n_orphan_proofs", "n_isolated_nodes",
@@ -131,6 +135,40 @@ def compute_paper_stats(paper_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         c for t, c in type_counts.items() if t not in set(TRACKED_TYPES)
     )
     stats["n_theorem_like"] = sum(type_counts[t] for t in THEOREM_LIKE_TYPES)
+
+    # Assumption/conclusion statistics for theorem-like nodes
+    n_with_assumptions = 0
+    n_with_conclusions = 0
+    n_with_both = 0
+    n_with_neither = 0
+    total_assumptions = 0
+    total_conclusions = 0
+    for node in nodes:
+        if node.get("type") in THEOREM_LIKE_TYPES:
+            a = node.get("assumptions", [])
+            c = node.get("conclusions", [])
+            has_a = bool(a and any(s.strip() for s in a if isinstance(s, str)))
+            has_c = bool(c and any(s.strip() for s in c if isinstance(s, str)))
+            if has_a:
+                n_with_assumptions += 1
+            if has_c:
+                n_with_conclusions += 1
+            if has_a and has_c:
+                n_with_both += 1
+            if not has_a and not has_c:
+                n_with_neither += 1
+            total_assumptions += len(a) if isinstance(a, list) else 0
+            total_conclusions += len(c) if isinstance(c, list) else 0
+
+    n_tl = stats["n_theorem_like"]
+    stats["n_thm_with_assumptions"] = n_with_assumptions
+    stats["n_thm_with_conclusions"] = n_with_conclusions
+    stats["n_thm_with_both"] = n_with_both
+    stats["n_thm_with_neither"] = n_with_neither
+    stats["total_assumptions"] = total_assumptions
+    stats["total_conclusions"] = total_conclusions
+    stats["avg_assumptions_per_thm"] = round(total_assumptions / n_tl, 2) if n_tl else 0
+    stats["avg_conclusions_per_thm"] = round(total_conclusions / n_tl, 2) if n_tl else 0
 
     # Edge type counts
     edge_types: Counter = Counter()
@@ -282,6 +320,23 @@ def print_summary(stats_list: List[Dict[str, Any]]) -> None:
     print(_line("  claims:         ", "n_claims"))
     print(_line("  conjectures:    ", "n_conjectures"))
     print(_line("  problems:       ", "n_problems"))
+    # Assumption/conclusion breakdown
+    tl_total = _total("n_theorem_like")
+    tl_with_a = _total("n_thm_with_assumptions")
+    tl_with_c = _total("n_thm_with_conclusions")
+    tl_with_both = _total("n_thm_with_both")
+    tl_with_neither = _total("n_thm_with_neither")
+    pct_a = f"{100*tl_with_a/tl_total:.0f}%" if tl_total else "n/a"
+    pct_c = f"{100*tl_with_c/tl_total:.0f}%" if tl_total else "n/a"
+    pct_both = f"{100*tl_with_both/tl_total:.0f}%" if tl_total else "n/a"
+    pct_neither = f"{100*tl_with_neither/tl_total:.0f}%" if tl_total else "n/a"
+    print(f"  Assumptions/conclusions (of {tl_total} theorem-like):")
+    print(f"    with assumptions:   {tl_with_a:>6,}  ({pct_a})")
+    print(f"    with conclusions:   {tl_with_c:>6,}  ({pct_c})")
+    print(f"    with both:          {tl_with_both:>6,}  ({pct_both})")
+    print(f"    with neither:       {tl_with_neither:>6,}  ({pct_neither})")
+    print(f"    avg assumptions/thm: {_avg('avg_assumptions_per_thm'):.1f}")
+    print(f"    avg conclusions/thm: {_avg('avg_conclusions_per_thm'):.1f}")
     print(_line("Definitions:      ", "n_definitions"))
     print(_line("Proofs:           ", "n_proofs"))
     print(_line("Equations:        ", "n_equations"))

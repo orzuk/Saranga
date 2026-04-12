@@ -318,6 +318,46 @@ def detect_anomalies_for_paper(
                                 f"DAG depth = {depth} on {n_nodes}-node paper (essentially flat)"))
                 details.append({"rule": "flat_dag", "severity": "medium", "depth": depth})
 
+    # B7: most theorem-like nodes have no conclusions (assumption/conclusion
+    #     split probably failed for this paper's style)
+    if n_theorem_like >= 3:
+        thm_nodes = [n for n in nodes if n.get("type") in THEOREM_LIKE_TYPES]
+        n_no_conclusions = 0
+        n_no_assumptions = 0
+        ids_no_conclusions: List[str] = []
+        ids_no_assumptions: List[str] = []
+        for t in thm_nodes:
+            c = t.get("conclusions", [])
+            a = t.get("assumptions", [])
+            has_c = bool(c and any(s.strip() for s in c if isinstance(s, str)))
+            has_a = bool(a and any(s.strip() for s in a if isinstance(s, str)))
+            if not has_c:
+                n_no_conclusions += 1
+                ids_no_conclusions.append(t.get("id", "?"))
+            if not has_a:
+                n_no_assumptions += 1
+                ids_no_assumptions.append(t.get("id", "?"))
+
+        if n_no_conclusions > n_theorem_like * 0.8:
+            results.append((paper_id, "B", "most_theorems_no_conclusions", "medium",
+                            f"{n_no_conclusions}/{n_theorem_like}", "<80%",
+                            f"{n_no_conclusions} of {n_theorem_like} theorem-like nodes have no conclusions"))
+            details.append({
+                "rule": "most_theorems_no_conclusions", "severity": "medium",
+                "n_no_conclusions": n_no_conclusions,
+                "ids_no_conclusions": ids_no_conclusions[:30],
+            })
+
+        if n_no_assumptions > n_theorem_like * 0.8:
+            results.append((paper_id, "B", "most_theorems_no_assumptions", "medium",
+                            f"{n_no_assumptions}/{n_theorem_like}", "<80%",
+                            f"{n_no_assumptions} of {n_theorem_like} theorem-like nodes have no assumptions"))
+            details.append({
+                "rule": "most_theorems_no_assumptions", "severity": "medium",
+                "n_no_assumptions": n_no_assumptions,
+                "ids_no_assumptions": ids_no_assumptions[:30],
+            })
+
     # =========================================================================
     # CATEGORY C — content oddity (low severity)
     # =========================================================================
