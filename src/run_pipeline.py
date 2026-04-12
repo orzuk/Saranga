@@ -462,21 +462,27 @@ def op_anomalies(args) -> None:
     Category D (distribution-level) is planned for a future pass.
     """
     try:
-        from anomaly_detection import detect_anomalies_in_dir, write_anomalies_report
+        from anomaly_detection import (
+            detect_anomalies_in_dir, write_anomalies_report, write_anomalies_detail,
+        )
     except ImportError as e:
         print(f"[pipeline] anomalies: cannot import anomaly_detection: {e}")
         return
 
-    records, n_scanned, n_flagged = detect_anomalies_in_dir(
+    records, detail_list, n_scanned, n_flagged = detect_anomalies_in_dir(
         args.out_dir, verbose=args.verbose
     )
 
     report_path = Path(args.out_dir) / "anomalies_report.csv"
     write_anomalies_report(records, str(report_path))
 
+    detail_path = Path(args.out_dir) / "anomalies_detail.json"
+    write_anomalies_detail(detail_list, str(detail_path))
+
     print(f"[pipeline] anomalies: scanned {n_scanned} papers, flagged {n_flagged} "
           f"({len(records)} total anomaly records)")
-    print(f"[pipeline] anomalies: report -> {report_path}")
+    print(f"[pipeline] anomalies: report  -> {report_path}")
+    print(f"[pipeline] anomalies: details -> {detail_path} ({len(detail_list)} flagged papers)")
 
     # Severity breakdown for quick visibility
     from collections import Counter
