@@ -89,16 +89,29 @@ def compute_date_range(
 
 
 def _find_local_tex(paper_id: str) -> Optional[Tuple[str, str]]:
-    """Search FULL_PAPERS_DIR for an already-cached .tex file matching paper_id.
-    Returns (tex_path, versioned_id) or None."""
+    """Search for an already-cached .tex file matching paper_id.
+
+    Looks in multiple locations:
+      1. FULL_PAPERS_DIR (main data cache, from config.py)
+      2. LLMVersion/full_papers/ (gold-standard tex files committed to git)
+
+    Returns (tex_path, versioned_id) or None.
+    """
     import os
-    pattern = os.path.join(FULL_PAPERS_DIR, "**", f"{paper_id}*.tex")
-    matches = globmod.glob(pattern, recursive=True)
-    if not matches:
-        return None
-    tex_path = matches[0]
-    versioned_id = Path(tex_path).stem
-    return tex_path, versioned_id
+    search_dirs = [FULL_PAPERS_DIR]
+    # Also search the git-committed gold-standard tex files in LLMVersion/
+    _llmv_papers = os.path.join(os.path.dirname(os.path.abspath(__file__)), "full_papers")
+    if os.path.isdir(_llmv_papers) and _llmv_papers != FULL_PAPERS_DIR:
+        search_dirs.append(_llmv_papers)
+
+    for search_dir in search_dirs:
+        pattern = os.path.join(search_dir, "**", f"{paper_id}*.tex")
+        matches = globmod.glob(pattern, recursive=True)
+        if matches:
+            tex_path = matches[0]
+            versioned_id = Path(tex_path).stem
+            return tex_path, versioned_id
+    return None
 
 
 def run_batch(
