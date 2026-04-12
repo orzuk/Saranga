@@ -139,23 +139,31 @@ def _looks_like_paper_graph(path: Path) -> bool:
 def _list_jsons(out_dir: str) -> List[Path]:
     """Find all knowledge-graph JSON files under out_dir.
 
-    Excludes pipeline-internal report files and stray JSONs that don't
-    match the unified schema (e.g. a stray 00README.json extracted from
-    an arXiv source tarball).
+    Excludes:
+    - Pipeline report files (anomalies_detail.json, etc.)
+    - Stray JSONs from arXiv tarball extraction (00README.json in tex/ dirs)
+    - Files that don't match the unified schema (no 'nodes' or 'objects' key)
+
+    Only considers files inside json/ subdirectories OR at the top level
+    of out_dir. Files in tex/ subdirectories are always skipped.
     """
     out_path = Path(out_dir)
     if not out_path.exists():
         return []
     all_jsons = sorted(out_path.rglob("*.json"))
     excluded_names = {
-        "status_log.csv",
+        "anomalies_report.csv",
+        "anomalies_detail.json",
+        "corpus_stats.csv",
         "validate_report.csv",
         "evaluation_results.csv",
-        "anomalies_report.csv",
+        "status_log.csv",
     }
     return [
         p for p in all_jsons
-        if p.name not in excluded_names and _looks_like_paper_graph(p)
+        if p.name not in excluded_names
+        and "/tex/" not in str(p)  # skip tarball-extracted stray files
+        and _looks_like_paper_graph(p)
     ]
 
 
