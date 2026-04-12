@@ -154,65 +154,95 @@ def fetch_citations_s2(paper_ids, output_path=None, api_key=None):
     """Fetch citation data from Semantic Scholar API.
 
     Returns {arxiv_id: {"references": [arxiv_ids], "citations": [arxiv_ids]}}.
+    Resumes from output_path if it already exists (partial fetch).
     """
-    try:
-        import urllib.request
-        import urllib.error
-    except ImportError:
-        print("ERROR: urllib not available")
-        return {}
+    import urllib.request
+    import urllib.error
 
+    # Resume from partial fetch if file exists
     citations = {}
+    if output_path and Path(output_path).exists():
+        with open(output_path) as f:
+            citations = json.load(f)
+        print(f"  Resuming: {len(citations)} papers already fetched")
+
     n = len(paper_ids)
-    headers = {}
+    remaining = [pid for pid in paper_ids if pid not in citations]
+    print(f"  {len(remaining)} papers to fetch")
+
+    headers = {"User-Agent": "SARANGA/1.0 (academic research)"}
     if api_key:
         headers["x-api-key"] = api_key
 
-    for i, pid in enumerate(paper_ids):
-        if i % 50 == 0:
-            print(f"  Fetching citations: {i}/{n}...")
+    delay = 2.0 if not api_key else 0.15  # conservative pacing
+    backoff = delay
+    n_errors = 0
+
+    for i, pid in enumerate(remaining):
+        if i % 50 == 0 and i > 0:
+            print(f"  Fetching citations: {i}/{len(remaining)} "
+                  f"(total {len(citations)}/{n})...")
+            # Save checkpoint every 50
+            if output_path:
+                with open(output_path, "w") as f:
+                    json.dump(citations, f)
 
         url = (f"https://api.semanticscholar.org/graph/v1/paper/arXiv:{pid}"
                f"?fields=externalIds,references.externalIds,citations.externalIds")
-        try:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read())
 
-            refs = set()
-            for r in data.get("references", []) or []:
-                ext = (r or {}).get("externalIds", {}) or {}
-                if ext.get("ArXiv"):
-                    refs.add(ext["ArXiv"])
-            cits = set()
-            for c in data.get("citations", []) or []:
-                ext = (c or {}).get("externalIds", {}) or {}
-                if ext.get("ArXiv"):
-                    cits.add(ext["ArXiv"])
+        for attempt in range(3):  # up to 3 retries per paper
+            try:
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    data = json.loads(resp.read())
 
-            citations[pid] = {
-                "references": sorted(refs),
-                "citations": sorted(cits),
-            }
-        except (urllib.error.HTTPError, urllib.error.URLError, Exception) as e:
-            # Rate limit or not found
-            if "429" in str(e):
-                print(f"  Rate limited at {i}, sleeping 60s...")
-                time.sleep(60)
-                i -= 1  # retry
-                continue
-            citations[pid] = {"references": [], "citations": []}
+                refs = set()
+                for r in data.get("references", []) or []:
+                    ext = (r or {}).get("externalIds", {}) or {}
+                    if ext.get("ArXiv"):
+                        refs.add(ext["ArXiv"])
+                cits = set()
+                for c in data.get("citations", []) or []:
+                    ext = (c or {}).get("externalIds", {}) or {}
+                    if ext.get("ArXiv"):
+                        cits.add(ext["ArXiv"])
 
-        # Rate limiting: 1 request per second without API key
-        if not api_key:
-            time.sleep(1.1)
-        else:
-            time.sleep(0.05)
+                citations[pid] = {
+                    "references": sorted(refs),
+                    "citations": sorted(cits),
+                }
+                backoff = delay  # reset backoff on success
+                break  # success, move to next paper
+
+            except urllib.error.HTTPError as e:
+                if e.code == 429:
+                    backoff = min(backoff * 2, 120)
+                    print(f"  Rate limited (attempt {attempt+1}), "
+                          f"waiting {backoff:.0f}s...")
+                    time.sleep(backoff)
+                elif e.code == 404:
+                    citations[pid] = {"references": [], "citations": []}
+                    break  # paper not found in S2
+                else:
+                    n_errors += 1
+                    citations[pid] = {"references": [], "citations": []}
+                    break
+            except Exception as e:
+                n_errors += 1
+                citations[pid] = {"references": [], "citations": []}
+                break
+
+        time.sleep(delay)
 
     if output_path:
         with open(output_path, "w") as f:
             json.dump(citations, f, indent=2)
         print(f"  Saved citations to {output_path}")
+
+    n_with_refs = sum(1 for v in citations.values()
+                      if v.get("references") or v.get("citations"))
+    print(f"  {n_with_refs}/{len(citations)} papers have citation data "
+          f"({n_errors} errors)")
 
     return citations
 
