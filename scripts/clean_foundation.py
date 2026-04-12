@@ -92,6 +92,71 @@ def load_all_items(data_dir):
     return items
 
 
+# Common math/English words that appear capitalized in titles but aren't proper nouns.
+# Used to detect whether a Definition entry is a "named" concept (Cauchy, Euler)
+# or generic vocabulary (Finite Set, Upper Bound).
+_COMMON_MATH_WORDS = {
+    # Basic math objects
+    "set", "sets", "subset", "subsets", "element", "elements", "pair", "pairs",
+    "function", "functions", "map", "maps", "mapping", "mappings",
+    "space", "spaces", "field", "fields", "ring", "rings", "group", "groups",
+    "graph", "graphs", "tree", "trees", "path", "paths", "cycle", "cycles",
+    "matrix", "matrices", "vector", "vectors", "sequence", "sequences",
+    "series", "number", "numbers", "integer", "integers", "real", "complex",
+    "rational", "natural", "prime", "primes",
+    # Properties/adjectives
+    "finite", "infinite", "countable", "uncountable", "bounded", "unbounded",
+    "open", "closed", "compact", "connected", "dense", "complete",
+    "continuous", "differentiable", "integrable", "measurable",
+    "linear", "nonlinear", "convex", "concave", "monotone", "monotonic",
+    "positive", "negative", "nonnegative", "nonpositive",
+    "abelian", "commutative", "associative", "distributive",
+    "symmetric", "antisymmetric", "transitive", "reflexive",
+    "injective", "surjective", "bijective", "invertible",
+    "normal", "regular", "simple", "proper", "trivial",
+    "maximum", "minimum", "maximal", "minimal", "optimal",
+    "upper", "lower", "left", "right", "inner", "outer",
+    "direct", "inverse", "dual", "conjugate", "adjoint",
+    "bipartite", "planar", "directed", "undirected", "weighted",
+    "spanning", "induced", "complete", "independent", "disjoint",
+    "pairwise", "mutual", "mutually",
+    # Structural terms
+    "bound", "bounds", "limit", "limits", "sum", "product", "union",
+    "intersection", "complement", "closure", "interior", "boundary",
+    "kernel", "image", "range", "domain", "codomain",
+    "degree", "order", "rank", "dimension", "length", "size", "width",
+    "height", "depth", "weight", "distance", "radius", "diameter",
+    "component", "components", "factor", "factors", "term", "terms",
+    "coefficient", "coefficients", "root", "roots", "zero", "zeros",
+    "vertex", "vertices", "edge", "edges", "node", "nodes",
+    "subgroup", "subring", "subspace", "subgraph", "subsequence",
+    "quotient", "coset", "ideal", "module", "algebra",
+    # Operations
+    "addition", "subtraction", "multiplication", "division",
+    "composition", "decomposition", "factorization", "expansion",
+    "permutation", "permutations", "combination", "combinations",
+    "partition", "partitions", "coloring", "colorings",
+    "embedding", "extension", "restriction", "projection", "reduction",
+    "transformation", "translation", "rotation", "reflection",
+    # Logical/general
+    "with", "respect", "without", "loss", "generality",
+    "necessary", "sufficient", "equivalent", "implies", "implied",
+    "existence", "uniqueness", "convergence", "divergence",
+    "hypothesis", "induction", "recursion", "iteration",
+    "condition", "conditions", "property", "properties",
+    "definition", "theorem", "lemma", "proposition", "corollary",
+    "proof", "example", "remark", "note", "observation",
+    "formula", "equation", "inequality", "identity", "relation",
+    "algorithm", "method", "technique", "procedure", "process",
+    "problem", "solution", "result", "test", "criterion",
+    "principle", "rule", "law", "axiom", "postulate",
+    "type", "class", "category", "family", "collection",
+    "general", "special", "particular", "arbitrary", "fixed",
+    "first", "second", "third", "nth", "last",
+    "large", "small", "sufficiently", "strictly", "non",
+}
+
+
 def filter_items(items, verbose=False):
     """Apply filtering rules. Returns (kept, dropped_with_reasons)."""
     kept = []
@@ -141,6 +206,43 @@ def filter_items(items, verbose=False):
         if len(title) > 100:
             dropped["too_long"].append(title)
             continue
+
+        # Rule 6: For definition-type entries, only keep "named" definitions
+        # (containing a proper noun). Drop generic vocabulary like
+        # "Definition:Finite Set", "Definition:Upper Bound", "Definition:With Respect To".
+        # Keep "Definition:Cauchy Sequence", "Definition:Gaussian Integral", etc.
+        item_type = item.get("type", "")
+        if item_type == "definition" or title.startswith("Definition:"):
+            # Extract the name part after "Definition:"
+            name_part = title
+            if title.startswith("Definition:"):
+                name_part = title[len("Definition:"):]
+            # Check for a proper noun: a capitalized word that isn't at the
+            # very start (where capitalization is expected) and isn't a
+            # common math word that happens to be capitalized
+            words = name_part.split()
+            has_proper_noun = False
+            for w in words:
+                # Skip first word (always capitalized), common math adjectives,
+                # and short words
+                if w == words[0] and len(words) > 1:
+                    continue
+                if len(w) < 3:
+                    continue
+                # A word starting with uppercase that isn't a common math term
+                if w[0].isupper() and w.lower() not in _COMMON_MATH_WORDS:
+                    has_proper_noun = True
+                    break
+            # Also keep if the FIRST word is a proper noun (e.g., "Cauchy Sequence")
+            if not has_proper_noun and words:
+                first = words[0]
+                if (first[0].isupper() and len(first) >= 3
+                        and first.lower() not in _COMMON_MATH_WORDS):
+                    has_proper_noun = True
+
+            if not has_proper_noun:
+                dropped["generic_definition"].append(title)
+                continue
 
         kept.append(item)
 
