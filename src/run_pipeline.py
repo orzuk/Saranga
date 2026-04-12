@@ -473,44 +473,49 @@ def op_link(args) -> None:
         except Exception as e:
             print(f"[pipeline] link: {jp.name}: FAILED reading: {e}")
 
-    # ── IDF filtering: drop terms appearing in >10% of papers ──
+    # ── Compute IDF across corpus ──
     idf_scores = compute_idf(all_matches_flat, n_total)
-    max_df_frac = 0.10
-    _, dropped_terms = filter_by_idf(all_matches_flat, idf_scores,
-                                      max_df_frac=max_df_frac)
-    if dropped_terms:
-        print(f"[pipeline] link: IDF filter (df>{max_df_frac:.0%}): "
-              f"dropping {len(dropped_terms)} over-common terms:")
-        for term in sorted(dropped_terms,
+    high_df_terms = {term for term, s in idf_scores.items() if s["df_frac"] > 0.10}
+    if high_df_terms:
+        print(f"[pipeline] link: {len(high_df_terms)} high-frequency terms "
+              f"(df>10%, tagged as generic):")
+        for term in sorted(high_df_terms,
                            key=lambda t: -idf_scores[t]["df"])[:20]:
             s = idf_scores[term]
             print(f"    {s['df']:>4} papers ({s['df_frac']:.0%}): {term}")
-        if len(dropped_terms) > 20:
-            print(f"    ... and {len(dropped_terms) - 20} more")
+        if len(high_df_terms) > 20:
+            print(f"    ... and {len(high_df_terms) - 20} more")
 
-    # ── Pass 2: write filtered edges back to each paper ──
+    # ── Pass 2: write ALL edges with IDF tags ──
     n_linked = 0
     total_matches = 0
+    n_specific = 0  # edges with df <= 10%
 
     for jp, data, matches in per_paper:
         try:
             edges = data["edges"]
             seen = set()
             for m in matches:
-                if m["foundation_name"] in dropped_terms:
-                    continue
                 key = (m["node_id"], m["foundation_name"])
                 if key in seen:
                     continue
                 seen.add(key)
-                # Use edge type based on foundation entry type
-                edge_type = "grounded_to"
+                fname = m["foundation_name"]
+                idf_info = idf_scores.get(fname, {})
+                df_frac = idf_info.get("df_frac", 0)
+                is_generic = fname in high_df_terms
                 edges.append({
-                    "source": m["foundation_name"],
+                    "source": fname,
                     "target": m["node_id"],
-                    "type": edge_type,
+                    "type": "grounded_to",
                     "note": f"matched term: {m['matched_term']}",
+                    "df": idf_info.get("df", 0),
+                    "df_frac": round(df_frac, 4),
+                    "idf": round(idf_info.get("idf", 0), 3),
+                    "generic": is_generic,
                 })
+                if not is_generic:
+                    n_specific += 1
 
             n_new = len(seen)
             if n_new > 0:
@@ -525,7 +530,8 @@ def op_link(args) -> None:
             print(f"[pipeline] link: {jp.name}: FAILED writing: {e}")
 
     print(f"[pipeline] link: {n_linked}/{n_total} papers linked, "
-          f"{total_matches} total foundation edges added")
+          f"{total_matches} total foundation edges "
+          f"({n_specific} specific + {total_matches - n_specific} generic)")
 
 
 # =============================================================================

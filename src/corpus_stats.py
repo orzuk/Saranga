@@ -69,6 +69,8 @@ STAT_COLUMNS = [
     "n_orphan_proofs", "n_isolated_nodes",
     "n_foundation_edges", "n_grounded_to", "n_mentions_concept",
     "n_distinct_foundation_targets",
+    "n_foundation_specific", "n_foundation_generic",
+    "n_distinct_foundation_specific",
 ]
 
 
@@ -213,22 +215,35 @@ def compute_paper_stats(paper_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
     # If `link` hasn't been run, all counts are 0 — which is informative.
     FOUNDATION_EDGE_TYPES = {"grounded_to", "mentions_concept"}
     foundation_targets = set()
+    foundation_targets_specific = set()
     n_grounded = 0
     n_mentions = 0
+    n_generic = 0
+    n_specific = 0
     for e in edges:
         etype = e.get("type") or ""
         if etype in FOUNDATION_EDGE_TYPES:
             t = e.get("target")
+            is_generic = e.get("generic", False)
             if t:
                 foundation_targets.add(t)
+                if not is_generic:
+                    foundation_targets_specific.add(t)
             if etype == "grounded_to":
                 n_grounded += 1
             elif etype == "mentions_concept":
                 n_mentions += 1
+            if is_generic:
+                n_generic += 1
+            else:
+                n_specific += 1
     stats["n_foundation_edges"] = n_grounded + n_mentions
     stats["n_grounded_to"] = n_grounded
     stats["n_mentions_concept"] = n_mentions
     stats["n_distinct_foundation_targets"] = len(foundation_targets)
+    stats["n_foundation_specific"] = n_specific
+    stats["n_foundation_generic"] = n_generic
+    stats["n_distinct_foundation_specific"] = len(foundation_targets_specific)
 
     # DAG properties
     if _HAS_NETWORKX and n_nodes > 0:
@@ -374,7 +389,12 @@ def print_summary(stats_list: List[Dict[str, Any]]) -> None:
     n_found = _total("n_foundation_edges")
     n_targets = _total("n_distinct_foundation_targets")
     if n_found > 0:
+        n_spec = _total("n_foundation_specific")
+        n_gen = _total("n_foundation_generic")
+        n_spec_targets = _total("n_distinct_foundation_specific")
         print(f"  Foundation links:  {n_found:>8,}   (avg {_avg('n_foundation_edges'):.1f})")
+        print(f"    specific:        {n_spec:>8,}   ({n_spec_targets} distinct terms)")
+        print(f"    generic (df>10%):{n_gen:>8,}")
         print(f"    grounded_to:     {_total('n_grounded_to'):>8,}")
         print(f"    mentions_concept:{_total('n_mentions_concept'):>8,}")
         print(f"    distinct targets:{n_targets:>8,}")
