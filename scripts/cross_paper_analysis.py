@@ -104,21 +104,25 @@ def find_top_terms_per_cluster(mat, labels, paper_ids, all_terms, top_k=10):
     return cluster_profiles
 
 
-def compute_similarities(papers, paper_ids, all_terms, top_k=50, min_shared=3):
-    """Compute top-k most similar paper pairs using hypergeometric p-value.
+def compute_similarities(papers, paper_ids, all_terms, term_df, n_papers,
+                         top_k=50, min_shared=3):
+    """Compute top-k most similar paper pairs using IDF-weighted overlap.
 
-    For each pair, the overlap is tested against a hypergeometric null:
-    if paper A has m terms and paper B has k terms drawn from N total,
-    the p-value for observing >= X shared terms is:
-        P(X >= x | N, m, k) = 1 - HypergeomCDF(x-1, N, m, k)
+    For each pair, the score is sum of IDF over shared terms:
+        score = sum_{t in shared} log(N_papers / df_t)
 
-    This automatically favors pairs where the overlap is surprising
-    given each paper's total foundation link count.
+    This is the log-likelihood under an independence model with
+    non-uniform term probabilities p_i = df_i / N_papers.
+    Common terms (high df) contribute little; rare terms contribute a lot.
+    No uniform-probability assumption needed.
     """
-    from scipy.stats import hypergeom
-
-    N = len(all_terms)  # total foundation vocabulary size
     paper_termsets = {pid: set(papers[pid].keys()) for pid in paper_ids}
+
+    # Precompute IDF for each term
+    idf = {}
+    for t in all_terms:
+        df = term_df.get(t, 1)
+        idf[t] = math.log(n_papers / df) if df > 0 else 0
 
     pairs = []
     n = len(paper_ids)
@@ -132,20 +136,17 @@ def compute_similarities(papers, paper_ids, all_terms, top_k=50, min_shared=3):
             if x < min_shared:
                 continue
 
-            m = len(terms_a)  # paper A's term count
-            k = len(terms_b)  # paper B's term count
+            # IDF-weighted overlap score (= log-likelihood under independence)
+            score = sum(idf.get(t, 0) for t in shared)
 
-            # Hypergeometric p-value: P(overlap >= x)
-            pval = hypergeom.sf(x - 1, N, m, k)  # sf = 1 - cdf
-
-            # Also compute Jaccard for display
+            # Jaccard for display
             union = terms_a | terms_b
             jaccard = x / len(union) if union else 0
 
-            pairs.append((pid_a, pid_b, x, jaccard, pval, sorted(shared)))
+            pairs.append((pid_a, pid_b, x, jaccard, score, sorted(shared)))
 
-    # Sort by p-value (most surprising first)
-    pairs.sort(key=lambda x: x[4])
+    # Sort by IDF-weighted score (highest = most surprising overlap)
+    pairs.sort(key=lambda x: -x[4])
     return pairs[:top_k]
 
 
@@ -300,22 +301,30 @@ def main():
         print(f"\n  Saved cluster assignments to {cluster_file}")
 
     # ── Compute similarities ──
+    # Compute document frequency for each term (across ALL papers, not just filtered)
+    term_df = Counter()
+    for terms in papers_all.values():
+        for t in terms:
+            term_df[t] += 1
+    n_papers_total = len(papers_all)
+
     print(f"\n{'='*60}")
-    print(f"TOP SIMILAR PAPER PAIRS (hypergeometric p-value, min {args.min_shared} shared)")
-    print(f"  Foundation vocabulary size N = {len(all_terms)}")
+    print(f"TOP SIMILAR PAPER PAIRS (IDF-weighted overlap, min {args.min_shared} shared)")
+    print(f"  Vocabulary: {len(all_terms)} terms, {n_papers_total} papers for IDF")
     print(f"{'='*60}")
 
-    similar_pairs = compute_similarities(papers, paper_ids, all_terms,
+    similar_pairs = compute_similarities(papers, paper_ids, all_terms, term_df,
+                                          n_papers_total,
                                           top_k=args.top_k_pairs,
                                           min_shared=args.min_shared)
     print(f"\n  Found {len(similar_pairs)} pairs with >= {args.min_shared} shared terms")
-    print(f"\n  Top 30 most surprising pairs (by hypergeometric p-value):")
-    for pid_a, pid_b, n_shared, jaccard, pval, shared_terms in similar_pairs[:30]:
+    print(f"\n  Top 30 most surprising pairs (by IDF-weighted overlap):")
+    for pid_a, pid_b, n_shared, jaccard, score, shared_terms in similar_pairs[:30]:
         m = len(papers[pid_a])
         k = len(papers[pid_b])
         top5 = shared_terms[:5]
         more = f" +{len(shared_terms)-5} more" if len(shared_terms) > 5 else ""
-        print(f"    p={pval:.2e}  {n_shared:>2} shared (of {m},{k})  J={jaccard:.2f}  "
+        print(f"    score={score:.1f}  {n_shared:>2} shared (of {m},{k})  J={jaccard:.2f}  "
               f"{pid_a} <-> {pid_b}")
         print(f"       {', '.join(top5)}{more}")
 
@@ -323,8 +332,9 @@ def main():
     sim_file = Path(args.out_dir) / "paper_similarities.json"
     with open(sim_file, "w") as f:
         json.dump([{"paper_a": a, "paper_b": b, "n_shared": ns,
-                     "jaccard": round(j, 4), "pvalue": pv, "shared_terms": st}
-                   for a, b, ns, j, pv, st in similar_pairs], f, indent=2)
+                     "jaccard": round(j, 4), "idf_score": round(sc, 2),
+                     "shared_terms": st}
+                   for a, b, ns, j, sc, st in similar_pairs], f, indent=2)
     print(f"\n  Saved to {sim_file}")
 
     # ── Part B: Hidden connections (if citations available) ──
@@ -347,10 +357,10 @@ def main():
 
         hidden = find_hidden_connections(similar_pairs, citations, top_k=30)
         print(f"\n  Found {len(hidden)} similar-but-uncited pairs (of top {len(similar_pairs)}):")
-        for pid_a, pid_b, n_shared, jaccard, pval, shared_terms in hidden[:20]:
+        for pid_a, pid_b, n_shared, jaccard, score, shared_terms in hidden[:20]:
             top5 = shared_terms[:5]
             more = f" +{len(shared_terms)-5} more" if len(shared_terms) > 5 else ""
-            print(f"    p={pval:.2e}  {n_shared:>2} shared (J={jaccard:.2f})  "
+            print(f"    score={score:.1f}  {n_shared:>2} shared (J={jaccard:.2f})  "
                   f"{pid_a} <-> {pid_b}")
             print(f"       {', '.join(top5)}{more}")
 
@@ -358,8 +368,9 @@ def main():
         hidden_file = Path(args.out_dir) / "hidden_connections.json"
         with open(hidden_file, "w") as f:
             json.dump([{"paper_a": a, "paper_b": b, "n_shared": ns,
-                         "jaccard": round(j, 4), "pvalue": pv, "shared_terms": st}
-                       for a, b, ns, j, pv, st in hidden], f, indent=2)
+                         "jaccard": round(j, 4), "idf_score": round(sc, 2),
+                         "shared_terms": st}
+                       for a, b, ns, j, sc, st in hidden], f, indent=2)
         print(f"\n  Saved to {hidden_file}")
     else:
         print("\n  [skip Part B] No citation data. Use --fetch-citations or --citations-json")
