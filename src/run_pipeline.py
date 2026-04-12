@@ -402,11 +402,28 @@ def op_link(args) -> None:
         print(f"[pipeline] link: no JSON files found under {args.out_dir}")
         return
 
-    # Build the foundation index once (shared across all papers)
-    print(f"[pipeline] link: building foundation index...")
+    # Auto-discover foundation files under DATA_DIR
     try:
-        index = build_foundation_index(None)  # None = use built-in well-known terms
-        print(f"[pipeline] link: index has {len(index)} searchable terms")
+        from config import DATA_DIR
+        data_dir = Path(str(DATA_DIR))
+    except ImportError:
+        data_dir = None
+
+    foundation_paths = []
+    if data_dir and data_dir.exists():
+        # NaturalProofs: ProofWiki, Stacks, Trench
+        np_dir = data_dir / "naturalproofs" / "raw"
+        if np_dir.exists():
+            for np_file in sorted(np_dir.glob("naturalproofs_*.json")):
+                foundation_paths.append(str(np_file))
+    if not foundation_paths:
+        print(f"[pipeline] link: no foundation files found under {data_dir}; "
+              f"using built-in 53 well-known terms only")
+
+    # Build the foundation index once (shared across all papers)
+    print(f"[pipeline] link: building foundation index from {len(foundation_paths)} files...")
+    try:
+        index = build_foundation_index(foundation_paths or None)
     except Exception as e:
         print(f"[pipeline] link: failed to build foundation index: {e}")
         return

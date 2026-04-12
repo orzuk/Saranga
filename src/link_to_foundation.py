@@ -80,29 +80,65 @@ WELL_KNOWN = {
 }
 
 
-def build_foundation_index(foundation_path):
-    """Build a name index from a NaturalProofs JSON file."""
+def build_foundation_index(foundation_paths=None):
+    """Build a name index from one or more NaturalProofs JSON files.
+
+    Args:
+        foundation_paths: single path (str), list of paths, or None.
+            If None, only the built-in WELL_KNOWN dict (53 terms) is used.
+
+    Handles two NaturalProofs formats:
+        - Flat list: {"dataset": [{"title": ...}, ...]}
+        - Nested dict: {"dataset": {"theorems": [...], "definitions": [...], "others": [...]}}
+    """
     index = dict(WELL_KNOWN)  # start with built-in
 
-    if foundation_path and Path(foundation_path).exists():
-        with open(foundation_path) as f:
+    if foundation_paths is None:
+        foundation_paths = []
+    elif isinstance(foundation_paths, (str, Path)):
+        foundation_paths = [foundation_paths]
+
+    for fp in foundation_paths:
+        fp = Path(fp)
+        if not fp.exists():
+            print(f"[link] WARNING: foundation file not found: {fp}")
+            continue
+
+        with open(fp) as f:
             data = json.load(f)
 
-        # NaturalProofs format: {"dataset": [...items...]}
-        items = data if isinstance(data, list) else data.get("dataset", data.get("theorems", []))
+        # Extract the item list(s) from the dataset
+        ds = data if isinstance(data, list) else data.get("dataset", data.get("theorems", []))
+
+        items = []
+        if isinstance(ds, list):
+            # Flat list format
+            items = ds
+        elif isinstance(ds, dict):
+            # Nested dict format: {"theorems": [...], "definitions": [...], ...}
+            for category_name, category_items in ds.items():
+                if isinstance(category_items, list):
+                    items.extend(category_items)
+
+        n_added = 0
         for item in items:
-            title = item.get("title", "")
+            if not isinstance(item, dict):
+                continue
+            title = item.get("title", "") or item.get("name", "")
             if title and len(title) >= 5:
                 key = title.strip().lower()
-                index[key] = {
-                    "name": title,
-                    "id": item.get("id", ""),
-                    "field": item.get("categories", [""])[0] if item.get("categories") else "",
-                    "source": "naturalproofs",
-                }
-        print(f"Loaded {len(items)} entries from {foundation_path}")
+                if key not in index:  # don't overwrite well-known entries
+                    index[key] = {
+                        "name": title,
+                        "id": item.get("id", ""),
+                        "type": item.get("type", ""),
+                        "field": item.get("categories", [""])[0] if item.get("categories") else "",
+                        "source": str(fp.stem),
+                    }
+                    n_added += 1
+        print(f"[link] Loaded {n_added} terms from {fp.name} ({len(items)} items total)")
 
-    print(f"Index has {len(index)} searchable terms")
+    print(f"[link] Index has {len(index)} searchable terms")
     return index
 
 
