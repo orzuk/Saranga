@@ -97,6 +97,7 @@ KNOWN_OPERATIONS = [
     "link",
     "evaluate",
     "anomalies",
+    "stats",
     "cross_paper",
 ]
 
@@ -470,6 +471,27 @@ def op_anomalies(args) -> None:
 
 
 # =============================================================================
+# OPERATION: stats (JSON -> corpus_stats.csv)
+# =============================================================================
+
+def op_stats(args) -> None:
+    """Compute per-paper statistics and write corpus_stats.csv."""
+    try:
+        from corpus_stats import compute_corpus_stats, write_corpus_stats, print_summary
+    except ImportError as e:
+        print(f"[pipeline] stats: cannot import corpus_stats: {e}")
+        return
+
+    stats_list, n_scanned = compute_corpus_stats(args.out_dir, verbose=args.verbose)
+
+    report_path = Path(args.out_dir) / "corpus_stats.csv"
+    write_corpus_stats(stats_list, str(report_path))
+
+    print(f"[pipeline] stats: {n_scanned} papers -> {report_path}")
+    print_summary(stats_list)
+
+
+# =============================================================================
 # OPERATION: cross_paper (future, Phase 3)
 # =============================================================================
 
@@ -596,6 +618,7 @@ def main():
         "link": op_link,
         "evaluate": op_evaluate,
         "anomalies": op_anomalies,
+        "stats": op_stats,
         "cross_paper": op_cross_paper,
     }
 
