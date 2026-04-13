@@ -395,9 +395,11 @@ def draw_legend(ax, node_data, show_foundation=False, has_ghosts=False,
                            linewidth=1.5, linestyle="dashed",
                            label="Foundation (ext.)")
         )
-    ax.legend(handles=legend_handles, loc="upper right",
-              fontsize=16 * font_scale, frameon=False,
-              title="Node types", title_fontsize=18 * font_scale)
+    # Position legend at fixed top-right of axes (not data coords)
+    ax.legend(handles=legend_handles,
+              loc="upper left", bbox_to_anchor=(1.01, 1.0),
+              fontsize=14 * font_scale, frameon=False,
+              title="Node types", title_fontsize=16 * font_scale)
 
 
 # ── Drawing ─────────────────────────────────────────────────────────────────
@@ -548,9 +550,12 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         fh = max((max_depth + 1) * LEVEL_GAP_Y + 4, 12)
         figsize = (fw, fh)
 
-    # Scale factor for title/legend: these are point-sized and need to grow
-    # with figure size to remain readable. Base: 16-inch wide figure.
-    _font_scale = max(figsize[0], figsize[1]) / 16.0
+    # Scale factor for title/legend: scale with figure AREA so they look
+    # consistent regardless of whether the figure is wide or tall.
+    # Base: 16x12 = 192 sq inches. Use sqrt so scaling is moderate.
+    import math
+    _fig_area = figsize[0] * figsize[1]
+    _font_scale = math.sqrt(_fig_area / 192.0)
 
     fig, ax = plt.subplots(1, 1, figsize=figsize)
     ax.set_aspect("equal")
