@@ -96,6 +96,74 @@ def _sanitize_math(text):
     return text
 
 
+def _to_display_text(text):
+    """Convert LaTeX-rich text to clean plain text for PNG display.
+
+    Strips all LaTeX notation to produce readable text that won't break
+    matplotlib. The JSON keeps the full LaTeX; this is display-only.
+    """
+    if not text:
+        return ""
+    t = text
+    # Remove $...$ delimiters (keep content)
+    t = t.replace("$", "")
+    # Remove common LaTeX commands, keep their argument
+    # \mathbb{R} -> R, \mathrm{Var} -> Var, \bm{x} -> x, etc.
+    t = _re.sub(r'\\(?:mathbb|mathrm|mathcal|mathbf|mathit|bm|boldsymbol|'
+                r'text|textit|textbf|emph|operatorname)\s*\{([^}]*)\}', r'\1', t)
+    # \frac{a}{b} -> a/b
+    t = _re.sub(r'\\frac\s*\{([^}]*)\}\s*\{([^}]*)\}', r'(\1)/(\2)', t)
+    # \sqrt{x} -> sqrt(x)
+    t = _re.sub(r'\\sqrt\s*\{([^}]*)\}', r'sqrt(\1)', t)
+    # \left, \right, \big, \Big etc. -> nothing
+    t = _re.sub(r'\\(?:left|right|big|Big|bigg|Bigg)([|()[\]{}.]?)', r'\1', t)
+    # Subscripts/superscripts: x_{abc} -> x_abc, x^{abc} -> x^abc
+    t = _re.sub(r'_\{([^}]*)\}', r'_\1', t)
+    t = _re.sub(r'\^\{([^}]*)\}', r'^\1', t)
+    # \| -> ||
+    t = t.replace(r'\|', '||')
+    # Common symbols
+    t = t.replace(r'\leq', '<=').replace(r'\geq', '>=')
+    t = t.replace(r'\le', '<=').replace(r'\ge', '>=')
+    t = t.replace(r'\neq', '!=').replace(r'\ne', '!=')
+    t = t.replace(r'\in', 'in').replace(r'\notin', 'not in')
+    t = t.replace(r'\subset', 'subset').replace(r'\subseteq', 'subseteq')
+    t = t.replace(r'\cup', 'U').replace(r'\cap', 'n')
+    t = t.replace(r'\times', 'x').replace(r'\cdot', '*').replace(r'\cdots', '...')
+    t = t.replace(r'\ldots', '...').replace(r'\dots', '...')
+    t = t.replace(r'\infty', 'inf').replace(r'\infinity', 'inf')
+    t = t.replace(r'\sum', 'sum').replace(r'\prod', 'prod')
+    t = t.replace(r'\int', 'int').replace(r'\partial', 'd')
+    t = t.replace(r'\nabla', 'grad').replace(r'\Delta', 'Delta')
+    t = t.replace(r'\alpha', 'alpha').replace(r'\beta', 'beta')
+    t = t.replace(r'\gamma', 'gamma').replace(r'\delta', 'delta')
+    t = t.replace(r'\epsilon', 'eps').replace(r'\varepsilon', 'eps')
+    t = t.replace(r'\theta', 'theta').replace(r'\lambda', 'lambda')
+    t = t.replace(r'\mu', 'mu').replace(r'\sigma', 'sigma')
+    t = t.replace(r'\rho', 'rho').replace(r'\phi', 'phi')
+    t = t.replace(r'\eta', 'eta').replace(r'\kappa', 'kappa')
+    t = t.replace(r'\pi', 'pi').replace(r'\omega', 'omega')
+    t = t.replace(r'\Phi', 'Phi').replace(r'\Sigma', 'Sigma')
+    t = t.replace(r'\Theta', 'Theta').replace(r'\Lambda', 'Lambda')
+    t = t.replace(r'\ell', 'l').replace(r'\log', 'log').replace(r'\exp', 'exp')
+    t = t.replace(r'\min', 'min').replace(r'\max', 'max')
+    t = t.replace(r'\sup', 'sup').replace(r'\inf', 'inf')
+    t = t.replace(r'\lim', 'lim').replace(r'\arg', 'arg')
+    t = t.replace(r'\forall', 'forall').replace(r'\exists', 'exists')
+    t = t.replace(r'\rightarrow', '->').replace(r'\to', '->')
+    t = t.replace(r'\Rightarrow', '=>').replace(r'\implies', '=>')
+    t = t.replace(r'\Leftrightarrow', '<=>').replace(r'\iff', '<=>')
+    t = t.replace(r'\sim', '~').replace(r'\approx', '~=')
+    t = t.replace(r'\quad', ' ').replace(r'\qquad', '  ')
+    t = t.replace(r'\,', ' ').replace(r'\;', ' ').replace(r'\ ', ' ')
+    # Remove any remaining backslash commands: \xxx -> xxx
+    t = _re.sub(r'\\([a-zA-Z]+)', r'\1', t)
+    # Clean up braces and extra spaces
+    t = t.replace('{', '').replace('}', '')
+    t = _re.sub(r'\s+', ' ', t).strip()
+    return t
+
+
 def _wrap(text, width=38):
     if not text:
         return []
@@ -514,7 +582,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             for x in (n.get("input") or []): lines.append(_shorten(x, 100))
             for x in (n.get("output") or []): lines.append(_shorten(x, 100))
         else:
-            lines.append(_shorten(n.get("statement", ""), 150))
+            raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
+            lines.append(_shorten(_to_display_text(raw), 150))
         return lines
 
     # ── First pass: compute each node's ideal width ──
@@ -553,18 +622,18 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 # Wrap each item to box width, then flatten
                 assume_lines = []
                 for a in assumptions[:MAX_LINES_PER_SECTION]:
-                    assume_lines.extend(_wrap(_sanitize_math(a), wrap_w) or [a[:wrap_w]])
+                    assume_lines.extend(_wrap(_to_display_text(a), wrap_w) or [a[:wrap_w]])
                 if len(assumptions) > MAX_LINES_PER_SECTION:
                     assume_lines.append(f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more")
                 conclude_lines = []
                 for c in conclusions[:MAX_LINES_PER_SECTION]:
-                    conclude_lines.extend(_wrap(_sanitize_math(c), wrap_w) or [c[:wrap_w]])
+                    conclude_lines.extend(_wrap(_to_display_text(c), wrap_w) or [c[:wrap_w]])
                 if len(conclusions) > MAX_LINES_PER_SECTION:
                     conclude_lines.append(f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more")
                 proof_lines = []
                 for ps in proof_strategies:
                     if ps:
-                        proof_lines.extend(_wrap(_sanitize_math(f"Proof: {ps}"), wrap_w))
+                        proof_lines.extend(_wrap(_to_display_text(f"Proof: {ps}"), wrap_w))
 
                 n_assume = max(len(assume_lines), 1)
                 n_conclude = max(len(conclude_lines), 1)
@@ -584,8 +653,10 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 h += len(out_lines) * LINE_H + PADDING
                 h += PADDING
             else:
-                stmt = _sanitize_math(n.get("statement", ""))
-                stmt_lines = _wrap(stmt, wrap_w)[:5]  # up to 5 wrapped lines
+                # Use statement, or name as fallback (e.g., proofs with descriptive names)
+                raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
+                stmt = _to_display_text(raw)
+                stmt_lines = _wrap(stmt, wrap_w)[:5]
                 n_stmt = max(len(stmt_lines), 1)
                 h = HEADER_H + n_stmt * LINE_H + 2 * PADDING
 
@@ -679,7 +750,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             assumptions = n.get("assumptions", [])
             a_lines = []
             for a in assumptions[:MAX_LINES_PER_SECTION]:
-                a_lines.extend(_wrap(_sanitize_math(a), dyn_wrap) or [a[:dyn_wrap]])
+                a_lines.extend(_wrap(_to_display_text(a), dyn_wrap) or [a[:dyn_wrap]])
             if len(assumptions) > MAX_LINES_PER_SECTION:
                 a_lines.append(f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more")
             if not a_lines:
@@ -688,7 +759,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             conclusions = n.get("conclusions", [])
             c_lines = []
             for c in conclusions[:MAX_LINES_PER_SECTION]:
-                c_lines.extend(_wrap(_sanitize_math(c), dyn_wrap) or [c[:dyn_wrap]])
+                c_lines.extend(_wrap(_to_display_text(c), dyn_wrap) or [c[:dyn_wrap]])
             if len(conclusions) > MAX_LINES_PER_SECTION:
                 c_lines.append(f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more")
             if not c_lines:
@@ -727,7 +798,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                         color="#999", lw=0.5, alpha=0.4)
                 for ps in proof_strategies:
                     if ps:
-                        for pline in _wrap(_sanitize_math(f"Proof: {ps}"), dyn_wrap):
+                        for pline in _wrap(_to_display_text(f"Proof: {ps}"), dyn_wrap):
                             ax.text(bx + PADDING, cursor_y, pline,
                                     ha="left", va="top", fontsize=10.5,
                                     color="#444", fontstyle="italic")
@@ -758,9 +829,10 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 cursor_y -= LINE_H
 
         else:
-            # Simple box: wrap statement text to box width (up to 5 lines)
+            # Simple box: wrap statement/name text to box width (up to 5 lines)
             dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT))
-            stmt = _sanitize_math(n.get("statement", ""))
+            raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
+            stmt = _to_display_text(raw)
             stmt_lines = _wrap(stmt, dyn_wrap)[:5]
             if not stmt_lines:
                 stmt_lines = [""]
