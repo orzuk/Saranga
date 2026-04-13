@@ -43,13 +43,13 @@ PROOF_COLOR = "#E8DAEF"
 
 # ── Layout constants (shared between draw_dag and draw_foundation_ghosts) ──
 MIN_BOX_W = 3.0
-MAX_BOX_W = 6.0
+MAX_BOX_W = 7.5
 BOX_GAP_X = 0.5
 LEVEL_GAP_Y = 5.0
 HEADER_H = 0.45
 LINE_H = 0.28
 PADDING = 0.10
-CHARS_PER_UNIT = 12
+CHARS_PER_UNIT = 10
 
 
 # ── Text helpers ────────────────────────────────────────────────────────────
@@ -99,8 +99,10 @@ def _sanitize_math(text):
 def _display_width(text):
     """Estimate display width of text in characters, accounting for math.
 
-    Math in $...$ renders ~1.8x wider than its character count due to
-    fractions, subscripts, operators etc.
+    Math in $...$ renders significantly wider than its character count due to
+    fractions, subscripts, operators etc.  We use 2.2x as the base multiplier
+    and bump to 2.8x for formulas containing \\frac, \\sum, \\prod, \\int
+    which render especially wide.
     """
     if not text or "$" not in text:
         return len(text) if text else 0
@@ -112,8 +114,13 @@ def _display_width(text):
             if j == -1:
                 width += len(text[i:])
                 break
-            math_chars = j - i - 1
-            width += int(math_chars * 1.8)  # math is wider
+            math_content = text[i+1:j]
+            math_chars = len(math_content)
+            # Use higher multiplier for formulas with wide constructs
+            if _re.search(r'\\frac|\\sum|\\prod|\\int|\\iint', math_content):
+                width += int(math_chars * 3.0)
+            else:
+                width += int(math_chars * 2.5)
             i = j + 1
         else:
             j = text.find("$", i)
@@ -129,7 +136,9 @@ def _has_tall_math(text):
     """Check if text contains math that renders taller than normal (fractions, sums, etc.)."""
     if not text or "$" not in text:
         return False
-    return bool(_re.search(r'\\frac|\\sum|\\prod|\\int|\^{', text))
+    return bool(_re.search(
+        r'\\frac|\\sum|\\prod|\\int|\\iint|\\log_|\\lim_|\^{|_{.*{|'
+        r'\\underset|\\overset|\\stackrel|\\binom|\\atop', text))
 
 
 def _prepare_for_display(text):
@@ -232,58 +241,81 @@ def _to_display_text(text):
 
 
 def _wrap(text, width=38):
-    """Wrap text to width, never breaking inside $...$ math expressions."""
+    """Wrap text to width, never breaking inside $...$ math expressions.
+
+    Strategy:
+    1. Split into atomic tokens: each $...$ math block is one token,
+       each word in non-math text is one token.
+    2. Greedily accumulate tokens into lines, breaking when _display_width
+       would exceed *width*.
+    3. If a single $...$ token is wider than *width*, shorten it with
+       _shorten (which never cuts inside math) so it fits.
+    """
     if not text:
         return []
     # If no math, simple wrap
     if "$" not in text:
         return textwrap.wrap(text, width=width)
 
-    # Split text into math ($...$) and non-math segments
-    segments = []
+    # Split text into atomic tokens: $...$ blocks and individual words
+    tokens = []
     i = 0
     while i < len(text):
         if text[i] == "$":
             # Find closing $
             j = text.find("$", i + 1)
             if j == -1:
-                segments.append(text[i:])
+                tokens.append(text[i:])
                 break
-            segments.append(text[i:j+1])  # include both $
+            tokens.append(text[i:j+1])  # include both $
             i = j + 1
         else:
             # Find next $ or end
             j = text.find("$", i)
             if j == -1:
-                segments.append(text[i:])
-                break
-            segments.append(text[i:j])
-            i = j
+                chunk = text[i:]
+            else:
+                chunk = text[i:j]
+            # Split non-math chunk into words (preserving spaces for joining)
+            words = chunk.split(" ")
+            for wi, w in enumerate(words):
+                if w:
+                    tokens.append(w)
+                if wi < len(words) - 1:
+                    tokens.append(" ")
+            i = j if j != -1 else len(text)
 
-    # Now wrap: accumulate segments into lines, breaking between segments
-    # Use _display_width for math-aware width estimation
+    # If a single math token is wider than width, fall back to plain text
+    for ti in range(len(tokens)):
+        tok = tokens[ti]
+        if tok.startswith("$") and tok.endswith("$") and _display_width(tok) > width:
+            # Convert to plain text and truncate to fit
+            plain = _to_display_text(tok)
+            if len(plain) > width:
+                plain = plain[:width - 3] + "..."
+            tokens[ti] = plain
+
+    # Greedily accumulate tokens into lines
     lines = []
     current = ""
-    for seg in segments:
-        if not seg:
+    for tok in tokens:
+        if tok == " ":
+            # Space: append to current line if there is content
+            if current:
+                current += " "
             continue
-        if current and _display_width(current + seg) > width:
-            lines.append(current.strip())
-            current = seg
+        candidate = current + tok if current and not current.endswith(" ") else current + tok
+        if current and _display_width(candidate) > width:
+            stripped = current.strip()
+            if stripped:
+                lines.append(stripped)
+            current = tok
         else:
-            current += seg
+            current = candidate
     if current.strip():
         lines.append(current.strip())
 
-    # Further wrap non-math lines that are still too long
-    result = []
-    for line in lines:
-        if "$" not in line and len(line) > width:
-            result.extend(textwrap.wrap(line, width=width))
-        else:
-            result.append(line)
-
-    return result
+    return lines
 
 
 def _shorten(text, maxlen=80):
@@ -682,21 +714,25 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
     MAX_LINES_PER_SECTION = 3
 
     def _content_lines(n):
-        """Get all content text lines for a node (for width estimation)."""
+        """Get all content text lines for a node (for width estimation).
+
+        Uses the same _prepare_for_display pipeline as the drawing code so
+        width estimates are consistent with what gets rendered.
+        """
         ntype = n.get("type", "")
         lines = []
         name = n.get("name") or ""
         lines.append(f"{n['id']}: {name}" if name else n['id'])
         if ntype in ("theorem", "lemma", "corollary", "proposition", "claim"):
             for a in (n.get("assumptions") or [])[:MAX_LINES_PER_SECTION]:
-                lines.append(_shorten(a, 100))
+                lines.append(_shorten(_prepare_for_display(a), 60))
             for c in (n.get("conclusions") or [])[:MAX_LINES_PER_SECTION]:
-                lines.append(_shorten(c, 100))
+                lines.append(_shorten(_prepare_for_display(c), 60))
             for ps in (n.get("proof_info") or []):
-                if ps: lines.append(_shorten(f"Proof: {ps}", 100))
+                if ps: lines.append(_shorten(_prepare_for_display(f"Proof: {ps}"), 60))
         elif ntype == "algorithm" and (n.get("input") or n.get("output")):
-            for x in (n.get("input") or []): lines.append(_shorten(x, 100))
-            for x in (n.get("output") or []): lines.append(_shorten(x, 100))
+            for x in (n.get("input") or []): lines.append(_shorten(x, 60))
+            for x in (n.get("output") or []): lines.append(_shorten(x, 60))
         else:
             raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
             lines.append(_shorten(_prepare_for_display(raw), 150))
@@ -709,7 +745,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         nid = n["id"]
         node_data[nid] = n
         content = _content_lines(n)
-        max_line = max(len(line) for line in content) if content else 10
+        max_line = max(_display_width(line) for line in content) if content else 10
         w = max(MIN_BOX_W, min(MAX_BOX_W, max_line / CHARS_PER_UNIT))
         node_width[nid] = w
 
@@ -726,7 +762,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         for n in row:
             nid = n["id"]
             w = node_width[nid]
-            wrap_w = max(20, int(w * CHARS_PER_UNIT))
+            wrap_w = max(20, int(w * CHARS_PER_UNIT) - 4)  # subtract margin for padding + bullet
             cy_top = -d * LEVEL_GAP_Y
             ntype = n.get("type", "")
 
@@ -752,7 +788,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                         proof_lines.extend(_wrap(_prepare_for_display(f"Proof: {ps}"), wrap_w))
 
                 # Count lines, using extra height for lines with tall math
-                TALL_LINE_H = LINE_H * 1.8
+                TALL_LINE_H = LINE_H * 2.2
                 assume_heights = sum(TALL_LINE_H if _has_tall_math(l) else LINE_H for l in assume_lines) or LINE_H
                 conclude_heights = sum(TALL_LINE_H if _has_tall_math(l) else LINE_H for l in conclude_lines) or LINE_H
                 n_proof = len(proof_lines)
@@ -843,12 +879,17 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
 
         cursor_y = by + bh  # start from top
 
-        # Header — truncate to box width
+        # Header — truncate name to box width, but always show full node ID
         name_str = n.get("name") or ""
-        header_chars = max(10, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT) - 2)
+        header_chars = max(len(nid) + 4, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT) - 2)
         header_text = f"{nid}"
         if name_str:
-            header_text += f": {_shorten(name_str, header_chars - len(nid) - 2)}"
+            avail = max(6, header_chars - len(nid) - 2)
+            header_text += f": {_shorten(name_str, avail)}"
+        # Choose header font size to fit: shrink if header text is long
+        header_fontsize = 14
+        if len(header_text) > header_chars:
+            header_fontsize = max(9, 14 * header_chars / len(header_text))
 
         header_rect = FancyBboxPatch(
             (bx, cursor_y - HEADER_H), bw, HEADER_H,
@@ -859,13 +900,13 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         )
         ax.add_patch(header_rect)
         ax.text(bx + bw / 2, cursor_y - HEADER_H / 2, header_text,
-                ha="center", va="center", fontsize=14, fontweight="bold",
+                ha="center", va="center", fontsize=header_fontsize, fontweight="bold",
                 color="white")
         cursor_y -= HEADER_H + PADDING
 
         if ntype in ("theorem", "lemma", "corollary", "proposition", "claim"):
             # Wrap text to box width (same logic as height computation)
-            dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT))
+            dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT) - 4)
             assumptions = n.get("assumptions", [])
             a_lines = []
             for a in assumptions[:MAX_LINES_PER_SECTION]:
@@ -884,7 +925,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             if not c_lines:
                 c_lines = ["(none)"]
 
-            TALL_LINE_H = LINE_H * 1.8
+            TALL_LINE_H = LINE_H * 2.2
 
             # Assumptions
             ax.text(bx + PADDING, cursor_y, "Assume:",
@@ -927,7 +968,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
 
         elif ntype == "algorithm" and (n.get("input") or n.get("output")):
             # Algorithm with input/output
-            dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT))
+            dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT) - 4)
             in_lines = [_shorten(x, dyn_wrap) for x in (n.get("input") or ["(none)"])]
             out_lines = [_shorten(x, 70) for x in (n.get("output") or ["(none)"])]
 
@@ -951,7 +992,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
 
         else:
             # Simple box: wrap statement/name text to box width (up to 5 lines)
-            dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT))
+            dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT) - 4)
             raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
             stmt = _prepare_for_display(raw)
             stmt_lines = _wrap(stmt, dyn_wrap)[:5]
