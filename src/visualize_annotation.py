@@ -49,7 +49,7 @@ LEVEL_GAP_Y = 5.0
 HEADER_H = 0.45
 LINE_H = 0.28
 PADDING = 0.10
-CHARS_PER_UNIT = 9
+CHARS_PER_UNIT = 12
 
 
 # ── Text helpers ────────────────────────────────────────────────────────────
@@ -330,7 +330,7 @@ def draw_foundation_ghosts(ax, ghost_map, node_rect):
             (gx, gy - ghost_h), ghost_w, ghost_h,
             boxstyle="round,pad=0.05",
             facecolor="#E8E8E8", edgecolor="#777777",
-            linewidth=1.5, linestyle="dashed",
+            linewidth=1.5, linestyle=(0, (8, 6)),
             gid=f"ghost_box_{gi}",
         )
         ax.add_patch(grect)
@@ -365,7 +365,7 @@ def draw_foundation_ghosts(ax, ghost_map, node_rect):
                     (tx + tw / 2, ty + th),
                     arrowstyle="-|>,head_length=0.8,head_width=0.35",
                     color="#999999", lw=1.5,
-                    linestyle="dashed",
+                    linestyle=(0, (8, 6)),  # 8pt dash, 6pt gap (more visible than "dashed")
                     connectionstyle="arc3,rad=0.05",
                     shrinkA=3, shrinkB=3,
                     gid=f"ghost_edge_{gi}_{ti}",
@@ -457,7 +457,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         lines = []
         name = n.get("name") or ""
         lines.append(f"{n['id']}: {name}" if name else n['id'])
-        if ntype in ("theorem", "lemma", "corollary", "proposition"):
+        if ntype in ("theorem", "lemma", "corollary", "proposition", "claim"):
             for a in (n.get("assumptions") or [])[:MAX_LINES_PER_SECTION]:
                 lines.append(_shorten(a, 100))
             for c in (n.get("conclusions") or [])[:MAX_LINES_PER_SECTION]:
@@ -544,12 +544,6 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         avg_w = sum(node_width.values()) / max(len(node_width), 1)
         fw = max(max_width * (avg_w + BOX_GAP_X) + 4, 16)
         fh = max((max_depth + 1) * LEVEL_GAP_Y + 4, 12)
-        # Cap figure size so fonts remain readable relative to the figure.
-        # Very large figures make point-sized fonts look tiny.
-        MAX_FIG_W, MAX_FIG_H = 28, 24
-        if fw > MAX_FIG_W or fh > MAX_FIG_H:
-            scale = min(MAX_FIG_W / fw, MAX_FIG_H / fh)
-            fw, fh = fw * scale, fh * scale
         figsize = (fw, fh)
 
     fig, ax = plt.subplots(1, 1, figsize=figsize)
@@ -618,17 +612,18 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 color="white")
         cursor_y -= HEADER_H + PADDING
 
-        if ntype in ("theorem", "lemma", "corollary", "proposition"):
-            # Rebuild truncated lines (matching height computation)
+        if ntype in ("theorem", "lemma", "corollary", "proposition", "claim"):
+            # Rebuild truncated lines — truncate to box width
+            dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT))
             assumptions = n.get("assumptions", [])
-            a_lines = [_shorten(a, 70) for a in assumptions]
+            a_lines = [_shorten(a, dyn_wrap) for a in assumptions]
             if len(a_lines) > MAX_LINES_PER_SECTION:
                 a_lines = a_lines[:MAX_LINES_PER_SECTION] + [f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more"]
             if not a_lines:
                 a_lines = ["(none)"]
 
             conclusions = n.get("conclusions", [])
-            c_lines = [_shorten(c, 70) for c in conclusions]
+            c_lines = [_shorten(c, dyn_wrap) for c in conclusions]
             if len(c_lines) > MAX_LINES_PER_SECTION:
                 c_lines = c_lines[:MAX_LINES_PER_SECTION] + [f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more"]
             if not c_lines:
@@ -698,7 +693,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         else:
             # Simple box: just statement text (max 3 lines)
             dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT))
-            stmt = _shorten(n.get("statement", ""), 150)
+            stmt = _shorten(n.get("statement", ""), dyn_wrap * 3)
             stmt_lines = _wrap(stmt, dyn_wrap)[:3]
             if not stmt_lines:
                 stmt_lines = [""]
