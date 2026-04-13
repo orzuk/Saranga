@@ -59,6 +59,8 @@ _LATEX_FIXES = {
     r"\implies": r"\Rightarrow",
     r"\Pr": r"\mathrm{Pr}",
     r"\boldsymbol": r"\mathbf",
+    r"\bm": r"\mathbf",
+    r"\mathbb": r"\mathrm",
     r"\big|": "|", r"\Big|": "|", r"\bigg|": "|",
     r"\big(": "(", r"\Big(": "(", r"\big)": ")", r"\Big)": ")",
     r"\left|": "|", r"\right|": "|",
@@ -543,18 +545,26 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             cy_top = -d * LEVEL_GAP_Y
             ntype = n.get("type", "")
 
-            if ntype in ("theorem", "lemma", "corollary", "proposition"):
+            if ntype in ("theorem", "lemma", "corollary", "proposition", "claim"):
                 assumptions = n.get("assumptions", [])
                 conclusions = n.get("conclusions", [])
                 proof_strategies = n.get("proof_info", [])
 
-                assume_lines = [_shorten(a, 100) for a in assumptions]
-                if len(assume_lines) > MAX_LINES_PER_SECTION:
-                    assume_lines = assume_lines[:MAX_LINES_PER_SECTION] + [f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more"]
-                conclude_lines = [_shorten(c, 100) for c in conclusions]
-                if len(conclude_lines) > MAX_LINES_PER_SECTION:
-                    conclude_lines = conclude_lines[:MAX_LINES_PER_SECTION] + [f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more"]
-                proof_lines = [_shorten(f"Proof: {ps}", 100) for ps in proof_strategies if ps]
+                # Wrap each item to box width, then flatten
+                assume_lines = []
+                for a in assumptions[:MAX_LINES_PER_SECTION]:
+                    assume_lines.extend(_wrap(_sanitize_math(a), wrap_w) or [a[:wrap_w]])
+                if len(assumptions) > MAX_LINES_PER_SECTION:
+                    assume_lines.append(f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more")
+                conclude_lines = []
+                for c in conclusions[:MAX_LINES_PER_SECTION]:
+                    conclude_lines.extend(_wrap(_sanitize_math(c), wrap_w) or [c[:wrap_w]])
+                if len(conclusions) > MAX_LINES_PER_SECTION:
+                    conclude_lines.append(f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more")
+                proof_lines = []
+                for ps in proof_strategies:
+                    if ps:
+                        proof_lines.extend(_wrap(_sanitize_math(f"Proof: {ps}"), wrap_w))
 
                 n_assume = max(len(assume_lines), 1)
                 n_conclude = max(len(conclude_lines), 1)
@@ -574,8 +584,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 h += len(out_lines) * LINE_H + PADDING
                 h += PADDING
             else:
-                stmt = _shorten(n.get("statement", ""), 150)
-                stmt_lines = _wrap(stmt, wrap_w)[:3]
+                stmt = _sanitize_math(n.get("statement", ""))
+                stmt_lines = _wrap(stmt, wrap_w)[:5]  # up to 5 wrapped lines
                 n_stmt = max(len(stmt_lines), 1)
                 h = HEADER_H + n_stmt * LINE_H + 2 * PADDING
 
@@ -664,19 +674,23 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         cursor_y -= HEADER_H + PADDING
 
         if ntype in ("theorem", "lemma", "corollary", "proposition", "claim"):
-            # Rebuild truncated lines — truncate to box width
+            # Wrap text to box width (same logic as height computation)
             dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT))
             assumptions = n.get("assumptions", [])
-            a_lines = [_shorten(a, dyn_wrap) for a in assumptions]
-            if len(a_lines) > MAX_LINES_PER_SECTION:
-                a_lines = a_lines[:MAX_LINES_PER_SECTION] + [f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more"]
+            a_lines = []
+            for a in assumptions[:MAX_LINES_PER_SECTION]:
+                a_lines.extend(_wrap(_sanitize_math(a), dyn_wrap) or [a[:dyn_wrap]])
+            if len(assumptions) > MAX_LINES_PER_SECTION:
+                a_lines.append(f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more")
             if not a_lines:
                 a_lines = ["(none)"]
 
             conclusions = n.get("conclusions", [])
-            c_lines = [_shorten(c, dyn_wrap) for c in conclusions]
-            if len(c_lines) > MAX_LINES_PER_SECTION:
-                c_lines = c_lines[:MAX_LINES_PER_SECTION] + [f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more"]
+            c_lines = []
+            for c in conclusions[:MAX_LINES_PER_SECTION]:
+                c_lines.extend(_wrap(_sanitize_math(c), dyn_wrap) or [c[:dyn_wrap]])
+            if len(conclusions) > MAX_LINES_PER_SECTION:
+                c_lines.append(f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more")
             if not c_lines:
                 c_lines = ["(none)"]
 
@@ -713,14 +727,16 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                         color="#999", lw=0.5, alpha=0.4)
                 for ps in proof_strategies:
                     if ps:
-                        ax.text(bx + PADDING, cursor_y, _shorten(f"Proof: {ps}", 70),
-                                ha="left", va="top", fontsize=10.5,
-                                color="#444", fontstyle="italic")
-                        cursor_y -= LINE_H
+                        for pline in _wrap(_sanitize_math(f"Proof: {ps}"), dyn_wrap):
+                            ax.text(bx + PADDING, cursor_y, pline,
+                                    ha="left", va="top", fontsize=10.5,
+                                    color="#444", fontstyle="italic")
+                            cursor_y -= LINE_H
 
         elif ntype == "algorithm" and (n.get("input") or n.get("output")):
             # Algorithm with input/output
-            in_lines = [_shorten(x, 70) for x in (n.get("input") or ["(none)"])]
+            dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT))
+            in_lines = [_shorten(x, dyn_wrap) for x in (n.get("input") or ["(none)"])]
             out_lines = [_shorten(x, 70) for x in (n.get("output") or ["(none)"])]
 
             ax.text(bx + PADDING, cursor_y, "Input:",
@@ -742,10 +758,10 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 cursor_y -= LINE_H
 
         else:
-            # Simple box: just statement text (max 3 lines)
+            # Simple box: wrap statement text to box width (up to 5 lines)
             dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT))
-            stmt = _shorten(n.get("statement", ""), dyn_wrap * 3)
-            stmt_lines = _wrap(stmt, dyn_wrap)[:3]
+            stmt = _sanitize_math(n.get("statement", ""))
+            stmt_lines = _wrap(stmt, dyn_wrap)[:5]
             if not stmt_lines:
                 stmt_lines = [""]
             for line in stmt_lines:
