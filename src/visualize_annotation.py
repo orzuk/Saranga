@@ -803,40 +803,72 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         if not texts or all(not t for t in texts):
             return MIN_BOX_W
 
-        # Header width requirement
         name = n.get("name") or ""
         nid = n["id"]
-        header_w_chars = len(nid) + 2 + len(name[:30])
-        header_w = (header_w_chars / CHARS_PER_UNIT) + 2 * PADDING + 0.3
 
-        # Find the minimum wrap width where all wrapped lines fit within that width.
-        # Binary search: lo = tight, hi = wide
-        lo_w = max(MIN_BOX_W, header_w)
+        # Bullet prefix overhead: theorem/algorithm nodes render "• " before
+        # each line (+2 display chars) plus the PADDING+0.1 indent
+        ntype = n.get("type", "")
+        has_bullets = ntype in ("theorem", "lemma", "corollary", "proposition",
+                                "claim", "algorithm")
+        bullet_extra = 2 if has_bullets else 0
+        # chars_overhead: padding on both sides + bullet prefix
+        chars_overhead = 4 + bullet_extra
+
+        def _needed_w(max_dw):
+            """Convert max display-width (chars) to data-unit width needed."""
+            return (max_dw + bullet_extra) / CHARS_PER_UNIT + 2 * PADDING + 0.15
+
+        def _header_w_for_box(w):
+            """Header width needed given box width w (renderer shows more name
+            chars for wider boxes). Header font is 14-bold ~25% wider than body.
+            Cap name display to 30 chars to prevent runaway expansion."""
+            header_chars = max(len(nid) + 4, int(w * CHARS_PER_UNIT) - 2)
+            avail = max(6, header_chars - len(nid) - 2)
+            avail = min(avail, 30)  # cap to prevent circular expansion
+            shown = len(nid) + 2 + min(avail, len(name))
+            HEADER_CPU = 9.0  # chars/unit for fontsize-14 bold
+            return shown / HEADER_CPU + 2 * PADDING + 0.15
+
+        # --- Step 1: find body width via binary search ---
+        # Initial header estimate (30-char cap, before circular expansion)
+        name_cap = min(len(name), 30)
+        init_header_w = (len(nid) + 2 + name_cap) / 9.0 + 2 * PADDING + 0.15
+
+        lo_w = max(MIN_BOX_W, init_header_w)
         hi_w = MAX_BOX_W
 
         # Check if even MAX_BOX_W is too narrow (math tokens wider than MAX)
-        hi_chars = max(20, int(hi_w * CHARS_PER_UNIT) - 4)
+        hi_chars = max(20, int(hi_w * CHARS_PER_UNIT) - chars_overhead)
         max_dw_at_hi = _wrap_all_and_measure(texts, hi_chars)
-        needed_at_hi = (max_dw_at_hi / CHARS_PER_UNIT) + 2 * PADDING + 0.3
+        needed_at_hi = _needed_w(max_dw_at_hi)
         if needed_at_hi > hi_w:
-            # Some content (likely a math token) is irreducibly wide
-            return min(needed_at_hi * 1.02, MAX_BOX_W * 1.5)
+            body_w = min(needed_at_hi * 1.02, MAX_BOX_W * 1.5)
+        else:
+            # Binary search for minimum width where body text fits
+            for _ in range(10):
+                mid_w = (lo_w + hi_w) / 2
+                mid_chars = max(20, int(mid_w * CHARS_PER_UNIT) - chars_overhead)
+                max_dw = _wrap_all_and_measure(texts, mid_chars)
+                needed = _needed_w(max_dw)
+                if needed <= mid_w:
+                    hi_w = mid_w
+                else:
+                    lo_w = mid_w
+            body_w = hi_w * 1.01
 
-        # Binary search for minimum width where text fits
-        for _ in range(8):  # 8 iterations gives ~0.01 precision
-            mid_w = (lo_w + hi_w) / 2
-            mid_chars = max(20, int(mid_w * CHARS_PER_UNIT) - 4)
-            max_dw = _wrap_all_and_measure(texts, mid_chars)
-            needed = (max_dw / CHARS_PER_UNIT) + 2 * PADDING + 0.3
-            if needed <= mid_w:
-                # Text fits at this width, try narrower
-                hi_w = mid_w
-            else:
-                # Text overflows, need wider
-                lo_w = mid_w
+        # --- Step 2: resolve header/body circular dependency ---
+        # Given body_w, the renderer may show more name chars. Iterate to
+        # convergence (typically 1-2 rounds).
+        w = max(MIN_BOX_W, body_w)
+        for _ in range(3):
+            hw = _header_w_for_box(w)
+            w_new = max(body_w, hw)
+            if w_new <= w + 0.01:
+                break
+            w = w_new
 
-        # Use the upper bound (guaranteed to fit) with small margin
-        return max(MIN_BOX_W, hi_w * 1.02)
+        return max(MIN_BOX_W, w)
 
     for n in nodes:
         nid = n["id"]
@@ -984,8 +1016,9 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         cursor_y = by + bh  # start from top
 
         # Header — truncate name to box width, but always show full node ID
+        # Use ~9 chars/unit for bold header font (vs 12 for body font)
         name_str = n.get("name") or ""
-        header_chars = max(len(nid) + 4, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT) - 2)
+        header_chars = max(len(nid) + 4, int(node_width.get(nid, 4.0) * 9) - 2)
         header_text = f"{nid}"
         if name_str:
             avail = max(6, header_chars - len(nid) - 2)
