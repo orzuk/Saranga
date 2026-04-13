@@ -414,35 +414,29 @@ def draw_legend(ax, node_data, node_rect, show_foundation=False,
     n_items = len(legend_handles)
     legend_h = n_items * LINE_H * 1.8 * font_scale + HEADER_H * 2 * font_scale
 
-    # Start position: bottom-right of graph
+    # Position: bottom-right, legend bottom aligned with lowest node bottom
+    legend_bottom = min(all_bottoms)
     legend_x = max(all_rights) - legend_w
-    legend_y = min(all_bottoms)
 
-    # Check overlap with bottom layers: find nodes whose right edge
-    # extends into the legend area AND whose vertical span overlaps
+    # Check overlap with nodes
     overlap = False
     for nid, (bx, by, bw, bh) in node_rect.items():
         node_right = bx + bw
         node_top = by + bh
         node_bottom = by
-        # Check if node overlaps with legend box
         if (node_right > legend_x - BOX_GAP_X and
             bx < legend_x + legend_w + BOX_GAP_X and
-            node_top > legend_y and
-            node_bottom < legend_y + legend_h):
+            node_top > legend_bottom and
+            node_bottom < legend_bottom + legend_h):
             overlap = True
             break
 
     if overlap:
-        # Move legend to just right of the rightmost node
         legend_x = max(all_rights) + BOX_GAP_X * 2
 
-    # Convert data coords to axes fraction for bbox_to_anchor
-    # We need to use data coordinates via a manual transform
-    # Simpler: just use loc="lower right" with bbox_to_anchor in data coords
-    # matplotlib can place legend at data coordinates via transform
-    leg = ax.legend(handles=legend_handles, loc="upper left",
-                    bbox_to_anchor=(legend_x, legend_y + legend_h),
+    # Anchor legend by its bottom-left corner
+    leg = ax.legend(handles=legend_handles, loc="lower left",
+                    bbox_to_anchor=(legend_x, legend_bottom),
                     bbox_transform=ax.transData,
                     fontsize=14 * font_scale, frameon=False,
                     title="Node types", title_fontsize=16 * font_scale)
