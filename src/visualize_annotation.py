@@ -43,13 +43,13 @@ PROOF_COLOR = "#E8DAEF"
 
 # ── Layout constants (shared between draw_dag and draw_foundation_ghosts) ──
 MIN_BOX_W = 3.0
-MAX_BOX_W = 7.5
+MAX_BOX_W = 6.0
 BOX_GAP_X = 0.5
 LEVEL_GAP_Y = 5.0
 HEADER_H = 0.45
 LINE_H = 0.28
 PADDING = 0.10
-CHARS_PER_UNIT = 10
+CHARS_PER_UNIT = 12
 
 
 # ── Text helpers ────────────────────────────────────────────────────────────
@@ -757,28 +757,10 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         w = max(MIN_BOX_W, min(MAX_BOX_W, max_line / CHARS_PER_UNIT))
         node_width[nid] = w
 
-    # ── Widen boxes in sparse layers ──
-    # If a layer has few nodes, allow them to be wider (up to 2x MAX_BOX_W)
-    # This helps wide math formulas fit without overflow
-    max_row_width = max(
-        sum(node_width[n["id"]] for n in levels.get(d, [])) + max(0, len(levels.get(d, [])) - 1) * BOX_GAP_X
-        for d in range(max_depth + 1)
-    ) if max_depth >= 0 else 20
-
-    for d in range(max_depth + 1):
-        row = levels.get(d, [])
-        if len(row) == 0:
-            continue
-        row_width = sum(node_width[n["id"]] for n in row) + max(0, len(row) - 1) * BOX_GAP_X
-        slack = max_row_width - row_width
-        if slack > 1.0 and len(row) <= 3:
-            # Distribute slack to widen nodes in this sparse row
-            extra_per_node = min(slack / len(row), MAX_BOX_W)  # up to double width
-            for n in row:
-                nid = n["id"]
-                node_width[nid] = min(node_width[nid] + extra_per_node, MAX_BOX_W * 2)
-
-    # ── Second pass: compute heights and positions ──
+    # ── Second pass: compute heights, refine widths, compute positions ──
+    # After wrapping text to initial box width, measure actual widest line
+    # and adjust box width to fit (+ 5% margin). This avoids both overflow
+    # and wasteful over-widening.
     node_pos = {}
     node_rect = {}
 
@@ -848,6 +830,26 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 stmt_lines = _wrap(stmt, wrap_w)[:5]
                 stmt_height = sum(_line_h(l) for l in stmt_lines) if stmt_lines else LINE_H
                 h = HEADER_H + stmt_height + 2 * PADDING
+
+            # Refine width: find widest wrapped line and fit box to it + 5% margin
+            all_display_lines = []
+            if ntype in ("theorem", "lemma", "corollary", "proposition", "claim"):
+                all_display_lines = assume_lines + conclude_lines + proof_lines
+            elif ntype == "algorithm" and (n.get("input") or n.get("output")):
+                all_display_lines = in_lines + out_lines
+            else:
+                all_display_lines = stmt_lines if 'stmt_lines' in dir() else []
+
+            if all_display_lines:
+                widest = max(_display_width(l) for l in all_display_lines)
+                # Also consider header
+                header_name = n.get("name") or ""
+                header_w = len(nid) + 2 + len(header_name[:30])
+                widest = max(widest, header_w)
+                # Convert to data units and add margin
+                needed_w = (widest / CHARS_PER_UNIT) + 2 * PADDING + 0.3
+                w = max(MIN_BOX_W, min(needed_w * 1.05, MAX_BOX_W * 2))
+                node_width[nid] = w
 
             node_pos[nid] = (x_cursor + w / 2, cy_top - h / 2)
             node_rect[nid] = (x_cursor, cy_top - h, w, h)
