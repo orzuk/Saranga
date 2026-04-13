@@ -54,26 +54,20 @@ CHARS_PER_UNIT = 12
 
 # ── Text helpers ────────────────────────────────────────────────────────────
 # LaTeX commands not supported by matplotlib mathtext — replace with equivalents
+# ONLY replace commands that matplotlib mathtext CANNOT render.
+# Tested: \mathbb, \mathcal, \mathrm, \mathbf, \operatorname, \text,
+# \boldsymbol, \triangleq, Greek letters, \nabla, \frac, \sum, \int,
+# \prod, \log, \sim, \in, \leq, \geq, \forall, \exists ALL WORK.
 _LATEX_FIXES = {
-    r"\iff": r"\Leftrightarrow",
-    r"\implies": r"\Rightarrow",
-    r"\Pr": r"\mathrm{Pr}",
-    r"\boldsymbol": r"\mathbf",
-    r"\bm": r"\mathbf",
-    r"\mathbb": r"\mathrm",
+    # These FAIL in matplotlib and need replacement:
+    r"\bm": r"\mathbf",                  # \bm not supported
+    r"\lVert": r"\|", r"\rVert": r"\|",  # \lVert/\rVert not supported
+    r"\coloneqq": r":=",                 # \coloneqq not supported
+    r"\pmod": r"\mathrm{mod}",           # \pmod not supported
+    # Sizing delimiters — not supported standalone, replace with plain:
     r"\big|": "|", r"\Big|": "|", r"\bigg|": "|",
     r"\big(": "(", r"\Big(": "(", r"\big)": ")", r"\Big)": ")",
-    r"\left|": "|", r"\right|": "|",
-    r"\text": r"\mathrm",
-    r"\operatorname": r"\mathrm",
-    r"\binom": r"\mathrm{C}",
-    r"\pmod": r"\mathrm{mod}",
-    r"\mod": r"\mathrm{mod}",
-    r"\lceil": r"\lfloor", r"\rceil": r"\rfloor",
-    r"\lVert": r"\|", r"\rVert": r"\|",
-    r"\triangleq": r"=",
-    r"\coloneqq": r":=",
-    r"\lfloor": r"\lfloor", r"\rfloor": r"\rfloor",  # these are fine
+    r"\bigg(": "(", r"\Bigg(": "(", r"\bigg)": ")", r"\Bigg)": ")",
 }
 
 # Regex-based fixes: commands like \ge that are prefixes of valid commands (\geq)
@@ -83,6 +77,9 @@ _LATEX_REGEX_FIXES = [
     (_re.compile(r'\\ge(?!q)'), r'\\geq'),
     (_re.compile(r'\\le(?!q|ft)'), r'\\leq'),
     (_re.compile(r'\\ne(?!g|wcommand)'), r'\\neq'),
+    # \left( → (, \right) → ), \left[ → [, etc.
+    (_re.compile(r'\\left\s*([(\[|.])'), r'\1'),
+    (_re.compile(r'\\right\s*([)\]|.])'), r'\1'),
 ]
 
 def _sanitize_math(text):
