@@ -196,9 +196,58 @@ def _to_display_text(text):
 
 
 def _wrap(text, width=38):
+    """Wrap text to width, never breaking inside $...$ math expressions."""
     if not text:
         return []
-    return textwrap.wrap(text, width=width)
+    # If no math, simple wrap
+    if "$" not in text:
+        return textwrap.wrap(text, width=width)
+
+    # Split text into math ($...$) and non-math segments
+    segments = []
+    i = 0
+    while i < len(text):
+        if text[i] == "$":
+            # Find closing $
+            j = text.find("$", i + 1)
+            if j == -1:
+                segments.append(text[i:])
+                break
+            segments.append(text[i:j+1])  # include both $
+            i = j + 1
+        else:
+            # Find next $ or end
+            j = text.find("$", i)
+            if j == -1:
+                segments.append(text[i:])
+                break
+            segments.append(text[i:j])
+            i = j
+
+    # Now wrap: accumulate segments into lines, breaking between segments
+    lines = []
+    current = ""
+    for seg in segments:
+        if not seg:
+            continue
+        # If adding this segment would exceed width and we have content, wrap
+        if current and len(current) + len(seg) > width:
+            lines.append(current.strip())
+            current = seg
+        else:
+            current += seg
+    if current.strip():
+        lines.append(current.strip())
+
+    # Further wrap non-math lines that are still too long
+    result = []
+    for line in lines:
+        if "$" not in line and len(line) > width:
+            result.extend(textwrap.wrap(line, width=width))
+        else:
+            result.append(line)
+
+    return result
 
 
 def _shorten(text, maxlen=80):
