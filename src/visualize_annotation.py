@@ -396,10 +396,23 @@ def merge_proofs(nodes, edges):
     proof_map = {}  # proof_id -> theorem_id
 
     for n in nodes:
-        if n["type"] == "proof" and n.get("proves"):
-            target_id = n["proves"]
+        if n["type"] == "proof":
+            # Support both "proves" and "parent" fields for linking to parent theorem
+            target_id = n.get("proves") or n.get("parent") or ""
             if target_id in node_by_id:
                 proof_map[n["id"]] = target_id
+
+    # Also find proofs linked via "proves" edges (e.g., theorem -> proof edge)
+    for e in edges:
+        if e.get("type") == "proves":
+            src, tgt = e["source"], e["target"]
+            # Could be theorem->proof or proof->theorem depending on convention
+            if src in node_by_id and node_by_id.get(tgt, {}).get("type") == "proof":
+                if tgt not in proof_map:
+                    proof_map[tgt] = src
+            elif tgt in node_by_id and node_by_id.get(src, {}).get("type") == "proof":
+                if src not in proof_map:
+                    proof_map[src] = tgt
 
     # Attach proof info to parent theorem (reset first to avoid duplication on repeated calls)
     for n in nodes:
@@ -744,6 +757,27 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         w = max(MIN_BOX_W, min(MAX_BOX_W, max_line / CHARS_PER_UNIT))
         node_width[nid] = w
 
+    # ── Widen boxes in sparse layers ──
+    # If a layer has few nodes, allow them to be wider (up to 2x MAX_BOX_W)
+    # This helps wide math formulas fit without overflow
+    max_row_width = max(
+        sum(node_width[n["id"]] for n in levels.get(d, [])) + max(0, len(levels.get(d, [])) - 1) * BOX_GAP_X
+        for d in range(max_depth + 1)
+    ) if max_depth >= 0 else 20
+
+    for d in range(max_depth + 1):
+        row = levels.get(d, [])
+        if len(row) == 0:
+            continue
+        row_width = sum(node_width[n["id"]] for n in row) + max(0, len(row) - 1) * BOX_GAP_X
+        slack = max_row_width - row_width
+        if slack > 1.0 and len(row) <= 3:
+            # Distribute slack to widen nodes in this sparse row
+            extra_per_node = min(slack / len(row), MAX_BOX_W)  # up to double width
+            for n in row:
+                nid = n["id"]
+                node_width[nid] = min(node_width[nid] + extra_per_node, MAX_BOX_W * 2)
+
     # ── Second pass: compute heights and positions ──
     node_pos = {}
     node_rect = {}
@@ -760,6 +794,14 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             wrap_w = max(20, int(w * CHARS_PER_UNIT) - 4)  # subtract margin for padding + bullet
             cy_top = -d * LEVEL_GAP_Y
             ntype = n.get("type", "")
+
+            # Line height: tall math > inline math > plain text
+            def _line_h(line):
+                if _has_tall_math(line):
+                    return LINE_H * 2.5
+                elif "$" in str(line):
+                    return LINE_H * 1.5
+                return LINE_H
 
             if ntype in ("theorem", "lemma", "corollary", "proposition", "claim"):
                 assumptions = n.get("assumptions", [])
@@ -782,10 +824,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                     if ps:
                         proof_lines.extend(_wrap(_prepare_for_display(f"Proof: {ps}"), wrap_w))
 
-                # Count lines, using extra height for lines with tall math
-                TALL_LINE_H = LINE_H * 2.2
-                assume_heights = sum(TALL_LINE_H if _has_tall_math(l) else LINE_H for l in assume_lines) or LINE_H
-                conclude_heights = sum(TALL_LINE_H if _has_tall_math(l) else LINE_H for l in conclude_lines) or LINE_H
+                assume_heights = sum(_line_h(l) for l in assume_lines) or LINE_H
+                conclude_heights = sum(_line_h(l) for l in conclude_lines) or LINE_H
                 n_proof = len(proof_lines)
 
                 h = HEADER_H + PADDING
@@ -806,8 +846,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
                 stmt = _prepare_for_display(raw)
                 stmt_lines = _wrap(stmt, wrap_w)[:5]
-                n_stmt = max(len(stmt_lines), 1)
-                h = HEADER_H + n_stmt * LINE_H + 2 * PADDING
+                stmt_height = sum(_line_h(l) for l in stmt_lines) if stmt_lines else LINE_H
+                h = HEADER_H + stmt_height + 2 * PADDING
 
             node_pos[nid] = (x_cursor + w / 2, cy_top - h / 2)
             node_rect[nid] = (x_cursor, cy_top - h, w, h)
@@ -899,6 +939,14 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 color="white")
         cursor_y -= HEADER_H + PADDING
 
+        # Line height helper — must match height computation exactly
+        def _line_h_draw(line):
+            if _has_tall_math(line):
+                return LINE_H * 2.5
+            elif "$" in line:
+                return LINE_H * 1.5
+            return LINE_H
+
         if ntype in ("theorem", "lemma", "corollary", "proposition", "claim"):
             # Wrap text to box width (same logic as height computation)
             dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT) - 4)
@@ -920,8 +968,6 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             if not c_lines:
                 c_lines = ["(none)"]
 
-            TALL_LINE_H = LINE_H * 2.2
-
             # Assumptions
             ax.text(bx + PADDING, cursor_y, "Assume:",
                     ha="left", va="top", fontsize=13, fontweight="bold", color="#333")
@@ -930,7 +976,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
                         ha="left", va="top", fontsize=12, color="#222",
                         fontstyle="italic")
-                cursor_y -= TALL_LINE_H if _has_tall_math(line) else LINE_H
+                cursor_y -= _line_h_draw(line)
 
             cursor_y -= PADDING * 0.3
 
@@ -945,7 +991,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             for line in c_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
                         ha="left", va="top", fontsize=12, color="#222")
-                cursor_y -= TALL_LINE_H if _has_tall_math(line) else LINE_H
+                cursor_y -= _line_h_draw(line)
 
             # Proof strategy (if merged)
             proof_strategies = n.get("proof_info", [])
@@ -996,7 +1042,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             for line in stmt_lines:
                 ax.text(bx + PADDING, cursor_y, line,
                         ha="left", va="top", fontsize=12, color="#222")
-                cursor_y -= LINE_H
+                cursor_y -= _line_h_draw(line)
 
     # ── Ghost nodes (external foundation dependencies) ──
     _base_ids = set(node_data.keys())
