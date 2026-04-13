@@ -96,6 +96,37 @@ def _sanitize_math(text):
     return text
 
 
+def _prepare_for_display(text):
+    """Prepare text for matplotlib rendering: keep math in $...$, fix unsupported commands.
+
+    - Text already in $...$ is sanitized (unsupported commands replaced)
+    - Text with bare LaTeX notation (subscripts, Greek, etc.) gets wrapped in $...$
+    - Truly unrenderable things fall back to their command name
+    """
+    if not text:
+        return ""
+    t = text
+
+    # If text has $...$ already, just sanitize the math parts
+    if "$" in t:
+        return _sanitize_math(t)
+
+    # Text without $: check if it contains math-like patterns
+    # If so, try wrapping the whole thing (or parts) in $...$
+    has_math = bool(_re.search(
+        r'[_^{}\\]|>=|<=|!=|\balpha\b|\bbeta\b|\bgamma\b|\bdelta\b|'
+        r'\btheta\b|\blambda\b|\bsigma\b|\bepsilon\b|\binfty\b|'
+        r'\bforall\b|\bexists\b|\bsubset\b', t))
+
+    if not has_math:
+        return t  # plain text, no math
+
+    # Has math-like notation but no $ delimiters.
+    # Can't reliably auto-wrap arbitrary LaTeX fragments in $...$,
+    # so fall back to clean plain text.
+    return _to_display_text(t)
+
+
 def _to_display_text(text):
     """Convert LaTeX-rich text to clean plain text for PNG display.
 
@@ -583,7 +614,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             for x in (n.get("output") or []): lines.append(_shorten(x, 100))
         else:
             raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
-            lines.append(_shorten(_to_display_text(raw), 150))
+            lines.append(_shorten(_prepare_for_display(raw), 150))
         return lines
 
     # ── First pass: compute each node's ideal width ──
@@ -622,18 +653,18 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 # Wrap each item to box width, then flatten
                 assume_lines = []
                 for a in assumptions[:MAX_LINES_PER_SECTION]:
-                    assume_lines.extend(_wrap(_to_display_text(a), wrap_w) or [a[:wrap_w]])
+                    assume_lines.extend(_wrap(_prepare_for_display(a), wrap_w) or [a[:wrap_w]])
                 if len(assumptions) > MAX_LINES_PER_SECTION:
                     assume_lines.append(f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more")
                 conclude_lines = []
                 for c in conclusions[:MAX_LINES_PER_SECTION]:
-                    conclude_lines.extend(_wrap(_to_display_text(c), wrap_w) or [c[:wrap_w]])
+                    conclude_lines.extend(_wrap(_prepare_for_display(c), wrap_w) or [c[:wrap_w]])
                 if len(conclusions) > MAX_LINES_PER_SECTION:
                     conclude_lines.append(f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more")
                 proof_lines = []
                 for ps in proof_strategies:
                     if ps:
-                        proof_lines.extend(_wrap(_to_display_text(f"Proof: {ps}"), wrap_w))
+                        proof_lines.extend(_wrap(_prepare_for_display(f"Proof: {ps}"), wrap_w))
 
                 n_assume = max(len(assume_lines), 1)
                 n_conclude = max(len(conclude_lines), 1)
@@ -655,7 +686,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             else:
                 # Use statement, or name as fallback (e.g., proofs with descriptive names)
                 raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
-                stmt = _to_display_text(raw)
+                stmt = _prepare_for_display(raw)
                 stmt_lines = _wrap(stmt, wrap_w)[:5]
                 n_stmt = max(len(stmt_lines), 1)
                 h = HEADER_H + n_stmt * LINE_H + 2 * PADDING
@@ -750,7 +781,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             assumptions = n.get("assumptions", [])
             a_lines = []
             for a in assumptions[:MAX_LINES_PER_SECTION]:
-                a_lines.extend(_wrap(_to_display_text(a), dyn_wrap) or [a[:dyn_wrap]])
+                a_lines.extend(_wrap(_prepare_for_display(a), dyn_wrap) or [a[:dyn_wrap]])
             if len(assumptions) > MAX_LINES_PER_SECTION:
                 a_lines.append(f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more")
             if not a_lines:
@@ -759,7 +790,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             conclusions = n.get("conclusions", [])
             c_lines = []
             for c in conclusions[:MAX_LINES_PER_SECTION]:
-                c_lines.extend(_wrap(_to_display_text(c), dyn_wrap) or [c[:dyn_wrap]])
+                c_lines.extend(_wrap(_prepare_for_display(c), dyn_wrap) or [c[:dyn_wrap]])
             if len(conclusions) > MAX_LINES_PER_SECTION:
                 c_lines.append(f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more")
             if not c_lines:
@@ -798,7 +829,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                         color="#999", lw=0.5, alpha=0.4)
                 for ps in proof_strategies:
                     if ps:
-                        for pline in _wrap(_to_display_text(f"Proof: {ps}"), dyn_wrap):
+                        for pline in _wrap(_prepare_for_display(f"Proof: {ps}"), dyn_wrap):
                             ax.text(bx + PADDING, cursor_y, pline,
                                     ha="left", va="top", fontsize=10.5,
                                     color="#444", fontstyle="italic")
@@ -832,7 +863,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             # Simple box: wrap statement/name text to box width (up to 5 lines)
             dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT))
             raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
-            stmt = _to_display_text(raw)
+            stmt = _prepare_for_display(raw)
             stmt_lines = _wrap(stmt, dyn_wrap)[:5]
             if not stmt_lines:
                 stmt_lines = [""]
