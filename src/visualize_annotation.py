@@ -41,6 +41,16 @@ NODE_COLORS = {
 DEFAULT_COLOR = {"header": "#566573", "body": "#EAECEE"}
 PROOF_COLOR = "#E8DAEF"
 
+# ── Layout constants (shared between draw_dag and draw_foundation_ghosts) ──
+MIN_BOX_W = 3.0
+MAX_BOX_W = 6.0
+BOX_GAP_X = 0.5
+LEVEL_GAP_Y = 5.0
+HEADER_H = 0.45
+LINE_H = 0.28
+PADDING = 0.10
+CHARS_PER_UNIT = 9
+
 
 # ── Text helpers ────────────────────────────────────────────────────────────
 # LaTeX commands not supported by matplotlib mathtext — replace with equivalents
@@ -211,6 +221,183 @@ def merge_proofs(nodes, edges):
     return display_nodes, display_edges, proof_map
 
 
+# ── Foundation graph linking (shared by PNG and HTML) ────────────────────────
+
+def _resolve_foundation_path(foundation_path=None):
+    """Find the best available foundation index path."""
+    if foundation_path is not None:
+        return foundation_path
+    # Auto-detect from common locations
+    candidates = [
+        Path("/mnt/g/My Drive/Research/Automath/naturalproofs/clean_foundation.json"),
+        Path("/sci/labs/orzuk/orzuk/projects/Authomathics/naturalproofs/clean_foundation.json"),
+    ]
+    # Also try via config.py DATA_DIR
+    try:
+        from config import DATA_DIR
+        candidates.insert(0, Path(str(DATA_DIR)) / "naturalproofs" / "clean_foundation.json")
+    except ImportError:
+        pass
+    for c in candidates:
+        if c.exists():
+            return str(c)
+    return None  # will fall back to built-in WELL_KNOWN
+
+
+def compute_foundation_links(nodes_raw, base_ids, foundation_path=None):
+    """Compute foundation ghost map: foundation_name -> list of base node IDs.
+
+    Shared by draw_dag (PNG rendering) and generate_interactive_html.
+
+    Args:
+        nodes_raw: list of all node dicts (including proofs, proof steps).
+        base_ids: set of node IDs for base nodes (definitions, theorems, lemmas, etc.)
+        foundation_path: path to clean_foundation.json, or None for auto-detect.
+
+    Returns:
+        (ghost_map, case1_matches):
+            ghost_map: {foundation_name: [base_node_ids]} — for ghost node rendering
+            case1_matches: {base_node_id: [foundation_names]} — for inline annotations
+    """
+    from link_to_foundation import build_foundation_index, link_paper
+
+    fg_path = _resolve_foundation_path(foundation_path)
+    fg_index = build_foundation_index(fg_path)
+    matches = link_paper(nodes_raw, fg_index, min_term_len=5)
+
+    ghost_map = {}   # foundation_name -> set of base node IDs
+    case1 = {}       # base_node_id -> list of foundation names
+
+    for m in matches:
+        nid = m["node_id"]
+        fname = m["foundation_name"]
+        if nid in base_ids:
+            # Direct match on a base node
+            ghost_map.setdefault(fname, set()).add(nid)
+            case1.setdefault(nid, []).append(fname)
+        else:
+            # Match on proof step — trace to parent base node
+            parent = nid
+            for nr in nodes_raw:
+                if nr["id"] == parent:
+                    if nr.get("parent_proof"):
+                        for nr2 in nodes_raw:
+                            if nr2["id"] == nr["parent_proof"] and nr2.get("proves"):
+                                parent = nr2["proves"]
+                                break
+                        break
+                    if nr.get("proves") and nr["proves"] in base_ids:
+                        parent = nr["proves"]
+                        break
+            if parent in base_ids:
+                ghost_map.setdefault(fname, set()).add(parent)
+                case1.setdefault(parent, []).append(fname)
+
+    # Convert sets to lists
+    ghost_map = {k: sorted(v) for k, v in ghost_map.items()}
+    case1 = {k: sorted(set(v)) for k, v in case1.items()}
+    return ghost_map, case1
+
+
+def draw_foundation_ghosts(ax, ghost_map, node_rect):
+    """Draw foundation ghost nodes and their dashed edges on a matplotlib axes.
+
+    Args:
+        ax: matplotlib axes.
+        ghost_map: {foundation_name: [base_node_ids]} from compute_foundation_links.
+        node_rect: {node_id: (x, y, w, h)} from draw_dag layout.
+    """
+    if not ghost_map or not node_rect:
+        return {}
+
+    from matplotlib.patches import FancyArrowPatch
+
+    all_tops = [by + bh for (bx, by, bw, bh) in node_rect.values()]
+    ghost_y_top = max(all_tops) + LEVEL_GAP_Y * 0.8
+    ghost_w = MIN_BOX_W * 1.1
+    ghost_h = HEADER_H + LINE_H * 1.5 + PADDING
+    ghost_names = sorted(ghost_map.keys())
+    total_ghost_w = len(ghost_names) * ghost_w + (len(ghost_names) - 1) * BOX_GAP_X * 0.5
+    ghost_start_x = -total_ghost_w / 2
+
+    ghost_rects = {}
+    for gi, gname in enumerate(ghost_names):
+        gx = ghost_start_x + gi * (ghost_w + BOX_GAP_X * 0.5)
+        gy = ghost_y_top
+
+        # Ghost box (dashed gray)
+        grect = FancyBboxPatch(
+            (gx, gy - ghost_h), ghost_w, ghost_h,
+            boxstyle="round,pad=0.05",
+            facecolor="#E8E8E8", edgecolor="#777777",
+            linewidth=1.5, linestyle="dashed",
+            gid=f"ghost_box_{gi}",
+        )
+        ax.add_patch(grect)
+        # Header bar
+        gheader = FancyBboxPatch(
+            (gx, gy - HEADER_H), ghost_w, HEADER_H,
+            boxstyle="round,pad=0.05",
+            facecolor="#777777", edgecolor="#777777",
+            linewidth=0,
+            gid=f"ghost_header_{gi}",
+        )
+        ax.add_patch(gheader)
+        # Name text
+        short_name = gname if len(gname) <= 22 else gname[:19] + "..."
+        ax.text(gx + ghost_w / 2, gy - HEADER_H / 2, short_name,
+                ha="center", va="center", fontsize=12, fontweight="bold",
+                color="white", gid=f"ghost_text_{gi}")
+        # References text
+        refs_str = "→ " + ", ".join(ghost_map[gname])
+        ax.text(gx + ghost_w / 2, gy - HEADER_H - LINE_H * 0.7, refs_str,
+                ha="center", va="center", fontsize=10, color="#555",
+                gid=f"ghost_refs_{gi}")
+
+        ghost_rects[gname] = (gx, gy - ghost_h, ghost_w, ghost_h)
+
+        # Dashed edges to target nodes
+        for ti, target_id in enumerate(ghost_map[gname]):
+            if target_id in node_rect:
+                tx, ty, tw, th = node_rect[target_id]
+                arrow = FancyArrowPatch(
+                    (gx + ghost_w / 2, gy - ghost_h),
+                    (tx + tw / 2, ty + th),
+                    arrowstyle="-|>,head_length=0.8,head_width=0.35",
+                    color="#999999", lw=1.5,
+                    linestyle="dashed",
+                    connectionstyle="arc3,rad=0.05",
+                    shrinkA=3, shrinkB=3,
+                    gid=f"ghost_edge_{gi}_{ti}",
+                )
+                ax.add_patch(arrow)
+
+    return ghost_rects
+
+
+def draw_legend(ax, node_data, show_foundation=False, has_ghosts=False):
+    """Draw the legend on a matplotlib axes."""
+    legend_handles = []
+    for ntype, cols in NODE_COLORS.items():
+        if any(node_data[nid].get("type") == ntype for nid in node_data):
+            legend_handles.append(
+                mpatches.Patch(facecolor=cols["body"], edgecolor=cols["header"],
+                               linewidth=1.5, label=ntype.title())
+            )
+    legend_handles.append(
+        plt.Line2D([0], [0], color="#666666", lw=2.5, marker=">",
+                   markersize=10, label="A supports B")
+    )
+    if show_foundation and has_ghosts:
+        legend_handles.append(
+            mpatches.Patch(facecolor="#E8E8E8", edgecolor="#777777",
+                           linewidth=1.5, linestyle="dashed",
+                           label="Foundation (ext.)")
+        )
+    ax.legend(handles=legend_handles, loc="upper right", fontsize=16,
+              frameon=False, title="Node types", title_fontsize=18)
+
+
 # ── Drawing ─────────────────────────────────────────────────────────────────
 def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
              resolution="standard", show_legend=True, show_foundation=False,
@@ -259,14 +446,9 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
     max_width = max(len(v) for v in levels.values()) if levels else 1
 
     # ── Box dimensions ──
-    MIN_BOX_W = 3.0
-    MAX_BOX_W = 6.0
-    BOX_GAP_X = 0.5
-    LEVEL_GAP_Y = 5.0
-    HEADER_H = 0.45
-    LINE_H = 0.28
-    PADDING = 0.10
-    CHARS_PER_UNIT = 12  # approx chars per unit of box width
+    # Layout constants are module-level (shared with draw_foundation_ghosts)
+    pass
+    # CHARS_PER_UNIT defined at module level
     MAX_LINES_PER_SECTION = 3
 
     def _content_lines(n):
@@ -362,6 +544,12 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         avg_w = sum(node_width.values()) / max(len(node_width), 1)
         fw = max(max_width * (avg_w + BOX_GAP_X) + 4, 16)
         fh = max((max_depth + 1) * LEVEL_GAP_Y + 4, 12)
+        # Cap figure size so fonts remain readable relative to the figure.
+        # Very large figures make point-sized fonts look tiny.
+        MAX_FIG_W, MAX_FIG_H = 28, 24
+        if fw > MAX_FIG_W or fh > MAX_FIG_H:
+            scale = min(MAX_FIG_W / fw, MAX_FIG_H / fh)
+            fw, fh = fw * scale, fh * scale
         figsize = (fw, fh)
 
     fig, ax = plt.subplots(1, 1, figsize=figsize)
@@ -520,113 +708,12 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 cursor_y -= LINE_H
 
     # ── Ghost nodes (external foundation dependencies) ──
-    # Always compute the ghost map (needed for SVG/HTML regardless of
-    # show_foundation), but only *draw* the ghosts when show_foundation=True.
-    from link_to_foundation import build_foundation_index, link_paper
-
-    # Resolve foundation index path
-    _fg_path = foundation_path
-    if _fg_path is None:
-        _default_fg = Path("/mnt/g/My Drive/Research/Automath/naturalproofs/clean_foundation.json")
-        if _default_fg.exists():
-            _fg_path = str(_default_fg)
-    _fg_index = build_foundation_index(_fg_path)
-    _fg_matches = link_paper(nodes_raw, _fg_index, min_term_len=5)
-
-    # Build ghost map: foundation_name -> set of base node IDs that reference it.
-    # Case 1: match is on a base node directly -> add it.
-    # Case 2: match is on a proof step -> trace to parent base node.
     _base_ids = set(node_data.keys())
-    _ghost_map = {}  # foundation_name -> set of base node IDs that reference it
-    for m in _fg_matches:
-        nid = m["node_id"]
-        if nid in _base_ids:
-            # Case 1: direct match on a base node
-            _ghost_map.setdefault(m["foundation_name"], set()).add(nid)
-        else:
-            # Case 2: match on proof step — trace to parent base node
-            parent = nid
-            for nr in nodes_raw:
-                if nr["id"] == parent:
-                    if nr.get("parent_proof"):
-                        for nr2 in nodes_raw:
-                            if nr2["id"] == nr["parent_proof"] and nr2.get("proves"):
-                                parent = nr2["proves"]
-                                break
-                        break
-                    if nr.get("proves") and nr["proves"] in _base_ids:
-                        parent = nr["proves"]
-                        break
-            if parent in _base_ids:
-                _ghost_map.setdefault(m["foundation_name"], set()).add(parent)
-    _ghost_map = {k: list(v) for k, v in _ghost_map.items()}
+    _ghost_map, _case1_matches = compute_foundation_links(
+        nodes_raw, _base_ids, foundation_path=foundation_path)
 
-    if _ghost_map and node_rect and show_foundation:
-        # Position ghost nodes in a row ABOVE the top layer
-        all_tops = [by + bh for (bx, by, bw, bh) in node_rect.values()]
-        ghost_y_top = max(all_tops) + LEVEL_GAP_Y * 0.8
-        ghost_w = MIN_BOX_W * 1.1
-        ghost_h = HEADER_H + LINE_H * 1.5 + PADDING
-        ghost_names = sorted(_ghost_map.keys())
-        total_ghost_w = len(ghost_names) * ghost_w + (len(ghost_names) - 1) * BOX_GAP_X * 0.5
-        ghost_start_x = -total_ghost_w / 2
-
-        ghost_rects = {}  # name -> (x, y, w, h)
-        for gi, gname in enumerate(ghost_names):
-            gx = ghost_start_x + gi * (ghost_w + BOX_GAP_X * 0.5)
-            gy = ghost_y_top
-
-            # Draw ghost node box with header (like regular nodes)
-            grect = FancyBboxPatch(
-                (gx, gy - ghost_h), ghost_w, ghost_h,
-                boxstyle="round,pad=0.05",
-                facecolor="#E8E8E8", edgecolor="#777777",
-                linewidth=1.5, linestyle="dashed",
-                gid=f"ghost_box_{gi}",
-            )
-            ax.add_patch(grect)
-            # Header bar
-            gheader = FancyBboxPatch(
-                (gx, gy - HEADER_H), ghost_w, HEADER_H,
-                boxstyle="round,pad=0.05",
-                facecolor="#777777", edgecolor="#777777",
-                linewidth=0,
-                gid=f"ghost_header_{gi}",
-            )
-            ax.add_patch(gheader)
-            # Name in header
-            short_name = gname if len(gname) <= 22 else gname[:19] + "..."
-            ax.text(gx + ghost_w / 2, gy - HEADER_H / 2, short_name,
-                    ha="center", va="center", fontsize=12, fontweight="bold",
-                    color="white", gid=f"ghost_text_{gi}")
-            # References below header
-            refs_str = "→ " + ", ".join(_ghost_map[gname])
-            ax.text(gx + ghost_w / 2, gy - HEADER_H - LINE_H * 0.7, refs_str,
-                    ha="center", va="center", fontsize=10, color="#555",
-                    gid=f"ghost_refs_{gi}")
-
-            ghost_rects[gname] = (gx, gy - ghost_h, ghost_w, ghost_h)
-
-            # Draw dashed edges to target nodes
-            from matplotlib.patches import FancyArrowPatch
-            for ti, target_id in enumerate(_ghost_map[gname]):
-                if target_id in node_rect:
-                    tx, ty, tw, th = node_rect[target_id]
-                    arrow = FancyArrowPatch(
-                        (gx + ghost_w / 2, gy - ghost_h),
-                        (tx + tw / 2, ty + th),
-                        arrowstyle="-|>,head_length=0.8,head_width=0.35",
-                        color="#999999", lw=1.5,
-                        linestyle="dashed",
-                        connectionstyle="arc3,rad=0.05",
-                        shrinkA=3, shrinkB=3,
-                        gid=f"ghost_edge_{gi}_{ti}",
-                    )
-                    ax.add_patch(arrow)
-
-        # Add ghost legend entry when foundation nodes are shown
-        if show_legend:
-            pass  # legend entry added below in the legend section
+    if show_foundation and _ghost_map:
+        draw_foundation_ghosts(ax, _ghost_map, node_rect)
 
     # ── Misc/Orphan equations box ──
     # Count orphan equations from the FULL node list (before filtering)
@@ -683,25 +770,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
 
     # ── Legend ──
     if show_legend:
-        legend_handles = []
-        for ntype, cols in NODE_COLORS.items():
-            if any(node_data[nid].get("type") == ntype for nid in node_data):
-                legend_handles.append(
-                    mpatches.Patch(facecolor=cols["body"], edgecolor=cols["header"],
-                                   linewidth=1.5, label=ntype.title())
-                )
-        legend_handles.append(
-            plt.Line2D([0], [0], color="#666666", lw=2.5, marker=">",
-                       markersize=10, label="A supports B")
-        )
-        if show_foundation and _ghost_map:
-            legend_handles.append(
-                mpatches.Patch(facecolor="#E8E8E8", edgecolor="#777777",
-                               linewidth=1.5, linestyle="dashed",
-                               label="Foundation (ext.)")
-            )
-        ax.legend(handles=legend_handles, loc="upper right", fontsize=16,
-                  frameon=False, title="Node types", title_fontsize=18)
+        draw_legend(ax, node_data, show_foundation=show_foundation,
+                    has_ghosts=bool(_ghost_map))
 
     # ── Title (from metadata if available) ──
     if metadata and metadata.get("chapter_title"):
@@ -719,7 +789,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         plt.tight_layout()
     except Exception:
         pass  # tight_layout can fail on complex math; savefig still works
-    plt.savefig(str(out_path), dpi=150, bbox_inches="tight", facecolor="white")
+    plt.savefig(str(out_path), dpi=200, bbox_inches="tight", facecolor="white")
 
     # Also save SVG if requested (for interactive HTML)
     svg_path = str(out_path).replace('.png', '.svg') if str(out_path).endswith('.png') else None
@@ -811,40 +881,9 @@ def generate_interactive_html(data, svg_path, html_path):
 
     base_nodes, base_edges, step_chains, eq_map, orphan_eqs = _classify_and_merge(nodes, edges)
 
-    # Foundation graph linking
-    from link_to_foundation import build_foundation_index, link_paper, WELL_KNOWN
-    index = build_foundation_index(None)  # built-in index only
-    matches = link_paper(nodes, index)
-
-    # Separate Case 1 (repeat: node exists) vs Case 2 (ghost: referenced but no node)
+    # Foundation graph linking (shared computation with draw_dag)
     base_ids = {n["id"] for n in base_nodes}
-    case1_matches = {}  # node_id -> list of foundation names
-    case2_ghosts = {}   # foundation_name -> list of node_ids that reference it
-    for m in matches:
-        if m["node_id"] in base_ids:
-            # Case 1: existing node matches foundation
-            case1_matches.setdefault(m["node_id"], []).append(m["foundation_name"])
-        else:
-            # Case 2: match in a proof step or equation, not a base node
-            # Find which base node this proof step belongs to
-            parent = m["node_id"]
-            # Check if it's a proof step — find its parent theorem
-            for n in nodes:
-                if n["id"] == parent and n.get("parent_proof"):
-                    # Find which theorem the proof proves
-                    for n2 in nodes:
-                        if n2["id"] == n["parent_proof"] and n2.get("proves"):
-                            parent = n2["proves"]
-                            break
-                    break
-                if n["id"] == parent and n.get("proves"):
-                    parent = n["proves"]
-                    break
-            if parent in base_ids:
-                case2_ghosts.setdefault(m["foundation_name"], set()).add(parent)
-
-    # Convert sets to lists for JSON
-    case2_ghosts = {k: list(v) for k, v in case2_ghosts.items()}
+    case2_ghosts, case1_matches = compute_foundation_links(nodes, base_ids)
 
     # Build detail data
     js_details = {}
