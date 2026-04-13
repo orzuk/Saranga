@@ -375,7 +375,8 @@ def draw_foundation_ghosts(ax, ghost_map, node_rect):
     return ghost_rects
 
 
-def draw_legend(ax, node_data, show_foundation=False, has_ghosts=False):
+def draw_legend(ax, node_data, show_foundation=False, has_ghosts=False,
+                font_scale=1.0):
     """Draw the legend on a matplotlib axes."""
     legend_handles = []
     for ntype, cols in NODE_COLORS.items():
@@ -394,8 +395,9 @@ def draw_legend(ax, node_data, show_foundation=False, has_ghosts=False):
                            linewidth=1.5, linestyle="dashed",
                            label="Foundation (ext.)")
         )
-    ax.legend(handles=legend_handles, loc="upper right", fontsize=16,
-              frameon=False, title="Node types", title_fontsize=18)
+    ax.legend(handles=legend_handles, loc="upper right",
+              fontsize=16 * font_scale, frameon=False,
+              title="Node types", title_fontsize=18 * font_scale)
 
 
 # ── Drawing ─────────────────────────────────────────────────────────────────
@@ -545,6 +547,10 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         fw = max(max_width * (avg_w + BOX_GAP_X) + 4, 16)
         fh = max((max_depth + 1) * LEVEL_GAP_Y + 4, 12)
         figsize = (fw, fh)
+
+    # Scale factor for title/legend: these are point-sized and need to grow
+    # with figure size to remain readable. Base: 16-inch wide figure.
+    _font_scale = max(figsize[0], figsize[1]) / 16.0
 
     fig, ax = plt.subplots(1, 1, figsize=figsize)
     ax.set_aspect("equal")
@@ -766,7 +772,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
     # ── Legend ──
     if show_legend:
         draw_legend(ax, node_data, show_foundation=show_foundation,
-                    has_ghosts=bool(_ghost_map))
+                    has_ghosts=bool(_ghost_map), font_scale=_font_scale)
 
     # ── Title (from metadata if available) ──
     if metadata and metadata.get("chapter_title"):
@@ -776,7 +782,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         title = f"{metadata['title']} — Knowledge Graph"
     else:
         title = "Knowledge Graph (DAG)"
-    ax.set_title(title, fontsize=24, fontweight="bold", pad=20)
+    ax.set_title(title, fontsize=24 * _font_scale, fontweight="bold",
+                  pad=20 * _font_scale)
 
     ax.autoscale()
     ax.margins(0.05)
