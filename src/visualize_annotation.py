@@ -375,9 +375,9 @@ def draw_foundation_ghosts(ax, ghost_map, node_rect):
     return ghost_rects
 
 
-def draw_legend(ax, node_data, show_foundation=False, has_ghosts=False,
-                font_scale=1.0):
-    """Draw the legend on a matplotlib axes."""
+def draw_legend(ax, node_data, node_rect, show_foundation=False,
+                has_ghosts=False, font_scale=1.0):
+    """Draw the legend in the bottom-right, shifting right only if overlapping nodes."""
     legend_handles = []
     for ntype, cols in NODE_COLORS.items():
         if any(node_data[nid].get("type") == ntype for nid in node_data):
@@ -395,11 +395,57 @@ def draw_legend(ax, node_data, show_foundation=False, has_ghosts=False,
                            linewidth=1.5, linestyle="dashed",
                            label="Foundation (ext.)")
         )
-    # Position legend at fixed top-right of axes (not data coords)
-    ax.legend(handles=legend_handles,
-              loc="upper left", bbox_to_anchor=(1.01, 1.0),
-              fontsize=14 * font_scale, frameon=False,
-              title="Node types", title_fontsize=16 * font_scale)
+
+    if not node_rect:
+        ax.legend(handles=legend_handles, loc="lower right",
+                  fontsize=14 * font_scale, frameon=False,
+                  title="Node types", title_fontsize=16 * font_scale)
+        return
+
+    # Compute legend size: ~15% of graph width, height depends on # items
+    all_lefts = [bx for (bx, by, bw, bh) in node_rect.values()]
+    all_rights = [bx + bw for (bx, by, bw, bh) in node_rect.values()]
+    all_bottoms = [by for (bx, by, bw, bh) in node_rect.values()]
+    all_tops = [by + bh for (bx, by, bw, bh) in node_rect.values()]
+
+    graph_w = max(all_rights) - min(all_lefts)
+    graph_h = max(all_tops) - min(all_bottoms)
+    legend_w = graph_w * 0.15
+    n_items = len(legend_handles)
+    legend_h = n_items * LINE_H * 1.8 * font_scale + HEADER_H * 2 * font_scale
+
+    # Start position: bottom-right of graph
+    legend_x = max(all_rights) - legend_w
+    legend_y = min(all_bottoms)
+
+    # Check overlap with bottom layers: find nodes whose right edge
+    # extends into the legend area AND whose vertical span overlaps
+    overlap = False
+    for nid, (bx, by, bw, bh) in node_rect.items():
+        node_right = bx + bw
+        node_top = by + bh
+        node_bottom = by
+        # Check if node overlaps with legend box
+        if (node_right > legend_x - BOX_GAP_X and
+            bx < legend_x + legend_w + BOX_GAP_X and
+            node_top > legend_y and
+            node_bottom < legend_y + legend_h):
+            overlap = True
+            break
+
+    if overlap:
+        # Move legend to just right of the rightmost node
+        legend_x = max(all_rights) + BOX_GAP_X * 2
+
+    # Convert data coords to axes fraction for bbox_to_anchor
+    # We need to use data coordinates via a manual transform
+    # Simpler: just use loc="lower right" with bbox_to_anchor in data coords
+    # matplotlib can place legend at data coordinates via transform
+    leg = ax.legend(handles=legend_handles, loc="upper left",
+                    bbox_to_anchor=(legend_x, legend_y + legend_h),
+                    bbox_transform=ax.transData,
+                    fontsize=14 * font_scale, frameon=False,
+                    title="Node types", title_fontsize=16 * font_scale)
 
 
 # ── Drawing ─────────────────────────────────────────────────────────────────
@@ -776,7 +822,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
 
     # ── Legend ──
     if show_legend:
-        draw_legend(ax, node_data, show_foundation=show_foundation,
+        draw_legend(ax, node_data, node_rect, show_foundation=show_foundation,
                     has_ghosts=bool(_ghost_map), font_scale=_font_scale)
 
     # ── Title (from metadata if available) ──
