@@ -213,12 +213,23 @@ def merge_proofs(nodes, edges):
 
 # ── Drawing ─────────────────────────────────────────────────────────────────
 def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
-             resolution="standard", show_legend=True):
+             resolution="standard", show_legend=True, show_foundation=False,
+             foundation_path=None):
     """Main entry: draw a layered DAG from student-format nodes/edges.
 
     resolution:
       "standard" — collapse proofs into theorem boxes, hide equations/proof_steps
       "full"     — show all nodes including proofs, equations, proof_steps as separate nodes
+
+    show_foundation:
+      If True, draw ghost nodes for external foundation dependencies above the
+      main graph (gray dashed boxes with dashed arrows to paper nodes).
+      Default False preserves the previous behaviour of hiding them in the PNG.
+
+    foundation_path:
+      Optional path to clean_foundation.json.  When *None* the code tries the
+      default location (/mnt/g/My Drive/Research/Automath/naturalproofs/clean_foundation.json)
+      and falls back to the built-in WELL_KNOWN dictionary.
     """
     if resolution == "full":
         # Full resolution: no merging, show everything
@@ -508,27 +519,49 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                         ha="left", va="top", fontsize=10.5, color="#222")
                 cursor_y -= LINE_H
 
-    # ── Ghost nodes (external dependencies) drawn in the SVG but hidden ──
+    # ── Ghost nodes (external foundation dependencies) ──
+    # Always compute the ghost map (needed for SVG/HTML regardless of
+    # show_foundation), but only *draw* the ghosts when show_foundation=True.
     from link_to_foundation import build_foundation_index, link_paper
-    _fg_index = build_foundation_index(None)
+
+    # Resolve foundation index path
+    _fg_path = foundation_path
+    if _fg_path is None:
+        _default_fg = Path("/mnt/g/My Drive/Research/Automath/naturalproofs/clean_foundation.json")
+        if _default_fg.exists():
+            _fg_path = str(_default_fg)
+    _fg_index = build_foundation_index(_fg_path)
     _fg_matches = link_paper(nodes_raw, _fg_index, min_term_len=5)
 
-    # Separate Case 2: references in proof steps (not base nodes)
+    # Build ghost map: foundation_name -> set of base node IDs that reference it.
+    # Case 1: match is on a base node directly -> add it.
+    # Case 2: match is on a proof step -> trace to parent base node.
     _base_ids = set(node_data.keys())
     _ghost_map = {}  # foundation_name -> set of base node IDs that reference it
     for m in _fg_matches:
-        if m["node_id"] not in _base_ids:
-            # Find parent base node
-            parent = m["node_id"]
+        nid = m["node_id"]
+        if nid in _base_ids:
+            # Case 1: direct match on a base node
+            _ghost_map.setdefault(m["foundation_name"], set()).add(nid)
+        else:
+            # Case 2: match on proof step — trace to parent base node
+            parent = nid
             for nr in nodes_raw:
-                if nr["id"] == parent and nr.get("proves") and nr["proves"] in _base_ids:
-                    parent = nr["proves"]
-                    break
+                if nr["id"] == parent:
+                    if nr.get("parent_proof"):
+                        for nr2 in nodes_raw:
+                            if nr2["id"] == nr["parent_proof"] and nr2.get("proves"):
+                                parent = nr2["proves"]
+                                break
+                        break
+                    if nr.get("proves") and nr["proves"] in _base_ids:
+                        parent = nr["proves"]
+                        break
             if parent in _base_ids:
                 _ghost_map.setdefault(m["foundation_name"], set()).add(parent)
     _ghost_map = {k: list(v) for k, v in _ghost_map.items()}
 
-    if _ghost_map and node_rect:
+    if _ghost_map and node_rect and show_foundation:
         # Position ghost nodes in a row ABOVE the top layer
         all_tops = [by + bh for (bx, by, bw, bh) in node_rect.values()]
         ghost_y_top = max(all_tops) + LEVEL_GAP_Y * 0.8
@@ -590,6 +623,10 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                         gid=f"ghost_edge_{gi}_{ti}",
                     )
                     ax.add_patch(arrow)
+
+        # Add ghost legend entry when foundation nodes are shown
+        if show_legend:
+            pass  # legend entry added below in the legend section
 
     # ── Misc/Orphan equations box ──
     # Count orphan equations from the FULL node list (before filtering)
@@ -657,6 +694,12 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             plt.Line2D([0], [0], color="#666666", lw=2.5, marker=">",
                        markersize=10, label="A supports B")
         )
+        if show_foundation and _ghost_map:
+            legend_handles.append(
+                mpatches.Patch(facecolor="#E8E8E8", edgecolor="#777777",
+                               linewidth=1.5, linestyle="dashed",
+                               label="Foundation (ext.)")
+            )
         ax.legend(handles=legend_handles, loc="upper right", fontsize=13,
                   frameon=False, title="Node types", title_fontsize=14)
 
@@ -1158,6 +1201,10 @@ def main():
     parser.add_argument("-o", "--output", default=None, help="Output PNG path (single file only)")
     parser.add_argument("--resolution", choices=["standard", "full"], default="standard",
                         help="standard: collapse proofs, hide equations. full: show all nodes.")
+    parser.add_argument("--show-foundation", action="store_true",
+                        help="Include foundation graph ghost nodes in the PNG output")
+    parser.add_argument("--foundation-path", default=None,
+                        help="Path to clean_foundation.json (default: auto-detect)")
     parser.add_argument("--html", action="store_true",
                         help="Also generate interactive HTML for each file")
     parser.add_argument("--html-only", action="store_true",
@@ -1195,7 +1242,9 @@ def main():
 
         if do_png:
             result = draw_dag(nodes, edges, output_path, metadata=metadata,
-                              resolution=args.resolution)
+                              resolution=args.resolution,
+                              show_foundation=args.show_foundation,
+                              foundation_path=args.foundation_path)
             n_nodes, n_edges = result[0], result[1]
             print(f"  -> {output_path} ({n_nodes} nodes, {n_edges} edges)")
 
@@ -1203,7 +1252,9 @@ def main():
             import os
             svg_only_path = str(output_path).replace('.png', '_nolegend.svg')
             draw_dag(nodes, edges, svg_only_path.replace('.svg', '.png'), metadata=metadata,
-                     resolution=args.resolution, show_legend=False)
+                     resolution=args.resolution, show_legend=False,
+                     show_foundation=True,
+                     foundation_path=args.foundation_path)
             html_path = input_path.with_suffix(".html")
             n_html = generate_interactive_html(data, svg_only_path, str(html_path))
             for tmp in [svg_only_path, svg_only_path.replace('.svg', '.png')]:
