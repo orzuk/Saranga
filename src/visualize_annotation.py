@@ -99,10 +99,9 @@ def _sanitize_math(text):
 def _display_width(text):
     """Estimate display width of text in characters, accounting for math.
 
-    Math in $...$ renders significantly wider than its character count due to
-    fractions, subscripts, operators etc.  We use 2.2x as the base multiplier
-    and bump to 2.8x for formulas containing \\frac, \\sum, \\prod, \\int
-    which render especially wide.
+    For math in $...$: strip LaTeX commands to estimate rendered character count,
+    then apply a small multiplier (1.3x) for spacing/operators.
+    E.g., '$\\mathbf{z}$' → rendered as 'z' (1 char), not 12 raw chars.
     """
     if not text or "$" not in text:
         return len(text) if text else 0
@@ -115,12 +114,26 @@ def _display_width(text):
                 width += len(text[i:])
                 break
             math_content = text[i+1:j]
-            math_chars = len(math_content)
-            # Use higher multiplier for formulas with wide constructs
-            if _re.search(r'\\frac|\\sum|\\prod|\\int|\\iint', math_content):
-                width += int(math_chars * 3.0)
+            # Estimate rendered width by stripping commands to their visual output
+            rendered = math_content
+            # \command{arg} → arg (1 char for the result)
+            rendered = _re.sub(r'\\(?:mathbf|mathrm|mathbb|mathcal|mathit|bm|'
+                               r'boldsymbol|text|operatorname)\s*\{([^}]*)\}', r'\1', rendered)
+            # \frac{a}{b} → a/b (roughly len(a)+len(b)+1)
+            rendered = _re.sub(r'\\frac\s*\{([^}]*)\}\s*\{([^}]*)\}', r'\1/\2', rendered)
+            # \sqrt{x} → √x
+            rendered = _re.sub(r'\\sqrt\s*\{([^}]*)\}', r'V\1', rendered)
+            # Greek letters: \alpha → α (1 char each)
+            rendered = _re.sub(r'\\[a-zA-Z]+', 'X', rendered)
+            # Subscript/superscript braces
+            rendered = rendered.replace('{', '').replace('}', '')
+            # Apply small multiplier for operator spacing
+            rendered_len = len(rendered)
+            if _re.search(r'\\frac|\\sum|\\prod|\\int', math_content):
+                rendered_len = int(rendered_len * 1.5)  # fractions are wider
             else:
-                width += int(math_chars * 2.5)
+                rendered_len = int(rendered_len * 1.3)  # general math spacing
+            width += max(rendered_len, 3)  # at least 3 chars for any math
             i = j + 1
         else:
             j = text.find("$", i)
