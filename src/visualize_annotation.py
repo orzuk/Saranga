@@ -747,20 +747,94 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         return lines
 
     # ── First pass: compute each node's ideal width ──
+    # Strategy: find the MINIMUM box width that fits all text.
+    # 1. Start with a candidate width (based on content estimate, capped to MAX_BOX_W)
+    # 2. Wrap all text to that width
+    # 3. Binary-search downward for the tightest width where nothing overflows
     node_width = {}
     node_data = {}
+
+    def _get_all_wrap_texts(n):
+        """Get all texts that need wrapping for a node."""
+        ntype = n.get("type", "")
+        texts = []
+        if ntype in ("theorem", "lemma", "corollary", "proposition", "claim"):
+            for a in (n.get("assumptions") or [])[:MAX_LINES_PER_SECTION]:
+                texts.append(_prepare_for_display(a))
+            for c in (n.get("conclusions") or [])[:MAX_LINES_PER_SECTION]:
+                texts.append(_prepare_for_display(c))
+            for ps in (n.get("proof_info") or []):
+                if ps:
+                    texts.append(_prepare_for_display(f"Proof: {ps}"))
+        elif ntype == "algorithm" and (n.get("input") or n.get("output")):
+            for x in (n.get("input") or []):
+                texts.append(_shorten(x, 100))
+            for x in (n.get("output") or []):
+                texts.append(_shorten(x, 100))
+        else:
+            raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
+            texts.append(_prepare_for_display(raw))
+        return texts
+
+    def _wrap_all_and_measure(texts, wrap_chars):
+        """Wrap all texts to wrap_chars width and return max display width of resulting lines."""
+        max_dw = 0
+        for t in texts:
+            lines = _wrap(t, wrap_chars) or [t[:wrap_chars] if t else ""]
+            for line in lines:
+                dw = _display_width(line)
+                if dw > max_dw:
+                    max_dw = dw
+        return max_dw
+
+    def _find_tight_width(n):
+        """Find the minimum box width that fits all text without overflow."""
+        texts = _get_all_wrap_texts(n)
+        if not texts or all(not t for t in texts):
+            return MIN_BOX_W
+
+        # Header width requirement
+        name = n.get("name") or ""
+        nid = n["id"]
+        header_w_chars = len(nid) + 2 + len(name[:30])
+        header_w = (header_w_chars / CHARS_PER_UNIT) + 2 * PADDING + 0.3
+
+        # Find the minimum wrap width where all wrapped lines fit within that width.
+        # Binary search: lo = tight, hi = wide
+        lo_w = max(MIN_BOX_W, header_w)
+        hi_w = MAX_BOX_W
+
+        # Check if even MAX_BOX_W is too narrow (math tokens wider than MAX)
+        hi_chars = max(20, int(hi_w * CHARS_PER_UNIT) - 4)
+        max_dw_at_hi = _wrap_all_and_measure(texts, hi_chars)
+        needed_at_hi = (max_dw_at_hi / CHARS_PER_UNIT) + 2 * PADDING + 0.3
+        if needed_at_hi > hi_w:
+            # Some content (likely a math token) is irreducibly wide
+            return min(needed_at_hi * 1.02, MAX_BOX_W * 1.5)
+
+        # Binary search for minimum width where text fits
+        for _ in range(8):  # 8 iterations gives ~0.01 precision
+            mid_w = (lo_w + hi_w) / 2
+            mid_chars = max(20, int(mid_w * CHARS_PER_UNIT) - 4)
+            max_dw = _wrap_all_and_measure(texts, mid_chars)
+            needed = (max_dw / CHARS_PER_UNIT) + 2 * PADDING + 0.3
+            if needed <= mid_w:
+                # Text fits at this width, try narrower
+                hi_w = mid_w
+            else:
+                # Text overflows, need wider
+                lo_w = mid_w
+
+        # Use the upper bound (guaranteed to fit) with small margin
+        return max(MIN_BOX_W, hi_w * 1.02)
+
     for n in nodes:
         nid = n["id"]
         node_data[nid] = n
-        content = _content_lines(n)
-        max_line = max(_display_width(line) for line in content) if content else 10
-        w = max(MIN_BOX_W, min(MAX_BOX_W, max_line / CHARS_PER_UNIT))
-        node_width[nid] = w
+        node_width[nid] = _find_tight_width(n)
 
-    # ── Second pass: compute heights, refine widths, compute positions ──
-    # After wrapping text to initial box width, measure actual widest line
-    # and adjust box width to fit (+ 5% margin). This avoids both overflow
-    # and wasteful over-widening.
+    # ── Second pass: compute heights and positions ──
+    # Widths were already optimized in the first pass via _find_tight_width.
     node_pos = {}
     node_rect = {}
 
@@ -831,25 +905,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 stmt_height = sum(_line_h(l) for l in stmt_lines) if stmt_lines else LINE_H
                 h = HEADER_H + stmt_height + 2 * PADDING
 
-            # Refine width: find widest wrapped line and fit box to it + 5% margin
-            all_display_lines = []
-            if ntype in ("theorem", "lemma", "corollary", "proposition", "claim"):
-                all_display_lines = assume_lines + conclude_lines + proof_lines
-            elif ntype == "algorithm" and (n.get("input") or n.get("output")):
-                all_display_lines = in_lines + out_lines
-            else:
-                all_display_lines = stmt_lines if 'stmt_lines' in dir() else []
-
-            if all_display_lines:
-                widest = max(_display_width(l) for l in all_display_lines)
-                # Also consider header
-                header_name = n.get("name") or ""
-                header_w = len(nid) + 2 + len(header_name[:30])
-                widest = max(widest, header_w)
-                # Convert to data units and add margin
-                needed_w = (widest / CHARS_PER_UNIT) + 2 * PADDING + 0.3
-                w = max(MIN_BOX_W, min(needed_w * 1.05, MAX_BOX_W * 2))
-                node_width[nid] = w
+            # Width was already optimized in the first pass (_find_tight_width).
+            # No expansion needed here.
 
             node_pos[nid] = (x_cursor + w / 2, cy_top - h / 2)
             node_rect[nid] = (x_cursor, cy_top - h, w, h)
