@@ -34,12 +34,12 @@ NODE_COLORS = {
     "algorithm":   {"header": "#2471A3", "body": "#D4E6F1"},
     "equation":    {"header": "#5DADE2", "body": "#EBF5FB"},
     "proposition": {"header": "#B03A2E", "body": "#FADBD8"},
-    "proof":       {"header": "#566573", "body": "#D5D8DC"},
-    "proof_step":  {"header": "#839192", "body": "#E8E8E8"},
+    "proof":       {"header": "#8E44AD", "body": "#E8DAEF"},
+    "proof_step":  {"header": "#A569BD", "body": "#F4ECF7"},
     "claim":       {"header": "#E74C3C", "body": "#FDEDEC"},
 }
 DEFAULT_COLOR = {"header": "#566573", "body": "#EAECEE"}
-PROOF_COLOR = "#D5D8DC"
+PROOF_COLOR = "#E8DAEF"
 
 
 # ── Text helpers ────────────────────────────────────────────────────────────
@@ -426,7 +426,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         )
         ax.add_patch(header_rect)
         ax.text(bx + bw / 2, cursor_y - HEADER_H / 2, header_text,
-                ha="center", va="center", fontsize=12, fontweight="bold",
+                ha="center", va="center", fontsize=14, fontweight="bold",
                 color="white")
         cursor_y -= HEADER_H + PADDING
 
@@ -448,11 +448,11 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
 
             # Assumptions
             ax.text(bx + PADDING, cursor_y, "Assume:",
-                    ha="left", va="top", fontsize=11, fontweight="bold", color="#333")
+                    ha="left", va="top", fontsize=13, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
             for line in a_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=10.5, color="#222",
+                        ha="left", va="top", fontsize=12, color="#222",
                         fontstyle="italic")
                 cursor_y -= LINE_H
 
@@ -464,11 +464,11 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
 
             # Conclusions
             ax.text(bx + PADDING, cursor_y, "Conclude:",
-                    ha="left", va="top", fontsize=11, fontweight="bold", color="#333")
+                    ha="left", va="top", fontsize=13, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
             for line in c_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=10.5, color="#222")
+                        ha="left", va="top", fontsize=12, color="#222")
                 cursor_y -= LINE_H
 
             # Proof strategy (if merged)
@@ -490,21 +490,21 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             out_lines = [_shorten(x, 70) for x in (n.get("output") or ["(none)"])]
 
             ax.text(bx + PADDING, cursor_y, "Input:",
-                    ha="left", va="top", fontsize=11, fontweight="bold", color="#333")
+                    ha="left", va="top", fontsize=13, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
             for line in in_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=10.5, color="#222")
+                        ha="left", va="top", fontsize=12, color="#222")
                 cursor_y -= LINE_H
             cursor_y -= PADDING * 0.3
             ax.plot([bx + 0.15, bx + bw - 0.15], [cursor_y + PADDING * 0.2] * 2,
                     color=colors["header"], lw=0.5, alpha=0.4)
             ax.text(bx + PADDING, cursor_y, "Output:",
-                    ha="left", va="top", fontsize=11, fontweight="bold", color="#333")
+                    ha="left", va="top", fontsize=13, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
             for line in out_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=10.5, color="#222")
+                        ha="left", va="top", fontsize=12, color="#222")
                 cursor_y -= LINE_H
 
         else:
@@ -516,7 +516,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 stmt_lines = [""]
             for line in stmt_lines:
                 ax.text(bx + PADDING, cursor_y, line,
-                        ha="left", va="top", fontsize=10.5, color="#222")
+                        ha="left", va="top", fontsize=12, color="#222")
                 cursor_y -= LINE_H
 
     # ── Ghost nodes (external foundation dependencies) ──
@@ -597,12 +597,12 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             # Name in header
             short_name = gname if len(gname) <= 22 else gname[:19] + "..."
             ax.text(gx + ghost_w / 2, gy - HEADER_H / 2, short_name,
-                    ha="center", va="center", fontsize=10, fontweight="bold",
+                    ha="center", va="center", fontsize=12, fontweight="bold",
                     color="white", gid=f"ghost_text_{gi}")
             # References below header
             refs_str = "→ " + ", ".join(_ghost_map[gname])
             ax.text(gx + ghost_w / 2, gy - HEADER_H - LINE_H * 0.7, refs_str,
-                    ha="center", va="center", fontsize=8.5, color="#555",
+                    ha="center", va="center", fontsize=10, color="#555",
                     gid=f"ghost_refs_{gi}")
 
             ghost_rects[gname] = (gx, gy - ghost_h, ghost_w, ghost_h)
@@ -676,7 +676,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         ax.add_patch(header_rect)
         ax.text(misc_x + misc_w / 2, misc_y + misc_h - HEADER_H / 2,
                 f"Misc ({n_orphan} equations)",
-                ha="center", va="center", fontsize=12, fontweight="bold", color="white")
+                ha="center", va="center", fontsize=14, fontweight="bold", color="white")
         ax.text(misc_x + misc_w / 2, misc_y + PADDING + LINE_H / 2,
                 "Unconnected equations",
                 ha="center", va="center", fontsize=10.5, color="#555")
@@ -700,8 +700,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                                linewidth=1.5, linestyle="dashed",
                                label="Foundation (ext.)")
             )
-        ax.legend(handles=legend_handles, loc="upper right", fontsize=13,
-                  frameon=False, title="Node types", title_fontsize=14)
+        ax.legend(handles=legend_handles, loc="upper right", fontsize=16,
+                  frameon=False, title="Node types", title_fontsize=18)
 
     # ── Title (from metadata if available) ──
     if metadata and metadata.get("chapter_title"):
@@ -711,7 +711,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         title = f"{metadata['title']} — Knowledge Graph"
     else:
         title = "Knowledge Graph (DAG)"
-    ax.set_title(title, fontsize=18, fontweight="bold", pad=15)
+    ax.set_title(title, fontsize=24, fontweight="bold", pad=20)
 
     ax.autoscale()
     ax.margins(0.05)
