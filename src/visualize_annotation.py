@@ -96,6 +96,42 @@ def _sanitize_math(text):
     return text
 
 
+def _display_width(text):
+    """Estimate display width of text in characters, accounting for math.
+
+    Math in $...$ renders ~1.8x wider than its character count due to
+    fractions, subscripts, operators etc.
+    """
+    if not text or "$" not in text:
+        return len(text) if text else 0
+    width = 0
+    i = 0
+    while i < len(text):
+        if text[i] == "$":
+            j = text.find("$", i + 1)
+            if j == -1:
+                width += len(text[i:])
+                break
+            math_chars = j - i - 1
+            width += int(math_chars * 1.8)  # math is wider
+            i = j + 1
+        else:
+            j = text.find("$", i)
+            if j == -1:
+                width += len(text[i:])
+                break
+            width += j - i
+            i = j
+    return width
+
+
+def _has_tall_math(text):
+    """Check if text contains math that renders taller than normal (fractions, sums, etc.)."""
+    if not text or "$" not in text:
+        return False
+    return bool(_re.search(r'\\frac|\\sum|\\prod|\\int|\^{', text))
+
+
 def _prepare_for_display(text):
     """Prepare text for matplotlib rendering: keep math in $...$, fix unsupported commands.
 
@@ -225,13 +261,13 @@ def _wrap(text, width=38):
             i = j
 
     # Now wrap: accumulate segments into lines, breaking between segments
+    # Use _display_width for math-aware width estimation
     lines = []
     current = ""
     for seg in segments:
         if not seg:
             continue
-        # If adding this segment would exceed width and we have content, wrap
-        if current and len(current) + len(seg) > width:
+        if current and _display_width(current + seg) > width:
             lines.append(current.strip())
             current = seg
         else:
@@ -715,13 +751,15 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                     if ps:
                         proof_lines.extend(_wrap(_prepare_for_display(f"Proof: {ps}"), wrap_w))
 
-                n_assume = max(len(assume_lines), 1)
-                n_conclude = max(len(conclude_lines), 1)
+                # Count lines, using extra height for lines with tall math
+                TALL_LINE_H = LINE_H * 1.8
+                assume_heights = sum(TALL_LINE_H if _has_tall_math(l) else LINE_H for l in assume_lines) or LINE_H
+                conclude_heights = sum(TALL_LINE_H if _has_tall_math(l) else LINE_H for l in conclude_lines) or LINE_H
                 n_proof = len(proof_lines)
 
                 h = HEADER_H + PADDING
-                h += n_assume * LINE_H + PADDING
-                h += n_conclude * LINE_H + PADDING
+                h += assume_heights + PADDING
+                h += conclude_heights + PADDING
                 if n_proof > 0:
                     h += n_proof * LINE_H + PADDING
                 h += PADDING
@@ -805,11 +843,12 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
 
         cursor_y = by + bh  # start from top
 
-        # Header
+        # Header — truncate to box width
         name_str = n.get("name") or ""
+        header_chars = max(10, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT) - 2)
         header_text = f"{nid}"
         if name_str:
-            header_text += f": {_shorten(name_str, 30)}"
+            header_text += f": {_shorten(name_str, header_chars - len(nid) - 2)}"
 
         header_rect = FancyBboxPatch(
             (bx, cursor_y - HEADER_H), bw, HEADER_H,
@@ -845,6 +884,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             if not c_lines:
                 c_lines = ["(none)"]
 
+            TALL_LINE_H = LINE_H * 1.8
+
             # Assumptions
             ax.text(bx + PADDING, cursor_y, "Assume:",
                     ha="left", va="top", fontsize=13, fontweight="bold", color="#333")
@@ -853,7 +894,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
                         ha="left", va="top", fontsize=12, color="#222",
                         fontstyle="italic")
-                cursor_y -= LINE_H
+                cursor_y -= TALL_LINE_H if _has_tall_math(line) else LINE_H
 
             cursor_y -= PADDING * 0.3
 
@@ -868,7 +909,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             for line in c_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
                         ha="left", va="top", fontsize=12, color="#222")
-                cursor_y -= LINE_H
+                cursor_y -= TALL_LINE_H if _has_tall_math(line) else LINE_H
 
             # Proof strategy (if merged)
             proof_strategies = n.get("proof_info", [])
