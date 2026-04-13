@@ -285,15 +285,10 @@ def _wrap(text, width=38):
                     tokens.append(" ")
             i = j if j != -1 else len(text)
 
-    # If a single math token is wider than width, fall back to plain text
-    for ti in range(len(tokens)):
-        tok = tokens[ti]
-        if tok.startswith("$") and tok.endswith("$") and _display_width(tok) > width:
-            # Convert to plain text and truncate to fit
-            plain = _to_display_text(tok)
-            if len(plain) > width:
-                plain = plain[:width - 3] + "..."
-            tokens[ti] = plain
+    # If a single math token is wider than width, just keep it as-is.
+    # It may overflow slightly, but that's better than breaking the LaTeX
+    # or stripping to plain text. The box will accommodate it partially.
+    # (Previously tried truncating, but cutting mid-\frac breaks rendering.)
 
     # Greedily accumulate tokens into lines
     lines = []
