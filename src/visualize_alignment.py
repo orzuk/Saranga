@@ -22,6 +22,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+import re as _re
 import matplotlib
 matplotlib.use("Agg")
 matplotlib.rcParams["mathtext.fontset"] = "cm"
@@ -214,22 +215,36 @@ def _node_height(n, wrap_w):
     return h
 
 
-def _layout(nodes, edges, box_w=4.2):
+def _layout(nodes, edges, box_w=4.2, group_info=None):
     """Assign (x, y, w, h) to each node using topological depth and section sort.
 
-    Returns dict node_id -> (x_center, y_center, w, h).
+    If group_info provided (gid -> (s1, s2)), shared nodes are placed in the
+    center of each row, with Candes-Tao-unique nodes on left and Donoho-unique
+    on right, so the shared backbone is visually centered.
     """
     depth = compute_dag_depth(nodes, edges)
     levels = defaultdict(list)
     for n in nodes:
         levels[depth[n["id"]]].append(n)
+
+    def _origin_key(n):
+        if not group_info:
+            return 1
+        s1, s2 = group_info.get(n["id"], (set(), set()))
+        if s1 and s2:
+            return 1  # shared: center
+        elif s1:
+            return 0  # p1 only: left
+        else:
+            return 2  # p2 only: right
+
     def _sec_key(n):
         sec = n.get("section", "99")
         try:
             parts = [float(x) for x in str(sec).split(".")]
         except Exception:
             parts = [99]
-        return (parts, n["id"])
+        return (_origin_key(n), parts, n["id"])
     for d in levels:
         levels[d].sort(key=_sec_key)
 
@@ -288,6 +303,15 @@ def _draw_box(ax, bx, by, bw, bh, node, *, header_color=None, body_color=None,
     # Header text
     nid_show = id_override if id_override is not None else node["id"]
     name = node.get("name") or ""
+    # Strip redundant type prefixes since the ID already encodes the type
+    # E.g. "Theorem 1: Near-optimal recovery" -> "Near-optimal recovery"
+    name = _re.sub(
+        r'^\s*(?:Theorem|Lemma|Corollary|Proposition|Definition|Claim|Proof|Algorithm)'
+        r'\s+[\d\.]+\s*[:\-]\s*', '', name, flags=_re.IGNORECASE)
+    # Also strip a bare leading "Theorem N/Lemma N" without colon
+    name = _re.sub(
+        r'^\s*(?:Theorem|Lemma|Corollary|Proposition|Definition|Claim|Proof|Algorithm)'
+        r'\s+[\d\.]+\s*', '', name, flags=_re.IGNORECASE)
     max_header_chars = max(18, int(bw * 9) - 2)
     avail = max(6, max_header_chars - len(nid_show) - 2)
     header_text = nid_show if not name else f"{nid_show}: {_shorten(name, min(avail, 40))}"
@@ -452,22 +476,29 @@ def _draw_mode_B(combined_nodes, combined_edges, group_list,
         label = " = ".join(sorted(s1)) if s1 else " = ".join(sorted(s2))
         _draw_box(ax, bx, by, bw, bh, node,
                   header_color=hcol, body_color=bcol,
-                  border_color=border, border_lw=2.0,
-                  alpha=0.75,  # faded so shared stand out
+                  border_color=border, border_lw=1.5,
+                  alpha=0.6,  # more faded so shared really stand out
                   id_override=label)
 
-    # Pass 2: shared nodes (emphasized — thick border, full opacity, larger)
+    # Pass 2: shared nodes (emphasized — thick border, full opacity, larger ~10%)
     for gid, (bx, by, bw, bh) in rects.items():
         node = node_by_id[gid]
         s1, s2 = group_info[gid]
         if not (s1 and s2):
             continue
+        # Enlarge by 10% — grow outward from center
+        grow_w = bw * 0.10
+        grow_h = bh * 0.10
+        bx2 = bx - grow_w / 2
+        by2 = by - grow_h / 2
+        bw2 = bw + grow_w
+        bh2 = bh + grow_h
         label = " = ".join(sorted(s1)) + " \u2194 " + " = ".join(sorted(s2))
-        _draw_box(ax, bx, by, bw, bh, node,
+        _draw_box(ax, bx2, by2, bw2, bh2, node,
                   header_color=SHARED_TINT["header"],
                   body_color=SHARED_TINT["body"],
                   border_color=SHARED_BORDER,
-                  border_lw=5.0,  # much thicker border
+                  border_lw=6.0,  # much thicker border
                   alpha=1.0,
                   id_override=label)
 
@@ -671,7 +702,10 @@ def draw_alignment(graph1_json, graph2_json, alignment_json, output_path,
     combined_nodes, combined_edges, group_of, group_list, \
         n1, n2, e1, e2 = _build_combined(g1, g2, align)
 
-    positions, rects = _layout(combined_nodes, combined_edges, box_w=4.2)
+    # Build group_info for layout: gid -> (s1, s2)
+    group_info_for_layout = {gid: (s1, s2) for gid, s1, s2 in group_list}
+    positions, rects = _layout(combined_nodes, combined_edges, box_w=4.2,
+                                group_info=group_info_for_layout)
 
     mode = mode.upper()
     if mode == "B":
