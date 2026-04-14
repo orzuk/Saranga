@@ -64,7 +64,7 @@ def tokenize(text):
 
 
 def node_text(n):
-    """Concatenate all text content of a node."""
+    """Concatenate all text content of a node (name, statement, assum, concl)."""
     parts = [n.get("name", ""), n.get("statement", "")]
     for fld in ("assumptions", "conclusions"):
         v = n.get(fld)
@@ -75,14 +75,64 @@ def node_text(n):
     return " ".join(parts)
 
 
-def jaccard_sim(node_a, node_b, use_type=True):
-    """Jaccard similarity with optional type-compatibility multiplier."""
-    ta = tokenize(node_text(node_a))
-    tb = tokenize(node_text(node_b))
+def node_proof_text(n):
+    """Proof-side text: proof_strategy field only (empty for non-proof nodes)."""
+    v = n.get("proof_strategy")
+    return str(v) if v else ""
+
+
+def _raw_jaccard(ta, tb):
     if not ta and not tb:
-        j = 0.0
-    else:
-        j = len(ta & tb) / max(1, len(ta | tb))
+        return 0.0
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / max(1, len(ta | tb))
+
+
+def jaccard_sim(node_a, node_b, use_type=True):
+    """Jaccard similarity on name+statement+assum+concl (the 'statement' axis).
+
+    Historical default sigma for the alignment benchmark. Kept for backward
+    compatibility; new multi-dimensional analysis uses jaccard_statement/_proof.
+    """
+    j = _raw_jaccard(tokenize(node_text(node_a)), tokenize(node_text(node_b)))
+    if use_type:
+        j *= type_compat(node_a.get("type", ""), node_b.get("type", ""))
+    return j
+
+
+def jaccard_statement(node_a, node_b, use_type=True):
+    """Sigma axis 1: Jaccard on name+statement+assumptions+conclusions only.
+
+    Identical to jaccard_sim; kept as an explicitly-named axis for the
+    multi-dimensional analysis.
+    """
+    return jaccard_sim(node_a, node_b, use_type=use_type)
+
+
+def jaccard_proof(node_a, node_b, use_type=True):
+    """Sigma axis 2: Jaccard on proof_strategy text only.
+
+    Non-zero only when both nodes have non-empty proof_strategy fields.
+    Type compatibility still applies so proof<->theorem gets damped.
+    """
+    ta = tokenize(node_proof_text(node_a))
+    tb = tokenize(node_proof_text(node_b))
+    j = _raw_jaccard(ta, tb)
+    if use_type:
+        j *= type_compat(node_a.get("type", ""), node_b.get("type", ""))
+    return j
+
+
+def jaccard_combined(node_a, node_b, use_type=True):
+    """Combined sigma: Jaccard on the UNION of statement and proof_strategy
+    token bags. Richer content per node -> higher signal when dimensions
+    align (the common case). Edge case 'same theorem, different proof' is
+    damped but still detectable when statement similarity dominates.
+    """
+    ta = tokenize(node_text(node_a) + " " + node_proof_text(node_a))
+    tb = tokenize(node_text(node_b) + " " + node_proof_text(node_b))
+    j = _raw_jaccard(ta, tb)
     if use_type:
         j *= type_compat(node_a.get("type", ""), node_b.get("type", ""))
     return j

@@ -76,7 +76,7 @@ import re as _re
 _LATEX_REGEX_FIXES = [
     (_re.compile(r'\\ge(?!q)'), r'\\geq'),
     (_re.compile(r'\\le(?!q|ft)'), r'\\leq'),
-    (_re.compile(r'\\ne(?!g|wcommand)'), r'\\neq'),
+    (_re.compile(r'\\ne(?!g|wcommand|q)'), r'\\neq'),
     # \left( → (, \right) → ), \left[ → [, etc.
     (_re.compile(r'\\left\s*([(\[|.])'), r'\1'),
     (_re.compile(r'\\right\s*([)\]|.])'), r'\1'),
