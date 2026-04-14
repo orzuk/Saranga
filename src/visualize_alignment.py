@@ -370,11 +370,14 @@ def _draw_edge(ax, src_rect, tgt_rect, color="#333", lw=2.0, style="-",
     )
 
 
-# ── Color scheme for alignment ──────────────────────────────────────────────
-P1_TINT = {"header": "#1F618D", "body": "#D6EAF8"}   # blue (Candes-Tao)
-P2_TINT = {"header": "#B9770E", "body": "#FAE5D3"}   # orange (Donoho)
-SHARED_TINT = {"header": "#7D6608", "body": "#FCF3CF"}  # gold for matched
-SHARED_BORDER = "#7D6608"
+# ── Color scheme for alignment — strong contrast ────────────────────────────
+# Paper 1 (Candes-Tao): saturated blue
+# Paper 2 (Donoho): saturated red
+# Shared (matched nodes/edges): saturated purple (= red + blue), emphasized
+P1_TINT = {"header": "#1A5490", "body": "#AED6F1"}   # strong blue
+P2_TINT = {"header": "#A93226", "body": "#F5B7B1"}   # strong red
+SHARED_TINT = {"header": "#5B2C6F", "body": "#E1BEE7"}  # strong purple
+SHARED_BORDER = "#4A148C"   # deep purple for emphasis
 
 
 # ── Mode B: one combined graph ──────────────────────────────────────────────
@@ -395,61 +398,95 @@ def _draw_mode_B(combined_nodes, combined_edges, group_list,
     # Build group metadata (shared/p1-only/p2-only)
     group_info = {gid: (s1, s2) for gid, s1, s2 in group_list}
 
-    # Draw edges first (p1 blue, p2 orange), with a small horizontal offset
-    # so edges that exist in both papers don't fully overlap.
+    # Detect shared edges: edges present in BOTH papers (same src, tgt pair
+    # where both endpoints are shared merged nodes).
+    # Group edges by (src, tgt) pair; if both origins present → shared edge.
+    edge_origins = {}  # (src, tgt) -> set of origins
+    for e in combined_edges:
+        key = (e["source"], e["target"])
+        edge_origins.setdefault(key, set()).add(e["_origin"])
+
+    shared_edge_keys = {k for k, origins in edge_origins.items() if len(origins) == 2}
+
+    # Draw non-shared edges first (thin, dimmed), then shared edges on top (thick, bold)
+    drawn_shared = set()
     for e in combined_edges:
         src_r = rects.get(e["source"])
         tgt_r = rects.get(e["target"])
         if not src_r or not tgt_r:
             continue
-        if e["_origin"] == "1":
-            color = P1_TINT["header"]
-            rad = -0.12
+        key = (e["source"], e["target"])
+        if key in shared_edge_keys:
+            if key in drawn_shared:
+                continue  # only draw once
+            drawn_shared.add(key)
+            # Shared edge: thick purple, emphasized
+            _draw_edge(ax, src_r, tgt_r, color=SHARED_BORDER, lw=4.0,
+                       alpha=1.0, rad=0.0)
         else:
-            color = P2_TINT["header"]
-            rad = 0.12
-        _draw_edge(ax, src_r, tgt_r, color=color, lw=1.8, alpha=0.75, rad=rad)
+            if e["_origin"] == "1":
+                color = P1_TINT["header"]
+                rad = -0.15
+            else:
+                color = P2_TINT["header"]
+                rad = 0.15
+            # Non-shared: slightly faded to make shared stand out
+            _draw_edge(ax, src_r, tgt_r, color=color, lw=1.8, alpha=0.55, rad=rad)
 
-    # Draw nodes colored by origin
+    # Draw non-shared nodes first (slightly faded), then shared nodes on top
+    # (emphasized with thick border, saturated color, full opacity).
     node_by_id = {n["id"]: n for n in combined_nodes}
+
+    # Pass 1: unique nodes (faded)
     for gid, (bx, by, bw, bh) in rects.items():
         node = node_by_id[gid]
         s1, s2 = group_info[gid]
         if s1 and s2:
-            hcol, bcol = SHARED_TINT["header"], SHARED_TINT["body"]
-            border = SHARED_BORDER
-            lw = 3.0
-        elif s1:
+            continue  # draw shared in pass 2
+        if s1:
             hcol, bcol = P1_TINT["header"], P1_TINT["body"]
             border = P1_TINT["header"]
-            lw = 1.8
         else:
             hcol, bcol = P2_TINT["header"], P2_TINT["body"]
             border = P2_TINT["header"]
-            lw = 1.8
-        # header text: compact representation of all IDs in the group
-        label = " = ".join(sorted(s1)) if s1 else ""
-        if s2:
-            label = (label + " \u2194 " + " = ".join(sorted(s2))) if label else " = ".join(sorted(s2))
+        label = " = ".join(sorted(s1)) if s1 else " = ".join(sorted(s2))
         _draw_box(ax, bx, by, bw, bh, node,
                   header_color=hcol, body_color=bcol,
-                  border_color=border, border_lw=lw,
+                  border_color=border, border_lw=2.0,
+                  alpha=0.75,  # faded so shared stand out
+                  id_override=label)
+
+    # Pass 2: shared nodes (emphasized — thick border, full opacity, larger)
+    for gid, (bx, by, bw, bh) in rects.items():
+        node = node_by_id[gid]
+        s1, s2 = group_info[gid]
+        if not (s1 and s2):
+            continue
+        label = " = ".join(sorted(s1)) + " \u2194 " + " = ".join(sorted(s2))
+        _draw_box(ax, bx, by, bw, bh, node,
+                  header_color=SHARED_TINT["header"],
+                  body_color=SHARED_TINT["body"],
+                  border_color=SHARED_BORDER,
+                  border_lw=5.0,  # much thicker border
+                  alpha=1.0,
                   id_override=label)
 
     # Legend
     handles = [
         mpatches.Patch(facecolor=SHARED_TINT["body"], edgecolor=SHARED_BORDER,
-                       linewidth=2.5, label="Shared / matched nodes"),
+                       linewidth=5.0, label="Shared nodes (matched)"),
         mpatches.Patch(facecolor=P1_TINT["body"], edgecolor=P1_TINT["header"],
-                       linewidth=1.5, label="Candes-Tao only"),
+                       linewidth=2.0, label="Cand\u00e8s\u2013Tao only"),
         mpatches.Patch(facecolor=P2_TINT["body"], edgecolor=P2_TINT["header"],
-                       linewidth=1.5, label="Donoho only"),
-        plt.Line2D([0], [0], color=P1_TINT["header"], lw=2.5,
-                   label="Candes-Tao edge"),
-        plt.Line2D([0], [0], color=P2_TINT["header"], lw=2.5,
+                       linewidth=2.0, label="Donoho only"),
+        plt.Line2D([0], [0], color=SHARED_BORDER, lw=4.0,
+                   label="Shared edge (both papers)"),
+        plt.Line2D([0], [0], color=P1_TINT["header"], lw=2.0, alpha=0.55,
+                   label="Cand\u00e8s\u2013Tao edge"),
+        plt.Line2D([0], [0], color=P2_TINT["header"], lw=2.0, alpha=0.55,
                    label="Donoho edge"),
     ]
-    ax.legend(handles=handles, loc="lower right", fontsize=13,
+    ax.legend(handles=handles, loc="lower right", fontsize=14,
               frameon=True, framealpha=0.95)
 
     ax.set_title("Compressed Sensing: Candes–Tao (blue) \u2194 Donoho (orange)"
