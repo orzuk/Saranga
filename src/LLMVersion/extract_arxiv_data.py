@@ -1,4 +1,5 @@
 from extract_arxiv_funcs import *
+from pathlib import Path
 
 
 if __name__ == "__main__":
@@ -14,6 +15,7 @@ if __name__ == "__main__":
         category   = None
         formats    = ['metadata', 'pdf', 'html', 'source']
         output_dir = None
+        advanced   = False
         verbose    = True
     else:
         # command-line mode
@@ -25,6 +27,9 @@ if __name__ == "__main__":
         parser.add_argument('--formats',   nargs='+',     default=['metadata'],
                             help='One or more: metadata, abstract, pdf, html, source')
         parser.add_argument('--output-dir',                help='Directory to save pdf/html/source files')
+        parser.add_argument('--advanced',  action='store_true',
+                            help='Download latex source using the advanced structure: one dir per paper, '
+                                 'unified/flattened tex + original archive. Saves to FULL_PAPERS_ADVANCED_DIR.')
         parser.add_argument('--verbose',    action='store_true', help='Enable debug prints')
         args = parser.parse_args()
 
@@ -34,19 +39,54 @@ if __name__ == "__main__":
         category   = args.category
         formats    = args.formats
         output_dir = args.output_dir
+        advanced   = args.advanced
         verbose    = args.verbose
         if output_dir is None:
             output_dir = DATA_DIR + '/full_papers'
 
-    # Single unified call
-    data = fetch_arxiv_batch(
-        regex_id   = regex_id,
-        start_date = start_date,
-        end_date   = end_date,
-        category   = category,
-        formats    = formats,
-        output_dir = output_dir,
-        verbose    = verbose)
+    # --advanced mode: fetch metadata then download+flatten each paper individually
+    if advanced:
+        print("[INFO] Advanced mode: downloading with per-paper subdirectory + flattened tex")
+        meta_data = fetch_arxiv_batch(
+            regex_id   = regex_id,
+            start_date = start_date,
+            end_date   = end_date,
+            category   = category,
+            formats    = ['metadata'],
+            output_dir = None,
+            verbose    = verbose,
+        )
+        data = meta_data
+        ok, failed = 0, 0
+        for aid, entry in meta_data.items():
+            md = entry.get('metadata', {})
+            base_id = aid.split('v')[0]
+            try:
+                tex_path, versioned_id = resolve_source_to_tex_local_first(
+                    base_id        = base_id,
+                    meta           = md,
+                    full_papers_dir= Path(FULL_PAPERS_ADVANCED_DIR),
+                    verbose        = verbose,
+                    use_paper_subdir=True,
+                )
+                print(f"[OK] {versioned_id} -> {tex_path}")
+                entry['tex_path'] = str(tex_path)
+                ok += 1
+            except Exception as e:
+                print(f"[FAIL] {aid}: {e}")
+                failed += 1
+        print(f"\n[INFO] Done. {ok} succeeded, {failed} failed.")
+    else:
+        # Standard path
+        data = fetch_arxiv_batch(
+            regex_id   = regex_id,
+            start_date = start_date,
+            end_date   = end_date,
+            category   = category,
+            formats    = formats,
+            output_dir = output_dir,
+            verbose    = verbose,
+        )
 
 
     # Print snippets for each paper

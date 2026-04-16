@@ -309,6 +309,30 @@ python distillation_analysis.py validate \
 - `--threshold`: Jaccard similarity threshold (default: 0.7)
 - `--output`: Override default output CSV path
 
+## Downloading arXiv Papers
+
+Papers can be downloaded using `extract_arxiv_data.py`. There are two storage modes:
+
+### Standard mode (legacy)
+Downloads the main `.tex` file only. `\input{}`/`\include{}` references remain unresolved.
+```
+full_papers/{year}/{month}/{day}/tex/{versioned_id}.tex
+```
+```bash
+python3 extract_arxiv_data.py --start 1996-01-01 --end 1999-12-31 --formats latex
+```
+
+### Advanced mode (recommended)
+Resolves all `\input{}`/`\include{}` references into a single unified `.tex` file. The original archive is preserved alongside it.
+```
+full_papers_advanced/{year}/{month}/{day}/{versioned_id}/
+    {versioned_id}.tex      ← unified/flattened
+    {versioned_id}.tar.gz   ← original archive
+```
+```bash
+python3 extract_arxiv_data.py --start 1996-01-01 --end 1999-12-31 --advanced
+```
+
 ## Cost Considerations
 Parsing 1707.07938v2:
 anthropic sonnet 4.0 - 20cents

@@ -42,5 +42,6 @@ ARXIV_META_DATA = DATA_DIR + '/arxiv-metadata-oai-snapshot.json'
 ARXIV_META_DATA_COMPACT = DATA_DIR + '/arxiv-metadata-oai-snapshot-compact.pkl'
 ARXIV_META_DATA_HDF5 = DATA_DIR + '/arxiv-metadata-oai-snapshot-compact.h5'
 FULL_PAPERS_DIR = DATA_DIR + '/full_papers'
+FULL_PAPERS_ADVANCED_DIR = DATA_DIR + '/full_papers_advanced'
 
 LOCAL_FIRST = True  # Try to find papers data/meta-data locally first. If can't find, then crawl arxiv website.

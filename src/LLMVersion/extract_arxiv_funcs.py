@@ -1447,12 +1447,81 @@ def fetch_arxiv_source(arxiv_id: str, dest_dir: Path, verbose: bool = False) -> 
 
 # at top of file you already import shutil, pathlib, etc. (shutil is present)
 
-def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir: Path, verbose: bool = False):
+_INPUT_RE = re.compile(r'\\(input|include)\s*\{([^}]+)\}')
+
+
+def flatten_tex(tex_path: Path, root_dir: Path, _seen: frozenset = None) -> str:
+    """
+    Recursively inline \\input{} and \\include{} commands in a .tex file.
+    Returns the fully flattened content as a string.
+
+    - tex_path: path to the .tex file to flatten
+    - root_dir: base directory for resolving relative include paths (the paper's storage dir)
+    - _seen: frozenset of resolved absolute paths already visited (cycle detection)
+    """
+    if _seen is None:
+        _seen = frozenset()
+
+    resolved = str(tex_path.resolve())
+    if resolved in _seen:
+        return f"% [flatten_tex] Circular reference skipped: {tex_path.name}\n"
+    _seen = _seen | {resolved}
+
+    try:
+        content = tex_path.read_text(errors='replace')
+    except Exception as e:
+        return f"% [flatten_tex] Cannot read {tex_path.name}: {e}\n"
+
+    out = []
+    for line in content.splitlines(keepends=True):
+        # Skip lines that are purely comments
+        if line.lstrip().startswith('%'):
+            out.append(line)
+            continue
+
+        match = _INPUT_RE.search(line)
+        if match:
+            # Ignore if the match is after a % comment marker on the same line
+            comment_pos = line.find('%')
+            if comment_pos != -1 and comment_pos < match.start():
+                out.append(line)
+                continue
+
+            arg = match.group(2).strip()
+            arg_tex = arg if arg.endswith('.tex') else arg + '.tex'
+
+            # Search root_dir first, then the including file's own directory
+            sub_path = None
+            for search_dir in (root_dir, tex_path.parent):
+                candidate = search_dir / arg_tex
+                if candidate.exists():
+                    sub_path = candidate
+                    break
+
+            if sub_path is None:
+                # File not found — keep original line with a warning comment
+                out.append(f"% [flatten_tex] Not found: {arg_tex}\n")
+                out.append(line)
+            else:
+                out.append(f"% --- begin {arg_tex} ---\n")
+                out.append(flatten_tex(sub_path, root_dir, _seen))
+                out.append(f"% --- end {arg_tex} ---\n")
+        else:
+            out.append(line)
+
+    return ''.join(out)
+
+
+def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir: Path,
+                                       verbose: bool = False, use_paper_subdir: bool = False):
     """
     Local-first resolver:
       1. Determine the latest version from metadata.
       2. Determine correct year/month/day directory from metadata.
-      3. Look for tex in full_papers/<year>/<month>/<day>/tex/<versioned_id>.tex
+      3. Look for tex in the appropriate directory:
+         - use_paper_subdir=False (default): full_papers/<year>/<month>/<day>/tex/<versioned_id>.tex
+         - use_paper_subdir=True  (advanced): full_papers/<year>/<month>/<day>/<versioned_id>/<versioned_id>.tex
+           In this mode the original archive and all companion files are preserved inside the paper dir.
       4. If missing → fetch_arxiv_source to that directory and use the main .tex it returns.
     Returns: (Path to canonical tex file, versioned_id)
     """
@@ -1474,29 +1543,34 @@ def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir:
     except ValueError:
         year, month, day = ("unknown", "unknown", "unknown")
 
-    # build tex directory path
-    tex_dir = full_papers_dir / year / month / day / "tex"
-    tex_dir.mkdir(parents=True, exist_ok=True)
+    # --- 3. Build storage directory ---
+    if use_paper_subdir:
+        # New structure: one directory per paper, keeps archive + all companion files
+        storage_dir = full_papers_dir / year / month / day / versioned_id
+    else:
+        # Legacy structure: flat tex/ directory shared by all papers on that date
+        storage_dir = full_papers_dir / year / month / day / "tex"
 
-    tex_path = tex_dir / f"{versioned_id}.tex"
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    tex_path = storage_dir / f"{versioned_id}.tex"
 
-    # --- 3. Local-first check ---
+    # --- 4. Local-first check ---
     if tex_path.exists():
         if verbose:
             print(f"[DEBUG] Using local TEX: {tex_path}")
         return tex_path, versioned_id
 
-    # --- 4. If missing -> fetch directly from arXiv ---
+    # --- 5. If missing -> fetch directly from arXiv ---
     if verbose:
-        print(f"[DEBUG] Local TEX missing. Fetching source for {versioned_id} into {tex_dir}")
+        print(f"[DEBUG] Local TEX missing. Fetching source for {versioned_id} into {storage_dir}")
 
     try:
         # IMPORTANT: this returns the path to the main .tex file in the unpacked source
-        main_tex = fetch_arxiv_source(versioned_id, tex_dir, verbose=verbose)
+        main_tex = fetch_arxiv_source(versioned_id, storage_dir, verbose=verbose)
     except Exception as e:
         raise RuntimeError(f"fetch_arxiv_source failed for {versioned_id}: {e}")
 
-    # --- 5. Canonicalise the main tex file ---
+    # --- 6. Canonicalise the main tex file ---
     if main_tex is not None:
         main_tex = Path(main_tex)
         if main_tex.exists():
@@ -1519,10 +1593,10 @@ def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir:
             # main_tex path is bogus → fall back to generic search below
             main_tex = None
 
-    # --- 6. Very defensive fallback: any *.tex in tex_dir ---
+    # --- 7. Very defensive fallback: any *.tex in storage_dir ---
     if not tex_path.exists():
         tex_files = sorted(
-            tex_dir.rglob("*.tex"),
+            storage_dir.rglob("*.tex"),
             key=lambda p: p.stat().st_size,
             reverse=True,
         )
@@ -1534,6 +1608,30 @@ def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir:
                     f"using largest TEX file {tex_path.name}"
                 )
         else:
-            raise FileNotFoundError(f"No .tex found in {tex_dir} after fetching")
+            raise FileNotFoundError(f"No .tex found in {storage_dir} after fetching")
+
+    # --- 8. Flatten \input / \include references (advanced mode only) ---
+    if use_paper_subdir and tex_path.exists():
+        if verbose:
+            print(f"[DEBUG] Flattening \\input/\\include references in {tex_path.name}")
+        try:
+            flattened = flatten_tex(tex_path, storage_dir)
+            tex_path.write_text(flattened, encoding='utf-8', errors='replace')
+            if verbose:
+                print(f"[DEBUG] Flattened tex written to {tex_path}")
+        except Exception as e:
+            if verbose:
+                print(f"[WARN] flatten_tex failed for {tex_path}: {e}")
+
+        # --- 9. Clean up: keep only unified tex + original tar.gz ---
+        keep = {tex_path.resolve(), (storage_dir / f"{versioned_id}.tar.gz").resolve()}
+        for item in list(storage_dir.iterdir()):
+            if item.resolve() not in keep:
+                if item.is_dir():
+                    shutil.rmtree(item)
+                else:
+                    item.unlink()
+        if verbose:
+            print(f"[DEBUG] Cleaned up companion files; kept {tex_path.name} and {versioned_id}.tar.gz")
 
     return tex_path, versioned_id
