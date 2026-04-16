@@ -1059,7 +1059,8 @@ def fetch_arxiv_batch(
     formats="metadata", #     batch_size: int   = 200,
     output_dir: str = DATA_DIR + '/full_papers', # default: save in tree,  None, # don't save output
     force_update: bool = False,
-    verbose: bool     = False
+    verbose: bool     = False,
+    top_k: int        = None,
 ) -> Dict[str, Dict[str, Any]]:
     """
     Fetch arXiv items by filtering IDs and retrieving requested formats.
@@ -1074,6 +1075,10 @@ def fetch_arxiv_batch(
     batch_size  : API pagination size (unused for local fetch)
     output_dir  : save files here if provided
     verbose     : print debug
+    top_k       : if set, return only the top-k most recent IDs BEFORE fetching
+                  full metadata (massively faster on broad filters). Sort is by
+                  versioned ID descending, which for arxiv IDs (YYMM.NNNNN and
+                  archive/YYMMNNN) is a reliable proxy for submission date.
 
     Returns dict[id -> {format: data_or_path, ...}]
     """
@@ -1106,6 +1111,31 @@ def fetch_arxiv_batch(
     if verbose:
         print(f"[DEBUG] {len(ids_no_ver)} base IDs, {len(ids_with_ver)} versioned IDs to process")
 
+    # ─── Stage 1.5: Apply top_k early (before the expensive metadata fetch) ───
+    # Arxiv IDs encode submission date in the string itself:
+    #   modern (post-2007):  YYMM.NNNNN  (e.g., 2505.19393v1)
+    #   legacy (pre-2007):   archive/YYMMNNN  (e.g., math/0512345v1)
+    # Sorting descending within each group approximates "newest first" without
+    # needing any metadata. We split on "/" because legacy IDs lexically collate
+    # AFTER modern IDs (ASCII 'm' > '2'), which would otherwise put legacy
+    # papers at the top of "newest first" — wrong.
+    if top_k is not None and top_k > 0 and len(ids_with_ver) > top_k:
+        if verbose:
+            print(f"[DEBUG] Applying top_k={top_k} BEFORE metadata fetch "
+                  f"(sorting {len(ids_with_ver)} versioned IDs by ID descending, "
+                  f"modern IDs first, as proxy for newest-first).")
+        # Split modern vs legacy, sort each descending, concat modern-first.
+        _modern = sorted([x for x in ids_with_ver if "/" not in x], reverse=True)
+        _legacy = sorted([x for x in ids_with_ver if "/" in x], reverse=True)
+        _all_sorted = _modern + _legacy
+        ids_with_ver = _all_sorted[:top_k]
+        # Shrink the base-ID list to match the top_k versioned selection.
+        _keep_base = set(v.split("v")[0] for v in ids_with_ver)
+        ids_no_ver = [b for b in ids_no_ver if b in _keep_base]
+        if verbose:
+            print(f"[DEBUG] After top_k={top_k}: "
+                  f"{len(ids_no_ver)} base IDs, {len(ids_with_ver)} versioned IDs to process")
+
     # ─── Stage 1a: If metadata is requested, fetch in one shot via local JSONL + HDF5 ───
     # If the user explicitly asked for “metadata” itself, we’ll load all:
     if "metadata" in formats:
@@ -1121,7 +1151,15 @@ def fetch_arxiv_batch(
 
     if verbose:
         print("[DEBUG] Fetching metadata for all versioned IDs via local JSONL + HDF5 offsets…")
-        print("IDS After Filtering:", ids_with_ver, "\n Columns needed:", needed)
+        _n_ids = len(ids_with_ver)
+        _preview = 100
+        if _n_ids <= _preview:
+            print(f"IDS After Filtering ({_n_ids} total):", ids_with_ver,
+                  "\n Columns needed:", needed)
+        else:
+            print(f"IDS After Filtering (showing first {_preview} of {_n_ids}):",
+                  list(ids_with_ver)[:_preview], f"... [+{_n_ids - _preview} more]",
+                  "\n Columns needed:", needed)
     all_meta = fetch_arxiv_metadata(versioned_ids = ids_with_ver, verbose = verbose, columns=needed)
     # No further date/category/author/title checks needed: filter_ids_by_regex already did them.
     id_meta = all_meta.copy()
@@ -1129,7 +1167,13 @@ def fetch_arxiv_batch(
     # ─── Early return if only metadata was requested ──────────────────────
     if formats == ['metadata']:
         if verbose:
-            print(f"[DEBUG] Returning all titles: {[id_meta[m]['title'] for m in id_meta]} ")
+            _titles = [id_meta[m].get('title', '') for m in id_meta]
+            _n_titles = len(_titles)
+            if _n_titles <= 20:
+                print(f"[DEBUG] Returning {_n_titles} titles: {_titles}")
+            else:
+                print(f"[DEBUG] Returning {_n_titles} titles (showing first 20):",
+                      _titles[:20], f"... [+{_n_titles - 20} more]")
 
         id_meta = {
             outer_key: {'metadata': inner_dict}

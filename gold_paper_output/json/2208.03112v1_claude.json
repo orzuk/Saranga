@@ -1,0 +1,247 @@
+{
+  "metadata": {
+    "title": "Explanation of Machine Learning Models of Colon Cancer Using SHAP Considering Interaction Effects",
+    "paper_id": "2208.03112v1",
+    "annotator": "Claude (LLM extraction)"
+  },
+  "nodes": [
+    {
+      "id": "def_shap",
+      "type": "definition",
+      "name": "SHAP (SHapley Additive exPlanation)",
+      "section": "2.1",
+      "statement": "SHAP is a method for interpreting the results of machine learning by computing the contribution of each feature, representing the outcome of patient-j as f(x^(j)) = phi_0 + sum_{i=1}^{K} phi_i(x_i^(j)), where phi_0 is the mean prediction and phi_i is the SHAP contribution of feature i."
+    },
+    {
+      "id": "eq_shap_decomposition",
+      "type": "equation",
+      "name": "SHAP Decomposition (Eq. 1)",
+      "section": "2.1",
+      "statement": "The model output for patient j is decomposed as f(x^(j)) = phi_0 + sum_{i=1}^{K} phi_i(x_i^(j)), expressing the prediction as a sum of a baseline value and individual feature contributions."
+    },
+    {
+      "id": "eq_phi0",
+      "type": "equation",
+      "name": "Baseline Value (Eq. 2)",
+      "section": "2.1",
+      "statement": "The baseline value phi_0 is defined as the mean prediction over all N patients: phi_0 = (1/N) sum_{j=1}^{N} f(x^(j))."
+    },
+    {
+      "id": "eq_phi_i",
+      "type": "equation",
+      "name": "SHAP Contribution (Eq. 3)",
+      "section": "2.1",
+      "statement": "The SHAP contribution of feature i for patient j is phi_i(x_i^(j)) = Phi(x_i^(j)) - (1/N) sum_{k=1}^{N} Phi(x_i^(k)), i.e., the Shapley value centered by its population mean."
+    },
+    {
+      "id": "def_shapley_value",
+      "type": "definition",
+      "name": "Shapley Value",
+      "section": "2.1",
+      "statement": "The Shapley value for feature i is defined as Phi(x_i) = sum_{S subseteq {1,...,K}\\{i}} (|S|!(K-|S|-1)!/K!) [f_x(S cup {i}) - f_x(S)], which computes the weighted average marginal contribution of feature i across all possible coalitions S of other features."
+    },
+    {
+      "id": "claim_shapley_uniqueness",
+      "type": "claim",
+      "name": "Uniqueness of Shapley Value",
+      "section": "2.1",
+      "statement": "The Shapley value is the only profit allocation method that satisfies the four properties: efficiency, symmetry, linearity, and null player.",
+      "assumptions": [
+        "A profit allocation method must satisfy efficiency, symmetry, linearity, and null player properties."
+      ],
+      "conclusions": [
+        "The Shapley value is the unique allocation satisfying all four properties."
+      ]
+    },
+    {
+      "id": "eq_three_variable",
+      "type": "equation",
+      "name": "Three-Variable Decomposition (Eq. 4)",
+      "section": "2.1",
+      "statement": "A three-variable function is expressed as F(x,y,z) = f_x(x) + f_y(y) + f_z(z) + g_{xy}(x,y) + g_{xz}(x,z), separating main effects f from pairwise interaction terms g."
+    },
+    {
+      "id": "claim_shap_interaction_mixing",
+      "type": "claim",
+      "name": "SHAP Mixes Main and Interaction Effects",
+      "section": "2.1",
+      "statement": "For the three-variable function F(x,y,z), the SHAP value of each feature includes both its main effect and half of each interaction term involving that feature: phi(x) = f_x(x) + (g_{xy}(x,y) + g_{xz}(x,z))/2. Thus SHAP cannot distinguish whether the main effect or interactions are driving the outcome.",
+      "assumptions": [
+        "F(x,y,z) = f_x(x) + f_y(y) + f_z(z) + g_{xy}(x,y) + g_{xz}(x,z)"
+      ],
+      "conclusions": [
+        "phi(x) = f_x(x) + (g_{xy}(x,y) + g_{xz}(x,z))/2",
+        "phi(y) = f_y(y) + g_{xy}(x,y)/2",
+        "phi(z) = f_z(z) + g_{xz}(x,z)/2",
+        "SHAP values cannot separate main effects from interaction effects."
+      ]
+    },
+    {
+      "id": "def_shapley_taylor",
+      "type": "definition",
+      "name": "Shapley-Taylor Index",
+      "section": "2.2",
+      "statement": "The Shapley-Taylor index decomposes the Shapley value Phi(x_i) into a main effect term Phi(x_i, x_i) and interaction terms Phi(x_i, x_j): Phi(x_i) = Phi(x_i, x_i) + (1/2) sum_{j != i} Phi(x_i, x_j)."
+    },
+    {
+      "id": "def_interaction_term",
+      "type": "definition",
+      "name": "Shapley-Taylor Interaction Effect Term",
+      "section": "2.2",
+      "statement": "The interaction effect term Phi(x_i, x_j) is defined as sum_{S subseteq {1,...,K}\\{i,j}} (2|S|!(K-|S|-1)!/K!) [f_x(S cup {i,j}) - f_x(S cup {i}) - f_x(S cup {j}) + f_x(S)], measuring the pairwise interaction between features i and j across all coalitions."
+    },
+    {
+      "id": "def_main_effect_term",
+      "type": "definition",
+      "name": "Shapley-Taylor Main Effect Term",
+      "section": "2.2",
+      "statement": "The main effect term is defined as Phi(x_i, x_i) = Phi(x_i) - (1/2) sum_{j != i} Phi(x_i, x_j), representing the contribution of feature i after removing all pairwise interaction effects."
+    },
+    {
+      "id": "claim_st_exact_decomposition",
+      "type": "claim",
+      "name": "Exact Decomposition by Shapley-Taylor Index",
+      "section": "2.2",
+      "statement": "For the three-variable function F(x,y,z) = f_x(x) + f_y(y) + f_z(z) + g_{xy}(x,y) + g_{xz}(x,z), the Shapley-Taylor index exactly recovers the main effects and interaction terms: Phi_{x,x} = f(x), Phi_{x,y} = g(x,y), and Phi_{x,z} = g(x,z).",
+      "assumptions": [
+        "F(x,y,z) = f_x(x) + f_y(y) + f_z(z) + g_{xy}(x,y) + g_{xz}(x,z)",
+        "The Shapley-Taylor index is used to decompose the Shapley values."
+      ],
+      "conclusions": [
+        "Phi_{x,x} = f(x) (main effect exactly recovered)",
+        "Phi_{x,y} = g(x,y) (interaction term exactly recovered)",
+        "Phi_{x,z} = g(x,z) (interaction term exactly recovered)"
+      ]
+    },
+    {
+      "id": "claim_shapley_interaction_inexact",
+      "type": "claim",
+      "name": "Shapley Interaction Value Does Not Separate Cleanly",
+      "section": "2.2",
+      "statement": "The Shapley interaction value (Lundberg et al.) is similar to the Shapley-Taylor index but cannot separate interactions clearly, i.e., Phi_{x,x} != f(x), Phi_{x,y} != g(x,y), and Phi_{x,z} != g(x,z).",
+      "assumptions": [
+        "F(x,y,z) = f_x(x) + f_y(y) + f_z(z) + g_{xy}(x,y) + g_{xz}(x,z)",
+        "The Shapley interaction value of Lundberg et al. is used."
+      ],
+      "conclusions": [
+        "The Shapley interaction value does not exactly recover main effects or interaction terms."
+      ]
+    },
+    {
+      "id": "claim_shap_importance",
+      "type": "claim",
+      "name": "SHAP Variable Importance via Variance",
+      "section": "2.1",
+      "statement": "Nohara et al. proposed using the variance (L2-norm) of the SHAP value for measuring variable importance. The ranking by absolute beta coefficients in a generalized linear regression model is exactly the same as the ranking by this SHAP-based importance measure.",
+      "assumptions": [
+        "The model is a generalized linear regression model.",
+        "Variable importance is measured by the variance (L2-norm) of SHAP values."
+      ],
+      "conclusions": [
+        "The ranking by |beta_i| equals the ranking by SHAP-based variable importance."
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "source": "def_shapley_value",
+      "target": "def_shap",
+      "type": "dependency"
+    },
+    {
+      "source": "def_shapley_value",
+      "target": "eq_shap_decomposition",
+      "type": "dependency"
+    },
+    {
+      "source": "eq_phi0",
+      "target": "eq_shap_decomposition",
+      "type": "uses"
+    },
+    {
+      "source": "def_shapley_value",
+      "target": "eq_phi_i",
+      "type": "uses"
+    },
+    {
+      "source": "eq_phi_i",
+      "target": "eq_shap_decomposition",
+      "type": "uses"
+    },
+    {
+      "source": "eq_three_variable",
+      "target": "claim_shap_interaction_mixing",
+      "type": "uses"
+    },
+    {
+      "source": "def_shapley_value",
+      "target": "claim_shap_interaction_mixing",
+      "type": "uses"
+    },
+    {
+      "source": "def_shapley_value",
+      "target": "def_shapley_taylor",
+      "type": "dependency"
+    },
+    {
+      "source": "def_interaction_term",
+      "target": "def_shapley_taylor",
+      "type": "uses"
+    },
+    {
+      "source": "def_shapley_value",
+      "target": "def_interaction_term",
+      "type": "dependency"
+    },
+    {
+      "source": "def_shapley_taylor",
+      "target": "def_main_effect_term",
+      "type": "uses"
+    },
+    {
+      "source": "def_interaction_term",
+      "target": "def_main_effect_term",
+      "type": "uses"
+    },
+    {
+      "source": "eq_three_variable",
+      "target": "claim_st_exact_decomposition",
+      "type": "uses"
+    },
+    {
+      "source": "def_shapley_taylor",
+      "target": "claim_st_exact_decomposition",
+      "type": "uses"
+    },
+    {
+      "source": "def_interaction_term",
+      "target": "claim_st_exact_decomposition",
+      "type": "uses"
+    },
+    {
+      "source": "def_main_effect_term",
+      "target": "claim_st_exact_decomposition",
+      "type": "uses"
+    },
+    {
+      "source": "eq_three_variable",
+      "target": "claim_shapley_interaction_inexact",
+      "type": "uses"
+    },
+    {
+      "source": "claim_st_exact_decomposition",
+      "target": "claim_shapley_interaction_inexact",
+      "type": "dependency"
+    },
+    {
+      "source": "def_shap",
+      "target": "claim_shap_importance",
+      "type": "uses"
+    },
+    {
+      "source": "def_shapley_value",
+      "target": "claim_shapley_uniqueness",
+      "type": "uses"
+    }
+  ]
+}

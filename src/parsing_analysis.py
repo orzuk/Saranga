@@ -2,8 +2,14 @@
 import json
 import argparse
 import csv
+import sys
 from pathlib import Path
 from collections import Counter, defaultdict
+
+# Resolve math_classes from src/LLMVersion/ (single source of truth)
+_LLMV = Path(__file__).resolve().parent / 'LLMVersion'
+if str(_LLMV) not in sys.path:
+    sys.path.insert(0, str(_LLMV))
 
 from math_classes import PaperGraph, TheoremLike, Proof
 
@@ -192,7 +198,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "json_dir",
-        help="Directory containing *.json files produced by math_paper_parser / run_parse_papers.py",
+        help="Directory containing *.json files produced by run_pipeline.py (or LLMVersion/parse_batch.py)",
     )
     parser.add_argument(
         "--out-csv",

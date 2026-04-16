@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -7,6 +8,11 @@ import matplotlib.patches as mpatches
 from matplotlib.lines import Line2D
 import networkx as nx
 import math
+
+# Resolve math_classes from src/LLMVersion/ (single source of truth)
+_LLMV = Path(__file__).resolve().parent / 'LLMVersion'
+if str(_LLMV) not in sys.path:
+    sys.path.insert(0, str(_LLMV))
 
 from math_classes import PaperGraph  # type: ignore
 

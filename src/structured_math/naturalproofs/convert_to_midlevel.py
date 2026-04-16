@@ -34,9 +34,9 @@ import argparse
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
-# Add repo root to path so we can import math_classes
+# Resolve math_classes from src/LLMVersion/ (single source of truth)
 REPO_ROOT = Path(__file__).resolve().parents[3]  # Authomathics/
-sys.path.insert(0, str(REPO_ROOT / 'src'))
+sys.path.insert(0, str(REPO_ROOT / 'src' / 'LLMVersion'))
 
 from math_classes import (
     TheoremLike, Definition, Proof, Relation, PaperGraph, MathObject
@@ -75,26 +75,28 @@ def join_contents(contents: list) -> str:
 def heuristic_split_assumptions(text: str) -> tuple:
     """
     Simple heuristic: lines starting with 'Let', 'Suppose', 'Assume', 'Given'
-    are assumptions; the rest is the statement/conclusion.
-    Returns (assumptions_str, statement_str).
-    This is the same logic used in math_paper_parser.py for arXiv papers.
+    are assumptions; the rest is the conclusion.
+    Returns (assumptions_list, conclusions_list), each a list of sentence
+    strings. Matches the List[str] schema used by TheoremLike.
     """
     lines = text.strip().split('\n')
     assumption_lines = []
-    statement_lines = []
+    conclusion_lines = []
     in_assumptions = True
 
     for line in lines:
         stripped = line.strip()
+        if not stripped:
+            continue
         if in_assumptions and re.match(
             r'^(Let|Suppose|Assume|Given|Consider|If)\b', stripped, re.IGNORECASE
         ):
             assumption_lines.append(stripped)
         else:
             in_assumptions = False
-            statement_lines.append(stripped)
+            conclusion_lines.append(stripped)
 
-    return ('\n'.join(assumption_lines), '\n'.join(statement_lines))
+    return (assumption_lines, conclusion_lines)
 
 
 # ============================================================================
@@ -134,7 +136,7 @@ def convert_naturalproofs_file(input_path: str, source_name: str,
 
         raw_text = join_contents(item.get('contents', []))
         clean_text = clean_proofwiki_markup(raw_text)
-        assumptions, statement = heuristic_split_assumptions(clean_text)
+        assumptions, conclusions = heuristic_split_assumptions(clean_text)
 
         counters['theorem'] += 1
         obj = TheoremLike(
@@ -148,7 +150,7 @@ def convert_naturalproofs_file(input_path: str, source_name: str,
             paper_id=f"naturalproofs_{source_name}",
             env_name=item.get('type', 'theorem'),
             assumptions=assumptions,
-            statement=statement,
+            conclusions=conclusions,
         )
         objects[our_id] = obj
 
@@ -258,7 +260,7 @@ def convert_naturalproofs_file(input_path: str, source_name: str,
 
         raw_text = join_contents(item.get('contents', []))
         clean_text = clean_proofwiki_markup(raw_text)
-        assumptions, statement = heuristic_split_assumptions(clean_text)
+        assumptions, conclusions = heuristic_split_assumptions(clean_text)
 
         counters['other'] += 1
         obj = TheoremLike(
@@ -272,7 +274,7 @@ def convert_naturalproofs_file(input_path: str, source_name: str,
             paper_id=f"naturalproofs_{source_name}",
             env_name=item.get('type', 'other'),
             assumptions=assumptions,
-            statement=statement,
+            conclusions=conclusions,
         )
         objects[our_id] = obj
 

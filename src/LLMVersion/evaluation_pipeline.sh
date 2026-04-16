@@ -68,6 +68,12 @@ if [ "$OPTIMIZE_PROMPT" = true ]; then
 fi
 
 # --- Extraction: loop over each paper × each provider ---
+# Now invokes the unified pipeline (src/run_pipeline.py) for the parse
+# operation. The pipeline internally delegates to parse_batch.py.
+# This shell script lives in src/LLMVersion/; RUN_PIPELINE resolves to
+# src/run_pipeline.py (one directory up).
+RUN_PIPELINE="$(cd "$(dirname "$0")/.." && pwd)/run_pipeline.py"
+
 for pid in "${PAPER_IDS[@]}"; do
     REGEX_ID="^${pid}"
     echo ""
@@ -77,7 +83,8 @@ for pid in "${PAPER_IDS[@]}"; do
 
     # HuggingFace
     export HF_TOKEN
-    python3 run_parse_papers.py \
+    python3 "${RUN_PIPELINE}" \
+        --operations parse \
         --regex-id "${REGEX_ID}" \
         --out-dir "${OUT_DIR}" \
         --extraction-mode llm \
@@ -88,7 +95,8 @@ for pid in "${PAPER_IDS[@]}"; do
 
     # Anthropic
     export ANTHROPIC_API_KEY
-    python3 run_parse_papers.py \
+    python3 "${RUN_PIPELINE}" \
+        --operations parse \
         --regex-id "${REGEX_ID}" \
         --out-dir "${OUT_DIR}" \
         --extraction-mode llm \
@@ -99,7 +107,8 @@ for pid in "${PAPER_IDS[@]}"; do
 
     # OpenAI
     export OPENAI_API_KEY
-    python3 run_parse_papers.py \
+    python3 "${RUN_PIPELINE}" \
+        --operations parse \
         --regex-id "${REGEX_ID}" \
         --out-dir "${OUT_DIR}" \
         --extraction-mode llm \
@@ -109,7 +118,8 @@ for pid in "${PAPER_IDS[@]}"; do
         --structure-types "${STRUCTURE_TYPE}"
 
     # Manual
-    python3 run_parse_papers.py \
+    python3 "${RUN_PIPELINE}" \
+        --operations parse \
         --regex-id "${REGEX_ID}" \
         --out-dir "${OUT_DIR}" \
         --extraction-mode manual \

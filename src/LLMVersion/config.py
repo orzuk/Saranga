@@ -1,47 +1,54 @@
-# Set paths for papers data
-import sys
-import os
+"""
+LLMVersion/config.py — thin shim that re-exports src/config.py.
 
-# ArXiv API endpoint and XML namespaces for query mode
-ATOM_URL = 'http://export.arxiv.org/api/query'
-NS = {'atom': 'http://www.w3.org/2005/Atom',
-    'opensearch': 'http://a9.com/-/spec/opensearch/1.1/'}
-ARXIV_NS = {'arxiv': 'http://arxiv.org/schemas/atom'}
+This file exists so that LLMVersion code can continue to use
+`from config import X` unchanged. It explicitly loads the canonical
+src/config.py file via importlib (under an alias name, to avoid a
+circular self-import), then re-exports its constants — converting
+`Path` objects to strings for LLMVersion's string-concatenation code.
 
+If you add a new path constant to src/config.py that LLMVersion code
+uses via string concatenation, add it to the _PATH_NAMES tuple below.
+"""
 
-SCRIPTS_DIR = './scripts'
-SRC_DIR = './src'
+import importlib.util as _importlib_util
+from pathlib import Path as _Path
 
-if sys.platform.lower().startswith('win'):
-    # Running on Windows/PyCharm
-    DATA_DIR = 'C:/Datasets/big_data_project_52017/arxiv_data'
-else:
-    # Running on *nix – decide between your WSL‐mount vs cluster
-    # 1) Check for your local WSL path
-    wsl_path = '/mnt/c/Datasets/big_data_project_52017/arxiv_data'
-    # 2) Check for your cluster path
-    cluster_path = '/sci/labs/orzuk/orzuk/teaching/big_data_project_52017/2024_25/arxiv_data'
-    # 3) If neither exists, fall back to your home‐dir layout
-    home_path = os.path.expanduser('~/Datasets/big_data_project_52017/arxiv_data')
+# Explicitly load src/config.py under a different module name so this
+# shim doesn't recurse into itself when doing `from config import *`.
+_src_config_path = _Path(__file__).resolve().parent.parent / "config.py"
+_spec = _importlib_util.spec_from_file_location("_src_config", str(_src_config_path))
+_src_config = _importlib_util.module_from_spec(_spec)
+_spec.loader.exec_module(_src_config)
 
-    if os.path.exists(wsl_path):
-        DATA_DIR = wsl_path
-    elif os.path.exists(cluster_path):
-        DATA_DIR = cluster_path
-    else:
-        DATA_DIR = home_path
+# Path constants: convert from pathlib.Path to str for LLMVersion's
+# string-based path arithmetic.
+_PATH_NAMES = (
+    "DATA_DIR", "CODE_DIR", "SCRIPTS_DIR", "SRC_DIR",
+    "ARXIV_DIR", "PROOFWIKI_DIR", "WIKIDATA_DIR",
+    "ARXIV_IDS_FILE", "ARXIV_META_DATA",
+    "ARXIV_META_DATA_COMPACT", "ARXIV_META_DATA_HDF5",
+    "FULL_PAPERS_DIR",
+    "PROOFWIKI_CORPUS", "WIKIDATA_REGISTRY",
+)
+for _name in _PATH_NAMES:
+    _val = getattr(_src_config, _name, None)
+    if _val is not None:
+        globals()[_name] = str(_val)
 
-# Make sure it really points somewhere valid:
-if not os.path.isdir(DATA_DIR):
-    raise RuntimeError(f"DATA_DIR not found: {DATA_DIR}")
+# Non-path constants pass through unchanged.
+_OTHER_NAMES = ("ATOM_URL", "NS", "ARXIV_NS", "LOCAL_FIRST", "ensure_data_dirs")
+for _name in _OTHER_NAMES:
+    if hasattr(_src_config, _name):
+        globals()[_name] = getattr(_src_config, _name)
 
-print("Using DATA_DIR =", DATA_DIR)
+# Cleanup so `from config import *` doesn't drag internal names into callers.
+del _importlib_util, _Path, _src_config_path, _spec, _src_config
+del _PATH_NAMES, _OTHER_NAMES, _name
+try:
+    del _val
+except NameError:
+    pass
 
-ARXIV_IDS_FILE = DATA_DIR + "/arxiv_ids_all_min_max.json"
-ARXIV_META_DATA = DATA_DIR + '/arxiv-metadata-oai-snapshot.json'
-ARXIV_META_DATA_COMPACT = DATA_DIR + '/arxiv-metadata-oai-snapshot-compact.pkl'
-ARXIV_META_DATA_HDF5 = DATA_DIR + '/arxiv-metadata-oai-snapshot-compact.h5'
-FULL_PAPERS_DIR = DATA_DIR + '/full_papers'
+# Advanced download mode: per-paper subdirectory with flattened tex + original archive.
 FULL_PAPERS_ADVANCED_DIR = DATA_DIR + '/full_papers_advanced'
-
-LOCAL_FIRST = True  # Try to find papers data/meta-data locally first. If can't find, then crawl arxiv website.

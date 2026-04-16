@@ -9,7 +9,7 @@
 module load python/3.10
 
 # Full path to your extractor script:
-SCRIPT=/sci/labs/orzuk/orzuk/github/ArXivAnalysis/src/extract_arxiv_data.py
+SCRIPT=/sci/labs/orzuk/orzuk/github/Authomathics/src/extract_arxiv_data.py
 
 # Ensure it's executable
 chmod +x "$SCRIPT"

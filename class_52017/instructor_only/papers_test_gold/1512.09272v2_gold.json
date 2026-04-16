@@ -1,0 +1,364 @@
+{
+  "metadata": {
+    "title": "Learning Local Image Descriptors with Deep Siamese and Triplet Convolutional Networks by Minimizing Global Loss Functions",
+    "paper_id": "1512.09272v2",
+    "annotator": "Claude (LLM extraction)"
+  },
+  "nodes": [
+    {
+      "id": "def_mahalanobis_distance",
+      "type": "definition",
+      "name": "Mahalanobis Distance",
+      "section": "3.1 Siamese and Triplet Networks (Sec. metric_learning)",
+      "statement": "The squared Mahalanobis distance between points x_i and x_j is defined as d_W = (x_i - x_j)^T W (x_i - x_j), where W is a positive semi-definite matrix parameterising the metric."
+    },
+    {
+      "id": "def_convnet",
+      "type": "definition",
+      "name": "Deep ConvNet Definition",
+      "section": "3.1 Siamese and Triplet Networks",
+      "statement": "A deep ConvNet is defined as f(x, theta_f) = f_out composed with r_L composed with h_L composed with f_L ... composed with r_1 composed with h_1 composed with f_1(x), where f_l is the pre-activation function (linear transforms in convolutional layers), h_l is a normalisation function, and r_l is a non-linear activation function such as ReLU."
+    },
+    {
+      "id": "def_siamese_network",
+      "type": "definition",
+      "name": "Siamese Network",
+      "section": "3.1 Siamese and Triplet Networks",
+      "statement": "A siamese network consists of two identical deep ConvNets with tied weights, trained using pairs of labelled inputs. It can produce either a feature embedding or a pairwise similarity estimation depending on architecture and loss function."
+    },
+    {
+      "id": "def_triplet_network",
+      "type": "definition",
+      "name": "Triplet Network",
+      "section": "3.1 Siamese and Triplet Networks",
+      "statement": "The triplet network is an extension of the siamese network that is trained with triplets at the input (x, x^+, x^-), where x and x^+ belong to the same class and x^- belongs to a different class. It produces a feature embedding using three identical (weight-tied) ConvNet towers."
+    },
+    {
+      "id": "eq_pairwise_loss",
+      "type": "equation",
+      "name": "Siamese Pairwise Embedding Loss (J_1^s)",
+      "section": "3.1 Siamese and Triplet Networks",
+      "statement": "The pairwise loss for a siamese network producing an embedding is J_1^s(x_i, x_j, theta_f) = delta(y_i - y_j) ||f(x_i) - f(x_j)||_2 - (1 - delta(y_i - y_j)) ||f(x_i) - f(x_j)||_2, which minimises distance between same-class pairs and maximises distance between different-class pairs."
+    },
+    {
+      "id": "eq_pairwise_similarity_loss",
+      "type": "equation",
+      "name": "Siamese Pairwise Similarity Loss (J_2^s)",
+      "section": "3.1 Siamese and Triplet Networks",
+      "statement": "The pairwise similarity loss for a siamese network is J_2^s(x_i, x_j, theta_g) = delta(y_i - y_j)(1/(kappa + g(x_i, x_j, theta_g))) + (1 - delta(y_i - y_j)) g(x_i, x_j, theta_g), where g returns a similarity score and kappa is a small positive constant."
+    },
+    {
+      "id": "eq_triplet_loss",
+      "type": "equation",
+      "name": "Triplet Loss (J_1^t)",
+      "section": "3.1 Siamese and Triplet Networks",
+      "statement": "The triplet loss is J_1^t(x, x^+, x^-, theta_f) = max(0, 1 - ||f(x) - f(x^-)||_2 / (||f(x) - f(x^+)||_2 + m)), where m is a margin, x^+ is same-class as x, and x^- is a different class. It provides relative context by jointly considering similar and dissimilar pairs in each triplet."
+    },
+    {
+      "id": "eq_global_loss_embedding",
+      "type": "equation",
+      "name": "Global Loss for Feature Embedding (J_1^g)",
+      "section": "3.2 Global Loss Function",
+      "statement": "The proposed global loss for feature embedding is J_1^g = (sigma^{2+} + sigma^{2-}) + lambda * max(0, mu^+ - mu^- + t), where mu^+, sigma^{2+} are mean and variance of matching pair distances, mu^-, sigma^{2-} are mean and variance of non-matching pair distances, lambda balances the terms, and t is the margin. Distances are d_i^+ = ||f(x_i) - f(x_i^+)||_2^2 / 4 and d_i^- = ||f(x_i) - f(x_i^-)||_2^2 / 4, constrained to [0,1]."
+    },
+    {
+      "id": "eq_global_loss_gradient",
+      "type": "equation",
+      "name": "Gradient of Global Embedding Loss",
+      "section": "3.2 Global Loss Function",
+      "statement": "The gradient of J_1^g with respect to f(x_i) depends on global statistics mu^+ and mu^- of the training set (not just the i-th triplet), which suppresses spurious gradients from outliers and improves generalisation compared to the triplet loss gradient which depends only on the i-th triplet."
+    },
+    {
+      "id": "eq_global_loss_pairwise",
+      "type": "equation",
+      "name": "Global Loss for Pairwise Similarity (J_2^g)",
+      "section": "3.2 Global Loss Function",
+      "statement": "The global loss for pairwise similarity estimation is J_2^g = (sigma^{2+} + sigma^{2-}) + lambda * max(0, m - (mu^+ - mu^-)), where mu^+ and sigma^{2+} are mean and variance of matching pair similarities, mu^- and sigma^{2-} are mean and variance of non-matching pair similarities. It minimises variance of both distributions, minimises mean non-matching similarity, and maximises mean matching similarity."
+    },
+    {
+      "id": "eq_global_loss_pairwise_gradient",
+      "type": "equation",
+      "name": "Gradient of Global Pairwise Similarity Loss",
+      "section": "3.2 Global Loss Function",
+      "statement": "The gradient of J_2^g with respect to g(x_i, x_i^+) is (2/N)[(g(x_i, x_i^+) - mu^+) - (1/2) * indicator((mu^+ - mu^-) < m)], and similarly for non-matching pairs with reversed sign on the indicator term."
+    },
+    {
+      "id": "eq_combined_loss",
+      "type": "equation",
+      "name": "Combined Triplet and Global Loss (J_1^{tg})",
+      "section": "3.3 Proposed Models",
+      "statement": "The combined loss is J_1^{tg} = gamma * sum_j J_1^t(x_j, x_j^+, x_j^-) + J_1^g({x_i}, {x_i^+}, {x_i^-}), combining the per-triplet triplet loss with the global embedding loss weighted by gamma."
+    },
+    {
+      "id": "def_model_tnet_tloss",
+      "type": "definition",
+      "name": "Model 1: TNet, TLoss",
+      "section": "3.3 Proposed Models",
+      "statement": "The first proposed model is a triplet network trained with the triplet loss J_1^t, which produces a feature embedding. Architecture: B(96,7,3)-P(2,2)-B(192,5,1)-P(2,2)-B(256,3,1)-B(256,1,1)-B(256,1,1), where B(n,k,s) is a block with convolution C(n,k,s) followed by batch normalisation and ReLU."
+    },
+    {
+      "id": "def_model_tnet_tgloss",
+      "type": "definition",
+      "name": "Model 2: TNet, TGLoss",
+      "section": "3.3 Proposed Models",
+      "statement": "The second proposed model is a triplet network producing an embedding, trained with the combined triplet and global loss J_1^{tg}. It uses the same architecture as TNet-TLoss and is initialised from TNet-TLoss weights trained for 50 epochs, then trained for 50 more epochs with the combined loss."
+    },
+    {
+      "id": "def_model_snet_gloss",
+      "type": "definition",
+      "name": "Model 3: SNet, GLoss",
+      "section": "3.3 Proposed Models",
+      "statement": "The third proposed model is a siamese network producing a pairwise similarity estimation, trained with the global pairwise similarity loss J_2^g. Architecture: B(96,7,3)-P(2,2)-B(192,5,1)-P(2,2)-B(256,3,1)-B(256,1,1)-C(1,1,1)."
+    },
+    {
+      "id": "def_model_cssnet_gloss",
+      "type": "definition",
+      "name": "Model 4: CS SNet, GLoss",
+      "section": "3.3 Proposed Models",
+      "statement": "The fourth proposed model is the central-surround siamese network producing pairwise similarity, trained with the global loss J_2^g. It uses a multi-resolution central-surround architecture: B(95,5,1)-P(2,2)-B(96,3,1)-P(2,2)-B(192,3,1)-B(192,3,1) for each stream, combined by B(768,2,1)-C(1,1,1)."
+    },
+    {
+      "id": "claim_triplet_better_siamese",
+      "type": "claim",
+      "name": "Triplet Network Improves Over Siamese for Descriptor Learning",
+      "section": "5.3 Results on UBC Benchmark Dataset",
+      "statement": "The triplet network (TNet-TLoss) produces a more accurate embedding than the siamese network for local image descriptor learning on the UBC benchmark dataset.",
+      "assumptions": [
+        "Training and testing on the UBC benchmark dataset with six combinations of Liberty, Notredame, and Yosemite sets",
+        "Comparison measured by FPR95 metric",
+        "Feature embedding comparison using L2 norm distance"
+      ],
+      "conclusions": [
+        "TNet-TLoss achieves mean FPR95 of 9.63%, improving over Siam-l2 (13.45%) on the UBC dataset"
+      ]
+    },
+    {
+      "id": "claim_combined_loss_best_embedding",
+      "type": "claim",
+      "name": "Combined Triplet+Global Loss Produces Best Embedding",
+      "section": "5.3 Results on UBC Benchmark Dataset",
+      "statement": "The combination of the triplet and global losses (TNet-TGLoss) produces the best feature embedding result in the field on the UBC dataset, with mean FPR95 of 8.8%.",
+      "assumptions": [
+        "Training and testing on UBC benchmark dataset",
+        "TNet-TGLoss initialised from TNet-TLoss trained for 50 epochs then trained for 50 more epochs with combined loss",
+        "Hyperparameters gamma=1, t=0.4, lambda=0.8 estimated via cross validation"
+      ],
+      "conclusions": [
+        "TNet-TGLoss achieves mean FPR95 of 8.8%, the best embedding result on the UBC dataset, improving over TNet-TLoss (9.63%) and siam-2stream-l2 (9.67%)",
+        "TNet-TGLoss embedding outperforms even some pairwise similarity methods (Siam and 512d-F(512))"
+      ]
+    },
+    {
+      "id": "claim_global_loss_best_pairwise",
+      "type": "claim",
+      "name": "CS SNet with Global Loss Produces Best Pairwise Similarity Result",
+      "section": "5.3 Results on UBC Benchmark Dataset",
+      "statement": "The central-surround siamese network trained with the global loss (CS SNet, GLoss) produces the best classification result on the UBC dataset in the pairwise similarity category, nearly halving the previous state-of-the-art FPR95.",
+      "assumptions": [
+        "Training and testing on UBC benchmark dataset",
+        "Randomly initialised weights trained for 80 epochs",
+        "Hyperparameters m=1, lambda=1 estimated via cross validation"
+      ],
+      "conclusions": [
+        "CS SNet GLoss achieves mean FPR95 of 2.71%, nearly halving the previous state-of-the-art (2ch-2stream at 4.19%)",
+        "CS SNet GLoss achieves the best result on all six train/test combinations"
+      ]
+    },
+    {
+      "id": "claim_global_loss_robustness",
+      "type": "claim",
+      "name": "Global Loss is Robust to Outliers",
+      "section": "4 Toy Problem",
+      "statement": "The global loss function is more robust to outliers than the standard triplet loss, as demonstrated on a 2D toy dataset with 5% label noise. The global loss gradient depends on training set statistics (mu^+, mu^-), which suppresses spurious gradients from outliers.",
+      "assumptions": [
+        "2D toy dataset with 80 samples from two Gaussian distributions",
+        "5% label noise (4 samples with switched labels)",
+        "ConvNet mapping to 128-dimensional embedding with structure B(256,2,1)-B(512,1,1)-C(128,1,1)",
+        "Evaluation by nearest-neighbour classification in embedding space"
+      ],
+      "conclusions": [
+        "Triplet loss alone overfits to outliers, producing incorrect labelling at outlier locations",
+        "Combined triplet and global losses reduce labelling mistakes caused by outliers",
+        "Global loss alone produces coherent label maps even at outlier locations"
+      ]
+    },
+    {
+      "id": "claim_pairwise_better_embedding",
+      "type": "claim",
+      "name": "Pairwise Similarity Methods Outperform Embedding Methods",
+      "section": "5.3 Results on UBC Benchmark Dataset",
+      "statement": "Siamese networks trained with pairwise similarity loss achieve better classification performance than feature embeddings produced by triplet loss, but at the cost of higher inference complexity since pairwise similarity requires a forward pass through the network for each comparison.",
+      "assumptions": [
+        "Comparison on UBC benchmark dataset",
+        "Embedding comparison uses cosine distance (simplified L2 due to unit norm)",
+        "Pairwise similarity requires the final fully connected layer for each pair"
+      ],
+      "conclusions": [
+        "Pairwise similarity methods (e.g., CS SNet GLoss at 2.71%) outperform embedding methods (e.g., TNet-TGLoss at 8.8%)",
+        "However, TNet-TGLoss embedding (8.8%) outperforms some pairwise similarity methods like Siam (10.07%) and 512d-F(512) (9.82%)"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "source": "def_mahalanobis_distance",
+      "target": "def_siamese_network",
+      "type": "dependency"
+    },
+    {
+      "source": "def_convnet",
+      "target": "def_siamese_network",
+      "type": "uses"
+    },
+    {
+      "source": "def_convnet",
+      "target": "def_triplet_network",
+      "type": "uses"
+    },
+    {
+      "source": "def_siamese_network",
+      "target": "def_triplet_network",
+      "type": "dependency"
+    },
+    {
+      "source": "def_siamese_network",
+      "target": "eq_pairwise_loss",
+      "type": "uses"
+    },
+    {
+      "source": "def_siamese_network",
+      "target": "eq_pairwise_similarity_loss",
+      "type": "uses"
+    },
+    {
+      "source": "def_triplet_network",
+      "target": "eq_triplet_loss",
+      "type": "uses"
+    },
+    {
+      "source": "eq_triplet_loss",
+      "target": "eq_global_loss_embedding",
+      "type": "dependency"
+    },
+    {
+      "source": "eq_global_loss_embedding",
+      "target": "eq_global_loss_gradient",
+      "type": "dependency"
+    },
+    {
+      "source": "eq_pairwise_similarity_loss",
+      "target": "eq_global_loss_pairwise",
+      "type": "dependency"
+    },
+    {
+      "source": "eq_global_loss_pairwise",
+      "target": "eq_global_loss_pairwise_gradient",
+      "type": "dependency"
+    },
+    {
+      "source": "eq_triplet_loss",
+      "target": "eq_combined_loss",
+      "type": "uses"
+    },
+    {
+      "source": "eq_global_loss_embedding",
+      "target": "eq_combined_loss",
+      "type": "uses"
+    },
+    {
+      "source": "def_triplet_network",
+      "target": "def_model_tnet_tloss",
+      "type": "uses"
+    },
+    {
+      "source": "eq_triplet_loss",
+      "target": "def_model_tnet_tloss",
+      "type": "uses"
+    },
+    {
+      "source": "def_triplet_network",
+      "target": "def_model_tnet_tgloss",
+      "type": "uses"
+    },
+    {
+      "source": "eq_combined_loss",
+      "target": "def_model_tnet_tgloss",
+      "type": "uses"
+    },
+    {
+      "source": "def_model_tnet_tloss",
+      "target": "def_model_tnet_tgloss",
+      "type": "dependency"
+    },
+    {
+      "source": "def_siamese_network",
+      "target": "def_model_snet_gloss",
+      "type": "uses"
+    },
+    {
+      "source": "eq_global_loss_pairwise",
+      "target": "def_model_snet_gloss",
+      "type": "uses"
+    },
+    {
+      "source": "def_siamese_network",
+      "target": "def_model_cssnet_gloss",
+      "type": "uses"
+    },
+    {
+      "source": "eq_global_loss_pairwise",
+      "target": "def_model_cssnet_gloss",
+      "type": "uses"
+    },
+    {
+      "source": "def_model_tnet_tloss",
+      "target": "claim_triplet_better_siamese",
+      "type": "uses"
+    },
+    {
+      "source": "def_model_tnet_tgloss",
+      "target": "claim_combined_loss_best_embedding",
+      "type": "uses"
+    },
+    {
+      "source": "def_model_tnet_tloss",
+      "target": "claim_combined_loss_best_embedding",
+      "type": "uses"
+    },
+    {
+      "source": "def_model_cssnet_gloss",
+      "target": "claim_global_loss_best_pairwise",
+      "type": "uses"
+    },
+    {
+      "source": "eq_global_loss_embedding",
+      "target": "claim_global_loss_robustness",
+      "type": "uses"
+    },
+    {
+      "source": "eq_triplet_loss",
+      "target": "claim_global_loss_robustness",
+      "type": "uses"
+    },
+    {
+      "source": "eq_global_loss_gradient",
+      "target": "claim_global_loss_robustness",
+      "type": "uses"
+    },
+    {
+      "source": "claim_triplet_better_siamese",
+      "target": "claim_pairwise_better_embedding",
+      "type": "dependency"
+    },
+    {
+      "source": "claim_combined_loss_best_embedding",
+      "target": "claim_pairwise_better_embedding",
+      "type": "dependency"
+    },
+    {
+      "source": "claim_global_loss_best_pairwise",
+      "target": "claim_pairwise_better_embedding",
+      "type": "dependency"
+    }
+  ]
+}

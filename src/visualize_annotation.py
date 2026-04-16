@@ -34,34 +34,40 @@ NODE_COLORS = {
     "algorithm":   {"header": "#2471A3", "body": "#D4E6F1"},
     "equation":    {"header": "#5DADE2", "body": "#EBF5FB"},
     "proposition": {"header": "#B03A2E", "body": "#FADBD8"},
-    "proof":       {"header": "#566573", "body": "#D5D8DC"},
-    "proof_step":  {"header": "#839192", "body": "#E8E8E8"},
+    "proof":       {"header": "#8E44AD", "body": "#E8DAEF"},
+    "proof_step":  {"header": "#A569BD", "body": "#F4ECF7"},
     "claim":       {"header": "#E74C3C", "body": "#FDEDEC"},
 }
 DEFAULT_COLOR = {"header": "#566573", "body": "#EAECEE"}
-PROOF_COLOR = "#D5D8DC"
+PROOF_COLOR = "#E8DAEF"
+
+# ── Layout constants (shared between draw_dag and draw_foundation_ghosts) ──
+MIN_BOX_W = 3.0
+MAX_BOX_W = 6.0
+BOX_GAP_X = 0.5
+LEVEL_GAP_Y = 5.0
+HEADER_H = 0.45
+LINE_H = 0.28
+PADDING = 0.10
+CHARS_PER_UNIT = 12
 
 
 # ── Text helpers ────────────────────────────────────────────────────────────
 # LaTeX commands not supported by matplotlib mathtext — replace with equivalents
+# ONLY replace commands that matplotlib mathtext CANNOT render.
+# Tested: \mathbb, \mathcal, \mathrm, \mathbf, \operatorname, \text,
+# \boldsymbol, \triangleq, Greek letters, \nabla, \frac, \sum, \int,
+# \prod, \log, \sim, \in, \leq, \geq, \forall, \exists ALL WORK.
 _LATEX_FIXES = {
-    r"\iff": r"\Leftrightarrow",
-    r"\implies": r"\Rightarrow",
-    r"\Pr": r"\mathrm{Pr}",
-    r"\boldsymbol": r"\mathbf",
+    # These FAIL in matplotlib and need replacement:
+    r"\bm": r"\mathbf",                  # \bm not supported
+    r"\lVert": r"\|", r"\rVert": r"\|",  # \lVert/\rVert not supported
+    r"\coloneqq": r":=",                 # \coloneqq not supported
+    r"\pmod": r"\mathrm{mod}",           # \pmod not supported
+    # Sizing delimiters — not supported standalone, replace with plain:
     r"\big|": "|", r"\Big|": "|", r"\bigg|": "|",
     r"\big(": "(", r"\Big(": "(", r"\big)": ")", r"\Big)": ")",
-    r"\left|": "|", r"\right|": "|",
-    r"\text": r"\mathrm",
-    r"\operatorname": r"\mathrm",
-    r"\binom": r"\mathrm{C}",
-    r"\pmod": r"\mathrm{mod}",
-    r"\mod": r"\mathrm{mod}",
-    r"\lceil": r"\lfloor", r"\rceil": r"\rfloor",
-    r"\lVert": r"\|", r"\rVert": r"\|",
-    r"\triangleq": r"=",
-    r"\coloneqq": r":=",
-    r"\lfloor": r"\lfloor", r"\rfloor": r"\rfloor",  # these are fine
+    r"\bigg(": "(", r"\Bigg(": "(", r"\bigg)": ")", r"\Bigg)": ")",
 }
 
 # Regex-based fixes: commands like \ge that are prefixes of valid commands (\geq)
@@ -70,7 +76,10 @@ import re as _re
 _LATEX_REGEX_FIXES = [
     (_re.compile(r'\\ge(?!q)'), r'\\geq'),
     (_re.compile(r'\\le(?!q|ft)'), r'\\leq'),
-    (_re.compile(r'\\ne(?!g|wcommand)'), r'\\neq'),
+    (_re.compile(r'\\ne(?!g|wcommand|q)'), r'\\neq'),
+    # \left( → (, \right) → ), \left[ → [, etc.
+    (_re.compile(r'\\left\s*([(\[|.])'), r'\1'),
+    (_re.compile(r'\\right\s*([)\]|.])'), r'\1'),
 ]
 
 def _sanitize_math(text):
@@ -84,10 +93,234 @@ def _sanitize_math(text):
     return text
 
 
+def _display_width(text):
+    """Estimate display width of text in characters, accounting for math.
+
+    For math in $...$: strip LaTeX commands to estimate rendered character count,
+    then apply a small multiplier (1.3x) for spacing/operators.
+    E.g., '$\\mathbf{z}$' → rendered as 'z' (1 char), not 12 raw chars.
+    """
+    if not text or "$" not in text:
+        return len(text) if text else 0
+    width = 0
+    i = 0
+    while i < len(text):
+        if text[i] == "$":
+            j = text.find("$", i + 1)
+            if j == -1:
+                width += len(text[i:])
+                break
+            math_content = text[i+1:j]
+            # Estimate rendered width by stripping commands to their visual output
+            rendered = math_content
+            # \command{arg} → arg (1 char for the result)
+            rendered = _re.sub(r'\\(?:mathbf|mathrm|mathbb|mathcal|mathit|bm|'
+                               r'boldsymbol|text|operatorname)\s*\{([^}]*)\}', r'\1', rendered)
+            # \frac{a}{b} → a/b (roughly len(a)+len(b)+1)
+            rendered = _re.sub(r'\\frac\s*\{([^}]*)\}\s*\{([^}]*)\}', r'\1/\2', rendered)
+            # \sqrt{x} → √x
+            rendered = _re.sub(r'\\sqrt\s*\{([^}]*)\}', r'V\1', rendered)
+            # Greek letters: \alpha → α (1 char each)
+            rendered = _re.sub(r'\\[a-zA-Z]+', 'X', rendered)
+            # Subscript/superscript braces
+            rendered = rendered.replace('{', '').replace('}', '')
+            # Apply small multiplier for operator spacing
+            rendered_len = len(rendered)
+            if _re.search(r'\\frac|\\sum|\\prod|\\int', math_content):
+                rendered_len = int(rendered_len * 1.5)  # fractions are wider
+            else:
+                rendered_len = int(rendered_len * 1.3)  # general math spacing
+            width += max(rendered_len, 3)  # at least 3 chars for any math
+            i = j + 1
+        else:
+            j = text.find("$", i)
+            if j == -1:
+                width += len(text[i:])
+                break
+            width += j - i
+            i = j
+    return width
+
+
+def _has_tall_math(text):
+    """Check if text contains math that renders taller than normal (fractions, sums, etc.)."""
+    if not text or "$" not in text:
+        return False
+    return bool(_re.search(
+        r'\\frac|\\sum|\\prod|\\int|\\iint|\\log_|\\lim_|\^{|_{.*{|'
+        r'\\underset|\\overset|\\stackrel|\\binom|\\atop', text))
+
+
+def _prepare_for_display(text):
+    """Prepare text for matplotlib rendering: keep math in $...$, fix unsupported commands.
+
+    - Text already in $...$ is sanitized (unsupported commands replaced)
+    - Text with bare LaTeX notation (subscripts, Greek, etc.) gets wrapped in $...$
+    - Truly unrenderable things fall back to their command name
+    """
+    if not text:
+        return ""
+    t = text
+
+    # If text has $...$ already, just sanitize the math parts
+    if "$" in t:
+        return _sanitize_math(t)
+
+    # Text without $: check if it contains math-like patterns
+    # If so, try wrapping the whole thing (or parts) in $...$
+    has_math = bool(_re.search(
+        r'[_^{}\\]|>=|<=|!=|\balpha\b|\bbeta\b|\bgamma\b|\bdelta\b|'
+        r'\btheta\b|\blambda\b|\bsigma\b|\bepsilon\b|\binfty\b|'
+        r'\bforall\b|\bexists\b|\bsubset\b', t))
+
+    if not has_math:
+        return t  # plain text, no math
+
+    # Has math-like notation but no $ delimiters.
+    # Can't reliably auto-wrap arbitrary LaTeX fragments in $...$,
+    # so fall back to clean plain text.
+    return _to_display_text(t)
+
+
+def _to_display_text(text):
+    """Convert LaTeX-rich text to clean plain text for PNG display.
+
+    Strips all LaTeX notation to produce readable text that won't break
+    matplotlib. The JSON keeps the full LaTeX; this is display-only.
+    """
+    if not text:
+        return ""
+    t = text
+    # Remove $...$ delimiters (keep content)
+    t = t.replace("$", "")
+    # Remove common LaTeX commands, keep their argument
+    # \mathbb{R} -> R, \mathrm{Var} -> Var, \bm{x} -> x, etc.
+    t = _re.sub(r'\\(?:mathbb|mathrm|mathcal|mathbf|mathit|bm|boldsymbol|'
+                r'text|textit|textbf|emph|operatorname)\s*\{([^}]*)\}', r'\1', t)
+    # \frac{a}{b} -> a/b
+    t = _re.sub(r'\\frac\s*\{([^}]*)\}\s*\{([^}]*)\}', r'(\1)/(\2)', t)
+    # \sqrt{x} -> sqrt(x)
+    t = _re.sub(r'\\sqrt\s*\{([^}]*)\}', r'sqrt(\1)', t)
+    # \left, \right, \big, \Big etc. -> nothing
+    t = _re.sub(r'\\(?:left|right|big|Big|bigg|Bigg)([|()[\]{}.]?)', r'\1', t)
+    # Subscripts/superscripts: x_{abc} -> x_abc, x^{abc} -> x^abc
+    t = _re.sub(r'_\{([^}]*)\}', r'_\1', t)
+    t = _re.sub(r'\^\{([^}]*)\}', r'^\1', t)
+    # \| -> ||
+    t = t.replace(r'\|', '||')
+    # Common symbols
+    t = t.replace(r'\leq', '<=').replace(r'\geq', '>=')
+    t = t.replace(r'\le', '<=').replace(r'\ge', '>=')
+    t = t.replace(r'\neq', '!=').replace(r'\ne', '!=')
+    t = t.replace(r'\in', 'in').replace(r'\notin', 'not in')
+    t = t.replace(r'\subset', 'subset').replace(r'\subseteq', 'subseteq')
+    t = t.replace(r'\cup', 'U').replace(r'\cap', 'n')
+    t = t.replace(r'\times', 'x').replace(r'\cdot', '*').replace(r'\cdots', '...')
+    t = t.replace(r'\ldots', '...').replace(r'\dots', '...')
+    t = t.replace(r'\infty', 'inf').replace(r'\infinity', 'inf')
+    t = t.replace(r'\sum', 'sum').replace(r'\prod', 'prod')
+    t = t.replace(r'\int', 'int').replace(r'\partial', 'd')
+    t = t.replace(r'\nabla', 'grad').replace(r'\Delta', 'Delta')
+    t = t.replace(r'\alpha', 'alpha').replace(r'\beta', 'beta')
+    t = t.replace(r'\gamma', 'gamma').replace(r'\delta', 'delta')
+    t = t.replace(r'\epsilon', 'eps').replace(r'\varepsilon', 'eps')
+    t = t.replace(r'\theta', 'theta').replace(r'\lambda', 'lambda')
+    t = t.replace(r'\mu', 'mu').replace(r'\sigma', 'sigma')
+    t = t.replace(r'\rho', 'rho').replace(r'\phi', 'phi')
+    t = t.replace(r'\eta', 'eta').replace(r'\kappa', 'kappa')
+    t = t.replace(r'\pi', 'pi').replace(r'\omega', 'omega')
+    t = t.replace(r'\Phi', 'Phi').replace(r'\Sigma', 'Sigma')
+    t = t.replace(r'\Theta', 'Theta').replace(r'\Lambda', 'Lambda')
+    t = t.replace(r'\ell', 'l').replace(r'\log', 'log').replace(r'\exp', 'exp')
+    t = t.replace(r'\min', 'min').replace(r'\max', 'max')
+    t = t.replace(r'\sup', 'sup').replace(r'\inf', 'inf')
+    t = t.replace(r'\lim', 'lim').replace(r'\arg', 'arg')
+    t = t.replace(r'\forall', 'forall').replace(r'\exists', 'exists')
+    t = t.replace(r'\rightarrow', '->').replace(r'\to', '->')
+    t = t.replace(r'\Rightarrow', '=>').replace(r'\implies', '=>')
+    t = t.replace(r'\Leftrightarrow', '<=>').replace(r'\iff', '<=>')
+    t = t.replace(r'\sim', '~').replace(r'\approx', '~=')
+    t = t.replace(r'\quad', ' ').replace(r'\qquad', '  ')
+    t = t.replace(r'\,', ' ').replace(r'\;', ' ').replace(r'\ ', ' ')
+    # Remove any remaining backslash commands: \xxx -> xxx
+    t = _re.sub(r'\\([a-zA-Z]+)', r'\1', t)
+    # Clean up braces and extra spaces
+    t = t.replace('{', '').replace('}', '')
+    t = _re.sub(r'\s+', ' ', t).strip()
+    return t
+
+
 def _wrap(text, width=38):
+    """Wrap text to width, never breaking inside $...$ math expressions.
+
+    Strategy:
+    1. Split into atomic tokens: each $...$ math block is one token,
+       each word in non-math text is one token.
+    2. Greedily accumulate tokens into lines, breaking when _display_width
+       would exceed *width*.
+    3. If a single $...$ token is wider than *width*, shorten it with
+       _shorten (which never cuts inside math) so it fits.
+    """
     if not text:
         return []
-    return textwrap.wrap(text, width=width)
+    # If no math, simple wrap
+    if "$" not in text:
+        return textwrap.wrap(text, width=width)
+
+    # Split text into atomic tokens: $...$ blocks and individual words
+    tokens = []
+    i = 0
+    while i < len(text):
+        if text[i] == "$":
+            # Find closing $
+            j = text.find("$", i + 1)
+            if j == -1:
+                tokens.append(text[i:])
+                break
+            tokens.append(text[i:j+1])  # include both $
+            i = j + 1
+        else:
+            # Find next $ or end
+            j = text.find("$", i)
+            if j == -1:
+                chunk = text[i:]
+            else:
+                chunk = text[i:j]
+            # Split non-math chunk into words (preserving spaces for joining)
+            words = chunk.split(" ")
+            for wi, w in enumerate(words):
+                if w:
+                    tokens.append(w)
+                if wi < len(words) - 1:
+                    tokens.append(" ")
+            i = j if j != -1 else len(text)
+
+    # If a single math token is wider than width, just keep it as-is.
+    # It may overflow slightly, but that's better than breaking the LaTeX
+    # or stripping to plain text. The box will accommodate it partially.
+    # (Previously tried truncating, but cutting mid-\frac breaks rendering.)
+
+    # Greedily accumulate tokens into lines
+    lines = []
+    current = ""
+    for tok in tokens:
+        if tok == " ":
+            # Space: append to current line if there is content
+            if current:
+                current += " "
+            continue
+        candidate = current + tok if current and not current.endswith(" ") else current + tok
+        if current and _display_width(candidate) > width:
+            stripped = current.strip()
+            if stripped:
+                lines.append(stripped)
+            current = tok
+        else:
+            current = candidate
+    if current.strip():
+        lines.append(current.strip())
+
+    return lines
 
 
 def _shorten(text, maxlen=80):
@@ -173,10 +406,23 @@ def merge_proofs(nodes, edges):
     proof_map = {}  # proof_id -> theorem_id
 
     for n in nodes:
-        if n["type"] == "proof" and n.get("proves"):
-            target_id = n["proves"]
+        if n["type"] == "proof":
+            # Support both "proves" and "parent" fields for linking to parent theorem
+            target_id = n.get("proves") or n.get("parent") or ""
             if target_id in node_by_id:
                 proof_map[n["id"]] = target_id
+
+    # Also find proofs linked via "proves" edges (e.g., theorem -> proof edge)
+    for e in edges:
+        if e.get("type") == "proves":
+            src, tgt = e["source"], e["target"]
+            # Could be theorem->proof or proof->theorem depending on convention
+            if src in node_by_id and node_by_id.get(tgt, {}).get("type") == "proof":
+                if tgt not in proof_map:
+                    proof_map[tgt] = src
+            elif tgt in node_by_id and node_by_id.get(src, {}).get("type") == "proof":
+                if src not in proof_map:
+                    proof_map[src] = tgt
 
     # Attach proof info to parent theorem (reset first to avoid duplication on repeated calls)
     for n in nodes:
@@ -211,14 +457,246 @@ def merge_proofs(nodes, edges):
     return display_nodes, display_edges, proof_map
 
 
+# ── Foundation graph linking (shared by PNG and HTML) ────────────────────────
+
+def _resolve_foundation_path(foundation_path=None):
+    """Find the best available foundation index path."""
+    if foundation_path is not None:
+        return foundation_path
+    # Auto-detect from common locations
+    candidates = [
+        Path("/mnt/g/My Drive/Research/Automath/naturalproofs/clean_foundation.json"),
+        Path("/sci/labs/orzuk/orzuk/projects/Authomathics/naturalproofs/clean_foundation.json"),
+    ]
+    # Also try via config.py DATA_DIR
+    try:
+        from config import DATA_DIR
+        candidates.insert(0, Path(str(DATA_DIR)) / "naturalproofs" / "clean_foundation.json")
+    except ImportError:
+        pass
+    for c in candidates:
+        if c.exists():
+            return str(c)
+    return None  # will fall back to built-in WELL_KNOWN
+
+
+def compute_foundation_links(nodes_raw, base_ids, foundation_path=None):
+    """Compute foundation ghost map: foundation_name -> list of base node IDs.
+
+    Shared by draw_dag (PNG rendering) and generate_interactive_html.
+
+    Args:
+        nodes_raw: list of all node dicts (including proofs, proof steps).
+        base_ids: set of node IDs for base nodes (definitions, theorems, lemmas, etc.)
+        foundation_path: path to clean_foundation.json, or None for auto-detect.
+
+    Returns:
+        (ghost_map, case1_matches):
+            ghost_map: {foundation_name: [base_node_ids]} — for ghost node rendering
+            case1_matches: {base_node_id: [foundation_names]} — for inline annotations
+    """
+    from link_to_foundation import build_foundation_index, link_paper
+
+    fg_path = _resolve_foundation_path(foundation_path)
+    fg_index = build_foundation_index(fg_path)
+    matches = link_paper(nodes_raw, fg_index, min_term_len=5)
+
+    ghost_map = {}   # foundation_name -> set of base node IDs
+    case1 = {}       # base_node_id -> list of foundation names
+
+    for m in matches:
+        nid = m["node_id"]
+        fname = m["foundation_name"]
+        if nid in base_ids:
+            # Direct match on a base node
+            ghost_map.setdefault(fname, set()).add(nid)
+            case1.setdefault(nid, []).append(fname)
+        else:
+            # Match on proof step — trace to parent base node
+            parent = nid
+            for nr in nodes_raw:
+                if nr["id"] == parent:
+                    if nr.get("parent_proof"):
+                        for nr2 in nodes_raw:
+                            if nr2["id"] == nr["parent_proof"] and nr2.get("proves"):
+                                parent = nr2["proves"]
+                                break
+                        break
+                    if nr.get("proves") and nr["proves"] in base_ids:
+                        parent = nr["proves"]
+                        break
+            if parent in base_ids:
+                ghost_map.setdefault(fname, set()).add(parent)
+                case1.setdefault(parent, []).append(fname)
+
+    # Convert sets to lists
+    ghost_map = {k: sorted(v) for k, v in ghost_map.items()}
+    case1 = {k: sorted(set(v)) for k, v in case1.items()}
+    return ghost_map, case1
+
+
+def draw_foundation_ghosts(ax, ghost_map, node_rect):
+    """Draw foundation ghost nodes and their dashed edges on a matplotlib axes.
+
+    Args:
+        ax: matplotlib axes.
+        ghost_map: {foundation_name: [base_node_ids]} from compute_foundation_links.
+        node_rect: {node_id: (x, y, w, h)} from draw_dag layout.
+    """
+    if not ghost_map or not node_rect:
+        return {}
+
+    from matplotlib.patches import FancyArrowPatch
+
+    all_tops = [by + bh for (bx, by, bw, bh) in node_rect.values()]
+    ghost_y_top = max(all_tops) + LEVEL_GAP_Y * 0.8
+    ghost_w = MIN_BOX_W * 1.1
+    ghost_h = HEADER_H + LINE_H * 1.5 + PADDING
+    ghost_names = sorted(ghost_map.keys())
+    total_ghost_w = len(ghost_names) * ghost_w + (len(ghost_names) - 1) * BOX_GAP_X * 0.5
+    ghost_start_x = -total_ghost_w / 2
+
+    ghost_rects = {}
+    for gi, gname in enumerate(ghost_names):
+        gx = ghost_start_x + gi * (ghost_w + BOX_GAP_X * 0.5)
+        gy = ghost_y_top
+
+        # Ghost box (dashed gray)
+        grect = FancyBboxPatch(
+            (gx, gy - ghost_h), ghost_w, ghost_h,
+            boxstyle="round,pad=0.05",
+            facecolor="#E8E8E8", edgecolor="#777777",
+            linewidth=1.5, linestyle=(0, (8, 6)),
+            gid=f"ghost_box_{gi}",
+        )
+        ax.add_patch(grect)
+        # Header bar
+        gheader = FancyBboxPatch(
+            (gx, gy - HEADER_H), ghost_w, HEADER_H,
+            boxstyle="round,pad=0.05",
+            facecolor="#777777", edgecolor="#777777",
+            linewidth=0,
+            gid=f"ghost_header_{gi}",
+        )
+        ax.add_patch(gheader)
+        # Name text
+        short_name = gname if len(gname) <= 22 else gname[:19] + "..."
+        ax.text(gx + ghost_w / 2, gy - HEADER_H / 2, short_name,
+                ha="center", va="center", fontsize=12, fontweight="bold",
+                color="white", gid=f"ghost_text_{gi}")
+        # References text
+        refs_str = "→ " + ", ".join(ghost_map[gname])
+        ax.text(gx + ghost_w / 2, gy - HEADER_H - LINE_H * 0.7, refs_str,
+                ha="center", va="center", fontsize=10, color="#555",
+                gid=f"ghost_refs_{gi}")
+
+        ghost_rects[gname] = (gx, gy - ghost_h, ghost_w, ghost_h)
+
+        # Dashed edges to target nodes
+        for ti, target_id in enumerate(ghost_map[gname]):
+            if target_id in node_rect:
+                tx, ty, tw, th = node_rect[target_id]
+                arrow = FancyArrowPatch(
+                    (gx + ghost_w / 2, gy - ghost_h),
+                    (tx + tw / 2, ty + th),
+                    arrowstyle="-|>,head_length=0.8,head_width=0.35",
+                    color="#999999", lw=1.5,
+                    linestyle=(0, (8, 6)),  # 8pt dash, 6pt gap (more visible than "dashed")
+                    connectionstyle="arc3,rad=0.05",
+                    shrinkA=3, shrinkB=3,
+                    gid=f"ghost_edge_{gi}_{ti}",
+                )
+                ax.add_patch(arrow)
+
+    return ghost_rects
+
+
+def draw_legend(ax, node_data, node_rect, show_foundation=False,
+                has_ghosts=False, font_scale=1.0):
+    """Draw the legend in the bottom-right, shifting right only if overlapping nodes."""
+    legend_handles = []
+    for ntype, cols in NODE_COLORS.items():
+        if any(node_data[nid].get("type") == ntype for nid in node_data):
+            legend_handles.append(
+                mpatches.Patch(facecolor=cols["body"], edgecolor=cols["header"],
+                               linewidth=1.5, label=ntype.title())
+            )
+    legend_handles.append(
+        plt.Line2D([0], [0], color="#666666", lw=2.5, marker=">",
+                   markersize=10, label="A supports B")
+    )
+    if show_foundation and has_ghosts:
+        legend_handles.append(
+            mpatches.Patch(facecolor="#E8E8E8", edgecolor="#777777",
+                           linewidth=1.5, linestyle="dashed",
+                           label="Foundation (ext.)")
+        )
+
+    if not node_rect:
+        ax.legend(handles=legend_handles, loc="lower right",
+                  fontsize=14 * font_scale, frameon=False,
+                  title="Node types", title_fontsize=16 * font_scale)
+        return
+
+    # Compute legend size: ~15% of graph width, height depends on # items
+    all_lefts = [bx for (bx, by, bw, bh) in node_rect.values()]
+    all_rights = [bx + bw for (bx, by, bw, bh) in node_rect.values()]
+    all_bottoms = [by for (bx, by, bw, bh) in node_rect.values()]
+    all_tops = [by + bh for (bx, by, bw, bh) in node_rect.values()]
+
+    graph_w = max(all_rights) - min(all_lefts)
+    graph_h = max(all_tops) - min(all_bottoms)
+    legend_w = graph_w * 0.15
+    n_items = len(legend_handles)
+    legend_h = n_items * LINE_H * 1.8 * font_scale + HEADER_H * 2 * font_scale
+
+    # Position: bottom-right, legend bottom aligned with lowest node bottom
+    legend_bottom = min(all_bottoms)
+    legend_x = max(all_rights) - legend_w
+
+    # Check overlap with nodes
+    overlap = False
+    for nid, (bx, by, bw, bh) in node_rect.items():
+        node_right = bx + bw
+        node_top = by + bh
+        node_bottom = by
+        if (node_right > legend_x - BOX_GAP_X and
+            bx < legend_x + legend_w + BOX_GAP_X and
+            node_top > legend_bottom and
+            node_bottom < legend_bottom + legend_h):
+            overlap = True
+            break
+
+    if overlap:
+        legend_x = max(all_rights) + BOX_GAP_X * 2
+
+    # Anchor legend by its bottom-left corner
+    leg = ax.legend(handles=legend_handles, loc="lower left",
+                    bbox_to_anchor=(legend_x, legend_bottom),
+                    bbox_transform=ax.transData,
+                    fontsize=14 * font_scale, frameon=False,
+                    title="Node types", title_fontsize=16 * font_scale)
+
+
 # ── Drawing ─────────────────────────────────────────────────────────────────
 def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
-             resolution="standard", show_legend=True):
+             resolution="standard", show_legend=True, show_foundation=False,
+             foundation_path=None):
     """Main entry: draw a layered DAG from student-format nodes/edges.
 
     resolution:
       "standard" — collapse proofs into theorem boxes, hide equations/proof_steps
       "full"     — show all nodes including proofs, equations, proof_steps as separate nodes
+
+    show_foundation:
+      If True, draw ghost nodes for external foundation dependencies above the
+      main graph (gray dashed boxes with dashed arrows to paper nodes).
+      Default False preserves the previous behaviour of hiding them in the PNG.
+
+    foundation_path:
+      Optional path to clean_foundation.json.  When *None* the code tries the
+      default location (/mnt/g/My Drive/Research/Automath/naturalproofs/clean_foundation.json)
+      and falls back to the built-in WELL_KNOWN dictionary.
     """
     if resolution == "full":
         # Full resolution: no merging, show everything
@@ -248,48 +726,157 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
     max_width = max(len(v) for v in levels.values()) if levels else 1
 
     # ── Box dimensions ──
-    MIN_BOX_W = 3.0
-    MAX_BOX_W = 6.0
-    BOX_GAP_X = 0.5
-    LEVEL_GAP_Y = 5.0
-    HEADER_H = 0.45
-    LINE_H = 0.28
-    PADDING = 0.10
-    CHARS_PER_UNIT = 12  # approx chars per unit of box width
+    # Layout constants are module-level (shared with draw_foundation_ghosts)
+    pass
+    # CHARS_PER_UNIT defined at module level
     MAX_LINES_PER_SECTION = 3
 
     def _content_lines(n):
-        """Get all content text lines for a node (for width estimation)."""
+        """Get all content text lines for a node (for width estimation).
+
+        Uses the same _prepare_for_display pipeline as the drawing code so
+        width estimates are consistent with what gets rendered.
+        """
         ntype = n.get("type", "")
         lines = []
         name = n.get("name") or ""
         lines.append(f"{n['id']}: {name}" if name else n['id'])
-        if ntype in ("theorem", "lemma", "corollary", "proposition"):
+        if ntype in ("theorem", "lemma", "corollary", "proposition", "claim"):
             for a in (n.get("assumptions") or [])[:MAX_LINES_PER_SECTION]:
-                lines.append(_shorten(a, 100))
+                lines.append(_shorten(_prepare_for_display(a), 60))
             for c in (n.get("conclusions") or [])[:MAX_LINES_PER_SECTION]:
-                lines.append(_shorten(c, 100))
+                lines.append(_shorten(_prepare_for_display(c), 60))
             for ps in (n.get("proof_info") or []):
-                if ps: lines.append(_shorten(f"Proof: {ps}", 100))
+                if ps: lines.append(_shorten(_prepare_for_display(f"Proof: {ps}"), 60))
         elif ntype == "algorithm" and (n.get("input") or n.get("output")):
-            for x in (n.get("input") or []): lines.append(_shorten(x, 100))
-            for x in (n.get("output") or []): lines.append(_shorten(x, 100))
+            for x in (n.get("input") or []): lines.append(_shorten(x, 60))
+            for x in (n.get("output") or []): lines.append(_shorten(x, 60))
         else:
-            lines.append(_shorten(n.get("statement", ""), 150))
+            raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
+            lines.append(_shorten(_prepare_for_display(raw), 150))
         return lines
 
     # ── First pass: compute each node's ideal width ──
+    # Strategy: find the MINIMUM box width that fits all text.
+    # 1. Start with a candidate width (based on content estimate, capped to MAX_BOX_W)
+    # 2. Wrap all text to that width
+    # 3. Binary-search downward for the tightest width where nothing overflows
     node_width = {}
     node_data = {}
+
+    def _get_all_wrap_texts(n):
+        """Get all texts that need wrapping for a node."""
+        ntype = n.get("type", "")
+        texts = []
+        if ntype in ("theorem", "lemma", "corollary", "proposition", "claim"):
+            for a in (n.get("assumptions") or [])[:MAX_LINES_PER_SECTION]:
+                texts.append(_prepare_for_display(a))
+            for c in (n.get("conclusions") or [])[:MAX_LINES_PER_SECTION]:
+                texts.append(_prepare_for_display(c))
+            for ps in (n.get("proof_info") or []):
+                if ps:
+                    texts.append(_prepare_for_display(f"Proof: {ps}"))
+        elif ntype == "algorithm" and (n.get("input") or n.get("output")):
+            for x in (n.get("input") or []):
+                texts.append(_shorten(x, 100))
+            for x in (n.get("output") or []):
+                texts.append(_shorten(x, 100))
+        else:
+            raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
+            texts.append(_prepare_for_display(raw))
+        return texts
+
+    def _wrap_all_and_measure(texts, wrap_chars):
+        """Wrap all texts to wrap_chars width and return max display width of resulting lines."""
+        max_dw = 0
+        for t in texts:
+            lines = _wrap(t, wrap_chars) or [t[:wrap_chars] if t else ""]
+            for line in lines:
+                dw = _display_width(line)
+                if dw > max_dw:
+                    max_dw = dw
+        return max_dw
+
+    def _find_tight_width(n):
+        """Find the minimum box width that fits all text without overflow."""
+        texts = _get_all_wrap_texts(n)
+        if not texts or all(not t for t in texts):
+            return MIN_BOX_W
+
+        name = n.get("name") or ""
+        nid = n["id"]
+
+        # Bullet prefix overhead: theorem/algorithm nodes render "• " before
+        # each line (+2 display chars) plus the PADDING+0.1 indent
+        ntype = n.get("type", "")
+        has_bullets = ntype in ("theorem", "lemma", "corollary", "proposition",
+                                "claim", "algorithm")
+        bullet_extra = 2 if has_bullets else 0
+        # chars_overhead: padding on both sides + bullet prefix
+        chars_overhead = 4 + bullet_extra
+
+        def _needed_w(max_dw):
+            """Convert max display-width (chars) to data-unit width needed."""
+            return (max_dw + bullet_extra) / CHARS_PER_UNIT + 2 * PADDING + 0.15
+
+        def _header_w_for_box(w):
+            """Header width needed given box width w (renderer shows more name
+            chars for wider boxes). Header font is 14-bold ~25% wider than body.
+            Cap name display to 30 chars to prevent runaway expansion."""
+            header_chars = max(len(nid) + 4, int(w * CHARS_PER_UNIT) - 2)
+            avail = max(6, header_chars - len(nid) - 2)
+            avail = min(avail, 30)  # cap to prevent circular expansion
+            shown = len(nid) + 2 + min(avail, len(name))
+            HEADER_CPU = 9.0  # chars/unit for fontsize-14 bold
+            return shown / HEADER_CPU + 2 * PADDING + 0.15
+
+        # --- Step 1: find body width via binary search ---
+        # Initial header estimate (30-char cap, before circular expansion)
+        name_cap = min(len(name), 30)
+        init_header_w = (len(nid) + 2 + name_cap) / 9.0 + 2 * PADDING + 0.15
+
+        lo_w = max(MIN_BOX_W, init_header_w)
+        hi_w = MAX_BOX_W
+
+        # Check if even MAX_BOX_W is too narrow (math tokens wider than MAX)
+        hi_chars = max(20, int(hi_w * CHARS_PER_UNIT) - chars_overhead)
+        max_dw_at_hi = _wrap_all_and_measure(texts, hi_chars)
+        needed_at_hi = _needed_w(max_dw_at_hi)
+        if needed_at_hi > hi_w:
+            body_w = min(needed_at_hi * 1.02, MAX_BOX_W * 1.5)
+        else:
+            # Binary search for minimum width where body text fits
+            for _ in range(10):
+                mid_w = (lo_w + hi_w) / 2
+                mid_chars = max(20, int(mid_w * CHARS_PER_UNIT) - chars_overhead)
+                max_dw = _wrap_all_and_measure(texts, mid_chars)
+                needed = _needed_w(max_dw)
+                if needed <= mid_w:
+                    hi_w = mid_w
+                else:
+                    lo_w = mid_w
+            body_w = hi_w * 1.01
+
+        # --- Step 2: resolve header/body circular dependency ---
+        # Given body_w, the renderer may show more name chars. Iterate to
+        # convergence (typically 1-2 rounds).
+        w = max(MIN_BOX_W, body_w)
+        for _ in range(3):
+            hw = _header_w_for_box(w)
+            w_new = max(body_w, hw)
+            if w_new <= w + 0.01:
+                break
+            w = w_new
+
+        return max(MIN_BOX_W, w)
+
     for n in nodes:
         nid = n["id"]
         node_data[nid] = n
-        content = _content_lines(n)
-        max_line = max(len(line) for line in content) if content else 10
-        w = max(MIN_BOX_W, min(MAX_BOX_W, max_line / CHARS_PER_UNIT))
-        node_width[nid] = w
+        node_width[nid] = _find_tight_width(n)
 
     # ── Second pass: compute heights and positions ──
+    # Widths were already optimized in the first pass via _find_tight_width.
     node_pos = {}
     node_rect = {}
 
@@ -302,30 +889,46 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         for n in row:
             nid = n["id"]
             w = node_width[nid]
-            wrap_w = max(20, int(w * CHARS_PER_UNIT))
+            wrap_w = max(20, int(w * CHARS_PER_UNIT) - 4)  # subtract margin for padding + bullet
             cy_top = -d * LEVEL_GAP_Y
             ntype = n.get("type", "")
 
-            if ntype in ("theorem", "lemma", "corollary", "proposition"):
+            # Line height: tall math > inline math > plain text
+            def _line_h(line):
+                if _has_tall_math(line):
+                    return LINE_H * 2.5
+                elif "$" in str(line):
+                    return LINE_H * 1.5
+                return LINE_H
+
+            if ntype in ("theorem", "lemma", "corollary", "proposition", "claim"):
                 assumptions = n.get("assumptions", [])
                 conclusions = n.get("conclusions", [])
                 proof_strategies = n.get("proof_info", [])
 
-                assume_lines = [_shorten(a, 100) for a in assumptions]
-                if len(assume_lines) > MAX_LINES_PER_SECTION:
-                    assume_lines = assume_lines[:MAX_LINES_PER_SECTION] + [f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more"]
-                conclude_lines = [_shorten(c, 100) for c in conclusions]
-                if len(conclude_lines) > MAX_LINES_PER_SECTION:
-                    conclude_lines = conclude_lines[:MAX_LINES_PER_SECTION] + [f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more"]
-                proof_lines = [_shorten(f"Proof: {ps}", 100) for ps in proof_strategies if ps]
+                # Wrap each item to box width, then flatten
+                assume_lines = []
+                for a in assumptions[:MAX_LINES_PER_SECTION]:
+                    assume_lines.extend(_wrap(_prepare_for_display(a), wrap_w) or [a[:wrap_w]])
+                if len(assumptions) > MAX_LINES_PER_SECTION:
+                    assume_lines.append(f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more")
+                conclude_lines = []
+                for c in conclusions[:MAX_LINES_PER_SECTION]:
+                    conclude_lines.extend(_wrap(_prepare_for_display(c), wrap_w) or [c[:wrap_w]])
+                if len(conclusions) > MAX_LINES_PER_SECTION:
+                    conclude_lines.append(f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more")
+                proof_lines = []
+                for ps in proof_strategies:
+                    if ps:
+                        proof_lines.extend(_wrap(_prepare_for_display(f"Proof: {ps}"), wrap_w))
 
-                n_assume = max(len(assume_lines), 1)
-                n_conclude = max(len(conclude_lines), 1)
+                assume_heights = sum(_line_h(l) for l in assume_lines) or LINE_H
+                conclude_heights = sum(_line_h(l) for l in conclude_lines) or LINE_H
                 n_proof = len(proof_lines)
 
                 h = HEADER_H + PADDING
-                h += n_assume * LINE_H + PADDING
-                h += n_conclude * LINE_H + PADDING
+                h += assume_heights + PADDING
+                h += conclude_heights + PADDING
                 if n_proof > 0:
                     h += n_proof * LINE_H + PADDING
                 h += PADDING
@@ -337,10 +940,15 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 h += len(out_lines) * LINE_H + PADDING
                 h += PADDING
             else:
-                stmt = _shorten(n.get("statement", ""), 150)
-                stmt_lines = _wrap(stmt, wrap_w)[:3]
-                n_stmt = max(len(stmt_lines), 1)
-                h = HEADER_H + n_stmt * LINE_H + 2 * PADDING
+                # Use statement, or name as fallback (e.g., proofs with descriptive names)
+                raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
+                stmt = _prepare_for_display(raw)
+                stmt_lines = _wrap(stmt, wrap_w)[:5]
+                stmt_height = sum(_line_h(l) for l in stmt_lines) if stmt_lines else LINE_H
+                h = HEADER_H + stmt_height + 2 * PADDING
+
+            # Width was already optimized in the first pass (_find_tight_width).
+            # No expansion needed here.
 
             node_pos[nid] = (x_cursor + w / 2, cy_top - h / 2)
             node_rect[nid] = (x_cursor, cy_top - h, w, h)
@@ -352,6 +960,13 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         fw = max(max_width * (avg_w + BOX_GAP_X) + 4, 16)
         fh = max((max_depth + 1) * LEVEL_GAP_Y + 4, 12)
         figsize = (fw, fh)
+
+    # Scale factor for title/legend: scale with figure AREA so they look
+    # consistent regardless of whether the figure is wide or tall.
+    # Base: 16x12 = 192 sq inches. Use sqrt so scaling is moderate.
+    import math
+    _fig_area = figsize[0] * figsize[1]
+    _font_scale = math.sqrt(_fig_area / 192.0)
 
     fig, ax = plt.subplots(1, 1, figsize=figsize)
     ax.set_aspect("equal")
@@ -400,11 +1015,18 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
 
         cursor_y = by + bh  # start from top
 
-        # Header
+        # Header — truncate name to box width, but always show full node ID
+        # Use ~9 chars/unit for bold header font (vs 12 for body font)
         name_str = n.get("name") or ""
+        header_chars = max(len(nid) + 4, int(node_width.get(nid, 4.0) * 9) - 2)
         header_text = f"{nid}"
         if name_str:
-            header_text += f": {_shorten(name_str, 30)}"
+            avail = max(6, header_chars - len(nid) - 2)
+            header_text += f": {_shorten(name_str, avail)}"
+        # Choose header font size to fit: shrink if header text is long
+        header_fontsize = 14
+        if len(header_text) > header_chars:
+            header_fontsize = max(9, 14 * header_chars / len(header_text))
 
         header_rect = FancyBboxPatch(
             (bx, cursor_y - HEADER_H), bw, HEADER_H,
@@ -415,35 +1037,48 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         )
         ax.add_patch(header_rect)
         ax.text(bx + bw / 2, cursor_y - HEADER_H / 2, header_text,
-                ha="center", va="center", fontsize=12, fontweight="bold",
+                ha="center", va="center", fontsize=header_fontsize, fontweight="bold",
                 color="white")
         cursor_y -= HEADER_H + PADDING
 
-        if ntype in ("theorem", "lemma", "corollary", "proposition"):
-            # Rebuild truncated lines (matching height computation)
+        # Line height helper — must match height computation exactly
+        def _line_h_draw(line):
+            if _has_tall_math(line):
+                return LINE_H * 2.5
+            elif "$" in line:
+                return LINE_H * 1.5
+            return LINE_H
+
+        if ntype in ("theorem", "lemma", "corollary", "proposition", "claim"):
+            # Wrap text to box width (same logic as height computation)
+            dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT) - 4)
             assumptions = n.get("assumptions", [])
-            a_lines = [_shorten(a, 70) for a in assumptions]
-            if len(a_lines) > MAX_LINES_PER_SECTION:
-                a_lines = a_lines[:MAX_LINES_PER_SECTION] + [f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more"]
+            a_lines = []
+            for a in assumptions[:MAX_LINES_PER_SECTION]:
+                a_lines.extend(_wrap(_prepare_for_display(a), dyn_wrap) or [a[:dyn_wrap]])
+            if len(assumptions) > MAX_LINES_PER_SECTION:
+                a_lines.append(f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more")
             if not a_lines:
                 a_lines = ["(none)"]
 
             conclusions = n.get("conclusions", [])
-            c_lines = [_shorten(c, 70) for c in conclusions]
-            if len(c_lines) > MAX_LINES_PER_SECTION:
-                c_lines = c_lines[:MAX_LINES_PER_SECTION] + [f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more"]
+            c_lines = []
+            for c in conclusions[:MAX_LINES_PER_SECTION]:
+                c_lines.extend(_wrap(_prepare_for_display(c), dyn_wrap) or [c[:dyn_wrap]])
+            if len(conclusions) > MAX_LINES_PER_SECTION:
+                c_lines.append(f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more")
             if not c_lines:
                 c_lines = ["(none)"]
 
             # Assumptions
             ax.text(bx + PADDING, cursor_y, "Assume:",
-                    ha="left", va="top", fontsize=11, fontweight="bold", color="#333")
+                    ha="left", va="top", fontsize=13, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
             for line in a_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=10.5, color="#222",
+                        ha="left", va="top", fontsize=12, color="#222",
                         fontstyle="italic")
-                cursor_y -= LINE_H
+                cursor_y -= _line_h_draw(line)
 
             cursor_y -= PADDING * 0.3
 
@@ -453,12 +1088,12 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
 
             # Conclusions
             ax.text(bx + PADDING, cursor_y, "Conclude:",
-                    ha="left", va="top", fontsize=11, fontweight="bold", color="#333")
+                    ha="left", va="top", fontsize=13, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
             for line in c_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=10.5, color="#222")
-                cursor_y -= LINE_H
+                        ha="left", va="top", fontsize=12, color="#222")
+                cursor_y -= _line_h_draw(line)
 
             # Proof strategy (if merged)
             proof_strategies = n.get("proof_info", [])
@@ -468,128 +1103,56 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                         color="#999", lw=0.5, alpha=0.4)
                 for ps in proof_strategies:
                     if ps:
-                        ax.text(bx + PADDING, cursor_y, _shorten(f"Proof: {ps}", 70),
-                                ha="left", va="top", fontsize=10.5,
-                                color="#444", fontstyle="italic")
-                        cursor_y -= LINE_H
+                        for pline in _wrap(_prepare_for_display(f"Proof: {ps}"), dyn_wrap):
+                            ax.text(bx + PADDING, cursor_y, pline,
+                                    ha="left", va="top", fontsize=10.5,
+                                    color="#444", fontstyle="italic")
+                            cursor_y -= LINE_H
 
         elif ntype == "algorithm" and (n.get("input") or n.get("output")):
             # Algorithm with input/output
-            in_lines = [_shorten(x, 70) for x in (n.get("input") or ["(none)"])]
+            dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT) - 4)
+            in_lines = [_shorten(x, dyn_wrap) for x in (n.get("input") or ["(none)"])]
             out_lines = [_shorten(x, 70) for x in (n.get("output") or ["(none)"])]
 
             ax.text(bx + PADDING, cursor_y, "Input:",
-                    ha="left", va="top", fontsize=11, fontweight="bold", color="#333")
+                    ha="left", va="top", fontsize=13, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
             for line in in_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=10.5, color="#222")
+                        ha="left", va="top", fontsize=12, color="#222")
                 cursor_y -= LINE_H
             cursor_y -= PADDING * 0.3
             ax.plot([bx + 0.15, bx + bw - 0.15], [cursor_y + PADDING * 0.2] * 2,
                     color=colors["header"], lw=0.5, alpha=0.4)
             ax.text(bx + PADDING, cursor_y, "Output:",
-                    ha="left", va="top", fontsize=11, fontweight="bold", color="#333")
+                    ha="left", va="top", fontsize=13, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
             for line in out_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=10.5, color="#222")
+                        ha="left", va="top", fontsize=12, color="#222")
                 cursor_y -= LINE_H
 
         else:
-            # Simple box: just statement text (max 3 lines)
-            dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT))
-            stmt = _shorten(n.get("statement", ""), 150)
-            stmt_lines = _wrap(stmt, dyn_wrap)[:3]
+            # Simple box: wrap statement/name text to box width (up to 5 lines)
+            dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT) - 4)
+            raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
+            stmt = _prepare_for_display(raw)
+            stmt_lines = _wrap(stmt, dyn_wrap)[:5]
             if not stmt_lines:
                 stmt_lines = [""]
             for line in stmt_lines:
                 ax.text(bx + PADDING, cursor_y, line,
-                        ha="left", va="top", fontsize=10.5, color="#222")
-                cursor_y -= LINE_H
+                        ha="left", va="top", fontsize=12, color="#222")
+                cursor_y -= _line_h_draw(line)
 
-    # ── Ghost nodes (external dependencies) drawn in the SVG but hidden ──
-    from link_to_foundation import build_foundation_index, link_paper
-    _fg_index = build_foundation_index(None)
-    _fg_matches = link_paper(nodes_raw, _fg_index, min_term_len=5)
-
-    # Separate Case 2: references in proof steps (not base nodes)
+    # ── Ghost nodes (external foundation dependencies) ──
     _base_ids = set(node_data.keys())
-    _ghost_map = {}  # foundation_name -> set of base node IDs that reference it
-    for m in _fg_matches:
-        if m["node_id"] not in _base_ids:
-            # Find parent base node
-            parent = m["node_id"]
-            for nr in nodes_raw:
-                if nr["id"] == parent and nr.get("proves") and nr["proves"] in _base_ids:
-                    parent = nr["proves"]
-                    break
-            if parent in _base_ids:
-                _ghost_map.setdefault(m["foundation_name"], set()).add(parent)
-    _ghost_map = {k: list(v) for k, v in _ghost_map.items()}
+    _ghost_map, _case1_matches = compute_foundation_links(
+        nodes_raw, _base_ids, foundation_path=foundation_path)
 
-    if _ghost_map and node_rect:
-        # Position ghost nodes in a row ABOVE the top layer
-        all_tops = [by + bh for (bx, by, bw, bh) in node_rect.values()]
-        ghost_y_top = max(all_tops) + LEVEL_GAP_Y * 0.8
-        ghost_w = MIN_BOX_W * 1.1
-        ghost_h = HEADER_H + LINE_H * 1.5 + PADDING
-        ghost_names = sorted(_ghost_map.keys())
-        total_ghost_w = len(ghost_names) * ghost_w + (len(ghost_names) - 1) * BOX_GAP_X * 0.5
-        ghost_start_x = -total_ghost_w / 2
-
-        ghost_rects = {}  # name -> (x, y, w, h)
-        for gi, gname in enumerate(ghost_names):
-            gx = ghost_start_x + gi * (ghost_w + BOX_GAP_X * 0.5)
-            gy = ghost_y_top
-
-            # Draw ghost node box with header (like regular nodes)
-            grect = FancyBboxPatch(
-                (gx, gy - ghost_h), ghost_w, ghost_h,
-                boxstyle="round,pad=0.05",
-                facecolor="#E8E8E8", edgecolor="#777777",
-                linewidth=1.5, linestyle="dashed",
-                gid=f"ghost_box_{gi}",
-            )
-            ax.add_patch(grect)
-            # Header bar
-            gheader = FancyBboxPatch(
-                (gx, gy - HEADER_H), ghost_w, HEADER_H,
-                boxstyle="round,pad=0.05",
-                facecolor="#777777", edgecolor="#777777",
-                linewidth=0,
-                gid=f"ghost_header_{gi}",
-            )
-            ax.add_patch(gheader)
-            # Name in header
-            short_name = gname if len(gname) <= 22 else gname[:19] + "..."
-            ax.text(gx + ghost_w / 2, gy - HEADER_H / 2, short_name,
-                    ha="center", va="center", fontsize=10, fontweight="bold",
-                    color="white", gid=f"ghost_text_{gi}")
-            # References below header
-            refs_str = "→ " + ", ".join(_ghost_map[gname])
-            ax.text(gx + ghost_w / 2, gy - HEADER_H - LINE_H * 0.7, refs_str,
-                    ha="center", va="center", fontsize=8.5, color="#555",
-                    gid=f"ghost_refs_{gi}")
-
-            ghost_rects[gname] = (gx, gy - ghost_h, ghost_w, ghost_h)
-
-            # Draw dashed edges to target nodes
-            from matplotlib.patches import FancyArrowPatch
-            for ti, target_id in enumerate(_ghost_map[gname]):
-                if target_id in node_rect:
-                    tx, ty, tw, th = node_rect[target_id]
-                    arrow = FancyArrowPatch(
-                        (gx + ghost_w / 2, gy - ghost_h),
-                        (tx + tw / 2, ty + th),
-                        arrowstyle="-|>,head_length=0.8,head_width=0.35",
-                        color="#999999", lw=1.5,
-                        linestyle="dashed",
-                        connectionstyle="arc3,rad=0.05",
-                        shrinkA=3, shrinkB=3,
-                        gid=f"ghost_edge_{gi}_{ti}",
-                    )
-                    ax.add_patch(arrow)
+    if show_foundation and _ghost_map:
+        draw_foundation_ghosts(ax, _ghost_map, node_rect)
 
     # ── Misc/Orphan equations box ──
     # Count orphan equations from the FULL node list (before filtering)
@@ -639,26 +1202,15 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         ax.add_patch(header_rect)
         ax.text(misc_x + misc_w / 2, misc_y + misc_h - HEADER_H / 2,
                 f"Misc ({n_orphan} equations)",
-                ha="center", va="center", fontsize=12, fontweight="bold", color="white")
+                ha="center", va="center", fontsize=14, fontweight="bold", color="white")
         ax.text(misc_x + misc_w / 2, misc_y + PADDING + LINE_H / 2,
                 "Unconnected equations",
                 ha="center", va="center", fontsize=10.5, color="#555")
 
     # ── Legend ──
     if show_legend:
-        legend_handles = []
-        for ntype, cols in NODE_COLORS.items():
-            if any(node_data[nid].get("type") == ntype for nid in node_data):
-                legend_handles.append(
-                    mpatches.Patch(facecolor=cols["body"], edgecolor=cols["header"],
-                                   linewidth=1.5, label=ntype.title())
-                )
-        legend_handles.append(
-            plt.Line2D([0], [0], color="#666666", lw=2.5, marker=">",
-                       markersize=10, label="A supports B")
-        )
-        ax.legend(handles=legend_handles, loc="upper right", fontsize=13,
-                  frameon=False, title="Node types", title_fontsize=14)
+        draw_legend(ax, node_data, node_rect, show_foundation=show_foundation,
+                    has_ghosts=bool(_ghost_map), font_scale=_font_scale)
 
     # ── Title (from metadata if available) ──
     if metadata and metadata.get("chapter_title"):
@@ -668,7 +1220,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         title = f"{metadata['title']} — Knowledge Graph"
     else:
         title = "Knowledge Graph (DAG)"
-    ax.set_title(title, fontsize=18, fontweight="bold", pad=15)
+    ax.set_title(title, fontsize=24 * _font_scale, fontweight="bold",
+                  pad=20 * _font_scale)
 
     ax.autoscale()
     ax.margins(0.05)
@@ -676,7 +1229,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         plt.tight_layout()
     except Exception:
         pass  # tight_layout can fail on complex math; savefig still works
-    plt.savefig(str(out_path), dpi=150, bbox_inches="tight", facecolor="white")
+    plt.savefig(str(out_path), dpi=200, bbox_inches="tight", facecolor="white")
 
     # Also save SVG if requested (for interactive HTML)
     svg_path = str(out_path).replace('.png', '.svg') if str(out_path).endswith('.png') else None
@@ -768,40 +1321,9 @@ def generate_interactive_html(data, svg_path, html_path):
 
     base_nodes, base_edges, step_chains, eq_map, orphan_eqs = _classify_and_merge(nodes, edges)
 
-    # Foundation graph linking
-    from link_to_foundation import build_foundation_index, link_paper, WELL_KNOWN
-    index = build_foundation_index(None)  # built-in index only
-    matches = link_paper(nodes, index)
-
-    # Separate Case 1 (repeat: node exists) vs Case 2 (ghost: referenced but no node)
+    # Foundation graph linking (shared computation with draw_dag)
     base_ids = {n["id"] for n in base_nodes}
-    case1_matches = {}  # node_id -> list of foundation names
-    case2_ghosts = {}   # foundation_name -> list of node_ids that reference it
-    for m in matches:
-        if m["node_id"] in base_ids:
-            # Case 1: existing node matches foundation
-            case1_matches.setdefault(m["node_id"], []).append(m["foundation_name"])
-        else:
-            # Case 2: match in a proof step or equation, not a base node
-            # Find which base node this proof step belongs to
-            parent = m["node_id"]
-            # Check if it's a proof step — find its parent theorem
-            for n in nodes:
-                if n["id"] == parent and n.get("parent_proof"):
-                    # Find which theorem the proof proves
-                    for n2 in nodes:
-                        if n2["id"] == n["parent_proof"] and n2.get("proves"):
-                            parent = n2["proves"]
-                            break
-                    break
-                if n["id"] == parent and n.get("proves"):
-                    parent = n["proves"]
-                    break
-            if parent in base_ids:
-                case2_ghosts.setdefault(m["foundation_name"], set()).add(parent)
-
-    # Convert sets to lists for JSON
-    case2_ghosts = {k: list(v) for k, v in case2_ghosts.items()}
+    case2_ghosts, case1_matches = compute_foundation_links(nodes, base_ids)
 
     # Build detail data
     js_details = {}
@@ -1158,6 +1680,10 @@ def main():
     parser.add_argument("-o", "--output", default=None, help="Output PNG path (single file only)")
     parser.add_argument("--resolution", choices=["standard", "full"], default="standard",
                         help="standard: collapse proofs, hide equations. full: show all nodes.")
+    parser.add_argument("--show-foundation", action="store_true",
+                        help="Include foundation graph ghost nodes in the PNG output")
+    parser.add_argument("--foundation-path", default=None,
+                        help="Path to clean_foundation.json (default: auto-detect)")
     parser.add_argument("--html", action="store_true",
                         help="Also generate interactive HTML for each file")
     parser.add_argument("--html-only", action="store_true",
@@ -1195,7 +1721,9 @@ def main():
 
         if do_png:
             result = draw_dag(nodes, edges, output_path, metadata=metadata,
-                              resolution=args.resolution)
+                              resolution=args.resolution,
+                              show_foundation=args.show_foundation,
+                              foundation_path=args.foundation_path)
             n_nodes, n_edges = result[0], result[1]
             print(f"  -> {output_path} ({n_nodes} nodes, {n_edges} edges)")
 
@@ -1203,7 +1731,9 @@ def main():
             import os
             svg_only_path = str(output_path).replace('.png', '_nolegend.svg')
             draw_dag(nodes, edges, svg_only_path.replace('.svg', '.png'), metadata=metadata,
-                     resolution=args.resolution, show_legend=False)
+                     resolution=args.resolution, show_legend=False,
+                     show_foundation=True,
+                     foundation_path=args.foundation_path)
             html_path = input_path.with_suffix(".html")
             n_html = generate_interactive_html(data, svg_only_path, str(html_path))
             for tmp in [svg_only_path, svg_only_path.replace('.svg', '.png')]:

@@ -1,31 +1,45 @@
 #!/usr/bin/env python3
 """
-Batch runner for math_paper_parser on many arXiv papers, with LLM support.
+Batch parse: library module for running math_paper_parser across many arXiv
+papers, with optional LLM support.
 
-Example usages:
+This file is the INTERNAL extraction-engine module. The recommended
+user-facing CLI is `src/run_pipeline.py --operations parse ...`, which
+invokes this module via subprocess. Direct invocation is still supported
+for specialized workflows (evaluation_pipeline.sh, prompt_optimizer.py,
+standalone debugging).
 
-  # Basic usage with specific arXiv ID
-  python run_parse_papers.py --regex-id "^2501\\.00685" --out-dir .
+Public functions:
+    run_batch(...)           - main filter + fetch + parse + save loop
+    compute_date_range(...)  - date range helper
+    _find_local_tex(...)     - local cache lookup helper
 
-  # With LLM definition extraction
-  python run_parse_papers.py \
+Example direct invocations (legacy, still supported):
+
+  python LLMVersion/parse_batch.py --regex-id "^2501\\.00685" --out-dir .
+
+  python LLMVersion/parse_batch.py \
       --regex-id "^2501\\.00685" \
       --out-dir . \
       --extraction-mode llm
 
-  # Combined manual + LLM extraction
-  python run_parse_papers.py \
+  python LLMVersion/parse_batch.py \
       --regex-id "^2501\\.00685" \
       --out-dir . \
       --extraction-mode both
 
-  # Last 30 days, math.PR, up to 20 papers, with LLM
-  python run_parse_papers.py \
+  python LLMVersion/parse_batch.py \
       --category math.PR \
       --days 30 \
       --top-k 20 \
       --out-dir parsed_math_pr_30d \
       --extraction-mode both
+
+Preferred (unified pipeline):
+
+  python src/run_pipeline.py --operations parse \
+      --category math.PR --days 30 --top-k 20 \
+      --out-dir parsed_math_pr_30d --extraction-mode both
 """
 
 import argparse
@@ -74,11 +88,18 @@ def compute_date_range(
     return start_date.isoformat(), end_date.isoformat()
 
 
-def _find_local_tex(paper_id: str) -> Optional[Tuple[str, str]]:
-    """Search FULL_PAPERS_DIR for an already-cached .tex file matching paper_id.
-    Returns (tex_path, versioned_id) or None."""
+def _find_local_tex(paper_id: str, tex_dir: str = None) -> Optional[Tuple[str, str]]:
+    """Search for a cached .tex file matching paper_id in a single directory.
+
+    Args:
+        paper_id: arxiv paper ID (e.g. '1210.4634' or '1210.4634v1')
+        tex_dir:  directory to search (default: FULL_PAPERS_DIR from config)
+
+    Returns (tex_path, versioned_id) or None.
+    """
     import os
-    pattern = os.path.join(FULL_PAPERS_DIR, "**", f"{paper_id}*.tex")
+    search_dir = tex_dir or FULL_PAPERS_DIR
+    pattern = os.path.join(search_dir, "**", f"{paper_id}*.tex")
     matches = globmod.glob(pattern, recursive=True)
     if not matches:
         return None
@@ -100,6 +121,7 @@ def run_batch(
         llm_model: str = "claude-sonnet-4-20250514",
         llm_chunk_chars: int = 30000,
         llm_provider: str = "anthropic",
+        tex_dir: Optional[str] = None,
         prompt_file: Optional[str] = None,
         structure_types: Optional[list] = None,
 ) -> None:
@@ -123,7 +145,7 @@ def run_batch(
         plain_id = regex_id.lstrip('^').rstrip('$')
         # Check if it's a simple paper ID (not a complex regex)
         if re.fullmatch(r'[\d.]+(?:v\d+)?', plain_id):
-            local = _find_local_tex(plain_id)
+            local = _find_local_tex(plain_id, tex_dir=tex_dir)
             if local:
                 tex_path, versioned_id = local
                 base_id = versioned_id.split("v")[0]
@@ -180,6 +202,13 @@ def run_batch(
     # ------------------------------------------------------------
     # 1b. FETCH METADATA via arXiv API (fallback)
     # ------------------------------------------------------------
+    # Pass top_k with a small headroom factor so the downstream sort-by-date
+    # in run_batch has some wiggle room. Sorting by ID (done inside
+    # fetch_arxiv_batch) is a close approximation of "newest first" but not
+    # identical to sorting by the official 'published' date, so we pull
+    # ~3x top_k candidates here and let run_batch pick the true top_k
+    # after it has real metadata.
+    _prefetch_k = (top_k * 3) if (top_k and top_k > 0) else None
     data = fetch_arxiv_batch(
         regex_id=regex_id,
         start_date=start_date,
@@ -188,6 +217,7 @@ def run_batch(
         formats="metadata",
         output_dir=None,
         verbose=verbose,
+        top_k=_prefetch_k,
     )
 
     if verbose:
@@ -457,6 +487,14 @@ def main():
         default="definition",
         help="Comma-separated structure types to extract via LLM (default: definition)",
     )
+    parser.add_argument(
+        "--tex-dir",
+        type=str,
+        default=None,
+        help="Directory to search for local .tex files (default: FULL_PAPERS_DIR "
+             "from config). Use this to point at a non-standard location, e.g. "
+             "src/LLMVersion/full_papers/ for Yaron's gold-standard papers.",
+    )
 
     args = parser.parse_args()
     print(f"[DEBUG] Parsed args: {args}")
@@ -486,6 +524,7 @@ def main():
         llm_provider=args.llm_provider,
         prompt_file=args.prompt_file,
         structure_types=structure_types,
+        tex_dir=args.tex_dir,
     )
 
     print("[INFO] Done.")

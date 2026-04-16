@@ -28,7 +28,10 @@ import tarfile
 import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any, Union
-from openai import OpenAI
+
+# NOTE: The OpenAI package is imported lazily inside _get_llm_client() below,
+# so that manual-mode extraction works on machines without the openai package.
+# Same pattern as the anthropic import.
 
 # NOTE: dataclasses are now in math_classes.py
 from math_classes import (
@@ -804,7 +807,7 @@ class PaperParser:
 
             label, _ = self._extract_label_and_name(body)
             clean_text = self._clean_latex_to_text(body)
-            assumptions, statement = self._split_assumptions_statement(clean_text)
+            assumptions, conclusions = self._split_assumptions_conclusions(clean_text)
 
             # Specialised classes for some kinds
             if kind == "problem":
@@ -818,7 +821,7 @@ class PaperParser:
                     clean_text=clean_text,
                     env_name=env_name,
                     assumptions=assumptions,
-                    statement=statement,
+                    conclusions=conclusions,
                 )
             elif kind == "conjecture":
                 obj = Conjecture(
@@ -831,7 +834,7 @@ class PaperParser:
                     clean_text=clean_text,
                     env_name=env_name,
                     assumptions=assumptions,
-                    statement=statement,
+                    conclusions=conclusions,
                 )
             else:
                 obj = TheoremLike(
@@ -844,7 +847,7 @@ class PaperParser:
                     clean_text=clean_text,
                     env_name=env_name,
                     assumptions=assumptions,
-                    statement=statement,
+                    conclusions=conclusions,
                 )
 
             objects.append(obj)
@@ -852,13 +855,17 @@ class PaperParser:
         return objects
 
     @staticmethod
-    def _split_assumptions_statement(text: str) -> Tuple[str, str]:
+    def _split_assumptions_conclusions(text: str) -> Tuple[List[str], List[str]]:
         """
-        Very heuristic split of assumptions vs statement.
+        Very heuristic split of assumption sentences vs conclusion sentences.
+
+        Returns a tuple (assumptions, conclusions) where each is a list of
+        individual sentence strings. Matches the unified JSON schema which
+        expects these fields as lists of strings.
         """
         sentences = re.split(r"(?<=[.!?])\s+", text)
         assumptions_sentences = []
-        statement_sentences = []
+        conclusions_sentences = []
 
         in_assumptions = True
         for s in sentences:
@@ -879,14 +886,14 @@ class PaperParser:
                     or lower.startswith("therefore ")
             ):
                 in_assumptions = False
-                statement_sentences.append(s_strip)
+                conclusions_sentences.append(s_strip)
             else:
                 if in_assumptions:
                     assumptions_sentences.append(s_strip)
                 else:
-                    statement_sentences.append(s_strip)
+                    conclusions_sentences.append(s_strip)
 
-        return " ".join(assumptions_sentences), " ".join(statement_sentences)
+        return assumptions_sentences, conclusions_sentences
 
     # ------------------------------------------------------------------
     # Definitions (manual + optional LLM)
@@ -1101,6 +1108,11 @@ class PaperParser:
             return anthropic.Anthropic(api_key=api_key), "anthropic"
 
         elif provider == "openai":
+            try:
+                from openai import OpenAI
+            except ImportError:
+                print("[ERROR] openai package not installed. Run: pip install openai")
+                return None, None
             api_key = os.environ.get("OPENAI_API_KEY")
             if not api_key:
                 print("[ERROR] OPENAI_API_KEY environment variable not set.")
@@ -1108,6 +1120,11 @@ class PaperParser:
             return OpenAI(api_key=api_key), "openai_compat"
 
         elif provider == "huggingface":
+            try:
+                from openai import OpenAI
+            except ImportError:
+                print("[ERROR] openai package not installed (required for HF router). Run: pip install openai")
+                return None, None
             api_key = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_API_KEY")
             if not api_key:
                 print("[ERROR] HF_TOKEN or HUGGINGFACE_API_KEY environment variable not set.")
@@ -1159,10 +1176,21 @@ class PaperParser:
         if dataclass_name == "Definition":
             return Definition(**common, env_name=None)
         elif dataclass_name in ("TheoremLike", "Conjecture", "Problem"):
+            # The LLM prompt currently returns "assumptions" and "statement" as
+            # strings (see prompts/theorem_prompt.txt). The Python fields are now
+            # List[str], so wrap any non-empty string in a single-element list.
+            # Also support the case where the LLM already returns a list.
+            def _to_list(x):
+                if x is None or x == "":
+                    return []
+                if isinstance(x, list):
+                    return x
+                return [x]
+
             extra = dict(
                 env_name=None,
-                assumptions=data.get("assumptions", ""),
-                statement=data.get("statement", ""),
+                assumptions=_to_list(data.get("assumptions", [])),
+                conclusions=_to_list(data.get("statement", data.get("conclusions", []))),
             )
             if dataclass_name == "Conjecture":
                 return Conjecture(**common, **extra)

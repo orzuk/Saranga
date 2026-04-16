@@ -13,8 +13,11 @@ if sys.platform.lower().startswith('win'):
     CODE_DIR = Path('C:/Code/Github/Authomathics')
 else:
     # Running on *nix – decide between WSL-mount vs cluster
-    wsl_data = Path('/mnt/c/Datasets/Authomathics_data')
+    # Local data mirrors cluster structure: DATA_DIR/naturalproofs/, DATA_DIR/arxiv/, etc.
+    # Only the root changes; relative paths are the same everywhere.
     wsl_code = Path('/mnt/c/Code/Github/Authomathics')
+    wsl_data_gdrive = Path('/mnt/g/My Drive/Research/Automath')  # Google Drive mirror
+    wsl_data_legacy = Path('/mnt/c/Datasets/Authomathics_data')  # old location
 
     cluster_data = Path('/sci/labs/orzuk/orzuk/projects/Authomathics')
     cluster_code = Path('/sci/labs/orzuk/orzuk/github/Authomathics')
@@ -26,9 +29,15 @@ else:
         # Cluster takes priority if it exists
         DATA_DIR = cluster_data
         CODE_DIR = cluster_code
-    elif wsl_data.exists() or wsl_code.exists():
-        DATA_DIR = wsl_data
+    elif wsl_code.exists():
         CODE_DIR = wsl_code
+        # Prefer Google Drive mirror (has naturalproofs/, arxiv/, etc.)
+        if wsl_data_gdrive.exists():
+            DATA_DIR = wsl_data_gdrive
+        elif wsl_data_legacy.exists():
+            DATA_DIR = wsl_data_legacy
+        else:
+            DATA_DIR = wsl_data_gdrive  # default, will be created if needed
     else:
         DATA_DIR = home_data
         CODE_DIR = home_code

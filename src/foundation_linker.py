@@ -19,9 +19,15 @@ Usage:
 import json
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from collections import defaultdict
+
+# Resolve math_classes from src/LLMVersion/ (single source of truth)
+_LLMV = Path(__file__).resolve().parent / 'LLMVersion'
+if str(_LLMV) not in sys.path:
+    sys.path.insert(0, str(_LLMV))
 
 from math_classes import Relation, PaperGraph, REL_GROUNDED_TO
 

@@ -120,7 +120,7 @@ Paths are auto-detected in this priority order:
 | `enable_grounding`     | `False`         | Enable concept grounding to Wikidata               |
 | `grounding_min_term_len`| `4`            | Minimum term length for concept matching           |
 
-### Batch Runner CLI (run_parse_papers.py)
+### Batch Runner CLI (parse_batch.py)
 
 | Flag             | Type    | Default          | Meaning                            |
 |------------------|---------|------------------|------------------------------------|
