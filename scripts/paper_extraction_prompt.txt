@@ -1,0 +1,238 @@
+================================================================================
+PAPER / CHAPTER EXTRACTION PROMPT — GENERAL PURPOSE
+================================================================================
+Version: 2026-04-17
+Use with: Claude Opus 4.6 (or Sonnet for bulk)
+Input: one chapter or section of a mathematical paper/textbook (LaTeX or PDF)
+Output: structured JSON with nodes + edges (the chapter's knowledge graph)
+
+Copy the PROMPT section below into your LLM call. Replace {CHAPTER_TEXT}
+with the actual chapter content. Adjust {BOOK_ID}, {CHAPTER_NUM},
+{CHAPTER_TITLE} as needed.
+
+================================================================================
+PROMPT
+================================================================================
+
+You are extracting a structured mathematical knowledge graph from one chapter
+of a paper or textbook. Read the chapter carefully, then produce a JSON object
+with all mathematical content organized as typed nodes and directed edges.
+
+INPUT CHAPTER:
+  Book/paper ID: {BOOK_ID}
+  Chapter number: {CHAPTER_NUM}
+  Chapter title: {CHAPTER_TITLE}
+
+{CHAPTER_TEXT}
+
+================================================================================
+EXTRACTION RULES
+================================================================================
+
+1. NODE TYPES TO EXTRACT (in order of priority):
+
+   DEFINITION     — formal or semi-formal introduction of a named concept.
+                    Includes "\begin{definition}", "We define X as...",
+                    "Let X be a...", "X is called... if...".
+                    Does NOT include ephemeral notation shortcuts like
+                    "write f for f(x)" — those are notation, not definitions.
+
+   THEOREM        — labeled or numbered theorem.
+   LEMMA          — labeled or numbered lemma.
+   PROPOSITION    — labeled or numbered proposition.
+   COROLLARY      — labeled or numbered corollary.
+   CLAIM          — informal claim, "Fact", "Observation" with a statement.
+   CONJECTURE     — unproven claim explicitly labeled as conjecture.
+
+   PROOF          — proof of a theorem/lemma/proposition/corollary.
+                    Link to its parent via a "proves" edge.
+
+   EXAMPLE        — worked example illustrating a concept.
+                    Link to the concept via an "illustrates" edge.
+
+   EXERCISE       — problem for the reader (with or without solution).
+                    Link to the relevant concept via an "about" edge.
+
+   EQUATION       — explicitly labeled/numbered equation (not every inline
+                    formula — only equations that the paper references by
+                    number, e.g., "by equation (3.5)").
+
+   ALGORITHM      — pseudocode or step-by-step procedure.
+
+   REMARK         — author's remark, note, observation that adds context
+                    but is not a theorem or definition.
+
+   Skip: section headings, figure captions, bibliographic references,
+   acknowledgments, table of contents entries.
+
+2. NODE FIELDS (for each extracted node):
+
+   {
+     "id":       unique ID, format: "{BOOK_ID}_ch{NN}_{type_abbrev}{seq}",
+                 e.g. "b006_ch03_def01", "b006_ch03_thm05", "b006_ch03_proof05"
+                 Type abbreviations: def, thm, lem, prop, cor, claim, conj,
+                 proof, ex, exer, eq, alg, rem
+
+     "type":     one of: definition, theorem, lemma, proposition, corollary,
+                 claim, conjecture, proof, example, exercise, equation,
+                 algorithm, remark
+
+     "name":     short descriptive name. Use the paper's own name if given
+                 (e.g., "Cauchy-Schwarz inequality", "k-means algorithm").
+                 If unnamed, write a short description
+                 (e.g., "Convergence of gradient descent").
+
+     "label":    the paper's own numbering, e.g., "Theorem 3.14",
+                 "Definition 2.1", "Algorithm 4.1". Preserve exactly as
+                 printed. null if unnumbered.
+
+     "statement_latex":
+                 the mathematical content in LaTeX. For theorems, this is the
+                 full statement (assumptions + conclusion together).
+                 Math MUST be wrapped in $..$ (inline) or $$...$$ (display).
+                 Preserve original LaTeX commands — do NOT simplify or rewrite.
+
+     "statement_clean":
+                 same content with LaTeX commands stripped to readable English.
+                 e.g., "$\|x\|_2 \leq C$" → "the L2 norm of x is at most C"
+
+     "assumptions":  (for theorem-like nodes ONLY)
+                 list of strings, each a separate hypothesis.
+                 e.g., ["$f$ is continuous on $[a,b]$", "$f(a) < 0 < f(b)$"]
+
+     "conclusions":  (for theorem-like nodes ONLY)
+                 list of strings, each a separate conclusion.
+                 e.g., ["there exists $c \\in (a,b)$ such that $f(c) = 0$"]
+
+     "raw_text": the full original text block as it appears in the source.
+                 Preserve verbatim — this is the recovery field.
+
+     "page":     page number (integer) if extracting from PDF. null if from
+                 LaTeX source without page numbers.
+   }
+
+3. ASSUMPTION / CONCLUSION SEPARATION:
+
+   This is critical for downstream alignment. For every theorem, lemma,
+   proposition, corollary, claim, and conjecture:
+
+   - ASSUMPTIONS are conditions, hypotheses, setups:
+     "Let...", "Suppose...", "Assume...", "Given...", "If...",
+     "For every... satisfying..."
+
+   - CONCLUSIONS are results, claims, what follows:
+     "Then...", "There exists...", "We have...", "It holds that...",
+     "...is at most...", "...converges to...", "...is unique"
+
+   - If the statement is a single sentence with "If P then Q" structure:
+     assumptions = ["P"], conclusions = ["Q"]
+
+   - If the separation is unclear, put the FULL statement in conclusions
+     and leave assumptions empty. Do NOT guess.
+
+   - A statement like "The chromatic number of G is at most k" is a
+     CONCLUSION, not an assumption — even though it contains no trigger
+     word like "then".
+
+4. EDGES (relationships between nodes):
+
+   {
+     "source": source node ID,
+     "target": target node ID,
+     "type":   one of: uses, proves, illustrates, about, generalizes, specializes
+   }
+
+   Edge types:
+     "uses"         — source depends on target (theorem uses a definition,
+                      proof uses a lemma). Only create when the dependency
+                      is explicit or clearly implied.
+     "proves"       — proof → theorem it proves. Every proof should have
+                      exactly one "proves" edge.
+     "illustrates"  — example → the definition/theorem it illustrates.
+     "about"        — exercise → the concept it tests.
+     "generalizes"  — source is a more general version of target.
+     "specializes"  — source is a special case of target.
+
+   Rules:
+     - Only backward or same-chapter edges. No forward references to later
+       chapters.
+     - Target must be a node ID that exists in this or a previous chapter.
+     - Prefer fewer confident edges over many speculative ones.
+     - A proof's "uses" edges should list the key lemmas/definitions it
+       invokes, not every symbol it mentions.
+
+5. SELF-CONTAINED STATEMENTS (important for downstream matching):
+
+   Each node's statement_latex and statement_clean should be understandable
+   WITHOUT reading the rest of the paper. Specifically:
+
+   a) NOTATION SIMPLIFICATION: if the paper says "we omit subscript i
+      throughout" or "to simplify, we write X for X_i", EXPAND the notation
+      back to its full form in the extracted statement. The reader of the
+      JSON should not need the paper's notation section.
+
+   b) IMPLICIT CONTEXT: if a theorem says "Under the conditions of
+      Theorem 3.1, ..." — expand: state what those conditions are, or at
+      minimum add a "uses" edge to Theorem 3.1.
+
+   c) ABBREVIATIONS: if the paper defines "RIP" = "Restricted Isometry
+      Property" in the introduction and then uses "RIP" throughout —
+      the FIRST occurrence in each node should spell it out:
+      "Restricted Isometry Property (RIP)". Subsequent occurrences in the
+      same node can use "RIP".
+
+   d) CUSTOM MACROS: if the paper defines \newcommand{\norm}[1]{\|#1\|}
+      and uses \norm{x}, the extracted statement_latex should contain
+      $\|x\|$, not $\norm{x}$. Expand custom macros to standard LaTeX.
+
+6. WHAT NOT TO EXTRACT:
+
+   - Inline formulas that are not part of a labeled/numbered structure
+     (e.g., "where $n$ is the sample size" is NOT a definition node)
+   - Section headings, paragraph titles
+   - Figure/table descriptions (unless they contain a labeled equation
+     or algorithm)
+   - Bibliographic references, acknowledgments
+   - Repeated statements (if the same theorem is stated twice, extract once)
+
+7. QUALITY CHECKS (verify before returning):
+
+   - Every proof node has exactly one "proves" edge
+   - Every example node has at least one "illustrates" edge
+   - No edge references a nonexistent node ID
+   - No forward references to later chapters
+   - Node IDs are unique
+   - Assumptions and conclusions don't overlap (same text in both lists)
+   - statement_latex has $..$ around all math
+
+================================================================================
+OUTPUT FORMAT
+================================================================================
+
+Return a single JSON object:
+
+{
+  "book_id": "{BOOK_ID}",
+  "chapter_num": {CHAPTER_NUM},
+  "chapter_title": "{CHAPTER_TITLE}",
+  "page_range": [start_page, end_page],
+  "nodes": [
+    {
+      "id": "...",
+      "type": "...",
+      "name": "...",
+      "label": "...",
+      "statement_latex": "...",
+      "statement_clean": "...",
+      "assumptions": ["..."],
+      "conclusions": ["..."],
+      "raw_text": "...",
+      "page": null
+    }
+  ],
+  "edges": [
+    {"source": "...", "target": "...", "type": "..."}
+  ]
+}
+
+Return ONLY the JSON object. No commentary, no markdown fences.
