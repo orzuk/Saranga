@@ -1,0 +1,430 @@
+"""
+Math-aware tokenizer + soft matching for mathematical LaTeX text.
+
+Two layers:
+  1. math_tokenize(text) → set[str]
+     Extracts NATURAL tokens (words, LaTeX commands, numbers, variables)
+     plus CONSTRUCTED tokens (operators, relations, structures like norms).
+
+  2. soft_jaccard(tokens_a, tokens_b) → float
+     Compares token sets with partial credit. Constructed tokens use a
+     category-based similarity table (no edit-distance artifacts).
+     Natural tokens use Jaro-Winkler for morphological similarity.
+
+The constructed tokens (norm_2, plus, pow_3, etc.) exist ONLY in the
+token set returned by math_tokenize(). They are never written to the
+canonical JSON. Embeddings see the original clean LaTeX; only the
+Jaccard-style sigma uses these tokens.
+"""
+from __future__ import annotations
+
+import re
+from functools import lru_cache
+
+
+# =========================================================================
+# CONSTRUCTED TOKEN DEFINITIONS
+# =========================================================================
+
+# --- Categories of constructed tokens ---
+# Each category has a set of members and a within-category similarity
+# matrix for non-identical members.
+
+# Arithmetic operators: detected from ASCII chars in the text
+ARITH_OPS = {
+    "+": "arith_plus",
+    "-": "arith_minus",
+    "*": "arith_mul",
+    "/": "arith_div",
+}
+
+# Within-category similarity for arithmetic ops
+# plus/minus are inverses (low), mul/div are inverses (low),
+# plus/mul are unrelated (very low)
+ARITH_SIM = {
+    ("arith_plus",  "arith_minus"): 0.3,   # inverse operations
+    ("arith_mul",   "arith_div"):   0.3,   # inverse operations
+    ("arith_plus",  "arith_mul"):   0.1,   # different families
+    ("arith_plus",  "arith_div"):   0.1,
+    ("arith_minus", "arith_mul"):   0.1,
+    ("arith_minus", "arith_div"):   0.1,
+}
+
+# Relation operators
+REL_DETECT = {
+    # ASCII relations (LaTeX ones like \leq are natural tokens already)
+    "<":  "rel_lt",
+    ">":  "rel_gt",
+    "=":  "rel_eq",
+}
+
+# Map LaTeX relation commands to constructed category for similarity
+# These are ALSO kept as natural tokens (\leq stays in the bag).
+# The constructed version enables cross-format matching (< vs \lt).
+REL_COMMAND_MAP = {
+    r"\leq": "rel_leq",
+    r"\geq": "rel_geq",
+    r"\neq": "rel_neq",
+    r"\lt":  "rel_lt",
+    r"\gt":  "rel_gt",
+    r"\equiv": "rel_equiv",
+    r"\approx": "rel_approx",
+    r"\sim": "rel_sim",
+}
+
+REL_SIM = {
+    ("rel_leq", "rel_geq"):   0.5,   # both inequalities, opposite direction
+    ("rel_leq", "rel_lt"):    0.8,   # strict vs non-strict
+    ("rel_geq", "rel_gt"):    0.8,
+    ("rel_lt",  "rel_gt"):    0.5,   # opposite direction
+    ("rel_eq",  "rel_neq"):   0.3,   # related but opposite
+    ("rel_eq",  "rel_equiv"): 0.8,   # both equality-like
+    ("rel_eq",  "rel_approx"):0.5,   # exact vs approximate
+    ("rel_eq",  "rel_leq"):  0.3,
+    ("rel_eq",  "rel_geq"):  0.3,
+    ("rel_leq", "rel_neq"):  0.1,
+    ("rel_geq", "rel_neq"):  0.1,
+    ("rel_sim", "rel_approx"):0.6,
+}
+
+# Structure tokens: detected by regex patterns
+# Format: "struct_TYPE" or "struct_TYPE_PARAM"
+STRUCT_SIM_SAME_TYPE_DIFF_PARAM = 0.7   # norm_2 vs norm_1
+STRUCT_SIM_SAME_TYPE_NO_PARAM = 0.5     # norm vs norm_2
+STRUCT_SIM_DIFF_TYPE = 0.0              # norm vs abs
+
+# Big-operator similarity (sum, prod, int are all "big operators")
+BIGOP_TOKENS = {"sum", "prod", "int", "oint", "iint", "iiint",
+                "bigcup", "bigcap", "bigoplus", "bigotimes"}
+BIGOP_SIM = 0.3  # different big operators share "aggregation" concept
+
+# All constructed token prefixes (for identification)
+CONSTRUCTED_PREFIXES = ("arith_", "rel_", "struct_")
+
+
+# =========================================================================
+# TOKEN EXTRACTION
+# =========================================================================
+
+# Natural token regex (same as current graph_alignment.py)
+_NATURAL_RE = re.compile(r"[a-zA-Z]+|\\[a-zA-Z]+|[0-9]+(?:\.[0-9]+)?")
+
+# Norm detection: \|...\| or ||...||
+_NORM_RE = re.compile(
+    r"(?:\\?\|\\?\||\\\|)"     # opening: || or \| or \|\|
+    r"[^|]*?"                  # content (non-greedy)
+    r"(?:\\?\|\\?\||\\\|)"     # closing
+    r"(?:[_^]\s*\{?\s*"        # optional subscript/superscript
+    r"([a-zA-Z0-9\\]+)"        # the parameter (1, 2, p, \infty, ...)
+    r"\s*\}?)?"
+)
+
+# Single absolute value: |...| (not part of ||)
+_ABS_RE = re.compile(
+    r"(?<!\|)\|(?!\|)"         # single | not preceded/followed by |
+    r"[^|]+?"
+    r"(?<!\|)\|(?!\|)"
+)
+
+# Power detection: ^{N} or ^N where N is a number or single letter
+_POW_RE = re.compile(
+    r"\^\s*\{?\s*([a-zA-Z0-9\\]+)\s*\}?"
+)
+
+# Set braces: \{...\}
+_SET_RE = re.compile(r"\\\{.*?\\\}")
+
+
+def math_tokenize(text: str) -> set[str]:
+    """Extract math-aware tokens from a LaTeX text string.
+
+    Returns a set of token strings, mixing:
+      - NATURAL tokens: words, LaTeX commands, numbers (unchanged from text)
+      - CONSTRUCTED tokens: arith_*, rel_*, struct_* (generated by pattern detection)
+
+    The constructed tokens are invisible to embeddings (they only exist in
+    this returned set, never in the canonical JSON).
+    """
+    if not text:
+        return set()
+
+    tokens: set[str] = set()
+
+    # --- Natural tokens (words, commands, numbers) ---
+    for m in _NATURAL_RE.finditer(text):
+        tok = m.group(0)
+        # Lowercase words but keep LaTeX commands as-is for case sensitivity
+        if not tok.startswith("\\"):
+            tok = tok.lower()
+        tokens.add(tok)
+
+        # If this is a relation command, ALSO emit a constructed rel_ token
+        if tok in REL_COMMAND_MAP:
+            tokens.add(REL_COMMAND_MAP[tok])
+
+        # If this is a big-operator command (\sum, \prod, etc.),
+        # also emit a bigop marker
+        cmd_name = tok.lstrip("\\")
+        if cmd_name in BIGOP_TOKENS:
+            tokens.add(f"struct_bigop_{cmd_name}")
+
+    # --- Arithmetic operators (ASCII) ---
+    for char, tok_name in ARITH_OPS.items():
+        if char in text:
+            tokens.add(tok_name)
+
+    # --- ASCII relations ---
+    for char, tok_name in REL_DETECT.items():
+        # Avoid matching < or > inside LaTeX commands
+        # Simple heuristic: check char exists outside of \command context
+        if char in text:
+            tokens.add(tok_name)
+
+    # --- Norm structures ---
+    for m in _NORM_RE.finditer(text):
+        param = m.group(1)
+        if param:
+            # Clean param: \infty -> infty, strip braces
+            param_clean = param.lstrip("\\").strip()
+            tokens.add(f"struct_norm_{param_clean}")
+        tokens.add("struct_norm")
+
+    # --- Absolute value ---
+    if _ABS_RE.search(text):
+        tokens.add("struct_abs")
+
+    # --- Power / exponent ---
+    for m in _POW_RE.finditer(text):
+        param = m.group(1).lstrip("\\").strip()
+        tokens.add(f"struct_pow_{param}")
+
+    # --- Set notation ---
+    if _SET_RE.search(text):
+        tokens.add("struct_set")
+
+    return tokens
+
+
+# =========================================================================
+# TOKEN SIMILARITY
+# =========================================================================
+
+def _parse_constructed(tok: str) -> tuple[str, str, str | None]:
+    """Parse a constructed token into (prefix, category, param).
+
+    Examples:
+        "arith_plus"       → ("arith_", "plus", None)
+        "rel_leq"          → ("rel_", "leq", None)
+        "struct_norm_2"    → ("struct_", "norm", "2")
+        "struct_norm"      → ("struct_", "norm", None)
+        "struct_pow_n"     → ("struct_", "pow", "n")
+        "struct_bigop_sum" → ("struct_", "bigop_sum", None)
+    """
+    for prefix in CONSTRUCTED_PREFIXES:
+        if tok.startswith(prefix):
+            rest = tok[len(prefix):]
+            # For struct_ tokens: split on first _ after the type
+            if prefix == "struct_":
+                parts = rest.split("_", 1)
+                if len(parts) == 2 and parts[0] not in ("bigop",):
+                    return prefix, parts[0], parts[1]
+                return prefix, rest, None
+            return prefix, rest, None
+    return ("", tok, None)
+
+
+def _is_constructed(tok: str) -> bool:
+    return any(tok.startswith(p) for p in CONSTRUCTED_PREFIXES)
+
+
+def _jaro_winkler(s1: str, s2: str) -> float:
+    """Jaro-Winkler similarity. Pure Python, no dependencies."""
+    if s1 == s2:
+        return 1.0
+    len1, len2 = len(s1), len(s2)
+    if len1 == 0 or len2 == 0:
+        return 0.0
+
+    match_dist = max(len1, len2) // 2 - 1
+    if match_dist < 0:
+        match_dist = 0
+
+    s1_matches = [False] * len1
+    s2_matches = [False] * len2
+    matches = 0
+    transpositions = 0
+
+    for i in range(len1):
+        start = max(0, i - match_dist)
+        end = min(i + match_dist + 1, len2)
+        for j in range(start, end):
+            if s2_matches[j] or s1[i] != s2[j]:
+                continue
+            s1_matches[i] = True
+            s2_matches[j] = True
+            matches += 1
+            break
+
+    if matches == 0:
+        return 0.0
+
+    k = 0
+    for i in range(len1):
+        if not s1_matches[i]:
+            continue
+        while not s2_matches[k]:
+            k += 1
+        if s1[i] != s2[k]:
+            transpositions += 1
+        k += 1
+
+    jaro = (matches / len1 + matches / len2 + (matches - transpositions / 2) / matches) / 3
+
+    # Winkler prefix bonus (up to 4 chars)
+    prefix = 0
+    for i in range(min(4, len1, len2)):
+        if s1[i] == s2[i]:
+            prefix += 1
+        else:
+            break
+
+    return jaro + prefix * 0.1 * (1 - jaro)
+
+
+@lru_cache(maxsize=50000)
+def token_sim(tok_a: str, tok_b: str) -> float:
+    """Similarity between two tokens. Cached for performance.
+
+    Rules:
+      - Identical tokens → 1.0
+      - Both constructed, same category:
+          same param → 1.0, diff param → from similarity table, no param → 0.5
+      - Both constructed, different category → 0.0
+          (exception: both are bigops → BIGOP_SIM)
+      - Both natural → Jaro-Winkler (captures morphological similarity
+          like "isometry" vs "isometric")
+      - Mixed (one constructed, one natural) → 0.0
+    """
+    if tok_a == tok_b:
+        return 1.0
+
+    a_con = _is_constructed(tok_a)
+    b_con = _is_constructed(tok_b)
+
+    if a_con and b_con:
+        pref_a, cat_a, param_a = _parse_constructed(tok_a)
+        pref_b, cat_b, param_b = _parse_constructed(tok_b)
+
+        # Different prefix families (arith vs rel vs struct)
+        if pref_a != pref_b:
+            return 0.0
+
+        if pref_a == "arith_":
+            # Look up in ARITH_SIM (symmetric)
+            key = (tok_a, tok_b)
+            if key in ARITH_SIM:
+                return ARITH_SIM[key]
+            key = (tok_b, tok_a)
+            if key in ARITH_SIM:
+                return ARITH_SIM[key]
+            return 0.1  # same family, no explicit entry
+
+        if pref_a == "rel_":
+            key = (tok_a, tok_b)
+            if key in REL_SIM:
+                return REL_SIM[key]
+            key = (tok_b, tok_a)
+            if key in REL_SIM:
+                return REL_SIM[key]
+            return 0.1
+
+        if pref_a == "struct_":
+            # Check if both are bigops
+            if cat_a.startswith("bigop") and cat_b.startswith("bigop"):
+                return BIGOP_SIM
+
+            # Same structural type (norm, pow, abs, set)?
+            if cat_a == cat_b:
+                if param_a is not None and param_b is not None:
+                    if param_a == param_b:
+                        return 1.0
+                    return STRUCT_SIM_SAME_TYPE_DIFF_PARAM  # 0.7
+                if (param_a is None) != (param_b is None):
+                    return STRUCT_SIM_SAME_TYPE_NO_PARAM    # 0.5
+                return 1.0  # both parameterless, same type
+            return STRUCT_SIM_DIFF_TYPE  # 0.0
+
+        return 0.0  # fallback for unknown prefix
+
+    if not a_con and not b_con:
+        # Both natural: Jaro-Winkler for morphological similarity
+        return _jaro_winkler(tok_a.lower(), tok_b.lower())
+
+    # Mixed: constructed vs natural → no match
+    return 0.0
+
+
+# =========================================================================
+# SOFT JACCARD (MONGE-ELKAN STYLE)
+# =========================================================================
+
+def soft_jaccard(tokens_a: set[str], tokens_b: set[str]) -> float:
+    """Hybrid set similarity: hard Jaccard for natural tokens, soft matching
+    for constructed tokens only.
+
+    This avoids the inflation problem of pure Monge-Elkan, where every
+    natural token gets unearned partial credit via Jaro-Winkler against
+    random words in large token sets.
+
+    Score = weighted combination:
+      - Hard Jaccard on natural tokens (proven baseline)
+      - Soft Jaccard on constructed tokens (category-based, no artifacts)
+    """
+    if not tokens_a or not tokens_b:
+        return 0.0
+
+    # Separate natural and constructed tokens
+    nat_a = {t for t in tokens_a if not _is_constructed(t)}
+    nat_b = {t for t in tokens_b if not _is_constructed(t)}
+    con_a = {t for t in tokens_a if _is_constructed(t)}
+    con_b = {t for t in tokens_b if _is_constructed(t)}
+
+    # Hard Jaccard on natural tokens (the proven workhorse)
+    hard_nat = hard_jaccard(nat_a, nat_b)
+
+    # Soft matching on constructed tokens only
+    soft_con = 0.0
+    if con_a and con_b:
+        # For each constructed token in A, find best match in B
+        sum_a = sum(max(token_sim(ta, tb) for tb in con_b) for ta in con_a)
+        sum_b = sum(max(token_sim(ta, tb) for ta in con_a) for tb in con_b)
+        soft_con = (sum_a / len(con_a) + sum_b / len(con_b)) / 2
+
+    # Weight: natural tokens dominate (they carry the content),
+    # constructed tokens add structural discrimination.
+    # If no constructed tokens exist, fall back to pure hard Jaccard.
+    n_nat = len(nat_a | nat_b) if (nat_a or nat_b) else 0
+    n_con = len(con_a | con_b) if (con_a or con_b) else 0
+    total = n_nat + n_con
+
+    if total == 0:
+        return 0.0
+    if n_con == 0:
+        return hard_nat
+    if n_nat == 0:
+        return soft_con
+
+    # Weight by token count ratio — constructed tokens are typically
+    # ~20-30% of all tokens, so they get proportional influence
+    w_nat = n_nat / total
+    w_con = n_con / total
+    return w_nat * hard_nat + w_con * soft_con
+
+
+def hard_jaccard(tokens_a: set[str], tokens_b: set[str]) -> float:
+    """Standard hard Jaccard for comparison/ablation."""
+    if not tokens_a and not tokens_b:
+        return 0.0
+    if not tokens_a or not tokens_b:
+        return 0.0
+    return len(tokens_a & tokens_b) / len(tokens_a | tokens_b)
