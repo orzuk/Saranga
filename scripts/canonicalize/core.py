@@ -373,9 +373,20 @@ def _extract_variables(math_text: str) -> list[str]:
     return order
 
 
-def build_local_rename_map(math_text: str) -> dict:
-    """Build a rename map for a single text fragment, first-occurrence order."""
-    variables = _extract_variables(math_text)
+def _extract_math_only(text: str) -> str:
+    """Extract only the content inside $..$ / $$...$$ delimiters."""
+    parts = []
+    for kind, segment in _segment(text):
+        if kind == "math":
+            parts.append(segment)
+    return " ".join(parts)
+
+
+def build_local_rename_map(text: str) -> dict:
+    """Build a rename map for a single text fragment, first-occurrence order.
+    Only extracts variables from math regions (not prose letters)."""
+    math_only = _extract_math_only(text)
+    variables = _extract_variables(math_only)
     return {
         var: f"{R.VAR_PREFIX}{i + 1}"
         for i, var in enumerate(variables)
@@ -400,7 +411,8 @@ def build_paper_rename_map(paper_json: dict) -> dict:
             val = node.get(field, "") or ""
             if isinstance(val, list):
                 val = " ".join(val)
-            for var in _extract_variables(val):
+            math_only = _extract_math_only(val)
+            for var in _extract_variables(math_only):
                 if var not in seen:
                     seen.add(var)
                     order.append(var)
@@ -421,35 +433,50 @@ def build_paper_rename_map(paper_json: dict) -> dict:
 
 
 def _apply_rename_in_math(math_text: str, rename_map: dict) -> str:
-    """Apply rename map inside a math segment, respecting token boundaries."""
+    """Apply rename map inside a math segment, respecting token boundaries.
+
+    Uses a SINGLE-PASS regex alternation so that replacement tokens (V1, V2)
+    don't get re-renamed by subsequent rules. This prevents the cascade bug
+    where \\epsilon -> V19 and then V in V19 matches 'V' -> V27 giving V2719.
+    """
     if not rename_map:
         return math_text
-    # Build a regex that matches any key as a whole token.
-    # Keys are either \cmd or a single letter.
-    cmd_keys = sorted(
-        [k for k in rename_map if k.startswith("\\")], key=len, reverse=True
-    )
-    letter_keys = sorted(
-        [k for k in rename_map if not k.startswith("\\")], key=len, reverse=True
-    )
 
-    # Commands: replace literally (command tokens don't need boundary check
-    # beyond the regex command-name matcher).
-    for cmd in cmd_keys:
-        # \alpha must not match \alphabet. Use lookbehind/lookahead for
-        # non-letter after command name.
-        pat = re.compile(re.escape(cmd) + r"(?![A-Za-z])")
-        math_text = pat.sub(rename_map[cmd], math_text)
+    # Build ONE regex with all alternatives, longest first.
+    # Each alternative has its own boundary constraints.
+    alternatives = []
+    # Map from regex-group-name -> replacement
+    group_map = {}
+    for idx, (src, dst) in enumerate(rename_map.items()):
+        gname = f"g{idx}"
+        if src.startswith("\\"):
+            # Command: escape + not followed by letter
+            alt = f"(?P<{gname}>{re.escape(src)})(?![A-Za-z])"
+        elif src in R.NORM_LETTERS:
+            # Norm-space letters (l, L): only rename when NOT followed by
+            # _ or ^ (which would make it l_1, L^2 etc. = a norm name).
+            alt = f"(?<![A-Za-z\\\\])(?P<{gname}>{re.escape(src)})(?![A-Za-z_^])"
+        else:
+            # Letter: not preceded by letter/backslash, not followed by letter
+            alt = f"(?<![A-Za-z\\\\])(?P<{gname}>{re.escape(src)})(?![A-Za-z])"
+        alternatives.append(alt)
+        group_map[gname] = dst
 
-    # Letters: match only as standalone identifier tokens, not inside a
-    # longer LaTeX command.
-    for letter in letter_keys:
-        # (?<![A-Za-z\\]) : previous char is not a letter and not '\'
-        # (?![A-Za-z])    : next char is not a letter
-        pat = re.compile(r"(?<![A-Za-z\\])" + re.escape(letter) + r"(?![A-Za-z])")
-        math_text = pat.sub(rename_map[letter], math_text)
+    if not alternatives:
+        return math_text
 
-    return math_text
+    # Sort by source length descending (longest match wins in alternation)
+    items = sorted(zip(alternatives, rename_map.keys()), key=lambda x: len(x[1]), reverse=True)
+    combined = "|".join(alt for alt, _ in items)
+    pattern = re.compile(combined)
+
+    def _replacer(m):
+        for gname, dst in group_map.items():
+            if m.group(gname) is not None:
+                return dst
+        return m.group(0)  # fallback: no change
+
+    return pattern.sub(_replacer, math_text)
 
 
 # ---------------------------------------------------------------------------
@@ -494,6 +521,9 @@ def _canonicalize_math_segment(math_text: str, rename_map: dict | None) -> str:
     # Phase 9-10 -- arrows, logic
     inner = _apply_literal_rules(inner, R.RULES_ARROWS)
     inner = _apply_literal_rules(inner, R.RULES_LOGIC)
+
+    # Phase 10b -- ell -> l unification
+    inner = _apply_literal_rules(inner, R.RULES_ELL)
 
     # Phase 11 -- function name aliases
     inner = _apply_literal_rules(inner, R.RULES_FUNCTION_ALIASES)
@@ -634,30 +664,36 @@ def canonicalize_paper(paper_json: dict,
     result["variable_rename_map_paper"] = paper_map
 
     nodes = result.get("nodes", {})
-    if isinstance(nodes, dict):
-        new_nodes = {}
-        for node_id, node in nodes.items():
-            # Compute node-local rename map
-            combined = ""
-            for fname in _FIELDS_TO_CANONICALIZE_STRING:
-                v = node.get(fname, "")
-                if isinstance(v, str):
-                    combined += " " + v
-            for fname in _FIELDS_TO_CANONICALIZE_LIST:
-                items = node.get(fname) or []
-                if isinstance(items, list):
-                    combined += " " + " ".join(items)
-            local_map = build_local_rename_map(combined)
 
-            new_node = _canonicalize_node(
-                node, paper_map, paper_map, prose_rewrites, "paper"
-            )
-            new_node = _canonicalize_node(
-                new_node, paper_map, local_map, prose_rewrites, "local"
-            )
-            new_node["variable_rename_map_local"] = local_map
-            new_nodes[node_id] = new_node
-        result["nodes"] = new_nodes
+    def _process_node(node):
+        combined = ""
+        for fname in _FIELDS_TO_CANONICALIZE_STRING:
+            v = node.get(fname, "")
+            if isinstance(v, str):
+                combined += " " + v
+        for fname in _FIELDS_TO_CANONICALIZE_LIST:
+            items = node.get(fname) or []
+            if isinstance(items, list):
+                combined += " " + " ".join(str(x) for x in items)
+        local_map = build_local_rename_map(combined)
+
+        new_node = _canonicalize_node(
+            node, paper_map, paper_map, prose_rewrites, "paper"
+        )
+        new_node = _canonicalize_node(
+            new_node, paper_map, local_map, prose_rewrites, "local"
+        )
+        new_node["variable_rename_map_local"] = local_map
+        return new_node
+
+    if isinstance(nodes, dict):
+        result["nodes"] = {
+            node_id: _process_node(node)
+            for node_id, node in nodes.items()
+        }
+    elif isinstance(nodes, list):
+        result["nodes"] = [_process_node(node) for node in nodes]
+
     return result
 
 

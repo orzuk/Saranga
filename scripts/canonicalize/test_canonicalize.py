@@ -257,6 +257,29 @@ class TestVariableRename(unittest.TestCase):
         # \pi is also a constant (command form)
         self.assertNotIn(r"\pi", m)
 
+    def test_norm_name_preserved(self):
+        # l_1, l_2 are norm names — the l should NOT be renamed
+        m = build_local_rename_map(r"$x \in l_1$ and $l_2$ norm")
+        out = canonicalize_text(r"$x \in l_1$ and $l_2$ norm", rename_map=m)
+        self.assertIn("l_1", out)   # kept as norm name
+        self.assertIn("l_2", out)   # kept as norm name
+        self.assertNotIn("x", out)  # x got renamed
+
+    def test_bare_l_renamed(self):
+        # bare l (no subscript) IS a variable, gets renamed
+        m = build_local_rename_map(r"$a + l = b$")
+        self.assertIn("l", m)  # l is in the rename map
+        out = canonicalize_text(r"$a + l = b$", rename_map=m)
+        self.assertNotIn("$a", out)  # a renamed
+        # l should be renamed (bare, no subscript)
+        # but we can't easily check this without knowing the V-number
+
+    def test_ell_to_l_then_norm_preserved(self):
+        # \ell_1 -> l_1 (surface rule) then l is kept (norm name)
+        m = build_local_rename_map(r"$\ell_1$ minimization of $x$")
+        out = canonicalize_text(r"$\ell_1$ minimization of $x$", rename_map=m)
+        self.assertIn("l_1", out)   # \ell -> l, then l_1 kept
+
     def test_only_greek_commands_are_variable_candidates(self):
         # \geq, \leq, \implies etc. are relations, NOT variables
         m = build_local_rename_map(r"$a \geq b \implies \alpha \leq \beta$")

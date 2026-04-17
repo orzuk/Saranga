@@ -386,6 +386,19 @@ RULES_LOGIC = {
 # CATEGORY 10 -- FUNCTION NAME ALIASES
 # ==========================================================================
 
+# \ell -> l  (unify "ell_1 norm" with "l_1 norm")
+# Both notations are standard; some authors use \ell for aesthetic reasons.
+RULES_ELL = {
+    r"\ell": "l",
+}
+
+# Letters that are norm-space names when followed by subscript/superscript.
+# l_1, l_2, l_p, l_\infty, L^2, L^p — these are concept names, NOT variables.
+# Bare l or L (no subscript) IS treated as a variable and gets renamed.
+# Applied at the rename step: if letter is in NORM_LETTERS and followed by _ or ^,
+# the rename is suppressed for that occurrence.
+NORM_LETTERS = {"l", "L"}
+
 RULES_FUNCTION_ALIASES = {
     r"\tg":     r"\tan",
     r"\ctg":    r"\cot",
