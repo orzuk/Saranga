@@ -26,30 +26,91 @@ from scipy.optimize import linear_sum_assignment
 # ── Type compatibility matrix ────────────────────────────────────────────────
 # Rewards theorem↔theorem, lemma↔theorem somewhat, etc.
 TYPE_COMPAT = {
-    # Same type = 1.0 (diagonal)
-    # Cross-theorem-like = 0.9
-    # Definition/Proof = more restrictive
-    ("theorem", "theorem"): 1.0,
-    ("theorem", "lemma"): 0.9, ("theorem", "proposition"): 0.9, ("theorem", "corollary"): 0.85,
-    ("lemma", "lemma"): 1.0, ("lemma", "proposition"): 0.9, ("lemma", "corollary"): 0.85,
-    ("proposition", "proposition"): 1.0, ("proposition", "corollary"): 0.85,
-    ("corollary", "corollary"): 1.0,
-    ("definition", "definition"): 1.0,
-    ("definition", "theorem"): 0.1, ("definition", "lemma"): 0.1,
-    ("proof", "proof"): 1.0,
-    ("claim", "claim"): 1.0, ("claim", "theorem"): 0.8, ("claim", "lemma"): 0.8,
-    ("algorithm", "algorithm"): 1.0,
-    ("equation", "equation"): 1.0,
+    # ── Same type = 1.0 (diagonal) ──
+    # All 13 types match themselves at 1.0; handled by the fallback in
+    # type_compat() below so we don't need to list them all here.
+
+    # ── Cross-theorem-like (high compatibility) ──
+    # theorem/lemma/proposition/corollary/claim: all state provable claims
+    ("theorem", "lemma"): 0.9,
+    ("theorem", "proposition"): 0.9,
+    ("theorem", "corollary"): 0.85,
+    ("theorem", "claim"): 0.8,
+    ("lemma", "proposition"): 0.9,
+    ("lemma", "corollary"): 0.85,
+    ("lemma", "claim"): 0.8,
+    ("proposition", "corollary"): 0.85,
+    ("proposition", "claim"): 0.8,
+    ("corollary", "claim"): 0.8,
+
+    # conjecture + problem: similar to theorem-like but unproven/open
+    ("conjecture", "theorem"): 0.7,
+    ("conjecture", "lemma"): 0.7,
+    ("conjecture", "proposition"): 0.7,
+    ("conjecture", "corollary"): 0.65,
+    ("conjecture", "claim"): 0.75,
+    ("conjecture", "problem"): 0.8,   # both are "open questions"
+    ("problem", "theorem"): 0.5,      # problem being studied vs proved result
+    ("problem", "conjecture"): 0.8,
+    ("problem", "definition"): 0.3,   # problem often defined, then studied
+
+    # ── Definition vs theorem-like (low — different purposes) ──
+    ("definition", "theorem"): 0.1,
+    ("definition", "lemma"): 0.1,
+    ("definition", "proposition"): 0.1,
+    ("definition", "corollary"): 0.1,
+    ("definition", "claim"): 0.1,
+    ("definition", "conjecture"): 0.1,
+
+    # ── Proof: matches proof only (structural, not semantic) ──
+    # proof vs theorem-like: very low (proof text ≠ statement text)
+    ("proof", "theorem"): 0.05,
+    ("proof", "lemma"): 0.05,
+    ("proof", "definition"): 0.0,
+
+    # ── Pedagogical ──
+    # example ↔ exercise: moderate (both are pedagogical)
+    ("example", "exercise"): 0.6,
+    # example/exercise vs theorem-like: low
+    ("example", "theorem"): 0.1,
+    ("example", "definition"): 0.2,
+    ("exercise", "theorem"): 0.1,
+    ("exercise", "definition"): 0.2,
+
+    # ── Algorithm ──
+    ("algorithm", "theorem"): 0.1,
+    ("algorithm", "definition"): 0.1,
+    ("algorithm", "proof"): 0.1,
+    ("algorithm", "example"): 0.3,
+
+    # ── Equation vs others ──
+    ("equation", "theorem"): 0.2,
+    ("equation", "definition"): 0.2,
+    ("equation", "lemma"): 0.2,
+    ("equation", "proof"): 0.1,
+
+    # ── Remark: low compatibility with everything ──
+    ("remark", "theorem"): 0.1,
+    ("remark", "definition"): 0.1,
+    ("remark", "proof"): 0.1,
+    ("remark", "example"): 0.3,
 }
 
 
 def type_compat(ta, tb):
-    """Get type compatibility score, symmetric."""
+    """Get type compatibility score, symmetric.
+
+    Same type = 1.0. Cross-type looked up in TYPE_COMPAT table.
+    Unknown pairs default to 0.1 (very low — different node types
+    rarely match across papers).
+    """
+    if ta == tb:
+        return 1.0
     if (ta, tb) in TYPE_COMPAT:
         return TYPE_COMPAT[(ta, tb)]
     if (tb, ta) in TYPE_COMPAT:
         return TYPE_COMPAT[(tb, ta)]
-    return 0.3  # unknown pair default
+    return 0.1  # unknown pair: very low
 
 
 # ── Node similarity functions ────────────────────────────────────────────────

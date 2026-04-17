@@ -47,21 +47,44 @@ Each node is a mathematical object. Required fields are marked with **R**, optio
 
 ### Node types
 
+13 types in 4 groups. Constants defined in `src/node_types.py`.
+
+**Theorem-like** (state a claim with assumptions/conclusions):
+
 | Type | Description |
 |------|-------------|
-| `definition` | Mathematical definition |
 | `theorem` | Theorem |
 | `lemma` | Lemma |
-| `corollary` | Corollary |
 | `proposition` | Proposition |
-| `proof` | Proof of a theorem/lemma/etc. |
-| `algorithm` | Algorithm or pseudocode |
-| `equation` | Key equation |
-| `example` | Worked example |
-| `remark` | Remark or note |
-| `conjecture` | Open conjecture |
-| `problem` | Mathematical problem |
-| `claim` | Claim (typically inside a proof) |
+| `corollary` | Corollary |
+| `claim` | Informal claim, "Fact", "Observation" |
+| `conjecture` | Explicitly unproven claim |
+
+**Foundational:**
+
+| Type | Description |
+|------|-------------|
+| `definition` | Mathematical definition of a named concept |
+| `proof` | Proof of a theorem/lemma/proposition/corollary |
+
+**Pedagogical** (primarily in textbooks):
+
+| Type | Description |
+|------|-------------|
+| `example` | Worked example illustrating a concept |
+| `exercise` | Pedagogical problem for the reader ("Show that...", "Compute...") |
+
+**Other mathematical content:**
+
+| Type | Description |
+|------|-------------|
+| `problem` | A named mathematical problem being studied ("the knapsack problem", "the isoperimetric problem"). Semantically closer to `conjecture` than to `exercise`. |
+| `equation` | Explicitly labeled/numbered equation referenced by number |
+| `algorithm` | Pseudocode or step-by-step procedure |
+| `remark` | Author's remark, note, observation |
+
+**Note:** `exercise` ≠ `problem`. An exercise is pedagogical (the author knows the answer).
+A problem is a mathematical object being studied (may be open/unsolved).
 
 ### Extra fields by type
 
