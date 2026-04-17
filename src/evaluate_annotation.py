@@ -138,7 +138,8 @@ def normalize_edges(data):
     for e in edges:
         src = e.get("source") or e.get("source_id", "")
         tgt = e.get("target") or e.get("target_id", "")
-        etype = e.get("type") or e.get("relation_type", "unknown")
+        from edge_types import normalize_edge_type
+        etype = normalize_edge_type(e.get("type") or e.get("relation_type"))
         normalized.append({"source": src, "target": tgt, "type": etype})
     return normalized
 

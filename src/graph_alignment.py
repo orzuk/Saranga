@@ -140,13 +140,21 @@ def jaccard_combined(node_a, node_b, use_type=True):
 
 # ── Edge similarity ──────────────────────────────────────────────────────────
 def edge_sim(e_a, e_b):
-    """Edge similarity: 1 if same type, 0.5 if different, 0 if types incompatible."""
-    ra = e_a.get("type", "uses")
-    rb = e_b.get("type", "uses")
+    """Edge similarity: 1 if same type, 0.8 if both dependency subtypes,
+    0.5 if both structural, 0.2 otherwise."""
+    from edge_types import normalize_edge_type, DEPENDENCY_TYPES, STRUCTURAL_TYPES
+    ra = normalize_edge_type(e_a.get("type") or e_a.get("relation_type"))
+    rb = normalize_edge_type(e_b.get("type") or e_b.get("relation_type"))
     if ra == rb:
         return 1.0
-    # Both structural ("uses"/"proves"/etc.) get partial credit
-    return 0.5
+    # Both dependency subtypes (uses/generalizes/specializes): high credit
+    if ra in DEPENDENCY_TYPES and rb in DEPENDENCY_TYPES:
+        return 0.8
+    # Both structural (proves/illustrates/tests): moderate credit
+    if ra in STRUCTURAL_TYPES and rb in STRUCTURAL_TYPES:
+        return 0.5
+    # Mixed dependency/structural: low credit
+    return 0.2
 
 
 # ── Core alignment algorithm ─────────────────────────────────────────────────

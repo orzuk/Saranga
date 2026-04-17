@@ -91,7 +91,7 @@ def _get_nodes_edges(data: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[D
             edge = {
                 "source": rel.get("source_id") or rel.get("source"),
                 "target": rel.get("target_id") or rel.get("target"),
-                "type": rel.get("relation_type") or rel.get("type"),
+                "type": rel.get("relation_type") or rel.get("type") or "uses",
             }
             edges.append(edge)
         return nodes, edges

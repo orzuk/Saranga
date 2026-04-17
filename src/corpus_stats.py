@@ -174,17 +174,21 @@ def compute_paper_stats(paper_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
     stats["avg_assumptions_per_thm"] = round(total_assumptions / n_tl, 2) if n_tl else 0
     stats["avg_conclusions_per_thm"] = round(total_conclusions / n_tl, 2) if n_tl else 0
 
-    # Edge type counts
-    edge_types: Counter = Counter()
+    # Edge type counts (normalize deprecated names → canonical)
+    from edge_types import normalize_edge_type, DEPENDENCY_TYPES, STRUCTURAL_TYPES
+    edge_type_counts: Counter = Counter()
     for e in edges:
-        etype = e.get("type") or "unknown"
-        edge_types[etype] += 1
-    stats["n_has_part_edges"] = edge_types.get("has_part", 0) + edge_types.get("proves", 0)
-    stats["n_uses_edges"] = edge_types.get("uses", 0) + edge_types.get("dependency", 0)
-    # Keyword edges are "uses" edges created from keyword matching — we can't
-    # distinguish them from ref-based "uses" at the JSON level (both have
-    # type="uses"). So n_uses_edges includes both. n_keyword_edges is set to 0
-    # here; Yaron's extractor logs the breakdown but it's not in the JSON.
+        etype = normalize_edge_type(e.get("type") or e.get("relation_type"))
+        edge_type_counts[etype] += 1
+    stats["n_proves_edges"] = edge_type_counts.get("proves", 0)
+    stats["n_dependency_edges"] = sum(edge_type_counts.get(t, 0) for t in DEPENDENCY_TYPES)
+    stats["n_illustrates_edges"] = edge_type_counts.get("illustrates", 0)
+    stats["n_tests_edges"] = edge_type_counts.get("tests", 0)
+    stats["n_generalizes_edges"] = edge_type_counts.get("generalizes", 0)
+    stats["n_specializes_edges"] = edge_type_counts.get("specializes", 0)
+    # Backward compat aliases
+    stats["n_has_part_edges"] = stats["n_proves_edges"]
+    stats["n_uses_edges"] = stats["n_dependency_edges"]
     stats["n_keyword_edges"] = 0
 
     # Orphan proofs

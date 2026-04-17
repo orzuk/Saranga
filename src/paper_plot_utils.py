@@ -310,15 +310,21 @@ def paper_to_network(
         edges_by_type.setdefault(rtype, []).append((u, v))
 
     edge_styles = {
-        "uses": dict(color="tab:blue", style="solid", width=2.0, alpha=0.8),
-        "depends_on": dict(color="tab:purple", style="solid", width=2.0, alpha=0.8),
-        "follows_from": dict(color="tab:green", style="dashed", width=2.0, alpha=0.8),
-        "has_part": dict(color="tab:gray", style="dotted", width=1.5, alpha=0.7),
-        "related_to": dict(color="tab:orange", style="dashed", width=2.0, alpha=0.8),
-        "generalizes": dict(color="tab:red", style="dashdot", width=2.0, alpha=0.8),
-
-        # NEW
+        # Dependency edges (blue family)
+        "uses":         dict(color="tab:blue",   style="solid",   width=2.0, alpha=0.8),
+        "generalizes":  dict(color="tab:red",    style="dashdot", width=2.0, alpha=0.8),
+        "specializes":  dict(color="tab:orange", style="dashdot", width=2.0, alpha=0.8),
+        # Structural edges (gray/green family)
+        "proves":       dict(color="tab:gray",   style="dotted",  width=1.5, alpha=0.7),
+        "illustrates":  dict(color="tab:green",  style="dashed",  width=1.5, alpha=0.7),
+        "tests":        dict(color="tab:purple", style="dashed",  width=1.5, alpha=0.7),
+        # External
+        "grounded_to":      dict(color="black", style="dotted", width=1.2, alpha=0.6),
         "mentions_concept": dict(color="black", style="dotted", width=1.2, alpha=0.6),
+        # Deprecated (backward compat — still render if present in old data)
+        "dependency":    dict(color="tab:blue",  style="solid",  width=2.0, alpha=0.8),
+        "has_part":      dict(color="tab:gray",  style="dotted", width=1.5, alpha=0.7),
+        "follows_from":  dict(color="tab:blue",  style="solid",  width=2.0, alpha=0.8),
     }
 
     for rtype, edge_list in edges_by_type.items():
