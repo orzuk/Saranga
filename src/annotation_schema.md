@@ -130,17 +130,39 @@ Each edge represents a dependency or relationship between nodes.
 
 ### Edge types
 
-| Type | Category | Description |
-|------|----------|-------------|
-| `dependency` | logical | Generic dependency (default if `type` omitted) |
-| `uses` | logical | A uses result/definition B |
-| `proves` | logical | Proof A proves theorem B |
-| `follows_from` | logical | A follows from B |
-| `generalizes` | conceptual | A generalizes B |
-| `equivalent_to` | conceptual | A is equivalent to B (symmetric) |
-| `grounded_to` | external | Paper node linked to a known result in foundation graph |
+**Direction convention:** Arrow from A to B means "A supports B" / "B depends on A."
+Edge name reads as "B [name] A" (target's action on source).
 
-Extractors may output just `{"source": "A", "target": "B"}` (no type) for generic dependencies. More specific types earn higher evaluation scores.
+**Dependency edges** (B depends on A):
+
+| Type | "B [type] A" | Description |
+|------|-------------|-------------|
+| `uses` | "B uses A" | Generic dependency. B's statement or proof references A. Default when no specific semantic relationship applies. |
+| `generalizes` | "B generalizes A" | B is more general than A (weaker assumptions or broader scope). Subtype of `uses`: implies dependency. |
+| `specializes` | "B specializes A" | B is a special case of A (stronger assumptions). Subtype of `uses`: implies dependency. |
+
+`generalizes` and `specializes` are subtypes of `uses`. To query all
+dependencies: `type in {"uses", "generalizes", "specializes"}`.
+Never create both `uses` and `generalizes` between the same pair — use the more specific type.
+
+**Structural edges** (B is connected to A):
+
+| Type | "B [type] A" | Description |
+|------|-------------|-------------|
+| `proves` | "B proves A" | B is a proof establishing theorem A. Each proof has exactly one `proves` edge. |
+| `illustrates` | "B illustrates A" | B is an example demonstrating concept A. |
+| `tests` | "B tests A" | B is an exercise or problem testing concept A. |
+
+**External edges:**
+
+| Type | Description |
+|------|-------------|
+| `grounded_to` | Paper node linked to a known result in the foundation graph (NaturalProofs/Mathlib). |
+
+**Deprecated** (accepted on input, normalized internally):
+`dependency` → `uses`, `follows_from` → `uses`, `equivalent_to` → two `generalizes` edges.
+
+Extractors may output just `{"source": "A", "target": "B"}` (no type); defaults to `uses`.
 
 ---
 
