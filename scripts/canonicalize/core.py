@@ -141,9 +141,9 @@ def _rewrite_exp(text: str) -> str:
     return re.sub(R.EXP_PATTERN, R.EXP_REPLACEMENT, text)
 
 
-def _rewrite_log_to_ln(text: str) -> str:
-    """\\log (no subscript) -> \\ln.  \\log_{10} stays \\log_{10}."""
-    return re.sub(R.LOG_TO_LN_PATTERN, r"\\ln", text)
+def _rewrite_ln_to_log(text: str) -> str:
+    """\\ln -> \\log (canonical form for natural log). \\log_{10} stays."""
+    return re.sub(R.LN_TO_LOG_PATTERN, R.LN_TO_LOG_REPLACEMENT, text)
 
 
 def _strip_overset_underset(text: str) -> str:
@@ -541,7 +541,7 @@ def _canonicalize_math_segment(math_text: str, rename_map: dict | None) -> str:
     inner = _rewrite_frac(inner)
     inner = _rewrite_binom(inner)
     inner = _rewrite_exp(inner)
-    inner = _rewrite_log_to_ln(inner)
+    inner = _rewrite_ln_to_log(inner)
 
     # Phase 15 -- inequality direction normalization
     inner = _flip_inequalities(inner)

@@ -259,12 +259,16 @@ RULES_NUMBER_SETS = {
 # ==========================================================================
 
 RULES_OPERATORS = {
-    r"\cdot":  "*",
-    r"\times": "*",
-    r"\ast":   "*",
-    r"\star":  "*",   # sometimes multiplication, sometimes "convolution"; flag if contextual
+    # SAFE to unify: \star and * are generic "multiplication" in most contexts
+    r"\star":  "*",
+    # \div -> / is always division
     r"\div":   "/",
-    # ± / ∓: keep as-is (they have distinct semantics from a lone operator)
+    # NOT unified (context-dependent — distinct math operations):
+    #   \cdot  = dot product (vectors) OR scalar multiplication
+    #   \times = cross product (vectors) OR Cartesian product (sets) OR multiplication
+    #   \ast   = convolution OR adjoint OR multiplication
+    # Keep each as its own token; embeddings learn contextual equivalence.
+    # ± / ∓: keep as-is (distinct semantics)
 }
 
 
@@ -464,11 +468,12 @@ BINOM_REPLACEMENT = r"C(\1,\2)"
 EXP_PATTERN = r"\\exp\s*\(([^)]*)\)"
 EXP_REPLACEMENT = r"e^{\1}"
 
-# \log -> \ln  ONLY when no subscript follows. \log_{10}(x) stays \log_{10}(x)
-# because there the author has explicitly chosen a base.
-# Pattern matches \log not followed by _ (subscript).
-LOG_TO_LN_PATTERN = r"\\log(?![_A-Za-z])"
-LOG_TO_LN_REPLACEMENT = r"\\ln"
+# \ln -> \log  (treat any unsubscripted log as natural log, canonical form = \log)
+# If author writes \log_{10} or \log_2, the subscript stays — that's explicit.
+# Rationale: \ln and \log (without base) both mean natural log in math/ML/stats.
+# If it's log base 10, the author should specify \log_{10}.
+LN_TO_LOG_PATTERN = r"\\ln(?![A-Za-z])"
+LN_TO_LOG_REPLACEMENT = r"\\log"
 
 # \overset{X}{Y}, \underset{X}{Y}, \stackrel{X}{Y} -> Y
 # Used e.g. in "f(x) \overset{x\to\infty}{\to} c" where the decoration

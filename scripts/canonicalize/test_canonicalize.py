@@ -28,15 +28,24 @@ class TestSurfaceNormalization(unittest.TestCase):
             "$(a + b)^2$",
         )
 
-    def test_cdot_to_star(self):
+    def test_cdot_kept_distinct(self):
+        # \cdot NOT unified with * (could be dot product vs multiplication)
         self.assertEqual(
             canonicalize_text(r"$a \cdot b$"),
-            "$a * b$",
+            r"$a \cdot b$",
         )
 
-    def test_times_to_star(self):
+    def test_times_kept_distinct(self):
+        # \times NOT unified with * (could be cross product vs multiplication)
         self.assertEqual(
             canonicalize_text(r"$a \times b$"),
+            r"$a \times b$",
+        )
+
+    def test_star_to_star(self):
+        # \star IS unified with * (generic operation)
+        self.assertEqual(
+            canonicalize_text(r"$a \star b$"),
             "$a * b$",
         )
 
@@ -150,19 +159,23 @@ class TestInequalityFlip(unittest.TestCase):
         )
 
 
-class TestLogToLn(unittest.TestCase):
+class TestLnToLog(unittest.TestCase):
 
-    def test_plain_log(self):
+    def test_ln_becomes_log(self):
+        self.assertEqual(
+            canonicalize_text(r"$\ln(x)$"),
+            r"$\log(x)$",
+        )
+
+    def test_log_stays_log(self):
         self.assertEqual(
             canonicalize_text(r"$\log(x)$"),
-            r"$\ln(x)$",
+            r"$\log(x)$",
         )
 
     def test_log_with_base_kept(self):
-        # \log_{10} must stay: author chose a base.
         out = canonicalize_text(r"$\log_{10}(x)$")
-        self.assertIn(r"\log_", out)  # still \log_{10}, not \ln
-        self.assertNotIn(r"\ln", out)
+        self.assertIn(r"\log_", out)
 
     def test_log_with_base_2(self):
         out = canonicalize_text(r"$\log_2(x)$")
