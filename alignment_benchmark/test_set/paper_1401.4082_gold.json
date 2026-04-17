@@ -1,0 +1,111 @@
+{
+  "metadata": {
+    "title": "Stochastic Backpropagation and Approximate Inference in Deep Generative Models (Rezende, Mohamed, Wierstra, 2014)",
+    "arxiv_id": "1401.4082",
+    "year": 2014,
+    "venue": "ICML 2014",
+    "framework": "stochastic backpropagation through Gaussian latent variables for deep generative model inference",
+    "annotator": "Claude (claude-code)",
+    "source_note": "Extraction based on well-known content of arXiv:1401.4082."
+  },
+  "nodes": [
+    {
+      "id": "DP_DLGM.1",
+      "type": "definition",
+      "name": "Deep latent Gaussian model (DLGM)",
+      "section": "2",
+      "statement": "A hierarchical generative model with $L$ layers of Gaussian latent variables: $\\mathbf{z}_L \\sim \\mathcal{N}(0, I)$, $\\mathbf{z}_l | \\mathbf{z}_{l+1} \\sim \\mathcal{N}(\\boldsymbol{\\mu}_l(\\mathbf{z}_{l+1}), \\mathrm{diag}(\\boldsymbol{\\sigma}_l^2(\\mathbf{z}_{l+1})))$ for $l = L-1, \\ldots, 1$, and $\\mathbf{x} | \\mathbf{z}_1 \\sim p_\\theta(\\mathbf{x}|\\mathbf{z}_1)$. The means and variances are computed by neural networks with parameters $\\theta$. This defines a deep, directed generative model."
+    },
+    {
+      "id": "DP_DLGM.2",
+      "type": "definition",
+      "name": "Variational free energy (ELBO)",
+      "section": "3",
+      "statement": "The variational free energy (ELBO): $\\mathcal{F}(\\theta, \\phi) = \\mathbb{E}_{q_\\phi(\\mathbf{z}|\\mathbf{x})} [\\log p_\\theta(\\mathbf{x}, \\mathbf{z}) - \\log q_\\phi(\\mathbf{z}|\\mathbf{x})] = \\mathbb{E}_{q_\\phi}[\\log p_\\theta(\\mathbf{x}|\\mathbf{z})] - D_{\\mathrm{KL}}(q_\\phi(\\mathbf{z}|\\mathbf{x}) \\| p_\\theta(\\mathbf{z})) \\le \\log p_\\theta(\\mathbf{x})$. Maximizing $\\mathcal{F}$ jointly optimizes the generative model and recognition model."
+    },
+    {
+      "id": "DP_DLGM.3",
+      "type": "definition",
+      "name": "Recognition model (approximate posterior)",
+      "section": "3",
+      "statement": "The recognition model $q_\\phi(\\mathbf{z}|\\mathbf{x})$ is a Gaussian with mean and variance produced by a neural network (the recognition/inference network): $q_\\phi(\\mathbf{z}_l|\\mathbf{x}) = \\mathcal{N}(\\boldsymbol{\\mu}_\\phi^l(\\mathbf{x}), \\mathrm{diag}(\\boldsymbol{\\sigma}_\\phi^{2,l}(\\mathbf{x})))$. For the hierarchical case, $q_\\phi(\\mathbf{z}|\\mathbf{x}) = \\prod_{l=1}^L q_\\phi(\\mathbf{z}_l | \\mathbf{x}, \\mathbf{z}_{<l})$."
+    },
+    {
+      "id": "DP_DLGM.4",
+      "type": "definition",
+      "name": "Gaussian backpropagation (reparameterization / stochastic backprop)",
+      "section": "4",
+      "statement": "For a Gaussian $q_\\phi(\\mathbf{z}|\\mathbf{x}) = \\mathcal{N}(\\boldsymbol{\\mu}, C)$ with mean $\\boldsymbol{\\mu}$ and covariance $C$ depending on $\\phi$: write $\\mathbf{z} = \\boldsymbol{\\mu} + R \\boldsymbol{\\epsilon}$ where $C = RR^\\top$ and $\\boldsymbol{\\epsilon} \\sim \\mathcal{N}(0, I)$. Then $\\nabla_\\phi \\mathbb{E}_q[f(\\mathbf{z})] = \\mathbb{E}_{\\boldsymbol{\\epsilon}} [\\nabla_\\phi f(\\boldsymbol{\\mu} + R \\boldsymbol{\\epsilon})]$ which can be estimated by sampling $\\boldsymbol{\\epsilon}$. This is the 'Gaussian backpropagation' rule. For general distributions, an additional correction term involving $\\nabla_{\\mathbf{z}} \\log q$ (Bonnet's and Price's theorems) arises."
+    },
+    {
+      "id": "DP_DLGM.5",
+      "type": "definition",
+      "name": "Structured variational inference with normalizing flows (mention)",
+      "section": "5",
+      "statement": "The paper mentions that the Gaussian recognition model can be made more flexible by applying a sequence of invertible smooth mappings (normalizing flows) to the initial Gaussian sample, yielding a richer variational family while maintaining tractable density evaluation via the change-of-variables formula."
+    },
+    {
+      "id": "LP_DLGM.1",
+      "type": "lemma",
+      "name": "Bonnet's theorem (Gaussian integration by parts)",
+      "section": "4.1",
+      "statement": "For $\\mathbf{z} \\sim \\mathcal{N}(\\boldsymbol{\\mu}, C)$ and differentiable $f$: $\\nabla_{\\boldsymbol{\\mu}} \\mathbb{E}[f(\\mathbf{z})] = \\mathbb{E}[\\nabla_{\\mathbf{z}} f(\\mathbf{z})]$ (Bonnet's theorem). This is a special case of Stein's identity.",
+      "assumptions": [
+        "Gaussian distribution $q = \\mathcal{N}(\\boldsymbol{\\mu}, C)$",
+        "Differentiable function $f$ with appropriate integrability"
+      ],
+      "conclusions": [
+        "Gradient w.r.t. mean equals expected gradient w.r.t. sample"
+      ]
+    },
+    {
+      "id": "LP_DLGM.2",
+      "type": "lemma",
+      "name": "Price's theorem (covariance derivative)",
+      "section": "4.1",
+      "statement": "For $\\mathbf{z} \\sim \\mathcal{N}(\\boldsymbol{\\mu}, C)$: $\\nabla_{C_{ij}} \\mathbb{E}[f(\\mathbf{z})] = \\frac{1}{2} \\mathbb{E}[\\nabla_{z_i} \\nabla_{z_j} f(\\mathbf{z})]$ (Price's theorem). This provides the gradient of the expectation w.r.t. covariance entries.",
+      "assumptions": [
+        "Gaussian distribution $q = \\mathcal{N}(\\boldsymbol{\\mu}, C)$",
+        "Twice-differentiable function $f$"
+      ],
+      "conclusions": [
+        "Gradient w.r.t. covariance equals half the expected Hessian of $f$"
+      ]
+    },
+    {
+      "id": "TP_DLGM.1",
+      "type": "theorem",
+      "name": "Unbiased gradient estimator for DLGM training",
+      "section": "4",
+      "statement": "Using Gaussian backpropagation, the gradient of $\\mathcal{F}$ w.r.t. both $\\theta$ and $\\phi$ can be estimated with low variance: $\\nabla_{\\theta,\\phi} \\mathcal{F} = \\mathbb{E}_{\\boldsymbol{\\epsilon} \\sim \\mathcal{N}(0,I)} [\\nabla_{\\theta,\\phi} (\\log p_\\theta(\\mathbf{x}, g_\\phi(\\boldsymbol{\\epsilon})) - \\log q_\\phi(g_\\phi(\\boldsymbol{\\epsilon})|\\mathbf{x}))]$ where $g_\\phi(\\boldsymbol{\\epsilon}) = \\boldsymbol{\\mu}_\\phi + R_\\phi \\boldsymbol{\\epsilon}$. This enables end-to-end training of DLGMs via standard backpropagation.",
+      "assumptions": [
+        "Gaussian recognition model (DP_DLGM.3)",
+        "Reparameterization via Gaussian backprop (DP_DLGM.4)",
+        "ELBO objective (DP_DLGM.2)"
+      ],
+      "conclusions": [
+        "Unbiased, low-variance gradient estimator for both generative and recognition parameters",
+        "End-to-end training via standard backpropagation + sampling"
+      ]
+    },
+    {
+      "id": "EP_DLGM.1",
+      "type": "example",
+      "name": "MNIST generative modeling",
+      "section": "6",
+      "statement": "DLGM with 1 and 2 layers of stochastic latent variables trained on MNIST. With 2 layers, achieves marginal likelihood bound comparable to the VAE. Demonstrates smooth latent-space interpolation and meaningful learned representations."
+    }
+  ],
+  "edges": [
+    {"source": "DP_DLGM.1", "target": "DP_DLGM.2", "type": "uses"},
+    {"source": "DP_DLGM.1", "target": "DP_DLGM.3", "type": "uses"},
+    {"source": "DP_DLGM.3", "target": "DP_DLGM.2", "type": "uses"},
+    {"source": "DP_DLGM.3", "target": "DP_DLGM.4", "type": "uses"},
+    {"source": "DP_DLGM.4", "target": "LP_DLGM.1", "type": "uses"},
+    {"source": "DP_DLGM.4", "target": "LP_DLGM.2", "type": "uses"},
+    {"source": "DP_DLGM.4", "target": "TP_DLGM.1", "type": "uses"},
+    {"source": "DP_DLGM.2", "target": "TP_DLGM.1", "type": "uses"},
+    {"source": "TP_DLGM.1", "target": "EP_DLGM.1", "type": "uses"},
+    {"source": "DP_DLGM.3", "target": "DP_DLGM.5", "type": "uses"}
+  ]
+}

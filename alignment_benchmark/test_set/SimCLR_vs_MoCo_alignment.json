@@ -1,0 +1,89 @@
+{
+  "metadata": {
+    "alignment_name": "SimCLR_vs_MoCo",
+    "paper_a": {
+      "arxiv_id": "2002.05709",
+      "title": "SimCLR: A Simple Framework for Contrastive Learning (Chen et al., 2020)"
+    },
+    "paper_b": {
+      "arxiv_id": "1911.05722",
+      "title": "MoCo: Momentum Contrast for Unsupervised Visual Representation Learning (He et al., 2019)"
+    },
+    "relation_type": "CF",
+    "annotator": "Claude (claude-code)",
+    "description": "SimCLR and MoCo are concurrent approaches to self-supervised visual representation learning via contrastive objectives. Both train encoders to bring augmented views of the same image close while pushing apart views of different images, using variants of the InfoNCE loss. The critical architectural difference: MoCo uses a momentum-updated key encoder and a queue to maintain a large dictionary of negatives with small batch size; SimCLR uses a single encoder with large in-batch negatives (large batch), requiring no queue or momentum encoder. They represent opposite ends of a design spectrum for providing negatives."
+  },
+  "matches": [
+    {
+      "paper_a_nodes": ["DP_SCL.1"],
+      "paper_b_nodes": ["DP_MOCO.1"],
+      "match_type": "analogous",
+      "explanation": "Both use random data augmentations to create positive pairs (two views of the same image). MoCo describes this as creating queries and keys from augmented views. SimCLR's major contribution is the systematic study of which augmentations matter most (random crop + color distortion). MoCo uses standard augmentations without extensive ablation."
+    },
+    {
+      "paper_a_nodes": ["DP_SCL.3"],
+      "paper_b_nodes": ["DP_MOCO.2"],
+      "match_type": "exact",
+      "explanation": "Both use the same contrastive loss function: InfoNCE. SimCLR calls it NT-Xent; MoCo calls it InfoNCE. Both compute $-\\log(\\exp(q \\cdot k_+ / \\tau) / \\sum \\exp(q \\cdot k_i / \\tau))$ with temperature $\\tau$. SimCLR uses cosine similarity (L2-normalized dot product); MoCo uses dot product (with L2-normalized representations). Mathematically equivalent."
+    },
+    {
+      "paper_a_nodes": ["DP_SCL.4"],
+      "paper_b_nodes": ["DP_MOCO.4"],
+      "match_type": "analogous",
+      "explanation": "THE core design divergence: how to provide enough negatives. SimCLR: use very large batches (up to 8192 images = 16384 views), using all 2(N-1) in-batch examples as negatives. Requires large compute. MoCo: maintain a queue (FIFO) of 65536 recent keys as negatives, decoupling dictionary size from batch size. Requires less compute but adds the queue mechanism. Both solve the same problem (large negative set) via opposite strategies."
+    },
+    {
+      "paper_a_nodes": ["DP_SCL.5"],
+      "paper_b_nodes": ["DP_MOCO.5"],
+      "match_type": "analogous",
+      "explanation": "The full training algorithms. SimCLR: encode all views with one encoder, compute loss, update by SGD/LARS. Simple (no special mechanisms) but requires large batch + TPU/multi-GPU. MoCo: encode queries with query encoder (updated by SGD), encode keys with momentum encoder (updated by EMA), compute loss against queue, update queue. More complex but works with standard batch sizes."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP_MOCO.3"],
+      "match_type": "none",
+      "explanation": "The momentum-updated key encoder is MoCo's key innovation. SimCLR uses a single encoder for both views (end-to-end backprop through both). The momentum encoder provides consistent representations across the queue; SimCLR doesn't need this because all negatives are from the current batch."
+    },
+    {
+      "paper_a_nodes": ["DP_SCL.2"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "explanation": "SimCLR's projection head $g$ (MLP mapping representations to contrastive space) is a major contribution. The finding that evaluating $h$ (before projection) outperforms $z$ (after projection) is an important design insight. MoCo v1 does not use a projection head (MoCo v2, published later, adopts it from SimCLR)."
+    },
+    {
+      "paper_a_nodes": ["TP_SCL.1"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "explanation": "SimCLR's systematic augmentation study (showing random crop + color distortion is critical) has no counterpart in MoCo. MoCo uses augmentations but does not study their composition."
+    },
+    {
+      "paper_a_nodes": ["TP_SCL.2"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "explanation": "The projection head analysis (nonlinear MLP removes task-specific information, improving downstream performance) is unique to SimCLR."
+    },
+    {
+      "paper_a_nodes": ["EP_SCL.1"],
+      "paper_b_nodes": ["TP_MOCO.1"],
+      "match_type": "analogous",
+      "explanation": "Both report ImageNet linear evaluation results. MoCo: 60.6% top-1 with ResNet-50. SimCLR: 69.3% top-1 with ResNet-50 (and 76.5% with 4x width). SimCLR achieves substantially better results, partly due to the projection head and stronger augmentations. Both demonstrate that self-supervised contrastive learning approaches supervised performance."
+    }
+  ],
+  "unmatched_paper_a": [
+    "DP_SCL.2",
+    "TP_SCL.1",
+    "TP_SCL.2"
+  ],
+  "unmatched_paper_b": [
+    "DP_MOCO.3"
+  ],
+  "unmatched_paper_a_explanations": {
+    "DP_SCL.2": "Projection head (MLP). Key design element adopted by later work (including MoCo v2) but not in MoCo v1.",
+    "TP_SCL.1": "Augmentation composition study. Unique empirical contribution.",
+    "TP_SCL.2": "Projection head analysis showing it removes task-specific info. Unique insight."
+  },
+  "unmatched_paper_b_explanations": {
+    "DP_MOCO.3": "Momentum-updated key encoder. Core MoCo innovation with no SimCLR counterpart (SimCLR uses end-to-end single encoder)."
+  },
+  "summary": "SimCLR and MoCo are concurrent frameworks for self-supervised contrastive learning of visual representations, sharing the same goal (learn encoder by bringing augmented views of same image close, pushing views of different images apart) and the same loss function (InfoNCE/NT-Xent). They diverge in how they provide a large set of negative examples: MoCo uses a momentum-updated key encoder + queue (memory-efficient, works with small batches), while SimCLR uses large in-batch negatives (simpler, requires large compute). SimCLR additionally contributes the projection head and systematic augmentation study, achieving higher accuracy. MoCo's momentum encoder is its unique innovation. Later work (MoCo v2, BYOL, etc.) combined insights from both. This is a clean concurrent-finding (CF) pair: same problem, same loss, different solutions for the negative-provision bottleneck."
+}

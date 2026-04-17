@@ -1,0 +1,74 @@
+{
+  "metadata": {
+    "title": "Momentum Contrast for Unsupervised Visual Representation Learning (He, Fan, Wu, Xie, Girshick, 2019)",
+    "arxiv_id": "1911.05722",
+    "year": 2019,
+    "venue": "CVPR 2020",
+    "framework": "contrastive learning with momentum-updated key encoder and queue of negatives",
+    "annotator": "Claude (claude-code)",
+    "source_note": "Extraction based on well-known content of arXiv:1911.05722."
+  },
+  "nodes": [
+    {
+      "id": "DP_MOCO.1",
+      "type": "definition",
+      "name": "Contrastive learning as dictionary lookup",
+      "section": "2",
+      "statement": "Contrastive unsupervised learning builds dynamic dictionaries. A query $q$ is encoded from one augmented view of an image; keys $\\{k_0, k_1, \\ldots\\}$ are encoded from other views. The positive key $k_+$ comes from a different augmentation of the same image; negative keys come from different images. The goal is to learn representations where $q$ is similar to $k_+$ and dissimilar to negatives."
+    },
+    {
+      "id": "DP_MOCO.2",
+      "type": "definition",
+      "name": "InfoNCE loss",
+      "section": "2",
+      "statement": "The InfoNCE contrastive loss: $\\mathcal{L}_q = -\\log \\frac{\\exp(q \\cdot k_+ / \\tau)}{\\sum_{i=0}^{K} \\exp(q \\cdot k_i / \\tau)}$ where $\\tau > 0$ is a temperature hyperparameter, $k_+$ is the positive key, and $\\{k_i\\}_{i=0}^K$ includes $k_+$ and $K$ negative keys. This is equivalent to a $(K+1)$-way softmax classification of $q$ as belonging to class $k_+$."
+    },
+    {
+      "id": "DP_MOCO.3",
+      "type": "definition",
+      "name": "Momentum-updated key encoder",
+      "section": "3.2",
+      "statement": "The query encoder $f_q$ with parameters $\\theta_q$ is updated by backpropagation. The key encoder $f_k$ with parameters $\\theta_k$ is NOT updated by gradient but by exponential moving average (momentum update): $\\theta_k \\leftarrow m \\theta_k + (1 - m) \\theta_q$ with momentum coefficient $m \\in [0,1)$ (e.g., $m = 0.999$). This provides slowly evolving, consistent key representations."
+    },
+    {
+      "id": "DP_MOCO.4",
+      "type": "definition",
+      "name": "Queue of negative keys",
+      "section": "3.1",
+      "statement": "Maintain a queue (FIFO) of the most recent mini-batches' encoded keys. The current mini-batch is enqueued and the oldest batch is dequeued. This decouples the dictionary size $K$ from the mini-batch size, allowing a very large number of negatives (e.g., $K = 65536$) without requiring large batch sizes."
+    },
+    {
+      "id": "DP_MOCO.5",
+      "type": "definition",
+      "name": "MoCo algorithm",
+      "section": "3",
+      "statement": "MoCo training: (1) Sample a mini-batch of images, create two random augmentations per image. (2) Encode queries via $f_q$; encode keys via $f_k$ (no gradient). (3) Compute InfoNCE loss with positive pair + queue negatives. (4) Update $\\theta_q$ by SGD; update $\\theta_k$ by momentum. (5) Enqueue current keys, dequeue oldest."
+    },
+    {
+      "id": "TP_MOCO.1",
+      "type": "theorem",
+      "name": "Large consistent dictionary enables better representations",
+      "section": "4",
+      "statement": "The momentum update is critical: using $m=0.999$ significantly outperforms end-to-end training of both encoders ($m=0$, equivalent to no momentum). The queue enables dictionary sizes of 65K negatives, far larger than the batch size. On ImageNet linear probing, MoCo achieves 60.6% top-1 accuracy with a ResNet-50 encoder, competitive with supervised pre-training for downstream transfer tasks.",
+      "assumptions": [
+        "InfoNCE loss (DP_MOCO.2)",
+        "Momentum key encoder (DP_MOCO.3)",
+        "Queue of negatives (DP_MOCO.4)"
+      ],
+      "conclusions": [
+        "Large dictionaries (65K) improve representation quality",
+        "Momentum update crucial for dictionary consistency",
+        "Competitive with supervised pre-training on transfer tasks"
+      ]
+    }
+  ],
+  "edges": [
+    {"source": "DP_MOCO.1", "target": "DP_MOCO.2", "type": "uses"},
+    {"source": "DP_MOCO.1", "target": "DP_MOCO.3", "type": "uses"},
+    {"source": "DP_MOCO.1", "target": "DP_MOCO.4", "type": "uses"},
+    {"source": "DP_MOCO.2", "target": "DP_MOCO.5", "type": "uses"},
+    {"source": "DP_MOCO.3", "target": "DP_MOCO.5", "type": "uses"},
+    {"source": "DP_MOCO.4", "target": "DP_MOCO.5", "type": "uses"},
+    {"source": "DP_MOCO.5", "target": "TP_MOCO.1", "type": "uses"}
+  ]
+}

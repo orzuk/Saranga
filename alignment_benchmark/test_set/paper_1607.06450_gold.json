@@ -1,0 +1,94 @@
+{
+  "metadata": {
+    "title": "Layer Normalization (Ba, Kiros, Hinton, 2016)",
+    "arxiv_id": "1607.06450",
+    "year": 2016,
+    "venue": "arXiv preprint (NeurIPS 2016 Deep Learning Symposium)",
+    "framework": "normalization of layer inputs across the feature dimension within each example, independent of batch",
+    "annotator": "Claude (claude-code)",
+    "source_note": "Extraction based on well-known content of arXiv:1607.06450."
+  },
+  "nodes": [
+    {
+      "id": "DP_LN.1",
+      "type": "definition",
+      "name": "Limitation of batch normalization for RNNs",
+      "section": "1",
+      "statement": "Batch normalization is not directly applicable to recurrent neural networks because: (1) it requires storing separate statistics for each time step, (2) variable-length sequences make this impractical, and (3) at test time, mini-batch statistics are unavailable for single-example inference in sequence models."
+    },
+    {
+      "id": "DP_LN.2",
+      "type": "definition",
+      "name": "Layer normalization transform",
+      "section": "3",
+      "statement": "For a single training example with hidden vector $\\mathbf{h} \\in \\mathbb{R}^H$, the layer normalization transform computes statistics over all $H$ hidden units within that example: $\\mu = \\frac{1}{H} \\sum_{i=1}^{H} h_i$, $\\sigma^2 = \\frac{1}{H} \\sum_{i=1}^{H} (h_i - \\mu)^2$, $\\hat{h}_i = \\frac{h_i - \\mu}{\\sqrt{\\sigma^2 + \\epsilon}}$, $y_i = \\gamma_i \\hat{h}_i + \\beta_i$, where $\\gamma, \\beta \\in \\mathbb{R}^H$ are learnable gain and bias parameters. Unlike BN, the normalization is over features within one example, not over examples within a batch."
+    },
+    {
+      "id": "DP_LN.3",
+      "type": "definition",
+      "name": "Layer normalization in RNNs",
+      "section": "3",
+      "statement": "In an RNN with hidden state $\\mathbf{h}^t = f(W_h \\mathbf{h}^{t-1} + W_x \\mathbf{x}^t + \\mathbf{b})$, layer normalization is applied to the pre-activation summed input: $\\mathbf{a}^t = W_h \\mathbf{h}^{t-1} + W_x \\mathbf{x}^t$, then $\\mathbf{h}^t = f(\\mathrm{LN}(\\mathbf{a}^t))$ where $\\mathrm{LN}$ normalizes across the $H$ dimensions of $\\mathbf{a}^t$. The same $\\gamma, \\beta$ are shared across time steps."
+    },
+    {
+      "id": "DP_LN.4",
+      "type": "definition",
+      "name": "Invariance properties of layer normalization",
+      "section": "3.1",
+      "statement": "Layer normalization has the following invariance properties: (1) It is invariant to re-scaling of individual weights: scaling a row of the weight matrix does not change the normalized output. (2) It is invariant to re-centering of individual weights. (3) It is NOT invariant to re-scaling of the dataset, unlike batch normalization. These properties complement those of BN."
+    },
+    {
+      "id": "DP_LN.5",
+      "type": "definition",
+      "name": "Comparison of normalization axes",
+      "section": "2",
+      "statement": "BN normalizes over the batch dimension for each feature: $\\mu_k^{\\mathrm{BN}} = \\frac{1}{m} \\sum_{i=1}^m h_k^{(i)}$. LN normalizes over the feature dimension for each example: $\\mu^{\\mathrm{LN},(i)} = \\frac{1}{H} \\sum_{k=1}^H h_k^{(i)}$. Both use learnable affine parameters $\\gamma, \\beta$ after normalization."
+    },
+    {
+      "id": "TP_LN.1",
+      "type": "theorem",
+      "name": "Geometry of LN gradient (Fisher information interpretation)",
+      "section": "4",
+      "statement": "Under a GLM interpretation where the pre-activation is $a_i^l = w_i^{l \\top} h^{l-1}$, the Fisher information matrix for the weights has a block structure. Layer normalization implicitly performs a form of natural gradient descent by normalizing the pre-activations, analogous to how BN relates to the Fisher information of the batch statistics.",
+      "assumptions": [
+        "Generalized linear model interpretation of a single layer",
+        "Layer normalization applied to pre-activations (DP_LN.2)"
+      ],
+      "conclusions": [
+        "LN gradient update has an implicit Fisher-information scaling",
+        "LN stabilizes the geometry of the loss surface"
+      ]
+    },
+    {
+      "id": "EP_LN.1",
+      "type": "example",
+      "name": "LN on order embeddings and skip-thought vectors",
+      "section": "5",
+      "statement": "Layer normalization applied to LSTM-based skip-thought encoders and order-embedding models yields faster convergence and improved generalization compared to baseline (no normalization) and in some cases compared to batch normalization."
+    },
+    {
+      "id": "EP_LN.2",
+      "type": "example",
+      "name": "LN on image-caption and question-answering",
+      "section": "5",
+      "statement": "On attentive reader models for question answering and image-caption retrieval, LN provides consistent speedups in training (reaching baseline performance in fewer updates) and modest improvements in final performance."
+    },
+    {
+      "id": "EP_LN.3",
+      "type": "example",
+      "name": "LN on convolutional networks (limited benefit)",
+      "section": "5",
+      "statement": "On convolutional networks (CIFAR-10 and ImageNet), layer normalization does not improve over batch normalization. The authors conjecture this is because in CNNs the features within a channel have different roles (edge detectors vs. textures), making cross-feature normalization less appropriate than cross-batch normalization."
+    }
+  ],
+  "edges": [
+    {"source": "DP_LN.1", "target": "DP_LN.2", "type": "motivates"},
+    {"source": "DP_LN.2", "target": "DP_LN.3", "type": "uses"},
+    {"source": "DP_LN.2", "target": "DP_LN.4", "type": "uses"},
+    {"source": "DP_LN.2", "target": "DP_LN.5", "type": "uses"},
+    {"source": "DP_LN.2", "target": "TP_LN.1", "type": "uses"},
+    {"source": "DP_LN.3", "target": "EP_LN.1", "type": "uses"},
+    {"source": "DP_LN.3", "target": "EP_LN.2", "type": "uses"},
+    {"source": "DP_LN.2", "target": "EP_LN.3", "type": "uses"}
+  ]
+}

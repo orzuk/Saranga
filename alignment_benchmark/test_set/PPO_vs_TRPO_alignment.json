@@ -1,0 +1,127 @@
+{
+  "metadata": {
+    "alignment_name": "PPO_vs_TRPO",
+    "paper_a": {
+      "arxiv_id": "1502.05477",
+      "title": "Trust Region Policy Optimization (Schulman et al., 2015)"
+    },
+    "paper_b": {
+      "arxiv_id": "1707.06347",
+      "title": "Proximal Policy Optimization Algorithms (Schulman et al., 2017)"
+    },
+    "relation_type": "EXT",
+    "annotator": "Claude (claude-code)",
+    "description": "PPO replaces TRPO's hard KL trust-region constraint with a clipped surrogate objective. Both optimize the same importance-sampled advantage surrogate; TRPO uses second-order natural-gradient steps with conjugate gradient and line search, while PPO uses simple first-order SGD on a clipped loss. PPO is strictly simpler while achieving comparable or better empirical performance."
+  },
+  "matches": [
+    {
+      "paper_a_nodes": ["DP_TRPO.1"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "explanation": "TRPO formally defines the MDP tuple. PPO assumes the same MDP setting implicitly but does not re-derive it, focusing instead on the algorithmic improvement over TRPO."
+    },
+    {
+      "paper_a_nodes": ["DP_TRPO.2"],
+      "paper_b_nodes": ["DP_PPO.1"],
+      "match_type": "exact",
+      "explanation": "Both define a stochastic policy mapping states to action distributions, with the goal of maximizing expected discounted return. PPO uses the policy gradient formulation directly; TRPO defines the same object in the context of the performance identity."
+    },
+    {
+      "paper_a_nodes": ["DP_TRPO.3"],
+      "paper_b_nodes": ["DP_PPO.5"],
+      "match_type": "analogous",
+      "explanation": "Both use advantage functions. TRPO defines $A_\\pi(s,a) = Q_\\pi(s,a) - V_\\pi(s)$ abstractly. PPO uses the concrete GAE($\\lambda$) estimator $\\hat{A}_t = \\sum_l (\\gamma\\lambda)^l \\delta_{t+l}$, which is a specific practical estimator of the same theoretical quantity. GAE was introduced in Schulman et al. (2015b), not in TRPO itself."
+    },
+    {
+      "paper_a_nodes": ["DP_TRPO.5"],
+      "paper_b_nodes": ["DP_PPO.2"],
+      "match_type": "exact",
+      "explanation": "Both define the same importance-sampled surrogate objective. TRPO writes it as $L_{\\pi_{\\text{old}}}(\\pi) = \\eta(\\pi_{\\text{old}}) + \\sum_s \\rho_{\\pi_{\\text{old}}}(s) \\sum_a \\pi(a|s) A_{\\pi_{\\text{old}}}(s,a)$. PPO writes the equivalent sample-based form $L^{\\mathrm{CPI}}(\\theta) = \\hat{\\mathbb{E}}_t[r_t(\\theta) \\hat{A}_t]$ using the probability ratio $r_t$. These are the same functional up to the additive constant $\\eta(\\pi_{\\text{old}})$."
+    },
+    {
+      "paper_a_nodes": ["DP_TRPO.6"],
+      "paper_b_nodes": ["DP_PPO.3"],
+      "match_type": "analogous",
+      "explanation": "This is the core difference between the papers. TRPO constrains the policy update via a hard KL divergence constraint $\\bar{D}_{\\mathrm{KL}}^{\\max}(\\pi_{\\text{old}}, \\pi) \\le \\delta$, requiring second-order optimization (conjugate gradient on the Fisher matrix). PPO replaces this with the clipped surrogate $L^{\\mathrm{CLIP}}$, which clips the probability ratio $r_t$ to $[1-\\epsilon, 1+\\epsilon]$, achieving a similar trust-region effect via first-order optimization. Both serve the same purpose (preventing destructively large policy updates) but via fundamentally different mechanisms."
+    },
+    {
+      "paper_a_nodes": ["DP_TRPO.6"],
+      "paper_b_nodes": ["DP_PPO.4"],
+      "match_type": "analogous",
+      "explanation": "PPO's adaptive KL penalty variant is a direct relaxation of TRPO's hard KL constraint. Instead of a hard constraint $D_{\\mathrm{KL}} \\le \\delta$, it uses a soft penalty $-\\beta D_{\\mathrm{KL}}$ with $\\beta$ adapted to target a desired KL. This is closer to TRPO than the clipped variant, but still avoids second-order optimization."
+    },
+    {
+      "paper_a_nodes": ["DP_TRPO.7"],
+      "paper_b_nodes": ["DP_PPO.7"],
+      "match_type": "analogous",
+      "explanation": "Both describe the practical algorithm for neural network policies. TRPO: compute Fisher-vector products via conjugate gradient, perform natural-gradient step with line search to satisfy KL constraint. PPO: collect trajectories with parallel actors, perform multiple epochs of minibatch SGD on the clipped objective. PPO is dramatically simpler (no conjugate gradient, no Fisher matrix, no line search), and allows multiple passes over the data."
+    },
+    {
+      "paper_a_nodes": ["LP_TRPO.1"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "explanation": "The Kakade-Langford performance difference identity is the theoretical foundation of TRPO. PPO does not re-derive it, taking the surrogate objective as given from TRPO and focusing on the optimization mechanism."
+    },
+    {
+      "paper_a_nodes": ["LP_TRPO.2"],
+      "paper_b_nodes": ["TP_PPO.1"],
+      "match_type": "analogous",
+      "explanation": "TRPO's monotonic improvement bound ($\\eta(\\tilde{\\pi}) \\ge L_\\pi(\\tilde{\\pi}) - C \\cdot D_{\\mathrm{KL}}^{\\max}$) provides a rigorous guarantee that the surrogate lower-bounds the true return within a KL ball. PPO's clipped objective provides an analogous (informal) guarantee: $L^{\\mathrm{CLIP}} \\le L^{\\mathrm{CPI}}$, ensuring a pessimistic bound that prevents overly aggressive updates. TRPO's bound is theoretically tight; PPO's is a heuristic substitute that works empirically."
+    },
+    {
+      "paper_a_nodes": ["TP_TRPO.1"],
+      "paper_b_nodes": ["DP_PPO.7"],
+      "match_type": "analogous",
+      "explanation": "The main practical algorithms of each paper. TRPO: constrained natural-gradient step with conjugate gradient and line search. PPO: minibatch SGD on clipped surrogate with multiple epochs. Same goal (stable policy improvement), vastly different implementation complexity. PPO is the simplification that made TRPO-style policy optimization practical at scale."
+    },
+    {
+      "paper_a_nodes": ["TP_TRPO.2"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "explanation": "TRPO's convergence guarantee (monotonically non-decreasing $\\eta$) relies on the exact KL constraint and the monotonic improvement bound. PPO has no formal convergence guarantee; its clipping heuristic does not provide the same theoretical assurance."
+    },
+    {
+      "paper_a_nodes": ["PP_TRPO.1"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "explanation": "The proof of the monotonic improvement bound (via Pinsker's inequality and state-distribution mismatch) is specific to TRPO's theoretical contribution. PPO does not prove analogous bounds."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP_PPO.6"],
+      "match_type": "none",
+      "explanation": "PPO's combined objective including value function loss and entropy bonus in a single loss function is a practical design choice not present in TRPO, which optimizes policy and value function separately."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["EP_PPO.1", "EP_PPO.2"],
+      "match_type": "none",
+      "explanation": "PPO's extensive empirical comparison across Atari and MuJoCo benchmarks demonstrating competitive performance with simpler implementation. TRPO had its own experiments but PPO's contribution is specifically the empirical validation that clipping works as well as or better than the trust region."
+    }
+  ],
+  "unmatched_paper_a": [
+    "DP_TRPO.1",
+    "DP_TRPO.4",
+    "LP_TRPO.1",
+    "TP_TRPO.2",
+    "PP_TRPO.1"
+  ],
+  "unmatched_paper_b": [
+    "DP_PPO.6",
+    "EP_PPO.1",
+    "EP_PPO.2"
+  ],
+  "unmatched_paper_a_explanations": {
+    "DP_TRPO.1": "Formal MDP definition. PPO assumes MDP setting without re-defining.",
+    "DP_TRPO.4": "Discounted visitation frequency. Used in TRPO's theoretical derivation but not explicitly in PPO.",
+    "LP_TRPO.1": "Kakade-Langford identity. Theoretical foundation specific to TRPO's derivation.",
+    "TP_TRPO.2": "Formal convergence guarantee. PPO has no analogous theoretical result.",
+    "PP_TRPO.1": "Proof of monotonic improvement bound via Pinsker's inequality. Specific to TRPO's theoretical analysis."
+  },
+  "unmatched_paper_b_explanations": {
+    "DP_PPO.6": "Combined loss (policy + value + entropy). A practical architectural choice in PPO not present in TRPO.",
+    "EP_PPO.1": "Atari benchmark results showing PPO's empirical effectiveness.",
+    "EP_PPO.2": "MuJoCo continuous control results demonstrating PPO matches TRPO with simpler implementation."
+  },
+  "summary": "PPO is a direct simplification of TRPO. Both papers share the same foundational setup: stochastic policies on MDPs, advantage-based surrogate objectives, and the goal of stable policy improvement. The critical divergence is in how they constrain the policy update: TRPO uses a hard KL divergence constraint requiring second-order optimization (Fisher information matrix, conjugate gradient, line search), while PPO replaces this with a clipped probability ratio in the objective function, enabling simple first-order SGD. PPO trades TRPO's theoretical monotonic improvement guarantee for dramatic implementation simplicity and the ability to perform multiple epochs of minibatch updates over collected data. The setup-level matches (MDP, policy, advantage, surrogate objective) are essentially exact. The constraint/clipping mechanism is the key analogous-but-different match. TRPO's theoretical machinery (Kakade-Langford identity, monotonic improvement bound proof) has no counterpart in PPO, which is primarily an empirical contribution."
+}

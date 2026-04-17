@@ -1,0 +1,115 @@
+{
+  "metadata": {
+    "alignment_name": "BN_vs_LayerNorm",
+    "paper_a": {
+      "arxiv_id": "1502.03167",
+      "title": "Batch Normalization: Accelerating Deep Network Training (Ioffe & Szegedy, 2015)"
+    },
+    "paper_b": {
+      "arxiv_id": "1607.06450",
+      "title": "Layer Normalization (Ba, Kiros, Hinton, 2016)"
+    },
+    "relation_type": "EXT",
+    "annotator": "Claude (claude-code)",
+    "description": "Layer normalization adapts the core idea of batch normalization (normalize pre-activations, then apply learnable affine transform) but changes the normalization axis from across-batch to across-features. This makes LN applicable to RNNs and single-example inference where BN fails. Same template, orthogonal normalization axis."
+  },
+  "matches": [
+    {
+      "paper_a_nodes": ["DP_BN.2"],
+      "paper_b_nodes": ["DP_LN.2"],
+      "match_type": "analogous",
+      "explanation": "The core normalization transforms. Both compute mean and variance, normalize, then apply learnable scale ($\\gamma$) and shift ($\\beta$). The critical difference: BN computes $\\mu$ and $\\sigma^2$ over the batch dimension (across $m$ examples for each feature), while LN computes them over the feature dimension (across $H$ features for each example). Same computational template, orthogonal axes."
+    },
+    {
+      "paper_a_nodes": ["DP_BN.3"],
+      "paper_b_nodes": ["DP_LN.5"],
+      "match_type": "analogous",
+      "explanation": "Both explicitly describe the normalization axis. BN: per-dimension over the batch ($\\mu_k = \\frac{1}{m}\\sum_i h_k^{(i)}$). LN: per-example over dimensions ($\\mu^{(i)} = \\frac{1}{H}\\sum_k h_k^{(i)}$). This comparison is the central conceptual contribution of the LN paper."
+    },
+    {
+      "paper_a_nodes": ["DP_BN.1"],
+      "paper_b_nodes": ["DP_LN.1"],
+      "match_type": "analogous",
+      "explanation": "Both identify a problem that motivates normalization. BN identifies internal covariate shift (changing input distributions across layers during training). LN identifies BN's inapplicability to RNNs (variable sequence lengths, no batch statistics at test time for sequential inference). LN is motivated by BN's limitation rather than by an independent problem."
+    },
+    {
+      "paper_a_nodes": ["DP_BN.4"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "explanation": "BN's backpropagation derivation through batch statistics is detailed explicitly. LN's backpropagation is simpler (no cross-example dependencies) and not detailed as extensively."
+    },
+    {
+      "paper_a_nodes": ["DP_BN.5"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "explanation": "BN's inference-time use of population statistics (running averages) is a key design element necessitated by its batch dependence. LN needs no such mechanism since its statistics are per-example and work identically at training and inference time. This is a major practical advantage of LN."
+    },
+    {
+      "paper_a_nodes": ["DP_BN.6"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "explanation": "BN's treatment of convolutional layers (normalizing over batch and spatial dimensions per channel) is specific to CNNs where BN excels. LN's treatment of convolutions is less natural and performs worse (EP_LN.3)."
+    },
+    {
+      "paper_a_nodes": ["TP_BN.1"],
+      "paper_b_nodes": ["DP_LN.4"],
+      "match_type": "analogous",
+      "explanation": "Both discuss invariance/stability properties of their normalization. BN provides scale invariance of the output with respect to weight magnitude (rescaling weights doesn't change normalized output). LN provides invariance to re-scaling and re-centering of individual weight rows, but NOT to dataset re-scaling. Complementary invariance properties arising from the different normalization axes."
+    },
+    {
+      "paper_a_nodes": ["TP_BN.2"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "explanation": "BN's implicit regularization from batch-dependent noise has no analogue in LN. Since LN statistics are computed per-example, there is no stochastic cross-example noise injection. LN does not have the same regularization effect."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP_LN.3"],
+      "match_type": "none",
+      "explanation": "LN's specific application to RNNs (normalizing the pre-activation $W_h h^{t-1} + W_x x^t$ with shared $\\gamma, \\beta$ across time steps) is the key use case that BN cannot address. This is unique to LN."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["TP_LN.1"],
+      "match_type": "none",
+      "explanation": "LN's Fisher information / natural gradient interpretation provides a different theoretical perspective not present in BN's analysis."
+    },
+    {
+      "paper_a_nodes": ["EP_BN.1"],
+      "paper_b_nodes": ["EP_LN.3"],
+      "match_type": "analogous",
+      "explanation": "Both evaluate on image classification. BN achieves state-of-the-art on ImageNet (BN-Inception). LN finds that on CNNs (CIFAR-10, ImageNet), it does NOT improve over BN, confirming that the batch axis is more appropriate for convolutional features. Complementary empirical findings."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["EP_LN.1", "EP_LN.2"],
+      "match_type": "none",
+      "explanation": "LN's experiments on NLP tasks (skip-thought vectors, attentive readers, order embeddings) demonstrate the unique advantage of LN for sequence models, a domain where BN was not evaluated."
+    }
+  ],
+  "unmatched_paper_a": [
+    "DP_BN.4",
+    "DP_BN.5",
+    "DP_BN.6",
+    "TP_BN.2"
+  ],
+  "unmatched_paper_b": [
+    "DP_LN.3",
+    "TP_LN.1",
+    "EP_LN.1",
+    "EP_LN.2"
+  ],
+  "unmatched_paper_a_explanations": {
+    "DP_BN.4": "Detailed backpropagation through batch statistics. Not needed for LN (simpler computation).",
+    "DP_BN.5": "Population statistics at inference. LN is batch-independent, so no running averages needed.",
+    "DP_BN.6": "Convolutional BN (normalize over batch+spatial per channel). LN's convolutional treatment is less natural.",
+    "TP_BN.2": "Implicit regularization via batch noise. No analogue in LN (per-example statistics are deterministic)."
+  },
+  "unmatched_paper_b_explanations": {
+    "DP_LN.3": "RNN-specific application of LN with shared parameters across time. BN cannot handle this directly.",
+    "TP_LN.1": "Fisher information / natural gradient interpretation of LN. Different theoretical lens.",
+    "EP_LN.1": "Skip-thought and order embedding experiments unique to LN's NLP focus.",
+    "EP_LN.2": "Question-answering and image-caption experiments unique to LN's NLP focus."
+  },
+  "summary": "Batch Normalization and Layer Normalization share the same computational template: compute mean and variance of pre-activations, normalize, then apply a learnable affine transform ($\\gamma, \\beta$). The fundamental difference is the normalization axis: BN normalizes across the batch dimension (each feature independently), while LN normalizes across the feature dimension (each example independently). This change makes LN applicable to RNNs and single-example inference where BN is impractical. The setup-level match (normalize-then-affine transform) is exact in structure, analogous in axis. BN has unique properties: implicit regularization from batch noise, population statistics at inference, strong results on CNNs. LN has unique properties: batch-independence, direct RNN applicability, weight row invariance. Each excels in its natural domain (BN for CNNs, LN for RNNs/Transformers), and the LN paper explicitly positions itself as extending BN to the sequential setting."
+}
