@@ -31,28 +31,54 @@ EQUATION = "equation"
 ALGORITHM = "algorithm"
 REMARK = "remark"
 
-# ── Extra fields per type ────────────────────────────────────────────────
-# These are OPTIONAL structured fields on specific node types.
-# Extractors populate them when the information is available.
+# ── Universal subclass field ─────────────────────────────────────────────
+# Every node type has an optional "subclass" field that gives a finer
+# categorization. Valid values depend on the node type.
 
-# Algorithm extra fields:
+SUBCLASS_VALUES = {
+    DEFINITION:  {"concept", "model", "estimator", "loss_function", "metric",
+                  "notation", "space", "operator"},
+    THEOREM:     {"existence", "uniqueness", "convergence", "bound",
+                  "characterization", "equivalence", "impossibility",
+                  "classification"},
+    LEMMA:       {"technical", "auxiliary", "key"},
+    PROPOSITION: {"existence", "uniqueness", "convergence", "bound",
+                  "characterization", "equivalence"},
+    COROLLARY:   {"consequence", "special_case"},
+    CLAIM:       {"existence", "bound", "convergence", "characterization"},
+    CONJECTURE:  {"open", "folklore"},
+    PROOF:       {"direct", "contradiction", "induction", "construction",
+                  "probabilistic", "combinatorial", "algebraic"},
+    EXAMPLE:     {"illustrative", "counterexample", "computational", "applied"},
+    EXERCISE:    {"computational", "theoretical", "proof_exercise", "programming"},
+    PROBLEM:     {"optimization", "decision", "search", "counting", "sampling",
+                  "estimation"},
+    ALGORITHM:   {"exact", "approximation", "heuristic", "randomized", "online",
+                  "greedy", "iterative"},
+    EQUATION:    {"identity", "inequality", "recursion", "differential", "bound"},
+    REMARK:      {"historical", "technical", "motivational"},
+}
+
+# ── Type-specific extra fields (beyond subclass) ────────────────────────
+# These carry structured information unique to certain node types.
+
+# Algorithm:
 #   solves:              str | null   — ID of the problem node this algorithm solves
-#   algorithm_class:     str | null   — "exact" | "approximation" | "heuristic" |
-#                                       "randomized" | "online" | "greedy"
-#   approximation_ratio: str | null   — e.g. "1.5", "O(log n)", "2-epsilon", null if exact
-#   complexity:          str | null   — time complexity, e.g. "O(n^2)", "O(m log m)"
-#   space_complexity:    str | null   — space complexity (optional)
-ALGORITHM_FIELDS = {"solves", "algorithm_class", "approximation_ratio",
-                    "complexity", "space_complexity"}
+#   approximation_ratio: str | null   — e.g. "1.5", "O(log n)", null if exact
+#   complexity:          str | null   — time complexity, e.g. "O(n^2)"
+#   space_complexity:    str | null   — space complexity
+ALGORITHM_EXTRA_FIELDS = {"solves", "approximation_ratio", "complexity",
+                          "space_complexity"}
 
-# Problem extra fields:
-#   problem_class:       str | null   — "optimization" | "decision" | "search" |
-#                                       "counting" | "sampling" | "other"
-#   complexity_class:    str | null   — "P" | "NP-hard" | "NP-complete" | "PSPACE" |
-#                                       "undecidable" | "unknown" | "open"
-#   approximability:     str | null   — "PTAS" | "FPTAS" | "APX-hard" |
-#                                       "inapproximable" | null
-PROBLEM_FIELDS = {"problem_class", "complexity_class", "approximability"}
+# Problem:
+#   complexity_class:    str | null   — "P", "NP-hard", "NP-complete", etc.
+#   approximability:     str | null   — "PTAS", "FPTAS", "APX-hard", etc.
+PROBLEM_EXTRA_FIELDS = {"complexity_class", "approximability"}
+
+# Proof:
+#   proves:              str          — ID of the theorem this proves
+#   proof_strategy:      str | null   — alias for subclass (backward compat)
+PROOF_EXTRA_FIELDS = {"proves", "proof_strategy"}
 
 # ── Groupings ────────────────────────────────────────────────────────────
 

@@ -106,22 +106,47 @@ A problem is a mathematical object being studied (may be open/unsolved).
 | `strategy_tags` | O | list of strings | Multiple strategy tags |
 | `steps` | O | list of Span | Proof step decomposition |
 
-**Algorithms:**
+**Universal `subclass` field** (available on ALL node types):
+
+| Field | Req | Type | Description |
+|-------|-----|------|-------------|
+| `subclass` | O | string | Finer categorization within the node type. Valid values depend on `type`. |
+
+Subclass values by type:
+
+| Type | Valid subclass values |
+|------|---------------------|
+| `definition` | `concept`, `model`, `estimator`, `loss_function`, `metric`, `notation`, `space`, `operator` |
+| `theorem` / `proposition` | `existence`, `uniqueness`, `convergence`, `bound`, `characterization`, `equivalence`, `impossibility` |
+| `lemma` | `technical`, `auxiliary`, `key` |
+| `corollary` | `consequence`, `special_case` |
+| `conjecture` | `open`, `folklore` |
+| `claim` | `existence`, `bound`, `convergence`, `characterization` |
+| `proof` | `direct`, `contradiction`, `induction`, `construction`, `probabilistic`, `combinatorial`, `algebraic` |
+| `algorithm` | `exact`, `approximation`, `heuristic`, `randomized`, `online`, `greedy`, `iterative` |
+| `problem` | `optimization`, `decision`, `search`, `counting`, `sampling`, `estimation` |
+| `example` | `illustrative`, `counterexample`, `computational`, `applied` |
+| `exercise` | `computational`, `theoretical`, `proof_exercise`, `programming` |
+| `equation` | `identity`, `inequality`, `recursion`, `differential`, `bound` |
+| `remark` | `historical`, `technical`, `motivational` |
+
+Example: a statistical model is `type: "definition"` with `subclass: "model"`.
+An optimization formulation is `type: "problem"` with `subclass: "optimization"`.
+
+**Algorithms** (extra fields beyond subclass):
 
 | Field | Req | Type | Description |
 |-------|-----|------|-------------|
 | `solves` | O | string | ID of the problem node this algorithm addresses |
-| `algorithm_class` | O | string | `"exact"`, `"approximation"`, `"heuristic"`, `"randomized"`, `"online"`, `"greedy"` |
-| `approximation_ratio` | O | string | e.g. `"1.5"`, `"O(log n)"`, `"2-epsilon"`. null if exact. |
+| `approximation_ratio` | O | string | e.g. `"1.5"`, `"O(log n)"`. null if exact. |
 | `complexity` | O | string | Time complexity: `"O(n^2)"`, `"O(m log m)"`, etc. |
 | `space_complexity` | O | string | Space complexity (optional) |
 
-**Problems:**
+**Problems** (extra fields beyond subclass):
 
 | Field | Req | Type | Description |
 |-------|-----|------|-------------|
-| `problem_class` | O | string | `"optimization"`, `"decision"`, `"search"`, `"counting"`, `"sampling"` |
-| `complexity_class` | O | string | `"P"`, `"NP-hard"`, `"NP-complete"`, `"PSPACE"`, `"undecidable"`, `"unknown"` |
+| `complexity_class` | O | string | `"P"`, `"NP-hard"`, `"NP-complete"`, `"PSPACE"`, `"undecidable"` |
 | `approximability` | O | string | `"PTAS"`, `"FPTAS"`, `"APX-hard"`, `"inapproximable"`, null |
 
 **Definitions:**
