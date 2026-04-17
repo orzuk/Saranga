@@ -106,6 +106,24 @@ A problem is a mathematical object being studied (may be open/unsolved).
 | `strategy_tags` | O | list of strings | Multiple strategy tags |
 | `steps` | O | list of Span | Proof step decomposition |
 
+**Universal `rigor` field** (available on ALL node types):
+
+| Field | Req | Type | Description |
+|-------|-----|------|-------------|
+| `rigor` | O | string | How rigorous the justification is. Orthogonal to `type` (which reflects the author's label). |
+
+| Value | Meaning | Typical fields |
+|-------|---------|---------------|
+| `formal` | Precise statement, rigorous proof | Pure math, CS theory |
+| `semi_formal` | Precise statement, proof sketch | Math statistics |
+| `heuristic` | Result justified by physical/intuitive argument | Theoretical physics |
+| `numerical` | Supported by simulation/computation only | Applied ML, biology |
+| `conjectural` | Stated without justification | Any field |
+
+Example: a math "Claim 1" with a full proof → `type: "claim", rigor: "formal"`.
+A physics result without rigorous proof → `type: "claim", rigor: "heuristic"`.
+A physics paper that explicitly labels something "Theorem" → `type: "theorem", rigor: "heuristic"`.
+
 **Universal `subclass` field** (available on ALL node types):
 
 | Field | Req | Type | Description |

@@ -31,6 +31,36 @@ EQUATION = "equation"
 ALGORITHM = "algorithm"
 REMARK = "remark"
 
+# ── Rigor field ──────────────────────────────────────────────────────────
+# Every node has an optional "rigor" field indicating how rigorous the
+# justification is. Orthogonal to "type" (which reflects the author's label).
+# A math "Claim 1" with proof = rigor:formal. A physics heuristic = rigor:heuristic.
+
+RIGOR_LEVELS = {
+    "formal",       # precise statement, rigorous proof (pure math, CS theory)
+    "semi_formal",  # precise statement, proof sketch or "standard arguments" (math stats)
+    "heuristic",    # result believed true, justified by physical/intuitive argument (physics)
+    "numerical",    # supported by simulation/computation, no analytical proof (applied ML, bio)
+    "conjectural",  # stated without justification
+}
+
+# Rigor classification of arXiv categories and book topics
+RIGOROUS_CATEGORIES = {
+    "math.CO", "math.PR", "math.AG", "math.NT", "math.LO", "math.GR",
+    "math.AT", "math.FA", "math.CA", "math.RT", "math.AC", "math.DG",
+    "cs.DS", "cs.CC", "cs.CG", "cs.FL", "cs.DM", "cs.LO",
+    "math.OC",  # mostly rigorous
+}
+MIXED_CATEGORIES = {
+    "stat.ML", "cs.LG", "cs.AI", "cs.CV", "cs.CL",  # mix of rigorous + heuristic
+    "stat.ME", "stat.TH",  # stat.TH is rigorous; stat.ME is mixed
+}
+HEURISTIC_CATEGORIES = {
+    "physics", "cond-mat", "hep-th", "quant-ph",  # mostly heuristic
+    "q-bio", "eess.SP",  # bio, signal processing
+}
+
+
 # ── Universal subclass field ─────────────────────────────────────────────
 # Every node type has an optional "subclass" field that gives a finer
 # categorization. Valid values depend on the node type.
