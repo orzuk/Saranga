@@ -32,14 +32,106 @@ W_NAME = 0.1
 W_ASSUMPTIONS = 0.2
 W_CONCLUSIONS = 0.7
 
-# ── Tokenizer (same as graph_alignment.py — natural tokens only) ─────────
+# ── English stop words (always removed from token bag) ───────────────────
+ENGLISH_STOP_WORDS = {
+    # Articles / determiners
+    "the", "a", "an", "this", "that", "these", "those",
+    # Prepositions
+    "of", "in", "to", "for", "with", "on", "at", "from", "by", "as",
+    "into", "through", "between", "under", "over", "above", "below",
+    "about", "after", "before", "during", "without", "within",
+    # Conjunctions
+    "and", "or", "but", "nor", "so", "yet",
+    # Pronouns
+    "we", "it", "its", "one", "they", "their", "our",
+    # Common verbs / auxiliaries
+    "is", "are", "be", "was", "were", "been", "being",
+    "has", "have", "had", "do", "does", "did",
+    "can", "may", "will", "shall", "should", "would", "could", "must",
+    # Math-prose function words
+    "if", "then", "such", "where", "when", "not", "no", "than",
+    "there", "each", "every", "any", "all", "some",
+    "also", "hence", "thus", "therefore", "moreover", "furthermore",
+    "respectively", "similarly", "conversely", "otherwise",
+    "denote", "denoted", "denotes", "called", "say", "said",
+    "let", "given", "suppose", "assume", "consider",
+    "holds", "satisfies", "follows", "implies", "yields", "gives",
+    "note", "observe", "recall", "see", "show", "write",
+    # Very short words that are noise
+    "at", "so", "up",
+}
+
+# ── Leading type-label stripping ─────────────────────────────────────────
+# Remove "Proof of ...", "Theorem 3.1:", "Definition:" etc. at the START
+# of a statement when the label word matches the node type. Does NOT
+# remove these words from the middle of text (e.g., "by definition" stays).
+
+_TYPE_LABELS = {
+    "theorem":     ["theorem", "thm"],
+    "lemma":       ["lemma", "lem"],
+    "proposition": ["proposition", "prop"],
+    "corollary":   ["corollary", "cor"],
+    "proof":       ["proof", "pf"],
+    "definition":  ["definition", "def"],
+    "claim":       ["claim"],
+    "conjecture":  ["conjecture", "conj"],
+    "remark":      ["remark", "rem"],
+    "example":     ["example", "ex"],
+    "exercise":    ["exercise"],
+    "algorithm":   ["algorithm", "alg"],
+}
+
+# Pattern: label word + optional numbering + optional punctuation at start
+# Matches: "Proof of Theorem 3.1:", "Theorem 2.5.", "Definition (Norm):", etc.
+_LEADING_LABEL_RE_CACHE = {}
+
+
+def _strip_leading_label(text: str, node_type: str) -> str:
+    """Remove the leading type label from text if it matches node_type.
+
+    'Proof of Theorem 3.1: We show...' (node_type=proof) → 'We show...'
+    'Theorem 3.1. For every...'       (node_type=theorem) → 'For every...'
+
+    Does NOT affect labels in the middle of text.
+    """
+    if not text or not node_type:
+        return text
+    labels = _TYPE_LABELS.get(node_type.lower(), [])
+    if not labels:
+        return text
+
+    for label in labels:
+        if label not in _LEADING_LABEL_RE_CACHE:
+            # Match: label + optional " of" + optional number/punct + colon/period/space
+            _LEADING_LABEL_RE_CACHE[label] = re.compile(
+                r"^\s*" + re.escape(label)
+                + r"(?:\s+of)?"                     # optional " of"
+                + r"(?:\s+\w+)?"                    # optional "Theorem" after "Proof of"
+                + r"(?:\s*[\d.]+)*"                 # optional numbering "3.1"
+                + r"\s*[:.;,\-)\]]*\s*",            # optional punctuation
+                re.IGNORECASE,
+            )
+        pat = _LEADING_LABEL_RE_CACHE[label]
+        if pat.match(text):
+            text = pat.sub("", text, count=1)
+            break
+    return text
+
+
+# ── Tokenizer (natural tokens, stop-word filtered) ───────────────────────
 _TOKEN_RE = re.compile(r"[a-zA-Z]+|\\[a-zA-Z]+|[0-9]+")
 
 
-def _tokenize(text: str) -> set[str]:
+def _tokenize(text: str, node_type: str = "") -> set[str]:
+    """Tokenize text with stop-word removal and leading-label stripping."""
     if not text:
         return set()
-    return set(t.lower() for t in _TOKEN_RE.findall(str(text)))
+    # Strip leading type label
+    text = _strip_leading_label(text, node_type)
+    # Tokenize
+    raw = set(t.lower() for t in _TOKEN_RE.findall(str(text)))
+    # Remove stop words
+    return raw - ENGLISH_STOP_WORDS
 
 
 def _jaccard(set_a: set, set_b: set) -> float:
@@ -95,14 +187,16 @@ def sigma(node_a: dict, node_b: dict) -> float:
     has_split_a = bool(assum_a.strip()) or bool(concl_a.strip())
     has_split_b = bool(assum_b.strip()) or bool(concl_b.strip())
 
-    if has_split_a and has_split_b:
-        s = (W_NAME * _jaccard(_tokenize(_get_text(node_a, "name")),
-                                _tokenize(_get_text(node_b, "name")))
-             + W_ASSUMPTIONS * _jaccard(_tokenize(assum_a), _tokenize(assum_b))
-             + W_CONCLUSIONS * _jaccard(_tokenize(concl_a), _tokenize(concl_b)))
-    else:
-        s = _jaccard(_tokenize(_full_text(node_a)), _tokenize(_full_text(node_b)))
-
     ta = node_a.get("type", node_a.get("kind", ""))
     tb = node_b.get("type", node_b.get("kind", ""))
+
+    if has_split_a and has_split_b:
+        s = (W_NAME * _jaccard(_tokenize(_get_text(node_a, "name"), ta),
+                                _tokenize(_get_text(node_b, "name"), tb))
+             + W_ASSUMPTIONS * _jaccard(_tokenize(assum_a, ta), _tokenize(assum_b, tb))
+             + W_CONCLUSIONS * _jaccard(_tokenize(concl_a, ta), _tokenize(concl_b, tb)))
+    else:
+        s = _jaccard(_tokenize(_full_text(node_a), ta), _tokenize(_full_text(node_b), tb))
+
+    # ta, tb already extracted above (before split logic)
     return s * type_compat(ta, tb)
