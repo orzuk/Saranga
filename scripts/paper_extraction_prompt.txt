@@ -1,35 +1,108 @@
 ================================================================================
-PAPER / CHAPTER EXTRACTION PROMPT — GENERAL PURPOSE
+PAPER / CHAPTER EXTRACTION PROMPT
 ================================================================================
-Version: 2026-04-17
+Version: 2026-04-17 v2
 Use with: Claude Opus 4.6 (or Sonnet for bulk)
 Input: one chapter or section of a mathematical paper/textbook (LaTeX or PDF)
 Output: structured JSON with nodes + edges (the chapter's knowledge graph)
 
+TWO VARIANTS: use {SOURCE_TYPE} = "textbook" or "paper" (see Section 0).
+
 Copy the PROMPT section below into your LLM call. Replace {CHAPTER_TEXT}
 with the actual chapter content. Adjust {BOOK_ID}, {CHAPTER_NUM},
-{CHAPTER_TITLE} as needed.
+{CHAPTER_TITLE}, {SOURCE_TYPE} as needed.
 
 ================================================================================
 PROMPT
 ================================================================================
 
 You are extracting a structured mathematical knowledge graph from one chapter
-of a paper or textbook. Read the chapter carefully, then produce a JSON object
+of a {SOURCE_TYPE}. Read the chapter carefully, then produce a JSON object
 with all mathematical content organized as typed nodes and directed edges.
 
-INPUT CHAPTER:
+INPUT:
   Book/paper ID: {BOOK_ID}
   Chapter number: {CHAPTER_NUM}
   Chapter title: {CHAPTER_TITLE}
+  Source type: {SOURCE_TYPE}
 
 {CHAPTER_TEXT}
+
+================================================================================
+0. MATHEMATICAL OBJECTS TO EXTRACT
+================================================================================
+
+Extract every instance of these 13 object types:
+
+  1.  DEFINITION      "We define X as...", "\begin{definition}...", "Let X be a..."
+  2.  THEOREM         "\begin{theorem}...", "Theorem 3.1. ..."
+  3.  LEMMA           "\begin{lemma}...", "Lemma 2.4. ..."
+  4.  PROPOSITION     "\begin{proposition}...", "Proposition 1.7. ..."
+  5.  COROLLARY       "\begin{corollary}...", "Corollary 4.2. ..."
+  6.  CLAIM           "Claim:", "Fact:", informal assertions with a statement
+  7.  CONJECTURE      explicitly labeled unproven claims
+  8.  PROOF           "\begin{proof}...", "Proof.", "Proof of Theorem 3.1."
+  9.  EXAMPLE         "Example 2.3:", worked-out illustrations of a concept
+  10. EXERCISE        "Exercise:", "Problem:", reader problems (with or without solution)
+  11. EQUATION        explicitly numbered/labeled equations referenced by number
+  12. ALGORITHM       pseudocode, numbered step-by-step procedures
+  13. REMARK          "Remark:", "Note:", author observations adding context
+
+And these 6 edge types connecting them:
+
+  1.  uses            theorem/proof/definition depends on an earlier node
+  2.  proves          proof → the theorem it proves
+  3.  illustrates     example → the definition/theorem it illustrates
+  4.  about           exercise → the concept it tests
+  5.  generalizes     source is a more general version of target
+  6.  specializes     source is a special case of target
+
+
+================================================================================
+0b. SOURCE-TYPE-SPECIFIC GUIDANCE
+================================================================================
+
+--- If {SOURCE_TYPE} = "textbook" ---
+
+  - EXAMPLES and EXERCISES are a major part of the content. Extract every
+    numbered example and exercise individually — they are pedagogical gold.
+  - Exercise sections often appear at chapter end. Extract each exercise
+    as a separate node, not one big "exercise set" node.
+  - If exercises have SOLUTIONS (inline or in appendix), extract the
+    solution as the exercise node's raw_text. If the solution is a proof,
+    create a separate proof node linked to the exercise.
+  - Theorems may be stated WITHOUT PROOF ("proof omitted", "left as
+    exercise"). That is fine — create the theorem node without a proof
+    node. If "proof left as exercise", create an exercise node linked via
+    "about" to the theorem.
+  - Historical remarks, biographical notes, and "Remark:" blocks are
+    common. Extract as REMARK nodes.
+  - Cross-references like "by Theorem 3.14 from Chapter 2" — create a
+    "uses" edge to the node ID from Chapter 2 (e.g., b006_ch02_thm14).
+
+--- If {SOURCE_TYPE} = "paper" ---
+
+  - PROOFS are the primary content alongside theorems. Extract every proof
+    with its full text.
+  - EXAMPLES are rare in research papers. When present, they are usually
+    important — extract them.
+  - EXERCISES are almost never present. Skip unless explicitly labeled.
+  - Papers often use heavy CUSTOM MACROS (\newcommand). Expand all custom
+    macros to standard LaTeX in statement_latex (see Rule 5d below).
+  - Cross-references use citations: "by [CT05, Theorem 1]". When possible,
+    create a "uses" edge. If the cited result is from another paper not in
+    our corpus, add a note in the edge or skip.
+  - ALGORITHMS are common in CS/ML papers. Extract with full pseudocode.
+  - The paper's introduction often restates main results informally before
+    formal versions appear later. Extract only the FORMAL version (the one
+    with a Theorem/Lemma label), not the informal preview.
+
 
 ================================================================================
 EXTRACTION RULES
 ================================================================================
 
-1. NODE TYPES TO EXTRACT (in order of priority):
+1. NODE TYPES — DETAILED GUIDANCE:
 
    DEFINITION     — formal or semi-formal introduction of a named concept.
                     Includes "\begin{definition}", "We define X as...",
