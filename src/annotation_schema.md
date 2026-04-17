@@ -106,6 +106,24 @@ A problem is a mathematical object being studied (may be open/unsolved).
 | `strategy_tags` | O | list of strings | Multiple strategy tags |
 | `steps` | O | list of Span | Proof step decomposition |
 
+**Algorithms:**
+
+| Field | Req | Type | Description |
+|-------|-----|------|-------------|
+| `solves` | O | string | ID of the problem node this algorithm addresses |
+| `algorithm_class` | O | string | `"exact"`, `"approximation"`, `"heuristic"`, `"randomized"`, `"online"`, `"greedy"` |
+| `approximation_ratio` | O | string | e.g. `"1.5"`, `"O(log n)"`, `"2-epsilon"`. null if exact. |
+| `complexity` | O | string | Time complexity: `"O(n^2)"`, `"O(m log m)"`, etc. |
+| `space_complexity` | O | string | Space complexity (optional) |
+
+**Problems:**
+
+| Field | Req | Type | Description |
+|-------|-----|------|-------------|
+| `problem_class` | O | string | `"optimization"`, `"decision"`, `"search"`, `"counting"`, `"sampling"` |
+| `complexity_class` | O | string | `"P"`, `"NP-hard"`, `"NP-complete"`, `"PSPACE"`, `"undecidable"`, `"unknown"` |
+| `approximability` | O | string | `"PTAS"`, `"FPTAS"`, `"APX-hard"`, `"inapproximable"`, null |
+
 **Definitions:**
 
 | Field | Req | Type | Description |
@@ -173,8 +191,9 @@ Never create both `uses` and `generalizes` between the same pair — use the mor
 | Type | "B [type] A" | Description |
 |------|-------------|-------------|
 | `proves` | "B proves A" | B is a proof establishing theorem A. Each proof has exactly one `proves` edge. |
+| `solves` | "B solves A" | B is an algorithm solving/addressing problem A. Parallels `proves`. |
 | `illustrates` | "B illustrates A" | B is an example demonstrating concept A. |
-| `tests` | "B tests A" | B is an exercise or problem testing concept A. |
+| `tests` | "B tests A" | B is an exercise testing concept A. |
 
 **External edges:**
 

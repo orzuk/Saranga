@@ -18,6 +18,7 @@ SPECIALIZES = "specializes"     # B specializes A (subtype of uses)
 
 # Structural edges
 PROVES = "proves"               # B proves A (proof → theorem)
+SOLVES = "solves"               # B solves A (algorithm → problem)
 ILLUSTRATES = "illustrates"     # B illustrates A (example → concept)
 TESTS = "tests"                 # B tests A (exercise → concept)
 
@@ -30,7 +31,7 @@ GROUNDED_TO = "grounded_to"     # linked to foundation graph entry
 DEPENDENCY_TYPES = {USES, GENERALIZES, SPECIALIZES}
 
 # All structural types
-STRUCTURAL_TYPES = {PROVES, ILLUSTRATES, TESTS}
+STRUCTURAL_TYPES = {PROVES, SOLVES, ILLUSTRATES, TESTS}
 
 # All internal edge types (excludes grounded_to)
 ALL_INTERNAL_TYPES = DEPENDENCY_TYPES | STRUCTURAL_TYPES

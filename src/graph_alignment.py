@@ -211,7 +211,10 @@ def edge_sim(e_a, e_b):
     # Both dependency subtypes (uses/generalizes/specializes): high credit
     if ra in DEPENDENCY_TYPES and rb in DEPENDENCY_TYPES:
         return 0.8
-    # Both structural (proves/illustrates/tests): moderate credit
+    # proves↔solves: high (both "establishes" relationships)
+    if {ra, rb} <= {"proves", "solves"}:
+        return 0.8
+    # Both structural (proves/solves/illustrates/tests): moderate credit
     if ra in STRUCTURAL_TYPES and rb in STRUCTURAL_TYPES:
         return 0.5
     # Mixed dependency/structural: low credit
