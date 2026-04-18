@@ -306,7 +306,7 @@ class PromptOptimizer:
         json_path = json_dir / json_filename
 
         json_path.write_text(
-            json.dumps(graph.to_dict(), indent=2), encoding="utf-8"
+            json.dumps(graph.to_unified_dict(), indent=2), encoding="utf-8"
         )
         print(f"  JSON saved: {json_path}")
 
@@ -621,6 +621,7 @@ Tokens include LaTeX commands (\\command), words, numbers, and symbols.
 6. The improved prompt MUST contain the placeholder {{latex_chunk}} exactly as written.
 7. The improved prompt must ask for JSON array output with fields: {fields_str}.
 8. Prefer fewer, broader rules over many specific rules. Each instruction in the prompt should apply across diverse mathematical papers and subfields.
+9. Authors often define custom LaTeX environments via \\newtheorem or \\newcommand (e.g., \\newtheorem{{defn}}{{Definition}}). The improved prompt SHOULD instruct the LLM to look for such macro declarations in the provided LaTeX and treat custom environments as equivalent to their standard counterparts.
 
 Respond with a JSON object (and nothing else):
 {{

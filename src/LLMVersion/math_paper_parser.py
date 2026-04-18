@@ -19,6 +19,7 @@ Features:
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import re
 import argparse
@@ -661,6 +662,32 @@ class PaperParser:
                     elif stype == "table":
                         tables = self._merge_objects(tables, llm_objs)
 
+        # ---- Distilled rules (NtRED): auto-loaded from {type}_eval/distilled_rules.py ----
+        if self.extraction_mode in ("manual", "both"):
+            # Definitions
+            distilled_defs = self._apply_distilled_rules(text, "definition")
+            if distilled_defs:
+                definitions = self._merge_objects(definitions, distilled_defs)
+
+            # Theorem-like types
+            for stype in self.THEOREM_LIKE_KINDS:
+                distilled = self._apply_distilled_rules(text, stype)
+                if distilled:
+                    manual_of_kind = [t for t in theorem_like if t.kind == stype]
+                    merged = self._merge_objects(manual_of_kind, distilled)
+                    theorem_like = [t for t in theorem_like if t.kind != stype] + merged
+
+            # Proofs, algorithms, tables
+            distilled_proofs = self._apply_distilled_rules(text, "proof")
+            if distilled_proofs:
+                proofs = self._merge_objects(proofs, distilled_proofs)
+            distilled_algos = self._apply_distilled_rules(text, "algorithm")
+            if distilled_algos:
+                algorithms = self._merge_objects(algorithms, distilled_algos)
+            distilled_tables = self._apply_distilled_rules(text, "table")
+            if distilled_tables:
+                tables = self._merge_objects(tables, distilled_tables)
+
         # equations inside theorem/definition/proof/algorithm bodies
         containers: List[MathObject] = theorem_like + definitions + proofs + algorithms
         equations = self._extract_equations(text, containers)
@@ -1088,6 +1115,110 @@ class PaperParser:
     # Backwards-compatible wrapper
     def _extract_definitions(self, text: str) -> List[Definition]:
         return self._extract_definitions_manual(text)
+
+    # ------------------------------------------------------------------
+    # Distilled rules (NtRED)
+    # ------------------------------------------------------------------
+
+    # Maps structure_type -> class constructor used to wrap distilled results
+    _DISTILLED_TYPE_MAP = {
+        'definition': 'Definition',
+        'theorem': 'TheoremLike',
+        'lemma': 'TheoremLike',
+        'proposition': 'TheoremLike',
+        'corollary': 'TheoremLike',
+        'claim': 'TheoremLike',
+        'conjecture': 'Conjecture',
+        'problem': 'Problem',
+        'proof': 'Proof',
+        'algorithm': 'Algorithm',
+        'table': 'TableObject',
+    }
+
+    def _apply_distilled_rules(self, text: str, structure_type: str) -> List[MathObject]:
+        """Load and apply distilled rules for a structure type if available.
+
+        Looks for {structure_type}_eval/distilled_rules.py relative to this file's
+        directory. If found, imports extract_distilled_{structure_type}(text) and
+        converts returned dicts to MathObject instances.
+        """
+        parser_dir = Path(__file__).resolve().parent
+        rules_path = parser_dir / f"{structure_type}_eval" / "distilled_rules.py"
+
+        if not rules_path.is_file():
+            return []
+
+        func_name = f"extract_distilled_{structure_type}"
+
+        try:
+            spec = importlib.util.spec_from_file_location(
+                f"distilled_rules_{structure_type}", str(rules_path))
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+        except Exception as e:
+            print(f"[WARN] Failed to load distilled rules from {rules_path}: {e}")
+            return []
+
+        extract_fn = getattr(mod, func_name, None)
+        if extract_fn is None:
+            print(f"[WARN] {rules_path} does not define {func_name}()")
+            return []
+
+        try:
+            raw_results = extract_fn(text)
+        except Exception as e:
+            print(f"[WARN] distilled {func_name}() raised: {e}")
+            return []
+
+        if not raw_results:
+            return []
+
+        # Convert dicts to proper MathObject instances
+        class_name = self._DISTILLED_TYPE_MAP.get(structure_type, 'MathObject')
+        class_map = {
+            'Definition': Definition,
+            'TheoremLike': TheoremLike,
+            'Conjecture': Conjecture,
+            'Problem': Problem,
+            'Proof': Proof,
+            'Algorithm': Algorithm,
+            'TableObject': TableObject,
+            'MathObject': MathObject,
+        }
+        cls = class_map.get(class_name, MathObject)
+
+        objects = []
+        for i, item in enumerate(raw_results, 1):
+            raw_latex = item.get('raw_latex', '')
+            clean_text = item.get('clean_text', '')
+            name = item.get('name')
+            env_name = item.get('env_name', 'distilled')
+
+            kwargs = dict(
+                id=f"DIST_{structure_type[0].upper()}{i}",
+                kind=structure_type,
+                index=i,
+                label=None,
+                name=name,
+                raw_latex=raw_latex,
+                clean_text=clean_text,
+            )
+
+            # Add type-specific fields
+            if cls in (Definition, TheoremLike, Conjecture, Problem, Algorithm):
+                kwargs['env_name'] = env_name
+            if cls == Proof:
+                kwargs['parent_id'] = None
+
+            try:
+                objects.append(cls(**kwargs))
+            except Exception as e:
+                print(f"[WARN] Could not create {class_name} from distilled rule {i}: {e}")
+
+        if objects:
+            print(f"[INFO] Distilled rules ({structure_type}): found {len(objects)} additional items.")
+
+        return objects
 
     # ------------------------------------------------------------------
     # LLM client helpers

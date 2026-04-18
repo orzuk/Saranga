@@ -101,7 +101,7 @@ for pid in "${PAPER_IDS[@]}"; do
         --out-dir "${OUT_DIR}" \
         --extraction-mode llm \
         --llm-provider anthropic \
-        --llm-model claude-sonnet-4-20250514 \
+        --llm-model claude-opus-4-6 \
         --prompt-file "${PROMPT_FILE}" \
         --structure-types "${STRUCTURE_TYPE}"
 

@@ -6,6 +6,7 @@ Subcommands:
   dark-knowledge  Identify gold items missed by manual but caught by LLMs
   discovery       Find LLM-consensus structures not in manual extractions
   analyze         Mine LaTeX patterns from missed structures
+  aggregate       Aggregate LLM-suggested rules into distilled_rules.py
   validate        Check if manual parser now catches previously missed items
 """
 
@@ -587,6 +588,7 @@ def analyze_patterns(items: List[dict], tex_dir: str = None,
         row = {
             'paper_id': paper_id,
             'gold_index': gold_index,
+            'gold_text': gold_text,
             'pattern_type': pattern_type,
             'latex_context': context[:2000] if context else '',
         }
@@ -798,6 +800,154 @@ def validate_rules(paper_ids: List[str], structure_type: str,
 
 
 # ---------------------------------------------------------------------------
+# Function 5: aggregate_rules
+# ---------------------------------------------------------------------------
+
+def aggregate_rules(input_csv: str, structure_type: str, eval_dir: str,
+                    model: str = 'claude-sonnet-4-20250514') -> str:
+    """Read analyze CSV, aggregate LLM-suggested rules into a distilled_rules.py file.
+
+    Parameters
+    ----------
+    input_csv : path to analyze output CSV (needs llm_suggested_rule column)
+    structure_type : e.g. 'definition', 'theorem', 'proof'
+    eval_dir : directory where distilled_rules.py will be written
+    model : Anthropic model ID
+
+    Returns the path to the generated distilled_rules.py.
+    """
+    import anthropic
+
+    rows = _read_items_csv(input_csv)
+    rules = []
+    for r in rows:
+        code = r.get('llm_suggested_rule', '').strip()
+        reasoning = r.get('llm_reasoning', '').strip()
+        latex_context = r.get('latex_context', '').strip()
+        gold_text = r.get('gold_text', '').strip()
+        if code:
+            rules.append({
+                'paper_id': r.get('paper_id', ''),
+                'gold_index': r.get('gold_index', ''),
+                'reasoning': reasoning,
+                'suggested_code': code,
+                'latex_context': latex_context,
+                'gold_text': gold_text,
+            })
+
+    if not rules:
+        print("ERROR: No non-empty llm_suggested_rule entries found in CSV.")
+        return ''
+
+    print(f"Found {len(rules)} rule suggestions to aggregate.")
+
+    # Build the meta-prompt with all individual rules + their gold texts
+    rules_text = ""
+    for i, rule in enumerate(rules, 1):
+        rules_text += f"\n--- Rule {i} (paper {rule['paper_id']}, gold_index {rule['gold_index']}) ---\n"
+        rules_text += f"Reasoning: {rule['reasoning']}\n"
+        rules_text += f"Code:\n{rule['suggested_code']}\n"
+
+    # Build gold test cases section
+    gold_tests_text = ""
+    for i, rule in enumerate(rules, 1):
+        gold_tests_text += f"\n--- Test case {i} (paper {rule['paper_id']}, gold_index {rule['gold_index']}) ---\n"
+        if rule['gold_text']:
+            gold_tests_text += f"GOLD TEXT (must be matched or substantially overlapped):\n{rule['gold_text']}\n"
+        if rule['latex_context']:
+            gold_tests_text += f"SURROUNDING LATEX CONTEXT:\n{rule['latex_context'][:1500]}\n"
+
+    prompt = f"""You are a Python engineer consolidating regex extraction rules for a LaTeX math paper parser.
+
+## Task
+
+Below are {len(rules)} individual rule suggestions for extracting "{structure_type}" structures from LaTeX source. Each was generated to catch a specific missed structure. Your job is to aggregate them into a SINGLE, clean Python file.
+
+## GOLD TEST CASES — your patterns MUST match these
+
+These are the actual LaTeX texts your patterns need to catch. For each one, the gold text shows what the correct extraction looks like, and the surrounding context shows the LaTeX source around it.
+
+{gold_tests_text}
+
+## Individual rule suggestions (for reference)
+
+{rules_text}
+
+## Key challenges
+
+1. **Multi-sentence definitions**: Many gold items span multiple sentences with display math (`\\[...\\]`, `$$...$$`, `\\begin{{equation}}`, `\\begin{{align}}`). Display math contains periods (e.g. `\\, .`). Do NOT use `[^.]*\\.` — it truncates at the first period inside display math. Use paragraph boundaries (`\\n\\n`) as the outer delimiter.
+
+2. **Precision**: These rules run IN ADDITION to an existing parser. Every FP is costly.
+   - The definitional anchor (`\\emph{{...}}`, "defined", "denote", "call", "consists of", `:=`) must appear in the FIRST SENTENCE of the match — not just anywhere in the captured paragraph. A paragraph that mentions "defined" in sentence 3 is NOT a definition starting at sentence 1.
+   - Patterns like "A/An X is Y" are TOO BROAD even with an anchor check — they match ordinary prose. Require `\\emph{{...}}` or `\\textbf{{...}}` on the term being introduced when using article+is patterns.
+   - Skip matches inside proof/theorem/lemma/remark/example environments.
+
+## Output requirements
+
+Write a complete, self-contained Python file with:
+
+1. Only `import re` and `from typing import List, Dict` at the top
+2. A single function: `extract_distilled_{structure_type}(text: str) -> List[dict]`
+3. Each returned dict must have keys: `raw_latex` (str), `clean_text` (str), `name` (str or None), `env_name` (str)
+4. The `env_name` should be `"distilled"` for all results
+5. `clean_text` should be a simplified version of `raw_latex` (strip LaTeX commands)
+6. Deduplicate overlapping matches
+7. Use compiled regex patterns at module level for efficiency
+8. Include a `_clean_latex(text: str) -> str` helper
+9. Include a `_inside_excluded_env(text: str, start: int, end: int) -> bool` post-filter
+
+## Important
+- Do NOT import from math_paper_parser or any project module
+- The function must be fully standalone
+- Only use the `re` module
+- Return raw matched text as `raw_latex`, not cleaned
+- Output ONLY the Python code, no markdown fences, no explanation"""
+
+    print("Calling LLM to aggregate rules...")
+    client = anthropic.Anthropic()
+    message = client.messages.create(
+        model=model,
+        max_tokens=4096,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    generated_code = message.content[0].text.strip()
+
+    # Strip markdown fences if present
+    if generated_code.startswith("```"):
+        lines = generated_code.split("\n")
+        # Remove first and last fence lines
+        if lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        generated_code = "\n".join(lines)
+
+    # Write to eval_dir/distilled_rules.py
+    os.makedirs(eval_dir, exist_ok=True)
+    out_path = os.path.join(eval_dir, 'distilled_rules.py')
+    with open(out_path, 'w', encoding='utf-8') as f:
+        f.write(generated_code)
+        f.write('\n')
+
+    print(f"Wrote distilled rules to {out_path}")
+
+    # Verify it's valid Python
+    try:
+        compile(generated_code, out_path, 'exec')
+        print("  Syntax check: OK")
+    except SyntaxError as e:
+        print(f"  WARNING: Generated code has syntax error: {e}")
+        print("  You may need to manually fix the file.")
+
+    # Verify the expected function exists
+    func_name = f"extract_distilled_{structure_type}"
+    if func_name not in generated_code:
+        print(f"  WARNING: Expected function '{func_name}' not found in generated code.")
+
+    return out_path
+
+
+# ---------------------------------------------------------------------------
 # CSV I/O helpers
 # ---------------------------------------------------------------------------
 
@@ -858,6 +1008,18 @@ def main():
                      help='Anthropic model for LLM analysis (default: claude-sonnet-4-20250514)')
     ana.add_argument('--tex-dir', default=None, help=f'TeX directory (default: {FULL_PAPERS_DIR})')
     ana.add_argument('--output', default=None, help='Output CSV path')
+
+    # -- aggregate --
+    agg = sub.add_parser('aggregate',
+                         help='Aggregate LLM-suggested rules into a distilled_rules.py file')
+    agg.add_argument('--input', required=True,
+                     help='CSV from analyze (needs llm_suggested_rule column)')
+    agg.add_argument('--structure-type', required=True,
+                     help='Structure type (e.g. definition, proof)')
+    agg.add_argument('--eval-dir', required=True,
+                     help='Directory where distilled_rules.py will be written')
+    agg.add_argument('--model', default='claude-sonnet-4-20250514',
+                     help='Anthropic model for aggregation (default: claude-sonnet-4-20250514)')
 
     # -- validate --
     val = sub.add_parser('validate',
@@ -937,6 +1099,20 @@ def main():
         print(f"  LLM suggestions with code: {llm_populated}/{len(results)}")
 
         _write_csv(results, out)
+
+    elif args.command == 'aggregate':
+        out_path = aggregate_rules(
+            args.input, args.structure_type, args.eval_dir, args.model)
+        if out_path:
+            print(f"\n{'='*60}")
+            print(f"AGGREGATE SUMMARY ({args.structure_type})")
+            print(f"{'='*60}")
+            print(f"Generated: {out_path}")
+            print(f"Function:  extract_distilled_{args.structure_type}(text)")
+            print(f"\nNext steps:")
+            print(f"  1. Review {out_path}")
+            print(f"  2. Run manual parser — distilled rules are auto-loaded")
+            print(f"  3. Run validate to check improvement")
 
     elif args.command == 'validate':
         paper_ids = [p.strip() for p in args.paper_ids.split(',')]
