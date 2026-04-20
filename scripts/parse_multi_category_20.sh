@@ -138,9 +138,28 @@ else
     BASE_OUT_DIR=${BASE_OUT_DIR:-/sci/labs/orzuk/orzuk/projects/Authomathics/arxiv/parsed_multi_category_20}
 fi
 
-# Repo and scripts
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# Repo and scripts.
+# Under SLURM, the script is COPIED to /var/spool/slurmd/job*/slurm_script,
+# so $BASH_SOURCE[0] no longer points at the repo — it points at that temp
+# copy. Fall back to $SLURM_SUBMIT_DIR (the dir from which sbatch was
+# invoked) when running under SLURM. Users submitting from the repo root
+# therefore get the correct REPO_ROOT automatically.
+REPO_ROOT="${REPO_ROOT:-}"
+if [ -z "$REPO_ROOT" ]; then
+    if [ -n "${SLURM_JOB_ID:-}" ] && [ -n "${SLURM_SUBMIT_DIR:-}" ] \
+            && [ -f "$SLURM_SUBMIT_DIR/src/run_pipeline.py" ]; then
+        REPO_ROOT="$SLURM_SUBMIT_DIR"
+    else
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+    fi
+fi
+if [ ! -f "$REPO_ROOT/src/run_pipeline.py" ]; then
+    echo "ERROR: run_pipeline.py not found under REPO_ROOT=$REPO_ROOT"
+    echo "       (You may need to set REPO_ROOT=... in the sbatch --export list,"
+    echo "        or sbatch from the repo root directory.)"
+    exit 1
+fi
 
 # Python detection (same logic as parse_smoke_test.sh)
 if [ -z "${PYTHON:-}" ]; then
