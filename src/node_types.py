@@ -5,7 +5,7 @@ Single source of truth. All pipeline modules import from here.
 See src/annotation_schema.md for the full specification.
 """
 
-# ── The 13 canonical node types ─────────────────────────────────────────
+# ── The 15 canonical node types ─────────────────────────────────────────
 
 # Theorem-like: have assumptions + conclusions, can be proved
 THEOREM = "theorem"
@@ -20,6 +20,15 @@ DEFINITION = "definition"
 
 # Proof
 PROOF = "proof"
+
+# Proof decomposition (optional fine-grained resolution):
+#   proof_step — one logical move within a proof. First-class node, NOT a
+#   nested array inside PROOF. Linked back to its parent via the
+#   `parent_proof` field (str: id of the PROOF node).
+#   Equations can attach to a specific proof_step via `parent_step`.
+#   Emitted only when extraction runs at "with_proof_steps" granularity;
+#   omitted at the default "theorem_level" granularity.
+PROOF_STEP = "proof_step"
 
 # Pedagogical
 EXAMPLE = "example"
@@ -79,6 +88,9 @@ SUBCLASS_VALUES = {
     CONJECTURE:  {"open", "folklore"},
     PROOF:       {"direct", "contradiction", "induction", "construction",
                   "probabilistic", "combinatorial", "algebraic"},
+    PROOF_STEP:  {"setup", "introduce_variable", "apply_lemma", "case_split",
+                  "induction_step", "contradiction_setup", "algebraic_manipulation",
+                  "substitute", "bound_estimate", "invoke_identity", "conclude", "other"},
     EXAMPLE:     {"illustrative", "counterexample", "computational", "applied"},
     EXERCISE:    {"computational", "theoretical", "proof_exercise", "programming"},
     PROBLEM:     {"optimization", "decision", "search", "counting", "sampling",
@@ -110,6 +122,22 @@ PROBLEM_EXTRA_FIELDS = {"complexity_class", "approximability"}
 #   proof_strategy:      str | null   — alias for subclass (backward compat)
 PROOF_EXTRA_FIELDS = {"proves", "proof_strategy"}
 
+# Proof step:
+#   parent_proof:        str          — ID of the PROOF node this step belongs to
+#   step_order:          int | null   — sequential index within the proof (1-based)
+#   depends_on_step_ids: list[str]    — step IDs within same proof that this step uses
+#   uses_node_ids:       list[str]    — external nodes (lemmas/defs) invoked in this step
+#   move_type:           str | null   — optional tag: setup / apply_lemma / case_split /
+#                                         induction / contradiction / algebraic_manipulation /
+#                                         substitute / bound_estimate / invoke_identity /
+#                                         conclude / other
+PROOF_STEP_EXTRA_FIELDS = {"parent_proof", "step_order",
+                           "depends_on_step_ids", "uses_node_ids", "move_type"}
+
+# Equation (optional enrichment when attached to a proof step):
+#   parent_step:         str | null   — ID of a proof_step node that derives this equation
+EQUATION_EXTRA_FIELDS = {"parent_step"}
+
 # ── Groupings ────────────────────────────────────────────────────────────
 
 # Theorem-like: nodes that state a mathematical claim with assumptions/conclusions
@@ -121,11 +149,15 @@ PROVABLE = {THEOREM, LEMMA, PROPOSITION, COROLLARY, CLAIM}
 # Pedagogical: nodes primarily for teaching
 PEDAGOGICAL = {EXAMPLE, EXERCISE}
 
-# All node types (14 total)
+# Proof decomposition nodes (emitted only at with_proof_steps granularity)
+PROOF_DECOMPOSITION = {PROOF_STEP}
+
+# All node types (15 total)
 ALL_TYPES = (
     THEOREM_LIKE
     | {DEFINITION, PROOF, PROBLEM, EQUATION, ALGORITHM, REMARK}
     | PEDAGOGICAL
+    | PROOF_DECOMPOSITION
 )
 
 # ── Backward compatibility ──────────────────────────────────────────────
@@ -142,6 +174,9 @@ DEPRECATED_MAP = {
     "ex": EXAMPLE,
     "alg": ALGORITHM,
     "eq": EQUATION,
+    "step": PROOF_STEP,     # sometimes proof-steps are tagged just "step"
+    "proof-step": PROOF_STEP,
+    "proofstep": PROOF_STEP,
 }
 
 

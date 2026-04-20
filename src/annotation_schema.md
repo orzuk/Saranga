@@ -47,7 +47,7 @@ Each node is a mathematical object. Required fields are marked with **R**, optio
 
 ### Node types
 
-13 types in 4 groups. Constants defined in `src/node_types.py`.
+15 types in 5 groups. Constants defined in `src/node_types.py`.
 
 **Theorem-like** (state a claim with assumptions/conclusions):
 
@@ -66,6 +66,12 @@ Each node is a mathematical object. Required fields are marked with **R**, optio
 |------|-------------|
 | `definition` | Mathematical definition of a named concept |
 | `proof` | Proof of a theorem/lemma/proposition/corollary |
+
+**Proof decomposition** (optional, emitted only at `with_proof_steps` granularity):
+
+| Type | Description |
+|------|-------------|
+| `proof_step` | A single logical move within a proof. **First-class node** (not a nested array inside `proof`). Linked via `parent_proof` to its enclosing proof node. An `equation` node may reference a proof_step via `parent_step`. |
 
 **Pedagogical** (primarily in textbooks):
 
@@ -104,7 +110,18 @@ A problem is a mathematical object being studied (may be open/unsolved).
 | `proves` | **R** | string | ID of the theorem/lemma this proves |
 | `proof_strategy` | O | string | Short tag: `"contradiction"`, `"induction"`, `"direct"`, etc. |
 | `strategy_tags` | O | list of strings | Multiple strategy tags |
-| `steps` | O | list of Span | Proof step decomposition |
+
+**Proof steps** (emitted only at `with_proof_steps` granularity):
+
+| Field | Req | Type | Description |
+|-------|-----|------|-------------|
+| `parent_proof` | **R** | string | ID of the `proof` node this step belongs to |
+| `step_order` | O | int | 1-based sequential index within the parent proof |
+| `depends_on_step_ids` | O | list of strings | Other `proof_step` IDs in same proof this step uses |
+| `uses_node_ids` | O | list of strings | External nodes (lemmas/defs) invoked in this step |
+| `move_type` | O | string | Tag: `setup`, `introduce_variable`, `apply_lemma`, `case_split`, `induction_step`, `contradiction_setup`, `algebraic_manipulation`, `substitute`, `bound_estimate`, `invoke_identity`, `conclude`, `other` |
+
+**Design note:** proof steps are modeled as **first-class nodes** (with their own IDs, appearing in the top-level `nodes` list), not as a nested `steps[]` array inside the parent `proof`. This matches the course-chapter corpus convention and allows equations to reference a specific step via `parent_step`. The legacy nested `steps[]` form is deprecated — if encountered in older JSONs, migrate to first-class `proof_step` nodes.
 
 **Universal `rigor` field** (available on ALL node types):
 
@@ -141,6 +158,7 @@ Subclass values by type:
 | `conjecture` | `open`, `folklore` |
 | `claim` | `existence`, `bound`, `convergence`, `characterization` |
 | `proof` | `direct`, `contradiction`, `induction`, `construction`, `probabilistic`, `combinatorial`, `algebraic` |
+| `proof_step` | `setup`, `introduce_variable`, `apply_lemma`, `case_split`, `induction_step`, `contradiction_setup`, `algebraic_manipulation`, `substitute`, `bound_estimate`, `invoke_identity`, `conclude`, `other` |
 | `algorithm` | `exact`, `approximation`, `heuristic`, `randomized`, `online`, `greedy`, `iterative` |
 | `problem` | `optimization`, `decision`, `search`, `counting`, `sampling`, `estimation` |
 | `example` | `illustrative`, `counterexample`, `computational`, `applied` |
