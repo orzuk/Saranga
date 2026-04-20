@@ -1,21 +1,36 @@
 #!/bin/bash -l
 #
 # Parse 20 arXiv categories in parallel via SLURM array jobs.
+# Supports TWO modes:
+#   (A) FETCH mode (default): fetch papers from arxiv by category/date/top-k.
+#   (B) LOCAL mode: if TEX_SRC_BASE is set, use pre-downloaded .tex files
+#       from that directory instead of fetching. In this mode TOP_K,
+#       START_DATE, END_DATE are ignored (all pre-downloaded papers parsed).
+#
 # Extends scripts/parse_multi_category.sh (10-category version) to 20
-# categories × 5000 papers = 100K total for the scaled paper-corpus run.
+# categories. Default fetch mode: 20 × 5000 = 100K total for the main run.
+# Local mode: process Yaron's pre-downloaded ~1200-paper calibration corpus.
 #
 # Usage:
-#   # Default: 20 categories × 5000 papers each = 100K total
-#   sbatch scripts/parse_multi_category_20.sh
 #
-#   # Smaller test run: 100 papers per category
+#   # [FETCH] Full 20 × 5000 paper run, 2010-2019 corpus:
+#   sbatch --export=ALL,PAPERS_PER_CAT=5000,START_DATE=2010-01-01,END_DATE=2019-12-31,BASE_OUT_DIR=/sci/labs/orzuk/orzuk/projects/Authomathics/arxiv/parsed_100k_2010s \
+#          scripts/parse_multi_category_20.sh
+#
+#   # [LOCAL] 1200-paper calibration run on 10 pre-downloaded categories (slots 0-9):
+#   # Pre-req: symlink exists at /sci/.../projects/Authomathics/arxiv/full_papers_advanced
+#   sbatch --array=0-9 \
+#          --export=ALL,TEX_SRC_BASE=/sci/labs/orzuk/orzuk/projects/Authomathics/arxiv/full_papers_advanced,BASE_OUT_DIR=/sci/labs/orzuk/orzuk/projects/Authomathics/arxiv/parsed_calibration_1200 \
+#          scripts/parse_multi_category_20.sh
+#
+#   # [FETCH] Small smoke test: 100 papers per category:
 #   sbatch --export=ALL,PAPERS_PER_CAT=100 scripts/parse_multi_category_20.sh
 #
-#   # Custom: 2000 papers, recent only (2023+), with visualization
+#   # [FETCH] Custom with visualization:
 #   sbatch --export=ALL,PAPERS_PER_CAT=2000,START_DATE=2023-01-01,OPERATIONS='parse,validate,anomalies,stats,visualize',HTML=1 \
 #          scripts/parse_multi_category_20.sh
 #
-#   # Quick local test (no SLURM, sequential, 10 papers per category):
+#   # Quick local (no SLURM), 10 papers per category:
 #   PAPERS_PER_CAT=10 bash scripts/parse_multi_category_20.sh
 #
 # Categories (20 total) — divided into the student's pure-math 10 (already
@@ -109,8 +124,19 @@ EXTRACTION_MODE=${EXTRACTION_MODE:-manual}
 OPERATIONS=${OPERATIONS:-parse,validate,anomalies,stats}
 HTML=${HTML:-0}
 
+# Optional: pre-downloaded local source (calibration / re-parse mode).
+# If set, --tex-dir is passed to run_pipeline.py and fetch is skipped.
+# Expected layout: $TEX_SRC_BASE/$CATEGORY/... (e.g. full_papers_advanced/math.CO/).
+# If not set: default FETCH mode (fetch from arxiv by category + date range + top-k).
+TEX_SRC_BASE=${TEX_SRC_BASE:-}
+
 # Base output directory. Each category gets a subdirectory.
-BASE_OUT_DIR=${BASE_OUT_DIR:-/sci/labs/orzuk/orzuk/projects/Authomathics/arxiv/parsed_multi_category_20}
+# Override via BASE_OUT_DIR env var (different default per mode).
+if [ -n "$TEX_SRC_BASE" ]; then
+    BASE_OUT_DIR=${BASE_OUT_DIR:-/sci/labs/orzuk/orzuk/projects/Authomathics/arxiv/parsed_local_tex}
+else
+    BASE_OUT_DIR=${BASE_OUT_DIR:-/sci/labs/orzuk/orzuk/projects/Authomathics/arxiv/parsed_multi_category_20}
+fi
 
 # Repo and scripts
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -176,11 +202,34 @@ for CATEGORY in "${RUN_CATEGORIES[@]}"; do
     CAT_SAFE="${CAT_SAFE//-/_}"        # math-ph -> math_ph
     OUT_DIR="${BASE_OUT_DIR}/${CAT_SAFE}"
 
+    # Resolve tex-dir for this category when in LOCAL mode
+    TEX_DIR=""
+    if [ -n "$TEX_SRC_BASE" ]; then
+        # Try $CATEGORY (math.CO) first, then $CAT_SAFE (math_CO)
+        if [ -d "$TEX_SRC_BASE/$CATEGORY" ]; then
+            TEX_DIR="$TEX_SRC_BASE/$CATEGORY"
+        elif [ -d "$TEX_SRC_BASE/$CAT_SAFE" ]; then
+            TEX_DIR="$TEX_SRC_BASE/$CAT_SAFE"
+        else
+            echo "WARNING: local tex dir not found for $CATEGORY at either"
+            echo "  $TEX_SRC_BASE/$CATEGORY   or  $TEX_SRC_BASE/$CAT_SAFE"
+            echo "  Falling back to TEX_SRC_BASE itself; run_pipeline.py will"
+            echo "  search the whole tree for matching arxiv IDs."
+            TEX_DIR="$TEX_SRC_BASE"
+        fi
+    fi
+
     echo "===================================================="
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Category: $CATEGORY"
-    echo "  PAPERS_PER_CAT  = $PAPERS_PER_CAT"
-    echo "  START_DATE      = ${START_DATE:-<all>}"
-    echo "  END_DATE        = ${END_DATE:-<all>}"
+    if [ -n "$TEX_SRC_BASE" ]; then
+        echo "  MODE            = LOCAL (pre-downloaded tex)"
+        echo "  TEX_DIR         = $TEX_DIR"
+    else
+        echo "  MODE            = FETCH (arxiv API)"
+        echo "  PAPERS_PER_CAT  = $PAPERS_PER_CAT"
+        echo "  START_DATE      = ${START_DATE:-<all>}"
+        echo "  END_DATE        = ${END_DATE:-<all>}"
+    fi
     echo "  EXTRACTION_MODE = $EXTRACTION_MODE"
     echo "  OPERATIONS      = $OPERATIONS"
     echo "  OUT_DIR         = $OUT_DIR"
@@ -194,16 +243,22 @@ for CATEGORY in "${RUN_CATEGORIES[@]}"; do
         "$PYTHON" run_pipeline.py
         --operations "$OPERATIONS"
         --category "$CATEGORY"
-        --top-k "$PAPERS_PER_CAT"
         --extraction-mode "$EXTRACTION_MODE"
         --out-dir "$OUT_DIR"
         --verbose
     )
-    if [ -n "$START_DATE" ]; then
-        CMD+=(--start "$START_DATE")
-    fi
-    if [ -n "$END_DATE" ]; then
-        CMD+=(--end "$END_DATE")
+    if [ -n "$TEX_SRC_BASE" ]; then
+        # LOCAL mode: point at pre-downloaded tex; no fetch-related args
+        CMD+=(--tex-dir "$TEX_DIR")
+    else
+        # FETCH mode: top-k + optional date range
+        CMD+=(--top-k "$PAPERS_PER_CAT")
+        if [ -n "$START_DATE" ]; then
+            CMD+=(--start "$START_DATE")
+        fi
+        if [ -n "$END_DATE" ]; then
+            CMD+=(--end "$END_DATE")
+        fi
     fi
     if [ "$HTML" = "1" ]; then
         CMD+=(--html)
