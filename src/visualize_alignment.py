@@ -46,7 +46,28 @@ def _load(path):
         return json.load(f)
 
 
-def _build_group_map(matches, nodes1_ids, nodes2_ids):
+def _detect_match_keys(matches, nodes1_ids, nodes2_ids):
+    """Auto-detect which keys in match dicts refer to paper1 vs paper2 nodes."""
+    if not matches:
+        return "paper_a_nodes", "paper_b_nodes"
+    # Collect all candidate keys (ending in _nodes)
+    for m in matches:
+        candidate_keys = [k for k in m if k.endswith("_nodes")]
+        if len(candidate_keys) >= 2:
+            # Try each pair and see which maps to which paper's node IDs
+            for i, k1 in enumerate(candidate_keys):
+                for k2 in candidate_keys[i+1:]:
+                    ids1 = set(m.get(k1, []) or [])
+                    ids2 = set(m.get(k2, []) or [])
+                    if ids1 & nodes1_ids and ids2 & nodes2_ids:
+                        return k1, k2
+                    if ids2 & nodes1_ids and ids1 & nodes2_ids:
+                        return k2, k1
+    return "paper_a_nodes", "paper_b_nodes"
+
+
+def _build_group_map(matches, nodes1_ids, nodes2_ids,
+                     key_a=None, key_b=None):
     """Return (group_id_of, groups) where each group is a tuple of
     (set(paper1_ids), set(paper2_ids)).
 
@@ -58,6 +79,9 @@ def _build_group_map(matches, nodes1_ids, nodes2_ids):
 
     Nodes not in any match become singleton groups on their respective side.
     """
+    if key_a is None or key_b is None:
+        key_a, key_b = _detect_match_keys(matches, nodes1_ids, nodes2_ids)
+
     group_of: Dict[Tuple[str, str], str] = {}
     group_list: List[Tuple[str, set, set]] = []
     next_gid = 0
@@ -68,9 +92,9 @@ def _build_group_map(matches, nodes1_ids, nodes2_ids):
     for m in matches:
         if m.get("match_type", "").lower() not in STRONG:
             continue
-        p1 = [n for n in m.get("paper2_nodes", []) if n in nodes1_ids
+        p1 = [n for n in m.get(key_a, []) if n in nodes1_ids
               and ("1", n) not in group_of]
-        p2 = [n for n in m.get("paper21_nodes", []) if n in nodes2_ids
+        p2 = [n for n in m.get(key_b, []) if n in nodes2_ids
               and ("2", n) not in group_of]
         if not p1 or not p2:
             continue  # one-sided match after dedup → skip
@@ -406,7 +430,8 @@ SHARED_BORDER = "#4A148C"   # deep purple for emphasis
 
 # ── Mode B: one combined graph ──────────────────────────────────────────────
 def _draw_mode_B(combined_nodes, combined_edges, group_list,
-                 positions, rects, out_path):
+                 positions, rects, out_path,
+                 paper1_name="Paper A", paper2_name="Paper B"):
     # Figure size
     xs = [bx for (bx, by, bw, bh) in rects.values()]
     xs_r = [bx + bw for (bx, by, bw, bh) in rects.values()]
@@ -507,20 +532,20 @@ def _draw_mode_B(combined_nodes, combined_edges, group_list,
         mpatches.Patch(facecolor=SHARED_TINT["body"], edgecolor=SHARED_BORDER,
                        linewidth=5.0, label="Shared nodes (matched)"),
         mpatches.Patch(facecolor=P1_TINT["body"], edgecolor=P1_TINT["header"],
-                       linewidth=2.0, label="Cand\u00e8s\u2013Tao only"),
+                       linewidth=2.0, label=f"{paper1_name} only"),
         mpatches.Patch(facecolor=P2_TINT["body"], edgecolor=P2_TINT["header"],
-                       linewidth=2.0, label="Donoho only"),
+                       linewidth=2.0, label=f"{paper2_name} only"),
         plt.Line2D([0], [0], color=SHARED_BORDER, lw=4.0,
                    label="Shared edge (both papers)"),
         plt.Line2D([0], [0], color=P1_TINT["header"], lw=2.0, alpha=0.55,
-                   label="Cand\u00e8s\u2013Tao edge"),
+                   label=f"{paper1_name} edge"),
         plt.Line2D([0], [0], color=P2_TINT["header"], lw=2.0, alpha=0.55,
-                   label="Donoho edge"),
+                   label=f"{paper2_name} edge"),
     ]
     ax.legend(handles=handles, loc="lower right", fontsize=14,
               frameon=True, framealpha=0.95)
 
-    ax.set_title("Compressed Sensing: Candes–Tao (blue) \u2194 Donoho (orange)"
+    ax.set_title(f"{paper1_name} (blue) \u2194 {paper2_name} (red)"
                  " — combined knowledge graph",
                  fontsize=18, fontweight="bold", pad=16)
     ax.autoscale()
@@ -535,7 +560,8 @@ def _draw_mode_B(combined_nodes, combined_edges, group_list,
 
 # ── Mode C: side-by-side sharing positions ──────────────────────────────────
 def _draw_mode_C(combined_nodes, group_list, group_of,
-                 n1, n2, e1, e2, positions, rects, out_path):
+                 n1, n2, e1, e2, positions, rects, out_path,
+                 paper1_name="Paper A", paper2_name="Paper B"):
     # For each original node, its rect comes from the group containing it.
     def rect_for(side, nid):
         gid = group_of.get((side, nid))
@@ -644,14 +670,13 @@ def _draw_mode_C(combined_nodes, group_list, group_of,
         if not s2:
             ghost_for_R[gid] = pick_ghost(s1, nbi1)
 
-    # Left panel: Candes-Tao (paper1), Right panel: Donoho (paper2)
     global panel_color_scheme
     panel_color_scheme = P1_TINT
     draw_side(axL, "1", nbi1, e1, P1_TINT["header"],
-              "Candes–Tao (Paper 2)", ghost_for_L, group_info)
+              paper1_name, ghost_for_L, group_info)
     panel_color_scheme = P2_TINT
     draw_side(axR, "2", nbi2, e2, P2_TINT["header"],
-              "Donoho (Paper 21)", ghost_for_R, group_info)
+              paper2_name, ghost_for_R, group_info)
 
     # Shared axis limits so positions truly align visually
     all_x0 = min(bx for (bx, by, bw, bh) in rects.values())
@@ -669,16 +694,16 @@ def _draw_mode_C(combined_nodes, group_list, group_of,
         mpatches.Patch(facecolor=SHARED_TINT["body"], edgecolor=SHARED_BORDER,
                        linewidth=2.5, label="Matched across both papers"),
         mpatches.Patch(facecolor=P1_TINT["body"], edgecolor=P1_TINT["header"],
-                       linewidth=1.5, label="Candes-Tao only"),
+                       linewidth=1.5, label=f"{paper1_name} only"),
         mpatches.Patch(facecolor=P2_TINT["body"], edgecolor=P2_TINT["header"],
-                       linewidth=1.5, label="Donoho only"),
+                       linewidth=1.5, label=f"{paper2_name} only"),
         mpatches.Patch(facecolor="#F4F4F4", edgecolor="#BBBBBB",
                        linewidth=1.0, label="Ghost (exists in other paper only)"),
     ]
     fig.legend(handles=handles, loc="lower center", ncol=4, fontsize=13,
                frameon=True, framealpha=0.95, bbox_to_anchor=(0.5, 0.01))
 
-    fig.suptitle("Compressed Sensing — side-by-side with shared positions",
+    fig.suptitle(f"{paper1_name} \u2194 {paper2_name} — side-by-side with shared positions",
                  fontsize=20, fontweight="bold", y=0.98)
     try:
         plt.tight_layout(rect=(0, 0.05, 1, 0.96))
@@ -689,6 +714,20 @@ def _draw_mode_C(combined_nodes, group_list, group_of,
 
 
 # ── Public entry point ──────────────────────────────────────────────────────
+def _paper_short_name(paper_json: dict) -> str:
+    """Extract a short display name from a paper JSON (title or first author)."""
+    title = paper_json.get("title", "")
+    authors = paper_json.get("authors", [])
+    if title:
+        # Truncate long titles
+        short = title if len(title) <= 40 else title[:37] + "..."
+        return short
+    if authors:
+        first = authors[0] if isinstance(authors[0], str) else str(authors[0])
+        return first.split()[-1]  # last name
+    return "Paper"
+
+
 def draw_alignment(graph1_json, graph2_json, alignment_json, output_path,
                    mode: str = "B"):
     """Render an alignment visualization.
@@ -698,6 +737,18 @@ def draw_alignment(graph1_json, graph2_json, alignment_json, output_path,
     g1 = _load(graph1_json)
     g2 = _load(graph2_json)
     align = _load(alignment_json)
+
+    # Extract paper names from metadata
+    meta = align.get("metadata", {})
+    p1_meta = meta.get("paper_a", {})
+    p2_meta = meta.get("paper_b", {})
+    paper1_name = p1_meta.get("short_name") or p1_meta.get("title") or _paper_short_name(g1)
+    paper2_name = p2_meta.get("short_name") or p2_meta.get("title") or _paper_short_name(g2)
+    # Truncate if too long
+    if len(paper1_name) > 40:
+        paper1_name = paper1_name[:37] + "..."
+    if len(paper2_name) > 40:
+        paper2_name = paper2_name[:37] + "..."
 
     combined_nodes, combined_edges, group_of, group_list, \
         n1, n2, e1, e2 = _build_combined(g1, g2, align)
@@ -710,10 +761,12 @@ def draw_alignment(graph1_json, graph2_json, alignment_json, output_path,
     mode = mode.upper()
     if mode == "B":
         _draw_mode_B(combined_nodes, combined_edges, group_list,
-                     positions, rects, output_path)
+                     positions, rects, output_path,
+                     paper1_name=paper1_name, paper2_name=paper2_name)
     elif mode == "C":
         _draw_mode_C(combined_nodes, group_list, group_of,
-                     n1, n2, e1, e2, positions, rects, output_path)
+                     n1, n2, e1, e2, positions, rects, output_path,
+                     paper1_name=paper1_name, paper2_name=paper2_name)
     else:
         raise ValueError(f"Unknown mode: {mode}  (use 'B' or 'C')")
     return output_path

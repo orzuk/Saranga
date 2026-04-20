@@ -2026,6 +2026,34 @@ Respond ONLY with JSON array."""
                 uses_ref_count += 1
 
         # ------------------------------------------------------------------
+        # 3b. Break length-2 cycles in 'uses' edges.
+        #     If A→B and B→A both exist, keep only the edge where the source
+        #     appears earlier in the document (insertion order of graph.objects).
+        # ------------------------------------------------------------------
+
+        doc_order = {obj_id: i for i, obj_id in enumerate(graph.objects)}
+        uses_to_remove = set()
+        for (src, tgt, rtype) in list(existing):
+            if rtype != "uses":
+                continue
+            reverse = (tgt, src, "uses")
+            if reverse in existing and reverse not in uses_to_remove:
+                # Keep the edge whose source appears earlier in the document
+                if doc_order.get(src, 0) > doc_order.get(tgt, 0):
+                    uses_to_remove.add((src, tgt, "uses"))
+                else:
+                    uses_to_remove.add((tgt, src, "uses"))
+
+        if uses_to_remove:
+            graph.relations = [
+                r for r in graph.relations
+                if (r.source_id, r.target_id, r.relation_type) not in uses_to_remove
+            ]
+            existing -= uses_to_remove
+            uses_ref_count -= len(uses_to_remove)
+            print(f"[INFO] _build_relations: broke {len(uses_to_remove)} length-2 'uses' cycles via document order.")
+
+        # ------------------------------------------------------------------
         # 4. Low-confidence 'uses' edges from theorems/proofs to definitions
         #    via keyword overlap in natural language text.
         #

@@ -16,6 +16,7 @@ Usage:
 import json
 import math
 import re
+import sys
 from collections import defaultdict
 from pathlib import Path
 
@@ -197,6 +198,46 @@ def jaccard_combined(node_a, node_b, use_type=True):
     if use_type:
         j *= type_compat(node_a.get("type", ""), node_b.get("type", ""))
     return j
+
+
+# ── Embedding-based node similarity ─────────────────────────────────────────
+# Lazy-loaded from scripts/embedding_sigma.py to avoid mandatory heavy
+# dependencies (sentence-transformers) when only Jaccard is needed.
+
+_embedding_module = None
+
+
+def _load_embedding_module():
+    global _embedding_module
+    if _embedding_module is None:
+        repo_root = Path(__file__).resolve().parents[1]
+        scripts_dir = str(repo_root / "scripts")
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        import embedding_sigma as _mod
+        _embedding_module = _mod
+    return _embedding_module
+
+
+def embedding_sim(node_a, node_b, use_type=True):
+    """Embedding cosine similarity × type compatibility.
+
+    Drop-in replacement for jaccard_sim. Requires sentence-transformers.
+    """
+    mod = _load_embedding_module()
+    if use_type:
+        return mod.sigma(node_a, node_b)
+    return mod.sigma_no_type(node_a, node_b)
+
+
+# Lookup table for --sigma CLI argument
+SIGMA_FUNCTIONS = {
+    "jaccard": jaccard_sim,
+    "jaccard_statement": jaccard_statement,
+    "jaccard_proof": jaccard_proof,
+    "jaccard_combined": jaccard_combined,
+    "embedding": embedding_sim,
+}
 
 
 # ── Edge similarity ──────────────────────────────────────────────────────────
@@ -406,12 +447,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("graph_a", help="Path to first paper JSON")
     parser.add_argument("graph_b", help="Path to second paper JSON")
+    parser.add_argument("--sigma", choices=list(SIGMA_FUNCTIONS.keys()),
+                        default="jaccard",
+                        help="Node similarity function (default: jaccard)")
     parser.add_argument("--n-perms", type=int, default=500,
                         help="Number of permutations for significance (default 500)")
     parser.add_argument("--alpha", type=float, default=0.5,
                         help="Edge-match weight (default 0.5)")
     parser.add_argument("--skip-significance", action="store_true")
     args = parser.parse_args()
+
+    sigma_fn = SIGMA_FUNCTIONS[args.sigma]
 
     with open(args.graph_a) as f:
         g_a = json.load(f)
@@ -422,9 +468,10 @@ def main():
     print(f"  {len(g_a['nodes'])} nodes, {len(g_a.get('edges', []))} edges")
     print(f"Graph B: {args.graph_b}")
     print(f"  {len(g_b['nodes'])} nodes, {len(g_b.get('edges', []))} edges")
+    print(f"Sigma:  {args.sigma}")
 
     print("\n=== Alignment ===")
-    result = align_graphs(g_a, g_b, sigma_fn=jaccard_sim, alpha=args.alpha)
+    result = align_graphs(g_a, g_b, sigma_fn=sigma_fn, alpha=args.alpha)
     print(f"Total score: {result['score']:.3f}")
     print(f"  node component: {result['node_score']:.3f}")
     print(f"  edge component: {result['edge_score']:.3f}")
@@ -437,16 +484,16 @@ def main():
     for aid, bid in sorted(result["matching"].items()):
         a = a_by_id[aid]
         b = b_by_id[bid]
-        sim = jaccard_sim(a, b)
+        sim = sigma_fn(a, b)
         print(f"  {aid} ({a.get('type','')}) <-> {bid} ({b.get('type','')})  "
-              f"sim={sim:.2f}")
+              f"sim={sim:.3f}")
         print(f"    A: {a.get('name','')[:70]}")
         print(f"    B: {b.get('name','')[:70]}")
 
     if not args.skip_significance:
         print(f"\n=== Significance (n_perms={args.n_perms}) ===")
         sig = significance_test(g_a, g_b, result["score"],
-                                 sigma_fn=jaccard_sim, alpha=args.alpha,
+                                 sigma_fn=sigma_fn, alpha=args.alpha,
                                  n_perms=args.n_perms)
         print(f"Observed score: {result['score']:.3f}")
         print(f"Null mean:      {sig['null_mean']:.3f}")
