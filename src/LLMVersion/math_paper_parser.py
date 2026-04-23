@@ -1313,6 +1313,59 @@ class PaperParser:
                 return None, None
             return OpenAI(base_url="https://router.huggingface.co/v1", api_key=api_key), "openai_compat"
 
+        elif provider == "openrouter":
+            # OpenRouter hosts Qwen, Gemini, DeepSeek, Mistral, and more behind a
+            # single OpenAI-compatible endpoint. The --llm-model flag selects the
+            # concrete model, e.g.:
+            #   --llm-provider openrouter --llm-model qwen/qwen3.6-35b-a3b
+            #   --llm-provider openrouter --llm-model google/gemini-2.5-pro
+            try:
+                from openai import OpenAI
+            except ImportError:
+                print("[ERROR] openai package not installed (required for OpenRouter). Run: pip install openai")
+                return None, None
+            api_key = os.environ.get("OPENROUTER_API_KEY")
+            if not api_key:
+                print("[ERROR] OPENROUTER_API_KEY environment variable not set.")
+                return None, None
+            return OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key), "openai_compat"
+
+        elif provider == "alibaba":
+            # Direct Alibaba Cloud Bailian (DashScope) OpenAI-compatible endpoint.
+            # Cheaper than OpenRouter for Qwen models but may be region-restricted.
+            # Intended primarily for Qwen3.x, e.g.:
+            #   --llm-provider alibaba --llm-model qwen3.6-35b-a3b
+            try:
+                from openai import OpenAI
+            except ImportError:
+                print("[ERROR] openai package not installed (required for Alibaba Bailian). Run: pip install openai")
+                return None, None
+            api_key = os.environ.get("DASHSCOPE_API_KEY") or os.environ.get("ALIBABA_API_KEY")
+            if not api_key:
+                print("[ERROR] DASHSCOPE_API_KEY (or ALIBABA_API_KEY) environment variable not set.")
+                return None, None
+            base_url = os.environ.get("DASHSCOPE_BASE_URL", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1")
+            return OpenAI(base_url=base_url, api_key=api_key), "openai_compat"
+
+        elif provider == "google":
+            # Native Google Generative AI SDK for Gemini. Unlike OpenRouter's
+            # Gemini, this uses the free AI Studio tier when GOOGLE_API_KEY is
+            # set and no billing is enabled on the project. Returns a
+            # distinct provider_type so _call_llm_api can dispatch to the
+            # Google-specific .generate_content() shape.
+            try:
+                import google.generativeai as genai
+            except ImportError:
+                print("[ERROR] google-generativeai package not installed. Run: pip install google-generativeai")
+                return None, None
+            api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+            if not api_key:
+                print("[ERROR] GOOGLE_API_KEY (or GEMINI_API_KEY) environment variable not set.")
+                return None, None
+            genai.configure(api_key=api_key)
+            # Client is the module; _call_llm_api instantiates per-model.
+            return genai, "google"
+
         else:
             print(f"[WARN] llm_provider='{provider}' not supported.")
             return None, None
