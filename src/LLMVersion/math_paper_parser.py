@@ -884,41 +884,92 @@ class PaperParser:
     @staticmethod
     def _split_assumptions_conclusions(text: str) -> Tuple[List[str], List[str]]:
         """
-        Very heuristic split of assumption sentences vs conclusion sentences.
+        Split theorem-like text into assumption and conclusion sentences.
 
-        Returns a tuple (assumptions, conclusions) where each is a list of
-        individual sentence strings. Matches the unified JSON schema which
-        expects these fields as lists of strings.
+        Strategy:
+        - Sentences starting with assumption keywords (let/suppose/assume/given)
+          are assumptions, but ONLY while we haven't seen a conclusion yet.
+        - Explicit conclusion keywords (then/hence/therefore/thus/so/it follows)
+          flip to conclusion mode.
+        - Intra-sentence "if <A>, then <B>" is split into assumption + conclusion.
+        - "For any/all/every/each <A>, <B>" quantifier phrases are split.
+        - Default is CONCLUSION (not assumption) — most theorem text is the claim.
         """
         sentences = re.split(r"(?<=[.!?])\s+", text)
         assumptions_sentences = []
         conclusions_sentences = []
 
+        # Patterns for assumption-start keywords
+        _ASSUMPTION_START = re.compile(
+            r"^(let|suppose|assume|given|denote)\b", re.IGNORECASE
+        )
+        # Patterns for explicit conclusion-start keywords
+        _CONCLUSION_START = re.compile(
+            r"^(then|hence|therefore|thus|so|it follows|we have|we get|we obtain|we conclude)\b",
+            re.IGNORECASE,
+        )
+        # Intra-sentence: "if <A>, then <B>" or "if <A> then <B>"
+        _IF_THEN = re.compile(
+            r"^if\s+(.+?),?\s+then\s+(.+)$", re.IGNORECASE | re.DOTALL
+        )
+        # "For any/all/every/each <A>, <B>" — quantifier introduces assumption
+        _QUANTIFIER = re.compile(
+            r"^for\s+(?:any|all|every|each)\s+(.+?),\s+(.+)$",
+            re.IGNORECASE | re.DOTALL,
+        )
+        # "Whenever/provided/when <A>, <B>"
+        _WHENEVER = re.compile(
+            r"^(?:whenever|provided|when)\s+(.+?),\s+(.+)$",
+            re.IGNORECASE | re.DOTALL,
+        )
+
         in_assumptions = True
+
         for s in sentences:
             s_strip = s.strip()
             if not s_strip:
                 continue
             lower = s_strip.lower()
-            if in_assumptions and (
-                    lower.startswith("let ")
-                    or lower.startswith("suppose ")
-                    or lower.startswith("assume ")
-                    or lower.startswith("given ")
-            ):
+
+            # --- Intra-sentence splits (highest priority) ---
+            m = _IF_THEN.match(s_strip)
+            if m:
+                assumptions_sentences.append("If " + m.group(1).strip())
+                conclusions_sentences.append("then " + m.group(2).strip())
+                in_assumptions = False
+                continue
+
+            m = _QUANTIFIER.match(s_strip)
+            if m:
+                assumptions_sentences.append(s_strip[:s_strip.index(",")].strip())
+                conclusions_sentences.append(m.group(2).strip())
+                in_assumptions = False
+                continue
+
+            m = _WHENEVER.match(s_strip)
+            if m:
+                assumptions_sentences.append(m.group(1).strip())
+                conclusions_sentences.append(m.group(2).strip())
+                in_assumptions = False
+                continue
+
+            # --- Sentence-level classification ---
+            if _ASSUMPTION_START.match(lower):
                 assumptions_sentences.append(s_strip)
-            elif in_assumptions and (
-                    lower.startswith("then ")
-                    or lower.startswith("hence ")
-                    or lower.startswith("therefore ")
-            ):
+                continue
+
+            if _CONCLUSION_START.match(lower):
                 in_assumptions = False
                 conclusions_sentences.append(s_strip)
+                continue
+
+            # Default: conclusion (unless we're in an assumption preamble that
+            # started with Let/Suppose and hasn't been broken yet)
+            if in_assumptions and assumptions_sentences and _ASSUMPTION_START.match(assumptions_sentences[-1].lower()):
+                assumptions_sentences.append(s_strip)
             else:
-                if in_assumptions:
-                    assumptions_sentences.append(s_strip)
-                else:
-                    conclusions_sentences.append(s_strip)
+                in_assumptions = False
+                conclusions_sentences.append(s_strip)
 
         return assumptions_sentences, conclusions_sentences
 
