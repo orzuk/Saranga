@@ -63,8 +63,10 @@ import argparse
 import csv
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -72,6 +74,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 RUN_EXTRACTION = REPO_ROOT / "scripts" / "silver_gold" / "run_extraction.py"
 VIZ_TOOL = REPO_ROOT / "src" / "visualize_annotation.py"
 LINK_TOOL = REPO_ROOT / "src" / "link_to_foundation.py"
+VALIDATE_TOOL = REPO_ROOT / "src" / "validate_annotation.py"
+ANOMALY_TOOL = REPO_ROOT / "src" / "anomaly_detection.py"
+CONSENSUS_TOOL = REPO_ROOT / "scripts" / "silver_gold" / "consensus_intersect.py"
 
 
 # =============================================================================
@@ -211,6 +216,126 @@ def run_visualize(json_path: Path, html_only: bool = False, timeout: int = 300) 
         return False
 
 
+def run_validate(json_path: Path, timeout: int = 120) -> bool:
+    """Run src/validate_annotation.py on a single JSON. Returns True on PASS.
+
+    The validator exits 0 when no errors are found, non-zero on schema /
+    DAG-acyclicity violations.
+    """
+    if not VALIDATE_TOOL.exists():
+        return False
+    cmd = [sys.executable, str(VALIDATE_TOOL), str(json_path)]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
+        return True
+    except subprocess.CalledProcessError as e:
+        stderr = (e.stderr or b"").decode(errors="replace")[:200]
+        stdout = (e.stdout or b"").decode(errors="replace")[:200]
+        msg = stderr or stdout
+        if msg:
+            print(f"  [WARN] validate failed for {json_path.name}: {msg.strip()}")
+        return False
+    except Exception as e:
+        print(f"  [WARN] validate error on {json_path.name}: {e}")
+        return False
+
+
+def run_anomaly_detect(json_path: Path, timeout: int = 120) -> bool:
+    """Run src/anomaly_detection.py scoped to a single JSON.
+
+    The detector's CLI takes --out-dir and recurses for *.json. To scope it
+    to one paper-graph file, we stage it (via copy) into a tempdir and point
+    the tool at that. The resulting anomalies_report.csv is copied next to
+    the source JSON as anomalies_<stem>.csv. Failures are logged, not raised.
+    """
+    if not ANOMALY_TOOL.exists():
+        return False
+    try:
+        with tempfile.TemporaryDirectory(prefix="anom_") as td:
+            staged = Path(td) / json_path.name
+            shutil.copyfile(json_path, staged)
+            report = Path(td) / "anomalies_report.csv"
+            cmd = [sys.executable, str(ANOMALY_TOOL),
+                   "--out-dir", td,
+                   "--report-path", str(report)]
+            subprocess.run(cmd, check=True, capture_output=True, timeout=timeout)
+            # Copy report next to the original JSON for inspection.
+            if report.exists():
+                dest = json_path.with_name(f"anomalies_{json_path.stem}.csv")
+                shutil.copyfile(report, dest)
+            detail = Path(td) / "anomalies_detail.json"
+            if detail.exists():
+                dest_detail = json_path.with_name(f"anomalies_{json_path.stem}.detail.json")
+                shutil.copyfile(detail, dest_detail)
+        return True
+    except subprocess.CalledProcessError as e:
+        stderr = (e.stderr or b"").decode(errors="replace")[:200]
+        print(f"  [WARN] anomaly detect failed for {json_path.name}: {stderr.strip()}")
+        return False
+    except Exception as e:
+        print(f"  [WARN] anomaly detect error on {json_path.name}: {e}")
+        return False
+
+
+def run_consensus(model_configs: List[Dict], base_dir: Path,
+                  paper_ids: Optional[List[str]] = None,
+                  timeout: int = 600) -> Dict[str, int]:
+    """For each non-reference model, call consensus_intersect.py vs model[0].
+
+    Reference is model_configs[0] (typically Opus, suffix=""). For every
+    other model with a non-empty (and non-duplicate) suffix, runs a pairwise
+    consensus comparison; writes:
+      - per-comparison CSV: <base_dir>/agreement_<modelB>_vs_ref.csv
+      - per-paper consensus JSON: gold_consensus_<modelB>.json
+
+    Returns a small summary dict.
+    """
+    summary = {"comparisons_run": 0, "comparisons_failed": 0, "skipped": 0}
+    if not CONSENSUS_TOOL.exists():
+        print(f"[CONSENSUS] tool not found at {CONSENSUS_TOOL}; skipping")
+        return summary
+    if len(model_configs) < 2:
+        print("[CONSENSUS] config has <2 models; nothing to compare")
+        return summary
+
+    ref = model_configs[0]
+    ref_suffix = ref.get("suffix", "")
+    ref_name = ref.get("name", "ref")
+    print(f"[CONSENSUS] reference model = '{ref_name}' (suffix='{ref_suffix}')")
+
+    seen_suffixes = {ref_suffix}
+    for m in model_configs[1:]:
+        suffix_b = m.get("suffix", f"_{m['name']}")
+        name_b = m["name"]
+        if not suffix_b or suffix_b == ref_suffix or suffix_b in seen_suffixes:
+            print(f"[CONSENSUS] skipping {name_b}: duplicate or empty suffix '{suffix_b}'")
+            summary["skipped"] += 1
+            continue
+        seen_suffixes.add(suffix_b)
+
+        out_csv = base_dir / f"agreement_{name_b}_vs_{ref_name}.csv"
+        cmd = [sys.executable, str(CONSENSUS_TOOL),
+               "--base-dir", str(base_dir),
+               "--suffix-a", ref_suffix,
+               "--suffix-b", suffix_b,
+               "--out-suffix", f"_consensus_{name_b}",
+               "--report-csv", str(out_csv)]
+        if paper_ids:
+            cmd.extend(["--paper-ids", ",".join(paper_ids)])
+        print(f"[CONSENSUS] {name_b} vs {ref_name}: writing {out_csv.name}")
+        try:
+            subprocess.run(cmd, check=True, timeout=timeout)
+            summary["comparisons_run"] += 1
+        except subprocess.CalledProcessError as e:
+            print(f"  [WARN] consensus failed for {name_b}: rc={e.returncode}")
+            summary["comparisons_failed"] += 1
+        except Exception as e:
+            print(f"  [WARN] consensus error for {name_b}: {e}")
+            summary["comparisons_failed"] += 1
+
+    return summary
+
+
 # =============================================================================
 # Main
 # =============================================================================
@@ -247,6 +372,20 @@ def main() -> int:
                     help="stage 4: render PNG + interactive HTML for each JSON")
     ap.add_argument("--html-only", action="store_true",
                     help="stage 4: HTML only (faster than --visualize)")
+    ap.add_argument("--validate", action="store_true",
+                    help="run src/validate_annotation.py on each output JSON "
+                         "(DAG acyclicity + schema checks); failures are "
+                         "logged but do not abort the pipeline")
+    ap.add_argument("--anomalies", action="store_true",
+                    help="run src/anomaly_detection.py per output JSON; "
+                         "writes anomalies_<stem>.csv next to each JSON. "
+                         "Failures are logged but do not abort the pipeline")
+    ap.add_argument("--consensus", action="store_true",
+                    help="after all extractions, run consensus_intersect.py "
+                         "pairwise against the FIRST model in the config "
+                         "(reference, typically Opus). Writes "
+                         "gold_consensus_<model>.json per paper and "
+                         "agreement_<model>_vs_<ref>.csv at base-dir")
     args = ap.parse_args()
 
     # --- Load config
@@ -289,37 +428,72 @@ def main() -> int:
                 continue
             run_extraction_for_model(m, args, avail_ids)
 
-    # --- Stage 3 + 4: link + visualize per (paper, model)
+    # --- Stage 3 + 4: per-(paper, model) downstream ops
     do_link = args.link_foundation
     do_viz = args.visualize or args.html_only
-    if not (do_link or do_viz):
-        print("\n[DONE] (no --link-foundation, --visualize, or --html-only requested)")
+    do_validate = args.validate
+    do_anomalies = args.anomalies
+    do_consensus = args.consensus
+    any_per_paper = do_link or do_viz or do_validate or do_anomalies
+    if not (any_per_paper or do_consensus):
+        print("\n[DONE] (no downstream stages requested: "
+              "--link-foundation / --visualize / --html-only / --validate / "
+              "--anomalies / --consensus)")
         return 0
 
-    print(f"\n{'='*70}")
-    print(f"  STAGE 3+4: downstream over (papers × models)")
-    print(f"  link={do_link}  visualize={do_viz}")
-    print(f"{'='*70}\n")
+    summary = {"links_done": 0, "viz_done": 0,
+               "validate_pass": 0, "validate_fail": 0,
+               "anomaly_done": 0, "anomaly_fail": 0,
+               "skipped_missing_json": 0}
 
-    summary = {"links_done": 0, "viz_done": 0, "skipped_missing_json": 0}
-    for r in available:
-        pid = r["paper_id"]
-        for m in models:
-            suffix = m.get("suffix", f"_{m['name']}")
-            jpath = args.base_dir / "papers" / pid / f"gold{suffix}.json"
-            if not jpath.exists():
-                summary["skipped_missing_json"] += 1
-                continue
-            ops = []
-            if do_link:
-                if run_link_foundation(jpath):
-                    ops.append("link")
-                    summary["links_done"] += 1
-            if do_viz:
-                if run_visualize(jpath, html_only=args.html_only):
-                    ops.append("viz")
-                    summary["viz_done"] += 1
-            print(f"  {pid} / {m['name']}: {' + '.join(ops) if ops else '(no ops)'}")
+    if any_per_paper:
+        print(f"\n{'='*70}")
+        print(f"  STAGE 3+: per-(paper, model) downstream")
+        print(f"  validate={do_validate}  anomalies={do_anomalies}  "
+              f"link={do_link}  visualize={do_viz}")
+        print(f"{'='*70}\n")
+
+        for r in available:
+            pid = r["paper_id"]
+            for m in models:
+                suffix = m.get("suffix", f"_{m['name']}")
+                jpath = args.base_dir / "papers" / pid / f"gold{suffix}.json"
+                if not jpath.exists():
+                    summary["skipped_missing_json"] += 1
+                    continue
+                ops = []
+                if do_validate:
+                    if run_validate(jpath):
+                        ops.append("validate ok")
+                        summary["validate_pass"] += 1
+                    else:
+                        ops.append("validate FAIL")
+                        summary["validate_fail"] += 1
+                if do_anomalies:
+                    if run_anomaly_detect(jpath):
+                        ops.append("anomalies ok")
+                        summary["anomaly_done"] += 1
+                    else:
+                        ops.append("anomalies FAIL")
+                        summary["anomaly_fail"] += 1
+                if do_link:
+                    if run_link_foundation(jpath):
+                        ops.append("link ok")
+                        summary["links_done"] += 1
+                if do_viz:
+                    if run_visualize(jpath, html_only=args.html_only):
+                        ops.append("viz ok")
+                        summary["viz_done"] += 1
+                print(f"  {pid} / {m['name']}: {' + '.join(ops) if ops else '(no ops)'}")
+
+    # --- Stage 5: cross-model consensus (post-loop, runs once)
+    if do_consensus:
+        print(f"\n{'='*70}")
+        print(f"  STAGE 5: pairwise consensus vs reference model")
+        print(f"{'='*70}\n")
+        paper_id_list = [r["paper_id"] for r in available] if args.paper_ids else None
+        cons_summary = run_consensus(models, args.base_dir, paper_id_list)
+        summary["consensus"] = cons_summary
 
     print(f"\n[DONE] downstream: {summary}")
     return 0
