@@ -4,6 +4,10 @@
 > **Scope**: shared architecture for three paper-graph comparison tasks.
 > **Deferred**: full restructure (post-NeurIPS).
 > **Owner**: Or Zuk; reviewer: Yaron Otmazgin.
+> **Companion doc**: `docs/pipeline_architecture.md` — the broader pipeline /
+> dataset-tier story (which operations apply to which of the 5 data tiers,
+> master-pipeline + thin-wrapper architecture, paper-appendix-ready table).
+> This doc focuses specifically on the comparison-task half (T1/T2/T3).
 
 ## 1. Three tasks, one underlying problem
 
