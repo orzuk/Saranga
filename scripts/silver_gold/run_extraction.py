@@ -346,15 +346,17 @@ def main() -> int:
                     help="root of alignment_benchmark (parent of papers/)")
     ap.add_argument("--prompt-file", type=Path, required=True,
                     help="prompt template; SWAP THIS to change extraction strategy")
-    ap.add_argument("--provider", required=True,
+    ap.add_argument("--provider", default=None,
                     choices=["huggingface", "openrouter", "alibaba",
-                             "google", "anthropic", "openai"])
-    ap.add_argument("--model", required=True,
+                             "google", "anthropic", "openai"],
+                    help="LLM provider (required unless --viz-only)")
+    ap.add_argument("--model", default=None,
                     help="provider-specific model string "
                          "(e.g. 'qwen/qwen3.6-35b-a3b', 'gemini-2.5-pro', "
-                         "'claude-opus-4-7')")
+                         "'claude-opus-4-7'). Required unless --viz-only.")
     ap.add_argument("--out-suffix", required=True,
-                    help="suffix for output file, e.g. _qwen -> gold_qwen.json")
+                    help="suffix for output file, e.g. _qwen -> gold_qwen.json. "
+                         "Use --out-suffix '' for downstream on existing gold.json.")
     ap.add_argument("--source-type", default="paper",
                     choices=["paper", "textbook"])
     ap.add_argument("--limit", type=int, default=0,
@@ -413,9 +415,15 @@ def main() -> int:
         print("[ERROR] no papers to process")
         return 1
 
-    # --- create LLM client
-    call_llm = make_client(args.provider)
-    print(f"[INFO] provider={args.provider}  model={args.model}")
+    # --- create LLM client (skip if downstream-only)
+    if args.viz_only:
+        call_llm = None
+        print("[INFO] --viz-only mode: no LLM client needed")
+    else:
+        if not args.provider or not args.model:
+            sys.exit("[ERROR] --provider and --model are required unless --viz-only")
+        call_llm = make_client(args.provider)
+        print(f"[INFO] provider={args.provider}  model={args.model}")
 
     # --- process
     log_rows: List[Dict[str, str]] = []
