@@ -261,8 +261,39 @@ def extract_json(response_text: str) -> dict:
 _REPO_ROOT_FOR_TOOLS = Path(__file__).resolve().parent.parent.parent
 
 
-def run_visualize(json_path: Path, html_only: bool = False, timeout: int = 300) -> bool:
-    """Call src/visualize_annotation.py on a single JSON. Returns success."""
+def run_wrap_math(json_path: Path, timeout: int = 60) -> bool:
+    """Call wrap_math.py on a single JSON to wrap bare math + normalize
+    schema (statement_latex -> statement). Idempotent. Modifies in place
+    with .bak backup. Returns success (True even if nothing was wrapped)."""
+    script = _REPO_ROOT_FOR_TOOLS / "scripts" / "silver_gold" / "wrap_math.py"
+    if not script.exists():
+        return False
+    try:
+        subprocess.run(
+            ["python3", str(script), str(json_path)],
+            check=True, capture_output=True, timeout=timeout,
+        )
+        return True
+    except subprocess.CalledProcessError as e:
+        msg = (e.stderr or b"").decode(errors="replace")[:200]
+        print(f"    [WARN] wrap_math failed: {msg}")
+        return False
+    except Exception as e:
+        print(f"    [WARN] wrap_math error: {type(e).__name__}: {e}")
+        return False
+
+
+def run_visualize(json_path: Path, html_only: bool = False, timeout: int = 300,
+                  auto_wrap_math: bool = True) -> bool:
+    """Call src/visualize_annotation.py on a single JSON. Returns success.
+
+    By default also runs wrap_math.py first so that legacy/non-v2-schema
+    JSONs render correctly (math gets $..$ wrapping; statement_latex gets
+    copied to statement field). Idempotent — safe to re-run.
+    """
+    if auto_wrap_math:
+        run_wrap_math(json_path)
+
     script = _REPO_ROOT_FOR_TOOLS / "src" / "visualize_annotation.py"
     if not script.exists():
         print(f"    [WARN] visualize: {script} not found")
@@ -320,7 +351,9 @@ def run_downstream(json_path: Path, args: argparse.Namespace) -> None:
     if args.link_foundation:
         run_link_foundation(json_path)
     if args.visualize or args.html_only:
-        run_visualize(json_path, html_only=args.html_only)
+        auto_wrap = getattr(args, "auto_wrap_math", True)
+        run_visualize(json_path, html_only=args.html_only,
+                      auto_wrap_math=auto_wrap)
 
 
 # =============================================================================
@@ -390,6 +423,15 @@ def main() -> int:
     ap.add_argument("--viz-only", action="store_true",
                     help="skip extraction entirely; only run downstream "
                          "(--visualize and/or --link-foundation) on existing JSONs")
+    ap.add_argument("--auto-wrap-math", dest="auto_wrap_math",
+                    action="store_true", default=True,
+                    help="run wrap_math.py on each JSON before --visualize "
+                         "to ensure $..$ markers and v2-schema fallback "
+                         "(default: ON; idempotent)")
+    ap.add_argument("--no-auto-wrap-math", dest="auto_wrap_math",
+                    action="store_false",
+                    help="disable the auto-wrap-math pre-pass before viz "
+                         "(use if you want raw rendering for debugging)")
     args = ap.parse_args()
 
     # --- load prompt template

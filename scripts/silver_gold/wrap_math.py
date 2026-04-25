@@ -131,12 +131,36 @@ def wrap_math_in_text(text: str) -> str:
     return "".join(out)
 
 
-def wrap_math_in_node(node: dict) -> int:
-    """Apply wrap_math_in_text to all string-valued fields a node may have.
-    Returns count of fields modified."""
-    fields_to_wrap = ("name", "statement", "raw_text", "raw_latex",
-                      "clean_text", "definition", "proof_strategy")
+def normalize_node_schema(node: dict) -> int:
+    """Bring v2-schema nodes into legacy schema for the visualizer.
+
+    The current visualize_annotation.py reads `statement` only; the v2
+    extraction prompt produces `statement_latex` (math-wrapped) and
+    `statement_clean` (English). If `statement` is missing/empty but
+    one of those exists, copy it across.
+
+    Returns 1 if a field was added, 0 otherwise.
+    """
     n_changed = 0
+    cur = (node.get("statement") or "").strip() if isinstance(node.get("statement"), str) else ""
+    if not cur:
+        for src_fld in ("statement_latex", "statement_clean"):
+            v = node.get(src_fld)
+            if isinstance(v, str) and v.strip():
+                node["statement"] = v
+                n_changed += 1
+                break
+    return n_changed
+
+
+def wrap_math_in_node(node: dict) -> int:
+    """Normalize schema, then wrap math in all string-valued fields.
+    Returns count of fields modified."""
+    n_changed = normalize_node_schema(node)
+
+    fields_to_wrap = ("name", "statement", "statement_latex",
+                      "raw_text", "raw_latex",
+                      "clean_text", "definition", "proof_strategy")
     for fld in fields_to_wrap:
         v = node.get(fld)
         if isinstance(v, str):
