@@ -98,6 +98,8 @@ KNOWN_OPERATIONS = [
     "evaluate",
     "anomalies",
     "stats",
+    "consensus",
+    "eval",
     "cross_paper",
 ]
 
@@ -207,11 +209,29 @@ def op_download(args) -> None:
 # =============================================================================
 
 def op_parse(args) -> None:
-    """Run Yaron's extractor (LLMVersion/parse_batch.py) as a subprocess.
+    """Run the parse backend selected by --extract-mode.
+
+    Phase 3 dispatch:
+      regex (default)        — Yaron's per-type / LLMVersion path (this body)
+      holistic-multi         — multi-model holistic LLM (Tier B silver-gold)
+      holistic-proof-steps   — holistic LLM with proof-step decomposition (Tier D)
+
+    The legacy --extraction-mode {manual, llm, both} flag still works and is
+    forwarded to LLMVersion/parse_batch.py unchanged in regex mode. NOTE the
+    distinct semantics: --extract-mode (new) selects the BACKEND; the old
+    --extraction-mode selects the manual/llm flavor WITHIN the regex backend.
 
     Subprocess isolation keeps LLMVersion's math_classes namespace from
     colliding with src/'s math_classes namespace in the same Python process.
     """
+    mode = getattr(args, "extract_mode", "regex")
+    if mode == "holistic-multi":
+        return run_holistic_multi_parse(args)
+    if mode == "holistic-proof-steps":
+        return run_holistic_proof_steps_parse(args)
+    if mode != "regex":
+        sys.exit(f"[pipeline] parse: unknown --extract-mode: {mode}")
+
     script = _LLMVERSION_DIR / "parse_batch.py"
     if not script.exists():
         print(f"[pipeline] parse: ERROR: cannot find {script}")
@@ -740,6 +760,48 @@ def main():
                         help="Directory containing gold-standard JSONs "
                              "(for the evaluate operation).")
 
+    # --- Phase 3: tier / extract-mode selection ---
+    parser.add_argument("--extract-mode", type=str, default="regex",
+                        choices=["regex", "holistic-multi", "holistic-proof-steps"],
+                        help="Phase 3: parse backend. "
+                             "'regex' (default) = per-type / LLMVersion (Tier A); "
+                             "'holistic-multi' = multi-LLM holistic via "
+                             "scripts/silver_gold/run_extraction.py (Tier B); "
+                             "'holistic-proof-steps' = holistic with "
+                             "proof-step decomposition (Tier D). NOTE: this is "
+                             "DIFFERENT from --extraction-mode (which is "
+                             "manual/llm/both inside the regex backend).")
+    parser.add_argument("--models-config", type=str, default=None,
+                        help="YAML or JSON listing models for "
+                             "--extract-mode holistic-multi / holistic-proof-steps. "
+                             "Same format as scripts/silver_gold/example_config.yaml.")
+    parser.add_argument("--base-dir", type=str, default=None,
+                        help="Tier B/D root: the alignment_benchmark dir "
+                             "(parent of papers/). Used by holistic-multi mode "
+                             "and by the consensus / eval operations.")
+    parser.add_argument("--registry", type=str, default=None,
+                        help="Tier B/D paper_registry.csv path. Used by "
+                             "holistic-multi mode.")
+    parser.add_argument("--paper-ids", type=str, default="",
+                        help="Comma-separated subset of paper_ids (Tier B/C/D).")
+    parser.add_argument("--limit", type=int, default=0,
+                        help="Cap papers to first N (0 = all). Used by "
+                             "holistic modes and downstream tier ops.")
+    parser.add_argument("--sleep", type=float, default=0.0,
+                        help="Sleep seconds between LLM calls "
+                             "(holistic modes).")
+    parser.add_argument("--no-extraction", action="store_true",
+                        help="In holistic modes, skip extraction; only run "
+                             "downstream ops (validate / consensus / eval) on "
+                             "existing JSONs.")
+    parser.add_argument("--consensus-suffix-a", type=str, default="",
+                        help="Suffix of reference JSONs for the consensus op "
+                             "(default: '' = gold.json).")
+    parser.add_argument("--consensus-suffix-b", type=str, default=None,
+                        help="Suffix of comparison JSONs for the consensus op. "
+                             "If unset, run pairwise vs all suffixes in "
+                             "--models-config.")
+
     args = parser.parse_args()
 
     # Normalize out_dir to an absolute path BEFORE dispatching to any operation.
@@ -774,6 +836,8 @@ def main():
         "evaluate": op_evaluate,
         "anomalies": op_anomalies,
         "stats": op_stats,
+        "consensus": op_consensus,
+        "eval": op_eval,
         "cross_paper": op_cross_paper,
     }
 
@@ -789,6 +853,275 @@ def main():
             continue
 
     print(f"\n[pipeline] Done.")
+
+
+# =============================================================================
+# Phase 3 — holistic-multi parse backend (Tier B)
+# =============================================================================
+# These live at the end of the file so the diff is purely additive.
+# They mirror scripts/silver_gold/run_full_pipeline.py:run_extraction_for_model
+# closely; future cleanup may consolidate.
+
+_RUN_EXTRACTION_TOOL = _REPO_ROOT / "scripts" / "silver_gold" / "run_extraction.py"
+_CONSENSUS_TOOL = _REPO_ROOT / "scripts" / "silver_gold" / "consensus_intersect.py"
+
+
+def _load_models_config(path: str) -> dict:
+    """Load a YAML or JSON models config. Same shape as
+    scripts/silver_gold/example_config.yaml."""
+    p = Path(path)
+    if not p.exists():
+        sys.exit(f"[pipeline] models config not found: {p}")
+    text = p.read_text(encoding="utf-8")
+    if p.suffix.lower() in (".yaml", ".yml"):
+        try:
+            import yaml  # type: ignore
+        except ImportError:
+            sys.exit("[pipeline] PyYAML not installed; convert config to .json "
+                     "or `pip install pyyaml`.")
+        return yaml.safe_load(text)
+    return json.loads(text)
+
+
+def _run_extraction_for_model(model_cfg: dict, args, paper_ids: List[str],
+                              extra_flags: Optional[List[str]] = None) -> int:
+    """Subprocess scripts/silver_gold/run_extraction.py for one model.
+
+    Returns the subprocess exit code (or -1 if env API key missing).
+    Mirrors run_full_pipeline.py:run_extraction_for_model.
+    """
+    import os
+    suffix = model_cfg.get("suffix", f"_{model_cfg['name']}")
+
+    cmd = [sys.executable, str(_RUN_EXTRACTION_TOOL),
+           "--provider", model_cfg["provider"],
+           "--model", model_cfg["model"],
+           "--prompt-file", str(args.prompt_file),
+           "--registry", str(args.registry),
+           "--base-dir", str(args.base_dir),
+           "--out-suffix", suffix,
+           "--max-tokens", str(model_cfg.get("max_tokens", 16384)),
+           "--max-input-chars", str(model_cfg.get("max_input_chars", 200000)),
+           "--resume",
+           "--log", f"silver_pipeline_log_{model_cfg['name']}.csv"]
+    if paper_ids:
+        cmd += ["--paper-ids", ",".join(paper_ids)]
+    if getattr(args, "limit", 0) and args.limit > 0:
+        cmd += ["--limit", str(args.limit)]
+    if getattr(args, "sleep", 0.0) and args.sleep > 0:
+        cmd += ["--sleep", str(args.sleep)]
+    if extra_flags:
+        cmd += extra_flags
+
+    env = os.environ.copy()
+    if model_cfg.get("base_url"):
+        env["OPENAI_BASE_URL"] = model_cfg["base_url"]
+    else:
+        env.pop("OPENAI_BASE_URL", None)
+    key_var = model_cfg.get("api_key_env")
+    if key_var and not env.get(key_var):
+        print(f"[pipeline] holistic: model '{model_cfg['name']}' env "
+              f"{key_var} not set — SKIPPING")
+        return -1
+
+    print(f"\n[pipeline] holistic-multi: extracting with '{model_cfg['name']}' "
+          f"(provider={model_cfg['provider']}, model={model_cfg['model']}, "
+          f"suffix='{suffix}')")
+    return subprocess.run(cmd, env=env).returncode
+
+
+def _validate_holistic_args(args, mode_name: str) -> None:
+    """Sanity-check that Tier B/D required flags are present."""
+    missing = []
+    if not getattr(args, "models_config", None):
+        missing.append("--models-config")
+    if not getattr(args, "base_dir", None):
+        missing.append("--base-dir")
+    if not getattr(args, "registry", None):
+        missing.append("--registry")
+    if not getattr(args, "prompt_file", None):
+        missing.append("--prompt-file")
+    if missing:
+        sys.exit(f"[pipeline] {mode_name}: missing required flag(s): "
+                 f"{', '.join(missing)}")
+
+
+def run_holistic_multi_parse(args) -> None:
+    """Tier B parse backend: holistic LLM extraction across multiple models.
+
+    For each model in --models-config, subprocess run_extraction.py with
+    the model's suffix; --resume on the inner script means already-extracted
+    papers are skipped. Models with `skip_extraction: true` are skipped.
+    """
+    if getattr(args, "no_extraction", False):
+        print("[pipeline] holistic-multi: --no-extraction set; skipping")
+        return
+    _validate_holistic_args(args, "holistic-multi")
+    if not _RUN_EXTRACTION_TOOL.exists():
+        sys.exit(f"[pipeline] holistic-multi: tool not found: "
+                 f"{_RUN_EXTRACTION_TOOL}")
+
+    cfg = _load_models_config(args.models_config)
+    models = cfg.get("models", [])
+    if not models:
+        sys.exit("[pipeline] holistic-multi: config has empty 'models' list")
+
+    paper_ids = [s.strip() for s in (args.paper_ids or "").split(",") if s.strip()]
+    print(f"[pipeline] holistic-multi: {len(models)} model(s); "
+          f"paper_ids={paper_ids or 'all'}")
+
+    for m in models:
+        if m.get("skip_extraction"):
+            print(f"[pipeline] holistic-multi: skip_extraction=true for "
+                  f"'{m['name']}' — leaving existing JSONs in place")
+            continue
+        rc = _run_extraction_for_model(m, args, paper_ids)
+        if rc not in (0, -1):
+            print(f"[pipeline] holistic-multi: '{m['name']}' returned rc={rc}")
+
+
+def run_holistic_proof_steps_parse(args) -> None:
+    """Tier D parse backend: holistic LLM with proof-step decomposition.
+
+    Variant of run_holistic_multi_parse that adds a `--proof-steps` flag to
+    the subprocess invocation. Once a dedicated proof-step prompt / schema
+    lands, this function will switch to that prompt template.
+
+    TODO(phase4): pick a tier-D-specific prompt-file by default if
+    --prompt-file is unset, and validate the JSON output uses the
+    proof-step schema variant.
+    """
+    if getattr(args, "no_extraction", False):
+        print("[pipeline] holistic-proof-steps: --no-extraction set; skipping")
+        return
+    _validate_holistic_args(args, "holistic-proof-steps")
+    if not _RUN_EXTRACTION_TOOL.exists():
+        sys.exit(f"[pipeline] holistic-proof-steps: tool not found: "
+                 f"{_RUN_EXTRACTION_TOOL}")
+
+    cfg = _load_models_config(args.models_config)
+    models = cfg.get("models", [])
+    if not models:
+        sys.exit("[pipeline] holistic-proof-steps: config has empty 'models' list")
+
+    paper_ids = [s.strip() for s in (args.paper_ids or "").split(",") if s.strip()]
+    extra = ["--proof-steps"]  # backend may currently ignore; harmless
+    print(f"[pipeline] holistic-proof-steps: {len(models)} model(s); "
+          f"paper_ids={paper_ids or 'all'} (proof-step variant)")
+
+    for m in models:
+        if m.get("skip_extraction"):
+            print(f"[pipeline] holistic-proof-steps: skip_extraction=true for "
+                  f"'{m['name']}'")
+            continue
+        rc = _run_extraction_for_model(m, args, paper_ids, extra_flags=extra)
+        if rc not in (0, -1):
+            print(f"[pipeline] holistic-proof-steps: '{m['name']}' returned "
+                  f"rc={rc}")
+
+
+# =============================================================================
+# Phase 3 — consensus op (Tier B)
+# =============================================================================
+
+def op_consensus(args) -> None:
+    """Run pairwise consensus_intersect.py vs the reference model.
+
+    Reference model = first entry in --models-config (typically Opus,
+    suffix=""). Comparison models = all subsequent entries. For each,
+    writes:
+      - <base_dir>/agreement_<modelB>_vs_<ref>.csv
+      - papers/<pid>/gold_consensus_<modelB>.json
+    """
+    if not _CONSENSUS_TOOL.exists():
+        print(f"[pipeline] consensus: tool not found: {_CONSENSUS_TOOL}")
+        return
+    if not getattr(args, "base_dir", None):
+        print("[pipeline] consensus: --base-dir required")
+        return
+    if not getattr(args, "models_config", None):
+        print("[pipeline] consensus: --models-config required")
+        return
+
+    cfg = _load_models_config(args.models_config)
+    models = cfg.get("models", [])
+    if len(models) < 2:
+        print("[pipeline] consensus: need >= 2 models in config; skipping")
+        return
+
+    ref = models[0]
+    ref_suffix = ref.get("suffix", "")
+    ref_name = ref.get("name", "ref")
+    print(f"[pipeline] consensus: reference model = '{ref_name}' "
+          f"(suffix='{ref_suffix}')")
+
+    base_dir = Path(args.base_dir)
+    seen = {ref_suffix}
+    for m in models[1:]:
+        suffix_b = m.get("suffix", f"_{m['name']}")
+        name_b = m["name"]
+        if not suffix_b or suffix_b in seen:
+            print(f"[pipeline] consensus: skip '{name_b}' (suffix='{suffix_b}')")
+            continue
+        seen.add(suffix_b)
+
+        out_csv = base_dir / f"agreement_{name_b}_vs_{ref_name}.csv"
+        cmd = [sys.executable, str(_CONSENSUS_TOOL),
+               "--base-dir", str(base_dir),
+               "--suffix-a", ref_suffix,
+               "--suffix-b", suffix_b,
+               "--out-suffix", f"_consensus_{name_b}",
+               "--report-csv", str(out_csv)]
+        if getattr(args, "paper_ids", ""):
+            cmd += ["--paper-ids", args.paper_ids]
+        print(f"[pipeline] consensus: {name_b} vs {ref_name} -> {out_csv.name}")
+        try:
+            subprocess.run(cmd, check=True, timeout=600)
+        except subprocess.CalledProcessError as e:
+            print(f"[pipeline] consensus: '{name_b}' failed rc={e.returncode}")
+        except Exception as e:
+            print(f"[pipeline] consensus: '{name_b}' error: {e}")
+
+
+# =============================================================================
+# Phase 3 — eval op (Tier C: T1 grading vs hand-gold)
+# =============================================================================
+
+def op_eval(args) -> None:
+    """T1 evaluation: grade extracted JSONs against hand-gold JSONs.
+
+    Delegates to existing src/evaluate_extraction.py CLI on a per-file basis.
+    TODO(phase4): once `match_nodes` is lifted into src/graph_alignment.py
+    as `match_same_paper` (per docs/graph_compare_design.md Phase 2), call
+    that library function in-process and compute precision_recall_f1
+    properly with bootstrap CI.
+    """
+    if not getattr(args, "gold_dir", None):
+        print("[pipeline] eval: --gold-dir required")
+        return
+
+    print(f"[pipeline] eval: gold={args.gold_dir} pred={args.out_dir}")
+
+    eval_tool = _SRC_DIR / "evaluate_extraction.py"
+    if not eval_tool.exists():
+        print(f"[pipeline] eval: {eval_tool} not found; nothing to do")
+        return
+    json_paths = _list_jsons(args.out_dir)
+    gold_dir = Path(args.gold_dir)
+    n_eval = 0
+    for jp in json_paths:
+        gold_candidate = gold_dir / jp.name
+        if not gold_candidate.exists():
+            continue
+        cmd = [sys.executable, str(eval_tool),
+               "--extracted", str(jp),
+               "--gold", str(gold_candidate)]
+        try:
+            subprocess.run(cmd, check=False, timeout=120)
+            n_eval += 1
+        except Exception as e:
+            print(f"[pipeline] eval: {jp.name} FAILED: {e}")
+    print(f"[pipeline] eval: graded {n_eval} pairs")
 
 
 if __name__ == "__main__":

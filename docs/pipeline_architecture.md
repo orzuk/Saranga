@@ -75,14 +75,15 @@ Why this beats separate Python drivers:
 
 | Component | Current state | Target state |
 |---|---|---|
-| `src/run_pipeline.py` | regex-only parse, fixed dispatch (Yaron) | extended: holistic-multi mode, consensus stage, eval stage |
-| `scripts/silver_gold/run_extraction.py` | standalone multi-provider runner | becomes the holistic-multi backend that run_pipeline.py invokes |
-| `scripts/silver_gold/run_full_pipeline.py` | standalone Tier B driver (current) | replaced by `scripts/run_silver_gold.sh` calling run_pipeline.py |
-| `scripts/silver_gold/consensus_intersect.py` | standalone | becomes the `consensus` stage backend |
-| `src/validate_annotation.py` | standalone | becomes the `validate` stage backend (no change needed; subprocess from run_pipeline) |
-| `src/visualize_annotation.py`, `src/link_to_foundation.py` | standalone | already used as backends |
-| Anomaly detector | inline in run_pipeline.py | factor out into `src/anomaly_detect.py` (cleaner) |
-| `scripts/run_alignment_benchmark.py` | standalone Tier E driver | becomes one of the wrappers, or stays standalone (it's already thin) |
+| `src/run_pipeline.py` | ✅ Phase 3: extended with `--extract-mode`, `--models-config`, `consensus`/`eval` ops | extended: holistic-multi mode, consensus stage, eval stage |
+| `scripts/silver_gold/run_extraction.py` | ✅ wired as the holistic-multi backend via subprocess | becomes the holistic-multi backend that run_pipeline.py invokes |
+| `scripts/silver_gold/run_full_pipeline.py` | ⚠️ kept working for in-flight Tier B; superseded by `scripts/run_silver_gold.sh` (Phase 4 will retire) | replaced by `scripts/run_silver_gold.sh` calling run_pipeline.py |
+| `scripts/silver_gold/consensus_intersect.py` | ✅ wired as `consensus` op backend (and `eval` op backend pending Phase 4 lift) | becomes the `consensus` stage backend |
+| `src/validate_annotation.py` | ✅ wired as `validate` op backend (subprocess) | becomes the `validate` stage backend (no change needed; subprocess from run_pipeline) |
+| `src/visualize_annotation.py`, `src/link_to_foundation.py` | ✅ already wired as backends | already used as backends |
+| Anomaly detector | ✅ already factored out as `src/anomaly_detection.py` | factor out into `src/anomaly_detect.py` (cleaner) |
+| `scripts/run_alignment_benchmark.py` | ✅ stays standalone; `scripts/run_alignment.sh` now wraps it | becomes one of the wrappers, or stays standalone (it's already thin) |
+| Five tier wrapper scripts | ✅ Phase 3: `scripts/run_{corpus,silver_gold,gold_eval,high_res,alignment}.sh` | new — one per tier |
 
 ## 5. Phase 2 — light additions (TODAY, ~1 hour)
 
@@ -324,3 +325,66 @@ the Phase 4 inventory.
 - **Do not** rewrite `src/run_pipeline.py` in a single big-bang commit. Migrate operation-by-operation with backward compat.
 - **Do not** unify holistic-multi and per-type backends — they have different output paths and different cost profiles. Two backends, one dispatcher.
 - **Do not** preempt the master refactor while the silver-gold experiment is producing data — the experiment is using the standalone scripts and that's fine.
+
+## 11. Phase 4 cleanup handoff (seeded by the Phase 3 agent, 2026-04-22)
+
+Files / sections observed by the Phase 3 refactor as becoming obsolete or
+duplicated. **Do not delete without Or's explicit OK** — the Phase 4
+agent should produce a `docs/cleanup_proposal.md` first; a second run
+executes approved deletions.
+
+Likely-obsolete after Phase 3 lands:
+
+1. **`scripts/silver_gold/run_full_pipeline.py`** — fully superseded by
+   `scripts/run_silver_gold.sh` + `src/run_pipeline.py --extract-mode
+   holistic-multi`. Kept working through Phase 3 to avoid breaking
+   in-flight extractions; retire once silver-gold experiments switch to
+   the new wrapper. All five stages (sources, extract, validate,
+   anomalies, link, viz, consensus) are now reproduced in run_pipeline.py.
+
+2. **Duplication between `src/evaluate_extraction.py` and the new `eval`
+   op in `src/run_pipeline.py`** — the Phase 3 `eval` op currently
+   subprocesses `consensus_intersect.py` for matching and reports P/R/F1.
+   `evaluate_extraction.py` does similar grading via a separate code
+   path. Per `docs/graph_compare_design.md` Phase 4, fold both into
+   `src/graph_compare.py:precision_recall_f1` and have the run_pipeline
+   `eval` op call that library. Until then, both coexist.
+
+3. **`match_nodes` in `scripts/silver_gold/consensus_intersect.py`** —
+   should be lifted into `src/graph_alignment.py` (later
+   `src/graph_compare.py`) as `match_same_paper`. Phase 3 deferred this
+   lift to keep the diff mechanical; the `eval` op currently invokes
+   consensus_intersect.py via subprocess instead.
+
+4. **`scripts/parse_smoke_test.sh`** — still works (regex mode is the
+   default); could optionally be extended with smoke tests for each new
+   tier wrapper. No deletion warranted.
+
+5. **Pair check: `src/link_to_foundation.py` vs any
+   `scripts/foundation_linker.py`** — flagged in §8 as a potential
+   old/new duplication; Phase 3 did not investigate.
+
+6. **Various `scripts/debug_*.sh` / `scripts/find_herald_*.sh`** —
+   Herald-investigation one-offs from earlier work. Not touched in
+   Phase 3. Cleanup agent should classify.
+
+Phase 3 explicitly preserved:
+
+- `src/LLMVersion/` — Yaron's area; **not modified**.
+- `scripts/silver_gold/run_full_pipeline.py` — kept working (in-flight
+  extraction depends on it).
+- `src/run_pipeline.py` already had clean dict-based dispatch (line
+  ~768 `dispatch = {...}`); no operation-registry restructure was
+  needed. Phase 3 only **added** ops and the `--extract-mode` flag.
+
+Risks introduced in Phase 3 to investigate during cleanup:
+
+- The new `consensus` and `eval` ops shell out to scripts under
+  `scripts/silver_gold/`. If those scripts move during Phase 4,
+  update the `_CONSENSUS_TOOL` constants in `src/run_pipeline.py`.
+- `--extract-mode {holistic-multi, holistic-proof-steps}` and
+  `--models-config` are wired into `dispatch_parse`; the legacy
+  `--extraction-mode {manual, llm, both}` flag is preserved untouched
+  for backward compat with `parse_smoke_test.sh` and Yaron's batch
+  driver. These two flags (`--extract-mode` vs `--extraction-mode`)
+  are intentionally distinct; see the run_pipeline.py docstring.
