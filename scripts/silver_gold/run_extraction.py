@@ -48,6 +48,7 @@ import csv
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -254,6 +255,75 @@ def extract_json(response_text: str) -> dict:
 
 
 # =============================================================================
+# Downstream operations: visualize + link to foundation
+# =============================================================================
+
+_REPO_ROOT_FOR_TOOLS = Path(__file__).resolve().parent.parent.parent
+
+
+def run_visualize(json_path: Path, html_only: bool = False, timeout: int = 300) -> bool:
+    """Call src/visualize_annotation.py on a single JSON. Returns success."""
+    script = _REPO_ROOT_FOR_TOOLS / "src" / "visualize_annotation.py"
+    if not script.exists():
+        print(f"    [WARN] visualize: {script} not found")
+        return False
+    args = ["python3", str(script), str(json_path)]
+    args.append("--html-only" if html_only else "--html")
+    try:
+        subprocess.run(args, check=True, capture_output=True, timeout=timeout)
+        out_html = json_path.with_suffix(".html")
+        if out_html.exists():
+            print(f"    -> viz: {out_html.name}")
+        return True
+    except subprocess.TimeoutExpired:
+        print(f"    [WARN] visualize timed out after {timeout}s")
+        return False
+    except subprocess.CalledProcessError as e:
+        msg = (e.stderr or b"").decode(errors="replace")[:200]
+        print(f"    [WARN] visualize failed: {msg}")
+        return False
+    except Exception as e:
+        print(f"    [WARN] visualize error: {type(e).__name__}: {e}")
+        return False
+
+
+def run_link_foundation(json_path: Path, timeout: int = 180) -> bool:
+    """Call src/link_to_foundation.py to augment a JSON with foundation-graph
+    edges. Writes <stem>.linked.json next to the input."""
+    script = _REPO_ROOT_FOR_TOOLS / "src" / "link_to_foundation.py"
+    if not script.exists():
+        print(f"    [WARN] link: {script} not found")
+        return False
+    linked_path = json_path.with_suffix(".linked.json")
+    args = ["python3", str(script),
+            "--paper-json", str(json_path),
+            "--output", str(linked_path)]
+    try:
+        subprocess.run(args, check=True, capture_output=True, timeout=timeout)
+        if linked_path.exists():
+            print(f"    -> linked: {linked_path.name}")
+        return True
+    except subprocess.TimeoutExpired:
+        print(f"    [WARN] link timed out after {timeout}s")
+        return False
+    except subprocess.CalledProcessError as e:
+        msg = (e.stderr or b"").decode(errors="replace")[:200]
+        print(f"    [WARN] link failed: {msg}")
+        return False
+    except Exception as e:
+        print(f"    [WARN] link error: {type(e).__name__}: {e}")
+        return False
+
+
+def run_downstream(json_path: Path, args: argparse.Namespace) -> None:
+    """Run any requested post-extraction operations on a single JSON."""
+    if args.link_foundation:
+        run_link_foundation(json_path)
+    if args.visualize or args.html_only:
+        run_visualize(json_path, html_only=args.html_only)
+
+
+# =============================================================================
 # Main
 # =============================================================================
 
@@ -304,6 +374,18 @@ def main() -> int:
                     help="only run on papers whose json_status=extracted (default)")
     ap.add_argument("--all-papers", dest="only_extracted", action="store_false",
                     help="run on all papers in registry, not just extracted ones")
+    # Downstream operations after extraction (chain like a pipeline)
+    ap.add_argument("--visualize", action="store_true",
+                    help="render PNG + HTML for each successful (or skipped) JSON "
+                         "via src/visualize_annotation.py")
+    ap.add_argument("--html-only", action="store_true",
+                    help="render only HTML (faster than --visualize, no PNG)")
+    ap.add_argument("--link-foundation", action="store_true",
+                    help="link each output JSON to the 298K foundation graph "
+                         "via src/link_to_foundation.py; writes <stem>.linked.json")
+    ap.add_argument("--viz-only", action="store_true",
+                    help="skip extraction entirely; only run downstream "
+                         "(--visualize and/or --link-foundation) on existing JSONs")
     args = ap.parse_args()
 
     # --- load prompt template
@@ -340,14 +422,38 @@ def main() -> int:
     ok = fail = skip = 0
     t_start = time.time()
 
+    # Pre-flight: if any downstream is requested, ensure tools exist
+    if (args.visualize or args.html_only or args.link_foundation):
+        for tool, flag in [
+            ("src/visualize_annotation.py", args.visualize or args.html_only),
+            ("src/link_to_foundation.py", args.link_foundation),
+        ]:
+            if flag and not (_REPO_ROOT_FOR_TOOLS / tool).exists():
+                print(f"[WARN] requested downstream tool not found: {tool}")
+
     for i, row in enumerate(rows, 1):
         pid = row["paper_id"]
         out_dir = args.base_dir / "papers" / pid
         out_path = out_dir / f"gold{args.out_suffix}.json"
 
+        # --viz-only mode: skip the LLM call entirely; just run downstream
+        # on whatever JSON already exists.
+        if args.viz_only:
+            if out_path.exists():
+                print(f"[{i}/{len(rows)}] {pid}: viz-only on {out_path.name}")
+                run_downstream(out_path, args)
+                ok += 1
+            else:
+                print(f"[{i}/{len(rows)}] {pid}: SKIP (no {out_path.name})")
+                skip += 1
+            continue
+
         if args.resume and out_path.exists():
-            print(f"[{i}/{len(rows)}] {pid}: SKIP (exists)")
+            print(f"[{i}/{len(rows)}] {pid}: SKIP extraction (exists)")
             skip += 1
+            # Still run downstream on the existing JSON if requested
+            if args.visualize or args.html_only or args.link_foundation:
+                run_downstream(out_path, args)
             continue
 
         tex_path = find_tex(row, args.base_dir)
@@ -406,6 +512,11 @@ def main() -> int:
             "elapsed_s": f"{dt:.1f}",
         })
         ok += 1
+
+        # Pipeline: run requested downstream operations on the new JSON.
+        if args.visualize or args.html_only or args.link_foundation:
+            run_downstream(out_path, args)
+
         if args.sleep > 0:
             time.sleep(args.sleep)
 

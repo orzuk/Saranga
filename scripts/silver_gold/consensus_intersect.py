@@ -42,6 +42,7 @@ sys.path.insert(0, str(_REPO_ROOT / "src"))
 from graph_alignment import (  # noqa: E402
     tokenize,
     node_text,
+    type_compat,
     _raw_jaccard as jaccard,
 )
 
@@ -64,30 +65,36 @@ def match_nodes(
     nodes_a: List[Dict],
     nodes_b: List[Dict],
     name_match_required: bool = False,
-    jaccard_threshold: float = 0.6,
+    jaccard_threshold: float = 0.4,
+    match_mode: str = "many-to-many",
+    type_compat_threshold: float = 0.5,
 ) -> List[Tuple[int, int]]:
-    """Return list of (i, j) such that nodes_a[i] is judged equivalent to
-    nodes_b[j].
+    """Return list of (i, j) where nodes_a[i] corresponds to nodes_b[j].
 
-    Two-pass:
-      Pass 1: exact (type, normalized name) match.
-      Pass 2: type match + Jaccard(text) >= threshold for the rest, greedy.
+    Modes:
+      - "many-to-many" (DEFAULT): each B node matches at most one A node;
+        each A node may match MULTIPLE B nodes. Handles granularity mismatch
+        where one model aggregates concepts and the other splits them
+        (typical when comparing different LLMs' extractions).
+      - "strict" (1-to-1): both sides match at most once. Use when both views
+        have the same granularity (rare in multi-LLM consensus).
+      - name_match_required=True: Pass 1 only (exact name); strictest.
 
-    Set ``name_match_required=True`` to disable Pass 2 (strictest).
-
-    Each node matches at most once.
+    Pass 2 (the fallback) uses NAME-only Jaccard with the type_compat matrix
+    from graph_alignment.py (so theorem↔lemma scores high, theorem↔definition
+    scores low). Names are short and stable; full statement text varies too
+    much to be reliable.
     """
     matches: List[Tuple[int, int]] = []
     used_b: Set[int] = set()
 
-    # Index B by (type, canonical-name) for Pass 1
+    # Pass 1: exact (type, canonical-name) — always one-to-one
     name_index_b: Dict[Tuple[str, Tuple[str, ...]], List[int]] = {}
     for j, nb in enumerate(nodes_b):
         key = (node_type(nb), name_canonical(nb.get("name", "")))
         if key[1]:
             name_index_b.setdefault(key, []).append(j)
 
-    # Pass 1: exact name + type (token-set equality after canonicalization)
     for i, na in enumerate(nodes_a):
         key = (node_type(na), name_canonical(na.get("name", "")))
         if not key[1]:
@@ -99,23 +106,58 @@ def match_nodes(
             used_b.add(j)
             break
 
-    if name_match_required:
+    if name_match_required or match_mode == "name-only":
         return matches
 
-    # Pass 2: type + Jaccard text fallback for nodes still unmatched
+    # Pass 2: name-token Jaccard with type_compat
+    if match_mode == "many-to-many":
+        # Each unmatched B node finds its best-matching A by name-Jaccard.
+        # A nodes can be claimed by multiple B's (no used_a constraint).
+        for j, nb in enumerate(nodes_b):
+            if j in used_b:
+                continue
+            name_b_tokens = tokenize(str(nb.get("name", "")))
+            if not name_b_tokens:
+                continue
+            tb = node_type(nb)
+            best_i, best_score = -1, 0.0
+            for i, na in enumerate(nodes_a):
+                ta = node_type(na)
+                tc = type_compat(ta, tb)
+                if tc < type_compat_threshold:
+                    continue
+                name_a_tokens = tokenize(str(na.get("name", "")))
+                if not name_a_tokens:
+                    continue
+                score = jaccard(name_a_tokens, name_b_tokens) * tc
+                if score > best_score:
+                    best_i, best_score = i, score
+            if best_i >= 0 and best_score >= jaccard_threshold:
+                matches.append((best_i, j))
+                used_b.add(j)
+        return matches
+
+    # match_mode == "strict": 1-to-1 Pass 2 on name tokens
     matched_a = {i for i, _ in matches}
     for i, na in enumerate(nodes_a):
         if i in matched_a:
             continue
         ta = node_type(na)
-        text_a = tokenize(node_text(na))
-        if not text_a:
+        name_a_tokens = tokenize(str(na.get("name", "")))
+        if not name_a_tokens:
             continue
         best_j, best_score = -1, 0.0
         for j, nb in enumerate(nodes_b):
-            if j in used_b or node_type(nb) != ta:
+            if j in used_b:
                 continue
-            score = jaccard(text_a, tokenize(node_text(nb)))
+            tb = node_type(nb)
+            tc = type_compat(ta, tb)
+            if tc < type_compat_threshold:
+                continue
+            name_b_tokens = tokenize(str(nb.get("name", "")))
+            if not name_b_tokens:
+                continue
+            score = jaccard(name_a_tokens, name_b_tokens) * tc
             if score > best_score:
                 best_j, best_score = j, score
         if best_j >= 0 and best_score >= jaccard_threshold:
