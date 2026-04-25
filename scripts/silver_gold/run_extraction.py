@@ -354,9 +354,11 @@ def main() -> int:
                     help="provider-specific model string "
                          "(e.g. 'qwen/qwen3.6-35b-a3b', 'gemini-2.5-pro', "
                          "'claude-opus-4-7'). Required unless --viz-only.")
-    ap.add_argument("--out-suffix", required=True,
+    ap.add_argument("--out-suffix", default=None,
                     help="suffix for output file, e.g. _qwen -> gold_qwen.json. "
-                         "Use --out-suffix '' for downstream on existing gold.json.")
+                         "Required for extraction mode. Ignored in --viz-only "
+                         "mode (which auto-discovers ALL gold*.json files in "
+                         "each paper directory).")
     ap.add_argument("--source-type", default="paper",
                     choices=["paper", "textbook"])
     ap.add_argument("--limit", type=int, default=0,
@@ -418,10 +420,12 @@ def main() -> int:
     # --- create LLM client (skip if downstream-only)
     if args.viz_only:
         call_llm = None
-        print("[INFO] --viz-only mode: no LLM client needed")
+        print("[INFO] --viz-only mode: no LLM client, auto-discovering gold*.json")
     else:
         if not args.provider or not args.model:
             sys.exit("[ERROR] --provider and --model are required unless --viz-only")
+        if args.out_suffix is None:
+            sys.exit("[ERROR] --out-suffix is required (unless --viz-only)")
         call_llm = make_client(args.provider)
         print(f"[INFO] provider={args.provider}  model={args.model}")
 
@@ -442,19 +446,30 @@ def main() -> int:
     for i, row in enumerate(rows, 1):
         pid = row["paper_id"]
         out_dir = args.base_dir / "papers" / pid
-        out_path = out_dir / f"gold{args.out_suffix}.json"
 
-        # --viz-only mode: skip the LLM call entirely; just run downstream
-        # on whatever JSON already exists.
+        # --viz-only mode: skip LLM, auto-discover ALL extraction JSONs in the
+        # paper folder (gold.json, gold_<model>.json, etc.) and run downstream
+        # on each one. Excludes .linked.json files (those are downstream outputs).
         if args.viz_only:
-            if out_path.exists():
-                print(f"[{i}/{len(rows)}] {pid}: viz-only on {out_path.name}")
-                run_downstream(out_path, args)
-                ok += 1
-            else:
-                print(f"[{i}/{len(rows)}] {pid}: SKIP (no {out_path.name})")
+            if not out_dir.exists():
+                print(f"[{i}/{len(rows)}] {pid}: SKIP (folder missing)")
                 skip += 1
+                continue
+            candidates = sorted(out_dir.glob("gold*.json"))
+            candidates = [p for p in candidates if not p.name.endswith(".linked.json")]
+            if not candidates:
+                print(f"[{i}/{len(rows)}] {pid}: SKIP (no gold*.json found)")
+                skip += 1
+                continue
+            print(f"[{i}/{len(rows)}] {pid}: viz-only on {len(candidates)} extraction(s)")
+            for cand in candidates:
+                print(f"  -> {cand.name}")
+                run_downstream(cand, args)
+            ok += 1
             continue
+
+        # Extraction mode: single output path determined by --out-suffix
+        out_path = out_dir / f"gold{args.out_suffix}.json"
 
         if args.resume and out_path.exists():
             print(f"[{i}/{len(rows)}] {pid}: SKIP extraction (exists)")
