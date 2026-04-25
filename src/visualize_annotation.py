@@ -64,11 +64,91 @@ _LATEX_FIXES = {
     r"\lVert": r"\|", r"\rVert": r"\|",  # \lVert/\rVert not supported
     r"\coloneqq": r":=",                 # \coloneqq not supported
     r"\pmod": r"\mathrm{mod}",           # \pmod not supported
+    r"\defeq": r":=",                    # \defeq (custom) → :=
+    r"\eqdef": r":=",                    # \eqdef (custom) → :=
+    # Common author-defined number-set shorthands (\R, \Z, \N, \Q, \C):
+    r"\R": r"\mathbb{R}",
+    r"\Z": r"\mathbb{Z}",
+    r"\N": r"\mathbb{N}",
+    r"\Q": r"\mathbb{Q}",
+    r"\C": r"\mathbb{C}",
+    # Common author shortcuts:
+    r"\eps": r"\varepsilon",
+    r"\hdots": r"\ldots",
+    r"\dotsc": r"\ldots",
+    r"\dotsb": r"\cdots",
     # Sizing delimiters — not supported standalone, replace with plain:
     r"\big|": "|", r"\Big|": "|", r"\bigg|": "|",
     r"\big(": "(", r"\Big(": "(", r"\big)": ")", r"\Big)": ")",
     r"\bigg(": "(", r"\Bigg(": "(", r"\bigg)": ")", r"\Bigg)": ")",
 }
+
+# Whitelist of LaTeX commands matplotlib mathtext supports natively. Any
+# \command NOT in this set gets wrapped in \mathrm{...} as a graceful
+# fallback so that rendering doesn't crash on author-defined macros.
+# Keep this list LARGE enough to avoid false positives (which render as
+# weird upright text); err toward inclusion.
+_KNOWN_MATHTEXT_COMMANDS = frozenset({
+    # Font/style:
+    'mathbb', 'mathcal', 'mathrm', 'mathbf', 'mathit', 'mathsf', 'mathtt',
+    'boldsymbol', 'bm', 'text', 'textbf', 'textit', 'operatorname',
+    # Greek lower:
+    'alpha', 'beta', 'gamma', 'delta', 'epsilon', 'varepsilon', 'zeta', 'eta',
+    'theta', 'vartheta', 'iota', 'kappa', 'lambda', 'mu', 'nu', 'xi',
+    'pi', 'varpi', 'rho', 'varrho', 'sigma', 'varsigma', 'tau', 'upsilon',
+    'phi', 'varphi', 'chi', 'psi', 'omega',
+    # Greek upper:
+    'Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta',
+    'Theta', 'Iota', 'Kappa', 'Lambda', 'Mu', 'Nu', 'Xi', 'Omicron',
+    'Pi', 'Rho', 'Sigma', 'Tau', 'Upsilon', 'Phi', 'Chi', 'Psi', 'Omega',
+    # Operators:
+    'frac', 'sqrt', 'sum', 'prod', 'int', 'iint', 'iiint', 'oint',
+    'bigcup', 'bigcap', 'bigsqcup',
+    'lim', 'liminf', 'limsup', 'inf', 'sup', 'min', 'max', 'arg',
+    'log', 'ln', 'exp', 'sin', 'cos', 'tan', 'cot', 'sec', 'csc',
+    'sinh', 'cosh', 'tanh', 'arcsin', 'arccos', 'arctan',
+    'det', 'dim', 'gcd', 'ker', 'deg', 'hom',
+    # Relations:
+    'in', 'notin', 'ni', 'subset', 'supset', 'subseteq', 'supseteq',
+    'subsetneq', 'supsetneq', 'cap', 'cup', 'setminus', 'emptyset',
+    'leq', 'geq', 'neq', 'leqq', 'geqq', 'leqslant', 'geqslant',
+    'lneq', 'gneq', 'approx', 'sim', 'simeq', 'asymp',
+    'equiv', 'cong', 'propto', 'parallel', 'perp', 'mid', 'nmid',
+    'lessgtr', 'gtrless', 'lll', 'ggg',
+    # Logic:
+    'forall', 'exists', 'nexists', 'land', 'lor', 'neg', 'lnot',
+    # Arrows:
+    'to', 'gets', 'mapsto', 'rightarrow', 'leftarrow', 'leftrightarrow',
+    'Rightarrow', 'Leftarrow', 'Leftrightarrow',
+    'longrightarrow', 'longleftarrow', 'longleftrightarrow',
+    'hookrightarrow', 'hookleftarrow', 'rightharpoonup', 'leftharpoonup',
+    # Basic:
+    'pm', 'mp', 'times', 'div', 'cdot', 'cdots', 'ldots', 'vdots', 'ddots',
+    'partial', 'nabla', 'infty', 'aleph', 'hbar',
+    'oplus', 'ominus', 'otimes', 'odot', 'star', 'ast', 'circ',
+    'dagger', 'ddagger', 'top', 'bot',
+    # Modifiers:
+    'tilde', 'hat', 'widetilde', 'widehat', 'bar', 'overline', 'underline',
+    'dot', 'ddot', 'vec', 'check', 'breve', 'acute', 'grave',
+    'overbrace', 'underbrace', 'overrightarrow', 'overleftarrow',
+    # Brackets/sizing (handled separately by regex, but include for safety):
+    'left', 'right', 'big', 'Big', 'bigg', 'Bigg',
+    # Misc:
+    'binom', 'choose', 'atop', 'over', 'pmod', 'mod',
+    'ell', 'wp', 'Re', 'Im', 'imath', 'jmath',
+    'square', 'blacksquare', 'triangle', 'triangledown',
+    'angle', 'sphericalangle', 'measuredangle',
+    'sharp', 'flat', 'natural',
+    'spadesuit', 'clubsuit', 'heartsuit', 'diamondsuit',
+    'triangleq', 'rtimes', 'ltimes', 'between',
+    'quad', 'qquad', 'thinspace',
+    # Colors / spacing — passed through as no-ops by mathtext typically:
+    'displaystyle', 'textstyle', 'scriptstyle', 'scriptscriptstyle',
+    'limits', 'nolimits',
+    # newcommand (not math but appears in raw_text dumps):
+    'newcommand', 'renewcommand', 'begin', 'end', 'item', 'label', 'ref',
+    'cite', 'caption', 'tag', 'eqref',
+})
 
 # Regex-based fixes: commands like \ge that are prefixes of valid commands (\geq)
 # Must use regex with word boundary to avoid breaking \geq -> \geqq
@@ -82,14 +162,43 @@ _LATEX_REGEX_FIXES = [
     (_re.compile(r'\\right\s*([)\]|.])'), r'\1'),
 ]
 
+
+def _fallback_unknown_commands(text):
+    """For any \\command whose name is NOT in _KNOWN_MATHTEXT_COMMANDS, wrap
+    it in \\mathrm{} so it renders as upright text instead of crashing
+    matplotlib's mathtext parser.
+
+    This handles author-defined macros like \\Lun, \\Lsym, \\charfct, \\Ncut
+    that appear in faithful LaTeX-source extractions but aren't in the paper
+    preamble we have access to.
+    """
+    if not text:
+        return text
+
+    def replace(m):
+        cmd = m.group(1)
+        if cmd in _KNOWN_MATHTEXT_COMMANDS:
+            return m.group(0)
+        return r'\mathrm{' + cmd + '}'
+    return _re.sub(r'\\([A-Za-z]+)', replace, text)
+
 def _sanitize_math(text):
-    """Replace unsupported LaTeX commands with matplotlib-compatible equivalents."""
+    """Replace unsupported LaTeX commands with matplotlib-compatible equivalents.
+
+    Three passes:
+      1. Explicit literal substitutions in _LATEX_FIXES (\\R → \\mathbb{R}, etc.)
+      2. Regex-based fixes in _LATEX_REGEX_FIXES (\\ge → \\geq, etc.)
+      3. Catch-all fallback: any \\command not in _KNOWN_MATHTEXT_COMMANDS
+         gets wrapped in \\mathrm{} so unknown author macros render as
+         upright text instead of crashing matplotlib mathtext.
+    """
     if not text:
         return text
     for old, new in _LATEX_FIXES.items():
         text = text.replace(old, new)
     for pattern, repl in _LATEX_REGEX_FIXES:
         text = pattern.sub(repl, text)
+    text = _fallback_unknown_commands(text)
     return text
 
 
