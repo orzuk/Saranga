@@ -278,13 +278,43 @@ Cross-paper alignment (T3)  & ---        & ---        & ---        & ---        
 \end{table}
 ```
 
-## 8. Schedule (working backwards from May 6)
+## 8. Phase 4 — codebase cleanup (after refactor settles, ~1-2h)
+
+After Phase 3 lands, several scripts become obsolete or duplicative.
+Run a dedicated cleanup agent that produces a **proposal** (not deletions).
+
+Cleanup agent mandate:
+1. **Inventory** all `.py` and `.sh` files in `scripts/` and `src/`, with
+   last-mod dates and import/subprocess relationships across the codebase.
+2. **Classify** each as `keep / merge / delete / unsure` with one-line
+   justification per file.
+3. **Yaron-respect**: anything in `src/LLMVersion/` or files touched by
+   Yaron in the last 30 days defaults to `unsure` — needs his sign-off.
+4. **Output**: `docs/cleanup_proposal.md` for Or's review. **No deletions
+   without explicit OK.** A second agent run executes approved deletions.
+
+Likely candidates already visible:
+- `scripts/silver_gold/run_full_pipeline.py` — replaced by
+  `scripts/run_silver_gold.sh` if Phase 3 absorbs holistic-multi into
+  master pipeline.
+- Various `scripts/debug_*.sh` / `scripts/find_*.sh` — Herald-investigation
+  one-offs that may no longer be used.
+- Pairs like `link_to_foundation.py` vs `foundation_linker.py` —
+  potential old/new duplication.
+- Commented-out / dead code blocks in larger files.
+
+The Phase 3 agent should leave a **handoff note** at the bottom of this
+doc listing files it observed becoming obsolete during refactor, to seed
+the Phase 4 inventory.
+
+## 9. Schedule (working backwards from May 6)
 
 | Date | Action |
 |---|---|
 | 2026-04-25 (today) | Doc + Phase 2 light changes (in flight) |
-| 2026-04-25 to 2026-04-27 | Silver-gold extraction running on cluster (deepseek + 2nd model); manual inspection of LLM discrepancies on paper1 |
+| 2026-04-25 to 2026-04-27 | Silver-gold extraction on cluster; manual inspection of LLM discrepancies on paper1/2/5 |
 | 2026-04-26 to 2026-04-29 | Phase 3 master refactor (~6-8h, in 2 blocks) |
+| 2026-04-29 to 2026-04-30 | **Phase 4 cleanup proposal → Or review → deletions** |
 | 2026-04-28 to 2026-05-02 | Consensus computed; write up Section 6 (silver-gold methodology) |
 | 2026-05-03 to 2026-05-05 | Paper polish, figures, references |
 | 2026-05-06 | Submit |
