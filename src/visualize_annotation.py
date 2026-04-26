@@ -34,6 +34,7 @@ NODE_COLORS = {
     "algorithm":   {"header": "#2471A3", "body": "#D4E6F1"},
     "equation":    {"header": "#5DADE2", "body": "#EBF5FB"},
     "proposition": {"header": "#B03A2E", "body": "#FADBD8"},
+    "property":    {"header": "#B03A2E", "body": "#FADBD8"},   # same as proposition
     "proof":       {"header": "#8E44AD", "body": "#E8DAEF"},
     "proof_step":  {"header": "#A569BD", "body": "#F4ECF7"},
     "claim":       {"header": "#E74C3C", "body": "#FDEDEC"},
