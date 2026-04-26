@@ -46,6 +46,22 @@ NODE_COLORS = {
 DEFAULT_COLOR = {"header": "#566573", "body": "#EAECEE"}
 PROOF_COLOR = "#E8DAEF"
 
+
+def _as_list(v):
+    """Coerce a list-or-string node field to a list of strings.
+
+    Some agents emit `input`/`output`/`assumptions` as a single string
+    instead of a list. Iterating a string char-by-char makes the
+    visualizer render one row per character — defend against this here.
+    """
+    if v is None:
+        return []
+    if isinstance(v, str):
+        return [v] if v.strip() else []
+    if isinstance(v, list):
+        return v
+    return [str(v)]
+
 # ── Layout constants (shared between draw_dag and draw_foundation_ghosts) ──
 MIN_BOX_W = 3.0
 MAX_BOX_W = 6.0
@@ -1048,15 +1064,15 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         name = n.get("name") or ""
         lines.append(f"{n['id']}: {name}" if name else n['id'])
         if ntype in ("theorem", "lemma", "corollary", "proposition", "claim"):
-            for a in (n.get("assumptions") or [])[:MAX_LINES_PER_SECTION]:
+            for a in _as_list(n.get("assumptions"))[:MAX_LINES_PER_SECTION]:
                 lines.append(_shorten(_prepare_for_display(a), 60))
-            for c in (n.get("conclusions") or [])[:MAX_LINES_PER_SECTION]:
+            for c in _as_list(n.get("conclusions"))[:MAX_LINES_PER_SECTION]:
                 lines.append(_shorten(_prepare_for_display(c), 60))
             for ps in (n.get("proof_info") or []):
                 if ps: lines.append(_shorten(_prepare_for_display(f"Proof: {ps}"), 60))
         elif ntype == "algorithm" and (n.get("input") or n.get("output")):
-            for x in (n.get("input") or []): lines.append(_shorten(x, 60))
-            for x in (n.get("output") or []): lines.append(_shorten(x, 60))
+            for x in _as_list(n.get("input")): lines.append(_shorten(x, 60))
+            for x in _as_list(n.get("output")): lines.append(_shorten(x, 60))
         else:
             raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
             lines.append(_shorten(_prepare_for_display(raw), 150))
@@ -1075,17 +1091,17 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         ntype = n.get("type", "")
         texts = []
         if ntype in ("theorem", "lemma", "corollary", "proposition", "claim"):
-            for a in (n.get("assumptions") or [])[:MAX_LINES_PER_SECTION]:
+            for a in _as_list(n.get("assumptions"))[:MAX_LINES_PER_SECTION]:
                 texts.append(_prepare_for_display(a))
-            for c in (n.get("conclusions") or [])[:MAX_LINES_PER_SECTION]:
+            for c in _as_list(n.get("conclusions"))[:MAX_LINES_PER_SECTION]:
                 texts.append(_prepare_for_display(c))
             for ps in (n.get("proof_info") or []):
                 if ps:
                     texts.append(_prepare_for_display(f"Proof: {ps}"))
         elif ntype == "algorithm" and (n.get("input") or n.get("output")):
-            for x in (n.get("input") or []):
+            for x in _as_list(n.get("input")):
                 texts.append(_shorten(x, 100))
-            for x in (n.get("output") or []):
+            for x in _as_list(n.get("output")):
                 texts.append(_shorten(x, 100))
         else:
             raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
@@ -1239,8 +1255,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                     h += n_proof * LINE_H + PADDING
                 h += PADDING
             elif ntype == "algorithm" and (n.get("input") or n.get("output")):
-                in_lines = [_shorten(x, 100) for x in (n.get("input") or ["(none)"])]
-                out_lines = [_shorten(x, 100) for x in (n.get("output") or ["(none)"])]
+                in_lines = [_shorten(x, 100) for x in (_as_list(n.get("input")) or ["(none)"])]
+                out_lines = [_shorten(x, 100) for x in (_as_list(n.get("output")) or ["(none)"])]
                 h = HEADER_H + PADDING
                 h += len(in_lines) * LINE_H + PADDING
                 h += len(out_lines) * LINE_H + PADDING
@@ -1418,8 +1434,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         elif ntype == "algorithm" and (n.get("input") or n.get("output")):
             # Algorithm with input/output
             dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT) - 4)
-            in_lines = [_shorten(x, dyn_wrap) for x in (n.get("input") or ["(none)"])]
-            out_lines = [_shorten(x, 70) for x in (n.get("output") or ["(none)"])]
+            in_lines = [_shorten(x, dyn_wrap) for x in (_as_list(n.get("input")) or ["(none)"])]
+            out_lines = [_shorten(x, 70) for x in (_as_list(n.get("output")) or ["(none)"])]
 
             ax.text(bx + PADDING, cursor_y, "Input:",
                     ha="left", va="top", fontsize=13, fontweight="bold", color="#333")

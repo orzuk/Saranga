@@ -86,8 +86,24 @@ Required node fields:
 Optional node fields when applicable:
 - `assumptions[]`, `conclusions[]` (theorem-like, when source separates them)
 - `parent_proof`, `proves` (proofs and proof steps)
-- `input`, `output` (algorithms)
+- `input[]`, `output[]` (algorithms — see schema rule below)
 - `steps[]` (with_proof_steps mode only)
+
+**Schema rule for `input` / `output` / `assumptions` / `conclusions`:**
+these MUST be JSON **arrays of strings**, one bullet point per array
+element, NOT a single concatenated string. Example for an algorithm:
+
+```json
+"input":  ["Cost matrix $M$", "Regularization parameter $\\lambda$",
+           "Marginals $r$ and $c$"],
+"output": ["Dual-Sinkhorn divergence $d_M^\\lambda(r,c)$",
+           "Scaling vectors $u, v$ such that $P^\\lambda = \\mathrm{diag}(u)\\,K\\,\\mathrm{diag}(v)$"]
+```
+
+Do NOT write `"input": "Cost matrix M, regularization parameter ..."`
+as one big string — the visualizer iterates each list element as a
+bullet, and collapsing into a string makes it iterate character by
+character.
 
 Compact ID convention: `{PREFIX}{paper_num}.{seq}` where:
 

@@ -95,6 +95,30 @@ TYPE_COMPAT = {
     ("remark", "definition"): 0.1,
     ("remark", "proof"): 0.1,
     ("remark", "example"): 0.3,
+
+    # ── Off-schema theorem-like aliases (\newtheorem{property} etc.) ──
+    # Authors freely coin custom env names ("property", "fact", "principle",
+    # "observation", "result"). Treat them as near-synonyms of the standard
+    # theorem-like types so cross-LLM consensus doesn't reject "theorem" vs
+    # "property" tagging differences as disagreement.
+    ("property", "proposition"): 0.95,
+    ("property", "theorem"): 0.9,
+    ("property", "lemma"): 0.85,
+    ("property", "corollary"): 0.85,
+    ("property", "claim"): 0.85,
+    ("fact", "proposition"): 0.9,
+    ("fact", "theorem"): 0.85,
+    ("fact", "lemma"): 0.85,
+    ("fact", "claim"): 0.9,
+    ("fact", "remark"): 0.5,
+    ("observation", "remark"): 0.85,
+    ("observation", "claim"): 0.85,
+    ("observation", "proposition"): 0.7,
+    ("principle", "theorem"): 0.85,
+    ("principle", "proposition"): 0.85,
+    ("principle", "claim"): 0.8,
+    ("result", "theorem"): 0.85,
+    ("result", "proposition"): 0.85,
 }
 
 
