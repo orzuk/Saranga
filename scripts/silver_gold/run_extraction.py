@@ -284,13 +284,28 @@ def run_wrap_math(json_path: Path, timeout: int = 60) -> bool:
 
 
 def run_visualize(json_path: Path, html_only: bool = False, timeout: int = 300,
-                  auto_wrap_math: bool = True) -> bool:
+                  auto_wrap_math: bool = True, force: bool = False) -> bool:
     """Call src/visualize_annotation.py on a single JSON. Returns success.
 
-    By default also runs wrap_math.py first so that legacy/non-v2-schema
-    JSONs render correctly (math gets $..$ wrapping; statement_latex gets
-    copied to statement field). Idempotent — safe to re-run.
+    Skip-if-exists: by default, if the expected output (.html, plus .png/.svg
+    in non-html-only mode) already exists, skip the render entirely and return
+    True. Pass force=True to overwrite.
+
+    Auto-wrap-math: when invoked, wrap_math.py runs first so legacy /
+    non-v2-schema JSONs render correctly. Idempotent.
     """
+    out_html = json_path.with_suffix(".html")
+    out_png = json_path.with_suffix(".png")
+    out_svg = json_path.with_suffix(".svg")
+
+    if not force:
+        if html_only and out_html.exists():
+            print(f"    -> viz: {out_html.name} (skip; already exists)")
+            return True
+        if (not html_only) and out_html.exists() and out_png.exists() and out_svg.exists():
+            print(f"    -> viz: {out_html.name} (+ png/svg) (skip; already exist)")
+            return True
+
     if auto_wrap_math:
         run_wrap_math(json_path)
 
@@ -302,7 +317,6 @@ def run_visualize(json_path: Path, html_only: bool = False, timeout: int = 300,
     args.append("--html-only" if html_only else "--html")
     try:
         subprocess.run(args, check=True, capture_output=True, timeout=timeout)
-        out_html = json_path.with_suffix(".html")
         if out_html.exists():
             print(f"    -> viz: {out_html.name}")
         return True
@@ -318,14 +332,23 @@ def run_visualize(json_path: Path, html_only: bool = False, timeout: int = 300,
         return False
 
 
-def run_link_foundation(json_path: Path, timeout: int = 180) -> bool:
+def run_link_foundation(json_path: Path, timeout: int = 180,
+                        force: bool = False) -> bool:
     """Call src/link_to_foundation.py to augment a JSON with foundation-graph
-    edges. Writes <stem>.linked.json next to the input."""
+    edges. Writes <stem>.linked.json next to the input.
+
+    Skip-if-exists: if the .linked.json already exists, skip and return True.
+    Pass force=True to overwrite.
+    """
+    linked_path = json_path.with_suffix(".linked.json")
+    if not force and linked_path.exists():
+        print(f"    -> linked: {linked_path.name} (skip; already exists)")
+        return True
+
     script = _REPO_ROOT_FOR_TOOLS / "src" / "link_to_foundation.py"
     if not script.exists():
         print(f"    [WARN] link: {script} not found")
         return False
-    linked_path = json_path.with_suffix(".linked.json")
     args = ["python3", str(script),
             "--paper-json", str(json_path),
             "--output", str(linked_path)]
@@ -348,12 +371,13 @@ def run_link_foundation(json_path: Path, timeout: int = 180) -> bool:
 
 def run_downstream(json_path: Path, args: argparse.Namespace) -> None:
     """Run any requested post-extraction operations on a single JSON."""
+    force = getattr(args, "force_overwrite", False)
     if args.link_foundation:
-        run_link_foundation(json_path)
+        run_link_foundation(json_path, force=force)
     if args.visualize or args.html_only:
         auto_wrap = getattr(args, "auto_wrap_math", True)
         run_visualize(json_path, html_only=args.html_only,
-                      auto_wrap_math=auto_wrap)
+                      auto_wrap_math=auto_wrap, force=force)
 
 
 # =============================================================================
@@ -432,6 +456,9 @@ def main() -> int:
                     action="store_false",
                     help="disable the auto-wrap-math pre-pass before viz "
                          "(use if you want raw rendering for debugging)")
+    ap.add_argument("--force-overwrite", action="store_true",
+                    help="re-render visualize / link-foundation outputs even "
+                         "if they already exist (default: skip if exists)")
     args = ap.parse_args()
 
     # --- load prompt template
