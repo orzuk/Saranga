@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Post-process extraction JSONs to wrap bare math fragments in $..$.
+r"""Post-process extraction JSONs to wrap bare math fragments in $..$.
 
 The visualizer renders text inside $..$ as math (proper subscripts,
 superscripts, Greek letters). Without $..$, "R_+^{d x d}" shows up as

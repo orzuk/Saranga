@@ -37,6 +37,10 @@ NODE_COLORS = {
     "proof":       {"header": "#8E44AD", "body": "#E8DAEF"},
     "proof_step":  {"header": "#A569BD", "body": "#F4ECF7"},
     "claim":       {"header": "#E74C3C", "body": "#FDEDEC"},
+    "example":     {"header": "#E67E22", "body": "#FAE5D3"},   # orange
+    "remark":      {"header": "#117A65", "body": "#A2D9CE"},   # teal
+    "problem":     {"header": "#7D3C98", "body": "#E8DAEF"},   # darker purple
+    "conjecture":  {"header": "#B9770E", "body": "#FCF3CF"},   # gold
 }
 DEFAULT_COLOR = {"header": "#566573", "body": "#EAECEE"}
 PROOF_COLOR = "#E8DAEF"
@@ -221,7 +225,7 @@ def _fallback_unknown_commands(text):
 def _sanitize_math(text):
     """Replace unsupported LaTeX commands with matplotlib-compatible equivalents.
 
-    Five passes:
+    Six passes:
       0. Collapse display-math markers `$$..$$` → `$..$` (mathtext doesn't
          support display mode, so treat as inline).
       1. Explicit literal substitutions in _LATEX_FIXES (\\R → \\mathbb{R}, etc.)
@@ -229,7 +233,11 @@ def _sanitize_math(text):
       3. Catch-all fallback: any \\command not in _KNOWN_MATHTEXT_COMMANDS
          gets wrapped in \\mathrm{} so unknown author macros render as
          upright text instead of crashing matplotlib mathtext.
-      4. Dollar-balance check: if the text has an odd number of unescaped
+      4. Backslash restoration inside `$..$`: bare math-name tokens like
+         Sigma, sum, in (where Opus / cleaned-up extractions stripped the
+         backslash) get the backslash put back so mathtext renders them
+         as symbols (Σ, ∑, ∈) rather than upright text.
+      5. Dollar-balance check: if the text has an odd number of unescaped
          $ markers, math mode would be entered but never closed, crashing
          mathtext. Escape all $ in that case so the text renders as plain
          text with visible $ signs.
@@ -248,17 +256,93 @@ def _sanitize_math(text):
     for pattern, repl in _LATEX_REGEX_FIXES:
         text = pattern.sub(repl, text)
     text = _fallback_unknown_commands(text)
-    # 0c: collapse `$<whitespace>$` (adjacent math blocks separated only
-    # by spaces) — these arise after stripping `\\\\` LaTeX line breaks
-    # from inside math. mathtext can't handle the empty-content `$<space>$`.
-    text = _re.sub(r'\$\s+\$', '', text)
+    # 0c: collapse `$$` (empty math content) — but DO NOT collapse
+    # `$ $` boundaries between adjacent math blocks ($X$ $Y$ stays as
+    # two separate blocks, NOT merged into $XY$). Earlier versions of
+    # this code collapsed `\$\s+\$` aggressively, which incorrectly
+    # merged neighbors.
     while '$$' in text:
         text = text.replace('$$', '')
+    text = _restore_bare_math_names(text)
     text = _balance_dollars(text)
     # Final safety: actually try to parse the math; on failure, strip $..$
     # so the text renders as plain unstyled string instead of crashing.
     text = _strip_math_on_error(text)
     return text
+
+
+# Bare math-name tokens that should become backslash commands inside $..$.
+# Restricted to $..$ so we don't break English prose containing the same
+# words ("Sigma" the proper noun, "in" the preposition, etc.).
+_BARE_MATH_NAMES = [
+    # Greek letters (lowercase)
+    'alpha', 'beta', 'gamma', 'delta', 'epsilon', 'varepsilon', 'zeta', 'eta',
+    'theta', 'vartheta', 'iota', 'kappa', 'lambda', 'mu', 'nu', 'xi',
+    'pi', 'varpi', 'rho', 'varrho', 'sigma', 'varsigma', 'tau', 'upsilon',
+    'phi', 'varphi', 'chi', 'psi', 'omega',
+    # Greek letters (uppercase)
+    'Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta',
+    'Theta', 'Iota', 'Kappa', 'Lambda', 'Mu', 'Nu', 'Xi',
+    'Pi', 'Rho', 'Sigma', 'Tau', 'Upsilon', 'Phi', 'Chi', 'Psi', 'Omega',
+    # Operators
+    'sum', 'prod', 'int', 'iint', 'oint',
+    'lim', 'liminf', 'limsup', 'inf', 'sup', 'min', 'max', 'arg',
+    'log', 'ln', 'exp',
+    'sin', 'cos', 'tan', 'cot', 'sec', 'csc',
+    'sinh', 'cosh', 'tanh', 'arcsin', 'arccos', 'arctan',
+    'det', 'dim', 'gcd', 'ker',
+    # Relations / set theory
+    'in', 'notin', 'ni', 'subset', 'subseteq', 'supset', 'supseteq',
+    'cap', 'cup', 'emptyset',
+    'forall', 'exists', 'nexists',
+    'leq', 'geq', 'neq',
+    'to', 'mapsto', 'rightarrow', 'leftarrow', 'Rightarrow', 'Leftarrow',
+    # Misc
+    'infty', 'partial', 'nabla', 'ell',
+    'cdot', 'cdots', 'ldots', 'times', 'div',
+    'pm', 'mp', 'mid',
+]
+# One combined regex for performance. The lookbehind ensures we don't
+# match continuation of another identifier ("inflate" doesn't become
+# "\inflate") or already-prefixed commands ("\sigma" stays as "\sigma").
+# Use [a-zA-Z0-9] (NOT \w) for boundaries because \w includes `_` — but
+# `_` is the LaTeX subscript marker, so we WANT `Sigma_d` to match
+# `Sigma` (the underscore is the boundary, not a continuation char).
+_BARE_MATH_NAMES_RE = _re.compile(
+    r'(?<![a-zA-Z0-9\\])(' + '|'.join(sorted(_BARE_MATH_NAMES, key=len, reverse=True)) + r')(?![a-zA-Z0-9])'
+)
+
+
+def _restore_bare_math_names(text):
+    """Inside `$..$` blocks, prefix bare math-name tokens (Sigma, sum, in,
+    ...) with a backslash so matplotlib mathtext renders them as symbols.
+
+    Operates ONLY inside `$..$` regions — leaves English prose alone, so
+    the proper-noun "Sigma" outside math stays as "Sigma" and the
+    preposition "in" outside math stays as "in".
+    """
+    if not text or '$' not in text:
+        return text
+    out = []
+    i = 0
+    while i < len(text):
+        if text[i] == '$':
+            j = text.find('$', i + 1)
+            if j == -1:
+                out.append(text[i:])
+                break
+            content = text[i + 1:j]
+            content = _BARE_MATH_NAMES_RE.sub(r'\\\1', content)
+            out.append('$' + content + '$')
+            i = j + 1
+        else:
+            j = text.find('$', i)
+            if j == -1:
+                out.append(text[i:])
+                break
+            out.append(text[i:j])
+            i = j
+    return ''.join(out)
 
 
 def _balance_dollars(text):
@@ -1595,6 +1679,18 @@ def generate_interactive_html(data, svg_path, html_path):
     ghosts_json = _json.dumps(case2_ghosts, ensure_ascii=True)
     case1_json = _json.dumps(case1_matches, ensure_ascii=True)
 
+    present_types = []
+    seen = set()
+    for n in base_nodes:
+        t = n.get("type", "")
+        if t and t not in seen and t in NODE_COLORS:
+            seen.add(t)
+            present_types.append(t)
+    legend_items = "\n".join(
+        f'  <div class="legend-item"><div class="legend-color" style="background:{NODE_COLORS[t]["body"]};border-color:{NODE_COLORS[t]["header"]};"></div>{t.replace("_"," ").title()}</div>'
+        for t in present_types
+    )
+
     html = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -1644,11 +1740,7 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
   </div>
 </div>
 <div class="legend">
-  <div class="legend-item"><div class="legend-color" style="background:#D5F5E3;border-color:#27AE60;"></div>Definition</div>
-  <div class="legend-item"><div class="legend-color" style="background:#FADBD8;border-color:#C0392B;"></div>Theorem</div>
-  <div class="legend-item"><div class="legend-color" style="background:#F5CBA7;border-color:#D35400;"></div>Lemma</div>
-  <div class="legend-item"><div class="legend-color" style="background:#F2D7D5;border-color:#943126;"></div>Corollary</div>
-  <div class="legend-item"><div class="legend-color" style="background:#D4E6F1;border-color:#2471A3;"></div>Algorithm</div>
+{legend_items}
   <div class="legend-item" style="margin-left:12px;"><span style="font-size:18px;color:#555;">&#8594;</span> A supports B</div>
   <div class="legend-item" style="margin-left:12px;"><button onclick="toggleGhosts()" id="ghost-btn" style="padding:4px 12px;border:1.5px solid #757575;border-radius:4px;background:#E0E0E0;cursor:pointer;font-size:12px;color:#333;">Show external dependencies</button></div>
 </div>
