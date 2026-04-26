@@ -69,6 +69,36 @@ rules and a richer (but optional) edge taxonomy with direction conventions.
    `type="property"` value — the visualizer color map only knows the
    schema's standard types.
 
+8. **COMPLETENESS — DO NOT DROP THEOREM-LIKE RESULTS.** Every numbered
+   or labeled stated result in the .tex source MUST produce a
+   theorem-like node (type ∈ {theorem, lemma, proposition, corollary,
+   claim}). Specifically:
+   - Every `\begin{theorem}` → `theorem` node
+   - Every `\begin{lemma}` → `lemma` node
+   - Every `\begin{proposition}` → `proposition` node
+   - Every `\begin{corollary}` → `corollary` node
+   - Every `\begin{property}` (custom env) → `proposition` node
+   - Every `\begin{claim}` → `claim` node
+
+   **Do NOT demote a stated result to an `equation` node** even if the
+   paper presents it inside `\begin{equation}...\end{equation}` blocks.
+   If the text says "the optimal $P^\\lambda$ has the unique form
+   $P^\\lambda = \\diag(u) K \\diag(v)$ ... [Sinkhorn's theorem]" — that
+   is a **theorem** (existence/uniqueness statement), even though
+   `P^\\lambda = \\diag(u) K \\diag(v)` looks like just an equation.
+   Promote it to a `theorem` node and additionally emit the equation as
+   an `equation` node if helpful, but the *result* must be a theorem.
+
+   Same for cited-but-relied-on results: if the paper says "by
+   Sinkhorn's theorem [reference], …", create a `theorem` node for that
+   statement (mark in the `name`/`statement` that it is cited). The
+   downstream graph uses these as prerequisites; encoding them as
+   equations breaks dependency tracking.
+
+   In short: count the labeled `\begin{X}...\end{X}` environments in
+   the source; the number of theorem-like nodes you emit must be ≥ that
+   count (it can be greater if cited-results are added).
+
 ## Schema
 
 Node types (use these, no others):
