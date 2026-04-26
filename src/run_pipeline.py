@@ -794,9 +794,9 @@ def main():
                         help="In holistic modes, skip extraction; only run "
                              "downstream ops (validate / consensus / eval) on "
                              "existing JSONs.")
-    parser.add_argument("--consensus-suffix-a", type=str, default="",
+    parser.add_argument("--consensus-suffix-a", type=str, default="_opus_4_7",
                         help="Suffix of reference JSONs for the consensus op "
-                             "(default: '' = gold.json).")
+                             "(default: '_opus_4_7' = gold_opus_4_7.json).")
     parser.add_argument("--consensus-suffix-b", type=str, default=None,
                         help="Suffix of comparison JSONs for the consensus op. "
                              "If unset, run pairwise vs all suffixes in "

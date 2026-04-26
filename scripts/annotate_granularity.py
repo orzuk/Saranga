@@ -186,6 +186,9 @@ def update_csv(csv_path, json_locator, stats_label):
 
 def locate_paper_json(row):
     pid = row.get('paper_id', '').strip()
+    p = os.path.join(PAPER_BASE, pid, 'gold_opus_4_7.json')
+    if os.path.exists(p):
+        return p
     return os.path.join(PAPER_BASE, pid, 'gold.json')
 
 

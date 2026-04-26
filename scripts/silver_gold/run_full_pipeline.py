@@ -22,7 +22,7 @@ Config format — YAML or JSON — example:
 
   models:
     - name: opus_4_7         # arbitrary friendly name
-      suffix: ""             # gold.json is the existing Opus extraction
+      suffix: _opus_4_7      # gold_opus_4_7.json is the existing Opus extraction
       provider: anthropic
       model: claude-opus-4-7
       api_key_env: ANTHROPIC_API_KEY

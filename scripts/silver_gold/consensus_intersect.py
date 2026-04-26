@@ -295,10 +295,10 @@ def main() -> int:
     )
     ap.add_argument("--base-dir", type=Path, required=True,
                     help="alignment_benchmark dir (parent of papers/)")
-    ap.add_argument("--suffix-a", default="",
-                    help='suffix of model A (default: "" = gold.json, the Opus run)')
+    ap.add_argument("--suffix-a", default="_opus_4_7",
+                    help='suffix of model A (default: "_opus_4_7" = gold_opus_4_7.json)')
     ap.add_argument("--suffix-b", required=True,
-                    help='suffix of model B (e.g. "_qwenT" = gold_qwenT.json)')
+                    help='suffix of model B (e.g. "_deepseek_r" = gold_deepseek_r.json)')
     ap.add_argument("--out-suffix", default="",
                     help='if set, also write a consensus JSON to gold<out-suffix>.json '
                          'next to the inputs')
