@@ -183,6 +183,19 @@ _LATEX_REGEX_FIXES = [
     (_re.compile(r'\\(?:label|ref|cite|caption|tag|eqref|cref|nameref)\s*\{[^}]*\}'), ''),
     # Strip stand-alone \\ (line breaks inside math snippets break mathtext):
     (_re.compile(r'\\\\(?![A-Za-z])'), ' '),
+    # Escaped special chars that mathtext doesn't recognize. Note re.sub
+    # replacement strings: a literal & in the replacement needs to NOT be
+    # `\&` (which would mean the matched group), use a plain `&`.
+    (_re.compile(r'\\&'), '&'),                   # \& → &
+    (_re.compile(r'\\%'), '%'),                   # \% → %
+    (_re.compile(r'\\#'), '#'),                   # \# → #
+    # Accent / modifier commands without braces — mathtext requires \bar{A}
+    # but author LaTeX often writes \bar A. Convert single-letter forms:
+    #   \bar A   →  \bar{A}
+    #   \hat x   →  \hat{x}
+    # Apply for each modifier we know mathtext accepts.
+    (_re.compile(r'\\(bar|hat|tilde|dot|ddot|vec|check|breve|acute|grave|widetilde|widehat|overline|underline)\s+([A-Za-z])\b'),
+     r'\\\1{\2}'),
 ]
 
 
