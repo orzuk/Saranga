@@ -77,6 +77,15 @@ _LATEX_FIXES = {
     r"\hdots": r"\ldots",
     r"\dotsc": r"\ldots",
     r"\dotsb": r"\cdots",
+    # Text-style commands matplotlib mathtext does NOT support
+    # (it knows \text but not \textbf/\textit/\texttt/etc.):
+    r"\textbf": r"\mathbf",
+    r"\textit": r"\mathit",
+    r"\texttt": r"\mathtt",
+    r"\textsf": r"\mathsf",
+    r"\textsc": r"\mathrm",
+    r"\textnormal": r"\mathrm",
+    r"\emph": r"\mathit",
     # Sizing delimiters — not supported standalone, replace with plain:
     r"\big|": "|", r"\Big|": "|", r"\bigg|": "|",
     r"\big(": "(", r"\Big(": "(", r"\big)": ")", r"\Big)": ")",
@@ -89,9 +98,11 @@ _LATEX_FIXES = {
 # Keep this list LARGE enough to avoid false positives (which render as
 # weird upright text); err toward inclusion.
 _KNOWN_MATHTEXT_COMMANDS = frozenset({
-    # Font/style:
+    # Font/style — note: matplotlib mathtext supports \text{} but NOT
+    # \textbf/\textit/\texttt/etc. Those map to \mathbf/\mathit/\mathtt
+    # via the explicit _LATEX_FIXES table above.
     'mathbb', 'mathcal', 'mathrm', 'mathbf', 'mathit', 'mathsf', 'mathtt',
-    'boldsymbol', 'bm', 'text', 'textbf', 'textit', 'operatorname',
+    'boldsymbol', 'bm', 'text', 'operatorname',
     # Greek lower:
     'alpha', 'beta', 'gamma', 'delta', 'epsilon', 'varepsilon', 'zeta', 'eta',
     'theta', 'vartheta', 'iota', 'kappa', 'lambda', 'mu', 'nu', 'xi',
@@ -145,9 +156,11 @@ _KNOWN_MATHTEXT_COMMANDS = frozenset({
     # Colors / spacing — passed through as no-ops by mathtext typically:
     'displaystyle', 'textstyle', 'scriptstyle', 'scriptscriptstyle',
     'limits', 'nolimits',
-    # newcommand (not math but appears in raw_text dumps):
-    'newcommand', 'renewcommand', 'begin', 'end', 'item', 'label', 'ref',
-    'cite', 'caption', 'tag', 'eqref',
+    # newcommand (not math but appears in raw_text dumps).
+    # NOTE: 'begin', 'end', 'item', 'label', 'ref', 'cite' are handled by
+    # _LATEX_REGEX_FIXES (stripped or replaced) BEFORE this whitelist runs,
+    # so they're intentionally NOT in this set.
+    'newcommand', 'renewcommand',
 })
 
 # Regex-based fixes: commands like \ge that are prefixes of valid commands (\geq)
@@ -160,6 +173,16 @@ _LATEX_REGEX_FIXES = [
     # \left( → (, \right) → ), \left[ → [, etc.
     (_re.compile(r'\\left\s*([(\[|.])'), r'\1'),
     (_re.compile(r'\\right\s*([)\]|.])'), r'\1'),
+    # Strip LaTeX environment markers — mathtext cannot parse them and they
+    # have no rendering meaning inside a math snippet anyway:
+    (_re.compile(r'\\begin\s*\{[^}]*\}'), ''),
+    (_re.compile(r'\\end\s*\{[^}]*\}'), ''),
+    # Convert \item to bullet (mathtext-safe) so list items render readably:
+    (_re.compile(r'\\item\b'), '• '),
+    # Strip cross-reference / metadata commands with one brace argument:
+    (_re.compile(r'\\(?:label|ref|cite|caption|tag|eqref|cref|nameref)\s*\{[^}]*\}'), ''),
+    # Strip stand-alone \\ (line breaks inside math snippets break mathtext):
+    (_re.compile(r'\\\\(?![A-Za-z])'), ' '),
 ]
 
 
@@ -185,21 +208,58 @@ def _fallback_unknown_commands(text):
 def _sanitize_math(text):
     """Replace unsupported LaTeX commands with matplotlib-compatible equivalents.
 
-    Three passes:
+    Five passes:
+      0. Collapse display-math markers `$$..$$` → `$..$` (mathtext doesn't
+         support display mode, so treat as inline).
       1. Explicit literal substitutions in _LATEX_FIXES (\\R → \\mathbb{R}, etc.)
-      2. Regex-based fixes in _LATEX_REGEX_FIXES (\\ge → \\geq, etc.)
+      2. Regex-based fixes in _LATEX_REGEX_FIXES (\\ge → \\geq, strip \\begin{}, etc.)
       3. Catch-all fallback: any \\command not in _KNOWN_MATHTEXT_COMMANDS
          gets wrapped in \\mathrm{} so unknown author macros render as
          upright text instead of crashing matplotlib mathtext.
+      4. Dollar-balance check: if the text has an odd number of unescaped
+         $ markers, math mode would be entered but never closed, crashing
+         mathtext. Escape all $ in that case so the text renders as plain
+         text with visible $ signs.
     """
     if not text:
         return text
+    # 0a: collapse display math (mathtext doesn't support $$..$$)
+    while '$$' in text:
+        text = text.replace('$$', '$')
+    # 0b: replace embedded newlines with spaces. mathtext parses the
+    # full string before line-splitting, so a `\n` between two $..$ blocks
+    # makes the parser see them as one combined token, often crashing.
+    text = text.replace('\n', ' ').replace('\r', ' ')
     for old, new in _LATEX_FIXES.items():
         text = text.replace(old, new)
     for pattern, repl in _LATEX_REGEX_FIXES:
         text = pattern.sub(repl, text)
     text = _fallback_unknown_commands(text)
+    # 0c: collapse `$<whitespace>$` (adjacent math blocks separated only
+    # by spaces) — these arise after stripping `\\\\` LaTeX line breaks
+    # from inside math. mathtext can't handle the empty-content `$<space>$`.
+    text = _re.sub(r'\$\s+\$', '', text)
+    while '$$' in text:
+        text = text.replace('$$', '')
+    text = _balance_dollars(text)
     return text
+
+
+def _balance_dollars(text):
+    """If `text` has an odd number of unescaped `$` markers, escape them
+    all so matplotlib mathtext doesn't enter unterminated math mode and
+    crash. Returns text unchanged if balance is even."""
+    if not text:
+        return text
+    # Count `$` not preceded by a backslash
+    n_unescaped = 0
+    for i, c in enumerate(text):
+        if c == '$' and (i == 0 or text[i - 1] != '\\'):
+            n_unescaped += 1
+    if n_unescaped % 2 == 0:
+        return text
+    # Odd number → escape them all
+    return _re.sub(r'(?<!\\)\$', r'\\$', text)
 
 
 def _display_width(text):
