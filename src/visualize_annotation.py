@@ -255,6 +255,9 @@ def _sanitize_math(text):
     while '$$' in text:
         text = text.replace('$$', '')
     text = _balance_dollars(text)
+    # Final safety: actually try to parse the math; on failure, strip $..$
+    # so the text renders as plain unstyled string instead of crashing.
+    text = _strip_math_on_error(text)
     return text
 
 
@@ -273,6 +276,42 @@ def _balance_dollars(text):
         return text
     # Odd number → escape them all
     return _re.sub(r'(?<!\\)\$', r'\\$', text)
+
+
+# Lazy mathtext parser for the safety check in _strip_math_on_error
+_MATHTEXT_PARSER = None
+
+
+def _can_render_math(text):
+    """Try parsing each `$..$` block with mathtext. Return True if all
+    blocks parse cleanly, False if any fails."""
+    if not text or '$' not in text:
+        return True
+    global _MATHTEXT_PARSER
+    if _MATHTEXT_PARSER is None:
+        try:
+            from matplotlib.mathtext import MathTextParser
+            _MATHTEXT_PARSER = MathTextParser('agg')
+        except Exception:
+            return True   # if we can't even import, give up checking
+    try:
+        # Validate each $..$ block
+        for match in _re.finditer(r'\$([^$]*)\$', text):
+            content = match.group(0)
+            if len(content) > 2:    # has content between dollars
+                _MATHTEXT_PARSER.parse(content, dpi=100, prop=None)
+        return True
+    except Exception:
+        return False
+
+
+def _strip_math_on_error(text):
+    """If `text` would crash mathtext, strip all `$..$` markers (keeping
+    the inner content as plain text). Last-resort fallback."""
+    if _can_render_math(text):
+        return text
+    # Strip $ but keep content
+    return _re.sub(r'\$([^$]*)\$', r'\1', text)
 
 
 def _display_width(text):
