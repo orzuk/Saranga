@@ -756,6 +756,10 @@ def validate_rules(paper_ids: List[str], structure_type: str,
                 if raw.strip():
                     texts.append(raw)
             parsed[paper_id] = texts
+            # Also store under version-stripped key so expected CSV lookup works
+            norm = re.sub(r'v\d+$', '', paper_id)
+            if norm != paper_id:
+                parsed[norm] = texts
             print(f"    Extracted {len(texts)} {structure_type}(s)")
         except Exception as e:
             print(f"    ERROR parsing {paper_id}: {e}")
@@ -907,7 +911,7 @@ Write a complete, self-contained Python file with:
     client = anthropic.Anthropic()
     message = client.messages.create(
         model=model,
-        max_tokens=4096,
+        max_tokens=16384,
         messages=[{"role": "user", "content": prompt}],
     )
     generated_code = message.content[0].text.strip()
