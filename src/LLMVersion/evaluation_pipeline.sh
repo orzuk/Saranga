@@ -10,6 +10,9 @@ MERGED_CSV="MergedGoldAndDef.csv"
 PROMPT_FILE=""
 STRUCTURE_TYPE="definition"
 
+# Provider selection (comma-separated: anthropic,openai,huggingface,manual)
+PROVIDERS="anthropic,openai,huggingface,manual"
+
 # Prompt optimization defaults
 OPTIMIZE_PROMPT=false
 OPT_ITERATIONS=3
@@ -40,6 +43,7 @@ while [[ $# -gt 0 ]]; do
         --opt-meta-provider) OPT_META_PROVIDER="$2"; shift 2 ;;
         --opt-meta-model) OPT_META_MODEL="$2"; shift 2 ;;
         --structure-type) STRUCTURE_TYPE="$2"; shift 2 ;;
+        --providers) PROVIDERS="$2"; shift 2 ;;
         *) echo "Unknown argument: $1"; exit 1 ;;
     esac
 done
@@ -47,6 +51,10 @@ done
 # Split comma-separated paper IDs into array
 IFS=',' read -ra PAPER_IDS <<< "$PAPER_ID"
 echo "=== Papers: ${PAPER_IDS[*]} ==="
+
+# Split comma-separated providers into array
+IFS=',' read -ra PROVIDER_LIST <<< "$PROVIDERS"
+echo "=== Providers: ${PROVIDER_LIST[*]} ==="
 
 # Prompt optimization (runs before main extraction)
 if [ "$OPTIMIZE_PROMPT" = true ]; then
@@ -81,49 +89,57 @@ for pid in "${PAPER_IDS[@]}"; do
     echo "=== Extracting paper: ${pid} ==="
     echo "============================================"
 
-    # HuggingFace
-    export HF_TOKEN
-    python3 "${RUN_PIPELINE}" \
-        --operations parse \
-        --regex-id "${REGEX_ID}" \
-        --out-dir "${OUT_DIR}" \
-        --extraction-mode llm \
-        --llm-provider huggingface \
-        --llm-model "Qwen/Qwen2.5-7B-Instruct" \
-        --prompt-file "${PROMPT_FILE}" \
-        --structure-types "${STRUCTURE_TYPE}"
-
-    # Anthropic
-    export ANTHROPIC_API_KEY
-    python3 "${RUN_PIPELINE}" \
-        --operations parse \
-        --regex-id "${REGEX_ID}" \
-        --out-dir "${OUT_DIR}" \
-        --extraction-mode llm \
-        --llm-provider anthropic \
-        --llm-model claude-opus-4-6 \
-        --prompt-file "${PROMPT_FILE}" \
-        --structure-types "${STRUCTURE_TYPE}"
-
-    # OpenAI
-    export OPENAI_API_KEY
-    python3 "${RUN_PIPELINE}" \
-        --operations parse \
-        --regex-id "${REGEX_ID}" \
-        --out-dir "${OUT_DIR}" \
-        --extraction-mode llm \
-        --llm-provider openai \
-        --llm-model gpt-4o \
-        --prompt-file "${PROMPT_FILE}" \
-        --structure-types "${STRUCTURE_TYPE}"
-
-    # Manual
-    python3 "${RUN_PIPELINE}" \
-        --operations parse \
-        --regex-id "${REGEX_ID}" \
-        --out-dir "${OUT_DIR}" \
-        --extraction-mode manual \
-        --structure-types "${STRUCTURE_TYPE}"
+    for provider in "${PROVIDER_LIST[@]}"; do
+        case "$provider" in
+            huggingface)
+                export HF_TOKEN
+                python3 "${RUN_PIPELINE}" \
+                    --operations parse \
+                    --regex-id "${REGEX_ID}" \
+                    --out-dir "${OUT_DIR}" \
+                    --extraction-mode llm \
+                    --llm-provider huggingface \
+                    --llm-model "Qwen/Qwen2.5-7B-Instruct" \
+                    --prompt-file "${PROMPT_FILE}" \
+                    --structure-types "${STRUCTURE_TYPE}"
+                ;;
+            anthropic)
+                export ANTHROPIC_API_KEY
+                python3 "${RUN_PIPELINE}" \
+                    --operations parse \
+                    --regex-id "${REGEX_ID}" \
+                    --out-dir "${OUT_DIR}" \
+                    --extraction-mode llm \
+                    --llm-provider anthropic \
+                    --llm-model claude-opus-4-6 \
+                    --prompt-file "${PROMPT_FILE}" \
+                    --structure-types "${STRUCTURE_TYPE}"
+                ;;
+            openai)
+                export OPENAI_API_KEY
+                python3 "${RUN_PIPELINE}" \
+                    --operations parse \
+                    --regex-id "${REGEX_ID}" \
+                    --out-dir "${OUT_DIR}" \
+                    --extraction-mode llm \
+                    --llm-provider openai \
+                    --llm-model gpt-4o \
+                    --prompt-file "${PROMPT_FILE}" \
+                    --structure-types "${STRUCTURE_TYPE}"
+                ;;
+            manual)
+                python3 "${RUN_PIPELINE}" \
+                    --operations parse \
+                    --regex-id "${REGEX_ID}" \
+                    --out-dir "${OUT_DIR}" \
+                    --extraction-mode manual \
+                    --structure-types "${STRUCTURE_TYPE}"
+                ;;
+            *)
+                echo "Unknown provider: $provider (valid: anthropic,openai,huggingface,manual)"
+                ;;
+        esac
+    done
 done
 
 # --- Post-processing: all papers together ---

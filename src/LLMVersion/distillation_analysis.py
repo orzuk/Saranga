@@ -522,7 +522,7 @@ def analyze_patterns(items: List[dict], tex_dir: str = None,
     items : list of dicts with at least 'paper_id' and 'gold_text'
     tex_dir : directory to search for .tex files (defaults to FULL_PAPERS_DIR)
     structure_type : e.g. 'proof', 'theorem' — needed for LLM analysis
-    model : Anthropic model ID (e.g. 'claude-sonnet-4-20250514')
+    model : Anthropic model ID (e.g. 'claude-opus-4-6')
 
     Returns list of dicts with:
       paper_id, gold_index, pattern_type, latex_context,
@@ -804,7 +804,7 @@ def validate_rules(paper_ids: List[str], structure_type: str,
 # ---------------------------------------------------------------------------
 
 def aggregate_rules(input_csv: str, structure_type: str, eval_dir: str,
-                    model: str = 'claude-sonnet-4-20250514') -> str:
+                    model: str = 'claude-opus-4-6') -> str:
     """Read analyze CSV, aggregate LLM-suggested rules into a distilled_rules.py file.
 
     Parameters
@@ -1004,8 +1004,8 @@ def main():
                      help='CSV from dark-knowledge or discovery (needs paper_id + gold_text columns)')
     ana.add_argument('--structure-type', required=True,
                      help='Structure type (e.g. proof, theorem) — determines which extraction method to show LLM')
-    ana.add_argument('--model', default='claude-sonnet-4-20250514',
-                     help='Anthropic model for LLM analysis (default: claude-sonnet-4-20250514)')
+    ana.add_argument('--model', default='claude-opus-4-6',
+                     help='Anthropic model for LLM analysis (default: claude-opus-4-6)')
     ana.add_argument('--tex-dir', default=None, help=f'TeX directory (default: {FULL_PAPERS_DIR})')
     ana.add_argument('--output', default=None, help='Output CSV path')
 
@@ -1018,8 +1018,8 @@ def main():
                      help='Structure type (e.g. definition, proof)')
     agg.add_argument('--eval-dir', required=True,
                      help='Directory where distilled_rules.py will be written')
-    agg.add_argument('--model', default='claude-sonnet-4-20250514',
-                     help='Anthropic model for aggregation (default: claude-sonnet-4-20250514)')
+    agg.add_argument('--model', default='claude-opus-4-6',
+                     help='Anthropic model for aggregation (default: claude-opus-4-6)')
 
     # -- validate --
     val = sub.add_parser('validate',

@@ -24,6 +24,7 @@ import csv
 import glob as globmod
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -105,6 +106,12 @@ class PromptOptimizer:
     def _load_gold_examples(self) -> Dict[str, List[str]]:
         """Load gold standard examples for all train papers. Returns dict keyed by paper_id."""
         examples_by_paper: Dict[str, List[str]] = {pid: [] for pid in self.train_paper_ids}
+        # Build normalized->original mapping so gold CSV IDs (e.g. "1204.0109")
+        # match train IDs with version suffixes (e.g. "1204.0109v1")
+        norm_to_pid = {}
+        for pid in self.train_paper_ids:
+            norm = re.sub(r'v\d+$', '', pid)
+            norm_to_pid[norm] = pid
         try:
             with open(self.gold_csv, "r", encoding="utf-8-sig", errors="replace") as f:
                 reader = csv.DictReader(f)
@@ -112,7 +119,14 @@ class PromptOptimizer:
                 for row in reader:
                     row = {k.strip(): v for k, v in row.items()}
                     pid = row.get("paper_id", "").strip().replace('_', '.')
-                    if pid in examples_by_paper:
+                    # Try exact match first, then normalized (without version suffix)
+                    resolved = examples_by_paper.get(pid)
+                    if resolved is None:
+                        mapped = norm_to_pid.get(pid)
+                        if mapped:
+                            resolved = examples_by_paper.get(mapped)
+                            pid = mapped
+                    if resolved is not None:
                         text = row.get("Gold_Standard_raw_latex", "").strip()
                         if text:
                             examples_by_paper[pid].append(text)
@@ -334,6 +348,7 @@ class PromptOptimizer:
             input_csv=defs_csv,
             gold_csv=self.gold_csv,
             output_csv=merged_csv,
+            paper_ids=paper_ids,
         )
 
         # Step 3: Evaluate
@@ -372,14 +387,16 @@ class PromptOptimizer:
             pass
 
         if not found_rows:
+            # No evaluation rows: 0 gold and 0 extracted = perfect (no errors)
             return {
-                "precision": 0.0, "recall": 0.0, "f1": 0.0,
+                "precision": 1.0, "recall": 1.0, "f1": 1.0,
                 "true_positives": 0, "false_positives": 0, "false_negatives": 0,
                 "num_gold": 0, "num_extracted": 0,
             }
 
-        precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0.0
-        recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0.0
+        # 0 gold and 0 extracted = perfect; otherwise use standard formulas
+        precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else (1.0 if total_fn == 0 else 0.0)
+        recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else (1.0 if total_fp == 0 else 0.0)
         f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
 
         return {

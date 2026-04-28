@@ -19,74 +19,74 @@
   "meta_provider": "anthropic",
   "meta_model": "claude-opus-4-6",
   "best_iteration": 2,
-  "best_f1": 0.7500000000000001,
+  "best_f1": 0.736842105263158,
   "iterations": [
     {
       "iteration": 0,
       "train_metrics": {
-        "precision": 0.32407407407407407,
+        "precision": 0.38461538461538464,
         "recall": 0.7954545454545454,
-        "f1": 0.46052631578947373,
+        "f1": 0.5185185185185185,
         "true_positives": 35,
-        "false_positives": 73,
+        "false_positives": 56,
         "false_negatives": 9,
         "num_gold": 44,
-        "num_extracted": 108
+        "num_extracted": 91
       },
       "error_counts": {
         "false_negatives": 9,
         "false_positives": 6,
         "near_misses": 6
       },
-      "prompt": "You are analyzing a mathematical paper written in LaTeX. Extract ALL mathematical definitions.\n\nDefinition forms:\n1. \\begin{definition}...\\end{definition}\n2. \"Definition 2.1. ...\"\n3. \"We define X as/to be ...\", \"X is defined as ...\", \"Let X be ...\"\n4. Implicit definitions with new notation\n\nFor each definition, extract:\n- name: Short descriptive name\n- raw_latex: Original LaTeX text (preserve ALL math notation)\n- clean_text: \"\" (always empty string \u2014 omitted for token output savings)\n- label: Any \\label{...} or null\n\nCRITICAL: The raw_latex field must be copied VERBATIM from the source \u2014 character for character.\nDo NOT modify the LaTeX in any way. Specifically:\n- Do NOT convert or substitute math delimiters\n- Do NOT expand, replace, or rename any macros or commands\n- Do NOT alter whitespace, line breaks, or formatting\n- Do NOT \"fix\" or \"improve\" any LaTeX syntax\nCopy exactly what appears in the input, nothing more, nothing less.\n\nReturn JSON array:\n[\n  {\n    \"name\": \"descriptive name\",\n    \"raw_latex\": \"original LaTeX\",\n    \"clean_text\": \"\",\n    \"label\": \"label or null\"\n  }\n]\n\nLaTeX text:\n\n{latex_chunk}\n\nRespond ONLY with JSON array."
+      "prompt": "You are analyzing a mathematical paper written in LaTeX. Extract ALL mathematical definitions.\n\nDefinition forms:\n1. \\begin{definition}...\\end{definition}\n2. \"Definition 2.1. ...\"\n3. \"We define X as/to be ...\", \"X is defined as ...\", \"Let X be ...\"\n4. Implicit definitions with new notation\n\nFor each definition, extract:\n- name: Short descriptive name\n- raw_latex: Original LaTeX text (preserve ALL math notation)\n- clean_text: \"\" (always empty string \u2014 omitted for token output savings)\n- label: Any \\label{...} or null\n\nCRITICAL: The raw_latex field must be copied VERBATIM from the source \u2014 character for character.\nDo NOT modify the LaTeX in any way. Specifically:\n- Do NOT convert or substitute math delimiters\n- Do NOT expand, replace, or rename any macros or commands\n- Do NOT alter whitespace, line breaks, or formatting\n- Do NOT \"fix\" or \"improve\" any LaTeX syntax\nCopy exactly what appears in the input, nothing more, nothing less.\n\nReturn JSON array:\n[\n  {\n    \"name\": \"descriptive name\",\n    \"raw_latex\": \"original LaTeX\",\n    \"clean_text\": \"\",\n    \"label\": \"label or null\"\n  }\n]\n\nLaTeX text:\n\n{latex_chunk}\n\nIMPORTANT: Only extract structures whose LaTeX environment name or heading explicitly identifies them as the requested type. For example, \\begin{claim} is a claim, NOT a lemma; \\begin{theorem} is a theorem, NOT a proposition. Never reclassify one structure type as another. If the paper contains no structures of the requested type, return an empty array [].\n\nRespond ONLY with JSON array."
     },
     {
       "iteration": 1,
       "train_metrics": {
-        "precision": 0.5925925925925926,
-        "recall": 0.8421052631578947,
-        "f1": 0.6956521739130435,
-        "true_positives": 32,
-        "false_positives": 22,
-        "false_negatives": 6,
-        "num_gold": 38,
-        "num_extracted": 54
+        "precision": 0.6666666666666666,
+        "recall": 0.6363636363636364,
+        "f1": 0.6511627906976744,
+        "true_positives": 28,
+        "false_positives": 14,
+        "false_negatives": 16,
+        "num_gold": 44,
+        "num_extracted": 42
       },
       "error_counts": {
-        "false_negatives": 10,
-        "false_positives": 5,
-        "near_misses": 5
+        "false_negatives": 13,
+        "false_positives": 3,
+        "near_misses": 6
       },
-      "prompt": "You are analyzing a mathematical paper written in LaTeX. Extract ALL mathematical definitions and ONLY definitions.\n\nFirst, scan the LaTeX source for any \\newtheorem or similar macro declarations (e.g., \\newtheorem{defn}{Definition}, \\newtheorem{dfn}{Definition}). Treat any such custom environments as equivalent to \\begin{definition}...\\end{definition}.\n\nWhat counts as a DEFINITION:\n1. Formal definition environments: \\begin{definition}...\\end{definition} and any custom equivalents discovered above.\n2. Labeled prose definitions: sentences beginning with \"Definition X.Y\" or similar numbering followed by definitional content.\n3. Prose definitions using explicit definitional language: \"We define X as...\", \"X is defined as...\", \"X is defined by...\", \"...is called...\", \"...is said to be...\", \"Let X be a/an...\" when introducing a NEW concept, object, or term for the first time.\n\nWhat does NOT count as a definition \u2014 do NOT extract these:\n- Theorems, lemmas, propositions, corollaries, proofs, remarks, examples, assumptions\n- Standalone equations or displayed math that merely compute, derive, or state results\n- Variable assignments, substitutions, or shorthand (e.g., \"Let x = 3\", \"Put w := ...\", \"Set y = ...\" when merely assigning a value for computation)\n- Matrix constructions or parameter specifications\n- Descriptions of algorithms, methods, or experimental setups (unless they formally define a mathematical object)\n- Notation conventions that merely introduce shorthand without defining a mathematical concept\n- Intermediate steps in proofs or derivations\n- Statements describing properties or results about previously defined objects\n\nCRITICAL RULES FOR EXTRACTION BOUNDARIES:\n- Include the COMPLETE definitional passage. If a definition spans multiple sentences, includes displayed equations, or defines several related concepts together in one paragraph or environment, extract the ENTIRE passage as ONE definition.\n- Do NOT split a single definitional passage into multiple extractions. If one paragraph defines a primary concept and then immediately defines variants or related sub-concepts, extract it all as one unit.\n- Include all surrounding prose that provides context for the definition (e.g., introductory clauses, conditions, displayed equations within the definition).\n- For equation-based definitions, include the surrounding text that frames the equation as a definition.\n\nFor each definition, extract:\n- name: Short descriptive name for the concept being defined\n- raw_latex: Original LaTeX text (preserve ALL math notation)\n- clean_text: \"\" (always empty string)\n- label: Any \\label{...} found within the definition, or null\n\nCRITICAL: The raw_latex field must be copied VERBATIM from the source \u2014 character for character.\nDo NOT modify the LaTeX in any way. Specifically:\n- Do NOT convert or substitute math delimiters\n- Do NOT expand, replace, or rename any macros or commands\n- Do NOT alter whitespace, line breaks, or formatting\n- Do NOT \"fix\" or \"improve\" any LaTeX syntax\nCopy exactly what appears in the input, nothing more, nothing less.\n\nReturn JSON array:\n[\n  {\n    \"name\": \"descriptive name\",\n    \"raw_latex\": \"original LaTeX\",\n    \"clean_text\": \"\",\n    \"label\": \"label or null\"\n  }\n]\n\nLaTeX text:\n\n{latex_chunk}\n\nRespond ONLY with JSON array."
+      "prompt": "You are analyzing a mathematical paper written in LaTeX. Extract ALL mathematical definitions.\n\nWhat counts as a definition:\n1. Formal definition environments: \\begin{definition}...\\end{definition} and custom variants declared via \\newtheorem (e.g., \\newtheorem{defn}{Definition}, \\newtheorem{dfn}{Definition}, etc.). Scan the preamble for such declarations and treat those environments as definitions.\n2. Labeled definitional passages: Text explicitly headed \"Definition X.Y\" or similar numbering.\n3. Inline definitions that introduce a NEW named mathematical concept using clear definitional language: \"is defined as\", \"is defined by\", \"we define X to be\", \"is called\", \"is said to be\", \"we call\", \"we say that\". The concept being defined should be highlighted (e.g., via \\emph, \\textit, \\textbf, or quotation marks).\n\nWhat does NOT count as a definition \u2014 do NOT extract these:\n- Temporary notation or variable assignments (e.g., \"Let x = 3\" or \"Put w := -f(v)\" or \"Set \u03b5 = 1/2\") that merely fix values for a proof or computation.\n- Descriptions of algorithms, methods, models, or systems (unless wrapped in a formal Definition environment).\n- Theorems, lemmas, propositions, corollaries, claims, remarks, examples, observations, or assumptions \u2014 even if they contain the word \"define\" incidentally.\n- Lists of data or experimental setup descriptions.\n- Statements that merely recall or restate known definitions without introducing new concepts.\n\nCRITICAL RULES FOR COMPLETENESS:\n- Extract each definition as a COMPLETE unit. If a single definitional passage defines multiple related concepts across several sentences or equations, extract the ENTIRE passage as ONE definition \u2014 do NOT split it into fragments.\n- Include ALL sentences, displayed equations, and conditions that are part of the same definitional passage.\n- Start from where the definition begins (including any introductory sentence like \"We consider the following definition\") and end where the definitional content ends.\n\nFor each definition, extract:\n- name: Short descriptive name for the concept being defined\n- raw_latex: Original LaTeX text (preserve ALL math notation)\n- clean_text: \"\" (always empty string)\n- label: Any \\label{...} found within the definition, or null\n\nCRITICAL: The raw_latex field must be copied VERBATIM from the source \u2014 character for character.\nDo NOT modify the LaTeX in any way. Specifically:\n- Do NOT convert or substitute math delimiters\n- Do NOT expand, replace, or rename any macros or commands\n- Do NOT alter whitespace, line breaks, or formatting\n- Do NOT \"fix\" or \"improve\" any LaTeX syntax\nCopy exactly what appears in the input, nothing more, nothing less.\n\nReturn JSON array:\n[\n  {\n    \"name\": \"descriptive name\",\n    \"raw_latex\": \"original LaTeX\",\n    \"clean_text\": \"\",\n    \"label\": \"label or null\"\n  }\n]\n\nLaTeX text:\n\n{latex_chunk}\n\nIMPORTANT: Only extract content that genuinely defines a new mathematical concept or object. When in doubt about whether something is a definition or just notation/setup, only extract it if it uses clear definitional language or appears in a formal Definition environment. If the paper contains no definitions, return an empty array [].\n\nRespond ONLY with JSON array."
     },
     {
       "iteration": 2,
       "train_metrics": {
-        "precision": 0.7021276595744681,
-        "recall": 0.8048780487804879,
-        "f1": 0.7500000000000001,
-        "true_positives": 33,
-        "false_positives": 14,
-        "false_negatives": 8,
-        "num_gold": 41,
-        "num_extracted": 47
+        "precision": 0.6862745098039216,
+        "recall": 0.7954545454545454,
+        "f1": 0.736842105263158,
+        "true_positives": 35,
+        "false_positives": 16,
+        "false_negatives": 9,
+        "num_gold": 44,
+        "num_extracted": 51
       },
       "error_counts": {
-        "false_negatives": 11,
-        "false_positives": 4,
+        "false_negatives": 9,
+        "false_positives": 6,
         "near_misses": 5
       },
-      "prompt": "You are analyzing a mathematical paper written in LaTeX. Extract ALL mathematical definitions and ONLY definitions.\n\nSTEP 1: Scan the LaTeX source for any \\newtheorem or similar macro declarations (e.g., \\newtheorem{defn}{Definition}, \\newtheorem{dfn}{Definition}, \\newtheorem{mydef}{Definition}). Treat any such custom environments as equivalent to \\begin{definition}...\\end{definition}.\n\nWhat counts as a DEFINITION \u2014 extract these:\n1. Formal definition environments: \\begin{definition}...\\end{definition} and any custom equivalents discovered in Step 1. Extract the ENTIRE environment contents.\n2. Labeled prose definitions: passages beginning with \"Definition X.Y\" or similar numbering, followed by definitional content.\n3. Prose passages that FORMALLY INTRODUCE a NEW mathematical concept, object, or quantity for the first time, using explicit definitional language such as:\n   - \"We define X as...\", \"X is defined as...\", \"X is defined by...\", \"...is defined to be...\"\n   - \"...is called...\", \"...is said to be...\"\n   - \"We define the optimization problem for X to be...\"\n   - \"Let X be a/an...\" when introducing a genuinely NEW named concept (not just setting a variable)\n   - \"We consider the following definition of...\"\n4. When a definition is introduced by framing language (e.g., \"X is defined as follows:\") followed by a displayed equation or environment, the definition includes BOTH the framing text AND the displayed equation(s) that follow.\n\nWhat does NOT count as a definition \u2014 do NOT extract these:\n- Theorems, lemmas, propositions, corollaries, proofs, remarks, examples, assumptions, conjectures\n- Statements that RECALL, REVIEW, or RESTATE known concepts (e.g., \"Recall that...\", \"Remember that...\", \"It is well known that...\")\n- Descriptions of algorithms, methods, models, or experimental setups that do not use formal definitional language to name a new mathematical object\n- General background descriptions of a topic area or class of methods (e.g., \"In general, X assumes the existence of...\")\n- Standalone equations that compute, derive, or state results without being framed as definitions\n- Variable assignments, substitutions, or shorthand for computation (e.g., \"Let x = 3\", \"Put w := ...\", \"Set y = ...\")\n- Notation conventions that merely introduce shorthand symbols without defining a mathematical concept\n- Properties, characterizations, or equivalent reformulations of previously defined objects (unless they explicitly define a new named concept)\n- Statements that describe what a special case of a previously defined concept is (e.g., \"The X takes on a special form when...\")\n\nCRITICAL RULES FOR EXTRACTION BOUNDARIES:\n- Include the COMPLETE definitional passage. If a definition spans multiple sentences, includes displayed equations, or defines several related sub-concepts together, extract the ENTIRE passage as ONE definition.\n- When a displayed equation is part of a definition, include ALL surrounding prose that frames it as a definition \u2014 both before and after the equation.\n- If a paragraph first defines a primary concept and then immediately defines variants, complementary notions, or sub-concepts of the same family, extract it all as ONE unit.\n- Do NOT split a single connected definitional passage into multiple extractions.\n- Do NOT truncate a definition before its displayed equations or before follow-up sentences that complete the definition.\n- When definitions of related operations (e.g., deletion, contraction) appear in the same paragraph or passage, extract them together as one unit.\n\nFor each definition, extract:\n- name: Short descriptive name for the concept being defined\n- raw_latex: Original LaTeX text (preserve ALL math notation)\n- clean_text: \"\" (always empty string)\n- label: Any \\label{...} found within the definition, or null\n\nCRITICAL: The raw_latex field must be copied VERBATIM from the source \u2014 character for character.\nDo NOT modify the LaTeX in any way. Specifically:\n- Do NOT convert or substitute math delimiters\n- Do NOT expand, replace, or rename any macros or commands\n- Do NOT alter whitespace, line breaks, or formatting\n- Do NOT \"fix\" or \"improve\" any LaTeX syntax\nCopy exactly what appears in the input, nothing more, nothing less.\n\nReturn JSON array:\n[\n  {\n    \"name\": \"descriptive name\",\n    \"raw_latex\": \"original LaTeX\",\n    \"clean_text\": \"\",\n    \"label\": \"label or null\"\n  }\n]\n\nLaTeX text:\n\n{latex_chunk}\n\nRespond ONLY with JSON array."
+      "prompt": "You are analyzing a mathematical paper written in LaTeX. Extract ALL mathematical definitions.\n\n## STEP 1: Scan for custom environments\nBefore extracting, scan the preamble for \\newtheorem declarations (e.g., \\newtheorem{defn}{Definition}, \\newtheorem{dfn}{Definition}, \\newtheorem{mydef}{Definition}, etc.). Treat any such custom environment as equivalent to a standard \\begin{definition}...\\end{definition} block.\n\n## STEP 2: Identify definitions from these sources\n\n1. **Formal definition environments**: \\begin{definition}...\\end{definition} and any custom variants found in Step 1. Extract the ENTIRE environment contents.\n\n2. **Labeled definitional passages**: Paragraphs or sections explicitly headed \"Definition X.Y\" or similar numbering patterns.\n\n3. **Inline definitions**: Passages that introduce a NEW named mathematical concept using definitional language such as: \"is defined as\", \"is defined by\", \"we define\", \"is called\", \"is said to be\", \"we call\", \"we say that\", \"we consider the following definition\", \"defined below\", \"defined to be\". The concept being defined is typically highlighted via \\emph, \\textit, \\textbf, or quotation marks.\n\n4. **Equation-based definitions**: Passages where a new mathematical object, function, or quantity is formally defined through an equation or formula, accompanied by definitional language.\n\n## STEP 3: Determine extraction boundaries \u2014 THIS IS CRITICAL\n\nA single definition extraction must include the ENTIRE definitional passage as one unit:\n\n- **Start boundary**: Begin at the first sentence that introduces the definition. Include introductory phrases like \"We consider the following definition\" or \"Let us consider the map... defined by\".\n\n- **End boundary**: Continue through ALL of the following that are part of the same definitional block:\n  - All consecutive sentences that define related or dependent concepts in the same paragraph\n  - All displayed equations (\\[...\\], equation environments, align environments, etc.) that formalize what is being defined\n  - \"Thus\", \"Hence\", \"That is\", or \"i.e.\" clauses that provide equivalent formulations\n  - Conditions, constraints, or clarifications (e.g., \"where...\", \"for all...\", \"such that...\")\n  - Subsequent sentences in the same paragraph that define closely related companion concepts (e.g., if one sentence defines concept A and the next defines concept B as a variant of A, extract both together)\n\n- **Do NOT split** a paragraph that defines multiple related concepts into separate extractions. If a passage defines a base concept and then immediately defines variants, extensions, or special cases thereof, extract it all as ONE definition.\n\n- **Do NOT truncate** before reaching the end of the definitional content. When in doubt, include more rather than less.\n\n## What does NOT count as a definition \u2014 do NOT extract:\n- Temporary notation or variable assignments (e.g., \"Let x = 3\", \"Put w := f(v)\", \"Set \u03b5 = 1/2\") that merely fix values for a proof or computation without introducing a reusable named concept.\n- Theorems, lemmas, propositions, corollaries, claims, remarks, examples, observations, or assumptions \u2014 even if they contain the word \"define\" incidentally.\n- Mere descriptions of properties, characterizations, or restatements of known definitions.\n- Algorithm descriptions, experimental setups, or model architectures UNLESS they appear within a formal Definition environment or use explicit definitional language to name a new mathematical concept.\n- Passages that merely recall or cite a previously established definition without new definitional content.\n\n## STEP 4: Format output\n\nFor each definition, extract:\n- **name**: Short descriptive name for the concept(s) being defined\n- **raw_latex**: Original LaTeX text, copied VERBATIM character-for-character from the source. Do NOT modify anything: preserve all math delimiters, macros, commands, comments (% lines), whitespace, and line breaks exactly as they appear.\n- **clean_text**: \"\" (always empty string)\n- **label**: Any \\label{...} found within the definition, or null\n\nReturn a JSON array:\n[\n  {\n    \"name\": \"descriptive name\",\n    \"raw_latex\": \"original LaTeX verbatim\",\n    \"clean_text\": \"\",\n    \"label\": \"label or null\"\n  }\n]\n\nLaTeX text:\n\n{latex_chunk}\n\nIMPORTANT REMINDERS:\n- Extract COMPLETE definitional passages. Do not fragment a multi-sentence definition into pieces.\n- Include all displayed equations and follow-up clauses that are part of the definition.\n- Only extract content that genuinely defines a new mathematical concept or object.\n- If the paper contains no definitions, return an empty array [].\n\nRespond ONLY with the JSON array."
     }
   ],
   "validation_metrics": {
-    "precision": 0.45,
-    "recall": 0.6,
-    "f1": 0.5142857142857143,
-    "true_positives": 9,
-    "false_positives": 11,
-    "false_negatives": 6,
+    "precision": 0.38095238095238093,
+    "recall": 0.5333333333333333,
+    "f1": 0.4444444444444444,
+    "true_positives": 8,
+    "false_positives": 13,
+    "false_negatives": 7,
     "num_gold": 15,
-    "num_extracted": 20
+    "num_extracted": 21
   }
 }
