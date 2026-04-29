@@ -1064,6 +1064,18 @@ class PaperParser:
             if raw:
                 inline_text = inline_text.replace(raw, " " * len(raw), 1)
 
+        # (Fix-a) Also mask out theorem-like and proof environments.
+        # C1/C4 patterns ("we define...", "let X be...") inside these
+        # are setup text, not standalone definitions.
+        _mask_env_kinds = {"theorem", "lemma", "proposition", "corollary",
+                           "claim", "conjecture", "problem", "proof"}
+        _mask_env_names = [env for env, kind in self.env_kind_map.items()
+                           if kind in _mask_env_kinds]
+        if _mask_env_names:
+            for _, _, body in self._extract_envs(text, _mask_env_names):
+                if body:
+                    inline_text = inline_text.replace(body, " " * len(body), 1)
+
         # C1: "We (also) define X as/by/to be ..." (case insensitive)
         inline_define_pattern = re.compile(
             r"(?P<full>"
@@ -1113,6 +1125,26 @@ class PaperParser:
             flags=re.IGNORECASE
         )
 
+        # (Fix-c) Negative patterns for C1 ("define"): phrases that look
+        # like "define X as" but are NOT definitions.
+        _c1_negative = re.compile(
+            r"\b(in\s+terms\s+of|as\s+we\s+did\s+in|as\s+in\s+(?:Section|"
+            r"Theorem|Lemma|Equation|Proposition|Definition|the\s+previous)|"
+            r"as\s+(?:before|above|below|follows)|defined\s+(?:above|below|"
+            r"earlier|previously|in\s+Section|in\s+Theorem|in\s+Lemma|"
+            r"in\s+Equation|in\s+Definition))\b",
+            flags=re.IGNORECASE,
+        )
+
+        # (Fix-d) Referential language: the sentence points elsewhere
+        # in the document, so it is not itself a definition.
+        _referential = re.compile(
+            r"\b(?:defined?\s+)?(?:below|above|right|left|"
+            r"in\s+the\s+(?:next|previous|following|preceding)\s+"
+            r"(?:section|chapter|subsection|paragraph))\b",
+            flags=re.IGNORECASE,
+        )
+
         def extract_name_hint(raw_name: str) -> str:
             raw_name = raw_name.strip()
             m_math = re.search(r"\$(.+?)\$", raw_name)
@@ -1143,6 +1175,13 @@ class PaperParser:
             )
 
         for m in inline_define_pattern.finditer(inline_text):
+            full_text = m.group("full")
+            # (Fix-c) Skip if negative pattern matches
+            if _c1_negative.search(full_text):
+                continue
+            # (Fix-d) Skip referential language
+            if _referential.search(full_text):
+                continue
             add_inline_definition(m, "inline_define")
 
         for m in inline_defined_as_pattern.finditer(inline_text):
@@ -1157,8 +1196,63 @@ class PaperParser:
         for m in inline_let_pattern.finditer(inline_text):
             full_text = m.group("full")
             # Only treat as definition if it contains definitional keywords
-            if definition_keywords.search(full_text):
-                add_inline_definition(m, "inline_let")
+            if not definition_keywords.search(full_text):
+                continue
+            # (Fix-d) Skip referential language
+            if _referential.search(full_text):
+                continue
+            add_inline_definition(m, "inline_let")
+
+        # --- (Fix-b) Priority-based dedup --------------------------------
+        # Priority: A (environment) > B (textual) > C2/C3 > C1/C4
+        # If two rules capture overlapping text, keep the higher-priority one.
+        _source_priority = {
+            "textual": 1,             # B
+            "inline_defined_as": 2,   # C2
+            "inline_we_say": 2,       # C3
+            "inline_define": 3,       # C1
+            "inline_let": 3,          # C4
+        }
+
+        def _priority(obj: Definition) -> int:
+            # A (environment-based) has env_name like "definition", "defn", etc.
+            # — anything not in _source_priority is A-type → highest priority (0)
+            return _source_priority.get(obj.env_name, 0)
+
+        # Sort by priority (lower = higher priority), then by index
+        objects.sort(key=lambda o: (_priority(o), o.index))
+
+        # Remove duplicates where clean_text overlaps significantly
+        deduped: List[Definition] = []
+        seen_texts: List[str] = []
+        for obj in objects:
+            ct = (obj.clean_text or "").strip().lower()
+            if not ct:
+                deduped.append(obj)
+                continue
+            # Check if this object's text is a substring of (or contains)
+            # an already-kept higher-priority object's text
+            is_dup = False
+            for prev in seen_texts:
+                # Either one contains the other, or they share >60% content
+                if ct in prev or prev in ct:
+                    is_dup = True
+                    break
+                # Also check if they start with the same first 60 chars
+                # (handles slight wording differences from two rules)
+                min_len = min(len(ct), len(prev))
+                if min_len > 30 and ct[:30] == prev[:30]:
+                    is_dup = True
+                    break
+            if not is_dup:
+                deduped.append(obj)
+                seen_texts.append(ct)
+
+        # Re-index
+        for i, obj in enumerate(deduped, start=1):
+            obj.id = f"D{i}"
+            obj.index = i
+        objects = deduped
 
         print(f"[INFO] _extract_definitions_manual: found {len(objects)} definitions (all kinds).")
         return objects
