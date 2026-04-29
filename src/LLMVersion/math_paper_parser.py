@@ -1087,17 +1087,17 @@ class PaperParser:
         )
 
         # C2: "X is defined as/to be ..." (case insensitive)
-        # Anchor name capture after a sentence boundary (period, newline, or
-        # start of string) to prevent catastrophic backtracking on long
-        # whitespace runs in the masked inline_text.
-        inline_defined_as_pattern = re.compile(
-            r"(?P<full>"
-            r"(?:(?<=\.)\s+|(?<=\n)\s*|(?:^)\s*)"
-            r"(?P<name>[^.]{1,80}?)"
-            r"\s+is\s+defined\s+"
-            r"(?:as|to\s+be)\s"
-            r"(?:\\\[.*?\\\]|\$\$.*?\$\$|[^.])*\.)",
-            flags=re.IGNORECASE | re.DOTALL,
+        # Two-phase approach to avoid catastrophic backtracking:
+        # 1. Find the fixed anchor "is defined as/to be"
+        # 2. Look back (up to 80 chars to previous sentence boundary) for name
+        # 3. Look forward for the rest of the sentence
+        _c2_anchor = re.compile(
+            r"\bis\s+defined\s+(?:as|to\s+be)\s",
+            flags=re.IGNORECASE,
+        )
+        _c2_tail = re.compile(
+            r"(?:\\\[.*?\\\]|\$\$.*?\$\$|[^.])*\.",
+            flags=re.DOTALL,
         )
 
         # C3: "We say/call X is/to be ..." - explicit definitional language
@@ -1188,8 +1188,32 @@ class PaperParser:
                 continue
             add_inline_definition(m, "inline_define")
 
-        for m in inline_defined_as_pattern.finditer(inline_text):
-            add_inline_definition(m, "inline_defined_as")
+        for anchor_m in _c2_anchor.finditer(inline_text):
+            # Look back from anchor for sentence boundary (period or start)
+            start_search = max(0, anchor_m.start() - 80)
+            prefix = inline_text[start_search:anchor_m.start()]
+            dot_pos = prefix.rfind(".")
+            if dot_pos >= 0:
+                name_start = start_search + dot_pos + 1
+            else:
+                name_start = start_search
+            name_text = inline_text[name_start:anchor_m.start()].strip()
+            if not name_text or len(name_text) > 80:
+                continue
+            # Match tail after anchor
+            tail_m = _c2_tail.match(inline_text, anchor_m.end())
+            if not tail_m:
+                continue
+            full_text = inline_text[name_start:tail_m.end()]
+            # Build a fake match-like object for add_inline_definition
+            class _C2Match:
+                def group(self, key):
+                    if key == "full":
+                        return full_text
+                    if key == "name":
+                        return name_text
+                    return None
+            add_inline_definition(_C2Match(), "inline_defined_as")
 
         # C3: "We say/call X is..." - explicit definitional language
         for m in inline_we_say_pattern.finditer(inline_text):
