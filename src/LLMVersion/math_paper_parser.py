@@ -1087,8 +1087,12 @@ class PaperParser:
         )
 
         # C2: "X is defined as/to be ..." (case insensitive)
+        # Anchor name capture after a sentence boundary (period, newline, or
+        # start of string) to prevent catastrophic backtracking on long
+        # whitespace runs in the masked inline_text.
         inline_defined_as_pattern = re.compile(
             r"(?P<full>"
+            r"(?:(?<=\.)\s+|(?<=\n)\s*|(?:^)\s*)"
             r"(?P<name>[^.]{1,80}?)"
             r"\s+is\s+defined\s+"
             r"(?:as|to\s+be)\s"
