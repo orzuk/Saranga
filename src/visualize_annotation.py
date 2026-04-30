@@ -42,6 +42,10 @@ NODE_COLORS = {
     "remark":      {"header": "#117A65", "body": "#A2D9CE"},   # teal
     "problem":     {"header": "#7D3C98", "body": "#E8DAEF"},   # darker purple
     "conjecture":  {"header": "#B9770E", "body": "#FCF3CF"},   # gold
+    # v2 schema additions
+    "algorithm_step": {"header": "#5DADE2", "body": "#EBF5FB"},  # light blue (sub-block of algorithm)
+    "open_problem":   {"header": "#B7950B", "body": "#FCF3CF"},  # olive/tan (Level-1, distinct from conjecture)
+    "assumption":     {"header": "#5D6D7E", "body": "#EAEDED"},  # muted blue-grey (Level-1)
 }
 DEFAULT_COLOR = {"header": "#566573", "body": "#EAECEE"}
 PROOF_COLOR = "#E8DAEF"
@@ -750,7 +754,50 @@ def merge_proofs(nodes, edges):
     for n in nodes:
         if n.get("type") != "proof":
             node_by_id[n["id"]]["proof_info"] = []
+    # Reset step_info on proof / algorithm parents
+    for n in nodes:
+        if n.get("type") in ("proof", "algorithm"):
+            node_by_id[n["id"]]["step_info"] = []
 
+    # ── v2: Attach proof_step / algorithm_step children to their parent ──
+    # Steps reference parents via "parent_id" (v2) or "parent_proof" (legacy).
+    def _step_parent(step_node):
+        return (step_node.get("parent_id")
+                or step_node.get("parent_proof")
+                or step_node.get("parent"))
+
+    def _summarize_step(s):
+        return {
+            "id": s.get("id", ""),
+            "name": s.get("name", ""),
+            "subclass": s.get("subclass", ""),
+            "statement_clean": s.get("statement_clean", ""),
+            "statement": s.get("statement", ""),
+            "step_order": s.get("step_order", 0),
+        }
+
+    for n in nodes:
+        ntype = n.get("type")
+        if ntype not in ("proof_step", "algorithm_step"):
+            continue
+        parent_id = _step_parent(n)
+        if not parent_id or parent_id not in node_by_id:
+            continue
+        parent = node_by_id[parent_id]
+        ptype = parent.get("type")
+        # proof_step → proof; algorithm_step → algorithm
+        if (ntype == "proof_step" and ptype == "proof") or \
+           (ntype == "algorithm_step" and ptype == "algorithm"):
+            parent.setdefault("step_info", [])
+            parent["step_info"].append(_summarize_step(n))
+
+    # Order step_info lists by step_order for stable rendering
+    for n in nodes:
+        if n.get("type") in ("proof", "algorithm") and n.get("step_info"):
+            n["step_info"].sort(key=lambda s: (s.get("step_order") or 0, s.get("id", "")))
+
+    # When a proof gets merged into its parent theorem, its step_info should
+    # bubble up to the theorem so the click-detail panel can render it.
     display_nodes = []
     for n in nodes:
         if n["id"] in proof_map:
@@ -760,6 +807,10 @@ def merge_proofs(nodes, edges):
             content = n.get("proof_strategy") or n.get("statement_clean") or n.get("statement")
             if content:
                 parent["proof_info"].append(content)
+            # Bubble proof's step_info up to the theorem
+            if n.get("step_info"):
+                parent.setdefault("step_info", [])
+                parent["step_info"].extend(n["step_info"])
             continue
         display_nodes.append(n)
 
@@ -1091,7 +1142,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
     else:
         # Standard: collapse proofs AND filter out equations/proof_steps
         nodes, edges, proof_map = merge_proofs(nodes_raw, edges_raw)
-        hidden_types = {"equation", "proof_step"}
+        hidden_types = {"equation", "proof_step", "algorithm_step"}
         hidden_ids = {n["id"] for n in nodes if n.get("type") in hidden_types}
         nodes = [n for n in nodes if n.get("type") not in hidden_types]
         edges = [e for e in edges
@@ -1564,6 +1615,13 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         else:
             # Simple box: wrap statement/name text to box width (up to 5 lines)
             dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT) - 4)
+            # v2: subclass badge for step nodes (proof_step / algorithm_step)
+            if ntype in ("proof_step", "algorithm_step") and n.get("subclass"):
+                ax.text(bx + PADDING, cursor_y,
+                        f"[{n.get('subclass')}]",
+                        ha="left", va="top", fontsize=10, color="#555",
+                        fontstyle="italic")
+                cursor_y -= LINE_H * 0.85
             raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
             stmt = _prepare_for_display(raw)
             stmt_lines = _wrap(stmt, dyn_wrap)[:5]
@@ -1725,7 +1783,7 @@ def _classify_and_merge(nodes, edges):
             if content:
                 parent["proof_info"].append(content)
 
-    base_nodes, proof_steps, equations, orphan_eqs = [], [], [], []
+    base_nodes, proof_steps, algo_steps, equations, orphan_eqs = [], [], [], [], []
     has_edge = set()
     for e in edges:
         has_edge.add(e["source"])
@@ -1736,6 +1794,8 @@ def _classify_and_merge(nodes, edges):
             continue
         if n["type"] == "proof_step":
             proof_steps.append(n)
+        elif n["type"] == "algorithm_step":
+            algo_steps.append(n)
         elif n["type"] == "equation":
             if n["id"] in has_edge:
                 equations.append(n)
@@ -1759,9 +1819,20 @@ def _classify_and_merge(nodes, edges):
 
     step_chains = {}
     for ps in proof_steps:
-        parent = ps.get("parent_proof", "")
+        # v2 uses parent_id; legacy uses parent_proof
+        parent = ps.get("parent_id") or ps.get("parent_proof", "")
         thm_id = proof_map.get(parent, parent)
         step_chains.setdefault(thm_id, []).append(ps)
+
+    # v2: algorithm_step children attach directly to their algorithm parent.
+    # Algorithms are not collapsed (no proof_map entry), so attach to parent_id.
+    for as_ in algo_steps:
+        parent = as_.get("parent_id") or as_.get("parent", "")
+        step_chains.setdefault(parent, []).append(as_)
+
+    # Sort each chain by step_order for stable rendering
+    for k in step_chains:
+        step_chains[k].sort(key=lambda s: (s.get("step_order") or 0, s.get("id", "")))
 
     eq_map = {}
     for eq in equations:
@@ -1770,6 +1841,26 @@ def _classify_and_merge(nodes, edges):
                 eq_map.setdefault(e["target"], []).append(eq)
             if e["target"] == eq["id"] and e["source"] in base_ids:
                 eq_map.setdefault(e["source"], []).append(eq)
+
+    # ── v2: Build step_info summaries (mirrors merge_proofs) ──
+    # Attach to parent base_node so click-detail panel can render Decomposition.
+    base_by_id = {n["id"]: n for n in base_nodes}
+    for parent_id, steps in step_chains.items():
+        parent = base_by_id.get(parent_id)
+        if parent is None:
+            continue
+        parent.setdefault("step_info", [])
+        parent["step_info"] = [
+            {
+                "id": s.get("id", ""),
+                "name": s.get("name", ""),
+                "subclass": s.get("subclass", ""),
+                "statement_clean": s.get("statement_clean", ""),
+                "statement": s.get("statement", ""),
+                "step_order": s.get("step_order", 0),
+            }
+            for s in steps
+        ]
 
     return base_nodes, base_edges, step_chains, eq_map, orphan_eqs
 
@@ -1810,6 +1901,7 @@ def generate_interactive_html(data, svg_path, html_path):
             "assumptions": n.get("assumptions", []),
             "conclusions": n.get("conclusions", []),
             "proof_info": n.get("proof_info", []),
+            "step_info": n.get("step_info", []),
             "input": n.get("input", []),
             "output": n.get("output", []),
             "steps": [{"id": s["id"], "statement": s.get("statement","")}
@@ -1883,6 +1975,13 @@ def generate_interactive_html(data, svg_path, html_path):
     svg_content = re.sub(r'id="node_([^"]+)"(?![^>]*\bclass=)',
                          _tag_node_class, svg_content)
 
+    # v2: collect (src,tgt) of `resolves` edges so we can dash them in the SVG
+    resolves_pairs = set()
+    for e in edges:
+        if e.get("type") == "resolves":
+            resolves_pairs.add((str(e["source"]).replace(" ", "_"),
+                                str(e["target"]).replace(" ", "_")))
+
     # Tag edges with classes based on the endpoint nodes' aux/external status.
     def _tag_edge_class(m):
         full_id = m.group(1)
@@ -1906,6 +2005,8 @@ def generate_interactive_html(data, svg_path, html_path):
             classes.append("edge-aux")
         if ds.get("origin", "paper") == "external" or dt.get("origin", "paper") == "external":
             classes.append("edge-external")
+        if (s_safe, t_safe) in resolves_pairs:
+            classes.append("edge-resolves")
         cls_attr = " ".join(classes)
         return f'id="edge_{full_id}" class="{cls_attr}"'
     svg_content = re.sub(r'id="edge_([^"]+)"', _tag_edge_class, svg_content)
@@ -1996,6 +2097,9 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
 /* Visual differentiation when shown */
 .node-external-shown [stroke-dasharray] {{ }}  /* no-op, see runtime tweak */
 .node-aux-shown {{ opacity: 0.75; }}
+/* v2: `resolves` edges (theorem-like resolves an open_problem/conjecture) — dashed */
+.edge-resolves path {{ stroke-dasharray: 5,3 !important; }}
+.edge-resolves {{ stroke-dasharray: 5,3 !important; }}
 </style>
 </head>
 <body>
@@ -2124,6 +2228,24 @@ function showDetail(nodeId) {{
       }} else {{
         h += '<div style="font-size:13px;font-style:italic;">' + esc(p) + '</div>';
       }}
+    }});
+    h += '</div>';
+  }}
+  // v2: Step decomposition (proof_step children of a proof, or algorithm_step children of an algorithm)
+  if (d.step_info && d.step_info.length > 0) {{
+    h += '<div class="detail-section"><h4>Decomposition (' + d.step_info.length + ' steps)</h4>';
+    d.step_info.forEach(function(s, i) {{
+      var ord = (s.step_order || (i + 1));
+      var label = s.name ? esc(s.name) : esc(s.id || ('Step ' + ord));
+      h += '<div class="step-item"><strong>' + ord + '. ' + label + '</strong>';
+      if (s.subclass) {{
+        h += ' <span style="font-size:11px;font-style:italic;color:#666;">[' + esc(s.subclass) + ']</span>';
+      }}
+      var body = s.statement_clean || s.statement || '';
+      if (body) {{
+        h += '<div style="font-size:12px;color:#444;margin-top:2px;">' + esc(body) + '</div>';
+      }}
+      h += '</div>';
     }});
     h += '</div>';
   }}
