@@ -33,6 +33,8 @@ from node_types import (  # noqa: E402
     LEVEL_2_PARENT_TYPE,
     TAGS_VOCABULARY,
     is_known_tag,
+    has_antecedent,
+    PROVABLE,
 )
 from edge_types import (  # noqa: E402
     ALL_TYPES as ALL_EDGE_TYPES,
@@ -107,9 +109,20 @@ def validate(data: dict) -> list[str]:
                                 f"unknown tag '{t}'; not in suggested vocabulary."
                             )
 
-        if n.get("type") in ("theorem", "lemma", "corollary"):
-            if not n.get("assumptions"):
-                warnings.append(f"WARNING: {n['type'].title()} '{nid}' has no assumptions.")
+        if n.get("type") in PROVABLE:
+            statement = n.get("statement") or n.get("clean_text") or ""
+            # Regime A/B/C rule (see node_types.has_antecedent):
+            # - Warn on missing assumptions ONLY if the statement contains
+            #   an explicit antecedent marker (if/let/suppose/...). A bare
+            #   inequality or identity is allowed to have empty assumptions.
+            # - Warn on missing conclusions always — every theorem-like
+            #   node asserts some fact.
+            if not n.get("assumptions") and has_antecedent(statement):
+                warnings.append(
+                    f"WARNING: {n['type'].title()} '{nid}' has no "
+                    f"assumptions but its statement contains an explicit "
+                    f"antecedent marker (if/let/suppose/...)."
+                )
             if not n.get("conclusions"):
                 warnings.append(f"WARNING: {n['type'].title()} '{nid}' has no conclusions.")
 

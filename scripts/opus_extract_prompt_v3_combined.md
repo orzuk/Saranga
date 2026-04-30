@@ -290,6 +290,40 @@ Optional node fields when applicable:
   `["existence", "uniqueness", "bound"]`; `algorithm` →
   `["iterative", "approximation"]`. Emit only tags you are confident in.
 
+**Schema rule for `assumptions` / `conclusions` on theorem-like nodes:**
+
+A theorem-like node (theorem, lemma, proposition, corollary, claim) falls
+into one of three regimes — populate `assumptions` and `conclusions`
+accordingly. `conclusions` is **always** populated; `assumptions` may be
+empty in Regime C.
+
+- **Regime A — explicit if/then.** Statement contains "if X, then Y" or
+  "let X. then Y" or "suppose X. Y". Put the antecedent(s) in
+  `assumptions`, the consequent(s) in `conclusions`.
+  Example: *"If $X \sim \mathcal{N}(0,1)$ and $t > 0$, then
+  $P(X > t) \le e^{-t^2/2}$."*
+  → `assumptions: ["$X \sim \mathcal{N}(0,1)$", "$t > 0$"]`,
+    `conclusions: ["$P(X > t) \le e^{-t^2/2}$"]`.
+
+- **Regime B — bare statement with free variables.** Statement is a
+  single inequality / equation / claim, but has typed variables or
+  objects whose declarations live in surrounding text. Recover the
+  declarations from context and put them in `assumptions`; the asserted
+  fact goes in `conclusions`.
+  Example: *"Theorem. $\|x\|_1 \le \sqrt{n} \, \|x\|_2$."* (with
+  surrounding text declaring $x \in \mathbb{R}^n$).
+  → `assumptions: ["$x \in \mathbb{R}^n$"]`,
+    `conclusions: ["$\|x\|_1 \le \sqrt{n} \, \|x\|_2$"]`.
+
+- **Regime C — pure identity / unconditional fact.** Statement is a
+  closed-form equality or universal fact with no free variables and no
+  recoverable preconditions. `assumptions` may be empty.
+  Example: *"Theorem. $e^{i\pi} + 1 = 0$."*
+  → `assumptions: []`, `conclusions: ["$e^{i\pi} + 1 = 0$"]`.
+
+Default to Regime B over Regime C: most theorems with free variables
+have implicit declarations in surrounding text — recover them.
+
 **Schema rule for `input` / `output` / `assumptions` / `conclusions`:**
 these MUST be JSON **arrays of strings**, one bullet point per array
 element, NOT a single concatenated string. Example for an algorithm:
