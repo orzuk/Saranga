@@ -617,15 +617,23 @@ class PaperGraph:
             If True, include optional research fields (raw_latex, clean_text,
             label, env_name, spans, etc.). If False, output student-minimal format.
         """
-        # --- Map edge type names ---
+        # --- Map edge type names to canonical schema ---
+        # Canonical edge types: uses, generalizes, specializes, proves,
+        # solves, illustrates, tests, resolves (see src/edge_types.py)
         EDGE_TYPE_MAP = {
             "uses": "uses",
-            "depends_on": "dependency",
-            "follows_from": "follows_from",
-            "has_part": "dependency",
+            "depends_on": "uses",
+            "follows_from": "uses",
+            "has_part": "uses",
             "generalizes": "generalizes",
-            "related_to": "dependency",
-            "equivalent_to": "equivalent_to",
+            "specializes": "specializes",
+            "related_to": "uses",
+            "equivalent_to": "uses",
+            "proves": "proves",
+            "solves": "solves",
+            "illustrates": "illustrates",
+            "tests": "tests",
+            "resolves": "resolves",
         }
 
         nodes = []
@@ -635,15 +643,15 @@ class PaperGraph:
                 "type": obj.kind,
                 "name": obj.name,
                 "statement": getattr(obj, "clean_text", "") or getattr(obj, "raw_latex", ""),
+                # Schema-required fields (defaults; enriched by LLM in future)
+                "origin": "paper",
+                "tags": [],
+                "subclass": None,
+                "rigor": None,
             }
-
-            # Section (not currently tracked, but placeholder)
-            # node["section"] = ...
 
             # Type-specific fields
             if isinstance(obj, TheoremLike):
-                # assumptions and conclusions are now List[str] at the Python level,
-                # matching the JSON schema. Pass through directly.
                 node["assumptions"] = list(getattr(obj, "assumptions", []) or [])
                 node["conclusions"] = list(getattr(obj, "conclusions", []) or [])
 
@@ -701,7 +709,7 @@ class PaperGraph:
                 "target": r.target_id,
             }
             mapped_type = EDGE_TYPE_MAP.get(r.relation_type, r.relation_type)
-            if mapped_type and mapped_type != "dependency":
+            if mapped_type:
                 edge["type"] = mapped_type
             if include_research_fields and r.metadata.get("confidence"):
                 edge["confidence"] = r.metadata["confidence"]

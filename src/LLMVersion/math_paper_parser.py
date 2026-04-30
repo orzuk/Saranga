@@ -185,6 +185,58 @@ STRUCTURE_TYPE_CONFIG = {
         "dataclass": "TableObject",
         "id_prefix": "Tb",
     },
+    "example": {
+        "description": "worked examples illustrating a concept",
+        "forms": [
+            r"\begin{example}...\end{example}",
+            '"Example 2.1. ..."',
+        ],
+        "json_fields": ["name", "raw_latex", "clean_text", "label"],
+        "dataclass": "Definition",
+        "id_prefix": "Ex",
+    },
+    "exercise": {
+        "description": "pedagogical exercises for the reader",
+        "forms": [
+            r"\begin{exercise}...\end{exercise}",
+            '"Exercise 2.1. ..."',
+        ],
+        "json_fields": ["name", "raw_latex", "clean_text", "label"],
+        "dataclass": "Definition",
+        "id_prefix": "Xr",
+    },
+    "remark": {
+        "description": "author remarks and observations",
+        "forms": [
+            r"\begin{remark}...\end{remark}",
+            '"Remark 2.1. ..."',
+        ],
+        "json_fields": ["name", "raw_latex", "clean_text", "label"],
+        "dataclass": "Definition",
+        "id_prefix": "Rm",
+    },
+    "open_problem": {
+        "description": "open (unsolved) mathematical questions",
+        "forms": [
+            r"\begin{openproblem}...\end{openproblem}",
+            r"\begin{openquestion}...\end{openquestion}",
+            '"Open Problem:", "Open Question:" headings',
+        ],
+        "json_fields": ["name", "raw_latex", "clean_text", "label", "assumptions", "statement"],
+        "dataclass": "TheoremLike",
+        "id_prefix": "OP",
+    },
+    "assumption": {
+        "description": "standing assumption blocks",
+        "forms": [
+            r"\begin{assumption}...\end{assumption}",
+            r"\begin{assumptions}...\end{assumptions}",
+            '"Assumption (A1). ..." numbered assumption blocks',
+        ],
+        "json_fields": ["name", "raw_latex", "clean_text", "label"],
+        "dataclass": "Definition",
+        "id_prefix": "As",
+    },
 }
 
 
@@ -244,6 +296,29 @@ class PaperParser:
 
         "problem": "problem",
         "Problem": "problem",
+
+        "openproblem": "open_problem",
+        "openProblem": "open_problem",
+        "openquestion": "open_problem",
+        "open": "open_problem",
+
+        "assumption": "assumption",
+        "Assumption": "assumption",
+        "assumptions": "assumption",
+        "Assumptions": "assumption",
+
+        "example": "example",
+        "Example": "example",
+        "exam": "example",
+        "ex": "example",
+
+        "exercise": "exercise",
+        "Exercise": "exercise",
+
+        "remark": "remark",
+        "Remark": "remark",
+        "rem": "remark",
+        "note": "remark",
     }
 
     THEOREM_LIKE_KINDS = {
@@ -254,6 +329,7 @@ class PaperParser:
         "claim",
         "conjecture",
         "problem",
+        "open_problem",
     }
 
     def __init__(
@@ -639,8 +715,12 @@ class PaperParser:
         proofs = self._extract_proofs(text)
         algorithms = self._extract_algorithms(text)
         tables = self._extract_tables(text)
+        assumptions = self._extract_assumptions(text)
+        examples = self._extract_examples(text)
+        exercises = self._extract_exercises(text)
+        remarks = self._extract_remarks(text)
 
-        # Merge/replace proof, algorithm, table when LLM was used
+        # Merge/replace proof, algorithm, table, assumption when LLM was used
         if self.extraction_mode in ("llm", "both"):
             for stype, regex_var in [("proof", proofs), ("algorithm", algorithms), ("table", tables)]:
                 if stype not in self.structure_types:
@@ -661,6 +741,31 @@ class PaperParser:
                         algorithms = self._merge_objects(algorithms, llm_objs)
                     elif stype == "table":
                         tables = self._merge_objects(tables, llm_objs)
+
+            # Merge/replace simple env types when LLM was used
+            for stype, regex_list in [("assumption", assumptions), ("example", examples),
+                                       ("exercise", exercises), ("remark", remarks)]:
+                if stype not in self.structure_types:
+                    continue
+                llm_objs = llm_extracted.get(stype, [])
+                if self.extraction_mode == "llm":
+                    if stype == "assumption":
+                        assumptions = llm_objs
+                    elif stype == "example":
+                        examples = llm_objs
+                    elif stype == "exercise":
+                        exercises = llm_objs
+                    elif stype == "remark":
+                        remarks = llm_objs
+                elif llm_objs:
+                    if stype == "assumption":
+                        assumptions = self._merge_objects(assumptions, llm_objs)
+                    elif stype == "example":
+                        examples = self._merge_objects(examples, llm_objs)
+                    elif stype == "exercise":
+                        exercises = self._merge_objects(exercises, llm_objs)
+                    elif stype == "remark":
+                        remarks = self._merge_objects(remarks, llm_objs)
 
         # ---- Distilled rules (NtRED): auto-loaded from {type}_eval/distilled_rules.py ----
         if self.extraction_mode in ("manual", "both"):
@@ -688,12 +793,12 @@ class PaperParser:
             if distilled_tables:
                 tables = self._merge_objects(tables, distilled_tables)
 
-        # equations inside theorem/definition/proof/algorithm bodies
-        containers: List[MathObject] = theorem_like + definitions + proofs + algorithms
+        # equations inside theorem/definition/proof/algorithm/example/remark bodies
+        containers: List[MathObject] = theorem_like + definitions + proofs + algorithms + examples + remarks
         equations = self._extract_equations(text, containers)
 
         # Register all objects in the PaperGraph
-        for obj in theorem_like + definitions + proofs + algorithms + tables + equations:
+        for obj in theorem_like + definitions + proofs + algorithms + tables + assumptions + examples + exercises + remarks + equations:
             obj.paper_id = self.paper_id
             graph.add_object(obj)
 
@@ -744,10 +849,12 @@ class PaperParser:
                 "definition",
                 "remark",
                 "example",
+                "exercise",
                 "claim",
                 "conclusion",
                 "problem",
                 "conjecture",
+                "assumption",
             ]:
                 if candidate in printed_clean:
                     kind = candidate
@@ -828,9 +935,10 @@ class PaperParser:
             counters[kind] += 1
             idx = counters[kind]
 
-            # ID prefix: T (theorem), L (lemma), P (proposition/problem/proof is different),
-            # C (corollary/claim/conjecture), etc. For simplicity keep first letter.
-            obj_id = kind[0].upper() + str(idx)
+            # Use STRUCTURE_TYPE_CONFIG prefix if available, else first letter
+            config = STRUCTURE_TYPE_CONFIG.get(kind)
+            prefix = config["id_prefix"] if config else kind[0].upper()
+            obj_id = prefix + str(idx)
 
             label, _ = self._extract_label_and_name(body)
             clean_text = self._clean_latex_to_text(body)
@@ -1565,6 +1673,58 @@ class PaperParser:
             return MathObject(**common)
 
     # ------------------------------------------------------------------
+    # Simple environment extraction (assumption, example, exercise, remark)
+    # ------------------------------------------------------------------
+
+    def _extract_simple_envs(self, text: str, target_kind: str) -> List[Definition]:
+        """Extract environments of a given kind as Definition objects."""
+        config = STRUCTURE_TYPE_CONFIG.get(target_kind)
+        prefix = config["id_prefix"] if config else target_kind[0].upper()
+
+        env_names = [
+            env for env, kind in self.env_kind_map.items()
+            if kind == target_kind
+        ]
+        if not env_names:
+            return []
+
+        found = self._extract_envs(text, env_names)
+        objects: List[Definition] = []
+
+        for idx, (env_name, opt_name, body) in enumerate(found, start=1):
+            label, _ = self._extract_label_and_name(body)
+            clean_text = self._clean_latex_to_text(body)
+            obj = Definition(
+                id=f"{prefix}{idx}",
+                kind=target_kind,
+                index=idx,
+                label=label,
+                name=opt_name.strip() if opt_name else None,
+                raw_latex=body,
+                clean_text=clean_text,
+                env_name=env_name,
+            )
+            objects.append(obj)
+
+        return objects
+
+    def _extract_assumptions(self, text: str) -> List[Definition]:
+        """Extract \\begin{assumption} blocks."""
+        return self._extract_simple_envs(text, "assumption")
+
+    def _extract_examples(self, text: str) -> List[Definition]:
+        """Extract \\begin{example} blocks."""
+        return self._extract_simple_envs(text, "example")
+
+    def _extract_exercises(self, text: str) -> List[Definition]:
+        """Extract \\begin{exercise} blocks."""
+        return self._extract_simple_envs(text, "exercise")
+
+    def _extract_remarks(self, text: str) -> List[Definition]:
+        """Extract \\begin{remark} blocks."""
+        return self._extract_simple_envs(text, "remark")
+
+    # ------------------------------------------------------------------
     # Unified LLM-based extraction
     # ------------------------------------------------------------------
 
@@ -2046,7 +2206,7 @@ Respond ONLY with JSON array."""
              proof._parent_link_source = one of:
                  'header_label', 'body_ref', 'prev_theorem_like'.
 
-        Later, _build_relations() will add structural 'has_part' edges
+        Later, _build_relations() will add structural 'proves' edges
         theorem -> proof using this parent_id, and logical 'uses' edges
         based on references in the proof body.
         """
@@ -2125,10 +2285,9 @@ Respond ONLY with JSON array."""
 
         We currently add:
 
-          1. Structural 'has_part' edges:
-             - theorem-like / definition / algorithm -> proof/equation
-               (based on parent_id + roles, with confidence depending on how
-               the parent_id was inferred).
+          1. Structural edges (canonical types per schema lock):
+             - proof 'proves' theorem-like (proof → theorem)
+             - container 'uses' equation (equation depends on container)
 
           2. Logical 'uses' edges with confidence:
              - any object -> another object it references via \ref/\eqref/\autoref
@@ -2155,15 +2314,15 @@ Respond ONLY with JSON array."""
                 label_to_id[lbl] = obj_id
 
         # ------------------------------------------------------------------
-        # 2. Structural 'has_part' edges
-        #    (a) theorem-like / other containers have_part their proofs
-        #    (b) containers have_part their equations
+        # 2. Structural edges (canonical edge types per schema lock)
+        #    (a) proof 'proves' theorem-like (proof → theorem)
+        #    (b) container 'uses' equation (equation depends on container)
         # ------------------------------------------------------------------
 
-        has_part_proof_count = 0
-        has_part_equation_count = 0
+        proves_count = 0
+        equation_edge_count = 0
 
-        # (a) theorem-like has_part proof (via proof.parent_id)
+        # (a) proof proves theorem-like (via proof.parent_id)
         for obj in graph.objects.values():
             if obj.kind != "proof":
                 continue
@@ -2172,7 +2331,7 @@ Respond ONLY with JSON array."""
             if not parent_id:
                 continue
 
-            key = (parent_id, obj.id, "has_part")
+            key = (obj.id, parent_id, "proves")
             if key in existing:
                 continue
 
@@ -2184,19 +2343,20 @@ Respond ONLY with JSON array."""
             else:
                 confidence = 0.8
 
-            graph.add_has_part(
-                whole_id=parent_id,
-                part_id=obj.id,
+            graph.add_relation(
+                source_id=obj.id,
+                target_id=parent_id,
+                relation_type="proves",
+                category="structural",
                 metadata={
-                    "role": "proof_of",
                     "parent_link_source": parent_source,
                     "confidence": confidence,
                 },
             )
             existing.add(key)
-            has_part_proof_count += 1
+            proves_count += 1
 
-        # (b) container has_part equation (via Equation.parent_id)
+        # (b) container uses equation (via Equation.parent_id)
         for obj in graph.objects.values():
             if not isinstance(obj, Equation):
                 continue
@@ -2205,17 +2365,17 @@ Respond ONLY with JSON array."""
             if not parent_id:
                 continue
 
-            key = (parent_id, obj.id, "has_part")
+            key = (parent_id, obj.id, "uses")
             if key in existing:
                 continue
 
-            graph.add_has_part(
-                whole_id=parent_id,
-                part_id=obj.id,
+            graph.add_uses(
+                user_id=parent_id,
+                used_id=obj.id,
                 metadata={"role": "equation_in", "confidence": 1.0},
             )
             existing.add(key)
-            has_part_equation_count += 1
+            equation_edge_count += 1
 
         # ------------------------------------------------------------------
         # 3. Logical 'uses' edges from explicit \ref / \eqref / \autoref
@@ -2356,11 +2516,11 @@ Respond ONLY with JSON array."""
         graph.relations = relations + graph.relations[len(relations):]
 
         total_uses_kw = locals().get("uses_kw_count", 0)
-        if has_part_proof_count or has_part_equation_count or uses_ref_count or total_uses_kw:
+        if proves_count or equation_edge_count or uses_ref_count or total_uses_kw:
             print(
                 "[INFO] _build_relations: "
-                f"added {has_part_proof_count} 'has_part' (proof) edges, "
-                f"{has_part_equation_count} 'has_part' (equation) edges, "
+                f"added {proves_count} 'proves' edges, "
+                f"{equation_edge_count} 'uses' (equation) edges, "
                 f"{uses_ref_count} 'uses' (ref) edges, "
                 f"{total_uses_kw} 'uses' (keyword) edges."
             )
