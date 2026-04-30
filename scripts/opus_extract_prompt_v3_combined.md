@@ -61,8 +61,9 @@ rules and a richer (but optional) edge taxonomy with direction conventions.
      `\textbf{End while}` blocks into `statement` — they break math
      rendering AND visual layout.
    - For PROOFS: `statement` is the proof's strategy sentence
-     ("By induction on $n$"), not the full proof. Use `steps[]` for
-     the body when `proof_granularity=with_proof_steps`.
+     ("By induction on $n$"), not the full proof. The proof body
+     decomposes into `proof_step` nodes (Level 2; see rule 10) when
+     the proof has clear semantic divisions.
 
 7. **Map `\newtheorem{property}` and similar to standard types.** If the
    paper defines a custom `\newtheorem{X}{...}` environment with name
@@ -167,6 +168,81 @@ rules and a richer (but optional) edge taxonomy with direction conventions.
    In short: count the labeled `\begin{X}...\end{X}` environments in
    the source; the number of theorem-like nodes you emit must be ≥ that
    count (it can be greater if cited-results are added).
+
+9. **ACYCLICITY (DAG CONSTRAINT).** The within-paper graph must be a
+   directed acyclic graph (DAG). Mathematical dependency cannot be
+   circular: a theorem cannot depend on a result that itself depends
+   on that theorem. When emitting a `uses` edge $A \to B$ (read "B
+   uses A"), make sure $A$ is logically prior to $B$ in the paper's
+   dependency order. If two nodes appear to cite each other in the
+   text, pick the single direction that reflects the actual logical
+   dependency (typically the one where the source is stated/proved
+   later in the paper depends on the earlier-stated one). Reciprocal
+   `uses` edges in both directions are NOT permitted; pick one. The
+   downstream validator runs cycle detection and flags violations.
+
+10. **LEVEL-2 STEP EXTRACTION (default-on, semantic-driven).** Decompose
+    `proof` and `algorithm` nodes into Level-2 step nodes
+    (`proof_step`, `algorithm_step`) WHEN the proof or algorithm has
+    a clear semantic decomposition. Triggers:
+
+    - **Explicit numbering**: "Step 1: …; Step 2: …; Step 3: …" or
+      "We proceed in three parts…" or numbered cases ("Case 1: …;
+      Case 2: …").
+    - **Signposted prose** (even without explicit "Step N" labels):
+      "First, we show …", "Now consider …", "Applying [lemma], …",
+      "It remains to show …", "Combining the above, we conclude …",
+      "Suppose for contradiction …", "By induction on $n$: base case …
+      inductive step …".
+
+    For short proofs without internal divisions (one paragraph, single
+    argument), emit ZERO step nodes; the proof's `statement` field
+    carries the whole content. Same for one-line algorithms.
+
+    Each step node has:
+    - `id` (e.g. `PSP5.1`, `ASP5.1` for paper 5 step 1)
+    - `type` (`proof_step` or `algorithm_step`)
+    - `parent_id` (id of the parent `proof` or `algorithm` node)
+    - `step_order` (1-based sequential index within the parent)
+    - `name` (a short descriptive label, e.g. "Set up gluing matrix",
+      "Inductive step on $n$", "Initialize $u, v$")
+    - `statement` (1–2 sentences of LaTeX-preserved content, OR for
+      `algorithm_step`, the pseudocode line/block)
+    - `subclass` (optional structural role from controlled vocabulary:
+      `setup`, `introduce_variable`, `apply_lemma`, `case_split`,
+      `induction_step`, `contradiction_setup`, `algebraic_manipulation`,
+      `substitute`, `bound_estimate`, `invoke_identity`, `conclude`
+      for proof steps; `initialize`, `loop`, `branch`, `update`,
+      `return` for algorithm steps)
+    - `tags` (optional list)
+
+    **Steps form a sub-DAG.** Emit `uses` edges between steps with
+    the same `parent_id` to capture intra-proof / intra-algorithm
+    dependencies. Examples:
+    - Linear: $\text{PSP5.1} \to \text{PSP5.2} \to \text{PSP5.3}$
+    - Case analysis: $\text{PSP5.1} \to \text{PSP5.2a}$,
+      $\text{PSP5.1} \to \text{PSP5.2b}$,
+      $\text{PSP5.2a} \to \text{PSP5.3}$,
+      $\text{PSP5.2b} \to \text{PSP5.3}$ (with `subclass=case_split`
+      on PSP5.1 and `subclass=case` on PSP5.2a/b)
+    - Induction: PSP5.1 (base) and PSP5.2 (IH) both feed into
+      PSP5.3 (inductive step) via `uses` edges
+
+    A step's `uses` edges may also point to Level-1 nodes outside
+    its parent (e.g. proof_step uses Lemma 2.3 → edge from LP*.* to
+    PSP*.*). Edges between steps of *different* parents are NOT
+    permitted; cross-proof references must go through Level-1 nodes.
+
+    **Loops** in algorithms are represented by a single
+    `subclass=loop` step whose `statement` / `pseudocode` field
+    describes the body; do NOT replicate the body as separate iteration
+    nodes. Same for branches: a single `subclass=branch` step whose
+    statement describes both alternatives, OR a branch step plus
+    sibling case-step children if the alternatives are conceptually
+    distinct.
+
+    The parent `proof.statement` / `algorithm.pseudocode` field
+    remains the verbatim content; steps capture the decomposition.
 
 ## Schema
 
