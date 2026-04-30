@@ -1904,8 +1904,6 @@ def generate_interactive_html(data, svg_path, html_path):
             "step_info": n.get("step_info", []),
             "input": n.get("input", []),
             "output": n.get("output", []),
-            "steps": [{"id": s["id"], "statement": s.get("statement","")}
-                      for s in step_chains.get(nid, [])],
             "equations": [{"id": e["id"], "statement": e.get("statement",""), "section": e.get("section",""),
                           "context": e.get("context",""), "parent_step": e.get("parent_step","")}
                           for e in eq_map.get(nid, [])],
@@ -2260,19 +2258,9 @@ function showDetail(nodeId) {{
     d.output.forEach(function(x) {{ h += '<div style="font-size:13px;">&bull; ' + esc(x) + '</div>'; }});
     h += '</div>';
   }}
-  // Proof steps with inline equations
-  if (d.steps && d.steps.length > 0) {{
-    h += '<div class="detail-section"><h4>Proof Steps (' + d.steps.length + ')</h4>';
-    d.steps.forEach(function(s, i) {{
-      h += '<div class="step-item"><strong>' + s.id + '</strong>: ' + esc(s.statement);
-      if (eqsByStep[s.id]) {{
-        eqsByStep[s.id].forEach(function(e) {{ h += eqBlock(e); }});
-      }}
-      h += '</div>';
-      if (i < d.steps.length - 1) h += '<div class="step-arrow">&#8595;</div>';
-    }});
-    h += '</div>';
-  }}
+  // (Legacy "Proof Steps" panel removed: same data now rendered above as
+  // "Decomposition" via d.step_info. Both used to read from step_chains and
+  // produced duplicate sections on click.)
   // Orphan equations (collapsible)
   if (eqsByCtx.orphan.length > 0) {{
     h += '<div class="detail-section"><h4 style="cursor:pointer;" onclick="toggleEqPanel(this)">Unplaced Equations (' + eqsByCtx.orphan.length + ') &#9660;</h4>';
