@@ -2288,6 +2288,9 @@ Respond ONLY with JSON array."""
           1. Structural edges (canonical types per schema lock):
              - proof 'proves' theorem-like (proof → theorem)
              - container 'uses' equation (equation depends on container)
+             - algorithm 'solves' problem (nearest preceding problem)
+             - example 'illustrates' concept (nearest preceding def/theorem-like)
+             - exercise 'tests' concept (nearest preceding def/theorem-like)
 
           2. Logical 'uses' edges with confidence:
              - any object -> another object it references via \ref/\eqref/\autoref
@@ -2376,6 +2379,90 @@ Respond ONLY with JSON array."""
             )
             existing.add(key)
             equation_edge_count += 1
+
+        # ------------------------------------------------------------------
+        # 2c. Structural edges: algorithm 'solves' problem
+        #     Link each algorithm to the nearest preceding problem node.
+        # ------------------------------------------------------------------
+
+        solves_count = 0
+        obj_ids = list(graph.objects.keys())
+        for i, obj_id in enumerate(obj_ids):
+            obj = graph.objects[obj_id]
+            if obj.kind != "algorithm":
+                continue
+            # Walk backwards to find nearest preceding problem
+            for j in range(i - 1, -1, -1):
+                candidate = graph.objects[obj_ids[j]]
+                if candidate.kind == "problem":
+                    key = (obj.id, candidate.id, "solves")
+                    if key not in existing:
+                        graph.add_relation(
+                            source_id=obj.id,
+                            target_id=candidate.id,
+                            relation_type="solves",
+                            category="structural",
+                            metadata={"source": "proximity", "confidence": 0.5},
+                        )
+                        existing.add(key)
+                        solves_count += 1
+                    break
+
+        # ------------------------------------------------------------------
+        # 2d. Structural edges: example 'illustrates' concept
+        #     Link each example to the nearest preceding definition or
+        #     theorem-like node.
+        # ------------------------------------------------------------------
+
+        illustrates_count = 0
+        illustrates_targets = {"definition"} | self.THEOREM_LIKE_KINDS
+        for i, obj_id in enumerate(obj_ids):
+            obj = graph.objects[obj_id]
+            if obj.kind != "example":
+                continue
+            for j in range(i - 1, -1, -1):
+                candidate = graph.objects[obj_ids[j]]
+                if candidate.kind in illustrates_targets:
+                    key = (obj.id, candidate.id, "illustrates")
+                    if key not in existing:
+                        graph.add_relation(
+                            source_id=obj.id,
+                            target_id=candidate.id,
+                            relation_type="illustrates",
+                            category="structural",
+                            metadata={"source": "proximity", "confidence": 0.5},
+                        )
+                        existing.add(key)
+                        illustrates_count += 1
+                    break
+
+        # ------------------------------------------------------------------
+        # 2e. Structural edges: exercise 'tests' concept
+        #     Link each exercise to the nearest preceding definition or
+        #     theorem-like node.
+        # ------------------------------------------------------------------
+
+        tests_count = 0
+        tests_targets = {"definition"} | self.THEOREM_LIKE_KINDS
+        for i, obj_id in enumerate(obj_ids):
+            obj = graph.objects[obj_id]
+            if obj.kind != "exercise":
+                continue
+            for j in range(i - 1, -1, -1):
+                candidate = graph.objects[obj_ids[j]]
+                if candidate.kind in tests_targets:
+                    key = (obj.id, candidate.id, "tests")
+                    if key not in existing:
+                        graph.add_relation(
+                            source_id=obj.id,
+                            target_id=candidate.id,
+                            relation_type="tests",
+                            category="structural",
+                            metadata={"source": "proximity", "confidence": 0.5},
+                        )
+                        existing.add(key)
+                        tests_count += 1
+                    break
 
         # ------------------------------------------------------------------
         # 3. Logical 'uses' edges from explicit \ref / \eqref / \autoref
@@ -2516,11 +2603,15 @@ Respond ONLY with JSON array."""
         graph.relations = relations + graph.relations[len(relations):]
 
         total_uses_kw = locals().get("uses_kw_count", 0)
-        if proves_count or equation_edge_count or uses_ref_count or total_uses_kw:
+        structural_total = proves_count + solves_count + illustrates_count + tests_count
+        if structural_total or equation_edge_count or uses_ref_count or total_uses_kw:
             print(
                 "[INFO] _build_relations: "
-                f"added {proves_count} 'proves' edges, "
-                f"{equation_edge_count} 'uses' (equation) edges, "
-                f"{uses_ref_count} 'uses' (ref) edges, "
-                f"{total_uses_kw} 'uses' (keyword) edges."
+                f"added {proves_count} 'proves', "
+                f"{solves_count} 'solves', "
+                f"{illustrates_count} 'illustrates', "
+                f"{tests_count} 'tests' edges, "
+                f"{equation_edge_count} 'uses' (equation), "
+                f"{uses_ref_count} 'uses' (ref), "
+                f"{total_uses_kw} 'uses' (keyword)."
             )

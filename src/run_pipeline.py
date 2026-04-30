@@ -739,7 +739,8 @@ def main():
                         help="Path to custom prompt template file.")
     parser.add_argument("--structure-types", type=str,
                         default="definition,theorem,lemma,proposition,corollary,"
-                                "claim,conjecture,problem,proof,algorithm,equation",
+                                "claim,conjecture,problem,open_problem,proof,"
+                                "algorithm,assumption,example,exercise,remark,table",
                         help="Comma-separated structure types to extract.")
     parser.add_argument("--tex-dir", type=str, default=None,
                         help="Directory to search for local .tex files instead of "
