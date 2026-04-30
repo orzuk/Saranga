@@ -1,7 +1,9 @@
 ================================================================================
 PAPER / CHAPTER EXTRACTION PROMPT
 ================================================================================
-Version: 2026-04-17 v2
+# CANONICAL: src/node_types.py and src/edge_types.py.
+# This file is derivative; sync it whenever the canonical changes.
+Version: 2026-04-28 v3 (schema lock — adds open_problem, assumption, algorithm_step; splits problem/open_problem)
 Use with: Claude Opus 4.6 (or Sonnet for bulk)
 Input: one chapter or section of a mathematical paper/textbook (LaTeX or PDF)
 Output: structured JSON with nodes + edges (the chapter's knowledge graph)
@@ -32,44 +34,19 @@ INPUT:
 0. MATHEMATICAL OBJECTS TO EXTRACT
 ================================================================================
 
-Extract every instance of these 13 object types:
+Extract every instance of the Level-1 object types listed below. Two
+additional Level-2 sub-block types (`proof_step`, `algorithm_step`) are
+OPTIONAL and emitted only when fine-grained granularity is explicitly
+requested by the caller (see Section "Granularity" below). Default:
+extract Level 1 only.
 
-  1.  DEFINITION      "We define X as...", "\begin{definition}...", "Let X be a..."
-  2.  THEOREM         "\begin{theorem}...", "Theorem 3.1. ..."
-  3.  LEMMA           "\begin{lemma}...", "Lemma 2.4. ..."
-  4.  PROPOSITION     "\begin{proposition}...", "Proposition 1.7. ..."
-  5.  COROLLARY       "\begin{corollary}...", "Corollary 4.2. ..."
-  6.  CLAIM           "Claim:", "Fact:", informal assertions with a statement
-  7.  CONJECTURE      explicitly labeled unproven claims
-  8.  PROOF           "\begin{proof}...", "Proof.", "Proof of Theorem 3.1."
-  9.  EXAMPLE         "Example 2.3:", worked-out illustrations of a concept
-  10. EXERCISE        "Exercise:", reader problems, pedagogical (author knows the answer)
-  11. PROBLEM         A named mathematical problem being studied or formulated.
-                      Includes: named problems ("the knapsack problem", "SAT"),
-                      open problems, and optimization formulations ("Given A, find x
-                      maximizing g(x) subject to Ax ≤ b"). Closer to CONJECTURE
-                      than to EXERCISE. NOT a pedagogical exercise for the reader.
-                      Algorithms that SOLVE a problem connect via: Problem → Algorithm
-                      (edge type "uses": "Algorithm uses Problem").
-  12. EQUATION        explicitly numbered/labeled equations referenced by number
-  13. ALGORITHM       pseudocode, numbered step-by-step procedures
-  14. REMARK          "Remark:", "Note:", author observations adding context
-
-And these 6 edge types connecting them:
+<!-- The prompt-builder substitutes the canonical schema block below at
+     extraction time (see src/schema_for_prompts.py: render_prompt). The
+     placeholder is the single source of truth for node + edge types. -->
+{{SCHEMA_BLOCK}}
 
   Direction convention: arrow A → B means "A supports B" / "B depends on A".
   Edge name reads as "B [name] A" (target's action on source).
-
-  DEPENDENCY EDGES (B depends on A):
-  1.  uses            "B uses A" — generic dependency (default)
-  2.  generalizes     "B generalizes A" — B is more general than A (subtype of uses)
-  3.  specializes     "B specializes A" — B is a special case of A (subtype of uses)
-
-  STRUCTURAL EDGES:
-  4.  proves          "B proves A" — B is a proof establishing theorem A
-  5.  solves          "B solves A" — B is an algorithm solving/addressing problem A
-  6.  illustrates     "B illustrates A" — B is an example demonstrating concept A
-  7.  tests           "B tests A" — B is an exercise testing concept A
 
   Never create both `uses` and `generalizes` between the same pair.
   Use the more specific type when applicable.
@@ -91,7 +68,7 @@ And these 6 edge types connecting them:
   - Theorems may be stated WITHOUT PROOF ("proof omitted", "left as
     exercise"). That is fine — create the theorem node without a proof
     node. If "proof left as exercise", create an exercise node linked via
-    "about" to the theorem.
+    "tests" to the theorem.
   - Historical remarks, biographical notes, and "Remark:" blocks are
     common. Extract as REMARK nodes.
   - Cross-references like "by Theorem 3.14 from Chapter 2" — create a
@@ -190,7 +167,7 @@ EXTRACTION RULES
                     Link to the concept via an "illustrates" edge.
 
    EXERCISE       — problem for the reader (with or without solution).
-                    Link to the relevant concept via an "about" edge.
+                    Link to the relevant concept via a "tests" edge.
 
    EQUATION       — explicitly labeled/numbered equation (not every inline
                     formula — only equations that the paper references by
@@ -201,6 +178,33 @@ EXTRACTION RULES
    REMARK         — author's remark, note, observation that adds context
                     but is not a theorem or definition.
 
+   PROBLEM        — a NAMED OR FORMULATED FORMAL mathematical problem the
+                    paper studies. Optimization formulations, decision
+                    problems, named problems with attached algorithms /
+                    complexity / hardness. NOT for unsolved questions —
+                    those are OPEN_PROBLEM.
+
+   OPEN_PROBLEM   — an unsolved mathematical question with no known
+                    solution; e.g. "Open Problem: Are there infinitely
+                    many odd perfect numbers?", the Riemann Hypothesis
+                    posed as a question. Similar to CONJECTURE in spirit
+                    but content-wise more like a question without a
+                    stated answer.
+
+   ASSUMPTION     — a `\begin{assumption}` block declaring standing
+                    assumptions for a section / theorem cluster.
+                    "Assumption (A1): f is convex." → assumption node.
+                    NOT the per-theorem `assumptions` field.
+
+   PROOF_STEP     — (Level 2, OPTIONAL) one logical move within a proof.
+                    Set `parent_id` to the parent PROOF node ID. Emit
+                    only at `with_proof_steps` granularity.
+
+   ALGORITHM_STEP — (Level 2, OPTIONAL) one numbered pseudocode line
+                    within an algorithm. Set `parent_id` to the parent
+                    ALGORITHM node ID. Emit only at fine-grained
+                    algorithm granularity.
+
    Skip: section headings, figure captions, bibliographic references,
    acknowledgments, table of contents entries.
 
@@ -210,11 +214,14 @@ EXTRACTION RULES
      "id":       unique ID, format: "{BOOK_ID}_ch{NN}_{type_abbrev}{seq}",
                  e.g. "b006_ch03_def01", "b006_ch03_thm05", "b006_ch03_proof05"
                  Type abbreviations: def, thm, lem, prop, cor, claim, conj,
-                 proof, ex, exer, eq, alg, rem
+                 proof, ex, exer, eq, alg, rem, prob, open_prob, assum,
+                 pstep, astep
 
-     "type":     one of: definition, theorem, lemma, proposition, corollary,
+     "type":     one of (Level 1, 16 types):
+                 definition, theorem, lemma, proposition, corollary,
                  claim, conjecture, proof, example, exercise, problem,
-                 equation, algorithm, remark
+                 open_problem, equation, algorithm, remark, assumption.
+                 Plus (Level 2, optional, 2 types): proof_step, algorithm_step.
 
      "rigor":    how rigorous the justification is (orthogonal to type):
                  formal       — precise statement + rigorous proof
@@ -225,15 +232,41 @@ EXTRACTION RULES
                  (null if clearly formal, which is the default for math papers)
 
      "subclass": optional finer categorization. Values depend on type:
-                 definition:  concept | model | estimator | loss_function | metric | notation
-                 theorem:     existence | uniqueness | convergence | bound | characterization | equivalence | impossibility
-                 proof:       direct | contradiction | induction | construction | probabilistic | algebraic
-                 algorithm:   exact | approximation | heuristic | randomized | greedy | iterative
-                 problem:     optimization | decision | search | counting | estimation
-                 example:     illustrative | counterexample | computational | applied
-                 exercise:    computational | theoretical | proof_exercise
-                 equation:    identity | inequality | recursion | differential
+                 definition:    concept | model | estimator | loss_function | metric | notation
+                 theorem:       existence | uniqueness | convergence | bound | characterization | equivalence | impossibility
+                 proof:         direct | contradiction | induction | construction | probabilistic | algebraic
+                 algorithm:     exact | approximation | heuristic | randomized | greedy | iterative
+                 problem:       optimization | decision | search | counting | estimation | feasibility | enumeration
+                 open_problem:  famous | named | folklore
+                 example:       illustrative | counterexample | computational | applied
+                 exercise:      computational | theoretical | proof_exercise
+                 equation:      identity | inequality | recursion | differential
+                 assumption:    standing | regularity | structural | distributional | asymptotic
                  (null if unclear — don't guess)
+
+     "tags":     OPTIONAL list[str] of type-specific tags drawn from a
+                 controlled vocabulary (see TAGS_VOCABULARY in
+                 src/node_types.py). Validators warn but do NOT reject
+                 unknown values, so emit only tags you are confident in.
+                 Example: a theorem proving a bound → tags: ["bound"];
+                 an iterative approximation algorithm → tags: ["iterative",
+                 "approximation"].
+
+     "origin":   provenance of the node (default "paper"):
+                 paper     — node represents a contribution introduced by
+                             THIS paper (definition, theorem, algorithm,
+                             example, etc. that the paper establishes).
+                 external  — node represents a CITED PRIOR RESULT the paper
+                             invokes but does not establish (a classical
+                             theorem like "Sinkhorn 1967", a baseline
+                             algorithm used for comparison, a foundational
+                             definition the paper depends on, etc.).
+                 If omitted, defaults to "paper".
+
+     "origin_citation": for origin="external" nodes ONLY, a free-text
+                 citation string identifying the cited source.
+                 Examples: "Sinkhorn 1967", "Cover & Thomas, Elements of
+                 Information Theory", "Villani 2009, §6.1", "[CT05, Thm 1]".
 
      "name":     short descriptive name. Use the paper's own name if given
                  (e.g., "Cauchy-Schwarz inequality", "k-means algorithm").
@@ -297,7 +330,7 @@ EXTRACTION RULES
    {
      "source": source node ID,
      "target": target node ID,
-     "type":   one of: uses, proves, illustrates, about, generalizes, specializes
+     "type":   one of: uses, proves, solves, illustrates, tests, generalizes, specializes
    }
 
    Edge types (arrow A → B, reads "B [type] A"):
@@ -367,6 +400,79 @@ EXTRACTION RULES
    - Bibliographic references, acknowledgments
    - Repeated statements (if the same theorem is stated twice, extract once)
 
+6b. TYPE-PROMOTION RULE — content trumps environment:
+
+   A node's type is determined by its SEMANTIC CONTENT, not the surrounding
+   LaTeX environment. The environment is a hint; the content decides.
+
+   Specifically:
+     - A "\begin{definition}" block whose body is an OPTIMIZATION
+       FORMULATION (e.g., "find x* = argmin f(x) subject to Ax <= b", or a
+       named problem with attached algorithms / complexity / hardness) MUST
+       be typed as PROBLEM, not DEFINITION. Diagnostic: does the object
+       come with the recurring problem-attachments (algorithms that solve
+       it, complexity discussion, dual formulation, hardness results)?
+       If yes -> type="problem", typically subclass="optimization".
+     - A "\begin{definition}" block whose body is a step-by-step procedure
+       MUST be typed as ALGORITHM.
+     - A "\begin{lemma}" or "\begin{proposition}" whose body is a numerical
+       bound used as scaffolding for one theorem REMAINS as lemma /
+       proposition (the environment captures the author's intent here).
+
+   This is the "Type-promotion rule" from the manuscript appendix
+   (node_types_appendix_draft.tex).
+
+6c. CITED PRIOR RESULTS — extract as origin="external" nodes:
+
+   Mathematical papers depend on cited prior results. A graph that captures
+   only the paper's OWN contributions is missing its scaffolding. You MUST
+   extract the cited classical theorems, foundational definitions, and
+   baseline algorithms that the paper INVOKES but does not establish.
+
+   What to extract as origin="external":
+     - Classical theorems the paper cites and uses ("by Sinkhorn 1967",
+       "by the Cover-Thomas information inequality", "Villani §6.1 shows
+       that ...").
+     - Foundational definitions from cited sources that the paper relies on.
+     - Baseline algorithms the paper compares against (e.g., a network
+       simplex method as a baseline for an optimal-transport algorithm).
+
+   Format:
+     - Use the SAME node types (theorem, lemma, definition, algorithm, ...)
+       as for paper-internal nodes.
+     - Set "origin": "external".
+     - Set "origin_citation" to a short free-text identifier of the source.
+     - Use "uses" edges to connect the external node to whatever paper-
+       internal node depends on it.
+
+   EXAMPLE 1 (cited classical theorem):
+
+     {
+       "id": "TP5.3",
+       "type": "theorem",
+       "name": "Information-Theoretic Inequality",
+       "section": "3.1 (cited)",
+       "statement": "For all $r,c \\in \\Sigma_d$ and $P \\in U(r,c)$: $h(P) \\leq h(r) + h(c)$, with equality iff $P = rc^T$.",
+       "origin": "external",
+       "origin_citation": "Cover & Thomas, Elements of Information Theory"
+     }
+
+   EXAMPLE 2 (baseline algorithm cited for comparison):
+
+     {
+       "id": "AP5.2",
+       "type": "algorithm",
+       "name": "Network Simplex Method for OT",
+       "section": "2.2 (cited)",
+       "statement": "Combinatorial LP solver for optimal transportation with worst-case complexity $O(d^3 \\log d)$.",
+       "origin": "external",
+       "origin_citation": "Ahuja, Magnanti, Orlin 1993"
+     }
+
+   When in doubt: if the paper says "by X", "as shown in [REF]", "we use
+   the classical result of Y", or "we compare against the baseline Z",
+   that is an external node.
+
 7. QUALITY CHECKS (verify before returning):
 
    - Every proof node has exactly one "proves" edge
@@ -376,6 +482,10 @@ EXTRACTION RULES
    - Node IDs are unique
    - Assumptions and conclusions don't overlap (same text in both lists)
    - statement_latex has $..$ around all math
+   - Every node has either origin="paper" (default) or origin="external"
+   - Every origin="external" node has origin_citation populated
+   - Optimization formulations (even inside \begin{definition}) are typed
+     as PROBLEM, not DEFINITION (see rule 6b: type-promotion)
 
 ================================================================================
 OUTPUT FORMAT
@@ -398,6 +508,8 @@ Return a single JSON object:
       "statement_clean": "...",
       "assumptions": ["..."],
       "conclusions": ["..."],
+      "origin": "paper",
+      "origin_citation": null,
       "raw_text": "...",
       "page": null
     }

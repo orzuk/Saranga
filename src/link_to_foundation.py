@@ -305,6 +305,8 @@ def link_paper(nodes, index, min_term_len=5, automaton=None, term_map=None):
                     "matched_term": term,
                     "foundation_name": entry["name"],
                     "foundation_field": entry.get("field", ""),
+                    "foundation_source": entry.get("source", ""),
+                    "foundation_book_label": entry.get("book_label", ""),
                 })
         else:
             # Fallback: per-term regex search (slow for large indices)
@@ -324,6 +326,8 @@ def link_paper(nodes, index, min_term_len=5, automaton=None, term_map=None):
                         "matched_term": term,
                         "foundation_name": entry["name"],
                         "foundation_field": entry.get("field", ""),
+                        "foundation_source": entry.get("source", ""),
+                        "foundation_book_label": entry.get("book_label", ""),
                     })
 
         matches.extend(node_matches)

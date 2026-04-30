@@ -1,11 +1,19 @@
 """
-Canonical node type definitions for the SARANGA knowledge graph.
+Canonical node type definitions for the SARANGA / Authomathics knowledge graph.
 
 Single source of truth. All pipeline modules import from here.
 See src/annotation_schema.md for the full specification.
+
+Schema lock revision: 2026-04-28
+- Adds `open_problem`, `assumption`, `algorithm_step` to the type set.
+- Splits `problem` (named formal mathematical problem) from `open_problem`
+  (unsolved mathematical question).
+- Introduces explicit Level 1 (paper-level) and Level 2 (sub-block)
+  groupings.
+- Adds optional `TAGS_VOCABULARY` for the per-type `tags: list[str]` field.
 """
 
-# ── The 15 canonical node types ─────────────────────────────────────────
+# ── Node types ──────────────────────────────────────────────────────────
 
 # Theorem-like: have assumptions + conclusions, can be proved
 THEOREM = "theorem"
@@ -21,24 +29,90 @@ DEFINITION = "definition"
 # Proof
 PROOF = "proof"
 
-# Proof decomposition (optional fine-grained resolution):
+# Proof decomposition (Level 2 — optional fine-grained resolution):
 #   proof_step — one logical move within a proof. First-class node, NOT a
 #   nested array inside PROOF. Linked back to its parent via the
-#   `parent_proof` field (str: id of the PROOF node).
+#   `parent_proof` field (str: id of the PROOF node) or generic `parent_id`.
 #   Equations can attach to a specific proof_step via `parent_step`.
 #   Emitted only when extraction runs at "with_proof_steps" granularity;
 #   omitted at the default "theorem_level" granularity.
 PROOF_STEP = "proof_step"
+
+# Algorithm decomposition (Level 2 — optional fine-grained resolution):
+#   algorithm_step — one numbered line of pseudocode within an algorithm
+#   node. Linked back to its parent ALGORITHM via `parent_algorithm`
+#   (or generic `parent_id`). Emitted only at fine-grained granularity.
+ALGORITHM_STEP = "algorithm_step"
 
 # Pedagogical
 EXAMPLE = "example"
 EXERCISE = "exercise"         # pedagogical problem for the reader
 
 # Other mathematical content
-PROBLEM = "problem"           # named math problem being studied (closer to conjecture)
+#
+# PROBLEM vs. OPEN_PROBLEM (split as of 2026-04-28):
+#   PROBLEM        — a *named or formulated formal mathematical problem*:
+#                    optimization formulations ("argmin f(x) s.t. Ax<=b"),
+#                    decision problems ("3-SAT"), named problems with
+#                    attached algorithms / complexity / hardness ("the
+#                    knapsack problem", "the isoperimetric problem").
+#                    Semantically the object the paper STUDIES — algorithms
+#                    SOLVE it, complexity discussions BOUND it.
+#                    Does NOT cover open mathematical questions — those
+#                    are now `open_problem`.
+#   OPEN_PROBLEM   — an unsolved mathematical *question* with no known
+#                    solution. Examples: "Are there infinitely many odd
+#                    perfect numbers?", the Riemann Hypothesis posed as
+#                    an open question, "Is P = NP?". Semantically similar
+#                    to CONJECTURE (theorem-like in spirit), but content-
+#                    wise more like a question without a stated answer.
+#                    Distinct from PROBLEM (which is formal/named) and
+#                    EXERCISE (which is pedagogical).
+PROBLEM = "problem"
+OPEN_PROBLEM = "open_problem"
+
 EQUATION = "equation"
 ALGORITHM = "algorithm"
 REMARK = "remark"
+
+# Setup / standing assumptions block:
+#   ASSUMPTION — a `\begin{assumption}` block declaring standing
+#   assumptions for a section, theorem cluster, or paper. Common in
+#   stats / optimization papers ("(A1) f is convex; (A2) X is bounded").
+#   Distinct from the per-theorem `assumptions` field, which lives
+#   inside a theorem-like node.
+ASSUMPTION = "assumption"
+
+# ── Origin field ─────────────────────────────────────────────────────────
+# Every node has an optional "origin" field indicating whether the node
+# represents a contribution of the paper being extracted ("paper", default)
+# or a cited prior result the paper invokes but does not establish
+# ("external" — e.g., a classical theorem like "Sinkhorn 1967" or a
+# baseline algorithm used for comparison).
+#
+# External nodes additionally carry an optional "origin_citation" string
+# (free text or BibTeX key, e.g., "Sinkhorn 1967", "Villani 2009 §6.1").
+# See manuscript appendix "Origin attribution" for the canonical rule.
+
+ORIGIN_PAPER = "paper"
+ORIGIN_EXTERNAL = "external"
+ORIGIN_VALUES = {ORIGIN_PAPER, ORIGIN_EXTERNAL}
+DEFAULT_ORIGIN = ORIGIN_PAPER
+
+
+def normalize_origin(raw_origin: str | None) -> str:
+    """Normalize an origin string. Default is 'paper' when missing/unknown.
+
+    Backwards compatibility: nodes without an `origin` field are assumed
+    to be paper-internal (the field was added after initial extractions).
+    """
+    if not raw_origin:
+        return DEFAULT_ORIGIN
+    o = str(raw_origin).strip().lower()
+    if o in ORIGIN_VALUES:
+        return o
+    return DEFAULT_ORIGIN
+
 
 # ── Rigor field ──────────────────────────────────────────────────────────
 # Every node has an optional "rigor" field indicating how rigorous the
@@ -75,30 +149,34 @@ HEURISTIC_CATEGORIES = {
 # categorization. Valid values depend on the node type.
 
 SUBCLASS_VALUES = {
-    DEFINITION:  {"concept", "model", "estimator", "loss_function", "metric",
-                  "notation", "space", "operator"},
-    THEOREM:     {"existence", "uniqueness", "convergence", "bound",
-                  "characterization", "equivalence", "impossibility",
-                  "classification"},
-    LEMMA:       {"technical", "auxiliary", "key"},
-    PROPOSITION: {"existence", "uniqueness", "convergence", "bound",
-                  "characterization", "equivalence"},
-    COROLLARY:   {"consequence", "special_case"},
-    CLAIM:       {"existence", "bound", "convergence", "characterization"},
-    CONJECTURE:  {"open", "folklore"},
-    PROOF:       {"direct", "contradiction", "induction", "construction",
-                  "probabilistic", "combinatorial", "algebraic"},
-    PROOF_STEP:  {"setup", "introduce_variable", "apply_lemma", "case_split",
-                  "induction_step", "contradiction_setup", "algebraic_manipulation",
-                  "substitute", "bound_estimate", "invoke_identity", "conclude", "other"},
-    EXAMPLE:     {"illustrative", "counterexample", "computational", "applied"},
-    EXERCISE:    {"computational", "theoretical", "proof_exercise", "programming"},
-    PROBLEM:     {"optimization", "decision", "search", "counting", "sampling",
-                  "estimation"},
-    ALGORITHM:   {"exact", "approximation", "heuristic", "randomized", "online",
-                  "greedy", "iterative"},
-    EQUATION:    {"identity", "inequality", "recursion", "differential", "bound"},
-    REMARK:      {"historical", "technical", "motivational"},
+    DEFINITION:    {"concept", "model", "estimator", "loss_function", "metric",
+                    "notation", "space", "operator"},
+    THEOREM:       {"existence", "uniqueness", "convergence", "bound",
+                    "characterization", "equivalence", "impossibility",
+                    "classification"},
+    LEMMA:         {"technical", "auxiliary", "key"},
+    PROPOSITION:   {"existence", "uniqueness", "convergence", "bound",
+                    "characterization", "equivalence"},
+    COROLLARY:     {"consequence", "special_case"},
+    CLAIM:         {"existence", "bound", "convergence", "characterization"},
+    CONJECTURE:    {"open", "folklore"},
+    PROOF:         {"direct", "contradiction", "induction", "construction",
+                    "probabilistic", "combinatorial", "algebraic"},
+    PROOF_STEP:    {"setup", "introduce_variable", "apply_lemma", "case_split",
+                    "induction_step", "contradiction_setup", "algebraic_manipulation",
+                    "substitute", "bound_estimate", "invoke_identity", "conclude", "other"},
+    ALGORITHM_STEP:{"initialize", "loop", "branch", "update", "return", "other"},
+    EXAMPLE:       {"illustrative", "counterexample", "computational", "applied"},
+    EXERCISE:      {"computational", "theoretical", "proof_exercise", "programming"},
+    PROBLEM:       {"optimization", "decision", "search", "counting", "sampling",
+                    "estimation", "feasibility", "enumeration"},
+    OPEN_PROBLEM:  {"famous", "named", "folklore"},
+    ALGORITHM:     {"exact", "approximation", "heuristic", "randomized", "online",
+                    "greedy", "iterative"},
+    EQUATION:      {"identity", "inequality", "recursion", "differential", "bound"},
+    REMARK:        {"historical", "technical", "motivational"},
+    ASSUMPTION:    {"standing", "regularity", "structural", "distributional",
+                    "asymptotic"},
 }
 
 # ── Type-specific extra fields (beyond subclass) ────────────────────────
@@ -117,6 +195,11 @@ ALGORITHM_EXTRA_FIELDS = {"solves", "approximation_ratio", "complexity",
 #   approximability:     str | null   — "PTAS", "FPTAS", "APX-hard", etc.
 PROBLEM_EXTRA_FIELDS = {"complexity_class", "approximability"}
 
+# Open problem:
+#   first_posed:         str | null   — "Erdős 1949", "Hilbert 1900 (#8)", etc.
+#   prize:               str | null   — "Clay Millennium Prize", etc.
+OPEN_PROBLEM_EXTRA_FIELDS = {"first_posed", "prize"}
+
 # Proof:
 #   proves:              str          — ID of the theorem this proves
 #   proof_strategy:      str | null   — alias for subclass (backward compat)
@@ -124,6 +207,8 @@ PROOF_EXTRA_FIELDS = {"proves", "proof_strategy"}
 
 # Proof step:
 #   parent_proof:        str          — ID of the PROOF node this step belongs to
+#                                       (legacy; `parent_id` is the new generic name)
+#   parent_id:           str          — generic Level 2 → Level 1 parent reference
 #   step_order:          int | null   — sequential index within the proof (1-based)
 #   depends_on_step_ids: list[str]    — step IDs within same proof that this step uses
 #   uses_node_ids:       list[str]    — external nodes (lemmas/defs) invoked in this step
@@ -131,12 +216,70 @@ PROOF_EXTRA_FIELDS = {"proves", "proof_strategy"}
 #                                         induction / contradiction / algebraic_manipulation /
 #                                         substitute / bound_estimate / invoke_identity /
 #                                         conclude / other
-PROOF_STEP_EXTRA_FIELDS = {"parent_proof", "step_order",
+PROOF_STEP_EXTRA_FIELDS = {"parent_proof", "parent_id", "step_order",
                            "depends_on_step_ids", "uses_node_ids", "move_type"}
+
+# Algorithm step:
+#   parent_algorithm:    str          — ID of the ALGORITHM node this step belongs to
+#                                       (legacy; `parent_id` is the new generic name)
+#   parent_id:           str          — generic Level 2 → Level 1 parent reference
+#   step_order:          int | null   — sequential index within the algorithm (1-based)
+#   pseudocode:          str | null   — the pseudocode line itself
+ALGORITHM_STEP_EXTRA_FIELDS = {"parent_algorithm", "parent_id", "step_order",
+                               "pseudocode"}
 
 # Equation (optional enrichment when attached to a proof step):
 #   parent_step:         str | null   — ID of a proof_step node that derives this equation
 EQUATION_EXTRA_FIELDS = {"parent_step"}
+
+# Assumption:
+#   scope:               str | null   — section/theorem ID(s) covered by this assumption
+#   label_token:         str | null   — short tag like "(A1)", "(H2)"
+ASSUMPTION_EXTRA_FIELDS = {"scope", "label_token"}
+
+# ── Tag vocabulary ──────────────────────────────────────────────────────
+# Optional `tags: list[str]` field on each node. The vocabulary below is a
+# *suggestion* set; extractors may emit subsets; validators warn but do NOT
+# reject unknown tags. Keep tags lower_snake_case.
+
+TAGS_VOCABULARY = {
+    THEOREM:      ["existence", "uniqueness", "inequality", "equality",
+                   "monotonicity", "convergence", "bound", "characterization",
+                   "decomposition", "equivalence"],
+    LEMMA:        ["existence", "uniqueness", "inequality", "equality",
+                   "monotonicity", "convergence", "bound", "characterization",
+                   "decomposition", "equivalence"],
+    PROPOSITION:  ["existence", "uniqueness", "inequality", "equality",
+                   "monotonicity", "convergence", "bound", "characterization",
+                   "decomposition", "equivalence"],
+    COROLLARY:    ["existence", "uniqueness", "inequality", "equality",
+                   "monotonicity", "convergence", "bound", "characterization",
+                   "decomposition", "equivalence"],
+    CLAIM:        ["existence", "uniqueness", "inequality", "equality",
+                   "monotonicity", "convergence", "bound", "characterization",
+                   "decomposition", "equivalence"],
+    PROOF:        ["induction", "contradiction", "direct", "contrapositive",
+                   "probabilistic", "combinatorial", "analytic", "geometric",
+                   "case_analysis", "construction"],
+    DEFINITION:   ["inductive", "recursive", "axiomatic", "constructive",
+                   "notation", "equivalent_form"],
+    PROBLEM:      ["optimization", "decision", "named", "feasibility",
+                   "counting", "enumeration"],
+    OPEN_PROBLEM: ["famous", "named"],
+    ALGORITHM:    ["iterative", "greedy", "divide_and_conquer", "dp",
+                   "randomized", "approximation", "online"],
+}
+
+
+def is_known_tag(node_type: str, tag: str) -> bool:
+    """Return True if `tag` is in the suggested vocabulary for `node_type`.
+
+    Validators should warn on unknown tags but NOT reject them — extractors
+    may emit type-specific tags outside the published vocabulary.
+    """
+    vocab = TAGS_VOCABULARY.get(node_type, [])
+    return tag in vocab
+
 
 # ── Groupings ────────────────────────────────────────────────────────────
 
@@ -149,16 +292,35 @@ PROVABLE = {THEOREM, LEMMA, PROPOSITION, COROLLARY, CLAIM}
 # Pedagogical: nodes primarily for teaching
 PEDAGOGICAL = {EXAMPLE, EXERCISE}
 
-# Proof decomposition nodes (emitted only at with_proof_steps granularity)
+# Proof / algorithm decomposition nodes (Level 2 — emitted only at fine-grained granularity)
 PROOF_DECOMPOSITION = {PROOF_STEP}
+ALGORITHM_DECOMPOSITION = {ALGORITHM_STEP}
 
-# All node types (15 total)
-ALL_TYPES = (
-    THEOREM_LIKE
-    | {DEFINITION, PROOF, PROBLEM, EQUATION, ALGORITHM, REMARK}
-    | PEDAGOGICAL
-    | PROOF_DECOMPOSITION
-)
+# ── Level 1 / Level 2 split ─────────────────────────────────────────────
+# Level 1: top-level paper-content nodes. Default extraction granularity.
+# Level 2: sub-block nodes (proof_step, algorithm_step). Emitted only at
+#          fine-grained granularity (`with_proof_steps` / `with_algo_steps`).
+# Each Level 2 node MUST reference its Level 1 parent via `parent_id`
+# (or the legacy type-specific field `parent_proof` / `parent_algorithm`).
+
+LEVEL_1_TYPES = {
+    THEOREM, LEMMA, PROPOSITION, COROLLARY, CLAIM, CONJECTURE,
+    DEFINITION, PROOF, EXAMPLE, EXERCISE,
+    PROBLEM, OPEN_PROBLEM,
+    EQUATION, ALGORITHM, REMARK, ASSUMPTION,
+}  # 16 types
+
+LEVEL_2_TYPES = {PROOF_STEP, ALGORITHM_STEP}  # 2 types
+
+# All node types (16 + 2 = 18)
+ALL_TYPES = LEVEL_1_TYPES | LEVEL_2_TYPES
+
+# Compatibility map: which Level 1 parent type each Level 2 type belongs to.
+LEVEL_2_PARENT_TYPE = {
+    PROOF_STEP:     PROOF,
+    ALGORITHM_STEP: ALGORITHM,
+}
+
 
 # ── Backward compatibility ──────────────────────────────────────────────
 
@@ -177,6 +339,14 @@ DEPRECATED_MAP = {
     "step": PROOF_STEP,     # sometimes proof-steps are tagged just "step"
     "proof-step": PROOF_STEP,
     "proofstep": PROOF_STEP,
+    "algorithm-step": ALGORITHM_STEP,
+    "algo-step": ALGORITHM_STEP,
+    "algostep": ALGORITHM_STEP,
+    "open-problem": OPEN_PROBLEM,
+    "openproblem": OPEN_PROBLEM,
+    "open_question": OPEN_PROBLEM,
+    "assum": ASSUMPTION,
+    "assumptions": ASSUMPTION,
 }
 
 

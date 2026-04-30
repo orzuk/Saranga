@@ -1,0 +1,78 @@
+# CANONICAL: src/node_types.py and src/edge_types.py.
+# This file is derivative; sync it whenever the canonical changes.
+# Per-type prompt: extracts OPEN_PROBLEM nodes only. Schema lock 2026-04-28.
+#
+# An `open_problem` is an UNSOLVED mathematical question with no known
+# solution. Distinct from `problem` (which is a named or formulated formal
+# problem being studied) and `conjecture` (which has a stated answer the
+# author believes true).
+
+You are analyzing a mathematical paper written in LaTeX. Extract ALL OPEN PROBLEMS
+— unsolved mathematical questions for which no known solution is given.
+
+An `open_problem` is:
+- An unsolved mathematical *question* posed without a stated answer.
+- Examples:
+  * "Open problem: Are there infinitely many odd perfect numbers?"
+  * "Open Question: Is P = NP?"
+  * The Riemann Hypothesis posed as a question ("Do all non-trivial
+    zeros of $\\zeta(s)$ lie on the critical line $\\Re(s) = 1/2$?").
+
+An `open_problem` is NOT:
+- A named or formulated formal mathematical problem being studied
+  (e.g. "the knapsack problem", an optimization formulation
+  "$\\arg\\min_x f(x)$") — that is `problem`.
+- A conjecture with a stated answer the author believes
+  ("Conjecture: every even integer > 2 is the sum of two primes")
+  — that is `conjecture`.
+- A pedagogical exercise — that is `exercise`.
+
+Open-problem forms to extract:
+1. \\begin{openproblem}...\\end{openproblem} (and variants like
+   \\begin{open}, \\begin{openquestion}, \\begin{openProblem}).
+2. "Open Problem:", "Open Question:", "Open:" headings followed by a
+   question or unsolved statement.
+3. Sentences explicitly describing a question as open: "It is an open
+   problem whether...", "It remains unknown whether...", "We do not know
+   whether...". Extract these only when phrased as a *question* without
+   an asserted answer.
+
+For each open_problem, extract:
+- name: Short descriptive name (e.g. "Odd Perfect Numbers", "P vs NP")
+- raw_latex: Original LaTeX text (preserve ALL math notation)
+- clean_text: "" (always empty string — omitted for token output savings)
+- label: Any \\label{...} or null
+- statement: The unsolved question itself
+- assumptions: Any background conditions or setup, if stated
+
+CRITICAL: The raw_latex field must be copied VERBATIM from the source —
+character for character. Do NOT modify the LaTeX in any way. Specifically:
+- Do NOT convert or substitute math delimiters
+- Do NOT expand, replace, or rename any macros or commands
+- Do NOT alter whitespace, line breaks, or formatting
+- Do NOT "fix" or "improve" any LaTeX syntax
+Copy exactly what appears in the input, nothing more, nothing less.
+
+Return JSON array:
+[
+  {
+    "name": "descriptive name",
+    "raw_latex": "original LaTeX",
+    "clean_text": "",
+    "label": "label or null",
+    "assumptions": "given conditions",
+    "statement": "the open question"
+  }
+]
+
+LaTeX text:
+
+{latex_chunk}
+
+IMPORTANT: Only extract open problems as defined above. Do NOT extract
+formal `\\begin{problem}` blocks that state a studied problem with a known
+form (those are `problem` nodes). Do NOT extract conjectures (those have
+a stated believed answer). If the paper contains no open problems, return
+an empty array [].
+
+Respond ONLY with JSON array.

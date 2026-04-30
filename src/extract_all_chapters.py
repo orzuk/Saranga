@@ -34,6 +34,15 @@ except ImportError:
 sys.path.insert(0, str(Path(__file__).parent))
 from visualize_annotation import draw_dag
 from validate_annotation import validate
+# Runtime prompt assembly (Option B). render_prompt substitutes
+# {{SCHEMA_BLOCK}} and {{TAGS_FOR_THIS_TYPE}} placeholders against the
+# canonical schema in src/node_types.py + src/edge_types.py.
+from schema_for_prompts import render_prompt  # noqa: F401  (used by callers)
+
+# TODO: render schema via render_prompt() — the SYSTEM_PROMPT below still
+#       hard-codes the schema (node types, edge types). When migrating, move
+#       it into a .txt template with a {{SCHEMA_BLOCK}} placeholder and
+#       wrap the read with render_prompt(). Tracked under Option B rollout.
 
 
 # Chapter metadata

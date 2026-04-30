@@ -53,7 +53,11 @@ TYPE_COMPAT = {
     ("conjecture", "problem"): 0.8,   # both are "open questions"
     ("problem", "theorem"): 0.5,      # problem being studied vs proved result
     ("problem", "conjecture"): 0.8,
-    ("problem", "definition"): 0.3,   # problem often defined, then studied
+    # problem<->definition: easily confused by annotators. The "problem" of
+    # computing X is often phrased as "define f(X) = ..." (e.g.
+    # $d_M(r,c) = \min_{P \in U(r,c)} \langle P, M\rangle$ can legitimately
+    # be tagged as either by different annotators).
+    ("problem", "definition"): 0.7,
 
     # ── Definition vs theorem-like (low — different purposes) ──
     ("definition", "theorem"): 0.1,
@@ -83,10 +87,17 @@ TYPE_COMPAT = {
     ("algorithm", "definition"): 0.1,
     ("algorithm", "proof"): 0.1,
     ("algorithm", "example"): 0.3,
+    # algorithm<->problem: an algorithm computes/solves a problem. Distinct
+    # objects (procedure vs question) but tightly coupled in extraction.
+    ("algorithm", "problem"): 0.35,
 
     # ── Equation vs others ──
     ("equation", "theorem"): 0.2,
-    ("equation", "definition"): 0.2,
+    # equation<->definition: a numbered equation often *is* an inline
+    # definition (e.g., a defining equation for a quantity). Bumped from
+    # 0.2 to 0.55 so annotators who tag the same line as definition vs
+    # equation don't get heavily penalized.
+    ("equation", "definition"): 0.55,
     ("equation", "lemma"): 0.2,
     ("equation", "proof"): 0.1,
 
@@ -279,7 +290,12 @@ def edge_sim(e_a, e_b):
     # proves↔solves: high (both "establishes" relationships)
     if {ra, rb} <= {"proves", "solves"}:
         return 0.8
-    # Both structural (proves/solves/illustrates/tests): moderate credit
+    # proves↔resolves: high-ish (both "settles the truth of A", but
+    # different source/target shapes: proof→theorem vs. theorem-like→
+    # open_problem/conjecture).
+    if {ra, rb} == {"proves", "resolves"}:
+        return 0.6
+    # Both structural (proves/solves/illustrates/tests/resolves): moderate credit
     if ra in STRUCTURAL_TYPES and rb in STRUCTURAL_TYPES:
         return 0.5
     # Mixed dependency/structural: low credit
@@ -411,6 +427,104 @@ def align_graphs(graph_a, graph_b, sigma_fn=jaccard_sim, alpha=0.5,
     }
 
 
+# ── Soft (threshold-free) precision/recall/F1 ────────────────────────────────
+# Computed *after* Hungarian alignment, from the matched-pair list. Done this
+# way (rather than baked into the solver) so that future many-to-one (B^3)
+# extensions can plug in an alternative matching producer and reuse these
+# metrics unchanged. Strict (threshold-based) metrics are still produced by
+# the existing call sites; soft metrics live alongside them.
+def soft_metrics(matching, graph_a, graph_b, sigma_fn=jaccard_sim, alpha=0.5,
+                 edge_type_match_factor=0.5):
+    """Threshold-free P/R/F1 from a Hungarian (or any 1-1) matching.
+
+    Node side
+    ---------
+        P_soft = sum(sigma over matched pairs) / |graph_a.nodes|
+        R_soft = sum(sigma over matched pairs) / |graph_b.nodes|
+        F1_soft = 2 P R / (P + R)
+
+    The same formulas apply for the dual-use case (cross-paper alignment OR
+    same-paper extraction comparison): graph_a is the "predicted" / LLM /
+    extracted side; graph_b is the "reference" / gold side. Names follow the
+    convention already used by score_matching() in graph_alignment_eval.py.
+
+    Edge side
+    ---------
+    For each matched edge pair, edge_score = sigma(src_pair) * sigma(tgt_pair) *
+    type_factor, where type_factor = 1.0 if edge types match (under edge_sim
+    equivalence => edge_sim == 1.0) and `edge_type_match_factor` (default 0.5)
+    otherwise. Same denominators as nodes (|edges_a|, |edges_b|).
+
+    Returns a dict with both node_* and edge_* soft metrics, plus a
+    `matched_pairs` list of (a_id, b_id, sigma) for inspection.
+    """
+    nodes_a = graph_a.get("nodes", [])
+    nodes_b = graph_b.get("nodes", [])
+    edges_a = graph_a.get("edges", [])
+    edges_b = graph_b.get("edges", [])
+
+    a_by_id = {n["id"]: n for n in nodes_a}
+    b_by_id = {n["id"]: n for n in nodes_b}
+
+    # Per-pair sigma from the matching
+    pair_sigma = {}
+    for aid, bid in matching.items():
+        if aid in a_by_id and bid in b_by_id:
+            pair_sigma[(aid, bid)] = sigma_fn(a_by_id[aid], b_by_id[bid])
+
+    sigma_sum = sum(pair_sigma.values())
+    n_a = len(nodes_a)
+    n_b = len(nodes_b)
+    p_node = sigma_sum / n_a if n_a else 0.0
+    r_node = sigma_sum / n_b if n_b else 0.0
+    f1_node = (2 * p_node * r_node / (p_node + r_node)) if (p_node + r_node) else 0.0
+
+    # Edge soft scoring. For every edge in A whose both endpoints are
+    # matched, look for the corresponding edge in B (src1 -> src2 mapped).
+    # If found, contribute sigma(src) * sigma(tgt) * type_factor.
+    edge_score_sum = 0.0
+    # Index B-edges by (source, target) for quick lookup
+    edges_b_by_pair = defaultdict(list)
+    for e in edges_b:
+        edges_b_by_pair[(e["source"], e["target"])].append(e)
+
+    for e1 in edges_a:
+        s1 = matching.get(e1["source"])
+        t1 = matching.get(e1["target"])
+        if not (s1 and t1):
+            continue
+        cand = edges_b_by_pair.get((s1, t1))
+        if not cand:
+            continue
+        # Best candidate by edge_sim
+        e2 = max(cand, key=lambda e: edge_sim(e1, e))
+        type_factor = 1.0 if edge_sim(e1, e2) == 1.0 else edge_type_match_factor
+        sig_src = pair_sigma.get((e1["source"], s1), 0.0)
+        sig_tgt = pair_sigma.get((e1["target"], t1), 0.0)
+        edge_score_sum += sig_src * sig_tgt * type_factor
+
+    n_ea = len(edges_a)
+    n_eb = len(edges_b)
+    p_edge = edge_score_sum / n_ea if n_ea else 0.0
+    r_edge = edge_score_sum / n_eb if n_eb else 0.0
+    f1_edge = (2 * p_edge * r_edge / (p_edge + r_edge)) if (p_edge + r_edge) else 0.0
+
+    return {
+        "precision_soft": p_node,
+        "recall_soft": r_node,
+        "f1_soft": f1_node,
+        "edge_precision_soft": p_edge,
+        "edge_recall_soft": r_edge,
+        "edge_f1_soft": f1_edge,
+        "sigma_sum": sigma_sum,
+        "edge_score_sum": edge_score_sum,
+        "matched_pairs": [
+            {"a_id": aid, "b_id": bid, "sigma": s}
+            for (aid, bid), s in pair_sigma.items()
+        ],
+    }
+
+
 # ── Statistical significance: Monte Carlo permutation test ──────────────────
 def significance_test(graph_a, graph_b, observed_score, sigma_fn=jaccard_sim,
                       alpha=0.5, n_perms=1000, seed=42, verbose=False):
@@ -465,6 +579,31 @@ def significance_test(graph_a, graph_b, observed_score, sigma_fn=jaccard_sim,
     }
 
 
+# ── Origin filtering helper ─────────────────────────────────────────────────
+def _drop_origin(graph, exclude):
+    """Return a copy of `graph` with nodes whose `origin` matches `exclude`
+    removed (along with any incident edges). Nodes without an `origin` field
+    default to 'paper' for backwards compatibility.
+    """
+    keep_ids = set()
+    kept_nodes = []
+    for n in graph.get("nodes", []):
+        origin = n.get("origin", "paper")
+        if origin == exclude:
+            continue
+        kept_nodes.append(n)
+        if n.get("id"):
+            keep_ids.add(n["id"])
+    kept_edges = [
+        e for e in graph.get("edges", [])
+        if e.get("source") in keep_ids and e.get("target") in keep_ids
+    ]
+    out = dict(graph)
+    out["nodes"] = kept_nodes
+    out["edges"] = kept_edges
+    return out
+
+
 # ── CLI for testing ──────────────────────────────────────────────────────────
 def main():
     import argparse
@@ -479,6 +618,12 @@ def main():
     parser.add_argument("--alpha", type=float, default=0.5,
                         help="Edge-match weight (default 0.5)")
     parser.add_argument("--skip-significance", action="store_true")
+    parser.add_argument("--exclude-origin", choices=["external", "paper"],
+                        default=None,
+                        help="Drop nodes (and incident edges) with the given "
+                             "origin value before alignment. Default sigma "
+                             "treats external nodes as first-class; pass "
+                             "'external' to score paper-only graphs.")
     args = parser.parse_args()
 
     sigma_fn = SIGMA_FUNCTIONS[args.sigma]
@@ -487,6 +632,11 @@ def main():
         g_a = json.load(f)
     with open(args.graph_b) as f:
         g_b = json.load(f)
+
+    if args.exclude_origin:
+        g_a = _drop_origin(g_a, args.exclude_origin)
+        g_b = _drop_origin(g_b, args.exclude_origin)
+        print(f"--exclude-origin {args.exclude_origin}: nodes filtered.")
 
     print(f"Graph A: {args.graph_a}")
     print(f"  {len(g_a['nodes'])} nodes, {len(g_a.get('edges', []))} edges")

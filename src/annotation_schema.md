@@ -1,5 +1,8 @@
 # Annotation JSON Schema
 
+<!-- CANONICAL: src/node_types.py and src/edge_types.py.
+     This file is derivative; sync it whenever the canonical changes. -->
+
 Unified format for mathematical knowledge graph annotations.
 Used by all extractors (baseline, LLM, student submissions) and evaluation tools.
 
@@ -44,12 +47,33 @@ Each node is a mathematical object. Required fields are marked with **R**, optio
 | `env_name` | O | string | LaTeX environment name (e.g., `"theorem"`, `"definition"`) |
 | `index` | O | int | Running index per type (1-based) |
 | `spans` | O | list | Fine-grained semantic spans (see below) |
+| `origin` | O | string | Provenance: `"paper"` (default) or `"external"` (cited prior result the paper invokes but does not establish — see below) |
+| `origin_citation` | O | string | For `origin: "external"` nodes only: free-text source identifier (e.g., `"Sinkhorn 1967"`, `"Cover & Thomas, Elements of Information Theory"`) |
+
+### Origin attribution
+
+Every node carries an optional `origin` field:
+
+- `"paper"` (default; assumed when missing for backwards compatibility) —
+  node represents a contribution introduced by the paper being extracted.
+- `"external"` — node represents a cited prior result the paper invokes but
+  does not establish: a classical theorem (e.g., "Sinkhorn 1967"), a
+  baseline algorithm used for comparison, a foundational definition the
+  paper depends on, etc.
+
+External nodes additionally carry an `origin_citation` string identifying
+the cited source. Both `paper`-origin and `external`-origin nodes use the
+same node types — the distinction is preserved so that visualizations can
+hide cited-prior nodes by default and so cross-paper analyses can identify
+shared external dependencies. Constants `ORIGIN_PAPER`, `ORIGIN_EXTERNAL`,
+and helper `normalize_origin()` live in `src/node_types.py`.
 
 ### Node types
 
-15 types in 5 groups. Constants defined in `src/node_types.py`.
+18 types organized into Level 1 (paper-level, 16) and Level 2 (sub-block, 2).
+Constants defined in `src/node_types.py`.
 
-**Theorem-like** (state a claim with assumptions/conclusions):
+**Theorem-like** (state a claim with assumptions/conclusions) [Level 1]:
 
 | Type | Description |
 |------|-------------|
@@ -58,39 +82,49 @@ Each node is a mathematical object. Required fields are marked with **R**, optio
 | `proposition` | Proposition |
 | `corollary` | Corollary |
 | `claim` | Informal claim, "Fact", "Observation" |
-| `conjecture` | Explicitly unproven claim |
+| `conjecture` | Explicitly unproven claim with a stated answer the author believes |
 
-**Foundational:**
+**Foundational** [Level 1]:
 
 | Type | Description |
 |------|-------------|
 | `definition` | Mathematical definition of a named concept |
 | `proof` | Proof of a theorem/lemma/proposition/corollary |
 
-**Proof decomposition** (optional, emitted only at `with_proof_steps` granularity):
-
-| Type | Description |
-|------|-------------|
-| `proof_step` | A single logical move within a proof. **First-class node** (not a nested array inside `proof`). Linked via `parent_proof` to its enclosing proof node. An `equation` node may reference a proof_step via `parent_step`. |
-
-**Pedagogical** (primarily in textbooks):
+**Pedagogical** [Level 1] (primarily in textbooks):
 
 | Type | Description |
 |------|-------------|
 | `example` | Worked example illustrating a concept |
 | `exercise` | Pedagogical problem for the reader ("Show that...", "Compute...") |
 
-**Other mathematical content:**
+**Other mathematical content** [Level 1]:
 
 | Type | Description |
 |------|-------------|
-| `problem` | A named mathematical problem being studied ("the knapsack problem", "the isoperimetric problem"). Semantically closer to `conjecture` than to `exercise`. |
+| `problem` | A *named or formulated formal mathematical problem*: optimization formulations ("argmin f(x) s.t. Ax<=b"), decision problems ("3-SAT"), named problems with attached algorithms / complexity / hardness ("the knapsack problem"). What the paper STUDIES. |
+| `open_problem` | An unsolved mathematical *question* with no known solution. E.g. "Are there infinitely many odd perfect numbers?", "Is P = NP?", the Riemann Hypothesis posed as a question. Similar to `conjecture` semantically, but content-wise more like a question without a stated answer. |
 | `equation` | Explicitly labeled/numbered equation referenced by number |
 | `algorithm` | Pseudocode or step-by-step procedure |
 | `remark` | Author's remark, note, observation |
+| `assumption` | A `\begin{assumption}` block declaring standing assumptions for a section/theorem cluster ("(A1) f is convex; (A2) X is bounded"). Distinct from the per-theorem `assumptions` field. |
 
-**Note:** `exercise` ≠ `problem`. An exercise is pedagogical (the author knows the answer).
-A problem is a mathematical object being studied (may be open/unsolved).
+**Sub-block decomposition** [Level 2 — emitted only at fine-grained granularity]:
+
+| Type | Description |
+|------|-------------|
+| `proof_step` | One logical move within a `proof`. **First-class node**, linked via `parent_id` (or legacy `parent_proof`) to its enclosing proof. |
+| `algorithm_step` | One numbered line of pseudocode within an `algorithm` node. Linked via `parent_id` (or legacy `parent_algorithm`). |
+
+**Note:** `exercise` ≠ `problem` ≠ `open_problem`. An exercise is pedagogical
+(author knows the answer). A problem is a formally formulated mathematical
+object the paper studies. An open_problem is an unsolved question with no
+known solution.
+
+**Optional `tags` field** (any node): a `list[str]` of type-specific tags
+drawn from `TAGS_VOCABULARY` in `src/node_types.py`. Validators warn but
+do not reject unknown tag values. Examples: `theorem` → `["existence",
+"uniqueness", "bound"]`; `algorithm` → `["iterative", "approximation"]`.
 
 ### Extra fields by type
 
@@ -111,15 +145,23 @@ A problem is a mathematical object being studied (may be open/unsolved).
 | `proof_strategy` | O | string | Short tag: `"contradiction"`, `"induction"`, `"direct"`, etc. |
 | `strategy_tags` | O | list of strings | Multiple strategy tags |
 
-**Proof steps** (emitted only at `with_proof_steps` granularity):
+**Proof steps** [Level 2 — emitted only at `with_proof_steps` granularity]:
 
 | Field | Req | Type | Description |
 |-------|-----|------|-------------|
-| `parent_proof` | **R** | string | ID of the `proof` node this step belongs to |
+| `parent_id` | **R** | string | ID of the parent Level 1 `proof` node (preferred). Legacy field `parent_proof` is still accepted. |
 | `step_order` | O | int | 1-based sequential index within the parent proof |
 | `depends_on_step_ids` | O | list of strings | Other `proof_step` IDs in same proof this step uses |
 | `uses_node_ids` | O | list of strings | External nodes (lemmas/defs) invoked in this step |
 | `move_type` | O | string | Tag: `setup`, `introduce_variable`, `apply_lemma`, `case_split`, `induction_step`, `contradiction_setup`, `algebraic_manipulation`, `substitute`, `bound_estimate`, `invoke_identity`, `conclude`, `other` |
+
+**Algorithm steps** [Level 2 — emitted only at fine-grained granularity]:
+
+| Field | Req | Type | Description |
+|-------|-----|------|-------------|
+| `parent_id` | **R** | string | ID of the parent Level 1 `algorithm` node (preferred). Legacy field `parent_algorithm` is still accepted. |
+| `step_order` | O | int | 1-based sequential index within the parent algorithm |
+| `pseudocode` | O | string | The raw pseudocode line for this step |
 
 **Design note:** proof steps are modeled as **first-class nodes** (with their own IDs, appearing in the top-level `nodes` list), not as a nested `steps[]` array inside the parent `proof`. This matches the course-chapter corpus convention and allows equations to reference a specific step via `parent_step`. The legacy nested `steps[]` form is deprecated — if encountered in older JSONs, migrate to first-class `proof_step` nodes.
 

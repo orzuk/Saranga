@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from graph_alignment import (
     align_graphs, significance_test, jaccard_sim,
-    build_cost_matrix, edge_sim,
+    build_cost_matrix, edge_sim, soft_metrics,
 )
 
 
@@ -65,7 +65,12 @@ def parse_alignment(alignment_json):
 
 
 def precision_recall(pred_matching, gold_pairs):
-    """Compute P/R/F1 treating matching as a set of (a, b) pairs."""
+    """Compute strict P/R/F1 treating matching as a set of (a, b) pairs.
+
+    Backwards-compatible: existing call sites continue to consume this strict,
+    threshold-based result. Soft (threshold-free) variants are produced
+    separately by precision_recall_soft() below.
+    """
     pred_pairs = set((a, b) for a, b in pred_matching.items())
     tp = pred_pairs & gold_pairs
     fp = pred_pairs - gold_pairs
@@ -75,6 +80,18 @@ def precision_recall(pred_matching, gold_pairs):
     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
     return {"precision": precision, "recall": recall, "f1": f1,
             "tp": sorted(tp), "fp": sorted(fp), "fn": sorted(fn)}
+
+
+def precision_recall_soft(pred_matching, graph_a, graph_b,
+                          sigma_fn=jaccard_sim, alpha=0.5):
+    """Soft (threshold-free) P/R/F1 using continuous sigma scores.
+
+    Thin wrapper around graph_alignment.soft_metrics() so callers that already
+    work in the (matching, graph_a, graph_b) idiom can get soft node + edge
+    metrics in one call. ADDED — does not replace precision_recall().
+    """
+    return soft_metrics(pred_matching, graph_a, graph_b,
+                        sigma_fn=sigma_fn, alpha=alpha)
 
 
 def main():
@@ -136,11 +153,19 @@ def main():
     print(f"\n{'='*60}")
     print("PRECISION / RECALL vs GOLD")
     pr_hung = precision_recall(hung_result["matching"], gold_pairs)
-    print(f"Hungarian: P={pr_hung['precision']:.2f}, "
+    print(f"Hungarian (strict): P={pr_hung['precision']:.2f}, "
           f"R={pr_hung['recall']:.2f}, F1={pr_hung['f1']:.2f}")
     print(f"  TP ({len(pr_hung['tp'])}): {pr_hung['tp']}")
     print(f"  FP ({len(pr_hung['fp'])}): {pr_hung['fp'][:5]}...")
     print(f"  FN ({len(pr_hung['fn'])}): {pr_hung['fn']}")
+
+    # Soft (threshold-free) metrics — additive, do not replace strict above
+    pr_soft = precision_recall_soft(hung_result["matching"], g_a, g_b,
+                                    sigma_fn=jaccard_sim, alpha=args.alpha)
+    print(f"Hungarian (soft):   P={pr_soft['precision_soft']:.2f}, "
+          f"R={pr_soft['recall_soft']:.2f}, F1={pr_soft['f1_soft']:.2f}")
+    print(f"  edge soft:        P={pr_soft['edge_precision_soft']:.2f}, "
+          f"R={pr_soft['edge_recall_soft']:.2f}, F1={pr_soft['edge_f1_soft']:.2f}")
 
     # --- Z-score for both
     print(f"\n{'='*60}")

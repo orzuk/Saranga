@@ -757,7 +757,9 @@ def merge_proofs(nodes, edges):
             parent_id = proof_map[n["id"]]
             parent = node_by_id[parent_id]
             parent.setdefault("proof_info", [])
-            parent["proof_info"].append(n.get("proof_strategy", ""))
+            content = n.get("proof_strategy") or n.get("statement_clean") or n.get("statement")
+            if content:
+                parent["proof_info"].append(content)
             continue
         display_nodes.append(n)
 
@@ -782,18 +784,27 @@ def merge_proofs(nodes, edges):
 # ── Foundation graph linking (shared by PNG and HTML) ────────────────────────
 
 def _resolve_foundation_path(foundation_path=None):
-    """Find the best available foundation index path."""
+    """Find the best available foundation index path.
+
+    Prefers ``clean_foundation_with_books.json`` over plain
+    ``clean_foundation.json`` so that book-derived entries (Gowers, Higham,
+    MAT520) are picked up automatically.
+    """
     if foundation_path is not None:
         return foundation_path
     # Auto-detect from common locations
     candidates = [
+        Path("/mnt/g/My Drive/Research/Automath/naturalproofs/clean_foundation_with_books.json"),
         Path("/mnt/g/My Drive/Research/Automath/naturalproofs/clean_foundation.json"),
+        Path("/sci/labs/orzuk/orzuk/projects/Authomathics/naturalproofs/clean_foundation_with_books.json"),
         Path("/sci/labs/orzuk/orzuk/projects/Authomathics/naturalproofs/clean_foundation.json"),
     ]
     # Also try via config.py DATA_DIR
     try:
         from config import DATA_DIR
-        candidates.insert(0, Path(str(DATA_DIR)) / "naturalproofs" / "clean_foundation.json")
+        data_dir = Path(str(DATA_DIR)) / "naturalproofs"
+        candidates.insert(0, data_dir / "clean_foundation_with_books.json")
+        candidates.insert(1, data_dir / "clean_foundation.json")
     except ImportError:
         pass
     for c in candidates:
@@ -813,22 +824,39 @@ def compute_foundation_links(nodes_raw, base_ids, foundation_path=None):
         foundation_path: path to clean_foundation.json, or None for auto-detect.
 
     Returns:
-        (ghost_map, case1_matches):
+        (ghost_map, case1_matches, ghost_meta):
             ghost_map: {foundation_name: [base_node_ids]} — for ghost node rendering
             case1_matches: {base_node_id: [foundation_names]} — for inline annotations
+            ghost_meta: {foundation_name: {"source": str, "is_book": bool,
+                                            "book_label": str}}
+                        — per-ghost provenance, used to differentiate book vs.
+                          mathlib/proofwiki/herald entries in the renderer.
     """
-    from link_to_foundation import build_foundation_index, link_paper
+    from link_to_foundation import build_foundation_index, link_paper, _build_automaton
 
     fg_path = _resolve_foundation_path(foundation_path)
     fg_index = build_foundation_index(fg_path)
-    matches = link_paper(nodes_raw, fg_index, min_term_len=5)
+    # Use Aho-Corasick when available — both vastly faster on the 27k+ index
+    # AND robust against terms containing regex metacharacters (e.g. "*").
+    automaton, term_map = _build_automaton(fg_index, min_term_len=5)
+    matches = link_paper(nodes_raw, fg_index, min_term_len=5,
+                         automaton=automaton, term_map=term_map)
 
     ghost_map = {}   # foundation_name -> set of base node IDs
     case1 = {}       # base_node_id -> list of foundation names
+    ghost_meta = {}  # foundation_name -> {source, is_book, book_label}
 
     for m in matches:
         nid = m["node_id"]
         fname = m["foundation_name"]
+        # Record provenance once per foundation name
+        if fname not in ghost_meta:
+            src = m.get("foundation_source", "") or ""
+            ghost_meta[fname] = {
+                "source":     src,
+                "is_book":    src.startswith("book:"),
+                "book_label": m.get("foundation_book_label", "") or "",
+            }
         if nid in base_ids:
             # Direct match on a base node
             ghost_map.setdefault(fname, set()).add(nid)
@@ -854,19 +882,25 @@ def compute_foundation_links(nodes_raw, base_ids, foundation_path=None):
     # Convert sets to lists
     ghost_map = {k: sorted(v) for k, v in ghost_map.items()}
     case1 = {k: sorted(set(v)) for k, v in case1.items()}
-    return ghost_map, case1
+    return ghost_map, case1, ghost_meta
 
 
-def draw_foundation_ghosts(ax, ghost_map, node_rect):
+def draw_foundation_ghosts(ax, ghost_map, node_rect, ghost_meta=None):
     """Draw foundation ghost nodes and their dashed edges on a matplotlib axes.
 
     Args:
         ax: matplotlib axes.
         ghost_map: {foundation_name: [base_node_ids]} from compute_foundation_links.
         node_rect: {node_id: (x, y, w, h)} from draw_dag layout.
+        ghost_meta: optional {foundation_name: {"source", "is_book", "book_label"}}
+            — used to differentiate book entries (dotted border, warmer fill,
+            "BookLabel: <name>" header) from mathlib/proofwiki/herald entries.
     """
     if not ghost_map or not node_rect:
         return {}
+
+    if ghost_meta is None:
+        ghost_meta = {}
 
     from matplotlib.patches import FancyArrowPatch
 
@@ -883,38 +917,62 @@ def draw_foundation_ghosts(ax, ghost_map, node_rect):
         gx = ghost_start_x + gi * (ghost_w + BOX_GAP_X * 0.5)
         gy = ghost_y_top
 
-        # Ghost box (dashed gray)
+        meta = ghost_meta.get(gname, {}) or {}
+        is_book = bool(meta.get("is_book"))
+        book_label = meta.get("book_label", "") or ""
+
+        # Visual style depends on origin (book vs mathlib/proofwiki/herald)
+        if is_book:
+            body_color = "#FFF8E1"   # warm cream
+            edge_color = "#A1887F"
+            header_color = "#8D6E63"
+            line_style = (0, (1, 2))  # dotted
+        else:
+            body_color = "#E8E8E8"   # cool gray (existing)
+            edge_color = "#777777"
+            header_color = "#777777"
+            line_style = (0, (8, 6))  # dashed (existing)
+
+        # Use a "ghostbook_" prefix for book entries so the JS / CSS layer can
+        # style them differently. The shared "ghost_" toggle handler still
+        # picks them up via the [id^="ghost"] selector used at runtime.
+        gid_prefix = "ghostbook" if is_book else "ghost"
+
+        # Ghost box
         grect = FancyBboxPatch(
             (gx, gy - ghost_h), ghost_w, ghost_h,
             boxstyle="round,pad=0.05",
-            facecolor="#E8E8E8", edgecolor="#777777",
-            linewidth=1.5, linestyle=(0, (8, 6)),
-            gid=f"ghost_box_{gi}",
+            facecolor=body_color, edgecolor=edge_color,
+            linewidth=1.5, linestyle=line_style,
+            gid=f"{gid_prefix}_box_{gi}",
         )
         ax.add_patch(grect)
         # Header bar
         gheader = FancyBboxPatch(
             (gx, gy - HEADER_H), ghost_w, HEADER_H,
             boxstyle="round,pad=0.05",
-            facecolor="#777777", edgecolor="#777777",
+            facecolor=header_color, edgecolor=header_color,
             linewidth=0,
-            gid=f"ghost_header_{gi}",
+            gid=f"{gid_prefix}_header_{gi}",
         )
         ax.add_patch(gheader)
-        # Name text
-        short_name = gname if len(gname) <= 22 else gname[:19] + "..."
+        # Name text — book entries get "Label: <name>" prefix
+        display_name = f"{book_label}: {gname}" if (is_book and book_label) else gname
+        short_name = display_name if len(display_name) <= 22 else display_name[:19] + "..."
         ax.text(gx + ghost_w / 2, gy - HEADER_H / 2, short_name,
                 ha="center", va="center", fontsize=12, fontweight="bold",
-                color="white", gid=f"ghost_text_{gi}")
+                color="white", gid=f"{gid_prefix}_text_{gi}")
         # References text
         refs_str = "→ " + ", ".join(ghost_map[gname])
         ax.text(gx + ghost_w / 2, gy - HEADER_H - LINE_H * 0.7, refs_str,
                 ha="center", va="center", fontsize=10, color="#555",
-                gid=f"ghost_refs_{gi}")
+                gid=f"{gid_prefix}_refs_{gi}")
 
         ghost_rects[gname] = (gx, gy - ghost_h, ghost_w, ghost_h)
 
-        # Dashed edges to target nodes
+        # Dashed (mathlib) or dotted (book) edges to target nodes
+        edge_color_arrow = "#A1887F" if is_book else "#999999"
+        edge_linestyle = (0, (1, 2)) if is_book else (0, (8, 6))
         for ti, target_id in enumerate(ghost_map[gname]):
             if target_id in node_rect:
                 tx, ty, tw, th = node_rect[target_id]
@@ -922,11 +980,11 @@ def draw_foundation_ghosts(ax, ghost_map, node_rect):
                     (gx + ghost_w / 2, gy - ghost_h),
                     (tx + tw / 2, ty + th),
                     arrowstyle="-|>,head_length=0.8,head_width=0.35",
-                    color="#999999", lw=1.5,
-                    linestyle=(0, (8, 6)),  # 8pt dash, 6pt gap (more visible than "dashed")
+                    color=edge_color_arrow, lw=1.5,
+                    linestyle=edge_linestyle,
                     connectionstyle="arc3,rad=0.05",
                     shrinkA=3, shrinkB=3,
-                    gid=f"ghost_edge_{gi}_{ti}",
+                    gid=f"{gid_prefix}_edge_{gi}_{ti}",
                 )
                 ax.add_patch(arrow)
 
@@ -951,7 +1009,12 @@ def draw_legend(ax, node_data, node_rect, show_foundation=False,
         legend_handles.append(
             mpatches.Patch(facecolor="#E8E8E8", edgecolor="#777777",
                            linewidth=1.5, linestyle="dashed",
-                           label="Foundation (ext.)")
+                           label="Foundation: mathlib/herald")
+        )
+        legend_handles.append(
+            mpatches.Patch(facecolor="#FFF8E1", edgecolor="#8D6E63",
+                           linewidth=1.5, linestyle="dotted",
+                           label="Foundation: book")
         )
 
     if not node_rect:
@@ -1307,7 +1370,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         x1 = tx + tw / 2
         y1 = ty_bottom + th  # top of target
 
-        ax.annotate(
+        ann = ax.annotate(
             "", xy=(x1, y1), xytext=(x0, y0),
             arrowprops=dict(
                 arrowstyle="-|>,head_length=1.2,head_width=0.6",
@@ -1317,12 +1380,32 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 shrinkA=3, shrinkB=3,
             ),
         )
+        # Tag the edge so JS toggles can hide/show it. Use a sanitized id.
+        try:
+            _safe_src = str(src).replace(" ", "_")
+            _safe_tgt = str(tgt).replace(" ", "_")
+            ann.arrow_patch.set_gid(f"edge_{_safe_src}__{_safe_tgt}")
+        except Exception:
+            pass
 
     # ── Draw boxes ──
+    # Track which patches/texts/lines belong to each node so we can bulk-tag
+    # them with a `node_<nid>__elemN` gid suffix after rendering. This lets
+    # the HTML toggle code hide every element of a node via attribute selector.
+    _node_artist_ranges = {}  # nid -> (patches_start, texts_start, lines_start, patches_end, texts_end, lines_end)
+
+    def _safe_nid(nid):
+        return str(nid).replace(" ", "_")
+
     for nid, (bx, by, bw, bh) in node_rect.items():
         n = node_data[nid]
         ntype = n.get("type", "")
         colors = NODE_COLORS.get(ntype, DEFAULT_COLOR)
+
+        # Snapshot artist counts so we can later identify per-node artists
+        _patches_start = len(ax.patches)
+        _texts_start = len(ax.texts)
+        _lines_start = len(ax.lines)
 
         # Main box background (gid for SVG click handling)
         rect = FancyBboxPatch(
@@ -1361,6 +1444,29 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         ax.text(bx + bw / 2, cursor_y - HEADER_H / 2, header_text,
                 ha="center", va="center", fontsize=header_fontsize, fontweight="bold",
                 color="white")
+        # Proof indicator — small badge in the top-right corner of the header
+        # for theorem-like nodes that have proof_info merged in. Click the node
+        # to see the actual proof text in the side panel.
+        _has_proof = (ntype in ("theorem", "lemma", "corollary", "proposition", "claim")
+                      and bool(n.get("proof_info")))
+        if _has_proof:
+            # Filled-circle badge so the visual cue survives even when the
+            # system font has no emoji glyph for "scroll".
+            from matplotlib.patches import Circle
+            _badge_r = HEADER_H * 0.18
+            _badge_cx = bx + bw - _badge_r * 1.6
+            _badge_cy = cursor_y - HEADER_H / 2
+            _safe_nid_for_badge = str(nid).replace(" ", "_")
+            badge = Circle((_badge_cx, _badge_cy), _badge_r,
+                           facecolor="#FFD54F", edgecolor="#5D4037",
+                           linewidth=0.8, zorder=5,
+                           gid=f"node_{_safe_nid_for_badge}__proofbadge")
+            ax.add_patch(badge)
+            # Asterisk inside (works without emoji fonts)
+            ax.text(_badge_cx, _badge_cy, "*",
+                    ha="center", va="center", fontsize=max(9, header_fontsize * 0.85),
+                    fontweight="bold", color="#5D4037",
+                    gid=f"node_{_safe_nid_for_badge}__proofbadgetext")
         cursor_y -= HEADER_H + PADDING
 
         # Line height helper — must match height computation exactly
@@ -1468,13 +1574,27 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                         ha="left", va="top", fontsize=12, color="#222")
                 cursor_y -= _line_h_draw(line)
 
+        # Bulk-tag this node's artists with a per-node gid so the HTML JS
+        # can hide/show every element of the node via attribute selector.
+        _safe = _safe_nid(nid)
+        # Skip the body rect (index _patches_start) — it already has gid="node_<nid>"
+        for i, p in enumerate(ax.patches[_patches_start + 1:len(ax.patches)]):
+            if p.get_gid() is None:
+                p.set_gid(f"node_{_safe}__patch{i}")
+        for i, t in enumerate(ax.texts[_texts_start:len(ax.texts)]):
+            if t.get_gid() is None:
+                t.set_gid(f"node_{_safe}__text{i}")
+        for i, ln in enumerate(ax.lines[_lines_start:len(ax.lines)]):
+            if ln.get_gid() is None:
+                ln.set_gid(f"node_{_safe}__line{i}")
+
     # ── Ghost nodes (external foundation dependencies) ──
     _base_ids = set(node_data.keys())
-    _ghost_map, _case1_matches = compute_foundation_links(
+    _ghost_map, _case1_matches, _ghost_meta = compute_foundation_links(
         nodes_raw, _base_ids, foundation_path=foundation_path)
 
     if show_foundation and _ghost_map:
-        draw_foundation_ghosts(ax, _ghost_map, node_rect)
+        draw_foundation_ghosts(ax, _ghost_map, node_rect, ghost_meta=_ghost_meta)
 
     # ── Misc/Orphan equations box ──
     # Count orphan equations from the FULL node list (before filtering)
@@ -1580,8 +1700,30 @@ def _classify_and_merge(nodes, edges):
             proof_map[n["id"]] = n["proves"]
             parent = node_by_id[n["proves"]]
             parent.setdefault("proof_info", [])
-            if n.get("proof_strategy"):
-                parent["proof_info"].append(n["proof_strategy"])
+            content = n.get("proof_strategy") or n.get("statement_clean") or n.get("statement")
+            if content:
+                parent["proof_info"].append(content)
+
+    # Also pick up proofs linked via "proves" edges (theorem<->proof, either direction)
+    for e in edges:
+        if e.get("type") != "proves":
+            continue
+        src, tgt = e["source"], e["target"]
+        proof_id, parent_id = None, None
+        if src in node_by_id and node_by_id.get(tgt, {}).get("type") == "proof":
+            proof_id, parent_id = tgt, src
+        elif tgt in node_by_id and node_by_id.get(src, {}).get("type") == "proof":
+            proof_id, parent_id = src, tgt
+        if proof_id and proof_id not in proof_map:
+            proof_map[proof_id] = parent_id
+            proof_node = node_by_id[proof_id]
+            parent = node_by_id[parent_id]
+            parent.setdefault("proof_info", [])
+            content = (proof_node.get("proof_strategy")
+                       or proof_node.get("statement_clean")
+                       or proof_node.get("statement"))
+            if content:
+                parent["proof_info"].append(content)
 
     base_nodes, proof_steps, equations, orphan_eqs = [], [], [], []
     has_edge = set()
@@ -1645,7 +1787,13 @@ def generate_interactive_html(data, svg_path, html_path):
 
     # Foundation graph linking (shared computation with draw_dag)
     base_ids = {n["id"] for n in base_nodes}
-    case2_ghosts, case1_matches = compute_foundation_links(nodes, base_ids)
+    case2_ghosts, case1_matches, ghost_meta = compute_foundation_links(nodes, base_ids)
+    # Counts for the unified Foundation toggle (mathlib/proofwiki + book entries)
+    n_ghost_book = sum(1 for n, m in ghost_meta.items()
+                       if n in case2_ghosts and m.get("is_book"))
+    n_ghost_other = sum(1 for n, m in ghost_meta.items()
+                        if n in case2_ghosts and not m.get("is_book"))
+    n_ghost_total = n_ghost_book + n_ghost_other
 
     # Build detail data
     js_details = {}
@@ -1656,6 +1804,9 @@ def generate_interactive_html(data, svg_path, html_path):
             "type": n.get("type", ""),
             "section": n.get("section", ""),
             "statement": n.get("statement", ""),
+            "statement_clean": n.get("statement_clean", ""),
+            "origin": n.get("origin", "paper"),
+            "origin_citation": n.get("origin_citation", ""),
             "assumptions": n.get("assumptions", []),
             "conclusions": n.get("conclusions", []),
             "proof_info": n.get("proof_info", []),
@@ -1668,6 +1819,28 @@ def generate_interactive_html(data, svg_path, html_path):
                           for e in eq_map.get(nid, [])],
         }
 
+    # Node classification for toggles: which nodes are auxiliary (example/remark)
+    # and which are external (cited prior results). Default origin = "paper".
+    AUX_TYPES = {"example", "remark"}
+    aux_node_ids = sorted({n["id"] for n in base_nodes if n.get("type") in AUX_TYPES})
+    ext_node_ids = sorted({n["id"] for n in base_nodes if n.get("origin", "paper") == "external"})
+
+    # Edges incident to aux/external nodes — needed so JS can hide them too.
+    # Use the same id-sanitization as the SVG edge gids.
+    def _safe(s):
+        return str(s).replace(" ", "_")
+    aux_set = set(aux_node_ids)
+    ext_set = set(ext_node_ids)
+    aux_edge_gids = []
+    ext_edge_gids = []
+    for e in base_edges:
+        s, t = e["source"], e["target"]
+        gid = f"edge_{_safe(s)}__{_safe(t)}"
+        if s in aux_set or t in aux_set:
+            aux_edge_gids.append(gid)
+        if s in ext_set or t in ext_set:
+            ext_edge_gids.append(gid)
+
     js_orphans = [{"id": e["id"], "statement": e.get("statement",""), "section": e.get("section","")}
                   for e in orphan_eqs]
 
@@ -1679,12 +1852,63 @@ def generate_interactive_html(data, svg_path, html_path):
     with open(svg_path, "r", encoding="utf-8") as f:
         svg_content = f.read()
 
-    # Make node rects clickable by adding onclick via regex
+    # Make node rects clickable by adding onclick via regex.
+    # Only target the body-rect ids (no "__" suffix) — per-element gids like
+    # node_<nid>__text0 / node_<nid>__patch1 are sibling artists used for
+    # toggling, not click handlers.
     import re
     def _add_onclick(m):
         nid = m.group(1)
         return 'id="node_' + nid + '" onclick="showDetail(\'' + nid + '\')" style="cursor:pointer;"'
-    svg_content = re.sub(r'id="node_([^"]+)"', _add_onclick, svg_content)
+    svg_content = re.sub(r'id="node_((?:(?!__)[^"])+)"', _add_onclick, svg_content)
+
+    # Tag every node-related SVG element (body, header, all text labels) with
+    # data-nid + classes so JS toggles can hide/show whole nodes (and their
+    # incident edges) via CSS class. Body rect gets the click handler; the
+    # auxiliary per-element ids share the prefix `node_<nid>__`.
+    def _tag_node_class(m):
+        full_id = m.group(1)
+        # Extract base nid: everything before "__" suffix, if any.
+        base_nid = full_id.split("__", 1)[0]
+        d = js_details.get(base_nid, {})
+        ntype = d.get("type", "")
+        origin = d.get("origin", "paper") or "paper"
+        classes = ["node-elem", f"node-type-{ntype}", f"node-origin-{origin}"]
+        if ntype in ("example", "remark"):
+            classes.append("node-aux")
+        if origin == "external":
+            classes.append("node-external")
+        cls_attr = " ".join(classes)
+        return f'id="node_{full_id}" class="{cls_attr}" data-nid="{base_nid}"'
+    svg_content = re.sub(r'id="node_([^"]+)"(?![^>]*\bclass=)',
+                         _tag_node_class, svg_content)
+
+    # Tag edges with classes based on the endpoint nodes' aux/external status.
+    def _tag_edge_class(m):
+        full_id = m.group(1)
+        # full_id is "<safe_src>__<safe_tgt>"
+        try:
+            s_safe, t_safe = full_id.split("__", 1)
+        except ValueError:
+            return m.group(0)
+        # Map back to original IDs via js_details lookup (ids that match after sanitization)
+        def _match(safe):
+            for nid in js_details:
+                if str(nid).replace(" ", "_") == safe:
+                    return nid
+            return safe
+        src = _match(s_safe)
+        tgt = _match(t_safe)
+        ds = js_details.get(src, {})
+        dt = js_details.get(tgt, {})
+        classes = ["edge-elem"]
+        if ds.get("type") in ("example", "remark") or dt.get("type") in ("example", "remark"):
+            classes.append("edge-aux")
+        if ds.get("origin", "paper") == "external" or dt.get("origin", "paper") == "external":
+            classes.append("edge-external")
+        cls_attr = " ".join(classes)
+        return f'id="edge_{full_id}" class="{cls_attr}"'
+    svg_content = re.sub(r'id="edge_([^"]+)"', _tag_edge_class, svg_content)
 
     # Add foundation links to detail data
     for nid, fnames in case1_matches.items():
@@ -1707,6 +1931,22 @@ def generate_interactive_html(data, svg_path, html_path):
         f'  <div class="legend-item"><div class="legend-color" style="background:{NODE_COLORS[t]["body"]};border-color:{NODE_COLORS[t]["header"]};"></div>{t.replace("_"," ").title()}</div>'
         for t in present_types
     )
+    # Foundation legend swatches — only include the kinds we actually have
+    foundation_legend_items = ""
+    if n_ghost_other:
+        foundation_legend_items += (
+            '  <div class="legend-item">'
+            '<div class="legend-color" style="background:#E8E8E8;border:1.5px dashed #777;"></div>'
+            'Foundation: mathlib / herald'
+            '</div>\n'
+        )
+    if n_ghost_book:
+        foundation_legend_items += (
+            '  <div class="legend-item">'
+            '<div class="legend-color" style="background:#FFF8E1;border:1.5px dotted #8D6E63;"></div>'
+            'Foundation: book (Gowers / Higham / Func.An.)'
+            '</div>\n'
+        )
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -1744,6 +1984,18 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
 .ghost-node:hover {{ background: #BDBDBD; }}
 .ghost-node .ghost-label {{ font-weight: bold; font-size: 13px; }}
 .ghost-node .ghost-refs {{ font-size: 11px; color: #666; margin-top: 3px; }}
+/* Toggle controls panel (Foundation, Examples & Remarks, Cited Results) */
+.toggle-panel {{ display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-left: 12px; padding: 4px 8px; background: #ECEFF1; border: 1px solid #CFD8DC; border-radius: 6px; }}
+.toggle-panel .toggle-label {{ font-size: 11px; color: #555; font-weight: bold; text-transform: uppercase; margin-right: 4px; }}
+.toggle-btn {{ padding: 4px 12px; border: 1.5px solid #757575; border-radius: 4px; background: #E0E0E0; cursor: pointer; font-size: 12px; color: #333; }}
+.toggle-btn:hover {{ background: #BDBDBD; }}
+.toggle-btn[data-showing="1"] {{ background: #2E7D32; color: white; border-color: #1B5E20; }}
+.toggle-btn[disabled] {{ opacity: 0.4; cursor: not-allowed; background: #EEE; }}
+/* Hidden state — applied dynamically via JS */
+.svg-hidden {{ display: none !important; }}
+/* Visual differentiation when shown */
+.node-external-shown [stroke-dasharray] {{ }}  /* no-op, see runtime tweak */
+.node-aux-shown {{ opacity: 0.75; }}
 </style>
 </head>
 <body>
@@ -1759,7 +2011,14 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
 <div class="legend">
 {legend_items}
   <div class="legend-item" style="margin-left:12px;"><span style="font-size:18px;color:#555;">&#8594;</span> A supports B</div>
-  <div class="legend-item" style="margin-left:12px;"><button onclick="toggleGhosts()" id="ghost-btn" style="padding:4px 12px;border:1.5px solid #757575;border-radius:4px;background:#E0E0E0;cursor:pointer;font-size:12px;color:#333;">Show external dependencies</button></div>
+  <div class="legend-item"><span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:#FFD54F;border:1px solid #5D4037;text-align:center;font-weight:bold;font-size:11px;color:#5D4037;line-height:12px;">*</span>&nbsp;has proof (click)</div>
+{foundation_legend_items}
+  <div class="toggle-panel" id="toggle-panel">
+    <span class="toggle-label">Toggle:</span>
+    <button class="toggle-btn" id="ghost-btn" onclick="toggleGhosts()"{(' disabled' if not n_ghost_total else '')}>Foundation ({n_ghost_total}{f" = {n_ghost_other}+{n_ghost_book}" if n_ghost_book else ""})</button>
+    <button class="toggle-btn" id="aux-btn" onclick="toggleAux()"{(' disabled' if not aux_node_ids else '')}>Examples &amp; Remarks ({len(aux_node_ids)})</button>
+    <button class="toggle-btn" id="ext-btn" onclick="toggleExternal()"{(' disabled' if not ext_node_ids else '')}>Cited Results ({len(ext_node_ids)})</button>
+  </div>
 </div>
 <div id="main">
   <div id="svg-container">{svg_content}</div>
@@ -1772,6 +2031,10 @@ var DETAILS = {details_json};
 var ORPHANS = {orphans_json};
 var GHOSTS = {ghosts_json};
 var CASE1 = {case1_json};
+var AUX_NODE_IDS = {_json.dumps(aux_node_ids, ensure_ascii=True)};
+var EXT_NODE_IDS = {_json.dumps(ext_node_ids, ensure_ascii=True)};
+var AUX_EDGE_GIDS = {_json.dumps(aux_edge_gids, ensure_ascii=True)};
+var EXT_EDGE_GIDS = {_json.dumps(ext_edge_gids, ensure_ascii=True)};
 
 var _lastDetailNode = null;
 function showDetail(nodeId) {{
@@ -1801,9 +2064,18 @@ function showDetail(nodeId) {{
   if (!d) return;
   var h = '<h3 style="margin:0 0 8px;font-size:16px;">' + esc(nodeId) + ': ' + esc(d.name || d.type) + '</h3>';
   h += '<div style="font-size:12px;color:#888;margin-bottom:4px;">' + d.type + (d.section ? ' (Sec ' + d.section + ')' : '') + '</div>';
+  // Origin badge — paper (default, shown only if external) or external (cited prior result)
+  if (d.origin === "external") {{
+    var citeStr = d.origin_citation ? (' &mdash; ' + esc(d.origin_citation)) : '';
+    h += '<div style="display:inline-block;padding:2px 8px;background:#FFF3E0;border:1px dashed #E65100;border-radius:3px;font-size:11px;color:#BF360C;margin-bottom:8px;">External (cited prior result)' + citeStr + '</div>';
+  }}
   // Foundation graph link badge (Case 1: known result)
   if (d.foundation_links && d.foundation_links.length > 0) {{
     h += '<div style="display:inline-block;padding:2px 8px;background:#E3F2FD;border:1px solid #2471A3;border-radius:3px;font-size:11px;color:#2471A3;margin-bottom:8px;">&#128218; Known result: ' + d.foundation_links.map(esc).join(', ') + '</div>';
+  }}
+  // Plain-text restatement (statement_clean) — shown above the formal statement
+  if (d.statement_clean) {{
+    h += '<div class="detail-section"><h4>Plain-Text Summary</h4><div style="font-size:13px;color:#444;font-style:italic;">' + esc(d.statement_clean) + '</div></div>';
   }}
   // Pre-build equation maps by context
   var eqsByCtx = {{statement:[], assumption:[], conclusion:[], orphan:[]}};
@@ -1905,21 +2177,94 @@ function toggleOrphans() {{
   p.style.display = "block";
   if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([p]).catch(function(){{}});
 }}
-// Ghost nodes (external dependencies)
+// Foundation toggle (ghost nodes — both mathlib/proofwiki ("ghost_") and
+// book entries ("ghostbook_") are picked up by the [id^="ghost"] selector).
 function toggleGhosts() {{
   var svgEl = document.querySelector("#svg-container svg");
-  var ghostEls = svgEl ? svgEl.querySelectorAll('[id^="ghost_"]') : [];
+  var ghostEls = svgEl ? svgEl.querySelectorAll('[id^="ghost"]') : [];
   var btn = document.getElementById("ghost-btn");
+  if (btn.disabled) return;
   var isShowing = btn.dataset.showing === "1";
   if (!isShowing) {{
     btn.dataset.showing = "1";
-    btn.textContent = "Hide external dependencies";
     ghostEls.forEach(function(el) {{ el.style.display = ""; }});
   }} else {{
     btn.dataset.showing = "0";
-    btn.textContent = "Show external dependencies";
     ghostEls.forEach(function(el) {{ el.style.display = "none"; }});
   }}
+}}
+
+// Generic helper: hide/show a set of nodes (by id) and their incident edges.
+function _setNodeVisibility(nodeIds, edgeGids, visible, extraClass) {{
+  var svgEl = document.querySelector("#svg-container svg");
+  if (!svgEl) return;
+  nodeIds.forEach(function(nid) {{
+    // Body rect
+    var body = svgEl.querySelector('[id="node_' + nid + '"]');
+    if (body) {{
+      body.style.display = visible ? "" : "none";
+      if (extraClass) {{
+        if (visible) body.classList.add(extraClass);
+        else body.classList.remove(extraClass);
+      }}
+    }}
+    // All sibling per-node elements (header rect, text labels, divider lines)
+    var sibs = svgEl.querySelectorAll('[id^="node_' + nid + '__"]');
+    sibs.forEach(function(el) {{
+      el.style.display = visible ? "" : "none";
+      if (extraClass) {{
+        if (visible) el.classList.add(extraClass);
+        else el.classList.remove(extraClass);
+      }}
+    }});
+  }});
+  edgeGids.forEach(function(gid) {{
+    var e = svgEl.querySelector('[id="' + gid + '"]');
+    if (e) e.style.display = visible ? "" : "none";
+  }});
+}}
+
+// Examples & Remarks toggle — hides nodes with type in {{example, remark}}
+function toggleAux() {{
+  var btn = document.getElementById("aux-btn");
+  if (btn.disabled) return;
+  var isShowing = btn.dataset.showing === "1";
+  var nextShowing = !isShowing;
+  btn.dataset.showing = nextShowing ? "1" : "0";
+  // Apply visual differentiation: lighter shade (opacity) when shown
+  _setNodeVisibility(AUX_NODE_IDS, AUX_EDGE_GIDS, nextShowing, "node-aux-shown");
+  // Apply opacity styling on the body rect when shown
+  AUX_NODE_IDS.forEach(function(nid) {{
+    var body = document.querySelector('#svg-container svg [id="node_' + nid + '"]');
+    if (body) body.style.opacity = nextShowing ? "0.75" : "";
+  }});
+}}
+
+// Cited Results (External) toggle — hides nodes with origin === "external"
+function toggleExternal() {{
+  var btn = document.getElementById("ext-btn");
+  if (btn.disabled) return;
+  var isShowing = btn.dataset.showing === "1";
+  var nextShowing = !isShowing;
+  btn.dataset.showing = nextShowing ? "1" : "0";
+  _setNodeVisibility(EXT_NODE_IDS, EXT_EDGE_GIDS, nextShowing, "node-external-shown");
+  // Apply dashed border on body rect when shown (visual differentiation)
+  EXT_NODE_IDS.forEach(function(nid) {{
+    var body = document.querySelector('#svg-container svg [id="node_' + nid + '"]');
+    if (body) {{
+      // FancyBboxPatch is a <path>; modify its stroke-dasharray for a dashed look.
+      var pathEl = body.tagName === "path" ? body : body.querySelector("path");
+      if (pathEl) {{
+        if (nextShowing) {{
+          pathEl.setAttribute("stroke-dasharray", "6,3");
+          pathEl.setAttribute("stroke-width", "2");
+        }} else {{
+          pathEl.removeAttribute("stroke-dasharray");
+          pathEl.removeAttribute("stroke-width");
+        }}
+      }}
+    }}
+  }});
 }}
 function showGhostDetail(nameOrEl) {{
   var name = (typeof nameOrEl === 'string') ? nameOrEl : nameOrEl;
@@ -1945,14 +2290,19 @@ function toggleEqPanel(el) {{
 }}
 function esc(t) {{ return t ? t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;") : ""; }}
 
-// Hide ghost elements on load (wait for SVG to render)
+// Hide ghost elements + aux + external elements on load (wait for SVG to render)
 window.addEventListener("load", function() {{
   var svgEl = document.querySelector("#svg-container svg");
   if (svgEl) {{
-    // Hide all ghost elements (boxes, headers, text, refs, edges)
-    var all = svgEl.querySelectorAll('[id^="ghost_"]');
+    // Hide all foundation ghost elements (mathlib/proofwiki AND book-derived).
+    // The [id^="ghost"] selector covers both "ghost_*" and "ghostbook_*".
+    var all = svgEl.querySelectorAll('[id^="ghost"]');
     all.forEach(function(el) {{ el.style.display = "none"; }});
   }}
+  // Examples & Remarks: hidden by default (toggle starts in OFF state).
+  _setNodeVisibility(AUX_NODE_IDS, AUX_EDGE_GIDS, false, null);
+  // Cited Results (External): hidden by default.
+  _setNodeVisibility(EXT_NODE_IDS, EXT_EDGE_GIDS, false, null);
 }});
 
 var currentZoom = 1.0;

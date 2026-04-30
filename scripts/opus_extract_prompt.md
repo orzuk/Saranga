@@ -1,3 +1,6 @@
+<!-- CANONICAL: src/node_types.py and src/edge_types.py.
+     This file is derivative; sync it whenever the canonical changes. -->
+
 Extract a mathematics textbook or paper to JSON for the Authomathics project.
 
 ## Book / Paper
@@ -55,6 +58,42 @@ Must be one of:
     `page`.
   - Only for prominent displayed equations — not every inline `$x^2$`.
 
+## NODE PROVENANCE — `origin` field (read this before extracting)
+
+Every node carries an `origin` field with two values:
+
+- `"paper"` (default) — node represents a contribution introduced by THIS
+  paper/textbook.
+- `"external"` — node represents a CITED PRIOR RESULT the paper invokes
+  but does not establish (a classical theorem, a baseline algorithm cited
+  for comparison, a foundational definition the paper depends on).
+
+For `origin: "external"` nodes, also set `origin_citation` to a short
+free-text source identifier (e.g. `"Sinkhorn 1967"`, `"Cover & Thomas,
+Elements of Information Theory"`, `"[CT05, Thm 1]"`).
+
+Why: a graph that captures only this paper's own contributions is missing
+its scaffolding. Cited classical theorems and baseline algorithms are
+genuine dependency nodes.
+
+## TYPE-PROMOTION RULE (content trumps environment)
+
+A node's type is determined by its semantic CONTENT, not the surrounding
+LaTeX environment. Specifically:
+
+- A `\begin{definition}` block whose body is an OPTIMIZATION FORMULATION
+  (`x* = argmin f(x) s.t. Ax<=b`, or a named problem with attached
+  algorithms / complexity / hardness) MUST be emitted as `type="problem"`,
+  NOT `type="definition"`. Diagnostic: does the object accumulate
+  problem-attachments (algorithms, complexity, dual, hardness)?
+- A `\begin{definition}` block whose body is a step-by-step procedure
+  becomes `type="algorithm"`.
+- `\begin{lemma}` / `\begin{proposition}` whose body is a numerical bound
+  used as scaffolding remain lemma / proposition.
+
+See `Manuscript/node_types_appendix_draft.tex` ("Type-promotion rule")
+for the canonical statement.
+
 ## HARD RULES (read carefully — prior agents drifted on these)
 
 1. **NO REGEX-SCRIPT SHORTCUT.** You MUST read the text with the Read tool
@@ -84,22 +123,19 @@ Must be one of:
 
 ## Schema (L1/L2 textbook or paper)
 
-Node types:
-- `DEFINITION` — name, label (e.g. "3.1"), statement_latex, statement_clean
-  (NL paraphrase), page
-- `THEOREM_LIKE` (type=theorem/lemma/proposition/corollary/claim) — same
-  fields + `assumptions[]` and `conclusions[]` as separate lists
-- `PROOF` — id, type="proof", proves_id, page, optional `steps[]`
-  (see PROOF_GRANULARITY above)
-- `EXAMPLE`, `EXERCISE`, `EQUATION` (see EQUATION_GRANULARITY), `ALGORITHM`,
-  `CONJECTURE`, `PROBLEM`, `REMARK`, `AXIOM` (for foundations books)
+<!-- The prompt-builder substitutes the canonical schema block below at
+     extraction time (see src/schema_for_prompts.py: render_prompt). Edit
+     src/node_types.py / src/edge_types.py — NOT this file — to change the
+     schema. -->
+{{SCHEMA_BLOCK}}
 
-Edge types: `uses` (prerequisite), `illustrates` (EXAMPLE→),
-`about` (EXERCISE→), `proves` (PROOF→THM), `special_case_of`, `generalizes`,
-`specializes`.
+Optional `tags` field (any node): a `list[str]` of type-specific tags
+from the controlled vocabulary in `src/node_types.py` (`TAGS_VOCABULARY`).
+Validators warn on unknown tags but do NOT reject. Full vocabulary lives
+in the schema spec; emit a tag only when confident.
 
 Node-ID convention: `{TYPE_PREFIX}{BID}_chN_xxxNN` or for papers
-`{PREFIX}P{NUM}.{SEQ}` where PREFIX ∈ {D, T, L, P, C, E, A, Pr, Q, R, Ax}.
+`{PREFIX}P{NUM}.{SEQ}` where PREFIX ∈ {D, T, L, P, C, E, A, Pr, Q, OQ, R, As, PS, AS}.
 
 Math in `$..$` inline LaTeX with proper `\commands`; escape backslashes
 properly in JSON.

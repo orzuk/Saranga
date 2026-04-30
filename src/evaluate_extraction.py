@@ -28,6 +28,28 @@ def load_annotation(path):
     return nodes, edges
 
 
+def filter_by_origin(nodes, edges, exclude):
+    """Drop nodes whose `origin` matches `exclude`, plus any incident edges.
+
+    Nodes without an `origin` field are treated as origin="paper" (default
+    for backwards compatibility with legacy JSONs that predate the field).
+    """
+    keep_ids = set()
+    kept_nodes = []
+    for n in nodes:
+        origin = n.get("origin", "paper")
+        if origin == exclude:
+            continue
+        kept_nodes.append(n)
+        if n.get("id"):
+            keep_ids.add(n["id"])
+    kept_edges = [
+        e for e in edges
+        if e.get("source") in keep_ids and e.get("target") in keep_ids
+    ]
+    return kept_nodes, kept_edges
+
+
 def tokenize(text):
     """Simple whitespace + punctuation tokenizer for Jaccard computation."""
     if not text:
@@ -200,6 +222,49 @@ def compute_metrics(tp, fp, fn, partial_tp=0, partial_weight=0.5):
             "precision": precision, "recall": recall, "f1": f1}
 
 
+def compute_soft_node_metrics(matches, n_extracted, n_gold):
+    """Threshold-free node P/R/F1 using continuous Jaccard similarities.
+
+    Many real matches sit just below the strict 0.5 threshold (sigma in
+    [0.30, 0.49]) and are silently dropped by compute_metrics(). The soft
+    variant uses the *raw* similarity of every matched pair as partial
+    credit:
+        P_soft = sum(sim over matched pairs) / |extracted|
+        R_soft = sum(sim over matched pairs) / |gold|
+        F1_soft = 2 P R / (P + R)
+
+    NOTE: match_nodes() applies a threshold and discards weak pairs, so soft
+    metrics computed on the returned `matches` are still floored at that
+    threshold. To get the true threshold-free behavior the caller should run
+    match_nodes() with threshold=0.0 (and compute strict counts separately at
+    the policy threshold). compute_metrics() is *not* removed -- both strict
+    and soft are returned.
+    """
+    sim_sum = sum(s for _, _, s, _ in matches)
+    p = sim_sum / n_extracted if n_extracted > 0 else 0.0
+    r = sim_sum / n_gold if n_gold > 0 else 0.0
+    f1 = 2 * p * r / (p + r) if (p + r) > 0 else 0.0
+    return {"precision_soft": p, "recall_soft": r, "f1_soft": f1,
+            "sigma_sum": sim_sum,
+            "n_extracted": n_extracted, "n_gold": n_gold}
+
+
+def compute_soft_edge_metrics(matched_edges, flipped_edges,
+                              n_ext_edges, n_gold_edges,
+                              flipped_factor=0.5):
+    """Threshold-free edge P/R/F1.
+
+    Per matched-direction edge: 1.0; per flipped-direction edge: flipped_factor.
+    Denominators are the full edge counts (|ext_edges| / |gold_edges|).
+    """
+    score = len(matched_edges) * 1.0 + len(flipped_edges) * flipped_factor
+    p = score / n_ext_edges if n_ext_edges else 0.0
+    r = score / n_gold_edges if n_gold_edges else 0.0
+    f1 = 2 * p * r / (p + r) if (p + r) > 0 else 0.0
+    return {"edge_precision_soft": p, "edge_recall_soft": r, "edge_f1_soft": f1,
+            "edge_score_sum": score}
+
+
 def per_type_metrics(matches, unmatched_ext, unmatched_gld, extracted, gold):
     """Compute node metrics broken down by node type."""
     all_types = set()
@@ -313,22 +378,41 @@ def main():
     parser.add_argument("--flipped-edge-credit", type=float, default=0.5,
                         help="Partial credit for edges with correct endpoints but reversed direction (default: 0.5)")
     parser.add_argument("--csv", help="Save summary metrics to CSV file")
+    parser.add_argument("--exclude-origin", choices=["external", "paper"],
+                        default=None,
+                        help="Exclude nodes (and their incident edges) with the given "
+                             "origin value before scoring. Use 'external' to score "
+                             "paper-only graphs (excludes cited prior results). "
+                             "Default: include all nodes.")
     args = parser.parse_args()
 
     ext_nodes, ext_edges = load_annotation(args.extracted)
     gold_nodes, gold_edges = load_annotation(args.gold)
+
+    if args.exclude_origin:
+        ext_nodes, ext_edges = filter_by_origin(ext_nodes, ext_edges,
+                                                exclude=args.exclude_origin)
+        gold_nodes, gold_edges = filter_by_origin(gold_nodes, gold_edges,
+                                                  exclude=args.exclude_origin)
+        print(f"--exclude-origin {args.exclude_origin}: filtered out nodes with that origin.")
 
     print(f"Extracted: {len(ext_nodes)} nodes, {len(ext_edges)} edges from {args.extracted}")
     print(f"Gold:      {len(gold_nodes)} nodes, {len(gold_edges)} edges from {args.gold}")
     print(f"Node similarity threshold: {args.node_sim_threshold}")
     print(f"Flipped edge credit: {args.flipped_edge_credit}")
 
-    # --- Node evaluation ---
+    # --- Node evaluation (strict at policy threshold) ---
     node_matches, unmatched_ext, unmatched_gld, id_map = match_nodes(
         ext_nodes, gold_nodes, args.node_sim_threshold)
     node_overall = compute_metrics(len(node_matches), len(unmatched_ext), len(unmatched_gld))
     node_per_type = per_type_metrics(node_matches, unmatched_ext, unmatched_gld,
                                      ext_nodes, gold_nodes)
+
+    # --- Soft node metrics (threshold-free): re-run match_nodes with
+    # threshold=0.0 so weak-but-nonzero pairs (sigma in [0.30, 0.49]) are
+    # counted with partial credit. Strict metrics above are unchanged.
+    soft_matches, _, _, _ = match_nodes(ext_nodes, gold_nodes, threshold=0.0)
+    node_soft = compute_soft_node_metrics(soft_matches, len(ext_nodes), len(gold_nodes))
 
     # --- Edge evaluation ---
     matched_edges, flipped_edges, unmatched_ext_edges, unmatched_gld_edges = match_edges(
@@ -337,10 +421,22 @@ def main():
                                    len(unmatched_gld_edges),
                                    partial_tp=len(flipped_edges),
                                    partial_weight=args.flipped_edge_credit)
+    edge_soft = compute_soft_edge_metrics(matched_edges, flipped_edges,
+                                          len(ext_edges), len(gold_edges),
+                                          flipped_factor=args.flipped_edge_credit)
 
     print_results(node_overall, node_per_type, node_matches,
                   unmatched_ext, unmatched_gld,
                   edge_overall)
+
+    print("\n--- SOFT METRICS (threshold-free, additive) ---")
+    print(f"Nodes: P_soft={node_soft['precision_soft']:.3f}  "
+          f"R_soft={node_soft['recall_soft']:.3f}  "
+          f"F1_soft={node_soft['f1_soft']:.3f}  "
+          f"(sigma_sum={node_soft['sigma_sum']:.2f})")
+    print(f"Edges: P_soft={edge_soft['edge_precision_soft']:.3f}  "
+          f"R_soft={edge_soft['edge_recall_soft']:.3f}  "
+          f"F1_soft={edge_soft['edge_f1_soft']:.3f}")
 
     if args.csv:
         save_csv(node_overall, node_per_type, edge_overall, args.csv)

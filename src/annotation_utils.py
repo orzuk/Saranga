@@ -13,6 +13,7 @@ _STUDENT_NODE_FIELDS: Set[str] = {
     "id", "type", "name", "statement", "section",
     "assumptions", "conclusions",
     "proves", "proof_strategy",
+    "origin", "origin_citation",
 }
 
 _STUDENT_EDGE_FIELDS: Set[str] = {"source", "target"}

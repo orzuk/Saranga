@@ -1,3 +1,6 @@
+<!-- CANONICAL: src/node_types.py and src/edge_types.py.
+     This file is derivative; sync it whenever the canonical changes. -->
+
 Extract a mathematics paper or chapter to JSON for the Authomathics project.
 
 This prompt is the **terse + math-aware** variant: keeps the agent
@@ -69,6 +72,72 @@ rules and a richer (but optional) edge taxonomy with direction conventions.
    `type="property"` value — the visualizer color map only knows the
    schema's standard types.
 
+7b. **TYPE-PROMOTION RULE — content trumps environment.** A node's type is
+   determined by its semantic CONTENT, not the surrounding LaTeX environment.
+
+   - A `\begin{definition}` block whose body is an OPTIMIZATION FORMULATION
+     (e.g. `x^* = \arg\min_x f(x)` subject to constraints, or a named
+     problem with attached algorithms / complexity / hardness) MUST be
+     emitted as `type="problem"` (typically `subclass="optimization"`),
+     NOT `type="definition"`.
+     Diagnostic: does the object come with the recurring problem-attachments
+     (algorithms that solve it, complexity bounds, dual formulation,
+     hardness results)? If yes -> `problem`.
+   - A `\begin{definition}` block whose body is a step-by-step procedure
+     becomes `type="algorithm"`.
+   - A `\begin{lemma}` / `\begin{proposition}` whose body is a numerical
+     bound used as scaffolding remains a lemma / proposition (the
+     environment captures the author's intent here).
+
+   See `Manuscript/node_types_appendix_draft.tex` ("Type-promotion rule")
+   for the canonical statement.
+
+7c. **CITED PRIOR RESULTS — emit as `origin: "external"`.** Mathematical
+   papers depend on prior work. A graph that captures only this paper's
+   own contributions is missing its scaffolding. EXTRACT the cited
+   classical theorems, foundational definitions, and baseline algorithms
+   that the paper INVOKES but does not ESTABLISH.
+
+   Each node carries an `origin` field:
+   - `"paper"` (default) — node is a contribution introduced by THIS paper.
+   - `"external"` — node is a CITED PRIOR RESULT the paper uses but does
+     not prove (a classical theorem, a baseline algorithm, a foundational
+     definition from a cited source).
+
+   For `origin: "external"` nodes, also set `origin_citation` to a short
+   free-text identifier of the cited source.
+
+   Example 1 (cited classical theorem):
+
+   ```json
+   {
+     "id": "TP5.3",
+     "type": "theorem",
+     "name": "Information-Theoretic Inequality",
+     "section": "3.1 (cited)",
+     "statement": "For all $r,c \\in \\Sigma_d$ and $P \\in U(r,c)$: $h(P) \\leq h(r) + h(c)$, with equality iff $P = rc^T$.",
+     "origin": "external",
+     "origin_citation": "Cover & Thomas, Elements of Information Theory"
+   }
+   ```
+
+   Example 2 (baseline algorithm cited for comparison):
+
+   ```json
+   {
+     "id": "AP5.2",
+     "type": "algorithm",
+     "name": "Network Simplex Method for OT",
+     "section": "2.2 (cited)",
+     "statement": "Combinatorial LP solver for optimal transportation with worst-case complexity $O(d^3 \\log d)$.",
+     "origin": "external",
+     "origin_citation": "Ahuja, Magnanti, Orlin 1993"
+   }
+   ```
+
+   Trigger phrases: "by X", "as shown in [REF]", "we use the classical
+   result of Y", "we compare against the baseline Z" -> `origin: "external"`.
+
 8. **COMPLETENESS — DO NOT DROP THEOREM-LIKE RESULTS.** Every numbered
    or labeled stated result in the .tex source MUST produce a
    theorem-like node (type ∈ {theorem, lemma, proposition, corollary,
@@ -101,10 +170,26 @@ rules and a richer (but optional) edge taxonomy with direction conventions.
 
 ## Schema
 
-Node types (use these, no others):
-`definition`, `theorem`, `lemma`, `proposition`, `corollary`, `claim`,
-`conjecture`, `proof`, `proof_step`, `algorithm`, `equation`, `example`,
-`exercise`, `problem`, `remark`, `axiom`.
+<!-- The prompt-builder substitutes the canonical schema block below at
+     extraction time (see src/schema_for_prompts.py: render_prompt). Edit
+     src/node_types.py / src/edge_types.py — NOT this file — to change the
+     schema. -->
+{{SCHEMA_BLOCK}}
+
+Important type splits:
+- `problem` vs. `open_problem`:
+  - `problem` = a NAMED OR FORMULATED FORMAL mathematical problem the
+    paper studies. E.g. an optimization formulation
+    "$x^* = \arg\min_x f(x)$ s.t. $Ax = b$", or a named decision
+    problem like "3-SAT" or "the knapsack problem".
+  - `open_problem` = an UNSOLVED mathematical question with no known
+    solution. E.g. "Open problem: are there infinitely many odd
+    perfect numbers?" Similar to `conjecture` semantically, but
+    content-wise more like a question without a stated answer.
+- `assumption` (Level 1 node) ≠ the per-theorem `assumptions` field.
+  An `assumption` node is a `\begin{assumption}` block declaring
+  standing assumptions for a section/theorem cluster
+  (e.g. "(A1) f is convex; (A2) X is bounded").
 
 Required node fields:
 - `id`: compact ID (see below)
@@ -114,10 +199,20 @@ Required node fields:
 - `section`: section label from paper
 
 Optional node fields when applicable:
+- `origin`: `"paper"` (default) or `"external"` (cited prior result —
+  see rule 7c)
+- `origin_citation`: free-text source identifier, required when
+  `origin="external"` (e.g. `"Sinkhorn 1967"`)
 - `assumptions[]`, `conclusions[]` (theorem-like, when source separates them)
-- `parent_proof`, `proves` (proofs and proof steps)
+- `parent_id`, `proves` (proofs and Level-2 sub-blocks; legacy
+  `parent_proof` / `parent_algorithm` still accepted)
 - `input[]`, `output[]` (algorithms — see schema rule below)
 - `steps[]` (with_proof_steps mode only)
+- `tags[]`: optional `list[str]` of type-specific tags from a controlled
+  vocabulary (see `TAGS_VOCABULARY` in `src/node_types.py`). Validators
+  warn but do NOT reject unknown tags. Examples: `theorem` →
+  `["existence", "uniqueness", "bound"]`; `algorithm` →
+  `["iterative", "approximation"]`. Emit only tags you are confident in.
 
 **Schema rule for `input` / `output` / `assumptions` / `conclusions`:**
 these MUST be JSON **arrays of strings**, one bullet point per array
@@ -147,10 +242,13 @@ Compact ID convention: `{PREFIX}{paper_num}.{seq}` where:
 | proof | PP | PP5.1 |
 | proof_step | PSP | PSP5.1 |
 | algorithm | AP | AP5.1 |
+| algorithm_step | ASP | ASP5.1 |
 | equation | EP | EP5.1 |
 | example | ExP | ExP5.1 |
 | remark | RP | RP5.1 |
 | problem | ProbP | ProbP5.1 |
+| open_problem | OpenP | OpenP5.1 |
+| assumption | AssumP | AssumP5.1 |
 | claim | ClP | ClP5.1 |
 | conjecture | CnjP | CnjP5.1 |
 
@@ -173,6 +271,7 @@ support for target".
 | `illustrates` | Source example illustrates target | **algorithm/thm → example**, NOT example → algorithm. ALWAYS use this type (NOT `uses`) for algorithm-to-example edges. |
 | `special_case_of` | Source is a special case of target | specific → general |
 | `generalizes` | Source generalizes target | general → specific |
+| `resolves` | Source open_problem/conjecture is settled by target theorem-like result | open_problem/conjecture → theorem-like (theorem, lemma, proposition, corollary, claim) |
 
 **Critical direction rule for `illustrates`:** an example *demonstrates*
 or *applies* an algorithm/theorem. The example is the **dependent**, the
