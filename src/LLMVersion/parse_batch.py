@@ -152,6 +152,35 @@ def run_batch(
                 local_items = [(base_id, tex_path, versioned_id)]
                 print(f"[INFO] Found local .tex for {plain_id}: {tex_path}")
 
+    # ------------------------------------------------------------
+    # 1a. ENUMERATE ALL LOCAL .TEX FILES (batch local mode)
+    # ------------------------------------------------------------
+    # When --tex-dir is given without a specific regex_id, discover
+    # all .tex files under tex_dir and parse them directly.
+    if tex_dir and not local_items:
+        import re as _re
+        tex_dir_path = Path(tex_dir)
+        all_tex = sorted(tex_dir_path.rglob("*.tex"))
+        # Deduplicate: keep one .tex per paper directory.  The download
+        # layout is .../YYYY/MM/DD/<paper_id>/<paper_id>.tex but some
+        # paper dirs contain companion .tex files.  Pick the file whose
+        # stem matches its parent directory name (the canonical main file).
+        seen_dirs: set = set()
+        for tp in all_tex:
+            parent = tp.parent
+            if parent in seen_dirs:
+                continue
+            seen_dirs.add(parent)
+            stem = tp.stem  # e.g. "1210.4634v1"
+            # Extract versioned_id from filename
+            m = _re.match(r'(\d{4}\.\d{4,5})(v\d+)?', stem)
+            if not m:
+                continue
+            base_id = m.group(1)
+            versioned_id = stem
+            local_items.append((base_id, str(tp), versioned_id))
+        print(f"[INFO] Local tex-dir mode: found {len(local_items)} .tex files under {tex_dir}")
+
     if local_items:
         # Skip arXiv API — process local files directly
         out_dir.mkdir(parents=True, exist_ok=True)
