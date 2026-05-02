@@ -13,8 +13,19 @@ Parsing / extraction logic (from LaTeX, Lean, etc.) should live elsewhere
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Any, Tuple, Type
+
+# Precompiled pattern to detect externally-cited theorem-like nodes.
+# Matches: \cite{...}, [Author Year], (Author, Year), "due to X", "by [ref]",
+# "proved in", "shown in", "established in", "follows from [ref]".
+_EXTERNAL_ORIGIN_RE = re.compile(
+    r"\\cite\{|\\cite\[|"                             # \cite{...} or \cite[...]
+    r"\b(?:due to|proved (?:by|in)|shown (?:by|in)|"
+    r"established (?:by|in)|follows from)\b",
+    re.IGNORECASE,
+)
 
 
 # ---------------------------------------------------------------------
@@ -638,13 +649,18 @@ class PaperGraph:
 
         nodes = []
         for obj in self.objects.values():
+            # Detect external origin for theorem-like nodes via citation patterns
+            origin = "paper"
+            if isinstance(obj, TheoremLike) and _EXTERNAL_ORIGIN_RE.search(obj.raw_latex or ""):
+                origin = "external"
+
             node: Dict[str, Any] = {
                 "id": obj.id,
                 "type": obj.kind,
                 "name": obj.name,
                 "statement": getattr(obj, "clean_text", "") or getattr(obj, "raw_latex", ""),
                 # Schema-required fields (defaults; enriched by LLM in future)
-                "origin": "paper",
+                "origin": origin,
                 "tags": [],
                 "subclass": None,
                 "rigor": None,
