@@ -2052,8 +2052,42 @@ def generate_interactive_html(data, svg_path, html_path):
 <head>
 <meta charset="utf-8">
 <title>{_esc(title)}</title>
-<script>MathJax = {{tex: {{inlineMath: [['$','$']]}}, startup: {{typeset: false}}}};</script>
-<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<script>
+window.KATEX_CONFIG = {{
+  delimiters: [
+    {{left: '$$', right: '$$', display: true}},
+    {{left: '$',  right: '$',  display: false}},
+    {{left: '\\\\(', right: '\\\\)', display: false}},
+    {{left: '\\\\[', right: '\\\\]', display: true}}
+  ],
+  throwOnError: false,
+  errorColor: '#cc0000',
+  strict: 'ignore',
+  trust: false,
+  macros: {{
+    '\\\\R': '\\\\mathbb{{R}}', '\\\\N': '\\\\mathbb{{N}}', '\\\\Z': '\\\\mathbb{{Z}}',
+    '\\\\Q': '\\\\mathbb{{Q}}', '\\\\C': '\\\\mathbb{{C}}',
+    '\\\\E': '\\\\mathbb{{E}}', '\\\\Var': '\\\\mathrm{{Var}}',
+    '\\\\Cov': '\\\\mathrm{{Cov}}', '\\\\defeq': '\\\\stackrel{{\\\\mathrm{{def}}}}{{=}}',
+    '\\\\eqdef': '\\\\stackrel{{\\\\mathrm{{def}}}}{{=}}',
+    '\\\\1': '\\\\mathbf{{1}}', '\\\\Lun': 'L_1',
+    '\\\\bepsilon': '\\\\boldsymbol{{\\\\epsilon}}',
+    '\\\\bx': '\\\\mathbf{{x}}', '\\\\by': '\\\\mathbf{{y}}',
+    '\\\\bw': '\\\\mathbf{{w}}', '\\\\btheta': '\\\\boldsymbol{{\\\\theta}}',
+    '\\\\T': '\\\\top', '\\\\indep': '\\\\perp\\\\!\\\\!\\\\!\\\\perp'
+  }}
+}};
+function typesetMath(el) {{
+  if (window.renderMathInElement) {{
+    try {{ renderMathInElement(el || document.body, window.KATEX_CONFIG); }}
+    catch (e) {{ /* swallow per-element errors */ }}
+  }}
+}}
+window.addEventListener('DOMContentLoaded', function() {{ typesetMath(document.body); }});
+</script>
 <style>
 body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #fafafa; }}
 #header {{ background: #2c3e50; color: white; padding: 10px 24px; display: flex; align-items: center; justify-content: space-between; }}
@@ -2159,7 +2193,7 @@ function showDetail(nodeId) {{
     if (ORPHANS.length === 0) h += '<div style="color:#888;">No orphan equations.</div>';
     panel.innerHTML = h;
     panel.className = "open";
-    if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([panel]).catch(function(){{}});
+    typesetMath(panel);
     return;
   }}
   var d = DETAILS[nodeId];
@@ -2272,7 +2306,7 @@ function showDetail(nodeId) {{
   }}
   panel.innerHTML = h;
   panel.className = "open";
-  if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([panel]).catch(function(){{}});
+  typesetMath(panel);
 }}
 function resetView() {{
   document.getElementById("detail-panel").className = "";
@@ -2285,7 +2319,7 @@ function toggleOrphans() {{
   ORPHANS.forEach(function(e) {{ h += '<div class="orphan-item"><strong>' + e.id + '</strong> (Sec ' + e.section + '): ' + esc(e.statement) + '</div>'; }});
   document.getElementById("orphan-list").innerHTML = h;
   p.style.display = "block";
-  if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([p]).catch(function(){{}});
+  typesetMath(p);
 }}
 // Foundation toggle (ghost nodes — both mathlib/proofwiki ("ghost_") and
 // book entries ("ghostbook_") are picked up by the [id^="ghost"] selector).
