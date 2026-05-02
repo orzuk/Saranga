@@ -2527,87 +2527,6 @@ Respond ONLY with JSON array."""
             print(f"[INFO] _build_relations: broke {len(uses_to_remove)} length-2 'uses' cycles via document order.")
 
         # ------------------------------------------------------------------
-        # 3c. Break remaining cycles (length >= 3) in 'uses' edges.
-        #     Build a lightweight adjacency list of 'uses' edges only,
-        #     run iterative DFS to find back-edges, and remove the one
-        #     whose source appears latest in the document per cycle.
-        # ------------------------------------------------------------------
-
-        # Build adjacency from current 'uses' edges
-        uses_adj: Dict[str, List[str]] = {}
-        for (src, tgt, rtype) in existing:
-            if rtype == "uses":
-                uses_adj.setdefault(src, []).append(tgt)
-
-        # Collect confidence per edge for tie-breaking (prefer removing low-confidence)
-        edge_confidence: Dict[tuple, float] = {}
-        for r in graph.relations:
-            if r.relation_type == "uses":
-                meta = getattr(r, "metadata", {}) or {}
-                edge_confidence[(r.source_id, r.target_id)] = meta.get("confidence", 1.0)
-
-        # Iterative DFS to find back-edges (cycle indicators)
-        WHITE, GRAY, BLACK = 0, 1, 2
-        color = {nid: WHITE for nid in uses_adj}
-        # Include nodes that are targets but not sources
-        for targets in uses_adj.values():
-            for t in targets:
-                if t not in color:
-                    color[t] = WHITE
-        back_edges = []
-        for start in list(color):
-            if color[start] != WHITE:
-                continue
-            stack = [(start, 0)]
-            color[start] = GRAY
-            adj_idx = {start: 0}
-            path_set = {start}
-            while stack:
-                node, idx = stack[-1]
-                neighbors = uses_adj.get(node, [])
-                if idx < len(neighbors):
-                    stack[-1] = (node, idx + 1)
-                    nxt = neighbors[idx]
-                    if color.get(nxt) == GRAY and nxt in path_set:
-                        back_edges.append((node, nxt))
-                    elif color.get(nxt, WHITE) == WHITE:
-                        color[nxt] = GRAY
-                        path_set.add(nxt)
-                        adj_idx[nxt] = 0
-                        stack.append((nxt, 0))
-                else:
-                    color[node] = BLACK
-                    path_set.discard(node)
-                    stack.pop()
-
-        if back_edges:
-            # For each back-edge, decide whether to remove it based on
-            # document order (latest source first) and confidence (lowest first)
-            cycle_remove = set()
-            for src, tgt in back_edges:
-                key = (src, tgt, "uses")
-                if key not in existing:
-                    continue
-                # Compare: remove the edge whose source is later in paper,
-                # or if same position, the one with lower confidence
-                conf = edge_confidence.get((src, tgt), 1.0)
-                rev_conf = edge_confidence.get((tgt, src), 1.0)
-                if conf <= rev_conf:
-                    cycle_remove.add(key)
-                elif doc_order.get(src, 0) >= doc_order.get(tgt, 0):
-                    cycle_remove.add(key)
-                else:
-                    cycle_remove.add(key)  # still remove back-edge
-
-            if cycle_remove:
-                graph.relations = [
-                    r for r in graph.relations
-                    if (r.source_id, r.target_id, r.relation_type) not in cycle_remove
-                ]
-                existing -= cycle_remove
-                print(f"[INFO] _build_relations: broke {len(cycle_remove)} back-edges to enforce DAG (cycles >= 3).")
-
-        # ------------------------------------------------------------------
         # 4. Low-confidence 'uses' edges from theorems/proofs to definitions
         #    via keyword overlap in natural language text.
         #
@@ -2682,6 +2601,71 @@ Respond ONLY with JSON array."""
 
         # Replace graph.relations with the accumulated ones
         graph.relations = relations + graph.relations[len(relations):]
+
+        # ------------------------------------------------------------------
+        # 5. Break remaining cycles (all lengths) in 'uses' edges.
+        #    Runs AFTER all edge types have been added (ref, keyword, etc.).
+        #    Iterative DFS finds back-edges; remove preferring low-confidence
+        #    first, then document-order (latest source removed).
+        # ------------------------------------------------------------------
+
+        uses_adj: Dict[str, List[str]] = {}
+        for (src, tgt, rtype) in existing:
+            if rtype == "uses":
+                uses_adj.setdefault(src, []).append(tgt)
+
+        edge_confidence: Dict[tuple, float] = {}
+        for r in graph.relations:
+            if r.relation_type == "uses":
+                meta = getattr(r, "metadata", {}) or {}
+                edge_confidence[(r.source_id, r.target_id)] = meta.get("confidence", 1.0)
+
+        WHITE, GRAY, BLACK = 0, 1, 2
+        color = {nid: WHITE for nid in uses_adj}
+        for targets in uses_adj.values():
+            for t in targets:
+                if t not in color:
+                    color[t] = WHITE
+        back_edges = []
+        for start in list(color):
+            if color[start] != WHITE:
+                continue
+            stack = [(start, 0)]
+            color[start] = GRAY
+            path_set = {start}
+            while stack:
+                node, idx = stack[-1]
+                neighbors = uses_adj.get(node, [])
+                if idx < len(neighbors):
+                    stack[-1] = (node, idx + 1)
+                    nxt = neighbors[idx]
+                    if color.get(nxt) == GRAY and nxt in path_set:
+                        back_edges.append((node, nxt))
+                    elif color.get(nxt, WHITE) == WHITE:
+                        color[nxt] = GRAY
+                        path_set.add(nxt)
+                        stack.append((nxt, 0))
+                else:
+                    color[node] = BLACK
+                    path_set.discard(node)
+                    stack.pop()
+
+        cycle_removed = 0
+        if back_edges:
+            cycle_remove = set()
+            for src, tgt in back_edges:
+                key = (src, tgt, "uses")
+                if key not in existing:
+                    continue
+                cycle_remove.add(key)
+            if cycle_remove:
+                graph.relations = [
+                    r for r in graph.relations
+                    if (r.source_id, r.target_id, r.relation_type) not in cycle_remove
+                ]
+                existing -= cycle_remove
+                cycle_removed = len(cycle_remove)
+                print(f"[INFO] _build_relations: broke {cycle_removed} back-edges to enforce DAG.")
 
         total_uses_kw = locals().get("uses_kw_count", 0)
         structural_total = proves_count + solves_count + illustrates_count + tests_count

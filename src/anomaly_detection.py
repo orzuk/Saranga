@@ -143,6 +143,12 @@ def detect_anomalies_for_paper(
         type_counts[node.get("type") or "unknown"] += 1
 
     n_theorem_like = sum(type_counts[t] for t in THEOREM_LIKE_TYPES)
+    # For ratio checks, only count paper-original theorems (not cited/external)
+    n_theorem_like_paper = sum(
+        1 for n in nodes
+        if n.get("type") in THEOREM_LIKE_TYPES
+        and n.get("origin", "paper") == "paper"
+    )
     n_proofs = type_counts.get("proof", 0)
     n_definitions = type_counts.get("definition", 0)
     n_equations = type_counts.get("equation", 0)
@@ -245,29 +251,30 @@ def detect_anomalies_for_paper(
     # CATEGORY B — structural oddity (medium severity)
     # =========================================================================
 
-    # B1: zero proofs with ≥3 theorem-like
-    if n_proofs == 0 and n_theorem_like >= 3:
+    # B1: zero proofs with ≥3 paper-original theorem-like
+    if n_proofs == 0 and n_theorem_like_paper >= 3:
         thm_ids = [n.get("id") for n in nodes
-                   if n.get("type") in THEOREM_LIKE_TYPES]
+                   if n.get("type") in THEOREM_LIKE_TYPES
+                   and n.get("origin", "paper") == "paper"]
         results.append((paper_id, "B", "zero_proofs_with_theorems", "medium",
-                        f"thm={n_theorem_like}, pf=0", ">=1 proof",
-                        f"{n_theorem_like} theorem-like objects but 0 proofs"))
+                        f"thm={n_theorem_like_paper}, pf=0", ">=1 proof",
+                        f"{n_theorem_like_paper} paper-original theorem-like but 0 proofs"))
         details.append({
             "rule": "zero_proofs_with_theorems", "severity": "medium",
             "theorem_like_ids": thm_ids,
         })
 
-    # B2: theorems/proofs ratio outside normal range
-    if n_theorem_like >= 5 and n_proofs > 0:
-        ratio = n_proofs / n_theorem_like
+    # B2: theorems/proofs ratio outside normal range (paper-original only)
+    if n_theorem_like_paper >= 5 and n_proofs > 0:
+        ratio = n_proofs / n_theorem_like_paper
         if ratio < 0.3 or ratio > 3.0:
             results.append((paper_id, "B", "theorems_proofs_ratio_off", "medium",
                             f"{ratio:.2f}", "[0.3, 3.0]",
-                            f"{n_proofs} proofs / {n_theorem_like} theorem-like = {ratio:.2f}"))
+                            f"{n_proofs} proofs / {n_theorem_like_paper} paper-original theorem-like = {ratio:.2f}"))
             details.append({
                 "rule": "theorems_proofs_ratio_off", "severity": "medium",
                 "ratio": round(ratio, 3),
-                "n_proofs": n_proofs, "n_theorem_like": n_theorem_like,
+                "n_proofs": n_proofs, "n_theorem_like": n_theorem_like_paper,
             })
 
     # B3: orphan proofs (proof's `proves` field missing or dangling)

@@ -76,7 +76,7 @@ STAT_COLUMNS = [
     "n_proofs",
     "n_examples", "n_exercises", "n_remarks",
     "n_algorithms", "n_equations", "n_tables", "n_other",
-    "n_theorem_like",
+    "n_theorem_like", "n_external_theorem_like",
     "n_thm_with_assumptions", "n_thm_with_conclusions",
     "n_thm_with_both", "n_thm_with_neither",
     "total_assumptions", "total_conclusions",
@@ -157,6 +157,11 @@ def compute_paper_stats(paper_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         c for t, c in type_counts.items() if t not in set(TRACKED_TYPES)
     )
     stats["n_theorem_like"] = sum(type_counts[t] for t in THEOREM_LIKE_TYPES)
+    stats["n_external_theorem_like"] = sum(
+        1 for n in nodes
+        if n.get("type") in THEOREM_LIKE_TYPES
+        and n.get("origin") == "external"
+    )
 
     # Assumption/conclusion statistics for theorem-like nodes
     n_with_assumptions = 0
@@ -371,6 +376,9 @@ def print_summary(stats_list: List[Dict[str, Any]]) -> None:
     print()
     print("  --- Node types ---")
     print(_line("Theorem-like:     ", "n_theorem_like"))
+    ext_total = _total("n_external_theorem_like")
+    if ext_total:
+        print(f"    (external/cited: {ext_total:>8,})")
     print(_line("  theorems:       ", "n_theorems"))
     print(_line("  lemmas:         ", "n_lemmas"))
     print(_line("  propositions:   ", "n_propositions"))
