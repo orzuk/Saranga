@@ -1385,6 +1385,10 @@ def fetch_arxiv_source(arxiv_id: str, dest_dir: Path, verbose: bool = False) -> 
     resp.raise_for_status()
     raw = resp.content
 
+    # Skip PDF files (submitted as PDF-only, no LaTeX source)
+    if raw[:4] == b"%PDF":
+        raise ValueError(f"{arxiv_id}: source is PDF, not LaTeX — skipping")
+
     # Save initial bytes
     gz_path = dest_dir / f"{arxiv_id}.tar.gz"
     gz_path.write_bytes(raw)
