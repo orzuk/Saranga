@@ -1,0 +1,78 @@
+{
+  "metadata": {
+    "alignment_name": "XGBoost_vs_GBM",
+    "paper_a": {
+      "arxiv_id": "1603.02754",
+      "title": "XGBoost: A Scalable Tree Boosting System (Chen & Guestrin, 2016)"
+    },
+    "paper_b": {
+      "arxiv_id": null,
+      "title": "Greedy Function Approximation: A Gradient Boosting Machine (Friedman, 2001)"
+    },
+    "relation_type": "EXT",
+    "annotator": "Claude (claude-code)",
+    "description": "XGBoost extends Friedman's gradient boosting machine with three key improvements: (1) second-order Taylor expansion of the loss (Newton step instead of gradient step), (2) explicit regularization on tree complexity and leaf weights, and (3) system-level optimizations (sparsity-aware learning, weighted quantile sketch, cache-aware block structure). The core algorithmic framework -- sequential additive tree fitting to loss gradients -- is identical."
+  },
+  "matches": [
+    {
+      "paper_a_nodes": ["DP_XGB.1"],
+      "paper_b_nodes": ["DP_GBM.1", "DP_GBM.3"],
+      "match_type": "analogous",
+      "explanation": "Both define the same additive tree ensemble: $\\hat{y} = \\sum_k f_k(\\mathbf{x})$ where each $f_k$ is a regression tree. XGBoost adds an explicit regularization term $\\Omega(f) = \\gamma T + \\frac{1}{2}\\lambda \\|\\mathbf{w}\\|^2$ penalizing number of leaves $T$ and leaf weight magnitude. GBM has no such explicit regularization in the objective."
+    },
+    {
+      "paper_a_nodes": ["DP_XGB.2"],
+      "paper_b_nodes": ["DP_GBM.2"],
+      "match_type": "analogous",
+      "explanation": "The core extension: GBM uses first-order gradient (pseudo-residuals $g_i$) to fit each tree. XGBoost uses a second-order Taylor expansion, incorporating both first ($g_i$) and second ($h_i$) derivatives. This is equivalent to a Newton step rather than a gradient step, providing better convergence and naturally handling different loss functions."
+    },
+    {
+      "paper_a_nodes": ["DP_XGB.3"],
+      "paper_b_nodes": ["DP_GBM.3"],
+      "match_type": "analogous",
+      "explanation": "Both compute optimal leaf values given a tree structure. GBM: line search $\\gamma_j = \\arg\\min_\\gamma \\sum_{i \\in R_j} L(y_i, F_{m-1} + \\gamma)$. XGBoost: closed-form $w_j^* = -G_j / (H_j + \\lambda)$ from the second-order approximation. XGBoost's formula includes the regularization $\\lambda$; setting $\\lambda = 0$ and using squared loss, both reduce to the same expression."
+    },
+    {
+      "paper_a_nodes": ["DP_XGB.4"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "explanation": "XGBoost's split gain formula $\\frac{1}{2}[G_L^2/(H_L+\\lambda) + G_R^2/(H_R+\\lambda) - (G_L+G_R)^2/(H_L+H_R+\\lambda)] - \\gamma$ explicitly includes the regularization term $\\gamma$ as a pruning threshold and $\\lambda$ for regularization. GBM's split criterion is based on variance reduction without explicit regularization."
+    },
+    {
+      "paper_a_nodes": ["DP_XGB.5"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "explanation": "Sparsity-aware split finding (handling missing values by learning a default direction) is an XGBoost-specific engineering contribution not present in GBM."
+    },
+    {
+      "paper_a_nodes": ["AG_XGB.1"],
+      "paper_b_nodes": ["AG_GBM.1"],
+      "match_type": "analogous",
+      "explanation": "Both describe greedy split finding for tree construction. GBM: fit tree to pseudo-residuals, then optimize leaf values. XGBoost: enumerate splits using $(g_i, h_i)$ statistics, selecting the split with maximum gain. Same greedy strategy, different scoring function (first-order vs. second-order)."
+    },
+    {
+      "paper_a_nodes": ["AG_XGB.2"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "explanation": "XGBoost's approximate split finding with weighted quantile sketch (using $h_i$ as weights) is a scalability innovation not present in GBM."
+    },
+    {
+      "paper_a_nodes": ["RM_XGB.1"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "explanation": "System-level optimizations (column blocks, cache-aware access, out-of-core computation) are XGBoost engineering contributions enabling scalability to billions of examples."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP_GBM.4"],
+      "match_type": "none",
+      "explanation": "GBM's shrinkage (learning rate $\\nu$) is adopted by XGBoost as well (called 'eta') but is not presented as a novel contribution in the XGBoost paper."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP_GBM.5"],
+      "match_type": "none",
+      "explanation": "GBM's stochastic gradient boosting (subsampling training data per iteration) is adopted by XGBoost, along with column subsampling, but is not a novel XGBoost contribution."
+    }
+  ]
+}

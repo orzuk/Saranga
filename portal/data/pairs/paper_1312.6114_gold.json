@@ -1,0 +1,115 @@
+{
+  "metadata": {
+    "title": "Auto-Encoding Variational Bayes (Kingma & Welling, 2013)",
+    "arxiv_id": "1312.6114",
+    "year": 2013,
+    "venue": "ICLR 2014",
+    "framework": "variational inference for deep latent-variable models via the reparameterization trick",
+    "annotator": "Claude (claude-code)",
+    "source_note": "Extraction based on well-known content of arXiv:1312.6114."
+  },
+  "nodes": [
+    {
+      "id": "DP_VAE.1",
+      "type": "definition",
+      "name": "Latent variable model",
+      "section": "2.1",
+      "statement": "A directed graphical model with observed variable $\\mathbf{x}$ and continuous latent variable $\\mathbf{z}$. The generative process: $\\mathbf{z} \\sim p_\\theta(\\mathbf{z})$ (prior, e.g., $\\mathcal{N}(0,I)$), $\\mathbf{x} \\sim p_\\theta(\\mathbf{x}|\\mathbf{z})$ (likelihood parameterized by a neural network). The marginal likelihood $p_\\theta(\\mathbf{x}) = \\int p_\\theta(\\mathbf{z}) p_\\theta(\\mathbf{x}|\\mathbf{z}) d\\mathbf{z}$ is intractable."
+    },
+    {
+      "id": "DP_VAE.2",
+      "type": "definition",
+      "name": "Intractable posterior and recognition model",
+      "section": "2.1",
+      "statement": "The true posterior $p_\\theta(\\mathbf{z}|\\mathbf{x})$ is intractable. Introduce an approximate posterior (recognition/inference model) $q_\\phi(\\mathbf{z}|\\mathbf{x})$, parameterized by $\\phi$ (e.g., a neural network encoder mapping $\\mathbf{x}$ to parameters of a Gaussian over $\\mathbf{z}$)."
+    },
+    {
+      "id": "DP_VAE.3",
+      "type": "definition",
+      "name": "Evidence lower bound (ELBO)",
+      "section": "2.2",
+      "statement": "The ELBO (variational lower bound on the log-marginal-likelihood): $\\mathcal{L}(\\theta, \\phi; \\mathbf{x}) = \\mathbb{E}_{q_\\phi(\\mathbf{z}|\\mathbf{x})}[\\log p_\\theta(\\mathbf{x}|\\mathbf{z})] - D_{\\mathrm{KL}}(q_\\phi(\\mathbf{z}|\\mathbf{x}) \\| p_\\theta(\\mathbf{z})) \\le \\log p_\\theta(\\mathbf{x})$. The gap is $D_{\\mathrm{KL}}(q_\\phi(\\mathbf{z}|\\mathbf{x}) \\| p_\\theta(\\mathbf{z}|\\mathbf{x})) \\ge 0$."
+    },
+    {
+      "id": "DP_VAE.4",
+      "type": "definition",
+      "name": "Reparameterization trick",
+      "section": "2.4",
+      "statement": "To obtain low-variance gradients of $\\mathcal{L}$ w.r.t. $\\phi$, reparameterize $\\mathbf{z} = g_\\phi(\\boldsymbol{\\epsilon}, \\mathbf{x})$ where $\\boldsymbol{\\epsilon} \\sim p(\\boldsymbol{\\epsilon})$ is a noise source independent of $\\phi$. For Gaussian $q_\\phi(\\mathbf{z}|\\mathbf{x}) = \\mathcal{N}(\\boldsymbol{\\mu}, \\boldsymbol{\\sigma}^2 I)$: $\\mathbf{z} = \\boldsymbol{\\mu} + \\boldsymbol{\\sigma} \\odot \\boldsymbol{\\epsilon}$ with $\\boldsymbol{\\epsilon} \\sim \\mathcal{N}(0,I)$. Gradients $\\nabla_\\phi \\mathbb{E}_{q_\\phi}[f(\\mathbf{z})] = \\mathbb{E}_{p(\\boldsymbol{\\epsilon})}[\\nabla_\\phi f(g_\\phi(\\boldsymbol{\\epsilon}, \\mathbf{x}))]$ can now be estimated by Monte Carlo."
+    },
+    {
+      "id": "DP_VAE.5",
+      "type": "definition",
+      "name": "Stochastic Gradient Variational Bayes (SGVB) estimator",
+      "section": "2.3",
+      "statement": "The SGVB estimator of the ELBO: $\\tilde{\\mathcal{L}}(\\theta, \\phi; \\mathbf{x}) = \\frac{1}{L} \\sum_{l=1}^{L} \\log p_\\theta(\\mathbf{x}|\\mathbf{z}^{(l)}) - D_{\\mathrm{KL}}(q_\\phi(\\mathbf{z}|\\mathbf{x}) \\| p_\\theta(\\mathbf{z}))$ where $\\mathbf{z}^{(l)} = g_\\phi(\\boldsymbol{\\epsilon}^{(l)}, \\mathbf{x})$ and $\\boldsymbol{\\epsilon}^{(l)} \\sim p(\\boldsymbol{\\epsilon})$. In practice $L=1$ suffices with large enough mini-batches."
+    },
+    {
+      "id": "DP_VAE.6",
+      "type": "definition",
+      "name": "Auto-encoding variational Bayes (AEVB) algorithm",
+      "section": "2.3",
+      "statement": "The AEVB algorithm: (1) Sample a mini-batch $\\mathbf{x}^{(i)}$ from the dataset. (2) Sample $\\boldsymbol{\\epsilon}$ from $p(\\boldsymbol{\\epsilon})$. (3) Compute the SGVB estimator $\\tilde{\\mathcal{L}}$. (4) Compute gradients $\\nabla_{\\theta,\\phi} \\tilde{\\mathcal{L}}$ via backpropagation through the reparameterized $\\mathbf{z}$. (5) Update $\\theta, \\phi$ with SGD/Adam. Repeat until convergence."
+    },
+    {
+      "id": "DP_VAE.7",
+      "type": "definition",
+      "name": "Gaussian encoder and decoder (VAE architecture)",
+      "section": "3",
+      "statement": "In the specific VAE architecture: the encoder outputs $\\boldsymbol{\\mu}_\\phi(\\mathbf{x}), \\log \\boldsymbol{\\sigma}^2_\\phi(\\mathbf{x})$ parameterizing $q_\\phi(\\mathbf{z}|\\mathbf{x}) = \\mathcal{N}(\\boldsymbol{\\mu}_\\phi, \\mathrm{diag}(\\boldsymbol{\\sigma}^2_\\phi))$. The decoder outputs parameters of $p_\\theta(\\mathbf{x}|\\mathbf{z})$ (Bernoulli for binary data or Gaussian for continuous data). The KL term $D_{\\mathrm{KL}}(q_\\phi \\| p_\\theta(\\mathbf{z}))$ has a closed-form expression when both are Gaussian."
+    },
+    {
+      "id": "LP_VAE.1",
+      "type": "lemma",
+      "name": "ELBO decomposition",
+      "section": "2.2",
+      "statement": "For any $q_\\phi(\\mathbf{z}|\\mathbf{x})$: $\\log p_\\theta(\\mathbf{x}) = D_{\\mathrm{KL}}(q_\\phi(\\mathbf{z}|\\mathbf{x}) \\| p_\\theta(\\mathbf{z}|\\mathbf{x})) + \\mathcal{L}(\\theta, \\phi; \\mathbf{x})$. Since $D_{\\mathrm{KL}} \\ge 0$, the ELBO is a lower bound. Maximizing the ELBO jointly in $\\theta$ and $\\phi$ simultaneously maximizes the marginal likelihood and minimizes the posterior approximation gap.",
+      "assumptions": [
+        "Latent variable model (DP_VAE.1)",
+        "Approximate posterior $q_\\phi$ (DP_VAE.2)"
+      ],
+      "conclusions": [
+        "$\\mathcal{L}(\\theta, \\phi; \\mathbf{x}) \\le \\log p_\\theta(\\mathbf{x})$",
+        "Gap equals $D_{\\mathrm{KL}}(q_\\phi \\| p_\\theta(\\mathbf{z}|\\mathbf{x}))$"
+      ]
+    },
+    {
+      "id": "TP_VAE.1",
+      "type": "theorem",
+      "name": "Unbiased low-variance gradient estimator via reparameterization",
+      "section": "2.4",
+      "statement": "The SGVB estimator $\\tilde{\\mathcal{L}}$ provides unbiased gradients of $\\mathcal{L}$ with respect to both $\\theta$ and $\\phi$: $\\nabla_{\\theta,\\phi} \\tilde{\\mathcal{L}} = \\nabla_{\\theta,\\phi} \\mathcal{L} + O(1/\\sqrt{L})$ in the Monte Carlo sense. Unlike the score-function (REINFORCE) estimator $\\nabla_\\phi \\mathbb{E}_q[f] = \\mathbb{E}_q[f \\nabla_\\phi \\log q]$, the reparameterized estimator has substantially lower variance, enabling practical training.",
+      "assumptions": [
+        "Reparameterizable $q_\\phi$ (DP_VAE.4)",
+        "Differentiable $p_\\theta(\\mathbf{x}|\\mathbf{z})$ w.r.t. $\\mathbf{z}$ (DP_VAE.1)"
+      ],
+      "conclusions": [
+        "Unbiased gradient estimator for both encoder and decoder parameters",
+        "Low variance compared to REINFORCE-style estimators",
+        "Practical SGD training of deep generative models"
+      ]
+    },
+    {
+      "id": "EP_VAE.1",
+      "type": "example",
+      "name": "MNIST and Frey Face generation",
+      "section": "4",
+      "statement": "VAE trained on MNIST and Frey Face datasets. Demonstrates ability to generate realistic samples, learn meaningful latent representations, and achieve competitive marginal likelihood bounds ($\\le -86.76$ nats on MNIST test set)."
+    }
+  ],
+  "edges": [
+    {"source": "DP_VAE.1", "target": "DP_VAE.2", "type": "uses"},
+    {"source": "DP_VAE.1", "target": "DP_VAE.3", "type": "uses"},
+    {"source": "DP_VAE.2", "target": "DP_VAE.3", "type": "uses"},
+    {"source": "DP_VAE.3", "target": "DP_VAE.4", "type": "motivates"},
+    {"source": "DP_VAE.4", "target": "DP_VAE.5", "type": "uses"},
+    {"source": "DP_VAE.3", "target": "DP_VAE.5", "type": "uses"},
+    {"source": "DP_VAE.5", "target": "DP_VAE.6", "type": "uses"},
+    {"source": "DP_VAE.2", "target": "DP_VAE.7", "type": "uses"},
+    {"source": "DP_VAE.1", "target": "LP_VAE.1", "type": "uses"},
+    {"source": "DP_VAE.2", "target": "LP_VAE.1", "type": "uses"},
+    {"source": "LP_VAE.1", "target": "DP_VAE.3", "type": "proves"},
+    {"source": "DP_VAE.4", "target": "TP_VAE.1", "type": "uses"},
+    {"source": "DP_VAE.6", "target": "EP_VAE.1", "type": "uses"}
+  ]
+}

@@ -170,7 +170,7 @@ def fetch_citations_s2(paper_ids, output_path=None, api_key=None):
     remaining = [pid for pid in paper_ids if pid not in citations]
     print(f"  {len(remaining)} papers to fetch")
 
-    headers = {"User-Agent": "SARANGA/1.0 (academic research)"}
+    headers = {"User-Agent": "Authomathics/1.0 (academic research)"}
     if api_key:
         headers["x-api-key"] = api_key
 

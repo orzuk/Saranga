@@ -1,0 +1,811 @@
+{
+  "metadata": {
+    "title": "Making Gradient Descent Optimal for Strongly Convex Stochastic Optimization",
+    "paper_num": 8,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined_with_steps",
+    "extraction_date": "2026-04-28",
+    "schema_version": "v2_level2_steps"
+  },
+  "nodes": [
+    {
+      "id": "ProbP8.1",
+      "type": "problem",
+      "name": "Convex Stochastic Optimization (Strongly Convex)",
+      "statement": "Minimize a $\\lambda$-strongly convex function $F$ over a convex domain $\\Wcal$ using only a stochastic gradient oracle that returns $\\hat{\\bg}$ with $\\E[\\hat{\\bg}]\\in\\partial F(\\bw)$, using $T$ oracle calls; bound $F(\\bw_T)-F(\\bw^*)$.",
+      "statement_clean": "Minimize an unknown strongly convex function from T noisy subgradient queries; bound the suboptimality.",
+      "section": "2 Preliminaries",
+      "origin": "paper",
+      "tags": ["optimization", "stochastic"]
+    },
+    {
+      "id": "DP8.1",
+      "type": "definition",
+      "name": "$\\lambda$-Strongly Convex Function",
+      "statement": "$F$ is $\\lambda$-strongly convex if for all $\\bw,\\bw'\\in\\Wcal$ and any subgradient $\\bg$ of $F$ at $\\bw$: $F(\\bw')\\geq F(\\bw)+\\inner{\\bg,\\bw'-\\bw}+\\frac{\\lambda}{2}\\norm{\\bw'-\\bw}^2$.",
+      "statement_clean": "F is lower-bounded by a quadratic in any direction.",
+      "section": "2 Preliminaries",
+      "origin": "paper",
+      "tags": ["convexity"]
+    },
+    {
+      "id": "DP8.2",
+      "type": "definition",
+      "name": "$\\mu$-Smoothness w.r.t. $\\bw^*$",
+      "statement": "$F$ is $\\mu$-smooth with respect to $\\bw^*$ if for all $\\bw\\in\\Wcal$: $F(\\bw)-F(\\bw^*)\\leq \\frac{\\mu}{2}\\norm{\\bw-\\bw^*}^2$.",
+      "statement_clean": "F is upper-bounded by a quadratic centered at the optimum.",
+      "section": "2 Preliminaries",
+      "origin": "paper",
+      "tags": ["smoothness"]
+    },
+    {
+      "id": "DP8.3",
+      "type": "definition",
+      "name": "Average Iterate $\\bar{\\bw}_T$",
+      "statement": "$\\bar{\\bw}_T = \\frac{1}{T}(\\bw_1+\\ldots+\\bw_T)$, the average of the SGD iterates.",
+      "statement_clean": "Standard Polyak-Ruppert averaging.",
+      "section": "2 Preliminaries",
+      "origin": "paper"
+    },
+    {
+      "id": "DP8.4",
+      "type": "definition",
+      "name": "$\\alpha$-Suffix Average $\\bar{\\bw}^{\\alpha}_T$",
+      "statement": "$\\bar{\\bw}^{\\alpha}_T = \\frac{\\bw_{(1-\\alpha)T+1}+\\ldots+\\bw_T}{\\alpha T}$ for $\\alpha\\in(0,1)$: average only the last $\\alpha T$ iterates.",
+      "statement_clean": "Average only the final fraction alpha of the SGD trajectory.",
+      "section": "5 $\\alpha$-Suffix Averaging",
+      "origin": "paper"
+    },
+    {
+      "id": "AssumP8.1",
+      "type": "assumption",
+      "name": "Bounded Second Moment of Stochastic Gradient",
+      "statement": "$\\E[\\norm{\\hat{\\bg}_t}^2]\\leq G^2$ for all $t$, regardless of how the iterates evolve.",
+      "statement_clean": "Stochastic gradient has uniformly bounded second moment.",
+      "section": "2 Preliminaries",
+      "origin": "paper"
+    },
+    {
+      "id": "AP8.1",
+      "type": "algorithm",
+      "name": "Stochastic Gradient Descent (SGD) with $\\eta_t=1/\\lambda t$",
+      "statement": "Initialize $\\bw_1=\\mathbf{0}$. For $t=1,\\ldots,T$: query the stochastic gradient oracle for $\\hat{\\bg}_t$ at $\\bw_t$; set $\\bw_{t+1}=\\Pi_{\\Wcal}(\\bw_t-\\eta_t \\hat{\\bg}_t)$.",
+      "statement_clean": "Projected stochastic gradient descent with $1/\\lambda t$ step size.",
+      "section": "2 Preliminaries",
+      "origin": "paper",
+      "input": [
+        "Convex domain $\\Wcal$",
+        "Stochastic gradient oracle for $F$",
+        "Step sizes $\\eta_t=1/\\lambda t$",
+        "Number of iterations $T$"
+      ],
+      "output": [
+        "Sequence of iterates $\\bw_1,\\ldots,\\bw_{T+1}$",
+        "A returned point: last iterate $\\bw_{T+1}$, average $\\bar{\\bw}_T$, or suffix average $\\bar{\\bw}^{\\alpha}_T$"
+      ],
+      "tags": ["iterative", "stochastic", "first-order"]
+    },
+    {
+      "id": "AP8.2",
+      "type": "algorithm",
+      "name": "Epoch-GD",
+      "statement": "Optimal algorithm of Hazan and Kale for strongly convex stochastic optimization: divides $T$ iterations into exponentially increasing epochs, runs SGD with averaging on each, uses each epoch's output as the next epoch's start; returns the final epoch's point.",
+      "statement_clean": "Exponentially increasing epochs of averaged SGD; cited optimal $O(1/T)$ baseline.",
+      "section": "1 Introduction; 6 Experiments (cited)",
+      "origin": "external",
+      "origin_citation": "Hazan & Kale 2011 (HazanKa11)",
+      "tags": ["iterative", "epoch"]
+    },
+    {
+      "id": "EP8.1",
+      "type": "equation",
+      "name": "SVM Objective",
+      "statement": "$F(\\bw) = \\frac{\\lambda}{2}\\norm{\\bw}^2 + \\frac{1}{m}\\sum_{i=1}^{m}\\max\\{0,1-y_i\\inner{\\bx_i,\\bw}\\}$.",
+      "statement_clean": "Regularized hinge-loss objective for linear SVM.",
+      "section": "6 Experiments",
+      "origin": "paper",
+      "tags": ["objective"]
+    },
+    {
+      "id": "TP8.1",
+      "type": "theorem",
+      "name": "Last-Iterate $O(1/T)$ Rate for Smooth Strongly Convex SGD",
+      "statement": "If $F$ is $\\lambda$-strongly convex and $\\mu$-smooth w.r.t. $\\bw^*$ over $\\Wcal$, $\\E[\\norm{\\hat{\\bg}_t}^2]\\leq G^2$, and $\\eta_t=1/\\lambda t$, then $\\E[F(\\bw_T)-F(\\bw^*)]\\leq \\frac{2\\mu G^2}{\\lambda^2 T}$.",
+      "statement_clean": "For smooth strongly convex F, the last SGD iterate achieves the optimal $O(1/T)$ rate.",
+      "section": "3 Smooth Functions",
+      "origin": "paper",
+      "assumptions": [
+        "$F$ is $\\lambda$-strongly convex",
+        "$F$ is $\\mu$-smooth with respect to $\\bw^*$",
+        "$\\E[\\norm{\\hat{\\bg}_t}^2]\\leq G^2$",
+        "$\\eta_t=1/\\lambda t$"
+      ],
+      "conclusions": ["$\\E[F(\\bw_T)-F(\\bw^*)]\\leq \\frac{2\\mu G^2}{\\lambda^2 T}$"],
+      "tags": ["bound", "convergence-rate"]
+    },
+    {
+      "id": "LP8.1",
+      "type": "lemma",
+      "name": "Distance Decay Lemma",
+      "statement": "If $F$ is $\\lambda$-strongly convex over $\\Wcal$, $\\E[\\norm{\\hat{\\bg}_t}^2]\\leq G^2$, and $\\eta_t=1/\\lambda t$, then $\\E[\\norm{\\bw_T-\\bw^*}^2]\\leq \\frac{4G^2}{\\lambda^2 T}$.",
+      "statement_clean": "Expected squared distance of SGD iterate to optimum decays as $1/T$ for any strongly convex F.",
+      "section": "3 Smooth Functions",
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "TP8.2",
+      "type": "theorem",
+      "name": "$O(1/T)$ Rate for Average Iterate (Smooth Case)",
+      "statement": "If $F$ is $\\lambda$-strongly convex and $\\mu$-smooth w.r.t. $\\bw^*$, $\\E[\\norm{\\hat{\\bg}_t}^2]\\leq G^2$, and $\\eta_t=1/\\lambda t$, then $\\E[F(\\bar{\\bw}_T)-F(\\bw^*)]\\leq \\frac{16\\mu G^2}{\\lambda^2 T}$.",
+      "statement_clean": "Average SGD iterate also attains the optimal $O(1/T)$ rate when F is smooth.",
+      "section": "3 Smooth Functions",
+      "origin": "paper",
+      "assumptions": [
+        "$F$ is $\\lambda$-strongly convex and $\\mu$-smooth w.r.t. $\\bw^*$",
+        "$\\E[\\norm{\\hat{\\bg}_t}^2]\\leq G^2$",
+        "$\\eta_t=1/\\lambda t$"
+      ],
+      "conclusions": ["$\\E[F(\\bar{\\bw}_T)-F(\\bw^*)]\\leq \\frac{16\\mu G^2}{\\lambda^2 T}$"],
+      "tags": ["bound", "convergence-rate"]
+    },
+    {
+      "id": "TP8.3",
+      "type": "theorem",
+      "name": "$\\Omega(\\log T/T)$ Lower Bound for SGD-Average (Border Optimum)",
+      "statement": "For $F(\\bw)=\\frac{1}{2}\\norm{\\bw}^2+w_1$ on $\\Wcal=[0,1]^d$ with the prescribed stochastic gradient, if $\\eta_t=c/t$, then for any $T\\geq T_0+1$ with $T_0=\\max\\{2,c/2\\}$: $\\E[F(\\bar{\\bw}_T)-F(\\bw^*)]\\geq \\frac{c}{16T}\\sum_{t=T_0}^{T-1}\\frac{1}{t}=\\Omega(\\log T/T)$.",
+      "statement_clean": "When the optimum lies on a corner of W, SGD with averaging is provably $\\Omega(\\log T/T)$.",
+      "section": "4 Non-Smooth Functions",
+      "origin": "paper",
+      "tags": ["lower-bound"]
+    },
+    {
+      "id": "TP8.4",
+      "type": "theorem",
+      "name": "$\\Omega(\\log T/T)$ Lower Bound for SGD-Average (Interior Optimum)",
+      "statement": "For the $1$-strongly convex $F(\\bw)=\\frac{1}{2}\\norm{\\bw}^2+\\begin{cases}w_1 & w_1\\geq 0\\\\ -7w_1 & w_1<0\\end{cases}$ on $\\Wcal=[-1,1]^d$ with the prescribed gradient oracle, if $w_{1,1}\\geq 0$, $\\eta_t=c/t$, $T_0=\\max\\{2,6c+1\\}$, $T\\geq T_0+2$: $\\E[F(\\bar{\\bw}_T)-F(\\bw^*)]\\geq \\frac{3c}{16T}\\sum_{t=T_0+2}^{T}\\frac{1}{t}-\\frac{T_0}{T}=\\Omega(\\log T/T)$.",
+      "statement_clean": "Even with optimum in the interior, non-smoothness forces SGD-average to a $\\Omega(\\log T/T)$ rate.",
+      "section": "4 Non-Smooth Functions",
+      "origin": "paper",
+      "tags": ["lower-bound"]
+    },
+    {
+      "id": "TP8.5",
+      "type": "theorem",
+      "name": "$O(1/T)$ Upper Bound for $\\alpha$-Suffix Averaging",
+      "statement": "For SGD with $\\alpha$-suffix averaging, $\\eta_t=1/\\lambda t$, $F$ $\\lambda$-strongly convex, $\\E[\\norm{\\hat{\\bg}_t}^2]\\leq G$: $\\E[F(\\bar{\\bw}^{\\alpha}_T)-F(\\bw^*)]\\leq \\frac{2+2.5\\log(1/(1-\\alpha))}{\\alpha}\\frac{G^2}{\\lambda T}$.",
+      "statement_clean": "Suffix averaging achieves the optimal $O(1/T)$ rate even without smoothness.",
+      "section": "5 $\\alpha$-Suffix Averaging",
+      "origin": "paper",
+      "assumptions": [
+        "$F$ is $\\lambda$-strongly convex",
+        "$\\E[\\norm{\\hat{\\bg}_t}^2]\\leq G$",
+        "$\\eta_t=1/\\lambda t$"
+      ],
+      "conclusions": ["$\\E[F(\\bar{\\bw}^{\\alpha}_T)-F(\\bw^*)]\\leq \\frac{2+2.5\\log(1/(1-\\alpha))}{\\alpha}\\frac{G^2}{\\lambda T}$"],
+      "tags": ["bound", "convergence-rate"]
+    },
+    {
+      "id": "PrP8.1",
+      "type": "proposition",
+      "name": "High-Probability Distance Bound",
+      "statement": "Let $\\delta\\in(0,1/e)$, $T\\geq 4$, $F$ $\\lambda$-strongly convex, $\\norm{\\hat{\\bg}_t}^2\\leq G^2$ a.s., $\\eta_t=1/\\lambda t$. Then with probability $\\geq 1-\\delta$, for any $t\\leq T$: $\\norm{\\bw_t-\\bw^*}^2\\leq \\frac{(624\\log(\\log(T)/\\delta)+1)G^2}{\\lambda^2 t}$.",
+      "statement_clean": "High-probability strengthening of Lemma close giving $1/t$ distance with $\\log\\log T$ overhead.",
+      "section": "5.5 High-Probability Bounds",
+      "origin": "paper",
+      "tags": ["high-probability", "bound"]
+    },
+    {
+      "id": "LP8.2",
+      "type": "lemma",
+      "name": "Initial-Distance Bound",
+      "statement": "If $\\E[\\norm{\\hat{\\bg}_1}^2]\\leq G^2$, then $\\E[\\norm{\\bw_1-\\bw^*}^2]\\leq \\frac{4G^2}{\\lambda^2}$.",
+      "statement_clean": "Strong convexity bounds the distance from the initial point to the optimum by the gradient bound.",
+      "section": "Appendix B.1",
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "TP8.6",
+      "type": "theorem",
+      "name": "Freedman's Inequality (Uniform Form)",
+      "statement": "Let $d_1,\\ldots,d_T$ be a martingale difference sequence with $|d_i|\\leq b$, and let $V_s=\\sum_{i=1}^{s}\\var(d_i\\mid d_1,\\ldots,d_{i-1})$. Then for all $a,v>0$: $\\Prob{\\sum_{i=1}^s d_i\\geq a \\text{ and } V_s\\leq v \\text{ for some } s\\leq T}\\leq \\exp\\left(\\frac{-a^2}{2(v+ba)}\\right)$.",
+      "statement_clean": "Freedman-type concentration for bounded martingales with conditional-variance control.",
+      "section": "Appendix B.1 (cited)",
+      "origin": "external",
+      "origin_citation": "de la Peña 1999, Theorem 1.2A",
+      "tags": ["concentration", "martingale"]
+    },
+    {
+      "id": "LP8.3",
+      "type": "lemma",
+      "name": "Maximal Freedman Bound (Bartlett-style)",
+      "statement": "Let $d_1,\\ldots,d_T$ be a martingale difference sequence with $|d_i|\\leq b$, $V_s=\\sum_{t=1}^{s}\\var_{t-1}(d_t)$, $\\sigma_s=\\sqrt{V_s}$. For $\\delta<1/e$, $T\\geq 4$: $\\Prob{\\sum_{t=1}^s d_t > 2\\max\\{2\\sigma_s,b\\sqrt{\\log(1/\\delta)}\\}\\sqrt{\\log(1/\\delta)} \\text{ for some } s\\leq T}\\leq \\log(T)\\delta$.",
+      "statement_clean": "Adaptive Freedman bound with discretization, used to control martingale tails uniformly in s.",
+      "section": "Appendix B.1",
+      "origin": "paper",
+      "origin_citation": "Adapted from Bartlett, Bousquet & Mendelson 2008",
+      "tags": ["concentration", "martingale"]
+    },
+    {
+      "id": "LP8.4",
+      "type": "lemma",
+      "name": "Lemma Above 0 (One-Sided Constraint)",
+      "statement": "For any $t\\geq T_0=\\max\\{2,6c+1\\}$, $w_{t,1}\\geq -c/(t-1)$, and if $w_{t,1}<0$ then $w_{t+1,1}\\geq 5c/t$.",
+      "statement_clean": "In the non-smooth example, the iterate cannot stay negative for two consecutive rounds.",
+      "section": "Appendix B.4",
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "LP8.5",
+      "type": "lemma",
+      "name": "Uniform Distance Upper Bound",
+      "statement": "Under the conditions of Proposition closehighprob, for all $t$: $\\norm{\\bw_t-\\bw^*}\\leq \\frac{2G}{\\lambda}$ with probability 1.",
+      "statement_clean": "Almost-sure version of the distance bound under bounded stochastic gradients.",
+      "section": "Appendix B.6",
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "LP8.6",
+      "type": "lemma",
+      "name": "Recursive-Form Distance Decomposition",
+      "statement": "Under the conditions of Proposition closehighprob, for any $t\\geq 2$: $\\norm{\\bw_{t+1}-\\bw^*}^2\\leq \\frac{2}{\\lambda(t-1)t}\\sum_{i=2}^{t}(i-1)\\inner{\\hat{\\bz}_i,\\bw_i-\\bw^*}+\\frac{G^2}{\\lambda^2 t}$, where $\\hat{\\bz}_i=\\bg_i-\\hat{\\bg}_i$.",
+      "statement_clean": "Unrolls the SGD recursion into a martingale sum plus a deterministic $1/t$ term.",
+      "section": "Appendix B.6",
+      "origin": "paper",
+      "tags": ["bound", "decomposition"]
+    },
+    {
+      "id": "PP8.1",
+      "type": "proof",
+      "name": "Proof of Lemma close (LP8.1)",
+      "statement": "Strong convexity yields $(1-2\\eta_t\\lambda)\\E[\\norm{\\bw_t-\\bw^*}^2]+\\eta_t^2 G^2$ recurrence; with $\\eta_t=1/\\lambda t$ this becomes $(1-2/t)\\E[\\norm{\\bw_t-\\bw^*}^2]+G^2/(\\lambda^2 t^2)$, and induction starting from Lemma distance gives $4G^2/(\\lambda^2 t)$.",
+      "section": "Appendix B.2",
+      "origin": "paper",
+      "parent_id": "LP8.1",
+      "proves": "LP8.1"
+    },
+    {
+      "id": "PP8.2",
+      "type": "proof",
+      "name": "Proof of Theorem average (TP8.2)",
+      "statement": "Recursion for $\\bar{\\bw}_{t+1}$ combined with Cauchy-Schwartz and Lemma close yields $\\E[\\norm{\\bar{\\bw}_T-\\bw^*}^2]\\leq 32G^2/(\\lambda^2 T)$ by induction; smoothness then gives the suboptimality bound.",
+      "section": "Appendix B.3",
+      "origin": "paper",
+      "parent_id": "TP8.2",
+      "proves": "TP8.2"
+    },
+    {
+      "id": "PP8.3",
+      "type": "proof",
+      "name": "Proof of Theorem simple (TP8.3)",
+      "statement": "Conditional on $Z_t\\leq -1/2$, $w_{t+1,1}\\geq \\eta_t/2$; Pr$(Z_t\\leq -1/2)=1/8$ gives $\\E[w_{t+1,1}]\\geq \\eta_t/16$, summing yields the lower bound.",
+      "section": "Appendix B.3 (Proof of thm:simple)",
+      "origin": "paper",
+      "parent_id": "TP8.3",
+      "proves": "TP8.3"
+    },
+    {
+      "id": "PP8.4",
+      "type": "proof",
+      "name": "Proof of Theorem involved (TP8.4)",
+      "statement": "Lemma above0 ensures $w_{t,1}<0$ implies $w_{t+1,1}\\geq 5c/t$; bounding Pr$(w_{t,1}\\notin[0,c/t]\\mid w_{t-1,1}\\geq 0)\\geq 3/4$ yields $\\E[\\bar{w}_{T,1}]\\geq (3c/16T)\\sum 1/t-T_0/T$.",
+      "section": "Appendix B.4",
+      "origin": "paper",
+      "parent_id": "TP8.4",
+      "proves": "TP8.4"
+    },
+    {
+      "id": "PP8.5",
+      "type": "proof",
+      "name": "Proof of Theorem alphaaveraging (TP8.5)",
+      "statement": "Sum the per-step recurrence over the suffix, lower-bound the inner-product sum via convexity, plug Lemma close to bound $\\E[\\norm{\\bw_t-\\bw^*}^2]$, and use $\\sum_{(1-\\alpha)T+1}^{T}1/t\\leq \\log(1/(1-\\alpha))$.",
+      "section": "Appendix B.5",
+      "origin": "paper",
+      "parent_id": "TP8.5",
+      "proves": "TP8.5"
+    },
+    {
+      "id": "PP8.6",
+      "type": "proof",
+      "name": "Proof of Proposition closehighprob (PrP8.1)",
+      "statement": "Bound conditional variance and uniform step size of $(i-1)Z_i$ via Lemma uniformupperbound, apply Lemma fromFreedman to the martingale $\\sum (i-1)Z_i$, plug into the recursive decomposition (Lemma recursive-def), then use induction with $a=(624\\log(\\log T/\\delta)+1)G^2/\\lambda^2$.",
+      "section": "Appendix B.6",
+      "origin": "paper",
+      "parent_id": "PrP8.1",
+      "proves": "PrP8.1"
+    },
+    {
+      "id": "ExP8.1",
+      "type": "example",
+      "name": "Smooth Artificial Experiment ($F=\\norm{\\bw}^2$ on $[-1,1]^5$)",
+      "statement": "On $\\Wcal=[-1,1]^5$, $F(\\bw)=\\norm{\\bw}^2$, $\\hat{\\bg}=\\bw+\\bz$ with $\\bz$ uniform on $[-1,1]^5$: all four algorithms achieve $\\Theta(1/T)$ rate; SGD-A has worse constants.",
+      "statement_clean": "Smooth synthetic experiment: SGD variants and Epoch-GD all attain $1/T$.",
+      "section": "6 Experiments",
+      "origin": "paper",
+      "tags": ["empirical"]
+    },
+    {
+      "id": "ExP8.2",
+      "type": "example",
+      "name": "Non-Smooth Artificial Experiment (Theorem-involved instance, $d=5$)",
+      "statement": "Simulating the non-smooth instance from Theorem involved with $d=5$: SGD-A shows $\\Theta(\\log(T)/T)$; SGD-L, SGD-$\\alpha$, Epoch-GD show $\\Theta(1/T)$.",
+      "statement_clean": "Non-smooth synthetic experiment confirms the theory: only SGD-A is suboptimal.",
+      "section": "6 Experiments",
+      "origin": "paper",
+      "tags": ["empirical"]
+    },
+    {
+      "id": "ExP8.3",
+      "type": "example",
+      "name": "SVM Experiments on ccat / cov1 / astro-ph",
+      "statement": "On three binary classification datasets with the SVM hinge-loss objective and stochastic gradients $\\hat{\\bg}_t=\\lambda \\bw_t-\\mathbf{1}_{y_i\\inner{\\bx_i,\\bw_t}\\leq 1}y_i\\bx_i$: SGD-A is worst; SGD-L, SGD-$\\alpha$, Epoch-GD perform similarly.",
+      "statement_clean": "Real-data SVM experiments: averaging-all is worst; suffix-average and last-iterate match Epoch-GD.",
+      "section": "6 Experiments",
+      "origin": "paper",
+      "tags": ["empirical"]
+    },
+    {
+      "id": "RP8.1",
+      "type": "remark",
+      "name": "Justifying $\\eta_t=\\Theta(1/t)$",
+      "statement": "If $\\eta_t=o(1/t)$, on $F(w)=w^2/2$ deterministically, $w_T=\\prod(1-\\eta_t)$ cannot be $O(1/T)$ unless $\\sum\\eta_t=\\Omega(\\log T)$, forcing $\\eta_t\\geq \\Omega(1/t)$. If $\\eta_t=\\omega(1/t)$, the variance argument from Theorem simple shows $\\E[F(w_t)]\\geq \\eta_t/16$, forcing $\\eta_t=O(1/t)$.",
+      "statement_clean": "Both sides force the canonical $1/t$ step-size schedule.",
+      "section": "Appendix A",
+      "origin": "paper"
+    },
+    {
+      "id": "OpenP8.1",
+      "type": "open_problem",
+      "name": "Last Iterate Rate for Non-Smooth Strongly Convex SGD",
+      "statement": "Does standard SGD without averaging attain an $\\Ocal(1/T)$ rate for general (possibly non-smooth) strongly convex $F$? Current theory only gives $\\Ocal(1/\\sqrt{T})$ via Jensen's inequality, while experiments suggest $\\Theta(1/T)$.",
+      "statement_clean": "Open: does last-iterate SGD reach optimal $1/T$ in the non-smooth strongly convex case?",
+      "section": "7 Discussion",
+      "origin": "paper",
+      "tags": ["open-question"]
+    },
+
+    {
+      "id": "ASP8.1",
+      "type": "algorithm_step",
+      "parent_id": "AP8.1",
+      "step_order": 1,
+      "name": "Initialize $\\bw_1=\\mathbf{0}$",
+      "statement": "Set the starting iterate $\\bw_1=\\mathbf{0}\\in\\Wcal$.",
+      "section": "2 Preliminaries",
+      "origin": "paper",
+      "subclass": "initialize"
+    },
+    {
+      "id": "ASP8.2",
+      "type": "algorithm_step",
+      "parent_id": "AP8.1",
+      "step_order": 2,
+      "name": "For $t=1,\\ldots,T$ loop body",
+      "statement": "For each $t$: query the stochastic-gradient oracle at $\\bw_t$ to obtain $\\hat{\\bg}_t$ with $\\E[\\hat{\\bg}_t]=\\bg_t\\in\\partial F(\\bw_t)$; then update $\\bw_{t+1}=\\Pi_{\\Wcal}(\\bw_t-\\eta_t \\hat{\\bg}_t)$.",
+      "section": "2 Preliminaries",
+      "origin": "paper",
+      "subclass": "loop"
+    },
+    {
+      "id": "ASP8.3",
+      "type": "algorithm_step",
+      "parent_id": "AP8.1",
+      "step_order": 3,
+      "name": "Return chosen output point",
+      "statement": "Return one of: the last iterate $\\bw_{T+1}$, the full average $\\bar{\\bw}_T=\\frac{1}{T}\\sum_{t=1}^{T}\\bw_t$, or the $\\alpha$-suffix average $\\bar{\\bw}^{\\alpha}_T$.",
+      "section": "2 Preliminaries; 5",
+      "origin": "paper",
+      "subclass": "return"
+    },
+
+    {
+      "id": "PSP8.1",
+      "type": "proof_step",
+      "parent_id": "PP8.1",
+      "step_order": 1,
+      "name": "Strong-convexity inner-product inequality",
+      "statement": "Strong convexity of $F$ and optimality of $\\bw^*$ give $\\inner{\\bg_t,\\bw_t-\\bw^*}\\geq F(\\bw_t)-F(\\bw^*)+\\frac{\\lambda}{2}\\norm{\\bw_t-\\bw^*}^2$ and $F(\\bw_t)-F(\\bw^*)\\geq \\frac{\\lambda}{2}\\norm{\\bw_t-\\bw^*}^2$.",
+      "section": "Appendix B.2",
+      "origin": "paper",
+      "subclass": "setup"
+    },
+    {
+      "id": "PSP8.2",
+      "type": "proof_step",
+      "parent_id": "PP8.1",
+      "step_order": 2,
+      "name": "Expand projection update",
+      "statement": "Use $\\norm{\\Pi_{\\Wcal}(\\bv)-\\bw}\\leq \\norm{\\bv-\\bw}$ to expand $\\E\\norm{\\bw_{t+1}-\\bw^*}^2$ in terms of $\\E\\norm{\\bw_t-\\bw^*}^2$, $\\E\\inner{\\bg_t,\\bw_t-\\bw^*}$, and $\\eta_t^2 \\E\\norm{\\hat{\\bg}_t}^2$.",
+      "section": "Appendix B.2",
+      "origin": "paper",
+      "subclass": "algebraic_manipulation"
+    },
+    {
+      "id": "PSP8.3",
+      "type": "proof_step",
+      "parent_id": "PP8.1",
+      "step_order": 3,
+      "name": "Combine to obtain recurrence",
+      "statement": "Substituting PSP8.1 into PSP8.2 yields the recurrence $\\E[\\norm{\\bw_{t+1}-\\bw^*}^2]\\leq (1-2\\eta_t\\lambda)\\E[\\norm{\\bw_t-\\bw^*}^2]+\\eta_t^2 G^2$.",
+      "section": "Appendix B.2",
+      "origin": "paper",
+      "subclass": "substitute"
+    },
+    {
+      "id": "PSP8.4",
+      "type": "proof_step",
+      "parent_id": "PP8.1",
+      "step_order": 4,
+      "name": "Plug $\\eta_t=1/\\lambda t$",
+      "statement": "Setting $\\eta_t=1/\\lambda t$ gives $\\E[\\norm{\\bw_{t+1}-\\bw^*}^2]\\leq (1-2/t)\\E[\\norm{\\bw_t-\\bw^*}^2]+G^2/(\\lambda^2 t^2)$.",
+      "section": "Appendix B.2",
+      "origin": "paper",
+      "subclass": "substitute"
+    },
+    {
+      "id": "PSP8.5",
+      "type": "proof_step",
+      "parent_id": "PP8.1",
+      "step_order": 5,
+      "name": "Induction with base case from Lemma distance",
+      "statement": "By Lemma distance (LP8.2), $\\E\\norm{\\bw_1-\\bw^*}^2\\leq 4G^2/\\lambda^2$; the recurrence then gives $\\E\\norm{\\bw_t-\\bw^*}^2\\leq 4G^2/(\\lambda^2 t)$ for $t=2$, and induction (base $t=3$) yields the claim for all $t$.",
+      "section": "Appendix B.2",
+      "origin": "paper",
+      "subclass": "induction_step"
+    },
+
+    {
+      "id": "PSP8.6",
+      "type": "proof_step",
+      "parent_id": "PP8.2",
+      "step_order": 1,
+      "name": "Recursive identity for $\\bar{\\bw}_{t+1}$",
+      "statement": "Decompose $\\bar{\\bw}_{t+1}=\\frac{t}{t+1}\\bar{\\bw}_t+\\frac{1}{t+1}\\bw_{t+1}$ and expand $\\E\\norm{\\bar{\\bw}_{t+1}-\\bw^*}^2$ via the cross-term identity.",
+      "section": "Appendix B.3",
+      "origin": "paper",
+      "subclass": "algebraic_manipulation"
+    },
+    {
+      "id": "PSP8.7",
+      "type": "proof_step",
+      "parent_id": "PP8.2",
+      "step_order": 2,
+      "name": "Apply Cauchy-Schwartz and Lemma close",
+      "statement": "Bound the cross term by $\\E[|XY|]\\leq\\sqrt{\\E[X^2]}\\sqrt{\\E[Y^2]}$ and use Lemma close (LP8.1) to bound $\\E\\norm{\\bw_{t+1}-\\bw^*}^2\\leq 4G^2/(\\lambda^2(t+1))$.",
+      "section": "Appendix B.3",
+      "origin": "paper",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP8.8",
+      "type": "proof_step",
+      "parent_id": "PP8.2",
+      "step_order": 3,
+      "name": "Induction yields $\\E\\norm{\\bar{\\bw}_T-\\bw^*}^2\\leq 32G^2/(\\lambda^2 T)$",
+      "statement": "By induction (base from Lemma distance LP8.2) the resulting inequality $\\big(\\tfrac{t}{t+1}\\big)^2 a_t+\\tfrac{4G}{\\lambda(t+1)^{3/2}}\\sqrt{a_t}+\\tfrac{4G^2}{\\lambda^2(t+1)^3}$ gives $\\E\\norm{\\bar{\\bw}_T-\\bw^*}^2\\leq 32G^2/(\\lambda^2 T)$.",
+      "section": "Appendix B.3",
+      "origin": "paper",
+      "subclass": "induction_step"
+    },
+    {
+      "id": "PSP8.9",
+      "type": "proof_step",
+      "parent_id": "PP8.2",
+      "step_order": 4,
+      "name": "Apply $\\mu$-smoothness to conclude",
+      "statement": "Smoothness of $F$ w.r.t. $\\bw^*$ gives $F(\\bar{\\bw}_T)-F(\\bw^*)\\leq \\frac{\\mu}{2}\\norm{\\bar{\\bw}_T-\\bw^*}^2$; combine with PSP8.8 to obtain the $16\\mu G^2/(\\lambda^2 T)$ bound.",
+      "section": "Appendix B.3",
+      "origin": "paper",
+      "subclass": "conclude"
+    },
+
+    {
+      "id": "PSP8.10",
+      "type": "proof_step",
+      "parent_id": "PP8.3",
+      "step_order": 1,
+      "name": "Write coordinate-1 SGD recursion",
+      "statement": "From the projected SGD update, $w_{t+1,1}=\\Pi_{[0,1]}((1-\\eta_t)w_{t,1}-\\eta_t Z_t)$.",
+      "section": "Appendix B.3 (Proof of thm:simple)",
+      "origin": "paper",
+      "subclass": "setup"
+    },
+    {
+      "id": "PSP8.11",
+      "type": "proof_step",
+      "parent_id": "PP8.3",
+      "step_order": 2,
+      "name": "Case split on $Z_t$",
+      "statement": "Conditional on $Z_t\\leq -1/2$ and using $\\eta_t\\leq 2$, $w_{t+1,1}\\geq \\eta_t/2$; conditional on $Z_t>-1/2$, the domain forces $w_{t+1,1}\\geq 0$.",
+      "section": "Appendix B.3 (Proof of thm:simple)",
+      "origin": "paper",
+      "subclass": "case_split"
+    },
+    {
+      "id": "PSP8.12",
+      "type": "proof_step",
+      "parent_id": "PP8.3",
+      "step_order": 3,
+      "name": "Take expectation: $\\E[w_{t+1,1}]\\geq \\eta_t/16$",
+      "statement": "Combining the two cases with $\\Pr(Z_t\\leq -1/2)=1/8$ on $Z_t\\sim U[-1,3]$ gives $\\E[w_{t+1,1}]\\geq \\frac{1}{16}\\eta_t$.",
+      "section": "Appendix B.3 (Proof of thm:simple)",
+      "origin": "paper",
+      "subclass": "bound_estimate"
+    },
+    {
+      "id": "PSP8.13",
+      "type": "proof_step",
+      "parent_id": "PP8.3",
+      "step_order": 4,
+      "name": "Sum over $t$ and convert to $F$",
+      "statement": "Summing $\\E[w_{t,1}]\\geq \\eta_{t-1}/16$ over $t=T_0+1,\\ldots,T$ gives $\\E[\\bar{w}_{T,1}]\\geq \\frac{1}{16T}\\sum_{t=T_0}^{T-1}\\eta_t$, and $F(\\bar{\\bw}_T)\\geq \\bar{w}_{T,1}$ on this instance with $\\bw^*=\\mathbf{0}$.",
+      "section": "Appendix B.3 (Proof of thm:simple)",
+      "origin": "paper",
+      "subclass": "conclude"
+    },
+
+    {
+      "id": "PSP8.14",
+      "type": "proof_step",
+      "parent_id": "PP8.4",
+      "step_order": 1,
+      "name": "Invoke Lemma above 0",
+      "statement": "By Lemma above0 (LP8.4), for $t\\geq T_0$, $w_{t,1}<0$ implies $w_{t+1,1}\\geq 5c/t$, and $w_{t,1}+w_{t+1,1}\\geq 3c/t$.",
+      "section": "Appendix B.4",
+      "origin": "paper",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP8.15",
+      "type": "proof_step",
+      "parent_id": "PP8.4",
+      "step_order": 2,
+      "name": "Lower-bound $\\E\\sum w_{t,1}$ by indicator argument",
+      "statement": "Pair iterates so that $\\E[w_{T_0,1}+\\ldots+w_{T,1}]\\geq \\sum_t \\Pr(w_{t,1}\\notin[0,\\eta_t])\\frac{c}{2t}$ via splitting the cases $w_{t,1}<0$ and $w_{t,1}>c/t$.",
+      "section": "Appendix B.4",
+      "origin": "paper",
+      "subclass": "bound_estimate"
+    },
+    {
+      "id": "PSP8.16",
+      "type": "proof_step",
+      "parent_id": "PP8.4",
+      "step_order": 3,
+      "name": "Bound $\\Pr(w_{t,1}\\in[0,c/t]\\mid w_{t-1,1}\\geq 0)\\leq 1/4$",
+      "statement": "For $Z_t\\sim U[-1,3]$ (length-4 interval), the event traps $Z_t$ in a length-1 interval, so the conditional probability is $\\leq 1/4$, giving $\\Pr(w_{t,1}\\notin[0,c/t]\\mid w_{t-1,1}\\geq 0)\\geq 3/4$.",
+      "section": "Appendix B.4",
+      "origin": "paper",
+      "subclass": "bound_estimate"
+    },
+    {
+      "id": "PSP8.17",
+      "type": "proof_step",
+      "parent_id": "PP8.4",
+      "step_order": 4,
+      "name": "Combine using non-consecutive-zero indicator",
+      "statement": "By LP8.4 the indicators $\\mathbf{1}_{w_{t,1}\\geq 0}$ cannot equal 0 in two consecutive rounds, so $\\mathbf{1}_{w_{t-1,1}\\geq 0}+\\mathbf{1}_{w_{t,1}\\geq 0}\\geq 1$, yielding $\\E[\\sum_{T_0}^{T} w_{t,1}]\\geq (3c/16)\\sum_{T_0+2}^{T}1/t$.",
+      "section": "Appendix B.4",
+      "origin": "paper",
+      "subclass": "algebraic_manipulation"
+    },
+    {
+      "id": "PSP8.18",
+      "type": "proof_step",
+      "parent_id": "PP8.4",
+      "step_order": 5,
+      "name": "Add early-rounds correction and conclude",
+      "statement": "Bound $\\E[\\sum_{1}^{T_0-1} w_{t,1}]\\geq -T_0$ via $w_{t,1}\\geq -1$; combine to get $\\E[\\bar{w}_{T,1}]\\geq \\frac{3c}{16T}\\sum_{T_0+2}^{T}\\frac{1}{t}-\\frac{T_0}{T}$, and note $F(\\bar{\\bw}_T)\\geq \\bar{w}_{T,1}$.",
+      "section": "Appendix B.4",
+      "origin": "paper",
+      "subclass": "conclude"
+    },
+
+    {
+      "id": "PSP8.19",
+      "type": "proof_step",
+      "parent_id": "PP8.5",
+      "step_order": 1,
+      "name": "Per-step recurrence and suffix sum",
+      "statement": "Reuse PP8.1's per-step inequality $\\E[\\norm{\\bw_{t+1}-\\bw^*}^2]\\leq \\E[\\norm{\\bw_t-\\bw^*}^2]-2\\eta_t\\E[\\inner{\\bg_t,\\bw_t-\\bw^*}]+\\eta_t^2 G^2$ and sum over $t=(1-\\alpha)T+1,\\ldots,T$.",
+      "section": "Appendix B.5",
+      "origin": "paper",
+      "subclass": "setup"
+    },
+    {
+      "id": "PSP8.20",
+      "type": "proof_step",
+      "parent_id": "PP8.5",
+      "step_order": 2,
+      "name": "Lower-bound LHS via convexity",
+      "statement": "By convexity, $\\sum_{t=(1-\\alpha)T+1}^{T}\\E[\\inner{\\bg_t,\\bw_t-\\bw^*}]\\geq \\sum_t \\E[F(\\bw_t)-F(\\bw^*)]\\geq \\alpha T \\E[F(\\bar{\\bw}^{\\alpha}_T)-F(\\bw^*)]$.",
+      "section": "Appendix B.5",
+      "origin": "paper",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP8.21",
+      "type": "proof_step",
+      "parent_id": "PP8.5",
+      "step_order": 3,
+      "name": "Plug Lemma close to bound $\\E\\norm{\\bw_t-\\bw^*}^2$",
+      "statement": "Apply Lemma close (LP8.1) to bound each $\\E\\norm{\\bw_t-\\bw^*}^2\\leq 4G^2/(\\lambda^2 t)$, and substitute into the rearranged sum.",
+      "section": "Appendix B.5",
+      "origin": "paper",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP8.22",
+      "type": "proof_step",
+      "parent_id": "PP8.5",
+      "step_order": 4,
+      "name": "Use $\\sum_{(1-\\alpha)T+1}^{T}1/t\\leq \\log(1/(1-\\alpha))$",
+      "statement": "Bound the harmonic suffix sum by $\\log(1/(1-\\alpha))$ and simplify to obtain $\\E[F(\\bar{\\bw}^{\\alpha}_T)-F(\\bw^*)]\\leq \\frac{2+2.5\\log(1/(1-\\alpha))}{\\alpha}\\frac{G^2}{\\lambda T}$.",
+      "section": "Appendix B.5",
+      "origin": "paper",
+      "subclass": "conclude"
+    },
+
+    {
+      "id": "PSP8.23",
+      "type": "proof_step",
+      "parent_id": "PP8.6",
+      "step_order": 1,
+      "name": "Identify martingale $Z_i=\\inner{\\hat{\\bz}_i,\\bw_i-\\bw^*}$",
+      "statement": "Define $Z_i=\\inner{\\hat{\\bz}_i,\\bw_i-\\bw^*}$ with $\\hat{\\bz}_i=\\bg_i-\\hat{\\bg}_i$; note $\\E_{i-1}[Z_i]=0$ and $\\var_{i-1}(Z_i)\\leq 4G^2\\norm{\\bw_i-\\bw^*}^2$.",
+      "section": "Appendix B.6",
+      "origin": "paper",
+      "subclass": "introduce_variable"
+    },
+    {
+      "id": "PSP8.24",
+      "type": "proof_step",
+      "parent_id": "PP8.6",
+      "step_order": 2,
+      "name": "Uniform step-bound from Lemma uniformupperbound",
+      "statement": "Using Lemma uniformupperbound (LP8.5), $|(i-1)Z_i|\\leq 2G(t-1)\\norm{\\bw_i-\\bw^*}\\leq 4G^2(t-1)/\\lambda$.",
+      "section": "Appendix B.6",
+      "origin": "paper",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP8.25",
+      "type": "proof_step",
+      "parent_id": "PP8.6",
+      "step_order": 3,
+      "name": "Apply Freedman-style bound (Lemma fromFreedman)",
+      "statement": "Apply Lemma fromFreedman (LP8.3) to $\\sum_{i=2}^{t}(i-1)Z_i$ to obtain, with prob.\\ $\\geq 1-\\delta$ for all $t\\leq T$, an $8G\\max\\{\\sqrt{\\sum (i-1)^2\\norm{\\bw_i-\\bw^*}^2},G(t-1)\\sqrt{\\log(\\log T/\\delta)}/\\lambda\\}\\sqrt{\\log(\\log T/\\delta)}$ tail bound.",
+      "section": "Appendix B.6",
+      "origin": "paper",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP8.26",
+      "type": "proof_step",
+      "parent_id": "PP8.6",
+      "step_order": 4,
+      "name": "Plug into recursive decomposition (Lemma recursive-def)",
+      "statement": "Substitute the Freedman bound into Lemma recursive-def (LP8.6) to obtain $\\norm{\\bw_{t+1}-\\bw^*}^2\\leq \\frac{b}{(t-1)t}\\sqrt{\\sum (i-1)^2\\norm{\\bw_i-\\bw^*}^2}+\\frac{c}{t}$ with $b,c$ defined in terms of $G,\\lambda,\\log\\log T/\\delta$.",
+      "section": "Appendix B.6",
+      "origin": "paper",
+      "subclass": "substitute"
+    },
+    {
+      "id": "PSP8.27",
+      "type": "proof_step",
+      "parent_id": "PP8.6",
+      "step_order": 5,
+      "name": "Inductive step: solve quadratic for $a$",
+      "statement": "Assume $\\norm{\\bw_i-\\bw^*}^2\\leq a/i$; deriving $a-(3b/2)\\sqrt{a}-(3c/2)\\geq 0$ and using $(x+y)^2\\leq 2(x^2+y^2)$ shows $a\\geq 9b^2/4+3c$ suffices.",
+      "section": "Appendix B.6",
+      "origin": "paper",
+      "subclass": "induction_step"
+    },
+    {
+      "id": "PSP8.28",
+      "type": "proof_step",
+      "parent_id": "PP8.6",
+      "step_order": 6,
+      "name": "Substitute $b,c$ to obtain $a=(624\\log(\\log T/\\delta)+1)G^2/\\lambda^2$",
+      "statement": "Plugging $b=16G\\sqrt{\\log(\\log T/\\delta)}/\\lambda$, $c=G^2(16\\log(\\log T/\\delta)+1)/\\lambda^2$ gives $a=(624\\log(\\log T/\\delta)+1)G^2/\\lambda^2$; the $\\delta<1/e$ condition ensures the base case $a\\geq 8G^2/\\lambda^2$.",
+      "section": "Appendix B.6",
+      "origin": "paper",
+      "subclass": "conclude"
+    }
+  ],
+  "edges": [
+    {"source": "DP8.1", "target": "ProbP8.1", "type": "uses"},
+    {"source": "DP8.1", "target": "AP8.1", "type": "uses"},
+    {"source": "DP8.2", "target": "TP8.1", "type": "uses"},
+    {"source": "DP8.2", "target": "TP8.2", "type": "uses"},
+    {"source": "DP8.3", "target": "TP8.2", "type": "uses"},
+    {"source": "DP8.3", "target": "TP8.3", "type": "uses"},
+    {"source": "DP8.3", "target": "TP8.4", "type": "uses"},
+    {"source": "DP8.4", "target": "TP8.5", "type": "uses"},
+    {"source": "AssumP8.1", "target": "TP8.1", "type": "uses"},
+    {"source": "AssumP8.1", "target": "TP8.2", "type": "uses"},
+    {"source": "AssumP8.1", "target": "LP8.1", "type": "uses"},
+    {"source": "AssumP8.1", "target": "TP8.5", "type": "uses"},
+    {"source": "AP8.1", "target": "ProbP8.1", "type": "solves"},
+    {"source": "AP8.2", "target": "ProbP8.1", "type": "solves"},
+    {"source": "LP8.2", "target": "LP8.1", "type": "uses"},
+    {"source": "LP8.1", "target": "TP8.1", "type": "uses"},
+    {"source": "LP8.1", "target": "TP8.2", "type": "uses"},
+    {"source": "LP8.1", "target": "TP8.5", "type": "uses"},
+    {"source": "LP8.4", "target": "TP8.4", "type": "uses"},
+    {"source": "TP8.6", "target": "LP8.3", "type": "uses"},
+    {"source": "LP8.3", "target": "PrP8.1", "type": "uses"},
+    {"source": "LP8.5", "target": "LP8.6", "type": "uses"},
+    {"source": "LP8.5", "target": "PrP8.1", "type": "uses"},
+    {"source": "LP8.6", "target": "PrP8.1", "type": "uses"},
+    {"source": "PrP8.1", "target": "TP8.1", "type": "uses"},
+    {"source": "PrP8.1", "target": "TP8.2", "type": "uses"},
+    {"source": "PrP8.1", "target": "TP8.5", "type": "uses"},
+    {"source": "PP8.1", "target": "LP8.1", "type": "proves"},
+    {"source": "PP8.2", "target": "TP8.2", "type": "proves"},
+    {"source": "PP8.3", "target": "TP8.3", "type": "proves"},
+    {"source": "PP8.4", "target": "TP8.4", "type": "proves"},
+    {"source": "PP8.5", "target": "TP8.5", "type": "proves"},
+    {"source": "PP8.6", "target": "PrP8.1", "type": "proves"},
+    {"source": "AP8.1", "target": "ExP8.1", "type": "illustrates"},
+    {"source": "AP8.2", "target": "ExP8.1", "type": "illustrates"},
+    {"source": "AP8.1", "target": "ExP8.2", "type": "illustrates"},
+    {"source": "AP8.2", "target": "ExP8.2", "type": "illustrates"},
+    {"source": "AP8.1", "target": "ExP8.3", "type": "illustrates"},
+    {"source": "AP8.2", "target": "ExP8.3", "type": "illustrates"},
+    {"source": "TP8.1", "target": "ExP8.1", "type": "illustrates"},
+    {"source": "TP8.2", "target": "ExP8.1", "type": "illustrates"},
+    {"source": "TP8.5", "target": "ExP8.1", "type": "illustrates"},
+    {"source": "TP8.4", "target": "ExP8.2", "type": "illustrates"},
+    {"source": "TP8.5", "target": "ExP8.2", "type": "illustrates"},
+    {"source": "EP8.1", "target": "ExP8.3", "type": "uses"},
+    {"source": "RP8.1", "target": "AP8.1", "type": "uses"},
+
+    {"source": "ASP8.1", "target": "ASP8.2", "type": "uses"},
+    {"source": "ASP8.2", "target": "ASP8.3", "type": "uses"},
+
+    {"source": "PSP8.1", "target": "PSP8.2", "type": "uses"},
+    {"source": "PSP8.1", "target": "PSP8.3", "type": "uses"},
+    {"source": "PSP8.2", "target": "PSP8.3", "type": "uses"},
+    {"source": "PSP8.3", "target": "PSP8.4", "type": "uses"},
+    {"source": "PSP8.4", "target": "PSP8.5", "type": "uses"},
+    {"source": "LP8.2", "target": "PSP8.5", "type": "uses"},
+
+    {"source": "PSP8.6", "target": "PSP8.7", "type": "uses"},
+    {"source": "LP8.1", "target": "PSP8.7", "type": "uses"},
+    {"source": "PSP8.7", "target": "PSP8.8", "type": "uses"},
+    {"source": "LP8.2", "target": "PSP8.8", "type": "uses"},
+    {"source": "PSP8.8", "target": "PSP8.9", "type": "uses"},
+    {"source": "DP8.2", "target": "PSP8.9", "type": "uses"},
+
+    {"source": "PSP8.10", "target": "PSP8.11", "type": "uses"},
+    {"source": "PSP8.11", "target": "PSP8.12", "type": "uses"},
+    {"source": "PSP8.12", "target": "PSP8.13", "type": "uses"},
+
+    {"source": "LP8.4", "target": "PSP8.14", "type": "uses"},
+    {"source": "PSP8.14", "target": "PSP8.15", "type": "uses"},
+    {"source": "PSP8.15", "target": "PSP8.17", "type": "uses"},
+    {"source": "PSP8.16", "target": "PSP8.17", "type": "uses"},
+    {"source": "PSP8.14", "target": "PSP8.17", "type": "uses"},
+    {"source": "PSP8.17", "target": "PSP8.18", "type": "uses"},
+
+    {"source": "PSP8.19", "target": "PSP8.20", "type": "uses"},
+    {"source": "PSP8.19", "target": "PSP8.21", "type": "uses"},
+    {"source": "LP8.1", "target": "PSP8.21", "type": "uses"},
+    {"source": "PSP8.20", "target": "PSP8.22", "type": "uses"},
+    {"source": "PSP8.21", "target": "PSP8.22", "type": "uses"},
+
+    {"source": "PSP8.23", "target": "PSP8.24", "type": "uses"},
+    {"source": "LP8.5", "target": "PSP8.24", "type": "uses"},
+    {"source": "PSP8.23", "target": "PSP8.25", "type": "uses"},
+    {"source": "PSP8.24", "target": "PSP8.25", "type": "uses"},
+    {"source": "LP8.3", "target": "PSP8.25", "type": "uses"},
+    {"source": "PSP8.25", "target": "PSP8.26", "type": "uses"},
+    {"source": "LP8.6", "target": "PSP8.26", "type": "uses"},
+    {"source": "PSP8.26", "target": "PSP8.27", "type": "uses"},
+    {"source": "PSP8.27", "target": "PSP8.28", "type": "uses"}
+  ]
+}

@@ -1,0 +1,87 @@
+{
+  "metadata": {
+    "title": "Flow Matching for Generative Modeling (Lipman, Chen, Ben-Hamu, Nickel, Le, 2022)",
+    "arxiv_id": "2210.02747",
+    "year": 2022,
+    "venue": "ICLR 2023",
+    "framework": "simulation-free training of continuous normalizing flows via conditional flow matching",
+    "annotator": "Claude (claude-code)",
+    "source_note": "Extraction based on well-known content of arXiv:2210.02747."
+  },
+  "nodes": [
+    {
+      "id": "DP_FM.1",
+      "type": "definition",
+      "name": "Continuous normalizing flow (CNF)",
+      "section": "2",
+      "statement": "A CNF defines a time-dependent diffeomorphism $\\phi_t : \\mathbb{R}^d \\to \\mathbb{R}^d$ via the ODE $\\frac{d\\phi_t(\\mathbf{x})}{dt} = \\mathbf{v}_t(\\phi_t(\\mathbf{x}))$ with $\\phi_0(\\mathbf{x}) = \\mathbf{x}$. If $\\mathbf{x}(0) \\sim p_0$ (e.g., standard Gaussian), then $\\mathbf{x}(1) = \\phi_1(\\mathbf{x}(0)) \\sim p_1$ where $p_1$ is the generated distribution. The density evolves by the continuity equation: $\\frac{\\partial p_t}{\\partial t} + \\nabla \\cdot (p_t \\mathbf{v}_t) = 0$."
+    },
+    {
+      "id": "DP_FM.2",
+      "type": "definition",
+      "name": "Flow matching objective",
+      "section": "3",
+      "statement": "The flow matching (FM) objective trains a neural velocity field $\\mathbf{v}_\\theta$ to match a target velocity field $\\mathbf{u}_t$ that generates the desired probability path $p_t$: $\\mathcal{L}_{\\mathrm{FM}}(\\theta) = \\mathbb{E}_{t \\sim \\mathcal{U}[0,1], \\mathbf{x} \\sim p_t} \\| \\mathbf{v}_\\theta(\\mathbf{x}, t) - \\mathbf{u}_t(\\mathbf{x}) \\|^2$. This is intractable because $p_t$ and $\\mathbf{u}_t$ are generally unknown."
+    },
+    {
+      "id": "DP_FM.3",
+      "type": "definition",
+      "name": "Conditional flow matching (CFM) objective",
+      "section": "3",
+      "statement": "The key insight: condition on data points $\\mathbf{x}_1 \\sim q(\\mathbf{x}_1)$ and define conditional probability paths $p_t(\\mathbf{x} | \\mathbf{x}_1)$ and conditional velocity fields $\\mathbf{u}_t(\\mathbf{x} | \\mathbf{x}_1)$. The CFM objective: $\\mathcal{L}_{\\mathrm{CFM}}(\\theta) = \\mathbb{E}_{t, \\mathbf{x}_1 \\sim q, \\mathbf{x} \\sim p_t(\\cdot|\\mathbf{x}_1)} \\| \\mathbf{v}_\\theta(\\mathbf{x}, t) - \\mathbf{u}_t(\\mathbf{x} | \\mathbf{x}_1) \\|^2$ has the same gradients as $\\mathcal{L}_{\\mathrm{FM}}$ but is tractable because $p_t(\\cdot|\\mathbf{x}_1)$ and $\\mathbf{u}_t(\\cdot|\\mathbf{x}_1)$ are simple (e.g., Gaussian)."
+    },
+    {
+      "id": "DP_FM.4",
+      "type": "definition",
+      "name": "Optimal transport (OT) conditional paths",
+      "section": "4",
+      "statement": "The simplest choice: Gaussian conditional paths with straight-line interpolation. $p_t(\\mathbf{x} | \\mathbf{x}_1) = \\mathcal{N}(\\mathbf{x}; t \\mathbf{x}_1, (1 - (1-\\sigma_{\\min})t)^2 I)$, with conditional velocity $\\mathbf{u}_t(\\mathbf{x} | \\mathbf{x}_1) = \\frac{\\mathbf{x}_1 - (1 - \\sigma_{\\min})\\mathbf{x}}{1 - (1 - \\sigma_{\\min})t}$. When $\\sigma_{\\min} \\to 0$, this approaches optimal transport displacement interpolation: $\\mathbf{x}_t = (1-t)\\mathbf{x}_0 + t \\mathbf{x}_1$ with velocity $\\mathbf{u}_t = \\mathbf{x}_1 - \\mathbf{x}_0$."
+    },
+    {
+      "id": "DP_FM.5",
+      "type": "definition",
+      "name": "Training algorithm",
+      "section": "4",
+      "statement": "The OT-CFM training: (1) Sample $t \\sim \\mathcal{U}[0,1]$, $\\mathbf{x}_0 \\sim p_0 = \\mathcal{N}(0,I)$, $\\mathbf{x}_1 \\sim q(\\mathbf{x}_1)$ (data). (2) Compute $\\mathbf{x}_t = (1-t)\\mathbf{x}_0 + t\\mathbf{x}_1$. (3) Minimize $\\| \\mathbf{v}_\\theta(\\mathbf{x}_t, t) - (\\mathbf{x}_1 - \\mathbf{x}_0) \\|^2$. This is simulation-free (no ODE solving during training), unlike standard CNF training."
+    },
+    {
+      "id": "TP_FM.1",
+      "type": "theorem",
+      "name": "CFM and FM have identical gradients",
+      "section": "3",
+      "statement": "Under mild conditions, $\\nabla_\\theta \\mathcal{L}_{\\mathrm{CFM}}(\\theta) = \\nabla_\\theta \\mathcal{L}_{\\mathrm{FM}}(\\theta)$. That is, the conditional flow matching objective provides unbiased gradients of the (intractable) flow matching objective. This follows because the marginal $p_t(\\mathbf{x}) = \\int p_t(\\mathbf{x}|\\mathbf{x}_1) q(\\mathbf{x}_1) d\\mathbf{x}_1$ and the marginal velocity $\\mathbf{u}_t(\\mathbf{x}) = \\int \\mathbf{u}_t(\\mathbf{x}|\\mathbf{x}_1) \\frac{p_t(\\mathbf{x}|\\mathbf{x}_1) q(\\mathbf{x}_1)}{p_t(\\mathbf{x})} d\\mathbf{x}_1$.",
+      "assumptions": [
+        "Marginal probability path $p_t = \\int p_t(\\cdot|\\mathbf{x}_1) q(\\mathbf{x}_1) d\\mathbf{x}_1$ generates the same $p_t$ as the target",
+        "Conditional paths $p_t(\\cdot|\\mathbf{x}_1)$ are Gaussian with known velocity"
+      ],
+      "conclusions": [
+        "Gradient equivalence: $\\nabla_\\theta \\mathcal{L}_{\\mathrm{CFM}} = \\nabla_\\theta \\mathcal{L}_{\\mathrm{FM}}$",
+        "CFM is a tractable, simulation-free training objective for CNFs"
+      ]
+    },
+    {
+      "id": "TP_FM.2",
+      "type": "theorem",
+      "name": "Competitive generation results",
+      "section": "5",
+      "statement": "OT-CFM achieves competitive or superior FID scores compared to diffusion models on standard benchmarks, with significantly fewer sampling steps (e.g., 100 ODE steps vs 1000 diffusion steps). Straighter flow trajectories from the OT paths enable faster numerical integration.",
+      "assumptions": [
+        "OT conditional paths (DP_FM.4)",
+        "CFM training (DP_FM.5)"
+      ],
+      "conclusions": [
+        "Competitive FID with fewer sampling steps",
+        "Straighter trajectories improve ODE solver efficiency"
+      ]
+    }
+  ],
+  "edges": [
+    {"source": "DP_FM.1", "target": "DP_FM.2", "type": "uses"},
+    {"source": "DP_FM.2", "target": "DP_FM.3", "type": "uses"},
+    {"source": "DP_FM.3", "target": "DP_FM.4", "type": "uses"},
+    {"source": "DP_FM.4", "target": "DP_FM.5", "type": "uses"},
+    {"source": "DP_FM.3", "target": "TP_FM.1", "type": "uses"},
+    {"source": "DP_FM.2", "target": "TP_FM.1", "type": "uses"},
+    {"source": "DP_FM.5", "target": "TP_FM.2", "type": "uses"}
+  ]
+}

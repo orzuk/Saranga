@@ -1,0 +1,103 @@
+{
+  "metadata": {
+    "title": "Proximal Policy Optimization Algorithms (Schulman, Wolski, Dhariwal, Radford, Klimov, 2017)",
+    "arxiv_id": "1707.06347",
+    "year": 2017,
+    "venue": "arXiv preprint (widely cited as OpenAI tech report)",
+    "framework": "policy optimization via clipped surrogate objective as alternative to trust-region constraint",
+    "annotator": "Claude (claude-code)",
+    "source_note": "Extraction based on well-known content of arXiv:1707.06347. No LaTeX source downloaded."
+  },
+  "nodes": [
+    {
+      "id": "DP_PPO.1",
+      "type": "definition",
+      "name": "Policy gradient and REINFORCE estimator",
+      "section": "2",
+      "statement": "The policy gradient theorem gives $\\hat{g} = \\hat{\\mathbb{E}}_t \\left[ \\nabla_\\theta \\log \\pi_\\theta(a_t | s_t) \\hat{A}_t \\right]$ where $\\hat{A}_t$ is an estimator of the advantage function at timestep $t$ and the expectation is over a finite batch of trajectories."
+    },
+    {
+      "id": "DP_PPO.2",
+      "type": "definition",
+      "name": "Probability ratio $r_t(\\theta)$",
+      "section": "3",
+      "statement": "The probability ratio between the new and old policies: $r_t(\\theta) = \\frac{\\pi_\\theta(a_t | s_t)}{\\pi_{\\theta_{\\text{old}}}(a_t | s_t)}$. Note $r_t(\\theta_{\\text{old}}) = 1$. The surrogate objective from TRPO can be written as $L^{\\mathrm{CPI}}(\\theta) = \\hat{\\mathbb{E}}_t \\left[ r_t(\\theta) \\hat{A}_t \\right]$."
+    },
+    {
+      "id": "DP_PPO.3",
+      "type": "definition",
+      "name": "Clipped surrogate objective $L^{\\mathrm{CLIP}}$",
+      "section": "3",
+      "statement": "The clipped surrogate objective: $L^{\\mathrm{CLIP}}(\\theta) = \\hat{\\mathbb{E}}_t \\left[ \\min\\left( r_t(\\theta) \\hat{A}_t, \\; \\mathrm{clip}(r_t(\\theta), 1-\\epsilon, 1+\\epsilon) \\hat{A}_t \\right) \\right]$ where $\\epsilon > 0$ (e.g., $\\epsilon = 0.2$) is a hyperparameter. The clipping removes the incentive for moving $r_t$ outside $[1-\\epsilon, 1+\\epsilon]$, providing a pessimistic (lower) bound on the unclipped objective."
+    },
+    {
+      "id": "DP_PPO.4",
+      "type": "definition",
+      "name": "Adaptive KL penalty coefficient (PPO-Penalty variant)",
+      "section": "4",
+      "statement": "An alternative to clipping: $L^{\\mathrm{KLPEN}}(\\theta) = \\hat{\\mathbb{E}}_t \\left[ r_t(\\theta) \\hat{A}_t - \\beta \\, D_{\\mathrm{KL}}[\\pi_{\\theta_{\\text{old}}}(\\cdot|s_t) \\| \\pi_\\theta(\\cdot|s_t)] \\right]$ where $\\beta$ is adapted: if $d = D_{\\mathrm{KL}}(\\pi_{\\theta_{\\text{old}}}, \\pi_\\theta) < d_{\\mathrm{targ}} / 1.5$, halve $\\beta$; if $d > d_{\\mathrm{targ}} \\times 1.5$, double $\\beta$."
+    },
+    {
+      "id": "DP_PPO.5",
+      "type": "definition",
+      "name": "Generalized Advantage Estimation (GAE)",
+      "section": "5",
+      "statement": "The advantage estimator used in PPO is GAE($\\lambda$): $\\hat{A}_t = \\sum_{l=0}^{T-t} (\\gamma \\lambda)^l \\delta_{t+l}$ where $\\delta_t = r_t + \\gamma V(s_{t+1}) - V(s_t)$ is the TD residual. This interpolates between TD(0) ($\\lambda=0$) and Monte Carlo ($\\lambda=1$)."
+    },
+    {
+      "id": "DP_PPO.6",
+      "type": "definition",
+      "name": "Combined objective with value and entropy",
+      "section": "5",
+      "statement": "The full PPO objective maximized at each iteration: $L^{\\mathrm{CLIP+VF+S}}_t(\\theta) = \\hat{\\mathbb{E}}_t \\left[ L^{\\mathrm{CLIP}}_t(\\theta) - c_1 L^{\\mathrm{VF}}_t(\\theta) + c_2 S[\\pi_\\theta](s_t) \\right]$ where $L^{\\mathrm{VF}}_t = (V_\\theta(s_t) - V_t^{\\mathrm{targ}})^2$ is the value-function loss, $S$ is the entropy bonus, and $c_1, c_2$ are coefficients."
+    },
+    {
+      "id": "DP_PPO.7",
+      "type": "definition",
+      "name": "PPO algorithm (minibatch SGD on clipped objective)",
+      "section": "5",
+      "statement": "The PPO algorithm: (1) Run $N$ parallel actors for $T$ timesteps collecting trajectories. (2) Compute advantages $\\hat{A}_t$ via GAE. (3) For $K$ epochs, sample minibatches from the collected data and perform SGD on $L^{\\mathrm{CLIP+VF+S}}$. (4) Update $\\theta_{\\text{old}} \\leftarrow \\theta$ and repeat."
+    },
+    {
+      "id": "TP_PPO.1",
+      "type": "theorem",
+      "name": "Clipped objective as lower bound (informal)",
+      "section": "3",
+      "statement": "For any $\\theta$, $L^{\\mathrm{CLIP}}(\\theta) \\le L^{\\mathrm{CPI}}(\\theta)$. When $\\hat{A}_t > 0$, the objective is $\\min(r_t, 1+\\epsilon) \\hat{A}_t$, preventing overly large increases in probability ratio. When $\\hat{A}_t < 0$, the objective is $\\max(r_t, 1-\\epsilon) \\hat{A}_t$, preventing the ratio from decreasing too much. This provides a pessimistic bound analogous to the trust-region constraint.",
+      "assumptions": [
+        "Probability ratio $r_t(\\theta)$ (DP_PPO.2)",
+        "Clipping parameter $\\epsilon > 0$ (DP_PPO.3)"
+      ],
+      "conclusions": [
+        "$L^{\\mathrm{CLIP}} \\le L^{\\mathrm{CPI}}$ pointwise, providing a pessimistic lower bound",
+        "Gradient of $L^{\\mathrm{CLIP}}$ is zero when $r_t$ is clipped, preventing large updates"
+      ]
+    },
+    {
+      "id": "EP_PPO.1",
+      "type": "example",
+      "name": "Atari benchmark results",
+      "section": "6",
+      "statement": "PPO with the clipped objective achieves performance competitive with or superior to A2C, ACER, and TRPO across 49 Atari games, while being substantially simpler to implement. PPO-Clip outperforms PPO-Penalty and standard policy gradient methods."
+    },
+    {
+      "id": "EP_PPO.2",
+      "type": "example",
+      "name": "Continuous control (MuJoCo) results",
+      "section": "6",
+      "statement": "On continuous control tasks (Hopper, Walker, HalfCheetah, Swimmer, etc.), PPO matches or exceeds TRPO performance while requiring only first-order optimization (no conjugate gradient or Fisher-vector products)."
+    }
+  ],
+  "edges": [
+    {"source": "DP_PPO.1", "target": "DP_PPO.2", "type": "uses"},
+    {"source": "DP_PPO.2", "target": "DP_PPO.3", "type": "uses"},
+    {"source": "DP_PPO.2", "target": "DP_PPO.4", "type": "uses"},
+    {"source": "DP_PPO.3", "target": "DP_PPO.6", "type": "uses"},
+    {"source": "DP_PPO.5", "target": "DP_PPO.6", "type": "uses"},
+    {"source": "DP_PPO.6", "target": "DP_PPO.7", "type": "uses"},
+    {"source": "DP_PPO.3", "target": "TP_PPO.1", "type": "uses"},
+    {"source": "DP_PPO.2", "target": "TP_PPO.1", "type": "uses"},
+    {"source": "DP_PPO.7", "target": "EP_PPO.1", "type": "uses"},
+    {"source": "DP_PPO.7", "target": "EP_PPO.2", "type": "uses"}
+  ]
+}

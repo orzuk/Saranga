@@ -1,7 +1,7 @@
-# SARANGA — STEREO Alignment Prompt (v1)
+# Authomathics — STEREO Alignment Prompt (v1)
 
 You are aligning two structured math-paper knowledge graphs that were each
-extracted by SARANGA's MONO single-paper pipeline. Your task is to produce
+extracted by Authomathics's MONO single-paper pipeline. Your task is to produce
 a node-level correspondence between them and a pair-level relationship
 classification, both serialized to a single JSON file.
 
@@ -12,7 +12,7 @@ parallel rediscovery, alternative proof, etc.
 
 ## Schema reference
 
-The two input papers conform to the SARANGA mid-level schema:
+The two input papers conform to the Authomathics mid-level schema:
 - 18 node types (16 Level-1 + 2 Level-2 = `proof_step`, `algorithm_step`),
   defined in `src/node_types.py`.
 - 7 edge types (`uses`, `generalizes`, `specializes`, `proves`, `illustrates`,

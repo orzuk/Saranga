@@ -1,5 +1,5 @@
 """
-Canonical node type definitions for the SARANGA / Authomathics knowledge graph.
+Canonical node type definitions for the Authomathics knowledge graph.
 
 Single source of truth. All pipeline modules import from here.
 See src/annotation_schema.md for the full specification.

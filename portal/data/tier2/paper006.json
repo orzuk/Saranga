@@ -1,0 +1,1075 @@
+{
+  "metadata": {
+    "title": "Communication-Efficient Algorithms for Statistical Optimization",
+    "paper_num": 6,
+    "authors": "Yuchen Zhang, John C. Duchi, Martin J. Wainwright",
+    "year": 2013,
+    "venue": "JMLR",
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined_with_steps",
+    "extraction_date": "2026-04-28"
+  },
+  "nodes": [
+    {
+      "id": "DP6.1",
+      "type": "definition",
+      "name": "Population risk",
+      "section": "2.1 Empirical risk minimization",
+      "statement": "Given a $\\statprob$-integrable loss family $f(\\cdot;x)$, the population risk is $F_0(\\theta) \\defeq \\E_\\statprob[f(\\theta; X)] = \\int f(\\theta;x)\\,d\\statprob(x)$.",
+      "statement_clean": "The expected loss under the data distribution.",
+      "origin": "paper",
+      "tags": ["risk", "expectation"]
+    },
+    {
+      "id": "DP6.2",
+      "type": "definition",
+      "name": "Local empirical objective and distribution",
+      "section": "2.2 Averaging methods",
+      "statement": "For processor $i$ with subset $S_{1,i}$ of size $n$: $\\statprob_{1,i} \\defeq \\frac{1}{|S_{1,i}|}\\sum_{x \\in S_{1,i}} \\delta_x$ and $F_{1,i}(\\theta) \\defeq \\frac{1}{|S_{1,i}|}\\sum_{x \\in S_{1,i}} f(\\theta; x)$.",
+      "statement_clean": "Local empirical distribution and risk on processor $i$.",
+      "origin": "paper",
+      "tags": ["empirical-distribution"]
+    },
+    {
+      "id": "DP6.3",
+      "type": "definition",
+      "name": "Fisher information matrix",
+      "section": "3.2 Bounds for simple averaging (cited)",
+      "statement": "$I(\\theta^*) \\defeq \\E[\\nabla \\log p(X \\mid \\theta^*)\\nabla \\log p(X \\mid \\theta^*)^\\top] = \\E[\\nabla^2 \\log p(X \\mid \\theta^*)]$.",
+      "statement_clean": "Standard Fisher information matrix for a parametric family.",
+      "origin": "external",
+      "origin_citation": "Lehmann & Casella, Theory of Point Estimation, 1998",
+      "tags": ["information"]
+    },
+    {
+      "id": "DP6.4",
+      "type": "definition",
+      "name": "Asymptotic variance $\\sigma^2$",
+      "section": "3.3 Bounds for subsampled mixture averaging",
+      "statement": "$\\sigma^2 \\defeq \\E[\\ltwo{\\nabla^2 F_0(\\theta^*)^{-1}\\nabla f(\\theta^*; X)}^2]$, the asymptotic variance of the inverse-Hessian-scaled gradient at $\\theta^*$.",
+      "statement_clean": "Inverse-Hessian-weighted gradient variance at the optimum.",
+      "origin": "paper",
+      "tags": ["variance"]
+    },
+    {
+      "id": "DP6.5",
+      "type": "definition",
+      "name": "Good events $\\event_0,\\event_1,\\event_2$",
+      "section": "Appendix B (Proof of Theorem 1)",
+      "statement": "$\\event_0 = \\{\\frac{1}{n}\\sum_i H(X_i) \\le 2H\\}$; $\\event_1 = \\{\\matrixnorm{\\nabla^2 F_1(\\theta^*) - \\nabla^2 F_0(\\theta^*)}_2 \\le \\rho\\lambda/2\\}$; $\\event_2 = \\{\\ltwo{\\nabla F_1(\\theta^*)} \\le (1-\\rho)\\lambda\\delta_\\rho/2\\}$.",
+      "statement_clean": "Three high-probability events under which $F_1$ behaves like $F_0$ near $\\theta^*$.",
+      "origin": "paper",
+      "tags": ["events"]
+    },
+    {
+      "id": "ProbP6.1",
+      "type": "problem",
+      "name": "Empirical risk minimization (ERM)",
+      "section": "2.1 Empirical risk minimization",
+      "statement": "Estimate $\\theta^* = \\arg\\min_{\\theta \\in \\Theta} F_0(\\theta)$ by solving $\\widehat{\\theta} \\in \\arg\\min_{\\theta \\in \\Theta} \\frac{1}{|S|}\\sum_{x \\in S} f(\\theta;x)$ given an i.i.d. sample $S$ from $\\statprob$.",
+      "statement_clean": "Minimize the average loss over a sample to estimate the population minimizer.",
+      "origin": "paper",
+      "tags": ["optimization", "estimation"]
+    },
+    {
+      "id": "ProbP6.2",
+      "type": "problem",
+      "name": "Distributed/communication-efficient statistical optimization",
+      "section": "2.2 Averaging methods",
+      "statement": "Given $N = mn$ samples split across $m$ machines, estimate $\\theta^* = \\arg\\min_\\theta F_0(\\theta)$ using only a single round (or limited rounds) of inter-machine communication, matching the centralized rate $\\sigma^2/N$ when possible.",
+      "statement_clean": "Estimate the population risk minimizer from data spread over $m$ machines with minimal communication.",
+      "origin": "paper",
+      "tags": ["optimization", "distributed"]
+    },
+    {
+      "id": "ProbP6.3",
+      "type": "problem",
+      "name": "Click-through-rate logistic regression on Tencent SoSo data",
+      "section": "5 Experiments with advertising data",
+      "statement": "Predict click probability $P(y=1\\mid x;\\theta) = 1/(1+\\exp(-\\langle\\theta,x\\rangle))$ on $N \\approx 2.4\\times 10^8$ samples in $d \\approx 7.4 \\times 10^5$ dimensions by minimizing $f(\\theta;(x,y)) = \\log(1+\\exp(-y\\langle\\theta,x\\rangle)) + \\frac{\\lambda}{2}\\ltwo{\\theta}^2$.",
+      "statement_clean": "Large-scale ridge-regularized logistic regression for ad-click prediction on the Tencent dataset.",
+      "origin": "paper",
+      "tags": ["optimization", "logistic-regression", "application"]
+    },
+    {
+      "id": "AssumP6.1",
+      "type": "assumption",
+      "name": "Parameters (compact convex domain)",
+      "section": "2.1",
+      "statement": "$\\Theta \\subset \\R^d$ is compact and convex, $\\theta^* \\in \\mathrm{int}(\\Theta)$, and the $\\ell_2$-radius is $R = \\max_{\\theta \\in \\Theta} \\ltwo{\\theta - \\theta^*}$.",
+      "statement_clean": "Parameter space is a bounded convex set containing the optimum in its interior.",
+      "origin": "paper",
+      "tags": ["regularity"]
+    },
+    {
+      "id": "AssumP6.2",
+      "type": "assumption",
+      "name": "Local strong convexity",
+      "section": "2.1",
+      "statement": "$F_0$ is twice differentiable and there exists $\\lambda > 0$ such that $\\nabla^2 F_0(\\theta^*) \\succeq \\lambda I_{d \\times d}$.",
+      "statement_clean": "The population risk has positive-definite Hessian at the optimum.",
+      "origin": "paper",
+      "tags": ["curvature"]
+    },
+    {
+      "id": "AssumP6.3",
+      "type": "assumption",
+      "name": "Smoothness (8th-moment bounds and Hessian Lipschitz)",
+      "section": "3.1 Smoothness conditions",
+      "statement": "On a ball $U$ around $\\theta^*$: $\\E[\\ltwo{\\nabla f(\\theta;X)}^8] \\le G^8$, $\\E[\\matrixnorm{\\nabla^2 f(\\theta;X) - \\nabla^2 F_0(\\theta)}_2^8] \\le L^8$; the Hessian $\\nabla^2 f(\\cdot;x)$ is $H(x)$-Lipschitz with $\\E[H(X)^8] \\le H^8$.",
+      "statement_clean": "Eighth-moment gradient/Hessian bounds and Lipschitz Hessian on a neighborhood of $\\theta^*$.",
+      "origin": "paper",
+      "tags": ["smoothness", "moments"]
+    },
+    {
+      "id": "AssumP6.4",
+      "type": "assumption",
+      "name": "Strong smoothness (third-derivative Lipschitz)",
+      "section": "3.3",
+      "statement": "For each $x$, $\\nabla^3 f(\\cdot;x)$ is $M(x)$-Lipschitz: $\\ltwo{(\\nabla^3 f(\\theta;x) - \\nabla^3 f(\\theta';x))(u\\otimes u)} \\le M(x)\\ltwo{\\theta-\\theta'}\\ltwo{u}^2$ on $U$, with $\\E[M(X)^8] \\le M^8$.",
+      "statement_clean": "Third derivatives of the loss are Lipschitz with eighth-moment bound on the Lipschitz constant.",
+      "origin": "paper",
+      "tags": ["smoothness"]
+    },
+    {
+      "id": "AssumP6.5",
+      "type": "assumption",
+      "name": "Smoothness and Strong Convexity II (global, for SGD)",
+      "section": "3.5 Stochastic gradient descent with averaging",
+      "statement": "$\\matrixnorm{\\nabla^2 f(\\theta;x) - \\nabla^2 f(\\theta^*;x)}_2 \\le H(x)\\ltwo{\\theta-\\theta^*}$ with $\\E[H(X)^2] \\le H^2$; $\\E[\\ltwo{\\nabla f(\\theta;X)}^4] \\le G^4$, $\\E[\\matrixnorm{\\nabla^2 f(\\theta^*;X)}_2^4] \\le L^4$; $F_0$ is globally $\\lambda$-strongly convex.",
+      "statement_clean": "Global fourth-moment smoothness and strong convexity used for the SGD analysis.",
+      "origin": "paper",
+      "tags": ["smoothness", "strong-convexity"]
+    },
+    {
+      "id": "AP6.1",
+      "type": "algorithm",
+      "name": "Average mixture (AVGM)",
+      "section": "2.2 Averaging methods",
+      "statement": "Distribute $N=mn$ samples evenly to $m$ machines; each computes its local empirical minimizer $\\theta_{1,i}$; return $\\bar\\theta_1 = \\frac{1}{m}\\sum_{i=1}^m \\theta_{1,i}$.",
+      "statement_clean": "Compute local empirical minimizers and average them across machines.",
+      "input": [
+        "Loss family $f(\\theta;x)$",
+        "Total dataset of $N = mn$ i.i.d. samples",
+        "Number of machines $m$"
+      ],
+      "output": [
+        "Averaged estimator $\\bar\\theta_1 = \\frac{1}{m}\\sum_{i=1}^m \\theta_{1,i}$"
+      ],
+      "origin": "paper",
+      "tags": ["distributed", "averaging", "single-round"]
+    },
+    {
+      "id": "AP6.2",
+      "type": "algorithm",
+      "name": "Subsampled average mixture (SAVGM)",
+      "section": "2.2 Averaging methods",
+      "statement": "Each machine $i$ subsamples $\\lceil rn\\rceil$ points from its local data, computes $\\theta_{1,i}$ on the full local data and $\\theta_{2,i}$ on the subsample; output the bias-corrected average $\\widehat\\theta_{\\mathrm{SAVGM}} = (\\bar\\theta_1 - r\\bar\\theta_2)/(1-r)$.",
+      "statement_clean": "AVGM with a bootstrap-style subsample correction for bias.",
+      "input": [
+        "Loss family $f(\\theta;x)$",
+        "Total dataset of $N = mn$ samples and $m$ machines",
+        "Subsampling ratio $r \\in [0,1]$"
+      ],
+      "output": [
+        "Bias-corrected estimator $\\widehat\\theta_{\\mathrm{SAVGM}} = (\\bar\\theta_1 - r\\bar\\theta_2)/(1-r)$"
+      ],
+      "origin": "paper",
+      "tags": ["distributed", "subsampling", "bias-correction", "single-round"]
+    },
+    {
+      "id": "AP6.3",
+      "type": "algorithm",
+      "name": "Stochastic gradient descent with averaging (SGDAVGM)",
+      "section": "3.5 Stochastic gradient descent with averaging",
+      "statement": "Each machine runs $n$ iterations of projected SGD with stepsize $\\eta_t = c/(\\lambda t)$ on its local data to produce $\\theta'_i$; the algorithm returns $\\bar\\theta^n = \\frac{1}{m}\\sum_{i=1}^m \\theta'_i$.",
+      "statement_clean": "Each machine runs SGD on its local data; outputs are averaged across machines.",
+      "input": [
+        "Loss family $f(\\theta;x)$",
+        "Total dataset of $N=mn$ samples and $m$ machines",
+        "Stepsize constant $c > 1$"
+      ],
+      "output": [
+        "Averaged stochastic estimator $\\bar\\theta^n = \\frac{1}{m}\\sum_{i=1}^m \\theta'_i$"
+      ],
+      "origin": "paper",
+      "tags": ["distributed", "stochastic-gradient", "single-pass"]
+    },
+    {
+      "id": "AP6.4",
+      "type": "algorithm",
+      "name": "Two-stage SGD + gradient descent for approximate ERM",
+      "section": "3.4 Time complexity",
+      "statement": "Stage 1: Run $\\order(\\log^2(mn)/\\rho^2)$ steps of SGD on $F_1$ to enter the local strong-convexity ball $B_\\rho(\\theta_1)$. Stage 2: Run $\\order(\\log(mn))$ iterations of standard gradient descent to reach error $(mn)^{-2}$, total time $\\order(n\\log(mn))$.",
+      "statement_clean": "Hybrid SGD-then-gradient-descent procedure achieving the $(mn)^{-2}$-accurate local minimizer in near-linear time.",
+      "input": [
+        "Local objective $F_1$",
+        "Target accuracy $(mn)^{-2}$",
+        "Local strong convexity radius $\\rho$"
+      ],
+      "output": [
+        "Approximate empirical minimizer $\\theta'_1$ with $\\E[\\ltwo{\\theta'_1-\\theta_1}^2] = \\order((mn)^{-2})$"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "approximation"]
+    },
+    {
+      "id": "AP6.5",
+      "type": "algorithm",
+      "name": "Stochastic dual coordinate ascent (SDCA) baseline",
+      "section": "5 (cited)",
+      "statement": "Run multiple passes of stochastic dual coordinate ascent on the regularized empirical objective; used as a near-oracle baseline in the ad-click experiment.",
+      "statement_clean": "SDCA optimizer used as a comparison baseline.",
+      "origin": "external",
+      "origin_citation": "Shalev-Shwartz & Zhang, 2013",
+      "tags": ["baseline", "dual-coordinate"]
+    },
+    {
+      "id": "AP6.6",
+      "type": "algorithm",
+      "name": "Trust-region Newton via LIBSVM (local solver)",
+      "section": "5 (cited)",
+      "statement": "Each local empirical minimizer $\\theta_i$ in the ad-click experiment is computed using a trust-region Newton method implemented in LIBSVM.",
+      "statement_clean": "Local-machine optimizer used to compute $\\theta_{1,i}$ for AVGM/SAVGM.",
+      "origin": "external",
+      "origin_citation": "Nocedal & Wright 2006; Chang & Lin (LIBSVM) 2011",
+      "tags": ["newton", "implementation"]
+    },
+    {
+      "id": "EP6.1",
+      "type": "equation",
+      "name": "Projected SGD update",
+      "section": "3.5",
+      "statement": "$\\theta^{t+1/2} = \\theta^t - \\eta_t \\nabla f(\\theta^t; X_t)$ and $\\theta^{t+1} = \\arg\\min_{\\theta \\in \\Theta}\\ltwo{\\theta - \\theta^{t+1/2}}^2$.",
+      "statement_clean": "One-step projected stochastic gradient update.",
+      "origin": "paper",
+      "tags": ["update-rule"]
+    },
+    {
+      "id": "ExP6.1",
+      "type": "example",
+      "name": "Necessity of Hessian conditions (Bernoulli loss)",
+      "section": "3.1",
+      "statement": "With $X \\sim \\mathrm{Bernoulli}(1/2)$ and $f(\\theta;x) = \\theta^2 - \\theta$ if $x=0$, else $\\theta^2 \\indic{\\theta\\le 0} + \\theta$: $F_0$ is strongly convex and smooth but with discontinuous second derivative; $\\E[\\theta_{1,i}] = \\Omega(n^{-1/2})$, so AVGM has MSE $\\Omega(n^{-1})$.",
+      "statement_clean": "A loss that satisfies first/second-order smoothness but has discontinuous Hessian, for which AVGM fails to beat the single-machine rate.",
+      "origin": "paper",
+      "tags": ["counterexample", "necessity"]
+    },
+    {
+      "id": "ExP6.2",
+      "type": "example",
+      "name": "Synthetic regression simulations",
+      "section": "4 Performance on synthetic data",
+      "statement": "Three regression models (standard linear, cubic-misspecified, heteroskedastic) with $N = 100{,}000$, $d \\in \\{20, 40, 200\\}$, and $m \\in \\{2,4,8,16,32,64,128\\}$; least-squares loss; AVGM, SAVGM (with $r \\in \\{0.005,0.01,0.02,0.04\\}$), SGDAVGM, single-machine, and oracle baselines compared.",
+      "statement_clean": "Simulation study comparing AVGM, SAVGM, SGDAVGM, and baselines on three regression models.",
+      "origin": "paper",
+      "tags": ["simulation"]
+    },
+    {
+      "id": "ExP6.3",
+      "type": "example",
+      "name": "Tencent SoSo ad-click experiment",
+      "section": "5 Experiments with advertising data",
+      "statement": "Five-fold validation on the Tencent {\\tt soso.com} dataset ($N \\approx 2.36 \\times 10^8$, $d = 741{,}725$); evaluates AVGM, SAVGM ($r \\in \\{0.1, 0.25\\}$) versus SDCA/SGD baselines on held-out log-loss and AUC; SAVGM outperforms AVGM as $m$ grows up to 128.",
+      "statement_clean": "Real-world large-scale logistic regression experiment for advertisement click-through prediction.",
+      "origin": "paper",
+      "tags": ["real-data", "logistic-regression"]
+    },
+    {
+      "id": "TP6.1",
+      "type": "theorem",
+      "name": "AVGM mean-squared error bound",
+      "section": "3.2 Bounds for simple averaging",
+      "statement": "Under Assumptions 1--3, $\\E[\\ltwo{\\bar\\theta - \\theta^*}^2] \\le \\frac{2}{nm}\\E[\\ltwo{\\nabla^2 F_0(\\theta^*)^{-1}\\nabla f(\\theta^*;X)}^2] + \\frac{c}{\\lambda^2 n^2}(L^2\\log d + H^2 G^2/\\lambda^2)\\E[\\ltwo{\\nabla^2 F_0(\\theta^*)^{-1}\\nabla f(\\theta^*;X)}^2] + \\order(m^{-1}n^{-2}) + \\order(n^{-3})$.",
+      "statement_clean": "MSE of the AVGM estimator decays as $\\sigma^2/(nm) + \\order(n^{-2})$.",
+      "assumptions": ["AssumP6.1", "AssumP6.2", "AssumP6.3"],
+      "conclusions": [
+        "Leading $\\sigma^2/(nm)$ term matches centralized rate when $m \\le \\sqrt{N}$",
+        "Second-order correction scales as $1/(\\lambda^2 n^2)$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "mean-squared-error"]
+    },
+    {
+      "id": "TP6.2",
+      "type": "theorem",
+      "name": "SAVGM mean-squared error bound",
+      "section": "3.3 Bounds for subsampled mixture averaging",
+      "statement": "Under Assumptions 1--4, $\\E[\\ltwo{\\widehat\\theta_{\\mathrm{SAVGM}} - \\theta^*}^2] \\le \\frac{2+3r}{(1-r)^2}\\cdot\\frac{1}{nm}\\sigma^2 + c(\\frac{M^2 G^6}{\\lambda^6} + \\frac{G^4 H^2 d \\log d}{\\lambda^4})\\frac{1}{r(1-r)^2}n^{-3} + \\order(\\frac{1}{(1-r)^2}m^{-1}n^{-2})$.",
+      "statement_clean": "Subsampling correction reduces the bias-induced $n^{-2}$ term in AVGM to $n^{-3}$.",
+      "assumptions": ["AssumP6.1", "AssumP6.2", "AssumP6.3", "AssumP6.4"],
+      "conclusions": [
+        "Centralized first-order rate as long as $m < n^2$",
+        "Bias term reduced to $\\order(n^{-3})$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "mean-squared-error"]
+    },
+    {
+      "id": "TP6.3",
+      "type": "theorem",
+      "name": "SGDAVGM mean-squared error bound",
+      "section": "3.5 Stochastic gradient descent with averaging",
+      "statement": "Under Assumptions 1 and 5, $\\E[\\ltwo{\\bar\\theta^n - \\theta^*}^2] \\le \\frac{\\alpha G^2}{\\lambda^2 n m} + \\frac{\\beta^2}{n^{3/2}}$, where $\\alpha = 4c^2$ and $\\beta$ is the constant defined in the text.",
+      "statement_clean": "Averaged-SGD MSE achieves the optimal $1/(nm)$ rate plus a $1/n^{3/2}$ bias term.",
+      "assumptions": ["AssumP6.1", "AssumP6.5"],
+      "conclusions": [
+        "Optimal $\\order(N^{-1})$ rate",
+        "Bias term $\\beta^2/n^{3/2}$ dominates when $m$ is large"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "stochastic-gradient"]
+    },
+    {
+      "id": "TP6.4",
+      "type": "theorem",
+      "name": "Hajek-Le Cam local asymptotic minimax theorem (cited)",
+      "section": "3.2 (cited)",
+      "statement": "For any estimator $\\widehat\\theta_N$ based on $N$ i.i.d. samples, $\\lim_{c\\to\\infty}\\liminf_{N\\to\\infty}\\sup_{\\theta \\in B_2(\\theta^*, c/\\sqrt N)} N\\E_\\theta[\\ltwo{\\widehat\\theta_N - \\theta}^2] \\ge \\tr(I(\\theta^*)^{-1})$.",
+      "statement_clean": "The trace of the inverse Fisher information lower-bounds the asymptotic minimax risk.",
+      "origin": "external",
+      "origin_citation": "van der Vaart, Asymptotic Statistics 1998, Theorem 8.11",
+      "tags": ["lower-bound", "minimax"]
+    },
+    {
+      "id": "CP6.1",
+      "type": "corollary",
+      "name": "AVGM weak corollary (norm-based bound)",
+      "section": "3.2",
+      "statement": "Under the conditions of Theorem 1, $\\E[\\ltwo{\\bar\\theta - \\theta^*}^2] \\le \\frac{2 G^2}{\\lambda^2 nm} + \\frac{c G^2}{\\lambda^4 n^2}(L^2 \\log d + H^2 G^2/\\lambda^2) + \\order(m^{-1}n^{-2}) + \\order(n^{-3})$.",
+      "statement_clean": "Easier-to-parse version of Theorem 1 obtained from operator-norm bounds on the inverse Hessian.",
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "CP6.2",
+      "type": "corollary",
+      "name": "Maximum-likelihood Fisher-information bound",
+      "section": "3.2",
+      "statement": "If the loss is the negative log-likelihood for a parametric family, then under the conditions of Theorem 1, $\\E[\\ltwo{\\bar\\theta_1 - \\theta^*}^2] \\le \\frac{2}{N}\\tr(I(\\theta^*)^{-1}) + \\frac{c m^2 \\tr(I(\\theta^*)^{-1})}{\\lambda^2 N^2}(L^2\\log d + H^2 G^2/\\lambda^2) + \\order(m N^{-2})$.",
+      "statement_clean": "For MLE, the AVGM leading term equals $2\\tr(I^{-1})/N$, matching (up to a factor 2) the Hájek-Le Cam lower bound.",
+      "origin": "paper",
+      "tags": ["fisher-information", "minimax"]
+    },
+    {
+      "id": "LP6.1",
+      "type": "lemma",
+      "name": "Good-events closeness",
+      "section": "Appendix B",
+      "statement": "On $\\event_0\\cap\\event_1\\cap\\event_2$, $\\ltwo{\\theta_1 - \\theta^*} \\le \\frac{2\\ltwo{\\nabla F_1(\\theta^*)}}{(1-\\rho)\\lambda}$ and $\\nabla^2 F_1(\\theta) \\succeq (1-\\rho)\\lambda I$ for $\\theta$ in the local ball.",
+      "statement_clean": "Under the three good events, $F_1$ is locally strongly convex and its minimizer is close to $\\theta^*$.",
+      "origin": "paper",
+      "tags": ["concentration", "strong-convexity"]
+    },
+    {
+      "id": "LP6.2",
+      "type": "lemma",
+      "name": "Moment consequences (gradient and Hessian deviation)",
+      "section": "Appendix B",
+      "statement": "$\\E[\\ltwo{\\nabla F_1(\\theta^*)}^k] \\le C \\frac{G^k}{n^{k/2}}$ and $\\E[\\matrixnorm{\\nabla^2 F_1(\\theta^*) - \\nabla^2 F_0(\\theta^*)}_2^k] \\le C' \\frac{\\log^{k/2}(2d) L^k}{n^{k/2}}$.",
+      "statement_clean": "Empirical gradient and Hessian deviation moment bounds at $\\theta^*$.",
+      "origin": "paper",
+      "tags": ["moment-bound"]
+    },
+    {
+      "id": "LP6.3",
+      "type": "lemma",
+      "name": "Higher-order moment of error",
+      "section": "Appendix B",
+      "statement": "For any $k \\le \\min\\{k_1,k_2,k_3\\}$: $\\E[\\ltwo{\\theta_1 - \\theta^*}^k] = \\order(n^{-k/2}\\frac{G^k}{(1-\\rho)^k \\lambda^k} + n^{-k_1/2} + n^{-k_2/2} + n^{-k_3/2}) = \\order(n^{-k/2})$.",
+      "statement_clean": "$k$th moment of $\\theta_1-\\theta^*$ scales as $n^{-k/2}$.",
+      "origin": "paper",
+      "tags": ["moment-bound"]
+    },
+    {
+      "id": "LP6.4",
+      "type": "lemma",
+      "name": "Higher-order matrix-moment bound",
+      "section": "Appendix B",
+      "statement": "For $k \\le \\min\\{k_1,k_2,k_3\\}/2$, $\\E[\\matrixnorm{Q}_2^k] = \\order(n^{-k/2})$, where $Q = \\nabla^2 F_1(\\theta^*) - \\nabla^2 F_1(\\theta')$.",
+      "statement_clean": "Operator norm moments of the Hessian-difference $Q$ scale as $n^{-k/2}$.",
+      "origin": "paper",
+      "tags": ["moment-bound"]
+    },
+    {
+      "id": "LP6.5",
+      "type": "lemma",
+      "name": "Bias bound for AVGM/SAVGM (target-norm-e)",
+      "section": "Appendix C",
+      "statement": "$\\ltwo{\\E[(\\theta_1 - r\\theta_2)/(1-r) - \\theta^*]}^2 \\le \\order(1)\\cdot \\frac{1}{r(1-r)^2}(\\frac{M^2 G^6}{\\lambda^6} + \\frac{G^4 H^2}{\\lambda^4}d\\log d) n^{-3}$.",
+      "statement_clean": "Bias of the SAVGM estimator decays as $n^{-3}$.",
+      "origin": "paper",
+      "tags": ["bias", "moment-bound"]
+    },
+    {
+      "id": "LP6.6",
+      "type": "lemma",
+      "name": "Variance bound for SAVGM (target-e-norm)",
+      "section": "Appendix C",
+      "statement": "$\\E[\\ltwo{\\theta_1 - \\theta^* - r(\\theta_2 - \\theta^*)}^2] \\le (2+3r)\\E[\\ltwo{\\nabla^2 F_0(\\theta^*)^{-1}\\nabla F_1(\\theta^*)}^2] + \\order(n^{-2})$.",
+      "statement_clean": "Variance of the SAVGM combination is bounded by $(2+3r)$ times the asymptotic variance plus $\\order(n^{-2})$.",
+      "origin": "paper",
+      "tags": ["variance", "moment-bound"]
+    },
+    {
+      "id": "LP6.7",
+      "type": "lemma",
+      "name": "First-level third-order expansion",
+      "section": "Appendix C",
+      "statement": "Under the conditions of Theorem 2, $\\theta_1 - \\theta^* = -H^{-1}\\nabla F_1(\\theta^*) + H^{-1}(\\nabla^2 F_1(\\theta^*) - H)H^{-1}\\nabla F_1(\\theta^*) - H^{-1}\\nabla^3 F_0(\\theta^*)((H^{-1}\\nabla F_1(\\theta^*))\\otimes(H^{-1}\\nabla F_1(\\theta^*))) + (M^2 G^6/\\lambda^6 + G^4 H^2 d\\log d/\\lambda^4)\\mathcal{R}_3$.",
+      "statement_clean": "Third-order Taylor expansion of the empirical-minimizer error around $\\theta^*$ with $\\order(n^{-3})$ remainder.",
+      "origin": "paper",
+      "tags": ["expansion"]
+    },
+    {
+      "id": "LP6.8",
+      "type": "lemma",
+      "name": "Second-level third-order expansion (subsampled)",
+      "section": "Appendix C",
+      "statement": "Under the conditions of Theorem 2, $\\theta_2 - \\theta^* = -H^{-1}\\nabla F_2(\\theta^*) + H^{-1}(\\nabla^2 F_2(\\theta^*) - H)H^{-1}\\nabla F_2(\\theta^*) - H^{-1}\\nabla^3 F_0(\\theta^*)((H^{-1}\\nabla F_2(\\theta^*))^{\\otimes 2}) + r^{-3/2}(M^2 G^6/\\lambda^6 + G^4 H^2 d\\log d/\\lambda^4)\\mathcal{R}_3$.",
+      "statement_clean": "Analogue of the first-level expansion for the subsampled estimator $\\theta_2$.",
+      "origin": "paper",
+      "tags": ["expansion"]
+    },
+    {
+      "id": "LP6.9",
+      "type": "lemma",
+      "name": "SGD distance bound (Rakhlin-Shamir-Sridharan)",
+      "section": "Appendix D (cited)",
+      "statement": "If $\\E[\\ltwo{g_t}^2] \\le G^2$ for all $t$ and $\\eta_t = c/(\\lambda t)$ with $c \\ge 1$, then $\\E[\\ltwo{\\theta^t - \\theta^*}^2] \\le \\alpha G^2/(\\lambda^2 t)$ where $\\alpha = 4c^2$.",
+      "statement_clean": "Sharp $1/t$ MSE rate for projected SGD with $1/t$ stepsize.",
+      "origin": "external",
+      "origin_citation": "Rakhlin, Shamir & Sridharan 2012",
+      "tags": ["sgd", "convergence-rate"]
+    },
+    {
+      "id": "LP6.10",
+      "type": "lemma",
+      "name": "Vector Rosenthal inequality (de Acosta)",
+      "section": "Appendix F (cited)",
+      "statement": "For independent random vectors $X_i$ in a separable Banach space with $\\E[\\norm{X_i}^k] < \\infty$, there exists $C_k$ such that $\\E[|\\norm{\\sum X_i} - \\E\\norm{\\sum X_i}|^k] \\le C_k[(\\sum \\E\\norm{X_i}^2)^{k/2} + \\sum \\E\\norm{X_i}^k]$.",
+      "statement_clean": "Banach-space Rosenthal-type inequality for sums of independent random vectors.",
+      "origin": "external",
+      "origin_citation": "de Acosta 1981, Theorem 2.1",
+      "tags": ["concentration", "moment-inequality"]
+    },
+    {
+      "id": "LP6.11",
+      "type": "lemma",
+      "name": "Matrix Rosenthal inequality (Chen-Gittens-Tropp)",
+      "section": "Appendix F (cited)",
+      "statement": "For independent symmetrically distributed Hermitian random matrices $X_i \\in \\R^{d\\times d}$, $\\E[\\matrixnorm{\\sum X_i}^k]^{1/k} \\le \\sqrt{2e\\log d}\\matrixnorm{(\\sum \\E[X_i^2])^{1/2}} + 2e\\log d (\\E[\\max_i \\matrixnorm{X_i}^k])^{1/k}$.",
+      "statement_clean": "Non-commutative matrix Rosenthal moment inequality.",
+      "origin": "external",
+      "origin_citation": "Chen, Gittens & Tropp 2012, Theorem A.1(2)",
+      "tags": ["concentration", "matrix-inequality"]
+    },
+    {
+      "id": "PP6.1",
+      "type": "proof",
+      "name": "Proof of Corollary 2 (maximum-likelihood)",
+      "section": "3.2",
+      "statement": "Apply $\\nabla \\log p(x\\mid\\theta^*) = \\nabla f(\\theta^*;x)$ and the trace identity $I(\\theta^*)^{-1} = \\E[(H^{-1}\\nabla f(\\theta^*;X))(H^{-1}\\nabla f(\\theta^*;X))^\\top]$, then use linearity of the trace.",
+      "statement_clean": "Direct calculation rewriting Theorem 1 in terms of the inverse Fisher information.",
+      "parent_id": "CP6.2",
+      "proves": "CP6.2",
+      "origin": "paper"
+    },
+    {
+      "id": "PP6.2",
+      "type": "proof",
+      "name": "Proof of Theorem 1",
+      "section": "Appendix B",
+      "statement": "Decompose $\\E[\\ltwo{\\bar\\theta - \\theta^*}^2] \\le \\frac{1}{m}\\E[\\ltwo{\\theta_1-\\theta^*}^2] + \\ltwo{\\E[\\theta_1-\\theta^*]}^2$; control each term via Taylor expansion of $\\nabla F_1$ and Lemmas 1--4.",
+      "statement_clean": "Independence-plus-Taylor decomposition; second moment gives $1/(nm)$ term, bias gives $1/n^2$ term.",
+      "parent_id": "TP6.1",
+      "proves": "TP6.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP6.3",
+      "type": "proof",
+      "name": "Proof of Theorem 2",
+      "section": "Appendix C",
+      "statement": "Decompose $\\E[\\ltwo{\\widehat\\theta_{\\mathrm{SAVGM}} - \\theta^*}^2]$ into bias-squared and variance pieces (Lemmas 5 and 6), then use the third-order expansions (Lemmas 7 and 8) to cancel the leading bias terms after subsampling correction.",
+      "statement_clean": "Decompose into bias and variance; third-order Taylor expansions show bias drops to $n^{-3}$.",
+      "parent_id": "TP6.2",
+      "proves": "TP6.2",
+      "origin": "paper"
+    },
+    {
+      "id": "PP6.4",
+      "type": "proof",
+      "name": "Proof of Theorem 3 (SGDAVGM)",
+      "section": "Appendix D",
+      "statement": "Apply Lemma 9 to bound $\\E[\\ltwo{\\theta^n-\\theta^*}^2]$ by $\\alpha G^2/(\\lambda^2 n)$; then via Taylor remainder $r_t$, Markov's inequality and induction, show $\\ltwo{\\E[\\theta^n - \\theta^*]} \\le \\beta/n^{3/4}$.",
+      "statement_clean": "Combine the Rakhlin-Shamir-Sridharan rate with a bias induction $a_{t+1} \\le (1-c/t)a_t + b/t^{7/4}$.",
+      "parent_id": "TP6.3",
+      "proves": "TP6.3",
+      "origin": "paper"
+    },
+    {
+      "id": "PP6.5",
+      "type": "proof",
+      "name": "Proof of Lemma 1 (good-events)",
+      "section": "Appendix E",
+      "statement": "Use the triangle inequality with $\\delta_\\rho = \\min\\{\\rho, \\rho\\lambda/(4H)\\}$ to show $F_1$ is $(1-\\rho)\\lambda$-strongly convex on a ball; then strong convexity plus a bound on $\\nabla F_1(\\theta^*)$ implies $\\theta_1$ is close to $\\theta^*$.",
+      "statement_clean": "Local strong convexity argument using triangle inequality and event $\\event_2$.",
+      "parent_id": "LP6.1",
+      "proves": "LP6.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP6.6",
+      "type": "proof",
+      "name": "Proof of Lemma 2 (moment-consequences)",
+      "section": "Appendix F",
+      "statement": "Apply the de Acosta vector Rosenthal inequality (LP6.10) to $\\nabla F_1(\\theta^*) = n^{-1}\\sum_i \\nabla f(\\theta^*;X_i)$; symmetrize and apply the Chen-Gittens-Tropp matrix Rosenthal inequality (LP6.11) to the Hessian deviation.",
+      "statement_clean": "Combine vector and matrix Rosenthal inequalities with Jensen's inequality.",
+      "parent_id": "LP6.2",
+      "proves": "LP6.2",
+      "origin": "paper"
+    },
+    {
+      "id": "PP6.7",
+      "type": "proof",
+      "name": "Proof of Lemma 7 (first-level third-order expansion)",
+      "section": "Appendix G",
+      "statement": "Restrict to event $\\event = \\event_0\\cap\\event_1\\cap\\event_2$; iterate the second-order expansion of $\\nabla F_1$ together with Lemmas 2--4 and Hölder's inequality to absorb fourth-order remainders into $\\mathcal{R}_3$.",
+      "statement_clean": "Iterated Taylor expansion + moment bounds.",
+      "parent_id": "LP6.7",
+      "proves": "LP6.7",
+      "origin": "paper"
+    },
+    {
+      "id": "RP6.1",
+      "type": "remark",
+      "name": "Linear regression has $H = 0$",
+      "section": "3.1",
+      "statement": "Assumption 3 is mild: for linear and logistic regression with non-rank-deficient population covariance and bounded data moments, both smoothness and local strong convexity hold; in linear regression, $H = 0$.",
+      "origin": "paper",
+      "tags": ["interpretation"]
+    },
+    {
+      "id": "RP6.2",
+      "type": "remark",
+      "name": "Optimal subsampling rate $r$",
+      "section": "3.3",
+      "statement": "When $m < N^{2/3}$, the bound (Thm 2) is minimized by $r \\propto C \\sqrt{m}/n = C m^{3/2}/N$ with $C \\approx (G^2/\\lambda^2)\\max\\{MG/\\lambda, H\\sqrt{d\\log d}\\}$.",
+      "origin": "paper",
+      "tags": ["tuning"]
+    },
+    {
+      "id": "RP6.3",
+      "type": "remark",
+      "name": "Allowed number of machines $m$",
+      "section": "3.3",
+      "statement": "AVGM allows $m \\le N^{1/2}\\sqrt{\\lambda^2/\\max\\{L^2\\log d, H^2 G^2/\\lambda^2\\}}$; SAVGM permits $m \\le N^{2/3}(\\lambda^2/\\max\\{MG/\\lambda, H\\sqrt{d\\log d}\\})^{2/3}$ for the optimal rate.",
+      "origin": "paper",
+      "tags": ["scaling"]
+    },
+    {
+      "id": "OpenP6.1",
+      "type": "open_problem",
+      "name": "Multiple subsamples / with-replacement variants for SAVGM",
+      "section": "3.3",
+      "statement": "Open: does computing multiple subsamples per machine reduce variance or improve performance, and does using subsamples with replacement (vs. without replacement as analyzed) yield improved performance?",
+      "statement_clean": "Whether richer resampling at each machine improves SAVGM is left open.",
+      "origin": "paper",
+      "tags": ["resampling"]
+    },
+    {
+      "id": "OpenP6.2",
+      "type": "open_problem",
+      "name": "Bootstrap correction for SGDAVGM",
+      "section": "3.5",
+      "statement": "Open: it is unclear whether a bootstrap subsampling correction is possible for the stochastic-gradient-based estimator SGDAVGM to remove the $\\beta^2/n^{3/2}$ bias term.",
+      "statement_clean": "Can SAVGM-style bias correction be applied to SGDAVGM?",
+      "origin": "paper",
+      "tags": ["bias-correction"]
+    },
+    {
+      "id": "OpenP6.3",
+      "type": "open_problem",
+      "name": "Decomposition methods for non-parametric estimation",
+      "section": "6 Discussion",
+      "statement": "Open: nonparametric estimation problems often suffer superlinear scaling in dataset size; whether the AVGM/SAVGM-style decomposition strategies extend to such settings is an open avenue.",
+      "statement_clean": "Extending averaging methods to non-parametric estimation is left for future work.",
+      "origin": "paper",
+      "tags": ["nonparametric"]
+    },
+
+    {
+      "id": "ASP6.1",
+      "type": "algorithm_step",
+      "name": "Compute local empirical minimizer on each machine",
+      "parent_id": "AP6.1",
+      "step_order": 1,
+      "statement": "For each $i \\in \\{1,\\ldots,m\\}$, processor $i$ computes $\\theta_{1,i} \\in \\arg\\min_{\\theta \\in \\Theta} \\frac{1}{|S_{1,i}|}\\sum_{x \\in S_{1,i}} f(\\theta; x)$.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP6.2",
+      "type": "algorithm_step",
+      "name": "Average the local minimizers",
+      "parent_id": "AP6.1",
+      "step_order": 2,
+      "statement": "Compute $\\bar\\theta_1 = \\frac{1}{m}\\sum_{i=1}^m \\theta_{1,i}$ and return.",
+      "subclass": "return",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP6.3",
+      "type": "algorithm_step",
+      "name": "Subsample on each machine",
+      "parent_id": "AP6.2",
+      "step_order": 1,
+      "statement": "Each processor $i$ draws $S_{2,i}$ of size $\\lceil rn\\rceil$ uniformly at random without replacement from $S_{1,i}$.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP6.4",
+      "type": "algorithm_step",
+      "name": "Compute both empirical minimizers per machine",
+      "parent_id": "AP6.2",
+      "step_order": 2,
+      "statement": "Each processor $i$ computes $\\theta_{1,i}$ on $S_{1,i}$ and $\\theta_{2,i} \\in \\arg\\min_{\\theta \\in \\Theta} \\frac{1}{|S_{2,i}|}\\sum_{x \\in S_{2,i}} f(\\theta; x)$ on the subsample.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP6.5",
+      "type": "algorithm_step",
+      "name": "Form bias-corrected combination",
+      "parent_id": "AP6.2",
+      "step_order": 3,
+      "statement": "Compute $\\bar\\theta_2 = \\frac{1}{m}\\sum_{i=1}^m \\theta_{2,i}$ and return $\\widehat\\theta_{\\mathrm{SAVGM}} = (\\bar\\theta_1 - r\\bar\\theta_2)/(1-r)$.",
+      "subclass": "return",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP6.6",
+      "type": "algorithm_step",
+      "name": "Run $n$ iterations of projected SGD on each machine",
+      "parent_id": "AP6.3",
+      "step_order": 1,
+      "statement": "Each machine performs $n$ iterations of projected SGD with stepsize $\\eta_t = c/(\\lambda t)$ on its local data of size $n$, producing $\\theta'_i$.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP6.7",
+      "type": "algorithm_step",
+      "name": "Average the local SGD outputs",
+      "parent_id": "AP6.3",
+      "step_order": 2,
+      "statement": "Return $\\bar\\theta^n = \\frac{1}{m}\\sum_{i=1}^m \\theta'_i$.",
+      "subclass": "return",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP6.8",
+      "type": "algorithm_step",
+      "name": "Stage 1: SGD warm-up to enter local strong-convexity ball",
+      "parent_id": "AP6.4",
+      "step_order": 1,
+      "statement": "Perform $\\order(\\log^2(mn)/\\rho^2)$ iterations of SGD on $F_1$ to obtain a point inside $B_\\rho(\\theta_1)$ with high probability.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP6.9",
+      "type": "algorithm_step",
+      "name": "Stage 2: standard gradient descent refinement",
+      "parent_id": "AP6.4",
+      "step_order": 2,
+      "statement": "Run $\\order(\\log(mn))$ iterations of standard gradient descent under local strong convexity to drive squared error down to $(mn)^{-2}$; total time $\\order(n\\log(mn))$.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+
+    {
+      "id": "PSP6.1",
+      "type": "proof_step",
+      "name": "Decompose averaged-error into variance and squared-bias terms",
+      "parent_id": "PP6.2",
+      "step_order": 1,
+      "statement": "By independence of $\\theta_i$ across machines: $\\E[\\ltwo{\\bar\\theta - \\theta^*}^2] \\le \\frac{1}{m}\\E[\\ltwo{\\theta_1 - \\theta^*}^2] + \\ltwo{\\E[\\theta_1 - \\theta^*]}^2$ (eq. (eqn:error-inequality)).",
+      "subclass": "setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP6.2",
+      "type": "proof_step",
+      "name": "Define good events and apply Lemma 1",
+      "parent_id": "PP6.2",
+      "step_order": 2,
+      "statement": "Define $\\event = \\event_0 \\cap \\event_1 \\cap \\event_2$ from (eqn:good-events). Lemma 1 (LP6.1) gives $\\ltwo{\\theta_1 - \\theta^*} \\le 2\\ltwo{\\nabla F_1(\\theta^*)}/((1-\\rho)\\lambda)$ on $\\event$; Lemma 2 (LP6.2) bounds $\\P(\\event^c)$ by union bound.",
+      "subclass": "introduce_variable",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP6.3",
+      "type": "proof_step",
+      "name": "Control $\\E[\\ltwo{\\theta_1 - \\theta^*}^2]$ via Taylor expansion",
+      "parent_id": "PP6.2",
+      "step_order": 3,
+      "statement": "Taylor-expand $\\nabla F_1$ to get $\\theta_1 - \\theta^* = -H^{-1}\\nabla F_1(\\theta^*) + H^{-1}(P+Q)(\\theta_1 - \\theta^*)$; apply Cauchy-Schwarz with Lemmas 3-4 to obtain $\\E[\\ltwo{\\theta_1 - \\theta^*}^2] \\le 2\\E[\\ltwo{H^{-1}\\nabla F_1(\\theta^*)}^2] + \\order(n^{-2})$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP6.4",
+      "type": "proof_step",
+      "name": "Control $\\ltwo{\\E[\\theta_1 - \\theta^*]}^2$ via recursive expansion",
+      "parent_id": "PP6.2",
+      "step_order": 4,
+      "statement": "It remains to bound the squared bias. Recursively substitute the expansion to obtain $\\theta_1 - \\theta^* = v + \\indic{\\event^c}(\\theta_1 - \\theta^* - v)$ with $\\E[v]$ involving $\\E[H^{-1}(P+Q)H^{-1}\\nabla F_1(\\theta^*)]$, then bound this by $C(L^2\\log d + H^2 G^2/\\lambda^2)\\E[\\ltwo{H^{-1}\\nabla F_1(\\theta^*)}^2]/(\\lambda^2 n) + \\order(n^{-3})$.",
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP6.5",
+      "type": "proof_step",
+      "name": "Combine variance and bias bounds",
+      "parent_id": "PP6.2",
+      "step_order": 5,
+      "statement": "Plugging the bounds from steps 3 and 4 back into the decomposition (step 1) yields the theorem statement, with the leading term $\\frac{2}{nm}\\E[\\ltwo{H^{-1}\\nabla f(\\theta^*;X)}^2]$ and second-order correction $\\frac{c}{\\lambda^2 n^2}(L^2\\log d + H^2 G^2/\\lambda^2)\\E[\\ldots]$ plus lower-order remainders.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+
+    {
+      "id": "PSP6.6",
+      "type": "proof_step",
+      "name": "Set up bias-variance decomposition for the SAVGM combination",
+      "parent_id": "PP6.3",
+      "step_order": 1,
+      "statement": "Write $\\E[\\ltwo{(\\bar\\theta_1 - r\\bar\\theta_2)/(1-r) - \\theta^*}^2] \\le \\ltwo{\\E[(\\theta_1 - r\\theta_2)/(1-r) - \\theta^*]}^2 + \\frac{1}{m}\\E[\\ltwo{(\\theta_1 - r\\theta_2)/(1-r) - \\theta^*}^2]$ (eq. (eqn:bootstrap-decomposition)).",
+      "subclass": "setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP6.7",
+      "type": "proof_step",
+      "name": "Apply Lemma 5 (target-norm-e) for the squared bias",
+      "parent_id": "PP6.3",
+      "step_order": 2,
+      "statement": "By Lemma 5 (LP6.5), the squared bias of the SAVGM combination is $\\le \\order(1)\\frac{1}{r(1-r)^2}(M^2 G^6/\\lambda^6 + G^4 H^2 d\\log d/\\lambda^4)n^{-3}$.",
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP6.8",
+      "type": "proof_step",
+      "name": "Apply Lemma 6 (target-e-norm) for the variance term",
+      "parent_id": "PP6.3",
+      "step_order": 3,
+      "statement": "By Lemma 6 (LP6.6), the variance term is bounded by $(2+3r)\\E[\\ltwo{H^{-1}\\nabla F_1(\\theta^*)}^2] + \\order(n^{-2})$.",
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP6.9",
+      "type": "proof_step",
+      "name": "Combine the two lemmas to conclude",
+      "parent_id": "PP6.3",
+      "step_order": 4,
+      "statement": "Summing the bounds from steps 2 and 3 in the decomposition of step 1 yields the theorem's bound: $\\frac{2+3r}{(1-r)^2 m}\\sigma^2 + \\order(\\frac{1}{(1-r)^2}m^{-1}n^{-2}) + \\order(\\frac{1}{r(1-r)^2}n^{-3})$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+
+    {
+      "id": "PSP6.10",
+      "type": "proof_step",
+      "name": "Reduce to per-machine bounds via independence inequality",
+      "parent_id": "PP6.4",
+      "step_order": 1,
+      "statement": "By (eqn:error-inequality): $\\E[\\ltwo{\\bar\\theta^n - \\theta^*}^2] \\le \\frac{1}{m}\\E[\\ltwo{\\theta^n - \\theta^*}^2] + \\ltwo{\\E[\\theta^n - \\theta^*]}^2$. It suffices to prove (a) $\\E[\\ltwo{\\theta^n - \\theta^*}^2] \\le \\alpha G^2/(\\lambda^2 n)$ and (b) $\\ltwo{\\E[\\theta^n - \\theta^*]}^2 \\le \\beta^2/n^{3/2}$.",
+      "subclass": "setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP6.11",
+      "type": "proof_step",
+      "name": "Variance bound via Lemma 9 (Rakhlin-Shamir-Sridharan)",
+      "parent_id": "PP6.4",
+      "step_order": 2,
+      "statement": "Lemma 9 (LP6.9) gives part (a) directly: $\\E[\\ltwo{\\theta^t - \\theta^*}^2] \\le \\alpha G^2/(\\lambda^2 t)$ with $\\alpha = 4c^2$.",
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP6.12",
+      "type": "proof_step",
+      "name": "Bias recursion via Taylor remainder $r_t$",
+      "parent_id": "PP6.4",
+      "step_order": 3,
+      "statement": "Decompose $g_t = \\nabla f_t(\\theta^*) + \\nabla^2 f_t(\\theta^*)(\\theta^t - \\theta^*) + r_t$ and bound $\\E[\\ltwo{r_t}]$ via Markov's inequality and Assumption 5; obtain $\\ltwo{\\E[\\theta^{t+1} - \\theta^*]} \\le (1 - c/t)\\ltwo{\\E[\\theta^t - \\theta^*]} + b/t^{7/4}$ for $t \\ge \\tau_0$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP6.13",
+      "type": "proof_step",
+      "name": "Inductive argument $a_t \\le \\beta/t^{3/4}$",
+      "parent_id": "PP6.4",
+      "step_order": 4,
+      "statement": "By induction on $t$ with $\\beta = \\max\\{\\tau_0 R, b/(c-1)\\}$: assuming $a_t \\le \\beta/t^{3/4}$, the recursion of step 3 gives $a_{t+1} \\le \\beta(t-1)/t^{7/4} - (\\beta(c-1) - b)/t^2 \\le \\beta/(t+1)^{3/4}$. Setting $t = n$ proves part (b).",
+      "subclass": "induction_step",
+      "origin": "paper"
+    },
+
+    {
+      "id": "PSP6.14",
+      "type": "proof_step",
+      "name": "Establish $(1-\\rho)\\lambda$-strong convexity of $F_1$ on $U$",
+      "parent_id": "PP6.5",
+      "step_order": 1,
+      "statement": "For $\\theta \\in U = \\{\\ltwo{\\theta - \\theta^*} < \\delta_\\rho\\}$, triangle inequality gives $\\matrixnorm{\\nabla^2 F_1(\\theta) - \\nabla^2 F_0(\\theta^*)}_2 \\le H\\ltwo{\\theta - \\theta^*} + \\rho\\lambda/2$ on $\\event_1$. Choosing $\\delta_\\rho \\le \\rho\\lambda/(4H)$ gives $\\nabla^2 F_1(\\theta) \\succeq (1-\\rho)\\lambda I$.",
+      "subclass": "setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP6.15",
+      "type": "proof_step",
+      "name": "Suppose $\\ltwo{\\theta_1 - \\theta^*} > \\delta_\\rho$ for contradiction",
+      "parent_id": "PP6.5",
+      "step_order": 2,
+      "statement": "Strong convexity on $U$ yields $\\min\\{\\interp\\ltwo{\\theta_1 - \\theta^*}, \\delta_\\rho^2/(\\interp\\ltwo{\\theta_1 - \\theta^*})\\} < 2\\ltwo{\\nabla F_1(\\theta^*)}/((1-\\rho)\\lambda) \\le \\delta_\\rho$ for any $\\interp \\in (0,1)$. Suppose for contradiction $\\ltwo{\\theta_1 - \\theta^*} > \\delta_\\rho$ and set $\\interp = \\delta_\\rho/\\ltwo{\\theta_1 - \\theta^*}$ to obtain $\\delta_\\rho < \\delta_\\rho$, a contradiction.",
+      "subclass": "contradiction_setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP6.16",
+      "type": "proof_step",
+      "name": "Conclude bound on $\\ltwo{\\theta_1 - \\theta^*}$",
+      "parent_id": "PP6.5",
+      "step_order": 3,
+      "statement": "Therefore $\\ltwo{\\theta_1 - \\theta^*} \\le \\delta_\\rho$, and the strong-convexity inequality with $\\theta' = \\theta_1$ yields $\\ltwo{\\theta_1 - \\theta^*}^2 \\le \\frac{2\\ltwo{\\nabla F_1(\\theta^*)}}{(1-\\rho)\\lambda}\\ltwo{\\theta_1 - \\theta^*}$. Dividing by $\\ltwo{\\theta_1 - \\theta^*}$ completes the proof.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+
+    {
+      "id": "PSP6.17",
+      "type": "proof_step",
+      "name": "Gradient bound via vector Rosenthal (de Acosta)",
+      "parent_id": "PP6.6",
+      "step_order": 1,
+      "statement": "Apply Lemma 10 (LP6.10) to $\\nabla F_1(\\theta^*) = n^{-1}\\sum_i \\nabla f(\\theta^*;X_i)$ with Jensen's inequality to bound $\\E[\\ltwo{\\nabla F_1(\\theta^*)}^k] \\le C G^k / n^{k/2}$, proving (eqn:grad-bound).",
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP6.18",
+      "type": "proof_step",
+      "name": "Hessian bound via symmetrization + matrix Rosenthal",
+      "parent_id": "PP6.6",
+      "step_order": 2,
+      "statement": "Define $Z_i = \\frac{1}{n}(\\nabla^2 f(\\theta^*;X_i) - \\nabla^2 F_0(\\theta^*))$, symmetrize via Rademacher variables, and apply Lemma 11 (LP6.11) to obtain $\\E[\\matrixnorm{\\sum Z_i}^k]^{1/k} \\le 5\\sqrt{\\log d}\\matrixnorm{(n^{-1}\\E[(\\nabla^2 f(\\theta^*;X) - \\nabla^2 F_0(\\theta^*))^2])^{1/2}} + 4e\\log d \\cdot n^{(1-k)/k}L$, proving (eqn:hessian-bound).",
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+
+    {
+      "id": "PSP6.19",
+      "type": "proof_step",
+      "name": "Restrict to good event $\\event$",
+      "parent_id": "PP6.7",
+      "step_order": 1,
+      "statement": "By (eqn:no-bad-events), $\\E[\\indic{\\event^c}\\ltwo{\\theta_1 - \\theta^*}^2] = \\order(R^2 n^{-4})$, so it suffices to prove the expansion on $\\event = \\event_0 \\cap \\event_1 \\cap \\event_2$.",
+      "subclass": "setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP6.20",
+      "type": "proof_step",
+      "name": "Third-order Taylor expansion of $\\nabla F_1$",
+      "parent_id": "PP6.7",
+      "step_order": 2,
+      "statement": "On $\\event$: $0 = \\nabla F_1(\\theta^*) + \\nabla^2 F_1(\\theta^*)\\Delta + \\nabla^3 F_1(\\theta')(\\Delta \\otimes \\Delta)$. Solving for $\\Delta = \\theta_1 - \\theta^*$ gives $\\Delta = -H^{-1}\\nabla F_1(\\theta^*) - H^{-1}(\\nabla^2 F_1(\\theta^*) - H)\\Delta - H^{-1}\\nabla^3 F_1(\\theta^*)(\\Delta\\otimes\\Delta) + H^{-1}(\\nabla^3 F_0(\\theta^*) - \\nabla^3 F_1(\\theta'))(\\Delta\\otimes\\Delta)$ (eq. (eqn:third-order-taylor-expansion)).",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP6.21",
+      "type": "proof_step",
+      "name": "Control third-derivative remainder",
+      "parent_id": "PP6.7",
+      "step_order": 3,
+      "statement": "Show $\\indic{\\event}(\\nabla^3 F_0(\\theta^*) - \\nabla^3 F_1(\\theta'))(\\Delta\\otimes\\Delta) = (M^2 G^6/\\lambda^6 + G^4 H^2 d\\log d/\\lambda^4)\\mathcal{R}_3$ via Hölder + Lemma 3 + Lemma 11 (eq. (eqn:remainder-third-derivative)).",
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP6.22",
+      "type": "proof_step",
+      "name": "Replace $\\Delta\\otimes\\Delta$ by leading term outer product",
+      "parent_id": "PP6.7",
+      "step_order": 4,
+      "statement": "Using (eqn:simple-error-expansion) and Lemmas 3-4: $\\indic{\\event}\\nabla^3 F_1(\\theta^*)(\\Delta\\otimes\\Delta) = \\nabla^3 F_1(\\theta^*)((H^{-1}\\nabla F_1(\\theta^*))\\otimes(H^{-1}\\nabla F_1(\\theta^*))) + \\mathcal{R}_3$ (eq. (eqn:outer-product-third-derivative-remainder)).",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP6.23",
+      "type": "proof_step",
+      "name": "Replace $\\Delta$ by $-H^{-1}\\nabla F_1(\\theta^*)$ in second-order term",
+      "parent_id": "PP6.7",
+      "step_order": 5,
+      "statement": "Show $-\\indic{\\event}H^{-1}(\\nabla^2 F_1(\\theta^*) - H)\\Delta = H^{-1}(\\nabla^2 F_1(\\theta^*) - H)H^{-1}\\nabla F_1(\\theta^*) + \\mathcal{R}_3$ (eq. (eqn:recursive-third-remainder)) by an argument parallel to step 4.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP6.24",
+      "type": "proof_step",
+      "name": "Combine to obtain the third-order expansion",
+      "parent_id": "PP6.7",
+      "step_order": 6,
+      "statement": "Substitute the cancellations from steps 3-5 into the Taylor expansion (step 2) and absorb $\\indic{\\event^c}\\Delta$ via $\\E[\\indic{\\event^c}\\ltwo{\\Delta}^2] = \\order(n^{-4})$ to obtain $\\theta_1 - \\theta^* = -H^{-1}\\nabla F_1(\\theta^*) + H^{-1}(\\nabla^2 F_1(\\theta^*) - H)H^{-1}\\nabla F_1(\\theta^*) - H^{-1}\\nabla^3 F_0(\\theta^*)((H^{-1}\\nabla F_1(\\theta^*))^{\\otimes 2}) + \\mathcal{R}_3$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "AssumP6.1", "target": "TP6.1", "type": "uses"},
+    {"source": "AssumP6.2", "target": "TP6.1", "type": "uses"},
+    {"source": "AssumP6.3", "target": "TP6.1", "type": "uses"},
+    {"source": "AssumP6.1", "target": "TP6.2", "type": "uses"},
+    {"source": "AssumP6.2", "target": "TP6.2", "type": "uses"},
+    {"source": "AssumP6.3", "target": "TP6.2", "type": "uses"},
+    {"source": "AssumP6.4", "target": "TP6.2", "type": "uses"},
+    {"source": "AssumP6.1", "target": "TP6.3", "type": "uses"},
+    {"source": "AssumP6.5", "target": "TP6.3", "type": "uses"},
+
+    {"source": "DP6.1", "target": "ProbP6.1", "type": "defines"},
+    {"source": "ProbP6.1", "target": "ProbP6.2", "type": "specializes"},
+    {"source": "DP6.2", "target": "AP6.1", "type": "defines"},
+    {"source": "DP6.2", "target": "AP6.2", "type": "defines"},
+
+    {"source": "AP6.1", "target": "ProbP6.2", "type": "solves"},
+    {"source": "AP6.2", "target": "ProbP6.2", "type": "solves"},
+    {"source": "AP6.3", "target": "ProbP6.2", "type": "solves"},
+    {"source": "AP6.4", "target": "ProbP6.2", "type": "solves"},
+
+    {"source": "AP6.1", "target": "AP6.2", "type": "specializes"},
+
+    {"source": "TP6.1", "target": "AP6.1", "type": "uses"},
+    {"source": "TP6.2", "target": "AP6.2", "type": "uses"},
+    {"source": "TP6.3", "target": "AP6.3", "type": "uses"},
+
+    {"source": "TP6.1", "target": "CP6.1", "type": "uses"},
+    {"source": "TP6.1", "target": "CP6.2", "type": "uses"},
+    {"source": "DP6.3", "target": "CP6.2", "type": "uses"},
+    {"source": "TP6.4", "target": "CP6.2", "type": "uses"},
+
+    {"source": "ExP6.1", "target": "AssumP6.3", "type": "illustrates"},
+    {"source": "AP6.1", "target": "ExP6.2", "type": "illustrates"},
+    {"source": "AP6.2", "target": "ExP6.2", "type": "illustrates"},
+    {"source": "AP6.3", "target": "ExP6.2", "type": "illustrates"},
+
+    {"source": "AP6.1", "target": "ExP6.3", "type": "illustrates"},
+    {"source": "AP6.2", "target": "ExP6.3", "type": "illustrates"},
+    {"source": "ProbP6.3", "target": "ExP6.3", "type": "illustrates"},
+    {"source": "AP6.5", "target": "ExP6.3", "type": "illustrates"},
+    {"source": "AP6.6", "target": "ExP6.3", "type": "illustrates"},
+
+    {"source": "EP6.1", "target": "AP6.3", "type": "uses"},
+
+    {"source": "PP6.1", "target": "CP6.2", "type": "proves"},
+    {"source": "PP6.2", "target": "TP6.1", "type": "proves"},
+    {"source": "PP6.3", "target": "TP6.2", "type": "proves"},
+    {"source": "PP6.4", "target": "TP6.3", "type": "proves"},
+    {"source": "PP6.5", "target": "LP6.1", "type": "proves"},
+    {"source": "PP6.6", "target": "LP6.2", "type": "proves"},
+    {"source": "PP6.7", "target": "LP6.7", "type": "proves"},
+
+    {"source": "DP6.5", "target": "LP6.1", "type": "uses"},
+    {"source": "DP6.5", "target": "PP6.5", "type": "uses"},
+
+    {"source": "LP6.1", "target": "PP6.2", "type": "uses"},
+    {"source": "LP6.2", "target": "PP6.2", "type": "uses"},
+    {"source": "LP6.3", "target": "PP6.2", "type": "uses"},
+    {"source": "LP6.4", "target": "PP6.2", "type": "uses"},
+
+    {"source": "LP6.2", "target": "LP6.3", "type": "uses"},
+    {"source": "LP6.3", "target": "LP6.4", "type": "uses"},
+
+    {"source": "LP6.5", "target": "PP6.3", "type": "uses"},
+    {"source": "LP6.6", "target": "PP6.3", "type": "uses"},
+    {"source": "LP6.7", "target": "LP6.5", "type": "uses"},
+    {"source": "LP6.8", "target": "LP6.5", "type": "uses"},
+    {"source": "LP6.7", "target": "LP6.6", "type": "uses"},
+    {"source": "LP6.8", "target": "LP6.6", "type": "uses"},
+
+    {"source": "LP6.2", "target": "LP6.7", "type": "uses"},
+    {"source": "LP6.3", "target": "LP6.7", "type": "uses"},
+    {"source": "LP6.4", "target": "LP6.7", "type": "uses"},
+    {"source": "LP6.7", "target": "LP6.8", "type": "generalizes"},
+
+    {"source": "LP6.9", "target": "PP6.4", "type": "uses"},
+    {"source": "LP6.10", "target": "PP6.6", "type": "uses"},
+    {"source": "LP6.11", "target": "PP6.6", "type": "uses"},
+    {"source": "LP6.11", "target": "PP6.7", "type": "uses"},
+
+    {"source": "RP6.2", "target": "TP6.2", "type": "uses"},
+    {"source": "RP6.3", "target": "TP6.1", "type": "uses"},
+    {"source": "RP6.3", "target": "TP6.2", "type": "uses"},
+
+    {"source": "OpenP6.1", "target": "TP6.2", "type": "resolves"},
+    {"source": "OpenP6.2", "target": "TP6.3", "type": "resolves"},
+
+    {"source": "ASP6.1", "target": "ASP6.2", "type": "uses"},
+    {"source": "ASP6.3", "target": "ASP6.4", "type": "uses"},
+    {"source": "ASP6.4", "target": "ASP6.5", "type": "uses"},
+    {"source": "ASP6.6", "target": "ASP6.7", "type": "uses"},
+    {"source": "ASP6.8", "target": "ASP6.9", "type": "uses"},
+
+    {"source": "PSP6.1", "target": "PSP6.2", "type": "uses"},
+    {"source": "PSP6.2", "target": "PSP6.3", "type": "uses"},
+    {"source": "PSP6.2", "target": "PSP6.4", "type": "uses"},
+    {"source": "PSP6.3", "target": "PSP6.5", "type": "uses"},
+    {"source": "PSP6.4", "target": "PSP6.5", "type": "uses"},
+
+    {"source": "PSP6.6", "target": "PSP6.7", "type": "uses"},
+    {"source": "PSP6.6", "target": "PSP6.8", "type": "uses"},
+    {"source": "PSP6.7", "target": "PSP6.9", "type": "uses"},
+    {"source": "PSP6.8", "target": "PSP6.9", "type": "uses"},
+
+    {"source": "PSP6.10", "target": "PSP6.11", "type": "uses"},
+    {"source": "PSP6.10", "target": "PSP6.12", "type": "uses"},
+    {"source": "PSP6.12", "target": "PSP6.13", "type": "uses"},
+    {"source": "PSP6.11", "target": "PSP6.13", "type": "uses"},
+
+    {"source": "PSP6.14", "target": "PSP6.15", "type": "uses"},
+    {"source": "PSP6.15", "target": "PSP6.16", "type": "uses"},
+
+    {"source": "PSP6.19", "target": "PSP6.20", "type": "uses"},
+    {"source": "PSP6.20", "target": "PSP6.21", "type": "uses"},
+    {"source": "PSP6.20", "target": "PSP6.22", "type": "uses"},
+    {"source": "PSP6.20", "target": "PSP6.23", "type": "uses"},
+    {"source": "PSP6.21", "target": "PSP6.24", "type": "uses"},
+    {"source": "PSP6.22", "target": "PSP6.24", "type": "uses"},
+    {"source": "PSP6.23", "target": "PSP6.24", "type": "uses"},
+
+    {"source": "LP6.1", "target": "PSP6.2", "type": "uses"},
+    {"source": "LP6.2", "target": "PSP6.2", "type": "uses"},
+    {"source": "LP6.3", "target": "PSP6.3", "type": "uses"},
+    {"source": "LP6.4", "target": "PSP6.3", "type": "uses"},
+    {"source": "LP6.5", "target": "PSP6.7", "type": "uses"},
+    {"source": "LP6.6", "target": "PSP6.8", "type": "uses"},
+    {"source": "LP6.9", "target": "PSP6.11", "type": "uses"},
+    {"source": "LP6.10", "target": "PSP6.17", "type": "uses"},
+    {"source": "LP6.11", "target": "PSP6.18", "type": "uses"},
+    {"source": "LP6.11", "target": "PSP6.21", "type": "uses"},
+    {"source": "LP6.3", "target": "PSP6.21", "type": "uses"},
+    {"source": "LP6.3", "target": "PSP6.22", "type": "uses"},
+    {"source": "LP6.4", "target": "PSP6.22", "type": "uses"}
+  ]
+}

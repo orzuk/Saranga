@@ -250,7 +250,7 @@ This table can drop into the manuscript appendix as-is.
 \begin{table}[h]
 \centering
 \small
-\caption{Datasets and pipeline stages used in SARANGA. Tier sizes
+\caption{Datasets and pipeline stages used in Authomathics. Tier sizes
 listed are pre-extraction. Each tier uses a subset of the available
 operations; rows are operations, columns are tiers, $\checkmark$
 denotes the operation is run on that tier.}

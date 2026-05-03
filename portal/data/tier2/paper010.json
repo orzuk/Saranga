@@ -1,0 +1,409 @@
+{
+  "metadata": {
+    "title": "Reconciling modern machine learning practice and the bias-variance trade-off",
+    "paper_num": 10,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-04-28"
+  },
+  "nodes": [
+    {
+      "id": "DP10.1",
+      "type": "definition",
+      "name": "Empirical Risk Minimization (ERM)",
+      "section": "1 Introduction",
+      "statement": "Given training data $(x_1,y_1),\\dotsc,(x_n,y_n)$, ERM picks $h \\in \\cH$ minimizing the empirical risk $\\frac{1}{n}\\sum_{i=1}^n \\ell(h(x_i), y_i)$, where $\\ell$ is a loss (e.g. squared loss).",
+      "statement_clean": "Empirical risk minimization selects the predictor in the hypothesis class that minimizes average loss on the training set.",
+      "origin": "external",
+      "origin_citation": "Vapnik 1995"
+    },
+    {
+      "id": "DP10.2",
+      "type": "definition",
+      "name": "True (test) risk",
+      "section": "1 Introduction",
+      "statement": "The true risk of $h$ is $\\E_{(x,y)\\sim P}[\\ell(h(x),y)]$, expected loss under the data distribution $P$ over $\\R^d \\times \\R$.",
+      "statement_clean": "Expected loss of a predictor under the underlying data-generating distribution."
+    },
+    {
+      "id": "DP10.3",
+      "type": "definition",
+      "name": "Bias-variance trade-off",
+      "section": "1 Introduction",
+      "statement": "Conventional principle: capacity of $\\cH$ must balance under-fitting (small $\\cH$, large empirical risk) and over-fitting (large $\\cH$, low empirical risk but large true risk).",
+      "statement_clean": "Classical principle that hypothesis-class capacity should balance underfitting against overfitting.",
+      "origin": "external",
+      "origin_citation": "Geman, Bienenstock, Doursat 1992; Hastie, Tibshirani, Friedman 2001"
+    },
+    {
+      "id": "DP10.4",
+      "type": "definition",
+      "name": "Interpolation threshold",
+      "section": "1 Introduction",
+      "statement": "The capacity level at which a learned predictor first achieves zero training risk (perfect fit to the training data); for many parametric families this occurs near $N = n$.",
+      "statement_clean": "Smallest model capacity at which the predictor exactly fits the training data."
+    },
+    {
+      "id": "DP10.5",
+      "type": "definition",
+      "name": "Double descent risk curve",
+      "section": "1 Introduction",
+      "statement": "Unified test-risk-vs-capacity curve: a classical U-shape below the interpolation threshold, a peak at the threshold, and a second descent in the over-parametrized regime, in which test risk decreases with capacity.",
+      "statement_clean": "Risk curve combining the classical U-shape with a second decreasing branch beyond the interpolation threshold.",
+      "tags": ["empirical_phenomenon"]
+    },
+    {
+      "id": "DP10.6",
+      "type": "definition",
+      "name": "Random Fourier Features (RFF) class $\\cHN$",
+      "section": "2 Neural networks",
+      "statement": "$\\cHN = \\{ h(x) = \\sum_{k=1}^N a_k \\phi(x;v_k) : a_k \\in \\mathbb{C} \\}$ where $\\phi(x;v) := e^{\\sqrt{-1}\\langle v,x\\rangle}$ and $v_1,\\dotsc,v_N$ are i.i.d. standard normal in $\\R^d$.",
+      "statement_clean": "Two-layer network with random fixed Fourier-basis first-layer weights and trainable output coefficients.",
+      "origin": "external",
+      "origin_citation": "Rahimi & Recht 2008"
+    },
+    {
+      "id": "DP10.7",
+      "type": "definition",
+      "name": "Reproducing Kernel Hilbert Space $\\rkhs$ (Gaussian kernel)",
+      "section": "2 Neural networks",
+      "statement": "RKHS associated with the Gaussian kernel; $\\cHN \\to \\rkhs$ as $N \\to \\infty$, and $\\optninf$ denotes the minimum-norm interpolant in $\\rkhs$.",
+      "statement_clean": "Function space associated with the Gaussian kernel; limit of RFF classes as the number of features grows.",
+      "origin": "external",
+      "origin_citation": "classical kernel theory"
+    },
+    {
+      "id": "DP10.8",
+      "type": "definition",
+      "name": "Random ReLU Features class",
+      "section": "App. C.2 (Random ReLU)",
+      "statement": "$\\cHN = \\{ h(x) = \\sum_{k=1}^N a_k \\phi(x;v_k) \\}$ where $\\phi(x;v) := \\max(\\langle v,x\\rangle, 0)$ and the $v_k$ are i.i.d. uniform on the unit sphere in $\\R^d$.",
+      "statement_clean": "Random-feature class using ReLU non-linearities with random sphere-sampled directions.",
+      "origin": "external",
+      "origin_citation": "Cho & Saul 2009"
+    },
+    {
+      "id": "DP10.9",
+      "type": "definition",
+      "name": "Fill distance $\\kappa_n$",
+      "section": "App. A (Approximation theorem)",
+      "statement": "$\\kappa_n := \\max_{x\\in\\Omega} \\min_{x_j} \\|x - x_j\\|$, the largest distance from any point in $\\Omega$ to its nearest sample.",
+      "statement_clean": "Worst-case distance from a domain point to the nearest training sample.",
+      "origin": "external",
+      "origin_citation": "scattered-data approximation literature"
+    },
+    {
+      "id": "DP10.10",
+      "type": "definition",
+      "name": "Inductive bias (smallest-norm interpolant)",
+      "section": "1 Introduction; Concluding thoughts",
+      "statement": "Among all interpolating predictors, prefer the one of smallest function-space norm; an Occam's-razor-style preference for the simplest fit.",
+      "statement_clean": "Preference for the smoothest/smallest-norm function that interpolates the data."
+    },
+    {
+      "id": "ProbP10.1",
+      "type": "problem",
+      "name": "ERM with squared loss in $\\cHN$",
+      "section": "2 Neural networks",
+      "statement": "Compute $\\optnN \\in \\arg\\min_{h \\in \\cHN} \\frac{1}{n}\\sum_{i=1}^n (h(x_i) - y_i)^2$; if the minimizer is non-unique (e.g. $N>n$), pick the coefficient vector $(a_1,\\dotsc,a_N)$ of minimum $\\ell_2$ norm as a proxy for the RKHS norm.",
+      "statement_clean": "Find the minimum-coefficient-norm empirical-squared-loss minimizer in the random-feature class.",
+      "subclass": "optimization"
+    },
+    {
+      "id": "EP10.1",
+      "type": "equation",
+      "name": "RFF predictor form",
+      "section": "2 Neural networks",
+      "statement": "$h(x) = \\sum_{k=1}^N a_k \\phi(x;v_k)$, $\\phi(x;v) = e^{\\sqrt{-1}\\langle v,x\\rangle}$.",
+      "statement_clean": "Linear combination of complex exponentials with random frequencies."
+    },
+    {
+      "id": "EP10.2",
+      "type": "equation",
+      "name": "Wendland-type interpolation bound",
+      "section": "App. A (Approximation theorem)",
+      "statement": "$\\sup_{x \\in \\Omega} |h(x) - h^*(x)| < A e^{-B(n/\\log n)^{1/d}} (\\|h^*\\|_\\rkhs + \\|h\\|_\\rkhs)$ for absolute constants $A,B>0$.",
+      "statement_clean": "Sup-norm error of an interpolant in RKHS decays exponentially in the fill distance."
+    },
+    {
+      "id": "TP10.1",
+      "type": "theorem",
+      "name": "Approximation Theorem for RKHS interpolants (Theorem 1)",
+      "section": "App. A (Approximation theorem)",
+      "statement": "Fix $h^* \\in \\rkhs$. With $x_i$ i.i.d. uniform on a compact cube $\\Omega \\subset \\R^d$ and $y_i = h^*(x_i)$, there exist absolute constants $A,B>0$ such that for any interpolant $h \\in \\rkhs$ (i.e. $h(x_i)=y_i$), with high probability $\\sup_{x\\in\\Omega} |h(x)-h^*(x)| < A e^{-B(n/\\log n)^{1/d}}(\\|h^*\\|_\\rkhs + \\|h\\|_\\rkhs)$.",
+      "statement_clean": "Any RKHS interpolant of a smooth target on a compact cube approximates it with sup-norm error decaying exponentially in $(n/\\log n)^{1/d}$, scaled by the sum of RKHS norms.",
+      "assumptions": [
+        "$h^* \\in \\rkhs$ (Gaussian-kernel RKHS)",
+        "$x_i$ i.i.d. uniform on a compact cube $\\Omega \\subset \\R^d$",
+        "$y_i = h^*(x_i)$ (noiseless labels)",
+        "$h \\in \\rkhs$ interpolates: $h(x_i) = y_i$ for all $i$"
+      ],
+      "conclusions": [
+        "$\\sup_{x \\in \\Omega} |h(x) - h^*(x)| < A e^{-B(n/\\log n)^{1/d}}(\\|h^*\\|_\\rkhs + \\|h\\|_\\rkhs)$ with high probability"
+      ],
+      "tags": ["approximation", "bound"]
+    },
+    {
+      "id": "PP10.1",
+      "type": "proof",
+      "name": "Proof sketch of Theorem 1",
+      "section": "App. A (Approximation theorem)",
+      "parent_id": "TP10.1",
+      "proves": "TP10.1",
+      "statement": "Bound the fill $\\kappa_n = O((n/\\log n)^{-1/d})$ with high probability via grid+union bound; apply Wendland's Theorem 11.22 to $f := h - h^*$, using $f(x_i)=0$ and $\\|f\\|_\\rkhs \\le \\|h^*\\|_\\rkhs + \\|h\\|_\\rkhs$.",
+      "statement_clean": "Combine a high-probability fill-distance bound with Wendland's RKHS interpolation theorem applied to the difference $h - h^*$."
+    },
+    {
+      "id": "PSP10.1",
+      "type": "proof_step",
+      "name": "Bound the fill distance",
+      "section": "App. A (Approximation theorem)",
+      "parent_id": "PP10.1",
+      "step_order": 1,
+      "subclass": "bound_estimate",
+      "statement": "Show that with high probability $\\kappa_n = O((n/\\log n)^{-1/d})$ by partitioning $\\Omega$ into a grid and applying a union bound over the cells."
+    },
+    {
+      "id": "PSP10.2",
+      "type": "proof_step",
+      "name": "Introduce difference function $f := h - h^*$",
+      "section": "App. A (Approximation theorem)",
+      "parent_id": "PP10.1",
+      "step_order": 2,
+      "subclass": "introduce_variable",
+      "statement": "Define $f(x) := h(x) - h^*(x)$; observe $f(x_i)=0$ and by the triangle inequality $\\|f\\|_\\rkhs \\le \\|h^*\\|_\\rkhs + \\|h\\|_\\rkhs$."
+    },
+    {
+      "id": "PSP10.3",
+      "type": "proof_step",
+      "name": "Apply Wendland Theorem 11.22 to $f$",
+      "section": "App. A (Approximation theorem)",
+      "parent_id": "PP10.1",
+      "step_order": 3,
+      "subclass": "apply_lemma",
+      "statement": "Wendland's Theorem 11.22 bounds $\\sup_x |f(x)|$ by an exponentially decaying factor in $\\kappa_n$ times $\\|f\\|_\\rkhs$; substitute the fill bound from Step 1 and the norm bound from Step 2 to conclude."
+    },
+    {
+      "id": "TP10.2",
+      "type": "theorem",
+      "name": "Wendland Theorem 11.22 (cited)",
+      "section": "App. A (cited)",
+      "statement": "For functions in the Gaussian-kernel RKHS that vanish on a sample with fill $\\kappa_n$, the sup-norm is bounded by $A e^{-B/\\kappa_n}$ times the RKHS norm, for absolute constants $A,B>0$.",
+      "statement_clean": "Classical sup-norm interpolation-error bound for Gaussian-kernel RKHS in terms of fill distance.",
+      "origin": "external",
+      "origin_citation": "Wendland 2004, Theorem 11.22"
+    },
+    {
+      "id": "AP10.1",
+      "type": "algorithm",
+      "name": "RFF learning (minimum-coefficient-$\\ell_2$-norm ERM)",
+      "section": "2 Neural networks",
+      "statement": "Compute $\\optnN \\in \\cHN$ that minimizes the squared training loss; among minimizers (when $N>n$) pick coefficients of smallest $\\ell_2$ norm as a surrogate for the RKHS norm.",
+      "input": [
+        "Training data $(x_1,y_1),\\dotsc,(x_n,y_n) \\in \\R^d \\times \\R$",
+        "Number of random features $N$",
+        "Random frequencies $v_1,\\dotsc,v_N$ i.i.d. $\\mathcal{N}(0, \\sigma^{-2} I)$"
+      ],
+      "output": [
+        "Coefficient vector $(a_1,\\dotsc,a_N) \\in \\mathbb{C}^N$ (or $\\R^{2N}$) of minimum $\\ell_2$ norm minimizing $\\frac{1}{n}\\sum_i (h(x_i)-y_i)^2$",
+        "Predictor $\\optnN(x) = \\sum_k a_k e^{\\sqrt{-1}\\langle v_k,x\\rangle}$"
+      ],
+      "origin": "external",
+      "origin_citation": "Rahimi & Recht 2008",
+      "tags": ["regression", "linear_least_squares"]
+    },
+    {
+      "id": "AP10.2",
+      "type": "algorithm",
+      "name": "Random ReLU Features learning",
+      "section": "App. C.2 (Random ReLU)",
+      "statement": "Linear regression of squared loss over the Random ReLU features class; optionally with small ridge regularization $\\lambda$ for numerical stability near the interpolation threshold.",
+      "input": [
+        "Training data $(x_1,y_1),\\dotsc,(x_n,y_n)$",
+        "Number of features $N$",
+        "Random directions $v_1,\\dotsc,v_N$ uniform on the unit sphere in $\\R^d$",
+        "Optional ridge parameter $\\lambda$ (e.g. $4 \\cdot 10^{-6}$)"
+      ],
+      "output": [
+        "Coefficients $a_k$ minimizing squared (or ridge-regularized) loss",
+        "Predictor $\\optnN(x) = \\sum_k a_k \\max(\\langle v_k,x\\rangle, 0)$"
+      ],
+      "origin": "external",
+      "origin_citation": "Cho & Saul 2009"
+    },
+    {
+      "id": "AP10.3",
+      "type": "algorithm",
+      "name": "Weight-reuse SGD for fully-connected two-layer NN",
+      "section": "App. C.3 (Fully connected neural networks)",
+      "statement": "Train a single-hidden-layer NN with SGD (momentum 0.95); below the interpolation threshold, initialize the first $H_1$ hidden units of a wider $H_2>H_1$-unit network from a previously trained narrower network and Gaussian-initialize the rest; above the threshold, use standard random initialization.",
+      "input": [
+        "Training data $(x_i,y_i)$, hidden-unit count $H$",
+        "Glorot-uniform initialization for the smallest network; weights of the previously trained narrower network for $H_2 > H_1$",
+        "Step-size schedule: 10% decay every 500 epochs in the under-parametrized regime; fixed step size in the over-parametrized regime",
+        "Stopping rule: 6000 epochs, or zero classification error (under-parametrized regime)"
+      ],
+      "output": [
+        "Trained network with $(d+1) H + (H+1) K$ parameters realizing the predictor",
+        "Reduced training-risk variability across capacity sweeps relative to plain random initialization"
+      ],
+      "tags": ["neural_network", "sgd", "non_convex"]
+    },
+    {
+      "id": "AP10.4",
+      "type": "algorithm",
+      "name": "Random Forest with capacity sweep",
+      "section": "3 Decision trees and ensemble methods; App. D",
+      "statement": "Standard random forest for regression: at each split, sample $\\sqrt{d}$ features; control capacity via $N_\\mathsf{tree}$ and $N_\\mathsf{leaf}^\\mathsf{max}$; bootstrap re-sampling optionally disabled (PERT-style) to permit single-tree interpolation.",
+      "input": [
+        "Training data, feature count $d$",
+        "Number of trees $N_\\mathsf{tree}$ and maximum number of leaves $N_\\mathsf{leaf}^\\mathsf{max}$",
+        "Bootstrap resampling on/off"
+      ],
+      "output": [
+        "Forest predictor that averages the trees",
+        "Capacity controlled by $(N_\\mathsf{tree}, N_\\mathsf{leaf}^\\mathsf{max})$, exhibits double-descent risk curve"
+      ],
+      "origin": "external",
+      "origin_citation": "Breiman 2001; Cutler & Zhao 2001 (PERT)",
+      "tags": ["ensemble", "tree"]
+    },
+    {
+      "id": "AP10.5",
+      "type": "algorithm",
+      "name": "$L_2$-boosting trees with forest averaging",
+      "section": "App. E ($L_2$-boosting)",
+      "statement": "Gradient boosting (shrinkage 0.85) of trees with $\\le 10$ leaves to interpolate the training data, then average predictions of multiple such forests trained with identical hyper-parameters; capacity is $(N_\\mathsf{tree}, N_\\mathsf{forest})$.",
+      "input": [
+        "Training data, max-leaves cap (10)",
+        "Shrinkage parameter (0.85)",
+        "Number of boosting trees $N_\\mathsf{tree}$ and number of forests $N_\\mathsf{forest}$"
+      ],
+      "output": [
+        "Averaged $L_2$-boosted forest predictor exhibiting double-descent risk"
+      ],
+      "origin": "external",
+      "origin_citation": "Friedman 2001 (gradient boosting)",
+      "tags": ["ensemble", "boosting"]
+    },
+    {
+      "id": "ExP10.1",
+      "type": "example",
+      "name": "RFF on MNIST ($n=10^4$, 10 classes)",
+      "section": "2 Neural networks (Fig. 2)",
+      "statement": "RFF predictors $\\optnN$ trained on a $10^4$-point MNIST subset display the U-shape for $N<n$, a peak at $N=n=10^4$, and a second descent for $N>n$; $\\optninf$ outperforms every finite-$N$ predictor."
+    },
+    {
+      "id": "ExP10.2",
+      "type": "example",
+      "name": "RFF on CIFAR-10, 20-Newsgroups, TIMIT, SVHN",
+      "section": "App. C.1 (Figs. 5, 6)",
+      "statement": "RFF predictors trained on $n=10^4$ subsets of CIFAR-10, 20-Newsgroups, TIMIT, SVHN reproduce the double-descent risk curve with peak at $N=10^4$ across image, text and speech modalities."
+    },
+    {
+      "id": "ExP10.3",
+      "type": "example",
+      "name": "Random ReLU on MNIST and SVHN",
+      "section": "App. C.2 (Fig. 7)",
+      "statement": "Random ReLU feature models on $n=10^4$ subsets of MNIST and SVHN exhibit risk and norm curves qualitatively identical to RFF; tiny ridge $\\lambda=4\\cdot 10^{-6}$ added for SVHN stability."
+    },
+    {
+      "id": "ExP10.4",
+      "type": "example",
+      "name": "Two-layer fully connected NN on MNIST",
+      "section": "2 Neural networks (Fig. 4); App. C.3",
+      "statement": "Single-hidden-layer FC networks trained with weight-reuse SGD on $n=4\\cdot 10^3$ MNIST exhibit double descent with interpolation threshold near $n \\cdot K = 4 \\cdot 10^4$ parameters; the same shape persists for CIFAR-10 (cat/dog) and for plain random initialization (with larger variance)."
+    },
+    {
+      "id": "ExP10.5",
+      "type": "example",
+      "name": "Random forest on MNIST (and SVHN, TIMIT)",
+      "section": "3 Decision trees and ensemble methods (Fig. 3); App. D",
+      "statement": "Random forests on $n=10^4$ MNIST (and SVHN, TIMIT) regression tasks display double descent under the joint capacity index $(N_\\mathsf{tree}, N_\\mathsf{leaf}^\\mathsf{max})$, both with and without bootstrap re-sampling."
+    },
+    {
+      "id": "ExP10.6",
+      "type": "example",
+      "name": "$L_2$-boosted trees on MNIST and SVHN",
+      "section": "App. E (Fig. 10)",
+      "statement": "$L_2$-boosted random trees on $n=10^4$ MNIST and SVHN regression tasks display double descent; strong over-fitting under squared loss before the interpolation threshold, attenuated by high shrinkage."
+    },
+    {
+      "id": "ExP10.7",
+      "type": "example",
+      "name": "Synthetic 1-D RFF (periodic Fourier basis)",
+      "section": "App. C.4 (Fig. 9)",
+      "statement": "Periodic complex-valued functions on $[0,2\\pi]$ with random Fourier basis $e_k(x)=\\exp(\\sqrt{-1}(k-1)x)$ chosen by sampling $p_k \\propto 1/k^2$, target $h^* = \\sum_k p_k e_k$, $n=256$, $\\sigma^2$ noise: simulations confirm double descent with peak at $N=n$ at SNR $=\\infty$ and SNR $=20$."
+    },
+    {
+      "id": "ExP10.8",
+      "type": "example",
+      "name": "Random ReLU univariate fit ($N=40$ vs $N=4000$)",
+      "section": "2 Neural networks (Fig. 1.5)",
+      "statement": "Fitting 10 data points by Random ReLU features: with $N=40$, normalized coefficient norm $\\approx 695$; with $N=4000$, norm $\\approx 159$; the fit becomes visibly smoother as $N$ grows."
+    },
+    {
+      "id": "RP10.1",
+      "type": "remark",
+      "name": "Equivalence of inductive biases for kernel machines",
+      "section": "Concluding thoughts (Inductive bias)",
+      "statement": "For kernel machines, explicit norm minimization, SGD from zero initialization, and averaging Gaussian-process trajectories all lead to the same minimum-norm interpolant $\\optninf$."
+    },
+    {
+      "id": "RP10.2",
+      "type": "remark",
+      "name": "Optimization in the over-parametrized regime",
+      "section": "Concluding thoughts (Optimization)",
+      "statement": "Local methods like SGD reliably converge to global minima of the training risk in over-parametrized models, so interpolating models are simultaneously low-test-risk and easy to optimize."
+    },
+    {
+      "id": "RP10.3",
+      "type": "remark",
+      "name": "Historical absence of the double-descent curve",
+      "section": "Concluding thoughts (Historical absence)",
+      "statement": "The interpolation peak was historically masked by regularization, early stopping in NN training, and by use of RFF only in the computationally favorable regime $N \\ll n$."
+    },
+    {
+      "id": "RP10.4",
+      "type": "remark",
+      "name": "Margins theory limitation",
+      "section": "1 Introduction",
+      "statement": "Margins theory partially explains why larger classes can help in classification but does not apply to regression and does not predict the second descent beyond the interpolation threshold."
+    }
+  ],
+  "edges": [
+    {"source": "DP10.6", "target": "ProbP10.1", "type": "uses"},
+    {"source": "DP10.1", "target": "ProbP10.1", "type": "uses"},
+    {"source": "EP10.1", "target": "DP10.6", "type": "uses"},
+    {"source": "ProbP10.1", "target": "AP10.1", "type": "uses"},
+    {"source": "DP10.6", "target": "AP10.1", "type": "uses"},
+    {"source": "DP10.7", "target": "AP10.1", "type": "uses"},
+    {"source": "AP10.1", "target": "ExP10.1", "type": "illustrates"},
+    {"source": "AP10.1", "target": "ExP10.2", "type": "illustrates"},
+    {"source": "DP10.8", "target": "AP10.2", "type": "uses"},
+    {"source": "AP10.2", "target": "ExP10.3", "type": "illustrates"},
+    {"source": "AP10.2", "target": "ExP10.8", "type": "illustrates"},
+    {"source": "AP10.3", "target": "ExP10.4", "type": "illustrates"},
+    {"source": "AP10.4", "target": "ExP10.5", "type": "illustrates"},
+    {"source": "AP10.5", "target": "ExP10.6", "type": "illustrates"},
+    {"source": "AP10.1", "target": "ExP10.7", "type": "illustrates"},
+    {"source": "DP10.4", "target": "DP10.5", "type": "uses"},
+    {"source": "DP10.3", "target": "DP10.5", "type": "uses"},
+    {"source": "DP10.5", "target": "ExP10.1", "type": "illustrates"},
+    {"source": "DP10.5", "target": "ExP10.4", "type": "illustrates"},
+    {"source": "DP10.5", "target": "ExP10.5", "type": "illustrates"},
+    {"source": "DP10.7", "target": "TP10.1", "type": "uses"},
+    {"source": "DP10.9", "target": "TP10.1", "type": "uses"},
+    {"source": "EP10.2", "target": "TP10.1", "type": "uses"},
+    {"source": "PP10.1", "target": "TP10.1", "type": "proves"},
+    {"source": "TP10.2", "target": "PP10.1", "type": "uses"},
+    {"source": "DP10.9", "target": "PSP10.1", "type": "uses"},
+    {"source": "PSP10.1", "target": "PSP10.3", "type": "uses"},
+    {"source": "PSP10.2", "target": "PSP10.3", "type": "uses"},
+    {"source": "TP10.2", "target": "PSP10.3", "type": "uses"},
+    {"source": "TP10.1", "target": "DP10.10", "type": "uses"},
+    {"source": "DP10.10", "target": "AP10.1", "type": "uses"},
+    {"source": "DP10.10", "target": "AP10.4", "type": "uses"}
+  ]
+}

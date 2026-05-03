@@ -1,0 +1,151 @@
+{
+  "metadata": {
+    "title": "Trust Region Policy Optimization (Schulman, Levine, Moritz, Jordan, Abbeel, 2015)",
+    "arxiv_id": "1502.05477",
+    "year": 2015,
+    "venue": "ICML 2015",
+    "framework": "policy optimization via surrogate objective with trust-region constraint",
+    "annotator": "Claude (claude-code)",
+    "source_note": "Extraction based on well-known content of arXiv:1502.05477. No LaTeX source downloaded."
+  },
+  "nodes": [
+    {
+      "id": "DP_TRPO.1",
+      "type": "definition",
+      "name": "Markov Decision Process (MDP)",
+      "section": "2",
+      "statement": "An MDP $(\\mathcal{S}, \\mathcal{A}, P, r, \\rho_0, \\gamma)$ where $\\mathcal{S}$ is the state space, $\\mathcal{A}$ the action space, $P : \\mathcal{S} \\times \\mathcal{A} \\times \\mathcal{S} \\to \\mathbb{R}$ the transition probability, $r : \\mathcal{S} \\to \\mathbb{R}$ the reward function, $\\rho_0$ the initial state distribution, and $\\gamma \\in (0,1)$ the discount factor."
+    },
+    {
+      "id": "DP_TRPO.2",
+      "type": "definition",
+      "name": "Stochastic policy and expected discounted return",
+      "section": "2",
+      "statement": "A stochastic policy $\\pi : \\mathcal{S} \\times \\mathcal{A} \\to [0,1]$ mapping states to distributions over actions. The expected discounted return is $\\eta(\\pi) = \\mathbb{E}_{s_0, a_0, \\ldots} \\left[ \\sum_{t=0}^{\\infty} \\gamma^t r(s_t) \\right]$ where $s_0 \\sim \\rho_0$, $a_t \\sim \\pi(\\cdot | s_t)$, $s_{t+1} \\sim P(\\cdot | s_t, a_t)$."
+    },
+    {
+      "id": "DP_TRPO.3",
+      "type": "definition",
+      "name": "State-action value, state value, and advantage",
+      "section": "2",
+      "statement": "The state-action value $Q_\\pi(s,a) = \\mathbb{E}_{s_{t+1}, a_{t+1}, \\ldots} \\left[ \\sum_{l=0}^{\\infty} \\gamma^l r(s_{t+l}) \\,|\\, s_t = s, a_t = a \\right]$, the state value $V_\\pi(s) = \\mathbb{E}_{a \\sim \\pi} [Q_\\pi(s,a)]$, and the advantage $A_\\pi(s,a) = Q_\\pi(s,a) - V_\\pi(s)$."
+    },
+    {
+      "id": "DP_TRPO.4",
+      "type": "definition",
+      "name": "Discounted visitation frequency",
+      "section": "2",
+      "statement": "The discounted visitation frequency (or state distribution) of policy $\\pi$ is $\\rho_\\pi(s) = \\sum_{t=0}^{\\infty} \\gamma^t P(s_t = s | \\pi)$, so that $\\eta(\\pi) = \\sum_s \\rho_\\pi(s) \\sum_a \\pi(a|s) r(s)$."
+    },
+    {
+      "id": "DP_TRPO.5",
+      "type": "definition",
+      "name": "Surrogate objective (importance-sampled advantage)",
+      "section": "2",
+      "statement": "Given the current policy $\\pi_{\\text{old}}$, the surrogate objective for a new policy $\\pi$ is $L_{\\pi_{\\text{old}}}(\\pi) = \\eta(\\pi_{\\text{old}}) + \\sum_s \\rho_{\\pi_{\\text{old}}}(s) \\sum_a \\pi(a|s) A_{\\pi_{\\text{old}}}(s,a)$. This equals $\\eta(\\pi_{\\text{old}}) + \\mathbb{E}_{s \\sim \\rho_{\\pi_{\\text{old}}}, a \\sim \\pi} [A_{\\pi_{\\text{old}}}(s,a)]$, and matches $\\eta(\\pi)$ to first order around $\\pi_{\\text{old}}$."
+    },
+    {
+      "id": "DP_TRPO.6",
+      "type": "definition",
+      "name": "KL divergence constraint (trust region)",
+      "section": "3",
+      "statement": "The trust region is defined by constraining the maximum KL divergence between the old and new policies: $\\bar{D}_{\\mathrm{KL}}^{\\max}(\\pi_{\\text{old}}, \\pi) = \\max_s D_{\\mathrm{KL}}(\\pi_{\\text{old}}(\\cdot|s) \\| \\pi(\\cdot|s)) \\le \\delta$ for a step-size parameter $\\delta > 0$."
+    },
+    {
+      "id": "DP_TRPO.7",
+      "type": "definition",
+      "name": "Parameterized policy $\\pi_\\theta$",
+      "section": "4",
+      "statement": "The policy $\\pi_\\theta$ is parameterized by a vector $\\theta \\in \\mathbb{R}^d$ (e.g., weights of a neural network). The trust-region optimization becomes: $\\max_\\theta L_{\\theta_{\\text{old}}}(\\theta)$ subject to $\\bar{D}_{\\mathrm{KL}}(\\theta_{\\text{old}}, \\theta) \\le \\delta$, where $\\bar{D}_{\\mathrm{KL}}$ is the average KL divergence over states sampled from $\\rho_{\\theta_{\\text{old}}}$."
+    },
+    {
+      "id": "LP_TRPO.1",
+      "type": "lemma",
+      "name": "Performance difference decomposition (Kakade & Langford identity)",
+      "section": "2",
+      "statement": "For any two policies $\\pi$ and $\\tilde{\\pi}$: $\\eta(\\tilde{\\pi}) = \\eta(\\pi) + \\sum_{t=0}^{\\infty} \\sum_s P(s_t = s | \\tilde{\\pi}) \\sum_a \\tilde{\\pi}(a|s) \\gamma^t A_\\pi(s,a) = \\eta(\\pi) + \\sum_s \\rho_{\\tilde{\\pi}}(s) \\sum_a \\tilde{\\pi}(a|s) A_\\pi(s,a)$.",
+      "assumptions": [
+        "Two policies $\\pi, \\tilde{\\pi}$ defined on the same MDP (DP_TRPO.1)"
+      ],
+      "conclusions": [
+        "Exact decomposition of performance difference in terms of advantages under $\\pi$ weighted by state visitation under $\\tilde{\\pi}$"
+      ]
+    },
+    {
+      "id": "LP_TRPO.2",
+      "type": "lemma",
+      "name": "Monotonic improvement bound (penalty version)",
+      "section": "2",
+      "statement": "For any policies $\\pi$ and $\\tilde{\\pi}$: $\\eta(\\tilde{\\pi}) \\ge L_\\pi(\\tilde{\\pi}) - C \\cdot \\bar{D}_{\\mathrm{KL}}^{\\max}(\\pi, \\tilde{\\pi})$ where $C = \\frac{4 \\epsilon \\gamma}{(1 - \\gamma)^2}$ and $\\epsilon = \\max_{s,a} |A_\\pi(s,a)|$. Thus maximizing $L_\\pi(\\tilde{\\pi}) - C \\cdot D_{\\mathrm{KL}}^{\\max}$ guarantees monotonic improvement of $\\eta$.",
+      "assumptions": [
+        "Surrogate objective $L_\\pi$ (DP_TRPO.5)",
+        "KL divergence between policies (DP_TRPO.6)",
+        "Bounded advantage: $\\epsilon = \\max_{s,a} |A_\\pi(s,a)|$"
+      ],
+      "conclusions": [
+        "Lower bound on true return $\\eta(\\tilde{\\pi})$ in terms of surrogate minus KL penalty",
+        "Monotonic improvement guarantee: if $\\tilde{\\pi} = \\arg\\max L_\\pi - C \\cdot D_{\\mathrm{KL}}^{\\max}$, then $\\eta(\\tilde{\\pi}) \\ge \\eta(\\pi)$"
+      ]
+    },
+    {
+      "id": "TP_TRPO.1",
+      "type": "theorem",
+      "name": "TRPO practical algorithm",
+      "section": "4",
+      "statement": "The practical TRPO algorithm solves the constrained optimization $\\max_\\theta \\hat{L}_{\\theta_{\\text{old}}}(\\theta)$ subject to $\\bar{D}_{\\mathrm{KL}}(\\theta_{\\text{old}}, \\theta) \\le \\delta$ using: (1) a linear approximation to $L$ and quadratic approximation to the KL constraint, yielding a natural-gradient step $\\theta_{k+1} = \\theta_k + \\alpha \\hat{F}^{-1} \\hat{g}$ where $\\hat{F}$ is the Fisher information matrix and $\\hat{g}$ the policy gradient; (2) a backtracking line search to satisfy the KL constraint exactly; (3) conjugate gradient to avoid explicitly forming $F^{-1}$.",
+      "assumptions": [
+        "Parameterized policy $\\pi_\\theta$ (DP_TRPO.7)",
+        "Trust-region constraint (DP_TRPO.6)",
+        "Surrogate objective (DP_TRPO.5)",
+        "Monotonic improvement guarantee (LP_TRPO.2)"
+      ],
+      "conclusions": [
+        "Practical policy update via constrained natural-gradient step",
+        "Monotonic improvement in practice with appropriate $\\delta$",
+        "Avoids explicit Fisher matrix inversion via conjugate gradient"
+      ]
+    },
+    {
+      "id": "TP_TRPO.2",
+      "type": "theorem",
+      "name": "Convergence guarantee (informal)",
+      "section": "2",
+      "statement": "Iteratively optimizing the surrogate $L_{\\pi_i}(\\pi_{i+1}) - C \\cdot D_{\\mathrm{KL}}^{\\max}(\\pi_i, \\pi_{i+1})$ produces a sequence of policies with monotonically non-decreasing $\\eta(\\pi_i)$. At convergence, $\\pi^*$ satisfies the necessary KKT conditions of the constrained problem.",
+      "assumptions": [
+        "Monotonic improvement bound (LP_TRPO.2)",
+        "Exact optimization of the penalized surrogate at each step"
+      ],
+      "conclusions": [
+        "Monotonically non-decreasing expected return $\\eta(\\pi_0) \\le \\eta(\\pi_1) \\le \\ldots$",
+        "Convergence to a stationary point of the constrained problem"
+      ]
+    },
+    {
+      "id": "PP_TRPO.1",
+      "type": "proof",
+      "name": "Proof of the monotonic improvement bound",
+      "section": "Appendix A",
+      "statement": "Starting from the Kakade-Langford identity (LP_TRPO.1), bound the difference $\\eta(\\tilde{\\pi}) - L_\\pi(\\tilde{\\pi})$ by noting it involves replacing $\\rho_{\\tilde{\\pi}}$ with $\\rho_\\pi$, which introduces error proportional to $D_{\\mathrm{TV}}(\\pi, \\tilde{\\pi})$ at each state, and using Pinsker's inequality $D_{\\mathrm{TV}} \\le \\sqrt{D_{\\mathrm{KL}}/2}$ to convert to KL. Telescope the geometric series to get the $\\gamma/(1-\\gamma)^2$ factor.",
+      "proves": "LP_TRPO.2",
+      "proof_strategy": "Bounding the state-distribution mismatch via TV distance, applying Pinsker's inequality, and telescoping."
+    }
+  ],
+  "edges": [
+    {"source": "DP_TRPO.1", "target": "DP_TRPO.2", "type": "uses"},
+    {"source": "DP_TRPO.2", "target": "DP_TRPO.3", "type": "uses"},
+    {"source": "DP_TRPO.2", "target": "DP_TRPO.4", "type": "uses"},
+    {"source": "DP_TRPO.3", "target": "DP_TRPO.5", "type": "uses"},
+    {"source": "DP_TRPO.4", "target": "DP_TRPO.5", "type": "uses"},
+    {"source": "DP_TRPO.5", "target": "DP_TRPO.6", "type": "uses"},
+    {"source": "DP_TRPO.2", "target": "DP_TRPO.7", "type": "uses"},
+    {"source": "DP_TRPO.3", "target": "LP_TRPO.1", "type": "uses"},
+    {"source": "DP_TRPO.4", "target": "LP_TRPO.1", "type": "uses"},
+    {"source": "LP_TRPO.1", "target": "LP_TRPO.2", "type": "uses"},
+    {"source": "DP_TRPO.5", "target": "LP_TRPO.2", "type": "uses"},
+    {"source": "DP_TRPO.6", "target": "LP_TRPO.2", "type": "uses"},
+    {"source": "LP_TRPO.2", "target": "TP_TRPO.1", "type": "uses"},
+    {"source": "DP_TRPO.7", "target": "TP_TRPO.1", "type": "uses"},
+    {"source": "LP_TRPO.2", "target": "TP_TRPO.2", "type": "uses"},
+    {"source": "PP_TRPO.1", "target": "LP_TRPO.2", "type": "proves"}
+  ]
+}

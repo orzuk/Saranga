@@ -1,0 +1,101 @@
+{
+  "metadata": {
+    "title": "Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift (Ioffe & Szegedy, 2015)",
+    "arxiv_id": "1502.03167",
+    "year": 2015,
+    "venue": "ICML 2015",
+    "framework": "normalization of layer inputs across the mini-batch dimension to stabilize training",
+    "annotator": "Claude (claude-code)",
+    "source_note": "Extraction based on well-known content of arXiv:1502.03167."
+  },
+  "nodes": [
+    {
+      "id": "DP_BN.1",
+      "type": "definition",
+      "name": "Internal covariate shift",
+      "section": "1",
+      "statement": "Internal covariate shift is the phenomenon where the distribution of each layer's inputs changes during training as the parameters of the preceding layers change. This slows training by requiring lower learning rates and careful parameter initialization."
+    },
+    {
+      "id": "DP_BN.2",
+      "type": "definition",
+      "name": "Batch normalization transform",
+      "section": "3",
+      "statement": "For a mini-batch $\\mathcal{B} = \\{x_1, \\ldots, x_m\\}$ of pre-activation values at a given neuron, the batch normalization transform is: $\\mu_{\\mathcal{B}} = \\frac{1}{m} \\sum_{i=1}^m x_i$, $\\sigma_{\\mathcal{B}}^2 = \\frac{1}{m} \\sum_{i=1}^m (x_i - \\mu_{\\mathcal{B}})^2$, $\\hat{x}_i = \\frac{x_i - \\mu_{\\mathcal{B}}}{\\sqrt{\\sigma_{\\mathcal{B}}^2 + \\epsilon}}$, $y_i = \\gamma \\hat{x}_i + \\beta \\equiv \\mathrm{BN}_{\\gamma,\\beta}(x_i)$, where $\\gamma$ and $\\beta$ are learnable scale and shift parameters, and $\\epsilon > 0$ is for numerical stability."
+    },
+    {
+      "id": "DP_BN.3",
+      "type": "definition",
+      "name": "Per-dimension normalization",
+      "section": "3",
+      "statement": "BN normalizes each scalar feature (dimension) independently. For a layer with $d$-dimensional input $x = (x^{(1)}, \\ldots, x^{(d)})$, each $x^{(k)}$ is normalized using the mean and variance computed over the mini-batch for that dimension. Each dimension has its own $\\gamma^{(k)}$ and $\\beta^{(k)}$."
+    },
+    {
+      "id": "DP_BN.4",
+      "type": "definition",
+      "name": "Backpropagation through BN",
+      "section": "3",
+      "statement": "The BN transform is differentiable with respect to its inputs $x_i$ and parameters $\\gamma, \\beta$. The gradients $\\frac{\\partial \\ell}{\\partial \\hat{x}_i}$, $\\frac{\\partial \\ell}{\\partial \\sigma_{\\mathcal{B}}^2}$, $\\frac{\\partial \\ell}{\\partial \\mu_{\\mathcal{B}}}$, and $\\frac{\\partial \\ell}{\\partial x_i}$ can be computed via the chain rule, enabling end-to-end training with SGD."
+    },
+    {
+      "id": "DP_BN.5",
+      "type": "definition",
+      "name": "Inference-time BN with population statistics",
+      "section": "3.1",
+      "statement": "At inference, per-batch statistics are replaced by population statistics: $\\mathbb{E}[x]$ and $\\mathrm{Var}[x]$ computed as running averages over training mini-batches. The inference normalization is $\\hat{x} = \\frac{x - \\mathbb{E}[x]}{\\sqrt{\\mathrm{Var}[x] + \\epsilon}}$, which is a fixed linear transform per neuron."
+    },
+    {
+      "id": "DP_BN.6",
+      "type": "definition",
+      "name": "BN for convolutional layers",
+      "section": "3.2",
+      "statement": "For convolutional layers, BN jointly normalizes over the batch AND spatial dimensions for each feature map (channel). If the activation map has shape $(m, C, H, W)$, BN computes mean and variance over the $(m \\times H \\times W)$ values for each channel $c$, so there are $C$ pairs of $(\\gamma, \\beta)$ parameters."
+    },
+    {
+      "id": "TP_BN.1",
+      "type": "theorem",
+      "name": "BN enables higher learning rates (empirical claim)",
+      "section": "3.3",
+      "statement": "BN makes training more resilient to the parameter scale: for any scalar $a$, $\\mathrm{BN}(a \\cdot W \\mathbf{u}) = \\mathrm{BN}(W \\mathbf{u})$ (scale invariance of the normalized output), and $\\frac{\\partial \\mathrm{BN}(a W \\mathbf{u})}{\\partial (a W \\mathbf{u})} \\cdot a = \\frac{\\partial \\mathrm{BN}(W \\mathbf{u})}{\\partial (W \\mathbf{u})}$ (gradient is unaffected by weight scale). This allows use of higher learning rates without risk of divergence.",
+      "assumptions": [
+        "BN transform applied to pre-activations (DP_BN.2)"
+      ],
+      "conclusions": [
+        "Scale invariance of BN output w.r.t. weight scaling",
+        "Effective gradient regularization preventing explosion/vanishing",
+        "Higher learning rates and faster convergence"
+      ]
+    },
+    {
+      "id": "TP_BN.2",
+      "type": "theorem",
+      "name": "BN acts as regularizer (empirical claim)",
+      "section": "3.4",
+      "statement": "Because each training example is normalized using statistics from other examples in the mini-batch, the network does not generate deterministic outputs for a given training input. This injects noise that acts as a regularizer, reducing the need for Dropout in some cases.",
+      "assumptions": [
+        "Mini-batch-dependent normalization statistics (DP_BN.2)"
+      ],
+      "conclusions": [
+        "Implicit regularization effect from batch-dependent noise",
+        "Reduced need for Dropout or other explicit regularization"
+      ]
+    },
+    {
+      "id": "EP_BN.1",
+      "type": "example",
+      "name": "BN-Inception achieves state-of-the-art on ImageNet",
+      "section": "4",
+      "statement": "Adding BN to the Inception architecture enables training with 14x fewer steps to match the original accuracy. BN-Inception achieves 4.82% top-5 validation error on ImageNet (ensemble), surpassing human-level performance."
+    }
+  ],
+  "edges": [
+    {"source": "DP_BN.1", "target": "DP_BN.2", "type": "motivates"},
+    {"source": "DP_BN.2", "target": "DP_BN.3", "type": "uses"},
+    {"source": "DP_BN.2", "target": "DP_BN.4", "type": "uses"},
+    {"source": "DP_BN.2", "target": "DP_BN.5", "type": "uses"},
+    {"source": "DP_BN.3", "target": "DP_BN.6", "type": "uses"},
+    {"source": "DP_BN.2", "target": "TP_BN.1", "type": "uses"},
+    {"source": "DP_BN.2", "target": "TP_BN.2", "type": "uses"},
+    {"source": "DP_BN.2", "target": "EP_BN.1", "type": "uses"}
+  ]
+}
