@@ -46,9 +46,18 @@ import argparse
 import json
 import csv
 import glob as globmod
+import signal
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Tuple
+
+
+class _ParseTimeout(Exception):
+    pass
+
+
+def _timeout_handler(signum, frame):
+    raise _ParseTimeout
 
 from config import FULL_PAPERS_DIR
 
@@ -124,6 +133,7 @@ def run_batch(
         tex_dir: Optional[str] = None,
         prompt_file: Optional[str] = None,
         structure_types: Optional[list] = None,
+        safeguard_timeout: Optional[int] = None,
 ) -> None:
     print(
         f"[INFO] Fetching arXiv IDs via fetch_arxiv_batch "
@@ -200,8 +210,18 @@ def run_batch(
                     custom_prompt_file=prompt_file,
                     structure_types=structure_types,
                 )
+                if safeguard_timeout:
+                    signal.signal(signal.SIGALRM, _timeout_handler)
+                    signal.alarm(safeguard_timeout)
                 graph = parser.parse_file(tex_path)
+                if safeguard_timeout:
+                    signal.alarm(0)
+            except _ParseTimeout:
+                print(f"[WARN]   Skipped {base_id} — parsing exceeded {safeguard_timeout}s timeout")
+                continue
             except Exception as e:
+                if safeguard_timeout:
+                    signal.alarm(0)
                 print(f"[WARN]   parse_file failed for {base_id}: {e}")
                 continue
 
@@ -324,9 +344,19 @@ def run_batch(
                 custom_prompt_file=prompt_file,
                 structure_types=structure_types,
             )
+            if safeguard_timeout:
+                signal.signal(signal.SIGALRM, _timeout_handler)
+                signal.alarm(safeguard_timeout)
             graph = parser.parse_file(tex_path)
+            if safeguard_timeout:
+                signal.alarm(0)
             status = "OK"
+        except _ParseTimeout:
+            status = f"TIMEOUT: exceeded {safeguard_timeout}s"
+            print(f"[WARN]   Skipped {base_id} — parsing exceeded {safeguard_timeout}s timeout")
         except Exception as e:
+            if safeguard_timeout:
+                signal.alarm(0)
             status = f"PARSE_ERROR: {e}"
             print(f"[WARN]   Failed to parse {base_id}: {e}")
             with open(out_dir / "status_log.csv", "a", newline="") as f:
@@ -524,6 +554,16 @@ def main():
              "from config). Use this to point at a non-standard location, e.g. "
              "src/LLMVersion/full_papers/ for Yaron's gold-standard papers.",
     )
+    parser.add_argument(
+        "--safeguard",
+        type=int,
+        default=None,
+        const=90,
+        nargs="?",
+        metavar="SECONDS",
+        help="Per-paper parse timeout in seconds. Skips papers that exceed it. "
+             "Defaults to 90s if flag is given without a value.",
+    )
 
     args = parser.parse_args()
     print(f"[DEBUG] Parsed args: {args}")
@@ -554,6 +594,7 @@ def main():
         prompt_file=args.prompt_file,
         structure_types=structure_types,
         tex_dir=args.tex_dir,
+        safeguard_timeout=args.safeguard,
     )
 
     print("[INFO] Done.")

@@ -282,6 +282,9 @@ for CATEGORY in "${RUN_CATEGORIES[@]}"; do
     if [ "$HTML" = "1" ]; then
         CMD+=(--html)
     fi
+    if [ -n "${SAFEGUARD:-}" ]; then
+        CMD+=(--safeguard "$SAFEGUARD")
+    fi
 
     "${CMD[@]}"
     RC=$?

@@ -265,6 +265,8 @@ def op_parse(args) -> None:
     cmd += ["--structure-types", args.structure_types]
     if args.tex_dir:
         cmd += ["--tex-dir", args.tex_dir]
+    if args.safeguard is not None:
+        cmd += ["--safeguard", str(args.safeguard)]
 
     print(f"[pipeline] parse: running LLMVersion extractor as subprocess")
     print(f"[pipeline] parse: cmd = {' '.join(cmd)}")
@@ -746,6 +748,10 @@ def main():
                         help="Directory to search for local .tex files instead of "
                              "the default FULL_PAPERS_DIR from config. Useful when "
                              "tex sources live in a non-standard location.")
+    parser.add_argument("--safeguard", type=int, default=None, const=90, nargs="?",
+                        metavar="SECONDS",
+                        help="Per-paper parse timeout in seconds. Papers exceeding "
+                             "this are skipped. Defaults to 90s if given without a value.")
 
     # --- visualize operation args ---
     parser.add_argument("--resolution", choices=["standard", "full"], default="standard",
