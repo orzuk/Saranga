@@ -357,6 +357,23 @@ def op_visualize(args) -> None:
                           .replace("_openai", "").replace("_huggingface", "")
 
         try:
+            # Output to sibling html/ or png/ dir if JSON is inside a json/ dir
+            if jp.parent.name == "json":
+                png_dir = jp.parent.parent / "png"
+                html_dir = jp.parent.parent / "html"
+            else:
+                png_dir = jp.parent
+                html_dir = jp.parent
+
+            # Skip if outputs already exist
+            png_path = png_dir / jp.with_suffix(".png").name
+            html_path = html_dir / jp.with_suffix(".html").name
+            png_exists = png_path.exists() if not args.html_only else True
+            html_exists = html_path.exists() if (args.html or args.html_only) else True
+            if png_exists and html_exists:
+                n_ok += 1
+                continue
+
             with open(jp, "r", encoding="utf-8") as f:
                 data = json.load(f)
             nodes = data.get("nodes", [])
@@ -368,25 +385,16 @@ def op_visualize(args) -> None:
 
             what = []  # track what we're generating
 
-            # Output to sibling html/ or png/ dir if JSON is inside a json/ dir
-            if jp.parent.name == "json":
-                png_dir = jp.parent.parent / "png"
-                html_dir = jp.parent.parent / "html"
-            else:
-                png_dir = jp.parent
-                html_dir = jp.parent
-
             # Suppress noisy library output (e.g. "Index has N searchable terms")
             # by capturing stdout during draw_dag / generate_interactive_html calls
-            png_path = png_dir / jp.with_suffix(".png").name
-            if not args.html_only:
+            if not args.html_only and not png_path.exists():
                 png_dir.mkdir(parents=True, exist_ok=True)
                 with contextlib.redirect_stdout(io.StringIO()):
                     draw_dag(nodes, edges, str(png_path), metadata=metadata,
                              resolution=args.resolution)
                 what.append("PNG")
 
-            if args.html or args.html_only:
+            if (args.html or args.html_only) and not html_path.exists():
                 import tempfile
                 tmp_dir = tempfile.mkdtemp()
                 tmp_png = os.path.join(tmp_dir, jp.stem + "_nolegend.png")
@@ -395,7 +403,6 @@ def op_visualize(args) -> None:
                 with contextlib.redirect_stdout(io.StringIO()):
                     draw_dag(nodes, edges, tmp_png, metadata=metadata,
                              resolution=args.resolution, show_legend=False)
-                    html_path = html_dir / jp.with_suffix(".html").name
                     generate_interactive_html(data, svg_only, str(html_path))
                 import shutil
                 shutil.rmtree(tmp_dir, ignore_errors=True)
