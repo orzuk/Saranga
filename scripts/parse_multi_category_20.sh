@@ -123,6 +123,7 @@ END_DATE=${END_DATE:-}
 EXTRACTION_MODE=${EXTRACTION_MODE:-manual}
 OPERATIONS=${OPERATIONS:-parse,validate,anomalies,stats}
 HTML=${HTML:-0}
+HTML_ONLY=${HTML_ONLY:-0}
 
 # Optional: pre-downloaded local source (calibration / re-parse mode).
 # If set, --tex-dir is passed to run_pipeline.py and fetch is skipped.
@@ -279,7 +280,9 @@ for CATEGORY in "${RUN_CATEGORIES[@]}"; do
             CMD+=(--end "$END_DATE")
         fi
     fi
-    if [ "$HTML" = "1" ]; then
+    if [ "$HTML_ONLY" = "1" ]; then
+        CMD+=(--html-only)
+    elif [ "$HTML" = "1" ]; then
         CMD+=(--html)
     fi
     if [ -n "${SAFEGUARD:-}" ]; then
