@@ -337,11 +337,13 @@ def generate_scale_tex(s: dict, category: str) -> str:
     lines.append("\\centering")
     lines.append("\\small")
     lines.append(f"\\caption{{Large-scale extraction: {fmt_num(n)} \\texttt{{{category}}} papers, "
-                 "T3 (rule-based) mode. Extraction completed in 38 minutes on a single cluster node "
-                 "(zero API cost).}}")
+                 "T3 (rule-based) mode. Extraction completed on a single cluster node "
+                 "(zero API cost).}")
     lines.append("\\label{tab:scale}")
     lines.append("\\begin{tabular}{lr@{\\hspace{1em}}l}")
     lines.append("\\toprule")
+    lines.append("\\textbf{Metric} & \\textbf{Value} & \\textbf{(avg/paper)} \\\\")
+    lines.append("\\midrule")
 
     # Data rows
     lines.append(f"Papers extracted (of {fmt_num(n)}) & {fmt_num(n)} & 100\\% success \\\\")
