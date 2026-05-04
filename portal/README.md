@@ -1,7 +1,16 @@
-# Authomathics Database — portal v0.1
+---
+title: SARANGA
+emoji: 📐
+colorFrom: blue
+colorTo: purple
+sdk: static
+pinned: false
+---
+
+# SARANGA Database — portal v0.1
 
 This directory holds a static web app that lets you browse the extracted
-knowledge graphs of math / CS papers in the Authomathics
+knowledge graphs of math / CS papers in the SARANGA
 dataset.
 
 It is **temporary**. The portal lives here under `portal/` only so we can

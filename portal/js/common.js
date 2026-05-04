@@ -1,4 +1,4 @@
-// Shared helpers for the Authomathics portal: fetch, manifest cache, KaTeX render.
+// Shared helpers for the SARANGA portal: fetch, manifest cache, KaTeX render.
 //
 // All pages assume `vendor/katex/` is reachable as a relative path from the
 // HTML page, and `data/manifest.json` likewise. We compute the prefix from
