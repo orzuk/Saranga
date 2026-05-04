@@ -120,9 +120,10 @@ def compute_category_stats(stats_rows: list[dict], anomaly_rows: list[dict]) -> 
     else:
         pct_anom = 0.0
 
-    # % with foundation links
-    n_linked = sum(1 for r in stats_rows if safe_float(r.get("n_foundation_edges")) > 0)
-    pct_link = n_linked / n_papers * 100
+    # Average specific (non-generic) foundation edges per paper
+    avg_foundation_specific = (
+        sum(safe_float(r.get("n_foundation_specific")) for r in stats_rows) / n_papers
+    )
 
     return {
         "n_papers": n_papers,
@@ -132,7 +133,7 @@ def compute_category_stats(stats_rows: list[dict], anomaly_rows: list[dict]) -> 
         "pct_acyclic": pct_acyclic,
         "pct_concl": pct_concl,
         "pct_anom": pct_anom,
-        "pct_link": pct_link,
+        "avg_foundation_specific": avg_foundation_specific,
     }
 
 
@@ -263,7 +264,7 @@ def generate_cross_category_tex(all_stats: dict[str, dict], num_tier_three: str 
     lines.append("\\toprule")
     lines.append("\\textbf{Category} & \\textbf{\\#papers} & \\textbf{nodes/p} & "
                  "\\textbf{edges/p} & \\textbf{depth} & \\textbf{\\% acyc} & "
-                 "\\textbf{\\% concl} & \\textbf{\\% anom} & \\textbf{\\% link} \\\\")
+                 "\\textbf{\\% concl} & \\textbf{\\% anom} & \\textbf{found/p} \\\\")
 
     # Data rows
     def emit_section(categories, label=None):
@@ -280,7 +281,7 @@ def generate_cross_category_tex(all_stats: dict[str, dict], num_tier_three: str 
                 f"{fmt_float(s['avg_nodes'])} & {fmt_float(s['avg_edges'])} & "
                 f"{fmt_float(s['avg_depth'])} & {fmt_pct(s['pct_acyclic'])} & "
                 f"{fmt_pct(s['pct_concl'])} & {fmt_pct(s['pct_anom'])} & "
-                f"{fmt_pct(s['pct_link'])} \\\\"
+                f"{fmt_float(s['avg_foundation_specific'])} \\\\"
             )
 
     emit_section(CATEGORIES_PURE_MATH, "Pure mathematics (13 categories)")
@@ -297,14 +298,14 @@ def generate_cross_category_tex(all_stats: dict[str, dict], num_tier_three: str 
         mean_acyc = sum(s["pct_acyclic"] * s["n_papers"] for s in valid) / total_papers
         mean_concl = sum(s["pct_concl"] * s["n_papers"] for s in valid) / total_papers
         mean_anom = sum(s["pct_anom"] * s["n_papers"] for s in valid) / total_papers
-        mean_link = sum(s["pct_link"] * s["n_papers"] for s in valid) / total_papers
+        mean_foundation = sum(s["avg_foundation_specific"] * s["n_papers"] for s in valid) / total_papers
         lines.append("\\midrule")
         lines.append(
             f"\\textbf{{Total / mean}} & \\textbf{{{fmt_num(total_papers)}}} & "
             f"{fmt_float(mean_nodes)} & {fmt_float(mean_edges)} & "
             f"{fmt_float(mean_depth)} & {fmt_pct(mean_acyc)} & "
             f"{fmt_pct(mean_concl)} & {fmt_pct(mean_anom)} & "
-            f"{fmt_pct(mean_link)} \\\\"
+            f"{fmt_float(mean_foundation)} \\\\"
         )
 
     # Table closing
@@ -317,7 +318,7 @@ def generate_cross_category_tex(all_stats: dict[str, dict], num_tier_three: str 
                  "\\% acyc = fraction of papers with acyclic extracted graph. "
                  "\\% concl = fraction of theorem-like nodes with non-empty conclusion field after splitter. "
                  "\\% anom = fraction of papers flagged by the anomaly detector (any severity). "
-                 "\\% link = fraction of papers with at least one foundation-graph match.")
+                 "found/p = average specific (IDF $\\leq$ 10\\%) foundation-graph edges per paper.")
     lines.append("\\end{table}")
 
     return "\n".join(lines)
@@ -398,11 +399,11 @@ def generate_macros_tex(all_stats: dict[str, dict], scale_stats: dict) -> str:
         total_papers = sum(s["n_papers"] for s in valid)
         mean_acyc = sum(s["pct_acyclic"] * s["n_papers"] for s in valid) / total_papers
         mean_concl = sum(s["pct_concl"] * s["n_papers"] for s in valid) / total_papers
-        mean_link = sum(s["pct_link"] * s["n_papers"] for s in valid) / total_papers
+        mean_foundation = sum(s["avg_foundation_specific"] * s["n_papers"] for s in valid) / total_papers
         lines.append(f"\\newcommand{{\\corpusTotalPapers}}{{{fmt_num(total_papers)}}}")
         lines.append(f"\\newcommand{{\\corpusMeanAcyclic}}{{{fmt_pct(mean_acyc)}}}")
         lines.append(f"\\newcommand{{\\corpusMeanConcl}}{{{fmt_pct(mean_concl)}}}")
-        lines.append(f"\\newcommand{{\\corpusMeanLink}}{{{fmt_pct(mean_link)}}}")
+        lines.append(f"\\newcommand{{\\corpusMeanFoundation}}{{{fmt_float(mean_foundation)}}}")
         lines.append("")
 
     # Scale (math.CO or whichever single-category) stats
@@ -413,7 +414,7 @@ def generate_macros_tex(all_stats: dict[str, dict], scale_stats: dict) -> str:
         lines.append(f"\\newcommand{{\\scaleEdges}}{{{fmt_num(scale_stats['n_edges'])}}}")
         lines.append(f"\\newcommand{{\\scalePctAcyclic}}{{{fmt_pct(scale_stats['n_acyclic']/n*100)}}}")
         lines.append(f"\\newcommand{{\\scalePctConcl}}{{{fmt_pct(scale_stats['n_thm_with_conclusions']/scale_stats['n_theorem_like']*100 if scale_stats['n_theorem_like']>0 else 0)}}}")
-        lines.append(f"\\newcommand{{\\scalePctLink}}{{{fmt_pct(scale_stats['n_papers_linked']/n*100)}}}")
+        lines.append(f"\\newcommand{{\\scaleAvgFoundation}}{{{fmt_float(scale_stats['n_foundation_specific']/n)}}}")
         lines.append("")
 
     return "\n".join(lines)
