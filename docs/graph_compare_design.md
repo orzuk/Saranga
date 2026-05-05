@@ -3,7 +3,7 @@
 > **Status**: 2026-04-25 design doc, pre-refactor state.
 > **Scope**: shared architecture for three paper-graph comparison tasks.
 > **Deferred**: full restructure (post-NeurIPS).
-> **Owner**: Or Zuk; reviewer: Yaron Otmazgin.
+> **Owner**: Author; reviewer: Author.
 > **Companion doc**: `docs/pipeline_architecture.md` — the broader pipeline /
 > dataset-tier story (which operations apply to which of the 5 data tiers,
 > master-pipeline + thin-wrapper architecture, paper-appendix-ready table).
@@ -190,7 +190,7 @@ Could be either, with a parameter. Current `consensus_intersect.py` does pairwis
 
 ### 7f. Schema-conversion utilities
 
-T1 evaluation requires that the predicted JSON conforms to the same schema as the gold. Today, multiple variants exist (Opus's holistic schema, Yaron's per-type pipeline schema). A schema normalizer (`graph_compare.normalize_schema(j)`) would help — converts any flavor into the canonical `{metadata, nodes, edges}` form. Out of scope for Phase 1-4.
+T1 evaluation requires that the predicted JSON conforms to the same schema as the gold. Today, multiple variants exist (Opus's holistic schema, Author's per-type pipeline schema). A schema normalizer (`graph_compare.normalize_schema(j)`) would help — converts any flavor into the canonical `{metadata, nodes, edges}` form. Out of scope for Phase 1-4.
 
 ## 8. Non-goals
 
@@ -198,7 +198,7 @@ T1 evaluation requires that the predicted JSON conforms to the same schema as th
 - **Don't** require a single matching output format that handles all three tasks' downstream needs. Each driver knows what it wants from a `List[(i, j)]`; let them format.
 - **Don't** refactor `evaluate_extraction.py` until Phase 4. It works today; touching it is risk for limited benefit.
 
-## 9. Notes for Yaron
+## 9. Notes for Author
 
 - Phase 1 (the minimal refactor below) keeps `graph_alignment.py` unchanged — just imports from it. Your code path is untouched.
 - Phase 2+ would rename `graph_alignment.py` → `graph_compare.py`. Heads-up but not yet.

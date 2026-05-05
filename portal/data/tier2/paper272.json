@@ -1,0 +1,362 @@
+{
+  "metadata": {
+    "title": "Greedy Function Approximation: A Gradient Boosting Machine",
+    "authors": "Jerome H. Friedman",
+    "year": 1999,
+    "paper_num": 272,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-03",
+    "source_note": "Extracted from PDF->text fallback; .tex source not available. Math fidelity reduced (some equations garbled in PDF text-layer; reconstructed by best-effort using context)."
+  },
+  "nodes": [
+    {
+      "id": "ProbP272.1",
+      "type": "problem",
+      "subclass": "optimization",
+      "name": "Function Estimation Problem",
+      "section": "1",
+      "statement": "Find $F^*(x) = \\arg\\min_{F(x)} E_{y,x}\\, \\Psi(y, F(x))$ given training sample $\\{y_i, x_i\\}_1^N$, where $\\Psi$ is a specified loss function.",
+      "statement_clean": "Estimate the function mapping inputs x to output y that minimizes expected loss over the joint distribution.",
+      "assumptions": ["Random output $y$ and inputs $x = \\{x_1, \\ldots, x_n\\}$", "Training sample $\\{y_i, x_i\\}_1^N$", "Specified loss function $\\Psi(y, F(x))$"],
+      "conclusions": ["$F^*(x) = \\arg\\min_{F(x)} E_{y,x}\\, \\Psi(y, F(x)) = \\arg\\min_{F(x)} E_x[E_y(\\Psi(y, F(x)) \\mid x)]$"],
+      "tags": ["regression", "classification"]
+    },
+    {
+      "id": "DP272.1",
+      "type": "definition",
+      "name": "Additive Expansion",
+      "section": "1",
+      "statement": "Parameterized class of functions $F(x; P) = \\sum_{m=0}^{M} \\beta_m h(x; a_m)$ where $P = \\{\\beta_m, a_m\\}_0^M$ and $h(x; a)$ are simple base functions of $x$.",
+      "tags": ["additive-model"]
+    },
+    {
+      "id": "DP272.2",
+      "type": "definition",
+      "name": "Common Loss Functions",
+      "section": "1",
+      "statement": "Squared-error $\\Psi(y, F) = (y - F)^2$ and absolute error $\\Psi(y, F) = |y - F|$ for regression ($y \\in \\mathbb{R}$); negative binomial log-likelihood $\\Psi(y, F) = \\log(1 + e^{-2yF})$ for classification ($y \\in \\{-1, 1\\}$)."
+    },
+    {
+      "id": "DP272.3",
+      "type": "definition",
+      "name": "Steepest-Descent Increments",
+      "section": "1.2",
+      "statement": "Increments $p_m = -\\rho_m g_m$ where $g_m = [\\partial \\Phi(P)/\\partial P_j]_{P=P_{m-1}}$ is the current gradient and $\\rho_m = \\arg\\min_\\rho \\Phi(P_{m-1} - \\rho g_m)$ is the line search step length.",
+      "origin": "external",
+      "origin_citation": "classical numerical optimization",
+      "tags": ["gradient-descent"]
+    },
+    {
+      "id": "DP272.4",
+      "type": "definition",
+      "name": "Function-Space Steepest-Descent",
+      "section": "2",
+      "statement": "In function space, the increment is $f_m(x) = -\\rho_m g_m(x)$ with $g_m(x) = E_y\\left[\\partial \\Psi(y, F(x))/\\partial F(x) \\mid x\\right]_{F(x)=F_{m-1}(x)}$ and $\\rho_m = \\arg\\min_\\rho E_{y,x}\\, \\Psi(y, F_{m-1}(x) - \\rho g_m(x))$."
+    },
+    {
+      "id": "DP272.5",
+      "type": "definition",
+      "name": "Greedy-Stagewise Approach",
+      "section": "3",
+      "statement": "For $m = 1, \\ldots, M$: solve $(\\beta_m, a_m) = \\arg\\min_{\\beta, a} \\sum_{i=1}^{N} \\Psi(y_i, F_{m-1}(x_i) + \\beta h(x_i, a))$, then set $F_m(x) = F_{m-1}(x) + \\beta_m h(x, a_m)$."
+    },
+    {
+      "id": "DP272.6",
+      "type": "definition",
+      "name": "Constrained Negative Gradient",
+      "section": "3",
+      "statement": "The base learner $h(x, a_m)$ most parallel to the unconstrained negative gradient $\\{-g_m(x_i)\\}_1^N$ is $a_m = \\arg\\min_{a, \\beta} \\sum_{i=1}^{N} [-g_m(x_i) - \\beta h(x_i, a)]^2$."
+    },
+    {
+      "id": "AP272.1",
+      "type": "algorithm",
+      "name": "Gradient Boost",
+      "section": "3",
+      "statement": "Generic gradient-descent boosting algorithm that fits a base learner to pseudo-responses (negative gradients of the loss) and updates via line search.",
+      "input": [
+        "Training data $\\{y_i, x_i\\}_1^N$",
+        "Loss function $\\Psi(y, F)$",
+        "Base learner class $h(x; a)$",
+        "Number of iterations $M$"
+      ],
+      "output": [
+        "Approximation $F_M(x) = \\sum_{m=0}^{M} \\beta_m h(x; a_m)$"
+      ],
+      "pseudocode": "1. $F_0(x) = \\arg\\min_\\rho \\sum_{i=1}^N \\Psi(y_i, \\rho)$. 2. For $m = 1$ to $M$: 3. $\\tilde{y}_i = -[\\partial \\Psi(y_i, F(x_i))/\\partial F(x_i)]_{F(x)=F_{m-1}(x)}$, $i = 1, \\ldots, N$. 4. $a_m = \\arg\\min_{a, \\beta} \\sum_{i=1}^N [\\tilde{y}_i - \\beta h(x_i, a)]^2$. 5. $\\rho_m = \\arg\\min_\\rho \\sum_{i=1}^N \\Psi(y_i, F_{m-1}(x_i) + \\rho h(x_i, a_m))$. 6. $F_m(x) = F_{m-1}(x) + \\rho_m h(x, a_m)$. 7. endFor.",
+      "tags": ["iterative", "stagewise"]
+    },
+    {
+      "id": "AP272.2",
+      "type": "algorithm",
+      "name": "LS Boost",
+      "section": "4.1",
+      "statement": "Gradient boosting with squared-error loss $\\Psi(y, F) = (y - F)^2/2$, which iteratively fits the current residuals.",
+      "input": ["Training data $\\{y_i, x_i\\}_1^N$", "Base learner $h(x; a)$", "Number of iterations $M$"],
+      "output": ["Regression approximation $F_M(x)$"],
+      "pseudocode": "$F_0(x) = \\bar{y}$. For $m = 1$ to $M$: $\\tilde{y}_i = y_i - F_{m-1}(x_i)$, $(\\rho_m, a_m) = \\arg\\min_{a, \\beta} \\sum_{i=1}^N [\\tilde{y}_i - \\beta h(x_i, a)]^2$, $F_m(x) = F_{m-1}(x) + \\rho_m h(x, a_m)$.",
+      "tags": ["iterative", "regression"]
+    },
+    {
+      "id": "AP272.3",
+      "type": "algorithm",
+      "name": "LAD TreeBoost",
+      "section": "4.2",
+      "statement": "Gradient boosting for least-absolute-deviation regression $\\Psi(y, F) = |y - F|$ with $L$-terminal-node trees, using the sign of residuals as pseudo-response and median updates per terminal node.",
+      "input": ["Training data $\\{y_i, x_i\\}_1^N$", "$L$-terminal-node tree base learner", "Number of iterations $M$"],
+      "output": ["Robust regression approximation $F_M(x)$"],
+      "pseudocode": "$F_0(x) = \\mathrm{median}\\{y_i\\}_1^N$. For $m = 1$ to $M$: $\\tilde{y}_i = \\mathrm{sign}(y_i - F_{m-1}(x_i))$; $\\{R_{lm}\\}_1^L = L$-terminal-node-tree($\\{\\tilde{y}_i, x_i\\}_1^N$); $\\gamma_{lm} = \\mathrm{median}_{x_i \\in R_{lm}}\\{y_i - F_{m-1}(x_i)\\}$; $F_m(x) = F_{m-1}(x) + \\gamma_{lm} \\mathbf{1}(x \\in R_{lm})$.",
+      "tags": ["iterative", "regression", "robust"]
+    },
+    {
+      "id": "AP272.4",
+      "type": "algorithm",
+      "name": "M TreeBoost",
+      "section": "4.3",
+      "statement": "Gradient boosting with Huber M loss for robust regression, using $L$-terminal-node trees with a Newton-like single-step update around the per-node median of residuals.",
+      "input": ["Training data $\\{y_i, x_i\\}_1^N$", "$L$-terminal-node tree base learner", "Number of iterations $M$", "Break-down quantile $\\alpha$"],
+      "output": ["Robust regression approximation $F_M(x)$"],
+      "pseudocode": "$F_0(x) = \\mathrm{median}\\{y_i\\}_1^N$. For $m = 1$ to $M$: $r_{m-1}(x_i) = y_i - F_{m-1}(x_i)$; $\\delta_m = \\mathrm{quantile}_\\alpha\\{|r_{m-1}(x_i)|\\}$; $\\tilde{y}_i = r_{m-1}(x_i)$ if $|r_{m-1}(x_i)| \\le \\delta_m$ else $\\delta_m \\cdot \\mathrm{sign}(r_{m-1}(x_i))$; build $L$-terminal-node tree on $\\{\\tilde{y}_i, x_i\\}$ with regions $\\{R_{lm}\\}$; $\\tilde{r}_{lm} = \\mathrm{median}_{x_i \\in R_{lm}}\\{r_{m-1}(x_i)\\}$; $\\gamma_{lm} = \\tilde{r}_{lm} + \\frac{1}{N_{lm}}\\sum_{x_i \\in R_{lm}} \\mathrm{sign}(r_{m-1}(x_i) - \\tilde{r}_{lm}) \\cdot \\min(\\delta_m, |r_{m-1}(x_i) - \\tilde{r}_{lm}|)$; $F_m(x) = F_{m-1}(x) + \\gamma_{lm} \\mathbf{1}(x \\in R_{lm})$.",
+      "tags": ["iterative", "regression", "robust"]
+    },
+    {
+      "id": "AP272.5",
+      "type": "algorithm",
+      "name": "L2 TreeBoost",
+      "section": "4.4",
+      "statement": "Gradient boosting for two-class logistic regression with negative binomial log-likelihood, using $L$-terminal-node trees and a single Newton-Raphson step for terminal-node updates.",
+      "input": ["Training data $\\{y_i, x_i\\}_1^N$ with $y_i \\in \\{-1, 1\\}$", "$L$-terminal-node tree base learner", "Number of iterations $M$"],
+      "output": ["Log-odds approximation $F_M(x)$ from which probabilities $p_+(x) = 1/(1 + e^{-2 F_M(x)})$ are derived"],
+      "pseudocode": "$F_0(x) = \\frac{1}{2} \\log\\frac{1+\\bar{y}}{1-\\bar{y}}$. For $m = 1$ to $M$: $\\tilde{y}_i = 2 y_i / (1 + \\exp(2 y_i F_{m-1}(x_i)))$; $\\{R_{lm}\\}_1^L = L$-terminal-node-tree($\\{\\tilde{y}_i, x_i\\}$); $\\gamma_{lm} = \\sum_{x_i \\in R_{lm}} \\tilde{y}_i / \\sum_{x_i \\in R_{lm}} |\\tilde{y}_i|(2 - |\\tilde{y}_i|)$; $F_m(x) = F_{m-1}(x) + \\gamma_{lm} \\mathbf{1}(x \\in R_{lm})$.",
+      "tags": ["iterative", "classification", "logistic"]
+    },
+    {
+      "id": "AP272.6",
+      "type": "algorithm",
+      "name": "LK TreeBoost",
+      "section": "4.5",
+      "statement": "Gradient boosting for $K$-class logistic regression using the symmetric multinomial logit; induces $K$ trees per iteration with diagonal-Hessian Newton-Raphson terminal updates.",
+      "input": ["Training data $\\{y_{ik}, x_i\\}$ with $y_{ik} = \\mathbf{1}(\\mathrm{class}_i = k)$", "$L$-terminal-node tree base learner", "Number of iterations $M$", "Number of classes $K$"],
+      "output": ["Per-class approximations $\\{F_{kM}(x)\\}_1^K$ inducing class probabilities $p_k(x) = \\exp(F_k(x)) / \\sum_l \\exp(F_l(x))$"],
+      "pseudocode": "$F_{k0}(x) = 0$, $k = 1, \\ldots, K$. For $m = 1$ to $M$: compute $p_k(x) = \\exp(F_k(x)) / \\sum_l \\exp(F_l(x))$; for $k = 1$ to $K$: $\\tilde{y}_{ik} = y_{ik} - p_k(x_i)$; build $L$-terminal-node tree with regions $\\{R_{klm}\\}$; $\\gamma_{klm} = \\frac{K-1}{K} \\cdot \\sum_{x_i \\in R_{klm}} \\tilde{y}_{ik} / \\sum_{x_i \\in R_{klm}} |\\tilde{y}_{ik}|(1 - |\\tilde{y}_{ik}|)$; $F_{km}(x) = F_{k,m-1}(x) + \\gamma_{klm} \\mathbf{1}(x \\in R_{klm})$.",
+      "tags": ["iterative", "classification", "multiclass"]
+    },
+    {
+      "id": "DP272.7",
+      "type": "definition",
+      "name": "Influence Trimming",
+      "section": "4.4.1",
+      "statement": "Delete observations whose weight $w_i$ falls below $w_{l(\\alpha)}$, where $l(\\alpha)$ solves $\\sum_{i=1}^{l(\\alpha)} w_{(i)} = \\alpha \\sum_{i=1}^N w_i$ and $w_i = \\exp(-2 y_i F_{m-1}(x_i))$ or $w_i = |\\tilde{y}_i|(2 - |\\tilde{y}_i|)$. Typical $\\alpha \\in [0.05, 0.2]$.",
+      "tags": ["acceleration"]
+    },
+    {
+      "id": "DP272.8",
+      "type": "definition",
+      "name": "Proportional Shrinkage Regularization",
+      "section": "5",
+      "statement": "Replace the update step $F_m(x) = F_{m-1}(x) + \\rho_m h(x, a_m)$ with $F_m(x) = F_{m-1}(x) + \\nu \\cdot \\rho_m h(x, a_m)$, $0 < \\nu \\le 1$, where $\\nu$ is a learning-rate / shrinkage parameter.",
+      "tags": ["regularization"]
+    },
+    {
+      "id": "DP272.9",
+      "type": "definition",
+      "name": "ANOVA Functional Decomposition",
+      "section": "7",
+      "statement": "$F(x) = \\sum_j f_j(x_j) + \\sum_{j,k} f_{jk}(x_j, x_k) + \\sum_{j,k,l} f_{jkl}(x_j, x_k, x_l) + \\cdots$, where the first sum is the additive (main-effects) component and successive sums capture interaction effects of increasing order.",
+      "origin": "external",
+      "origin_citation": "classical functional ANOVA"
+    },
+    {
+      "id": "ClP272.1",
+      "type": "claim",
+      "name": "Tree-Size Controls Interaction Order",
+      "section": "7",
+      "statement": "An $L$-terminal-node tree produces a function with interaction order at most $\\min(L-1, n)$. Consequently the interaction order of a TreeBoost approximation is bounded by that of its individual trees.",
+      "assumptions": ["Best-first decision trees with $L$ terminal nodes", "$n$ input variables"],
+      "conclusions": ["Per-tree interaction order $\\le \\min(L-1, n)$", "Boosted approximation interaction order $\\le \\min(L-1, n)$"]
+    },
+    {
+      "id": "DP272.10",
+      "type": "definition",
+      "name": "Relative Influence (continuous)",
+      "section": "8.1",
+      "statement": "For a continuous approximation, $J_j = \\left(E_x\\left[\\partial \\hat{F}(x)/\\partial x_j\\right]^2 \\mathrm{var}_x[x_j]\\right)^{1/2}$ measures the influence of input $x_j$ on the variation of $\\hat{F}$."
+    },
+    {
+      "id": "DP272.11",
+      "type": "definition",
+      "name": "Tree-Based Relative Influence",
+      "section": "8.1",
+      "statement": "For a single tree $T$: $\\hat{J}_j^2(T) = \\sum_{t=1}^{L-1} \\hat{I}_t^2 \\mathbf{1}(v_t = j)$ summed over non-terminal nodes, where $v_t$ is the splitting variable and $\\hat{I}_t^2$ is the squared-error improvement from the split. For a boosted ensemble $\\{T_m\\}_1^M$: $\\hat{J}_j^2 = \\frac{1}{M} \\sum_{m=1}^M \\hat{J}_j^2(T_m)$.",
+      "origin": "external",
+      "origin_citation": "Breiman, Friedman, Olshen, Stone 1983 (extended to ensembles here)",
+      "tags": ["interpretability"]
+    },
+    {
+      "id": "EP272.1",
+      "type": "equation",
+      "name": "Least-Squares Split Improvement",
+      "section": "4.5",
+      "statement": "$I^2(R_l, R_r) = \\frac{w_l w_r}{w_l + w_r} (\\bar{y}_l - \\bar{y}_r)^2$, where $\\bar{y}_l, \\bar{y}_r$ are the daughter response means and $w_l, w_r$ the corresponding weight sums."
+    },
+    {
+      "id": "ClP272.2",
+      "type": "claim",
+      "name": "Linear-Target Justification of Tree Influence",
+      "section": "8.1",
+      "statement": "If $F^*(x) = a_0 + \\sum_j a_j x_j$ and the input covariance is a multiple of the identity $E_x[(x - \\bar{x})(x - \\bar{x})^T] = c I_n$, then the continuous relative-influence measure satisfies $J_j = |a_j|$.",
+      "assumptions": ["Linear target $F^*(x) = a_0 + \\sum_{j=1}^n a_j x_j$", "$E_x[(x - \\bar{x})(x - \\bar{x})^T] = c I_n$"],
+      "conclusions": ["$J_j = |a_j|$ for $j = 1, \\ldots, n$"]
+    },
+    {
+      "id": "DP272.12",
+      "type": "definition",
+      "name": "Partial Dependence Function",
+      "section": "8.2",
+      "statement": "For input subset $z_l \\subset x$ with complement $z_{\\setminus l}$: $\\bar{F}_l(z_l) = E_{z_{\\setminus l}}[\\hat{F}(x)] = \\int \\hat{F}(x)\\, p_{\\setminus l}(z_{\\setminus l})\\, d z_{\\setminus l}$, the marginal-density average summarizing the dependence of $\\hat{F}$ on $z_l$.",
+      "tags": ["interpretability", "visualization"]
+    },
+    {
+      "id": "RP272.1",
+      "type": "remark",
+      "name": "Marginal vs Conditional Averaging",
+      "section": "8.2",
+      "statement": "Averaging over the conditional density $p(z_{\\setminus l} \\mid z_l)$ gives $\\tilde{F}_l(z_l) = E_x[\\hat{F}(x) \\mid z_l]$, which conflates the dependence of $\\hat{F}$ on $z_l$ with associations to $z_{\\setminus l}$; the marginal-density form (46) is preferred unless inputs are independent."
+    },
+    {
+      "id": "AP272.7",
+      "type": "algorithm",
+      "name": "Weighted Tree-Traversal for Partial Dependence",
+      "section": "8.2",
+      "statement": "Compute $\\bar{F}_l(z_l)$ on a decision tree by a weighted root-to-leaf traversal: at $z_l$-splits follow the appropriate child; at $z_{\\setminus l}$-splits visit both children with weights proportional to the training fraction going each way. Aggregate over the $M$ trees of a boosted ensemble.",
+      "input": ["Boosted ensemble $\\{T_m\\}_1^M$", "Subset $z_l$ and target values"],
+      "output": ["Partial-dependence value $\\bar{F}_l(z_l)$"],
+      "tags": ["interpretability"]
+    },
+    {
+      "id": "ExP272.1",
+      "type": "example",
+      "name": "Shrinkage-vs-Iterations Simulation",
+      "section": "5",
+      "statement": "Simulation with 5000 observations, normal noise (SNR 2:1), 11-terminal-node trees, and shrinkage $\\nu \\in \\{1.0, 0.25, 0.125, 0.06\\}$ shows that smaller $\\nu$ requires larger optimal $M$ but yields lower lack-of-fit; the misclassification error-rate is much less sensitive to over-fitting than the negative log-likelihood."
+    },
+    {
+      "id": "ExP272.2",
+      "type": "example",
+      "name": "Random Function Generator",
+      "section": "6.1",
+      "statement": "Targets $F^*(x) = \\sum_{l=1}^{20} a_l g_l(z_l)$ with $a_l \\sim U[-1, 1]$ and $g_l(z_l) = \\exp(-\\frac{1}{2}(z_l - \\mu_l)^T V_l (z_l - \\mu_l))$ are randomly generated; $z_l$ is a random size-$n_l$ subset of $x$ with $n_l = \\lfloor 1.5 + r \\rfloor$, $r \\sim \\mathrm{Exp}(2)$. 100 such target functions are used in the simulation studies."
+    },
+    {
+      "id": "ExP272.3",
+      "type": "example",
+      "name": "Error-Distribution Comparison: LS vs LAD vs M TreeBoost",
+      "section": "6.2",
+      "statement": "Over 100 random targets with 1:1 SNR: under normal errors LS TreeBoost wins 73 trials and is on average 0.2% worse than the best while LAD is 7.4% worse; under slash errors LS is disastrous (364.6% worse on average) while M TreeBoost is best 68 times and 1.0% worse on average. M TreeBoost is the overall method of choice."
+    },
+    {
+      "id": "ExP272.4",
+      "type": "example",
+      "name": "LS TreeBoost vs MARS",
+      "section": "6.3",
+      "statement": "On the 100 randomly generated targets with normal errors and 1:1 SNR, MARS and LS TreeBoost have similar average-absolute error, but MARS root-mean-squared error is typically 30% larger, indicating MARS predictions are either very close or very far from the target while LS TreeBoost errors are more uniform."
+    },
+    {
+      "id": "ExP272.5",
+      "type": "example",
+      "name": "LK TreeBoost vs LogitBoost vs AdaBoost.MH (5-class)",
+      "section": "6.4",
+      "statement": "Over 100 5-class targets ($N=7500$, 11-terminal-node trees), LK TreeBoost wins 78 trials and is 0.6% worse than the best on average; LogitBoost wins 21 and is 3.5% worse; AdaBoost.MH never wins and is 15% worse. With proportional shrinkage ($\\nu = 0.1$) added to LogitBoost and AdaBoost.MH, all three perform similarly."
+    },
+    {
+      "id": "ExP272.6",
+      "type": "example",
+      "name": "Tree-Size Effect Simulation",
+      "section": "7",
+      "statement": "On the 100 random targets, $L \\in \\{2, 3, 6, 11, 21\\}$: smallest trees ($L \\le 2$) give wider error distributions; $L \\in \\{6, 11, 21\\}$ are similar with little difference. Mean relative-to-best errors: 23.2%, 16.4%, 2.4%, 2.2%, 3.7%."
+    },
+    {
+      "id": "ExP272.7",
+      "type": "example",
+      "name": "Garnet Data",
+      "section": "9.1",
+      "statement": "$N = 13317$ garnets with 11 chemical concentrations and a categorical tectonic-plate variable. Predict TiO$_2$ from the others. Six-terminal-node trees suffice; LAD and M TreeBoost outperform LS, with Ga and Zr the most influential variables and a strong Ga-Zr interaction visible in partial-dependence plots."
+    },
+    {
+      "id": "ExP272.8",
+      "type": "example",
+      "name": "Demographic Data",
+      "section": "9.2",
+      "statement": "$N = 9409$ shopping-mall questionnaires with 14 demographic variables. Predict income from the other 13. Differences among LS / LAD / M TreeBoost are small; an additive ($L = 2$) model suffices; no small group of variables dominates relative importance."
+    },
+    {
+      "id": "RP272.2",
+      "type": "remark",
+      "name": "Robustness and Invariances of TreeBoost",
+      "section": "10",
+      "statement": "All TreeBoost procedures are invariant under (strictly) monotone transformations of individual input variables, immune to long-tailed input distributions, and robust to irrelevant inputs. LAD/M TreeBoost are additionally robust to output outliers."
+    },
+    {
+      "id": "RP272.3",
+      "type": "remark",
+      "name": "Computational Scaling",
+      "section": "10",
+      "statement": "After sorting, regression TreeBoost (LS, LAD, M) scales linearly in $N$, $n$, $M$ and roughly logarithmically in $L$. LK TreeBoost scales linearly in $K$ but sub-linearly in $M$ when influence trimming is used."
+    }
+  ],
+  "edges": [
+    {"source": "DP272.3", "target": "DP272.4", "type": "uses"},
+    {"source": "DP272.1", "target": "DP272.5", "type": "uses"},
+    {"source": "DP272.4", "target": "DP272.6", "type": "uses"},
+    {"source": "DP272.5", "target": "AP272.1", "type": "uses"},
+    {"source": "DP272.6", "target": "AP272.1", "type": "uses"},
+    {"source": "DP272.4", "target": "AP272.1", "type": "uses"},
+    {"source": "AP272.1", "target": "ProbP272.1", "type": "solves"},
+    {"source": "DP272.1", "target": "AP272.1", "type": "uses"},
+    {"source": "DP272.2", "target": "AP272.2", "type": "uses"},
+    {"source": "DP272.2", "target": "AP272.3", "type": "uses"},
+    {"source": "DP272.2", "target": "AP272.5", "type": "uses"},
+    {"source": "AP272.1", "target": "AP272.2", "type": "specializes"},
+    {"source": "AP272.1", "target": "AP272.3", "type": "specializes"},
+    {"source": "AP272.1", "target": "AP272.4", "type": "specializes"},
+    {"source": "AP272.1", "target": "AP272.5", "type": "specializes"},
+    {"source": "AP272.1", "target": "AP272.6", "type": "specializes"},
+    {"source": "AP272.5", "target": "AP272.6", "type": "specializes"},
+    {"source": "DP272.7", "target": "AP272.5", "type": "uses"},
+    {"source": "DP272.7", "target": "AP272.6", "type": "uses"},
+    {"source": "DP272.8", "target": "AP272.1", "type": "uses"},
+    {"source": "DP272.8", "target": "ExP272.1", "type": "uses"},
+    {"source": "AP272.2", "target": "ExP272.1", "type": "illustrates"},
+    {"source": "AP272.3", "target": "ExP272.1", "type": "illustrates"},
+    {"source": "AP272.5", "target": "ExP272.1", "type": "illustrates"},
+    {"source": "ExP272.2", "target": "ExP272.3", "type": "uses"},
+    {"source": "ExP272.2", "target": "ExP272.4", "type": "uses"},
+    {"source": "ExP272.2", "target": "ExP272.5", "type": "uses"},
+    {"source": "ExP272.2", "target": "ExP272.6", "type": "uses"},
+    {"source": "AP272.2", "target": "ExP272.3", "type": "illustrates"},
+    {"source": "AP272.3", "target": "ExP272.3", "type": "illustrates"},
+    {"source": "AP272.4", "target": "ExP272.3", "type": "illustrates"},
+    {"source": "AP272.2", "target": "ExP272.4", "type": "illustrates"},
+    {"source": "AP272.6", "target": "ExP272.5", "type": "illustrates"},
+    {"source": "AP272.2", "target": "ExP272.6", "type": "illustrates"},
+    {"source": "DP272.9", "target": "ClP272.1", "type": "uses"},
+    {"source": "EP272.1", "target": "DP272.11", "type": "uses"},
+    {"source": "DP272.10", "target": "DP272.11", "type": "specializes"},
+    {"source": "DP272.10", "target": "ClP272.2", "type": "uses"},
+    {"source": "AP272.1", "target": "DP272.11", "type": "uses"},
+    {"source": "DP272.12", "target": "AP272.7", "type": "uses"},
+    {"source": "DP272.12", "target": "RP272.1", "type": "uses"},
+    {"source": "AP272.4", "target": "ExP272.7", "type": "illustrates"},
+    {"source": "AP272.3", "target": "ExP272.7", "type": "illustrates"},
+    {"source": "AP272.2", "target": "ExP272.7", "type": "illustrates"},
+    {"source": "DP272.11", "target": "ExP272.7", "type": "illustrates"},
+    {"source": "AP272.7", "target": "ExP272.7", "type": "illustrates"},
+    {"source": "AP272.4", "target": "ExP272.8", "type": "illustrates"},
+    {"source": "AP272.3", "target": "ExP272.8", "type": "illustrates"},
+    {"source": "AP272.2", "target": "ExP272.8", "type": "illustrates"},
+    {"source": "DP272.11", "target": "ExP272.8", "type": "illustrates"},
+    {"source": "AP272.7", "target": "ExP272.8", "type": "illustrates"},
+    {"source": "ClP272.1", "target": "ExP272.6", "type": "illustrates"}
+  ]
+}

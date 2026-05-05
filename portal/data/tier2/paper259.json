@@ -1,0 +1,589 @@
+{
+  "metadata": {
+    "title": "SAGA: A Fast Incremental Gradient Method With Support for Non-Strongly Convex Composite Objectives",
+    "paper_num": 259,
+    "authors": ["Aaron Defazio", "Francis Bach", "Simon Lacoste-Julien"],
+    "year": 2014,
+    "venue": "NIPS 2014",
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "ProbP259.1",
+      "type": "problem",
+      "name": "Composite finite-sum minimisation",
+      "section": "1 Introduction",
+      "statement": "Minimise $F(x) = f(x) + h(x)$ where $f(x) = \\frac{1}{n}\\sum_{i=1}^{n} f_i(x)$, each $f_i$ is convex with $L$-Lipschitz gradient (optionally $\\mu$-strongly convex), and $h$ is convex possibly non-differentiable with a tractable proximal operator.",
+      "statement_clean": "Minimise the sum of $n$ smooth convex losses plus a (proximable) regulariser.",
+      "subclass": "optimization",
+      "origin": "paper",
+      "tags": ["optimization", "convex", "finite-sum", "composite"]
+    },
+    {
+      "id": "DP259.1",
+      "type": "definition",
+      "name": "Proximal operator",
+      "section": "2 SAGA Algorithm",
+      "statement": "$\\mathrm{prox}^{h}_{\\stepsize}(y) := \\arg\\min_{x \\in \\mathbb{R}^d} \\{ h(x) + \\frac{1}{2\\stepsize}\\|x-y\\|^2 \\}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP259.2",
+      "type": "definition",
+      "name": "Lyapunov function $T$",
+      "section": "5 Theory",
+      "statement": "$T^k := \\frac{1}{n}\\sum_i f_i(\\phi_i^k) - f(x^*) - \\frac{1}{n}\\sum_i \\langle f_i'(x^*), \\phi_i^k - x^* \\rangle + c\\|x^k - x^*\\|^2$.",
+      "statement_clean": "Lyapunov potential combining a Bregman-style gradient-table term with the squared distance to the optimum.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP259.3",
+      "type": "definition",
+      "name": "Variance-reduced estimator $\\theta_\\alpha$",
+      "section": "3 Related Work / SAGA midpoint",
+      "statement": "Given correlated random variables $X, Y$ with $\\mathbb{E}Y$ computable, define $\\theta_\\alpha := \\alpha(X-Y) + \\mathbb{E}Y$ for $\\alpha \\in [0,1]$, so $\\mathbb{E}\\theta_\\alpha = \\alpha\\,\\mathbb{E}X + (1-\\alpha)\\,\\mathbb{E}Y$.",
+      "statement_clean": "Generalised control-variate estimator interpolating between $\\mathbb{E}Y$ ($\\alpha=0$) and an unbiased estimate of $\\mathbb{E}X$ ($\\alpha=1$).",
+      "origin": "paper"
+    },
+    {
+      "id": "AP259.1",
+      "type": "algorithm",
+      "name": "SAGA",
+      "section": "2 SAGA Algorithm",
+      "statement": "Incremental gradient method with a stored gradient table: at each step, sample $j$ uniformly, replace $f_j'(\\phi_j^k)$ in the table, and take a proximal step $x^{k+1} = \\mathrm{prox}^h_\\stepsize(w^{k+1})$.",
+      "statement_clean": "Variance-reduced stochastic gradient method with a stored gradient table and a proximal step on the regulariser.",
+      "input": [
+        "Initial iterate $x^0 \\in \\mathbb{R}^d$",
+        "Gradient table $\\{f_i'(\\phi_i^0)\\}_{i=1}^n$ with $\\phi_i^0 = x^0$",
+        "Step size $\\stepsize$ (e.g. $\\stepsize = 1/(2(\\mu n + L))$ or $\\stepsize = 1/(3L)$)"
+      ],
+      "output": [
+        "Iterate $x^k$ converging to $x^* = \\arg\\min F$",
+        "Updated gradient table $\\{f_i'(\\phi_i^k)\\}$"
+      ],
+      "pseudocode": "Repeat: (1) Pick $j$ uniformly at random; (2) set $\\phi_j^{k+1} = x^k$, store $f_j'(\\phi_j^{k+1})$ replacing the previous entry; (3) compute $w^{k+1} = x^k - \\stepsize[f_j'(\\phi_j^{k+1}) - f_j'(\\phi_j^k) + \\frac{1}{n}\\sum_i f_i'(\\phi_i^k)]$ and $x^{k+1} = \\mathrm{prox}^h_\\stepsize(w^{k+1})$.",
+      "origin": "paper",
+      "tags": ["iterative", "stochastic", "variance-reduction", "proximal"]
+    },
+    {
+      "id": "AP259.2",
+      "type": "algorithm",
+      "name": "SAGA: equivalent reformulation (non-composite, $u$-form)",
+      "section": "3 Related Work / Finito-MISO",
+      "statement": "Equivalent rewriting of SAGA in the non-composite case using $u^k$ with $u^0 := x^0 + \\stepsize \\sum_i f_i'(x^0)$, exposing the link to Finito/MISO$\\mu$.",
+      "input": [
+        "Auxiliary $u^k$",
+        "Gradient table $\\{f_i'(\\phi_i^k)\\}$"
+      ],
+      "output": [
+        "Iterate $x^k = u^k - \\stepsize \\sum_i f_i'(\\phi_i^k)$"
+      ],
+      "pseudocode": "(1) $x^k = u^k - \\stepsize \\sum_i f_i'(\\phi_i^k)$; (2) $u^{k+1} = u^k + \\frac{1}{n}(x^k - u^k)$; (3) pick $j$ uniformly; (4) $\\phi_j^{k+1} = x^k$ and store $f_j'(\\phi_j^{k+1})$.",
+      "origin": "paper",
+      "tags": ["iterative", "stochastic"]
+    },
+    {
+      "id": "AP259.3",
+      "type": "algorithm",
+      "name": "SDCA in the primal",
+      "section": "3 Related Work / SDCA",
+      "statement": "Primal reformulation of SDCA obtained via the Moreau decomposition $\\mathrm{prox}^{f^*}(v) = v - \\mathrm{prox}^{f}(v)$, which eliminates explicit dual variables.",
+      "input": [
+        "Gradient table $\\{f_i'(\\phi_i^k)\\}$",
+        "Step $\\stepsize = 1/(\\mu n)$"
+      ],
+      "output": [
+        "Primal iterate $x^k = -\\stepsize \\sum_i f_i'(\\phi_i^k)$"
+      ],
+      "pseudocode": "(1) Pick $j$ uniformly; (2) compute $\\phi_j^{k+1} = \\mathrm{prox}^{f_j}_{\\stepsize}(z)$ where $z = -\\stepsize \\sum_{i\\neq j} f_i'(\\phi_i^k)$; (3) store $f_j'(\\phi_j^{k+1}) = (z - \\phi_j^{k+1})/\\stepsize$ in the table; return $x^k = -\\stepsize \\sum_i f_i'(\\phi_i^k)$.",
+      "origin": "paper",
+      "tags": ["iterative", "stochastic", "proximal"]
+    },
+    {
+      "id": "AP259.4",
+      "type": "algorithm",
+      "name": "SDCA/Finito midpoint",
+      "section": "Appendix A",
+      "statement": "Variant obtained by moving the strong-convexity bound inside each $f_i$: the SDCA update becomes $\\phi_j^{k+1} = \\mathrm{prox}^{f_j}_{(\\mu(n-1))^{-1}}(z)$ with $z = \\frac{1}{n-1}\\sum_{i\\neq j}\\phi_i^k - \\frac{1}{\\mu(n-1)}\\sum_{i\\neq j} f_i'(\\phi_i^k)$, yielding a method midway between Finito and SDCA with no tunable parameters.",
+      "input": [
+        "Tables $\\{\\phi_i^k\\}$ and $\\{f_i'(\\phi_i^k)\\}$",
+        "Strong convexity constant $\\mu$"
+      ],
+      "output": [
+        "Iterate $x^{k+1} = \\frac{1}{n}\\sum_i \\phi_i^{k+1} - \\frac{1}{\\mu n}\\sum_i f_i'(\\phi_i^{k+1})$"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "proximal"]
+    },
+    {
+      "id": "AP259.5",
+      "type": "algorithm",
+      "name": "SAG (Stochastic Average Gradient)",
+      "section": "3 Related Work (cited)",
+      "statement": "Biased variance-reduced stochastic gradient method with the update $x^{k+1} = x^k - \\stepsize[\\frac{1}{n}(f_j'(x^k) - f_j'(\\phi_j^k)) + \\frac{1}{n}\\sum_i f_i'(\\phi_i^k)]$ (i.e. $\\alpha = 1/n$ in the variance-reduction view).",
+      "origin": "external",
+      "origin_citation": "Schmidt, Le Roux, Bach (SAG)",
+      "tags": ["iterative", "stochastic", "variance-reduction"]
+    },
+    {
+      "id": "AP259.6",
+      "type": "algorithm",
+      "name": "SVRG (Stochastic Variance Reduced Gradient)",
+      "section": "3 Related Work (cited)",
+      "statement": "Unbiased variance-reduced method with update $x^{k+1} = x^k - \\stepsize[f_j'(x^k) - f_j'(\\tilde{x}) + \\frac{1}{n}\\sum_i f_i'(\\tilde{x})]$, where $\\tilde{x}$ is refreshed only at the start of each outer loop.",
+      "origin": "external",
+      "origin_citation": "Johnson & Zhang 2013 (SVRG)",
+      "tags": ["iterative", "stochastic", "variance-reduction"]
+    },
+    {
+      "id": "AP259.7",
+      "type": "algorithm",
+      "name": "Finito / MISO$\\mu$",
+      "section": "3 Related Work (cited)",
+      "statement": "Update $x^{k+1} = \\frac{1}{n}\\sum_i \\phi_i^k - \\stepsize \\sum_i f_i'(\\phi_i^k)$ with step $\\stepsize \\sim 1/(\\mu n)$.",
+      "origin": "external",
+      "origin_citation": "Defazio, Caetano, Domke (Finito); Mairal (MISO)",
+      "tags": ["iterative"]
+    },
+    {
+      "id": "AP259.8",
+      "type": "algorithm",
+      "name": "SDCA (Stochastic Dual Coordinate Ascent)",
+      "section": "3 Related Work (cited)",
+      "statement": "Block coordinate ascent on the dual of an $\\ell_2$-regularised empirical risk; per step, $\\alpha_j^{k+1} = \\alpha_j^k + \\arg\\max_{\\Delta \\alpha_j} \\{ -f_j^*(-\\alpha_j^k - \\Delta\\alpha_j) - \\frac{\\mu n}{2}\\|x^k + \\frac{1}{\\mu n}\\Delta\\alpha_j\\|^2 \\}$.",
+      "origin": "external",
+      "origin_citation": "Shalev-Shwartz & Zhang (SDCA / Prox-SDCA)",
+      "tags": ["iterative", "stochastic", "proximal"]
+    },
+    {
+      "id": "EP259.1",
+      "type": "equation",
+      "name": "SAGA main update for $w^{k+1}$",
+      "section": "2 SAGA Algorithm",
+      "statement": "$w^{k+1} = x^k - \\stepsize\\!\\left[ f_j'(\\phi_j^{k+1}) - f_j'(\\phi_j^k) + \\frac{1}{n}\\sum_{i=1}^n f_i'(\\phi_i^k) \\right]$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP259.2",
+      "type": "equation",
+      "name": "SAG vs SAGA vs SVRG side-by-side updates",
+      "section": "3 Related Work / SAGA midpoint",
+      "statement": "$x^{k+1} = x^k - \\stepsize[\\tfrac{1}{n}(f_j'(x^k)-f_j'(\\phi_j^k)) + \\tfrac{1}{n}\\sum_i f_i'(\\phi_i^k)]$ (SAG); $x^{k+1} = x^k - \\stepsize[f_j'(x^k)-f_j'(\\phi_j^k) + \\tfrac{1}{n}\\sum_i f_i'(\\phi_i^k)]$ (SAGA); $x^{k+1} = x^k - \\stepsize[f_j'(x^k)-f_j'(\\tilde{x}) + \\tfrac{1}{n}\\sum_i f_i'(\\tilde{x})]$ (SVRG).",
+      "origin": "paper"
+    },
+    {
+      "id": "EP259.3",
+      "type": "equation",
+      "name": "Finito/MISO$\\mu$ update",
+      "section": "3 Related Work / Finito-MISO",
+      "statement": "$x^{k+1} = \\frac{1}{n}\\sum_i \\phi_i^k - \\stepsize \\sum_{i=1}^n f_i'(\\phi_i^k)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP259.4",
+      "type": "equation",
+      "name": "Moreau decomposition",
+      "section": "3 Related Work / SDCA",
+      "statement": "$\\mathrm{prox}^{f^*}(v) = v - \\mathrm{prox}^{f}(v)$.",
+      "origin": "external",
+      "origin_citation": "Moreau decomposition (classical)"
+    },
+    {
+      "id": "LP259.1",
+      "type": "lemma",
+      "name": "Lemma 1 (inner-product bound)",
+      "section": "5 Theory",
+      "statement": "$\\langle f'(x), x^* - x \\rangle \\leq \\frac{L-\\mu}{L}[f(x^*)-f(x)] - \\frac{\\mu}{2}\\|x^*-x\\|^2 - \\frac{1}{2Ln}\\sum_i \\|f_i'(x^*)-f_i'(x)\\|^2 - \\frac{\\mu}{L}\\langle f'(x^*), x-x^* \\rangle$.",
+      "assumptions": [
+        "$f(x) = \\frac{1}{n}\\sum_{i=1}^n f_i(x)$",
+        "Each $f_i$ is $\\mu$-strongly convex",
+        "Each $f_i$ has $L$-Lipschitz continuous gradient",
+        "$x, x^* \\in \\mathbb{R}^d$"
+      ],
+      "conclusions": [
+        "$\\langle f'(x), x^*-x\\rangle \\leq \\frac{L-\\mu}{L}[f(x^*)-f(x)] - \\frac{\\mu}{2}\\|x^*-x\\|^2 - \\frac{1}{2Ln}\\sum_i \\|f_i'(x^*)-f_i'(x)\\|^2 - \\frac{\\mu}{L}\\langle f'(x^*), x-x^*\\rangle$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "LP259.2",
+      "type": "lemma",
+      "name": "Lemma 2 (gradient-difference bound at stored points)",
+      "section": "5 Theory",
+      "statement": "$\\frac{1}{n}\\sum_i \\|f_i'(\\phi_i)-f_i'(x^*)\\|^2 \\leq 2L[\\frac{1}{n}\\sum_i f_i(\\phi_i) - f(x^*) - \\frac{1}{n}\\sum_i \\langle f_i'(x^*), \\phi_i - x^*\\rangle]$.",
+      "assumptions": [
+        "Each $f_i$ has $L$-Lipschitz gradient and is convex",
+        "$\\phi_i, x^* \\in \\mathbb{R}^d$ for each $i$"
+      ],
+      "conclusions": [
+        "$\\frac{1}{n}\\sum_i \\|f_i'(\\phi_i)-f_i'(x^*)\\|^2 \\leq 2L\\left[\\frac{1}{n}\\sum_i f_i(\\phi_i)-f(x^*)-\\frac{1}{n}\\sum_i \\langle f_i'(x^*),\\phi_i-x^*\\rangle\\right]$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "LP259.3",
+      "type": "lemma",
+      "name": "Lemma 3 ($w$-change bound)",
+      "section": "5 Theory",
+      "statement": "$\\mathbb{E}\\|w^{k+1}-x^k-\\stepsize f'(x^*)\\|^2 \\leq \\stepsize^2(1+\\beta^{-1})\\mathbb{E}\\|f_j'(\\phi_j^k)-f_j'(x^*)\\|^2 + \\stepsize^2(1+\\beta)\\mathbb{E}\\|f_j'(x^k)-f_j'(x^*)\\|^2 - \\stepsize^2 \\beta\\|f'(x^k)-f'(x^*)\\|^2$.",
+      "assumptions": [
+        "$w^{k+1}$ as in the SAGA update (Eq. EP259.1)",
+        "$\\beta > 0$",
+        "$\\phi_i^k, x^k, x^* \\in \\mathbb{R}^d$"
+      ],
+      "conclusions": [
+        "$\\mathbb{E}\\|w^{k+1}-x^k-\\stepsize f'(x^*)\\|^2 \\leq \\stepsize^2(1+\\beta^{-1})\\mathbb{E}\\|f_j'(\\phi_j^k)-f_j'(x^*)\\|^2 + \\stepsize^2(1+\\beta)\\mathbb{E}\\|f_j'(x^k)-f_j'(x^*)\\|^2 - \\stepsize^2\\beta\\|f'(x^k)-f'(x^*)\\|^2$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "LP259.4",
+      "type": "lemma",
+      "name": "Lemma A1 (strong-convexity lower bound)",
+      "section": "Appendix B",
+      "statement": "$f(x) \\geq f(y) + \\langle f'(y), x-y\\rangle + \\frac{1}{2(L-\\mu)}\\|f'(x)-f'(y)\\|^2 + \\frac{\\mu L}{2(L-\\mu)}\\|y-x\\|^2 + \\frac{\\mu}{L-\\mu}\\langle f'(x)-f'(y), y-x\\rangle$.",
+      "assumptions": [
+        "$f$ is $\\mu$-strongly convex",
+        "$f$ has $L$-Lipschitz gradient",
+        "$x, y \\in \\mathbb{R}^d$"
+      ],
+      "conclusions": [
+        "$f(x) \\geq f(y)+\\langle f'(y),x-y\\rangle+\\frac{1}{2(L-\\mu)}\\|f'(x)-f'(y)\\|^2+\\frac{\\mu L}{2(L-\\mu)}\\|y-x\\|^2+\\frac{\\mu}{L-\\mu}\\langle f'(x)-f'(y),y-x\\rangle$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "TP259.1",
+      "type": "theorem",
+      "name": "Theorem 1 (Lyapunov contraction in the strongly convex case)",
+      "section": "5 Theory",
+      "statement": "With $\\stepsize = \\frac{1}{2(\\mu n + L)}$, $c = \\frac{1}{2\\stepsize(1-\\stepsize\\mu)n}$ and $\\kappa = \\frac{1}{\\stepsize\\mu}$, the SAGA Lyapunov function satisfies $\\mathbb{E}[T^{k+1}] \\leq (1 - 1/\\kappa) T^k$.",
+      "assumptions": [
+        "Each $f_i$ is $\\mu$-strongly convex with $L$-Lipschitz gradient",
+        "$h$ is convex with tractable proximal operator",
+        "$T^k$ as in DP259.2",
+        "$\\stepsize = 1/(2(\\mu n+L))$, $c = 1/(2\\stepsize(1-\\stepsize\\mu)n)$, $\\kappa = 1/(\\stepsize\\mu)$"
+      ],
+      "conclusions": [
+        "$\\mathbb{E}[T^{k+1}] \\leq (1 - 1/\\kappa) T^k$ conditional on $T^k$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "convergence-rate"]
+    },
+    {
+      "id": "CP259.1",
+      "type": "corollary",
+      "name": "Corollary 1 (linear convergence in iterate distance)",
+      "section": "5 Theory",
+      "statement": "$\\mathbb{E}\\|x^k-x^*\\|^2 \\leq (1 - \\frac{\\mu}{2(\\mu n + L)})^k \\big[\\|x^0-x^*\\|^2 + \\frac{n}{\\mu n + L}[f(x^0) - \\langle f'(x^*), x^0 - x^*\\rangle - f(x^*)]\\big]$.",
+      "assumptions": [
+        "Hypotheses of Theorem TP259.1",
+        "Initial table $\\phi_i^0 = x^0$"
+      ],
+      "conclusions": [
+        "$\\mathbb{E}\\|x^k-x^*\\|^2 \\leq (1-\\frac{\\mu}{2(\\mu n+L)})^k \\left[\\|x^0-x^*\\|^2 + \\frac{n}{\\mu n+L}[f(x^0)-\\langle f'(x^*),x^0-x^*\\rangle-f(x^*)]\\right]$"
+      ],
+      "origin": "paper",
+      "tags": ["convergence-rate", "bound"]
+    },
+    {
+      "id": "TP259.2",
+      "type": "theorem",
+      "name": "Theorem 2 (sublinear $O(n/k)$ rate, non-strongly convex case)",
+      "section": "Appendix C",
+      "statement": "When each $f_i$ is convex (no strong convexity) and $\\stepsize = 1/(3L)$: $\\mathbb{E}[F(\\bar{x}^k)]-F(x^*) \\leq \\frac{4n}{k}\\big[\\frac{2L}{n}\\|x^0-x^*\\|^2 + f(x^0) - \\langle f'(x^*), x^0-x^*\\rangle - f(x^*)\\big]$, where $\\bar{x}^k = \\frac{1}{k}\\sum_{t=1}^k x^t$.",
+      "assumptions": [
+        "Each $f_i$ is convex with $L$-Lipschitz gradient",
+        "$h$ convex with tractable proximal operator",
+        "$\\stepsize = 1/(3L)$",
+        "$\\bar{x}^k = \\frac{1}{k}\\sum_{t=1}^k x^t$"
+      ],
+      "conclusions": [
+        "$\\mathbb{E}[F(\\bar{x}^k)] - F(x^*) \\leq \\frac{4n}{k}\\left[\\frac{2L}{n}\\|x^0-x^*\\|^2 + f(x^0)-\\langle f'(x^*),x^0-x^*\\rangle-f(x^*)\\right]$"
+      ],
+      "origin": "paper",
+      "tags": ["convergence-rate", "bound"]
+    },
+    {
+      "id": "PP259.1",
+      "type": "proof",
+      "name": "Proof of Theorem 1",
+      "section": "5 Theory",
+      "statement": "Bound the conditional change in each term of the Lyapunov function $T^k$, applying non-expansiveness of the prox, Lemma LP259.3 for the $w$-change term, and Lemmas LP259.1, LP259.2 to absorb the cross terms; choose $\\beta = (2\\mu n+L)/L$ so that all `bracket' coefficients are non-positive.",
+      "parent_id": "TP259.1",
+      "proves": "TP259.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP259.1",
+      "type": "proof_step",
+      "parent_id": "PP259.1",
+      "step_order": 1,
+      "name": "Expand $f$- and inner-product terms of $T^{k+1}$",
+      "statement": "$\\mathbb{E}[\\frac{1}{n}\\sum_i f_i(\\phi_i^{k+1})] = \\frac{1}{n}f(x^k) + (1-\\frac{1}{n})\\frac{1}{n}\\sum_i f_i(\\phi_i^k)$, and similarly $\\mathbb{E}[-\\frac{1}{n}\\sum_i \\langle f_i'(x^*), \\phi_i^{k+1}-x^*\\rangle] = -\\frac{1}{n}\\langle f'(x^*), x^k-x^*\\rangle - (1-\\frac{1}{n})\\frac{1}{n}\\sum_i \\langle f_i'(x^*), \\phi_i^k-x^*\\rangle$.",
+      "subclass": "algebraic_manipulation"
+    },
+    {
+      "id": "PSP259.2",
+      "type": "proof_step",
+      "parent_id": "PP259.1",
+      "step_order": 2,
+      "name": "Apply non-expansiveness of prox",
+      "statement": "$c\\|x^{k+1}-x^*\\|^2 = c\\|\\mathrm{prox}_\\stepsize(w^{k+1}) - \\mathrm{prox}_\\stepsize(x^* - \\stepsize f'(x^*))\\|^2 \\leq c\\|w^{k+1} - x^* + \\stepsize f'(x^*)\\|^2$ (uses optimality of $x^*$).",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP259.3",
+      "type": "proof_step",
+      "parent_id": "PP259.1",
+      "step_order": 3,
+      "name": "Expand quadratic and use $\\mathbb{E}[w^{k+1}] = x^k - \\stepsize f'(x^k)$",
+      "statement": "Splitting $w^{k+1}-x^*+\\stepsize f'(x^*) = (x^k-x^*) + (w^{k+1}-x^k+\\stepsize f'(x^*))$ and using $\\mathbb{E}[w^{k+1}-x^k] = -\\stepsize f'(x^k)$ to simplify the cross term, then bounding the residual via Lemma LP259.3.",
+      "subclass": "algebraic_manipulation"
+    },
+    {
+      "id": "PSP259.4",
+      "type": "proof_step",
+      "parent_id": "PP259.1",
+      "step_order": 4,
+      "name": "Apply Lemma 1 and Lemma 2 to absorb cross terms",
+      "statement": "Bound $-2c\\stepsize\\langle f'(x^k), x^k-x^*\\rangle$ via Lemma LP259.1 and $\\mathbb{E}\\|f_j'(\\phi_j^k)-f_j'(x^*)\\|^2$ via Lemma LP259.2, then collect terms.",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP259.5",
+      "type": "proof_step",
+      "parent_id": "PP259.1",
+      "step_order": 5,
+      "name": "Choose constants so brackets are non-positive",
+      "statement": "Together with $-\\|f'(x^k)-f'(x^*)\\|^2 \\leq -2\\mu[f(x^k)-f(x^*)-\\langle f'(x^*), x^k-x^*\\rangle]$, the choices $\\stepsize=1/(2(\\mu n+L))$, $c = 1/(2\\stepsize(1-\\stepsize\\mu)n)$, $\\kappa = 1/(\\stepsize\\mu)$, $\\beta = (2\\mu n + L)/L$ make every round-bracketed coefficient non-positive, leaving $\\mathbb{E}[T^{k+1}] - T^k \\leq -T^k/\\kappa$.",
+      "subclass": "conclude"
+    },
+    {
+      "id": "PSP259.6",
+      "type": "proof_step",
+      "parent_id": "PP259.1",
+      "step_order": 6,
+      "name": "Adaptivity-to-strong-convexity addendum",
+      "statement": "With $\\stepsize = 1/(3L)$, the same $c$, $\\beta = 2$ and $1/\\kappa = \\min\\{1/(4n), \\mu/(3L)\\}$ also give non-positive coefficients, so the algorithm linearly converges adaptively whenever $\\mu > 0$.",
+      "subclass": "conclude"
+    },
+    {
+      "id": "PP259.2",
+      "type": "proof",
+      "name": "Proof of Theorem 2 (non-strongly convex case)",
+      "section": "Appendix C",
+      "statement": "Augment the Lyapunov function with an extra $\\alpha\\|x^k-x^*\\|^2$ term, bound this term using a prox-SVRG inequality with $\\Delta = -\\frac{1}{\\stepsize}(w^{k+1}-x^k) - f'(x^k)$, then telescope to obtain the $4n/k$ rate.",
+      "parent_id": "TP259.2",
+      "proves": "TP259.2",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP259.7",
+      "type": "proof_step",
+      "parent_id": "PP259.2",
+      "step_order": 1,
+      "name": "Augmented Lyapunov function",
+      "statement": "Add $\\alpha\\|x^k-x^*\\|^2$ to the Lyapunov function used in Theorem 1 and treat it differently from the $c\\|x^k-x^*\\|^2$ term.",
+      "subclass": "setup"
+    },
+    {
+      "id": "PSP259.8",
+      "type": "proof_step",
+      "parent_id": "PP259.2",
+      "step_order": 2,
+      "name": "Use prox-SVRG inequality on $\\alpha$-term",
+      "statement": "Setting $\\Delta = -\\frac{1}{\\stepsize}(w^{k+1}-x^k)-f'(x^k)$, apply the prox-SVRG bound $\\alpha\\mathbb{E}\\|x^{k+1}-x^*\\|^2 \\leq \\alpha\\|x^k-x^*\\|^2 - 2\\alpha\\stepsize\\mathbb{E}[F(x^{k+1})-F(x^*)] + 2\\alpha\\stepsize^2\\mathbb{E}\\|\\Delta\\|^2$ (uses only $\\mathbb{E}[\\Delta]=0$).",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP259.9",
+      "type": "proof_step",
+      "parent_id": "PP259.2",
+      "step_order": 3,
+      "name": "Bound $\\mathbb{E}\\|\\Delta\\|^2$",
+      "statement": "A modification of the proof of Lemma LP259.3 yields $\\mathbb{E}\\|\\Delta\\|^2 \\leq (1+\\beta^{-1})\\mathbb{E}\\|f_j'(\\phi_j^k)-f_j'(x^*)\\|^2 + (1+\\beta)\\mathbb{E}\\|f_j'(x^k)-f_j'(x^*)\\|^2$.",
+      "subclass": "bound_estimate"
+    },
+    {
+      "id": "PSP259.10",
+      "type": "proof_step",
+      "parent_id": "PP259.2",
+      "step_order": 4,
+      "name": "Tune constants $\\beta=1$, $c=3L/(2n)$, $\\alpha=3L/(8n)$",
+      "statement": "Apply Lemma LP259.2 to the $\\phi$-term and combine with the Theorem 1 bound (with $\\mu=0$). The choices $\\stepsize=1/(3L)$, $\\beta=1$, $c=3L/(2n)$, $\\alpha=3L/(8n)$ zero out all round-bracketed coefficients and yield $\\mathbb{E}[T^{k+1}]-T^k \\leq -\\frac{1}{4n}\\mathbb{E}[F(x^{k+1})-F(x^*)]$.",
+      "subclass": "algebraic_manipulation"
+    },
+    {
+      "id": "PSP259.11",
+      "type": "proof_step",
+      "parent_id": "PP259.2",
+      "step_order": 5,
+      "name": "Telescope and apply convexity",
+      "statement": "Sum over $k$ to telescope $T$, drop $-\\mathbb{E}[T^k] \\leq 0$, then push the average inside $F$ by convexity to get $\\mathbb{E}[F(\\bar{x}^k)-F(x^*)] \\leq \\frac{4n}{k}T^0$, with $T^0 \\leq (c+\\alpha)\\|x^0-x^*\\|^2 + \\dots \\leq \\frac{2L}{n}\\|x^0-x^*\\|^2 + \\dots$.",
+      "subclass": "conclude"
+    },
+    {
+      "id": "PP259.3",
+      "type": "proof",
+      "name": "Proof of Lemma A1 (strong-convexity lower bound)",
+      "section": "Appendix B",
+      "statement": "Define $g(x) = f(x) - \\frac{\\mu}{2}\\|x\\|^2$, which has $(L-\\mu)$-Lipschitz gradient; apply the standard convex inequality $g(x) \\geq g(y) + \\langle g'(y), x-y\\rangle + \\frac{1}{2(L-\\mu)}\\|g'(x)-g'(y)\\|^2$ and substitute back.",
+      "parent_id": "LP259.4",
+      "proves": "LP259.4",
+      "origin": "paper"
+    },
+    {
+      "id": "PP259.4",
+      "type": "proof",
+      "name": "Proof of Lemma 1 (corollary of Lemma A1)",
+      "section": "Appendix B",
+      "statement": "Apply Lemma LP259.4 with $y = x^*$, average over the $f_i$ functions.",
+      "parent_id": "LP259.1",
+      "proves": "LP259.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP259.5",
+      "type": "proof",
+      "name": "Proof of Lemma 2",
+      "section": "Appendix B",
+      "statement": "Apply $f(y) \\geq f(x) + \\langle f'(x), y-x\\rangle + \\frac{1}{2L}\\|f'(x)-f'(y)\\|^2$ with $y=\\phi_i$, $x=x^*$, for each $f_i$, and sum over $i$.",
+      "parent_id": "LP259.2",
+      "proves": "LP259.2",
+      "origin": "paper"
+    },
+    {
+      "id": "PP259.6",
+      "type": "proof",
+      "name": "Proof of Lemma 3 ($w$-change)",
+      "section": "Appendix B",
+      "statement": "Mirror the SVRG variance argument with the tighter inequality $\\|x+y\\|^2 \\leq (1+\\beta^{-1})\\|x\\|^2 + (1+\\beta)\\|y\\|^2$ and the variance decomposition $\\mathbb{E}\\|X-\\mathbb{E}X\\|^2 = \\mathbb{E}\\|X\\|^2 - \\|\\mathbb{E}X\\|^2$ (used three times).",
+      "parent_id": "LP259.3",
+      "proves": "LP259.3",
+      "origin": "paper"
+    },
+    {
+      "id": "RP259.1",
+      "type": "remark",
+      "name": "SAGA as the variance-reduction midpoint between SAG and SVRG",
+      "section": "3 Related Work / SAGA midpoint",
+      "statement": "In the variance-reduction template $\\theta_\\alpha = \\alpha(X-Y)+\\mathbb{E}Y$ with $X = f_j'(x^k)$, $Y = f_j'(\\phi_j^k)$: SAG corresponds to $\\alpha=1/n$ (biased), SAGA to $\\alpha=1$ (unbiased) with table updated per step, SVRG to $\\alpha=1$ with $Y = f_j'(\\tilde{x})$ updated only between outer loops.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP259.2",
+      "type": "remark",
+      "name": "Adaptivity to strong convexity",
+      "section": "2 SAGA Algorithm",
+      "statement": "When the step size $\\stepsize = 1/(3L)$ is used, SAGA automatically adapts to any inherent strong convexity $\\mu > 0$, achieving rate $(1 - \\min\\{1/(4n), \\mu/(3L)\\})^k$ without retuning.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP259.3",
+      "type": "remark",
+      "name": "Storage trick for linear predictors",
+      "section": "4 Implementation",
+      "statement": "When each $f_i$ is a function of $X_i^T x$ (logistic regression, least squares), storing one scalar per $i$ suffices for the gradient table, matching SDCA's memory cost; for $p$-class problems, $p-1$ scalars per $i$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP259.4",
+      "type": "remark",
+      "name": "Just-in-time updating for sparse gradients",
+      "section": "4 Implementation",
+      "statement": "For sparse derivatives, the dense $u$ or $x$ updates can be replaced by lazy (just-in-time) updates so that each iteration touches only the active coordinates, mirroring the standard SAG trick.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP259.5",
+      "type": "remark",
+      "name": "Explicit-quadratic-regulariser variant",
+      "section": "4 Implementation",
+      "statement": "When strong convexity is induced by an explicit quadratic regulariser, use the modified update $x^{k+1} = (1-\\stepsize\\mu)x^k - \\stepsize[f_j'(x^k)-f_j'(\\phi_j^k)+\\frac{1}{n}\\sum_i f_i'(\\phi_i^k)]$, with a separate scaling constant $\\beta^k$ in the sparse implementation.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP259.1",
+      "type": "example",
+      "name": "Empirical comparison on MNIST, COVTYPE, IJCNN1, MILLIONSONG",
+      "section": "6 Experiments",
+      "statement": "Binary logistic classifier on MNIST/COVTYPE/IJCNN1 and least-squares on MILLIONSONG, with both $\\ell_2$ and $\\ell_1$ regularisation. SAGA performs comparably to non-permuted Finito and SDCA; Finito (perm) is best per epoch but most expensive per step; SVRG does roughly $2\\times$ the gradient evaluations per epoch.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP259.2",
+      "type": "example",
+      "name": "Sparse least-squares / ridge regression Cython implementation",
+      "section": "Appendix D",
+      "statement": "Cython code for SAGA on sparse least-squares with $\\ell_2$ regularisation, illustrating just-in-time updating, the $\\beta^k$ scaling trick, and the geometric-series table $\\mathrm{lag\\_scaling}$.",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "AP259.1", "target": "ProbP259.1", "type": "solves"},
+    {"source": "DP259.1", "target": "AP259.1", "type": "uses"},
+    {"source": "EP259.1", "target": "AP259.1", "type": "uses"},
+    {"source": "DP259.1", "target": "EP259.4", "type": "uses"},
+    {"source": "AP259.1", "target": "AP259.2", "type": "uses"},
+    {"source": "AP259.1", "target": "RP259.5", "type": "uses"},
+    {"source": "AP259.1", "target": "RP259.4", "type": "uses"},
+    {"source": "AP259.1", "target": "RP259.3", "type": "uses"},
+    {"source": "AP259.5", "target": "RP259.1", "type": "uses"},
+    {"source": "AP259.6", "target": "RP259.1", "type": "uses"},
+    {"source": "AP259.1", "target": "RP259.1", "type": "uses"},
+    {"source": "DP259.3", "target": "RP259.1", "type": "uses"},
+    {"source": "EP259.2", "target": "RP259.1", "type": "uses"},
+    {"source": "AP259.7", "target": "AP259.2", "type": "uses"},
+    {"source": "EP259.3", "target": "AP259.7", "type": "uses"},
+    {"source": "EP259.4", "target": "AP259.3", "type": "uses"},
+    {"source": "AP259.8", "target": "AP259.3", "type": "uses"},
+    {"source": "AP259.3", "target": "AP259.4", "type": "uses"},
+    {"source": "AP259.7", "target": "AP259.4", "type": "uses"},
+    {"source": "LP259.4", "target": "LP259.1", "type": "uses"},
+    {"source": "PP259.4", "target": "LP259.1", "type": "proves"},
+    {"source": "PP259.5", "target": "LP259.2", "type": "proves"},
+    {"source": "PP259.6", "target": "LP259.3", "type": "proves"},
+    {"source": "PP259.3", "target": "LP259.4", "type": "proves"},
+    {"source": "PP259.1", "target": "TP259.1", "type": "proves"},
+    {"source": "PP259.2", "target": "TP259.2", "type": "proves"},
+    {"source": "DP259.2", "target": "TP259.1", "type": "uses"},
+    {"source": "EP259.1", "target": "LP259.3", "type": "uses"},
+    {"source": "LP259.1", "target": "PP259.1", "type": "uses"},
+    {"source": "LP259.2", "target": "PP259.1", "type": "uses"},
+    {"source": "LP259.3", "target": "PP259.1", "type": "uses"},
+    {"source": "LP259.2", "target": "PP259.2", "type": "uses"},
+    {"source": "LP259.3", "target": "PP259.2", "type": "uses"},
+    {"source": "TP259.1", "target": "CP259.1", "type": "uses"},
+    {"source": "TP259.1", "target": "RP259.2", "type": "uses"},
+    {"source": "AP259.1", "target": "ExP259.1", "type": "illustrates"},
+    {"source": "AP259.5", "target": "ExP259.1", "type": "illustrates"},
+    {"source": "AP259.6", "target": "ExP259.1", "type": "illustrates"},
+    {"source": "AP259.7", "target": "ExP259.1", "type": "illustrates"},
+    {"source": "AP259.8", "target": "ExP259.1", "type": "illustrates"},
+    {"source": "AP259.1", "target": "ExP259.2", "type": "illustrates"},
+    {"source": "RP259.4", "target": "ExP259.2", "type": "illustrates"},
+    {"source": "RP259.5", "target": "ExP259.2", "type": "illustrates"},
+    {"source": "PSP259.1", "target": "PSP259.2", "type": "uses"},
+    {"source": "PSP259.2", "target": "PSP259.3", "type": "uses"},
+    {"source": "PSP259.3", "target": "PSP259.4", "type": "uses"},
+    {"source": "PSP259.4", "target": "PSP259.5", "type": "uses"},
+    {"source": "PSP259.5", "target": "PSP259.6", "type": "uses"},
+    {"source": "LP259.3", "target": "PSP259.3", "type": "uses"},
+    {"source": "LP259.1", "target": "PSP259.4", "type": "uses"},
+    {"source": "LP259.2", "target": "PSP259.4", "type": "uses"},
+    {"source": "PSP259.7", "target": "PSP259.8", "type": "uses"},
+    {"source": "PSP259.8", "target": "PSP259.9", "type": "uses"},
+    {"source": "PSP259.9", "target": "PSP259.10", "type": "uses"},
+    {"source": "PSP259.10", "target": "PSP259.11", "type": "uses"},
+    {"source": "LP259.2", "target": "PSP259.10", "type": "uses"},
+    {"source": "LP259.3", "target": "PSP259.9", "type": "uses"}
+  ]
+}

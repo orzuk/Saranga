@@ -3,9 +3,9 @@
 # Output: $DATA_DIR/mathlib/raw/herald_statements.jsonl
 #         $DATA_DIR/mathlib/raw/herald_proofs.jsonl
 
-source /sci/labs/orzuk/orzuk/authomathics-venv/bin/activate
+source /<cluster>/<user>/authomathics-venv/bin/activate
 
-DATA_DIR=/sci/labs/orzuk/orzuk/projects/Authomathics
+DATA_DIR=/<cluster>/<user>/projects/Authomathics
 OUT_DIR=$DATA_DIR/mathlib/raw
 mkdir -p $OUT_DIR
 
@@ -13,7 +13,7 @@ python3 << 'PYEOF'
 import json
 import os
 
-DATA_DIR = os.environ.get('DATA_DIR', '/sci/labs/orzuk/orzuk/projects/Authomathics')
+DATA_DIR = os.environ.get('DATA_DIR', '/<cluster>/<user>/projects/Authomathics')
 OUT_DIR = os.path.join(DATA_DIR, 'mathlib', 'raw')
 
 from datasets import load_dataset

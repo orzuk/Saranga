@@ -1,0 +1,504 @@
+{
+  "metadata": {
+    "title": "Highway Networks",
+    "paper_num": 217,
+    "authors": "Rupesh Kumar Srivastava, Klaus Greff, Jurgen Schmidhuber",
+    "year": 2015,
+    "venue": "ICML 2015 (Deep Learning Workshop)",
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "DP217.1",
+      "type": "definition",
+      "name": "Plain feedforward layer",
+      "section": "2 Highway Networks",
+      "statement_latex": "A plain feedforward layer applies a non-linear transform $H$ parameterized by $\\vec{W_H}$ to its input $\\vec{x}$ to produce output $\\vec{y} = H(\\vec{x}, \\vec{W_H})$.",
+      "statement_clean": "A plain layer in a feedforward network applies a parameterized non-linear transform H to its input.",
+      "origin": "paper",
+      "tags": ["architecture"]
+    },
+    {
+      "id": "DP217.2",
+      "type": "definition",
+      "name": "Highway layer",
+      "section": "2 Highway Networks",
+      "statement_latex": "A highway layer augments a plain layer with two non-linear transforms $T(\\vec{x},\\vec{W_T})$ (transform gate) and $C(\\vec{x},\\vec{W_C})$ (carry gate) so that $\\vec{y} = H(\\vec{x},\\vec{W_H})\\cdot T(\\vec{x},\\vec{W_T}) + \\vec{x}\\cdot C(\\vec{x},\\vec{W_C})$.",
+      "statement_clean": "A highway layer mixes a non-linear transform of the input with the input itself, weighted by learned transform/carry gates.",
+      "origin": "paper",
+      "tags": ["architecture", "gating"]
+    },
+    {
+      "id": "DP217.3",
+      "type": "definition",
+      "name": "Transform gate $T$",
+      "section": "2.2 Training Deep Highway Networks",
+      "statement_latex": "The transform gate is $T(\\vec{x}) = \\sigma(\\vec{W_T}^T \\vec{x} + \\vec{b_T})$, where $\\sigma$ is the logistic sigmoid, $\\vec{W_T}$ is the gate weight matrix and $\\vec{b_T}$ the gate bias.",
+      "statement_clean": "Sigmoid-activated affine gate that controls how much of H(x) is passed through.",
+      "origin": "paper",
+      "tags": ["gating"]
+    },
+    {
+      "id": "DP217.4",
+      "type": "definition",
+      "name": "Carry gate $C$",
+      "section": "2 Highway Networks",
+      "statement_latex": "The carry gate is set to $C = \\mathbf{1} - T$, so the highway layer reduces to $\\vec{y} = H(\\vec{x},\\vec{W_H})\\cdot T(\\vec{x},\\vec{W_T}) + \\vec{x}\\cdot(\\mathbf{1} - T(\\vec{x},\\vec{W_T}))$.",
+      "statement_clean": "Carry gate is the complement of the transform gate, simplifying the highway equation.",
+      "origin": "paper",
+      "tags": ["gating"]
+    },
+    {
+      "id": "DP217.5",
+      "type": "definition",
+      "name": "Highway block",
+      "section": "2 Highway Networks",
+      "statement_latex": "A highway block is the $i^{th}$ unit that computes block state $H_i(\\vec{x})$, transform gate output $T_i(\\vec{x})$, and block output $y_i = H_i(\\vec{x}) T_i(\\vec{x}) + x_i (1 - T_i(\\vec{x}))$.",
+      "statement_clean": "Per-unit version of the highway layer producing a scalar block output.",
+      "origin": "paper",
+      "tags": ["architecture"]
+    },
+    {
+      "id": "DP217.6",
+      "type": "definition",
+      "name": "Information highway",
+      "section": "1 Introduction",
+      "statement_latex": "An information highway is a path in a highway network along which information can flow across several layers without attenuation, enabled by the gating mechanism.",
+      "statement_clean": "Path through the network where the carry gate dominates so the input passes through nearly unchanged.",
+      "origin": "paper",
+      "tags": ["concept"]
+    },
+    {
+      "id": "DP217.7",
+      "type": "definition",
+      "name": "Sigmoid $\\sigma$",
+      "section": "1.1 Notation",
+      "statement_latex": "$\\sigma(x) = \\frac{1}{1 + e^{-x}},\\ x \\in \\mathbb{R}$.",
+      "statement_clean": "The standard logistic sigmoid function used throughout.",
+      "origin": "paper",
+      "tags": ["function"]
+    },
+    {
+      "id": "EP217.1",
+      "type": "equation",
+      "name": "Plain layer equation",
+      "section": "2 Highway Networks",
+      "statement_latex": "$\\vec{y} = H(\\vec{x}, \\vec{W_H})$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP217.2",
+      "type": "equation",
+      "name": "General highway equation",
+      "section": "2 Highway Networks",
+      "statement_latex": "$\\vec{y} = H(\\vec{x}, \\vec{W_H})\\cdot T(\\vec{x}, \\vec{W_T}) + \\vec{x}\\cdot C(\\vec{x}, \\vec{W_C})$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP217.3",
+      "type": "equation",
+      "name": "Simplified highway equation",
+      "section": "2 Highway Networks",
+      "statement_latex": "$\\vec{y} = H(\\vec{x},\\vec{W_H})\\cdot T(\\vec{x},\\vec{W_T}) + \\vec{x}\\cdot(\\mathbf{1} - T(\\vec{x},\\vec{W_T}))$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PrP217.1",
+      "type": "proposition",
+      "name": "Boundary behavior of highway layer",
+      "section": "2 Highway Networks",
+      "statement_latex": "$\\vec{y} = \\vec{x}$ if $T(\\vec{x},\\vec{W_T}) = \\mathbf{0}$, and $\\vec{y} = H(\\vec{x},\\vec{W_H})$ if $T(\\vec{x},\\vec{W_T}) = \\mathbf{1}$.",
+      "statement_clean": "When the transform gate is zero the highway layer is the identity; when it is one the highway layer reduces to the plain layer.",
+      "assumptions": [
+        "$\\vec{x}, \\vec{y}, H(\\vec{x},\\vec{W_H})$ and $T(\\vec{x},\\vec{W_T})$ have the same dimensionality"
+      ],
+      "conclusions": [
+        "$\\vec{y} = \\vec{x}$ when $T(\\vec{x},\\vec{W_T}) = \\mathbf{0}$",
+        "$\\vec{y} = H(\\vec{x},\\vec{W_H})$ when $T(\\vec{x},\\vec{W_T}) = \\mathbf{1}$"
+      ],
+      "origin": "paper",
+      "tags": ["limit-case", "identity-mapping"]
+    },
+    {
+      "id": "PrP217.2",
+      "type": "proposition",
+      "name": "Jacobian of highway layer at gate extremes",
+      "section": "2 Highway Networks",
+      "statement_latex": "$\\frac{d\\vec{y}}{d\\vec{x}} = \\vec{I}$ if $T(\\vec{x},\\vec{W_T}) = \\mathbf{0}$, and $\\frac{d\\vec{y}}{d\\vec{x}} = H'(\\vec{x},\\vec{W_H})$ if $T(\\vec{x},\\vec{W_T}) = \\mathbf{1}$.",
+      "statement_clean": "At the gate extremes the layer Jacobian is either the identity or the Jacobian of H, which keeps gradients well-conditioned for very deep networks.",
+      "assumptions": [
+        "$H$ is differentiable at $\\vec{x}$",
+        "$\\vec{x}, \\vec{y}, H, T$ all share the same dimensionality"
+      ],
+      "conclusions": [
+        "$\\frac{d\\vec{y}}{d\\vec{x}} = \\vec{I}$ when $T = \\mathbf{0}$",
+        "$\\frac{d\\vec{y}}{d\\vec{x}} = H'(\\vec{x},\\vec{W_H})$ when $T = \\mathbf{1}$"
+      ],
+      "origin": "paper",
+      "tags": ["gradient-flow", "jacobian"]
+    },
+    {
+      "id": "PrP217.3",
+      "type": "proposition",
+      "name": "Sigmoid range prevents exact gate extremes",
+      "section": "2.2 Training Deep Highway Networks",
+      "statement_latex": "Since $\\sigma(x) \\in (0,1)$ for all $x \\in \\mathbb{R}$, the conditions $T = \\mathbf{0}$ and $T = \\mathbf{1}$ in the boundary identities can never be exactly satisfied.",
+      "assumptions": [
+        "$T(\\vec{x}) = \\sigma(\\vec{W_T}^T\\vec{x} + \\vec{b_T})$"
+      ],
+      "conclusions": [
+        "$T(\\vec{x}) \\in (0,1)^d$ strictly, so the limit cases are approached but never attained"
+      ],
+      "origin": "paper",
+      "tags": ["remark"]
+    },
+    {
+      "id": "AP217.1",
+      "type": "algorithm",
+      "name": "Highway network forward pass",
+      "section": "2 Highway Networks",
+      "statement_latex": "Forward pass through a highway network: at each layer compute the gated mixture of $H(\\vec{x},\\vec{W_H})$ and the input $\\vec{x}$, weighted by the transform gate $T$ and its complement.",
+      "input": [
+        "Input vector $\\vec{x}_1$",
+        "Per-layer transform parameters $\\vec{W_{H,l}}$",
+        "Per-layer gate parameters $\\vec{W_{T,l}}, \\vec{b_{T,l}}$",
+        "Number of layers $L$"
+      ],
+      "output": [
+        "Network output $\\vec{y}_L$"
+      ],
+      "pseudocode": "for l = 1..L: T = sigmoid(W_T,l^T x_l + b_T,l); H = H(x_l, W_H,l); x_{l+1} = H * T + x_l * (1 - T); return x_{L+1}",
+      "origin": "paper",
+      "tags": ["forward-propagation"]
+    },
+    {
+      "id": "AP217.2",
+      "type": "algorithm",
+      "name": "Negative-bias initialization for highway networks",
+      "section": "2.2 Training Deep Highway Networks",
+      "statement_latex": "Initialize the transform-gate bias $\\vec{b_T}$ to a negative value (e.g., $-1, -2, -3, -4$) so the network is initially biased towards \\emph{carry} behavior; weights $\\vec{W_H}$ follow any standard zero-mean scheme.",
+      "input": [
+        "Network depth $L$",
+        "Initial bias value $b_0 < 0$ (e.g., $-1, -2, -3, -4$)",
+        "Standard zero-mean init for $\\vec{W_H}$ (e.g., He 2015)"
+      ],
+      "output": [
+        "Initialized highway network biased towards identity routing at start of training"
+      ],
+      "pseudocode": "Set b_T,l = b_0 < 0 for all l; init W_H,l using a standard scheme (e.g. He init); init W_T,l with small zero-mean values.",
+      "origin": "paper",
+      "tags": ["initialization"]
+    },
+    {
+      "id": "AP217.3",
+      "type": "algorithm",
+      "name": "SGD-with-momentum training of highway networks",
+      "section": "3.1 Optimization",
+      "statement_latex": "Train highway networks using stochastic gradient descent with momentum, with hyperparameters (learning rate, momentum, decay, activation, gate bias) chosen by random search.",
+      "input": [
+        "Training set",
+        "Initialized highway network (per AP217.2)",
+        "Hyperparameters: initial learning rate, momentum, learning-rate decay, activation for $H$ ($\\mathrm{ReLU}$ or $\\tanh$), transform-gate bias in $[-10, -1]$"
+      ],
+      "output": [
+        "Trained highway network"
+      ],
+      "pseudocode": "Random-search 40 hyperparameter configs; for each, run SGD with momentum minimizing cross-entropy loss; pick best by training error.",
+      "origin": "paper",
+      "tags": ["training", "sgd"]
+    },
+    {
+      "id": "ProbP217.1",
+      "type": "problem",
+      "name": "Training of very deep neural networks",
+      "section": "Abstract / 1 Introduction",
+      "statement_latex": "Train feedforward neural networks of very large depth (hundreds of layers) end-to-end with simple gradient-based optimization, despite worsening optimization difficulty as depth grows.",
+      "origin": "paper",
+      "tags": ["optimization", "deep-learning"]
+    },
+    {
+      "id": "ExP217.1",
+      "type": "example",
+      "name": "MNIST optimization comparison (10/20/50/100 layers)",
+      "section": "3.1 Optimization",
+      "statement_latex": "On MNIST, plain and highway networks of depths 10, 20, 50, 100 (1 input layer + 9/19/49/99 hidden + softmax) are trained with SGD+momentum; plain networks degrade sharply with depth while highway networks remain trainable up to 100 layers.",
+      "statement_clean": "MNIST experiment showing highway networks remain optimizable as depth grows from 10 to 100, while plain networks degrade.",
+      "origin": "paper",
+      "tags": ["mnist", "depth-comparison"]
+    },
+    {
+      "id": "ExP217.2",
+      "type": "example",
+      "name": "CIFAR-100 900-layer highway network",
+      "section": "3.1 Optimization",
+      "statement_latex": "A 900-layer highway network on CIFAR-100 was trained with SGD+momentum; after 80 epochs no signs of optimization difficulty were observed.",
+      "origin": "paper",
+      "tags": ["cifar100", "extreme-depth"]
+    },
+    {
+      "id": "ExP217.3",
+      "type": "example",
+      "name": "Convolutional highway networks vs Fitnets on CIFAR-10",
+      "section": "3.2 Comparison to Fitnets",
+      "statement_latex": "Convolutional highway networks with ReLU activations and sigmoid gates are trained directly with backpropagation on CIFAR-10 (with random translations), matching or exceeding Fitnet accuracies (e.g., 19-layer Highway 2 achieves $92.24\\%$).",
+      "statement_clean": "On CIFAR-10, highway networks match or beat Fitnets while being trained directly with backprop (no two-stage hint training).",
+      "origin": "paper",
+      "tags": ["cifar10", "convolutional", "comparison"]
+    },
+    {
+      "id": "ExP217.4",
+      "type": "example",
+      "name": "Internal inspection of 50-layer highway networks",
+      "section": "4 Analysis",
+      "statement_latex": "Inspection of best 50-hidden-layer fully-connected highway networks on MNIST and CIFAR-100 shows transform-gate biases initialized to $-2$ and $-4$ respectively decrease further during training; transform-gate activity is sparse and block outputs form persistent stripes across many layers.",
+      "statement_clean": "Visualization of trained highway networks on MNIST and CIFAR-100 shows sparse, selective gating and information-highway stripe patterns.",
+      "origin": "paper",
+      "tags": ["interpretation", "visualization"]
+    },
+    {
+      "id": "RP217.1",
+      "type": "remark",
+      "name": "Inspiration from LSTM gating",
+      "section": "1 Introduction / 2.2",
+      "statement_latex": "The gating mechanism of highway networks is inspired by Long Short-Term Memory recurrent networks; the negative-bias initialization echoes the proposal of Gers et al. (1999) to bias forget/output gates so as to bridge long-range temporal dependencies early in learning.",
+      "origin": "paper",
+      "tags": ["motivation"]
+    },
+    {
+      "id": "RP217.2",
+      "type": "remark",
+      "name": "Dimensionality matching for highway layers",
+      "section": "2.1 Constructing Highway Networks",
+      "statement_latex": "When changing representation size, replace $\\vec{x}$ with a sub-sampled or zero-padded $\\hat{\\vec{x}}$, or insert a plain layer for the dimensionality change and continue stacking highway layers (the choice used in this study).",
+      "origin": "paper",
+      "tags": ["architecture"]
+    },
+    {
+      "id": "RP217.3",
+      "type": "remark",
+      "name": "Convolutional highway construction",
+      "section": "2.1 Constructing Highway Networks",
+      "statement_latex": "Convolutional highway layers use weight-sharing and local receptive fields for both $H$ and $T$; zero-padding is used to keep block-state and transform-gate feature maps the same size as the input.",
+      "origin": "paper",
+      "tags": ["convolutional", "architecture"]
+    },
+    {
+      "id": "RP217.4",
+      "type": "remark",
+      "name": "Initialization independence from $H$",
+      "section": "2.2 Training Deep Highway Networks",
+      "statement_latex": "Negative-bias initialization of $\\vec{b_T}$ is sufficient for learning to proceed in very deep highway networks across various zero-mean initial distributions of $\\vec{W_H}$ and various activation functions for $H$ (e.g., ReLU, tanh).",
+      "origin": "paper",
+      "tags": ["initialization", "robustness"]
+    },
+    {
+      "id": "RP217.5",
+      "type": "remark",
+      "name": "Transform-gate biases used for selectivity, not shutdown",
+      "section": "4 Analysis",
+      "statement_latex": "On CIFAR-100 the trained transform-gate biases form a depth-dependent gradient that is inversely correlated with mean gate activity, indicating the strong negative biases at low depths make gates more selective rather than simply shutting them down.",
+      "origin": "paper",
+      "tags": ["analysis"]
+    },
+    {
+      "id": "PP217.1",
+      "type": "proof",
+      "name": "Proof of boundary behavior of highway layer",
+      "section": "2 Highway Networks",
+      "statement_latex": "By case analysis: substitute $T = \\mathbf{0}$ and $T = \\mathbf{1}$ into the simplified highway equation $\\vec{y} = H\\cdot T + \\vec{x}\\cdot(\\mathbf{1}-T)$.",
+      "proves": "PrP217.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP217.2",
+      "type": "proof",
+      "name": "Proof of Jacobian limits",
+      "section": "2 Highway Networks",
+      "statement_latex": "Differentiate the boundary identities of Proposition PrP217.1 with respect to $\\vec{x}$.",
+      "proves": "PrP217.2",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP217.1",
+      "type": "proof_step",
+      "name": "Substitute $T = \\mathbf{0}$ into highway equation",
+      "parent_id": "PP217.1",
+      "step_order": 1,
+      "statement_latex": "Plug $T(\\vec{x},\\vec{W_T}) = \\mathbf{0}$ into $\\vec{y} = H(\\vec{x},\\vec{W_H})\\cdot T + \\vec{x}\\cdot(\\mathbf{1} - T)$ to obtain $\\vec{y} = H(\\vec{x},\\vec{W_H})\\cdot\\mathbf{0} + \\vec{x}\\cdot\\mathbf{1} = \\vec{x}$.",
+      "subclass": "substitute",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP217.2",
+      "type": "proof_step",
+      "name": "Substitute $T = \\mathbf{1}$ into highway equation",
+      "parent_id": "PP217.1",
+      "step_order": 2,
+      "statement_latex": "Plug $T(\\vec{x},\\vec{W_T}) = \\mathbf{1}$ to obtain $\\vec{y} = H(\\vec{x},\\vec{W_H})\\cdot\\mathbf{1} + \\vec{x}\\cdot\\mathbf{0} = H(\\vec{x},\\vec{W_H})$.",
+      "subclass": "substitute",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP217.3",
+      "type": "proof_step",
+      "name": "Differentiate highway equation at $T = \\mathbf{0}$",
+      "parent_id": "PP217.2",
+      "step_order": 1,
+      "statement_latex": "From $\\vec{y} = \\vec{x}$ at $T = \\mathbf{0}$ (Proposition PrP217.1), differentiating with respect to $\\vec{x}$ yields $\\frac{d\\vec{y}}{d\\vec{x}} = \\vec{I}$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP217.4",
+      "type": "proof_step",
+      "name": "Differentiate highway equation at $T = \\mathbf{1}$",
+      "parent_id": "PP217.2",
+      "step_order": 2,
+      "statement_latex": "From $\\vec{y} = H(\\vec{x},\\vec{W_H})$ at $T = \\mathbf{1}$ (Proposition PrP217.1), differentiating yields $\\frac{d\\vec{y}}{d\\vec{x}} = H'(\\vec{x},\\vec{W_H})$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP217.1",
+      "type": "algorithm_step",
+      "name": "Compute transform gate $T$",
+      "parent_id": "AP217.1",
+      "step_order": 1,
+      "statement_latex": "$T \\leftarrow \\sigma(\\vec{W_T}^{\\top}\\vec{x}_l + \\vec{b_T})$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP217.2",
+      "type": "algorithm_step",
+      "name": "Compute non-linear transform $H$",
+      "parent_id": "AP217.1",
+      "step_order": 2,
+      "statement_latex": "$H \\leftarrow H(\\vec{x}_l, \\vec{W_{H,l}})$ (typically affine + non-linearity).",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP217.3",
+      "type": "algorithm_step",
+      "name": "Combine via gated mixture",
+      "parent_id": "AP217.1",
+      "step_order": 3,
+      "statement_latex": "$\\vec{x}_{l+1} \\leftarrow H \\cdot T + \\vec{x}_l \\cdot (\\mathbf{1} - T)$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP217.4",
+      "type": "algorithm_step",
+      "name": "Loop over layers $l = 1,\\ldots,L$",
+      "parent_id": "AP217.1",
+      "step_order": 4,
+      "statement_latex": "Repeat the gate, transform, and mixture steps for $l = 1,\\ldots,L$, then return $\\vec{x}_{L+1}$.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP217.5",
+      "type": "algorithm_step",
+      "name": "Set negative gate bias $\\vec{b_T} = b_0$",
+      "parent_id": "AP217.2",
+      "step_order": 1,
+      "statement_latex": "For each layer $l$, set $\\vec{b_{T,l}} = b_0$ with $b_0 \\in \\{-1,-2,-3,-4,\\ldots\\}$ (negative).",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP217.6",
+      "type": "algorithm_step",
+      "name": "Initialize $\\vec{W_H}$ via standard zero-mean scheme",
+      "parent_id": "AP217.2",
+      "step_order": 2,
+      "statement_latex": "Initialize $\\vec{W_H}$ using a standard zero-mean scheme such as He (2015); initialize $\\vec{W_T}$ similarly with small zero-mean values.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP217.7",
+      "type": "algorithm_step",
+      "name": "Random search over hyperparameters",
+      "parent_id": "AP217.3",
+      "step_order": 1,
+      "statement_latex": "Sample 40 hyperparameter configurations: initial learning rate, momentum, learning-rate decay, activation for $H$ ($\\mathrm{ReLU}$ or $\\tanh$), and transform-gate bias in $[-10, -1]$.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP217.8",
+      "type": "algorithm_step",
+      "name": "Run SGD+momentum for each configuration",
+      "parent_id": "AP217.3",
+      "step_order": 2,
+      "statement_latex": "For each sampled configuration, train the network end-to-end with SGD with momentum, minimizing cross-entropy on the training set.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP217.9",
+      "type": "algorithm_step",
+      "name": "Select best configuration",
+      "parent_id": "AP217.3",
+      "step_order": 3,
+      "statement_latex": "Return the trained network achieving the lowest training cross-entropy across the 40 random-search runs.",
+      "subclass": "return",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "DP217.1", "target": "DP217.2", "type": "uses"},
+    {"source": "DP217.1", "target": "EP217.1", "type": "uses"},
+    {"source": "DP217.2", "target": "EP217.2", "type": "uses"},
+    {"source": "DP217.4", "target": "EP217.3", "type": "uses"},
+    {"source": "DP217.2", "target": "DP217.4", "type": "uses"},
+    {"source": "DP217.7", "target": "DP217.3", "type": "uses"},
+    {"source": "DP217.3", "target": "DP217.2", "type": "uses"},
+    {"source": "DP217.2", "target": "DP217.5", "type": "specializes"},
+    {"source": "DP217.2", "target": "DP217.6", "type": "uses"},
+    {"source": "DP217.2", "target": "PrP217.1", "type": "uses"},
+    {"source": "EP217.3", "target": "PrP217.1", "type": "uses"},
+    {"source": "PrP217.1", "target": "PrP217.2", "type": "uses"},
+    {"source": "DP217.3", "target": "PrP217.3", "type": "uses"},
+    {"source": "DP217.7", "target": "PrP217.3", "type": "uses"},
+    {"source": "DP217.2", "target": "AP217.1", "type": "uses"},
+    {"source": "DP217.3", "target": "AP217.1", "type": "uses"},
+    {"source": "DP217.4", "target": "AP217.1", "type": "uses"},
+    {"source": "EP217.3", "target": "AP217.1", "type": "uses"},
+    {"source": "DP217.3", "target": "AP217.2", "type": "uses"},
+    {"source": "AP217.2", "target": "AP217.3", "type": "uses"},
+    {"source": "AP217.1", "target": "AP217.3", "type": "uses"},
+    {"source": "AP217.1", "target": "ProbP217.1", "type": "solves"},
+    {"source": "AP217.2", "target": "ProbP217.1", "type": "solves"},
+    {"source": "AP217.3", "target": "ProbP217.1", "type": "solves"},
+    {"source": "AP217.3", "target": "ExP217.1", "type": "illustrates"},
+    {"source": "AP217.3", "target": "ExP217.2", "type": "illustrates"},
+    {"source": "AP217.3", "target": "ExP217.3", "type": "illustrates"},
+    {"source": "AP217.1", "target": "ExP217.4", "type": "illustrates"},
+    {"source": "AP217.2", "target": "ExP217.4", "type": "illustrates"},
+    {"source": "PrP217.1", "target": "AP217.2", "type": "uses"},
+    {"source": "PrP217.2", "target": "AP217.2", "type": "uses"},
+    {"source": "RP217.1", "target": "AP217.2", "type": "uses"},
+    {"source": "RP217.2", "target": "AP217.1", "type": "uses"},
+    {"source": "RP217.3", "target": "ExP217.3", "type": "uses"},
+    {"source": "RP217.4", "target": "AP217.3", "type": "uses"},
+    {"source": "ExP217.4", "target": "RP217.5", "type": "uses"},
+    {"source": "PP217.1", "target": "PrP217.1", "type": "proves"},
+    {"source": "PP217.2", "target": "PrP217.2", "type": "proves"},
+    {"source": "PrP217.1", "target": "PP217.2", "type": "uses"},
+    {"source": "PSP217.1", "target": "PSP217.2", "type": "uses"},
+    {"source": "PSP217.3", "target": "PSP217.4", "type": "uses"},
+    {"source": "ASP217.1", "target": "ASP217.3", "type": "uses"},
+    {"source": "ASP217.2", "target": "ASP217.3", "type": "uses"},
+    {"source": "ASP217.3", "target": "ASP217.4", "type": "uses"},
+    {"source": "ASP217.5", "target": "ASP217.6", "type": "uses"},
+    {"source": "ASP217.7", "target": "ASP217.8", "type": "uses"},
+    {"source": "ASP217.8", "target": "ASP217.9", "type": "uses"}
+  ]
+}

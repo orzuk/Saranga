@@ -3,7 +3,7 @@
 
 Usage (on cluster):
     python scripts/generate_paper_tables.py \
-        --base-dir /sci/labs/orzuk/orzuk/teaching/big_data_project_52017/2024_25/arxiv_data/parsed_100k \
+        --base-dir /<cluster>/<user>/teaching/big_data_project_52017/2024_25/arxiv_data/parsed_100k \
         --out-dir tables/
 
 Outputs:
@@ -425,7 +425,7 @@ def main():
     parser.add_argument(
         "--base-dir",
         type=Path,
-        default=Path("/sci/labs/orzuk/orzuk/teaching/big_data_project_52017/2024_25/arxiv_data/parsed_100k"),
+        default=Path("/<cluster>/<user>/teaching/big_data_project_52017/2024_25/arxiv_data/parsed_100k"),
         help="Base directory containing per-category subdirectories",
     )
     parser.add_argument(

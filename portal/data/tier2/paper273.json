@@ -1,0 +1,567 @@
+{
+  "metadata": {
+    "title": "Visualizing Data using t-SNE",
+    "authors": "Laurens van der Maaten, Geoffrey Hinton",
+    "year": 2008,
+    "venue": "Journal of Machine Learning Research 9 (2008) 2579-2605",
+    "paper_num": 273,
+    "bid": "paper273",
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-03",
+    "source_note": "Extracted from PDF->text fallback; .tex source not available. Math fidelity reduced."
+  },
+  "nodes": [
+    {
+      "id": "DP273.1",
+      "type": "definition",
+      "name": "Map / Map points",
+      "section": "1 Introduction",
+      "statement": "The low-dimensional data representation $Y = \\{y_1, y_2, \\ldots, y_n\\}$ obtained from the high-dimensional data $X = \\{x_1, x_2, \\ldots, x_n\\}$ is called a $\\textit{map}$, and individual $y_i$ are called $\\textit{map points}$.",
+      "statement_clean": "A map is the low-dimensional embedding of the high-dimensional data, with individual map points being the embedded representations of each datapoint.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP273.2",
+      "type": "definition",
+      "name": "Conditional probability $p_{j|i}$ (high-dimensional similarity)",
+      "section": "2 Stochastic Neighbor Embedding",
+      "statement": "For high-dimensional points $x_i, x_j$ and Gaussian variance $\\sigma_i$: $p_{j|i} = \\frac{\\exp(-\\|x_i - x_j\\|^2 / 2\\sigma_i^2)}{\\sum_{k \\neq i} \\exp(-\\|x_i - x_k\\|^2 / 2\\sigma_i^2)}$, with $p_{i|i} = 0$.",
+      "statement_clean": "The probability that $x_i$ would pick $x_j$ as a neighbor under a Gaussian centered at $x_i$ with variance $\\sigma_i^2$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP273.3",
+      "type": "definition",
+      "name": "Conditional probability $q_{j|i}$ (low-dimensional similarity, SNE)",
+      "section": "2 Stochastic Neighbor Embedding",
+      "statement": "For map points with variance $\\frac{1}{\\sqrt{2}}$: $q_{j|i} = \\frac{\\exp(-\\|y_i - y_j\\|^2)}{\\sum_{k \\neq i} \\exp(-\\|y_i - y_k\\|^2)}$, with $q_{i|i} = 0$.",
+      "statement_clean": "Low-dimensional analogue of $p_{j|i}$ using a Gaussian with fixed variance $1/\\sqrt{2}$ on map points.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP273.4",
+      "type": "definition",
+      "name": "Perplexity",
+      "section": "2 Stochastic Neighbor Embedding",
+      "statement": "$\\mathrm{Perp}(P_i) = 2^{H(P_i)}$, where $H(P_i) = -\\sum_j p_{j|i} \\log_2 p_{j|i}$ is the Shannon entropy of $P_i$ in bits. Interpreted as a smooth measure of the effective number of neighbors.",
+      "statement_clean": "Perplexity is two raised to the Shannon entropy of the conditional distribution; it acts as a smooth count of effective neighbors.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP273.5",
+      "type": "definition",
+      "name": "Symmetrized joint probability $p_{ij}$",
+      "section": "3.1 Symmetric SNE",
+      "statement": "To avoid outlier issues, define $p_{ij} = \\frac{p_{j|i} + p_{i|j}}{2n}$, ensuring $\\sum_j p_{ij} > \\frac{1}{2n}$ for all $i$.",
+      "statement_clean": "Symmetrize the conditional probabilities and divide by $2n$ so each datapoint contributes meaningfully to the cost.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP273.6",
+      "type": "definition",
+      "name": "Symmetric SNE low-dimensional joint $q_{ij}$",
+      "section": "3.1 Symmetric SNE",
+      "statement": "$q_{ij} = \\frac{\\exp(-\\|y_i - y_j\\|^2)}{\\sum_{k \\neq l} \\exp(-\\|y_k - y_l\\|^2)}$, with $q_{ii} = 0$.",
+      "statement_clean": "Joint Gaussian similarity between map points used by symmetric SNE.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP273.7",
+      "type": "definition",
+      "name": "t-SNE low-dimensional joint $q_{ij}$ (Student-t with one d.o.f.)",
+      "section": "3.3 Mismatched Tails",
+      "statement": "$q_{ij} = \\frac{(1 + \\|y_i - y_j\\|^2)^{-1}}{\\sum_{k \\neq l} (1 + \\|y_k - y_l\\|^2)^{-1}}$.",
+      "statement_clean": "Joint similarity in the map under a heavy-tailed Student-t distribution with one degree of freedom.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP273.8",
+      "type": "definition",
+      "name": "Crowding problem",
+      "section": "3.2 The Crowding Problem",
+      "statement": "When mapping a high-dimensional manifold to two dimensions, the area available for moderately distant points is too small relative to nearby points, so accurately modeling small distances forces moderately distant points much too far away, crushing clusters at the center.",
+      "statement_clean": "The geometric mismatch by which low-dimensional space cannot accommodate the volume of moderately distant neighbors of high-dimensional points.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP273.9",
+      "type": "definition",
+      "name": "Diffusion distance",
+      "section": "6.1 Comparison with Related Techniques (cited)",
+      "statement": "$D^{(t)}(x_i, x_j) = \\sqrt{\\sum_k \\frac{(p_{ik}^{(t)} - p_{jk}^{(t)})^2}{\\psi(x_k)^{(0)}}}$, where $p_{ij}^{(t)}$ is the probability of a particle traveling from $x_i$ to $x_j$ in $t$ timesteps.",
+      "statement_clean": "Distance between $x_i, x_j$ measured by squared differences of $t$-step random-walk probabilities, weighted by local density.",
+      "origin": "external",
+      "origin_citation": "Lafon and Lee 2006"
+    },
+    {
+      "id": "ProbP273.1",
+      "type": "problem",
+      "name": "SNE optimization problem",
+      "section": "2 Stochastic Neighbor Embedding",
+      "statement": "Minimize $C = \\sum_i \\mathrm{KL}(P_i \\| Q_i) = \\sum_i \\sum_j p_{j|i} \\log \\frac{p_{j|i}}{q_{j|i}}$ over the map $Y$.",
+      "statement_clean": "Find the map $Y$ that minimizes the sum of KL divergences between high- and low-dimensional conditional neighbor distributions.",
+      "subclass": "optimization",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP273.2",
+      "type": "problem",
+      "name": "Symmetric SNE optimization problem",
+      "section": "3.1 Symmetric SNE",
+      "statement": "Minimize $C = \\mathrm{KL}(P \\| Q) = \\sum_i \\sum_j p_{ij} \\log \\frac{p_{ij}}{q_{ij}}$ where $P$ and $Q$ are joint distributions over pairs of points.",
+      "statement_clean": "Minimize a single KL divergence between joint high- and low-dimensional pair distributions.",
+      "subclass": "optimization",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP273.3",
+      "type": "problem",
+      "name": "t-SNE optimization problem",
+      "section": "3.3 Mismatched Tails",
+      "statement": "Minimize $C = \\mathrm{KL}(P \\| Q)$ where $p_{ij}$ is the symmetrized Gaussian joint and $q_{ij}$ is the Student-t (one d.o.f.) joint defined in Equation 4.",
+      "statement_clean": "Minimize KL divergence between symmetric Gaussian high-dimensional joint and heavy-tailed Student-t low-dimensional joint.",
+      "subclass": "optimization",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP273.4",
+      "type": "problem",
+      "name": "Combinatorial Dirichlet problem (random walk probabilities)",
+      "section": "Appendix B",
+      "statement": "Compute the probability that a random walk from a non-landmark point first hits a given landmark point by minimizing the combinatorial Dirichlet integral $D[x] = \\frac{1}{2} x^T L x$ subject to landmark boundary conditions, where $L = D - W$ is the graph Laplacian.",
+      "statement_clean": "Find first-hit probabilities of random walks via the combinatorial Dirichlet problem on the graph Laplacian.",
+      "subclass": "optimization",
+      "origin": "external",
+      "origin_citation": "Grady 2006; Kakutani 1945; Doyle and Snell 1984"
+    },
+    {
+      "id": "EP273.1",
+      "type": "equation",
+      "name": "SNE gradient",
+      "section": "2 Stochastic Neighbor Embedding",
+      "statement": "$\\frac{\\delta C}{\\delta y_i} = 2 \\sum_j (p_{j|i} - q_{j|i} + p_{i|j} - q_{i|j})(y_i - y_j)$.",
+      "statement_clean": "Gradient of the SNE cost with respect to $y_i$, interpretable as spring forces.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP273.2",
+      "type": "equation",
+      "name": "Gradient update with momentum",
+      "section": "2 Stochastic Neighbor Embedding",
+      "statement": "$Y^{(t)} = Y^{(t-1)} + \\eta \\frac{\\delta C}{\\delta Y} + \\alpha(t)(Y^{(t-1)} - Y^{(t-2)})$, where $\\eta$ is the learning rate and $\\alpha(t)$ the momentum.",
+      "statement_clean": "Iterative parameter update combining gradient step with momentum from prior iterations.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP273.3",
+      "type": "equation",
+      "name": "Symmetric SNE gradient",
+      "section": "3.1 Symmetric SNE",
+      "statement": "$\\frac{\\delta C}{\\delta y_i} = 4 \\sum_j (p_{ij} - q_{ij})(y_i - y_j)$.",
+      "statement_clean": "Simpler-form gradient of the symmetric SNE cost.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP273.4",
+      "type": "equation",
+      "name": "t-SNE gradient",
+      "section": "3.3 Mismatched Tails",
+      "statement": "$\\frac{\\delta C}{\\delta y_i} = 4 \\sum_j (p_{ij} - q_{ij})(y_i - y_j)(1 + \\|y_i - y_j\\|^2)^{-1}$.",
+      "statement_clean": "Gradient of the t-SNE KL cost; derivation in Appendix A.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP273.5",
+      "type": "equation",
+      "name": "Sammon mapping cost function",
+      "section": "6.1 Comparison with Related Techniques (cited)",
+      "statement": "$C = \\frac{1}{\\sum_{ij} \\|x_i - x_j\\|} \\sum_{i \\neq j} \\frac{(\\|x_i - x_j\\| - \\|y_i - y_j\\|)^2}{\\|x_i - x_j\\|}$.",
+      "statement_clean": "Sammon mapping cost: weighted squared error between high- and low-dimensional pairwise distances.",
+      "origin": "external",
+      "origin_citation": "Sammon 1969"
+    },
+    {
+      "id": "EP273.6",
+      "type": "equation",
+      "name": "Diffusion maps cost",
+      "section": "6.1 Comparison with Related Techniques (cited)",
+      "statement": "$C = \\sum_i \\sum_j (D^{(t)}(x_i, x_j) - \\|y_i - y_j\\|)^2$.",
+      "statement_clean": "Diffusion maps minimize squared error between diffusion distances and Euclidean distances in the map.",
+      "origin": "external",
+      "origin_citation": "Lafon and Lee 2006"
+    },
+    {
+      "id": "AP273.1",
+      "type": "algorithm",
+      "name": "t-SNE (simple version)",
+      "section": "3.4 Optimization Methods for t-SNE",
+      "statement": "Gradient-descent-with-momentum procedure that computes high-dimensional affinities $p_{ij}$ at fixed perplexity, then iteratively updates the map $Y$ using the t-SNE gradient (Equation 5).",
+      "input": [
+        "Data set $X = \\{x_1, x_2, \\ldots, x_n\\}$",
+        "Cost function parameter: perplexity $\\mathrm{Perp}$",
+        "Optimization parameters: number of iterations $T$, learning rate $\\eta$, momentum $\\alpha(t)$"
+      ],
+      "output": [
+        "Low-dimensional data representation $Y^{(T)} = \\{y_1, y_2, \\ldots, y_n\\}$"
+      ],
+      "pseudocode": "begin\n  compute pairwise affinities $p_{j|i}$ with perplexity Perp (using Equation 1)\n  set $p_{ij} = (p_{j|i} + p_{i|j}) / 2n$\n  sample initial solution $Y^{(0)} = \\{y_1, \\ldots, y_n\\}$ from $\\mathcal{N}(0, 10^{-4} I)$\n  for $t = 1$ to $T$ do\n    compute low-dimensional affinities $q_{ij}$ (using Equation 4)\n    compute gradient $\\delta C / \\delta Y$ (using Equation 5)\n    set $Y^{(t)} = Y^{(t-1)} + \\eta \\, \\delta C / \\delta Y + \\alpha(t)(Y^{(t-1)} - Y^{(t-2)})$\n  end\nend",
+      "tags": ["iterative", "gradient-descent"],
+      "origin": "paper"
+    },
+    {
+      "id": "AP273.2",
+      "type": "algorithm",
+      "name": "Random-walk t-SNE for large data sets",
+      "section": "5 Applying t-SNE to Large Data Sets",
+      "statement": "Modification of t-SNE that defines $p_{j|i}$ between landmark points as the fraction of random walks (with edge probabilities $\\propto e^{-\\|x_i - x_j\\|^2}$) starting at landmark $x_i$ that terminate at landmark $x_j$ on a $k$-nearest-neighbor graph built from the entire data set.",
+      "input": [
+        "Full high-dimensional data set $X$",
+        "Number of nearest neighbors $k$",
+        "Landmark subset of size $\\ll n$"
+      ],
+      "output": [
+        "Low-dimensional map of the landmark points reflecting structure of the entire data set"
+      ],
+      "tags": ["iterative", "approximation", "scalable"],
+      "origin": "paper"
+    },
+    {
+      "id": "AP273.3",
+      "type": "algorithm",
+      "name": "Early exaggeration",
+      "section": "3.4 Optimization Methods for t-SNE",
+      "statement": "Optimization trick that multiplies all $p_{ij}$ by a constant (e.g., 4) during the initial iterations to encourage tight, well-separated clusters that can rearrange globally.",
+      "input": [
+        "Joint probabilities $p_{ij}$",
+        "Exaggeration factor (e.g., 4)",
+        "Number of initial iterations (e.g., 50)"
+      ],
+      "output": [
+        "Modified $p_{ij}$ used in the early phase of optimization"
+      ],
+      "tags": ["heuristic"],
+      "origin": "paper"
+    },
+    {
+      "id": "AP273.4",
+      "type": "algorithm",
+      "name": "Early compression",
+      "section": "3.4 Optimization Methods for t-SNE",
+      "statement": "Add an $L_2$ penalty proportional to the sum of squared distances of map points from the origin to keep them close together early in optimization.",
+      "input": [
+        "Cost function $C$",
+        "Penalty magnitude",
+        "Iteration at which penalty is removed"
+      ],
+      "output": [
+        "Modified cost function used in early iterations"
+      ],
+      "tags": ["heuristic", "regularization"],
+      "origin": "paper"
+    },
+    {
+      "id": "AP273.5",
+      "type": "algorithm",
+      "name": "Sammon mapping",
+      "section": "6.1 Comparison with Related Techniques (cited)",
+      "statement": "Nonlinear projection that minimizes the Sammon cost function via Newton's method, weighting pairwise-distance errors by the inverse of high-dimensional distance.",
+      "tags": ["iterative"],
+      "origin": "external",
+      "origin_citation": "Sammon 1969"
+    },
+    {
+      "id": "AP273.6",
+      "type": "algorithm",
+      "name": "Isomap",
+      "section": "6.1 Comparison with Related Techniques (cited)",
+      "statement": "Manifold-learning method that approximates geodesic distances on a $k$-nearest-neighbor graph and embeds them via classical multidimensional scaling.",
+      "tags": ["spectral", "manifold-learning"],
+      "origin": "external",
+      "origin_citation": "Tenenbaum, de Silva, Langford 2000"
+    },
+    {
+      "id": "AP273.7",
+      "type": "algorithm",
+      "name": "Locally Linear Embedding (LLE)",
+      "section": "6.1 Comparison with Related Techniques (cited)",
+      "statement": "Embeds data by reconstructing each point from its $k$ neighbors with linear weights, then finding low-dimensional coordinates that preserve those reconstruction weights subject to a covariance constraint.",
+      "tags": ["spectral", "manifold-learning"],
+      "origin": "external",
+      "origin_citation": "Roweis and Saul 2000"
+    },
+    {
+      "id": "AP273.8",
+      "type": "algorithm",
+      "name": "Stochastic Neighbor Embedding (SNE)",
+      "section": "2 Stochastic Neighbor Embedding (cited / re-presented)",
+      "statement": "Original asymmetric SNE: minimize $\\sum_i \\mathrm{KL}(P_i \\| Q_i)$ with conditional Gaussian probabilities in both spaces, using gradient descent with momentum and simulated annealing via Gaussian noise on $Y$.",
+      "tags": ["iterative", "gradient-descent"],
+      "origin": "external",
+      "origin_citation": "Hinton and Roweis 2002"
+    },
+    {
+      "id": "AP273.9",
+      "type": "algorithm",
+      "name": "UNI-SNE",
+      "section": "3.2 The Crowding Problem (cited)",
+      "statement": "Variant of symmetric SNE that adds a uniform background mixing proportion $\\rho$ to $q_{ij}$ to introduce slight repulsion between distant points; trained by first running SNE then increasing $\\rho$.",
+      "tags": ["iterative"],
+      "origin": "external",
+      "origin_citation": "Cook, Sutskever, Mnih, Hinton 2007"
+    },
+    {
+      "id": "PP273.1",
+      "type": "proof",
+      "name": "Derivation of t-SNE gradient",
+      "section": "Appendix A",
+      "statement": "Derivation of $\\frac{\\delta C}{\\delta y_i} = 4 \\sum_j (p_{ij} - q_{ij})(y_i - y_j)(1 + \\|y_i - y_j\\|^2)^{-1}$ by chain-rule differentiation of $C = \\mathrm{KL}(P \\| Q)$ through auxiliary variables $d_{ij} = \\|y_i - y_j\\|$ and normalizer $Z = \\sum_{k \\neq l}(1 + d_{kl}^2)^{-1}$.",
+      "parent_id": "EP273.4",
+      "proves": "EP273.4",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP273.1",
+      "type": "proof_step",
+      "parent_id": "PP273.1",
+      "step_order": 1,
+      "name": "Introduce auxiliary variables",
+      "statement": "Define $d_{ij} = \\|y_i - y_j\\|$ and $Z = \\sum_{k \\neq l}(1 + d_{kl}^2)^{-1}$, and observe that varying $y_i$ only changes $d_{ij}$ and $d_{ji}$ for varying $j$.",
+      "subclass": "introduce_variable",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP273.2",
+      "type": "proof_step",
+      "parent_id": "PP273.1",
+      "step_order": 2,
+      "name": "Apply chain rule via $d_{ij}$",
+      "statement": "$\\frac{\\delta C}{\\delta y_i} = \\sum_j \\left(\\frac{\\delta C}{\\delta d_{ij}} + \\frac{\\delta C}{\\delta d_{ji}}\\right)(y_i - y_j) = 2 \\sum_j \\frac{\\delta C}{\\delta d_{ij}} (y_i - y_j)$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP273.3",
+      "type": "proof_step",
+      "parent_id": "PP273.1",
+      "step_order": 3,
+      "name": "Differentiate $\\log q_{kl}$ via $\\log q_{kl} Z - \\log Z$",
+      "statement": "Using $C = \\sum_{k \\neq l} p_{kl} \\log p_{kl} - p_{kl} \\log q_{kl}$ (constant first part), expand $\\log q_{kl} = \\log(q_{kl} Z) - \\log Z$, and differentiate; only the $k=i, l=j$ term contributes to $\\delta(1+d_{kl}^2)^{-1} / \\delta d_{ij}$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP273.4",
+      "type": "proof_step",
+      "parent_id": "PP273.1",
+      "step_order": 4,
+      "name": "Simplify using $\\sum_{k \\neq l} p_{kl} = 1$",
+      "statement": "Obtain $\\frac{\\delta C}{\\delta d_{ij}} = 2(p_{ij} - q_{ij})(1 + d_{ij}^2)^{-1}$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP273.5",
+      "type": "proof_step",
+      "parent_id": "PP273.1",
+      "step_order": 5,
+      "name": "Conclude gradient",
+      "statement": "Substitute into the chain-rule expression to get $\\frac{\\delta C}{\\delta y_i} = 4 \\sum_j (p_{ij} - q_{ij})(1 + \\|y_i - y_j\\|^2)^{-1}(y_i - y_j)$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PP273.2",
+      "type": "proof",
+      "name": "Analytical solution to landmark random-walk probabilities",
+      "section": "Appendix B",
+      "statement": "Sketch (after Grady 2006): the first-hit probability from a non-landmark to a specific landmark equals the solution of the combinatorial Dirichlet problem on the graph Laplacian; reordering landmarks first decomposes the integral, and stationarity gives the linear system $L_N x_N = -B^T$.",
+      "parent_id": "ProbP273.4",
+      "origin": "external",
+      "origin_citation": "Grady 2006"
+    },
+    {
+      "id": "PSP273.6",
+      "type": "proof_step",
+      "parent_id": "PP273.2",
+      "step_order": 1,
+      "name": "Set up Dirichlet integral on Laplacian",
+      "statement": "Write $D[x] = \\frac{1}{2} x^T L x$ where $L = D - W$ is the graph Laplacian and $D = \\mathrm{diag}(\\sum_j w_{1j}, \\ldots, \\sum_j w_{nj})$.",
+      "subclass": "setup",
+      "origin": "external"
+    },
+    {
+      "id": "PSP273.7",
+      "type": "proof_step",
+      "parent_id": "PP273.2",
+      "step_order": 2,
+      "name": "Decompose by reordering landmarks first",
+      "statement": "$D[x_N] = \\frac{1}{2}(x_L^T L_L x_L + 2 x_N^T B^T x_L + x_N^T L_N x_N)$, where subscripts $L$, $N$ denote landmark and non-landmark blocks.",
+      "subclass": "algebraic_manipulation",
+      "origin": "external"
+    },
+    {
+      "id": "PSP273.8",
+      "type": "proof_step",
+      "parent_id": "PP273.2",
+      "step_order": 3,
+      "name": "Differentiate and obtain linear system",
+      "statement": "Setting $\\delta D[x_N] / \\delta x_N = 0$ yields $L_N x_N = -B^T$, nonsingular when each connected component contains a landmark (Biggs 1974).",
+      "subclass": "conclude",
+      "origin": "external"
+    },
+    {
+      "id": "PSP273.9",
+      "type": "proof_step",
+      "parent_id": "PP273.2",
+      "step_order": 4,
+      "name": "Cholesky factorization for solving",
+      "statement": "Compute $L_N = C C^T$ (Cholesky), then solve $C y = -B^T$ and $C x_N = y$ via fast back-substitution; duplicate landmarks to obtain landmark-to-landmark walk probabilities.",
+      "subclass": "conclude",
+      "origin": "external"
+    },
+    {
+      "id": "RP273.1",
+      "type": "remark",
+      "name": "Spring interpretation of SNE gradient",
+      "section": "2 Stochastic Neighbor Embedding",
+      "statement": "The SNE gradient acts as the resultant force from springs between $y_i$ and each $y_j$; force direction is $(y_i - y_j)$ and stiffness is the mismatch $(p_{j|i} - q_{j|i} + p_{i|j} - q_{i|j})$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP273.2",
+      "type": "remark",
+      "name": "Asymmetric KL favors local structure",
+      "section": "2 Stochastic Neighbor Embedding",
+      "statement": "Because KL is asymmetric, large $p_{j|i}$ modeled by small $q_{j|i}$ incurs heavy cost, so SNE prioritizes preserving local structure.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP273.3",
+      "type": "remark",
+      "name": "Student-t inverse-square tail behavior",
+      "section": "3.3 Mismatched Tails",
+      "statement": "$(1 + \\|y_i - y_j\\|^2)^{-1}$ approaches an inverse-square law for large pairwise distances, making the joint-probability representation almost scale-invariant for distant points.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP273.4",
+      "type": "remark",
+      "name": "Long-range forces eliminate need for simulated annealing",
+      "section": "3.3 Mismatched Tails",
+      "statement": "The heavy tails introduce long-range forces that can pull separated clusters of similar points back together, removing the need for simulated annealing used by SNE and UNI-SNE.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP273.5",
+      "type": "remark",
+      "name": "Quadratic complexity of t-SNE",
+      "section": "5 Applying t-SNE to Large Data Sets",
+      "statement": "Both computational and memory complexity of t-SNE are $O(n^2)$, making the standard version infeasible beyond ~10,000 points and motivating the random-walk variant.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP273.6",
+      "type": "remark",
+      "name": "Three weaknesses of t-SNE",
+      "section": "6.2 Weaknesses",
+      "statement": "(1) Behavior unclear for general dimensionality reduction beyond $d=3$; (2) sensitive to the curse of intrinsic dimensionality due to local linearity assumption; (3) cost function is non-convex.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP273.1",
+      "type": "example",
+      "name": "MNIST visualization",
+      "section": "4.3 Results",
+      "statement": "t-SNE applied to 6,000 randomly selected MNIST digits (784 dimensions, reduced via PCA to 30) produces an almost-perfect class separation, while Sammon mapping, Isomap, and LLE do not (Figures 2-3).",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP273.2",
+      "type": "example",
+      "name": "Olivetti faces visualization",
+      "section": "4.3 Results",
+      "statement": "On 400 face images of 40 individuals (10,304 pixels), t-SNE reveals natural class structure with most individuals' images clustered together (Figure 4).",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP273.3",
+      "type": "example",
+      "name": "COIL-20 visualization",
+      "section": "4.3 Results",
+      "statement": "On 1,440 images of 20 objects under 72 viewpoints (1,024 pixels), t-SNE represents each object's one-dimensional viewpoint manifold as a closed loop (Figure 5).",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP273.4",
+      "type": "example",
+      "name": "Random-walk t-SNE on full MNIST",
+      "section": "5 Applying t-SNE to Large Data Sets",
+      "statement": "Random-walk t-SNE applied to 6,000 landmark digits using all 60,000 MNIST digits ($k=20$ neighbors) yields perfectly separated classes, captures within-class variation (digit orientation, twos' loopiness), and a 1-NN classifier on the 2D map achieves 5.13% error vs.\\ 5.75% on the original 784-dimensional data (Figure 7).",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP273.5",
+      "type": "example",
+      "name": "Three-landmark random-walk advantage illustration",
+      "section": "5 Applying t-SNE to Large Data Sets",
+      "statement": "For three (almost) equidistant landmarks A, B, C with non-landmark points concentrated between A and B, random-walk affinities give $p(A,B) \\gg p(A,C)$, while a standard landmark approach treats them equally (Figure 6).",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "DP273.2", "target": "DP273.4", "type": "uses"},
+    {"source": "DP273.2", "target": "ProbP273.1", "type": "uses"},
+    {"source": "DP273.3", "target": "ProbP273.1", "type": "uses"},
+    {"source": "DP273.4", "target": "AP273.8", "type": "uses"},
+    {"source": "ProbP273.1", "target": "AP273.8", "type": "solves"},
+    {"source": "EP273.1", "target": "AP273.8", "type": "uses"},
+    {"source": "EP273.2", "target": "AP273.8", "type": "uses"},
+    {"source": "RP273.1", "target": "EP273.1", "type": "illustrates"},
+    {"source": "RP273.2", "target": "ProbP273.1", "type": "illustrates"},
+    {"source": "DP273.5", "target": "ProbP273.2", "type": "uses"},
+    {"source": "DP273.6", "target": "ProbP273.2", "type": "uses"},
+    {"source": "EP273.3", "target": "ProbP273.2", "type": "uses"},
+    {"source": "AP273.8", "target": "AP273.9", "type": "specializes"},
+    {"source": "DP273.8", "target": "DP273.7", "type": "uses"},
+    {"source": "DP273.7", "target": "ProbP273.3", "type": "uses"},
+    {"source": "DP273.5", "target": "ProbP273.3", "type": "uses"},
+    {"source": "ProbP273.3", "target": "AP273.1", "type": "solves"},
+    {"source": "EP273.4", "target": "AP273.1", "type": "uses"},
+    {"source": "EP273.2", "target": "AP273.1", "type": "uses"},
+    {"source": "PP273.1", "target": "EP273.4", "type": "proves"},
+    {"source": "PSP273.1", "target": "PSP273.2", "type": "uses"},
+    {"source": "PSP273.2", "target": "PSP273.3", "type": "uses"},
+    {"source": "PSP273.3", "target": "PSP273.4", "type": "uses"},
+    {"source": "PSP273.4", "target": "PSP273.5", "type": "uses"},
+    {"source": "RP273.3", "target": "DP273.7", "type": "illustrates"},
+    {"source": "RP273.4", "target": "AP273.1", "type": "illustrates"},
+    {"source": "AP273.3", "target": "AP273.1", "type": "uses"},
+    {"source": "AP273.4", "target": "AP273.1", "type": "uses"},
+    {"source": "AP273.1", "target": "ExP273.1", "type": "illustrates"},
+    {"source": "AP273.1", "target": "ExP273.2", "type": "illustrates"},
+    {"source": "AP273.1", "target": "ExP273.3", "type": "illustrates"},
+    {"source": "AP273.5", "target": "ExP273.1", "type": "illustrates"},
+    {"source": "AP273.6", "target": "ExP273.1", "type": "illustrates"},
+    {"source": "AP273.7", "target": "ExP273.1", "type": "illustrates"},
+    {"source": "AP273.5", "target": "ExP273.2", "type": "illustrates"},
+    {"source": "AP273.6", "target": "ExP273.2", "type": "illustrates"},
+    {"source": "AP273.7", "target": "ExP273.2", "type": "illustrates"},
+    {"source": "AP273.5", "target": "ExP273.3", "type": "illustrates"},
+    {"source": "AP273.6", "target": "ExP273.3", "type": "illustrates"},
+    {"source": "AP273.7", "target": "ExP273.3", "type": "illustrates"},
+    {"source": "RP273.5", "target": "AP273.2", "type": "illustrates"},
+    {"source": "AP273.1", "target": "AP273.2", "type": "specializes"},
+    {"source": "AP273.2", "target": "ExP273.4", "type": "illustrates"},
+    {"source": "AP273.2", "target": "ExP273.5", "type": "illustrates"},
+    {"source": "ProbP273.4", "target": "PP273.2", "type": "uses"},
+    {"source": "PP273.2", "target": "AP273.2", "type": "uses"},
+    {"source": "PSP273.6", "target": "PSP273.7", "type": "uses"},
+    {"source": "PSP273.7", "target": "PSP273.8", "type": "uses"},
+    {"source": "PSP273.8", "target": "PSP273.9", "type": "uses"},
+    {"source": "EP273.5", "target": "AP273.5", "type": "uses"},
+    {"source": "DP273.9", "target": "EP273.6", "type": "uses"},
+    {"source": "RP273.6", "target": "AP273.1", "type": "illustrates"}
+  ]
+}

@@ -9,18 +9,18 @@
 #
 # Extends scripts/parse_multi_category.sh (10-category version) to 20
 # categories. Default fetch mode: 20 × 5000 = 100K total for the main run.
-# Local mode: process Yaron's pre-downloaded ~1200-paper calibration corpus.
+# Local mode: process Author's pre-downloaded ~1200-paper calibration corpus.
 #
 # Usage:
 #
 #   # [FETCH] Full 20 × 5000 paper run, 2010-2019 corpus:
-#   sbatch --export=ALL,PAPERS_PER_CAT=5000,START_DATE=2010-01-01,END_DATE=2019-12-31,BASE_OUT_DIR=/sci/labs/orzuk/orzuk/projects/Authomathics/arxiv/parsed_100k_2010s \
+#   sbatch --export=ALL,PAPERS_PER_CAT=5000,START_DATE=2010-01-01,END_DATE=2019-12-31,BASE_OUT_DIR=/<cluster>/<user>/projects/Authomathics/arxiv/parsed_100k_2010s \
 #          scripts/parse_multi_category_20.sh
 #
 #   # [LOCAL] 1200-paper calibration run on 10 pre-downloaded categories (slots 0-9):
 #   # Pre-req: symlink exists at /sci/.../projects/Authomathics/arxiv/full_papers_advanced
 #   sbatch --array=0-9 \
-#          --export=ALL,TEX_SRC_BASE=/sci/labs/orzuk/orzuk/projects/Authomathics/arxiv/full_papers_advanced,BASE_OUT_DIR=/sci/labs/orzuk/orzuk/projects/Authomathics/arxiv/parsed_calibration_1200 \
+#          --export=ALL,TEX_SRC_BASE=/<cluster>/<user>/projects/Authomathics/arxiv/full_papers_advanced,BASE_OUT_DIR=/<cluster>/<user>/projects/Authomathics/arxiv/parsed_calibration_1200 \
 #          scripts/parse_multi_category_20.sh
 #
 #   # [FETCH] Small smoke test: 100 papers per category:
@@ -90,7 +90,7 @@ set -uo pipefail
 
 # The 20 categories — order matches SLURM_ARRAY_TASK_ID 0-19
 # Slots 0-9 match the "student set" of 10 pure-math categories already
-# downloaded (Yaron's advanced-download batch). Slots 10-19 are the
+# downloaded (Author's advanced-download batch). Slots 10-19 are the
 # complement to reach 20 (analysis, CS theory, stats/engineering).
 CATEGORIES=(
     # --- Slots 0-9: student's pure-math 10 (already downloaded) -----------
@@ -134,9 +134,9 @@ TEX_SRC_BASE=${TEX_SRC_BASE:-}
 # Base output directory. Each category gets a subdirectory.
 # Override via BASE_OUT_DIR env var (different default per mode).
 if [ -n "$TEX_SRC_BASE" ]; then
-    BASE_OUT_DIR=${BASE_OUT_DIR:-/sci/labs/orzuk/orzuk/projects/Authomathics/arxiv/parsed_local_tex}
+    BASE_OUT_DIR=${BASE_OUT_DIR:-/<cluster>/<user>/projects/Authomathics/arxiv/parsed_local_tex}
 else
-    BASE_OUT_DIR=${BASE_OUT_DIR:-/sci/labs/orzuk/orzuk/projects/Authomathics/arxiv/parsed_multi_category_20}
+    BASE_OUT_DIR=${BASE_OUT_DIR:-/<cluster>/<user>/projects/Authomathics/arxiv/parsed_multi_category_20}
 fi
 
 # Repo and scripts.

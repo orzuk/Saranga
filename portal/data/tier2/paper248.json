@@ -1,0 +1,822 @@
+{
+  "metadata": {
+    "title": "Stochastic First- and Zeroth-order Methods for Nonconvex Stochastic Programming",
+    "authors": "Saeed Ghadimi, Guanghui Lan",
+    "year": 2012,
+    "paper_num": 248,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "ProbP248.1",
+      "type": "problem",
+      "name": "Unconstrained nonconvex stochastic programming (NLP)",
+      "section": "1 Introduction",
+      "statement": "$f^* := \\inf_{x \\in \\mathbb{R}^n} f(x)$, where $f:\\mathbb{R}^n \\to \\mathbb{R}$ is differentiable (possibly nonconvex), bounded from below, with $L$-Lipschitz gradient.",
+      "statement_clean": "Minimize a possibly nonconvex smooth function over R^n, with access only to noisy gradient or function values.",
+      "subclass": "optimization",
+      "origin": "paper",
+      "tags": ["nonconvex", "smooth", "stochastic"]
+    },
+    {
+      "id": "ProbP248.2",
+      "type": "problem",
+      "name": "Simulation-based stochastic NLP",
+      "section": "3 Stochastic zeroth-order methods",
+      "statement": "$f^* := \\inf_{x \\in \\mathbb{R}^n} \\{ f(x) := \\int_{\\Xi} F(x,\\xi) \\, dP(\\xi) \\}$, with $F(\\cdot,\\xi) \\in \\mathcal{C}_L^{1,1}(\\mathbb{R}^n)$ a.s.",
+      "statement_clean": "Minimize an expectation of a smooth random function when only zeroth-order (function-value) noisy evaluations are available.",
+      "subclass": "optimization",
+      "origin": "paper",
+      "tags": ["nonconvex", "smooth", "stochastic", "derivative-free"]
+    },
+    {
+      "id": "DP248.1",
+      "type": "definition",
+      "name": "Smooth function class $\\mathcal{C}_L^{1,1}$",
+      "section": "1.1 Notation",
+      "statement": "$f \\in \\mathcal{C}_L^{1,1}(\\mathbb{R}^n)$ iff $f$ is differentiable and $\\|\\nabla f(y) - \\nabla f(x)\\| \\le L\\|y-x\\|$ for all $x,y$.",
+      "origin": "external",
+      "origin_citation": "Nesterov 2004"
+    },
+    {
+      "id": "DP248.2",
+      "type": "definition",
+      "name": "Stochastic first-order oracle ($\\mathcal{SFO}$)",
+      "section": "1 Introduction",
+      "statement": "An oracle that, on input $x_k$, returns a stochastic gradient $G(x_k,\\xi_k)$ where $\\xi_k$ are random variables with distributions $P_k$ supported on $\\Xi_k \\subseteq \\mathbb{R}^d$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP248.3",
+      "type": "definition",
+      "name": "Stochastic zeroth-order oracle ($\\mathcal{SZO}$)",
+      "section": "3.1",
+      "statement": "An oracle that, on input $(x_k,\\xi_k)$, returns the function value $F(x_k,\\xi_k)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP248.4",
+      "type": "definition",
+      "name": "$(\\epsilon,\\Lambda)$-solution",
+      "section": "1 Introduction",
+      "statement": "A point $\\bar x$ such that $\\mathrm{Prob}\\{\\|\\nabla f(\\bar x)\\|^2 \\le \\epsilon\\} \\ge 1-\\Lambda$ for some $\\epsilon > 0$ and $\\Lambda \\in (0,1)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP248.5",
+      "type": "definition",
+      "name": "Gaussian-smoothed approximation $f_\\mu$",
+      "section": "3.1",
+      "statement": "$f_\\mu(x) := (2\\pi)^{-n/2} \\int f(x+\\mu u) e^{-\\|u\\|^2/2} \\, du = \\mathbb{E}_u[f(x+\\mu u)]$, where $u \\sim \\mathcal{N}(0,I_n)$ and $\\mu>0$ is a smoothing parameter.",
+      "origin": "external",
+      "origin_citation": "Nesterov 2011 (Nest11-1)"
+    },
+    {
+      "id": "DP248.6",
+      "type": "definition",
+      "name": "Gaussian-smoothed gradient estimator $G_\\mu$",
+      "section": "3.1",
+      "statement": "$G_\\mu(x_k,\\xi_k,u_k) := \\frac{F(x_k+\\mu u_k,\\xi_k) - F(x_k,\\xi_k)}{\\mu} u_k$, an unbiased estimator of $\\nabla f_\\mu(x_k)$.",
+      "origin": "external",
+      "origin_citation": "Nesterov 2011 (Nest11-1)"
+    },
+    {
+      "id": "AssumP248.1",
+      "type": "assumption",
+      "name": "A1: unbiased bounded-variance stochastic gradients",
+      "section": "1 Introduction",
+      "statement": "For all $k\\ge 1$: (a) $\\mathbb{E}[G(x_k,\\xi_k)] = \\nabla f(x_k)$; (b) $\\mathbb{E}[\\|G(x_k,\\xi_k) - \\nabla f(x_k)\\|^2] \\le \\sigma^2$ for some $\\sigma\\ge 0$.",
+      "origin": "paper"
+    },
+    {
+      "id": "AssumP248.2",
+      "type": "assumption",
+      "name": "A2: light-tail (sub-Gaussian) stochastic gradients",
+      "section": "2 Stochastic first-order methods",
+      "statement": "For all $x\\in\\mathbb{R}^n$ and $k\\ge 1$: $\\mathbb{E}[\\exp\\{\\|G(x,\\xi_k) - \\nabla f(x)\\|^2/\\sigma^2\\}] \\le \\exp\\{1\\}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "AssumP248.3",
+      "type": "assumption",
+      "name": "A3: unbiased stochastic function values",
+      "section": "3.1",
+      "statement": "For all $k\\ge 1$: $\\mathbb{E}[F(x_k,\\xi_k)] = f(x_k)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP248.1",
+      "type": "equation",
+      "name": "Smoothness inequality",
+      "section": "1.1 Notation",
+      "statement": "For $f \\in \\mathcal{C}_L^{1,1}(\\mathbb{R}^n)$: $|f(y) - f(x) - \\langle \\nabla f(x), y-x\\rangle| \\le \\frac{L}{2}\\|y-x\\|^2$.",
+      "origin": "external",
+      "origin_citation": "Nesterov 2004"
+    },
+    {
+      "id": "EP248.2",
+      "type": "equation",
+      "name": "Convex co-coercivity bound",
+      "section": "1.1 Notation",
+      "statement": "If $f$ is convex and $f \\in \\mathcal{C}_L^{1,1}(\\mathbb{R}^n)$, then $\\langle \\nabla f(y) - \\nabla f(x), y-x\\rangle \\ge \\frac{1}{L}\\|\\nabla f(y) - \\nabla f(x)\\|^2$.",
+      "origin": "external",
+      "origin_citation": "Nesterov 2004"
+    },
+    {
+      "id": "AP248.1",
+      "type": "algorithm",
+      "name": "Randomized stochastic gradient (RSG) method",
+      "section": "2.1",
+      "statement": "SA-type method that runs SGD updates and returns the iterate $x_R$ at a randomly drawn iteration index $R \\sim P_R$ rather than the average of iterates.",
+      "input": [
+        "Initial point $x_1$",
+        "Iteration limit $N$",
+        "Stepsizes $\\{\\gamma_k\\}_{k\\ge 1}$",
+        "Probability mass function $P_R(\\cdot)$ on $\\{1,\\ldots,N\\}$"
+      ],
+      "output": [
+        "Random iterate $x_R$"
+      ],
+      "subclass": "iterative",
+      "origin": "paper",
+      "tags": ["iterative", "stochastic", "nonconvex"]
+    },
+    {
+      "id": "AP248.2",
+      "type": "algorithm",
+      "name": "Two-phase RSG ($2$-RSG) method",
+      "section": "2.2",
+      "statement": "Runs $S$ independent RSG calls to obtain candidates $\\{\\bar x_s\\}$, then in a post-optimization phase selects the candidate with smallest $\\|g(\\bar x_s)\\|$ estimated via $T$ stochastic gradient samples.",
+      "input": [
+        "Initial point $x_1$",
+        "Number of runs $S$",
+        "Iteration limit $N$",
+        "Sample size $T$"
+      ],
+      "output": [
+        "Best candidate $\\bar x^*$ with $\\|g(\\bar x^*)\\| = \\min_s \\|g(\\bar x_s)\\|$, where $g(\\bar x_s) := \\frac{1}{T}\\sum_{k=1}^T G(\\bar x_s,\\xi_k)$"
+      ],
+      "subclass": "iterative",
+      "origin": "paper",
+      "tags": ["iterative", "stochastic", "two-phase"]
+    },
+    {
+      "id": "AP248.3",
+      "type": "algorithm",
+      "name": "Randomized stochastic gradient free (RSGF) method",
+      "section": "3.1",
+      "statement": "Zeroth-order analogue of RSG: at each iteration, samples $u_k$ Gaussian and uses the finite-difference gradient estimator $G_\\mu(x_k,\\xi_k,u_k) = [F(x_k+\\mu u_k,\\xi_k) - F(x_k,\\xi_k)] u_k / \\mu$ in place of a stochastic gradient.",
+      "input": [
+        "Initial point $x_1$",
+        "Iteration limit $N$",
+        "Stepsizes $\\{\\gamma_k\\}$",
+        "Probability mass function $P_R(\\cdot)$",
+        "Smoothing parameter $\\mu>0$"
+      ],
+      "output": [
+        "Random iterate $x_R$"
+      ],
+      "subclass": "iterative",
+      "origin": "paper",
+      "tags": ["iterative", "derivative-free", "stochastic", "nonconvex"]
+    },
+    {
+      "id": "AP248.4",
+      "type": "algorithm",
+      "name": "Two-phase RSGF ($2$-RSGF) method",
+      "section": "3.2",
+      "statement": "Two-phase variant of RSGF: optimization phase runs RSGF $S$ times to obtain candidates; post-optimization phase picks $\\bar x^*$ with smallest $\\|g_\\mu(\\bar x_s)\\|$ over $T$ Gaussian-smoothed gradient samples.",
+      "input": [
+        "Initial point $x_1$",
+        "Number of runs $S$",
+        "Iteration limit $N$",
+        "Sample size $T$",
+        "Smoothing parameter $\\mu$"
+      ],
+      "output": [
+        "Best candidate $\\bar x^*$ with $\\|g_\\mu(\\bar x^*)\\| = \\min_s \\|g_\\mu(\\bar x_s)\\|$"
+      ],
+      "subclass": "iterative",
+      "origin": "paper",
+      "tags": ["iterative", "derivative-free", "stochastic", "two-phase"]
+    },
+    {
+      "id": "TP248.1",
+      "type": "theorem",
+      "name": "Smooth Gaussian approximation properties (Nesterov)",
+      "section": "3.1 (cited)",
+      "statement": "For $f \\in \\mathcal{C}_L^{1,1}$: (a) $\\nabla f_\\mu$ has Lipschitz constant $L_\\mu \\le L$; (b) $|f_\\mu(x)-f(x)| \\le \\frac{\\mu^2}{2} L n$ and $\\|\\nabla f_\\mu(x) - \\nabla f(x)\\| \\le \\frac{\\mu}{2} L (n+3)^{3/2}$; (c) $\\frac{1}{\\mu^2}\\mathbb{E}_u[\\{f(x+\\mu u)-f(x)\\}^2 \\|u\\|^2] \\le \\frac{\\mu^2}{2} L^2 (n+6)^3 + 2(n+4)\\|\\nabla f(x)\\|^2$.",
+      "assumptions": ["$f \\in \\mathcal{C}_L^{1,1}(\\mathbb{R}^n)$", "$u$ standard Gaussian, $\\mu>0$"],
+      "conclusions": [
+        "$L_\\mu \\le L$",
+        "$|f_\\mu(x)-f(x)| \\le \\frac{\\mu^2}{2} L n$",
+        "$\\|\\nabla f_\\mu(x) - \\nabla f(x)\\| \\le \\frac{\\mu}{2} L (n+3)^{3/2}$",
+        "$\\frac{1}{\\mu^2}\\mathbb{E}_u[\\{f(x+\\mu u)-f(x)\\}^2\\|u\\|^2] \\le \\frac{\\mu^2}{2} L^2 (n+6)^3 + 2(n+4)\\|\\nabla f(x)\\|^2$"
+      ],
+      "origin": "external",
+      "origin_citation": "Nesterov 2011 (Nest11-1)",
+      "tags": ["bound", "approximation"]
+    },
+    {
+      "id": "LP248.1",
+      "type": "lemma",
+      "name": "Vector-valued martingale large-deviation bound",
+      "section": "2.2 (cited)",
+      "statement": "Let $\\{\\zeta_i\\} \\subset \\mathbb{R}^n$ be a martingale-difference sequence. (a) If $\\mathbb{E}[\\|\\zeta_i\\|^2]\\le\\sigma_i^2$, then $\\mathrm{Prob}\\{\\|\\sum_{i=1}^N \\zeta_i\\|^2 \\ge \\lambda \\sum_i \\sigma_i^2\\} \\le 1/\\lambda$. (b) Under the sub-Gaussian condition $\\mathbb{E}[\\exp(\\|\\zeta_i\\|^2/\\sigma_i^2)|i-1] \\le \\exp(1)$, $\\mathrm{Prob}\\{\\|\\sum \\zeta_i\\| \\ge \\sqrt{2}(1+\\lambda)\\sqrt{\\sum \\sigma_i^2}\\} \\le \\exp(-\\lambda^2/3)$.",
+      "assumptions": [
+        "$\\{\\zeta_i\\}_{i\\ge 1}$ is a martingale-difference sequence in $\\mathbb{R}^n$ adapted to a filtration $\\{\\mathcal{F}_i\\}$"
+      ],
+      "conclusions": [
+        "(a) Markov-type bound on $\\|\\sum_{i=1}^N \\zeta_i\\|$ under bounded-variance",
+        "(b) sub-Gaussian-type tail bound under the exponential moment assumption"
+      ],
+      "origin": "external",
+      "origin_citation": "Juditsky-Nemirovski 2008 (jn08-1, Theorem 2.1)",
+      "tags": ["bound", "concentration"]
+    },
+    {
+      "id": "TP248.2",
+      "type": "theorem",
+      "name": "Convergence of the RSG method",
+      "section": "2.1",
+      "statement": "Under A1, with $\\gamma_k < 2/L$ and $P_R(k) = (2\\gamma_k - L\\gamma_k^2)/\\sum_{k=1}^N (2\\gamma_k - L\\gamma_k^2)$: (a) $\\frac{1}{L}\\mathbb{E}[\\|\\nabla f(x_R)\\|^2] \\le (D_f^2 + \\sigma^2 \\sum \\gamma_k^2)/\\sum (2\\gamma_k - L\\gamma_k^2)$; (b) if $f$ is convex with optimum $x^*$, $\\mathbb{E}[f(x_R)-f^*] \\le (D_X^2 + \\sigma^2 \\sum \\gamma_k^2)/\\sum (2\\gamma_k - L\\gamma_k^2)$.",
+      "assumptions": [
+        "Assumption A1",
+        "$f \\in \\mathcal{C}_L^{1,1}(\\mathbb{R}^n)$ bounded below",
+        "$\\gamma_k < 2/L$ and $P_R$ chosen as in the theorem",
+        "(b) additionally, $f$ convex with optimum $x^*$"
+      ],
+      "conclusions": [
+        "(a) $\\frac{1}{L}\\mathbb{E}[\\|\\nabla f(x_R)\\|^2] \\le (D_f^2 + \\sigma^2 \\sum_{k=1}^N \\gamma_k^2)/\\sum_{k=1}^N (2\\gamma_k - L\\gamma_k^2)$ where $D_f := [2(f(x_1)-f^*)/L]^{1/2}$",
+        "(b) $\\mathbb{E}[f(x_R)-f^*] \\le (D_X^2 + \\sigma^2 \\sum \\gamma_k^2)/\\sum (2\\gamma_k - L\\gamma_k^2)$ where $D_X := \\|x_1 - x^*\\|$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "convergence"]
+    },
+    {
+      "id": "CP248.1",
+      "type": "corollary",
+      "name": "Constant-stepsize complexity of RSG",
+      "section": "2.1",
+      "statement": "With constant stepsize $\\gamma_k = \\min\\{1/L, \\tilde D/(\\sigma\\sqrt{N})\\}$ and $P_R$ as in Theorem 1: $\\frac{1}{L}\\mathbb{E}[\\|\\nabla f(x_R)\\|^2] \\le \\mathcal{B}_N := L D_f^2/N + (\\tilde D + D_f^2/\\tilde D)\\sigma/\\sqrt{N}$; and if $f$ is convex, $\\mathbb{E}[f(x_R)-f^*] \\le L D_X^2/N + (\\tilde D + D_X^2/\\tilde D)\\sigma/\\sqrt{N}$.",
+      "assumptions": [
+        "Assumption A1",
+        "$\\gamma_k = \\min\\{1/L, \\tilde D/(\\sigma\\sqrt N)\\}$ for some $\\tilde D>0$",
+        "$P_R$ as in Theorem 1"
+      ],
+      "conclusions": [
+        "$\\frac{1}{L}\\mathbb{E}[\\|\\nabla f(x_R)\\|^2] \\le L D_f^2/N + (\\tilde D + D_f^2/\\tilde D)\\sigma/\\sqrt N$",
+        "If convex: $\\mathbb{E}[f(x_R)-f^*] \\le L D_X^2/N + (\\tilde D + D_X^2/\\tilde D)\\sigma/\\sqrt N$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "complexity"]
+    },
+    {
+      "id": "TP248.3",
+      "type": "theorem",
+      "name": "Convergence and complexity of $2$-RSG",
+      "section": "2.2",
+      "statement": "Under A1: (a) $\\mathrm{Prob}\\{\\|\\nabla f(\\bar x^*)\\|^2 \\ge 2(4 L \\mathcal{B}_N + 3\\lambda \\sigma^2/T)\\} \\le (S+1)/\\lambda + 2^{-S}$; (b) with $S=\\lceil\\log(2/\\Lambda)\\rceil$ and $N(\\epsilon),T(\\epsilon,\\Lambda)$ as defined, $2$-RSG returns an $(\\epsilon,\\Lambda)$-solution within $S(\\Lambda)[N(\\epsilon)+T(\\epsilon,\\Lambda)]$ $\\mathcal{SFO}$ calls.",
+      "assumptions": [
+        "Assumption A1",
+        "Stepsizes and $P_R$ as in Theorem 1 / Corollary 1",
+        "$\\bar x_1, \\ldots, \\bar x_S$ are independent outputs of $S$ runs of RSG"
+      ],
+      "conclusions": [
+        "(a) $\\mathrm{Prob}\\{\\|\\nabla f(\\bar x^*)\\|^2 \\ge 2(4 L \\mathcal{B}_N + 3\\lambda\\sigma^2/T)\\} \\le (S+1)/\\lambda + 2^{-S}$",
+        "(b) $2$-RSG produces an $(\\epsilon,\\Lambda)$-solution after at most $S(\\Lambda)[N(\\epsilon)+T(\\epsilon,\\Lambda)]$ $\\mathcal{SFO}$ calls"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "complexity", "high-probability"]
+    },
+    {
+      "id": "CP248.2",
+      "type": "corollary",
+      "name": "Improved $2$-RSG complexity under light-tail A2",
+      "section": "2.2",
+      "statement": "Under A1+A2: (a) $\\mathrm{Prob}\\{\\|\\nabla f(\\bar x^*)\\|^2 \\ge 4[2L\\mathcal{B}_N + 3(1+\\lambda)^2\\sigma^2/T]\\} \\le (S+1)\\exp(-\\lambda^2/3) + 2^{-S}$; (b) with $T'(\\epsilon,\\Lambda)=\\frac{24\\sigma^2}{\\epsilon}[1+(3\\ln(2(S+1)/\\Lambda))^{1/2}]^2$, $2$-RSG attains an $(\\epsilon,\\Lambda)$-solution in $S(\\Lambda)[N(\\epsilon)+T'(\\epsilon,\\Lambda)]$ $\\mathcal{SFO}$ calls.",
+      "assumptions": [
+        "Assumptions A1 and A2",
+        "Stepsizes and $P_R$ as in Corollary 1"
+      ],
+      "conclusions": [
+        "(a) sub-Gaussian high-probability bound on $\\|\\nabla f(\\bar x^*)\\|^2$",
+        "(b) refined $\\mathcal{SFO}$ complexity $S(\\Lambda)[N(\\epsilon)+T'(\\epsilon,\\Lambda)]$, with the third-order term in $1/\\Lambda$ removed"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "complexity", "high-probability"]
+    },
+    {
+      "id": "TP248.4",
+      "type": "theorem",
+      "name": "Convergence of the RSGF method",
+      "section": "3.1",
+      "statement": "Under A1+A3, with $\\gamma_k < 1/[2(n+4)L]$ and $P_R(k) \\propto \\gamma_k - 2L(n+4)\\gamma_k^2$: (a) $\\frac{1}{L}\\mathbb{E}[\\|\\nabla f(x_R)\\|^2] \\le \\{D_f^2 + 2\\mu^2(n+4)[1 + L(n+4)^2\\sum (\\gamma_k/4 + L\\gamma_k^2)] + 2(n+4)\\sigma^2\\sum\\gamma_k^2\\}/\\sum[\\gamma_k - 2L(n+4)\\gamma_k^2]$; (b) if $f$ convex with optimum $x^*$, an analogous bound on $\\mathbb{E}[f(x_R)-f^*]$ holds.",
+      "assumptions": [
+        "Assumptions A1 and A3",
+        "$F(\\cdot,\\xi) \\in \\mathcal{C}_L^{1,1}(\\mathbb{R}^n)$ a.s.",
+        "$\\gamma_k < 1/[2(n+4)L]$ and $P_R$ as in the theorem"
+      ],
+      "conclusions": [
+        "(a) bound on $\\frac{1}{L}\\mathbb{E}[\\|\\nabla f(x_R)\\|^2]$ involving $D_f$, $\\mu$, $n$, $\\sigma$, and $\\{\\gamma_k\\}$",
+        "(b) if $f$ convex: bound on $\\mathbb{E}[f(x_R)-f^*]$ involving $D_X$, $\\mu$, $n$, $\\sigma$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "convergence"]
+    },
+    {
+      "id": "CP248.3",
+      "type": "corollary",
+      "name": "Constant-stepsize complexity of RSGF",
+      "section": "3.1",
+      "statement": "With $\\gamma_k = \\frac{1}{\\sqrt{n+4}}\\min\\{1/(4L\\sqrt{n+4}), \\tilde D/(\\sigma\\sqrt N)\\}$ and $\\mu \\le D_f/[(n+4)\\sqrt{2N}]$: $\\frac{1}{L}\\mathbb{E}[\\|\\nabla f(x_R)\\|^2] \\le \\bar{\\mathcal{B}}_N := 12(n+4)L D_f^2/N + 4\\sigma\\sqrt{n+4}/\\sqrt N \\cdot (\\tilde D + D_f^2/\\tilde D)$; if $f$ convex with $\\mu \\le D_X/\\sqrt{n+4}$, $\\mathbb{E}[f(x_R)-f^*] \\le 5L(n+4)D_X^2/N + 2\\sigma\\sqrt{n+4}/\\sqrt N (\\tilde D + D_X^2/\\tilde D)$.",
+      "assumptions": [
+        "Assumptions A1 and A3",
+        "$\\gamma_k$ and $\\mu$ as specified"
+      ],
+      "conclusions": [
+        "$\\frac{1}{L}\\mathbb{E}[\\|\\nabla f(x_R)\\|^2] \\le 12(n+4)L D_f^2/N + 4\\sigma\\sqrt{n+4}/\\sqrt N (\\tilde D + D_f^2/\\tilde D)$",
+        "RSGF iteration complexity for nonconvex $\\epsilon$-solution: $\\mathcal{O}(n/\\epsilon^2)$",
+        "convex case: $\\mathcal{O}(n/\\epsilon^2)$ with weaker $n$-dependence than Nesterov's nonsmooth bound"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "complexity"]
+    },
+    {
+      "id": "TP248.5",
+      "type": "theorem",
+      "name": "Convergence and complexity of $2$-RSGF",
+      "section": "3.2",
+      "statement": "Under A1+A3: (a) $\\mathrm{Prob}\\{\\|\\nabla f(\\bar x^*)\\|^2 \\ge 8L\\bar{\\mathcal{B}}_N + \\frac{3(n+4)L^2 D_f^2}{2N} + \\frac{24(n+4)\\lambda}{T}[L\\bar{\\mathcal{B}}_N + (n+4)L^2 D_f^2/N + \\sigma^2]\\} \\le (S+1)/\\lambda + 2^{-S}$; (b) for given $\\epsilon,\\Lambda$, with $S(\\Lambda),\\hat N(\\epsilon),\\hat T(\\epsilon,\\Lambda)$ as defined, $2$-RSGF returns an $(\\epsilon,\\Lambda)$-solution within $2 S(\\Lambda)[\\hat N(\\epsilon)+\\hat T(\\epsilon,\\Lambda)]$ $\\mathcal{SZO}$ calls.",
+      "assumptions": [
+        "Assumptions A1 and A3",
+        "Stepsizes / $P_R$ / $\\mu$ as in the RSGF setup",
+        "$\\bar x_1,\\ldots,\\bar x_S$ independent outputs of $S$ runs of RSGF"
+      ],
+      "conclusions": [
+        "(a) high-probability bound on $\\|\\nabla f(\\bar x^*)\\|^2$",
+        "(b) $2$-RSGF achieves an $(\\epsilon,\\Lambda)$-solution in $2 S(\\Lambda)[\\hat N(\\epsilon)+\\hat T(\\epsilon,\\Lambda)]$ $\\mathcal{SZO}$ calls"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "complexity", "high-probability"]
+    },
+    {
+      "id": "RP248.1",
+      "type": "remark",
+      "name": "Markov-inequality $(\\epsilon,\\Lambda)$-complexity of RSG",
+      "section": "2.1",
+      "statement": "By Markov's inequality applied to Corollary 1, the number of $\\mathcal{SFO}$ calls of RSG to find an $(\\epsilon,\\Lambda)$-solution is $\\mathcal{O}\\{1/(\\Lambda\\epsilon) + \\sigma^2/(\\Lambda^2\\epsilon^2)\\}$, which is pessimistic in $\\Lambda$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP248.2",
+      "type": "remark",
+      "name": "Improved complexity bound for $2$-RSG",
+      "section": "2.2",
+      "statement": "Total $\\mathcal{SFO}$ calls reduce to $\\mathcal{O}\\{\\log(1/\\Lambda)/\\epsilon + (\\sigma^2/\\epsilon^2)\\log(1/\\Lambda) + \\log^2(1/\\Lambda)\\sigma^2/(\\Lambda\\epsilon)\\}$, smaller than the RSG bound by up to a factor of $1/[\\Lambda^2\\log(1/\\Lambda)]$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP248.3",
+      "type": "remark",
+      "name": "Improved complexity for $2$-RSG under A2",
+      "section": "2.2",
+      "statement": "Under A1+A2 the third term in the $2$-RSG complexity drops the $1/\\Lambda$ factor, giving $\\mathcal{O}\\{\\log(1/\\Lambda)/\\epsilon + (\\sigma^2/\\epsilon^2)\\log(1/\\Lambda) + \\log^2(1/\\Lambda)\\sigma^2/\\epsilon\\}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP248.4",
+      "type": "remark",
+      "name": "Stepsize policies for RSG",
+      "section": "2.1",
+      "statement": "RSG also achieves the same $\\mathcal{O}(1/\\sqrt N)$ rate under increasing $\\gamma_k = \\min\\{1/L, \\tilde D \\sqrt{k}/(\\sigma N)\\}$ or decreasing $\\gamma_k = \\min\\{1/L, \\tilde D/(\\sigma (kN)^{1/4})\\}$ stepsize policies.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP248.1",
+      "type": "proof",
+      "name": "Proof of Theorem 1 (RSG convergence)",
+      "section": "2.1",
+      "parent_id": "TP248.2",
+      "proves": "TP248.2",
+      "statement": "Apply the smoothness inequality and the SGD update; sum, take expectations using A1 and the martingale property of $\\delta_k = G(x_k,\\xi_k)-\\nabla f(x_k)$; for part (b) use convex co-coercivity to convert gradient bounds to function-value bounds.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP248.1",
+      "type": "proof_step",
+      "name": "Per-iteration smoothness expansion",
+      "parent_id": "PP248.1",
+      "step_order": 1,
+      "subclass": "apply_lemma",
+      "statement": "Using $f \\in \\mathcal{C}_L^{1,1}$ and the SGD update $x_{k+1}=x_k - \\gamma_k G(x_k,\\xi_k)$, derive $f(x_{k+1}) \\le f(x_k) - (\\gamma_k - L\\gamma_k^2/2)\\|\\nabla f(x_k)\\|^2 - (\\gamma_k - L\\gamma_k^2)\\langle \\nabla f(x_k),\\delta_k\\rangle + \\frac{L}{2}\\gamma_k^2\\|\\delta_k\\|^2$."
+    },
+    {
+      "id": "PSP248.2",
+      "type": "proof_step",
+      "name": "Telescoping and lower bound by $f^*$",
+      "parent_id": "PP248.1",
+      "step_order": 2,
+      "subclass": "algebraic_manipulation",
+      "statement": "Sum the per-iteration bound for $k=1,\\ldots,N$, then use $f(x_{N+1}) \\ge f^*$ to obtain $\\sum (\\gamma_k - L\\gamma_k^2/2)\\|\\nabla f(x_k)\\|^2 \\le f(x_1) - f^* - \\sum (\\gamma_k - L\\gamma_k^2)\\langle \\nabla f(x_k),\\delta_k\\rangle + \\frac{L}{2}\\sum \\gamma_k^2\\|\\delta_k\\|^2$."
+    },
+    {
+      "id": "PSP248.3",
+      "type": "proof_step",
+      "name": "Take expectation; eliminate noise terms via A1",
+      "parent_id": "PP248.1",
+      "step_order": 3,
+      "subclass": "bound_estimate",
+      "statement": "Use $\\mathbb{E}[\\langle \\nabla f(x_k),\\delta_k\\rangle|\\xi_{[k-1]}]=0$ and $\\mathbb{E}[\\|\\delta_k\\|^2]\\le \\sigma^2$ from A1 to get $\\sum (\\gamma_k - L\\gamma_k^2/2) \\mathbb{E}\\|\\nabla f(x_k)\\|^2 \\le f(x_1) - f^* + \\frac{L\\sigma^2}{2}\\sum \\gamma_k^2$."
+    },
+    {
+      "id": "PSP248.4",
+      "type": "proof_step",
+      "name": "Convert to bound on $\\mathbb{E}\\|\\nabla f(x_R)\\|^2$ via $P_R$",
+      "parent_id": "PP248.1",
+      "step_order": 4,
+      "subclass": "conclude",
+      "statement": "Divide by $L\\sum (\\gamma_k - L\\gamma_k^2/2)$ and use $\\mathbb{E}[\\|\\nabla f(x_R)\\|^2] = \\sum (2\\gamma_k - L\\gamma_k^2) \\mathbb{E}\\|\\nabla f(x_k)\\|^2 / \\sum (2\\gamma_k - L\\gamma_k^2)$ from the choice of $P_R$ to obtain part (a)."
+    },
+    {
+      "id": "PSP248.5",
+      "type": "proof_step",
+      "name": "Convex case: distance recursion",
+      "parent_id": "PP248.1",
+      "step_order": 5,
+      "subclass": "case_split",
+      "statement": "For part (b), set $\\omega_k = \\|x_k - x^*\\|$ and expand $\\omega_{k+1}^2$. Use co-coercivity $\\frac{1}{L}\\|\\nabla f(x_k)\\|^2 \\le \\langle \\nabla f(x_k),x_k-x^*\\rangle$ and convexity to get $\\omega_{k+1}^2 \\le \\omega_k^2 - (2\\gamma_k - L\\gamma_k^2)[f(x_k)-f^*] - 2\\gamma_k\\langle x_k-\\gamma_k\\nabla f(x_k)-x^*,\\delta_k\\rangle + \\gamma_k^2\\|\\delta_k\\|^2$."
+    },
+    {
+      "id": "PSP248.6",
+      "type": "proof_step",
+      "name": "Sum, take expectation, mirror part (a)",
+      "parent_id": "PP248.1",
+      "step_order": 6,
+      "subclass": "conclude",
+      "statement": "Sum and use $\\omega_{N+1}\\ge 0$; the rest mirrors part (a) with $D_X^2$ replacing $D_f^2$ to obtain (b)."
+    },
+    {
+      "id": "PP248.2",
+      "type": "proof",
+      "name": "Proof of Corollary 1 (constant-stepsize bound)",
+      "section": "2.1",
+      "parent_id": "CP248.1",
+      "proves": "CP248.1",
+      "statement": "Substitute $\\gamma_k = \\min\\{1/L, \\tilde D/(\\sigma\\sqrt N)\\}$ into Theorem 1 and bound $\\sum \\gamma_k^2$ to extract the explicit $L D_f^2/N + (\\tilde D + D_f^2/\\tilde D)\\sigma/\\sqrt N$ rate.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP248.3",
+      "type": "proof",
+      "name": "Proof of Theorem 2 ($2$-RSG complexity)",
+      "section": "2.2",
+      "parent_id": "TP248.3",
+      "proves": "TP248.3",
+      "statement": "Decompose $\\|\\nabla f(\\bar x^*)\\|^2$ into three terms, bound each by the RSG single-run high-probability bound, the martingale lemma applied to $g(\\bar x_s)-\\nabla f(\\bar x_s)$, and a similar bound at $\\bar x^*$; for (b), set $\\lambda = 2(S+1)/\\Lambda$ and verify the calibrated $N(\\epsilon),T(\\epsilon,\\Lambda)$ make the failure probability $\\le \\Lambda$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP248.7",
+      "type": "proof_step",
+      "name": "Three-term split of $\\|\\nabla f(\\bar x^*)\\|^2$",
+      "parent_id": "PP248.3",
+      "step_order": 1,
+      "subclass": "algebraic_manipulation",
+      "statement": "From the post-optimization rule $\\|g(\\bar x^*)\\| = \\min_s \\|g(\\bar x_s)\\|$, derive $\\|\\nabla f(\\bar x^*)\\|^2 \\le 4\\min_s \\|\\nabla f(\\bar x_s)\\|^2 + 4\\max_s \\|g(\\bar x_s)-\\nabla f(\\bar x_s)\\|^2 + 2\\|g(\\bar x^*)-\\nabla f(\\bar x^*)\\|^2$."
+    },
+    {
+      "id": "PSP248.8",
+      "type": "proof_step",
+      "name": "Bound $\\min_s\\|\\nabla f(\\bar x_s)\\|^2$ by independence",
+      "parent_id": "PP248.3",
+      "step_order": 2,
+      "subclass": "apply_lemma",
+      "statement": "Using independence of the $\\bar x_s$ and the Markov bound $\\mathrm{Prob}\\{\\|\\nabla f(x_R)\\|^2 \\ge 2 L\\mathcal{B}_N\\} \\le 1/2$, get $\\mathrm{Prob}\\{\\min_s \\|\\nabla f(\\bar x_s)\\|^2 \\ge 2 L\\mathcal{B}_N\\} \\le 2^{-S}$."
+    },
+    {
+      "id": "PSP248.9",
+      "type": "proof_step",
+      "name": "Bound noise terms via Lemma 1(a)",
+      "parent_id": "PP248.3",
+      "step_order": 3,
+      "subclass": "apply_lemma",
+      "statement": "Apply martingale lemma 1(a) to $\\delta_{s,k}=G(\\bar x_s,\\xi_k)-\\nabla f(\\bar x_s)$ to get $\\mathrm{Prob}\\{\\max_s\\|g(\\bar x_s)-\\nabla f(\\bar x_s)\\|^2 \\ge \\lambda\\sigma^2/T\\} \\le S/\\lambda$ and similarly $\\mathrm{Prob}\\{\\|g(\\bar x^*)-\\nabla f(\\bar x^*)\\|^2 \\ge \\lambda\\sigma^2/T\\} \\le 1/\\lambda$."
+    },
+    {
+      "id": "PSP248.10",
+      "type": "proof_step",
+      "name": "Combine and conclude part (a)",
+      "parent_id": "PP248.3",
+      "step_order": 4,
+      "subclass": "conclude",
+      "statement": "Combine the three bounds with the union bound to obtain $\\mathrm{Prob}\\{\\|\\nabla f(\\bar x^*)\\|^2 \\ge 2(4L\\mathcal{B}_N + 3\\lambda\\sigma^2/T)\\} \\le (S+1)/\\lambda + 2^{-S}$."
+    },
+    {
+      "id": "PSP248.11",
+      "type": "proof_step",
+      "name": "Calibrate $\\lambda,N,T$ for part (b)",
+      "parent_id": "PP248.3",
+      "step_order": 5,
+      "subclass": "conclude",
+      "statement": "Set $\\lambda = 2(S+1)/\\Lambda$. With $N(\\epsilon)$ chosen so that $\\mathcal{B}_{N(\\epsilon)} \\le \\epsilon/(16L)$ and $T(\\epsilon,\\Lambda)$ chosen so that $3\\lambda\\sigma^2/T = \\epsilon/8$, get total bound $\\Lambda/2 + 2^{-S} \\le \\Lambda$, giving an $(\\epsilon,\\Lambda)$-solution in $S(\\Lambda)[N(\\epsilon)+T(\\epsilon,\\Lambda)]$ $\\mathcal{SFO}$ calls."
+    },
+    {
+      "id": "PP248.4",
+      "type": "proof",
+      "name": "Proof of Corollary 2 ($2$-RSG under A2)",
+      "section": "2.2",
+      "parent_id": "CP248.2",
+      "proves": "CP248.2",
+      "statement": "Same three-term split as Theorem 2, but bound noise terms using Lemma 1(b) (sub-Gaussian) instead of Lemma 1(a), yielding exponential tails and the improved $\\log^2(1/\\Lambda)\\sigma^2/\\epsilon$ third-term scaling.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP248.5",
+      "type": "proof",
+      "name": "Proof of Theorem 3 (RSGF convergence)",
+      "section": "3.1",
+      "parent_id": "TP248.4",
+      "proves": "TP248.4",
+      "statement": "Run the analysis on the smoothed function $f_\\mu$, exploit unbiasedness of $G_\\mu$ for $\\nabla f_\\mu$ (eq. 3.5), apply Theorem (smth_approx) to bound $\\mathbb{E}\\|G_\\mu(x_k,\\zeta_k)\\|^2$ in terms of $\\|\\nabla f(x_k)\\|^2 + \\sigma^2 + \\mu^2 L^2 (n+6)^3$, then transfer the bound back from $f_\\mu$ to $f$ using $\\|\\nabla f_\\mu - \\nabla f\\|^2$ and $|f_\\mu^* - f^*|$ estimates.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP248.12",
+      "type": "proof_step",
+      "name": "Smoothness expansion on $f_\\mu$",
+      "parent_id": "PP248.5",
+      "step_order": 1,
+      "subclass": "apply_lemma",
+      "statement": "Using Theorem (smth_approx).a) ($L_\\mu \\le L$) and the RSGF update, get $f_\\mu(x_{k+1}) \\le f_\\mu(x_k) - \\gamma_k\\|\\nabla f_\\mu(x_k)\\|^2 - \\gamma_k\\langle\\nabla f_\\mu(x_k),\\Delta_k\\rangle + \\frac{L}{2}\\gamma_k^2\\|G_\\mu(x_k,\\zeta_k)\\|^2$, where $\\Delta_k = G_\\mu(x_k,\\zeta_k)-\\nabla f_\\mu(x_k)$."
+    },
+    {
+      "id": "PSP248.13",
+      "type": "proof_step",
+      "name": "Sum, take expectation, eliminate $\\Delta_k$ term",
+      "parent_id": "PP248.5",
+      "step_order": 2,
+      "subclass": "algebraic_manipulation",
+      "statement": "Sum and use $\\mathbb{E}[\\langle \\nabla f_\\mu(x_k),\\Delta_k\\rangle|\\zeta_{[k-1]}]=0$; bound $\\mathbb{E}[\\|G_\\mu(x_k,\\zeta_k)\\|^2|\\zeta_{[k-1]}] \\le 2(n+4)[\\|\\nabla f(x_k)\\|^2+\\sigma^2] + \\mu^2 L^2(n+6)^3/2$ via Theorem (smth_approx).c) and A1."
+    },
+    {
+      "id": "PSP248.14",
+      "type": "proof_step",
+      "name": "Transfer from $f_\\mu$ to $f$",
+      "parent_id": "PP248.5",
+      "step_order": 3,
+      "subclass": "substitute",
+      "statement": "Use $\\|\\nabla f_\\mu(x)\\|^2 \\ge \\frac{1}{2}\\|\\nabla f(x)\\|^2 - \\frac{\\mu^2}{4}L^2(n+3)^3$ and $|f_\\mu^*-f^*| \\le \\mu^2 Ln/2$ to push the bound from $\\nabla f_\\mu$ back to $\\nabla f$, absorbing $\\mu$-dependent error terms."
+    },
+    {
+      "id": "PSP248.15",
+      "type": "proof_step",
+      "name": "Divide by stepsize sum and apply $P_R$",
+      "parent_id": "PP248.5",
+      "step_order": 4,
+      "subclass": "conclude",
+      "statement": "Divide by $\\sum [\\gamma_k - 2L(n+4)\\gamma_k^2]$ and use the definition of $P_R$ in eq. (3.7) to extract the bound on $\\mathbb{E}\\|\\nabla f(x_R)\\|^2$ in part (a). Part (b) follows analogously, replacing $D_f$ by $D_X$."
+    },
+    {
+      "id": "PP248.6",
+      "type": "proof",
+      "name": "Proof of Corollary 3 (constant-stepsize RSGF)",
+      "section": "3.1",
+      "parent_id": "CP248.3",
+      "proves": "CP248.3",
+      "statement": "Substitute the explicit constant $\\gamma_k$ and $\\mu$ choices into Theorem 3 and simplify; use $\\sum [\\gamma_k - 2L(n+4)\\gamma_k^2] \\ge N\\gamma_1/2$ to obtain explicit $\\bar{\\mathcal{B}}_N$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP248.7",
+      "type": "proof",
+      "name": "Proof of Theorem 4 ($2$-RSGF complexity)",
+      "section": "3.2",
+      "parent_id": "TP248.5",
+      "proves": "TP248.5",
+      "statement": "Same blueprint as the proof of Theorem 2, but with three sources of error: variance of the Gaussian smoothed estimator, bias $\\|\\nabla f_\\mu - \\nabla f\\|^2$ (controlled by Theorem smth_approx.b)) and the optimization-phase RSGF bound from Theorem 3.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP248.16",
+      "type": "proof_step",
+      "name": "Bias-corrected three-term split",
+      "parent_id": "PP248.7",
+      "step_order": 1,
+      "subclass": "algebraic_manipulation",
+      "statement": "Using $\\|g_\\mu(\\bar x^*)\\|^2 = \\min_s\\|g_\\mu(\\bar x_s)\\|^2$ and $\\|\\nabla f_\\mu - \\nabla f\\|^2 \\le (n+4)L^2 D_f^2/(8N)$ (from Theorem smth_approx.b) and the choice of $\\mu$), derive $\\|\\nabla f(\\bar x^*)\\|^2 \\le 4\\min_s\\|\\nabla f(\\bar x_s)\\|^2 + 8\\max_s\\|g_\\mu(\\bar x_s)-\\nabla f(\\bar x_s)\\|^2 + 4\\|g_\\mu(\\bar x^*)-\\nabla f_\\mu(\\bar x^*)\\|^2 + 3(n+4)L^2 D_f^2/(2N)$."
+    },
+    {
+      "id": "PSP248.17",
+      "type": "proof_step",
+      "name": "Bound $\\min_s\\|\\nabla f(\\bar x_s)\\|^2$",
+      "parent_id": "PP248.7",
+      "step_order": 2,
+      "subclass": "apply_lemma",
+      "statement": "Apply $\\mathrm{Prob}\\{\\|\\nabla f(x_R)\\|^2 \\ge 2L\\bar{\\mathcal{B}}_N\\} \\le 1/2$ from Corollary 3 to each of the $S$ independent runs and use independence to get $\\mathrm{Prob}\\{\\min_s \\|\\nabla f(\\bar x_s)\\|^2 \\ge 2L\\bar{\\mathcal{B}}_N\\} \\le 2^{-S}$."
+    },
+    {
+      "id": "PSP248.18",
+      "type": "proof_step",
+      "name": "Variance bound on $G_\\mu$ noise via Lemma 1(a)",
+      "parent_id": "PP248.7",
+      "step_order": 3,
+      "subclass": "apply_lemma",
+      "statement": "Using $\\mathbb{E}\\|\\Delta_{s,k}\\|^2 \\le 2(n+4)[L\\bar{\\mathcal{B}}_N + \\sigma^2 + L^2 D_f^2/(2N)] =: \\mathcal{D}_N$ and Lemma 1(a), get $\\mathrm{Prob}\\{\\max_s\\|g_\\mu(\\bar x_s)-\\nabla f_\\mu(\\bar x_s)\\|^2 \\ge \\lambda \\mathcal{D}_N/T\\} \\le S/\\lambda$ and similarly for $\\bar x^*$."
+    },
+    {
+      "id": "PSP248.19",
+      "type": "proof_step",
+      "name": "Combine to (a)",
+      "parent_id": "PP248.7",
+      "step_order": 4,
+      "subclass": "conclude",
+      "statement": "Combine to get $\\mathrm{Prob}\\{\\|\\nabla f(\\bar x^*)\\|^2 \\ge 8L\\bar{\\mathcal{B}}_N + \\frac{3(n+4)L^2 D_f^2}{2N} + \\frac{24(n+4)\\lambda}{T}[L\\bar{\\mathcal{B}}_N + (n+4)L^2 D_f^2/N + \\sigma^2]\\} \\le (S+1)/\\lambda + 2^{-S}$."
+    },
+    {
+      "id": "PSP248.20",
+      "type": "proof_step",
+      "name": "Calibrate and conclude (b)",
+      "parent_id": "PP248.7",
+      "step_order": 5,
+      "subclass": "conclude",
+      "statement": "Choose $\\lambda = 2(S+1)/\\Lambda$ and $\\hat N(\\epsilon),\\hat T(\\epsilon,\\Lambda)$ as in eqs. (3.21)-(3.22); verify $8L\\bar{\\mathcal{B}}_{\\hat N} + \\frac{3(n+4)L^2 D_f^2}{2\\hat N} \\le 17\\epsilon/24$ and the third term $\\le 7\\epsilon/24$, totaling $\\epsilon$; total $\\mathcal{SZO}$ calls $\\le 2 S(\\Lambda)[\\hat N(\\epsilon)+\\hat T(\\epsilon,\\Lambda)]$."
+    },
+    {
+      "id": "ASP248.1",
+      "type": "algorithm_step",
+      "name": "Sample iteration index $R$",
+      "parent_id": "AP248.1",
+      "step_order": 1,
+      "subclass": "initialize",
+      "statement": "Step 0: draw a random index $R$ with probability mass function $P_R$ on $\\{1,\\ldots,N\\}$."
+    },
+    {
+      "id": "ASP248.2",
+      "type": "algorithm_step",
+      "name": "SGD update loop",
+      "parent_id": "AP248.1",
+      "step_order": 2,
+      "subclass": "loop",
+      "statement": "For $k = 1,\\ldots,R$: query $\\mathcal{SFO}$ for $G(x_k,\\xi_k)$ and update $x_{k+1} = x_k - \\gamma_k G(x_k,\\xi_k)$."
+    },
+    {
+      "id": "ASP248.3",
+      "type": "algorithm_step",
+      "name": "Return $x_R$",
+      "parent_id": "AP248.1",
+      "step_order": 3,
+      "subclass": "return",
+      "statement": "Output the iterate $x_R$ at the random index $R$."
+    },
+    {
+      "id": "ASP248.4",
+      "type": "algorithm_step",
+      "name": "Optimization phase: $S$ independent RSG runs",
+      "parent_id": "AP248.2",
+      "step_order": 1,
+      "subclass": "loop",
+      "statement": "For $s=1,\\ldots,S$: call RSG with input $x_1$, iteration limit $N$, stepsizes from eq. (2.5), and $P_R$ from eq. (2.4). Let $\\bar x_s$ be the output."
+    },
+    {
+      "id": "ASP248.5",
+      "type": "algorithm_step",
+      "name": "Post-optimization: select $\\bar x^*$",
+      "parent_id": "AP248.2",
+      "step_order": 2,
+      "subclass": "return",
+      "statement": "Compute $g(\\bar x_s) := \\frac{1}{T}\\sum_{k=1}^T G(\\bar x_s,\\xi_k)$ for each $s$ and return $\\bar x^* = \\arg\\min_{s} \\|g(\\bar x_s)\\|$."
+    },
+    {
+      "id": "ASP248.6",
+      "type": "algorithm_step",
+      "name": "Sample iteration index $R$",
+      "parent_id": "AP248.3",
+      "step_order": 1,
+      "subclass": "initialize",
+      "statement": "Step 0: draw a random index $R$ with probability mass function $P_R$ on $\\{1,\\ldots,N\\}$."
+    },
+    {
+      "id": "ASP248.7",
+      "type": "algorithm_step",
+      "name": "Gaussian-finite-difference update loop",
+      "parent_id": "AP248.3",
+      "step_order": 2,
+      "subclass": "loop",
+      "statement": "For $k=1,\\ldots,R$: draw $u_k \\sim \\mathcal{N}(0,I_n)$, query $\\mathcal{SZO}$ for $F(x_k,\\xi_k)$ and $F(x_k+\\mu u_k,\\xi_k)$, form $G_\\mu(x_k,\\xi_k,u_k) = [F(x_k+\\mu u_k,\\xi_k)-F(x_k,\\xi_k)] u_k/\\mu$, and update $x_{k+1} = x_k - \\gamma_k G_\\mu(x_k,\\xi_k,u_k)$."
+    },
+    {
+      "id": "ASP248.8",
+      "type": "algorithm_step",
+      "name": "Return $x_R$",
+      "parent_id": "AP248.3",
+      "step_order": 3,
+      "subclass": "return",
+      "statement": "Output the iterate $x_R$ at the random index $R$."
+    },
+    {
+      "id": "ASP248.9",
+      "type": "algorithm_step",
+      "name": "Optimization phase: $S$ independent RSGF runs",
+      "parent_id": "AP248.4",
+      "step_order": 1,
+      "subclass": "loop",
+      "statement": "For $s=1,\\ldots,S$: call RSGF with input $x_1$, iteration limit $N$, stepsizes from eq. (3.10), $P_R$ from eq. (3.7), smoothing parameter $\\mu$ from eq. (3.11). Let $\\bar x_s$ be the output."
+    },
+    {
+      "id": "ASP248.10",
+      "type": "algorithm_step",
+      "name": "Post-optimization: select $\\bar x^*$ via $g_\\mu$",
+      "parent_id": "AP248.4",
+      "step_order": 2,
+      "subclass": "return",
+      "statement": "Compute $g_\\mu(\\bar x_s) := \\frac{1}{T}\\sum_{k=1}^T G_\\mu(\\bar x_s,\\xi_k,u_k)$ for each $s$ and return $\\bar x^* = \\arg\\min_s \\|g_\\mu(\\bar x_s)\\|$."
+    }
+  ],
+  "edges": [
+    {"source": "DP248.1", "target": "ProbP248.1", "type": "uses"},
+    {"source": "DP248.2", "target": "ProbP248.1", "type": "uses"},
+    {"source": "DP248.3", "target": "ProbP248.2", "type": "uses"},
+    {"source": "AssumP248.1", "target": "AP248.1", "type": "uses"},
+    {"source": "AssumP248.1", "target": "AP248.2", "type": "uses"},
+    {"source": "AssumP248.1", "target": "AP248.3", "type": "uses"},
+    {"source": "AssumP248.1", "target": "AP248.4", "type": "uses"},
+    {"source": "AssumP248.2", "target": "CP248.2", "type": "uses"},
+    {"source": "AssumP248.3", "target": "AP248.3", "type": "uses"},
+    {"source": "AssumP248.3", "target": "AP248.4", "type": "uses"},
+    {"source": "DP248.5", "target": "AP248.3", "type": "uses"},
+    {"source": "DP248.6", "target": "AP248.3", "type": "uses"},
+    {"source": "DP248.5", "target": "AP248.4", "type": "uses"},
+    {"source": "DP248.6", "target": "AP248.4", "type": "uses"},
+
+    {"source": "EP248.1", "target": "TP248.2", "type": "uses"},
+    {"source": "EP248.2", "target": "TP248.2", "type": "uses"},
+    {"source": "AssumP248.1", "target": "TP248.2", "type": "uses"},
+
+    {"source": "AP248.1", "target": "TP248.2", "type": "uses"},
+    {"source": "AP248.2", "target": "TP248.3", "type": "uses"},
+    {"source": "AP248.3", "target": "TP248.4", "type": "uses"},
+    {"source": "AP248.4", "target": "TP248.5", "type": "uses"},
+
+    {"source": "TP248.2", "target": "CP248.1", "type": "uses"},
+    {"source": "CP248.1", "target": "TP248.3", "type": "uses"},
+    {"source": "LP248.1", "target": "TP248.3", "type": "uses"},
+    {"source": "CP248.1", "target": "CP248.2", "type": "uses"},
+    {"source": "LP248.1", "target": "CP248.2", "type": "uses"},
+    {"source": "AssumP248.2", "target": "CP248.2", "type": "uses"},
+
+    {"source": "TP248.1", "target": "TP248.4", "type": "uses"},
+    {"source": "TP248.2", "target": "TP248.4", "type": "uses"},
+    {"source": "TP248.4", "target": "CP248.3", "type": "uses"},
+    {"source": "CP248.3", "target": "TP248.5", "type": "uses"},
+    {"source": "LP248.1", "target": "TP248.5", "type": "uses"},
+    {"source": "TP248.1", "target": "TP248.5", "type": "uses"},
+
+    {"source": "PP248.1", "target": "TP248.2", "type": "proves"},
+    {"source": "PP248.2", "target": "CP248.1", "type": "proves"},
+    {"source": "PP248.3", "target": "TP248.3", "type": "proves"},
+    {"source": "PP248.4", "target": "CP248.2", "type": "proves"},
+    {"source": "PP248.5", "target": "TP248.4", "type": "proves"},
+    {"source": "PP248.6", "target": "CP248.3", "type": "proves"},
+    {"source": "PP248.7", "target": "TP248.5", "type": "proves"},
+
+    {"source": "PSP248.1", "target": "PSP248.2", "type": "uses"},
+    {"source": "PSP248.2", "target": "PSP248.3", "type": "uses"},
+    {"source": "PSP248.3", "target": "PSP248.4", "type": "uses"},
+    {"source": "PSP248.4", "target": "PSP248.5", "type": "uses"},
+    {"source": "PSP248.5", "target": "PSP248.6", "type": "uses"},
+
+    {"source": "PSP248.7", "target": "PSP248.10", "type": "uses"},
+    {"source": "PSP248.8", "target": "PSP248.10", "type": "uses"},
+    {"source": "PSP248.9", "target": "PSP248.10", "type": "uses"},
+    {"source": "PSP248.10", "target": "PSP248.11", "type": "uses"},
+
+    {"source": "PSP248.12", "target": "PSP248.13", "type": "uses"},
+    {"source": "PSP248.13", "target": "PSP248.14", "type": "uses"},
+    {"source": "PSP248.14", "target": "PSP248.15", "type": "uses"},
+
+    {"source": "PSP248.16", "target": "PSP248.19", "type": "uses"},
+    {"source": "PSP248.17", "target": "PSP248.19", "type": "uses"},
+    {"source": "PSP248.18", "target": "PSP248.19", "type": "uses"},
+    {"source": "PSP248.19", "target": "PSP248.20", "type": "uses"},
+
+    {"source": "ASP248.1", "target": "ASP248.2", "type": "uses"},
+    {"source": "ASP248.2", "target": "ASP248.3", "type": "uses"},
+    {"source": "ASP248.4", "target": "ASP248.5", "type": "uses"},
+    {"source": "ASP248.6", "target": "ASP248.7", "type": "uses"},
+    {"source": "ASP248.7", "target": "ASP248.8", "type": "uses"},
+    {"source": "ASP248.9", "target": "ASP248.10", "type": "uses"},
+
+    {"source": "AP248.1", "target": "AP248.2", "type": "uses"},
+    {"source": "AP248.3", "target": "AP248.4", "type": "uses"},
+    {"source": "AP248.1", "target": "AP248.3", "type": "specializes"},
+
+    {"source": "TP248.3", "target": "RP248.2", "type": "uses"},
+    {"source": "CP248.2", "target": "RP248.3", "type": "uses"},
+    {"source": "CP248.1", "target": "RP248.1", "type": "uses"},
+    {"source": "AP248.1", "target": "RP248.4", "type": "uses"}
+  ]
+}

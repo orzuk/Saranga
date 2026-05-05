@@ -82,7 +82,7 @@ OPERATIONS=${OPERATIONS:-parse,validate,anomalies,stats}
 HTML=${HTML:-0}
 
 # Base output directory. Each category gets a subdirectory.
-BASE_OUT_DIR=${BASE_OUT_DIR:-/sci/labs/orzuk/orzuk/projects/Authomathics/arxiv/parsed_multi_category}
+BASE_OUT_DIR=${BASE_OUT_DIR:-/<cluster>/<user>/projects/Authomathics/arxiv/parsed_multi_category}
 
 # Repo and scripts
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

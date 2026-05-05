@@ -1,0 +1,107 @@
+{
+  "metadata": {
+    "title": "NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis (Mildenhall et al., 2020)",
+    "arxiv_id": "2003.08934",
+    "year": 2020,
+    "venue": "ECCV 2020",
+    "framework": "Continuous volumetric scene representation via MLP mapping 5D coordinates to radiance and density, trained with differentiable volume rendering",
+    "annotator": "Claude Opus 4.6",
+    "source_note": "Extraction based on well-known content of arXiv:2003.08934."
+  },
+  "nodes": [
+    {
+      "id": "DP_NR.1",
+      "type": "definition",
+      "rigor": "semi_formal",
+      "subclass": "formulation",
+      "name": "Neural radiance field representation",
+      "section": "2",
+      "statement": "A neural radiance field is a continuous function $F_\\Theta: (\\mathbf{x}, \\mathbf{d}) \\to (\\mathbf{c}, \\sigma)$ represented by an MLP with weights $\\Theta$. It maps a 3D location $\\mathbf{x} = (x, y, z)$ and 2D viewing direction $\\mathbf{d} = (\\theta, \\phi)$ to an emitted color $\\mathbf{c} = (r, g, b)$ and a volume density $\\sigma$. The density $\\sigma(\\mathbf{x})$ depends only on location (view-independent), while color $\\mathbf{c}(\\mathbf{x}, \\mathbf{d})$ depends on both location and direction (view-dependent appearance)."
+    },
+    {
+      "id": "DP_NR.2",
+      "type": "definition",
+      "rigor": "formal",
+      "subclass": "formulation",
+      "name": "Volume rendering equation",
+      "section": "4",
+      "statement": "The expected color $C(\\mathbf{r})$ of camera ray $\\mathbf{r}(t) = \\mathbf{o} + t\\mathbf{d}$ with near and far bounds $t_n, t_f$ is $C(\\mathbf{r}) = \\int_{t_n}^{t_f} T(t) \\sigma(\\mathbf{r}(t)) \\mathbf{c}(\\mathbf{r}(t), \\mathbf{d}) \\, dt$, where $T(t) = \\exp\\left(-\\int_{t_n}^{t} \\sigma(\\mathbf{r}(s)) \\, ds\\right)$ is the accumulated transmittance along the ray from $t_n$ to $t$."
+    },
+    {
+      "id": "DP_NR.3",
+      "type": "definition",
+      "rigor": "formal",
+      "subclass": "formulation",
+      "name": "Discretized volume rendering (quadrature)",
+      "section": "4",
+      "statement": "The continuous integral is approximated by stratified sampling: partition $[t_n, t_f]$ into $N$ bins, sample $t_i \\sim \\mathcal{U}[t_n + \\frac{i-1}{N}(t_f - t_n), \\, t_n + \\frac{i}{N}(t_f - t_n)]$, and compute $\\hat{C}(\\mathbf{r}) = \\sum_{i=1}^{N} T_i (1 - \\exp(-\\sigma_i \\delta_i)) \\mathbf{c}_i$, where $T_i = \\exp\\left(-\\sum_{j=1}^{i-1} \\sigma_j \\delta_j\\right)$ and $\\delta_i = t_{i+1} - t_i$. This is differentiable with respect to the MLP parameters."
+    },
+    {
+      "id": "DP_NR.4",
+      "type": "definition",
+      "rigor": "semi_formal",
+      "subclass": "technique",
+      "name": "Positional encoding",
+      "section": "5.1",
+      "statement": "To enable the MLP to represent high-frequency scene content, each input coordinate $p$ is mapped via $\\gamma(p) = (\\sin(2^0 \\pi p), \\cos(2^0 \\pi p), \\ldots, \\sin(2^{L-1} \\pi p), \\cos(2^{L-1} \\pi p))$. For 3D position, $L = 10$ (60 components); for viewing direction, $L = 4$ (24 components). Without positional encoding, the MLP produces oversmoothed results due to spectral bias toward low frequencies."
+    },
+    {
+      "id": "DP_NR.5",
+      "type": "definition",
+      "rigor": "semi_formal",
+      "subclass": "technique",
+      "name": "Hierarchical volume sampling (coarse-to-fine)",
+      "section": "5.2",
+      "statement": "Two networks are trained: a 'coarse' network and a 'fine' network. The coarse network is evaluated at $N_c$ stratified samples. Its output weights $w_i = T_i(1 - \\exp(-\\sigma_i \\delta_i))$ define a piecewise-constant PDF along the ray, from which $N_f$ additional samples are drawn via inverse CDF sampling. The fine network is evaluated at the union of $N_c + N_f$ samples, concentrating computation near visible surfaces."
+    },
+    {
+      "id": "DP_NR.6",
+      "type": "definition",
+      "rigor": "semi_formal",
+      "subclass": "architecture",
+      "name": "NeRF MLP architecture",
+      "section": "Supplement",
+      "statement": "The MLP has 8 fully-connected layers (256 channels each) with ReLU activations. The positionally-encoded position is input to the first layer, with a skip connection concatenating it again at the 5th layer. After 8 layers, the network outputs $\\sigma$ and a 256-d feature, which is concatenated with the encoded viewing direction and passed through one additional layer to produce the RGB color $\\mathbf{c}$."
+    },
+    {
+      "id": "AL_NR.1",
+      "type": "algorithm",
+      "rigor": "semi_formal",
+      "subclass": "training",
+      "name": "NeRF optimization procedure",
+      "section": "5",
+      "statement": "The loss is $\\mathcal{L} = \\sum_{\\mathbf{r} \\in \\mathcal{R}} \\left[ \\|\\hat{C}_c(\\mathbf{r}) - C(\\mathbf{r})\\|_2^2 + \\|\\hat{C}_f(\\mathbf{r}) - C(\\mathbf{r})\\|_2^2 \\right]$, summing over a batch $\\mathcal{R}$ of rays, with $\\hat{C}_c$ and $\\hat{C}_f$ from the coarse and fine networks respectively, and $C(\\mathbf{r})$ the ground-truth pixel color. Optimized with Adam ($5 \\times 10^{-4}$ learning rate, exponentially decayed). One scene takes ~100-300k iterations on a single GPU."
+    },
+    {
+      "id": "EP_NR.1",
+      "type": "experiment",
+      "rigor": "informal",
+      "subclass": "benchmark",
+      "name": "View synthesis results",
+      "section": "6",
+      "statement": "NeRF achieves state-of-the-art novel view synthesis on synthetic (Blender) and real (LLFF) datasets, with PSNR improvements of 3-5 dB over prior methods (SRN, LLFF, Neural Volumes). Qualitative results show sharp edges, fine detail, and consistent view-dependent effects (reflections, specularities) that prior methods fail to capture.",
+      "datasets": ["Blender synthetic", "LLFF real forward-facing"]
+    },
+    {
+      "id": "EP_NR.2",
+      "type": "experiment",
+      "rigor": "informal",
+      "subclass": "ablation",
+      "name": "Ablation: positional encoding and hierarchical sampling",
+      "section": "6.3",
+      "statement": "Removing positional encoding reduces PSNR by ~4 dB (oversmoothed results). Removing view dependence reduces PSNR by ~1 dB (cannot model specularities). Removing hierarchical sampling reduces quality and increases noise. Each component contributes significantly to final quality."
+    }
+  ],
+  "edges": [
+    {"source": "DP_NR.1", "target": "DP_NR.2", "type": "uses", "note": "The radiance field is rendered via the volume rendering equation."},
+    {"source": "DP_NR.2", "target": "DP_NR.3", "type": "specializes", "note": "Continuous integral is discretized for practical computation."},
+    {"source": "DP_NR.4", "target": "DP_NR.1", "type": "uses", "note": "Positional encoding enables the MLP to represent high frequencies."},
+    {"source": "DP_NR.3", "target": "DP_NR.5", "type": "uses", "note": "Coarse network samples are used to guide fine network sampling."},
+    {"source": "DP_NR.6", "target": "DP_NR.1", "type": "uses", "note": "The MLP architecture implements the radiance field function."},
+    {"source": "DP_NR.3", "target": "AL_NR.1", "type": "uses", "note": "The rendering loss compares rendered vs ground-truth pixel colors."},
+    {"source": "DP_NR.5", "target": "AL_NR.1", "type": "uses", "note": "Both coarse and fine networks contribute to the training loss."},
+    {"source": "AL_NR.1", "target": "EP_NR.1", "type": "tests", "note": "The trained NeRF is evaluated on view synthesis benchmarks."},
+    {"source": "DP_NR.4", "target": "EP_NR.2", "type": "tests", "note": "Ablation tests the contribution of positional encoding."},
+    {"source": "DP_NR.5", "target": "EP_NR.2", "type": "tests", "note": "Ablation tests the contribution of hierarchical sampling."}
+  ]
+}

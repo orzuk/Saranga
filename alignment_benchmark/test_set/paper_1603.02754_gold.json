@@ -1,0 +1,76 @@
+{
+  "metadata": {
+    "title": "XGBoost: A Scalable Tree Boosting System (Chen & Guestrin, 2016)",
+    "arxiv_id": "1603.02754",
+    "year": 2016,
+    "venue": "KDD 2016",
+    "framework": "Scalable gradient tree boosting with regularization, sparsity-aware learning, and system-level optimizations",
+    "annotator": "Claude (claude-code)",
+    "source_note": "Extraction based on arXiv:1603.02754 PDF text."
+  },
+  "nodes": [
+    {
+      "id": "DP_XGB.1",
+      "type": "definition",
+      "name": "Regularized tree boosting objective",
+      "section": "2.1",
+      "statement": "Given a dataset with $n$ examples and $m$ features, predict $\\hat{y}_i = \\sum_{k=1}^{K} f_k(\\mathbf{x}_i)$ where each $f_k \\in \\mathcal{F}$ is a regression tree. The regularized objective is $\\mathcal{L} = \\sum_{i=1}^{n} l(y_i, \\hat{y}_i) + \\sum_{k=1}^{K} \\Omega(f_k)$ where $\\Omega(f) = \\gamma T + \\frac{1}{2} \\lambda \\|\\mathbf{w}\\|^2$, $T$ is the number of leaves, and $\\mathbf{w}$ are the leaf weights."
+    },
+    {
+      "id": "DP_XGB.2",
+      "type": "definition",
+      "name": "Second-order Taylor expansion of loss",
+      "section": "2.2",
+      "statement": "At boosting round $t$, approximate the loss using a second-order Taylor expansion: $\\mathcal{L}^{(t)} \\approx \\sum_{i=1}^{n} [l(y_i, \\hat{y}_i^{(t-1)}) + g_i f_t(\\mathbf{x}_i) + \\frac{1}{2} h_i f_t(\\mathbf{x}_i)^2] + \\Omega(f_t)$, where $g_i = \\partial_{\\hat{y}^{(t-1)}} l(y_i, \\hat{y}_i^{(t-1)})$ and $h_i = \\partial^2_{\\hat{y}^{(t-1)}} l(y_i, \\hat{y}_i^{(t-1)})$ are the first and second derivatives of the loss."
+    },
+    {
+      "id": "DP_XGB.3",
+      "type": "definition",
+      "name": "Optimal leaf weights and split gain",
+      "section": "2.2",
+      "statement": "For a fixed tree structure $q$, the optimal weight for leaf $j$ is $w_j^* = -\\frac{\\sum_{i \\in I_j} g_i}{\\sum_{i \\in I_j} h_i + \\lambda}$ and the optimal objective value is $\\tilde{\\mathcal{L}} = -\\frac{1}{2} \\sum_{j=1}^{T} \\frac{(\\sum_{i \\in I_j} g_i)^2}{\\sum_{i \\in I_j} h_i + \\lambda} + \\gamma T$, where $I_j$ is the set of instances in leaf $j$."
+    },
+    {
+      "id": "DP_XGB.4",
+      "type": "definition",
+      "name": "Split finding gain",
+      "section": "2.2",
+      "statement": "The gain from splitting a leaf into left ($I_L$) and right ($I_R$) is: $\\mathrm{Gain} = \\frac{1}{2} \\left[ \\frac{(\\sum_{i \\in I_L} g_i)^2}{\\sum_{i \\in I_L} h_i + \\lambda} + \\frac{(\\sum_{i \\in I_R} g_i)^2}{\\sum_{i \\in I_R} h_i + \\lambda} - \\frac{(\\sum_{i \\in I} g_i)^2}{\\sum_{i \\in I} h_i + \\lambda} \\right] - \\gamma$. The term $\\gamma$ acts as a pruning threshold: splits with negative gain are pruned."
+    },
+    {
+      "id": "DP_XGB.5",
+      "type": "definition",
+      "name": "Sparsity-aware split finding",
+      "section": "3.4",
+      "statement": "For each tree node, learn a default direction for missing values. During split finding, only route non-missing values and assign missing values to the default direction. The optimal default direction is found by trying both left and right and choosing the one with higher gain."
+    },
+    {
+      "id": "AG_XGB.1",
+      "type": "algorithm",
+      "name": "Exact greedy split finding",
+      "section": "3.1 (Algorithm 1)",
+      "statement": "For each node, enumerate all features; for each feature, sort instances by feature value and scan linearly to find the split with maximum gain using the gradient statistics $(g_i, h_i)$. Complexity: $O(Kd \\cdot n \\log n)$ for $K$ trees, $d$ features, $n$ examples."
+    },
+    {
+      "id": "AG_XGB.2",
+      "type": "algorithm",
+      "name": "Approximate split finding with weighted quantile sketch",
+      "section": "3.2-3.3",
+      "statement": "Instead of exact enumeration, propose candidate split points using percentiles of the feature distribution, weighted by the second-order gradient $h_i$. Map continuous features into buckets defined by these candidates and aggregate gradient statistics per bucket. A novel distributed weighted quantile sketch algorithm provides provable guarantees."
+    },
+    {
+      "id": "RM_XGB.1",
+      "type": "remark",
+      "name": "Column block and cache-aware access",
+      "section": "4",
+      "statement": "Data is stored in compressed column (CSC) format in in-memory blocks. For the exact algorithm, the block structure allows parallel split finding across features. For the approximate algorithm, cache-aware prefetching reduces cache misses during gradient accumulation."
+    },
+    {
+      "id": "RM_XGB.2",
+      "type": "remark",
+      "name": "Relationship to gradient boosting machine (GBM)",
+      "section": "2",
+      "statement": "XGBoost extends Friedman's gradient boosting by: (1) using a second-order Taylor expansion instead of first-order (Newton step), (2) adding explicit $L_1$ and $L_2$ regularization on leaf weights and tree complexity, (3) incorporating shrinkage (learning rate) and column subsampling, and (4) engineering for scalability."
+    }
+  ]
+}

@@ -1,0 +1,661 @@
+{
+  "metadata": {
+    "title": "Trust Region Policy Optimization",
+    "paper_num": 243,
+    "authors": "John Schulman, Sergey Levine, Philipp Moritz, Michael I. Jordan, Pieter Abbeel",
+    "year": 2015,
+    "venue": "ICML",
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "DP243.1",
+      "type": "definition",
+      "name": "Markov Decision Process (MDP)",
+      "section": "2 Preliminaries",
+      "statement": "An infinite-horizon discounted MDP is a tuple $(\\mathcal{S}, \\mathcal{A}, P, r, \\rho_0, \\gamma)$, where $\\mathcal{S}$ is a finite state set, $\\mathcal{A}$ a finite action set, $P:\\mathcal{S}\\times\\mathcal{A}\\times\\mathcal{S}\\to\\mathbb{R}$ a transition kernel, $r:\\mathcal{S}\\to\\mathbb{R}$ a reward, $\\rho_0$ an initial distribution, and $\\gamma\\in(0,1)$ a discount factor.",
+      "statement_clean": "An infinite-horizon discounted MDP with finite state and action sets.",
+      "origin": "external",
+      "origin_citation": "Bertsekas, standard RL setup",
+      "tags": ["foundational"]
+    },
+    {
+      "id": "DP243.2",
+      "type": "definition",
+      "name": "Expected discounted reward $\\eta(\\pi)$",
+      "section": "2 Preliminaries",
+      "statement": "$\\eta(\\pi) = \\mathbb{E}_{s_0,a_0,\\dots}\\!\\left[\\sum_{t=0}^{\\infty}\\gamma^t r(s_t)\\right]$ where $s_0\\sim\\rho_0$, $a_t\\sim\\pi(a_t\\mid s_t)$, $s_{t+1}\\sim P(\\cdot\\mid s_t,a_t)$.",
+      "statement_clean": "Expected discounted return of a stochastic policy $\\pi$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP243.3",
+      "type": "definition",
+      "name": "State-action value, value, and advantage functions",
+      "section": "2 Preliminaries",
+      "statement": "$Q_\\pi(s_t,a_t)=\\mathbb{E}\\!\\left[\\sum_{l=0}^\\infty\\gamma^l r(s_{t+l})\\right]$; $V_\\pi(s_t)=\\mathbb{E}\\!\\left[\\sum_{l=0}^\\infty\\gamma^l r(s_{t+l})\\right]$; $A_\\pi(s,a)=Q_\\pi(s,a)-V_\\pi(s)$.",
+      "statement_clean": "Standard $Q$, $V$, and advantage functions for policy $\\pi$.",
+      "origin": "external",
+      "origin_citation": "Standard RL"
+    },
+    {
+      "id": "DP243.4",
+      "type": "definition",
+      "name": "Discounted state-visitation frequency $\\rho_\\pi$",
+      "section": "2 Preliminaries",
+      "statement": "$\\rho_\\pi(s) = P(s_0=s) + \\gamma P(s_1=s) + \\gamma^2 P(s_2=s) + \\dots$, with $s_0\\sim\\rho_0$ and actions chosen according to $\\pi$.",
+      "statement_clean": "Unnormalized $\\gamma$-discounted occupancy measure induced by $\\pi$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP243.5",
+      "type": "definition",
+      "name": "Local surrogate $L_\\pi(\\tilde\\pi)$",
+      "section": "2 Preliminaries",
+      "statement": "$L_\\pi(\\tilde\\pi)=\\eta(\\pi)+\\sum_s \\rho_\\pi(s)\\sum_a \\tilde\\pi(a\\mid s)A_\\pi(s,a)$. Uses $\\rho_\\pi$ instead of $\\rho_{\\tilde\\pi}$, ignoring visitation changes due to the policy update.",
+      "statement_clean": "First-order surrogate objective approximating $\\eta(\\tilde\\pi)$ near $\\pi$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP243.6",
+      "type": "definition",
+      "name": "Total variation divergence $D_{TV}$ and $D^{max}_{TV}$",
+      "section": "3 Monotonic Improvement Guarantee",
+      "statement": "$D_{TV}(p\\,\\|\\,q)=\\tfrac{1}{2}\\sum_i |p_i-q_i|$ for discrete $p,q$; $D^{max}_{TV}(\\pi,\\tilde\\pi)=\\max_s D_{TV}(\\pi(\\cdot\\mid s)\\,\\|\\,\\tilde\\pi(\\cdot\\mid s))$.",
+      "statement_clean": "Total variation distance and its state-wise maximum between two policies.",
+      "origin": "external",
+      "origin_citation": "Standard probability"
+    },
+    {
+      "id": "DP243.7",
+      "type": "definition",
+      "name": "Maximum and average KL divergence $D^{max}_{KL}$, $\\bar D_{KL}^{\\rho}$",
+      "section": "3-4",
+      "statement": "$D^{max}_{KL}(\\pi,\\tilde\\pi)=\\max_s D_{KL}(\\pi(\\cdot\\mid s)\\,\\|\\,\\tilde\\pi(\\cdot\\mid s))$; $\\bar D_{KL}^{\\rho}(\\theta_1,\\theta_2)=\\mathbb{E}_{s\\sim\\rho}\\!\\left[D_{KL}(\\pi_{\\theta_1}(\\cdot\\mid s)\\,\\|\\,\\pi_{\\theta_2}(\\cdot\\mid s))\\right]$.",
+      "statement_clean": "Worst-case (over states) and $\\rho$-weighted average KL divergence between two policies.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP243.8",
+      "type": "definition",
+      "name": "$\\alpha$-coupled policy pair",
+      "section": "Appendix A (Proof of Policy Improvement Bound)",
+      "statement": "$(\\pi,\\tilde\\pi)$ is an $\\alpha$-coupled policy pair if there is a joint distribution over $(a,\\tilde a)\\mid s$ with marginals $\\pi(\\cdot\\mid s)$ and $\\tilde\\pi(\\cdot\\mid s)$ such that $P(a\\neq\\tilde a\\mid s)\\le\\alpha$ for every $s$.",
+      "statement_clean": "Joint distribution coupling two policies so they disagree with probability at most $\\alpha$ in every state.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP243.9",
+      "type": "definition",
+      "name": "Mean advantage $\\bar A(s)$",
+      "section": "Appendix A",
+      "statement": "$\\bar A(s)=\\mathbb{E}_{a\\sim\\tilde\\pi(\\cdot\\mid s)}[A_\\pi(s,a)]$ — expected advantage of $\\tilde\\pi$ over $\\pi$ at state $s$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP243.1",
+      "type": "equation",
+      "name": "Advantage identity for policy returns",
+      "section": "2 Preliminaries (eq:advid)",
+      "statement": "$\\eta(\\tilde\\pi)=\\eta(\\pi)+\\mathbb{E}_{s_0,a_0,\\dots\\sim\\tilde\\pi}\\!\\left[\\sum_{t=0}^\\infty \\gamma^t A_\\pi(s_t,a_t)\\right]$.",
+      "statement_clean": "Identity expressing the return of $\\tilde\\pi$ in terms of cumulative advantages of $\\tilde\\pi$ over $\\pi$.",
+      "origin": "external",
+      "origin_citation": "Kakade & Langford 2002"
+    },
+    {
+      "id": "EP243.2",
+      "type": "equation",
+      "name": "State-form rewrite of advantage identity",
+      "section": "2 Preliminaries (eq:etaexact)",
+      "statement": "$\\eta(\\tilde\\pi)=\\eta(\\pi)+\\sum_s \\rho_{\\tilde\\pi}(s)\\sum_a \\tilde\\pi(a\\mid s) A_\\pi(s,a)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP243.3",
+      "type": "equation",
+      "name": "Kakade--Langford lower bound for conservative policy iteration",
+      "section": "2 Preliminaries (eq:kakbound0)",
+      "statement": "$\\eta(\\pi_{\\mathrm{new}}) \\ge L_{\\pi_{\\mathrm{old}}}(\\pi_{\\mathrm{new}}) - \\frac{2\\epsilon\\gamma}{(1-\\gamma)^2}\\alpha^2$ with $\\epsilon=\\max_s |\\mathbb{E}_{a\\sim\\pi'(a\\mid s)}A_\\pi(s,a)|$.",
+      "statement_clean": "Original policy improvement bound for mixture (CPI) policies.",
+      "origin": "external",
+      "origin_citation": "Kakade & Langford 2002 (modified)"
+    },
+    {
+      "id": "EP243.4",
+      "type": "equation",
+      "name": "KL-divergence policy improvement bound",
+      "section": "3 Monotonic Improvement (eq:klminorizer)",
+      "statement": "$\\eta(\\tilde\\pi) \\ge L_\\pi(\\tilde\\pi) - C\\, D^{max}_{KL}(\\pi,\\tilde\\pi)$, with $C=\\frac{4\\epsilon\\gamma}{(1-\\gamma)^2}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "TP243.1",
+      "type": "theorem",
+      "name": "Policy improvement bound (Theorem 1)",
+      "section": "3 Monotonic Improvement (thm:impthm)",
+      "statement": "Let $\\alpha=D^{max}_{TV}(\\pi_{\\mathrm{old}},\\pi_{\\mathrm{new}})$. Then $\\eta(\\pi_{\\mathrm{new}}) \\ge L_{\\pi_{\\mathrm{old}}}(\\pi_{\\mathrm{new}}) - \\frac{4\\epsilon\\gamma}{(1-\\gamma)^2}\\alpha^2$ where $\\epsilon=\\max_{s,a}|A_\\pi(s,a)|$.",
+      "statement_clean": "Generalizes the Kakade--Langford bound from mixture policies to arbitrary stochastic policies, using total variation distance.",
+      "assumptions": [
+        "$\\pi_{\\mathrm{old}}, \\pi_{\\mathrm{new}}$ are stochastic policies on a discounted MDP",
+        "$\\alpha = D^{max}_{TV}(\\pi_{\\mathrm{old}}, \\pi_{\\mathrm{new}})$",
+        "$\\epsilon = \\max_{s,a}|A_\\pi(s,a)| < \\infty$"
+      ],
+      "conclusions": [
+        "$\\eta(\\pi_{\\mathrm{new}}) \\ge L_{\\pi_{\\mathrm{old}}}(\\pi_{\\mathrm{new}}) - \\frac{4\\epsilon\\gamma}{(1-\\gamma)^2}\\alpha^2$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "monotonic_improvement"]
+    },
+    {
+      "id": "LP243.1",
+      "type": "lemma",
+      "name": "Per-timestep advantage decomposition (improvelemma)",
+      "section": "Appendix A",
+      "statement": "Given two policies $\\pi,\\tilde\\pi$: $\\eta(\\tilde\\pi)=\\eta(\\pi)+\\mathbb{E}_{\\tau\\sim\\tilde\\pi}\\!\\left[\\sum_{t=0}^\\infty \\gamma^t A_\\pi(s_t,a_t)\\right]$.",
+      "assumptions": ["$\\pi,\\tilde\\pi$ are policies on a discounted MDP"],
+      "conclusions": ["$\\eta(\\tilde\\pi)=\\eta(\\pi)+\\mathbb{E}_{\\tau\\sim\\tilde\\pi}[\\sum_{t=0}^\\infty\\gamma^t A_\\pi(s_t,a_t)]$"],
+      "origin": "external",
+      "origin_citation": "Kakade & Langford 2002"
+    },
+    {
+      "id": "LP243.2",
+      "type": "lemma",
+      "name": "Bound on mean advantage under coupled policies",
+      "section": "Appendix A",
+      "statement": "If $(\\pi,\\tilde\\pi)$ is an $\\alpha$-coupled policy pair, then for all $s$: $|\\bar A(s)| \\le 2\\alpha\\,\\max_{s,a}|A_\\pi(s,a)|$.",
+      "assumptions": ["$(\\pi,\\tilde\\pi)$ is an $\\alpha$-coupled policy pair"],
+      "conclusions": ["$|\\bar A(s)| \\le 2\\alpha\\max_{s,a}|A_\\pi(s,a)|$ for all $s$"],
+      "origin": "paper"
+    },
+    {
+      "id": "LP243.3",
+      "type": "lemma",
+      "name": "Bound on state-distribution shift in mean advantage (advbound)",
+      "section": "Appendix A",
+      "statement": "Let $(\\pi,\\tilde\\pi)$ be an $\\alpha$-coupled policy pair. Then $|\\mathbb{E}_{s_t\\sim\\tilde\\pi}\\bar A(s_t) - \\mathbb{E}_{s_t\\sim\\pi}\\bar A(s_t)| \\le 2\\alpha\\max_s\\bar A(s) \\le 4\\alpha(1-(1-\\alpha)^t)\\max_{s,a}|A_\\pi(s,a)|$.",
+      "assumptions": ["$(\\pi,\\tilde\\pi)$ is an $\\alpha$-coupled policy pair"],
+      "conclusions": ["$|\\mathbb{E}_{s_t\\sim\\tilde\\pi}\\bar A(s_t)-\\mathbb{E}_{s_t\\sim\\pi}\\bar A(s_t)| \\le 4\\alpha(1-(1-\\alpha)^t)\\max_{s,a}|A_\\pi(s,a)|$"],
+      "origin": "paper"
+    },
+    {
+      "id": "TP243.2",
+      "type": "theorem",
+      "name": "Pinsker / TV-KL inequality",
+      "section": "3 Monotonic Improvement (cited)",
+      "statement": "For any distributions $p,q$: $D_{TV}(p\\,\\|\\,q)^2 \\le D_{KL}(p\\,\\|\\,q)$.",
+      "assumptions": ["$p,q$ are probability distributions"],
+      "conclusions": ["$D_{TV}(p\\,\\|\\,q)^2 \\le D_{KL}(p\\,\\|\\,q)$"],
+      "origin": "external",
+      "origin_citation": "Pollard, A User's Guide to Measure Theoretic Probability, Ch. 3"
+    },
+    {
+      "id": "TP243.3",
+      "type": "theorem",
+      "name": "Coupling characterization of total variation",
+      "section": "Appendix A (cited)",
+      "statement": "If $D_{TV}(p_X,p_Y)=\\alpha$ then there exists a joint distribution $(X,Y)$ with marginals $p_X, p_Y$ and $P(X=Y)\\ge 1-\\alpha$.",
+      "assumptions": ["$p_X, p_Y$ are distributions on a common space", "$D_{TV}(p_X,p_Y)=\\alpha$"],
+      "conclusions": ["A coupling $(X,Y)$ with $P(X=Y)\\ge 1-\\alpha$ exists"],
+      "origin": "external",
+      "origin_citation": "Levin, Peres, Wilmer, Markov Chains and Mixing Times, Prop. 4.7"
+    },
+    {
+      "id": "PP243.1",
+      "type": "proof",
+      "name": "Coupling proof of Theorem 1",
+      "section": "Appendix A",
+      "statement": "By coupling $\\pi,\\tilde\\pi$ with disagreement probability $\\le\\alpha$, decomposing the advantage expectation by whether disagreement has occurred before time $t$, summing the per-timestep error bound, and converting $\\alpha$ via the TV-coupling correspondence.",
+      "proves": "TP243.1",
+      "parent_id": "TP243.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP243.2",
+      "type": "proof",
+      "name": "Perturbation theory proof of Theorem 1",
+      "section": "Appendix B",
+      "statement": "Write $G=(1-\\gamma P_\\pi)^{-1}$ and $\\tilde G=(1-\\gamma P_{\\tilde\\pi})^{-1}$, expand $\\tilde G - G$ to second order in $\\Delta=P_{\\tilde\\pi}-P_\\pi$, identify the first-order term with $L_\\pi(\\tilde\\pi)-L_\\pi(\\pi)$, and bound the $O(\\Delta^2)$ remainder using $\\ell_1$ operator norms with $\\|\\Delta\\|_1=2\\alpha$.",
+      "proves": "TP243.1",
+      "parent_id": "TP243.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP243.1",
+      "type": "proof_step",
+      "parent_id": "PP243.1",
+      "step_order": 1,
+      "name": "Apply per-timestep advantage decomposition",
+      "statement": "Invoke Lemma 1 to write $\\eta(\\tilde\\pi)-\\eta(\\pi)=\\mathbb{E}_{\\tau\\sim\\tilde\\pi}[\\sum_t\\gamma^t A_\\pi(s_t,a_t)]$, and rewrite both $\\eta(\\tilde\\pi)$ and $L_\\pi(\\tilde\\pi)$ in terms of $\\bar A(s_t)$ under trajectory measures $\\tilde\\pi$ and $\\pi$.",
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP243.2",
+      "type": "proof_step",
+      "parent_id": "PP243.1",
+      "step_order": 2,
+      "name": "Couple policies and split by disagreement",
+      "statement": "For an $\\alpha$-coupled pair, decompose $\\mathbb{E}_{s_t\\sim\\tilde\\pi}[\\bar A(s_t)]$ and $\\mathbb{E}_{s_t\\sim\\pi}[\\bar A(s_t)]$ over the event $n_t=0$ (no disagreement before $t$); the $n_t=0$ contributions match and cancel.",
+      "subclass": "introduce_variable",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP243.3",
+      "type": "proof_step",
+      "parent_id": "PP243.1",
+      "step_order": 3,
+      "name": "Bound disagreement probability and conditional advantage gap",
+      "statement": "Use $P(n_t>0)\\le 1-(1-\\alpha)^t$ together with $|\\bar A(s)|\\le 2\\alpha\\,\\epsilon$ (Lemma 2) to obtain $|\\mathbb{E}_{s_t\\sim\\tilde\\pi}\\bar A(s_t)-\\mathbb{E}_{s_t\\sim\\pi}\\bar A(s_t)|\\le 4\\alpha(1-(1-\\alpha)^t)\\epsilon$ (Lemma 3).",
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP243.4",
+      "type": "proof_step",
+      "parent_id": "PP243.1",
+      "step_order": 4,
+      "name": "Sum over time and simplify",
+      "statement": "Sum the per-timestep bound with weight $\\gamma^t$: $|\\eta(\\tilde\\pi)-L_\\pi(\\tilde\\pi)|\\le 4\\epsilon\\alpha\\big(\\frac{1}{1-\\gamma}-\\frac{1}{1-\\gamma(1-\\alpha)}\\big)=\\frac{4\\alpha^2\\gamma\\epsilon}{(1-\\gamma)(1-\\gamma(1-\\alpha))}\\le\\frac{4\\alpha^2\\gamma\\epsilon}{(1-\\gamma)^2}$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP243.5",
+      "type": "proof_step",
+      "parent_id": "PP243.1",
+      "step_order": 5,
+      "name": "Convert $\\alpha$ from coupling to TV divergence",
+      "statement": "By the TV-coupling correspondence (Theorem 3 cited), if $D^{max}_{TV}(\\pi,\\tilde\\pi)\\le\\alpha$, then an $\\alpha$-coupled pair with the right marginals exists; substitute $\\alpha=D^{max}_{TV}$ to conclude Theorem 1.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP243.6",
+      "type": "proof_step",
+      "parent_id": "PP243.2",
+      "step_order": 1,
+      "name": "Set up resolvent operators",
+      "statement": "Define $G=(1-\\gamma P_\\pi)^{-1}=\\sum_k(\\gamma P_\\pi)^k$ and $\\tilde G=(1-\\gamma P_{\\tilde\\pi})^{-1}$, so $\\eta(\\pi)=rG\\rho_0$ and $\\eta(\\tilde\\pi)=r\\tilde G\\rho_0$. Set $\\Delta=P_{\\tilde\\pi}-P_\\pi$.",
+      "subclass": "setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP243.7",
+      "type": "proof_step",
+      "parent_id": "PP243.2",
+      "step_order": 2,
+      "name": "Expand $\\tilde G - G$ to second order in $\\Delta$",
+      "statement": "From $G^{-1}-\\tilde G^{-1}=\\gamma\\Delta$ derive $\\tilde G=G+\\gamma G\\Delta\\tilde G=G+\\gamma G\\Delta G+\\gamma^2 G\\Delta G\\Delta\\tilde G$, hence $\\eta(\\tilde\\pi)-\\eta(\\pi)=\\gamma rG\\Delta G\\rho_0+\\gamma^2 rG\\Delta G\\Delta\\tilde G\\rho_0$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP243.8",
+      "type": "proof_step",
+      "parent_id": "PP243.2",
+      "step_order": 3,
+      "name": "Identify the leading term with $L_\\pi(\\tilde\\pi)-L_\\pi(\\pi)$",
+      "statement": "Using $rG=v$ and $G\\rho_0=\\rho_\\pi$, compute $\\gamma v\\Delta\\rho_\\pi$ and verify it equals $L_\\pi(\\tilde\\pi)-L_\\pi(\\pi)$ via direct expansion of $L_\\pi$.",
+      "subclass": "invoke_identity",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP243.9",
+      "type": "proof_step",
+      "parent_id": "PP243.2",
+      "step_order": 4,
+      "name": "Bound the $O(\\Delta^2)$ remainder",
+      "statement": "Show $\\|\\gamma rG\\Delta\\|_\\infty=\\|\\gamma v\\Delta\\|_\\infty\\le 2\\alpha\\epsilon$ and $\\|G\\Delta\\tilde G\\rho\\|_1\\le \\|G\\|_1\\|\\Delta\\|_1\\|\\tilde G\\|_1=2\\alpha/(1-\\gamma)^2$, giving $|\\gamma^2 rG\\Delta G\\Delta\\tilde G\\rho|\\le 4\\gamma\\epsilon\\alpha^2/(1-\\gamma)^2$, which yields Theorem 1.",
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP243.1",
+      "type": "problem",
+      "name": "TRPO trust-region policy optimization problem",
+      "section": "4 Optimization of Parameterized Policies (eq:trprob)",
+      "statement": "$\\maximize_\\theta L_{\\theta_{\\mathrm{old}}}(\\theta)$ subject to $\\bar D^{\\rho_{\\theta_{\\mathrm{old}}}}_{KL}(\\theta_{\\mathrm{old}},\\theta) \\le \\delta$.",
+      "statement_clean": "Maximize the surrogate objective subject to a bound on the average KL divergence to the previous policy.",
+      "origin": "paper",
+      "tags": ["constrained_optimization"]
+    },
+    {
+      "id": "ProbP243.2",
+      "type": "problem",
+      "name": "Max-KL constrained policy optimization",
+      "section": "4 (eq:maxklconst)",
+      "statement": "$\\maximize_\\theta L_{\\theta_{\\mathrm{old}}}(\\theta)$ subject to $D^{max}_{KL}(\\theta_{\\mathrm{old}},\\theta)\\le\\delta$.",
+      "statement_clean": "Theoretically motivated trust-region problem with a per-state KL bound; impractical due to many constraints.",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP243.3",
+      "type": "problem",
+      "name": "Sample-based importance-sampled TRPO subproblem",
+      "section": "5 Sample-Based Estimation (eq:trprobexp)",
+      "statement": "$\\maximize_\\theta\\,\\mathbb{E}_{s\\sim\\rho_{\\theta_{\\mathrm{old}}},a\\sim q}\\!\\left[\\frac{\\pi_\\theta(a\\mid s)}{q(a\\mid s)} Q_{\\theta_{\\mathrm{old}}}(s,a)\\right]$ subject to $\\mathbb{E}_{s\\sim\\rho_{\\theta_{\\mathrm{old}}}}[D_{KL}(\\pi_{\\theta_{\\mathrm{old}}}(\\cdot\\mid s)\\,\\|\\,\\pi_\\theta(\\cdot\\mid s))]\\le\\delta$.",
+      "statement_clean": "Importance-sampling expectation form of the TRPO update used by Monte Carlo estimation.",
+      "origin": "paper"
+    },
+    {
+      "id": "AP243.1",
+      "type": "algorithm",
+      "name": "Policy iteration with KL-penalty (Algorithm 1)",
+      "section": "3 Monotonic Improvement (alg:pialg)",
+      "statement": "Iteratively maximize $M_i(\\pi)=L_{\\pi_i}(\\pi)-C\\, D^{max}_{KL}(\\pi_i,\\pi)$ at each step; this MM scheme guarantees a non-decreasing sequence $\\eta(\\pi_0)\\le\\eta(\\pi_1)\\le\\dots$.",
+      "input": [
+        "Initial policy $\\pi_0$",
+        "Discount $\\gamma$, advantage bound $\\epsilon=\\max_{s,a}|A_\\pi(s,a)|$",
+        "Penalty coefficient $C=4\\epsilon\\gamma/(1-\\gamma)^2$"
+      ],
+      "output": [
+        "Sequence of policies $\\pi_0,\\pi_1,\\pi_2,\\dots$ with $\\eta(\\pi_0)\\le\\eta(\\pi_1)\\le\\dots$"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "MM_algorithm"]
+    },
+    {
+      "id": "ASP243.1",
+      "type": "algorithm_step",
+      "parent_id": "AP243.1",
+      "step_order": 1,
+      "name": "Initialize",
+      "statement": "Set $\\pi_0$ to an initial policy.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP243.2",
+      "type": "algorithm_step",
+      "parent_id": "AP243.1",
+      "step_order": 2,
+      "name": "Outer loop over iterations",
+      "statement": "For $i=0,1,2,\\dots$ until convergence: compute advantages and update.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP243.3",
+      "type": "algorithm_step",
+      "parent_id": "AP243.1",
+      "step_order": 3,
+      "name": "Compute advantages",
+      "statement": "Compute all advantage values $A_{\\pi_i}(s,a)$ under the current policy.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP243.4",
+      "type": "algorithm_step",
+      "parent_id": "AP243.1",
+      "step_order": 4,
+      "name": "Solve the penalized subproblem",
+      "statement": "Set $\\pi_{i+1}=\\arg\\max_\\pi\\big[L_{\\pi_i}(\\pi)-C\\,D^{max}_{KL}(\\pi_i,\\pi)\\big]$ with $C=4\\epsilon\\gamma/(1-\\gamma)^2$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "AP243.2",
+      "type": "algorithm",
+      "name": "Trust Region Policy Optimization (TRPO)",
+      "section": "6 Practical Algorithm",
+      "statement": "Practical policy update: collect samples (single-path or vine), build estimated objective and KL constraint, then approximately solve the constrained subproblem via conjugate gradient and a line search.",
+      "input": [
+        "Current policy parameters $\\theta_{\\mathrm{old}}$",
+        "KL trust-region radius $\\delta$",
+        "Sampling scheme: single-path or vine"
+      ],
+      "output": [
+        "Updated parameters $\\theta_{\\mathrm{new}}$ satisfying $\\bar D^{\\rho_{\\theta_{\\mathrm{old}}}}_{KL}(\\theta_{\\mathrm{old}},\\theta_{\\mathrm{new}})\\le\\delta$ with improved estimated $L_{\\theta_{\\mathrm{old}}}$"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "trust_region", "natural_gradient"]
+    },
+    {
+      "id": "ASP243.5",
+      "type": "algorithm_step",
+      "parent_id": "AP243.2",
+      "step_order": 1,
+      "name": "Sample trajectories (single-path or vine)",
+      "statement": "Use the single-path or vine procedure to collect a set of state-action pairs together with Monte Carlo estimates of their $Q$-values $\\hat Q_{\\theta_{\\mathrm{old}}}(s,a)$.",
+      "subclass": "branch",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP243.6",
+      "type": "algorithm_step",
+      "parent_id": "AP243.2",
+      "step_order": 2,
+      "name": "Build empirical objective and constraint",
+      "statement": "By averaging over samples, construct the estimated importance-sampled objective and the average-KL constraint of $L_{\\theta_{\\mathrm{old}}}$ and $\\bar D^{\\rho_{\\theta_{\\mathrm{old}}}}_{KL}$ as in problem ProbP243.3.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP243.7",
+      "type": "algorithm_step",
+      "parent_id": "AP243.2",
+      "step_order": 3,
+      "name": "Compute search direction by conjugate gradient",
+      "statement": "Approximately solve $A x = g$ where $A$ is the Fisher information matrix (Hessian of $\\bar D_{KL}$) and $g$ is the policy-gradient estimate, using conjugate gradient with $k\\approx 10$ Hessian-vector products.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP243.8",
+      "type": "algorithm_step",
+      "parent_id": "AP243.2",
+      "step_order": 4,
+      "name": "Compute maximal step length",
+      "statement": "Take $\\beta=\\sqrt{2\\delta/(s^T A s)}$ so that the quadratic approximation $\\tfrac{1}{2}\\beta^2 s^T A s = \\delta$ matches the KL bound.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP243.9",
+      "type": "algorithm_step",
+      "parent_id": "AP243.2",
+      "step_order": 5,
+      "name": "Backtracking line search",
+      "statement": "Starting from $\\beta$, exponentially shrink the step size until both $L_{\\theta_{\\mathrm{old}}}$ improves and the nonlinear KL constraint $\\bar D_{KL}\\le\\delta$ is satisfied; set $\\theta_{\\mathrm{new}}=\\theta_{\\mathrm{old}}+\\beta s$.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP243.10",
+      "type": "algorithm_step",
+      "parent_id": "AP243.2",
+      "step_order": 6,
+      "name": "Repeat",
+      "statement": "Set $\\theta_{\\mathrm{old}}\\leftarrow\\theta_{\\mathrm{new}}$ and repeat from sampling.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "AP243.3",
+      "type": "algorithm",
+      "name": "Single-path sampling procedure",
+      "section": "5.1 Single Path",
+      "statement": "Sample $s_0\\sim\\rho_0$, simulate $\\pi_{\\theta_{\\mathrm{old}}}$ for $T$ steps to produce a trajectory; use $q(a\\mid s)=\\pi_{\\theta_{\\mathrm{old}}}(a\\mid s)$ and estimate $\\hat Q_{\\theta_{\\mathrm{old}}}(s_t,a_t)$ as the discounted sum of future rewards.",
+      "input": ["Initial-state distribution $\\rho_0$", "Current policy $\\pi_{\\theta_{\\mathrm{old}}}$", "Trajectory length $T$"],
+      "output": ["State-action samples $(s_t,a_t)$ with empirical $Q$-value estimates"],
+      "origin": "paper"
+    },
+    {
+      "id": "AP243.4",
+      "type": "algorithm",
+      "name": "Vine sampling procedure",
+      "section": "5.2 Vine",
+      "statement": "Sample trunk trajectories from $\\pi_{\\theta_i}$, choose a rollout set of $N$ states, draw $K$ actions per state from $q(\\cdot\\mid s_n)$, and estimate $\\hat Q_{\\theta_i}(s_n,a_{n,k})$ via short rollouts using common random numbers; combine via the (self-normalized) importance-sampling estimator.",
+      "input": ["Trunk policy $\\pi_{\\theta_i}$", "Rollout set size $N$", "Number of actions per state $K$", "Sampling distribution $q$"],
+      "output": ["Per-state surrogate $L_n(\\theta)$ and the assembled estimator for $L_{\\theta_{\\mathrm{old}}}$"],
+      "origin": "paper",
+      "tags": ["variance_reduction"]
+    },
+    {
+      "id": "AP243.5",
+      "type": "algorithm",
+      "name": "Conservative Policy Iteration (CPI)",
+      "section": "2 Preliminaries (cited)",
+      "statement": "Update via the mixture $\\pi_{\\mathrm{new}}(a\\mid s)=(1-\\alpha)\\pi_{\\mathrm{old}}(a\\mid s)+\\alpha\\pi'(a\\mid s)$ where $\\pi'=\\arg\\max_{\\pi'} L_{\\pi_{\\mathrm{old}}}(\\pi')$.",
+      "origin": "external",
+      "origin_citation": "Kakade & Langford 2002"
+    },
+    {
+      "id": "AP243.6",
+      "type": "algorithm",
+      "name": "Natural Policy Gradient",
+      "section": "7 Connections with Prior Work (cited)",
+      "statement": "Special case of TRPO with linear approximation to $L$ and quadratic approximation to $\\bar D_{KL}$: $\\theta_{\\mathrm{new}}=\\theta_{\\mathrm{old}}+\\frac{1}{\\lambda}A(\\theta_{\\mathrm{old}})^{-1}\\nabla_\\theta L|_{\\theta_{\\mathrm{old}}}$, where $A$ is the Fisher information matrix.",
+      "origin": "external",
+      "origin_citation": "Kakade 2002"
+    },
+    {
+      "id": "RP243.1",
+      "type": "remark",
+      "name": "Monotonic improvement of Algorithm 1 (MM perspective)",
+      "section": "3 Monotonic Improvement",
+      "statement": "Defining $M_i(\\pi)=L_{\\pi_i}(\\pi)-C\\,D^{max}_{KL}(\\pi_i,\\pi)$, $\\eta(\\pi_{i+1})-\\eta(\\pi_i)\\ge M_i(\\pi_{i+1})-M_i(\\pi_i)$, so maximizing $M_i$ at each step monotonically improves $\\eta$ — a minorization-maximization scheme.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP243.2",
+      "type": "remark",
+      "name": "Average-KL relaxation in practice",
+      "section": "4 Optimization of Parameterized Policies",
+      "statement": "Replacing the per-state $D^{max}_{KL}\\le\\delta$ constraint with the average $\\bar D^{\\rho}_{KL}\\le\\delta$ is a heuristic relaxation; experiments show similar empirical behavior to the max-KL form.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP243.3",
+      "type": "remark",
+      "name": "Analytic Fisher information matrix vs. empirical FIM",
+      "section": "6 Practical Algorithm",
+      "statement": "$A_{ij}=\\frac{1}{N}\\sum_n\\partial_{\\theta_i}\\partial_{\\theta_j} D_{KL}(\\pi_{\\theta_{\\mathrm{old}}}(\\cdot\\mid s_n)\\,\\|\\,\\pi_\\theta(\\cdot\\mid s_n))$ is preferred over the gradient-covariance estimate; it integrates over actions analytically and avoids storing dense Hessians.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP243.4",
+      "type": "remark",
+      "name": "Fisher--vector product via $J^T M J$",
+      "section": "Appendix C.1 (Computing the FVP)",
+      "statement": "Writing the policy as $\\pi_\\theta=p(\\cdot\\mid \\mu_\\theta(x))$, the Fisher information factors as $J^T M J$ where $J=\\partial \\mu/\\partial\\theta$ and $M$ is the Fisher of the distribution in $\\mu$; the Fisher--vector product $y\\mapsto J^T M J y$ uses standard back-prop and a closed-form $M$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP243.1",
+      "type": "example",
+      "name": "Simulated robotic locomotion (swimmer, hopper, walker)",
+      "section": "8.1 Experiments",
+      "statement": "TRPO (single-path and vine) trained Gaussian neural-network policies (state dims 10, 12, 18; up to 8206 parameters) on three MuJoCo locomotion tasks with $\\delta=0.01$ and $\\gamma=0.99$, learning swimming, hopping and walking gaits and outperforming CEM, CMA, natural-gradient and empirical-FIM baselines.",
+      "origin": "paper",
+      "tags": ["empirical"]
+    },
+    {
+      "id": "ExP243.2",
+      "type": "example",
+      "name": "Atari games from raw images",
+      "section": "8.2 Playing Games from Images",
+      "statement": "TRPO trained convolutional policies with $\\sim$33{,}500 parameters on seven Atari games, with single-path and vine variants achieving competitive scores against deep $Q$-learning and UCC-I baselines.",
+      "origin": "paper",
+      "tags": ["empirical", "neural_network"]
+    },
+    {
+      "id": "ExP243.3",
+      "type": "example",
+      "name": "Cartpole baseline",
+      "section": "8.1 Experiments",
+      "statement": "Classical cart-pole balancing problem with a six-parameter linear policy serves as a baseline where the max-KL variant (Equation eq:maxklconst) remains tractable, allowing comparison against the average-KL form used by TRPO.",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "EP243.1", "target": "EP243.2", "type": "uses"},
+    {"source": "DP243.4", "target": "EP243.2", "type": "uses"},
+    {"source": "DP243.3", "target": "EP243.1", "type": "uses"},
+    {"source": "DP243.2", "target": "EP243.1", "type": "uses"},
+    {"source": "EP243.2", "target": "DP243.5", "type": "uses"},
+    {"source": "DP243.4", "target": "DP243.5", "type": "uses"},
+    {"source": "AP243.5", "target": "EP243.3", "type": "uses"},
+    {"source": "DP243.5", "target": "EP243.3", "type": "uses"},
+
+    {"source": "EP243.3", "target": "TP243.1", "type": "generalizes"},
+    {"source": "DP243.6", "target": "TP243.1", "type": "uses"},
+    {"source": "DP243.5", "target": "TP243.1", "type": "uses"},
+
+    {"source": "PP243.1", "target": "TP243.1", "type": "proves"},
+    {"source": "PP243.2", "target": "TP243.1", "type": "proves"},
+
+    {"source": "LP243.1", "target": "PP243.1", "type": "uses"},
+    {"source": "DP243.8", "target": "PP243.1", "type": "uses"},
+    {"source": "DP243.9", "target": "PP243.1", "type": "uses"},
+    {"source": "LP243.2", "target": "PP243.1", "type": "uses"},
+    {"source": "LP243.3", "target": "PP243.1", "type": "uses"},
+    {"source": "TP243.3", "target": "PP243.1", "type": "uses"},
+
+    {"source": "DP243.8", "target": "LP243.2", "type": "uses"},
+    {"source": "LP243.2", "target": "LP243.3", "type": "uses"},
+    {"source": "DP243.9", "target": "LP243.2", "type": "uses"},
+    {"source": "DP243.9", "target": "LP243.3", "type": "uses"},
+
+    {"source": "PSP243.1", "target": "PSP243.2", "type": "uses"},
+    {"source": "PSP243.2", "target": "PSP243.3", "type": "uses"},
+    {"source": "PSP243.3", "target": "PSP243.4", "type": "uses"},
+    {"source": "PSP243.4", "target": "PSP243.5", "type": "uses"},
+    {"source": "LP243.1", "target": "PSP243.1", "type": "uses"},
+    {"source": "LP243.2", "target": "PSP243.3", "type": "uses"},
+    {"source": "LP243.3", "target": "PSP243.3", "type": "uses"},
+    {"source": "TP243.3", "target": "PSP243.5", "type": "uses"},
+
+    {"source": "PSP243.6", "target": "PSP243.7", "type": "uses"},
+    {"source": "PSP243.7", "target": "PSP243.8", "type": "uses"},
+    {"source": "PSP243.7", "target": "PSP243.9", "type": "uses"},
+    {"source": "PSP243.8", "target": "PSP243.9", "type": "uses"},
+    {"source": "DP243.5", "target": "PSP243.8", "type": "uses"},
+
+    {"source": "TP243.1", "target": "EP243.4", "type": "uses"},
+    {"source": "TP243.2", "target": "EP243.4", "type": "uses"},
+    {"source": "DP243.7", "target": "EP243.4", "type": "uses"},
+
+    {"source": "EP243.4", "target": "AP243.1", "type": "uses"},
+    {"source": "DP243.5", "target": "AP243.1", "type": "uses"},
+    {"source": "DP243.7", "target": "AP243.1", "type": "uses"},
+
+    {"source": "EP243.4", "target": "ProbP243.2", "type": "uses"},
+    {"source": "ProbP243.2", "target": "ProbP243.1", "type": "specializes"},
+    {"source": "DP243.7", "target": "ProbP243.1", "type": "uses"},
+    {"source": "DP243.5", "target": "ProbP243.1", "type": "uses"},
+    {"source": "ProbP243.1", "target": "ProbP243.3", "type": "uses"},
+
+    {"source": "AP243.1", "target": "AP243.2", "type": "specializes"},
+    {"source": "ProbP243.3", "target": "AP243.2", "type": "uses"},
+    {"source": "AP243.3", "target": "AP243.2", "type": "uses"},
+    {"source": "AP243.4", "target": "AP243.2", "type": "uses"},
+
+    {"source": "ASP243.1", "target": "ASP243.2", "type": "uses"},
+    {"source": "ASP243.2", "target": "ASP243.3", "type": "uses"},
+    {"source": "ASP243.3", "target": "ASP243.4", "type": "uses"},
+
+    {"source": "ASP243.5", "target": "ASP243.6", "type": "uses"},
+    {"source": "ASP243.6", "target": "ASP243.7", "type": "uses"},
+    {"source": "ASP243.7", "target": "ASP243.8", "type": "uses"},
+    {"source": "ASP243.8", "target": "ASP243.9", "type": "uses"},
+    {"source": "ASP243.9", "target": "ASP243.10", "type": "uses"},
+
+    {"source": "AP243.6", "target": "AP243.2", "type": "specializes"},
+    {"source": "AP243.5", "target": "AP243.2", "type": "specializes"},
+
+    {"source": "RP243.1", "target": "AP243.1", "type": "uses"},
+    {"source": "RP243.2", "target": "ProbP243.1", "type": "uses"},
+    {"source": "RP243.3", "target": "AP243.2", "type": "uses"},
+    {"source": "RP243.4", "target": "ASP243.7", "type": "uses"},
+
+    {"source": "AP243.2", "target": "ExP243.1", "type": "illustrates"},
+    {"source": "AP243.2", "target": "ExP243.2", "type": "illustrates"},
+    {"source": "AP243.2", "target": "ExP243.3", "type": "illustrates"},
+    {"source": "ProbP243.2", "target": "ExP243.3", "type": "illustrates"}
+  ]
+}

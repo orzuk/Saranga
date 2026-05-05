@@ -1,0 +1,727 @@
+{
+  "metadata": {
+    "title": "On Automatic Differentiation",
+    "authors": "Andreas Griewank",
+    "year": 1989,
+    "paper_num": 388,
+    "bid": "paper388",
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-03",
+    "source_note": "Extracted from PDF→text fallback; .tex source not available. Math fidelity reduced.",
+    "registry_mismatch_note": "Registry title 'On Automatic Differentiation' matches PDF title. PDF cover lists CRPC-TR89003 (1989) Rice University; inner title page is ANL/MCS-P10-1088 (Nov 1988). Authors: Griewank. Year: 1989 (per published version in Mathematical Programming, eds. Iri & Tanabe)."
+  },
+  "nodes": [
+    {
+      "id": "DP388.1",
+      "type": "definition",
+      "name": "Original Program (sequential factorable representation)",
+      "section": "3.1",
+      "statement": "A function $y = f(x): \\mathbb{R}^n \\to \\mathbb{R}$ is given by a sequential program: for $i = n+1, n+2, \\ldots, m$, set $x_i = f_i \\langle x_j \\rangle_{j \\in \\mathcal{J}_i}$ and $y = x_m$, where $\\mathcal{J}_i \\subset \\{1,\\ldots,i-1\\}$ and each elementary function $f_i$ is a library function whose gradient $\\nabla f_i = \\langle \\partial f_i / \\partial x_j \\rangle_{j \\in \\mathcal{J}_i}$ is computable.",
+      "statement_clean": "A composite function defined by a sequential program of elementary library operations on intermediate scalar variables.",
+      "origin": "paper",
+      "tags": ["formulation"]
+    },
+    {
+      "id": "DP388.2",
+      "type": "definition",
+      "name": "Computational Graph",
+      "section": "3.1",
+      "statement": "An acyclic directed graph with vertex set $\\{x_i\\}_{1 \\le i \\le m}$ and an arc from $x_j$ to $x_i$ exactly when $j \\in \\mathcal{J}_i$. Each arc carries the value $\\partial f_i / \\partial x_j$; minimal elements are the independent variables.",
+      "statement_clean": "Visualization of the original program as a DAG with nodes as variables and arc labels as local partial derivatives.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP388.3",
+      "type": "definition",
+      "name": "Work Ratio $q\\{f\\}$",
+      "section": "2.2",
+      "statement": "The work ratio of a function evaluation against joint function-and-gradient evaluation: $q\\{f\\} \\equiv \\mathrm{work}\\{f, \\nabla f\\} / \\mathrm{work}\\{f\\}$.",
+      "statement_clean": "Ratio of the cost of evaluating a function together with its gradient to the cost of the function alone.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP388.4",
+      "type": "definition",
+      "name": "Generalized Work Ratio $Q\\{f\\}$",
+      "section": "3.3",
+      "statement": "$Q\\{f\\} \\equiv \\mathrm{work}\\{f, \\bar{g} + \\gamma \\nabla f\\} / \\mathrm{work}\\{f\\}$, the cost ratio for incrementing a vector $\\bar{g}$ by a multiple $\\gamma \\nabla f$ of the gradient relative to evaluating $f$.",
+      "statement_clean": "Ratio capturing the cost of computing a gradient-vector update via reverse accumulation, slightly larger than $q\\{f\\}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP388.5",
+      "type": "definition",
+      "name": "Adjoint quantities $\\bar{x}_i$",
+      "section": "3.3",
+      "statement": "For each intermediate variable $x_i$, the adjoint scalar $\\bar{x}_i \\equiv \\partial x_m / \\partial x_i$ with $\\bar{x}_m = 1$ and $\\partial f(x)/\\partial x_i = \\bar{x}_i$ for $i = 1,\\ldots,n$.",
+      "statement_clean": "The sensitivity of the output $x_m$ with respect to each intermediate variable; the gradient is read off from the adjoints of the input variables.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP388.6",
+      "type": "definition",
+      "name": "Factorable function (McCormick et al.)",
+      "section": "3.1",
+      "statement": "A scalar function representable as a composition of elementary library functions $f_i$ with $n_i \\equiv |\\mathcal{J}_i| < i$ arguments, where each $f_i$ is either an elementary arithmetic operation or a univariate system function.",
+      "statement_clean": "Representation of a scalar function as a finite composition of elementary library operations; covers essentially all functions of practical interest.",
+      "origin": "external",
+      "origin_citation": "McCormick et al., as cited in [18] Jackson & McCormick 1988"
+    },
+    {
+      "id": "ProbP388.1",
+      "type": "problem",
+      "name": "Cheap-gradient problem (Wolfe 1982)",
+      "section": "1",
+      "statement": "Bound the ratio $q\\{f\\}$ between the cost of evaluating a gradient with $n$ components and the cost of evaluating the underlying scalar function. Wolfe's observation: with care, $q\\{f\\}$ is usually around $1.5$, not $n+1$.",
+      "statement_clean": "Compute the gradient of a function defined by a program at cost bounded by a constant times the cost of evaluating the function itself.",
+      "origin": "paper",
+      "subclass": "complexity_bound",
+      "tags": ["complexity", "gradient"]
+    },
+    {
+      "id": "ExP388.1",
+      "type": "example",
+      "name": "Helmholtz Energy Function",
+      "section": "2",
+      "statement": "$f(x) = RT \\sum_{i=1}^{n} x_i \\log \\frac{x_i}{1 - b^T x} - \\frac{x^T A x}{\\sqrt{8} b^T x} \\log \\frac{1 + (1+\\sqrt{2}) b^T x}{1 + (1-\\sqrt{2}) b^T x}$ with $0 \\le x, b \\in \\mathbb{R}^n$, $A = A^T \\in \\mathbb{R}^{n \\times n}$, $R$ the universal gas constant.",
+      "statement_clean": "The Helmholtz energy of a mixed fluid in a unit volume at temperature $T$, derived from a cubic equation of state; used as a test function for AD.",
+      "origin": "paper",
+      "tags": ["test_function"]
+    },
+    {
+      "id": "ExP388.2",
+      "type": "example",
+      "name": "Product Function $f(x) = \\prod_{i=1}^n x_i$",
+      "section": "2.2",
+      "statement": "$f(x) \\equiv \\prod_{i=1}^n x_i = x_1 \\cdot x_2 \\cdots x_{n-1} \\cdot x_n$ with gradient component $\\partial f / \\partial x_i = \\prod_{j \\ne i} x_j$.",
+      "statement_clean": "The product of $n$ variables, used by Speelpenning to illustrate the inefficiency of forward-mode AD relative to reverse-mode AD.",
+      "origin": "paper",
+      "tags": ["test_function"]
+    },
+    {
+      "id": "ExP388.3",
+      "type": "example",
+      "name": "Computational Graph for Product (Figure 1)",
+      "section": "3.1",
+      "statement": "Computational graph for the product function with $f_5 \\langle x_1 \\rangle = x_1$ and $f_i \\langle x_j, x_k \\rangle = x_j \\cdot x_k$ for $i = 6,7,8$, with arcs labeled by partial derivatives $\\partial f_i / \\partial x_j$.",
+      "statement_clean": "Visualization of the product example as a DAG; the four-input case $f = x_1 x_2 x_3 x_4$ shown explicitly.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP388.4",
+      "type": "example",
+      "name": "Helmholtz energy work-ratio table (Table 1)",
+      "section": "2.3",
+      "statement": "Observed work ratios on the Helmholtz energy for $n = 5,10,20,\\ldots,80$ across MAPLE (symbolic), PASCAL-SC forward, PASCAL-SC reverse, and JAKEF (FORTRAN reverse precompiler). Reverse-mode ratios are uniformly bounded (around $2$–$5$); divided differences and symbolic differentiation grow with $n$.",
+      "statement_clean": "Empirical comparison demonstrating that reverse-mode AD has work ratio bounded uniformly in $n$, while forward and symbolic methods scale linearly.",
+      "origin": "paper",
+      "tags": ["empirical"]
+    },
+    {
+      "id": "ExP388.5",
+      "type": "example",
+      "name": "Quadratic-plus-rank-one example for Hessian cost",
+      "section": "3.6",
+      "statement": "$f(x) = .5[x^T x + (a^T x)^2]$, $\\nabla f(x) = x + (a^T x) a$, $\\nabla^2 f(x) = I + a a^T$. Function and gradient cost $2n$ multiplications; Hessian accumulation requires $\\approx .5 n^2$ multiplications, showing the bound $\\bar{Q}^2 n$ is sharp in $n$.",
+      "statement_clean": "Demonstrates that the $n \\bar{Q}^2$ bound on the work ratio for the Hessian is essentially tight.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP388.6",
+      "type": "example",
+      "name": "Discontinuity from equality test",
+      "section": "3.4",
+      "statement": "$\\text{if } x \\ne 0 \\text{ then } y = (1 - \\cos x)/x \\text{ else } y = 0$. Automatic differentiation evaluates $\\partial y/\\partial x$ at $x=0$ as $0$ rather than the correct $1/2$, illustrating that branching on real equalities can yield wrong derivatives.",
+      "statement_clean": "Branch-on-equality bug where AD silently computes the wrong derivative at a singular point.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP388.1",
+      "type": "equation",
+      "name": "Forward-mode work bound",
+      "section": "3.2",
+      "statement": "$\\mathrm{work}\\{f, \\nabla f\\} = \\sum_{i=n+1}^{m} [\\mathrm{work}\\{f_i, \\nabla f_i\\} + n \\, n_i (\\mathrm{mults} + \\mathrm{adds})]$, where the extra $n \\, n_i$ operations form $\\nabla x_i$ as a linear combination of the $n_i$ gradient vectors $\\nabla x_j$.",
+      "statement_clean": "Cost formula for forward accumulation, exposing the additive overhead linear in $n$ for each elementary node.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP388.2",
+      "type": "equation",
+      "name": "Reverse-mode adjoint recursion",
+      "section": "3.3",
+      "statement": "$\\bar{x}_j = \\sum_{i \\in \\mathcal{I}_j} \\frac{\\partial f_i}{\\partial x_j} \\bar{x}_i$, where $\\mathcal{I}_j \\equiv \\{i \\le m : j \\in \\mathcal{J}_i\\}$.",
+      "statement_clean": "Backward chain-rule update relating each adjoint to those of its successors in the computational graph.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP388.3",
+      "type": "equation",
+      "name": "Adjoint ODE for initial value problem",
+      "section": "3.4",
+      "statement": "$z'(t) = -F_y^T[y(t), t, x] z(t)$ with $z(1) = w$, and $\\nabla f(x)^T = z(0)^T \\frac{\\partial y_0}{\\partial x} + \\int_0^1 z(t)^T F_x[y(t), t, x] \\, dt$.",
+      "statement_clean": "Continuous-time analog of reverse accumulation: gradient of $w^T y(1)$ for an ODE-defined function expressed via an adjoint ODE running backwards in time.",
+      "origin": "external",
+      "origin_citation": "Leitmann 1981 (calculus of variations / control theory), as referenced in [10] and [23]"
+    },
+    {
+      "id": "EP388.4",
+      "type": "equation",
+      "name": "Hessian forward-mode recursion",
+      "section": "3.6",
+      "statement": "For $i = n+1,\\ldots,m$: $\\nabla^2 x_i = \\sum_{j \\in \\mathcal{J}_i} \\left[ \\frac{\\partial f_i}{\\partial x_j} \\nabla^2 x_j + \\sum_{k \\in \\mathcal{J}_i} \\nabla x_j \\frac{\\partial^2 f_i}{\\partial x_j \\partial x_k} (\\nabla x_k)^T \\right]$, with $\\nabla x_i = e_i$ and $\\nabla^2 x_i = 0$ for $i = 1,\\ldots,n$.",
+      "statement_clean": "Chain-rule recursion that propagates the Hessian along the computational graph in forward mode.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP388.5",
+      "type": "equation",
+      "name": "Hessian-vector reverse bound",
+      "section": "3.6",
+      "statement": "$\\frac{\\mathrm{work}\\{\\nabla^2 f\\}}{\\mathrm{work}\\{f\\}} \\le \\bar{Q} \\frac{\\sum_{i=1}^n \\mathrm{work}\\{\\partial f / \\partial x_i\\}}{\\mathrm{work}\\{\\nabla f\\}} \\cdot \\frac{\\mathrm{work}\\{\\nabla f\\}}{\\mathrm{work}\\{f\\}} \\le n \\bar{Q}^2$.",
+      "statement_clean": "Bound on the cost of accumulating the Hessian as $n \\bar{Q}^2$ times the function evaluation cost.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP388.6",
+      "type": "equation",
+      "name": "Reverse-mode constant $\\bar{Q} \\le 5$",
+      "section": "3.3",
+      "statement": "$\\bar{Q} \\equiv Q\\{x_1 \\ast x_2\\} = \\frac{3 \\, \\mathrm{mults} + 2 \\, \\mathrm{adds} + 5 \\, \\mathrm{fetches} + 3 \\, \\mathrm{stores}}{1 \\, \\mathrm{mult} + 2 \\, \\mathrm{fetches} + 1 \\, \\mathrm{store}} \\le 5$.",
+      "statement_clean": "Concrete operation-counting upper bound of $5$ on the work ratio for the multiplication elementary function, which dominates among arithmetic and standard univariate operations.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP388.7",
+      "type": "equation",
+      "name": "Local error propagation bound",
+      "section": "3.5",
+      "statement": "$|\\bar{x}_m - f(x)| \\le \\sum_{i=1}^{m} |\\bar{x}_i| \\, \\delta x_i$, where $\\delta x_i$ bounds the local discrepancy $|\\bar{x}_i - f_i \\langle \\bar{x}_j \\rangle_{j \\in \\mathcal{J}_i}|$ and the input data tolerances.",
+      "statement_clean": "Total evaluation error bounded by a weighted $\\ell_1$ sum of local error tolerances with adjoint quantities as weights.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP388.8",
+      "type": "equation",
+      "name": "Helmholtz first-component MACSYMA gradient code",
+      "section": "2.1",
+      "statement": "Auto-generated FORTRAN expression for $g(1) = \\partial f / \\partial x_1$ produced by MACSYMA's $\\mathrm{diff}$ + $\\mathrm{fortran}$ commands; spans roughly 19 continuation lines for $n = 5$ and is unmaintainable.",
+      "statement_clean": "Illustrative listing showing that symbolic differentiation produces unwieldy code even for moderate $n$.",
+      "origin": "paper"
+    },
+    {
+      "id": "AP388.1",
+      "type": "algorithm",
+      "name": "Forward Differentiation of Product",
+      "section": "2.2",
+      "statement": "Forward-mode AD specialized to $f(x) = \\prod_{i=1}^n x_i$: augment each assignment with its gradient update; requires $\\approx \\frac{1}{2} n^2$ multiplications, so $q \\simeq n/2$.",
+      "input": [
+        "Independent variables $x_1, \\ldots, x_n$"
+      ],
+      "output": [
+        "Function value $y = x_{2n}$",
+        "Gradient $g = \\nabla x_{2n}$"
+      ],
+      "pseudocode": "x_{n+1} = x_1; \\nabla x_{n+1} = e_1; for i = n+2, n+3, \\ldots, 2n: x_i = x_{i-n} x_{i-1}, \\nabla x_i = x_{i-1} e_{i-n} + x_{i-n} \\nabla x_{i-1}; y = x_{2n}; g = \\nabla x_{2n}.",
+      "origin": "paper",
+      "tags": ["forward_mode", "ad"]
+    },
+    {
+      "id": "AP388.2",
+      "type": "algorithm",
+      "name": "Reverse Differentiation of Product",
+      "section": "2.2",
+      "statement": "Reverse-mode AD specialized to $f(x) = \\prod_{i=1}^n x_i$ (Speelpenning's trick): a forward sweep of partial products followed by a reverse sweep of adjoint updates, costing $3n - 3$ multiplications and giving $q \\simeq 3$ uniformly in $n$.",
+      "input": [
+        "Independent variables $x_1, \\ldots, x_n$"
+      ],
+      "output": [
+        "Function value $y = x_{2n}$",
+        "Gradient $g = \\langle \\bar{x}_i \\rangle_{i = 1 \\ldots n}$"
+      ],
+      "pseudocode": "x_{n+1} = x_1; for i = n+2, \\ldots, 2n: x_i = x_{i-n} x_{i-1} (Forward Sweep); y = x_{2n}; \\bar{x}_{2n} = 1; for i = 2n, 2n-1, \\ldots, n+2: \\bar{x}_{i-1} = \\bar{x}_i x_{i-n}, \\bar{x}_{i-n} = \\bar{x}_i x_{i-1} (Reverse Sweep); \\bar{x}_1 = \\bar{x}_{n+1}; g = \\langle \\bar{x}_i \\rangle_{i = 1 \\ldots n}.",
+      "origin": "paper",
+      "tags": ["reverse_mode", "ad"]
+    },
+    {
+      "id": "AP388.3",
+      "type": "algorithm",
+      "name": "Forward Extension (Forward-Mode AD, general case)",
+      "section": "3.2",
+      "statement": "General forward-mode AD: augment the original program by maintaining a gradient vector $\\nabla x_i$ for each intermediate variable using the chain rule.",
+      "input": [
+        "Sequential program for $y = f(x): \\mathbb{R}^n \\to \\mathbb{R}$",
+        "Argument $x \\in \\mathbb{R}^n$"
+      ],
+      "output": [
+        "Function value $y = x_m$",
+        "Gradient $g = \\nabla x_m$"
+      ],
+      "pseudocode": "For i = 1, \\ldots, n: \\nabla x_i = e_i. For i = n+1, \\ldots, m: x_i = f_i \\langle x_j \\rangle_{j \\in \\mathcal{J}_i}, \\nabla x_i = \\sum_{j \\in \\mathcal{J}_i} (\\partial f_i / \\partial x_j) \\nabla x_j. Return y = x_m, g = \\nabla x_m.",
+      "origin": "paper",
+      "tags": ["forward_mode", "ad", "iterative"]
+    },
+    {
+      "id": "AP388.4",
+      "type": "algorithm",
+      "name": "Reverse Extension (Reverse-Mode AD, general case)",
+      "section": "3.3",
+      "statement": "General reverse-mode AD: a forward sweep computes intermediate values; a reverse sweep accumulates adjoints $\\bar{x}_i$ via the transposed chain rule, producing $g = \\bar{g} + \\gamma \\nabla f(x)$.",
+      "input": [
+        "Sequential program for $y = f(x): \\mathbb{R}^n \\to \\mathbb{R}$",
+        "Seed $\\gamma$ and increment vector $\\bar{g} \\in \\mathbb{R}^n$"
+      ],
+      "output": [
+        "Function value $y = x_m$",
+        "Gradient update $g = \\bar{g} + \\gamma \\nabla f(x)$ (reduces to $\\nabla f$ when $\\bar{g}=0$, $\\gamma=1$)"
+      ],
+      "pseudocode": "Forward Sweep: for i = n+1, \\ldots, m: x_i = f_i \\langle x_j \\rangle_{j \\in \\mathcal{J}_i}, \\bar{x}_i = 0. y = x_m; \\bar{x}_m = \\gamma; \\langle \\bar{x}_i \\rangle_{i=1}^n = \\bar{g}. Reverse Sweep: for i = m, m-1, \\ldots, n+1: for all j \\in \\mathcal{J}_i: \\bar{x}_j \\mathrel{+}= (\\partial f_i / \\partial x_j) \\bar{x}_i. Return g = \\langle \\bar{x}_i \\rangle_{i=1}^n.",
+      "origin": "paper",
+      "tags": ["reverse_mode", "ad", "iterative"]
+    },
+    {
+      "id": "AP388.5",
+      "type": "algorithm",
+      "name": "FORTRAN Precompiler Approach (JAKEF / GRESS / PADRE2)",
+      "section": "4.2",
+      "statement": "Source-to-source precompiler reads a FORTRAN routine for $f(x)$, breaks each statement into elementary operations, and emits an extended FORTRAN routine that evaluates $f$ jointly with $\\nabla f$ (and optionally Hessian) by forward or reverse accumulation.",
+      "input": [
+        "FORTRAN source for evaluating $f(x)$",
+        "Naming convention or declarations for dependent / independent variables"
+      ],
+      "output": [
+        "Extended FORTRAN routine evaluating $f(x)$ and $\\nabla f(x)$ jointly",
+        "Optional second derivatives (PADRE2) or error estimates"
+      ],
+      "origin": "external",
+      "origin_citation": "JAKEF [Hillstrom 1985], GRESS [Horwedel et al. 1988], PADRE2 [Iri & Kubota 1987]",
+      "tags": ["software"]
+    },
+    {
+      "id": "AP388.6",
+      "type": "algorithm",
+      "name": "Operator Overloading Approach (PASCAL-SC type GRADIENT / VAREAL)",
+      "section": "4.3",
+      "statement": "Implements forward (type GRADIENT) or reverse (type VAREAL) AD by overloading elementary operators on a new variable type that carries either a gradient vector or a record-pointer linkage representing the linearized computational graph.",
+      "input": [
+        "PASCAL-SC source for $f(x)$ with independent variables redeclared to type GRADIENT or VAREAL"
+      ],
+      "output": [
+        "Function value (via EVAL) and gradient (via vector field of GRADIENT, or ACCUMULATE on VAREAL)"
+      ],
+      "origin": "external",
+      "origin_citation": "Rall 1984 [26], 1987 [27]; PASCAL-SC by Kulisch et al. [22]",
+      "tags": ["software"]
+    },
+    {
+      "id": "AP388.7",
+      "type": "algorithm",
+      "name": "Symbolic Differentiation (MACSYMA / MAPLE)",
+      "section": "2.1",
+      "statement": "Algebraic-manipulation system: enter the closed-form expression for $f(x)$, apply $\\mathrm{diff}$ (or $\\mathrm{grad}$), and translate the resulting symbolic gradient back to FORTRAN.",
+      "input": [
+        "Closed-form algebraic expression for $f(x)$"
+      ],
+      "output": [
+        "Closed-form symbolic expressions for each gradient component $\\partial f / \\partial x_i$"
+      ],
+      "origin": "external",
+      "origin_citation": "MACSYMA (Symbolics Inc.), MAPLE [Char et al. 1988]",
+      "tags": ["baseline"]
+    },
+    {
+      "id": "AP388.8",
+      "type": "algorithm",
+      "name": "Divided Differences (numerical differencing)",
+      "section": "1",
+      "statement": "Approximate each gradient component by a one-sided or central finite difference, requiring $\\sim n+1$ function evaluations and yielding $q \\sim n+1$.",
+      "input": [
+        "Routine for evaluating $f(x)$",
+        "Step size $h$"
+      ],
+      "output": [
+        "Approximate gradient $\\hat{\\nabla} f(x)$"
+      ],
+      "origin": "external",
+      "origin_citation": "Classical numerical differentiation (baseline)",
+      "tags": ["baseline"]
+    },
+    {
+      "id": "TP388.1",
+      "type": "theorem",
+      "name": "Wolfe's Assertion (Cheap-Gradient Theorem)",
+      "section": "1",
+      "statement": "For any factorable function $f: \\mathbb{R}^n \\to \\mathbb{R}$ defined by a sequential program, reverse-mode automatic differentiation evaluates $f$ together with $\\nabla f$ at cost at most $5$ times the cost of evaluating $f$ alone, independent of $n$.",
+      "statement_clean": "Reverse-mode AD computes the gradient at a cost bounded by a constant (here $5$) times the function-evaluation cost, regardless of dimension.",
+      "assumptions": [
+        "$f$ is given by a sequential program of elementary library functions",
+        "Each elementary $f_i$ is an arithmetic operation or standard univariate function"
+      ],
+      "conclusions": [
+        "$q\\{f\\} \\le \\bar{Q} \\le 5$, independent of $n$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "complexity", "main_result"]
+    },
+    {
+      "id": "TP388.2",
+      "type": "theorem",
+      "name": "Composition Closure of $Q\\{f\\}$",
+      "section": "3.3",
+      "statement": "$Q\\{f\\} = \\frac{\\mathrm{work}\\{f, \\bar{g} + \\gamma \\nabla f\\}}{\\mathrm{work}\\{f\\}} \\le \\max_{n < i \\le m} Q\\{f_i\\}$. Hence the set of functions $f$ for which $Q\\{f\\} \\le \\bar{Q}$ is closed under composition.",
+      "statement_clean": "The reverse-mode work ratio of a composite function is bounded by the worst work ratio of its elementary constituents and is closed under composition.",
+      "assumptions": [
+        "$f$ is built by composition of elementary library functions $f_i$ as in the Original Program",
+        "Memory space is unlimited and free"
+      ],
+      "conclusions": [
+        "$Q\\{f\\} \\le \\max_{n < i \\le m} Q\\{f_i\\}$",
+        "$\\{f : Q\\{f\\} \\le \\bar{Q}\\}$ is closed under composition"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "main_result"]
+    },
+    {
+      "id": "TP388.3",
+      "type": "theorem",
+      "name": "Baur–Strassen Complexity of Partial Derivatives",
+      "section": "1 (cited)",
+      "statement": "For rational functions, the gradient can be evaluated at cost bounded by a constant multiple of the cost of the function itself; in particular Wolfe's assertion holds for rationals.",
+      "statement_clean": "Earlier complexity-theoretic version of the cheap-gradient principle, established for rational functions.",
+      "origin": "external",
+      "origin_citation": "Baur & Strassen 1983, 'The Complexity of Partial Derivatives' [2]",
+      "tags": ["complexity", "external"]
+    },
+    {
+      "id": "TP388.4",
+      "type": "theorem",
+      "name": "Linear Error Propagation Identity",
+      "section": "3.5 (cited)",
+      "statement": "If all $f_i$ are linear and the adjoint values $\\bar{x}_i$ are exact, then $|\\bar{x}_m - f(x)| \\le \\sum_{i=1}^{m} |\\bar{x}_i| \\, \\delta x_i$ holds with equality conditions verifiable by induction on the computational graph.",
+      "statement_clean": "Error in the computed function value is exactly bounded by the adjoint-weighted sum of local error tolerances when the functions are linear and adjoints are exact.",
+      "origin": "external",
+      "origin_citation": "Bauer 1974, 'Computational Graphs and Rounding Errors' [1]",
+      "tags": ["error_analysis", "external"]
+    },
+    {
+      "id": "ClP388.1",
+      "type": "claim",
+      "name": "Reverse-Mode Storage Requirement",
+      "section": "3.3",
+      "statement": "Reverse accumulation requires storing all intermediate values $x_i$ from the forward sweep so they remain available when the reverse sweep needs the local partial derivatives $\\partial f_i / \\partial x_j$. In contrast, forward-mode storage is bounded by a factor of $n+1$ over the original program.",
+      "statement_clean": "Reverse mode trades increased memory (proportional to the length of the forward sweep) for the constant-factor cost bound on the gradient.",
+      "assumptions": [
+        "Original program has been executed to obtain $x_m$",
+        "Local partial derivatives are needed during the reverse sweep"
+      ],
+      "conclusions": [
+        "Reverse-mode storage scales with the length of the forward sweep",
+        "Forward-mode storage scales by a factor of $n+1$ relative to the original program"
+      ],
+      "origin": "paper",
+      "tags": ["storage"]
+    },
+    {
+      "id": "ClP388.2",
+      "type": "claim",
+      "name": "Forward-Mode Linear Growth",
+      "section": "3.2",
+      "statement": "If each library function $f_i$ requires at most $c \\, n_i$ arithmetic operations, the forward-mode work ratio satisfies $q\\{f\\} \\ge 1 + n/c$, growing linearly with $n$.",
+      "assumptions": [
+        "Each elementary $f_i$ uses at most $c \\, n_i$ arithmetic operations"
+      ],
+      "conclusions": [
+        "$q\\{f\\} \\ge 1 + n/c$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "complexity"]
+    },
+    {
+      "id": "ClP388.3",
+      "type": "claim",
+      "name": "Adjoint ODE ↔ Reverse Accumulation Correspondence",
+      "section": "3.4",
+      "statement": "Reverse accumulation can be interpreted as the discrete analog of the adjoint differential equation from the calculus of variations and control theory; hence for ODE-defined $f(x)$ the reverse-mode work ratio approaches the continuous-case value (close to $2$, certainly below $5$).",
+      "origin": "paper",
+      "tags": ["interpretation"]
+    },
+    {
+      "id": "ClP388.4",
+      "type": "claim",
+      "name": "Higher-Derivative-Vector Bound",
+      "section": "3.6",
+      "statement": "A directional derivative $\\nabla^{1+p} f(x) v_1 v_2 \\cdots v_p$ can be computed recursively using $p+1$ sweeps of reverse gradient accumulation; evaluating it costs only $5^{1+p}$ times the cost of $f$, exhibiting exponential growth in $p$ but no dependence on $n$.",
+      "assumptions": [
+        "Directions $v_1,\\ldots,v_p \\in \\mathbb{R}^n$ are given",
+        "Reverse-mode bound $\\bar{Q} \\le 5$ applies at each level"
+      ],
+      "conclusions": [
+        "$\\mathrm{work}\\{\\nabla^{1+p} f(x) v_1 \\cdots v_p\\} \\le 5^{1+p} \\, \\mathrm{work}\\{f\\}$"
+      ],
+      "origin": "paper",
+      "tags": ["complexity", "higher_order"]
+    },
+    {
+      "id": "PrP388.1",
+      "type": "proposition",
+      "name": "Additivity of Computational Work",
+      "section": "3.1",
+      "statement": "For any reasonable measure of computational work on a serial machine, $\\mathrm{work}\\{f\\} = \\sum_{i=n+1}^{m} \\mathrm{work}\\{f_i\\}$.",
+      "statement_clean": "Total work to evaluate a factorable function decomposes additively over its elementary constituents.",
+      "origin": "paper",
+      "tags": ["assumption", "complexity"]
+    },
+    {
+      "id": "PrP388.2",
+      "type": "proposition",
+      "name": "Multi-Output Reverse Increment",
+      "section": "3.3",
+      "statement": "The Reverse Extension program with seeds $\\bar{g}$ and $\\gamma$ produces $g = \\bar{g} + \\gamma \\nabla f(x)$, so $\\mathrm{work}\\{f, \\bar{g} + \\gamma \\nabla f\\} = \\sum_{i=n+1}^{m} \\mathrm{work}\\{f_i, \\bar{g}_i + \\gamma_i \\nabla f_i\\}$.",
+      "statement_clean": "Reverse accumulation increments a given vector by a multiple of the gradient at the same cost as a plain gradient sweep, and the work decomposes additively.",
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "RP388.1",
+      "type": "remark",
+      "name": "Speelpenning's Insight",
+      "section": "1, 2.2",
+      "statement": "Speelpenning [28] showed in his 1980 thesis that Wolfe's assertion holds in general (without explicitly stating it) and that the optimal gradient code is generated directly by the reverse mode of automatic differentiation, originally implemented in the precompiler JAKE.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP388.2",
+      "type": "remark",
+      "name": "Reverse vs Forward Comparison Summary",
+      "section": "5",
+      "statement": "Reverse-mode AD yields gradients at less than $5/n$ times the cost of divided differences; forward-mode AD has cost comparable to divided differences but better accuracy. Both are far superior to symbolic differentiation for non-trivial functions.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP388.3",
+      "type": "remark",
+      "name": "AD differentiates the smooth piece",
+      "section": "3.4",
+      "statement": "On programs with branching, automatic differentiation generally returns the derivative of the smooth piece containing the current argument, in contrast to divided differences which can yield meaningless results across discontinuities.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP388.4",
+      "type": "remark",
+      "name": "Implications for Optimization",
+      "section": "5",
+      "statement": "Cheap, accurate gradients via AD undermine common assumptions of optimization literature: derivative-based methods (including BFGS with line search, smooth exact penalty methods) become more attractive; full Hessians can be obtained automatically but Hessian-vector products via AD can cost up to $5n$ times the function, so quasi-Newton remains useful.",
+      "origin": "paper"
+    },
+    {
+      "id": "OpenP388.1",
+      "type": "open_problem",
+      "name": "Combinatorial Graph Optimization for AD",
+      "section": "5",
+      "statement": "No general method exists for combinatorial analysis of the computational graph to optimally compute derivative matrices and to detect super-elementary 'funnels' for local pre-accumulation; designing such an analysis is open.",
+      "origin": "paper"
+    },
+    {
+      "id": "OpenP388.2",
+      "type": "open_problem",
+      "name": "Optimal Storage / Splines for ODE-defined $f$",
+      "section": "3.4",
+      "statement": "Nobody has studied the relative merits of various storage strategies (full trajectory, optimal spline representation, separate discretization of original and adjoint equations) for reverse-mode AD applied to ODE-defined $f(x)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "OpenP388.3",
+      "type": "open_problem",
+      "name": "Best Strategy for Derivative Matrices",
+      "section": "5",
+      "statement": "For a vector-valued function $F(x): \\mathbb{R}^n \\to \\mathbb{R}^m$ with closely related components, it is unclear whether forward, reverse, or a mixed mode of automatic differentiation is optimal; no clearly superior strategy is known.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP388.1",
+      "type": "proof",
+      "name": "Proof sketch of $\\bar{Q} \\le 5$ via per-operation count",
+      "section": "3.3",
+      "parent_id": "TP388.1",
+      "proves": "TP388.1",
+      "statement": "By the composition closure result, $Q\\{f\\}$ is bounded by the worst $Q\\{f_i\\}$ over elementary functions. Counting fetches, stores, multiplications, and additions for the multiplication operation $f_i(x_1, x_2) = x_1 \\ast x_2$ (the most expensive case) yields $\\bar{Q} = Q\\{x_1 \\ast x_2\\} \\le 5$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP388.1",
+      "type": "proof_step",
+      "name": "Apply Composition Closure",
+      "section": "3.3",
+      "parent_id": "PP388.1",
+      "step_order": 1,
+      "statement": "Invoke the composition-closure inequality $Q\\{f\\} \\le \\max_{n < i \\le m} Q\\{f_i\\}$ established for the Reverse Extension via additivity of work.",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP388.2",
+      "type": "proof_step",
+      "name": "Identify worst-case elementary function",
+      "section": "3.3",
+      "parent_id": "PP388.1",
+      "step_order": 2,
+      "statement": "Among arithmetic operations and standard univariate system functions on a modern mainframe, $\\sin$/$\\cos$ have ratio just above $2$ and other system functions have ratio close to $1$; assuming additions cheaper than multiplications and divisions $\\ge 1.5\\times$ multiplications, the multiplication $x_1 \\ast x_2$ attains the worst $Q$.",
+      "subclass": "case_split"
+    },
+    {
+      "id": "PSP388.3",
+      "type": "proof_step",
+      "name": "Count operations for multiplication",
+      "section": "3.3",
+      "parent_id": "PP388.1",
+      "step_order": 3,
+      "statement": "For $f_i(x_1,x_2) = x_1 x_2$ in reverse mode: forward sweep = $1$ mult + $2$ fetches + $1$ store; reverse sweep adds $2$ mults + $2$ adds + $3$ fetches + $2$ stores. Hence $\\bar{Q} = (3 \\, \\mathrm{mults} + 2 \\, \\mathrm{adds} + 5 \\, \\mathrm{fetches} + 3 \\, \\mathrm{stores}) / (1 \\, \\mathrm{mult} + 2 \\, \\mathrm{fetches} + 1 \\, \\mathrm{store}) \\le 5$.",
+      "subclass": "bound_estimate"
+    },
+    {
+      "id": "PSP388.4",
+      "type": "proof_step",
+      "name": "Conclude $Q\\{f\\} \\le 5$",
+      "section": "3.3",
+      "parent_id": "PP388.1",
+      "step_order": 4,
+      "statement": "Combining the previous steps, $Q\\{f\\} \\le \\max_i Q\\{f_i\\} \\le \\bar{Q} \\le 5$ for any $f$ built from elementary arithmetic and standard univariate system functions, independent of $n$.",
+      "subclass": "conclude"
+    },
+    {
+      "id": "PP388.2",
+      "type": "proof",
+      "name": "Proof of Composition Closure",
+      "section": "3.3",
+      "parent_id": "TP388.2",
+      "proves": "TP388.2",
+      "statement": "By additivity of computational work over elementary operations, $\\mathrm{work}\\{f, \\bar{g} + \\gamma \\nabla f\\} = \\sum_i \\mathrm{work}\\{f_i, \\bar{g}_i + \\gamma_i \\nabla f_i\\}$. Dividing by $\\mathrm{work}\\{f\\} = \\sum_i \\mathrm{work}\\{f_i\\}$ and bounding term-by-term gives $Q\\{f\\} \\le \\max_i Q\\{f_i\\}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP388.1",
+      "type": "algorithm_step",
+      "name": "Forward Sweep (Reverse Extension)",
+      "section": "3.3",
+      "parent_id": "AP388.4",
+      "step_order": 1,
+      "statement": "For $i = n+1, n+2, \\ldots, m$: compute $x_i = f_i \\langle x_j \\rangle_{j \\in \\mathcal{J}_i}$ and initialize $\\bar{x}_i = 0$.",
+      "subclass": "loop"
+    },
+    {
+      "id": "ASP388.2",
+      "type": "algorithm_step",
+      "name": "Initialize Adjoints",
+      "section": "3.3",
+      "parent_id": "AP388.4",
+      "step_order": 2,
+      "statement": "Set $y = x_m$, $\\bar{x}_m = \\gamma$, and $\\langle \\bar{x}_i \\rangle_{i=1}^n = \\bar{g}$.",
+      "subclass": "initialize"
+    },
+    {
+      "id": "ASP388.3",
+      "type": "algorithm_step",
+      "name": "Reverse Sweep",
+      "section": "3.3",
+      "parent_id": "AP388.4",
+      "step_order": 3,
+      "statement": "For $i = m, m-1, \\ldots, n+1$: for all $j \\in \\mathcal{J}_i$ do $\\bar{x}_j \\mathrel{+}= (\\partial f_i / \\partial x_j) \\bar{x}_i$.",
+      "subclass": "loop"
+    },
+    {
+      "id": "ASP388.4",
+      "type": "algorithm_step",
+      "name": "Return Gradient Update",
+      "section": "3.3",
+      "parent_id": "AP388.4",
+      "step_order": 4,
+      "statement": "Return $g = \\langle \\bar{x}_i \\rangle_{i=1}^n$, satisfying $g = \\bar{g} + \\gamma \\nabla f(x)$.",
+      "subclass": "return"
+    },
+    {
+      "id": "ASP388.5",
+      "type": "algorithm_step",
+      "name": "Initialize Gradient Vectors",
+      "section": "3.2",
+      "parent_id": "AP388.3",
+      "step_order": 1,
+      "statement": "For $i = 1, \\ldots, n$: set $\\nabla x_i = e_i$, the $i$-th Cartesian basis vector in $\\mathbb{R}^n$.",
+      "subclass": "initialize"
+    },
+    {
+      "id": "ASP388.6",
+      "type": "algorithm_step",
+      "name": "Forward Loop with Gradient Update",
+      "section": "3.2",
+      "parent_id": "AP388.3",
+      "step_order": 2,
+      "statement": "For $i = n+1, \\ldots, m$: compute $x_i = f_i \\langle x_j \\rangle_{j \\in \\mathcal{J}_i}$ and $\\nabla x_i = \\sum_{j \\in \\mathcal{J}_i} (\\partial f_i / \\partial x_j) \\nabla x_j$.",
+      "subclass": "loop"
+    },
+    {
+      "id": "ASP388.7",
+      "type": "algorithm_step",
+      "name": "Return Function Value and Gradient",
+      "section": "3.2",
+      "parent_id": "AP388.3",
+      "step_order": 3,
+      "statement": "Return $y = x_m$ and $g = \\nabla x_m$.",
+      "subclass": "return"
+    }
+  ],
+  "edges": [
+    {"source": "DP388.1", "target": "DP388.2", "type": "uses"},
+    {"source": "DP388.1", "target": "AP388.3", "type": "uses"},
+    {"source": "DP388.1", "target": "AP388.4", "type": "uses"},
+    {"source": "DP388.6", "target": "DP388.1", "type": "uses"},
+    {"source": "DP388.5", "target": "EP388.2", "type": "uses"},
+    {"source": "DP388.5", "target": "AP388.4", "type": "uses"},
+    {"source": "DP388.3", "target": "ProbP388.1", "type": "uses"},
+    {"source": "DP388.3", "target": "DP388.4", "type": "uses"},
+    {"source": "DP388.4", "target": "TP388.2", "type": "uses"},
+    {"source": "ProbP388.1", "target": "TP388.1", "type": "resolves"},
+    {"source": "TP388.3", "target": "TP388.1", "type": "uses"},
+    {"source": "TP388.2", "target": "TP388.1", "type": "uses"},
+    {"source": "EP388.6", "target": "TP388.1", "type": "uses"},
+    {"source": "EP388.2", "target": "AP388.4", "type": "uses"},
+    {"source": "EP388.1", "target": "ClP388.2", "type": "uses"},
+    {"source": "PrP388.1", "target": "TP388.2", "type": "uses"},
+    {"source": "PrP388.2", "target": "TP388.2", "type": "uses"},
+    {"source": "AP388.4", "target": "PrP388.2", "type": "uses"},
+    {"source": "AP388.3", "target": "ClP388.2", "type": "illustrates"},
+    {"source": "AP388.1", "target": "ExP388.2", "type": "illustrates"},
+    {"source": "AP388.2", "target": "ExP388.2", "type": "illustrates"},
+    {"source": "AP388.3", "target": "AP388.1", "type": "specializes"},
+    {"source": "AP388.4", "target": "AP388.2", "type": "specializes"},
+    {"source": "AP388.4", "target": "ExP388.4", "type": "illustrates"},
+    {"source": "AP388.3", "target": "ExP388.4", "type": "illustrates"},
+    {"source": "AP388.7", "target": "ExP388.4", "type": "illustrates"},
+    {"source": "AP388.8", "target": "ExP388.4", "type": "illustrates"},
+    {"source": "AP388.7", "target": "EP388.8", "type": "illustrates"},
+    {"source": "ExP388.1", "target": "ExP388.4", "type": "uses"},
+    {"source": "ExP388.2", "target": "ExP388.3", "type": "uses"},
+    {"source": "DP388.2", "target": "ExP388.3", "type": "uses"},
+    {"source": "AP388.5", "target": "AP388.4", "type": "uses"},
+    {"source": "AP388.6", "target": "AP388.4", "type": "uses"},
+    {"source": "AP388.5", "target": "AP388.3", "type": "uses"},
+    {"source": "AP388.6", "target": "AP388.3", "type": "uses"},
+    {"source": "TP388.4", "target": "EP388.7", "type": "uses"},
+    {"source": "DP388.5", "target": "EP388.7", "type": "uses"},
+    {"source": "DP388.5", "target": "EP388.3", "type": "uses"},
+    {"source": "EP388.3", "target": "ClP388.3", "type": "uses"},
+    {"source": "TP388.1", "target": "ClP388.4", "type": "uses"},
+    {"source": "EP388.4", "target": "EP388.5", "type": "uses"},
+    {"source": "ExP388.5", "target": "EP388.5", "type": "illustrates"},
+    {"source": "ExP388.6", "target": "RP388.3", "type": "illustrates"},
+    {"source": "PP388.1", "target": "TP388.1", "type": "proves"},
+    {"source": "PP388.2", "target": "TP388.2", "type": "proves"},
+    {"source": "PSP388.1", "target": "PSP388.2", "type": "uses"},
+    {"source": "PSP388.2", "target": "PSP388.3", "type": "uses"},
+    {"source": "PSP388.3", "target": "PSP388.4", "type": "uses"},
+    {"source": "ASP388.1", "target": "ASP388.2", "type": "uses"},
+    {"source": "ASP388.2", "target": "ASP388.3", "type": "uses"},
+    {"source": "ASP388.3", "target": "ASP388.4", "type": "uses"},
+    {"source": "ASP388.5", "target": "ASP388.6", "type": "uses"},
+    {"source": "ASP388.6", "target": "ASP388.7", "type": "uses"}
+  ]
+}

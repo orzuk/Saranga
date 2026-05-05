@@ -11,7 +11,7 @@ gold.json from Opus and gold_qwenT.json from Qwen), compute:
 Run on a directory of papers:
 
   python3 consensus_intersect.py \\
-      --base-dir /sci/labs/orzuk/orzuk/projects/Authomathics/alignment_benchmark \\
+      --base-dir /<cluster>/<user>/projects/Authomathics/alignment_benchmark \\
       --suffix-a "" \\
       --suffix-b _qwenT \\
       --out-suffix _consensus_opus_qwen \\

@@ -1,0 +1,749 @@
+{
+  "metadata": {
+    "title": "A Stochastic Gradient Method with an Exponential Convergence Rate for Finite Training Sets",
+    "paper_num": 258,
+    "authors": "Nicolas Le Roux, Mark Schmidt, Francis Bach",
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "ProbP258.1",
+      "type": "problem",
+      "name": "Finite-sum strongly-convex minimization",
+      "section": "1 Introduction",
+      "statement": "Minimize a finite sample average of smooth functions: $\\minimize{x\\in\\mathbb{R}^p} g(x) \\defd \\frac{1}{n}\\sum_{i=1}^n f_i(x)$, with each $f_i$ smooth and $g$ strongly convex.",
+      "statement_clean": "Minimize the average of $n$ smooth functions where the average is strongly convex.",
+      "subclass": "optimization",
+      "tags": ["optimization", "machine-learning"]
+    },
+    {
+      "id": "ProbP258.2",
+      "type": "problem",
+      "name": "$\\ell_2$-regularized empirical risk minimization",
+      "section": "1 Introduction",
+      "statement": "$\\minimize{x\\in\\mathbb{R}^p} \\frac{\\lambda}{2}\\|x\\|^2 + \\frac{1}{n}\\sum_{i=1}^n l_i(x)$, with convex smooth losses $l_i$ and regularization $\\lambda$.",
+      "subclass": "optimization",
+      "tags": ["optimization", "regularization"]
+    },
+    {
+      "id": "ProbP258.3",
+      "type": "problem",
+      "name": "$\\ell_2$-regularized logistic regression",
+      "section": "1 Introduction",
+      "statement": "Special case of $\\ell_2$-regularized ERM with $f_i(x) \\defd \\frac{\\lambda}{2}\\|x\\|^2 + \\log(1+\\exp(-b_i a_i^T x))$ for binary labels $b_i \\in \\{-1,1\\}$.",
+      "subclass": "optimization",
+      "tags": ["optimization", "classification"]
+    },
+    {
+      "id": "ProbP258.4",
+      "type": "problem",
+      "name": "$\\ell_2$-regularized least squares",
+      "section": "Appendix B (Comparison of convergence rates)",
+      "statement": "$\\minimize{x\\in\\mathbb{R}^p} \\frac{\\lambda}{2}\\|x\\|^2 + \\frac{1}{2n}\\|Ax-b\\|^2$, with Fenchel dual $\\minimize{y\\in\\mathbb{R}^n} \\frac{n}{2}\\|y\\|^2 + \\frac{1}{2\\lambda}y^\\top AA^\\top y + y^\\top b$.",
+      "subclass": "optimization",
+      "tags": ["optimization", "regression"]
+    },
+    {
+      "id": "DP258.1",
+      "type": "definition",
+      "name": "Lipschitz-continuous gradient",
+      "section": "3 Convergence Analysis",
+      "statement": "Each $f_i'$ is $L$-Lipschitz: $\\|f_i'(x)-f_i'(y)\\| \\leq L\\|x-y\\|$ for all $x,y \\in \\mathbb{R}^p$.",
+      "tags": ["smoothness"]
+    },
+    {
+      "id": "DP258.2",
+      "type": "definition",
+      "name": "Strong convexity (constant $\\mu$)",
+      "section": "3 Convergence Analysis",
+      "statement": "$g = \\frac{1}{n}\\sum_i f_i$ is $\\mu$-strongly convex: $x \\mapsto g(x) - \\frac{\\mu}{2}\\|x\\|^2$ is convex (with $\\mu > 0$).",
+      "tags": ["convexity"]
+    },
+    {
+      "id": "DP258.3",
+      "type": "definition",
+      "name": "Variance of gradients at the optimum",
+      "section": "3 Convergence Analysis",
+      "statement": "$\\sigma^2 = \\frac{1}{n}\\sum_i \\|f_i'(x^\\ast)\\|^2$, where $x^\\ast$ is the unique minimizer of $g$.",
+      "tags": ["definition"]
+    },
+    {
+      "id": "DP258.4",
+      "type": "definition",
+      "name": "Memory vector $y_i^k$",
+      "section": "1 Introduction",
+      "statement": "$y_i^k = f_i'(x^k)$ if $i=i_k$ and $y_i^k = y_i^{k-1}$ otherwise; stores the most recent gradient evaluation of each $f_i$.",
+      "tags": ["definition"]
+    },
+    {
+      "id": "DP258.5",
+      "type": "definition",
+      "name": "Lyapunov state vector $\\theta^k$",
+      "section": "Appendix A.1 Problem set-up and notations",
+      "statement": "$\\theta^k = (y_1^k, \\dots, y_n^k, x^k)^\\top \\in \\mathbb{R}^{(n+1)p}$ and $\\theta^\\ast = (f_1'(x^\\ast), \\dots, f_n'(x^\\ast), x^\\ast)^\\top$.",
+      "tags": ["definition"]
+    },
+    {
+      "id": "DP258.6",
+      "type": "definition",
+      "name": "Selection function $S(j, i_{1:k})$",
+      "section": "2 Related Work",
+      "statement": "$S(j, i_{1:k}) = 1/n$ if $j$ corresponds to the last iteration where $j = i_k$, and $0$ otherwise; gives the SAG re-write $x^{k+1} = x^k - \\sum_{j=1}^k \\alpha_k S(j, i_{1:k}) f_{i_j}'(x^j)$.",
+      "tags": ["definition"]
+    },
+    {
+      "id": "EP258.1",
+      "type": "equation",
+      "name": "Full gradient (FG) iteration",
+      "section": "1 Introduction",
+      "statement": "$x^{k+1} = x^k - \\alpha_k g'(x^k) = x^k - \\frac{\\alpha_k}{n}\\sum_{i=1}^n f_i'(x^k)$.",
+      "tags": ["iteration"]
+    },
+    {
+      "id": "EP258.2",
+      "type": "equation",
+      "name": "Stochastic gradient (SG) iteration",
+      "section": "1 Introduction",
+      "statement": "$x^{k+1} = x^k - \\alpha_k f_{i_k}'(x^k)$, with $i_k$ sampled uniformly from $\\{1,\\dots,n\\}$.",
+      "tags": ["iteration"]
+    },
+    {
+      "id": "EP258.3",
+      "type": "equation",
+      "name": "Stochastic average gradient (SAG) iteration",
+      "section": "1 Introduction",
+      "statement": "$x^{k+1} = x^k - \\frac{\\alpha_k}{n}\\sum_{i=1}^n y_i^k$, where $y_i^k$ stores the most recent gradient $f_i'$ evaluated at the iterate when $i$ was last sampled.",
+      "tags": ["iteration"]
+    },
+    {
+      "id": "EP258.4",
+      "type": "equation",
+      "name": "$\\ell_2$ exact-regularizer recursion",
+      "section": "4 Implementation Details",
+      "statement": "$d \\leftarrow d - y_i;\\; y_i \\leftarrow l_i'(x^k);\\; d \\leftarrow d + y_i;\\; x \\leftarrow (1-\\alpha\\lambda)x - \\frac{\\alpha}{m}d$.",
+      "tags": ["iteration", "implementation"]
+    },
+    {
+      "id": "AssumP258.1",
+      "type": "assumption",
+      "name": "Standing assumptions (Section 3)",
+      "section": "3 Convergence Analysis",
+      "statement": "(A1) Each $f_i$ is differentiable with $L$-Lipschitz gradient. (A2) $g = \\frac{1}{n}\\sum_i f_i$ is $\\mu$-strongly convex with $\\mu>0$. (A3) Initialize $y_i^0 = 0$ for all $i$.",
+      "tags": ["assumption"]
+    },
+    {
+      "id": "AP258.1",
+      "type": "algorithm",
+      "name": "Stochastic Average Gradient (SAG)",
+      "section": "1 Introduction; 4 Implementation Details",
+      "statement": "Randomized incremental method that maintains a memory of the most recent gradient $y_i^k$ for each $f_i$ and updates $x^{k+1} = x^k - \\frac{\\alpha_k}{n}\\sum_i y_i^k$.",
+      "input": [
+        "Smooth convex functions $f_1,\\dots,f_n$ with $L$-Lipschitz gradients",
+        "Step size $\\alpha_k$",
+        "Initial iterate $x^0$"
+      ],
+      "output": [
+        "Sequence $x^k$ converging to $x^\\ast = \\arg\\min_x \\frac{1}{n}\\sum_i f_i(x)$"
+      ],
+      "pseudocode": "Initialize $y_i^0=0$ for $i=1..n$; for $k=1,2,\\dots$: sample $i_k \\sim \\mathrm{Unif}\\{1,..,n\\}$; set $y_{i_k}^k \\leftarrow f_{i_k}'(x^{k-1})$ and $y_i^k \\leftarrow y_i^{k-1}$ for $i\\neq i_k$; update $x^k \\leftarrow x^{k-1} - \\frac{\\alpha}{n}\\sum_i y_i^k$.",
+      "tags": ["iterative", "stochastic", "memory-based"]
+    },
+    {
+      "id": "AP258.2",
+      "type": "algorithm",
+      "name": "SAG with line search (SAG-LS)",
+      "section": "4 Implementation Details",
+      "statement": "Practical SAG variant using step size $\\alpha_k = 2/(L_k + n\\lambda)$ with adaptive $L_k$ from a line search that doubles $L_k$ when the local Lipschitz inequality fails and multiplies by $2^{-1/n}$ each iteration.",
+      "input": [
+        "Smooth losses $f_i$",
+        "Initial Lipschitz estimate $L_0$"
+      ],
+      "output": [
+        "Iterates $x^k$ converging to $x^\\ast$ with adaptive step size"
+      ],
+      "tags": ["iterative", "adaptive"]
+    },
+    {
+      "id": "AP258.3",
+      "type": "algorithm",
+      "name": "Full Gradient (FG) method",
+      "section": "1 Introduction",
+      "statement": "Cauchy's gradient descent: $x^{k+1} = x^k - \\alpha_k g'(x^k)$ with cost $O(np)$ per step and linear rate $O(\\rho^k)$ depending on the condition number of $g$.",
+      "origin": "external",
+      "origin_citation": "Cauchy 1847; Nesterov 2004 (Theorem 2.1.15)",
+      "tags": ["iterative", "deterministic"]
+    },
+    {
+      "id": "AP258.4",
+      "type": "algorithm",
+      "name": "Stochastic Gradient (SG) method",
+      "section": "1 Introduction",
+      "statement": "Robbins--Monro iteration $x^{k+1} = x^k - \\alpha_k f_{i_k}'(x^k)$ with sublinear $O(1/k)$ rate under suitable decreasing step sizes.",
+      "origin": "external",
+      "origin_citation": "Robbins & Monro 1951; Bottou & LeCun 2004",
+      "tags": ["iterative", "stochastic"]
+    },
+    {
+      "id": "AP258.5",
+      "type": "algorithm",
+      "name": "Incremental Aggregated Gradient (IAG)",
+      "section": "2 Related Work",
+      "statement": "Identical recursion to SAG~\\eqref{eq:SAG} but with a cyclic (deterministic) choice of $i_k$ rather than uniform sampling.",
+      "origin": "external",
+      "origin_citation": "Blatt et al. 2008",
+      "tags": ["iterative", "deterministic"]
+    },
+    {
+      "id": "AP258.6",
+      "type": "algorithm",
+      "name": "Accelerated Full Gradient (AFG)",
+      "section": "2 Related Work; 5 Experimental Results",
+      "statement": "Nesterov's accelerated FG method interleaving gradient steps with an extrapolation; achieves rate $1-\\sqrt{\\mu/L}$ in the strongly-convex case.",
+      "origin": "external",
+      "origin_citation": "Nesterov 1983",
+      "tags": ["iterative", "deterministic", "accelerated"]
+    },
+    {
+      "id": "AP258.7",
+      "type": "algorithm",
+      "name": "Pegasos",
+      "section": "5 Experimental Results",
+      "statement": "State-of-the-art SG method using step size $\\alpha_k = 1/(\\mu k)$ with a projection onto a norm-ball containing $x^\\ast$.",
+      "origin": "external",
+      "origin_citation": "Shalev-Shwartz et al. 2007",
+      "tags": ["iterative", "stochastic"]
+    },
+    {
+      "id": "AP258.8",
+      "type": "algorithm",
+      "name": "Regularized Dual Averaging (RDA)",
+      "section": "5 Experimental Results",
+      "statement": "Sample-average SG method based on dual averaging, used as a state-of-the-art baseline.",
+      "origin": "external",
+      "origin_citation": "Xiao 2010",
+      "tags": ["iterative", "stochastic"]
+    },
+    {
+      "id": "AP258.9",
+      "type": "algorithm",
+      "name": "Epoch SG (ESG)",
+      "section": "5 Experimental Results",
+      "statement": "Epoch-based SG with constant step size and averaging within each epoch; optimal for non-smooth strongly-convex stochastic optimization.",
+      "origin": "external",
+      "origin_citation": "Hazan & Kale 2010",
+      "tags": ["iterative", "stochastic"]
+    },
+    {
+      "id": "AP258.10",
+      "type": "algorithm",
+      "name": "Nearly-Optimal SG (NOSG)",
+      "section": "5 Experimental Results",
+      "statement": "Combines ideas from SG and AFG to obtain near-optimal dependency on problem-dependent constants.",
+      "origin": "external",
+      "origin_citation": "Ghadimi & Lan 2010",
+      "tags": ["iterative", "stochastic"]
+    },
+    {
+      "id": "AP258.11",
+      "type": "algorithm",
+      "name": "L-BFGS",
+      "section": "5 Experimental Results",
+      "statement": "Limited-memory quasi-Newton method tuned for log-linear models; used as a strong full-batch baseline.",
+      "origin": "external",
+      "origin_citation": "minFunc software (Schmidt)",
+      "tags": ["iterative", "deterministic", "quasi-newton"]
+    },
+    {
+      "id": "PrP258.1",
+      "type": "proposition",
+      "name": "Convergence of SAG with small step size $\\alpha = 1/(2nL)$",
+      "section": "3 Convergence Analysis (Proposition 1)",
+      "statement": "With constant step size $\\alpha_k = \\frac{1}{2nL}$, the SAG iterates satisfy for $k \\geq 1$: $\\mathbb{E}\\|x^k - x^\\ast\\|^2 \\leq (1 - \\frac{\\mu}{8Ln})^k [3\\|x^0 - x^\\ast\\|^2 + \\frac{9\\sigma^2}{4L^2}]$.",
+      "assumptions": [
+        "Each $f_i$ has $L$-Lipschitz gradient",
+        "$g$ is $\\mu$-strongly convex",
+        "$y_i^0 = 0$ for all $i$",
+        "Constant step size $\\alpha_k = \\frac{1}{2nL}$"
+      ],
+      "conclusions": [
+        "$\\mathbb{E}\\|x^k - x^\\ast\\|^2 \\leq (1 - \\frac{\\mu}{8Ln})^k \\bigl[3\\|x^0 - x^\\ast\\|^2 + \\frac{9\\sigma^2}{4L^2}\\bigr]$ for all $k\\geq 1$"
+      ],
+      "tags": ["convergence", "bound"]
+    },
+    {
+      "id": "PrP258.2",
+      "type": "proposition",
+      "name": "Convergence of SAG with large step size $\\alpha = 1/(2n\\mu)$",
+      "section": "3 Convergence Analysis (Proposition 2)",
+      "statement": "If $n \\geq \\frac{8L}{\\mu}$, with step size $\\alpha_k = \\frac{1}{2n\\mu}$ the SAG iterates satisfy for $k \\geq n$: $\\mathbb{E}[g(x^k) - g(x^\\ast)] \\leq C(1 - \\frac{1}{8n})^k$, where $C = \\frac{16L}{3n}\\|x^0-x^\\ast\\|^2 + \\frac{4\\sigma^2}{3n\\mu}(8\\log(1+\\frac{\\mu n}{4L}) + 1)$.",
+      "assumptions": [
+        "Each $f_i$ has $L$-Lipschitz gradient",
+        "$g$ is $\\mu$-strongly convex",
+        "$n \\geq 8L/\\mu$",
+        "Constant step size $\\alpha_k = 1/(2n\\mu)$",
+        "First $n$ iterations are SG; SAG initialized with the average of these iterates and $y_i^0=0$"
+      ],
+      "conclusions": [
+        "$\\mathbb{E}[g(x^k) - g(x^\\ast)] \\leq C(1 - \\frac{1}{8n})^k$ for $k \\geq n$",
+        "$C = \\frac{16L}{3n}\\|x^0 - x^\\ast\\|^2 + \\frac{4\\sigma^2}{3n\\mu}\\bigl(8\\log(1 + \\frac{\\mu n}{4L}) + 1\\bigr)$"
+      ],
+      "tags": ["convergence", "bound"]
+    },
+    {
+      "id": "LP258.1",
+      "type": "lemma",
+      "name": "Recursion for the quadratic Lyapunov term",
+      "section": "Appendix A.4 Important lemma",
+      "statement": "For $P = \\bigl(\\begin{smallmatrix} A & b \\\\ b^\\top & c \\end{smallmatrix}\\bigr)$, the conditional expectation $\\mathbb{E}[(\\theta^k-\\theta^\\ast)^\\top P (\\theta^k-\\theta^\\ast)\\mid \\mathcal{F}_{k-1}]$ admits an explicit closed form in terms of $\\theta^{k-1}$ and the auxiliary matrix $S = A - \\frac{\\alpha}{n} b e^\\top - \\frac{\\alpha}{n} e b^\\top + \\frac{\\alpha^2}{n^2} e c e^\\top$.",
+      "assumptions": [
+        "$A \\in \\mathbb{R}^{np\\times np}$, $b \\in \\mathbb{R}^{np\\times p}$, $c \\in \\mathbb{R}^{p\\times p}$",
+        "SAG recursion for $\\theta^k$ as in Appendix A.1"
+      ],
+      "conclusions": [
+        "Closed form in $y^{k-1} - f'(x^\\ast)$, $f'(x^{k-1}) - f'(x^\\ast)$, and $x^{k-1} - x^\\ast$ involving $S$ and $\\Diag(\\diag(S))$"
+      ],
+      "tags": ["lemma", "technical"]
+    },
+    {
+      "id": "LP258.2",
+      "type": "lemma",
+      "name": "SG bound used to initialize SAG",
+      "section": "Appendix A.3 Convergence results for SGD",
+      "statement": "With $\\gamma_k = \\frac{1}{2L + \\mu k/2}$, averaging gives $\\mathbb{E} g\\bigl(\\frac{1}{k}\\sum_{i=0}^{k-1} \\tilde{x}^i\\bigr) - g(x^\\ast) \\leq \\frac{2L}{k}\\|x^0 - x^\\ast\\|^2 + \\frac{4\\sigma^2}{k\\mu}\\log(1+\\frac{\\mu k}{4L})$.",
+      "assumptions": [
+        "Each $f_i$ has $L$-Lipschitz gradient",
+        "$g$ is $\\mu$-strongly convex",
+        "SG recursion $\\tilde{x}^k = \\tilde{x}^{k-1} - \\gamma_k f_{i_k}'(\\tilde{x}^{k-1})$ with step $\\gamma_k = 1/(2L + \\mu k/2)$"
+      ],
+      "conclusions": [
+        "$\\mathbb{E} g(\\bar{x}^k) - g(x^\\ast) \\leq \\frac{2L}{k}\\|x^0-x^\\ast\\|^2 + \\frac{4\\sigma^2}{k\\mu}\\log(1+\\frac{\\mu k}{4L})$"
+      ],
+      "tags": ["lemma", "averaging"]
+    },
+    {
+      "id": "TP258.1",
+      "type": "theorem",
+      "name": "Lower bound for first-order strongly-convex stochastic optimization",
+      "section": "1 Introduction (cited)",
+      "statement": "Under unbiased gradient access, the rate $\\mathbb{E}[g(x^k)] - g(x^\\ast) = O(1/k)$ is optimal for strongly-convex stochastic optimization; no algorithm relying only on unbiased gradient measurements can do better.",
+      "origin": "external",
+      "origin_citation": "Nemirovsky & Yudin 1983; Nemirovski et al. 2009; Agarwal et al. 2010",
+      "assumptions": [
+        "Algorithm accesses $g$ only via unbiased measurements of objective and gradient",
+        "$g$ is strongly convex"
+      ],
+      "conclusions": [
+        "$\\mathbb{E}[g(x^k)] - g(x^\\ast) = \\Omega(1/k)$"
+      ],
+      "tags": ["lower-bound", "optimality"]
+    },
+    {
+      "id": "TP258.2",
+      "type": "theorem",
+      "name": "FG linear convergence (Nesterov)",
+      "section": "1 Introduction (cited)",
+      "statement": "With a constant step size, the FG method satisfies $g(x^k) - g(x^\\ast) = O(\\rho^k)$ for some $\\rho<1$ depending on the condition number of $g$.",
+      "origin": "external",
+      "origin_citation": "Nesterov 2004, Theorem 2.1.15",
+      "assumptions": [
+        "$g$ is strongly convex with $L$-Lipschitz gradient",
+        "FG iteration with constant step size"
+      ],
+      "conclusions": [
+        "$g(x^k) - g(x^\\ast) = O(\\rho^k)$ for some $\\rho<1$"
+      ],
+      "tags": ["convergence", "linear-rate"]
+    },
+    {
+      "id": "TP258.3",
+      "type": "theorem",
+      "name": "Co-coercivity of Lipschitz gradients",
+      "section": "Appendix (cited)",
+      "statement": "For each $i$, $\\|f_i'(x) - f_i'(x^\\ast)\\|^2 \\leq L (f_i'(x) - f_i'(x^\\ast))^\\top (x - x^\\ast)$, and summing $\\sum_i \\|f_i'(x^{k-1}) - f_i'(x^\\ast)\\|^2 \\leq nL\\, g'(x^{k-1})^\\top (x^{k-1}-x^\\ast)$.",
+      "origin": "external",
+      "origin_citation": "Nesterov 2004, Theorem 2.1.5",
+      "assumptions": [
+        "Each $f_i$ convex with $L$-Lipschitz gradient"
+      ],
+      "conclusions": [
+        "$\\|f_i'(x) - f_i'(x^\\ast)\\|^2 \\leq L (f_i'(x) - f_i'(x^\\ast))^\\top (x - x^\\ast)$"
+      ],
+      "tags": ["smoothness", "inequality"]
+    },
+    {
+      "id": "PP258.1",
+      "type": "proof",
+      "name": "Proof of Proposition 1 ($\\alpha = 1/(2nL)$)",
+      "section": "Appendix A.5",
+      "statement": "Construct a quadratic Lyapunov $Q(\\theta^k) = (\\theta^k - \\theta^\\ast)^\\top P (\\theta^k-\\theta^\\ast)$ with explicit $A,b,c$, show linear contraction $\\mathbb{E} Q(\\theta^k) \\leq (1-\\delta)\\mathbb{E} Q(\\theta^{k-1})$ with $\\delta = \\mu/(8nL)$, then dominate $\\|x^k-x^\\ast\\|^2$ by $3 Q(\\theta^k)$ via a Schur-complement argument.",
+      "proves": "PrP258.1",
+      "parent_id": "PrP258.1",
+      "tags": ["proof", "lyapunov"]
+    },
+    {
+      "id": "PP258.2",
+      "type": "proof",
+      "name": "Proof of Proposition 2 ($\\alpha = 1/(2n\\mu)$)",
+      "section": "Appendix A.6",
+      "statement": "Use Lyapunov $Q(\\theta^k) = 2g(x^k + \\frac{\\alpha}{n}e^\\top y^k) - 2g(x^\\ast) + (\\theta^k-\\theta^\\ast)^\\top P (\\theta^k-\\theta^\\ast)$, prove linear contraction with rate $1 - 1/(8n)$ when $n\\mu/L \\geq 8$, dominate $g(x^k) - g(x^\\ast)$ by $Q$, then absorb the SG initialization phase.",
+      "proves": "PrP258.2",
+      "parent_id": "PrP258.2",
+      "tags": ["proof", "lyapunov"]
+    },
+    {
+      "id": "PSP258.1",
+      "type": "proof_step",
+      "parent_id": "PP258.1",
+      "step_order": 1,
+      "name": "Define quadratic Lyapunov $Q(\\theta^k)$",
+      "section": "Appendix A.5 (Step 1)",
+      "statement": "Set $Q(\\theta^k) = (\\theta^k - \\theta^\\ast)^\\top P (\\theta^k - \\theta^\\ast)$ with $A = 3n\\alpha^2 I + \\frac{\\alpha^2}{n}(\\frac{1}{n}-2)ee^\\top$, $b = -\\alpha(1-\\frac{1}{n})e$, $c = I$, giving $S = 3n\\alpha^2 I$.",
+      "subclass": "setup"
+    },
+    {
+      "id": "PSP258.2",
+      "type": "proof_step",
+      "parent_id": "PP258.1",
+      "step_order": 2,
+      "name": "Apply Lemma A.4 to get recursion for $\\mathbb{E} Q$",
+      "section": "Appendix A.5 (Step 1)",
+      "statement": "Plug the chosen $A,b,c$ into the recursion of Lemma A.4 (LP258.1) to express $\\mathbb{E}[Q(\\theta^k)\\mid\\mathcal{F}_{k-1}]$ in terms of $y^{k-1}-f'(x^\\ast)$, $f'(x^{k-1})-f'(x^\\ast)$, and $x^{k-1}-x^\\ast$.",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP258.3",
+      "type": "proof_step",
+      "parent_id": "PP258.1",
+      "step_order": 3,
+      "name": "Bound $\\|f'(x^{k-1})-f'(x^\\ast)\\|^2$ by Lipschitz",
+      "section": "Appendix A.5 (Step 1)",
+      "statement": "Use $(f'(x^{k-1})-f'(x^\\ast))^\\top (f'(x^{k-1})-f'(x^\\ast)) \\leq nL\\, g'(x^{k-1})^\\top (x^{k-1}-x^\\ast)$ from Nesterov Theorem 2.1.5.",
+      "subclass": "bound_estimate"
+    },
+    {
+      "id": "PSP258.4",
+      "type": "proof_step",
+      "parent_id": "PP258.1",
+      "step_order": 4,
+      "name": "Eliminate cross term via completing the square",
+      "section": "Appendix A.5 (Step 1)",
+      "statement": "For symmetric negative-definite $M$, use $s^\\top M s + s^\\top t \\leq -\\frac{1}{4} t^\\top M^{-1} t$ to remove the $(y^{k-1}-f'(x^\\ast))^\\top e (x^{k-1}-x^\\ast)$ cross term, yielding $-\\frac{\\delta^2(1-1/n)^2 n}{3n\\delta - 1 - 2\\delta + (\\delta-1)/n}\\|x^{k-1}-x^\\ast\\|^2$.",
+      "subclass": "algebraic_manipulation"
+    },
+    {
+      "id": "PSP258.5",
+      "type": "proof_step",
+      "parent_id": "PP258.1",
+      "step_order": 5,
+      "name": "Pick $\\delta = \\mu/(8nL)$ and verify positivity",
+      "section": "Appendix A.5 (Step 1)",
+      "statement": "With $\\delta = \\mu/(8nL)$ and $\\alpha = 1/(2nL)$, verify $2\\alpha - 3\\alpha^2 nL + \\frac{\\delta^2(1-1/n)^2 n}{3n\\delta - 1 - 2\\delta + (\\delta-1)/n}\\frac{1}{\\mu} - \\frac{\\delta}{\\mu} \\geq 0$, hence $\\mathbb{E}[Q(\\theta^k)\\mid\\mathcal{F}_{k-1}] \\leq (1-\\delta)Q(\\theta^{k-1})$.",
+      "subclass": "substitute"
+    },
+    {
+      "id": "PSP258.6",
+      "type": "proof_step",
+      "parent_id": "PP258.1",
+      "step_order": 6,
+      "name": "Iterate to linear convergence of $\\mathbb{E} Q(\\theta^k)$",
+      "section": "Appendix A.5 (Step 1)",
+      "statement": "Take total expectation and unroll: $\\mathbb{E} Q(\\theta^k) \\leq (1 - \\frac{\\mu}{8nL})^k Q(\\theta^0)$.",
+      "subclass": "conclude"
+    },
+    {
+      "id": "PSP258.7",
+      "type": "proof_step",
+      "parent_id": "PP258.1",
+      "step_order": 7,
+      "name": "Domination $Q(\\theta^k) \\geq \\tfrac{1}{3}\\|x^k-x^\\ast\\|^2$ via Schur complement",
+      "section": "Appendix A.5 (Step 2)",
+      "statement": "Show $\\frac{2}{3} I - b^\\top A^{-1} b \\succ 0$ for $n\\geq 2$ so that $P - \\bigl(\\begin{smallmatrix} 0 & 0 \\\\ 0 & I/3 \\end{smallmatrix}\\bigr) \\succ 0$, hence $\\|x^k-x^\\ast\\|^2 \\leq 3 Q(\\theta^k)$.",
+      "subclass": "bound_estimate"
+    },
+    {
+      "id": "PSP258.8",
+      "type": "proof_step",
+      "parent_id": "PP258.1",
+      "step_order": 8,
+      "name": "Initial value $Q(\\theta^0)$ with $y_i^0 = 0$",
+      "section": "Appendix A.5 (Step 2)",
+      "statement": "With $y_i^0 = 0$: $Q(\\theta^0) = \\frac{3\\sigma^2}{4L^2} + \\|x^0-x^\\ast\\|^2$, yielding the final bound $\\mathbb{E}\\|x^k-x^\\ast\\|^2 \\leq (1-\\frac{\\mu}{8nL})^k(\\frac{9\\sigma^2}{4L^2} + 3\\|x^0-x^\\ast\\|^2)$.",
+      "subclass": "conclude"
+    },
+    {
+      "id": "PSP258.9",
+      "type": "proof_step",
+      "parent_id": "PP258.2",
+      "step_order": 1,
+      "name": "Define enriched Lyapunov $Q(\\theta^k)$",
+      "section": "Appendix A.6 (Step 1)",
+      "statement": "Set $Q(\\theta^k) = 2g(x^k + \\frac{\\alpha}{n}e^\\top y^k) - 2g(x^\\ast) + (\\theta^k-\\theta^\\ast)^\\top P (\\theta^k-\\theta^\\ast)$ with $A = \\frac{\\eta\\alpha}{n}I + \\frac{\\alpha}{n}(1-2\\nu)ee^\\top$, $b = -\\nu e$, $c = 0$.",
+      "subclass": "setup"
+    },
+    {
+      "id": "PSP258.10",
+      "type": "proof_step",
+      "parent_id": "PP258.2",
+      "step_order": 2,
+      "name": "Apply Lemma A.4 and convexity to bound $\\mathbb{E} Q$ recursion",
+      "section": "Appendix A.6 (Step 1)",
+      "statement": "Plug $A,b,c$ into Lemma A.4 (LP258.1) and use the convexity inequality $g(x^{k-1} + \\frac{\\alpha}{n}e^\\top y^{k-1}) \\geq g(x^{k-1}) + \\frac{\\alpha}{n}g'(x^{k-1})^\\top e^\\top y^{k-1}$.",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP258.11",
+      "type": "proof_step",
+      "parent_id": "PP258.2",
+      "step_order": 3,
+      "name": "Complete the square in $y^{k-1}-f'(x^\\ast)$",
+      "section": "Appendix A.6 (Step 1)",
+      "statement": "With $\\tau_{y,I},\\tau_{y,e}<0$, complete the square to bound the quadratic form by a single $-(x^{k-1}-x^\\ast)^\\top g'(x^{k-1})$ term plus a $\\|g'(x^{k-1})\\|^2$ term.",
+      "subclass": "algebraic_manipulation"
+    },
+    {
+      "id": "PSP258.12",
+      "type": "proof_step",
+      "parent_id": "PP258.2",
+      "step_order": 4,
+      "name": "Substitute $\\delta = 1/(8n)$, $\\nu=1/(2n)$, $\\eta=2$, $\\alpha = 1/(2n\\mu)$",
+      "section": "Appendix A.6 (Step 1)",
+      "statement": "With these choices and $n\\mu/L\\geq 8$, the coefficient of $(x^{k-1}-x^\\ast)^\\top g'(x^{k-1})$ is $\\leq 0$ and the coefficient of $\\|g'(x^{k-1})\\|^2$ is $\\geq 0$.",
+      "subclass": "substitute"
+    },
+    {
+      "id": "PSP258.13",
+      "type": "proof_step",
+      "parent_id": "PP258.2",
+      "step_order": 5,
+      "name": "Iterate to $\\mathbb{E} Q(\\theta^k) \\leq (1-1/(8n))^k Q(\\theta^0)$",
+      "section": "Appendix A.6 (Step 1)",
+      "statement": "Take expectation and unroll: $\\mathbb{E} Q(\\theta^k) \\leq (1 - 1/(8n))^k [2(g(x^0) - g(x^\\ast)) + \\sigma^2/(n\\mu)]$.",
+      "subclass": "conclude"
+    },
+    {
+      "id": "PSP258.14",
+      "type": "proof_step",
+      "parent_id": "PP258.2",
+      "step_order": 6,
+      "name": "Domination $Q(\\theta^k) \\geq \\tfrac{6}{7}(g(x^k)-g(x^\\ast))$",
+      "section": "Appendix A.6 (Step 2)",
+      "statement": "Minimize the lower bound over $e^\\top y^k$, then use $\\mu/L \\geq 8/n$ and Lipschitz of $g'$ to obtain $Q(\\theta^k) \\geq \\frac{6}{7}(g(x^k)-g(x^\\ast))$.",
+      "subclass": "bound_estimate"
+    },
+    {
+      "id": "PSP258.15",
+      "type": "proof_step",
+      "parent_id": "PP258.2",
+      "step_order": 7,
+      "name": "Initialize via $n$ SG iterations",
+      "section": "Appendix A.6 (Step 3)",
+      "statement": "Use Lemma LP258.2 (SG averaging) to bound $\\mathbb{E} g(x^n) - g(x^\\ast)$, and combine with the SAG contraction to obtain the final bound for $k\\geq n$.",
+      "subclass": "conclude"
+    },
+    {
+      "id": "ASP258.1",
+      "type": "algorithm_step",
+      "parent_id": "AP258.1",
+      "step_order": 1,
+      "name": "Initialize $y_i^0 = 0$ for all $i$",
+      "section": "1 Introduction; Appendix A.1",
+      "statement": "Set $y_i^0 \\leftarrow 0$ for $i=1,\\dots,n$ and choose initial iterate $x^0$.",
+      "subclass": "initialize"
+    },
+    {
+      "id": "ASP258.2",
+      "type": "algorithm_step",
+      "parent_id": "AP258.1",
+      "step_order": 2,
+      "name": "Sample index $i_k$ uniformly",
+      "section": "1 Introduction",
+      "statement": "Pick $i_k \\sim \\mathrm{Uniform}\\{1,\\dots,n\\}$ at each iteration $k$.",
+      "subclass": "loop"
+    },
+    {
+      "id": "ASP258.3",
+      "type": "algorithm_step",
+      "parent_id": "AP258.1",
+      "step_order": 3,
+      "name": "Update memory $y^k_{i_k}$",
+      "section": "1 Introduction",
+      "statement": "Set $y^k_{i_k} \\leftarrow f_{i_k}'(x^{k-1})$ and $y^k_i \\leftarrow y^{k-1}_i$ for $i \\neq i_k$.",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP258.4",
+      "type": "algorithm_step",
+      "parent_id": "AP258.1",
+      "step_order": 4,
+      "name": "Iterate update $x^k$",
+      "section": "1 Introduction",
+      "statement": "Set $x^k \\leftarrow x^{k-1} - \\frac{\\alpha}{n}\\sum_{i=1}^n y_i^k$ (in practice divide by $m$, the number of distinct sampled indices, to mitigate bias).",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP258.5",
+      "type": "algorithm_step",
+      "parent_id": "AP258.2",
+      "step_order": 1,
+      "name": "Initialize $L_0 = 1$",
+      "section": "4 Implementation Details",
+      "statement": "Set $L_0 \\leftarrow 1$ and $\\alpha_0 \\leftarrow 2/(L_0 + n\\lambda)$.",
+      "subclass": "initialize"
+    },
+    {
+      "id": "ASP258.6",
+      "type": "algorithm_step",
+      "parent_id": "AP258.2",
+      "step_order": 2,
+      "name": "Line-search test to update $L_k$",
+      "section": "4 Implementation Details",
+      "statement": "If $\\|f_{i_k}'(x^k)\\|^2 > 10^{-8}$ and $f_{i_k}(x^k - (1/L_k)f_{i_k}'(x^k)) > f_{i_k}(x^k) - \\frac{1}{2L_k}\\|f_{i_k}'(x^k)\\|^2$, double $L_k \\leftarrow 2 L_k$; else multiply $L_k \\leftarrow 2^{-1/n} L_k$.",
+      "subclass": "branch"
+    },
+    {
+      "id": "ASP258.7",
+      "type": "algorithm_step",
+      "parent_id": "AP258.2",
+      "step_order": 3,
+      "name": "SAG update with adaptive step",
+      "section": "4 Implementation Details",
+      "statement": "Apply the SAG update~\\eqref{eq:SAG} with step size $\\alpha_k = 2/(L_k + n\\lambda)$.",
+      "subclass": "update"
+    },
+    {
+      "id": "ExP258.1",
+      "type": "example",
+      "name": "$\\ell_2$-regularized logistic regression on benchmark data",
+      "section": "5 Experimental Results",
+      "statement": "Numerical comparison of SAG (with constant Lipschitz step and with line-search) against FG, AFG, L-BFGS, Pegasos, RDA, ESG, NOSG on the binary classification datasets quantum, protein, sido, rcv1, and covertype with $\\lambda = 1/n$.",
+      "tags": ["empirical", "benchmark"]
+    },
+    {
+      "id": "ExP258.2",
+      "type": "example",
+      "name": "Hand-tuned step-size comparison",
+      "section": "5 Experimental Results",
+      "statement": "Second experiment: FG, AFG, Pegasos, SG, ASG (averaged SG), IAG and SAG, each with the best step size in hindsight (powers of 10), on the same five datasets.",
+      "tags": ["empirical", "benchmark"]
+    },
+    {
+      "id": "ExP258.3",
+      "type": "example",
+      "name": "Numerical illustration: SAG rate vs FG/AFG",
+      "section": "3 Convergence Analysis",
+      "statement": "For $n=100000$, $L=100$, $\\mu=0.01$: FG rate $((L-\\mu)/(L+\\mu))^2 = 0.9996$, AFG $1-\\sqrt{\\mu/L}=0.99$, SAG $(1-1/8n)^n = 0.8825$ in $n$ iterations.",
+      "tags": ["numerical-example"]
+    },
+    {
+      "id": "RP258.1",
+      "type": "remark",
+      "name": "SAG matches the SG $O(1/k)$ rate",
+      "section": "3 Convergence Analysis",
+      "statement": "Since $(1-\\mu/(8Ln))^k \\leq \\exp(-k\\mu/(8Ln)) \\leq 8Ln/(k\\mu) = O(n/k)$, the small-step SAG iteration also achieves the standard SG rate, albeit with a constant proportional to $n$.",
+      "tags": ["remark"]
+    },
+    {
+      "id": "RP258.2",
+      "type": "remark",
+      "name": "Step size $1/(16L)$ recovers Proposition 2 rate",
+      "section": "3 Convergence Analysis",
+      "statement": "Since Proposition 2 holds for any $\\mu \\geq 8L/n$, taking $\\mu = 8L/n$ shows that step size $\\alpha_k = 1/(16L)$ achieves the same rate without explicit knowledge of $\\mu$.",
+      "tags": ["remark"]
+    },
+    {
+      "id": "RP258.3",
+      "type": "remark",
+      "name": "Conjectured faster rate for $\\alpha_k = 1/L$",
+      "section": "4 Implementation Details",
+      "statement": "Empirically $\\alpha_k = 1/L$ and $\\alpha_k = 2/(L+n\\mu)$ work even when the Proposition 2 hypothesis fails; the authors conjecture rates substantially faster than Proposition 1 in the general case.",
+      "tags": ["conjecture", "remark"]
+    },
+    {
+      "id": "RP258.4",
+      "type": "remark",
+      "name": "Termination criterion via memory norm",
+      "section": "6 Discussion",
+      "statement": "The quantity $(1/n)\\|\\sum_i y_i^k\\|$ converges to $\\|g'(x^k)\\|$ as $\\|x^k - x^{k-1}\\|\\to 0$, providing a natural stopping criterion for SAG.",
+      "tags": ["remark", "implementation"]
+    }
+  ],
+  "edges": [
+    {"source": "DP258.1", "target": "PrP258.1", "type": "uses"},
+    {"source": "DP258.2", "target": "PrP258.1", "type": "uses"},
+    {"source": "DP258.3", "target": "PrP258.1", "type": "uses"},
+    {"source": "AssumP258.1", "target": "PrP258.1", "type": "uses"},
+    {"source": "DP258.1", "target": "PrP258.2", "type": "uses"},
+    {"source": "DP258.2", "target": "PrP258.2", "type": "uses"},
+    {"source": "DP258.3", "target": "PrP258.2", "type": "uses"},
+    {"source": "AssumP258.1", "target": "PrP258.2", "type": "uses"},
+    {"source": "DP258.4", "target": "AP258.1", "type": "uses"},
+    {"source": "DP258.5", "target": "PP258.1", "type": "uses"},
+    {"source": "DP258.5", "target": "PP258.2", "type": "uses"},
+    {"source": "EP258.3", "target": "AP258.1", "type": "uses"},
+    {"source": "EP258.1", "target": "AP258.3", "type": "uses"},
+    {"source": "EP258.2", "target": "AP258.4", "type": "uses"},
+    {"source": "AP258.1", "target": "ProbP258.1", "type": "solves"},
+    {"source": "AP258.2", "target": "ProbP258.1", "type": "solves"},
+    {"source": "AP258.3", "target": "ProbP258.1", "type": "solves"},
+    {"source": "AP258.4", "target": "ProbP258.1", "type": "solves"},
+    {"source": "AP258.5", "target": "ProbP258.1", "type": "solves"},
+    {"source": "AP258.6", "target": "ProbP258.1", "type": "solves"},
+    {"source": "ProbP258.1", "target": "ProbP258.2", "type": "specializes"},
+    {"source": "ProbP258.2", "target": "ProbP258.3", "type": "specializes"},
+    {"source": "ProbP258.2", "target": "ProbP258.4", "type": "specializes"},
+    {"source": "AP258.1", "target": "AP258.2", "type": "specializes"},
+    {"source": "AP258.5", "target": "AP258.1", "type": "generalizes"},
+    {"source": "PP258.1", "target": "PrP258.1", "type": "proves"},
+    {"source": "PP258.2", "target": "PrP258.2", "type": "proves"},
+    {"source": "LP258.1", "target": "PP258.1", "type": "uses"},
+    {"source": "LP258.1", "target": "PP258.2", "type": "uses"},
+    {"source": "LP258.2", "target": "PP258.2", "type": "uses"},
+    {"source": "TP258.3", "target": "PP258.1", "type": "uses"},
+    {"source": "TP258.3", "target": "PP258.2", "type": "uses"},
+    {"source": "AP258.1", "target": "ExP258.1", "type": "illustrates"},
+    {"source": "AP258.2", "target": "ExP258.1", "type": "illustrates"},
+    {"source": "AP258.3", "target": "ExP258.1", "type": "illustrates"},
+    {"source": "AP258.6", "target": "ExP258.1", "type": "illustrates"},
+    {"source": "AP258.7", "target": "ExP258.1", "type": "illustrates"},
+    {"source": "AP258.8", "target": "ExP258.1", "type": "illustrates"},
+    {"source": "AP258.9", "target": "ExP258.1", "type": "illustrates"},
+    {"source": "AP258.10", "target": "ExP258.1", "type": "illustrates"},
+    {"source": "AP258.11", "target": "ExP258.1", "type": "illustrates"},
+    {"source": "AP258.1", "target": "ExP258.2", "type": "illustrates"},
+    {"source": "AP258.3", "target": "ExP258.2", "type": "illustrates"},
+    {"source": "AP258.4", "target": "ExP258.2", "type": "illustrates"},
+    {"source": "AP258.5", "target": "ExP258.2", "type": "illustrates"},
+    {"source": "AP258.6", "target": "ExP258.2", "type": "illustrates"},
+    {"source": "AP258.7", "target": "ExP258.2", "type": "illustrates"},
+    {"source": "PrP258.1", "target": "ExP258.3", "type": "illustrates"},
+    {"source": "PrP258.2", "target": "ExP258.3", "type": "illustrates"},
+    {"source": "AP258.6", "target": "ExP258.3", "type": "illustrates"},
+    {"source": "EP258.4", "target": "AP258.2", "type": "uses"},
+    {"source": "PSP258.1", "target": "PSP258.2", "type": "uses"},
+    {"source": "PSP258.2", "target": "PSP258.3", "type": "uses"},
+    {"source": "PSP258.3", "target": "PSP258.4", "type": "uses"},
+    {"source": "PSP258.4", "target": "PSP258.5", "type": "uses"},
+    {"source": "PSP258.5", "target": "PSP258.6", "type": "uses"},
+    {"source": "PSP258.6", "target": "PSP258.7", "type": "uses"},
+    {"source": "PSP258.7", "target": "PSP258.8", "type": "uses"},
+    {"source": "PSP258.9", "target": "PSP258.10", "type": "uses"},
+    {"source": "PSP258.10", "target": "PSP258.11", "type": "uses"},
+    {"source": "PSP258.11", "target": "PSP258.12", "type": "uses"},
+    {"source": "PSP258.12", "target": "PSP258.13", "type": "uses"},
+    {"source": "PSP258.13", "target": "PSP258.14", "type": "uses"},
+    {"source": "PSP258.14", "target": "PSP258.15", "type": "uses"},
+    {"source": "ASP258.1", "target": "ASP258.2", "type": "uses"},
+    {"source": "ASP258.2", "target": "ASP258.3", "type": "uses"},
+    {"source": "ASP258.3", "target": "ASP258.4", "type": "uses"},
+    {"source": "ASP258.5", "target": "ASP258.6", "type": "uses"},
+    {"source": "ASP258.6", "target": "ASP258.7", "type": "uses"},
+    {"source": "TP258.1", "target": "RP258.1", "type": "uses"},
+    {"source": "PrP258.1", "target": "RP258.1", "type": "uses"},
+    {"source": "PrP258.2", "target": "RP258.2", "type": "uses"},
+    {"source": "PrP258.1", "target": "RP258.3", "type": "uses"},
+    {"source": "AP258.1", "target": "RP258.4", "type": "uses"}
+  ]
+}

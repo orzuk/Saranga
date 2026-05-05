@@ -1,0 +1,334 @@
+{
+  "metadata": {
+    "alignment_name": "DDPM_vs_ScoreSDE",
+    "paper_a": {
+      "arxiv_id": "2006.11239",
+      "title": "Denoising Diffusion Probabilistic Models"
+    },
+    "paper_b": {
+      "arxiv_id": "2011.13456",
+      "title": "Score-Based Generative Modeling through Stochastic Differential Equations"
+    },
+    "relation_type": "PR",
+    "annotator": "Claude (claude-opus-4-7-silver-with-steps)",
+    "scheme_version": "with_steps_v2",
+    "description": "Parallel rediscovery: DDPM (Ho-Jain-Abbeel) and Score SDE (Song et al.) independently arrive at essentially the same generative diffusion procedure. DDPM works in discrete time with a Gaussian Markov chain, an epsilon-prediction parameterization, and a re-weighted variational bound; Score SDE writes the same construction in continuous time as a forward Ito SDE plus Anderson's reverse-time SDE driven by the score. Score SDE explicitly identifies DDPM's forward chain as a discretization of its VP SDE and DDPM's ancestral sampler as a discretization of the corresponding reverse-time SDE, and rewrites L_simple as denoising score matching. The papers thus describe the same object in dual languages (discrete-time epsilon-prediction vs continuous-time score)."
+  },
+  "matches": [
+    {
+      "paper_a_nodes": ["DP230.2"],
+      "paper_b_nodes": ["DP231.4", "DP231.8"],
+      "match_type": "exact",
+      "confidence": "high",
+      "explanation": "DDPM's forward Markov chain q(x_t|x_{t-1}) = N(sqrt(1-beta_t) x_{t-1}, beta_t I) is the same object that Score SDE both restates as the DDPM perturbation kernel (DP231.4) and identifies as the Euler-Maruyama discretization of the VP SDE (DP231.8). Score SDE's Appendix B derivation (PP231.3) explicitly takes the limit of DDPM's chain to obtain the VP SDE, so the discrete and continuous formulations are the same forward process up to time-stepping."
+    },
+    {
+      "paper_a_nodes": ["DP230.1"],
+      "paper_b_nodes": ["DP231.6", "TP231.1"],
+      "match_type": "exact",
+      "confidence": "high",
+      "explanation": "DDPM's learned reverse Markov chain p_theta(x_{t-1}|x_t) with Gaussian transitions is the discrete-time form of the continuous reverse-time SDE (DP231.6) given by Anderson's theorem (TP231.1). Score SDE's PrP231.2 / PP231.5 explicitly proves that DDPM ancestral sampling is a discretization of the same reverse-time VP SDE, so the underlying generative reverse process is identical."
+    },
+    {
+      "paper_a_nodes": ["DP230.3"],
+      "paper_b_nodes": ["DP231.4"],
+      "match_type": "exact",
+      "confidence": "high",
+      "explanation": "DDPM's notation alpha_t = 1 - beta_t and bar-alpha_t = prod alpha_s appears verbatim in Score SDE's DDPM forward-chain restatement (DP231.4 uses alpha_i := prod_{j<=i}(1 - beta_j)); the symbol 'alpha' is reused with the same definition."
+    },
+    {
+      "paper_a_nodes": ["EP230.3"],
+      "paper_b_nodes": ["DP231.4", "EP231.5"],
+      "match_type": "exact",
+      "confidence": "high",
+      "explanation": "DDPM's closed-form forward marginal q(x_t|x_0) = N(sqrt(bar-alpha_t) x_0, (1 - bar-alpha_t) I) is exactly the DDPM/VP perturbation kernel restated in Score SDE (DP231.4), and is the special case of EP231.5 (closed-form Gaussian perturbation kernels for VE/VP/sub-VP) for the VP SDE."
+    },
+    {
+      "paper_a_nodes": ["EP230.4"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "The closed-form discrete-time conditioned posterior q(x_{t-1}|x_t,x_0) is a DDPM-specific object used to write its Rao-Blackwellized variational bound. Score SDE bypasses this construction entirely — it works at the SDE level with the score function and Anderson's reversal — so there is no direct counterpart."
+    },
+    {
+      "paper_a_nodes": ["DP230.5"],
+      "paper_b_nodes": ["DP231.1"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "DDPM's epsilon-prediction parameterization mu_theta(x_t,t) = (1/sqrt(alpha_t))(x_t - (beta_t/sqrt(1-bar-alpha_t)) eps_theta) plays the same role as Score SDE's score network s_theta(x,t) ~ grad log p_t(x) (DP231.1): both are the learned function that drives the reverse update. They differ by an affine reparameterization eps_theta = -sqrt(1-bar-alpha_t) s_theta. Same conceptual role (learned drift correction), different but interconvertible parameterization."
+    },
+    {
+      "paper_a_nodes": ["DP230.4"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "The discretized Gaussian decoder p_theta(x_0|x_1) for image-pixel output is a DDPM-specific contribution tied to lossless-codelength evaluation on integer pixel data. Score SDE works with continuous data (with uniform dequantization noted in RP231.3) and has no analogous discrete decoder."
+    },
+    {
+      "paper_a_nodes": ["EP230.1", "EP230.2"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "DDPM's variational bound on NLL and its KL decomposition into L_T + sum L_{t-1} + L_0 are the discrete-time ELBO machinery inherited from Sohl-Dickstein. Score SDE does not write an ELBO — it trains via a continuous denoising score-matching objective (EP231.3) and computes likelihoods via the probability flow ODE (AP231.10). No direct counterpart to the per-step KL decomposition."
+    },
+    {
+      "paper_a_nodes": ["EP230.5", "EP230.6"],
+      "paper_b_nodes": ["EP231.2", "EP231.3"],
+      "match_type": "exact",
+      "confidence": "high",
+      "explanation": "DDPM's epsilon-MSE form of L_{t-1} (EP230.5) and the simplified objective L_simple (EP230.6) are the same loss family as Score SDE's DDPM re-weighted ELBO objective (EP231.2 — explicitly rewritten as denoising score matching with weight (1-alpha_i)) and as the discrete-N specialization of the continuous score-matching objective (EP231.3). Score SDE's RP231.1 makes the equivalence explicit. Same loss, written in noise-prediction (DDPM) vs score-prediction (Score SDE) language."
+    },
+    {
+      "paper_a_nodes": ["EP230.7"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "DDPM's alternate variational bound L = KL(q(x_T)||p(x_T)) + sum KL(q(x_{t-1}|x_t)||p_theta(x_{t-1}|x_t)) + H(x_0) and its autoregressive interpretation (PrP230.3) are unique DDPM-side observations used to discuss progressive coding and a generalized bit ordering. Score SDE has no analogue of this alternate bound."
+    },
+    {
+      "paper_a_nodes": ["EP230.8"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "DDPM's progressive estimate hat-x_0 = (x_t - sqrt(1-bar-alpha_t) eps_theta(x_t))/sqrt(bar-alpha_t) (Tweedie-type one-step denoising) is implicit in Score SDE's RP231.2 (Tweedie denoising step at t=0) but is not lifted to a named object in the Score SDE graph; conservatively recorded as none on the L1 nodes."
+    },
+    {
+      "paper_a_nodes": ["PrP230.1"],
+      "paper_b_nodes": ["RP231.1"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "DDPM's Proposition PrP230.1 — that the epsilon-prediction VB term equals (up to a t-dependent weight) a denoising score matching loss — is exactly the equivalence Score SDE's RP231.1 records when stating that SMLD's sigma_i^2 weight and DDPM's (1-alpha_i) weight both correspond to inverse expected score-norm, exposing DDPM/SMLD as the same weighted denoising score-matching family. Same equivalence, stated as a proposition in DDPM and as a remark in Score SDE."
+    },
+    {
+      "paper_a_nodes": ["PrP230.2"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "The Rao-Blackwellized KL decomposition of L into per-step Gaussian KLs is a DDPM-side proposition tied to its discrete variational bound. Score SDE does not derive an analogous per-step decomposition (it uses the SDE / Fokker-Planck framework instead)."
+    },
+    {
+      "paper_a_nodes": ["PrP230.3"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "DDPM's reinterpretation of diffusion as a generalized autoregressive model (with a special masking schedule and T = D) is a paper-specific conceptual remark with no Score SDE counterpart."
+    },
+    {
+      "paper_a_nodes": ["AP230.1"],
+      "paper_b_nodes": ["EP231.3", "EP231.2"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "DDPM's training algorithm (sample x_0, t, eps; SGD on ||eps - eps_theta||^2) is the discrete-N realization of Score SDE's continuous-time score-matching training objective (EP231.3), with weight schedule (1-alpha_i) (EP231.2). Score SDE does not present a separate named training algorithm node — the training objective IS the algorithm — so the match is L1-algorithm to L1-equation, hence analogous."
+    },
+    {
+      "paper_a_nodes": ["AP230.2"],
+      "paper_b_nodes": ["AP231.13", "AP231.3"],
+      "match_type": "exact",
+      "confidence": "high",
+      "explanation": "DDPM's sampling algorithm AP230.2 is exactly Score SDE's cited DDPM ancestral sampler (AP231.13) and is rederived as the predictor in Score SDE's PC sampler for the VP SDE (AP231.3 — same iterate up to the epsilon/score reparameterization). PrP231.2 and PP231.5 explicitly prove this is a discretization of the reverse-time VP SDE."
+    },
+    {
+      "paper_a_nodes": ["AP230.3", "AP230.4"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "DDPM's progressive lossy sender/receiver protocols using minimal random coding are a unique DDPM-side contribution interpreting the variational bound as a codelength. Score SDE has no compression/coding angle (its likelihood story uses the probability flow ODE instead, which is a different idea — see AP231.10)."
+    },
+    {
+      "paper_a_nodes": ["ProbP230.1"],
+      "paper_b_nodes": ["ProbP231.1"],
+      "match_type": "exact",
+      "confidence": "high",
+      "explanation": "Both papers state the same problem: train a generative model on natural-image data using a learned reverse of a fixed Gaussian noising process and produce high-quality samples (CIFAR10, CelebA-HQ, LSUN are common benchmarks). Score SDE phrases it as score-based modeling via SDEs (ProbP231.1); DDPM phrases it as high-fidelity image generation with diffusion models (ProbP230.1). Same problem, equivalent formulations."
+    },
+    {
+      "paper_a_nodes": ["PP230.1"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Appendix B derivation of DDPM's KL decomposition of L is unique to the discrete-time variational-bound treatment (see EP230.2 / PrP230.2 above). Score SDE's PP231.1 (Fokker-Planck / probability flow) is a different derivation for a different theorem."
+    },
+    {
+      "paper_a_nodes": ["PP230.2"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "DDPM's derivation of the epsilon-MSE form of L_{t-1} is the DDPM-side proof that L_simple is a weighted denoising score matching loss. Score SDE assumes/cites this equivalence (RP231.1) without rederiving it as a labeled proof. Conservatively marked none on the L1-proof level."
+    },
+    {
+      "paper_a_nodes": ["PP230.3"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Derivation of the alternate VB EP230.7 is DDPM-specific (mirrors EP230.7 / PrP230.3); no Score SDE counterpart."
+    },
+    {
+      "paper_a_nodes": ["RP230.4"],
+      "paper_b_nodes": ["DP231.3", "AP231.12"],
+      "match_type": "analogous",
+      "confidence": "medium",
+      "explanation": "DDPM's discussion of differences from NCSN (architecture, scaling, schedule) refers to the same NCSN object that Score SDE formalizes as its noise-conditional score network (DP231.3) and annealed Langevin sampler (AP231.12). Both papers position their construction relative to NCSN; the alignment is at the 'related-work' level."
+    },
+    {
+      "paper_a_nodes": ["ExP230.1"],
+      "paper_b_nodes": ["ExP231.1"],
+      "match_type": "exact",
+      "confidence": "high",
+      "explanation": "Both papers report unconditional CIFAR-10 generation as their headline benchmark (DDPM: IS 9.46, FID 3.17; Score SDE: IS 9.89, FID 2.20 — Score SDE explicitly improves over DDPM on the same metric/dataset)."
+    },
+    {
+      "paper_a_nodes": ["ExP230.2"],
+      "paper_b_nodes": ["ExP231.7"],
+      "match_type": "analogous",
+      "confidence": "medium",
+      "explanation": "Both papers showcase CelebA-HQ samples and latent-space interpolations. DDPM uses 256x256 with linear interpolation in x_t; Score SDE uses spherical interpolation on probability-flow latent codes. Same demonstration, different latent construction."
+    },
+    {
+      "paper_a_nodes": ["ExP230.3"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "low",
+      "explanation": "DDPM's LSUN Bedroom/Church/Cat sample-quality benchmarks are mentioned only in passing in Score SDE (which uses LSUN for inpainting/colorization, ExP231.5, not for FID benchmarking). No precise example-level counterpart."
+    },
+    {
+      "paper_a_nodes": ["ExP230.4"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "DDPM's rate-distortion curve on CIFAR10 is a unique DDPM-side experiment supporting its codelength interpretation; Score SDE has no rate-distortion analysis."
+    },
+    {
+      "paper_a_nodes": ["ExP230.5"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "DDPM's progressive generation demo (showing hat-x_0 at intermediate steps) is conceptually echoed in Score SDE's discussion of the probability-flow latent code (ExP231.6, ExP231.7) but not directly mirrored as an example."
+    },
+    {
+      "paper_a_nodes": ["TP230.1"],
+      "paper_b_nodes": ["DP231.4"],
+      "match_type": "exact",
+      "confidence": "high",
+      "explanation": "Both papers cite Sohl-Dickstein et al. 2015 as the diffusion-probabilistic-models foundation. In Score SDE this prior result is folded into the DDPM-chain definition DP231.4 (which co-cites Sohl-Dickstein 2015 and Ho et al. 2020). External-vs-external cross-citation, no signal for relation_type."
+    },
+    {
+      "paper_a_nodes": ["TP230.2"],
+      "paper_b_nodes": ["DP231.3", "EP231.1", "AP231.12"],
+      "match_type": "exact",
+      "confidence": "high",
+      "explanation": "DDPM's cited NCSN result (denoising score matching with annealed Langevin dynamics) is exactly Score SDE's NCSN definition (DP231.3), SMLD denoising score-matching objective (EP231.1), and annealed Langevin algorithm (AP231.12), all attributed to Song & Ermon 2019. External citation match."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP231.2"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Score SDE's SMLD perturbation kernel p_sigma(tilde-x|x) = N(x, sigma^2 I) over multiple noise scales is the variance-exploding noise model from Song & Ermon 2019. DDPM uses a different (variance-preserving) Markov-chain perturbation and never builds the SMLD kernel; this is a Score-SDE-side construction with no DDPM counterpart."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP231.5"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "The continuous-time forward Ito SDE dx = f(x,t) dt + g(t) dw is the central Score-SDE-side abstraction. DDPM stays entirely in discrete time and never writes the SDE; the closest object on the DDPM side is the discrete forward chain DP230.2, which is matched separately as the (VP-)discretization."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP231.7"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "The variance-exploding (VE) SDE is Score SDE's continuous-time limit of the SMLD chain; DDPM has no VE construction (it uses variance-preserving noise)."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP231.9"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "The sub-VP SDE is a Score-SDE-side novel construction with tighter variance bound than VP; not present in DDPM."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP231.10", "TP231.2", "PP231.1"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "The probability flow ODE (DP231.10), its marginal-equivalence theorem (TP231.2), and the Fokker-Planck-based proof (PP231.1) are unique Score-SDE contributions enabling deterministic sampling and exact-likelihood evaluation. DDPM has no deterministic sampler and no analogous ODE."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP231.11"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "The general matrix-diffusion SDE with state-dependent G(x,t) is Score SDE's most general continuous-time form (Appendix A); DDPM has no such generalization."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP231.12", "TP231.4", "ProbP231.2", "AP231.7", "AP231.8", "AP231.9"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Conditional / inverse-problem sampling — conditional reverse-time SDE (DP231.12, TP231.4), the conditional sampling problem (ProbP231.2), imputation (AP231.7), colorization (AP231.8), and classifier-guided class-conditional sampling (AP231.9) — is a major Score-SDE-side contribution that DDPM does not address."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["EP231.4"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Sliced-score-matching variant of the training objective is a Score-SDE-side fallback for non-affine drifts; DDPM has no analogue (it uses denoising score matching only)."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["TP231.3", "PP231.4"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "The variance bound sub-VP <= VP and its proof are unique Score-SDE contributions tied to the sub-VP SDE construction (DP231.9); no DDPM counterpart."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["PrP231.2", "PP231.5"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Score SDE's Proposition that the DDPM ancestral sampler matches reverse-diffusion sampling of the VP SDE in the limit (and its Appendix-F proof) is a Score-SDE-side bridging result. The corresponding DDPM-side claim (that AP230.2 equals the reverse-time SDE discretization) is not stated in DDPM's graph; logged here as Score-SDE-only."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["PP231.2", "PP231.3"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Score SDE's Appendix-B derivations of the VE and VP SDEs as continuum limits of the SMLD/DDPM chains are Score-SDE-side proofs that connect the discrete and continuous formulations. DDPM never takes the continuous limit, so it has no analogous proof."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["AP231.1", "AP231.2", "AP231.4"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "The Predictor-Corrector sampler (general AP231.1, VE-specialization AP231.2, reverse-diffusion predictor AP231.4) is Score SDE's flagship sampler combining a numerical SDE solver with a score-based MCMC corrector. DDPM uses a single-shot ancestral sampler with no MCMC corrector; the PC framework has no DDPM counterpart."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["AP231.5", "AP231.10", "EP231.6", "ProbP231.3"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Probability-flow ODE sampler (AP231.5), exact-likelihood computation via probability flow + Hutchinson trace estimator (AP231.10, EP231.6), and the exact-likelihood-evaluation problem (ProbP231.3) are all Score-SDE-side contributions enabled by the deterministic ODE. DDPM evaluates likelihood only via the variational bound (EP230.1)."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["AP231.6"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Score SDE introduces an ancestral sampler for SMLD models (analogous derivation as DDPM's ancestral sampler but for the variance-exploding chain). DDPM does not consider SMLD/VE schedules, so there is no counterpart."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["AP231.11"],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "Annealed Langevin dynamics as a corrector with signal-to-noise step-size schedule is a Score-SDE-side algorithm (a generalization of NCSN's sampler used inside the PC framework). DDPM has no Langevin/MCMC corrector step in its sampler."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["ExP231.2", "ExP231.3", "ExP231.4", "ExP231.5", "ExP231.6"],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "Score-SDE-side experimental contributions without direct DDPM counterparts: CIFAR-10 likelihood at 2.99 bits/dim via probability flow (ExP231.2), CelebA-HQ 1024x1024 (ExP231.3 — DDPM only goes to 256x256), class-conditional CIFAR-10 (ExP231.4), LSUN inpainting/colorization (ExP231.5), and unique-identifiability empirical verification (ExP231.6, an ODE-specific experiment)."
+    }
+  ]
+}

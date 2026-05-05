@@ -1,0 +1,96 @@
+{
+  "metadata": {
+    "title": "Scene Representation Networks: Continuous 3D-Structure-Aware Neural Scene Representations (Sitzmann, Zollhoefer, Wetzstein, 2019)",
+    "arxiv_id": "1906.01618",
+    "year": 2019,
+    "venue": "NeurIPS 2019",
+    "framework": "Continuous neural scene representations with learned 3D structure via differentiable ray marching",
+    "annotator": "Claude Opus 4.6",
+    "source_note": "Extraction based on well-known content of arXiv:1906.01618."
+  },
+  "nodes": [
+    {
+      "id": "DP_SR.1",
+      "type": "definition",
+      "rigor": "semi_formal",
+      "subclass": "concept",
+      "name": "Continuous neural scene representation",
+      "section": "1",
+      "statement": "A scene representation network (SRN) represents a scene as a continuous function $\\Phi: \\mathbf{x} \\in \\mathbb{R}^3 \\to \\mathbf{f} \\in \\mathbb{R}^{256}$ mapping 3D world coordinates to a feature vector that encodes local scene properties (geometry and appearance). This function is parameterized by a neural network and is queried at arbitrary continuous 3D locations."
+    },
+    {
+      "id": "DP_SR.2",
+      "type": "definition",
+      "rigor": "semi_formal",
+      "subclass": "formulation",
+      "name": "Differentiable ray marching",
+      "section": "3.2",
+      "statement": "Image formation is modeled as differentiable ray marching. For each pixel, a ray $\\mathbf{r}(t) = \\mathbf{o} + t\\mathbf{d}$ is cast from the camera. An LSTM-based recurrent network iteratively refines the step along the ray: at each step $i$, the feature $\\mathbf{f}_i = \\Phi(\\mathbf{x}_i)$ at the current 3D point is fed to the LSTM, which outputs a step size $\\Delta t_i$ and updated hidden state. The final surface point $\\mathbf{x}^*$ is the last position after $K$ marching steps."
+    },
+    {
+      "id": "DP_SR.3",
+      "type": "definition",
+      "rigor": "semi_formal",
+      "subclass": "architecture",
+      "name": "Pixel generator (appearance model)",
+      "section": "3.3",
+      "statement": "A pixel generator network $\\Pi: \\mathbf{f} \\to \\mathbf{c}$ maps the feature vector $\\mathbf{f}^* = \\Phi(\\mathbf{x}^*)$ at the found surface point to an RGB color $\\mathbf{c} = (r, g, b)$. This is a small MLP (1x1 convolution) applied independently per pixel. The pixel generator is shared across all scenes in a category, learning a common appearance model."
+    },
+    {
+      "id": "DP_SR.4",
+      "type": "definition",
+      "rigor": "semi_formal",
+      "subclass": "architecture",
+      "name": "Hypernetwork for scene conditioning",
+      "section": "3.4",
+      "statement": "To generalize across scenes, SRN uses a hypernetwork that maps a per-scene latent code $\\mathbf{z}$ to the weights of the scene representation network $\\Phi$. Given a new scene (few input views), the latent code $\\mathbf{z}$ is optimized at test time to fit the new observations, enabling few-shot 3D reconstruction."
+    },
+    {
+      "id": "DP_SR.5",
+      "type": "definition",
+      "rigor": "semi_formal",
+      "subclass": "concept",
+      "name": "3D-structure-aware representation",
+      "section": "1",
+      "statement": "Unlike 2D image-space representations, SRNs are 3D-structure-aware: the representation lives in 3D world coordinates, and image formation is achieved through explicit geometric operations (ray casting and marching). This inductive bias ensures multiview consistency and enables geometric reasoning."
+    },
+    {
+      "id": "AL_SR.1",
+      "type": "algorithm",
+      "rigor": "semi_formal",
+      "subclass": "training",
+      "name": "SRN training procedure",
+      "section": "4",
+      "statement": "SRNs are trained end-to-end from only 2D images and camera poses, without 3D supervision (no depth, no meshes). The loss is $\\mathcal{L} = \\sum_{\\text{pixels}} \\|\\hat{\\mathbf{c}} - \\mathbf{c}_{\\text{gt}}\\|_2^2$. Gradients flow through the pixel generator, through the ray marching LSTM, and into the scene representation network $\\Phi$. Trained with Adam optimizer."
+    },
+    {
+      "id": "EP_SR.1",
+      "type": "experiment",
+      "rigor": "informal",
+      "subclass": "benchmark",
+      "name": "Novel view synthesis results",
+      "section": "5",
+      "statement": "SRNs achieve state-of-the-art novel view synthesis on ShapeNet categories (cars, chairs) from sparse input views, outperforming DeepSDF, Occupancy Networks, and DVR in both reconstruction quality and view synthesis. The learned representations capture meaningful geometry (smooth surfaces, correct occlusion).",
+      "datasets": ["ShapeNet (cars, chairs)"]
+    },
+    {
+      "id": "EP_SR.2",
+      "type": "experiment",
+      "rigor": "informal",
+      "subclass": "application",
+      "name": "Few-shot reconstruction and interpolation",
+      "section": "5",
+      "statement": "Given a single input view of a new object, SRN reconstructs a plausible 3D representation by optimizing the latent code $\\mathbf{z}$. The learned latent space supports smooth shape and appearance interpolation between objects.",
+      "datasets": ["ShapeNet"]
+    }
+  ],
+  "edges": [
+    {"source": "DP_SR.1", "target": "DP_SR.2", "type": "uses", "note": "The continuous scene function is queried along rays during ray marching."},
+    {"source": "DP_SR.2", "target": "DP_SR.3", "type": "uses", "note": "Ray marching finds the surface point whose feature is mapped to color."},
+    {"source": "DP_SR.5", "target": "DP_SR.1", "type": "uses", "note": "3D-structure-awareness is achieved by the 3D coordinate-based representation."},
+    {"source": "DP_SR.4", "target": "DP_SR.1", "type": "uses", "note": "Hypernetwork generates per-scene weights for the representation."},
+    {"source": "DP_SR.3", "target": "AL_SR.1", "type": "uses", "note": "Pixel colors from the generator are compared to ground truth."},
+    {"source": "AL_SR.1", "target": "EP_SR.1", "type": "tests", "note": "Trained SRN is evaluated on view synthesis."},
+    {"source": "DP_SR.4", "target": "EP_SR.2", "type": "tests", "note": "Hypernetwork enables few-shot reconstruction via latent code optimization."}
+  ]
+}

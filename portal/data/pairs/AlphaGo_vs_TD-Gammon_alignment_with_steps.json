@@ -1,0 +1,250 @@
+{
+  "metadata": {
+    "alignment_name": "AlphaGo_vs_TD-Gammon",
+    "paper_a": {
+      "arxiv_id": "",
+      "title": "Mastering the Game of Go with Deep Neural Networks and Tree Search"
+    },
+    "paper_b": {
+      "arxiv_id": "",
+      "title": "Temporal Difference Learning and TD-Gammon"
+    },
+    "relation_type": "SM",
+    "annotator": "Claude (claude-opus-4-7-silver-with-steps)",
+    "scheme_version": "with_steps_v2",
+    "description": "Both papers use the same overarching method: a deep neural network trained by self-play on a two-player perfect-information game, with the network learning to predict the game's expected outcome (value) and being used (directly or via search) for move selection. AlphaGo extends and scales this template (separate policy + value networks, REINFORCE policy gradient and MSE value regression instead of TD($\\lambda$), and large-scale MCTS at decision time) to the much harder game of Go. TD-Gammon's TD($\\lambda$) self-play training of an MLP value function for backgammon is the methodological ancestor; Silver et al. cite it as the canonical precedent for self-play RL on board games."
+  },
+  "matches": [
+    {
+      "paper_a_nodes": ["DP234.1"],
+      "paper_b_nodes": ["DP235.1"],
+      "match_type": "analogous",
+      "confidence": "medium",
+      "explanation": "AlphaGo's 'Alternating Markov Game' (two-player zero-sum, deterministic transitions, terminal reward) and TD-Gammon's 'Reinforcement Learning Paradigm' (state, action, scalar reward) both fix the formal problem setting. AlphaGo's is the specialized two-player perfect-information variant; TD-Gammon states the generic single-agent RL frame and only later restricts to backgammon (which is itself a two-player stochastic game). Same role at the head of each paper, narrower object on the AlphaGo side."
+    },
+    {
+      "paper_a_nodes": ["DP234.2"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "AlphaGo's explicit 'Policy' definition $p(a\\mid s)$ has no separately stated counterpart in the TD-Gammon JSON. TD-Gammon's policy is implicit: at every ply pick the move whose successor state has maximum predicted equity (greedy w.r.t. the value network). The notion of a stochastic policy distribution over actions is not factored out as its own object."
+    },
+    {
+      "paper_a_nodes": ["DP234.3", "DP234.4"],
+      "paper_b_nodes": ["DP235.6"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "AlphaGo defines the value function under a policy $v^p(s) = \\mathbb{E}[z_t\\mid s_t=s, a\\sim p]$ and the optimal value $v^*(s)$ via the minimax recursion. TD-Gammon defines 'Equity' as 'the network's score for a position, interpreted as the estimate of expected outcome of the game from that position'. They are the same conceptual object (expected terminal reward from a state) but TD-Gammon never separates 'value under a policy' from 'optimal value' and never writes the minimax recursion (backgammon is symmetric and equity is taken from the side-to-move's perspective, but no explicit $\\max$ over actions appears in the definition)."
+    },
+    {
+      "paper_a_nodes": ["DP234.5", "DP234.7"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "AlphaGo's two policy networks ($p_\\sigma$ trained by SL on human games, $p_\\rho$ refined by self-play policy gradient) have no analogue in TD-Gammon. TD-Gammon does not separate a policy network from a value network: there is one MLP that outputs expected-outcome estimates, and the policy is obtained greedily from those estimates. Moreover TD-Gammon has no supervised-learning pre-training stage (no expert-game database)."
+    },
+    {
+      "paper_a_nodes": ["DP234.6", "DP234.9"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "AlphaGo's fast rollout policy $p_\\pi$ (linear softmax over 3x3 patterns for Monte Carlo rollouts) and tree policy $p_\\tau$ (placeholder priors at newly expanded nodes) are MCTS-internal scaffolding. TD-Gammon performs no rollouts during play (only optional 2-ply expectimax in TD-Gammon 2.0) and has no MCTS tree, so neither object has a counterpart."
+    },
+    {
+      "paper_a_nodes": ["DP234.8"],
+      "paper_b_nodes": ["DP235.4", "DP235.5"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "AlphaGo's value network $v_\\theta(s)$ is a deep convolutional network with a tanh scalar output predicting $v^{p_\\rho}(s) \\approx v^*(s)$. TD-Gammon's MLP, defined together with its input/output encoding (board encoding $\\to$ 4-component sigmoid output of win/gammon probabilities), plays the same role: a parametric estimator of the position's expected outcome. The match is analogous (not exact) because the architectures (deep CNN vs single-hidden-layer sigmoidal MLP) and outputs (scalar tanh vs 4-vector of win/gammon probabilities) differ, but the role in the system is identical."
+    },
+    {
+      "paper_a_nodes": ["DP234.10", "DP234.11", "DP234.12"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Edge statistics $(P, N_v, N_r, W_v, W_r, Q)$, the combined action value $Q(s,a)=(1-\\lambda)W_v/N_v + \\lambda W_r/N_r$, and the leaf evaluation $V(s_L)=(1-\\lambda)v_\\theta(s_L) + \\lambda z_L$ are MCTS-tree bookkeeping. TD-Gammon has no search tree at training time, so these objects have no counterpart."
+    },
+    {
+      "paper_a_nodes": ["EP234.1"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "AlphaGo's SL policy gradient update $\\Delta\\sigma \\propto \\partial \\log p_\\sigma / \\partial \\sigma$ corresponds to a supervised maximum-likelihood pretraining stage that TD-Gammon does not have."
+    },
+    {
+      "paper_a_nodes": ["EP234.2", "EP234.3"],
+      "paper_b_nodes": ["EP235.1", "EP235.2"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "Both papers define the gradient updates that drive self-play training. TD-Gammon's TD($\\lambda$) update $\\Delta w_t = \\alpha (Y_{t+1}-Y_t)\\sum_{k\\le t}\\lambda^{t-k}\\nabla_w Y_k$ with the terminal substitution $z - Y_f$ is one update rule that simultaneously bootstraps a value estimator and improves play. AlphaGo factors this into two separate learning rules: REINFORCE policy gradient $\\Delta\\rho \\propto (\\partial\\log p_\\rho /\\partial\\rho)\\, z_t$ for the policy network and MSE regression $\\Delta\\theta \\propto (z - v_\\theta)\\partial v_\\theta/\\partial\\theta$ for the value network. The MSE update is essentially TD(0) with $\\lambda = 0$ on Monte Carlo returns; the REINFORCE update has no analogue inside TD-Gammon (TD-Gammon has no separate policy parameters). Same family of self-play gradient learning, but split into two specialized rules in AlphaGo."
+    },
+    {
+      "paper_a_nodes": ["EP234.4"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "PUCT exploration bonus is part of MCTS action selection; TD-Gammon has no tree search and no analogous bonus."
+    },
+    {
+      "paper_a_nodes": ["TP234.1"],
+      "paper_b_nodes": ["TP235.1"],
+      "match_type": "analogous",
+      "confidence": "low",
+      "explanation": "Both papers cite a single asymptotic-guarantee theorem from prior work. AlphaGo cites Kocsis-Szepesvari (UCT converges to $v^*$); TD-Gammon cites the universal approximation theorem for MLPs. They are not the same theorem and not even about the same quantity, but they play identical structural roles: an external convergence/expressivity guarantee invoked to motivate the proposed method. Match is analogous-low because the underlying mathematics is different."
+    },
+    {
+      "paper_a_nodes": ["AP234.1"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "AlphaGo's supervised pretraining of $p_\\sigma$ on 30M KGS positions has no counterpart in TD-Gammon, which trains tabula rasa from random weights."
+    },
+    {
+      "paper_a_nodes": ["AP234.2"],
+      "paper_b_nodes": ["AP235.1"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "This is the central methodological correspondence. Both algorithms train a neural network on a two-player game by self-play. TD-Gammon (AP235.1) plays the network against itself, picks the greedy move at each ply, and updates weights by TD($\\lambda$) using temporally successive predictions plus the terminal outcome. AlphaGo's RL policy training (AP234.2) plays $p_\\rho$ against random snapshots from a past-opponent pool, scores each game, and updates $\\rho$ by REINFORCE with a value-network baseline. Same paradigm (self-play deep RL on a board game), different update rule (TD($\\lambda$) vs REINFORCE) and a key algorithmic refinement in AlphaGo (opponent pool vs current-network self-play to avoid policy collapse)."
+    },
+    {
+      "paper_a_nodes": ["ASP234.6", "ASP234.7", "ASP234.8", "ASP234.9"],
+      "paper_b_nodes": ["ASP235.1", "ASP235.2", "ASP235.3", "ASP235.4", "ASP235.5"],
+      "match_type": "analogous",
+      "confidence": "medium",
+      "explanation": "Composite L2 alignment of the two self-play training loops. Initialization: TD-Gammon starts from random weights (ASP235.1); AlphaGo initializes $\\rho = \\sigma$ from the SL pretrained network and seeds an opponent pool (ASP234.6). Game generation: TD-Gammon plays a single self-play game greedily (ASP235.2); AlphaGo plays 128 parallel games against a randomly sampled past opponent (ASP234.7). Update: TD-Gammon applies the TD($\\lambda$) per-step update (ASP235.3) and the terminal substitution $z - Y_f$ (ASP235.4); AlphaGo applies a single REINFORCE-with-baseline update at game end summed over the trajectory (ASP234.8). Iteration: TD-Gammon repeats for $\\sim 10^5$ games (ASP235.5); AlphaGo periodically appends $\\rho$ to the opponent pool (ASP234.9). Same loop structure, different update rules and a population-based opponent-sampling refinement on the AlphaGo side."
+    },
+    {
+      "paper_a_nodes": ["AP234.3"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "AlphaGo's value-network regression algorithm trains $v_\\theta$ by MSE on (state, outcome) pairs drawn from decorrelated self-play games. TD-Gammon does not have a separate value-regression stage; its single MLP is the value network and is trained jointly with play by TD($\\lambda$). The mathematical content (MSE on Monte Carlo returns) is the $\\lambda=0$ degenerate case of TD($\\lambda$) on terminal-reward returns, but as algorithms they are organized very differently and are not directly aligned (the closest L1 relation is captured under AP234.2 $\\leftrightarrow$ AP235.1)."
+    },
+    {
+      "paper_a_nodes": ["ASP234.10", "ASP234.11", "ASP234.12"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "L2 sub-steps of value-network regression (decorrelated position generation by mixing $p_\\sigma$, uniform random action, and $p_\\rho$; single-sample-per-game scoring; mini-batch MSE gradient step). TD-Gammon has no analogous decorrelation or regression sub-routine."
+    },
+    {
+      "paper_a_nodes": ["AP234.4"],
+      "paper_b_nodes": ["AP235.4"],
+      "match_type": "analogous",
+      "confidence": "low",
+      "explanation": "Both papers add a search procedure on top of the trained network at decision time. AlphaGo's APV-MCTS is an asynchronous, multi-threaded MCTS with a four-stage simulation loop (Selection, Evaluation, Backup, Expansion) that combines policy priors $p_\\sigma$, value-network estimates $v_\\theta$, and fast rollouts $p_\\pi$. TD-Gammon 2.0 adds a heuristic 2-ply expectimax lookahead over the dice distribution. The match is analogous-low: same structural role (search augmentation of a learned evaluator) but vastly different machinery (deep-tree MCTS with neural priors and rollouts vs shallow expectimax with no rollouts)."
+    },
+    {
+      "paper_a_nodes": ["ASP234.1", "ASP234.2", "ASP234.3", "ASP234.4", "ASP234.5"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "L2 sub-steps of APV-MCTS (Selection, Evaluation, Backup with virtual loss, Expansion, Final Move Selection) have no counterpart in TD-Gammon's much shallower 2-ply lookahead, and the v2 spec disallows orphan L2 matches anyway."
+    },
+    {
+      "paper_a_nodes": ["AP234.5"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Distributed APV-MCTS (master holding the search tree, 1202 worker CPUs running rollouts, 176 worker GPUs evaluating networks) is an engineering contribution specific to AlphaGo. TD-Gammon has no distributed counterpart."
+    },
+    {
+      "paper_a_nodes": ["AP234.6"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Cached-move rollout heuristic (last-good-reply-style hash table keyed by 3x3 pattern context) is a Go-specific MCTS rollout improvement with no TD-Gammon analogue."
+    },
+    {
+      "paper_a_nodes": ["AP234.7"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Dihedral-symmetry ensembling of network evaluations exploits the $19\\times 19$ board's reflection/rotation symmetries. Backgammon has no such board symmetry and TD-Gammon has nothing analogous."
+    },
+    {
+      "paper_a_nodes": ["AP234.8"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Cited prior work (alpha-beta pruning) on the AlphaGo side with no corresponding citation on the TD-Gammon side."
+    },
+    {
+      "paper_a_nodes": ["AP234.9"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Cited prior work (UCT) on the AlphaGo side with no corresponding citation on the TD-Gammon side."
+    },
+    {
+      "paper_a_nodes": ["AP234.10"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Cited baseline (Pachi) on the AlphaGo side; TD-Gammon's analogous baselines (Neurogammon and human masters Robertie/Magriel/Davis) are encoded as examples (ExP235.1, ExP235.4) rather than as separate algorithm nodes, so there is no algorithm-to-algorithm baseline match."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["AP235.2"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Cited backpropagation algorithm on the TD-Gammon side; AlphaGo also uses backpropagation but does not cite it as a separate node, so this is a one-sided cited dependency."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["AP235.3"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "TD-Gammon's post-hoc Zadeh-Kobliska doubling-cube formula is backgammon-specific (no doubling cube exists in Go). No AlphaGo counterpart."
+    },
+    {
+      "paper_a_nodes": ["ProbP234.1"],
+      "paper_b_nodes": ["ProbP235.1"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "Both top-level problem statements ask for a strong evaluator and move-selector for a board game whose state space defeats exact methods. AlphaGo: superhuman play in Go (branching $b\\approx 250$, depth $d\\approx 150$; need $v(s)\\approx v^*(s)$ and a sampling policy). TD-Gammon: master-level evaluator for backgammon (state space $> 10^{20}$, branching of several hundred per ply). Same problem template, different game (deterministic perfect-information vs stochastic perfect-information)."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["ProbP235.2"],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "TD-Gammon's generic delayed-reward / temporal-credit-assignment problem is stated abstractly. AlphaGo inherits the same difficulty (rewards arrive only at the terminal Go position) but does not separately state it as a problem node."
+    },
+    {
+      "paper_a_nodes": ["RP234.1"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "AlphaGo's empirical observation that the SL policy network outperforms the stronger RL policy network as MCTS prior is specific to having two policy networks; TD-Gammon has only one network and no MCTS prior."
+    },
+    {
+      "paper_a_nodes": ["RP234.2"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Observation that $v_\\theta \\approx v^{p_\\rho}$ outperforms $v_\\theta \\approx v^{p_\\sigma}$ requires a two-policy setup absent in TD-Gammon."
+    },
+    {
+      "paper_a_nodes": ["RP234.3"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "AlphaGo's diagnosis of value-network overfitting and its remedy (decorrelated single-sample-per-game self-play data set) addresses a problem that TD-Gammon's online TD($\\lambda$) training does not face in the same form. No corresponding remark on the TD-Gammon side."
+    },
+    {
+      "paper_a_nodes": ["RP234.4"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Comment on dihedral-invariant filters hurting large CNNs is Go-board-symmetry-specific."
+    },
+    {
+      "paper_a_nodes": ["RP234.5"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "AlphaGo match-time hyperparameter list ($\\beta=0.67, \\lambda=0.5, n_{vl}=3, n_{thr}=40, c_{puct}=5$) is system-specific; TD-Gammon's hyperparameters are not enumerated as a separate remark."
+    }
+  ]
+}

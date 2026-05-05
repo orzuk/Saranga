@@ -1,0 +1,83 @@
+{
+  "metadata": {
+    "title": "Asynchronous Methods for Deep Reinforcement Learning (Mnih et al., 2016)",
+    "arxiv_id": "1602.01783",
+    "year": 2016,
+    "venue": "ICML 2016",
+    "framework": "Asynchronous multi-threaded RL training with parallel actor-learners, culminating in A3C (Asynchronous Advantage Actor-Critic)",
+    "annotator": "Claude (claude-code)",
+    "source_note": "Extraction based on arXiv:1602.01783 PDF text."
+  },
+  "nodes": [
+    {
+      "id": "DP_A3C.1",
+      "type": "definition",
+      "name": "Asynchronous training framework",
+      "section": "3",
+      "statement": "Multiple actor-learner threads run in parallel on a single multi-core CPU, each with its own copy of the environment. Each thread computes gradients locally and asynchronously updates a shared global parameter vector $\\theta$, using asynchronous SGD or RMSProp without locks."
+    },
+    {
+      "id": "DP_A3C.2",
+      "type": "definition",
+      "name": "Advantage actor-critic",
+      "section": "4",
+      "statement": "An actor-critic architecture where the policy $\\pi(a_t|s_t; \\theta)$ (actor) and value function $V(s_t; \\theta_v)$ (critic) share a convolutional neural network body. The policy gradient uses the advantage $A(s_t, a_t) = R_t - V(s_t; \\theta_v)$ as baseline, where $R_t = \\sum_{k=0}^{n-1} \\gamma^k r_{t+k} + \\gamma^n V(s_{t+n}; \\theta_v)$ is the $n$-step return."
+    },
+    {
+      "id": "DP_A3C.3",
+      "type": "definition",
+      "name": "n-step returns",
+      "section": "4",
+      "statement": "Instead of one-step TD, use $n$-step returns: $R_t = \\sum_{k=0}^{n-1} \\gamma^k r_{t+k} + \\gamma^n V(s_{t+n}; \\theta_v)$, which provides a better bias-variance tradeoff and propagates rewards faster. Operates up to $t_{\\max}$ steps or until a terminal state."
+    },
+    {
+      "id": "DP_A3C.4",
+      "type": "definition",
+      "name": "Entropy regularization",
+      "section": "4",
+      "statement": "Add an entropy bonus $H(\\pi(s_t; \\theta))$ to the policy loss to discourage premature convergence to deterministic policies and encourage exploration. The full loss gradient for the policy includes $\\beta \\nabla_\\theta H(\\pi(s_t; \\theta))$."
+    },
+    {
+      "id": "EQ_A3C.1",
+      "type": "equation",
+      "name": "Policy gradient with advantage",
+      "section": "4",
+      "statement": "$\\nabla_\\theta \\log \\pi(a_t | s_t; \\theta) (R_t - V(s_t; \\theta_v)) + \\beta \\nabla_\\theta H(\\pi(s_t; \\theta))$"
+    },
+    {
+      "id": "EQ_A3C.2",
+      "type": "equation",
+      "name": "REINFORCE policy gradient (baseline form)",
+      "section": "4",
+      "statement": "$\\nabla_\\theta \\log \\pi(a_t | s_t; \\theta) (R_t - b_t)$ where $b_t$ is a baseline that does not depend on the action. Setting $b_t = V(s_t; \\theta_v)$ gives the advantage actor-critic."
+    },
+    {
+      "id": "AG_A3C.1",
+      "type": "algorithm",
+      "name": "A3C algorithm",
+      "section": "Supplementary (Algorithm S3)",
+      "statement": "Each thread: (1) Sync local parameters $\\theta' \\leftarrow \\theta$ from global. (2) Interact with environment for up to $t_{\\max}$ steps using policy $\\pi(\\cdot; \\theta')$, collecting $(s_t, a_t, r_t)$. (3) Compute $n$-step returns $R_t$ and accumulate gradients $d\\theta \\leftarrow d\\theta + \\nabla_{\\theta'} \\log \\pi(a_t|s_t; \\theta')(R_t - V(s_t; \\theta'_v))$ and $d\\theta_v \\leftarrow d\\theta_v + \\nabla_{\\theta'_v} (R_t - V(s_t; \\theta'_v))^2$. (4) Asynchronously update global $\\theta, \\theta_v$ using accumulated gradients."
+    },
+    {
+      "id": "RM_A3C.1",
+      "type": "remark",
+      "name": "Decorrelation via parallelism replaces experience replay",
+      "section": "3",
+      "statement": "Multiple parallel actors in different parts of the environment naturally decorrelate their experiences, providing a complementary stabilization mechanism to experience replay (used in DQN). This enables on-policy methods like actor-critic and SARSA to be trained stably with neural networks."
+    },
+    {
+      "id": "RM_A3C.2",
+      "type": "remark",
+      "name": "Four asynchronous methods presented",
+      "section": "4",
+      "statement": "The paper presents asynchronous variants of four RL algorithms: one-step Q-learning, one-step SARSA, n-step Q-learning, and advantage actor-critic (A3C). A3C achieves the best performance while being the most general."
+    },
+    {
+      "id": "RM_A3C.3",
+      "type": "remark",
+      "name": "CPU training competitive with GPU",
+      "section": "5",
+      "statement": "A3C on a single multi-core CPU (16 threads) trains faster and achieves better results than DQN on a GPU, while using far less memory (no experience replay buffer). A3C achieves superhuman performance on many Atari games and solves continuous control tasks."
+    }
+  ]
+}

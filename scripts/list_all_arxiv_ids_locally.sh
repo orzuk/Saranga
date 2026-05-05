@@ -10,7 +10,7 @@
 module load python/3.10
 
 # Full path to your CLI script
-SCRIPT=/sci/labs/orzuk/orzuk/github/Authomathics/src/extract_arxiv_data.py
+SCRIPT=/<cluster>/<user>/github/Authomathics/src/extract_arxiv_data.py
 
 # Ensure it’s executable (optional if already done)
 chmod +x "$SCRIPT"

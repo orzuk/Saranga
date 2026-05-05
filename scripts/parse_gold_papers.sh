@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Parse, validate, visualize, and analyze Yaron's 10 gold-standard papers.
+# Parse, validate, visualize, and analyze Author's 10 gold-standard papers.
 #
 # These papers have manually annotated gold standards in
 # src/LLMVersion/Gold_Standard_*.csv, so the extraction output can be

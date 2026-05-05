@@ -64,7 +64,7 @@ Paths are auto-detected in this priority order:
 
 | Priority | Platform   | DATA_DIR                                         | CODE_DIR                                        |
 |----------|------------|--------------------------------------------------|-------------------------------------------------|
-| 1        | Cluster    | `/sci/labs/orzuk/orzuk/projects/Authomathics`    | `/sci/labs/orzuk/orzuk/github/Authomathics`     |
+| 1        | Cluster    | `/<cluster>/<user>/projects/Authomathics`    | `/<cluster>/<user>/github/Authomathics`     |
 | 2        | WSL        | `/mnt/c/Datasets/Authomathics_data`              | `/mnt/c/Code/Github/Authomathics`               |
 | 3        | Windows    | `C:/Datasets/Authomathics_data`                  | `C:/Code/Github/Authomathics`                   |
 | 4        | Fallback   | `~/Datasets/Authomathics_data`                   | `~/Code/Authomathics`                           |

@@ -9,7 +9,7 @@ The data model and unified JSON schema are documented in [`src/annotation_schema
 ## Quick start
 
 ```bash
-git clone https://github.com/orzuk/Authomathics
+git clone <REPO_URL_REDACTED_FOR_REVIEW>
 cd Authomathics
 
 # Smoke test: parse 5 math.CO papers through the unified pipeline (no LLM cost)
@@ -29,7 +29,7 @@ sbatch scripts/parse_math_co_cluster.sh
   - `OPENAI_API_KEY` — OpenAI GPT
   - `HF_TOKEN` — HuggingFace
 
-Path configuration is auto-detected per platform by `src/config.py` (Windows, WSL, HUJI cluster, or home).
+Path configuration is auto-detected per platform by `src/config.py` (Windows, WSL, <anon> cluster, or home).
 
 ---
 
@@ -107,7 +107,7 @@ python src/run_pipeline.py \
 
 ---
 
-## Cluster workflow (HUJI SLURM)
+## Cluster workflow (SLURM)
 
 Two ready-to-run shell scripts:
 
@@ -279,7 +279,7 @@ Authomathics/
 ├── PROJECT_SETTINGS.md                # Configuration reference
 ├── .gitignore                         # Includes output/, logs/, __pycache__/
 │
-├── src/                               # Python source (Or Zuk)
+├── src/                               # Python source
 │   ├── run_pipeline.py                # ★ Unified pipeline orchestrator
 │   ├── config.py                      # Platform-auto-detected paths + endpoints
 │   ├── annotation_schema.md           # Unified JSON schema spec
@@ -302,7 +302,7 @@ Authomathics/
 │   ├── scrape_all_proofwiki.py        # Batch ProofWiki scrape
 │   ├── extract_all_chapters.py        # BHK chapter batch extractor
 │   │
-│   ├── LLMVersion/                    # ★ Active extraction engine (Yaron Otmazgin)
+│   ├── LLMVersion/                    # ★ Active extraction engine
 │   │   ├── parse_batch.py        # Core extractor
 │   │   ├── math_paper_parser.py       # Heuristic + LLM parser
 │   │   ├── math_classes.py            # ★ Single source of truth for the data model

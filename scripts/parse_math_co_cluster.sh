@@ -37,10 +37,10 @@ OPERATIONS=${OPERATIONS:-parse}
 STRUCTURE_TYPES=${STRUCTURE_TYPES:-"definition,theorem,lemma,proposition,corollary,claim,conjecture,problem,proof,algorithm,equation"}
 
 # Where the outputs land
-OUT_DIR=${OUT_DIR:-/sci/labs/orzuk/orzuk/projects/Authomathics/arxiv/parsed_${CATEGORY//./_}_${EXTRACTION_MODE}_${TOP_K}}
+OUT_DIR=${OUT_DIR:-/<cluster>/<user>/projects/Authomathics/arxiv/parsed_${CATEGORY//./_}_${EXTRACTION_MODE}_${TOP_K}}
 
 # Code
-REPO_ROOT=${REPO_ROOT:-/sci/labs/orzuk/orzuk/github/Authomathics}
+REPO_ROOT=${REPO_ROOT:-/<cluster>/<user>/github/Authomathics}
 
 # Python interpreter. Priority:
 #   1. $PYTHON env var (via sbatch --export=PYTHON=/path/to/python)
@@ -49,7 +49,7 @@ REPO_ROOT=${REPO_ROOT:-/sci/labs/orzuk/orzuk/github/Authomathics}
 #   4. python3 / python on PATH
 #
 # Recommended workflow on the cluster:
-#   source /sci/labs/orzuk/$USER/venvs/your-venv/bin/activate
+#   source /<cluster>/$USER/venvs/your-venv/bin/activate
 #   sbatch scripts/parse_math_co_cluster.sh
 # SLURM inherits VIRTUAL_ENV from the submitting shell, so the venv stays
 # active inside the job.

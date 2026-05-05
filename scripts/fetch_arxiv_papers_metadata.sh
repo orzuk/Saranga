@@ -9,14 +9,14 @@
 module load python/3.10
 
 # Full path to your extractor script:
-SCRIPT=/sci/labs/orzuk/orzuk/github/Authomathics/src/extract_arxiv_data.py
+SCRIPT=/<cluster>/<user>/github/Authomathics/src/extract_arxiv_data.py
 
 # Ensure it's executable
 chmod +x "$SCRIPT"
 
 # Run the fetch_papers subcommand
 python "$SCRIPT" fetch_papers \
-    --data-dir /sci/labs/orzuk/orzuk/teaching/big_data_project_52017/2024_25/arxiv_data \
+    --data-dir /<cluster>/<user>/teaching/big_data_project_52017/2024_25/arxiv_data \
     --from-date 2021-01-01 \
     --until-date 2021-12-31 \
     --category cs.LG \

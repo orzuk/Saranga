@@ -1,0 +1,719 @@
+{
+  "metadata": {
+    "title": "Flow Matching for Generative Modeling",
+    "authors": "Yaron Lipman, Ricky T. Q. Chen, Heli Ben-Hamu, Maximilian Nickel, Matt Le",
+    "year": 2023,
+    "paper_num": 232,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "DP232.1",
+      "type": "definition",
+      "name": "Probability density path",
+      "section": "2 Preliminaries",
+      "statement": "A time-dependent probability density function $p:[0,1]\\times \\mathbb{R}^d \\to \\mathbb{R}_{>0}$ satisfying $\\int p_t(x)dx = 1$ for all $t \\in [0,1]$.",
+      "statement_clean": "A time-indexed family of probability densities on $\\mathbb{R}^d$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP232.2",
+      "type": "definition",
+      "name": "Time-dependent vector field",
+      "section": "2 Preliminaries",
+      "statement": "A map $v:[0,1]\\times \\mathbb{R}^d \\to \\mathbb{R}^d$ that assigns a velocity vector $v_t(x)$ to each point $x$ at each time $t$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP232.3",
+      "type": "definition",
+      "name": "Flow",
+      "section": "2 Preliminaries",
+      "statement": "A diffeomorphic map $\\phi:[0,1]\\times \\mathbb{R}^d \\to \\mathbb{R}^d$ defined by the ODE $\\frac{d}{dt}\\phi_t(x) = v_t(\\phi_t(x))$ with $\\phi_0(x) = x$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP232.4",
+      "type": "definition",
+      "name": "Continuous Normalizing Flow (CNF)",
+      "section": "2 Preliminaries",
+      "statement": "A deep parametric model of the flow $\\phi_t$ obtained by modeling the vector field with a neural network $v_t(x;\\theta)$ with parameters $\\theta \\in \\mathbb{R}^p$.",
+      "origin": "external",
+      "origin_citation": "Chen et al. 2018 (Neural ODEs)"
+    },
+    {
+      "id": "DP232.5",
+      "type": "definition",
+      "name": "Push-forward",
+      "section": "2 Preliminaries",
+      "statement": "$[\\phi_t]_* p_0(x) = p_0(\\phi_t^{-1}(x))\\det\\left[\\frac{\\partial \\phi_t^{-1}}{\\partial x}(x)\\right]$; a vector field $v_t$ is said to generate $p_t$ if its flow satisfies $p_t = [\\phi_t]_* p_0$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP232.6",
+      "type": "definition",
+      "name": "Conditional probability path",
+      "section": "3.1 Constructing $p_t,u_t$",
+      "statement": "A density $p_t(x|x_1)$ for each data sample $x_1$ such that $p_0(x|x_1) = p(x)$ and $p_1(x|x_1)$ is concentrated around $x_1$, e.g. $p_1(x|x_1)=\\mathcal{N}(x|x_1,\\sigma^2 I)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP232.7",
+      "type": "definition",
+      "name": "Marginal probability path",
+      "section": "3.1 Constructing $p_t,u_t$",
+      "statement": "$p_t(x) = \\int p_t(x|x_1) q(x_1) dx_1$, the mixture of conditional probability paths over the data distribution.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP232.8",
+      "type": "definition",
+      "name": "Marginal vector field",
+      "section": "3.1 Constructing $p_t,u_t$",
+      "statement": "$u_t(x) = \\int u_t(x|x_1) \\frac{p_t(x|x_1)q(x_1)}{p_t(x)} dx_1$, the aggregation of conditional vector fields weighted by the posterior over $x_1$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP232.9",
+      "type": "definition",
+      "name": "Continuity equation",
+      "section": "Appendix B",
+      "statement": "PDE $\\frac{d}{dt}p_t(x) + \\mathrm{div}(p_t(x) v_t(x)) = 0$ providing necessary and sufficient condition that $v_t$ generates $p_t$.",
+      "origin": "external",
+      "origin_citation": "Villani 2009, Optimal Transport"
+    },
+    {
+      "id": "DP232.10",
+      "type": "definition",
+      "name": "Gaussian conditional probability path",
+      "section": "4 Conditional Probability Paths",
+      "statement": "$p_t(x|x_1) = \\mathcal{N}(x|\\mu_t(x_1), \\sigma_t(x_1)^2 I)$ with $\\mu_0=0,\\sigma_0=1$ and $\\mu_1(x_1)=x_1,\\sigma_1(x_1)=\\sigma_{\\min}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP232.11",
+      "type": "definition",
+      "name": "OT displacement interpolant",
+      "section": "4.1 Special instances (Example II)",
+      "statement": "$p_t = [(1-t)\\mathrm{id} + t\\psi]_\\star p_0$ where $\\psi$ is the OT map pushing $p_0$ to $p_1$; for two Gaussians (first standard) the displacement map takes the form $\\psi_t(x)=(1-(1-\\sigma_{\\min})t)x + tx_1$.",
+      "origin": "external",
+      "origin_citation": "McCann 1997, A convexity principle for interacting gases"
+    },
+    {
+      "id": "EP232.1",
+      "type": "equation",
+      "name": "Flow ODE",
+      "section": "2 Preliminaries",
+      "statement": "$\\frac{d}{dt}\\phi_t(x) = v_t(\\phi_t(x)),\\ \\phi_0(x)=x$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP232.2",
+      "type": "equation",
+      "name": "Flow Matching (FM) objective",
+      "section": "3 Flow Matching",
+      "statement": "$\\mathcal{L}_{\\mathrm{FM}}(\\theta) = \\mathbb{E}_{t,p_t(x)}\\|v_t(x) - u_t(x)\\|^2$, with $t \\sim \\mathcal{U}[0,1]$, $x \\sim p_t(x)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP232.3",
+      "type": "equation",
+      "name": "Conditional Flow Matching (CFM) objective",
+      "section": "3.2 Conditional Flow Matching",
+      "statement": "$\\mathcal{L}_{\\mathrm{CFM}}(\\theta) = \\mathbb{E}_{t,q(x_1),p_t(x|x_1)} \\|v_t(x) - u_t(x|x_1)\\|^2$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP232.4",
+      "type": "equation",
+      "name": "OT-CFM closed form loss",
+      "section": "4.1 (Example II)",
+      "statement": "$\\mathcal{L}_{\\mathrm{CFM}}(\\theta) = \\mathbb{E}_{t,q(x_1),p(x_0)}\\|v_t(\\psi_t(x_0)) - (x_1 - (1-\\sigma_{\\min})x_0)\\|^2$.",
+      "origin": "paper"
+    },
+    {
+      "id": "TP232.1",
+      "type": "theorem",
+      "name": "Marginal vector field generates marginal probability path",
+      "section": "3.1 (Theorem 1)",
+      "statement": "Given vector fields $u_t(x|x_1)$ that generate conditional paths $p_t(x|x_1)$, for any $q(x_1)$ the marginal vector field $u_t$ in (3) generates the marginal path $p_t$ in (2); i.e. $u_t,p_t$ satisfy the continuity equation.",
+      "statement_clean": "The posterior-weighted average of conditional vector fields generates the corresponding mixture probability path.",
+      "assumptions": [
+        "Conditional vector fields $u_t(x|x_1)$ generate conditional probability paths $p_t(x|x_1)$",
+        "Distribution $q(x_1)$ on data",
+        "Regularity conditions of Leibniz rule for exchanging integration and differentiation"
+      ],
+      "conclusions": [
+        "The marginal vector field $u_t(x) = \\int u_t(x|x_1) \\frac{p_t(x|x_1)q(x_1)}{p_t(x)} dx_1$ generates $p_t(x) = \\int p_t(x|x_1)q(x_1) dx_1$",
+        "$(u_t,p_t)$ satisfy the continuity equation"
+      ],
+      "origin": "paper",
+      "tags": ["existence", "generative"]
+    },
+    {
+      "id": "TP232.2",
+      "type": "theorem",
+      "name": "FM and CFM gradients coincide",
+      "section": "3.2 (Theorem 2)",
+      "statement": "Assuming $p_t(x)>0$ for all $x \\in \\mathbb{R}^d, t \\in [0,1]$, then up to a constant independent of $\\theta$, $\\mathcal{L}_{\\mathrm{CFM}}$ and $\\mathcal{L}_{\\mathrm{FM}}$ are equal; hence $\\nabla_\\theta \\mathcal{L}_{\\mathrm{FM}}(\\theta) = \\nabla_\\theta \\mathcal{L}_{\\mathrm{CFM}}(\\theta)$.",
+      "statement_clean": "The tractable per-sample CFM loss has the same gradients with respect to $\\theta$ as the intractable FM loss.",
+      "assumptions": [
+        "$p_t(x) > 0$ for all $x \\in \\mathbb{R}^d$ and $t \\in [0,1]$",
+        "$q(x)$ and $p_t(x|x_1)$ decay sufficiently fast as $\\|x\\| \\to \\infty$",
+        "$u_t, v_t, \\nabla_\\theta v_t$ are bounded"
+      ],
+      "conclusions": [
+        "$\\mathcal{L}_{\\mathrm{FM}}(\\theta) = \\mathcal{L}_{\\mathrm{CFM}}(\\theta) + \\mathrm{const}(\\theta\\text{-independent})$",
+        "$\\nabla_\\theta \\mathcal{L}_{\\mathrm{FM}}(\\theta) = \\nabla_\\theta \\mathcal{L}_{\\mathrm{CFM}}(\\theta)$"
+      ],
+      "origin": "paper",
+      "tags": ["equivalence", "gradient"]
+    },
+    {
+      "id": "TP232.3",
+      "type": "theorem",
+      "name": "Unique vector field of Gaussian flow",
+      "section": "4 (Theorem 3)",
+      "statement": "Let $p_t(x|x_1)$ be a Gaussian path $\\mathcal{N}(x|\\mu_t(x_1),\\sigma_t(x_1)^2 I)$ and $\\psi_t(x) = \\sigma_t(x_1)x + \\mu_t(x_1)$. Then the unique vector field defining $\\psi_t$ has the form $u_t(x|x_1) = \\frac{\\sigma'_t(x_1)}{\\sigma_t(x_1)}(x-\\mu_t(x_1)) + \\mu'_t(x_1)$.",
+      "statement_clean": "Closed-form generating vector field for the canonical affine flow of a Gaussian conditional path.",
+      "assumptions": [
+        "$p_t(x|x_1) = \\mathcal{N}(x|\\mu_t(x_1),\\sigma_t(x_1)^2 I)$ Gaussian conditional path",
+        "$\\psi_t(x) = \\sigma_t(x_1)x + \\mu_t(x_1)$ is the corresponding affine flow",
+        "$\\sigma_t(x_1) > 0$ so $\\psi_t$ is invertible"
+      ],
+      "conclusions": [
+        "$u_t(x|x_1) = \\frac{\\sigma'_t(x_1)}{\\sigma_t(x_1)}(x - \\mu_t(x_1)) + \\mu'_t(x_1)$",
+        "This $u_t(x|x_1)$ generates the Gaussian path $p_t(x|x_1)$"
+      ],
+      "origin": "paper",
+      "tags": ["uniqueness", "closed_form"]
+    },
+    {
+      "id": "LP232.1",
+      "type": "lemma",
+      "name": "Time-reversal of generating vector field",
+      "section": "Appendix C (Lemma 1)",
+      "statement": "If $u_t$ generates $p_t$, then $\\tilde{u}_t(x) = -u_{1-t}(x)$ generates $\\tilde{p}_t(x) = p_{1-t}(x)$ when initialized at $\\tilde{p}_0(x) = p_1(x)$.",
+      "assumptions": [
+        "$u_t(x)$ generates probability density path $p_t(x)$"
+      ],
+      "conclusions": [
+        "$\\tilde{u}_t(x) = -u_{1-t}(x)$ generates the time-reversed path $\\tilde{p}_t(x) = p_{1-t}(x)$ initialized at $\\tilde{p}_0 = p_1$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "PrP232.1",
+      "type": "proposition",
+      "name": "Diffusion conditional VF coincides with Probability Flow ODE",
+      "section": "Appendix C",
+      "statement": "The conditional vector fields derived from Theorem 3 for VE and VP Gaussian paths coincide with the vector field of the deterministic Probability Flow ODE of Song et al. (2020).",
+      "assumptions": [
+        "VE path $p_t(x|x_1)=\\mathcal{N}(x|x_1,\\sigma_{1-t}^2 I)$ or VP path $p_t(x|x_1)=\\mathcal{N}(x|\\alpha_{1-t}x_1,(1-\\alpha_{1-t}^2)I)$"
+      ],
+      "conclusions": [
+        "Resulting $u_t(x|x_1)$ from Theorem 3 equals the Probability Flow ODE VF in Song et al. 2020 eq. 13"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "PrP232.2",
+      "type": "proposition",
+      "name": "OT conditional flow as displacement map",
+      "section": "4.1 (Example II)",
+      "statement": "For $\\mu_t(x)=tx_1$ and $\\sigma_t(x)=1-(1-\\sigma_{\\min})t$, the conditional flow $\\psi_t(x)=(1-(1-\\sigma_{\\min})t)x + tx_1$ is the OT displacement map between the Gaussians $p_0(x|x_1)$ and $p_1(x|x_1)$.",
+      "assumptions": [
+        "Linear-in-$t$ mean and std with boundary conditions",
+        "$p_0$ and $p_1$ both Gaussian with first being standard"
+      ],
+      "conclusions": [
+        "$\\psi_t$ is the OT (Wasserstein-2) displacement map between $p_0(x|x_1)$ and $p_1(x|x_1)$",
+        "Particles travel in straight lines at constant speed"
+      ],
+      "origin": "external",
+      "origin_citation": "McCann 1997, Example 1.7"
+    },
+    {
+      "id": "AP232.1",
+      "type": "algorithm",
+      "name": "Flow Matching (FM) / Conditional Flow Matching (CFM) training",
+      "section": "3.2",
+      "statement": "Iterative training procedure that regresses a neural vector field $v_t(x;\\theta)$ onto the conditional vector field $u_t(x|x_1)$ via SGD on the CFM loss.",
+      "input": [
+        "Data distribution samples $x_1 \\sim q(x_1)$",
+        "Choice of conditional probability path $p_t(x|x_1)$ and vector field $u_t(x|x_1)$",
+        "Initial network parameters $\\theta$"
+      ],
+      "output": [
+        "Trained CNF vector field $v_t(x;\\theta)$ approximating the marginal $u_t(x)$ that generates $p_t \\approx q$ at $t=1$"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "stochastic_gradient", "simulation_free"]
+    },
+    {
+      "id": "AP232.2",
+      "type": "algorithm",
+      "name": "CNF sampling via ODE solver",
+      "section": "5.2 Sampling Efficiency",
+      "statement": "Draw $x_0 \\sim \\mathcal{N}(0,I)$ then compute $\\phi_1(x_0)$ by solving the flow ODE with the trained $v_t$ on $t \\in [0,1]$ using an off-the-shelf ODE solver (\\texttt{dopri5} or fixed-step midpoint).",
+      "input": [
+        "Trained vector field $v_t(x;\\theta)$",
+        "ODE solver (e.g. dopri5, midpoint)"
+      ],
+      "output": [
+        "Sample $x_1 = \\phi_1(x_0) \\sim p_1 \\approx q$"
+      ],
+      "origin": "paper",
+      "tags": ["sampling", "ode_solver"]
+    },
+    {
+      "id": "AP232.3",
+      "type": "algorithm",
+      "name": "Hutchinson trace estimator for CNF log-likelihood",
+      "section": "Appendix C (CNF probability)",
+      "statement": "Replace the divergence in the change-of-variable ODE with the unbiased Hutchinson estimator $z^T D v_t(\\phi_t(x)) z$ where $\\mathbb{E} zz^T = I$, and solve in reverse to obtain an unbiased estimator of $\\log p_1(x_1)$.",
+      "input": [
+        "Trained vector field $v_t$",
+        "Test point $x_1$",
+        "Random vector $z$ with $\\mathbb{E}zz^T = I$"
+      ],
+      "output": [
+        "Unbiased estimate of $\\log p_1(x_1) = \\log p_0(x_0) - \\tilde{f}(0)$"
+      ],
+      "origin": "external",
+      "origin_citation": "FFJORD (Grathwohl et al. 2018)"
+    },
+    {
+      "id": "AP232.4",
+      "type": "algorithm",
+      "name": "Score Matching (SM) baseline",
+      "section": "Appendix D (Diffusion baselines)",
+      "statement": "Train a score network $s_t(x)$ via $\\mathcal{L}_{\\mathrm{SM}} = \\mathbb{E}\\, \\lambda(t)\\|s_t(x) - \\nabla \\log p_t(x|x_1)\\|^2$; baseline against FM.",
+      "origin": "external",
+      "origin_citation": "Song et al. 2020 (Score-Based Generative Modeling)",
+      "tags": ["baseline"]
+    },
+    {
+      "id": "AP232.5",
+      "type": "algorithm",
+      "name": "DDPM (Noise Matching) baseline",
+      "section": "Appendix D",
+      "statement": "Train a noise network $\\epsilon_t(x)$ via $\\mathcal{L}_{\\mathrm{NM}} = \\mathbb{E}\\,\\|\\epsilon_t(\\sigma_t(x_1)x_0+\\mu_t(x_1)) - x_0\\|^2$; baseline against FM.",
+      "origin": "external",
+      "origin_citation": "Ho et al. 2020 (DDPM)",
+      "tags": ["baseline"]
+    },
+    {
+      "id": "PP232.1",
+      "type": "proof",
+      "name": "Proof of Theorem 1 (marginal VF)",
+      "section": "Appendix A",
+      "statement": "Verify the continuity equation for the marginal $(p_t,u_t)$ by exchanging differentiation and integration and using that conditional $u_t(\\cdot|x_1)$ generates $p_t(\\cdot|x_1)$.",
+      "proves": "TP232.1",
+      "parent_id": "TP232.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP232.2",
+      "type": "proof",
+      "name": "Proof of Theorem 2 (FM=CFM gradients)",
+      "section": "Appendix A",
+      "statement": "Expand the squared norms, identify $\\theta$-independent terms, and use Fubini's theorem with the marginal definition of $p_t$ to show $\\mathbb{E}_{p_t(x)}\\langle v_t,u_t\\rangle = \\mathbb{E}_{q(x_1),p_t(x|x_1)}\\langle v_t,u_t(\\cdot|x_1)\\rangle$.",
+      "proves": "TP232.2",
+      "parent_id": "TP232.2",
+      "origin": "paper"
+    },
+    {
+      "id": "PP232.3",
+      "type": "proof",
+      "name": "Proof of Theorem 3 (Gaussian VF)",
+      "section": "Appendix A",
+      "statement": "Use $\\frac{d}{dt}\\psi_t(x) = w_t(\\psi_t(x))$, invert $\\psi_t$, differentiate in $t$, and combine to solve for $w_t$.",
+      "proves": "TP232.3",
+      "parent_id": "TP232.3",
+      "origin": "paper"
+    },
+    {
+      "id": "PP232.4",
+      "type": "proof",
+      "name": "Proof of time-reversal lemma",
+      "section": "Appendix C",
+      "statement": "Apply the continuity equation to $\\tilde{p}_t(x) = p_{1-t}(x)$ and observe $-u_{1-t}$ produces the same divergence equation.",
+      "proves": "LP232.1",
+      "parent_id": "LP232.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP232.1",
+      "type": "proof_step",
+      "parent_id": "PP232.1",
+      "step_order": 1,
+      "name": "Differentiate marginal under integral",
+      "statement": "Compute $\\frac{d}{dt} p_t(x) = \\int \\frac{d}{dt} p_t(x|x_1) q(x_1) dx_1$ by exchanging differentiation and integration (Leibniz).",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP232.2",
+      "type": "proof_step",
+      "parent_id": "PP232.1",
+      "step_order": 2,
+      "name": "Apply conditional continuity equation",
+      "statement": "Use that $u_t(\\cdot|x_1)$ generates $p_t(\\cdot|x_1)$ to substitute $\\frac{d}{dt} p_t(x|x_1) = -\\mathrm{div}(u_t(x|x_1)p_t(x|x_1))$.",
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP232.3",
+      "type": "proof_step",
+      "parent_id": "PP232.1",
+      "step_order": 3,
+      "name": "Pull divergence out and identify marginal VF",
+      "statement": "Exchange the $x_1$-integral with $\\mathrm{div}$ to obtain $-\\mathrm{div}(u_t(x) p_t(x))$ using the definition (3) of the marginal $u_t$, completing the continuity equation for $(p_t,u_t)$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP232.4",
+      "type": "proof_step",
+      "parent_id": "PP232.2",
+      "step_order": 1,
+      "name": "Bilinear expansion of the squared norms",
+      "statement": "$\\|v_t-u_t\\|^2 = \\|v_t\\|^2 - 2\\langle v_t,u_t\\rangle + \\|u_t\\|^2$ and similarly for $\\|v_t-u_t(\\cdot|x_1)\\|^2$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP232.5",
+      "type": "proof_step",
+      "parent_id": "PP232.2",
+      "step_order": 2,
+      "name": "Marginal vs conditional norm of $v_t$",
+      "statement": "Show $\\mathbb{E}_{p_t(x)} \\|v_t(x)\\|^2 = \\mathbb{E}_{q(x_1),p_t(x|x_1)} \\|v_t(x)\\|^2$ using $p_t = \\int p_t(\\cdot|x_1)q(x_1) dx_1$ and Fubini.",
+      "subclass": "substitute",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP232.6",
+      "type": "proof_step",
+      "parent_id": "PP232.2",
+      "step_order": 3,
+      "name": "Inner-product identity via marginal $u_t$",
+      "statement": "$\\mathbb{E}_{p_t(x)}\\langle v_t(x),u_t(x)\\rangle = \\mathbb{E}_{q(x_1),p_t(x|x_1)}\\langle v_t(x),u_t(x|x_1)\\rangle$ using the definition of marginal $u_t$ and exchanging integration order.",
+      "subclass": "substitute",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP232.7",
+      "type": "proof_step",
+      "parent_id": "PP232.2",
+      "step_order": 4,
+      "name": "Conclude equality of objectives up to $\\theta$-constant",
+      "statement": "Combine the identities; the $\\|u_t\\|^2$ and $\\|u_t(\\cdot|x_1)\\|^2$ terms are independent of $\\theta$, so $\\mathcal{L}_{\\mathrm{FM}}$ and $\\mathcal{L}_{\\mathrm{CFM}}$ differ by a $\\theta$-independent constant; gradients agree.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP232.8",
+      "type": "proof_step",
+      "parent_id": "PP232.3",
+      "step_order": 1,
+      "name": "Set up flow ODE for $w_t$",
+      "statement": "Let $w_t(x) := u_t(x|x_1)$. From the basic ODE $\\frac{d}{dt}\\psi_t(x) = w_t(\\psi_t(x))$ substitute $x = \\psi_t^{-1}(y)$ to get $\\psi'_t(\\psi_t^{-1}(y)) = w_t(y)$.",
+      "subclass": "setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP232.9",
+      "type": "proof_step",
+      "parent_id": "PP232.3",
+      "step_order": 2,
+      "name": "Invert the affine flow",
+      "statement": "Compute $\\psi_t^{-1}(y) = \\frac{y - \\mu_t(x_1)}{\\sigma_t(x_1)}$ and $\\psi'_t(x) = \\sigma'_t(x_1)x + \\mu'_t(x_1)$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP232.10",
+      "type": "proof_step",
+      "parent_id": "PP232.3",
+      "step_order": 3,
+      "name": "Substitute and obtain closed-form $u_t(x|x_1)$",
+      "statement": "Plug the inverse and derivative into $\\psi'_t(\\psi_t^{-1}(y)) = w_t(y)$ to get $w_t(y) = \\frac{\\sigma'_t(x_1)}{\\sigma_t(x_1)}(y - \\mu_t(x_1)) + \\mu'_t(x_1)$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP232.11",
+      "type": "proof_step",
+      "parent_id": "PP232.4",
+      "step_order": 1,
+      "name": "Differentiate $\\tilde p_t = p_{1-t}$",
+      "statement": "$\\frac{d}{dt}\\tilde p_t(x) = -p'_{1-t}(x)$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP232.12",
+      "type": "proof_step",
+      "parent_id": "PP232.4",
+      "step_order": 2,
+      "name": "Apply continuity equation for $p_t$",
+      "statement": "$-p'_{1-t}(x) = \\mathrm{div}(p_{1-t}(x) u_{1-t}(x)) = -\\mathrm{div}(\\tilde p_t(x) (-u_{1-t}(x)))$, so $\\tilde u_t(x) = -u_{1-t}(x)$ generates $\\tilde p_t$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP232.1",
+      "type": "algorithm_step",
+      "parent_id": "AP232.1",
+      "step_order": 1,
+      "name": "Sample $t,x_1,x$",
+      "statement": "Sample $t \\sim \\mathcal{U}[0,1]$, $x_1 \\sim q(x_1)$, $x \\sim p_t(x|x_1)$ (e.g. for Gaussian path: $x_0 \\sim \\mathcal{N}(0,I)$ and $x = \\psi_t(x_0) = \\sigma_t(x_1) x_0 + \\mu_t(x_1)$).",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP232.2",
+      "type": "algorithm_step",
+      "parent_id": "AP232.1",
+      "step_order": 2,
+      "name": "Compute conditional VF target",
+      "statement": "Evaluate $u_t(x|x_1) = \\frac{\\sigma'_t(x_1)}{\\sigma_t(x_1)}(x-\\mu_t(x_1)) + \\mu'_t(x_1)$ (Theorem 3); for OT path simplify to target $x_1 - (1-\\sigma_{\\min})x_0$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP232.3",
+      "type": "algorithm_step",
+      "parent_id": "AP232.1",
+      "step_order": 3,
+      "name": "Compute CFM loss and gradient",
+      "statement": "Evaluate $\\|v_t(x;\\theta) - u_t(x|x_1)\\|^2$ and back-propagate to obtain $\\nabla_\\theta \\mathcal{L}_{\\mathrm{CFM}}$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP232.4",
+      "type": "algorithm_step",
+      "parent_id": "AP232.1",
+      "step_order": 4,
+      "name": "Adam parameter update (loop)",
+      "statement": "Apply Adam step on $\\theta$; repeat the sample/loss/update cycle for $N$ iterations until convergence.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP232.5",
+      "type": "algorithm_step",
+      "parent_id": "AP232.2",
+      "step_order": 1,
+      "name": "Draw initial noise",
+      "statement": "Sample $x_0 \\sim \\mathcal{N}(0,I)$.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP232.6",
+      "type": "algorithm_step",
+      "parent_id": "AP232.2",
+      "step_order": 2,
+      "name": "Integrate flow ODE",
+      "statement": "Solve $\\frac{d}{dt}\\phi_t(x_0) = v_t(\\phi_t(x_0);\\theta)$ on $t \\in [0,1]$ with an ODE solver (e.g. \\texttt{dopri5} with atol/rtol $=10^{-5}$, or fixed-step midpoint).",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP232.7",
+      "type": "algorithm_step",
+      "parent_id": "AP232.2",
+      "step_order": 3,
+      "name": "Return sample",
+      "statement": "Return $x_1 = \\phi_1(x_0)$.",
+      "subclass": "return",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP232.8",
+      "type": "algorithm_step",
+      "parent_id": "AP232.3",
+      "step_order": 1,
+      "name": "Set up reverse-time augmented ODE",
+      "statement": "Initialize at $s=0$ with $\\phi_1(x) = x_1$, $\\tilde f(1) = 0$; integrate $\\frac{d}{ds}[\\phi_{1-s}, \\tilde f(1-s)] = [-v_{1-s}(\\phi_{1-s}), z^T D v_{1-s}(\\phi_{1-s}) z]$ for $s \\in [0,1]$.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP232.9",
+      "type": "algorithm_step",
+      "parent_id": "AP232.3",
+      "step_order": 2,
+      "name": "Return unbiased log-likelihood estimate",
+      "statement": "Return $\\log p_0(x_0) - \\tilde f(0)$ as an unbiased estimator of $\\log p_1(x_1)$.",
+      "subclass": "return",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP232.1",
+      "type": "example",
+      "name": "Variance Exploding (VE) diffusion path",
+      "section": "4.1 (Example I)",
+      "statement": "Reversed VE path $p_t(x|x_1) = \\mathcal{N}(x | x_1, \\sigma_{1-t}^2 I)$ with $\\sigma_t$ increasing, $\\sigma_0=0, \\sigma_1\\gg 1$; substituting in Theorem 3 gives $u_t(x|x_1) = -\\frac{\\sigma'_{1-t}}{\\sigma_{1-t}}(x-x_1)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP232.2",
+      "type": "example",
+      "name": "Variance Preserving (VP) diffusion path",
+      "section": "4.1 (Example I)",
+      "statement": "$p_t(x|x_1) = \\mathcal{N}(x | \\alpha_{1-t} x_1, (1-\\alpha_{1-t}^2)I)$ with $\\alpha_t = e^{-T(t)/2}$, $T(t)=\\int_0^t \\beta(s)ds$; gives $u_t(x|x_1) = -\\frac{T'(1-t)}{2}\\frac{e^{-T(1-t)}x - e^{-T(1-t)/2}x_1}{1 - e^{-T(1-t)}}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP232.3",
+      "type": "example",
+      "name": "Optimal Transport conditional path",
+      "section": "4.1 (Example II)",
+      "statement": "$\\mu_t(x)=tx_1$, $\\sigma_t(x)=1-(1-\\sigma_{\\min})t$, giving $u_t(x|x_1) = \\frac{x_1 - (1-\\sigma_{\\min})x}{1-(1-\\sigma_{\\min})t}$ and conditional flow $\\psi_t(x) = (1-(1-\\sigma_{\\min})t)x + tx_1$ with constant-direction VF and straight-line trajectories.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP232.4",
+      "type": "example",
+      "name": "2D checkerboard generative model",
+      "section": "5 (Figure 4)",
+      "statement": "CNFs trained with FM-OT, FM-Diffusion, and SM-Diffusion on a 2D checkerboard distribution; FM-OT introduces the checkerboard pattern earlier and is more efficient at low NFE.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP232.5",
+      "type": "example",
+      "name": "Unconditional ImageNet 32/64/128 generation",
+      "section": "5.1 Density Modeling and Sample Quality",
+      "statement": "Train CNFs with FM-OT, FM-Diffusion, SM, ScoreFlow, DDPM on ImageNet 32, 64, 128 (and CIFAR-10); FM-OT consistently obtains best NLL/FID/NFE; ImageNet-128 reaches FID 20.9 and BPD 2.90.",
+      "origin": "paper",
+      "tags": ["benchmark", "generation"]
+    },
+    {
+      "id": "ExP232.6",
+      "type": "example",
+      "name": "Conditional super-resolution 64$\\to$256",
+      "section": "5.3 Conditional sampling",
+      "statement": "Apply Flow Matching with OT path to upsample 64$\\times$64 ImageNet images to 256$\\times$256; FM-OT achieves FID 3.4 and IS 200.8, outperforming SR3 in FID/IS while matching PSNR/SSIM.",
+      "origin": "paper",
+      "tags": ["super_resolution", "conditional"]
+    },
+    {
+      "id": "RP232.1",
+      "type": "remark",
+      "name": "OT VF has constant direction in time",
+      "section": "4.1 (Example II)",
+      "statement": "The OT conditional VF can be written as $u_t(x|x_1) = g(t)h(x|x_1)$, hence has a constant direction across $t$, in contrast to diffusion VFs whose directions vary with $t$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP232.2",
+      "type": "remark",
+      "name": "Diffusion paths do not reach true noise in finite time",
+      "section": "4.1",
+      "statement": "Diffusion-derived paths only approach a Gaussian as $t \\to 0$ and do not exactly reach noise in finite time; the FM construction lets us directly set $\\mu_t,\\sigma_t$ with full path control.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP232.3",
+      "type": "remark",
+      "name": "Marginal VF need not be optimal transport",
+      "section": "4.1",
+      "statement": "Even though each conditional flow is the OT displacement map between Gaussians, the resulting marginal VF is not in general the OT solution between $p_0$ and $q$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP232.4",
+      "type": "remark",
+      "name": "Theorem 1 derivable from Diffusion Mixture Representation",
+      "section": "3.1",
+      "statement": "Theorem 1 can also be derived from the Diffusion Mixture Representation Theorem of Peluchetti (2021), which gives marginal drift/diffusion coefficients of mixed diffusion SDEs.",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP232.1",
+      "type": "problem",
+      "name": "Simulation-free CNF training",
+      "section": "1 Introduction / 3",
+      "statement": "Train a CNF $v_t(x;\\theta)$ to push a simple prior $p_0$ to a target $p_1 \\approx q$ at $t=1$ without ODE simulation during training, scaling to high-dimensional image distributions.",
+      "origin": "paper",
+      "tags": ["learning", "generative_modeling"]
+    }
+  ],
+  "edges": [
+    {"source": "DP232.3", "target": "DP232.4", "type": "uses"},
+    {"source": "DP232.2", "target": "DP232.3", "type": "uses"},
+    {"source": "DP232.5", "target": "DP232.4", "type": "uses"},
+    {"source": "EP232.1", "target": "DP232.3", "type": "uses"},
+    {"source": "DP232.6", "target": "DP232.7", "type": "uses"},
+    {"source": "DP232.6", "target": "DP232.8", "type": "uses"},
+    {"source": "DP232.7", "target": "DP232.8", "type": "uses"},
+    {"source": "DP232.9", "target": "TP232.1", "type": "uses"},
+    {"source": "DP232.7", "target": "TP232.1", "type": "uses"},
+    {"source": "DP232.8", "target": "TP232.1", "type": "uses"},
+    {"source": "PP232.1", "target": "TP232.1", "type": "proves"},
+    {"source": "EP232.2", "target": "TP232.2", "type": "uses"},
+    {"source": "EP232.3", "target": "TP232.2", "type": "uses"},
+    {"source": "TP232.1", "target": "TP232.2", "type": "uses"},
+    {"source": "PP232.2", "target": "TP232.2", "type": "proves"},
+    {"source": "DP232.10", "target": "TP232.3", "type": "uses"},
+    {"source": "PP232.3", "target": "TP232.3", "type": "proves"},
+    {"source": "DP232.9", "target": "LP232.1", "type": "uses"},
+    {"source": "PP232.4", "target": "LP232.1", "type": "proves"},
+    {"source": "TP232.3", "target": "PrP232.1", "type": "uses"},
+    {"source": "LP232.1", "target": "PrP232.1", "type": "uses"},
+    {"source": "TP232.3", "target": "PrP232.2", "type": "uses"},
+    {"source": "DP232.11", "target": "PrP232.2", "type": "uses"},
+    {"source": "DP232.6", "target": "AP232.1", "type": "uses"},
+    {"source": "EP232.3", "target": "AP232.1", "type": "uses"},
+    {"source": "TP232.2", "target": "AP232.1", "type": "uses"},
+    {"source": "TP232.3", "target": "AP232.1", "type": "uses"},
+    {"source": "DP232.10", "target": "AP232.1", "type": "uses"},
+    {"source": "AP232.1", "target": "ProbP232.1", "type": "solves"},
+    {"source": "DP232.4", "target": "AP232.2", "type": "uses"},
+    {"source": "EP232.1", "target": "AP232.2", "type": "uses"},
+    {"source": "AP232.1", "target": "AP232.2", "type": "uses"},
+    {"source": "DP232.9", "target": "AP232.3", "type": "uses"},
+    {"source": "DP232.5", "target": "AP232.3", "type": "uses"},
+    {"source": "AP232.4", "target": "AP232.5", "type": "specializes"},
+    {"source": "ExP232.1", "target": "ExP232.2", "type": "specializes"},
+    {"source": "AP232.1", "target": "ExP232.4", "type": "illustrates"},
+    {"source": "AP232.1", "target": "ExP232.5", "type": "illustrates"},
+    {"source": "AP232.1", "target": "ExP232.6", "type": "illustrates"},
+    {"source": "AP232.4", "target": "ExP232.5", "type": "illustrates"},
+    {"source": "AP232.5", "target": "ExP232.5", "type": "illustrates"},
+    {"source": "TP232.3", "target": "ExP232.1", "type": "uses"},
+    {"source": "TP232.3", "target": "ExP232.2", "type": "uses"},
+    {"source": "TP232.3", "target": "ExP232.3", "type": "uses"},
+    {"source": "DP232.11", "target": "ExP232.3", "type": "uses"},
+    {"source": "ExP232.3", "target": "EP232.4", "type": "uses"},
+    {"source": "EP232.3", "target": "EP232.4", "type": "specializes"},
+    {"source": "ExP232.3", "target": "RP232.1", "type": "uses"},
+    {"source": "ExP232.2", "target": "RP232.2", "type": "uses"},
+    {"source": "PrP232.2", "target": "RP232.3", "type": "uses"},
+    {"source": "TP232.1", "target": "RP232.4", "type": "uses"},
+    {"source": "PSP232.1", "target": "PSP232.2", "type": "uses"},
+    {"source": "PSP232.2", "target": "PSP232.3", "type": "uses"},
+    {"source": "PSP232.4", "target": "PSP232.5", "type": "uses"},
+    {"source": "PSP232.5", "target": "PSP232.6", "type": "uses"},
+    {"source": "PSP232.6", "target": "PSP232.7", "type": "uses"},
+    {"source": "PSP232.4", "target": "PSP232.7", "type": "uses"},
+    {"source": "PSP232.8", "target": "PSP232.9", "type": "uses"},
+    {"source": "PSP232.9", "target": "PSP232.10", "type": "uses"},
+    {"source": "PSP232.11", "target": "PSP232.12", "type": "uses"},
+    {"source": "ASP232.1", "target": "ASP232.2", "type": "uses"},
+    {"source": "ASP232.2", "target": "ASP232.3", "type": "uses"},
+    {"source": "ASP232.3", "target": "ASP232.4", "type": "uses"},
+    {"source": "ASP232.5", "target": "ASP232.6", "type": "uses"},
+    {"source": "ASP232.6", "target": "ASP232.7", "type": "uses"},
+    {"source": "ASP232.8", "target": "ASP232.9", "type": "uses"}
+  ]
+}

@@ -1,0 +1,153 @@
+{
+  "metadata": {
+    "alignment_name": "Transformer_vs_NMT_attn",
+    "paper_a": {"arxiv_id": "1706.03762", "title": "Attention Is All You Need"},
+    "paper_b": {"arxiv_id": "1409.0473", "title": "Neural Machine Translation by Jointly Learning to Align and Translate"},
+    "relation_type": "EXT",
+    "annotator": "Claude (claude-opus-4-7-silver-with-steps)",
+    "scheme_version": "with_steps_v2",
+    "description": "Bahdanau et al. (2015) introduced soft additive attention over BiRNN encoder annotations as an add-on to an RNN encoder-decoder for machine translation. Vaswani et al. (2017) extend this idea by (i) replacing additive attention with a scaled dot-product variant computed in matrix form and stacked into multi-head blocks, (ii) discarding the recurrence entirely so that attention is the sole mechanism for both source-side encoding and target-side decoding (self-attention in addition to encoder-decoder attention), and (iii) adding sinusoidal positional encodings to recover the order information that the BiRNN previously supplied. The Transformer thus generalises Bahdanau's per-step attention from one cross-attention layer attached to an RNN into a full attention-only sequence transduction architecture; the relationship is best characterised as EXT."
+  },
+  "matches": [
+    {
+      "paper_a_nodes": ["ProbP222.1"],
+      "paper_b_nodes": ["ProbP223.1"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "Both papers state the same sequence-transduction / machine-translation problem: map a variable-length source sequence to a target sequence via a learned conditional distribution. Paper A frames it generically (any sequence transduction with parallelism and short paths as desiderata) while Paper B states it specifically as arg max p(y|x) for translation. Same problem at the conceptual level, slightly different framing — analogous rather than exact."
+    },
+    {
+      "paper_a_nodes": ["DP222.1"],
+      "paper_b_nodes": ["DP223.1"],
+      "match_type": "exact",
+      "confidence": "high",
+      "explanation": "Both nodes are external/cited definitions of the standard RNN encoder-decoder architecture (Cho 2014; Sutskever 2014; Bahdanau 2014). Paper A cites it as background; Paper B builds directly on it. The underlying object is identical: encoder produces continuous representations from input symbols, decoder generates target one token at a time. External-origin on both sides; carries no signal for the pair-level relation but is recorded for completeness."
+    },
+    {
+      "paper_a_nodes": ["DP222.4", "DP222.5", "EP222.1"],
+      "paper_b_nodes": ["DP223.4", "DP223.5", "DP223.6", "EP223.4", "EP223.5"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "Cluster correspondence between the two papers' attention mechanisms. Paper A's general Attention Function (DP222.4) and Scaled Dot-Product Attention (DP222.5 / EP222.1) play the same role as Paper B's alignment model (DP223.4), softmax attention weights (DP223.5 / EP223.5), and context vector (DP223.6 / EP223.4). Both compute a softmax-normalised compatibility between a query (decoder state s_{i-1} in B, query vector in A) and keys (encoder annotations h_j in B, key matrix K in A), and return a weighted sum of values (= annotations in B). The two formulations differ in (a) compatibility function: additive MLP v_a^T tanh(W_a s + U_a h) in B vs scaled dot product QK^T/sqrt(d_k) in A, (b) packing: per-step scalar vs batched matrix form, and (c) the extra sqrt(d_k) scaling motivated by ClP222.1. Same conceptual mechanism, different formulation -> analogous, but at high confidence because the papers themselves identify the correspondence (see RP222.4)."
+    },
+    {
+      "paper_a_nodes": ["DP222.6", "EP222.2", "AP222.2"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Multi-head attention (definition, equation, and algorithm) is a Transformer-original contribution with no counterpart in Bahdanau. Bahdanau computes a single scalar alignment score per (i,j) with one shared MLP; the idea of running h parallel attention heads on linearly projected subspaces and concatenating is introduced here."
+    },
+    {
+      "paper_a_nodes": ["AP222.1"],
+      "paper_b_nodes": ["DP223.5", "DP223.6", "EP223.4", "EP223.5"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "Paper A's scaled dot-product attention algorithm (compute QK^T, scale, softmax, multiply V) corresponds to Paper B's per-target-step procedure of forming alignment energies e_ij = a(s_{i-1}, h_j), normalising via softmax to alpha_ij, and computing c_i = sum_j alpha_ij h_j. The algorithmic skeleton (score -> softmax -> weighted sum of values) is the same; what differs is the score function (additive MLP vs scaled dot product) and that A operates on packed matrices Q,K,V while B is a per-step inner loop of the decoder. Justifies cross-type alignment (algorithm <-> definitions/equations) because Bahdanau does not factor the attention computation into a standalone algorithm node."
+    },
+    {
+      "paper_a_nodes": ["DP222.10"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Self-attention (intra-attention) — keys, queries, and values from the same sequence — is cited as external to Paper A but used centrally; Paper B has no analogue. Bahdanau's attention is exclusively cross-attention from the decoder over encoder annotations; there is no notion of encoder positions attending to each other. This is precisely the conceptual leap that EXT captures."
+    },
+    {
+      "paper_a_nodes": ["DP222.2", "AP222.3"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Transformer encoder stack and encoder layer (multi-head self-attention + position-wise FFN, both with residual + LayerNorm, repeated N=6 times) have no counterpart in Bahdanau, where the encoder is a single bidirectional RNN. The closest analogue on B's side would be the BiRNN (DP223.3, external-origin) and ASP223.1, but those represent a fundamentally different mechanism; they are recorded separately under DP223.3's match below."
+    },
+    {
+      "paper_a_nodes": ["DP222.3", "AP222.4"],
+      "paper_b_nodes": ["EP223.3"],
+      "match_type": "analogous",
+      "confidence": "medium",
+      "explanation": "Paper A's decoder stack and decoder layer (masked self-attention + encoder-decoder attention + FFN, repeated N times) and Paper B's per-step decoder recurrence p(y_i | y_{i-1}, s_i, c_i) with s_i = f(s_{i-1}, y_{i-1}, c_i) both consume the previous target tokens and the encoder representation to produce next-token logits in an autoregressive fashion. The mechanism is wholly different — stacked masked attention vs gated RNN — and the Transformer adds masked self-attention to model y-prefix dependencies that Bahdanau handles via the decoder RNN state s_i. Recorded as analogous to mark the role-equivalence; medium confidence because the structural overlap is mostly at the level of 'autoregressive decoder consuming encoder context'."
+    },
+    {
+      "paper_a_nodes": ["DP222.7", "EP222.3"],
+      "paper_b_nodes": ["DP223.8"],
+      "match_type": "analogous",
+      "confidence": "medium",
+      "explanation": "Both nodes describe a small position-wise non-linear projection sitting between the recurrent/attention block and the next layer or output. Paper A's position-wise feed-forward network max(0, xW_1+b_1)W_2+b_2 with d_ff=2048 is applied identically at every position inside every encoder/decoder layer. Paper B's maxout deep output layer is applied at every target position to map (s_{i-1}, Ey_{i-1}, c_i) to vocabulary logits. Both are per-position MLP-style maps, but the Transformer's FFN is an internal sub-layer repeated N times whereas Bahdanau's maxout is only the final output head. Analogous at medium confidence."
+    },
+    {
+      "paper_a_nodes": ["DP222.8", "EP222.4", "PrP222.2"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Sinusoidal positional encoding and the proposition that PE_{pos+k} is a linear function of PE_{pos} are Transformer-specific. Bahdanau does not need explicit position encodings because the BiRNN already encodes order through the recurrence; this is one of the central design changes that the Transformer must compensate for."
+    },
+    {
+      "paper_a_nodes": ["DP222.9"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "Sharing weights between input embedding, output embedding, and pre-softmax projection (with sqrt(d_model) embedding scaling) is a Transformer training detail with no explicit counterpart in Bahdanau; Bahdanau uses a separate maxout output head over learned target embeddings."
+    },
+    {
+      "paper_a_nodes": ["AP222.5"],
+      "paper_b_nodes": ["AP223.1"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "These are the two papers' end-to-end translation models. Paper A's Transformer (full model: embed+PE -> N encoder layers -> N decoder layers -> shared-weight projection -> softmax) and Paper B's RNNsearch (BiRNN encoder -> per-step alignment+context+gated decoder unit -> maxout output) both solve the sequence-transduction problem stated in their respective ProbP nodes by combining an encoder, an attention-based decoder, and an output head. The Transformer is the EXT generalisation: same overall recipe but with the RNN backbone removed and attention used everywhere."
+    },
+    {
+      "paper_a_nodes": ["AP222.6", "EP222.5"],
+      "paper_b_nodes": ["AP223.2"],
+      "match_type": "analogous",
+      "confidence": "medium",
+      "explanation": "Both algorithms are the training optimiser for the respective model. Paper A uses Adam with the warmup-then-inverse-square-root schedule; Paper B uses Adadelta with gradient clipping and length-bucketed minibatches. Same role (first-order stochastic optimiser with adaptive learning rates), different specific recipe — analogous, medium confidence."
+    },
+    {
+      "paper_a_nodes": ["ClP222.1"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "The variance argument (Var(q.k) = d_k motivating the 1/sqrt(d_k) scaling) is specific to dot-product attention and has no counterpart in Bahdanau, whose additive compatibility is bounded by tanh and does not need this rescaling."
+    },
+    {
+      "paper_a_nodes": ["PrP222.1"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "The per-layer complexity / sequential operations / max-path-length comparison among self-attention, recurrent, and convolutional layers is a Transformer-original analysis that motivates abandoning recurrence. It is precisely the argument against Bahdanau-style RNN backbones."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP223.2"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Bahdanau's 'annotation' h_j (concatenation of forward and backward BiRNN hidden states at source position j) has no Transformer counterpart. The Transformer's analogue of source-side per-position context is the encoder layer output, but that is produced by stacked self-attention rather than a BiRNN, and is captured under the encoder-stack none-match above."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP223.3"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Bidirectional RNN (cited from Schuster & Paliwal 1997) is the encoder backbone in Bahdanau; the Transformer eliminates RNNs entirely, so there is no counterpart. External-origin in B; recorded as none on the contribution side because removing the BiRNN is the central EXT move."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP223.7"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Gated hidden unit (GRU-style update with reset/update gates) — external in B (Cho 2014). Transformer has no gated recurrent unit; the closest functional role is played by the residual-plus-LayerNorm wrapper around each sub-layer, but that is structurally unrelated."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["EP223.1"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Encoder forward state recurrence h_t = f(x_t, h_{t-1}) is the defining equation of the RNN encoder; the Transformer replaces it entirely with stacked self-attention and therefore has no analogous equation."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["EP223.2"],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "Decoder factorisation p(y) = prod_t p(y_t | y_{<t}, c) is the chain-rule decomposition of an autoregressive decoder. The Transformer also produces an autoregressive distribution (implicit in AP222.5 via masked self-attention and the final softmax), but no explicit equation node states the chain-rule factorisation, so we mark this none rather than forcing a cross-paper match against a missing A-side node."
+    }
+  ]
+}

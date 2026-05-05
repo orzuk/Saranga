@@ -7,8 +7,12 @@ matched nodes collapses into a single merged super-node.  We run the layered
 DAG layout from :mod:`visualize_annotation` on that merged graph and reuse
 the shared (x, y) positions to render either
 
-    * mode "B" – one combined graph with color-coded node origins, or
-    * mode "C" – two side-by-side graphs sharing positions for matched nodes.
+    * mode "B" – one combined graph with color-coded node origins,
+    * mode "C" – two side-by-side graphs sharing positions for matched
+      nodes, or
+    * mode "S" – ONLY the shared (matched) clusters as bicolor split
+      rectangles (paper-A name on top, paper-B name on bottom). The
+      compact "what's actually shared" view; ignores unmatched nodes.
 
 Usage
 -----
@@ -713,6 +717,340 @@ def _draw_mode_C(combined_nodes, group_list, group_of,
     plt.close(fig)
 
 
+# ── Mode S: shared-only bicolor DAG ─────────────────────────────────────────
+# Color scheme is intentionally distinct from B/C — soft warm/cool tints so
+# the bicolor split inside one cluster is unambiguous at a glance.
+S_PAPER_A_BG = "#FADBD8"
+S_PAPER_A_FG = "#7B241C"
+S_PAPER_B_BG = "#D6EAF8"
+S_PAPER_B_FG = "#1A5276"
+S_DIVIDER    = "#9b9b9b"
+S_EDGE       = "#999999"
+
+
+def _truncate_label(name, maxlen=42):
+    if not name:
+        return ""
+    name = str(name)
+    if len(name) <= maxlen:
+        return name
+    return name[: maxlen - 1] + "…"
+
+
+def _shared_label(rep_id, rep_name, extras):
+    """Build "Name (+N more)" suffix when there are sibling ids on this side."""
+    name = rep_name or rep_id
+    label = _truncate_label(name)
+    if extras > 0:
+        label = f"{label}  (+{extras} more)"
+    return label
+
+
+def _draw_mode_S(graph1_json, graph2_json, alignment, out_path,
+                 paper1_name="Paper A", paper2_name="Paper B"):
+    """Render only the shared (matched) clusters as a layered DAG.
+
+    Each shared cluster = one rectangle vertically split into a paper-A top
+    half and a paper-B bottom half. Edges are derived by collapsing the
+    paper-internal edges: if both endpoints of an edge live in shared
+    clusters, draw the corresponding cluster-to-cluster edge. Duplicate
+    edges (same source/target cluster) are collapsed to one.
+
+    Also writes a JSON sidecar at out_path.with_suffix('.shared.json')
+    containing per-cluster details (ids, names, statements, types) so the
+    portal wrapper can populate the click-through detail panel without
+    re-parsing the source JSONs.
+    """
+    import json as _json
+
+    # Mode S uses RAW source nodes (no merge_proofs / no equation filter):
+    # an annotator can match any node type — equation, proof, proof_step,
+    # algorithm — and we want every annotated match to render. The combined
+    # B/C views collapse proofs into theorems and hide equations for visual
+    # clarity, but Mode S is the "what was annotated as shared" view, so
+    # those filters would silently drop legitimate matches.
+    n1 = list(graph1_json["nodes"])
+    n2 = list(graph2_json["nodes"])
+    e1 = list(graph1_json["edges"])
+    e2 = list(graph2_json["edges"])
+    nbi1 = {n["id"]: n for n in n1}
+    nbi2 = {n["id"]: n for n in n2}
+
+    matches = alignment.get("matches", []) or []
+    key_a, key_b = _detect_match_keys(matches, set(nbi1), set(nbi2))
+
+    # Build shared clusters — one per match entry whose match_type is in
+    # {exact, analogous} AND has at least one node on each side. `none`
+    # entries are by definition unshared and skipped silently.
+    shared_clusters = []
+    node_to_clusters_1 = defaultdict(list)  # paper1 nid -> [cluster idx, ...]
+    node_to_clusters_2 = defaultdict(list)
+    for idx, m in enumerate(matches):
+        mt = (m.get("match_type") or "").lower()
+        if mt not in ("exact", "analogous"):
+            continue
+        a_ids = [nid for nid in (m.get(key_a) or []) if nid in nbi1]
+        b_ids = [nid for nid in (m.get(key_b) or []) if nid in nbi2]
+        if not a_ids or not b_ids:
+            continue
+        cidx = len(shared_clusters)
+        for nid in a_ids:
+            node_to_clusters_1[nid].append(cidx)
+        for nid in b_ids:
+            node_to_clusters_2[nid].append(cidx)
+        shared_clusters.append({
+            "cluster_index": cidx,
+            "pair_id": m.get("pair_id") or m.get("id") or f"M{idx+1}",
+            "match_type": mt,
+            "confidence": m.get("confidence", ""),
+            "explanation": m.get("explanation", ""),
+            "paper_a_ids": a_ids,
+            "paper_b_ids": b_ids,
+        })
+
+    if not shared_clusters:
+        # Render an empty figure with a friendly message rather than crashing.
+        fig, ax = plt.subplots(1, 1, figsize=(10, 4))
+        ax.axis("off")
+        ax.text(0.5, 0.5,
+                f"No shared clusters between\n{paper1_name} and {paper2_name}",
+                ha="center", va="center", fontsize=14, color="#555")
+        plt.savefig(str(out_path), dpi=180, bbox_inches="tight",
+                    facecolor="white")
+        plt.close(fig)
+        # Empty sidecar
+        sidecar = Path(out_path).with_suffix(".shared.json")
+        sidecar.write_text(_json.dumps({
+            "paper_a_name": paper1_name, "paper_b_name": paper2_name,
+            "clusters": [], "edges": [],
+        }, ensure_ascii=False, indent=2))
+        return out_path
+
+    # Build the cluster-level DAG: collapse paper edges onto cluster ids.
+    # An edge contributes only if BOTH endpoints belong to a shared cluster
+    # (otherwise we'd need to draw an unmatched node, which Mode S forbids).
+    # Since one node can appear in multiple clusters, expand to all (cs, ct)
+    # pairs where cs ∈ clusters(src) and ct ∈ clusters(tgt), cs != ct.
+    cluster_edges = set()
+    for e in e1:
+        for cs in node_to_clusters_1.get(e["source"], ()):
+            for ct in node_to_clusters_1.get(e["target"], ()):
+                if cs != ct:
+                    cluster_edges.add((cs, ct))
+    for e in e2:
+        for cs in node_to_clusters_2.get(e["source"], ()):
+            for ct in node_to_clusters_2.get(e["target"], ()):
+                if cs != ct:
+                    cluster_edges.add((cs, ct))
+
+    # Layout: layered by topological depth. Synthesize node/edge dicts that
+    # compute_dag_depth understands (it just needs id/source/target).
+    fake_nodes = [{"id": str(c["cluster_index"])} for c in shared_clusters]
+    fake_edges = [{"source": str(s), "target": str(t)}
+                  for (s, t) in cluster_edges]
+    depth = compute_dag_depth(fake_nodes, fake_edges)
+    levels = defaultdict(list)
+    for c in shared_clusters:
+        levels[depth[str(c["cluster_index"])]].append(c)
+
+    # Sort each level by section number (using the paper-A representative).
+    def _sec_key(cluster):
+        rep = nbi1.get(cluster["paper_a_ids"][0], {})
+        sec = rep.get("section", "99")
+        try:
+            parts = [float(x) for x in str(sec).split(".")]
+        except Exception:
+            parts = [99.0]
+        return (parts, cluster["paper_a_ids"][0])
+
+    for d in levels:
+        levels[d].sort(key=_sec_key)
+
+    # Box dimensions: tuned for two-line label (paper A name + paper B name).
+    BOX_W = 4.6
+    BOX_H = 1.4   # slightly taller than the standard MIN_BOX_W to fit 2 lines + divider
+    GAP_X = 0.6
+    GAP_Y = 1.6
+
+    # Position each cluster (cx, cy) and rectangle (bx, by) bottom-left.
+    rects = {}        # cidx -> (bx, by, w, h)
+    max_depth = max(levels.keys()) if levels else 0
+    for d in range(max_depth + 1):
+        row = levels.get(d, [])
+        if not row:
+            continue
+        total = len(row) * BOX_W + (len(row) - 1) * GAP_X
+        x0 = -total / 2
+        y_top = -d * (BOX_H + GAP_Y)
+        for i, c in enumerate(row):
+            bx = x0 + i * (BOX_W + GAP_X)
+            by = y_top - BOX_H
+            rects[c["cluster_index"]] = (bx, by, BOX_W, BOX_H)
+
+    # Figure size from rect bounds.
+    xs0 = [bx for (bx, by, bw, bh) in rects.values()]
+    xs1 = [bx + bw for (bx, by, bw, bh) in rects.values()]
+    ys0 = [by for (bx, by, bw, bh) in rects.values()]
+    ys1 = [by + bh for (bx, by, bw, bh) in rects.values()]
+    graph_w = (max(xs1) - min(xs0))
+    graph_h = (max(ys1) - min(ys0))
+    figsize = (max(graph_w * 0.95 + 2, 10), max(graph_h * 0.7 + 3, 6))
+
+    fig, ax = plt.subplots(1, 1, figsize=figsize)
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+    # Draw edges (light gray) BEFORE boxes so arrows go behind.
+    for (s, t) in cluster_edges:
+        if s not in rects or t not in rects:
+            continue
+        sr = rects[s]
+        tr = rects[t]
+        sx, sy, sw, sh = sr
+        tx, ty, tw, th = tr
+        x0p = sx + sw / 2
+        y0p = sy
+        x1p = tx + tw / 2
+        y1p = ty + th
+        rad = 0.08 if abs(x0p - x1p) > 0.5 else 0
+        ax.annotate(
+            "", xy=(x1p, y1p), xytext=(x0p, y0p),
+            arrowprops=dict(
+                arrowstyle="-|>,head_length=0.7,head_width=0.4",
+                color=S_EDGE, lw=1.0, alpha=0.85,
+                connectionstyle=f"arc3,rad={rad}",
+                shrinkA=2, shrinkB=2,
+            ),
+        )
+
+    # Draw each shared cluster as a bicolor split rectangle.
+    sidecar_clusters = []
+    for c in shared_clusters:
+        cidx = c["cluster_index"]
+        if cidx not in rects:
+            continue
+        bx, by, bw, bh = rects[cidx]
+        half_h = bh / 2.0
+
+        mt = c["match_type"]
+        if mt == "exact":
+            border_lw = 1.5
+            border_ls = "-"
+        else:  # analogous (none never reaches here)
+            border_lw = 1.5
+            border_ls = (0, (4, 3))
+
+        # Paper-A top half
+        top = mpatches.Rectangle(
+            (bx, by + half_h), bw, half_h,
+            facecolor=S_PAPER_A_BG, edgecolor="none", linewidth=0,
+        )
+        ax.add_patch(top)
+        # Paper-B bottom half
+        bot = mpatches.Rectangle(
+            (bx, by), bw, half_h,
+            facecolor=S_PAPER_B_BG, edgecolor="none", linewidth=0,
+        )
+        ax.add_patch(bot)
+        # Outer border (encodes match_type via line style)
+        # The matplotlib id used by the SVG output for click-through is set
+        # via gid on the outer border patch.
+        outer = mpatches.Rectangle(
+            (bx, by), bw, bh,
+            facecolor="none", edgecolor="#333",
+            linewidth=border_lw, linestyle=border_ls,
+        )
+        outer.set_gid(f"shared_cluster_{cidx}")
+        ax.add_patch(outer)
+        # Divider line
+        ax.plot([bx + 0.05, bx + bw - 0.05],
+                [by + half_h, by + half_h],
+                color=S_DIVIDER, lw=0.6, solid_capstyle="butt")
+
+        # Labels: representative name on each side, with "(+N more)" if siblings.
+        a_first = c["paper_a_ids"][0]
+        b_first = c["paper_b_ids"][0]
+        a_extras = len(c["paper_a_ids"]) - 1
+        b_extras = len(c["paper_b_ids"]) - 1
+        a_name = (nbi1.get(a_first, {}).get("name") or a_first)
+        b_name = (nbi2.get(b_first, {}).get("name") or b_first)
+        a_label = _shared_label(a_first, a_name, a_extras)
+        b_label = _shared_label(b_first, b_name, b_extras)
+
+        ax.text(bx + bw / 2, by + half_h + half_h / 2, a_label,
+                ha="center", va="center",
+                fontsize=10.5, color=S_PAPER_A_FG, fontweight="bold")
+        ax.text(bx + bw / 2, by + half_h / 2, b_label,
+                ha="center", va="center",
+                fontsize=10.5, color=S_PAPER_B_FG, fontweight="bold")
+
+        # Sidecar entry — full data for the click panel.
+        def _node_summary(nid, lookup):
+            n = lookup.get(nid, {})
+            return {
+                "id": nid,
+                "name": n.get("name", ""),
+                "type": n.get("type", ""),
+                "statement": n.get("statement", ""),
+                "section": n.get("section", ""),
+            }
+
+        sidecar_clusters.append({
+            "cluster_index": cidx,
+            "gid": f"shared_cluster_{cidx}",
+            "pair_id": c["pair_id"],
+            "match_type": mt,
+            "confidence": c["confidence"],
+            "explanation": c["explanation"],
+            "paper_a_nodes": [_node_summary(nid, nbi1)
+                              for nid in c["paper_a_ids"]],
+            "paper_b_nodes": [_node_summary(nid, nbi2)
+                              for nid in c["paper_b_ids"]],
+        })
+
+    # Legend: explain bicolor halves + border styles.
+    handles = [
+        mpatches.Patch(facecolor=S_PAPER_A_BG, edgecolor="#333",
+                       linewidth=1.0, label=f"{paper1_name} (top half)"),
+        mpatches.Patch(facecolor=S_PAPER_B_BG, edgecolor="#333",
+                       linewidth=1.0, label=f"{paper2_name} (bottom half)"),
+        plt.Line2D([0], [0], color="#333", lw=1.5, linestyle="-",
+                   label="exact match"),
+        plt.Line2D([0], [0], color="#333", lw=1.5, linestyle=(0, (4, 3)),
+                   label="analogous match"),
+    ]
+    ax.legend(handles=handles, loc="lower right", fontsize=11,
+              frameon=True, framealpha=0.95)
+
+    ax.set_title(
+        f"Shared concepts: {paper1_name} ↔ {paper2_name}  "
+        f"({len(shared_clusters)} cluster"
+        f"{'s' if len(shared_clusters) != 1 else ''}, "
+        f"{len(cluster_edges)} edge"
+        f"{'s' if len(cluster_edges) != 1 else ''})",
+        fontsize=15, fontweight="bold", pad=14)
+
+    ax.autoscale()
+    ax.margins(0.05)
+    try:
+        plt.tight_layout()
+    except Exception:
+        pass
+    plt.savefig(str(out_path), dpi=180, bbox_inches="tight",
+                facecolor="white")
+    plt.close(fig)
+
+    # Write sidecar JSON next to the output.
+    sidecar_path = Path(out_path).with_suffix(".shared.json")
+    sidecar_path.write_text(_json.dumps({
+        "paper_a_name": paper1_name,
+        "paper_b_name": paper2_name,
+        "clusters": sidecar_clusters,
+        "edges": [{"source": s, "target": t} for (s, t) in sorted(cluster_edges)],
+    }, ensure_ascii=False, indent=2))
+    return out_path
+
+
 # ── Public entry point ──────────────────────────────────────────────────────
 def _paper_short_name(paper_json: dict) -> str:
     """Extract a short display name from a paper JSON (title or first author)."""
@@ -732,7 +1070,10 @@ def draw_alignment(graph1_json, graph2_json, alignment_json, output_path,
                    mode: str = "B"):
     """Render an alignment visualization.
 
-    mode: "B" for combined graph, "C" for side-by-side with shared positions.
+    mode:
+        "B" – combined graph (3 columns: A-only, shared, B-only)
+        "C" – side-by-side with shared positions
+        "S" – shared-only bicolor DAG (matched clusters only)
     """
     g1 = _load(graph1_json)
     g2 = _load(graph2_json)
@@ -750,6 +1091,14 @@ def draw_alignment(graph1_json, graph2_json, alignment_json, output_path,
     if len(paper2_name) > 40:
         paper2_name = paper2_name[:37] + "..."
 
+    mode = mode.upper()
+    if mode == "S":
+        # Mode S has its own pipeline: it never builds the unmatched-node
+        # graph, so we skip _build_combined / _layout entirely.
+        _draw_mode_S(g1, g2, align, output_path,
+                     paper1_name=paper1_name, paper2_name=paper2_name)
+        return output_path
+
     combined_nodes, combined_edges, group_of, group_list, \
         n1, n2, e1, e2 = _build_combined(g1, g2, align)
 
@@ -758,7 +1107,6 @@ def draw_alignment(graph1_json, graph2_json, alignment_json, output_path,
     positions, rects = _layout(combined_nodes, combined_edges, box_w=4.2,
                                 group_info=group_info_for_layout)
 
-    mode = mode.upper()
     if mode == "B":
         _draw_mode_B(combined_nodes, combined_edges, group_list,
                      positions, rects, output_path,
@@ -768,7 +1116,7 @@ def draw_alignment(graph1_json, graph2_json, alignment_json, output_path,
                      n1, n2, e1, e2, positions, rects, output_path,
                      paper1_name=paper1_name, paper2_name=paper2_name)
     else:
-        raise ValueError(f"Unknown mode: {mode}  (use 'B' or 'C')")
+        raise ValueError(f"Unknown mode: {mode}  (use 'B', 'C', or 'S')")
     return output_path
 
 
@@ -780,7 +1128,7 @@ if __name__ == "__main__":
     ap.add_argument("graph2_json")
     ap.add_argument("alignment_json")
     ap.add_argument("output")
-    ap.add_argument("--mode", default="B", choices=["B", "C"])
+    ap.add_argument("--mode", default="B", choices=["B", "C", "S"])
     args = ap.parse_args()
     draw_alignment(args.graph1_json, args.graph2_json, args.alignment_json,
                    args.output, mode=args.mode)

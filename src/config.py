@@ -19,8 +19,8 @@ else:
     wsl_data_gdrive = Path('/mnt/g/My Drive/Research/Automath')  # Google Drive mirror
     wsl_data_legacy = Path('/mnt/c/Datasets/Authomathics_data')  # old location
 
-    cluster_data = Path('/sci/labs/orzuk/orzuk/projects/Authomathics')
-    cluster_code = Path('/sci/labs/orzuk/orzuk/github/Authomathics')
+    cluster_data = Path('/<cluster>/<user>/projects/Authomathics')
+    cluster_code = Path('/<cluster>/<user>/github/Authomathics')
 
     home_data = Path.home() / 'Datasets' / 'Authomathics_data'
     home_code = Path.home() / 'Code' / 'Authomathics'

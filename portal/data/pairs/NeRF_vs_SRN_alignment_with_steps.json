@@ -1,0 +1,195 @@
+{
+  "metadata": {
+    "alignment_name": "NeRF_vs_SRN",
+    "paper_a": {"arxiv_id": "2003.08934", "title": "NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis"},
+    "paper_b": {"arxiv_id": "1906.01618", "title": "Scene Representation Networks: Continuous 3D-Structure-Aware Neural Scene Representations"},
+    "relation_type": "CF",
+    "annotator": "Claude (claude-opus-4-7-silver-with-steps)",
+    "scheme_version": "with_steps_v2",
+    "description": "Both papers learn an implicit MLP-based continuous 3D scene representation supervised only by 2D posed images through a differentiable renderer. They are competing frameworks for the same problem: SRN treats geometry as an implicit opaque surface located by a learned LSTM ray marcher and decoded to color by a per-pixel MLP, while NeRF treats geometry as a continuous volume density rendered by classical alpha-compositing along the entire ray. NeRF explicitly cites SRN as a baseline and shows it outperforms SRN on novel-view synthesis."
+  },
+  "matches": [
+    {
+      "paper_a_nodes": ["DP226.1"],
+      "paper_b_nodes": ["DP227.2", "DP227.7"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "Both define a continuous MLP-parameterized scene function from world coordinates. NeRF's $F_\\Theta:(\\mathbf{x},\\mathbf{d})\\to(\\mathbf{c},\\sigma)$ folds geometry and view-dependent color into a single 5D MLP, whereas SRN factors the same role across a feature MLP $\\Phi:\\mathbb{R}^3\\to\\mathbb{R}^n$ (DP227.2) and a per-pixel decoder MLP that produces RGB from $\\mathbf{v}$ (DP227.7). SRN has no view-direction input. This is the central conceptual correspondence and the reason the pair was curated."
+    },
+    {
+      "paper_a_nodes": ["DP226.2"],
+      "paper_b_nodes": ["DP227.4"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "Both encode where matter is in the scene. NeRF's volume density $\\sigma(\\mathbf{x})$ (DP226.2) is a soft, differential ray-termination probability, supporting volumetric integration; SRN's surface set $\\Omega$ (DP227.4) is a hard implicit level-set treated as an opaque surface. Same conceptual slot (geometry container) under fundamentally different formulations - a hallmark of CF."
+    },
+    {
+      "paper_a_nodes": ["DP226.4"],
+      "paper_b_nodes": ["EP227.1"],
+      "match_type": "exact",
+      "confidence": "high",
+      "explanation": "Identical mathematical object: parameterization of the camera ray through a pixel given camera pose and intrinsics. NeRF writes it as $\\mathbf{r}(t) = \\mathbf{o} + t\\mathbf{d}$; SRN writes the same line in world coordinates as $\\mathbf{r}_{u,v}(d) = \\mathbf{R}^T(\\mathbf{K}^{-1}(u,v,d)^T-\\mathbf{t})$, which expands NeRF's $\\mathbf{o}$ and $\\mathbf{d}$ from $(u,v,\\mathbf{K},\\mathbf{E})$. Same standard pinhole-camera ray."
+    },
+    {
+      "paper_a_nodes": ["DP226.3"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Accumulated transmittance $T(t)=\\exp(-\\int_{t_n}^t\\sigma\\,ds)$ is a building block of NeRF's volume-rendering integral. SRN does not integrate along the ray and so has no transmittance-like quantity."
+    },
+    {
+      "paper_a_nodes": ["DP226.5"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Sinusoidal positional encoding $\\gamma(\\cdot)$ is one of NeRF's distinctive contributions and has no SRN counterpart. SRN feeds raw $\\mathbf{x}$ into $\\Phi$ without Fourier features."
+    },
+    {
+      "paper_a_nodes": ["DP226.6"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Stratified quadrature sampling is specific to NeRF's volume-integration pipeline. SRN does not numerically integrate along the ray - it walks to a single surface intersection - so there is no comparable sample-set definition."
+    },
+    {
+      "paper_a_nodes": ["DP226.7"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "NDC space is used by NeRF only for forward-facing real scenes (Appendix C). It is also a generic graphics primitive (origin: external) and has no analog in the SRN paper, which works directly in world coordinates."
+    },
+    {
+      "paper_a_nodes": ["EP226.1", "EP226.2"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Continuous volume-rendering integral $C(\\mathbf{r}) = \\int T(t)\\sigma(\\mathbf{r}(t))\\mathbf{c}(\\mathbf{r}(t),\\mathbf{d})dt$ and its quadrature estimator are the engine of NeRF and have no SRN analog. SRN's renderer evaluates $\\Phi$ at a single estimated surface point and pushes it through the pixel generator instead of integrating along the ray. This is the single largest mathematical divergence between the two frameworks."
+    },
+    {
+      "paper_a_nodes": ["EP226.3"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Coarse-network normalized weights $\\hat{w}_i = w_i/\\sum_j w_j$ define an importance-sampling PDF unique to NeRF's two-pass hierarchical scheme. SRN uses no such PDF since it does not integrate along the ray."
+    },
+    {
+      "paper_a_nodes": ["EP226.4"],
+      "paper_b_nodes": ["EP227.2"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "Both papers use a squared-error photometric reconstruction loss between rendered and observed pixels as the primary supervision signal. NeRF's loss (EP226.4) sums coarse and fine network errors over a ray batch in a single scene. SRN's joint objective (EP227.2) contains the same image-MSE term plus a depth-positivity regularizer and a Gaussian latent-code prior, summed across instances and views. Same role, but SRN's loss includes additional regularizers tied to the multi-instance hypernetwork formulation."
+    },
+    {
+      "paper_a_nodes": ["EP226.5"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "NDC ray origin/direction formulas are NeRF-specific (Appendix C); SRN has no NDC reparameterization."
+    },
+    {
+      "paper_a_nodes": ["ProbP226.1"],
+      "paper_b_nodes": ["ProbP227.2"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "Both pose the inverse problem of learning a 3D scene representation from posed 2D images for novel-view synthesis. NeRF's problem (ProbP226.1) is single-scene: synthesize new views given posed RGB images of one scene. SRN's problem (ProbP227.2) is multi-instance: jointly learn a renderer, hypernetwork, and per-instance latent codes across a class of scenes. Same task at the per-scene level but SRN extends to discovering shape/appearance priors over a class - an axis NeRF does not target."
+    },
+    {
+      "paper_a_nodes": ["ProbP227.1"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "SRN's ray-surface intersection optimization $\\arg\\min\\{d>0 : \\mathbf{r}_{u,v}(d)\\in\\Omega\\}$ is not posed in NeRF, which avoids surface localization entirely by integrating the volume."
+    },
+    {
+      "paper_a_nodes": ["AP226.1"],
+      "paper_b_nodes": ["AP227.4"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "Both are the top-level training algorithm: SGD on a photometric loss with a differentiable renderer in the loop. NeRF's procedure (AP226.1) trains coarse+fine MLPs for one scene with positional encoding, stratified+importance sampling, and Adam. SRN's procedure (AP227.4) jointly trains the renderer, hypernetwork, and latent codes across many scenes with depth and latent regularizers. Composite L1 match; the two procedures are structurally similar (init -> render -> photometric loss -> backprop) but differ in scene scope (single vs class) and renderer (volume integration vs LSTM ray marcher)."
+    },
+    {
+      "paper_a_nodes": ["AP226.2"],
+      "paper_b_nodes": ["AP227.1"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "Both algorithms decide where along each camera ray to evaluate the scene MLP - the heart of the two frameworks' renderers. NeRF's hierarchical volume sampling (AP226.2) uses two passes (stratified coarse then inverse-CDF fine) and feeds all samples into a quadrature alpha-compositor; SRN's RM-LSTM (AP227.1) iteratively predicts a single adaptive step length at each iteration and stops at one estimated surface point. Same conceptual slot (ray traversal sampler) realized by two completely different mechanisms - the central CF axis flagged in why_related."
+    },
+    {
+      "paper_a_nodes": ["ASP226.6", "ASP226.7", "ASP226.8", "ASP226.9"],
+      "paper_b_nodes": ["ASP227.1", "ASP227.2", "ASP227.3", "ASP227.4", "ASP227.5", "ASP227.6", "ASP227.7"],
+      "match_type": "analogous",
+      "confidence": "medium",
+      "explanation": "Composite L2-vs-L2 entry tied to the parent match AP226.2 <-> AP227.1. Both step DAGs walk a camera ray and evaluate the scene MLP at chosen positions, but the inner control flow is fundamentally different. NeRF: coarse stratified sample (ASP226.6) -> coarse network query and per-sample weights (ASP226.7) -> normalize weights to a PDF and inverse-transform sample (ASP226.8) -> fine network query and quadrature (ASP226.9). SRN: init depth and LSTM state (ASP227.1) -> for-loop body (ASP227.2): compute world coord (ASP227.3) -> query feature (ASP227.4) -> LSTM predicts step (ASP227.5) -> increment depth (ASP227.6) -> return final intersection (ASP227.7). NeRF's loop runs over samples in parallel with a closed-form weighting; SRN's loop runs over time with a recurrent state. Listed as a single composite many-to-many entry per the L2 alignment rule."
+    },
+    {
+      "paper_a_nodes": ["AP226.3"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Neural Volumes (Lombardi et al. 2019) is cited only by NeRF as a baseline (origin: external); SRN does not reference it."
+    },
+    {
+      "paper_a_nodes": ["AP226.4"],
+      "paper_b_nodes": ["AP227.4", "AP227.1"],
+      "match_type": "exact",
+      "confidence": "high",
+      "explanation": "AP226.4 is NeRF's prose summary of paper B itself - it cites Sitzmann et al. NeurIPS 2019 (the SRN paper) and describes the scene-as-MLP plus recurrent-ray-marcher pipeline. The cited content corresponds to SRN's own joint training algorithm AP227.4 together with the RM-LSTM ray marcher AP227.1. Cross-paper external-vs-paper alignment of the same underlying method - mild evidence for the CF relationship even though it carries no information beyond confirming the pair pairing."
+    },
+    {
+      "paper_a_nodes": ["AP226.5"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "LLFF (Mildenhall et al. 2019) is cited only by NeRF; SRN does not reference it."
+    },
+    {
+      "paper_a_nodes": ["PrP226.1"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "The NDC ray-space transformation proposition is a NeRF appendix result with no SRN counterpart - SRN never reparameterizes ray space."
+    },
+    {
+      "paper_a_nodes": ["PP226.1"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Proof of the NDC reparameterization (PrP226.1) is paper-original to NeRF; no analog in SRN."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP227.1"],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "SRN explicitly defines the multi-instance training set $\\mathcal{C}=\\{(\\mathcal{I}_i,\\mathbf{E}_i,\\mathbf{K}_i)\\}$ as a first-class object (DP227.1). NeRF takes this implicitly as input to its algorithm AP226.1 but does not extract a separate definition node."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP227.3"],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "SRN factors out the abstract neural renderer $\\Theta:\\mathcal{X}\\times\\mathbb{R}^{3\\times 4}\\times\\mathbb{R}^{3\\times 3}\\to\\mathbb{R}^{H\\times W\\times 3}$ as a named object. NeRF has the same conceptual mapping but absorbs it into the MLP $F_\\Theta$ + volume-rendering integral and does not extract a separate renderer-as-functor definition."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP227.5", "DP227.6"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "The hypernetwork $\\Psi:\\mathbf{z}\\mapsto\\phi$ and the latent-manifold assumption are SRN's mechanism for generalizing across scenes in one class. NeRF is a single-scene method and has no hypernetwork or latent code - the largest SRN-side contribution with no NeRF analog."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["EP227.3"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Few-shot reconstruction objective (latent-only optimization with frozen $\\theta,\\psi$) is enabled by SRN's hypernetwork formulation; NeRF has no analog."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["AP227.5"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Few-shot latent-code recovery for a new instance is SRN-specific and depends on the hypernetwork prior."
+    }
+  ]
+}

@@ -6,7 +6,7 @@
 #SBATCH --mem=4G
 #SBATCH --cpus-per-task=1
 #SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=or.zuk@mail.huji.ac.il
+#SBATCH --mail-user=anonymous@example.com
 
 # ProofWiki Comprehensive Scraper
 # ===============================
@@ -24,8 +24,8 @@
 set -e  # Exit on error
 
 # Configuration
-CODE_DIR="/sci/labs/orzuk/orzuk/github/Authomathics"
-DATA_DIR="/sci/labs/orzuk/orzuk/projects/Authomathics"
+CODE_DIR="/<cluster>/<user>/github/Authomathics"
+DATA_DIR="/<cluster>/<user>/projects/Authomathics"
 
 # Parse mode argument (default: core)
 MODE="${1:-core}"

@@ -1,0 +1,394 @@
+{
+  "metadata": {
+    "title": "Momentum Contrast for Unsupervised Visual Representation Learning",
+    "paper_num": 229,
+    "authors": "Kaiming He, Haoqi Fan, Yuxin Wu, Saining Xie, Ross Girshick",
+    "year": 2020,
+    "venue": "CVPR",
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "ProbP229.1",
+      "type": "problem",
+      "name": "Unsupervised Visual Representation Learning",
+      "section": "1",
+      "statement": "Learn visual feature representations from unlabeled images such that the resulting features transfer well to downstream vision tasks (detection, segmentation, classification) via fine-tuning.",
+      "statement_clean": "Train an image encoder without labels so its features transfer to downstream vision tasks.",
+      "origin": "paper",
+      "tags": ["representation_learning", "unsupervised"]
+    },
+    {
+      "id": "ProbP229.2",
+      "type": "problem",
+      "name": "Dynamic Dictionary Look-up for Contrastive Learning",
+      "section": "3.1",
+      "statement": "Train an encoder $f_q$ such that an encoded query $q = f_q(x_q)$ matches its positive key $k_+$ and is dissimilar to all other (negative) keys in a dictionary $\\{k_0, k_1, k_2, \\dots\\}$.",
+      "statement_clean": "Build an encoder whose query is similar to one matching key and dissimilar to many negative keys in a dictionary.",
+      "origin": "paper",
+      "assumptions": ["Encoded query $q$ and a set of encoded keys $\\{k_0, k_1, \\dots\\}$ exist", "There is a single positive key $k_+$ that $q$ matches"],
+      "conclusions": ["A contrastive loss $L_q$ is low when $q$ is similar to $k_+$ and dissimilar to other keys"]
+    },
+    {
+      "id": "DP229.1",
+      "type": "definition",
+      "name": "Contrastive Loss",
+      "section": "2",
+      "statement": "A loss function that measures similarities of sample pairs in a representation space. Its target can vary on-the-fly during training and is defined in terms of the data representation computed by a network.",
+      "origin": "external",
+      "origin_citation": "Hadsell, Chopra, LeCun 2006"
+    },
+    {
+      "id": "DP229.2",
+      "type": "definition",
+      "name": "InfoNCE Loss",
+      "section": "3.1",
+      "statement": "$L_q = -\\log \\frac{\\exp(q \\cdot k_+/\\tau)}{\\sum_{i=0}^{K} \\exp(q \\cdot k_i / \\tau)}$, where $\\tau$ is a temperature hyper-parameter and the sum is over one positive and $K$ negative samples.",
+      "statement_clean": "A $(K{+}1)$-way softmax cross-entropy loss that classifies the query $q$ as its positive key $k_+$ among $K$ negatives.",
+      "origin": "external",
+      "origin_citation": "van den Oord, Li, Vinyals 2018 (CPC)"
+    },
+    {
+      "id": "DP229.3",
+      "type": "definition",
+      "name": "Query Encoder $f_q$ and Key Encoder $f_k$",
+      "section": "3.1",
+      "statement": "Encoder networks producing the query representation $q = f_q(x_q)$ and key representation $k = f_k(x_k)$ from input samples $x_q, x_k$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP229.4",
+      "type": "definition",
+      "name": "Dictionary as a Queue",
+      "section": "3.2",
+      "statement": "Maintain the dictionary of keys as a FIFO queue: the current mini-batch is enqueued, and the oldest mini-batch is dequeued. The queue size $K$ is decoupled from the mini-batch size and is a hyper-parameter.",
+      "origin": "paper",
+      "tags": ["data_structure"]
+    },
+    {
+      "id": "DP229.5",
+      "type": "definition",
+      "name": "Momentum Update of Key Encoder",
+      "section": "3.2",
+      "statement": "Update key-encoder parameters by $\\theta_k \\leftarrow m \\theta_k + (1-m)\\theta_q$, where $m \\in [0,1)$ is the momentum coefficient. Only $\\theta_q$ is updated by back-propagation.",
+      "statement_clean": "The key encoder is an exponential moving average of the query encoder; no gradients flow through it.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP229.6",
+      "type": "definition",
+      "name": "Instance Discrimination Pretext Task",
+      "section": "3.3",
+      "statement": "Treat a query and a key as a positive pair if they originate from the same image (two random augmentations / views of it), and as negatives otherwise.",
+      "origin": "external",
+      "origin_citation": "Wu et al. 2018 (InstDisc)"
+    },
+    {
+      "id": "DP229.7",
+      "type": "definition",
+      "name": "Shuffling BN",
+      "section": "3.3",
+      "statement": "When training the key encoder $f_k$ across multiple GPUs, shuffle the sample order of the current mini-batch before distributing it among GPUs (and shuffle back after encoding); the order for $f_q$ is unchanged. Ensures BN statistics for $q$ and its positive key come from different sub-batches.",
+      "origin": "paper",
+      "tags": ["normalization", "training_trick"]
+    },
+    {
+      "id": "EP229.1",
+      "type": "equation",
+      "name": "InfoNCE Contrastive Loss",
+      "section": "3.1",
+      "statement": "$L_q = -\\log \\dfrac{\\exp(q\\cdot k_+/\\tau)}{\\sum_{i=0}^{K} \\exp(q\\cdot k_i/\\tau)}$ \\quad (Eq. 1).",
+      "origin": "paper"
+    },
+    {
+      "id": "EP229.2",
+      "type": "equation",
+      "name": "Momentum Update Rule",
+      "section": "3.2",
+      "statement": "$\\theta_k \\leftarrow m\\,\\theta_k + (1-m)\\,\\theta_q$ \\quad (Eq. 2).",
+      "origin": "paper"
+    },
+    {
+      "id": "AP229.1",
+      "type": "algorithm",
+      "name": "Momentum Contrast (MoCo)",
+      "section": "3.2 / Algorithm 1",
+      "statement": "PyTorch-style mini-batch training procedure that maintains a queue of encoded keys and updates the key encoder as a momentum moving average of the query encoder, optimizing the InfoNCE loss.",
+      "statement_clean": "MoCo training: encode query/key from two augmentations, compute InfoNCE against the queue, SGD on $f_q$, momentum-update $f_k$, then enqueue new keys and dequeue old.",
+      "origin": "paper",
+      "input": [
+        "Encoder networks $f_q, f_k$ (initialized $f_k.\\text{params} = f_q.\\text{params}$)",
+        "Queue of $K$ keys (size $C\\times K$)",
+        "Momentum coefficient $m$",
+        "Temperature $\\tau$",
+        "Mini-batch loader of $N$ samples"
+      ],
+      "output": [
+        "Trained query encoder $f_q$ (unsupervised feature extractor)",
+        "Updated key encoder $f_k$"
+      ],
+      "pseudocode": "for x in loader: x_q = aug(x); x_k = aug(x); q = f_q(x_q); k = f_k(x_k).detach(); l_pos = bmm(q, k); l_neg = mm(q, queue); logits = cat([l_pos, l_neg]); labels = 0; loss = CE(logits/t, labels); loss.backward(); update(f_q); f_k.params = m*f_k.params + (1-m)*f_q.params; enqueue(queue, k); dequeue(queue).",
+      "tags": ["iterative", "self_supervised", "contrastive"]
+    },
+    {
+      "id": "AP229.2",
+      "type": "algorithm",
+      "name": "End-to-End Contrastive Mechanism",
+      "section": "3.2 (cited / compared)",
+      "statement": "Use samples in the current mini-batch as the dictionary; both query and key encoders are updated by back-propagation. Dictionary size is coupled with the mini-batch size.",
+      "origin": "external",
+      "origin_citation": "Hadsell-Chopra-LeCun 2006 / van den Oord 2018 / Hjelm 2019 etc."
+    },
+    {
+      "id": "AP229.3",
+      "type": "algorithm",
+      "name": "Memory Bank",
+      "section": "3.2 (cited / compared)",
+      "statement": "Maintain a bank of representations of all dataset samples; for each mini-batch sample dictionary keys randomly from the bank with no back-propagation. Bank entries are updated when the corresponding sample is last seen.",
+      "origin": "external",
+      "origin_citation": "Wu et al. 2018 (InstDisc)"
+    },
+    {
+      "id": "ExP229.1",
+      "type": "example",
+      "name": "ImageNet-1M Linear Classification",
+      "section": "4.1",
+      "statement": "Pre-train MoCo unsupervisedly on ImageNet-1M, freeze features, train a linear classifier, evaluate top-1 accuracy. With ResNet-50 and $K=65536$, $m=0.999$, MoCo reaches 60.6%; with R50w4x reaches 68.6%.",
+      "origin": "paper",
+      "tags": ["benchmark", "evaluation"]
+    },
+    {
+      "id": "ExP229.2",
+      "type": "example",
+      "name": "Ablation: Contrastive Loss Mechanisms vs. K",
+      "section": "4.1",
+      "statement": "Compare end-to-end, memory-bank, and MoCo on IN-1M linear classification while sweeping $K \\in \\{256, \\dots, 65536\\}$. MoCo benefits monotonically from larger $K$ (54.7 to 60.6) and is best of the three, especially at large $K$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP229.3",
+      "type": "example",
+      "name": "Ablation: Momentum Coefficient $m$",
+      "section": "4.1",
+      "statement": "On IN-1M with $K=4096$: $m=0$ fails; $m=0.9 \\to 55.2$; $m=0.99 \\to 57.8$; $m=0.999 \\to 59.0$; $m=0.9999 \\to 58.9$. A slowly progressing key encoder (large $m$) is essential.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP229.4",
+      "type": "example",
+      "name": "PASCAL VOC Object Detection",
+      "section": "4.2.1",
+      "statement": "Fine-tune Faster R-CNN (R50-C4 / R50-dilated-C5) initialized from MoCo IN-1M or IG-1B on VOC trainval07+12, evaluate on test2007. MoCo IG-1B exceeds ImageNet-supervised pre-training by up to +0.9 AP50, +3.7 AP, +4.9 AP75.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP229.5",
+      "type": "example",
+      "name": "COCO Detection and Instance Segmentation",
+      "section": "4.2.2",
+      "statement": "Fine-tune Mask R-CNN (R50-FPN / R50-C4) on COCO train2017, evaluate on val2017. With 2x schedule, MoCo beats ImageNet-supervised pre-training in all metrics on both backbones.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP229.6",
+      "type": "example",
+      "name": "More Downstream Tasks (Keypoint, DensePose, LVIS, Cityscapes, VOC-seg)",
+      "section": "4.2.3",
+      "statement": "Across COCO keypoint detection, COCO dense pose, LVIS instance segmentation, Cityscapes instance and semantic segmentation, and VOC semantic segmentation, MoCo IG-1B is on par or better than the ImageNet-supervised counterpart in 7 of these tasks.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP229.7",
+      "type": "example",
+      "name": "Shuffling BN Ablation",
+      "section": "A.9",
+      "statement": "Without shuffling BN, MoCo overfits the pretext task: pretext training accuracy reaches >99.9% while kNN ImageNet validation accuracy collapses, indicating BN-leak \"cheating\".",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP229.8",
+      "type": "example",
+      "name": "iNaturalist Fine-Grained Classification",
+      "section": "A.6",
+      "statement": "Fine-tune R50 end-to-end on iNaturalist 2018 (~437k images, 8142 classes). MoCo IN-1M = 65.6%, MoCo IG-1B = 65.8%, supervised IN-1M = 66.1%, random init = 61.8%.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP229.1",
+      "type": "remark",
+      "name": "Two Desiderata: Large and Consistent Dictionaries",
+      "section": "1 / 3.2",
+      "statement": "Hypothesis motivating MoCo: good contrastive features require dictionaries that are (i) large (so as to densely sample the high-dimensional visual space) and (ii) consistent (keys produced by similar encoders), but existing mechanisms achieve only one of the two.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP229.2",
+      "type": "remark",
+      "name": "Why Naive Copy of $f_q$ to $f_k$ Fails",
+      "section": "3.2",
+      "statement": "Copying $f_k \\leftarrow f_q$ at every step (ignoring queue gradients) yields poor results: the rapidly changing key encoder destroys consistency among the keys stored in the queue. The momentum update fixes this.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP229.3",
+      "type": "remark",
+      "name": "Memory Bank's Inconsistency",
+      "section": "3.2",
+      "statement": "In a memory bank, sampled keys correspond to encoder snapshots scattered over the past epoch, hence are inconsistent. MoCo avoids this by encoding fresh keys with a slow-moving encoder, producing consistent keys at the cost of only the most recent mini-batches.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP229.4",
+      "type": "remark",
+      "name": "Normalization and Schedules for Transfer",
+      "section": "4.2",
+      "statement": "Two practical issues for transferring MoCo features: (i) feature distributions differ from supervised pre-training, motivating tuned BN during fine-tuning; (ii) controlled fine-tuning schedules (e.g., 1x/2x) are used so MoCo and supervised baselines are compared fairly.",
+      "origin": "paper"
+    },
+    {
+      "id": "OpenP229.1",
+      "type": "open_problem",
+      "name": "Better Pretext Tasks for MoCo",
+      "section": "5",
+      "statement": "MoCo's gain from IN-1M to IG-1B is positive but small, suggesting larger-scale data is not fully exploited. Whether more advanced pretext tasks (e.g., masked auto-encoding analogous to BERT) can unlock further gains is open.",
+      "origin": "paper"
+    },
+    {
+      "id": "OpenP229.2",
+      "type": "open_problem",
+      "name": "Large Mini-Batch Optimization for End-to-End Contrastive",
+      "section": "4.1",
+      "statement": "End-to-end contrastive training is bottlenecked by the open problem of optimizing very large mini-batches; even with linear learning-rate scaling, accuracy drops at 1024-batch and it is unclear if the trend extrapolates to larger $K$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP229.1",
+      "type": "algorithm_step",
+      "parent_id": "AP229.1",
+      "step_order": 1,
+      "name": "Initialize key encoder from query encoder",
+      "statement": "$f_k.\\text{params} \\leftarrow f_q.\\text{params}$.",
+      "subclass": "initialize"
+    },
+    {
+      "id": "ASP229.2",
+      "type": "algorithm_step",
+      "parent_id": "AP229.1",
+      "step_order": 2,
+      "name": "Mini-batch loop",
+      "statement": "For each mini-batch $x$ of $N$ samples loaded from the dataset, perform steps 3-9 below.",
+      "subclass": "loop"
+    },
+    {
+      "id": "ASP229.3",
+      "type": "algorithm_step",
+      "parent_id": "AP229.1",
+      "step_order": 3,
+      "name": "Augment two views",
+      "statement": "$x_q = \\mathrm{aug}(x);\\; x_k = \\mathrm{aug}(x)$ — two random augmentations of the same images form positive pairs.",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP229.4",
+      "type": "algorithm_step",
+      "parent_id": "AP229.1",
+      "step_order": 4,
+      "name": "Encode queries and keys",
+      "statement": "$q = f_q.\\mathrm{forward}(x_q)$ (size $N\\times C$); $k = f_k.\\mathrm{forward}(x_k)$, then $k = k.\\mathrm{detach}()$ (no gradient to keys).",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP229.5",
+      "type": "algorithm_step",
+      "parent_id": "AP229.1",
+      "step_order": 5,
+      "name": "Form positive and negative logits",
+      "statement": "$l_{\\text{pos}} = \\mathrm{bmm}(q, k)$ ($N\\times 1$); $l_{\\text{neg}} = \\mathrm{mm}(q, \\text{queue})$ ($N\\times K$); $\\text{logits} = \\mathrm{cat}([l_{\\text{pos}}, l_{\\text{neg}}], \\text{dim}=1)$.",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP229.6",
+      "type": "algorithm_step",
+      "parent_id": "AP229.1",
+      "step_order": 6,
+      "name": "Compute InfoNCE loss",
+      "statement": "$\\text{labels} = \\mathbf{0}$ (positives are at index 0); $\\text{loss} = \\mathrm{CrossEntropyLoss}(\\text{logits}/\\tau, \\text{labels})$ — implements Eq. (1).",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP229.7",
+      "type": "algorithm_step",
+      "parent_id": "AP229.1",
+      "step_order": 7,
+      "name": "SGD update of query encoder",
+      "statement": "$\\text{loss.backward}();\\; \\text{update}(f_q.\\text{params})$ — only $\\theta_q$ receives gradients.",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP229.8",
+      "type": "algorithm_step",
+      "parent_id": "AP229.1",
+      "step_order": 8,
+      "name": "Momentum update of key encoder",
+      "statement": "$f_k.\\text{params} \\leftarrow m \\cdot f_k.\\text{params} + (1-m) \\cdot f_q.\\text{params}$ — implements Eq. (2).",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP229.9",
+      "type": "algorithm_step",
+      "parent_id": "AP229.1",
+      "step_order": 9,
+      "name": "Enqueue current keys, dequeue oldest",
+      "statement": "$\\mathrm{enqueue}(\\text{queue}, k);\\; \\mathrm{dequeue}(\\text{queue})$ — keep dictionary size at $K$, replacing the oldest mini-batch.",
+      "subclass": "update"
+    }
+  ],
+  "edges": [
+    {"source": "DP229.1", "target": "DP229.2", "type": "uses"},
+    {"source": "DP229.2", "target": "EP229.1", "type": "uses"},
+    {"source": "DP229.3", "target": "DP229.2", "type": "uses"},
+    {"source": "DP229.3", "target": "AP229.1", "type": "uses"},
+    {"source": "DP229.4", "target": "AP229.1", "type": "uses"},
+    {"source": "DP229.5", "target": "AP229.1", "type": "uses"},
+    {"source": "EP229.1", "target": "AP229.1", "type": "uses"},
+    {"source": "EP229.2", "target": "AP229.1", "type": "uses"},
+    {"source": "DP229.6", "target": "AP229.1", "type": "uses"},
+    {"source": "DP229.7", "target": "AP229.1", "type": "uses"},
+    {"source": "AP229.1", "target": "ProbP229.2", "type": "solves"},
+    {"source": "AP229.1", "target": "ProbP229.1", "type": "solves"},
+    {"source": "ProbP229.2", "target": "ProbP229.1", "type": "specializes"},
+    {"source": "AP229.1", "target": "ExP229.1", "type": "illustrates"},
+    {"source": "AP229.1", "target": "ExP229.2", "type": "illustrates"},
+    {"source": "AP229.1", "target": "ExP229.3", "type": "illustrates"},
+    {"source": "AP229.1", "target": "ExP229.4", "type": "illustrates"},
+    {"source": "AP229.1", "target": "ExP229.5", "type": "illustrates"},
+    {"source": "AP229.1", "target": "ExP229.6", "type": "illustrates"},
+    {"source": "AP229.1", "target": "ExP229.7", "type": "illustrates"},
+    {"source": "AP229.1", "target": "ExP229.8", "type": "illustrates"},
+    {"source": "AP229.2", "target": "ExP229.2", "type": "illustrates"},
+    {"source": "AP229.3", "target": "ExP229.2", "type": "illustrates"},
+    {"source": "RP229.1", "target": "AP229.1", "type": "uses"},
+    {"source": "RP229.2", "target": "DP229.5", "type": "uses"},
+    {"source": "RP229.3", "target": "DP229.4", "type": "uses"},
+    {"source": "RP229.4", "target": "ExP229.4", "type": "uses"},
+    {"source": "RP229.4", "target": "ExP229.5", "type": "uses"},
+    {"source": "DP229.7", "target": "ExP229.7", "type": "illustrates"},
+    {"source": "OpenP229.2", "target": "AP229.2", "type": "uses"},
+    {"source": "ASP229.1", "target": "ASP229.2", "type": "uses"},
+    {"source": "ASP229.2", "target": "ASP229.3", "type": "uses"},
+    {"source": "ASP229.3", "target": "ASP229.4", "type": "uses"},
+    {"source": "ASP229.4", "target": "ASP229.5", "type": "uses"},
+    {"source": "ASP229.5", "target": "ASP229.6", "type": "uses"},
+    {"source": "ASP229.6", "target": "ASP229.7", "type": "uses"},
+    {"source": "ASP229.7", "target": "ASP229.8", "type": "uses"},
+    {"source": "ASP229.8", "target": "ASP229.9", "type": "uses"},
+    {"source": "DP229.4", "target": "ASP229.9", "type": "uses"},
+    {"source": "DP229.5", "target": "ASP229.8", "type": "uses"},
+    {"source": "EP229.1", "target": "ASP229.6", "type": "uses"},
+    {"source": "EP229.2", "target": "ASP229.8", "type": "uses"},
+    {"source": "DP229.6", "target": "ASP229.3", "type": "uses"}
+  ]
+}

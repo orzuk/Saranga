@@ -2,7 +2,7 @@
 
 > Generated: 2026-04-26 (Or, in main thread — sub-agent was sandboxed
 > without Bash/Grep). **READ-ONLY proposal — no deletions performed.**
-> Owner-of-decision: Or Zuk. Reviewer for `unsure` / LLMVersion items: Yaron.
+> Owner-of-decision: Author. Reviewer for `unsure` / LLMVersion items: Author.
 
 ## Summary
 
@@ -19,7 +19,7 @@ For each `.py`/`.sh` file in `src/` and `scripts/`:
 2. Counted incoming references via `grep -rn` across .py/.sh/.md.
 3. Special handling for files explicitly preserved in
    `docs/pipeline_architecture.md` Section 11.
-4. Yaron-touched-in-last-30-days files default to `unsure`.
+4. Author-touched-in-last-30-days files default to `unsure`.
 
 ## Confident-delete candidates (no refs, dormant, clearly one-off)
 
@@ -41,7 +41,7 @@ edits suggest they were one-off investigation scripts.
 | `scripts/show_sample_records.sh` | 2026-04-12 | 0 | Herald inspection one-off |
 | `scripts/zip_script.sh` | 2025-11-20 | 1 | One self-ref; old archiver utility |
 
-**All 11 are Or-authored** (per `git log`), so no Yaron sign-off needed.
+**All 11 are Or-authored** (per `git log`), so no Author sign-off needed.
 Confident: **delete**. Net: ~250 lines removed.
 
 ## Probable-delete (no refs, but newer or larger)
@@ -67,19 +67,19 @@ then delete. ~half-day's worth of stale exploration scripts.
 |---|---|---|
 | `scripts/silver_gold/run_full_pipeline.py` | superseded | Replaced by `scripts/run_silver_gold.sh` (Phase 3); kept until silver-gold experiment migrates. **Do not delete this cycle.** |
 | `src/foundation_linker.py` | duplicate-likely | Self-imports only; only README mentions it. `src/link_to_foundation.py` is the actively-used variant (17 refs across run_pipeline, run_extraction, design docs). Probable retire after verifying. |
-| `scripts/parse_multi_category.sh` | predecessor | The 10-category version, superseded by `parse_multi_category_20.sh`. Self-references only. Probable retire after verifying Yaron isn't using it. |
+| `scripts/parse_multi_category.sh` | predecessor | The 10-category version, superseded by `parse_multi_category_20.sh`. Self-references only. Probable retire after verifying Author isn't using it. |
 | `src/evaluate_extraction.py` | future-merge | Will be subsumed by the new `eval` op in `src/run_pipeline.py` once the in-process `match_same_paper` lift lands (per `docs/graph_compare_design.md` Phase 2). Keep for now; ~6 weeks out. |
 
-## unsure (Yaron-touched in last 30 days OR LLMVersion area)
+## unsure (Author-touched in last 30 days OR LLMVersion area)
 
-These need Yaron's sign-off, not Or's alone:
+These need Author's sign-off, not Or's alone:
 
 | File | Last touch | Author | Status |
 |---|---|---|---|
-| `src/LLMVersion/*` (15 files) | last 30 days | Yaron + Or (mixed) | Yaron's primary area; unsure for all |
-| `src/visualize_alignment.py` | 2026-04-20 | Yaron | Yaron's recent work for alignment viz |
+| `src/LLMVersion/*` (15 files) | last 30 days | Author + Or (mixed) | Author's primary area; unsure for all |
+| `src/visualize_alignment.py` | 2026-04-20 | Author | Author's recent work for alignment viz |
 
-**Action**: include in next email to Yaron — ask whether any of his
+**Action**: include in next email to Author — ask whether any of his
 LLMVersion files are now obsolete after the Y2 + multi-category +
 distillation work he's been doing.
 
@@ -170,9 +170,9 @@ Open each in turn; if it's not in your workflow, delete:
   retire `scripts/silver_gold/run_full_pipeline.py`
 - After `eval` op matures, retire `src/evaluate_extraction.py`
 
-### Round 4 (after Yaron review):
+### Round 4 (after Author review):
 
-- Send Yaron the LLMVersion + visualize_alignment list — ask if any
+- Send Author the LLMVersion + visualize_alignment list — ask if any
   of his recent files are now obsolete
 
 ## Open questions for Or
@@ -191,7 +191,7 @@ Open each in turn; if it's not in your workflow, delete:
    this an old release-archiving tool? Probably safe to delete but
    confirm.
 
-4. **`src/visualize_alignment.py`**: Yaron's last commit; only used by
+4. **`src/visualize_alignment.py`**: Author's last commit; only used by
    alignment-benchmark workflow. Worth a one-line message to him before
    touching.
 
@@ -209,4 +209,4 @@ Open each in turn; if it's not in your workflow, delete:
 
 Total scope: 11 confident deletions, 6 probable deletions, ~17 unsure,
 ~4 future-merge candidates. Net potential reduction: ~600 LOC and 17
-files (out of 99) before any Yaron review.
+files (out of 99) before any Author review.

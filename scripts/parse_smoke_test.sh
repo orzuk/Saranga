@@ -55,7 +55,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 #   4. python3 / python on PATH
 #
 # Recommended: activate your venv before running.
-#   source /sci/labs/orzuk/$USER/venvs/your-venv/bin/activate
+#   source /<cluster>/$USER/venvs/your-venv/bin/activate
 #   ./scripts/parse_smoke_test.sh
 if [ -z "${PYTHON:-}" ]; then
     PYTHON=""

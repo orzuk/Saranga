@@ -552,7 +552,7 @@ def main():
         default=None,
         help="Directory to search for local .tex files (default: FULL_PAPERS_DIR "
              "from config). Use this to point at a non-standard location, e.g. "
-             "src/LLMVersion/full_papers/ for Yaron's gold-standard papers.",
+             "src/LLMVersion/full_papers/ for Author's gold-standard papers.",
     )
     parser.add_argument(
         "--safeguard",

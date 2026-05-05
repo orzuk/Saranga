@@ -1,0 +1,504 @@
+{
+  "metadata": {
+    "title": "An Improved Data Stream Summary: The Count-Min Sketch and its Applications",
+    "authors": "Graham Cormode, S. Muthukrishnan",
+    "year": 2003,
+    "paper_num": 311,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-03",
+    "source_note": "Extracted from PDF->text fallback; .tex source not available. Math fidelity reduced.",
+    "registry_mismatch_note": "Registry expected 'Space/time trade-offs in hash coding with allowable errors' (Bloom 1970). Actual paper at this path is Cormode & Muthukrishnan, 'An Improved Data Stream Summary: The Count-Min Sketch and its Applications' (2003)."
+  },
+  "nodes": [
+    {
+      "id": "DP311.1",
+      "type": "definition",
+      "name": "Data stream model (turnstile / cash register)",
+      "section": "2 Preliminaries",
+      "statement": "A vector $a \\in \\mathbb{R}^n$ with $a_i(0) = 0$ is updated by a stream of pairs $(i_t, c_t)$ via $a_{i_t}(t) = a_{i_t}(t-1) + c_t$. Cash register: $c_t \\geq 0$; turnstile: $c_t$ may be negative.",
+      "statement_clean": "Implicit vector updated incrementally; cash register restricts to positive updates, turnstile allows arbitrary updates.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP311.2",
+      "type": "definition",
+      "name": "Point query $Q(i)$",
+      "section": "2 Preliminaries",
+      "statement": "$Q(i)$ returns an approximation of $a_i$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP311.3",
+      "type": "definition",
+      "name": "Range query $Q(l,r)$",
+      "section": "2 Preliminaries",
+      "statement": "$Q(l,r)$ returns an approximation of $\\sum_{i=l}^{r} a_i$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP311.4",
+      "type": "definition",
+      "name": "Inner product query $Q(a,b)$",
+      "section": "2 Preliminaries",
+      "statement": "$Q(a,b)$ returns an approximation of $a \\cdot b = \\sum_{i=1}^{n} a_i b_i$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP311.5",
+      "type": "definition",
+      "name": "Count-Min (CM) sketch",
+      "section": "3 Count-Min Sketches",
+      "statement": "A two-dimensional array $\\mathrm{count}[1..d, 1..w]$ with $w = \\lceil e/\\varepsilon \\rceil$ and $d = \\lceil \\ln(1/\\delta) \\rceil$, together with $d$ pairwise-independent hash functions $h_1,\\ldots,h_d : \\{1,\\ldots,n\\} \\to \\{1,\\ldots,w\\}$.",
+      "origin": "paper",
+      "tags": ["data-structure", "sketch"]
+    },
+    {
+      "id": "DP311.6",
+      "type": "definition",
+      "name": "Dyadic range",
+      "section": "4.3 Range Query",
+      "statement": "A dyadic range is an interval of the form $[x \\cdot 2^y + 1, (x+1) \\cdot 2^y]$ for non-negative integers $x, y$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP311.7",
+      "type": "definition",
+      "name": "$\\phi$-Quantiles",
+      "section": "2 Preliminaries",
+      "statement": "The $\\phi$-quantiles of a multiset of cardinality $\\|a\\|_1$ are the items of rank $k\\phi\\|a\\|_1$ for $k=0,\\ldots,1/\\phi$. An $\\varepsilon$-approximation accepts any item with rank between $(k\\phi - \\varepsilon)\\|a\\|_1$ and $(k\\phi + \\varepsilon)\\|a\\|_1$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP311.8",
+      "type": "definition",
+      "name": "$\\phi$-Heavy Hitters",
+      "section": "2 Preliminaries",
+      "statement": "The $\\phi$-heavy hitters are items $i$ with $a_i \\geq \\phi \\|a\\|_1$. An $\\varepsilon$-approximation outputs any $i$ with $a_i \\geq (\\phi - \\varepsilon)\\|a\\|_1$.",
+      "origin": "paper"
+    },
+    {
+      "id": "AP311.1",
+      "type": "algorithm",
+      "name": "CM Sketch Update Procedure",
+      "section": "3 Count-Min Sketches",
+      "statement": "On update $(i_t, c_t)$, add $c_t$ to one cell in each row of the sketch, indexed by the hash functions.",
+      "input": ["Update pair $(i_t, c_t)$", "CM sketch with hash functions $h_1,\\ldots,h_d$"],
+      "output": ["Updated sketch"],
+      "pseudocode": "For all $1 \\leq j \\leq d$: $\\mathrm{count}[j, h_j(i_t)] \\leftarrow \\mathrm{count}[j, h_j(i_t)] + c_t$.",
+      "origin": "paper",
+      "tags": ["streaming"]
+    },
+    {
+      "id": "AP311.2",
+      "type": "algorithm",
+      "name": "Point Query Estimation (non-negative case)",
+      "section": "4.1 Point Query",
+      "statement": "Estimate $\\hat{a}_i = \\min_j \\mathrm{count}[j, h_j(i)]$.",
+      "input": ["Item index $i$", "CM sketch"],
+      "output": ["Estimate $\\hat{a}_i$ of $a_i$"],
+      "origin": "paper"
+    },
+    {
+      "id": "AP311.3",
+      "type": "algorithm",
+      "name": "Point Query Estimation (general case)",
+      "section": "4.1 Point Query",
+      "statement": "Estimate $\\hat{a}_i = \\mathrm{median}_j \\mathrm{count}[j, h_j(i)]$, used when entries of $a$ may be negative.",
+      "input": ["Item index $i$", "CM sketch"],
+      "output": ["Estimate $\\hat{a}_i$ of $a_i$"],
+      "origin": "paper"
+    },
+    {
+      "id": "AP311.4",
+      "type": "algorithm",
+      "name": "Inner Product Estimation",
+      "section": "4.2 Inner Product Query",
+      "statement": "Compute $(\\widehat{a \\cdot b})_j = \\sum_{k=1}^{w} \\mathrm{count}_a[j,k] \\cdot \\mathrm{count}_b[j,k]$ and estimate $\\widehat{a \\cdot b} = \\min_j (\\widehat{a \\cdot b})_j$ for non-negative vectors.",
+      "input": ["CM sketches for $a$ and $b$"],
+      "output": ["Estimate $\\widehat{a \\cdot b}$ of $a \\cdot b$"],
+      "origin": "paper"
+    },
+    {
+      "id": "AP311.5",
+      "type": "algorithm",
+      "name": "Range Query via Dyadic Decomposition",
+      "section": "4.3 Range Query",
+      "statement": "Maintain $\\log_2 n$ CM sketches, one per dyadic level. Decompose any range $[l,r]$ into at most $2\\log_2 n$ dyadic ranges and answer each by a point query, summing the results.",
+      "input": ["Range endpoints $l, r$", "$\\log_2 n$ CM sketches over dyadic levels"],
+      "output": ["Estimate $\\hat{a}[l,r]$ of $\\sum_{i=l}^{r} a_i$"],
+      "origin": "paper"
+    },
+    {
+      "id": "AP311.6",
+      "type": "algorithm",
+      "name": "Heavy Hitters in the Cash Register Model",
+      "section": "5.2 Heavy Hitters",
+      "statement": "Maintain $\\|a\\|_1$ online; on each update, query the new item with the CM sketch and insert into a heap if estimate exceeds $\\phi \\|a(t)\\|_1$. Prune heap when items fall below threshold; output remaining items at end.",
+      "input": ["Stream of positive updates", "Threshold $\\phi$, error $\\varepsilon$"],
+      "output": ["Set of items with estimated count $\\geq \\phi \\|a\\|_1$"],
+      "origin": "paper"
+    },
+    {
+      "id": "AP311.7",
+      "type": "algorithm",
+      "name": "Heavy Hitters in the Turnstile Model",
+      "section": "5.2 Heavy Hitters",
+      "statement": "Keep $\\log n$ CM sketches over dyadic ranges and perform a parallel binary search down the hierarchy: split nodes whose estimated weight exceeds $(\\phi+\\varepsilon)\\|a\\|_1$ and recurse to leaves.",
+      "input": ["Stream of arbitrary updates with $a_i(t) \\geq 0$", "Threshold $\\phi$, error $\\varepsilon$"],
+      "output": ["Set of heavy hitter items"],
+      "origin": "paper"
+    },
+    {
+      "id": "AP311.8",
+      "type": "algorithm",
+      "name": "Quantiles in the Turnstile Model",
+      "section": "5.1 Quantiles in the Turnstile Model",
+      "statement": "Reduce quantile finding to range-sum queries via binary search: for $1 \\leq k \\leq 1/\\phi - 1$, find $r$ such that $\\hat{a}[1,r] = k\\phi \\|a\\|_1$, using $\\log n$ CM sketches over dyadic ranges.",
+      "input": ["Stream of updates", "Quantile parameter $\\phi$, error $\\varepsilon$"],
+      "output": ["$1/\\phi$ approximate $\\phi$-quantiles"],
+      "origin": "paper"
+    },
+    {
+      "id": "TP311.1",
+      "type": "theorem",
+      "name": "Theorem 1 (Point query, non-negative case)",
+      "section": "4.1 Point Query",
+      "statement": "The estimate $\\hat{a}_i$ satisfies $a_i \\leq \\hat{a}_i$, and with probability at least $1-\\delta$, $\\hat{a}_i \\leq a_i + \\varepsilon \\|a\\|_1$.",
+      "assumptions": ["$a$ has non-negative entries", "$h_1,\\ldots,h_d$ pairwise independent", "$w = \\lceil e/\\varepsilon \\rceil$, $d = \\lceil \\ln(1/\\delta) \\rceil$"],
+      "conclusions": ["$a_i \\leq \\hat{a}_i$", "$\\Pr[\\hat{a}_i > a_i + \\varepsilon\\|a\\|_1] \\leq \\delta$"],
+      "origin": "paper",
+      "tags": ["bound", "approximation"]
+    },
+    {
+      "id": "PP311.1",
+      "type": "proof",
+      "name": "Proof of Theorem 1",
+      "section": "4.1 Point Query",
+      "statement": "Bound expected collision contribution via pairwise independence, then apply Markov's inequality across $d$ rows.",
+      "parent_id": "TP311.1",
+      "proves": "TP311.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP311.1",
+      "type": "proof_step",
+      "name": "Define indicator $I_{i,j,k}$ and bound expectation",
+      "parent_id": "PP311.1",
+      "step_order": 1,
+      "section": "4.1 Point Query",
+      "statement": "Let $I_{i,j,k} = 1$ iff $i \\neq k$ and $h_j(i) = h_j(k)$. By pairwise independence, $E(I_{i,j,k}) \\leq 1/w = \\varepsilon/e$.",
+      "subclass": "introduce_variable"
+    },
+    {
+      "id": "PSP311.2",
+      "type": "proof_step",
+      "name": "Bound expectation of $X_{i,j}$",
+      "parent_id": "PP311.1",
+      "step_order": 2,
+      "section": "4.1 Point Query",
+      "statement": "Let $X_{i,j} = \\sum_{k=1}^{n} I_{i,j,k} a_k$. Then $\\mathrm{count}[j,h_j(i)] = a_i + X_{i,j}$ and $E(X_{i,j}) \\leq (\\varepsilon/e)\\|a\\|_1$.",
+      "subclass": "bound_estimate"
+    },
+    {
+      "id": "PSP311.3",
+      "type": "proof_step",
+      "name": "Apply Markov's inequality across $d$ rows",
+      "parent_id": "PP311.1",
+      "step_order": 3,
+      "section": "4.1 Point Query",
+      "statement": "$\\Pr[\\hat{a}_i > a_i + \\varepsilon\\|a\\|_1] = \\Pr[\\forall j: X_{i,j} > e \\cdot E(X_{i,j})] < e^{-d} \\leq \\delta$.",
+      "subclass": "conclude"
+    },
+    {
+      "id": "TP311.2",
+      "type": "theorem",
+      "name": "Theorem 2 (Point query, general case)",
+      "section": "4.1 Point Query",
+      "statement": "With probability $1 - \\delta^{1/4}$, $a_i - 3\\varepsilon\\|a\\|_1 \\leq \\hat{a}_i \\leq a_i + 3\\varepsilon\\|a\\|_1$, where $\\hat{a}_i = \\mathrm{median}_j \\mathrm{count}[j,h_j(i)]$.",
+      "assumptions": ["$a$ may have negative entries", "$h_1,\\ldots,h_d$ pairwise independent"],
+      "conclusions": ["$|\\hat{a}_i - a_i| \\leq 3\\varepsilon\\|a\\|_1$ with probability $1 - \\delta^{1/4}$"],
+      "origin": "paper",
+      "tags": ["bound", "approximation"]
+    },
+    {
+      "id": "PP311.2",
+      "type": "proof",
+      "name": "Proof of Theorem 2",
+      "section": "4.1 Point Query",
+      "statement": "Each count deviates by more than $3\\varepsilon\\|a\\|_1$ with probability at most $1/8$; apply Chernoff bounds to the median of $\\ln(1/\\delta)$ copies.",
+      "parent_id": "TP311.2",
+      "proves": "TP311.2",
+      "origin": "paper"
+    },
+    {
+      "id": "TP311.3",
+      "type": "theorem",
+      "name": "Theorem 3 (Inner product)",
+      "section": "4.2 Inner Product Query",
+      "statement": "$\\widehat{a \\cdot b} \\geq a \\cdot b$ and, with probability $1 - \\delta$, $\\widehat{a \\cdot b} \\leq a \\cdot b + \\varepsilon \\|a\\|_1 \\|b\\|_1$.",
+      "assumptions": ["$a, b$ are non-negative vectors", "Pairwise independent $h_j$"],
+      "conclusions": ["$a \\cdot b \\leq \\widehat{a \\cdot b} \\leq a \\cdot b + \\varepsilon \\|a\\|_1 \\|b\\|_1$ with probability $1 - \\delta$"],
+      "origin": "paper",
+      "tags": ["bound", "approximation"]
+    },
+    {
+      "id": "PP311.3",
+      "type": "proof",
+      "name": "Proof of Theorem 3",
+      "section": "4.2 Inner Product Query",
+      "statement": "Decompose row product into diagonal $\\sum_i a_i b_i$ plus collision terms; bound the expectation of collisions and apply Markov.",
+      "parent_id": "TP311.3",
+      "proves": "TP311.3",
+      "origin": "paper"
+    },
+    {
+      "id": "CP311.1",
+      "type": "corollary",
+      "name": "Corollary 1 (Join size estimation)",
+      "section": "4.2 Inner Product Query",
+      "statement": "The join size of two relations on a particular attribute can be approximated up to $\\varepsilon \\|a\\|_1 \\|b\\|_1$ with probability $1 - \\delta$, using space $O((1/\\varepsilon) \\log(1/\\delta))$.",
+      "assumptions": ["Relations encoded as non-negative vectors $a, b$"],
+      "conclusions": ["Additive error $\\varepsilon \\|a\\|_1 \\|b\\|_1$ with probability $1 - \\delta$", "Space $O((1/\\varepsilon)\\log(1/\\delta))$"],
+      "origin": "paper"
+    },
+    {
+      "id": "TP311.4",
+      "type": "theorem",
+      "name": "Theorem 4 (Range query)",
+      "section": "4.3 Range Query",
+      "statement": "$a[l,r] \\leq \\hat{a}[l,r]$ and, with probability at least $1 - \\delta$, $\\hat{a}[l,r] \\leq a[l,r] + 2\\varepsilon \\log n \\|a\\|_1$.",
+      "assumptions": ["Non-negative $a$", "$\\log_2 n$ CM sketches over dyadic levels"],
+      "conclusions": ["$a[l,r] \\leq \\hat{a}[l,r] \\leq a[l,r] + 2\\varepsilon \\log n \\|a\\|_1$ with probability $1-\\delta$"],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "PP311.4",
+      "type": "proof",
+      "name": "Proof of Theorem 4",
+      "section": "4.3 Range Query",
+      "statement": "By Theorem 1 each component is non-underestimated; the expected additive error per dyadic estimator sums to $2 \\log n (\\varepsilon/e)\\|a\\|_1$, then Markov bounds the union over estimators.",
+      "parent_id": "TP311.4",
+      "proves": "TP311.4",
+      "origin": "paper"
+    },
+    {
+      "id": "TP311.5",
+      "type": "theorem",
+      "name": "Theorem 5 (Quantiles in turnstile)",
+      "section": "5.1 Quantiles in the Turnstile Model",
+      "statement": "$\\varepsilon$-approximate $\\phi$-quantiles can be found with probability at least $1 - \\delta$ using space $O((1/\\varepsilon) \\log^2(n) \\log(\\log(n)/(\\phi\\delta)))$, with insert/delete time $O(\\log(n)\\log(\\log(n)/(\\phi\\delta)))$.",
+      "assumptions": ["Stream in turnstile model"],
+      "conclusions": ["Space $O((1/\\varepsilon) \\log^2(n) \\log(\\log(n)/(\\phi\\delta)))$", "Update time $O(\\log(n) \\log(\\log(n)/(\\phi\\delta)))$"],
+      "origin": "paper",
+      "tags": ["bound", "complexity"]
+    },
+    {
+      "id": "TP311.6",
+      "type": "theorem",
+      "name": "Theorem 6 (Heavy hitters, cash register)",
+      "section": "5.2 Heavy Hitters",
+      "statement": "Heavy hitters can be found from a positive stream using CM sketches with space $O((1/\\varepsilon) \\log(\\|a\\|_1/\\delta))$ and time $O(\\log(\\|a\\|_1/\\delta))$ per item; every item with count $\\geq \\phi\\|a\\|_1$ is output, and with probability $1-\\delta$ no item with count $< (\\phi-\\varepsilon)\\|a\\|_1$ is output.",
+      "assumptions": ["Cash register stream of length $\\|a\\|_1$"],
+      "conclusions": ["Space $O((1/\\varepsilon)\\log(\\|a\\|_1/\\delta))$", "Update time $O(\\log(\\|a\\|_1/\\delta))$", "Completeness for true heavy hitters; bounded false positives w.p. $1-\\delta$"],
+      "origin": "paper",
+      "tags": ["bound", "complexity"]
+    },
+    {
+      "id": "PP311.6",
+      "type": "proof",
+      "name": "Proof of Theorem 6",
+      "section": "5.2 Heavy Hitters",
+      "statement": "The threshold $\\phi\\|a(t)\\|_1$ is monotone non-decreasing, so checking estimates at each update suffices to capture every heavy hitter. Scale $\\delta$ via union bound over $\\|a\\|_1$ queries.",
+      "parent_id": "TP311.6",
+      "proves": "TP311.6",
+      "origin": "paper"
+    },
+    {
+      "id": "TP311.7",
+      "type": "theorem",
+      "name": "Theorem 7 (Heavy hitters, turnstile)",
+      "section": "5.2 Heavy Hitters",
+      "statement": "The divide-and-conquer algorithm uses space $O((1/\\varepsilon) \\log(n) \\log(2\\log(n)/(\\delta\\phi)))$ and time $O(\\log(n) \\log(2\\log(n)/(\\delta\\phi)))$ per update; every item with frequency $\\geq (\\phi+\\varepsilon)\\|a\\|_1$ is output, and with probability $1-\\delta$ no item with frequency $< \\phi\\|a\\|_1$ is output.",
+      "assumptions": ["Turnstile stream with $a_i(t) \\geq 0$"],
+      "conclusions": ["Space $O((1/\\varepsilon)\\log(n)\\log(2\\log(n)/(\\delta\\phi)))$", "Update time $O(\\log(n)\\log(2\\log(n)/(\\delta\\phi)))$", "Completeness for $(\\phi+\\varepsilon)$-heavy hitters; controlled false positives"],
+      "origin": "paper",
+      "tags": ["bound", "complexity"]
+    },
+    {
+      "id": "ProbP311.1",
+      "type": "problem",
+      "name": "Approximate Quantiles on Data Streams",
+      "section": "2 Preliminaries",
+      "statement": "Find $\\varepsilon$-approximate $\\phi$-quantiles of an implicit vector $a$ presented as a stream of updates.",
+      "subclass": "data-stream-query",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP311.2",
+      "type": "problem",
+      "name": "Approximate Heavy Hitters on Data Streams",
+      "section": "2 Preliminaries",
+      "statement": "Output all items $i$ with $a_i \\geq \\phi \\|a\\|_1$, allowing those with $a_i \\geq (\\phi-\\varepsilon)\\|a\\|_1$ as false positives.",
+      "subclass": "data-stream-query",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP311.3",
+      "type": "problem",
+      "name": "Hierarchical Heavy Hitters",
+      "section": "5.2 Heavy Hitters",
+      "statement": "Find all nodes in a hierarchy of depth $h$ over the items that are heavy hitters after subtracting descendants' contributions.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP311.1",
+      "type": "example",
+      "name": "Example 1: Dyadic decomposition of $[48,107]$ for $n=256$",
+      "section": "4.3 Range Query",
+      "statement": "For $n = 256$, the range $[48, 107]$ is canonically covered by $[48,48], [49,64], [65,96], [97,104], [105,106], [107,107]$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP311.1",
+      "type": "remark",
+      "name": "Choice of $b = e$ minimizes space",
+      "section": "4.1 Point Query",
+      "statement": "Setting $w = b/\\varepsilon$ and $d = \\log_b(1/\\delta)$ for any $b > 1$ preserves the guarantee; the space cost $(2 + e/\\varepsilon)\\ln(1/\\delta)$ is minimized at $b = e$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP311.2",
+      "type": "remark",
+      "name": "Hierarchical heavy hitters cost improvement",
+      "section": "5.2.0.1",
+      "statement": "Using the CM sketch reduces the turnstile-model hierarchical heavy hitters cost from $O((h/\\varepsilon^2) \\log(1/\\delta))$ to $O((h/\\varepsilon) \\log(1/\\delta))$ space and $O(h \\log(1/\\delta))$ update time.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP311.3",
+      "type": "remark",
+      "name": "Common sketch framework",
+      "section": "6 Comparison of Sketch Techniques",
+      "statement": "All considered sketches (tug-of-war, count sketch, random subset sums, CM) share form $(j,k)\\text{-entry} = \\sum_{i: h_k(i)=j} a_i \\cdot g_k(i)$, parameterized by $w$, $d$, and the auxiliary hash family $g$.",
+      "origin": "paper"
+    },
+    {
+      "id": "OpenP311.1",
+      "type": "open_problem",
+      "name": "Simple sketches for stream correlations",
+      "section": "7 Conclusions",
+      "statement": "Design extremely simple, practical sketches such as the CM sketch for estimating correlations between data streams and other complex aggregate functions.",
+      "origin": "paper"
+    },
+    {
+      "id": "TP311.E1",
+      "type": "theorem",
+      "name": "Markov's Inequality (cited)",
+      "section": "4.1 (cited)",
+      "statement": "For a non-negative random variable $X$ and $t > 0$, $\\Pr[X \\geq t] \\leq E[X]/t$.",
+      "assumptions": ["$X \\geq 0$ random variable", "$t > 0$"],
+      "conclusions": ["$\\Pr[X \\geq t] \\leq E[X]/t$"],
+      "origin": "external",
+      "origin_citation": "Classical; Motwani & Raghavan, Randomized Algorithms (1995)"
+    },
+    {
+      "id": "TP311.E2",
+      "type": "theorem",
+      "name": "Frequency moments lower bound",
+      "section": "1 Introduction (cited)",
+      "statement": "Approximating frequency moments $F_k(t) = \\sum_i (a_i(t))^k$, the number of distinct items, and the Hamming distance between strings each require $\\Omega(1/\\varepsilon^2)$ space.",
+      "origin": "external",
+      "origin_citation": "Woodruff, SODA 2004"
+    },
+    {
+      "id": "AP311.E1",
+      "type": "algorithm",
+      "name": "Tug-of-war sketch (cited)",
+      "section": "6 (cited)",
+      "statement": "Sketch maintaining $\\sum_i a_i \\cdot g_j(i)$ with $g_j: [n] \\to \\{+1,-1\\}$ a 4-wise independent hash family; estimates $L_2$ norm and inner products with $O((1/\\varepsilon^2) \\log(1/\\delta))$ space.",
+      "origin": "external",
+      "origin_citation": "Alon, Matias, Szegedy 1996"
+    },
+    {
+      "id": "AP311.E2",
+      "type": "algorithm",
+      "name": "Count Sketch (cited)",
+      "section": "6 (cited)",
+      "statement": "Sketch with $w = O(1/\\varepsilon^2)$, $d = O(\\log(1/\\delta))$, and pairwise-independent sign hash $g_j$, supporting point queries with additive error $\\varepsilon \\|a\\|_2$.",
+      "origin": "external",
+      "origin_citation": "Charikar, Chen, Farach-Colton, ICALP 2002"
+    },
+    {
+      "id": "AP311.E3",
+      "type": "algorithm",
+      "name": "Random subset sums (cited)",
+      "section": "6 (cited)",
+      "statement": "Sketch with $w=2$, $d = (24/\\varepsilon^2)\\log(1/\\delta)$, and $g(i)=1$, used for point and range queries.",
+      "origin": "external",
+      "origin_citation": "Gilbert, Kotidis, Muthukrishnan, Strauss 2002"
+    }
+  ],
+  "edges": [
+    {"source": "DP311.5", "target": "AP311.1", "type": "uses"},
+    {"source": "DP311.5", "target": "AP311.2", "type": "uses"},
+    {"source": "DP311.5", "target": "AP311.3", "type": "uses"},
+    {"source": "DP311.5", "target": "AP311.4", "type": "uses"},
+    {"source": "DP311.5", "target": "AP311.5", "type": "uses"},
+    {"source": "DP311.2", "target": "AP311.2", "type": "defines"},
+    {"source": "DP311.2", "target": "AP311.3", "type": "defines"},
+    {"source": "DP311.4", "target": "AP311.4", "type": "defines"},
+    {"source": "DP311.3", "target": "AP311.5", "type": "defines"},
+    {"source": "DP311.6", "target": "AP311.5", "type": "uses"},
+    {"source": "DP311.1", "target": "AP311.1", "type": "uses"},
+
+    {"source": "AP311.1", "target": "AP311.2", "type": "uses"},
+    {"source": "AP311.1", "target": "AP311.3", "type": "uses"},
+    {"source": "AP311.1", "target": "AP311.4", "type": "uses"},
+    {"source": "AP311.1", "target": "AP311.5", "type": "uses"},
+
+    {"source": "AP311.2", "target": "TP311.1", "type": "uses"},
+    {"source": "AP311.3", "target": "TP311.2", "type": "uses"},
+    {"source": "AP311.4", "target": "TP311.3", "type": "uses"},
+    {"source": "AP311.5", "target": "TP311.4", "type": "uses"},
+
+    {"source": "PP311.1", "target": "TP311.1", "type": "proves"},
+    {"source": "PP311.2", "target": "TP311.2", "type": "proves"},
+    {"source": "PP311.3", "target": "TP311.3", "type": "proves"},
+    {"source": "PP311.4", "target": "TP311.4", "type": "proves"},
+    {"source": "PP311.6", "target": "TP311.6", "type": "proves"},
+
+    {"source": "TP311.E1", "target": "PP311.1", "type": "uses"},
+    {"source": "TP311.E1", "target": "PP311.3", "type": "uses"},
+    {"source": "TP311.E1", "target": "PP311.4", "type": "uses"},
+
+    {"source": "PSP311.1", "target": "PSP311.2", "type": "uses"},
+    {"source": "PSP311.2", "target": "PSP311.3", "type": "uses"},
+    {"source": "TP311.E1", "target": "PSP311.3", "type": "uses"},
+
+    {"source": "TP311.3", "target": "CP311.1", "type": "uses"},
+
+    {"source": "TP311.4", "target": "AP311.8", "type": "uses"},
+    {"source": "AP311.5", "target": "AP311.8", "type": "uses"},
+    {"source": "AP311.8", "target": "TP311.5", "type": "uses"},
+    {"source": "AP311.8", "target": "ProbP311.1", "type": "solves"},
+
+    {"source": "AP311.2", "target": "AP311.6", "type": "uses"},
+    {"source": "TP311.1", "target": "AP311.6", "type": "uses"},
+    {"source": "AP311.6", "target": "TP311.6", "type": "uses"},
+    {"source": "AP311.6", "target": "ProbP311.2", "type": "solves"},
+
+    {"source": "AP311.5", "target": "AP311.7", "type": "uses"},
+    {"source": "TP311.4", "target": "AP311.7", "type": "uses"},
+    {"source": "AP311.7", "target": "TP311.7", "type": "uses"},
+    {"source": "AP311.7", "target": "ProbP311.2", "type": "solves"},
+
+    {"source": "AP311.5", "target": "ExP311.1", "type": "illustrates"},
+    {"source": "DP311.6", "target": "ExP311.1", "type": "uses"},
+
+    {"source": "AP311.7", "target": "ProbP311.3", "type": "uses"},
+    {"source": "RP311.2", "target": "ProbP311.3", "type": "uses"}
+  ]
+}

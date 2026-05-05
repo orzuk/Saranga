@@ -1,0 +1,494 @@
+{
+  "metadata": {
+    "title": "Regularization of Neural Networks using DropConnect",
+    "paper_num": 221,
+    "authors": "Wan, Zeiler, Zhang, LeCun, Fergus",
+    "year": 2013,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-03",
+    "source_note": "Extracted from PDF->text fallback; .tex source not available. Math fidelity reduced."
+  },
+  "nodes": [
+    {
+      "id": "DP221.1",
+      "type": "definition",
+      "name": "DropConnect Network",
+      "section": "8.1 Preliminaries",
+      "statement": "Given dataset $S$ with $\\ell$ entries $\\{x_1,\\dots,x_\\ell\\}$ with labels $\\{y_1,\\dots,y_\\ell\\}$, the DropConnect network is the mixture model $o = \\sum_M p(M) f(x;\\theta,M) = E_M[f(x;\\theta,M)]$, with parameters $\\theta=\\{W_s,W,W_g\\}$ and binary mask $M$.",
+      "statement_clean": "A DropConnect network is a mixture over binary weight masks $M$ that produces predictions by averaging the masked subnetworks.",
+      "origin": "paper",
+      "tags": ["mixture model", "neural network"]
+    },
+    {
+      "id": "DP221.2",
+      "type": "definition",
+      "name": "Logistic Loss",
+      "section": "8.1 Preliminaries",
+      "statement": "For $k$-class classification, $A_y(o) = -\\sum_i y_i \\ln \\frac{\\exp o_i}{\\sum_j \\exp o_j} = -o_i + \\ln \\sum_j \\exp(o_j)$, where $y$ is a binary vector with the $i$-th bit set on.",
+      "statement_clean": "Logistic loss combines softmax output with one-hot labels into a single scalar loss.",
+      "origin": "paper",
+      "tags": ["loss function", "softmax"]
+    },
+    {
+      "id": "DP221.3",
+      "type": "definition",
+      "name": "Empirical Rademacher Complexity",
+      "section": "8.1 Preliminaries",
+      "statement": "For sample $S=\\{x_1,\\dots,x_\\ell\\}$ from distribution $D$ and real-valued function class $F$ on $X$, $\\hat R_\\ell(F) = E_\\sigma\\left[\\sup_{f\\in F} \\frac{2}{\\ell} \\left|\\sum_{i=1}^\\ell \\sigma_i f(x_i)\\right| \\mid x_1,\\dots,x_\\ell\\right]$, with $\\sigma_i$ independent uniform $\\{\\pm 1\\}$ random variables.",
+      "statement_clean": "Standard empirical Rademacher complexity of a function class.",
+      "origin": "external",
+      "origin_citation": "classical, see Ledoux & Talagrand 1991",
+      "tags": ["complexity measure"]
+    },
+    {
+      "id": "DP221.4",
+      "type": "definition",
+      "name": "Dropout Layer",
+      "section": "2.1 Dropout",
+      "statement": "Dropout applied to a fully connected layer's output: $r = m \\star a(W v)$, where $\\star$ is element-wise product and $m_j \\sim \\mathrm{Bernoulli}(p)$ independently for each unit $j$.",
+      "statement_clean": "Dropout zeros each output activation independently with probability $1-p$.",
+      "origin": "external",
+      "origin_citation": "Hinton et al., 2012",
+      "tags": ["regularization"]
+    },
+    {
+      "id": "DP221.5",
+      "type": "definition",
+      "name": "DropConnect Layer",
+      "section": "2.2 DropConnect",
+      "statement": "DropConnect layer output: $r = a((M \\star W) v)$ where $M$ is a binary mask matrix with $M_{ij} \\sim \\mathrm{Bernoulli}(p)$, drawn independently per training example.",
+      "statement_clean": "DropConnect drops individual connections (entries of $W$) independently rather than whole units.",
+      "origin": "paper",
+      "tags": ["regularization", "neural network"]
+    },
+    {
+      "id": "DP221.6",
+      "type": "definition",
+      "name": "Full DropConnect Model Architecture",
+      "section": "3 Model Description",
+      "statement": "Composed of: feature extractor $v=g(x;W_g)$ (CNN), DropConnect layer $r=a((M\\star W)v)$, softmax classifier $o=s(r;W_s)$, and cross-entropy loss $A(y,o)=-\\sum_{i=1}^k y_i \\log(o_i)$.",
+      "statement_clean": "Four-component architecture: CNN feature extractor, DropConnect layer, softmax, cross-entropy loss.",
+      "origin": "paper",
+      "tags": ["architecture"]
+    },
+    {
+      "id": "EP221.1",
+      "type": "equation",
+      "name": "Mixture Output via Mask Marginalization",
+      "section": "3 Model Description",
+      "statement": "$o = E_M[f(x;\\theta,M)] = \\sum_M p(M) f(x;\\theta,M)$ — the exact output sums over all $2^{|M|}$ masks.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP221.2",
+      "type": "equation",
+      "name": "Gaussian Moment Matching for $u$",
+      "section": "3.2 Inference",
+      "statement": "For $u_i = \\sum_j (W_{ij} v_j) M_{ij}$: $E_M[u] = p W v$ and $V_M[u] = p(1-p) (W \\star W)(v \\star v)$, approximated as Gaussian.",
+      "origin": "paper",
+      "tags": ["approximation"]
+    },
+    {
+      "id": "EP221.3",
+      "type": "equation",
+      "name": "Generalization Bound (Eqn 5)",
+      "section": "4 Model Generalization Bound",
+      "statement": "$\\hat R_\\ell(F) \\le p \\cdot 2 \\sqrt{k} d B_s n \\sqrt{d} B_h \\hat R_\\ell(G)$ — Rademacher complexity scales linearly with the keep probability $p$.",
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "AP221.1",
+      "type": "algorithm",
+      "name": "SGD Training with DropConnect",
+      "section": "3.1 Training",
+      "statement": "Per-example SGD: sample mask $M$, forward propagate with masked weights, backpropagate, and update parameters.",
+      "input": [
+        "Example $x$",
+        "Parameters $\\theta_{t-1}$ from step $t-1$",
+        "Learning rate $\\eta$"
+      ],
+      "output": [
+        "Updated parameters $\\theta_t$"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "SGD"]
+    },
+    {
+      "id": "AP221.2",
+      "type": "algorithm",
+      "name": "Inference with DropConnect (Gaussian Moment Matching)",
+      "section": "3.2 Inference",
+      "statement": "At inference, approximate $u$ by a Gaussian via moment matching, draw $Z$ samples per unit, apply activation, and average to pass to the next layer.",
+      "input": [
+        "Example $x$",
+        "Parameters $\\theta$",
+        "Number of samples $Z$"
+      ],
+      "output": [
+        "Prediction $\\hat r = \\sum_{z=1}^Z r_z / Z$"
+      ],
+      "origin": "paper",
+      "tags": ["approximation", "inference"]
+    },
+    {
+      "id": "AP221.3",
+      "type": "algorithm",
+      "name": "Mean-field Inference (Hinton-style)",
+      "section": "3.2 Inference",
+      "statement": "Approximate $\\sum_M a((M \\star W) v) \\approx a(\\sum_M (M \\star W) v)$ — averaging before activation rather than after; not mathematically justified for relu.",
+      "origin": "external",
+      "origin_citation": "Hinton et al., 2012",
+      "tags": ["approximation", "baseline"]
+    },
+    {
+      "id": "LP221.1",
+      "type": "lemma",
+      "name": "Logistic Loss Properties",
+      "section": "8.2 Bound Derivation",
+      "statement": "Logistic loss $A$ satisfies: (1) $A_y(0)=\\ln k$; (2) $-1 \\le A'_y(o) \\le 1$; (3) $A''_y(o) \\ge 0$.",
+      "assumptions": ["$A$ is the logistic loss (Definition 2)"],
+      "conclusions": [
+        "$A_y(0) = \\ln k$",
+        "$-1 \\le A'_y(o) \\le 1$",
+        "$A''_y(o) \\ge 0$ (convexity)"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "LP221.2",
+      "type": "lemma",
+      "name": "Ledoux-Talagrand Contraction Lemma",
+      "section": "8.2 Bound Derivation",
+      "statement": "If $A:\\mathbb{R}^k \\to \\mathbb{R}$ is Lipschitz with constant $L$ and $A(0)=0$, then $\\hat R_\\ell(A \\circ H) \\le 2 k L \\hat R_\\ell(F)$, where $H = [F_j]_{j=1}^k$ is a $k$-dimensional function class.",
+      "assumptions": [
+        "$F$ is a class of real functions",
+        "$H = [F_j]_{j=1}^k$",
+        "$A:\\mathbb{R}^k \\to \\mathbb{R}$ is Lipschitz with constant $L$",
+        "$A(0)=0$"
+      ],
+      "conclusions": [
+        "$\\hat R_\\ell(A \\circ H) \\le 2 k L \\hat R_\\ell(F)$"
+      ],
+      "origin": "external",
+      "origin_citation": "Ledoux and Talagrand, 1991"
+    },
+    {
+      "id": "LP221.3",
+      "type": "lemma",
+      "name": "Classifier Generalization Bound",
+      "section": "8.2 Bound Derivation",
+      "statement": "$E[A_y(o)] \\le \\frac{1}{\\ell}\\sum_{i=1}^\\ell A_{y_i}(o_i) + 2k \\hat R_\\ell(F) + 3 \\sqrt{\\ln(2/\\delta) / (2\\ell)}$ — generalization bound for $k$-class logistic-loss classifier in terms of empirical Rademacher complexity.",
+      "assumptions": [
+        "$k$-class classifier with logistic loss"
+      ],
+      "conclusions": [
+        "$E[A_y(o)] \\le \\frac{1}{\\ell}\\sum A_{y_i}(o_i) + 2k\\hat R_\\ell(F) + 3 \\sqrt{\\ln(2/\\delta)/(2\\ell)}$"
+      ],
+      "origin": "external",
+      "origin_citation": "classical Rademacher generalization bound"
+    },
+    {
+      "id": "LP221.4",
+      "type": "lemma",
+      "name": "Activation Composition Bound",
+      "section": "8.2 Bound Derivation",
+      "statement": "For all neuron activations sigmoid, tanh and relu, $\\hat R_\\ell(a \\circ F) \\le 2 \\hat R_\\ell(F)$.",
+      "assumptions": [
+        "$a$ is sigmoid, tanh, or relu"
+      ],
+      "conclusions": [
+        "$\\hat R_\\ell(a \\circ F) \\le 2 \\hat R_\\ell(F)$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "LP221.5",
+      "type": "lemma",
+      "name": "Network Layer Bound",
+      "section": "8.2 Bound Derivation",
+      "statement": "Let $G = [F_j]_{j=1}^d$ and $H_B$ a linear transform parameterized by $W$ with $\\|W\\|_2 \\le B$. Then $\\hat R_\\ell(H \\circ G) \\le \\sqrt{d} B \\hat R_\\ell(F)$.",
+      "assumptions": [
+        "$G = [F_j]_{j=1}^d$ a class of real functions $\\mathbb{R}^d \\to \\mathbb{R}$",
+        "$H_B$ is linear transform with $\\|W\\|_2 \\le B$"
+      ],
+      "conclusions": [
+        "$\\hat R_\\ell(H \\circ G) \\le \\sqrt{d} B \\hat R_\\ell(F)$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "LP221.6",
+      "type": "lemma",
+      "name": "Expectation-Class Rademacher Bound",
+      "section": "8.2 Bound Derivation",
+      "statement": "Let $F_M$ be a class of real functions depending on $M$. Then $\\hat R_\\ell(E_M[F_M]) \\le E_M[\\hat R_\\ell(F_M)]$.",
+      "assumptions": [
+        "$F_M$ is a class of real functions parameterized by $M$"
+      ],
+      "conclusions": [
+        "$\\hat R_\\ell(E_M[F_M]) \\le E_M[\\hat R_\\ell(F_M)]$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "TP221.1",
+      "type": "theorem",
+      "name": "DropConnect Network Complexity",
+      "section": "8.2 Bound Derivation",
+      "statement": "$\\hat R_\\ell(F) \\le p \\cdot 2 \\sqrt{k} d B_s n \\sqrt{d} B_h \\hat R_\\ell(G)$ — empirical Rademacher complexity of a DropConnect network is linear in the keep probability $p$.",
+      "assumptions": [
+        "DropConnect network as in Definition 1",
+        "$|W| \\le B_h$ (DropConnect-layer weight bound)",
+        "$|W_s| \\le B_s$ (softmax-layer weight bound, $\\|W_s\\|_2 \\le \\sqrt{dk} B_s$)",
+        "$\\hat R_\\ell(G)$ empirical Rademacher complexity of the feature extractor"
+      ],
+      "conclusions": [
+        "$\\hat R_\\ell(F) \\le p \\cdot 2 \\sqrt{k} d B_s n \\sqrt{d} B_h \\hat R_\\ell(G)$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "generalization"]
+    },
+    {
+      "id": "RP221.1",
+      "type": "remark",
+      "name": "Layer-wise Network Bound Remark",
+      "section": "8.2 Bound Derivation",
+      "statement": "For a layer with input function class $G = [F_j]_{j=1}^d$ and linear transform $H$ with activation $a$, by Lemmas 4 and 5: $\\hat R_\\ell(H \\circ G) \\le c \\sqrt{d} B \\hat R_\\ell(F)$, with $c=1$ for identity neuron and $c=2$ otherwise.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP221.2",
+      "type": "remark",
+      "name": "DropConnect generalizes Dropout",
+      "section": "2.2 DropConnect",
+      "statement": "When $a(0)=0$ (as for tanh, relu), Dropout $r = m \\star a(W v) = a(m \\star W v)$ — equivalent to applying a row-structured mask to $W$. DropConnect's per-entry mask is the unstructured generalization.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP221.1",
+      "type": "proof",
+      "name": "Proof of Lemma 5 (Network Layer Bound)",
+      "section": "8.2 Bound Derivation",
+      "parent_id": "LP221.5",
+      "proves": "LP221.5",
+      "statement": "Expand the Rademacher supremum, use the inner-product / Cauchy-Schwarz identity to pull out $\\|W\\| \\le B$, then bound the supremum over coordinate functions $f^j$ by a $\\sqrt{d}$ factor.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP221.2",
+      "type": "proof",
+      "name": "Proof of Lemma 6 (Expectation Bound)",
+      "section": "8.2 Bound Derivation",
+      "parent_id": "LP221.6",
+      "proves": "LP221.6",
+      "statement": "$\\hat R_\\ell(E_M[F_M]) = \\hat R_\\ell(\\sum_M p(m) F_M) \\le \\sum_M \\hat R_\\ell(p(m) F_M) \\le \\sum_M |p(m)| \\hat R_\\ell(F_M) = E_M[\\hat R_\\ell(F_M)]$ by sub-additivity and homogeneity of $\\hat R_\\ell$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP221.3",
+      "type": "proof",
+      "name": "Proof of Theorem 1 (DropConnect Complexity)",
+      "section": "8.2 Bound Derivation",
+      "parent_id": "TP221.1",
+      "proves": "TP221.1",
+      "statement": "Combine Lemma 6 (expectation), Lemma 4 (activation bound), Lemma 5 (linear-layer bound) and bound the diagonal-mask norm $\\|D_M W\\|$ by $B_h \\sqrt{p \\, n d}$ to obtain the linear-in-$p$ bound.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP221.1",
+      "type": "proof_step",
+      "name": "Bound full network by expectation over masks",
+      "parent_id": "PP221.3",
+      "step_order": 1,
+      "subclass": "apply_lemma",
+      "statement": "$\\hat R_\\ell(F) = \\hat R_\\ell(E_M[f(x;\\theta,M)]) \\le E_M[\\hat R_\\ell(f(x;\\theta,M))]$ by Lemma 6.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP221.2",
+      "type": "proof_step",
+      "name": "Peel off softmax (linear+activation)",
+      "parent_id": "PP221.3",
+      "step_order": 2,
+      "subclass": "apply_lemma",
+      "statement": "Apply Lemmas 4 and 5 to the softmax layer to get $\\hat R_\\ell(F) \\le 2 \\sqrt{k} d B_s E_M[\\hat R_\\ell(h_M \\circ g)]$, where $h_M = (M \\star W) v$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP221.3",
+      "type": "proof_step",
+      "name": "Rewrite hidden-layer Rademacher with diagonal mask",
+      "parent_id": "PP221.3",
+      "step_order": 3,
+      "subclass": "algebraic_manipulation",
+      "statement": "$E_M[\\hat R_\\ell(h_M \\circ g)] = E_{M,\\sigma}[\\sup_{h\\in H, g\\in G} \\frac{2}{\\ell} \\sum_i \\sigma_i W^T D_M g(x_i)]$, where $D_M$ is the diagonal matrix with diagonal $m$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP221.4",
+      "type": "proof_step",
+      "name": "Bound $\\|D_M W\\|$ and apply layer bound",
+      "parent_id": "PP221.3",
+      "step_order": 4,
+      "subclass": "bound_estimate",
+      "statement": "Take $E_M \\max \\|D_M W\\| \\le B_h \\sqrt{p\\, n d}$ and bound the remaining expectation by $\\sqrt{n} \\hat R_\\ell(G)$, giving $E_M[\\hat R_\\ell(h_M \\circ g)] \\le p n \\sqrt{d} B_h \\hat R_\\ell(G)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP221.5",
+      "type": "proof_step",
+      "name": "Combine to obtain final bound",
+      "parent_id": "PP221.3",
+      "step_order": 5,
+      "subclass": "conclude",
+      "statement": "Combining: $\\hat R_\\ell(F) \\le p \\cdot 2 \\sqrt{k} d B_s n \\sqrt{d} B_h \\hat R_\\ell(G)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP221.1",
+      "type": "algorithm_step",
+      "name": "Forward Pass with random mask",
+      "parent_id": "AP221.1",
+      "step_order": 1,
+      "subclass": "initialize",
+      "statement": "Extract features $v \\leftarrow g(x;W_g)$; sample mask $M_{ij} \\sim \\mathrm{Bernoulli}(p)$; compute $r = a((M \\star W) v)$ and $o = s(r;W_s)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP221.2",
+      "type": "algorithm_step",
+      "name": "Backpropagate gradients through masked weights",
+      "parent_id": "AP221.1",
+      "step_order": 2,
+      "subclass": "update",
+      "statement": "Differentiate $A'_\\theta$; mask the DropConnect-layer gradient: $W \\leftarrow W - \\eta (M \\star A'_W)$. Update softmax: $W_s \\leftarrow W_s - \\eta A'_{W_s}$. Update feature extractor: $W_g \\leftarrow W_g - \\eta A'_{W_g}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP221.3",
+      "type": "algorithm_step",
+      "name": "Moment matching for $u$",
+      "parent_id": "AP221.2",
+      "step_order": 1,
+      "subclass": "initialize",
+      "statement": "Compute $\\mu \\leftarrow E_M[u]$ and $\\sigma^2 \\leftarrow V_M[u]$ from $E_M[u]=p W v$, $V_M[u]=p(1-p)(W\\star W)(v\\star v)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP221.4",
+      "type": "algorithm_step",
+      "name": "Sample-and-activate loop",
+      "parent_id": "AP221.2",
+      "step_order": 2,
+      "subclass": "loop",
+      "statement": "For $z=1{:}Z$ and $i=1{:}d$: sample $u_{i,z} \\sim \\mathcal{N}(\\mu_i,\\sigma_i^2)$; set $r_{i,z} \\leftarrow a(u_{i,z})$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP221.5",
+      "type": "algorithm_step",
+      "name": "Average samples and forward",
+      "parent_id": "AP221.2",
+      "step_order": 3,
+      "subclass": "return",
+      "statement": "Pass result $\\hat r = \\sum_{z=1}^Z r_z / Z$ to the next layer.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP221.1",
+      "type": "example",
+      "name": "MNIST classification",
+      "section": "6.1 MNIST",
+      "statement": "Two fully connected 800-unit layers on MNIST with relu/sigmoid/tanh; DropConnect achieves 1.20% (relu, voting 1.12%). With deeper Ciresan-style feature extractor, DropConnect attains 0.21% error without elastic distortions, surpassing prior 0.23% state-of-the-art.",
+      "origin": "paper",
+      "tags": ["benchmark", "MNIST"]
+    },
+    {
+      "id": "ExP221.2",
+      "type": "example",
+      "name": "CIFAR-10 classification",
+      "section": "6.2 CIFAR-10",
+      "statement": "On CIFAR-10 with the larger Krizhevsky feature extractor, DropConnect achieves 11.10% per-model and 9.41% with 5-network voting; 12-network voting reaches 9.32%, beating the prior 9.5% state-of-the-art.",
+      "origin": "paper",
+      "tags": ["benchmark", "CIFAR-10"]
+    },
+    {
+      "id": "ExP221.3",
+      "type": "example",
+      "name": "SVHN classification",
+      "section": "6.3 SVHN",
+      "statement": "On the SVHN dataset (604,388 train, 26,032 test), DropConnect achieves 2.23% per-model and 1.94% with voting, improving on the previous 2.80% state-of-the-art.",
+      "origin": "paper",
+      "tags": ["benchmark", "SVHN"]
+    },
+    {
+      "id": "ExP221.4",
+      "type": "example",
+      "name": "NORB classification",
+      "section": "6.4 NORB",
+      "statement": "On the 2-fold jittered-cluttered NORB dataset (29,160 train, 58,320 test), DropConnect achieves 4.14% per-model and 3.23% with voting; both Dropout and DropConnect beat the prior 3.57% state-of-the-art.",
+      "origin": "paper",
+      "tags": ["benchmark", "NORB"]
+    },
+    {
+      "id": "ExP221.5",
+      "type": "example",
+      "name": "GPU implementation speedup",
+      "section": "5 Implementation Details",
+      "statement": "Comparing CPU vs GPU implementations of the DropConnect layer on a $4096 \\times 4096$ layer with mini-batch 128: bit-packed masks in 2D-texture-aligned GPU memory yield a 414.8x speedup over a float-mask CPU baseline.",
+      "origin": "paper",
+      "tags": ["implementation", "GPU"]
+    }
+  ],
+  "edges": [
+    {"source": "DP221.1", "target": "DP221.5", "type": "uses"},
+    {"source": "DP221.5", "target": "DP221.6", "type": "uses"},
+    {"source": "DP221.4", "target": "DP221.5", "type": "generalizes"},
+    {"source": "DP221.4", "target": "RP221.2", "type": "uses"},
+    {"source": "DP221.5", "target": "RP221.2", "type": "uses"},
+    {"source": "DP221.6", "target": "AP221.1", "type": "uses"},
+    {"source": "DP221.5", "target": "AP221.1", "type": "uses"},
+    {"source": "DP221.1", "target": "EP221.1", "type": "uses"},
+    {"source": "EP221.1", "target": "AP221.2", "type": "uses"},
+    {"source": "EP221.2", "target": "AP221.2", "type": "uses"},
+    {"source": "AP221.3", "target": "AP221.2", "type": "uses"},
+    {"source": "DP221.2", "target": "LP221.1", "type": "uses"},
+    {"source": "DP221.2", "target": "LP221.3", "type": "uses"},
+    {"source": "DP221.3", "target": "LP221.2", "type": "uses"},
+    {"source": "DP221.3", "target": "LP221.4", "type": "uses"},
+    {"source": "DP221.3", "target": "LP221.5", "type": "uses"},
+    {"source": "DP221.3", "target": "LP221.6", "type": "uses"},
+    {"source": "DP221.3", "target": "TP221.1", "type": "uses"},
+    {"source": "LP221.2", "target": "LP221.4", "type": "uses"},
+    {"source": "LP221.2", "target": "LP221.5", "type": "uses"},
+    {"source": "LP221.4", "target": "RP221.1", "type": "uses"},
+    {"source": "LP221.5", "target": "RP221.1", "type": "uses"},
+    {"source": "LP221.4", "target": "TP221.1", "type": "uses"},
+    {"source": "LP221.5", "target": "TP221.1", "type": "uses"},
+    {"source": "LP221.6", "target": "TP221.1", "type": "uses"},
+    {"source": "DP221.1", "target": "TP221.1", "type": "uses"},
+    {"source": "PP221.1", "target": "LP221.5", "type": "proves"},
+    {"source": "PP221.2", "target": "LP221.6", "type": "proves"},
+    {"source": "PP221.3", "target": "TP221.1", "type": "proves"},
+    {"source": "PSP221.1", "target": "PSP221.2", "type": "uses"},
+    {"source": "PSP221.2", "target": "PSP221.3", "type": "uses"},
+    {"source": "PSP221.3", "target": "PSP221.4", "type": "uses"},
+    {"source": "PSP221.4", "target": "PSP221.5", "type": "uses"},
+    {"source": "ASP221.1", "target": "ASP221.2", "type": "uses"},
+    {"source": "ASP221.3", "target": "ASP221.4", "type": "uses"},
+    {"source": "ASP221.4", "target": "ASP221.5", "type": "uses"},
+    {"source": "TP221.1", "target": "EP221.3", "type": "uses"},
+    {"source": "AP221.1", "target": "ExP221.1", "type": "illustrates"},
+    {"source": "AP221.1", "target": "ExP221.2", "type": "illustrates"},
+    {"source": "AP221.1", "target": "ExP221.3", "type": "illustrates"},
+    {"source": "AP221.1", "target": "ExP221.4", "type": "illustrates"},
+    {"source": "AP221.2", "target": "ExP221.1", "type": "illustrates"},
+    {"source": "AP221.2", "target": "ExP221.2", "type": "illustrates"},
+    {"source": "AP221.2", "target": "ExP221.3", "type": "illustrates"},
+    {"source": "AP221.2", "target": "ExP221.4", "type": "illustrates"},
+    {"source": "AP221.1", "target": "ExP221.5", "type": "illustrates"}
+  ]
+}

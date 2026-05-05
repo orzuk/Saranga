@@ -58,7 +58,7 @@ Examples:
       --html
 
 Design notes:
-  * The `parse` operation runs Yaron's extractor (LLMVersion/parse_batch.py)
+  * The `parse` operation runs Author's extractor (LLMVersion/parse_batch.py)
     as a subprocess. This isolates LLMVersion's `math_classes` namespace from
     src/'s `math_classes` namespace, which prevents field-name conflicts.
   * All other operations import directly from src/ tools, which all share the
@@ -212,7 +212,7 @@ def op_parse(args) -> None:
     """Run the parse backend selected by --extract-mode.
 
     Phase 3 dispatch:
-      regex (default)        — Yaron's per-type / LLMVersion path (this body)
+      regex (default)        — Author's per-type / LLMVersion path (this body)
       holistic-multi         — multi-model holistic LLM (Tier B silver-gold)
       holistic-proof-steps   — holistic LLM with proof-step decomposition (Tier D)
 
@@ -719,7 +719,7 @@ def main():
         ),
     )
 
-    # --- filter args (shared with Yaron's parse_batch.py) ---
+    # --- filter args (shared with Author's parse_batch.py) ---
     parser.add_argument("--start", dest="start_date", type=str, default=None,
                         help="Start date YYYY-MM-DD (submission date).")
     parser.add_argument("--end", dest="end_date", type=str, default=None,

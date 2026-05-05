@@ -80,7 +80,7 @@
     }).map(function (k) { return [k, counts[k]]; });
   }
 
-  function renderOverview(meta, nodes, paperId) {
+  function renderOverview(meta, nodes, paperId, manifestEntry) {
     const root = document.getElementById("tab-overview");
     root.innerHTML = "";
 
@@ -113,6 +113,28 @@
     }
     if (meta.abstract) pair("Abstract", esc(meta.abstract));
     root.appendChild(dl);
+
+    // Pair memberships (filled in by build_manifest from the master CSV
+    // and registry's `appears_in_pairs` column).
+    const aip = (manifestEntry && manifestEntry.appears_in_pairs) || [];
+    if (aip.length > 0) {
+      const h = document.createElement("h4");
+      h.textContent = "Appears in pairs (" + aip.length + ")";
+      h.style.margin = "20px 0 8px";
+      h.style.fontSize = "14px";
+      root.appendChild(h);
+      const wrap = document.createElement("div");
+      wrap.className = "histogram";
+      for (const pid of aip) {
+        const a = document.createElement("a");
+        a.className = "bar";
+        a.href = "pair.html?id=" + encodeURIComponent(pid);
+        a.style.textDecoration = "none";
+        a.textContent = pid;
+        wrap.appendChild(a);
+      }
+      root.appendChild(wrap);
+    }
 
     // Node-type histogram.
     const hist = buildHistogram(nodes);
@@ -248,7 +270,7 @@
   }
 
   function activateTab(name) {
-    for (const t of ["overview", "nodes", "raw"]) {
+    for (const t of ["overview", "nodes", "graph", "raw"]) {
       const btn = document.getElementById("tabbtn-" + t);
       const pane = document.getElementById("tab-" + t);
       if (btn) btn.classList.toggle("active", t === name);
@@ -258,13 +280,55 @@
       // Re-render math for any newly opened cards.
       Authomathics.renderMath(document.getElementById("tab-nodes"));
     }
+    if (name === "graph") {
+      const tier = Authomathics.getQueryParam("tier") || "1";
+      const id = Authomathics.getQueryParam("id");
+      const baseUrl = "/render?id=" + encodeURIComponent(id) +
+                      "&tier=" + encodeURIComponent(tier);
+      const iframe = document.getElementById("graph-iframe");
+      const openLink = document.getElementById("graph-open-tab");
+      const rebuildBtn = document.getElementById("graph-force-rebuild");
+      const status = document.getElementById("graph-status");
+
+      function loadGraph(force) {
+        const url = force ? baseUrl + "&nocache=1&_=" + Date.now() : baseUrl;
+        if (status) status.textContent = force ? "Re-rendering..." : "Loading...";
+        iframe.onload = function () {
+          if (status) status.textContent = "(check banner in top-right of graph for cache status)";
+        };
+        iframe.src = url;
+      }
+      if (openLink) openLink.href = baseUrl;
+      if (rebuildBtn && !rebuildBtn._wired) {
+        rebuildBtn.addEventListener("click", function () { loadGraph(true); });
+        rebuildBtn._wired = true;
+      }
+      if (iframe && iframe.src.indexOf(baseUrl.split("&")[0]) === -1) {
+        loadGraph(false);
+      }
+    }
   }
+
+  // Module-scoped state for lazy graph rendering.
+  let _graphData = null;
+  let _graphRendered = false;
+  let _cy = null;
 
   document.addEventListener("DOMContentLoaded", async function () {
     const tier = Authomathics.getQueryParam("tier") || "1";
     const id = Authomathics.getQueryParam("id");
     const titleEl = document.getElementById("paper-title");
     const subtitleEl = document.getElementById("paper-subtitle");
+
+    // Wire breadcrumb + back link to the originating tier listing.
+    const tierListUrl = "papers_tier" + tier + ".html";
+    const tierLabel = "Tier " + tier;
+    const backCrumb = document.getElementById("back-to-tier");
+    if (backCrumb) { backCrumb.href = tierListUrl; backCrumb.textContent = tierLabel; }
+    const backLink = document.getElementById("back-link");
+    const backLinkTier = document.getElementById("back-link-tier");
+    if (backLink) backLink.href = tierListUrl;
+    if (backLinkTier) backLinkTier.textContent = tierLabel;
 
     if (!id) {
       titleEl.textContent = "No paper id in URL";
@@ -293,15 +357,220 @@
       "Tier " + esc(tier) + " &middot; " + norm.nodes.length + " nodes" +
       (link ? ' &middot; <a href="' + link + '" target="_blank" rel="noopener">arXiv</a>' : "");
 
-    renderOverview(meta, norm.nodes, id);
+    // Pull this paper's manifest entry so we can show appears_in_pairs.
+    let manifestEntry = null;
+    try {
+      const manifest = await Authomathics.loadManifest();
+      const tierKey = "tier" + tier;
+      const list = (manifest.papers && manifest.papers[tierKey]) || [];
+      manifestEntry = list.find(function (p) { return p.paper_id === id; }) || null;
+    } catch (e) { /* non-fatal */ }
+
+    renderOverview(meta, norm.nodes, id, manifestEntry);
     renderNodes(norm.nodes);
     renderRaw(data);
+    // Stash normalized nodes/edges for lazy graph render on first Graph-tab click.
+    _graphData = { nodes: norm.nodes, edges: norm.edges };
+    _graphRendered = false;
+    if (_cy) { try { _cy.destroy(); } catch (e) {} _cy = null; }
     activateTab("overview");
     Authomathics.renderMath(document.body);
 
-    for (const t of ["overview", "nodes", "raw"]) {
+    for (const t of ["overview", "nodes", "graph", "raw"]) {
       const btn = document.getElementById("tabbtn-" + t);
       if (btn) btn.addEventListener("click", function () { activateTab(t); });
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // Graph view (cytoscape.js). Pure-JS, lazy-initialized on first tab open.
+  // ---------------------------------------------------------------------------
+
+  // Color palette per node type. Anything unmapped falls back to NODE_DEFAULT.
+  const NODE_COLORS = {
+    theorem:        "#d04848",
+    lemma:          "#e08a3c",
+    proposition:    "#e6c84a",
+    corollary:      "#f0c878",
+    definition:     "#4ea862",
+    proof:          "#8a8a8a",
+    proof_step:     "#bdbdbd",
+    problem:        "#3f7fbf",
+    equation:       "#8060c0",
+    algorithm:      "#3aa39a",
+    algorithm_step: "#9ad6cf",
+    example:        "#46b5c4",
+    remark:         "#bdbdbd",
+    assumption:     "#c2a878",
+    conjecture:     "#d97aa8",
+    claim:          "#e6a8c4",
+    open_problem:   "#7ab6e0"
+  };
+  const NODE_DEFAULT = "#9aa0a6";
+
+  // Per-relation edge styling.
+  const EDGE_STYLES = {
+    proves:      { color: "#d04848", style: "solid" },
+    uses:        { color: "#8a8a8a", style: "solid" },
+    generalizes: { color: "#3f7fbf", style: "solid" },
+    specializes: { color: "#3f7fbf", style: "dashed" },
+    illustrates: { color: "#8a8a8a", style: "dotted" },
+    solves:      { color: "#2c8a4d", style: "solid" },
+    resolves:    { color: "#2c8a4d", style: "solid" },
+    defines:     { color: "#8a8a8a", style: "dashed" }
+  };
+  const EDGE_DEFAULT = { color: "#bdbdbd", style: "solid" };
+
+  function truncate(s, n) {
+    if (!s) return "";
+    s = String(s);
+    if (s.length <= n) return s;
+    return s.slice(0, n - 1).replace(/\s+\S*$/, "") + "…";
+  }
+
+  function renderGraph(data) {
+    const container = document.getElementById("graph-canvas");
+    if (!container) return;
+    if (typeof cytoscape === "undefined") {
+      container.innerHTML =
+        '<div class="empty" style="padding:20px">cytoscape.js failed to load.</div>';
+      return;
+    }
+    if (!data.nodes || data.nodes.length === 0) {
+      container.innerHTML =
+        '<div class="empty" style="padding:20px">No nodes to graph.</div>';
+      return;
+    }
+
+    // Build a set of valid node ids so we can drop edges that reference unknown
+    // endpoints (cytoscape throws otherwise).
+    const idSet = new Set(data.nodes.map(function (n) { return n.id; }));
+
+    const cyNodes = data.nodes.map(function (n) {
+      const t = n.type || "unknown";
+      return {
+        data: {
+          id: n.id,
+          label: n.name || n.id || "",
+          type: t,
+          statement: n.statement || "",
+          color: NODE_COLORS[t] || NODE_DEFAULT
+        }
+      };
+    });
+
+    const cyEdges = (data.edges || [])
+      .filter(function (e) { return idSet.has(e.source) && idSet.has(e.target); })
+      .map(function (e, i) {
+        const rel = e.type || e.relation || "related";
+        const sty = EDGE_STYLES[rel] || EDGE_DEFAULT;
+        return {
+          data: {
+            id: "e" + i,
+            source: e.source,
+            target: e.target,
+            relation: rel,
+            color: sty.color,
+            lineStyle: sty.style
+          }
+        };
+      });
+
+    _cy = cytoscape({
+      container: container,
+      elements: { nodes: cyNodes, edges: cyEdges },
+      wheelSensitivity: 0.2,
+      style: [
+        {
+          selector: "node",
+          style: {
+            "background-color": "data(color)",
+            "label": "data(label)",
+            "color": "#1a1a1a",
+            "font-size": "10px",
+            "text-valign": "center",
+            "text-halign": "center",
+            "text-wrap": "wrap",
+            "text-max-width": "80px",
+            "width": "36px",
+            "height": "36px",
+            "border-width": 1,
+            "border-color": "#1a1a1a",
+            "border-opacity": 0.4,
+            "text-outline-color": "#fff",
+            "text-outline-width": 2
+          }
+        },
+        {
+          selector: "edge",
+          style: {
+            "width": 1.4,
+            "line-color": "data(color)",
+            "target-arrow-color": "data(color)",
+            "target-arrow-shape": "triangle",
+            "curve-style": "bezier",
+            "line-style": "data(lineStyle)",
+            "arrow-scale": 0.9
+          }
+        },
+        {
+          selector: "node:selected",
+          style: { "border-width": 3, "border-color": "#2e4f8c", "border-opacity": 1 }
+        }
+      ],
+      layout: {
+        name: "cose",
+        animate: false,
+        nodeRepulsion: 8000,
+        idealEdgeLength: 90,
+        padding: 30
+      }
+    });
+
+    // Hover tooltip: a single shared <div>, positioned at cursor.
+    const tip = document.getElementById("graph-tooltip");
+    if (tip) {
+      _cy.on("mouseover", "node", function (evt) {
+        const d = evt.target.data();
+        const stmt = truncate(d.statement, 200);
+        tip.innerHTML =
+          '<div style="font-weight:600;margin-bottom:4px">' +
+          esc(d.label) + ' <span style="color:#9aa0a6;font-weight:400">(' +
+          esc(d.type) + ')</span></div>' +
+          (stmt ? '<div>' + esc(stmt) + '</div>' : '');
+        tip.style.display = "block";
+      });
+      _cy.on("mousemove", "node", function (evt) {
+        const oe = evt.originalEvent;
+        if (!oe) return;
+        // Position relative to viewport using fixed coords, then convert to page.
+        tip.style.left = (oe.pageX + 14) + "px";
+        tip.style.top  = (oe.pageY + 14) + "px";
+      });
+      _cy.on("mouseout", "node", function () { tip.style.display = "none"; });
+      _cy.on("tap", function (evt) {
+        if (evt.target === _cy) tip.style.display = "none";
+      });
+    }
+
+    // Build a small legend below the canvas: one swatch per node type present.
+    const legend = document.getElementById("graph-legend");
+    if (legend) {
+      const present = {};
+      for (const n of cyNodes) present[n.data.type] = true;
+      const types = Object.keys(present).sort();
+      const parts = ['<strong style="color:#1a1a1a">Legend:</strong> '];
+      for (const t of types) {
+        const c = NODE_COLORS[t] || NODE_DEFAULT;
+        parts.push(
+          '<span style="display:inline-block;margin:0 10px 4px 0">' +
+          '<span style="display:inline-block;width:10px;height:10px;background:' +
+          c + ';border-radius:50%;vertical-align:middle;margin-right:4px;' +
+          'border:1px solid rgba(0,0,0,0.2)"></span>' + esc(t) + '</span>'
+        );
+      }
+      parts.push('<span style="color:#9aa0a6">  ·  drag to pan, scroll to zoom</span>');
+      legend.innerHTML = parts.join("");
+    }
+  }
 })();

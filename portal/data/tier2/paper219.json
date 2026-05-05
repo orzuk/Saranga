@@ -1,0 +1,587 @@
+{
+  "metadata": {
+    "title": "Layer Normalization",
+    "paper_num": 219,
+    "authors": "Jimmy Lei Ba, Jamie Ryan Kiros, Geoffrey E. Hinton",
+    "year": 2016,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "DP219.1",
+      "type": "definition",
+      "name": "Feed-forward neural network summed inputs",
+      "section": "2 Background",
+      "statement": "For the $l^{th}$ hidden layer with weight matrix $W^l$ and bottom-up inputs $h^l$: $a^l_i = {w^l_i}^\\T h^l$ and $h^{l+1}_i = f(a^l_i + b^l_i)$, where $f(\\cdot)$ is element-wise non-linearity and $b^l_i$ is a scalar bias.",
+      "statement_clean": "Definition of the summed input to neuron i in layer l of a feed-forward network and its activation.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP219.2",
+      "type": "definition",
+      "name": "Batch normalization statistics",
+      "section": "2 Background",
+      "statement": "$\\bar{a}^l_i = \\frac{g^l_i}{\\sigma^l_i}(a^l_i - \\mu^l_i)$ with $\\mu^l_i = \\mathbb{E}_{x \\sim P(x)}[a^l_i]$ and $\\sigma^l_i = \\sqrt{\\mathbb{E}_{x \\sim P(x)}[(a^l_i - \\mu^l_i)^2]}$.",
+      "statement_clean": "Batch normalization rescales summed inputs using mean and standard deviation taken across the data distribution, with a per-neuron gain.",
+      "origin": "external",
+      "origin_citation": "Ioffe & Szegedy 2015"
+    },
+    {
+      "id": "DP219.3",
+      "type": "definition",
+      "name": "Layer normalization statistics",
+      "section": "3 Layer normalization",
+      "statement": "$\\mu^l = \\frac{1}{H}\\sum_{i=1}^H a^l_i$ and $\\sigma^l = \\sqrt{\\frac{1}{H}\\sum_{i=1}^H (a^l_i - \\mu^l)^2}$, where $H$ is the number of hidden units in the layer.",
+      "statement_clean": "Layer normalization computes mean and standard deviation over all hidden units in the same layer for a single training case.",
+      "origin": "paper",
+      "tags": ["normalization"]
+    },
+    {
+      "id": "DP219.4",
+      "type": "definition",
+      "name": "Layer normalization function $LN$",
+      "section": "Supplementary Material",
+      "statement": "$LN(z;\\alpha,\\beta) = \\frac{(z-\\mu)}{\\sigma}\\odot\\alpha + \\beta$ with $\\mu = \\frac{1}{D}\\sum_{i=1}^D z_i$ and $\\sigma = \\sqrt{\\frac{1}{D}\\sum_{i=1}^D (z_i-\\mu)^2}$, mapping $\\mathbb{R}^D \\to \\mathbb{R}^D$ with adaptive gains $\\alpha$ and biases $\\beta$.",
+      "statement_clean": "The layer normalization operator as a parameterized function with adaptive per-dimension gains and biases.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP219.5",
+      "type": "definition",
+      "name": "Layer-normalized RNN recurrent layer",
+      "section": "3.1 Layer normalized recurrent neural networks",
+      "statement": "$h^t = f\\big[\\frac{g}{\\sigma^t}\\odot(a^t - \\mu^t) + b\\big]$ with $a^t = W_{hh}h^{t-1} + W_{xh}x^t$, $\\mu^t = \\frac{1}{H}\\sum_i a_i^t$, $\\sigma^t = \\sqrt{\\frac{1}{H}\\sum_i(a_i^t-\\mu^t)^2}$.",
+      "statement_clean": "Layer normalization applied to the recurrent layer of a standard RNN at each time-step, with one shared gain and bias.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP219.6",
+      "type": "definition",
+      "name": "Generalized Linear Model (GLM) log-likelihood",
+      "section": "5.2.2 Geometry of normalized GLMs",
+      "statement": "$\\log P(y|x;w,b) = \\frac{(a+b)y - \\eta(a+b)}{\\phi} + c(y,\\phi)$ with $\\mathbb{E}[y|x] = f(a+b) = f(w^\\T x + b)$ and $\\mathrm{Var}[y|x] = \\phi f'(a+b)$.",
+      "statement_clean": "Exponential-family GLM parameterized by weight vector $w$ and scalar bias $b$, with transfer function $f$.",
+      "origin": "external",
+      "origin_citation": "Standard GLM (e.g. McCullagh & Nelder 1989)"
+    },
+    {
+      "id": "DP219.7",
+      "type": "definition",
+      "name": "Fisher information matrix (KL Riemannian metric)",
+      "section": "5.2.1 Riemannian metric",
+      "statement": "$ds^2 = D_{KL}[P(y|x;\\theta)\\,\\|\\,P(y|x;\\theta+\\delta)] \\approx \\frac{1}{2}\\delta^\\T F(\\theta)\\delta$ with $F(\\theta) = \\mathbb{E}_{x,y}\\big[\\frac{\\partial \\log P}{\\partial \\theta}\\frac{\\partial \\log P}{\\partial \\theta}^\\T\\big]$.",
+      "statement_clean": "Second-order Taylor approximation of the KL divergence yields the Fisher information matrix as the Riemannian metric on the parameter manifold.",
+      "origin": "external",
+      "origin_citation": "Amari 1998"
+    },
+    {
+      "id": "DP219.8",
+      "type": "definition",
+      "name": "GLM Fisher information matrix",
+      "section": "5.2.2 Geometry of normalized GLMs",
+      "statement": "For multi-dimensional GLM with $\\theta = \\mathrm{vec}([W,b]^\\T)$: $F(\\theta) = \\mathbb{E}_{x \\sim P(x)}\\big[\\frac{\\mathrm{Cov}[y|x]}{\\phi^2}\\otimes\\begin{bmatrix}xx^\\T & x \\\\ x^\\T & 1\\end{bmatrix}\\big]$.",
+      "statement_clean": "Fisher information matrix for a multi-dimensional GLM is the expected Kronecker product of the output covariance and the data feature outer product.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP219.9",
+      "type": "definition",
+      "name": "Normalized-GLM Fisher information matrix $\\bar{F}$",
+      "section": "5.2.2 Geometry of normalized GLMs",
+      "statement": "$\\bar{F}_{ij} = \\mathbb{E}_x\\big[\\frac{\\mathrm{Cov}[y_i,y_j|x]}{\\phi^2}\\,M_{ij}(g,\\sigma,\\chi,a,\\mu)\\big]$, where $\\chi_i = x - \\frac{\\partial \\mu_i}{\\partial w_i} - \\frac{a_i-\\mu_i}{\\sigma_i}\\frac{\\partial \\sigma_i}{\\partial w_i}$ and $M_{ij}$ is the $3\\times 3$ block in Eq. (nfisher).",
+      "statement_clean": "Block of the Fisher information matrix for a normalized GLM with parameters $(W,b,g)$, with corrections from the dependence of $\\mu_i,\\sigma_i$ on $w_i$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP219.1",
+      "type": "equation",
+      "name": "Common normalization form",
+      "section": "5.1 Invariance under weights and data transformations",
+      "statement": "$h_i = f\\big(\\frac{g_i}{\\sigma_i}(a_i - \\mu_i) + b_i\\big)$, the common form for batch, weight, and layer normalization (with $\\mu,\\sigma$ defined per scheme; weight-norm uses $\\mu=0$, $\\sigma=\\|w\\|_2$).",
+      "origin": "paper"
+    },
+    {
+      "id": "PrP219.1",
+      "type": "proposition",
+      "name": "Layer normalization is invariant to weight matrix re-scaling and re-centering",
+      "section": "5.1 Invariance",
+      "statement": "If $W' = \\delta W + \\mathbf{1}\\gamma^\\T$, then under layer normalization $h' = f(\\frac{g}{\\sigma'}(W'x - \\mu') + b) = f(\\frac{g}{\\sigma}(Wx - \\mu) + b) = h$.",
+      "statement_clean": "Scaling the entire weight matrix and adding a constant to every incoming-weight row leaves layer-normalized outputs unchanged.",
+      "assumptions": [
+        "$W' = \\delta W + \\mathbf{1}\\gamma^\\T$ for scalar $\\delta$ and vector $\\gamma$",
+        "Layer normalization (Eq. 3) is applied to summed inputs"
+      ],
+      "conclusions": [
+        "$h'(x) = h(x)$, i.e. the model output is invariant to the $(\\delta,\\gamma)$ transformation of $W$"
+      ],
+      "origin": "paper",
+      "tags": ["invariance"]
+    },
+    {
+      "id": "PrP219.2",
+      "type": "proposition",
+      "name": "Layer normalization is invariant to per-example input re-scaling",
+      "section": "5.1 Invariance",
+      "statement": "If $x' = \\delta x$, then $h'_i = f(\\frac{g_i}{\\sigma'}(w_i^\\T x' - \\mu') + b_i) = f(\\frac{g_i}{\\delta\\sigma}(\\delta w_i^\\T x - \\delta\\mu) + b_i) = h_i$.",
+      "statement_clean": "Re-scaling a single training case by $\\delta$ leaves the layer-normalized prediction unchanged.",
+      "assumptions": [
+        "$x' = \\delta x$ for scalar $\\delta > 0$",
+        "Layer normalization is applied to the summed inputs of a single training case"
+      ],
+      "conclusions": [
+        "$h'(x') = h(x)$, i.e. the prediction is invariant to per-example input scaling"
+      ],
+      "origin": "paper",
+      "tags": ["invariance"]
+    },
+    {
+      "id": "PrP219.3",
+      "type": "proposition",
+      "name": "Invariance summary table for batch / weight / layer normalization",
+      "section": "5.1 (Table 1)",
+      "statement": "Across six transformations (weight matrix re-scaling, weight matrix re-centering, weight vector re-scaling, dataset re-scaling, dataset re-centering, single training case re-scaling), batch norm is invariant to weight-matrix re-scaling, weight-vector re-scaling, dataset re-scaling and re-centering; weight norm is invariant to weight-matrix and weight-vector re-scaling; layer norm is invariant to weight-matrix re-scaling and re-centering, dataset re-scaling, and single training case re-scaling.",
+      "statement_clean": "Table 1: each normalization scheme has a distinct set of invariances.",
+      "assumptions": [
+        "Three normalization schemes share the form $h_i = f(\\frac{g_i}{\\sigma_i}(a_i-\\mu_i)+b_i)$ with scheme-specific $(\\mu_i,\\sigma_i)$"
+      ],
+      "conclusions": [
+        "Layer normalization is the only one of the three invariant to single training case re-scaling",
+        "Layer normalization is the only one of the three invariant to weight-matrix re-centering",
+        "Batch normalization is the only one invariant to dataset re-centering"
+      ],
+      "origin": "paper",
+      "tags": ["invariance", "comparison"]
+    },
+    {
+      "id": "ClP219.1",
+      "type": "claim",
+      "name": "Implicit learning-rate reduction via weight-norm growth",
+      "section": "5.2.2 Implicit learning rate reduction",
+      "statement": "If $\\|w_i\\|$ doubles, the model output is unchanged but the curvature of $\\bar{F}$ along the $w_i$ direction shrinks by a factor of $\\tfrac{1}{2}$ because $\\sigma_i$ also doubles, so the same gradient step produces a smaller change in orientation of large-norm weights.",
+      "statement_clean": "Normalization induces an implicit early-stopping effect: the effective learning rate for a weight vector is inversely proportional to its norm.",
+      "assumptions": [
+        "Normalized GLM with Fisher information matrix $\\bar{F}$ as in Eq. (nfisher)",
+        "Norm of $w_i$ grows during training"
+      ],
+      "conclusions": [
+        "The Fisher block along $w_i$ scales as $1/\\|w_i\\|$, reducing the effective learning rate as the weight norm grows"
+      ],
+      "origin": "paper",
+      "tags": ["learning-dynamics"]
+    },
+    {
+      "id": "ClP219.2",
+      "type": "claim",
+      "name": "Gain-direction Riemannian metric depends only on prediction error",
+      "section": "5.2.2 Learning the magnitude of incoming weights",
+      "statement": "For batch and layer normalized GLMs, $ds^2 = \\frac{1}{2}\\delta_g^\\T \\,\\mathbb{E}_x[\\mathrm{Cov}[y|x]/\\phi^2]\\, \\delta_g$ (batch) or a related expression depending on $(a_i-\\mu)/\\sigma$ (layer), so updates along the gain parameters depend only on the magnitude of the prediction error, not on the input scale.",
+      "statement_clean": "Learning the magnitude of incoming weights through gain parameters in normalized models is robust to the scaling of inputs and parameters.",
+      "assumptions": [
+        "Normalized GLM with gain parameter $g$",
+        "Gradient update changes only the gain parameter by $\\delta_g$"
+      ],
+      "conclusions": [
+        "The KL change $ds^2$ along the gain direction is proportional to expected output covariance, independent of input norm",
+        "Standard (un-normalized) GLM has $ds^2$ depending on $a_i a_j / (\\|w_i\\|\\|w_j\\|)$, which is input-dependent"
+      ],
+      "origin": "paper",
+      "tags": ["learning-dynamics", "robustness"]
+    },
+    {
+      "id": "AP219.1",
+      "type": "algorithm",
+      "name": "Layer Normalization (LN) operator",
+      "section": "Supplementary Material (and Sec. 3)",
+      "statement": "Given activation vector $z \\in \\mathbb{R}^D$ and adaptive gain/bias $(\\alpha,\\beta)$, compute mean and variance across the $D$ coordinates of $z$, normalize, then re-scale and shift coordinate-wise.",
+      "input": [
+        "Activation vector $z \\in \\mathbb{R}^D$ for a single training case at one layer / time-step",
+        "Adaptive gain $\\alpha \\in \\mathbb{R}^D$ and bias $\\beta \\in \\mathbb{R}^D$"
+      ],
+      "output": [
+        "Normalized vector $LN(z;\\alpha,\\beta) = \\frac{z-\\mu}{\\sigma}\\odot\\alpha + \\beta \\in \\mathbb{R}^D$"
+      ],
+      "pseudocode": "1. $\\mu \\gets \\frac{1}{D}\\sum_{i=1}^D z_i$\n2. $\\sigma \\gets \\sqrt{\\frac{1}{D}\\sum_{i=1}^D (z_i-\\mu)^2}$\n3. return $\\frac{(z-\\mu)}{\\sigma}\\odot\\alpha + \\beta$",
+      "origin": "paper",
+      "tags": ["normalization"]
+    },
+    {
+      "id": "AP219.2",
+      "type": "algorithm",
+      "name": "Layer-normalized LSTM",
+      "section": "Supplementary Material (Teaching machines to read and comprehend; handwriting)",
+      "statement": "An LSTM in which the pre-activations from $W_h h_{t-1}$ and $W_x x_t$ and the cell state $c_t$ are individually layer-normalized using $LN$ with separate gain/bias parameters.",
+      "input": [
+        "Input $x_t$ and previous hidden state $h_{t-1}$, previous cell state $c_{t-1}$",
+        "Weights $W_h, W_x$, bias $b$, three pairs of LN parameters $(\\alpha_1,\\beta_1),(\\alpha_2,\\beta_2),(\\alpha_3,\\beta_3)$"
+      ],
+      "output": [
+        "Updated cell state $c_t$ and hidden state $h_t$"
+      ],
+      "pseudocode": "$(f_t,i_t,o_t,g_t)^\\T = LN(W_h h_{t-1};\\alpha_1,\\beta_1) + LN(W_x x_t;\\alpha_2,\\beta_2) + b$\n$c_t = \\sigma(f_t)\\odot c_{t-1} + \\sigma(i_t)\\odot \\tanh(g_t)$\n$h_t = \\sigma(o_t)\\odot \\tanh(LN(c_t;\\alpha_3,\\beta_3))$",
+      "origin": "paper"
+    },
+    {
+      "id": "AP219.3",
+      "type": "algorithm",
+      "name": "Layer-normalized GRU",
+      "section": "Supplementary Material (Order embeddings and skip-thoughts)",
+      "statement": "A GRU variant in which $W_h h_{t-1}$, $W_x x_t$, $W x_t$, and $U h_{t-1}$ are each separately layer-normalized using $LN$ with distinct gain/bias parameters.",
+      "input": [
+        "Input $x_t$ and previous hidden state $h_{t-1}$",
+        "Weights $W_h, W_x, W, U$, four pairs of LN parameters $(\\alpha_i,\\beta_i)_{i=1}^4$"
+      ],
+      "output": [
+        "Updated hidden state $h_t$"
+      ],
+      "pseudocode": "$(z_t, r_t)^\\T = LN(W_h h_{t-1};\\alpha_1,\\beta_1) + LN(W_x x_t;\\alpha_2,\\beta_2)$\n$\\hat{h}_t = \\tanh(LN(W x_t;\\alpha_3,\\beta_3) + \\sigma(r_t)\\odot LN(U h_{t-1};\\alpha_4,\\beta_4))$\n$h_t = (1-\\sigma(z_t)) h_{t-1} + \\sigma(z_t) \\hat{h}_t$",
+      "origin": "paper"
+    },
+    {
+      "id": "AP219.4",
+      "type": "algorithm",
+      "name": "Layer-normalized DRAW LSTM",
+      "section": "Supplementary Material (Modeling binarized MNIST using DRAW)",
+      "statement": "An LSTM used in DRAW where layer normalization is applied only to the cell state $c_t$ (not to the pre-activation gates).",
+      "input": [
+        "Input $x_t$ and previous hidden state $h_{t-1}$, previous cell state $c_{t-1}$",
+        "Weights $W_h, W_x$, bias $b$, single pair of LN parameters $(\\alpha,\\beta)$"
+      ],
+      "output": [
+        "Updated cell state $c_t$ and hidden state $h_t$"
+      ],
+      "pseudocode": "$(f_t,i_t,o_t,g_t)^\\T = W_h h_{t-1} + W_x x_t + b$\n$c_t = \\sigma(f_t)\\odot c_{t-1} + \\sigma(i_t)\\odot \\tanh(g_t)$\n$h_t = \\sigma(o_t)\\odot \\tanh(LN(c_t;\\alpha,\\beta))$",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP219.1",
+      "type": "problem",
+      "name": "Reducing covariate shift / training time in deep neural networks",
+      "section": "1 Introduction",
+      "statement": "Design a per-layer normalization scheme that reduces internal covariate shift, accelerates training of deep networks (including RNNs), and works in the small-batch and online regimes where batch normalization is impractical.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP219.1",
+      "type": "example",
+      "name": "Order-embeddings of images and language (MSCOCO)",
+      "section": "6.1 Order embeddings of images and language",
+      "statement": "Layer normalization applied to the GRU encoder of the order-embeddings model on Microsoft COCO improves Caption Retrieval R@1 from 46.6 to 48.5 and Image Retrieval R@1 from 37.8 to 38.9, and reaches the best validation score in 60% of the baseline's training time.",
+      "origin": "paper",
+      "tags": ["empirical", "speedup"]
+    },
+    {
+      "id": "ExP219.2",
+      "type": "example",
+      "name": "Attentive reader on CNN corpus (question answering)",
+      "section": "6.2 Teaching machines to read and comprehend",
+      "statement": "On a unidirectional attentive-reader QA model trained on the CNN corpus, layer normalization both trains faster and converges to a better validation result than the baseline and recurrent batch normalization variants, and is robust to gain initialization (1.0 outperforms 0.1, unlike recurrent BN).",
+      "origin": "paper",
+      "tags": ["empirical", "comparison"]
+    },
+    {
+      "id": "ExP219.3",
+      "type": "example",
+      "name": "Skip-thought vectors on BookCorpus",
+      "section": "6.3 Skip-thought vectors",
+      "statement": "Training a 2400-dimensional skip-thoughts encoder on BookCorpus with layer normalization yields a speedup over baseline and improves downstream tasks (SICK, MR, CR, SUBJ, MPQA) after 1M iterations, with further gains after a month of training.",
+      "origin": "paper",
+      "tags": ["empirical", "speedup"]
+    },
+    {
+      "id": "ExP219.4",
+      "type": "example",
+      "name": "DRAW on binarized MNIST",
+      "section": "6.4 Modeling binarized MNIST using DRAW",
+      "statement": "On a DRAW model with 64 glimpses and 256 LSTM hidden units trained on the fixed-binarization MNIST, layer normalization yields nearly $2\\times$ faster convergence; baseline reaches $82.36$ nats and LN reaches $82.09$ nats test variational log-likelihood after 200 epochs.",
+      "origin": "paper",
+      "tags": ["empirical", "speedup", "generative-modeling"]
+    },
+    {
+      "id": "ExP219.5",
+      "type": "example",
+      "name": "Handwriting sequence generation (IAM-OnDB)",
+      "section": "6.5 Handwriting sequence generation",
+      "statement": "On the IAM Online Handwriting Database with sequences of average length $\\sim 700$ and mini-batch size 8, a 3-layer 400-cell LSTM with layer normalization converges to comparable log-likelihood as the baseline but much faster.",
+      "origin": "paper",
+      "tags": ["empirical", "long-sequences"]
+    },
+    {
+      "id": "ExP219.6",
+      "type": "example",
+      "name": "Permutation-invariant MNIST classification",
+      "section": "6.6 Permutation invariant MNIST",
+      "statement": "On a 784-1000-1000-10 feed-forward network for permutation-invariant MNIST trained with Adam, layer normalization is robust across batch-sizes 128 and 4 and converges faster than batch normalization applied to all layers.",
+      "origin": "paper",
+      "tags": ["empirical", "feed-forward"]
+    },
+    {
+      "id": "ExP219.7",
+      "type": "example",
+      "name": "Convolutional networks (preliminary)",
+      "section": "6.7 Convolutional Networks",
+      "statement": "Preliminary ConvNet experiments show that layer normalization speeds up training over an unnormalized baseline but is outperformed by batch normalization, because boundary-receptive-field hidden units have very different statistics from interior units.",
+      "origin": "paper",
+      "tags": ["empirical", "negative-result"]
+    },
+    {
+      "id": "RP219.1",
+      "type": "remark",
+      "name": "Layer normalization is not a re-parameterization",
+      "section": "4 Related work",
+      "statement": "Unlike weight normalization or batch normalization with expected statistics, the layer-normalized model is not a re-parameterization of the original feed-forward network, and therefore has different invariance properties.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP219.2",
+      "type": "remark",
+      "name": "Stable hidden-to-hidden dynamics in RNNs",
+      "section": "3.1 Layer normalized RNNs",
+      "statement": "Because layer normalization makes the recurrent layer invariant to re-scaling of all summed inputs, it prevents the average magnitude of summed inputs from drifting at each time-step, mitigating exploding/vanishing gradients.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP219.3",
+      "type": "remark",
+      "name": "Same computation at training and test time",
+      "section": "Abstract / 3 Layer normalization",
+      "statement": "Unlike batch normalization, layer normalization performs exactly the same computation at training and test time and imposes no constraint on mini-batch size; it can be used in pure online learning with batch size 1.",
+      "origin": "paper"
+    },
+
+    {
+      "id": "PSP219.1",
+      "type": "proof_step",
+      "parent_id": "PrP219.1",
+      "step_order": 1,
+      "name": "Substitute the transformed weights into the layer-normalized output",
+      "statement": "Replace $W$ by $W' = \\delta W + \\mathbf{1}\\gamma^\\T$ in $h' = f(\\frac{g}{\\sigma'}(W' x - \\mu') + b)$ to expand the pre-activation as $(\\delta W + \\mathbf{1}\\gamma^\\T) x = \\delta W x + (\\gamma^\\T x)\\mathbf{1}$.",
+      "subclass": "substitute",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP219.2",
+      "type": "proof_step",
+      "parent_id": "PrP219.1",
+      "step_order": 2,
+      "name": "New mean and standard deviation under the transformation",
+      "statement": "Show that $\\mu' = \\delta\\mu + \\gamma^\\T x$ and $\\sigma' = \\delta\\sigma$, since adding $(\\gamma^\\T x)\\mathbf{1}$ shifts every coordinate by the same constant and scaling by $\\delta$ scales both mean and standard deviation by $\\delta$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP219.3",
+      "type": "proof_step",
+      "parent_id": "PrP219.1",
+      "step_order": 3,
+      "name": "Cancel $\\delta$ and the constant shift",
+      "statement": "Substitute $\\mu' = \\delta\\mu + \\gamma^\\T x$, $\\sigma' = \\delta\\sigma$, and $W' x = \\delta W x + (\\gamma^\\T x)\\mathbf{1}$ into the LN expression; the constant shift cancels and $\\delta$ cancels in the ratio, yielding $f(\\frac{g}{\\sigma}(Wx - \\mu) + b) = h$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+
+    {
+      "id": "PSP219.4",
+      "type": "proof_step",
+      "parent_id": "PrP219.2",
+      "step_order": 1,
+      "name": "Express normalization statistics under input scaling",
+      "statement": "With $x' = \\delta x$, the summed input becomes $w_i^\\T x' = \\delta w_i^\\T x$, so $\\mu' = \\delta \\mu$ and $\\sigma' = \\delta \\sigma$.",
+      "subclass": "substitute",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP219.5",
+      "type": "proof_step",
+      "parent_id": "PrP219.2",
+      "step_order": 2,
+      "name": "Cancel $\\delta$ in the LN ratio",
+      "statement": "Substitute into $h'_i = f(\\frac{g_i}{\\sigma'}(w_i^\\T x' - \\mu') + b_i) = f(\\frac{g_i}{\\delta\\sigma}(\\delta w_i^\\T x - \\delta\\mu) + b_i) = f(\\frac{g_i}{\\sigma}(w_i^\\T x - \\mu) + b_i) = h_i$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+
+    {
+      "id": "ASP219.1",
+      "type": "algorithm_step",
+      "parent_id": "AP219.1",
+      "step_order": 1,
+      "name": "Compute layer mean",
+      "statement": "$\\mu \\gets \\frac{1}{D}\\sum_{i=1}^D z_i$",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP219.2",
+      "type": "algorithm_step",
+      "parent_id": "AP219.1",
+      "step_order": 2,
+      "name": "Compute layer standard deviation",
+      "statement": "$\\sigma \\gets \\sqrt{\\frac{1}{D}\\sum_{i=1}^D (z_i - \\mu)^2}$",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP219.3",
+      "type": "algorithm_step",
+      "parent_id": "AP219.1",
+      "step_order": 3,
+      "name": "Affine re-scale and shift",
+      "statement": "Return $\\frac{(z-\\mu)}{\\sigma}\\odot \\alpha + \\beta$.",
+      "subclass": "return",
+      "origin": "paper"
+    },
+
+    {
+      "id": "ASP219.4",
+      "type": "algorithm_step",
+      "parent_id": "AP219.2",
+      "step_order": 1,
+      "name": "Compute and layer-normalize gate pre-activations",
+      "statement": "$(f_t,i_t,o_t,g_t)^\\T = LN(W_h h_{t-1};\\alpha_1,\\beta_1) + LN(W_x x_t;\\alpha_2,\\beta_2) + b$",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP219.5",
+      "type": "algorithm_step",
+      "parent_id": "AP219.2",
+      "step_order": 2,
+      "name": "Update cell state",
+      "statement": "$c_t = \\sigma(f_t)\\odot c_{t-1} + \\sigma(i_t)\\odot \\tanh(g_t)$",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP219.6",
+      "type": "algorithm_step",
+      "parent_id": "AP219.2",
+      "step_order": 3,
+      "name": "Layer-normalize cell state and emit hidden state",
+      "statement": "$h_t = \\sigma(o_t)\\odot \\tanh(LN(c_t;\\alpha_3,\\beta_3))$",
+      "subclass": "return",
+      "origin": "paper"
+    },
+
+    {
+      "id": "ASP219.7",
+      "type": "algorithm_step",
+      "parent_id": "AP219.3",
+      "step_order": 1,
+      "name": "Compute layer-normalized gate pre-activations",
+      "statement": "$(z_t, r_t)^\\T = LN(W_h h_{t-1};\\alpha_1,\\beta_1) + LN(W_x x_t;\\alpha_2,\\beta_2)$",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP219.8",
+      "type": "algorithm_step",
+      "parent_id": "AP219.3",
+      "step_order": 2,
+      "name": "Compute candidate hidden state",
+      "statement": "$\\hat{h}_t = \\tanh(LN(W x_t;\\alpha_3,\\beta_3) + \\sigma(r_t)\\odot LN(U h_{t-1};\\alpha_4,\\beta_4))$",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP219.9",
+      "type": "algorithm_step",
+      "parent_id": "AP219.3",
+      "step_order": 3,
+      "name": "Update hidden state via gated combination",
+      "statement": "$h_t = (1-\\sigma(z_t)) h_{t-1} + \\sigma(z_t) \\hat{h}_t$",
+      "subclass": "return",
+      "origin": "paper"
+    },
+
+    {
+      "id": "ASP219.10",
+      "type": "algorithm_step",
+      "parent_id": "AP219.4",
+      "step_order": 1,
+      "name": "Compute gate pre-activations (no LN)",
+      "statement": "$(f_t,i_t,o_t,g_t)^\\T = W_h h_{t-1} + W_x x_t + b$",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP219.11",
+      "type": "algorithm_step",
+      "parent_id": "AP219.4",
+      "step_order": 2,
+      "name": "Update cell state",
+      "statement": "$c_t = \\sigma(f_t)\\odot c_{t-1} + \\sigma(i_t)\\odot \\tanh(g_t)$",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP219.12",
+      "type": "algorithm_step",
+      "parent_id": "AP219.4",
+      "step_order": 3,
+      "name": "Apply LN to cell state and emit hidden state",
+      "statement": "$h_t = \\sigma(o_t)\\odot \\tanh(LN(c_t;\\alpha,\\beta))$",
+      "subclass": "return",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "DP219.1", "target": "DP219.2", "type": "uses"},
+    {"source": "DP219.1", "target": "DP219.3", "type": "uses"},
+    {"source": "DP219.2", "target": "DP219.3", "type": "generalizes"},
+    {"source": "DP219.3", "target": "DP219.4", "type": "uses"},
+    {"source": "DP219.3", "target": "DP219.5", "type": "uses"},
+    {"source": "DP219.4", "target": "AP219.1", "type": "uses"},
+    {"source": "DP219.4", "target": "AP219.2", "type": "uses"},
+    {"source": "DP219.4", "target": "AP219.3", "type": "uses"},
+    {"source": "DP219.4", "target": "AP219.4", "type": "uses"},
+    {"source": "DP219.5", "target": "AP219.2", "type": "uses"},
+
+    {"source": "DP219.2", "target": "EP219.1", "type": "uses"},
+    {"source": "DP219.3", "target": "EP219.1", "type": "uses"},
+
+    {"source": "DP219.3", "target": "PrP219.1", "type": "uses"},
+    {"source": "DP219.3", "target": "PrP219.2", "type": "uses"},
+    {"source": "EP219.1", "target": "PrP219.3", "type": "uses"},
+    {"source": "PrP219.1", "target": "PrP219.3", "type": "specializes"},
+    {"source": "PrP219.2", "target": "PrP219.3", "type": "specializes"},
+
+    {"source": "DP219.6", "target": "DP219.8", "type": "uses"},
+    {"source": "DP219.7", "target": "DP219.8", "type": "uses"},
+    {"source": "DP219.8", "target": "DP219.9", "type": "generalizes"},
+    {"source": "DP219.6", "target": "DP219.9", "type": "uses"},
+    {"source": "DP219.9", "target": "ClP219.1", "type": "uses"},
+    {"source": "DP219.9", "target": "ClP219.2", "type": "uses"},
+
+    {"source": "AP219.1", "target": "ProbP219.1", "type": "resolves"},
+
+    {"source": "PSP219.1", "target": "PSP219.2", "type": "uses"},
+    {"source": "PSP219.2", "target": "PSP219.3", "type": "uses"},
+    {"source": "PSP219.1", "target": "PSP219.3", "type": "uses"},
+    {"source": "PSP219.4", "target": "PSP219.5", "type": "uses"},
+
+    {"source": "ASP219.1", "target": "ASP219.2", "type": "uses"},
+    {"source": "ASP219.2", "target": "ASP219.3", "type": "uses"},
+    {"source": "ASP219.1", "target": "ASP219.3", "type": "uses"},
+    {"source": "ASP219.4", "target": "ASP219.5", "type": "uses"},
+    {"source": "ASP219.5", "target": "ASP219.6", "type": "uses"},
+    {"source": "ASP219.7", "target": "ASP219.8", "type": "uses"},
+    {"source": "ASP219.8", "target": "ASP219.9", "type": "uses"},
+    {"source": "ASP219.10", "target": "ASP219.11", "type": "uses"},
+    {"source": "ASP219.11", "target": "ASP219.12", "type": "uses"},
+
+    {"source": "AP219.2", "target": "ExP219.2", "type": "illustrates"},
+    {"source": "AP219.2", "target": "ExP219.5", "type": "illustrates"},
+    {"source": "AP219.3", "target": "ExP219.1", "type": "illustrates"},
+    {"source": "AP219.3", "target": "ExP219.3", "type": "illustrates"},
+    {"source": "AP219.4", "target": "ExP219.4", "type": "illustrates"},
+    {"source": "AP219.1", "target": "ExP219.6", "type": "illustrates"},
+    {"source": "AP219.1", "target": "ExP219.7", "type": "illustrates"},
+
+    {"source": "PrP219.3", "target": "RP219.1", "type": "uses"},
+    {"source": "PrP219.2", "target": "RP219.2", "type": "uses"},
+    {"source": "DP219.3", "target": "RP219.3", "type": "uses"}
+  ]
+}

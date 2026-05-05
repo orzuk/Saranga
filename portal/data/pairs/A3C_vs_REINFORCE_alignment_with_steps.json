@@ -1,0 +1,187 @@
+{
+  "metadata": {
+    "alignment_name": "A3C_vs_REINFORCE",
+    "paper_a": {
+      "arxiv_id": "1602.01783",
+      "title": "Asynchronous Methods for Deep Reinforcement Learning"
+    },
+    "paper_b": {
+      "arxiv_id": "Williams1992",
+      "title": "Simple Statistical Gradient-Following Algorithms for Connectionist Reinforcement Learning"
+    },
+    "relation_type": "EXT",
+    "annotator": "Claude (claude-opus-4-7-silver-with-steps)",
+    "scheme_version": "with_steps_v2",
+    "description": "A3C (Mnih et al. 2016) extends Williams's REINFORCE (1992) policy-gradient framework with a learned value-function critic (advantage baseline), $n$-step bootstrapping, asynchronous parallel actor-learners, and entropy regularization. Paper A explicitly cites paper B's REINFORCE and reuses its score-function gradient skeleton; the actor-critic + bootstrapping + asynchrony stack is the contribution of paper A. Paper B is PDF-fallback, so confidences are slightly downgraded where match relies on exact LaTeX rather than name/type."
+  },
+  "matches": [
+    {
+      "paper_a_nodes": ["AP240.9"],
+      "paper_b_nodes": ["AP241.1", "DP241.7"],
+      "match_type": "exact",
+      "confidence": "high",
+      "explanation": "Paper A cites REINFORCE (Williams 1992) as external prior work (AP240.9), describing exactly the score-function update $\\nabla_\\theta \\log\\pi(a_t|s_t;\\theta) R_t$. Paper B is the original definition: AP241.1 is the algorithm and DP241.7 is the formal class definition $\\Delta w_{ij} = \\alpha_{ij}(r-b_{ij}) e_{ij}$. Same algorithm by name and by formula; A treats it as black-box reference, B develops the theory."
+    },
+    {
+      "paper_a_nodes": ["EP240.2"],
+      "paper_b_nodes": ["EP241.5", "AP241.1"],
+      "match_type": "exact",
+      "confidence": "high",
+      "explanation": "Paper A's EP240.2 ('REINFORCE Policy Gradient with Baseline', $\\nabla_\\theta \\log\\pi(a_t|s_t;\\theta)(R_t - b_t(s_t))$) is the same update as paper B's REINFORCE rule (AP241.1: $\\Delta w_{ij} = \\alpha_{ij}(r-b_{ij}) e_{ij}$ with $e_{ij} = \\partial \\ln g_i/\\partial w_{ij}$, instantiated for Bernoulli-logistic in EP241.5). Paper A presents the deep-policy version (continuous action distributions, neural-net $\\theta$) but the structural form — log-policy gradient times offset reinforcement — is identical."
+    },
+    {
+      "paper_a_nodes": ["DP240.5"],
+      "paper_b_nodes": ["DP241.8"],
+      "match_type": "analogous",
+      "confidence": "medium",
+      "explanation": "Paper A uses the state-value function $V^\\pi(s) = \\mathbb{E}[R_t \\mid s_t = s]$ explicitly as the baseline $b_t(s_t)$ subtracted from $R_t$ in REINFORCE/A3C updates. Paper B defines the abstract reinforcement baseline $b_{ij}$ subtracted from $r$ as a variance-reduction device, conditionally independent of $y_i$ given $W, x_i$. Same conceptual role (variance-reduction subtractive reference), but B's baseline is a scalar/per-weight quantity not tied to a learned value function, while A's is a parametric state-value approximator $V(s_t;\\theta_v)$."
+    },
+    {
+      "paper_a_nodes": ["DP240.6"],
+      "paper_b_nodes": ["DP241.8"],
+      "match_type": "analogous",
+      "confidence": "medium",
+      "explanation": "Paper A's advantage function $A(a_t,s_t) = Q(a_t,s_t) - V(s_t)$ generalizes the 'offset reinforcement' $r - b_{ij}$ idea in paper B. The advantage is the offset that subtracts the (learned) state baseline from the action-conditional return; paper B's baseline serves the same variance-reduction role but uses scalar/exponentially-averaged $\\bar r$ (DP241.9) rather than a state-dependent $V(s_t)$. The shift to state-dependent baselines is part of A's extension."
+    },
+    {
+      "paper_a_nodes": ["DP240.9", "EP240.3"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Entropy regularization $\\beta H(\\pi(s_t;\\theta'))$ added to the policy objective is paper A-specific; paper B's REINFORCE has no entropy term. Williams 1992 discusses Gaussian-unit width $\\sigma$ as a stochasticity control (DP241.4, EP241.10) but never as an entropy bonus."
+    },
+    {
+      "paper_a_nodes": ["EP240.4"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "The A3C $n$-step advantage estimator $A(s_t,a_t) = \\sum_{i=0}^{k-1}\\gamma^i r_{t+i} + \\gamma^k V(s_{t+k};\\theta_v) - V(s_t;\\theta_v)$ has no counterpart in paper B. Williams 1992 uses Monte-Carlo episode-end returns (Episodic REINFORCE, DP241.12) but not bootstrapped value targets; bootstrapping with a learned $V$ is part of A's actor-critic extension."
+    },
+    {
+      "paper_a_nodes": ["AP240.4"],
+      "paper_b_nodes": ["AP241.1", "AP241.3"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "A3C (AP240.4) is paper A's central contribution and a direct extension of paper B's REINFORCE family. Same policy-gradient skeleton ($\\nabla \\log\\pi \\cdot \\text{offset}$), but A3C adds: (i) a learned value-function critic $V(s_t;\\theta_v)$ as the state-dependent baseline, replacing scalar $b_{ij}$; (ii) $n$-step bootstrapped advantage estimator instead of Monte-Carlo episode return; (iii) asynchronous parallel actor-learners with Hogwild-style updates; (iv) entropy regularization. Paper B's Episodic REINFORCE (AP241.3) is the closest direct ancestor since it accumulates per-step eligibilities then performs one update — the structural analog of A3C's $t_{max}$-rollout-then-update pattern."
+    },
+    {
+      "paper_a_nodes": ["AP240.4"],
+      "paper_b_nodes": ["ASP240.11", "ASP240.12", "ASP240.13", "ASP240.14", "ASP240.15"],
+      "match_type": "none",
+      "confidence": "low",
+      "explanation": "Composite L2 entry placeholder: A3C's per-thread step decomposition (rollout, bootstrap, backward accumulate, async update) has no fine-grained step counterpart in paper B's text — Williams's Episodic REINFORCE is presented as a closed-form update rule, not a step-wise procedure with a parallel actor inner loop. Listed for completeness; this entry would be omitted under strict L2 rules but is included to flag where step-block alignment fails."
+    },
+    {
+      "paper_a_nodes": ["AP240.1"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Asynchronous one-step Q-learning is paper A's value-based asynchronous variant (extending DQN, not REINFORCE). Paper B has no Q-learning, no off-policy bootstrapping, and no asynchronous architecture. Pure paper-A contribution."
+    },
+    {
+      "paper_a_nodes": ["AP240.2"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Asynchronous one-step Sarsa: again value-based and asynchronous, no analog in Williams 1992."
+    },
+    {
+      "paper_a_nodes": ["AP240.3"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Asynchronous $n$-step Q-learning: Q-learning + $n$-step + asynchronous, all absent from paper B."
+    },
+    {
+      "paper_a_nodes": ["AP240.5"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Hogwild!-style asynchronous momentum SGD is the lock-free shared-parameter optimization layer; paper B has no parallel/asynchronous training discussion (single-thread connectionist learning)."
+    },
+    {
+      "paper_a_nodes": ["AP240.6"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Shared RMSProp is a paper-A optimization detail; paper B predates RMSProp (1992) and uses vanilla SGD."
+    },
+    {
+      "paper_a_nodes": ["DP240.7", "DP240.8"],
+      "paper_b_nodes": ["DP241.10"],
+      "match_type": "analogous",
+      "confidence": "low",
+      "explanation": "Paper A's $n$-step return + forward view is the bootstrapped-rollout schema underlying A3C and the asynchronous $n$-step Q variant. Paper B has the related but weaker concept of an episodic learning task (DP241.10) — fixed-length $k$-step episodes with one terminal reinforcement. Both define a multi-step horizon over which credit is assigned, but A's $n$-step is bootstrapped (mid-rollout truncation with $V$ continuation) while B's episode is Monte-Carlo (full horizon, no bootstrapping). Loose conceptual analog only."
+    },
+    {
+      "paper_a_nodes": ["DP240.1"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "Paper A's MDP-style RL setting (state $s_t$, action $a_t$, reward $r_t$, transition to $s_{t+1}$) is more general than paper B's setup, which is feedforward/recurrent connectionist with i.i.d. inputs and immediate or episode-end reinforcement (AssumP241.1). Williams's framework predates the standard MDP formalization in this paper; treating these as a 'match' would obscure the genuine generalization paper A makes."
+    },
+    {
+      "paper_a_nodes": ["DP240.2"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "Discounted return $R_t = \\sum_k \\gamma^k r_{t+k}$ has no direct analog in Williams 1992. Paper B uses scalar reinforcement $r$ delivered per trial or per episode (no discount factor)."
+    },
+    {
+      "paper_a_nodes": ["DP240.3", "DP240.4"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Action-value $Q^\\pi$ and optimal $Q^*$: value-based RL machinery, absent from paper B (which is pure policy-gradient with no Q estimation)."
+    },
+    {
+      "paper_a_nodes": ["EP240.1"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "One-step Q-learning loss is value-based and external to the REINFORCE thread."
+    },
+    {
+      "paper_a_nodes": ["EP240.5"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Non-centered RMSProp update is an optimization detail, not part of the policy-gradient theory in paper B."
+    },
+    {
+      "paper_a_nodes": ["ProbP240.1"],
+      "paper_b_nodes": ["DP241.6"],
+      "match_type": "exact",
+      "confidence": "high",
+      "explanation": "Both papers state the same RL objective: maximize expected return (paper A: $\\mathbb{E}[R_t]$; paper B: $E\\{r \\mid W\\}$). Notation differs (W vs $\\theta$, $r$ vs $R_t$), but the optimization target is the same — expected reinforcement / return as a function of the learnable parameters. Paper B is PDF-fallback so we trust the name/type ('Expected reinforcement performance criterion' / 'problem') over LaTeX exactness."
+    },
+    {
+      "paper_a_nodes": ["RP240.1"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Parallel actors decorrelating updates is paper A's central methodological observation enabling on-policy deep RL without replay buffers; no analog in single-thread Williams 1992."
+    },
+    {
+      "paper_a_nodes": ["RP240.2"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Forward vs backward view (eligibility traces) discussion is paper-A specific."
+    },
+    {
+      "paper_a_nodes": ["RP240.3"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Shared conv network for policy and value is a deep-net architectural choice not present in 1992 connectionist setup."
+    },
+    {
+      "paper_a_nodes": ["RP240.4"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Superlinear scaling observation is a paper-A empirical claim about asynchronous training."
+    }
+  ]
+}

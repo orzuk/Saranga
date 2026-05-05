@@ -2,15 +2,15 @@
 # Check if Herald statements and proofs can be linked
 # Compare fields and find shared keys
 
-source /sci/labs/orzuk/orzuk/authomathics-venv/bin/activate
+source /<cluster>/<user>/authomathics-venv/bin/activate
 
-DATA_DIR=/sci/labs/orzuk/orzuk/projects/Authomathics
+DATA_DIR=/<cluster>/<user>/projects/Authomathics
 
 python3 << 'PYEOF'
 import json
 import os
 
-DATA_DIR = os.environ.get('DATA_DIR', '/sci/labs/orzuk/orzuk/projects/Authomathics')
+DATA_DIR = os.environ.get('DATA_DIR', '/<cluster>/<user>/projects/Authomathics')
 
 # Show sample entries from each dataset
 print("=== Herald STATEMENTS sample (first 3) ===")

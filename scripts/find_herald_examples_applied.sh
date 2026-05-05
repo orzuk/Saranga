@@ -3,15 +3,15 @@
 # statistics, probability, combinatorics, linear algebra, number theory basics
 # Run on cluster: bash scripts/find_herald_examples_applied.sh
 
-source /sci/labs/orzuk/orzuk/authomathics-venv/bin/activate
+source /<cluster>/<user>/authomathics-venv/bin/activate
 
-DATA_DIR=/sci/labs/orzuk/orzuk/projects/Authomathics
+DATA_DIR=/<cluster>/<user>/projects/Authomathics
 
 python3 << 'PYEOF'
 import json
 import os
 
-DATA_DIR = os.environ.get('DATA_DIR', '/sci/labs/orzuk/orzuk/projects/Authomathics')
+DATA_DIR = os.environ.get('DATA_DIR', '/<cluster>/<user>/projects/Authomathics')
 proofs_path = os.path.join(DATA_DIR, 'mathlib/raw/herald_proofs.jsonl')
 
 # Keywords by area - more concrete/applied math

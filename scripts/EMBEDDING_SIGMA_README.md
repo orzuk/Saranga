@@ -72,7 +72,7 @@ pip install numpy scipy scikit-learn sentence-transformers
 
 ### Step 1: Run the benchmark
 ```bash
-cd /sci/labs/orzuk/orzuk/projects/Authomathics/arxiv/alignment_benchmark
+cd /<cluster>/<user>/projects/Authomathics/arxiv/alignment_benchmark
 
 # Make sure scripts/ is on PYTHONPATH
 export PYTHONPATH="/path/to/Authomathics/scripts:$PYTHONPATH"

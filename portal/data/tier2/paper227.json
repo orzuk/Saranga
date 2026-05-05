@@ -1,0 +1,464 @@
+{
+  "metadata": {
+    "title": "Scene Representation Networks: Continuous 3D-Structure-Aware Neural Scene Representations",
+    "paper_num": 227,
+    "authors": "Vincent Sitzmann, Michael Zollhoefer, Gordon Wetzstein",
+    "year": 2019,
+    "venue": "NeurIPS 2019",
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "DP227.1",
+      "type": "definition",
+      "name": "Training Set of Posed Images",
+      "section": "3 Formulation",
+      "statement": "Training set $\\mathcal{C} = \\{(\\mathcal{I}_i, \\mathbf{E}_i, \\mathbf{K}_i)\\}_{i=1}^N$ of $N$ tuples of images $\\mathcal{I}_i \\in \\mathbb{R}^{H \\times W \\times 3}$ with extrinsic $\\mathbf{E}_i = [\\mathbf{R}|\\mathbf{t}] \\in \\mathbb{R}^{3\\times 4}$ and intrinsic $\\mathbf{K}_i \\in \\mathbb{R}^{3\\times 3}$ camera matrices.",
+      "statement_clean": "A training dataset is a collection of 2D images each annotated with its camera intrinsic and extrinsic matrices.",
+      "origin": "paper",
+      "tags": ["data"]
+    },
+    {
+      "id": "DP227.2",
+      "type": "definition",
+      "name": "Scene Representation Function $\\Phi$",
+      "section": "3.1 Representing Scenes as Functions",
+      "statement": "A scene is represented as a continuous function $\\Phi : \\mathbb{R}^3 \\to \\mathbb{R}^n$, $\\mathbf{x} \\mapsto \\Phi(\\mathbf{x}) = \\mathbf{v}$, mapping a spatial location to a learned feature vector $\\mathbf{v}$ encoding local scene properties.",
+      "statement_clean": "Phi is a continuous function from 3D world coordinates to an n-dimensional feature vector representing local scene geometry/appearance.",
+      "origin": "paper",
+      "tags": ["object", "neural-network"]
+    },
+    {
+      "id": "DP227.3",
+      "type": "definition",
+      "name": "Neural Rendering Function $\\Theta$",
+      "section": "3.2 Neural Rendering",
+      "statement": "Neural renderer $\\Theta : \\mathcal{X} \\times \\mathbb{R}^{3\\times 4} \\times \\mathbb{R}^{3\\times 3} \\to \\mathbb{R}^{H\\times W\\times 3}$, $(\\Phi, \\mathbf{E}, \\mathbf{K}) \\mapsto \\Theta(\\Phi, \\mathbf{E}, \\mathbf{K}) = \\mathcal{I}$, where $\\mathcal{X}$ is the space of all scene-representation functions $\\Phi$.",
+      "statement_clean": "Theta maps a scene representation Phi together with camera extrinsics and intrinsics to a rendered image.",
+      "origin": "paper",
+      "tags": ["object", "neural-network"]
+    },
+    {
+      "id": "DP227.4",
+      "type": "definition",
+      "name": "Surface Set $\\Omega$",
+      "section": "3.2.1 Differentiable Ray Marching Algorithm",
+      "statement": "$\\Omega \\subset \\mathbb{R}^3$ denotes the set of all points lying on the surface of the scene; geometry is implicitly represented as the level set where $\\Phi$ transitions between feature vectors.",
+      "statement_clean": "Omega is the implicit surface of the scene, defined as where the feature representation transitions between free space and matter.",
+      "origin": "paper",
+      "tags": ["set"]
+    },
+    {
+      "id": "DP227.5",
+      "type": "definition",
+      "name": "Hypernetwork $\\Psi$",
+      "section": "3.3 Generalizing Across Scenes",
+      "statement": "Mapping $\\Psi : \\mathbb{R}^k \\to \\mathbb{R}^l$, $\\mathbf{z}_j \\mapsto \\Psi(\\mathbf{z}_j) = \\phi_j$, parameterized as an MLP with parameters $\\psi$, that maps a latent code $\\mathbf{z}_j$ to the parameter vector $\\phi_j$ of the scene MLP $\\Phi_j$.",
+      "statement_clean": "Psi is a hypernetwork that turns a low-dimensional latent code into the parameters of an instance-specific scene MLP.",
+      "origin": "paper",
+      "tags": ["object", "neural-network"]
+    },
+    {
+      "id": "DP227.6",
+      "type": "definition",
+      "name": "Latent Manifold Assumption",
+      "section": "3.3 Generalizing Across Scenes",
+      "statement": "Scenes of the same class are assumed to share shape and appearance properties characterizable by latent variables $\\mathbf{z} \\in \\mathbb{R}^k$ with $k < l$, equivalently that all parameter vectors $\\phi_j$ live in a $k$-dimensional subspace of $\\mathbb{R}^l$.",
+      "statement_clean": "The MLP parameters of all instances of one object class are assumed to live on a low-dimensional latent manifold.",
+      "origin": "paper",
+      "tags": ["assumption"]
+    },
+    {
+      "id": "DP227.7",
+      "type": "definition",
+      "name": "Pixel Generator",
+      "section": "3.2.2 Pixel Generator Architecture",
+      "statement": "Per-pixel MLP that maps a single feature vector $\\mathbf{v}$ at a ray-surface intersection to a single RGB color value; equivalent to a CNN with only $1\\times 1$ convolutions.",
+      "statement_clean": "A per-pixel MLP that converts feature vectors at intersection points to RGB colors, with no spatial convolutions.",
+      "origin": "paper",
+      "tags": ["neural-network"]
+    },
+    {
+      "id": "EP227.1",
+      "type": "equation",
+      "name": "Ray Parameterization",
+      "section": "3.2.1 Differentiable Ray Marching Algorithm",
+      "statement": "$\\mathbf{r}_{u,v}(d) = \\mathbf{R}^T(\\mathbf{K}^{-1}(u, v, d)^T - \\mathbf{t})$ for $d > 0$, giving world coordinates of the point along the camera ray through pixel $(u,v)$ at distance $d$.",
+      "statement_clean": "World-space ray parameterization for the camera ray through pixel (u,v) at depth d.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP227.2",
+      "type": "equation",
+      "name": "Joint Optimization Objective",
+      "section": "3.4 Joint Optimization",
+      "statement": "$\\arg\\min_{\\theta, \\psi, \\{\\mathbf{z}_j\\}} \\sum_{j=1}^M \\sum_{i=1}^N \\| \\Theta_\\theta(\\Phi_{\\Psi(\\mathbf{z}_j)}, \\mathbf{E}^j_i, \\mathbf{K}^j_i) - \\mathcal{I}^j_i \\|_2^2 + \\lambda_{dep} \\| \\min(\\mathbf{d}^j_{i,\\text{final}}, \\mathbf{0}) \\|_2^2 + \\lambda_{lat} \\| \\mathbf{z}_j \\|_2^2$.",
+      "statement_clean": "Sum of image-reconstruction loss, depth-positivity regularizer, and Gaussian latent-code prior, jointly optimized over renderer, hypernetwork, and latent codes.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP227.3",
+      "type": "equation",
+      "name": "Few-Shot Reconstruction Objective",
+      "section": "3.4 Joint Optimization",
+      "statement": "$\\hat{\\mathbf{z}} = \\arg\\min_{\\mathbf{z}} \\sum_{i=1}^N \\| \\Theta_\\theta(\\Phi_{\\Psi(\\mathbf{z})}, \\mathbf{E}_i, \\mathbf{K}_i) - \\mathcal{I}_i \\|_2^2 + \\lambda_{dep}\\|\\min(\\mathbf{d}_{i,\\text{final}}, \\mathbf{0})\\|_2^2 + \\lambda_{lat}\\|\\mathbf{z}\\|_2^2$, with $\\theta, \\psi$ fixed.",
+      "statement_clean": "Latent-code-only optimization for new instances, holding the trained renderer and hypernetwork fixed.",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP227.1",
+      "type": "problem",
+      "name": "Ray-Surface Intersection",
+      "section": "3.2.1 Differentiable Ray Marching Algorithm",
+      "statement": "$\\arg\\min\\; d \\;\\text{s.t.}\\; \\mathbf{r}_{u,v}(d) \\in \\Omega,\\; d > 0$: find the smallest positive distance along the camera ray through pixel $(u,v)$ that lies on the scene surface $\\Omega$.",
+      "statement_clean": "Optimization problem of finding the closest ray-surface intersection along each camera ray.",
+      "subclass": "optimization",
+      "origin": "paper",
+      "assumptions": ["$\\Omega \\subset \\mathbb{R}^3$ is the scene surface", "$\\mathbf{r}_{u,v}(d)$ is the camera ray as in Eq.~\\ref{eq:ray_param}", "$d > 0$ (point in front of camera)"],
+      "conclusions": ["Find $d^* = \\arg\\min\\{ d > 0 : \\mathbf{r}_{u,v}(d) \\in \\Omega \\}$"]
+    },
+    {
+      "id": "ProbP227.2",
+      "type": "problem",
+      "name": "Scene Representation Learning",
+      "section": "3 Formulation",
+      "statement": "Given a multi-instance dataset $\\mathcal{D} = \\{\\mathcal{C}_j\\}_{j=1}^M$ of posed-image collections, learn renderer parameters $\\theta$, hypernetwork parameters $\\psi$, and per-instance latent codes $\\mathbf{z}_j$ to faithfully reconstruct images and discover shape/appearance priors.",
+      "statement_clean": "End-to-end multi-instance scene representation learning from only posed 2D images.",
+      "subclass": "optimization",
+      "origin": "paper",
+      "assumptions": ["Dataset $\\mathcal{D} = \\{\\mathcal{C}_j\\}_{j=1}^M$", "Latent manifold assumption (DP227.6)"],
+      "conclusions": ["Learn $(\\theta, \\psi, \\{\\mathbf{z}_j\\}_{j=1}^M)$ minimizing the objective in EP227.2"]
+    },
+    {
+      "id": "AP227.1",
+      "type": "algorithm",
+      "name": "Differentiable Ray-Marching with RM-LSTM",
+      "section": "3.2.1 Differentiable Ray Marching Algorithm",
+      "statement": "Iterative ray-marching algorithm that finds the world-coordinate ray-surface intersection by predicting an adaptive step length at each iteration via a learned RM-LSTM driven by the local scene feature $\\Phi(\\mathbf{x}_i)$.",
+      "input": [
+        "Scene representation $\\Phi$",
+        "Camera intrinsics $\\mathbf{K}$, extrinsics $\\mathbf{E}$",
+        "Pixel coordinates $(u,v)$"
+      ],
+      "output": [
+        "World coordinates $\\mathbf{r}_{u,v}(d_{\\text{max\\_iter}})$ of the estimated ray-surface intersection"
+      ],
+      "pseudocode": "Initialize $d_0 \\gets 0.05$ (near plane), $(\\mathbf{h}_0, \\mathbf{c}_0) \\gets (\\mathbf{0}, \\mathbf{0})$. For $i = 0$ to $\\text{max\\_iter}$: $\\mathbf{x}_i \\gets \\mathbf{r}_{u,v}(d_i)$; $\\mathbf{v}_i \\gets \\Phi(\\mathbf{x}_i)$; $(\\delta, \\mathbf{h}_{i+1}, \\mathbf{c}_{i+1}) \\gets LSTM(\\mathbf{v}_i, \\mathbf{h}_i, \\mathbf{c}_i)$; $d_{i+1} \\gets d_i + \\delta$. Return $\\mathbf{r}_{u,v}(d_{\\text{max\\_iter}})$.",
+      "origin": "paper",
+      "tags": ["iterative", "differentiable"]
+    },
+    {
+      "id": "AP227.2",
+      "type": "algorithm",
+      "name": "Sphere Tracing",
+      "section": "3.2.1 (cited)",
+      "statement": "Classical ray-marching algorithm in which each step length equals the signed distance from the current point to the closest surface; the algorithm terminates at the surface where the signed distance is zero.",
+      "input": ["Signed distance field of the scene", "Camera ray origin and direction"],
+      "output": ["Coordinates of the ray-surface intersection"],
+      "origin": "external",
+      "origin_citation": "Hart 1996, Sphere Tracing"
+    },
+    {
+      "id": "AP227.3",
+      "type": "algorithm",
+      "name": "Auto-Decoder Latent-Code Optimization",
+      "section": "3.3 Finding latent codes (cited)",
+      "statement": "Treat per-instance latent codes $\\mathbf{z}_j$ as free variables and optimize them jointly with the network parameters by stochastic gradient descent, under a zero-mean diagonal-covariance Gaussian prior on $\\mathbf{z}_j$.",
+      "input": ["Per-instance datasets $\\mathcal{C}_j$", "Initial random latent codes $\\mathbf{z}_j$"],
+      "output": ["Trained latent codes $\\mathbf{z}_j$ jointly optimized with network parameters"],
+      "origin": "external",
+      "origin_citation": "Park et al. 2019, DeepSDF"
+    },
+    {
+      "id": "AP227.4",
+      "type": "algorithm",
+      "name": "SRN Joint End-to-End Training",
+      "section": "3.4 Joint Optimization",
+      "statement": "Stochastic gradient descent on the joint objective EP227.2 over renderer parameters $\\theta$, hypernetwork parameters $\\psi$, and latent codes $\\{\\mathbf{z}_j\\}$, end-to-end without pre-training.",
+      "input": [
+        "Multi-instance posed-image dataset $\\mathcal{D}$",
+        "Hyperparameters $\\lambda_{dep}, \\lambda_{lat}$"
+      ],
+      "output": [
+        "Trained $\\theta, \\psi, \\{\\mathbf{z}_j\\}_{j=1}^M$"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "end-to-end"]
+    },
+    {
+      "id": "AP227.5",
+      "type": "algorithm",
+      "name": "Few-Shot Reconstruction via Latent Optimization",
+      "section": "3.4 Few-shot reconstruction",
+      "statement": "Given a trained model, freeze $\\theta$ and $\\psi$ and recover a latent code $\\hat{\\mathbf{z}}$ for a new instance by minimizing the per-instance objective EP227.3 by SGD.",
+      "input": [
+        "Trained $\\theta, \\psi$",
+        "New instance dataset $\\mathcal{C} = \\{(\\mathcal{I}_i, \\mathbf{E}_i, \\mathbf{K}_i)\\}_{i=1}^N$"
+      ],
+      "output": [
+        "Latent code $\\hat{\\mathbf{z}}$ representing the new instance"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "ExP227.1",
+      "type": "example",
+      "name": "Shepard-Metzler Object Novel-View Synthesis",
+      "section": "4 Experiments",
+      "statement": "Train SRNs and dGQN on 15 observations each of 1000 7-element Shepard-Metzler objects at $64\\times 64$. SRNs reach $30.41$ dB PSNR on the training set vs $20.85$ dB for dGQN, $24.36$ dB vs $18.56$ dB in the two-shot setting, and $18.11$ dB vs $17.51$ dB in the one-shot setting.",
+      "statement_clean": "Limited-data Shepard-Metzler experiment showing SRNs strongly outperform a deterministic GQN baseline.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP227.2",
+      "type": "example",
+      "name": "Shapenet Cars and Chairs Novel-View Synthesis",
+      "section": "4 Experiments",
+      "statement": "Train on 50 views per instance for $4.5$k chairs and $2.5$k cars from Shapenet v2 at $128\\times 128$. SRNs achieve PSNR/SSIM of $26.23/0.95$ (chairs) and $26.32/0.94$ (cars) on training, outperforming TCO, WRL, and dGQN baselines in all 50-, 2-, and 1-shot settings.",
+      "statement_clean": "Shapenet cars/chairs experiment where SRNs beat all three baselines across few-shot regimes.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP227.3",
+      "type": "example",
+      "name": "Non-Rigid Face Model from Basel Faces",
+      "section": "4 Experiments",
+      "statement": "Render 50 views each of 1000 faces from the Basel face model (224-dim parameter vector: 160 identity + 64 expression). SRNs conditioned on this disentangled latent space reconstruct face geometry/appearance and animate facial expression by varying the 64 expression parameters while holding identity fixed.",
+      "statement_clean": "SRNs trained on Basel faces enable smooth animation of facial expressions while preserving identity.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP227.4",
+      "type": "example",
+      "name": "Latent-Space Interpolation",
+      "section": "4 Experiments",
+      "statement": "Interpolate between latent codes $\\mathbf{z}_j$ of cars and chairs in Shapenet while rotating the camera; reconstructed scenes transition smoothly between models, demonstrating that the learned latent manifold is meaningful.",
+      "statement_clean": "Linear latent-space interpolation produces smooth shape/appearance morphs between Shapenet instances.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP227.5",
+      "type": "example",
+      "name": "Room-Scale Minecraft Scene",
+      "section": "4 Experiments",
+      "statement": "Train a single SRN on 500 observations of a Minecraft room with multiple objects and four occluding columns; the model produces largely multi-view-consistent novel views and recovers occluding columns and object geometry, failing only on low-texture regions and thin tubes.",
+      "statement_clean": "Single-scene SRN demonstration on a multi-object room-scale Minecraft environment.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP227.1",
+      "type": "remark",
+      "name": "Multi-View Consistency from Per-Pixel Generator",
+      "section": "3.2.2 Pixel Generator Architecture",
+      "statement": "Because the pixel generator is a per-pixel MLP, the same $(x,y,z)$ world coordinate always maps to the same color, so given correct ray-surface intersections the rendering is trivially multi-view consistent; 2D convolutions provide no such guarantee.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP227.2",
+      "type": "remark",
+      "name": "Fixed-Iteration Ray Marching",
+      "section": "3.2.1 Differentiable Ray Marching Algorithm",
+      "statement": "The ray marcher uses a constant number of iterations rather than a dynamic termination criterion, since dynamic termination has no convergence guarantee while $\\Phi$ and the RM-LSTM are still randomly initialized; depth maps from running estimates make the procedure interpretable.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP227.3",
+      "type": "remark",
+      "name": "Continuous vs Discrete Scene Representations",
+      "section": "3.1 Representing Scenes as Functions",
+      "statement": "$\\Phi$ generalizes voxel grids and point clouds: it densely models scene properties at arbitrary resolution since it is continuous over $\\mathbb{R}^3$, with effective resolution limited only by the MLP capacity.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP227.4",
+      "type": "remark",
+      "name": "Failure Modes",
+      "section": "4 Failure cases",
+      "statement": "The ray marcher may get stuck in surface holes or skim past occluders, causing the SRN to fill in or step through surfaces; objects far from the training distribution may match texture but fail to recover geometry; reconstructed depth maps make these failures diagnosable.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP227.5",
+      "type": "remark",
+      "name": "Loss-Term Roles",
+      "section": "3.4 Joint Optimization",
+      "statement": "$\\mathcal{L}_{\\text{img}}$ enforces image reconstruction in $\\ell_2$, $\\mathcal{L}_{\\text{depth}}$ regularizes the positivity constraint $d > 0$ from EP227.1, and $\\mathcal{L}_{\\text{latent}}$ enforces the zero-mean Gaussian prior on $\\mathbf{z}_j$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP227.1",
+      "type": "algorithm_step",
+      "name": "Initialize Distance and LSTM State",
+      "parent_id": "AP227.1",
+      "step_order": 1,
+      "statement": "$d_0 \\gets 0.05$ (near plane); $(\\mathbf{h}_0, \\mathbf{c}_0) \\gets (\\mathbf{0}, \\mathbf{0})$ (LSTM hidden and cell states).",
+      "subclass": "initialize"
+    },
+    {
+      "id": "ASP227.2",
+      "type": "algorithm_step",
+      "name": "Iterative Marching Loop",
+      "parent_id": "AP227.1",
+      "step_order": 2,
+      "statement": "For $i = 0$ to $\\text{max\\_iter}$, repeat the following body: compute world coordinates from current depth, query feature, predict step length, and update depth.",
+      "subclass": "loop"
+    },
+    {
+      "id": "ASP227.3",
+      "type": "algorithm_step",
+      "name": "Compute World Coordinates",
+      "parent_id": "AP227.1",
+      "step_order": 3,
+      "statement": "$\\mathbf{x}_i \\gets \\mathbf{r}_{u,v}(d_i)$ using the ray parameterization (EP227.1).",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP227.4",
+      "type": "algorithm_step",
+      "name": "Query Scene Feature",
+      "parent_id": "AP227.1",
+      "step_order": 4,
+      "statement": "$\\mathbf{v}_i \\gets \\Phi(\\mathbf{x}_i)$: extract the feature vector at the current ray position from the scene representation.",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP227.5",
+      "type": "algorithm_step",
+      "name": "Predict Step Length via RM-LSTM",
+      "parent_id": "AP227.1",
+      "step_order": 5,
+      "statement": "$(\\delta, \\mathbf{h}_{i+1}, \\mathbf{c}_{i+1}) \\gets LSTM(\\mathbf{v}_i, \\mathbf{h}_i, \\mathbf{c}_i)$: predict the next step length and propagate the LSTM state.",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP227.6",
+      "type": "algorithm_step",
+      "name": "Increment Depth",
+      "parent_id": "AP227.1",
+      "step_order": 6,
+      "statement": "$d_{i+1} \\gets d_i + \\delta$: advance the ray by the predicted step length.",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP227.7",
+      "type": "algorithm_step",
+      "name": "Return Final Intersection Estimate",
+      "parent_id": "AP227.1",
+      "step_order": 7,
+      "statement": "Return $\\mathbf{r}_{u,v}(d_{\\text{max\\_iter}})$, the world coordinates of the estimated ray-surface intersection.",
+      "subclass": "return"
+    },
+    {
+      "id": "ASP227.8",
+      "type": "algorithm_step",
+      "name": "Initialize Parameters and Latent Codes",
+      "parent_id": "AP227.4",
+      "step_order": 1,
+      "statement": "Randomly initialize renderer parameters $\\theta$, hypernetwork parameters $\\psi$, and per-instance latent codes $\\{\\mathbf{z}_j\\}_{j=1}^M$.",
+      "subclass": "initialize"
+    },
+    {
+      "id": "ASP227.9",
+      "type": "algorithm_step",
+      "name": "Forward Pass: Render Each Image",
+      "parent_id": "AP227.4",
+      "step_order": 2,
+      "statement": "For each $(j,i)$, build $\\Phi_{\\Psi(\\mathbf{z}_j)}$ via the hypernetwork, run the differentiable ray marcher (AP227.1) to find intersections, and apply the pixel generator to produce the predicted image $\\Theta_\\theta(\\Phi_{\\Psi(\\mathbf{z}_j)}, \\mathbf{E}^j_i, \\mathbf{K}^j_i)$.",
+      "subclass": "loop"
+    },
+    {
+      "id": "ASP227.10",
+      "type": "algorithm_step",
+      "name": "Compute Joint Loss",
+      "parent_id": "AP227.4",
+      "step_order": 3,
+      "statement": "Evaluate $\\mathcal{L}_{\\text{img}} + \\mathcal{L}_{\\text{depth}} + \\mathcal{L}_{\\text{latent}}$ as in EP227.2 across the mini-batch.",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP227.11",
+      "type": "algorithm_step",
+      "name": "SGD Update on $(\\theta, \\psi, \\{\\mathbf{z}_j\\})$",
+      "parent_id": "AP227.4",
+      "step_order": 4,
+      "statement": "Backpropagate the joint loss end-to-end and apply a stochastic gradient step to $\\theta$, $\\psi$, and the latent codes $\\mathbf{z}_j$ jointly.",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP227.12",
+      "type": "algorithm_step",
+      "name": "Freeze Trained Parameters",
+      "parent_id": "AP227.5",
+      "step_order": 1,
+      "statement": "Hold renderer parameters $\\theta$ and hypernetwork parameters $\\psi$ fixed at their values from joint training (AP227.4).",
+      "subclass": "initialize"
+    },
+    {
+      "id": "ASP227.13",
+      "type": "algorithm_step",
+      "name": "Optimize New Latent Code",
+      "parent_id": "AP227.5",
+      "step_order": 2,
+      "statement": "Solve $\\hat{\\mathbf{z}} = \\arg\\min_{\\mathbf{z}} \\sum_{i=1}^N \\| \\Theta_\\theta(\\Phi_{\\Psi(\\mathbf{z})}, \\mathbf{E}_i, \\mathbf{K}_i) - \\mathcal{I}_i\\|_2^2 + \\lambda_{dep}\\|\\min(\\mathbf{d}_{i,\\text{final}}, \\mathbf{0})\\|_2^2 + \\lambda_{lat}\\|\\mathbf{z}\\|_2^2$ via SGD.",
+      "subclass": "loop"
+    },
+    {
+      "id": "ASP227.14",
+      "type": "algorithm_step",
+      "name": "Return Reconstructed Latent Code",
+      "parent_id": "AP227.5",
+      "step_order": 3,
+      "statement": "Return $\\hat{\\mathbf{z}}$, which fully specifies the new instance's scene representation $\\Phi_{\\Psi(\\hat{\\mathbf{z}})}$.",
+      "subclass": "return"
+    }
+  ],
+  "edges": [
+    {"source": "DP227.1", "target": "ProbP227.2", "type": "uses"},
+    {"source": "DP227.2", "target": "DP227.3", "type": "uses"},
+    {"source": "DP227.2", "target": "DP227.4", "type": "uses"},
+    {"source": "DP227.4", "target": "ProbP227.1", "type": "uses"},
+    {"source": "EP227.1", "target": "ProbP227.1", "type": "uses"},
+    {"source": "EP227.1", "target": "AP227.1", "type": "uses"},
+    {"source": "DP227.2", "target": "AP227.1", "type": "uses"},
+    {"source": "AP227.2", "target": "AP227.1", "type": "generalizes"},
+    {"source": "AP227.1", "target": "ProbP227.1", "type": "solves"},
+    {"source": "AP227.1", "target": "DP227.3", "type": "uses"},
+    {"source": "DP227.7", "target": "DP227.3", "type": "uses"},
+    {"source": "DP227.5", "target": "DP227.2", "type": "uses"},
+    {"source": "DP227.6", "target": "DP227.5", "type": "uses"},
+    {"source": "EP227.2", "target": "AP227.4", "type": "uses"},
+    {"source": "DP227.5", "target": "EP227.2", "type": "uses"},
+    {"source": "DP227.3", "target": "EP227.2", "type": "uses"},
+    {"source": "DP227.1", "target": "EP227.2", "type": "uses"},
+    {"source": "AP227.3", "target": "AP227.4", "type": "uses"},
+    {"source": "AP227.4", "target": "ProbP227.2", "type": "solves"},
+    {"source": "EP227.3", "target": "AP227.5", "type": "uses"},
+    {"source": "AP227.4", "target": "AP227.5", "type": "uses"},
+    {"source": "AP227.4", "target": "ExP227.1", "type": "illustrates"},
+    {"source": "AP227.4", "target": "ExP227.2", "type": "illustrates"},
+    {"source": "AP227.4", "target": "ExP227.3", "type": "illustrates"},
+    {"source": "AP227.4", "target": "ExP227.4", "type": "illustrates"},
+    {"source": "AP227.1", "target": "ExP227.5", "type": "illustrates"},
+    {"source": "AP227.5", "target": "ExP227.1", "type": "illustrates"},
+    {"source": "AP227.5", "target": "ExP227.2", "type": "illustrates"},
+    {"source": "RP227.1", "target": "DP227.7", "type": "uses"},
+    {"source": "RP227.2", "target": "AP227.1", "type": "uses"},
+    {"source": "RP227.3", "target": "DP227.2", "type": "uses"},
+    {"source": "RP227.4", "target": "AP227.1", "type": "uses"},
+    {"source": "RP227.5", "target": "EP227.2", "type": "uses"},
+    {"source": "ASP227.1", "target": "ASP227.2", "type": "uses"},
+    {"source": "ASP227.2", "target": "ASP227.3", "type": "uses"},
+    {"source": "ASP227.3", "target": "ASP227.4", "type": "uses"},
+    {"source": "ASP227.4", "target": "ASP227.5", "type": "uses"},
+    {"source": "ASP227.5", "target": "ASP227.6", "type": "uses"},
+    {"source": "ASP227.6", "target": "ASP227.7", "type": "uses"},
+    {"source": "ASP227.8", "target": "ASP227.9", "type": "uses"},
+    {"source": "ASP227.9", "target": "ASP227.10", "type": "uses"},
+    {"source": "ASP227.10", "target": "ASP227.11", "type": "uses"},
+    {"source": "ASP227.12", "target": "ASP227.13", "type": "uses"},
+    {"source": "ASP227.13", "target": "ASP227.14", "type": "uses"}
+  ]
+}

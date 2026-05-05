@@ -1,7 +1,7 @@
 # Pipeline Architecture: Datasets, Stages, and Refactor Plan
 
 > **Status**: 2026-04-25 design doc, pre-refactor.
-> **Owner**: Or Zuk; reviewer: Yaron Otmazgin.
+> **Owner**: Author; reviewer: Author.
 > **Companion doc**: `docs/graph_compare_design.md` (the comparison-task half).
 
 ## 1. Five data tiers
@@ -87,7 +87,7 @@ Why this beats separate Python drivers:
 
 ## 5. Phase 2 — light additions (TODAY, ~1 hour)
 
-Goal: make `scripts/silver_gold/run_full_pipeline.py` (Tier B driver) feature-complete by adding the missing stages via subprocess to existing tools. **Does not touch Yaron's `src/run_pipeline.py`.** This is interim until the master refactor.
+Goal: make `scripts/silver_gold/run_full_pipeline.py` (Tier B driver) feature-complete by adding the missing stages via subprocess to existing tools. **Does not touch Author's `src/run_pipeline.py`.** This is interim until the master refactor.
 
 Stages to add as new flags:
 
@@ -289,8 +289,8 @@ Cleanup agent mandate:
    last-mod dates and import/subprocess relationships across the codebase.
 2. **Classify** each as `keep / merge / delete / unsure` with one-line
    justification per file.
-3. **Yaron-respect**: anything in `src/LLMVersion/` or files touched by
-   Yaron in the last 30 days defaults to `unsure` — needs his sign-off.
+3. **Author-respect**: anything in `src/LLMVersion/` or files touched by
+   Author in the last 30 days defaults to `unsure` — needs his sign-off.
 4. **Output**: `docs/cleanup_proposal.md` for Or's review. **No deletions
    without explicit OK.** A second agent run executes approved deletions.
 
@@ -370,7 +370,7 @@ Likely-obsolete after Phase 3 lands:
 
 Phase 3 explicitly preserved:
 
-- `src/LLMVersion/` — Yaron's area; **not modified**.
+- `src/LLMVersion/` — Author's area; **not modified**.
 - `scripts/silver_gold/run_full_pipeline.py` — kept working (in-flight
   extraction depends on it).
 - `src/run_pipeline.py` already had clean dict-based dispatch (line
@@ -385,6 +385,6 @@ Risks introduced in Phase 3 to investigate during cleanup:
 - `--extract-mode {holistic-multi, holistic-proof-steps}` and
   `--models-config` are wired into `dispatch_parse`; the legacy
   `--extraction-mode {manual, llm, both}` flag is preserved untouched
-  for backward compat with `parse_smoke_test.sh` and Yaron's batch
+  for backward compat with `parse_smoke_test.sh` and Author's batch
   driver. These two flags (`--extract-mode` vs `--extraction-mode`)
   are intentionally distinct; see the run_pipeline.py docstring.

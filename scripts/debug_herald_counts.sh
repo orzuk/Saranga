@@ -2,7 +2,7 @@
 # Debug Herald dataset sizes and name extraction rates
 # Run on cluster: bash scripts/debug_herald_counts.sh
 
-source /sci/labs/orzuk/orzuk/authomathics-venv/bin/activate
+source /<cluster>/<user>/authomathics-venv/bin/activate
 
 python3 << 'PYEOF'
 from datasets import load_dataset

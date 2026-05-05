@@ -15,7 +15,7 @@ echo "Starting download for ${YEAR}-${MONTH}"
 
 FORMATS="pdf html latex"
 
-PYTHON=/sci/labs/orzuk/orzuk/software/miniforge3/envs/pymol-env/bin/python
+PYTHON=/<cluster>/<user>/software/miniforge3/envs/pymol-env/bin/python
 
 current="${YEAR}-${MONTH}-01"
 while [[ "${current:0:7}" == "${YEAR}-${MONTH}" ]]; do

@@ -1,0 +1,436 @@
+{
+  "metadata": {
+    "title": "Double Descent Demystified: Identifying, Interpreting & Ablating the Sources of a Deep Learning Puzzle",
+    "paper_num": 459,
+    "authors": "Schaeffer, Khona, Robertson, Boopathy, Pistunova, Rocks, Fiete, Koyejo",
+    "year": 2023,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "DP459.1",
+      "type": "definition",
+      "name": "Supervised regression dataset",
+      "section": "2 Notation and Terminology",
+      "statement": "$\\mathcal{D} \\defeq \\{(\\vec{x}_n, y_n)\\}_{n=1}^N$ with covariates $\\vec{x}_n \\in \\mathbb{R}^D$ and targets $y_n \\in \\mathbb{R}$.",
+      "statement_clean": "Training set of N covariate-target pairs in dimension D."
+    },
+    {
+      "id": "DP459.2",
+      "type": "definition",
+      "name": "Design matrix and target vector",
+      "section": "2 Notation and Terminology",
+      "statement": "$X \\in \\mathbb{R}^{N \\times D}$ stacks the covariates $\\vec{x}_n$ as rows and $Y \\in \\mathbb{R}^{N \\times 1}$ stacks the targets $y_n$.",
+      "statement_clean": "Matrix-vector form of training data."
+    },
+    {
+      "id": "DP459.3",
+      "type": "definition",
+      "name": "Linear regression model",
+      "section": "2 Notation and Terminology",
+      "statement": "A linear model assumes $f(\\vec{x}) = \\vec{x} \\cdot \\vec{\\beta}$, with parameters $\\hat{\\vec{\\beta}} \\in \\mathbb{R}^D$ chosen so that $\\vec{x} \\cdot \\vec{\\beta} \\approx y$.",
+      "statement_clean": "Linear predictor parameterized by beta."
+    },
+    {
+      "id": "DP459.4",
+      "type": "definition",
+      "name": "Overparameterized / underparameterized / interpolation threshold",
+      "section": "2 Notation and Terminology",
+      "statement": "A model is overparameterized (underconstrained) if $N < P$ and underparameterized (overconstrained) if $N > P$; the interpolation threshold is $N = P$, where the model can perfectly interpolate the training points.",
+      "statement_clean": "Three regimes based on ratio of parameters P to data N."
+    },
+    {
+      "id": "DP459.5",
+      "type": "definition",
+      "name": "Polynomial feature map",
+      "section": "3 Visual Intuition from Polynomial Regression",
+      "statement": "$\\vec{\\phi}_P : \\mathbb{R} \\to \\mathbb{R}^P$ maps $x \\mapsto (\\phi_1(x), \\ldots, \\phi_P(x))^T$ where $\\phi_i$ are polynomials (Legendre polynomials in the simulations).",
+      "statement_clean": "Feature lift to a P-dimensional polynomial basis."
+    },
+    {
+      "id": "DP459.6",
+      "type": "definition",
+      "name": "Gram matrix and second-moment matrix",
+      "section": "4 Mathematical Intuition from Ordinary Linear Regression",
+      "statement": "Gram matrix $X X^T \\in \\mathbb{R}^{N \\times N}$ (outer product matrix) and second-moment matrix $X^T X \\in \\mathbb{R}^{D \\times D}$ derived from $X$.",
+      "statement_clean": "Two derived matrices used in linear regression solutions."
+    },
+    {
+      "id": "DP459.7",
+      "type": "definition",
+      "name": "Singular value decomposition of $X$",
+      "section": "4 Mathematical Intuition from Ordinary Linear Regression",
+      "statement": "$X = U \\Sigma V^T$ with $U, V$ orthonormal and $\\Sigma$ diagonal; equivalently $X = \\sum_{r=1}^{\\mathrm{rank}(X)} \\sigma_r \\vec{u}_r \\vec{v}_r^T$ with singular values $\\sigma_1 > \\cdots > \\sigma_R > 0$.",
+      "statement_clean": "SVD of the training feature matrix.",
+      "origin": "external",
+      "origin_citation": "classical (SVD)"
+    },
+    {
+      "id": "DP459.8",
+      "type": "definition",
+      "name": "Ideal linear parameters and residual errors",
+      "section": "4 Mathematical Intuition from Ordinary Linear Regression",
+      "statement": "There exist (unknown) ideal parameters $\\vec{\\beta}^* \\in \\mathbb{R}^D$ and residuals $E \\in \\mathbb{R}^{N \\times 1}$ such that $Y = X \\vec{\\beta}^* + E$; residuals may be noise or deterministic structure not capturable by the model class.",
+      "statement_clean": "Notation separating signal X beta* from model-class-residuals E."
+    },
+    {
+      "id": "ProbP459.1",
+      "type": "problem",
+      "name": "Underparameterized least-squares problem",
+      "section": "4 Mathematical Intuition from Ordinary Linear Regression",
+      "statement": "$\\hat{\\vec{\\beta}}_{under} \\defeq \\arg\\min_{\\vec{\\beta}} \\frac{1}{N} \\sum_n \\|\\vec{x}_n \\cdot \\vec{\\beta} - y_n\\|_2^2 = \\arg\\min_{\\vec{\\beta}} \\|X \\vec{\\beta} - Y\\|_F^2$.",
+      "statement_clean": "Classical OLS optimization in the underparameterized regime.",
+      "subclass": "optimization"
+    },
+    {
+      "id": "ProbP459.2",
+      "type": "problem",
+      "name": "Overparameterized minimum-norm interpolation problem",
+      "section": "4 Mathematical Intuition from Ordinary Linear Regression",
+      "statement": "$\\hat{\\vec{\\beta}}_{over} \\defeq \\arg\\min_{\\vec{\\beta}} \\|\\vec{\\beta}\\|_2^2$ subject to $\\vec{x}_n \\cdot \\vec{\\beta} = y_n$ for all $n$; the smallest-norm interpolant of the training data.",
+      "statement_clean": "Min-norm interpolation chosen because it is what gradient descent implicitly minimizes.",
+      "subclass": "optimization"
+    },
+    {
+      "id": "TP459.1",
+      "type": "theorem",
+      "name": "Closed-form OLS estimator (underparameterized)",
+      "section": "4 Mathematical Intuition from Ordinary Linear Regression",
+      "statement": "The solution of the underparameterized least-squares problem is $\\hat{\\vec{\\beta}}_{under} = (X^T X)^{-1} X^T Y$.",
+      "assumptions": ["$X \\in \\mathbb{R}^{N \\times D}$ with $N > D$ so that $X^T X$ is invertible", "least-squares objective $\\|X \\vec{\\beta} - Y\\|_F^2$"],
+      "conclusions": ["$\\hat{\\vec{\\beta}}_{under} = (X^T X)^{-1} X^T Y$"],
+      "origin": "external",
+      "origin_citation": "classical OLS"
+    },
+    {
+      "id": "TP459.2",
+      "type": "theorem",
+      "name": "Min-norm interpolant via Gram matrix (overparameterized)",
+      "section": "4 Mathematical Intuition from Ordinary Linear Regression",
+      "statement": "The solution of the overparameterized min-norm interpolation problem is $\\hat{\\vec{\\beta}}_{over} = X^T (X X^T)^{-1} Y$, where $X X^T$ is invertible because it is full rank in the overparameterized regime.",
+      "assumptions": ["$X \\in \\mathbb{R}^{N \\times D}$ with $N < D$ so that $X X^T$ is full rank", "min-norm interpolation problem"],
+      "conclusions": ["$\\hat{\\vec{\\beta}}_{over} = X^T (X X^T)^{-1} Y$"]
+    },
+    {
+      "id": "PP459.1",
+      "type": "proof",
+      "name": "Lagrangian derivation of $\\hat{\\vec{\\beta}}_{over}$",
+      "section": "4 Mathematical Intuition from Ordinary Linear Regression",
+      "statement": "Form the Lagrangian $\\mathcal{L}(\\vec{\\beta}, \\vec{\\lambda}) = \\|\\vec{\\beta}\\|_2^2 + \\vec{\\lambda}^T (Y - X \\vec{\\beta})$ and set its gradients to zero to recover $\\hat{\\vec{\\beta}}_{over} = X^T (X X^T)^{-1} Y$.",
+      "parent_id": "TP459.2",
+      "proves": "TP459.2"
+    },
+    {
+      "id": "PSP459.1",
+      "type": "proof_step",
+      "name": "Form Lagrangian",
+      "parent_id": "PP459.1",
+      "step_order": 1,
+      "statement": "$\\mathcal{L}(\\vec{\\beta}, \\vec{\\lambda}) \\defeq \\|\\vec{\\beta}\\|_2^2 + \\vec{\\lambda}^T (Y - X \\vec{\\beta})$ with multipliers $\\vec{\\lambda} \\in \\mathbb{R}^N$.",
+      "subclass": "setup"
+    },
+    {
+      "id": "PSP459.2",
+      "type": "proof_step",
+      "name": "Stationarity in $\\vec{\\beta}$",
+      "parent_id": "PP459.1",
+      "step_order": 2,
+      "statement": "$\\nabla_{\\vec{\\beta}} \\mathcal{L} = 2 \\hat{\\vec{\\beta}} - X^T \\vec{\\lambda} = 0 \\Rightarrow \\hat{\\vec{\\beta}}_{over} = \\tfrac{1}{2} X^T \\vec{\\lambda}$.",
+      "subclass": "algebraic_manipulation"
+    },
+    {
+      "id": "PSP459.3",
+      "type": "proof_step",
+      "name": "Primal feasibility yields $\\vec{\\lambda}$",
+      "parent_id": "PP459.1",
+      "step_order": 3,
+      "statement": "$\\nabla_{\\vec{\\lambda}} \\mathcal{L} = 0 \\Rightarrow Y = \\tfrac{1}{2} X X^T \\vec{\\lambda} \\Rightarrow \\vec{\\lambda} = 2 (X X^T)^{-1} Y$.",
+      "subclass": "algebraic_manipulation"
+    },
+    {
+      "id": "PSP459.4",
+      "type": "proof_step",
+      "name": "Substitute to obtain $\\hat{\\vec{\\beta}}_{over}$",
+      "parent_id": "PP459.1",
+      "step_order": 4,
+      "statement": "Substituting $\\vec{\\lambda}$ into the expression for $\\hat{\\vec{\\beta}}$ gives $\\hat{\\vec{\\beta}}_{over} = X^T (X X^T)^{-1} Y$.",
+      "subclass": "conclude"
+    },
+    {
+      "id": "EP459.1",
+      "type": "equation",
+      "name": "Predictions of fitted models",
+      "section": "4 Mathematical Intuition from Ordinary Linear Regression",
+      "statement": "$\\hat{y}_{test,under} = \\vec{x}_{test} \\cdot (X^T X)^{-1} X^T Y$ and $\\hat{y}_{test,over} = \\vec{x}_{test} \\cdot X^T (X X^T)^{-1} Y$."
+    },
+    {
+      "id": "TP459.3",
+      "type": "theorem",
+      "name": "Spectral decomposition of prediction error (variance term)",
+      "section": "4 Mathematical Intuition from Ordinary Linear Regression",
+      "statement": "Writing $X = U \\Sigma V^T$ and $Y = X \\vec{\\beta}^* + E$, the prediction-error variance term satisfies $\\hat{y}_{test,under} - y_{test}^* = \\sum_{r=1}^R \\frac{1}{\\sigma_r} (\\vec{x}_{test} \\cdot \\vec{v}_r)(\\vec{u}_r \\cdot E)$ in the underparameterized regime.",
+      "assumptions": ["$Y = X \\vec{\\beta}^* + E$", "$X = U \\Sigma V^T$ with rank $R$", "$y_{test}^* \\defeq \\vec{x}_{test} \\cdot \\vec{\\beta}^*$"],
+      "conclusions": ["$\\hat{y}_{test,under} - y_{test}^* = \\sum_{r=1}^R \\frac{1}{\\sigma_r} (\\vec{x}_{test} \\cdot \\vec{v}_r)(\\vec{u}_r \\cdot E)$"]
+    },
+    {
+      "id": "TP459.4",
+      "type": "theorem",
+      "name": "Overparameterized prediction-error decomposition (bias + variance)",
+      "section": "4 Mathematical Intuition from Ordinary Linear Regression",
+      "statement": "$\\hat{y}_{test,over} - y_{test}^* = \\vec{x}_{test} \\cdot (X^T (X X^T)^{-1} X - I_D) \\vec{\\beta}^* + \\sum_{r=1}^R \\frac{1}{\\sigma_r} (\\vec{x}_{test} \\cdot \\vec{v}_r)(\\vec{u}_r \\cdot E)$, splitting into a bias term and the same variance term.",
+      "assumptions": ["$Y = X \\vec{\\beta}^* + E$", "$X = U \\Sigma V^T$", "overparameterized regime"],
+      "conclusions": ["bias-variance split with explicit closed form for both terms"]
+    },
+    {
+      "id": "PP459.2",
+      "type": "proof",
+      "name": "Derivation of error decomposition via SVD substitution",
+      "section": "4 Mathematical Intuition from Ordinary Linear Regression",
+      "statement": "Substitute $Y = X \\vec{\\beta}^* + E$ into the prediction formulas, simplify $\\vec{x}_{test} \\cdot (X^T X)^{-1} X^T X \\vec{\\beta}^* = \\vec{x}_{test} \\cdot \\vec{\\beta}^*$, and replace the remaining $X$ with its SVD to obtain the singular-mode sum.",
+      "parent_id": "TP459.3",
+      "proves": "TP459.3"
+    },
+    {
+      "id": "PSP459.5",
+      "type": "proof_step",
+      "name": "Substitute $Y = X \\vec{\\beta}^* + E$",
+      "parent_id": "PP459.2",
+      "step_order": 1,
+      "statement": "$\\hat{y}_{test,under} = \\vec{x}_{test} \\cdot (X^T X)^{-1} X^T (X \\vec{\\beta}^* + E)$.",
+      "subclass": "substitute"
+    },
+    {
+      "id": "PSP459.6",
+      "type": "proof_step",
+      "name": "Cancel $(X^T X)^{-1} X^T X = I$",
+      "parent_id": "PP459.2",
+      "step_order": 2,
+      "statement": "Yields $\\hat{y}_{test,under} = \\vec{x}_{test} \\cdot \\vec{\\beta}^* + \\vec{x}_{test} \\cdot (X^T X)^{-1} X^T E$, so $\\hat{y}_{test,under} - y_{test}^* = \\vec{x}_{test} \\cdot (X^T X)^{-1} X^T E$.",
+      "subclass": "algebraic_manipulation"
+    },
+    {
+      "id": "PSP459.7",
+      "type": "proof_step",
+      "name": "Replace $X$ with $U \\Sigma V^T$",
+      "parent_id": "PP459.2",
+      "step_order": 3,
+      "statement": "$(X^T X)^{-1} X^T = V \\Sigma^{+} U^T$ gives $\\sum_{r=1}^R \\frac{1}{\\sigma_r}(\\vec{x}_{test}\\cdot\\vec{v}_r)(\\vec{u}_r \\cdot E)$.",
+      "subclass": "invoke_identity"
+    },
+    {
+      "id": "ClP459.1",
+      "type": "claim",
+      "name": "Three factors that together create double descent",
+      "section": "4 Mathematical Intuition from Ordinary Linear Regression",
+      "statement": "Double descent arises when three quantities simultaneously grow extreme: (i) some $1/\\sigma_r$ is large (a small-but-nonzero singular value of $X$), (ii) $\\vec{u}_r \\cdot E$ is large (training residuals project onto that mode), and (iii) $\\vec{x}_{test} \\cdot \\vec{v}_r$ is large (test point varies along that mode).",
+      "assumptions": ["the variance-term decomposition of TP459.3 / TP459.4 holds"],
+      "conclusions": ["the per-mode contribution $\\frac{1}{\\sigma_r}(\\vec{x}_{test}\\cdot\\vec{v}_r)(\\vec{u}_r \\cdot E)$ explodes only when all three factors are simultaneously extreme"]
+    },
+    {
+      "id": "ClP459.2",
+      "type": "claim",
+      "name": "Smallest non-zero singular value is minimized at the interpolation threshold",
+      "section": "4 Mathematical Intuition from Ordinary Linear Regression",
+      "statement": "As one approaches $N = P = D$, the smallest non-zero singular value of $X$ is probabilistically driven to its lowest value, because each new training datum is unlikely to add substantial variance in a fresh orthogonal direction; this can be made rigorous via the Marchenko-Pastur distribution.",
+      "assumptions": ["random training features $X$ with finite second moments"],
+      "conclusions": ["$\\min_r \\sigma_r$ attains its smallest typical value near $N = P = D$"]
+    },
+    {
+      "id": "ClP459.3",
+      "type": "claim",
+      "name": "Necessary conditions: removing any factor kills double descent",
+      "section": "5 When Does Double Descent Not Occur?",
+      "statement": "Double descent does not occur if any of the three factors is absent: (a) no small-but-nonzero singular values of $X$ (e.g. ridge regression); (b) $\\vec{x}_{test}$ lies in the leading-singular-direction subspace of $X$; or (c) the best model in the class has zero residual $E$ on the training data.",
+      "assumptions": ["the three-factor characterization of ClP459.1"],
+      "conclusions": ["absence of any single factor suffices to prevent the test-error spike at the interpolation threshold"]
+    },
+    {
+      "id": "AP459.1",
+      "type": "algorithm",
+      "name": "Polynomial regression sweep",
+      "section": "3 Visual Intuition from Polynomial Regression",
+      "statement": "Fit a linear-in-$\\vec{\\beta}_P$ model $y \\approx \\vec{\\phi}_P(x) \\cdot \\vec{\\beta}_P$ to data generated from $y(x) = 2x + \\cos(25 x)$, sweeping $P$ from $1$ to $200$ to visualize bias and variance across regimes.",
+      "input": ["Data $(x_n, y_n)$ with $y(x) = 2 x + \\cos(25 x)$ and $x \\in [-1,1]$", "Number of polynomial features $P$ (swept $1 \\ldots 200$)", "Polynomial basis $\\phi_i$ (Legendre polynomials)"],
+      "output": ["Fitted parameters $\\vec{\\beta}_P$", "Test error curve as a function of $P$ exhibiting double descent"]
+    },
+    {
+      "id": "AP459.2",
+      "type": "algorithm",
+      "name": "Ordinary linear regression with sweep over $N$",
+      "section": "5 Empirical Evidence on Real Data with Linear Regression",
+      "statement": "Run ordinary linear regression on a tabular dataset (WHO Life Expectancy, California Housing, or Diabetes), sweeping the number of training data $N$ and using the underparameterized OLS estimator or the overparameterized min-norm estimator according to whether $N > D$ or $N < D$.",
+      "input": ["Tabular dataset with features in $\\mathbb{R}^D$ and scalar target", "Sweep of training-set sizes $N$"],
+      "output": ["Test mean-squared-error curve as a function of $N$", "Smallest non-zero singular value of $X$ as a function of $N$"]
+    },
+    {
+      "id": "AP459.3",
+      "type": "algorithm",
+      "name": "Three-factor ablation procedure for double descent",
+      "section": "5 When Does Double Descent Not Occur?",
+      "statement": "Causally test the three-factor hypothesis by, while sweeping $N$, separately (1) cutting off small singular values of $X$, (2) projecting $\\vec{x}_{test}$ onto the training-feature subspace, and (3) replacing $Y$ by $X \\vec{\\beta}^*$ so that residuals vanish.",
+      "input": ["Dataset (synthetic student-teacher or real)", "Sweep over $N$", "Choice of which factor to ablate"],
+      "output": ["Test-error curves with and without the ablation, showing the spike disappears when any of the three factors is removed"]
+    },
+    {
+      "id": "ASP459.1",
+      "type": "algorithm_step",
+      "name": "Singular-value cutoff ablation",
+      "parent_id": "AP459.3",
+      "step_order": 1,
+      "statement": "Compute the SVD $X = U \\Sigma V^T$ and zero out all singular values below a chosen cutoff before forming $\\hat{\\vec{\\beta}}$.",
+      "subclass": "branch"
+    },
+    {
+      "id": "ASP459.2",
+      "type": "algorithm_step",
+      "name": "Project test features onto training subspace",
+      "parent_id": "AP459.3",
+      "step_order": 2,
+      "statement": "Replace $\\vec{x}_{test}$ by its projection onto the column span of $V$ (equivalently the leading singular modes of $X$) before computing $\\hat{y}_{test}$.",
+      "subclass": "branch"
+    },
+    {
+      "id": "ASP459.3",
+      "type": "algorithm_step",
+      "name": "Linearize the targets",
+      "parent_id": "AP459.3",
+      "step_order": 3,
+      "statement": "Fit $\\vec{\\beta}^*$ on the full dataset, then replace $Y$ by $X \\vec{\\beta}^*$ and $y_{test}^*$ by $\\vec{x}_{test} \\cdot \\vec{\\beta}^*$ so that $E \\equiv 0$.",
+      "subclass": "branch"
+    },
+    {
+      "id": "ExP459.1",
+      "type": "example",
+      "name": "Polynomial regression of $y = 2x + \\cos(25 x)$",
+      "section": "3 Visual Intuition from Polynomial Regression",
+      "statement": "Concrete one-dimensional example with target $y(x) = 2 x + \\cos(25 x)$ on $x \\in [-1,1]$ used to visualize the bias-variance trade-off and double descent as $P$ varies."
+    },
+    {
+      "id": "ExP459.2",
+      "type": "example",
+      "name": "Linear regression on WHO Life Expectancy",
+      "section": "5 Empirical Evidence on Real Data with Linear Regression",
+      "statement": "Ordinary linear regression on the WHO Life Expectancy dataset shows a sharp test-error spike at the interpolation threshold; the smallest non-zero singular value of $X$ also bottoms out there."
+    },
+    {
+      "id": "ExP459.3",
+      "type": "example",
+      "name": "Linear regression on California Housing",
+      "section": "5 Empirical Evidence on Real Data with Linear Regression",
+      "statement": "Ordinary linear regression on the California Housing dataset reproduces double descent with a corresponding minimum of $\\min_r \\sigma_r(X)$ at $N = P$."
+    },
+    {
+      "id": "ExP459.4",
+      "type": "example",
+      "name": "Linear regression on Diabetes",
+      "section": "5 Empirical Evidence on Real Data with Linear Regression",
+      "statement": "Ordinary linear regression on the Diabetes dataset (sklearn) again exhibits double descent and the singular-value dip at the interpolation threshold."
+    },
+    {
+      "id": "ExP459.5",
+      "type": "example",
+      "name": "Student-teacher synthetic ablation",
+      "section": "5 When Does Double Descent Not Occur?",
+      "statement": "Synthetic student-teacher dataset on which the three ablations of AP459.3 each remove the test-error spike; serves as a controlled illustration of ClP459.3."
+    },
+    {
+      "id": "ExP459.6",
+      "type": "example",
+      "name": "Shallow nonlinear autoencoders (Henighan et al. 2023)",
+      "section": "6 Intuition Extends to Nonlinear Models",
+      "statement": "Shallow nonlinear autoencoders display double descent between a 'data-point feature' and 'generalizing feature' regime; the tutorial's three-factor view explains this as the same Gram-vs-second-moment duality and shows label noise is not required, only model-class residuals.",
+      "origin": "external",
+      "origin_citation": "Henighan et al. 2023 (superposition / memorization)"
+    },
+    {
+      "id": "RP459.1",
+      "type": "remark",
+      "name": "Multiple descents are possible",
+      "section": "1 What is double descent?",
+      "statement": "Not every dataset/model pair exhibits exactly two descents; under different settings there can be one, three, or more descents (Nakkiran et al. 2020; Chen et al. 2021)."
+    },
+    {
+      "id": "RP459.2",
+      "type": "remark",
+      "name": "Implicit bias of gradient descent justifies the min-norm choice",
+      "section": "4 Mathematical Intuition from Ordinary Linear Regression",
+      "statement": "The min-norm interpolation problem (ProbP459.2) is the optimization problem that gradient descent implicitly minimizes in the overparameterized regime (see Appendix on implicit bias)."
+    },
+    {
+      "id": "RP459.3",
+      "type": "remark",
+      "name": "'Variance' terminology slightly abused without centering",
+      "section": "4 Mathematical Intuition from Ordinary Linear Regression",
+      "statement": "Without centering $X$, $X^T X$ is the second-moment matrix rather than the empirical covariance, so the words 'vary' and 'variance' are used informally; the geometric intuition is unchanged."
+    },
+    {
+      "id": "RP459.4",
+      "type": "remark",
+      "name": "Linear-regression intuition extends to NNGP-limit deep networks",
+      "section": "6 Intuition Extends to Nonlinear Models",
+      "statement": "Infinite-width neural networks (e.g. the Neural Network Gaussian Process limit of Lee et al. 2017) reduce to linear regression on a particular feature map $F_\\theta(X)$, so the three-factor analysis applies via the spectrum of $F_\\theta(X)$."
+    },
+    {
+      "id": "RP459.5",
+      "type": "remark",
+      "name": "Noise is not required; only model-class residuals are",
+      "section": "6 Intuition Extends to Nonlinear Models",
+      "statement": "Random label noise is not necessary for double descent; what matters is the existence of residual errors $E$ from the perspective of the model class, which can be entirely deterministic (e.g. a nonlinear model trying to fit a noiseless linear relationship)."
+    }
+  ],
+  "edges": [
+    {"source": "DP459.1", "target": "DP459.2", "type": "uses"},
+    {"source": "DP459.2", "target": "DP459.3", "type": "uses"},
+    {"source": "DP459.1", "target": "DP459.4", "type": "uses"},
+    {"source": "DP459.2", "target": "DP459.6", "type": "uses"},
+    {"source": "DP459.6", "target": "DP459.7", "type": "uses"},
+    {"source": "DP459.3", "target": "ProbP459.1", "type": "defines"},
+    {"source": "DP459.3", "target": "ProbP459.2", "type": "defines"},
+    {"source": "ProbP459.1", "target": "TP459.1", "type": "uses"},
+    {"source": "ProbP459.2", "target": "TP459.2", "type": "uses"},
+    {"source": "DP459.6", "target": "TP459.1", "type": "uses"},
+    {"source": "DP459.6", "target": "TP459.2", "type": "uses"},
+    {"source": "PP459.1", "target": "TP459.2", "type": "proves"},
+    {"source": "PSP459.1", "target": "PSP459.2", "type": "uses"},
+    {"source": "PSP459.1", "target": "PSP459.3", "type": "uses"},
+    {"source": "PSP459.2", "target": "PSP459.4", "type": "uses"},
+    {"source": "PSP459.3", "target": "PSP459.4", "type": "uses"},
+    {"source": "TP459.1", "target": "EP459.1", "type": "uses"},
+    {"source": "TP459.2", "target": "EP459.1", "type": "uses"},
+    {"source": "EP459.1", "target": "TP459.3", "type": "uses"},
+    {"source": "EP459.1", "target": "TP459.4", "type": "uses"},
+    {"source": "DP459.7", "target": "TP459.3", "type": "uses"},
+    {"source": "DP459.7", "target": "TP459.4", "type": "uses"},
+    {"source": "DP459.8", "target": "TP459.3", "type": "uses"},
+    {"source": "DP459.8", "target": "TP459.4", "type": "uses"},
+    {"source": "PP459.2", "target": "TP459.3", "type": "proves"},
+    {"source": "PSP459.5", "target": "PSP459.6", "type": "uses"},
+    {"source": "PSP459.6", "target": "PSP459.7", "type": "uses"},
+    {"source": "TP459.3", "target": "ClP459.1", "type": "uses"},
+    {"source": "TP459.4", "target": "ClP459.1", "type": "uses"},
+    {"source": "ClP459.1", "target": "ClP459.3", "type": "uses"},
+    {"source": "ClP459.2", "target": "ClP459.1", "type": "uses"},
+    {"source": "DP459.5", "target": "AP459.1", "type": "uses"},
+    {"source": "DP459.3", "target": "AP459.1", "type": "uses"},
+    {"source": "AP459.1", "target": "ExP459.1", "type": "illustrates"},
+    {"source": "TP459.1", "target": "AP459.2", "type": "uses"},
+    {"source": "TP459.2", "target": "AP459.2", "type": "uses"},
+    {"source": "AP459.2", "target": "ExP459.2", "type": "illustrates"},
+    {"source": "AP459.2", "target": "ExP459.3", "type": "illustrates"},
+    {"source": "AP459.2", "target": "ExP459.4", "type": "illustrates"},
+    {"source": "ClP459.1", "target": "AP459.3", "type": "uses"},
+    {"source": "AP459.3", "target": "ASP459.1", "type": "uses"},
+    {"source": "AP459.3", "target": "ASP459.2", "type": "uses"},
+    {"source": "AP459.3", "target": "ASP459.3", "type": "uses"},
+    {"source": "AP459.3", "target": "ExP459.5", "type": "illustrates"},
+    {"source": "AP459.3", "target": "ExP459.2", "type": "illustrates"},
+    {"source": "AP459.3", "target": "ExP459.3", "type": "illustrates"},
+    {"source": "AP459.3", "target": "ExP459.4", "type": "illustrates"},
+    {"source": "ClP459.3", "target": "ExP459.5", "type": "illustrates"},
+    {"source": "ClP459.1", "target": "ExP459.6", "type": "illustrates"},
+    {"source": "RP459.2", "target": "ProbP459.2", "type": "uses"}
+  ]
+}

@@ -1,0 +1,480 @@
+{
+  "metadata": {
+    "title": "Generative Adversarial Nets",
+    "paper_num": 212,
+    "authors": "Ian J. Goodfellow, Jean Pouget-Abadie, Mehdi Mirza, Bing Xu, David Warde-Farley, Sherjil Ozair, Aaron Courville, Yoshua Bengio",
+    "year": 2014,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "DP212.1",
+      "type": "definition",
+      "name": "Generator $G$",
+      "section": "3 Adversarial nets",
+      "statement": "A differentiable function $G(\\bm{z}; \\theta_g)$ represented by a multilayer perceptron with parameters $\\theta_g$, mapping noise variables $\\bm{z} \\sim p_{\\bm{z}}(\\bm{z})$ to data space, implicitly defining the generator distribution $p_g$ over $\\bm{x}$.",
+      "statement_clean": "A neural network mapping random noise to data space, defining the implicit generative distribution $p_g$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP212.2",
+      "type": "definition",
+      "name": "Discriminator $D$",
+      "section": "3 Adversarial nets",
+      "statement": "A multilayer perceptron $D(\\bm{x}; \\theta_d)$ outputting a scalar in $[0,1]$ representing the probability that $\\bm{x}$ came from the data distribution $p_\\text{data}$ rather than from the generator distribution $p_g$.",
+      "statement_clean": "A neural network classifier estimating the probability that an input $\\bm{x}$ comes from the data rather than from the generator.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP212.3",
+      "type": "definition",
+      "name": "Value function $V(D,G)$ of the adversarial game",
+      "section": "3 Adversarial nets",
+      "statement": "$V(D,G) = \\mathbb{E}_{\\bm{x} \\sim p_\\text{data}}[\\log D(\\bm{x})] + \\mathbb{E}_{\\bm{z} \\sim p_{\\bm{z}}}[\\log(1 - D(G(\\bm{z})))]$, used as the payoff in the two-player minimax game between $G$ and $D$.",
+      "statement_clean": "Expected log-likelihood that $D$ correctly classifies real and generated samples, used as the minimax objective.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP212.4",
+      "type": "definition",
+      "name": "Virtual training criterion $C(G)$",
+      "section": "4.1 Global Optimality",
+      "statement": "$C(G) = \\max_D V(G,D) = \\mathbb{E}_{\\bm{x} \\sim p_\\text{data}}[\\log D^*_G(\\bm{x})] + \\mathbb{E}_{\\bm{x} \\sim p_g}[\\log(1 - D^*_G(\\bm{x}))]$.",
+      "statement_clean": "The maximum of the value function over $D$, viewed as a function of the generator alone.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP212.5",
+      "type": "definition",
+      "name": "Kullback--Leibler divergence",
+      "section": "4.1 (cited)",
+      "statement": "For distributions $p, q$, $KL(p \\| q) = \\int p(\\bm{x}) \\log \\frac{p(\\bm{x})}{q(\\bm{x})} d\\bm{x}$, a non-negative measure of dissimilarity that is zero iff $p = q$.",
+      "origin": "external",
+      "origin_citation": "Kullback & Leibler 1951; Cover & Thomas, Elements of Information Theory"
+    },
+    {
+      "id": "DP212.6",
+      "type": "definition",
+      "name": "Jensen--Shannon divergence",
+      "section": "4.1 (cited)",
+      "statement": "For distributions $p, q$, $JSD(p \\| q) = \\tfrac{1}{2} KL\\!\\left(p \\,\\big\\|\\, \\tfrac{p+q}{2}\\right) + \\tfrac{1}{2} KL\\!\\left(q \\,\\big\\|\\, \\tfrac{p+q}{2}\\right)$, symmetric, bounded, non-negative, and zero iff $p=q$.",
+      "origin": "external",
+      "origin_citation": "Lin 1991"
+    },
+    {
+      "id": "ProbP212.1",
+      "type": "problem",
+      "name": "Adversarial minimax game for generative modeling",
+      "section": "3 Adversarial nets",
+      "statement": "Solve the two-player minimax problem $\\min_G \\max_D V(D,G) = \\mathbb{E}_{\\bm{x} \\sim p_\\text{data}}[\\log D(\\bm{x})] + \\mathbb{E}_{\\bm{z} \\sim p_{\\bm{z}}}[\\log(1 - D(G(\\bm{z})))]$ with respect to the generator distribution $p_g$ induced by $G$.",
+      "statement_clean": "Find a generator $G$ minimizing the worst-case log-likelihood that $D$ correctly classifies real vs.\\ generated samples.",
+      "subclass": "optimization",
+      "origin": "paper"
+    },
+    {
+      "id": "EP212.1",
+      "type": "equation",
+      "name": "Minimax game definition",
+      "section": "3 Adversarial nets",
+      "statement": "$\\min_G \\max_D V(D, G) = \\mathbb{E}_{\\bm{x} \\sim p_\\text{data}(\\bm{x})}[\\log D(\\bm{x})] + \\mathbb{E}_{\\bm{z} \\sim p_{\\bm{z}}(\\bm{z})}[\\log(1 - D(G(\\bm{z})))]$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP212.2",
+      "type": "equation",
+      "name": "Optimal discriminator closed form",
+      "section": "4.1 Global Optimality",
+      "statement": "$D^*_G(\\bm{x}) = \\dfrac{p_\\text{data}(\\bm{x})}{p_\\text{data}(\\bm{x}) + p_g(\\bm{x})}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP212.3",
+      "type": "equation",
+      "name": "Reformulation of $C(G)$ as KL divergences",
+      "section": "4.1 Global Optimality",
+      "statement": "$C(G) = -\\log 4 + KL\\!\\left(p_\\text{data} \\,\\big\\|\\, \\tfrac{p_\\text{data}+p_g}{2}\\right) + KL\\!\\left(p_g \\,\\big\\|\\, \\tfrac{p_\\text{data}+p_g}{2}\\right)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP212.4",
+      "type": "equation",
+      "name": "Reformulation of $C(G)$ as Jensen--Shannon divergence",
+      "section": "4.1 Global Optimality",
+      "statement": "$C(G) = -\\log 4 + 2 \\cdot JSD(p_\\text{data} \\| p_g)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PrP212.1",
+      "type": "proposition",
+      "name": "Optimal discriminator for fixed $G$",
+      "section": "4.1 Global Optimality",
+      "statement": "For $G$ fixed, the optimal discriminator is $D^*_G(\\bm{x}) = \\dfrac{p_\\text{data}(\\bm{x})}{p_\\text{data}(\\bm{x}) + p_g(\\bm{x})}$.",
+      "assumptions": [
+        "Generator $G$ is fixed",
+        "$p_\\text{data}$ and $p_g$ are well-defined densities on the same space"
+      ],
+      "conclusions": [
+        "$D^*_G(\\bm{x}) = \\dfrac{p_\\text{data}(\\bm{x})}{p_\\text{data}(\\bm{x}) + p_g(\\bm{x})}$ maximizes $V(G,D)$"
+      ],
+      "tags": ["existence", "uniqueness", "closed-form"],
+      "origin": "paper"
+    },
+    {
+      "id": "TP212.1",
+      "type": "theorem",
+      "name": "Global optimality of $p_g = p_\\text{data}$",
+      "section": "4.1 Global Optimality",
+      "statement": "The global minimum of the virtual training criterion $C(G)$ is achieved if and only if $p_g = p_\\text{data}$, and at that point $C(G) = -\\log 4$.",
+      "assumptions": [
+        "Non-parametric setting: $p_g$ ranges over all densities",
+        "$D$ is allowed to attain the optimum $D^*_G$ for each $G$"
+      ],
+      "conclusions": [
+        "$\\min_G C(G) = -\\log 4$",
+        "The minimum is attained iff $p_g = p_\\text{data}$"
+      ],
+      "tags": ["existence", "uniqueness", "global-optimum"],
+      "origin": "paper"
+    },
+    {
+      "id": "PrP212.2",
+      "type": "proposition",
+      "name": "Convergence of the adversarial training procedure",
+      "section": "4.2 Convergence",
+      "statement": "If $G$ and $D$ have enough capacity and at each step the discriminator reaches its optimum given $G$, and $p_g$ is updated to improve $\\mathbb{E}_{\\bm{x} \\sim p_\\text{data}}[\\log D^*_G(\\bm{x})] + \\mathbb{E}_{\\bm{x} \\sim p_g}[\\log(1 - D^*_G(\\bm{x}))]$, then $p_g$ converges to $p_\\text{data}$.",
+      "assumptions": [
+        "Sufficient capacity of $G$ and $D$",
+        "$D$ attains its optimum given $G$ at each step",
+        "$p_g$ is updated to improve the criterion with sufficiently small steps"
+      ],
+      "conclusions": [
+        "$p_g \\to p_\\text{data}$"
+      ],
+      "tags": ["convergence", "asymptotic"],
+      "origin": "paper"
+    },
+    {
+      "id": "PP212.1",
+      "type": "proof",
+      "name": "Proof of optimal discriminator (Proposition 1)",
+      "section": "4.1 Global Optimality",
+      "statement": "Pointwise maximization of the integrand $a \\log y + b \\log(1-y)$ over $y \\in [0,1]$ yields $y = a/(a+b)$, applied with $a = p_\\text{data}(\\bm{x})$, $b = p_g(\\bm{x})$.",
+      "proves": "PrP212.1",
+      "parent_id": "PrP212.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP212.2",
+      "type": "proof",
+      "name": "Proof of global optimality (Theorem 1)",
+      "section": "4.1 Global Optimality",
+      "statement": "Substitute $D^*_G$ into $C(G)$, rewrite the resulting expression as $-\\log 4 + 2 \\cdot JSD(p_\\text{data} \\| p_g)$, and use non-negativity of $JSD$ with equality iff distributions match.",
+      "proves": "TP212.1",
+      "parent_id": "TP212.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP212.3",
+      "type": "proof",
+      "name": "Proof of convergence of adversarial training (Proposition 2)",
+      "section": "4.2 Convergence",
+      "statement": "Treat $V(G,D) = U(p_g, D)$ as a function of $p_g$; the supremum over $D$ is convex in $p_g$, with unique minimum from Theorem 1, so subgradient updates of $p_g$ at the optimal $D$ converge to $p_\\text{data}$.",
+      "proves": "PrP212.2",
+      "parent_id": "PrP212.2",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP212.1",
+      "type": "proof_step",
+      "name": "Express $V(G,D)$ as a single integral over $\\bm{x}$",
+      "parent_id": "PP212.1",
+      "step_order": 1,
+      "statement": "Rewrite $V(G,D) = \\int_{\\bm{x}} p_\\text{data}(\\bm{x}) \\log D(\\bm{x}) + p_g(\\bm{x}) \\log(1 - D(\\bm{x})) d\\bm{x}$ by changing variables $\\bm{z} \\to \\bm{x}$ in the second term.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP212.2",
+      "type": "proof_step",
+      "name": "Pointwise optimization of $a\\log y + b\\log(1-y)$",
+      "parent_id": "PP212.1",
+      "step_order": 2,
+      "statement": "For $(a,b) \\in \\mathbb{R}^2 \\setminus \\{(0,0)\\}$, the function $y \\mapsto a \\log y + b \\log(1-y)$ attains its maximum on $[0,1]$ at $y = \\dfrac{a}{a+b}$.",
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP212.3",
+      "type": "proof_step",
+      "name": "Apply with $a=p_\\text{data}, b=p_g$ and conclude",
+      "parent_id": "PP212.1",
+      "step_order": 3,
+      "statement": "Setting $a = p_\\text{data}(\\bm{x})$ and $b = p_g(\\bm{x})$ gives $D^*_G(\\bm{x}) = \\dfrac{p_\\text{data}(\\bm{x})}{p_\\text{data}(\\bm{x}) + p_g(\\bm{x})}$; $D$ need not be defined outside $\\mathrm{Supp}(p_\\text{data}) \\cup \\mathrm{Supp}(p_g)$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP212.4",
+      "type": "proof_step",
+      "name": "Evaluate $C(G)$ at $p_g = p_\\text{data}$",
+      "parent_id": "PP212.2",
+      "step_order": 1,
+      "statement": "When $p_g = p_\\text{data}$, $D^*_G(\\bm{x}) = \\tfrac{1}{2}$ and $C(G) = \\log\\tfrac{1}{2} + \\log\\tfrac{1}{2} = -\\log 4$.",
+      "subclass": "substitute",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP212.5",
+      "type": "proof_step",
+      "name": "Subtract $-\\log 4$ to expose KL divergences",
+      "parent_id": "PP212.2",
+      "step_order": 2,
+      "statement": "Subtract $\\mathbb{E}_{p_\\text{data}}[-\\log 2] + \\mathbb{E}_{p_g}[-\\log 2] = -\\log 4$ from $C(G)$ to obtain $C(G) = -\\log 4 + KL\\!\\left(p_\\text{data} \\,\\big\\|\\, \\tfrac{p_\\text{data}+p_g}{2}\\right) + KL\\!\\left(p_g \\,\\big\\|\\, \\tfrac{p_\\text{data}+p_g}{2}\\right)$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP212.6",
+      "type": "proof_step",
+      "name": "Recognize Jensen--Shannon divergence",
+      "parent_id": "PP212.2",
+      "step_order": 3,
+      "statement": "Identify the previous expression as $C(G) = -\\log 4 + 2 \\cdot JSD(p_\\text{data} \\| p_g)$.",
+      "subclass": "invoke_identity",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP212.7",
+      "type": "proof_step",
+      "name": "Conclude using non-negativity of $JSD$",
+      "parent_id": "PP212.2",
+      "step_order": 4,
+      "statement": "Since $JSD(p_\\text{data} \\| p_g) \\geq 0$ with equality iff $p_\\text{data} = p_g$, the global minimum $-\\log 4$ of $C(G)$ is attained exactly when $p_g = p_\\text{data}$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP212.8",
+      "type": "proof_step",
+      "name": "View $V(G,D)$ as $U(p_g, D)$, convex in $p_g$",
+      "parent_id": "PP212.3",
+      "step_order": 1,
+      "statement": "Define $U(p_g, D) := V(G,D)$ as a function of $p_g$; $U$ is convex in $p_g$ for every fixed $D$.",
+      "subclass": "setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP212.9",
+      "type": "proof_step",
+      "name": "Subgradient inclusion for supremum of convex functions",
+      "parent_id": "PP212.3",
+      "step_order": 2,
+      "statement": "For $f(x) = \\sup_{\\alpha \\in \\mathcal{A}} f_\\alpha(x)$ with each $f_\\alpha$ convex in $x$, $\\partial f_\\beta(x) \\subset \\partial f(x)$ when $\\beta = \\arg\\sup_\\alpha f_\\alpha(x)$, so a subgradient at the optimal $D$ is a valid update direction.",
+      "subclass": "invoke_identity",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP212.10",
+      "type": "proof_step",
+      "name": "Conclude convergence using uniqueness from Theorem 1",
+      "parent_id": "PP212.3",
+      "step_order": 3,
+      "statement": "$\\sup_D U(p_g, D)$ is convex in $p_g$ with unique global optimum at $p_g = p_\\text{data}$ (Thm.~\\ref{thm:global-optimality}); sufficiently small subgradient updates of $p_g$ therefore converge to $p_\\text{data}$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "AP212.1",
+      "type": "algorithm",
+      "name": "Minibatch SGD training of generative adversarial nets",
+      "section": "3 Adversarial nets",
+      "statement": "Iterative minibatch SGD that alternates $k$ ascent steps on $\\theta_d$ with one descent step on $\\theta_g$ to optimize the minimax game $\\min_G \\max_D V(D,G)$.",
+      "input": [
+        "Number of training iterations",
+        "Number of inner discriminator steps $k$ (e.g.\\ $k=1$)",
+        "Minibatch size $m$",
+        "Noise prior $p_g(\\bm{z})$ and data distribution $p_\\text{data}(\\bm{x})$",
+        "Initial parameters $\\theta_d$, $\\theta_g$"
+      ],
+      "output": [
+        "Trained generator parameters $\\theta_g$",
+        "Trained discriminator parameters $\\theta_d$"
+      ],
+      "pseudocode": "for number of training iterations: for k steps: sample $\\{\\bm{z}^{(i)}\\}_{i=1}^m \\sim p_g$; sample $\\{\\bm{x}^{(i)}\\}_{i=1}^m \\sim p_\\text{data}$; ascend $\\nabla_{\\theta_d} \\tfrac{1}{m} \\sum_i [\\log D(\\bm{x}^{(i)}) + \\log(1 - D(G(\\bm{z}^{(i)})))]$; end for; sample $\\{\\bm{z}^{(i)}\\}_{i=1}^m \\sim p_g$; descend $\\nabla_{\\theta_g} \\tfrac{1}{m} \\sum_i \\log(1 - D(G(\\bm{z}^{(i)})))$; end for.",
+      "tags": ["iterative", "stochastic", "gradient-based"],
+      "origin": "paper"
+    },
+    {
+      "id": "ASP212.1",
+      "type": "algorithm_step",
+      "name": "Outer training loop",
+      "parent_id": "AP212.1",
+      "step_order": 1,
+      "statement": "Repeat the inner discriminator/generator updates for the prescribed number of training iterations.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP212.2",
+      "type": "algorithm_step",
+      "name": "Inner discriminator loop ($k$ steps)",
+      "parent_id": "AP212.1",
+      "step_order": 2,
+      "statement": "Repeat the discriminator update $k$ times per outer iteration.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP212.3",
+      "type": "algorithm_step",
+      "name": "Sample noise and data minibatches",
+      "parent_id": "AP212.1",
+      "step_order": 3,
+      "statement": "Sample minibatch $\\{\\bm{z}^{(1)}, \\dots, \\bm{z}^{(m)}\\}$ from noise prior $p_g(\\bm{z})$ and minibatch $\\{\\bm{x}^{(1)}, \\dots, \\bm{x}^{(m)}\\}$ from $p_\\text{data}(\\bm{x})$.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP212.4",
+      "type": "algorithm_step",
+      "name": "Discriminator gradient ascent",
+      "parent_id": "AP212.1",
+      "step_order": 4,
+      "statement": "Update $\\theta_d$ by ascending $\\nabla_{\\theta_d} \\tfrac{1}{m} \\sum_{i=1}^m \\left[ \\log D(\\bm{x}^{(i)}) + \\log(1 - D(G(\\bm{z}^{(i)}))) \\right]$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP212.5",
+      "type": "algorithm_step",
+      "name": "Sample fresh noise minibatch for $G$ update",
+      "parent_id": "AP212.1",
+      "step_order": 5,
+      "statement": "After the $k$ discriminator steps, sample a fresh minibatch $\\{\\bm{z}^{(1)}, \\dots, \\bm{z}^{(m)}\\}$ from the noise prior $p_g(\\bm{z})$.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP212.6",
+      "type": "algorithm_step",
+      "name": "Generator gradient descent",
+      "parent_id": "AP212.1",
+      "step_order": 6,
+      "statement": "Update $\\theta_g$ by descending $\\nabla_{\\theta_g} \\tfrac{1}{m} \\sum_{i=1}^m \\log(1 - D(G(\\bm{z}^{(i)})))$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "RP212.1",
+      "type": "remark",
+      "name": "Non-saturating generator objective",
+      "section": "3 Adversarial nets",
+      "statement": "Early in training $\\log(1 - D(G(\\bm{z})))$ saturates because $D$ confidently rejects $G$'s samples; instead training $G$ to maximize $\\log D(G(\\bm{z}))$ yields the same fixed point but much stronger early gradients.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP212.2",
+      "type": "remark",
+      "name": "Bayes-rule interpretation of $D$'s objective",
+      "section": "4.1 Global Optimality",
+      "statement": "The training objective for $D$ can be interpreted as maximizing the log-likelihood for estimating the conditional probability $P(Y=y \\mid \\bm{x})$, where $Y=1$ if $\\bm{x} \\sim p_\\text{data}$ and $Y=0$ if $\\bm{x} \\sim p_g$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP212.3",
+      "type": "remark",
+      "name": "Practical caveat: parameter-space optimization",
+      "section": "4.2 Convergence",
+      "statement": "In practice we optimize $\\theta_g$ rather than $p_g$ directly; multilayer perceptrons introduce multiple critical points in parameter space, but their empirical performance suggests they are reasonable models despite the lack of theoretical guarantees.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP212.4",
+      "type": "remark",
+      "name": "Helvetica scenario / mode collapse",
+      "section": "6 Advantages and disadvantages",
+      "statement": "If $G$ is trained too much without updating $D$, $G$ may collapse too many values of $\\bm{z}$ to the same value of $\\bm{x}$, losing diversity needed to model $p_\\text{data}$ -- the so-called ``Helvetica scenario''.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP212.1",
+      "type": "example",
+      "name": "MNIST and TFD Parzen-window log-likelihood evaluation",
+      "section": "5 Experiments",
+      "statement": "Adversarial nets trained on MNIST and Toronto Face Database; test-set log-likelihood estimated via Gaussian Parzen window fit to generated samples ($\\sigma$ chosen by cross-validation). Reported scores: MNIST $225 \\pm 2$, TFD $2057 \\pm 26$, competitive with DBN, Stacked CAE, and Deep GSN baselines.",
+      "tags": ["empirical", "benchmark"],
+      "origin": "paper"
+    },
+    {
+      "id": "ExP212.2",
+      "type": "example",
+      "name": "CIFAR-10 sample generation",
+      "section": "5 Experiments",
+      "statement": "Adversarial nets trained on CIFAR-10 with both fully-connected and convolutional discriminator / ``deconvolutional'' generator architectures; samples shown in Fig.~\\ref{fig:visuals1}(c,d).",
+      "tags": ["empirical", "qualitative"],
+      "origin": "paper"
+    },
+    {
+      "id": "ExP212.3",
+      "type": "example",
+      "name": "Latent-space interpolation",
+      "section": "5 Experiments",
+      "statement": "Digits obtained by linearly interpolating between coordinates in $\\bm{z}$ space of the full MNIST model (Fig.~\\ref{fig:visuals3}), illustrating smooth transitions in the learned latent representation.",
+      "tags": ["qualitative"],
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "DP212.1", "target": "DP212.3", "type": "uses"},
+    {"source": "DP212.2", "target": "DP212.3", "type": "uses"},
+    {"source": "DP212.1", "target": "ProbP212.1", "type": "uses"},
+    {"source": "DP212.2", "target": "ProbP212.1", "type": "uses"},
+    {"source": "DP212.3", "target": "ProbP212.1", "type": "uses"},
+    {"source": "DP212.3", "target": "EP212.1", "type": "uses"},
+    {"source": "EP212.1", "target": "ProbP212.1", "type": "uses"},
+    {"source": "DP212.3", "target": "PrP212.1", "type": "uses"},
+    {"source": "PrP212.1", "target": "EP212.2", "type": "uses"},
+    {"source": "PP212.1", "target": "PrP212.1", "type": "proves"},
+    {"source": "PSP212.1", "target": "PSP212.2", "type": "uses"},
+    {"source": "PSP212.2", "target": "PSP212.3", "type": "uses"},
+    {"source": "PrP212.1", "target": "DP212.4", "type": "uses"},
+    {"source": "DP212.4", "target": "TP212.1", "type": "uses"},
+    {"source": "PrP212.1", "target": "TP212.1", "type": "uses"},
+    {"source": "DP212.5", "target": "EP212.3", "type": "uses"},
+    {"source": "DP212.5", "target": "DP212.6", "type": "uses"},
+    {"source": "DP212.6", "target": "EP212.4", "type": "uses"},
+    {"source": "PP212.2", "target": "TP212.1", "type": "proves"},
+    {"source": "PSP212.4", "target": "PSP212.5", "type": "uses"},
+    {"source": "PSP212.5", "target": "PSP212.6", "type": "uses"},
+    {"source": "PSP212.6", "target": "PSP212.7", "type": "uses"},
+    {"source": "EP212.3", "target": "PSP212.5", "type": "uses"},
+    {"source": "EP212.4", "target": "PSP212.6", "type": "uses"},
+    {"source": "DP212.6", "target": "PSP212.7", "type": "uses"},
+    {"source": "AP212.1", "target": "ProbP212.1", "type": "solves"},
+    {"source": "DP212.1", "target": "AP212.1", "type": "uses"},
+    {"source": "DP212.2", "target": "AP212.1", "type": "uses"},
+    {"source": "DP212.3", "target": "AP212.1", "type": "uses"},
+    {"source": "ASP212.1", "target": "ASP212.2", "type": "uses"},
+    {"source": "ASP212.2", "target": "ASP212.3", "type": "uses"},
+    {"source": "ASP212.3", "target": "ASP212.4", "type": "uses"},
+    {"source": "ASP212.2", "target": "ASP212.5", "type": "uses"},
+    {"source": "ASP212.5", "target": "ASP212.6", "type": "uses"},
+    {"source": "PP212.3", "target": "PrP212.2", "type": "proves"},
+    {"source": "TP212.1", "target": "PrP212.2", "type": "uses"},
+    {"source": "PrP212.1", "target": "PrP212.2", "type": "uses"},
+    {"source": "AP212.1", "target": "PrP212.2", "type": "uses"},
+    {"source": "PSP212.8", "target": "PSP212.9", "type": "uses"},
+    {"source": "PSP212.9", "target": "PSP212.10", "type": "uses"},
+    {"source": "TP212.1", "target": "PSP212.10", "type": "uses"},
+    {"source": "AP212.1", "target": "ExP212.1", "type": "illustrates"},
+    {"source": "AP212.1", "target": "ExP212.2", "type": "illustrates"},
+    {"source": "AP212.1", "target": "ExP212.3", "type": "illustrates"},
+    {"source": "RP212.1", "target": "AP212.1", "type": "uses"},
+    {"source": "RP212.2", "target": "PrP212.1", "type": "uses"},
+    {"source": "RP212.3", "target": "PrP212.2", "type": "uses"},
+    {"source": "RP212.4", "target": "AP212.1", "type": "uses"}
+  ]
+}

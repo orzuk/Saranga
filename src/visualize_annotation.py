@@ -74,7 +74,13 @@ LEVEL_GAP_Y = 5.0
 HEADER_H = 0.45
 LINE_H = 0.28
 PADDING = 0.10
-CHARS_PER_UNIT = 12
+# Display-width "chars" per data unit at fontsize 12 (body text). Empirically
+# measured: typical English at fontsize 12 renders at ~8.5–9.5 actual chars per
+# data unit; _display_width (which estimates rendered char count) tracks this
+# closely, so CHARS_PER_UNIT must equal the same value for box-width and
+# wrap-target computations to stay self-consistent. Old value 12 over-counted
+# capacity → boxes were ~30-40% too narrow and text extruded on the right.
+CHARS_PER_UNIT = 8.5
 
 
 # ── Text helpers ────────────────────────────────────────────────────────────
@@ -847,8 +853,8 @@ def _resolve_foundation_path(foundation_path=None):
     candidates = [
         Path("/mnt/g/My Drive/Research/Automath/naturalproofs/clean_foundation_with_books.json"),
         Path("/mnt/g/My Drive/Research/Automath/naturalproofs/clean_foundation.json"),
-        Path("/sci/labs/orzuk/orzuk/projects/Authomathics/naturalproofs/clean_foundation_with_books.json"),
-        Path("/sci/labs/orzuk/orzuk/projects/Authomathics/naturalproofs/clean_foundation.json"),
+        Path("/<cluster>/<user>/projects/Authomathics/naturalproofs/clean_foundation_with_books.json"),
+        Path("/<cluster>/<user>/projects/Authomathics/naturalproofs/clean_foundation.json"),
     ]
     # Also try via config.py DATA_DIR
     try:
@@ -1021,9 +1027,11 @@ def draw_foundation_ghosts(ax, ghost_map, node_rect, ghost_meta=None):
 
         ghost_rects[gname] = (gx, gy - ghost_h, ghost_w, ghost_h)
 
-        # Dashed (mathlib) or dotted (book) edges to target nodes
-        edge_color_arrow = "#A1887F" if is_book else "#999999"
-        edge_linestyle = (0, (1, 2)) if is_book else (0, (8, 6))
+        # Dashed (mathlib) or dotted (book) edges to target nodes — drawn
+        # thicker than regular edges so the foundation overlay reads as a
+        # distinct layer rather than fading into the background.
+        edge_color_arrow = "#8D6E63" if is_book else "#666666"
+        edge_linestyle = (0, (3, 3)) if is_book else (0, (6, 3))
         for ti, target_id in enumerate(ghost_map[gname]):
             if target_id in node_rect:
                 tx, ty, tw, th = node_rect[target_id]
@@ -1031,7 +1039,7 @@ def draw_foundation_ghosts(ax, ghost_map, node_rect, ghost_meta=None):
                     (gx + ghost_w / 2, gy - ghost_h),
                     (tx + tw / 2, ty + th),
                     arrowstyle="-|>,head_length=0.8,head_width=0.35",
-                    color=edge_color_arrow, lw=1.5,
+                    color=edge_color_arrow, lw=2.0,
                     linestyle=edge_linestyle,
                     connectionstyle="arc3,rad=0.05",
                     shrinkA=3, shrinkB=3,
@@ -1255,21 +1263,25 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             """Convert max display-width (chars) to data-unit width needed."""
             return (max_dw + bullet_extra) / CHARS_PER_UNIT + 2 * PADDING + 0.15
 
+        # Empirically measured chars/unit for fontsize-14 bold ≈ 6.5–7.0
+        # (was 9.0 — caused header text to overflow the box on long names).
+        HEADER_CPU = 6.5
+
         def _header_w_for_box(w):
             """Header width needed given box width w (renderer shows more name
-            chars for wider boxes). Header font is 14-bold ~25% wider than body.
-            Cap name display to 30 chars to prevent runaway expansion."""
+            chars for wider boxes). Header font is 14-bold (substantially wider
+            than body 12-normal). Cap name display to 30 chars to prevent
+            runaway expansion."""
             header_chars = max(len(nid) + 4, int(w * CHARS_PER_UNIT) - 2)
             avail = max(6, header_chars - len(nid) - 2)
             avail = min(avail, 30)  # cap to prevent circular expansion
             shown = len(nid) + 2 + min(avail, len(name))
-            HEADER_CPU = 9.0  # chars/unit for fontsize-14 bold
             return shown / HEADER_CPU + 2 * PADDING + 0.15
 
         # --- Step 1: find body width via binary search ---
         # Initial header estimate (30-char cap, before circular expansion)
         name_cap = min(len(name), 30)
-        init_header_w = (len(nid) + 2 + name_cap) / 9.0 + 2 * PADDING + 0.15
+        init_header_w = (len(nid) + 2 + name_cap) / HEADER_CPU + 2 * PADDING + 0.15
 
         lo_w = max(MIN_BOX_W, init_header_w)
         hi_w = MAX_BOX_W
@@ -1303,6 +1315,22 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             if w_new <= w + 0.01:
                 break
             w = w_new
+
+        # --- Step 3: hard-floor against post-wrap overshoot ---
+        # _wrap can overshoot its target width when a single token (e.g.,
+        # "contradiction." or a long $...$ math block) is wider than the
+        # remaining line space and no break point exists. The renderer draws
+        # text left-aligned without clipping, so any overshoot extrudes past
+        # the right edge of the box. Use the actual post-wrap max display-width
+        # at the chosen w as a hard floor: regrow w until it accommodates the
+        # widest line that _wrap actually produces.
+        for _ in range(4):
+            wrap_chars = max(20, int(w * CHARS_PER_UNIT) - chars_overhead)
+            actual_max_dw = _wrap_all_and_measure(texts, wrap_chars)
+            needed_w = _needed_w(actual_max_dw)
+            if needed_w <= w + 0.005:
+                break
+            w = max(w, needed_w)
 
         return max(MIN_BOX_W, w)
 
@@ -1471,10 +1499,13 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
 
         cursor_y = by + bh  # start from top
 
-        # Header — truncate name to box width, but always show full node ID
-        # Use ~9 chars/unit for bold header font (vs 12 for body font)
+        # Header — truncate name to box width, but always show full node ID.
+        # ~6.5 chars/unit for fontsize-14 bold (empirically measured); must
+        # match HEADER_CPU in _find_tight_width so box width and rendered
+        # header text stay consistent.
+        _HEADER_CPU = 6.5
         name_str = n.get("name") or ""
-        header_chars = max(len(nid) + 4, int(node_width.get(nid, 4.0) * 9) - 2)
+        header_chars = max(len(nid) + 4, int(node_width.get(nid, 4.0) * _HEADER_CPU) - 2)
         header_text = f"{nid}"
         if name_str:
             avail = max(6, header_chars - len(nid) - 2)
@@ -1931,6 +1962,19 @@ def generate_interactive_html(data, svg_path, html_path):
         if s in ext_set or t in ext_set:
             ext_edge_gids.append(gid)
 
+    # Foundation ghost-edge → target node id map. Ghost edges get gid pattern
+    # f"{prefix}_edge_{gi}_{ti}" where gi indexes sorted(ghost_map keys) and
+    # ti indexes the target list. Mirror that here so the JS toggle can hide
+    # ghost edges whose target is currently invisible (e.g., aux/external node
+    # hidden) — otherwise the foundation arrow points into empty space.
+    ghost_edge_to_target = {}
+    ghost_names_sorted = sorted(case2_ghosts.keys())
+    for gi, gname in enumerate(ghost_names_sorted):
+        meta = ghost_meta.get(gname, {}) or {}
+        prefix = "ghostbook" if meta.get("is_book") else "ghost"
+        for ti, target_id in enumerate(case2_ghosts[gname]):
+            ghost_edge_to_target[f"{prefix}_edge_{gi}_{ti}"] = target_id
+
     js_orphans = [{"id": e["id"], "statement": e.get("statement",""), "section": e.get("section","")}
                   for e in orphan_eqs]
 
@@ -2171,6 +2215,11 @@ var AUX_NODE_IDS = {_json.dumps(aux_node_ids, ensure_ascii=True)};
 var EXT_NODE_IDS = {_json.dumps(ext_node_ids, ensure_ascii=True)};
 var AUX_EDGE_GIDS = {_json.dumps(aux_edge_gids, ensure_ascii=True)};
 var EXT_EDGE_GIDS = {_json.dumps(ext_edge_gids, ensure_ascii=True)};
+// Foundation ghost-edge gid → target node id (so we can hide ghost edges
+// pointing to currently-invisible aux/external nodes).
+var GHOST_EDGE_TO_TARGET = {_json.dumps(ghost_edge_to_target, ensure_ascii=True)};
+var AUX_NODE_SET = (function(){{ var s={{}}; AUX_NODE_IDS.forEach(function(n){{s[n]=1;}}); return s; }})();
+var EXT_NODE_SET = (function(){{ var s={{}}; EXT_NODE_IDS.forEach(function(n){{s[n]=1;}}); return s; }})();
 
 var _lastDetailNode = null;
 function showDetail(nodeId) {{
@@ -2324,18 +2373,43 @@ function toggleOrphans() {{
 // Foundation toggle (ghost nodes — both mathlib/proofwiki ("ghost_") and
 // book entries ("ghostbook_") are picked up by the [id^="ghost"] selector).
 function toggleGhosts() {{
-  var svgEl = document.querySelector("#svg-container svg");
-  var ghostEls = svgEl ? svgEl.querySelectorAll('[id^="ghost"]') : [];
   var btn = document.getElementById("ghost-btn");
   if (btn.disabled) return;
   var isShowing = btn.dataset.showing === "1";
-  if (!isShowing) {{
-    btn.dataset.showing = "1";
-    ghostEls.forEach(function(el) {{ el.style.display = ""; }});
-  }} else {{
-    btn.dataset.showing = "0";
-    ghostEls.forEach(function(el) {{ el.style.display = "none"; }});
-  }}
+  btn.dataset.showing = isShowing ? "0" : "1";
+  _applyGhostVisibility();
+}}
+
+// Apply current foundation visibility, respecting whether ghost edges' target
+// nodes are currently hidden (aux/external toggles). A foundation arrow is
+// only shown when (a) Foundation toggle is ON and (b) its target node is
+// currently visible — otherwise it would float into empty space.
+function _applyGhostVisibility() {{
+  var svgEl = document.querySelector("#svg-container svg");
+  if (!svgEl) return;
+  var btn = document.getElementById("ghost-btn");
+  var on = btn && btn.dataset.showing === "1";
+  var auxBtn = document.getElementById("aux-btn");
+  var extBtn = document.getElementById("ext-btn");
+  var auxOn = auxBtn && auxBtn.dataset.showing === "1";
+  var extOn = extBtn && extBtn.dataset.showing === "1";
+  // Show/hide ghost boxes, headers, text, refs uniformly.
+  var ghostEls = svgEl.querySelectorAll('[id^="ghost"]');
+  ghostEls.forEach(function(el) {{
+    var gid = el.id;
+    if (!on) {{
+      el.style.display = "none";
+      return;
+    }}
+    // Edge gid pattern: "<prefix>_edge_<gi>_<ti>". For these, check target.
+    if (GHOST_EDGE_TO_TARGET.hasOwnProperty(gid)) {{
+      var target = GHOST_EDGE_TO_TARGET[gid];
+      var targetHidden = (AUX_NODE_SET[target] && !auxOn) || (EXT_NODE_SET[target] && !extOn);
+      el.style.display = targetHidden ? "none" : "";
+    }} else {{
+      el.style.display = "";
+    }}
+  }});
 }}
 
 // Generic helper: hide/show a set of nodes (by id) and their incident edges.
@@ -2382,6 +2456,8 @@ function toggleAux() {{
     var body = document.querySelector('#svg-container svg [id="node_' + nid + '"]');
     if (body) body.style.opacity = nextShowing ? "0.75" : "";
   }});
+  // Re-evaluate foundation edges (some now point to hidden/visible targets)
+  _applyGhostVisibility();
 }}
 
 // Cited Results (External) toggle — hides nodes with origin === "external"
@@ -2392,6 +2468,8 @@ function toggleExternal() {{
   var nextShowing = !isShowing;
   btn.dataset.showing = nextShowing ? "1" : "0";
   _setNodeVisibility(EXT_NODE_IDS, EXT_EDGE_GIDS, nextShowing, "node-external-shown");
+  // Re-evaluate foundation edges (some now point to hidden/visible targets)
+  _applyGhostVisibility();
   // Apply dashed border on body rect when shown (visual differentiation)
   EXT_NODE_IDS.forEach(function(nid) {{
     var body = document.querySelector('#svg-container svg [id="node_' + nid + '"]');

@@ -1,0 +1,1171 @@
+{
+  "metadata": {
+    "title": "A Differential Equation for Modeling Nesterov's Accelerated Gradient Method: Theory and Insights",
+    "paper_num": 255,
+    "authors": "Weijie Su, Stephen Boyd, Emmanuel J. Candès",
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "ProbP255.1",
+      "type": "problem",
+      "name": "Convex minimization problem",
+      "section": "1",
+      "statement": "Minimize $f(x)$ where $f$ is a convex function (smooth or non-smooth) and $x \\in \\mathbb{R}^n$.",
+      "statement_clean": "Find a minimizer of a convex function over $\\mathbb{R}^n$.",
+      "origin": "paper",
+      "subclass": "optimization"
+    },
+    {
+      "id": "ProbP255.2",
+      "type": "problem",
+      "name": "Composite convex minimization",
+      "section": "2.2 / Appendix C",
+      "statement": "Minimize $f(x) = g(x) + h(x)$ with $g \\in \\mathcal{F}_L$ smooth and $h$ a structured general convex function possibly assuming $+\\infty$.",
+      "statement_clean": "Minimize a sum of a smooth convex function and a structured (possibly nonsmooth) convex function.",
+      "origin": "paper",
+      "subclass": "optimization"
+    },
+    {
+      "id": "DP255.1",
+      "type": "definition",
+      "name": "Class $\\mathcal{F}_L$ of $L$-smooth convex functions",
+      "section": "1 (Notation)",
+      "statement": "$\\mathcal{F}_L$ is the class of convex functions $f$ on $\\mathbb{R}^n$ that are continuously differentiable with $L$-Lipschitz gradient: $\\|\\nabla f(x)-\\nabla f(y)\\| \\le L\\|x-y\\|$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP255.2",
+      "type": "definition",
+      "name": "Class $\\mathcal{S}_\\mu$ of $\\mu$-strongly convex functions",
+      "section": "1 (Notation)",
+      "statement": "$\\mathcal{S}_\\mu$ is the class of $\\mu$-strongly convex $C^1$ functions $f$ on $\\mathbb{R}^n$, meaning $f(x)-\\mu\\|x\\|^2/2$ is convex; set $\\mathcal{S}_{\\mu,L} = \\mathcal{F}_L \\cap \\mathcal{S}_\\mu$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP255.3",
+      "type": "definition",
+      "name": "$\\mathcal{F}_\\infty$",
+      "section": "2 (Derivation)",
+      "statement": "$\\mathcal{F}_\\infty := \\bigcup_{L>0}\\mathcal{F}_L$, the union of all $L$-smooth convex classes.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP255.4",
+      "type": "definition",
+      "name": "Proximal subgradient $G_s$",
+      "section": "4.1 (High Friction)",
+      "statement": "$G_s(x) := (x - \\arg\\min_z(\\|z-(x-s\\nabla g(x))\\|^2/(2s)+h(z)))/s$.",
+      "statement_clean": "Generalized gradient mapping that combines a forward gradient step on the smooth part with the proximal operator of the nonsmooth part.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP255.5",
+      "type": "definition",
+      "name": "Directional subgradient $G(x,p;f)$",
+      "section": "Appendix C",
+      "statement": "A Borel measurable $G(x,p)$ such that $G(x,p)\\in\\partial f(x)$ and $\\langle G(x,p),p\\rangle = \\sup_{\\xi\\in\\partial f(x)}\\langle\\xi,p\\rangle$ for all $x,p$.",
+      "statement_clean": "Subgradient choice that captures the directional derivative of $f$ at $x$ along $p$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP255.6",
+      "type": "definition",
+      "name": "Speed restarting time $T(x_0;f)$",
+      "section": "5.1 (A New Restarting Scheme)",
+      "statement": "$T(x_0;f) := \\sup\\{t>0 : \\forall u\\in(0,t),~ \\d\\|\\dot X(u)\\|^2/\\d u > 0\\}$, the first time the velocity $\\|\\dot X\\|$ stops increasing.",
+      "origin": "paper"
+    },
+    {
+      "id": "AP255.1",
+      "type": "algorithm",
+      "name": "Nesterov's accelerated gradient scheme",
+      "section": "1 (Introduction)",
+      "statement": "Iterative first-order scheme with momentum: $x_k = y_{k-1} - s\\nabla f(y_{k-1})$ and $y_k = x_k + \\frac{k-1}{k+2}(x_k - x_{k-1})$.",
+      "input": [
+        "Smooth convex objective $f \\in \\mathcal{F}_L$",
+        "Initial point $x_0$, with $y_0 = x_0$",
+        "Step size $s \\le 1/L$"
+      ],
+      "output": [
+        "Iterates $\\{x_k\\}$ approximating $\\arg\\min f$"
+      ],
+      "origin": "external",
+      "origin_citation": "Nesterov 1983",
+      "tags": ["iterative", "first-order", "accelerated"]
+    },
+    {
+      "id": "AP255.2",
+      "type": "algorithm",
+      "name": "Generalized Nesterov's scheme (parameter $r$)",
+      "section": "4 (The Magic Constant 3)",
+      "statement": "Composite-form generalization with momentum coefficient $(k-1)/(k+r-1)$: $x_k = y_{k-1} - sG_s(y_{k-1})$ and $y_k = x_k + \\frac{k-1}{k+r-1}(x_k-x_{k-1})$.",
+      "input": [
+        "Composite objective $f = g+h$ with $g \\in \\mathcal{F}_L$, $h$ convex",
+        "Initial $x_0$ with $y_0 = x_0$",
+        "Step size $s \\in (0, 1/L]$",
+        "Momentum parameter $r$"
+      ],
+      "output": [
+        "Iterates $\\{x_k\\}$ approximating $\\arg\\min f$"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "first-order", "accelerated"]
+    },
+    {
+      "id": "AP255.3",
+      "type": "algorithm",
+      "name": "Speed Restarting Nesterov's Scheme",
+      "section": "5.3 (Numerical Examples)",
+      "statement": "Discrete proximal Nesterov scheme that restarts the momentum index $j$ to 1 whenever $\\|x_k-x_{k-1}\\| < \\|x_{k-1}-x_{k-2}\\|$ and $j \\ge k_{\\min}$.",
+      "input": [
+        "Initial $x_0 \\in \\mathbb{R}^n$, $y_0 = x_0$, $x_{-1}=x_0$",
+        "Step size $0 < s \\le 1/L$",
+        "Iteration limits $k_{\\max}, k_{\\min} \\in \\mathbb{N}^+$"
+      ],
+      "output": [
+        "Approximate minimizer $x_{k_{\\max}}$"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "first-order", "restarting", "accelerated"]
+    },
+    {
+      "id": "AP255.4",
+      "type": "algorithm",
+      "name": "Forward Euler discretization of the smoothed ODE",
+      "section": "Appendix B",
+      "statement": "Two-step forward Euler scheme for the smoothed ODE: $X^\\delta_{k+1} = X^\\delta_k + \\Delta t Z^\\delta_k$ and $Z^\\delta_{k+1} = (1 - 3\\Delta t/\\max\\{\\delta,k\\Delta t\\}) Z^\\delta_k - \\Delta t \\nabla f(X^\\delta_k)$.",
+      "input": [
+        "Initial $X^\\delta_0 = x_0$, $Z^\\delta_0 = 0$",
+        "Step size $\\Delta t = \\sqrt{s}$",
+        "Smoothing parameter $\\delta$"
+      ],
+      "output": [
+        "Discrete trajectory $\\{X^\\delta_k\\}$ approximating the smoothed ODE solution"
+      ],
+      "origin": "paper",
+      "tags": ["discretization"]
+    },
+    {
+      "id": "EP255.1",
+      "type": "equation",
+      "name": "Nesterov's ODE (key)",
+      "section": "1, 2",
+      "statement": "$\\ddot{X} + \\frac{3}{t}\\dot{X} + \\nabla f(X) = 0$, $t>0$, with $X(0)=x_0$, $\\dot X(0)=0$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP255.2",
+      "type": "equation",
+      "name": "Generalized ODE with damping $r/t$",
+      "section": "1.2, 4",
+      "statement": "$\\ddot X + \\frac{r}{t}\\dot X + \\nabla f(X) = 0$ with $X(0)=x_0$, $\\dot X(0)=0$, parameterized by $r$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP255.3",
+      "type": "equation",
+      "name": "Smoothed ODE",
+      "section": "Appendix A",
+      "statement": "$\\ddot X + \\frac{3}{\\max(\\delta,t)}\\dot X + \\nabla f(X) = 0$ with $X(0)=x_0,\\dot X(0)=0$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP255.4",
+      "type": "equation",
+      "name": "Speed-restarted ODE",
+      "section": "5.1",
+      "statement": "$\\ddot X(t) + \\frac{3}{t_{\\mathrm{sr}}}\\dot X(t) + \\nabla f(X(t)) = 0$ where $t_{\\mathrm{sr}}$ is reset to 0 at each restart and grows like $t$ between restarts.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP255.5",
+      "type": "equation",
+      "name": "Composite-optimization ODE",
+      "section": "Appendix C",
+      "statement": "$\\ddot X + \\frac{3}{t}\\dot X + G(X,\\dot X) = 0$, $X(0)=x_0,\\dot X(0)=0$, with directional subgradient $G$.",
+      "origin": "paper"
+    },
+    {
+      "id": "TP255.1",
+      "type": "theorem",
+      "name": "Existence and uniqueness of solution to the ODE",
+      "section": "2 (Theorem 1)",
+      "statement": "For any $f \\in \\mathcal{F}_\\infty$ and $x_0 \\in \\mathbb{R}^n$, the ODE $\\ddot X + (3/t)\\dot X + \\nabla f(X) = 0$ with $X(0)=x_0$, $\\dot X(0)=0$ has a unique global solution $X \\in C^2((0,\\infty);\\mathbb{R}^n) \\cap C^1([0,\\infty);\\mathbb{R}^n)$.",
+      "assumptions": [
+        "$f \\in \\mathcal{F}_\\infty$",
+        "$x_0 \\in \\mathbb{R}^n$"
+      ],
+      "conclusions": [
+        "ODE has a unique global solution $X \\in C^2((0,\\infty);\\mathbb{R}^n) \\cap C^1([0,\\infty);\\mathbb{R}^n)$"
+      ],
+      "origin": "paper",
+      "tags": ["existence", "uniqueness"]
+    },
+    {
+      "id": "TP255.2",
+      "type": "theorem",
+      "name": "Convergence of Nesterov's scheme to the ODE",
+      "section": "2 (Theorem 2)",
+      "statement": "For any $f \\in \\mathcal{F}_\\infty$ and any $T>0$, Nesterov's scheme converges to the ODE solution: $\\lim_{s\\to 0}\\max_{0\\le k\\le T/\\sqrt{s}}\\|x_k - X(k\\sqrt{s})\\| = 0$.",
+      "assumptions": [
+        "$f \\in \\mathcal{F}_\\infty$",
+        "$T > 0$ fixed"
+      ],
+      "conclusions": [
+        "$\\lim_{s\\to 0}\\max_{0 \\le k \\le T/\\sqrt{s}}\\|x_k - X(k\\sqrt{s})\\| = 0$"
+      ],
+      "origin": "paper",
+      "tags": ["convergence", "limit"]
+    },
+    {
+      "id": "TP255.3",
+      "type": "theorem",
+      "name": "Inverse-quadratic convergence of the ODE",
+      "section": "3.1 (Theorem 3)",
+      "statement": "For any $f \\in \\mathcal{F}_\\infty$ and the unique solution $X(t)$ to the ODE, $f(X(t)) - f^\\star \\le \\frac{2\\|x_0-x^\\star\\|^2}{t^2}$ for all $t>0$.",
+      "assumptions": [
+        "$f \\in \\mathcal{F}_\\infty$",
+        "$X$ is the unique global solution to the ODE with $X(0)=x_0$, $\\dot X(0)=0$"
+      ],
+      "conclusions": [
+        "$f(X(t)) - f^\\star \\le 2\\|x_0-x^\\star\\|^2/t^2$ for $t>0$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "convergence"]
+    },
+    {
+      "id": "TP255.4",
+      "type": "theorem",
+      "name": "Oscillation roots for strongly convex 1D $f$",
+      "section": "3.3 (Theorem 4)",
+      "statement": "For $f \\in \\mathcal{S}_{\\mu,L}(\\mathbb{R})$, the positive roots $0<t_1<t_2<\\ldots$ of $X(t)-x^\\star$ satisfy $t_1 < 7.6635/\\sqrt{\\mu}$, $t_{i+1}-t_i < 7.6635/\\sqrt{\\mu}$, and $t_{i+2}-t_i > \\pi/\\sqrt{L}$.",
+      "assumptions": [
+        "$f \\in \\mathcal{S}_{\\mu,L}(\\mathbb{R})$",
+        "$X$ solves the ODE; $0<t_1<t_2<\\ldots$ are roots of $X(t)-x^\\star$"
+      ],
+      "conclusions": [
+        "$t_1 < 7.6635/\\sqrt{\\mu}$",
+        "$t_{i+1} - t_i < 7.6635/\\sqrt{\\mu}$",
+        "$t_{i+2} - t_i > \\pi/\\sqrt{L}$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "TP255.5",
+      "type": "theorem",
+      "name": "High-friction convergence of generalized ODE",
+      "section": "4.1 (Theorem 5)",
+      "statement": "The solution $X$ of the generalized ODE with damping $r/t$ satisfies $f(X(t))-f^\\star \\le \\frac{(r-1)^2\\|x_0-x^\\star\\|^2}{2t^2}$ and $\\int_0^\\infty t(f(X(t))-f^\\star)\\d t \\le \\frac{(r-1)^2\\|x_0-x^\\star\\|^2}{2(r-3)}$.",
+      "assumptions": [
+        "$r > 3$",
+        "$f \\in \\mathcal{F}_\\infty$"
+      ],
+      "conclusions": [
+        "$f(X(t))-f^\\star \\le (r-1)^2\\|x_0-x^\\star\\|^2/(2t^2)$",
+        "$\\int_0^\\infty t(f(X(t))-f^\\star)\\d t \\le (r-1)^2\\|x_0-x^\\star\\|^2/(2(r-3))$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "convergence"]
+    },
+    {
+      "id": "TP255.6",
+      "type": "theorem",
+      "name": "Discrete high-friction convergence",
+      "section": "4.1 (Theorem 6)",
+      "statement": "For $0 < s \\le 1/L$ and the generalized Nesterov's scheme with parameter $r$, $f(x_k)-f^\\star \\le \\frac{(r-1)^2\\|x_0-x^\\star\\|^2}{2s(k+r-2)^2}$ and $\\sum_{k=1}^\\infty (k+r-1)(f(x_k)-f^\\star) \\le \\frac{(r-1)^2\\|x_0-x^\\star\\|^2}{2s(r-3)}$.",
+      "assumptions": [
+        "$r > 3$",
+        "$f = g+h$ with $g \\in \\mathcal{F}_L$, $h$ convex extended-real",
+        "$0 < s \\le 1/L$"
+      ],
+      "conclusions": [
+        "$f(x_k)-f^\\star \\le (r-1)^2\\|x_0-x^\\star\\|^2/(2s(k+r-2)^2)$",
+        "$\\sum_{k=1}^\\infty (k+r-1)(f(x_k)-f^\\star) \\le (r-1)^2\\|x_0-x^\\star\\|^2/(2s(r-3))$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "convergence"]
+    },
+    {
+      "id": "TP255.7",
+      "type": "theorem",
+      "name": "Low-friction convergence under convex $(f-f^\\star)^{(r-1)/2}$",
+      "section": "4.2 (Theorem 7)",
+      "statement": "Suppose $1<r<3$ and $X$ solves the generalized ODE. If $(f-f^\\star)^{(r-1)/2}$ is convex, then $f(X(t))-f^\\star \\le \\frac{(r-1)^2\\|x_0-x^\\star\\|^2}{2t^2}$.",
+      "assumptions": [
+        "$1 < r < 3$",
+        "$f$ continuously differentiable convex with $(f-f^\\star)^{(r-1)/2}$ convex"
+      ],
+      "conclusions": [
+        "$f(X(t))-f^\\star \\le (r-1)^2\\|x_0-x^\\star\\|^2/(2t^2)$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "convergence"]
+    },
+    {
+      "id": "TP255.8",
+      "type": "theorem",
+      "name": "Higher-rate convergence for strongly convex $f$ (continuous)",
+      "section": "4.3 (Theorem 8)",
+      "statement": "For $f \\in \\mathcal{S}_{\\mu,L}(\\mathbb{R}^n)$ and $2 \\le \\alpha \\le 2r/3$, the solution to the generalized ODE satisfies $f(X(t))-f^\\star \\le \\frac{C\\|x_0-x^\\star\\|^2}{\\mu^{(\\alpha-2)/2} t^{\\alpha}}$ for all $t>0$, with $C$ depending only on $\\alpha,r$.",
+      "assumptions": [
+        "$f \\in \\mathcal{S}_{\\mu,L}(\\mathbb{R}^n)$",
+        "$2 \\le \\alpha \\le 2r/3$"
+      ],
+      "conclusions": [
+        "$f(X(t))-f^\\star \\le C\\|x_0-x^\\star\\|^2/(\\mu^{(\\alpha-2)/2} t^\\alpha)$",
+        "$C$ depends only on $\\alpha, r$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "convergence"]
+    },
+    {
+      "id": "TP255.9",
+      "type": "theorem",
+      "name": "$O(1/k^3)$ rate for generalized scheme on strongly convex $f$",
+      "section": "4.3 (Theorem 9)",
+      "statement": "For $f = g+h$ with $g \\in \\mathcal{S}_{\\mu,L}$ and $h$ convex extended-real, the generalized Nesterov's scheme with $r \\ge 9/2$ and $s = 1/L$ satisfies $f(x_k)-f^\\star \\le \\frac{CL\\|x_0-x^\\star\\|^2}{k^2}\\frac{\\sqrt{L/\\mu}}{k}$.",
+      "assumptions": [
+        "$g \\in \\mathcal{S}_{\\mu,L}$, $h$ convex with possible $+\\infty$",
+        "$r \\ge 9/2$, $s = 1/L$"
+      ],
+      "conclusions": [
+        "$f(x_k)-f^\\star \\le CL\\|x_0-x^\\star\\|^2 \\sqrt{L/\\mu}/k^3$",
+        "$C$ depends only on $r$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "convergence"]
+    },
+    {
+      "id": "TP255.10",
+      "type": "theorem",
+      "name": "Linear convergence under speed restarting",
+      "section": "5.1 (Theorem 10)",
+      "statement": "There exist $c_1,c_2>0$ depending only on $L/\\mu$ such that for any $f \\in \\mathcal{S}_{\\mu,L}$, the speed-restarted ODE solution satisfies $f(X^{\\mathrm{sr}}(t)) - f^\\star \\le \\frac{c_1 L\\|x_0-x^\\star\\|^2}{2}e^{-c_2 t\\sqrt{L}}$.",
+      "assumptions": [
+        "$f \\in \\mathcal{S}_{\\mu,L}$",
+        "$X^{\\mathrm{sr}}$ is the solution of the speed-restarted ODE"
+      ],
+      "conclusions": [
+        "$f(X^{\\mathrm{sr}}(t)) - f^\\star \\le c_1 L\\|x_0-x^\\star\\|^2 e^{-c_2 t\\sqrt{L}}/2$",
+        "$c_1, c_2 > 0$ depend only on $L/\\mu$"
+      ],
+      "origin": "paper",
+      "tags": ["convergence", "linear-rate"]
+    },
+    {
+      "id": "TP255.11",
+      "type": "theorem",
+      "name": "Inverse-quadratic rate for composite ODE",
+      "section": "Appendix C",
+      "statement": "If the ODE $\\ddot X + (3/t)\\dot X + G(X,\\dot X) = 0$ admits a solution $X(t)$ on $[0,\\alpha)$, then $f(X(t))-f^\\star \\le 2\\|x_0-x^\\star\\|^2/t^2$ for all $0<t<\\alpha$.",
+      "assumptions": [
+        "$f$ convex with directional subgradient $G(x,p;f)$",
+        "ODE admits a solution $X(t)$ on $[0,\\alpha)$"
+      ],
+      "conclusions": [
+        "$f(X(t))-f^\\star \\le 2\\|x_0-x^\\star\\|^2/t^2$ for $0<t<\\alpha$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "convergence"]
+    },
+    {
+      "id": "LP255.1",
+      "type": "lemma",
+      "name": "Existence of ODE solution",
+      "section": "Appendix A (Lemma 1)",
+      "statement": "For any $f \\in \\mathcal{F}_\\infty$ and $x_0 \\in \\mathbb{R}^n$, the ODE has at least one solution $X \\in C^2(0,\\infty)\\cap C^1[0,\\infty)$.",
+      "assumptions": [
+        "$f \\in \\mathcal{F}_\\infty$",
+        "$x_0 \\in \\mathbb{R}^n$"
+      ],
+      "conclusions": [
+        "ODE has a solution $X \\in C^2(0,\\infty)\\cap C^1[0,\\infty)$"
+      ],
+      "origin": "paper",
+      "tags": ["existence"]
+    },
+    {
+      "id": "LP255.2",
+      "type": "lemma",
+      "name": "Bound on $M_\\delta(\\delta)$",
+      "section": "Appendix A (Lemma 2)",
+      "statement": "For $\\delta < \\sqrt{6/L}$, $M_\\delta(\\delta) \\le \\frac{\\|\\nabla f(x_0)\\|}{1 - L\\delta^2/6}$.",
+      "assumptions": [
+        "$\\delta < \\sqrt{6/L}$"
+      ],
+      "conclusions": [
+        "$M_\\delta(\\delta) \\le \\|\\nabla f(x_0)\\|/(1 - L\\delta^2/6)$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "LP255.3",
+      "type": "lemma",
+      "name": "Lipschitz-gradient bound for smoothed ODE",
+      "section": "Appendix A (Lemma 3)",
+      "statement": "For any $u>0$, $\\|\\nabla f(X_\\delta(u)) - \\nabla f(x_0)\\| \\le \\tfrac12 L M_\\delta(u) u^2$.",
+      "assumptions": [
+        "$X_\\delta$ solves the smoothed ODE"
+      ],
+      "conclusions": [
+        "$\\|\\nabla f(X_\\delta(u))-\\nabla f(x_0)\\| \\le L M_\\delta(u) u^2/2$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "LP255.4",
+      "type": "lemma",
+      "name": "Bound on $M_\\delta(t)$ for $t>\\delta$",
+      "section": "Appendix A (Lemma 4)",
+      "statement": "For $\\delta < \\sqrt{6/L}$ and $\\delta < t < \\sqrt{12/L}$, $M_\\delta(t) \\le \\frac{(5-L\\delta^2/6)\\|\\nabla f(x_0)\\|}{4(1-L\\delta^2/6)(1-Lt^2/12)}$.",
+      "assumptions": [
+        "$\\delta < \\sqrt{6/L}$",
+        "$\\delta < t < \\sqrt{12/L}$"
+      ],
+      "conclusions": [
+        "$M_\\delta(t) \\le (5-L\\delta^2/6)\\|\\nabla f(x_0)\\|/(4(1-L\\delta^2/6)(1-Lt^2/12))$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "LP255.5",
+      "type": "lemma",
+      "name": "Equicontinuity / uniform-boundedness of $\\{X_\\delta\\}$",
+      "section": "Appendix A (Lemma 5)",
+      "statement": "$\\mathcal{F} = \\{X_\\delta : [0,\\sqrt{6/L}]\\to\\mathbb{R}^n \\mid \\delta = \\sqrt{3/L}/2^m, m=0,1,\\ldots\\}$ is uniformly bounded and equicontinuous.",
+      "assumptions": [
+        "Family parameterized by $\\delta = \\sqrt{3/L}/2^m$, $m \\in \\mathbb{N}$"
+      ],
+      "conclusions": [
+        "$\\mathcal{F}$ is uniformly bounded",
+        "$\\mathcal{F}$ is equicontinuous"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "LP255.6",
+      "type": "lemma",
+      "name": "Local uniqueness of ODE solution",
+      "section": "Appendix A (Lemma 6)",
+      "statement": "For any $f \\in \\mathcal{F}_\\infty$, the ODE has at most one local solution in a neighborhood of $t=0$.",
+      "assumptions": [
+        "$f \\in \\mathcal{F}_\\infty$"
+      ],
+      "conclusions": [
+        "At most one local solution near $t=0$"
+      ],
+      "origin": "paper",
+      "tags": ["uniqueness"]
+    },
+    {
+      "id": "LP255.7",
+      "type": "lemma",
+      "name": "Two-trajectory gradient bound",
+      "section": "Appendix A (Lemma 7)",
+      "statement": "For any $t \\in (0,\\alpha)$ and two solutions $X,Y$ of the ODE on $(0,\\alpha)$, $\\|\\nabla f(X(t)) - \\nabla f(Y(t))\\| \\le L t \\tilde M(t)$ where $\\tilde M(t) = \\sup_{u\\in[0,t)}\\|\\dot X(u)-\\dot Y(u)\\|$.",
+      "assumptions": [
+        "$X, Y$ solve the ODE on $(0,\\alpha)$"
+      ],
+      "conclusions": [
+        "$\\|\\nabla f(X(t)) - \\nabla f(Y(t))\\| \\le L t \\tilde M(t)$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "LP255.8",
+      "type": "lemma",
+      "name": "Euler-vs-Nesterov error bound",
+      "section": "Appendix B (Lemma 8)",
+      "statement": "With $\\Delta t = \\sqrt{s}$, for any $T>0$, $\\max_{1\\le k \\le T/\\sqrt{s}} \\|X^\\delta_k - x_k\\| \\le C\\delta^2 + o_s(1)$ for some constant $C$.",
+      "assumptions": [
+        "$\\Delta t = \\sqrt{s}$, $T > 0$ fixed"
+      ],
+      "conclusions": [
+        "$\\max_{1\\le k \\le T/\\sqrt{s}} \\|X^\\delta_k - x_k\\| \\le C\\delta^2 + o_s(1)$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "LP255.9",
+      "type": "lemma",
+      "name": "Rockafellar directional-derivative formula",
+      "section": "Appendix C (Lemma 9)",
+      "statement": "For any convex $f$ and $x,p \\in \\mathbb{R}^n$, $\\lim_{s\\to 0+} (f(x+sp)-f(x))/s = \\sup_{\\xi\\in\\partial f(x)} \\langle\\xi,p\\rangle$.",
+      "assumptions": [
+        "$f$ convex on $\\mathbb{R}^n$",
+        "$x,p \\in \\mathbb{R}^n$"
+      ],
+      "conclusions": [
+        "$\\lim_{s\\to 0+}(f(x+sp)-f(x))/s = \\sup_{\\xi\\in\\partial f(x)} \\langle\\xi,p\\rangle$"
+      ],
+      "origin": "external",
+      "origin_citation": "Rockafellar, Convex Analysis"
+    },
+    {
+      "id": "LP255.10",
+      "type": "lemma",
+      "name": "Upper bound on $M(t)$",
+      "section": "5.2 (Lemma 10)",
+      "statement": "For $t<\\sqrt{12/L}$, $M(t) \\le \\frac{\\|\\nabla f(x_0)\\|}{4(1 - Lt^2/12)}$.",
+      "assumptions": [
+        "$t < \\sqrt{12/L}$"
+      ],
+      "conclusions": [
+        "$M(t) \\le \\|\\nabla f(x_0)\\|/(4(1-Lt^2/12))$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "LP255.11",
+      "type": "lemma",
+      "name": "Constant-factor decay across one speed restart",
+      "section": "5.2 (Lemma 11)",
+      "statement": "There is a universal constant $C>0$ such that $f(X(T)) - f^\\star \\le (1 - C\\mu/L)(f(x_0) - f^\\star)$.",
+      "assumptions": [
+        "$f \\in \\mathcal{S}_{\\mu,L}$",
+        "$T = T(x_0;f)$ is the speed restarting time"
+      ],
+      "conclusions": [
+        "$f(X(T)) - f^\\star \\le (1 - C\\mu/L)(f(x_0) - f^\\star)$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "LP255.12",
+      "type": "lemma",
+      "name": "Upper bound on speed restarting time",
+      "section": "5.2 (Lemma 12)",
+      "statement": "There is a universal constant $\\tilde C$ such that $T \\le \\frac{4 \\exp(\\tilde C L/\\mu)}{5\\sqrt{L}}$.",
+      "assumptions": [
+        "$f \\in \\mathcal{S}_{\\mu,L}$"
+      ],
+      "conclusions": [
+        "$T \\le 4 \\exp(\\tilde C L/\\mu)/(5\\sqrt{L})$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "LP255.13",
+      "type": "lemma",
+      "name": "Lower bound on speed restarting time",
+      "section": "Appendix E (Lemma 13)",
+      "statement": "$T(x_0;f) \\ge 4/(5\\sqrt{L})$.",
+      "assumptions": [
+        "$f \\in \\mathcal{S}_{\\mu,L}$"
+      ],
+      "conclusions": [
+        "$T(x_0;f) \\ge 4/(5\\sqrt{L})$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "RP255.1",
+      "type": "remark",
+      "name": "Phase transition at $r=3$",
+      "section": "1.2",
+      "statement": "For the generalized ODE/scheme with damping $r/t$, inverse-quadratic $O(1/t^2)$ convergence holds iff $r \\ge 3$; the worst-case constant is minimized at $r=3$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP255.2",
+      "type": "remark",
+      "name": "Time invariance of the ODE",
+      "section": "2.1",
+      "statement": "Under linear time rescaling $\\tilde t = ct$, the ODE for $X(\\tilde t)$ is again $\\ddot X + (3/\\tilde t)\\dot X + \\nabla f(X)/c^2 = 0$, equivalent to minimizing $f/c^2$. Time invariance holds iff the velocity coefficient has the form $C/t$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP255.3",
+      "type": "remark",
+      "name": "Initial asymptotic of ODE solution",
+      "section": "2.1",
+      "statement": "Assuming $\\lim_{t\\to 0}\\ddot X(t)$ exists, $\\ddot X(0) = -\\nabla f(x_0)/4$ and $X(t) = -\\nabla f(x_0)t^2/8 + x_0 + o(t^2)$ for small $t$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP255.4",
+      "type": "remark",
+      "name": "Tightness of the constant 2",
+      "section": "3.1",
+      "statement": "The bound $f(X(t))-f^\\star \\le 2\\|x_0-x^\\star\\|^2/t^2$ is tight: for $f(x)=x$ on $\\mathbb{R}_+$ with $x_0>0$, the maximum of $t^2(f(X(t))-f^\\star)$ equals $2x_0^2$, achieved at $t=2\\sqrt{x_0}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP255.5",
+      "type": "remark",
+      "name": "Numerical-stability step size from forward Euler",
+      "section": "3.4",
+      "statement": "The forward-Euler discretization of the ODE is numerically stable when $\\Delta t < 2/\\sqrt{L}$, corresponding to step size $s=1/L$ in Nesterov; gradient descent's analogous bound is $\\Delta t \\le 2/L$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP255.6",
+      "type": "remark",
+      "name": "Bessel-function representation for quadratic $f$",
+      "section": "3.2",
+      "statement": "For $f(x)=\\tfrac12 \\langle x,\\Lambda x\\rangle$, the ODE solution decouples into $X_i(t) = \\frac{2 x_{0,i}}{t\\sqrt{\\lambda_i}}J_1(t\\sqrt{\\lambda_i})$, giving $f(X(t)) = O(\\|x_0-x^\\star\\|^2/(t^3\\sqrt{\\min\\lambda_i}))$.",
+      "origin": "paper"
+    },
+    {
+      "id": "OpenP255.1",
+      "type": "open_problem",
+      "name": "Provable linear rate for gradient restarting",
+      "section": "5.3",
+      "statement": "Is there a provable linear convergence rate for the gradient restarting scheme of Nesterov's method analogous to the linear rate established in Theorem 10 for speed restarting?",
+      "origin": "paper"
+    },
+    {
+      "id": "OpenP255.2",
+      "type": "open_problem",
+      "name": "General ODE-to-discrete translation theory",
+      "section": "Discussion",
+      "statement": "Develop a general theory mapping properties of continuous ODEs into corresponding properties for discrete update schemes, allowing analysis to be carried out only at the ODE level.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP255.1",
+      "type": "example",
+      "name": "Two-dimensional quadratic showing oscillations",
+      "section": "1.1, 3.2",
+      "statement": "Minimize $f = 2\\times 10^{-2}x_1^2 + 5\\times 10^{-3}x_2^2$ from $x_0=(1,1)$; Nesterov's scheme exhibits butterfly-like oscillations with major period $10\\pi$ and 2 minor peaks per major bump, matched by the Bessel-function ODE solution.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP255.2",
+      "type": "example",
+      "name": "$r=1$ failure of inverse-quadratic rate",
+      "section": "1.2, 4.2",
+      "statement": "For $f(x)=\\tfrac12 x^2$ with $r=1$ in the generalized ODE/scheme starting from $x_0=1$, scaled errors $t^2(f(X(t))-f^\\star)$ and $sk^2(f(x_k)-f^\\star)$ grow with $t$/iterations, ruling out $O(1/t^2)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP255.3",
+      "type": "example",
+      "name": "$f(x)=|x|$ counterexamples for $2\\le r<3$",
+      "section": "4.2",
+      "statement": "For $f(x)=|x|$ with $r=2$ or $r=2.5$, the explicit piecewise solution shows $t^2(f(X(t))-f^\\star)$ grows (linearly for $r=2$, sublinearly for $r=2.5$), violating $O(1/t^2)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP255.4",
+      "type": "example",
+      "name": "Lasso square-root scaling demonstration",
+      "section": "3.4",
+      "statement": "Minimize $f(x)=\\|y-Ax\\|^2/2 + \\|x\\|_1$ with $y=(4,2,0)$ and specified columns of $A$ from $x_0=(2,0)$; iterates $x_k$ at $k \\approx t_c/\\sqrt{s}$ with the same $t_c$ are very close across $s$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP255.5",
+      "type": "example",
+      "name": "Six benchmark examples for generalized scheme",
+      "section": "4.4",
+      "statement": "Six synthetic benchmarks (lasso fat/square design, NLS fat/sparse design, logistic regression, $\\ell_1$-regularized logistic) show smaller $r$ wins early, larger $r$ wins late.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP255.6",
+      "type": "example",
+      "name": "Restarting benchmarks (quadratic, log-sum-exp, matrix completion, lasso, sorted-$\\ell_1$, logistic)",
+      "section": "5.3",
+      "statement": "Speed-restarting empirically achieves linear convergence on quadratic, log-sum-exp ($\\rho\\log\\sum e^{(a_i^Tx-b_i)/\\rho}$), matrix completion, lasso, sorted-$\\ell_1$, and logistic-regression problems, outperforming gradient restarting and original Nesterov.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP255.7",
+      "type": "example",
+      "name": "Lasso composite example for directional subgradient",
+      "section": "Appendix C",
+      "statement": "For $\\tfrac12\\|y-Ax\\|^2 + \\lambda\\|x\\|_1$, a directional subgradient is $G(x,p) = -A^T(y-Ax) + \\lambda \\mathrm{sgn}(x,p)$, refined to encourage sparsity at coordinates where $x_i=p_i=0$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP255.1",
+      "type": "proof",
+      "name": "Proof of Theorem 1 (existence/uniqueness)",
+      "section": "Appendix A",
+      "parent_id": "TP255.1",
+      "proves": "TP255.1",
+      "statement": "Combine Lemma 1 (existence via Arzelà-Ascoli on smoothed approximations) with Lemma 6 (local uniqueness via a Gronwall-style $\\tilde M(t) \\le Lt^2 \\tilde M(t)/5$ contraction).",
+      "origin": "paper"
+    },
+    {
+      "id": "PP255.2",
+      "type": "proof",
+      "name": "Proof of Theorem 2 (limit of Nesterov to ODE)",
+      "section": "Appendix B",
+      "parent_id": "TP255.2",
+      "proves": "TP255.2",
+      "statement": "Triangle inequality $\\|x_k-X(k\\sqrt{s})\\|$ via the smoothed ODE: bound $\\|x_k - X^\\delta_k\\|$ by Lemma 8, $\\|X^\\delta_k - X_\\delta(k\\sqrt{s})\\|$ by standard forward Euler, and $\\|X_\\delta(k\\sqrt{s})-X(k\\sqrt{s})\\|$ via the convergent subsequence in Lemma 5.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP255.3",
+      "type": "proof",
+      "name": "Proof of Theorem 3 (ODE inverse-quadratic rate)",
+      "section": "3.1",
+      "parent_id": "TP255.3",
+      "proves": "TP255.3",
+      "statement": "Define energy $\\mathcal{E}(t) = t^2(f(X(t))-f^\\star) + 2\\|X+ t\\dot X/2 - x^\\star\\|^2$; substituting the ODE gives $\\dot{\\mathcal{E}} \\le 0$ via convexity, and monotonicity yields $f(X(t))-f^\\star \\le \\mathcal{E}(0)/t^2 = 2\\|x_0-x^\\star\\|^2/t^2$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP255.4",
+      "type": "proof",
+      "name": "Proof of Theorem 5 (high-friction continuous rate)",
+      "section": "4.1",
+      "parent_id": "TP255.5",
+      "proves": "TP255.5",
+      "statement": "Use energy $\\mathcal{E}(t) = \\frac{2t^2}{r-1}(f(X)-f^\\star) + (r-1)\\|X + t\\dot X/(r-1) - x^\\star\\|^2$; differentiation and convexity give $\\dot{\\mathcal{E}} \\le -2(r-3)t(f(X)-f^\\star)/(r-1)$, yielding both inequalities.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP255.5",
+      "type": "proof",
+      "name": "Proof of Theorem 6 (discrete high-friction rate)",
+      "section": "4.1",
+      "parent_id": "TP255.6",
+      "proves": "TP255.6",
+      "statement": "Discrete energy $\\mathcal{E}(k) = \\frac{2(k+r-2)^2 s}{r-1}(f(x_k)-f^\\star) + (r-1)\\|z_k - x^\\star\\|^2$ with $z_k = ((k+r-1)y_k - kx_k)/(r-1)$; recursive inequality from the proximal-subgradient bound \\eqref{eq:prox_ineq} summed appropriately gives both bounds.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP255.6",
+      "type": "proof",
+      "name": "Proof of Theorem 7 (low-friction with convex $(f-f^\\star)^{(r-1)/2}$)",
+      "section": "4.2",
+      "parent_id": "TP255.7",
+      "proves": "TP255.7",
+      "statement": "Convexity of $(f-f^\\star)^{(r-1)/2}$ gives $\\frac{2}{r-1}(f(X)-f^\\star) \\le \\langle X-x^\\star, \\nabla f(X)\\rangle$; combined with the energy derivative formula \\eqref{eq:r_e_der} yields $\\mathcal{E}(t)$ non-increasing, hence the bound.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP255.7",
+      "type": "proof",
+      "name": "Proof of Theorem 8 ($O(t^{-\\alpha})$ continuous rate)",
+      "section": "4.3",
+      "parent_id": "TP255.8",
+      "proves": "TP255.8",
+      "statement": "Energy $\\mathcal{E}(t;\\alpha) = t^\\alpha(f(X)-f^\\star) + \\frac{(2r-\\alpha)^2 t^{\\alpha-2}}{8}\\|X + 2t\\dot X/(2r-\\alpha) - x^\\star\\|^2$; strong convexity bounds the cross term, then induction on $\\alpha$ from the base case $2<\\alpha\\le 4$ yields the bound.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP255.8",
+      "type": "proof",
+      "name": "Proof of Theorem 9 ($O(1/k^3)$ discrete rate)",
+      "section": "Appendix D",
+      "parent_id": "TP255.9",
+      "proves": "TP255.9",
+      "statement": "Discrete energy \\eqref{eq:dis_t3_energy} with strengthened proximal inequality \\eqref{eq:str_prox} for strongly convex $g$; show $\\Delta_k - \\Delta_{k-1}$ recursion, bound auxiliary terms $\\Pi_1, \\Pi_2$, and combine with Theorem 6 for $k \\le k^\\star$ and the recursion for $k>k^\\star$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP255.9",
+      "type": "proof",
+      "name": "Proof of Theorem 10 (linear rate of speed restarting)",
+      "section": "5.2",
+      "parent_id": "TP255.10",
+      "proves": "TP255.10",
+      "statement": "By Lemma 12 at least $m = \\lfloor 5t\\sqrt{L}e^{-\\tilde C L/\\mu}/4 \\rfloor$ restartings have occurred; recursively applying Lemma 11 yields $f(X^{\\mathrm{sr}}(t))-f^\\star \\le (1-C\\mu/L)^m(f(x_0)-f^\\star) \\le c_1 e^{-c_2 t\\sqrt{L}}(f(x_0)-f^\\star)$, then bound by $L\\|x_0-x^\\star\\|^2/2$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP255.10",
+      "type": "proof",
+      "name": "Proof of Theorem 11 (composite ODE rate)",
+      "section": "Appendix C",
+      "parent_id": "TP255.11",
+      "proves": "TP255.11",
+      "statement": "Show the energy $\\mathcal{E}$ from the proof of Theorem 3 is monotonically decreasing despite non-differentiability: study $(\\mathcal{E}(t+\\Delta t)-\\mathcal{E}(t))/\\Delta t$ using local Lipschitzness of $f$ and Rockafellar's directional-derivative identity (Lemma 9).",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP255.1",
+      "type": "proof_step",
+      "parent_id": "PP255.3",
+      "step_order": 1,
+      "name": "Define energy functional $\\mathcal{E}(t)$",
+      "subclass": "introduce_variable",
+      "statement": "Set $\\mathcal{E}(t) = t^2(f(X(t))-f^\\star) + 2\\|X + t\\dot X/2 - x^\\star\\|^2$, viewed as a Lyapunov / negative-entropy functional.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP255.2",
+      "type": "proof_step",
+      "parent_id": "PP255.3",
+      "step_order": 2,
+      "name": "Differentiate and substitute the ODE",
+      "subclass": "algebraic_manipulation",
+      "statement": "Compute $\\dot{\\mathcal{E}} = 2t(f(X)-f^\\star) + t^2\\langle\\nabla f,\\dot X\\rangle + 4\\langle X + t\\dot X/2 - x^\\star, 3\\dot X/2 + t\\ddot X/2\\rangle$ and substitute $3\\dot X/2 + t\\ddot X/2 = -t\\nabla f(X)/2$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP255.3",
+      "type": "proof_step",
+      "parent_id": "PP255.3",
+      "step_order": 3,
+      "name": "Apply convexity to get $\\dot{\\mathcal{E}} \\le 0$",
+      "subclass": "bound_estimate",
+      "statement": "Simplification gives $\\dot{\\mathcal{E}} = 2t(f(X)-f^\\star) - 2t\\langle X-x^\\star,\\nabla f(X)\\rangle \\le 0$ by convexity of $f$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP255.4",
+      "type": "proof_step",
+      "parent_id": "PP255.3",
+      "step_order": 4,
+      "name": "Conclude via monotonicity",
+      "subclass": "conclude",
+      "statement": "From $\\mathcal{E}(t)\\le\\mathcal{E}(0)$ and the second term being non-negative, $f(X(t))-f^\\star \\le \\mathcal{E}(0)/t^2 = 2\\|x_0-x^\\star\\|^2/t^2$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP255.5",
+      "type": "proof_step",
+      "parent_id": "PP255.4",
+      "step_order": 1,
+      "name": "Define energy $\\mathcal{E}(t)$ for parameter $r$",
+      "subclass": "introduce_variable",
+      "statement": "Set $\\mathcal{E}(t) = \\frac{2t^2}{r-1}(f(X)-f^\\star) + (r-1)\\|X + t\\dot X/(r-1) - x^\\star\\|^2$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP255.6",
+      "type": "proof_step",
+      "parent_id": "PP255.4",
+      "step_order": 2,
+      "name": "Compute $\\dot{\\mathcal{E}}$ using $r\\dot X + t\\ddot X = -t\\nabla f$",
+      "subclass": "algebraic_manipulation",
+      "statement": "Substitute $r\\dot X + t\\ddot X = -t\\nabla f(X)$ and apply convexity to obtain $\\dot{\\mathcal{E}} \\le -\\frac{2(r-3)t}{r-1}(f(X)-f^\\star)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP255.7",
+      "type": "proof_step",
+      "parent_id": "PP255.4",
+      "step_order": 3,
+      "name": "Derive pointwise bound from monotonicity",
+      "subclass": "bound_estimate",
+      "statement": "Since $\\dot{\\mathcal{E}} \\le 0$ and $f(X)\\ge f^\\star$, $\\frac{2t^2}{r-1}(f(X)-f^\\star) \\le \\mathcal{E}(0) = (r-1)\\|x_0-x^\\star\\|^2$, giving the first inequality.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP255.8",
+      "type": "proof_step",
+      "parent_id": "PP255.4",
+      "step_order": 4,
+      "name": "Integrate to obtain integral bound",
+      "subclass": "conclude",
+      "statement": "Integrating the inequality $\\frac{2(r-3)t}{r-1}(f(X)-f^\\star) \\le -\\dot{\\mathcal{E}}$ from $0$ to $\\infty$ yields $\\int_0^\\infty t(f(X)-f^\\star)\\d t \\le (r-1)^2\\|x_0-x^\\star\\|^2/(2(r-3))$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP255.9",
+      "type": "proof_step",
+      "parent_id": "PP255.5",
+      "step_order": 1,
+      "name": "Define discrete energy $\\mathcal{E}(k)$",
+      "subclass": "introduce_variable",
+      "statement": "Set $\\mathcal{E}(k) = \\frac{2(k+r-2)^2 s}{r-1}(f(x_k)-f^\\star) + (r-1)\\|z_k-x^\\star\\|^2$ with $z_k = ((k+r-1)y_k - kx_k)/(r-1)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP255.10",
+      "type": "proof_step",
+      "parent_id": "PP255.5",
+      "step_order": 2,
+      "name": "Establish recursive inequality",
+      "subclass": "apply_lemma",
+      "statement": "Sum $\\frac{k-1}{k+r-2}\\times$\\eqref{eq:prox_ineq} at $(x_{k-1},y_{k-1})$ and $\\frac{r-1}{k+r-2}\\times$\\eqref{eq:prox_ineq} at $(x^\\star,y_{k-1})$ to derive $\\mathcal{E}(k) + \\frac{2s[(r-3)(k+r-2)+1]}{r-1}(f(x_{k-1})-f^\\star) \\le \\mathcal{E}(k-1)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP255.11",
+      "type": "proof_step",
+      "parent_id": "PP255.5",
+      "step_order": 3,
+      "name": "Telescope and conclude both inequalities",
+      "subclass": "conclude",
+      "statement": "Recursively summing the inequality and lower-bounding the LHS by $\\frac{2s(k+r-2)^2}{r-1}(f(x_k)-f^\\star)$ proves the first bound; taking $k\\to\\infty$ gives the second.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP255.12",
+      "type": "proof_step",
+      "parent_id": "PP255.7",
+      "step_order": 1,
+      "name": "Define $\\alpha$-energy $\\mathcal{E}(t;\\alpha)$",
+      "subclass": "introduce_variable",
+      "statement": "Set $\\mathcal{E}(t;\\alpha) = t^\\alpha(f(X)-f^\\star) + \\frac{(2r-\\alpha)^2 t^{\\alpha-2}}{8}\\|X + 2t\\dot X/(2r-\\alpha) - x^\\star\\|^2$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP255.13",
+      "type": "proof_step",
+      "parent_id": "PP255.7",
+      "step_order": 2,
+      "name": "Bound $\\dot{\\mathcal{E}}$ using strong convexity",
+      "subclass": "bound_estimate",
+      "statement": "Strong convexity bounds $\\langle X-x^\\star,\\nabla f(X)\\rangle$ from below; with $r \\ge 3\\alpha/2$, for $t\\ge t_\\alpha = \\sqrt{(\\alpha-2)(2r-\\alpha)/(2\\mu)}$, $\\dot{\\mathcal{E}} \\le \\frac{(\\alpha-2)(2r-\\alpha)t^{\\alpha-2}}{8}\\frac{\\d\\|X-x^\\star\\|^2}{\\d t}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP255.14",
+      "type": "proof_step",
+      "parent_id": "PP255.7",
+      "step_order": 3,
+      "name": "Base case $2<\\alpha\\le 4$",
+      "subclass": "case_split",
+      "statement": "Apply Theorem 5 to bound $\\|X(t)-x^\\star\\|^2$ via $f(X)-f^\\star$, derive bound on $\\mathcal{E}(t)$, then use $f-f^\\star \\le \\mathcal{E}(t)/t^\\alpha$ for $t\\ge t_\\alpha$ and Theorem 5 directly for $t<t_\\alpha$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP255.15",
+      "type": "proof_step",
+      "parent_id": "PP255.7",
+      "step_order": 4,
+      "name": "Inductive step $\\alpha = \\tilde\\alpha + 1$",
+      "subclass": "induction_step",
+      "statement": "Assume bound holds at $\\tilde\\alpha$, plug into the derivative inequality for $\\mathcal{E}(t;\\alpha)$, and verify the bound at $\\alpha$ provided $r \\ge 3\\alpha/2$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP255.16",
+      "type": "proof_step",
+      "parent_id": "PP255.9",
+      "step_order": 1,
+      "name": "Lower bound on number of restarts at time $t$",
+      "subclass": "apply_lemma",
+      "statement": "By Lemma 12, by time $t$ at least $m = \\lfloor 5t\\sqrt{L} e^{-\\tilde C L/\\mu}/4 \\rfloor$ restartings have occurred for $X^{\\mathrm{sr}}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP255.17",
+      "type": "proof_step",
+      "parent_id": "PP255.9",
+      "step_order": 2,
+      "name": "Recursive constant-factor decay",
+      "subclass": "apply_lemma",
+      "statement": "Applying Lemma 11 across $m$ restarts gives $f(X^{\\mathrm{sr}}(t))-f^\\star \\le (1-C\\mu/L)^m (f(x_0)-f^\\star)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP255.18",
+      "type": "proof_step",
+      "parent_id": "PP255.9",
+      "step_order": 3,
+      "name": "Convert to exponential and to $\\|x_0-x^\\star\\|^2$ bound",
+      "subclass": "conclude",
+      "statement": "Using $(1-C\\mu/L)^m \\le e^{-C\\mu m/L}$ gives $c_1 e^{-c_2 t\\sqrt{L}}(f(x_0)-f^\\star)$, then bound $f(x_0)-f^\\star \\le L\\|x_0-x^\\star\\|^2/2$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP255.19",
+      "type": "proof_step",
+      "parent_id": "PP255.10",
+      "step_order": 1,
+      "name": "Reduce to monotonicity of $\\mathcal{E}$",
+      "subclass": "setup",
+      "statement": "It suffices to show the same energy $\\mathcal{E}$ from the smooth proof is monotonically decreasing; since $\\mathcal{E}$ may not be differentiable, study $(\\mathcal{E}(t+\\Delta t)-\\mathcal{E}(t))/\\Delta t$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP255.20",
+      "type": "proof_step",
+      "parent_id": "PP255.10",
+      "step_order": 2,
+      "name": "Expand the differentiable second term",
+      "subclass": "algebraic_manipulation",
+      "statement": "Differentiate $2\\|X + t\\dot X/2 - x^\\star\\|^2$ to get $4\\langle X + t\\dot X/2 - x^\\star, 3\\dot X/2 + t\\ddot X/2\\rangle$, and substitute the ODE $\\ddot X + (3/t)\\dot X + G(X,\\dot X) = 0$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP255.21",
+      "type": "proof_step",
+      "parent_id": "PP255.10",
+      "step_order": 3,
+      "name": "Use Rockafellar's directional formula on first term",
+      "subclass": "apply_lemma",
+      "statement": "By Lemma 9 (Rockafellar), $f(X + \\Delta t\\dot X) = f(X) + \\Delta t\\langle\\dot X, G(X,\\dot X)\\rangle + o(\\Delta t)$, controlling $f(X(t+\\Delta t))$ to first order.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP255.22",
+      "type": "proof_step",
+      "parent_id": "PP255.10",
+      "step_order": 4,
+      "name": "Combine via convexity, conclude monotonicity",
+      "subclass": "conclude",
+      "statement": "Combining gives $\\mathcal{E}(t+\\Delta t)-\\mathcal{E}(t) \\le 2t(f(X)-f^\\star)\\Delta t - 2t\\langle X-x^\\star, G\\rangle\\Delta t + o(\\Delta t) \\le o(\\Delta t)$ by convexity, so $\\mathcal{E}$ is non-increasing and $f(X(t))-f^\\star \\le 2\\|x_0-x^\\star\\|^2/t^2$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP255.1",
+      "type": "algorithm_step",
+      "parent_id": "AP255.3",
+      "step_order": 1,
+      "name": "Initialize iterates and counter",
+      "subclass": "initialize",
+      "statement": "Set $y_0 = x_0$, $x_{-1} = x_0$, restart counter $j \\gets 1$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP255.2",
+      "type": "algorithm_step",
+      "parent_id": "AP255.3",
+      "step_order": 2,
+      "name": "Outer loop over $k = 1$ to $k_{\\max}$",
+      "subclass": "loop",
+      "statement": "For $k = 1, \\ldots, k_{\\max}$: perform proximal Nesterov step using counter $j$, then test the speed-restart criterion and update $j$ accordingly.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP255.3",
+      "type": "algorithm_step",
+      "parent_id": "AP255.3",
+      "step_order": 3,
+      "name": "Proximal-gradient update for $x_k$",
+      "subclass": "update",
+      "statement": "$x_k \\gets \\arg\\min_x (\\tfrac{1}{2s}\\|x - y_{k-1} + s\\nabla g(y_{k-1})\\|^2 + h(x))$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP255.4",
+      "type": "algorithm_step",
+      "parent_id": "AP255.3",
+      "step_order": 4,
+      "name": "Momentum extrapolation using counter $j$",
+      "subclass": "update",
+      "statement": "$y_k \\gets x_k + \\frac{j-1}{j+2}(x_k - x_{k-1})$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP255.5",
+      "type": "algorithm_step",
+      "parent_id": "AP255.3",
+      "step_order": 5,
+      "name": "Speed-restart test and counter update",
+      "subclass": "branch",
+      "statement": "If $\\|x_k - x_{k-1}\\| < \\|x_{k-1}-x_{k-2}\\|$ and $j \\ge k_{\\min}$ then $j \\gets 1$, else $j \\gets j+1$.",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "DP255.1", "target": "DP255.2", "type": "uses"},
+    {"source": "DP255.1", "target": "DP255.3", "type": "uses"},
+    {"source": "DP255.1", "target": "AP255.1", "type": "uses"},
+    {"source": "DP255.3", "target": "TP255.1", "type": "uses"},
+    {"source": "DP255.3", "target": "TP255.2", "type": "uses"},
+    {"source": "DP255.3", "target": "TP255.3", "type": "uses"},
+    {"source": "DP255.3", "target": "TP255.5", "type": "uses"},
+    {"source": "DP255.2", "target": "TP255.4", "type": "uses"},
+    {"source": "DP255.2", "target": "TP255.8", "type": "uses"},
+    {"source": "DP255.2", "target": "TP255.9", "type": "uses"},
+    {"source": "DP255.2", "target": "TP255.10", "type": "uses"},
+    {"source": "DP255.4", "target": "AP255.2", "type": "uses"},
+    {"source": "DP255.4", "target": "TP255.6", "type": "uses"},
+    {"source": "DP255.5", "target": "EP255.5", "type": "uses"},
+    {"source": "DP255.5", "target": "TP255.11", "type": "uses"},
+    {"source": "DP255.6", "target": "EP255.4", "type": "uses"},
+    {"source": "DP255.6", "target": "AP255.3", "type": "uses"},
+    {"source": "DP255.6", "target": "TP255.10", "type": "uses"},
+    {"source": "AP255.1", "target": "EP255.1", "type": "uses"},
+    {"source": "EP255.1", "target": "TP255.1", "type": "uses"},
+    {"source": "EP255.1", "target": "TP255.2", "type": "uses"},
+    {"source": "EP255.1", "target": "TP255.3", "type": "uses"},
+    {"source": "EP255.2", "target": "TP255.5", "type": "uses"},
+    {"source": "EP255.2", "target": "TP255.7", "type": "uses"},
+    {"source": "EP255.2", "target": "TP255.8", "type": "uses"},
+    {"source": "EP255.2", "target": "AP255.2", "type": "uses"},
+    {"source": "EP255.3", "target": "AP255.4", "type": "uses"},
+    {"source": "EP255.3", "target": "LP255.1", "type": "uses"},
+    {"source": "EP255.3", "target": "LP255.2", "type": "uses"},
+    {"source": "EP255.3", "target": "LP255.4", "type": "uses"},
+    {"source": "EP255.3", "target": "LP255.8", "type": "uses"},
+    {"source": "EP255.4", "target": "TP255.10", "type": "uses"},
+    {"source": "EP255.5", "target": "TP255.11", "type": "uses"},
+    {"source": "TP255.1", "target": "TP255.3", "type": "uses"},
+    {"source": "TP255.1", "target": "TP255.5", "type": "uses"},
+    {"source": "TP255.1", "target": "TP255.10", "type": "uses"},
+    {"source": "LP255.1", "target": "TP255.1", "type": "uses"},
+    {"source": "LP255.6", "target": "TP255.1", "type": "uses"},
+    {"source": "LP255.2", "target": "LP255.4", "type": "uses"},
+    {"source": "LP255.3", "target": "LP255.2", "type": "uses"},
+    {"source": "LP255.3", "target": "LP255.4", "type": "uses"},
+    {"source": "LP255.4", "target": "LP255.5", "type": "uses"},
+    {"source": "LP255.2", "target": "LP255.5", "type": "uses"},
+    {"source": "LP255.5", "target": "LP255.1", "type": "uses"},
+    {"source": "LP255.7", "target": "LP255.6", "type": "uses"},
+    {"source": "LP255.8", "target": "TP255.2", "type": "uses"},
+    {"source": "LP255.9", "target": "TP255.11", "type": "uses"},
+    {"source": "LP255.10", "target": "LP255.11", "type": "uses"},
+    {"source": "LP255.10", "target": "LP255.13", "type": "uses"},
+    {"source": "LP255.13", "target": "LP255.11", "type": "uses"},
+    {"source": "LP255.11", "target": "TP255.10", "type": "uses"},
+    {"source": "LP255.12", "target": "TP255.10", "type": "uses"},
+    {"source": "TP255.5", "target": "TP255.6", "type": "uses"},
+    {"source": "TP255.5", "target": "TP255.8", "type": "uses"},
+    {"source": "TP255.5", "target": "TP255.9", "type": "uses"},
+    {"source": "TP255.6", "target": "TP255.9", "type": "uses"},
+    {"source": "TP255.8", "target": "RP255.6", "type": "uses"},
+    {"source": "AP255.1", "target": "ProbP255.1", "type": "uses"},
+    {"source": "AP255.2", "target": "ProbP255.2", "type": "uses"},
+    {"source": "AP255.3", "target": "ProbP255.2", "type": "uses"},
+    {"source": "AP255.1", "target": "ExP255.1", "type": "illustrates"},
+    {"source": "AP255.1", "target": "ExP255.4", "type": "illustrates"},
+    {"source": "AP255.2", "target": "ExP255.2", "type": "illustrates"},
+    {"source": "AP255.2", "target": "ExP255.3", "type": "illustrates"},
+    {"source": "AP255.2", "target": "ExP255.5", "type": "illustrates"},
+    {"source": "AP255.3", "target": "ExP255.6", "type": "illustrates"},
+    {"source": "EP255.5", "target": "ExP255.7", "type": "illustrates"},
+    {"source": "EP255.1", "target": "ExP255.1", "type": "illustrates"},
+    {"source": "EP255.2", "target": "ExP255.2", "type": "illustrates"},
+    {"source": "EP255.2", "target": "ExP255.3", "type": "illustrates"},
+    {"source": "PP255.1", "target": "TP255.1", "type": "proves"},
+    {"source": "PP255.2", "target": "TP255.2", "type": "proves"},
+    {"source": "PP255.3", "target": "TP255.3", "type": "proves"},
+    {"source": "PP255.4", "target": "TP255.5", "type": "proves"},
+    {"source": "PP255.5", "target": "TP255.6", "type": "proves"},
+    {"source": "PP255.6", "target": "TP255.7", "type": "proves"},
+    {"source": "PP255.7", "target": "TP255.8", "type": "proves"},
+    {"source": "PP255.8", "target": "TP255.9", "type": "proves"},
+    {"source": "PP255.9", "target": "TP255.10", "type": "proves"},
+    {"source": "PP255.10", "target": "TP255.11", "type": "proves"},
+    {"source": "AP255.2", "target": "RP255.1", "type": "uses"},
+    {"source": "EP255.2", "target": "RP255.1", "type": "uses"},
+    {"source": "AP255.3", "target": "OpenP255.1", "type": "resolves"},
+    {"source": "PSP255.1", "target": "PSP255.2", "type": "uses"},
+    {"source": "PSP255.2", "target": "PSP255.3", "type": "uses"},
+    {"source": "PSP255.3", "target": "PSP255.4", "type": "uses"},
+    {"source": "PSP255.5", "target": "PSP255.6", "type": "uses"},
+    {"source": "PSP255.6", "target": "PSP255.7", "type": "uses"},
+    {"source": "PSP255.7", "target": "PSP255.8", "type": "uses"},
+    {"source": "PSP255.9", "target": "PSP255.10", "type": "uses"},
+    {"source": "PSP255.10", "target": "PSP255.11", "type": "uses"},
+    {"source": "PSP255.12", "target": "PSP255.13", "type": "uses"},
+    {"source": "PSP255.13", "target": "PSP255.14", "type": "uses"},
+    {"source": "PSP255.14", "target": "PSP255.15", "type": "uses"},
+    {"source": "PSP255.16", "target": "PSP255.17", "type": "uses"},
+    {"source": "PSP255.17", "target": "PSP255.18", "type": "uses"},
+    {"source": "PSP255.19", "target": "PSP255.20", "type": "uses"},
+    {"source": "PSP255.20", "target": "PSP255.21", "type": "uses"},
+    {"source": "PSP255.21", "target": "PSP255.22", "type": "uses"},
+    {"source": "ASP255.1", "target": "ASP255.2", "type": "uses"},
+    {"source": "ASP255.2", "target": "ASP255.3", "type": "uses"},
+    {"source": "ASP255.3", "target": "ASP255.4", "type": "uses"},
+    {"source": "ASP255.4", "target": "ASP255.5", "type": "uses"}
+  ]
+}

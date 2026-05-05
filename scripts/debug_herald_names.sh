@@ -3,9 +3,9 @@
 # Herald statements: 579K entries but only 11K match LeanDojo (1.96%)
 # Herald proofs: 44.5K entries and 40K match (90.5%)
 
-source /sci/labs/orzuk/orzuk/authomathics-venv/bin/activate
+source /<cluster>/<user>/authomathics-venv/bin/activate
 
-DATA_DIR=/sci/labs/orzuk/orzuk/projects/Authomathics
+DATA_DIR=/<cluster>/<user>/projects/Authomathics
 
 python3 << 'PYEOF'
 import json
@@ -13,7 +13,7 @@ import re
 import os
 from collections import defaultdict
 
-DATA_DIR = os.environ.get('DATA_DIR', '/sci/labs/orzuk/orzuk/projects/Authomathics')
+DATA_DIR = os.environ.get('DATA_DIR', '/<cluster>/<user>/projects/Authomathics')
 
 # Load LeanDojo names
 print("Loading LeanDojo names...")

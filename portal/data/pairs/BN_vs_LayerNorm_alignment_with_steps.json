@@ -1,0 +1,257 @@
+{
+  "metadata": {
+    "alignment_name": "BN_vs_LayerNorm",
+    "paper_a": {
+      "arxiv_id": "1502.03167",
+      "title": "Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift"
+    },
+    "paper_b": {
+      "arxiv_id": "1607.06450",
+      "title": "Layer Normalization"
+    },
+    "relation_type": "EXT",
+    "annotator": "Claude (claude-opus-4-7-silver-with-steps)",
+    "scheme_version": "with_steps_v2",
+    "description": "Layer Normalization (paper B) is an extension/variant of Batch Normalization (paper A): it keeps the same mean/variance standardization plus learnable affine restoration template, but reduces the normalization statistics across the feature dimension of a single example rather than across the mini-batch dimension. This removes BN's mini-batch dependence and yields identical train/test computation, enabling RNN and small-batch use. Paper B explicitly cites BN, derives a shared 'common normalization form' that subsumes both, and contrasts their invariance and Riemannian-geometry properties."
+  },
+  "matches": [
+    {
+      "paper_a_nodes": ["DP218.1"],
+      "paper_b_nodes": ["ProbP219.1"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "BN paper defines 'Internal Covariate Shift' as the motivating phenomenon (a definition node); LN paper folds the same motivation into its problem statement of 'reducing covariate shift / training time in deep networks' but adds the small-batch / RNN regime as part of the problem. Same conceptual driver, different node types (definition vs problem)."
+    },
+    {
+      "paper_a_nodes": ["ProbP218.2"],
+      "paper_b_nodes": ["ProbP219.1"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "Both papers state the design problem of finding a differentiable normalization that does not require global dataset statistics every update. LN extends the problem scope to the small-batch and online (batch-size-1) regimes where BN is impractical."
+    },
+    {
+      "paper_a_nodes": ["ProbP218.1"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "BN's explicit SGD loss-minimization problem statement has no counterpart in the LN paper, which assumes the standard supervised training setup without re-stating it as a node."
+    },
+    {
+      "paper_a_nodes": ["DP218.5"],
+      "paper_b_nodes": ["DP219.3"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "Both define a per-coordinate (mean,std) standardization $\\widehat{x} = (x - \\mu)/\\sigma$. BN takes the moments across the mini-batch dimension (one $(\\mu,\\sigma)$ per feature, statistics over $m$ examples); LN takes the moments across the feature dimension at one example (one $(\\mu,\\sigma)$ per example, statistics over $H$ units). Same standardization template, orthogonal axis of aggregation — the central EXT axis of this pair."
+    },
+    {
+      "paper_a_nodes": ["DP218.6"],
+      "paper_b_nodes": ["DP219.4"],
+      "match_type": "exact",
+      "confidence": "high",
+      "explanation": "Both define the learnable affine restoration applied after standardization: $y = \\gamma \\widehat{x} + \\beta$ in BN and $LN(z;\\alpha,\\beta) = ((z-\\mu)/\\sigma)\\odot\\alpha + \\beta$ in LN, with the gain/bias playing identical roles ($\\gamma\\leftrightarrow\\alpha$, $\\beta\\leftrightarrow\\beta$) so the operator can in principle recover the identity."
+    },
+    {
+      "paper_a_nodes": ["DP218.7"],
+      "paper_b_nodes": ["DP219.4", "AP219.1"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "BN defines the full 'BatchNorm transform' as 'standardize-across-batch then affine'; LN's analogue is the LN operator (definition + algorithm) which composes 'standardize-across-features then affine'. Composite vs composite, with the only mathematical difference being the axis of aggregation of $(\\mu,\\sigma)$."
+    },
+    {
+      "paper_a_nodes": ["DP218.4"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "BN's $\\Norm(\\vx,\\setX)$ abstraction (a normalization that depends on the whole training set) is the conceptual foil that motivates BN's mini-batch shortcut. LN does not introduce this abstract object — it goes directly to the per-example single-layer formula — so there is no counterpart node."
+    },
+    {
+      "paper_a_nodes": ["DP218.9"],
+      "paper_b_nodes": ["RP219.3"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "BN must define a separate inference rule using population statistics ($\\E[x],\\Var[x]$) to remove the batch dependence at test time. LN's analogue is the remark that 'layer normalization performs exactly the same computation at training and test time', i.e. the inference issue dissolves precisely because LN's statistics are per-example. The cross-type (definition $\\to$ remark) match is justified because the LN paper consciously presents LN's lack of a separate inference rule as the contrast to BN."
+    },
+    {
+      "paper_a_nodes": ["DP218.8"],
+      "paper_b_nodes": ["ExP219.7"],
+      "match_type": "analogous",
+      "confidence": "medium",
+      "explanation": "BN gives a clean convolutional rule (per feature-map BN, one $(\\gamma,\\beta)$ per channel). LN's only counterpart on the convnet side is the negative-result example noting that LN underperforms BN on convnets because boundary-receptive-field units have different statistics. Both speak to ConvNet adaptation; in BN this is a fully worked design, in LN it is an empirical caveat — hence analogous, medium confidence."
+    },
+    {
+      "paper_a_nodes": ["AP218.1"],
+      "paper_b_nodes": ["AP219.1"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "Both algorithms follow the same four-line pseudocode template (compute mean, compute variance, standardize, scale-and-shift). The only difference is the axis of summation: BN sums over $i=1..m$ mini-batch examples (with $\\epsilon$ for numerical stability); LN sums over $i=1..D$ feature coordinates of one example. Same algorithm shape, swapped axis."
+    },
+    {
+      "paper_a_nodes": ["ASP218.1", "ASP218.2", "ASP218.3", "ASP218.4"],
+      "paper_b_nodes": ["ASP219.1", "ASP219.2", "ASP219.3"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "Composite L2 alignment that accompanies the parent AP218.1 ↔ AP219.1 match. BN's four steps (mean, variance, normalize, scale-and-shift) correspond to LN's three steps (mean, std, single combined scale-shift-and-return). The merger of the last two BN steps into one LN return is a presentation difference; mathematically the same per-step operations apply, with the sum range changed from $i=1..m$ (batch) to $i=1..D$ (features)."
+    },
+    {
+      "paper_a_nodes": ["AP218.2"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "BN's 'Training a Batch-Normalized Network' procedure (insert BN modules, train, then freeze with population stats and replace each BN by a fixed linear transform) has no LN analogue: LN does not require any train/test transform swap because its statistics are per-example. This is precisely the asymmetry that motivates LN."
+    },
+    {
+      "paper_a_nodes": ["ASP218.5", "ASP218.6", "ASP218.7", "ASP218.8", "ASP218.9", "ASP218.10"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Composite L2 entry recording that all six steps of BN's training-network construction (population-statistics estimation and replacement of BN with a fixed linear transform at inference) are absent in LN. Listed explicitly because they constitute a substantial chunk of BN's contribution that LN intentionally drops."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["AP219.2"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Layer-normalized LSTM is a paper-original LN contribution with no BN counterpart. BN is described only for feed-forward / conv networks; the recurrent application is one of LN's headline extensions enabled by per-example statistics."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["AP219.3"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Layer-normalized GRU; same rationale as the LN-LSTM — RNN-side application uniquely enabled by LN."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["AP219.4"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Layer-normalized DRAW LSTM — paper-original recurrent generative model variant with no BN analogue."
+    },
+    {
+      "paper_a_nodes": ["EP218.1"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "BN's explicit backprop chain rule equation has no LN counterpart node. LN does not present a written-out backprop derivation in the extracted graph; the gradients are presumably analogous (same formulas with the sum index changed from batch to features) but the LN paper does not surface this as a node."
+    },
+    {
+      "paper_a_nodes": ["PP218.1", "PSP218.1", "PSP218.2", "PSP218.3", "PSP218.4", "PSP218.5"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "Composite entry: BN's full backprop derivation (proof + 5 proof_steps) has no LN counterpart. Recorded jointly so the parent-first rule is honored even though no LN analogue exists."
+    },
+    {
+      "paper_a_nodes": ["EP218.2", "PrP218.1"],
+      "paper_b_nodes": ["PrP219.1"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "Both papers prove a weight-rescaling invariance proposition for their normalization. BN's PrP218.1: $\\BatchNorm(W\\vu) = \\BatchNorm((aW)\\vu)$ for scalar $a$ (with the supporting equation EP218.2). LN's PrP219.1: $h$ is invariant to $W' = \\delta W + \\mathbf{1}\\gamma^\\T$, i.e. scaling AND row-additive shift. LN's invariance is strictly stronger (re-centering is added) — a clean EXT-style enrichment. The Jacobian-scaling consequences ($\\partial / \\partial W$ scales as $1/a$) are present in BN but only implicit in LN."
+    },
+    {
+      "paper_a_nodes": ["PP218.3"],
+      "paper_b_nodes": ["PSP219.1", "PSP219.2", "PSP219.3"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "Parent-skipped composite: BN's scale-invariance proof PP218.3 (mean scales by $a$, variance by $a^2$, ratio cancels) corresponds directly to LN's three proof_steps for PrP219.1 (substitute $W' = \\delta W + \\mathbf{1}\\gamma^\\T$; show $\\mu' = \\delta\\mu + \\gamma^\\T x$, $\\sigma' = \\delta\\sigma$; cancel $\\delta$ and the constant shift). Same algebraic cancellation pattern, with LN handling the additional re-centering term."
+    },
+    {
+      "paper_a_nodes": ["PSP218.6", "PSP218.7", "PSP218.8"],
+      "paper_b_nodes": ["PSP219.1", "PSP219.2", "PSP219.3"],
+      "match_type": "analogous",
+      "confidence": "medium",
+      "explanation": "Composite L2-step alignment under the matched scale-invariance proofs. BN steps: (mean/variance scale with $a$) → (equate BN outputs) → (Jacobian identities). LN steps: (substitute transformed weights) → (new $\\mu',\\sigma'$ under $\\delta,\\gamma$) → (cancel $\\delta$ and constant). Same skeleton; LN omits the Jacobian-scaling corollary, BN omits the re-centering term."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["PrP219.2", "PSP219.4", "PSP219.5"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "LN's per-example input-rescaling invariance proposition (with its two proof steps) has no BN analogue: BN normalizes across the batch, so per-example input rescaling is NOT an invariance of BN. This is one of LN's distinguishing properties (Table 1)."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["PrP219.3"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "LN's invariance summary table (Prop. 3) explicitly compares BN, weight-norm, and LN across six transformations. As a comparison-table proposition, it is paper-B-original; BN paper has no analogous summary node."
+    },
+    {
+      "paper_a_nodes": ["DP218.7", "AP218.1"],
+      "paper_b_nodes": ["EP219.1"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "LN's EP219.1 'common normalization form' $h_i = f(\\frac{g_i}{\\sigma_i}(a_i - \\mu_i) + b_i)$ is the abstraction that subsumes BN, weight-norm, and LN under one equation, parameterized by the scheme-specific $(\\mu_i,\\sigma_i)$. BN's BatchNorm transform (DP218.7 + AP218.1) is the BN-specific instantiation of this form — strong evidence for the EXT relation."
+    },
+    {
+      "paper_a_nodes": ["ClP218.1", "PP218.2"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "BN's identity-recoverability claim and its proof are not stated as a node in LN, even though the same property follows trivially from $LN$'s gain/bias parameterization. Marked none because LN does not surface it."
+    },
+    {
+      "paper_a_nodes": ["ClP218.2"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "BN's claim that the standardized $\\widehat{x}$ have empirical mean 0 and unit variance has no explicit LN counterpart node, although it would follow with the sum index swapped. Recorded as none because LN does not assert it as a separate claim."
+    },
+    {
+      "paper_a_nodes": ["CnjP218.1", "PP218.4", "PSP218.9", "PSP218.10", "PSP218.11"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "BN's conjecture that BN drives layer Jacobian singular values toward 1 (with its proof and three proof_steps) has no LN counterpart. LN's Riemannian-geometry analysis (DP219.7-9, ClP219.1-2) addresses a different question (Fisher information / implicit learning-rate reduction)."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP219.6", "DP219.7", "DP219.8", "DP219.9"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "LN's GLM / Fisher information / normalized-GLM Fisher framework is paper-B-original analysis with no BN counterpart. BN does not perform a Riemannian geometric analysis. Composite none entry covering DP219.6-DP219.9."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["ClP219.1"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "LN's 'implicit learning-rate reduction via weight-norm growth' claim (Fisher block scales as $1/\\|w_i\\|$) is paper-B-original, derived from the normalized-GLM Fisher analysis. BN paper makes no such formal claim."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["ClP219.2"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "LN's claim that the gain-direction Riemannian metric depends only on prediction error (not input scale) is paper-B-original Fisher-geometric analysis, no BN analogue."
+    },
+    {
+      "paper_a_nodes": ["RP218.2"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "BN's regularization remark (output is non-deterministic for a given input because each example is normalized with its mini-batch, so Dropout can be reduced) is BN-specific; the analogous non-determinism vanishes under LN since each example is normalized independently. Skipped per compactness rule for `remark`-type nodes — included only because it is conceptually load-bearing for the EXT story."
+    },
+    {
+      "paper_a_nodes": ["DP218.2", "DP218.3"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "BN's external-origin definitions (Covariate Shift from Shimodaira 2000; Whitening from LeCun et al.) are not cited in the LN extraction. External-vs-external alignment skipped per origin-aware rule."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP219.1"],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "LN's background definition of the feed-forward layer ($a^l_i = w_i^{l\\T} h^l$, $h^{l+1}_i = f(a^l_i + b^l_i)$) is set-up notation with no node-level counterpart in BN; BN works inline with the same setup but does not promote it to a definition node."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP219.5"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "LN's recurrent-layer instantiation (apply LN at each time step inside an RNN) is paper-B-original; BN does not address recurrent layers. This is one of LN's headline extensions enabled by per-example statistics."
+    }
+  ]
+}

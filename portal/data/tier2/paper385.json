@@ -1,0 +1,375 @@
+{
+  "metadata": {
+    "title": "Equation of State Calculations by Fast Computing Machines",
+    "authors": "Nicholas Metropolis, Arianna W. Rosenbluth, Marshall N. Rosenbluth, Augusta H. Teller, Edward Teller",
+    "year": 1953,
+    "paper_num": 385,
+    "bid": "paper385",
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-03",
+    "source_note": "Extracted from PDF->text fallback; .tex source not available. Math fidelity reduced.",
+    "registry_mismatch_note": "PDF first-page title and authors match metadata.json (Metropolis et al. 1953)."
+  },
+  "nodes": [
+    {
+      "id": "ProbP385.1",
+      "type": "problem",
+      "subclass": "computation",
+      "name": "Equation of state via canonical-ensemble integration",
+      "section": "II",
+      "statement": "Compute the canonical-ensemble equilibrium average $F = \\frac{\\int F \\exp(-E/kT)\\, d^{2N}p\\, d^{2N}q}{\\int \\exp(-E/kT)\\, d^{2N}p\\, d^{2N}q}$ for a system of $N$ interacting particles with two-body potential $V$.",
+      "statement_clean": "Evaluate equilibrium averages of observables in the canonical ensemble for an N-particle interacting system, in order to determine the equation of state.",
+      "origin": "paper",
+      "tags": ["statistical_mechanics", "high_dimensional_integration"]
+    },
+    {
+      "id": "DP385.1",
+      "type": "definition",
+      "name": "Periodic boundary conditions and minimum distance $d_{AB}$",
+      "section": "II",
+      "statement": "The simulation cell is a square containing $N$ particles, replicated periodically. The minimum distance $d_{AB}$ between particles $A$ and $B$ is the shortest distance between $A$ and any periodic image of $B$.",
+      "statement_clean": "Defines a periodically replicated square cell and the minimum-image convention for inter-particle distances.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP385.2",
+      "type": "definition",
+      "name": "Total potential energy",
+      "section": "II",
+      "statement": "$E = \\tfrac{1}{2} \\sum_{i=1}^{N} \\sum_{\\substack{j=1\\\\ j\\neq i}}^{N} V(d_{ij})$, where $V$ is the pair potential and $d_{ij}$ the minimum-image distance.",
+      "statement_clean": "Pairwise potential energy of the N-particle configuration using the minimum-image distances.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP385.3",
+      "type": "definition",
+      "name": "Canonical ensemble average",
+      "section": "II",
+      "statement": "$F = \\left[\\int F\\,\\exp(-E/kT)\\, d^{2N}p\\, d^{2N}q\\right] / \\left[\\int \\exp(-E/kT)\\, d^{2N}p\\, d^{2N}q\\right]$.",
+      "statement_clean": "Equilibrium expectation of property F as a Boltzmann-weighted phase-space integral.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP385.4",
+      "type": "definition",
+      "name": "Trial move (proposal)",
+      "section": "II",
+      "statement": "Each particle is moved by $X \\to X + \\alpha \\xi_1$, $Y \\to Y + \\alpha \\xi_2$, where $\\alpha$ is the maximum displacement and $\\xi_1,\\xi_2$ are independent random numbers in $(-1,1)$.",
+      "statement_clean": "A proposed move displaces a particle uniformly within a square of side $2\\alpha$ centred on its current position.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP385.5",
+      "type": "definition",
+      "name": "Sample average over moves",
+      "section": "II",
+      "statement": "$F = (1/M) \\sum_{j=1}^{M} F_j$, where $F_j$ is the value of $F$ after the $j$th attempted move (whether accepted or not).",
+      "statement_clean": "Estimator of the ensemble average as the arithmetic mean of the observable along the generated chain.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP385.6",
+      "type": "definition",
+      "name": "Radial distribution count $N_m$",
+      "section": "III.B",
+      "statement": "Divide the annulus between $\\pi d_0^2$ and $K^2 \\pi d_0^2$ into 64 zones of equal area $\\Delta A^2$, and let $N_m$ count the pairs of particles whose squared separation $r^2$ lies in zone $m$ ($m=1,\\dots,64$).",
+      "statement_clean": "Histogram of pair separations used to estimate the radial distribution function.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP385.7",
+      "type": "definition",
+      "name": "Cluster integral $A_{i,k}$",
+      "section": "V",
+      "statement": "$A_{i,k}$ is the cluster integral over configuration space of $i$ particles connected by $k$ overlap bonds (a bond between $i,j$ if $r_{ij} < d$); primes distinguish topologically different bond patterns of the same $(i,k)$.",
+      "statement_clean": "Combinatorial integrals over particle configurations weighted by overlap-bond indicators, used in the virial expansion.",
+      "origin": "paper"
+    },
+    {
+      "id": "AssumP385.1",
+      "type": "assumption",
+      "name": "Standing assumptions",
+      "section": "I",
+      "statement": "Classical statistics; only two-body forces; spherically symmetric molecular potential; finite $N$ (up to several hundred); periodic boundary conditions.",
+      "statement_clean": "Lists the modeling assumptions under which the method and analysis are presented.",
+      "origin": "paper"
+    },
+    {
+      "id": "AP385.1",
+      "type": "algorithm",
+      "subclass": "iterative",
+      "name": "Metropolis Monte Carlo algorithm",
+      "section": "II",
+      "statement": "Markov-chain Monte Carlo sampler that generates configurations distributed as $\\exp(-E/kT)$ by proposing random local moves and accepting them with probability $\\min(1, \\exp(-\\Delta E / kT))$.",
+      "statement_clean": "Iterative sampling scheme that draws configurations from the Boltzmann distribution by proposing local moves and accepting with the Metropolis criterion.",
+      "input": [
+        "Number of particles $N$",
+        "Initial configuration (e.g. regular lattice)",
+        "Pair potential $V$ and temperature $T$",
+        "Maximum displacement $\\alpha$",
+        "Number of cycles / moves $M$"
+      ],
+      "output": [
+        "Sequence of configurations approximately distributed as $\\exp(-E/kT)$",
+        "Estimator $F = (1/M) \\sum_{j=1}^{M} F_j$ of any observable $F$"
+      ],
+      "pseudocode": "Initialize particles in a configuration. For each cycle, attempt to move each particle in turn: draw $\\xi_1,\\xi_2 \\in (-1,1)$ and propose $X' = X + \\alpha\\xi_1$, $Y' = Y + \\alpha\\xi_2$ (with periodic wrap). Compute $\\Delta E$. If $\\Delta E \\leq 0$, accept. Otherwise draw $\\xi_3 \\in (0,1)$; accept if $\\xi_3 < \\exp(-\\Delta E / kT)$, else reject and keep the old position. In either case, count the (new or old) configuration in the running average $F = (1/M) \\sum_j F_j$.",
+      "origin": "paper",
+      "tags": ["iterative", "monte_carlo", "markov_chain"]
+    },
+    {
+      "id": "ASP385.1",
+      "type": "algorithm_step",
+      "parent_id": "AP385.1",
+      "step_order": 1,
+      "subclass": "initialize",
+      "name": "Initialize configuration",
+      "section": "II",
+      "statement": "Place the $N$ particles in some configuration (e.g. a regular lattice such as the trigonal lattice of Fig. 2)."
+    },
+    {
+      "id": "ASP385.2",
+      "type": "algorithm_step",
+      "parent_id": "AP385.1",
+      "step_order": 2,
+      "subclass": "loop",
+      "name": "Sweep over particles",
+      "section": "II",
+      "statement": "Iterate over particles $i = 1, \\dots, N$; for each, perform a trial move and acceptance test (steps 3-5), then move on to the next particle."
+    },
+    {
+      "id": "ASP385.3",
+      "type": "algorithm_step",
+      "parent_id": "AP385.1",
+      "step_order": 3,
+      "subclass": "update",
+      "name": "Propose displacement",
+      "section": "II",
+      "statement": "Draw random $\\xi_1, \\xi_2 \\in (-1, 1)$ and set $X \\to X + \\alpha\\xi_1$, $Y \\to Y + \\alpha\\xi_2$. Wrap into the square via the periodicity assumption if necessary."
+    },
+    {
+      "id": "ASP385.4",
+      "type": "algorithm_step",
+      "parent_id": "AP385.1",
+      "step_order": 4,
+      "subclass": "branch",
+      "name": "Metropolis acceptance test",
+      "section": "II",
+      "statement": "Compute $\\Delta E$. If $\\Delta E < 0$, accept the move. Otherwise draw $\\xi_3 \\in (0,1)$: accept if $\\xi_3 < \\exp(-\\Delta E / kT)$; else reject and restore the old position."
+    },
+    {
+      "id": "ASP385.5",
+      "type": "algorithm_step",
+      "parent_id": "AP385.1",
+      "step_order": 5,
+      "subclass": "update",
+      "name": "Update running averages",
+      "section": "II",
+      "statement": "Whether the move was accepted or not, treat the (new or restored) configuration as a new sample and add $F$ at this configuration to the running average $F = (1/M) \\sum_j F_j$."
+    },
+    {
+      "id": "ASP385.6",
+      "type": "algorithm_step",
+      "parent_id": "AP385.1",
+      "step_order": 6,
+      "subclass": "loop",
+      "name": "Repeat until convergence",
+      "section": "II",
+      "statement": "Continue cycles until the chain has equilibrated and the desired number of post-equilibration samples has been collected."
+    },
+    {
+      "id": "TP385.1",
+      "type": "theorem",
+      "name": "Convergence of the Metropolis chain to the canonical distribution",
+      "section": "II",
+      "statement": "The Markov chain defined by the trial-move-plus-acceptance rule is ergodic and its stationary distribution is the canonical distribution $\\nu_r \\propto \\exp(-E_r / kT)$.",
+      "statement_clean": "Proves that the proposed sampling scheme generates configurations whose long-run distribution is the desired Boltzmann distribution.",
+      "assumptions": [
+        "Symmetric proposal: $P_{rs} = P_{sr}$ (uniform displacement in a square of side $2\\alpha$)",
+        "A configuration of lower energy is always accepted; a higher-energy move is accepted with probability $\\exp(-\\Delta E / kT)$",
+        "Forbidden (rejected) moves leave the chain at its current state, which is still counted in the average"
+      ],
+      "conclusions": [
+        "The chain is ergodic: every configuration in the cell can be reached from any other",
+        "The ensemble of chain states approaches the canonical distribution $\\nu_r \\propto \\exp(-E_r / kT)$"
+      ],
+      "origin": "paper",
+      "tags": ["convergence", "ergodicity"]
+    },
+    {
+      "id": "PP385.1",
+      "type": "proof",
+      "parent_id": "TP385.1",
+      "proves": "TP385.1",
+      "name": "Proof of convergence to the canonical distribution",
+      "section": "II",
+      "statement": "Combine ergodicity (any configuration is reachable by enough symmetric proposals) with a detailed-balance-style flow argument: between any two states $r,s$, if $\\nu_r / \\nu_s > \\exp(-E_r/kT) / \\exp(-E_s/kT)$, the net flow $P_{rs}(\\nu_s \\exp(-(E_r-E_s)/kT) - \\nu_r)$ moves systems from $r$ to $s$, driving the ensemble to the canonical distribution.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP385.1",
+      "type": "proof_step",
+      "parent_id": "PP385.1",
+      "step_order": 1,
+      "subclass": "setup",
+      "name": "Symmetric proposal $P_{rs} = P_{sr}$",
+      "section": "II",
+      "statement": "Because each particle is moved uniformly in a square of side $2\\alpha$ centred on its current position, the a priori probability of proposing $r \\to s$ equals that of proposing $s \\to r$ (both nonzero only when the moved positions lie within each other's proposal squares)."
+    },
+    {
+      "id": "PSP385.2",
+      "type": "proof_step",
+      "parent_id": "PP385.1",
+      "step_order": 2,
+      "subclass": "setup",
+      "name": "Ergodicity",
+      "section": "II",
+      "statement": "Since each particle has positive probability of moving anywhere within its proposal square at each step, a long enough sequence of moves can carry the system from any configuration to any other; configuration space is connected by the chain."
+    },
+    {
+      "id": "PSP385.3",
+      "type": "proof_step",
+      "parent_id": "PP385.1",
+      "step_order": 3,
+      "subclass": "algebraic_manipulation",
+      "name": "Net flow between two states",
+      "section": "II",
+      "statement": "Assume $E_r > E_s$. The number of systems moving $r \\to s$ in one step is $\\nu_r P_{rs}$ (all such moves accepted). The number moving $s \\to r$ is $\\nu_s P_{sr} \\exp(-(E_r - E_s)/kT)$. The net flow $r \\to s$ is $P_{rs}(\\nu_s \\exp(-(E_r-E_s)/kT) - \\nu_r)$, vanishing iff $\\nu_r/\\nu_s = \\exp(-(E_r-E_s)/kT)$."
+    },
+    {
+      "id": "PSP385.4",
+      "type": "proof_step",
+      "parent_id": "PP385.1",
+      "step_order": 4,
+      "subclass": "conclude",
+      "name": "Approach to canonical distribution",
+      "section": "II",
+      "statement": "Combining ergodicity with the net-flow expression: deviations from $\\nu_r \\propto \\exp(-E_r / kT)$ generate a restoring flow, so the ensemble must approach the canonical distribution. (Counting rejected moves as a new visit to the original state is essential to avoid distorting the relative weights.)"
+    },
+    {
+      "id": "RP385.1",
+      "type": "remark",
+      "name": "Choice of maximum displacement $\\alpha$",
+      "section": "II",
+      "statement": "The argument does not bound the convergence rate. The displacement $\\alpha$ must be chosen with care: if too large, most moves are forbidden; if too small, the configuration changes too slowly. Either extreme delays equilibration.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP385.2",
+      "type": "remark",
+      "name": "Rigid-sphere simplification",
+      "section": "II",
+      "statement": "For rigid spheres, $\\Delta E \\in \\{0, \\infty\\}$, so the acceptance test reduces to: accept the move unless the moved sphere overlaps another, in which case keep it at the original position.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP385.1",
+      "type": "equation",
+      "name": "Virial theorem",
+      "section": "III.A",
+      "statement": "$\\left(\\sum_i X_i^{(\\text{tot})} \\cdot r_i\\right)_{\\text{Av}} = 2PA + \\left(\\sum_i X_i^{(\\text{int})} \\cdot r_i\\right)_{\\text{Av}} = 2 E_{\\text{kin}}$, with $E_{\\text{kin}} = N m \\bar{v}^2 / 2$.",
+      "statement_clean": "Clausius virial theorem relating pressure, area, and the average of forces dotted with positions.",
+      "origin": "external",
+      "origin_citation": "Clausius virial theorem"
+    },
+    {
+      "id": "TP385.2",
+      "type": "theorem",
+      "name": "Equation of state for two-dimensional rigid spheres",
+      "section": "III.A",
+      "statement": "$PA = E_{\\text{kin}}(1 + \\pi d_0^2 \\bar{n} / 2) = N k T (1 + \\pi d_0^2 \\bar{n} / 2)$, where $\\bar{n}$ is the average density of other particles at the surface of a particle.",
+      "statement_clean": "Closed-form expression for the rigid-sphere equation of state in terms of the contact-pair density $\\bar{n}$.",
+      "assumptions": [
+        "Two-dimensional system of $N$ rigid spheres of contact distance $d_0$",
+        "Velocity-independent two-body potential, so velocities are Maxwellian",
+        "Clausius virial theorem applies"
+      ],
+      "conclusions": [
+        "$PA = N k T (1 + \\pi d_0^2 \\bar{n} / 2)$",
+        "Determining $\\bar{n}$ as a function of area $A$ suffices to determine the equation of state"
+      ],
+      "origin": "paper",
+      "tags": ["equation_of_state"]
+    },
+    {
+      "id": "ExP385.1",
+      "type": "example",
+      "name": "Two-dimensional rigid-sphere simulation on the MANIAC",
+      "section": "III.B, IV",
+      "statement": "Run with $N = 224$ particles in a unit square, initially in a 14x16 trigonal lattice, with maximum displacement $\\alpha = d - d_0$. About 48-64 cycles per value of $\\nu \\in \\{0,1,2,3,4,5,5.5,6,6.25,6.5,7\\}$ on the Los Alamos MANIAC (~3 minutes per cycle).",
+      "statement_clean": "The actual numerical experiment in the paper: a 224-particle 2D rigid-sphere fluid sampled by the Metropolis algorithm on the MANIAC computer.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP385.2",
+      "type": "example",
+      "name": "Radial distribution function at $\\nu = 5$",
+      "section": "IV",
+      "statement": "For $\\nu = 5$, $A/A_0 = 1.31966$, $K = 1.5$: extrapolated values $N_t(1)=6367$, $N_t(2)=6160$, $N_t(3)=6377$ give $\\bar{N}_t = 6301$ and $(PA/NkT)-1 = 64 \\bar{N}_t / N^2 (K^2-1) = 6.43$.",
+      "statement_clean": "Sample radial-distribution-function fit at $\\nu=5$ illustrating how $\\bar{N}_t$ is extracted and converted into the pressure.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP385.2",
+      "type": "equation",
+      "name": "Virial coefficient expansion",
+      "section": "V",
+      "statement": "$(PA/NkT) - 1 = C_1(A_0/A) + C_2(A_0/A)^2 + C_3(A_0/A)^3 + C_4(A_0/A)^4 + O((A_0/A)^5)$, with $C_1 = \\pi/3!$, $C_2 = 4\\pi^2 A_{3,3}/9$, $C_3 = \\pi^3(6A_{4,5} - 3A_{4,4} - A_{4,6})/3!$, and $C_4$ a 9-term combination of $A_{5,k}$ integrals.",
+      "statement_clean": "Expansion of the equation of state in powers of inverse area, with cluster-integral coefficients.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP385.3",
+      "type": "equation",
+      "name": "Numerical virial expansion",
+      "section": "V",
+      "statement": "$(PA/NkT) - 1 = 1.813799(A_0/A) + 2.57269(A_0/A)^2 + 3.179(A_0/A)^3 + 3.38(A_0/A)^4 + O((A_0/A)^5)$.",
+      "statement_clean": "Numerical four-term virial expansion obtained by combining algebraic and Monte-Carlo evaluations of the $A_{i,k}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PrP385.1",
+      "type": "proposition",
+      "name": "Agreement of Monte Carlo with virial expansion and free-volume theory",
+      "section": "VI",
+      "statement": "For two-dimensional rigid spheres, the Monte Carlo equation of state agrees with the free-volume approximation for $A/A_0 < 1.8$ and with the five-term virial expansion for $A/A_0 > 2.5$, with no indication of a phase transition.",
+      "statement_clean": "Empirical conclusion: the new Monte Carlo data interpolate between the small-area free-volume regime and the large-area virial regime, with no phase transition seen.",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "DP385.1", "target": "DP385.2", "type": "uses"},
+    {"source": "DP385.2", "target": "DP385.3", "type": "uses"},
+    {"source": "DP385.3", "target": "ProbP385.1", "type": "defines"},
+    {"source": "AssumP385.1", "target": "ProbP385.1", "type": "uses"},
+    {"source": "AssumP385.1", "target": "AP385.1", "type": "uses"},
+    {"source": "DP385.4", "target": "AP385.1", "type": "uses"},
+    {"source": "DP385.5", "target": "AP385.1", "type": "uses"},
+    {"source": "DP385.2", "target": "AP385.1", "type": "uses"},
+    {"source": "AP385.1", "target": "ProbP385.1", "type": "solves"},
+    {"source": "TP385.1", "target": "AP385.1", "type": "uses"},
+    {"source": "PP385.1", "target": "TP385.1", "type": "proves"},
+    {"source": "PSP385.1", "target": "PSP385.3", "type": "uses"},
+    {"source": "PSP385.2", "target": "PSP385.4", "type": "uses"},
+    {"source": "PSP385.3", "target": "PSP385.4", "type": "uses"},
+    {"source": "ASP385.1", "target": "ASP385.2", "type": "uses"},
+    {"source": "ASP385.2", "target": "ASP385.3", "type": "uses"},
+    {"source": "ASP385.3", "target": "ASP385.4", "type": "uses"},
+    {"source": "ASP385.4", "target": "ASP385.5", "type": "uses"},
+    {"source": "ASP385.5", "target": "ASP385.6", "type": "uses"},
+    {"source": "RP385.1", "target": "AP385.1", "type": "uses"},
+    {"source": "RP385.2", "target": "AP385.1", "type": "uses"},
+    {"source": "EP385.1", "target": "TP385.2", "type": "uses"},
+    {"source": "AssumP385.1", "target": "TP385.2", "type": "uses"},
+    {"source": "TP385.2", "target": "ExP385.1", "type": "uses"},
+    {"source": "AP385.1", "target": "ExP385.1", "type": "illustrates"},
+    {"source": "DP385.6", "target": "ExP385.2", "type": "uses"},
+    {"source": "ExP385.1", "target": "ExP385.2", "type": "uses"},
+    {"source": "DP385.7", "target": "EP385.2", "type": "uses"},
+    {"source": "EP385.2", "target": "EP385.3", "type": "uses"},
+    {"source": "ExP385.1", "target": "PrP385.1", "type": "uses"},
+    {"source": "EP385.3", "target": "PrP385.1", "type": "uses"}
+  ]
+}

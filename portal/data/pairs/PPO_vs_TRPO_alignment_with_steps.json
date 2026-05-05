@@ -1,0 +1,201 @@
+{
+  "metadata": {
+    "alignment_name": "PPO_vs_TRPO",
+    "paper_a": {
+      "arxiv_id": "1707.06347",
+      "title": "Proximal Policy Optimization Algorithms"
+    },
+    "paper_b": {
+      "arxiv_id": "1502.05477",
+      "title": "Trust Region Policy Optimization"
+    },
+    "relation_type": "EXT",
+    "annotator": "Claude (claude-opus-4-7-silver-with-steps)",
+    "scheme_version": "with_steps_v2",
+    "description": "PPO (paper A, 2017) extends TRPO (paper B, 2015) by replacing TRPO's hard KL trust-region constraint and second-order conjugate-gradient update with a first-order clipped surrogate objective $L^{CLIP}$ optimized via multiple SGD epochs. PPO inherits TRPO's importance-sampled surrogate $L^{CPI}$, the probability-ratio formulation, and the trust-region motivation, but trades the constrained second-order machinery for a cheaper clipping/penalty mechanism that is easier to implement and tune."
+  },
+  "matches": [
+    {
+      "paper_a_nodes": ["DP242.2"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "PPO names the vanilla policy-gradient surrogate $L^{PG}=\\hat{\\mathbb{E}}_t[\\log\\pi_\\theta(a_t|s_t)\\hat A_t]$ as a starting point. TRPO never introduces this loss explicitly — its development goes from $\\eta(\\pi)$ directly to the importance-sampled local surrogate $L_\\pi(\\tilde\\pi)$ (DP243.5). No direct counterpart in paper B."
+    },
+    {
+      "paper_a_nodes": ["DP242.3"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "PPO defines the probability ratio $r_t(\\theta)=\\pi_\\theta/\\pi_{\\theta_{\\text{old}}}$ as a named, first-class object so it can drive the clip operator. TRPO uses the same ratio implicitly inside its importance-sampled subproblem ProbP243.3 but never elevates it to a standalone definition."
+    },
+    {
+      "paper_a_nodes": ["DP242.4"],
+      "paper_b_nodes": ["DP243.5"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "PPO's Conservative Policy Iteration surrogate $L^{CPI}(\\theta)=\\hat{\\mathbb{E}}_t[r_t(\\theta)\\hat A_t]$ is the sample / importance-sampled form of TRPO's local surrogate $L_\\pi(\\tilde\\pi)=\\eta(\\pi)+\\sum_s\\rho_\\pi(s)\\sum_a\\tilde\\pi(a|s)A_\\pi(s,a)$. They play the same role (first-order surrogate around $\\theta_{\\text{old}}$, ignoring state-visitation drift) and PPO explicitly cites Kakade--Langford as the origin. Different but equivalent renderings (state-form vs.\\ ratio-form)."
+    },
+    {
+      "paper_a_nodes": ["DP242.5"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "The clipped surrogate $L^{CLIP}$ is the central new contribution of PPO and has no counterpart in TRPO; TRPO controls policy change through a hard KL constraint rather than a clipped probability ratio."
+    },
+    {
+      "paper_a_nodes": ["DP242.6"],
+      "paper_b_nodes": ["EP243.4", "AP243.1"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "PPO's KL-penalized surrogate $L^{KLPEN}=\\hat{\\mathbb{E}}_t[r_t\\hat A_t-\\beta\\,\\mathrm{KL}]$ is the same minorization form as TRPO's KL-penalty inequality $\\eta(\\tilde\\pi)\\ge L_\\pi(\\tilde\\pi)-C\\,D^{max}_{KL}(\\pi,\\tilde\\pi)$ (EP243.4) and the corresponding penalized policy-iteration scheme AP243.1. The penalty coefficient $\\beta$ in PPO is adapted online; TRPO's $C$ is the analytic constant $4\\epsilon\\gamma/(1-\\gamma)^2$."
+    },
+    {
+      "paper_a_nodes": ["DP242.8"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "The combined loss $L^{CLIP+VF+S}$ adds a value-function squared error and an entropy bonus to support shared actor-critic networks; TRPO has no such joint loss because its actor update is a constrained second-order step independent of the critic."
+    },
+    {
+      "paper_a_nodes": ["ProbP242.1"],
+      "paper_b_nodes": ["ProbP243.1", "ProbP243.2"],
+      "match_type": "exact",
+      "confidence": "high",
+      "explanation": "PPO's ProbP242.1 (max surrogate s.t.\\ $\\hat{\\mathbb{E}}_t[\\mathrm{KL}]\\le\\delta$) is exactly TRPO's trust-region problem. ProbP243.1 is the average-KL form used in practice and ProbP243.2 the max-KL form; PPO cites this constrained problem as TRPO's, with origin tagged Schulman 2015b. Many-to-many because TRPO splits the constraint into max-KL and average-KL variants."
+    },
+    {
+      "paper_a_nodes": ["ProbP242.2"],
+      "paper_b_nodes": ["EP243.4"],
+      "match_type": "exact",
+      "confidence": "high",
+      "explanation": "PPO's ProbP242.2 is the unconstrained KL-penalized form $\\max_\\theta\\hat{\\mathbb{E}}_t[r_t\\hat A_t-\\beta\\,\\mathrm{KL}]$, which is precisely the maximization of TRPO's KL-divergence policy improvement bound EP243.4 (Lagrangian relaxation of the trust-region problem). Cross-type (problem ↔ equation) but the mathematics is identical: PPO frames the inequality as the objective of an optimization problem."
+    },
+    {
+      "paper_a_nodes": ["AP242.1"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "The adaptive KL penalty algorithm is original to PPO: TRPO's $C$ is fixed analytically and TRPO never adapts a penalty coefficient (it instead enforces a hard constraint via line search)."
+    },
+    {
+      "paper_a_nodes": ["AP242.2"],
+      "paper_b_nodes": ["AP243.2"],
+      "match_type": "analogous",
+      "confidence": "high",
+      "explanation": "PPO's Algorithm 1 (parallel actors, $K$ epochs of minibatch SGD on the surrogate) and TRPO's practical algorithm AP243.2 are both iterative on-policy update loops that collect samples, build a surrogate, and update $\\theta_{\\text{old}}$. They differ fundamentally in the inner update (first-order SGD vs.\\ conjugate-gradient + line search with KL constraint) — analogous role, different machinery, which is the central EXT relationship of this pair."
+    },
+    {
+      "paper_a_nodes": ["AP242.3"],
+      "paper_b_nodes": ["AP243.2"],
+      "match_type": "exact",
+      "confidence": "high",
+      "explanation": "PPO's AP242.3 is its short description of TRPO (cited as Schulman 2015b); it corresponds exactly to paper B's TRPO algorithm AP243.2 (conjugate-gradient on the linearized objective with a quadratic KL approximation). Paper A's node is origin=external, paper B's is origin=paper — a textbook external-vs-paper alignment that supports the EXT relation."
+    },
+    {
+      "paper_a_nodes": ["PP242.1"],
+      "paper_b_nodes": [],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "PPO's only proof argues that $L^{CLIP}$ is a pessimistic lower bound on $L^{CPI}$. TRPO's proofs (PP243.1, PP243.2) establish the policy-improvement bound for $\\eta$ in terms of $L_\\pi$ and $D^{max}_{KL}$, a different claim entirely."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP243.2"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "TRPO's expected discounted return $\\eta(\\pi)=\\mathbb{E}[\\sum_t\\gamma^t r(s_t)]$ is foundational RL background. PPO uses returns implicitly through advantages and value functions but never names $\\eta$ as a definition."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP243.4"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Discounted state-visitation $\\rho_\\pi(s)$ underpins TRPO's local-surrogate construction and the proof of Theorem 1. PPO operates entirely in trajectory-sample space and never names this measure."
+    },
+    {
+      "paper_a_nodes": ["DP242.6", "AP242.1"],
+      "paper_b_nodes": ["DP243.7"],
+      "match_type": "analogous",
+      "confidence": "medium",
+      "explanation": "TRPO's named average/max KL definitions $D^{max}_{KL}$ and $\\bar D^\\rho_{KL}$ correspond to PPO's informal usage of KL inside $L^{KLPEN}$ (DP242.6) and inside the adaptive-penalty algorithm (AP242.1), where $d=\\hat{\\mathbb{E}}_t[\\mathrm{KL}]$ is the empirical analogue of TRPO's $\\bar D^\\rho_{KL}$. PPO does not separately define the KL operator, so this is a definition-vs-usage correspondence."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP243.8"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "$\\alpha$-coupled policy pair is an auxiliary construct inside TRPO's coupling proof of Theorem 1. PPO does not engage with the policy-improvement-bound proof and has no counterpart."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["DP243.9"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Mean advantage $\\bar A(s)$ is a proof-internal quantity in TRPO's coupling argument with no counterpart in PPO."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["EP243.2"],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "TRPO's state-form rewrite $\\eta(\\tilde\\pi)=\\eta(\\pi)+\\sum_s\\rho_{\\tilde\\pi}(s)\\sum_a\\tilde\\pi(a|s)A_\\pi(s,a)$ is the exact identity that motivates both $L^{CPI}$ (paper A's DP242.4) and the KL-penalty bound. PPO uses $L^{CPI}$ directly without restating the underlying identity, so there is no explicit counterpart in paper A."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["TP243.1"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "TRPO's main theoretical result — the policy-improvement bound $\\eta(\\pi_{\\text{new}})\\ge L_{\\pi_{\\text{old}}}(\\pi_{\\text{new}})-\\frac{4\\epsilon\\gamma}{(1-\\gamma)^2}\\alpha^2$ — has no counterpart in PPO, which abandons the bound-driven design in favor of a heuristic clip."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["LP243.2"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Bound on mean advantage under coupled policies (Lemma 2) is internal to TRPO's coupling proof; PPO has no analogous lemma."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["LP243.3"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Bound on state-distribution shift (Lemma 3) is internal to TRPO's coupling proof; PPO has no analogous lemma."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["PP243.1"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "TRPO's coupling proof of Theorem 1 has no PPO counterpart; PPO does not prove a policy-improvement bound."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["PP243.2"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "TRPO's perturbation-theory / resolvent proof of Theorem 1 has no PPO counterpart."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["ProbP243.3"],
+      "match_type": "none",
+      "confidence": "medium",
+      "explanation": "TRPO's importance-sampled subproblem with average-KL constraint is the bridge from theory to a sample-based update. PPO drops the constraint entirely, so there is no analogue subproblem in paper A — only the constrained ProbP242.1/ProbP242.2 which match TRPO's higher-level problems."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["AP243.3"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Single-path sampling is a TRPO-specific Monte-Carlo scheme for $\\hat Q$. PPO uses GAE-based advantage estimates inside its actor-critic loop and does not adopt single-path rollouts as a named procedure."
+    },
+    {
+      "paper_a_nodes": [],
+      "paper_b_nodes": ["AP243.4"],
+      "match_type": "none",
+      "confidence": "high",
+      "explanation": "Vine sampling is TRPO-specific (rollout sets, $K$ actions per state, common random numbers). PPO has no counterpart."
+    }
+  ]
+}

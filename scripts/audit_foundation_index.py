@@ -241,7 +241,7 @@ def main():
     if args.data_dir is None:
         # Auto-detect
         candidates = [
-            Path("/sci/labs/orzuk/orzuk/projects/Authomathics"),
+            Path("/<cluster>/<user>/projects/Authomathics"),
             Path("/mnt/c/Datasets/Authomathics_data"),
             Path.home() / "Datasets" / "Authomathics_data",
         ]
