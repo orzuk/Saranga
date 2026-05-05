@@ -1,13 +1,39 @@
-"""Upload HTML graph visualizations to HF Space in batches of 500 per category."""
+"""Upload HTML graph visualizations to HF Space in batches per category."""
 import os
 import sys
+import time
 import tempfile
 from pathlib import Path
 from huggingface_hub import upload_folder
 
 BASE = "/sci/labs/orzuk/orzuk/teaching/big_data_project_52017/2024_25/arxiv_data/parsed_100k"
 REPO_ID = "RHCPP/saranga"
-BATCH_SIZE = 500
+BATCH_SIZE = 100
+MAX_RETRIES = 3
+
+
+def upload_batch(files, cat_name, attempt=1):
+    """Upload a batch of files, retry on transient errors."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for f in files:
+            os.symlink(f, os.path.join(tmpdir, f.name))
+        try:
+            upload_folder(
+                folder_path=tmpdir,
+                repo_id=REPO_ID,
+                repo_type="space",
+                path_in_repo=f"html/{cat_name}",
+            )
+            return True
+        except Exception as e:
+            if attempt < MAX_RETRIES:
+                wait = 30 * attempt
+                print(f"    Error: {e}. Retrying in {wait}s (attempt {attempt+1}/{MAX_RETRIES})")
+                time.sleep(wait)
+                return upload_batch(files, cat_name, attempt + 1)
+            else:
+                print(f"    FAILED after {MAX_RETRIES} attempts: {e}")
+                return False
 
 
 def upload_category(cat_dir: Path, cat_name: str):
@@ -17,24 +43,19 @@ def upload_category(cat_dir: Path, cat_name: str):
         print(f"  {cat_name}: no HTML files, skipping")
         return
 
+    failed = 0
     for batch_start in range(0, total, BATCH_SIZE):
         batch = htmls[batch_start : batch_start + BATCH_SIZE]
         batch_end = batch_start + len(batch)
         print(f"  {cat_name}: uploading {batch_start+1}-{batch_end} of {total}")
 
-        # Create temp dir with symlinks for this batch
-        with tempfile.TemporaryDirectory() as tmpdir:
-            for f in batch:
-                os.symlink(f, os.path.join(tmpdir, f.name))
+        if not upload_batch(batch, cat_name):
+            failed += 1
 
-            upload_folder(
-                folder_path=tmpdir,
-                repo_id=REPO_ID,
-                repo_type="space",
-                path_in_repo=f"html/{cat_name}",
-            )
-
-    print(f"  {cat_name} done ({total} files)")
+    if failed:
+        print(f"  {cat_name}: WARNING — {failed} batch(es) failed")
+    else:
+        print(f"  {cat_name} done ({total} files)")
 
 
 def main():
