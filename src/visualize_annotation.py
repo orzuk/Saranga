@@ -1298,17 +1298,42 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             """Header width needed given box width w (renderer shows more name
             chars for wider boxes). Header font is 14-bold (substantially wider
             than body 12-normal). Cap name display to 30 chars to prevent
-            runaway expansion."""
-            header_chars = max(len(nid) + 4, int(w * CHARS_PER_UNIT) - 2)
+            runaway expansion. Uses the *actual* shortened name length rather
+            than the worst-case truncation budget so boxes don't get sized for
+            chars that _shorten will end up dropping (e.g., math tokens that
+            don't fit are removed wholesale).
+
+            The avail budget MUST use HEADER_CPU (the header packing density)
+            to match what the draw code does, otherwise the width-fitter and
+            the draw-time _shorten disagree on how many chars fit and the
+            header gets unnecessarily truncated.
+            """
+            header_chars = max(len(nid) + 4, int(w * HEADER_CPU) - 2)
             avail = max(6, header_chars - len(nid) - 2)
             avail = min(avail, 30)  # cap to prevent circular expansion
-            shown = len(nid) + 2 + min(avail, len(name))
+            if name:
+                shown_name = _shorten(name, avail)
+                # Use len() not _display_width() so the box width accommodates
+                # the _shorten char-length budget, otherwise the next
+                # iteration's avail comes out 1 short and truncates.
+                shown = len(nid) + 2 + len(shown_name)
+            else:
+                shown = len(nid)
             return shown / HEADER_CPU + 2 * PADDING + 0.15
 
         # --- Step 1: find body width via binary search ---
-        # Initial header estimate (30-char cap, before circular expansion)
-        name_cap = min(len(name), 30)
-        init_header_w = (len(nid) + 2 + name_cap) / HEADER_CPU + 2 * PADDING + 0.15
+        # Initial header estimate uses the *actual* shortened name to avoid
+        # over-allocating box width for chars _shorten will drop. Note that
+        # _shorten compares against character LENGTH (not display width), so
+        # the box width budget must accommodate len(shown_name), even if the
+        # shown name's rendered display width is smaller (e.g., when it
+        # contains compact math tokens).
+        if name:
+            init_shown_name = _shorten(name, 30)
+            init_header_chars = len(nid) + 2 + len(init_shown_name)
+        else:
+            init_header_chars = len(nid)
+        init_header_w = init_header_chars / HEADER_CPU + 2 * PADDING + 0.15
 
         lo_w = max(MIN_BOX_W, init_header_w)
         hi_w = MAX_BOX_W
