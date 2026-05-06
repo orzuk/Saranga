@@ -46,7 +46,14 @@ import pandas as pd
 
 from config import *
 import pickle
-import h5py
+
+# h5py is heavy (HDF5 binding) and only needed by hdf5_dump / hdf5_load helpers
+# below. On cluster venvs without h5py we still want the rest of this module
+# (parsing, regex extraction) to import. The HDF5 helpers will raise on call.
+try:
+    import h5py
+except ImportError:
+    h5py = None
 
 
 ARXIV_ID_RE = re.compile(r"^(?:arXiv:)?(\d{4}\.\d{4,5})(v\d+)?$")
