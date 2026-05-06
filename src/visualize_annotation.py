@@ -1297,9 +1297,12 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             """Convert max display-width (chars) to data-unit width needed."""
             return (max_dw + bullet_extra) / CHARS_PER_UNIT + 2 * PADDING + 0.15
 
-        # Empirically measured chars/unit for fontsize-14 bold ≈ 6.5–7.0
-        # (was 9.0 — caused header text to overflow the box on long names).
-        HEADER_CPU = 6.5
+        # Empirically measured chars/unit for fontsize-14 bold averages ≈ 7.0
+        # (range 6.7-7.7 across header lengths and math content). Using 7.0
+        # gives boxes that hug the rendered header tightly; any minor
+        # overflow on the longest plain-text headers is caught by the
+        # per-node text clipping patch added later in this function.
+        HEADER_CPU = 7.0
 
         def _header_w_for_box(w):
             """Header width needed given box width w (renderer shows more name
@@ -1564,7 +1567,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         # ~6.5 chars/unit for fontsize-14 bold (empirically measured); must
         # match HEADER_CPU in _find_tight_width so box width and rendered
         # header text stay consistent.
-        _HEADER_CPU = 6.5
+        _HEADER_CPU = 7.0  # keep in sync with HEADER_CPU in _find_tight_width
         name_str = n.get("name") or ""
         header_chars = max(len(nid) + 4, int(node_width.get(nid, 4.0) * _HEADER_CPU) - 2)
         header_text = f"{nid}"
