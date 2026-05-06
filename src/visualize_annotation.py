@@ -658,13 +658,20 @@ def _wrap(text, width=38):
 def _shorten(text, maxlen=80):
     """Shorten text, never cutting inside a $...$ math expression.
 
+    *maxlen* is interpreted as display-width budget (chars-equivalent of
+    rendered width via _display_width), not raw character count, so that
+    callers sizing UI boxes by visual extent get consistent decisions:
+    a math token like ``$\\cF_s(B)$`` has len=10 but renders as ~5 chars,
+    and we must keep it whenever the box has 5+ chars of room to render
+    it, regardless of len.
+
     If cutting would land inside an equation, drop the equation entirely
     rather than showing a partial formula.
     """
     if not text:
         return ""
     text = _sanitize_math(text)
-    if len(text) <= maxlen:
+    if _display_width(text) <= maxlen:
         return text
     cut = maxlen - 3
     # Count $ signs before cut point; if odd, we're inside math
@@ -1313,24 +1320,20 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             avail = min(avail, 30)  # cap to prevent circular expansion
             if name:
                 shown_name = _shorten(name, avail)
-                # Use len() not _display_width() so the box width accommodates
-                # the _shorten char-length budget, otherwise the next
-                # iteration's avail comes out 1 short and truncates.
-                shown = len(nid) + 2 + len(shown_name)
+                # _shorten now uses display-width budgets, so use _display_width
+                # here too: both ends agree on what 'fits'.
+                shown = len(nid) + 2 + _display_width(shown_name)
             else:
                 shown = len(nid)
             return shown / HEADER_CPU + 2 * PADDING + 0.15
 
         # --- Step 1: find body width via binary search ---
-        # Initial header estimate uses the *actual* shortened name to avoid
-        # over-allocating box width for chars _shorten will drop. Note that
-        # _shorten compares against character LENGTH (not display width), so
-        # the box width budget must accommodate len(shown_name), even if the
-        # shown name's rendered display width is smaller (e.g., when it
-        # contains compact math tokens).
+        # Initial header estimate uses the actual shortened name's display
+        # width (which is what matplotlib will render) -- now that _shorten
+        # also operates on display-width budgets, both ends agree.
         if name:
             init_shown_name = _shorten(name, 30)
-            init_header_chars = len(nid) + 2 + len(init_shown_name)
+            init_header_chars = len(nid) + 2 + _display_width(init_shown_name)
         else:
             init_header_chars = len(nid)
         init_header_w = init_header_chars / HEADER_CPU + 2 * PADDING + 0.15
