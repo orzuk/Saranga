@@ -22,7 +22,9 @@
   function init(manifest) {
     if (cfg.mode === "papers") {
       const tierKey = "tier" + cfg.tier;
-      allRows = (manifest.papers && manifest.papers[tierKey]) || [];
+      let rows = (manifest.papers && manifest.papers[tierKey]) || [];
+      if (cfg.tier === 1) rows = collapseTier1Versions(rows);
+      allRows = rows;
       sortKey = "paper_id";
       renderPapers();
     } else {
@@ -30,6 +32,36 @@
       sortKey = "pair_id";
       renderPairs();
     }
+  }
+
+  // Tier 1 ships three extractions per paper (manual / anthropic / openai)
+  // as separate JSONs named <id>_<variant>.json. Collapse the 3 entries into
+  // one row so the table shows one row per paper with three version links.
+  function collapseTier1Versions(rows) {
+    const SUFFIXES = ["_manual", "_anthropic", "_openai"];
+    const groups = new Map();
+    for (const r of rows) {
+      let base = r.paper_id, variant = null;
+      for (const s of SUFFIXES) {
+        if (base.endsWith(s)) { variant = s.slice(1); base = base.slice(0, -s.length); break; }
+      }
+      if (!variant) {
+        // Fall back: keep ungrouped row as-is
+        groups.set(r.paper_id, Object.assign({}, r, { versions: {} }));
+        continue;
+      }
+      if (!groups.has(base)) groups.set(base, { paper_id: base, versions: {} });
+      const g = groups.get(base);
+      g.versions[variant] = r.paper_id; // suffixed id used in paper.html link
+      // Prefer manual stats; fall back to whichever appeared first.
+      if (variant === "manual" || g.n_nodes == null) {
+        g.title = r.title;
+        g.n_nodes = r.n_nodes;
+        g.buckets = r.buckets;
+        g.top_node_types = r.top_node_types;
+      }
+    }
+    return [...groups.values()];
   }
 
   function applyFilter() {
@@ -110,6 +142,9 @@
 
     const tbl = document.createElement("table");
     tbl.className = "listing";
+    const versionHeader = (cfg.tier === 1)
+      ? '<th title="Three independent extractions of each gold-standard paper: manual hand-coded, Claude Opus, and OpenAI GPT">Versions</th>'
+      : "";
     tbl.innerHTML =
       "<thead><tr>" +
       '<th data-k="paper_id">Paper ID</th>' +
@@ -121,6 +156,7 @@
       '<th data-k="bucket_pf"    style="text-align:right" title="Proofs">Proofs</th>' +
       '<th data-k="bucket_steps" style="text-align:right" title="Level-2 step decomposition: proof_step + algorithm_step">Steps</th>' +
       '<th data-k="bucket_other" style="text-align:right" title="Other: equation, problem, open_problem, assumption, example, remark">Other</th>' +
+      versionHeader +
       "</tr></thead><tbody></tbody>";
     main.appendChild(tbl);
 
@@ -141,15 +177,23 @@
     const tbody = document.querySelector("#listing table.listing tbody");
     if (!tbody) return;
     tbody.innerHTML = "";
+    const colspan = (cfg.tier === 1) ? 10 : 9;
     if (view.length === 0) {
       const tr = document.createElement("tr");
-      tr.innerHTML = '<td colspan="9" class="empty">No papers match.</td>';
+      tr.innerHTML = '<td colspan="' + colspan + '" class="empty">No papers match.</td>';
       tbody.appendChild(tr);
     }
     function fmt(n) { return (n && n > 0) ? String(n) : '<span style="color:#bbb">&ndash;</span>'; }
+    function paperUrl(id) {
+      return "paper.html?tier=" + cfg.tier + "&id=" + encodeURIComponent(id);
+    }
     for (const r of view) {
       const tr = document.createElement("tr");
-      const url = "paper.html?tier=" + cfg.tier + "&id=" + encodeURIComponent(r.paper_id);
+      // Tier 1: paper_id link points to the manual version (the gold reference);
+      // Versions column links each of the three extractions independently.
+      const primaryId = (cfg.tier === 1 && r.versions && r.versions.manual)
+        ? r.versions.manual : r.paper_id;
+      const url = paperUrl(primaryId);
       // Buckets: prefer the structured field; fall back to recomputing from
       // top_node_types if the manifest predates the bucket columns.
       let b = r.buckets;
@@ -168,6 +212,20 @@
           other: sumOf(["equation","problem","open_problem","assumption","example","remark"]),
         };
       }
+      let versionsCell = "";
+      if (cfg.tier === 1 && r.versions) {
+        const vs = r.versions;
+        const link = function (id, label, title) {
+          if (!id) return '<span style="color:#bbb" title="' + title + ' (missing)">' + label + '</span>';
+          return '<a href="' + paperUrl(id) + '" title="' + title + '">' + label + '</a>';
+        };
+        versionsCell =
+          '<td style="white-space:nowrap;font-family:monospace;font-size:12px">' +
+            link(vs.manual,    "M", "Manual gold (hand-coded)") + " | " +
+            link(vs.anthropic, "C", "Claude Opus extraction") + " | " +
+            link(vs.openai,    "G", "OpenAI GPT extraction") +
+          '</td>';
+      }
       tr.innerHTML =
         '<td><a href="' + url + '">' + esc(r.paper_id) + "</a></td>" +
         "<td>" + esc(r.title || "(untitled)") + "</td>" +
@@ -177,7 +235,8 @@
         '<td style="text-align:right">' + fmt(b.alg)   + "</td>" +
         '<td style="text-align:right">' + fmt(b.pf)    + "</td>" +
         '<td style="text-align:right">' + fmt(b.steps) + "</td>" +
-        '<td style="text-align:right">' + fmt(b.other) + "</td>";
+        '<td style="text-align:right">' + fmt(b.other) + "</td>" +
+        versionsCell;
       tbody.appendChild(tr);
     }
     document.getElementById("count-line").textContent =
