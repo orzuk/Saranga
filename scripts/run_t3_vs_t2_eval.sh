@@ -77,11 +77,20 @@ mkdir -p "$T3_OUT"
 n_extracted=0
 n_skipped=0
 while IFS=$'\t' read -r pid aid title; do
+    # Tier2 uses zero-padded paperNNN; cluster uses unpadded paperN for n < 100.
+    # Try both forms.
     tex_dir="$TEX_BASE_DIR/$pid"
     if [ ! -d "$tex_dir" ]; then
-        echo "  skip $pid (no tex dir at $tex_dir)"
-        n_skipped=$((n_skipped + 1))
-        continue
+        # Strip leading zeros from the numeric suffix and retry
+        num=$(echo "$pid" | sed 's/^paper0*//')
+        alt_dir="$TEX_BASE_DIR/paper$num"
+        if [ -d "$alt_dir" ]; then
+            tex_dir="$alt_dir"
+        else
+            echo "  skip $pid (no tex dir; tried $tex_dir and $alt_dir)"
+            n_skipped=$((n_skipped + 1))
+            continue
+        fi
     fi
     out_dir="$T3_OUT/$pid"
     if [ -f "$out_dir/parse_summary.json" ]; then
@@ -92,8 +101,8 @@ while IFS=$'\t' read -r pid aid title; do
     mkdir -p "$out_dir"
     python3 src/run_pipeline.py \
         --operations parse,validate \
-        --extractor regex \
-        --in-dir "$tex_dir" \
+        --extract-mode regex \
+        --tex-dir "$tex_dir" \
         --out-dir "$out_dir" \
         > "$out_dir/run.log" 2>&1 || {
             echo "  FAIL $pid (see $out_dir/run.log)"

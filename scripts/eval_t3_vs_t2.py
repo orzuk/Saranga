@@ -29,21 +29,34 @@ REPO = Path(__file__).resolve().parent.parent
 EVAL = REPO / "src" / "evaluate_extraction.py"
 
 
-def find_t3_json(t3_dir: Path, arxiv_id: str) -> Path | None:
-    """Find the T3 extraction file for a given arxiv_id by recursive search."""
-    # Try direct filename match first (faster than full recursion):
-    direct = list(t3_dir.glob(f"**/{arxiv_id}.json"))
-    if direct:
-        return direct[0]
-    # Fall back: scan metadata of every json
-    for f in t3_dir.glob("**/*.json"):
-        try:
-            d = json.load(open(f))
-            md = d.get("metadata") or {}
-            if md.get("arxiv_id") == arxiv_id:
-                return f
-        except (json.JSONDecodeError, OSError):
+def find_t3_json(t3_dir: Path, paper_id: str) -> Path | None:
+    """Find the T3 extraction file for a given tier2 paper id (e.g. 'paper001').
+
+    The shell driver extracts each paper into <t3_dir>/<paper_id>/, with the
+    actual JSON output landing inside that subdir (run_pipeline writes to
+    `json/` subfolder when using --operations parse). We accept any JSON in
+    the matching subdir, preferring those inside `json/`.
+    """
+    sub = t3_dir / paper_id
+    if not sub.is_dir():
+        # Try unpadded form (paper1 vs paper001) just in case
+        unpadded = "paper" + paper_id.removeprefix("paper").lstrip("0")
+        if (t3_dir / unpadded).is_dir():
+            sub = t3_dir / unpadded
+        else:
+            return None
+    # Prefer json/ subdirectory output
+    json_dir = sub / "json"
+    if json_dir.is_dir():
+        candidates = sorted(json_dir.glob("*.json"))
+        if candidates:
+            return candidates[0]
+    # Fall back to any non-report JSON in the subdir
+    for f in sorted(sub.glob("*.json")):
+        if f.name in ("anomalies_detail.json", "anomalies_report.csv",
+                      "validate_report.csv", "corpus_stats.csv"):
             continue
+        return f
     return None
 
 
@@ -73,16 +86,17 @@ def main():
 
     n_evaluated = n_skipped = 0
     for i, t2_path in enumerate(t2_files, 1):
+        paper_id = t2_path.stem  # e.g. "paper005"
+        # Skip PDF-fallback papers (they have a source_note and weren't extracted by T3)
         d = json.load(open(t2_path))
-        arxiv_id = (d.get("metadata") or {}).get("arxiv_id")
-        if not arxiv_id:
-            print(f"  [{i:3d}/{len(t2_files)}] {t2_path.name}: no arxiv_id, skip")
+        md = d.get("metadata") or {}
+        if "source_note" in md:
             n_skipped += 1
             continue
 
-        t3_path = find_t3_json(t3_dir, arxiv_id)
+        t3_path = find_t3_json(t3_dir, paper_id)
         if t3_path is None:
-            print(f"  [{i:3d}/{len(t2_files)}] {arxiv_id}: T3 file not found, skip")
+            print(f"  [{i:3d}/{len(t2_files)}] {paper_id}: T3 file not found, skip")
             n_skipped += 1
             continue
 
