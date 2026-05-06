@@ -1690,6 +1690,24 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                         ha="left", va="top", fontsize=12, color="#222")
                 cursor_y -= _line_h_draw(line)
 
+        # Clip every text artist drawn for this node to the box rectangle so
+        # text that the width-fitter mis-estimated cannot extrude past the
+        # right edge of the box. (Brutal but reliable: we'd rather have a
+        # visibly clipped line than a label hanging into the next node.)
+        # Inset slightly from the rounded-rect border so corners don't show
+        # bare letters.
+        from matplotlib.patches import Rectangle as _ClipRect
+        _clip_inset = 0.04
+        _clip_patch = _ClipRect(
+            (bx + _clip_inset, by + _clip_inset),
+            bw - 2 * _clip_inset, bh - 2 * _clip_inset,
+            transform=ax.transData, fill=False, linewidth=0,
+        )
+        ax.add_patch(_clip_patch)
+        _clip_patch.set_visible(False)
+        for _ta in ax.texts[_texts_start:len(ax.texts)]:
+            _ta.set_clip_path(_clip_patch)
+
         # Bulk-tag this node's artists with a per-node gid so the HTML JS
         # can hide/show every element of the node via attribute selector.
         _safe = _safe_nid(nid)
