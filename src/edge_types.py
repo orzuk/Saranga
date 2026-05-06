@@ -1,5 +1,5 @@
 """
-Canonical edge type definitions for the Authomathics knowledge graph.
+Canonical edge type definitions for the SARANGA knowledge graph.
 
 Single source of truth. All pipeline modules import from here.
 See src/annotation_schema.md for the full specification.

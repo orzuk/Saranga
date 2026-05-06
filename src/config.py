@@ -19,21 +19,21 @@ def _safe_exists(p):
 
 if sys.platform.lower().startswith('win'):
     # Running on Windows/PyCharm
-    DATA_DIR = Path('C:/Datasets/Authomathics_data')
-    CODE_DIR = Path('C:/Code/Github/Authomathics')
+    DATA_DIR = Path('C:/Datasets/saranga_data')
+    CODE_DIR = Path('C:/Code/Github/saranga')
 else:
     # Running on *nix – decide between WSL-mount vs cluster
     # Local data mirrors cluster structure: DATA_DIR/naturalproofs/, DATA_DIR/arxiv/, etc.
     # Only the root changes; relative paths are the same everywhere.
-    wsl_code = Path('/mnt/c/Code/Github/Authomathics')
-    wsl_data_gdrive = Path('/mnt/g/My Drive/Research/Automath')  # Google Drive mirror
-    wsl_data_legacy = Path('/mnt/c/Datasets/Authomathics_data')  # old location
+    wsl_code = Path('/mnt/c/Code/Github/saranga')
+    wsl_data_gdrive = Path('/mnt/g/My Drive/Research/saranga')  # Google Drive mirror
+    wsl_data_legacy = Path('/mnt/c/Datasets/saranga_data')  # old location
 
-    cluster_data = Path('/<cluster>/<user>/projects/Authomathics')
-    cluster_code = Path('/<cluster>/<user>/github/Authomathics')
+    cluster_data = Path('/<cluster>/<user>/projects/saranga')
+    cluster_code = Path('/<cluster>/<user>/github/saranga')
 
-    home_data = Path.home() / 'Datasets' / 'Authomathics_data'
-    home_code = Path.home() / 'Code' / 'Authomathics'
+    home_data = Path.home() / 'Datasets' / 'saranga_data'
+    home_code = Path.home() / 'Code' / 'saranga'
 
     if _safe_exists(cluster_code):
         # Cluster takes priority if it exists

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unified pipeline orchestrator for Authomathics.
+Unified pipeline orchestrator for SARANGA.
 
 Filters arXiv papers by metadata (ID, date, category, regex), then runs one
 or more operations on each matching paper. Operations can be chained.
@@ -699,7 +699,7 @@ def op_cross_paper(args) -> None:
 def main():
     parser = argparse.ArgumentParser(
         description=(
-            "Unified Authomathics pipeline: filter arXiv papers by metadata, "
+            "Unified SARANGA pipeline: filter arXiv papers by metadata, "
             "then run one or more operations (download, parse, validate, "
             "visualize, link, evaluate, cross_paper). See __doc__ for examples."
         ),
