@@ -1130,7 +1130,7 @@ def draw_legend(ax, node_data, node_rect, show_foundation=False,
 # ── Drawing ─────────────────────────────────────────────────────────────────
 def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
              resolution="standard", show_legend=True, show_foundation=False,
-             foundation_path=None):
+             foundation_path=None, show_extras=False):
     """Main entry: draw a layered DAG from student-format nodes/edges.
 
     resolution:
@@ -1141,6 +1141,12 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
       If True, draw ghost nodes for external foundation dependencies above the
       main graph (gray dashed boxes with dashed arrows to paper nodes).
       Default False preserves the previous behaviour of hiding them in the PNG.
+
+    show_extras:
+      If False (default for the PNG path), hide examples, remarks, and cited
+      results (\texttt{origin: external}) so the PNG stays focused on the
+      paper's core paper-origin Level-1 contribution. The interactive HTML
+      keeps them so toggles in the viewer can re-enable them on demand.
 
     foundation_path:
       Optional path to clean_foundation.json.  When *None* the code tries the
@@ -1160,6 +1166,19 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         nodes = [n for n in nodes if n.get("type") not in hidden_types]
         edges = [e for e in edges
                  if e["source"] not in hidden_ids and e["target"] not in hidden_ids]
+
+    if not show_extras:
+        # PNG-default lean view: drop examples, remarks, and cited (external)
+        # results so the figure shows only the paper's core Level-1 graph.
+        # Reviewers can toggle these back on in the interactive HTML.
+        extra_types = {"example", "remark"}
+        extra_ids = {
+            n["id"] for n in nodes
+            if n.get("type") in extra_types or n.get("origin") == "external"
+        }
+        nodes = [n for n in nodes if n["id"] not in extra_ids]
+        edges = [e for e in edges
+                 if e["source"] not in extra_ids and e["target"] not in extra_ids]
     depth = compute_dag_depth(nodes, edges)
 
     # Group by depth level
@@ -2603,6 +2622,10 @@ def main():
                         help="Include foundation graph ghost nodes in the PNG output")
     parser.add_argument("--foundation-path", default=None,
                         help="Path to clean_foundation.json (default: auto-detect)")
+    parser.add_argument("--show-extras", action="store_true",
+                        help="Include examples, remarks, and cited (origin:external) "
+                             "results in the PNG. Default off keeps the PNG focused on "
+                             "paper-origin Level-1 nodes; the HTML always retains them.")
     parser.add_argument("--html", action="store_true",
                         help="Also generate interactive HTML for each file")
     parser.add_argument("--html-only", action="store_true",
@@ -2642,17 +2665,21 @@ def main():
             result = draw_dag(nodes, edges, output_path, metadata=metadata,
                               resolution=args.resolution,
                               show_foundation=args.show_foundation,
-                              foundation_path=args.foundation_path)
+                              foundation_path=args.foundation_path,
+                              show_extras=args.show_extras)
             n_nodes, n_edges = result[0], result[1]
             print(f"  -> {output_path} ({n_nodes} nodes, {n_edges} edges)")
 
         if do_html:
             import os
             svg_only_path = str(output_path).replace('.png', '_nolegend.svg')
+            # The HTML viewer toggles examples/remarks/cited on demand, so the
+            # underlying SVG must contain them regardless of the PNG default.
             draw_dag(nodes, edges, svg_only_path.replace('.svg', '.png'), metadata=metadata,
                      resolution=args.resolution, show_legend=False,
                      show_foundation=True,
-                     foundation_path=args.foundation_path)
+                     foundation_path=args.foundation_path,
+                     show_extras=True)
             html_path = input_path.with_suffix(".html")
             n_html = generate_interactive_html(data, svg_only_path, str(html_path))
             for tmp in [svg_only_path, svg_only_path.replace('.svg', '.png')]:
