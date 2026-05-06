@@ -7,6 +7,16 @@ from pathlib import Path
 # MASTER DIRECTORIES (platform-specific, only these change between environments)
 # =============================================================================
 
+def _safe_exists(p):
+    # WSL drives can be temporarily disconnected (e.g. /mnt/g when GDrive
+    # is unmounted); .exists() raises OSError("No such device") instead of
+    # returning False. Treat that the same as "not present".
+    try:
+        return p.exists()
+    except OSError:
+        return False
+
+
 if sys.platform.lower().startswith('win'):
     # Running on Windows/PyCharm
     DATA_DIR = Path('C:/Datasets/Authomathics_data')
@@ -25,16 +35,16 @@ else:
     home_data = Path.home() / 'Datasets' / 'Authomathics_data'
     home_code = Path.home() / 'Code' / 'Authomathics'
 
-    if cluster_code.exists():
+    if _safe_exists(cluster_code):
         # Cluster takes priority if it exists
         DATA_DIR = cluster_data
         CODE_DIR = cluster_code
-    elif wsl_code.exists():
+    elif _safe_exists(wsl_code):
         CODE_DIR = wsl_code
         # Prefer Google Drive mirror (has naturalproofs/, arxiv/, etc.)
-        if wsl_data_gdrive.exists():
+        if _safe_exists(wsl_data_gdrive):
             DATA_DIR = wsl_data_gdrive
-        elif wsl_data_legacy.exists():
+        elif _safe_exists(wsl_data_legacy):
             DATA_DIR = wsl_data_legacy
         else:
             DATA_DIR = wsl_data_gdrive  # default, will be created if needed

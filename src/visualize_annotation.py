@@ -865,8 +865,13 @@ def _resolve_foundation_path(foundation_path=None):
     except ImportError:
         pass
     for c in candidates:
-        if c.exists():
-            return str(c)
+        try:
+            if c.exists():
+                return str(c)
+        except OSError:
+            # Path on a disconnected mount (e.g. /mnt/g when GDrive is
+            # unmounted under WSL); skip and try the next candidate.
+            continue
     return None  # will fall back to built-in WELL_KNOWN
 
 
