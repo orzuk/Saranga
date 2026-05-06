@@ -462,9 +462,13 @@ def _display_width(text):
             # Apply small multiplier for operator spacing
             rendered_len = len(rendered)
             if _re.search(r'\\frac|\\sum|\\prod|\\int', math_content):
-                rendered_len = int(rendered_len * 1.5)  # fractions are wider
+                rendered_len = int(rendered_len * 1.4)  # fractions/sums are wider
             else:
-                rendered_len = int(rendered_len * 1.3)  # general math spacing
+                # General inline math renders fairly tightly in matplotlib.
+                # The previous 1.3x multiplier made _display_width over-count
+                # routine math like $(c_j)_{j \\in T}$, causing _wrap to break
+                # lines unnecessarily even when there was room.
+                rendered_len = int(rendered_len * 1.05)
             width += max(rendered_len, 3)  # at least 3 chars for any math
             i = j + 1
         else:
@@ -479,16 +483,17 @@ def _display_width(text):
 
 def _has_tall_math(text):
     """Check if text contains math that renders taller than normal (fractions,
-    sums, integrals, nested fractions). Plain superscripts/subscripts (e.g.
-    ``x^{2}`` or ``a_{i}``) are NOT considered tall -- those rendered with
-    LINE_H * 2.5 made line spacing visibly inconsistent in graphs whose
-    nodes mix sub/super-script lines with plain ones.
+    sums, integrals, nested fractions, sup/inf/max/min/argmin/argmax with
+    subscripted limits, lim with subscripted index). Plain superscripts/
+    subscripts (e.g. ``x^{2}`` or ``a_{i}``) are NOT considered tall.
     """
     if not text or "$" not in text:
         return False
     return bool(_re.search(
         r'\\frac|\\sum|\\prod|\\int|\\iint|\\oint|'
         r'\\bigcup|\\bigcap|\\bigsqcup|'
+        r'\\sup_|\\inf_|\\max_|\\min_|\\arg\s*(?:\\min|\\max)|'
+        r'\\lim\s*_|\\liminf|\\limsup|'
         r'\\underset|\\overset|\\stackrel|\\binom|\\atop', text))
 
 
