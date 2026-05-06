@@ -182,12 +182,18 @@ def run_batch(
                 continue
             seen_dirs.add(parent)
             stem = tp.stem  # e.g. "1210.4634v1"
-            # Extract versioned_id from filename
+            # Extract versioned_id from filename. First try the arXiv ID
+            # pattern; if it doesn't match (e.g., the file is named
+            # "paper1.tex" or similar non-arXiv stem), accept the stem as-is
+            # and use it as both base_id and versioned_id so single-paper
+            # extraction still works under --tex-dir.
             m = _re.match(r'(\d{4}\.\d{4,5})(v\d+)?', stem)
-            if not m:
-                continue
-            base_id = m.group(1)
-            versioned_id = stem
+            if m:
+                base_id = m.group(1)
+                versioned_id = stem
+            else:
+                base_id = stem
+                versioned_id = stem
             local_items.append((base_id, str(tp), versioned_id))
         print(f"[INFO] Local tex-dir mode: found {len(local_items)} .tex files under {tex_dir}")
 
