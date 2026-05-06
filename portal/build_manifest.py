@@ -309,7 +309,9 @@ def walk_papers(subdir: str, tier: int) -> list[dict[str, Any]]:
         print(f"  (skip: {subdir} does not exist)")
         return []
     out: list[dict[str, Any]] = []
-    for p in sorted(d.glob("*.json")):
+    # Only paper*.json - skip non-paper artefacts (e.g. anomalies_detail.json)
+    # that may share the data dir but are not paper records.
+    for p in sorted(d.glob("paper*.json")):
         s = summarize_paper(p, tier)
         if s is not None:
             out.append(s)
@@ -363,9 +365,21 @@ def read_alignment_index() -> dict[str, dict[str, Any]]:
             variant = "v1"
             pid = stem
         matches = data.get("matches", [])
+        n_total = len(matches) if isinstance(matches, list) else 0
+        n_positive = 0
+        n_negative = 0
+        if isinstance(matches, list):
+            for m in matches:
+                t = (m or {}).get("match_type", "")
+                if t in ("exact", "analogous"):
+                    n_positive += 1
+                elif t == "none":
+                    n_negative += 1
         entry = {
             "filename": p.name,
-            "n_matches": len(matches) if isinstance(matches, list) else 0,
+            "n_matches": n_total,                # legacy: total annotated pairs (+ and -)
+            "n_positive_matches": n_positive,    # exact + analogous (true matches)
+            "n_negative_matches": n_negative,    # match_type == "none" (annotated non-matches)
             "annotator": meta.get("annotator") or "",
             "scheme_version": meta.get("scheme_version") or "",
             "alignment_name": meta.get("alignment_name") or pid,
@@ -495,6 +509,14 @@ def build_pairs_manifest(
                           if (align is not None and
                               align.get("scheme") == "with_steps_v2")
                           else None),
+            "n_positive_matches": (align.get("n_positive_matches")
+                                   if (align is not None and
+                                       align.get("scheme") == "with_steps_v2")
+                                   else None),
+            "n_negative_matches": (align.get("n_negative_matches")
+                                   if (align is not None and
+                                       align.get("scheme") == "with_steps_v2")
+                                   else None),
             "annotator": (align["annotator"]
                           if (align is not None and
                               align.get("scheme") == "with_steps_v2")
@@ -532,11 +554,13 @@ def _stem_tier(stem: str | None) -> int | None:
 def main() -> None:
     print(f"Building manifest from {DATA} ...")
 
-    tier1_paths = sorted((DATA / "tier1").glob("*.json")) \
+    # Filter to paper*.json so non-paper artefacts (e.g. anomalies_detail.json)
+    # in the same dir don't get treated as paper records.
+    tier1_paths = sorted((DATA / "tier1").glob("paper*.json")) \
         if (DATA / "tier1").exists() else []
-    tier2_paths = sorted((DATA / "tier2").glob("*.json")) \
+    tier2_paths = sorted((DATA / "tier2").glob("paper*.json")) \
         if (DATA / "tier2").exists() else []
-    tier3_paths = sorted((DATA / "tier3-sample").glob("*.json")) \
+    tier3_paths = sorted((DATA / "tier3-sample").glob("paper*.json")) \
         if (DATA / "tier3-sample").exists() else []
 
     tier1 = walk_papers("tier1", 1)
@@ -614,6 +638,8 @@ def main() -> None:
                 "alignment_available": True,
                 "alignment_file": align["filename"],
                 "n_matches": align["n_matches"],
+                "n_positive_matches": align.get("n_positive_matches"),
+                "n_negative_matches": align.get("n_negative_matches"),
                 "annotator": align["annotator"],
                 "alignment_name": align["alignment_name"],
                 "why_related": align["description"],

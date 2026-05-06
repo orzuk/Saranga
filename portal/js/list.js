@@ -283,7 +283,7 @@
       '<th data-k="paper_b_title">Paper B</th>' +
       '<th data-k="relation_type">Rel</th>' +
       '<th data-k="status">Status</th>' +
-      '<th data-k="n_matches" style="text-align:right">Matches</th>' +
+      '<th data-k="n_positive_matches" style="text-align:right" title="Positive matches (exact + analogous) / total annotated pairs (positives + non-matches)">Matches&nbsp;(+&thinsp;/&thinsp;total)</th>' +
       "</tr></thead><tbody></tbody>";
     main.appendChild(tbl);
 
@@ -330,9 +330,17 @@
       const tr = document.createElement("tr");
       const url = "pair.html?id=" + encodeURIComponent(r.pair_id);
       const status = r.status || (r.alignment_available ? "annotated" : "");
-      const matchesCell = (r.n_matches != null && r.n_matches > 0)
-        ? String(r.n_matches)
-        : '<span style="color:#bbb">&ndash;</span>';
+      // Show "positive / total" so the user can see annotated non-matches
+      // are included in the total and don't mistake them for true matches.
+      let matchesCell;
+      if (r.n_matches == null || r.n_matches === 0) {
+        matchesCell = '<span style="color:#bbb">&ndash;</span>';
+      } else if (r.n_positive_matches != null) {
+        matchesCell = String(r.n_positive_matches) +
+          ' <span style="color:#999">/ ' + String(r.n_matches) + '</span>';
+      } else {
+        matchesCell = String(r.n_matches);
+      }
       tr.innerHTML =
         '<td><a href="' + url + '">' + esc(r.pair_id) + "</a></td>" +
         "<td>" + paperLabel(r.paper_a, r.paper_a_title, r.paper_a_id) + "</td>" +

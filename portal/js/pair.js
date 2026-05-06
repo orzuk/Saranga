@@ -101,6 +101,20 @@
       return;
     }
 
+    // Update heading to show split: positive matches vs non-match annotations.
+    const heading = document.getElementById("matches-heading");
+    if (heading) {
+      let nPos = 0, nNeg = 0;
+      for (const m of matches) {
+        const t = (m && m.match_type) || "";
+        if (t === "exact" || t === "analogous") nPos++;
+        else if (t === "none") nNeg++;
+      }
+      heading.textContent =
+        "Match annotations: " + nPos + " matches (exact + analogous), " +
+        nNeg + " annotated non-matches, " + matches.length + " total";
+    }
+
     const tbl = document.createElement("table");
     tbl.className = "listing matches-table";
     tbl.innerHTML =
