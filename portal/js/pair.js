@@ -115,6 +115,21 @@
         nNeg + " annotated non-matches, " + matches.length + " total";
     }
 
+    // Sort by match type: exact, analogous, none, then anything else alpha.
+    // Stable order within each group preserves the original JSON ordering.
+    const TYPE_ORDER = { exact: 0, analogous: 1, none: 2 };
+    matches = matches
+      .map((m, i) => ({ m, i }))
+      .sort(function (a, b) {
+        const ra = TYPE_ORDER[(a.m.match_type || "").toLowerCase()];
+        const rb = TYPE_ORDER[(b.m.match_type || "").toLowerCase()];
+        const ka = (ra == null) ? 99 : ra;
+        const kb = (rb == null) ? 99 : rb;
+        if (ka !== kb) return ka - kb;
+        return a.i - b.i;
+      })
+      .map(o => o.m);
+
     const tbl = document.createElement("table");
     tbl.className = "listing matches-table";
     tbl.innerHTML =
