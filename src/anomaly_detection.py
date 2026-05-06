@@ -372,7 +372,11 @@ def detect_anomalies_for_paper(
     # Collect text for content rules
     texts: List[str] = []
     for n in nodes:
-        text = n.get("clean_text") or n.get("statement") or ""
+        # T2 (Opus) JSONs use 'statement_clean' rather than 'clean_text';
+        # check both before falling back to raw 'statement'. Otherwise the
+        # raw_latex_in_clean_text rule fires on every T2 paper because
+        # 'statement' is the unsanitised LaTeX source by design.
+        text = n.get("clean_text") or n.get("statement_clean") or n.get("statement") or ""
         if text:
             texts.append(text)
 
