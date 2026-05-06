@@ -1,0 +1,697 @@
+{
+  "metadata": {
+    "title": "Sinkhorn Distances: Lightspeed Computation of Optimal Transportation Distances",
+    "paper_num": 5,
+    "authors": "Marco Cuturi",
+    "year": 2013,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined_with_steps",
+    "extraction_date": "2026-04-28",
+    "role": "case-study",
+    "initial_source": "paper005 silver",
+    "note": "Worked-example gold annotation, NOT part of the 10-paper Benchmark-1 evaluation set. Iteratively curated from silver Opus scaffold; differences against silver report as the silver-vs-gold agreement metric."
+  },
+  "nodes": [
+    {
+      "id": "DP5.1",
+      "type": "definition",
+      "name": "Probability Simplex",
+      "section": "2.1",
+      "statement": "The simplex $\\Sigma_d \\defeq \\{x \\in \\mathbb{R}^d_+ : x^T \\mathbf{1}_d = 1\\}$ is the set of $d$-dimensional probability vectors (histograms).",
+      "statement_clean": "The set of d-dimensional probability vectors summing to 1.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP5.2",
+      "type": "definition",
+      "name": "Transportation Polytope",
+      "section": "2.1",
+      "statement": "For $r, c \\in \\Sigma_d$, the transportation polytope is $U(r,c) \\defeq \\{P \\in \\mathbb{R}_+^{d \\times d} \\mid P\\mathbf{1}_d = r,\\, P^T\\mathbf{1}_d = c\\}$ — the set of joint probabilities with marginals $r$ and $c$.",
+      "statement_clean": "The set of nonnegative d-by-d matrices with row sums r and column sums c.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP5.3",
+      "type": "definition",
+      "name": "Entropy and Kullback-Leibler Divergence",
+      "section": "2.1",
+      "statement": "For $r \\in \\Sigma_d$, $h(r) = -\\sum_{i=1}^d r_i \\log r_i$; for $P \\in U(r,c)$, $h(P) = -\\sum_{i,j} p_{ij} \\log p_{ij}$; and $\\mathbf{KL}(P\\|Q) = \\sum_{ij} p_{ij} \\log(p_{ij}/q_{ij})$.",
+      "statement_clean": "Standard Shannon entropy for marginals and joint tables, plus the KL divergence between two tables.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP5.4",
+      "type": "definition",
+      "name": "Cone of Distance Matrices",
+      "section": "2.2",
+      "statement": "$\\mathcal{M} = \\{M \\in \\mathbb{R}_+^{d\\times d} : \\forall i, m_{ii}=0;\\ \\forall i,j,k,\\ m_{ij} \\leq m_{ik} + m_{kj}\\}$ is the cone of (pseudo-)metric matrices on $\\{1,\\ldots,d\\}$.",
+      "statement_clean": "Nonnegative symmetric matrices with zero diagonal satisfying the triangle inequality.",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP5.1",
+      "type": "problem",
+      "name": "Optimal Transportation Problem",
+      "section": "2.2",
+      "statement": "Given a $d\\times d$ cost matrix $M$ and marginals $r,c \\in \\Sigma_d$, compute $d_M(r,c) \\defeq \\min_{P \\in U(r,c)} \\langle P, M \\rangle$.",
+      "statement_clean": "Minimize the Frobenius inner product between a transportation plan P and a cost matrix M over the transportation polytope.",
+      "subclass": "optimization",
+      "origin": "paper"
+    },
+    {
+      "id": "EP5.1",
+      "type": "equation",
+      "name": "Basic Entropy Inequality for Joint Probabilities",
+      "section": "3.1",
+      "statement": "$\\forall r, c \\in \\Sigma_d,\\ \\forall P \\in U(r,c),\\ h(P) \\leq h(r) + h(c)$, with equality at the independence table $P = rc^T$.",
+      "statement_clean": "The entropy of any joint distribution is bounded by the sum of its marginal entropies, with equality at the product table.",
+      "origin": "external",
+      "origin_citation": "Cover & Thomas, Elements of Information Theory, Sec. 2"
+    },
+    {
+      "id": "DP5.5",
+      "type": "definition",
+      "name": "Entropy-Constrained Transportation Polytope",
+      "section": "3.1",
+      "statement": "For $\\alpha \\geq 0$, $U_\\alpha(r,c) \\defeq \\{P \\in U(r,c) \\mid \\mathbf{KL}(P \\| rc^T) \\leq \\alpha\\} = \\{P \\in U(r,c) \\mid h(P) \\geq h(r)+h(c)-\\alpha\\}$.",
+      "statement_clean": "Subset of U(r,c) consisting of joint tables with KL distance at most alpha from the independence table.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP5.6",
+      "type": "definition",
+      "name": "Sinkhorn Distance",
+      "section": "3.1",
+      "statement": "$d_{M,\\alpha}(r,c) \\defeq \\min_{P \\in U_\\alpha(r,c)} \\langle P, M \\rangle$ — the optimal transportation cost over the entropy-constrained polytope.",
+      "statement_clean": "Optimal transport cost over the entropy-restricted transportation polytope.",
+      "origin": "paper"
+    },
+    {
+      "id": "PrP5.1",
+      "type": "proposition",
+      "name": "Sinkhorn Reduces to Optimal Transport for Large $\\alpha$",
+      "section": "3.2",
+      "statement": "For $\\alpha$ large enough, the Sinkhorn distance $d_{M,\\alpha}$ coincides with the classical transportation distance $d_M$.",
+      "statement_clean": "When the entropic budget alpha is large enough, the Sinkhorn distance equals the classical optimal transport distance.",
+      "origin": "paper",
+      "tags": [
+        "limit_case"
+      ]
+    },
+    {
+      "id": "PrP5.2",
+      "type": "proposition",
+      "name": "Independence Kernel",
+      "section": "3.2",
+      "statement": "When $\\alpha = 0$ and $M$ is a Euclidean distance matrix, $d_{M,0}(r,c) = r^T M c$ is a negative-definite kernel; equivalently $e^{-t\\, r^T M c}$ is positive-definite for all $t>0$.",
+      "statement_clean": "At alpha=0 with Euclidean M, the Sinkhorn distance reduces to r^T M c, which is negative-definite.",
+      "origin": "paper",
+      "tags": [
+        "closed_form",
+        "kernel"
+      ]
+    },
+    {
+      "id": "TP5.1",
+      "type": "theorem",
+      "name": "Sinkhorn Distances Are Symmetric and Satisfy Triangle Inequality",
+      "section": "3.2",
+      "statement": "For all $\\alpha \\geq 0$ and $M \\in \\mathcal{M}$, $d_{M,\\alpha}$ is symmetric and satisfies all triangle inequalities. The function $(r,c) \\mapsto \\mathbf{1}_{r \\neq c}\\, d_{M,\\alpha}(r,c)$ satisfies all three distance axioms.",
+      "statement_clean": "Sinkhorn distances are symmetric and obey the triangle inequality; multiplying by an indicator recovers the coincidence axiom.",
+      "origin": "paper",
+      "tags": [
+        "metric_properties"
+      ]
+    },
+    {
+      "id": "LP5.1",
+      "type": "lemma",
+      "name": "Gluing Lemma With Entropic Constraint",
+      "section": "3.2",
+      "statement": "Let $\\alpha \\geq 0$ and $x,y,z \\in \\Sigma_d$. Given $P \\in U_\\alpha(x,y)$ and $Q \\in U_\\alpha(y,z)$, the matrix $S$ with $s_{ik} \\defeq \\sum_j p_{ij} q_{jk}/y_j$ satisfies $S \\in U_\\alpha(x,z)$.",
+      "statement_clean": "Two entropy-constrained joint tables (P on x,y and Q on y,z) can be glued via the y-conditional product to produce an entropy-constrained joint table on (x,z).",
+      "origin": "paper",
+      "tags": [
+        "gluing"
+      ]
+    },
+    {
+      "id": "TP5.2",
+      "type": "theorem",
+      "name": "Sinkhorn's Matrix-Scaling Theorem",
+      "section": "4.1 (cited)",
+      "statement": "Given a positive matrix $K = e^{-\\lambda M}$ and marginals $r, c$, there exist unique (up to scaling) positive vectors $u, v$ such that $P^\\lambda = \\mathrm{diag}(u)\\, K\\, \\mathrm{diag}(v)$ has row sums $r$ and column sums $c$.",
+      "statement_clean": "A unique diagonal scaling of a positive matrix realizes any prescribed positive row and column sums.",
+      "origin": "external",
+      "origin_citation": "Sinkhorn 1967; Knight 2008",
+      "tags": [
+        "existence",
+        "uniqueness"
+      ]
+    },
+    {
+      "id": "TP5.3",
+      "type": "theorem",
+      "name": "Equality Condition in the Marginal Entropy Bound",
+      "section": "Appendix (cited)",
+      "statement": "For $P \\in U(r,c)$, equality $h(P) = h(r) + h(c)$ holds if and only if $P = rc^T$.",
+      "statement_clean": "Joint entropy equals the sum of marginal entropies precisely when the joint is the product of its marginals.",
+      "origin": "external",
+      "origin_citation": "Cover & Thomas, Theorem 2.6.6"
+    },
+    {
+      "id": "LP5.2",
+      "type": "lemma",
+      "name": "Data Processing Inequality",
+      "section": "Appendix (cited)",
+      "statement": "If $X \\to Y \\to Z$ is a Markov chain, then $I(X;Y) \\geq I(X;Z)$.",
+      "statement_clean": "Mutual information cannot increase along a Markov chain.",
+      "origin": "external",
+      "origin_citation": "Cover & Thomas, Theorem 2.8.1"
+    },
+    {
+      "id": "AP5.2",
+      "type": "algorithm",
+      "name": "Network Simplex Method for Optimal Transportation",
+      "section": "2.2 (cited)",
+      "statement": "Combinatorial LP solver computing the classical optimal transportation cost $d_M(r,c)$ with worst-case complexity $O(d^3 \\log d)$.",
+      "statement_clean": "Classical LP solver for optimal transportation with super-cubic cost.",
+      "origin": "external",
+      "origin_citation": "Ahuja, Magnanti, Orlin 1993; Orlin 1993",
+      "tags": [
+        "baseline"
+      ]
+    },
+    {
+      "id": "DP5.7",
+      "type": "definition",
+      "name": "Dual-Sinkhorn Divergence",
+      "section": "4",
+      "statement": "$d_M^\\lambda(r,c) \\defeq \\langle P^\\lambda, M\\rangle$, where $P^\\lambda = \\arg\\min_{P \\in U(r,c)} \\langle P, M\\rangle - \\frac{1}{\\lambda} h(P)$. By duality, for each $\\alpha$ there is a $\\lambda \\in [0,\\infty]$ with $d_{M,\\alpha} = d_M^\\lambda$.",
+      "statement_clean": "Lagrangian (entropically regularized) form of the Sinkhorn distance with multiplier 1/lambda.",
+      "origin": "paper"
+    },
+    {
+      "id": "AP5.1",
+      "type": "algorithm",
+      "name": "Sinkhorn-Knopp Algorithm",
+      "section": "4.1",
+      "statement": "Iterative matrix-scaling algorithm that computes the dual-Sinkhorn divergence $d_M^\\lambda(r,c)$ via fixed-point iteration on the scaling vectors $u, v$.",
+      "input": [
+        "Cost matrix $M$",
+        "Regularization parameter $\\lambda$",
+        "Marginals $r$ and $c$ (or column matrix $C$)"
+      ],
+      "output": [
+        "Dual-Sinkhorn divergence $d_M^\\lambda(r,c)$",
+        "Scaling vectors $u, v$ such that $P^\\lambda = \\mathrm{diag}(u)\\, K\\, \\mathrm{diag}(v)$"
+      ],
+      "pseudocode": "I = (r>0); r = r(I); M = M(I,:); K = exp(-lambda*M); x = ones(length(r),size(c,2))/length(r); while x changes do x = diag(1./r)*K*(c.*(1./(K'*(1./x)))); end; u = 1./x; v = c.*(1./(K'*u)); d_M^lambda(r,c) = sum(u.*((K.*M)*v))",
+      "origin": "paper",
+      "tags": [
+        "iterative",
+        "matrix_scaling",
+        "vectorized"
+      ]
+    },
+    {
+      "id": "PP5.1",
+      "type": "proof",
+      "name": "Proof of Property 1 (large-$\\alpha$ equivalence)",
+      "parent_id": "PrP5.1",
+      "proves": "PrP5.1",
+      "section": "3.2",
+      "statement": "Since $h(P) \\geq \\tfrac12(h(r)+h(c))$ for any $P \\in U(r,c)$, for $t$ large enough $U_t(r,c) = U(r,c)$, so $d_{M,t} = d_M$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP5.2",
+      "type": "proof",
+      "name": "Proof of Property 2 (Independence Kernel)",
+      "parent_id": "PrP5.2",
+      "proves": "PrP5.2",
+      "section": "Appendix",
+      "statement": "When $\\alpha=0$, $U_0(r,c) = \\{rc^T\\}$ by Theorem 2.6.6 of Cover & Thomas, so $d_{M,0}(r,c) = r^T M c$. Expanding $m_{ij} = \\|\\varphi_i - \\varphi_j\\|^2$ shows $r^T M c$ is a sum of negative-definite kernels.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP5.3",
+      "type": "proof",
+      "name": "Proof of Theorem 1 (metric properties)",
+      "parent_id": "TP5.1",
+      "proves": "TP5.1",
+      "section": "3.2",
+      "statement": "Symmetry follows from $M$'s symmetry. For the triangle inequality, glue optimal $P \\in U_\\alpha(x,y)$ and $Q \\in U_\\alpha(y,z)$ via Lemma 1 to obtain $S \\in U_\\alpha(x,z)$ and bound $\\langle S, M\\rangle$ using $m_{ik} \\leq m_{ij}+m_{jk}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP5.4",
+      "type": "proof",
+      "name": "Proof of Lemma 1 (Gluing Lemma)",
+      "parent_id": "LP5.1",
+      "proves": "LP5.1",
+      "section": "Appendix",
+      "statement": "Define $T$ on $\\{1,\\ldots,d\\}^3$ by $t_{ijk} = p_{ij}q_{jk}/y_j$ (and 0 when $y_j=0$); show $S = \\sum_j T$ has marginals $x$ and $z$; then use the data processing inequality on the Markov chain $X \\to Y \\to Z$ to get $h(S) \\geq h(x)+h(z)-\\alpha$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP5.1",
+      "type": "remark",
+      "name": "Faster Independence Kernel via Cholesky Preprocessing",
+      "section": "Appendix",
+      "statement": "Pre-compute the norm vector $u$ and a Cholesky factor $L$ of the Gram matrix $K$; replace each histogram $r_i$ by $L r_i$ and store $r_i^T u$ to evaluate the Independence kernel quickly. The kernel is positive-definite on histograms with the same 1-norm but not on arbitrary vectors.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP5.1",
+      "type": "example",
+      "name": "MNIST Digits Classification",
+      "section": "5.1",
+      "statement": "Classify MNIST digits (each treated as a normalized histogram on a $20\\times 20$ pixel grid) using SVMs with kernel $e^{-d/t}$, varying $N \\in \\{3,5,12,17,25\\}\\times 10^3$. Sinkhorn distance with $\\lambda=9$ outperforms EMD, Hellinger, $\\chi^2$, Total Variation, and Gaussian.",
+      "origin": "paper",
+      "tags": [
+        "empirical",
+        "classification"
+      ]
+    },
+    {
+      "id": "ExP5.2",
+      "type": "example",
+      "name": "Convergence of Sinkhorn Distance to EMD",
+      "section": "5.2",
+      "statement": "Boxplot of $(d_M^\\lambda(r,c) - d_M(r,c))/d_M(r,c)$ over $40^2$ MNIST pairs as $\\lambda$ grows; even for large $\\lambda$, Sinkhorn hovers about 10\\% above EMD.",
+      "origin": "paper",
+      "tags": [
+        "empirical",
+        "convergence_study"
+      ]
+    },
+    {
+      "id": "ExP5.3",
+      "type": "example",
+      "name": "Computational Speed Comparison",
+      "section": "5.3",
+      "statement": "Benchmark Sinkhorn (CPU and GPU) vs. Rubner's and Pele-Werman's EMD implementations on uniformly-sampled simplex points with random distance matrices. Sinkhorn is over $10^5$ times faster than EMD solvers at large $d$ with tolerance $0.01$; GPU adds another order of magnitude.",
+      "origin": "paper",
+      "tags": [
+        "empirical",
+        "runtime"
+      ]
+    },
+    {
+      "id": "ExP5.4",
+      "type": "example",
+      "name": "Empirical Iteration-Count Complexity",
+      "section": "5.4",
+      "statement": "Replicates the speed experiment focusing on the number of Sinkhorn-Knopp iterations needed for $\\|x - x'\\|_2 \\leq 0.01$; iteration count grows as $e^{-\\lambda M}$ becomes diagonally dominant.",
+      "origin": "paper",
+      "tags": [
+        "empirical",
+        "complexity_study"
+      ]
+    },
+    {
+      "id": "ASP5.1",
+      "type": "algorithm_step",
+      "name": "Drop zero-marginal entries and form kernel $K$",
+      "parent_id": "AP5.1",
+      "step_order": 1,
+      "section": "4.1",
+      "statement": "Set $I = (r>0)$, restrict $r$ and $M$ to indices $I$, then form the Gibbs kernel $K = \\exp(-\\lambda M)$.",
+      "subclass": "initialize"
+    },
+    {
+      "id": "ASP5.2",
+      "type": "algorithm_step",
+      "name": "Initialize scaling vector $x$",
+      "parent_id": "AP5.1",
+      "step_order": 2,
+      "section": "4.1",
+      "statement": "Set $x = \\mathbf{1}/|r|$, a uniform vector of length $|r|$ (or matrix-shaped if $c$ is a column family $C$).",
+      "subclass": "initialize"
+    },
+    {
+      "id": "ASP5.3",
+      "type": "algorithm_step",
+      "name": "Sinkhorn fixed-point loop",
+      "parent_id": "AP5.1",
+      "step_order": 3,
+      "section": "4.1",
+      "statement": "While $x$ changes, update $x \\leftarrow \\mathrm{diag}(1/r)\\, K\\, (c .* (1/(K^T (1/x))))$ — one combined row/column rescaling per iteration.",
+      "subclass": "loop"
+    },
+    {
+      "id": "ASP5.4",
+      "type": "algorithm_step",
+      "name": "Recover scaling vectors $u, v$",
+      "parent_id": "AP5.1",
+      "step_order": 4,
+      "section": "4.1",
+      "statement": "After convergence set $u = 1/x$ and $v = c .* (1/(K^T u))$ so that $P^\\lambda = \\mathrm{diag}(u)\\, K\\, \\mathrm{diag}(v)$.",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP5.5",
+      "type": "algorithm_step",
+      "name": "Return dual-Sinkhorn divergence",
+      "parent_id": "AP5.1",
+      "step_order": 5,
+      "section": "4.1",
+      "statement": "Return $d_M^\\lambda(r,c) = \\sum (u .* ((K .* M)\\, v)) = \\langle P^\\lambda, M\\rangle$.",
+      "subclass": "return"
+    },
+    {
+      "id": "PSP5.1",
+      "type": "proof_step",
+      "name": "Symmetry of $d_{M,\\alpha}$",
+      "parent_id": "PP5.3",
+      "step_order": 1,
+      "section": "3.2",
+      "statement": "Symmetry of $d_{M,\\alpha}$ follows directly from the symmetry of the cost matrix $M$ and the symmetric role of $r, c$ in $U_\\alpha(r,c)$.",
+      "subclass": "setup"
+    },
+    {
+      "id": "PSP5.2",
+      "type": "proof_step",
+      "name": "Glue optimal plans via Lemma 1",
+      "parent_id": "PP5.3",
+      "step_order": 2,
+      "section": "3.2",
+      "statement": "Let $P \\in U_\\alpha(x,y)$ and $Q \\in U_\\alpha(y,z)$ be the optimal plans for $d_{M,\\alpha}(x,y)$ and $d_{M,\\alpha}(y,z)$. Apply Lemma 1 to obtain $S \\in U_\\alpha(x,z)$.",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP5.3",
+      "type": "proof_step",
+      "name": "Bound $\\langle S, M\\rangle$ via triangle inequality on $M$",
+      "parent_id": "PP5.3",
+      "step_order": 3,
+      "section": "3.2",
+      "statement": "$d_{M,\\alpha}(x,z) \\leq \\langle S, M\\rangle = \\sum_{ik} m_{ik} \\sum_j p_{ij}q_{jk}/y_j \\leq \\sum_{ijk} (m_{ij}+m_{jk}) p_{ij} q_{jk}/y_j$ using $m_{ik} \\leq m_{ij}+m_{jk}$.",
+      "subclass": "bound_estimate"
+    },
+    {
+      "id": "PSP5.4",
+      "type": "proof_step",
+      "name": "Marginalize and conclude",
+      "parent_id": "PP5.3",
+      "step_order": 4,
+      "section": "3.2",
+      "statement": "Splitting the sum and using $\\sum_k q_{jk}/y_j = 1$ and $\\sum_i p_{ij}/y_j = 1$ collapses the bound to $\\sum_{ij} m_{ij} p_{ij} + \\sum_{jk} m_{jk} q_{jk} = d_{M,\\alpha}(x,y) + d_{M,\\alpha}(y,z)$.",
+      "subclass": "conclude"
+    },
+    {
+      "id": "PSP5.5",
+      "type": "proof_step",
+      "name": "Define the gluing distribution $T$",
+      "parent_id": "PP5.4",
+      "step_order": 1,
+      "section": "Appendix",
+      "statement": "Let $T$ be the joint on $\\{1,\\ldots,d\\}^3$ with $t_{ijk} \\defeq p_{ij}q_{jk}/y_j$ for $y_j>0$ (and $t_{ijk} = 0$ otherwise).",
+      "subclass": "introduce_variable"
+    },
+    {
+      "id": "PSP5.6",
+      "type": "proof_step",
+      "name": "Verify row and column sums of $S$",
+      "parent_id": "PP5.4",
+      "step_order": 2,
+      "section": "Appendix",
+      "statement": "Set $S = [\\sum_j t_{ijk}]_{ik}$. Computing $\\sum_i \\sum_j s_{ijk}$ telescopes to $\\sum_j q_{jk} = z_k$ (column sums) and $\\sum_k \\sum_j s_{ijk}$ telescopes to $\\sum_j p_{ij} = x_i$ (row sums), so $S$ is a transportation matrix between $x$ and $z$.",
+      "subclass": "algebraic_manipulation"
+    },
+    {
+      "id": "PSP5.7",
+      "type": "proof_step",
+      "name": "Entropy bound via data-processing inequality",
+      "parent_id": "PP5.4",
+      "step_order": 3,
+      "section": "Appendix",
+      "statement": "Since $p(X,Y,Z) = p(X)p(Y\\mid X)p(Z\\mid Y)$, $(X,Y,Z)$ is a Markov chain, so the data-processing inequality $I(X;Y) \\geq I(X;Z)$ yields $h(X,Z) - h(X) - h(Z) \\geq -\\alpha$, i.e. $h(S) \\geq h(x)+h(z)-\\alpha$.",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP5.8",
+      "type": "proof_step",
+      "name": "Reduce $U_0(r,c)$ to the singleton $\\{rc^T\\}$",
+      "parent_id": "PP5.2",
+      "step_order": 1,
+      "section": "Appendix",
+      "statement": "$U_0(r,c)$ contains all $P$ with $h(P) = h(r)+h(c)$; by Cover & Thomas Theorem 2.6.6 this forces $P = rc^T$, so $d_{M,0}(r,c) = \\langle rc^T, M\\rangle = r^T M c$.",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP5.9",
+      "type": "proof_step",
+      "name": "Expand $r^T M c$ via Euclidean embedding",
+      "parent_id": "PP5.2",
+      "step_order": 2,
+      "section": "Appendix",
+      "statement": "Since $M$ is a Euclidean distance matrix, $m_{ij} = \\|\\varphi_i - \\varphi_j\\|^2$. Expanding gives $r^T M c = r^T u + c^T u - 2\\, r^T K c$ with $u_i = \\|\\varphi_i\\|^2$ and $K_{ij} = \\langle \\varphi_i, \\varphi_j\\rangle$, using $\\sum r_i = \\sum c_i = 1$.",
+      "subclass": "algebraic_manipulation"
+    },
+    {
+      "id": "PSP5.10",
+      "type": "proof_step",
+      "name": "Show $r^T M c$ is a negative-definite kernel",
+      "parent_id": "PP5.2",
+      "step_order": 3,
+      "section": "Appendix",
+      "statement": "$r^T u + c^T u$ is a sum of n.d. kernels (separable), and $-2 r^T K c$ is n.d. as the negative of a positive-definite kernel; their sum $r^T M c$ is therefore negative-definite.",
+      "subclass": "conclude"
+    }
+  ],
+  "edges": [
+    {
+      "source": "DP5.1",
+      "target": "DP5.2",
+      "type": "uses"
+    },
+    {
+      "source": "DP5.1",
+      "target": "DP5.3",
+      "type": "uses"
+    },
+    {
+      "source": "DP5.2",
+      "target": "DP5.3",
+      "type": "uses"
+    },
+    {
+      "source": "DP5.2",
+      "target": "ProbP5.1",
+      "type": "uses"
+    },
+    {
+      "source": "DP5.4",
+      "target": "ProbP5.1",
+      "type": "uses"
+    },
+    {
+      "source": "AP5.2",
+      "target": "ProbP5.1",
+      "type": "solves"
+    },
+    {
+      "source": "DP5.3",
+      "target": "EP5.1",
+      "type": "uses"
+    },
+    {
+      "source": "DP5.2",
+      "target": "EP5.1",
+      "type": "uses"
+    },
+    {
+      "source": "EP5.1",
+      "target": "DP5.5",
+      "type": "uses"
+    },
+    {
+      "source": "DP5.2",
+      "target": "DP5.5",
+      "type": "uses"
+    },
+    {
+      "source": "DP5.5",
+      "target": "DP5.6",
+      "type": "uses"
+    },
+    {
+      "source": "DP5.6",
+      "target": "PrP5.1",
+      "type": "uses"
+    },
+    {
+      "source": "DP5.6",
+      "target": "PrP5.2",
+      "type": "uses"
+    },
+    {
+      "source": "DP5.6",
+      "target": "TP5.1",
+      "type": "uses"
+    },
+    {
+      "source": "DP5.4",
+      "target": "TP5.1",
+      "type": "uses"
+    },
+    {
+      "source": "PP5.1",
+      "target": "PrP5.1",
+      "type": "proves"
+    },
+    {
+      "source": "PP5.2",
+      "target": "PrP5.2",
+      "type": "proves"
+    },
+    {
+      "source": "PP5.3",
+      "target": "TP5.1",
+      "type": "proves"
+    },
+    {
+      "source": "PP5.4",
+      "target": "LP5.1",
+      "type": "proves"
+    },
+    {
+      "source": "DP5.5",
+      "target": "LP5.1",
+      "type": "uses"
+    },
+    {
+      "source": "LP5.1",
+      "target": "PP5.3",
+      "type": "uses"
+    },
+    {
+      "source": "TP5.3",
+      "target": "PP5.2",
+      "type": "uses"
+    },
+    {
+      "source": "LP5.2",
+      "target": "PP5.4",
+      "type": "uses"
+    },
+    {
+      "source": "DP5.6",
+      "target": "DP5.7",
+      "type": "uses"
+    },
+    {
+      "source": "DP5.3",
+      "target": "DP5.7",
+      "type": "uses"
+    },
+    {
+      "source": "DP5.2",
+      "target": "DP5.7",
+      "type": "uses"
+    },
+    {
+      "source": "DP5.7",
+      "target": "AP5.1",
+      "type": "uses"
+    },
+    {
+      "source": "TP5.2",
+      "target": "AP5.1",
+      "type": "uses"
+    },
+    {
+      "source": "AP5.1",
+      "target": "ExP5.1",
+      "type": "illustrates"
+    },
+    {
+      "source": "AP5.1",
+      "target": "ExP5.2",
+      "type": "illustrates"
+    },
+    {
+      "source": "AP5.1",
+      "target": "ExP5.3",
+      "type": "illustrates"
+    },
+    {
+      "source": "AP5.1",
+      "target": "ExP5.4",
+      "type": "illustrates"
+    },
+    {
+      "source": "AP5.2",
+      "target": "ExP5.3",
+      "type": "illustrates"
+    },
+    {
+      "source": "PrP5.2",
+      "target": "ExP5.1",
+      "type": "illustrates"
+    },
+    {
+      "source": "PP5.2",
+      "target": "RP5.1",
+      "type": "uses"
+    },
+    {
+      "source": "ASP5.1",
+      "target": "ASP5.2",
+      "type": "uses"
+    },
+    {
+      "source": "ASP5.2",
+      "target": "ASP5.3",
+      "type": "uses"
+    },
+    {
+      "source": "ASP5.3",
+      "target": "ASP5.4",
+      "type": "uses"
+    },
+    {
+      "source": "ASP5.4",
+      "target": "ASP5.5",
+      "type": "uses"
+    },
+    {
+      "source": "PSP5.1",
+      "target": "PSP5.4",
+      "type": "uses"
+    },
+    {
+      "source": "PSP5.2",
+      "target": "PSP5.3",
+      "type": "uses"
+    },
+    {
+      "source": "PSP5.3",
+      "target": "PSP5.4",
+      "type": "uses"
+    },
+    {
+      "source": "PSP5.5",
+      "target": "PSP5.6",
+      "type": "uses"
+    },
+    {
+      "source": "PSP5.5",
+      "target": "PSP5.7",
+      "type": "uses"
+    },
+    {
+      "source": "PSP5.8",
+      "target": "PSP5.9",
+      "type": "uses"
+    },
+    {
+      "source": "PSP5.9",
+      "target": "PSP5.10",
+      "type": "uses"
+    }
+  ]
+}
