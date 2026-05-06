@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from huggingface_hub import upload_folder
 
-BASE = "/sci/labs/orzuk/orzuk/teaching/big_data_project_52017/2024_25/arxiv_data/parsed_100k"
+BASE = "/<cluster>/<user>/projects/saranga/arxiv_data/parsed_100k"
 REPO_ID = "RHCPP/saranga"
 BATCH_SIZE = 100
 MAX_RETRIES = 3
