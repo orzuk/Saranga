@@ -2121,6 +2121,50 @@ def generate_interactive_html(data, svg_path, html_path):
             '</div>\n'
         )
 
+    # KaTeX macros: cover operators and symbol families that author preambles
+    # routinely \newcommand. Mirrors portal/js/common.js — keep in sync.
+    katex_macros_dict = {
+        "\\R": "\\mathbb{R}", "\\N": "\\mathbb{N}", "\\Z": "\\mathbb{Z}",
+        "\\Q": "\\mathbb{Q}", "\\C": "\\mathbb{C}", "\\F": "\\mathbb{F}",
+        "\\E": "\\mathbb{E}", "\\P": "\\mathbb{P}", "\\1": "\\mathbf{1}",
+        "\\Var": "\\operatorname{Var}", "\\Cov": "\\operatorname{Cov}",
+        "\\Cor": "\\operatorname{Cor}", "\\KL":  "\\operatorname{KL}",
+        "\\indep": "\\perp\\!\\!\\!\\perp",
+        "\\Tr": "\\operatorname{Tr}", "\\tr": "\\operatorname{tr}",
+        "\\rk": "\\operatorname{rank}", "\\rank": "\\operatorname{rank}",
+        "\\diag": "\\operatorname{diag}", "\\Span": "\\operatorname{Span}",
+        "\\Hom": "\\operatorname{Hom}", "\\End": "\\operatorname{End}",
+        "\\Aut": "\\operatorname{Aut}", "\\Hess": "\\operatorname{Hess}",
+        "\\sgn": "\\operatorname{sgn}", "\\spec": "\\operatorname{spec}",
+        "\\supp": "\\operatorname{supp}", "\\vol": "\\operatorname{vol}",
+        "\\diam": "\\operatorname{diam}",
+        "\\poly": "\\operatorname{poly}", "\\polylog": "\\operatorname{polylog}",
+        "\\Lsym": "L_{\\mathrm{sym}}", "\\Lrw": "L_{\\mathrm{rw}}",
+        "\\Lun":  "L_1",
+        "\\Cut":     "\\operatorname{Cut}",
+        "\\Ncut":    "\\operatorname{Ncut}",
+        "\\charfct": "\\mathbf{1}",
+        "\\T":      "\\top",
+        "\\defeq":  "\\stackrel{\\mathrm{def}}{=}",
+        "\\eqdef":  "\\stackrel{\\mathrm{def}}{=}",
+        "\\bx": "\\mathbf{x}", "\\by": "\\mathbf{y}", "\\bz": "\\mathbf{z}",
+        "\\bw": "\\mathbf{w}", "\\bu": "\\mathbf{u}", "\\bv": "\\mathbf{v}",
+        "\\bA": "\\mathbf{A}", "\\bB": "\\mathbf{B}", "\\bX": "\\mathbf{X}",
+        "\\bY": "\\mathbf{Y}", "\\bZ": "\\mathbf{Z}",
+        "\\bepsilon": "\\boldsymbol{\\epsilon}", "\\btheta":   "\\boldsymbol{\\theta}",
+        "\\bmu":      "\\boldsymbol{\\mu}",      "\\bSigma":   "\\boldsymbol{\\Sigma}",
+    }
+    # Caligraphic family \cA..\cZ → \mathcal{A}..\mathcal{Z}
+    for _i in range(26):
+        _L = chr(65 + _i)
+        katex_macros_dict["\\c" + _L] = "\\mathcal{" + _L + "}"
+    # Emit as a JS object literal: '\sgn': '\operatorname{sgn}', etc.
+    # Each backslash needs to survive Python -> JS string -> KaTeX, so 1 -> 2.
+    katex_macros_js = ",\n    ".join(
+        "'{}': '{}'".format(k.replace("\\", "\\\\"), v.replace("\\", "\\\\"))
+        for k, v in katex_macros_dict.items()
+    )
+
     html = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -2142,16 +2186,7 @@ window.KATEX_CONFIG = {{
   strict: 'ignore',
   trust: false,
   macros: {{
-    '\\\\R': '\\\\mathbb{{R}}', '\\\\N': '\\\\mathbb{{N}}', '\\\\Z': '\\\\mathbb{{Z}}',
-    '\\\\Q': '\\\\mathbb{{Q}}', '\\\\C': '\\\\mathbb{{C}}',
-    '\\\\E': '\\\\mathbb{{E}}', '\\\\Var': '\\\\mathrm{{Var}}',
-    '\\\\Cov': '\\\\mathrm{{Cov}}', '\\\\defeq': '\\\\stackrel{{\\\\mathrm{{def}}}}{{=}}',
-    '\\\\eqdef': '\\\\stackrel{{\\\\mathrm{{def}}}}{{=}}',
-    '\\\\1': '\\\\mathbf{{1}}', '\\\\Lun': 'L_1',
-    '\\\\bepsilon': '\\\\boldsymbol{{\\\\epsilon}}',
-    '\\\\bx': '\\\\mathbf{{x}}', '\\\\by': '\\\\mathbf{{y}}',
-    '\\\\bw': '\\\\mathbf{{w}}', '\\\\btheta': '\\\\boldsymbol{{\\\\theta}}',
-    '\\\\T': '\\\\top', '\\\\indep': '\\\\perp\\\\!\\\\!\\\\!\\\\perp'
+    {katex_macros_js}
   }}
 }};
 function typesetMath(el) {{
