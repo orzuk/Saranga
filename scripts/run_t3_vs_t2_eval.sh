@@ -78,16 +78,16 @@ n_extracted=0
 n_skipped=0
 while IFS=$'\t' read -r pid aid title; do
     # Tier2 uses zero-padded paperNNN; cluster uses unpadded paperN for n < 100.
-    # Try both forms.
-    tex_dir="$TEX_BASE_DIR/$pid"
+    # The actual .tex files live inside paperN/source/, not at paperN/ top level.
+    tex_dir="$TEX_BASE_DIR/$pid/source"
     if [ ! -d "$tex_dir" ]; then
         # Strip leading zeros from the numeric suffix and retry
         num=$(echo "$pid" | sed 's/^paper0*//')
-        alt_dir="$TEX_BASE_DIR/paper$num"
+        alt_dir="$TEX_BASE_DIR/paper$num/source"
         if [ -d "$alt_dir" ]; then
             tex_dir="$alt_dir"
         else
-            echo "  skip $pid (no tex dir; tried $tex_dir and $alt_dir)"
+            echo "  skip $pid (no source dir; tried $tex_dir and $alt_dir)"
             n_skipped=$((n_skipped + 1))
             continue
         fi
