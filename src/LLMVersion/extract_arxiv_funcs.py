@@ -43,7 +43,6 @@ from pathlib import Path
 
 
 import pandas as pd
-import tables
 
 from config import *
 import pickle
