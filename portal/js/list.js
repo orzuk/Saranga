@@ -11,6 +11,26 @@
   const cfg = window.AuthomathicsListConfig || { mode: "papers", tier: 1 };
   const esc = Authomathics.esc;
 
+  // Map short relation codes to their full names; convert underscores
+  // in already-full names ('parallel_rediscovery' -> 'parallel rediscovery').
+  // Keeps the Rel column human-readable and consistent across rows.
+  const REL_DISPLAY = {
+    EXT: "extension",
+    AP:  "application",
+    PR:  "precursor",
+    BI:  "bidirectional",
+    CF:  "counterfactual",
+    SM:  "similar",
+    SP:  "specialization",
+    NEG: "negative",
+  };
+  function relDisplay(rt) {
+    if (!rt) return "?";
+    const upper = String(rt).toUpperCase();
+    if (REL_DISPLAY[upper]) return REL_DISPLAY[upper];
+    return String(rt).replace(/_/g, " ");
+  }
+
   let allRows = [];
   let view = [];
   let sortKey = null;
@@ -345,7 +365,7 @@
         '<td><a href="' + url + '">' + esc(r.pair_id) + "</a></td>" +
         "<td>" + paperLabel(r.paper_a, r.paper_a_title, r.paper_a_id) + "</td>" +
         "<td>" + paperLabel(r.paper_b, r.paper_b_title, r.paper_b_id) + "</td>" +
-        '<td><span class="relation-pill">' + esc(r.relation_type || "?") + "</span></td>" +
+        '<td><span class="relation-pill">' + esc(relDisplay(r.relation_type)) + "</span></td>" +
         '<td><span class="status-pill status-' + esc(status) + '">' +
             esc(status || "?") + "</span></td>" +
         '<td style="text-align:right">' + matchesCell + "</td>";
