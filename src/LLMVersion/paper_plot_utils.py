@@ -2,10 +2,21 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-from matplotlib.lines import Line2D
-import networkx as nx
+# matplotlib + networkx are heavy and only needed by the plotting helpers.
+# Soft-import so this module loads on cluster venvs without them; the
+# plotting functions will raise on call.
+try:
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as mpatches
+    from matplotlib.lines import Line2D
+except ImportError:
+    plt = None
+    mpatches = None
+    Line2D = None
+try:
+    import networkx as nx
+except ImportError:
+    nx = None
 import math
 
 from math_classes import PaperGraph  # type: ignore
