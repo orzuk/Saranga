@@ -1083,8 +1083,7 @@ def draw_legend(ax, node_data, node_rect, show_foundation=False,
 
     if not node_rect:
         ax.legend(handles=legend_handles, loc="lower right",
-                  fontsize=14 * font_scale, frameon=False,
-                  title="Node types", title_fontsize=16 * font_scale)
+                  fontsize=14 * font_scale, frameon=False)
         return
 
     # Compute legend size: ~15% of graph width, height depends on # items
@@ -1123,8 +1122,7 @@ def draw_legend(ax, node_data, node_rect, show_foundation=False,
     leg = ax.legend(handles=legend_handles, loc="lower left",
                     bbox_to_anchor=(legend_x, legend_bottom),
                     bbox_transform=ax.transData,
-                    fontsize=14 * font_scale, frameon=False,
-                    title="Node types", title_fontsize=16 * font_scale)
+                    fontsize=14 * font_scale, frameon=False)
 
 
 # ── Drawing ─────────────────────────────────────────────────────────────────
@@ -1179,6 +1177,11 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         nodes = [n for n in nodes if n["id"] not in extra_ids]
         edges = [e for e in edges
                  if e["source"] not in extra_ids and e["target"] not in extra_ids]
+        # Also drop singleton nodes (no in- or out-edges after filtering); they
+        # add visual noise without contributing to the dependency story. The
+        # interactive HTML still shows them since the SVG keeps everything.
+        connected = {e["source"] for e in edges} | {e["target"] for e in edges}
+        nodes = [n for n in nodes if n["id"] in connected]
     depth = compute_dag_depth(nodes, edges)
 
     # Group by depth level
