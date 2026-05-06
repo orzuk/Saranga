@@ -283,9 +283,15 @@
     if (name === "graph") {
       const tier = Authomathics.getQueryParam("tier") || "1";
       const id = Authomathics.getQueryParam("id");
+      const graphUrl = "graphs/tier" + tier + "/" + id + ".html";
       const iframe = document.getElementById("graph-iframe");
       if (iframe && iframe.src === "about:blank") {
-        iframe.src = "graphs/tier" + tier + "/" + id + ".html";
+        iframe.src = graphUrl;
+      }
+      var newTabLink = document.getElementById("graph-newtab");
+      if (newTabLink) {
+        newTabLink.href = graphUrl;
+        newTabLink.style.display = "inline";
       }
     }
   }
