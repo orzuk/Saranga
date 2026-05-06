@@ -1727,8 +1727,11 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
     truly_orphan = [n for n in all_eq_nodes if n["id"] not in edge_targets and n["id"] not in displayed_ids]
     n_orphan = len(set(n["id"] for n in orphan_eqs + truly_orphan))
 
-    if n_orphan > 0 and node_rect:
+    if n_orphan > 0 and node_rect and show_extras:
         # Position: same height as the bottom layer, to the right
+        # Note: only rendered when show_extras=True; the lean PNG hides this
+        # disconnected "Misc (N equations)" annotation since equations are
+        # already excluded from the standard view.
         misc_w = MAX_BOX_W
         misc_h = HEADER_H + LINE_H + 2 * PADDING
         all_bottoms = [by for (bx, by, bw, bh) in node_rect.values()]
