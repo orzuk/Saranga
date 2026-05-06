@@ -1424,11 +1424,17 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                     h += n_proof * LINE_H + PADDING
                 h += PADDING
             elif ntype == "algorithm" and (n.get("input") or n.get("output")):
-                in_lines = [_shorten(x, 100) for x in (_as_list(n.get("input")) or ["(none)"])]
-                out_lines = [_shorten(x, 100) for x in (_as_list(n.get("output")) or ["(none)"])]
+                # Match draw path: wrap each input/output entry so the height
+                # accounts for actual line counts after wrapping.
+                in_lines = []
+                for x in (_as_list(n.get("input")) or ["(none)"]):
+                    in_lines.extend(_wrap(_prepare_for_display(x), wrap_w) or [x[:wrap_w]])
+                out_lines = []
+                for x in (_as_list(n.get("output")) or ["(none)"]):
+                    out_lines.extend(_wrap(_prepare_for_display(x), wrap_w) or [x[:wrap_w]])
                 h = HEADER_H + PADDING
-                h += len(in_lines) * LINE_H + PADDING
-                h += len(out_lines) * LINE_H + PADDING
+                h += sum(_line_h(l) for l in in_lines) + PADDING
+                h += sum(_line_h(l) for l in out_lines) + PADDING
                 h += PADDING
             else:
                 # Use statement, or name as fallback (e.g., proofs with descriptive names)
@@ -1649,26 +1655,41 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         elif ntype == "algorithm" and (n.get("input") or n.get("output")):
             # Algorithm with input/output
             dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT) - 4)
-            in_lines = [_shorten(x, dyn_wrap) for x in (_as_list(n.get("input")) or ["(none)"])]
-            out_lines = [_shorten(x, 70) for x in (_as_list(n.get("output")) or ["(none)"])]
+            # Bug fix: previously used _shorten here (truncate-and-print-on-
+            # one-line) which mismatched the width calculation that assumed
+            # wrapping. Use _wrap so each input/output item flows over as
+            # many lines as needed to fit the box. Track whether each line
+            # is the first of its item so only the first gets a bullet.
+            in_lines = []  # list of (line, is_first_of_item)
+            for x in (_as_list(n.get("input")) or ["(none)"]):
+                wrapped = _wrap(_prepare_for_display(x), dyn_wrap) or [x[:dyn_wrap]]
+                for i, ln in enumerate(wrapped):
+                    in_lines.append((ln, i == 0))
+            out_lines = []
+            for x in (_as_list(n.get("output")) or ["(none)"]):
+                wrapped = _wrap(_prepare_for_display(x), dyn_wrap) or [x[:dyn_wrap]]
+                for i, ln in enumerate(wrapped):
+                    out_lines.append((ln, i == 0))
 
             ax.text(bx + PADDING, cursor_y, "Input:",
                     ha="left", va="top", fontsize=13, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
-            for line in in_lines:
-                ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
+            for line, is_first in in_lines:
+                prefix = "• " if is_first else "  "
+                ax.text(bx + PADDING + 0.1, cursor_y, f"{prefix}{line}",
                         ha="left", va="top", fontsize=12, color="#222")
-                cursor_y -= LINE_H
+                cursor_y -= _line_h_draw(line)
             cursor_y -= PADDING * 0.3
             ax.plot([bx + 0.15, bx + bw - 0.15], [cursor_y + PADDING * 0.2] * 2,
                     color=colors["header"], lw=0.5, alpha=0.4)
             ax.text(bx + PADDING, cursor_y, "Output:",
                     ha="left", va="top", fontsize=13, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
-            for line in out_lines:
-                ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
+            for line, is_first in out_lines:
+                prefix = "• " if is_first else "  "
+                ax.text(bx + PADDING + 0.1, cursor_y, f"{prefix}{line}",
                         ha="left", va="top", fontsize=12, color="#222")
-                cursor_y -= LINE_H
+                cursor_y -= _line_h_draw(line)
 
         else:
             # Simple box: wrap statement/name text to box width (up to 5 lines)
