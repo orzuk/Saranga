@@ -687,6 +687,39 @@ def _shorten(text, maxlen=80):
     return text[:cut].rstrip() + "..."
 
 
+def _wrap_header(nid, name, max_dw_per_line):
+    """Build a 1- or 2-line header ``[<nid>: <name pieces>]`` whose lines each
+    fit in ``max_dw_per_line`` units of display width.
+
+    Falls back to ``_shorten`` truncation only on the final line if even the
+    second line cannot accommodate the remaining text. Names are sanitised
+    through ``_prepare_for_display`` so author-defined macros (e.g. ``\\cF``)
+    don't crash matplotlib's mathtext parser.
+    """
+    if not name:
+        return [str(nid)]
+    name = _prepare_for_display(name)
+    one_line = f"{nid}: {name}"
+    if _display_width(one_line) <= max_dw_per_line:
+        return [one_line]
+    # Two-line layout: line 1 holds the id and as many leading words as fit;
+    # line 2 holds the rest, truncated if still too wide. Prefer breaking at
+    # spaces so we never split a word; never break inside math tokens.
+    prefix = f"{nid}: "
+    prefix_dw = _display_width(prefix)
+    budget1 = max(6, max_dw_per_line - prefix_dw)
+    line1_words = _wrap(name, budget1)
+    if not line1_words:
+        return [_shorten(one_line, max_dw_per_line)]
+    line1_text = line1_words[0]
+    rest = name[len(line1_text):].lstrip()
+    if not rest:
+        return [prefix + line1_text]
+    line2_text = rest if _display_width(rest) <= max_dw_per_line \
+        else _shorten(rest, max_dw_per_line)
+    return [prefix + line1_text, line2_text]
+
+
 # ── DAG computation ─────────────────────────────────────────────────────────
 def compute_dag_depth(nodes, edges):
     """Compute longest-path depth for each node. Roots = depth 0."""
@@ -1402,10 +1435,29 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         node_data[nid] = n
         node_width[nid] = _find_tight_width(n)
 
+    # Pre-compute header lines (1 or 2) per node, given the chosen width.
+    # The box-height formulas below use this so two-line headers don't push
+    # the body content past the bottom of the colored box.
+    node_header_lines = {}
+    for n in nodes:
+        nid = n["id"]
+        w = node_width[nid]
+        # Same chars budget the draw code uses: int(w * HEADER_CPU) - 2
+        max_dw_per_line = max(8, int(w * 8.0) - 2)
+        node_header_lines[nid] = _wrap_header(nid, n.get("name") or "", max_dw_per_line)
+
     # ── Second pass: compute heights and positions ──
     # Widths were already optimized in the first pass via _find_tight_width.
     node_pos = {}
     node_rect = {}
+
+    # Track running cy_top so each layer starts below the tallest node of
+    # the previous layer, plus a fixed gap. Previously each layer was
+    # placed at a fixed -d * LEVEL_GAP_Y, which caused visible overlap when
+    # a layer's tallest node exceeded LEVEL_GAP_Y (e.g., TP2.1 in
+    # Cand\`es-Tao with many assumption/conclusion lines).
+    LAYER_GAP = 1.0
+    cy_top_layer = 0.0
 
     for d in range(max_depth + 1):
         row = levels.get(d, [])
@@ -1413,12 +1465,16 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         row_width = sum(node_width[n["id"]] for n in row) + max(0, len(row) - 1) * BOX_GAP_X
         x_cursor = -row_width / 2
 
+        layer_max_h = 0.0  # tallest node in this layer; sets next layer's offset
+
         for n in row:
             nid = n["id"]
             w = node_width[nid]
             wrap_w = max(20, int(w * CHARS_PER_UNIT) - 4)  # subtract margin for padding + bullet
-            cy_top = -d * LEVEL_GAP_Y
+            cy_top = cy_top_layer
             ntype = n.get("type", "")
+            # Header may be 1 or 2 lines (long names wrap rather than truncate).
+            header_h = HEADER_H * len(node_header_lines.get(nid, [str(nid)]))
 
             # Line height: tall math > inline math > plain text
             def _line_h(line):
@@ -1453,7 +1509,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 conclude_heights = sum(_line_h(l) for l in conclude_lines) or LINE_H
                 n_proof = len(proof_lines)
 
-                h = HEADER_H + PADDING
+                h = header_h + PADDING
                 h += assume_heights + PADDING
                 h += conclude_heights + PADDING
                 if n_proof > 0:
@@ -1468,7 +1524,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 out_lines = []
                 for x in (_as_list(n.get("output")) or ["(none)"]):
                     out_lines.extend(_wrap(_prepare_for_display(x), wrap_w) or [x[:wrap_w]])
-                h = HEADER_H + PADDING
+                h = header_h + PADDING
                 h += sum(_line_h(l) for l in in_lines) + PADDING
                 h += sum(_line_h(l) for l in out_lines) + PADDING
                 h += PADDING
@@ -1478,7 +1534,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 stmt = _prepare_for_display(raw)
                 stmt_lines = _wrap(stmt, wrap_w)[:5]
                 stmt_height = sum(_line_h(l) for l in stmt_lines) if stmt_lines else LINE_H
-                h = HEADER_H + stmt_height + 2 * PADDING
+                h = header_h + stmt_height + 2 * PADDING
 
             # Width was already optimized in the first pass (_find_tight_width).
             # No expansion needed here.
@@ -1486,6 +1542,16 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             node_pos[nid] = (x_cursor + w / 2, cy_top - h / 2)
             node_rect[nid] = (x_cursor, cy_top - h, w, h)
             x_cursor += w + BOX_GAP_X
+            if h > layer_max_h:
+                layer_max_h = h
+
+        # Move the next layer's top to below the tallest node of this layer,
+        # but at least LEVEL_GAP_Y below the current cy_top so the layout
+        # stays sensibly spaced even on layers full of small nodes.
+        cy_top_layer = min(
+            cy_top_layer - layer_max_h - LAYER_GAP,
+            cy_top_layer - LEVEL_GAP_Y,
+        )
 
     # ── Figure ── (auto-size based on content)
     if figsize is None:
@@ -1568,33 +1634,33 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
 
         cursor_y = by + bh  # start from top
 
-        # Header — truncate name to box width, but always show full node ID.
-        # ~6.5 chars/unit for fontsize-14 bold (empirically measured); must
-        # match HEADER_CPU in _find_tight_width so box width and rendered
-        # header text stay consistent.
+        # Header: 1 or 2 lines, pre-computed in node_header_lines.
         _HEADER_CPU = 8.0  # keep in sync with HEADER_CPU in _find_tight_width
-        name_str = n.get("name") or ""
-        header_chars = max(len(nid) + 4, int(node_width.get(nid, 4.0) * _HEADER_CPU) - 2)
-        header_text = f"{nid}"
-        if name_str:
-            avail = max(6, header_chars - len(nid) - 2)
-            header_text += f": {_shorten(name_str, avail)}"
-        # Choose header font size to fit: shrink if header text is long
+        header_lines = node_header_lines.get(nid, [str(nid)])
+        n_hl = len(header_lines)
+        header_total_h = HEADER_H * n_hl
         header_fontsize = 14
-        if len(header_text) > header_chars:
-            header_fontsize = max(9, 14 * header_chars / len(header_text))
+        # If even after wrapping a line is too wide, shrink that line's font.
+        max_dw_per_line = max(8, int(bw * _HEADER_CPU) - 2)
+        for hl in header_lines:
+            if _display_width(hl) > max_dw_per_line:
+                header_fontsize = min(header_fontsize,
+                                      max(9, 14 * max_dw_per_line / _display_width(hl)))
 
         header_rect = FancyBboxPatch(
-            (bx, cursor_y - HEADER_H), bw, HEADER_H,
+            (bx, cursor_y - header_total_h), bw, header_total_h,
             boxstyle="round,pad=0.05",
             facecolor=colors["header"],
             edgecolor=colors["header"],
             linewidth=0,
         )
         ax.add_patch(header_rect)
-        ax.text(bx + bw / 2, cursor_y - HEADER_H / 2, header_text,
-                ha="center", va="center", fontsize=header_fontsize, fontweight="bold",
-                color="white")
+        # Stack header lines top-to-bottom inside the colored bar.
+        for i, hl in enumerate(header_lines):
+            line_y = cursor_y - HEADER_H * (i + 0.5)
+            ax.text(bx + bw / 2, line_y, hl,
+                    ha="center", va="center", fontsize=header_fontsize,
+                    fontweight="bold", color="white")
         # Proof indicator — small badge in the top-right corner of the header
         # for theorem-like nodes that have proof_info merged in. Click the node
         # to see the actual proof text in the side panel.
@@ -1618,7 +1684,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                     ha="center", va="center", fontsize=max(9, header_fontsize * 0.85),
                     fontweight="bold", color="#5D4037",
                     gid=f"node_{_safe_nid_for_badge}__proofbadgetext")
-        cursor_y -= HEADER_H + PADDING
+        cursor_y -= header_total_h + PADDING
 
         # Line height helper — must match height computation exactly
         def _line_h_draw(line):
