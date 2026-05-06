@@ -1295,14 +1295,16 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
 
         def _needed_w(max_dw):
             """Convert max display-width (chars) to data-unit width needed."""
-            return (max_dw + bullet_extra) / CHARS_PER_UNIT + 2 * PADDING + 0.15
+            return (max_dw + bullet_extra) / CHARS_PER_UNIT + 2 * PADDING
 
-        # Empirically measured chars/unit for fontsize-14 bold averages ≈ 7.0
-        # (range 6.7-7.7 across header lengths and math content). Using 7.0
-        # gives boxes that hug the rendered header tightly; any minor
-        # overflow on the longest plain-text headers is caught by the
-        # per-node text clipping patch added later in this function.
-        HEADER_CPU = 7.0
+        # Empirically measured chars/unit for fontsize-14 bold averages ≈ 7.5
+        # for headers that actually contain math (the math token compresses
+        # to ~5 visual chars but counts ~7 in display_width, so apparent
+        # density is higher). Plain-text headers measured 6.7-7.0 chars/unit;
+        # using 7.5 gives boxes that hug the rendered header tightly --
+        # roughly 0.3 units of total padding. Any minor overflow is caught
+        # by the per-node text clipping patch added later in this function.
+        HEADER_CPU = 7.5
 
         def _header_w_for_box(w):
             """Header width needed given box width w (renderer shows more name
@@ -1328,7 +1330,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 shown = len(nid) + 2 + _display_width(shown_name)
             else:
                 shown = len(nid)
-            return shown / HEADER_CPU + 2 * PADDING + 0.15
+            # +2 to match the '-2' margin baked into the draw code's header_chars
+            return (shown + 2) / HEADER_CPU + 2 * PADDING
 
         # --- Step 1: find body width via binary search ---
         # Initial header estimate uses the actual shortened name's display
@@ -1339,7 +1342,10 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             init_header_chars = len(nid) + 2 + _display_width(init_shown_name)
         else:
             init_header_chars = len(nid)
-        init_header_w = init_header_chars / HEADER_CPU + 2 * PADDING + 0.15
+        # +2/HEADER_CPU compensates for the '-2' margin the draw code applies
+        # when computing avail; without this the binary search converges
+        # to a width 1 char short, and _shorten truncates the header.
+        init_header_w = (init_header_chars + 2) / HEADER_CPU + 2 * PADDING
 
         lo_w = max(MIN_BOX_W, init_header_w)
         hi_w = MAX_BOX_W
@@ -1567,7 +1573,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         # ~6.5 chars/unit for fontsize-14 bold (empirically measured); must
         # match HEADER_CPU in _find_tight_width so box width and rendered
         # header text stay consistent.
-        _HEADER_CPU = 7.0  # keep in sync with HEADER_CPU in _find_tight_width
+        _HEADER_CPU = 7.5  # keep in sync with HEADER_CPU in _find_tight_width
         name_str = n.get("name") or ""
         header_chars = max(len(nid) + 4, int(node_width.get(nid, 4.0) * _HEADER_CPU) - 2)
         header_text = f"{nid}"
