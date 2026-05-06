@@ -1297,14 +1297,13 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             """Convert max display-width (chars) to data-unit width needed."""
             return (max_dw + bullet_extra) / CHARS_PER_UNIT + 2 * PADDING
 
-        # Empirically measured chars/unit for fontsize-14 bold averages ≈ 7.5
-        # for headers that actually contain math (the math token compresses
-        # to ~5 visual chars but counts ~7 in display_width, so apparent
-        # density is higher). Plain-text headers measured 6.7-7.0 chars/unit;
-        # using 7.5 gives boxes that hug the rendered header tightly --
-        # roughly 0.3 units of total padding. Any minor overflow is caught
-        # by the per-node text clipping patch added later in this function.
-        HEADER_CPU = 7.5
+        # Empirically measured chars/unit for fontsize-14 bold averages ≈ 8.0
+        # for headers containing math (math token compresses visually so
+        # apparent density is higher than for plain text). Plain-text
+        # headers measured 6.7-7.0 chars/unit -- those will be very tight
+        # at HEADER_CPU=8.0; any minor overflow is caught by the per-node
+        # text clipping patch added later in this function.
+        HEADER_CPU = 8.0
 
         def _header_w_for_box(w):
             """Header width needed given box width w (renderer shows more name
@@ -1573,7 +1572,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         # ~6.5 chars/unit for fontsize-14 bold (empirically measured); must
         # match HEADER_CPU in _find_tight_width so box width and rendered
         # header text stay consistent.
-        _HEADER_CPU = 7.5  # keep in sync with HEADER_CPU in _find_tight_width
+        _HEADER_CPU = 8.0  # keep in sync with HEADER_CPU in _find_tight_width
         name_str = n.get("name") or ""
         header_chars = max(len(nid) + 4, int(node_width.get(nid, 4.0) * _HEADER_CPU) - 2)
         header_text = f"{nid}"
