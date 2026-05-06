@@ -9,12 +9,12 @@ For each category, reports:
 
 Usage (on cluster):
     python scripts/sanity_check_links.py \
-        --base-dir /sci/labs/orzuk/orzuk/teaching/big_data_project_52017/2024_25/arxiv_data/parsed_100k \
+        --base-dir /path/to/parsed_100k \
         --categories math.CO math.GR cs.LG math-ph
 
     # Or check all categories:
     python scripts/sanity_check_links.py \
-        --base-dir /sci/labs/orzuk/orzuk/teaching/big_data_project_52017/2024_25/arxiv_data/parsed_100k
+        --base-dir /path/to/parsed_100k
 """
 
 import argparse

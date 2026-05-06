@@ -20,7 +20,7 @@ Pipeline:
 Usage:
   cd /mnt/c/Code/Github/Authomathics
   python -m scripts.canonicalize.run_canonicalization_ab_test \\
-      --benchmark-dir alignment_benchmark_for_yaron \\
+      --benchmark-dir alignment_benchmark \\
       --n-perms 500
 
 Options:
@@ -286,7 +286,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--benchmark-dir",
-                    default=str(_REPO / "alignment_benchmark_for_yaron"),
+                    default=str(_REPO / "alignment_benchmark"),
                     help="Path to the benchmark package root")
     ap.add_argument("--n-perms", type=int, default=500,
                     help="Permutations per pair for the Z-score null")

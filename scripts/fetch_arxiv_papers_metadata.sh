@@ -16,7 +16,7 @@ chmod +x "$SCRIPT"
 
 # Run the fetch_papers subcommand
 python "$SCRIPT" fetch_papers \
-    --data-dir /<cluster>/<user>/teaching/big_data_project_52017/2024_25/arxiv_data \
+    --data-dir /path/to/arxiv_data \
     --from-date 2021-01-01 \
     --until-date 2021-12-31 \
     --category cs.LG \

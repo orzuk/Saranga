@@ -8,7 +8,7 @@ from pathlib import Path
 import anthropic
 
 TEX_PATH = Path(os.path.expanduser(
-    "~/Datasets/big_data_project_52017/arxiv_data/full_papers/2013/06/17/tex/1210.4634.tex"
+    "~/Datasets/arxiv_data/full_papers/2013/06/17/tex/1210.4634.tex"
 ))
 
 def main():

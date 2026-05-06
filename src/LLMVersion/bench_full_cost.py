@@ -19,15 +19,15 @@ import anthropic
 # 5 gold-standard papers (varied lengths)
 PAPERS = {
     "1204.0109v1": Path(os.path.expanduser(
-        "~/Datasets/big_data_project_52017/arxiv_data/full_papers/2012/03/31/tex/1204.0109v1.tex")),
+        "~/Datasets/arxiv_data/full_papers/2012/03/31/tex/1204.0109v1.tex")),
     "1210.4634": Path(os.path.expanduser(
-        "~/Datasets/big_data_project_52017/arxiv_data/full_papers/2013/06/17/tex/1210.4634.tex")),
+        "~/Datasets/arxiv_data/full_papers/2013/06/17/tex/1210.4634.tex")),
     "1405.2464v2": Path(os.path.expanduser(
-        "~/Datasets/big_data_project_52017/arxiv_data/full_papers/2015/03/16/tex/1405.2464v2.tex")),
+        "~/Datasets/arxiv_data/full_papers/2015/03/16/tex/1405.2464v2.tex")),
     "2208.03112v1": Path(os.path.expanduser(
-        "~/Datasets/big_data_project_52017/arxiv_data/full_papers/2022/08/05/tex/2208.03112v1.tex")),
+        "~/Datasets/arxiv_data/full_papers/2022/08/05/tex/2208.03112v1.tex")),
     "2309.05826v1": Path(os.path.expanduser(
-        "~/Datasets/big_data_project_52017/arxiv_data/full_papers/2023/09/11/tex/2309.05826v1.tex")),
+        "~/Datasets/arxiv_data/full_papers/2023/09/11/tex/2309.05826v1.tex")),
 }
 
 # Structure types to extract (the common ones)

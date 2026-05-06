@@ -129,7 +129,7 @@ export EMBEDDING_MODEL=BAAI/bge-m3
 # Then re-run steps 1 and 3
 ```
 
-## Target Metrics (from README_FOR_YARON.md)
+## Target Metrics
 
 | Metric | Jaccard Baseline | Target | 
 |--------|-----------------|--------|

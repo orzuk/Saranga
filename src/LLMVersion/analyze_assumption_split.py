@@ -3,7 +3,7 @@ Scan parsed JSONs from the 1000-paper run and extract all theorem-like nodes
 with their assumption/conclusion splits into a single analysis JSON.
 
 Usage (on cluster):
-    python analyze_assumption_split.py /sci/labs/orzuk/orzuk/projects/Authomathics/arxiv/parsed_math_CO_manual_1000
+    python analyze_assumption_split.py /path/to/parsed_math_CO_manual_1000
 
 Usage (local, if you copied some JSONs):
     python analyze_assumption_split.py /path/to/parsed_dir
