@@ -691,10 +691,12 @@ def _wrap_header(nid, name, max_dw_per_line):
     """Build a 1- or 2-line header ``[<nid>: <name pieces>]`` whose lines each
     fit in ``max_dw_per_line`` units of display width.
 
-    Falls back to ``_shorten`` truncation only on the final line if even the
-    second line cannot accommodate the remaining text. Names are sanitised
-    through ``_prepare_for_display`` so author-defined macros (e.g. ``\\cF``)
-    don't crash matplotlib's mathtext parser.
+    For two-line layouts the split point is chosen to *balance* the two lines
+    (minimise the wider one) so the box doesn't end up sized for a long line
+    1 with a near-empty line 2 (e.g., 'Optimal recovery of compressible
+    signals' / '(Theorem 5.1)'). Names are sanitised through
+    ``_prepare_for_display`` so author-defined macros (e.g. ``\\cF``) don't
+    crash matplotlib's mathtext parser.
     """
     if not name:
         return [str(nid)]
@@ -702,22 +704,54 @@ def _wrap_header(nid, name, max_dw_per_line):
     one_line = f"{nid}: {name}"
     if _display_width(one_line) <= max_dw_per_line:
         return [one_line]
-    # Two-line layout: line 1 holds the id and as many leading words as fit;
-    # line 2 holds the rest, truncated if still too wide. Prefer breaking at
-    # spaces so we never split a word; never break inside math tokens.
+
     prefix = f"{nid}: "
     prefix_dw = _display_width(prefix)
-    budget1 = max(6, max_dw_per_line - prefix_dw)
-    line1_words = _wrap(name, budget1)
-    if not line1_words:
+
+    # Tokenise the name preserving math blocks as atomic units (mirrors _wrap).
+    tokens = []
+    i = 0
+    while i < len(name):
+        if name[i] == "$":
+            j = name.find("$", i + 1)
+            j = j + 1 if j != -1 else len(name)
+            tokens.append(name[i:j])
+            i = j
+        else:
+            j = name.find("$", i)
+            chunk = name[i:j] if j != -1 else name[i:]
+            for w in chunk.split(" "):
+                if w:
+                    tokens.append(w)
+            i = j if j != -1 else len(name)
+    if not tokens:
         return [_shorten(one_line, max_dw_per_line)]
-    line1_text = line1_words[0]
-    rest = name[len(line1_text):].lstrip()
-    if not rest:
-        return [prefix + line1_text]
-    line2_text = rest if _display_width(rest) <= max_dw_per_line \
-        else _shorten(rest, max_dw_per_line)
-    return [prefix + line1_text, line2_text]
+
+    # Try every legal split, pick the one that minimises max(line1_dw, line2_dw)
+    best = None  # (max_dw, line1_text, line2_text)
+    for k in range(1, len(tokens)):
+        l1 = " ".join(tokens[:k])
+        l2 = " ".join(tokens[k:])
+        l1_dw = _display_width(prefix + l1)
+        l2_dw = _display_width(l2)
+        if l1_dw > max_dw_per_line or l2_dw > max_dw_per_line:
+            continue
+        score = max(l1_dw, l2_dw)
+        if best is None or score < best[0]:
+            best = (score, l1, l2)
+    if best is None:
+        # No legal balanced split (some single token is wider than budget).
+        # Fall back to the original greedy first-fit + truncate.
+        budget1 = max(6, max_dw_per_line - prefix_dw)
+        line1_words = _wrap(name, budget1)
+        if not line1_words:
+            return [_shorten(one_line, max_dw_per_line)]
+        line1_text = line1_words[0]
+        rest = name[len(line1_text):].lstrip()
+        line2_text = rest if _display_width(rest) <= max_dw_per_line \
+            else _shorten(rest, max_dw_per_line)
+        return [prefix + line1_text, line2_text]
+    return [prefix + best[1], best[2]]
 
 
 # ── DAG computation ─────────────────────────────────────────────────────────
@@ -1229,9 +1263,53 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
     for n in nodes:
         levels[depth[n["id"]]].append(n)
 
-    # Sort within each level by section
+    # Sort within each level by section (initial heuristic).
     for d in levels:
         levels[d].sort(key=_section_sort_key)
+
+    # Refine ordering with the barycenter heuristic: each node should sit
+    # near the average position of its parents and children. Standard
+    # technique for layered graph drawing -- minimises edge crossings and
+    # avoids the kind of "neighbour on the wrong side" problem the user
+    # observed (e.g., ProbP2.3 in layer 2 sitting on the left while both
+    # its parent ProbP2.2 and child ProbP2.3-alike are mid-right).
+    # We do 4 alternating top-down / bottom-up sweeps; this almost always
+    # converges and adds < 1 ms even on 50-node graphs.
+    edge_set = [(e["source"], e["target"]) for e in edges]
+    sorted_levels = sorted(levels.keys())
+    for _sweep in range(4):
+        layer_order = sorted_levels if _sweep % 2 == 0 else list(reversed(sorted_levels))
+        for d in layer_order:
+            row = levels[d]
+            if len(row) < 2:
+                continue
+            # Build neighbour-rank dict for nodes in adjacent layers.
+            neighbour_ranks = {}  # node_id -> list of (rank, layer_size) pairs
+            for delta in (-1, +1):
+                neigh_layer = levels.get(d + delta)
+                if not neigh_layer:
+                    continue
+                neigh_rank = {n["id"]: i for i, n in enumerate(neigh_layer)}
+                for n in row:
+                    nid = n["id"]
+                    if delta == -1:
+                        # parents in d-1: edges (parent -> nid)
+                        ranks = [neigh_rank[s] for (s, t) in edge_set
+                                 if t == nid and s in neigh_rank]
+                    else:
+                        # children in d+1: edges (nid -> child)
+                        ranks = [neigh_rank[t] for (s, t) in edge_set
+                                 if s == nid and t in neigh_rank]
+                    if ranks:
+                        # Normalise to [0, 1] so layers of different sizes contribute equally.
+                        norm = (len(neigh_layer) - 1) or 1
+                        for r in ranks:
+                            neighbour_ranks.setdefault(nid, []).append(r / norm)
+            cur_rank = {n["id"]: i / max(1, len(row) - 1) for i, n in enumerate(row)}
+            def bary(n):
+                rs = neighbour_ranks.get(n["id"], [])
+                return sum(rs) / len(rs) if rs else cur_rank[n["id"]]
+            row.sort(key=bary)
 
     max_depth = max(levels.keys()) if levels else 0
     max_width = max(len(v) for v in levels.values()) if levels else 1
