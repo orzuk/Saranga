@@ -2539,7 +2539,19 @@ function applyZoom() {{
 }}
 function zoomIn() {{ currentZoom = Math.min(currentZoom * 1.3, 5.0); applyZoom(); }}
 function zoomOut() {{ currentZoom = Math.max(currentZoom / 1.3, 0.2); applyZoom(); }}
-function zoomFit() {{ currentZoom = 1.0; applyZoom(); }}
+function zoomFit() {{
+  if (svgEl) {{
+    var container = document.getElementById("svg-container");
+    var svgW = svgEl.getBoundingClientRect().width / currentZoom;
+    var svgH = svgEl.getBoundingClientRect().height / currentZoom;
+    var cW = container.clientWidth - 20;
+    var cH = container.clientHeight - 20;
+    currentZoom = Math.min(cW / svgW, cH / svgH, 1.0);
+    applyZoom();
+  }}
+}}
+// Auto-fit on load
+zoomFit();
 
 // Mouse wheel zoom on the SVG container
 document.getElementById("svg-container").addEventListener("wheel", function(e) {{

@@ -283,28 +283,9 @@
     if (name === "graph") {
       const tier = Authomathics.getQueryParam("tier") || "1";
       const id = Authomathics.getQueryParam("id");
-      const baseUrl = "/render?id=" + encodeURIComponent(id) +
-                      "&tier=" + encodeURIComponent(tier);
       const iframe = document.getElementById("graph-iframe");
-      const openLink = document.getElementById("graph-open-tab");
-      const rebuildBtn = document.getElementById("graph-force-rebuild");
-      const status = document.getElementById("graph-status");
-
-      function loadGraph(force) {
-        const url = force ? baseUrl + "&nocache=1&_=" + Date.now() : baseUrl;
-        if (status) status.textContent = force ? "Re-rendering..." : "Loading...";
-        iframe.onload = function () {
-          if (status) status.textContent = "(check banner in top-right of graph for cache status)";
-        };
-        iframe.src = url;
-      }
-      if (openLink) openLink.href = baseUrl;
-      if (rebuildBtn && !rebuildBtn._wired) {
-        rebuildBtn.addEventListener("click", function () { loadGraph(true); });
-        rebuildBtn._wired = true;
-      }
-      if (iframe && iframe.src.indexOf(baseUrl.split("&")[0]) === -1) {
-        loadGraph(false);
+      if (iframe && iframe.src === "about:blank") {
+        iframe.src = "graphs/tier" + tier + "/" + id + ".html";
       }
     }
   }
