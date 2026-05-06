@@ -175,6 +175,9 @@ _KNOWN_MATHTEXT_COMMANDS = frozenset({
     'overbrace', 'underbrace', 'overrightarrow', 'overleftarrow',
     # Brackets/sizing (handled separately by regex, but include for safety):
     'left', 'right', 'big', 'Big', 'bigg', 'Bigg',
+    'langle', 'rangle', 'lvert', 'rvert', 'lceil', 'rceil',
+    'lfloor', 'rfloor', 'lbrace', 'rbrace', 'lbrack', 'rbrack',
+    'llbracket', 'rrbracket',
     # Misc:
     'binom', 'choose', 'atop', 'over', 'pmod', 'mod',
     'ell', 'wp', 'Re', 'Im', 'imath', 'jmath',
@@ -475,11 +478,17 @@ def _display_width(text):
 
 
 def _has_tall_math(text):
-    """Check if text contains math that renders taller than normal (fractions, sums, etc.)."""
+    """Check if text contains math that renders taller than normal (fractions,
+    sums, integrals, nested fractions). Plain superscripts/subscripts (e.g.
+    ``x^{2}`` or ``a_{i}``) are NOT considered tall -- those rendered with
+    LINE_H * 2.5 made line spacing visibly inconsistent in graphs whose
+    nodes mix sub/super-script lines with plain ones.
+    """
     if not text or "$" not in text:
         return False
     return bool(_re.search(
-        r'\\frac|\\sum|\\prod|\\int|\\iint|\\log_|\\lim_|\^{|_{.*{|'
+        r'\\frac|\\sum|\\prod|\\int|\\iint|\\oint|'
+        r'\\bigcup|\\bigcap|\\bigsqcup|'
         r'\\underset|\\overset|\\stackrel|\\binom|\\atop', text))
 
 
@@ -599,7 +608,10 @@ def _wrap(text, width=38):
     if "$" not in text:
         return textwrap.wrap(text, width=width)
 
-    # Split text into atomic tokens: $...$ blocks and individual words
+    # Split text into atomic tokens: $...$ blocks and individual words.
+    # Trailing punctuation directly after a $...$ block (e.g., ``$X$.`` or
+    # ``$X$);``) is glued to the math token so it doesn't get bin-packed
+    # as a standalone token onto a new line ('. starts line').
     tokens = []
     i = 0
     while i < len(text):
@@ -609,8 +621,12 @@ def _wrap(text, width=38):
             if j == -1:
                 tokens.append(text[i:])
                 break
-            tokens.append(text[i:j+1])  # include both $
-            i = j + 1
+            end = j + 1
+            # Absorb a short run of trailing punctuation directly after $...$.
+            while end < len(text) and text[end] in ".,;:)!?":
+                end += 1
+            tokens.append(text[i:end])
+            i = end
         else:
             # Find next $ or end
             j = text.find("$", i)
