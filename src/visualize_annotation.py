@@ -1577,7 +1577,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             # Line height: tall math > inline math > plain text
             def _line_h(line):
                 if _has_tall_math(line):
-                    return LINE_H * 2.5
+                    return LINE_H * 3.4
                 elif "$" in str(line):
                     return LINE_H * 1.5
                 return LINE_H
