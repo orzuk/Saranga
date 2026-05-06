@@ -691,14 +691,13 @@ def _wrap_header(nid, name, max_dw_per_line):
     """Build a 1- or 2-line header ``[<nid>: <name pieces>]`` whose lines each
     fit in ``max_dw_per_line`` units of display width.
 
-    Strategy when wrapping is needed: prefer a balanced split (minimise the
-    wider line) so the box doesn't end up sized for a long line-1 with a
-    near-empty line-2; BUT if the resulting balanced lines are much narrower
-    than the available budget, fall back to greedy fit so the header
-    actually fills the colored bar instead of leaving whitespace each side
-    of two short centered lines. The 0.85 threshold was chosen so 'two
-    short lines centered in a body-driven wide box' triggers the fallback,
-    while 'naturally tight wraps' (LP2.5, LP2.3) keep balance.
+    For two-line layouts the split point is chosen to *balance* the two
+    lines (minimise the wider one) so a 'TP2.5: Optimal recovery of
+    compressible signals (Theorem 5.1)' doesn't render as a ~40-char line
+    1 plus a 13-char line 2 of just '(Theorem 5.1)'. When the body content
+    forces the box wider than the balanced wrap needs, the centered
+    header will have whitespace each side -- that is intentional;
+    keeping the lines balanced takes priority over filling the bar.
 
     Names are sanitised through ``_prepare_for_display`` so author-defined
     macros (e.g. ``\\cF``) don't crash matplotlib's mathtext parser.
@@ -744,35 +743,18 @@ def _wrap_header(nid, name, max_dw_per_line):
         score = max(l1_dw, l2_dw)
         if best is None or score < best[0]:
             best = (score, l1, l2)
-    # Compute greedy fit (line 1 = max words that fit; line 2 = rest) so
-    # we can decide whether to use balanced or greedy.
-    budget1 = max(6, max_dw_per_line - prefix_dw)
-    line1_words = _wrap(name, budget1)
-    if line1_words:
-        greedy_l1 = line1_words[0]
-        rest = name[len(greedy_l1):].lstrip()
-        greedy = (
-            prefix + greedy_l1,
-            rest if _display_width(rest) <= max_dw_per_line
-                 else _shorten(rest, max_dw_per_line),
-        )
-        greedy_max = max(_display_width(greedy[0]), _display_width(greedy[1]))
-    else:
-        greedy = None
-        greedy_max = max_dw_per_line + 1  # invalid
-
     if best is None:
         # No legal balanced split (some single token is wider than budget).
-        if greedy is not None:
-            return list(greedy)
-        return [_shorten(one_line, max_dw_per_line)]
-
-    # If the balanced wrap leaves the wider line << box budget, the box was
-    # sized by something else (body content, usually). Use greedy instead so
-    # line 1 fills the colored bar rather than leaving whitespace each side
-    # of two short centered lines.
-    if greedy is not None and best[0] < 0.85 * max_dw_per_line:
-        return list(greedy)
+        # Fall back to greedy first-fit + truncate so we still produce 2 lines.
+        budget1 = max(6, max_dw_per_line - prefix_dw)
+        line1_words = _wrap(name, budget1)
+        if not line1_words:
+            return [_shorten(one_line, max_dw_per_line)]
+        line1_text = line1_words[0]
+        rest = name[len(line1_text):].lstrip()
+        line2_text = rest if _display_width(rest) <= max_dw_per_line \
+            else _shorten(rest, max_dw_per_line)
+        return [prefix + line1_text, line2_text]
     return [prefix + best[1], best[2]]
 
 
