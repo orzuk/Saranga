@@ -108,8 +108,14 @@ def main():
     rows = []
     n_no_t3 = n_no_t2 = 0
     for pid in t3_pids:
-        # Locate T3 JSON (any *.json in the paper subdir except parse_summary.json)
-        t3_jsons = [p for p in (T3_DIR / pid).glob("*.json") if p.name != "parse_summary.json"]
+        # Locate T3 JSON: parse_batch.py writes to <pid>/json/<paper>.json.
+        # Try that first, then fall back to <pid>/*.json (older layouts).
+        t3_dir = T3_DIR / pid / "json"
+        if t3_dir.is_dir():
+            t3_jsons = [p for p in t3_dir.glob("*.json") if "summary" not in p.name.lower()]
+        else:
+            t3_jsons = [p for p in (T3_DIR / pid).glob("*.json")
+                        if "summary" not in p.name.lower()]
         if not t3_jsons:
             n_no_t3 += 1
             continue
