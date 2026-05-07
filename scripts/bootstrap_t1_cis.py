@@ -159,14 +159,28 @@ def main():
         for aid, gold in zip(arxiv_ids, manual_papers):
             t3_ext = cache / f"{aid}.json"
             if not t3_ext.exists():
-                # Look for LaTeX source
+                # Look for LaTeX source. Try several layouts:
+                #   <root>/<arxiv>/source/*.tex  (fetch_t1_latex.sh layout)
+                #   <root>/<arxiv>/*.tex
+                #   <root>/<aid_no_v>/source/*.tex
+                aid_no_v = aid.split("v")[0]
                 tex_dir = None
-                for cand_root in [Path(args.t3_tex_base)] + [Path(p) for p in args.t3_tex_base.split(",") if p]:
-                    for sub in cand_root.rglob(f"*{aid.split('v')[0]}*"):
+                for cand_root in [Path(args.t3_tex_base)]:
+                    for try_path in [
+                        cand_root / aid / "source",
+                        cand_root / aid,
+                        cand_root / aid_no_v / "source",
+                        cand_root / aid_no_v,
+                    ]:
+                        if try_path.is_dir() and any(try_path.glob("*.tex")):
+                            tex_dir = try_path
+                            break
+                    if tex_dir: break
+                    # Last resort: rglob and check each dir for .tex
+                    for sub in cand_root.rglob(f"*{aid_no_v}*"):
                         if sub.is_dir() and any(sub.glob("*.tex")):
                             tex_dir = sub
                             break
-                    if tex_dir: break
                 if tex_dir is None:
                     print(f"  [T3] no LaTeX source for {aid} under {args.t3_tex_base}; skipping")
                     continue
