@@ -40,7 +40,8 @@ THEOREM_LIKE = {"theorem", "lemma", "proposition", "corollary", "claim",
                 "conjecture", "problem", "definition", "proof"}
 
 
-def per_paper_per_type_f1(extracted_path, gold_path):
+def per_paper_per_type_counts(extracted_path, gold_path):
+    """Returns dict {type: (tp, fp, fn)} for the 9 evaluated types."""
     with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tf:
         out_csv = tf.name
     cmd = [
@@ -52,37 +53,61 @@ def per_paper_per_type_f1(extracted_path, gold_path):
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     if proc.returncode != 0:
+        Path(out_csv).unlink(missing_ok=True)
         return None
-    f1 = {}
+    counts = {}
     try:
         for r in csv.DictReader(open(out_csv)):
             cat = (r.get("category") or "").strip()
             typ = (r.get("type") or "").strip().lower()
             if cat == "nodes" and typ in THEOREM_LIKE:
-                try: f1[typ] = float(r.get("f1") or "0")
-                except ValueError: pass
+                try:
+                    tp = int(r.get("tp") or 0)
+                    fp = int(r.get("fp") or 0)
+                    fn = int(r.get("fn") or 0)
+                    counts[typ] = (tp, fp, fn)
+                except ValueError:
+                    pass
     finally:
         Path(out_csv).unlink(missing_ok=True)
-    return f1
+    return counts
 
 
-def macro_f1(per_type_f1):
-    types = list(THEOREM_LIKE)
-    return sum(per_type_f1.get(t, 0.0) for t in types) / len(types)
+def macro_f1_corpus(per_paper_counts, types):
+    """Corpus-level macro-F1: sum TP/FP/FN per type across papers,
+    compute F1 per type, average over types where gold>0 (TP+FN>0).
+    Matches the paper's reported aggregation."""
+    sums = {t: [0, 0, 0] for t in types}
+    for counts in per_paper_counts:
+        for t in types:
+            tp, fp, fn = counts.get(t, (0, 0, 0))
+            sums[t][0] += tp
+            sums[t][1] += fp
+            sums[t][2] += fn
+    f1s = []
+    for t in types:
+        tp, fp, fn = sums[t]
+        if tp + fn == 0:
+            continue  # no gold for this type at all; skip
+        denom = 2 * tp + fp + fn
+        f1 = (2 * tp / denom) if denom > 0 else 0.0
+        f1s.append(f1)
+    return sum(f1s) / len(f1s) if f1s else 0.0
 
 
-def bootstrap_ci(values, n_iter=10000, seed=42, alpha=0.05):
-    n = len(values)
-    if n == 0: return None
+def bootstrap_ci_corpus(per_paper_counts, types, n_iter=10000, seed=42, alpha=0.05):
+    n = len(per_paper_counts)
+    if n == 0:
+        return None
     rng = random.Random(seed)
     means = []
     for _ in range(n_iter):
-        sample = [values[rng.randrange(n)] for _ in range(n)]
-        means.append(sum(sample) / n)
+        sample = [per_paper_counts[rng.randrange(n)] for _ in range(n)]
+        means.append(macro_f1_corpus(sample, types))
     means.sort()
     lo = means[int(n_iter * alpha / 2)]
     hi = means[int(n_iter * (1 - alpha / 2))]
-    return sum(values) / n, lo, hi
+    return macro_f1_corpus(per_paper_counts, types), lo, hi
 
 
 def main():
@@ -111,18 +136,18 @@ def main():
 
     results = {}
     for prov_name, suffix in providers.items():
-        per_paper_macros = []
+        per_paper_counts_list = []
         for aid, gold in zip(arxiv_ids, manual_papers):
             ext = T1_DIR / f"{aid}{suffix}.json"
             if not ext.exists():
                 print(f"  [{prov_name}] missing {ext.name}")
                 continue
-            f1s = per_paper_per_type_f1(ext, gold)
-            if f1s is None:
+            counts = per_paper_per_type_counts(ext, gold)
+            if counts is None:
                 print(f"  [{prov_name}] eval failed on {aid}")
                 continue
-            per_paper_macros.append(macro_f1(f1s))
-        results[prov_name] = per_paper_macros
+            per_paper_counts_list.append(counts)
+        results[prov_name] = per_paper_counts_list
 
     # T3 extraction if requested
     if not args.skip_t3:
@@ -164,25 +189,48 @@ def main():
                         print(f"  [T3] no extraction output for {aid}")
                         continue
                     shutil.copy(cands[0], t3_ext)
-            f1s = per_paper_per_type_f1(t3_ext, gold)
-            if f1s is None:
+            counts = per_paper_per_type_counts(t3_ext, gold)
+            if counts is None:
                 print(f"  [T3] eval failed on {aid}")
                 continue
-            t3_macros.append(macro_f1(f1s))
+            t3_macros.append(counts)
         results["T3 (regex)"] = t3_macros
 
-    # Bootstrap and print
+    # Per-type breakdown for each provider
+    types_ordered = ["definition", "theorem", "lemma", "proposition", "corollary",
+                     "claim", "conjecture", "problem", "proof"]
+    for prov_name, per_paper_counts_list in results.items():
+        print()
+        print(f"=== Per-type breakdown for {prov_name} (corpus-aggregated over n={len(per_paper_counts_list)} papers) ===")
+        if not per_paper_counts_list:
+            print("  no successful evals")
+            continue
+        print(f"{'Type':<14s} {'TP':>5s} {'FP':>5s} {'FN':>5s} {'Precision':>10s} {'Recall':>8s} {'F1':>8s}")
+        print("-" * 60)
+        for t in types_ordered:
+            tp = sum(c.get(t, (0,0,0))[0] for c in per_paper_counts_list)
+            fp = sum(c.get(t, (0,0,0))[1] for c in per_paper_counts_list)
+            fn = sum(c.get(t, (0,0,0))[2] for c in per_paper_counts_list)
+            if tp + fn == 0:
+                print(f"{t:<14s} {tp:>5d} {fp:>5d} {fn:>5d} {'(no gold)':>10s} {'':>8s} {'':>8s}")
+                continue
+            prec = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+            rec  = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+            denom = 2*tp + fp + fn
+            f1 = (2*tp / denom) if denom > 0 else 0.0
+            print(f"{t:<14s} {tp:>5d} {fp:>5d} {fn:>5d} {prec:>10.3f} {rec:>8.3f} {f1:>8.3f}")
+
     print()
-    print(f"=== Benchmark 1 macro-F1 over T1 (n=10), bootstrap 95% CIs ({args.n_iter} iters) ===")
-    print(f"{'Provider':<22s} {'mean':>8s}  {'95% CI':>20s}  {'n':>4s}")
-    print("-" * 60)
-    for name, vals in results.items():
-        ci = bootstrap_ci(vals, n_iter=args.n_iter)
+    print(f"=== Macro-F1 aggregate + bootstrap 95% CI ({args.n_iter} iters) ===")
+    print(f"{'Provider':<22s} {'macro-F1':>10s}  {'95% CI':>20s}  {'n papers':>10s}")
+    print("-" * 70)
+    for name, per_paper_counts_list in results.items():
+        ci = bootstrap_ci_corpus(per_paper_counts_list, types_ordered, n_iter=args.n_iter)
         if ci is None:
-            print(f"  {name:<20s} no successful evals")
+            print(f"{name:<22s} no successful evals")
             continue
         mean, lo, hi = ci
-        print(f"{name:<22s} {mean:>8.3f}  [{lo:.3f}, {hi:.3f}]    {len(vals):>4d}")
+        print(f"{name:<22s} {mean:>10.3f}  [{lo:.3f}, {hi:.3f}]    {len(per_paper_counts_list):>10d}")
 
 
 if __name__ == "__main__":
