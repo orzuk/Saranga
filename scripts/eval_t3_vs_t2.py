@@ -90,6 +90,7 @@ def main():
         # Skip PDF-fallback papers (they have a source_note and weren't extracted by T3)
         d = json.load(open(t2_path))
         md = d.get("metadata") or {}
+        arxiv_id = md.get("arxiv_id") or md.get("arxiv") or ""
         if "source_note" in md:
             n_skipped += 1
             continue
