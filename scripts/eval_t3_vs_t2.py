@@ -116,14 +116,29 @@ def main():
             n_skipped += 1
             continue
 
-        # Parse the produced CSV
+        # Parse the produced CSV (long format from evaluate_extraction.py:
+        # columns = category,type,precision,recall,f1,tp,fp,fn).
         try:
             rows = list(csv.DictReader(open(result_csv)))
         except OSError:
             n_skipped += 1
             continue
-        metrics = {r["metric"]: float(r["value"]) for r in rows
-                   if r.get("metric") and r.get("value", "").replace(".", "", 1).replace("-", "", 1).isdigit()}
+        metrics = {}
+        for r in rows:
+            cat = (r.get("category") or "").strip()
+            typ = (r.get("type") or "").strip()
+            if cat == "nodes" and typ == "OVERALL":
+                for k in ("precision", "recall", "f1"):
+                    try:
+                        metrics[f"node_{k}"] = float(r.get(k, "") or "0")
+                    except ValueError:
+                        pass
+            elif cat == "edges" and typ == "OVERALL":
+                for k in ("precision", "recall", "f1"):
+                    try:
+                        metrics[f"edge_{k}"] = float(r.get(k, "") or "0")
+                    except ValueError:
+                        pass
         summary_rows.append({
             "paper_id": t2_path.stem,
             "arxiv_id": arxiv_id,
