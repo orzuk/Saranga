@@ -51,6 +51,81 @@ DEFAULT_COLOR = {"header": "#566573", "body": "#EAECEE"}
 PROOF_COLOR = "#E8DAEF"
 
 
+def _normalize_schema(data, source_path=None):
+    """Normalize a loaded paper graph to the canonical schema (schema A) used
+    by the rest of this renderer, falling back to alternative field names
+    that appear in JSONs produced by the cluster T3 pipeline (schema B,
+    src/LLMVersion/parse_batch.py output: 'label', 'clean_text', 'raw_latex',
+    '[MATH]' placeholders).
+
+    Field-by-field fallback (schema-A first, then schema-B). Modifies `data`
+    in place and returns it. Idempotent on schema-A inputs.
+
+      node['name']             ← name | label | id | "<type-prefix><index>"
+      node['statement']        ← raw_latex (when statement contains '[MATH]')
+                                 | statement
+      node['statement_clean']  ← statement_clean | clean_text-without-[MATH]
+                                 | derived from cleaned statement
+      metadata['title']        ← title | paper_id | source filename stem
+    """
+    import re as _re_local
+    nodes = data.get("nodes", []) or []
+    for n in nodes:
+        if not isinstance(n, dict):
+            continue
+        # Restore real LaTeX into 'statement' when '[MATH]' placeholders are
+        # present and 'raw_latex' has the unredacted source.
+        stmt = n.get("statement") or ""
+        raw  = n.get("raw_latex") or ""
+        if raw and "[MATH]" in stmt and "[MATH]" not in raw:
+            cleaned = _re_local.sub(r'^\s*\\label\{[^}]*\}\s*', '', raw)
+            cleaned = _re_local.sub(r'\s+', ' ', cleaned).strip()
+            if cleaned:
+                n["statement"] = cleaned
+                stmt = cleaned
+        # statement_clean: prefer existing; else clean_text without [MATH];
+        # else fall back to (now-fixed) statement.
+        if not n.get("statement_clean"):
+            ct = n.get("clean_text") or ""
+            if ct and "[MATH]" not in ct:
+                n["statement_clean"] = ct
+            elif stmt and "[MATH]" not in stmt:
+                n["statement_clean"] = stmt
+            # else: leave absent; downstream handles missing field gracefully.
+        # Name: prefer existing; else label or id.
+        if not n.get("name"):
+            n["name"] = n.get("label") or n.get("id") or _gen_name_from_node(n)
+        # assumptions / conclusions: schema B sometimes ships these arrays
+        # populated with [MATH]-redacted text. We can't reliably reconstruct
+        # them from raw_latex without alignment, so drop entries that contain
+        # placeholders (the renderer will fall back to statement_clean).
+        for fld in ("assumptions", "conclusions"):
+            arr = n.get(fld)
+            if isinstance(arr, list) and arr:
+                n[fld] = [s for s in arr
+                          if isinstance(s, str) and "[MATH]" not in s]
+    md = data.get("metadata")
+    if isinstance(md, dict):
+        if not md.get("title"):
+            md["title"] = (md.get("paper_id") or
+                          (source_path.stem if source_path else "(untitled)"))
+        data["metadata"] = md
+    return data
+
+
+def _gen_name_from_node(n):
+    """Last-resort label generator from a node's type + index."""
+    typ = (n.get("type") or "").lower()
+    idx = n.get("index") or "?"
+    prefix = {
+        "theorem": "T", "lemma": "L", "proposition": "P", "corollary": "C",
+        "claim": "Cl", "conjecture": "Cj", "definition": "D", "proof": "Pr",
+        "equation": "E", "algorithm": "A", "problem": "Q",
+        "example": "Ex", "remark": "R", "open_problem": "OQ",
+    }.get(typ, "N")
+    return f"{prefix}{idx}"
+
+
 def _as_list(v):
     """Coerce a list-or-string node field to a list of strings.
 
@@ -2936,6 +3011,11 @@ def main():
 
         with open(input_path, "r", encoding="utf-8") as f:
             data = json.load(f)
+
+        # Normalize schema-B (src/LLMVersion/ parse_batch.py output) to
+        # canonical schema-A that the renderer expects. Idempotent on
+        # schema-A inputs (portal, T2 Opus extractions).
+        data = _normalize_schema(data, source_path=input_path)
 
         nodes = data.get("nodes", [])
         edges = data.get("edges", [])
