@@ -122,70 +122,87 @@ echo "  -> ${N_ITEMS} ${STYPE} items in silver gold"
 # Step 1: run the rule-parser on each of the 250 .tex sources to produce
 # detailed_matches.csv that the distillation expects.
 #
-# This step needs the source .tex per paper. If you don't have all 250 .tex
-# files locally yet, rsync them from cluster first:
-#   rsync -avz --include='*/' --include='source/*.tex' --exclude='*' \
-#       <user>@<cluster>:/sci/.../alignment_benchmark/papers/ \
-#       $SARANGA_DATA_ROOT/alignment/papers/
+# Uses a per-paper cache at $SARANGA_DATA_ROOT/inspection/silver_rules_cache/
+# (populated separately in ~20 min via the same code). If the cache file
+# exists for a paper, read from it; else run the parser and persist.
+#
+# Source .tex files come from $ALIGN_DIR (typically a symlink to
+# $SARANGA_DATA_ROOT/alignment/papers/, which mirrors GDrive's
+# alignment_benchmark/papers/).
 # ---------------------------------------------------------------------------
+RULES_CACHE="${SARANGA_DATA:-/mnt/c/Datasets/Saranga_data}/inspection/silver_rules_cache"
 echo
-echo "[1/5] Running rule-parser on 250 silver papers (mode=rules) ..."
+echo "[1/5] Loading rule-parser output for silver papers (cache: $RULES_CACHE) ..."
 python3 - <<PYEOF
-import sys, json, csv, os, glob
+import sys, json, csv, os
 from pathlib import Path
 sys.path.insert(0, "$LLM_DIR")
-from math_paper_parser import PaperParser
 
 ALIGN = Path("$ALIGN_DIR")
 T2    = Path("$T2_DIR")
 EVAL  = Path("$EVAL_DIR")
+CACHE = Path("$RULES_CACHE")
 STYPE = "$STYPE"
 
 EVAL.mkdir(parents=True, exist_ok=True)
+CACHE.mkdir(parents=True, exist_ok=True)
 
-# detailed_matches.csv is what distillation_analysis.py reads. Format:
-#   paper_id,provider,raw_latex,...
-# We write rows for both 'rules' (rule-parser) and 'opus' (silver gold)
-# providers, so dark-knowledge can compute "rules missed AND opus caught".
+# Lazy import only when cache miss requires it
+PaperParser = None
 
 rows = []
-n_papers = 0; n_skipped = 0
+n_papers = 0; n_skipped = 0; n_cache_hit = 0; n_cache_miss = 0
 for paper_dir in sorted(ALIGN.glob("paper*")):
-    pid = paper_dir.name  # paperNNN
+    pid = paper_dir.name
     if not pid.startswith("paper"): continue
-    src_dir = paper_dir / "source"
-    if not src_dir.exists():
-        n_skipped += 1; continue
-    tex_files = sorted(src_dir.glob("*.tex"))
-    if not tex_files: continue
-
-    # Find main tex by \documentclass; fall back to first .tex
-    main_tex = None
-    for tf in tex_files:
+    cached = CACHE / f"{pid}_rules.json"
+    graph_dict = None
+    if cached.exists():
         try:
-            with open(tf, encoding="utf-8", errors="replace") as f:
-                head = f.read(8000)
-            if r"\documentclass" in head:
-                main_tex = tf; break
+            graph_dict = json.loads(cached.read_text(encoding="utf-8"))
+            n_cache_hit += 1
         except Exception:
+            graph_dict = None
+    if graph_dict is None:
+        # Cache miss — parse from .tex
+        src_dir = paper_dir / "source"
+        if not src_dir.exists():
+            n_skipped += 1; continue
+        tex_files = sorted(src_dir.glob("*.tex"))
+        if not tex_files: continue
+        main_tex = None
+        for tf in tex_files:
+            try:
+                with open(tf, encoding="utf-8", errors="replace") as f:
+                    head = f.read(8000)
+                if r"\documentclass" in head:
+                    main_tex = tf; break
+            except Exception:
+                continue
+        if main_tex is None: main_tex = tex_files[0]
+        try:
+            if PaperParser is None:
+                from math_paper_parser import PaperParser
+            parser = PaperParser(paper_id=pid, extraction_mode="rules", structure_types=None)
+            graph = parser.parse_file(str(main_tex))
+            graph_dict = graph.to_unified_dict()
+            cached.write_text(json.dumps(graph_dict, indent=2), encoding="utf-8")
+            n_cache_miss += 1
+        except Exception as e:
+            print(f"  [warn] {pid}: parse failed ({e})"); n_skipped += 1
             continue
-    if main_tex is None: main_tex = tex_files[0]
 
-    try:
-        parser = PaperParser(paper_id=pid, extraction_mode="rules", structure_types=[STYPE])
-        graph = parser.parse_file(str(main_tex))
-        graph_dict = graph.to_dict()
-        for obj_id, obj in graph_dict.get("objects", {}).items():
-            if obj.get("kind") != STYPE: continue
-            raw = obj.get("raw_latex") or obj.get("statement") or ""
-            if raw.strip():
-                rows.append({"paper_id": pid, "provider": "rules", "raw_latex": raw})
-        n_papers += 1
-    except Exception as e:
-        print(f"  [warn] {pid}: parse failed ({e})"); n_skipped += 1
+    # Filter cached graph for this STYPE and emit rows
+    for n in graph_dict.get("nodes", []):
+        if n.get("type") != STYPE: continue
+        raw = n.get("statement_latex") or n.get("statement") or n.get("raw_latex") or ""
+        if raw.strip():
+            rows.append({"paper_id": pid, "provider": "rules", "raw_latex": raw})
+    n_papers += 1
 
-# Add the opus side: same papers, opus extractions are in T2_DIR/paperNNN.json
+# Opus side
 for f in sorted(T2.glob("paper*.json")):
+    if f.name == "anomalies_detail.json": continue
     d = json.load(open(f))
     pid_num = d.get("metadata", {}).get("paper_num") or int(f.stem.replace("paper",""))
     pid = f"paper{int(pid_num)}"
@@ -200,7 +217,8 @@ with open(out_csv, "w", newline="", encoding="utf-8") as f:
     w = csv.DictWriter(f, fieldnames=["paper_id","provider","raw_latex"])
     w.writeheader()
     for r in rows: w.writerow(r)
-print(f"  wrote {out_csv}: {len(rows)} rows from {n_papers} papers ({n_skipped} skipped)")
+print(f"  cache hit: {n_cache_hit}; cache miss (re-parsed): {n_cache_miss}; skipped: {n_skipped}")
+print(f"  wrote {out_csv}: {len(rows)} rows from {n_papers} papers")
 PYEOF
 
 # ---------------------------------------------------------------------------
