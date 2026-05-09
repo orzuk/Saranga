@@ -1435,14 +1435,27 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 lines.append(_shorten(_prepare_for_display(a), 60))
             for c in _as_list(n.get("conclusions"))[:MAX_LINES_PER_SECTION]:
                 lines.append(_shorten(_prepare_for_display(c), 60))
-            for ps in (n.get("proof_info") or []):
-                if ps: lines.append(_shorten(_prepare_for_display(f"Proof: {ps}"), 60))
+            # Cap proof_info display: rule-based extractor sometimes splits
+            # one logical proof into multiple paragraph-level proof nodes,
+            # all attached to the same parent. Show the first only and a
+            # '+N more proofs' indicator rather than stacking lines.
+            proofs_all = [p for p in (n.get("proof_info") or []) if p]
+            if proofs_all:
+                lines.append(_shorten(_prepare_for_display(f"Proof: {proofs_all[0]}"), 60))
+                if len(proofs_all) > 1:
+                    lines.append(f"(+{len(proofs_all)-1} more proof segment{'s' if len(proofs_all)>2 else ''})")
         elif ntype == "algorithm" and (n.get("input") or n.get("output")):
             for x in _as_list(n.get("input")): lines.append(_shorten(x, 60))
             for x in _as_list(n.get("output")): lines.append(_shorten(x, 60))
         else:
             raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
-            lines.append(_shorten(_prepare_for_display(raw), 150))
+            # 40-char teaser inside the node body; full text in click panel.
+            # Aggressive cap because schema-B JSONs (rule-based parsed_100k)
+            # produce many nodes per paper without short 'name' fields, so
+            # in-box statement text otherwise overwhelms the SVG.
+            short = _shorten(_prepare_for_display(raw), 40)
+            if short:
+                lines.append(short)
         return lines
 
     # ── First pass: compute each node's ideal width ──
@@ -1462,9 +1475,11 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 texts.append(_prepare_for_display(a))
             for c in _as_list(n.get("conclusions"))[:MAX_LINES_PER_SECTION]:
                 texts.append(_prepare_for_display(c))
-            for ps in (n.get("proof_info") or []):
-                if ps:
-                    texts.append(_prepare_for_display(f"Proof: {ps}"))
+            proofs_all = [p for p in (n.get("proof_info") or []) if p]
+            if proofs_all:
+                texts.append(_shorten(_prepare_for_display(f"Proof: {proofs_all[0]}"), 60))
+                if len(proofs_all) > 1:
+                    texts.append(f"(+{len(proofs_all)-1} more)")
         elif ntype == "algorithm" and (n.get("input") or n.get("output")):
             for x in _as_list(n.get("input")):
                 texts.append(_shorten(x, 100))
@@ -1472,7 +1487,9 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 texts.append(_shorten(x, 100))
         else:
             raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
-            texts.append(_prepare_for_display(raw))
+            short = _shorten(_prepare_for_display(raw), 40)
+            if short:
+                texts.append(short)
         return texts
 
     def _wrap_all_and_measure(texts, wrap_chars):
