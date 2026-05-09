@@ -2,6 +2,24 @@
 
 Inspection snapshot: 5 math.CO papers extracted by both the rule-based T3 extractor (`_rules.json`, parse_batch.py post-Fix-a/b/c/d) and Claude Opus 4.7 with the `v3_combined` prompt (`_opus.json`). Goal: ground the next round of T3 fixes in concrete failure cases beyond the ones already on the parser-improvement list (B1 / B3 / B5 / B4).
 
+## How to view the HTML graphs
+
+The repo is private, so the HTMLs in this directory cannot be viewed inline on github.com. Two options:
+
+1. **Clone and open locally (recommended):**
+   ```bash
+   git clone https://github.com/orzuk/Saranga.git
+   cd Saranga/inspection/2026-05-09_5paper/
+   # Then either open the HTMLs directly:
+   open 1003.3103v1_rules.html      # macOS
+   xdg-open 1003.3103v1_rules.html  # Linux
+   start 1003.3103v1_rules.html     # Windows / WSL via cmd
+   # OR open this README in a Markdown previewer (VSCode, Typora, etc.)
+   # — the per-paper links in the table below become clickable and
+   # open the HTMLs in your default browser.
+   ```
+2. **Direct download from GitHub:** browse to the file in the GitHub UI, click "Raw", save as. Then open in browser. Slower than cloning the whole dir.
+
 ## Aggregate metrics (treating Opus as gold)
 
 | paper | rules nodes | opus nodes | rules edges | opus edges | node F1 | edge F1 |
@@ -16,13 +34,15 @@ Edge F1 is ~0 across the board: rules emits keyword-matched edges that don't ali
 
 ## What to look at per paper
 
+The `_rules.html` / `_opus.html` columns are relative links — they open the HTML graph in your browser when you've cloned this repo and view this README in a Markdown previewer (or click them directly in any text editor that resolves `.md` links).
+
 | Paper | Source | T3 graph (rules) | Opus graph |
 |---|---|---|---|
-| 1001.2078v1 | [arxiv abs](https://arxiv.org/abs/1001.2078v1) / [pdf](https://arxiv.org/pdf/1001.2078v1) | `1001.2078v1_rules.html` | `1001.2078v1_opus.html` |
-| 1001.3528v1 | [arxiv abs](https://arxiv.org/abs/1001.3528v1) / [pdf](https://arxiv.org/pdf/1001.3528v1) | `1001.3528v1_rules.html` | `1001.3528v1_opus.html` |
-| 1001.4249v1 | [arxiv abs](https://arxiv.org/abs/1001.4249v1) / [pdf](https://arxiv.org/pdf/1001.4249v1) | `1001.4249v1_rules.html` | `1001.4249v1_opus.html` |
-| 1003.0943v2 | [arxiv abs](https://arxiv.org/abs/1003.0943v2) / [pdf](https://arxiv.org/pdf/1003.0943v2) | `1003.0943v2_rules.html` | `1003.0943v2_opus.html` |
-| 1003.3103v1 | [arxiv abs](https://arxiv.org/abs/1003.3103v1) / [pdf](https://arxiv.org/pdf/1003.3103v1) | `1003.3103v1_rules.html` | `1003.3103v1_opus.html` |
+| 1001.2078v1 | [arxiv abs](https://arxiv.org/abs/1001.2078v1) / [pdf](https://arxiv.org/pdf/1001.2078v1) | [1001.2078v1_rules.html](./1001.2078v1_rules.html) | [1001.2078v1_opus.html](./1001.2078v1_opus.html) |
+| 1001.3528v1 | [arxiv abs](https://arxiv.org/abs/1001.3528v1) / [pdf](https://arxiv.org/pdf/1001.3528v1) | [1001.3528v1_rules.html](./1001.3528v1_rules.html) | [1001.3528v1_opus.html](./1001.3528v1_opus.html) |
+| 1001.4249v1 | [arxiv abs](https://arxiv.org/abs/1001.4249v1) / [pdf](https://arxiv.org/pdf/1001.4249v1) | [1001.4249v1_rules.html](./1001.4249v1_rules.html) | [1001.4249v1_opus.html](./1001.4249v1_opus.html) |
+| 1003.0943v2 | [arxiv abs](https://arxiv.org/abs/1003.0943v2) / [pdf](https://arxiv.org/pdf/1003.0943v2) | [1003.0943v2_rules.html](./1003.0943v2_rules.html) | [1003.0943v2_opus.html](./1003.0943v2_opus.html) |
+| 1003.3103v1 | [arxiv abs](https://arxiv.org/abs/1003.3103v1) / [pdf](https://arxiv.org/pdf/1003.3103v1) | [1003.3103v1_rules.html](./1003.3103v1_rules.html) | [1003.3103v1_opus.html](./1003.3103v1_opus.html) |
 
 ## Why each paper was picked (Or's first-pass impressions)
 
