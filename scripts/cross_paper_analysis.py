@@ -29,8 +29,8 @@ import numpy as np
 def load_foundation_edges(out_dir):
     """Load foundation edges from all paper JSONs. Returns {arxiv_id: {term: idf_weight}}."""
     papers = {}
-    for jp in sorted(glob.glob(str(Path(out_dir) / "**" / "*_manual.json"), recursive=True)):
-        arxiv_id = Path(jp).stem.replace("_manual", "")
+    for jp in sorted(glob.glob(str(Path(out_dir) / "**" / "*_rules.json"), recursive=True)):
+        arxiv_id = Path(jp).stem.replace("_rules", "")
         terms = {}
         with open(jp) as f:
             data = json.load(f)

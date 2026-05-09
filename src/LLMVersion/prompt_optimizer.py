@@ -15,7 +15,7 @@ Usage:
   python3 prompt_optimizer.py \
       --paper-id 2208.03112 \
       --provider anthropic \
-      --model claude-sonnet-4-20250514 \
+      --model claude-sonnet-4-6 \
       --iterations 3
 """
 
@@ -42,13 +42,13 @@ class PromptOptimizer:
         self,
         paper_id: Optional[str] = None,
         provider: str = "anthropic",
-        model: str = "claude-sonnet-4-20250514",
+        model: str = "claude-sonnet-4-6",
         gold_csv: str = "Gold_Standard.csv",
         initial_prompt_file: str = "custom_prompt.txt",
         threshold: float = 0.7,
         max_iterations: int = 3,
         meta_provider: str = "anthropic",
-        meta_model: str = "claude-sonnet-4-20250514",
+        meta_model: str = "claude-sonnet-4-6",
         out_dir: str = ".",
         work_dir: Optional[str] = None,
         structure_type: str = "definition",
@@ -857,7 +857,7 @@ def main():
     parser.add_argument(
         "--meta-model",
         type=str,
-        default="claude-sonnet-4-20250514",
+        default="claude-sonnet-4-6",
         help="Model for meta-optimization",
     )
     parser.add_argument(

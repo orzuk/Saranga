@@ -126,8 +126,8 @@ def run_batch(
         out_dir: Path,
         draw_graphs: bool,
         verbose: bool,
-        extraction_mode: str = "manual",
-        llm_model: str = "claude-sonnet-4-20250514",
+        extraction_mode: str = "rules",
+        llm_model: str = "claude-sonnet-4-6",
         llm_chunk_chars: int = 30000,
         llm_provider: str = "anthropic",
         tex_dir: Optional[str] = None,
@@ -232,12 +232,12 @@ def run_batch(
                 continue
 
             # Save JSON into json/ subdir so definitions_from_json_to_csv.py glob finds it
-            if extraction_mode == "manual":
-                suffix = "manual"
+            if extraction_mode == "rules":
+                suffix = "rules"
             elif extraction_mode == "llm":
                 suffix = llm_provider
             else:
-                suffix = f"{llm_provider}+manual"
+                suffix = f"{llm_provider}+rules"
             json_dir = out_dir / "json"
             json_dir.mkdir(parents=True, exist_ok=True)
             json_name = f"{versioned_id}_{suffix}.json"
@@ -393,12 +393,12 @@ def run_batch(
         json_dir.mkdir(parents=True, exist_ok=True)
 
         # Determine JSON suffix
-        if extraction_mode == "manual":
-            suffix = "manual"
+        if extraction_mode == "rules":
+            suffix = "rules"
         elif extraction_mode == "llm":
             suffix = llm_model.replace('/', '-')  # sanitize slashes for filename
         elif extraction_mode == "both":
-            suffix = f"{llm_model}+manual"
+            suffix = f"{llm_model}+rules"
 
         json_filename = f"{versioned_id}_{suffix}.json"
         json_path = json_dir / json_filename
@@ -512,19 +512,19 @@ def main():
     parser.add_argument(
         "--extraction-mode",
         type=str,
-        default="manual",
-        choices=["manual", "llm", "both"],
+        default="rules",
+        choices=["rules", "llm", "both"],
         help=(
             "Extraction mode for all structure types: "
-            "'manual' (pattern-based, default), "
-            "'llm' (LLM API), "
-            "'both' (combines both methods)."
+            "'rules' (pattern-based rule extractor, default; output suffix _rules.json), "
+            "'llm' (LLM API; output suffix _<provider>.json), "
+            "'both' (combines both)."
         ),
     )
     parser.add_argument(
         "--llm-model",
         type=str,
-        default="claude-sonnet-4-20250514",
+        default="claude-sonnet-4-6",
         help="Anthropic model to use for LLM extraction (if enabled).",
     )
     parser.add_argument(

@@ -17,9 +17,9 @@ PROVIDERS="anthropic,openai,huggingface,manual"
 OPTIMIZE_PROMPT=false
 OPT_ITERATIONS=3
 OPT_PROVIDER="anthropic"
-OPT_MODEL="claude-sonnet-4-20250514"
+OPT_MODEL="claude-sonnet-4-6"
 OPT_META_PROVIDER="anthropic"
-OPT_META_MODEL="claude-sonnet-4-20250514"
+OPT_META_MODEL="claude-sonnet-4-6"
 
 # API Keys
 HF_TOKEN="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"
@@ -111,7 +111,7 @@ for pid in "${PAPER_IDS[@]}"; do
                     --out-dir "${OUT_DIR}" \
                     --extraction-mode llm \
                     --llm-provider anthropic \
-                    --llm-model claude-opus-4-6 \
+                    --llm-model claude-opus-4-7 \
                     --prompt-file "${PROMPT_FILE}" \
                     --structure-types "${STRUCTURE_TYPE}"
                 ;;
@@ -132,7 +132,7 @@ for pid in "${PAPER_IDS[@]}"; do
                     --operations parse \
                     --regex-id "${REGEX_ID}" \
                     --out-dir "${OUT_DIR}" \
-                    --extraction-mode manual \
+                    --extraction-mode rules \
                     --structure-types "${STRUCTURE_TYPE}"
                 ;;
             *)

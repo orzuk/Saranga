@@ -14,7 +14,7 @@ n_total = 0
 n_generic_edges = 0
 n_specific_edges = 0
 
-for jp in sorted(glob.glob(out_dir + "/**/*_manual.json", recursive=True)):
+for jp in sorted(glob.glob(out_dir + "/**/*_rules.json", recursive=True)):
     n_total += 1
     with open(jp) as f:
         data = json.load(f)

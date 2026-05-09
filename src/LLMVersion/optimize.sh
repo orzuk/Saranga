@@ -35,7 +35,7 @@ python prompt_optimizer.py \
     --gold-csv "$GOLD_CSV" \
     --initial-prompt "prompts/${STYPE}_prompt.txt" \
     --provider anthropic \
-    --model claude-opus-4-6 \
-    --meta-model claude-opus-4-6 \
+    --model claude-opus-4-7 \
+    --meta-model claude-opus-4-7 \
     --iterations 3 \
     --out-dir "${STYPE}_optimization"

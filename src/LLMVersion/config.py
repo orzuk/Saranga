@@ -25,7 +25,15 @@ _spec.loader.exec_module(_src_config)
 # string-based path arithmetic.
 _PATH_NAMES = (
     "DATA_DIR", "CODE_DIR", "SCRIPTS_DIR", "SRC_DIR",
-    "ARXIV_DIR", "PROOFWIKI_DIR", "WIKIDATA_DIR",
+    "DATASET_ROOT",
+    "TIER1_DIR", "TIER1_STEPS_DIR", "TIER2_DIR", "TIER3_DIR", "TIER3_SAMPLES",
+    "ALIGNMENT_DIR", "EVAL_DIR", "INSPECTION_DIR",
+    "ARXIV_RAW_DIR", "FOUNDATION_DIR",
+    "MANIFESTS_DIR", "TIER1_MANIFEST", "TIER1_STEPS_MANIFEST",
+    "TIER2_MANIFEST", "TIER3_MANIFEST", "ALIGNMENT_MANIFEST",
+    "PORTAL_DIR", "PORTAL_DATA_DIR",
+    "ARXIV_DIR", "PROOFWIKI_DIR", "WIKIDATA_DIR", "MATHLIB_DIR",
+    "NATURALPROOFS_DIR", "BOOKS_DIR",
     "ARXIV_IDS_FILE", "ARXIV_META_DATA",
     "ARXIV_META_DATA_COMPACT", "ARXIV_META_DATA_HDF5",
     "FULL_PAPERS_DIR",
@@ -37,7 +45,14 @@ for _name in _PATH_NAMES:
         globals()[_name] = str(_val)
 
 # Non-path constants pass through unchanged.
-_OTHER_NAMES = ("ATOM_URL", "NS", "ARXIV_NS", "LOCAL_FIRST", "ensure_data_dirs")
+_OTHER_NAMES = (
+    "ATOM_URL", "NS", "ARXIV_NS", "LOCAL_FIRST", "ensure_data_dirs",
+    "SOURCES", "SUFFIX_TO_SOURCE", "HUMAN_SOURCES", "RULE_SOURCES", "LLM_SOURCES",
+    "DEFAULT_LLM_KEY", "DEFAULT_LLM_MODEL",
+    "CORPUS_CATEGORIES", "ARXIV_FORM", "FS_FORM",
+    "HF_DATASET_REPO", "HF_PORTAL_SPACE",
+    "DEFAULT_NODE_SIM_THRESHOLD", "DEFAULT_FLIPPED_EDGE_CREDIT",
+)
 for _name in _OTHER_NAMES:
     if hasattr(_src_config, _name):
         globals()[_name] = getattr(_src_config, _name)

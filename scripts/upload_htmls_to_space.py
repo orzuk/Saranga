@@ -6,8 +6,12 @@ import tempfile
 from pathlib import Path
 from huggingface_hub import upload_folder
 
-BASE = "/<cluster>/<user>/projects/saranga/arxiv_data/parsed_100k"
-REPO_ID = "RHCPP/saranga"
+# Resolve canonical HF Space id from src/config.py.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+from config import HF_PORTAL_SPACE, TIER3_DIR  # noqa: E402
+
+BASE = str(TIER3_DIR)
+REPO_ID = HF_PORTAL_SPACE
 BATCH_SIZE = 100
 MAX_RETRIES = 3
 

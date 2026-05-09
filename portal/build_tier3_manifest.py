@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Fetch the list of HTML graph files from the RHCPP/saranga HF Space
-and build the tier3 section of data/manifest.json.
+Fetch the list of HTML graph files from the HF Space (HF_PORTAL_SPACE in
+src/config.py) and build the tier3 section of data/manifest.json.
 
 Usage:
     python build_tier3_manifest.py
@@ -9,11 +9,16 @@ Usage:
 
 import json
 import re
+import sys
 import urllib.request
 from pathlib import Path
 
-SPACE_API = "https://huggingface.co/api/spaces/RHCPP/saranga/tree/main/html"
-GRAPH_BASE = "https://rhcpp-saranga.static.hf.space/html"
+# Resolve src/config.py for HF_PORTAL_SPACE + ARXIV_FORM lookup.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+from config import HF_PORTAL_SPACE, ARXIV_FORM  # noqa: E402
+
+SPACE_API  = f"https://huggingface.co/api/spaces/{HF_PORTAL_SPACE}/tree/main/html"
+GRAPH_BASE = f"https://{HF_PORTAL_SPACE.replace('/', '-').lower()}.static.hf.space/html"
 
 ROOT = Path(__file__).resolve().parent
 MANIFEST_PATH = ROOT / "data" / "manifest.json"
@@ -49,16 +54,22 @@ def main() -> None:
         files = fetch_json(url)
         n = 0
         for f in files:
-            fname = f["path"].split("/")[-1]  # e.g. "1001.0212v2_manual.html"
+            fname = f["path"].split("/")[-1]  # e.g. "1001.0212v2_rules.html"
             if not fname.endswith(".html"):
                 continue
-            paper_id = fname.replace("_manual.html", "")
+            # Strip whichever suffix is present (transition window: _rules
+            # is the new canonical, _manual is legacy).
+            paper_id = fname
+            for _suf in ("_rules.html", "_manual.html", ".html"):
+                if paper_id.endswith(_suf):
+                    paper_id = paper_id[:-len(_suf)]
+                    break
             graph_url = f"{GRAPH_BASE}/{cat}/{fname}"
             tier3.append({
                 "paper_id": paper_id,
                 "title": "",
                 "n_nodes": 0,
-                "category": cat.replace("_", "."),
+                "category": ARXIV_FORM.get(cat, cat.replace("_", ".")),
                 "graph_url": graph_url,
                 "tier": 3,
             })

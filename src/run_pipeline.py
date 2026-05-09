@@ -33,7 +33,7 @@ Operations:
 
 Examples:
 
-  # Parse 500 math.CO papers with manual extraction:
+  # Parse 500 math.CO papers with rule-based extraction:
   python src/run_pipeline.py \\
       --operations parse \\
       --category math.CO \\
@@ -41,7 +41,7 @@ Examples:
       --end 2026-04-01 \\
       --top-k 500 \\
       --out-dir /path/to/out \\
-      --extraction-mode manual
+      --extraction-mode rules
 
   # Parse + validate + visualize a single paper:
   python src/run_pipeline.py \\
@@ -216,10 +216,10 @@ def op_parse(args) -> None:
       holistic-multi         — multi-model holistic LLM (Tier B silver-gold)
       holistic-proof-steps   — holistic LLM with proof-step decomposition (Tier D)
 
-    The legacy --extraction-mode {manual, llm, both} flag still works and is
+    The legacy --extraction-mode {rules, llm, both} flag still works and is
     forwarded to LLMVersion/parse_batch.py unchanged in regex mode. NOTE the
     distinct semantics: --extract-mode (new) selects the BACKEND; the old
-    --extraction-mode selects the manual/llm flavor WITHIN the regex backend.
+    --extraction-mode selects the rules/llm flavor WITHIN the regex backend.
 
     Subprocess isolation keeps LLMVersion's math_classes namespace from
     colliding with src/'s math_classes namespace in the same Python process.
@@ -353,8 +353,10 @@ def op_visualize(args) -> None:
     n_ok = 0
     for i, jp in enumerate(json_paths, start=1):
         # Extract paper_id from filename for progress display
-        paper_id = jp.stem.replace("_manual", "").replace("_anthropic", "") \
-                          .replace("_openai", "").replace("_huggingface", "")
+        paper_id = jp.stem
+        for _suf in ("_rules", "_manual", "_anthropic", "_openai", "_huggingface",
+                     "_opus", "_sonnet", "_haiku", "_gemini", "_qwen", "_deepseek"):
+            paper_id = paper_id.replace(_suf, "")
 
         try:
             # Output to sibling html/ or png/ dir if JSON is inside a json/ dir
@@ -744,12 +746,14 @@ def main():
                              "metadata,source,pdf,html")
 
     # --- parse operation args (forwarded to LLMVersion subprocess) ---
-    parser.add_argument("--extraction-mode", type=str, default="manual",
-                        choices=["manual", "llm", "both"],
-                        help="Extraction mode: manual (default), llm, or both.")
+    parser.add_argument("--extraction-mode", type=str, default="rules",
+                        choices=["rules", "llm", "both"],
+                        help="Extraction mode: rules (rule-based, default), llm, or both. "
+                             "Output suffix is _rules / _<provider> / _<provider>+rules.")
     parser.add_argument("--llm-model", type=str,
-                        default="claude-sonnet-4-20250514",
-                        help="LLM model name (when mode includes llm).")
+                        default="claude-sonnet-4-6",
+                        help="LLM model name (when mode includes llm). "
+                             "See SOURCES in src/config.py for known model ids.")
     parser.add_argument("--llm-provider", type=str, default="anthropic",
                         choices=["anthropic", "openai", "huggingface"],
                         help="LLM provider.")
@@ -795,7 +799,7 @@ def main():
                              "'holistic-proof-steps' = holistic with "
                              "proof-step decomposition (Tier D). NOTE: this is "
                              "DIFFERENT from --extraction-mode (which is "
-                             "manual/llm/both inside the regex backend).")
+                             "rules/llm/both inside the regex backend).")
     parser.add_argument("--models-config", type=str, default=None,
                         help="YAML or JSON listing models for "
                              "--extract-mode holistic-multi / holistic-proof-steps. "

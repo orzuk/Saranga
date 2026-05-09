@@ -141,7 +141,7 @@ fi
 # --- Summary ---
 echo "===================================================="
 echo "[gold] Done."
-N_JSON=$(find "$OUT_DIR" -name "*_manual.json" -o -name "*_anthropic.json" -o -name "*_openai.json" 2>/dev/null | wc -l)
+N_JSON=$(find "$OUT_DIR" \( -name "*_rules.json" -o -name "*_anthropic.json" -o -name "*_openai.json" -o -name "*_opus.json" \) 2>/dev/null | wc -l)
 echo "  Papers extracted: $N_JSON"
 
 for report in anomalies_report.csv anomalies_detail.json corpus_stats.csv validate_report.csv; do

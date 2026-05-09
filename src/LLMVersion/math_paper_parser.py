@@ -335,7 +335,7 @@ class PaperParser:
     def __init__(
             self,
             paper_id: Optional[str] = None,
-            extraction_mode: str = "both",  # 'manual', 'llm', or 'both'
+            extraction_mode: str = "both",  # 'rules', 'llm', or 'both'
             llm_model: str = "gpt-4o-mini",
             llm_chunk_chars: int = 30000,
             llm_provider: str = "openai",
@@ -348,7 +348,7 @@ class PaperParser:
         ----------
         paper_id : Optional[str]
             Identifier for this paper.
-        extraction_mode : {'manual', 'llm', 'both'}
+        extraction_mode : {'rules', 'llm', 'both'}
             - 'manual': only use rule-based extraction.
             - 'llm'   : only use LLM-based extraction.
             - 'both'  : use both and merge (default).
@@ -360,6 +360,10 @@ class PaperParser:
             Which structure types to extract via LLM (default: ["definition"]).
         """
         self.paper_id = paper_id or "paper"
+        # Accept legacy 'manual' as an alias for 'rules' so older callers
+        # don't silently no-op. New code should always pass 'rules'.
+        if extraction_mode == "manual":
+            extraction_mode = "rules"
         self.extraction_mode = extraction_mode
         self.llm_model = llm_model
         self.llm_chunk_chars = llm_chunk_chars
@@ -667,7 +671,7 @@ class PaperParser:
 
         # ---- Definitions: manual extraction ----
         manual_defs: List[Definition] = []
-        if self.extraction_mode in ("manual", "both"):
+        if self.extraction_mode in ("rules", "both"):
             manual_defs = self._extract_definitions_manual(text)
 
         # ---- LLM extraction for each requested structure type ----
@@ -768,7 +772,7 @@ class PaperParser:
                         remarks = self._merge_objects(remarks, llm_objs)
 
         # ---- Distilled rules (NtRED): auto-loaded from {type}_eval/distilled_rules.py ----
-        if self.extraction_mode in ("manual", "both"):
+        if self.extraction_mode in ("rules", "both"):
             # Definitions
             distilled_defs = self._apply_distilled_rules(text, "definition")
             if distilled_defs:
@@ -1733,7 +1737,7 @@ class PaperParser:
             text: str,
             structure_type: str = "definition",
             chunk_chars: int = 30000,
-            model: str = "claude-sonnet-4-20250514",
+            model: str = "claude-sonnet-4-6",
     ) -> List[MathObject]:
         """Unified LLM extraction for any structure type."""
         client, provider_type = self._create_llm_client(self.llm_provider)
@@ -1777,7 +1781,7 @@ class PaperParser:
             llm_type: str = "anthropic",
             provider: str = "hosted",
             chunk_chars: int = 30000,
-            model: str = "claude-sonnet-4-20250514",
+            model: str = "claude-sonnet-4-6",
     ) -> List[Definition]:
         """Extract definitions via LLM. Delegates to _extract_objects_llm."""
         objects = self._extract_objects_llm(

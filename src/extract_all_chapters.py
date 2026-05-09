@@ -109,7 +109,7 @@ def build_prompt(chapter_num, chapter_title, latex_text, gold_example_json=None)
     return prompt
 
 
-def call_llm(client, prompt, model="claude-sonnet-4-20250514", max_retries=2):
+def call_llm(client, prompt, model="claude-sonnet-4-6", max_retries=2):
     """Call Claude API with retry logic."""
     for attempt in range(max_retries + 1):
         try:
@@ -140,7 +140,7 @@ def parse_json_response(text):
 
 
 def process_chapter(client, chapter_num, chapters_dir, out_dir, gold_json_str=None,
-                    model="claude-sonnet-4-20250514", skip_existing=True):
+                    model="claude-sonnet-4-6", skip_existing=True):
     """Process a single chapter: extract JSON + generate PNG."""
     title = CHAPTERS.get(chapter_num, f"Chapter {chapter_num}")
     body_file = chapters_dir / f"chapter{chapter_num}_body.tex"
@@ -234,8 +234,8 @@ def main():
                         help="Output directory for JSON + PNG files")
     parser.add_argument("--gold-json", default=None,
                         help="Path to gold standard JSON (Ch2) for few-shot prompting")
-    parser.add_argument("--model", default="claude-sonnet-4-20250514",
-                        help="Anthropic model ID (default: claude-sonnet-4-20250514)")
+    parser.add_argument("--model", default="claude-sonnet-4-6",
+                        help="Anthropic model ID (default: claude-sonnet-4-6)")
     parser.add_argument("--chapters", default=None,
                         help="Comma-separated chapter numbers (default: all). E.g., '3,4,5'")
     parser.add_argument("--force", action="store_true",
