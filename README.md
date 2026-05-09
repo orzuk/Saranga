@@ -1,4 +1,7 @@
-# Authomathics
+# Saranga
+
+**Dataset (bulk download):** https://huggingface.co/datasets/RHCPP/saranga
+**Interactive portal:** https://huggingface.co/spaces/RHCPP/saranga
 
 Tools for downloading, parsing, and structuring mathematical knowledge from arXiv papers and textbooks. Extracts typed knowledge graphs (definitions, theorems, lemmas, proofs, and their dependencies) from LaTeX sources, links them to a foundation graph of ~298K well-known results (NaturalProofs + LeanDojo/Herald + Mathlib4), and provides validation, visualization, and evaluation tools.
 
@@ -10,7 +13,7 @@ The data model and unified JSON schema are documented in [`src/annotation_schema
 
 ```bash
 git clone <REPO_URL_REDACTED_FOR_REVIEW>
-cd Authomathics
+cd Saranga
 
 # Smoke test: parse 5 math.CO papers through the unified pipeline (no LLM cost)
 ./scripts/parse_smoke_test.sh
@@ -273,7 +276,7 @@ Output: per-chapter files `chapterN.tex` (with preamble), `chapterN_body.tex` (b
 ## Project structure
 
 ```
-Authomathics/
+Saranga/
 ├── README.md                          # This file
 ├── PROJECT_ORGANIZATION.txt           # Detailed architecture notes
 ├── PROJECT_SETTINGS.md                # Configuration reference
