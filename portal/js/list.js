@@ -44,6 +44,17 @@
       const tierKey = "tier" + cfg.tier;
       let rows = (manifest.papers && manifest.papers[tierKey]) || [];
       if (cfg.tier === 1) rows = collapseTier1Versions(rows);
+
+      // Tier 3: show category grid first, paper list only when ?cat= is set.
+      if (cfg.tier === 3) {
+        var catParam = new URL(window.location.href).searchParams.get("cat");
+        if (!catParam) {
+          renderCategoryGrid(rows);
+          return;
+        }
+        rows = rows.filter(function (r) { return r.category === catParam; });
+      }
+
       allRows = rows;
       sortKey = "paper_id";
       renderPapers();
@@ -52,6 +63,46 @@
       sortKey = "pair_id";
       renderPairs();
     }
+  }
+
+  function renderCategoryGrid(rows) {
+    var main = document.getElementById("listing");
+    if (!main) return;
+    main.innerHTML = "";
+
+    // Count papers per category
+    var cats = {};
+    for (var i = 0; i < rows.length; i++) {
+      var c = rows[i].category || "unknown";
+      if (!cats[c]) cats[c] = { count: 0, nodes: 0 };
+      cats[c].count++;
+      cats[c].nodes += (rows[i].n_nodes || 0);
+    }
+    var catNames = Object.keys(cats).sort();
+
+    var heading = document.createElement("p");
+    heading.style.cssText = "color:#6a6a6a;font-size:14px;margin-bottom:18px";
+    heading.textContent = catNames.length + " categories, " + rows.length + " papers total";
+    main.appendChild(heading);
+
+    var grid = document.createElement("div");
+    grid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;";
+
+    for (var ci = 0; ci < catNames.length; ci++) {
+      var name = catNames[ci];
+      var info = cats[name];
+      var card = document.createElement("a");
+      card.href = "papers_tier3.html?cat=" + encodeURIComponent(name);
+      card.style.cssText = "display:block;padding:16px;background:#fff;border:1px solid #e0e0e0;border-radius:8px;text-decoration:none;color:inherit;transition:box-shadow 0.15s;";
+      card.onmouseover = function() { this.style.boxShadow = "0 2px 8px rgba(0,0,0,0.12)"; };
+      card.onmouseout = function() { this.style.boxShadow = "none"; };
+      card.innerHTML =
+        '<div style="font-size:18px;font-weight:600;color:#2c3e50;margin-bottom:4px;">' + esc(name) + '</div>' +
+        '<div style="font-size:13px;color:#888;">' + info.count + ' papers &middot; ' +
+        Math.round(info.nodes / info.count) + ' avg nodes</div>';
+      grid.appendChild(card);
+    }
+    main.appendChild(grid);
   }
 
   // Tier 1 ships three extractions per paper (manual / anthropic / openai)

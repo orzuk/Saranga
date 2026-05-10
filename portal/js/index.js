@@ -11,13 +11,14 @@
     const t2 = (papers.tier2 || []).length;
     const t3 = (papers.tier3 || []).length;
 
-    setText("count-tier1", t1 + "");
+    var uniqueTier1 = Math.round(t1 / 3) || t1;
+    setText("count-tier1", uniqueTier1 + "");
     setText("count-tier2", t2 + "");
     setText("count-tier3", t3 > 0 ? t3 + "" : "—");
 
-    setText("blurb-tier1", t1 + " manual gold papers");
+    setText("blurb-tier1", uniqueTier1 + " manual gold papers");
     setText("blurb-tier2", t2 + " silver-extracted (sample of 270)");
-    setText("blurb-tier3", "100K dream-scale arXiv math/CS — coming soon");
+    setText("blurb-tier3", "100K arXiv math/CS papers");
 
     setText("count-pairs", pairs.length + "");
     setText("blurb-pairs", pairs.length + " pair alignments");

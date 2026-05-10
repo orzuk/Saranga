@@ -283,9 +283,17 @@
     if (name === "graph") {
       const tier = Authomathics.getQueryParam("tier") || "1";
       const id = Authomathics.getQueryParam("id");
+      var gpath = (_manifestEntry && _manifestEntry.graph_path)
+        ? _manifestEntry.graph_path
+        : "graphs/tier" + tier + "/" + id + ".html";
       const iframe = document.getElementById("graph-iframe");
       if (iframe && iframe.src === "about:blank") {
-        iframe.src = "graphs/tier" + tier + "/" + id + ".html";
+        iframe.src = gpath;
+      }
+      var newTabLink = document.getElementById("graph-newtab");
+      if (newTabLink) {
+        newTabLink.href = gpath;
+        newTabLink.style.display = "inline";
       }
     }
   }
@@ -294,6 +302,7 @@
   let _graphData = null;
   let _graphRendered = false;
   let _cy = null;
+  let _manifestEntry = null; // cached for nested path lookup
 
   document.addEventListener("DOMContentLoaded", async function () {
     const tier = Authomathics.getQueryParam("tier") || "1";
@@ -317,8 +326,20 @@
       return;
     }
 
+    // Pull this paper's manifest entry early so we can use json_path/graph_path.
+    let manifestEntry = null;
+    try {
+      const manifest = await Authomathics.loadManifest();
+      const tierKey = "tier" + tier;
+      const list = (manifest.papers && manifest.papers[tierKey]) || [];
+      manifestEntry = list.find(function (p) { return p.paper_id === id; }) || null;
+    } catch (e) { /* non-fatal */ }
+    _manifestEntry = manifestEntry;
+
     const tierDir = "tier" + tier;
-    const url = "data/" + tierDir + "/" + id + ".json";
+    const url = (manifestEntry && manifestEntry.json_path)
+      ? manifestEntry.json_path
+      : "data/" + tierDir + "/" + id + ".json";
     let data;
     try {
       data = await Authomathics.fetchJson(url);
@@ -337,15 +358,6 @@
     subtitleEl.innerHTML =
       "Tier " + esc(tier) + " &middot; " + norm.nodes.length + " nodes" +
       (link ? ' &middot; <a href="' + link + '" target="_blank" rel="noopener">arXiv</a>' : "");
-
-    // Pull this paper's manifest entry so we can show appears_in_pairs.
-    let manifestEntry = null;
-    try {
-      const manifest = await Authomathics.loadManifest();
-      const tierKey = "tier" + tier;
-      const list = (manifest.papers && manifest.papers[tierKey]) || [];
-      manifestEntry = list.find(function (p) { return p.paper_id === id; }) || null;
-    } catch (e) { /* non-fatal */ }
 
     renderOverview(meta, norm.nodes, id, manifestEntry);
     renderNodes(norm.nodes);
