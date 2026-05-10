@@ -1,42 +1,8 @@
 import re
 from typing import List, Dict
-
-# Helper: clean LaTeX to plain text
-def _clean_latex(text: str) -> str:
-    s = text
-    # Remove comments
-    s = re.sub(r'(?<!\\)%.*', '', s)
-    # Remove \label{...}
-    s = re.sub(r'\\label\{[^}]*\}', '', s)
-    # Remove \ref, \eqref, \cite variants
-    s = re.sub(r'\\(?:eq)?ref\{[^}]*\}', '', s)
-    s = re.sub(r'\\cite(?:\[[^\]]*\])?\{[^}]*\}', '', s)
-    # Remove \hfill, \qed, \qedref{...}, \qedsymbol, \blacksquare
-    s = re.sub(r'\\hfill\b', '', s)
-    s = re.sub(r'\\qedref\{[^}]*\}', '', s)
-    s = re.sub(r'\\qed\b', '', s)
-    s = re.sub(r'\\qedsymbol\b', '', s)
-    s = re.sub(r'\\blacksquare\b', '', s)
-    # Remove common formatting commands but keep content
-    s = re.sub(r'\\(?:emph|textbf|textit|textrm|textsf|texttt|mathrm|mathbf|mathit|mathcal|mathscr|mathbb|operatorname)\{([^}]*)\}', r'\1', s)
-    # Remove \newline, \bigskip, \medskip, \smallskip, \noindent, \par
-    s = re.sub(r'\\(?:newline|bigskip|medskip|smallskip|noindent|par)\b', ' ', s)
-    # Remove \begin{...} and \end{...}
-    s = re.sub(r'\\(?:begin|end)\{[^}]*\}', '', s)
-    # Remove remaining simple commands like \foo but keep arguments
-    s = re.sub(r'\\[a-zA-Z]+\*?(?:\[[^\]]*\])?(?:\{([^}]*)\})?', lambda m: m.group(1) if m.group(1) else ' ', s)
-    # Remove braces
-    s = re.sub(r'[{}]', '', s)
-    # Remove display math delimiters
-    s = re.sub(r'\$\$', ' ', s)
-    s = re.sub(r'\\\[', ' ', s)
-    s = re.sub(r'\\\]', ' ', s)
-    # Remove inline math delimiters but keep content
-    s = re.sub(r'\$([^$]*)\$', r'\1', s)
-    # Collapse whitespace
-    s = re.sub(r'[ \t]+', ' ', s)
-    s = re.sub(r'\n{3,}', '\n\n', s)
-    return s.strip()
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from latex_clean import clean_latex_to_text as _clean_latex
 
 
 def _inside_excluded_env(text: str, start: int, end: int) -> bool:

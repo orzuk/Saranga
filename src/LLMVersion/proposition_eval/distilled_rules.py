@@ -31,38 +31,9 @@ _EXCLUDED_ENV_RE = re.compile(
     re.DOTALL | re.IGNORECASE
 )
 
-# LaTeX command stripping patterns
-_LATEX_CMD_RE = re.compile(r"\\(?:emph|textbf|textit|textsf|textrm|texttt|mathrm|mathbf|mathit|mathcal|mathbb|operatorname)\{([^}]*)\}")
-_LATEX_LABEL_RE = re.compile(r"\\label\{[^}]*\}")
-_LATEX_REF_RE = re.compile(r"\\(?:ref|eqref|cite)\{[^}]*\}")
-_LATEX_SIMPLE_CMD_RE = re.compile(r"\\(?:newline|noindent|par|smallskip|medskip|bigskip|\\)\b\s*")
-_LATEX_BEGIN_END_RE = re.compile(r"\\(?:begin|end)\{[^}]*\}")
-_LATEX_GENERIC_CMD_RE = re.compile(r"\\([a-zA-Z]+)")
-_LATEX_BRACES_RE = re.compile(r"[{}]")
-_MULTI_SPACE_RE = re.compile(r"\s+")
-
-
-def _clean_latex(text: str) -> str:
-    """Strip LaTeX commands to produce a simplified plain-text version."""
-    s = text.strip()
-    # Remove \label{...}
-    s = _LATEX_LABEL_RE.sub("", s)
-    # Remove \ref, \eqref, \cite
-    s = _LATEX_REF_RE.sub("", s)
-    # Remove \begin{...} and \end{...}
-    s = _LATEX_BEGIN_END_RE.sub("", s)
-    # Unwrap formatting commands like \emph{...}, \textbf{...}
-    for _ in range(3):  # multiple passes for nested commands
-        s = _LATEX_CMD_RE.sub(r"\1", s)
-    # Remove simple commands
-    s = _LATEX_SIMPLE_CMD_RE.sub(" ", s)
-    # Replace remaining \command with the command name (heuristic)
-    s = _LATEX_GENERIC_CMD_RE.sub(r"\1", s)
-    # Remove stray braces
-    s = _LATEX_BRACES_RE.sub("", s)
-    # Collapse whitespace
-    s = _MULTI_SPACE_RE.sub(" ", s)
-    return s.strip()
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from latex_clean import clean_latex_to_text as _clean_latex
 
 
 def _inside_excluded_env(text: str, start: int, end: int) -> bool:

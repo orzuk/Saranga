@@ -1,26 +1,8 @@
 import re
 from typing import List
-
-# ============================================================
-# Helper: clean LaTeX to plain text
-# ============================================================
-
-def _clean_latex(text: str) -> str:
-    """Strip LaTeX commands to produce a simplified plain-text version."""
-    s = text
-    s = re.sub(r'(?<!\\)%.*', '', s)
-    s = re.sub(r'\\label\{[^}]*\}', '', s)
-    s = re.sub(r'\\(?:emph|textit|textbf|textsl|textrm|text|mathrm|mathbf|mathit|mathcal|mathbb|mathfrak|operatorname)\{([^}]*)\}', r'\1', s)
-    s = re.sub(r'\{\\(?:em|it|bf|sl|rm)\s+([^}]*)\}', r'\1', s)
-    s = re.sub(r'~?\\cite\{[^}]*\}', '', s)
-    s = re.sub(r'\\(?:eq)?ref\{[^}]*\}', '', s)
-    s = re.sub(r'\\(?:begin|end)\{[^}]*\}', '', s)
-    s = re.sub(r'\\(?:noindent|bigskip|medskip|smallskip|quad|qquad|hfill|vfill|centering|maketitle|par)\b', '', s)
-    s = re.sub(r'\\[a-zA-Z]+\b\s*', ' ', s)
-    s = re.sub(r'[{}]', '', s)
-    s = re.sub(r'[ \t]+', ' ', s)
-    s = re.sub(r'\n{3,}', '\n\n', s)
-    return s.strip()
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from latex_clean import clean_latex_to_text as _clean_latex
 
 
 # ============================================================

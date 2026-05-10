@@ -869,15 +869,9 @@ class PaperParser:
 
     @staticmethod
     def _clean_latex_to_text(latex: str) -> str:
-        """Best-effort LaTeX -> plain text cleaner (keeps math markers)."""
-        latex = re.sub(r"\\(textbf|textit|emph|mathrm|mathbf|mathit|text)\s*{([^}]*)}", r"\2", latex)
-        latex = re.sub(r"\$\$(.*?)\$\$", " [MATH] ", latex, flags=re.DOTALL)
-        latex = re.sub(r"\$(.*?)\$", " [MATH] ", latex, flags=re.DOTALL)
-        latex = re.sub(r"\\\[(.*?)\\\]", " [MATH] ", latex, flags=re.DOTALL)
-        latex = re.sub(r"\\begin{equation\*?}(.*?)\\end{equation\*?}", " [MATH] ", latex, flags=re.DOTALL)
-        latex = re.sub(r"\\[a-zA-Z]+\*?(?:\[[^\]]*\])?(?:{[^}]*})?", "", latex)
-        latex = re.sub(r"\s+", " ", latex)
-        return latex.strip()
+        """Best-effort LaTeX -> plain text cleaner (preserves math content)."""
+        from latex_clean import clean_latex_to_text
+        return clean_latex_to_text(latex)
 
     @staticmethod
     def _extract_label_and_name(env_body: str) -> Tuple[Optional[str], Optional[str]]:
@@ -1949,21 +1943,34 @@ Respond ONLY with JSON array."""
             manual_objs: List[MathObject],
             llm_objs: List[MathObject],
     ) -> List[MathObject]:
-        """Merge manual and LLM-extracted objects, avoiding duplicates."""
+        """Merge manual and LLM-extracted objects, avoiding duplicates.
+
+        Dedup is based on clean_text alone — if two extractors find the same
+        text but one assigns a name (e.g. from \\label) and the other doesn't,
+        they are still the same structure.  When the distilled version carries
+        a name that the base version lacks, backfill it.
+        """
         if not llm_objs:
             return manual_objs
 
-        seen = set(
-            (d.clean_text.strip().lower(), (d.name or "").strip().lower())
-            for d in manual_objs
-        )
+        seen_texts = set()
+        text_to_obj = {}
+        for d in manual_objs:
+            txt = d.clean_text.strip().lower()
+            seen_texts.add(txt)
+            text_to_obj[txt] = d
 
         merged = list(manual_objs)
         for d in llm_objs:
-            key = (d.clean_text.strip().lower(), (d.name or "").strip().lower())
-            if key not in seen:
+            txt = d.clean_text.strip().lower()
+            if txt not in seen_texts:
                 merged.append(d)
-                seen.add(key)
+                seen_texts.add(txt)
+            else:
+                # Backfill name if the base object lacks one
+                existing = text_to_obj.get(txt)
+                if existing and not existing.name and d.name:
+                    existing.name = d.name
 
         return merged
 

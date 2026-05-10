@@ -1,33 +1,8 @@
 import re
 from typing import List, Dict
-
-# Helper to clean LaTeX to plain text
-def _clean_latex(text: str) -> str:
-    s = text
-    # Remove \label{...}
-    s = re.sub(r'\\label\{[^}]*\}', '', s)
-    # Remove \displaystyle
-    s = re.sub(r'\\displaystyle\b', '', s)
-    # Remove \noalign{...}
-    s = re.sub(r'\\noalign\{[^}]*\}', '', s)
-    # Remove \text{...} but keep content
-    s = re.sub(r'\\text\{([^}]*)\}', r'\1', s)
-    # Remove \begin{...} and \end{...}
-    s = re.sub(r'\\(?:begin|end)\{[^}]*\}', '', s)
-    # Remove common LaTeX commands but keep arguments
-    s = re.sub(r'\\(?:dvg|frac|sqrt|lim|limits|quad|qquad|Big|bigg?|left|right|partial)\b', '', s)
-    # Remove remaining backslash commands (single word)
-    s = re.sub(r'\\[a-zA-Z]+\b\s*', '', s)
-    # Remove \, \; \! etc.
-    s = re.sub(r'\\[,;!>\s]', ' ', s)
-    # Remove braces
-    s = re.sub(r'[{}]', '', s)
-    # Remove & alignment chars
-    s = re.sub(r'&', ' ', s)
-    # Collapse whitespace
-    s = re.sub(r'[ \t]+', ' ', s)
-    s = re.sub(r'\n\s*\n', '\n', s)
-    return s.strip()
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from latex_clean import clean_latex_to_text as _clean_latex
 
 
 # Check if a match position is inside an excluded environment

@@ -58,36 +58,9 @@ EXCLUDED_END_RE = re.compile(
     re.DOTALL
 )
 
-# Patterns for cleaning LaTeX
-LATEX_CMD_RE = re.compile(r'\\(?:begin|end)\s*\{[^}]*\}')
-LATEX_LABEL_RE = re.compile(r'\\label\s*\{[^}]*\}')
-LATEX_COMMAND_RE = re.compile(r'\\(?:emph|textbf|textit|textrm|mathrm|mathsf|mathbb|mathcal|operatorname)\s*\{([^}]*)\}')
-LATEX_SIMPLE_CMD_RE = re.compile(r'\\(?:par|noindent|newline|bigskip|medskip|smallskip|\\)\b')
-LATEX_GENERIC_CMD_RE = re.compile(r'\\([a-zA-Z]+)')
-MULTI_SPACE_RE = re.compile(r'\s+')
-
-
-def _clean_latex(text: str) -> str:
-    """Strip LaTeX commands to produce a simplified plain text version."""
-    result = text
-    # Remove \begin{...} and \end{...}
-    result = LATEX_CMD_RE.sub('', result)
-    # Remove \label{...}
-    result = LATEX_LABEL_RE.sub('', result)
-    # Unwrap formatting commands like \emph{...} -> ...
-    for _ in range(3):  # multiple passes for nested commands
-        result = LATEX_COMMAND_RE.sub(r'\1', result)
-    # Remove simple commands
-    result = LATEX_SIMPLE_CMD_RE.sub(' ', result)
-    # Remove dollar signs (inline math delimiters) but keep content
-    result = result.replace('$', '')
-    # Remove remaining backslash commands but keep their names as readable text
-    result = LATEX_GENERIC_CMD_RE.sub(r'\1', result)
-    # Remove braces
-    result = result.replace('{', '').replace('}', '')
-    # Collapse whitespace
-    result = MULTI_SPACE_RE.sub(' ', result).strip()
-    return result
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from latex_clean import clean_latex_to_text as _clean_latex
 
 
 def _inside_excluded_env(text: str, start: int, end: int) -> bool:
