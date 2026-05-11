@@ -1419,6 +1419,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
     pass
     # CHARS_PER_UNIT defined at module level
     MAX_LINES_PER_SECTION = 3
+    MAX_STMT_LINES = 2   # max lines of statement text shown in node boxes
+    MAX_STMT_CHARS = 100  # max display-width chars before truncation with "..."
 
     def _content_lines(n):
         """Get all content text lines for a node (for width estimation).
@@ -1684,15 +1686,17 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 conclusions = n.get("conclusions", [])
                 proof_strategies = n.get("proof_info", [])
 
-                # Wrap each item to box width, then flatten
+                # Wrap each item to box width, then flatten; shorten to keep boxes compact
                 assume_lines = []
                 for a in assumptions[:MAX_LINES_PER_SECTION]:
-                    assume_lines.extend(_wrap(_prepare_for_display(a), wrap_w) or [a[:wrap_w]])
+                    a_short = _shorten(_prepare_for_display(a), MAX_STMT_CHARS)
+                    assume_lines.extend(_wrap(a_short, wrap_w)[:MAX_STMT_LINES] or [a_short[:wrap_w]])
                 if len(assumptions) > MAX_LINES_PER_SECTION:
                     assume_lines.append(f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more")
                 conclude_lines = []
                 for c in conclusions[:MAX_LINES_PER_SECTION]:
-                    conclude_lines.extend(_wrap(_prepare_for_display(c), wrap_w) or [c[:wrap_w]])
+                    c_short = _shorten(_prepare_for_display(c), MAX_STMT_CHARS)
+                    conclude_lines.extend(_wrap(c_short, wrap_w)[:MAX_STMT_LINES] or [c_short[:wrap_w]])
                 if len(conclusions) > MAX_LINES_PER_SECTION:
                     conclude_lines.append(f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more")
                 proof_lines = []
@@ -1726,8 +1730,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             else:
                 # Use statement, or name as fallback (e.g., proofs with descriptive names)
                 raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
-                stmt = _prepare_for_display(raw)
-                stmt_lines = _wrap(stmt, wrap_w)[:5]
+                stmt = _shorten(_prepare_for_display(raw), MAX_STMT_CHARS)
+                stmt_lines = _wrap(stmt, wrap_w)[:MAX_STMT_LINES]
                 stmt_height = sum(_line_h(l) for l in stmt_lines) if stmt_lines else LINE_H
                 h = header_h + stmt_height + 2 * PADDING
 
@@ -1895,7 +1899,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             assumptions = n.get("assumptions", [])
             a_lines = []
             for a in assumptions[:MAX_LINES_PER_SECTION]:
-                a_lines.extend(_wrap(_prepare_for_display(a), dyn_wrap) or [a[:dyn_wrap]])
+                a_short = _shorten(_prepare_for_display(a), MAX_STMT_CHARS)
+                a_lines.extend(_wrap(a_short, dyn_wrap)[:MAX_STMT_LINES] or [a_short[:dyn_wrap]])
             if len(assumptions) > MAX_LINES_PER_SECTION:
                 a_lines.append(f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more")
             if not a_lines:
@@ -1904,7 +1909,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             conclusions = n.get("conclusions", [])
             c_lines = []
             for c in conclusions[:MAX_LINES_PER_SECTION]:
-                c_lines.extend(_wrap(_prepare_for_display(c), dyn_wrap) or [c[:dyn_wrap]])
+                c_short = _shorten(_prepare_for_display(c), MAX_STMT_CHARS)
+                c_lines.extend(_wrap(c_short, dyn_wrap)[:MAX_STMT_LINES] or [c_short[:dyn_wrap]])
             if len(conclusions) > MAX_LINES_PER_SECTION:
                 c_lines.append(f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more")
             if not c_lines:
@@ -1999,8 +2005,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                         fontstyle="italic")
                 cursor_y -= LINE_H * 0.85
             raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
-            stmt = _prepare_for_display(raw)
-            stmt_lines = _wrap(stmt, dyn_wrap)[:5]
+            stmt = _shorten(_prepare_for_display(raw), MAX_STMT_CHARS)
+            stmt_lines = _wrap(stmt, dyn_wrap)[:MAX_STMT_LINES]
             if not stmt_lines:
                 stmt_lines = [""]
             for line in stmt_lines:

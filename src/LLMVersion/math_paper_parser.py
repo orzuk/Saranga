@@ -801,8 +801,11 @@ class PaperParser:
         containers: List[MathObject] = theorem_like + definitions + proofs + algorithms + examples + remarks
         equations = self._extract_equations(text, containers)
 
-        # Register all objects in the PaperGraph
-        for obj in theorem_like + definitions + proofs + algorithms + tables + assumptions + examples + exercises + remarks + equations:
+        # Register all objects in the PaperGraph, sorted by source position
+        # so that graph.objects preserves document order (needed for proof linking).
+        all_objects = theorem_like + definitions + proofs + algorithms + tables + assumptions + examples + exercises + remarks + equations
+        all_objects.sort(key=lambda o: getattr(o, '_source_pos', float('inf')))
+        for obj in all_objects:
             obj.paper_id = self.paper_id
             graph.add_object(obj)
 
@@ -884,12 +887,13 @@ class PaperParser:
     # Generic environment extraction
     # ------------------------------------------------------------------
 
-    def _extract_envs(self, text: str, env_names: List[str]) -> List[Tuple[str, str, str]]:
+    def _extract_envs(self, text: str, env_names: List[str]) -> List[Tuple[str, str, str, int]]:
         """
         Generic environment extractor.
 
-        Returns list of (env_name, opt_name, body) where:
+        Returns list of (env_name, opt_name, body, source_pos) where:
           \begin{env_name}[opt_name] body \end{env_name}
+        source_pos is the character offset of \begin in *text*.
         """
         env_pattern = (
                 r"\\begin{(" + "|".join(map(re.escape, env_names)) + r")}"
@@ -903,7 +907,7 @@ class PaperParser:
             env = m.group(1)
             opt = m.group("opt")
             body = m.group("body")
-            results.append((env, opt, body))
+            results.append((env, opt, body, m.start()))
         return results
 
     # ------------------------------------------------------------------
@@ -927,7 +931,7 @@ class PaperParser:
         counters: Dict[str, int] = {k: 0 for k in self.THEOREM_LIKE_KINDS}
         objects: List[TheoremLike] = []
 
-        for env_name, opt_name, body in found:
+        for env_name, opt_name, body, source_pos in found:
             kind = self.env_kind_map.get(env_name, "theorem")
             counters.setdefault(kind, 0)
             counters[kind] += 1
@@ -983,6 +987,7 @@ class PaperParser:
                     conclusions=conclusions,
                 )
 
+            obj._source_pos = source_pos
             objects.append(obj)
 
         return objects
@@ -1112,23 +1117,23 @@ class PaperParser:
         env_names = [env for env, kind in self.env_kind_map.items() if kind == "definition"]
         if env_names:
             env_defs = self._extract_envs(text, env_names)
-            for env_name, opt_name, body in env_defs:
+            for env_name, opt_name, body, source_pos in env_defs:
                 idx += 1
                 obj_id = f"D{idx}"
                 label, _ = self._extract_label_and_name(body)
                 clean_text = self._clean_latex_to_text(body)
-                objects.append(
-                    Definition(
-                        id=obj_id,
-                        kind="definition",
-                        index=idx,
-                        label=label,
-                        name=opt_name.strip() if opt_name else None,
-                        raw_latex=body,
-                        clean_text=clean_text,
-                        env_name=env_name,
-                    )
+                d = Definition(
+                    id=obj_id,
+                    kind="definition",
+                    index=idx,
+                    label=label,
+                    name=opt_name.strip() if opt_name else None,
+                    raw_latex=body,
+                    clean_text=clean_text,
+                    env_name=env_name,
                 )
+                d._source_pos = source_pos
+                objects.append(d)
 
         # --- B. Textual 'Definition 2.1.' style definitions ---
         definition_text_pattern = re.compile(
@@ -1147,18 +1152,18 @@ class PaperParser:
             obj_id = f"D{idx}"
             name = f"Definition {number}"
             clean_text = self._clean_latex_to_text(body)
-            objects.append(
-                Definition(
-                    id=obj_id,
-                    kind="definition",
-                    index=idx,
-                    label=None,
-                    name=name,
-                    raw_latex=body,
-                    clean_text=clean_text,
-                    env_name="textual",
-                )
+            d = Definition(
+                id=obj_id,
+                kind="definition",
+                index=idx,
+                label=None,
+                name=name,
+                raw_latex=body,
+                clean_text=clean_text,
+                env_name="textual",
             )
+            d._source_pos = m.start()
+            objects.append(d)
 
         # --- C. Inline textual definitions -------------------------------
 
@@ -1178,7 +1183,7 @@ class PaperParser:
         _mask_env_names = [env for env, kind in self.env_kind_map.items()
                            if kind in _mask_env_kinds]
         if _mask_env_names:
-            for _, _, body in self._extract_envs(text, _mask_env_names):
+            for _, _, body, _ in self._extract_envs(text, _mask_env_names):
                 if body:
                     inline_text = inline_text.replace(body, " " * len(body), 1)
 
@@ -1271,18 +1276,18 @@ class PaperParser:
             clean_text = self._clean_latex_to_text(full)
             idx += 1
             obj_id = f"D{idx}"
-            objects.append(
-                Definition(
-                    id=obj_id,
-                    kind="definition",
-                    index=idx,
-                    label=None,
-                    name=name_hint or None,
-                    raw_latex=full,
-                    clean_text=clean_text,
-                    env_name=source,
-                )
+            d = Definition(
+                id=obj_id,
+                kind="definition",
+                index=idx,
+                label=None,
+                name=name_hint or None,
+                raw_latex=full,
+                clean_text=clean_text,
+                env_name=source,
             )
+            d._source_pos = match.start()
+            objects.append(d)
 
         for m in inline_define_pattern.finditer(inline_text):
             full_text = m.group("full")
@@ -1312,6 +1317,7 @@ class PaperParser:
                 continue
             full_text = inline_text[name_start:tail_m.end()]
             # Build a fake match-like object for add_inline_definition
+            _ns = name_start  # capture for closure
             class _C2Match:
                 def group(self, key):
                     if key == "full":
@@ -1319,6 +1325,8 @@ class PaperParser:
                     if key == "name":
                         return name_text
                     return None
+                def start(self):
+                    return _ns
             add_inline_definition(_C2Match(), "inline_defined_as")
 
         # C3: "We say/call X is..." - explicit definitional language
@@ -1689,7 +1697,7 @@ class PaperParser:
         found = self._extract_envs(text, env_names)
         objects: List[Definition] = []
 
-        for idx, (env_name, opt_name, body) in enumerate(found, start=1):
+        for idx, (env_name, opt_name, body, source_pos) in enumerate(found, start=1):
             label, _ = self._extract_label_and_name(body)
             clean_text = self._clean_latex_to_text(body)
             obj = Definition(
@@ -1702,6 +1710,7 @@ class PaperParser:
                 clean_text=clean_text,
                 env_name=env_name,
             )
+            obj._source_pos = source_pos
             objects.append(obj)
 
         return objects
@@ -2001,7 +2010,7 @@ Respond ONLY with JSON array."""
         # we want to capture that label.
         header_ref_pattern = re.compile(r"\\(?:ref|eqref|autoref)\{([^}]+)\}")
 
-        for env_name, opt_name, body in found:
+        for env_name, opt_name, body, source_pos in found:
             idx += 1
             obj_id = f"R{idx}"  # Unique id for proofs; prefix doesn't matter elsewhere.
 
@@ -2018,6 +2027,7 @@ Respond ONLY with JSON array."""
                 raw_latex=body,
                 clean_text=clean_text,
             )
+            proof._source_pos = source_pos
 
             # Optional: header-based theorem label from \begin{proof}[...]
             if opt_name:
@@ -2094,7 +2104,7 @@ Respond ONLY with JSON array."""
         objects: List[Algorithm] = []
         idx = 0
 
-        for env_name, opt_name, body in found:
+        for env_name, opt_name, body, source_pos in found:
             idx += 1
             obj_id = f"A{idx}"
 
@@ -2134,6 +2144,7 @@ Respond ONLY with JSON array."""
                 clean_text=clean_text,
                 env_name=env_name,
             )
+            alg._source_pos = source_pos
             objects.append(alg)
 
         if objects:
@@ -2162,7 +2173,7 @@ Respond ONLY with JSON array."""
         idx = 0
         caption_pattern = re.compile(r"\\caption\s*{([^}]*)}", flags=re.DOTALL)
 
-        for env_name, opt_name, body in found:
+        for env_name, opt_name, body, source_pos in found:
             idx += 1
             obj_id = f"Tb{idx}"
 
@@ -2189,6 +2200,7 @@ Respond ONLY with JSON array."""
                 env_name=env_name,
                 caption=caption,
             )
+            tbl._source_pos = source_pos
             objects.append(tbl)
 
         if objects:
