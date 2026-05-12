@@ -252,14 +252,15 @@ def main():
 
     print(f"\nDownloaded {len(tier3_entries)} papers ({failed} failed)")
 
-    # Step 4: Update manifest (merge with existing tier3 entries from other categories)
+    # Step 4: Update manifest (merge new entries with existing, keyed by paper_id)
     manifest_path = PORTAL_DIR / "data" / "manifest.json"
     manifest = json.loads(manifest_path.read_text())
     existing = manifest["papers"].get("tier3", [])
-    # Remove entries for categories we just processed, keep the rest
-    processed_cats = set(e["category"] for e in tier3_entries)
-    kept = [e for e in existing if e.get("category") not in processed_cats]
-    manifest["papers"]["tier3"] = kept + tier3_entries
+    # Build dict keyed by paper_id, existing first then new overwrite
+    by_id = {e["paper_id"]: e for e in existing}
+    for e in tier3_entries:
+        by_id[e["paper_id"]] = e
+    manifest["papers"]["tier3"] = sorted(by_id.values(), key=lambda e: e["paper_id"])
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False))
     total = len(manifest["papers"]["tier3"])
     print(f"Manifest updated: {len(tier3_entries)} new + {len(kept)} existing = {total} tier3 entries")
