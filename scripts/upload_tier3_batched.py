@@ -108,7 +108,16 @@ def main():
         print("Nothing to upload!")
         return
 
-    # Step 3: Upload in batches
+    # Step 3: Upload manifest first
+    manifest = PORTAL_DIR / "data" / "manifest.json"
+    if manifest.exists():
+        print("  Uploading manifest...", end=" ", flush=True)
+        if upload_batch(api, [(str(manifest), "data/manifest.json")], "manifest"):
+            print("ok")
+        else:
+            print("FAILED")
+
+    # Step 4: Upload data/graph files in batches
     total = len(to_upload)
     batch_size = args.batch_size
     failed = 0

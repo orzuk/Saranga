@@ -64,6 +64,15 @@ def build_manifest_entry(paper_id: str, json_path: str, graph_path: str,
     }
 
 
+def _already_downloaded(cat_display: str, html_name: str) -> bool:
+    """Check if both json and html for a paper already exist locally."""
+    paper_id = html_name.replace(".html", "")
+    year = arxiv_year(paper_id)
+    json_dest = PORTAL_DIR / "data" / "tier3" / cat_display / year / (paper_id + ".json")
+    graph_dest = PORTAL_DIR / "graphs" / "tier3" / cat_display / year / html_name
+    return json_dest.exists() and graph_dest.exists()
+
+
 def list_dataset_categories(api: HfApi) -> list[str]:
     """List top-level category directories in the dataset."""
     items = list(list_repo_tree(DATASET_ID, repo_type="dataset", path_in_repo=""))
@@ -146,6 +155,10 @@ def main():
             yy = hname[:2]
             year = "20" + yy
             by_year.setdefault(year, []).append(hname)
+
+        # Filter out already-downloaded papers
+        for yr in list(by_year.keys()):
+            by_year[yr] = [h for h in by_year[yr] if not _already_downloaded(cat_display, h)]
 
         # Sample evenly across years, round-robin
         n_target = args.per_category
