@@ -101,7 +101,8 @@ echo "[Step 4/4] Validating distilled rules..."
 python distillation_analysis.py validate \
     --paper-ids "$ALL_PAPERS" \
     --structure-type "$STYPE" \
-    --expected "$DK_CSV"
+    --expected "$DK_CSV" \
+    --gold-csv "$GOLD_CSV"
 
 echo ""
 echo "============================================================"

@@ -708,8 +708,12 @@ def _classify_pattern(gold_text: str, tex_source: str) -> Tuple[str, str, str]:
 # ---------------------------------------------------------------------------
 
 def validate_rules(paper_ids: List[str], structure_type: str,
-                   expected_items: List[dict], threshold: float = 0.7) -> List[dict]:
+                   expected_items: List[dict], threshold: float = 0.7,
+                   gold_csv: Optional[str] = None) -> List[dict]:
     """Run manual parser on papers and check if previously missed items are now caught.
+
+    Also computes full precision/recall/F1 against gold standard if gold_csv is provided,
+    detecting whether distilled rules introduced new false positives.
 
     Parameters
     ----------
@@ -717,6 +721,7 @@ def validate_rules(paper_ids: List[str], structure_type: str,
     structure_type : e.g. 'definition', 'theorem'
     expected_items : list of dicts with 'paper_id' and 'gold_text'
     threshold : Jaccard threshold for match
+    gold_csv : optional path to full gold standard CSV for precision/FP check
 
     Returns list of dicts with:
       paper_id, gold_index, gold_text, status (caught/missed), best_match_sim, best_match_text
@@ -799,6 +804,70 @@ def validate_rules(paper_ids: List[str], structure_type: str,
     total = len(expected_items)
     print(f"\nValidation: {caught_count}/{total} previously-missed items now caught "
           f"({caught_count/total*100:.1f}%)" if total else "No items to validate")
+
+    # --- Full precision/recall/F1 against gold standard ---
+    if gold_csv:
+        gold_data = _load_gold_csv(gold_csv)
+        total_tp = 0
+        total_fp = 0
+        total_fn = 0
+        fp_details = []
+
+        for paper_id in paper_ids:
+            norm_pid = re.sub(r'v\d+$', '', paper_id).replace('_', '.')
+            extracted = parsed.get(paper_id, []) or parsed.get(norm_pid, [])
+            gold_items = gold_data.get(norm_pid, [])
+            gold_texts = [g['raw_latex'] or g['clean_text'] for g in gold_items if (g['raw_latex'] or g['clean_text']).strip()]
+
+            # Match extracted against gold (greedy best-match)
+            matched_gold = set()
+            matched_ext = set()
+            # Build similarity matrix
+            pairs = []
+            for ei, ext in enumerate(extracted):
+                for gi, gt in enumerate(gold_texts):
+                    sim = jaccard_similarity(ext, gt)
+                    if sim >= threshold:
+                        pairs.append((sim, ei, gi))
+            # Greedy assignment by descending similarity
+            pairs.sort(reverse=True)
+            for sim, ei, gi in pairs:
+                if ei not in matched_ext and gi not in matched_gold:
+                    matched_ext.add(ei)
+                    matched_gold.add(gi)
+
+            tp = len(matched_ext)
+            fp = len(extracted) - tp
+            fn = len(gold_texts) - len(matched_gold)
+            total_tp += tp
+            total_fp += fp
+            total_fn += fn
+
+            # Collect FP details for reporting
+            for ei, ext in enumerate(extracted):
+                if ei not in matched_ext:
+                    fp_details.append({
+                        'paper_id': paper_id,
+                        'extracted_text': ext[:200],
+                    })
+
+        precision = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 1.0
+        recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 1.0
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+
+        print(f"\n{'='*60}")
+        print(f"FULL GOLD EVALUATION ({structure_type})")
+        print(f"{'='*60}")
+        print(f"  TP: {total_tp}  FP: {total_fp}  FN: {total_fn}")
+        print(f"  Precision: {precision:.3f}")
+        print(f"  Recall:    {recall:.3f}")
+        print(f"  F1:        {f1:.3f}")
+        if total_fp > 0:
+            print(f"\n  WARNING: {total_fp} false positive(s) detected!")
+            for fpd in fp_details[:10]:
+                print(f"    [{fpd['paper_id']}] {fpd['extracted_text'][:100]}...")
+            if len(fp_details) > 10:
+                print(f"    ... and {len(fp_details) - 10} more")
 
     return results
 
@@ -1033,6 +1102,8 @@ def main():
     val.add_argument('--expected', required=True,
                      help='CSV of expected items (from dark-knowledge output)')
     val.add_argument('--threshold', type=float, default=0.7, help='Jaccard threshold')
+    val.add_argument('--gold-csv', default=None,
+                     help='Full gold standard CSV for precision/FP check (e.g. Gold_Standard_Definitions.csv)')
     val.add_argument('--output', default=None, help='Output CSV path')
 
     args = parser.parse_args()
@@ -1121,7 +1192,8 @@ def main():
     elif args.command == 'validate':
         paper_ids = [p.strip() for p in args.paper_ids.split(',')]
         expected_items = _read_items_csv(args.expected)
-        results = validate_rules(paper_ids, args.structure_type, expected_items, args.threshold)
+        results = validate_rules(paper_ids, args.structure_type, expected_items, args.threshold,
+                                 gold_csv=args.gold_csv)
         out = args.output or args.expected.replace('.csv', '_validation.csv')
 
         caught = sum(1 for r in results if r['status'] == 'caught')
