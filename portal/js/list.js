@@ -121,9 +121,11 @@
         groups.set(r.paper_id, Object.assign({}, r, { versions: {} }));
         continue;
       }
-      if (!groups.has(base)) groups.set(base, { paper_id: base, versions: {} });
+      if (!groups.has(base)) groups.set(base, { paper_id: base, versions: {}, provider_nodes: {}, provider_buckets: {} });
       const g = groups.get(base);
       g.versions[variant] = r.paper_id; // suffixed id used in paper.html link
+      g.provider_nodes[variant] = r.n_nodes || 0;
+      g.provider_buckets[variant] = r.buckets || null;
       // Prefer manual stats; fall back to whichever appeared first.
       if (variant === "manual" || g.n_nodes == null) {
         g.title = r.title;
@@ -220,13 +222,13 @@
       "<thead><tr>" +
       '<th data-k="paper_id">Paper ID</th>' +
       '<th data-k="title">Title</th>' +
-      '<th data-k="n_nodes" style="text-align:right">Nodes</th>' +
-      '<th data-k="bucket_def"   style="text-align:right" title="Definitions">Def</th>' +
-      '<th data-k="bucket_thm"   style="text-align:right" title="Theorem-like: theorem, lemma, proposition, corollary, claim, conjecture">Thm-like</th>' +
-      '<th data-k="bucket_alg"   style="text-align:right" title="Algorithms">Alg</th>' +
-      '<th data-k="bucket_pf"    style="text-align:right" title="Proofs">Proofs</th>' +
-      '<th data-k="bucket_steps" style="text-align:right" title="Level-2 step decomposition: proof_step + algorithm_step">Steps</th>' +
-      '<th data-k="bucket_other" style="text-align:right" title="Other: equation, problem, open_problem, assumption, example, remark">Other</th>' +
+      '<th data-k="n_nodes" style="text-align:right">' + (cfg.tier === 1 ? 'Nodes (M/C/G)' : 'Nodes') + '</th>' +
+      '<th data-k="bucket_def"   style="text-align:right" title="Definitions">' + (cfg.tier === 1 ? 'Def (M/C/G)' : 'Def') + '</th>' +
+      '<th data-k="bucket_thm"   style="text-align:right" title="Theorem-like: theorem, lemma, proposition, corollary, claim, conjecture">' + (cfg.tier === 1 ? 'Thm (M/C/G)' : 'Thm-like') + '</th>' +
+      '<th data-k="bucket_alg"   style="text-align:right" title="Algorithms">' + (cfg.tier === 1 ? 'Alg (M/C/G)' : 'Alg') + '</th>' +
+      '<th data-k="bucket_pf"    style="text-align:right" title="Proofs">' + (cfg.tier === 1 ? 'Proofs (M/C/G)' : 'Proofs') + '</th>' +
+      '<th data-k="bucket_steps" style="text-align:right" title="Level-2 step decomposition: proof_step + algorithm_step">' + (cfg.tier === 1 ? 'Steps (M/C/G)' : 'Steps') + '</th>' +
+      '<th data-k="bucket_other" style="text-align:right" title="Other: equation, problem, open_problem, assumption, example, remark">' + (cfg.tier === 1 ? 'Other (M/C/G)' : 'Other') + '</th>' +
       versionHeader +
       "</tr></thead><tbody></tbody>";
     main.appendChild(tbl);
@@ -297,16 +299,36 @@
             link(vs.openai,    "G", "OpenAI GPT extraction") +
           '</td>';
       }
+      // Tier 1: show M/C/G for node counts and all bucket columns.
+      var nodesCell, defCell, thmCell, algCell, pfCell, stepsCell, otherCell;
+      if (cfg.tier === 1 && r.provider_buckets) {
+        var pn = r.provider_nodes || {};
+        var pb = r.provider_buckets;
+        function mcg(field) {
+          var bm = pb.manual || {}, bc = pb.anthropic || {}, bg = pb.openai || {};
+          return fmt(bm[field]) + ' / ' + fmt(bc[field]) + ' / ' + fmt(bg[field]);
+        }
+        nodesCell = (pn.manual || 0) + ' / ' + (pn.anthropic || 0) + ' / ' + (pn.openai || 0);
+        defCell = mcg('def'); thmCell = mcg('thm'); algCell = mcg('alg');
+        pfCell = mcg('pf'); stepsCell = mcg('steps'); otherCell = mcg('other');
+      } else {
+        nodesCell = String(r.n_nodes || 0);
+        defCell = fmt(b.def); thmCell = fmt(b.thm); algCell = fmt(b.alg);
+        pfCell = fmt(b.pf); stepsCell = fmt(b.steps); otherCell = fmt(b.other);
+      }
+      var idCell = (cfg.tier === 1)
+        ? '<td>' + esc(r.paper_id) + '</td>'
+        : '<td><a href="' + url + '">' + esc(r.paper_id) + "</a></td>";
       tr.innerHTML =
-        '<td><a href="' + url + '">' + esc(r.paper_id) + "</a></td>" +
+        idCell +
         "<td>" + esc(r.title || "(untitled)") + "</td>" +
-        '<td style="text-align:right">' + (r.n_nodes || 0) + "</td>" +
-        '<td style="text-align:right">' + fmt(b.def)   + "</td>" +
-        '<td style="text-align:right">' + fmt(b.thm)   + "</td>" +
-        '<td style="text-align:right">' + fmt(b.alg)   + "</td>" +
-        '<td style="text-align:right">' + fmt(b.pf)    + "</td>" +
-        '<td style="text-align:right">' + fmt(b.steps) + "</td>" +
-        '<td style="text-align:right">' + fmt(b.other) + "</td>" +
+        '<td style="text-align:right">' + nodesCell + "</td>" +
+        '<td style="text-align:right">' + defCell   + "</td>" +
+        '<td style="text-align:right">' + thmCell   + "</td>" +
+        '<td style="text-align:right">' + algCell   + "</td>" +
+        '<td style="text-align:right">' + pfCell    + "</td>" +
+        '<td style="text-align:right">' + stepsCell + "</td>" +
+        '<td style="text-align:right">' + otherCell + "</td>" +
         versionsCell;
       tbody.appendChild(tr);
     }

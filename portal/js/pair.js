@@ -272,11 +272,12 @@
       }
     }
 
-    function buildRenderUrl(force) {
+    function buildGraphUrl(force) {
       const sel = document.getElementById("graph-mode");
       const mode = (sel && sel.value) || "S";
-      let u = "/render_alignment?id=" + encodeURIComponent(id) + "&mode=" + mode;
-      if (force) u += "&nocache=1&_=" + Date.now();
+      // Static pre-rendered HTML: graphs/pairs/<pair_id>_<mode>.html
+      var u = "graphs/pairs/" + encodeURIComponent(id) + "_" + mode + ".html";
+      if (force) u += "?_=" + Date.now();
       return u;
     }
 
@@ -284,8 +285,8 @@
       const iframe = document.getElementById("graph-iframe");
       const status = document.getElementById("graph-status");
       const openLink = document.getElementById("graph-open-tab");
-      const url = buildRenderUrl(force);
-      if (openLink) openLink.href = buildRenderUrl(false);
+      const url = buildGraphUrl(force);
+      if (openLink) openLink.href = buildGraphUrl(false);
       if (!entry.alignment_available) {
         if (status) status.textContent =
           "No alignment annotation yet — graph view requires an annotated alignment.";
@@ -295,10 +296,13 @@
           "</b>. The graph view appears once an alignment JSON is annotated for this pair.</div>";
         return;
       }
-      if (status) status.textContent = force ? "Re-rendering..." : "Loading...";
+      if (status) status.textContent = "Loading...";
       iframe.removeAttribute("srcdoc");
+      iframe.onerror = function () {
+        if (status) status.textContent = "Graph not yet pre-rendered for this pair/mode.";
+      };
       iframe.onload = function () {
-        if (status) status.textContent = "(check banner in top-right of graph for cache status)";
+        if (status) status.textContent = "";
       };
       iframe.src = url;
     }

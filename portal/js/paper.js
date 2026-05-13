@@ -94,7 +94,8 @@
       dl.appendChild(dt); dl.appendChild(dd);
     }
     pair("Paper ID", esc(paperId));
-    pair("Title", esc(meta.title || "(untitled)"));
+    var title = meta.title || (manifestEntry && manifestEntry.title) || "(untitled)";
+    pair("Title", esc(title));
     if (meta.authors) {
       const a = Array.isArray(meta.authors) ? meta.authors.join(", ") : meta.authors;
       pair("Authors", esc(a));
