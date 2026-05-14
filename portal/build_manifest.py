@@ -309,9 +309,18 @@ def walk_papers(subdir: str, tier: int) -> list[dict[str, Any]]:
         print(f"  (skip: {subdir} does not exist)")
         return []
     out: list[dict[str, Any]] = []
-    # Only paper*.json - skip non-paper artefacts (e.g. anomalies_detail.json)
-    # that may share the data dir but are not paper records.
-    for p in sorted(d.glob("paper*.json")):
+    # Tier1 files are <arxiv_id>_<variant>.json; tier2/3 are paper*.json.
+    # For tier1, glob all *.json except known non-paper files.
+    _skip = {"manifest.json", "tier2_anomalies_detail.json", "tier2_anomalies_report.csv",
+             "cs_candes_tao_gold.json", "sinkhorn_gold.json"}
+    if tier == 1:
+        candidates = sorted(
+            p for p in d.glob("*.json")
+            if p.name not in _skip and not p.name.startswith("tier")
+        )
+    else:
+        candidates = sorted(d.glob("paper*.json"))
+    for p in candidates:
         s = summarize_paper(p, tier)
         if s is not None:
             out.append(s)
@@ -556,8 +565,14 @@ def main() -> None:
 
     # Filter to paper*.json so non-paper artefacts (e.g. anomalies_detail.json)
     # in the same dir don't get treated as paper records.
-    tier1_paths = sorted((DATA / "tier1").glob("paper*.json")) \
-        if (DATA / "tier1").exists() else []
+    # Tier1 files are named <arxiv_id>_<variant>.json (not paper*.json).
+    # Grab all JSONs except non-paper artefacts.
+    _t1_skip = {"manifest.json", "tier2_anomalies_detail.json",
+                 "cs_candes_tao_gold.json", "sinkhorn_gold.json"}
+    tier1_paths = sorted(
+        p for p in (DATA / "tier1").glob("*.json")
+        if p.name not in _t1_skip and not p.name.startswith("tier")
+    ) if (DATA / "tier1").exists() else []
     tier2_paths = sorted((DATA / "tier2").glob("paper*.json")) \
         if (DATA / "tier2").exists() else []
     tier3_paths = sorted((DATA / "tier3-sample").glob("paper*.json")) \

@@ -82,27 +82,45 @@ def main():
             print(f"  ... and {len(unique_ids) - 10} more")
         return
 
-    # Fetch in batches
+    # Fetch in batches with retry and incremental saves
     fetched = 0
     failed = 0
+    save_every = 500  # save manifest every N successful fetches
+    since_save = 0
     for i in range(0, len(unique_ids), args.batch_size):
         batch = unique_ids[i:i + args.batch_size]
         end = i + len(batch)
         print(f"  Fetching {i+1}-{end} of {len(unique_ids)}...", end=" ", flush=True)
-        try:
-            titles = fetch_titles(batch)
-            for aid, title in titles.items():
-                for entry in id_to_entries.get(aid, []):
-                    entry["title"] = title
+        ok = False
+        for attempt in range(3):
+            try:
+                titles = fetch_titles(batch)
+                for aid, title in titles.items():
+                    for entry in id_to_entries.get(aid, []):
+                        entry["title"] = title
                 fetched += len(titles)
-            not_found = len(batch) - len(titles)
-            if not_found:
-                print(f"ok ({len(titles)} found, {not_found} missing)")
-            else:
-                print(f"ok ({len(titles)})")
-        except Exception as e:
-            print(f"FAILED: {e}")
-            failed += len(batch)
+                since_save += len(titles)
+                not_found = len(batch) - len(titles)
+                if not_found:
+                    print(f"ok ({len(titles)} found, {not_found} missing)")
+                else:
+                    print(f"ok ({len(titles)})")
+                ok = True
+                break
+            except Exception as e:
+                if attempt < 2:
+                    wait = args.delay * (attempt + 2)
+                    print(f"retry ({e})...", end=" ", flush=True)
+                    time.sleep(wait)
+                else:
+                    print(f"FAILED after 3 attempts: {e}")
+                    failed += len(batch)
+        # Save incrementally
+        if since_save >= save_every:
+            manifest_path.write_text(
+                json.dumps(manifest, indent=2, ensure_ascii=False))
+            print(f"    [saved — {fetched} titles so far]")
+            since_save = 0
         if end < len(unique_ids):
             time.sleep(args.delay)
 

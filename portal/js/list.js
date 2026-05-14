@@ -109,7 +109,7 @@
   // as separate JSONs named <id>_<variant>.json. Collapse the 3 entries into
   // one row so the table shows one row per paper with three version links.
   function collapseTier1Versions(rows) {
-    const SUFFIXES = ["_manual", "_anthropic", "_openai"];
+    const SUFFIXES = ["_manual", "_rules", "_anthropic", "_openai"];
     const groups = new Map();
     for (const r of rows) {
       let base = r.paper_id, variant = null;
@@ -216,19 +216,18 @@
     const tbl = document.createElement("table");
     tbl.className = "listing";
     const versionHeader = (cfg.tier === 1)
-      ? '<th title="Three independent extractions of each gold-standard paper: manual hand-coded, Claude Opus, and OpenAI GPT">Versions</th>'
+      ? '<th title="Four independent extractions of each gold-standard paper: manual gold (M), rule-based regex (R), Claude Opus (C), and OpenAI GPT-4o (G)">Versions</th>'
       : "";
     tbl.innerHTML =
       "<thead><tr>" +
       '<th data-k="paper_id">Paper ID</th>' +
       '<th data-k="title">Title</th>' +
-      '<th data-k="n_nodes" style="text-align:right">' + (cfg.tier === 1 ? 'Nodes (M/C/G)' : 'Nodes') + '</th>' +
-      '<th data-k="bucket_def"   style="text-align:right" title="Definitions">' + (cfg.tier === 1 ? 'Def (M/C/G)' : 'Def') + '</th>' +
-      '<th data-k="bucket_thm"   style="text-align:right" title="Theorem-like: theorem, lemma, proposition, corollary, claim, conjecture">' + (cfg.tier === 1 ? 'Thm (M/C/G)' : 'Thm-like') + '</th>' +
-      '<th data-k="bucket_alg"   style="text-align:right" title="Algorithms">' + (cfg.tier === 1 ? 'Alg (M/C/G)' : 'Alg') + '</th>' +
-      '<th data-k="bucket_pf"    style="text-align:right" title="Proofs">' + (cfg.tier === 1 ? 'Proofs (M/C/G)' : 'Proofs') + '</th>' +
-      '<th data-k="bucket_steps" style="text-align:right" title="Level-2 step decomposition: proof_step + algorithm_step">' + (cfg.tier === 1 ? 'Steps (M/C/G)' : 'Steps') + '</th>' +
-      '<th data-k="bucket_other" style="text-align:right" title="Other: equation, problem, open_problem, assumption, example, remark">' + (cfg.tier === 1 ? 'Other (M/C/G)' : 'Other') + '</th>' +
+      '<th data-k="n_nodes" style="text-align:right">' + (cfg.tier === 1 ? 'Nodes (M/R/C/G)' : 'Nodes') + '</th>' +
+      '<th data-k="bucket_def"   style="text-align:right" title="Definitions">' + (cfg.tier === 1 ? 'Def (M/R/C/G)' : 'Def') + '</th>' +
+      '<th data-k="bucket_thm"   style="text-align:right" title="Theorem-like: theorem, lemma, proposition, corollary, claim, conjecture">' + (cfg.tier === 1 ? 'Thm (M/R/C/G)' : 'Thm-like') + '</th>' +
+      '<th data-k="bucket_alg"   style="text-align:right" title="Algorithms">' + (cfg.tier === 1 ? 'Alg (M/R/C/G)' : 'Alg') + '</th>' +
+      '<th data-k="bucket_pf"    style="text-align:right" title="Proofs">' + (cfg.tier === 1 ? 'Proofs (M/R/C/G)' : 'Proofs') + '</th>' +
+      '<th data-k="bucket_other" style="text-align:right" title="Other: equation, problem, open_problem, assumption, example, remark">' + (cfg.tier === 1 ? 'Other (M/R/C/G)' : 'Other') + '</th>' +
       versionHeader +
       "</tr></thead><tbody></tbody>";
     main.appendChild(tbl);
@@ -250,7 +249,7 @@
     const tbody = document.querySelector("#listing table.listing tbody");
     if (!tbody) return;
     tbody.innerHTML = "";
-    const colspan = (cfg.tier === 1) ? 10 : 9;
+    const colspan = (cfg.tier === 1) ? 9 : 8;
     if (view.length === 0) {
       const tr = document.createElement("tr");
       tr.innerHTML = '<td colspan="' + colspan + '" class="empty">No papers match.</td>';
@@ -294,9 +293,10 @@
         };
         versionsCell =
           '<td style="white-space:nowrap;font-family:monospace;font-size:12px">' +
-            link(vs.manual,    "M", "Manual gold (hand-coded)") + " | " +
+            link(vs.manual,    "M", "Manual gold (hand-annotated)") + " | " +
+            link(vs.rules,     "R", "Rule-based regex parser") + " | " +
             link(vs.anthropic, "C", "Claude Opus extraction") + " | " +
-            link(vs.openai,    "G", "OpenAI GPT extraction") +
+            link(vs.openai,    "G", "OpenAI GPT-4o extraction") +
           '</td>';
       }
       // Tier 1: show M/C/G for node counts and all bucket columns.
@@ -305,10 +305,10 @@
         var pn = r.provider_nodes || {};
         var pb = r.provider_buckets;
         function mcg(field) {
-          var bm = pb.manual || {}, bc = pb.anthropic || {}, bg = pb.openai || {};
-          return fmt(bm[field]) + ' / ' + fmt(bc[field]) + ' / ' + fmt(bg[field]);
+          var bm = pb.manual || {}, br = pb.rules || {}, bc = pb.anthropic || {}, bg = pb.openai || {};
+          return fmt(bm[field]) + ' / ' + fmt(br[field]) + ' / ' + fmt(bc[field]) + ' / ' + fmt(bg[field]);
         }
-        nodesCell = (pn.manual || 0) + ' / ' + (pn.anthropic || 0) + ' / ' + (pn.openai || 0);
+        nodesCell = (pn.manual || 0) + ' / ' + (pn.rules || 0) + ' / ' + (pn.anthropic || 0) + ' / ' + (pn.openai || 0);
         defCell = mcg('def'); thmCell = mcg('thm'); algCell = mcg('alg');
         pfCell = mcg('pf'); stepsCell = mcg('steps'); otherCell = mcg('other');
       } else {
@@ -327,7 +327,6 @@
         '<td style="text-align:right">' + thmCell   + "</td>" +
         '<td style="text-align:right">' + algCell   + "</td>" +
         '<td style="text-align:right">' + pfCell    + "</td>" +
-        '<td style="text-align:right">' + stepsCell + "</td>" +
         '<td style="text-align:right">' + otherCell + "</td>" +
         versionsCell;
       tbody.appendChild(tr);
