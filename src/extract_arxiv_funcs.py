@@ -43,7 +43,12 @@ from pathlib import Path
 
 
 import pandas as pd
-import tables
+try:
+    import tables
+except ImportError:
+    # `tables` (PyTables) is only needed by the HDF5 readers/writers below;
+    # let pure helpers import cleanly without it.
+    tables = None  # type: ignore
 
 from config import *
 import pickle
