@@ -100,21 +100,46 @@ def signature_of(
     *,
     include_generic_links: bool = False,
 ) -> Signature:
-    """Compute a Signature for a single node from a paper JSON."""
+    """Compute a Signature for a single node from a paper JSON.
+
+    `raw_latex` is preferred over `clean_text` for tokenization. The tier3
+    extractor strips every math expression in `clean_text` to a literal
+    `[MATH]` placeholder, which collapses semantically distinct theorems
+    to identical token sets. Example: a Method-E dry run on the 97K-paper
+    cluster corpus surfaced six top-scoring (combined=0.8) candidates that
+    all matched "The functor [MATH] is an equivalence of categories" —
+    pure boilerplate noise, no actual math overlap.
+
+    Using `raw_latex` preserves \\command tokens, mathbb / mathcal / set
+    notation, sup/sub symbols, and named operators, which math_tokenize
+    can convert to discriminating tokens (\\sum, \\mathbb, struct_norm_2,
+    rel_leq, etc.). `operators` (LaTeX backslash commands) only fire when
+    raw LaTeX is available; previously they were always empty.
+
+    `conclusion_type` heuristics work on either source — the patterns
+    (\\exists, "there exists", "if and only if") appear in both — but we
+    use clean_text when available for cleaner natural-language matching.
+    """
     nid = node.get("id")
-    text = (node.get("clean_text")
-            or node.get("statement")
-            or node.get("raw_latex")
-            or "")
+    # Token source: raw_latex preferred (preserves math), fall back to clean_text.
+    token_text = (node.get("raw_latex")
+                  or node.get("statement")
+                  or node.get("clean_text")
+                  or "")
+    # Conclusion-type source: clean_text preferred (natural-language regex).
+    ct_text = (node.get("clean_text")
+               or node.get("statement")
+               or node.get("raw_latex")
+               or "")
     f_ids = grounded_target_set(nid, paper_edges,
                                 include_generic=include_generic_links)
-    tokens = math_tokenize(text)
+    tokens = math_tokenize(token_text)
     operators = {t for t in tokens if t.startswith("\\")}
     return Signature(
         foundation_ids=frozenset(f_ids),
         operators=frozenset(operators),
         statement_tokens=frozenset(tokens),
-        conclusion_type=conclusion_type_of(text),
+        conclusion_type=conclusion_type_of(ct_text),
     )
 
 
