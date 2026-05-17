@@ -1,20 +1,26 @@
 #!/usr/bin/env python3
 """Append textbook entries to clean_foundation.json -> clean_foundation_with_books.json.
 
-Reads three already-extracted books from textbooks/extracted/:
-  - b245_gowers_pcm     (Princeton Companion to Mathematics)   -> source "book:gowers"
-  - b246_higham_pcam    (Princeton Companion to Applied Math)  -> source "book:higham"
-  - b221_mat520         (Princeton MAT520 Functional Analysis) -> source "book:functional_analysis"
+Default behavior: auto-discover every book directory under
+`<repo>/textbooks/extracted/b*/` and pull entries from each. (Previously the
+script was pinned to 3 books — gowers PCM, higham PCAM, MAT520 functional
+analysis. Auto-discovery makes the script work with the full 117-book
+extraction set.)
 
 For each book, walks every chapter/article JSON, pulls every node that has a
 usable name/label, and registers it in the merged foundation index keyed by a
 normalized lowercase form. Existing keys (already present from proofwiki etc.)
-are NOT overwritten.
+are NOT overwritten — first-seen wins, so order matters when multiple books
+define the same named result. The source-tag is derived from the book dir
+name: `b006_axler` -> `book:axler`. Three books retain their historical tags
+(gowers / higham / functional_analysis) for continuity.
 
 Output: clean_foundation_with_books.json next to the source clean_foundation.json.
 
 Usage:
-    python scripts/add_books_to_foundation.py
+    python scripts/add_books_to_foundation.py                 # all books
+    python scripts/add_books_to_foundation.py --books-only b006_axler,b026_judson
+    python scripts/add_books_to_foundation.py --legacy-3-books  # old behavior
 """
 from __future__ import annotations
 
@@ -31,12 +37,67 @@ DEFAULT_FOUNDATION = Path(
 )
 DEFAULT_OUT = DEFAULT_FOUNDATION.parent / "clean_foundation_with_books.json"
 
-BOOKS = [
+LEGACY_BOOKS = [
     # (subdir_name, source_tag, pretty_label_prefix)
     ("b245_gowers_pcm",  "book:gowers",               "Gowers"),
     ("b246_higham_pcam", "book:higham",               "Higham"),
     ("b221_mat520",      "book:functional_analysis",  "FunctAn"),
 ]
+
+# Books whose source_tag we want to pin to a stable, well-known name rather
+# than the dir-derived default. Keys: subdir name; values: (source_tag, label).
+PINNED_SOURCE_TAGS = {
+    "b245_gowers_pcm":  ("book:gowers",              "Gowers"),
+    "b246_higham_pcam": ("book:higham",              "Higham"),
+    "b221_mat520":      ("book:functional_analysis", "FunctAn"),
+}
+
+
+def _label_from_dir_name(subdir_name: str) -> tuple[str, str]:
+    """Derive (source_tag, pretty_label) from a book subdir name.
+
+    `b006_axler`        -> ("book:axler", "Axler")
+    `b001_openstax_calc1` -> ("book:openstax_calc1", "Openstax_Calc1")
+    """
+    if subdir_name in PINNED_SOURCE_TAGS:
+        return PINNED_SOURCE_TAGS[subdir_name]
+    # Strip the "b\d+_" prefix
+    m = re.match(r"^b\d+[_-](.+)$", subdir_name)
+    handle = m.group(1) if m else subdir_name
+    return (f"book:{handle}", handle.replace("_", " ").title().replace(" ", "_"))
+
+
+def discover_books(extracted_dir: Path) -> list[tuple[str, str, str]]:
+    """Auto-discover all book subdirs under extracted_dir that contain content.
+
+    Returns list of (subdir_name, source_tag, label_prefix) tuples, sorted by
+    subdir name. A directory counts as a book if it matches ^b\\d and contains
+    at least one JSON file with a `nodes` list.
+    """
+    out: list[tuple[str, str, str]] = []
+    if not extracted_dir.is_dir():
+        return out
+    for d in sorted(extracted_dir.iterdir()):
+        if not d.is_dir():
+            continue
+        if not re.match(r"^b\d", d.name):
+            continue
+        # Cheap content check: any *.json with a "nodes" key?
+        has_content = False
+        for fp in d.glob("*.json"):
+            try:
+                with open(fp, "r", encoding="utf-8") as f:
+                    head = f.read(2048)
+                if '"nodes"' in head:
+                    has_content = True
+                    break
+            except Exception:
+                continue
+        if not has_content:
+            continue
+        tag, label = _label_from_dir_name(d.name)
+        out.append((d.name, tag, label))
+    return out
 
 
 def _normalize_key(title: str) -> str:
@@ -110,12 +171,17 @@ def _iter_book_nodes(book_dir: Path) -> Iterable[Dict[str, Any]]:
                 yield n
 
 
-def build_book_entries() -> Dict[str, Dict[str, Any]]:
-    """Walk all three books, return merged {key: entry} dict (book entries only)."""
+def build_book_entries(books: list[tuple[str, str, str]]) -> Dict[str, Dict[str, Any]]:
+    """Walk every book in `books`, return merged {key: entry} dict.
+
+    `books` is a list of (subdir_name, source_tag, pretty_label) tuples — the
+    same shape as the legacy hardcoded BOOKS list. First-seen-wins: if two
+    books define the same normalized key, the earlier book's entry is kept.
+    """
     out: Dict[str, Dict[str, Any]] = {}
     per_book_counts: Dict[str, int] = {}
 
-    for subdir, source_tag, label_prefix in BOOKS:
+    for subdir, source_tag, label_prefix in books:
         bdir = EXTRACTED_DIR / subdir
         if not bdir.is_dir():
             print(f"[skip] {bdir} not found")
@@ -152,7 +218,8 @@ def build_book_entries() -> Dict[str, Dict[str, Any]]:
         per_book_counts[source_tag] = added
         print(f"[load] {subdir}: {added} entries")
 
-    print(f"[total] {sum(per_book_counts.values())} book entries across {len(BOOKS)} books")
+    print(f"[total] {sum(per_book_counts.values())} book entries "
+          f"across {len(books)} books")
     return out
 
 
@@ -166,7 +233,24 @@ def main():
     ap.add_argument("--output",
                     default=str(DEFAULT_OUT),
                     help="Output path for merged foundation_with_books JSON.")
+    ap.add_argument("--legacy-3-books", action="store_true",
+                    help="Use the original 3-book hardcoded list (gowers + higham + "
+                         "functional_analysis). Default is auto-discovery of all "
+                         "extracted books.")
+    ap.add_argument("--books-only", default=None,
+                    help="Comma-sep subdir names to restrict the run to "
+                         "(e.g. 'b006_axler,b026_judson').")
     args = ap.parse_args()
+
+    if args.legacy_3_books:
+        books = LEGACY_BOOKS
+        print(f"[mode] legacy 3-book list ({len(books)} books)")
+    else:
+        books = discover_books(EXTRACTED_DIR)
+        if args.books_only:
+            allow = {s.strip() for s in args.books_only.split(",") if s.strip()}
+            books = [b for b in books if b[0] in allow]
+        print(f"[mode] auto-discovery: {len(books)} books found under {EXTRACTED_DIR}")
 
     fnd_path = Path(args.foundation)
     if not fnd_path.exists():
@@ -178,7 +262,7 @@ def main():
     base_index = base.get("index", {})
     print(f"[read]   base entries: {len(base_index)}")
 
-    book_entries = build_book_entries()
+    book_entries = build_book_entries(books)
 
     merged = dict(base_index)
     n_collisions = 0
@@ -198,7 +282,8 @@ def main():
             **(base.get("meta", {}) or {}),
             "books_added":      n_added,
             "books_collisions": n_collisions,
-            "books_sources":    [b[1] for b in BOOKS],
+            "books_sources":    [b[1] for b in books],
+            "books_count":      len(books),
             "index_size":       len(merged),
         },
         "index": merged,

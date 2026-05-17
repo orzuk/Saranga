@@ -84,6 +84,48 @@ class FoundationLinker:
         print(f"FoundationLinker: loaded {loaded} Mathlib entries, "
               f"{len(self._term_index)} unique terms indexed")
 
+    def load_unified_index(self, json_path: str) -> None:
+        """Load a single merged foundation index (the output of
+        scripts/add_books_to_foundation.py).
+
+        File format:
+            {"meta": {...},
+             "index": {normalized_key: entry, ...}}
+        Each entry should carry at least {name, source, type}. If `id` is
+        missing or empty, we synthesize one from the normalized key so the
+        linker's per-edge provenance still works.
+
+        Use this in place of the per-source `load_naturalproofs_index` calls
+        when working with the merged broad-math index. Mathlib is loaded
+        separately via `load_mathlib_index` regardless.
+        """
+        if not os.path.exists(json_path):
+            print(f"FoundationLinker: {json_path} not found, "
+                  f"skipping unified index")
+            return
+        with open(json_path) as f:
+            data = json.load(f)
+        index = data.get('index') if isinstance(data, dict) else None
+        if not isinstance(index, dict):
+            print(f"FoundationLinker: {json_path} has no 'index' dict; "
+                  f"skipping (got keys: {list(data) if isinstance(data, dict) else type(data).__name__})")
+            return
+        loaded = 0
+        for key, entry in index.items():
+            if not isinstance(entry, dict):
+                continue
+            eid = entry.get('id') or f"unified:{key}"
+            entry = {**entry, 'id': eid}
+            self._entries[eid] = entry
+            loaded += 1
+        self._build_index()
+        meta = data.get('meta', {}) or {}
+        srcs = meta.get('books_sources') or []
+        print(f"FoundationLinker: loaded {loaded} unified entries from {json_path}")
+        print(f"  index_size meta={meta.get('index_size')}, "
+              f"books_count meta={meta.get('books_count')}, "
+              f"{len(self._term_index)} unique terms indexed")
+
     def _build_index(self) -> None:
         """Build term index from entry names for substring matching."""
         self._term_index = {}
@@ -232,7 +274,12 @@ def main():
     parser.add_argument('--paper-json', required=True,
                         help='Path to paper mid-level JSON')
     parser.add_argument('--naturalproofs-dir', default=None,
-                        help='Path to NaturalProofs midlevel/ directory')
+                        help='Path to NaturalProofs midlevel/ directory '
+                             '(legacy multi-file loader)')
+    parser.add_argument('--unified-index', default=None,
+                        help='Path to merged broad-math foundation file '
+                             '(e.g. clean_foundation_with_books.json). '
+                             'Replaces --naturalproofs-dir when given.')
     parser.add_argument('--mathlib-dir', default=None,
                         help='Path to Mathlib midlevel/ directory')
     parser.add_argument('--min-term-len', type=int, default=6,
@@ -244,6 +291,8 @@ def main():
 
     # Load foundation index
     linker = FoundationLinker()
+    if args.unified_index:
+        linker.load_unified_index(args.unified_index)
     if args.naturalproofs_dir:
         linker.load_naturalproofs_index(args.naturalproofs_dir)
     if args.mathlib_dir:
