@@ -47,7 +47,13 @@ import tables
 
 from config import *
 import pickle
-import h5py
+try:
+    import h5py
+except ImportError:
+    # h5py is only needed by the HDF5 metadata helpers (meta_data_full_to_hdf5,
+    # load_meta_data_hdf5, iter_meta_data_hdf5, load_meta_data_hdf5_by_ids).
+    # Letting pure helpers like normalize_arxiv_id import cleanly without it.
+    h5py = None  # type: ignore
 
 
 ARXIV_ID_RE = re.compile(r"^(?:arXiv:)?(\d{4}\.\d{4,5})(v\d+)?$")
