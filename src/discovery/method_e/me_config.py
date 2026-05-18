@@ -45,6 +45,13 @@ class MethodEConfig:
     headline_only_no_citation: bool = True   # K_structural is the headline;
                                              # K_citation kept for calibration
 
+    # Author-overlap filter: drop pairs where the candidate paper shares
+    # any author with the problem paper. Method E requires the candidate
+    # author to NOT know about the open problem; same-author trivially
+    # violates that. Only applied when the citation graph is loaded
+    # (otherwise no author data available).
+    drop_same_author: bool = True
+
     # LLM judge
     judge_model: str = "sonnet"           # tier-1 cheap judge
     judge_model_tier2: str = "opus"       # tier-2 confirmation pass

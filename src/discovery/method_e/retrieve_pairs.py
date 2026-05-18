@@ -267,6 +267,16 @@ def retrieve(
                                 same_author = bool(a_set & b_set)
                         except Exception:
                             same_author = None
+                # HARD FILTER: drop same-author pairs entirely.
+                # Rationale: Method E's K_structural value depends on the
+                # candidate author NOT knowing about the open problem;
+                # same-author pairs are trivially "knew about it". Hand
+                # review on five top v2 candidates surfaced a same-author
+                # case (Bravyi 2013 / Vershynina 2018) as #1 — exactly the
+                # kind of pair this filter exists to remove.
+                if (same_author is True
+                        and getattr(config, "drop_same_author", True)):
+                    continue
 
                 m = Match(
                     problem_id=p.key,
