@@ -1827,9 +1827,11 @@ class PaperParser:
             print("Using Prompt from file:", self.custom_prompt_file)
             return template.replace("{latex_chunk}", latex_chunk)
 
-        # 2. Per-type prompt file in prompts/ directory
+        # 2. Per-type prompt file in repo-level prompts/ directory.
+        # The official catalog of all prompts lives at <repo_root>/prompts/.
+        # Path: src/LLMVersion/math_paper_parser.py -> ../../prompts/
         script_dir = Path(__file__).parent
-        type_prompt = script_dir / "prompts" / f"{structure_type}_prompt.txt"
+        type_prompt = script_dir.parent.parent / "prompts" / f"{structure_type}_prompt.txt"
         if type_prompt.exists():
             template = type_prompt.read_text()
             print(f"Using Prompt from file: {type_prompt}")

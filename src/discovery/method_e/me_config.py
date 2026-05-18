@@ -48,7 +48,7 @@ class MethodEConfig:
     # LLM judge
     judge_model: str = "sonnet"           # tier-1 cheap judge
     judge_model_tier2: str = "opus"       # tier-2 confirmation pass
-    judge_prompt_version: str = "method_e_judge_v1"
+    judge_prompt_version: str = "method_e_judge"
     judge_dry_run: bool = False           # set True to skip LLM API spend
 
     # Paths (set at run-time; not part of the frozen config)

@@ -1,6 +1,6 @@
 """Method E LLM-as-judge pass over the retrieval candidates.
 
-Thin binding: loads the method_e_judge_v1 prompt, runs each candidate row
+Thin binding: loads the method_e_judge prompt, runs each candidate row
 through common.llm_judge.LLMJudge, writes a judged_candidates.jsonl that
 augments retrieve_pairs.py output with {relationship, verdict, justification}.
 
@@ -58,8 +58,12 @@ def parse_judge_response(raw: str) -> dict:
 
 # ── Prompt loader ──────────────────────────────────────────────────────────
 
-def load_prompt(prompt_version: str = "method_e_judge_v1") -> str:
-    p = _HERE / "prompts" / f"{prompt_version}.txt"
+def load_prompt(prompt_name: str = "method_e_judge") -> str:
+    """Load a prompt from the repo-level prompts/ catalog.
+
+    Path: src/discovery/method_e/judge.py -> ../../../prompts/<name>.txt
+    """
+    p = _HERE.parent.parent.parent / "prompts" / f"{prompt_name}.txt"
     if not p.exists():
         raise FileNotFoundError(f"Prompt not found: {p}")
     return p.read_text(encoding="utf-8")
@@ -73,7 +77,7 @@ def judge_candidates(
     *,
     cache_path: Path,
     model: str = "sonnet",
-    prompt_version: str = "method_e_judge_v1",
+    prompt_version: str = "method_e_judge",
     dry_run: bool = False,
     max_candidates: Optional[int] = None,
     progress_every: int = 50,
@@ -154,7 +158,7 @@ def main():
     ap.add_argument("--cache", required=True)
     ap.add_argument("--model", default="sonnet",
                     help="Short key from config.SOURCES or full model ID")
-    ap.add_argument("--prompt-version", default="method_e_judge_v1")
+    ap.add_argument("--prompt-version", default="method_e_judge")
     ap.add_argument("--dry-run", action="store_true",
                     help="Skip LLM API calls; assign NO/UNRELATED to all "
                          "candidates. Useful for smoke testing.")

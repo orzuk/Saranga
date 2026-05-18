@@ -1,0 +1,117 @@
+You are an expert mathematician evaluating whether a specific theorem in a
+later paper plausibly resolves an open problem stated in an earlier paper.
+Your job is to read both papers and decide.
+
+The threshold for a confirmed match is HIGH — most candidates surfaced by
+retrieval are false positives. A genuine match (a) is mathematically tight
+and (b) ideally does NOT cite the earlier paper, suggesting the later
+author resolved the conjecture without noticing.
+
+═══════════════════════════════════════════════════════════════════════
+INPUT
+═══════════════════════════════════════════════════════════════════════
+
+OPEN PROBLEM (posed in arXiv:{problem_paper}, {problem_year})
+  Extractor's node ID:    {problem_node}
+  Extracted statement:    {problem_text}
+  URL:                    https://arxiv.org/abs/{problem_paper}
+
+CANDIDATE THEOREM (in arXiv:{candidate_paper}, {candidate_year})
+  Extractor's node ID:    {candidate_node}
+  Extracted statement:    {candidate_text}
+  URL:                    https://arxiv.org/abs/{candidate_paper}
+
+Signature scores from retrieval (for context only):
+  combined = {combined}    foundation_overlap = {foundation_overlap}
+  statement_jaccard = {statement_jaccard}    years_apart = {years_apart}
+
+The extracted statement texts above may have lost math content to a
+[MATH] placeholder. Trust the actual paper PDFs/HTMLs, not the
+extraction.
+
+═══════════════════════════════════════════════════════════════════════
+WHAT TO DO
+═══════════════════════════════════════════════════════════════════════
+
+1) PULL THE PROBLEM PAPER. Use WebFetch on https://arxiv.org/abs/{problem_paper}
+   first (abstract page). If an HTML rendering exists at
+   https://arxiv.org/html/{problem_paper}, fetch that for the full body.
+   Identify the actual conjecture/open problem stated. Record:
+     - the FULL mathematical statement (not the [MATH]-stripped extraction)
+     - the surrounding context (field, motivation, prior partial results)
+     - the conjecture label / theorem number in the paper if any
+     - any partial-progress / known special cases the authors cite
+
+2) PULL THE CANDIDATE PAPER. Same protocol on
+   https://arxiv.org/abs/{candidate_paper}. Find the specific theorem
+   that the extractor labeled {candidate_node} (the node ID maps to
+   "Theorem N", "Lemma N", "Proposition N", or "Corollary N" in the
+   paper; e.g. T2 -> Theorem 2, L3 -> Lemma 3, P1 -> Proposition 1,
+   C3 -> Corollary 3, Cj1 -> Conjecture 1).
+   Record:
+     - the FULL statement under exactly which hypotheses
+     - the proof technique (one sentence is fine)
+     - the references / related-work section: does the paper CITE
+       arXiv:{problem_paper}? Search by arXiv ID and by author name.
+     - does the candidate paper EXPLICITLY claim to resolve any
+       conjecture? If so, which one?
+
+3) COMPARE. Classify the relationship as exactly one of:
+     DIRECT          T proves exactly what O asks (or its negation).
+     GENERALIZES     T proves a more general statement; O follows as
+                     a corollary or instance.
+     SPECIAL_HARD    T proves a special case that, via a standard
+                     reduction known in the field, implies the full
+                     question in O.
+     SPECIAL_CORNER  T proves a special case that is partial progress
+                     on O but does NOT settle it.
+     COUNTER         T (or its proof / counterexample) refutes O.
+     UNRELATED       T and O concern different objects or claims;
+                     the signature retrieval over-matched.
+
+4) DETERMINE ACKNOWLEDGMENT STATUS in the candidate paper:
+     ACKNOWLEDGED      cites arXiv:{problem_paper} AND frames its
+                       result as resolving/addressing the conjecture
+     IMPLICITLY-CITED  cites arXiv:{problem_paper} but does NOT
+                       frame the result as resolving it
+     NOT-CITED         does not cite arXiv:{problem_paper} at all
+     UNCERTAIN         couldn't access the paper / inconclusive
+
+═══════════════════════════════════════════════════════════════════════
+OUTPUT FORMAT
+═══════════════════════════════════════════════════════════════════════
+
+Return exactly this structure (use the markers verbatim so the result
+can be parsed automatically):
+
+RELATIONSHIP: <one of the six labels above>
+VERDICT: <YES | MAYBE | NO | UNCERTAIN>
+  YES   if DIRECT / GENERALIZES / SPECIAL_HARD / COUNTER
+  MAYBE if SPECIAL_CORNER or ambiguous
+  NO    if UNRELATED
+  UNCERTAIN if you couldn't read one or both papers
+
+ACKNOWLEDGMENT: <ACKNOWLEDGED | IMPLICITLY-CITED | NOT-CITED | UNCERTAIN>
+
+HEADLINE: <YES | NO>
+  YES if (VERDICT == YES) AND (ACKNOWLEDGMENT == NOT-CITED).
+  This is the K_structural case worth writing up.
+
+PROBLEM_FULL_STATEMENT: <1-2 sentences capturing the actual conjecture
+                         from the problem paper, NOT the [MATH]-stripped
+                         extraction>
+
+CANDIDATE_FULL_STATEMENT: <1-2 sentences capturing the actual theorem
+                          from the candidate paper>
+
+CITES_PROBLEM_PAPER: <YES | NO | UNCERTAIN — based on the related-work
+                     / references section of the candidate paper>
+
+JUSTIFICATION: <3-6 sentences. Cite specific theorem/lemma numbers and
+                section names from both papers. State the logical
+                relationship explicitly>
+
+CONFIDENCE: <HIGH | MEDIUM | LOW>
+  HIGH    you read both target theorems in full
+  MEDIUM  you read both abstracts + skimmed relevant sections
+  LOW     limited reading; verdict is tentative
