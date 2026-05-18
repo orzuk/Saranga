@@ -914,6 +914,10 @@ def aggregate_rules(input_csv: str, structure_type: str, eval_dir: str,
 
     print(f"Found {len(rules)} rule suggestions to aggregate.")
 
+    # Read the base extraction method so the meta-LLM can avoid redundancy
+    base_method_source = _read_extraction_method(structure_type)
+    print(f"  Base method source: {len(base_method_source)} chars")
+
     # Build the meta-prompt with all individual rules + their gold texts
     rules_text = ""
     for i, rule in enumerate(rules, 1):
@@ -934,7 +938,15 @@ def aggregate_rules(input_csv: str, structure_type: str, eval_dir: str,
 
 ## Task
 
-Below are {len(rules)} individual rule suggestions for extracting "{structure_type}" structures from LaTeX source. Each was generated to catch a specific missed structure. Your job is to aggregate them into a SINGLE, clean Python file.
+Below are {len(rules)} individual rule suggestions for extracting "{structure_type}" structures from LaTeX source. Each was generated to catch a specific missed structure. Your job is to aggregate them into a SINGLE, clean Python file that runs IN ADDITION to the base parser below.
+
+## EXISTING BASE EXTRACTION METHOD (already runs — do NOT duplicate)
+
+The following code is the base parser's extraction method for "{structure_type}". Your distilled rules will run alongside it, so do NOT generate patterns that duplicate what the base method already catches. Only produce rules for gaps the base method misses.
+
+```python
+{base_method_source}
+```
 
 ## GOLD TEST CASES — your patterns MUST match these
 
