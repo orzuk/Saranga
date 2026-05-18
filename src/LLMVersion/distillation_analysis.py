@@ -55,15 +55,41 @@ def jaccard_similarity(text1, text2):
     return len(t1 & t2) / len(t1 | t2)
 
 
-def _find_local_tex(paper_id: str) -> Optional[Tuple[str, str]]:
-    """Find local .tex file for paper_id. Returns (tex_path, versioned_id) or None."""
+def _find_local_tex(paper_id: str, search_dirs: Optional[List[str]] = None) -> Optional[Tuple[str, str]]:
+    """Find local .tex file for paper_id. Returns (tex_path, versioned_id) or None.
+
+    Parameters
+    ----------
+    paper_id : arXiv-style ID (e.g. '1210.4634') or portal-style (e.g. 'paper001')
+    search_dirs : additional directories to search (e.g. alignment/papers/paperNNN/source/)
+    """
+    # Search FULL_PAPERS_DIR first (default)
     pattern = os.path.join(FULL_PAPERS_DIR, "**", f"{paper_id}*.tex")
     matches = globmod.glob(pattern, recursive=True)
-    if not matches:
-        return None
-    tex_path = matches[0]
-    versioned_id = Path(tex_path).stem
-    return tex_path, versioned_id
+    if matches:
+        tex_path = matches[0]
+        versioned_id = Path(tex_path).stem
+        return tex_path, versioned_id
+
+    # Search additional dirs (e.g. alignment/papers/paperNNN/source/)
+    if search_dirs:
+        for d in search_dirs:
+            pattern = os.path.join(d, "**", f"*.tex")
+            matches = globmod.glob(pattern, recursive=True)
+            if matches:
+                # Prefer files with \documentclass (main file)
+                for m in matches:
+                    try:
+                        with open(m, 'r', encoding='utf-8', errors='replace') as f:
+                            head = f.read(2000)
+                        if '\\documentclass' in head:
+                            return m, Path(m).stem
+                    except OSError:
+                        continue
+                # Fallback to first .tex file
+                return matches[0], Path(matches[0]).stem
+
+    return None
 
 
 def _load_detailed_matches(eval_dir: str) -> List[dict]:
@@ -436,7 +462,8 @@ def _call_llm_for_rule(gold_text: str, latex_context: str,
                        model: str) -> dict:
     """Call LLM to suggest a concrete regex rule for catching a missed structure.
 
-    Returns {'reasoning': str, 'suggested_code': str} or fallback on error.
+    Returns {'reasoning': str, 'suggested_code': str,
+             'input_tokens': int, 'output_tokens': int} or fallback on error.
     """
     import anthropic
 
@@ -495,6 +522,8 @@ Respond with JSON (no markdown fences):
         return {
             'reasoning': parsed.get('reasoning', ''),
             'suggested_code': parsed.get('suggested_code', ''),
+            'input_tokens': getattr(message.usage, 'input_tokens', 0),
+            'output_tokens': getattr(message.usage, 'output_tokens', 0),
         }
     except json.JSONDecodeError:
         # Try to salvage partial JSON
@@ -503,16 +532,21 @@ Respond with JSON (no markdown fences):
         return {
             'reasoning': reasoning_m.group(1) if reasoning_m else response_text[:500],
             'suggested_code': code_m.group(1) if code_m else '',
+            'input_tokens': getattr(message.usage, 'input_tokens', 0),
+            'output_tokens': getattr(message.usage, 'output_tokens', 0),
         }
     except Exception as e:
         return {
             'reasoning': f'LLM call failed: {e}',
             'suggested_code': '',
+            'input_tokens': 0,
+            'output_tokens': 0,
         }
 
 
 def analyze_patterns(items: List[dict], tex_dir: str = None,
-                     structure_type: str = None, model: str = None) -> List[dict]:
+                     structure_type: str = None, model: str = None,
+                     search_dirs: Optional[List[str]] = None) -> List[dict]:
     """Analyze LaTeX source around missed structures to classify patterns.
 
     When structure_type and model are provided, uses an LLM to suggest concrete
@@ -524,11 +558,17 @@ def analyze_patterns(items: List[dict], tex_dir: str = None,
     tex_dir : directory to search for .tex files (defaults to FULL_PAPERS_DIR)
     structure_type : e.g. 'proof', 'theorem' — needed for LLM analysis
     model : Anthropic model ID (e.g. 'claude-opus-4-7')
+    search_dirs : extra directories passed to ``_find_local_tex`` (e.g.
+        alignment/papers/paperNNN/source/ for silver-standard papers)
 
     Returns list of dicts with:
       paper_id, gold_index, pattern_type, latex_context,
       llm_suggested_rule, llm_reasoning  (when LLM enabled)
       suggested_regex_hint               (when LLM disabled / fallback)
+
+    The returned list has an extra attribute ``usage`` (dict) with keys
+    ``input_tokens``, ``output_tokens``, and ``llm_calls`` accumulated
+    across all LLM calls in this invocation.
     """
     if tex_dir is None:
         tex_dir = FULL_PAPERS_DIR
@@ -543,6 +583,8 @@ def analyze_patterns(items: List[dict], tex_dir: str = None,
     results = []
     tex_cache: Dict[str, str] = {}
     llm_call_count = 0
+    total_input_tokens = 0
+    total_output_tokens = 0
 
     for item in items:
         paper_id = item['paper_id']
@@ -554,10 +596,10 @@ def analyze_patterns(items: List[dict], tex_dir: str = None,
 
         # Load TeX source (cached)
         if paper_id not in tex_cache:
-            found = _find_local_tex(paper_id)
+            found = _find_local_tex(paper_id, search_dirs=search_dirs)
             if found is None:
                 stripped = re.sub(r'v\d+$', '', paper_id)
-                found = _find_local_tex(stripped)
+                found = _find_local_tex(stripped, search_dirs=search_dirs)
             if found:
                 try:
                     with open(found[0], 'r', encoding='utf-8', errors='replace') as f:
@@ -603,6 +645,8 @@ def analyze_patterns(items: List[dict], tex_dir: str = None,
                 gold_text, context, method_source, structure_type, model)
             row['llm_reasoning'] = llm_result['reasoning']
             row['llm_suggested_rule'] = llm_result['suggested_code']
+            total_input_tokens += llm_result.get('input_tokens', 0)
+            total_output_tokens += llm_result.get('output_tokens', 0)
         elif use_llm:
             row['llm_reasoning'] = f'No context found ({pattern_type})'
             row['llm_suggested_rule'] = ''
@@ -613,6 +657,18 @@ def analyze_patterns(items: List[dict], tex_dir: str = None,
 
     if use_llm:
         print(f"\nTotal LLM calls: {llm_call_count}")
+        print(f"  Total tokens: {total_input_tokens} input, {total_output_tokens} output")
+
+    # Return (results, usage_dict) when LLM was used, plain results otherwise
+    # for backward compatibility. Callers that need usage can check:
+    #   if isinstance(ret, tuple): results, usage = ret
+    if use_llm:
+        usage = {
+            'input_tokens': total_input_tokens,
+            'output_tokens': total_output_tokens,
+            'llm_calls': llm_call_count,
+        }
+        return results, usage
 
     return results
 
@@ -878,7 +934,7 @@ def validate_rules(paper_ids: List[str], structure_type: str,
 # ---------------------------------------------------------------------------
 
 def aggregate_rules(input_csv: str, structure_type: str, eval_dir: str,
-                    model: str = 'claude-opus-4-7') -> str:
+                    model: str = 'claude-opus-4-7') -> 'str | tuple[str, dict]':
     """Read analyze CSV, aggregate LLM-suggested rules into a distilled_rules.py file.
 
     Parameters
@@ -888,7 +944,9 @@ def aggregate_rules(input_csv: str, structure_type: str, eval_dir: str,
     eval_dir : directory where distilled_rules.py will be written
     model : Anthropic model ID
 
-    Returns the path to the generated distilled_rules.py.
+    Returns the path to the generated distilled_rules.py, and a usage dict
+    with keys ``input_tokens``, ``output_tokens`` (returned as a tuple
+    ``(path, usage)``).
     """
     import anthropic
 
@@ -911,7 +969,7 @@ def aggregate_rules(input_csv: str, structure_type: str, eval_dir: str,
 
     if not rules:
         print("ERROR: No non-empty llm_suggested_rule entries found in CSV.")
-        return ''
+        return '', {'input_tokens': 0, 'output_tokens': 0}
 
     print(f"Found {len(rules)} rule suggestions to aggregate.")
 
@@ -997,6 +1055,10 @@ Write a complete, self-contained Python file with:
         max_tokens=16384,
         messages=[{"role": "user", "content": prompt}],
     )
+    aggregate_usage = {
+        'input_tokens': getattr(message.usage, 'input_tokens', 0),
+        'output_tokens': getattr(message.usage, 'output_tokens', 0),
+    }
     generated_code = message.content[0].text.strip()
 
     # Strip markdown fences if present
@@ -1031,7 +1093,9 @@ Write a complete, self-contained Python file with:
     if func_name not in generated_code:
         print(f"  WARNING: Expected function '{func_name}' not found in generated code.")
 
-    return out_path
+    print(f"  Aggregate tokens: {aggregate_usage['input_tokens']} input, "
+          f"{aggregate_usage['output_tokens']} output")
+    return out_path, aggregate_usage
 
 
 # ---------------------------------------------------------------------------
@@ -1430,11 +1494,16 @@ def main():
 
     elif args.command == 'analyze':
         items = _read_items_csv(args.input)
-        results = analyze_patterns(
+        ret = analyze_patterns(
             items, args.tex_dir,
             structure_type=args.structure_type,
             model=args.model,
         )
+        # analyze_patterns returns (results, usage) when LLM is used
+        if isinstance(ret, tuple):
+            results, usage = ret
+        else:
+            results, usage = ret, {}
         out = args.output or args.input.replace('.csv', '_patterns.csv')
 
         print(f"\n{'='*60}")
@@ -1451,7 +1520,7 @@ def main():
         _write_csv(results, out)
 
     elif args.command == 'aggregate':
-        out_path = aggregate_rules(
+        out_path, _agg_usage = aggregate_rules(
             args.input, args.structure_type, args.eval_dir, args.model)
         if out_path:
             print(f"\n{'='*60}")
