@@ -8,6 +8,7 @@ Subcommands:
   analyze         Mine LaTeX patterns from missed structures
   aggregate       Aggregate LLM-suggested rules into distilled_rules.py
   validate        Check if manual parser now catches previously missed items
+  prune           Comment out distilled rules that cause false positives
 """
 
 import argparse
@@ -973,8 +974,9 @@ Write a complete, self-contained Python file with:
 
 1. Only `import re` and `from typing import List, Dict` at the top
 2. A single function: `extract_distilled_{structure_type}(text: str) -> List[dict]`
-3. Each returned dict must have keys: `raw_latex` (str), `clean_text` (str), `name` (str or None), `env_name` (str)
+3. Each returned dict must have keys: `raw_latex` (str), `clean_text` (str), `name` (str or None), `env_name` (str), `rule_name` (str)
 4. The `env_name` should be `"distilled"` for all results
+4b. The `rule_name` should be a short identifier for which pattern produced the match (e.g. 'P1_TEXTIT_IS', 'ENV_NOTATION'). This is used by the prune step to trace FPs back to specific rules.
 5. `clean_text` should be a simplified version of `raw_latex` (strip LaTeX commands)
 6. Deduplicate overlapping matches
 7. Use compiled regex patterns at module level for efficiency
@@ -1030,6 +1032,256 @@ Write a complete, self-contained Python file with:
         print(f"  WARNING: Expected function '{func_name}' not found in generated code.")
 
     return out_path
+
+
+# ---------------------------------------------------------------------------
+# Function 6: prune_rules
+# ---------------------------------------------------------------------------
+
+def _comment_out_rule_block(lines: List[str], pattern_name: str,
+                            fp_papers: List[str], tp_count: int) -> List[str]:
+    """Comment out a compiled pattern's definition and its usage block.
+
+    Prefixes affected lines with ``# `` and inserts a ``PRUNED`` marker so the
+    manual parser ignores them while keeping a record they once existed.
+    """
+    result: List[str] = []
+    i = 0
+    fp_info = ', '.join(fp_papers[:3])
+    if len(fp_papers) > 3:
+        fp_info += f' +{len(fp_papers) - 3} more'
+    tp_note = f" | also {tp_count} TP — review before uncommenting" if tp_count else ""
+    marker = f"# PRUNED — FP on {fp_info}{tp_note}"
+
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.lstrip()
+
+        # ---- Pattern definition block: _NAME = re.compile(...) ----
+        if re.match(rf'^{re.escape(pattern_name)}\s*=\s*re\.compile\(', stripped):
+            indent = len(line) - len(stripped)
+            result.append(' ' * indent + marker + '\n')
+            paren_depth = 0
+            while i < len(lines):
+                l = lines[i]
+                if not l.lstrip().startswith('#'):
+                    paren_depth += l.count('(') - l.count(')')
+                result.append('# ' + l)
+                i += 1
+                if paren_depth <= 0:
+                    break
+            continue
+
+        # ---- Usage block in extract function ----
+        if (pattern_name in stripped
+                and not stripped.startswith('#')
+                and any(kw in stripped for kw in
+                        ('finditer', 'findall', 'search', 'match('))):
+            indent = len(line) - len(stripped)
+            # Also comment the section header above (e.g. # ---- P1: ... ----)
+            if result and result[-1].strip().startswith('# ----'):
+                result[-1] = '# ' + result[-1]
+            result.append('# ' + line)
+            i += 1
+            # Comment out the indented body below
+            while i < len(lines):
+                l = lines[i]
+                s = l.lstrip()
+                ind = len(l) - len(s)
+                if s == '':
+                    result.append(l)  # blank line — pass through
+                    i += 1
+                elif ind > indent:
+                    result.append('# ' + l)
+                    i += 1
+                else:
+                    break
+            continue
+
+        result.append(line)
+        i += 1
+
+    return result
+
+
+def prune_rules(paper_ids: List[str], structure_type: str,
+                gold_csv: str, eval_dir: str,
+                threshold: float = 0.7) -> int:
+    """Identify FP-causing distilled rules and comment them out.
+
+    Calls the distilled extraction function *directly* (bypassing the full
+    parser) so we isolate distilled-rule output.  Each FP is attributed to the
+    compiled regex pattern that produced it, and that pattern's definition +
+    usage block is commented out with a ``# PRUNED`` marker.
+
+    Returns the number of rules pruned.
+    """
+    import importlib.util
+
+    rules_path = os.path.join(eval_dir, 'distilled_rules.py')
+    if not os.path.isfile(rules_path):
+        print(f"ERROR: No distilled rules file at {rules_path}")
+        return 0
+
+    func_name = f'extract_distilled_{structure_type}'
+
+    # 1. Load the distilled-rules module
+    spec = importlib.util.spec_from_file_location(
+        f'distilled_rules_prune_{structure_type}', rules_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    extract_fn = getattr(mod, func_name, None)
+    if extract_fn is None:
+        print(f"ERROR: {rules_path} does not define {func_name}()")
+        return 0
+
+    # 2. Load gold standard
+    gold_data = _load_gold_csv(gold_csv)
+
+    # 3. Extract from each paper and classify TP / FP
+    all_results: List[tuple] = []  # (paper_id, result_dict, is_tp)
+
+    for paper_id in paper_ids:
+        found = _find_local_tex(paper_id)
+        if found is None:
+            found = _find_local_tex(re.sub(r'v\d+$', '', paper_id))
+        if found is None:
+            print(f"  WARNING: TeX not found for {paper_id}, skipping")
+            continue
+
+        tex_path, versioned_id = found
+        print(f"  Extracting from {paper_id}...")
+        with open(tex_path, 'r', encoding='utf-8', errors='replace') as f:
+            text = f.read()
+
+        results = extract_fn(text)
+        extracted_texts = [r.get('raw_latex', '') for r in results]
+
+        # Gold items for this paper
+        norm_pid = re.sub(r'v\d+$', '', paper_id).replace('_', '.')
+        gold_items = gold_data.get(norm_pid, [])
+        gold_texts = [
+            g['raw_latex'] or g['clean_text']
+            for g in gold_items
+            if (g.get('raw_latex') or g.get('clean_text', '')).strip()
+        ]
+
+        # Greedy matching (same logic as validate_rules)
+        matched_gold: Set[int] = set()
+        matched_ext: Set[int] = set()
+        pairs = []
+        for ei, ext in enumerate(extracted_texts):
+            for gi, gt in enumerate(gold_texts):
+                sim = jaccard_similarity(ext, gt)
+                if sim >= threshold:
+                    pairs.append((sim, ei, gi))
+        pairs.sort(reverse=True)
+        for sim, ei, gi in pairs:
+            if ei not in matched_ext and gi not in matched_gold:
+                matched_ext.add(ei)
+                matched_gold.add(gi)
+
+        for ei, r in enumerate(results):
+            all_results.append((paper_id, r, ei in matched_ext))
+
+    fp_results = [(pid, r) for pid, r, is_tp in all_results if not is_tp]
+    tp_results = [(pid, r) for pid, r, is_tp in all_results if is_tp]
+
+    if not fp_results:
+        print("\nNo false positives detected. Nothing to prune.")
+        return 0
+
+    print(f"\nFound {len(fp_results)} FP(s), {len(tp_results)} TP(s)")
+
+    # 4. Attribute FPs (and TPs) to specific compiled patterns
+    fp_by_rule: Dict[str, List[str]] = defaultdict(list)
+    tp_by_rule: Dict[str, List[str]] = defaultdict(list)
+
+    has_rule_names = all(r.get('rule_name') for _, r in fp_results)
+
+    if has_rule_names:
+        # Fast path — rule_name already in results
+        for pid, r in fp_results:
+            fp_by_rule[r['rule_name']].append(pid)
+        for pid, r in tp_results:
+            if r.get('rule_name'):
+                tp_by_rule[r['rule_name']].append(pid)
+    else:
+        # Slow path — attribute by testing each pattern individually
+        print("  (rule_name not in results — attributing via pattern matching)")
+        patterns: Dict[str, re.Pattern] = {}
+        for name in dir(mod):
+            obj = getattr(mod, name)
+            if (isinstance(obj, re.Pattern)
+                    and name.startswith('_')
+                    and 'EXCLUDED' not in name.upper()
+                    and 'EXCL' not in name.upper()):
+                patterns[name] = obj
+
+        # Cache paper texts
+        paper_texts: Dict[str, str] = {}
+        for paper_id in paper_ids:
+            found = _find_local_tex(paper_id)
+            if found is None:
+                found = _find_local_tex(re.sub(r'v\d+$', '', paper_id))
+            if found:
+                with open(found[0], 'r', encoding='utf-8', errors='replace') as f:
+                    paper_texts[paper_id] = f.read()
+
+        def _attribute(pid: str, raw: str) -> Optional[str]:
+            text = paper_texts.get(pid, '')
+            if not text:
+                return None
+            for pat_name, pat in patterns.items():
+                for m in pat.finditer(text):
+                    matched = (m.group('full')
+                               if 'full' in m.groupdict()
+                               else m.group(0))
+                    if jaccard_similarity(matched.strip(), raw.strip()) >= threshold:
+                        return pat_name
+            return None
+
+        for pid, r in fp_results:
+            rule = _attribute(pid, r.get('raw_latex', ''))
+            if rule:
+                fp_by_rule[rule].append(pid)
+            else:
+                fp_by_rule['<unattributed>'].append(pid)
+        for pid, r in tp_results:
+            rule = _attribute(pid, r.get('raw_latex', ''))
+            if rule:
+                tp_by_rule[rule].append(pid)
+
+    # 5. Report
+    print(f"\nFP-causing rules:")
+    for rule_name, fps in sorted(fp_by_rule.items()):
+        tps = tp_by_rule.get(rule_name, [])
+        print(f"  {rule_name}: {len(fps)} FP, {len(tps)} TP")
+        for pid in sorted(set(fps)):
+            print(f"    FP paper: {pid}")
+
+    # 6. Comment out FP-causing rules in the source file
+    with open(rules_path, 'r', encoding='utf-8') as f:
+        source_lines = f.readlines()
+
+    pruned_count = 0
+    for rule_name, fp_papers in fp_by_rule.items():
+        if rule_name == '<unattributed>':
+            print(f"\n  WARNING: {len(fp_papers)} FP(s) could not be attributed "
+                  f"to a specific pattern — skipping")
+            continue
+        tp_count = len(tp_by_rule.get(rule_name, []))
+        unique_papers = sorted(set(fp_papers))
+        source_lines = _comment_out_rule_block(
+            source_lines, rule_name, unique_papers, tp_count)
+        pruned_count += 1
+
+    with open(rules_path, 'w', encoding='utf-8') as f:
+        f.writelines(source_lines)
+
+    print(f"\nPruned {pruned_count} rule(s) in {rules_path}")
+    print("Commented-out rules preserved with '# PRUNED' markers.")
+    return pruned_count
 
 
 # ---------------------------------------------------------------------------
@@ -1117,6 +1369,17 @@ def main():
     val.add_argument('--gold-csv', default=None,
                      help='Full gold standard CSV for precision/FP check (e.g. Gold_Standard_Definitions.csv)')
     val.add_argument('--output', default=None, help='Output CSV path')
+
+    # -- prune --
+    pru = sub.add_parser('prune',
+                         help='Comment out distilled rules that cause false positives')
+    pru.add_argument('--paper-ids', required=True, help='Comma-separated paper IDs')
+    pru.add_argument('--structure-type', required=True, help='Structure type')
+    pru.add_argument('--gold-csv', required=True,
+                     help='Full gold standard CSV (e.g. Gold_Standard_Definitions.csv)')
+    pru.add_argument('--eval-dir', required=True,
+                     help='Directory containing distilled_rules.py')
+    pru.add_argument('--threshold', type=float, default=0.7, help='Jaccard threshold')
 
     args = parser.parse_args()
 
@@ -1216,6 +1479,22 @@ def main():
         print(f"Caught: {caught}/{total} ({caught/total*100:.1f}%)" if total else "No items")
 
         _write_csv(results, out)
+
+    elif args.command == 'prune':
+        paper_ids = [p.strip() for p in args.paper_ids.split(',')]
+        pruned = prune_rules(
+            paper_ids, args.structure_type, args.gold_csv,
+            args.eval_dir, args.threshold)
+
+        print(f"\n{'='*60}")
+        print(f"PRUNE SUMMARY ({args.structure_type})")
+        print(f"{'='*60}")
+        print(f"Rules pruned: {pruned}")
+        if pruned:
+            print(f"\nNext steps:")
+            print(f"  1. Review {args.eval_dir}/distilled_rules.py")
+            print(f"  2. Run validate to verify FPs are gone")
+            print(f"  3. Uncomment any rules you want to keep")
 
 
 if __name__ == '__main__':
