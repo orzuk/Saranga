@@ -379,6 +379,25 @@ class PaperParser:
     # Macro / input expansion
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _extract_brace_body(text: str, start: int) -> Optional[Tuple[str, int]]:
+        """Extract a brace-balanced body starting at *text[start]* == '{'.
+
+        Returns (body_contents, end_pos) where end_pos is the index
+        **after** the closing '}'.  Returns None if braces are unbalanced.
+        """
+        if start >= len(text) or text[start] != '{':
+            return None
+        depth = 0
+        for i in range(start, len(text)):
+            if text[i] == '{':
+                depth += 1
+            elif text[i] == '}':
+                depth -= 1
+                if depth == 0:
+                    return text[start + 1 : i], i + 1
+        return None
+
     def _expand_macros(self, text: str) -> str:
         """
         Expand simple \\newcommand / \\renewcommand macros with NO arguments.
@@ -389,23 +408,40 @@ class PaperParser:
         by '\\begin{equation}'.
 
         We ignore macros with arguments like \\newcommand{\\abs}[1]{...}.
+        Handles brace-balanced bodies (e.g. \\newcommand{\\thm}{\\begin{theorem}}).
         """
-        pattern = re.compile(
-            r"\\(?:re)?newcommand\*?\s*{\\([a-zA-Z@]+)}\s*{([^}]*)}",
-            flags=re.DOTALL,
+        # Match the preamble: \newcommand*?{\name}  — then we parse the rest
+        # manually to handle balanced braces.
+        preamble = re.compile(
+            r"\\(?:re)?newcommand\*?\s*\{\\([a-zA-Z@]+)\}\s*",
         )
 
         macros: Dict[str, str] = {}
+        # Collect all macro definitions, building a cleaned text
+        result_parts: List[str] = []
+        pos = 0
+        for m in preamble.finditer(text):
+            name = m.group(1)
+            after_preamble = m.end()
 
-        def collect_macro(m: re.Match) -> str:
-            name = m.group(1)  # e.g. 'be'
-            body = m.group(2)  # e.g. '\begin{equation}'
+            # Skip macros with argument count: [N]{body}
+            if after_preamble < len(text) and text[after_preamble] == '[':
+                # has arguments — leave as-is, not a 0-arg macro
+                continue
+
+            # Extract the brace-balanced body
+            body_result = self._extract_brace_body(text, after_preamble)
+            if body_result is None:
+                continue
+            body, end_pos = body_result
+
             macros[name] = body
-            # remove the definition itself from the text
-            return ""
+            # Remove the definition from text
+            result_parts.append(text[pos : m.start()])
+            pos = end_pos
 
-        # 1) strip definitions and collect macro map
-        text = pattern.sub(collect_macro, text)
+        result_parts.append(text[pos:])
+        text = "".join(result_parts)
 
         # 2) expand occurrences of each macro
         for name, body in macros.items():
@@ -664,6 +700,10 @@ class PaperParser:
         text = self._strip_comments(text)
         self._parse_newtheorem(text)
 
+        # 4) Strip \newenvironment definitions so their internal
+        #    \begin{ENV}...\end{ENV} fragments don't get matched as content.
+        text = self._strip_newenvironments(text)
+
         graph = PaperGraph(paper_id=self.paper_id)
 
         # ---- Theorem-like objects (manual, always runs) ----
@@ -869,6 +909,29 @@ class PaperParser:
 
             if kind:
                 self.env_kind_map[env_name] = kind
+
+    def _strip_newenvironments(self, text: str) -> str:
+        r"""Remove \newenvironment{name}{begin-code}{end-code} definitions.
+
+        These definitions contain \begin{ENV}...\end{ENV} fragments that
+        are formatting boilerplate, not actual content.  If left in the
+        text they produce false-positive matches in ``_extract_envs``.
+        """
+        pattern = re.compile(r"\\newenvironment\s*\{[^}]*\}\s*")
+        result_parts: List[str] = []
+        pos = 0
+        for m in pattern.finditer(text):
+            result_parts.append(text[pos : m.start()])
+            cursor = m.end()
+            # Skip the two brace-balanced arguments: {begin-code}{end-code}
+            for _ in range(2):
+                body = self._extract_brace_body(text, cursor)
+                if body is None:
+                    break
+                _, cursor = body
+            pos = cursor
+        result_parts.append(text[pos:])
+        return "".join(result_parts)
 
     @staticmethod
     def _clean_latex_to_text(latex: str) -> str:
