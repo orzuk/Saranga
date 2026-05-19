@@ -404,7 +404,8 @@ def op_visualize(args) -> None:
                 html_dir.mkdir(parents=True, exist_ok=True)
                 with contextlib.redirect_stdout(io.StringIO()):
                     draw_dag(nodes, edges, tmp_png, metadata=metadata,
-                             resolution=args.resolution, show_legend=False)
+                             resolution=args.resolution, show_legend=False,
+                             show_foundation=True, show_extras=True)
                     generate_interactive_html(data, svg_only, str(html_path))
                 import shutil
                 shutil.rmtree(tmp_dir, ignore_errors=True)
