@@ -537,13 +537,9 @@ def _display_width(text):
             # Apply small multiplier for operator spacing
             rendered_len = len(rendered)
             if _re.search(r'\\frac|\\sum|\\prod|\\int', math_content):
-                rendered_len = int(rendered_len * 1.4)  # fractions/sums are wider
+                rendered_len = int(rendered_len * 1.5)  # fractions are wider
             else:
-                # General inline math renders fairly tightly in matplotlib.
-                # The previous 1.3x multiplier made _display_width over-count
-                # routine math like $(c_j)_{j \\in T}$, causing _wrap to break
-                # lines unnecessarily even when there was room.
-                rendered_len = int(rendered_len * 1.05)
+                rendered_len = int(rendered_len * 1.3)  # general math spacing
             width += max(rendered_len, 3)  # at least 3 chars for any math
             i = j + 1
         else:
@@ -1419,8 +1415,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
     pass
     # CHARS_PER_UNIT defined at module level
     MAX_LINES_PER_SECTION = 3
-    MAX_STMT_LINES = 2   # max lines of statement text shown in node boxes
-    MAX_STMT_CHARS = 100  # max display-width chars before truncation with "..."
+    MAX_STMT_LINES = 5   # max lines of statement text shown in node boxes
+    MAX_STMT_CHARS = 150  # max display-width chars before truncation with "..."
 
     def _content_lines(n):
         """Get all content text lines for a node (for width estimation).
@@ -1455,7 +1451,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             # Aggressive cap because schema-B JSONs (rule-based parsed_100k)
             # produce many nodes per paper without short 'name' fields, so
             # in-box statement text otherwise overwhelms the SVG.
-            short = _shorten(_prepare_for_display(raw), 40)
+            short = _shorten(_prepare_for_display(raw), 150)
             if short:
                 lines.append(short)
         return lines
@@ -1489,7 +1485,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 texts.append(_shorten(x, 100))
         else:
             raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
-            short = _shorten(_prepare_for_display(raw), 40)
+            short = _shorten(_prepare_for_display(raw), 150)
             if short:
                 texts.append(short)
         return texts
@@ -1533,7 +1529,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         # headers measured 6.7-7.0 chars/unit -- those will be very tight
         # at HEADER_CPU=8.0; any minor overflow is caught by the per-node
         # text clipping patch added later in this function.
-        HEADER_CPU = 8.0
+        HEADER_CPU = 6.5
 
         def _header_w_for_box(w):
             """Header width needed given box width w (renderer shows more name
@@ -1676,7 +1672,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             # Line height: tall math > inline math > plain text
             def _line_h(line):
                 if _has_tall_math(line):
-                    return LINE_H * 3.4
+                    return LINE_H * 2.5
                 elif "$" in str(line):
                     return LINE_H * 1.5
                 return LINE_H
@@ -1689,14 +1685,12 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 # Wrap each item to box width, then flatten; shorten to keep boxes compact
                 assume_lines = []
                 for a in assumptions[:MAX_LINES_PER_SECTION]:
-                    a_short = _shorten(_prepare_for_display(a), MAX_STMT_CHARS)
-                    assume_lines.extend(_wrap(a_short, wrap_w)[:MAX_STMT_LINES] or [a_short[:wrap_w]])
+                    assume_lines.extend(_wrap(_prepare_for_display(a), wrap_w) or [a[:wrap_w]])
                 if len(assumptions) > MAX_LINES_PER_SECTION:
                     assume_lines.append(f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more")
                 conclude_lines = []
                 for c in conclusions[:MAX_LINES_PER_SECTION]:
-                    c_short = _shorten(_prepare_for_display(c), MAX_STMT_CHARS)
-                    conclude_lines.extend(_wrap(c_short, wrap_w)[:MAX_STMT_LINES] or [c_short[:wrap_w]])
+                    conclude_lines.extend(_wrap(_prepare_for_display(c), wrap_w) or [c[:wrap_w]])
                 if len(conclusions) > MAX_LINES_PER_SECTION:
                     conclude_lines.append(f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more")
                 proof_lines = []
@@ -1834,7 +1828,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         cursor_y = by + bh  # start from top
 
         # Header: 1 or 2 lines, pre-computed in node_header_lines.
-        _HEADER_CPU = 8.0  # keep in sync with HEADER_CPU in _find_tight_width
+        _HEADER_CPU = 6.5  # keep in sync with HEADER_CPU in _find_tight_width
         header_lines = node_header_lines.get(nid, [str(nid)])
         n_hl = len(header_lines)
         header_total_h = HEADER_H * n_hl
@@ -1899,8 +1893,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             assumptions = n.get("assumptions", [])
             a_lines = []
             for a in assumptions[:MAX_LINES_PER_SECTION]:
-                a_short = _shorten(_prepare_for_display(a), MAX_STMT_CHARS)
-                a_lines.extend(_wrap(a_short, dyn_wrap)[:MAX_STMT_LINES] or [a_short[:dyn_wrap]])
+                a_lines.extend(_wrap(_prepare_for_display(a), dyn_wrap) or [a[:dyn_wrap]])
             if len(assumptions) > MAX_LINES_PER_SECTION:
                 a_lines.append(f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more")
             if not a_lines:
@@ -1909,8 +1902,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             conclusions = n.get("conclusions", [])
             c_lines = []
             for c in conclusions[:MAX_LINES_PER_SECTION]:
-                c_short = _shorten(_prepare_for_display(c), MAX_STMT_CHARS)
-                c_lines.extend(_wrap(c_short, dyn_wrap)[:MAX_STMT_LINES] or [c_short[:dyn_wrap]])
+                c_lines.extend(_wrap(_prepare_for_display(c), dyn_wrap) or [c[:dyn_wrap]])
             if len(conclusions) > MAX_LINES_PER_SECTION:
                 c_lines.append(f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more")
             if not c_lines:
@@ -2357,6 +2349,52 @@ def generate_interactive_html(data, svg_path, html_path):
     # Read SVG content
     with open(svg_path, "r", encoding="utf-8") as f:
         svg_content = f.read()
+
+    # ── Per-node text clipping ──────────────────────────────────────────
+    # matplotlib's set_clip_path doesn't export to SVG, so text can
+    # overflow node boxes. Fix: extract each body-rect's bounding box,
+    # inject an SVG <clipPath>, and apply it to all text <g> elements
+    # belonging to that node.
+    import re as _re_clip
+
+    # 1. Extract body-rect bounds from the path's coordinate pairs.
+    #    The body rect is the <path> inside <g id="node_<nid>"> (no "__").
+    _body_g_re = _re_clip.compile(
+        r'id="node_((?:(?!__)[^"])+)"[^>]*>\s*<path\s+d="([^"]+)"',
+        _re_clip.DOTALL,
+    )
+    _coord_re = _re_clip.compile(r'[\d.]+')
+    _node_bounds = {}  # nid -> (x_min, y_min, x_max, y_max)
+    for m in _body_g_re.finditer(svg_content):
+        nid = m.group(1)
+        path_d = m.group(2)
+        coords = [float(c) for c in _coord_re.findall(path_d)]
+        if len(coords) >= 4:
+            xs = coords[0::2]
+            ys = coords[1::2]
+            _node_bounds[nid] = (min(xs), min(ys), max(xs), max(ys))
+
+    # 2. Inject <clipPath> definitions into the SVG <defs> section
+    if _node_bounds:
+        clip_defs = []
+        for nid, (x_min, y_min, x_max, y_max) in _node_bounds.items():
+            clip_defs.append(
+                f'<clipPath id="clip_node_{nid}">'
+                f'<rect x="{x_min}" y="{y_min}" width="{x_max - x_min}" height="{y_max - y_min}"/>'
+                f'</clipPath>'
+            )
+        clip_block = "\n".join(clip_defs)
+        # Insert before the closing </defs> tag
+        svg_content = svg_content.replace("</defs>", clip_block + "\n</defs>", 1)
+
+        # 3. Apply clip-path to text <g> elements: id="node_<nid>__text..."
+        def _add_text_clip(m):
+            full_id = m.group(1)
+            base_nid = full_id.split("__", 1)[0]
+            if base_nid in _node_bounds:
+                return f'id="node_{full_id}" clip-path="url(#clip_node_{base_nid})"'
+            return m.group(0)
+        svg_content = _re_clip.sub(r'id="node_(([^"]+)__text[^"]*)"', _add_text_clip, svg_content)
 
     # Make node rects clickable by adding onclick via regex.
     # Only target the body-rect ids (no "__" suffix) — per-element gids like
