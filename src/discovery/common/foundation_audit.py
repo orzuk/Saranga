@@ -169,15 +169,32 @@ def audit(
     print(f"[audit] walking corpus (categories={categories or 'all'}, "
           f"year_min={year_min}, year_max={year_max}) ...", flush=True)
     t0 = time.time()
-    pool = list(iter_papers(categories=categories, year_min=year_min,
-                            year_max=year_max))
-    print(f"[audit]   found {len(pool):,} papers in {time.time()-t0:.1f}s",
-          flush=True)
-    if not pool:
+    # Reservoir sampling: holds O(sample_size) papers in memory, not O(corpus).
+    # Prevents OOM on the 96k-paper v2 corpus, particularly on login nodes.
+    sample: list = []
+    n_seen = 0
+    t_last = t0
+    for paper in iter_papers(categories=categories, year_min=year_min,
+                             year_max=year_max):
+        n_seen += 1
+        if len(sample) < sample_size:
+            sample.append(paper)
+        else:
+            j = rng.randrange(n_seen)
+            if j < sample_size:
+                sample[j] = paper
+        now = time.time()
+        if now - t_last >= 5.0:
+            print(f"[audit]   walked {n_seen:,} papers "
+                  f"({now-t0:.0f}s elapsed) ...", flush=True)
+            t_last = now
+    print(f"[audit]   walked {n_seen:,} papers total in "
+          f"{time.time()-t0:.1f}s", flush=True)
+    if n_seen == 0:
         print("No papers matched the filters.", file=sys.stderr)
         sys.exit(2)
-    sample = rng.sample(pool, min(sample_size, len(pool)))
-    print(f"[audit] sampled {len(sample)} papers (seed={seed})", flush=True)
+    print(f"[audit] reservoir-sampled {len(sample)} papers (seed={seed})",
+          flush=True)
 
     # Optionally load the foundation linker for in-memory fresh re-linking
     fresh_linker = None

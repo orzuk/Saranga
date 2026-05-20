@@ -82,12 +82,17 @@ def _resolve_model(model: str) -> str:
 
 
 def _provider_for(model: str) -> str:
-    """Crude provider sniff: claude-* -> anthropic, gpt-* -> openai."""
+    """Provider sniff: claude-* -> anthropic, gpt-* -> openai,
+    qwen*/Qwen/* -> local (OpenAI-compatible endpoint, e.g. vLLM/SGLang server).
+    Local endpoint URL comes from $LLM_LOCAL_BASE_URL (default localhost:8000/v1)."""
     m = (model or "").lower()
     if m.startswith("claude"):
         return "anthropic"
     if m.startswith("gpt") or m.startswith("o1") or m.startswith("o3"):
         return "openai"
+    if m.startswith("qwen") or m.startswith("deepseek") or m.startswith("llama") \
+            or m.startswith("mistral") or m.startswith("gemma"):
+        return "local"
     raise ValueError(f"Cannot infer provider for model {model!r}")
 
 
