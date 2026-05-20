@@ -27,6 +27,7 @@ import csv
 import json
 import random
 import sys
+import time
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -165,16 +166,25 @@ def audit(
     mathlib_dir=None,
 ):
     rng = random.Random(seed)
+    print(f"[audit] walking corpus (categories={categories or 'all'}, "
+          f"year_min={year_min}, year_max={year_max}) ...", flush=True)
+    t0 = time.time()
     pool = list(iter_papers(categories=categories, year_min=year_min,
                             year_max=year_max))
+    print(f"[audit]   found {len(pool):,} papers in {time.time()-t0:.1f}s",
+          flush=True)
     if not pool:
         print("No papers matched the filters.", file=sys.stderr)
         sys.exit(2)
     sample = rng.sample(pool, min(sample_size, len(pool)))
+    print(f"[audit] sampled {len(sample)} papers (seed={seed})", flush=True)
 
     # Optionally load the foundation linker for in-memory fresh re-linking
     fresh_linker = None
     if fresh_link:
+        print(f"[audit] loading foundation linker from "
+              f"{unified_index_path} ...", flush=True)
+        t0 = time.time()
         from foundation_linker import FoundationLinker  # noqa: E402
         fresh_linker = FoundationLinker()
         if unified_index_path:
@@ -185,6 +195,8 @@ def audit(
             print("--fresh-link requested but no foundation index was loaded; "
                   "supply --unified-index and/or --mathlib-dir.", file=sys.stderr)
             sys.exit(2)
+        print(f"[audit]   loaded {len(fresh_linker._entries):,} entries in "
+              f"{time.time()-t0:.1f}s", flush=True)
 
     nodes_by_type: Counter = Counter()
     linked_by_type: Counter = Counter()
@@ -206,7 +218,16 @@ def audit(
             cols += ["n_fresh_link", "fresh_sample_terms"]
         w.writerow(cols)
 
-        for paper in sample:
+        print(f"[audit] linking {len(sample)} papers ...", flush=True)
+        t_loop = time.time()
+        for paper_idx, paper in enumerate(sample, start=1):
+            if paper_idx == 1 or paper_idx % 5 == 0 or paper_idx == len(sample):
+                elapsed = time.time() - t_loop
+                rate = paper_idx / elapsed if elapsed > 0 else 0
+                eta = (len(sample) - paper_idx) / rate if rate > 0 else 0
+                print(f"[audit]   paper {paper_idx}/{len(sample)} "
+                      f"({paper.paper_id}, {paper.category}, y={paper.year}) "
+                      f"-- {elapsed:.0f}s elapsed, ETA {eta:.0f}s", flush=True)
             # Index grounded_to edges by target node
             grounded: defaultdict[str, list] = defaultdict(list)
             for e in paper.edges:
