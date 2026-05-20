@@ -191,6 +191,17 @@ class LLMJudge:
                 raise RuntimeError("openai SDK not installed; "
                                    "pip install openai") from e
             self._client = OpenAI()
+        elif self.provider == "local":
+            # OpenAI-compatible local endpoint (vLLM, SGLang, llama.cpp server)
+            try:
+                from openai import OpenAI
+            except ImportError as e:
+                raise RuntimeError("openai SDK not installed; "
+                                   "pip install openai") from e
+            base_url = os.environ.get("LLM_LOCAL_BASE_URL",
+                                      "http://localhost:8000/v1")
+            api_key = os.environ.get("LLM_LOCAL_API_KEY", "dummy")
+            self._client = OpenAI(base_url=base_url, api_key=api_key)
         else:
             raise ValueError(f"Unsupported provider {self.provider!r}")
 
@@ -205,15 +216,19 @@ class LLMJudge:
             resp = self._client.messages.create(**kwargs)
             return "".join(b.text for b in resp.content
                            if getattr(b, "type", "") == "text") or ""
-        else:  # openai
+        else:  # openai or local (OpenAI-compatible)
             msgs = []
             if self.system:
                 msgs.append({"role": "system", "content": self.system})
             msgs.append({"role": "user", "content": prompt})
-            resp = self._client.chat.completions.create(
-                model=self.model,
-                max_completion_tokens=self.max_tokens,
-                messages=msgs)
+            kwargs = {"model": self.model, "messages": msgs}
+            # 'openai' uses max_completion_tokens (post-o1); local servers
+            # like vLLM use the older max_tokens.
+            if self.provider == "openai":
+                kwargs["max_completion_tokens"] = self.max_tokens
+            else:
+                kwargs["max_tokens"] = self.max_tokens
+            resp = self._client.chat.completions.create(**kwargs)
             return resp.choices[0].message.content or ""
 
     # ── Public API ────────────────────────────────────────────────────────
