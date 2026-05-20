@@ -424,9 +424,14 @@ def detect_anomalies_for_paper(
         details.append({"rule": "duplicate_ids", "severity": "low",
                         "duplicate_ids": dups})
 
-    # C5: dangling edges (source or target not in the node set)
+    # C5: dangling edges (source or target not in the node set).
+    # Skip `grounded_to` edges: by design their non-paper endpoint references
+    # the foundation knowledge graph, not a local node, so they always look
+    # dangling under this check.
     dangling_edges: List[Dict[str, str]] = []
     for e in edges:
+        if e.get("type") == "grounded_to":
+            continue
         s, t = e.get("source"), e.get("target")
         if (s and s not in node_id_set) or (t and t not in node_id_set):
             dangling_edges.append({"source": s, "target": t,
