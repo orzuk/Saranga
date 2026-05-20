@@ -351,11 +351,21 @@ def main():
                          "on each sampled paper, to estimate the coverage "
                          "gain from a re-link without writing to disk.")
     ap.add_argument("--unified-index", default=None,
-                    help="Merged foundation file used by --fresh-link "
-                         "(e.g. clean_foundation_with_books.json).")
+                    help="Merged foundation file used by --fresh-link. "
+                         "Defaults to config.FOUNDATION_INDEX_PATH "
+                         "(currently clean_foundation_with_books.json).")
     ap.add_argument("--mathlib-dir", default=None,
                     help="Mathlib midlevel/ directory used by --fresh-link.")
     args = ap.parse_args()
+    if args.fresh_link and args.unified_index is None:
+        try:
+            from config import FOUNDATION_INDEX_PATH
+            if Path(FOUNDATION_INDEX_PATH).exists():
+                args.unified_index = str(FOUNDATION_INDEX_PATH)
+                print(f"[audit] using foundation index from config: {args.unified_index}",
+                      file=sys.stderr)
+        except ImportError:
+            pass
     audit(
         out_csv=Path(args.out),
         sample_size=args.sample,

@@ -446,28 +446,26 @@ def op_link(args) -> None:
         print(f"[pipeline] link: no JSON files found under {args.out_dir}")
         return
 
-    # Auto-discover foundation files under DATA_DIR
+    # Foundation index path comes from config.FOUNDATION_INDEX_PATH so the
+    # active index file is declared in one place (see src/config.py).
     try:
-        from config import DATA_DIR
-        data_dir = Path(str(DATA_DIR))
+        from config import FOUNDATION_INDEX_PATH, NATURALPROOFS_DIR
     except ImportError:
-        data_dir = None
+        FOUNDATION_INDEX_PATH = None
+        NATURALPROOFS_DIR = None
 
     foundation_paths = []
-    if data_dir and data_dir.exists():
-        # Prefer clean_foundation.json (deduplicated, filtered) if available
-        clean_path = data_dir / "naturalproofs" / "clean_foundation.json"
-        if clean_path.exists():
-            foundation_paths.append(str(clean_path))
-            print(f"[pipeline] link: using clean foundation index: {clean_path}")
-        else:
-            # Fallback: raw NaturalProofs files
-            np_dir = data_dir / "naturalproofs" / "raw"
-            if np_dir.exists():
-                for np_file in sorted(np_dir.glob("naturalproofs_*.json")):
-                    foundation_paths.append(str(np_file))
+    if FOUNDATION_INDEX_PATH and Path(FOUNDATION_INDEX_PATH).exists():
+        foundation_paths.append(str(FOUNDATION_INDEX_PATH))
+        print(f"[pipeline] link: using foundation index: {FOUNDATION_INDEX_PATH}")
+    elif NATURALPROOFS_DIR and Path(NATURALPROOFS_DIR).exists():
+        # Fallback: raw NaturalProofs files
+        np_dir = Path(NATURALPROOFS_DIR) / "raw"
+        if np_dir.exists():
+            for np_file in sorted(np_dir.glob("naturalproofs_*.json")):
+                foundation_paths.append(str(np_file))
     if not foundation_paths:
-        print(f"[pipeline] link: no foundation files found under {data_dir}; "
+        print(f"[pipeline] link: no foundation files found at {FOUNDATION_INDEX_PATH}; "
               f"using built-in 53 well-known terms only")
 
     # Build the foundation index once (shared across all papers)

@@ -95,6 +95,13 @@ MATHLIB_DIR       = _resolve_foundation_subdir('mathlib')
 BOOKS_DIR         = _resolve_foundation_subdir('books')
 ARXIV_DIR         = _resolve_foundation_subdir('arxiv') if not _safe_exists(ARXIV_RAW_DIR) else ARXIV_RAW_DIR
 
+# Foundation index — the merged JSON the linker reads. Change FOUNDATION_INDEX_FILE
+# below to swap which file the link pipeline + foundation_audit + visualizers use.
+FOUNDATION_INDEX_FILE = 'clean_foundation_with_books.json'
+# FOUNDATION_INDEX_FILE = 'clean_foundation_with_books_neurips_submission_frozen.json'  # NeurIPS-frozen (3 books, ~27k entries)
+# FOUNDATION_INDEX_FILE = 'clean_foundation.json'                                        # Mathlib-only baseline (~26k entries)
+FOUNDATION_INDEX_PATH = NATURALPROOFS_DIR / FOUNDATION_INDEX_FILE
+
 # In-repo manifests = source of truth for "what each tier should contain".
 MANIFESTS_DIR        = CODE_DIR / 'dataset_manifests'
 TIER1_MANIFEST       = MANIFESTS_DIR / 'tier1.csv'
