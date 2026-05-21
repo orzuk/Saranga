@@ -34,13 +34,20 @@ set -euo pipefail
 
 mkdir -p /sci/labs/orzuk/orzuk/method_e_jobs
 
-# Model — pick a size that fits the GPU you got. Defaults to Qwen3-32B int4.
-# Options:
-#   Qwen/Qwen3-32B-Instruct                  (~64 GB FP16; needs 1× H100 80GB or 2× 40GB)
-#   Qwen/Qwen3-32B-Instruct-AWQ-int4         (~16 GB; fits 1× H100 / A100 / RTX A6000)
-#   Qwen/Qwen3-14B-Instruct                  (~28 GB FP16; 1× A100 40GB)
-#   Qwen/Qwen2.5-72B-Instruct-AWQ-int4       (~40 GB; needs H100 80GB)
-MODEL="${QWEN_MODEL:-Qwen/Qwen3-32B-Instruct-AWQ-int4}"
+# Model — pick a size that fits the GPU you got. Defaults to Qwen3-32B AWQ.
+# Real model IDs on HuggingFace (verified 2026-05-21):
+#   Qwen/Qwen3-32B                           (~64 GB FP16; needs H100 80GB)
+#   Qwen/Qwen3-32B-AWQ                       (~16-20 GB AWQ-int4; fits L40s/A100/H100)
+#   Qwen/Qwen3-32B-FP8                       (~32 GB FP8; needs A100 40GB+)
+#   Qwen/Qwen3-14B                           (~28 GB FP16; A100 40GB)
+#   Qwen/Qwen2.5-32B-Instruct-AWQ            (older but solid; ~16 GB)
+# (Older 'Qwen/Qwen3-32B-Instruct-AWQ-int4' name was wrong — that exact
+#  ID does not exist on HF; the verified AWQ path is Qwen3-32B-AWQ.)
+#
+# `--served-model-name` lets the client refer to a friendly alias
+# (e.g. 'qwen3-32b-awq-int4') without needing to match the real HF model ID.
+MODEL="${QWEN_MODEL:-Qwen/Qwen3-32B-AWQ}"
+SERVED_AS="${QWEN_SERVED_NAME:-qwen3-32b-awq-int4}"
 PORT="${QWEN_PORT:-8000}"
 HOST="0.0.0.0"
 
@@ -69,9 +76,11 @@ echo "[launch_qwen] On the client side, point at:"
 echo "[launch_qwen]   export LLM_LOCAL_BASE_URL=http://$(hostname):$PORT/v1"
 echo "[launch_qwen]"
 
-# vLLM serves the OpenAI-compatible API. Tuned for a single H100/A100 80GB.
+# vLLM serves the OpenAI-compatible API. --served-model-name lets clients
+# call the model by the friendly alias rather than the HF ID.
 python -m vllm.entrypoints.openai.api_server \
   --model "$MODEL" \
+  --served-model-name "$SERVED_AS" \
   --host "$HOST" \
   --port "$PORT" \
   --tensor-parallel-size 1 \
