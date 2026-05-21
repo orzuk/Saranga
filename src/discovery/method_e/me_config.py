@@ -14,8 +14,19 @@ from typing import Optional
 @dataclass
 class MethodEConfig:
     # Corpus filters
-    cutoff_year: int = 2018                 # problems posed <= cutoff_year-1
-                                            # theorems published >= cutoff_year
+    # cutoff_year semantics:
+    #   int  -> hard cutoff (Option A). Problems indexed at year <= cutoff-1;
+    #           theorems indexed at year >= cutoff. The retrieve_pairs step
+    #           additionally enforces theorem.year >= problem.year.
+    #   None -> no hard cutoff (Option B). All problems and all theorems
+    #           are indexed regardless of year. Temporal direction is enforced
+    #           ONLY by retrieve_pairs (theorem.year >= problem.year). This is
+    #           strictly more permissive — catches e.g. a 2014 theorem that
+    #           resolves a 2012 problem, which the hard cutoff misses by
+    #           lumping both pre-cutoff. Default remains 2018 for backward
+    #           compatibility with the May 2026 run; set to None for the
+    #           year-as-attribute design.
+    cutoff_year: Optional[int] = 2018
     categories: Optional[list[str]] = None  # restrict to these tier3 dirs
     problem_types: list[str] = field(
         default_factory=lambda: ["open_problem", "conjecture"])

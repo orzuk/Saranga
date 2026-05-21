@@ -2,13 +2,19 @@
 
 Chains the phases:
 
-    Phase 1L: build problems index (open_problem + conjecture, pre-cutoff)
-    Phase 1R: build theorems index (theorem/lemma/prop/corollary, post-cutoff)
+    Phase 1L: build problems index (open_problem + conjecture)
+    Phase 1R: build theorems index (theorem/lemma/prop/corollary)
     Phase 1.5: dedup theorems (cluster restatements; canonical = earliest)
     Phase 2a: fetch S2 citation graph (skip if --no-citations)
-    Phase 2b: retrieve candidate pairs
+    Phase 2b: retrieve candidate pairs (enforces theorem.year >= problem.year)
     Phase 2c: LLM-as-judge pass (Sonnet by default; --dry-run for no spend)
     Phase 3: export triage CSV
+
+Year handling: with default `cutoff_year=2018`, problems are indexed at
+year <= 2017 and theorems at year >= 2018 (hard cutoff). Pass `--no-cutoff`
+to index all years and let Phase 2b alone enforce theorem.year >= problem.year
+(catches e.g. a 2014 theorem resolving a 2012 problem, which the hard
+cutoff misses).
 
 Each phase is idempotent: outputs are checked; if present, skipped unless
 --force. Frozen config.yaml is written first.
@@ -93,21 +99,30 @@ def _write_config(cfg: MethodEConfig, path: Path) -> None:
 # ── Per-phase wrappers ───────────────────────────────────────────────────────
 
 def phase_index(cfg: MethodEConfig, P: dict, force: bool) -> None:
+    # When cutoff_year is None we index all years (Option B); when it's an
+    # integer we apply the hard cutoff at index build time (Option A). Either
+    # way, retrieve_pairs enforces theorem.year >= problem.year at scoring
+    # time, so Option B doesn't lose the temporal-direction guarantee.
+    problems_year_max = (cfg.cutoff_year - 1) if cfg.cutoff_year is not None else None
+    theorems_year_min = cfg.cutoff_year if cfg.cutoff_year is not None else None
+
     if force or not _exists_nonempty(P["problems"]):
-        print(f"\n=== Phase 1L: build problems index ===")
+        print(f"\n=== Phase 1L: build problems index "
+              f"(year_max={problems_year_max}) ===")
         build_node_index(
             types=cfg.problem_types,
-            year_max=cfg.cutoff_year - 1,
+            year_max=problems_year_max,
             categories_in=cfg.categories,
             out=P["problems"],
         )
     else:
         print(f"[skip] problems.jsonl exists")
     if force or not _exists_nonempty(P["theorems"]):
-        print(f"\n=== Phase 1R: build theorems index ===")
+        print(f"\n=== Phase 1R: build theorems index "
+              f"(year_min={theorems_year_min}) ===")
         build_node_index(
             types=cfg.theorem_types,
-            year_min=cfg.cutoff_year,
+            year_min=theorems_year_min,
             categories_in=cfg.categories,
             out=P["theorems"],
         )
@@ -209,7 +224,15 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--categories", default=None,
                     help="Comma-sep categories (e.g. math_CO,cs_CC)")
     ap.add_argument("--cutoff-year", type=int, default=None,
-                    help="Problems posed pre-cutoff; theorems published cutoff+")
+                    help="Problems posed pre-cutoff; theorems published cutoff+ "
+                         "(hard cutoff at index build time). Default 2018 from "
+                         "MethodEConfig.")
+    ap.add_argument("--no-cutoff", action="store_true",
+                    help="Disable hard year cutoff at index build time. All "
+                         "problems and theorems are indexed regardless of year; "
+                         "the temporal constraint theorem.year >= problem.year "
+                         "is enforced only at retrieval time (Option B / "
+                         "year-as-attribute design).")
     ap.add_argument("--top-k", type=int, default=None)
     ap.add_argument("--score-threshold", type=float, default=None)
 
@@ -241,7 +264,9 @@ def main():
     cfg = MethodEConfig()
     if args.categories:
         cfg.categories = [c.strip() for c in args.categories.split(",") if c.strip()]
-    if args.cutoff_year is not None:
+    if args.no_cutoff:
+        cfg.cutoff_year = None
+    elif args.cutoff_year is not None:
         cfg.cutoff_year = args.cutoff_year
     if args.top_k is not None:
         cfg.top_k_per_problem = args.top_k
