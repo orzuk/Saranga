@@ -16,8 +16,14 @@
 # the HF cache, then loads in memory. Subsequent runs reuse the cache.
 
 #SBATCH --job-name=qwen_judge
-#SBATCH --partition=gpu
-#SBATCH --gres=gpu:1
+# HUJI cluster: 'gpu' partition doesn't exist; use salmon (l40s, 48GB) as
+# the default. Override via sbatch --partition=<other> if needed.
+#   l4    -> catfish (24GB; tight for 32B AWQ-int4 but works)
+#   l40s  -> salmon  (48GB; comfortable; current default)
+#   a100  -> dogfish (80GB; overkill; often drained anyway)
+#   h200  -> goldfish (way overkill)
+#SBATCH --partition=salmon
+#SBATCH --gres=gpu:l40s:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
 #SBATCH --time=24:00:00
