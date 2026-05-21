@@ -1,6 +1,7 @@
 # CANONICAL: src/node_types.py and src/edge_types.py.
 # This file is derivative; sync it whenever the canonical changes.
-# Per-type prompt: extracts PROPOSITION nodes only. Schema lock 2026-04-28.
+# Per-type prompt: extracts PROPOSITION nodes only. Schema lock 2026-05-21
+# (added origin / origin_citation fields).
 
 You are analyzing a mathematical paper written in LaTeX. Extract ALL mathematical propositions.
 
@@ -10,12 +11,18 @@ Proposition forms:
 3. Formally stated propositions with assumptions and conclusions
 
 For each proposition, extract:
-- name: Short descriptive name (e.g. "Uniqueness Proposition", "Convergence Proposition")
+- name: Short descriptive name (e.g. "Uniqueness Proposition", "Convergence Proposition"). If no explicit name appears, fall back to the \label{...} value, or the first 6 words of the statement.
 - raw_latex: Original LaTeX text (preserve ALL math notation)
 - clean_text: "" (always empty string — omitted for token output savings)
 - label: Any \label{...} or null
 - assumptions: The hypotheses/conditions
 - statement: The main claim/conclusion
+- origin: "paper" (default) or "external". Mark "external" when the proposition is a restatement of a prior result. Specifically, mark external if ANY of:
+  * The env body contains a citation (\cite{...}, \cite[...], "due to X", "[Author Year]", "shown in", "proved in", "established by").
+  * The optional name argument identifies a famous named result (e.g. \begin{proposition}[Cayley-Hamilton], [Author Year]).
+  * The paragraph immediately preceding the env attributes the proposition to prior work.
+  Otherwise default to "paper".
+- origin_citation: When origin="external", a short source identifier (e.g. "Author Year"). When origin="paper", set to null.
 
 CRITICAL: The raw_latex field must be copied VERBATIM from the source — character for character.
 Do NOT modify the LaTeX in any way. Specifically:
@@ -33,7 +40,9 @@ Return JSON array:
     "clean_text": "",
     "label": "label or null",
     "assumptions": "hypotheses text",
-    "statement": "conclusion text"
+    "statement": "conclusion text",
+    "origin": "paper",
+    "origin_citation": null
   }
 ]
 

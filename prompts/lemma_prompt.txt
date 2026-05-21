@@ -1,6 +1,7 @@
 # CANONICAL: src/node_types.py and src/edge_types.py.
 # This file is derivative; sync it whenever the canonical changes.
-# Per-type prompt: extracts LEMMA nodes only. Schema lock 2026-04-28.
+# Per-type prompt: extracts LEMMA nodes only. Schema lock 2026-05-21
+# (added origin / origin_citation fields).
 
 You are analyzing a mathematical paper written in LaTeX. Extract ALL mathematical lemmas.
 
@@ -10,12 +11,18 @@ Lemma forms:
 3. Formally stated lemmas with assumptions and conclusions
 
 For each lemma, extract:
-- name: Short descriptive name (e.g. "Key Lemma", "Approximation Lemma")
+- name: Short descriptive name (e.g. "Key Lemma", "Approximation Lemma"). If no explicit name appears, fall back to the \label{...} value, or the first 6 words of the statement.
 - raw_latex: Original LaTeX text (preserve ALL math notation)
 - clean_text: "" (always empty string — omitted for token output savings)
 - label: Any \label{...} or null
 - assumptions: The hypotheses/conditions (e.g. "Let X be a compact space", "Suppose f is continuous")
 - statement: The main claim/conclusion (e.g. "Then f has a fixed point")
+- origin: "paper" (default) or "external". Mark "external" when the lemma is a restatement of a prior result rather than the paper's own contribution. Specifically, mark external if ANY of:
+  * The env body contains a citation (\cite{...}, \cite[...], "due to X", "[Author Year]", "shown in", "proved in", "established by").
+  * The optional name argument identifies a famous named lemma (e.g. \begin{lemma}[Zorn], [Schwarz], [Nakayama], [Yoneda], [Burnside], [Frobenius], [Fatou], [Itô]).
+  * The paragraph immediately preceding the env attributes the lemma to prior work.
+  Otherwise default to "paper".
+- origin_citation: When origin="external", a short source identifier (e.g. "Zorn 1935", "Nakayama"). When origin="paper", set to null.
 
 CRITICAL: The raw_latex field must be copied VERBATIM from the source — character for character.
 Do NOT modify the LaTeX in any way. Specifically:
@@ -33,7 +40,9 @@ Return JSON array:
     "clean_text": "",
     "label": "label or null",
     "assumptions": "hypotheses text",
-    "statement": "conclusion text"
+    "statement": "conclusion text",
+    "origin": "paper",
+    "origin_citation": null
   }
 ]
 

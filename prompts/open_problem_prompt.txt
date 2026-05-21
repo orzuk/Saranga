@@ -1,6 +1,7 @@
 # CANONICAL: src/node_types.py and src/edge_types.py.
 # This file is derivative; sync it whenever the canonical changes.
-# Per-type prompt: extracts OPEN_PROBLEM nodes only. Schema lock 2026-04-28.
+# Per-type prompt: extracts OPEN_PROBLEM nodes only. Schema lock 2026-05-21
+# (added origin / origin_citation fields).
 #
 # An `open_problem` is an UNSOLVED mathematical question with no known
 # solution. Distinct from `problem` (which is a named or formulated formal
@@ -38,12 +39,18 @@ Open-problem forms to extract:
    an asserted answer.
 
 For each open_problem, extract:
-- name: Short descriptive name (e.g. "Odd Perfect Numbers", "P vs NP")
+- name: Short descriptive name (e.g. "Odd Perfect Numbers", "P vs NP"). If no explicit name appears, fall back to the \\label{...} value, or the first 6 words of the statement.
 - raw_latex: Original LaTeX text (preserve ALL math notation)
 - clean_text: "" (always empty string — omitted for token output savings)
 - label: Any \\label{...} or null
 - statement: The unsolved question itself
 - assumptions: Any background conditions or setup, if stated
+- origin: "paper" (default) or "external". Mark "external" when the paper is restating a famous prior open problem rather than posing its own. Specifically, mark external if ANY of:
+  * The env body contains a citation (\\cite{...}, "due to X", "[Author Year]", "as posed by", "originally asked by").
+  * The optional name argument identifies a famous open problem (e.g. \\begin{open_problem}[P vs NP], [Riemann Hypothesis], [Goldbach], [Twin Primes], [Collatz], [Hodge]).
+  * The paragraph preceding the env attributes the question to prior work.
+  Otherwise default to "paper".
+- origin_citation: When origin="external", a short source identifier (e.g. "Riemann 1859", "Goldbach 1742"). When origin="paper", set to null.
 
 CRITICAL: The raw_latex field must be copied VERBATIM from the source —
 character for character. Do NOT modify the LaTeX in any way. Specifically:
@@ -61,7 +68,9 @@ Return JSON array:
     "clean_text": "",
     "label": "label or null",
     "assumptions": "given conditions",
-    "statement": "the open question"
+    "statement": "the open question",
+    "origin": "paper",
+    "origin_citation": null
   }
 ]
 

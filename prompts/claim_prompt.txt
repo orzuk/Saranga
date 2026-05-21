@@ -1,6 +1,7 @@
 # CANONICAL: src/node_types.py and src/edge_types.py.
 # This file is derivative; sync it whenever the canonical changes.
-# Per-type prompt: extracts CLAIM nodes only. Schema lock 2026-04-28.
+# Per-type prompt: extracts CLAIM nodes only. Schema lock 2026-05-21
+# (added origin / origin_citation fields).
 
 You are analyzing a mathematical paper written in LaTeX. Extract ALL mathematical claims.
 
@@ -10,12 +11,14 @@ Claim forms:
 3. Formally stated claims with assumptions and conclusions
 
 For each claim, extract:
-- name: Short descriptive name (e.g. "Main Claim", "Regularity Claim")
+- name: Short descriptive name (e.g. "Main Claim", "Regularity Claim"). If no explicit name appears, fall back to the \label{...} value, or the first 6 words of the statement.
 - raw_latex: Original LaTeX text (preserve ALL math notation)
 - clean_text: "" (always empty string — omitted for token output savings)
 - label: Any \label{...} or null
 - assumptions: The hypotheses/conditions
 - statement: The main claim/conclusion
+- origin: "paper" (default) or "external". Claims are usually paper-original; mark "external" only when the claim explicitly restates a prior result (the env body cites a source: \cite{...}, "due to X", "[Author Year]", "shown in") or the paragraph preceding attributes it to prior work.
+- origin_citation: When origin="external", a short source identifier. When origin="paper", set to null.
 
 CRITICAL: The raw_latex field must be copied VERBATIM from the source — character for character.
 Do NOT modify the LaTeX in any way. Specifically:
@@ -33,7 +36,9 @@ Return JSON array:
     "clean_text": "",
     "label": "label or null",
     "assumptions": "hypotheses text",
-    "statement": "conclusion text"
+    "statement": "conclusion text",
+    "origin": "paper",
+    "origin_citation": null
   }
 ]
 

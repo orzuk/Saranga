@@ -1,6 +1,7 @@
 # CANONICAL: src/node_types.py and src/edge_types.py.
 # This file is derivative; sync it whenever the canonical changes.
-# Per-type prompt: extracts ALGORITHM nodes only. Schema lock 2026-04-28.
+# Per-type prompt: extracts ALGORITHM nodes only. Schema lock 2026-05-21
+# (added origin / origin_citation fields).
 
 You are analyzing a mathematical paper written in LaTeX. Extract ALL algorithms.
 
@@ -10,10 +11,16 @@ Algorithm forms:
 3. Pseudocode blocks with Input/Output and numbered steps
 
 For each algorithm, extract:
-- name: Short descriptive name (e.g. "Gradient Descent Algorithm", "Sorting Procedure")
+- name: Short descriptive name (e.g. "Gradient Descent Algorithm", "Sorting Procedure"). If no explicit name appears, fall back to the \label{...} value, or the first 6 words of the algorithm header / caption.
 - raw_latex: Original LaTeX text (preserve ALL math notation and pseudocode)
 - clean_text: "" (always empty string — omitted for token output savings)
 - label: Any \label{...} or null
+- origin: "paper" (default) or "external". Mark "external" when the algorithm is a known cited algorithm used as a building block rather than the paper's own contribution. Specifically, mark external if ANY of:
+  * The env body / caption contains a citation (\cite{...}, "due to X", "[Author Year]", "as in").
+  * The name is a famous algorithm (e.g. Sinkhorn, Dijkstra, k-means, EM, Adam, Newton's Method, gradient descent, BFGS, Metropolis-Hastings).
+  * The paragraph preceding the env attributes the algorithm to prior work.
+  Otherwise default to "paper".
+- origin_citation: When origin="external", a short source identifier (e.g. "Sinkhorn 1967", "Dijkstra 1959"). When origin="paper", set to null.
 
 CRITICAL: The raw_latex field must be copied VERBATIM from the source — character for character.
 Do NOT modify the LaTeX in any way. Specifically:
@@ -29,7 +36,9 @@ Return JSON array:
     "name": "descriptive name",
     "raw_latex": "original LaTeX",
     "clean_text": "",
-    "label": "label or null"
+    "label": "label or null",
+    "origin": "paper",
+    "origin_citation": null
   }
 ]
 
