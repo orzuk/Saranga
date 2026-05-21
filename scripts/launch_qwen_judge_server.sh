@@ -56,13 +56,19 @@ HOST="0.0.0.0"
 # once via scripts in /sci/labs/orzuk/orzuk/method_e_jobs/install_vllm.sh.
 source /sci/labs/orzuk/orzuk/venvs/qwen-vllm/bin/activate
 
-# HuggingFace cache — keep weights on the lab disk, NOT the 5GB home quota.
-# (HF model downloads are 16-65GB and will OOM the home dir if left default.)
+# All caches and scratch on the lab disk. The 5GB /sci/home/orzuk quota
+# is far too small for vLLM's combined caches (model weights + Triton
+# compile cache + PyTorch inductor cache + vLLM modelinfo registry +
+# tmp wheel extraction). Each of these needs its own env override —
+# vLLM reads XDG_CACHE_HOME for the generic cache root but Triton and
+# torch.inductor have their own variables. HF_HOME alone is not enough.
 export HF_HOME="${HF_HOME:-/sci/labs/orzuk/orzuk/hf-cache}"
-mkdir -p "$HF_HOME"
-# Also redirect TMPDIR to lab disk for pip/vllm wheel extraction.
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-/sci/labs/orzuk/orzuk/xdg-cache}"
+export VLLM_CACHE_ROOT="${VLLM_CACHE_ROOT:-/sci/labs/orzuk/orzuk/xdg-cache/vllm}"
+export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-/sci/labs/orzuk/orzuk/xdg-cache/triton}"
+export TORCH_INDUCTOR_CACHE_DIR="${TORCH_INDUCTOR_CACHE_DIR:-/sci/labs/orzuk/orzuk/xdg-cache/torchinductor}"
 export TMPDIR="${TMPDIR:-/sci/labs/orzuk/orzuk/tmp_install}"
-mkdir -p "$TMPDIR"
+mkdir -p "$HF_HOME" "$XDG_CACHE_HOME" "$VLLM_CACHE_ROOT" "$TRITON_CACHE_DIR" "$TORCH_INDUCTOR_CACHE_DIR" "$TMPDIR"
 
 # Optional: speed up downloads on first run
 export HF_HUB_ENABLE_HF_TRANSFER=1
