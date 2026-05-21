@@ -27,12 +27,12 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64G
 #SBATCH --time=24:00:00
-#SBATCH --output=/sci/home/orzuk/method_e_jobs/qwen_judge.%j.log
-#SBATCH --error=/sci/home/orzuk/method_e_jobs/qwen_judge.%j.log
+#SBATCH --output=/sci/labs/orzuk/orzuk/method_e_jobs/qwen_judge.%j.log
+#SBATCH --error=/sci/labs/orzuk/orzuk/method_e_jobs/qwen_judge.%j.log
 
 set -euo pipefail
 
-mkdir -p "$HOME/method_e_jobs"
+mkdir -p /sci/labs/orzuk/orzuk/method_e_jobs
 
 # Model — pick a size that fits the GPU you got. Defaults to Qwen3-32B int4.
 # Options:
@@ -44,13 +44,18 @@ MODEL="${QWEN_MODEL:-Qwen/Qwen3-32B-Instruct-AWQ-int4}"
 PORT="${QWEN_PORT:-8000}"
 HOST="0.0.0.0"
 
-# Use the project venv (must have vllm + openai installed; see install
-# note below) or a separate qwen-serving venv if vllm conflicts.
-source /sci/labs/orzuk/orzuk/venvs/authomathics-venv/bin/activate
+# Use the dedicated qwen-vllm venv (vllm + flashinfer + torch + nvidia
+# libs together are too heavy for the shared authomathics-venv). Set up
+# once via scripts in /sci/labs/orzuk/orzuk/method_e_jobs/install_vllm.sh.
+source /sci/labs/orzuk/orzuk/venvs/qwen-vllm/bin/activate
 
-# HuggingFace cache — keep weights on a fast scratch path if available.
-export HF_HOME="${HF_HOME:-$HOME/.cache/huggingface}"
+# HuggingFace cache — keep weights on the lab disk, NOT the 5GB home quota.
+# (HF model downloads are 16-65GB and will OOM the home dir if left default.)
+export HF_HOME="${HF_HOME:-/sci/labs/orzuk/orzuk/hf-cache}"
 mkdir -p "$HF_HOME"
+# Also redirect TMPDIR to lab disk for pip/vllm wheel extraction.
+export TMPDIR="${TMPDIR:-/sci/labs/orzuk/orzuk/tmp_install}"
+mkdir -p "$TMPDIR"
 
 # Optional: speed up downloads on first run
 export HF_HUB_ENABLE_HF_TRANSFER=1
@@ -75,10 +80,8 @@ python -m vllm.entrypoints.openai.api_server \
   --dtype auto \
   --trust-remote-code
 
-# NOTE: one-time install if vllm isn't in the venv yet:
-#   pip install --upgrade vllm openai
-# vLLM bundles its own CUDA build; conflicts with system PyTorch are
-# possible. If so, use a dedicated venv:
-#   python -m venv /sci/labs/orzuk/orzuk/venvs/qwen-vllm
-#   source /sci/labs/orzuk/orzuk/venvs/qwen-vllm/bin/activate
-#   pip install vllm openai
+# NOTE: one-time install (done 2026-05-21):
+#   sbatch /sci/labs/orzuk/orzuk/method_e_jobs/install_vllm.sh
+# Creates /sci/labs/orzuk/orzuk/venvs/qwen-vllm with vllm + openai installed.
+# All paths (PIP_CACHE_DIR, TMPDIR, HF_HOME, venv) live under /sci/labs/...
+# to avoid the 5GB /sci/home/orzuk quota.
