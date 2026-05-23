@@ -233,6 +233,16 @@ def retrieve(
                 # problem paper (otherwise it can't be a "later resolution").
                 if cand.year < p.year:
                     continue
+                # Same-year tiebreak: arXiv IDs encode submission month as
+                # the first 4 chars (YYMM.NNNNN format post-2007; old-style
+                # math.CO/YYMMNNN keeps the same prefix in the tail). For
+                # same-year pairs we require T's submission month to be
+                # strictly later than O's, else T predates O within the year.
+                if cand.year == p.year:
+                    p_tail = p.paper_id.split("/")[-1] if p.paper_id else ""
+                    c_tail = cand.paper_id.split("/")[-1] if cand.paper_id else ""
+                    if c_tail[:4] < p_tail[:4]:
+                        continue
                 # Self-resolution filter: drop pairs where the candidate is
                 # from the same paper as the problem. A paper that states a
                 # conjecture and proves it in the same paper is not a
@@ -287,6 +297,17 @@ def retrieve(
                 # kind of pair this filter exists to remove.
                 if (same_author is True
                         and getattr(config, "drop_same_author", True)):
+                    continue
+                # HARD FILTER: drop pairs where the candidate paper cites
+                # the problem paper. Method E's discovery value depends on
+                # the candidate author NOT knowing about the open problem
+                # — if T cites O, T's author was aware, and any resolution
+                # is unsurprising. The `headline_only_no_citation` flag
+                # was declared in MethodEConfig since the original commit
+                # but never actually checked here. Only drops when cites
+                # is *known* True; None (no citation graph) passes through.
+                if (cites is True
+                        and getattr(config, "headline_only_no_citation", True)):
                     continue
 
                 m = Match(
