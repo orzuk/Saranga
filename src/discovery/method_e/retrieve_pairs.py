@@ -305,8 +305,8 @@ def retrieve(
                     cites_problem_paper=cites,
                     same_author=same_author,
                     canonical_substituted=canon_substituted,
-                    problem_text=p.clean_text[:1500],
-                    candidate_text=cand.clean_text[:1500],
+                    problem_text=(p.raw_latex or p.clean_text)[:1500],
+                    candidate_text=(cand.raw_latex or cand.clean_text)[:1500],
                 )
                 scored.append((sc.combined, m))
 
