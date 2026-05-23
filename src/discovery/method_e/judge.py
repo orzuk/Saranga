@@ -39,7 +39,8 @@ _RE_JUSTIFICATION = re.compile(r"JUSTIFICATION:\s*(.+?)\s*$",
                                 re.IGNORECASE | re.MULTILINE | re.DOTALL)
 
 _VALID_RELATIONS = {"DIRECT", "GENERALIZES", "SPECIAL_HARD",
-                    "SPECIAL_CORNER", "COUNTER", "UNRELATED"}
+                    "SPECIAL_CORNER", "INDIRECT_TOOL", "COUNTER",
+                    "UNRELATED"}
 
 
 def parse_judge_response(raw: str) -> dict:
