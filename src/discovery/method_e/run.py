@@ -63,6 +63,7 @@ from node_dedup import cluster_index  # noqa: E402
 from retrieve_pairs import retrieve  # noqa: E402
 from judge import judge_candidates  # noqa: E402
 from export_triage import export  # noqa: E402
+from export_candidates import export as export_candidates_csv  # noqa: E402
 
 
 _DEFAULT_RUNS_ROOT = DATA_DIR / "discovery" / "method_e" / "runs"
@@ -80,9 +81,11 @@ def _paths(run_dir: Path) -> dict:
         "dedup":           run_dir / "dedup_clusters.jsonl",
         "citations":       run_dir / "s2_citations.sqlite",
         "candidates":      run_dir / "candidates.jsonl",
+        "candidates_csv":  run_dir / "candidates_ranked.csv",
         "judged":          run_dir / "judged_candidates.jsonl",
         "judge_cache":     run_dir / "judge_cache.sqlite",
         "triage":          run_dir / "triage_cases.csv",
+        "triage_all":      run_dir / "triage_all.csv",
         "stats":           run_dir / "stats.json",
     }
 
@@ -171,17 +174,28 @@ def phase_cite(P: dict, *, api_key: str | None, delay: float | None,
 
 def phase_retrieve(cfg: MethodEConfig, P: dict, *,
                    use_citations: bool, force: bool) -> None:
-    if not force and _exists_nonempty(P["candidates"]):
-        print(f"[skip] candidates.jsonl exists"); return
-    print(f"\n=== Phase 2b: retrieve candidate pairs ===")
-    retrieve(
-        problems_path=P["problems"],
-        theorems_path=P["theorems"],
-        out_path=P["candidates"],
-        dedup_path=P["dedup"] if P["dedup"].exists() else None,
-        citations_sqlite=P["citations"] if use_citations and P["citations"].exists() else None,
-        config=cfg,
-    )
+    if force or not _exists_nonempty(P["candidates"]):
+        print(f"\n=== Phase 2b: retrieve candidate pairs ===")
+        retrieve(
+            problems_path=P["problems"],
+            theorems_path=P["theorems"],
+            out_path=P["candidates"],
+            dedup_path=P["dedup"] if P["dedup"].exists() else None,
+            citations_sqlite=P["citations"] if use_citations and P["citations"].exists() else None,
+            config=cfg,
+        )
+    else:
+        print(f"[skip] candidates.jsonl exists")
+    # Always (re)emit the ranked CSV — even if candidates.jsonl was skipped,
+    # the CSV may be missing from older runs. Idempotent.
+    if force or not _exists_nonempty(P["candidates_csv"]):
+        print(f"=== Phase 2b.5: export candidates_ranked.csv ===")
+        export_candidates_csv(
+            candidates_path=P["candidates"],
+            out_csv=P["candidates_csv"],
+        )
+    else:
+        print(f"[skip] candidates_ranked.csv exists")
 
 
 def phase_judge(cfg: MethodEConfig, P: dict, *,
@@ -202,10 +216,17 @@ def phase_judge(cfg: MethodEConfig, P: dict, *,
 
 
 def phase_export(P: dict, force: bool) -> None:
-    if not force and _exists_nonempty(P["triage"]):
-        print(f"[skip] triage_cases.csv exists"); return
-    print(f"\n=== Phase 3: export triage CSV ===")
-    export(judged_path=P["judged"], out_csv=P["triage"])
+    print(f"\n=== Phase 3: export judge CSVs ===")
+    if force or not _exists_nonempty(P["triage"]):
+        export(judged_path=P["judged"], out_csv=P["triage"],
+               include_verdicts=["YES", "MAYBE"])
+    else:
+        print(f"[skip] triage_cases.csv exists")
+    if force or not _exists_nonempty(P["triage_all"]):
+        export(judged_path=P["judged"], out_csv=P["triage_all"],
+               include_verdicts=["YES", "MAYBE", "NO"])
+    else:
+        print(f"[skip] triage_all.csv exists")
 
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
