@@ -233,6 +233,17 @@ def retrieve(
                 # problem paper (otherwise it can't be a "later resolution").
                 if cand.year < p.year:
                     continue
+                # Self-resolution filter: drop pairs where the candidate is
+                # from the same paper as the problem. A paper that states a
+                # conjecture and proves it in the same paper is not a
+                # Method E find (no cross-paper bridge). The
+                # `exclude_self_resolved` config flag is checked here.
+                # Note: `self_resolution_window_years` is currently unused —
+                # same-author follow-up resolution is handled separately by
+                # `drop_same_author` below.
+                if (cand.paper_id == p.paper_id
+                        and getattr(config, "exclude_self_resolved", True)):
+                    continue
                 # If canonicalization maps the candidate to an earlier paper,
                 # check the canonical's year instead.
                 canon_substituted = False
