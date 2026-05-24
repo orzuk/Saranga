@@ -78,6 +78,14 @@ def _paths(run_dir: Path) -> dict:
         "config":          run_dir / "config.yaml",
         "problems":        run_dir / "problems.jsonl",
         "theorems":        run_dir / "theorems.jsonl",
+        # Split-format index: when build_node_index is called with
+        # text_store=<...theorems_text.sqlite>, the slim sig file goes
+        # to theorems_sig.jsonl and raw text goes to the sqlite. The
+        # retrieve_pairs.py _resolve_index_files auto-detects the split
+        # format when both files exist. See scripts/split_theorems_index.py
+        # for migration of an existing legacy theorems.jsonl.
+        "theorems_sig":    run_dir / "theorems_sig.jsonl",
+        "theorems_text":   run_dir / "theorems_text.sqlite",
         "dedup":           run_dir / "dedup_clusters.jsonl",
         "citations":       run_dir / "s2_citations.sqlite",
         "candidates":      run_dir / "candidates.jsonl",
@@ -101,7 +109,8 @@ def _write_config(cfg: MethodEConfig, path: Path) -> None:
 
 # ── Per-phase wrappers ───────────────────────────────────────────────────────
 
-def phase_index(cfg: MethodEConfig, P: dict, force: bool) -> None:
+def phase_index(cfg: MethodEConfig, P: dict, force: bool,
+                split_index: bool = False) -> None:
     # When cutoff_year is None we index all years (Option B); when it's an
     # integer we apply the hard cutoff at index build time (Option A). Either
     # way, retrieve_pairs enforces theorem.year >= problem.year at scoring
@@ -120,17 +129,40 @@ def phase_index(cfg: MethodEConfig, P: dict, force: bool) -> None:
         )
     else:
         print(f"[skip] problems.jsonl exists")
-    if force or not _exists_nonempty(P["theorems"]):
-        print(f"\n=== Phase 1R: build theorems index "
-              f"(year_min={theorems_year_min}) ===")
-        build_node_index(
-            types=cfg.theorem_types,
-            year_min=theorems_year_min,
-            categories_in=cfg.categories,
-            out=P["theorems"],
-        )
+
+    # Theorems index — supports two formats:
+    #   LEGACY:  single theorems.jsonl with raw_latex inline (~1.8GB at
+    #            v2 scale; retrieve needs ~80GB RAM).
+    #   SPLIT:   theorems_sig.jsonl + theorems_text.sqlite (retrieve
+    #            needs ~750MB; gateway-runnable).
+    # Default: legacy (unchanged behavior). Opt-in to split via
+    # split_index=True / --split-index CLI flag.
+    legacy_exists = _exists_nonempty(P["theorems"])
+    split_exists = (_exists_nonempty(P["theorems_sig"])
+                    and P["theorems_text"].exists())
+    if not force and (legacy_exists or split_exists):
+        which = "split" if split_exists else "legacy"
+        print(f"[skip] theorems index exists ({which} format)")
     else:
-        print(f"[skip] theorems.jsonl exists")
+        if split_index:
+            print(f"\n=== Phase 1R: build theorems index "
+                  f"(year_min={theorems_year_min}, format=split) ===")
+            build_node_index(
+                types=cfg.theorem_types,
+                year_min=theorems_year_min,
+                categories_in=cfg.categories,
+                out=P["theorems_sig"],
+                text_store=P["theorems_text"],
+            )
+        else:
+            print(f"\n=== Phase 1R: build theorems index "
+                  f"(year_min={theorems_year_min}, format=legacy) ===")
+            build_node_index(
+                types=cfg.theorem_types,
+                year_min=theorems_year_min,
+                categories_in=cfg.categories,
+                out=P["theorems"],
+            )
 
 
 def phase_dedup(cfg: MethodEConfig, P: dict, force: bool) -> None:
@@ -154,7 +186,10 @@ def phase_cite(P: dict, *, api_key: str | None, delay: float | None,
     g = S2CitationGraph(P["citations"], api_key=api_key, delay=delay)
     ids: list[str] = []
     seen = set()
-    for src in (P["problems"], P["theorems"]):
+    # Iterate problems index + theorems index, gathering unique paper_ids.
+    # Theorems index may be legacy (theorems.jsonl) or split (theorems_sig.jsonl).
+    theorems_src = P["theorems"] if P["theorems"].exists() else P["theorems_sig"]
+    for src in (P["problems"], theorems_src):
         if not src.exists():
             continue
         with src.open(encoding="utf-8") as f:
@@ -272,6 +307,15 @@ def _parser() -> argparse.ArgumentParser:
                     help="Don't actually call the LLM judge")
     ap.add_argument("--max-candidates", type=int, default=None,
                     help="Cap on candidates passed to judge (debug/smoke)")
+
+    # Index format
+    ap.add_argument("--split-index", action="store_true",
+                    help="When building the theorems index in Phase 1R, write "
+                         "split format (theorems_sig.jsonl + theorems_text.sqlite) "
+                         "instead of the legacy single theorems.jsonl. Split "
+                         "format drops retrieve-time RAM from ~80GB to ~750MB "
+                         "(gateway-runnable). Retrieve auto-detects either "
+                         "format. Default off — legacy behavior preserved.")
     return ap
 
 
@@ -315,7 +359,7 @@ def main():
 
     stats: dict = {}
     if "index" in phases:
-        phase_index(cfg, P, args.force)
+        phase_index(cfg, P, args.force, split_index=args.split_index)
     if "dedup" in phases:
         phase_dedup(cfg, P, args.force)
     if "cite" in phases and use_citations:
