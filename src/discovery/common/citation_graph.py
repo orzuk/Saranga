@@ -45,8 +45,9 @@ for _p in (_SRC, _HERE):
 from arxiv_id import normalize_arxiv_id  # noqa: E402
 
 _S2_URL = ("https://api.semanticscholar.org/graph/v1/paper/arXiv:{aid}"
-           "?fields=externalIds,year,authors.name,"
-           "references.externalIds,citations.externalIds")
+           "?fields=externalIds,year,authors.name,authors.authorId,"
+           "references.externalIds,references.paperId,"
+           "citations.externalIds,citations.paperId")
 _UA = "Saranga/1.0 (academic research)"
 
 
@@ -59,18 +60,33 @@ CREATE TABLE IF NOT EXISTS papers (
     fetched_at   TEXT
 );
 CREATE TABLE IF NOT EXISTS refs (
-    citer_arxiv_id TEXT NOT NULL,
-    cited_arxiv_id TEXT NOT NULL,
-    PRIMARY KEY (citer_arxiv_id, cited_arxiv_id)
+    citer_arxiv_id TEXT NOT NULL DEFAULT '',
+    cited_arxiv_id TEXT NOT NULL DEFAULT '',
+    cited_s2_id    TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (citer_arxiv_id, cited_arxiv_id, cited_s2_id)
 );
 CREATE INDEX IF NOT EXISTS idx_refs_cited ON refs (cited_arxiv_id);
+CREATE INDEX IF NOT EXISTS idx_refs_cited_s2 ON refs (cited_s2_id);
 """
 
 
 def _connect(path: Path) -> sqlite3.Connection:
+    """Connect, create schema if needed, and migrate existing DBs.
+
+    Migration handles the case where an older sqlite (without cited_s2_id
+    column) is opened by newer code. The ALTER TABLE is a no-op if the
+    column already exists.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path))
     conn.executescript(_SCHEMA)
+    # Schema migration: add cited_s2_id if missing on old DBs
+    try:
+        conn.execute("ALTER TABLE refs ADD COLUMN cited_s2_id TEXT DEFAULT ''")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_refs_cited_s2 ON refs (cited_s2_id)")
+    except sqlite3.OperationalError:
+        pass  # column already exists (sqlite raises "duplicate column name")
     conn.commit()
     return conn
 
@@ -142,12 +158,44 @@ class S2CitationGraph:
             "SELECT citer_arxiv_id FROM refs WHERE cited_arxiv_id = ?", (a,))
         return {r[0] for r in cur.fetchall()}
 
+    def s2_id_of(self, arxiv_id: str) -> str:
+        """Return the S2 paperId for an arxiv_id (or empty string if unknown).
+
+        Used by `cites()` to match cites that reference a paper by its
+        S2/journal ID rather than its arXiv ID (e.g., a 2018 paper that
+        cites a 2013 paper via the journal version's DOI — that reference
+        has no ArXiv external ID but does have the same S2 paperId).
+        """
+        a = normalize_arxiv_id(arxiv_id)
+        cur = self.conn.execute(
+            "SELECT s2_id FROM papers WHERE arxiv_id = ?", (a,))
+        row = cur.fetchone()
+        return (row[0] or "") if row else ""
+
     def cites(self, citer: str, cited: str) -> bool:
+        """Does `citer` cite `cited`? Checks both arxiv-id and S2-paperId paths.
+
+        The arxiv-id path catches cites recorded with an explicit arXiv
+        external ID. The S2-paperId path catches cites that referenced the
+        journal / non-arXiv version of the same paper (S2 unifies versions
+        under a single paperId). Brown→Dris was missed by arxiv-only
+        matching until we added the s2_id fallback here.
+        """
         c = normalize_arxiv_id(citer)
         d = normalize_arxiv_id(cited)
+        # Cheap path: direct arxiv-to-arxiv match
         cur = self.conn.execute(
             "SELECT 1 FROM refs WHERE citer_arxiv_id = ? AND cited_arxiv_id = ?",
             (c, d))
+        if cur.fetchone():
+            return True
+        # Fallback: look up cited's S2 paperId, check if citer's refs include it
+        cited_s2 = self.s2_id_of(d)
+        if not cited_s2:
+            return False
+        cur = self.conn.execute(
+            "SELECT 1 FROM refs WHERE citer_arxiv_id = ? AND cited_s2_id = ?",
+            (c, cited_s2))
         return cur.fetchone() is not None
 
     # ── Writes / fetch ────────────────────────────────────────────────────
@@ -167,24 +215,45 @@ class S2CitationGraph:
              json.dumps(authors, ensure_ascii=False),
              datetime.now(timezone.utc).isoformat()),
         )
-        # References
-        refs = set()
+        # References (out-edges of arxiv_id). Store both arxiv-id and
+        # S2-paperId of each reference when available. A reference may
+        # have only one (e.g. a paper cited via DOI only has paperId but
+        # no arxiv id) — we still record the row so cites() can match
+        # via the S2 path. Robust to pre-2007 / old-style arxiv IDs via
+        # the canonical normalize_arxiv_id parser.
         for r in payload.get("references") or []:
-            ext_r = (r or {}).get("externalIds", {}) or {}
+            r = r or {}
+            ext_r = r.get("externalIds") or {}
+            arxiv_r = ""
             if ext_r.get("ArXiv"):
-                refs.add(normalize_arxiv_id(ext_r["ArXiv"]))
-        for cited in refs:
-            self.conn.execute(
-                "INSERT OR IGNORE INTO refs (citer_arxiv_id, cited_arxiv_id) "
-                "VALUES (?, ?)", (arxiv_id, cited))
-        # Citations
-        for c in payload.get("citations") or []:
-            ext_c = (c or {}).get("externalIds", {}) or {}
-            if ext_c.get("ArXiv"):
-                citer = normalize_arxiv_id(ext_c["ArXiv"])
+                try:
+                    arxiv_r = normalize_arxiv_id(ext_r["ArXiv"])
+                except ValueError:
+                    arxiv_r = ""
+            s2_r = (r.get("paperId") or "").strip()
+            if arxiv_r or s2_r:
                 self.conn.execute(
-                    "INSERT OR IGNORE INTO refs (citer_arxiv_id, cited_arxiv_id) "
-                    "VALUES (?, ?)", (citer, arxiv_id))
+                    "INSERT OR IGNORE INTO refs "
+                    "(citer_arxiv_id, cited_arxiv_id, cited_s2_id) "
+                    "VALUES (?, ?, ?)",
+                    (arxiv_id, arxiv_r, s2_r))
+        # Citations (in-edges to arxiv_id). When we fetch O, the citations
+        # field gives us the citers. We record each citer→arxiv_id edge.
+        # The "cited" side here is arxiv_id (our paper), so we know its
+        # arxiv id; we just need to identify the citer.
+        for c in payload.get("citations") or []:
+            c = c or {}
+            ext_c = c.get("externalIds") or {}
+            if ext_c.get("ArXiv"):
+                try:
+                    citer = normalize_arxiv_id(ext_c["ArXiv"])
+                except ValueError:
+                    continue
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO refs "
+                    "(citer_arxiv_id, cited_arxiv_id, cited_s2_id) "
+                    "VALUES (?, ?, ?)",
+                    (citer, arxiv_id, ""))
 
     def _fetch_one(self, arxiv_id: str, max_retries: int = 3) -> bool:
         """Fetch a single paper. Returns True on success/404 (cached either
