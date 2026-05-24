@@ -50,10 +50,15 @@ cd src
 # averaging ~0.7 req/sec. Use 0.5s = 2 req/sec sustained (under most
 # academic-tier limits) for ~11h to fetch ~80K papers.
 S2_DELAY="${S2_DELAY:-0.5}"
+# --force bypasses phase_cite's "skip if sqlite exists" early return.
+# Otherwise resuming after a killed earlier job (with partial sqlite)
+# is a no-op. The inner fetch_batch still has skip_existing=True so
+# already-fetched papers won't be re-queried — only the missing ones.
 python3 -u -m discovery.method_e.run cite \
   --run-dir "$RUN_DIR" \
   --s2-api-key "$S2_API_KEY" \
-  --s2-delay "$S2_DELAY"
+  --s2-delay "$S2_DELAY" \
+  --force
 
 echo "[me_cite] done at $(date)"
 ls -lh "$RUN_DIR/s2_citations.sqlite"
