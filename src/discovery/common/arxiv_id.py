@@ -14,17 +14,29 @@ if str(_SRC) not in sys.path:
 
 from extract_arxiv_funcs import normalize_arxiv_id  # noqa: E402,F401  (re-export)
 
-_YYMM_RE = re.compile(r"^(\d{2})(\d{2})\.\d{4,5}")
+_MODERN_YYMM_RE = re.compile(r"^(\d{2})(\d{2})\.\d{4,5}$")
+_OLD_STYLE_YYMM_RE = re.compile(r"^[a-z]+(?:-[a-z]+)?(?:\.[A-Z]{2,3})?/(\d{2})(\d{2})\d{3}$")
 
 
 def year_from_arxiv_id(arxiv_id: str) -> int:
-    """Return submission year from `1805.11176` (any version) -> 2018.
+    """Return submission year from a canonical arXiv ID.
 
-    Only handles the post-2007 YYMM.NNNNN scheme. Raises ValueError otherwise.
-    Pre-2007 arxiv IDs (`math/0501001`) are not in SARANGA's tier3 corpus.
+    Modern format: `1805.11176` -> 2018 (from YYMM prefix).
+    Old style:     `math/9410211` -> 1994
+                   `cs/0008011`   -> 2000
+                   `math.CO/0509050` -> 2005
+
+    The pre-2007 ID convention: YY is 91-99 (= 1991-1999) or 00-06
+    (= 2000-2006). The new YYMM.NNNNN format started April 2007.
+
+    Raises ValueError on unparseable IDs.
     """
     base = normalize_arxiv_id(arxiv_id)
-    m = _YYMM_RE.match(base)
-    if not m:
-        raise ValueError(f"Cannot extract year from arxiv ID: {arxiv_id!r}")
-    return 2000 + int(m.group(1))
+    m = _MODERN_YYMM_RE.match(base)
+    if m:
+        return 2000 + int(m.group(1))
+    m = _OLD_STYLE_YYMM_RE.match(base)
+    if m:
+        yy = int(m.group(1))
+        return (1900 + yy) if yy >= 91 else (2000 + yy)
+    raise ValueError(f"Cannot extract year from arxiv ID: {arxiv_id!r}")

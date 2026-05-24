@@ -18,7 +18,7 @@
 #          scripts/run_method_e_cite.sh
 #
 #SBATCH --job-name=me_cite
-#SBATCH --time=12:00:00
+#SBATCH --time=24:00:00
 #SBATCH --mem=32G
 #SBATCH --cpus-per-task=2
 #SBATCH --output=/sci/home/orzuk/method_e_jobs/me_cite.%j.log
@@ -45,9 +45,15 @@ echo "[me_cite] RUN_DIR  = $RUN_DIR"
 echo "[me_cite] starting at $(date) on $(hostname)"
 
 cd src
+# S2 throttles authenticated keys harder than their docs suggest —
+# the prior attempt at 0.15s delay hit rate-limit retries constantly,
+# averaging ~0.7 req/sec. Use 0.5s = 2 req/sec sustained (under most
+# academic-tier limits) for ~11h to fetch ~80K papers.
+S2_DELAY="${S2_DELAY:-0.5}"
 python3 -u -m discovery.method_e.run cite \
   --run-dir "$RUN_DIR" \
-  --s2-api-key "$S2_API_KEY"
+  --s2-api-key "$S2_API_KEY" \
+  --s2-delay "$S2_DELAY"
 
 echo "[me_cite] done at $(date)"
 ls -lh "$RUN_DIR/s2_citations.sqlite"

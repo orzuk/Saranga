@@ -63,20 +63,54 @@ except ImportError:
 
 ARXIV_ID_RE = re.compile(r"^(?:arXiv:)?(\d{4}\.\d{4,5})(v\d+)?$")
 URL_ID_RE = re.compile(r"(\d{4}\.\d{4,5})(v\d+)?")
+# Pre-2007 style: <subject>/YYMMNNN. Subjects can be plain (math, cs,
+# physics), hyphenated (cond-mat, quant-ph), or dotted (math.CO).
+# Examples: math/9410211, cs/0008011, quant-ph/0702094,
+#           cond-mat/0010285, math.CO/0509050.
+OLD_STYLE_RE = re.compile(
+    r"^(?:arXiv:)?([a-z]+(?:-[a-z]+)?(?:\.[A-Z]{2,3})?/\d{7})(v\d+)?$"
+)
+
 
 def normalize_arxiv_id(s: str) -> str:
-    """
-    Accepts:
-        - '2101.12345'
-        - 'arXiv:2101.12345'
-        - 'https://arxiv.org/abs/2101.12345v2'
-    Returns base ID: '2101.12345'
+    """Canonical arXiv-ID parser. SINGLE SOURCE OF TRUTH across SARANGA.
+
+    Handles both modern (post-2007) and pre-2007 / "old-style" arXiv IDs.
+    Do not re-implement parsing elsewhere — import from here.
+
+    Accepts (modern, post-2007 YYMM.NNNNN scheme):
+        - '2101.12345'              4-digit YYMM + 4-5 digit serial
+        - '2101.12345v2'            with version suffix
+        - 'arXiv:2101.12345'        prefix variants
+        - 'https://arxiv.org/abs/2101.12345v2'   URLs
+
+    Accepts (pre-2007 / "old-style" subject/YYMMNNN scheme):
+        - 'math/9410211'
+        - 'cs/0008011'
+        - 'quant-ph/0702094'        hyphenated subjects
+        - 'cond-mat/0010285'
+        - 'math.CO/0509050'         subject.subcategory
+        - 'arXiv:math/9410211'
+
+    Returns canonical base ID with no prefix and no version suffix:
+        - '2101.12345'              modern
+        - 'math/9410211'            old style, preserves subject prefix
+
+    Raises ValueError for any input we cannot match.
     """
     s = s.strip()
+
+    # Modern format (most common, check first)
     m = ARXIV_ID_RE.match(s)
     if m:
         return m.group(1)
 
+    # Pre-2007 format
+    m = OLD_STYLE_RE.match(s)
+    if m:
+        return m.group(1)
+
+    # URL with modern ID embedded (e.g. arxiv.org/abs/2101.12345v2)
     m = URL_ID_RE.search(s)
     if m:
         return m.group(1)
