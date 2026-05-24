@@ -93,6 +93,38 @@ def _load_jsonl_rows(path: Path) -> list[_IndexRow]:
     return out
 
 
+def _lookup_text(row: "_IndexRow", text_store) -> str:
+    """Return the best available text for an index row.
+
+    Legacy single-file format: raw_latex / clean_text are on the row.
+    Split format: row has empty text fields; fetch from sqlite store.
+    """
+    if row.raw_latex or row.clean_text:
+        return row.raw_latex or row.clean_text
+    if text_store is not None:
+        raw, clean = text_store.get(row.paper_id, row.node_id)
+        return raw or clean or ""
+    return ""
+
+
+def _resolve_index_files(theorems_path: Path) -> tuple[Path, Optional[Path]]:
+    """Auto-detect split vs single-file index format.
+
+    If `<dir>/theorems_sig.jsonl` and `<dir>/theorems_text.sqlite` exist,
+    use the split format: load sig as the index (small, fast), open the
+    sqlite for lazy text lookup at candidate-emission time.
+    Else fall back to the single-file `theorems_path` (legacy).
+
+    Returns (index_jsonl_path, text_sqlite_path_or_None).
+    """
+    theorems_path = Path(theorems_path)
+    sig = theorems_path.parent / "theorems_sig.jsonl"
+    text = theorems_path.parent / "theorems_text.sqlite"
+    if sig.exists() and text.exists():
+        return (sig, text)
+    return (theorems_path, None)
+
+
 def _load_dedup_canonical_map(path: Optional[Path]) -> dict:
     """Returns {member_key: canonical_key} mapping built from dedup clusters."""
     out: dict[str, str] = {}
@@ -196,7 +228,20 @@ def retrieve(
         config = MethodEConfig()
 
     problems = _load_jsonl_rows(Path(problems_path))
-    theorems = _load_jsonl_rows(Path(theorems_path))
+    # Auto-detect split index format (theorems_sig.jsonl + theorems_text.sqlite)
+    # vs legacy single-file theorems.jsonl. Split format drops retrieve RAM
+    # from ~2.1GB to ~750MB by lazy-loading text only at emit time.
+    theorems_idx_path, text_store_path = _resolve_index_files(Path(theorems_path))
+    if text_store_path is not None:
+        print(f"[retrieve] SPLIT index detected: sig={theorems_idx_path.name} "
+              f"text={text_store_path.name}", file=sys.stderr)
+    theorems = _load_jsonl_rows(theorems_idx_path)
+    # Open lazy text store if split format; else None and we use the
+    # raw_latex/clean_text already on each row (legacy path).
+    text_store = None
+    if text_store_path is not None:
+        from text_store import TextStore  # noqa: E402
+        text_store = TextStore(text_store_path)
     if not problems or not theorems:
         print(f"[retrieve] empty input: problems={len(problems)} "
               f"theorems={len(theorems)}", file=sys.stderr)
@@ -326,8 +371,8 @@ def retrieve(
                     cites_problem_paper=cites,
                     same_author=same_author,
                     canonical_substituted=canon_substituted,
-                    problem_text=(p.raw_latex or p.clean_text)[:1500],
-                    candidate_text=(cand.raw_latex or cand.clean_text)[:1500],
+                    problem_text=_lookup_text(p, text_store)[:1500],
+                    candidate_text=_lookup_text(cand, text_store)[:1500],
                 )
                 scored.append((sc.combined, m))
 
