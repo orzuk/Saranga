@@ -51,7 +51,10 @@ _S2_URL = ("https://api.semanticscholar.org/graph/v1/paper/arXiv:{aid}"
 _UA = "Saranga/1.0 (academic research)"
 
 
-_SCHEMA = """
+# Base schema — tables only, no indices that depend on newer columns.
+# Index creation happens AFTER the migration step below so an old DB
+# without the cited_s2_id column doesn't blow up on CREATE INDEX.
+_SCHEMA_TABLES = """
 CREATE TABLE IF NOT EXISTS papers (
     arxiv_id     TEXT PRIMARY KEY,
     s2_id        TEXT,
@@ -65,6 +68,9 @@ CREATE TABLE IF NOT EXISTS refs (
     cited_s2_id    TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (citer_arxiv_id, cited_arxiv_id, cited_s2_id)
 );
+"""
+
+_SCHEMA_INDICES = """
 CREATE INDEX IF NOT EXISTS idx_refs_cited ON refs (cited_arxiv_id);
 CREATE INDEX IF NOT EXISTS idx_refs_cited_s2 ON refs (cited_s2_id);
 """
@@ -73,20 +79,23 @@ CREATE INDEX IF NOT EXISTS idx_refs_cited_s2 ON refs (cited_s2_id);
 def _connect(path: Path) -> sqlite3.Connection:
     """Connect, create schema if needed, and migrate existing DBs.
 
-    Migration handles the case where an older sqlite (without cited_s2_id
-    column) is opened by newer code. The ALTER TABLE is a no-op if the
-    column already exists.
+    Order matters: we create the tables first (CREATE TABLE IF NOT EXISTS
+    is a no-op for an existing old table); THEN run any ALTER TABLE
+    migrations to add columns missing on old DBs; THEN create indices
+    that may reference newly-added columns. Doing CREATE INDEX before
+    ALTER TABLE fails on old DBs with "no such column".
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path))
-    conn.executescript(_SCHEMA)
-    # Schema migration: add cited_s2_id if missing on old DBs
+    # Step 1: tables (idempotent — no-op on existing old DB)
+    conn.executescript(_SCHEMA_TABLES)
+    # Step 2: migration — add cited_s2_id column if missing
     try:
         conn.execute("ALTER TABLE refs ADD COLUMN cited_s2_id TEXT DEFAULT ''")
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_refs_cited_s2 ON refs (cited_s2_id)")
     except sqlite3.OperationalError:
         pass  # column already exists (sqlite raises "duplicate column name")
+    # Step 3: indices (now safe — cited_s2_id is guaranteed present)
+    conn.executescript(_SCHEMA_INDICES)
     conn.commit()
     return conn
 
