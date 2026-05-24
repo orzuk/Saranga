@@ -8,15 +8,28 @@ Method E uses two calls:
 Method H reuses the second call. Method B uses different category filters.
 Method A uses a broader type set with no year bound.
 
-Output: JSONL, one row per node:
-    {paper_id, year, category, node_id, node_type, name, subclass,
-     raw_latex (truncated), clean_text (truncated),
-     sig_foundation_ids, sig_operators, sig_statement_tokens, conclusion_type}
+Output formats (one of two):
+
+  Legacy single-file (default — current behavior):
+    out=theorems.jsonl
+    Each row carries raw_latex + clean_text inline. ~1.5KB/row at
+    v2 scale (1.24M rows = 1.8GB total). Retrieve loads everything
+    into RAM — needs ~2.1GB, requires 64GB+ SLURM allocation.
+
+  Split format (opt-in via --text-store / text_store= arg):
+    out=theorems_sig.jsonl       slim: sig + metadata only (~430MB total)
+    text_store=theorems_text.sqlite  random-access text store (~370MB)
+    Retrieve loads only sig into RAM (~750MB total); raw_latex /
+    clean_text are lazy-fetched only for the top-K candidates per
+    problem. Runs on the gateway, no SLURM needed.
+
+retrieve_pairs.py auto-detects: if `<run_dir>/theorems_sig.jsonl`
+exists alongside `<run_dir>/theorems_text.sqlite`, the split format
+is used; else it falls back to legacy `theorems.jsonl`.
 
 JSONL was chosen over Parquet for the POC: pandas/pyarrow are not always
 installed on the cluster venv, and the per-row append model lets us stream
-through 100k papers without holding everything in memory. A converter can
-be added later when we need columnar reads.
+through 100k papers without holding everything in memory.
 """
 import argparse
 import json
@@ -69,14 +82,17 @@ def build_node_index(
     compute_signature: bool = True,
     min_clean_text_chars: int = 15,
     progress_every: int = 1000,
+    text_store: Optional[Path] = None,
 ) -> int:
-    """Stream-write a node index JSONL. Returns the number of rows written.
+    """Stream-write a node index. Returns the number of rows written.
 
     Args:
         types: list of node-type strings (`open_problem`, `theorem`, ...).
                Passed through `normalize_node_type` before matching, so
                legacy aliases are accepted.
-        out: output path (a JSONL file).
+        out: output path. In LEGACY mode (text_store=None), a single
+             JSONL file with text fields inline. In SPLIT mode
+             (text_store set), the slim sig-only JSONL.
         year_min, year_max: inclusive year bounds for the parent paper.
         categories_in: top-level subdirs under TIER3_DIR (e.g. ["math_CO"]).
         compute_signature: when False, emits raw rows without the per-node
@@ -86,51 +102,98 @@ def build_node_index(
                               Default 15 filters extraction-failure nodes
                               whose text collapsed to brace artifacts.
                               Set to 0 to disable.
+        text_store: optional sqlite path. When set, the row's raw_latex /
+                    clean_text fields are written to this sqlite instead
+                    of inline in the JSONL row (split format). Used by
+                    Method E's retrieve_pairs.py auto-detect — the
+                    canonical layout is:
+                        <run>/theorems_sig.jsonl   (this function's `out`)
+                        <run>/theorems_text.sqlite (text_store)
+                    Use sibling helper from method_e.text_store.TextStore.
     """
     type_set = {normalize_node_type(t) for t in types}
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
 
+    # Optional split-format text store
+    store = None
+    if text_store is not None:
+        text_store = Path(text_store)
+        text_store.parent.mkdir(parents=True, exist_ok=True)
+        # Wipe any existing sqlite — partial state from a prior run would
+        # leak into the new index.
+        if text_store.exists():
+            text_store.unlink()
+        # Import lazily so the legacy code path doesn't require TextStore.
+        sys.path.insert(0, str(_SRC / "discovery" / "method_e"))
+        from text_store import TextStore  # noqa: E402
+        store = TextStore(text_store)
+
     n_rows = 0
     n_skipped_text = 0
     n_papers = 0
-    with out.open("w", encoding="utf-8") as f:
-        for paper in iter_papers(categories=categories_in,
-                                 year_min=year_min, year_max=year_max):
-            n_papers += 1
-            for node in paper.nodes:
-                if not isinstance(node, dict):
-                    continue
-                ntype = normalize_node_type(node.get("type"))
-                if ntype not in type_set:
-                    continue
-                if not _has_substantive_text(node, min_clean_text_chars):
-                    n_skipped_text += 1
-                    continue
-                row = {
-                    "paper_id": paper.paper_id,
-                    "year": paper.year,
-                    "category": paper.category,
-                    "node_id": node.get("id"),
-                    "node_type": ntype,
-                    "name": node.get("name"),
-                    "subclass": node.get("subclass"),
-                    "raw_latex": (node.get("raw_latex") or "")[:_RAW_TRUNC],
-                    "clean_text": (node.get("clean_text") or "")[:_TEXT_TRUNC],
-                }
-                if compute_signature:
-                    sig = signature_of(node, paper.edges)
-                    row["sig_foundation_ids"] = sorted(sig.foundation_ids)
-                    row["sig_operators"] = sorted(sig.operators)
-                    row["sig_statement_tokens"] = sorted(sig.statement_tokens)
-                    row["conclusion_type"] = sig.conclusion_type
-                f.write(json.dumps(row, ensure_ascii=False) + "\n")
-                n_rows += 1
-            if n_papers % progress_every == 0:
-                print(f"[build_node_index] papers={n_papers:>6} "
-                      f"rows={n_rows:>7}", file=sys.stderr)
-    print(f"[build_node_index] DONE papers={n_papers} rows={n_rows} "
-          f"(filtered_short_text={n_skipped_text}) -> {out}",
+    text_batch: list[tuple] = []
+    _BATCH = 2000  # sqlite insert batch size
+
+    try:
+        with out.open("w", encoding="utf-8") as f:
+            for paper in iter_papers(categories=categories_in,
+                                     year_min=year_min, year_max=year_max):
+                n_papers += 1
+                for node in paper.nodes:
+                    if not isinstance(node, dict):
+                        continue
+                    ntype = normalize_node_type(node.get("type"))
+                    if ntype not in type_set:
+                        continue
+                    if not _has_substantive_text(node, min_clean_text_chars):
+                        n_skipped_text += 1
+                        continue
+                    raw = (node.get("raw_latex") or "")[:_RAW_TRUNC]
+                    clean = (node.get("clean_text") or "")[:_TEXT_TRUNC]
+                    row = {
+                        "paper_id": paper.paper_id,
+                        "year": paper.year,
+                        "category": paper.category,
+                        "node_id": node.get("id"),
+                        "node_type": ntype,
+                        "name": node.get("name"),
+                        "subclass": node.get("subclass"),
+                    }
+                    if store is None:
+                        # Legacy: text inline in JSONL row
+                        row["raw_latex"] = raw
+                        row["clean_text"] = clean
+                    else:
+                        # Split: text goes to sqlite, JSONL row stays slim
+                        text_batch.append((paper.paper_id,
+                                           node.get("id") or "",
+                                           raw, clean))
+                        if len(text_batch) >= _BATCH:
+                            store.put_many(text_batch)
+                            text_batch = []
+                    if compute_signature:
+                        sig = signature_of(node, paper.edges)
+                        row["sig_foundation_ids"] = sorted(sig.foundation_ids)
+                        row["sig_operators"] = sorted(sig.operators)
+                        row["sig_statement_tokens"] = sorted(sig.statement_tokens)
+                        row["conclusion_type"] = sig.conclusion_type
+                    f.write(json.dumps(row, ensure_ascii=False) + "\n")
+                    n_rows += 1
+                if n_papers % progress_every == 0:
+                    print(f"[build_node_index] papers={n_papers:>6} "
+                          f"rows={n_rows:>7}", file=sys.stderr)
+        # Flush remaining text rows
+        if store is not None and text_batch:
+            store.put_many(text_batch)
+    finally:
+        if store is not None:
+            store.close()
+
+    mode = "split" if text_store is not None else "legacy"
+    extra = f"  text_store={text_store}" if text_store is not None else ""
+    print(f"[build_node_index] DONE ({mode}) papers={n_papers} rows={n_rows} "
+          f"(filtered_short_text={n_skipped_text}) -> {out}{extra}",
           file=sys.stderr)
     return n_rows
 
@@ -150,7 +213,15 @@ def main():
                     help="Min alphabetic char count in clean_text to index a "
                          "node (default 15; 0 disables). Filters extraction-"
                          "failure nodes like '{ :} } {'.")
-    ap.add_argument("--out", required=True, help="Output JSONL path")
+    ap.add_argument("--out", required=True, help="Output JSONL path "
+                    "(sig-only when --text-store is given; full row inline otherwise)")
+    ap.add_argument("--text-store", default=None,
+                    help="Optional sqlite path; enables split-format output. "
+                         "Text fields go here (random-access) instead of "
+                         "inline in the JSONL row. Drops retrieve-time RAM "
+                         "from ~2GB to ~750MB at v2 scale. Recommended "
+                         "naming: theorems_text.sqlite alongside "
+                         "theorems_sig.jsonl in the same run dir.")
     args = ap.parse_args()
     build_node_index(
         types=[t.strip() for t in args.types.split(",") if t.strip()],
@@ -161,6 +232,7 @@ def main():
                       if args.categories else None,
         compute_signature=not args.no_signature,
         min_clean_text_chars=args.min_text_chars,
+        text_store=Path(args.text_store) if args.text_store else None,
     )
 
 
