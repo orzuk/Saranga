@@ -437,8 +437,12 @@ class PaperGraph:
     def add_uses(self, user_id: str, used_id: str, **kwargs: Any) -> None:
         """
         user_id uses used_id (proof/theorem/algorithm uses lemma/definition/equation).
+
+        Stored direction follows the canonical schema (see src/edge_types.py):
+        arrow A -> B means "B depends on A", so the foundation/used node is the
+        source and the depending/user node is the target.
         """
-        self.add_relation(user_id, used_id, REL_USES, category="logical", directed=True, **kwargs)
+        self.add_relation(used_id, user_id, REL_USES, category="logical", directed=True, **kwargs)
 
     def add_depends_on(self, theorem_id: str, prereq_id: str, **kwargs: Any) -> None:
         """

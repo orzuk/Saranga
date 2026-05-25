@@ -691,14 +691,17 @@ class PaperParser:
         # 1) Merge all included files AND expand simple macros
         text = self._expand_inputs(text, base_dir=path.parent)
 
-        # 2) Restrict to document body only
+        # 2) Strip comments and parse \newtheorem from the full document
+        # (preamble + body). Restricting to body first would hide preamble
+        # declarations like \newtheorem{conj}{Conjecture}, causing custom
+        # env names to be missed.
+        text = self._strip_comments(text)
+        self._parse_newtheorem(text)
+
+        # 3) Restrict to document body only for the actual extraction pass.
         m = re.search(r"\\begin{document}(.*)\\end{document}", text, flags=re.DOTALL)
         if m:
             text = m.group(1)
-
-        # 3) Strip comments and parse \newtheorem
-        text = self._strip_comments(text)
-        self._parse_newtheorem(text)
 
         # 4) Strip \newenvironment definitions so their internal
         #    \begin{ENV}...\end{ENV} fragments don't get matched as content.
@@ -878,8 +881,9 @@ class PaperParser:
         self.env_kind_map = dict(self.BASE_ENV_KIND_MAP)
 
         # \newtheorem{env}[counter]{Printed Name}
+        # Also matches the starred (unnumbered) variant \newtheorem*{env}{Name}.
         pattern = re.compile(
-            r"\\newtheorem\s*{([^}]+)}(?:\[[^\]]+\])?\s*{([^}]+)}",
+            r"\\newtheorem\*?\s*{([^}]+)}(?:\[[^\]]+\])?\s*{([^}]+)}",
             flags=re.DOTALL,
         )
 
@@ -2456,7 +2460,7 @@ Respond ONLY with JSON array."""
             if not parent_id:
                 continue
 
-            key = (parent_id, obj.id, "uses")
+            key = (obj.id, parent_id, "uses")
             if key in existing:
                 continue
 
@@ -2570,7 +2574,7 @@ Respond ONLY with JSON array."""
                 if not target_id or target_id == obj.id:
                     continue
 
-                key = (obj.id, target_id, "uses")
+                key = (target_id, obj.id, "uses")
                 if key in existing:
                     continue
 
@@ -2613,79 +2617,6 @@ Respond ONLY with JSON array."""
             existing -= uses_to_remove
             uses_ref_count -= len(uses_to_remove)
             print(f"[INFO] _build_relations: broke {len(uses_to_remove)} length-2 'uses' cycles via document order.")
-
-        # ------------------------------------------------------------------
-        # 4. Low-confidence 'uses' edges from theorems/proofs to definitions
-        #    via keyword overlap in natural language text.
-        #
-        #    This is a very rough heuristic, clearly marked as such.
-        # ------------------------------------------------------------------
-
-        # Prepare definition keyword sets
-        def _keyword_set(text: str) -> set:
-            text = text.lower()
-            words = re.findall(r"[a-zA-Z]+", text)
-            stopwords = {
-                "the", "a", "an", "and", "or", "of", "in", "for", "to",
-                "is", "are", "be", "we", "this", "that", "such", "by",
-                "with", "let", "denote", "define", "definition",
-            }
-            return {w for w in words if len(w) >= 5 and w not in stopwords}
-
-        definitions: Dict[str, Definition] = {
-            obj.id: obj
-            for obj in graph.objects.values()
-            if obj.kind == "definition"
-        }
-
-        if definitions:
-            def_keywords: Dict[str, set] = {}
-            for def_id, def_obj in definitions.items():
-                txt = getattr(def_obj, "clean_text", "") or getattr(def_obj, "raw_latex", "")
-                def_keywords[def_id] = _keyword_set(txt)
-
-            # Candidates that might use definitions: theorem-like + proofs
-            theorem_ids = [
-                obj.id
-                for obj in graph.objects.values()
-                if obj.kind in self.THEOREM_LIKE_KINDS
-            ]
-            proof_ids = [
-                obj.id
-                for obj in graph.objects.values()
-                if obj.kind == "proof"
-            ]
-
-            uses_kw_count = 0
-            for user_id in theorem_ids + proof_ids:
-                obj = graph.objects[user_id]
-                txt = getattr(obj, "clean_text", "") or getattr(obj, "raw_latex", "")
-                kw = _keyword_set(txt)
-                if not kw:
-                    continue
-
-                for def_id, def_kw in def_keywords.items():
-                    if not def_kw:
-                        continue
-                    common = kw & def_kw
-                    if len(common) < 2:
-                        continue
-
-                    key = (user_id, def_id, "uses")
-                    if key in existing:
-                        continue
-
-                    graph.add_uses(
-                        user_id=user_id,
-                        used_id=def_id,
-                        metadata={
-                            "source": "keyword_overlap",
-                            "confidence": 0.3,
-                            "keywords": sorted(list(common))[:5],
-                        },
-                    )
-                    existing.add(key)
-                    uses_kw_count += 1
 
         # Replace graph.relations with the accumulated ones
         graph.relations = relations + graph.relations[len(relations):]
@@ -2755,9 +2686,8 @@ Respond ONLY with JSON array."""
                 cycle_removed = len(cycle_remove)
                 print(f"[INFO] _build_relations: broke {cycle_removed} back-edges to enforce DAG.")
 
-        total_uses_kw = locals().get("uses_kw_count", 0)
         structural_total = proves_count + solves_count + illustrates_count + tests_count
-        if structural_total or equation_edge_count or uses_ref_count or total_uses_kw:
+        if structural_total or equation_edge_count or uses_ref_count:
             print(
                 "[INFO] _build_relations: "
                 f"added {proves_count} 'proves', "
@@ -2765,6 +2695,5 @@ Respond ONLY with JSON array."""
                 f"{illustrates_count} 'illustrates', "
                 f"{tests_count} 'tests' edges, "
                 f"{equation_edge_count} 'uses' (equation), "
-                f"{uses_ref_count} 'uses' (ref), "
-                f"{total_uses_kw} 'uses' (keyword)."
+                f"{uses_ref_count} 'uses' (ref)."
             )
