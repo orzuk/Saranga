@@ -132,12 +132,18 @@ def make_anthropic_client() -> Callable:
         sys.exit("[ERROR] ANTHROPIC_API_KEY not set.")
     client = anthropic.Anthropic(api_key=key)
 
-    def call(prompt: str, model: str, max_tokens: int = 16384) -> str:
-        msg = client.messages.create(
+    def call(prompt: str, model: str, max_tokens: int = 32000) -> str:
+        # SDK requires streaming when max_tokens may push a single response
+        # past the 10-minute non-streaming ceiling. Verbatim-extraction prompts
+        # (v4+) routinely produce 20K+ output tokens and trip this.
+        with client.messages.stream(
             model=model,
             max_tokens=max_tokens,
             messages=[{"role": "user", "content": prompt}],
-        )
+        ) as stream:
+            for _ in stream.text_stream:
+                pass
+            msg = stream.get_final_message()
         return msg.content[0].text
 
     return call
@@ -426,8 +432,10 @@ def main() -> int:
                     help="skip papers whose output file already exists")
     ap.add_argument("--sleep", type=float, default=0.0,
                     help="seconds to sleep between calls (rate limits)")
-    ap.add_argument("--max-tokens", type=int, default=16384,
-                    help="max output tokens from the LLM")
+    ap.add_argument("--max-tokens", type=int, default=32000,
+                    help="max output tokens from the LLM (verbatim-extraction "
+                         "prompts like v4 routinely need 20K+; Anthropic client "
+                         "auto-streams to handle long responses)")
     ap.add_argument("--max-input-chars", type=int, default=200000,
                     help="truncate .tex larger than this (0 = no cap)")
     ap.add_argument("--log", type=Path, default=Path("silver_gold_log.csv"))
