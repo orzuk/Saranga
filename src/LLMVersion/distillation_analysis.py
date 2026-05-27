@@ -72,11 +72,19 @@ def _find_local_tex(paper_id: str, search_dirs: Optional[List[str]] = None) -> O
         return tex_path, versioned_id
 
     # Search additional dirs (e.g. alignment/papers/paperNNN/source/)
+    # If a dir contains a path segment named after the paper_id, treat it as
+    # belonging to that paper. Otherwise prefer files named like the paper_id;
+    # fall back to any .tex when the dir is paper-specific by construction.
     if search_dirs:
         for d in search_dirs:
-            pattern = os.path.join(d, "**", f"*.tex")
-            matches = globmod.glob(pattern, recursive=True)
-            if matches:
+            if paper_id and paper_id not in d:
+                # Skip cumulative dirs that don't belong to this paper
+                continue
+            for pat_glob in (f"{paper_id}*.tex", "*.tex"):
+                pattern = os.path.join(d, "**", pat_glob)
+                matches = globmod.glob(pattern, recursive=True)
+                if not matches:
+                    continue
                 # Prefer files with \documentclass (main file)
                 for m in matches:
                     try:
@@ -86,7 +94,6 @@ def _find_local_tex(paper_id: str, search_dirs: Optional[List[str]] = None) -> O
                             return m, Path(m).stem
                     except OSError:
                         continue
-                # Fallback to first .tex file
                 return matches[0], Path(matches[0]).stem
 
     return None
@@ -1071,6 +1078,19 @@ Write a complete, self-contained Python file with:
             lines = lines[:-1]
         generated_code = "\n".join(lines)
 
+    # Fix common LLM-generated dedup bug: del r['_start'] inside the overlap
+    # loop causes KeyError when later items check already-cleaned dicts.
+    # Move the deletion after the loop.
+    generated_code = generated_code.replace(
+        "if not overlap:\n            del r['_start']\n            deduped.append(r)",
+        "if not overlap:\n            deduped.append(r)"
+    )
+    if "for r in deduped:\n        r.pop('_start', None)" not in generated_code:
+        generated_code = generated_code.replace(
+            "return deduped",
+            "for r in deduped:\n        r.pop('_start', None)\n\n    return deduped"
+        )
+
     # Write to eval_dir/distilled_rules.py
     os.makedirs(eval_dir, exist_ok=True)
     out_path = os.path.join(eval_dir, 'distilled_rules.py')
@@ -1170,13 +1190,24 @@ def _comment_out_rule_block(lines: List[str], pattern_name: str,
 
 def prune_rules(paper_ids: List[str], structure_type: str,
                 gold_csv: str, eval_dir: str,
-                threshold: float = 0.7) -> int:
+                threshold: float = 0.7,
+                require_fp_majority: bool = False,
+                tex_search_dirs: Optional[List[str]] = None) -> int:
     """Identify FP-causing distilled rules and comment them out.
 
     Calls the distilled extraction function *directly* (bypassing the full
     parser) so we isolate distilled-rule output.  Each FP is attributed to the
     compiled regex pattern that produced it, and that pattern's definition +
     usage block is commented out with a ``# PRUNED`` marker.
+
+    Parameters
+    ----------
+    require_fp_majority : if True, only prune rules where FP > TP (forgives
+        rules with mostly correct extractions and a few stray FPs). Default
+        False preserves the original aggressive behavior (any FP -> prune).
+    tex_search_dirs : extra directories to search for paper .tex sources
+        (passed to ``_find_local_tex``). Useful when papers live outside
+        ``FULL_PAPERS_DIR`` (e.g., the alignment-benchmark layout).
 
     Returns the number of rules pruned.
     """
@@ -1206,9 +1237,10 @@ def prune_rules(paper_ids: List[str], structure_type: str,
     all_results: List[tuple] = []  # (paper_id, result_dict, is_tp)
 
     for paper_id in paper_ids:
-        found = _find_local_tex(paper_id)
+        found = _find_local_tex(paper_id, search_dirs=tex_search_dirs)
         if found is None:
-            found = _find_local_tex(re.sub(r'v\d+$', '', paper_id))
+            found = _find_local_tex(re.sub(r'v\d+$', '', paper_id),
+                                    search_dirs=tex_search_dirs)
         if found is None:
             print(f"  WARNING: TeX not found for {paper_id}, skipping")
             continue
@@ -1285,9 +1317,10 @@ def prune_rules(paper_ids: List[str], structure_type: str,
         # Cache paper texts
         paper_texts: Dict[str, str] = {}
         for paper_id in paper_ids:
-            found = _find_local_tex(paper_id)
+            found = _find_local_tex(paper_id, search_dirs=tex_search_dirs)
             if found is None:
-                found = _find_local_tex(re.sub(r'v\d+$', '', paper_id))
+                found = _find_local_tex(re.sub(r'v\d+$', '', paper_id),
+                                        search_dirs=tex_search_dirs)
             if found:
                 with open(found[0], 'r', encoding='utf-8', errors='replace') as f:
                     paper_texts[paper_id] = f.read()
@@ -1329,16 +1362,24 @@ def prune_rules(paper_ids: List[str], structure_type: str,
         source_lines = f.readlines()
 
     pruned_count = 0
+    kept_count = 0
     for rule_name, fp_papers in fp_by_rule.items():
         if rule_name == '<unattributed>':
             print(f"\n  WARNING: {len(fp_papers)} FP(s) could not be attributed "
                   f"to a specific pattern — skipping")
             continue
         tp_count = len(tp_by_rule.get(rule_name, []))
+        fp_count = len(fp_papers)
+        if require_fp_majority and fp_count <= tp_count:
+            print(f"  KEEP  {rule_name}: {fp_count} FP, {tp_count} TP (FP not majority)")
+            kept_count += 1
+            continue
         unique_papers = sorted(set(fp_papers))
         source_lines = _comment_out_rule_block(
             source_lines, rule_name, unique_papers, tp_count)
         pruned_count += 1
+    if require_fp_majority:
+        print(f"  (FP-majority gate: kept {kept_count} rule(s) where FP <= TP)")
 
     with open(rules_path, 'w', encoding='utf-8') as f:
         f.writelines(source_lines)

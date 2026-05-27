@@ -1,0 +1,172 @@
+\documentclass[10pt]{article}
+\usepackage[a4paper,margin=2cm]{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{caption}
+\usepackage{xcolor}
+\usepackage{colortbl}
+
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+\renewcommand{\arraystretch}{1.15}
+\setlength{\tabcolsep}{6pt}
+
+\title{\vspace{-2em}Silver Distillation on v4 Opus --- Pilot Summary}
+\author{paper001 + paper005, structure type: \texttt{definition}}
+\date{2026-05-27}
+
+\begin{document}
+\maketitle
+\vspace{-1.5em}
+
+\section*{Setup}
+\noindent
+\begin{tabular}{ll}
+\toprule
+\textbf{Field} & \textbf{Value} \\
+\midrule
+Pilot papers       & paper001 (von Luxburg, spectral clustering tutorial), paper005 (Sinkhorn / OT) \\
+Structure type     & \texttt{definition} \\
+Gold source        & v4 Opus extractions, filtered by \texttt{origin = paper} (or unset) \\
+Model              & claude-sonnet-4-6 \\
+Matching threshold & 0.7 \\
+Eval directory     & \texttt{src/LLMVersion/definition\_eval\_silver\_v4} \\
+\bottomrule
+\end{tabular}
+
+\bigskip
+\noindent
+{\small \textbf{Why these papers.} paper001 has 12 \texttt{origin=paper} definitions written as narrative prose (no \texttt{\textbackslash begin\{definition\}} environments). paper005 has 4 inline definitions with no \texttt{origin} tag set; we accept missing-\texttt{origin} nodes when filtering.}
+
+\section*{Table 1 --- Matching metric: Jaccard vs Containment (paper001 only)}
+
+\noindent
+The default matcher uses set-Jaccard $|A \cap B| / |A \cup B|$ on lightly-normalized tokens. We added \texttt{clean\_latex\_to\_text} cleaning (drops braces, expands macros to readable text, strips \texttt{\textbackslash label/\textbackslash ref/\textbackslash cite}) and made the metric switchable. Containment $|A \cap B| / \min(|A|,|B|)$ is forgiving when the rules parser extracts a fragment of the opus narrative.
+
+\medskip
+\begin{tabular}{lC{2.8cm}C{2.8cm}C{2.8cm}}
+\toprule
+\textbf{Stage} & \textbf{Raw Jaccard} & \textbf{Clean Jaccard} & \textbf{Clean Containment} \\
+\midrule
+Baseline P / R / F1 & 0.00 / 0.00 / \textbf{0.000} & --- & 0.35 / 0.50 / \textbf{0.414} \\
+Post-distill P / R / F1 & 0.13 / 0.33 / \textbf{0.182} & --- & 0.43 / 0.92 / \textbf{0.579}$^\dagger$ \\
+Recall @ 0.7 (paper001) & 0 / 12 & 1 / 12 & 5 / 12 \\
+Dark-knowledge items & 12 & --- & 7 (5 already matched) \\
+Distilled rules generated & 22 & --- & 13 \\
+Total cost (USD) & \$0.46 & --- & \$0.32 \\
+Wall time (s) & 269 & --- & 193 \\
+\bottomrule
+\end{tabular}
+
+\medskip
+\noindent
+{\small $^\dagger$ Pre-prune, paper001 solo run. Set-Jaccard collapses every match for asymmetric spans (opus extracts 45--83-token paragraphs; rules extracts 17--37-token fragments). Containment captures 4 true matches that Jaccard misses (e.g.\ R5 ``Unnormalized Laplacian $L=D-W$'' $\leftrightarrow$ opus O7 ``$\backslash$Lun $= D-W$''). Cleaning alone only recovers 1 of those 4. \textbf{Adopted: clean + containment.}}
+
+\section*{Table 2 --- Sequential distillation results (with FP-majority pruning)}
+
+\noindent
+Pipeline per paper: (1) parse with rules + silver distilled rules so far; (2) identify FNs (dark knowledge); (3) LLM-analyze each FN to extract a regex pattern; (4) LLM-aggregate cumulative analyze rows into \texttt{distilled\_rules.py}; (4b) deterministic prune of any rule where FP $>$ TP across all papers seen so far; (5) post-distillation evaluation.
+
+\medskip
+\begin{tabular}{lcccccccc}
+\toprule
+\textbf{Paper} & \textbf{Gold} & \textbf{FN base} & \textbf{Already cov.} & \textbf{New FN} & \textbf{Rules} & \textbf{Cost (\$)} & \textbf{Time (s)} & \textbf{F1 pre $\to$ post} \\
+\midrule
+paper001 & 12 & 6 & 0 & 7 & 8  & 0.297 & 165 & 0.414 $\to$ 0.545 \\
+paper005 & 4  & 3 & \textbf{1} & 2 & 14 & 0.190 & 108 & 0.250 $\to$ 0.750 \\
+\midrule
+\textbf{Total / Avg} & 16 & 9 & 1 & 9 & 14 & \textbf{0.487} & 137 & 0.332 $\to$ 0.648 \\
+\bottomrule
+\end{tabular}
+
+\medskip
+\noindent
+{\small \textbf{Key signal.} 1 of paper005's 3 baseline FNs was caught automatically by paper001's distilled rules --- direct evidence of rule transfer between papers. paper005's post-distillation F1 jumped from 0.250 to 0.750 (3 TP / 4 gold, 1 FP).}
+
+\section*{Table 3 --- FP pruning impact}
+
+\noindent
+Without pruning, the aggregate LLM is incentivized to generate permissive patterns (it only sees FN signal). The deterministic prune step re-runs the distilled rules on all pilot papers, classifies each extraction as TP or FP, attributes FPs to specific compiled patterns by \texttt{rule\_name}, and comments out any rule where \textbf{FP $>$ TP} (gate added to avoid pruning net-helpful rules).
+
+\medskip
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Variant} & \textbf{paper001 F1} & \textbf{paper005 F1} & \textbf{Avg F1} & \textbf{Active rules} \\
+\midrule
+No prune        & 0.550 & 0.500 & 0.525 & $\sim$20 \\
+With FP$>$TP prune & 0.545 & \textbf{0.750} & \textbf{0.648} & 14 (3 pruned) \\
+\bottomrule
+\end{tabular}
+
+\medskip
+\noindent
+\textbf{Recurring pruned rules (same patterns each iteration):}
+\medskip
+
+\begin{tabular}{lcc l}
+\toprule
+\textbf{Rule} & \textbf{FP} & \textbf{TP} & \textbf{Reason} \\
+\midrule
+\texttt{P1\_BOLD\_LABEL}    & 4 & 3 & Catches \texttt{\$\{\textbackslash bf X:\}\$} headings; over-fires on non-defs \\
+\texttt{P3\_ALSO\_CALLED}   & 3 & 1 & ``X is also called Y'' triggers on non-definitional asides \\
+\texttt{P5\_DEFINE\_WITH\_ENV} & 2 & 1 & \texttt{\textbackslash begin\{env\}...\textbackslash define...} too broad \\
+\bottomrule
+\end{tabular}
+
+\medskip
+\noindent
+{\small These rule families are regenerated by the aggregate LLM every iteration and re-pruned. A future improvement is feeding pruned-rule history back into the aggregate prompt so the LLM stops inventing the same FP-prone patterns.}
+
+\section*{Table 4 --- Cost \& token breakdown}
+
+\medskip
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Paper} & \textbf{Analyze calls} & \textbf{Analyze in/out tok.} & \textbf{Analyze \$} & \textbf{Aggregate in/out tok.} & \textbf{Aggregate \$} & \textbf{Total \$} \\
+\midrule
+paper001 & 7 & 37{,}463 / 5{,}005 & 0.187 & 14{,}296 / 4{,}448 & 0.110 & 0.297 \\
+paper005 & 2 & 10{,}957 / \phantom{0}\phantom{0}976 & 0.048 & 16{,}716 / 6{,}169 & 0.143 & 0.190 \\
+\midrule
+\textbf{Total} & 9 & 48{,}420 / 5{,}981 & 0.235 & 31{,}012 / 10{,}617 & 0.253 & \textbf{0.487} \\
+\bottomrule
+\end{tabular}
+
+\medskip
+\noindent
+{\small \textbf{Pricing.} Sonnet 4.6 at \$3.00 / 1M input, \$15.00 / 1M output. Analyze calls scale with FN count; aggregate is a single call per iteration over the cumulative analyze pool.}
+
+\section*{Table 5 --- Sub-linearity}
+
+\noindent
+The point of sequential silver distillation: later papers should need progressively fewer LLM calls because prior distilled rules already cover common patterns.
+
+\medskip
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Paper} & \textbf{Baseline FN} & \textbf{FN caught by prior rules} & \textbf{New FN to distill} & \textbf{LLM analyze calls} \\
+\midrule
+paper001 & 6 & 0 (no prior) & 7$^\ddagger$ & 7 \\
+paper005 & 3 & \textbf{1 (33\%)} & 2 & 2 \\
+\midrule
+\multicolumn{2}{l}{\textit{Reduction ratio}} & & & \textbf{0.29} (2/7) \\
+\bottomrule
+\end{tabular}
+
+\medskip
+\noindent
+{\small $^\ddagger$ \texttt{total\_fns} from dark-knowledge step differs slightly from baseline FN count due to greedy max-similarity rematching after rules. \textbf{Diminishing returns confirmed} per the script's sub-linearity check.}
+
+\section*{Open items before scaling}
+
+\noindent
+\begin{tabular}{p{4.2cm}p{12.0cm}}
+\toprule
+\textbf{Item} & \textbf{Status / next step} \\
+\midrule
+Aggregate sees pruned history & Not implemented. Would stop the LLM from reinventing \texttt{P1\_BOLD\_LABEL}-style FP patterns each iteration. \\
+Resume across invocations & Not implemented. Currently must keep all pilot papers in one \texttt{--pilot-papers} list or aggregate overwrites \texttt{distilled\_rules.py}. \\
+paper450 + larger pilot & Tex source available at \texttt{/Users/yaronot/Datasets/Authomathics\_data/alignment/papers/paper450/}. Add to pilot list when ready. \\
+Other structure types & Run silver distillation on \texttt{theorem}, \texttt{proposition}, \texttt{lemma}, etc. Each paper has those nodes in v4 Opus too. \\
+\bottomrule
+\end{tabular}
+
+\end{document}

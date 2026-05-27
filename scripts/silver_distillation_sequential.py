@@ -36,15 +36,51 @@ LLM_DIR = REPO / "src" / "LLMVersion"
 sys.path.insert(0, str(LLM_DIR))
 sys.path.insert(0, str(REPO / "src"))
 
+import distillation_analysis as _da
 from distillation_analysis import (
     _load_gold_csv,
     _load_extractions,
     analyze_patterns,
     aggregate_rules,
     identify_dark_knowledge,
-    jaccard_similarity,
+    prune_rules,
     validate_rules,
 )
+from latex_clean import clean_latex_to_text
+
+
+# Match metric — set by --match-metric flag. "jaccard" preserves prior behavior;
+# "containment" uses |A ∩ B| / min(|A|,|B|) which is forgiving on span asymmetry
+# (rules fragments inside opus paragraphs match cleanly).
+_MATCH_METRIC = "jaccard"
+
+
+def jaccard_similarity(text1, text2):
+    """Match score on token sets after `clean_latex_to_text` normalization.
+
+    Overrides `distillation_analysis.jaccard_similarity` for the silver
+    distillation pipeline so macros (\\Lun, \\hdots) collapse to readable
+    tokens and brace/format-command noise is removed before matching.
+
+    Despite the legacy name, the metric is controlled by `_MATCH_METRIC`:
+      - "jaccard"     -> |A ∩ B| / |A ∪ B|
+      - "containment" -> |A ∩ B| / min(|A|, |B|)
+    """
+    c1 = clean_latex_to_text(text1 or "").lower()
+    c2 = clean_latex_to_text(text2 or "").lower()
+    t1 = _da.tokenize_latex(c1)
+    t2 = _da.tokenize_latex(c2)
+    if not t1 or not t2:
+        return 0.0
+    inter = len(t1 & t2)
+    if _MATCH_METRIC == "containment":
+        return inter / min(len(t1), len(t2))
+    return inter / len(t1 | t2)
+
+
+# Monkey-patch so identify_dark_knowledge / validate_rules / etc. inside
+# distillation_analysis pick up the cleaned matcher transparently.
+_da.jaccard_similarity = jaccard_similarity
 
 # ---------------------------------------------------------------------------
 # Pricing (USD per million tokens) — update as needed
@@ -84,22 +120,29 @@ FNAME_MAP = {
 
 
 def convert_t2_to_gold_csv(t2_json_path: Path, structure_type: str,
-                           out_dir: Path) -> tuple[Path, int]:
+                           out_dir: Path,
+                           origin_filter: str | None = None) -> tuple[Path, int]:
     """Convert a single T2 JSON file into gold-CSV rows for `structure_type`.
 
     Appends to the CSV if it already exists.
-    Returns (csv_path, n_items_added).
+    If `origin_filter` is set (e.g. "paper"), only nodes whose `origin` field
+    matches are included. Returns (csv_path, n_items_added).
     """
     d = json.load(open(t2_json_path, encoding='utf-8'))
-    pid_num = d.get("metadata", {}).get("paper_num")
-    if pid_num is None:
-        pid_num = t2_json_path.stem.replace("paper", "").lstrip("0") or "1"
-    pid = f"paper{int(pid_num)}"
+    # Use the filename stem as paper_id (e.g. "paper001") to stay consistent
+    # with how pilot_papers are specified and how evaluate_single_paper looks up gold.
+    pid = t2_json_path.stem
 
     rows = []
     for n in d.get("nodes", []):
         if n.get("type") != structure_type:
             continue
+        # origin filter: match `origin_filter`, or accept nodes with no origin
+        # tag (older v4 parses don't emit the field on every node).
+        if origin_filter is not None:
+            o = n.get("origin")
+            if o is not None and o != origin_filter:
+                continue
         raw = n.get("statement_latex") or n.get("statement") or n.get("raw_latex") or ""
         clean = n.get("statement_clean") or n.get("clean_text") or ""
         if raw.strip():
@@ -129,13 +172,17 @@ def convert_t2_to_gold_csv(t2_json_path: Path, structure_type: str,
 
 def build_detailed_matches(paper_id: str, t2_json_path: Path,
                            tex_dir: Path, structure_type: str,
-                           eval_dir: Path) -> Path:
+                           eval_dir: Path,
+                           origin_filter: str | None = None) -> Path:
     """Parse one paper with rules, combine with opus, write detailed_matches.csv.
 
     Uses provider names 'manual' (for rules) and 'anthropic' (for opus)
     so that identify_dark_knowledge works unchanged.
     """
     from math_paper_parser import PaperParser
+
+    # Install silver distilled rules so the parser picks them up
+    _, backup = _install_silver_rules(eval_dir, structure_type)
 
     rows = []
 
@@ -157,25 +204,31 @@ def build_detailed_matches(paper_id: str, t2_json_path: Path,
                 raw = obj.get('raw_latex', '') or obj.get('statement', '')
                 if raw.strip():
                     rows.append({"paper_id": paper_id, "provider": "manual",
-                                 "raw_latex": raw})
+                                 "definition_text": raw})
         except Exception as e:
             print(f"  [warn] Rules parse failed for {paper_id}: {e}")
+
+    _uninstall_silver_rules(structure_type, backup)
 
     # --- Opus side ---
     d = json.load(open(t2_json_path, encoding='utf-8'))
     for n in d.get("nodes", []):
         if n.get("type") != structure_type:
             continue
+        if origin_filter is not None:
+            o = n.get("origin")
+            if o is not None and o != origin_filter:
+                continue
         raw = n.get("statement_latex") or n.get("statement") or n.get("raw_latex") or ""
         if raw.strip():
             rows.append({"paper_id": paper_id, "provider": "anthropic",
-                         "raw_latex": raw})
+                         "definition_text": raw})
 
     # Write
     eval_dir.mkdir(parents=True, exist_ok=True)
     out = eval_dir / "detailed_matches.csv"
     with open(out, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=["paper_id", "provider", "raw_latex"])
+        w = csv.DictWriter(f, fieldnames=["paper_id", "provider", "definition_text"])
         w.writeheader()
         for r in rows:
             w.writerow(r)
@@ -205,10 +258,59 @@ def _find_main_tex(src_dir: Path) -> Path | None:
 # Compute P/R/F1 for a single paper against its silver gold
 # ---------------------------------------------------------------------------
 
+def _install_silver_rules(eval_dir: Path, structure_type: str) -> tuple[Path, Path | None]:
+    """Symlink silver distilled_rules.py into where PaperParser expects it.
+
+    Returns (target_dir, backup_path_or_None) so caller can restore.
+    """
+    silver_rules = eval_dir / "distilled_rules.py"
+    parser_dir = Path(LLM_DIR)
+    target_dir = parser_dir / f"{structure_type}_eval"
+    target_file = target_dir / "distilled_rules.py"
+
+    backup = None
+    if target_file.exists() or target_file.is_symlink():
+        backup = target_file.with_suffix('.py.silver_bak')
+        target_file.rename(backup)
+
+    if silver_rules.exists():
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target_file.symlink_to(silver_rules.resolve())
+
+    # Invalidate any cached module so the parser re-imports the new rules
+    for key in list(sys.modules.keys()):
+        if 'distilled_rules' in key:
+            del sys.modules[key]
+
+    return target_dir, backup
+
+
+def _uninstall_silver_rules(structure_type: str, backup: Path | None):
+    """Restore original distilled_rules.py after silver evaluation."""
+    parser_dir = Path(LLM_DIR)
+    target_file = parser_dir / f"{structure_type}_eval" / "distilled_rules.py"
+
+    if target_file.is_symlink():
+        target_file.unlink()
+
+    if backup and backup.exists():
+        backup.rename(target_file)
+
+
 def evaluate_single_paper(paper_id: str, tex_dir: Path, structure_type: str,
-                          gold_csv: Path, threshold: float = 0.7) -> dict:
-    """Parse paper with rules and compute P/R/F1 against silver gold CSV."""
+                          gold_csv: Path, threshold: float = 0.7,
+                          eval_dir: Path = None) -> dict:
+    """Parse paper with rules and compute P/R/F1 against silver gold CSV.
+
+    If eval_dir is provided, temporarily installs its distilled_rules.py
+    so the parser picks them up.
+    """
     from math_paper_parser import PaperParser
+
+    # Install silver rules if available
+    backup = None
+    if eval_dir is not None:
+        _, backup = _install_silver_rules(eval_dir, structure_type)
 
     # Load gold for this paper
     gold_data = _load_gold_csv(str(gold_csv))
@@ -236,6 +338,10 @@ def evaluate_single_paper(paper_id: str, tex_dir: Path, structure_type: str,
                     extracted_texts.append(raw)
         except Exception as e:
             print(f"  [warn] Parse failed for {paper_id}: {e}")
+
+    # Uninstall silver rules
+    if eval_dir is not None:
+        _uninstall_silver_rules(structure_type, backup)
 
     # Greedy matching (same logic as distillation_analysis.validate_rules)
     matched_gold = set()
@@ -302,11 +408,18 @@ def run_sequential(args):
     threshold = args.threshold
 
     pilot_papers = [p.strip() for p in args.pilot_papers.split(',')]
+    origin_filter = args.origin_filter or None
+    # Set the matching metric used by jaccard_similarity (and the monkey-patched
+    # copy inside distillation_analysis) for this whole run.
+    global _MATCH_METRIC
+    _MATCH_METRIC = args.match_metric
     print(f"Silver Sequential Distillation")
     print(f"  structure_type: {structure_type}")
     print(f"  model: {model}")
     print(f"  pilot papers: {pilot_papers}")
     print(f"  eval_dir: {eval_dir}")
+    print(f"  origin_filter: {origin_filter}")
+    print(f"  match_metric: {_MATCH_METRIC} (clean_latex_to_text + tokens)")
     print()
 
     # Validate prerequisites
@@ -338,7 +451,8 @@ def run_sequential(args):
     total_gold_items = 0
     for pid in pilot_papers:
         t2_path = t2_dir / f"{pid}.json"
-        _, n_items = convert_t2_to_gold_csv(t2_path, structure_type, gold_dir)
+        _, n_items = convert_t2_to_gold_csv(t2_path, structure_type, gold_dir,
+                                            origin_filter=origin_filter)
         total_gold_items += n_items
         print(f"  {pid}: {n_items} {structure_type}(s)")
     print(f"  Total: {total_gold_items} gold items across {len(pilot_papers)} papers")
@@ -375,7 +489,8 @@ def run_sequential(args):
         #     (with current distilled rules already loaded by the parser)
         print(f"  [1] Parsing with rules + current distilled rules...")
         dm_path = build_detailed_matches(
-            pid, t2_path, tex_dir, structure_type, eval_dir)
+            pid, t2_path, tex_dir, structure_type, eval_dir,
+            origin_filter=origin_filter)
 
         # 3b: Identify dark knowledge for this paper
         print(f"  [2] Identifying dark knowledge...")
@@ -457,10 +572,31 @@ def run_sequential(args):
         else:
             print(f"  [3-4] Skipping analyze/aggregate (no dark knowledge)")
 
+        # 3e.5: Prune FP-causing rules (only if FP > TP for that rule).
+        # Uses ALL papers seen so far so a rule that's a net win on later
+        # papers isn't pruned for a single earlier FP. The tex search dir
+        # is needed because the silver pilot lives outside FULL_PAPERS_DIR.
+        papers_so_far = pilot_papers[:paper_idx]
+        rules_file = eval_dir / "distilled_rules.py"
+        if rules_file.exists():
+            tex_search_dirs = [str(tex_dir / p / "source") for p in papers_so_far]
+            print(f"  [4b] Pruning FP-majority rules over {len(papers_so_far)} paper(s)...")
+            n_pruned = prune_rules(
+                paper_ids=papers_so_far,
+                structure_type=structure_type,
+                gold_csv=str(gold_csv_path),
+                eval_dir=str(eval_dir),
+                threshold=threshold,
+                require_fp_majority=True,
+                tex_search_dirs=tex_search_dirs,
+            )
+            print(f"      Pruned {n_pruned} rule(s) where FP > TP")
+
         # 3f: Post-distillation evaluation
         print(f"  [5] Post-distillation evaluation...")
         post_metrics = evaluate_single_paper(
-            pid, tex_dir, structure_type, gold_csv_path, threshold)
+            pid, tex_dir, structure_type, gold_csv_path, threshold,
+            eval_dir=eval_dir)
         print(f"      P={post_metrics['precision']:.3f} "
               f"R={post_metrics['recall']:.3f} "
               f"F1={post_metrics['f1']:.3f} "
@@ -541,7 +677,9 @@ def run_sequential(args):
         first_half = sum(fns_per_paper[:len(fns_per_paper)//2])
         second_half = sum(fns_per_paper[len(fns_per_paper)//2:])
         print(f"\n  Sub-linearity: first-half FNs={first_half}, second-half FNs={second_half}")
-        if second_half < first_half:
+        if first_half == 0:
+            print(f"  (no FNs in first half — sub-linearity not measurable)")
+        elif second_half < first_half:
             print(f"  ✓ Diminishing returns confirmed (ratio: {second_half/first_half:.2f})")
         else:
             print(f"  ✗ No diminishing returns observed (ratio: {second_half/first_half:.2f})")
@@ -568,6 +706,15 @@ def main():
                    help="Anthropic model for LLM calls")
     p.add_argument("--threshold", type=float, default=0.7,
                    help="Jaccard similarity threshold (default: 0.7)")
+    p.add_argument("--origin-filter", default=None,
+                   help="Only include nodes whose `origin` matches (e.g. 'paper'). "
+                        "Use to exclude externally-cited definitions from v4 opus JSONs.")
+    p.add_argument("--match-metric", default="jaccard",
+                   choices=["jaccard", "containment"],
+                   help="Token-set match metric. 'jaccard' = |∩|/|∪| (default, "
+                        "strict). 'containment' = |∩|/min(|A|,|B|) (forgiving on "
+                        "span asymmetry — recommended when rules extract fragments "
+                        "of opus's bundled narrative definitions).")
     args = p.parse_args()
     run_sequential(args)
 
