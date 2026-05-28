@@ -42,75 +42,10 @@ NODE_COLORS = {
     "remark":      {"header": "#117A65", "body": "#A2D9CE"},   # teal
     "problem":     {"header": "#7D3C98", "body": "#E8DAEF"},   # darker purple
     "conjecture":  {"header": "#B9770E", "body": "#FCF3CF"},   # gold
-    # v2 schema additions
-    "algorithm_step": {"header": "#5DADE2", "body": "#EBF5FB"},  # light blue (sub-block of algorithm)
-    "open_problem":   {"header": "#B7950B", "body": "#FCF3CF"},  # olive/tan (Level-1, distinct from conjecture)
-    "assumption":     {"header": "#5D6D7E", "body": "#EAEDED"},  # muted blue-grey (Level-1)
+    "algorithm_step": {"header": "#5DADE2", "body": "#EBF5FB"},
+    "open_problem":   {"header": "#B7950B", "body": "#FCF3CF"},
+    "assumption":     {"header": "#5D6D7E", "body": "#EAEDED"},
 }
-DEFAULT_COLOR = {"header": "#566573", "body": "#EAECEE"}
-PROOF_COLOR = "#E8DAEF"
-
-
-def _normalize_schema(data, source_path=None):
-    """Normalize a loaded paper graph to the canonical schema (schema A) used
-    by the rest of this renderer, falling back to alternative field names
-    that appear in JSONs produced by the cluster T3 pipeline (schema B,
-    src/LLMVersion/parse_batch.py output: 'label', 'clean_text', 'raw_latex',
-    '[MATH]' placeholders).
-
-    Field-by-field fallback (schema-A first, then schema-B). Modifies `data`
-    in place and returns it. Idempotent on schema-A inputs.
-
-      node['name']             ← name | label | id | "<type-prefix><index>"
-      node['statement']        ← raw_latex (when statement contains '[MATH]')
-                                 | statement
-      node['statement_clean']  ← statement_clean | clean_text-without-[MATH]
-                                 | derived from cleaned statement
-      metadata['title']        ← title | paper_id | source filename stem
-    """
-    import re as _re_local
-    nodes = data.get("nodes", []) or []
-    for n in nodes:
-        if not isinstance(n, dict):
-            continue
-        # Restore real LaTeX into 'statement' when '[MATH]' placeholders are
-        # present and 'raw_latex' has the unredacted source.
-        stmt = n.get("statement") or ""
-        raw  = n.get("raw_latex") or ""
-        if raw and "[MATH]" in stmt and "[MATH]" not in raw:
-            cleaned = _re_local.sub(r'^\s*\\label\{[^}]*\}\s*', '', raw)
-            cleaned = _re_local.sub(r'\s+', ' ', cleaned).strip()
-            if cleaned:
-                n["statement"] = cleaned
-                stmt = cleaned
-        # statement_clean: prefer existing; else clean_text without [MATH];
-        # else fall back to (now-fixed) statement.
-        if not n.get("statement_clean"):
-            ct = n.get("clean_text") or ""
-            if ct and "[MATH]" not in ct:
-                n["statement_clean"] = ct
-            elif stmt and "[MATH]" not in stmt:
-                n["statement_clean"] = stmt
-            # else: leave absent; downstream handles missing field gracefully.
-        # Name: prefer existing; else label or id.
-        if not n.get("name"):
-            n["name"] = n.get("label") or n.get("id") or _gen_name_from_node(n)
-        # assumptions / conclusions: schema B sometimes ships these arrays
-        # populated with [MATH]-redacted text. We can't reliably reconstruct
-        # them from raw_latex without alignment, so drop entries that contain
-        # placeholders (the renderer will fall back to statement_clean).
-        for fld in ("assumptions", "conclusions"):
-            arr = n.get(fld)
-            if isinstance(arr, list) and arr:
-                n[fld] = [s for s in arr
-                          if isinstance(s, str) and "[MATH]" not in s]
-    md = data.get("metadata")
-    if isinstance(md, dict):
-        if not md.get("title"):
-            md["title"] = (md.get("paper_id") or
-                          (source_path.stem if source_path else "(untitled)"))
-        data["metadata"] = md
-    return data
 
 
 def _gen_name_from_node(n):
@@ -126,13 +61,49 @@ def _gen_name_from_node(n):
     return f"{prefix}{idx}"
 
 
-def _as_list(v):
-    """Coerce a list-or-string node field to a list of strings.
+def _normalize_schema(data, source_path=None):
+    """Normalize a loaded paper graph to the canonical schema (schema A).
 
-    Some agents emit `input`/`output`/`assumptions` as a single string
-    instead of a list. Iterating a string char-by-char makes the
-    visualizer render one row per character — defend against this here.
+    Fallback to schema B (parse_batch.py: 'label', 'clean_text', 'raw_latex',
+    '[MATH]' placeholders). Modifies data in place and returns it.
     """
+    import re as _re_local
+    nodes = data.get("nodes", []) or []
+    for n in nodes:
+        if not isinstance(n, dict):
+            continue
+        stmt = n.get("statement") or ""
+        raw  = n.get("raw_latex") or ""
+        if raw and "[MATH]" in stmt and "[MATH]" not in raw:
+            cleaned = _re_local.sub(r'^\s*\\label\{[^}]*\}\s*', '', raw)
+            cleaned = _re_local.sub(r'\s+', ' ', cleaned).strip()
+            if cleaned:
+                n["statement"] = cleaned
+                stmt = cleaned
+        if not n.get("statement_clean"):
+            ct = n.get("clean_text") or ""
+            if ct and "[MATH]" not in ct:
+                n["statement_clean"] = ct
+            elif stmt and "[MATH]" not in stmt:
+                n["statement_clean"] = stmt
+        if not n.get("name"):
+            n["name"] = n.get("label") or n.get("id") or _gen_name_from_node(n)
+        for fld in ("assumptions", "conclusions"):
+            arr = n.get(fld)
+            if isinstance(arr, list) and arr:
+                n[fld] = [s for s in arr
+                          if isinstance(s, str) and "[MATH]" not in s]
+    md = data.get("metadata")
+    if isinstance(md, dict):
+        if not md.get("title"):
+            md["title"] = (md.get("paper_id") or
+                          (source_path.stem if source_path else "(untitled)"))
+        data["metadata"] = md
+    return data
+
+
+def _as_list(v):
+    """Coerce a list-or-string node field to a list of strings."""
     if v is None:
         return []
     if isinstance(v, str):
@@ -140,6 +111,8 @@ def _as_list(v):
     if isinstance(v, list):
         return v
     return [str(v)]
+DEFAULT_COLOR = {"header": "#566573", "body": "#EAECEE"}
+PROOF_COLOR = "#E8DAEF"
 
 # ── Layout constants (shared between draw_dag and draw_foundation_ghosts) ──
 MIN_BOX_W = 3.0
@@ -149,13 +122,7 @@ LEVEL_GAP_Y = 5.0
 HEADER_H = 0.45
 LINE_H = 0.28
 PADDING = 0.10
-# Display-width "chars" per data unit at fontsize 12 (body text). Empirically
-# measured: typical English at fontsize 12 renders at ~8.5–9.5 actual chars per
-# data unit; _display_width (which estimates rendered char count) tracks this
-# closely, so CHARS_PER_UNIT must equal the same value for box-width and
-# wrap-target computations to stay self-consistent. Old value 12 over-counted
-# capacity → boxes were ~30-40% too narrow and text extruded on the right.
-CHARS_PER_UNIT = 8.5
+CHARS_PER_UNIT = 12
 
 
 # ── Text helpers ────────────────────────────────────────────────────────────
@@ -250,9 +217,6 @@ _KNOWN_MATHTEXT_COMMANDS = frozenset({
     'overbrace', 'underbrace', 'overrightarrow', 'overleftarrow',
     # Brackets/sizing (handled separately by regex, but include for safety):
     'left', 'right', 'big', 'Big', 'bigg', 'Bigg',
-    'langle', 'rangle', 'lvert', 'rvert', 'lceil', 'rceil',
-    'lfloor', 'rfloor', 'lbrace', 'rbrace', 'lbrack', 'rbrack',
-    'llbracket', 'rrbracket',
     # Misc:
     'binom', 'choose', 'atop', 'over', 'pmod', 'mod',
     'ell', 'wp', 'Re', 'Im', 'imath', 'jmath',
@@ -553,18 +517,11 @@ def _display_width(text):
 
 
 def _has_tall_math(text):
-    """Check if text contains math that renders taller than normal (fractions,
-    sums, integrals, nested fractions, sup/inf/max/min/argmin/argmax with
-    subscripted limits, lim with subscripted index). Plain superscripts/
-    subscripts (e.g. ``x^{2}`` or ``a_{i}``) are NOT considered tall.
-    """
+    """Check if text contains math that renders taller than normal (fractions, sums, etc.)."""
     if not text or "$" not in text:
         return False
     return bool(_re.search(
-        r'\\frac|\\sum|\\prod|\\int|\\iint|\\oint|'
-        r'\\bigcup|\\bigcap|\\bigsqcup|'
-        r'\\sup_|\\inf_|\\max_|\\min_|\\arg\s*(?:\\min|\\max)|'
-        r'\\lim\s*_|\\liminf|\\limsup|'
+        r'\\frac|\\sum|\\prod|\\int|\\iint|\\log_|\\lim_|\^{|_{.*{|'
         r'\\underset|\\overset|\\stackrel|\\binom|\\atop', text))
 
 
@@ -684,10 +641,7 @@ def _wrap(text, width=38):
     if "$" not in text:
         return textwrap.wrap(text, width=width)
 
-    # Split text into atomic tokens: $...$ blocks and individual words.
-    # Trailing punctuation directly after a $...$ block (e.g., ``$X$.`` or
-    # ``$X$);``) is glued to the math token so it doesn't get bin-packed
-    # as a standalone token onto a new line ('. starts line').
+    # Split text into atomic tokens: $...$ blocks and individual words
     tokens = []
     i = 0
     while i < len(text):
@@ -697,12 +651,8 @@ def _wrap(text, width=38):
             if j == -1:
                 tokens.append(text[i:])
                 break
-            end = j + 1
-            # Absorb a short run of trailing punctuation directly after $...$.
-            while end < len(text) and text[end] in ".,;:)!?":
-                end += 1
-            tokens.append(text[i:end])
-            i = end
+            tokens.append(text[i:j+1])  # include both $
+            i = j + 1
         else:
             # Find next $ or end
             j = text.find("$", i)
@@ -750,20 +700,13 @@ def _wrap(text, width=38):
 def _shorten(text, maxlen=80):
     """Shorten text, never cutting inside a $...$ math expression.
 
-    *maxlen* is interpreted as display-width budget (chars-equivalent of
-    rendered width via _display_width), not raw character count, so that
-    callers sizing UI boxes by visual extent get consistent decisions:
-    a math token like ``$\\cF_s(B)$`` has len=10 but renders as ~5 chars,
-    and we must keep it whenever the box has 5+ chars of room to render
-    it, regardless of len.
-
     If cutting would land inside an equation, drop the equation entirely
     rather than showing a partial formula.
     """
     if not text:
         return ""
     text = _sanitize_math(text)
-    if _display_width(text) <= maxlen:
+    if len(text) <= maxlen:
         return text
     cut = maxlen - 3
     # Count $ signs before cut point; if odd, we're inside math
@@ -777,77 +720,6 @@ def _shorten(text, maxlen=80):
         else:
             cut = maxlen - 3  # fallback
     return text[:cut].rstrip() + "..."
-
-
-def _wrap_header(nid, name, max_dw_per_line):
-    """Build a 1- or 2-line header ``[<nid>: <name pieces>]`` whose lines each
-    fit in ``max_dw_per_line`` units of display width.
-
-    For two-line layouts the split point is chosen to *balance* the two
-    lines (minimise the wider one) so a 'TP2.5: Optimal recovery of
-    compressible signals (Theorem 5.1)' doesn't render as a ~40-char line
-    1 plus a 13-char line 2 of just '(Theorem 5.1)'. When the body content
-    forces the box wider than the balanced wrap needs, the centered
-    header will have whitespace each side -- that is intentional;
-    keeping the lines balanced takes priority over filling the bar.
-
-    Names are sanitised through ``_prepare_for_display`` so author-defined
-    macros (e.g. ``\\cF``) don't crash matplotlib's mathtext parser.
-    """
-    if not name:
-        return [str(nid)]
-    name = _prepare_for_display(name)
-    one_line = f"{nid}: {name}"
-    if _display_width(one_line) <= max_dw_per_line:
-        return [one_line]
-
-    prefix = f"{nid}: "
-    prefix_dw = _display_width(prefix)
-
-    # Tokenise the name preserving math blocks as atomic units (mirrors _wrap).
-    tokens = []
-    i = 0
-    while i < len(name):
-        if name[i] == "$":
-            j = name.find("$", i + 1)
-            j = j + 1 if j != -1 else len(name)
-            tokens.append(name[i:j])
-            i = j
-        else:
-            j = name.find("$", i)
-            chunk = name[i:j] if j != -1 else name[i:]
-            for w in chunk.split(" "):
-                if w:
-                    tokens.append(w)
-            i = j if j != -1 else len(name)
-    if not tokens:
-        return [_shorten(one_line, max_dw_per_line)]
-
-    # Try every legal split, pick the one that minimises max(line1_dw, line2_dw)
-    best = None  # (max_dw, line1_text, line2_text)
-    for k in range(1, len(tokens)):
-        l1 = " ".join(tokens[:k])
-        l2 = " ".join(tokens[k:])
-        l1_dw = _display_width(prefix + l1)
-        l2_dw = _display_width(l2)
-        if l1_dw > max_dw_per_line or l2_dw > max_dw_per_line:
-            continue
-        score = max(l1_dw, l2_dw)
-        if best is None or score < best[0]:
-            best = (score, l1, l2)
-    if best is None:
-        # No legal balanced split (some single token is wider than budget).
-        # Fall back to greedy first-fit + truncate so we still produce 2 lines.
-        budget1 = max(6, max_dw_per_line - prefix_dw)
-        line1_words = _wrap(name, budget1)
-        if not line1_words:
-            return [_shorten(one_line, max_dw_per_line)]
-        line1_text = line1_words[0]
-        rest = name[len(line1_text):].lstrip()
-        line2_text = rest if _display_width(rest) <= max_dw_per_line \
-            else _shorten(rest, max_dw_per_line)
-        return [prefix + line1_text, line2_text]
-    return [prefix + best[1], best[2]]
 
 
 # ── DAG computation ─────────────────────────────────────────────────────────
@@ -895,6 +767,104 @@ def _section_sort_key(node):
     return (parts, node["id"])
 
 
+def _split_proof_into_steps(body):
+    """Split a proof body into (label, text) pseudo-steps via Part markers
+    or a math-aware paragraph/display-eq split."""
+    if not body:
+        return []
+    part_re = _re.compile(r'\bPart\s*\(?(\d+)\)?', _re.IGNORECASE)
+    def_verbs = _re.compile(
+        r'\s+(?:is|are|can|follows|holds|will|gives|shows|implies)\b',
+        _re.IGNORECASE)
+    part_hits = []
+    for m in part_re.finditer(body):
+        tail = body[m.end():m.end() + 12]
+        if tail.startswith(':') or tail.startswith('.') or def_verbs.match(tail):
+            part_hits.append(m)
+    pieces = []
+    if len(part_hits) >= 2:
+        for i, m in enumerate(part_hits):
+            end = part_hits[i + 1].start() if i + 1 < len(part_hits) else len(body)
+            chunk = body[m.end():end].strip(" :.\t\n\\")
+            chunk = _re.sub(r'\s+', ' ', chunk).strip(' &\t\n')
+            if chunk:
+                pieces.append((f"Part ({m.group(1)})", chunk))
+        return pieces
+
+    math_open  = _re.compile(r'\\(?:ba\b|begin\{(?:align\*?|eqnarray\*?|gather\*?|equation\*?|array|matrix|aligned)\})')
+    math_close = _re.compile(r'\\(?:ea\b|end\{(?:align\*?|eqnarray\*?|gather\*?|equation\*?|array|matrix|aligned)\})')
+    split_pat  = _re.compile(r'\\\\|\\par\b|\n\s*\n')
+
+    top_breaks = []
+    depth = 0
+    i = 0
+    while i < len(body):
+        mo = math_open.match(body, i)
+        if mo:
+            depth += 1
+            i = mo.end()
+            continue
+        mc = math_close.match(body, i)
+        if mc:
+            depth = max(0, depth - 1)
+            i = mc.end()
+            continue
+        if depth == 0:
+            ms = split_pat.match(body, i)
+            if ms:
+                top_breaks.append((i, ms.end()))
+                i = ms.end()
+                continue
+        i += 1
+
+    math_ends = []
+    depth = 0
+    i = 0
+    while i < len(body):
+        mo = math_open.match(body, i)
+        if mo:
+            depth += 1
+            i = mo.end()
+            continue
+        mc = math_close.match(body, i)
+        if mc:
+            depth = max(0, depth - 1)
+            if depth == 0 and mc.end() < len(body):
+                math_ends.append(mc.end())
+            i = mc.end()
+            continue
+        i += 1
+
+    cuts = []
+    for (s, e) in top_breaks:
+        cuts.append((s, e))
+    for s in math_ends:
+        if any(abs(s - cs) <= 3 or (cs <= s <= ce) for (cs, ce) in cuts):
+            continue
+        cuts.append((s, s))
+    cuts.sort()
+
+    raw_pieces = []
+    last = 0
+    for (cs, ce) in cuts:
+        raw_pieces.append(body[last:cs])
+        last = ce
+    raw_pieces.append(body[last:])
+
+    cleaned = []
+    for p in raw_pieces:
+        p = _re.sub(r'\s+', ' ', p).strip(' &\t\n')
+        if p and len(p) >= 8:
+            cleaned.append(p)
+    if len(cleaned) >= 2 and not math_open.search(cleaned[-1]) \
+            and len(cleaned[-1]) < 160:
+        cleaned[-2] = cleaned[-2] + ' ' + cleaned[-1]
+        cleaned.pop()
+    for p in cleaned:
+        pieces.append(("", p))
+    return pieces
+
+
 # ── Merge proofs into parent theorems ───────────────────────────────────────
 def merge_proofs(nodes, edges):
     """Collapse proof nodes into their parent theorem.
@@ -930,65 +900,50 @@ def merge_proofs(nodes, edges):
     for n in nodes:
         if n.get("type") != "proof":
             node_by_id[n["id"]]["proof_info"] = []
-    # Reset step_info on proof / algorithm parents
+            node_by_id[n["id"]]["proof_step_count"] = 0
+
+    # Count proof_step nodes per theorem (via parent_proof → proof_map).
     for n in nodes:
-        if n.get("type") in ("proof", "algorithm"):
-            node_by_id[n["id"]]["step_info"] = []
-
-    # ── v2: Attach proof_step / algorithm_step children to their parent ──
-    # Steps reference parents via "parent_id" (v2) or "parent_proof" (legacy).
-    def _step_parent(step_node):
-        return (step_node.get("parent_id")
-                or step_node.get("parent_proof")
-                or step_node.get("parent"))
-
-    def _summarize_step(s):
-        return {
-            "id": s.get("id", ""),
-            "name": s.get("name", ""),
-            "subclass": s.get("subclass", ""),
-            "statement_clean": s.get("statement_clean", ""),
-            "statement": s.get("statement", ""),
-            "step_order": s.get("step_order", 0),
-        }
-
-    for n in nodes:
-        ntype = n.get("type")
-        if ntype not in ("proof_step", "algorithm_step"):
+        if n.get("type") != "proof_step":
             continue
-        parent_id = _step_parent(n)
-        if not parent_id or parent_id not in node_by_id:
-            continue
-        parent = node_by_id[parent_id]
-        ptype = parent.get("type")
-        # proof_step → proof; algorithm_step → algorithm
-        if (ntype == "proof_step" and ptype == "proof") or \
-           (ntype == "algorithm_step" and ptype == "algorithm"):
-            parent.setdefault("step_info", [])
-            parent["step_info"].append(_summarize_step(n))
+        parent = (n.get("parent_proof") or n.get("parent_id")
+                  or n.get("parent") or "")
+        thm_id = proof_map.get(parent, parent)
+        if thm_id in node_by_id and node_by_id[thm_id].get("type") != "proof":
+            node_by_id[thm_id]["proof_step_count"] = (
+                node_by_id[thm_id].get("proof_step_count", 0) + 1)
 
-    # Order step_info lists by step_order for stable rendering
-    for n in nodes:
-        if n.get("type") in ("proof", "algorithm") and n.get("step_info"):
-            n["step_info"].sort(key=lambda s: (s.get("step_order") or 0, s.get("id", "")))
+    # Stash proof bodies so we can estimate synthesized step counts for
+    # rules-mode JSONs that lack proof_step children.
+    _proof_bodies_for_synth = defaultdict(list)
 
-    # When a proof gets merged into its parent theorem, its step_info should
-    # bubble up to the theorem so the click-detail panel can render it.
     display_nodes = []
     for n in nodes:
         if n["id"] in proof_map:
             parent_id = proof_map[n["id"]]
             parent = node_by_id[parent_id]
             parent.setdefault("proof_info", [])
-            content = n.get("proof_strategy") or n.get("statement_clean") or n.get("statement")
-            if content:
-                parent["proof_info"].append(content)
-            # Bubble proof's step_info up to the theorem
-            if n.get("step_info"):
-                parent.setdefault("step_info", [])
-                parent["step_info"].extend(n["step_info"])
+            body = (n.get("proof_strategy") or n.get("clean_text")
+                    or n.get("statement") or "").strip()
+            if body:
+                parent["proof_info"].append(body)
+            synth_src = (n.get("raw_latex") or n.get("clean_text")
+                         or n.get("statement") or "").strip()
+            if synth_src:
+                _proof_bodies_for_synth[parent_id].append(synth_src)
             continue
         display_nodes.append(n)
+
+    # For rules-mode (no proof_step children), estimate steps by splitting
+    # each proof body. Tier2's proof_step_count is already set, so skip.
+    for thm_id, bodies in _proof_bodies_for_synth.items():
+        if node_by_id[thm_id].get("proof_step_count", 0) > 0:
+            continue
+        total = 0
+        for body in bodies:
+            total += len(_split_proof_into_steps(body))
+        if total > 0:
+            node_by_id[thm_id]["proof_step_count"] = total
 
     # Redirect edges: replace proof_id with its theorem_id
     display_edges = []
@@ -1013,20 +968,35 @@ def merge_proofs(nodes, edges):
 def _resolve_foundation_path(foundation_path=None):
     """Find the best available foundation index path.
 
-    Prefers ``clean_foundation_with_books.json`` over plain
-    ``clean_foundation.json`` so that book-derived entries (Gowers, Higham,
-    MAT520) are picked up automatically.
+    Port #6 (51K-term with_books index): we look for
+    ``clean_foundation_with_books.json`` ahead of ``clean_foundation.json``,
+    matching HEAD's preference. Upstream ``link_to_foundation.link_paper``
+    has an unescaped-regex bug on backslashed LaTeX terms in the larger
+    index, so we wrap the call in compute_foundation_links with try/except
+    and fall back to the built-in WELL_KNOWN on failure.
     """
     if foundation_path is not None:
         return foundation_path
-    # Auto-detect from common locations
+    # Auto-detect from common locations — with_books preferred (Port #6).
     candidates = [
         Path("/mnt/g/My Drive/Research/Automath/naturalproofs/clean_foundation_with_books.json"),
         Path("/mnt/g/My Drive/Research/Automath/naturalproofs/clean_foundation.json"),
-        Path("/<cluster>/<user>/projects/Authomathics/naturalproofs/clean_foundation_with_books.json"),
-        Path("/<cluster>/<user>/projects/Authomathics/naturalproofs/clean_foundation.json"),
+        Path("/sci/labs/orzuk/orzuk/projects/Authomathics/naturalproofs/clean_foundation_with_books.json"),
+        Path("/sci/labs/orzuk/orzuk/projects/Authomathics/naturalproofs/clean_foundation.json"),
+        # Mac local (pre-rename Authomathics_data, where the 20MB index lives)
+        Path.home() / "Datasets/Authomathics_data/foundation/clean_foundation_with_books.json",
+        Path.home() / "Datasets/Authomathics_data/foundation/clean_foundation.json",
+        Path.home() / "Datasets/Authomathics_data/naturalproofs/clean_foundation_with_books.json",
+        Path.home() / "Datasets/Authomathics_data/naturalproofs/clean_foundation.json",
     ]
-    # Also try via config.py DATA_DIR
+    # Also try via config.py — prefer NATURALPROOFS_DIR (resolves new
+    # foundation/naturalproofs layout); fall back to DATA_DIR/naturalproofs.
+    try:
+        from config import NATURALPROOFS_DIR  # type: ignore
+        candidates.insert(0, Path(str(NATURALPROOFS_DIR)) / "clean_foundation_with_books.json")
+        candidates.insert(1, Path(str(NATURALPROOFS_DIR)) / "clean_foundation.json")
+    except ImportError:
+        pass
     try:
         from config import DATA_DIR
         data_dir = Path(str(DATA_DIR)) / "naturalproofs"
@@ -1039,8 +1009,6 @@ def _resolve_foundation_path(foundation_path=None):
             if c.exists():
                 return str(c)
         except OSError:
-            # Path on a disconnected mount (e.g. /mnt/g when GDrive is
-            # unmounted under WSL); skip and try the next candidate.
             continue
     return None  # will fall back to built-in WELL_KNOWN
 
@@ -1064,15 +1032,33 @@ def compute_foundation_links(nodes_raw, base_ids, foundation_path=None):
                         — per-ghost provenance, used to differentiate book vs.
                           mathlib/proofwiki/herald entries in the renderer.
     """
-    from link_to_foundation import build_foundation_index, link_paper, _build_automaton
+    from link_to_foundation import build_foundation_index, link_paper
+    try:
+        from link_to_foundation import _build_automaton  # type: ignore
+    except ImportError:
+        _build_automaton = None  # type: ignore
 
     fg_path = _resolve_foundation_path(foundation_path)
-    fg_index = build_foundation_index(fg_path)
-    # Use Aho-Corasick when available — both vastly faster on the 27k+ index
-    # AND robust against terms containing regex metacharacters (e.g. "*").
-    automaton, term_map = _build_automaton(fg_index, min_term_len=5)
-    matches = link_paper(nodes_raw, fg_index, min_term_len=5,
-                         automaton=automaton, term_map=term_map)
+    try:
+        fg_index = build_foundation_index(fg_path)
+        ac, term_map = (None, None)
+        if _build_automaton is not None:
+            try:
+                ac, term_map = _build_automaton(fg_index, min_term_len=5)
+            except Exception:
+                ac, term_map = (None, None)
+        matches = link_paper(nodes_raw, fg_index, min_term_len=5,
+                             automaton=ac, term_map=term_map)
+    except Exception as _re_err:
+        # Upstream link_paper has an unescaped-regex bug on the larger
+        # with_books index (LaTeX terms like \lambda). Fall back to None
+        # (built-in WELL_KNOWN list inside build_foundation_index).
+        print(f"[link] WARNING: foundation linking failed ({_re_err}); falling back to built-in list.")
+        fg_index = build_foundation_index(None)
+        try:
+            matches = link_paper(nodes_raw, fg_index, min_term_len=5)
+        except Exception:
+            matches = []
 
     ghost_map = {}   # foundation_name -> set of base node IDs
     case1 = {}       # base_node_id -> list of foundation names
@@ -1137,17 +1123,33 @@ def draw_foundation_ghosts(ax, ghost_map, node_rect, ghost_meta=None):
     from matplotlib.patches import FancyArrowPatch
 
     all_tops = [by + bh for (bx, by, bw, bh) in node_rect.values()]
+    all_lefts = [bx for (bx, by, bw, bh) in node_rect.values()]
+    all_rights = [bx + bw for (bx, by, bw, bh) in node_rect.values()]
     ghost_y_top = max(all_tops) + LEVEL_GAP_Y * 0.8
     ghost_w = MIN_BOX_W * 1.1
     ghost_h = HEADER_H + LINE_H * 1.5 + PADDING
+    ghost_step_x = ghost_w + BOX_GAP_X * 0.5
+    ghost_step_y = ghost_h + LEVEL_GAP_Y * 0.25
     ghost_names = sorted(ghost_map.keys())
-    total_ghost_w = len(ghost_names) * ghost_w + (len(ghost_names) - 1) * BOX_GAP_X * 0.5
-    ghost_start_x = -total_ghost_w / 2
+    # Wrap ghost row into multiple rows so the foundation overlay never makes
+    # the overall data extent wider than the main graph. With set_aspect equal,
+    # a wider overlay scales the whole figure down → squashed main boxes.
+    main_w = (max(all_rights) - min(all_lefts)) if all_rights else 0
+    if main_w > 0 and ghost_step_x > 0:
+        per_row = max(1, int(main_w // ghost_step_x))
+    else:
+        per_row = max(1, len(ghost_names))
 
     ghost_rects = {}
     for gi, gname in enumerate(ghost_names):
-        gx = ghost_start_x + gi * (ghost_w + BOX_GAP_X * 0.5)
-        gy = ghost_y_top
+        row = gi // per_row
+        col = gi % per_row
+        row_count = min(per_row, len(ghost_names) - row * per_row)
+        row_total_w = row_count * ghost_w + (row_count - 1) * BOX_GAP_X * 0.5
+        row_start_x = -row_total_w / 2
+        gx = row_start_x + col * ghost_step_x
+        # Higher row index → drawn higher above the main graph
+        gy = ghost_y_top + row * ghost_step_y
 
         meta = ghost_meta.get(gname, {}) or {}
         is_book = bool(meta.get("is_book"))
@@ -1166,7 +1168,7 @@ def draw_foundation_ghosts(ax, ghost_map, node_rect, ghost_meta=None):
             line_style = (0, (8, 6))  # dashed (existing)
 
         # Use a "ghostbook_" prefix for book entries so the JS / CSS layer can
-        # style them differently. The shared "ghost_" toggle handler still
+        # style them differently. The shared "ghost" toggle handler still
         # picks them up via the [id^="ghost"] selector used at runtime.
         gid_prefix = "ghostbook" if is_book else "ghost"
 
@@ -1202,11 +1204,9 @@ def draw_foundation_ghosts(ax, ghost_map, node_rect, ghost_meta=None):
 
         ghost_rects[gname] = (gx, gy - ghost_h, ghost_w, ghost_h)
 
-        # Dashed (mathlib) or dotted (book) edges to target nodes — drawn
-        # thicker than regular edges so the foundation overlay reads as a
-        # distinct layer rather than fading into the background.
-        edge_color_arrow = "#8D6E63" if is_book else "#666666"
-        edge_linestyle = (0, (3, 3)) if is_book else (0, (6, 3))
+        # Dashed (mathlib) or dotted (book) edges to target nodes.
+        edge_color_arrow = "#8D6E63" if is_book else "#999999"
+        edge_linestyle = (0, (3, 3)) if is_book else (0, (8, 6))
         for ti, target_id in enumerate(ghost_map[gname]):
             if target_id in node_rect:
                 tx, ty, tw, th = node_rect[target_id]
@@ -1214,7 +1214,7 @@ def draw_foundation_ghosts(ax, ghost_map, node_rect, ghost_meta=None):
                     (gx + ghost_w / 2, gy - ghost_h),
                     (tx + tw / 2, ty + th),
                     arrowstyle="-|>,head_length=0.8,head_width=0.35",
-                    color=edge_color_arrow, lw=2.0,
+                    color=edge_color_arrow, lw=1.5,
                     linestyle=edge_linestyle,
                     connectionstyle="arc3,rad=0.05",
                     shrinkA=3, shrinkB=3,
@@ -1243,17 +1243,13 @@ def draw_legend(ax, node_data, node_rect, show_foundation=False,
         legend_handles.append(
             mpatches.Patch(facecolor="#E8E8E8", edgecolor="#777777",
                            linewidth=1.5, linestyle="dashed",
-                           label="Foundation: mathlib/herald")
-        )
-        legend_handles.append(
-            mpatches.Patch(facecolor="#FFF8E1", edgecolor="#8D6E63",
-                           linewidth=1.5, linestyle="dotted",
-                           label="Foundation: book")
+                           label="Foundation (ext.)")
         )
 
     if not node_rect:
         ax.legend(handles=legend_handles, loc="lower right",
-                  fontsize=14 * font_scale, frameon=False)
+                  fontsize=14 * font_scale, frameon=False,
+                  title="Node types", title_fontsize=16 * font_scale)
         return
 
     # Compute legend size: ~15% of graph width, height depends on # items
@@ -1292,13 +1288,14 @@ def draw_legend(ax, node_data, node_rect, show_foundation=False,
     leg = ax.legend(handles=legend_handles, loc="lower left",
                     bbox_to_anchor=(legend_x, legend_bottom),
                     bbox_transform=ax.transData,
-                    fontsize=14 * font_scale, frameon=False)
+                    fontsize=14 * font_scale, frameon=False,
+                    title="Node types", title_fontsize=16 * font_scale)
 
 
 # ── Drawing ─────────────────────────────────────────────────────────────────
 def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
              resolution="standard", show_legend=True, show_foundation=False,
-             foundation_path=None, show_extras=False):
+             foundation_path=None):
     """Main entry: draw a layered DAG from student-format nodes/edges.
 
     resolution:
@@ -1309,12 +1306,6 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
       If True, draw ghost nodes for external foundation dependencies above the
       main graph (gray dashed boxes with dashed arrows to paper nodes).
       Default False preserves the previous behaviour of hiding them in the PNG.
-
-    show_extras:
-      If False (default for the PNG path), hide examples, remarks, and cited
-      results (\texttt{origin: external}) so the PNG stays focused on the
-      paper's core paper-origin Level-1 contribution. The interactive HTML
-      keeps them so toggles in the viewer can re-enable them on demand.
 
     foundation_path:
       Optional path to clean_foundation.json.  When *None* the code tries the
@@ -1327,31 +1318,13 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         edges = list(edges_raw)
         proof_map = {}
     else:
-        # Standard: collapse proofs AND filter out equations/proof_steps
+        # Standard: collapse proofs AND filter out equations/proof_steps/algorithm_steps
         nodes, edges, proof_map = merge_proofs(nodes_raw, edges_raw)
         hidden_types = {"equation", "proof_step", "algorithm_step"}
         hidden_ids = {n["id"] for n in nodes if n.get("type") in hidden_types}
         nodes = [n for n in nodes if n.get("type") not in hidden_types]
         edges = [e for e in edges
                  if e["source"] not in hidden_ids and e["target"] not in hidden_ids]
-
-    if not show_extras:
-        # PNG-default lean view: drop examples, remarks, and cited (external)
-        # results so the figure shows only the paper's core Level-1 graph.
-        # Reviewers can toggle these back on in the interactive HTML.
-        extra_types = {"example", "remark"}
-        extra_ids = {
-            n["id"] for n in nodes
-            if n.get("type") in extra_types or n.get("origin") == "external"
-        }
-        nodes = [n for n in nodes if n["id"] not in extra_ids]
-        edges = [e for e in edges
-                 if e["source"] not in extra_ids and e["target"] not in extra_ids]
-        # Also drop singleton nodes (no in- or out-edges after filtering); they
-        # add visual noise without contributing to the dependency story. The
-        # interactive HTML still shows them since the SVG keeps everything.
-        connected = {e["source"] for e in edges} | {e["target"] for e in edges}
-        nodes = [n for n in nodes if n["id"] in connected]
     depth = compute_dag_depth(nodes, edges)
 
     # Group by depth level
@@ -1359,53 +1332,9 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
     for n in nodes:
         levels[depth[n["id"]]].append(n)
 
-    # Sort within each level by section (initial heuristic).
+    # Sort within each level by section (initial heuristic)
     for d in levels:
         levels[d].sort(key=_section_sort_key)
-
-    # Refine ordering with the barycenter heuristic: each node should sit
-    # near the average position of its parents and children. Standard
-    # technique for layered graph drawing -- minimises edge crossings and
-    # avoids the kind of "neighbour on the wrong side" problem the user
-    # observed (e.g., ProbP2.3 in layer 2 sitting on the left while both
-    # its parent ProbP2.2 and child ProbP2.3-alike are mid-right).
-    # We do 4 alternating top-down / bottom-up sweeps; this almost always
-    # converges and adds < 1 ms even on 50-node graphs.
-    edge_set = [(e["source"], e["target"]) for e in edges]
-    sorted_levels = sorted(levels.keys())
-    for _sweep in range(4):
-        layer_order = sorted_levels if _sweep % 2 == 0 else list(reversed(sorted_levels))
-        for d in layer_order:
-            row = levels[d]
-            if len(row) < 2:
-                continue
-            # Build neighbour-rank dict for nodes in adjacent layers.
-            neighbour_ranks = {}  # node_id -> list of (rank, layer_size) pairs
-            for delta in (-1, +1):
-                neigh_layer = levels.get(d + delta)
-                if not neigh_layer:
-                    continue
-                neigh_rank = {n["id"]: i for i, n in enumerate(neigh_layer)}
-                for n in row:
-                    nid = n["id"]
-                    if delta == -1:
-                        # parents in d-1: edges (parent -> nid)
-                        ranks = [neigh_rank[s] for (s, t) in edge_set
-                                 if t == nid and s in neigh_rank]
-                    else:
-                        # children in d+1: edges (nid -> child)
-                        ranks = [neigh_rank[t] for (s, t) in edge_set
-                                 if s == nid and t in neigh_rank]
-                    if ranks:
-                        # Normalise to [0, 1] so layers of different sizes contribute equally.
-                        norm = (len(neigh_layer) - 1) or 1
-                        for r in ranks:
-                            neighbour_ranks.setdefault(nid, []).append(r / norm)
-            cur_rank = {n["id"]: i / max(1, len(row) - 1) for i, n in enumerate(row)}
-            def bary(n):
-                rs = neighbour_ranks.get(n["id"], [])
-                return sum(rs) / len(rs) if rs else cur_rank[n["id"]]
-            row.sort(key=bary)
 
     max_depth = max(levels.keys()) if levels else 0
     max_width = max(len(v) for v in levels.values()) if levels else 1
@@ -1415,8 +1344,28 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
     pass
     # CHARS_PER_UNIT defined at module level
     MAX_LINES_PER_SECTION = 3
-    MAX_STMT_LINES = 5   # max lines of statement text shown in node boxes
-    MAX_STMT_CHARS = 150  # max display-width chars before truncation with "..."
+
+    _THEOREM_LIKE = ("theorem", "lemma", "corollary", "proposition", "claim")
+
+    def _theorem_has_inline_content(n):
+        """True if a theorem-like node has assume/conclude to render;
+        otherwise it falls through to the statement-only branch."""
+        return bool(_as_list(n.get("assumptions"))
+                    or _as_list(n.get("conclusions")))
+
+    def _proof_indicator(n):
+        """Compact 'X proofs, Y steps' label for the box; full prose
+        stays in the side-panel Proof Strategy section."""
+        n_steps = int(n.get("proof_step_count") or 0)
+        n_proofs = len([p for p in (n.get("proof_info") or []) if p])
+        if n_proofs == 0 and n_steps == 0:
+            return ""
+        parts = []
+        if n_proofs > 0:
+            parts.append(f"{n_proofs} proof{'s' if n_proofs != 1 else ''}")
+        if n_steps > 0:
+            parts.append(f"{n_steps} step{'s' if n_steps != 1 else ''}")
+        return ", ".join(parts)
 
     def _content_lines(n):
         """Get all content text lines for a node (for width estimation).
@@ -1428,32 +1377,22 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         lines = []
         name = n.get("name") or ""
         lines.append(f"{n['id']}: {name}" if name else n['id'])
-        if ntype in ("theorem", "lemma", "corollary", "proposition", "claim"):
+        if ntype in _THEOREM_LIKE and _theorem_has_inline_content(n):
             for a in _as_list(n.get("assumptions"))[:MAX_LINES_PER_SECTION]:
                 lines.append(_shorten(_prepare_for_display(a), 60))
             for c in _as_list(n.get("conclusions"))[:MAX_LINES_PER_SECTION]:
                 lines.append(_shorten(_prepare_for_display(c), 60))
-            # Cap proof_info display: rule-based extractor sometimes splits
-            # one logical proof into multiple paragraph-level proof nodes,
-            # all attached to the same parent. Show the first only and a
-            # '+N more proofs' indicator rather than stacking lines.
-            proofs_all = [p for p in (n.get("proof_info") or []) if p]
-            if proofs_all:
-                lines.append(_shorten(_prepare_for_display(f"Proof: {proofs_all[0]}"), 60))
-                if len(proofs_all) > 1:
-                    lines.append(f"(+{len(proofs_all)-1} more proof segment{'s' if len(proofs_all)>2 else ''})")
+            _pl = _proof_indicator(n)
+            if _pl: lines.append(_pl)
         elif ntype == "algorithm" and (n.get("input") or n.get("output")):
             for x in _as_list(n.get("input")): lines.append(_shorten(x, 60))
             for x in _as_list(n.get("output")): lines.append(_shorten(x, 60))
         else:
             raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
-            # 40-char teaser inside the node body; full text in click panel.
-            # Aggressive cap because schema-B JSONs (rule-based parsed_100k)
-            # produce many nodes per paper without short 'name' fields, so
-            # in-box statement text otherwise overwhelms the SVG.
-            short = _shorten(_prepare_for_display(raw), 150)
-            if short:
-                lines.append(short)
+            lines.append(_shorten(_prepare_for_display(raw), 150))
+            if ntype in _THEOREM_LIKE:
+                _pl = _proof_indicator(n)
+                if _pl: lines.append(_pl)
         return lines
 
     # ── First pass: compute each node's ideal width ──
@@ -1468,16 +1407,14 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         """Get all texts that need wrapping for a node."""
         ntype = n.get("type", "")
         texts = []
-        if ntype in ("theorem", "lemma", "corollary", "proposition", "claim"):
+        if ntype in _THEOREM_LIKE and _theorem_has_inline_content(n):
             for a in _as_list(n.get("assumptions"))[:MAX_LINES_PER_SECTION]:
-                texts.append(_prepare_for_display(a))
+                texts.append(_shorten(_prepare_for_display(a), 60))
             for c in _as_list(n.get("conclusions"))[:MAX_LINES_PER_SECTION]:
-                texts.append(_prepare_for_display(c))
-            proofs_all = [p for p in (n.get("proof_info") or []) if p]
-            if proofs_all:
-                texts.append(_shorten(_prepare_for_display(f"Proof: {proofs_all[0]}"), 60))
-                if len(proofs_all) > 1:
-                    texts.append(f"(+{len(proofs_all)-1} more)")
+                texts.append(_shorten(_prepare_for_display(c), 60))
+            _pl = _proof_indicator(n)
+            if _pl:
+                texts.append(_pl)
         elif ntype == "algorithm" and (n.get("input") or n.get("output")):
             for x in _as_list(n.get("input")):
                 texts.append(_shorten(x, 100))
@@ -1485,9 +1422,11 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 texts.append(_shorten(x, 100))
         else:
             raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
-            short = _shorten(_prepare_for_display(raw), 150)
-            if short:
-                texts.append(short)
+            texts.append(_prepare_for_display(raw))
+            if ntype in _THEOREM_LIKE:
+                _pl = _proof_indicator(n)
+                if _pl:
+                    texts.append(_pl)
         return texts
 
     def _wrap_all_and_measure(texts, wrap_chars):
@@ -1521,56 +1460,23 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
 
         def _needed_w(max_dw):
             """Convert max display-width (chars) to data-unit width needed."""
-            return (max_dw + bullet_extra) / CHARS_PER_UNIT + 2 * PADDING
-
-        # Empirically measured chars/unit for fontsize-14 bold averages ≈ 8.0
-        # for headers containing math (math token compresses visually so
-        # apparent density is higher than for plain text). Plain-text
-        # headers measured 6.7-7.0 chars/unit -- those will be very tight
-        # at HEADER_CPU=8.0; any minor overflow is caught by the per-node
-        # text clipping patch added later in this function.
-        HEADER_CPU = 6.5
+            return (max_dw + bullet_extra) / CHARS_PER_UNIT + 2 * PADDING + 0.15
 
         def _header_w_for_box(w):
             """Header width needed given box width w (renderer shows more name
-            chars for wider boxes). Header font is 14-bold (substantially wider
-            than body 12-normal). Cap name display to 30 chars to prevent
-            runaway expansion. Uses the *actual* shortened name length rather
-            than the worst-case truncation budget so boxes don't get sized for
-            chars that _shorten will end up dropping (e.g., math tokens that
-            don't fit are removed wholesale).
-
-            The avail budget MUST use HEADER_CPU (the header packing density)
-            to match what the draw code does, otherwise the width-fitter and
-            the draw-time _shorten disagree on how many chars fit and the
-            header gets unnecessarily truncated.
-            """
-            header_chars = max(len(nid) + 4, int(w * HEADER_CPU) - 2)
+            chars for wider boxes). Header font is 14-bold ~25% wider than body.
+            Cap name display to 30 chars to prevent runaway expansion."""
+            header_chars = max(len(nid) + 4, int(w * CHARS_PER_UNIT) - 2)
             avail = max(6, header_chars - len(nid) - 2)
             avail = min(avail, 30)  # cap to prevent circular expansion
-            if name:
-                shown_name = _shorten(name, avail)
-                # _shorten now uses display-width budgets, so use _display_width
-                # here too: both ends agree on what 'fits'.
-                shown = len(nid) + 2 + _display_width(shown_name)
-            else:
-                shown = len(nid)
-            # +2 to match the '-2' margin baked into the draw code's header_chars
-            return (shown + 2) / HEADER_CPU + 2 * PADDING
+            shown = len(nid) + 2 + min(avail, len(name))
+            HEADER_CPU = 9.0  # chars/unit for fontsize-14 bold
+            return shown / HEADER_CPU + 2 * PADDING + 0.15
 
         # --- Step 1: find body width via binary search ---
-        # Initial header estimate uses the actual shortened name's display
-        # width (which is what matplotlib will render) -- now that _shorten
-        # also operates on display-width budgets, both ends agree.
-        if name:
-            init_shown_name = _shorten(name, 30)
-            init_header_chars = len(nid) + 2 + _display_width(init_shown_name)
-        else:
-            init_header_chars = len(nid)
-        # +2/HEADER_CPU compensates for the '-2' margin the draw code applies
-        # when computing avail; without this the binary search converges
-        # to a width 1 char short, and _shorten truncates the header.
-        init_header_w = (init_header_chars + 2) / HEADER_CPU + 2 * PADDING
+        # Initial header estimate (30-char cap, before circular expansion)
+        name_cap = min(len(name), 30)
+        init_header_w = (len(nid) + 2 + name_cap) / 9.0 + 2 * PADDING + 0.15
 
         lo_w = max(MIN_BOX_W, init_header_w)
         hi_w = MAX_BOX_W
@@ -1594,6 +1500,12 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                     lo_w = mid_w
             body_w = hi_w * 1.01
 
+        # Floor theorem-branch width so each shortened item fits unwrapped
+        # (binary search above measures wrapped sub-lines, not item length).
+        if ntype in _THEOREM_LIKE and _theorem_has_inline_content(n):
+            longest_item = max((_display_width(t) for t in texts), default=0)
+            body_w = max(body_w, _needed_w(longest_item))
+
         # --- Step 2: resolve header/body circular dependency ---
         # Given body_w, the renderer may show more name chars. Iterate to
         # convergence (typically 1-2 rounds).
@@ -1605,22 +1517,6 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 break
             w = w_new
 
-        # --- Step 3: hard-floor against post-wrap overshoot ---
-        # _wrap can overshoot its target width when a single token (e.g.,
-        # "contradiction." or a long $...$ math block) is wider than the
-        # remaining line space and no break point exists. The renderer draws
-        # text left-aligned without clipping, so any overshoot extrudes past
-        # the right edge of the box. Use the actual post-wrap max display-width
-        # at the chosen w as a hard floor: regrow w until it accommodates the
-        # widest line that _wrap actually produces.
-        for _ in range(4):
-            wrap_chars = max(20, int(w * CHARS_PER_UNIT) - chars_overhead)
-            actual_max_dw = _wrap_all_and_measure(texts, wrap_chars)
-            needed_w = _needed_w(actual_max_dw)
-            if needed_w <= w + 0.005:
-                break
-            w = max(w, needed_w)
-
         return max(MIN_BOX_W, w)
 
     for n in nodes:
@@ -1628,29 +1524,10 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         node_data[nid] = n
         node_width[nid] = _find_tight_width(n)
 
-    # Pre-compute header lines (1 or 2) per node, given the chosen width.
-    # The box-height formulas below use this so two-line headers don't push
-    # the body content past the bottom of the colored box.
-    node_header_lines = {}
-    for n in nodes:
-        nid = n["id"]
-        w = node_width[nid]
-        # Same chars budget the draw code uses: int(w * HEADER_CPU) - 2
-        max_dw_per_line = max(8, int(w * 8.0) - 2)
-        node_header_lines[nid] = _wrap_header(nid, n.get("name") or "", max_dw_per_line)
-
     # ── Second pass: compute heights and positions ──
     # Widths were already optimized in the first pass via _find_tight_width.
     node_pos = {}
     node_rect = {}
-
-    # Track running cy_top so each layer starts below the tallest node of
-    # the previous layer, plus a fixed gap. Previously each layer was
-    # placed at a fixed -d * LEVEL_GAP_Y, which caused visible overlap when
-    # a layer's tallest node exceeded LEVEL_GAP_Y (e.g., TP2.1 in
-    # Cand\`es-Tao with many assumption/conclusion lines).
-    LAYER_GAP = 1.0
-    cy_top_layer = 0.0
 
     for d in range(max_depth + 1):
         row = levels.get(d, [])
@@ -1658,16 +1535,12 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         row_width = sum(node_width[n["id"]] for n in row) + max(0, len(row) - 1) * BOX_GAP_X
         x_cursor = -row_width / 2
 
-        layer_max_h = 0.0  # tallest node in this layer; sets next layer's offset
-
         for n in row:
             nid = n["id"]
             w = node_width[nid]
             wrap_w = max(20, int(w * CHARS_PER_UNIT) - 4)  # subtract margin for padding + bullet
-            cy_top = cy_top_layer
+            cy_top = -d * LEVEL_GAP_Y
             ntype = n.get("type", "")
-            # Header may be 1 or 2 lines (long names wrap rather than truncate).
-            header_h = HEADER_H * len(node_header_lines.get(nid, [str(nid)]))
 
             # Line height: tall math > inline math > plain text
             def _line_h(line):
@@ -1677,57 +1550,51 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                     return LINE_H * 1.5
                 return LINE_H
 
-            if ntype in ("theorem", "lemma", "corollary", "proposition", "claim"):
-                assumptions = n.get("assumptions", [])
-                conclusions = n.get("conclusions", [])
-                proof_strategies = n.get("proof_info", [])
+            if ntype in _THEOREM_LIKE and _theorem_has_inline_content(n):
+                assumptions = _as_list(n.get("assumptions"))
+                conclusions = _as_list(n.get("conclusions"))
 
-                # Wrap each item to box width, then flatten; shorten to keep boxes compact
+                # Shorten each item to one wrapped line; cap section items.
                 assume_lines = []
                 for a in assumptions[:MAX_LINES_PER_SECTION]:
-                    assume_lines.extend(_wrap(_prepare_for_display(a), wrap_w) or [a[:wrap_w]])
+                    short = _shorten(_prepare_for_display(a), 60)
+                    assume_lines.extend(_wrap(short, wrap_w) or [short[:wrap_w]])
                 if len(assumptions) > MAX_LINES_PER_SECTION:
                     assume_lines.append(f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more")
                 conclude_lines = []
                 for c in conclusions[:MAX_LINES_PER_SECTION]:
-                    conclude_lines.extend(_wrap(_prepare_for_display(c), wrap_w) or [c[:wrap_w]])
+                    short = _shorten(_prepare_for_display(c), 60)
+                    conclude_lines.extend(_wrap(short, wrap_w) or [short[:wrap_w]])
                 if len(conclusions) > MAX_LINES_PER_SECTION:
                     conclude_lines.append(f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more")
-                proof_lines = []
-                for ps in proof_strategies:
-                    if ps:
-                        proof_lines.extend(_wrap(_prepare_for_display(f"Proof: {ps}"), wrap_w))
+                _proof_label = _proof_indicator(n)
 
                 assume_heights = sum(_line_h(l) for l in assume_lines) or LINE_H
                 conclude_heights = sum(_line_h(l) for l in conclude_lines) or LINE_H
-                n_proof = len(proof_lines)
+                n_proof = 1 if _proof_label else 0
 
-                h = header_h + PADDING
+                h = HEADER_H + PADDING
                 h += assume_heights + PADDING
                 h += conclude_heights + PADDING
                 if n_proof > 0:
                     h += n_proof * LINE_H + PADDING
                 h += PADDING
             elif ntype == "algorithm" and (n.get("input") or n.get("output")):
-                # Match draw path: wrap each input/output entry so the height
-                # accounts for actual line counts after wrapping.
-                in_lines = []
-                for x in (_as_list(n.get("input")) or ["(none)"]):
-                    in_lines.extend(_wrap(_prepare_for_display(x), wrap_w) or [x[:wrap_w]])
-                out_lines = []
-                for x in (_as_list(n.get("output")) or ["(none)"]):
-                    out_lines.extend(_wrap(_prepare_for_display(x), wrap_w) or [x[:wrap_w]])
-                h = header_h + PADDING
-                h += sum(_line_h(l) for l in in_lines) + PADDING
-                h += sum(_line_h(l) for l in out_lines) + PADDING
+                in_lines = [_shorten(x, 100) for x in (_as_list(n.get("input")) or ["(none)"])]
+                out_lines = [_shorten(x, 100) for x in (_as_list(n.get("output")) or ["(none)"])]
+                h = HEADER_H + PADDING
+                h += len(in_lines) * LINE_H + PADDING
+                h += len(out_lines) * LINE_H + PADDING
                 h += PADDING
             else:
                 # Use statement, or name as fallback (e.g., proofs with descriptive names)
                 raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
-                stmt = _shorten(_prepare_for_display(raw), MAX_STMT_CHARS)
-                stmt_lines = _wrap(stmt, wrap_w)[:MAX_STMT_LINES]
+                stmt = _prepare_for_display(raw)
+                stmt_lines = _wrap(stmt, wrap_w)[:5]
                 stmt_height = sum(_line_h(l) for l in stmt_lines) if stmt_lines else LINE_H
-                h = header_h + stmt_height + 2 * PADDING
+                h = HEADER_H + stmt_height + 2 * PADDING
+                if ntype in _THEOREM_LIKE and _proof_indicator(n):
+                    h += LINE_H + PADDING  # proof indicator line
 
             # Width was already optimized in the first pass (_find_tight_width).
             # No expansion needed here.
@@ -1735,16 +1602,6 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             node_pos[nid] = (x_cursor + w / 2, cy_top - h / 2)
             node_rect[nid] = (x_cursor, cy_top - h, w, h)
             x_cursor += w + BOX_GAP_X
-            if h > layer_max_h:
-                layer_max_h = h
-
-        # Move the next layer's top to below the tallest node of this layer,
-        # but at least LEVEL_GAP_Y below the current cy_top so the layout
-        # stays sensibly spaced even on layers full of small nodes.
-        cy_top_layer = min(
-            cy_top_layer - layer_max_h - LAYER_GAP,
-            cy_top_layer - LEVEL_GAP_Y,
-        )
 
     # ── Figure ── (auto-size based on content)
     if figsize is None:
@@ -1777,21 +1634,27 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         x1 = tx + tw / 2
         y1 = ty_bottom + th  # top of target
 
+        # Port #7: `resolves` edges (v2 schema) — dashed line and distinct color.
+        _etype = (e.get("type") or e.get("relation") or "").lower()
+        _is_resolves = (_etype == "resolves")
+        _arrow_kwargs = dict(
+            arrowstyle="-|>,head_length=1.2,head_width=0.6",
+            color="#1976D2" if _is_resolves else "#333333",
+            lw=2.5,
+            connectionstyle="arc3,rad=0.08" if abs(x0 - x1) > 0.5 else "arc3,rad=0",
+            shrinkA=3, shrinkB=3,
+        )
+        if _is_resolves:
+            _arrow_kwargs["linestyle"] = "--"
         ann = ax.annotate(
             "", xy=(x1, y1), xytext=(x0, y0),
-            arrowprops=dict(
-                arrowstyle="-|>,head_length=1.2,head_width=0.6",
-                color="#333333",
-                lw=2.5,
-                connectionstyle="arc3,rad=0.08" if abs(x0 - x1) > 0.5 else "arc3,rad=0",
-                shrinkA=3, shrinkB=3,
-            ),
+            arrowprops=_arrow_kwargs,
         )
         # Tag the edge so JS toggles can hide/show it. Use a sanitized id.
         try:
             _safe_src = str(src).replace(" ", "_")
             _safe_tgt = str(tgt).replace(" ", "_")
-            ann.arrow_patch.set_gid(f"edge_{_safe_src}__{_safe_tgt}")
+            ann.arrow_patch.set_gid(f"edge_{_safe_src}__to__{_safe_tgt}")
         except Exception:
             pass
 
@@ -1799,8 +1662,6 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
     # Track which patches/texts/lines belong to each node so we can bulk-tag
     # them with a `node_<nid>__elemN` gid suffix after rendering. This lets
     # the HTML toggle code hide every element of a node via attribute selector.
-    _node_artist_ranges = {}  # nid -> (patches_start, texts_start, lines_start, patches_end, texts_end, lines_end)
-
     def _safe_nid(nid):
         return str(nid).replace(" ", "_")
 
@@ -1827,41 +1688,35 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
 
         cursor_y = by + bh  # start from top
 
-        # Header: 1 or 2 lines, pre-computed in node_header_lines.
-        _HEADER_CPU = 6.5  # keep in sync with HEADER_CPU in _find_tight_width
-        header_lines = node_header_lines.get(nid, [str(nid)])
-        n_hl = len(header_lines)
-        header_total_h = HEADER_H * n_hl
+        # Header — truncate name to box width, but always show full node ID
+        # Use ~9 chars/unit for bold header font (vs 12 for body font)
+        name_str = n.get("name") or ""
+        header_chars = max(len(nid) + 4, int(node_width.get(nid, 4.0) * 9) - 2)
+        header_text = f"{nid}"
+        if name_str:
+            avail = max(6, header_chars - len(nid) - 2)
+            header_text += f": {_shorten(name_str, avail)}"
+        # Choose header font size to fit: shrink if header text is long
         header_fontsize = 14
-        # If even after wrapping a line is too wide, shrink that line's font.
-        max_dw_per_line = max(8, int(bw * _HEADER_CPU) - 2)
-        for hl in header_lines:
-            if _display_width(hl) > max_dw_per_line:
-                header_fontsize = min(header_fontsize,
-                                      max(9, 14 * max_dw_per_line / _display_width(hl)))
+        if len(header_text) > header_chars:
+            header_fontsize = max(9, 14 * header_chars / len(header_text))
 
         header_rect = FancyBboxPatch(
-            (bx, cursor_y - header_total_h), bw, header_total_h,
+            (bx, cursor_y - HEADER_H), bw, HEADER_H,
             boxstyle="round,pad=0.05",
             facecolor=colors["header"],
             edgecolor=colors["header"],
             linewidth=0,
         )
         ax.add_patch(header_rect)
-        # Stack header lines top-to-bottom inside the colored bar.
-        for i, hl in enumerate(header_lines):
-            line_y = cursor_y - HEADER_H * (i + 0.5)
-            ax.text(bx + bw / 2, line_y, hl,
-                    ha="center", va="center", fontsize=header_fontsize,
-                    fontweight="bold", color="white")
-        # Proof indicator — small badge in the top-right corner of the header
-        # for theorem-like nodes that have proof_info merged in. Click the node
-        # to see the actual proof text in the side panel.
+        ax.text(bx + bw / 2, cursor_y - HEADER_H / 2, header_text,
+                ha="center", va="center", fontsize=header_fontsize, fontweight="bold",
+                color="white")
+        # Proof indicator — small yellow badge in the top-right corner of the
+        # header for theorem-like nodes that have proof_info merged in.
         _has_proof = (ntype in ("theorem", "lemma", "corollary", "proposition", "claim")
                       and bool(n.get("proof_info")))
         if _has_proof:
-            # Filled-circle badge so the visual cue survives even when the
-            # system font has no emoji glyph for "scroll".
             from matplotlib.patches import Circle
             _badge_r = HEADER_H * 0.18
             _badge_cx = bx + bw - _badge_r * 1.6
@@ -1872,12 +1727,11 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                            linewidth=0.8, zorder=5,
                            gid=f"node_{_safe_nid_for_badge}__proofbadge")
             ax.add_patch(badge)
-            # Asterisk inside (works without emoji fonts)
             ax.text(_badge_cx, _badge_cy, "*",
                     ha="center", va="center", fontsize=max(9, header_fontsize * 0.85),
                     fontweight="bold", color="#5D4037",
                     gid=f"node_{_safe_nid_for_badge}__proofbadgetext")
-        cursor_y -= header_total_h + PADDING
+        cursor_y -= HEADER_H + PADDING
 
         # Line height helper — must match height computation exactly
         def _line_h_draw(line):
@@ -1887,22 +1741,24 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 return LINE_H * 1.5
             return LINE_H
 
-        if ntype in ("theorem", "lemma", "corollary", "proposition", "claim"):
+        if ntype in _THEOREM_LIKE and _theorem_has_inline_content(n):
             # Wrap text to box width (same logic as height computation)
             dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT) - 4)
-            assumptions = n.get("assumptions", [])
+            assumptions = _as_list(n.get("assumptions"))
             a_lines = []
             for a in assumptions[:MAX_LINES_PER_SECTION]:
-                a_lines.extend(_wrap(_prepare_for_display(a), dyn_wrap) or [a[:dyn_wrap]])
+                short = _shorten(_prepare_for_display(a), 60)
+                a_lines.extend(_wrap(short, dyn_wrap) or [short[:dyn_wrap]])
             if len(assumptions) > MAX_LINES_PER_SECTION:
                 a_lines.append(f"... +{len(assumptions)-MAX_LINES_PER_SECTION} more")
             if not a_lines:
                 a_lines = ["(none)"]
 
-            conclusions = n.get("conclusions", [])
+            conclusions = _as_list(n.get("conclusions"))
             c_lines = []
             for c in conclusions[:MAX_LINES_PER_SECTION]:
-                c_lines.extend(_wrap(_prepare_for_display(c), dyn_wrap) or [c[:dyn_wrap]])
+                short = _shorten(_prepare_for_display(c), 60)
+                c_lines.extend(_wrap(short, dyn_wrap) or [short[:dyn_wrap]])
             if len(conclusions) > MAX_LINES_PER_SECTION:
                 c_lines.append(f"... +{len(conclusions)-MAX_LINES_PER_SECTION} more")
             if not c_lines:
@@ -1933,96 +1789,62 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                         ha="left", va="top", fontsize=12, color="#222")
                 cursor_y -= _line_h_draw(line)
 
-            # Proof strategy (if merged)
-            proof_strategies = n.get("proof_info", [])
-            if proof_strategies:
+            _proof_label = _proof_indicator(n)
+            if _proof_label:
                 cursor_y -= PADDING * 0.2
                 ax.plot([bx + 0.15, bx + bw - 0.15], [cursor_y + PADDING * 0.1] * 2,
                         color="#999", lw=0.5, alpha=0.4)
-                for ps in proof_strategies:
-                    if ps:
-                        for pline in _wrap(_prepare_for_display(f"Proof: {ps}"), dyn_wrap):
-                            ax.text(bx + PADDING, cursor_y, pline,
-                                    ha="left", va="top", fontsize=10.5,
-                                    color="#444", fontstyle="italic")
-                            cursor_y -= LINE_H
+                ax.text(bx + PADDING, cursor_y, _proof_label,
+                        ha="left", va="top", fontsize=10.5,
+                        color="#444", fontstyle="italic")
+                cursor_y -= LINE_H
 
         elif ntype == "algorithm" and (n.get("input") or n.get("output")):
             # Algorithm with input/output
             dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT) - 4)
-            # Bug fix: previously used _shorten here (truncate-and-print-on-
-            # one-line) which mismatched the width calculation that assumed
-            # wrapping. Use _wrap so each input/output item flows over as
-            # many lines as needed to fit the box. Track whether each line
-            # is the first of its item so only the first gets a bullet.
-            in_lines = []  # list of (line, is_first_of_item)
-            for x in (_as_list(n.get("input")) or ["(none)"]):
-                wrapped = _wrap(_prepare_for_display(x), dyn_wrap) or [x[:dyn_wrap]]
-                for i, ln in enumerate(wrapped):
-                    in_lines.append((ln, i == 0))
-            out_lines = []
-            for x in (_as_list(n.get("output")) or ["(none)"]):
-                wrapped = _wrap(_prepare_for_display(x), dyn_wrap) or [x[:dyn_wrap]]
-                for i, ln in enumerate(wrapped):
-                    out_lines.append((ln, i == 0))
+            in_lines = [_shorten(x, dyn_wrap) for x in (_as_list(n.get("input")) or ["(none)"])]
+            out_lines = [_shorten(x, 70) for x in (_as_list(n.get("output")) or ["(none)"])]
 
             ax.text(bx + PADDING, cursor_y, "Input:",
                     ha="left", va="top", fontsize=13, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
-            for line, is_first in in_lines:
-                prefix = "• " if is_first else "  "
-                ax.text(bx + PADDING + 0.1, cursor_y, f"{prefix}{line}",
+            for line in in_lines:
+                ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
                         ha="left", va="top", fontsize=12, color="#222")
-                cursor_y -= _line_h_draw(line)
+                cursor_y -= LINE_H
             cursor_y -= PADDING * 0.3
             ax.plot([bx + 0.15, bx + bw - 0.15], [cursor_y + PADDING * 0.2] * 2,
                     color=colors["header"], lw=0.5, alpha=0.4)
             ax.text(bx + PADDING, cursor_y, "Output:",
                     ha="left", va="top", fontsize=13, fontweight="bold", color="#333")
             cursor_y -= LINE_H * 0.7
-            for line, is_first in out_lines:
-                prefix = "• " if is_first else "  "
-                ax.text(bx + PADDING + 0.1, cursor_y, f"{prefix}{line}",
+            for line in out_lines:
+                ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
                         ha="left", va="top", fontsize=12, color="#222")
-                cursor_y -= _line_h_draw(line)
+                cursor_y -= LINE_H
 
         else:
             # Simple box: wrap statement/name text to box width (up to 5 lines)
             dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT) - 4)
-            # v2: subclass badge for step nodes (proof_step / algorithm_step)
-            if ntype in ("proof_step", "algorithm_step") and n.get("subclass"):
-                ax.text(bx + PADDING, cursor_y,
-                        f"[{n.get('subclass')}]",
-                        ha="left", va="top", fontsize=10, color="#555",
-                        fontstyle="italic")
-                cursor_y -= LINE_H * 0.85
             raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
-            stmt = _shorten(_prepare_for_display(raw), MAX_STMT_CHARS)
-            stmt_lines = _wrap(stmt, dyn_wrap)[:MAX_STMT_LINES]
+            stmt = _prepare_for_display(raw)
+            stmt_lines = _wrap(stmt, dyn_wrap)[:5]
             if not stmt_lines:
                 stmt_lines = [""]
             for line in stmt_lines:
                 ax.text(bx + PADDING, cursor_y, line,
                         ha="left", va="top", fontsize=12, color="#222")
                 cursor_y -= _line_h_draw(line)
-
-        # Clip every text artist drawn for this node to the box rectangle so
-        # text that the width-fitter mis-estimated cannot extrude past the
-        # right edge of the box. (Brutal but reliable: we'd rather have a
-        # visibly clipped line than a label hanging into the next node.)
-        # Inset slightly from the rounded-rect border so corners don't show
-        # bare letters.
-        from matplotlib.patches import Rectangle as _ClipRect
-        _clip_inset = 0.04
-        _clip_patch = _ClipRect(
-            (bx + _clip_inset, by + _clip_inset),
-            bw - 2 * _clip_inset, bh - 2 * _clip_inset,
-            transform=ax.transData, fill=False, linewidth=0,
-        )
-        ax.add_patch(_clip_patch)
-        _clip_patch.set_visible(False)
-        for _ta in ax.texts[_texts_start:len(ax.texts)]:
-            _ta.set_clip_path(_clip_patch)
+            if ntype in _THEOREM_LIKE:
+                _proof_label = _proof_indicator(n)
+                if _proof_label:
+                    cursor_y -= PADDING * 0.2
+                    ax.plot([bx + 0.15, bx + bw - 0.15], [cursor_y + PADDING * 0.1] * 2,
+                            color="#999", lw=0.5, alpha=0.4)
+                    ax.text(bx + PADDING, cursor_y, _proof_label,
+                            ha="left", va="top", fontsize=10.5,
+                            color="#444", fontstyle="italic")
+                    cursor_y -= LINE_H
 
         # Bulk-tag this node's artists with a per-node gid so the HTML JS
         # can hide/show every element of the node via attribute selector.
@@ -2061,11 +1883,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
     truly_orphan = [n for n in all_eq_nodes if n["id"] not in edge_targets and n["id"] not in displayed_ids]
     n_orphan = len(set(n["id"] for n in orphan_eqs + truly_orphan))
 
-    if n_orphan > 0 and node_rect and show_extras:
+    if n_orphan > 0 and node_rect:
         # Position: same height as the bottom layer, to the right
-        # Note: only rendered when show_extras=True; the lean PNG hides this
-        # disconnected "Misc (N equations)" annotation since equations are
-        # already excluded from the standard view.
         misc_w = MAX_BOX_W
         misc_h = HEADER_H + LINE_H + 2 * PADDING
         all_bottoms = [by for (bx, by, bw, bh) in node_rect.values()]
@@ -2120,20 +1939,22 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
 
     ax.autoscale()
     ax.margins(0.05)
-    try:
-        plt.tight_layout()
-    except Exception:
-        pass  # tight_layout can fail on complex math; savefig still works
+    # Re-fit figsize to the actual post-autoscale data aspect so the
+    # foundation-ghost row can't squash the axes horizontally.
+    _xlim = ax.get_xlim(); _ylim = ax.get_ylim()
+    _x_rng = max(_xlim) - min(_xlim)
+    _y_rng = max(_ylim) - min(_ylim)
+    if _x_rng > 0 and _y_rng > 0:
+        fig.set_size_inches(_x_rng * 0.8 + 2, _y_rng * 0.8 + 2)
+    ax.set_position([0.02, 0.02, 0.96, 0.96])
     plt.savefig(str(out_path), dpi=200, bbox_inches="tight", facecolor="white")
 
-    # Also save SVG if requested (for interactive HTML)
+    # Also save SVG if requested (for interactive HTML).
+    # No bbox_inches="tight": for wide-aspect figures it shrinks the saved
+    # SVG ~3x relative to figsize, squashing per-box pixel budget.
     svg_path = str(out_path).replace('.png', '.svg') if str(out_path).endswith('.png') else None
     if svg_path:
-        # Set gid on each node rectangle for click handling
-        for nid, (bx, by, bw, bh) in node_rect.items():
-            # The FancyBboxPatch was already added; we tag it via node_rect for the HTML wrapper
-            pass
-        plt.savefig(svg_path, format='svg', bbox_inches="tight", facecolor="white")
+        plt.savefig(svg_path, format='svg', facecolor="white")
 
     plt.close(fig)
 
@@ -2141,7 +1962,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
 
 
 def _classify_and_merge(nodes, edges):
-    """Merge proofs into parent theorems. Separate equations/proof_steps."""
+    """Merge proofs into parent theorems. Separate equations/proof_steps.
+    v2: also fold algorithm_step nodes into their parent algorithm."""
     node_by_id = {n["id"]: n for n in nodes}
 
     proof_map = {}
@@ -2153,32 +1975,15 @@ def _classify_and_merge(nodes, edges):
             proof_map[n["id"]] = n["proves"]
             parent = node_by_id[n["proves"]]
             parent.setdefault("proof_info", [])
-            content = n.get("proof_strategy") or n.get("statement_clean") or n.get("statement")
-            if content:
-                parent["proof_info"].append(content)
+            # LLM extraction writes the proof body to `proof_strategy`; the
+            # rules parser writes it to `statement`/`clean_text`. Accept any
+            # non-empty form so the `*` badge + side-panel work for both.
+            body = (n.get("proof_strategy") or n.get("clean_text")
+                    or n.get("statement") or "").strip()
+            if body:
+                parent["proof_info"].append(body)
 
-    # Also pick up proofs linked via "proves" edges (theorem<->proof, either direction)
-    for e in edges:
-        if e.get("type") != "proves":
-            continue
-        src, tgt = e["source"], e["target"]
-        proof_id, parent_id = None, None
-        if src in node_by_id and node_by_id.get(tgt, {}).get("type") == "proof":
-            proof_id, parent_id = tgt, src
-        elif tgt in node_by_id and node_by_id.get(src, {}).get("type") == "proof":
-            proof_id, parent_id = src, tgt
-        if proof_id and proof_id not in proof_map:
-            proof_map[proof_id] = parent_id
-            proof_node = node_by_id[proof_id]
-            parent = node_by_id[parent_id]
-            parent.setdefault("proof_info", [])
-            content = (proof_node.get("proof_strategy")
-                       or proof_node.get("statement_clean")
-                       or proof_node.get("statement"))
-            if content:
-                parent["proof_info"].append(content)
-
-    base_nodes, proof_steps, algo_steps, equations, orphan_eqs = [], [], [], [], []
+    base_nodes, proof_steps, algorithm_steps, equations, orphan_eqs = [], [], [], [], []
     has_edge = set()
     for e in edges:
         has_edge.add(e["source"])
@@ -2190,7 +1995,7 @@ def _classify_and_merge(nodes, edges):
         if n["type"] == "proof_step":
             proof_steps.append(n)
         elif n["type"] == "algorithm_step":
-            algo_steps.append(n)
+            algorithm_steps.append(n)
         elif n["type"] == "equation":
             if n["id"] in has_edge:
                 equations.append(n)
@@ -2200,11 +2005,26 @@ def _classify_and_merge(nodes, edges):
             base_nodes.append(n)
 
     base_ids = {n["id"] for n in base_nodes}
+
+    # Build redirect map so edges that pointed at algorithm_step nodes get
+    # rewritten to point at the algorithm parent (mirrors proof_map for proofs).
+    algo_step_map = {}
+    for s in algorithm_steps:
+        parent_id = s.get("parent_id") or s.get("parent_proof") or s.get("parent")
+        if parent_id and parent_id in base_ids:
+            algo_step_map[s["id"]] = parent_id
+
+    def _redirect(nid):
+        # Apply proof_map first then algo_step_map (steps don't nest under proofs).
+        nid = proof_map.get(nid, nid)
+        nid = algo_step_map.get(nid, nid)
+        return nid
+
     base_edges = []
     seen = set()
     for e in edges:
-        s = proof_map.get(e["source"], e["source"])
-        t = proof_map.get(e["target"], e["target"])
+        s = _redirect(e["source"])
+        t = _redirect(e["target"])
         if s == t or s not in base_ids or t not in base_ids:
             continue
         key = (s, t)
@@ -2214,20 +2034,68 @@ def _classify_and_merge(nodes, edges):
 
     step_chains = {}
     for ps in proof_steps:
-        # v2 uses parent_id; legacy uses parent_proof
-        parent = ps.get("parent_id") or ps.get("parent_proof", "")
+        parent = ps.get("parent_proof", "") or ps.get("parent_id", "") or ps.get("parent", "")
         thm_id = proof_map.get(parent, parent)
         step_chains.setdefault(thm_id, []).append(ps)
 
-    # v2: algorithm_step children attach directly to their algorithm parent.
-    # Algorithms are not collapsed (no proof_map entry), so attach to parent_id.
-    for as_ in algo_steps:
-        parent = as_.get("parent_id") or as_.get("parent", "")
-        step_chains.setdefault(parent, []).append(as_)
+    # v2: algorithm_step → algorithm parent. Use the same step_chains map so the
+    # side panel renders both kinds of decomposition uniformly.
+    for as_ in algorithm_steps:
+        parent_id = as_.get("parent_id") or as_.get("parent_proof") or as_.get("parent")
+        if parent_id and parent_id in base_ids:
+            step_chains.setdefault(parent_id, []).append(as_)
 
-    # Sort each chain by step_order for stable rendering
-    for k in step_chains:
-        step_chains[k].sort(key=lambda s: (s.get("step_order") or 0, s.get("id", "")))
+    # Synthesize pseudo proof-steps for rules-mode JSONs: those have a single
+    # `proof` node carrying the whole body in `statement`/`clean_text`, with
+    # no `proof_step` children. Split on the proof's own Part-markers (or
+    # paragraph breaks as a fallback) so the side panel can show a
+    # Decomposition section like for LLM outputs. All proofs of the same
+    # theorem are appended, with the proof id stored in `subclass` so the
+    # reader can tell which proof a step came from.
+    # Count how many distinct proofs target each theorem (so we know whether
+    # to tag steps with their parent proof id).
+    proof_count_for_thm = {}
+    for n in nodes:
+        if n.get("type") == "proof" and n.get("proves") in base_ids:
+            proof_count_for_thm[n["proves"]] = proof_count_for_thm.get(n["proves"], 0) + 1
+    seen_proofs = set()
+    for n in nodes:
+        if n.get("type") != "proof" or not n.get("proves"):
+            continue
+        if n["id"] in seen_proofs:
+            continue
+        seen_proofs.add(n["id"])
+        thm_id = n["proves"]
+        if thm_id not in base_ids:
+            continue
+        # Prefer raw_latex (consistent LaTeX) so we can reliably detect math
+        # environments before splitting; fall back to clean_text / statement.
+        body = (n.get("raw_latex") or n.get("clean_text")
+                or n.get("statement") or "").strip()
+        if not body:
+            continue
+        pieces = _split_proof_into_steps(body)
+        if not pieces:
+            continue
+        proof_id = n["id"]
+        existing = len(step_chains.get(thm_id, []))
+        # Only tag the proof id when the theorem has more than one proof.
+        proof_tag = proof_id if proof_count_for_thm.get(thm_id, 0) > 1 else ""
+        for i, (label, body_piece) in enumerate(pieces):
+            step_chains.setdefault(thm_id, []).append({
+                "id":              f"{proof_id}_s{i+1}",
+                "statement":       body_piece,
+                "statement_clean": body_piece,
+                "name":            label,
+                "subclass":        proof_tag,
+                "step_order":      existing + i + 1,
+                "type":            "proof_step",
+                "parent_proof":    proof_id,
+            })
+
+    # Sort step_chains entries by step_order for stable rendering
+    for k, lst in step_chains.items():
+        lst.sort(key=lambda s: (s.get("step_order") or 0, s.get("id", "")))
 
     eq_map = {}
     for eq in equations:
@@ -2236,26 +2104,6 @@ def _classify_and_merge(nodes, edges):
                 eq_map.setdefault(e["target"], []).append(eq)
             if e["target"] == eq["id"] and e["source"] in base_ids:
                 eq_map.setdefault(e["source"], []).append(eq)
-
-    # ── v2: Build step_info summaries (mirrors merge_proofs) ──
-    # Attach to parent base_node so click-detail panel can render Decomposition.
-    base_by_id = {n["id"]: n for n in base_nodes}
-    for parent_id, steps in step_chains.items():
-        parent = base_by_id.get(parent_id)
-        if parent is None:
-            continue
-        parent.setdefault("step_info", [])
-        parent["step_info"] = [
-            {
-                "id": s.get("id", ""),
-                "name": s.get("name", ""),
-                "subclass": s.get("subclass", ""),
-                "statement_clean": s.get("statement_clean", ""),
-                "statement": s.get("statement", ""),
-                "step_order": s.get("step_order", 0),
-            }
-            for s in steps
-        ]
 
     return base_nodes, base_edges, step_chains, eq_map, orphan_eqs
 
@@ -2271,73 +2119,87 @@ def generate_interactive_html(data, svg_path, html_path):
 
     base_nodes, base_edges, step_chains, eq_map, orphan_eqs = _classify_and_merge(nodes, edges)
 
+    # Port #4: classify nodes for the 3-toggle panel.
+    AUX_TYPES = {"example", "remark"}
+    aux_node_ids = sorted({n["id"] for n in base_nodes if n.get("type") in AUX_TYPES})
+    ext_node_ids = sorted({n["id"] for n in base_nodes if n.get("origin", "paper") == "external"})
+
+    # Bug 1 fix: build node_id → [edge gids touching this node]. Edge gids in
+    # the SVG are tagged as f"edge_<safe_src>__to__<safe_tgt>" by draw_dag.
+    # When the JS toggle hides a node, it iterates this map and also hides
+    # every incident edge so we don't leave dangling arrows.
+    def _safe_eid(s):
+        return str(s).replace(" ", "_")
+    node_to_edges = {}
+    for e in base_edges:
+        s, t = e["source"], e["target"]
+        gid = f"edge_{_safe_eid(s)}__to__{_safe_eid(t)}"
+        node_to_edges.setdefault(s, []).append(gid)
+        node_to_edges.setdefault(t, []).append(gid)
+
     # Foundation graph linking (shared computation with draw_dag)
     base_ids = {n["id"] for n in base_nodes}
     case2_ghosts, case1_matches, ghost_meta = compute_foundation_links(nodes, base_ids)
-    # Counts for the unified Foundation toggle (mathlib/proofwiki + book entries)
+    # Counts split: foundation ghost subsets (mathlib/proofwiki vs textbook)
     n_ghost_book = sum(1 for n, m in ghost_meta.items()
                        if n in case2_ghosts and m.get("is_book"))
     n_ghost_other = sum(1 for n, m in ghost_meta.items()
                         if n in case2_ghosts and not m.get("is_book"))
     n_ghost_total = n_ghost_book + n_ghost_other
+    # Lists of ghost element id-prefixes per subset, so the JS toggles can
+    # show/hide just the mathlib-or-herald vs book sub-set selectively.
+    ghost_names_sorted = sorted(case2_ghosts.keys())
+    ghost_book_indices = []
+    ghost_other_indices = []
+    for gi, gname in enumerate(ghost_names_sorted):
+        meta = ghost_meta.get(gname, {}) or {}
+        if meta.get("is_book"):
+            ghost_book_indices.append(gi)
+        else:
+            ghost_other_indices.append(gi)
 
     # Build detail data
     js_details = {}
+    # Map base_node id -> proof_info (from any proofs already merged in
+    # _classify_and_merge). Also expose step_info (alias of `steps` for the
+    # HEAD-style side-panel template).
     for n in base_nodes:
         nid = n["id"]
+        _steps = [{"id": s["id"], "statement": s.get("statement",""),
+                   "statement_clean": s.get("statement_clean",""),
+                   "name": s.get("name",""), "subclass": s.get("subclass",""),
+                   "step_order": s.get("step_order", 0),
+                   "type": s.get("type","")}
+                  for s in step_chains.get(nid, [])]
         js_details[nid] = {
             "name": n.get("name", ""),
             "type": n.get("type", ""),
             "section": n.get("section", ""),
             "statement": n.get("statement", ""),
+            # Port #4: plain-text summary (HEAD's "Plain-Text Summary" panel).
             "statement_clean": n.get("statement_clean", ""),
+            # Port #1/#2: external-cited badge in side panel.
             "origin": n.get("origin", "paper"),
             "origin_citation": n.get("origin_citation", ""),
             "assumptions": n.get("assumptions", []),
             "conclusions": n.get("conclusions", []),
             "proof_info": n.get("proof_info", []),
-            "step_info": n.get("step_info", []),
             "input": n.get("input", []),
             "output": n.get("output", []),
+            "steps": _steps,
+            # Port #5: HEAD-style "Decomposition" panel reads from step_info.
+            "step_info": _steps,
             "equations": [{"id": e["id"], "statement": e.get("statement",""), "section": e.get("section",""),
                           "context": e.get("context",""), "parent_step": e.get("parent_step","")}
                           for e in eq_map.get(nid, [])],
         }
-
-    # Node classification for toggles: which nodes are auxiliary (example/remark)
-    # and which are external (cited prior results). Default origin = "paper".
-    AUX_TYPES = {"example", "remark"}
-    aux_node_ids = sorted({n["id"] for n in base_nodes if n.get("type") in AUX_TYPES})
-    ext_node_ids = sorted({n["id"] for n in base_nodes if n.get("origin", "paper") == "external"})
-
-    # Edges incident to aux/external nodes — needed so JS can hide them too.
-    # Use the same id-sanitization as the SVG edge gids.
-    def _safe(s):
-        return str(s).replace(" ", "_")
-    aux_set = set(aux_node_ids)
-    ext_set = set(ext_node_ids)
-    aux_edge_gids = []
-    ext_edge_gids = []
-    for e in base_edges:
-        s, t = e["source"], e["target"]
-        gid = f"edge_{_safe(s)}__{_safe(t)}"
-        if s in aux_set or t in aux_set:
-            aux_edge_gids.append(gid)
-        if s in ext_set or t in ext_set:
-            ext_edge_gids.append(gid)
-
-    # Foundation ghost-edge → target node id map. Ghost edges get gid pattern
-    # f"{prefix}_edge_{gi}_{ti}" where gi indexes sorted(ghost_map keys) and
-    # ti indexes the target list. Mirror that here so the JS toggle can hide
-    # ghost edges whose target is currently invisible (e.g., aux/external node
-    # hidden) — otherwise the foundation arrow points into empty space.
-    ghost_edge_to_target = {}
-    ghost_names_sorted = sorted(case2_ghosts.keys())
-    for gi, gname in enumerate(ghost_names_sorted):
-        meta = ghost_meta.get(gname, {}) or {}
-        prefix = "ghostbook" if meta.get("is_book") else "ghost"
-        for ti, target_id in enumerate(case2_ghosts[gname]):
-            ghost_edge_to_target[f"{prefix}_edge_{gi}_{ti}"] = target_id
+    # Has-proof toggle (#1.a): collect ids of theorem-like nodes that
+    # actually carry proof_info — these are the highlightable targets.
+    _has_proof_node_ids = sorted({
+        nid for nid, d in js_details.items()
+        if d.get("type") in ("theorem", "lemma", "corollary", "proposition", "claim")
+        and (d.get("proof_info") or d.get("step_info"))
+    })
 
     js_orphans = [{"id": e["id"], "statement": e.get("statement",""), "section": e.get("section","")}
                   for e in orphan_eqs]
@@ -2350,118 +2212,23 @@ def generate_interactive_html(data, svg_path, html_path):
     with open(svg_path, "r", encoding="utf-8") as f:
         svg_content = f.read()
 
-    # ── Per-node text clipping ──────────────────────────────────────────
-    # matplotlib's set_clip_path doesn't export to SVG, so text can
-    # overflow node boxes. Fix: extract each body-rect's bounding box,
-    # inject an SVG <clipPath>, and apply it to all text <g> elements
-    # belonging to that node.
-    import re as _re_clip
-
-    # 1. Extract body-rect bounds from the path's coordinate pairs.
-    #    The body rect is the <path> inside <g id="node_<nid>"> (no "__").
-    _body_g_re = _re_clip.compile(
-        r'id="node_((?:(?!__)[^"])+)"[^>]*>\s*<path\s+d="([^"]+)"',
-        _re_clip.DOTALL,
-    )
-    _coord_re = _re_clip.compile(r'[\d.]+')
-    _node_bounds = {}  # nid -> (x_min, y_min, x_max, y_max)
-    for m in _body_g_re.finditer(svg_content):
-        nid = m.group(1)
-        path_d = m.group(2)
-        coords = [float(c) for c in _coord_re.findall(path_d)]
-        if len(coords) >= 4:
-            xs = coords[0::2]
-            ys = coords[1::2]
-            _node_bounds[nid] = (min(xs), min(ys), max(xs), max(ys))
-
-    # 2. Inject <clipPath> definitions into the SVG <defs> section
-    if _node_bounds:
-        clip_defs = []
-        for nid, (x_min, y_min, x_max, y_max) in _node_bounds.items():
-            clip_defs.append(
-                f'<clipPath id="clip_node_{nid}">'
-                f'<rect x="{x_min}" y="{y_min}" width="{x_max - x_min}" height="{y_max - y_min}"/>'
-                f'</clipPath>'
-            )
-        clip_block = "\n".join(clip_defs)
-        # Insert before the closing </defs> tag
-        svg_content = svg_content.replace("</defs>", clip_block + "\n</defs>", 1)
-
-        # 3. Apply clip-path to text <g> elements: id="node_<nid>__text..."
-        def _add_text_clip(m):
-            full_id = m.group(1)
-            base_nid = full_id.split("__", 1)[0]
-            if base_nid in _node_bounds:
-                return f'id="node_{full_id}" clip-path="url(#clip_node_{base_nid})"'
-            return m.group(0)
-        svg_content = _re_clip.sub(r'id="node_(([^"]+)__text[^"]*)"', _add_text_clip, svg_content)
+    # Convert matplotlib's `width=Xpt height=Ypt` to absolute pixels; without
+    # this browsers responsively-fit the inline SVG to the flex container.
+    import re as _re_svg
+    def _pt_to_px(m):
+        return f'{m.group(1)}{float(m.group(2)) * 4.0 / 3.0:.0f}px"'
+    svg_content = _re_svg.sub(r'(\swidth=")([\d.]+)pt"', _pt_to_px, svg_content, count=1)
+    svg_content = _re_svg.sub(r'(\sheight=")([\d.]+)pt"', _pt_to_px, svg_content, count=1)
 
     # Make node rects clickable by adding onclick via regex.
-    # Only target the body-rect ids (no "__" suffix) — per-element gids like
-    # node_<nid>__text0 / node_<nid>__patch1 are sibling artists used for
-    # toggling, not click handlers.
+    # Only match the body-rect gid `node_<nid>` (no `__` separator) — the
+    # per-node sub-artist gids `node_<nid>__patch0` etc. exist purely so the
+    # toggle JS can find every artist of a node; they must NOT be clickable.
     import re
     def _add_onclick(m):
         nid = m.group(1)
         return 'id="node_' + nid + '" onclick="showDetail(\'' + nid + '\')" style="cursor:pointer;"'
     svg_content = re.sub(r'id="node_((?:(?!__)[^"])+)"', _add_onclick, svg_content)
-
-    # Tag every node-related SVG element (body, header, all text labels) with
-    # data-nid + classes so JS toggles can hide/show whole nodes (and their
-    # incident edges) via CSS class. Body rect gets the click handler; the
-    # auxiliary per-element ids share the prefix `node_<nid>__`.
-    def _tag_node_class(m):
-        full_id = m.group(1)
-        # Extract base nid: everything before "__" suffix, if any.
-        base_nid = full_id.split("__", 1)[0]
-        d = js_details.get(base_nid, {})
-        ntype = d.get("type", "")
-        origin = d.get("origin", "paper") or "paper"
-        classes = ["node-elem", f"node-type-{ntype}", f"node-origin-{origin}"]
-        if ntype in ("example", "remark"):
-            classes.append("node-aux")
-        if origin == "external":
-            classes.append("node-external")
-        cls_attr = " ".join(classes)
-        return f'id="node_{full_id}" class="{cls_attr}" data-nid="{base_nid}"'
-    svg_content = re.sub(r'id="node_([^"]+)"(?![^>]*\bclass=)',
-                         _tag_node_class, svg_content)
-
-    # v2: collect (src,tgt) of `resolves` edges so we can dash them in the SVG
-    resolves_pairs = set()
-    for e in edges:
-        if e.get("type") == "resolves":
-            resolves_pairs.add((str(e["source"]).replace(" ", "_"),
-                                str(e["target"]).replace(" ", "_")))
-
-    # Tag edges with classes based on the endpoint nodes' aux/external status.
-    def _tag_edge_class(m):
-        full_id = m.group(1)
-        # full_id is "<safe_src>__<safe_tgt>"
-        try:
-            s_safe, t_safe = full_id.split("__", 1)
-        except ValueError:
-            return m.group(0)
-        # Map back to original IDs via js_details lookup (ids that match after sanitization)
-        def _match(safe):
-            for nid in js_details:
-                if str(nid).replace(" ", "_") == safe:
-                    return nid
-            return safe
-        src = _match(s_safe)
-        tgt = _match(t_safe)
-        ds = js_details.get(src, {})
-        dt = js_details.get(tgt, {})
-        classes = ["edge-elem"]
-        if ds.get("type") in ("example", "remark") or dt.get("type") in ("example", "remark"):
-            classes.append("edge-aux")
-        if ds.get("origin", "paper") == "external" or dt.get("origin", "paper") == "external":
-            classes.append("edge-external")
-        if (s_safe, t_safe) in resolves_pairs:
-            classes.append("edge-resolves")
-        cls_attr = " ".join(classes)
-        return f'id="edge_{full_id}" class="{cls_attr}"'
-    svg_content = re.sub(r'id="edge_([^"]+)"', _tag_edge_class, svg_content)
 
     # Add foundation links to detail data
     for nid, fnames in case1_matches.items():
@@ -2484,7 +2251,7 @@ def generate_interactive_html(data, svg_path, html_path):
         f'  <div class="legend-item"><div class="legend-color" style="background:{NODE_COLORS[t]["body"]};border-color:{NODE_COLORS[t]["header"]};"></div>{t.replace("_"," ").title()}</div>'
         for t in present_types
     )
-    # Foundation legend swatches — only include the kinds we actually have
+    # Foundation legend swatches — only include the kinds we actually have.
     foundation_legend_items = ""
     if n_ghost_other:
         foundation_legend_items += (
@@ -2501,82 +2268,53 @@ def generate_interactive_html(data, svg_path, html_path):
             '</div>\n'
         )
 
-    # KaTeX macros: cover operators and symbol families that author preambles
-    # routinely \newcommand. Mirrors portal/js/common.js — keep in sync.
-    katex_macros_dict = {
-        "\\R": "\\mathbb{R}", "\\N": "\\mathbb{N}", "\\Z": "\\mathbb{Z}",
-        "\\Q": "\\mathbb{Q}", "\\C": "\\mathbb{C}", "\\F": "\\mathbb{F}",
-        "\\E": "\\mathbb{E}", "\\P": "\\mathbb{P}", "\\1": "\\mathbf{1}",
-        "\\Var": "\\operatorname{Var}", "\\Cov": "\\operatorname{Cov}",
-        "\\Cor": "\\operatorname{Cor}", "\\KL":  "\\operatorname{KL}",
-        "\\indep": "\\perp\\!\\!\\!\\perp",
-        "\\Tr": "\\operatorname{Tr}", "\\tr": "\\operatorname{tr}",
-        "\\rk": "\\operatorname{rank}", "\\rank": "\\operatorname{rank}",
-        "\\diag": "\\operatorname{diag}", "\\Span": "\\operatorname{Span}",
-        "\\Hom": "\\operatorname{Hom}", "\\End": "\\operatorname{End}",
-        "\\Aut": "\\operatorname{Aut}", "\\Hess": "\\operatorname{Hess}",
-        "\\sgn": "\\operatorname{sgn}", "\\spec": "\\operatorname{spec}",
-        "\\supp": "\\operatorname{supp}", "\\vol": "\\operatorname{vol}",
-        "\\diam": "\\operatorname{diam}",
-        "\\poly": "\\operatorname{poly}", "\\polylog": "\\operatorname{polylog}",
-        "\\Lsym": "L_{\\mathrm{sym}}", "\\Lrw": "L_{\\mathrm{rw}}",
-        "\\Lun":  "L_1",
-        "\\Cut":     "\\operatorname{Cut}",
-        "\\Ncut":    "\\operatorname{Ncut}",
-        "\\charfct": "\\mathbf{1}",
-        "\\T":      "\\top",
-        "\\defeq":  "\\stackrel{\\mathrm{def}}{=}",
-        "\\eqdef":  "\\stackrel{\\mathrm{def}}{=}",
-        "\\bx": "\\mathbf{x}", "\\by": "\\mathbf{y}", "\\bz": "\\mathbf{z}",
-        "\\bw": "\\mathbf{w}", "\\bu": "\\mathbf{u}", "\\bv": "\\mathbf{v}",
-        "\\bA": "\\mathbf{A}", "\\bB": "\\mathbf{B}", "\\bX": "\\mathbf{X}",
-        "\\bY": "\\mathbf{Y}", "\\bZ": "\\mathbf{Z}",
-        "\\bepsilon": "\\boldsymbol{\\epsilon}", "\\btheta":   "\\boldsymbol{\\theta}",
-        "\\bmu":      "\\boldsymbol{\\mu}",      "\\bSigma":   "\\boldsymbol{\\Sigma}",
+    # Port #5: shared math macros (mirrors HEAD's KATEX_MACROS, adapted for MathJax v3).
+    # MathJax `tex.macros` keys are the command name without backslash; values are
+    # the expansion. Backslashes in values must be doubled so that the resulting
+    # JSON survives the JS string literal.
+    _mj_macros_dict = {
+        "R": r"\mathbb{R}", "N": r"\mathbb{N}", "Z": r"\mathbb{Z}",
+        "Q": r"\mathbb{Q}", "C": r"\mathbb{C}", "F": r"\mathbb{F}",
+        "E": r"\mathbb{E}", "P": r"\mathbb{P}",
+        "Var": r"\operatorname{Var}", "Cov": r"\operatorname{Cov}",
+        "Cor": r"\operatorname{Cor}", "KL":  r"\operatorname{KL}",
+        "indep": r"\perp\!\!\!\perp",
+        "Tr": r"\operatorname{Tr}", "tr": r"\operatorname{tr}",
+        "rk": r"\operatorname{rank}", "rank": r"\operatorname{rank}",
+        "diag": r"\operatorname{diag}", "Span": r"\operatorname{Span}",
+        "Hom": r"\operatorname{Hom}", "End": r"\operatorname{End}",
+        "Aut": r"\operatorname{Aut}", "Hess": r"\operatorname{Hess}",
+        "sgn": r"\operatorname{sgn}", "spec": r"\operatorname{spec}",
+        "supp": r"\operatorname{supp}", "vol": r"\operatorname{vol}",
+        "diam": r"\operatorname{diam}",
+        "poly": r"\operatorname{poly}", "polylog": r"\operatorname{polylog}",
+        "Lsym": r"L_{\mathrm{sym}}", "Lrw": r"L_{\mathrm{rw}}",
+        "Lun":  r"L_1",
+        "Cut":     r"\operatorname{Cut}",
+        "Ncut":    r"\operatorname{Ncut}",
+        "charfct": r"\mathbf{1}",
+        "T":      r"\top",
+        "defeq":  r"\stackrel{\mathrm{def}}{=}",
+        "eqdef":  r"\stackrel{\mathrm{def}}{=}",
+        "bx": r"\mathbf{x}", "by": r"\mathbf{y}", "bz": r"\mathbf{z}",
+        "bw": r"\mathbf{w}", "bu": r"\mathbf{u}", "bv": r"\mathbf{v}",
+        "bA": r"\mathbf{A}", "bB": r"\mathbf{B}", "bX": r"\mathbf{X}",
+        "bY": r"\mathbf{Y}", "bZ": r"\mathbf{Z}",
+        "bepsilon": r"\boldsymbol{\epsilon}", "btheta":   r"\boldsymbol{\theta}",
+        "bmu":      r"\boldsymbol{\mu}",      "bSigma":   r"\boldsymbol{\Sigma}",
     }
-    # Caligraphic family \cA..\cZ → \mathcal{A}..\mathcal{Z}
     for _i in range(26):
         _L = chr(65 + _i)
-        katex_macros_dict["\\c" + _L] = "\\mathcal{" + _L + "}"
-    # Emit as a JS object literal: '\sgn': '\operatorname{sgn}', etc.
-    # Each backslash needs to survive Python -> JS string -> KaTeX, so 1 -> 2.
-    katex_macros_js = ",\n    ".join(
-        "'{}': '{}'".format(k.replace("\\", "\\\\"), v.replace("\\", "\\\\"))
-        for k, v in katex_macros_dict.items()
-    )
+        _mj_macros_dict["c" + _L] = r"\mathcal{" + _L + r"}"
+    _mj_macros_json = _json.dumps(_mj_macros_dict)
 
     html = f"""<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
 <title>{_esc(title)}</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script>
-window.KATEX_CONFIG = {{
-  delimiters: [
-    {{left: '$$', right: '$$', display: true}},
-    {{left: '$',  right: '$',  display: false}},
-    {{left: '\\\\(', right: '\\\\)', display: false}},
-    {{left: '\\\\[', right: '\\\\]', display: true}}
-  ],
-  throwOnError: false,
-  errorColor: '#cc0000',
-  strict: 'ignore',
-  trust: false,
-  macros: {{
-    {katex_macros_js}
-  }}
-}};
-function typesetMath(el) {{
-  if (window.renderMathInElement) {{
-    try {{ renderMathInElement(el || document.body, window.KATEX_CONFIG); }}
-    catch (e) {{ /* swallow per-element errors */ }}
-  }}
-}}
-window.addEventListener('DOMContentLoaded', function() {{ typesetMath(document.body); }});
-</script>
+<script>MathJax = {{tex: {{inlineMath: [['$','$']], macros: {_mj_macros_json}}}, startup: {{typeset: false}}}};</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
 <style>
 body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #fafafa; }}
 #header {{ background: #2c3e50; color: white; padding: 10px 24px; display: flex; align-items: center; justify-content: space-between; }}
@@ -2606,21 +2344,14 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
 .ghost-node:hover {{ background: #BDBDBD; }}
 .ghost-node .ghost-label {{ font-weight: bold; font-size: 13px; }}
 .ghost-node .ghost-refs {{ font-size: 11px; color: #666; margin-top: 3px; }}
-/* Toggle controls panel (Foundation, Examples & Remarks, Cited Results) */
+/* Port #4: 3-button toggle panel (Foundation / Examples & Remarks / Cited Results) */
 .toggle-panel {{ display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-left: 12px; padding: 4px 8px; background: #ECEFF1; border: 1px solid #CFD8DC; border-radius: 6px; }}
 .toggle-panel .toggle-label {{ font-size: 11px; color: #555; font-weight: bold; text-transform: uppercase; margin-right: 4px; }}
 .toggle-btn {{ padding: 4px 12px; border: 1.5px solid #757575; border-radius: 4px; background: #E0E0E0; cursor: pointer; font-size: 12px; color: #333; }}
 .toggle-btn:hover {{ background: #BDBDBD; }}
 .toggle-btn[data-showing="1"] {{ background: #2E7D32; color: white; border-color: #1B5E20; }}
-.toggle-btn[disabled] {{ opacity: 0.4; cursor: not-allowed; background: #EEE; }}
-/* Hidden state — applied dynamically via JS */
-.svg-hidden {{ display: none !important; }}
-/* Visual differentiation when shown */
-.node-external-shown [stroke-dasharray] {{ }}  /* no-op, see runtime tweak */
+.toggle-btn[disabled] {{ opacity: 0.4; cursor: not-allowed; background: #EEE; color: #333; border-color: #BDBDBD; }}
 .node-aux-shown {{ opacity: 0.75; }}
-/* v2: `resolves` edges (theorem-like resolves an open_problem/conjecture) — dashed */
-.edge-resolves path {{ stroke-dasharray: 5,3 !important; }}
-.edge-resolves {{ stroke-dasharray: 5,3 !important; }}
 </style>
 </head>
 <body>
@@ -2637,11 +2368,10 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
 {legend_items}
   <div class="legend-item" style="margin-left:12px;"><span style="font-size:18px;color:#555;">&#8594;</span> A supports B</div>
   <div class="legend-item"><span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:#FFD54F;border:1px solid #5D4037;text-align:center;font-weight:bold;font-size:11px;color:#5D4037;line-height:12px;">*</span>&nbsp;has proof (click)</div>
-{foundation_legend_items}
-  <div class="toggle-panel" id="toggle-panel">
+{foundation_legend_items}  <div class="toggle-panel" id="toggle-panel">
     <span class="toggle-label">Toggle:</span>
-    <button class="toggle-btn" id="ghost-btn" onclick="toggleGhosts()"{(' disabled' if not n_ghost_total else '')}>Foundation ({n_ghost_total}{f" = {n_ghost_other}+{n_ghost_book}" if n_ghost_book else ""})</button>
-    <button class="toggle-btn" id="aux-btn" onclick="toggleAux()"{(' disabled' if not aux_node_ids else '')}>Examples &amp; Remarks ({len(aux_node_ids)})</button>
+    <button class="toggle-btn" id="ghost-btn" onclick="toggleGhosts()"{(' disabled' if not n_ghost_total else '')}>Foundations ({n_ghost_total})</button>
+    <button class="toggle-btn" id="aux-btn" data-showing="1" onclick="toggleAux()"{(' disabled' if not aux_node_ids else '')}>Examples &amp; Remarks ({len(aux_node_ids)})</button>
     <button class="toggle-btn" id="ext-btn" onclick="toggleExternal()"{(' disabled' if not ext_node_ids else '')}>Cited Results ({len(ext_node_ids)})</button>
   </div>
 </div>
@@ -2656,15 +2386,16 @@ var DETAILS = {details_json};
 var ORPHANS = {orphans_json};
 var GHOSTS = {ghosts_json};
 var CASE1 = {case1_json};
+// Port #4: aux (example/remark) and ext (external-origin) node id lists.
 var AUX_NODE_IDS = {_json.dumps(aux_node_ids, ensure_ascii=True)};
 var EXT_NODE_IDS = {_json.dumps(ext_node_ids, ensure_ascii=True)};
-var AUX_EDGE_GIDS = {_json.dumps(aux_edge_gids, ensure_ascii=True)};
-var EXT_EDGE_GIDS = {_json.dumps(ext_edge_gids, ensure_ascii=True)};
-// Foundation ghost-edge gid → target node id (so we can hide ghost edges
-// pointing to currently-invisible aux/external nodes).
-var GHOST_EDGE_TO_TARGET = {_json.dumps(ghost_edge_to_target, ensure_ascii=True)};
-var AUX_NODE_SET = (function(){{ var s={{}}; AUX_NODE_IDS.forEach(function(n){{s[n]=1;}}); return s; }})();
-var EXT_NODE_SET = (function(){{ var s={{}}; EXT_NODE_IDS.forEach(function(n){{s[n]=1;}}); return s; }})();
+// Port #1: has-proof targets (theorem-like with non-empty proof_info).
+var HAS_PROOF_NODE_IDS = {_json.dumps(_has_proof_node_ids, ensure_ascii=True)};
+// Port #1: foundation ghost-element index lists split by source.
+var GHOST_BOOK_INDICES = {_json.dumps(ghost_book_indices, ensure_ascii=True)};
+var GHOST_OTHER_INDICES = {_json.dumps(ghost_other_indices, ensure_ascii=True)};
+// Bug 1 fix: incident-edge map so hiding a node also hides edges touching it.
+var NODE_TO_EDGES = {_json.dumps(node_to_edges, ensure_ascii=True)};
 
 var _lastDetailNode = null;
 function showDetail(nodeId) {{
@@ -2687,14 +2418,14 @@ function showDetail(nodeId) {{
     if (ORPHANS.length === 0) h += '<div style="color:#888;">No orphan equations.</div>';
     panel.innerHTML = h;
     panel.className = "open";
-    typesetMath(panel);
+    if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([panel]).catch(function(){{}});
     return;
   }}
   var d = DETAILS[nodeId];
   if (!d) return;
   var h = '<h3 style="margin:0 0 8px;font-size:16px;">' + esc(nodeId) + ': ' + esc(d.name || d.type) + '</h3>';
   h += '<div style="font-size:12px;color:#888;margin-bottom:4px;">' + d.type + (d.section ? ' (Sec ' + d.section + ')' : '') + '</div>';
-  // Origin badge — paper (default, shown only if external) or external (cited prior result)
+  // Origin badge — paper (default) or external (cited prior result)
   if (d.origin === "external") {{
     var citeStr = d.origin_citation ? (' &mdash; ' + esc(d.origin_citation)) : '';
     h += '<div style="display:inline-block;padding:2px 8px;background:#FFF3E0;border:1px dashed #E65100;border-radius:3px;font-size:11px;color:#BF360C;margin-bottom:8px;">External (cited prior result)' + citeStr + '</div>';
@@ -2702,10 +2433,6 @@ function showDetail(nodeId) {{
   // Foundation graph link badge (Case 1: known result)
   if (d.foundation_links && d.foundation_links.length > 0) {{
     h += '<div style="display:inline-block;padding:2px 8px;background:#E3F2FD;border:1px solid #2471A3;border-radius:3px;font-size:11px;color:#2471A3;margin-bottom:8px;">&#128218; Known result: ' + d.foundation_links.map(esc).join(', ') + '</div>';
-  }}
-  // Plain-text restatement (statement_clean) — shown above the formal statement
-  if (d.statement_clean) {{
-    h += '<div class="detail-section"><h4>Plain-Text Summary</h4><div style="font-size:13px;color:#444;font-style:italic;">' + esc(d.statement_clean) + '</div></div>';
   }}
   // Pre-build equation maps by context
   var eqsByCtx = {{statement:[], assumption:[], conclusion:[], orphan:[]}};
@@ -2757,24 +2484,6 @@ function showDetail(nodeId) {{
     }});
     h += '</div>';
   }}
-  // v2: Step decomposition (proof_step children of a proof, or algorithm_step children of an algorithm)
-  if (d.step_info && d.step_info.length > 0) {{
-    h += '<div class="detail-section"><h4>Decomposition (' + d.step_info.length + ' steps)</h4>';
-    d.step_info.forEach(function(s, i) {{
-      var ord = (s.step_order || (i + 1));
-      var label = s.name ? esc(s.name) : esc(s.id || ('Step ' + ord));
-      h += '<div class="step-item"><strong>' + ord + '. ' + label + '</strong>';
-      if (s.subclass) {{
-        h += ' <span style="font-size:11px;font-style:italic;color:#666;">[' + esc(s.subclass) + ']</span>';
-      }}
-      var body = s.statement_clean || s.statement || '';
-      if (body) {{
-        h += '<div style="font-size:12px;color:#444;margin-top:2px;">' + esc(body) + '</div>';
-      }}
-      h += '</div>';
-    }});
-    h += '</div>';
-  }}
   // Algorithm input/output
   if (d.input && d.input.length > 0) {{
     h += '<div class="detail-section"><h4>Input</h4>';
@@ -2786,9 +2495,31 @@ function showDetail(nodeId) {{
     d.output.forEach(function(x) {{ h += '<div style="font-size:13px;">&bull; ' + esc(x) + '</div>'; }});
     h += '</div>';
   }}
-  // (Legacy "Proof Steps" panel removed: same data now rendered above as
-  // "Decomposition" via d.step_info. Both used to read from step_chains and
-  // produced duplicate sections on click.)
+  // Proof / algorithm steps with inline equations. v2: algorithm_step folded
+  // into parent algorithm; render same panel but title by parent type.
+  // Port #5: heading mirrors HEAD's "Decomposition (N steps)" wording.
+  if (d.steps && d.steps.length > 0) {{
+    var stepKind = (d.type === 'algorithm') ? 'Decomposition' : 'Decomposition';
+    h += '<div class="detail-section"><h4>' + stepKind + ' (' + d.steps.length + ' steps)</h4>';
+    d.steps.forEach(function(s, i) {{
+      var ord = (s.step_order || (i + 1));
+      var label = s.name ? esc(s.name) : esc(s.id || ('Step ' + ord));
+      var body = s.statement_clean || s.statement || '';
+      h += '<div class="step-item"><strong>' + ord + '. ' + label + '</strong>';
+      if (s.subclass) {{
+        h += ' <span style="font-size:11px;font-style:italic;color:#666;">[' + esc(s.subclass) + ']</span>';
+      }}
+      if (body) {{
+        h += '<div style="font-size:12px;color:#444;margin-top:2px;">' + esc(body) + '</div>';
+      }}
+      if (eqsByStep[s.id]) {{
+        eqsByStep[s.id].forEach(function(e) {{ h += eqBlock(e); }});
+      }}
+      h += '</div>';
+      if (i < d.steps.length - 1) h += '<div class="step-arrow">&#8595;</div>';
+    }});
+    h += '</div>';
+  }}
   // Orphan equations (collapsible)
   if (eqsByCtx.orphan.length > 0) {{
     h += '<div class="detail-section"><h4 style="cursor:pointer;" onclick="toggleEqPanel(this)">Unplaced Equations (' + eqsByCtx.orphan.length + ') &#9660;</h4>';
@@ -2800,7 +2531,7 @@ function showDetail(nodeId) {{
   }}
   panel.innerHTML = h;
   panel.className = "open";
-  typesetMath(panel);
+  if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([panel]).catch(function(){{}});
 }}
 function resetView() {{
   document.getElementById("detail-panel").className = "";
@@ -2813,123 +2544,150 @@ function toggleOrphans() {{
   ORPHANS.forEach(function(e) {{ h += '<div class="orphan-item"><strong>' + e.id + '</strong> (Sec ' + e.section + '): ' + esc(e.statement) + '</div>'; }});
   document.getElementById("orphan-list").innerHTML = h;
   p.style.display = "block";
-  typesetMath(p);
+  if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([p]).catch(function(){{}});
 }}
-// Foundation toggle (ghost nodes — both mathlib/proofwiki ("ghost_") and
-// book entries ("ghostbook_") are picked up by the [id^="ghost"] selector).
+// Ghost nodes (Foundation) — selector covers both "ghost_*" and "ghostbook_*"
+// so a single toggle hides/shows the entire foundation overlay (mathlib AND book).
 function toggleGhosts() {{
+  var svgEl = document.querySelector("#svg-container svg");
+  var ghostEls = svgEl ? svgEl.querySelectorAll('[id^="ghost"]') : [];
   var btn = document.getElementById("ghost-btn");
-  if (btn.disabled) return;
   var isShowing = btn.dataset.showing === "1";
-  btn.dataset.showing = isShowing ? "0" : "1";
-  _applyGhostVisibility();
+  if (!isShowing) {{
+    btn.dataset.showing = "1";
+    ghostEls.forEach(function(el) {{ el.style.display = ""; }});
+    // Reflect subset toggles to "on" too.
+    var mb = document.getElementById("ghost-mathlib-btn");
+    var bb = document.getElementById("ghost-book-btn");
+    if (mb && !mb.disabled) mb.dataset.showing = "1";
+    if (bb && !bb.disabled) bb.dataset.showing = "1";
+  }} else {{
+    btn.dataset.showing = "0";
+    ghostEls.forEach(function(el) {{ el.style.display = "none"; }});
+    var mb = document.getElementById("ghost-mathlib-btn");
+    var bb = document.getElementById("ghost-book-btn");
+    if (mb && !mb.disabled) mb.dataset.showing = "0";
+    if (bb && !bb.disabled) bb.dataset.showing = "0";
+  }}
 }}
 
-// Apply current foundation visibility, respecting whether ghost edges' target
-// nodes are currently hidden (aux/external toggles). A foundation arrow is
-// only shown when (a) Foundation toggle is ON and (b) its target node is
-// currently visible — otherwise it would float into empty space.
-function _applyGhostVisibility() {{
+// Port #1: Foundation subset toggles. Show/hide ghost elements whose gid
+// suffix matches the subset's index list. Indices come from
+// GHOST_BOOK_INDICES (book entries) / GHOST_OTHER_INDICES (mathlib/herald).
+function _toggleGhostSubset(btnId, indices, prefix) {{
   var svgEl = document.querySelector("#svg-container svg");
   if (!svgEl) return;
-  var btn = document.getElementById("ghost-btn");
-  var on = btn && btn.dataset.showing === "1";
-  var auxBtn = document.getElementById("aux-btn");
-  var extBtn = document.getElementById("ext-btn");
-  var auxOn = auxBtn && auxBtn.dataset.showing === "1";
-  var extOn = extBtn && extBtn.dataset.showing === "1";
-  // Show/hide ghost boxes, headers, text, refs uniformly.
-  var ghostEls = svgEl.querySelectorAll('[id^="ghost"]');
-  ghostEls.forEach(function(el) {{
-    var gid = el.id;
-    if (!on) {{
-      el.style.display = "none";
-      return;
-    }}
-    // Edge gid pattern: "<prefix>_edge_<gi>_<ti>". For these, check target.
-    if (GHOST_EDGE_TO_TARGET.hasOwnProperty(gid)) {{
-      var target = GHOST_EDGE_TO_TARGET[gid];
-      var targetHidden = (AUX_NODE_SET[target] && !auxOn) || (EXT_NODE_SET[target] && !extOn);
-      el.style.display = targetHidden ? "none" : "";
+  var btn = document.getElementById(btnId);
+  if (!btn || btn.disabled) return;
+  var nextShowing = !(btn.dataset.showing === "1");
+  btn.dataset.showing = nextShowing ? "1" : "0";
+  indices.forEach(function(gi) {{
+    // Box, header, text, refs for this ghost
+    ["box", "header", "text", "refs"].forEach(function(kind) {{
+      var el = svgEl.querySelector('[id="' + prefix + '_' + kind + '_' + gi + '"]');
+      if (el) el.style.display = nextShowing ? "" : "none";
+    }});
+    // Edges: <prefix>_edge_<gi>_<ti> — match all by gi prefix scan.
+    var edges = svgEl.querySelectorAll('[id^="' + prefix + '_edge_' + gi + '_"]');
+    edges.forEach(function(e) {{ e.style.display = nextShowing ? "" : "none"; }});
+  }});
+}}
+function toggleGhostsMathlib() {{
+  // Mathlib/proofwiki/herald entries use the "ghost" prefix.
+  _toggleGhostSubset("ghost-mathlib-btn", GHOST_OTHER_INDICES, "ghost");
+}}
+function toggleGhostsBook() {{
+  // Book entries use the "ghostbook" prefix.
+  _toggleGhostSubset("ghost-book-btn", GHOST_BOOK_INDICES, "ghostbook");
+}}
+
+// Port #1: "Has proof" toggle — highlight theorem-like nodes with a non-empty
+// proof_info by toggling a CSS class on the body rect.
+function toggleHasProof() {{
+  var btn = document.getElementById("has-proof-btn");
+  if (!btn || btn.disabled) return;
+  var nextShowing = !(btn.dataset.showing === "1");
+  btn.dataset.showing = nextShowing ? "1" : "0";
+  var svgEl = document.querySelector("#svg-container svg");
+  if (!svgEl) return;
+  HAS_PROOF_NODE_IDS.forEach(function(nid) {{
+    var safeNid = String(nid).replace(/ /g, "_");
+    var body = svgEl.querySelector('[id="node_' + safeNid + '"]');
+    if (!body) return;
+    var pathEl = body.tagName === "path" ? body : body.querySelector("path");
+    if (!pathEl) return;
+    if (nextShowing) {{
+      pathEl.setAttribute("data-prev-stroke", pathEl.getAttribute("stroke") || "");
+      pathEl.setAttribute("data-prev-strokewidth", pathEl.getAttribute("stroke-width") || "");
+      pathEl.setAttribute("stroke", "#5D4037");
+      pathEl.setAttribute("stroke-width", "3");
     }} else {{
-      el.style.display = "";
+      pathEl.setAttribute("stroke", pathEl.getAttribute("data-prev-stroke") || "");
+      pathEl.setAttribute("stroke-width", pathEl.getAttribute("data-prev-strokewidth") || "");
     }}
   }});
 }}
 
-// Generic helper: hide/show a set of nodes (by id) and their incident edges.
-function _setNodeVisibility(nodeIds, edgeGids, visible, extraClass) {{
+// Port #4: Generic helper to hide/show a set of nodes by id.
+// Bug 1 fix: also hide/show every edge incident to the toggled nodes via
+// NODE_TO_EDGES, so we don't leave dangling arrows pointing into empty space.
+function _setNodeVisibility(nodeIds, visible, extraClass) {{
   var svgEl = document.querySelector("#svg-container svg");
   if (!svgEl) return;
+  var edgeGids = {{}};  // collect unique edge gids touching any toggled node
   nodeIds.forEach(function(nid) {{
-    // Body rect
-    var body = svgEl.querySelector('[id="node_' + nid + '"]');
+    var safeNid = String(nid).replace(/ /g, "_");
+    var body = svgEl.querySelector('[id="node_' + safeNid + '"]');
     if (body) {{
       body.style.display = visible ? "" : "none";
       if (extraClass) {{
-        if (visible) body.classList.add(extraClass);
-        else body.classList.remove(extraClass);
+        if (visible) body.classList.add(extraClass); else body.classList.remove(extraClass);
       }}
     }}
-    // All sibling per-node elements (header rect, text labels, divider lines)
-    var sibs = svgEl.querySelectorAll('[id^="node_' + nid + '__"]');
+    var sibs = svgEl.querySelectorAll('[id^="node_' + safeNid + '__"]');
     sibs.forEach(function(el) {{
       el.style.display = visible ? "" : "none";
-      if (extraClass) {{
-        if (visible) el.classList.add(extraClass);
-        else el.classList.remove(extraClass);
-      }}
     }});
+    var incident = NODE_TO_EDGES[nid] || [];
+    incident.forEach(function(g) {{ edgeGids[g] = true; }});
   }});
-  edgeGids.forEach(function(gid) {{
-    var e = svgEl.querySelector('[id="' + gid + '"]');
-    if (e) e.style.display = visible ? "" : "none";
+  Object.keys(edgeGids).forEach(function(g) {{
+    var el = svgEl.querySelector('[id="' + g + '"]');
+    if (el) el.style.display = visible ? "" : "none";
   }});
 }}
 
-// Examples & Remarks toggle — hides nodes with type in {{example, remark}}
+// Examples & Remarks toggle
 function toggleAux() {{
   var btn = document.getElementById("aux-btn");
   if (btn.disabled) return;
-  var isShowing = btn.dataset.showing === "1";
-  var nextShowing = !isShowing;
+  var nextShowing = !(btn.dataset.showing === "1");
   btn.dataset.showing = nextShowing ? "1" : "0";
-  // Apply visual differentiation: lighter shade (opacity) when shown
-  _setNodeVisibility(AUX_NODE_IDS, AUX_EDGE_GIDS, nextShowing, "node-aux-shown");
-  // Apply opacity styling on the body rect when shown
-  AUX_NODE_IDS.forEach(function(nid) {{
-    var body = document.querySelector('#svg-container svg [id="node_' + nid + '"]');
-    if (body) body.style.opacity = nextShowing ? "0.75" : "";
-  }});
-  // Re-evaluate foundation edges (some now point to hidden/visible targets)
-  _applyGhostVisibility();
+  _setNodeVisibility(AUX_NODE_IDS, nextShowing, "node-aux-shown");
 }}
 
-// Cited Results (External) toggle — hides nodes with origin === "external"
+// Cited Results (External) toggle — also applies dashed border when shown,
+// matching HEAD's visual differentiation of external nodes.
 function toggleExternal() {{
   var btn = document.getElementById("ext-btn");
   if (btn.disabled) return;
-  var isShowing = btn.dataset.showing === "1";
-  var nextShowing = !isShowing;
+  var nextShowing = !(btn.dataset.showing === "1");
   btn.dataset.showing = nextShowing ? "1" : "0";
-  _setNodeVisibility(EXT_NODE_IDS, EXT_EDGE_GIDS, nextShowing, "node-external-shown");
-  // Re-evaluate foundation edges (some now point to hidden/visible targets)
-  _applyGhostVisibility();
-  // Apply dashed border on body rect when shown (visual differentiation)
+  _setNodeVisibility(EXT_NODE_IDS, nextShowing);
+  var svgEl = document.querySelector("#svg-container svg");
+  if (!svgEl) return;
   EXT_NODE_IDS.forEach(function(nid) {{
-    var body = document.querySelector('#svg-container svg [id="node_' + nid + '"]');
-    if (body) {{
-      // FancyBboxPatch is a <path>; modify its stroke-dasharray for a dashed look.
-      var pathEl = body.tagName === "path" ? body : body.querySelector("path");
-      if (pathEl) {{
-        if (nextShowing) {{
-          pathEl.setAttribute("stroke-dasharray", "6,3");
-          pathEl.setAttribute("stroke-width", "2");
-        }} else {{
-          pathEl.removeAttribute("stroke-dasharray");
-          pathEl.removeAttribute("stroke-width");
-        }}
-      }}
+    var safeNid = String(nid).replace(/ /g, "_");
+    var body = svgEl.querySelector('[id="node_' + safeNid + '"]');
+    if (!body) return;
+    var pathEl = body.tagName === "path" ? body : body.querySelector("path");
+    if (!pathEl) return;
+    if (nextShowing) {{
+      pathEl.setAttribute("stroke-dasharray", "6,3");
+      pathEl.setAttribute("stroke-width", "2");
+    }} else {{
+      pathEl.removeAttribute("stroke-dasharray");
+      pathEl.removeAttribute("stroke-width");
     }}
   }});
 }}
@@ -2957,19 +2715,17 @@ function toggleEqPanel(el) {{
 }}
 function esc(t) {{ return t ? t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;") : ""; }}
 
-// Hide ghost elements + aux + external elements on load (wait for SVG to render)
+// Hide ghost elements on load (wait for SVG to render)
 window.addEventListener("load", function() {{
   var svgEl = document.querySelector("#svg-container svg");
   if (svgEl) {{
-    // Hide all foundation ghost elements (mathlib/proofwiki AND book-derived).
+    // Hide all foundation ghost elements (mathlib AND book-derived).
     // The [id^="ghost"] selector covers both "ghost_*" and "ghostbook_*".
     var all = svgEl.querySelectorAll('[id^="ghost"]');
     all.forEach(function(el) {{ el.style.display = "none"; }});
   }}
-  // Examples & Remarks: hidden by default (toggle starts in OFF state).
-  _setNodeVisibility(AUX_NODE_IDS, AUX_EDGE_GIDS, false, null);
-  // Cited Results (External): hidden by default.
-  _setNodeVisibility(EXT_NODE_IDS, EXT_EDGE_GIDS, false, null);
+  // Port #2: Cited Results (External) hidden by default — matches HEAD.
+  _setNodeVisibility(EXT_NODE_IDS, false);
 }});
 
 var currentZoom = 1.0;
@@ -2979,19 +2735,7 @@ function applyZoom() {{
 }}
 function zoomIn() {{ currentZoom = Math.min(currentZoom * 1.3, 5.0); applyZoom(); }}
 function zoomOut() {{ currentZoom = Math.max(currentZoom / 1.3, 0.2); applyZoom(); }}
-function zoomFit() {{
-  if (svgEl) {{
-    var container = document.getElementById("svg-container");
-    var svgW = svgEl.getBoundingClientRect().width / currentZoom;
-    var svgH = svgEl.getBoundingClientRect().height / currentZoom;
-    var cW = container.clientWidth - 20;
-    var cH = container.clientHeight - 20;
-    currentZoom = Math.min(cW / svgW, cH / svgH, 1.0);
-    applyZoom();
-  }}
-}}
-// Auto-fit on load
-zoomFit();
+function zoomFit() {{ currentZoom = 1.0; applyZoom(); }}
 
 // Mouse wheel zoom on the SVG container
 document.getElementById("svg-container").addEventListener("wheel", function(e) {{
@@ -3043,10 +2787,6 @@ def main():
                         help="Include foundation graph ghost nodes in the PNG output")
     parser.add_argument("--foundation-path", default=None,
                         help="Path to clean_foundation.json (default: auto-detect)")
-    parser.add_argument("--show-extras", action="store_true",
-                        help="Include examples, remarks, and cited (origin:external) "
-                             "results in the PNG. Default off keeps the PNG focused on "
-                             "paper-origin Level-1 nodes; the HTML always retains them.")
     parser.add_argument("--html", action="store_true",
                         help="Also generate interactive HTML for each file")
     parser.add_argument("--html-only", action="store_true",
@@ -3072,10 +2812,6 @@ def main():
 
         with open(input_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-
-        # Normalize schema-B (src/LLMVersion/ parse_batch.py output) to
-        # canonical schema-A that the renderer expects. Idempotent on
-        # schema-A inputs (portal, T2 Opus extractions).
         data = _normalize_schema(data, source_path=input_path)
 
         nodes = data.get("nodes", [])
@@ -3091,21 +2827,17 @@ def main():
             result = draw_dag(nodes, edges, output_path, metadata=metadata,
                               resolution=args.resolution,
                               show_foundation=args.show_foundation,
-                              foundation_path=args.foundation_path,
-                              show_extras=args.show_extras)
+                              foundation_path=args.foundation_path)
             n_nodes, n_edges = result[0], result[1]
             print(f"  -> {output_path} ({n_nodes} nodes, {n_edges} edges)")
 
         if do_html:
             import os
             svg_only_path = str(output_path).replace('.png', '_nolegend.svg')
-            # The HTML viewer toggles examples/remarks/cited on demand, so the
-            # underlying SVG must contain them regardless of the PNG default.
             draw_dag(nodes, edges, svg_only_path.replace('.svg', '.png'), metadata=metadata,
                      resolution=args.resolution, show_legend=False,
                      show_foundation=True,
-                     foundation_path=args.foundation_path,
-                     show_extras=True)
+                     foundation_path=args.foundation_path)
             html_path = input_path.with_suffix(".html")
             n_html = generate_interactive_html(data, svg_only_path, str(html_path))
             for tmp in [svg_only_path, svg_only_path.replace('.svg', '.png')]:

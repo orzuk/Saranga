@@ -313,12 +313,16 @@ def link_paper(nodes, index, min_term_len=5, automaton=None, term_map=None):
             for term, entry in index.items():
                 if len(term) < min_term_len:
                     continue
-                # Use word boundaries for literal terms; regex terms (.*+?) used as-is
-                if any(c in term for c in '.*+?'):
-                    pattern = term
-                else:
-                    pattern = r'\b' + re.escape(term) + r'\b'
-                if re.search(pattern, search_text):
+                # Always escape — terms in the with_books index may contain raw
+                # LaTeX (e.g. "\lambda") whose `\l` is not a valid regex escape.
+                # The old `.*+?`-as-regex shortcut crashed on these; literal
+                # matching with word boundaries is what we actually want.
+                pattern = r'\b' + re.escape(term) + r'\b'
+                try:
+                    found = re.search(pattern, search_text)
+                except re.error:
+                    continue
+                if found:
                     node_matches.append({
                         "node_id": node["id"],
                         "node_type": node.get("type", ""),
