@@ -1119,6 +1119,382 @@ Write a complete, self-contained Python file with:
 
 
 # ---------------------------------------------------------------------------
+# MERGED (multi-structure) distillation helpers
+# ---------------------------------------------------------------------------
+# These power scripts/silver_distillation_merged.py: a single pass distills
+# *all* requested structure types per paper instead of re-running the whole
+# pipeline once per type.  Two levers cut cost vs the per-type path:
+#   1. Items are grouped by their shared base extraction method (the 7
+#      theorem-like types collapse to ONE "theoremlike" group), so the base
+#      method context is sent once per group, not once per type.
+#   2. analyze_patterns_batched sends B missed structures per LLM call (not 1)
+#      and marks the static base-method source with cache_control so it bills at
+#      the cache-read rate on every batch + the aggregate within a paper.
+# The originals analyze_patterns / aggregate_rules are left untouched.
+
+# Base extraction method name -> short group key used for extract_distilled_<group>.
+_METHOD_GROUP_KEY = {
+    "_extract_definitions_manual": "definition",
+    "_extract_theorem_like": "theoremlike",
+    "_extract_proofs": "proof",
+    "_extract_algorithms": "algorithm",
+    "_extract_tables": "table",
+}
+
+
+def base_method_groups(structure_types: List[str]) -> Dict[str, List[str]]:
+    """Group structure types by the base parser method they share.
+
+    Returns {group_key: [types...]} preserving input order.  Types whose method
+    is unknown fall back to a singleton group keyed by the type itself.
+    """
+    groups: Dict[str, List[str]] = {}
+    for st in structure_types:
+        method = STRUCTURE_EXTRACT_METHODS.get(st)
+        gkey = _METHOD_GROUP_KEY.get(method, st)
+        groups.setdefault(gkey, []).append(st)
+    return groups
+
+
+def _empty_usage() -> dict:
+    return {'input_tokens': 0, 'output_tokens': 0,
+            'cache_read_input_tokens': 0, 'cache_creation_input_tokens': 0,
+            'llm_calls': 0}
+
+
+def _acc_usage(dst: dict, msg_usage) -> None:
+    """Accumulate an Anthropic message.usage into dst (cache-token aware)."""
+    dst['input_tokens'] += getattr(msg_usage, 'input_tokens', 0) or 0
+    dst['output_tokens'] += getattr(msg_usage, 'output_tokens', 0) or 0
+    dst['cache_read_input_tokens'] += getattr(msg_usage, 'cache_read_input_tokens', 0) or 0
+    dst['cache_creation_input_tokens'] += getattr(msg_usage, 'cache_creation_input_tokens', 0) or 0
+
+
+def _parse_json_array(text: str) -> list:
+    """Parse a JSON array from an LLM response, tolerating fences / single obj."""
+    t = (text or "").strip()
+    if t.startswith("```"):
+        t = "\n".join(l for l in t.split("\n") if not l.strip().startswith("```"))
+    try:
+        data = json.loads(t)
+        if isinstance(data, dict):
+            return [data]
+        return data if isinstance(data, list) else []
+    except json.JSONDecodeError:
+        m = re.search(r'\[.*\]', t, re.DOTALL)
+        if m:
+            try:
+                return json.loads(m.group(0))
+            except json.JSONDecodeError:
+                return []
+        return []
+
+
+def _analyze_row(item: dict, context: str, pattern_type: str, group_key: str,
+                 code: str, reasoning: str) -> dict:
+    """Build one analyze-CSV row, matching analyze_patterns' schema + type tags."""
+    return {
+        'paper_id': item['paper_id'],
+        'gold_index': item.get('gold_index', ''),
+        'gold_text': item.get('gold_text', ''),
+        'pattern_type': pattern_type,
+        'latex_context': context[:2000] if context else '',
+        'llm_reasoning': reasoning,
+        'llm_suggested_rule': code,
+        'structure_type': item.get('structure_type', group_key),
+        'structure_group': group_key,
+    }
+
+
+def analyze_patterns_batched(items: List[dict], tex_dir: str = None,
+                             group_key: str = None,
+                             types_in_group: Optional[List[str]] = None,
+                             model: str = None,
+                             search_dirs: Optional[List[str]] = None,
+                             batch_size: int = 8) -> Tuple[List[dict], dict]:
+    """Batched, cache-aware analyze for ONE base-method group.
+
+    `items` are dark-knowledge dicts (paper_id, gold_index, gold_text, plus an
+    added `structure_type` naming the exact subtype, e.g. 'lemma'); all must
+    share the same base-method `group_key` (e.g. 'theoremlike').  One LLM call
+    handles up to `batch_size` items: the shared base-method source sits in a
+    cache_control'd system block, the user turn lists the missed structures, and
+    the model returns a JSON array of per-item rule suggestions.
+
+    Returns (rows, usage); rows match analyze_patterns' CSV schema plus
+    `structure_type` and `structure_group`.
+    """
+    import anthropic
+    if tex_dir is None:
+        tex_dir = FULL_PAPERS_DIR
+    types_in_group = types_in_group or [group_key]
+    rep_type = types_in_group[0]
+    method_source = _read_extraction_method(rep_type)
+
+    usage = _empty_usage()
+    rows: List[dict] = []
+    tex_cache: Dict[str, str] = {}
+    pending: List[tuple] = []   # (item, context, pattern_type)
+
+    for item in items:
+        paper_id = item['paper_id']
+        gold_text = item.get('gold_text', '')
+        if not gold_text.strip():
+            continue
+        if paper_id not in tex_cache:
+            found = _find_local_tex(paper_id, search_dirs=search_dirs)
+            if found is None:
+                found = _find_local_tex(re.sub(r'v\d+$', '', paper_id),
+                                        search_dirs=search_dirs)
+            tex_cache[paper_id] = ''
+            if found:
+                try:
+                    with open(found[0], 'r', encoding='utf-8', errors='replace') as f:
+                        tex_cache[paper_id] = f.read()
+                except OSError:
+                    pass
+        tex_source = tex_cache[paper_id]
+        if not tex_source:
+            rows.append(_analyze_row(item, '', 'tex_not_found', group_key,
+                                     '', 'TeX source not found'))
+            continue
+        context, pattern_type, _hint = _classify_pattern(gold_text, tex_source)
+        if not context:
+            rows.append(_analyze_row(item, '', pattern_type, group_key,
+                                     '', f'No context found ({pattern_type})'))
+            continue
+        pending.append((item, context, pattern_type))
+
+    if not pending:
+        return rows, usage
+
+    client = anthropic.Anthropic()
+    sys_text = (
+        "You are a Python regex engineer for a LaTeX math structure parser.\n\n"
+        f"## Base extraction method for the \"{group_key}\" family\n\n"
+        f"```python\n{method_source}\n```\n"
+    )
+
+    for b in range(0, len(pending), batch_size):
+        batch = pending[b:b + batch_size]
+        parts = [
+            f"Below are {len(batch)} {group_key} structures the base method FAILED "
+            f"to extract but SHOULD have. For EACH, give the MINIMAL Python addition "
+            f"(a new regex / env name / branch) needed to catch it.\n"
+        ]
+        for k, (item, context, pattern_type) in enumerate(batch):
+            gtype = item.get('structure_type', group_key)
+            parts.append(
+                f"\n### Item {k} — type: {gtype} (rule-based guess: {pattern_type})\n"
+                f"MISSED {gtype} (gold):\n```\n{item.get('gold_text', '')[:1500]}\n```\n"
+                f"LATEX CONTEXT:\n```latex\n{context[:2000]}\n```\n"
+            )
+        parts.append(
+            "\n## Output\nRespond with ONLY a JSON array (no markdown fences), one "
+            "object per item, in the SAME order:\n"
+            '[{"index": <int matching Item k>, "reasoning": "...", '
+            '"suggested_code": "minimal copy-pasteable Python"}]\n'
+            "Do NOT rewrite the whole method; output only the minimal addition per item."
+        )
+        user_text = "".join(parts)
+        message = None
+        try:
+            message = client.messages.create(
+                model=model, max_tokens=4096,
+                system=[{"type": "text", "text": sys_text,
+                         "cache_control": {"type": "ephemeral"}}],
+                messages=[{"role": "user", "content": user_text}],
+            )
+        except Exception:
+            try:
+                message = client.messages.create(
+                    model=model, max_tokens=4096, system=sys_text,
+                    messages=[{"role": "user", "content": user_text}],
+                )
+            except Exception as e2:
+                print(f"  [{group_key}] batched analyze call failed: {e2}")
+                for k, (item, context, pattern_type) in enumerate(batch):
+                    rows.append(_analyze_row(item, context, pattern_type,
+                                             group_key, '', f'LLM call failed: {e2}'))
+                continue
+        usage['llm_calls'] += 1
+        _acc_usage(usage, message.usage)
+        by_index = {}
+        for obj in _parse_json_array(message.content[0].text):
+            try:
+                by_index[int(obj.get('index'))] = obj
+            except (TypeError, ValueError):
+                continue
+        for k, (item, context, pattern_type) in enumerate(batch):
+            obj = by_index.get(k, {})
+            rows.append(_analyze_row(
+                item, context, pattern_type, group_key,
+                obj.get('suggested_code', ''), obj.get('reasoning', '')))
+
+    print(f"  [{group_key}] batched analyze: {usage['llm_calls']} call(s), "
+          f"{usage['input_tokens']} in / {usage['output_tokens']} out "
+          f"(cache_read {usage['cache_read_input_tokens']})")
+    return rows, usage
+
+
+def aggregate_rules_merged(input_csv: str, group_key: str,
+                           types_in_group: List[str], eval_dir: str,
+                           model: str = 'claude-opus-4-7') -> Tuple[str, dict]:
+    """Aggregate analyze rows for ONE base-method group into
+    eval_dir/distilled_rules.py exposing ``extract_distilled_<group_key>``.
+
+    For multi-type groups (theoremlike) every returned dict must carry a
+    ``structure_type`` field naming the precise subtype, decided from the matched
+    environment / marker.  The base-method source is cache_control'd.  On a
+    syntax error or missing entry function the previous file is kept (fault
+    isolation) and that group's last-good rules survive.
+    """
+    import anthropic
+    rows = _read_items_csv(input_csv)
+    rules = []
+    for r in rows:
+        code = (r.get('llm_suggested_rule') or '').strip()
+        if not code:
+            continue
+        rules.append({
+            'paper_id': r.get('paper_id', ''),
+            'gold_index': r.get('gold_index', ''),
+            'structure_type': r.get('structure_type', group_key),
+            'reasoning': (r.get('llm_reasoning') or '').strip(),
+            'suggested_code': code,
+            'latex_context': (r.get('latex_context') or '').strip(),
+            'gold_text': (r.get('gold_text') or '').strip(),
+        })
+
+    out_path = os.path.join(eval_dir, 'distilled_rules.py')
+    if not rules:
+        print(f"  [{group_key}] no non-empty suggestions to aggregate.")
+        return (out_path if os.path.isfile(out_path) else ''), _empty_usage()
+
+    rep_type = types_in_group[0]
+    base_method_source = _read_extraction_method(rep_type)
+    multi = len(types_in_group) > 1
+    func_name = f"extract_distilled_{group_key}"
+
+    rules_text = ""
+    for i, rule in enumerate(rules, 1):
+        rules_text += (f"\n--- Rule {i} (paper {rule['paper_id']}, "
+                       f"type {rule['structure_type']}, gold_index {rule['gold_index']}) ---\n"
+                       f"Reasoning: {rule['reasoning']}\nCode:\n{rule['suggested_code']}\n")
+    gold_tests_text = ""
+    for i, rule in enumerate(rules, 1):
+        gold_tests_text += (f"\n--- Test case {i} (paper {rule['paper_id']}, "
+                            f"type {rule['structure_type']}) ---\n")
+        if rule['gold_text']:
+            gold_tests_text += f"GOLD TEXT (must be matched):\n{rule['gold_text']}\n"
+        if rule['latex_context']:
+            gold_tests_text += f"SURROUNDING LATEX CONTEXT:\n{rule['latex_context'][:1500]}\n"
+
+    if multi:
+        subtype_block = (
+            "## Subtype tagging (REQUIRED)\n\n"
+            f"This family covers these subtypes: {', '.join(types_in_group)}.\n"
+            "Every result dict MUST include a `structure_type` field set to the "
+            "correct subtype, decided from the matched environment or textual "
+            "marker (case-insensitive, strip trailing '*'):\n"
+            + "".join(f"  - \\begin{{{t}}} or the word '{t.capitalize()}' -> '{t}'\n"
+                      for t in types_in_group)
+            + "If the subtype is ambiguous, default to 'theorem'.\n")
+        st_key_req = "`structure_type` (str, the subtype), "
+    else:
+        only_type = types_in_group[0]
+        subtype_block = (f"## Subtype tagging\n\nEvery result dict MUST include "
+                         f"`structure_type` set to '{only_type}'.\n")
+        st_key_req = "`structure_type` (str), "
+
+    prompt = f"""You are a Python engineer consolidating regex extraction rules for a LaTeX math paper parser.
+
+## Task
+
+Below are {len(rules)} individual rule suggestions for extracting "{group_key}" structures from LaTeX source. Aggregate them into a SINGLE, clean, self-contained Python file that runs IN ADDITION to the base parser shown in the system context. Do NOT duplicate what the base method already catches — only fill the gaps.
+
+{subtype_block}
+## GOLD TEST CASES — your patterns MUST match these
+{gold_tests_text}
+
+## Individual rule suggestions (for reference)
+{rules_text}
+
+## Key challenges
+1. Multi-sentence statements with display math contain periods; use paragraph boundaries (`\\n\\n`), never `[^.]*\\.`.
+2. Precision: every FP is costly. Require a real anchor (env name or bold/emph marker) in the FIRST sentence. Skip matches inside proof/example/remark environments.
+
+## Output requirements
+1. Only `import re` and `from typing import List, Dict` at the top
+2. A single function: `{func_name}(text: str) -> List[dict]`
+3. Each returned dict has keys: `raw_latex` (str), `clean_text` (str), `name` (str or None), `env_name` (str), `rule_name` (str), {st_key_req}
+4. `env_name` is `"distilled"`; `rule_name` is the module-level compiled-pattern variable name that produced the match — it MUST equal that variable's name (the prune step keys off it)
+5. Use compiled regex patterns at module level; include `_clean_latex(text)` and `_inside_excluded_env(text, start, end)` helpers
+6. Deduplicate overlapping matches
+- Do NOT import any project module; stdlib `re` only
+- Output ONLY the Python code, no fences, no explanation"""
+
+    print(f"  [{group_key}] aggregating {len(rules)} suggestion(s)...")
+    client = anthropic.Anthropic()
+    sys_block = ("## EXISTING BASE EXTRACTION METHOD (already runs — do NOT "
+                 f"duplicate)\n```python\n{base_method_source}\n```")
+    try:
+        message = client.messages.create(
+            model=model, max_tokens=16384,
+            system=[{"type": "text", "text": sys_block,
+                     "cache_control": {"type": "ephemeral"}}],
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except Exception:
+        message = client.messages.create(
+            model=model, max_tokens=16384,
+            messages=[{"role": "user", "content": sys_block + "\n\n" + prompt}],
+        )
+    usage = {
+        'input_tokens': getattr(message.usage, 'input_tokens', 0),
+        'output_tokens': getattr(message.usage, 'output_tokens', 0),
+        'cache_read_input_tokens': getattr(message.usage, 'cache_read_input_tokens', 0) or 0,
+        'cache_creation_input_tokens': getattr(message.usage, 'cache_creation_input_tokens', 0) or 0,
+    }
+    generated_code = message.content[0].text.strip()
+    if generated_code.startswith("```"):
+        lines = generated_code.split("\n")
+        if lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        generated_code = "\n".join(lines)
+
+    # Same dedup-bug fixups as aggregate_rules (LLMs reliably reproduce them).
+    generated_code = generated_code.replace(
+        "if not overlap:\n            del r['_start']\n            deduped.append(r)",
+        "if not overlap:\n            deduped.append(r)")
+    if "for r in deduped:\n        r.pop('_start', None)" not in generated_code:
+        generated_code = generated_code.replace(
+            "return deduped",
+            "for r in deduped:\n        r.pop('_start', None)\n\n    return deduped")
+
+    os.makedirs(eval_dir, exist_ok=True)
+    try:
+        compile(generated_code, out_path, 'exec')
+    except SyntaxError as e:
+        print(f"  [{group_key}] WARNING: syntax error in generated code: {e}; "
+              f"keeping previous {out_path}")
+        return (out_path if os.path.isfile(out_path) else ''), usage
+    if func_name not in generated_code:
+        print(f"  [{group_key}] WARNING: {func_name} not found; keeping previous file")
+        return (out_path if os.path.isfile(out_path) else ''), usage
+
+    with open(out_path, 'w', encoding='utf-8') as f:
+        f.write(generated_code)
+        f.write('\n')
+    print(f"  [{group_key}] wrote {out_path} "
+          f"({usage['input_tokens']} in / {usage['output_tokens']} out, "
+          f"cache_read {usage['cache_read_input_tokens']})")
+    return out_path, usage
+
+
+# ---------------------------------------------------------------------------
 # Function 6: prune_rules
 # ---------------------------------------------------------------------------
 
