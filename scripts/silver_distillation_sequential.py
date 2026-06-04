@@ -420,6 +420,8 @@ def run_sequential(args):
     print(f"  eval_dir: {eval_dir}")
     print(f"  origin_filter: {origin_filter}")
     print(f"  match_metric: {_MATCH_METRIC} (clean_latex_to_text + tokens)")
+    print(f"  prune_alpha: {args.prune_alpha} (prune when FP/(FP+TP) > alpha)")
+    print(f"  resume: {args.resume}")
     print()
 
     # Validate prerequisites
@@ -433,23 +435,54 @@ def run_sequential(args):
         if main_tex is None:
             print(f"WARNING: No .tex source for {pid} at {src_dir}")
 
-    # Clean slate for eval dir
     eval_dir.mkdir(parents=True, exist_ok=True)
-    # Remove old gold CSV if exists (we append per paper)
     gold_csv_path = gold_dir / FNAME_MAP[structure_type]
-    if gold_csv_path.exists():
-        gold_csv_path.unlink()
+    cumulative_csv = eval_dir / "cumulative_analyze.csv"
+    history_path = eval_dir / "pruned_history.json"
+    log_path = eval_dir / "iteration_log.json"
 
     iteration_log = []
     cumulative_cost = 0.0
     cumulative_rules = 0
-    all_analyze_rows = []  # accumulated across papers
+    all_analyze_rows = []   # accumulated across papers (and prior invocations)
+    prior_papers = []       # papers processed in earlier invocations (resume)
+    start_idx = 0           # paper_idx offset for resume
+
+    if args.resume:
+        # Load prior state; keep gold CSV / distilled_rules.py / history on disk.
+        if log_path.exists():
+            with open(log_path, encoding='utf-8') as f:
+                iteration_log = json.load(f)
+            prior_papers = [e['paper_id'] for e in iteration_log]
+            start_idx = len(iteration_log)
+            if iteration_log:
+                cumulative_cost = iteration_log[-1].get('cumulative_cost_usd', 0.0)
+        if cumulative_csv.exists():
+            with open(cumulative_csv, encoding='utf-8') as f:
+                all_analyze_rows = list(csv.DictReader(f))
+        print(f"  RESUME: {len(prior_papers)} prior paper(s), "
+              f"{len(all_analyze_rows)} cumulative analyze row(s), "
+              f"cumulative cost ${cumulative_cost:.4f}")
+        print(f"          prior papers: {prior_papers}")
+        print()
+    else:
+        # Clean slate: drop per-run accumulators so a fresh run starts empty.
+        for stale in (gold_csv_path, cumulative_csv, history_path):
+            if stale.exists():
+                stale.unlink()
 
     print("=" * 70)
     print("PHASE 1: Convert all pilot T2 JSONs -> silver gold CSV")
     print("=" * 70)
+    existing_gold_pids = set()
+    if gold_csv_path.exists():
+        with open(gold_csv_path, encoding='utf-8') as f:
+            existing_gold_pids = {r['paper_id'] for r in csv.DictReader(f)}
     total_gold_items = 0
     for pid in pilot_papers:
+        if pid in existing_gold_pids:
+            print(f"  {pid}: already in gold CSV — skipping conversion")
+            continue
         t2_path = t2_dir / f"{pid}.json"
         _, n_items = convert_t2_to_gold_csv(t2_path, structure_type, gold_dir,
                                             origin_filter=origin_filter)
@@ -478,11 +511,12 @@ def run_sequential(args):
     print("PHASE 3: Sequential distillation")
     print("=" * 70)
 
-    for paper_idx, pid in enumerate(pilot_papers, 1):
+    for offset, pid in enumerate(pilot_papers):
+        paper_idx = start_idx + offset + 1
         t0 = time.time()
         t2_path = t2_dir / f"{pid}.json"
         print(f"\n{'─'*60}")
-        print(f"Paper {paper_idx}/{len(pilot_papers)}: {pid}")
+        print(f"Paper {paper_idx} ({offset+1}/{len(pilot_papers)} this run): {pid}")
         print(f"{'─'*60}")
 
         # 3a: Build detailed_matches.csv for this paper
@@ -538,7 +572,6 @@ def run_sequential(args):
             all_analyze_rows.extend(analyze_results)
 
             # Write cumulative CSV for aggregate step
-            cumulative_csv = eval_dir / "cumulative_analyze.csv"
             if all_analyze_rows:
                 fieldnames = list(all_analyze_rows[0].keys())
                 with open(cumulative_csv, 'w', newline='', encoding='utf-8') as f:
@@ -553,7 +586,8 @@ def run_sequential(args):
             if has_suggestions:
                 print(f"  [4] Aggregating {len(all_analyze_rows)} cumulative rules...")
                 agg_ret = aggregate_rules(
-                    str(cumulative_csv), structure_type, str(eval_dir), model)
+                    str(cumulative_csv), structure_type, str(eval_dir), model,
+                    pruned_history_path=str(history_path))
                 if isinstance(agg_ret, tuple):
                     rules_path_str, agg_usage = agg_ret
                 else:
@@ -576,21 +610,23 @@ def run_sequential(args):
         # Uses ALL papers seen so far so a rule that's a net win on later
         # papers isn't pruned for a single earlier FP. The tex search dir
         # is needed because the silver pilot lives outside FULL_PAPERS_DIR.
-        papers_so_far = pilot_papers[:paper_idx]
+        papers_so_far = prior_papers + pilot_papers[:offset + 1]
         rules_file = eval_dir / "distilled_rules.py"
         if rules_file.exists():
             tex_search_dirs = [str(tex_dir / p / "source") for p in papers_so_far]
-            print(f"  [4b] Pruning FP-majority rules over {len(papers_so_far)} paper(s)...")
+            print(f"  [4b] Pruning rules (alpha={args.prune_alpha:.2f}) over "
+                  f"{len(papers_so_far)} paper(s)...")
             n_pruned = prune_rules(
                 paper_ids=papers_so_far,
                 structure_type=structure_type,
                 gold_csv=str(gold_csv_path),
                 eval_dir=str(eval_dir),
                 threshold=threshold,
-                require_fp_majority=True,
+                max_fdr=args.prune_alpha,
                 tex_search_dirs=tex_search_dirs,
+                history_path=str(history_path),
             )
-            print(f"      Pruned {n_pruned} rule(s) where FP > TP")
+            print(f"      Pruned {n_pruned} rule(s) with FDR > {args.prune_alpha:.2f}")
 
         # 3f: Post-distillation evaluation
         print(f"  [5] Post-distillation evaluation...")
@@ -715,6 +751,18 @@ def main():
                         "strict). 'containment' = |∩|/min(|A|,|B|) (forgiving on "
                         "span asymmetry — recommended when rules extract fragments "
                         "of opus's bundled narrative definitions).")
+    p.add_argument("--prune-alpha", type=float, default=0.5,
+                   help="Per-rule false-discovery tolerance for pruning. A "
+                        "distilled rule is pruned when FP/(FP+TP) > alpha across "
+                        "papers seen so far. Default 0.5 = prune FP-majority "
+                        "rules (legacy behavior); 0.0 = prune any rule with a "
+                        "single FP; higher = more permissive.")
+    p.add_argument("--resume", action="store_true",
+                   help="Continue a prior run in --eval-dir instead of starting "
+                        "fresh: load iteration_log.json + cumulative_analyze.csv, "
+                        "keep the existing gold CSV / distilled_rules.py / "
+                        "pruned_history.json, and only process pilot papers not "
+                        "already recorded. Lets each paper be its own invocation.")
     args = p.parse_args()
     run_sequential(args)
 

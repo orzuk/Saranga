@@ -940,8 +940,94 @@ def validate_rules(paper_ids: List[str], structure_type: str,
 # Function 5: aggregate_rules
 # ---------------------------------------------------------------------------
 
+def _build_pruned_history_block(pruned_history_path: Optional[str]) -> str:
+    """Render the previously-pruned patterns as a DO-NOT-REGENERATE prompt block.
+
+    Returns '' when there is no history file or it is empty.
+    """
+    if not pruned_history_path or not os.path.isfile(pruned_history_path):
+        return ''
+    try:
+        with open(pruned_history_path, encoding='utf-8') as f:
+            hist = json.load(f)
+    except (OSError, ValueError):
+        return ''
+    if not hist:
+        return ''
+
+    block = ("\n## PREVIOUSLY PRUNED PATTERNS — DO NOT REGENERATE\n\n"
+             "The patterns below were generated in earlier iterations and then "
+             "PRUNED because they produced more false positives than true positives "
+             "across the papers seen so far. Do NOT recreate these or semantically "
+             "equivalent patterns. If a gold case below appears to need one of them, "
+             "use a STRICTER, more specific anchor instead of the broad pattern.\n")
+    for e in hist:
+        block += (f"\n- `{e.get('rule_name', '?')}` "
+                  f"({e.get('fp_count', 0)} FP, {e.get('tp_count', 0)} TP)\n")
+        src = (e.get('pattern_src') or '').strip()
+        if src:
+            block += f"```python\n{src[:600]}\n```\n"
+    return block
+
+
+def _grab_compile_block(lines: List[str], start: int) -> tuple[str, int]:
+    """Grab a `re.compile(...)` assignment starting at line index `start`.
+
+    Returns (source_text, index_after_block).
+    """
+    src: List[str] = []
+    paren_depth = 0
+    i, n = start, len(lines)
+    while i < n:
+        l = lines[i]
+        paren_depth += l.count('(') - l.count(')')
+        src.append(l.rstrip('\n'))
+        i += 1
+        if paren_depth <= 0:
+            break
+    return '\n'.join(src), i
+
+
+def _extract_compiled_pattern_src(lines: List[str], pattern_name: str) -> str:
+    """Best-effort fetch of the regex source behind a result's `rule_name`.
+
+    The compiled variable name is LLM-generated and only loosely tied to the
+    `rule_name` string (e.g. rule_name ``P6_EMPH_TERM`` -> variable
+    ``_P6_EMPH_RE``; ``P2_IS_CALLED`` -> ``_P2_IS_CALLED_RE``). So we try exact
+    candidate spellings first, then fall back to collecting every ``re.compile``
+    assignment whose variable shares the leading ``P<N>`` tag. Reads `lines` as
+    they currently are; call BEFORE the block is commented out. Returns '' if
+    nothing matches.
+    """
+    base = pattern_name.lstrip('_')
+    candidates = [base, '_' + base, '_' + base + '_RE', base + '_RE']
+    for cand in candidates:
+        for i in range(len(lines)):
+            if re.match(rf'^{re.escape(cand)}\s*=\s*re\.compile\(',
+                        lines[i].lstrip()):
+                return _grab_compile_block(lines, i)[0]
+
+    # Fallback: gather all compiled patterns sharing the P<N> tag.
+    m = re.match(r'(P\d+)', base)
+    if m:
+        tag = m.group(1)
+        blocks: List[str] = []
+        i, n = 0, len(lines)
+        while i < n:
+            if re.match(rf'^_?{tag}[_A-Za-z0-9]*\s*=\s*re\.compile\(',
+                        lines[i].lstrip()):
+                block, i = _grab_compile_block(lines, i)
+                blocks.append(block)
+            else:
+                i += 1
+        if blocks:
+            return '\n'.join(blocks)
+    return ''
+
+
 def aggregate_rules(input_csv: str, structure_type: str, eval_dir: str,
-                    model: str = 'claude-opus-4-7') -> 'str | tuple[str, dict]':
+                    model: str = 'claude-opus-4-7',
+                    pruned_history_path: Optional[str] = None) -> 'str | tuple[str, dict]':
     """Read analyze CSV, aggregate LLM-suggested rules into a distilled_rules.py file.
 
     Parameters
@@ -950,6 +1036,11 @@ def aggregate_rules(input_csv: str, structure_type: str, eval_dir: str,
     structure_type : e.g. 'definition', 'theorem', 'proof'
     eval_dir : directory where distilled_rules.py will be written
     model : Anthropic model ID
+    pruned_history_path : optional path to a ``pruned_history.json`` written by
+        ``prune_rules``. When present, the previously-pruned patterns are fed
+        back into the meta-prompt as a "DO NOT REGENERATE" block so the LLM
+        stops reinventing FP-prone families (e.g. ``P*_BOLD_LABEL``) every
+        iteration.
 
     Returns the path to the generated distilled_rules.py, and a usage dict
     with keys ``input_tokens``, ``output_tokens`` (returned as a tuple
@@ -984,6 +1075,12 @@ def aggregate_rules(input_csv: str, structure_type: str, eval_dir: str,
     base_method_source = _read_extraction_method(structure_type)
     print(f"  Base method source: {len(base_method_source)} chars")
 
+    # Pull in the history of previously-pruned (FP-majority) patterns so the
+    # LLM doesn't regenerate them. Built by prune_rules across prior papers.
+    pruned_block = _build_pruned_history_block(pruned_history_path)
+    if pruned_block:
+        print(f"  Pruned-history feedback: {pruned_block.count('- `')} pattern(s)")
+
     # Build the meta-prompt with all individual rules + their gold texts
     rules_text = ""
     for i, rule in enumerate(rules, 1):
@@ -1013,7 +1110,7 @@ The following code is the base parser's extraction method for "{structure_type}"
 ```python
 {base_method_source}
 ```
-
+{pruned_block}
 ## GOLD TEST CASES — your patterns MUST match these
 
 These are the actual LaTeX texts your patterns need to catch. For each one, the gold text shows what the correct extraction looks like, and the surrounding context shows the LaTeX source around it.
@@ -1192,7 +1289,9 @@ def prune_rules(paper_ids: List[str], structure_type: str,
                 gold_csv: str, eval_dir: str,
                 threshold: float = 0.7,
                 require_fp_majority: bool = False,
-                tex_search_dirs: Optional[List[str]] = None) -> int:
+                max_fdr: Optional[float] = None,
+                tex_search_dirs: Optional[List[str]] = None,
+                history_path: Optional[str] = None) -> int:
     """Identify FP-causing distilled rules and comment them out.
 
     Calls the distilled extraction function *directly* (bypassing the full
@@ -1202,16 +1301,30 @@ def prune_rules(paper_ids: List[str], structure_type: str,
 
     Parameters
     ----------
-    require_fp_majority : if True, only prune rules where FP > TP (forgives
-        rules with mostly correct extractions and a few stray FPs). Default
-        False preserves the original aggressive behavior (any FP -> prune).
+    require_fp_majority : legacy flag kept for backward compat. Only consulted
+        when ``max_fdr`` is None: True -> alpha 0.5 (prune when FP > TP), False
+        -> alpha 0.0 (original aggressive behavior, any FP -> prune).
+    max_fdr : per-rule false-discovery tolerance ``alpha`` in [0, 1]. A rule is
+        pruned when its local FDR ``FP / (FP + TP) > alpha``. Lower alpha is
+        stricter (demands higher precision per rule). ``alpha=0.5`` reproduces
+        the FP-majority gate; ``alpha=0.0`` prunes any rule with a single FP.
+        Takes precedence over ``require_fp_majority`` when set.
     tex_search_dirs : extra directories to search for paper .tex sources
         (passed to ``_find_local_tex``). Useful when papers live outside
         ``FULL_PAPERS_DIR`` (e.g., the alignment-benchmark layout).
+    history_path : optional path to a ``pruned_history.json``. When set, each
+        pruned pattern (name, FP/TP counts, regex source) is merged into that
+        file so a later ``aggregate_rules`` call can avoid regenerating it.
 
     Returns the number of rules pruned.
     """
     import importlib.util
+
+    # Resolve the per-rule FDR tolerance (alpha). Explicit max_fdr wins;
+    # otherwise fall back to the legacy boolean (0.5 majority / 0.0 aggressive).
+    if max_fdr is None:
+        max_fdr = 0.5 if require_fp_majority else 0.0
+    max_fdr = max(0.0, min(1.0, float(max_fdr)))
 
     rules_path = os.path.join(eval_dir, 'distilled_rules.py')
     if not os.path.isfile(rules_path):
@@ -1363,6 +1476,7 @@ def prune_rules(paper_ids: List[str], structure_type: str,
 
     pruned_count = 0
     kept_count = 0
+    newly_pruned: List[dict] = []
     for rule_name, fp_papers in fp_by_rule.items():
         if rule_name == '<unattributed>':
             print(f"\n  WARNING: {len(fp_papers)} FP(s) could not be attributed "
@@ -1370,19 +1484,54 @@ def prune_rules(paper_ids: List[str], structure_type: str,
             continue
         tp_count = len(tp_by_rule.get(rule_name, []))
         fp_count = len(fp_papers)
-        if require_fp_majority and fp_count <= tp_count:
-            print(f"  KEEP  {rule_name}: {fp_count} FP, {tp_count} TP (FP not majority)")
+        fdr = fp_count / (fp_count + tp_count) if (fp_count + tp_count) else 1.0
+        if fdr <= max_fdr:
+            print(f"  KEEP  {rule_name}: {fp_count} FP, {tp_count} TP "
+                  f"(FDR={fdr:.2f} <= alpha={max_fdr:.2f})")
             kept_count += 1
             continue
         unique_papers = sorted(set(fp_papers))
+        # Capture the pattern source BEFORE commenting it out, for history.
+        pattern_src = _extract_compiled_pattern_src(source_lines, rule_name)
         source_lines = _comment_out_rule_block(
             source_lines, rule_name, unique_papers, tp_count)
+        newly_pruned.append({
+            'rule_name': rule_name,
+            'fp_count': fp_count,
+            'tp_count': tp_count,
+            'pattern_src': pattern_src,
+        })
         pruned_count += 1
-    if require_fp_majority:
-        print(f"  (FP-majority gate: kept {kept_count} rule(s) where FP <= TP)")
+    print(f"  (FDR gate alpha={max_fdr:.2f}: kept {kept_count} rule(s) with "
+          f"FDR <= alpha)")
 
     with open(rules_path, 'w', encoding='utf-8') as f:
         f.writelines(source_lines)
+
+    # Persist pruned-rule history (merge by rule_name) so later aggregate calls
+    # can feed it back into the meta-prompt.
+    if history_path and newly_pruned:
+        existing: Dict[str, dict] = {}
+        if os.path.isfile(history_path):
+            try:
+                with open(history_path, encoding='utf-8') as f:
+                    for e in json.load(f):
+                        existing[e['rule_name']] = e
+            except (OSError, ValueError, KeyError):
+                existing = {}
+        for d in newly_pruned:
+            prev = existing.get(d['rule_name'])
+            if prev:
+                prev['fp_count'] = max(prev.get('fp_count', 0), d['fp_count'])
+                prev['tp_count'] = max(prev.get('tp_count', 0), d['tp_count'])
+                if d['pattern_src']:
+                    prev['pattern_src'] = d['pattern_src']
+            else:
+                existing[d['rule_name']] = d
+        with open(history_path, 'w', encoding='utf-8') as f:
+            json.dump(list(existing.values()), f, indent=2)
+        print(f"  Pruned-history updated: {history_path} "
+              f"({len(existing)} pattern(s) total)")
 
     print(f"\nPruned {pruned_count} rule(s) in {rules_path}")
     print("Commented-out rules preserved with '# PRUNED' markers.")
