@@ -395,6 +395,83 @@ def count_compiled_patterns(rules_path: Path) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Human-readable per-paper digest
+# ---------------------------------------------------------------------------
+
+def _trunc(s: str, n: int = 400) -> str:
+    s = (s or "").strip().replace("\n", " ")
+    return s[:n] + ("…" if len(s) > n else "")
+
+
+def append_digest_section(digest_path: Path, paper_idx: int, pid: str,
+                          baseline: dict, post: dict, dk_items: list,
+                          analyze_results: list, prune_report: dict,
+                          residual_dk: list, alpha: float):
+    """Append a readable markdown section explaining one paper's distillation:
+    which gold items were missed + why + the suggested rule, which distilled
+    rules produced FPs (with snippets) and whether they were pruned, and what
+    FNs remain after distillation.
+    """
+    by_gi = {}
+    for r in analyze_results:
+        gi = r.get("gold_index")
+        try:
+            by_gi[int(gi)] = r
+        except (TypeError, ValueError):
+            continue
+
+    out = []
+    out.append(f"\n## Paper {paper_idx}: {pid}  "
+               f"(F1 {baseline['f1']:.3f} → {post['f1']:.3f}, "
+               f"P {post['precision']:.3f} R {post['recall']:.3f})\n")
+    out.append(f"- gold={baseline['n_gold']}  "
+               f"rules-extracted {baseline['n_extracted']}→{post['n_extracted']}  "
+               f"baseline FN={baseline['fn']}\n")
+
+    out.append(f"\n### Dark-knowledge FNs found this round ({len(dk_items)})\n")
+    if not dk_items:
+        out.append("_None — rules + prior distilled rules already covered the gold._\n")
+    for d in dk_items:
+        gi = d.get("gold_index")
+        out.append(f"\n**Gold[{gi}]** (manual best sim "
+                   f"{d.get('manual_best_similarity')}): {_trunc(d.get('gold_text'))}\n")
+        ar = by_gi.get(int(gi)) if str(gi).isdigit() else None
+        if ar:
+            reasoning = (ar.get("llm_reasoning") or "").strip()
+            rule = (ar.get("llm_suggested_rule") or "").strip()
+            if reasoning:
+                out.append(f"  - _Why missed / approach:_ {_trunc(reasoning, 600)}\n")
+            if rule:
+                out.append(f"  - _Suggested rule:_\n\n```python\n{rule[:900]}\n```\n")
+            else:
+                out.append("  - _No rule suggested (e.g. tex_not_found)._\n")
+
+    rules = (prune_report or {}).get("rules", [])
+    touched = [r for r in rules if r.get("fp_count", 0) > 0]
+    out.append(f"\n### Pruning (alpha={alpha:.2f}) — distilled rules producing FPs "
+               f"({len(touched)})\n")
+    if not touched:
+        out.append("_No false positives from distilled rules over papers seen so far._\n")
+    for r in touched:
+        status = "🔴 PRUNED" if r.get("pruned") else "🟢 kept"
+        out.append(f"\n- `{r['rule_name']}` — FDR {r['fdr']:.2f} "
+                   f"({r['fp_count']} FP / {r['tp_count']} TP) — {status}\n")
+        for ex in r.get("fp_examples", []):
+            out.append(f"    - FP @ {ex.get('paper_id')}: "
+                       f"{_trunc(ex.get('text'), 200)}\n")
+
+    out.append(f"\n### Residual FNs after distillation ({len(residual_dk)})\n")
+    if not residual_dk:
+        out.append("_None — all dark-knowledge gold now covered._\n")
+    for d in residual_dk:
+        out.append(f"- Gold[{d.get('gold_index')}]: {_trunc(d.get('gold_text'))}\n")
+
+    out.append("\n---\n")
+    with open(digest_path, "a", encoding="utf-8") as f:
+        f.writelines(out)
+
+
+# ---------------------------------------------------------------------------
 # Main sequential loop
 # ---------------------------------------------------------------------------
 
@@ -470,6 +547,16 @@ def run_sequential(args):
         for stale in (gold_csv_path, cumulative_csv, history_path):
             if stale.exists():
                 stale.unlink()
+
+    # Human-readable digest — fresh header on a new run, append on --resume.
+    digest_path = eval_dir / "distill_digest.md"
+    if not args.resume or not digest_path.exists():
+        with open(digest_path, 'w', encoding='utf-8') as f:
+            f.write(f"# Silver Distillation Digest — {structure_type}\n\n")
+            f.write(f"- model: `{model}`\n")
+            f.write(f"- match_metric: `{_MATCH_METRIC}`\n")
+            f.write(f"- prune_alpha: `{args.prune_alpha}`\n")
+            f.write(f"- origin_filter: `{origin_filter}`\n")
 
     print("=" * 70)
     print("PHASE 1: Convert all pilot T2 JSONs -> silver gold CSV")
@@ -547,6 +634,7 @@ def run_sequential(args):
         analyze_usage = {'input_tokens': 0, 'output_tokens': 0, 'llm_calls': 0}
         agg_usage = {'input_tokens': 0, 'output_tokens': 0}
         new_rules_count = 0
+        analyze_results = []  # this paper's per-FN rows (for the digest)
 
         if dk_items:
             # 3d: Analyze patterns (LLM calls, one per FN item)
@@ -638,6 +726,28 @@ def run_sequential(args):
               f"F1={post_metrics['f1']:.3f} "
               f"(was F1={baselines[pid]['f1']:.3f})")
 
+        # 3g: Digest — residual FNs (rebuild matches with final pruned rules,
+        # re-identify dark knowledge), prune report, and write a readable section.
+        print(f"  [6] Writing digest section...")
+        residual_dk = []
+        try:
+            build_detailed_matches(pid, t2_path, tex_dir, structure_type, eval_dir,
+                                   origin_filter=origin_filter)
+            residual_dk = [d for d in identify_dark_knowledge(
+                str(eval_dir), str(gold_csv_path), structure_type, threshold)
+                if d['paper_id'] == pid]
+        except Exception as e:
+            print(f"      [warn] residual FN computation failed: {e}")
+        prune_report = {}
+        pr_path = eval_dir / "prune_report.json"
+        if pr_path.exists():
+            with open(pr_path, encoding='utf-8') as f:
+                prune_report = json.load(f)
+        append_digest_section(
+            digest_path, paper_idx, pid, baselines[pid], post_metrics,
+            dk_items, analyze_results, prune_report, residual_dk,
+            args.prune_alpha)
+
         wall_time = time.time() - t0
         total_cost = analyze_cost + aggregate_cost
         cumulative_cost += total_cost
@@ -721,6 +831,7 @@ def run_sequential(args):
             print(f"  ✗ No diminishing returns observed (ratio: {second_half/first_half:.2f})")
 
     print(f"\n  Generated rules: {eval_dir}/distilled_rules.py")
+    print(f"  Readable digest: {digest_path}")
     print(f"  Run report:  python scripts/silver_distillation_report.py "
           f"--log {log_path}")
 

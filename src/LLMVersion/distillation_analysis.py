@@ -1205,6 +1205,23 @@ Write a complete, self-contained Python file with:
         print(f"  WARNING: Generated code has syntax error: {e}")
         print("  You may need to manually fix the file.")
 
+    # Runtime smoke-test: import the module and run the function on a small
+    # input. Catches LLM codegen that compiles but fails at runtime (undefined
+    # names, invalid regex flags) BEFORE it crashes prune/eval downstream.
+    func_name = f"extract_distilled_{structure_type}"
+    try:
+        ns: dict = {}
+        exec(compile(generated_code, out_path, 'exec'), ns)
+        fn = ns.get(func_name)
+        if fn is None:
+            print(f"  WARNING: smoke-test: {func_name}() not defined")
+        else:
+            fn("A set $S$ is \\emph{open} if for every point it contains a ball.\n\n")
+            print("  Runtime smoke-test: OK")
+    except Exception as e:
+        print(f"  WARNING: runtime smoke-test FAILED ({type(e).__name__}: {e}). "
+              f"The distilled rules may be skipped at prune/eval time.")
+
     # Verify the expected function exists
     func_name = f"extract_distilled_{structure_type}"
     if func_name not in generated_code:
@@ -1333,11 +1350,18 @@ def prune_rules(paper_ids: List[str], structure_type: str,
 
     func_name = f'extract_distilled_{structure_type}'
 
-    # 1. Load the distilled-rules module
+    # 1. Load the distilled-rules module (guard against bad LLM codegen — the
+    # file can pass a syntax check yet raise at import, e.g. undefined names or
+    # invalid regex flags. Don't let that crash the whole pipeline.)
     spec = importlib.util.spec_from_file_location(
         f'distilled_rules_prune_{structure_type}', rules_path)
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception as e:
+        print(f"ERROR: distilled rules failed to import ({type(e).__name__}: {e}) "
+              f"— skipping prune for this round")
+        return 0
     extract_fn = getattr(mod, func_name, None)
     if extract_fn is None:
         print(f"ERROR: {rules_path} does not define {func_name}()")
@@ -1363,7 +1387,12 @@ def prune_rules(paper_ids: List[str], structure_type: str,
         with open(tex_path, 'r', encoding='utf-8', errors='replace') as f:
             text = f.read()
 
-        results = extract_fn(text)
+        try:
+            results = extract_fn(text)
+        except Exception as e:
+            print(f"  WARNING: distilled extract raised on {paper_id} "
+                  f"({type(e).__name__}: {e}) — treating as no distilled output")
+            results = []
         extracted_texts = [r.get('raw_latex', '') for r in results]
 
         # Gold items for this paper
@@ -1405,6 +1434,13 @@ def prune_rules(paper_ids: List[str], structure_type: str,
     # 4. Attribute FPs (and TPs) to specific compiled patterns
     fp_by_rule: Dict[str, List[str]] = defaultdict(list)
     tp_by_rule: Dict[str, List[str]] = defaultdict(list)
+    # Keep the actual FP snippets per rule (for history + digest "why").
+    fp_examples_by_rule: Dict[str, List[dict]] = defaultdict(list)
+
+    def _record_fp_example(rule_name: str, pid: str, r: dict):
+        snippet = (r.get('raw_latex', '') or '').strip().replace('\n', ' ')
+        fp_examples_by_rule[rule_name].append(
+            {'paper_id': pid, 'text': snippet[:300]})
 
     has_rule_names = all(r.get('rule_name') for _, r in fp_results)
 
@@ -1412,6 +1448,7 @@ def prune_rules(paper_ids: List[str], structure_type: str,
         # Fast path — rule_name already in results
         for pid, r in fp_results:
             fp_by_rule[r['rule_name']].append(pid)
+            _record_fp_example(r['rule_name'], pid, r)
         for pid, r in tp_results:
             if r.get('rule_name'):
                 tp_by_rule[r['rule_name']].append(pid)
@@ -1455,8 +1492,10 @@ def prune_rules(paper_ids: List[str], structure_type: str,
             rule = _attribute(pid, r.get('raw_latex', ''))
             if rule:
                 fp_by_rule[rule].append(pid)
+                _record_fp_example(rule, pid, r)
             else:
                 fp_by_rule['<unattributed>'].append(pid)
+                _record_fp_example('<unattributed>', pid, r)
         for pid, r in tp_results:
             rule = _attribute(pid, r.get('raw_latex', ''))
             if rule:
@@ -1500,13 +1539,37 @@ def prune_rules(paper_ids: List[str], structure_type: str,
             'fp_count': fp_count,
             'tp_count': tp_count,
             'pattern_src': pattern_src,
+            'fp_examples': fp_examples_by_rule.get(rule_name, [])[:3],
         })
         pruned_count += 1
+    pruned_names = {d['rule_name'] for d in newly_pruned}
     print(f"  (FDR gate alpha={max_fdr:.2f}: kept {kept_count} rule(s) with "
           f"FDR <= alpha)")
 
     with open(rules_path, 'w', encoding='utf-8') as f:
         f.writelines(source_lines)
+
+    # Write a per-call prune report (every attributed rule, pruned or kept)
+    # so the orchestrator can build a human-readable digest of FPs/why.
+    report = []
+    for rule_name in sorted(set(fp_by_rule) | set(tp_by_rule)):
+        if rule_name == '<unattributed>':
+            continue
+        fpc = len(fp_by_rule.get(rule_name, []))
+        tpc = len(tp_by_rule.get(rule_name, []))
+        fdr = fpc / (fpc + tpc) if (fpc + tpc) else 1.0
+        report.append({
+            'rule_name': rule_name,
+            'fp_count': fpc,
+            'tp_count': tpc,
+            'fdr': round(fdr, 3),
+            'pruned': rule_name in pruned_names,
+            'fp_examples': fp_examples_by_rule.get(rule_name, [])[:3],
+            'tp_papers': sorted(set(tp_by_rule.get(rule_name, []))),
+        })
+    with open(os.path.join(eval_dir, 'prune_report.json'), 'w',
+              encoding='utf-8') as f:
+        json.dump({'alpha': max_fdr, 'rules': report}, f, indent=2)
 
     # Persist pruned-rule history (merge by rule_name) so later aggregate calls
     # can feed it back into the meta-prompt.
@@ -1526,6 +1589,15 @@ def prune_rules(paper_ids: List[str], structure_type: str,
                 prev['tp_count'] = max(prev.get('tp_count', 0), d['tp_count'])
                 if d['pattern_src']:
                     prev['pattern_src'] = d['pattern_src']
+                merged_ex = (prev.get('fp_examples', []) or []) + d.get('fp_examples', [])
+                # dedupe by (paper_id, text), keep up to 3
+                seen, uniq = set(), []
+                for ex in merged_ex:
+                    key = (ex.get('paper_id'), ex.get('text'))
+                    if key not in seen:
+                        seen.add(key)
+                        uniq.append(ex)
+                prev['fp_examples'] = uniq[:3]
             else:
                 existing[d['rule_name']] = d
         with open(history_path, 'w', encoding='utf-8') as f:
