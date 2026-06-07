@@ -46,12 +46,11 @@ trap cleanup EXIT
 #   SHARED_ENV=/path/to/env  sbatch grade_all_gpu.sh
 SHARED_ENV="${SHARED_ENV:-/sci/labs/orzuk/orzuk/venvs/llm}"
 SHARED_HF_CACHE="${SHARED_HF_CACHE:-/sci/labs/orzuk/orzuk/trained_models/hf_cache}"
-if [ -f "$SHARED_ENV/bin/activate" ]; then
-    source "$SHARED_ENV/bin/activate"                       # plain venv
-elif command -v conda >/dev/null 2>&1; then
-    source "$(conda info --base)/etc/profile.d/conda.sh"    # conda env (init for batch shells)
-    conda activate "$SHARED_ENV"
-fi
+# The submit shell may already have a venv/conda env active whose bin/ is first on
+# PATH and would otherwise win. Prepend the target env's bin/ so `python` is ITS
+# interpreter no matter what was inherited. (PATH order beats activate/conda here.)
+unset VIRTUAL_ENV 2>/dev/null || true
+export PATH="$SHARED_ENV/bin:$PATH"
 export LD_LIBRARY_PATH="$SHARED_ENV/lib:${LD_LIBRARY_PATH:-}"
 export HF_HOME="$SHARED_HF_CACHE"
 echo "[grade_all] python: $(which python)"
