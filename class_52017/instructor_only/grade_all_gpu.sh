@@ -63,10 +63,14 @@ python -c "import vllm" 2>/dev/null || {
 }
 
 # --- launch vLLM ---
-echo "[grade_all] starting vLLM for $MODEL ..."
+# MAXLEN kept modest: this GPU's KV cache can't hold 32768 (needs ~4.5 GiB, ~3.9 avail).
+# 16384 fits with margin and is far more than the inputs need. Override via env if needed.
+MAXLEN="${MAXLEN:-16384}"
+GPU_UTIL="${GPU_UTIL:-0.92}"
+echo "[grade_all] starting vLLM for $MODEL (max-model-len=$MAXLEN, gpu-util=$GPU_UTIL) ..."
 python -m vllm.entrypoints.openai.api_server \
     --model "$MODEL" --port $VLLM_PORT \
-    --max-model-len 32768 --gpu-memory-utilization 0.9 --trust-remote-code \
+    --max-model-len "$MAXLEN" --gpu-memory-utilization "$GPU_UTIL" --trust-remote-code \
     > vllm_server.log 2>&1 &
 VLLM_PID=$!
 for i in $(seq 1 60); do
