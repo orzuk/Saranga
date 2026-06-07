@@ -31,7 +31,13 @@ def read_avg(summary_path):
                         return float(row[k])
                     except (KeyError, ValueError, TypeError):
                         return None
-                return {"combined": g("combined_F1"), "node": g("node_F1"), "edge": g("edge_F1")}
+                def avg2(a, b):
+                    return (a + b) / 2 if (a is not None and b is not None) else None
+                # Combined = average across nodes and edges. F1 is the brief's combined_F1
+                # (mean of node-F1 and edge-F1); P and R are the matching means.
+                return {"P": avg2(g("node_P"), g("edge_P")),
+                        "R": avg2(g("node_R"), g("edge_R")),
+                        "F1": g("combined_F1")}
     return None
 
 
@@ -60,31 +66,34 @@ def main():
 
     def rank_key(r):
         primary = r["test"] if (args.rank_by == "test" and r["test"]) else r["train"]
-        return primary["combined"] if primary and primary["combined"] is not None else -1.0
+        return primary["F1"] if primary and primary.get("F1") is not None else -1.0
 
     rows.sort(key=rank_key, reverse=True)
 
     def fmt(d, k):
-        return f"{d[k]:.3f}" if d and d.get(k) is not None else "—"
+        if not d or d.get(k) is None:
+            return "—"
+        return f"**{d[k]:.3f}**" if k == "F1" else f"{d[k]:.3f}"
 
     def label(sid):
         if not args.anonymize:
             return sid
         return "student-" + hashlib.sha1(sid.encode()).hexdigest()[:6]
 
-    rank_desc = ("Ranked by **test combined F1** (train shown when no test score yet)."
-                 if args.rank_by == "test" else "Ranked by **train combined F1**.")
+    rank_desc = ("Ranked by **combined F1** on the test set (train F1 shown when no test score yet)."
+                 if args.rank_by == "test" else "Ranked by **combined F1** on the train set.")
     lines = [f"# {args.title}", ""]
     if args.note:
         lines += [args.note, ""]
-    lines += [f"{rank_desc} {len(rows)} submissions.", "",
-             "| Rank | Submission | Train comb | Train node | Train edge | Test comb | Test node | Test edge |",
+    lines += [f"{rank_desc} Each cell is the average over nodes and edges; **F1** is the ranked metric. "
+              f"{len(rows)} submissions.", "",
+             "| Rank | Submission | Train P | Train R | Train F1 | Test P | Test R | Test F1 |",
              "|---:|---|---:|---:|---:|---:|---:|---:|"]
     for rank, r in enumerate(rows, 1):
         tr, te = r["train"], r["test"]
         lines.append(
-            f"| {rank} | {label(r['id'])} | {fmt(tr,'combined')} | {fmt(tr,'node')} | {fmt(tr,'edge')} "
-            f"| {fmt(te,'combined')} | {fmt(te,'node')} | {fmt(te,'edge')} |")
+            f"| {rank} | {label(r['id'])} | {fmt(tr,'P')} | {fmt(tr,'R')} | {fmt(tr,'F1')} "
+            f"| {fmt(te,'P')} | {fmt(te,'R')} | {fmt(te,'F1')} |")
 
     with open(args.out, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
