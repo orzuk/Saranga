@@ -31,7 +31,7 @@ MODEL="${MODEL:-Qwen/Qwen3-8B}"                                    # vLLM serves
 LEADERBOARD="${LEADERBOARD:-$COURSE_REPO/LEADERBOARD.md}"          # publish straight into the course repo by default
 RANK_BY="${RANK_BY:-test}"                                         # rank by test combined-F1 (train shown until test exists)
 BOARD_TITLE="${BOARD_TITLE:-Big Data Project 52017 — Part 2 Leaderboard}"
-NOTE="${NOTE:-Every pair is shown at the baseline extractor's score. Submit your own annotate_chapter.py and your row updates with your real numbers. Final ranking uses the held-out test set (chapters 11-12 + 5 unseen papers).}"
+NOTE="${NOTE:-Every pair starts at the baseline score. Submit your own annotate_chapter.py and your row updates with your real numbers. Final ranking uses the held-out test set (chapters 11-12 + 5 unseen papers).}"
 VLLM_PORT=8000
 VLLM_PID=""
 # ==========================================================
