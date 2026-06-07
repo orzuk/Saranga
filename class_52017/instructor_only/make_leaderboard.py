@@ -94,12 +94,18 @@ def main():
 
     rank_desc = ("Ranked by **combined F1** on the test set (train shown when no test score yet)."
                  if args.rank_by == "test" else "Ranked by **combined F1** on the train set.")
+    metric_help = (
+        "Each cell is **P/R/F1** (F1 in bold), where "
+        "**P** = precision = TP/(TP+FP) (of the items you extracted, the fraction that are correct); "
+        "**R** = recall = TP/(TP+FN) (of the gold items, the fraction you found); "
+        "**F1** = 2&middot;P&middot;R/(P+R) (harmonic mean of P and R). "
+        "**combined** = average over nodes and edges.")
     lines = [f"# {args.title}", ""]
     if args.note:
         lines += [args.note, ""]
-    lines += [f"{rank_desc} Each cell is **P/R/F1** (F1 in bold); 'combined' is the average of nodes and edges. "
-              f"{len(rows)} submissions.", "",
-             "| Rank | Submission | Train node | Train edge | Train combined | Test node | Test edge | Test combined |",
+    lines += [f"{rank_desc} {len(rows)} submissions.", "", metric_help, "",
+             "| Rank | Submission | Train node<br>P/R/F1 | Train edge<br>P/R/F1 | Train combined<br>P/R/F1 "
+             "| Test node<br>P/R/F1 | Test edge<br>P/R/F1 | Test combined<br>P/R/F1 |",
              "|---:|---|---:|---:|---:|---:|---:|---:|"]
     for rank, r in enumerate(rows, 1):
         tr, te = r["train"], r["test"]
