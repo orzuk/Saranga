@@ -41,12 +41,27 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# --- environment (same as run_on_gpu.sh) ---
-SHARED_ENV="/sci/labs/orzuk/orzuk/venvs/llm"
-SHARED_HF_CACHE="/sci/labs/orzuk/orzuk/trained_models/hf_cache"
-source activate "$SHARED_ENV" 2>/dev/null || conda activate "$SHARED_ENV"
+# --- environment ---
+# Must be an env with vllm installed. Override on the command line if needed:
+#   SHARED_ENV=/path/to/env  sbatch grade_all_gpu.sh
+SHARED_ENV="${SHARED_ENV:-/sci/labs/orzuk/orzuk/venvs/llm}"
+SHARED_HF_CACHE="${SHARED_HF_CACHE:-/sci/labs/orzuk/orzuk/trained_models/hf_cache}"
+if [ -f "$SHARED_ENV/bin/activate" ]; then
+    source "$SHARED_ENV/bin/activate"                       # plain venv
+elif command -v conda >/dev/null 2>&1; then
+    source "$(conda info --base)/etc/profile.d/conda.sh"    # conda env (init for batch shells)
+    conda activate "$SHARED_ENV"
+fi
 export LD_LIBRARY_PATH="$SHARED_ENV/lib:${LD_LIBRARY_PATH:-}"
 export HF_HOME="$SHARED_HF_CACHE"
+echo "[grade_all] python: $(which python)"
+# Fail fast with a clear message instead of hanging 10 min on a server that never starts.
+python -c "import vllm" 2>/dev/null || {
+    echo "[grade_all] ERROR: 'vllm' not importable in env: $SHARED_ENV"
+    echo "[grade_all]   Set SHARED_ENV=/path/to/env-with-vllm and resubmit, e.g.:"
+    echo "[grade_all]   SHARED_ENV=... SPLIT=both TEST_DIR=../test_set SUBMISSIONS=submissions_dec sbatch grade_all_gpu.sh"
+    exit 1
+}
 
 # --- launch vLLM ---
 echo "[grade_all] starting vLLM for $MODEL ..."
