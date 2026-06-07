@@ -95,10 +95,10 @@ def main():
     rank_desc = ("Ranked by **combined F1** on the test set (train shown when no test score yet)."
                  if args.rank_by == "test" else "Ranked by **combined F1** on the train set.")
     metric_help = (
-        "Each cell is **P/R/F1** (F1 in bold), where "
-        "**P** = precision = TP/(TP+FP) (of the items you extracted, the fraction that are correct); "
-        "**R** = recall = TP/(TP+FN) (of the gold items, the fraction you found); "
-        "**F1** = 2&middot;P&middot;R/(P+R) (harmonic mean of P and R). "
+        "Each cell is P/R/**F1** (F1 in bold), where <br>\n"
+        "P = precision = TP/(TP+FP) (of the items you extracted, the fraction that are correct); <br>\n"
+        "R = recall = TP/(TP+FN) (of the gold items, the fraction you found); <br>\n"
+        "**F1** = 2&middot;P&middot;R/(P+R) (harmonic mean of P and R).\n\n"
         "**combined** = average over nodes and edges.")
     lines = [f"# {args.title}", ""]
     if args.note:
