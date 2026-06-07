@@ -49,7 +49,7 @@ def main():
                     help="Which split's combined F1 to rank by (falls back to train if test missing)")
     ap.add_argument("--anonymize", action="store_true",
                     help="Replace ids with a stable pseudonym (student-<hash>)")
-    ap.add_argument("--title", default="Big Data Project 52017 — Leaderboard")
+    ap.add_argument("--title", default="Big Data Project 52017 Leaderboard")
     ap.add_argument("--note", default="",
                     help="Optional explanatory line printed under the title (student-facing framing)")
     args = ap.parse_args()
@@ -72,7 +72,7 @@ def main():
 
     def fmt(d, k):
         if not d or d.get(k) is None:
-            return "—"
+            return "-"
         return f"**{d[k]:.3f}**" if k == "F1" else f"{d[k]:.3f}"
 
     def label(sid):
