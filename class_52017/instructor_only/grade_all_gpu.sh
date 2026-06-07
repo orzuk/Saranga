@@ -28,7 +28,10 @@ OUT="${OUT:-results}"                                              # per-pair sc
 TEST_DIR="${TEST_DIR:-}"                                           # set to a test_set/ dir to also grade the test split
 SPLIT="${SPLIT:-train}"                                            # train | test | both
 MODEL="${MODEL:-Qwen/Qwen3-8B}"                                    # vLLM serves ONE model; must match grade_all --model
-LEADERBOARD="${LEADERBOARD:-$OUT/LEADERBOARD.md}"
+LEADERBOARD="${LEADERBOARD:-$COURSE_REPO/LEADERBOARD.md}"          # publish straight into the course repo by default
+RANK_BY="${RANK_BY:-test}"                                         # rank by test combined-F1 (train shown until test exists)
+BOARD_TITLE="${BOARD_TITLE:-Big Data Project 52017 — Part 2 Leaderboard}"
+NOTE="${NOTE:-Every pair is shown at the baseline extractor's score. Submit your own annotate_chapter.py and your row updates with your real numbers. Final ranking uses the held-out test set (chapters 11-12 + 5 unseen papers).}"
 VLLM_PORT=8000
 VLLM_PID=""
 # ==========================================================
@@ -63,8 +66,9 @@ CMD=(python3 "$INSTRUCTOR_DIR/grade_all.py"
      --submissions "$SUBMISSIONS" --out "$OUT"
      --runner "$COURSE_REPO/src/run_all.py"
      --split "$SPLIT" --model "$MODEL" --leaderboard "$LEADERBOARD"
-     --jobs "${JOBS:-4}")
+     --jobs "${JOBS:-4}" --rank-by "$RANK_BY" --board-title "$BOARD_TITLE")
 [ -n "$TEST_DIR" ] && CMD+=(--test-dir "$TEST_DIR")
+[ -n "$NOTE" ] && CMD+=(--note "$NOTE")
 [ "${DEDUPE:-1}" = "1" ] && CMD+=(--dedupe)   # group identical submissions; safe always-on
 echo "[grade_all] ${CMD[*]}"
 "${CMD[@]}"
