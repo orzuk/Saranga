@@ -22,7 +22,9 @@ set -euo pipefail
 
 # ===== CONFIG: set these paths for your cluster layout =====
 COURSE_REPO="/sci/labs/orzuk/orzuk/github/BigDataProject_52017"   # holds src/run_all.py
-INSTRUCTOR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"     # this folder (grade_all.py, make_leaderboard.py)
+# SLURM runs a COPY of this script from /var/spool, so BASH_SOURCE points there, not to
+# instructor_only/. Use the submit dir (where you ran sbatch) to find grade_all.py.
+INSTRUCTOR_DIR="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 SUBMISSIONS="${SUBMISSIONS:-submissions_dec}"                      # DECRYPTED submissions (one folder per pair)
 OUT="${OUT:-results}"                                              # per-pair scores go here
 TEST_DIR="${TEST_DIR:-}"                                           # set to a test_set/ dir to also grade the test split
