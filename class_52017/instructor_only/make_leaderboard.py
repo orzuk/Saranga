@@ -57,6 +57,10 @@ def main():
     ap.add_argument("--note", default="",
                     help="Optional explanatory line printed under the title (student-facing framing)")
     args = ap.parse_args()
+    # Collapse any stray newlines/extra spaces (e.g. when a wrapped shell paste splits
+    # --title/--note across lines) so the header/note always render on one line.
+    args.title = " ".join(args.title.split())
+    args.note = " ".join(args.note.split())
 
     students = sorted(d for d in glob.glob(os.path.join(args.results, "*")) if os.path.isdir(d))
     rows = []
