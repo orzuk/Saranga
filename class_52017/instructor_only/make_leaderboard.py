@@ -31,13 +31,17 @@ def read_avg(summary_path):
                         return float(row[k])
                     except (KeyError, ValueError, TypeError):
                         return None
+                def trip(p, r, f):
+                    return {"P": g(p), "R": g(r), "F1": g(f)}
                 def avg2(a, b):
                     return (a + b) / 2 if (a is not None and b is not None) else None
-                # Combined = average across nodes and edges. F1 is the brief's combined_F1
-                # (mean of node-F1 and edge-F1); P and R are the matching means.
-                return {"P": avg2(g("node_P"), g("edge_P")),
-                        "R": avg2(g("node_R"), g("edge_R")),
-                        "F1": g("combined_F1")}
+                # node, edge, and combined (avg of the two; F1 is the brief's combined_F1,
+                # the ranked metric).
+                return {"node": trip("node_P", "node_R", "node_F1"),
+                        "edge": trip("edge_P", "edge_R", "edge_F1"),
+                        "combined": {"P": avg2(g("node_P"), g("edge_P")),
+                                     "R": avg2(g("node_R"), g("edge_R")),
+                                     "F1": g("combined_F1")}}
     return None
 
 
@@ -66,34 +70,38 @@ def main():
 
     def rank_key(r):
         primary = r["test"] if (args.rank_by == "test" and r["test"]) else r["train"]
-        return primary["F1"] if primary and primary.get("F1") is not None else -1.0
+        return primary["combined"]["F1"] if primary and primary["combined"]["F1"] is not None else -1.0
 
     rows.sort(key=rank_key, reverse=True)
 
-    def fmt(d, k):
-        if not d or d.get(k) is None:
+    def cell(split, typ):
+        """One 'P/R/F1' cell (F1 bold) for split['node'|'edge'|'combined'], or '-'."""
+        m = split.get(typ) if split else None
+        if not m or m.get("F1") is None:
             return "-"
-        return f"**{d[k]:.3f}**" if k == "F1" else f"{d[k]:.3f}"
+        p = "-" if m["P"] is None else f"{m['P']:.3f}"
+        r = "-" if m["R"] is None else f"{m['R']:.3f}"
+        return f"{p}/{r}/**{m['F1']:.3f}**"
 
     def label(sid):
         if not args.anonymize:
             return sid
         return "student-" + hashlib.sha1(sid.encode()).hexdigest()[:6]
 
-    rank_desc = ("Ranked by **combined F1** on the test set (train F1 shown when no test score yet)."
+    rank_desc = ("Ranked by **combined F1** on the test set (train shown when no test score yet)."
                  if args.rank_by == "test" else "Ranked by **combined F1** on the train set.")
     lines = [f"# {args.title}", ""]
     if args.note:
         lines += [args.note, ""]
-    lines += [f"{rank_desc} Each cell is the average over nodes and edges; **F1** is the ranked metric. "
+    lines += [f"{rank_desc} Each cell is **P/R/F1** (F1 in bold); 'combined' is the average of nodes and edges. "
               f"{len(rows)} submissions.", "",
-             "| Rank | Submission | Train P | Train R | Train F1 | Test P | Test R | Test F1 |",
+             "| Rank | Submission | Train node | Train edge | Train combined | Test node | Test edge | Test combined |",
              "|---:|---|---:|---:|---:|---:|---:|---:|"]
     for rank, r in enumerate(rows, 1):
         tr, te = r["train"], r["test"]
         lines.append(
-            f"| {rank} | {label(r['id'])} | {fmt(tr,'P')} | {fmt(tr,'R')} | {fmt(tr,'F1')} "
-            f"| {fmt(te,'P')} | {fmt(te,'R')} | {fmt(te,'F1')} |")
+            f"| {rank} | {label(r['id'])} | {cell(tr,'node')} | {cell(tr,'edge')} | {cell(tr,'combined')} "
+            f"| {cell(te,'node')} | {cell(te,'edge')} | {cell(te,'combined')} |")
 
     with open(args.out, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
