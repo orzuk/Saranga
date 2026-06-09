@@ -1498,6 +1498,20 @@ Below are {len(rules)} individual rule suggestions for extracting "{group_key}" 
 # Function 6: prune_rules
 # ---------------------------------------------------------------------------
 
+def _code_paren_delta(line: str) -> int:
+    """Net '(' minus ')' on a line, ignoring parens inside string literals.
+
+    Regex rule bodies are string literals full of unbalanced parens (e.g.
+    ``r'(?P<name>...)'``); counting those would close the re.compile(...) span
+    early and leave trailing ``flags=...,``/``)`` lines uncommented (→ orphaned
+    indent → SyntaxError). Blanking quoted spans first fixes that.
+    """
+    stripped = re.sub(
+        r'''(?:[rRbBuUfF]{0,2})('(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*")''',
+        '', line)
+    return stripped.count('(') - stripped.count(')')
+
+
 def _comment_out_rule_block(lines: List[str], pattern_name: str,
                             fp_papers: List[str], tp_count: int) -> List[str]:
     """Comment out a compiled pattern's definition and its usage block.
@@ -1525,7 +1539,7 @@ def _comment_out_rule_block(lines: List[str], pattern_name: str,
             while i < len(lines):
                 l = lines[i]
                 if not l.lstrip().startswith('#'):
-                    paren_depth += l.count('(') - l.count(')')
+                    paren_depth += _code_paren_delta(l)
                 result.append('# ' + l)
                 i += 1
                 if paren_depth <= 0:

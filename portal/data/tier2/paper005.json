@@ -1,0 +1,483 @@
+{
+  "metadata": {
+    "title": "Sinkhorn Distances: Lightspeed Computation of Optimal Transportation Distances",
+    "paper_num": 5,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v4.1",
+    "extraction_date": "2025-01-21"
+  },
+  "nodes": [
+    {
+      "id": "DP5.1",
+      "type": "definition",
+      "name": "Transportation polytope $U(r,c)$",
+      "section": "2.1 Transportation Tables and Joint Probabilities",
+      "statement": "In what follows, $\\langle \\cdot,\\cdot \\rangle$ stands for the Frobenius dot-product. For two histograms $r$ and $c$ in the simplex $\\Sigma_d\\defeq \\{x\\in \\RR^d_+: x^T\\ones_d=1\\}$, we write $U(r,c)$ for the transportation polytope of $r$ and $c$, namely the polyhedral set of $d\\times d$ matrices: $$$U(r,c)\\defeq$ $\\{P\\in\\RR_+^{d\\times d}\\; |\\; P\\ones_d=r, P^T\\ones_d=c\\}$,$$ where $\\ones_d$ is the $d$ dimensional vector of ones. $U(r,c)$ contains all nonnegative $d\\times d$ matrices with row and column sums $r$ and $c$ respectively. $U(r,c)$ has a probabilistic interpretation: for $X$ and $Y$ two multinomial random variables taking values in $\\{1,\\cdots,d\\}$, each with distribution $r$ and $c$ respectively, the set $U(r,c)$ contains all possible $\\emph{joint probabilities}$ of $(X,Y)$. Indeed, any matrix $P\\in U(r,c)$ can be identified with a joint probability for $(X,Y)$ such that $p(X=i,Y=j)=p_{ij}$. Such joint probabilities are also known as $\\emph{contingency tables}$."
+    },
+    {
+      "id": "DP5.2",
+      "type": "definition",
+      "name": "Entropy and Kullback-Leibler divergence",
+      "section": "2.1 Transportation Tables and Joint Probabilities",
+      "statement": "We define the entropy $h$ and the Kullback-Leibler divergences of these tables and their marginals as $\\begin{gather*}$ $r\\in\\Sigma_d,\\quad$ $h(r)=-\\sum_{i=1}^d$ $r_i$ $\\log$ $r_i,\\quad$ $\\quad$ $P\\in$ $U(r,c),\\quad$ $h(P)=-\\sum_{i,j=1}^d$ $p_{ij}$ $\\log$ $p_{ij}\\\\$ P,Q $\\in$ $U(r,c),\\quad$ $\\kl(P\\|Q)=\\sum_{ij}p_{ij}\\log\\frac{p_{ij}}{q_{ij}}$. $\\end{gather*}$"
+    },
+    {
+      "id": "ProbP5.1",
+      "type": "problem",
+      "name": "Optimal Transportation Problem",
+      "section": "2.2 Optimal Transportation",
+      "statement": "Given a $d\\times d$ cost matrix $M$, the cost of mapping $r$ to $c$ using a transportation matrix (or joint probability) $P$ can be quantified as $\\dotprod{P}{M}$. The following problem: $$ $d_M(r,c)$ $\\defeq$ $\\min_{P\\in U(r,c)}$ $\\dotprod{P}{M}$. $$ is called an $\\emph{optimal transportation}$ problem between $r$ and $c$ given cost $M$. An optimal table $P^\\star$ for this problem can be obtained with the network $simplex~\\citep[\\S9]{ahuja1993network}$ as well as other $approaches~\\citep{orlin1993faster}$. The optimum of this problem, $d_M(r,c)$, is a $distance~\\citep[\\S6.1]{villani09}$ whenever the matrix $M$ is itself a metric matrix, namely whenever $M$ belongs to the cone of distance $matrices~\\citep{avis1980extreme,brickell2008metric}$: $$$\\Mcal=\\{M\\in\\RR^{d\\times d}_+:\\forall i\\leq d, m_{ii}=0;\\, \\forall i,j,k\\leq d, m_{ij}\\leq m_{ik} + m_{kj}\\}$.$$ For a general matrix $M$, the worst case complexity of computing that optimum with any of the algorithms known so far scales in $O(d^3\\log d)$ and turns out to be super-cubic in practice as $well~\\citep[\\S2.1]{Pele-iccv2009}$.",
+      "tags": [
+        "optimization",
+        "linear-program"
+      ],
+      "statement_short": "$d_M(r,c) \\defeq \\min_{P\\in U(r,c)} \\langle P,M\\rangle$ — the linear program of optimal transportation."
+    },
+    {
+      "id": "EP5.1",
+      "type": "equation",
+      "name": "Entropy bound for joint probabilities",
+      "section": "3.1 Entropic Constraints on Joint Probabilities",
+      "statement": "We recall a basic information theoretic $inequality~\\citep[\\S2]{cover91elements}$ which applies to all joint probabilities: $\\begin{equation}\\label{eq:basic}$ $\\forall$ r,c $\\in$ $\\Sigma_d$, $\\forall$ $P\\in$ U(r,c), h(P) $\\leq$ h(r)+h(c). $\\end{equation}$",
+      "origin": "external",
+      "origin_citation": "Cover & Thomas, Elements of Information Theory, \\S2"
+    },
+    {
+      "id": "DP5.3",
+      "type": "definition",
+      "name": "Entropy-constrained transportation set $U_\\alpha(r,c)$",
+      "section": "3.1 Entropic Constraints on Joint Probabilities",
+      "statement": "This bound is tight, since the table $rc^T$ -- known as the independence $table~\\citep{good1963maximum}$ -- has an entropy of $h(rc^T)=h(r)+h(c)$. By the concavity of entropy, we can introduce the convex set $U_\\alpha(r,c)\\subset U(r,c)$ as $$$U_\\alpha(r,c)\\defeq$ $\\{P\\in U(r,c)\\,|\\,\\KL(P\\|rc^T)\\leq \\alpha \\}$ = $\\{P\\in U(r,c)\\,|\\, h(P)\\geq h(r)+h(c)-\\alpha\\}$$$ These definitions are indeed equivalent, since one can easily check that $$$\\KL(P\\|rc^T)=$ h(r)+h(c)-h(P),$$ a quantity which is also the mutual information $I(X\\|Y)$ of two random variables $(X,Y)$ should they follow the joint probability $P$$~\\cite[\\S2]{cover91elements}$."
+    },
+    {
+      "id": "DP5.4",
+      "type": "definition",
+      "name": "Sinkhorn Distances",
+      "section": "3.1 Entropic Constraints on Joint Probabilities",
+      "statement": "$\\begin{definition}[Sinkhorn$ $Distances]\\label{def:sinkhorn}$ $\\displaystyle d_{M,\\alpha}(r,c)\\defeq\\min_{P\\in U_\\alpha(r,c)}\\dotprod{P}{M}$ $\\end{definition}$",
+      "statement_short": "$d_{M,\\alpha}(r,c)\\defeq\\min_{P\\in U_\\alpha(r,c)}\\langle P,M\\rangle$"
+    },
+    {
+      "id": "PrP5.1",
+      "type": "proposition",
+      "name": "Sinkhorn distance reduces to transportation distance for large $\\alpha$",
+      "section": "3.2 Metric Properties",
+      "statement": "$\\begin{property}\\label{prop:nsd}$ For $\\alpha$ large enough, the Sinkhorn distance $d_{M,\\alpha}$ is the transportation distance $d_{M}$$.\\end{property}$",
+      "assumptions": [
+        "For $\\alpha$ large enough"
+      ],
+      "conclusions": [
+        "the Sinkhorn distance $d_{M,\\alpha}$ is the transportation distance $d_{M}$"
+      ]
+    },
+    {
+      "id": "PP5.1",
+      "type": "proof",
+      "name": "Proof of $Property~\\ref{prop:nsd}$ (in-text)",
+      "section": "3.2 Metric Properties",
+      "proves": "PrP5.1",
+      "statement": "$\\begin{proof}Since$ for any $P\\in U(r,c), h(P)$ is lower bounded by $\\tfrac{1}{2}(h(r)+h(c))$, we have that for $t$ large enough $U_{t}(r,c)= U(r,c)$ and thus both quantities $coincide.\\end{proof}$"
+    },
+    {
+      "id": "PrP5.2",
+      "type": "proposition",
+      "name": "Independence Kernel",
+      "section": "3.2 Metric Properties",
+      "statement": "$\\begin{property}[Independence$ Kernel] When $\\alpha=0$ and $M$ is a Euclidean Distance $Matrix\\footnote{$\\exists n, \\exists \\varphi_1,\\cdots,\\varphi_d\\in\\RR^n$ such that $m_{ij}=\\norm{\\varphi_i - \\varphi_j}_2^2$ \\citep[\\S5]{dattorro2005convex}. Recall that, in that case, $M.^t=[m_{ij}^t]$, $0<t<1$ is also a Euclidean distance matrix~\\cite[p.78,\\S3.2.10]{berg84harmonic} }$, the Sinkhorn distance has the explicit form $d_{M,0}=r^T M c$. $d_{M,0}$ is a negative definite kernel, $\\ie\\$, $e^{-t r^TMc}$ is a positive definite kernel $\\forall t>0$. We call this kernel the independence $kernel.\\end{property}$",
+      "assumptions": [
+        "$\\alpha=0$",
+        "$M$ is a Euclidean Distance Matrix"
+      ],
+      "conclusions": [
+        "the Sinkhorn distance has the explicit form $d_{M,0}=r^T M c$",
+        "$d_{M,0}$ is a negative definite kernel, $\\ie\\$, $e^{-t r^TMc}$ is a positive definite kernel $\\forall t>0$"
+      ]
+    },
+    {
+      "id": "TP5.1",
+      "type": "theorem",
+      "name": "Metric properties of Sinkhorn distances",
+      "section": "3.2 Metric Properties",
+      "statement": "$\\begin{theorem}\\label{theo:metric}$ For all $\\alpha\\geq 0$ and $M\\in\\Mcal$, $d_{M,\\alpha}$ is symmetric and satisfies all triangle inequalities. The function $(r,c)\\mapsto \\ones_{r\\ne c} d_{M,\\alpha}(r,c)$ satisfies all three distance axioms. $\\end{theorem}$",
+      "assumptions": [
+        "For all $\\alpha\\geq 0$ and $M\\in\\Mcal$"
+      ],
+      "conclusions": [
+        "$d_{M,\\alpha}$ is symmetric and satisfies all triangle inequalities",
+        "The function $(r,c)\\mapsto \\ones_{r\\ne c} d_{M,\\alpha}(r,c)$ satisfies all three distance axioms"
+      ]
+    },
+    {
+      "id": "LP5.1",
+      "type": "lemma",
+      "name": "Gluing Lemma With Entropic Constraint",
+      "section": "3.2 Metric Properties",
+      "statement": "$\\begin{lemma}[Gluing$ Lemma With Entropic $Constraint]\\label{lem:gluing}$ Let $\\alpha\\geq 0$ and $x,y,z$ be three elements of $\\Sigma_d$. Let $P\\in U_\\alpha(x,y)$ and $Q\\in U_\\alpha(y,z)$ be two joint probabilities in the transportation polytopes of $(x,y)$ and $(y,z)$ with sufficient entropy. Let $S$ be the $d\\times d$ matrix whose $(i,k)$'s coefficient is $s_{ik}\\defeq \\sum_{j} \\frac{p_{ij}q_{jk}}{y_j}$. Then $S\\in U_{\\alpha}(x,z)$. $\\end{lemma}$",
+      "assumptions": [
+        "Let $\\alpha\\geq 0$ and $x,y,z$ be three elements of $\\Sigma_d$",
+        "Let $P\\in U_\\alpha(x,y)$ and $Q\\in U_\\alpha(y,z)$ be two joint probabilities in the transportation polytopes of $(x,y)$ and $(y,z)$ with sufficient entropy",
+        "Let $S$ be the $d\\times d$ matrix whose $(i,k)$'s coefficient is $s_{ik}\\defeq \\sum_{j} \\frac{p_{ij}q_{jk}}{y_j}$"
+      ],
+      "conclusions": [
+        "$S\\in U_{\\alpha}(x,z)$"
+      ]
+    },
+    {
+      "id": "PP5.2",
+      "type": "proof",
+      "name": "Proof of $Theorem~\\ref{theo:metric}$",
+      "section": "3.2 Metric Properties",
+      "proves": "TP5.1",
+      "statement": "$\\emph{Proof of Theorem~\\ref{theo:metric}.}$ The symmetry of $d_{M,\\alpha}$ is a direct result of $M$'s symmetry. Let $x,y,z$ be three elements in $\\Sigma_d$. Let $P\\in U_{\\alpha}(x,y)$ and $Q\\in U_{\\alpha}(y,z)$ be the optimal solutions obtained when computing $d_{M,\\alpha}(x,y)$ and $d_{M,\\alpha}(y,z)$ respectively. Using the matrix $S$ of $U_{\\alpha}(x,z)$ provided in $Lemma~\\ref{lem:gluing}$, we proceed with the following chain of inequalities: $$$\\begin{aligned}$ $d_{M,\\alpha}(x,z)&=\\min_{P\\in U_\\alpha(x,z)}\\dotprod{X}{M}$ $\\leq$ $\\dotprod{S}{M}$ = $\\sum_{ik}$ $m_{ik}\\sum_{j}$ $\\frac{p_{ij}q_{jk}}{y_j}$ \\\\ & $\\leq$ $\\sum_{ijk}$ $\\left(m_{ij}+m_{jk}\\right)$ $\\frac{p_{ij}q_{jk}}{y_j}$ = $\\sum_{ijk}$ $m_{ij}$ $\\frac{p_{ij}q_{jk}}{y_j}$ $+m_{jk}$ $\\frac{p_{ij}q_{jk}}{y_j}$ \\\\ & $=\\sum_{ij}$ $m_{ij}p_{ij}$ $\\sum_k$ $\\frac{q_{jk}}{y_j}$ + $\\sum_{jk}$ $m_{jk}$ $q_{jk}$ $\\sum_i$ $\\frac{p_{ij}}{y_j}\\\\$ &= $\\sum_{ij}$ $m_{ij}p_{ij}$ + $\\sum_{jk}$ $m_{jk}$ $q_{jk}$ = $d_{M,\\alpha}(x,y)+d_{M,\\alpha}(y,z).\\,\\blacksquare\\end{aligned}$ $$"
+    },
+    {
+      "id": "PSP5.1",
+      "type": "proof_step",
+      "name": "Symmetry",
+      "parent_id": "PP5.2",
+      "step_order": 1,
+      "subclass": "setup",
+      "statement": "The symmetry of $d_{M,\\alpha}$ is a direct result of $M$'s symmetry."
+    },
+    {
+      "id": "PSP5.2",
+      "type": "proof_step",
+      "name": "Apply Gluing Lemma to construct $S$",
+      "parent_id": "PP5.2",
+      "step_order": 2,
+      "subclass": "apply_lemma",
+      "statement": "Let $x,y,z$ be three elements in $\\Sigma_d$. Let $P\\in U_{\\alpha}(x,y)$ and $Q\\in U_{\\alpha}(y,z)$ be the optimal solutions obtained when computing $d_{M,\\alpha}(x,y)$ and $d_{M,\\alpha}(y,z)$ respectively. Using the matrix $S$ of $U_{\\alpha}(x,z)$ provided in $Lemma~\\ref{lem:gluing}$, we proceed with the following chain of inequalities:"
+    },
+    {
+      "id": "PSP5.3",
+      "type": "proof_step",
+      "name": "Chain of inequalities yielding triangle inequality",
+      "parent_id": "PP5.2",
+      "step_order": 3,
+      "subclass": "bound_estimate",
+      "statement": "$$$\\begin{aligned}$ $d_{M,\\alpha}(x,z)&=\\min_{P\\in U_\\alpha(x,z)}\\dotprod{X}{M}$ $\\leq$ $\\dotprod{S}{M}$ = $\\sum_{ik}$ $m_{ik}\\sum_{j}$ $\\frac{p_{ij}q_{jk}}{y_j}$ \\\\ & $\\leq$ $\\sum_{ijk}$ $\\left(m_{ij}+m_{jk}\\right)$ $\\frac{p_{ij}q_{jk}}{y_j}$ = $\\sum_{ijk}$ $m_{ij}$ $\\frac{p_{ij}q_{jk}}{y_j}$ $+m_{jk}$ $\\frac{p_{ij}q_{jk}}{y_j}$ \\\\ & $=\\sum_{ij}$ $m_{ij}p_{ij}$ $\\sum_k$ $\\frac{q_{jk}}{y_j}$ + $\\sum_{jk}$ $m_{jk}$ $q_{jk}$ $\\sum_i$ $\\frac{p_{ij}}{y_j}\\\\$ &= $\\sum_{ij}$ $m_{ij}p_{ij}$ + $\\sum_{jk}$ $m_{jk}$ $q_{jk}$ = $d_{M,\\alpha}(x,y)+d_{M,\\alpha}(y,z).\\,\\blacksquare\\end{aligned}$ $$"
+    },
+    {
+      "id": "ProbP5.2",
+      "type": "problem",
+      "name": "Dual-Sinkhorn divergence (entropy-regularized OT)",
+      "section": "4 Computing Sinkhorn Distances with the Sinkhorn-Knopp Algorithm",
+      "statement": "Recall that the Sinkhorn distance (Definition $~\\ref{def:sinkhorn})$ is defined through a hard constraint on the entropy of $h(P)$ relative to $h(r)$ and $h(c)$. In what follows, we consider the same program with a Lagrange multiplier for the entropy constraint, $\\begin{equation}\\label{eq:pen}$ $\\boxed{d_{M}^{\\lambda}(r,c) \\defeq \\dotprod{P^\\lambda}{M},\\,\\text{ where } P^\\lambda=\\argmin_{P\\in U(r,c)} \\dotprod{P}{M} - \\frac{1}{\\lambda} h(P).}$ $\\end{equation}$ By duality theory we have that for every pair $(r,c)$, to each $\\alpha$ corresponds an $\\lambda\\in[0,\\infty]$ such that $d_{M,\\alpha(r,c)}=d_{M}^{\\lambda}(r,c)$. We call $d_{M}^\\lambda$ the dual-Sinkhorn divergence and show that it can be computed at a much cheaper cost than the classical optimal transportation problem for reasonable values of $\\lambda$.",
+      "tags": [
+        "optimization",
+        "regularization"
+      ]
+    },
+    {
+      "id": "TP5.2",
+      "type": "theorem",
+      "name": "Form of $P^\\lambda$ (Sinkhorn factorization)",
+      "section": "4.1 Computing $d_{M}^\\lambda$",
+      "statement": "When $\\lambda>0$, the solution $P^\\lambda$ is unique by strict convexity of minus the entropy. In fact, $P^\\lambda$ is necessarily of the form $u_i e^{-\\lambda m_{ij}} v_j$, where $u$ and $v$ are two non-negative vectors uniquely defined up to a multiplicative factor.",
+      "assumptions": [
+        "$\\lambda>0$"
+      ],
+      "conclusions": [
+        "the solution $P^\\lambda$ is unique by strict convexity of minus the entropy",
+        "$P^\\lambda$ is necessarily of the form $u_i e^{-\\lambda m_{ij}} v_j$, where $u$ and $v$ are two non-negative vectors uniquely defined up to a multiplicative factor"
+      ]
+    },
+    {
+      "id": "EP5.2",
+      "type": "equation",
+      "name": "Sinkhorn scaling form of $P^\\lambda$",
+      "section": "4.1 Computing $d_{M}^\\lambda$",
+      "statement": "$P^\\lambda$ is thus, $by~\\citeauthor{sinkhorn1967concerning}'s$ $theorem~\\citeyearpar{sinkhorn1967concerning}$, the $\\emph{only matrix}$ with row-sum $r$ and column-sum $c$ of the form $\\begin{equation}\\label{eq:sinkhorn}\\exists$ $u,v>\\mathbf{0}_d$ : $P^\\lambda$ = $\\diag(u)$ $e^{-\\lambda M}$ $\\diag(v).\\end{equation}$",
+      "origin": "external",
+      "origin_citation": "Sinkhorn 1967, \\emph{Concerning nonnegative matrices and doubly stochastic matrices}"
+    },
+    {
+      "id": "AP5.1",
+      "type": "algorithm",
+      "name": "Computation of $d^\\lambda_M(r,c)$ using Sinkhorn-Knopp's fixed point iteration",
+      "section": "4.1 Computing $d_{M}^\\lambda$",
+      "statement": "$\\begin{algorithm}[H]$ $\\begin{algorithmic}$ $\\caption{Computation of $d^\\lambda_M(r,c)$ using Sinkhorn-Knopp's fixed point iteration}\\label{alg:sk}$ $\\STATE$ $\\textbf{Input}$ $\\texttt{M}$, $\\lambda$, $\\texttt{r}$, $\\texttt{c}$. $\\STATE$ $\\texttt{I=(r>0); r=r(I); M=M(I,:); \\texttt{K=exp(-$\\lambda$*M)}}$ $\\STATE$ Set $\\texttt{x}=\\texttt{ones(length(r),size(c,2))/length(r)}$; $\\WHILE{\\texttt{x} changes}$ $\\STATE$ $\\texttt{x=diag(1./r)*K*(c.*(1./(K'*(1./x))))}$ $\\ENDWHILE$ $\\STATE$ $\\texttt{u=1./x;  v=c.*(1./(K'*u))}$ $\\STATE$ $d_{M}^\\lambda$$(\\texttt{r},\\texttt{c})=\\texttt{sum(u.*((K.*M)*v))}$ $\\end{algorithmic}$ $\\end{algorithm}$",
+      "input": [
+        "\\texttt{M}",
+        "$\\lambda$",
+        "\\texttt{r}",
+        "\\texttt{c}"
+      ],
+      "output": [
+        "$d_{M}^\\lambda$(\\texttt{r},\\texttt{c})=\\texttt{sum(u.*((K.*M)*v))}"
+      ],
+      "tags": [
+        "matrix-scaling",
+        "fixed-point-iteration"
+      ]
+    },
+    {
+      "id": "ASP5.1",
+      "type": "algorithm_step",
+      "name": "Input",
+      "parent_id": "AP5.1",
+      "step_order": 1,
+      "subclass": "initialize",
+      "statement": "$\\textbf{Input}$ $\\texttt{M}$, $\\lambda$, $\\texttt{r}$, $\\texttt{c}$."
+    },
+    {
+      "id": "ASP5.2",
+      "type": "algorithm_step",
+      "name": "Select positive entries and form $K$",
+      "parent_id": "AP5.1",
+      "step_order": 2,
+      "subclass": "initialize",
+      "statement": "$\\texttt{I=(r>0); r=r(I); M=M(I,:); \\texttt{K=exp(-$\\lambda$*M)}}$"
+    },
+    {
+      "id": "ASP5.3",
+      "type": "algorithm_step",
+      "name": "Initialize $x$",
+      "parent_id": "AP5.1",
+      "step_order": 3,
+      "subclass": "initialize",
+      "statement": "Set $\\texttt{x}=\\texttt{ones(length(r),size(c,2))/length(r)}$;"
+    },
+    {
+      "id": "ASP5.4",
+      "type": "algorithm_step",
+      "name": "Fixed-point iteration loop on $x$",
+      "parent_id": "AP5.1",
+      "step_order": 4,
+      "subclass": "loop",
+      "statement": "$\\WHILE{\\texttt{x} changes}$ $\\STATE$ $\\texttt{x=diag(1./r)*K*(c.*(1./(K'*(1./x))))}$ $\\ENDWHILE$"
+    },
+    {
+      "id": "ASP5.5",
+      "type": "algorithm_step",
+      "name": "Recover scaling vectors $u, v$",
+      "parent_id": "AP5.1",
+      "step_order": 5,
+      "subclass": "update",
+      "statement": "$\\texttt{u=1./x;  v=c.*(1./(K'*u))}$"
+    },
+    {
+      "id": "ASP5.6",
+      "type": "algorithm_step",
+      "name": "Return Sinkhorn divergence",
+      "parent_id": "AP5.1",
+      "step_order": 6,
+      "subclass": "return",
+      "statement": "$d_{M}^\\lambda$$(\\texttt{r},\\texttt{c})=\\texttt{sum(u.*((K.*M)*v))}$"
+    },
+    {
+      "id": "EP5.3",
+      "type": "equation",
+      "name": "Lagrangian of entropy-regularized OT",
+      "section": "4.1 Computing $d_{M}^\\lambda$",
+      "statement": "This well known fact in transportation $theory~\\citep{erlander1990gravity}$ can be indeed checked by forming the Lagrangian $\\Lcal(P,\\alpha,\\beta)$ of the objective of $Equation~\\eqref{eq:pen}$ using $\\alpha,\\beta\\geq \\mathbf{0}_d$ for each of the two equality constraints in $U(r,c)$. For these two cost vectors $\\alpha,\\beta$, $$$\\Lcal(P,\\alpha,\\beta)=\\sum_{ij}$ $\\frac{1}{\\lambda}p_{ij}\\log$ $p_{ij}+$ $p_{ij}m_{ij}$ + $\\alpha^T(P$ $\\ones_d-r)$ + $\\beta^T(P^T\\ones_d-c)$$$ We obtain then, for any couple $(i,j)$, that if $\\frac{\\partial \\Lcal}{\\partial p_{ij}^\\lambda}=0$, then $$ $p_{ij}^\\lambda=$ $e^{-\\frac{1}{2}-\\lambda \\alpha_i}$ $e^{-\\lambda m_{ij}}e^{-\\frac{1}{2}-\\lambda \\beta_j}$, $$ and thus recover the form provided above."
+    },
+    {
+      "id": "RP5.1",
+      "type": "remark",
+      "name": "Bisection on $\\lambda$ to compute $d_{M,\\alpha}$",
+      "section": "4.2 Computing $d_{M,\\alpha}$ through $d_{M}^\\lambda$",
+      "statement": "With a naive approach, $d_{M,\\alpha}$ can be obtained by computing $d_{M}^\\lambda$ iteratively until the entropy of the solution $P^\\lambda$ has reached an adequate value $h(r)+h(c)-\\alpha$. Since the entropy of $P^\\lambda$ decreases monotonically when $\\lambda$ increases, this search can be carried out by simple bisection, starting with a small $\\lambda$ which is iteratively increased. In what follows, we only consider the dual-Sinkhorn divergence $d_{M}^\\lambda$ since it is cheaper to compute and displays good performances in itself. We believe that more clever approaches can be applied to calculate exactly $d_{M,\\alpha}$, and we leave this for future work. In the rest of this paper we will now refer to $d_{M}^\\lambda$ as the Sinkhorn distance, despite the fact that it is not provably a distance."
+    },
+    {
+      "id": "PP5.3",
+      "type": "proof",
+      "name": "Proof of $Property~\\ref{prop:nsd}$ (Appendix, Independence Kernel part)",
+      "section": "Appendix: Proofs",
+      "proves": "PrP5.2",
+      "statement": "$\\begin{proof}[Proof$ of $Property~\\ref{prop:nsd}]$ The set $U_1(r,c)$ contains all joint probabilities $P$ for which $h(P)=h(r)+h(c)$. In that $case~\\citep[Theorem$ 2.6.6]{cover91elements} applies and $U_1(r,c)$ can only be equal to the singleton $\\{rc^T\\}$. If $M$ is negative definite, there exists vectors $(\\varphi_1,\\cdots,\\varphi_d)$ in some Euclidean space $\\RR^n$ such that $m_{ij}=\\norm{\\varphi_i-\\varphi_j}_2^2$ through $\\citep[\\S3.3.2]{berg84harmonic}$. We thus have that $$$\\begin{aligned}r^TM$ c&= $\\sum_{ij}r_i$ $c_j$ $\\norm{\\varphi_i-\\varphi_j}^2=$ $(\\sum_{i}r_i$ $\\norm{\\varphi_i}^2$ + $\\sum_{i}$ $c_i$ $\\norm{\\varphi_i}^2)$ - $2\\sum_{ij}$ $\\dotprod{r_i\\varphi_i}{c_j\\varphi_j}\\\\&=$ $r^Tu$ + $c^Tu$ - 2 $r^TK$ $c\\end{aligned}$$$ where $u_i=\\norm{\\phi_i}^2$ and $K_{ij}=\\dotprod{\\varphi_i}{\\varphi_j}$. We used the fact that $\\sum r_i=\\sum c_i=1$ to go from the first to the second equality. $r^TMc$ is thus a n.d. kernel because it is the sum of two n.d. kernels: the first term $(r^Tu+c^Tu)$ is the sum of the same function evaluated separately on $r$ and $c$, and thus a negative definite $kernel~\\citep[\\S3.2.10]{berg84harmonic}$; the latter term $-2r^TKu$ is negative definite as minus a positive definite $kernel~\\citep[Definition$ $\\S3.1.1]{berg84harmonic}.\\end{proof}$"
+    },
+    {
+      "id": "PSP5.4",
+      "type": "proof_step",
+      "name": "Reduce $U_1(r,c)$ to the singleton $\\{rc^T\\}$",
+      "parent_id": "PP5.3",
+      "step_order": 1,
+      "subclass": "apply_lemma",
+      "statement": "The set $U_1(r,c)$ contains all joint probabilities $P$ for which $h(P)=h(r)+h(c)$. In that $case~\\citep[Theorem$ 2.6.6]{cover91elements} applies and $U_1(r,c)$ can only be equal to the singleton $\\{rc^T\\}$."
+    },
+    {
+      "id": "PSP5.5",
+      "type": "proof_step",
+      "name": "Express $r^T M c$ via Euclidean embedding",
+      "parent_id": "PP5.3",
+      "step_order": 2,
+      "subclass": "algebraic_manipulation",
+      "statement": "If $M$ is negative definite, there exists vectors $(\\varphi_1,\\cdots,\\varphi_d)$ in some Euclidean space $\\RR^n$ such that $m_{ij}=\\norm{\\varphi_i-\\varphi_j}_2^2$ through $\\citep[\\S3.3.2]{berg84harmonic}$. We thus have that $$$\\begin{aligned}r^TM$ c&= $\\sum_{ij}r_i$ $c_j$ $\\norm{\\varphi_i-\\varphi_j}^2=$ $(\\sum_{i}r_i$ $\\norm{\\varphi_i}^2$ + $\\sum_{i}$ $c_i$ $\\norm{\\varphi_i}^2)$ - $2\\sum_{ij}$ $\\dotprod{r_i\\varphi_i}{c_j\\varphi_j}\\\\&=$ $r^Tu$ + $c^Tu$ - 2 $r^TK$ $c\\end{aligned}$$$ where $u_i=\\norm{\\phi_i}^2$ and $K_{ij}=\\dotprod{\\varphi_i}{\\varphi_j}$. We used the fact that $\\sum r_i=\\sum c_i=1$ to go from the first to the second equality."
+    },
+    {
+      "id": "PSP5.6",
+      "type": "proof_step",
+      "name": "$r^T M c$ is a negative definite kernel",
+      "parent_id": "PP5.3",
+      "step_order": 3,
+      "subclass": "conclude",
+      "statement": "$r^TMc$ is thus a n.d. kernel because it is the sum of two n.d. kernels: the first term $(r^Tu+c^Tu)$ is the sum of the same function evaluated separately on $r$ and $c$, and thus a negative definite $kernel~\\citep[\\S3.2.10]{berg84harmonic}$; the latter term $-2r^TKu$ is negative definite as minus a positive definite $kernel~\\citep[Definition$ $\\S3.1.1]{berg84harmonic}$."
+    },
+    {
+      "id": "RP5.2",
+      "type": "remark",
+      "name": "Faster computation of the Independence kernel via Cholesky factor",
+      "section": "Appendix: Proofs",
+      "statement": "$\\emph{Remark.}$ The proof above suggests a faster way to compute the Independence kernel. Given a matrix $M$, one can indeed pre-compute the vector of norms $u$ as well as a Cholesky factor $L$ of $K$ above to preprocess a dataset of histograms by premultiplying each observations $r_i$ by $L$ and only store $Lr_i$ as well as precomputing its diagonal term $r_i^Tu$. Note that the independence kernel is positive definite on histograms with the same 1-norm, but is no longer positive definite for arbitrary vectors."
+    },
+    {
+      "id": "PP5.4",
+      "type": "proof",
+      "name": "Proof of $Lemma~\\ref{lem:gluing}$",
+      "section": "Appendix: Proofs",
+      "proves": "LP5.1",
+      "statement": "$\\begin{proof}[Proof$ of $Lemma~\\ref{lem:gluing}]$ Let $T$ be the a probability distribution on $\\{1,\\cdots,d\\}^d$ whose coefficients are defined as $\\begin{equation}\\label{eq:T}t_{ijk}\\defeq$ $\\frac{p_{ij}q_{jk}}{y_j},\\end{equation}$ for all indices $j$ such that $y_j>0$. For indices $j$ such that $y_j=0$, all values $t_{ijk}$ are set to $0$. Let $S \\defeq [ \\sum_{j} t_{ijk}]_{ik}$. $S$ is a transportation matrix between $x$ and $z$. Indeed, $$$\\begin{aligned}$ $\\sum_{i}$ $\\sum_{j}$ $s_{ijk}&=$ $\\sum_{j}$ $\\sum_{i}\\frac{p_{ij}q_{jk}}{y_j}=$ $\\sum_{j}$ $\\frac{q_{jk}}{y_j}$ $\\sum_{i}$ $p_{ij}$ $=\\sum_{j}$ $\\frac{q_{jk}}{y_j}$ $y_j=\\sum_j$ $q_{jk}=z_k$ $\\text{  (column sums) }\\\\$ $\\sum_{k}$ $\\sum_{j}$ $s_{ijk}&=$ $\\sum_{j}$ $\\sum_{k}\\frac{p_{ij}q_{jk}}{y_j}=$ $\\sum_{j}$ $\\frac{p_{ij}}{y_j}$ $\\sum_{k}q_{jk}$ $=\\sum_{j}$ $\\frac{p_{ij}}{y_j}$ $y_j=\\sum_j$ $p_{ij}=x_i$ $\\text{  (row sums) }$ $\\end{aligned}$ $$ We now prove that $h(S)\\geq h(x)+h(z)-\\alpha$. Let $(X,Y,Z)$ be three random variables jointly distributed as $T$. Since by definition of $T$ in $Equation~\\eqref{eq:T}$ $$p(X,Y,Z)=p(X,Y)p(Y,Z)/p(Y)= p(X)p(Y|X)p(Z|Y),$$ the triplet $(X,Y,Z)$ is a Markov chain $X\\rightarrow Y \\rightarrow Z$$~\\citep[Equation$ 2.118]{cover91elements} and thus, by virtue of the data processing $inequality~\\citep[Theorem$ 2.8.1]{cover91elements}, the following inequality between mutual informations applies: $$$\\label{eq:dpi}I(X;Y)\\geq$ $I(X;Z),\\text{ namely }$ $\\quad$ $h(X,Z)-h(X)+h(Z)\\geq$ h(X,Y) $-h(X)+h(Y)\\geq$ $-\\alpha$.$$$\\end{proof}$"
+    },
+    {
+      "id": "PSP5.7",
+      "type": "proof_step",
+      "name": "Define joint distribution $T$ and gluing matrix $S$",
+      "parent_id": "PP5.4",
+      "step_order": 1,
+      "subclass": "introduce_variable",
+      "statement": "Let $T$ be the a probability distribution on $\\{1,\\cdots,d\\}^d$ whose coefficients are defined as $\\begin{equation}\\label{eq:T}t_{ijk}\\defeq$ $\\frac{p_{ij}q_{jk}}{y_j},\\end{equation}$ for all indices $j$ such that $y_j>0$. For indices $j$ such that $y_j=0$, all values $t_{ijk}$ are set to $0$. Let $S \\defeq [ \\sum_{j} t_{ijk}]_{ik}$."
+    },
+    {
+      "id": "PSP5.8",
+      "type": "proof_step",
+      "name": "Verify $S$ has marginals $x$ and $z$",
+      "parent_id": "PP5.4",
+      "step_order": 2,
+      "subclass": "algebraic_manipulation",
+      "statement": "$S$ is a transportation matrix between $x$ and $z$. Indeed, $$$\\begin{aligned}$ $\\sum_{i}$ $\\sum_{j}$ $s_{ijk}&=$ $\\sum_{j}$ $\\sum_{i}\\frac{p_{ij}q_{jk}}{y_j}=$ $\\sum_{j}$ $\\frac{q_{jk}}{y_j}$ $\\sum_{i}$ $p_{ij}$ $=\\sum_{j}$ $\\frac{q_{jk}}{y_j}$ $y_j=\\sum_j$ $q_{jk}=z_k$ $\\text{  (column sums) }\\\\$ $\\sum_{k}$ $\\sum_{j}$ $s_{ijk}&=$ $\\sum_{j}$ $\\sum_{k}\\frac{p_{ij}q_{jk}}{y_j}=$ $\\sum_{j}$ $\\frac{p_{ij}}{y_j}$ $\\sum_{k}q_{jk}$ $=\\sum_{j}$ $\\frac{p_{ij}}{y_j}$ $y_j=\\sum_j$ $p_{ij}=x_i$ $\\text{  (row sums) }$ $\\end{aligned}$ $$"
+    },
+    {
+      "id": "PSP5.9",
+      "type": "proof_step",
+      "name": "Establish entropy bound via Markov chain and data processing inequality",
+      "parent_id": "PP5.4",
+      "step_order": 3,
+      "subclass": "apply_lemma",
+      "statement": "We now prove that $h(S)\\geq h(x)+h(z)-\\alpha$. Let $(X,Y,Z)$ be three random variables jointly distributed as $T$. Since by definition of $T$ in $Equation~\\eqref{eq:T}$ $$p(X,Y,Z)=p(X,Y)p(Y,Z)/p(Y)= p(X)p(Y|X)p(Z|Y),$$ the triplet $(X,Y,Z)$ is a Markov chain $X\\rightarrow Y \\rightarrow Z$$~\\citep[Equation$ 2.118]{cover91elements} and thus, by virtue of the data processing $inequality~\\citep[Theorem$ 2.8.1]{cover91elements}, the following inequality between mutual informations applies: $$$\\label{eq:dpi}I(X;Y)\\geq$ $I(X;Z),\\text{ namely }$ $\\quad$ $h(X,Z)-h(X)+h(Z)\\geq$ h(X,Y) $-h(X)+h(Y)\\geq$ $-\\alpha$.$$"
+    }
+  ],
+  "edges": [
+    {
+      "source": "DP5.1",
+      "target": "DP5.2",
+      "type": "uses"
+    },
+    {
+      "source": "DP5.1",
+      "target": "ProbP5.1",
+      "type": "uses"
+    },
+    {
+      "source": "DP5.2",
+      "target": "DP5.3",
+      "type": "uses"
+    },
+    {
+      "source": "DP5.1",
+      "target": "DP5.3",
+      "type": "uses"
+    },
+    {
+      "source": "EP5.1",
+      "target": "DP5.3",
+      "type": "uses"
+    },
+    {
+      "source": "DP5.3",
+      "target": "DP5.4",
+      "type": "uses"
+    },
+    {
+      "source": "ProbP5.1",
+      "target": "DP5.4",
+      "type": "uses"
+    },
+    {
+      "source": "DP5.4",
+      "target": "PrP5.1",
+      "type": "uses"
+    },
+    {
+      "source": "PP5.1",
+      "target": "PrP5.1",
+      "type": "proves"
+    },
+    {
+      "source": "DP5.4",
+      "target": "PrP5.2",
+      "type": "uses"
+    },
+    {
+      "source": "PP5.3",
+      "target": "PrP5.2",
+      "type": "proves"
+    },
+    {
+      "source": "DP5.4",
+      "target": "TP5.1",
+      "type": "uses"
+    },
+    {
+      "source": "LP5.1",
+      "target": "TP5.1",
+      "type": "uses"
+    },
+    {
+      "source": "PP5.2",
+      "target": "TP5.1",
+      "type": "proves"
+    },
+    {
+      "source": "DP5.3",
+      "target": "LP5.1",
+      "type": "uses"
+    },
+    {
+      "source": "PP5.4",
+      "target": "LP5.1",
+      "type": "proves"
+    },
+    {
+      "source": "DP5.4",
+      "target": "ProbP5.2",
+      "type": "uses"
+    },
+    {
+      "source": "ProbP5.2",
+      "target": "TP5.2",
+      "type": "uses"
+    },
+    {
+      "source": "TP5.2",
+      "target": "EP5.2",
+      "type": "uses"
+    },
+    {
+      "source": "EP5.3",
+      "target": "TP5.2",
+      "type": "uses"
+    },
+    {
+      "source": "EP5.2",
+      "target": "AP5.1",
+      "type": "uses"
+    },
+    {
+      "source": "ProbP5.2",
+      "target": "AP5.1",
+      "type": "uses"
+    },
+    {
+      "source": "AP5.1",
+      "target": "RP5.1",
+      "type": "uses"
+    },
+    {
+      "source": "PP5.3",
+      "target": "RP5.2",
+      "type": "uses"
+    }
+  ]
+}

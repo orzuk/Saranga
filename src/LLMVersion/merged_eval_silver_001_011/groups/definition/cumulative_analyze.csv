@@ -1,0 +1,1510 @@
+paper_id,gold_index,gold_text,pattern_type,latex_context,llm_reasoning,llm_suggested_rule,structure_type,structure_group
+paper001,0,"Given a set of data points $x_1,\hdots x_n$ and some notion of similarity $s_{ij} \geq 0$ between all pairs of data points $x_i$ and $x_j$, the intuitive goal of clustering is to divide the data points into several groups such that points in the same group are similar and points in different groups are dissimilar to each other. If we do not have more information than similarities between data points, a nice way of representing the data is in form of the ${\em similarity graph}$ $G = (V,E)$. Each vertex $v_i$ in this graph represents a data point $x_i$. Two vertices are connected if the similarity $s_{ij}$ between the corresponding data points $x_i$ and $x_j$ is positive or larger than a certain threshold, and the edge is weighted by $s_{ij}$.",unclassified,"} a perturbation theory approach. In
+Section \ref{sec-inpractice} we will study some practical issues
+related to spectral clustering, and discuss various extensions and
+literature related to spectral clustering in Section
+\ref{sec-extensions}.
+
+
+
+
+
+
+%
+\section{Similarity graphs} \label{sec-graphs}
+%
+
+Given a set of data points $x_1,\hdots x_n$ and some notion of
+similarity $s_{ij} \geq 0$ between all pairs of data points $x_i$ and
+$x_j$, the intuitive goal of clustering is to divide the data points
+into several groups such that points in the same group are similar and
+points in different groups are dissimilar to each other. If we do not
+have more information than similarities between data points, a nice
+way of representing the data is in form of the {\em similarity graph}
+$G = (V,E)$. Each vertex $v_i$ in this graph represents a data point
+$x_i$.  Two vertices are connected if the similarity $s_{ij}$ between
+the corresponding data points $x_i$ and $x_j$ is positive or larger
+than a certain threshold, and the edge is weighted by $s_{ij}$.  The
+problem of clustering can now be reformulated using the similarity
+graph: we want to find a partition of the graph such that the edges
+between different groups have very low weights (which means that
+points in different clusters are dissimilar from each other) and the
+edges within a group have high weights (which means that points within
+the same cluster are similar to each other). To be able to formalize
+this intuition we first want to introduce some basic graph notation
+and briefly discuss the kind of graphs we are going to study.
+
+
+%
+\subsection{Graph notation}
+%
+
+
+
+Let $G = (V,E)$ be an undirected graph with vertex
+set $V = \{v_1, \hdots, v_n\}$.
+%
+In the following we assume that the graph $G$ is weighted, that is
+each edge between two vertices $v_i$ and $v_j$ carries a non-negative weight $w_{ij} \geq
+0$. 
+%
+The weighted {\em ad","This is a paragraph-level definition introduced after a \section heading. It describes a concept ('similarity graph') using bold/em formatting inline but has no environment or numbered label. It's a prose block that starts right after a section header. We need a pattern that captures definitional paragraphs that occur right after \section or \subsection headers, spanning until the next structural break.","# C5: Paragraph definitions after \section/\subsection headers
+# Captures the first paragraph (up to a double newline or structural command)
+# that follows a section-level command, when it contains definitional language.
+inline_section_def_pattern = re.compile(
+    r""(?:\\(?:sub)*section\*?\{[^}]*\})""
+    r""(?:\s*%[^\n]*\n)*""  # optional comment lines
+    r""\s*""
+    r""(?P<full>(?P<name>[^\n.]{1,120}?)""  # first ~sentence as name hint
+    r""(?:(?!\\(?:sub)*section|\\begin|\\end\{document\}).){50,1500}?)""  # body
+    r""(?=\n\s*\n|\\(?:sub)*section|\\begin|\\end\{document\})"",
+    flags=re.DOTALL,
+)
+
+# Keywords indicating this paragraph is definitional
+_section_def_keywords = re.compile(
+    r""\b(define[sd]?|definition|notation|denote[sd]?|call|refer to|known as|""  
+    r""represent[s]?|consists? of|form of the|we (say|use|write))\b"",
+    flags=re.IGNORECASE,
+)
+
+for m in inline_section_def_pattern.finditer(inline_text):
+    full_text = m.group(""full"").strip()
+    if not _section_def_keywords.search(full_text):
+        continue
+    if _referential.search(full_text):
+        continue
+    name_raw = full_text[:80].split(""."")[0].strip()
+    name_hint = extract_name_hint(name_raw)
+    clean_text = self._clean_latex_to_text(full_text)
+    idx += 1
+    obj_id = f""D{idx}""
+    d = Definition(
+        id=obj_id,
+        kind=""definition"",
+        index=idx,
+        label=None,
+        name=name_hint or None,
+        raw_latex=full_text,
+        clean_text=clean_text,
+        env_name=""inline_section_def"",
+    )
+    d._source_pos = m.start()
+    objects.append(d)",definition,definition
+paper001,3,"A subset $A \subset V$ of a graph is connected if any two vertices in $A$ can be joined by a path such that all intermediate points also lie in $A$. A subset $A$ is called a connected component if it is connected and if there are no connections between vertices in $A$ and $\bar A$. The nonempty sets $A_1, \hdots, A_k$ form a partition of the graph if $A_i \cap A_j = \emptyset$ and $A_1 \union \hdots \union A_k = V$.",inline_definition," dealing with a sum like $\sum_{i \in
+  A} w_{ij}$.  For two not necessarily disjoint sets $A,B \subset V$ we
+define 
+%
+\ba
+W(A,B):= \sum_{i \in A, j \in B} w_{ij}.
+\ea
+%
+ We consider two different ways of measuring the ``size'' of a
+subset $A \subset V$:
+%
+\ba 
+& |A| := \text{ the number of vertices in } A \\
+& \vol(A) := \sum_{i \in A} d_i. 
+\ea 
+%
+Intuitively, $|A|$  measures the size of $A$ by its number of
+vertices, while $\vol(A)$ measures the size of $A$ by summing over the weights
+of all edges attached to vertices in $A$. 
+%
+A subset $A \subset V$ of a graph is connected if any two vertices in
+$A$ can be joined by a path such that all intermediate points also lie
+in $A$. A subset $A$ is called a connected component if it is
+connected and if there are no connections between vertices in $A$ and
+$\bar A$. The nonempty sets $A_1, \hdots, A_k$ form a partition of the
+graph if $A_i \cap A_j = \emptyset$ and $A_1 \union \hdots \union A_k
+= V$.
+
+
+%
+  \subsection{Different similarity graphs} \label{ssec-sim-graphs}
+%
+
+  There are several popular constructions to transform a given set
+  $x_1,\hdots,x_n$ of data points with pairwise similarities $s_{ij}$
+  or pairwise distances $d_{ij}$ into a graph. When constructing
+  s",This is a prose definition using 'is called' / 'is connected' / 'form a partition' patterns - specifically 'A subset ... is called a connected component' and similar. The existing patterns miss it because it uses 'is called' rather than 'is defined as'. We need a new C5-style pattern for 'X is called Y' definitional sentences.,"# C6: ""X is called Y"" - definitional sentences using 'called'
+_c6_anchor = re.compile(
+    r""\bis\s+called\b"",
+    flags=re.IGNORECASE,
+)
+_c6_tail = re.compile(
+    r""(?:\.{1,3}|[^.])*\."",
+    flags=re.DOTALL,
+)
+
+for anchor_m in _c6_anchor.finditer(inline_text):
+    start_search = max(0, anchor_m.start() - 120)
+    prefix = inline_text[start_search:anchor_m.start()]
+    dot_pos = prefix.rfind(""."")
+    if dot_pos >= 0:
+        name_start = start_search + dot_pos + 1
+    else:
+        name_start = start_search
+    name_text = inline_text[name_start:anchor_m.start()].strip()
+    if not name_text or len(name_text) > 120:
+        continue
+    tail_m = _c6_tail.match(inline_text, anchor_m.end())
+    if not tail_m:
+        continue
+    full_text = inline_text[name_start:tail_m.end()]
+    if _referential.search(full_text):
+        continue
+    _ns6 = name_start
+    class _C6Match:
+        def group(self, key):
+            if key == ""full"":
+                return full_text
+            if key == ""name"":
+                return name_text
+            return None
+        def start(self):
+            return _ns6
+    add_inline_definition(_C6Match(), ""inline_is_called"")",definition,definition
+paper001,4,"${\bf The $\eps$-neighborhood graph:}$ Here we connect all points whose pairwise distances are smaller than $\eps$. As the distances between all connected points are roughly of the same scale (at most $\eps$), weighting the edges would not incorporate more information about the data to the graph. Hence, the $\eps$-neighborhood graph is usually considered as an unweighted graph.",unclassified,"hs}
+%
+
+  There are several popular constructions to transform a given set
+  $x_1,\hdots,x_n$ of data points with pairwise similarities $s_{ij}$
+  or pairwise distances $d_{ij}$ into a graph. When constructing
+  similarity graphs the goal is to model the local neighborhood
+  relationships between the data points. \\
+
+  {\bf The $\eps$-neighborhood graph:} Here we connect all points
+  whose pairwise distances are smaller than $\eps$.  As the distances
+  between all connected points are roughly of the same scale (at most
+  $\eps$), weighting the edges would not incorporate more information
+  about the data to the graph. Hence, the $\eps$-neighborhood graph is
+  usually considered as an unweighted graph. \\
+
+
+{\bf $k$-nearest neighbor graphs:} Here the goal is to connect vertex
+$v_i$ with vertex $v_j$ if $v_j$ is among the $k$-nearest neighbors of
+$v_i$. However, this definition leads to a directed graph, as the
+neighborhood relationship is not symmetric. There are two ways of
+making this graph undirected. The first way is to simply ignore the
+directions of the edges, that is we connect $v_i$ and $v_j$ with an
+undirected 
+edge if $v_i$ is among t","Items 2, 3, and 4 are all definitions introduced with a bold header pattern using {\bf ...} or similar LaTeX bold markup, followed by 'Here ...' or descriptive text. The pattern is: {\bf <name>:} followed by body text until the next {\bf or structural break. We need a pattern that captures these '\bf label: body' definition blocks.","# C7: {\bf Name:} / \textbf{Name:} style inline definitions
+# Captures bold-labeled definition blocks common in textbooks/surveys
+inline_bf_pattern = re.compile(
+    r""(?P<full>""
+    r""(?:\{\\bf\s+|\\textbf\{)""
+    r""(?P<name>[^}:]{1,100})""
+    r""(?::?\}|\}:?)""
+    r""\s*""
+    r""(?:\\\\|\s*)""
+    r""(?:[^\\]|\\(?!bf\b|textbf\{|section|subsection|begin|end)){10,600}?""
+    r"")""
+    r""(?=\n\s*\n|\{\\bf\s|\\textbf\{|\\\\\s*\n|\\(?:sub)*section|\\begin|\\end\{document\})"",
+    flags=re.DOTALL,
+)
+
+for m in inline_bf_pattern.finditer(inline_text):
+    full_text = m.group(""full"").strip()
+    name_raw = m.group(""name"").strip()
+    if not full_text or len(full_text) < 20:
+        continue
+    if _referential.search(full_text):
+        continue
+    name_hint = extract_name_hint(name_raw)
+    clean_text = self._clean_latex_to_text(full_text)
+    idx += 1
+    obj_id = f""D{idx}""
+    d = Definition(
+        id=obj_id,
+        kind=""definition"",
+        index=idx,
+        label=None,
+        name=name_hint or None,
+        raw_latex=full_text,
+        clean_text=clean_text,
+        env_name=""inline_bf_label"",
+    )
+    d._source_pos = m.start()
+    objects.append(d)",definition,definition
+paper001,5,"${\bf $k$-nearest neighbor graphs:}$ Here the goal is to connect vertex $v_i$ with vertex $v_j$ if $v_j$ is among the $k$-nearest neighbors of $v_i$. However, this definition leads to a directed graph, as the neighborhood relationship is not symmetric. There are two ways of making this graph undirected. The first way is to simply ignore the directions of the edges, that is we connect $v_i$ and $v_j$ with an undirected edge if $v_i$ is among the $k$-nearest neighbors of $v_j$ ${\em or}$ if $v_j$ is among the $k$-nearest neighbors of $v_i$. The resulting graph is what is usually called ${\em the $k$-nearest neighbor graph}$. The second choice is to connect vertices $v_i$ and $v_j$ if both $v_i$ is among the $k$-nearest neighbors of $v_j$ ${\em and}$ $v_j$ is among the $k$-nearest neighbors of $v_i$. The resulting graph is called the ${\em mutual $k$-nearest neighbor graph}$. In both cases, after connecting the appropriate vertices we weight the edges by the similarity of their endpoints.",inline_definition,"ph if $A_i \cap A_j = \emptyset$ and $A_1 \union \hdots \union A_k
+= V$.
+
+
+%
+  \subsection{Different similarity graphs} \label{ssec-sim-graphs}
+%
+
+  There are several popular constructions to transform a given set
+  $x_1,\hdots,x_n$ of data points with pairwise similarities $s_{ij}$
+  or pairwise distances $d_{ij}$ into a graph. When constructing
+  similarity graphs the goal is to model the local neighborhood
+  relationships between the data points. \\
+
+  {\bf The $\eps$-neighborhood graph:} Here we connect all points
+  whose pairwise distances are smaller than $\eps$.  As the distances
+  between all connected points are roughly of the same scale (at most
+  $\eps$), weighting the edges would not incorporate more information
+  about the data to the graph. Hence, the $\eps$-neighborhood graph is
+  usually considered as an unweighted graph. \\
+
+
+{\bf $k$-nearest neighbor graphs:} Here the goal is to connect vertex
+$v_i$ with vertex $v_j$ if $v_j$ is among the $k$-nearest neighbors of
+$v_i$. However, this definition leads to a directed graph, as the
+neighborhood relationship is not symmetric. There are two ways of
+making this graph undirected. The first way is to simply ignore the
+directions of the edges, that is we connect $v_i$ and $v_j$ with an
+undirected 
+edge if $v_i$ is among the $k$-nearest neighbors of $v_j$ {\em or} if
+$v_j$ is among the $k$-nearest neighbors of $v_i$. The resulting graph
+is what is usually called {\em the $k$-nearest neighbor graph}. The
+second choice is to connect vertices $v_i$ and $v_j$ if both $v_i$ is
+among the $k$-nearest neighbors of $v_j$ {\em and} $v_j$ is among the
+$k$-nearest neighbors of $v_i$. The resulting graph is called the {\em
+  mutual $k$-nearest neighbor graph}.  In both cases, after connecting
+the appropriate vertices we weight the edges by the similarity of their endpoints. \\
+%
+
+
+
+
+
+{\bf The fully connected graph:} Here we simply connect all points
+with positive similarity with each other, and we weight all edges by
+$s_{",Same as Item 2 - this is another {\bf k-nearest neighbor graphs:} style bold-labeled definition block. It is caught by the same C7 pattern described for Item 2.,"# Same C7 pattern as Item 2 handles this case.
+# No additional code needed beyond the C7 pattern added for Item 2.
+# The inline_bf_pattern will match '{\bf $k$-nearest neighbor graphs:}'
+# and extract the body until the next \bf block or structural break.
+pass",definition,definition
+paper001,6,"${\bf The fully connected graph:}$ Here we simply connect all points with positive similarity with each other, and we weight all edges by $s_{ij}$. As the graph should represent the local neighborhood relationships, this construction is only useful if the similarity function itself models local neighborhoods. An example for such a similarity function is the Gaussian similarity function $s(x_i,x_j) = \exp(- {\norm[x_i - x_j]^2}/({2 \sigma^2}))$, where the parameter $\sigma$ controls the width of the neighborhoods. This parameter plays a similar role as the parameter $\eps$ in case of the $\eps$-neighborhood graph.",inline_definition," $k$-nearest neighbors of
+$v_i$. However, this definition leads to a directed graph, as the
+neighborhood relationship is not symmetric. There are two ways of
+making this graph undirected. The first way is to simply ignore the
+directions of the edges, that is we connect $v_i$ and $v_j$ with an
+undirected 
+edge if $v_i$ is among the $k$-nearest neighbors of $v_j$ {\em or} if
+$v_j$ is among the $k$-nearest neighbors of $v_i$. The resulting graph
+is what is usually called {\em the $k$-nearest neighbor graph}. The
+second choice is to connect vertices $v_i$ and $v_j$ if both $v_i$ is
+among the $k$-nearest neighbors of $v_j$ {\em and} $v_j$ is among the
+$k$-nearest neighbors of $v_i$. The resulting graph is called the {\em
+  mutual $k$-nearest neighbor graph}.  In both cases, after connecting
+the appropriate vertices we weight the edges by the similarity of their endpoints. \\
+%
+
+
+
+
+
+{\bf The fully connected graph:} Here we simply connect all points
+with positive similarity with each other, and we weight all edges by
+$s_{ij}$. As the graph should represent the local neighborhood
+relationships, this construction is only useful if the
+similarity function itself models local neighborhoods.  An example for
+such a similarity function is the Gaussian similarity function
+$s(x_i,x_j) = \exp(- {\norm[x_i - x_j]^2}/({2 \sigma^2}))$, where
+the parameter $\sigma$ controls the width of the neighborhoods. This
+parameter plays a similar role as the parameter $\eps$ in case
+of the $\eps$-neighborhood graph. \\
+
+
+All graphs mentioned above are regularly used in spectral
+clustering. To our knowledge, theoretical results on the question h",Same pattern as Items 2 and 3 - this is '{\bf The fully connected graph:}' followed by descriptive text. The C7 inline_bf_pattern added for Item 2 will handle this as well.,"# Same C7 pattern as Item 2 handles this case.
+# No additional code needed beyond the C7 pattern added for Item 2.
+# The inline_bf_pattern will match '{\bf The fully connected graph:}'
+# and extract its body.
+pass",definition,definition
+paper001,8,"There are two matrices which are called normalized graph Laplacians in the literature. Both matrices are closely related to each other and are defined as $\Lsym := D^{-1/2} \Lun D^{-1/2} = I - D^{-1/2} W D^{-1/2}$ $\Lrw := D^{-1} \Lun = I - D^{-1} W.$ We denote the first matrix by $\Lsym$ as it is a symmetric matrix, and the second one by $\Lrw$ as it is closely related to a random walk.",unclassified," constant one vector on the $i$-th
+connected component. Thus, the matrix $\Lun$ has as many eigenvalues
+$0$ as there are connected components, and the corresponding
+eigenvectors are the indicator vectors of the connected components.
+\end{proof}
+%
+
+
+
+%
+\subsection{The normalized graph Laplacians} \label{ssec-lnorm}
+%
+
+
+
+There are two matrices which are called normalized graph
+Laplacians in the literature. Both matrices are closely related to
+each other and are defined as 
+%
+\ba
+& \Lsym := D^{-1/2} \Lun D^{-1/2} = I -  D^{-1/2} W D^{-1/2}\\
+& \Lrw := D^{-1} \Lun = I - D^{-1} W. 
+\ea 
+%
+We denote the first matrix by $\Lsym$ as it is a symmetric matrix, and
+the second one by $\Lrw$ as it is closely related to a random walk.
+In the following we summarize several properties of $\Lsym$ and
+$\Lrw$. The standard reference for normalized graph Laplacians is \citeA{Chung97}. \\
+
+
+
+%
+%
+\begin{proposition}[Properties of $\Lsym$ and $\Lrw$] 
+\label{prop-norm}
+%
+The normalized Laplacians satisfy the following properties:
+\begin{enumerate}
+
+\item For every $f \in \R^n$ we have 
+\ba
+f' \Lsym f = 
+\frac{1}{2} \sum_{i,j=1}^n w_{ij} 
+\left(\frac{f_i}{\sqrt{d_i}} - \frac{f_j}{\sqrt{",This is a subsection-level definition where the defining text appears right after a \subsection header and uses 'are defined as' with a display math block (\ba ... \ea or align environment). The existing C2 pattern uses 'is defined' but misses 'are defined'. Also the tail pattern needs to handle display math blocks. We need to extend C2 to also catch 'are defined as/to be'.,"# Extend C2 anchor to also match 'are defined as/to be'
+_c2_anchor_extended = re.compile(
+    r""\b(?:is|are)\s+defined\s+(?:as|to\s+be)\s"",
+    flags=re.IGNORECASE,
+)
+
+# Also handle display math in tail (\ba...\ea, \begin{align}...\end{align}, \[...\])
+_c2_tail_extended = re.compile(
+    r""(?:""
+    r""\\ba.*?\\ea""
+    r""|\\begin\{(?:align|equation|gather)\*?\}.*?\\end\{(?:align|equation|gather)\*?\}""
+    r""|\\\[.*?\\\]""
+    r""|\$\$.*?\$\$""
+    r""|[^.]*?""
+    r"")""
+    r""(?:[^.]*\.)"",
+    flags=re.DOTALL,
+)
+
+for anchor_m in _c2_anchor_extended.finditer(inline_text):
+    start_search = max(0, anchor_m.start() - 120)
+    prefix = inline_text[start_search:anchor_m.start()]
+    dot_pos = prefix.rfind(""."")
+    if dot_pos >= 0:
+        name_start = start_search + dot_pos + 1
+    else:
+        name_start = start_search
+    name_text = inline_text[name_start:anchor_m.start()].strip()
+    if not name_text or len(name_text) > 120:
+        continue
+    # Try to find end: look for a sentence end after display math
+    search_end = min(len(inline_text), anchor_m.end() + 600)
+    tail_region = inline_text[anchor_m.end():search_end]
+    tail_m = _c2_tail_extended.match(tail_region)
+    if not tail_m:
+        continue
+    full_text = inline_text[name_start:anchor_m.end() + tail_m.end()]
+    if _referential.search(full_text):
+        continue
+    _ns5 = name_start
+    class _C5Match:
+        def group(self, key):
+            if key == ""full"":
+                return full_text
+            if key == ""name"":
+                return name_text
+            return None
+        def start(self):
+            return _ns5
+    add_inline_definition(_C5Match(), ""inline_are_defined_as"")",definition,definition
+paper001,10,"A second connection between random walks and graph Laplacians can be made via the commute distance on the graph. The commute distance (also called resistance distance) $c_{ij}$ between two vertices $v_i$ and $v_j$ is the expected time it takes the random walk to travel from vertex $v_i$ to vertex $v_j$ and back $\cite{Lovasz93,AldFil}$.",unclassified,"the definition of $\Ncut$. 
+\end{proof}
+
+
+This proposition leads to a nice interpretation of $\Ncut$, and
+hence of normalized spectral clustering. 
+It tells us that when minimizing $\Ncut$, we actually look for a cut
+through the graph such that a random
+walk seldom transitions from $A$ to $\bar A$ and vice versa. 
+
+
+%
+\subsubsection*{The commute distance}
+%
+
+
+A second connection between random walks and graph Laplacians
+can be made via the commute distance on the graph.  The commute
+distance (also called resistance distance) $c_{ij}$ between two
+vertices $v_i$ and $v_j$ is the expected time it takes the random walk to
+travel from vertex $v_i$ to vertex $v_j$ and back
+\cite{Lovasz93,AldFil}. The commute distance has several nice
+properties which make it particularly appealing for machine
+learning. As opposed to the shortest path distance on a graph, the
+commute distance between two vertices decreases if there are many
+different short ways to get from vertex $v_i$ to vertex $v_j$. So instead
+of just looking for the one shortest path, the commute distance looks
+a",This is a definition introduced with 'The commute distance (also called resistance distance) ... is the expected time ...'. It uses 'also called' in parentheses and 'is the expected time' (not 'is defined as'). We need a pattern for 'X (also called Y) is <definition>' or more generally 'The X ... is <noun phrase describing the concept>'.,"# C8: ""The X (also called Y) is ..."" definitional sentences
+# Matches: 'The <term> (<qualifier>) <verb> <definition>'
+_c8_pattern = re.compile(
+    r""(?P<full>""
+    r""(?:The\s+)?""
+    r""(?P<name>[A-Z][^.()]{2,80}?)""
+    r""(?:\s*\([^)]{1,60}\))?""
+    r""\s+(?:is|are|refers?\s+to|denotes?)\s+the\s+""
+    r""(?:[^.]){20,400}?""
+    r""\.)"",
+    flags=re.DOTALL,
+)
+
+# Keywords indicating the sentence is truly defining something
+_c8_def_keywords = re.compile(
+    r""\b(expected|defined|denoted|notation|refers?\s+to|known\s+as|""  
+    r""called|probability|distance|measure|number|set|function|matrix)\b"",
+    flags=re.IGNORECASE,
+)
+
+for m in _c8_pattern.finditer(inline_text):
+    full_text = m.group(""full"").strip()
+    name_raw = m.group(""name"").strip()
+    if not _c8_def_keywords.search(full_text):
+        continue
+    if _referential.search(full_text):
+        continue
+    if len(full_text) < 40:
+        continue
+    name_hint = extract_name_hint(name_raw)
+    clean_text = self._clean_latex_to_text(full_text)
+    idx += 1
+    obj_id = f""D{idx}""
+    d = Definition(
+        id=obj_id,
+        kind=""definition"",
+        index=idx,
+        label=None,
+        name=name_hint or None,
+        raw_latex=full_text,
+        clean_text=clean_text,
+        env_name=""inline_the_x_is"",
+    )
+    d._source_pos = m.start()
+    objects.append(d)",definition,definition
+paper002,1,"a linear code is a given collection of codewords which are vectors $a_1,\ldots, a_n \in \R^m$---the columns of the matrix $A$.",unclassified,". The problem
+we consider is whether it is possible to recover $f$ exactly from the
+data $y$. And if so, how? 
+
+In its abstract form, our problem is of course equivalent to the
+classical error correcting problem which arises in coding theory as we
+may think of $A$ as a \emph{linear code}; a linear code is a given
+collection of codewords which are vectors $a_1,\ldots, a_n \in
+\R^m$---the columns of the matrix $A$. Given a vector $f \in \R^n$ (the
+``plaintext'') we can then generate a vector $Af$ in $\R^m$ (the
+``ciphertext''); if $A$ has full rank, then one can clearly recover
+the plaintext $f$ from the ciphertext $Af$. But now we suppose that
+the ciphertext $Af$ is corrupted by an arbitrary vector $e \in \R^m$
+giving rise to the corrupted ciphertext $Af+e$.  The question is then:
+given the coding matrix $A$ and $Af+e$, can one recover $f$ exactly?
+
+As is well-known, if the fraction of th","The text uses a semicolon-separated inline definition pattern: 'X; X is a ...' or 'as we may think of X as a \emph{term}; term is a given collection...'. The key pattern is: an emphasized term (via \emph{}) followed by a semicolon, then a definition sentence. The existing C1 pattern requires 'define' and C2 requires 'is defined as'. This pattern has the form 'TERM; TERM is a DEFINITION.' We need a new pattern that catches 'term is a given/the ...' style definitions, especially after an \emph{} introduction. Specifically, this is 'a [term]; [term] is a [definition phrase].' We can add a new pattern C5 that matches '[term] is a/an [definition...].' triggered when the subject looks like a defined term (preceded by emph or introduced inline).","# C5: 'X is a/an ...' style inline definition, especially after \emph{term}
+# Pattern: \emph{term}; term is a/an ...
+inline_is_a_pattern = re.compile(
+    r""(?P<full>""
+    r""(?:\\emph\{(?P<emph_name>[^}]+)\}[^.;]{0,40}[;,]\s*)?""
+    r""(?P<name>[A-Za-z][A-Za-z0-9 \-]{1,60}?)""
+    r""\s+is\s+(?:a|an|the)\s+(?:given\s+)?(?:collection|set|sequence|map|mapping|function|family|class|space|operator|matrix|vector|graph|code|measure|distribution|process|transform|pair|triple|tuple|list|array|structure|object|element|member|subset|subspace|subgroup|ring|field|group|algebra|category|bundle|sheaf|complex|chain|module|lattice|poset|order|relation|partition|cover|basis|frame|system|scheme|variety|manifold|surface|curve|form|tensor|functional|filter|ideal|radical|kernel|image|cokernel|coimage|homomorphism|isomorphism|automorphism|endomorphism|morphism|functor|natural|adjunction|limit|colimit|pullback|pushout|product|coproduct|equalizer|coequalizer|localization|completion|compactification|extension|lift|section|retraction|deformation|homotopy|cohomology|homology|sheaf|stack|topos|site|model|theory|language|formula|sentence|proof|argument|algorithm|procedure|protocol|strategy|policy|rule|criterion|condition|property|invariant|characteristic|feature|parameter|variable|constant|symbol|notation|abbreviation|term|notion|concept|definition)\b""
+    r""(?:[^.])*\.)"",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+
+for m in inline_is_a_pattern.finditer(inline_text):
+    full_text = m.group(""full"")
+    if _referential.search(full_text):
+        continue
+    emph = m.group(""emph_name"")
+    name_raw = emph if emph else m.group(""name"")
+    name_hint = extract_name_hint(name_raw)
+    clean_text = _self_clean(full_text)  # use self._clean_latex_to_text
+    idx += 1
+    obj_id = f""D{idx}""
+    d = Definition(
+        id=obj_id,
+        kind=""definition"",
+        index=idx,
+        label=None,
+        name=name_hint or None,
+        raw_latex=full_text,
+        clean_text=self._clean_latex_to_text(full_text),
+        env_name=""inline_is_a"",
+    )
+    d._source_pos = m.start()
+    objects.append(d)
+
+# Add 'inline_is_a' to priority map (same level as C2/C3)
+_source_priority[""inline_is_a""] = 2",definition,definition
+paper002,3,"the object of interest is {\em compressible} in the sense that the reordered entries of $\alpha$ decay like a power-law; concretely, suppose that the entries of $\alpha$, rearranged in decreasing order of magnitude, $|\alpha|_{(1)} \geq |\alpha|_{(2)} \geq \cdots \geq |\alpha|_{(m)}$, obey \begin{equation} |\alpha|_{(k)} \leq B\cdot k^{-s} \end{equation} for some $s \geq 1$. We will denote by $\cF_s(B)$ the class of all signals $\alpha \in \R^m$ obeying \eqref{eq:wlp}.",unclassified,"lpha$ as the
+coefficients $\alpha = \Psi^* f$ of a digital signal or image $f$ in
+some nice orthobasis, e.g. a wavelet basis so that the information
+about the signal is of the form $y = F \alpha = F \Psi^* f$.
+
+Suppose now that the object of interest is {\em compressible} in the
+sense that the reordered entries of $\alpha$ decay like a power-law;
+concretely, suppose that the entries of $\alpha$, rearranged in
+decreasing order of magnitude, $|\alpha|_{(1)} \geq |\alpha|_{(2)} \geq
+\cdots \geq |\alpha|_{(m)}$, obey 
+\begin{equation}
+\label{eq:wlp}
+|\alpha|_{(k)} \leq B\cdot k^{-s}
+\end{equation}
+for some $s \geq 1$.  We will denote by $\cF_s(B)$ the class of all
+signals $\alpha \in \R^m$ obeying \eqref{eq:wlp}. The claim is that it is
+possible to reconstruct compressible signals from only a small number
+of random measurements.
+\begin{theorem}
+\label{teo:optimalrecovery}
+Let $F$ be the measurement matrix as in \eqref{eq:linmeas} and consider
+the solution $\alpha^\sharp$ to
+  \begin{equation}
+    \label{eq:newP1}
+\min_{\tilde \alpha \in \R^m} \, \|\tilde \alpha\|_{\ell_1} 
+\quad \text{ subject to } \quad F \tilde \alpha = y.
+  \end{equation}
+  Let $S \le K$ such that $\delta_S + 2\theta_S + \theta_{S,2S} < 1$
+  and set $\lambda = K/S$.  Then $\alpha^\sharp$ obeys
+  \begin{equation}
+    \label{eq:optimalrecovery}
+   \sup_{\alpha ",The definition uses 'We will denote by $X$ the class of ...' — a 'denote by' pattern. The existing patterns don't cover 'denote by X ...' constructions. We need a new pattern C6: 'We (will) denote by NAME ...' which is a standard mathematical definition form. The name here is '$\cF_s(B)$' and the definition is 'the class of all signals...'.,"# C6: 'We (will) denote by X ...' style inline definition
+inline_denote_pattern = re.compile(
+    r""(?P<full>""
+    r""(?:We\s+)?(?:will\s+)?(?:also\s+)?denote\s+by\s+""
+    r""(?P<name>(?:\$[^$]+\$|[A-Za-z0-9\\{}_^]+))""
+    r""(?:[^.])*\.)"",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+
+for m in inline_denote_pattern.finditer(inline_text):
+    full_text = m.group(""full"")
+    if _referential.search(full_text):
+        continue
+    add_inline_definition(m, ""inline_denote"")
+
+# Add to priority map
+_source_priority[""inline_denote""] = 2",definition,definition
+paper002,4,"a {\em random} matrix $F$ obeys the UUP with oversampling factor $\lambda$ if $F$ obeys \begin{equation} \delta_S \le 1/2, \qquad S = \rho \cdot K/\lambda, \end{equation} with probability at least $1 - O(N^{-\gamma/\rho})$ for some fixed positive constant $\gamma > 0$.",unclassified,"Recovery,CompressedSensing}.
+
+Theorem \ref{teo:optimalrecovery} is stronger than our former result,
+namely, Theorem 1.4 in \cite{OptimalRecovery}. To see why this is
+true, recall the former claim: \cite{OptimalRecovery} introduced two
+conditions, the uniform uncertainty principle (UUP) and the exact
+reconstruction principle (ERP).  In a nutshell, a {\em random} matrix
+$F$ obeys the UUP with oversampling factor $\lambda$ if $F$ obeys
+\begin{equation}
+  \label{eq:uup}
+   \delta_S \le 1/2, \qquad S = \rho \cdot K/\lambda, 
+\end{equation}
+with probability at least $1 - O(N^{-\gamma/\rho})$ for some fixed
+positive constant $\gamma > 0$. Second, a measurement matrix $F$ obeys
+the ERP with oversampling factor $\lambda$ if for each fixed subset
+$T$ of size $|T| \le S$ \eqref{eq:uup} and each `sign' vector $c$
+defined on $T$, there exists with the same overwhelmingly large
+probability a vector $w \in H$ with the following properties:",The definition uses 'X obeys/satisfies CONDITION if ...' pattern introduced with 'a {\em term} obeys the UUP ... if F obeys ...'. The pattern is: 'a {\em term} [subject] obeys/satisfies [something] if [condition]'. More specifically it matches: '[subject] obeys [property name] with [parameters] if [formal condition]'. This is a mathematical definition via 'if' clause. We need a new pattern C7 that catches '[term] obeys/satisfies PROPERTY if FORMAL_DEFINITION.' especially when preceded by \em{}.,"# C7: 'X obeys/satisfies PROPERTY if ...' style inline definition
+# Catches: 'a {\em term} obeys PROPERTY ... if F obeys [equation]'
+inline_obeys_pattern = re.compile(
+    r""(?P<full>""
+    r""(?:a\s+)?(?:\\emph\{(?P<emph_name>[^}]+)\}|\{\\em\s+(?P<em_name>[^}]+)\})""
+    r""[^.]{0,120}?""
+    r""\bobeys\b""
+    r""(?:[^.])*\.)"",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+
+for m in inline_obeys_pattern.finditer(inline_text):
+    full_text = m.group(""full"")
+    if _referential.search(full_text):
+        continue
+    emph = m.group(""emph_name"") or m.group(""em_name"")
+    name_hint = extract_name_hint(emph) if emph else None
+    clean_text = self._clean_latex_to_text(full_text)
+    idx += 1
+    obj_id = f""D{idx}""
+    d = Definition(
+        id=obj_id,
+        kind=""definition"",
+        index=idx,
+        label=None,
+        name=name_hint or None,
+        raw_latex=full_text,
+        clean_text=clean_text,
+        env_name=""inline_obeys"",
+    )
+    d._source_pos = m.start()
+    objects.append(d)
+
+# Add to priority map
+_source_priority[""inline_obeys""] = 2",definition,definition
+paper004,1,"The notation  $\|\cdot\|_n$ stands for the empirical norm: $$\|g\|_n= \sqrt{\frac1n \sum_{i=1}^n g^2(Z_i)}$$ for any $g:\mathcal Z\to\RR$. We suppose that $\|f_j\|_n\neq 0$, $j=1,\dots, M$. Set $$ f_{\max} = \max_{1\le j\le M} \|f_j\|_n\,, \quad f_{\min}= \min_{1\le j\le M} \|f_j\|_n\,. $$",unknown_environment,"}=(f(Z_1),\dots,f(Z_n))^T$, $\bmw=(W_1,\dots,W_n)^T$.  With this
+notation,
+\begin{eqnarray*}
+\bmy &= {\bmf} +\bmw.
+\end{eqnarray*} We will write
+$|x|_p$ for the $\ell_p$ norm of $x\in\RR^M$, $1\le p\le\infty$. The notation  $\|\cdot\|_n$ stands for the empirical norm:
+$$\|g\|_n= \sqrt{\frac1n \sum_{i=1}^n g^2(Z_i)}$$
+for any $g:\mathcal Z\to\RR$. We suppose that $\|f_j\|_n\neq 0$, $j=1,\dots, M$.
+Set
+$$
+f_{\max} = \max_{1\le j\le M} \|f_j\|_n\,, \quad f_{\min}= \min_{1\le j\le M} \|f_j\|_n\,.
+$$
+
+
+
+ For any
+$\beta= (\beta_1,\dots,\beta_M)\in \RR^M$, define ${\sf
+f}_{\beta} = \sum_{j=1}^M \beta_j f_j$, or explicitly, ${\sf
+f}_{\beta}(z) = \sum_{j=1}^M \beta_j f_j(z)$, and $\bmf_\beta =X\beta$.
+The estimates we consider are all of the form ${ f}_{\tilde \beta} (\cdot)$
+where $\tilde \beta$ is data determined.
+Since we consider mainly sparse vectors $\tilde \beta$, it will be convenient to define the following. Let $$ \scm(\beta)= \sum_{j=1}^M I_{\{ \beta_j\ne 0\}} =
+|",Item 0 contains 'The notation ... stands for ...' which is a definitional sentence introducing notation. The existing C1 pattern looks for 'define' but misses 'stands for' as a definitional verb. We need a new inline pattern matching 'X stands for ...' or 'The notation X stands for ...'.,"# C5: 'X stands for ...' / 'The notation X stands for ...'
+inline_stands_for_pattern = re.compile(
+    r'(?P<full>'
+    r'(?:The\s+notation\s+)?'
+    r'(?P<name>(?:\$[^$]+\$|[A-Za-z0-9\\_ ]{1,60}?))'
+    r'\s+stands\s+for\b'
+    r'(?:\\\[.*?\\\]|\$\$.*?\$\$|[^.])*\.)' ,
+    flags=re.IGNORECASE | re.DOTALL,
+)
+for m in inline_stands_for_pattern.finditer(inline_text):
+    if _referential.search(m.group('full')):
+        continue
+    add_inline_definition(m, 'inline_stands_for')
+_source_priority['inline_stands_for'] = 3",definition,definition
+paper004,2,"Let $$ \scm(\beta)= \sum_{j=1}^M I_{\{ \beta_j\ne 0\}} = |J(\beta)|$$ denote the number of non-zero coordinates of $\beta$, where $I_{\{ \cdot\}}$ denotes the indicator function, $J(\beta)=\left \{j\in\{1,\ldots,M\} \right.:$ $\left. \beta_j \ne 0\right\}$, and $|J|$ denotes the cardinality of $J$. The value $\scm(\beta)$ characterizes the {\it sparsity} of the vector $\beta$: the smaller $\scm(\beta)$, the ``sparser"" $\beta$.",unclassified,"\neq 0$, $j=1,\dots, M$.
+Set
+$$
+f_{\max} = \max_{1\le j\le M} \|f_j\|_n\,, \quad f_{\min}= \min_{1\le j\le M} \|f_j\|_n\,.
+$$
+
+
+
+ For any
+$\beta= (\beta_1,\dots,\beta_M)\in \RR^M$, define ${\sf
+f}_{\beta} = \sum_{j=1}^M \beta_j f_j$, or explicitly, ${\sf
+f}_{\beta}(z) = \sum_{j=1}^M \beta_j f_j(z)$, and $\bmf_\beta =X\beta$.
+The estimates we consider are all of the form ${ f}_{\tilde \beta} (\cdot)$
+where $\tilde \beta$ is data determined.
+Since we consider mainly sparse vectors $\tilde \beta$, it will be convenient to define the following. Let $$ \scm(\beta)= \sum_{j=1}^M I_{\{ \beta_j\ne 0\}} =
+|J(\beta)|$$ denote the number of non-zero coordinates of
+$\beta$, where $I_{\{ \cdot\}}$ denotes the indicator function,
+$J(\beta)=\left \{j\in\{1,\ldots,M\} \right.:$ $\left. \beta_j
+\ne 0\right\}$, and $|J|$ denotes the cardinality of $J$. The value
+$\scm(\beta)$ characterizes the {\it sparsity} of the vector
+$\beta$: the smaller $\scm(\beta)$, the ``sparser""
+ $\beta$.
+For a vector $\bD\in \RR^M$ and a subset $J\subset \{1,\dots,M\}$ we
+denote by $\bD_J$ the vector in $\RR^M$ which has the same
+coordinates as $\bD$ on $J$ and zero coordinates on the complement
+$J^c$ of $J$.
+
+
+
+
+
+ Introduce the residual sum of squares
+$$ \wh{S} (\beta) = \frac1n ",Item 1 uses the pattern 'Let $$ ... $$ denote ...' — a display-math 'let ... denote' construction. The existing C4 only handles inline math names and short 'be' constructions. We need a pattern matching 'Let <display_math> denote ...' sentences.,"# C6: 'Let $$ ... $$ denote ...' or 'Let $ ... $ denote ...'
+inline_let_denote_pattern = re.compile(
+    r'(?P<full>'
+    r'[Ll]et\s+'
+    r'(?P<name>(?:\$\$.*?\$\$|\$[^$]+\$))'
+    r'(?:[^.]{{0,300}}?)'
+    r'\bdenote\b'
+    r'(?:\\\[.*?\\\]|\$\$.*?\$\$|[^.])*\.)' ,
+    flags=re.DOTALL,
+)
+for m in inline_let_denote_pattern.finditer(inline_text):
+    if _referential.search(m.group('full')):
+        continue
+    add_inline_definition(m, 'inline_let_denote')
+_source_priority['inline_let_denote'] = 2",definition,definition
+paper004,3,"Introduce the residual sum of squares $$ \wh{S} (\beta) = \frac1n \sum_{i=1}^n \{ Y_i - {\sf f}_{\beta}(Z_i) \}^2,$$ for all $\beta\in\RR^M$.",unknown_environment,"or a vector $\bD\in \RR^M$ and a subset $J\subset \{1,\dots,M\}$ we
+denote by $\bD_J$ the vector in $\RR^M$ which has the same
+coordinates as $\bD$ on $J$ and zero coordinates on the complement
+$J^c$ of $J$.
+
+
+
+
+
+ Introduce the residual sum of squares
+$$ \wh{S} (\beta) = \frac1n \sum_{i=1}^n \{ Y_i - {\sf
+f}_{\beta}(Z_i) \}^2,$$ for all $\beta\in\RR^M$.  Define the
+Lasso solution $\wh{\beta}_L =
+(\wh{\beta}_{1,L},\dots,\wh{\beta}_{M,L})$ by
+\begin{equation}\begin{split}\label{lass}
+\wh{\beta}_L = \argmin_{\beta\in\RR^M} \left\{ \wh{S}(\beta) +
+2r\sum_{j=1}^M  \|f_j\|_n |\beta_j| \right\},
+\end{split}\end{equation}
+where $r>0$ is some tuning constant, and introduce the corresponding Lasso
+estimator
+\begin{equation}\begin{split}
+\label{lse} \widehat{f}_L(x)={\sf
+f}_{\wh{\beta}_L}(x) =\sum_{j=1}^M \wh{\beta}_{j,L} f_j(z).
+\end{split}\end{equation}
+
+The criterion in (\ref{lass}) is convex in",Item 2 starts with 'Introduce the residual sum of squares $$ ... $$' — an imperative 'Introduce X' pattern that the existing patterns do not cover. We need a new pattern matching 'Introduce <name> <display_math>...'.,"# C7: 'Introduce X ...' definitional imperative
+inline_introduce_pattern = re.compile(
+    r'(?P<full>'
+    r'\bIntroduce\b\s+'
+    r'(?P<name>[^.$\n]{1,80}?)'
+    r'(?:\$\$.*?\$\$|\\\[.*?\\\])'
+    r'(?:[^.]{{0,200}}?)'
+    r'\.)',
+    flags=re.DOTALL,
+)
+for m in inline_introduce_pattern.finditer(inline_text):
+    if _referential.search(m.group('full')):
+        continue
+    add_inline_definition(m, 'inline_introduce')
+_source_priority['inline_introduce'] = 2",definition,definition
+paper004,4,"Finally for any $n\ge 1$, $M\ge2$, we consider the Gram matrix $$ \Psi_{n} = \frac1n X^TX = \left( \frac1n \sum_{i=1}^n f_j(Z_i) f_{j^\prime} (Z_i) \right)_{ 1\le j,j^\prime \le M},$$ and let $\phi_{\max}$ denote  the maximal eigenvalue of $\Psi_n$.",unclassified,"\beta}_{M,D})$ is
+the Dantzig selector. By the definition of Dantzig selector, we have
+$|\widehat\beta_D|_1\le |\widehat\beta_L|_1$.
+
+
+
+The Dantzig selector is computationally feasible, since it reduces to a
+linear programming problem \cite{ct07}.
+
+Finally for any $n\ge 1$, $M\ge2$, we consider the Gram matrix $$ \Psi_{n} =
+\frac1n X^TX = \left( \frac1n \sum_{i=1}^n f_j(Z_i) f_{j^\prime}
+(Z_i) \right)_{ 1\le j,j^\prime \le M},$$
+and let $\phi_{\max}$ denote  the maximal eigenvalue of $\Psi_n$.
+
+
+
+
+
+
+
+
+
+
+
+
+\section{Restricted eigenvalue assumptions}\label{sec2}
+
+
+
+We now introduce the key assumptions on the Gram matrix that are
+needed to guarantee nice statistical properties of Lasso and Dantzig
+selector. Under the sparsity scenario we are typically interested in
+the case where $M>n$, and even $M\gg n$. Then the matrix $\Psi_n$ is
+degenerate, which can be written as
+$$
+\min_{\bD\in \RR^M:","Item 3 uses 'we consider the Gram matrix $$ ... $$, and let X denote ...' — a pattern combining 'consider' with a display-math definition plus a follow-up 'let X denote'. We need a pattern for 'we consider <name> <display_math>' as a definitional construction.","# C8: 'we consider <name> $$ ... $$' definitional
+inline_we_consider_pattern = re.compile(
+    r'(?P<full>'
+    r'\bwe\s+consider\b\s+'
+    r'(?P<name>[^.$\n]{1,80}?)'
+    r'(?:\$\$.*?\$\$|\\\[.*?\\\])'
+    r'(?:[^.]{{0,300}}?)'
+    r'\.)',
+    flags=re.IGNORECASE | re.DOTALL,
+)
+for m in inline_we_consider_pattern.finditer(inline_text):
+    if _referential.search(m.group('full')):
+        continue
+    add_inline_definition(m, 'inline_we_consider')
+_source_priority['inline_we_consider'] = 2",definition,definition
+paper004,5,"For a real number $1\le u\le M$ we introduce the following quantities that we will call {\it restricted eigenvalues}: \begin{equation*} \begin{split} \phi_{\min}(u) &= \min_{x\in \RR^M: 1\le \scm(x) \le u } \frac{x^T\Psi_n x}{|x|_2^2}, \\ \phi_{\max}(u) &= \max_{x\in \RR^M: 1\le \scm(x) \le u } \frac{x^T\Psi_n x}{|x|_2^2}. \end{split} \end{equation*}",unknown_environment,"_0}
+imply Assumptions \RE s{c_0} and \REm sm{c_0}
+respectively if $s'>s$.
+
+
+\section{Discussion of the RE assumptions}
+\label{discRE}
+
+
+There exist several simple sufficient conditions for Assumptions \RE
+s{c_0} and \REm sm{c_0} to hold. Here we discuss some of them.
+
+For a real number $1\le u\le M$ we introduce the following
+quantities that we will call {\it restricted eigenvalues}:
+\begin{equation*}%\label{phiminmax}
+\begin{split}
+\phi_{\min}(u) &= \min_{x\in \RR^M: 1\le \scm(x) \le u }
+\frac{x^T\Psi_n
+x}{|x|_2^2}, \\
+ \phi_{\max}(u) &= \max_{x\in \RR^M: 1\le \scm(x) \le
+u } \frac{x^T\Psi_n x}{|x|_2^2}.
+\end{split}
+\end{equation*}
+Denote by $X_J$ the $n\times |J|$ submatrix of $X$ obtained by
+removing from $X$ the columns that do not correspond to the indices
+in $J$, and for $1\le m_1,m_2\le M$ introduce the following
+quantities called {\it restricted correlations}:
+\begin{equation*}
+\theta_{m_1,m_2} = \max\left\{ \frac{
+c_1^TX_{I_1}^TX_{I_2}c_2}{n\,|c_1|_2\,|c_2|_2}: I_1\cap
+I_2=\emptyset, |I_i|\leq m_i, c_i\in\RR^{I_i}\setminus \{0\}, i=1,2
+\right\}.
+\end{equation*}
+
+In Lemma \ref{l2",Item 4 uses 'we introduce the following quantities that we will call {\it restricted eigenvalues}: \begin{equation*} ... \end{equation*}' — a 'we introduce ... called' pattern followed by a display equation environment. We need a pattern for 'we introduce ... call(ed) <name>: <equation_env>'.,"# C9: 'we introduce ... call(ed) <name>: \begin{equation*}...\end{equation*}'
+inline_introduce_called_pattern = re.compile(
+    r'(?P<full>'
+    r'\bwe\s+introduce\b[^.\\]{0,120}?'
+    r'(?:call(?:ed)?)\s+'
+    r'(?:\{\\it\s+)?(?P<name>[^}.\n]{1,80})(?:\})?\s*:?\s*'
+    r'(?:\\begin\{equation\*?\}.*?\\end\{equation\*?\}|\\begin\{align\*?\}.*?\\end\{align\*?\}))',
+    flags=re.IGNORECASE | re.DOTALL,
+)
+for m in inline_introduce_called_pattern.finditer(inline_text):
+    if _referential.search(m.group('full')):
+        continue
+    add_inline_definition(m, 'inline_introduce_called')
+_source_priority['inline_introduce_called'] = 2",definition,definition
+paper004,6,"Denote by $X_J$ the $n\times |J|$ submatrix of $X$ obtained by removing from $X$ the columns that do not correspond to the indices in $J$, and for $1\le m_1,m_2\le M$ introduce the following quantities called {\it restricted correlations}: \begin{equation*} \theta_{m_1,m_2} = \max\left\{ \frac{ c_1^TX_{I_1}^TX_{I_2}c_2}{n\,|c_1|_2\,|c_2|_2}: I_1\cap I_2=\emptyset, |I_i|\leq m_i, c_i\in\RR^{I_i}\setminus \{0\}, i=1,2 \right\}.\end{equation*}",unknown_environment,"tions \RE s{c_0} and \REm sm{c_0}
+respectively if $s'>s$.
+
+
+\section{Discussion of the RE assumptions}
+\label{discRE}
+
+
+There exist several simple sufficient conditions for Assumptions \RE
+s{c_0} and \REm sm{c_0} to hold. Here we discuss some of them.
+
+For a real number $1\le u\le M$ we introduce the following
+quantities that we will call {\it restricted eigenvalues}:
+\begin{equation*}%\label{phiminmax}
+\begin{split}
+\phi_{\min}(u) &= \min_{x\in \RR^M: 1\le \scm(x) \le u }
+\frac{x^T\Psi_n
+x}{|x|_2^2}, \\
+ \phi_{\max}(u) &= \max_{x\in \RR^M: 1\le \scm(x) \le
+u } \frac{x^T\Psi_n x}{|x|_2^2}.
+\end{split}
+\end{equation*}
+Denote by $X_J$ the $n\times |J|$ submatrix of $X$ obtained by
+removing from $X$ the columns that do not correspond to the indices
+in $J$, and for $1\le m_1,m_2\le M$ introduce the following
+quantities called {\it restricted correlations}:
+\begin{equation*}
+\theta_{m_1,m_2} = \max\left\{ \frac{
+c_1^TX_{I_1}^TX_{I_2}c_2}{n\,|c_1|_2\,|c_2|_2}: I_1\cap
+I_2=\emptyset, |I_i|\leq m_i, c_i\in\RR^{I_i}\setminus \{0\}, i=1,2
+\right\}.
+\end{equation*}
+
+In Lemma \ref{l2} below we show that a sufficient condition for \RE
+s{c_0} and \REm ss{c_0} to hold is given, for example, by the
+following assumption on the Gram matrix.
+
+
+
+%\noindent {\bf Assumption 1.} {\it Assume",Item 5 uses 'Denote by X ... the ... quantities called {\it restricted correlations}: \begin{equation*} ... \end{equation*}' — a 'Denote by X ... called <name>:' pattern followed by an equation environment. We need a pattern for 'Denote by <name> ... called ... : <equation>'.,"# C10: 'Denote by X ... (called <name>) ... \begin{equation*}...\end{equation*}'
+inline_denote_by_pattern = re.compile(
+    r'(?P<full>'
+    r'\bDenote\s+by\s+'
+    r'(?P<name>(?:\$[^$]+\$|[A-Za-z0-9\\_{} ]{1,60}))'
+    r'[^\\]{0,300}?'
+    r'(?:\\begin\{equation\*?\}.*?\\end\{equation\*?\}|\\begin\{align\*?\}.*?\\end\{align\*?\}|\$\$.*?\$\$|\\\[.*?\\\]))',
+    flags=re.IGNORECASE | re.DOTALL,
+)
+for m in inline_denote_by_pattern.finditer(inline_text):
+    if _referential.search(m.group('full')):
+        continue
+    add_inline_definition(m, 'inline_denote_by')
+_source_priority['inline_denote_by'] = 2",definition,definition
+paper004,7,"we consider $f$ satisfying the {\it weak sparsity} property relative to the dictionary $f_1,\dots,f_M$. That is, we assume that there exist an integer $s$ and constant $C_0<\infty$ such that the set \begin{equation} \Lambda_s = \left\{ \beta \in \RR^M: \ \scm(\beta)\le s,  \ \| {\sf f}_\beta - f\|_n^2 \le \frac{C_0 f_{\max}^2r^2}{\kappa^2} \scm(\beta) \right\} \end{equation} is non-empty.",unclassified," since we cannot guarantee that the corresponding ${\sf
+f}_\beta$ gives a good approximation of the unknown function $f$.
+Therefore we choose another approach (cf. \cite{btw06b}): we
+consider $f$ satisfying the {\it weak sparsity} property relative to
+the dictionary $f_1,\dots,f_M$. That is, we assume that there exist
+an integer $s$ and constant $C_0<\infty$ such that the set
+\begin{equation}\label{La}
+%
+\Lambda_s = \left\{ \beta \in \RR^M: \ \scm(\beta)\le s,  \ \| {\sf
+f}_\beta - f\|_n^2 \le \frac{C_0 f_{\max}^2r^2}{\kappa^2}
+\scm(\beta) \right\}
+\end{equation}
+%
+is non-empty. Here $\kappa$ is the same as in Theorem
+\ref{th-ora-las}. The second inequality in (\ref{La}) says that the
+``bias"" term $\| {\sf f}_\beta - f\|_n^2$ cannot be much larger than
+the ``variance term"" $\sim{f_{\max}^2r^2}\kappa^{-2} \scm(\beta)$,
+cf. (\ref{predlasso}). Weak sparsity is milder than the sparsity
+property in the usual sense: the latter means that $f$ admits the
+exact representation $f={\sf f}_{\beta^*}$ for some $\beta^*\in
+\RR^M$, with hopefully small $\scm(\beta^*)= s$.\\
+
+
+
+\begin{proposition}\label{th-ora-dan}
+Let  $W_i$ be independent ${\mathcal N}(0,\sigma^2)$ random
+varia",Item 6 wraps a set definition inside a \begin{equation}...\end{equation} environment with surrounding text that says 'we assume that ... such that the set \begin{equation} \Lambda_s = ... \end{equation} is non-empty.' This is a named-set definition embedded in an equation environment with surrounding narrative. We need a pattern that catches 'the set \begin{equation} <name> = ... \end{equation}'.,"# C11: 'the set \begin{equation} <name> = ... \end{equation} is non-empty'
+inline_set_equation_pattern = re.compile(
+    r'(?P<full>'
+    r'\bthe\s+set\b[^\\]{0,100}?'
+    r'\\begin\{equation[^}]*\}[^\\]*?'
+    r'(?P<name>\\?[A-Za-z][A-Za-z0-9_{}^\\]*\s*=)'
+    r'.*?'
+    r'\\end\{equation[^}]*\})',
+    flags=re.IGNORECASE | re.DOTALL,
+)
+for m in inline_set_equation_pattern.finditer(inline_text):
+    if _referential.search(m.group('full')):
+        continue
+    add_inline_definition(m, 'inline_set_equation')
+_source_priority['inline_set_equation'] = 2",definition,definition
+paper005,1,"We define the entropy $h$ and the Kullback-Leibler divergences of these tables and their marginals as $\begin{gather*}$ $r\in\Sigma_d,\quad$ $h(r)=-\sum_{i=1}^d$ $r_i$ $\log$ $r_i,\quad$ $\quad$ $P\in$ $U(r,c),\quad$ $h(P)=-\sum_{i,j=1}^d$ $p_{ij}$ $\log$ $p_{ij}\\$ P,Q $\in$ $U(r,c),\quad$ $\kl(P\|Q)=\sum_{ij}p_{ij}\log\frac{p_{ij}}{q_{ij}}$. $\end{gather*}$",inline_definition," a probabilistic interpretation: for $X$ and $Y$ two multinomial random variables taking values in $\{1,\cdots,d\}$, each with distribution $r$ and $c$ respectively, the set $U(r,c)$ contains all possible \emph{joint probabilities} of $(X,Y)$. Indeed, any matrix $P\in U(r,c)$ can be identified with a joint probability for $(X,Y)$ such that $p(X=i,Y=j)=p_{ij}$. Such joint probabilities are also known as \emph{contingency tables}. We define the entropy $h$ and the Kullback-Leibler divergences of these tables and their marginals as
+\begin{gather*}
+r\in\Sigma_d,\quad h(r)=-\sum_{i=1}^d r_i \log r_i,\quad \quad P\in U(r,c),\quad h(P)=-\sum_{i,j=1}^d p_{ij} \log p_{ij}\\ P,Q \in U(r,c),\quad \kl(P\|Q)=\sum_{ij}p_{ij}\log\frac{p_{ij}}{q_{ij}}.
+\end{gather*}
+
+\subsection{Optimal Transportation} Given a $d\times d$ cost matrix $M$, the cost of mapping $r$ to $c$ using a transportation matrix (or joint probability) $P$ can be quantified  as $\dotprod{P}{M}$. The following problem:
+$$
+d_M(r,c) \defeq \min_{P\in U(r,c)} \dotprod{P}{M}.
+$$
+is called an \emph{optimal transportation} problem between $r$ and $c$ given co","Item 0 is missed because the C1 inline_define pattern requires the definition text to end with a period, but here the definition body spans a \begin{gather*}...\end{gather*} environment (which contains the math). The pattern `(?:\\[.*?\\]|\$\$.*?\$\$|[^.])*\.` doesn't match \begin{gather*}...\end{gather*} blocks. We need to extend the C1 (and similar) patterns to also skip over \begin{...}...\end{...} blocks. The minimal fix is to add a new regex branch specifically for 'We define ... as\n\begin{...}...\end{...}' pattern.","# C5: 'We define X as/by/to be ...' where the definition body is a LaTeX environment
+# (e.g., gather*, align*, equation*) rather than inline math
+inline_define_env_pattern = re.compile(
+    r""(?P<full>""
+    r""(?:We\s+)?(?:also\s+)?define\s+""
+    r""(?P<name>[^.]{1,80}?)""
+    r""\s*(?:as|by|to\s+be|:=|=)\s*""
+    r""(?:\\begin\{[^}]*\}.*?\\end\{[^}]*\})""
+    r"")"",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+
+for m in inline_define_env_pattern.finditer(inline_text):
+    full_text = m.group(""full"")
+    if _c1_negative.search(full_text):
+        continue
+    if _referential.search(full_text):
+        continue
+    add_inline_definition(m, ""inline_define"")",definition,definition
+paper005,2,"This bound is tight, since the table $rc^T$ -- known as the independence $table~\citep{good1963maximum}$ -- has an entropy of $h(rc^T)=h(r)+h(c)$. By the concavity of entropy, we can introduce the convex set $U_\alpha(r,c)\subset U(r,c)$ as $$$U_\alpha(r,c)\defeq$ $\{P\in U(r,c)\,|\,\KL(P\|rc^T)\leq \alpha \}$ = $\{P\in U(r,c)\,|\, h(P)\geq h(r)+h(c)-\alpha\}$$$ These definitions are indeed equivalent, since one can easily check that $$$\KL(P\|rc^T)=$ h(r)+h(c)-h(P),$$ a quantity which is also the mutual information $I(X\|Y)$ of two random variables $(X,Y)$ should they follow the joint probability $P$$~\cite[\S2]{cover91elements}$.",unclassified,"epting approximated solutions, albeit at a cost in performance~\citep{GraumanD04} and a loss in applicability.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Sinkhorn Distances}\label{sec:grav}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+We consider in this section a family of optimal transportation distances whose feasible set is the not the whole of $U(r,c)$, but a parameterized restricted set of joint probability matrices.
+
+\subsection{Entropic Constraints on Joint Probabilities}
+We recall a basic information theoretic inequality~\citep[\S2]{cover91elements} which applies to all joint probabilities: 
+\begin{equation}\label{eq:basic}
+	\forall r,c \in \Sigma_d, \forall P\in U(r,c), h(P) \leq h(r)+h(c).
+\end{equation}
+
+This bound is tight, since the table $rc^T$ -- known as the independence table~\citep{good1963maximum} -- has an entropy of $h(rc^T)=h(r)+h(c)$. By the concavity of entropy, we can introduce the convex set $U_\alpha(r,c)\subset U(r,c)$ as
+$$U_\alpha(r,c)\defeq \{P\in U(r,c)\,|\,\KL(P\|rc^T)\leq \alpha \} = \{P\in U(r,c)\,|\, h(P)\geq h(r)+h(c)-\alpha\}$$
+
+These definitions are indeed equivalent, since one can easily check that 
+$$\KL(P\|rc^T)= h(r)+h(c)-h(P),$$ a quantity which is also the mutual information $I(X\|Y)$ of two random variables $(X,Y)$ should they follow the joint probability $P$~\cite[\S2]{cover91elements}. Hence, all tables $P$ whose Kullback-Leibler divergence to the table $rc^T$ is constrained to lie below a certain threshold can be interpreted as the set of tables $P$ in $U(r,c)$ which have \emph{sufficient} entropy with respect to $h(r)$ and $h(c)$, or joint prob","Item 1 is missed because there is no pattern that catches 'we can introduce X as $$...$$' style definitions. The phrase uses 'introduce ... as' which is not covered by C1 ('define'), C2 ('is defined as'), C3 ('say/call'), or C4 ('let ... be'). We need a new C6 pattern for 'introduce X as' followed by a display math block ($$...$$).","# C6: 'introduce X as $$...$$' or 'introduce X as \[...\]' - definitional language using 'introduce'
+inline_introduce_pattern = re.compile(
+    r""(?P<full>""
+    r""introduce\s+""
+    r""(?P<name>[^.]{1,80}?)""
+    r""\s*(?:as|by|to\s+be|:=|=)\s*""
+    r""(?:\$\$.*?\$\$|\\\[.*?\\\]|\\begin\{[^}]*\}.*?\\end\{[^}]*\})""
+    r"")"",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+
+for m in inline_introduce_pattern.finditer(inline_text):
+    full_text = m.group(""full"")
+    if _referential.search(full_text):
+        continue
+    add_inline_definition(m, ""inline_introduce"")",definition,definition
+paper006,0,"\, x)$ is $\statprob$-integrable, the \emph{population risk} $\popfun : \optvarspace \rightarrow \R$ is given by \begin{equation} \popfun(\optvar) \defeq \E_\statprob[f(\optvar; \statrv)] = \int_{\statsamplespace} f(\optvar; \statsample) d \statprob(\statsample). \end{equation}",unclassified,"arspace \subseteq \R^d$. Let
+$\statprob$ be a probability distribution over the sample space
+$\statsamplespace$.  Assuming that each function $x \mapsto f(\optvar;
+\, x)$ is $\statprob$-integrable, the \emph{population risk} $\popfun
+: \optvarspace \rightarrow \R$ is given by
+\begin{equation}
+  \label{eqn:objective}
+  \popfun(\optvar) \defeq \E_\statprob[f(\optvar; \statrv)] =
+  \int_{\statsamplespace} f(\optvar; \statsample) d
+  \statprob(\statsample).
+\end{equation}
+Our goal is to estimate the parameter vector minimizing the population
+risk, namely the quantity
+\begin{equation}
+  \label{eqn:optimal-point}
+  \optvar^* \defeq
+  \argmin_{\optvar \in \optvarspace} \popfun(\optvar)
+  = \argmin_{\optvar \in \optvarspace}
+  \int_{\statsamplespace} f(\optvar; \statsample) d\statprob(\statsample),
+\end{equation}
+which we assume to be unique. In practice, the population distribution
+$\statprob$ is unknown to us, but we have access to a collection
+$\s",The text introduces 'population risk' using 'is given by' followed by an equation environment. The current C2 pattern looks for 'is defined as/to be' but misses 'is given by'. We need a new anchor pattern for 'is given by' that also captures a trailing equation block (\begin{equation}...\end{equation}).,"# C5: 'X is given by \begin{equation}...\end{equation}'
+_c5_anchor = re.compile(
+    r'\bis\s+given\s+by\s*\n?\s*\\begin\{equation\*?\}',
+    flags=re.IGNORECASE,
+)
+_c5_full = re.compile(
+    r'(?P<name>[^.\n]{1,120}?)\s+is\s+given\s+by\s*\n?\s*'
+    r'(?P<body>\\begin\{equation\*?\}.*?\\end\{equation\*?\})',
+    flags=re.IGNORECASE | re.DOTALL,
+)
+for m in _c5_full.finditer(inline_text):
+    name_raw = m.group('name').strip()
+    # only accept if name_raw ends near a sentence boundary or is non-trivial
+    if not name_raw or len(name_raw) > 120:
+        continue
+    full_text = m.group(0)
+    name_hint = extract_name_hint(name_raw)
+    clean_text = self._clean_latex_to_text(full_text)
+    idx += 1
+    obj_id = f'D{idx}'
+    d = Definition(
+        id=obj_id,
+        kind='definition',
+        index=idx,
+        label=None,
+        name=name_hint or None,
+        raw_latex=full_text,
+        clean_text=clean_text,
+        env_name='inline_given_by',
+    )
+    d._source_pos = m.start()
+    objects.append(d)",definition,definition
+paper006,1,$\samples$ of samples from the distribution $\statprob$. Empirical risk minimization is based on estimating $\optvar^*$ by solving the optimization problem \begin{equation} \what{\optvar} \in \argmin_{\optvar \in \optvarspace} \MYMIN{ \frac{1}{|\samples|} \sum_{\statsample \in \samples} f(\optvar; \statsample)}. \end{equation},unclassified,"statsample) d
+  \statprob(\statsample).
+\end{equation}
+Our goal is to estimate the parameter vector minimizing the population
+risk, namely the quantity
+\begin{equation}
+  \label{eqn:optimal-point}
+  \optvar^* \defeq
+  \argmin_{\optvar \in \optvarspace} \popfun(\optvar)
+  = \argmin_{\optvar \in \optvarspace}
+  \int_{\statsamplespace} f(\optvar; \statsample) d\statprob(\statsample),
+\end{equation}
+which we assume to be unique. In practice, the population distribution
+$\statprob$ is unknown to us, but we have access to a collection
+$\samples$ of samples from the distribution $\statprob$.  Empirical
+risk minimization is based on estimating $\optvar^*$ by solving the
+optimization problem
+\begin{equation}
+  \label{eqn:erm}
+  \what{\optvar} \in \argmin_{\optvar \in \optvarspace} \MYMIN{
+    \frac{1}{|\samples|} \sum_{\statsample \in \samples} f(\optvar;
+    \statsample)}.
+\end{equation}
+
+Throughout the paper, we impose some regularity conditions on the
+parameter space, the risk function $\popfun$, and the instantaneous
+loss functions $f(\cdot; \st",The text introduces empirical risk minimization 'is based on estimating ... by solving the optimization problem' followed by an equation block containing \defeq or \in \argmin. We need a pattern that catches prose introducing a definition via 'based on ... by solving' or more generally any sentence leading into an equation block that contains \defeq.,"# C6: Sentence ending with 'optimization problem / defined by / etc.' followed by
+# \begin{equation}...\end{equation} that contains \defeq
+_c6_full = re.compile(
+    r'(?P<name>[^.\n]{1,200}?)'
+    r'(?:optimization\s+problem|is\s+based\s+on[^.]{0,100}?solving[^.]{0,60}?problem)'
+    r'\s*\n?\s*'
+    r'(?P<body>\\begin\{equation\*?\}.*?\\end\{equation\*?\})',
+    flags=re.IGNORECASE | re.DOTALL,
+)
+for m in _c6_full.finditer(inline_text):
+    body_text = m.group('body')
+    # Only treat as definition if the equation contains \defeq or \argmin
+    if not re.search(r'\\(?:defeq|argmin|triangleq|coloneqq)', body_text):
+        continue
+    full_text = m.group(0)
+    name_raw = m.group('name').strip()
+    name_hint = extract_name_hint(name_raw)
+    clean_text = self._clean_latex_to_text(full_text)
+    idx += 1
+    obj_id = f'D{idx}'
+    d = Definition(
+        id=obj_id,
+        kind='definition',
+        index=idx,
+        label=None,
+        name=name_hint or None,
+        raw_latex=full_text,
+        clean_text=clean_text,
+        env_name='inline_optim_problem',
+    )
+    d._source_pos = m.start()
+    objects.append(d)",definition,definition
+paper006,2,"\neq j$. In addition, for each processor $i$ we define the (local) empirical distribution $\statprob_{1,i}$ and empirical objective $F_{1,i}$ via \begin{equation} \statprob_{1,i} \defeq \frac{1}{|\samples_1|} \sum_{\statsample \in \samples_{1,i}} \delta_{\statsample}, ~~~ \mbox{and} ~~~ F_{1,i}(\optvar) \defeq \frac{1}{|\samples_{1,i}|} \sum_{\statsample \in \samples_{1,i}} f(\optvar; \statsample). \end{equation}",inline_definition,"i = 1,
+\ldots, \nummac$, we let $\samples_{1,i}$ denote the data set assigned
+to processor $i$; by construction, it is a collection of $\numobs$
+samples drawn i.i.d.\ according to $\statprob$, and the samples in
+subsets $\samples_{1,i}$ and $\samples_{1,j}$ are independent for $i
+\neq j$.  In addition, for each processor $i$ we define the (local)
+empirical distribution $\statprob_{1,i}$ and empirical objective
+$F_{1,i}$ via
+\begin{equation}
+\label{EqnDefnLocalQuants}
+  \statprob_{1,i} \defeq \frac{1}{|\samples_1|} \sum_{\statsample \in
+    \samples_{1,i}} \delta_{\statsample}, ~~~ \mbox{and} ~~~
+  F_{1,i}(\optvar) \defeq \frac{1}{|\samples_{1,i}|} \sum_{\statsample
+    \in \samples_{1,i}} f(\optvar; \statsample).
+\end{equation}
+
+\noindent With this notation, the \avgm\ algorithm is very simple to
+describe:
+%
+\paragraph{Average mixture algorithm}
+\begin{enumerate}
+\item[(1)] For each $i \in \{1, \ldots, \nummac\}$, processor $i$ uses
+  its local dataset $\samples_{1, i}$ to compute the local empirical
+  minimizer
+  \begin{align}
+    \label{EqnDefnLocalEmpMin}
+    \optvar_{1, i} & \in \argmin_{\optvar \in \optvarspace}
+    \MYMIN{\underbrace{\frac{1}{|S_{1,i}|} \sum_{x \in S_{1,i}} f(\optvar;
+      x)}_{F_{1,i}(\op",The C1 'define' pattern matches 'we define X as/by/to be ...' but stops at a period and doesn't span into a following equation environment. Here the definition spans 'we define ... via \begin{equation}...\end{equation}'. We need to extend C1 or add a new branch that allows 'via' as a trigger word and captures the following equation block.,"# C7: 'define/denote X via \begin{equation}...\end{equation}'
+_c7_pattern = re.compile(
+    r'(?:we\s+)?(?:also\s+)?(?:define|denote)\s+'
+    r'(?P<name>[^.\n]{1,120}?)'
+    r'\s+via\s*\n?\s*'
+    r'(?P<body>\\begin\{equation\*?\}.*?\\end\{equation\*?\})',
+    flags=re.IGNORECASE | re.DOTALL,
+)
+for m in _c7_pattern.finditer(inline_text):
+    name_raw = m.group('name').strip()
+    if not name_raw:
+        continue
+    full_text = m.group(0)
+    if _c1_negative.search(full_text):
+        continue
+    name_hint = extract_name_hint(name_raw)
+    clean_text = self._clean_latex_to_text(full_text)
+    idx += 1
+    obj_id = f'D{idx}'
+    d = Definition(
+        id=obj_id,
+        kind='definition',
+        index=idx,
+        label=None,
+        name=name_hint or None,
+        raw_latex=full_text,
+        clean_text=clean_text,
+        env_name='inline_define_via',
+    )
+    d._source_pos = m.start()
+    objects.append(d)",definition,definition
+paper006,3,"particular, under suitable regularity conditions~\citep[e.g.][Chapter 6]{LehmannCa98}, we can define the Fisher information matrix \begin{equation*} \information(\optvar^*) \defeq \E\left[\nabla \loglike(\statrv \mid \optvar^*) \nabla \loglike(\statrv \mid \optvar^*)^\top\right] = \E[\nabla^2 \loglike(\statrv\mid \optvar^*)]. \end{equation*}",unclassified,"ncluding the problem of linear regression, the
+effect of this matrix-vector multiplication is to perform some type of
+standardization.  When the loss $f(\cdot; \statsample) : \optvarspace
+\rightarrow \R$ is actually the negative log-likelihood
+$\loglike(\statsample \mid \optvar)$ for a parametric family of models
+$\{ \statprob_\optvar \}$, we can make this intuition precise.  In
+particular, under suitable regularity conditions~\citep[e.g.][Chapter
+  6]{LehmannCa98}, we can define the Fisher information matrix
+\begin{equation*}
+  \information(\optvar^*) \defeq \E\left[\nabla \loglike(\statrv \mid
+    \optvar^*) \nabla \loglike(\statrv \mid \optvar^*)^\top\right] =
+  \E[\nabla^2 \loglike(\statrv\mid \optvar^*)].
+\end{equation*}
+Recalling that $\totalnumobs = \nummac \numobs$ is the total number of samples
+available, let us define the neighborhood $B_2(\optvar, t) \defeq \{\optvar'
+\in \R^d : \ltwo{\optvar' - \optvar} \le t\}$. Then under our assumptions, the
+H\'ajek-Le~Cam minimax theorem~\cite[Theorem 8.11]{VanDerVaart98} guarantees
+for \emph{any estimator} $\what{\optva","The text says 'we can define the Fisher information matrix \begin{equation*}...\end{equation*}'. The C1 pattern requires 'as/by/to be/:=', but here the definition flows directly into an equation* block without such a keyword. We need to extend the define pattern to also capture 'define X \begin{equation...'.","# C8: 'we can define X \begin{equation*}...\end{equation*}'
+# (no 'as/by/to be' keyword, equation block follows directly)
+_c8_pattern = re.compile(
+    r'(?:we\s+)?(?:can\s+)?(?:also\s+)?define\s+'
+    r'(?P<name>[^\\\n]{1,120}?)'
+    r'\s*\n?\s*'
+    r'(?P<body>\\begin\{equation\*?\}.*?\\end\{equation\*?\})',
+    flags=re.IGNORECASE | re.DOTALL,
+)
+for m in _c8_pattern.finditer(inline_text):
+    name_raw = m.group('name').strip()
+    if not name_raw:
+        continue
+    full_text = m.group(0)
+    if _c1_negative.search(full_text):
+        continue
+    if _referential.search(full_text):
+        continue
+    name_hint = extract_name_hint(name_raw)
+    clean_text = self._clean_latex_to_text(full_text)
+    idx += 1
+    obj_id = f'D{idx}'
+    d = Definition(
+        id=obj_id,
+        kind='definition',
+        index=idx,
+        label=None,
+        name=name_hint or None,
+        raw_latex=full_text,
+        clean_text=clean_text,
+        env_name='inline_define_eq',
+    )
+    d._source_pos = m.start()
+    objects.append(d)",definition,definition
+paper006,4,"A convex function $F$ is $\strongparam$-strongly convex on a set $U \subseteq \R^d$ if for arbitrary $u, v \in U$ we have \begin{equation*} F(u) \ge F(v) + \<\nabla F(v), u - v\> + \frac{\strongparam}{2} \ltwo{u - v}^2. \end{equation*}",inline_definition," all
+$\totalnumobs = \numobs\nummac$ samples.
+
+
+\paragraph{Notation:}
+
+Before continuing, we define the remainder of our notation. We use
+$\ell_2$ to denote the usual Euclidean norm $\ltwo{\theta} =
+(\sum_{j=1}^d \theta_j^2)^{\half}$.  The $\ell_2$-operator norm of a
+matrix $A \in \R^{d_1 \times d_2}$ is its maximum singular value,
+defined by
+\begin{equation*}
+  \matrixnorm{A}_2 \defeq \sup_{v \in \R^{d_2}, \ltwo{v} \le 1} \|A
+  v\|_2.
+\end{equation*}
+A convex function $F$ is $\strongparam$-strongly convex on a set $U
+\subseteq \R^d$ if for arbitrary $u, v \in U$ we have
+\begin{equation*}
+  F(u) \ge F(v) + \<\nabla F(v), u - v\> + \frac{\strongparam}{2}
+  \ltwo{u - v}^2.
+\end{equation*}
+(If $F$ is not differentiable, we may replace $\nabla F$ with any
+subgradient of $F$.) We let $\otimes$ denote the Kronecker product,
+and for a pair of vectors $u, v$, we define the outer product $u
+\otim","The text says 'A convex function F is ...-strongly convex on a set U if for arbitrary u, v in U we have \begin{equation*}...\end{equation*}'. This is a conditional definition of a mathematical property ('if ... we have'). We need a pattern for 'SUBJECT is PROPERTY ... if ... we have \begin{equation*}...'.","# C9: 'X is <property> ... if ... we have \begin{equation*}...\end{equation*}'
+_c9_pattern = re.compile(
+    r'(?P<name>(?:[A-Z][^.\n]{0,80}?))'
+    r'\s+is\s+[^.\n]{0,120}?\bif\b[^.\n]{0,120}?\bwe\s+have\b'
+    r'\s*\n?\s*'
+    r'(?P<body>\\begin\{equation\*?\}.*?\\end\{equation\*?\})',
+    flags=re.DOTALL,
+)
+for m in _c9_pattern.finditer(inline_text):
+    name_raw = m.group('name').strip()
+    if not name_raw:
+        continue
+    full_text = m.group(0)
+    if _referential.search(full_text):
+        continue
+    name_hint = extract_name_hint(name_raw)
+    clean_text = self._clean_latex_to_text(full_text)
+    idx += 1
+    obj_id = f'D{idx}'
+    d = Definition(
+        id=obj_id,
+        kind='definition',
+        index=idx,
+        label=None,
+        name=name_hint or None,
+        raw_latex=full_text,
+        clean_text=clean_text,
+        env_name='inline_property_if',
+    )
+    d._source_pos = m.start()
+    objects.append(d)",definition,definition
+paper007,2,The kernel $K$ is \emph{positive definite with respect to  $|| \cdot ||_{p^{in}} $}  if $ || f ||_{p^{in}} > 0 \implies || f ||_K > 0$.,unclassified,"dimensional kernel}  $K$ is a function $\mathbb{R}^{n_{0}}\times\mathbb{R}^{n_{0}}\to\mathbb{R}^{n_{L}\times n_{L}}$, which maps any pair $(x,x')$ to an $n_{L}\times n_{L}$-matrix such that $K(x, x') = K(x', x)^T$ (equivalently $K$ is a symmetric tensor in $\mathcal{F}\otimes\mathcal{F}$). Such a kernel defines a bilinear map on $\mathcal{F}$, taking the expectation over independent $x, x' \sim p^{in}$:
+$$
+\left<f, g \right>_K := \mathbb{E}_{x, x' \sim p^{in}} \left[f(x)^T K(x, x') g(x') \right].
+$$
+The kernel $K$ is \emph{positive definite with respect to  $|| \cdot ||_{p^{in}} $}  if $ || f ||_{p^{in}} > 0 \implies || f ||_K > 0$.
+
+We denote by $ \mathcal{F}^{*} $ the dual of $ \mathcal{F} $ with respect to $ p^{in} $, i.e. the set of linear forms $ \mu: \mathcal {F} \to \mathbb{R} $ of the form $ \mu = \langle d, \cdot \rangle_{p^{in}} $ for some $ d \in \mathcal{F} $.  Two elements o","Item 0 defines 'positive definite with respect to ...' using the pattern 'X is \emph{...} if ...'. The key marker is '\emph{' introducing the defined term, followed by a condition. The existing C2 pattern looks for 'is defined as/to be', but this uses 'is \emph{...} if'. We need a new pattern matching 'X is \emph{term} if ...' as a definitional sentence.","# C5: ""X is \emph{term} if ..."" — emph-based inline definition
+inline_emph_pattern = re.compile(
+    r""(?P<full>""
+    r""(?P<name>[^.]{1,80}?)""
+    r""\s+is\s+\\emph\{[^}]+\}""
+    r""(?:\s+with\s+respect\s+to\s+[^.]{0,60}?)?""
+    r""\s+if\s+""
+    r""(?:\\\[.*?\\\]|\$\$.*?\$\$|[^.])*\.)"",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+
+for m in inline_emph_pattern.finditer(inline_text):
+    if _referential.search(m.group(""full"")):
+        continue
+    add_inline_definition(m, ""inline_emph_if"")",definition,definition
+paper007,5,"For ANNs trained using gradient descent on the composition $C \circ F^{(L)}$, the situation is very similar to that studied in the Section \ref{sec:rfa}. During training, the network function $f_\theta$ evolves along the (negative) kernel gradient $$ \partial_t  f_{\theta(t)} = -\nabla_{\Theta^{(L)}} C|_{f_{\theta(t)}} $$ with respect to the \emph{neural tangent kernel} (NTK) \begin{align*}  \Theta^{(L)}(\theta) &= \sum_{p=1}^P \partial_{\theta_p} F^{(L)}(\theta) \otimes \partial_{\theta_p} F^{(L)}(\theta). \end{align*}",unclassified,"1}^P  f^{(p)}_i(x) f^{(p)}_{i'}(x').
+$
+
+Performing gradient descent on the cost $ C \circ F^{lin}$ is therefore equivalent to performing kernel gradient descent with the tangent kernel $\tilde{K}$ in the function space. In the limit as $P \to \infty$, by the law of large numbers, the (random) tangent kernel $\tilde{K}$ tends to the fixed kernel $K$, which makes this method an approximation of kernel gradient descent with respect to the limiting kernel $K$.
+
+\section{Neural tangent kernel} \label{sec:neural_tangent_kernel}
+For ANNs trained using gradient descent on the composition $C \circ F^{(L)}$, the situation is very similar to that studied in the Section \ref{sec:rfa}. During training, the network function $f_\theta$ evolves along the (negative) kernel gradient
+$$
+\partial_t  f_{\theta(t)} = -\nabla_{\Theta^{(L)}} C|_{f_{\theta(t)}}
+$$
+with respect to the \emph{neural tangent kernel} (NTK)
+\begin{align*}
+ \Theta^{(L)}(\theta) &= \sum_{p=1}^P \partial_{\theta_p} F^{(L)}(\theta) \otimes \partial_{\theta_p} F^{(L)}(\theta).
+\end{align*}
+However, in contrast to $F^{lin}$, the realization function $F^{(L)}$ of ANNs is not linear. As a consequence, the derivatives $\partial_{\theta_p} F^{(L)}(\theta)$ and the neural tangent kernel depend on the parameters $\theta$. The NTK is therefore random at initialization and varies during training, which makes the analysis of the convergence of $f_\theta$ more delicate.
+
+In the next subsec","Item 1 introduces the 'neural tangent kernel (NTK)' via the phrase 'with respect to the \emph{neural tangent kernel} (NTK)' followed by an align* equation. The definition spans from the section header sentence through the equation. The key marker is 'with respect to the \emph{...}' introducing a named concept. We need a pattern that catches '\emph{name}' used as a definitional introduction, specifically the pattern 'with respect to the \emph{term}' followed by an environment or display math.","# C6: ""... the \emph{term} [(abbrev)] [display-math-or-env]"" — named concept introduction
+inline_emph_named_pattern = re.compile(
+    r""(?P<full>""
+    r""(?:[^.\n]{0,120}?)""
+    r""(?:the\s+)?\\emph\{(?P<name>[^}]{1,80})\}""
+    r""(?:\s*\([^)]{1,20}\))?""
+    r""\s*(?:\$\$.*?\$\$|\\\[.*?\\\]|\s*\\begin\{(?:align|equation|align\*)\}.*?\\end\{(?:align|equation|align\*)\})""
+    r"")"",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+
+for m in inline_emph_named_pattern.finditer(inline_text):
+    full_text = m.group(""full"")
+    if _referential.search(full_text):
+        continue
+    add_inline_definition(m, ""inline_emph_named"")",definition,definition
+paper007,6,"Given a goal function $f^*$ and input distribution $p^{in}$, the least-squares regression cost is $$  C(f) = \frac{1}{2} ||f - f^*||^2_{p^{in}} = \frac{1}{2}\mathbb{E}_{x \sim p^{in}} \left[\|f(x) - f^*(x)\|^2 \right]. $$",unclassified,"y the following proposition, proven in Appendix \ref{Appendix-4}:
+\begin{prop}\label{prop:pos-def}
+	 For a non-polynomial Lipschitz nonlinearity $ \sigma $, for any input dimension $ n_0 $, the restriction of the limiting NTK $ \Theta_\infty^{(L)} $ to the unit sphere $ \mathbb{S}^{n_0 - 1} = \{ x \in \mathbb{R}^{n_0} : x^T x =1 \} $ is positive-definite if $ L \geq 2 $. 
+\end{prop}
+
+\section{Least-squares regression}\label{sec:least-squares}
+Given a goal function $f^*$ and input distribution $p^{in}$, the least-squares regression cost is
+$$
+ C(f) = \frac{1}{2} ||f - f^*||^2_{p^{in}} = \frac{1}{2}\mathbb{E}_{x \sim p^{in}} \left[\|f(x) - f^*(x)\|^2 \right].
+$$
+Theorems  \ref{thm:convergence_NTK_initialization} and \ref{thm:conv-ntk-training} apply to an ANN trained on such a cost. Indeed the norm of the training direction $\|d(f)\|_{p^{in}} = \| f^* - f \|_{p^{in}}$ is strictly decreasin",Item 2 uses the pattern 'the X is $$...$$' or 'the X cost is $$...$$'. The definition introduces 'the least-squares regression cost' with a display math formula. The existing patterns don't catch 'the NOUN is $$...$$' constructions. We need a pattern that matches 'the <noun phrase> is [display math]' as a definition.,"# C7: ""the <noun> is $$ ... $$"" — named quantity defined by display math
+inline_noun_is_formula_pattern = re.compile(
+    r""(?P<full>""
+    r""[Tt]he\s+(?P<name>[a-zA-Z][^$\n]{1,60}?)\s+is\s*""
+    r""(?:\\\[.*?\\\]|\$\$.*?\$\$)""
+    r""(?:[^.]*\.)?)"",
+    flags=re.DOTALL,
+)
+
+for m in inline_noun_is_formula_pattern.finditer(inline_text):
+    full_text = m.group(""full"")
+    if _referential.search(full_text):
+        continue
+    # Must contain a display math block to qualify
+    if not re.search(r'\$\$|\\\[', full_text):
+        continue
+    add_inline_definition(m, ""inline_noun_is_formula"")",definition,definition
+paper007,7,"A natural choice of convergence to study the NTK is with respect to the operator norm on kernels: $$ \lVert K \rVert_{op} = \max_{\lVert f \rVert_{p^{in}} \leq 1} \lVert f \rVert_K = \max_{\lVert f \rVert_{p^{in}} \leq 1}\sqrt {\mathbb{E}_{x, x'}[f(x)^T K(x, x')f(x')]}, $$ where the expectation is taken over two independent $x, x' \sim p^{in}$. This norm depends on the input distribution $p^{in}$.",unclassified," ..., n_{L-1} \to \infty$ sequentially, i.e. we first take $n_1 \to \infty$, then $n_2 \to \infty $, etc. This leads to much simpler proofs, but our results could in principle be strengthened to the more general setting when $\min(n_1, ..., n_{L-1}) \to \infty$.
+
+A natural choice of convergence to study the NTK is with respect to the operator norm on kernels:
+$$
+\lVert K \rVert_{op} = \max_{\lVert f \rVert_{p^{in}} \leq 1} \lVert f \rVert_K = \max_{\lVert f \rVert_{p^{in}} \leq 1}\sqrt {\mathbb{E}_{x, x'}[f(x)^T K(x, x')f(x')]},
+$$
+where the expectation is taken over two independent $x, x' \sim p^{in}$. This norm depends on the input distribution $p^{in}$. In our setting, $p^{in}$ is taken to be the empirical measure of a finite dataset of distinct samples $x_1, ..., x_N$. As a result, the operator norm of $K$ is equal to the leading eigenvalue of the $N n_L \times N n_L$ Gram matrix $\left( K_{kk'}(x_i, x_j)\right)_{k, k' < n_L, i, j < N}$. In our setting, convergence in operator norm is hence equivalent to pointwise convergence of $ K $ on the dataset. 
+
+
+\subsection{Asymptotics at Initialization}
+It has already been observed \citep{Neal1996, Lee2017} that the output functions $f",Item 3 introduces a named norm 'operator norm on kernels' via 'A natural choice of convergence ... is with respect to the operator norm on kernels: $$ ... $$'. The pattern is 'NOUN PHRASE: $$ ... $$' — a colon preceding a display-math definition. We need a pattern that catches a sentence ending with a colon followed by display math ($$...$$) as a definition.,"# C8: ""<sentence ending with colon> $$ ... $$"" — colon-introduced display-math definition
+inline_colon_formula_pattern = re.compile(
+    r""(?P<full>""
+    r""(?P<name>[A-Z][^:\n]{5,120}?):""
+    r""\s*(?:\\\[.*?\\\]|\$\$.*?\$\$)""
+    r""(?:[^.]*\.)?)"",
+    flags=re.DOTALL,
+)
+
+for m in inline_colon_formula_pattern.finditer(inline_text):
+    full_text = m.group(""full"")
+    # Must contain a display math block
+    if not re.search(r'\$\$|\\\[', full_text):
+        continue
+    if _referential.search(full_text):
+        continue
+    # The name part should be a reasonable sentence (not too long, not an env command)
+    name_raw = m.group(""name"")
+    if re.search(r'\\begin|\\end', name_raw):
+        continue
+    add_inline_definition(m, ""inline_colon_formula"")",definition,definition
+paper010,0,"The predictor $h_n$ is commonly chosen from some function class $\cH$, such as neural networks with a certain architecture, using \emph{empirical risk minimization (ERM)} and its variants. In ERM, the predictor is taken to be a function $h \in \cH$ that minimizes the \emph{empirical (or training) risk} $\frac1n \sum_{i=1}^n \ell(h(x_i), y_i)$, where $\ell$ is a loss function, such as the squared loss $\ell(y',y) = (y' - y)^2$ for regression or zero-one loss $\ell(y',y) = \ind{y' \neq y}$ for classification.",unclassified,"chine learning models delineates the limits of classical analyses, and has implications for both the theory and practice of machine learning.
+\end{abstract}
+
+\newpage
+
+\section{Introduction}\label{sec:intro}
+
+Machine learning has become key to important applications in science, technology and commerce.
+The focus of machine learning is on the problem of prediction:
+given a sample of training examples $(x_1,y_1),\dotsc,(x_n,y_n)$ from $\R^d \times \R$, we learn a predictor $h_n \colon \R^d \to \R$ that is used to predict the label $y$ of a new point $x$, unseen in training.
+ 
+The predictor $h_n$ is commonly chosen from some function class $\cH$, such as  neural networks with a certain architecture, using \emph{empirical risk minimization (ERM)} and its variants.
+In ERM, the predictor is taken to be a function $h \in \cH$ that minimizes the \emph{empirical (or training) risk} $\frac1n \sum_{i=1}^n \ell(h(x_i), y_i)$, where $\ell$ is a loss function, such as the squared loss $\ell(y',y) = (y' - y)^2$ for regression or zero-one loss $\ell(y',y) = \ind{y' \neq y}$ for classification.
+
+The goal of machine learning is to find $h_n$ that performs well on new data, unseen in training. 
+To study performance on new data  (known as {\it generalization}) we typically assume the training examples are sampled randomly from a probability distribution $P$ over $\R^d \times \R$, and evaluate $h_n$ on a new test example ",,,definition,definition
+paper010,1,"The challenge stems from the mismatch between the goals of minimizing the empirical risk (the explicit goal of ERM algorithms, optimization) and minimizing the \emph{true (or test) risk} $\E_{(x,y)\sim P}[\ell(h(x),y)]$ (the goal of machine learning).",unclassified,"ind{y' \neq y}$ for classification.
+
+The goal of machine learning is to find $h_n$ that performs well on new data, unseen in training. 
+To study performance on new data  (known as {\it generalization}) we typically assume the training examples are sampled randomly from a probability distribution $P$ over $\R^d \times \R$, and evaluate $h_n$ on a new test example $(x,y)$ drawn independently from $P$. The challenge stems from the mismatch between the goals of minimizing the empirical risk (the explicit goal of ERM algorithms, optimization) and minimizing the \emph{true (or test) risk} $\E_{(x,y)\sim P}[\ell(h(x),y)]$ (the goal of machine learning).
+
+
+Conventional wisdom in machine learning suggests controlling the capacity of the function class $\cH$ based on the {\em bias-variance trade-off} by balancing \emph{under-fitting} and \emph{over-fitting} (cf.,~\cite{geman1992neural,friedman2001el",,,definition,definition
+paper010,2,"The \emph{double descent risk curve}, which incorporates the U-shaped risk curve (i.e., the ``classical'' regime) together with the observed behavior from using high capacity function classes (i.e., the ``modern'' interpolating regime), separated by the interpolation threshold. The predictors to the right of the interpolation threshold have zero training risk.",unclassified,"the training data obtain near-optimal test results even when the training data are corrupted with high levels of noise~\cite{zhang2016understanding,belkin2018understand}.
+
+\begin{figure}
+  \centering
+  \begin{tabular}{cc}
+  \includegraphics[height=0.15\textheight]{u-shaped.pdf} &
+  \includegraphics[height=0.15\textheight]{doubledescent.pdf} \\
+  {\bf (a)} & {\bf (b)}
+  \end{tabular}
+  \caption{{\bf Curves for training risk (dashed line) and test risk (solid line).}
+    ({\bf a}) The classical \emph{U-shaped risk curve} arising from the bias-variance trade-off.
+    ({\bf b}) The \emph{double descent risk curve}, which incorporates the U-shaped risk curve (i.e., the ``classical'' regime) together with the observed behavior from using high capacity function classes (i.e., the ``modern'' interpolating regime), separated by the interpolation threshold.
+    The predictors to the right of the interpolation threshold have zero training risk.}
+  \label{fig:double-descent}
+\end{figure}
+
+
+The main finding of this work is a pattern for how performance on unseen data depends on model capacity and the mechanism underlyin",,,definition,definition
+paper010,3,"We first consider a popular class of non-linear parametric models called \emph{Random Fourier Features} (\emph{RFF})~\cite{rahimi2008random}, which can be viewed as a class of two-layer neural networks with fixed weights in the first layer. The RFF model family $\cHN$ with $N$ (complex-valued) parameters consists of functions $h \colon \R^d \to \mathbb{C}$ of the form \[ h(x) = \sum_{k=1}^N a_k \phi(x; v_k) \quad\text{where}\quad \phi(x; v) := e^{\sqrt{-1} \langle v,x \rangle} , \] and the vectors $v_1,\dotsc,v_N$ are sampled independently from the standard normal distribution in $\R^d$. (We consider $\cHN$ as a class of real-valued functions with $2N$ real-valued parameters by taking real and imaginary parts separately.)",unclassified,"eyond the interpolation threshold.
+Recently, there has been an emerging recognition that certain interpolating predictors (not based on ERM) can indeed be provably statistically optimal or near-optimal~\cite{belkin2018overfitting,belkin2018does}, which is compatible with our empirical observations in the interpolating regime.
+
+
+In the remainder of this article, we discuss empirical evidence for the double descent curve, the mechanism for its emergence and conclude with some final observations and parting thoughts.
+
+
+
+\section{Neural networks}
+\label{sec:RFF+NN}
+
+In this section, we discuss the double descent risk curve in the context of neural networks.
+
+\paragraph{Random Fourier features.}
+
+We first consider a popular class of non-linear parametric models called \emph{Random Fourier Features} (\emph{RFF})~\cite{rahimi2008random}, which can be viewed as a  class of two-layer neural networks with fixed weights in the first layer.
+The RFF model family $\cHN$ with $N$ (complex-valued) parameters consists of functions $h \colon \R^d \to \mathbb{C}$ of the form
+\[
+  h(x) = \sum_{k=1}^N a_k \phi(x; v_k)
+  \quad\text{where}\quad
+  \phi(x; v) := e^{\sqrt{-1} \langle v,x \rangle} ,
+\]
+and the vectors $v_1,\dotsc,v_N$ are sampled independently from the standard normal distribution in $\R^d$.
+(We consider $\cHN$ as a class of real-valued functions with $2N$ real-valued parameters by taking real and imaginary parts separately.)
+Note that $\cHN$ is a randomized function class, but as $N \to \infty$, the function class becomes a closer and closer approximation to the Reproducing Kernel Hilbert Space (RKHS) corresponding to the Gaussian kernel, denoted by $\rkhs$.
+While it is possible to directly use $\rkhs$ (e.g., as is done with kernel machines~\cite{boser1992training}), the random classes $\cHN$ are computationally attractive to use when the ",,,definition,definition
+paper010,4,"Specifically, the Random ReLU features model family $\cHN$ with $N$ parameters consists of functions $h \colon \R^d \to \R$ of the form \[ h(x) = \sum_{k=1}^N a_k \phi(x; v_k) \quad\text{where}\quad \phi(x; v) :=\max( \langle v,x \rangle,0) . \] The vectors $v_1,\dotsc,v_N$ are sampled independently from uniform distribution over surface of unit sphere in $\R^d$. The coefficients $a_k$ are learned using linear regression.",unclassified,"^{-6}$ is added for SVHN to ensure numerical stability near interpolation threshold.}
+  \label{fig:RELU_MNIST_SVHN}
+\end{figure}
+
+We show that the double descent risk curve also appears with Random ReLU feature networks~\cite{cho2009ReLU}.
+Such networks are similar to the RFF models, except that they use the ReLU transfer function.
+Specifically, the Random ReLU features model family $\cHN$ with $N$ parameters consists of functions $h \colon \R^d \to \R$ of the form
+\[
+  h(x) = \sum_{k=1}^N a_k \phi(x; v_k)
+  \quad\text{where}\quad
+  \phi(x; v) :=\max( \langle v,x \rangle,0) .
+\]
+The vectors $v_1,\dotsc,v_N$ are sampled independently from uniform distribution over surface of unit sphere in $\R^d$.
+The coefficients $a_k$ are learned using linear regression.
+Figure~\ref{fig:RELU_MNIST_SVHN} illustrates zero-one loss with Random ReLU features for MNIST and SVHN data.
+Ridge regularization with parameter $\lambda := 4\cdot 10^{-6}$ is added in SVHN experiments to ensure numerical stability near the interpolation threshold.
+For MNIST experiments, no regularization is added.
+We observe that the resulting risk curves and the norm curves are very similar to those for RFF.
+
+\subsection{Fully connected neural networks}\label{app:FNN}
+
+In our ",,,definition,definition
+paper010,5,"Consider the class $\cH$ of periodic complex-valued functions on the interval $[0,2\pi]$, and let \[ e_k(x) := \exp(\sqrt{-1}(k{-}1)x) \] for positive integers $k$. Fix a probability distribution $p=(p_1,p_2,\ldots)$ on the positive integers. For each integer $N$, we generate a random function class $\cHN$ by (i) sampling independently from $p$ until $N$ distinct indices $k_1,\dotsc,k_N$ are chosen, and then (ii) let $\cHN$ be the linear span of $e_{k_1},\dotsc,e_{k_N}$. Here, $N$ is the number of parameters to specify a function in $\cHN$ and also reflects the capacity of $\cHN$.",unclassified,"l{fig:fcnn-s}
+\end{figure}
+
+
+
+\subsection{Synthetic model} \label{app:RFF1D}
+
+We now discuss the nature of the double descent risk curve in the context of a simple synthetic model, which can be viewed as a version of RFF for  functions on the one-dimensional circle.
+Consider the class $\cH$ of periodic complex-valued
+functions on the interval $[0,2\pi]$, and let \[ e_k(x) := \exp(\sqrt{-1}(k{-}1)x) \] for positive integers $k$.
+Fix a probability distribution $p=(p_1,p_2,\ldots)$ on the positive integers.
+For each integer $N$, we generate a random function class $\cHN$ by (i) sampling independently from $p$ until $N$ distinct indices $k_1,\dotsc,k_N$ are chosen, and then (ii) let $\cHN$ be the linear span of $e_{k_1},\dotsc,e_{k_N}$.
+Here, $N$ is the number of parameters to specify a function in $\cHN$ and also reflects the capacity of $\cHN$.
+
+We generate data from the following model:
+\[ y_i = h^*(x_i) + \varepsilon_i \]
+where the target function $h^* = \sum_k \alpha_k^* e_k$ is in the span of the $e_k$, and $\varepsilon_1,\dotsc,\varepsilon_n$ are independent zero-mean normal random variables with variance $\sigma^2$.
+The $x_1,\dotsc,x_n$ themselves are drawn uniformly at random from $\{2\pi j/M : j = 0,\dotsc,M-1\}$ for $M := 4096$.
+We also let $\alpha_k^* := p_k$ for all $k$, with $p_k \propto 1/k^2$.
+The signal-to-noise ratio (SNR) is $\E[ h^*(x_i)^2 ] / \sigma^2$.
+
+Given data $(x_1,y_1),\dotsc,(x_n,y_n) \in [0,2\pi] \times \R$, we learn a function from the function class $\cHN$ using empirical risk minimization, which is equivalent to ordinar",,,definition,definition

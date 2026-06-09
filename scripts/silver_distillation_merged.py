@@ -33,12 +33,19 @@ Usage:
 """
 
 import argparse
+import ast
+import builtins as _builtins
 import csv
 import json
 import os
+import shutil
+import signal
 import sys
 import time
 from pathlib import Path
+
+# Names always available without definition (builtins + dunders).
+_SAFE_NAMES = set(dir(_builtins)) | {"__name__", "__file__", "__doc__", "__builtins__"}
 
 # Add src/LLMVersion to path for imports
 REPO = Path(__file__).resolve().parent.parent
@@ -95,6 +102,192 @@ def estimate_cost(usage: dict, model: str) -> float:
     out = usage.get('output_tokens', 0) or 0
     return (inp * i_rate + cr * i_rate * 0.1 + cw * i_rate * 1.25
             + out * o_rate) / 1_000_000
+
+
+# ---------------------------------------------------------------------------
+# Generated-code guard: validate + auto-repair each group's distilled_rules.py
+# right after the aggregate LLM writes it, so one bad codegen can't abort the
+# whole multi-paper run. Catches the common failure class (undefined name that
+# only differs by case from a defined global, e.g. `_referential` vs
+# `_REFERENTIAL`), repairs it with an alias, and otherwise falls back to the
+# previous good file (or a safe empty stub). This touches only the generated
+# ARTIFACT, never the LLM prompt.
+# ---------------------------------------------------------------------------
+
+def _target_names(t) -> set:
+    out = set()
+    if isinstance(t, ast.Name):
+        out.add(t.id)
+    elif isinstance(t, (ast.Tuple, ast.List)):
+        for e in t.elts:
+            out |= _target_names(e)
+    elif isinstance(t, ast.Starred):
+        out |= _target_names(t.value)
+    return out
+
+
+def _scan_names(tree) -> tuple:
+    """Return (module_top_bound, all_bound, loads) for a parsed module.
+
+    `all_bound` over-approximates definitions (a name bound in ANY scope counts
+    as defined everywhere) so we never flag a real binding as undefined; that
+    keeps the repair conservative. `module_top_bound` is used as the alias
+    source, since helper globals live at module level.
+    """
+    module_top = set()
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            module_top.add(node.name)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for a in node.names:
+                module_top.add((a.asname or a.name).split('.')[0])
+        elif isinstance(node, ast.Assign):
+            for t in node.targets:
+                module_top |= _target_names(t)
+        elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+            module_top |= _target_names(node.target)
+
+    bound, loads = set(), set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            if not isinstance(node, ast.Lambda):
+                bound.add(node.name)
+            a = node.args
+            for arg in (list(a.posonlyargs) + list(a.args) + list(a.kwonlyargs)):
+                bound.add(arg.arg)
+            if a.vararg:
+                bound.add(a.vararg.arg)
+            if a.kwarg:
+                bound.add(a.kwarg.arg)
+        elif isinstance(node, ast.ClassDef):
+            bound.add(node.name)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for al in node.names:
+                bound.add((al.asname or al.name).split('.')[0])
+        elif isinstance(node, ast.Assign):
+            for t in node.targets:
+                bound |= _target_names(t)
+        elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+            bound |= _target_names(node.target)
+        elif isinstance(node, (ast.For, ast.AsyncFor)):
+            bound |= _target_names(node.target)
+        elif isinstance(node, (ast.With, ast.AsyncWith)):
+            for it in node.items:
+                if it.optional_vars:
+                    bound |= _target_names(it.optional_vars)
+        elif isinstance(node, ast.comprehension):
+            bound |= _target_names(node.target)
+        elif isinstance(node, ast.NamedExpr):
+            bound |= _target_names(node.target)
+        elif isinstance(node, ast.ExceptHandler):
+            if node.name:
+                bound.add(node.name)
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            bound.update(node.names)
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            loads.add(node.id)
+    return module_top, bound, loads
+
+
+class _RuleTimeout(Exception):
+    pass
+
+
+def _run_with_timeout(fn, arg, seconds: float):
+    """Run fn(arg) but abort with _RuleTimeout if it exceeds `seconds`.
+
+    Uses SIGALRM (main thread, Unix) — the merged pipeline is single-threaded,
+    so this safely interrupts a catastrophically-backtracking regex.
+    """
+    def _handler(signum, frame):
+        raise _RuleTimeout()
+
+    old = signal.signal(signal.SIGALRM, _handler)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        return fn(arg)
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, old)
+
+
+def validate_and_repair_group_file(path: Path, gkey: str, prev_src,
+                                   probe_text: str = "", timeout_s: float = 30.0) -> str:
+    """Make `path` safe to import+run, or fall back. Returns the action taken:
+    'ok' | 'aliased' | 'reverted' | 'stubbed' | 'slow'.
+
+    `probe_text` (real LaTeX from the papers seen so far) is run through the
+    entry point under a `timeout_s` wall-clock limit, so a regex that is valid
+    Python but catastrophically backtracks on real input is caught here and
+    reverted — before it can hang the prune/parse steps.
+    """
+    fn_name = f"extract_distilled_{gkey}"
+
+    def _restore() -> str:
+        if prev_src is not None:
+            path.write_text(prev_src, encoding='utf-8')
+            return 'reverted'
+        path.write_text(f"def {fn_name}(text):\n    return []\n", encoding='utf-8')
+        return 'stubbed'
+
+    try:
+        src = path.read_text(encoding='utf-8')
+    except Exception:
+        return _restore()
+
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return _restore()
+
+    module_top, bound, loads = _scan_names(tree)
+    undefined = loads - bound - _SAFE_NAMES
+
+    action = 'ok'
+    if undefined:
+        lower_map = {}
+        for n in module_top:
+            lower_map.setdefault(n.lower(), n)
+        aliases, unfixable = [], []
+        for u in sorted(undefined):
+            m = lower_map.get(u.lower())
+            if m and m != u:
+                aliases.append((u, m))
+            else:
+                unfixable.append(u)
+        if unfixable:
+            return _restore()
+        src = (src + "\n\n# --- auto-repair: alias case-mismatched globals ---\n"
+               + "\n".join(f"{u} = {m}" for u, m in aliases) + "\n")
+        path.write_text(src, encoding='utf-8')
+        try:
+            _, b2, l2 = _scan_names(ast.parse(src))
+        except SyntaxError:
+            return _restore()
+        if l2 - b2 - _SAFE_NAMES:
+            return _restore()
+        action = 'aliased'
+
+    # Final smoke test: import the module + call the entry point on empty input.
+    ns = {'__name__': 'distilled_smoke'}
+    try:
+        exec(compile(src, str(path), 'exec'), ns)
+        fn = ns.get(fn_name)
+        if not callable(fn):
+            return _restore()
+        fn("")
+    except Exception:
+        return _restore()
+
+    # Timed run on real text: reject catastrophically-backtracking regexes.
+    if probe_text:
+        try:
+            _run_with_timeout(fn, probe_text, timeout_s)
+        except _RuleTimeout:
+            return f"slow→{_restore()}"
+        except Exception:
+            return _restore()
+    return action
 
 
 # ---------------------------------------------------------------------------
@@ -212,6 +405,33 @@ def uninstall_importer(types, backups: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Per-step rule snapshots (for the paper-by-paper graph filmstrip)
+# ---------------------------------------------------------------------------
+
+def snapshot_rules(eval_dir: Path, groups_dir: Path, groups: dict,
+                   step_idx: int, label: str) -> Path:
+    """Freeze the current per-group distilled_rules.py into a self-contained
+    snapshot dir so paper graphs can later be re-parsed at this exact rule state.
+
+    Layout: <eval_dir>/snapshots/step_<NN>_<label>/{distilled_rules.py, groups/<g>/...}
+    The snapshot's importer is written with the snapshot as its base, so it
+    points at the FROZEN copies — installing it reproduces this step's rules.
+    Copies only (no LLM); cheap and additive.
+    """
+    snap = eval_dir / "snapshots" / f"step_{step_idx:02d}_{label}"
+    (snap / "groups").mkdir(parents=True, exist_ok=True)
+    for g in groups:
+        src = groups_dir / g / "distilled_rules.py"
+        gdst = snap / "groups" / g
+        gdst.mkdir(parents=True, exist_ok=True)
+        if src.exists():
+            shutil.copy2(src, gdst / "distilled_rules.py")
+    # Importer pointing at the frozen group files (snap as base dir).
+    write_combined_importer(snap, groups)
+    return snap
+
+
+# ---------------------------------------------------------------------------
 # Combined parse: one parser run, bucket extracted raw_latex by kind
 # ---------------------------------------------------------------------------
 
@@ -249,6 +469,25 @@ def parse_buckets(pid: str, tex_dir: Path, types, eval_dir: Path | None) -> dict
         uninstall_importer(types, backups)
 
     return buckets
+
+
+def build_guard_probe(tex_dir: Path, paper_ids, per_paper_cap: int = 20000) -> str:
+    """Concatenate (capped) LaTeX of the given papers as a backtracking probe.
+
+    Mirrors what prune later runs the rules over (all papers so far), so a rule
+    that backtracks on any of them is caught by the timed guard before use.
+    """
+    chunks = []
+    for pid in paper_ids:
+        main_tex = _find_main_tex(tex_dir / pid / "source")
+        if main_tex is None:
+            continue
+        try:
+            txt = Path(main_tex).read_text(encoding='utf-8', errors='replace')
+        except Exception:
+            continue
+        chunks.append(txt[:per_paper_cap])
+    return "\n".join(chunks)
 
 
 def opus_buckets(t2_path: Path, types, origin_filter) -> dict:
@@ -430,6 +669,9 @@ def run(args):
                     (gd / stale).unlink()
         for g in groups:
             (groups_dir / g).mkdir(parents=True, exist_ok=True)
+        # Drop stale per-step snapshots so the filmstrip starts clean.
+        if (eval_dir / "snapshots").exists():
+            shutil.rmtree(eval_dir / "snapshots")
 
     # ---- Phase 1: gold CSVs (no LLM) ----
     print("=" * 70)
@@ -466,6 +708,10 @@ def run(args):
     print("PHASE 3: merged distillation")
     print("=" * 70)
 
+    # Step-0 snapshot = no distilled rules yet (clean baseline for the filmstrip).
+    if start_idx == 0:
+        snapshot_rules(eval_dir, groups_dir, groups, 0, "initial")
+
     for offset, pid in enumerate(pilot_papers):
         paper_idx = start_idx + offset + 1
         t0 = time.time()
@@ -501,6 +747,9 @@ def run(args):
         analyze_usage_tot = _da._empty_usage()
         agg_usage_tot = _da._empty_usage()
         search_dirs = [str(tex_dir / pid / "source")]
+        # Backtracking probe = LaTeX of every paper the prune will run over.
+        guard_probe = build_guard_probe(
+            tex_dir, prior_papers + pilot_papers[:offset + 1])
         per_group = {}
         for gkey, items in fn_items_by_group.items():
             gdir = groups_dir / gkey
@@ -527,10 +776,16 @@ def run(args):
                            for r in group_cum_rows[gkey])
             if has_sugg:
                 print(f"  [4:{gkey}] aggregate {len(group_cum_rows[gkey])} cumulative rule(s) ...")
+                gfile = gdir / "distilled_rules.py"
+                prev_src = gfile.read_text(encoding='utf-8') if gfile.exists() else None
                 _path, gusage = aggregate_rules_merged(
                     str(group_cum_csv[gkey]), gkey, groups[gkey], str(gdir), model)
                 for k in agg_usage_tot:
                     agg_usage_tot[k] += gusage.get(k, 0)
+                guard = validate_and_repair_group_file(
+                    gfile, gkey, prev_src, probe_text=guard_probe)
+                if guard != 'ok':
+                    print(f"      [guard] generated rules unsafe → {guard}")
             per_group[gkey] = {
                 'fns': len(items),
                 'rules': count_compiled_patterns(gdir / "distilled_rules.py"),
@@ -550,6 +805,7 @@ def run(args):
             group_gold = build_group_gold(gold_dir, gkey, groups[gkey])
             print(f"  [5:{gkey}] prune (alpha={args.prune_alpha:.2f}) over "
                   f"{len(papers_so_far)} paper(s) ...")
+            pre_prune_src = gfile.read_text(encoding='utf-8')
             n_pruned = prune_rules(
                 paper_ids=papers_so_far, structure_type=gkey,
                 gold_csv=str(group_gold), eval_dir=str(groups_dir / gkey),
@@ -557,6 +813,15 @@ def run(args):
                 tex_search_dirs=tex_search_dirs)
             if n_pruned:
                 print(f"      pruned {n_pruned} rule(s)")
+            # Defense-in-depth: prune output is unguarded codegen too — a
+            # corrupted comment-out would silently disable the whole group.
+            pruned_guard = validate_and_repair_group_file(
+                gfile, gkey, pre_prune_src, probe_text=guard_probe)
+            if pruned_guard != 'ok':
+                print(f"      [guard:post-prune] {pruned_guard}")
+
+        # 3e-snapshot: freeze this paper's cumulative rule state for the filmstrip.
+        snapshot_rules(eval_dir, groups_dir, groups, paper_idx, pid)
 
         # 3f: post-eval (one combined parse with installed importer).
         post = parse_buckets(pid, tex_dir, types, eval_dir=eval_dir)

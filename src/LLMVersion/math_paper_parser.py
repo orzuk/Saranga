@@ -2023,32 +2023,60 @@ Respond ONLY with JSON array."""
     ) -> List[MathObject]:
         """Merge manual and LLM-extracted objects, avoiding duplicates.
 
-        Dedup is based on clean_text alone — if two extractors find the same
-        text but one assigns a name (e.g. from \\label) and the other doesn't,
-        they are still the same structure.  When the distilled version carries
-        a name that the base version lacks, backfill it.
+        Dedup is by clean_text, with a CONTAINMENT fallback: a distilled rule
+        often re-extracts a structure the base parser already found but with a
+        slightly different span (different boundary), so exact-text matching
+        misses it and both copies get emitted (a duplicate). We therefore also
+        drop a candidate whose token set is largely contained in (or contains)
+        an already-kept same-type object. When the distilled version carries a
+        name the base version lacks, backfill it.
         """
         if not llm_objs:
             return manual_objs
 
+        # Containment threshold mirrors the silver-eval matcher (0.7).
+        CONTAIN_TH = 0.7
+
+        def _tokens(o):
+            return set((o.clean_text or "").strip().lower().split())
+
         seen_texts = set()
         text_to_obj = {}
+        kept_tokens = []  # (token_set, obj) for every object already in `merged`
         for d in manual_objs:
             txt = d.clean_text.strip().lower()
             seen_texts.add(txt)
             text_to_obj[txt] = d
+            kept_tokens.append((_tokens(d), d))
 
         merged = list(manual_objs)
         for d in llm_objs:
             txt = d.clean_text.strip().lower()
-            if txt not in seen_texts:
-                merged.append(d)
-                seen_texts.add(txt)
-            else:
-                # Backfill name if the base object lacks one
+            # 1) exact-text duplicate
+            if txt in seen_texts:
                 existing = text_to_obj.get(txt)
                 if existing and not existing.name and d.name:
                     existing.name = d.name
+                continue
+            # 2) containment duplicate (same-type span overlap)
+            dt = _tokens(d)
+            dup_of = None
+            if dt:
+                for kt, ko in kept_tokens:
+                    if not kt:
+                        continue
+                    if len(dt & kt) / min(len(dt), len(kt)) >= CONTAIN_TH:
+                        dup_of = ko
+                        break
+            if dup_of is not None:
+                if not dup_of.name and d.name:
+                    dup_of.name = d.name
+                continue
+            # 3) genuinely new structure
+            merged.append(d)
+            seen_texts.add(txt)
+            text_to_obj[txt] = d
+            kept_tokens.append((dt, d))
 
         return merged
 

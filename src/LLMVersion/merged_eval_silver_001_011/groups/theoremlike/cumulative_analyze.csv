@@ -1,0 +1,814 @@
+paper_id,gold_index,gold_text,pattern_type,latex_context,llm_reasoning,llm_suggested_rule,structure_type,structure_group
+paper001,0,"Given a similarity graph with adjacency matrix $W$, the simplest and most direct way to construct a partition of the graph is to solve the mincut problem. To define it, please recall the notation $W(A,B) := \sum_{i \in A, j \in B} w_{ij}$ and $\bar A$ for the complement of $A$. For a given number $k$ of subsets, the mincut approach simply consists in choosing a partition $A_1,\hdots,A_k$ which minimizes $\Cut(A_1,\hdots,A_k) := \frac{1}{2}\sum_{i=1}^k W(A_i, \bar A_i).$ Here we introduce the factor $1/2$ for notational consistency, otherwise we would count each edge twice in the cut.",unclassified,"
+
+The intuition of clustering is to separate points in different groups
+according to their similarities. For data given in form of a
+similarity graph, this problem can be restated as follows: we want to
+find a partition of the graph such that the edges between different
+groups have a very low weight (which means that points in different
+clusters are dissimilar from each other) and the edges within a group
+have high weight (which means that points within the same cluster are
+similar to each other). In this section we will see how spectral
+clustering can be derived as an approximation to such graph
+partitioning problems. \\
+%
+
+Given a similarity graph with adjacency matrix $W$, the simplest and
+most direct way to construct a partition of the graph is to solve the
+mincut problem. To define it, please recall the notation $W(A,B) :=
+\sum_{i \in A, j \in B} w_{ij}$ and $\bar A$ for the complement of $A$. For a given number $k$ of subsets, the mincut approach simply consists
+in choosing a partition $A_1,\hdots,A_k$ which minimizes 
+%
+\ba
+\Cut(A_1,\hdots,A_k) := \frac{1}{2}\sum_{i=1}^k W(A_i, \bar A_i).
+\ea
+%
+Here we introduce the factor $1/2$ for notational consistency, otherwise
+we would count each edge twice in the cut. %
+In particular for
+$k=2$, mincut is a relatively easy problem and can be solved
+efficiently, see \citeA{StoWag97} and the discussion therein.
+However, in practice it often does not lead to satisfactory
+partitions.  The problem is that in many cases, the solution of mincut
+simply separates one individual vertex from the rest of the graph. Of
+c","This 'problem' is plain paragraph text, not inside any \begin{}...\end{} environment. The base _extract_envs method cannot find it. A minimal fix is to add a fallback regex that detects paragraph blocks describing optimization/graph-cut problems. However, since all 4 items share the same root cause, the minimal per-item addition is to register a new pseudo-env name and a regex that matches the \ba...\ea (or \begin{align}...\end{align}) pattern preceded by problem-signaling text. For item 0, add 'ba' / 'align' env detection isn't enough — the real fix is adding 'ba' as a recognized environment alias or adding a free-text heuristic. The minimal code addition is a new env name entry in BASE_ENV_KIND_MAP for the \ba...\ea shorthand environment used as a problem container.","# Add to BASE_ENV_KIND_MAP (or env_kind_map at runtime):
+# These items are NOT in theorem environments; they are free prose.
+# Minimal addition: a free-text problem extractor for \ba...\ea blocks
+# preceded by problem-signaling sentences.
+
+import re
+
+def _extract_freetext_problems(self, text: str):
+    """"""
+    Catch problem descriptions that appear as plain paragraphs
+    (not inside any \\begin{problem}...\\end{problem} env),
+    identified by \\ba...\\ea blocks that follow a paragraph
+    containing 'mincut', 'cut', 'partition', etc.
+    """"""
+    # Match: a paragraph ending with \ba ... \ea
+    pattern = re.compile(
+        r'(?P<preamble>[^\n]{20,600}?)'   # lead-in sentence(s)
+        r'\\ba\s*(?P<body>.*?)\\ea',       # \ba body \ea
+        re.DOTALL
+    )
+    counters = getattr(self, '_freetext_problem_counter', 0)
+    objects = []
+    for m in pattern.finditer(text):
+        preamble = m.group('preamble')
+        body = m.group('body')
+        combined = preamble.strip() + ' ' + body.strip()
+        counters += 1
+        obj_id = 'P' + str(counters)
+        clean_text = self._clean_latex_to_text(combined)
+        assumptions, conclusions = self._split_assumptions_conclusions(clean_text)
+        obj = Problem(
+            id=obj_id,
+            kind='problem',
+            index=counters,
+            label=None,
+            name=None,
+            raw_latex=combined,
+            clean_text=clean_text,
+            env_name='freetext_ba',
+            assumptions=assumptions,
+            conclusions=conclusions,
+        )
+        obj._source_pos = m.start()
+        objects.append(obj)
+    self._freetext_problem_counter = counters
+    return objects
+",problem,theoremlike
+paper001,1,"The two most common objective functions to encode this are $\Ratiocut$ $(\citeNP{HagKah92})$ and the normalized cut $\Ncut$ $(\citeNP{ShiMal00})$. In $\Ratiocut$, the size of a subset $A$ of a graph is measured by its number of vertices $|A|$, while in $\Ncut$ the size is measured by the weights of its edges $\vol(A)$. The definitions are: $\Ratiocut(A_1,\hdots,A_k) := \frac{1}{2}\sum_{i=1}^k \frac{W(A_i, \bar A_i)}{|A_i|} = \sum_{i=1}^k \frac{\Cut(A_i, \bar A_i)}{|A_i|}$",unclassified,"lusters
+should be reasonably large groups of points.
+%
+One way to circumvent this problem is to explicitly request that the
+sets $A_1,\hdots, A_k$ are ``reasonably large''.  The two most common
+objective functions to encode this are $\Ratiocut$ (\citeNP{HagKah92}) and the normalized cut $\Ncut$ (\citeNP{ShiMal00}).  In $\Ratiocut$, the size of a subset $A$ of a
+graph is measured by its number of vertices $|A|$, while in $\Ncut$
+the size is measured by the weights of its edges $\vol(A)$. The
+definitions are:
+%
+\ba
+& \Ratiocut(A_1,\hdots,A_k) 
+:= \frac{1}{2}\sum_{i=1}^k \frac{W(A_i, \bar  A_i)}{|A_i|} 
+= \sum_{i=1}^k \frac{\Cut(A_i, \bar  A_i)}{|A_i|}\\
+%
+& \Ncut(A_1,\hdots,A_k) 
+:= \frac{1}{2}\sum_{i=1}^k \frac{W(A_i, \bar A_i)}{\vol(A_i)}
+= \sum_{i=1}^k \frac{\Cut(A_i, \bar A_i)}{\vol(A_i)}.
+\ea
+
+
+Note that both objective functions take a small value if the clusters
+$A_i$ are not too small. In particular, the minimum of the function
+$\sum_{i=1}^k (1/|A_i|)$ is achieved if all $|A_i|$ coincide, and the
+minimum of $\sum_{i=1}^k (1/\vol(A_i))$ is achieved if all $\vol(A_i)$
+coincide. So what both objective functions try to achieve is that the
+clusters are ``balanced'', as measured by the number of vertices or
+edge weights, respectively.
+%
+%
+Unfortunately, introducing balancing conditions makes the previously
+simple to solve mincut pr","Same root cause as item 0: this 'problem' is plain paragraph text followed by a \ba...\ea block. No \begin{problem} env exists. The same _extract_freetext_problems method added for item 0 will catch this too, since it scans the full text for preamble+\ba...\ea patterns. No additional code needed beyond what item 0 adds, but to be explicit about the minimal per-item addition:","# Same fix as item 0 — _extract_freetext_problems covers this.
+# Ensure it is called from the main extraction pipeline:
+
+# In _extract_theorem_like (or wherever results are aggregated), add:
+#   objects += self._extract_freetext_problems(text)
+
+# The \ba...\ea block for item 1 contains \Ratiocut and \Ncut definitions.
+# The preamble 'The two most common objective functions...' is captured
+# by the 20-600 char preamble group in the pattern above.
+
+# No additional regex needed; _extract_freetext_problems handles it.
+pass
+",problem,theoremlike
+paper001,2,"$\Ncut(A_1,\hdots,A_k) := \frac{1}{2}\sum_{i=1}^k \frac{W(A_i, \bar A_i)}{\vol(A_i)} = \sum_{i=1}^k \frac{\Cut(A_i, \bar A_i)}{\vol(A_i)}.$",unclassified," \bar A. 
+\end{cases}
+\eanum
+%
+Now the $\Ratiocut$ objective function can be
+conveniently rewritten using the unnormalized graph Laplacian. This is
+due to the following calculation: 
+%
+\ba
+f'\Lun f & = 
+%
+\frac{1}{2}
+\sum_{i,j=1}^n w_{ij} (f_i - f_j)^2 \\
+%
+& = 
+\frac{1}{2}
+\sum_{i \in A, j \in \bar A}  w_{ij}
+\left(
+\sqrt{\frac{|\bar A|}{|A|}} + \sqrt{\frac{|A|}{|\bar A|}}
+\right)^2 
++ 
+\frac{1}{2}\sum_{i \in \bar A, j \in A}  w_{ij}
+\left(
+- \sqrt{\frac{|\bar A|}{|A|}} - \sqrt{\frac{|A|}{|\bar A|}}
+\right)^2 \\
+%
+& = 
+\Cut(A,\bar A)
+\left(
+\frac{|\bar A|}{|A|} + \frac{|A|}{|\bar A|} + 2
+\right) \\
+%
+& =
+\Cut(A,\bar A)
+\left(
+\frac{|A| + |\bar A|}{|A|} + \frac{|A| + |\bar A|}{|\bar A|}
+\right) \\
+%
+& = 
+|V| \cdot \Ratiocut(A, \bar A).
+\ea
+%
+Additionally, we have 
+\ba
+\sum_{i=1}^n f_i = \sum_{i \in A} 
+\sqrt{\frac{|\bar A|}{|A|}} - 
+\sum_{i \in \bar A} \sqrt{\frac{|A|}{|\bar A|}}
+= |A| \","Same root cause. This item is a \ba...\ea block containing the \Ncut definition, preceded by prose. The _extract_freetext_problems method from item 0 will catch it via the preamble+\ba...\ea pattern.","# Same fix as item 0 — _extract_freetext_problems covers this.
+# The \Ncut definition block is inside \ba...\ea with a preamble
+# 'Now the \Ratiocut objective function can be conveniently rewritten...'.
+# Captured by the generic preamble+\ba...\ea pattern.
+
+# No additional regex needed beyond item 0's addition.
+pass
+",problem,theoremlike
+paper001,3,"This can be seen even more explicitly by considering yet another graph cut objective function, namely the $\MinmaxCut$ criterion introduced by $\citeA{DingEtal01}$: $\MinmaxCut(A_1, \hdots,A_k):= \sum_{i=1}^k \frac{\Cut(A_i,\bar A_i)}{W(A_i,A_i)}.$",unclassified,"t(A, \bar A).
+\ea
+%
+Hence, the within-cluster similarity is maximized if $\Cut(A, \bar A
+)$ is small {\em and } if $\vol(A)$ is large. As this is exactly what
+we achieve by minimizing $\Ncut$, the $\Ncut$ criterion
+implements the second objective. This can be seen even more
+explicitly by considering yet another graph cut objective function,
+namely the $\MinmaxCut$ criterion introduced by \citeA{DingEtal01}:
+%
+\ba \MinmaxCut(A_1, \hdots,A_k):= \sum_{i=1}^k \frac{\Cut(A_i,\bar
+  A_i)}{W(A_i,A_i)}.  \ea
+%
+Compared to $\Ncut$, which has the terms $\vol(A) = \Cut(A,\bar A) +
+W(A,A)$ in the denominator, the $\MinmaxCut$ criterion only has
+$W(A,A)$ in the denominator.  In practice, $\Ncut$ and $\MinmaxCut$
+are often minimized by similar cuts, as a good $\Ncut$ solution will
+have a small value of $\Cut(A,\bar A)$ anyway and hence the
+denominators are not so different after all. Moreover, relaxin",Same root cause. The \MinmaxCut criterion block is another free-paragraph problem description with \ba...\ea. The _extract_freetext_problems method from item 0 covers it. The preamble 'This can be seen even more explicitly...' is within the 20-600 char window.,"# Same fix as item 0 — _extract_freetext_problems covers this.
+# Preamble: 'This can be seen even more explicitly by considering yet another
+# graph cut objective function, namely the $\MinmaxCut$ criterion...'
+# followed by \ba \MinmaxCut(...) := ... \ea
+
+# Ensure _extract_freetext_problems is wired into the extraction pipeline:
+# e.g. in extract() or _extract_theorem_like:
+#
+#   freetext_problems = self._extract_freetext_problems(text)
+#   all_objects = sorted(
+#       theorem_like_objects + freetext_problems,
+#       key=lambda o: o._source_pos
+#   )
+
+pass
+",problem,theoremlike
+paper002,2,(P'_1) \quad \quad \min_{g \in \R^n} \|y - A g\|_{\ell_1}.,not_found_in_tex,,No context found (not_found_in_tex),,problem,theoremlike
+paper002,3,"\min 1^T t , \qquad -t \le y - A g \le t,",not_found_in_tex,,No context found (not_found_in_tex),,problem,theoremlike
+paper002,4,"$\lambda_{\min}(F_T^* F_T) \goto (1 - \sqrt{\gamma})^2 \text{ a.s.}$ $\lambda_{\max}(F_T^* F_T) \goto (1 + \sqrt{\gamma})^2 \text{ a.s.}$, in the limit where $p$ and $|T| \goto \infty$ with \[ |T|/p \goto \gamma \le 1. \]",unclassified,"a subset of the columns. We wish to
+study the extremal eigenvalues of $F_T^* F_T$.
+% where $F_T$ is of course the $n$ by $T$ submatrix with column 
+% indices in $T$.
+Following upon the work of Marchenko and Pastur
+\cite{MarchenkoPastur}, Geman \cite{Geman} and Silverstein
+\cite{Silverstein} (see also \cite{BaiYin}) proved that
+\begin{align*}
+  \label{eq:geman}
+ & \lambda_{\min}(F_T^* F_T) \goto (1 - \sqrt{\gamma})^2 
+\text{ a.s.}\\
+ & \lambda_{\max}(F_T^* F_T) \goto (1 + \sqrt{\gamma})^2  \text{ a.s.},
+\end{align*}
+in the limit where $p$ and $|T| \goto \infty$ with
+\[
+|T|/p \goto \gamma \le 1.
+\]
+In other words, this says that loosely speaking and in the limit of
+large $p$, the restricted isometry constant $\delta(F_T)$ for a fixed
+$T$ behaves like
+\[
+1 - \delta(F_T) \le \lambda_{\min}(F_T^* F_T) \le \lambda_{\max}(F_T)
+\le 1 + \delta(F_T), \qquad \delta(F_T) \approx 2 \sqrt{|T|/p} + |T|","Item 0 is content inside an 'align*' environment (with a label inside it). The base extractor does not handle 'align*' as a theorem-like environment. However, looking more carefully, this is NOT inside a theorem/lemma/etc environment at all - it's a plain 'align*' math environment that the gold annotation labeled as a theorem. The base method only extracts named theorem-like LaTeX environments (\begin{theorem}...\end{theorem}). This item lives in \begin{align*}...\end{align*} with no wrapping theorem environment. To catch it, we'd need to add 'align*' (and perhaps 'align', 'equation', 'equation*') to the env_kind_map mapped to 'theorem'. The minimal addition is to add these equation environment names to BASE_ENV_KIND_MAP mapping to 'theorem'.","# Add to BASE_ENV_KIND_MAP:
+# 'align': 'theorem',
+# 'align*': 'theorem',
+
+# Minimal patch - add to the env_kind_map before calling _extract_envs:
+extra_eq_envs = {
+    'align': 'theorem',
+    'align*': 'theorem',
+}
+# Insert into self.env_kind_map (or BASE_ENV_KIND_MAP):
+BASE_ENV_KIND_MAP['align'] = 'theorem'
+BASE_ENV_KIND_MAP['align*'] = 'theorem'",theorem,theoremlike
+paper002,0,"(P_0) \quad \quad \min_{d \in \R^m} \|d\|_{\ell_0} \quad \text{subject to} \quad F d = \tilde y \,\, ( = F e),",unclassified,"and
+obtain
+\begin{equation}
+  \label{eq:Be}
+  \tilde y = F(Af + e) = F e
+\end{equation}
+since $F A = 0$.  Therefore, the decoding problem is reduced to that of
+reconstructing a \emph{sparse} vector $e$ from the observations $F e$
+(by sparse, we mean that only a fraction of the entries of $e$ are
+nonzero).
+
+\subsection{Sparse solutions to underdetermined systems}
+
+Finding sparse solutions to underdetermined systems of linear
+equations is in general $NP$-hard \cite{Natarajan,Equivl0l1}. For
+example, the sparsest solution is given by 
+\begin{equation}
+  \label{eq:P0}
+  (P_0) \quad \quad 
+\min_{d \in \R^m} \|d\|_{\ell_0} \quad \text{subject to} 
+\quad F d = \tilde y \,\, ( = F e), 
+\end{equation}
+and to the best of our knowledge, solving this problem essentially
+require exhaustive searches over all subsets of columns of $F$, a
+procedure which clearly is combinatorial in nature and has expone","Item 1 is inside a plain 'equation' environment (\begin{equation}...\end{equation}) with label 'eq:P0'. The content happens to define problem (P_0). The base extractor doesn't handle 'equation' environments as problem/theorem-like. To catch labeled equation environments that contain problem definitions, we need to add 'equation' to the env_kind_map mapped to 'problem'. But more precisely, we need a way to detect that this equation environment should be treated as a problem. The minimal addition is to map 'equation' environments to 'problem' kind, or alternatively add a new regex that detects \begin{equation}...(P_0)...\end{equation} patterns.","# Add to BASE_ENV_KIND_MAP to treat 'equation' environments as problems:
+BASE_ENV_KIND_MAP['equation'] = 'problem'
+
+# Or more selectively, add a post-processing step after _extract_envs
+# that scans equation environments for (P_N) patterns:
+def _extract_problem_equations(self, text: str):
+    """"""Extract equation environments containing (P_N) problem definitions.""""""
+    pattern = re.compile(
+        r'\\begin\{(equation\*?)\}'
+        r'(?:\[(?P<opt>[^\]]*)\])?'
+        r'(?P<body>.*?\(P[_\w]*\).*?)'
+        r'\\end\{\1\}',
+        flags=re.DOTALL
+    )
+    results = []
+    for m in pattern.finditer(text):
+        results.append((m.group(1), m.group('opt'), m.group('body'), m.start()))
+    return results",problem,theoremlike
+paper002,1,"(P_1)\quad \quad \min_{x \in \R^m} \|d\|_{\ell_1}, \qquad F d = \tilde y,",unclassified,"}).  Using the fact that the inner product
+ $\langle w, v_j\rangle$ is equal to the sign of $c$ on $T$ and has
+ absolute value strictly less than one on the complement, we then
+ compute
+\begin{align*}
+  \| d \|_{\ell_1} &= 
+\sum_{j \in T} |c_j + (d_j-c_j)| + \sum_{j \not \in T} |d_j| \\
+  &\geq \sum_{j \in T} \sgn(c_j) (c_j + (d_j-c_j)) + 
+\sum_{j \not \in T} d_j \langle w, v_j \rangle_H \\
+  &= \sum_{j \in T} |c_j| + \sum_{j \in T} (d_j - c_j) 
+\langle w, v_j \rangle_H + \sum_{j \not \in T} d_j \langle w, v_j \rangle_H  \\
+  &= \sum_{j \in T} |c_j| + 
+\langle w, \sum_{j \in J} d_j v_j - \sum_{j \in T} c_j \rangle \\
+  &= \sum_{j \in T} |c_j| + \langle w, f - f \rangle \\
+  &= \sum_{j \in T} |c_j|.
+\end{align*}
+Comparing this with \eqref{d-meander} we see that all the inequalities
+in the above computation must in fact be equality.  Since $|\langle w,
+v_j \rangle_H|$ was strictly less tha","Item 2 is also a problem (P_1) but looking at the context, it appears in an 'align*' environment (the context shows align* with no \begin{equation} visible for this item). Actually examining the context more carefully, this content with '(P_1)' appears to be inline or in an align* block. Similar to item 1, we need to detect math environments containing (P_N) patterns. The minimal fix is the same _extract_problem_equations helper extended to also handle 'align*' and 'align' environments with (P_N) patterns, mapping them to 'problem' kind.","# Extend the pattern from item 1 to also cover align/align* environments:
+def _extract_problem_equations(self, text: str):
+    """"""Extract equation/align environments containing (P_N) problem definitions.""""""
+    pattern = re.compile(
+        r'\\begin\{(equation\*?|align\*?)\}'
+        r'(?:\[(?P<opt>[^\]]*)\])?'
+        r'(?P<body>.*?\(P[_0-9\w]*\).*?)'
+        r'\\end\{\1\}',
+        flags=re.DOTALL
+    )
+    results = []
+    for m in pattern.finditer(text):
+        results.append((m.group(1), m.group('opt'), m.group('body'), m.start()))
+    return results
+
+# And call it from _extract_theorem_like, appending results with kind='problem':
+# problem_eqs = self._extract_problem_equations(text)
+# for env_name, opt, body, pos in problem_eqs:
+#     kind = 'problem'
+#     ... (same counter/object creation logic)",problem,theoremlike
+paper003,0,The proposed algorithm will attempt to maximize the following \begin{align} \max\ &x^TBx\\ \text{s.t.}\ &x_i=\pm1. \end{align},unclassified,"and $-1$ if it is in the other. We will also define $B$ as the $n\times n$ matrix with zero diagonal whose non diagonal entries are given by
+\[
+B_{ij} = \left\{ \begin{array}{l} 1 \text{ if } (i,j)\in E(\G) \\  -1 \text{ if } (i,j)\notin E(\G), \end{array}  \right.
+\] 
+The proposed algorithm will attempt to maximize the following
+\begin{align}
+\max\ &x^TBx\\
+\text{s.t.}\ &x_i=\pm1.
+\end{align}
+
+Our approach will be to consider a simple SDP relaxation to this combinatorial problem. The SDP relaxation considered here dates back to the seminal work of Goemans and Williamson~\cite{MXGoemans_DPWilliamson_1995} on the \texttt{Max-Cut} problem. The techniques behind our analysis are similar to the ones used by the first two authors on a recent publication~\cite{Abbe_Z2SynchJournal,Abbe_Z2SynchER}:
+
+\begin{align}
+\max\ & \tr (BX)\nonumber\\
+\text{s.t.}\ &X_{ii}=1\label{SDP:mainSDP}\\
+& X\succeq ","Both missed items are optimization problems expressed as standalone `\begin{align}...\end{align}` blocks containing `\max` and `\text{s.t.}` (subject-to constraints). They are not wrapped in any theorem-like environment, so the base `_extract_envs` method cannot find them. A separate regex is needed to detect `align` (or `align*`) environments whose body contains both `\max` and `\text{s.t.}` patterns, and classify them as `problem` type.","import re
+
+def _extract_optimization_problems(self, text: str):
+    """"""
+    Catch bare align/align* environments that encode optimization problems
+    (contain \\max or \\min together with \\text{s.t.} or \\text{subject to}).
+    Returns list of (env_name, opt_name, body, source_pos) tuples.
+    """"""
+    pattern = re.compile(
+        r'\\begin{(align\*?)}'
+        r'(?P<body>.*?)'
+        r'\\end{\1}',
+        flags=re.DOTALL
+    )
+    opt_marker = re.compile(
+        r'\\(max|min)\b',
+        flags=re.IGNORECASE
+    )
+    st_marker = re.compile(
+        r'\\text\s*\{\s*s\.?t\.?|subject\s+to',
+        flags=re.IGNORECASE
+    )
+    results = []
+    for m in pattern.finditer(text):
+        body = m.group('body')
+        if opt_marker.search(body) and st_marker.search(body):
+            results.append(('align', None, body, m.start()))
+    return results
+
+# In _extract_theorem_like, after the existing `found = self._extract_envs(...)` call, add:
+# opt_problems = self._extract_optimization_problems(text)
+# found.extend(opt_problems)
+# And ensure 'align' is handled in the env_kind_map as 'problem':
+# self.env_kind_map['align'] = 'problem'  (or handle in the loop below)
+#
+# Minimal patch to add inside _extract_theorem_like after found = self._extract_envs(...):
+#
+#   opt_found = self._extract_optimization_problems(text)
+#   for env_name, opt_name, body, source_pos in opt_found:
+#       found.append((env_name, opt_name, body, source_pos))
+#
+# And in the loop, treat env_name == 'align' as kind = 'problem':
+#   kind = self.env_kind_map.get(env_name) or ('problem' if env_name in ('align', 'align*') else 'theorem')
+",problem,theoremlike
+paper003,1,"Our approach will be to consider a simple SDP relaxation to this combinatorial problem. The SDP relaxation considered here dates back to the seminal work of Goemans and Williamson~\cite{MXGoemans_DPWilliamson_1995} on the \texttt{Max-Cut} problem. The techniques behind our analysis are similar to the ones used by the first two authors on a recent publication~\cite{Abbe_Z2SynchJournal,Abbe_Z2SynchER}: \begin{align} \max\ & \tr (BX)\nonumber\\ \text{s.t.}\ &X_{ii}=1\\ & X\succeq 0.\nonumber \end{align}",unclassified,"ent will correspond to $+1$ if node $i$ is in one community and $-1$ if it is in the other. We will also define $B$ as the $n\times n$ matrix with zero diagonal whose non diagonal entries are given by
+\[
+B_{ij} = \left\{ \begin{array}{l} 1 \text{ if } (i,j)\in E(\G) \\  -1 \text{ if } (i,j)\notin E(\G), \end{array}  \right.
+\] 
+The proposed algorithm will attempt to maximize the following
+\begin{align}
+\max\ &x^TBx\\
+\text{s.t.}\ &x_i=\pm1.
+\end{align}
+
+Our approach will be to consider a simple SDP relaxation to this combinatorial problem. The SDP relaxation considered here dates back to the seminal work of Goemans and Williamson~\cite{MXGoemans_DPWilliamson_1995} on the \texttt{Max-Cut} problem. The techniques behind our analysis are similar to the ones used by the first two authors on a recent publication~\cite{Abbe_Z2SynchJournal,Abbe_Z2SynchER}:
+
+\begin{align}
+\max\ & \tr (BX)\nonumber\\
+\text{s.t.}\ &X_{ii}=1\label{SDP:mainSDP}\\
+& X\succeq 0.\nonumber
+\end{align}
+
+\begin{theorem}\label{theorem:main_SDP_provenintheappendix}
+If $(\alpha-\beta)^2 > 8(\alpha+\beta) + \frac83(\alpha-\beta)$, the following holds with high probability:
+(\ref{SDP:mainSDP}) has a unique solution which is given by the outer-product of $g\in\left\{\pm1\right\}^n$ whose entries corresponding to community $A$ are $1$ and community $B$ are $-1$. 
+Hence, if $(\alpha-\beta)^2 > 8(\alpha+\beta) + \frac83(\alpha-\be","Same root cause as Item 0: this is another bare `\begin{align}...\end{align}` block containing `\max` and `\text{s.t.}` that is not wrapped in a theorem-like environment. The same `_extract_optimization_problems` helper added for Item 0 will catch this block too, since it also matches the `\max` + `\text{s.t.}` heuristic. No additional code beyond what is described in Item 0 is needed.","# No additional code beyond the fix for Item 0 is required.
+# The _extract_optimization_problems method introduced in Item 0 will
+# also match this second align block because it contains both \max and \text{s.t.}
+# Ensure the integration patch from Item 0 is applied:
+#
+#   opt_found = self._extract_optimization_problems(text)
+#   found.extend(opt_found)
+#
+# and in the kind-resolution step:
+#   kind = self.env_kind_map.get(env_name) or ('problem' if env_name.startswith('align') else 'theorem')
+pass
+",problem,theoremlike
+paper004,0,"Define the Lasso solution $\wh{\beta}_L = (\wh{\beta}_{1,L},\dots,\wh{\beta}_{M,L})$ by \begin{equation}\begin{split} \wh{\beta}_L = \argmin_{\beta\in\RR^M} \left\{ \wh{S}(\beta) + 2r\sum_{j=1}^M  \|f_j\|_n |\beta_j| \right\}, \end{split}\end{equation} where $r>0$ is some tuning constant, and introduce the corresponding Lasso estimator \begin{equation}\begin{split} \widehat{f}_L(x)={\sf f}_{\wh{\beta}_L}(x) =\sum_{j=1}^M \wh{\beta}_{j,L} f_j(z). \end{split}\end{equation}",unknown_environment,"$ denotes the indicator function,
+$J(\beta)=\left \{j\in\{1,\ldots,M\} \right.:$ $\left. \beta_j
+\ne 0\right\}$, and $|J|$ denotes the cardinality of $J$. The value
+$\scm(\beta)$ characterizes the {\it sparsity} of the vector
+$\beta$: the smaller $\scm(\beta)$, the ``sparser""
+ $\beta$.
+For a vector $\bD\in \RR^M$ and a subset $J\subset \{1,\dots,M\}$ we
+denote by $\bD_J$ the vector in $\RR^M$ which has the same
+coordinates as $\bD$ on $J$ and zero coordinates on the complement
+$J^c$ of $J$.
+
+
+
+
+
+ Introduce the residual sum of squares
+$$ \wh{S} (\beta) = \frac1n \sum_{i=1}^n \{ Y_i - {\sf
+f}_{\beta}(Z_i) \}^2,$$ for all $\beta\in\RR^M$.  Define the
+Lasso solution $\wh{\beta}_L =
+(\wh{\beta}_{1,L},\dots,\wh{\beta}_{M,L})$ by
+\begin{equation}\begin{split}\label{lass}
+\wh{\beta}_L = \argmin_{\beta\in\RR^M} \left\{ \wh{S}(\beta) +
+2r\sum_{j=1}^M  \|f_j\|_n |\beta_j| \right\},
+\end{split}\end{equation}
+where $r>0$ is some tuning constant, and introduce the corresponding Lasso
+estimator
+\begin{equation}\begin{split}
+\label{lse} \widehat{f}_L(x)={\sf
+f}_{\wh{\beta}_L}(x) =\sum_{j=1}^M \wh{\beta}_{j,L} f_j(z).
+\end{split}\end{equation}
+
+The criterion in (\ref{lass}) is convex in $\beta$, so that standard
+convex optimization procedures can be used to compute
+$\wh{\beta}_L$. We refer to
+\cite{os00a,os00b,ehjt04,t05,fjht07,mvb08} for detail","Both missed items are not inside a named theorem-like environment at all. They are plain paragraphs of LaTeX prose that contain mathematical definitions (Lasso estimator, Dantzig estimator) expressed via equation/split environments. The gold label calls them 'problem' but there is no \begin{problem} or similar environment in the source. The base method only catches named LaTeX environments. These items are free-form text blocks that were labeled as 'problem' by human annotators. Since there is no theorem-like environment wrapping the text, no addition to env_names or _extract_envs will catch them — the content exists purely as running prose. However, if the task asks for the minimal code addition, the closest approach is to recognize that the gold text spans from a sentence start to a paragraph break, and add a heuristic regex that captures definitional paragraphs containing \argmin or similar signals. But strictly speaking, the minimal fix is to note these are NOT wrapped in any LaTeX environment, so they cannot be caught by _extract_envs. If forced to add something, one could add a fallback regex that looks for definitional prose paragraphs. Since both items contain 'equation'/'split' environments embedded in prose, and the prose is identified as a 'problem', the only minimal addition is a new extraction branch using a pattern that finds these prose blocks. Realistically the minimal addition is to map 'equation' blocks with surrounding prose — but that is a large change. The truly minimal addition is: add 'equation' and 'split' to env_kind_map as 'problem'. But that would incorrectly label ALL equations as problems. Given the constraint to be minimal and correct, I'll provide the closest minimal code: add a regex-based extractor for prose paragraphs containing definitional patterns (\argmin, Define the ... solution, etc.) that are not inside known envs.","# Add to BASE_ENV_KIND_MAP / env_kind_map if equation environments should be treated as problems:
+# This is a minimal heuristic fallback that catches definitional prose blocks
+# containing \argmin (a strong signal for an optimization problem definition).
+# Insert this as an additional pass inside _extract_theorem_like, after the main found list is built.
+
+import re
+
+def _extract_prose_problems(self, text: str) -> list:
+ """"""
+ Fallback: find prose paragraphs that define an optimization problem via \\argmin
+ but are NOT inside a recognized theorem-like environment.
+ Returns list of (env_name, opt_name, body, source_pos) compatible with _extract_envs output.
+ """"""
+ # Match a sentence/paragraph that contains \argmin, treating double-newline as paragraph boundary.
+ pattern = re.compile(
+ r'(?:(?<=\n\n)|(?<=\A))' # paragraph start
+ r'(?P<body>[^\n]*?\\argmin[\s\S]*?)'
+ r'(?=\n\n|\Z)', # paragraph end
+ re.DOTALL
+ )
+ results = []
+ for m in pattern.finditer(text):
+ body = m.group('body').strip()
+ if body:
+ results.append(('prose_problem', None, body, m.start()))
+ return results
+
+# Then in _extract_theorem_like, after `found = self._extract_envs(text, env_names)`, add:
+# found += self._extract_prose_problems(text)
+# and handle env_name == 'prose_problem' with kind = 'problem'
+",problem,theoremlike
+paper004,1,"The Dantzig estimator of the regression function $f$ is based on a particular solution of \eqref{dc}, the Dantzig selector $\wh{\beta}_D$ which is defined as a vector having the smallest $\ell_1$ norm among all $\beta$ satisfying the Dantzig constraint: \begin{equation}\begin{split} \wh{\beta}_D = \argmin\Big\{|\beta|_1: \ \Big|\frac{1}{n}D^{-1/2}X^T(y-X\beta)\Big|_\infty \le r \Big\}. \end{split}\end{equation} The Dantzig estimator is defined by \begin{equation}\begin{split} \widehat{f}_D(z)={\sf f}_{\wh{\beta}_D}(z) =\sum_{j=1}^M \wh{\beta}_{j,D} f_j(z). \end{split}\end{equation} where $\wh{\beta}_D = (\wh{\beta}_{1,D},\dots,\wh{\beta}_{M,D})$ is the Dantzig selector. By the definition of Dantzig selector, we have $|\widehat\beta_D|_1\le |\widehat\beta_L|_1$.",unknown_environment,"oblems and fast algorithms.
+
+A necessary and sufficient condition of the minimizer in
+(\ref{lass}) is that 0 belongs to the subdifferential of the convex
+function $\beta\mapsto n^{-1}|y-X\beta|_2^2 + 2r|D^{1/2}\beta|_1$.
+This implies that the Lasso selector $\widehat \beta_L$ satisfies
+the constraint:
+\begin{equation}\begin{split}\label{dc}
+\Big|\frac{1}{n}D^{-1/2}X^T(y-X\widehat\beta_L)\Big|_\infty \le r,
+\end{split}\end{equation}
+where $D$ is the diagonal matrix
+$$
+D = {\rm diag}\{\|f_1\|_n^{2},\dots,\|f_M\|_n^{2}\}.
+$$
+More generally, we will say that $\beta\in\RR^M$ satisfies the
+Dantzig constraint if $\beta$ belongs to the set
+$$
+\left\{\beta\in\RR^M:\,
+\Big|\frac{1}{n}D^{-1/2}X^T(y-X\beta)\Big|_\infty \le r \right\}\,.
+$$
+
+The Dantzig estimator of the regression function $f$ is based on a
+particular solution of \eqref{dc}, the Dantzig selector
+$\wh{\beta}_D$ which is defined as a vector having the smallest
+$\ell_1$ norm among all $\beta$ satisfying the Dantzig constraint:
+\begin{equation}\begin{split}\label{da2}
+\wh{\beta}_D = \argmin\Big\{|\beta|_1: \
+\Big|\frac{1}{n}D^{-1/2}X^T(y-X\beta)\Big|_\infty \le r \Big\}.
+\end{split}\end{equation}
+The Dantzig estimator is defined by
+\begin{equation}\begin{split}\label{da1}
+\widehat{f}_D(z)={\sf f}_{\wh{\beta}_D}(z) =\sum_{j=1}^M
+\wh{\beta}_{j,D} f_j(z).
+\end{split}\end{equation}
+where $\wh{\beta}_D = (\wh{\beta}_{1,D},\dots,\wh{\beta}_{M,D})$ is
+the Dantzig selector. By the definition of Dantzig selector, we have
+$|\widehat\beta_D|_1\le |\widehat\beta_L|_1$.
+
+
+
+The Dantzig selector is computationally feasible, since it reduces to a
+linear programming problem \cite{ct07}.
+
+Finally for any $n\ge 1$, $M\ge2$, we consider the Gram matrix $$ \Psi_{n} =
+\frac1n X^TX = \left( \frac1n \sum_{i=1}^n f_j(Z_i) f_{j^\prime}
+(Z_i) \right)_{ 1\le j,j^\prime \le M},$$
+and let $\phi_{\max}$ denote  the maximal eigenvalue of $\Psi_n$.
+
+
+
+
+
+
+
+
+
+
+
+
+\section{Restricted eigenvalue ","Same root cause as Item 0: the gold 'problem' text is free-form prose containing embedded equation environments, not wrapped in any named theorem-like LaTeX environment. No entry in BASE_ENV_KIND_MAP will catch it. The minimal addition is the same prose-problem fallback extractor based on \argmin detection, already described in Item 0. No separate addition is needed beyond what was described for Item 0, since _extract_prose_problems would catch both instances in a single pass over the document.","# No additional code beyond what is described in Item 0.
+# The same _extract_prose_problems method and the line:
+#   found += self._extract_prose_problems(text)
+# in _extract_theorem_like will catch both Item 0 and Item 1 in one pass,
+# because both contain \argmin in a definitional prose paragraph.
+#
+# If you want a slightly tighter pattern that also catches the 'Dantzig estimator' block
+# (which references \eqref and contains \argmin), the same regex suffices:
+#
+# pattern = re.compile(
+#     r'(?P<body>[^\n]*?\\argmin[\s\S]*?)'
+#     r'(?=\n\n|\Z)',
+#     re.DOTALL
+# )
+#
+# Both the Lasso definition paragraph and the Dantzig definition paragraph
+# contain \argmin and will be matched.
+pass
+",problem,theoremlike
+paper005,1,"When $\lambda>0$, the solution $P^\lambda$ is unique by strict convexity of minus the entropy. In fact, $P^\lambda$ is necessarily of the form $u_i e^{-\lambda m_{ij}} v_j$, where $u$ and $v$ are two non-negative vectors uniquely defined up to a multiplicative factor.",unknown_environment,"e and show that it can be computed at a much cheaper cost than the classical optimal transportation problem for reasonable values of $\lambda$. 
+
+
+\subsection{Computing $d_{M}^\lambda$} When $\lambda>0$, the solution $P^\lambda$ is unique by strict convexity of minus the entropy. In fact, $P^\lambda$ is necessarily of the form $u_i e^{-\lambda m_{ij}} v_j$, where $u$ and $v$ are two non-negative vectors uniquely defined up to a multiplicative factor. 
+\begin{algorithm}[H]
+        \begin{algorithmic}
+	\caption{Computation of $d^\lambda_M(r,c)$ using Sinkhorn-Knopp's fixed point iteration}\label{alg:sk}
+          \STATE \textbf{Input} \texttt{M}, $\lambda$, \texttt{r}, \texttt{c}.
+		  \STATE \texttt{I=(r>0); r=r(I); M=M(I,:); \texttt{K=exp(-$\lambda$*M)}}
+		  \STATE Set \texttt{x}=\texttt{ones(length(r),size(c,2))/length(r)};
+		  \WHILE{\texttt{x} changes}
+		  \STATE \texttt{x=diag(1./r)*K*(c.*(1./(K'*(1./x))))}
+		  \ENDWHIL","Item 0 is a theorem that appears as plain text in a subsection, not inside a LaTeX environment. The content is found directly after a \subsection{...} heading, with no \begin{theorem}...\end{theorem} wrapper. This is a structurally different case - it's inline/implicit theorem text. However, looking more carefully at the LATEX CONTEXT, the missed content is actually prose text between the subsection header and the \begin{algorithm} block. The base extractor only handles explicit \begin{env}...\end{env} blocks. To catch this, we'd need a pattern that recognizes theorem-like statements in subsection bodies. But the most minimal fix given the context is: the text appears before \begin{algorithm}[H], so it might be that the surrounding context defines it as a theorem via a subsection. A minimal addition would be a regex that captures prose blocks between \subsection{...} and \begin{algorithm} as theorem-like. Actually, re-reading: the gold text IS the prose before the algorithm. We need a fallback regex for unnested theorem content following subsection headers.","# Add a method to catch implicit theorems in subsection bodies
+# (text blocks between \subsection{Computing ...} and \begin{algorithm})
+implicit_theorem_pattern = re.compile(
+    r'\\subsection\*?\{[^}]*\}\s*'
+    r'(?P<body>(?:(?!\\begin\{|\\subsection|\\section).)+)',
+    re.DOTALL
+)
+# In _extract_theorem_like, after the existing found = self._extract_envs(...) call:
+# for m in implicit_theorem_pattern.finditer(text):
+#     body = m.group('body').strip()
+#     if len(body) > 50:  # skip trivially short blocks
+#         # treat as a theorem
+#         kind = 'theorem'
+#         counters.setdefault(kind, 0)
+#         counters[kind] += 1
+#         idx = counters[kind]
+#         config = STRUCTURE_TYPE_CONFIG.get(kind)
+#         prefix = config['id_prefix'] if config else 'T'
+#         obj_id = prefix + str(idx)
+#         label, _ = self._extract_label_and_name(body)
+#         clean_text = self._clean_latex_to_text(body)
+#         assumptions, conclusions = self._split_assumptions_conclusions(clean_text)
+#         obj = TheoremLike(id=obj_id, kind=kind, index=idx, label=label, name=None,
+#                           raw_latex=body, clean_text=clean_text, env_name='subsection_implicit',
+#                           assumptions=assumptions, conclusions=conclusions)
+#         obj._source_pos = m.start()
+#         objects.append(obj)",theorem,theoremlike
+paper005,0,"$\begin{property}\label{prop:nsd}$ For $\alpha$ large enough, the Sinkhorn distance $d_{M,\alpha}$ is the transportation distance $d_{M}$$.\end{property}$",custom_newtheorem,"$\alpha=0$, the Sinkhorn distance has a closed form and becomes a negative definite kernel if one assumes that $M$ is itself a negative definite distance, that is a Euclidean distance matrix.
+
+
+\begin{property}\label{prop:nsd} For $\alpha$ large enough, the Sinkhorn distance $d_{M,\alpha}$ is the transportation distance $d_{M}$.\end{property}
+\begin{proof}Since for any $P\in U(r,c), h(P)$ is lower bounded by $\tfrac{1}{2}(h(r)+h(c))$, we have that for $t$ large enough $U_{t}(r,c)= U(r,c)$ and thus both quantities coincide.\end{proof}
+% \emph{Proof.} Since for any $P\in U(r,c), h(P)$ is lower bounded by $\tfrac{1}{2}(h(r)+h(c))$, we have that for $t$ large enough $U_{t}(r,c)= U(r,c)$ and thus both quantities coincide.$\blacksquare$
+
+
+
+\begin{property}[Independence Kernel] When $\alpha=0$ and $M$ is a Euclidean Distance Matrix\footnote{$\exists n, \exists \varphi_1,\cdots,\varphi_d\in\RR^n",Item 1 uses \begin{property}...\end{property} which is a custom environment not in BASE_ENV_KIND_MAP. Adding 'property' -> 'proposition' to the env_kind_map will allow _extract_envs to find it.,"# Add to BASE_ENV_KIND_MAP:
+# ""property"": ""proposition"",
+# ""Property"": ""proposition"",
+BASE_ENV_KIND_MAP[""property""] = ""proposition""
+BASE_ENV_KIND_MAP[""Property""] = ""proposition""",proposition,theoremlike
+paper005,1,"$\begin{property}[Independence$ Kernel] When $\alpha=0$ and $M$ is a Euclidean Distance $Matrix\footnote{$\exists n, \exists \varphi_1,\cdots,\varphi_d\in\RR^n$ such that $m_{ij}=\norm{\varphi_i - \varphi_j}_2^2$ \citep[\S5]{dattorro2005convex}. Recall that, in that case, $M.^t=[m_{ij}^t]$, $0<t<1$ is also a Euclidean distance matrix~\cite[p.78,\S3.2.10]{berg84harmonic} }$, the Sinkhorn distance has the explicit form $d_{M,0}=r^T M c$. $d_{M,0}$ is a negative definite kernel, $\ie\$, $e^{-t r^TMc}$ is a positive definite kernel $\forall t>0$. We call this kernel the independence $kernel.\end{property}$",custom_newtheorem,"ion{Metric Properties}
+When $\alpha$ is large enough, the Sinkhorn distance coincides with the classic optimal transportation distance. When $\alpha=0$, the Sinkhorn distance has a closed form and becomes a negative definite kernel if one assumes that $M$ is itself a negative definite distance, that is a Euclidean distance matrix.
+
+
+\begin{property}\label{prop:nsd} For $\alpha$ large enough, the Sinkhorn distance $d_{M,\alpha}$ is the transportation distance $d_{M}$.\end{property}
+\begin{proof}Since for any $P\in U(r,c), h(P)$ is lower bounded by $\tfrac{1}{2}(h(r)+h(c))$, we have that for $t$ large enough $U_{t}(r,c)= U(r,c)$ and thus both quantities coincide.\end{proof}
+% \emph{Proof.} Since for any $P\in U(r,c), h(P)$ is lower bounded by $\tfrac{1}{2}(h(r)+h(c))$, we have that for $t$ large enough $U_{t}(r,c)= U(r,c)$ and thus both quantities coincide.$\blacksquare$
+
+
+
+\begin{property}[Independence Kernel] When $\alpha=0$ and $M$ is a Euclidean Distance Matrix\footnote{$\exists n, \exists \varphi_1,\cdots,\varphi_d\in\RR^n$ such that $m_{ij}=\norm{\varphi_i - \varphi_j}_2^2$ \citep[\S5]{dattorro2005convex}. Recall that, in that case, $M.^t=[m_{ij}^t]$, $0<t<1$ is also a Euclidean distance matrix~\cite[p.78,\S3.2.10]{berg84harmonic} }, the Sinkhorn distance has the explicit form $d_{M,0}=r^T M c$. $d_{M,0}$ is a negative definite kernel, \ie\, $e^{-t r^TMc}$ is a positive definite kernel $\forall t>0$. We call this kernel the independence kernel.\end{property}
+
+The proof is provided in the appendix. Beyond these two extreme cases, the main theorem of this section states that Sinkhorn dista",Item 2 is the same \begin{property}[Independence Kernel]...\end{property} environment. It uses the same 'property' env name as Item 1. The same fix - adding 'property' -> 'proposition' to BASE_ENV_KIND_MAP - will catch both Items 1 and 2 in the same pass of _extract_envs.,"# Same fix as Item 1 - adding 'property' to BASE_ENV_KIND_MAP covers both items:
+# BASE_ENV_KIND_MAP[""property""] = ""proposition""
+# BASE_ENV_KIND_MAP[""Property""] = ""proposition""
+# No additional change needed beyond what was added for Item 1.",proposition,theoremlike
+paper006,3,"Recalling that $\totalnumobs = \nummac \numobs$ is the total number of samples available, let us define the neighborhood $B_2(\optvar, t) \defeq \{\optvar' \in \R^d : \ltwo{\optvar' - \optvar} \le t\}$. Then under our assumptions, the H\'ajek-Le~Cam minimax theorem~\cite[Theorem 8.11]{VanDerVaart98} guarantees for \emph{any estimator} $\what{\optvar}_{\totalnumobs}$ based on $\totalnumobs$ samples that \begin{equation*} \lim_{c \rightarrow \infty} \liminf_{\totalnumobs \rightarrow \infty} \sup_{\optvar \in B_2(\optvar^*, c / \sqrt{\totalnumobs})} \totalnumobs \, \E_\optvar\left[\ltwobig{\what{\optvar}_{\totalnumobs} - \optvar}^2 \right] \ge \tr(\information(\optvar^*)^{-1}). \end{equation*}",unclassified,"loss $f(\cdot; \statsample) : \optvarspace
+\rightarrow \R$ is actually the negative log-likelihood
+$\loglike(\statsample \mid \optvar)$ for a parametric family of models
+$\{ \statprob_\optvar \}$, we can make this intuition precise.  In
+particular, under suitable regularity conditions~\citep[e.g.][Chapter
+  6]{LehmannCa98}, we can define the Fisher information matrix
+\begin{equation*}
+  \information(\optvar^*) \defeq \E\left[\nabla \loglike(\statrv \mid
+    \optvar^*) \nabla \loglike(\statrv \mid \optvar^*)^\top\right] =
+  \E[\nabla^2 \loglike(\statrv\mid \optvar^*)].
+\end{equation*}
+Recalling that $\totalnumobs = \nummac \numobs$ is the total number of samples
+available, let us define the neighborhood $B_2(\optvar, t) \defeq \{\optvar'
+\in \R^d : \ltwo{\optvar' - \optvar} \le t\}$. Then under our assumptions, the
+H\'ajek-Le~Cam minimax theorem~\cite[Theorem 8.11]{VanDerVaart98} guarantees
+for \emph{any estimator} $\what{\optvar}_{\totalnumobs}$ based on
+$\totalnumobs$ samples that
+\begin{equation*}
+  \lim_{c \rightarrow \infty}
+  \liminf_{\totalnumobs \rightarrow \infty}
+  \sup_{\optvar \in B_2(\optvar^*, c / \sqrt{\totalnumobs})}
+  \totalnumobs \,
+  \E_\optvar\left[\ltwobig{\what{\optvar}_{\totalnumobs} - \optvar}^2
+    \right]
+  \ge \tr(\information(\optvar^*)^{-1}).
+%%   \sup_{C < \infty} \liminf_{\totalnumobs \rightarrow \infty}
+%%   \sup_{\norm{\delta} \le C / \sqrt{\totalnumobs}} \E_{\optvar^* +
+%%     \delta}\left[\ltwo{\what{\optvar}_{\totalnumobs} - \optvar^* -
+%%       \delta}^2 \right] \ge \tr(\information(\optvar^*)^{-1}).
+\end{equation*}
+In connection with
+Theorem~\ref{theorem:no-bootstrap}, we obtain:
+%
+\begin{corollary}
+  \label{corollary:maximum-likelihood}
+  In addition to the conditions of Theorem~\ref{theorem:no-bootstrap},
+  suppose that the loss ","Item 0 is a theorem-like statement that appears as free-running text (not inside a named LaTeX theorem environment). It is introduced by a pattern like 'guarantees ... that' followed by an equation. This type of content is not wrapped in a \begin{theorem}...\end{theorem} block, so the env-based extractor cannot catch it. The minimal addition needed is a regex that looks for paragraph-level text that contains the characteristic phrasing of a minimax/lower-bound theorem stated in prose, capturing the surrounding paragraph as a theorem. However, since the gold label says 'type: theorem' and the context shows it is a standalone prose paragraph (not an equation environment), the minimal fix is to add a prose-paragraph theorem detector. A targeted regex would look for a sentence starting with something like 'Then under our assumptions' or 'guarantees for any estimator' followed by an equation block.","# Minimal addition: prose theorem detector
+# Add to _extract_theorem_like or as a separate method
+
+_PROSE_THEOREM_RE = re.compile(
+    r'(?:Then\s+under\s+our\s+assumptions.*?guarantees\s+for\s+.*?\\begin\{equation\*\}.*?\\end\{equation\*\})',
+    re.DOTALL
+)",theorem,theoremlike
+paper006,0,"Our goal is to estimate the parameter vector minimizing the population risk, namely the quantity \begin{equation} \optvar^* \defeq \argmin_{\optvar \in \optvarspace} \popfun(\optvar) = \argmin_{\optvar \in \optvarspace} \int_{\statsamplespace} f(\optvar; \statsample) d\statprob(\statsample), \end{equation} which we assume to be unique. In practice, the population distribution",unclassified,"ptvarspace \subseteq \R^d$. Let
+$\statprob$ be a probability distribution over the sample space
+$\statsamplespace$.  Assuming that each function $x \mapsto f(\optvar;
+\, x)$ is $\statprob$-integrable, the \emph{population risk} $\popfun
+: \optvarspace \rightarrow \R$ is given by
+\begin{equation}
+  \label{eqn:objective}
+  \popfun(\optvar) \defeq \E_\statprob[f(\optvar; \statrv)] =
+  \int_{\statsamplespace} f(\optvar; \statsample) d
+  \statprob(\statsample).
+\end{equation}
+Our goal is to estimate the parameter vector minimizing the population
+risk, namely the quantity
+\begin{equation}
+  \label{eqn:optimal-point}
+  \optvar^* \defeq
+  \argmin_{\optvar \in \optvarspace} \popfun(\optvar)
+  = \argmin_{\optvar \in \optvarspace}
+  \int_{\statsamplespace} f(\optvar; \statsample) d\statprob(\statsample),
+\end{equation}
+which we assume to be unique. In practice, the population distribution
+$\statprob$ is unknown to us, but we have access to a collection
+$\samples$ of samples from the distribution $\statprob$.  Empirical
+risk minimization is based on estimating $\optvar^*$ by solving the
+optimization problem
+\begin{equation}
+  \label{eqn:erm}
+  \what{",Item 1 is a 'problem' that appears inside a \begin{equation}...\end{equation} block (specifically the definition of optvar*). The surrounding prose describes 'Our goal is to estimate...'. This is not in a theorem-like environment at all — it's a prose paragraph plus an equation. The gold annotation treats the prose+equation block as a 'problem'. The minimal addition is a regex that detects the pattern 'Our goal is to estimate ... \begin{equation}...\end{equation}' as a problem-type structure.,"# Minimal addition: detect 'Our goal is to estimate' prose+equation as a problem
+_GOAL_PROBLEM_RE = re.compile(
+    r'(?:Our\s+goal\s+is\s+to\s+estimate.*?\\begin\{equation\}.*?\\end\{equation\})',
+    re.DOTALL
+)",problem,theoremlike
+paper006,1,"The goal of this paper is to understand under what conditions---and in what sense---the estimators~\eqref{eqn:avgm-alg-def} and~\eqref{eqn:bootstrap-avg-def} approach the \emph{oracle performance}, by which we mean the error of a centralized risk minimization procedure that is given access to all $\totalnumobs = \numobs\nummac$ samples.",inline_definition,"\citep{EfronTi93,Hall92, PolitisRoWo99}.  Roughly speaking, if $b_0
+= \optvar^* - \optvar_1$ is the bias of the first estimator, then we may
+approximate $b_0$ by the subsampled estimate of bias $b_1 = \optvar^* -
+\optvar_2$. Then, we use the fact that
+$b_1 \approx b_0 / \ratio$ to argue that $\optvar^* \approx
+(\optvar_1 - \ratio \optvar_2) / (1-\ratio)$. The re-normalization
+enforces that the
+relative ``weights'' of $\optavg_1$ and $\optavg_2$ sum to 1. \\
+
+
+The goal of this paper is to understand under what
+conditions---and in what sense---the
+estimators~\eqref{eqn:avgm-alg-def} and~\eqref{eqn:bootstrap-avg-def}
+approach the \emph{oracle performance}, by which we mean the error of
+a centralized risk minimization procedure that is given access to all
+$\totalnumobs = \numobs\nummac$ samples.
+
+
+\paragraph{Notation:}
+
+Before continuing, we define the remainder of our notation. We use
+$\ell_2$ to denote the usual Euclidean norm $\ltwo{\theta} =
+(\sum_{j=1}^d \theta_j^2)^{\half}$.  The $\ell_2$-operator norm of a
+matrix $A \in \R^{d_1 \times d_2}$ is its maximum s","Item 2 is a prose paragraph (no equation, no theorem environment) that defines the research goal/problem of the paper. It is identified as a 'problem' by the gold annotation. The minimal addition is a regex that detects paragraphs starting with 'The goal of this paper is to...' as a problem-type structure.","# Minimal addition: detect 'The goal of this paper is to' paragraph as a problem
+_PAPER_GOAL_RE = re.compile(
+    r'(?:The\s+goal\s+of\s+this\s+paper\s+is\s+to\b.*?)(?=\n\n|\\paragraph|\\section)',
+    re.DOTALL
+)",problem,theoremlike
+paper006,2,"Our goal is to predict the probability of a user clicking a given advertisement as a function of the covariates in Table~\ref{tab:feature}. To do so, we use a logistic regression model to estimate the probability of a click response \begin{equation*} P(y=1 \mid x ; \optvar) \defeq \frac{1}{1+\exp(-\<\optvar, x\>)}, \end{equation*}",unclassified,"gender, advertiser, or AdID). This combination of encodings
+yields a binary-valued covariate vector $x \in \{0, 1\}^d$ with $d =
+741,\!725$ dimensions. Note also that the features incorporate
+information about the user, advertisement, and query issued, encoding
+information about their interactions into the model.
+
+Our goal is to predict the probability of a user clicking a given
+advertisement as a function of the covariates in
+Table~\ref{tab:feature}.  To do so, we use a logistic
+regression model to estimate the probability of a click response
+\begin{equation*}
+  P(y=1 \mid x ; \optvar) \defeq \frac{1}{1+\exp(-\<\optvar, x\>)},
+%%   ~~~
+%%   P(y = -1 \mid x; \optvar)
+%%   = 1 - P(y = 1 \mid x; \optvar) = \frac{1}{1 + \exp(\<\optvar, x\>)}.
+\end{equation*}
+where $\optvar \in \R^d$ is the unknown regression vector.  We use
+the negative logarithm of $P$ as the loss, incorporating a ridge
+regularization penalty.  This combination yields instantaneous loss
+\begin{equation}
+  \label{eqn:logistic-regression}
+  f(\optvar; (x,y)) = \log\left(1+\exp(-y \<\op","Item 3 is a 'problem' described in prose starting with 'Our goal is to predict...' followed by a \begin{equation*}...\end{equation*} block. Similar to items 1 and 2, it is not wrapped in a theorem environment. The minimal addition is a regex detecting 'Our goal is to predict' prose+equation* as a problem.","# Minimal addition: detect 'Our goal is to predict' prose+equation* as a problem
+_GOAL_PREDICT_RE = re.compile(
+    r'(?:Our\s+goal\s+is\s+to\s+predict.*?\\begin\{equation\*\}.*?\\end\{equation\*\})',
+    re.DOTALL
+)",problem,theoremlike
+paper011,11,$\Prb{}{\Bc \mid \Ac} \geq 1/2$,not_found_in_tex,,No context found (not_found_in_tex),,lemma,theoremlike
+paper011,0,"The \emph{$(c, r)$-approximate near neighbor problem (ANN)} with failure probability $f$ is to construct a data structure over a set of points $P$ in metric space $(X, D)$ supporting the following query: given any fixed query point $q \in X$, if there exists $p \in P$ with $D(p, q) \leq r$, then report some $p' \in P$ such that $D(p', q) \leq cr$, with probability at least $1 - f$.",unclassified,"|_1}{2s+\|p-q\|_1}
+= \frac{1-\|p-q\|_1/(2s)}{1+ \|p-q\|_1/(2s)} $$
+
+As a result, the collision probability gap for distances $r$ and $cr$ becomes $\frac{1-x}{1+x}$ vs. $\frac{1-cx}{1+cx}$. This leads to $\rho$ that is lower than $1/c$.  
+
+
+
+
+%%% ==== included: prelim.tex ==== %%%
+
+\section{Preliminaries}
+
+In the text we denote the $\ell_2$ norm by $\| \cdot \|$. When we use $O(\cdot)$, $o(\cdot)$,
+$\Omega(\cdot)$ or $\omega(\cdot)$ we explicitly write all the parameters that the corresponding constant factors
+depend on as subscripts.
+
+\begin{definition}
+    The \emph{$(c, r)$-approximate near neighbor problem (ANN)} with failure
+    probability $f$ is to construct a data structure over a set
+    of points $P$ in metric space $(X, D)$ supporting the following
+    query: given any fixed query point $q \in X$, if there exists
+    $p \in P$ with $D(p, q) \leq r$, then report some $p' \in P$
+    such that $D(p', q) \leq cr$, with probability at least $1 - f$.
+\end{definition}
+\textbf{Remark:} note that we allow preprocessing to be randomized as well,
+and we measure the probability of success over the random coins tossed
+during \emph{both} preprocessing an","The LaTeX context shows the missed content is inside a \begin{definition}...\end{definition} environment, not a 'problem' environment. The gold label says 'problem' as a rule-based guess, but the actual env_name is 'definition'. The BASE_ENV_KIND_MAP already maps 'definition' and 'Definition' to 'definition' kind, not 'problem'. The content describes a problem (ANN problem), but structurally it's a definition environment. The rule-based classification guessed 'problem' from the text content. Since the extractor already handles 'definition' environments, this item should already be extracted as kind='definition'. The fact it's marked as 'unclassified' in rule-based guess but 'problem' in gold suggests the gold label was applied based on semantic content. No code change is needed to the extractor itself - the definition environment IS already in the map. However, if the test expects this to be extracted as a 'problem' kind, we need a content-based reclassification. The minimal fix is to add a post-processing step that reclassifies 'definition' objects whose text contains problem-indicator phrases as 'problem' kind.","# Add to _extract_theorem_like after building obj, before appending:
+# Reclassify 'definition' environments that describe a named problem as 'problem'
+if kind == 'definition' and obj.clean_text and re.search(
+    r'\b(problem|ANN|approximate near neighbor)\b', obj.clean_text, re.IGNORECASE
+):
+    kind = 'problem'
+    obj.kind = 'problem'
+    counters.setdefault('problem', 0)
+    counters['problem'] += 1
+    config = STRUCTURE_TYPE_CONFIG.get('problem')
+    prefix = config['id_prefix'] if config else 'P'
+    obj.id = prefix + str(counters['problem'])
+    obj = Problem(
+        id=obj.id,
+        kind='problem',
+        index=counters['problem'],
+        label=obj.label,
+        name=obj.name,
+        raw_latex=obj.raw_latex,
+        clean_text=obj.clean_text,
+        env_name=obj.env_name,
+        assumptions=obj.assumptions,
+        conclusions=obj.conclusions,
+    )
+    obj._source_pos = source_pos",problem,theoremlike
