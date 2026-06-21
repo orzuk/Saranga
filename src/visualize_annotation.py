@@ -25,6 +25,13 @@ from matplotlib.patches import FancyBboxPatch
 import networkx as nx
 
 
+# Edges with confidence below this are drawn faded (e.g. low-confidence
+# term_reuse links at 0.3). Overridable via --min-confidence on the CLI.
+LOW_CONF_THRESHOLD = 0.5
+# When True, low-confidence edges are dropped entirely instead of faded
+# (set by --hide-low-confidence).
+HIDE_LOW_CONF = False
+
 # ── Colors ──────────────────────────────────────────────────────────────────
 NODE_COLORS = {
     "definition":  {"header": "#27AE60", "body": "#D5F5E3"},
@@ -946,20 +953,27 @@ def merge_proofs(nodes, edges):
             node_by_id[thm_id]["proof_step_count"] = total
 
     # Redirect edges: replace proof_id with its theorem_id
-    display_edges = []
-    seen = set()
+    display_map = {}
+    order = []
     for e in edges:
         s = proof_map.get(e["source"], e["source"])
         t = proof_map.get(e["target"], e["target"])
         if s == t:
             continue  # skip self-loops from merging
         key = (s, t)
-        if key not in seen:
-            display_edges.append({"source": s, "target": t,
-                                  "type": e.get("type", ""),
-                                  "note": e.get("note", "")})
-            seen.add(key)
+        conf = e.get("confidence", 1.0)
+        if key not in display_map:
+            display_map[key] = {"source": s, "target": t,
+                                "type": e.get("type", ""),
+                                "note": e.get("note", ""),
+                                "confidence": conf}
+            order.append(key)
+        elif conf > display_map[key].get("confidence", 1.0):
+            # keep the strongest evidence when several edges merge to (s, t)
+            display_map[key]["confidence"] = conf
+            display_map[key]["type"] = e.get("type", "")
 
+    display_edges = [display_map[k] for k in order]
     return display_nodes, display_edges, proof_map
 
 
@@ -1325,6 +1339,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         nodes = [n for n in nodes if n.get("type") not in hidden_types]
         edges = [e for e in edges
                  if e["source"] not in hidden_ids and e["target"] not in hidden_ids]
+    if HIDE_LOW_CONF:
+        edges = [e for e in edges if float(e.get("confidence", 1.0) or 1.0) >= LOW_CONF_THRESHOLD]
     depth = compute_dag_depth(nodes, edges)
 
     # Group by depth level
@@ -1637,15 +1653,26 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         # Port #7: `resolves` edges (v2 schema) — dashed line and distinct color.
         _etype = (e.get("type") or e.get("relation") or "").lower()
         _is_resolves = (_etype == "resolves")
+        # Low-confidence edges (e.g. term_reuse, confidence 0.3) are drawn faded
+        # so the high-confidence skeleton (proves/ref/structural) stands out.
+        _conf = e.get("confidence", 1.0)
+        try:
+            _conf = float(_conf)
+        except (TypeError, ValueError):
+            _conf = 1.0
+        _low_conf = _conf < LOW_CONF_THRESHOLD
         _arrow_kwargs = dict(
             arrowstyle="-|>,head_length=1.2,head_width=0.6",
-            color="#1976D2" if _is_resolves else "#333333",
-            lw=2.5,
+            color="#1976D2" if _is_resolves else ("#C0C0C0" if _low_conf else "#333333"),
+            lw=1.0 if _low_conf else 2.5,
+            alpha=0.4 if _low_conf else 1.0,
             connectionstyle="arc3,rad=0.08" if abs(x0 - x1) > 0.5 else "arc3,rad=0",
             shrinkA=3, shrinkB=3,
         )
         if _is_resolves:
             _arrow_kwargs["linestyle"] = "--"
+        elif _low_conf:
+            _arrow_kwargs["linestyle"] = (0, (1, 2))  # dotted
         ann = ax.annotate(
             "", xy=(x1, y1), xytext=(x0, y0),
             arrowprops=_arrow_kwargs,
@@ -2029,7 +2056,8 @@ def _classify_and_merge(nodes, edges):
             continue
         key = (s, t)
         if key not in seen:
-            base_edges.append({"source": s, "target": t})
+            base_edges.append({"source": s, "target": t,
+                               "confidence": e.get("confidence", 1.0)})
             seen.add(key)
 
     step_chains = {}
@@ -2131,11 +2159,18 @@ def generate_interactive_html(data, svg_path, html_path):
     def _safe_eid(s):
         return str(s).replace(" ", "_")
     node_to_edges = {}
+    low_conf_edge_gids = []
     for e in base_edges:
         s, t = e["source"], e["target"]
         gid = f"edge_{_safe_eid(s)}__to__{_safe_eid(t)}"
         node_to_edges.setdefault(s, []).append(gid)
         node_to_edges.setdefault(t, []).append(gid)
+        try:
+            if float(e.get("confidence", 1.0) or 1.0) < LOW_CONF_THRESHOLD:
+                low_conf_edge_gids.append(gid)
+        except (TypeError, ValueError):
+            pass
+    low_conf_edge_gids = sorted(set(low_conf_edge_gids))
 
     # Foundation graph linking (shared computation with draw_dag)
     base_ids = {n["id"] for n in base_nodes}
@@ -2373,6 +2408,7 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
     <button class="toggle-btn" id="ghost-btn" onclick="toggleGhosts()"{(' disabled' if not n_ghost_total else '')}>Foundations ({n_ghost_total})</button>
     <button class="toggle-btn" id="aux-btn" data-showing="1" onclick="toggleAux()"{(' disabled' if not aux_node_ids else '')}>Examples &amp; Remarks ({len(aux_node_ids)})</button>
     <button class="toggle-btn" id="ext-btn" onclick="toggleExternal()"{(' disabled' if not ext_node_ids else '')}>Cited Results ({len(ext_node_ids)})</button>
+    <button class="toggle-btn" id="lowconf-btn" data-showing="1" onclick="toggleLowConf()"{(' disabled' if not low_conf_edge_gids else '')}>Low-confidence edges ({len(low_conf_edge_gids)})</button>
   </div>
 </div>
 <div id="main">
@@ -2389,6 +2425,7 @@ var CASE1 = {case1_json};
 // Port #4: aux (example/remark) and ext (external-origin) node id lists.
 var AUX_NODE_IDS = {_json.dumps(aux_node_ids, ensure_ascii=True)};
 var EXT_NODE_IDS = {_json.dumps(ext_node_ids, ensure_ascii=True)};
+var LOW_CONF_EDGE_GIDS = {_json.dumps(low_conf_edge_gids, ensure_ascii=True)};
 // Port #1: has-proof targets (theorem-like with non-empty proof_info).
 var HAS_PROOF_NODE_IDS = {_json.dumps(_has_proof_node_ids, ensure_ascii=True)};
 // Port #1: foundation ghost-element index lists split by source.
@@ -2666,6 +2703,21 @@ function toggleAux() {{
   _setNodeVisibility(AUX_NODE_IDS, nextShowing, "node-aux-shown");
 }}
 
+// Low-confidence edges (e.g. term_reuse, confidence 0.3) — already drawn faded;
+// this toggle hides/shows them entirely to reveal the high-confidence skeleton.
+function toggleLowConf() {{
+  var btn = document.getElementById("lowconf-btn");
+  if (btn.disabled) return;
+  var nextShowing = !(btn.dataset.showing === "1");
+  btn.dataset.showing = nextShowing ? "1" : "0";
+  var svgEl = document.querySelector("#svg-container svg");
+  if (!svgEl) return;
+  LOW_CONF_EDGE_GIDS.forEach(function(gid) {{
+    var el = svgEl.querySelector('[id="' + gid + '"]');
+    if (el) el.style.display = nextShowing ? "" : "none";
+  }});
+}}
+
 // Cited Results (External) toggle — also applies dashed border when shown,
 // matching HEAD's visual differentiation of external nodes.
 function toggleExternal() {{
@@ -2771,6 +2823,7 @@ def resolve_paths(args_list):
 
 
 def main():
+    global LOW_CONF_THRESHOLD
     import argparse
     parser = argparse.ArgumentParser(
         description="Visualize knowledge graph annotation(s) as DAG images.",
@@ -2791,7 +2844,16 @@ def main():
                         help="Also generate interactive HTML for each file")
     parser.add_argument("--html-only", action="store_true",
                         help="Generate only interactive HTML (no PNG)")
+    parser.add_argument("--min-confidence", type=float, default=LOW_CONF_THRESHOLD,
+                        help=f"Edges below this confidence are faded (default {LOW_CONF_THRESHOLD}).")
+    parser.add_argument("--hide-low-confidence", action="store_true",
+                        help="Drop edges below --min-confidence entirely instead of fading them.")
     args = parser.parse_args()
+
+    LOW_CONF_THRESHOLD = args.min_confidence
+    if args.hide_low_confidence:
+        # signal draw_dag to filter rather than fade
+        globals()["HIDE_LOW_CONF"] = True
 
     files = resolve_paths(args.input)
     if not files:

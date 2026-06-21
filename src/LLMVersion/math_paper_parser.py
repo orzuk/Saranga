@@ -2632,6 +2632,92 @@ Respond ONLY with JSON array."""
                 uses_ref_count += 1
 
         # ------------------------------------------------------------------
+        # 4. Low-confidence 'uses' edges via TERM REUSE.
+        #
+        #    A node that introduces a distinctive named term -- a definition
+        #    (definiendum), or a *named* theorem-like result / assumption -- is
+        #    linked to any other node whose text reuses that term verbatim
+        #    (term-provider -> user). Restores + generalizes the keyword-overlap
+        #    heuristic removed in bf1f6ef, tightened to whole-term matches.
+        #    This is the dominant *recoverable* cause of Opus edges
+        #    (definition->result, definition->definition, assumption->result,
+        #    result->result for named results). Edges tagged confidence=0.3 so
+        #    downstream consumers (viz / eval) can filter them. The residual
+        #    result->result edges with no textual trace are genuinely semantic
+        #    (LLM-only) and are intentionally NOT produced here.
+        # ------------------------------------------------------------------
+
+        _STOP = {
+            "the", "a", "an", "and", "or", "of", "in", "for", "to", "is",
+            "are", "be", "we", "this", "that", "such", "by", "with", "let",
+            "denote", "define", "definition", "where", "then", "from", "given",
+        }
+        # LaTeX / math artifacts and generic words too common to identify a
+        # specific concept (would over-match as a lone token).
+        _GENERIC = {
+            "infty", "mathcal", "mathbb", "mathbf", "function", "vector",
+            "matrix", "value", "values", "number", "point", "points", "space",
+            "variable", "variables", "problem", "result", "results", "case",
+            "set", "sets", "element", "elements", "property", "properties",
+            "theorem", "lemma", "proof", "proposition", "corollary",
+        }
+
+        def _term_tokens(obj) -> list:
+            # definitions carry the defined term in `definiendum`; results /
+            # assumptions carry their optional name in `name`.
+            if getattr(obj, "kind", None) == "definition":
+                term = getattr(obj, "definiendum", None) or getattr(obj, "name", None) or ""
+            else:
+                term = getattr(obj, "name", None) or ""
+            toks = [w for w in re.findall(r"[a-zA-Z]+", term.lower())
+                    if len(w) >= 4 and w not in _STOP and w not in _GENERIC]
+            # Distinctive term only: a multi-word phrase, or one long token
+            # (e.g. "laplacian"). Lone short/generic tokens are dropped.
+            if len(toks) == 1 and len(toks[0]) < 8:
+                return []
+            return toks
+
+        term_source_kinds = {"definition", "assumption"} | self.THEOREM_LIKE_KINDS
+        term_target_kinds = (
+            {"definition", "proof", "algorithm", "assumption", "remark", "example"}
+            | self.THEOREM_LIKE_KINDS
+        )
+        sources = [
+            (obj.id, toks) for obj in graph.objects.values()
+            if obj.kind in term_source_kinds and (toks := _term_tokens(obj))
+        ]
+        uses_term_count = 0
+        if sources:
+            for user in graph.objects.values():
+                if user.kind not in term_target_kinds:
+                    continue
+                txt = (getattr(user, "clean_text", "")
+                       or getattr(user, "raw_latex", "") or "").lower()
+                if not txt:
+                    continue
+                user_parent = getattr(user, "parent_id", None)
+                for src_id, toks in sources:
+                    if src_id == user.id or user_parent == src_id:
+                        # skip self and a result's own proof (already 'proves')
+                        continue
+                    if not all(re.search(r"\b" + re.escape(t) + r"\b", txt) for t in toks):
+                        continue
+                    key = (src_id, user.id, "uses")
+                    if key in existing:
+                        continue
+                    graph.add_uses(
+                        user_id=user.id,
+                        used_id=src_id,
+                        metadata={
+                            "source": "term_reuse",
+                            "confidence": 0.3,
+                            "term": " ".join(toks),
+                        },
+                    )
+                    existing.add(key)
+                    uses_term_count += 1
+
+        # ------------------------------------------------------------------
         # 3b. Break length-2 cycles in 'uses' edges.
         #     If A→B and B→A both exist, keep only the edge where the source
         #     appears earlier in the document (insertion order of graph.objects).
@@ -2728,7 +2814,7 @@ Respond ONLY with JSON array."""
                 print(f"[INFO] _build_relations: broke {cycle_removed} back-edges to enforce DAG.")
 
         structural_total = proves_count + solves_count + illustrates_count + tests_count
-        if structural_total or equation_edge_count or uses_ref_count:
+        if structural_total or equation_edge_count or uses_ref_count or uses_term_count:
             print(
                 "[INFO] _build_relations: "
                 f"added {proves_count} 'proves', "
@@ -2736,5 +2822,6 @@ Respond ONLY with JSON array."""
                 f"{illustrates_count} 'illustrates', "
                 f"{tests_count} 'tests' edges, "
                 f"{equation_edge_count} 'uses' (equation), "
-                f"{uses_ref_count} 'uses' (ref)."
+                f"{uses_ref_count} 'uses' (ref), "
+                f"{uses_term_count} 'uses' (term_reuse)."
             )
