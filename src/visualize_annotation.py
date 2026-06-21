@@ -298,6 +298,21 @@ def _fallback_unknown_commands(text):
         return r'\mathrm{' + cmd + '}'
     return _re.sub(r'\\([A-Za-z]+)', replace, text)
 
+def _statement_render_source(n):
+    """Pick the best statement text for MathJax rendering in the side panel.
+
+    statement / statement_clean are de-TeX'd for matching ($ delimiters and
+    command backslashes stripped) so they won't render. Prefer raw_latex when
+    it still carries TeX (a $ or a backslash command); strip stray \\label{...}
+    and collapse whitespace. Falls back to statement otherwise.
+    """
+    raw = (n.get("raw_latex") or "").strip()
+    stmt = n.get("statement") or ""
+    src = raw if _re.search(r'[$\\]', raw) else stmt
+    src = _re.sub(r'\\label\s*\{[^}]*\}', '', src)
+    src = _re.sub(r'\s+', ' ', src).strip()
+    return src
+
 def _sanitize_math(text):
     """Replace unsupported LaTeX commands with matplotlib-compatible equivalents.
 
@@ -2211,6 +2226,11 @@ def generate_interactive_html(data, svg_path, html_path):
             "type": n.get("type", ""),
             "section": n.get("section", ""),
             "statement": n.get("statement", ""),
+            # TeX-faithful render source for the Statement panel. statement/
+            # statement_clean are de-TeX'd for matching ($ and command backslashes
+            # stripped) and won't MathJax-render, so prefer raw_latex when it
+            # carries TeX. Computed here to avoid JS-regex-in-f-string escaping.
+            "statement_render": _statement_render_source(n),
             # Port #4: plain-text summary (HEAD's "Plain-Text Summary" panel).
             "statement_clean": n.get("statement_clean", ""),
             # Port #1/#2: external-cited badge in side panel.
@@ -2331,6 +2351,9 @@ def generate_interactive_html(data, svg_path, html_path):
         "T":      r"\top",
         "defeq":  r"\stackrel{\mathrm{def}}{=}",
         "eqdef":  r"\stackrel{\mathrm{def}}{=}",
+        # mathdots-package macro that MathJax doesn't define natively
+        # (\vdots and \ddots are already built in).
+        "hdots":  r"\ldots",
         "bx": r"\mathbf{x}", "by": r"\mathbf{y}", "bz": r"\mathbf{z}",
         "bw": r"\mathbf{w}", "bu": r"\mathbf{u}", "bv": r"\mathbf{v}",
         "bA": r"\mathbf{A}", "bB": r"\mathbf{B}", "bX": r"\mathbf{X}",
@@ -2489,9 +2512,12 @@ function showDetail(nodeId) {{
   var eqTag = function(e) {{ return '<span style="color:#2471A3;font-size:11px;"> (' + e.id + ')</span>'; }};
   var eqBlock = function(e) {{ return '<div style="margin:2px 0 2px 12px;padding:3px 8px;background:#EBF5FB;border-left:2px solid #5DADE2;font-size:12px;">' + esc(e.id) + ': ' + esc(e.statement) + '</div>'; }};
 
-  // Statement + inline statement equations
-  if (d.statement) {{
-    h += '<div class="detail-section"><h4>Statement</h4><div style="font-size:14px;">' + esc(d.statement) + '</div>';
+  // Statement + inline statement equations.
+  // Prefer raw_latex (TeX intact -> MathJax can typeset). statement/statement_clean
+  // are de-TeX'd for matching ($ and command backslashes stripped) and won't render.
+  var stmtSrc = d.statement_render || d.statement || '';
+  if (stmtSrc) {{
+    h += '<div class="detail-section"><h4>Statement</h4><div style="font-size:14px;">' + esc(stmtSrc) + '</div>';
     eqsByCtx.statement.forEach(function(e) {{ h += eqBlock(e); }});
     h += '</div>';
   }}
