@@ -116,6 +116,11 @@ FNAME_MAP = {
     "claim":       "Gold_Standard_Claims.csv",
     "conjecture":  "Gold_Standard_Conjectures.csv",
     "problem":     "Gold_Standard_Problems.csv",
+    "remark":      "Gold_Standard_Remarks.csv",
+    "algorithm":   "Gold_Standard_Algorithms.csv",
+    "example":     "Gold_Standard_Examples.csv",
+    "assumption":  "Gold_Standard_Assumptions.csv",
+    "open_problem":"Gold_Standard_OpenProblems.csv",
 }
 
 

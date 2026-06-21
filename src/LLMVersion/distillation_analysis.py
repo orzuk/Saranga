@@ -412,6 +412,10 @@ STRUCTURE_EXTRACT_METHODS = {
     "proof": "_extract_proofs",
     "algorithm": "_extract_algorithms",
     "table": "_extract_tables",
+    "open_problem": "_extract_theorem_like",
+    "remark": "_extract_simple_envs",
+    "example": "_extract_simple_envs",
+    "assumption": "_extract_simple_envs",
 }
 
 
@@ -1139,6 +1143,7 @@ _METHOD_GROUP_KEY = {
     "_extract_proofs": "proof",
     "_extract_algorithms": "algorithm",
     "_extract_tables": "table",
+    "_extract_simple_envs": "simpleenv",
 }
 
 
@@ -1280,7 +1285,20 @@ def analyze_patterns_batched(items: List[dict], tex_dir: str = None,
         parts = [
             f"Below are {len(batch)} {group_key} structures the base method FAILED "
             f"to extract but SHOULD have. For EACH, give the MINIMAL Python addition "
-            f"(a new regex / env name / branch) needed to catch it.\n"
+            f"(a new regex / env name / branch) needed to catch it.\n\n"
+            "## GENERALIZATION REQUIREMENT (critical)\n"
+            "Each item is ONE EXAMPLE of a recurring structural pattern, NOT a "
+            "target to memorize. Your regex MUST generalize to ANY math paper:\n"
+            "- Do NOT copy author names, paper-specific terminology, theorem "
+            "names, equation/section labels, specific variable names, or custom "
+            "macro names from the example (e.g. no 'Marchenko', 'Sinkhorn', "
+            "'\\defeq', '(P_k)').\n"
+            "- Anchor on STRUCTURE, not content: environment names, "
+            "\\begin/\\end, \\textbf/\\emph/\\textit markers, sectioning, "
+            "leading keywords ('Definition', 'Algorithm', etc.).\n"
+            "- Prefer a small, bounded pattern. If catching the example would "
+            "require hardcoding instance-specific text, say so in `reasoning` "
+            "and propose the closest GENERAL rule instead (or none).\n"
         ]
         for k, (item, context, pattern_type) in enumerate(batch):
             gtype = item.get('structure_type', group_key)
@@ -1383,10 +1401,12 @@ def aggregate_rules_merged(input_csv: str, group_key: str,
                        f"Reasoning: {rule['reasoning']}\nCode:\n{rule['suggested_code']}\n")
     gold_tests_text = ""
     for i, rule in enumerate(rules, 1):
-        gold_tests_text += (f"\n--- Test case {i} (paper {rule['paper_id']}, "
+        gold_tests_text += (f"\n--- Example {i} (paper {rule['paper_id']}, "
                             f"type {rule['structure_type']}) ---\n")
         if rule['gold_text']:
-            gold_tests_text += f"GOLD TEXT (must be matched):\n{rule['gold_text']}\n"
+            gold_tests_text += ("EXAMPLE INSTANCE (representative of the class — "
+                                "do NOT hardcode its literal tokens):\n"
+                                f"{rule['gold_text']}\n")
         if rule['latex_context']:
             gold_tests_text += f"SURROUNDING LATEX CONTEXT:\n{rule['latex_context'][:1500]}\n"
 
@@ -1414,7 +1434,10 @@ def aggregate_rules_merged(input_csv: str, group_key: str,
 Below are {len(rules)} individual rule suggestions for extracting "{group_key}" structures from LaTeX source. Aggregate them into a SINGLE, clean, self-contained Python file that runs IN ADDITION to the base parser shown in the system context. Do NOT duplicate what the base method already catches — only fill the gaps.
 
 {subtype_block}
-## GOLD TEST CASES — your patterns MUST match these
+## EXAMPLE INSTANCES (representative of the pattern class — NOT literal targets)
+These show the KINDS of structures to catch. Write rules that capture the
+general class; it is acceptable to NOT match an example if matching it would
+require hardcoding instance-specific content.
 {gold_tests_text}
 
 ## Individual rule suggestions (for reference)
@@ -1423,6 +1446,7 @@ Below are {len(rules)} individual rule suggestions for extracting "{group_key}" 
 ## Key challenges
 1. Multi-sentence statements with display math contain periods; use paragraph boundaries (`\\n\\n`), never `[^.]*\\.`.
 2. Precision: every FP is costly. Require a real anchor (env name or bold/emph marker) in the FIRST sentence. Skip matches inside proof/example/remark environments.
+3. GENERALIZATION (critical): patterns MUST work on ANY math paper, not just these examples. Do NOT hardcode author names, paper-specific terminology, theorem/section/equation labels, specific variable names, or custom macro names (e.g. no `Marchenko`, `Sinkhorn`, `\\defeq`, `(P_k)`, `\\ulesalgorithm`). Anchor on STRUCTURE (environment names, `\\begin`/`\\end`, `\\textbf`/`\\emph`, sectioning, leading keywords), never on content tokens. Reject any suggested rule above that only works by matching literal instance text.
 
 ## Output requirements
 1. Only `import re` and `from typing import List, Dict` at the top
@@ -1513,19 +1537,26 @@ def _code_paren_delta(line: str) -> int:
 
 
 def _comment_out_rule_block(lines: List[str], pattern_name: str,
-                            fp_papers: List[str], tp_count: int) -> List[str]:
+                            fp_papers: List[str], tp_count: int,
+                            reason: Optional[str] = None) -> List[str]:
     """Comment out a compiled pattern's definition and its usage block.
 
     Prefixes affected lines with ``# `` and inserts a ``PRUNED`` marker so the
     manual parser ignores them while keeping a record they once existed.
+
+    ``reason`` overrides the default FP-based marker text (used by the
+    time-guard, which prunes for slowness rather than false positives).
     """
     result: List[str] = []
     i = 0
-    fp_info = ', '.join(fp_papers[:3])
-    if len(fp_papers) > 3:
-        fp_info += f' +{len(fp_papers) - 3} more'
-    tp_note = f" | also {tp_count} TP — review before uncommenting" if tp_count else ""
-    marker = f"# PRUNED — FP on {fp_info}{tp_note}"
+    if reason is not None:
+        marker = f"# PRUNED — {reason}"
+    else:
+        fp_info = ', '.join(fp_papers[:3])
+        if len(fp_papers) > 3:
+            fp_info += f' +{len(fp_papers) - 3} more'
+        tp_note = f" | also {tp_count} TP — review before uncommenting" if tp_count else ""
+        marker = f"# PRUNED — FP on {fp_info}{tp_note}"
 
     while i < len(lines):
         line = lines[i]
@@ -1578,12 +1609,105 @@ def _comment_out_rule_block(lines: List[str], pattern_name: str,
     return result
 
 
+def prune_slow_rules(rules_path: str, paper_texts: Dict[str, str],
+                     max_rule_seconds: float = 10.0,
+                     hard_cap: Optional[float] = None) -> Dict[str, float]:
+    """Comment out compiled patterns with catastrophic-backtracking runtime.
+
+    Times each compiled ``_NAME`` pattern's ``findall`` over every paper text;
+    any whose *worst* per-paper time exceeds ``max_rule_seconds`` is commented
+    out (same mechanism as the FP prune). This catches overfit/pathological
+    LLM-generated regexes that match little or nothing yet cost seconds per
+    document — the FP gate never sees them because a zero-match rule is not a
+    false positive.
+
+    A SIGALRM hard cap (default ``max(2.0, 6*max_rule_seconds)``) bounds each
+    individual ``findall`` so a truly exponential pattern can't hang the guard
+    itself; if the cap trips the pattern is treated as infinitely slow. SIGALRM
+    is only armed on the main thread; off-thread it degrades to plain timing.
+
+    Returns ``{pattern_name: worst_seconds}`` for the patterns it pruned.
+    """
+    import importlib.util
+    import time as _time
+    import threading as _threading
+    import signal as _signal
+
+    spec = importlib.util.spec_from_file_location('distilled_slowguard', rules_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    # Collect every module-level compiled pattern. Unlike the FP-prune slow
+    # path, we do NOT require a leading underscore: LLM codegen names patterns
+    # inconsistently (``NAMED_OPT_ENV_RE`` vs ``_PROSE_STEP_RE``), and the worst
+    # backtrackers tend to be the un-underscored ones. Skip masking/exclusion
+    # patterns (``*EXCL*``) since commenting those out changes filtering logic.
+    patterns: Dict[str, re.Pattern] = {}
+    for name in dir(mod):
+        obj = getattr(mod, name)
+        if isinstance(obj, re.Pattern) and 'EXCL' not in name.upper():
+            patterns[name] = obj
+    if not patterns or not paper_texts:
+        return {}
+
+    hard_cap = hard_cap or max(2.0, max_rule_seconds * 6)
+    use_alarm = _threading.current_thread() is _threading.main_thread()
+
+    class _PatTimeout(Exception):
+        pass
+
+    def _on_alarm(signum, frame):
+        raise _PatTimeout()
+
+    old_handler = _signal.signal(_signal.SIGALRM, _on_alarm) if use_alarm else None
+    slow: Dict[str, float] = {}
+    try:
+        for name, pat in patterns.items():
+            worst = 0.0
+            for txt in paper_texts.values():
+                if use_alarm:
+                    _signal.setitimer(_signal.ITIMER_REAL, hard_cap)
+                t0 = _time.time()
+                try:
+                    pat.findall(txt)
+                except _PatTimeout:
+                    worst = float('inf')
+                    break
+                finally:
+                    if use_alarm:
+                        _signal.setitimer(_signal.ITIMER_REAL, 0)
+                worst = max(worst, _time.time() - t0)
+            if worst > max_rule_seconds:
+                slow[name] = worst
+    finally:
+        if use_alarm:
+            _signal.signal(_signal.SIGALRM, old_handler)
+
+    if not slow:
+        return {}
+
+    print(f"\nTime-guard (cap {max_rule_seconds:.2f}s/paper): pruning "
+          f"{len(slow)} slow pattern(s)")
+    with open(rules_path, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+    for name, secs in sorted(slow.items(), key=lambda kv: -kv[1]):
+        shown = "TIMEOUT" if secs == float('inf') else f"{secs:.2f}s"
+        print(f"  SLOW  {name}: {shown}")
+        lines = _comment_out_rule_block(
+            lines, name, [], 0,
+            reason=f"SLOW backtracking ({shown} > {max_rule_seconds:.2f}s/paper cap)")
+    with open(rules_path, 'w', encoding='utf-8') as f:
+        f.writelines(lines)
+    return slow
+
+
 def prune_rules(paper_ids: List[str], structure_type: str,
                 gold_csv: str, eval_dir: str,
                 threshold: float = 0.7,
                 require_fp_majority: bool = False,
                 max_fdr: Optional[float] = None,
-                tex_search_dirs: Optional[List[str]] = None) -> int:
+                tex_search_dirs: Optional[List[str]] = None,
+                max_rule_seconds: Optional[float] = 10.0) -> int:
     """Identify FP-causing distilled rules and comment them out.
 
     Calls the distilled extraction function *directly* (bypassing the full
@@ -1652,7 +1776,15 @@ def prune_rules(paper_ids: List[str], structure_type: str,
         with open(tex_path, 'r', encoding='utf-8', errors='replace') as f:
             text = f.read()
 
-        results = extract_fn(text)
+        # Defensive: LLM-generated extract_fn can raise on specific inputs
+        # (e.g. a buggy sort key). The parser path already swallows this; mirror
+        # it here so one bad codegen degrades the group instead of killing the
+        # whole run.
+        try:
+            results = extract_fn(text)
+        except Exception as e:
+            print(f"  [WARN] extract_fn raised on {paper_id}: {e} — skipping paper")
+            continue
         extracted_texts = [r.get('raw_latex', '') for r in results]
 
         # Gold items for this paper
@@ -1790,6 +1922,22 @@ def prune_rules(paper_ids: List[str], structure_type: str,
 
     print(f"\nPruned {pruned_count} rule(s) in {rules_path}")
     print("Commented-out rules preserved with '# PRUNED' markers.")
+
+    # 7. Time guard — prune catastrophic-backtracking patterns (slowness, not
+    #    FPs). A zero-match overfit regex never trips the FDR gate but can cost
+    #    seconds per document, so guard it here over the same paper set.
+    if max_rule_seconds is not None and max_rule_seconds > 0:
+        guard_texts: Dict[str, str] = {}
+        for paper_id in paper_ids:
+            found = (_find_local_tex(paper_id, search_dirs=tex_search_dirs)
+                     or _find_local_tex(re.sub(r'v\d+$', '', paper_id),
+                                        search_dirs=tex_search_dirs))
+            if found:
+                with open(found[0], 'r', encoding='utf-8', errors='replace') as f:
+                    guard_texts[paper_id] = f.read()
+        slow = prune_slow_rules(rules_path, guard_texts, max_rule_seconds)
+        pruned_count += len(slow)
+
     return pruned_count
 
 

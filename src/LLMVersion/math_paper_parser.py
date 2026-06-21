@@ -1246,9 +1246,16 @@ class PaperParser:
         # C1/C4 patterns ("we define...", "let X be...") inside these
         # are setup text, not standalone definitions.
         _mask_env_kinds = {"theorem", "lemma", "proposition", "corollary",
-                           "claim", "conjecture", "problem", "proof"}
+                           "claim", "conjecture", "problem", "proof",
+                           "algorithm"}
         _mask_env_names = [env for env, kind in self.env_kind_map.items()
                            if kind in _mask_env_kinds]
+        # (Fix-a2) Pseudocode / verbatim blocks: their "let X be ..." and
+        # "... is defined as ..." lines are code, not prose definitions.
+        for _pc in ("algorithm", "algorithmic", "algorithmics", "algorithm2e",
+                    "verbatim", "lstlisting", "minted"):
+            if _pc not in _mask_env_names:
+                _mask_env_names.append(_pc)
         if _mask_env_names:
             for _, _, body, _ in self._extract_envs(text, _mask_env_names):
                 if body:
@@ -1281,7 +1288,7 @@ class PaperParser:
         # C3: "We say/call X is/to be ..." - explicit definitional language
         inline_we_say_pattern = re.compile(
             r"(?P<full>"
-            r"(?:We\s+)?(?:say|call)\s+(?:that\s+)?"
+            r"(?:We\s+)?\b(?:say|call)\b\s+(?:that\s+)?"  # \b stops 'reCALL'
             r"(?P<name>[^.]{1,60}?)"
             r"\s+(?:is|to\s+be|are)\s+"
             r"(?:\\\[.*?\\\]|\$\$.*?\$\$|[^.])*\.)",
@@ -1370,11 +1377,17 @@ class PaperParser:
             # Look back from anchor for sentence boundary (period or start)
             start_search = max(0, anchor_m.start() - 80)
             prefix = inline_text[start_search:anchor_m.start()]
-            dot_pos = prefix.rfind(".")
-            if dot_pos >= 0:
-                name_start = start_search + dot_pos + 1
-            else:
-                name_start = start_search
+            # (Fix-e) Stop the name look-back at the nearest sentence end OR
+            # structural boundary, so the span never swallows preamble /
+            # section headers / list markers.
+            _cuts = [prefix.rfind(".")]
+            for _mk in ("\n\n", "\\section", "\\subsection", "\\maketitle",
+                        "\\begin", "\\end", "\\item", "\\State", "\\par", "}"):
+                _p = prefix.rfind(_mk)
+                if _p >= 0:
+                    _cuts.append(_p + len(_mk) - 1)
+            _best = max(_cuts)
+            name_start = start_search + (_best + 1 if _best >= 0 else 0)
             name_text = inline_text[name_start:anchor_m.start()].strip()
             if not name_text or len(name_text) > 80:
                 continue
@@ -1435,7 +1448,7 @@ class PaperParser:
         deduped: List[Definition] = []
         seen_texts: List[str] = []
         for obj in objects:
-            ct = (obj.clean_text or "").strip().lower()
+            ct = re.sub(r"\s+", " ", (obj.clean_text or "").strip().lower())
             if not ct:
                 deduped.append(obj)
                 continue

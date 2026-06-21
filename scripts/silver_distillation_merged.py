@@ -810,7 +810,8 @@ def run(args):
                 paper_ids=papers_so_far, structure_type=gkey,
                 gold_csv=str(group_gold), eval_dir=str(groups_dir / gkey),
                 threshold=threshold, max_fdr=args.prune_alpha,
-                tex_search_dirs=tex_search_dirs)
+                tex_search_dirs=tex_search_dirs,
+                max_rule_seconds=args.max_rule_seconds)
             if n_pruned:
                 print(f"      pruned {n_pruned} rule(s)")
             # Defense-in-depth: prune output is unguarded codegen too — a
@@ -914,6 +915,70 @@ def run(args):
     print(f"\n  Combined importer: {eval_dir}/distilled_rules.py")
     print(f"  Per-group rules:   {groups_dir}/<group>/distilled_rules.py")
 
+    # ---- Finalize: auto-generate eval + report + chart + FP-judge ----
+    # Read-only consumers of the just-produced rules; each is guarded so a
+    # reporting failure never discards the (expensive) distillation result.
+    finalize_run(args, eval_dir)
+
+
+def finalize_run(args, eval_dir):
+    """Run the read-only post-distillation steps: final_eval (per-type F1 CSV),
+    LLM FP-judge (adjusted precision), consolidated REPORT.md, and the
+    per-type F1/FP chart. Controlled by --skip-finalize / --skip-fp-judge.
+    Every step is independently guarded.
+    """
+    import subprocess
+    repo = Path(__file__).resolve().parent.parent
+    eval_dir = Path(eval_dir)
+    mm = args.match_metric
+
+    if getattr(args, "skip_finalize", False):
+        print("\n[finalize] skipped (--skip-finalize)")
+        return
+
+    print(f"\n{'='*70}\nFINALIZE (read-only reports)\n{'='*70}")
+
+    # 1. final_eval.py -> final_eval.csv (subprocess: own argparse, no LLM)
+    try:
+        print("[finalize] final_eval ...")
+        subprocess.run(
+            [sys.executable, str(repo / "scripts" / "final_eval.py"),
+             "--eval-dir", str(eval_dir), "--tex-dir", str(args.tex_dir),
+             "--match-metric", mm],
+            check=True)
+    except Exception as e:
+        print(f"[finalize] final_eval failed: {e}")
+
+    # 2. fp_judge.py -> fp_judge.csv (subprocess: makes LLM calls)
+    if not getattr(args, "skip_fp_judge", False):
+        try:
+            print("[finalize] fp_judge (LLM-as-judge) ...")
+            subprocess.run(
+                [sys.executable, str(repo / "scripts" / "fp_judge.py"),
+                 "--eval-dir", str(eval_dir), "--tex-dir", str(args.tex_dir),
+                 "--match-metric", mm, "--model", args.model],
+                check=True)
+        except Exception as e:
+            print(f"[finalize] fp_judge failed: {e}")
+    else:
+        print("[finalize] fp_judge skipped (--skip-fp-judge)")
+
+    # 3. consolidated REPORT.md (reads final_eval.csv + fp_judge.csv)
+    try:
+        print("[finalize] REPORT.md ...")
+        from make_distill_report import build_report
+        print(f"           wrote {build_report(eval_dir)}")
+    except Exception as e:
+        print(f"[finalize] report failed: {e}")
+
+    # 4. per_type_f1_fp.png chart
+    try:
+        print("[finalize] per_type_f1_fp.png ...")
+        from plot_type_f1_fp import build_chart
+        print(f"           wrote {build_chart(eval_dir, args.tex_dir, mm)}")
+    except Exception as e:
+        print(f"[finalize] chart failed: {e}")
+
 
 def main():
     p = argparse.ArgumentParser(description="Silver Standard MERGED Distillation")
@@ -933,10 +998,18 @@ def main():
                    help="Only include opus nodes whose `origin` matches (e.g. 'paper')")
     p.add_argument("--match-metric", default="jaccard",
                    choices=["jaccard", "containment"])
+    p.add_argument("--max-rule-seconds", type=float, default=10.0,
+                   help="Time-guard: prune any distilled pattern whose worst "
+                        "per-paper findall exceeds this many seconds "
+                        "(catastrophic backtracking). 0 disables.")
     p.add_argument("--prune-alpha", type=float, default=0.5,
                    help="Per-rule FDR tolerance: prune when FP/(FP+TP) > alpha")
     p.add_argument("--resume", action="store_true",
                    help="Continue a prior run in --eval-dir (per-paper invocation)")
+    p.add_argument("--skip-finalize", action="store_true",
+                   help="Skip the post-run reports (final_eval + judge + report + chart)")
+    p.add_argument("--skip-fp-judge", action="store_true",
+                   help="Skip only the LLM FP-judge step (keeps final_eval/report/chart)")
     args = p.parse_args()
     run(args)
 
