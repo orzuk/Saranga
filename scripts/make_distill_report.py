@@ -16,6 +16,71 @@ from collections import Counter
 from pathlib import Path
 
 
+def _prf(tp, fp, fn):
+    p = tp / (tp + fp) if (tp + fp) else 0.0
+    r = tp / (tp + fn) if (tp + fn) else 0.0
+    f = 2 * p * r / (p + r) if (p + r) else 0.0
+    return p, r, f
+
+
+def pooled_stages(eval_dir, log):
+    """Pooled (node-level) TP/FP/FN + P/R/F1 for the three stages that matter:
+    base (no distilled rules), post-distillation (final rule set), and
+    post-LLM-judge (spurious FPs the judge ruled were silver under-labeling are
+    removed; recall is unchanged because the judge only inspects FPs).
+
+    Sources: base + post from pooled_stages.json (clean step_00 vs final rule
+    set, written by final_eval.py — exact integer counts, not contaminated by
+    prior rules as iteration_log baselines are on a resume); judge from
+    fp_judge.csv (GENUINE = rescued FP). Returns list of (label, tp, fp, fn).
+    """
+    btp = bfp = bfn = 0
+    ptp = pfp = pfn = None
+
+    pj = eval_dir / "pooled_stages.json"
+    if pj.exists():
+        ps = json.load(open(pj, encoding="utf-8"))
+        b, p = ps["base"], ps["final"]
+        btp, bfp, bfn = b["tp"], b["fp"], b["fn"]
+        ptp, pfp, pfn = p["tp"], p["fp"], p["fn"]
+    else:
+        # Fallback (older runs without pooled_stages.json): iteration_log
+        # baseline + final_eval.csv f1-inversion. NOTE: base is contaminated on
+        # resume runs — rerun scripts/final_eval.py to get the clean headline.
+        for e in log:
+            for d in e.get("per_type", {}).values():
+                bb = d.get("baseline", {})
+                btp += bb.get("tp", 0); bfp += bb.get("fp", 0); bfn += bb.get("fn", 0)
+        fe = eval_dir / "final_eval.csv"
+        if fe.exists():
+            rows = list(csv.DictReader(open(fe, encoding="utf-8")))
+            types = [c[len("final_f1_"):] for c in (rows[0] if rows else {})
+                     if c.startswith("final_f1_")]
+            ptp = 0; pfp = 0; total_gold = 0
+            for r in rows:
+                for t in types:
+                    f1 = float(r[f"final_f1_{t}"]); gold = int(r[f"final_gold_{t}"])
+                    fp = int(r[f"final_fp_{t}"])
+                    total_gold += gold; pfp += fp
+                    ptp += round(f1 * (fp + gold) / (2 - f1)) if f1 > 0 else 0
+            pfn = total_gold - ptp
+
+    # --- judge: remove rescued (GENUINE) FPs; TP/FN unchanged ---
+    jtp = jfp = jfn = None
+    fj = eval_dir / "fp_judge.csv"
+    if fj.exists() and ptp is not None:
+        jr = list(csv.DictReader(open(fj, encoding="utf-8")))
+        rescued = sum(1 for x in jr if x.get("verdict") == "GENUINE")
+        jtp, jfp, jfn = ptp, max(pfp - rescued, 0), pfn
+
+    stages = [("Base (no distilled rules)", btp, bfp, bfn)]
+    if ptp is not None:
+        stages.append(("Post-distillation (final rules)", ptp, pfp, pfn))
+    if jtp is not None:
+        stages.append(("Post-LLM-judge (spurious FPs removed)", jtp, jfp, jfn))
+    return stages
+
+
 def build_report(eval_dir):
     eval_dir = Path(eval_dir)
     out = eval_dir / "REPORT.md"
@@ -27,6 +92,19 @@ def build_report(eval_dir):
     w("# Silver Merged Distillation — Results Report")
     w(f"\n_eval-dir: `{eval_dir}` · papers: {len(log)} · "
       f"generated read-only from existing artifacts_\n")
+
+    # ---- Headline: pooled (node-level) P/R/F1 across the three stages ----
+    w("## 0. Headline — pooled P/R/F1 (base → distillation → LLM-judge)\n")
+    w("_Pooled over every node in all papers (not a per-type macro), so it is "
+      "not deflated by sparse/absent types. The judge corrects precision only "
+      "(rescues FPs that were silver under-labeling); it cannot change recall._\n")
+    w("| stage | TP | FP | FN | precision | recall | F1 |")
+    w("|---|---|---|---|---|---|---|")
+    for label, tp, fp, fn in pooled_stages(eval_dir, log):
+        p, r, f = _prf(tp, fp, fn)
+        w(f"| {label} | {tp} | {fp} | {fn} | {p:.3f} | {r:.3f} | {f:.3f} |")
+    w("")
+
     tot_calls = sum(e.get("total_llm_calls", 0) for e in log)
     tot_cost = sum(e.get("total_cost_usd", 0) for e in log)
     w("## 1. Run summary\n")
@@ -35,18 +113,32 @@ def build_report(eval_dir):
       f"Avg ${tot_cost/len(log):.4f}/paper" if log else "- (no papers)")
     w("- LLM steps per group: 2 (analyze + aggregate); "
       "identify-dark-knowledge & prune are deterministic\n")
-    w("| paper | total FNs | new FNs | cum. rules | calls (a+agg) | cost | "
-      "F1 base | F1 post |")
-    w("|---|---|---|---|---|---|---|---|")
+    # FN gap per paper: with ZERO rules vs with the rules accumulated BEFORE this
+    # paper was distilled (both from final_eval.csv, same matcher). Shows
+    # dark-knowledge transfer — for later papers, prior rules already shrink the
+    # gap before we learn anything new (paper 1 has no prior rules, so equal).
+    # F1 base/post columns dropped: they were a macro over ALL types (absent
+    # counted 0), deflated and misleading — read §0 for the real P/R/F1.
+    fe_fn = {}
+    fe = eval_dir / "final_eval.csv"
+    if fe.exists():
+        for r in csv.DictReader(open(fe, encoding="utf-8")):
+            if "fn_base" in r and "fn_sofar" in r:
+                fe_fn[r["paper_id"]] = (r["fn_base"], r["fn_sofar"])
+    w("| paper | FN (no rules) | FN (rules so far) | cum. rules | calls (a+agg) | cost |")
+    w("|---|---|---|---|---|---|")
     for e in log:
-        w(f"| {e['paper_id']} | {e.get('total_fns','?')} | "
-          f"{e.get('new_fns_to_distill','?')} | {e.get('cumulative_rules','?')} | "
+        fnb, fns = fe_fn.get(e['paper_id'], (e.get('total_fns', '?'), e.get('total_fns', '?')))
+        w(f"| {e['paper_id']} | {fnb} | {fns} | {e.get('cumulative_rules','?')} | "
           f"{e.get('total_llm_calls','?')} "
           f"({e.get('analyze_llm_calls','?')}+{e.get('aggregate_llm_calls','?')}) | "
-          f"${e.get('total_cost_usd',0):.4f} | {e.get('baseline_f1',0):.3f} | "
-          f"{e.get('post_f1',0):.3f} |")
+          f"${e.get('total_cost_usd',0):.4f} |")
 
     w("\n## 2. Final per-type F1 (containment matching)\n")
+    w("_Per-paper diagnostic detail. `present` = macro over only the types that "
+      "appear in that paper; `all9` counts absent types as 0 (deflated — ignore "
+      "for quality). Use this table to spot which specific types are weak, not "
+      "for the headline number (that's §0)._\n")
     fe = eval_dir / "final_eval.csv"
     if fe.exists():
         rows = list(csv.DictReader(open(fe, encoding="utf-8")))

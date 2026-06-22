@@ -1,0 +1,792 @@
+paper_id,gold_index,gold_text,pattern_type,latex_context,llm_reasoning,llm_suggested_rule,structure_type,structure_group
+paper001,0,"${\bf Unnormalized spectral clustering}\\$ Input: Similarity matrix $S \in \R^{n \times n}$, number $k$ of clusters to con\-struct. $\bullet$ Construct a similarity graph by one of the ways described in Section $\ref{sec-graphs}$. Let $W$ be its weighted adjacency matrix. $\bullet$ Compute the unnormalized Laplacian $\Lun$. $\bullet$ ${\bf Compute the first $\boldsymbol k$ eigenvectors $\boldsymbol{u_1,\hdots,u_{k}}$ of $\boldsymbol{\Lun}$.}$ $\bullet$ Let $U \in \R^{n \times k}$ be the matrix containing the vectors $u_1,\hdots,u_k$ as columns. $\bullet$ For $i=1,\hdots,n$, let $y_i \in \R^{k}$ be the vector corresponding to the $i$-th row of $U$. $\bullet$ Cluster the points $(y_i)_{i=1,\hdots,n}$ in $\R^k$ with the $k$-means algorithm into clusters $C_1,\hdots,C_k$. Output: Clusters $A_1,\hdots,A_k$ with $A_i = \{j | \; y_j \in C_i\}$.",unclassified,"arity function which is symmetric and non-negative, and we denote the
+corresponding similarity matrix by $S = (s_{ij})_{i,j=1 \hdots n}$.
+
+\ulesalgorithm{Unnormalized spectral clustering}{
+Input: Similarity matrix $S \in \R^{n \times n}$, number $k$ of clusters to con\-struct. 
+\blobb{ Construct a similarity graph by one of the ways described in
+   Section \ref{sec-graphs}. Let $W$ be its weighted adjacency matrix. }
+\blobb{Compute the unnormalized Laplacian $\Lun$. }
+\blobb{{\bf Compute the first  $\boldsymbol k$ eigenvectors $\boldsymbol{u_1,\hdots,u_{k}}$ of $\boldsymbol{\Lun}$.} }
+\blobb{ Let $U \in \R^{n \times k}$ be the matrix containing the vectors $u_1,\hdots,u_k$ as
+columns. }
+\blobb{ For $i=1,\hdots,n$, let $y_i \in \R^{k}$ be the vector corresponding to the $i$-th
+row of $U$. }
+\blobb{ Cluster the points $(y_i)_{i=1,\hdots,n}$ in $\R^k$ with the $k$-means
+algorithm into clusters $C_1,\hdots,C_k$. }
+Output: Clusters $A_1,\hdots,A_k$ with $A_i = \{j | \; y_j \in
+C_i\}$. 
+}
+
+There are two different versions of normalized spectral clustering,
+depending which of the normalized graph Laplacians is used. We name
+both algorithms after two popular papers, for more references and
+history please see Section~\ref{sec-extensions}. 
+
+
+\ulesalgorithm{Normalized spectral clustering according to
+  \citeA{ShiMal00}}{%
+Input: Similarity matrix $S \in \R^{n \times n}$, number $k$ of clusters to con\-struct. 
+\blobb{ Construct a similarity graph by one of the ways described in
+   Section \ref{sec-graphs}. Let $W$ be its weighted adjacency matrix. }
+\blobb{Compute the unnormalized Laplacian $\Lun$. }
+\blobb{{\bf Compute the first $\boldsymbol k$  generalized eigenvectors $\boldsymbol{ u_1,\hdots,u_{k}}$ of the
+  generalized eigenproblem $\boldsymbol{\Lun u = \lambda D u}$. }}
+\blobb{ Let $U\in \R^{n \times k}$ be the matrix containing the vectors $u_1,\hdots,u_k$ as
+columns. }
+\blobb{ For $i=1,\hdots,n$, let $y_i \in \R^{k}$ be the vector corresponding to the $i$-th
+row of $U","All three missed algorithms are produced by a custom macro \ulesalgorithm{<title>}{<body>} (not a \begin/\end environment). The base extractor only looks for \begin{algorithm}...\end{algorithm}. We need a new regex branch that matches \ulesalgorithm{...}{...} where the body is a brace-delimited block. The macro name 'ulesalgorithm' is the structural anchor; the pattern generalises to any invocation of this macro anywhere in a paper. We match balanced outer braces for both the title and body arguments using a dedicated regex (simple non-nested brace content for title, and a recursive/greedy approach for body). Since Python's re does not support recursive patterns, we approximate body matching by allowing any content including nested braces up to a reasonable depth, or simply match up to the closing brace that corresponds to the opening — a common approximation is to allow [^{}]* plus one level of nesting.","def _extract_ulesalgorithm(self, text: str) -> List[Algorithm]:
+    """"""
+    Extract algorithms defined via the custom macro:
+        \\ulesalgorithm{<title>}{<body>}
+    This macro is NOT a \\begin/\\end environment, so _extract_envs misses it.
+    We generalise: match any \\<word>algorithm{title}{body} macro pattern.
+    """"""
+    # Match \<something>algorithm{title}{body} where body may contain nested braces (1 level deep).
+    # The macro name ends with 'algorithm' (case-insensitive) to stay general.
+    pattern = re.compile(
+        r'\\(?P<macro>[A-Za-z]*[Aa]lgorithm)'
+        r'\{(?P<title>[^{}]*)\}'          # title: no nested braces
+        r'\{(?P<body>(?:[^{}]|\{[^{}]*\})*)\}',  # body: one level of nesting allowed
+        re.DOTALL
+    )
+    objects: List[Algorithm] = []
+    idx = getattr(self, '_alg_counter', 0)  # continue numbering from existing
+    for m in pattern.finditer(text):
+        idx += 1
+        obj_id = f'A{idx}'
+        title = m.group('title').strip()
+        body = m.group('body')
+        label, _ = self._extract_label_and_name(body)
+        clean_text = self._clean_latex_to_text(body)
+        input_sig: Optional[str] = None
+        output_sig: Optional[str] = None
+        m_in = re.search(r'Input\s*:?\s*(.*?)(?=Output\s*:|$)', clean_text, re.IGNORECASE | re.DOTALL)
+        if m_in:
+            input_sig = m_in.group(1).strip() or None
+        m_out = re.search(r'Output\s*:?\s*(.*)', clean_text, re.IGNORECASE | re.DOTALL)
+        if m_out:
+            output_sig = m_out.group(1).strip() or None
+        alg = Algorithm(
+            id=obj_id,
+            kind='algorithm',
+            index=idx,
+            label=label,
+            name=title if title else None,
+            raw_latex=body,
+            clean_text=clean_text,
+            env_name=m.group('macro'),
+        )
+        alg._source_pos = m.start()
+        objects.append(alg)
+    self._alg_counter = idx
+    if objects:
+        print(f'[INFO] _extract_ulesalgorithm: found {len(objects)} \\<*>algorithm macro environments.')
+    return objects
+",algorithm,algorithm
+paper001,1,"${\bf Normalized spectral clustering according to \citeA{ShiMal00}}\\$ Input: Similarity matrix $S \in \R^{n \times n}$, number $k$ of clusters to con\-struct. $\bullet$ Construct a similarity graph by one of the ways described in Section $\ref{sec-graphs}$. Let $W$ be its weighted adjacency matrix. $\bullet$ Compute the unnormalized Laplacian $\Lun$. $\bullet$ ${\bf Compute the first $\boldsymbol k$ generalized eigenvectors $\boldsymbol{ u_1,\hdots,u_{k}}$ of the generalized eigenproblem $\boldsymbol{\Lun u = \lambda D u}$. }$ $\bullet$ Let $U\in \R^{n \times k}$ be the matrix containing the vectors $u_1,\hdots,u_k$ as columns. $\bullet$ For $i=1,\hdots,n$, let $y_i \in \R^{k}$ be the vector corresponding to the $i$-th row of $U$. $\bullet$ Cluster the points $(y_i)_{i=1,\hdots,n}$ in $\R^k$ with the $k$-means algorithm into clusters $C_1, \hdots, C_k$. Output: Clusters $A_1,\hdots,A_k$ with $A_i = \{j | \; y_j \in C_i\}$.",unclassified,"d non-negative, and we denote the
+corresponding similarity matrix by $S = (s_{ij})_{i,j=1 \hdots n}$.
+
+\ulesalgorithm{Unnormalized spectral clustering}{
+Input: Similarity matrix $S \in \R^{n \times n}$, number $k$ of clusters to con\-struct. 
+\blobb{ Construct a similarity graph by one of the ways described in
+   Section \ref{sec-graphs}. Let $W$ be its weighted adjacency matrix. }
+\blobb{Compute the unnormalized Laplacian $\Lun$. }
+\blobb{{\bf Compute the first  $\boldsymbol k$ eigenvectors $\boldsymbol{u_1,\hdots,u_{k}}$ of $\boldsymbol{\Lun}$.} }
+\blobb{ Let $U \in \R^{n \times k}$ be the matrix containing the vectors $u_1,\hdots,u_k$ as
+columns. }
+\blobb{ For $i=1,\hdots,n$, let $y_i \in \R^{k}$ be the vector corresponding to the $i$-th
+row of $U$. }
+\blobb{ Cluster the points $(y_i)_{i=1,\hdots,n}$ in $\R^k$ with the $k$-means
+algorithm into clusters $C_1,\hdots,C_k$. }
+Output: Clusters $A_1,\hdots,A_k$ with $A_i = \{j | \; y_j \in
+C_i\}$. 
+}
+
+There are two different versions of normalized spectral clustering,
+depending which of the normalized graph Laplacians is used. We name
+both algorithms after two popular papers, for more references and
+history please see Section~\ref{sec-extensions}. 
+
+
+\ulesalgorithm{Normalized spectral clustering according to
+  \citeA{ShiMal00}}{%
+Input: Similarity matrix $S \in \R^{n \times n}$, number $k$ of clusters to con\-struct. 
+\blobb{ Construct a similarity graph by one of the ways described in
+   Section \ref{sec-graphs}. Let $W$ be its weighted adjacency matrix. }
+\blobb{Compute the unnormalized Laplacian $\Lun$. }
+\blobb{{\bf Compute the first $\boldsymbol k$  generalized eigenvectors $\boldsymbol{ u_1,\hdots,u_{k}}$ of the
+  generalized eigenproblem $\boldsymbol{\Lun u = \lambda D u}$. }}
+\blobb{ Let $U\in \R^{n \times k}$ be the matrix containing the vectors $u_1,\hdots,u_k$ as
+columns. }
+\blobb{ For $i=1,\hdots,n$, let $y_i \in \R^{k}$ be the vector corresponding to the $i$-th
+row of $U$. }
+\blobb{ Cluster the points $(y_",Same structural pattern as Item 0: \ulesalgorithm{title}{body}. The _extract_ulesalgorithm method added for Item 0 will also catch this occurrence because it generalises to ALL invocations of macros ending in 'algorithm' with two brace-delimited arguments. No additional code is needed beyond what was added for Item 0.,"# No additional code required beyond the _extract_ulesalgorithm method introduced for Item 0.
+# That method's pattern r'\\(?P<macro>[A-Za-z]*[Aa]lgorithm)\{...\}\{...\}' already matches
+# every \ulesalgorithm{...}{...} call in the document, including this one.
+pass
+",algorithm,algorithm
+paper001,2,"${\bf Normalized spectral clustering according to \citeA{NgJorWei02}}\\$ Input: Similarity matrix $S \in \R^{n \times n}$, number $k$ of clusters to con\-struct. $\bullet$ Construct a similarity graph by one of the ways described in Section $\ref{sec-graphs}$. Let $W$ be its weighted adjacency matrix. $\bullet$ Compute the normalized Laplacian $\Lsym$. $\bullet$ ${\bf Compute the first $ \boldsymbol k$ eigenvectors $\boldsymbol{u_1,\hdots,u_{k}}$ of $\boldsymbol{\Lsym}$.}$ $\bullet$ Let $U\in \R^{n \times k}$ be the matrix containing the vectors $u_1,\hdots,u_k$ as columns. $\bullet$ ${\bf Form the matrix $T\in \R^{n \times k}$ from $U$ by normalizing the rows to norm 1}$, that is set $t_{ij} = u_{ij}/ (\sum_k u_{ik}^2)^{1/2}$. $\bullet$ For $i=1,\hdots,n$, let $y_i \in \R^{k}$ be the vector corresponding to the $i$-th row of $T$. $\bullet$ Cluster the points $(y_i)_{i=1,\hdots,n}$ with the $k$-means algorithm into clusters $C_1, \hdots, C_k$. Output: Clusters $A_1,\hdots,A_k$ with $A_i = \{j | \; y_j \in C_i\}$.",inline_definition,"rithm{Normalized spectral clustering according to
+  \citeA{ShiMal00}}{%
+Input: Similarity matrix $S \in \R^{n \times n}$, number $k$ of clusters to con\-struct. 
+\blobb{ Construct a similarity graph by one of the ways described in
+   Section \ref{sec-graphs}. Let $W$ be its weighted adjacency matrix. }
+\blobb{Compute the unnormalized Laplacian $\Lun$. }
+\blobb{{\bf Compute the first $\boldsymbol k$  generalized eigenvectors $\boldsymbol{ u_1,\hdots,u_{k}}$ of the
+  generalized eigenproblem $\boldsymbol{\Lun u = \lambda D u}$. }}
+\blobb{ Let $U\in \R^{n \times k}$ be the matrix containing the vectors $u_1,\hdots,u_k$ as
+columns. }
+\blobb{ For $i=1,\hdots,n$, let $y_i \in \R^{k}$ be the vector corresponding to the $i$-th
+row of $U$. }
+\blobb{ Cluster the points $(y_i)_{i=1,\hdots,n}$ in $\R^k$ with the $k$-means
+algorithm into clusters $C_1, \hdots, C_k$. }
+Output: Clusters $A_1,\hdots,A_k$ with $A_i = \{j | \; y_j \in
+C_i\}$. 
+}
+
+Note that this algorithm uses the generalized eigenvectors of $\Lun$,
+which according to Proposition \ref{prop-norm} correspond to the
+eigenvectors of the matrix $\Lrw$. So in fact, the
+algorithm works with eigenvectors of the normalized Laplacian $\Lrw$, and hence is called
+normalized spectral clustering. 
+%
+%
+The next algorithm also uses a normalized Laplacian, but this time the
+matrix $\Lsym$ instead of $\Lrw$. As we will see, this algorithm needs
+to introduce an additional row normalization step which is not needed
+in the other algorithms. The reasons will
+become clear in Section \ref{sec-perturbation}. \\
+
+
+
+
+\ulesalgorithm{Normalized spectral clustering according to
+  \citeA{NgJorWei02}}{%
+Input: Similarity matrix $S \in \R^{n \times n}$, number $k$ of clusters to con\-struct. 
+\blobb{ Construct a similarity graph by one of the ways described in
+   Section \ref{sec-graphs}. Let $W$ be its weighted adjacency matrix. }
+\blobb{Compute the normalized Laplacian $\Lsym$. }
+\blobb{{\bf Compute the first $ \boldsymbol k$  eigenvectors
+    $\bo",Same structural pattern as Items 0 and 1: \ulesalgorithm{title}{body}. The _extract_ulesalgorithm method introduced for Item 0 already handles this case in a generalised way. No further code is needed.,"# No additional code required beyond the _extract_ulesalgorithm method introduced for Item 0.
+# The general macro pattern r'\\(?P<macro>[A-Za-z]*[Aa]lgorithm)\{...\}\{...\}' catches
+# all three \ulesalgorithm invocations in the document.
+pass
+",algorithm,algorithm
+paper002,0,"\begin{enumerate} \item select $n$ (the size of the input signal) and $m$ so that with the same notations as before, $A$ is an $n$ by $m$ matrix; sample $A$ with independent Gaussian entries; \item select $S$ as a percentage of $m$; \item select a support set $T$ of size $|T|= S$ uniformly at random, and sample a vector $e$ on $T$ with independent and identically distributed Gaussian entries\footnote{Just as in \cite{RandomBP}, the results presented here do not seem to depend on the actual distribution used to sample the errors.}; \item make $\tilde y = A x + e$ (the choice of $x$ does not matter as is clear from the discussion and here, $x$ is also selected at random), solve $(P'_1)$ and obtain $x^*$; \item compare $x$ to $x^*$; \item repeat $100$ times for each $S$ and $A$; \item repeat for various sizes of $n$ and $m$. \end{enumerate}",unclassified,"s $e \in \R^m$
+from the underdetermined system of equations $F e = z \in \R^{m-n}$).
+The goal here is to evaluate empirically the location of the
+breakpoint as to get an accurate sense of the performance one might
+expect in practice. In order to do this, we performed a series of
+experiments designed as follows:
+\begin{enumerate}
+\item select $n$ (the size of the input signal) and $m$ so that with
+  the same notations as before, $A$ is an $n$ by $m$ matrix; sample
+  $A$ with independent Gaussian entries; 
+% while the 'annihilator' $F$ is a $p$ by $m$ matrix
+  % with $p = m - n$; 
+    
+\item select $S$ as a percentage of $m$; % and sample a
+  % $p$ by $m$ matrix with independent Gaussian entries;
+  
+\item select a support set $T$ of size $|T|= S$ uniformly at random,
+  and sample a vector $e$ on $T$ with independent and identically
+  distributed Gaussian entries\footnote{Just as in \cite{RandomBP},
+    the results presented here do not seem to depend on the actual
+    distribution used to sample the errors.};
+\item make $\tilde y = A x + e$ (the choice of $x$ does not matter as
+  is clear from the discussion and here, $x$ is also selected at
+  random), solve $(P'_1)$ and obtain $x^*$;
+\item compare $x$ to $x^*$;
+\item repeat $100$ times for each $S$ and $A$;
+\item repeat for various sizes of $n$ and $m$. 
+\end{enumerate}
+
+The results are presented in Figure~\ref{fig:reccurves2} and
+Figure~\ref{fig:reccurves4}.  Figure~\ref{fig:reccurves2} examines the
+situation in which the length of the code is twice that of the input
+vector $m = 2n$, for $m = 512$ and $m = 1024$. Our experiments show
+that one recovers the input vector {\em all the time} as long as the
+fraction of the corrupted entries is below 17\%. This holds for $m =
+512$ (Figure~\ref{fig:reccurves2}(a)) and $m = 1024$
+(Figure~\ref{fig:reccurves2}(b)).  In Figure~\ref{fig:reccurves4}, we
+investigate how these results change as the length of the codewords 
+increases compared to the length of the input, and examine ","The missed algorithm is described as a numbered list of procedural steps (an `enumerate` environment) that describes an experimental/algorithmic procedure. The base extractor only looks for explicit `algorithm`/`algorithm*` environments. This `enumerate` environment is being used as an algorithm description. However, generalizing this to catch ALL `enumerate` environments would produce massive false positives (most papers use `enumerate` for non-algorithmic lists). The structural signal here is that this `enumerate` appears in a context describing an experimental procedure with sequential steps, but there's no reliable LaTeX-level marker to distinguish algorithmic enumerates from regular ones without content analysis. The closest general rule would be to look for `enumerate` environments whose items follow a procedural pattern (verbs like 'select', 'sample', 'repeat', 'compute', 'solve'), but that requires content-based heuristics that would be paper-specific. The most defensible minimal addition is to add 'enumerate' to a special secondary pass that checks if the enumerate body matches a heuristic 'algorithmic steps' pattern (e.g., multiple \item entries with imperative verbs). However, since the requirement says not to hardcode content, I'll add a structural heuristic: an enumerate with >= 4 \item entries that appears near algorithmic keywords in surrounding context. Given the constraints, I'll add a pattern that captures `enumerate` environments as candidate algorithms only when they have a sufficient number of \item tokens, which is a structural (not content-specific) signal.","# Add to _extract_algorithms, after the existing env_names block:
+# Also scan for \begin{enumerate} blocks that look like procedural step lists
+# (structural heuristic: >= 4 \item entries = likely a multi-step algorithm)
+enumerate_pattern = re.compile(
+    r'\\begin\{enumerate\}(?P<body>.*?)\\end\{enumerate\}',
+    flags=re.DOTALL
+)
+for m in enumerate_pattern.finditer(text):
+    body = m.group('body')
+    # Count \item occurrences as a structural proxy for algorithmic step lists
+    item_count = len(re.findall(r'\\item', body))
+    if item_count >= 4:
+        idx += 1
+        obj_id = f'A{idx}'
+        label, _ = self._extract_label_and_name(body)
+        clean_text = self._clean_latex_to_text(body)
+        input_sig = None
+        output_sig = None
+        m_in = re.search(r'Input\s*:?\s*(.*?)(?=Output\s*:|$)', clean_text, flags=re.IGNORECASE)
+        if m_in:
+            input_sig = m_in.group(1).strip() or None
+        m_out = re.search(r'Output\s*:?\s*(.*)', clean_text, flags=re.IGNORECASE)
+        if m_out:
+            output_sig = m_out.group(1).strip() or None
+        alg = Algorithm(
+            id=obj_id,
+            kind='algorithm',
+            index=idx,
+            label=label,
+            name=None,
+            raw_latex=body,
+            clean_text=clean_text,
+            env_name='enumerate',
+        )
+        alg._source_pos = m.start()
+        objects.append(alg)",algorithm,algorithm
+paper003,0,"The algorithm proceeds by splitting the information obtained in the graph into a part that is used by the partial recovery algorithm and a part that is used for the local steps. In order to make the two steps (almost) independent, we propose the following procedure: First take a random partition of the edges of complete graph on the $n$ nodes into 2 graphs $H_1$ and $H_2$ (done independently of the observed graph $\G$). $H_1$ is an Erdos-Renyi graph on n nodes with edge probability $C/\log(n)$, $H_2$ is the complement of $H_1$. We then define $G_1$ and $G_2$ subgraphs of $\G$ as $G_1=H_1 \cap \G$ and $G_2=H_2 \cap \G$. In the second step, we apply Massoulie's~\cite{Massoulie_SBM} algorithm for partial recovery to $G_1$. As $G_1$ is an SBM graph with parameters $(C\alpha,C\beta)$, this algorithm is guaranteed~\cite{Massoulie_SBM} to output, with high probability, a partition of the n nodes into two communities $A'$ and $B'$, such that the partition is correct for at least $(1-\delta(C))n$ nodes, where $\delta(C)\to 0$ as $C\to\infty$. In other words, $A'$ and $B'$ coincide with $A$ and $B$ (the correct communities) on at least $(1-\delta(C))n$ nodes. Lastly, we flip some of the nodes' memberships depending on the edges they have in $G_2$. Using the communities $A'$ and $B'$ obtained in the previous step, we flip the membership of a given node if it has more edges in $G_2$ going to the opposite community than it has to its own. If the the number of flips in each cluster is not the same, keep the clusters unchanged.",unknown_environment," recovery from efficient partial recovery}\label{black}
+
+In this section we show how to leverage state of the art algorithms for partial recovery in the sparse case in order to construct an efficient algorithm that achieves exact recovery down to the optimal information theoretical threshold.\\
+
+The algorithm proceeds by splitting the information obtained in the graph into a part that is used by the partial recovery algorithm and a part that is used for the local steps. In order to make the two steps (almost) independent, we propose the following procedure: First take a random partition of the edges of complete graph on the $n$ nodes into 2 graphs $H_1$ and $H_2$ (done independently of the observed graph $\G$). $H_1$ is an Erdos-Renyi graph on n nodes with edge probability $C/\log(n)$, $H_2$ is the complement of $H_1$. We then define $G_1$ and $G_2$ subgraphs of $\G$ as $G_1=H_1 \cap \G$ and $G_2=H_2 \cap \G$. In the second step, we apply Massoulie's~\cite{Massoulie_SBM} algorithm for partial recovery to $G_1$. As $G_1$ is an SBM graph with parameters $(C\alpha,C\beta)$, this algorithm is guaranteed~\cite{Massoulie_SBM} to output, with high probability, a partition of the n nodes into two communities $A'$ and $B'$, such that the partition is correct for at least $(1-\delta(C))n$ nodes, where $\delta(C)\to 0$ as $C\to\infty$. In other words, $A'$ and $B'$ coincide with $A$ and $B$ (the correct communities) on at least $(1-\delta(C))n$ nodes. %Furthermore, we know that $\delta(C) \rightarrow 0$ when $C \rightarrow \infty$.
+Lastly, we flip some of the nodes' memberships depending on the edges they have in $G_2$. Using the communities $A'$ and $B'$ obtained in the previous step, we flip the membership of a given node if it has more edges in $G_2$  going to the opposite community than it has to its own. If the the number of flips in each cluster is not the same, keep the clusters unchanged. %Typically, if a node is considered to be in $A'$ from Massoulie's algorithm but ","This algorithm is described in plain prose within a section body, not inside a LaTeX environment like \begin{algorithm}...\end{algorithm}. The text describes an algorithmic procedure but is embedded as regular paragraph text. There is no environment to match structurally. The closest general rule would be to detect sections whose heading contains 'algorithm' and whose body contains algorithmic keywords (e.g., 'Input', 'Output', 'Step', 'procedure'), but this would be extremely noisy and would require hardcoding section-level patterns that are paper-specific. The gold item is a prose description of an algorithm, not a structured LaTeX environment. The most general thing we can do is look for a section/subsection label or heading that mentions 'algorithm' combined with procedural prose, but catching this without false positives across arbitrary papers is not feasible with a minimal regex addition. The pattern here is too content-dependent (it's just a paragraph) to generalize safely. No minimal regex addition can reliably catch this class without significant false positives.","# No safe minimal regex addition is possible for prose-only algorithm descriptions.
+# The item is a plain paragraph, not a LaTeX environment.
+# If desired, one could search for sections with 'algorithm' in the heading and
+# treat their body as an algorithm block, but this is too noisy for a general parser.
+# Closest general heuristic (optional, high false-positive risk):
+
+import re
+from typing import List
+
+def _extract_prose_algorithms(self, text: str):
+    """"""
+    Heuristic: find subsections/sections whose title contains 'algorithm'
+    and extract the following paragraph as an Algorithm object.
+    Only use if prose-level algorithm detection is acceptable.
+    """"""
+    # Match \section, \subsection, etc. with 'algorithm' in the title
+    pattern = re.compile(
+        r'\\(?:sub)*section\*?\{([^}]*algorithm[^}]*)\}'
+        r'(?:\\label\{[^}]*\})?'
+        r'\s*(.*?)'
+        r'(?=\\(?:sub)*section|\Z)',
+        flags=re.IGNORECASE | re.DOTALL
+    )
+    results = []
+    for m in pattern.finditer(text):
+        title = m.group(1).strip()
+        body = m.group(2).strip()
+        results.append(('prose_algorithm', None, body, m.start()))
+    return results
+# NOTE: This is intentionally left as a separate helper and NOT merged into
+# _extract_algorithms to avoid false positives in the main pipeline.",algorithm,algorithm
+paper006,0,"\paragraph{Average mixture algorithm} \begin{enumerate} \item[(1)] For each $i \in \{1, \ldots, \nummac\}$, processor $i$ uses its local dataset $\samples_{1, i}$ to compute the local empirical minimizer \begin{align} \optvar_{1, i} & \in \argmin_{\optvar \in \optvarspace} \MYMIN{\underbrace{\frac{1}{|S_{1,i}|} \sum_{x \in S_{1,i}} f(\optvar; x)}_{F_{1,i}(\optvar)}}. \end{align} \item[(2)] These $\nummac$ local estimates are then averaged together---that is, we compute \begin{equation} \optavg_1 = \frac{1}{\nummac} \sum_{i = 1}^\nummac \optvar_{1, i}. \end{equation} \end{enumerate}",inline_definition,"ples is a multiple of $\nummac$.)  For $i = 1,
+\ldots, \nummac$, we let $\samples_{1,i}$ denote the data set assigned
+to processor $i$; by construction, it is a collection of $\numobs$
+samples drawn i.i.d.\ according to $\statprob$, and the samples in
+subsets $\samples_{1,i}$ and $\samples_{1,j}$ are independent for $i
+\neq j$.  In addition, for each processor $i$ we define the (local)
+empirical distribution $\statprob_{1,i}$ and empirical objective
+$F_{1,i}$ via
+\begin{equation}
+\label{EqnDefnLocalQuants}
+  \statprob_{1,i} \defeq \frac{1}{|\samples_1|} \sum_{\statsample \in
+    \samples_{1,i}} \delta_{\statsample}, ~~~ \mbox{and} ~~~
+  F_{1,i}(\optvar) \defeq \frac{1}{|\samples_{1,i}|} \sum_{\statsample
+    \in \samples_{1,i}} f(\optvar; \statsample).
+\end{equation}
+
+\noindent With this notation, the \avgm\ algorithm is very simple to
+describe:
+%
+\paragraph{Average mixture algorithm}
+\begin{enumerate}
+\item[(1)] For each $i \in \{1, \ldots, \nummac\}$, processor $i$ uses
+  its local dataset $\samples_{1, i}$ to compute the local empirical
+  minimizer
+  \begin{align}
+    \label{EqnDefnLocalEmpMin}
+    \optvar_{1, i} & \in \argmin_{\optvar \in \optvarspace}
+    \MYMIN{\underbrace{\frac{1}{|S_{1,i}|} \sum_{x \in S_{1,i}} f(\optvar;
+      x)}_{F_{1,i}(\optvar)}}.
+  \end{align}
+\item[(2)] These $\nummac$ local estimates are then averaged
+  together---that is, we compute
+  \begin{equation}
+    \label{eqn:avgm-alg-def}
+   \optavg_1 = \frac{1}{\nummac} \sum_{i = 1}^\nummac \optvar_{1, i}.
+  \end{equation}
+\end{enumerate}
+
+The subsampled average mixture (\sa",This algorithm is described inline: a \paragraph{...} heading followed by a \begin{enumerate}...\end{enumerate} block. The pattern is \paragraph{<words> algorithm} then \begin{enumerate}...\end{enumerate}. We need a regex that captures \paragraph{...algorithm...} + enumerate body as an algorithm. The name comes from the paragraph argument.,"# Pattern: \paragraph{... algorithm ...} \begin{enumerate} ... \end{enumerate}
+_PARA_ALG_RE = re.compile(
+    r'\\paragraph\{(?P<name>[^}]*?\balgorithm\b[^}]*)\}'
+    r'\s*(?P<body>\\begin\{enumerate\}.*?\\end\{enumerate\})',
+    flags=re.DOTALL | re.IGNORECASE
+)
+
+def _extract_paragraph_algorithms(self, text: str):
+    objects = []
+    idx = 0
+    for m in _PARA_ALG_RE.finditer(text):
+        idx += 1
+        name = m.group('name').strip()
+        body = m.group('body')
+        label, _ = self._extract_label_and_name(body)
+        clean_text = self._clean_latex_to_text(body)
+        alg = Algorithm(
+            id=f'A_para_{idx}',
+            kind='algorithm',
+            index=idx,
+            label=label,
+            name=name,
+            raw_latex=body,
+            clean_text=clean_text,
+            env_name='paragraph+enumerate',
+        )
+        alg._source_pos = m.start()
+        objects.append(alg)
+    return objects",algorithm,algorithm
+paper006,1,"The subsampled average mixture (\savgm) algorithm is based on an additional level of sampling on top of the first, involving a fixed subsampling rate $\ratio \in [0, 1]$. It consists of the following additional steps: \paragraph{Subsampled average mixture algorithm} \begin{enumerate} \item[(1)] Each processor $i$ draws a subset $\samples_{2,i}$ of size $\ceil{r \numobs}$ by sampling uniformly at random without replacement from its local data set $\samples_{1,i}$. \item[(2)] Each processor $i$ computes both the local empirical minimizers $\optvar_{1,i}$ from equation~\eqref{EqnDefnLocalEmpMin} and the empirical minimizer \begin{align} \optvar_{2,i} & \in \argmin_{\optvar \in \Theta } \MYMIN{\underbrace{\frac{1}{|\samples_{2,i}|} \sum_{\statsample \in \samples_{2,i}} f(\optvar; \statsample)}_{F_{2,i}(\optvar)}}. \end{align} \item[(3)] In addition to the previous average~\eqref{eqn:avgm-alg-def}, the \savgm\ algorithm computes the bootstrap average $\optavg_2 \defeq \frac{1}{\nummac} \sum_{i=1}^\nummac \optvar_{2,i}$, and then returns the weighted combination \begin{equation} \savgvec \defeq \frac{\optavg_1 - \ratio \optavg_2}{1 - \ratio}. \end{equation} \end{enumerate}",inline_definition," processor $i$; by construction, it is a collection of $\numobs$
+samples drawn i.i.d.\ according to $\statprob$, and the samples in
+subsets $\samples_{1,i}$ and $\samples_{1,j}$ are independent for $i
+\neq j$.  In addition, for each processor $i$ we define the (local)
+empirical distribution $\statprob_{1,i}$ and empirical objective
+$F_{1,i}$ via
+\begin{equation}
+\label{EqnDefnLocalQuants}
+  \statprob_{1,i} \defeq \frac{1}{|\samples_1|} \sum_{\statsample \in
+    \samples_{1,i}} \delta_{\statsample}, ~~~ \mbox{and} ~~~
+  F_{1,i}(\optvar) \defeq \frac{1}{|\samples_{1,i}|} \sum_{\statsample
+    \in \samples_{1,i}} f(\optvar; \statsample).
+\end{equation}
+
+\noindent With this notation, the \avgm\ algorithm is very simple to
+describe:
+%
+\paragraph{Average mixture algorithm}
+\begin{enumerate}
+\item[(1)] For each $i \in \{1, \ldots, \nummac\}$, processor $i$ uses
+  its local dataset $\samples_{1, i}$ to compute the local empirical
+  minimizer
+  \begin{align}
+    \label{EqnDefnLocalEmpMin}
+    \optvar_{1, i} & \in \argmin_{\optvar \in \optvarspace}
+    \MYMIN{\underbrace{\frac{1}{|S_{1,i}|} \sum_{x \in S_{1,i}} f(\optvar;
+      x)}_{F_{1,i}(\optvar)}}.
+  \end{align}
+\item[(2)] These $\nummac$ local estimates are then averaged
+  together---that is, we compute
+  \begin{equation}
+    \label{eqn:avgm-alg-def}
+   \optavg_1 = \frac{1}{\nummac} \sum_{i = 1}^\nummac \optvar_{1, i}.
+  \end{equation}
+\end{enumerate}
+
+The subsampled average mixture (\savgm) algorithm is based on an
+additional level of sampling on top of the first, involving a fixed
+subsampling rate $\ratio \in [0, 1]$.  It consists of
+the following additional steps:
+\paragraph{Subsampled average mixture algorithm}
+\begin{enumerate}
+\item[(1)] Each processor $i$ draws a subset $\samples_{2,i}$ of size
+  $\ceil{r \numobs}$ by sampling uniformly at random without
+  replacement from its local data set $\samples_{1,i}$.
+
+\item[(2)] Each processor $i$ computes both the local empirical
+  minimizers $\optvar_{1,i}$ from equatio",Same structural pattern as Item 0: \paragraph{... algorithm ...} followed by \begin{enumerate}...\end{enumerate}. The same _extract_paragraph_algorithms method handles this case. No additional code needed beyond what is added for Item 0.,"# Already covered by _extract_paragraph_algorithms added for Item 0.
+# No additional code required for Item 1.",algorithm,algorithm
+paper006,2,"The averaged stochastic gradient algorithm (\sgdavgm) is based on the following two steps: \begin{enumerate} \item[(1)] Given some constant $c > 1$, each machine performs $\numobs$ iterations of stochastic gradient descent~\eqref{eqn:sgd-iteration} on its local dataset of $\numobs$ samples using the stepsize $\stepsize_t = \frac{c}{\strongparam t}$, then outputs the resulting local parameter $\optvar'_i$. \item[(2)] The algorithm computes the average $\optavg^\numobs = \frac{1}{\nummac} \sum_{i=1}^\nummac \optvar'_i$. \end{enumerate}",unclassified,"f{assumption:smoothness-sgd} holds for many common
+problems; for instance, it holds for any linear regression problem in
+which the covariates have finite fourth moments and the domain
+$\optvarspace$ is compact. \\
+
+The averaged stochastic gradient algorithm
+(\sgdavgm) is based on the following two steps:
+\begin{enumerate}
+\item[(1)] Given some constant $c > 1$, each machine performs
+  $\numobs$ iterations of stochastic gradient
+  descent~\eqref{eqn:sgd-iteration} on its local dataset of $\numobs$
+  samples using the stepsize $\stepsize_t = \frac{c}{\strongparam t}$,
+  then outputs the resulting local parameter $\optvar'_i$.
+%
+\item[(2)] The algorithm computes the average $\optavg^\numobs =
+  \frac{1}{\nummac} \sum_{i=1}^\nummac \optvar'_i$.
+\end{enumerate}
+%
+The following result characterizes the mean-squared error of this
+procedure in terms of the constants
+\begin{equation*}
+  \alpha \defeq 4c^2 \quad
+  \mbox{and} \quad
+  \beta \defeq \max\left\{\ceil{\frac{c
+      \lipgrad}{\strongparam}}, \frac{c \alpha^{3/4}
+    \lipobj^{3/2}}{(c - 1)\strongparam^{5/2}} \left(
+  \frac{\alpha^{1/4} \liphessian \lipobj^{1/2}}{\strongparam^{1/2}}
+  + \frac{4 \lipobj + \lipgrad \radius}{\rho^{3/2}} \right)\right\}.
+\end{equation*}
+\begin{theorem}
+  \label{theorem:sgd}
+  Under Assumptions~\ref{assumption:parameter-space}
+  and~\ref{assumption:smoothness-sgd}, the output $\optavg^\numobs$ of
+  the \savgm\ algorithm has mean-squared error upper bounded as
+  \begin{equation}",This algorithm is described inline in prose: a sentence ending in 'the following <N> steps:' or 'the following two steps:' immediately followed by \begin{enumerate}...\end{enumerate}. We can generalize: prose context containing 'algorithm' within a few hundred characters before \begin{enumerate}. A tighter structural anchor: 'algorithm' keyword in prose + immediately-following enumerate.,"# Pattern: sentence containing 'algorithm' ... 'following ... steps:' then \begin{enumerate}...\end{enumerate}
+_PROSE_ALG_RE = re.compile(
+    r'(?:algorithm\b[^\n]{0,300}?following[^\n]{0,80}?:\s*)'
+    r'(?P<body>\\begin\{enumerate\}.*?\\end\{enumerate\})',
+    flags=re.DOTALL | re.IGNORECASE
+)
+
+def _extract_prose_algorithms(self, text: str):
+    objects = []
+    idx = 0
+    for m in _PROSE_ALG_RE.finditer(text):
+        idx += 1
+        body = m.group('body')
+        label, _ = self._extract_label_and_name(body)
+        clean_text = self._clean_latex_to_text(body)
+        alg = Algorithm(
+            id=f'A_prose_{idx}',
+            kind='algorithm',
+            index=idx,
+            label=label,
+            name=None,
+            raw_latex=body,
+            clean_text=clean_text,
+            env_name='prose+enumerate',
+        )
+        alg._source_pos = m.start()
+        objects.append(alg)
+    return objects",algorithm,algorithm
+paper006,3,"Stochastic gradient descent algorithms iteratively update a parameter vector $\optvar^t$ over time based on randomly sampled gradient information. Specifically, at iteration $t$, a sample $\statrv_t$ is drawn at random from the distribution $\statprob$ (or, in the case of a finite set of data $\{\statrv_1, \ldots, \statrv_\numobs\}$, a sample $\statrv_t$ is chosen from the data set). The method then performs the following two steps: \begin{equation} \optvar^{t + \half} = \optvar^t - \stepsize_t \nabla f(\optvar^t; \statrv_t) ~~~ \mbox{and} ~~~ \optvar^{t + 1} = \argmin_{\optvar \in \optvarspace} \left\{ \ltwobig{\optvar - \optvar^{t + \half}}^2 \right\}. \end{equation}",unclassified,"computational requirements.
+In this section, we describe an extension of
+Theorem~\ref{theorem:no-bootstrap} to the case in which each machine
+computes an approximate minimizer using only stochastic gradient descent.
+
+Stochastic gradient algorithms have a lengthy history in
+statistics, optimization, and machine learning~\citep{RobbinsMo51, PolyakJu92,
+  NemirovskiJuLaSh09, RakhlinShSr12}.  Let us begin by briefly
+reviewing the basic form of stochastic gradient descent (SGD).
+Stochastic gradient descent algorithms iteratively update a parameter
+vector $\optvar^t$ over time based on randomly sampled gradient
+information. Specifically, at iteration $t$, a sample $\statrv_t$ is
+drawn at random from the distribution $\statprob$ (or, in the case of
+a finite set of data $\{\statrv_1, \ldots, \statrv_\numobs\}$, a
+sample $\statrv_t$ is chosen from the data set). The method then
+performs the following two steps:
+\begin{equation}
+  \optvar^{t + \half} = \optvar^t - \stepsize_t \nabla f(\optvar^t;
+  \statrv_t)
+  ~~~ \mbox{and} ~~~
+  \optvar^{t + 1} = \argmin_{\optvar \in \optvarspace}
+  \left\{ \ltwobig{\optvar - \optvar^{t + \half}}^2 \right\}.
+  \label{eqn:sgd-iteration}
+\end{equation}
+Here $\stepsize_t > 0$ is a stepsize, and the first update
+in~\eqref{eqn:sgd-iteration} is a gradient descent step with respect to the
+random gradient $\nabla f(\optvar^t; \statrv_t)$. The method then projects the
+intermediate point $\optvar^{t + \half}$ back onto the constraint set
+$\optvarspace$ (if there is a constraint set). The convergence of SGD methods
+of the form~\eqref{eqn:sgd-iteration} has been well-studied, and we refer the
+reader to the papers by~\citet{PolyakJu92}, \citet{NemirovskiJuLaSh09}, and
+\citet{RakhlinShSr12} for deeper investigat","This describes an algorithm (SGD) in prose + a \begin{equation}...\end{equation} block (not enumerate). The structural pattern: text describing an iterative method mentioning 'performs the following ... steps:' or 'the following two steps:' followed by \begin{equation}...\end{equation}. However, this is very hard to distinguish from ordinary equations. The closest general rule is: prose containing 'algorithm' or 'following.*steps' immediately followed by \begin{equation}...\end{equation}. This is risky for false positives. A conservative approach: flag only when the preceding sentence explicitly says 'the following two steps:' or 'performs the following steps:' right before \begin{equation}.","# Pattern: 'following ... steps:' immediately before \begin{equation}...\end{equation}
+_STEPS_EQ_RE = re.compile(
+    r'following\s+\w+\s+steps\s*:\s*'
+    r'(?P<body>\\begin\{equation[*]?\}.*?\\end\{equation[*]?\})',
+    flags=re.DOTALL | re.IGNORECASE
+)
+
+def _extract_steps_equation_algorithms(self, text: str):
+    objects = []
+    idx = 0
+    for m in _STEPS_EQ_RE.finditer(text):
+        idx += 1
+        body = m.group('body')
+        label, _ = self._extract_label_and_name(body)
+        clean_text = self._clean_latex_to_text(body)
+        alg = Algorithm(
+            id=f'A_stepseq_{idx}',
+            kind='algorithm',
+            index=idx,
+            label=label,
+            name=None,
+            raw_latex=body,
+            clean_text=clean_text,
+            env_name='prose+equation',
+        )
+        alg._source_pos = m.start()
+        objects.append(alg)
+    return objects",algorithm,algorithm
+paper006,4,"that this computation can be performed in time $\order(\numobs \log(\nummac \numobs))$. In particular, the following two-stage strategy, involving a combination of stochastic gradient descent (see the following subsection for more details) and standard gradient descent, has this complexity: \begin{enumerate} \item[(1)] As shown in the proof of Theorem~\ref{theorem:no-bootstrap}, with high probability, the empirical risk $F_1$ is strongly convex in a ball $B_\rho(\optvar_1)$ of constant radius $\rho > 0$ around $\optvar_1$. Consequently, performing stochastic gradient descent on $F_1$ for $\order(\log^2(\nummac \numobs) / \rho^2)$ iterations yields an approximate minimizer that falls within $B_\rho(\optvar_1)$ with high probability~\citep[e.g.][Proposition 2.1]{NemirovskiJuLaSh09}. Note that the radius $\rho$ for local strong convexity is a property of the population risk $F_0$ we use as a prior knowledge. \item[(2)] This initial estimate can be further improved by a few iterations of standard gradient descent. Under local strong convexity of the objective function, gradient descent is known to converge at a geometric rate~\citep[see, e.g.][]{NocedalWr06,BoydVa04}, so $\order(\log(1/\epsilon))$ iterations will reduce the error to order $\epsilon$. In our case, we have $\epsilon = (\nummac \numobs)^{-2}$, and since each iteration of standard gradient descent requires $\order(\numobs)$ units of time, a total of $\order(\numobs \log(\nummac \numobs))$ time units are sufficient to obtain a final estimate $\optvar_1'$ satisfying condition~\eqref{EqnConness}. \end{enumerate}",unclassified," objective
+function $F_{1,i}$.  Thus, the vector $\optvar_i'$ can be viewed as an
+approximate form of $\optvar_i$, and we let $\optavg' =
+\frac{1}{\nummac} \sum_{i=1}^\nummac \optvar_{i}'$ denote the average
+of these approximate minimizers, which corresponds to the output of
+the approximate \avgm\ algorithm.  With this notation, we have
+\begin{equation}
+  \label{eqn:approximate-inequality-no-bootstrap}
+  \E\left[\ltwobig{\optavg' - \optvar^*}^2\right] \;
+  \stackrel{(i)}{\leq} \; 2 \E[\ltwo{\optavg - \optvar^*}^2] + 2
+  \E\left[\ltwobig{\optavg' - \optavg}^2\right] \;
+  \stackrel{(ii)}{\leq} \; 2 \E[\ltwo{\optavg - \optvar^*}^2] + 2
+  \E[\ltwo{\optvar_1' - \optvar_1}^2],
+\end{equation}
+where step (i) follows by triangle inequality and the elementary bound
+$(a+b)^2 \leq 2 a^2 + 2 b^2$; step (ii) follows by Jensen's
+inequality.  Consequently, suppose that \mbox{processor $i$} runs
+enough iterations to obtain an approximate minimizer $\optvar'_1$ such
+that
+\begin{align}
+  \label{EqnConness}
+  \E[\ltwo{\optvar_i' - \optvar_i}^2] & = \order((\nummac
+  \numobs)^{-2}).
+\end{align}
+When this condition holds, the
+bound~\eqref{eqn:approximate-inequality-no-bootstrap} shows that the
+average $\optavg'$ of the approximate minimizers shares the same
+convergence rates provided by Theorem~\ref{theorem:no-bootstrap}.
+
+
+But how long does it take to compute an approximate minimizer
+$\optvar'_i$ satisfying condition~\eqref{EqnConness}?
+Assuming processing one sample requires one unit of time, we claim
+that this computation can be performed in time $\order(\numobs
+\log(\nummac \numobs))$.  In particular, the following two-stage
+strategy, involving a combination of stochastic gradient descent (see
+the following subsection for more details) and standard gradient
+descent, has this complexity:
+\begin{enumerate}
+\item[(1)] As shown in the proof of
+  Theorem~\ref{theorem:no-bootstrap}, with high probability, the
+  empirical risk $F_1$ is strongly convex in a ball
+  $B_\rho(\optvar_1)$ of cons",Same pattern as Item 2: inline prose with 'algorithm' or 'strategy' context + 'the following ... steps:' + \begin{enumerate}...\end{enumerate}. The _extract_prose_algorithms regex with 'following ... steps:' already generalizes to catch 'two-stage strategy ... has this complexity:' if we also allow non-'algorithm' lead words. We can broaden the pattern slightly to also anchor on 'strategy' or 'procedure' or any word before 'following ... steps:'.,"# Broaden _PROSE_ALG_RE to not require 'algorithm' in the lead, just 'following ... steps:'
+# Replace the previous _PROSE_ALG_RE with:
+_PROSE_ALG_RE = re.compile(
+    r'(?:(?:algorithm|procedure|strategy|method)\b[^\n]{0,400}?)?'
+    r'following[^\n]{0,120}?(?:steps|strategy|procedure)\s*:\s*'
+    r'(?P<body>\\begin\{enumerate\}.*?\\end\{enumerate\})',
+    flags=re.DOTALL | re.IGNORECASE
+)",algorithm,algorithm
+paper006,5,"The dataset is too large to fit in the memory of most computers: in total, four splits of the data require 55~gigabytes. Consequently, it is difficult to provide an oracle training comparison using the full $\totalnumobs$ samples. Instead, for each experiment, we perform 10 passes of stochastic dual coordinate ascent (SDCA)~\citep{shalev2012stochastic} and 10 passes of stochastic gradient descent (SGD) through the dataset to get two rough baselines of the performance attained by the empirical minimizer for the entire training dataset. Figure~\ref{fig:results}(b) shows the hold-out set log-loss after each of the sequential passes through the training data finishes. Note that although the SDCA enjoys faster convergence rate on the regularized empirical risk~\citep{shalev2012stochastic}, the plot shows that the SGD has better generalization performance.",unclassified,"dying the \avgm\ or
+\savgm\ method, we compute the local estimate $\optvar_i$ via a trust-region
+Newton-based method~\citep{NocedalWr06} implemented by LIBSVM~\citep{chang2011libsvm}.
+
+The dataset is too large to fit in the memory of most computers: in total,
+four splits of the data require 55~gigabytes. Consequently, it is difficult
+to provide an oracle training comparison using the full $\totalnumobs$
+samples.  Instead, for each experiment, we perform 10 passes of stochastic dual
+coordinate ascent (SDCA)~\citep{shalev2012stochastic} and 10 passes of stochastic gradient descent (SGD) through the
+dataset to get two rough baselines of the
+performance attained by the empirical minimizer for the entire training
+dataset. Figure~\ref{fig:results}(b) shows the hold-out set log-loss after
+each of the sequential passes through the training data finishes. Note that
+although the SDCA enjoys faster convergence rate on the regularized empirical risk~\citep{shalev2012stochastic},
+the plot shows that the SGD has better generalization performance.
+
+In Figure~\ref{fig:results}(a), we show the average hold-out set log-loss
+(with standard errors) of the estimator $\optavg_1$ provided by the
+\avgm\ method versus number of splits of the data $\nummac$, and we also plot
+the log-loss of the \savgm\ method using subsampling ratios of $\ratio \in
+\{.1, .25\}$. The plot shows that for small $\nummac$, both \avgm\ and
+\savgm\ enjoy good performance, comparable to or better than (our proxy for)
+the oracle solution using all $\totalnumobs$ samples. As the number of
+machines $\nummac$ grows, however, the de-biasing provided by the subsampled
+bootstrap method yields substantial improvements over the standard
+\avgm\ method. In addition, even with $\nummac = 128$ splits of the dataset,
+the \savgm\ method gives better hold-out set performance than performing two
+passes of stochastic gradient on the entire dataset of $\nummac$ samples; with
+$\nummac = 64$, \savgm\ enjoys performance as strong as loo","Item 5 is a paragraph of prose describing experiments with SGD/SDCA algorithms. There is no \begin{enumerate}, no \begin{algorithm}, no \paragraph{... algorithm}. The 'algorithm' mention is incidental—this is a results/experimental description paragraph, not a structured algorithm definition. Catching this would require matching arbitrary prose paragraphs containing the word 'algorithm', which would produce enormous false-positive rates across any math paper. This item cannot be reliably generalized without hardcoding paper-specific content. Recommendation: do NOT add a rule for this pattern.","# Item 5 is a prose experimental-results paragraph with no structural marker
+# (no \begin{algorithm}, \paragraph{...algorithm...}, or enumerate block).
+# Catching it generically would flood results with false positives.
+# No rule added for this item.
+pass",algorithm,algorithm
+paper008,0,"The algorithm we focus on is stochastic gradient descent (SGD). The SGD algorithm is parameterized by step sizes $\eta_1,\ldots,\eta_T$, and is defined as follows (below, we assume for simplicity that the algorithm is initialized at $\mathbf{0}\in \Wcal$, following common practice). \begin{enumerate} \item Initialize $\bw_1=\mathbf{0}$ \item For $t=1,\ldots,T$: \begin{itemize} \item Query the stochastic gradient oracle at $\bw_t$ to get a random $\hat{\bg}_t$ such that $\E[\hat{\bg}_t]=\bg_t$ is a subgradient of $F$ at $\bw_t$. \item Let $\bw_{t+1}=\Pi_{\Wcal}(\bw_t-\eta_t \hat{\bg}_t)$, where $\Pi_{\Wcal}$ is the projection operator on $\Wcal$. \end{itemize} \end{enumerate}",inline_definition,"eing a \emph{strongly convex} function. Formally, we say that a function $F$ is \emph{$\lambda$-strongly convex}, if for all $\bw,\bw'\in \Wcal$ and any subgradient $\bg$ of $F$ at $\bw$,
+\begin{equation}\label{eq:strconvex}
+F(\bw')\geq F(\bw)+\inner{\bg,\bw'-\bw}+\frac{\lambda}{2}\norm{\bw'-\bw}^2.
+\end{equation}
+
+Another possible property of $F$ we will consider is smoothness, at least with respect to the optimum $\bw^*$. Formally, a function $F$ is \emph{$\mu$-smooth with respect to $\bw^*$} if for all $\bw\in\Wcal$,
+\begin{equation}\label{eq:smoothness}
+F(\bw) - F(\bw^*)\leq \frac{\mu}{2}\norm{\bw-\bw^*}^2.
+\end{equation}
+Such functions arise, for instance, in logistic and least-squares regression, and in general for learning linear predictors where the loss function has a Lipschitz-continuous gradient.
+
+The algorithm we focus on is stochastic gradient descent (SGD). The SGD algorithm is parameterized by step sizes $\eta_1,\ldots,\eta_T$, and is defined as follows (below, we assume for simplicity that the algorithm is initialized at $\mathbf{0}\in \Wcal$, following common practice).
+\begin{enumerate}
+    \item Initialize $\bw_1=\mathbf{0}$
+    \item For $t=1,\ldots,T$:
+    \begin{itemize}
+        \item Query the stochastic gradient oracle at $\bw_t$ to get a random $\hat{\bg}_t$ such that $\E[\hat{\bg}_t]=\bg_t$ is a subgradient of $F$ at $\bw_t$.
+        \item Let $\bw_{t+1}=\Pi_{\Wcal}(\bw_t-\eta_t \hat{\bg}_t)$, where $\Pi_{\Wcal}$ is the projection operator on $\Wcal$.
+    \end{itemize}
+\end{enumerate}
+This algorithm returns a sequence of points $\bw_1,\ldots,\bw_T$. To obtain a single point, one can use several strategies. Perhaps the simplest one is to return the last point, $\bw_{T+1}$. Another procedure, for which the standa","This algorithm is described inline in prose followed by a \begin{enumerate}...\end{enumerate} environment. The structural pattern is: a sentence or two introducing 'the algorithm' (or naming a specific algorithm), immediately followed by \begin{enumerate} containing \item steps (possibly with nested \begin{itemize}). The base extractor only looks for \begin{algorithm}. To catch this general pattern, we need to detect an enumerate environment that immediately follows a sentence containing keywords like 'algorithm' and 'defined as follows' or similar framing. However, this is inherently ambiguous—not every enumerate is an algorithm. A reasonable general rule: look for a paragraph ending with a phrase like 'defined as follows', 'as follows', 'the following', or 'following steps' (case-insensitive) within ~300 chars before \begin{enumerate}, treating the combined prose+enumerate as an algorithm block. This is the closest generalizable structural signal without hardcoding content.","# Inline algorithm pattern: prose intro ending with 'as follows' (or similar) + \begin{enumerate}
+_INLINE_ALG_PATTERN = re.compile(
+    r'(?P<intro>(?:[^\n]|\n(?!\s*\n)){0,400}?'
+    r'(?:as follows|following steps?|following procedure|defined below|described below)'
+    r'[^\n]{0,100}?)'
+    r'\s*(?P<body>\\begin\{enumerate\}.*?\\end\{enumerate\})'
+    ,
+    flags=re.DOTALL | re.IGNORECASE
+)
+
+def _extract_inline_algorithms(self, text: str) -> list:
+    """"""Extract algorithm descriptions that appear as prose + enumerate, not in an algorithm env.""""""
+    # Avoid re-extracting things already inside a named algorithm environment
+    already_covered = set()
+    for m in re.finditer(r'\\begin\{algorithm\*?\}.*?\\end\{algorithm\*?\}', text, re.DOTALL | re.IGNORECASE):
+        already_covered.add(m.start())
+
+    objects = []
+    for m in _INLINE_ALG_PATTERN.finditer(text):
+        # Skip if this match overlaps a real algorithm env
+        if any(m.start() <= pos <= m.end() for pos in already_covered):
+            continue
+        body = m.group('intro') + m.group('body')
+        clean_text = self._clean_latex_to_text(body)
+        label, _ = self._extract_label_and_name(body)
+        alg = Algorithm(
+            id=None,  # will be renumbered by caller
+            kind='algorithm',
+            index=None,
+            label=label,
+            name=None,
+            raw_latex=body,
+            clean_text=clean_text,
+            env_name='enumerate',
+        )
+        alg._source_pos = m.start()
+        objects.append(alg)
+    return objects
+",algorithm,algorithm
+paper008,1,"In the previous section, we showed that SGD with averaging may have a rate of $\Omega(\log(T)/T)$ for non-smooth $F$. To get the optimal $\Ocal(1/T)$ rate for any $F$, we might turn to the algorithms of \cite{HazanKa11} and \cite{JudNes11}. However, these algorithms constitute a significant departure from standard SGD. In this section, we show that it is actually possible to get an $\Ocal(1/T)$ rate using a much simpler modification of the algorithm: given the sequence of points $\bw_1,\ldots,\bw_T$ provided by SGD, instead of returning the average $\bar{\bw}_T = (\bw_1+\ldots+\bw_T)/T$, we average and return just a suffix, namely \[ \bar{\bw}^{\alpha}_T = \frac{\bw_{(1-\alpha)T+1}+\ldots+\bw_T}{\alpha T}, \] for some constant $\alpha\in (0,1)$ (assuming $\alpha T$ and $(1-\alpha)T$ are integers). We call this procedure \emph{$\alpha$-suffix averaging}.",inline_definition,"eq 0$ is just for convenience, and the analysis also carries through, with some second-order factors, if we let $w_{1,1}<0$.
+
+
+
+
+\section{Recovering an $\Ocal(1/T)$ Rate for SGD with $\alpha$-Suffix Averaging}\label{sec:suffix}
+
+In the previous section, we showed that SGD with averaging may have a rate of $\Omega(\log(T)/T)$ for non-smooth $F$. To get the optimal $\Ocal(1/T)$ rate for any $F$, we might turn to the algorithms of \cite{HazanKa11} and \cite{JudNes11}. However, these algorithms constitute  a significant departure from standard SGD. In this section, we show that it is actually possible to get an $\Ocal(1/T)$ rate using a much simpler modification of the algorithm: given the sequence of points $\bw_1,\ldots,\bw_T$ provided by SGD, instead of returning the average $\bar{\bw}_T = (\bw_1+\ldots+\bw_T)/T$, we average and return just a suffix, namely
+\[
+\bar{\bw}^{\alpha}_T = \frac{\bw_{(1-\alpha)T+1}+\ldots+\bw_T}{\alpha T},
+\]
+for some constant $\alpha\in (0,1)$ (assuming $\alpha T$ and $(1-\alpha)T$ are integers). We call this procedure \emph{$\alpha$-suffix averaging}.
+
+\begin{theorem}\label{thm:alphaaveraging}
+Consider SGD with $\alpha$-suffix averaging as described above, and with step sizes $\eta_t=1/\lambda t$. Suppose $F$ is $\lambda$-strongly convex, and that $\E[\norm{\hat{\bg}_t}^2]\leq G$ for all $t$. Then for any $T$, it holds that
+\[
+\E[F(\bar{\bw}^{\alpha}_{T})-F(\bw^*)] \leq \frac{2+2.5 \log\left(\frac{1}{1-\alpha}\right)}{\alpha}
+\frac{G^2}{\lambda T}.
+\]
+\end{theorem}
+Note that for any constant $\alpha\in (0,1)$, the bound above is $\Ocal(G^2/\lambda T)$. This matches the optimal guarantees in \cite{HazanKa11} up to constant factors. However, this is shown for standard SGD, as opposed to the more specialized algorithm of \cite{HazanKa11}. Also, it is interesting to note that this bound is comparable to the bound of \thmref{thm:last} for the last iterate, when $F$ is also smooth, as long as $\mu/\lambda = \Ocal(1)$. However, \thmref{thm:last}","This item is pure prose—there is no \begin{enumerate} or any LaTeX environment wrapping the algorithm description. The 'algorithm' (suffix averaging) is described entirely in a paragraph, including a display math block (\[ ... \]). The structural anchor is a sentence like 'We call this procedure \emph{...}' or 'We call this X' naming a procedure, combined with surrounding prose that describes a modification of an existing algorithm. This is an extremely weak structural signal—essentially any paragraph could match. Reliably extracting this without false positives would require semantic understanding, not just regex. The closest generalizable structural rule would be: a paragraph (bounded by blank lines or section boundaries) that (a) contains 'we call this' or 'we refer to this as' or 'we call the resulting' and (b) contains a display math block (\[ ... \]) describing a formula—but this would match many non-algorithm constructs too. I recommend flagging this as out-of-scope for regex-based extraction: inline prose algorithms with no structural delimiter cannot be reliably generalized via regex without unacceptable false positives.","# Pattern for prose-only algorithm descriptions introduced by 'we call this [procedure|algorithm|method]'
+# Matches a paragraph (up to 2000 chars) containing a display math block and ending with a naming phrase.
+_PROSE_ALG_PATTERN = re.compile(
+    r'(?P<body>'
+    r'(?:[^\n]|\n(?!\s*\n)){0,800}?'       # up to ~800 chars of prose (non-blank-line-crossing)
+    r'\\\[.*?\\\]'                            # a display math block
+    r'(?:[^\n]|\n(?!\s*\n)){0,400}?'        # more prose after math
+    r'[Ww]e (?:call|refer to) this '
+    r'(?:procedure|algorithm|method|approach|scheme|strategy)'
+    r'[^.!?]*[.!?]'
+    r')'
+    ,
+    flags=re.DOTALL
+)
+
+def _extract_prose_algorithms(self, text: str) -> list:
+    """"""Extract algorithm descriptions that are pure prose with a display math + naming phrase.""""""
+    already_covered = set()
+    for m in re.finditer(r'\\begin\{(?:algorithm|enumerate|itemize)[*]?\}', text, re.IGNORECASE):
+        for offset in range(m.start(), min(m.start()+2000, len(text))):
+            already_covered.add(offset)
+
+    objects = []
+    for m in _PROSE_ALG_PATTERN.finditer(text):
+        if m.start() in already_covered:
+            continue
+        body = m.group('body')
+        clean_text = self._clean_latex_to_text(body)
+        label, _ = self._extract_label_and_name(body)
+        alg = Algorithm(
+            id=None,
+            kind='algorithm',
+            index=None,
+            label=label,
+            name=None,
+            raw_latex=body,
+            clean_text=clean_text,
+            env_name='prose',
+        )
+        alg._source_pos = m.start()
+        objects.append(alg)
+    return objects
+",algorithm,algorithm
+paper014,2,"Let $\pT(\bx, \bz) = \pT(\bz) \pT(\bx|\bz)$ be the generative model we are sampling from, and for a given datapoint $\bxi$ we would like to estimate the marginal likelihood $\pT(\bxi)$. The estimation process consists of three stages: \begin{enumerate} \item Sample $L$ values $\{\bzl\}$ from the posterior using gradient-based MCMC, e.g. Hybrid Monte Carlo, using $\nabla_{\bz} \log \pT(\bz|\bx) = \nabla_{\bz} \log \pT(\bz) + \nabla_{\bz} \log \pT(\bx|\bz)$. \item Fit a density estimator $q(\bz)$ to these samples $\{\bzl\}$. \item Again, sample $L$ new values from the posterior. Plug these samples, as well as the fitted $q(\bz)$, into the following estimator: \begin{align*} \pT(\bxi) \simeq \left( \frac{1}{L} \sum_{l=1}^L \frac{q(\bzl)}{\pT(\bz) \pT(\bxi|\bzl)} \right)^{-1} \text{\quad where \quad} \bzl \sim \pT(\bz|\bxi) \end{align*} \end{enumerate}",unclassified,"ollowing marginal likelihood estimator that produces good estimates of the marginal likelihood as long as the dimensionality of the sampled space is low (less then 5 dimensions), and sufficient samples are taken.  Let $\pT(\bx, \bz) = \pT(\bz) \pT(\bx|\bz)$ be the generative model we are sampling from, and for a given datapoint $\bxi$ we would like to estimate the marginal likelihood $\pT(\bxi)$.
+
+The estimation process consists of three stages:
+\begin{enumerate}
+\item Sample $L$ values $\{\bzl\}$ from the posterior using gradient-based MCMC, e.g. Hybrid Monte Carlo, using $\nabla_{\bz} \log \pT(\bz|\bx) = \nabla_{\bz} \log \pT(\bz) + \nabla_{\bz} \log \pT(\bx|\bz)$.
+\item Fit a density estimator $q(\bz)$ to these samples $\{\bzl\}$.
+\item Again, sample $L$ new values from the posterior. Plug these samples, as well as the fitted $q(\bz)$, into the following estimator:
+\begin{align*}
+\pT(\bxi) \simeq \left( \frac{1}{L} \sum_{l=1}^L \frac{q(\bzl)}{\pT(\bz) \pT(\bxi|\bzl)} \right)^{-1} \text{\quad where \quad} \bzl \sim \pT(\bz|\bxi)
+\end{align*}
+\end{enumerate}
+
+Derivation of the estimator:
+\begin{align*}
+\frac{1}{\pT(\bxi)} 
+&= \frac{\int q(\bz) \,d\bz}{\pT(\bxi)}
+= \frac{\int q(\bz) \frac{\pT(\bxi, \bz) }{\pT(\bxi, \bz)} \,d\bz}{\pT(\bxi)} \\
+&= \int \frac{\pT(\bxi, \bz)}{\pT(\bxi)} \frac{q(\bz)}{\pT(\bxi, \bz)} \,d\bz \\
+&= \int \pT(\bz|\bxi) \frac{q(\bz)}{\pT(\bxi, \bz)} \,d\bz \\
+&\simeq \frac{1}{L} \sum_{l=1}^L \frac{q(\bzl)}{\pT(\bz) \pT(\bxi|\bzl)} \text{\quad where \quad} \bzl \sim \pT(\bz|\bxi)
+\end{align*}
+
+\section{Monte Carlo EM}
+The Monte Carlo EM algorithm does not employ an encoder, instead it samples from the posterior of the latent variables using gradients of the posterior computed with $\nabla_{\bz} \log \pT(\bz|\bx) = \nabla_{\bz} \log \pT(\bz) + \nabla_{\bz} \log \pT(\bx|\bz)$. The Monte Carlo EM procedure consists of 10 HMC leapfrog steps with an automatically tuned stepsize such that the acceptance rate was 90\%, followed by 5 weight updates st","This is not a standard LaTeX algorithm environment at all — it's a numbered enumeration (`\begin{enumerate}`) embedded in prose that describes a multi-step algorithmic process. The gold label is assigning 'algorithm' type based on the semantic content (it describes a 3-step estimation procedure), not on any structural LaTeX marker like \begin{algorithm}. To generalize this without hardcoding content, the closest structural rule is: detect an `enumerate` environment that is preceded (within a short window) by prose containing algorithmic signal phrases like 'process consists of', 'procedure consists of', 'steps:', 'algorithm:', 'method consists of', etc. However, this is inherently content-based and very noisy — nearly any enumerate environment in a math paper could be a procedure. The structural anchor is too weak to generalize reliably without false positives. The minimal addition would be a heuristic: scan for `\begin{enumerate}` blocks preceded within ~300 chars by phrases like 'consists of.*steps' or 'process consists of' or 'procedure consists of'. This is the closest general rule without hardcoding paper-specific text.","# Add to _extract_algorithms, after the existing `found = self._extract_envs(...)` block:
+
+# Heuristic: catch enumerate environments used as algorithmic procedures
+# triggered by preceding prose containing step-description phrases
+PROC_SIGNAL = re.compile(
+    r'(?:process|procedure|method|algorithm|estimation)\s+consists\s+of'
+    r'|following\s+(?:steps?|stages?|procedure)\s*:'
+    r'|(?:steps?|stages?)\s+(?:are|follow)\s*:',
+    re.IGNORECASE
+)
+
+enum_pattern = re.compile(
+    r'(?P<pre_context>(?:.|\n){0,400})'
+    r'(?P<full>\\begin\{enumerate\}(?P<body>.*?)\\end\{enumerate\})',
+    re.DOTALL
+)
+
+for m in enum_pattern.finditer(text):
+    pre = m.group('pre_context')
+    if PROC_SIGNAL.search(pre):
+        body = m.group('body')
+        source_pos = m.start('full')
+        # avoid duplicates already caught by standard env extraction
+        already = any(abs(o._source_pos - source_pos) < 10 for o in objects)
+        if already:
+            continue
+        idx += 1
+        obj_id = f'A{idx}'
+        label, _ = self._extract_label_and_name(body)
+        clean_text = self._clean_latex_to_text(body)
+        alg = Algorithm(
+            id=obj_id,
+            kind='algorithm',
+            index=idx,
+            label=label,
+            name=None,
+            raw_latex=body,
+            clean_text=clean_text,
+            env_name='enumerate',
+        )
+        alg._source_pos = source_pos
+        objects.append(alg)
+",algorithm,algorithm

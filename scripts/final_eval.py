@@ -79,19 +79,40 @@ def main():
     papers = [e['paper_id'] for e in log]
 
     rows = []
+    # Pooled (node-level) TP/FP/FN for the clean step_00 baseline vs final rules,
+    # so the report's headline P/R/F1 isn't a deflated per-type macro and isn't
+    # contaminated by prior rules (as iteration_log baselines are on a resume).
+    pooled = {'base': {'tp': 0, 'fp': 0, 'fn': 0},
+              'final': {'tp': 0, 'fp': 0, 'fn': 0}}
+    # Snapshots in processing order: snaps[0]=step_00 (no rules), snaps[i+1]=after
+    # the i-th distilled paper. So the rules in effect JUST BEFORE papers[i] was
+    # distilled live in snaps[i] — used for the "FN with rules so far" column.
     print(f"\n{'Paper':<10} | {'baseline all9/present':<22} | {'FINAL all9/present':<20} | per-type FINAL f1 (gold>0)")
     print("-" * 110)
-    for pid in papers:
+    for i, pid in enumerate(papers):
+        pre_snap = snaps[i] if i < len(snaps) else step00
         base_b = parse_buckets(pid, tex_dir, types, eval_dir=step00)
+        sofar_b = parse_buckets(pid, tex_dir, types, eval_dir=pre_snap)
         fin_b = parse_buckets(pid, tex_dir, types, eval_dir=final)
         base_m = {t: metrics(base_b[t], gold[t].get(pid, []), args.threshold) for t in types}
+        sofar_m = {t: metrics(sofar_b[t], gold[t].get(pid, []), args.threshold) for t in types}
         fin_m = {t: metrics(fin_b[t], gold[t].get(pid, []), args.threshold) for t in types}
+        for t in types:
+            for k in ('tp', 'fp', 'fn'):
+                pooled['base'][k] += base_m[t][k]
+                pooled['final'][k] += fin_m[t][k]
+        # FN gap (gold missed), summed over types: no rules vs rules-accumulated-
+        # before-this-paper. Same metrics() method, so paper 1 (no prior rules)
+        # has fn_base == fn_sofar by construction.
+        fn_base = sum(base_m[t]['fn'] for t in types)
+        fn_sofar = sum(sofar_m[t]['fn'] for t in types)
         b9, bp = overall(base_m)
         f9, fp = overall(fin_m)
         present_str = "  ".join(f"{t[:3]}={fin_m[t]['f1']:.2f}"
                                 for t in types if fin_m[t]['n_gold'] > 0)
         print(f"{pid:<10} | {b9:.3f} / {bp:.3f}{'':<8} | {f9:.3f} / {fp:.3f}{'':<6} | {present_str}")
         rows.append({'paper_id': pid,
+                     'fn_base': fn_base, 'fn_sofar': fn_sofar,
                      'baseline_all9': round(b9, 4), 'baseline_present': round(bp, 4),
                      'final_all9': round(f9, 4), 'final_present': round(fp, 4),
                      **{f'final_f1_{t}': round(fin_m[t]['f1'], 4) for t in types},
@@ -111,6 +132,11 @@ def main():
         w.writeheader()
         w.writerows(rows)
     print(f"\nWrote {out}")
+
+    # Pooled clean base vs final counts for the report's headline table.
+    pjson = eval_dir / "pooled_stages.json"
+    json.dump(pooled, open(pjson, "w", encoding="utf-8"), indent=2)
+    print(f"Wrote {pjson}")
 
 
 if __name__ == "__main__":
