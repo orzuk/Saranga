@@ -2749,69 +2749,86 @@ Respond ONLY with JSON array."""
         graph.relations = relations + graph.relations[len(relations):]
 
         # ------------------------------------------------------------------
-        # 5. Break remaining cycles (all lengths) in 'uses' edges.
-        #    Runs AFTER all edge types have been added (ref, keyword, etc.).
-        #    Iterative DFS finds back-edges; remove preferring low-confidence
-        #    first, then document-order (latest source removed).
+        # 5. Break remaining cycles (all lengths) across ALL edge types.
+        #    The acyclicity metric (corpus_stats) is computed over the full
+        #    directed graph, so a cycle may MIX a low-confidence 'uses'
+        #    (term_reuse, conf 0.3) edge with a structural 'proves' /
+        #    'illustrates' edge -- which a 'uses'-only breaker can never see.
+        #    Repeatedly find one cycle and drop its weakest edge (lowest
+        #    confidence; tie-break: source appearing latest in the document),
+        #    so structural edges survive and the weak edge that closed the
+        #    loop is the one cut. Runs AFTER every edge type has been added.
         # ------------------------------------------------------------------
 
-        uses_adj: Dict[str, List[str]] = {}
-        for (src, tgt, rtype) in existing:
-            if rtype == "uses":
-                uses_adj.setdefault(src, []).append(tgt)
+        doc_order2 = {obj_id: i for i, obj_id in enumerate(graph.objects)}
 
-        edge_confidence: Dict[tuple, float] = {}
-        for r in graph.relations:
-            if r.relation_type == "uses":
-                meta = getattr(r, "metadata", {}) or {}
-                edge_confidence[(r.source_id, r.target_id)] = meta.get("confidence", 1.0)
-
-        WHITE, GRAY, BLACK = 0, 1, 2
-        color = {nid: WHITE for nid in uses_adj}
-        for targets in uses_adj.values():
-            for t in targets:
-                if t not in color:
-                    color[t] = WHITE
-        back_edges = []
-        for start in list(color):
-            if color[start] != WHITE:
-                continue
-            stack = [(start, 0)]
-            color[start] = GRAY
-            path_set = {start}
-            while stack:
-                node, idx = stack[-1]
-                neighbors = uses_adj.get(node, [])
-                if idx < len(neighbors):
-                    stack[-1] = (node, idx + 1)
-                    nxt = neighbors[idx]
-                    if color.get(nxt) == GRAY and nxt in path_set:
-                        back_edges.append((node, nxt))
-                    elif color.get(nxt, WHITE) == WHITE:
-                        color[nxt] = GRAY
-                        path_set.add(nxt)
-                        stack.append((nxt, 0))
-                else:
-                    color[node] = BLACK
-                    path_set.discard(node)
-                    stack.pop()
+        def _edge_confidence(rel) -> float:
+            meta = getattr(rel, "metadata", {}) or {}
+            c = meta.get("confidence")
+            return float(c) if c is not None else 1.0
 
         cycle_removed = 0
-        if back_edges:
-            cycle_remove = set()
-            for src, tgt in back_edges:
-                key = (src, tgt, "uses")
-                if key not in existing:
+        # Each pass removes >=1 edge, so the edge count bounds the iterations.
+        for _ in range(len(graph.relations) + 1):
+            # adjacency: source_id -> list of (target_id, index into relations)
+            adj: Dict[str, List[tuple]] = {}
+            for i, r in enumerate(graph.relations):
+                adj.setdefault(r.source_id, []).append((r.target_id, i))
+
+            WHITE, GRAY, BLACK = 0, 1, 2
+            color: Dict[str, int] = {}
+            parent_edge: Dict[str, tuple] = {}  # node -> (parent_id, rel_index)
+            cycle_edge_idxs = None
+            for start in list(adj.keys()):
+                if color.get(start, WHITE) != WHITE:
                     continue
-                cycle_remove.add(key)
-            if cycle_remove:
-                graph.relations = [
-                    r for r in graph.relations
-                    if (r.source_id, r.target_id, r.relation_type) not in cycle_remove
-                ]
-                existing -= cycle_remove
-                cycle_removed = len(cycle_remove)
-                print(f"[INFO] _build_relations: broke {cycle_removed} back-edges to enforce DAG.")
+                stack = [(start, 0)]
+                color[start] = GRAY
+                while stack:
+                    node, k = stack[-1]
+                    nbrs = adj.get(node, [])
+                    if k < len(nbrs):
+                        stack[-1] = (node, k + 1)
+                        nxt, ridx = nbrs[k]
+                        nc = color.get(nxt, WHITE)
+                        if nc == GRAY:
+                            # back-edge node->nxt closes a cycle; walk parents
+                            # from node up to nxt to collect the cycle's edges.
+                            idxs = [ridx]
+                            cur = node
+                            while cur != nxt:
+                                p, pidx = parent_edge[cur]
+                                idxs.append(pidx)
+                                cur = p
+                            cycle_edge_idxs = idxs
+                            break
+                        elif nc == WHITE:
+                            color[nxt] = GRAY
+                            parent_edge[nxt] = (node, ridx)
+                            stack.append((nxt, 0))
+                    else:
+                        color[node] = BLACK
+                        stack.pop()
+                if cycle_edge_idxs is not None:
+                    break
+
+            if cycle_edge_idxs is None:
+                break  # graph is acyclic
+
+            # Drop the weakest edge on the cycle: lowest confidence first,
+            # then the edge whose source appears latest in the document.
+            def _weakness(ri):
+                r = graph.relations[ri]
+                return (_edge_confidence(r), -doc_order2.get(r.source_id, 0))
+
+            victim = min(cycle_edge_idxs, key=_weakness)
+            vr = graph.relations[victim]
+            existing.discard((vr.source_id, vr.target_id, vr.relation_type))
+            graph.relations.pop(victim)
+            cycle_removed += 1
+
+        if cycle_removed:
+            print(f"[INFO] _build_relations: broke {cycle_removed} cross-type cycle edge(s) to enforce DAG.")
 
         structural_total = proves_count + solves_count + illustrates_count + tests_count
         if structural_total or equation_edge_count or uses_ref_count or uses_term_count:
