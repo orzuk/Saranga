@@ -298,13 +298,15 @@ def write_combined_importer(eval_dir: Path, groups: dict) -> Path:
     """Write <eval_dir>/distilled_rules.py re-exporting per-type entry points.
 
     `groups` maps group_key -> [types]. The importer loads each group's
-    self-contained module by ABSOLUTE path (so it resolves no matter which
-    {type}_eval/ dir it gets symlinked into) and exposes, for every type, an
-    extract_distilled_<type>(text) that filters the group's output by
-    structure_type. Missing group files degrade gracefully to [].
+    self-contained module by a path RELATIVE to the importer file itself
+    (resolved at runtime via realpath(__file__)) -- so it works on any
+    machine and no matter which {type}_eval/ dir it gets symlinked into
+    (realpath follows the symlink back to this snapshot's groups/ dir).
+    Exposes, for every type, an extract_distilled_<type>(text) that filters
+    the group's output by structure_type. Missing group files degrade to [].
     """
     group_files = {
-        gkey: str((eval_dir / "groups" / gkey / "distilled_rules.py").resolve())
+        gkey: f"groups/{gkey}/distilled_rules.py"
         for gkey in groups
     }
     type_to_group = {t: gkey for gkey, types in groups.items() for t in types}
@@ -318,14 +320,21 @@ def write_combined_importer(eval_dir: Path, groups: dict) -> Path:
         "import importlib.util as _ilu",
         "import os as _os",
         "",
+        "# Group files are stored relative to this importer; resolve against",
+        "# its real location so it works through symlinks and across machines.",
+        "_HERE = _os.path.dirname(_os.path.realpath(__file__))",
+        "",
         f"_GROUP_FILES = {json.dumps(group_files, indent=4)}",
         "",
         f"_TYPE_TO_GROUP = {json.dumps(type_to_group, indent=4)}",
         "",
         "",
         "def _load_group(gkey):",
-        "    path = _GROUP_FILES.get(gkey)",
-        "    if not path or not _os.path.isfile(path):",
+        "    rel = _GROUP_FILES.get(gkey)",
+        "    if not rel:",
+        "        return None",
+        "    path = _os.path.join(_HERE, rel)",
+        "    if not _os.path.isfile(path):",
         "        return None",
         "    try:",
         "        spec = _ilu.spec_from_file_location('distilled_group_' + gkey, path)",

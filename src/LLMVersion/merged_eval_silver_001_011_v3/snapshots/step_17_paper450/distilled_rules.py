@@ -6,12 +6,17 @@
 import importlib.util as _ilu
 import os as _os
 
+# Group files are stored relative to this importer; resolve against its real
+# location so it works through symlinks and across machines (realpath follows
+# the {type}_eval/ production symlink back to this snapshot's groups/ dir).
+_HERE = _os.path.dirname(_os.path.realpath(__file__))
+
 _GROUP_FILES = {
-    "definition": "/Users/yaronot/Desktop/Data Courses/Plagiarism Detection/Thesis/Authomathics/src/LLMVersion/merged_eval_silver_001_011_v3/snapshots/step_17_paper450/groups/definition/distilled_rules.py",
-    "theoremlike": "/Users/yaronot/Desktop/Data Courses/Plagiarism Detection/Thesis/Authomathics/src/LLMVersion/merged_eval_silver_001_011_v3/snapshots/step_17_paper450/groups/theoremlike/distilled_rules.py",
-    "proof": "/Users/yaronot/Desktop/Data Courses/Plagiarism Detection/Thesis/Authomathics/src/LLMVersion/merged_eval_silver_001_011_v3/snapshots/step_17_paper450/groups/proof/distilled_rules.py",
-    "simpleenv": "/Users/yaronot/Desktop/Data Courses/Plagiarism Detection/Thesis/Authomathics/src/LLMVersion/merged_eval_silver_001_011_v3/snapshots/step_17_paper450/groups/simpleenv/distilled_rules.py",
-    "algorithm": "/Users/yaronot/Desktop/Data Courses/Plagiarism Detection/Thesis/Authomathics/src/LLMVersion/merged_eval_silver_001_011_v3/snapshots/step_17_paper450/groups/algorithm/distilled_rules.py"
+    "definition": "groups/definition/distilled_rules.py",
+    "theoremlike": "groups/theoremlike/distilled_rules.py",
+    "proof": "groups/proof/distilled_rules.py",
+    "simpleenv": "groups/simpleenv/distilled_rules.py",
+    "algorithm": "groups/algorithm/distilled_rules.py"
 }
 
 _TYPE_TO_GROUP = {
@@ -33,8 +38,11 @@ _TYPE_TO_GROUP = {
 
 
 def _load_group(gkey):
-    path = _GROUP_FILES.get(gkey)
-    if not path or not _os.path.isfile(path):
+    rel = _GROUP_FILES.get(gkey)
+    if not rel:
+        return None
+    path = _os.path.join(_HERE, rel)
+    if not _os.path.isfile(path):
         return None
     try:
         spec = _ilu.spec_from_file_location('distilled_group_' + gkey, path)
