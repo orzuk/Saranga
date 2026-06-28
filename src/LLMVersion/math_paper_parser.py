@@ -1574,6 +1574,14 @@ class PaperParser:
             # Add type-specific fields
             if cls in (Definition, TheoremLike, Conjecture, Problem, Algorithm):
                 kwargs['env_name'] = env_name
+            # Theorem-like distilled nodes get the same assumption/conclusion
+            # split as env-extracted ones (otherwise they count as neither,
+            # deflating the corpus-wide with-assumptions/with-conclusions rate).
+            if cls in (TheoremLike, Conjecture, Problem):
+                split_src = clean_text or self._clean_latex_to_text(raw_latex)
+                assumptions, conclusions = self._split_assumptions_conclusions(split_src)
+                kwargs['assumptions'] = assumptions
+                kwargs['conclusions'] = conclusions
             if cls == Proof:
                 kwargs['parent_id'] = None
 
