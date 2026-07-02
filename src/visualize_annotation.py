@@ -1324,7 +1324,7 @@ def draw_legend(ax, node_data, node_rect, show_foundation=False,
 # ── Drawing ─────────────────────────────────────────────────────────────────
 def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
              resolution="standard", show_legend=True, show_foundation=False,
-             foundation_path=None, show_extras=True):
+             foundation_path=None, show_extras=True, write_png=True):
     """Main entry: draw a layered DAG from student-format nodes/edges.
 
     resolution:
@@ -1340,6 +1340,13 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
       Optional path to clean_foundation.json.  When *None* the code tries the
       default location (/mnt/g/My Drive/Research/Automath/naturalproofs/clean_foundation.json)
       and falls back to the built-in WELL_KNOWN dictionary.
+
+    write_png:
+      When True (default) rasterize and save a PNG at out_path (the original
+      behaviour).  When False, skip the PNG entirely and only write the sibling
+      SVG -- used by the interactive-HTML path, which embeds the SVG and never
+      needs the PNG.  Skipping avoids a huge Agg pixel-buffer allocation on
+      large graphs (the source of both the slow render and the OOM there).
 
     show_extras:
       Accepted for API compatibility with callers (op_visualize) that request
@@ -1995,7 +2002,11 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
     if _x_rng > 0 and _y_rng > 0:
         fig.set_size_inches(_x_rng * 0.8 + 2, _y_rng * 0.8 + 2)
     ax.set_position([0.02, 0.02, 0.96, 0.96])
-    plt.savefig(str(out_path), dpi=200, bbox_inches="tight", facecolor="white")
+    # The PNG raster is an Agg pixel buffer of ~(fw*dpi)x(fh*dpi)x4 bytes, which
+    # blows up (time + memory) on large figures. Callers that only need the SVG
+    # (interactive HTML) pass write_png=False to skip it entirely.
+    if write_png:
+        plt.savefig(str(out_path), dpi=200, bbox_inches="tight", facecolor="white")
 
     # Also save SVG if requested (for interactive HTML).
     # No bbox_inches="tight": for wide-aspect figures it shrinks the saved
