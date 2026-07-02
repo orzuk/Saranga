@@ -118,6 +118,15 @@ ALIASES = {
 }
 
 
+# Cache built indexes/automatons across calls. The foundation files are the
+# same for every paper in a batch, so rebuilding per paper is pure waste
+# (dominates visualize runtime when show_foundation=True). Keyed by the
+# resolved path list; the automaton is keyed by the (identity of the) index it
+# was built from, which is stable because the index itself is now cached.
+_INDEX_CACHE = {}
+_AUTOMATON_CACHE = {}
+
+
 def build_foundation_index(foundation_paths=None):
     """Build a name index from foundation data.
 
@@ -131,14 +140,25 @@ def build_foundation_index(foundation_paths=None):
         - Clean foundation: {"index": {"term": {"name": ...}, ...}}
         - Flat list: {"dataset": [{"title": ...}, ...]}
         - Nested dict: {"dataset": {"theorems": [...], "definitions": [...], "others": [...]}}
+
+    Results are memoized by path list; repeated calls with the same paths return
+    the same cached index object (so callers must treat it as read-only).
     """
+    if foundation_paths is None:
+        norm_paths = []
+    elif isinstance(foundation_paths, (str, Path)):
+        norm_paths = [foundation_paths]
+    else:
+        norm_paths = list(foundation_paths)
+
+    cache_key = tuple(str(p) for p in norm_paths)
+    if cache_key in _INDEX_CACHE:
+        return _INDEX_CACHE[cache_key]
+
     index = dict(WELL_KNOWN)  # start with built-in
     index.update(ALIASES)     # add abbreviation aliases
 
-    if foundation_paths is None:
-        foundation_paths = []
-    elif isinstance(foundation_paths, (str, Path)):
-        foundation_paths = [foundation_paths]
+    foundation_paths = norm_paths
 
     for fp in foundation_paths:
         fp = Path(fp)
@@ -206,6 +226,7 @@ def build_foundation_index(foundation_paths=None):
         print(f"[link] Loaded {n_added} terms from {fp.name} ({len(items)} items total)")
 
     print(f"[link] Index has {len(index)} searchable terms")
+    _INDEX_CACHE[cache_key] = index
     return index
 
 
@@ -219,6 +240,11 @@ def _build_automaton(index, min_term_len=5):
         import ahocorasick
     except ImportError:
         return None, None
+
+    # Reuse the automaton when called again with the same (cached) index object.
+    auto_key = (id(index), min_term_len)
+    if auto_key in _AUTOMATON_CACHE:
+        return _AUTOMATON_CACHE[auto_key]
 
     A = ahocorasick.Automaton()
     term_map = {}  # normalized_term -> entry
@@ -239,6 +265,7 @@ def _build_automaton(index, min_term_len=5):
                 A.add_word(alt, alt)
                 term_map[alt] = entry
     A.make_automaton()
+    _AUTOMATON_CACHE[auto_key] = (A, term_map)
     return A, term_map
 
 
