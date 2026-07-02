@@ -350,6 +350,15 @@ def op_visualize(args) -> None:
     import io
     import contextlib
 
+    # Oversized graphs blow up memory super-linearly (bezier arrow clipping +
+    # patch objects + coordinate-range-driven figure): ~400 nodes already needs
+    # ~5GB, so ~500+ nodes OOMs an 8GB job. Such graphs are also unreadable
+    # hairballs (often parse garbage). Skip them so the batch keeps going.
+    # Override via env for larger-memory jobs; 0 disables the cap.
+    max_nodes = int(os.environ.get("MAX_VIZ_NODES", "350"))
+    max_edges = int(os.environ.get("MAX_VIZ_EDGES", "1000"))
+    n_skipped_big = 0
+
     n_ok = 0
     for i, jp in enumerate(json_paths, start=1):
         # Extract paper_id from filename for progress display
@@ -382,6 +391,12 @@ def op_visualize(args) -> None:
             edges = data.get("edges", [])
             if not nodes:
                 print(f"[pipeline] visualize: {paper_id} [{i}/{n_total}] skipped (no nodes)")
+                continue
+            if (max_nodes and len(nodes) > max_nodes) or (max_edges and len(edges) > max_edges):
+                n_skipped_big += 1
+                print(f"[pipeline] visualize: {paper_id} [{i}/{n_total}] "
+                      f"SKIPPED oversized ({len(nodes)} nodes, {len(edges)} edges "
+                      f"> cap {max_nodes}/{max_edges}) to avoid OOM")
                 continue
             metadata = data.get("metadata", {})
 
@@ -420,7 +435,8 @@ def op_visualize(args) -> None:
             if args.verbose:
                 traceback.print_exc()
 
-    print(f"[pipeline] visualize: {n_ok}/{n_total} graphs rendered successfully")
+    print(f"[pipeline] visualize: {n_ok}/{n_total} graphs rendered successfully "
+          f"({n_skipped_big} skipped as oversized)")
 
 
 # =============================================================================
