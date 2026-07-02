@@ -107,12 +107,15 @@ def compute_category_stats(stats_rows: list[dict], anomaly_rows: list[dict]) -> 
             concl_fracs.append(n_concl / n_thm)
     pct_concl = (sum(concl_fracs) / len(concl_fracs) * 100) if concl_fracs else 0.0
 
-    # % anomalous (papers flagged with any non-pass anomaly)
+    # % failed (papers with a high-severity anomaly = genuine extraction failure:
+    # empty_json / tiny_paper / no_edges). Low/medium rules (missing_names,
+    # flat_dag, zero_equations, ...) are cosmetic or structural, not failures.
     if anomaly_rows:
         flagged_papers = set()
         for row in anomaly_rows:
             rule = row.get("rule", "")
-            if rule != "pass":
+            severity = (row.get("severity", "") or "").strip().lower()
+            if rule != "pass" and severity == "high":
                 pid = row.get("paper_id", "")
                 if pid:
                     flagged_papers.add(pid)
@@ -186,11 +189,12 @@ def compute_scale_stats(stats_rows: list[dict], anomaly_rows: list[dict]) -> dic
     n_papers_linked = sum(1 for r in stats_rows if safe_float(r.get("n_foundation_edges")) > 0)
     n_distinct_targets = total("n_distinct_foundation_targets")
 
-    # Anomalies
+    # Anomalies (high-severity only = genuine extraction failures)
     if anomaly_rows:
         flagged_papers = set()
         for row in anomaly_rows:
-            if row.get("rule", "") != "pass":
+            severity = (row.get("severity", "") or "").strip().lower()
+            if row.get("rule", "") != "pass" and severity == "high":
                 flagged_papers.add(row.get("paper_id", ""))
         n_anomalous = len(flagged_papers)
     else:
@@ -264,7 +268,7 @@ def generate_cross_category_tex(all_stats: dict[str, dict], num_tier_three: str 
     lines.append("\\toprule")
     lines.append("\\textbf{Category} & \\textbf{\\#papers} & \\textbf{nodes/p} & "
                  "\\textbf{edges/p} & \\textbf{depth} & \\textbf{\\% acyc} & "
-                 "\\textbf{\\% concl} & \\textbf{\\% anom} & \\textbf{found/p} \\\\")
+                 "\\textbf{\\% concl} & \\textbf{\\% fail} & \\textbf{found/p} \\\\")
 
     # Data rows
     def emit_section(categories, label=None):
@@ -317,7 +321,8 @@ def generate_cross_category_tex(all_stats: dict[str, dict], num_tier_three: str 
     lines.append("nodes/p, edges/p = average per paper. depth = average DAG depth. "
                  "\\% acyc = fraction of papers with acyclic extracted graph. "
                  "\\% concl = fraction of theorem-like nodes with non-empty conclusion field after splitter. "
-                 "\\% anom = fraction of papers flagged by the anomaly detector (any severity). "
+                 "\\% fail = fraction of papers with a high-severity extraction failure "
+                 "(empty output, degenerate size, or no edges); low/medium structural flags are excluded. "
                  "found/p = average specific (IDF $\\leq$ 10\\%) foundation-graph edges per paper.")
     lines.append("\\end{table}")
 
