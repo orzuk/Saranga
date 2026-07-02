@@ -1324,7 +1324,7 @@ def draw_legend(ax, node_data, node_rect, show_foundation=False,
 # ── Drawing ─────────────────────────────────────────────────────────────────
 def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
              resolution="standard", show_legend=True, show_foundation=False,
-             foundation_path=None):
+             foundation_path=None, show_extras=True):
     """Main entry: draw a layered DAG from student-format nodes/edges.
 
     resolution:
@@ -1340,6 +1340,12 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
       Optional path to clean_foundation.json.  When *None* the code tries the
       default location (/mnt/g/My Drive/Research/Automath/naturalproofs/clean_foundation.json)
       and falls back to the built-in WELL_KNOWN dictionary.
+
+    show_extras:
+      Accepted for API compatibility with callers (op_visualize) that request
+      example/remark/cited_result nodes in the SVG.  In "standard" resolution
+      these node types are always drawn already; the HTML toggle buttons hide
+      them via JS, so this flag is currently a no-op kept to avoid a TypeError.
     """
     if resolution == "full":
         # Full resolution: no merging, show everything
