@@ -351,12 +351,13 @@ def op_visualize(args) -> None:
     import contextlib
 
     # Oversized graphs blow up memory super-linearly (bezier arrow clipping +
-    # patch objects + coordinate-range-driven figure): ~400 nodes already needs
-    # ~5GB, so ~500+ nodes OOMs an 8GB job. Such graphs are also unreadable
-    # hairballs (often parse garbage). Skip them so the batch keeps going.
-    # Override via env for larger-memory jobs; 0 disables the cap.
-    max_nodes = int(os.environ.get("MAX_VIZ_NODES", "350"))
-    max_edges = int(os.environ.get("MAX_VIZ_EDGES", "1000"))
+    # patch objects + coordinate-range-driven figure): ~400 nodes needs ~5GB and
+    # it climbs steeply from there. Such graphs are also unreadable hairballs
+    # (often parse garbage). Skip them so the batch keeps going instead of
+    # OOM-killing. Defaults sized for a 16GB job (peak ~8-11GB); lower them for
+    # an 8GB job (e.g. 350/1000) or raise for more memory. 0 disables the cap.
+    max_nodes = int(os.environ.get("MAX_VIZ_NODES", "500"))
+    max_edges = int(os.environ.get("MAX_VIZ_EDGES", "1500"))
     n_skipped_big = 0
 
     n_ok = 0
