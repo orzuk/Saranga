@@ -698,10 +698,26 @@ class PaperParser:
         text = self._strip_comments(text)
         self._parse_newtheorem(text)
 
-        # 3) Restrict to document body only for the actual extraction pass.
-        m = re.search(r"\\begin{document}(.*)\\end{document}", text, flags=re.DOTALL)
-        if m:
-            text = m.group(1)
+        # 3) Restrict to the document body/bodies for the actual extraction
+        #    pass. A source may contain MORE THAN ONE \begin{document} (e.g. a
+        #    PDF-wrapper stub `\begin{document}\includepdf{...}\end{document}`
+        #    followed by the real paper) and may be MISSING its final
+        #    \end{document}. A single greedy `\begin{document}(.*)\end{document}`
+        #    would capture first-begin -> last-end, which for a stub-first
+        #    layout is just the tiny stub and drops the entire real paper.
+        #    Instead, take the content of EVERY \begin{document} block (to its
+        #    \end{document} or EOF) and concatenate. Preambles between blocks
+        #    are naturally excluded; a stub's \includepdf yields no nodes; and
+        #    no real content is ever dropped. Duplicate content across blocks
+        #    is later collapsed by cross-source dedup (_merge_objects).
+        begins = list(re.finditer(r"\\begin{document}", text))
+        if begins:
+            bodies = []
+            for b in begins:
+                rest = text[b.end():]
+                e = re.search(r"\\end{document}", rest)
+                bodies.append(rest[: e.start()] if e else rest)
+            text = "\n".join(bodies)
 
         # 4) Strip \newenvironment definitions so their internal
         #    \begin{ENV}...\end{ENV} fragments don't get matched as content.

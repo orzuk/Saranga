@@ -169,32 +169,69 @@ def run_batch(
     # all .tex files under tex_dir and parse them directly.
     if tex_dir and not local_items:
         import re as _re
+        _ARXIV_RE = _re.compile(r'(\d{4}\.\d{4,5})(v\d+)?')
         tex_dir_path = Path(tex_dir)
         all_tex = sorted(tex_dir_path.rglob("*.tex"))
-        # Deduplicate: keep one .tex per paper directory.  The download
-        # layout is .../YYYY/MM/DD/<paper_id>/<paper_id>.tex but some
-        # paper dirs contain companion .tex files.  Pick the file whose
-        # stem matches its parent directory name (the canonical main file).
-        seen_dirs: set = set()
+        # Group .tex files by paper directory.  The download layout is
+        # .../YYYY/MM/DD/<paper_id>/... where <paper_id> is the arXiv id, but
+        # a dir may hold companion .tex files (main.tex, intro.tex, ...).
+        # Two things matter here:
+        #   (1) pick the canonical MAIN .tex to parse (not a fragment like
+        #       abstract.tex that happens to sort first), and
+        #   (2) name the output by the arXiv id taken from the PARENT DIR,
+        #       NOT the .tex filename.  Otherwise papers whose main file is
+        #       generically named (main.tex, intro.tex, ...) all collapse to
+        #       the same output name (main_rules.json, ...) and silently
+        #       overwrite each other — the cause of the missing-paper gap in
+        #       cs.* categories where main.tex naming is common.
+        dir_to_texs: Dict[Path, list] = {}
         for tp in all_tex:
-            parent = tp.parent
-            if parent in seen_dirs:
-                continue
-            seen_dirs.add(parent)
-            stem = tp.stem  # e.g. "1210.4634v1"
-            # Extract versioned_id from filename. First try the arXiv ID
-            # pattern; if it doesn't match (e.g., the file is named
-            # "paper1.tex" or similar non-arXiv stem), accept the stem as-is
-            # and use it as both base_id and versioned_id so single-paper
-            # extraction still works under --tex-dir.
-            m = _re.match(r'(\d{4}\.\d{4,5})(v\d+)?', stem)
+            dir_to_texs.setdefault(tp.parent, []).append(tp)
+
+        def _pick_main_tex(texs: list) -> Path:
+            # Mirror find_main_tex() in extract_arxiv_funcs.py so the main-file
+            # choice is consistent with what the downloader canonicalises.
+            texs = sorted(texs)
+            parent_name = texs[0].parent.name
+            # 1. file whose stem == parent dir name (canonical <id>.tex)
+            for tp in texs:
+                if tp.stem == parent_name:
+                    return tp
+            # 2. any arXiv-id-named file
+            for tp in texs:
+                if _ARXIV_RE.match(tp.stem):
+                    return tp
+            # 3. common root filenames
+            _common = ("main.tex", "paper.tex", "ms.tex", "article.tex")
+            for tp in texs:
+                if tp.name.lower() in _common:
+                    return tp
+            # 4. a file that declares \documentclass (the real root)
+            for tp in texs:
+                try:
+                    head = tp.read_text(encoding="utf-8", errors="replace")[:20000]
+                except Exception:
+                    continue
+                if "\\documentclass" in head:
+                    return tp
+            # 5. fallback: largest file (matches find_main_tex)
+            return max(texs, key=lambda p: p.stat().st_size)
+
+        for parent, texs in dir_to_texs.items():
+            tp = _pick_main_tex(texs)
+            # Derive the arXiv id from the PARENT DIR name first (canonical
+            # in the download layout); fall back to the file stem for
+            # non-arXiv layouts (e.g. a lone paper1.tex under --tex-dir).
+            m = _ARXIV_RE.match(parent.name) or _ARXIV_RE.match(tp.stem)
             if m:
+                versioned_id = m.group(0)   # e.g. 1005.2714v2
                 base_id = m.group(1)
-                versioned_id = stem
             else:
-                base_id = stem
-                versioned_id = stem
+                versioned_id = tp.stem
+                base_id = tp.stem
             local_items.append((base_id, str(tp), versioned_id))
+        # Deterministic processing order (by tex path), as before.
+        local_items.sort(key=lambda it: it[1])
         print(f"[INFO] Local tex-dir mode: found {len(local_items)} .tex files under {tex_dir}")
 
     if local_items:
