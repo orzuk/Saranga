@@ -330,6 +330,59 @@ def op_validate(args) -> None:
 # OPERATION: visualize (JSON -> PNG + HTML)
 # =============================================================================
 
+def _viz_mem_cap():
+    """Per-render address-space ceiling (bytes, MB).
+
+    A single pathological graph can balloon past any node/edge heuristic, so we
+    render each paper in a child process capped below the SLURM memory limit.
+    The child hits its own RLIMIT_AS (raising MemoryError) *before* the cgroup
+    limit is reached, so the runaway paper is skipped and the job survives.
+
+    Cap = MAX_VIZ_CHILD_MB env if set, else 85% of SLURM_MEM_PER_NODE, else 12GB.
+    """
+    import os
+    env = os.environ.get("MAX_VIZ_CHILD_MB")
+    if env:
+        mb = int(env)
+    else:
+        slurm = os.environ.get("SLURM_MEM_PER_NODE")
+        mb = int(float(slurm) * 0.85) if slurm else 12000
+    return mb * 1024 * 1024, mb
+
+
+def _render_guarded(render_fn, mem_cap_bytes):
+    """Run render_fn in a forked child with an address-space limit.
+
+    A single runaway paper can't OOM-kill the whole job: it hits RLIMIT_AS in
+    its own child and exits non-zero, which the parent treats as "skip". The
+    parent never runs matplotlib itself, so it also stays lean across the batch.
+    Returns True on success, False if the child crashed / exceeded the cap.
+    Falls back to inline execution where os.fork is unavailable.
+    """
+    import os
+    if not hasattr(os, "fork"):
+        try:
+            render_fn()
+            return True
+        except Exception:
+            return False
+    pid = os.fork()
+    if pid == 0:  # child
+        try:
+            # RLIMIT_AS is only meaningfully enforced on Linux; macOS reserves a
+            # huge virtual address space so a finite cap would fail every render.
+            # On non-Linux we still fork (crash isolation) but skip the cap.
+            if mem_cap_bytes and sys.platform.startswith("linux"):
+                import resource
+                resource.setrlimit(resource.RLIMIT_AS, (mem_cap_bytes, mem_cap_bytes))
+            render_fn()
+            os._exit(0)
+        except BaseException:
+            os._exit(1)
+    _, status = os.waitpid(pid, 0)
+    return os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
+
+
 def op_visualize(args) -> None:
     """Generate PNG and/or HTML visualizations for all JSONs under out_dir."""
     try:
@@ -359,6 +412,27 @@ def op_visualize(args) -> None:
     max_nodes = int(os.environ.get("MAX_VIZ_NODES", "500"))
     max_edges = int(os.environ.get("MAX_VIZ_EDGES", "1500"))
     n_skipped_big = 0
+
+    # Hard safety net: render each paper in a memory-capped child process, so a
+    # single graph that balloons past any heuristic can't OOM-kill the job -- it
+    # trips its own limit and gets skipped. See _viz_mem_cap / _render_guarded.
+    mem_cap_bytes, mem_cap_mb = _viz_mem_cap()
+    n_skipped_oom = 0
+    print(f"[pipeline] visualize: per-render memory guard = {mem_cap_mb} MB "
+          f"(node/edge pre-cap {max_nodes}/{max_edges})")
+
+    # Pre-warm the foundation index+automaton in the PARENT so every forked
+    # child inherits it via copy-on-write instead of rebuilding it per paper
+    # (rendering happens in children, so the parent would otherwise never build
+    # it and the cross-paper cache from _build_automaton would be defeated).
+    try:
+        from link_to_foundation import build_foundation_index, _build_automaton
+        from visualize_annotation import _resolve_foundation_path
+        with contextlib.redirect_stdout(io.StringIO()):
+            _idx = build_foundation_index(_resolve_foundation_path(None))
+            _build_automaton(_idx, min_term_len=5)
+    except Exception as _e:
+        print(f"[pipeline] visualize: foundation pre-warm skipped ({_e})")
 
     n_ok = 0
     for i, jp in enumerate(json_paths, start=1):
@@ -401,32 +475,43 @@ def op_visualize(args) -> None:
                 continue
             metadata = data.get("metadata", {})
 
-            what = []  # track what we're generating
+            what = []  # track what we're generating (for the progress log)
 
-            # Suppress noisy library output (e.g. "Index has N searchable terms")
-            # by capturing stdout during draw_dag / generate_interactive_html calls
+            # The actual rendering, run inside a memory-capped child so a runaway
+            # paper is skipped instead of OOM-killing the batch. Suppress noisy
+            # library output (e.g. "Index has N searchable terms").
+            def _render():
+                if not args.html_only and not png_path.exists():
+                    png_dir.mkdir(parents=True, exist_ok=True)
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        draw_dag(nodes, edges, str(png_path), metadata=metadata,
+                                 resolution=args.resolution)
+                if (args.html or args.html_only) and not html_path.exists():
+                    import tempfile
+                    tmp_dir = tempfile.mkdtemp()
+                    tmp_png = os.path.join(tmp_dir, jp.stem + "_nolegend.png")
+                    svg_only = tmp_png.replace(".png", ".svg")
+                    html_dir.mkdir(parents=True, exist_ok=True)
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        draw_dag(nodes, edges, tmp_png, metadata=metadata,
+                                 resolution=args.resolution, show_legend=False,
+                                 show_foundation=True, show_extras=True,
+                                 write_png=False)
+                        generate_interactive_html(data, svg_only, str(html_path))
+                    import shutil
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+
             if not args.html_only and not png_path.exists():
-                png_dir.mkdir(parents=True, exist_ok=True)
-                with contextlib.redirect_stdout(io.StringIO()):
-                    draw_dag(nodes, edges, str(png_path), metadata=metadata,
-                             resolution=args.resolution)
                 what.append("PNG")
-
             if (args.html or args.html_only) and not html_path.exists():
-                import tempfile
-                tmp_dir = tempfile.mkdtemp()
-                tmp_png = os.path.join(tmp_dir, jp.stem + "_nolegend.png")
-                svg_only = tmp_png.replace(".png", ".svg")
-                html_dir.mkdir(parents=True, exist_ok=True)
-                with contextlib.redirect_stdout(io.StringIO()):
-                    draw_dag(nodes, edges, tmp_png, metadata=metadata,
-                             resolution=args.resolution, show_legend=False,
-                             show_foundation=True, show_extras=True,
-                             write_png=False)
-                    generate_interactive_html(data, svg_only, str(html_path))
-                import shutil
-                shutil.rmtree(tmp_dir, ignore_errors=True)
                 what.append("HTML")
+
+            if not _render_guarded(_render, mem_cap_bytes):
+                n_skipped_oom += 1
+                print(f"[pipeline] visualize: {paper_id} [{i}/{n_total}] "
+                      f"SKIPPED ({len(nodes)} nodes, {len(edges)} edges): render "
+                      f"crashed or exceeded {mem_cap_mb} MB memory guard")
+                continue
 
             n_ok += 1
             print(f"[pipeline] visualize: {paper_id} [{i}/{n_total}] "
@@ -437,7 +522,7 @@ def op_visualize(args) -> None:
                 traceback.print_exc()
 
     print(f"[pipeline] visualize: {n_ok}/{n_total} graphs rendered successfully "
-          f"({n_skipped_big} skipped as oversized)")
+          f"({n_skipped_big} skipped as oversized, {n_skipped_oom} skipped by memory guard)")
 
 
 # =============================================================================
