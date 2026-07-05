@@ -183,53 +183,103 @@ def slide_p1(fig):
 
 
 # ── Slide 4: how A2 alignment works ───────────────────────────────────────────
+def _align_diagram(fig):
+    """Real Adam↔AdamW graph alignment: two papers' node sets, mapped."""
+    ax = fig.add_axes([0.40, 0.24, 0.57, 0.55]); ax.axis("off")
+    ax.set_xlim(0, 1); ax.set_ylim(0, 1)
+    ax.text(0.22, 1.02, "Adam  (1412.6980)", ha="center", fontsize=11,
+            fontweight="bold", color="#12324f")
+    ax.text(0.80, 1.02, "AdamW  (1711.05101)", ha="center", fontsize=11,
+            fontweight="bold", color="#12324f")
+    # (y, adam_label, adamw_label, relation)  relation: exact|analog|left|right
+    rows = [
+        (0.90, "Moment estimates", "Moment estimates", "exact"),
+        (0.74, "Bias correction", "Bias correction", "exact"),
+        (0.58, "Adam update rule", "AdamW update (+decay)", "analog"),
+        (0.42, "L2 with Adam", "L2 vs weight decay", "exact"),
+        (0.26, "Convergence Thm 4.1", None, "left"),
+        (0.10, None, "Warm restarts (new)", "right"),
+    ]
+
+    def _box(cx, y, text, ec):
+        ax.add_patch(plt.Rectangle((cx - 0.18, y - 0.05), 0.36, 0.10,
+                     fc="#f4f7fb", ec=ec, lw=1.3))
+        ax.text(cx, y, text, ha="center", va="center", fontsize=8.7)
+
+    for y, la, lb, rel in rows:
+        if la:
+            _box(0.22, y, la, GREEN)
+        if lb:
+            _box(0.80, y, lb, GREEN)
+        if rel == "exact":
+            ax.plot([0.40, 0.62], [y, y], "-", color="#555", lw=1.8)
+        elif rel == "analog":
+            ax.plot([0.40, 0.62], [y, y], "--", color=ORANGE, lw=1.8)
+        elif rel == "left":
+            ax.text(0.44, y, "only in Adam", fontsize=8.5, color=RED, va="center")
+        elif rel == "right":
+            ax.text(0.58, y, "new in AdamW", fontsize=8.5, color=RED, va="center", ha="right")
+    ax.text(0.5, -0.03, "——  same    - - -  analogous    (unpaired = unique to one paper)",
+            ha="center", fontsize=9, color=GRvy)
+
+
 def slide_align(fig):
-    _title(fig, "How T-ALIGN A2 matches two papers — bipartite matching",
-           "Finds which result in paper A corresponds to which in paper B")
-    ax = fig.add_axes([0.06, 0.30, 0.52, 0.48])
+    _title(fig, "How T-ALIGN maps one paper's graph onto another",
+           "Not a single match — the WHOLE node set of A ↔ the node set of B")
+    ax = fig.add_axes([0.05, 0.24, 0.32, 0.54])
     _steps(ax, [
-        "Score every A-node vs every B-node: text similarity\n× type-compatibility (theorem↔lemma allowed, etc.).",
-        "Hungarian algorithm picks the best one-to-one\npairing that maximises total score.",
-        "Refine: reward pairs whose neighbours also match\n(a theorem↔theorem whose proofs align too).",
-        "Permutation test → p-value: is this more aligned\nthan two random papers?",
+        "Score every A-node vs every\nB-node (text × type-compat).",
+        "Pick the best one-to-one\nmatching (Hungarian).",
+        "Reward matches whose\nneighbours also match.",
+        "Left over = unique to each\npaper; p-value vs random.",
     ], GREEN)
-    _example_box(fig, 0.575, 0.39, 0.385, 0.34, "Real match (Adam vs AdamW)", [
-        "Adam  (DP_ADAM.3):",
-        "  θ = θ − α·m/(√v+ε)",
-        "AdamW (DP_AW.2):",
-        "  θ = (1−λ)θ − α·m/(√v+ε)",
-        "→ same rule + (1−λ) decay",
-    ], GREEN)
-    fig.text(0.575, 0.355, "matched across the two papers by our alignment run",
-             fontsize=10, color=GRvy, style="italic")
-    fig.text(0.06, 0.185, "On a paper with renamed notation we recover 99.9% of the "
-             "true node↔node map; random papers score ~0.03.",
-             fontsize=12.5, color=GREEN, fontweight="bold")
+    _align_diagram(fig)
+    fig.text(0.05, 0.155, "Real run: the shared algorithm is matched node-by-node; "
+             "each paper's unique parts stay unpaired.",
+             fontsize=12, color=GREEN, fontweight="bold")
 
 
 # ── Slide 5: how O1 works ─────────────────────────────────────────────────────
+def _open_flow(fig):
+    """Two-stage pipeline on the real TSP example: O1 retrieval → O4 judge."""
+    ax = fig.add_axes([0.52, 0.15, 0.45, 0.62]); ax.axis("off")
+    ax.set_xlim(0, 1); ax.set_ylim(0, 1)
+
+    def box(y0, y1, title, lines, tc, fc):
+        ax.add_patch(plt.Rectangle((0.02, y0), 0.96, y1 - y0, fc=fc, ec="#bbb", lw=1.4))
+        ax.text(0.06, y1 - 0.035, title, fontsize=11, fontweight="bold", color=tc, va="top")
+        for i, ln in enumerate(lines):
+            ax.text(0.07, y1 - 0.115 - i * 0.072, ln, fontsize=9.4, va="top", family="monospace")
+
+    box(0.70, 1.00, "①  O1 · cheap retrieval",
+        ["conj 1107.1630  ↔  thm 1105.2040",
+         "different authors ✓   theorem not older ✓",
+         "high term + foundation overlap"], BLUE, "#eef4fb")
+    ax.annotate("", xy=(0.5, 0.635), xytext=(0.5, 0.70),
+                arrowprops=dict(arrowstyle="-|>", color="#555", lw=2.2))
+    box(0.33, 0.63, "②  O4 · LLM judge (Opus)",
+        ["reads the full statements:",
+         "conj: subtour-LP gap (1,2-TSP) = 10/9",
+         "thm:  gap of CR for SymSubMP ≤ 2(1−1/k)"], ORANGE, "#fdf3e8")
+    ax.annotate("", xy=(0.5, 0.265), xytext=(0.5, 0.33),
+                arrowprops=dict(arrowstyle="-|>", color="#555", lw=2.2))
+    box(0.03, 0.25, "VERDICT",
+        ["NO — FALSE POSITIVE",
+         "different objects → rejected"], RED, "#fdecec")
+
+
 def slide_open(fig):
-    _title(fig, "How T-OPEN O1 finds solved open problems",
-           "An open question in an old paper, answered by a theorem in a newer one")
-    ax = fig.add_axes([0.06, 0.30, 0.52, 0.48])
+    _title(fig, "How T-OPEN works — cheap search proposes, an LLM judge decides",
+           "A conjecture in one paper vs a theorem in another, by different authors")
+    ax = fig.add_axes([0.05, 0.26, 0.44, 0.50])
     _steps(ax, [
-        "Index open-problem/conjecture nodes as 'queries',\ntheorem/lemma nodes as 'candidates'.",
-        "For each problem, find theorems with high overlap\nin terms and foundations.",
-        "Keep only: solution is NEWER, and DIFFERENT authors\n(so neither side knew) — the 'nobody noticed' case.",
-        "LLM judge (O4) confirms: 'does this theorem really\nresolve the problem?'",
+        "O1: index conjectures as queries,\ntheorems as candidates.",
+        "O1: match on shared terms +\nfoundations; keep different-author,\nnot-older theorems.",
+        "O4: LLM judge reads both and\nrules YES / NO on resolution.",
     ], ORANGE)
-    _example_box(fig, 0.575, 0.39, 0.385, 0.34, "O1 proposes → O4 judges", [
-        "Conj 1107.1630 (1,2-TSP):",
-        "  subtour-LP gap = 10/9",
-        "Thm 1105.2040: gap of CR",
-        "  for SymSubMP ≤ 2(1−1/k)",
-        "O4 verdict: NO (diff object)",
-    ], ORANGE)
-    fig.text(0.575, 0.355, "different object → the LLM judge catches the false positive",
-             fontsize=10, color=GRvy, style="italic")
-    fig.text(0.06, 0.185, "Cheap search over-proposes; the LLM judge filters. "
-             "Confirmed true hits need the full 100k + semantic (P3) retrieval.",
-             fontsize=12.5, color=ORANGE, fontweight="bold")
+    _open_flow(fig)
+    fig.text(0.05, 0.15, "Real run: O1 proposed a 1,2-TSP pair; the judge rejected it "
+             "(different objects).", fontsize=12, color=ORANGE, fontweight="bold")
 
 
 # ── Slide 6: scaling ──────────────────────────────────────────────────────────
@@ -404,9 +454,11 @@ def main() -> None:
         "best one-to-one matching. We then reward matches whose neighbours also match, so "
         "the graph structure has to agree too. On a paper where we only renamed the "
         "symbols we recover 99.9% of the correct matches, while unrelated papers score "
-        "near zero — so the signal is real. A concrete case from our runs: aligning the "
-        "Adam and AdamW papers, it matched Adam's parameter-update rule to AdamW's — the "
-        "same rule, differing only in how the weight-decay term is applied.",
+        "near zero — so the signal is real. The diagram is a real run: aligning the whole "
+        "Adam and AdamW papers, their shared algorithm (moment estimates, bias correction, "
+        "the update rule, the L2 term) maps node-for-node, while AdamW's new pieces and "
+        "Adam's convergence theorem are correctly left unpaired. That's what alignment "
+        "produces — a full correspondence between the two papers, not one match.",
         "open": "This is the flagship task. We treat open problems and conjectures as "
         "questions and theorems as possible answers, and look for a later theorem, by "
         "different authors, that matches an earlier open problem — the case where nobody "
