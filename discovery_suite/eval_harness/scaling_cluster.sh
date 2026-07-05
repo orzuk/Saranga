@@ -9,17 +9,23 @@
 #   sbatch --export=ROOT=/path/to/v4/tier3,SIZES=2000,8000,32000,100000 \
 #          discovery_suite/eval_harness/scaling_cluster.sh
 #
+# Resource request mirrors the lab's proven scripts (parse_multi_category_20.sh):
+# 32G / 4 cpus / 4h, no explicit partition. Asking for 64G/8cpu triggered
+# SLURM (BadConstraints) — no node in the default partition offered it, and the
+# benchmark is single-threaded Python anyway (extra cores unused).
 #SBATCH --job-name=disc_scaling
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
 #SBATCH --time=04:00:00
-#SBATCH --mem=64G
-#SBATCH --cpus-per-task=8
+#SBATCH --mem=32G
+#SBATCH --cpus-per-task=4
 
 set -uo pipefail
 
 ROOT="${ROOT:-$HOME/Datasets/Saranga_data/tier3}"     # v4 100k tier3 tree
-SIZES="${SIZES:-2000,8000,16000,32000,64000,100000}"
+# Default stops at 32k: comfortably fits 32G RAM and already fixes the scaling
+# slope. Push higher via --export=SIZES=... if the node has the memory.
+SIZES="${SIZES:-2000,8000,16000,32000}"
 OUT="${OUT:-discovery_suite/eval_harness/runs/scaling_v4_100k.json}"
 
 echo "[scaling] root=$ROOT sizes=$SIZES"
