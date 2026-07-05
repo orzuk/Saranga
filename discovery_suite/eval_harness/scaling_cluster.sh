@@ -5,9 +5,14 @@
 #
 # Usage:
 #   sbatch discovery_suite/eval_harness/scaling_cluster.sh
-# Customize:
-#   sbatch --export=ROOT=/path/to/v4/tier3,SIZES=2000,8000,32000,100000 \
-#          discovery_suite/eval_harness/scaling_cluster.sh
+# Customize (PREFERRED — plain sbatch propagates your exported env):
+#   export ROOT=/path/to/v4/tier3
+#   export SIZES=2000,8000,16000,32000
+#   sbatch discovery_suite/eval_harness/scaling_cluster.sh
+#
+# WARNING: do NOT pass a comma-separated SIZES via `--export=...,SIZES=a,b,c`:
+#   sbatch's --export splits its list on commas, so SIZES becomes just "a".
+#   If you must use --export, colon-separate: --export=SIZES=2000:8000:16000.
 #
 # Resource request mirrors the lab's proven scripts (parse_multi_category_20.sh):
 # 32G / 4 cpus / 4h, no explicit partition. Asking for 64G/8cpu triggered

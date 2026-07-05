@@ -33,7 +33,10 @@ def main() -> None:
     ap.add_argument("--sizes", default="500,1000,2000,4000,8000,16000")
     ap.add_argument("--out", default=str(_HERE / "runs" / "scaling_local.json"))
     args = ap.parse_args()
-    sizes = [int(x) for x in args.sizes.split(",")]
+    # Accept comma, colon, or whitespace separators. Colon is useful with
+    # `sbatch --export=SIZES=a:b:c` since --export splits its list on commas.
+    import re as _re
+    sizes = [int(x) for x in _re.split(r"[,:\s]+", args.sizes.strip()) if x]
 
     t0 = time.time()
     papers_all = load_papers(root=args.root, limit=max(sizes))
