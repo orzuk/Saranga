@@ -193,15 +193,15 @@ def slide_align(fig):
         "Refine: reward pairs whose neighbours also match\n(a theorem↔theorem whose proofs align too).",
         "Permutation test → p-value: is this more aligned\nthan two random papers?",
     ], GREEN)
-    _example_box(fig, 0.62, 0.40, 0.32, 0.32, "Real match (Adam vs AdamW)", [
-        "Adam node  DP_ADAM.3",
-        "  <->  AdamW  DP_AW.2",
-        "same param-update rule;",
-        "L2 term handled",
-        "differently  [analogous]",
+    _example_box(fig, 0.575, 0.39, 0.385, 0.34, "Real match (Adam vs AdamW)", [
+        "Adam  (DP_ADAM.3):",
+        "  θ = θ − α·m/(√v+ε)",
+        "AdamW (DP_AW.2):",
+        "  θ = (1−λ)θ − α·m/(√v+ε)",
+        "→ same rule + (1−λ) decay",
     ], GREEN)
-    fig.text(0.62, 0.365, "from our two-paper alignment runs", fontsize=10.5,
-             color=GRvy, style="italic")
+    fig.text(0.575, 0.355, "matched across the two papers by our alignment run",
+             fontsize=10, color=GRvy, style="italic")
     fig.text(0.06, 0.185, "On a paper with renamed notation we recover 99.9% of the "
              "true node↔node map; random papers score ~0.03.",
              fontsize=12.5, color=GREEN, fontweight="bold")
@@ -218,15 +218,15 @@ def slide_open(fig):
         "Keep only: solution is NEWER, and DIFFERENT authors\n(so neither side knew) — the 'nobody noticed' case.",
         "LLM judge (O4) confirms: 'does this theorem really\nresolve the problem?'",
     ], ORANGE)
-    _example_box(fig, 0.60, 0.40, 0.36, 0.32, "Real run: O1 proposes, O4 judges", [
-        "Conj 1107.1630: subtour-LP",
-        "  gap, 1,2-TSP  (= 10/9)",
-        "Thm 1105.2040: a DIFFERENT",
-        "  relaxation's gap",
-        "O4 verdict: NO  (filtered)",
+    _example_box(fig, 0.575, 0.39, 0.385, 0.34, "O1 proposes → O4 judges", [
+        "Conj 1107.1630 (1,2-TSP):",
+        "  subtour-LP gap = 10/9",
+        "Thm 1105.2040: gap of CR",
+        "  for SymSubMP ≤ 2(1−1/k)",
+        "O4 verdict: NO (diff object)",
     ], ORANGE)
-    fig.text(0.60, 0.365, "→ the LLM judge catches lexical false positives",
-             fontsize=10.5, color=GRvy, style="italic")
+    fig.text(0.575, 0.355, "different object → the LLM judge catches the false positive",
+             fontsize=10, color=GRvy, style="italic")
     fig.text(0.06, 0.185, "Cheap search over-proposes; the LLM judge filters. "
              "Confirmed true hits need the full 100k + semantic (P3) retrieval.",
              fontsize=12.5, color=ORANGE, fontweight="bold")
