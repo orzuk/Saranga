@@ -632,12 +632,11 @@ def main() -> None:
         _slide(pp, slide_align, NOTES["align"])
         _slide(pp, slide_align_agg, NOTES["align_agg"])
         _slide(pp, slide_open, NOTES["open"])
-        _slide(pp, slide_candidates, NOTES["candidates"])
         _slide(pp, lambda f: slide_scaling(f, rows), NOTES["scaling"])
         _slide(pp, slide_results, NOTES["results"])
         _slide(pp, slide_eval, NOTES["eval"])
         _slide(pp, slide_roadmap, NOTES["roadmap"])
-    n = 12 if stats else 11
+    n = 11 if stats else 10
     print(f"wrote {out}  ({out.stat().st_size//1024} KB, {n} slides)")
 
 
