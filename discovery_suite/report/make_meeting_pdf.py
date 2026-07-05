@@ -275,33 +275,53 @@ def slide_scaling(fig, rows):
 
 # ── Slide 7: detection results ────────────────────────────────────────────────
 def slide_results(fig):
-    _title(fig, "Does it work? — planted known-answer test",
-           "We hide known copies at rising difficulty and measure how many we recover")
+    _title(fig, "Does it work? — we plant copies we know, then see if we find them",
+           "Take real papers, secretly paste a known copy, measure how many the tools recover")
     x = np.arange(len(LEVELS))
-    ax = fig.add_axes([0.07, 0.30, 0.42, 0.48])
-    ax.plot(x, PLAG_P1, "o-", color=BLUE, lw=2.5, label="T-PLAG P1 (recall)")
-    ax.plot(x, OPEN_O1, "s-", color=ORANGE, lw=2.5, label="T-OPEN O1 (recall)")
-    ax.plot(x, ALIGN_A2, "^-", color=GREEN, lw=2.5, label="T-ALIGN A2 (match acc.)")
-    ax.plot(x, ALIGN_CTRL, "x--", color=RED, lw=1.5, label="control (unrelated)")
-    ax.set_xticks(x); ax.set_xticklabels(["L0 verbatim", "L1 light", "L2 paraphr."])
-    ax.set_ylim(-0.03, 1.05); ax.set_ylabel("recovery"); ax.grid(True, alpha=0.3)
-    ax.legend(fontsize=10, loc="center left")
-    ax.annotate("keyword match breaks\nunder paraphrase\n→ motivates P3/P4",
-                xy=(2, 0.45), xytext=(1.05, 0.22), fontsize=10.5, color=BLUE,
+    ax = fig.add_axes([0.06, 0.32, 0.42, 0.44])
+    ax.plot(x, PLAG_P1, "o-", color=BLUE, lw=2.5)
+    ax.plot(x, ALIGN_A2, "^-", color=GREEN, lw=2.5)
+    ax.plot(x, OPEN_O1, "s-", color=ORANGE, lw=2.5)
+    ax.plot(x, ALIGN_CTRL, "x--", color=RED, lw=1.5)
+    ax.set_xticks(x)
+    ax.set_xticklabels(["exact\ncopy", "renamed\nsymbols", "reworded"])
+    ax.set_ylim(-0.03, 1.05)
+    ax.set_ylabel("% of hidden copies found", fontsize=12)
+    ax.set_xlabel("how hard we hid the copy  →", fontsize=12)
+    ax.grid(True, alpha=0.3)
+    ax.annotate("keyword match breaks\nwhen text is reworded",
+                xy=(2, 0.45), xytext=(0.55, 0.20), fontsize=10.5, color=BLUE,
                 arrowprops=dict(arrowstyle="->", color=BLUE))
-    ax2 = fig.add_axes([0.58, 0.40, 0.36, 0.30]); ax2.axis("off")
-    rows = [["what", "reading"],
-            ["1.0 = found all", "L0/L1/L2 = harder copies"],
-            ["control ~0.03", "= not fooled by chance"],
-            ["ALIGN 0.999", "near-perfect node map"],
-            ["OPEN real hits", "found unplanted cases"]]
-    t = ax2.table(cellText=rows, loc="center", cellLoc="left"); t.auto_set_font_size(False)
-    t.set_fontsize(12); t.scale(1, 2.2)
-    for (r, c), cell in t.get_celld().items():
-        cell.set_edgecolor("#dddddd")
-        if r == 0: cell.set_facecolor("#12324f"); cell.set_text_props(color="w", fontweight="bold")
-    fig.text(0.06, 0.185, "Under rule-based edits so far; LLM-paraphrase levels (L2–L4) "
-             "wired in — that harder curve is the next run.", fontsize=12, color=GRvy)
+
+    # Colour-coded plain-English legend (replaces the cryptic table).
+    bullets = [
+        (BLUE, "Blue — plagiarism, keyword method",
+         "100% on exact copies, but ~50% once symbols change and ~45% when "
+         "reworded. Keyword matching works for copy-paste but breaks on rewording "
+         "— exactly why we need the deeper meaning-based methods (P3/P4)."),
+        (GREEN, "Green — alignment",
+         "Stays near 0.9–1.0 even as text changes, because it also uses the graph "
+         "structure, not just the words. Robust."),
+        (ORANGE, "Orange — open problems",
+         "Stays at 1.0 in this test."),
+        (RED, "Red dashed — control (sanity check)",
+         "Unrelated papers, nothing planted: it flags almost nothing (~3%) — so the "
+         "high scores aren't just flagging everything."),
+    ]
+    y = 0.735
+    for col, label, detail in bullets:
+        fig.text(0.535, y, "●", fontsize=13, color=col, va="top")
+        fig.text(0.56, y, label, fontsize=11.5, color=col, fontweight="bold", va="top")
+        wrapped = textwrap.fill(detail, width=62)
+        fig.text(0.56, y - 0.028, wrapped, fontsize=10.3, color="#444", va="top")
+        y -= 0.028 + 0.0165 * (wrapped.count("\n") + 1) + 0.028
+
+    fig.text(0.06, 0.20, "Takeaway: coloured lines high = planted copies found.   "
+             "Red line ≈ 0 = unrelated papers not flagged.",
+             fontsize=12, color="#12324f", fontweight="bold")
+    fig.text(0.06, 0.16, "Blue's drop when text is reworded is why we need the deeper, "
+             "meaning-based methods.",
+             fontsize=12, color="#12324f", fontweight="bold")
 
 
 # ── Slide 8: evaluation method ────────────────────────────────────────────────
@@ -393,11 +413,15 @@ def main() -> None:
         "data, landing right on our prediction. The orange line (retrieval) climbs faster, "
         "so at full scale we'll swap in a smarter index — the same one the embedding "
         "method uses.",
-        "results": "To prove the methods work without real labelled plagiarism, we hide "
-        "known copies at increasing difficulty and see how many we get back. 1.0 means we "
-        "found them all. Alignment is near-perfect; the keyword method aces exact copies "
-        "but drops as text is reworded — which is exactly why we need the deeper methods. "
-        "The control line staying near zero shows we're not just flagging everything.",
+        "results": "We can't test on arXiv directly because nobody labelled which papers "
+        "are copies. So we cheat honestly: we take real papers, secretly paste a copy we "
+        "control, and check whether the tool finds it — at three difficulty levels, from "
+        "exact copy to fully reworded. The up-axis is the fraction we got back. The blue "
+        "keyword method finds every exact copy but drops by half once the text is reworded "
+        "— that's the whole argument for the deeper meaning-based methods. Green alignment "
+        "stays high because it uses structure too. And the red control line near zero is "
+        "the sanity check: on unrelated papers we flag almost nothing, so the tool isn't "
+        "just crying wolf.",
         "eval": "The old text-only project couldn't measure itself because arXiv has no "
         "plagiarism labels. We fix that by planting known answers at five difficulty levels "
         "and measuring recovery, plus trap cases like honest quotations that must not fire. "
