@@ -10,6 +10,8 @@ modified). Adds:
 """
 from __future__ import annotations
 
+import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -21,10 +23,57 @@ for _p in (_REPO_ROOT / "src", _REPO_ROOT / "src" / "discovery"):
         sys.path.insert(0, str(_p))
 
 from common.corpus_io import Paper, iter_papers  # noqa: E402  (re-exported)
+from arxiv_id import normalize_arxiv_id, year_from_arxiv_id  # noqa: E402
 
 # Local, always-present default (portal mirror). Override with root=... for the
 # full 100k parse on the cluster.
 DEFAULT_ROOT = _REPO_ROOT / "portal" / "data" / "tier3"
+
+_SUFFIXES = ("_rules.json", "_manual.json")
+
+
+def _lazy_walk(root: Path) -> Iterator[Path]:
+    """Yield paper JSON paths lazily via os.walk — NO upfront global sort.
+
+    corpus_io.iter_papers does ``sorted(root.rglob("*.json"))`` which enumerates
+    and sorts the ENTIRE tree before yielding one path — minutes on a 100k-file
+    networked FS (Lustre). We sort only per-directory (cheap, still deterministic)
+    and yield as we go, so ``limit`` returns almost immediately.
+    """
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames.sort()
+        for fn in sorted(filenames):
+            if fn.endswith(_SUFFIXES):
+                yield Path(dirpath) / fn
+
+
+def _build_paper(path: Path, root: Path) -> Optional[Paper]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
+    meta = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+    stem = path.stem
+    for s in ("_rules", "_manual"):
+        if stem.endswith(s):
+            stem = stem[: -len(s)]
+    pid_raw = meta.get("paper_id") or stem
+    try:
+        pid = normalize_arxiv_id(pid_raw)
+        year = year_from_arxiv_id(pid)
+    except ValueError:
+        return None
+    try:
+        cat = path.relative_to(root).parts[0]
+    except (ValueError, IndexError):
+        cat = ""
+    nodes, edges = data.get("nodes"), data.get("edges")
+    if not isinstance(nodes, list) or not isinstance(edges, list):
+        return None
+    return Paper(paper_id=pid, year=year, category=cat, path=path,
+                 nodes=nodes, edges=edges)
 
 
 def load_papers(
@@ -35,11 +84,24 @@ def load_papers(
     year_max: Optional[int] = None,
     limit: Optional[int] = None,
 ) -> list[Paper]:
-    """Eagerly load Paper records (list, so tools can index/shuffle)."""
+    """Eagerly load Paper records (list, so tools can index/shuffle).
+
+    Uses a lazy per-directory walk (fast on big networked corpora); stops as soon
+    as ``limit`` papers are collected.
+    """
     root = Path(root) if root else DEFAULT_ROOT
+    cat_filter = set(categories) if categories else None
     out: list[Paper] = []
-    for p in iter_papers(root=root, categories=categories,
-                         year_min=year_min, year_max=year_max):
+    for path in _lazy_walk(root):
+        p = _build_paper(path, root)
+        if p is None:
+            continue
+        if cat_filter is not None and p.category not in cat_filter:
+            continue
+        if year_min is not None and p.year < year_min:
+            continue
+        if year_max is not None and p.year > year_max:
+            continue
         out.append(p)
         if limit is not None and len(out) >= limit:
             break
