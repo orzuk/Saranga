@@ -16,9 +16,14 @@
 #SBATCH --job-name=disc_scaling
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
+#SBATCH --partition=glacier
 #SBATCH --time=04:00:00
 #SBATCH --mem=32G
 #SBATCH --cpus-per-task=4
+# NOTE: the site auto-adds Features=cpuonly to CPU jobs; only the `glacier`
+# partition advertises that feature (dogfish/catfish/etc. do not), so leaving
+# the partition to the scheduler lands on a node that can't satisfy it →
+# BadConstraints. Pin glacier explicitly.
 
 set -uo pipefail
 
