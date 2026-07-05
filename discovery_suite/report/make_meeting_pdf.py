@@ -193,13 +193,15 @@ def slide_align(fig):
         "Refine: reward pairs whose neighbours also match\n(a theorem↔theorem whose proofs align too).",
         "Permutation test → p-value: is this more aligned\nthan two random papers?",
     ], GREEN)
-    _example_box(fig, 0.62, 0.40, 0.32, 0.32, "Score matrix → pick 1:1", [
-        "        b1    b2    b3",
-        "  a1  [0.9]  0.2   0.1",
-        "  a2   0.1  [0.8]  0.3",
-        "  a3   0.2   0.1  [0.7]",
-        "→ a1-b1, a2-b2, a3-b3",
+    _example_box(fig, 0.62, 0.40, 0.32, 0.32, "Real match (Adam vs AdamW)", [
+        "Adam node  DP_ADAM.3",
+        "  <->  AdamW  DP_AW.2",
+        "same param-update rule;",
+        "L2 term handled",
+        "differently  [analogous]",
     ], GREEN)
+    fig.text(0.62, 0.365, "from our two-paper alignment runs", fontsize=10.5,
+             color=GRvy, style="italic")
     fig.text(0.06, 0.185, "On a paper with renamed notation we recover 99.9% of the "
              "true node↔node map; random papers score ~0.03.",
              fontsize=12.5, color=GREEN, fontweight="bold")
@@ -216,15 +218,17 @@ def slide_open(fig):
         "Keep only: solution is NEWER, and DIFFERENT authors\n(so neither side knew) — the 'nobody noticed' case.",
         "LLM judge (O4) confirms: 'does this theorem really\nresolve the problem?'",
     ], ORANGE)
-    _example_box(fig, 0.62, 0.42, 0.32, 0.30, "Worked example", [
-        "2011 conjecture:",
-        " 'is every X connected?'",
-        "2014 theorem (other authors):",
-        " 'every X is connected.'",
-        "→ candidate resolution",
+    _example_box(fig, 0.60, 0.40, 0.36, 0.32, "Real candidate (our O1 run)", [
+        "Conjecture  1107.1630:",
+        " 'integrality gap of the",
+        "  subtour LP for 1,2-TSP'",
+        "Theorem  1105.2040:",
+        " bounds that same gap",
     ], ORANGE)
-    fig.text(0.06, 0.185, "Already surfaced real, unplanted conjecture→theorem "
-             "candidates in the corpus — to be human-reviewed.",
+    fig.text(0.60, 0.365, "→ surfaced automatically; O4 judge would confirm",
+             fontsize=10.5, color=GRvy, style="italic")
+    fig.text(0.06, 0.185, "Real, unplanted conjecture→theorem candidates already "
+             "surfaced in the corpus — exactly the target case, for human review.",
              fontsize=12.5, color=ORANGE, fontweight="bold")
 
 
@@ -400,13 +404,17 @@ def main() -> None:
         "best one-to-one matching. We then reward matches whose neighbours also match, so "
         "the graph structure has to agree too. On a paper where we only renamed the "
         "symbols we recover 99.9% of the correct matches, while unrelated papers score "
-        "near zero — so the signal is real.",
+        "near zero — so the signal is real. A concrete case from our runs: aligning the "
+        "Adam and AdamW papers, it matched Adam's parameter-update rule to AdamW's — the "
+        "same rule, differing only in how the weight-decay term is applied.",
         "open": "This is the flagship task. We treat open problems and conjectures as "
         "questions and theorems as possible answers, and look for a later theorem, by "
         "different authors, that matches an earlier open problem — the case where nobody "
         "realised it was already solved. A cheap search proposes candidates and an LLM "
-        "judge confirms them. It has already surfaced real candidate pairs in our corpus "
-        "that we now need to inspect by hand.",
+        "judge confirms them. It has already surfaced real candidate pairs in our corpus — "
+        "for example a conjecture in one paper about the integrality gap of the subtour LP "
+        "for the 1,2-TSP, matched to a theorem in another paper that bounds that same "
+        "quantity. Exactly the kind of lead we now review by hand.",
         "scaling": "This shows run-time as the corpus grows. The blue line (cheap match) "
         "doubles when the data doubles — linear, so 100k is fine, about half an hour on a "
         "single core. The stars are the actual numbers from the cluster on the real 100k "
