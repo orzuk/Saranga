@@ -419,15 +419,120 @@ def slide_roadmap(fig):
              fontsize=12.5, color=BLUE, fontweight="bold")
 
 
+# ── Slide B: corpus scale (the haystack) ──────────────────────────────────────
+def slide_corpus(fig, stats):
+    _title(fig, "The haystack — the parsed corpus is a graph of 1.5M results",
+           "Finding reuse / matches / solved problems = searching millions of linked nodes")
+    nt = stats["node_types"]
+    top = list(nt.items())[:11][::-1]      # smallest→largest for barh
+    labels = [k for k, _ in top]; vals = [v for _, v in top]
+    ax = fig.add_axes([0.20, 0.24, 0.34, 0.52])
+    ax.barh(range(len(labels)), vals, color=BLUE, alpha=0.85)
+    ax.set_yticks(range(len(labels))); ax.set_yticklabels(labels, fontsize=10)
+    ax.set_xscale("log"); ax.set_xlabel("nodes of this type (log scale)", fontsize=10)
+    for i, v in enumerate(vals):
+        ax.text(v * 1.15, i, f"{v:,}", va="center", fontsize=8.3, color="#333")
+    ax.set_title("what a paper is made of", fontsize=12)
+
+    p = stats["proj_100k"]
+    nn = stats["nodes"]; ne = stats["edges"]; npap = stats["papers"]
+    rows = [
+        (f"{npap:,}", "papers parsed (local)"),
+        (f"{nn/1e6:.2f}M", "results (nodes)"),
+        (f"{ne/1e6:.2f}M", "links (edges)"),
+        (f"~{nn/npap:.0f}", "linked results / paper"),
+    ]
+    y = 0.70
+    for big, lab in rows:
+        fig.text(0.60, y, big, fontsize=20, fontweight="bold", color=BLUE)
+        fig.text(0.73, y + 0.01, lab, fontsize=12.5, color="#333", va="center")
+        y -= 0.075
+    fig.add_artist(plt.Line2D([0.60, 0.94], [0.375, 0.375], color="#ccc", lw=1))
+    fig.text(0.60, 0.33, "Open-problem search space:", fontsize=13,
+             fontweight="bold", color=ORANGE)
+    fig.text(0.60, 0.275, f"{stats['problems']:,} open questions   vs   "
+             f"{stats['theorems']:,} proven results", fontsize=13)
+    fig.text(0.60, 0.225, f"(≈ {p['problems']:,} vs {p['theorems']:,} at the full 100k)",
+             fontsize=11.5, color=GRvy)
+    fig.text(0.06, 0.15, "≈ 84 linked results per paper → 8M+ nodes at 100k — far too many "
+             "to compare by hand.", fontsize=12.5, color=BLUE, fontweight="bold")
+
+
+# ── Slide C: alignment across real pairs ──────────────────────────────────────
+def slide_align_agg(fig):
+    _title(fig, "Alignment across real paper pairs — what matches, what's unique",
+           "For each pair we align the two result-graphs; most results correspond")
+    pairs = [
+        ("t-SNE / UMAP", 0, 6, 3), ("XGBoost / GBM", 0, 4, 6),
+        ("Shor / Simon", 0, 5, 3), ("Adam / AdamW", 3, 2, 6),
+        ("Green / Tao (primes)", 2, 4, 4), ("FlowMatch / Rectified", 2, 2, 6),
+        ("DDPM / ScoreSDE", 4, 1, 8), ("BBP / Baik–Tracy-Widom", 1, 2, 11),
+        ("A3C / REINFORCE", 1, 2, 5),
+    ]
+    labels = [p[0] for p in pairs]
+    ex = np.array([p[1] for p in pairs]); an = np.array([p[2] for p in pairs])
+    un = np.array([p[3] for p in pairs])
+    y = np.arange(len(pairs))
+    ax = fig.add_axes([0.26, 0.22, 0.60, 0.56])
+    ax.barh(y, ex, color="#1b7a3d", label="exact (identical result)")
+    ax.barh(y, an, left=ex, color="#7bcfa0", label="analogous (same idea, reworded)")
+    ax.barh(y, un, left=ex + an, color="#c9c9c9", label="unique to one paper")
+    ax.set_yticks(y); ax.set_yticklabels(labels, fontsize=10)
+    ax.set_xlabel("number of result-nodes", fontsize=11)
+    ax.legend(fontsize=9.5, loc="lower right")
+    ax.invert_yaxis()
+    fig.text(0.06, 0.135, "e.g. Shor vs Simon: every match is 'analogous' — same idea, "
+             "different problem.   Adam vs AdamW: mostly exact (a small fix).",
+             fontsize=12, color=GREEN, fontweight="bold")
+
+
+# ── Slide D: candidate → verdict ──────────────────────────────────────────────
+def slide_candidates(fig):
+    _title(fig, "From candidate to verdict — the pipeline filters real from spurious",
+           "The cheap stage casts a wide net; an LLM judge / human confirms")
+    rows = [
+        ["task", "real candidate our run surfaced", "2nd-stage verdict"],
+        ["Plagiarism", "1103.0040 ↔ 1103.0041: same 'MIDR\nallocation rule' definition",
+         "genuine reuse\n(companion papers)"],
+        ["Plagiarism", "many papers share 'Let G be a\ndirected graph'",
+         "boilerplate → filtered"],
+        ["Open problem", "1,2-TSP subtour-LP gap conjecture\n↔ a theorem that looked similar",
+         "O4 judge: NO\n(different object)"],
+        ["Open problem", "convex-body slicing conjecture\n↔ a graph-theory theorem",
+         "O4 judge: NO\n(unrelated)"],
+    ]
+    ax = fig.add_axes([0.17, 0.34, 0.77, 0.40]); ax.axis("off")
+    t = ax.table(cellText=[r[1:] for r in rows[1:]], rowLabels=[r[0] for r in rows[1:]],
+                 colLabels=rows[0][1:], loc="center", cellLoc="left")
+    t.auto_set_font_size(False); t.set_fontsize(11.5); t.scale(1, 3.2)
+    for (r, c), cell in t.get_celld().items():
+        cell.set_edgecolor("#cccccc")
+        if r == 0:
+            cell.set_facecolor("#12324f"); cell.set_text_props(color="w", fontweight="bold")
+        if c == -1:
+            cell.set_facecolor("#eaf1f8"); cell.set_text_props(fontweight="bold")
+        if c == 1 and r > 0:
+            cell.set_text_props(fontweight="bold")
+    fig.text(0.06, 0.24, "In just 800 papers, the cheap plagiarism pass flagged 303 near-"
+             "identical cross-paper node pairs.", fontsize=12.5, color="#12324f",
+             fontweight="bold")
+    fig.text(0.06, 0.185, "Most are boilerplate or same-author companion papers; a judge / "
+             "reviewer keeps only the real cases. That second stage is the whole point.",
+             fontsize=12, color=GRvy)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--scaling", default=None)
+    ap.add_argument("--corpus", default=str(Path(__file__).resolve().parents[1] /
+                                            "eval_harness" / "runs" / "corpus_stats.json"))
     ap.add_argument("--out", default=str(Path(__file__).resolve().parent /
                                          "saranga_discovery_brief.pdf"))
     args = ap.parse_args()
     rows = []
     if args.scaling and Path(args.scaling).exists():
         rows = json.loads(Path(args.scaling).read_text()).get("rows", [])
+    stats = json.loads(Path(args.corpus).read_text()) if Path(args.corpus).exists() else None
 
     NOTES = {
         "overview": "We turned every arXiv paper into a graph of typed results — "
@@ -494,20 +599,46 @@ def main() -> None:
         "today, producing a ranked list of suspected reuse and solved-problem candidates "
         "for us to review. The deeper, more expensive methods come next to catch the "
         "subtle paraphrased cases.",
+        "corpus": "This is the scale of what we're searching. Every paper becomes a graph "
+        "of typed results — mostly equations and definitions, plus thousands of theorems, "
+        "lemmas and proofs — linked by how they use and prove each other. Locally that's "
+        "already 1.5 million results and 2 million links; at the full 100k it's over 8 "
+        "million. For the open-problem task specifically, we're matching about 4,000 open "
+        "questions against 166,000 proven results — which is exactly why we can't do this "
+        "by hand.",
+        "align_agg": "Here's alignment run on real, recognisable paper pairs. Each bar is "
+        "one pair; the dark part is results that are identical, the light-green part is the "
+        "same idea reworded, and the grey part is what's unique to just one of the papers. "
+        "The pattern is telling: Shor vs Simon and t-SNE vs UMAP are all 'analogous' — the "
+        "same core idea reused on a new problem — while Adam vs AdamW is mostly identical "
+        "because it's a small fix. This is the kind of cross-paper structure we can now "
+        "quantify automatically.",
+        "candidates": "This makes the two-stage design concrete. The cheap first pass is "
+        "deliberately greedy — in just 800 papers it flagged 303 near-identical pairs. Some "
+        "are genuine reuse, like two companion papers by the same authors sharing a "
+        "definition; many are just boilerplate everyone writes, like 'let G be a directed "
+        "graph'; and the open-problem candidates were both correctly thrown out by the LLM "
+        "judge. The point of the second stage — a judge or a human — is exactly to keep the "
+        "real cases and drop the noise.",
     }
 
     out = Path(args.out); out.parent.mkdir(parents=True, exist_ok=True)
     with PdfPages(out) as pp:
         _slide(pp, slide_overview, NOTES["overview"])
+        if stats:
+            _slide(pp, lambda f: slide_corpus(f, stats), NOTES["corpus"])
         _slide(pp, slide_complexity, NOTES["complexity"])
         _slide(pp, slide_p1, NOTES["p1"])
         _slide(pp, slide_align, NOTES["align"])
+        _slide(pp, slide_align_agg, NOTES["align_agg"])
         _slide(pp, slide_open, NOTES["open"])
+        _slide(pp, slide_candidates, NOTES["candidates"])
         _slide(pp, lambda f: slide_scaling(f, rows), NOTES["scaling"])
         _slide(pp, slide_results, NOTES["results"])
         _slide(pp, slide_eval, NOTES["eval"])
         _slide(pp, slide_roadmap, NOTES["roadmap"])
-    print(f"wrote {out}  ({out.stat().st_size//1024} KB, 9 slides)")
+    n = 12 if stats else 11
+    print(f"wrote {out}  ({out.stat().st_size//1024} KB, {n} slides)")
 
 
 if __name__ == "__main__":
