@@ -218,17 +218,17 @@ def slide_open(fig):
         "Keep only: solution is NEWER, and DIFFERENT authors\n(so neither side knew) — the 'nobody noticed' case.",
         "LLM judge (O4) confirms: 'does this theorem really\nresolve the problem?'",
     ], ORANGE)
-    _example_box(fig, 0.60, 0.40, 0.36, 0.32, "Real candidate (our O1 run)", [
-        "Conjecture  1107.1630:",
-        " 'integrality gap of the",
-        "  subtour LP for 1,2-TSP'",
-        "Theorem  1105.2040:",
-        " bounds that same gap",
+    _example_box(fig, 0.60, 0.40, 0.36, 0.32, "Real run: O1 proposes, O4 judges", [
+        "Conj 1107.1630: subtour-LP",
+        "  gap, 1,2-TSP  (= 10/9)",
+        "Thm 1105.2040: a DIFFERENT",
+        "  relaxation's gap",
+        "O4 verdict: NO  (filtered)",
     ], ORANGE)
-    fig.text(0.60, 0.365, "→ surfaced automatically; O4 judge would confirm",
+    fig.text(0.60, 0.365, "→ the LLM judge catches lexical false positives",
              fontsize=10.5, color=GRvy, style="italic")
-    fig.text(0.06, 0.185, "Real, unplanted conjecture→theorem candidates already "
-             "surfaced in the corpus — exactly the target case, for human review.",
+    fig.text(0.06, 0.185, "Cheap search over-proposes; the LLM judge filters. "
+             "Confirmed true hits need the full 100k + semantic (P3) retrieval.",
              fontsize=12.5, color=ORANGE, fontweight="bold")
 
 
@@ -411,10 +411,12 @@ def main() -> None:
         "questions and theorems as possible answers, and look for a later theorem, by "
         "different authors, that matches an earlier open problem — the case where nobody "
         "realised it was already solved. A cheap search proposes candidates and an LLM "
-        "judge confirms them. It has already surfaced real candidate pairs in our corpus — "
-        "for example a conjecture in one paper about the integrality gap of the subtour LP "
-        "for the 1,2-TSP, matched to a theorem in another paper that bounds that same "
-        "quantity. Exactly the kind of lead we now review by hand.",
+        "judge confirms them. Here's the two stages working on a real pair: the cheap "
+        "search flagged a 1,2-TSP subtour-LP conjecture against a theorem that looked "
+        "similar, but the Opus judge correctly ruled NO — the theorem was about a "
+        "different relaxation. That's the design: cheap search proposes, the judge filters "
+        "the false positives. Confirmed true resolutions need the full 100k plus the "
+        "meaning-based retrieval, which is next.",
         "scaling": "This shows run-time as the corpus grows. The blue line (cheap match) "
         "doubles when the data doubles — linear, so 100k is fine, about half an hour on a "
         "single core. The stars are the actual numbers from the cluster on the real 100k "
