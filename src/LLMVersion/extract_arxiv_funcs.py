@@ -1388,13 +1388,28 @@ def fetch_arxiv_source(arxiv_id: str, dest_dir: Path, verbose: bool = False) -> 
     # -----------------------
     # 1. Download file
     # -----------------------
-    url = f"https://arxiv.org/e-print/{arxiv_id}"
-    if verbose:
-        print(f"[INFO] Downloading {arxiv_id} from {url}")
+    def _download(aid: str):
+        u = f"https://arxiv.org/e-print/{aid}"
+        if verbose:
+            print(f"[INFO] Downloading {aid} from {u}")
+        r = requests.get(u, timeout=60)
+        r.raise_for_status()
+        return r.content, u
 
-    resp = requests.get(url, timeout=60)
-    resp.raise_for_status()
-    raw = resp.content
+    try:
+        raw, url = _download(arxiv_id)
+    except requests.HTTPError as e:
+        # A specific version can 404 on the source endpoint (e.g. metadata-only
+        # version bumps carry no new source). Retry unversioned → arXiv serves
+        # the latest source that actually exists.
+        base_ver = re.sub(r"v\d+$", "", arxiv_id)
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        if status == 404 and base_ver != arxiv_id:
+            if verbose:
+                print(f"[WARN] {arxiv_id} 404 on source; retrying unversioned {base_ver}")
+            raw, url = _download(base_ver)
+        else:
+            raise
 
     # Skip PDF files (submitted as PDF-only, no LaTeX source)
     if raw[:4] == b"%PDF":
