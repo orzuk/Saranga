@@ -1373,6 +1373,11 @@ def fetch_arxiv_source(arxiv_id: str, dest_dir: Path, verbose: bool = False) -> 
     """
     dest_dir.mkdir(parents=True, exist_ok=True)
 
+    # Legacy pre-2007 IDs contain a slash (e.g. "quant-ph/0001114v2"); the slash
+    # must NOT leak into local file names or it creates a bogus nested dir. Keep
+    # the raw id for the URL, use the sanitized one for on-disk file names.
+    safe_id = arxiv_id.replace("/", "_")
+
     # Clean directory from previous attempts
     for p in dest_dir.iterdir():
         if p.is_file():
@@ -1396,7 +1401,7 @@ def fetch_arxiv_source(arxiv_id: str, dest_dir: Path, verbose: bool = False) -> 
         raise ValueError(f"{arxiv_id}: source is PDF, not LaTeX — skipping")
 
     # Save initial bytes
-    gz_path = dest_dir / f"{arxiv_id}.tar.gz"
+    gz_path = dest_dir / f"{safe_id}.tar.gz"
     gz_path.write_bytes(raw)
 
     # -----------------------
@@ -1414,7 +1419,7 @@ def fetch_arxiv_source(arxiv_id: str, dest_dir: Path, verbose: bool = False) -> 
         # → Not gzip; maybe raw tex
         if verbose:
             print("[DEBUG] gzip failed → treat as raw tex.")
-        tex_path = dest_dir / f"{arxiv_id}.tex"
+        tex_path = dest_dir / f"{safe_id}.tex"
         tex_path.write_bytes(raw)
         return tex_path
 
@@ -1426,14 +1431,14 @@ def fetch_arxiv_source(arxiv_id: str, dest_dir: Path, verbose: bool = False) -> 
         # Probably raw tex mislabeled as gzip
         if verbose:
             print("[DEBUG] gzip output is not a tar → treat as raw tex.")
-        tex_path = dest_dir / f"{arxiv_id}.tex"
+        tex_path = dest_dir / f"{safe_id}.tex"
         tex_path.write_bytes(decompressed)
         return tex_path
 
     # -----------------------
     # 4. Try to extract tar
     # -----------------------
-    tar_path = dest_dir / f"{arxiv_id}.tar"
+    tar_path = dest_dir / f"{safe_id}.tar"
     tar_path.write_bytes(decompressed)
 
     if verbose:
@@ -1588,6 +1593,10 @@ def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir:
         version_tag = "v1"
 
     versioned_id = f"{base_id}{version_tag}"
+    # Legacy pre-2007 IDs contain a slash ("quant-ph/0001114v2"). Use a
+    # slash-free form for the on-disk paper dir + file names so we get a clean
+    # single-level paper folder; the raw versioned_id is still used for URLs.
+    safe_vid = versioned_id.replace("/", "_")
 
     # --- 2. Determine date directory ---
     pub = meta.get("published") or meta.get("created") or ""
@@ -1600,13 +1609,13 @@ def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir:
     # --- 3. Build storage directory ---
     if use_paper_subdir:
         # New structure: one directory per paper, keeps archive + all companion files
-        storage_dir = full_papers_dir / year / month / day / versioned_id
+        storage_dir = full_papers_dir / year / month / day / safe_vid
     else:
         # Legacy structure: flat tex/ directory shared by all papers on that date
         storage_dir = full_papers_dir / year / month / day / "tex"
 
     storage_dir.mkdir(parents=True, exist_ok=True)
-    tex_path = storage_dir / f"{versioned_id}.tex"
+    tex_path = storage_dir / f"{safe_vid}.tex"
 
     # --- 4. Local-first check ---
     if tex_path.exists():
@@ -1678,7 +1687,7 @@ def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir:
                 print(f"[WARN] flatten_tex failed for {tex_path}: {e}")
 
         # --- 9. Clean up: keep only unified tex + original tar.gz ---
-        keep = {tex_path.resolve(), (storage_dir / f"{versioned_id}.tar.gz").resolve()}
+        keep = {tex_path.resolve(), (storage_dir / f"{safe_vid}.tar.gz").resolve()}
         for item in list(storage_dir.iterdir()):
             if item.resolve() not in keep:
                 if item.is_dir():
