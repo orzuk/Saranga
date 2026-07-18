@@ -83,16 +83,13 @@ def _extract_one(path_str):
 
 
 def _default_workers():
-    """CPUs this job may actually use — NOT os.cpu_count(), which returns every
-    core on the physical node (128 on a cluster box) even when SLURM only gave us
-    a handful. Prefer SLURM's allocation, then the process's CPU affinity."""
-    n = os.environ.get("SLURM_CPUS_PER_TASK")
-    if n:
-        return int(n)
-    try:
-        return len(os.sched_getaffinity(0))
-    except AttributeError:  # not on Linux
-        return os.cpu_count() or 4
+    """How many files to READ at once. Reading is network-I/O-bound (each worker
+    mostly waits on the disk), so we want MANY concurrent readers to hide latency
+    — NOT the CPU count. SLURM's cgroup still caps our real CPU share to the
+    allocated cores no matter how many reader processes we start, so a high count
+    is safe and much faster (128 readers read 100k files in ~170s; 4 took ~13min).
+    Capped at 64 to stay reasonable; override with --workers."""
+    return min(64, os.cpu_count() or 8)
 
 
 def _extract(root, ptypes, min_words, on_progress, workers):
@@ -176,7 +173,8 @@ def main() -> None:
     ap.add_argument("--include-problem", action="store_true",
                     help="also treat generic `problem` nodes as queries (slower, noisier)")
     ap.add_argument("--workers", type=int, default=None,
-                    help="parallel file readers (default = CPUs allocated to the job)")
+                    help="concurrent file readers (default = min(64, node cores); reads "
+                         "are I/O-bound so more readers = faster, CPU stays cgroup-capped)")
     ap.add_argument("--df-frac", type=float, default=0.02,
                     help="for candidate generation, use only words in <= this fraction "
                          "of theorems (skips common words whose huge posting lists make "
