@@ -81,6 +81,19 @@ def _extract_one(path_str):
     return problems, theorems
 
 
+def _default_workers():
+    """CPUs this job may actually use — NOT os.cpu_count(), which returns every
+    core on the physical node (128 on a cluster box) even when SLURM only gave us
+    a handful. Prefer SLURM's allocation, then the process's CPU affinity."""
+    n = os.environ.get("SLURM_CPUS_PER_TASK")
+    if n:
+        return int(n)
+    try:
+        return len(os.sched_getaffinity(0))
+    except AttributeError:  # not on Linux
+        return os.cpu_count() or 4
+
+
 def _extract(root, ptypes, min_words, on_progress, workers):
     """Read the whole corpus (files in parallel); return (problems, theorems).
 
@@ -130,22 +143,23 @@ def main() -> None:
     ap.add_argument("--min-words", type=int, default=6)
     ap.add_argument("--include-problem", action="store_true",
                     help="also treat generic `problem` nodes as queries (slower, noisier)")
-    ap.add_argument("--workers", type=int, default=os.cpu_count() or 4,
-                    help="parallel file readers (default = all CPUs)")
+    ap.add_argument("--workers", type=int, default=None,
+                    help="parallel file readers (default = CPUs allocated to the job)")
     args = ap.parse_args()
 
     ptypes = {"open_problem", "conjecture"}
     if args.include_problem:
         ptypes = ptypes | {"problem"}
 
+    workers = args.workers or _default_workers()
     t0 = time.time()
-    print(f"[sweep] reading corpus with {args.workers} parallel workers …", flush=True)
+    print(f"[sweep] reading corpus with {workers} parallel workers …", flush=True)
 
     def _load_progress(done, total):
         print(f"[sweep] load: read {done}/{total} files ({time.time()-t0:.0f}s)", flush=True)
 
     problems, theorems = _extract(args.root, ptypes, args.min_words,
-                                  _load_progress, args.workers)
+                                  _load_progress, workers)
     print(f"[sweep] streamed corpus in {time.time()-t0:.0f}s; "
           f"{len(problems)} query nodes ({'+'.join(sorted(ptypes))}), "
           f"{len(theorems)} theorem nodes", flush=True)
