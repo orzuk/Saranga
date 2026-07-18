@@ -83,16 +83,22 @@ def load_papers(
     year_min: Optional[int] = None,
     year_max: Optional[int] = None,
     limit: Optional[int] = None,
+    on_progress=None,
 ) -> list[Paper]:
     """Eagerly load Paper records (list, so tools can index/shuffle).
 
     Uses a lazy per-directory walk (fast on big networked corpora); stops as soon
-    as ``limit`` papers are collected.
+    as ``limit`` papers are collected. ``on_progress(scanned, kept)`` (optional)
+    fires every 5000 files scanned so long cluster loads aren't a black box.
     """
     root = Path(root) if root else DEFAULT_ROOT
     cat_filter = set(categories) if categories else None
     out: list[Paper] = []
+    scanned = 0
     for path in _lazy_walk(root):
+        scanned += 1
+        if on_progress is not None and scanned % 5000 == 0:
+            on_progress(scanned, len(out))
         p = _build_paper(path, root)
         if p is None:
             continue

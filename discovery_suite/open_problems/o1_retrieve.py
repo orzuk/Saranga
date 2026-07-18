@@ -46,8 +46,13 @@ def retrieve(
     top_k: int = 20,
     min_score: float = 0.05,
     min_words: int = 6,
+    on_progress=None,
 ) -> list[tuple[str, str, float]]:
-    """Return ranked (problem_key, theorem_key, score) across the corpus."""
+    """Return ranked (problem_key, theorem_key, score) across the corpus.
+
+    ``on_progress(done, total)`` (optional) fires every 100 problems so the
+    O(#problems x #theorems) scan reports progress on big corpora.
+    """
     problems, theorems = [], []
     for p in papers:
         for n in p.nodes:
@@ -62,7 +67,10 @@ def retrieve(
                 theorems.append(rec)
 
     out: list[tuple[str, str, float]] = []
-    for pk, ppid, pyear, ptoks in problems:
+    n_prob = len(problems)
+    for i, (pk, ppid, pyear, ptoks) in enumerate(problems):
+        if on_progress is not None and i and i % 100 == 0:
+            on_progress(i, n_prob)
         scored = []
         for tk, tpid, tyear, ttoks in theorems:
             if tpid == ppid or tyear < pyear:

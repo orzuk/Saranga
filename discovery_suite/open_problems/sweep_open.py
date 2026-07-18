@@ -37,7 +37,9 @@ from o1_retrieve import retrieve  # noqa: E402
 def _node_index(papers) -> dict:
     """key 'pid::nodeid' -> (category, type, name/snippet) for CSV enrichment."""
     idx = {}
-    for p in papers:
+    for i, p in enumerate(papers):
+        if i and i % 20000 == 0:
+            print(f"[sweep] index {i}/{len(papers)} papers …", flush=True)
         for n in p.nodes:
             key = f"{p.paper_id}::{n.get('id')}"
             snippet = (node_norm_text(n) or "")[:160].replace("\n", " ")
@@ -63,7 +65,12 @@ def main() -> None:
     o1_retrieve.PROBLEM_TYPES = ptypes  # retrieve() reads this global at call time
 
     t0 = time.time()
-    papers = load_papers(root=args.root, limit=args.limit)
+
+    def _load_progress(scanned, kept):
+        print(f"[sweep] load: scanned {scanned} files, kept {kept} papers "
+              f"({time.time()-t0:.0f}s)", flush=True)
+
+    papers = load_papers(root=args.root, limit=args.limit, on_progress=_load_progress)
     n_prob = sum(1 for p in papers for n in p.nodes
                  if (n.get("type") or "").lower() in ptypes)
     print(f"[sweep] loaded {len(papers)} papers in {time.time()-t0:.1f}s; "
@@ -72,8 +79,13 @@ def main() -> None:
     idx = _node_index(papers)
 
     t1 = time.time()
+
+    def _retr_progress(done, total):
+        print(f"[sweep] retrieve: {done}/{total} query nodes scored "
+              f"({time.time()-t1:.0f}s)", flush=True)
+
     pairs = retrieve(papers, top_k=args.top_k, min_score=args.min_score,
-                     min_words=args.min_words)
+                     min_words=args.min_words, on_progress=_retr_progress)
     print(f"[sweep] retrieve -> {len(pairs)} candidate pairs in {time.time()-t1:.1f}s", flush=True)
 
     out = Path(args.out)
