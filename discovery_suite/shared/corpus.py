@@ -76,6 +76,39 @@ def _build_paper(path: Path, root: Path) -> Optional[Paper]:
                  nodes=nodes, edges=edges)
 
 
+def stream_papers(
+    root: Optional[Path] = None,
+    *,
+    categories: Optional[Sequence[str]] = None,
+    year_min: Optional[int] = None,
+    year_max: Optional[int] = None,
+    on_progress=None,
+) -> Iterator[Paper]:
+    """Yield Paper records ONE AT A TIME (lazy) so callers can extract-and-discard
+    without ever holding the whole corpus in memory. Same filters as load_papers.
+    ``on_progress(scanned)`` fires every 5000 files scanned. Use this — not
+    load_papers — for corpus-scale sweeps: a full 100k list of Paper objects
+    (all nodes+edges+raw_latex) is ~10-20GB, but most of it is never needed.
+    """
+    root = Path(root) if root else DEFAULT_ROOT
+    cat_filter = set(categories) if categories else None
+    scanned = 0
+    for path in _lazy_walk(root):
+        scanned += 1
+        if on_progress is not None and scanned % 5000 == 0:
+            on_progress(scanned)
+        p = _build_paper(path, root)
+        if p is None:
+            continue
+        if cat_filter is not None and p.category not in cat_filter:
+            continue
+        if year_min is not None and p.year < year_min:
+            continue
+        if year_max is not None and p.year > year_max:
+            continue
+        yield p
+
+
 def load_papers(
     root: Optional[Path] = None,
     *,
