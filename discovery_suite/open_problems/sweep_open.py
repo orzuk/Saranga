@@ -114,16 +114,22 @@ def _extract(root, ptypes, min_words, on_progress, workers):
     return problems, theorems
 
 
-def _rank(problems, theorems, top_k, min_score, on_progress, df_frac=0.5):
-    """Temporal-directed Jaccard, but only over theorems that SHARE A WORD with
-    each problem (via an inverted index) instead of all-pairs. On 100k this turns
-    ~24 billion comparisons into a few hundred million. Return ranked
+def _rank(problems, theorems, top_k, min_score, on_progress, df_frac=0.02):
+    """Temporal-directed Jaccard, but only over theorems that share a SELECTIVE
+    word with each problem (via an inverted index) instead of all-pairs. On 100k
+    this turns ~24 billion comparisons into a few hundred million. Return ranked
     (prob_rec, thm_rec, score).
 
-    A jaccard >= min_score (~0.1) pair must share several words, so a word-overlap
-    prefilter can't miss it. Words appearing in > df_frac of all theorems (e.g. the
-    'math' placeholder) are skipped as index keys — they're uninformative and would
-    make every problem 'share a word' with everything."""
+    Two separate roles for words:
+      * candidate GENERATION uses only *selective* words — those in <= df_frac of
+        theorems. Common words (the 'math' placeholder, stopwords, and mid-common
+        words like 'graph'/'set' that each sit in hundreds of thousands of
+        theorems) are skipped here: iterating their huge posting lists is what
+        made rank hang, and a pair whose ONLY overlap is such generic words is a
+        weak match anyway.
+      * SCORING is the exact full-word Jaccard (unchanged) — so every candidate's
+        score is identical to the brute-force value; we only narrow *which*
+        theorems get scored."""
     # inverted index: word -> theorem row-numbers containing it
     posting = defaultdict(list)
     for ti, th in enumerate(theorems):
@@ -131,15 +137,15 @@ def _rank(problems, theorems, top_k, min_score, on_progress, df_frac=0.5):
             posting[tok].append(ti)
     max_df = max(1, int(len(theorems) * df_frac))
     common = {tok for tok, lst in posting.items() if len(lst) > max_df}
-    print(f"[sweep] index: {len(posting)} words, {len(common)} skipped as too common "
-          f"(>{max_df} theorems)", flush=True)
+    print(f"[sweep] index: {len(posting)} words, {len(common)} skipped for candidate "
+          f"generation as too common (>{max_df} theorems)", flush=True)
 
     out = []
     total = len(problems)
     for i, pr in enumerate(problems):
-        if on_progress is not None and i and i % 2000 == 0:
+        if on_progress is not None and i and i % 500 == 0:
             on_progress(i, total)
-        # candidate theorems = those sharing >=1 informative word with the problem
+        # candidate theorems = those sharing >=1 selective word with the problem
         cand = set()
         for tok in pr["toks"]:
             if tok not in common:
@@ -171,9 +177,10 @@ def main() -> None:
                     help="also treat generic `problem` nodes as queries (slower, noisier)")
     ap.add_argument("--workers", type=int, default=None,
                     help="parallel file readers (default = CPUs allocated to the job)")
-    ap.add_argument("--df-frac", type=float, default=0.5,
-                    help="skip index words appearing in > this fraction of theorems "
-                         "(only removes placeholder/stopword-like tokens; 1.0 = skip none)")
+    ap.add_argument("--df-frac", type=float, default=0.02,
+                    help="for candidate generation, use only words in <= this fraction "
+                         "of theorems (skips common words whose huge posting lists make "
+                         "rank hang; scoring still uses full word-sets). 1.0 = all words")
     args = ap.parse_args()
 
     ptypes = {"open_problem", "conjecture"}
