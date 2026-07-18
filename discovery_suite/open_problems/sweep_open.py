@@ -26,6 +26,7 @@ import csv
 import os
 import sys
 import time
+from collections import defaultdict
 from multiprocessing import Pool
 from pathlib import Path
 
@@ -113,18 +114,43 @@ def _extract(root, ptypes, min_words, on_progress, workers):
     return problems, theorems
 
 
-def _rank(problems, theorems, top_k, min_score, on_progress):
-    """All-pairs temporal-directed Jaccard; return ranked (prob_rec, thm_rec, s)."""
+def _rank(problems, theorems, top_k, min_score, on_progress, df_frac=0.5):
+    """Temporal-directed Jaccard, but only over theorems that SHARE A WORD with
+    each problem (via an inverted index) instead of all-pairs. On 100k this turns
+    ~24 billion comparisons into a few hundred million. Return ranked
+    (prob_rec, thm_rec, score).
+
+    A jaccard >= min_score (~0.1) pair must share several words, so a word-overlap
+    prefilter can't miss it. Words appearing in > df_frac of all theorems (e.g. the
+    'math' placeholder) are skipped as index keys — they're uninformative and would
+    make every problem 'share a word' with everything."""
+    # inverted index: word -> theorem row-numbers containing it
+    posting = defaultdict(list)
+    for ti, th in enumerate(theorems):
+        for tok in th["toks"]:
+            posting[tok].append(ti)
+    max_df = max(1, int(len(theorems) * df_frac))
+    common = {tok for tok, lst in posting.items() if len(lst) > max_df}
+    print(f"[sweep] index: {len(posting)} words, {len(common)} skipped as too common "
+          f"(>{max_df} theorems)", flush=True)
+
     out = []
     total = len(problems)
     for i, pr in enumerate(problems):
-        if on_progress is not None and i and i % 100 == 0:
+        if on_progress is not None and i and i % 2000 == 0:
             on_progress(i, total)
+        # candidate theorems = those sharing >=1 informative word with the problem
+        cand = set()
+        for tok in pr["toks"]:
+            if tok not in common:
+                cand.update(posting.get(tok, ()))
+        ptoks, ppid, pyear = pr["toks"], pr["pid"], pr["year"]
         scored = []
-        for th in theorems:
-            if th["pid"] == pr["pid"] or th["year"] < pr["year"]:
+        for ti in cand:
+            th = theorems[ti]
+            if th["pid"] == ppid or th["year"] < pyear:
                 continue
-            s = _jaccard(pr["toks"], th["toks"])
+            s = _jaccard(ptoks, th["toks"])
             if s >= min_score:
                 scored.append((th, s))
         scored.sort(key=lambda x: -x[1])
@@ -145,6 +171,9 @@ def main() -> None:
                     help="also treat generic `problem` nodes as queries (slower, noisier)")
     ap.add_argument("--workers", type=int, default=None,
                     help="parallel file readers (default = CPUs allocated to the job)")
+    ap.add_argument("--df-frac", type=float, default=0.5,
+                    help="skip index words appearing in > this fraction of theorems "
+                         "(only removes placeholder/stopword-like tokens; 1.0 = skip none)")
     args = ap.parse_args()
 
     ptypes = {"open_problem", "conjecture"}
@@ -169,7 +198,8 @@ def main() -> None:
     def _rank_progress(done, total):
         print(f"[sweep] rank: {done}/{total} query nodes scored ({time.time()-t1:.0f}s)", flush=True)
 
-    ranked = _rank(problems, theorems, args.top_k, args.min_score, _rank_progress)
+    ranked = _rank(problems, theorems, args.top_k, args.min_score, _rank_progress,
+                   df_frac=args.df_frac)
     print(f"[sweep] rank -> {len(ranked)} candidate pairs in {time.time()-t1:.0f}s", flush=True)
 
     out = Path(args.out)
