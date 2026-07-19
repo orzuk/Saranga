@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gc
+import multiprocessing as mp
 import os
 import sys
 import time
@@ -111,23 +113,61 @@ def _extract(root, ptypes, min_words, on_progress, workers):
     return problems, theorems
 
 
-def _rank(problems, theorems, top_k, min_score, on_progress, df_frac=0.02):
-    """Temporal-directed Jaccard, but only over theorems that share a SELECTIVE
-    word with each problem (via an inverted index) instead of all-pairs. On 100k
-    this turns ~24 billion comparisons into a few hundred million. Return ranked
-    (prob_rec, thm_rec, score).
+def _compute_workers():
+    """Cores for the COMPARE step. Unlike reading, this is CPU-bound, so use the
+    cores SLURM actually gave us (extra processes just fight over the same cores
+    and multiply memory). Falls back to CPU affinity, then cpu_count."""
+    n = os.environ.get("SLURM_CPUS_PER_TASK")
+    if n:
+        return max(1, int(n))
+    try:
+        return max(1, len(os.sched_getaffinity(0)))
+    except AttributeError:
+        return os.cpu_count() or 4
 
-    Two separate roles for words:
-      * candidate GENERATION uses only *selective* words — those in <= df_frac of
-        theorems. Common words (the 'math' placeholder, stopwords, and mid-common
-        words like 'graph'/'set' that each sit in hundreds of thousands of
-        theorems) are skipped here: iterating their huge posting lists is what
-        made rank hang, and a pair whose ONLY overlap is such generic words is a
-        weak match anyway.
-      * SCORING is the exact full-word Jaccard (unchanged) — so every candidate's
-        score is identical to the brute-force value; we only narrow *which*
-        theorems get scored."""
-    # inverted index: word -> theorem row-numbers containing it
+
+def _score_core(ptoks, ppid, pyear, theorems, posting, common, min_score, top_k):
+    """Score one problem against its candidate theorems; return [(theorem_idx, score)].
+
+    Candidate GENERATION uses only *selective* words (<= df_frac of theorems);
+    common words (the 'math' placeholder, stopwords, mid-common words like
+    'graph'/'set') are skipped — iterating their huge posting lists is what made
+    rank hang, and a pair whose only overlap is such generic words is weak anyway.
+    SCORING is the exact full-word Jaccard, so scores match the brute-force value."""
+    cand = set()
+    for tok in ptoks:
+        if tok not in common:
+            pl = posting.get(tok)
+            if pl:
+                cand.update(pl)
+    scored = []
+    for ti in cand:
+        th = theorems[ti]
+        if th["pid"] == ppid or th["year"] < pyear:
+            continue
+        s = _jaccard(ptoks, th["toks"])
+        if s >= min_score:
+            scored.append((ti, s))
+    # secondary key = theorem id so top_k ties break deterministically (independent
+    # of candidate iteration order, parallel read order, or PYTHONHASHSEED)
+    scored.sort(key=lambda x: (-x[1], theorems[x[0]]["key"]))
+    return scored[:top_k]
+
+
+# Globals shared with forked compare-workers (populated in the parent right
+# before the Pool is created; fork inherits them copy-on-write — no pickling of
+# the 1.5M-theorem index across the process boundary).
+_R: dict = {}
+
+
+def _score_problem(pi):
+    return pi, _score_core(
+        _R["problems"][pi]["toks"], _R["problems"][pi]["pid"],
+        _R["problems"][pi]["year"], _R["theorems"], _R["posting"],
+        _R["common"], _R["min_score"], _R["top_k"])
+
+
+def _build_index(theorems, df_frac):
     posting = defaultdict(list)
     for ti, th in enumerate(theorems):
         for tok in th["toks"]:
@@ -136,34 +176,54 @@ def _rank(problems, theorems, top_k, min_score, on_progress, df_frac=0.02):
     common = {tok for tok, lst in posting.items() if len(lst) > max_df}
     print(f"[sweep] index: {len(posting)} words, {len(common)} skipped for candidate "
           f"generation as too common (>{max_df} theorems)", flush=True)
+    return posting, common
 
+
+def _rank(problems, theorems, top_k, min_score, on_progress, df_frac=0.02, workers=1):
+    """Inverted-index Jaccard ranking. With workers>1 the problems are split across
+    processes that share the index via fork (copy-on-write). Returns ranked
+    (prob_rec, thm_rec, score)."""
+    posting, common = _build_index(theorems, df_frac)
     out = []
     total = len(problems)
-    for i, pr in enumerate(problems):
-        if on_progress is not None and i and i % 500 == 0:
-            on_progress(i, total)
-        # candidate theorems = those sharing >=1 selective word with the problem
-        cand = set()
-        for tok in pr["toks"]:
-            if tok not in common:
-                cand.update(posting.get(tok, ()))
-        ptoks, ppid, pyear = pr["toks"], pr["pid"], pr["year"]
-        scored = []
-        for ti in cand:
-            th = theorems[ti]
-            if th["pid"] == ppid or th["year"] < pyear:
-                continue
-            s = _jaccard(ptoks, th["toks"])
-            if s >= min_score:
-                scored.append((th, s))
-        scored.sort(key=lambda x: -x[1])
-        for th, s in scored[:top_k]:
-            out.append((pr, th, s))
-    out.sort(key=lambda x: -x[2])
+
+    if workers <= 1:
+        for i, pr in enumerate(problems):
+            if on_progress is not None and i and i % 500 == 0:
+                on_progress(i, total)
+            for ti, s in _score_core(pr["toks"], pr["pid"], pr["year"],
+                                     theorems, posting, common, min_score, top_k):
+                out.append((pr, theorems[ti], s))
+        out.sort(key=lambda x: (-x[2], x[0]["key"], x[1]["key"]))
+        return out
+
+    # parallel: hand the index to forked workers via globals (no pickling)
+    _R.update(problems=problems, theorems=theorems, posting=posting,
+              common=common, min_score=min_score, top_k=top_k)
+    gc.freeze()  # move the big shared objects out of GC's reach -> less COW churn
+    done = 0
+    ctx = mp.get_context("fork")
+    with ctx.Pool(workers) as pool:
+        for pi, scored in pool.imap_unordered(_score_problem, range(total), chunksize=64):
+            done += 1
+            if on_progress is not None and done % 500 == 0:
+                on_progress(done, total)
+            pr = problems[pi]
+            for ti, s in scored:
+                out.append((pr, theorems[ti], s))
+    out.sort(key=lambda x: (-x[2], x[0]["key"], x[1]["key"]))
     return out
 
 
 def main() -> None:
+    # Use fork for all pools: it's the Linux default (cluster) and, on macOS,
+    # avoids the framework build's broken spawn (posix_spawn "Undefined error").
+    # Also lets compare-workers share the index copy-on-write instead of pickling.
+    try:
+        mp.set_start_method("fork")
+    except (RuntimeError, ValueError):
+        pass  # already set, or fork unavailable
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=None, help="parsed corpus root (streams all categories)")
     ap.add_argument("--out", required=True, help="output triage CSV path")
@@ -175,6 +235,10 @@ def main() -> None:
     ap.add_argument("--workers", type=int, default=None,
                     help="concurrent file readers (default = min(64, node cores); reads "
                          "are I/O-bound so more readers = faster, CPU stays cgroup-capped)")
+    ap.add_argument("--rank-workers", type=int, default=None,
+                    help="processes for the compare step (default = allocated cores). "
+                         "CPU-bound; memory scales with this, so keep near the cores you "
+                         "reserved. 1 = sequential")
     ap.add_argument("--df-frac", type=float, default=0.02,
                     help="for candidate generation, use only words in <= this fraction "
                          "of theorems (skips common words whose huge posting lists make "
@@ -199,12 +263,14 @@ def main() -> None:
           f"{len(theorems)} theorem nodes", flush=True)
 
     t1 = time.time()
+    rank_workers = args.rank_workers or _compute_workers()
+    print(f"[sweep] comparing with {rank_workers} worker(s)", flush=True)
 
     def _rank_progress(done, total):
         print(f"[sweep] rank: {done}/{total} query nodes scored ({time.time()-t1:.0f}s)", flush=True)
 
     ranked = _rank(problems, theorems, args.top_k, args.min_score, _rank_progress,
-                   df_frac=args.df_frac)
+                   df_frac=args.df_frac, workers=rank_workers)
     print(f"[sweep] rank -> {len(ranked)} candidate pairs in {time.time()-t1:.0f}s", flush=True)
 
     out = Path(args.out)
