@@ -11,9 +11,18 @@
 #   export ROOT=/sci/labs/orzuk/orzuk/teaching/big_data_project_52017/2024_25/arxiv_data/parsed_100k_v4
 #   sbatch discovery_suite/plagiarism/sweep_cluster.sh
 #
-# Bigger corpora (e.g. 3M papers): raise PARTITIONS so each shard still fits in
-# RAM at pass 3 (e.g. export PARTITIONS=512), and make sure WORK_DIR has room for
-# the signatures (~num_perm*8 bytes/node) + band rows.
+# Pass 3 (bucket+verify) is the bottleneck and is parallelised across the
+# allocated cores automatically (it reads SLURM_CPUS_PER_TASK). At 100k / 4 cores
+# it was ~62 min serial; more cores scale it down near-linearly.
+#
+# Bigger corpora (e.g. 3M papers): this must stay ONE job (chunking by year would
+# hide cross-year reuse). Override the SBATCH resources at submit time and raise
+# PARTITIONS so a single shard still fits in RAM at pass 3 AND
+# rank_workers*shard < mem, e.g.:
+#   sbatch --cpus-per-task=16 --time=24:00:00 --mem=64G \
+#     --export=ALL,ROOT=$ROOT,PARTITIONS=512 discovery_suite/plagiarism/sweep_cluster.sh
+# Also make sure WORK_DIR has room for the signatures (~num_perm*8 bytes/node,
+# ~8GB at 100k, ~240GB at 3M) + band rows; point it at fast scratch if needed.
 #
 # Resource profile mirrors the lab's proven scripts (32G/4cpu/4h, glacier).
 #SBATCH --job-name=plag_sweep
@@ -34,11 +43,14 @@ WORK_DIR="${WORK_DIR:-discovery_suite/plagiarism/runs/plag_sweep_100k_work}"
 MIN_JACCARD="${MIN_JACCARD:-0.20}"
 PARTITIONS="${PARTITIONS:-64}"
 WORKERS="${WORKERS:-16}"
+# RANK_WORKERS unset -> pass 3 auto-uses SLURM_CPUS_PER_TASK. Override to cap it.
+RANK_WORKERS="${RANK_WORKERS:-}"
 
-echo "[plag_sweep] root=$ROOT out=$OUT work_dir=$WORK_DIR min_jaccard=$MIN_JACCARD partitions=$PARTITIONS workers=$WORKERS"
+echo "[plag_sweep] root=$ROOT out=$OUT work_dir=$WORK_DIR min_jaccard=$MIN_JACCARD partitions=$PARTITIONS workers=$WORKERS rank_workers=${RANK_WORKERS:-auto}"
 python3 discovery_suite/plagiarism/sweep_plag.py \
     --root "$ROOT" --out "$OUT" --work-dir "$WORK_DIR" \
-    --min-jaccard "$MIN_JACCARD" --partitions "$PARTITIONS" --workers "$WORKERS"
+    --min-jaccard "$MIN_JACCARD" --partitions "$PARTITIONS" --workers "$WORKERS" \
+    ${RANK_WORKERS:+--rank-workers "$RANK_WORKERS"}
 
 echo "[plag_sweep] done -> $OUT (+ *_nodes.csv evidence)"
 echo "[next] filter cross_category / high score_max rows, then adjudicate the"

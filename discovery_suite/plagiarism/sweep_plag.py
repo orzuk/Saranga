@@ -227,68 +227,117 @@ class _SigReader:
             fh.close()
 
 
-def _pass3_pairs(work_dir, num_perm, bands, partitions, min_jaccard, max_bucket, on_progress):
+# Partitions are fully independent, so pass 3 forks across the allocated cores.
+# Each worker gets its own _SigReader (own file handles) + struct via the pool
+# initializer; it writes its partition's pairs to pairs_part_{p}.tsv. Peak RAM is
+# rank_workers * (one partition), so keep --partitions high enough that a single
+# partition is small.
+_P3: dict = {}
+_P3ROW: struct.Struct | None = None
+_P3SIGS: _SigReader | None = None
+
+
+def _p3_init(work_dir, num_perm, bands, min_jaccard, max_bucket):
+    global _P3, _P3ROW, _P3SIGS
     rowbytes = (num_perm // bands) * 8
-    row = struct.Struct(f"<H{rowbytes}sHIQH")
-    rsz = row.size
-    sigs = _SigReader(work_dir, num_perm)
+    _P3ROW = struct.Struct(f"<H{rowbytes}sHIQH")
+    _P3SIGS = _SigReader(work_dir, num_perm)
+    _P3 = {"work_dir": Path(work_dir), "rsz": _P3ROW.size,
+           "min_jaccard": min_jaccard, "max_bucket": max_bucket}
+
+
+def _p3_one(p):
+    """Bucket + verify one partition; write its cross-paper pairs. Returns count."""
+    work_dir, rsz = _P3["work_dir"], _P3["rsz"]
+    min_jaccard, max_bucket = _P3["min_jaccard"], _P3["max_bucket"]
+    row, sigs = _P3ROW, _P3SIGS
+    with open(work_dir / f"part_{p}.bin", "rb") as fh:
+        data = fh.read()
+    recs = [row.unpack(data[i:i + rsz]) for i in range(0, len(data), rsz)]
+    # sort so identical (band_idx, band_bytes) rows are adjacent = a bucket
+    recs.sort(key=lambda r: (r[0], r[1]))
     n_pairs = 0
-    out = open(work_dir / "pairs.tsv", "w", encoding="utf-8", buffering=1 << 20)
-    try:
-        for p in range(partitions):
-            recs = []
-            with open(work_dir / f"part_{p}.bin", "rb") as fh:
-                data = fh.read()
-            for i in range(0, len(data), rsz):
-                recs.append(row.unpack(data[i:i + rsz]))
-            # sort so identical (band_idx, band_bytes) rows are adjacent = a bucket
-            recs.sort(key=lambda r: (r[0], r[1]))
-            i, m = 0, len(recs)
-            while i < m:
-                j = i + 1
-                while j < m and recs[j][0] == recs[i][0] and recs[j][1] == recs[i][1]:
-                    j += 1
-                bucket = recs[i:j]
-                i = j
-                if len(bucket) < 2 or (max_bucket and len(bucket) > max_bucket):
-                    continue
-                for a in range(len(bucket)):
-                    _, _, wa, lia, pua, ya = bucket[a]
-                    sa = sigs.sig(wa, lia)
-                    for b in range(a + 1, len(bucket)):
-                        _, _, wb, lib, pub, yb = bucket[b]
-                        if pua == pub:            # same paper — not reuse
-                            continue
-                        sb = sigs.sig(wb, lib)
-                        s = float(np.mean(sa == sb))
-                        if s < min_jaccard:
-                            continue
-                        # orient: older paper is the source (tie -> smaller uid,
-                        # then smaller (w,li)) so the pair's key is canonical
-                        A = (ya, pua, wa, lia)
-                        B = (yb, pub, wb, lib)
-                        (sy, spu, sw, sl), (ty, tpu, tw, tl) = (
-                            (A, B) if A <= B else (B, A))
-                        out.write(f"{sw}\t{sl}\t{tw}\t{tl}\t{s:.4f}\t"
-                                  f"{spu}\t{tpu}\t{sy}\t{ty}\n")
-                        n_pairs += 1
-            if on_progress is not None:
-                on_progress(p + 1, partitions)
-    finally:
-        out.close()
-        sigs.close()
+    with open(work_dir / f"pairs_part_{p}.tsv", "w", encoding="utf-8", buffering=1 << 20) as out:
+        i, m = 0, len(recs)
+        while i < m:
+            j = i + 1
+            while j < m and recs[j][0] == recs[i][0] and recs[j][1] == recs[i][1]:
+                j += 1
+            bucket = recs[i:j]
+            i = j
+            if len(bucket) < 2 or (max_bucket and len(bucket) > max_bucket):
+                continue
+            for a in range(len(bucket)):
+                _, _, wa, lia, pua, ya = bucket[a]
+                sa = sigs.sig(wa, lia)
+                for b in range(a + 1, len(bucket)):
+                    _, _, wb, lib, pub, yb = bucket[b]
+                    if pua == pub:            # same paper — not reuse
+                        continue
+                    sb = sigs.sig(wb, lib)
+                    s = float(np.mean(sa == sb))
+                    if s < min_jaccard:
+                        continue
+                    # orient: older paper is the source (tie -> smaller uid, then
+                    # smaller (w,li)) so the pair's key is canonical
+                    A = (ya, pua, wa, lia)
+                    B = (yb, pub, wb, lib)
+                    (sy, spu, sw, sl), (ty, tpu, tw, tl) = (A, B) if A <= B else (B, A)
+                    out.write(f"{sw}\t{sl}\t{tw}\t{tl}\t{s:.4f}\t"
+                              f"{spu}\t{tpu}\t{sy}\t{ty}\n")
+                    n_pairs += 1
     return n_pairs
 
 
+def _pass3_pairs(work_dir, num_perm, bands, partitions, min_jaccard, max_bucket,
+                 rank_workers, on_progress):
+    total, done = 0, 0
+    if rank_workers <= 1:
+        _p3_init(str(work_dir), num_perm, bands, min_jaccard, max_bucket)
+        try:
+            for p in range(partitions):
+                total += _p3_one(p)
+                done += 1
+                if on_progress is not None:
+                    on_progress(done, partitions)
+        finally:
+            _P3SIGS.close()
+        return total
+    ctx = mp.get_context("fork")
+    with ctx.Pool(rank_workers, initializer=_p3_init,
+                  initargs=(str(work_dir), num_perm, bands, min_jaccard, max_bucket)) as pool:
+        for n in pool.imap_unordered(_p3_one, range(partitions)):
+            total += n
+            done += 1
+            if on_progress is not None:
+                on_progress(done, partitions)
+    return total
+
+
+def _compute_rank_workers():
+    """Cores for pass 3 (CPU-bound). Use the SLURM allocation, then CPU affinity."""
+    n = os.environ.get("SLURM_CPUS_PER_TASK")
+    if n:
+        return max(1, int(n))
+    try:
+        return max(1, len(os.sched_getaffinity(0)))
+    except AttributeError:
+        return os.cpu_count() or 4
+
+
 # ── Pass 4: dedup (external sort), aggregate, resolve meta, write CSVs ─────────
-def _external_sort(src: Path, dst: Path, work_dir: Path):
-    """Sort pairs by node-pair key, highest score first within each pair, so the
-    first row of each (sw,sl,tw,tl) group is the max — dedup is then a linear scan."""
+def _external_sort(srcs: list[Path], dst: Path, work_dir: Path):
+    """Sort all per-partition pair files by node-pair key, highest score first
+    within each pair, so the first row of each (sw,sl,tw,tl) group is the max —
+    dedup is then a linear scan. Bounded memory (external merge sort)."""
+    if not srcs:
+        dst.write_text("")
+        return
     env = dict(os.environ, LC_ALL="C")
     with open(dst, "w") as out:
         subprocess.run(
             ["sort", "-t", "\t", "-k1,1n", "-k2,2n", "-k3,3n", "-k4,4n", "-k5,5nr",
-             "-T", str(work_dir), str(src)],
+             "-T", str(work_dir), *[str(s) for s in srcs]],
             check=True, stdout=out, env=env)
 
 
@@ -309,9 +358,9 @@ def _resolve_meta(work_dir: Path, needed: dict[int, set[int]]) -> dict[tuple[int
 
 
 def _pass4_finalize(work_dir, out_path, min_jaccard):
-    pairs = work_dir / "pairs.tsv"
+    srcs = [Path(s) for s in sorted(glob.glob(str(work_dir / "pairs_part_*.tsv")))]
     ssorted = work_dir / "pairs_sorted.tsv"
-    _external_sort(pairs, ssorted, work_dir)
+    _external_sort(srcs, ssorted, work_dir)
 
     uniq = work_dir / "uniq.tsv"          # one row per node pair (max score)
     needed: dict[int, set[int]] = defaultdict(set)
@@ -424,6 +473,10 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=1, help="MinHash permutation seed")
     ap.add_argument("--workers", type=int, default=None,
                     help="parallel fingerprint workers (default = min(16, cores))")
+    ap.add_argument("--rank-workers", type=int, default=None,
+                    help="parallel pass-3 workers (default = allocated cores). Peak "
+                         "RAM ~ this * one partition, so raise --partitions if you "
+                         "raise this. 1 = serial.")
     ap.add_argument("--keep-work", action="store_true", help="don't delete the scratch dir")
     args = ap.parse_args()
 
@@ -450,9 +503,12 @@ def main() -> None:
     print(f"[plag] pass 2 done in {time.time()-t1:.0f}s", flush=True)
 
     t2 = time.time()
-    print(f"[plag] pass 3/4: bucket + verify pairs (min_jaccard={args.min_jaccard}) …", flush=True)
+    rank_workers = args.rank_workers or _compute_rank_workers()
+    print(f"[plag] pass 3/4: bucket + verify pairs (min_jaccard={args.min_jaccard}, "
+          f"rank_workers={rank_workers}) …", flush=True)
     n_pairs = _pass3_pairs(
         work_dir, args.num_perm, args.bands, args.partitions, args.min_jaccard, max_bucket,
+        rank_workers,
         lambda d, t: (print(f"[plag] pair: {d}/{t} partitions ({time.time()-t2:.0f}s)", flush=True)
                       if d % 8 == 0 or d == t else None))
     print(f"[plag] pass 3 done: {n_pairs} raw pairs in {time.time()-t2:.0f}s", flush=True)
