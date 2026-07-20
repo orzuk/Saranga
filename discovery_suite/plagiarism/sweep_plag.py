@@ -84,6 +84,8 @@ _WROOT = None
 _WHASHER: MinHasher | None = None
 _WK = 5
 _WMINWORDS = 8
+_WMINDISTINCT = 6
+_WDROPTYPES: frozenset = frozenset()
 _WNUMPERM = 128
 _WBANDS = 32
 _WROWBYTES = 0
@@ -96,12 +98,14 @@ _WBANDF = None
 _COUNTER = None
 
 
-def _winit(root, k, min_words, num_perm, bands, seed, work_dir, counter):
-    global _WROOT, _WHASHER, _WK, _WMINWORDS, _WNUMPERM, _WBANDS, _WROWBYTES, _WROW
-    global _WID, _WN, _WSIG, _WMETA, _WBANDF, _COUNTER
+def _winit(root, k, min_words, min_distinct, drop_types, num_perm, bands, seed, work_dir, counter):
+    global _WROOT, _WHASHER, _WK, _WMINWORDS, _WMINDISTINCT, _WDROPTYPES, _WNUMPERM
+    global _WBANDS, _WROWBYTES, _WROW, _WID, _WN, _WSIG, _WMETA, _WBANDF, _COUNTER
     _WROOT = Path(root)
     _WK = k
     _WMINWORDS = min_words
+    _WMINDISTINCT = min_distinct
+    _WDROPTYPES = frozenset(t.strip().lower() for t in drop_types.split(",") if t.strip())
     _WNUMPERM = num_perm
     _WBANDS = bands
     _WROWBYTES = (num_perm // bands) * 8
@@ -129,8 +133,13 @@ def _fingerprint_one(path_str):
     year = int(p.year) & 0xFFFF
     kept = 0
     for n in p.nodes:
+        if (n.get("type") or "").lower() in _WDROPTYPES:   # non-prose boilerplate
+            continue
         txt = node_norm_text(n) or ""
-        if len(txt.split()) < _WMINWORDS:
+        toks = txt.split()
+        if len(toks) < _WMINWORDS:
+            continue
+        if len(set(toks)) < _WMINDISTINCT:   # degenerate: '1 1 1 1', repeated tokens
             continue
         sig = _WHASHER.signature(k_shingles(txt, k=_WK))  # uint64[num_perm]
         li = _WN
@@ -169,7 +178,8 @@ def _pass1_fingerprint(root, args, work_dir, on_progress):
     ctx = mp.get_context("fork")  # Linux default; avoids macOS broken spawn
     done = 0
     with ctx.Pool(workers, initializer=_winit,
-                  initargs=(root, args.k, args.min_words, args.num_perm, args.bands,
+                  initargs=(root, args.k, args.min_words, args.min_distinct,
+                            args.drop_types, args.num_perm, args.bands,
                             args.seed, str(work_dir), counter)) as pool:
         for _ in pool.imap_unordered(_fingerprint_one, paths, chunksize=64):
             done += 1
@@ -468,6 +478,13 @@ def main() -> None:
                          "Raise for bigger corpora (3M: try 512+).")
     ap.add_argument("--min-jaccard", type=float, default=0.2, help="min est. Jaccard to keep a node pair")
     ap.add_argument("--min-words", type=int, default=8)
+    ap.add_argument("--min-distinct", type=int, default=6,
+                    help="require >= this many DISTINCT tokens per node — drops "
+                         "degenerate boilerplate ('1 1 1 1' matrices/tables, repeated "
+                         "tokens) that otherwise hit Jaccard 1.0 everywhere. 0 = off")
+    ap.add_argument("--drop-types", default="equation,table,figure,caption,tikzpicture,tikz,notation",
+                    help="comma list of node types to skip (non-prose boilerplate). "
+                         "Empty string = keep all types.")
     ap.add_argument("--max-bucket", type=int, default=400,
                     help="skip LSH buckets larger than this (boilerplate); 0 = no cap")
     ap.add_argument("--seed", type=int, default=1, help="MinHash permutation seed")
