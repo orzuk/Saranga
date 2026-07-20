@@ -15,9 +15,49 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections import defaultdict
 from pathlib import Path
 
 import pandas as pd
+
+
+def _reaggregate(nodes_csv, paper_df, max_node_papers):
+    """Re-build paper-pair rows from the node-evidence CSV, dropping *promiscuous*
+    nodes (a node matching more than max_node_papers distinct papers is generic
+    boilerplate — 'the proof is analogous to that of theorem', standard lemmas —
+    an IDF/document-frequency filter). Categories are joined back from paper_df.
+    Returns (paper_pair_df, n_generic_nodes)."""
+    nd = pd.read_csv(nodes_csv, dtype={
+        "source_key": str, "target_key": str, "source_paper": str,
+        "target_paper": str, "source_snippet": str, "target_snippet": str})
+    n_generic = 0
+    if max_node_papers and max_node_papers > 0:
+        seen: dict[str, set] = defaultdict(set)
+        for sk, tk, sp, tp in zip(nd.source_key, nd.target_key,
+                                  nd.source_paper, nd.target_paper):
+            seen[sk].add(tp)
+            seen[tk].add(sp)
+        generic = {k for k, v in seen.items() if len(v) > max_node_papers}
+        n_generic = len(generic)
+        nd = nd[~(nd.source_key.isin(generic) | nd.target_key.isin(generic))]
+
+    catmap = {(str(r.source_paper), str(r.target_paper)): (r.source_cat, r.target_cat)
+              for r in paper_df.itertuples(index=False)}
+    rows = []
+    for (sp, tp), g in nd.groupby(["source_paper", "target_paper"], sort=False):
+        best = g.loc[g["est_jaccard"].idxmax()]
+        scat, tcat = catmap.get((sp, tp), ("", ""))
+        rows.append({
+            "score_max": g.est_jaccard.max(), "score_sum": g.est_jaccard.sum(),
+            "n_shared_nodes": len(g),
+            "source_paper": sp, "source_year": int(best.source_year), "source_cat": scat,
+            "target_paper": tp, "target_year": int(best.target_year), "target_cat": tcat,
+            "cross_category": int(best.cross_category), "same_year": int(best.same_year),
+            "best_source_key": best.source_key, "best_target_key": best.target_key,
+            "best_source_snippet": best.source_snippet,
+            "best_target_snippet": best.target_snippet,
+        })
+    return pd.DataFrame(rows), n_generic
 
 
 def _authorize(hot, index_path):
@@ -67,6 +107,14 @@ def main() -> None:
                     help="drop same-author pairs (needs --author-index); surfaces "
                          "the cross-author reuse that is the real plagiarism target. "
                          "Author-unknown pairs are KEPT.")
+    ap.add_argument("--nodes-csv", default=None,
+                    help="node-evidence CSV (<sweep>_nodes.csv). Enables the "
+                         "promiscuity filter: re-aggregate paper pairs after dropping "
+                         "generic nodes. No sweep re-run needed.")
+    ap.add_argument("--max-node-papers", type=int, default=0,
+                    help="with --nodes-csv: drop nodes matching more than this many "
+                         "distinct papers (generic boilerplate / standard statements). "
+                         "0 = off. Try 10-30.")
     ap.add_argument("--top", type=int, default=0, help="cap output rows (0 = all)")
     args = ap.parse_args()
 
@@ -76,6 +124,14 @@ def main() -> None:
         "source_paper": str, "target_paper": str, "source_cat": str,
         "target_cat": str, "best_source_key": str, "best_target_key": str,
         "best_source_snippet": str, "best_target_snippet": str})
+
+    if args.nodes_csv:
+        df, n_generic = _reaggregate(args.nodes_csv, df, args.max_node_papers)
+        print(f"re-aggregated from {args.nodes_csv}: dropped {n_generic:,} promiscuous "
+              f"nodes (>{args.max_node_papers} papers) -> {len(df):,} paper pairs")
+    elif args.max_node_papers:
+        raise SystemExit("--max-node-papers requires --nodes-csv")
+
     print(f"{len(df):,} paper pairs in {args.inp}")
     print("score_max distribution:")
     print(df["score_max"].describe()[["min", "25%", "50%", "75%", "max"]].to_string())
