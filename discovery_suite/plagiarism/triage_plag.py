@@ -14,9 +14,34 @@ triage step; read-only consumer of the sweep CSV.
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 import pandas as pd
+
+
+def _authorize(hot, index_path):
+    """Add shared_authors + self_reuse columns via the author index. Unknown (id
+    missing from the index) -> -1, so those pairs are neither cleared nor dropped.
+    Returns (annotated_df, n_pairs_with_both_authors_known)."""
+    with open(index_path, encoding="utf-8") as fh:
+        idx = json.load(fh)
+    shared, self_r, known = [], [], 0
+    for _, r in hot.iterrows():
+        a = idx.get(str(r.source_paper))
+        b = idx.get(str(r.target_paper))
+        if a is None or b is None:
+            shared.append(-1)
+            self_r.append(-1)
+        else:
+            known += 1
+            n = len(set(a) & set(b))
+            shared.append(n)
+            self_r.append(1 if n > 0 else 0)
+    hot = hot.copy()
+    hot["shared_authors"] = shared
+    hot["self_reuse"] = self_r
+    return hot, known
 
 
 def main() -> None:
@@ -35,6 +60,13 @@ def main() -> None:
     ap.add_argument("--exclude-same-year", action="store_true",
                     help="drop same-year pairs (keep only reuse across years, where "
                          "the older-source direction is unambiguous)")
+    ap.add_argument("--author-index", default=None,
+                    help="author index JSON (build_author_index.py). Adds "
+                         "shared_authors + self_reuse columns.")
+    ap.add_argument("--exclude-self-reuse", action="store_true",
+                    help="drop same-author pairs (needs --author-index); surfaces "
+                         "the cross-author reuse that is the real plagiarism target. "
+                         "Author-unknown pairs are KEPT.")
     ap.add_argument("--top", type=int, default=0, help="cap output rows (0 = all)")
     args = ap.parse_args()
 
@@ -55,6 +87,19 @@ def main() -> None:
         hot = hot[hot.cross_category == 1]
     if args.exclude_same_year:
         hot = hot[hot.same_year == 0]
+
+    if args.author_index:
+        hot, known = _authorize(hot, args.author_index)
+        n_self = int((hot.self_reuse == 1).sum())
+        n_unk = int((hot.self_reuse == -1).sum())
+        print(f"\nauthor gate: {known:,}/{len(hot):,} pairs have both authors known; "
+              f"{n_self:,} same-author (self-reuse), {n_unk:,} author-unknown")
+        if args.exclude_self_reuse:
+            hot = hot[hot.self_reuse != 1]
+            print(f"  excluded self-reuse -> {len(hot):,} pairs remain")
+    elif args.exclude_self_reuse:
+        raise SystemExit("--exclude-self-reuse requires --author-index")
+
     hot = hot.sort_values(["score_max", "n_shared_nodes", "score_sum"],
                           ascending=False)
     if args.top:
@@ -64,9 +109,14 @@ def main() -> None:
           f"(score_max>={args.min_score_max}, n_shared_nodes>={args.min_nodes}"
           f"{', cross-category' if args.cross_category else ''}"
           f"{', cross-year' if args.exclude_same_year else ''})\n")
+    has_auth = "self_reuse" in hot.columns
     for _, r in hot.head(20).iterrows():
         tag = "XCAT" if r.cross_category else "    "
-        print(f"  {r.score_max:.2f} x{int(r.n_shared_nodes):<3} {tag} "
+        auth = ""
+        if has_auth:
+            auth = ("SELF" if r.self_reuse == 1 else
+                    "?   " if r.self_reuse == -1 else "XAUT")
+        print(f"  {r.score_max:.2f} x{int(r.n_shared_nodes):<4} {tag} {auth} "
               f"{r.source_paper}({r.source_cat}) -> {r.target_paper}({r.target_cat})")
         print(f"        {str(r.best_source_snippet)[:88]}")
 
