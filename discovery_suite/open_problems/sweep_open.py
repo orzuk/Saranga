@@ -50,13 +50,15 @@ from o1_retrieve import THEOREM_TYPES, _jaccard  # noqa: E402
 _WROOT = None
 _WPTYPES: set = set()
 _WMINWORDS = 6
+_WPREFER_RAW = True
 
 
-def _winit(root, ptypes, min_words):
-    global _WROOT, _WPTYPES, _WMINWORDS
+def _winit(root, ptypes, min_words, prefer_raw):
+    global _WROOT, _WPTYPES, _WMINWORDS, _WPREFER_RAW
     _WROOT = Path(root)
     _WPTYPES = ptypes
     _WMINWORDS = min_words
+    _WPREFER_RAW = prefer_raw
 
 
 def _extract_one(path_str):
@@ -70,7 +72,7 @@ def _extract_one(path_str):
         t = (n.get("type") or "").lower()
         if t not in keep:
             continue
-        txt = node_norm_text(n) or ""
+        txt = node_norm_text(n, prefer_raw=_WPREFER_RAW) or ""
         toks = frozenset(txt.split())
         if len(toks) < _WMINWORDS:
             continue
@@ -94,7 +96,7 @@ def _default_workers():
     return min(64, os.cpu_count() or 8)
 
 
-def _extract(root, ptypes, min_words, on_progress, workers):
+def _extract(root, ptypes, min_words, on_progress, workers, prefer_raw):
     """Read the whole corpus (files in parallel); return (problems, theorems).
 
     Only the small node records are collected in the main process; each paper is
@@ -103,7 +105,7 @@ def _extract(root, ptypes, min_words, on_progress, workers):
     problems, theorems = [], []
     done = 0
     with Pool(workers, initializer=_winit,
-              initargs=(root, ptypes, min_words)) as pool:
+              initargs=(root, ptypes, min_words, prefer_raw)) as pool:
         for probs, thms in pool.imap_unordered(_extract_one, paths, chunksize=64):
             done += 1
             if on_progress is not None and done % 5000 == 0:
@@ -243,7 +245,13 @@ def main() -> None:
                     help="for candidate generation, use only words in <= this fraction "
                          "of theorems (skips common words whose huge posting lists make "
                          "rank hang; scoring still uses full word-sets). 1.0 = all words")
+    ap.add_argument("--text-source", choices=("raw", "masked"), default="raw",
+                    help="'raw' (default): tokenize clean_latex_to_text(raw_latex), "
+                         "math-preserving and uniform across base/distilled nodes. "
+                         "'masked': legacy — use the stored clean_text/statement, where "
+                         "the base parser masks math to [MATH] (-> the token 'math').")
     args = ap.parse_args()
+    prefer_raw = args.text_source == "raw"
 
     ptypes = {"open_problem", "conjecture"}
     if args.include_problem:
@@ -251,13 +259,14 @@ def main() -> None:
 
     workers = args.workers or _default_workers()
     t0 = time.time()
-    print(f"[sweep] reading corpus with {workers} parallel workers …", flush=True)
+    print(f"[sweep] reading corpus with {workers} parallel workers "
+          f"(text-source={args.text_source}) …", flush=True)
 
     def _load_progress(done, total):
         print(f"[sweep] load: read {done}/{total} files ({time.time()-t0:.0f}s)", flush=True)
 
     problems, theorems = _extract(args.root, ptypes, args.min_words,
-                                  _load_progress, workers)
+                                  _load_progress, workers, prefer_raw)
     print(f"[sweep] streamed corpus in {time.time()-t0:.0f}s; "
           f"{len(problems)} query nodes ({'+'.join(sorted(ptypes))}), "
           f"{len(theorems)} theorem nodes", flush=True)

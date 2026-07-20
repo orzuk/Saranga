@@ -23,8 +23,12 @@ MIN_SCORE="${MIN_SCORE:-0.10}"
 TOPK="${TOPK:-20}"
 
 echo "[open_sweep] root=$ROOT out=$OUT min_score=$MIN_SCORE top_k=$TOPK"
+# --text-source raw: tokenize clean_latex_to_text(raw_latex) so retrieval sees the
+# real math (constants/operators/identifiers), not the [MATH]-masked clean_text.
+# This is the sweep_open.py default too; stated explicitly here for clarity.
 python3 discovery_suite/open_problems/sweep_open.py \
-    --root "$ROOT" --out "$OUT" --top-k "$TOPK" --min-score "$MIN_SCORE"
+    --root "$ROOT" --out "$OUT" --top-k "$TOPK" --min-score "$MIN_SCORE" \
+    --text-source raw
 
 echo "[open_sweep] done -> $OUT"
 echo "[next] review top rows, then adjudicate with:"

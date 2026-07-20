@@ -206,6 +206,30 @@ def node_text(node: dict, *, include_type: bool = True) -> str:
     return " ".join(parts)
 
 
-def node_norm_text(node: dict) -> str:
-    """node_text run through normalize_math_text — the shingling substrate."""
+try:
+    # Shared math-preserving LaTeX cleaner (base parser + distilled rules use it).
+    # `src` is already on sys.path above, so `LLMVersion` resolves as a package.
+    from LLMVersion.latex_clean import clean_latex_to_text  # noqa: E402
+except Exception:  # pragma: no cover - cleaner optional; fall back to masked field
+    clean_latex_to_text = None
+
+
+def node_norm_text(node: dict, *, prefer_raw: bool = False) -> str:
+    """node_text run through normalize_math_text — the shingling substrate.
+
+    With ``prefer_raw`` and a ``raw_latex`` field present, the node text is built
+    from ``clean_latex_to_text(raw_latex)`` (math-PRESERVING) instead of the
+    stored ``clean_text``/``statement``. The base parser masks those to ``[MATH]``
+    (which normalizes to the single token ``math``), so masked-field matching is
+    blind to the actual mathematics AND inconsistent with distilled nodes (whose
+    stored text is unmasked). Cleaning raw_latex through the same shared function
+    for every node makes retrieval math-aware and uniform. Falls back to the
+    masked field when raw_latex is absent or the cleaner import failed.
+    """
+    if prefer_raw and clean_latex_to_text is not None:
+        raw = node.get("raw_latex")
+        if raw:
+            name = node.get("name")
+            body = clean_latex_to_text(str(raw))
+            return normalize_math_text(f"{name} {body}" if name else body)
     return normalize_math_text(node_text(node, include_type=False))
