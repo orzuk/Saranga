@@ -377,16 +377,13 @@ def main() -> None:
         return snippet, "snip", 0
 
     # citation-novelty gate (#3): does B cite A (a KNOWN resolution) or neither?
+    # NB: run as a SECOND pass, AFTER judging, over only the YES/PARTIAL survivors —
+    # so S2 is queried for a few papers, not every paper in the (large) shortlist.
     cg = None
     if args.citations:
         from citation_graph import S2CitationGraph
         cg = S2CitationGraph(Path(args.citations),
                              api_key=args.s2_key or os.environ.get("S2_KEY"))
-        if not args.no_fetch_citations:
-            pids = sorted({r["problem_key"].split("::")[0] for r in rows} |
-                          {r["theorem_key"].split("::")[0] for r in rows})
-            print(f"[batch_o4] fetching S2 citations for {len(pids)} papers …")
-            cg.fetch_batch(pids)
 
     def _cite_gate(pk: str, tk: str) -> tuple[int, int, int]:
         """(b_cites_a, a_cites_b, novel). Each 1/0, or -1 if a paper is unknown to
@@ -422,11 +419,8 @@ def main() -> None:
         b_text, b_st, b_cov = _context(tk, r["theorem_snippet"])
         both_ctx = (a_st == "ctx" and b_st == "ctx")
         found += int(both_ctx)
-        b_cites_a, a_cites_b, novel = _cite_gate(pk, tk)
-        ctag = ("CITED" if (b_cites_a == 1 or a_cites_b == 1) else
-                "novel" if novel == 1 else "?    ")
         print(f"  [{i:>3}] {r['score']:>5} {pk} -> {tk}  "
-              f"[a:{a_st}/{a_cov}kw b:{b_st}/{b_cov}kw {ctag}]")
+              f"[a:{a_st}/{a_cov}kw b:{b_st}/{b_cov}kw]")
         if args.probe:
             _preview("A", a_text)
             _preview("B", b_text)
@@ -435,15 +429,32 @@ def main() -> None:
                           b_pid=tk.split("::")[0], b_text=b_text[: args.radius * 2])
         p = res.parsed
         print(f"        -> VERDICT={p['verdict']} SAME_OBJECT={p['same_object']} "
-              f"cite={ctag.strip()} {'(cached)' if res.cached else ''}")
+              f"{'(cached)' if res.cached else ''}")
         print(f"           {p['justification'][:140]}")
+        # citation columns filled in the second pass below (-1 = not yet checked)
         out_rows.append({**r, "verdict": p["verdict"], "same_object": p["same_object"],
                          "justification": p["justification"],
                          "ctx_found": int(both_ctx),
-                         "b_cites_a": b_cites_a, "a_cites_b": a_cites_b, "novel": novel})
+                         "b_cites_a": -1, "a_cites_b": -1, "novel": -1})
 
     print(f"\n[batch_o4] context located for {found}/{len(rows)} pairs "
           f"(both sides found in their .tex)")
+
+    # ── citation pass: only over YES/PARTIAL survivors (few papers, not all) ──
+    if cg is not None and out_rows:
+        hits = [r for r in out_rows if r["verdict"].upper() in ("YES", "PARTIAL")]
+        if hits and not args.no_fetch_citations:
+            pids = sorted({r["problem_key"].split("::")[0] for r in hits} |
+                          {r["theorem_key"].split("::")[0] for r in hits})
+            print(f"\n[batch_o4] citation gate: fetching S2 for {len(pids)} papers "
+                  f"from {len(hits)} YES/PARTIAL pair(s) …")
+            cg.fetch_batch(pids)
+        for r in hits:
+            ba, ab, nov = _cite_gate(r["problem_key"], r["theorem_key"])
+            r["b_cites_a"], r["a_cites_b"], r["novel"] = ba, ab, nov
+            ctag = ("CITED" if (ba == 1 or ab == 1) else
+                    "novel" if nov == 1 else "unknown")
+            print(f"  {r['score']} {r['problem_key']} -> {r['theorem_key']}: {ctag}")
     if args.probe:
         print("[batch_o4] probe only — no verdicts written. Re-run without --probe "
               "(and with --out) to judge.")
