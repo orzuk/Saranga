@@ -235,6 +235,18 @@ _PROMPT = (
 )
 
 
+def _preview(side: str, text: str, edge: int = 320) -> None:
+    """Print the head and tail of a located window (with its size) so --probe shows
+    what the judge will actually receive, not just the first line."""
+    flat = " ".join(text.split())
+    size = len(text)
+    if size <= 2 * edge:
+        print(f"        {side} [{size}c]: {flat}")
+    else:
+        print(f"        {side} [{size}c] head: {flat[:edge]}")
+        print(f"        {side}       tail: {flat[-edge:]}")
+
+
 def _parse(raw: str) -> dict:
     out = {"verdict": "", "same_object": "", "justification": "", "raw": raw}
     for line in raw.splitlines():
@@ -256,8 +268,10 @@ def main() -> None:
                     help="advanced = 100k (category/YYYY/MM/DD/id), flat = 3M (YYYY/MM/DD/id)")
     ap.add_argument("--out", default=None, help="verdicts CSV (omit with --probe)")
     ap.add_argument("--top", type=int, default=20, help="judge the top-N triage rows")
-    ap.add_argument("--radius", type=int, default=1200,
-                    help="context window half-width in chars, each side of the node")
+    ap.add_argument("--radius", type=int, default=1800,
+                    help="context window half-width in chars each side of the node "
+                         "(~6 chars/word, so 1800 ~= 300 words/side). Bigger = more "
+                         "context but more tokens/$ and risk of pulling in a neighbour.")
     ap.add_argument("--model", default="opus")
     ap.add_argument("--probe", action="store_true",
                     help="locate-only: resolve .tex + windows and report hit/miss, "
@@ -311,8 +325,8 @@ def main() -> None:
         print(f"  [{i:>3}] {r['score']:>5} {pk} -> {tk}  "
               f"[{tag} a={a_cov}kw b={b_cov}kw]")
         if args.probe:
-            print(f"        A excerpt: {a_text[:110].strip()}")
-            print(f"        B excerpt: {b_text[:110].strip()}")
+            _preview("A", a_text)
+            _preview("B", b_text)
             continue
         res = judge.judge(a_pid=pk.split("::")[0], a_text=a_text[: args.radius * 2],
                           b_pid=tk.split("::")[0], b_text=b_text[: args.radius * 2])
