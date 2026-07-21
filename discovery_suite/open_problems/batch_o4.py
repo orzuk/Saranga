@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import csv
 import glob
+import json
 import os
 import re
 import sys
@@ -215,6 +216,56 @@ def locate_window(tex: str, snippet: str, radius: int) -> tuple[str | None, int]
     return None, cluster_cov
 
 
+# ── raw_latex fallback anchor (for symbolic nodes with no content words) ─────
+# The CSV snippet of a node like "the map psi is a bijection" has no distinctive
+# words (psi/map are short/generic), so keyword-locate fails (b=0kw). The parsed
+# JSON keeps the node's raw_latex, which carries its \label{...} — a far more
+# reliable anchor — and, failing that, is itself a better excerpt than the tiny
+# normalized snippet.
+_LABEL_RE = re.compile(r"\\label\{([^}]+)\}")
+
+
+def resolve_parsed(parsed_root: str, pid: str) -> Path | None:
+    """Find the parsed JSON for `pid`. Layout is <category>/<year>/<id>*.json; the
+    year comes from the id and the category is globbed (~20 dirs), so no tree walk."""
+    try:
+        yyyy = year_from_arxiv_id(pid)
+    except ValueError:
+        return None
+    for pat in (f"{parsed_root}/*/{yyyy}/{pid}*.json",
+                f"{parsed_root}/{yyyy}/{pid}*.json"):
+        hits = sorted(glob.glob(pat))
+        if hits:
+            return Path(hits[0])
+    return None
+
+
+def load_node_raw(parsed_root: str, key: str, cache: dict) -> str | None:
+    """raw_latex of the node `paper::id` from its parsed JSON (None if not found)."""
+    pid, nid = key.split("::", 1)
+    if pid not in cache:
+        p = resolve_parsed(parsed_root, pid)
+        try:
+            cache[pid] = json.loads(p.read_text(encoding="utf-8")).get("nodes", []) \
+                if p else []
+        except Exception:
+            cache[pid] = []
+    for n in cache[pid]:
+        if str(n.get("id")) == nid:
+            return (n.get("raw_latex") or "").strip() or None
+    return None
+
+
+def locate_by_label(tex: str, raw_latex: str, radius: int) -> str | None:
+    """Locate the node in `tex` by its \\label{...} (taken from raw_latex) — exact
+    and symbol-proof — then window with the paragraph snap. None if no label hits."""
+    for lab in _LABEL_RE.findall(raw_latex):
+        j = tex.find("\\label{" + lab + "}")
+        if j >= 0:
+            return _snap(tex, max(0, j - radius), min(len(tex), j + radius), radius)
+    return None
+
+
 # ── judge prompt ─────────────────────────────────────────────────────────────
 _PROMPT = (
     "Below are excerpts (with surrounding text for context) from two different "
@@ -273,6 +324,20 @@ def main() -> None:
                          "(~6 chars/word, so 1800 ~= 300 words/side). Bigger = more "
                          "context but more tokens/$ and risk of pulling in a neighbour.")
     ap.add_argument("--model", default="opus")
+    ap.add_argument("--parsed-root", default=None,
+                    help="root of the parsed JSON (<category>/<year>/<id>.json). Enables "
+                         "the raw_latex fallback: when a symbolic node has no content "
+                         "words to keyword-locate, anchor on its \\label{} in the .tex, "
+                         "else send its raw_latex instead of the tiny normalized snippet.")
+    ap.add_argument("--citations", default=None,
+                    help="S2 citation-graph sqlite (common/citation_graph.py). Enables "
+                         "the novelty gate: flag pairs where B cites A (a KNOWN "
+                         "resolution) vs neither (the undiscovered target).")
+    ap.add_argument("--s2-key", default=None,
+                    help="Semantic Scholar API key (else $S2_KEY). Higher rate limit.")
+    ap.add_argument("--no-fetch-citations", action="store_true",
+                    help="with --citations: query the cache only, don't hit S2 for "
+                         "missing papers (offline / already-populated cache).")
     ap.add_argument("--probe", action="store_true",
                     help="locate-only: resolve .tex + windows and report hit/miss, "
                          "NO API calls. Run this first to validate before spending.")
@@ -282,20 +347,55 @@ def main() -> None:
         rows = list(csv.DictReader(fh))[: args.top]
     print(f"[batch_o4] {len(rows)} rows (top {args.top}) from {args.triage}")
 
-    # cache each paper's .tex text (a pair may reuse a paper across rows)
+    # cache each paper's .tex text / parsed nodes (a pair may reuse a paper)
     tex_cache: dict[str, str | None] = {}
+    node_cache: dict[str, list] = {}
 
-    def _context(key: str, snippet: str) -> tuple[str, bool, int]:
+    def _context(key: str, snippet: str) -> tuple[str, str, int]:
+        """Return (excerpt, status, coverage). status: 'ctx' = located window in the
+        .tex (best), 'raw' = the node's raw_latex (real statement, no surrounding
+        prose), 'snip' = the normalized snippet (last resort)."""
         pid = key.split("::", 1)[0]
         if pid not in tex_cache:
             p = resolve_tex(args.tex_root, pid, args.layout)
             tex_cache[pid] = (p.read_text(encoding="utf-8", errors="replace")
                               if p else None)
         tex = tex_cache[pid]
-        if not tex:
-            return snippet, False, 0            # no .tex -> fall back to snippet
-        win, cover = locate_window(tex, snippet, args.radius)
-        return (win, True, cover) if win else (snippet, False, cover)
+        if tex:
+            win, cover = locate_window(tex, snippet, args.radius)
+            if win:
+                return win, "ctx", cover
+        # keyword-locate failed (or no .tex). Try the raw_latex fallback (#2).
+        if args.parsed_root:
+            raw = load_node_raw(args.parsed_root, key, node_cache)
+            if raw:
+                if tex:
+                    win = locate_by_label(tex, raw, args.radius)
+                    if win:
+                        return win, "ctx", -1     # anchored on \label, not keywords
+                return raw, "raw", -1             # real statement beats the snippet
+        return snippet, "snip", 0
+
+    # citation-novelty gate (#3): does B cite A (a KNOWN resolution) or neither?
+    cg = None
+    if args.citations:
+        from citation_graph import S2CitationGraph
+        cg = S2CitationGraph(Path(args.citations),
+                             api_key=args.s2_key or os.environ.get("S2_KEY"))
+        if not args.no_fetch_citations:
+            pids = sorted({r["problem_key"].split("::")[0] for r in rows} |
+                          {r["theorem_key"].split("::")[0] for r in rows})
+            print(f"[batch_o4] fetching S2 citations for {len(pids)} papers …")
+            cg.fetch_batch(pids)
+
+    def _cite_gate(pk: str, tk: str) -> tuple[int, int, int]:
+        """(b_cites_a, a_cites_b, novel). Each 1/0, or -1 if a paper is unknown to
+        the cache. novel=1 only when BOTH directions are known AND neither cites."""
+        a, b = pk.split("::")[0], tk.split("::")[0]
+        if cg is None or not (cg.has(a) and cg.has(b)):
+            return -1, -1, -1
+        ba, ab = int(cg.cites(b, a)), int(cg.cites(a, b))
+        return ba, ab, int(not (ba or ab))
 
     judge = None
     if not args.probe:
@@ -318,12 +418,15 @@ def main() -> None:
     out_rows = []
     for i, r in enumerate(rows, 1):
         pk, tk = r["problem_key"], r["theorem_key"]
-        a_text, a_ok, a_cov = _context(pk, r["problem_snippet"])
-        b_text, b_ok, b_cov = _context(tk, r["theorem_snippet"])
-        found += int(a_ok and b_ok)
-        tag = "ctx" if (a_ok and b_ok) else ("A?" if not a_ok else "B?")
+        a_text, a_st, a_cov = _context(pk, r["problem_snippet"])
+        b_text, b_st, b_cov = _context(tk, r["theorem_snippet"])
+        both_ctx = (a_st == "ctx" and b_st == "ctx")
+        found += int(both_ctx)
+        b_cites_a, a_cites_b, novel = _cite_gate(pk, tk)
+        ctag = ("CITED" if (b_cites_a == 1 or a_cites_b == 1) else
+                "novel" if novel == 1 else "?    ")
         print(f"  [{i:>3}] {r['score']:>5} {pk} -> {tk}  "
-              f"[{tag} a={a_cov}kw b={b_cov}kw]")
+              f"[a:{a_st}/{a_cov}kw b:{b_st}/{b_cov}kw {ctag}]")
         if args.probe:
             _preview("A", a_text)
             _preview("B", b_text)
@@ -332,11 +435,12 @@ def main() -> None:
                           b_pid=tk.split("::")[0], b_text=b_text[: args.radius * 2])
         p = res.parsed
         print(f"        -> VERDICT={p['verdict']} SAME_OBJECT={p['same_object']} "
-              f"{'(cached)' if res.cached else ''}")
+              f"cite={ctag.strip()} {'(cached)' if res.cached else ''}")
         print(f"           {p['justification'][:140]}")
         out_rows.append({**r, "verdict": p["verdict"], "same_object": p["same_object"],
                          "justification": p["justification"],
-                         "ctx_found": int(a_ok and b_ok)})
+                         "ctx_found": int(both_ctx),
+                         "b_cites_a": b_cites_a, "a_cites_b": a_cites_b, "novel": novel})
 
     print(f"\n[batch_o4] context located for {found}/{len(rows)} pairs "
           f"(both sides found in their .tex)")
@@ -351,8 +455,18 @@ def main() -> None:
         w.writerows(out_rows)
     yes = sum(1 for r in out_rows if r["verdict"].upper() == "YES")
     part = sum(1 for r in out_rows if r["verdict"].upper() == "PARTIAL")
+    # the discovery target: YES + same object + solid context + not a cited resolution
+    disc = [r for r in out_rows
+            if r["verdict"].upper() in ("YES", "PARTIAL")
+            and str(r["same_object"]).upper() == "YES"
+            and r["ctx_found"] == 1 and r["novel"] == 1]
     print(f"[batch_o4] wrote {len(out_rows)} verdicts -> {args.out} "
           f"({yes} YES, {part} PARTIAL)")
+    if args.citations:
+        print(f"[batch_o4] {len(disc)} UNDISCOVERED candidate(s) "
+              f"(YES/PARTIAL + same_object + ctx + not-cited):")
+        for r in disc:
+            print(f"    {r['score']} {r['problem_key']} -> {r['theorem_key']}")
 
 
 if __name__ == "__main__":
