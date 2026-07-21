@@ -343,6 +343,17 @@ def main() -> None:
                          "NO API calls. Run this first to validate before spending.")
     args = ap.parse_args()
 
+    # Fail loudly on a bad root instead of silently judging on snippets — a
+    # non-existent --tex-root (e.g. a literal "..." placeholder left in) would
+    # otherwise locate nothing and quietly degrade every pair to its snippet.
+    if not Path(args.tex_root).is_dir():
+        raise SystemExit(f"--tex-root is not a directory: {args.tex_root!r}\n"
+                         "  (did you paste a '...' placeholder? use the full path)")
+    if args.parsed_root and not Path(args.parsed_root).is_dir():
+        print(f"[batch_o4] WARNING: --parsed-root not a directory ({args.parsed_root!r}); "
+              "disabling the raw_latex fallback", flush=True)
+        args.parsed_root = None
+
     with open(args.triage, newline="", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))[: args.top]
     print(f"[batch_o4] {len(rows)} rows (top {args.top}) from {args.triage}")
