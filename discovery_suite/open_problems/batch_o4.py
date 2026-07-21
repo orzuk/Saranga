@@ -103,6 +103,18 @@ _STOP = set("the a an of in on to is are be that this these for and or not with 
             "if then let we our by any all such there exists it its where which".split())
 _WORD = re.compile(r"[A-Za-z]{4,}")
 
+# Metadata regions that are keyword-dense but are NOT the statement — the probe
+# showed the locator otherwise landing on the abstract / \keywords / author block.
+_ABSTRACT_RE = re.compile(r"\\begin\{abstract\}.*?\\end\{abstract\}", re.S)
+_META_CMD_RE = re.compile(
+    r"\\(?:keywords|subjclass|title|author|address|email|thanks|date|dedicatory)"
+    r"\s*(?:\[[^\]]*\])?\s*\{", re.I)
+# A theorem-like environment (any name containing a statement-ish stem). Excludes
+# proof/abstract/figure/table. Non-greedy body; envs don't nest in practice.
+_ENV_RE = re.compile(r"\\begin\{([A-Za-z]+\*?)\}(.*?)\\end\{\1\}", re.S)
+_STMT_STEMS = ("thm", "theorem", "conj", "lemma", "lem", "prop", "cor", "claim",
+               "defin", "defn", "dfn", "problem", "question", "cnj")
+
 
 def _keywords(snippet: str, k: int = 6) -> list[str]:
     """Content words from the (normalized) snippet, longest first (rarer). These
@@ -117,53 +129,90 @@ def _keywords(snippet: str, k: int = 6) -> list[str]:
     return sorted(words, key=len, reverse=True)[:k]
 
 
-def locate_window(tex: str, snippet: str, radius: int) -> tuple[str | None, int]:
-    """Best surrounding-text window in `tex` for the node described by `snippet`.
+def _strip_meta(tex: str) -> str:
+    """Drop the preamble and metadata so the locator can't land on them. Cuts
+    everything before \\begin{document}, blanks the abstract, and blanks the
+    argument-opening of title/author/keywords/... commands (length-preserving via
+    space-fill so any offsets stay meaningful)."""
+    doc = tex.find("\\begin{document}")
+    if doc != -1:
+        tex = " " * doc + tex[doc:]
+    tex = _ABSTRACT_RE.sub(lambda m: " " * len(m.group(0)), tex)
+    tex = _META_CMD_RE.sub(lambda m: " " * len(m.group(0)), tex)
+    return tex
 
-    Finds the tightest span where the most keywords co-occur, then extends to the
-    nearest blank-line (paragraph) boundaries, capped at `radius` each side.
-    Returns (window_text | None, n_keywords_matched)."""
-    kws = _keywords(snippet)
-    if not kws:
-        return None, 0
-    low = tex.lower()
-    # positions of each keyword
-    hits: list[tuple[int, int]] = []  # (pos, kw_index)
-    for i, kw in enumerate(kws):
-        start = 0
-        while True:
-            j = low.find(kw, start)
-            if j < 0:
-                break
-            hits.append((j, i))
-            start = j + len(kw)
-    if not hits:
-        return None, 0
-    hits.sort()
-    # slide a window over the sorted hit positions; keep the one covering most kws
-    best_center, best_cover = None, 0
-    n = len(hits)
-    for a in range(n):
-        seen = set()
-        b = a
-        while b < n and hits[b][0] - hits[a][0] <= radius:
-            seen.add(hits[b][1])
-            b += 1
-        if len(seen) > best_cover:
-            best_cover = len(seen)
-            best_center = (hits[a][0] + hits[b - 1][0]) // 2
-    if best_center is None or best_cover < min(2, len(kws)):
-        return None, best_cover
-    lo = max(0, best_center - radius)
-    hi = min(len(tex), best_center + radius)
-    # snap outward to paragraph breaks when one is nearby
+
+def _coverage(text: str, kws: list[str]) -> int:
+    low = text.lower()
+    return sum(1 for kw in kws if kw in low)
+
+
+def _best_stmt_env(tex: str, kws: list[str]) -> tuple[int, int, int] | None:
+    """Best-matching theorem-like environment: (start, end, coverage) or None. The
+    node is usually a \\begin{theorem/conjecture/...} block, so scoring statement
+    environments by keyword overlap targets the claim, not the surrounding prose."""
+    best = None
+    for m in _ENV_RE.finditer(tex):
+        name = m.group(1).lower()
+        if not any(s in name for s in _STMT_STEMS):
+            continue
+        cov = _coverage(m.group(2), kws)
+        if best is None or cov > best[2]:
+            best = (m.start(), m.end(), cov)
+    return best
+
+
+def _snap(tex: str, lo: int, hi: int, radius: int) -> str:
+    """Extend [lo,hi] out to nearby paragraph (blank-line) breaks, capped by radius."""
     pbreak = tex.rfind("\n\n", max(0, lo - radius), lo + 1)
     if pbreak != -1:
         lo = pbreak
-    nbreak = tex.find("\n\n", hi - 1, hi + radius)
+    nbreak = tex.find("\n\n", max(hi - 1, 0), hi + radius)
     if nbreak != -1:
         hi = nbreak
-    return tex[lo:hi].strip(), best_cover
+    return tex[max(0, lo):hi].strip()
+
+
+def locate_window(tex: str, snippet: str, radius: int) -> tuple[str | None, int]:
+    """Best surrounding-text window in `tex` for the node described by `snippet`.
+
+    Prefers the theorem-like environment whose body best matches the snippet's
+    keywords (that IS the statement), widened to the paragraph before/after for the
+    narrative ("we now settle ..."). Falls back to the tightest keyword cluster for
+    statements written inline (no environment). Returns (window | None, coverage)."""
+    kws = _keywords(snippet)
+    if not kws:
+        return None, 0
+    tex = _strip_meta(tex)
+    low = tex.lower()
+
+    # keyword-cluster fallback (also used to score inline statements)
+    hits: list[tuple[int, int]] = []
+    for i, kw in enumerate(kws):
+        start = 0
+        while (j := low.find(kw, start)) >= 0:
+            hits.append((j, i))
+            start = j + len(kw)
+    cluster_center, cluster_cov = None, 0
+    hits.sort()
+    n = len(hits)
+    for a in range(n):
+        seen, b = set(), a
+        while b < n and hits[b][0] - hits[a][0] <= radius:
+            seen.add(hits[b][1])
+            b += 1
+        if len(seen) > cluster_cov:
+            cluster_cov = len(seen)
+            cluster_center = (hits[a][0] + hits[b - 1][0]) // 2
+
+    # prefer a statement environment when it matches at least as well as the cluster
+    env = _best_stmt_env(tex, kws)
+    if env is not None and env[2] >= max(2, cluster_cov - 1):
+        return _snap(tex, env[0], env[1], radius), env[2]
+    if cluster_center is not None and cluster_cov >= 2:
+        lo = max(0, cluster_center - radius)
+        return _snap(tex, lo, min(len(tex), cluster_center + radius), radius), cluster_cov
+    return None, cluster_cov
 
 
 # ── judge prompt ─────────────────────────────────────────────────────────────
