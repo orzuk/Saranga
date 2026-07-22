@@ -26,8 +26,10 @@ theorem in a *different, later* paper B? Find such cross-paper resolutions over 
 
 ## Run over the 100K corpus
 
-- Sweep emitted **~300,204 candidate problem→theorem pairs** (Jaccard ≥ 0.10);
-  **~15,062 distinct conjecture/open-problem statements** had at least one candidate;
+- The parser extracted **15,143 conjecture / open-problem statements** across the 100K
+  corpus, matched against **1,589,327 theorem-like nodes** (theorem/lemma/prop/corollary/claim).
+- The sweep emitted **300,204 candidate problem→theorem pairs** (Jaccard ≥ 0.10);
+  **15,062 of the 15,143 statements** had at least one candidate resolution;
   ~206,350 pairs were cross-category.
 - Triage shortlist (cross-category, score ≥ 0.5, ≤ 3 theorems/problem): **166 pairs /
   104 distinct problems** → `runs/triage_top_raw.csv`.
