@@ -39,6 +39,7 @@ Usage (download one batch of years into all_arxiv_papers):
 
 import argparse
 import csv
+import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -49,6 +50,27 @@ from extract_arxiv_funcs import (
     fetch_arxiv_batch,
     resolve_source_to_tex_local_first,
 )
+
+
+def _safe_log(status_log: Path, row: list, retries: int = 5) -> None:
+    """Append a row to the per-job status CSV, tolerating transient NFS write
+    stalls. Never raises: a flaky filesystem must not kill a multi-hour job."""
+    for attempt in range(retries):
+        try:
+            with open(status_log, "a", newline="") as f:
+                csv.writer(f).writerow(row)
+            return
+        except OSError:
+            time.sleep(2 * (attempt + 1))
+    # Give up silently; losing one log line is preferable to crashing the run.
+
+
+def _safe_print(msg: str) -> None:
+    """print() that survives a transient stdout/NFS write stall."""
+    try:
+        print(msg)
+    except OSError:
+        time.sleep(2)
 
 
 def _pub_date(md: dict) -> datetime:
@@ -131,11 +153,15 @@ def main() -> None:
     total = len(items)
     print(f"[INFO] {total} papers to download into {out_dir}")
 
-    status_log = out_dir / "download_status_log.csv"
+    # Per-job status log: every concurrent job MUST write its own file. A single
+    # shared CSV appended-to over NFS causes lock contention (nfs_get_lock_context
+    # hangs) that crashes all running jobs at once.
+    job_tag = os.environ.get("SLURM_JOB_ID") or str(os.getpid())
+    status_log = out_dir / f"download_status_{args.start_date}_{args.end_date}_{job_tag}.csv"
     ok = 0
     fail = 0
     for i, (base_id, md) in enumerate(items, start=1):
-        print(f"\n[INFO] ({i}/{total}) {base_id}")
+        _safe_print(f"\n[INFO] ({i}/{total}) {base_id}")
         try:
             tex_path, versioned_id = resolve_source_to_tex_local_first(
                 base_id=base_id,
@@ -145,14 +171,12 @@ def main() -> None:
                 use_paper_subdir=True,
             )
             ok += 1
-            with open(status_log, "a", newline="") as f:
-                csv.writer(f).writerow([base_id, versioned_id, "OK", str(tex_path)])
-            print(f"[OK]   {versioned_id} -> {tex_path}")
+            _safe_log(status_log, [base_id, versioned_id, "OK", str(tex_path)])
+            _safe_print(f"[OK]   {versioned_id} -> {tex_path}")
         except Exception as e:
             fail += 1
-            with open(status_log, "a", newline="") as f:
-                csv.writer(f).writerow([base_id, "", f"ERROR: {e}", ""])
-            print(f"[WARN] Failed {base_id}: {e}")
+            _safe_log(status_log, [base_id, "", f"ERROR: {e}", ""])
+            _safe_print(f"[WARN] Failed {base_id}: {e}")
 
         if args.sleep and i < total:
             time.sleep(args.sleep)
