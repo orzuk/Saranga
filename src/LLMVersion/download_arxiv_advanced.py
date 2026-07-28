@@ -40,6 +40,7 @@ Usage (download one batch of years into all_arxiv_papers):
 import argparse
 import csv
 import os
+import signal
 import time
 from datetime import datetime
 from pathlib import Path
@@ -73,6 +74,14 @@ def _safe_print(msg: str) -> None:
         time.sleep(2)
 
 
+class _PaperTimeout(Exception):
+    """Raised when a single paper exceeds the hard per-paper wall-clock cap."""
+
+
+def _paper_timeout_handler(signum, frame):
+    raise _PaperTimeout("per-paper hard timeout exceeded")
+
+
 def _pub_date(md: dict) -> datetime:
     for key in ("published", "created"):
         if md.get(key):
@@ -104,6 +113,9 @@ def main() -> None:
                         help="Resume: skip papers until this base id is reached (in sorted order).")
     parser.add_argument("--sleep", type=float, default=1.0,
                         help="Seconds to sleep between paper downloads (be gentle on the arXiv API).")
+    parser.add_argument("--paper-timeout", type=int, default=300,
+                        help="Hard wall-clock cap (seconds) per paper; a hung "
+                             "download/flatten is aborted and skipped (0 disables).")
     parser.add_argument("--verbose", action="store_true", help="Verbose debug prints.")
     args = parser.parse_args()
 
@@ -160,8 +172,16 @@ def main() -> None:
     status_log = out_dir / f"download_status_{args.start_date}_{args.end_date}_{job_tag}.csv"
     ok = 0
     fail = 0
+    # Hard per-paper wall-clock cap: requests' timeout is per-socket-op, not a
+    # total, so a trickling/stalled arxiv connection can hang a job forever.
+    # SIGALRM aborts a paper that overruns; the except below logs it and moves on.
+    use_alarm = bool(args.paper_timeout) and hasattr(signal, "SIGALRM")
+    if use_alarm:
+        signal.signal(signal.SIGALRM, _paper_timeout_handler)
     for i, (base_id, md) in enumerate(items, start=1):
         _safe_print(f"\n[INFO] ({i}/{total}) {base_id}")
+        if use_alarm:
+            signal.alarm(args.paper_timeout)
         try:
             tex_path, versioned_id = resolve_source_to_tex_local_first(
                 base_id=base_id,
@@ -177,6 +197,9 @@ def main() -> None:
             fail += 1
             _safe_log(status_log, [base_id, "", f"ERROR: {e}", ""])
             _safe_print(f"[WARN] Failed {base_id}: {e}")
+        finally:
+            if use_alarm:
+                signal.alarm(0)
 
         if args.sleep and i < total:
             time.sleep(args.sleep)
