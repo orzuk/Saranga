@@ -1,0 +1,837 @@
+{
+  "metadata": {
+    "title": "Random Forests",
+    "authors": "Leo Breiman",
+    "year": 2001,
+    "paper_num": 268,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-03",
+    "source_note": "Extracted from PDF->text fallback; .tex source not available. Math fidelity reduced."
+  },
+  "nodes": [
+    {
+      "id": "DP268.1",
+      "type": "definition",
+      "name": "Random Forest",
+      "section": "1.1",
+      "statement": "A random forest is a classifier consisting of a collection of tree-structured classifiers $\\{h(x,\\Theta_k), k=1,\\dots\\}$ where the $\\{\\Theta_k\\}$ are i.i.d. random vectors and each tree casts a unit vote for the most popular class at input $x$.",
+      "statement_clean": "A random forest is an ensemble of tree classifiers grown using i.i.d. random vectors, with majority-vote aggregation."
+    },
+    {
+      "id": "DP268.2",
+      "type": "definition",
+      "name": "Margin function (ensemble)",
+      "section": "2.1",
+      "statement": "Given an ensemble $h_1,\\dots,h_K$ and training distribution $(Y,X)$: $mg(X,Y) = \\mathrm{av}_k I(h_k(X)=Y) - \\max_{j\\neq Y} \\mathrm{av}_k I(h_k(X)=j)$.",
+      "statement_clean": "Margin = (average vote for correct class) minus (max average vote for any wrong class)."
+    },
+    {
+      "id": "DP268.3",
+      "type": "definition",
+      "name": "Generalization error $PE^*$",
+      "section": "2.1",
+      "statement": "$PE^* = P_{X,Y}(mg(X,Y) < 0)$, the probability under $(X,Y)$ that the ensemble margin is negative."
+    },
+    {
+      "id": "DP268.4",
+      "type": "definition",
+      "name": "Margin function for a random forest",
+      "section": "2.2",
+      "statement": "$mr(X,Y) = P_\\Theta(h(X,\\Theta)=Y) - \\max_{j\\neq Y} P_\\Theta(h(X,\\Theta)=j)$.  (Eq. 2)"
+    },
+    {
+      "id": "DP268.5",
+      "type": "definition",
+      "name": "Strength of the set of classifiers",
+      "section": "2.2",
+      "statement": "The strength is $s = E_{X,Y}\\, mr(X,Y)$. (Eq. 3)"
+    },
+    {
+      "id": "DP268.6",
+      "type": "definition",
+      "name": "Raw margin function",
+      "section": "2.2",
+      "statement": "$rmg(\\Theta,X,Y) = I(h(X,\\Theta)=Y) - I(h(X,\\Theta)=\\hat\\jmath(X,Y))$, where $\\hat\\jmath(X,Y)=\\arg\\max_{j\\neq Y} P_\\Theta(h(X,\\Theta)=j)$."
+    },
+    {
+      "id": "DP268.7",
+      "type": "definition",
+      "name": "Mean correlation $\\bar\\rho$",
+      "section": "2.2",
+      "statement": "$\\bar\\rho = E_{\\Theta,\\Theta'}[\\rho(\\Theta,\\Theta')\\,sd(\\Theta)\\,sd(\\Theta')] / E_{\\Theta,\\Theta'}[sd(\\Theta)\\,sd(\\Theta')]$, the variance-weighted mean correlation between raw margins of two i.i.d. trees."
+    },
+    {
+      "id": "DP268.8",
+      "type": "definition",
+      "name": "$c/s^2$ ratio",
+      "section": "2.2",
+      "statement": "The $c/s^2$ ratio of a random forest is defined as $c/s^2 = \\bar\\rho / s^2$.  Smaller is better."
+    },
+    {
+      "id": "DP268.9",
+      "type": "definition",
+      "name": "Out-of-bag classifier",
+      "section": "3.1",
+      "statement": "For training point $(y,x)$, aggregate votes only over those bagged classifiers $h(\\cdot,T_k)$ whose bootstrap set $T_k$ does not contain $(y,x)$.  The OB error is the misclassification rate of this aggregated classifier on the training set."
+    },
+    {
+      "id": "DP268.10",
+      "type": "definition",
+      "name": "Mean-squared generalization error",
+      "section": "11",
+      "statement": "For numerical predictor $h$: $E_{X,Y}(Y-h(X))^2$. (Eq. 11)"
+    },
+    {
+      "id": "DP268.11",
+      "type": "definition",
+      "name": "Average tree generalization error $PE^*(tree)$ (regression)",
+      "section": "11",
+      "statement": "$PE^*(tree) = E_\\Theta E_{X,Y}(Y - h(X,\\Theta))^2$."
+    },
+    {
+      "id": "DP268.12",
+      "type": "definition",
+      "name": "Weighted residual correlation $\\bar\\rho$ (regression)",
+      "section": "11",
+      "statement": "$\\bar\\rho = E_\\Theta E_{\\Theta'}[\\rho(\\Theta,\\Theta')\\,sd(\\Theta)\\,sd(\\Theta')] / (E_\\Theta sd(\\Theta))^2$ where $sd(\\Theta) = \\sqrt{E_{X,Y}(Y-h(X,\\Theta))^2}$. (Eq. 14)"
+    },
+    {
+      "id": "TP268.1",
+      "type": "theorem",
+      "name": "Convergence of random forests (Theorem 1.2)",
+      "section": "2.1",
+      "statement": "As the number of trees increases, for almost surely all sequences $\\Theta_1,\\dots$, $PE^*$ converges to $P_{X,Y}\\bigl(P_\\Theta(h(X,\\Theta)=Y) - \\max_{j\\neq Y} P_\\Theta(h(X,\\Theta)=j) < 0\\bigr)$. (Eq. 1)",
+      "assumptions": [
+        "$h(X,\\Theta_k) = h(X,\\Theta_k)$ are tree classifiers indexed by i.i.d. random vectors $\\Theta_k$",
+        "Training set drawn from distribution of $(Y,X)$"
+      ],
+      "conclusions": [
+        "$PE^*$ converges almost surely to the limit in (1) as $K \\to \\infty$"
+      ],
+      "tags": ["existence", "convergence"]
+    },
+    {
+      "id": "TP268.2",
+      "type": "theorem",
+      "name": "Upper bound on generalization error (Theorem 2.3)",
+      "section": "2.2",
+      "statement": "An upper bound for the generalization error is $PE^* \\le \\bar\\rho\\,(1 - s^2)/s^2$.",
+      "assumptions": [
+        "Strength $s = E_{X,Y}\\, mr(X,Y) \\ge 0$",
+        "$\\bar\\rho$ is the mean correlation of raw margins between two i.i.d. trees"
+      ],
+      "conclusions": [
+        "$PE^* \\le \\bar\\rho(1-s^2)/s^2$"
+      ],
+      "tags": ["bound", "upper_bound"]
+    },
+    {
+      "id": "TP268.3",
+      "type": "theorem",
+      "name": "Almost-sure regression convergence (Theorem 11.1)",
+      "section": "11",
+      "statement": "As the number of trees in the forest goes to infinity, almost surely $E_{X,Y}(Y - \\mathrm{av}_k h(X,\\Theta_k))^2 \\to E_{X,Y}(Y - E_\\Theta h(X,\\Theta))^2$. (Eq. 12)",
+      "assumptions": [
+        "Tree predictors $h(x,\\Theta)$ take numerical values",
+        "Training set drawn i.i.d. from distribution of $(Y,X)$"
+      ],
+      "conclusions": [
+        "Forest MSE converges a.s. to the MSE of the average tree predictor"
+      ],
+      "tags": ["convergence"]
+    },
+    {
+      "id": "TP268.4",
+      "type": "theorem",
+      "name": "Regression forest error bound (Theorem 11.2)",
+      "section": "11",
+      "statement": "Assume that for all $\\Theta$, $E\\,Y = E_X h(X,\\Theta)$.  Then $PE^*(forest) \\le \\bar\\rho\\, PE^*(tree)$, where $\\bar\\rho$ is the weighted correlation between residuals $Y - h(X,\\Theta)$ and $Y - h(X,\\Theta')$ for independent $\\Theta,\\Theta'$.",
+      "assumptions": [
+        "$E\\,Y = E_X h(X,\\Theta)$ for all $\\Theta$ (unbiasedness of trees)",
+        "$\\Theta,\\Theta'$ are i.i.d."
+      ],
+      "conclusions": [
+        "$PE^*(forest) \\le \\bar\\rho\\, PE^*(tree)$"
+      ],
+      "tags": ["bound", "upper_bound"]
+    },
+    {
+      "id": "EP268.1",
+      "type": "equation",
+      "name": "Chebyshev bound on $PE^*$",
+      "section": "2.2",
+      "statement": "Assuming $s \\ge 0$, Chebyshev's inequality gives $PE^* \\le \\mathrm{var}(mr)/s^2$. (Eq. 4)"
+    },
+    {
+      "id": "EP268.2",
+      "type": "equation",
+      "name": "Variance decomposition of $mr$",
+      "section": "2.2",
+      "statement": "$\\mathrm{var}(mr) = E_{\\Theta,\\Theta'}[\\rho(\\Theta,\\Theta')\\, sd(\\Theta)\\, sd(\\Theta')] = \\bar\\rho\\,(E_\\Theta sd(\\Theta))^2 \\le \\bar\\rho\\, E_\\Theta\\,\\mathrm{var}(\\Theta)$. (Eqs. 6-7)"
+    },
+    {
+      "id": "EP268.3",
+      "type": "equation",
+      "name": "Bound on $E_\\Theta \\mathrm{var}(\\Theta)$",
+      "section": "2.2",
+      "statement": "$E_\\Theta \\mathrm{var}(\\Theta) \\le E_\\Theta\\bigl(E_{X,Y}\\, rmg(\\Theta,X,Y)\\bigr)^2 - s^2 \\le 1 - s^2$. (Eq. 8)"
+    },
+    {
+      "id": "EP268.4",
+      "type": "equation",
+      "name": "Two-class margin form",
+      "section": "2.2",
+      "statement": "In the two-class case, $mr(X,Y) = 2 P_\\Theta(h(X,\\Theta)=Y) - 1$ and $\\bar\\rho = E_{\\Theta,\\Theta'}[\\rho(h(\\cdot,\\Theta), h(\\cdot,\\Theta'))]$ (with $Y \\in \\{+1,-1\\}$)."
+    },
+    {
+      "id": "EP268.5",
+      "type": "equation",
+      "name": "Multi-class per-class strength bound",
+      "section": "2.2",
+      "statement": "$PE^* \\le \\sum_j \\mathrm{var}\\bigl(P_\\Theta(h(X,\\Theta)=Y) - P_\\Theta(h(X,\\Theta)=j)\\bigr)/s_j^2$, where $s_j = E_{X,Y}[P_\\Theta(h(X,\\Theta)=Y) - P_\\Theta(h(X,\\Theta)=j)]$. (Eq. 9)"
+    },
+    {
+      "id": "EP268.6",
+      "type": "equation",
+      "name": "Adaboost weighted-vote operator",
+      "section": "7",
+      "statement": "Vote of $k$th classifier weighted by $Q(w_k) = \\log[(1-\\mathrm{error}(k))/\\mathrm{error}(k)]$: normalized class-$j$ vote at $x$ equals $\\sum_k I(h(x,w_k)=j) Q(w_k)/\\sum_k Q(w_k)$. (Eq. 10)"
+    },
+    {
+      "id": "EP268.7",
+      "type": "equation",
+      "name": "OB standard-deviation estimate",
+      "section": "Appendix II",
+      "statement": "$sd(\\Theta) = [p_1 + p_2 + (p_1 - p_2)^2]^{1/2}$, where $p_1 = E_{X,Y}\\,I(h(X,\\Theta)=Y)$ and $p_2 = E_{X,Y}\\,I(h(X,\\Theta) = \\hat\\jmath(X,Y))$. (Eq. A2)"
+    },
+    {
+      "id": "AP268.1",
+      "type": "algorithm",
+      "name": "Forest-RI (Random Input Selection)",
+      "section": "4",
+      "statement": "Random forest with random input selection: at each node split on the best of $F$ randomly chosen input variables; grow each tree on a bootstrap sample to full size, no pruning.",
+      "input": [
+        "Training set of $N$ instances",
+        "Number of input variables $M$",
+        "Group size $F$ (typical choices $F=1$ or $F=\\lfloor\\log_2 M\\rfloor + 1$)",
+        "Number of trees $K$"
+      ],
+      "output": [
+        "Random forest classifier; majority vote of the $K$ trees"
+      ],
+      "tags": ["ensemble", "iterative", "approximation"]
+    },
+    {
+      "id": "AP268.2",
+      "type": "algorithm",
+      "name": "Forest-RC (Random Linear Combinations)",
+      "section": "5",
+      "statement": "Random forest where each candidate split feature is a random linear combination of $L$ randomly selected inputs with uniform $[-1,1]$ coefficients; the best of $F$ such features is used at each node.",
+      "input": [
+        "Training set of $N$ instances",
+        "Number of variables to combine $L$ (paper uses $L=3$)",
+        "Number of features $F$ generated at each node",
+        "Number of trees $K$"
+      ],
+      "output": [
+        "Random forest classifier; majority vote of $K$ trees grown with linear-combination features"
+      ],
+      "tags": ["ensemble", "iterative"]
+    },
+    {
+      "id": "AP268.3",
+      "type": "algorithm",
+      "name": "Out-of-bag estimation of error, strength, correlation",
+      "section": "3.1, Appendix II",
+      "statement": "After each bagged tree, aggregate votes over instances not in that bootstrap sample to estimate $PE^*$, strength $s$, and mean correlation $\\bar\\rho$ without a held-out test set.",
+      "input": [
+        "Training set $T$",
+        "Bootstrap samples $T_k$ and trees $h(x,\\Theta_k)$"
+      ],
+      "output": [
+        "OB estimate of generalization error",
+        "OB estimate of strength $s$",
+        "OB estimate of correlation $\\bar\\rho$"
+      ],
+      "tags": ["estimator", "internal_estimate"]
+    },
+    {
+      "id": "AP268.4",
+      "type": "algorithm",
+      "name": "Variable-importance via OB permutation",
+      "section": "10",
+      "statement": "After each tree, randomly permute values of variable $m$ in the OB examples, run them down the tree, and record the percent increase in OB misclassification rate over the unpermuted run.",
+      "input": [
+        "Trained random forest with OB sets",
+        "Variable index $m \\in \\{1,\\dots,M\\}$"
+      ],
+      "output": [
+        "Percent increase in OB misclassification rate when variable $m$ is noised, used as importance score"
+      ],
+      "tags": ["interpretability"]
+    },
+    {
+      "id": "AP268.5",
+      "type": "algorithm",
+      "name": "Adaboost (cited)",
+      "section": "1.1, 7 (cited)",
+      "statement": "Deterministic boosting algorithm: at iteration $k+1$ reweight training set based on past misclassifications, $w(k+1) = \\phi(w(k))$; final classifier weighted by $Q(w_k) = \\log[(1-\\mathrm{error}(k))/\\mathrm{error}(k)]$.",
+      "input": [
+        "Training set",
+        "Base learner (e.g. tree)",
+        "Number of iterations"
+      ],
+      "output": [
+        "Weighted ensemble classifier"
+      ],
+      "origin": "external",
+      "origin_citation": "Freund and Schapire 1996"
+    },
+    {
+      "id": "AP268.6",
+      "type": "algorithm",
+      "name": "Bagging (cited)",
+      "section": "1.1, 3.1 (cited)",
+      "statement": "Construct ensemble by training base learner on bootstrap samples of the training set and aggregating predictions by majority vote (or averaging).",
+      "input": [
+        "Training set",
+        "Base learner",
+        "Number of bootstrap samples"
+      ],
+      "output": [
+        "Bagged predictor"
+      ],
+      "origin": "external",
+      "origin_citation": "Breiman 1996a (Bagging Predictors)"
+    },
+    {
+      "id": "PrP268.1",
+      "type": "proposition",
+      "name": "Five desirable properties of random forests",
+      "section": "3",
+      "statement": "Random forests with random feature selection: (i) accuracy comparable to or better than Adaboost; (ii) robust to outliers and noise; (iii) faster than bagging or boosting; (iv) yield internal estimates of error, strength, correlation, and variable importance; (v) simple and easily parallelized.",
+      "tags": ["claim_list"]
+    },
+    {
+      "id": "CnjP268.1",
+      "type": "conjecture",
+      "name": "Adaboost is a random forest",
+      "section": "7",
+      "statement": "Define $Tf(w) = f(\\phi(w))$.  Conjecture: $T$ is ergodic with invariant measure $\\pi(dw)$, so the Adaboost vote (10) converges to $E_{Q\\pi}[I(h(x,w)=j)]$, where $Q\\pi(dw) = Q(w)\\pi(dw)/\\int Q(v)\\pi(dv)$.  If true, Adaboost is equivalent to a random forest with weights drawn from $Q\\pi$."
+    },
+    {
+      "id": "ProbP268.1",
+      "type": "problem",
+      "name": "Random forest classification",
+      "section": "1.1",
+      "subclass": "supervised_learning",
+      "statement": "Given training data $(y_n, x_n)_{n=1}^N$ from $(Y,X)$, build an ensemble classifier with low generalization error $PE^* = P_{X,Y}(\\text{misclassify})$ that does not overfit as $K \\to \\infty$."
+    },
+    {
+      "id": "ProbP268.2",
+      "type": "problem",
+      "name": "Random forest regression",
+      "section": "11",
+      "subclass": "supervised_learning",
+      "statement": "Given training data from $(Y,X)$ with $Y$ numerical, build a tree ensemble whose mean-squared error $E_{X,Y}(Y - h(X))^2$ is small."
+    },
+    {
+      "id": "AssumP268.1",
+      "type": "assumption",
+      "name": "Strength positive, classifier weak-learning",
+      "section": "2.2",
+      "statement": "$s = E_{X,Y}\\, mr(X,Y) \\ge 0$.  In the two-class case this becomes the weak-learning condition $E_{X,Y} P_\\Theta(h(X,\\Theta)=Y) > 0.5$."
+    },
+    {
+      "id": "AssumP268.2",
+      "type": "assumption",
+      "name": "Tree unbiasedness (regression)",
+      "section": "11",
+      "statement": "For all $\\Theta$, $E\\,Y = E_X h(X,\\Theta)$."
+    },
+    {
+      "id": "PP268.1",
+      "type": "proof",
+      "name": "Proof of Theorem 1.2 (a.s. convergence)",
+      "section": "Appendix I",
+      "parent_id": "TP268.1",
+      "proves": "TP268.1",
+      "statement": "Reduce to a finite partition argument: for fixed training set and $\\Theta$, $\\{x: h(\\Theta,x)=j\\}$ is a finite union of hyper-rectangles; apply the Strong Law of Large Numbers to indicators $I(\\varphi(\\Theta_n)=k)$."
+    },
+    {
+      "id": "PP268.2",
+      "type": "proof",
+      "name": "Proof of Theorem 11.1 (regression a.s. convergence)",
+      "section": "Appendix I",
+      "parent_id": "TP268.3",
+      "proves": "TP268.3",
+      "statement": "There is a finite set of hyper-rectangles $R_1,\\dots,R_K$ such that $h(\\Theta,x)$ takes values $\\sum_k I(x \\in S_k) y_k$; the rest parallels the proof of Theorem 1.2."
+    },
+    {
+      "id": "PP268.3",
+      "type": "proof",
+      "name": "Proof of Theorem 2.3 (forest error bound)",
+      "section": "2.2",
+      "parent_id": "TP268.2",
+      "proves": "TP268.2",
+      "statement": "Apply Chebyshev (4), express $\\mathrm{var}(mr)$ via raw-margin covariance (5)-(7), then bound $E_\\Theta \\mathrm{var}(\\Theta) \\le 1 - s^2$ by (8); combine to obtain $PE^* \\le \\bar\\rho(1-s^2)/s^2$."
+    },
+    {
+      "id": "PP268.4",
+      "type": "proof",
+      "name": "Proof of Theorem 11.2 (regression bound)",
+      "section": "11",
+      "parent_id": "TP268.4",
+      "proves": "TP268.4",
+      "statement": "Expand $PE^*(forest) = E_\\Theta E_{\\Theta'} E_{X,Y}(Y - h(X,\\Theta))(Y - h(X,\\Theta'))$, write the right side as covariance $E_\\Theta E_{\\Theta'}[\\rho(\\Theta,\\Theta') sd(\\Theta) sd(\\Theta')] = \\bar\\rho (E_\\Theta sd(\\Theta))^2 \\le \\bar\\rho\\, PE^*(tree)$ by Cauchy-Schwarz / Jensen."
+    },
+    {
+      "id": "PSP268.1",
+      "type": "proof_step",
+      "parent_id": "PP268.1",
+      "step_order": 1,
+      "name": "Hyper-rectangle decomposition",
+      "subclass": "setup",
+      "statement": "For a fixed training set and fixed $\\Theta$, the set $\\{x : h(\\Theta,x) = j\\}$ is a union of finitely many hyper-rectangles; only $K$ such unions $S_1,\\dots,S_K$ are possible across all $\\Theta$."
+    },
+    {
+      "id": "PSP268.2",
+      "type": "proof_step",
+      "parent_id": "PP268.1",
+      "step_order": 2,
+      "name": "Define cell index $\\varphi$ and counts $N_k$",
+      "subclass": "introduce_variable",
+      "statement": "Set $\\varphi(\\Theta)=k$ if $\\{x: h(\\Theta,x)=j\\} = S_k$; let $N_k$ be the count of $\\varphi(\\Theta_n)=k$ in the first $N$ trials."
+    },
+    {
+      "id": "PSP268.3",
+      "type": "proof_step",
+      "parent_id": "PP268.1",
+      "step_order": 3,
+      "name": "Apply SLLN to $N_k$",
+      "subclass": "invoke_identity",
+      "statement": "By the Strong Law of Large Numbers, $N_k = (1/N)\\sum_n I(\\varphi(\\Theta_n)=k)$ converges almost surely to $P_\\Theta(\\varphi(\\Theta)=k)$."
+    },
+    {
+      "id": "PSP268.4",
+      "type": "proof_step",
+      "parent_id": "PP268.1",
+      "step_order": 4,
+      "name": "Combine over $k$ to identify limit",
+      "subclass": "conclude",
+      "statement": "Outside a probability-zero set $C$, $(1/N)\\sum_n I(h(\\Theta_n,x)=j) \\to \\sum_k P_\\Theta(\\varphi(\\Theta)=k) I(x \\in S_k) = P_\\Theta(h(\\Theta,x)=j)$."
+    },
+    {
+      "id": "PSP268.5",
+      "type": "proof_step",
+      "parent_id": "PP268.3",
+      "step_order": 1,
+      "name": "Chebyshev applied to $mr$",
+      "subclass": "apply_lemma",
+      "statement": "From (4), $PE^* = P_{X,Y}(mr < 0) \\le \\mathrm{var}(mr)/s^2$ when $s \\ge 0$."
+    },
+    {
+      "id": "PSP268.6",
+      "type": "proof_step",
+      "parent_id": "PP268.3",
+      "step_order": 2,
+      "name": "Express $\\mathrm{var}(mr)$ via raw margins",
+      "subclass": "algebraic_manipulation",
+      "statement": "Using $mr(X,Y)^2 = E_{\\Theta,\\Theta'} rmg(\\Theta,X,Y) rmg(\\Theta',X,Y)$ (Eq. 5), $\\mathrm{var}(mr) = E_{\\Theta,\\Theta'}[\\rho(\\Theta,\\Theta') sd(\\Theta) sd(\\Theta')] = \\bar\\rho\\,(E_\\Theta sd(\\Theta))^2$."
+    },
+    {
+      "id": "PSP268.7",
+      "type": "proof_step",
+      "parent_id": "PP268.3",
+      "step_order": 3,
+      "name": "Bound $(E_\\Theta sd(\\Theta))^2 \\le 1 - s^2$",
+      "subclass": "bound_estimate",
+      "statement": "By (8), $E_\\Theta \\mathrm{var}(\\Theta) \\le E_\\Theta(E_{X,Y} rmg(\\Theta,X,Y))^2 - s^2 \\le 1 - s^2$, so $\\mathrm{var}(mr) \\le \\bar\\rho(1 - s^2)$."
+    },
+    {
+      "id": "PSP268.8",
+      "type": "proof_step",
+      "parent_id": "PP268.3",
+      "step_order": 4,
+      "name": "Combine into final bound",
+      "subclass": "conclude",
+      "statement": "Combining the Chebyshev bound with the variance estimate yields $PE^* \\le \\bar\\rho(1 - s^2)/s^2$."
+    },
+    {
+      "id": "PSP268.9",
+      "type": "proof_step",
+      "parent_id": "PP268.4",
+      "step_order": 1,
+      "name": "Expand squared error via i.i.d. $\\Theta,\\Theta'$",
+      "subclass": "algebraic_manipulation",
+      "statement": "$PE^*(forest) = E_{X,Y}[E_\\Theta(Y - h(X,\\Theta))]^2 = E_\\Theta E_{\\Theta'} E_{X,Y}(Y - h(X,\\Theta))(Y - h(X,\\Theta'))$. (Eq. 13)"
+    },
+    {
+      "id": "PSP268.10",
+      "type": "proof_step",
+      "parent_id": "PP268.4",
+      "step_order": 2,
+      "name": "Identify covariance representation",
+      "subclass": "introduce_variable",
+      "statement": "The right side is $E_\\Theta E_{\\Theta'}[\\rho(\\Theta,\\Theta') sd(\\Theta) sd(\\Theta')]$ with $sd(\\Theta) = \\sqrt{E_{X,Y}(Y - h(X,\\Theta))^2}$."
+    },
+    {
+      "id": "PSP268.11",
+      "type": "proof_step",
+      "parent_id": "PP268.4",
+      "step_order": 3,
+      "name": "Apply weighted correlation definition",
+      "subclass": "invoke_identity",
+      "statement": "Using the definition of $\\bar\\rho$ in (14), $PE^*(forest) = \\bar\\rho (E_\\Theta sd(\\Theta))^2 \\le \\bar\\rho\\, PE^*(tree)$ by Jensen."
+    },
+    {
+      "id": "ASP268.1",
+      "type": "algorithm_step",
+      "parent_id": "AP268.1",
+      "step_order": 1,
+      "name": "Bootstrap sample",
+      "subclass": "initialize",
+      "statement": "For each tree $k=1,\\dots,K$, draw a bootstrap sample (with replacement) from the training set."
+    },
+    {
+      "id": "ASP268.2",
+      "type": "algorithm_step",
+      "parent_id": "AP268.1",
+      "step_order": 2,
+      "name": "Random feature selection at each node",
+      "subclass": "loop",
+      "statement": "At each node, select a random subset of $F$ input variables and split on the best of these (CART criterion); grow tree to maximum size, no pruning."
+    },
+    {
+      "id": "ASP268.3",
+      "type": "algorithm_step",
+      "parent_id": "AP268.1",
+      "step_order": 3,
+      "name": "Aggregate by majority vote",
+      "subclass": "return",
+      "statement": "Predict the class with the most votes across the $K$ trees."
+    },
+    {
+      "id": "ASP268.4",
+      "type": "algorithm_step",
+      "parent_id": "AP268.2",
+      "step_order": 1,
+      "name": "Bootstrap sample",
+      "subclass": "initialize",
+      "statement": "Draw bootstrap training set for tree $k$."
+    },
+    {
+      "id": "ASP268.5",
+      "type": "algorithm_step",
+      "parent_id": "AP268.2",
+      "step_order": 2,
+      "name": "Generate $F$ random linear-combination features per node",
+      "subclass": "loop",
+      "statement": "At each node, select $L$ inputs at random and form $F$ features as linear combinations with uniform $[-1,1]$ coefficients; split on the best of these $F$ features."
+    },
+    {
+      "id": "ASP268.6",
+      "type": "algorithm_step",
+      "parent_id": "AP268.2",
+      "step_order": 3,
+      "name": "Aggregate by majority vote",
+      "subclass": "return",
+      "statement": "Combine $K$ trees by majority vote."
+    },
+    {
+      "id": "ASP268.7",
+      "type": "algorithm_step",
+      "parent_id": "AP268.3",
+      "step_order": 1,
+      "name": "Compute $Q(x,j)$ from OB votes",
+      "subclass": "initialize",
+      "statement": "$Q(x,j) = \\sum_k I(h(x,\\Theta_k)=j;\\,(y,x)\\notin T_{k,B}) / \\sum_k I((y,x)\\notin T_{k,B})$, the OB estimate of $P_\\Theta(h(x,\\Theta)=j)$."
+    },
+    {
+      "id": "ASP268.8",
+      "type": "algorithm_step",
+      "parent_id": "AP268.3",
+      "step_order": 2,
+      "name": "Estimate strength $s$",
+      "subclass": "update",
+      "statement": "Replace $P_\\Theta$ by $Q$ in the strength definition: estimate $s$ as the training-set average of $Q(x,y) - \\max_{j\\neq y} Q(x,j)$."
+    },
+    {
+      "id": "ASP268.9",
+      "type": "algorithm_step",
+      "parent_id": "AP268.3",
+      "step_order": 3,
+      "name": "Estimate $\\mathrm{var}(mr)$",
+      "subclass": "update",
+      "statement": "Average $(Q(x,y) - \\max_{j\\neq y} Q(x,j))^2$ over the training set; subtract $\\hat s^2$ to estimate $\\mathrm{var}(mr)$ via (A1)."
+    },
+    {
+      "id": "ASP268.10",
+      "type": "algorithm_step",
+      "parent_id": "AP268.3",
+      "step_order": 4,
+      "name": "Estimate $sd(\\Theta_k)$ then $\\bar\\rho$",
+      "subclass": "return",
+      "statement": "Form $p_1, p_2$ as OB averages of $I(h(x,\\Theta_k)=y)$ and $I(h(x,\\Theta_k)=\\hat\\jmath(x,y))$, plug into (A2) for $sd(\\Theta_k)$, average over $k$, then $\\bar\\rho = \\widehat{\\mathrm{var}(mr)} / (\\overline{sd(\\Theta)})^2$."
+    },
+    {
+      "id": "ASP268.11",
+      "type": "algorithm_step",
+      "parent_id": "AP268.4",
+      "step_order": 1,
+      "name": "Permute variable $m$ in OB set",
+      "subclass": "loop",
+      "statement": "After each tree, randomly permute values of variable $m$ across OB examples; run permuted OB examples down the tree and record predicted classes."
+    },
+    {
+      "id": "ASP268.12",
+      "type": "algorithm_step",
+      "parent_id": "AP268.4",
+      "step_order": 2,
+      "name": "Aggregate plurality vote with $m$ noised",
+      "subclass": "update",
+      "statement": "For each $x_n$, take plurality of OB votes from the $m$-permuted runs and compare with true class to compute the noised misclassification rate."
+    },
+    {
+      "id": "ASP268.13",
+      "type": "algorithm_step",
+      "parent_id": "AP268.4",
+      "step_order": 3,
+      "name": "Report percent increase",
+      "subclass": "return",
+      "statement": "Importance score for variable $m$ = percent increase of noised OB misclassification rate over the unpermuted OB rate."
+    },
+    {
+      "id": "ExP268.1",
+      "type": "example",
+      "name": "Forest-RI vs. Adaboost on 17 datasets (Table 2)",
+      "section": "4",
+      "statement": "Forest-RI test-set errors compared to Adaboost on 13 small UCI datasets, 3 large datasets (letters, sat-images, zip-code), and 4 synthetic sets (waveform, twonorm, threenorm, ringnorm); errors generally comparable to or better than Adaboost."
+    },
+    {
+      "id": "ExP268.2",
+      "type": "example",
+      "name": "Forest-RC vs. Adaboost (Table 3)",
+      "section": "5",
+      "statement": "Forest-RC with $L=3$, $F\\in\\{2,8\\}$ chosen by OB error compared to Adaboost across the same datasets; Forest-RC compares more favorably than Forest-RI overall and excels on synthetic data."
+    },
+    {
+      "id": "ExP268.3",
+      "type": "example",
+      "name": "Sonar data: strength/correlation vs. F (Figure 1)",
+      "section": "6",
+      "statement": "Forest-RI on sonar (60 inputs, 208 examples) with $F$ varied 1-50 over 80 reps (400,000 trees total): past $F\\approx 4$ strength stabilizes while correlation continues to rise; test-set error has a slight minimum at $F\\approx 4-8$ then increases."
+    },
+    {
+      "id": "ExP268.4",
+      "type": "example",
+      "name": "Breast data: linear-combination features (Figure 2)",
+      "section": "6",
+      "statement": "Breast data with $L=3$ random combinations and $F$ varied 1-25: correlation rises slowly, strength roughly constant, minimum error at $F=1$."
+    },
+    {
+      "id": "ExP268.5",
+      "type": "example",
+      "name": "Satellite data: larger-data behavior (Figure 3)",
+      "section": "6",
+      "statement": "Satellite data with $L=2$ and $F$ varied 1-25: both correlation and strength increase steadily, error decreases slightly--larger data sets sustain strength growth longer before plateau."
+    },
+    {
+      "id": "ExP268.6",
+      "type": "example",
+      "name": "5%-noise robustness (Table 4)",
+      "section": "8",
+      "statement": "5% of class labels flipped at random on 9 small datasets: Adaboost error increases markedly (e.g. 43.2% on breast cancer, 48.9% on votes), while Forest-RI and Forest-RC are largely unaffected (single-digit changes)."
+    },
+    {
+      "id": "ExP268.7",
+      "type": "example",
+      "name": "1000-input weak-feature simulated data",
+      "section": "9",
+      "statement": "Generated 10-class data with 1000 binary inputs, $N=1000$ training and 4000 test examples; Bayes error 1.0%, Naive Bayes 6.2%; Forest-RI error 10.7% ($F=1$), 3.0% ($F=10$), 2.8% ($F=25$); Adaboost cannot run because base classifiers are too weak."
+    },
+    {
+      "id": "ExP268.8",
+      "type": "example",
+      "name": "Variable importance on diabetes data (Figures 4-5)",
+      "section": "10",
+      "statement": "Forest-RI ($F=1$) on diabetes: variable 2 dominates, then variables 8 and 6.  Forest using only variable 2 has 29.7% error vs. 23.1% with all 8.  Variable 6 added drops error to 26.4%; variable 8 adds little because it shares information with variable 2."
+    },
+    {
+      "id": "ExP268.9",
+      "type": "example",
+      "name": "Variable importance on votes data (Figure 6)",
+      "section": "10",
+      "statement": "On the 16-issue Congressional voting data ($F=5$), variable 4 stands out--noising it triples the error.  Using only variable 4 yields 4.3% test-set error, comparable to using all 16."
+    },
+    {
+      "id": "ExP268.10",
+      "type": "example",
+      "name": "Adaboost-as-random-forest experiment",
+      "section": "7",
+      "statement": "On Wisconsin Breast Cancer, drawing weight vectors from Adaboost runs ($w(1),\\dots,w(50)$, first 25 discarded) and running the resulting random forest 250 times yields 2.94% error, essentially equal to deterministic Adaboost's 2.91%."
+    },
+    {
+      "id": "ExP268.11",
+      "type": "example",
+      "name": "Regression: bagging vs. adaptive bagging vs. forest (Table 6)",
+      "section": "12",
+      "statement": "Mean-squared test-set errors on 8 regression datasets ($F=25$, $L=2$, 100 trees): random forest is always better than bagging; mixed comparison with adaptive bagging."
+    },
+    {
+      "id": "ExP268.12",
+      "type": "example",
+      "name": "Regression: output-noise injection (Table 8)",
+      "section": "12",
+      "statement": "Replacing bagging with mean-zero Gaussian output noise (sd equal to output sd) gives lowest-to-date errors on Boston Housing (9.1) and Ozone (16.3) and is overall slightly better than bagging."
+    },
+    {
+      "id": "RP268.1",
+      "type": "remark",
+      "name": "Bound is loose but suggestive",
+      "section": "2.2",
+      "statement": "The bound $PE^* \\le \\bar\\rho(1-s^2)/s^2$ is likely loose, but it plays the same suggestive role for random forests as VC-type bounds do for other classifiers."
+    },
+    {
+      "id": "RP268.2",
+      "type": "remark",
+      "name": "OB estimates remove need for held-out test set",
+      "section": "3.1",
+      "statement": "Since each bootstrap sample omits about one-third of training instances, OB estimates are unbiased (after running past test-set convergence) and as accurate as a same-size held-out test set."
+    },
+    {
+      "id": "RP268.3",
+      "type": "remark",
+      "name": "Categorical-variable handling",
+      "section": "5.1",
+      "statement": "When a categorical variable with $I$ values is selected for a split, choose a random subset of categories and define an indicator-based binary substitute; weight categorical variables to be $I-1$ times as likely as numerical to be selected."
+    },
+    {
+      "id": "RP268.4",
+      "type": "remark",
+      "name": "Forest-RI compute-time ratio",
+      "section": "4",
+      "statement": "Ratio of Forest-RI compute time to all-variable tree time is $F\\,\\log_2(N)/M$.  On zip-code with $F=1$ this is $0.025$ (~40x speedup over Adaboost)."
+    },
+    {
+      "id": "RP268.5",
+      "type": "remark",
+      "name": "Conclusions",
+      "section": "13",
+      "statement": "Random forests do not overfit (Law of Large Numbers); strength/correlation framework gives insight; OB estimates make these quantities concrete; results competitive with boosting and adaptive bagging without progressively changing the training set."
+    },
+    {
+      "id": "TP268.5",
+      "type": "theorem",
+      "name": "Strong Law of Large Numbers (cited)",
+      "section": "Appendix I (cited)",
+      "statement": "For i.i.d. random variables $X_n$ with finite mean $\\mu$, $(1/N)\\sum_{n=1}^N X_n \\to \\mu$ almost surely as $N \\to \\infty$.",
+      "origin": "external",
+      "origin_citation": "Classical result (Kolmogorov)"
+    },
+    {
+      "id": "TP268.6",
+      "type": "theorem",
+      "name": "Chebyshev's inequality (cited)",
+      "section": "2.2 (cited)",
+      "statement": "For any random variable $Z$ with finite mean and variance: $P(|Z - E Z| \\ge t) \\le \\mathrm{var}(Z)/t^2$.  Used here to bound $P_{X,Y}(mr < 0) \\le \\mathrm{var}(mr)/s^2$.",
+      "origin": "external",
+      "origin_citation": "Classical (Chebyshev)"
+    }
+  ],
+  "edges": [
+    {"source": "DP268.1", "target": "ProbP268.1", "type": "defines"},
+    {"source": "DP268.1", "target": "TP268.1", "type": "uses"},
+    {"source": "DP268.2", "target": "DP268.3", "type": "uses"},
+    {"source": "DP268.3", "target": "TP268.1", "type": "uses"},
+    {"source": "TP268.5", "target": "TP268.1", "type": "uses"},
+    {"source": "PP268.1", "target": "TP268.1", "type": "proves"},
+    {"source": "PSP268.1", "target": "PSP268.2", "type": "uses"},
+    {"source": "PSP268.2", "target": "PSP268.3", "type": "uses"},
+    {"source": "PSP268.3", "target": "PSP268.4", "type": "uses"},
+    {"source": "TP268.5", "target": "PSP268.3", "type": "uses"},
+
+    {"source": "DP268.4", "target": "DP268.5", "type": "uses"},
+    {"source": "DP268.5", "target": "AssumP268.1", "type": "uses"},
+    {"source": "DP268.6", "target": "EP268.2", "type": "uses"},
+    {"source": "DP268.7", "target": "EP268.2", "type": "uses"},
+    {"source": "DP268.7", "target": "DP268.8", "type": "uses"},
+    {"source": "DP268.5", "target": "DP268.8", "type": "uses"},
+    {"source": "TP268.6", "target": "EP268.1", "type": "uses"},
+    {"source": "EP268.1", "target": "TP268.2", "type": "uses"},
+    {"source": "EP268.2", "target": "TP268.2", "type": "uses"},
+    {"source": "EP268.3", "target": "TP268.2", "type": "uses"},
+    {"source": "AssumP268.1", "target": "TP268.2", "type": "uses"},
+    {"source": "PP268.3", "target": "TP268.2", "type": "proves"},
+    {"source": "PSP268.5", "target": "PSP268.6", "type": "uses"},
+    {"source": "PSP268.6", "target": "PSP268.7", "type": "uses"},
+    {"source": "PSP268.7", "target": "PSP268.8", "type": "uses"},
+    {"source": "TP268.6", "target": "PSP268.5", "type": "uses"},
+
+    {"source": "DP268.1", "target": "AP268.1", "type": "uses"},
+    {"source": "AP268.6", "target": "AP268.1", "type": "uses"},
+    {"source": "ASP268.1", "target": "ASP268.2", "type": "uses"},
+    {"source": "ASP268.2", "target": "ASP268.3", "type": "uses"},
+
+    {"source": "AP268.1", "target": "AP268.2", "type": "specializes"},
+    {"source": "ASP268.4", "target": "ASP268.5", "type": "uses"},
+    {"source": "ASP268.5", "target": "ASP268.6", "type": "uses"},
+
+    {"source": "DP268.9", "target": "AP268.3", "type": "uses"},
+    {"source": "AP268.6", "target": "AP268.3", "type": "uses"},
+    {"source": "DP268.5", "target": "AP268.3", "type": "uses"},
+    {"source": "DP268.7", "target": "AP268.3", "type": "uses"},
+    {"source": "EP268.7", "target": "AP268.3", "type": "uses"},
+    {"source": "ASP268.7", "target": "ASP268.8", "type": "uses"},
+    {"source": "ASP268.7", "target": "ASP268.9", "type": "uses"},
+    {"source": "ASP268.8", "target": "ASP268.9", "type": "uses"},
+    {"source": "ASP268.7", "target": "ASP268.10", "type": "uses"},
+    {"source": "ASP268.9", "target": "ASP268.10", "type": "uses"},
+
+    {"source": "AP268.3", "target": "AP268.4", "type": "uses"},
+    {"source": "ASP268.11", "target": "ASP268.12", "type": "uses"},
+    {"source": "ASP268.12", "target": "ASP268.13", "type": "uses"},
+
+    {"source": "AP268.1", "target": "ProbP268.1", "type": "solves"},
+    {"source": "AP268.2", "target": "ProbP268.1", "type": "solves"},
+    {"source": "AP268.5", "target": "ProbP268.1", "type": "solves"},
+    {"source": "AP268.6", "target": "ProbP268.1", "type": "solves"},
+
+    {"source": "AP268.1", "target": "ExP268.1", "type": "illustrates"},
+    {"source": "AP268.5", "target": "ExP268.1", "type": "illustrates"},
+    {"source": "AP268.2", "target": "ExP268.2", "type": "illustrates"},
+    {"source": "AP268.5", "target": "ExP268.2", "type": "illustrates"},
+    {"source": "AP268.1", "target": "ExP268.3", "type": "illustrates"},
+    {"source": "AP268.3", "target": "ExP268.3", "type": "illustrates"},
+    {"source": "AP268.2", "target": "ExP268.4", "type": "illustrates"},
+    {"source": "AP268.3", "target": "ExP268.4", "type": "illustrates"},
+    {"source": "AP268.2", "target": "ExP268.5", "type": "illustrates"},
+    {"source": "AP268.3", "target": "ExP268.5", "type": "illustrates"},
+    {"source": "AP268.1", "target": "ExP268.6", "type": "illustrates"},
+    {"source": "AP268.2", "target": "ExP268.6", "type": "illustrates"},
+    {"source": "AP268.5", "target": "ExP268.6", "type": "illustrates"},
+    {"source": "AP268.1", "target": "ExP268.7", "type": "illustrates"},
+    {"source": "AP268.4", "target": "ExP268.8", "type": "illustrates"},
+    {"source": "AP268.4", "target": "ExP268.9", "type": "illustrates"},
+    {"source": "AP268.5", "target": "ExP268.10", "type": "illustrates"},
+    {"source": "EP268.6", "target": "CnjP268.1", "type": "uses"},
+
+    {"source": "DP268.10", "target": "ProbP268.2", "type": "defines"},
+    {"source": "DP268.11", "target": "TP268.4", "type": "uses"},
+    {"source": "DP268.12", "target": "TP268.4", "type": "uses"},
+    {"source": "TP268.5", "target": "TP268.3", "type": "uses"},
+    {"source": "PP268.2", "target": "TP268.3", "type": "proves"},
+    {"source": "PP268.1", "target": "PP268.2", "type": "uses"},
+    {"source": "AssumP268.2", "target": "TP268.4", "type": "uses"},
+    {"source": "PP268.4", "target": "TP268.4", "type": "proves"},
+    {"source": "PSP268.9", "target": "PSP268.10", "type": "uses"},
+    {"source": "PSP268.10", "target": "PSP268.11", "type": "uses"},
+
+    {"source": "AP268.2", "target": "ProbP268.2", "type": "solves"},
+    {"source": "AP268.6", "target": "ProbP268.2", "type": "solves"},
+    {"source": "AP268.2", "target": "ExP268.11", "type": "illustrates"},
+    {"source": "AP268.2", "target": "ExP268.12", "type": "illustrates"}
+  ]
+}

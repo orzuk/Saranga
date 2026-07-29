@@ -1,0 +1,478 @@
+{
+  "metadata": {
+    "title": "A fast quantum mechanical algorithm for database search",
+    "paper_num": 319,
+    "authors": "Lov K. Grover",
+    "year": 1996,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "ProbP319.1",
+      "type": "problem",
+      "name": "Unstructured Database Search Problem",
+      "section": "2",
+      "statement": "Given a system with $N = 2^n$ states $S_1, S_2, \\ldots, S_N$ and a unique state $S_\\nu$ satisfying $C(S_\\nu) = 1$ (with $C(S) = 0$ otherwise), where $C$ is evaluable in unit time, identify the state $S_\\nu$.",
+      "statement_clean": "Find the unique element in an unsorted database of N items satisfying a given condition C, given oracle access to C.",
+      "origin": "paper",
+      "tags": ["search", "decision"]
+    },
+    {
+      "id": "DP319.1",
+      "type": "definition",
+      "name": "Walsh-Hadamard Transformation",
+      "section": "1.2",
+      "statement": "The unitary operator $W$ on $n$ qubits with matrix entries $W_{ij} = 2^{-n/2} (-1)^{i \\cdot j}$, where $i, j$ are $n$-bit binary strings and $i \\cdot j$ is the bitwise dot product.",
+      "statement_clean": "Tensor product of n single-qubit Hadamard gates, mapping basis states to equal-amplitude superpositions with sign determined by parity.",
+      "origin": "external",
+      "origin_citation": "Deutsch & Jozsa 1992 [DJ92]",
+      "tags": ["unitary", "transform"]
+    },
+    {
+      "id": "DP319.2",
+      "type": "definition",
+      "name": "Single-bit Hadamard (Fair Coin Flip) Matrix",
+      "section": "1.2",
+      "statement": "The single-qubit unitary $M = \\frac{1}{\\sqrt{2}} \\begin{pmatrix} 1 & 1 \\\\ 1 & -1 \\end{pmatrix}$, mapping $|0\\rangle \\to \\frac{1}{\\sqrt{2}}(|0\\rangle + |1\\rangle)$ and $|1\\rangle \\to \\frac{1}{\\sqrt{2}}(|0\\rangle - |1\\rangle)$.",
+      "origin": "external",
+      "origin_citation": "Simon 1994 [Simon94]",
+      "tags": ["unitary"]
+    },
+    {
+      "id": "DP319.3",
+      "type": "definition",
+      "name": "Selective Phase Rotation",
+      "section": "1.2",
+      "statement": "A diagonal unitary of the form $\\mathrm{diag}(e^{j\\phi_1}, e^{j\\phi_2}, \\ldots, e^{j\\phi_N})$, with $j = \\sqrt{-1}$ and $\\phi_i \\in \\mathbb{R}$, which preserves probabilities in each state but alters phases.",
+      "origin": "paper",
+      "tags": ["unitary"]
+    },
+    {
+      "id": "DP319.4",
+      "type": "definition",
+      "name": "Diffusion Transform $D$",
+      "section": "3,4",
+      "statement": "The $N \\times N$ matrix $D$ with $D_{ij} = \\frac{2}{N}$ for $i \\neq j$ and $D_{ii} = -1 + \\frac{2}{N}$.",
+      "statement_clean": "Operator that performs inversion of each amplitude about the mean amplitude.",
+      "origin": "paper",
+      "tags": ["unitary"]
+    },
+    {
+      "id": "DP319.5",
+      "type": "definition",
+      "name": "Phase-Inversion (Rotation) Matrix $R$",
+      "section": "3",
+      "statement": "Diagonal matrix with $R_{ij} = 0$ for $i \\neq j$, $R_{00} = 1$, and $R_{ii} = -1$ for $i \\neq 0$.",
+      "origin": "paper",
+      "tags": ["unitary"]
+    },
+    {
+      "id": "DP319.6",
+      "type": "definition",
+      "name": "Inversion About Average",
+      "section": "4",
+      "statement": "The operation that maps an amplitude vector $v$ with mean $\\alpha = \\frac{1}{N}\\sum_i v_i$ to $v'$ where $v'_i = \\alpha + (\\alpha - v_i) = -v_i + 2\\alpha$.",
+      "origin": "paper",
+      "tags": ["geometric"]
+    },
+    {
+      "id": "DP319.7",
+      "type": "definition",
+      "name": "Projection Matrix $P$",
+      "section": "4",
+      "statement": "The $N \\times N$ matrix with $P_{ij} = \\frac{1}{N}$ for all $i, j$, which satisfies $P^2 = P$ and maps any vector to one whose components all equal the average of the input components.",
+      "origin": "paper",
+      "tags": ["projection"]
+    },
+    {
+      "id": "EP319.1",
+      "type": "equation",
+      "name": "Decomposition $D = -I + 2P$",
+      "section": "4",
+      "statement": "$D \\equiv -I + 2P$, where $I$ is the $N \\times N$ identity and $P_{ij} = 1/N$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP319.2",
+      "type": "equation",
+      "name": "Change in marked-state amplitude $\\Delta k$",
+      "section": "5",
+      "statement": "$\\Delta k = k_2 - k = -\\frac{2k}{N} + 2\\left(1 - \\frac{1}{N}\\right) l$.",
+      "origin": "paper"
+    },
+    {
+      "id": "AP319.1",
+      "type": "algorithm",
+      "name": "Grover's Quantum Search Algorithm",
+      "section": "3",
+      "statement": "Initialize an equal superposition over $N$ states, then repeat the Grover iteration (selective phase inversion of the marked state, then diffusion transform $D$) $O(\\sqrt{N})$ times, and finally measure.",
+      "input": [
+        "Number of states $N = 2^n$",
+        "Oracle (black-box) for condition $C(S) \\in \\{0,1\\}$ with unique marked state $S_\\nu$"
+      ],
+      "output": [
+        "The marked state $S_\\nu$ with probability at least $\\frac{1}{2}$"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "quantum"]
+    },
+    {
+      "id": "ASP319.1",
+      "type": "algorithm_step",
+      "name": "Initialize uniform superposition",
+      "parent_id": "AP319.1",
+      "step_order": 1,
+      "statement": "Set the system to the equal superposition $\\left(\\frac{1}{\\sqrt{N}}, \\frac{1}{\\sqrt{N}}, \\ldots, \\frac{1}{\\sqrt{N}}\\right)$ in $O(\\log N)$ steps by applying the Walsh-Hadamard transform to the all-zero state.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP319.2",
+      "type": "algorithm_step",
+      "name": "Grover iteration loop",
+      "parent_id": "AP319.1",
+      "step_order": 2,
+      "statement": "Repeat $O(\\sqrt{N})$ times: (a) selectively rotate the phase by $\\pi$ in states with $C(S) = 1$, leaving others unchanged; (b) apply the diffusion transform $D = WRW$.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP319.3",
+      "type": "algorithm_step",
+      "name": "Measure",
+      "parent_id": "AP319.1",
+      "step_order": 3,
+      "statement": "Sample (measure) the resulting state; the marked $S_\\nu$ is obtained with probability at least $\\frac{1}{2}$.",
+      "subclass": "return",
+      "origin": "paper"
+    },
+    {
+      "id": "TP319.1",
+      "type": "theorem",
+      "name": "Local Decomposition of Diffusion: $D = WRW$",
+      "section": "5",
+      "statement": "$D = W R W$, where $W$ is the Walsh-Hadamard transform with $W_{ij} = 2^{-n/2} (-1)^{i \\cdot j}$ and $R$ is the rotation matrix with $R_{ii} = 1$ for $i = 0$, $R_{ii} = -1$ for $i \\neq 0$, and $R_{ij} = 0$ for $i \\neq j$.",
+      "assumptions": [
+        "$N = 2^n$ states indexed by $n$-bit binary strings",
+        "$D$ is the diffusion transform of (5.0)"
+      ],
+      "conclusions": [
+        "$D = W R W$, exhibiting $D$ as a product of three local quantum operations"
+      ],
+      "origin": "paper",
+      "tags": ["factorization", "implementation"]
+    },
+    {
+      "id": "PP319.1",
+      "type": "proof",
+      "name": "Proof of Theorem 1 ($D = WRW$)",
+      "section": "5",
+      "parent_id": "TP319.1",
+      "proves": "TP319.1",
+      "statement": "Write $R = R_1 + R_2$ with $R_1 = -I$ and $R_2$ having only $R_{2,00} = 2$. Show $W R_1 W = -I$ via $WW = I$, then compute $W R_2 W$ entrywise to obtain a uniform $\\frac{2}{N}$ matrix; the sum equals $D$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP319.1",
+      "type": "proof_step",
+      "name": "Decompose $R = R_1 + R_2$",
+      "parent_id": "PP319.1",
+      "step_order": 1,
+      "statement": "Write $R = R_1 + R_2$ where $R_1 = -I$ and $R_2$ is the matrix with $R_{2,00} = 2$ and all other entries zero.",
+      "subclass": "introduce_variable",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP319.2",
+      "type": "proof_step",
+      "name": "Show $W R_1 W = -I$",
+      "parent_id": "PP319.1",
+      "step_order": 2,
+      "statement": "Using $MM = I$ for the single-qubit Hadamard $M$, deduce $WW = I$, hence $D_1 = W R_1 W = -W I W = -I$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP319.3",
+      "type": "proof_step",
+      "name": "Compute $W R_2 W$ entrywise",
+      "parent_id": "PP319.1",
+      "step_order": 3,
+      "statement": "By matrix multiplication $D_{2,ad} = \\sum_{bc} W_{ab} R_{2,bc} W_{cd} = 2 W_{a0} W_{0d} = \\frac{2}{2^n}(-1)^{a\\cdot 0 + 0 \\cdot d} = \\frac{2}{N}$, so every entry of $D_2$ equals $\\frac{2}{N}$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP319.4",
+      "type": "proof_step",
+      "name": "Sum to recover $D$",
+      "parent_id": "PP319.1",
+      "step_order": 4,
+      "statement": "Adding $D_1 = -I$ and $D_2$ (whose entries are all $\\frac{2}{N}$) yields the matrix $D$ with $D_{ii} = -1 + \\frac{2}{N}$ and $D_{ij} = \\frac{2}{N}$ for $i \\neq j$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "TP319.2",
+      "type": "theorem",
+      "name": "Action of Diffusion on Two-Level State",
+      "section": "5",
+      "statement": "If the amplitudes are $k_1$ in one designated state and $l_1$ in each of the remaining $N-1$ states, then after applying $D$ the new amplitudes are $k_2 = \\left(\\frac{2}{N} - 1\\right) k_1 + 2 \\frac{N-1}{N} l_1$ and $l_2 = \\frac{2}{N} k_1 + \\frac{N-2}{N} l_1$.",
+      "assumptions": [
+        "State vector has amplitude $k_1$ in one state and $l_1$ in each of the other $N-1$ states"
+      ],
+      "conclusions": [
+        "$k_2 = (\\frac{2}{N} - 1) k_1 + 2 \\frac{N-1}{N} l_1$",
+        "$l_2 = \\frac{2}{N} k_1 + \\frac{N-2}{N} l_1$"
+      ],
+      "origin": "paper",
+      "tags": ["amplitude", "evolution"]
+    },
+    {
+      "id": "PP319.2",
+      "type": "proof",
+      "name": "Proof of Theorem 2",
+      "section": "5",
+      "parent_id": "TP319.2",
+      "proves": "TP319.2",
+      "statement": "Apply the definition (5.0) of $D$ to the two-level amplitude vector and read off the marked-state and unmarked-state components after multiplication.",
+      "origin": "paper"
+    },
+    {
+      "id": "CP319.1",
+      "type": "corollary",
+      "name": "Sign Preservation under $D$",
+      "section": "5",
+      "statement": "Let $k$ be negative, $l$ positive (real), and $k/l < N$. Then after applying $D$ both $k_1$ and $l_1$ are positive (the latter holding under the stronger condition $k/l < (N-2)/2$, which follows from $k/l < N$ for $N \\geq 9$).",
+      "assumptions": [
+        "$k < 0$, $l > 0$",
+        "$k$ and $l$ real",
+        "$|k/l| < N$ (and $N \\geq 9$ for the second conclusion)"
+      ],
+      "conclusions": [
+        "$k_1 > 0$ after applying $D$",
+        "$l_1 > 0$ after applying $D$"
+      ],
+      "origin": "paper",
+      "tags": ["sign", "monotonicity"]
+    },
+    {
+      "id": "PP319.3",
+      "type": "proof",
+      "name": "Proof of Corollary 2.1",
+      "section": "5",
+      "parent_id": "CP319.1",
+      "proves": "CP319.1",
+      "statement": "From Theorem 2: $k_1 = (2/N - 1)k + 2(N-1)/N \\cdot l$; with $k < 0$ the first term is positive and the second is positive, so $k_1 > 0$. Similarly $l_1 = (2/N) k + (N-2)/N \\cdot l > 0$ when $|k/l| < (N-2)/2$, which holds for $N \\geq 9$ given $|k/l| < N$.",
+      "origin": "paper"
+    },
+    {
+      "id": "CP319.2",
+      "type": "corollary",
+      "name": "Probability Conservation under $D$",
+      "section": "5",
+      "statement": "If amplitudes are $k$ in the marked state and $l$ in each of the $N-1$ unmarked states, then after applying $D$ the new amplitudes $k_1, l_1$ satisfy $k_1^2 + (N-1) l_1^2 = k^2 + (N-1) l^2$.",
+      "assumptions": [
+        "Pre-$D$ amplitudes: $k$ in the marked state, $l$ in each of $N-1$ unmarked states"
+      ],
+      "conclusions": [
+        "$k_1^2 + (N-1) l_1^2 = k^2 + (N-1) l^2$ (total probability is preserved)"
+      ],
+      "origin": "paper",
+      "tags": ["unitarity", "conservation"]
+    },
+    {
+      "id": "PP319.4",
+      "type": "proof",
+      "name": "Proof of Corollary 2.2",
+      "section": "5",
+      "parent_id": "CP319.2",
+      "proves": "CP319.2",
+      "statement": "Substitute the Theorem-2 expressions for $k_1$ and $l_1$ into $k_1^2 + (N-1) l_1^2$, expand, and collect terms; cross terms cancel and the result equals $k^2 + (N-1) l^2$.",
+      "origin": "paper"
+    },
+    {
+      "id": "TP319.3",
+      "type": "theorem",
+      "name": "Lower Bound on Per-Iteration Amplitude Increase",
+      "section": "5",
+      "statement": "Let the amplitude in the marked state before step (a) be $k$, and the amplitude in each of the other $N-1$ states be $l$, with $0 < k < \\frac{1}{\\sqrt{2}}$ and $l > 0$. Then after steps (a) and (b) of the algorithm, $\\Delta k > \\frac{1}{2\\sqrt{N}}$ and $l$ remains positive.",
+      "assumptions": [
+        "Amplitude in marked state $k$ satisfies $0 < k < 1/\\sqrt{2}$",
+        "Amplitude $l$ in each of the other $N-1$ states satisfies $l > 0$"
+      ],
+      "conclusions": [
+        "$\\Delta k > \\frac{1}{2\\sqrt{N}}$",
+        "After steps (a) and (b), $l > 0$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "amplitude_amplification"]
+    },
+    {
+      "id": "PP319.5",
+      "type": "proof",
+      "name": "Proof of Theorem 3",
+      "section": "5",
+      "parent_id": "TP319.3",
+      "proves": "TP319.3",
+      "statement": "After phase inversion (a) and diffusion (b), Theorem 2 yields $\\Delta k = -\\frac{2k}{N} + 2(1 - \\frac{1}{N}) l$. Since $k < 1/\\sqrt{2}$, Corollary 2.2 gives $l > 1/\\sqrt{2N}$, which combined with the formula yields $\\Delta k > 1/(2\\sqrt{N})$. Positivity of $l_2$ then follows from Corollary 2.1 using $k_1/l_1 < \\sqrt{N}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP319.5",
+      "type": "proof_step",
+      "name": "Apply Theorem 2 to derive $\\Delta k$",
+      "parent_id": "PP319.5",
+      "step_order": 1,
+      "statement": "Denote post-phase-inversion amplitudes $k_1 = -k$, $l_1 = l$ and post-diffusion $k_2, l_2$. By Theorem 2: $k_2 = (1 - 2/N) k + 2(1 - 1/N) l$, hence $\\Delta k = k_2 - k = -\\frac{2k}{N} + 2(1 - \\frac{1}{N}) l$.",
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP319.6",
+      "type": "proof_step",
+      "name": "Lower bound $l$ via Corollary 2.2",
+      "parent_id": "PP319.5",
+      "step_order": 2,
+      "statement": "Since $0 < k < 1/\\sqrt{2}$, the conservation identity $k^2 + (N-1) l^2 = 1$ (from Corollary 2.2 with normalization) yields $l > \\frac{1}{\\sqrt{2N}}$.",
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP319.7",
+      "type": "proof_step",
+      "name": "Conclude $\\Delta k > \\frac{1}{2\\sqrt{N}}$",
+      "parent_id": "PP319.5",
+      "step_order": 3,
+      "statement": "Substituting $l > 1/\\sqrt{2N}$ into $\\Delta k = -\\frac{2k}{N} + 2(1 - \\frac{1}{N}) l$ gives $\\Delta k > \\frac{1}{2\\sqrt{N}}$ for non-trivial $N$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP319.8",
+      "type": "proof_step",
+      "name": "Show $l_2 > 0$ via Corollary 2.1",
+      "parent_id": "PP319.5",
+      "step_order": 4,
+      "statement": "After phase inversion $k_1 < 0$ and $l_1 > 0$. From $0 < k < 1/\\sqrt{2}$ and $l > 1/\\sqrt{2N}$ obtain $|k_1/l_1| < \\sqrt{N}$, so by Corollary 2.1 $l_2 > 0$.",
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "TP319.4",
+      "type": "theorem",
+      "name": "$O(\\sqrt{N})$ Upper Bound for Quantum Search",
+      "section": "4-5",
+      "statement": "There exists $M < \\sqrt{2N}$ such that after $M$ Grover iterations, the marked-state amplitude $k$ exceeds $\\frac{1}{\\sqrt{2}}$, so measurement returns the marked state with probability greater than $\\frac{1}{2}$. Hence the algorithm finds $S_\\nu$ in $O(\\sqrt{N})$ queries.",
+      "assumptions": [
+        "Initial state is the uniform superposition",
+        "Theorem 3 holds (per-iteration $\\Delta k > 1/(2\\sqrt{N})$)"
+      ],
+      "conclusions": [
+        "There is an $M < \\sqrt{2N}$ such that after $M$ iterations $k > 1/\\sqrt{2}$",
+        "The algorithm succeeds with probability $> 1/2$ in $O(\\sqrt{N})$ queries"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "complexity", "main_result"]
+    },
+    {
+      "id": "TP319.5",
+      "type": "theorem",
+      "name": "$\\Omega(\\sqrt{N})$ Quantum Lower Bound",
+      "section": "1, 6",
+      "statement": "Any quantum mechanical algorithm that identifies the unique marked element of an unstructured database of $N$ items requires $\\Omega(\\sqrt{N})$ oracle queries; equivalently, an algorithm running for $T$ steps is sensitive to only $O(T^2)$ queries.",
+      "assumptions": [
+        "Algorithm has only oracle access to $C$",
+        "No structural information about the database is available"
+      ],
+      "conclusions": [
+        "Any successful quantum search algorithm requires $\\Omega(\\sqrt{N})$ queries"
+      ],
+      "origin": "external",
+      "origin_citation": "Bennett, Bernstein, Brassard, Vazirani [BBBV96]",
+      "tags": ["lower_bound", "complexity"]
+    },
+    {
+      "id": "RP319.1",
+      "type": "remark",
+      "name": "Optimality up to Constants",
+      "section": "1, 6",
+      "statement": "Combining the $O(\\sqrt{N})$ upper bound (Theorem 4) with the $\\Omega(\\sqrt{N})$ lower bound (Theorem 5) shows the algorithm is within a small constant factor of the fastest possible quantum mechanical search algorithm; [BBHT96] gives tight bounds.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP319.2",
+      "type": "remark",
+      "name": "Handling Multiple Marked States",
+      "section": "8",
+      "statement": "When more than one state satisfies $C(S) = 1$, the algorithm can be extended either by (i) checking ranges of degeneracy via $\\log N$ repetitions over $(k, k+1, \\ldots, 2k)$ (cf. [BBHT96]), or (ii) randomly perturbing the problem to remove degeneracy (cf. [MVV87], [VV86]).",
+      "origin": "paper"
+    },
+    {
+      "id": "RP319.3",
+      "type": "remark",
+      "name": "Implementation Considerations",
+      "section": "7",
+      "statement": "The algorithm requires only the Walsh-Hadamard transform and conditional phase shift, both relatively easy to implement compared with operations needed for other quantum algorithms (e.g. Shor's). Using the function-evaluation mode (rather than memory retrieval) avoids quantum memory storage; classical-memory storage with quantum sampling is also conceivable.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP319.4",
+      "type": "remark",
+      "name": "Connection to Interaction-Free Measurement",
+      "section": "8",
+      "statement": "Quantum interaction-free measurements (e.g. [EV93], [KWZ96]) suggest the search problem can locate the desired object without examining all candidates by allowing only a small probability of interaction with each, analogous to the algorithm's behavior.",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "DP319.2", "target": "DP319.1", "type": "uses"},
+    {"source": "DP319.1", "target": "AP319.1", "type": "uses"},
+    {"source": "DP319.3", "target": "AP319.1", "type": "uses"},
+    {"source": "DP319.4", "target": "AP319.1", "type": "uses"},
+    {"source": "DP319.5", "target": "TP319.1", "type": "uses"},
+    {"source": "DP319.4", "target": "TP319.1", "type": "uses"},
+    {"source": "DP319.1", "target": "TP319.1", "type": "uses"},
+    {"source": "DP319.7", "target": "EP319.1", "type": "uses"},
+    {"source": "EP319.1", "target": "DP319.6", "type": "uses"},
+    {"source": "DP319.6", "target": "DP319.4", "type": "uses"},
+    {"source": "TP319.1", "target": "AP319.1", "type": "uses"},
+    {"source": "AP319.1", "target": "ProbP319.1", "type": "solves"},
+    {"source": "PP319.1", "target": "TP319.1", "type": "proves"},
+    {"source": "DP319.1", "target": "PP319.1", "type": "uses"},
+    {"source": "DP319.5", "target": "PP319.1", "type": "uses"},
+    {"source": "DP319.2", "target": "PP319.1", "type": "uses"},
+    {"source": "PSP319.1", "target": "PSP319.2", "type": "uses"},
+    {"source": "PSP319.1", "target": "PSP319.3", "type": "uses"},
+    {"source": "PSP319.2", "target": "PSP319.4", "type": "uses"},
+    {"source": "PSP319.3", "target": "PSP319.4", "type": "uses"},
+    {"source": "PP319.2", "target": "TP319.2", "type": "proves"},
+    {"source": "DP319.4", "target": "PP319.2", "type": "uses"},
+    {"source": "TP319.2", "target": "CP319.1", "type": "uses"},
+    {"source": "PP319.3", "target": "CP319.1", "type": "proves"},
+    {"source": "TP319.2", "target": "CP319.2", "type": "uses"},
+    {"source": "PP319.4", "target": "CP319.2", "type": "proves"},
+    {"source": "TP319.2", "target": "TP319.3", "type": "uses"},
+    {"source": "CP319.1", "target": "TP319.3", "type": "uses"},
+    {"source": "CP319.2", "target": "TP319.3", "type": "uses"},
+    {"source": "PP319.5", "target": "TP319.3", "type": "proves"},
+    {"source": "EP319.2", "target": "PP319.5", "type": "uses"},
+    {"source": "PSP319.5", "target": "PSP319.6", "type": "uses"},
+    {"source": "PSP319.5", "target": "PSP319.7", "type": "uses"},
+    {"source": "PSP319.6", "target": "PSP319.7", "type": "uses"},
+    {"source": "PSP319.5", "target": "PSP319.8", "type": "uses"},
+    {"source": "PSP319.6", "target": "PSP319.8", "type": "uses"},
+    {"source": "TP319.3", "target": "TP319.4", "type": "uses"},
+    {"source": "AP319.1", "target": "TP319.4", "type": "uses"},
+    {"source": "TP319.4", "target": "RP319.1", "type": "uses"},
+    {"source": "TP319.5", "target": "RP319.1", "type": "uses"},
+    {"source": "ASP319.1", "target": "ASP319.2", "type": "uses"},
+    {"source": "ASP319.2", "target": "ASP319.3", "type": "uses"},
+    {"source": "DP319.1", "target": "ASP319.1", "type": "uses"},
+    {"source": "DP319.4", "target": "ASP319.2", "type": "uses"},
+    {"source": "DP319.3", "target": "ASP319.2", "type": "uses"}
+  ]
+}

@@ -1,0 +1,779 @@
+{
+  "metadata": {
+    "title": "Fast Exact Matrix Completion: A Unified Optimization Framework for Matrix Completion",
+    "paper_num": 451,
+    "authors": "Dimitris Bertsimas and Michael Lingzhi Li",
+    "year": 2020,
+    "venue": "JMLR 21 (19-471)",
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "ProbP451.1",
+      "type": "problem",
+      "subclass": "optimization",
+      "name": "Classical Low-Rank Matrix Completion",
+      "section": "2",
+      "statement": "Recover $\\bm{X}=\\bm{U}\\bm{V}^T$ of rank $k$ minimizing $\\frac{1}{nm}\\sum_{(i,j)\\in\\Omega}(X_{ij}-A_{ij})^2$ subject to $\\rank(\\bm{X})=k$, given partially observed $\\bm{A}\\in\\md{R}^{n\\times m}$ with index set $\\Omega$ of known entries.",
+      "statement_clean": "Recover a rank-k matrix that fits known entries of A.",
+      "origin": "paper",
+      "tags": ["optimization", "non-convex"]
+    },
+    {
+      "id": "ProbP451.2",
+      "type": "problem",
+      "subclass": "optimization",
+      "name": "Matrix Completion with Side Information and Tikhonov Regularization",
+      "section": "2",
+      "statement": "$\\min_{\\|\\bm{S}\\|_2=1}\\min_{\\bm{U}}\\frac{1}{nm}\\left(\\sum_{(i,j)\\in\\Omega}(X_{ij}-A_{ij})^2+\\frac{1}{\\gamma}\\|\\bm{U}\\|_2^2\\right)$ s.t. $\\bm{X}=\\bm{U}\\bm{S}^T\\bm{B}^T$, where $\\bm{B}\\in\\md{R}^{m\\times p}$ is the feature matrix.",
+      "statement_clean": "Regularized matrix completion that factorizes X using side-information features B.",
+      "origin": "paper",
+      "tags": ["optimization", "regularized"]
+    },
+    {
+      "id": "DP451.1",
+      "type": "definition",
+      "name": "Diagonal Mask Matrix $\\bm{W}_i$",
+      "section": "2",
+      "statement": "$\\bm{W}_i\\in\\md{R}^{m\\times m}$ is diagonal with $(\\bm{W}_i)_{jj}=1$ if $(i,j)\\in\\Omega$ and $0$ otherwise; $\\overline{\\bm{a}}_i=\\bm{a}_i\\bm{W}_i$ is row $i$ of $\\bm{A}$ with unknown entries set to $0$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP451.2",
+      "type": "definition",
+      "name": "Reformulated Variable $\\bm{V}=\\bm{B}\\bm{S}$",
+      "section": "2",
+      "statement": "Auxiliary matrix $\\bm{V}=\\bm{B}\\bm{S}\\in\\md{R}^{m\\times k}$ used to simplify the separable form of the objective.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP451.3",
+      "type": "definition",
+      "name": "$(\\alpha,p)$-submatrix full rank",
+      "section": "4.1",
+      "statement": "A matrix $\\bm{S}\\in\\md{R}^{m\\times k}$ ($m>k$) is $(\\alpha,p)$-submatrix full rank if every $p\\times k$ submatrix of $\\bm{S}$ has full column rank with minimum singular value at least $\\alpha$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP451.4",
+      "type": "definition",
+      "name": "Strict Saddle Function",
+      "section": "4.1",
+      "statement": "$f:\\md{R}^d\\to\\md{R}$ is $(\\theta,\\zeta,\\eta)$-strict saddle if for every $\\bm{x}$, at least one of: (1) $\\|\\nabla f(\\bm{x})\\|\\geq\\theta$; (2) $\\lambda_{\\min}(\\nabla^2 f(\\bm{x}))\\leq-\\zeta$; (3) $\\bm{x}$ is within $\\eta$ of a local minimum.",
+      "origin": "external",
+      "origin_citation": "Ge, Huang, Jin, Yuan 2015 (escaping saddle points)"
+    },
+    {
+      "id": "DP451.5",
+      "type": "definition",
+      "name": "Row-Sampling Model",
+      "section": "4.1",
+      "statement": "For each row $\\bm{a}_i$ of $\\bm{A}$, sample $l$ of $m$ entries uniformly without replacement to be observed; effective per-entry probability $r=l/m$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP451.6",
+      "type": "definition",
+      "name": "Projection Matrices $\\bm{P}_{\\bm{S}}$ and $\\bm{P}_{\\bm{S}_i}$",
+      "section": "Appendix A",
+      "statement": "$\\bm{S}_i=\\bm{W}_i\\bm{S}$, $\\bm{P}_{\\bm{S}}=\\bm{I}_m-\\bm{S}(\\bm{S}^T\\bm{S})^{-1}\\bm{S}^T$, $\\bm{P}_{\\bm{S}_i}=\\bm{W}_i-\\bm{S}_i(\\bm{S}_i^T\\bm{S}_i)^{-1}\\bm{S}_i^T$, satisfying $\\bm{P}_{\\bm{S}}\\bm{S}=\\bm{0}$ and $\\bm{P}_{\\bm{S}_i}\\bm{S}_i=\\bm{0}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP451.7",
+      "type": "definition",
+      "name": "MAPE (Mean Absolute Percentage Error)",
+      "section": "5.1",
+      "statement": "$\\text{MAPE}=\\frac{1}{nm}\\sum_{i=1}^n\\sum_{j=1}^m\\frac{|\\hat{A}_{ij}-A_{ij}|}{|A_{ij}|}$, the evaluation metric for matrix recovery accuracy.",
+      "origin": "paper"
+    },
+    {
+      "id": "AssumP451.1",
+      "type": "assumption",
+      "name": "Assumption 1: Spread-Out Decomposition",
+      "section": "4.1",
+      "statement": "$\\bm{A}=\\bm{U}^*\\bm{S}^{*T}$ has rank $k$ with $\\bm{U}^*\\in\\md{R}^{n\\times k}$, $\\bm{S}^*\\in\\md{R}^{m\\times k}$, $\\|\\bm{S}^*\\|=1$, and both $\\bm{U}^*,\\bm{S}^*$ are $(\\alpha,l)$-submatrix full rank with $\\alpha>0$.",
+      "origin": "paper"
+    },
+    {
+      "id": "AssumP451.2",
+      "type": "assumption",
+      "name": "Assumption 2: Domain Restriction on $\\bm{S}$",
+      "section": "4.1",
+      "statement": "The variable $\\bm{S}$ is restricted to matrices that are $(\\alpha,l)$-submatrix full rank, ensuring $(\\bm{S}^T\\bm{W}_i\\bm{S})^{-1}$ is well-defined wherever $c(\\bm{S})$ is evaluated.",
+      "origin": "paper"
+    },
+    {
+      "id": "PrP451.1",
+      "type": "proposition",
+      "name": "Separable Reformulation of Matrix Completion",
+      "section": "2",
+      "statement": "Problem (\\ref{mainproblem}) is equivalent to $\\min_{\\|\\bm{S}\\|_2=1} c(\\bm{S})=\\frac{1}{nm}\\sum_{i=1}^n\\overline{\\bm{a}}_i\\left(\\bm{I}_m-\\bm{V}\\left(\\frac{\\bm{I}_k}{\\gamma}+\\bm{V}^T\\bm{W}_i\\bm{V}\\right)^{-1}\\bm{V}^T\\right)\\overline{\\bm{a}}_i^T$ with $\\bm{V}=\\bm{B}\\bm{S}$.",
+      "assumptions": [
+        "$\\bm{A}\\in\\md{R}^{n\\times m}$ is partially observed on $\\Omega$",
+        "$\\bm{B}\\in\\md{R}^{m\\times p}$ is the side-information feature matrix",
+        "$\\gamma>0$ is the Tikhonov parameter"
+      ],
+      "conclusions": [
+        "The two-level minimization over $(\\bm{U},\\bm{S})$ collapses to a single minimization over $\\bm{S}$ with closed-form inner solution"
+      ],
+      "origin": "paper",
+      "tags": ["reformulation", "closed-form"]
+    },
+    {
+      "id": "LP451.1",
+      "type": "lemma",
+      "name": "Matrix Inversion Lemma (Woodbury)",
+      "section": "2",
+      "statement": "For $\\bm{U}\\in\\md{R}^{n\\times k}$ and $\\bm{V}\\in\\md{R}^{k\\times n}$: $(\\bm{I}_n+\\bm{U}\\bm{V})^{-1}=\\bm{I}_n-\\bm{U}(\\bm{I}_k+\\bm{V}\\bm{U})^{-1}\\bm{V}$.",
+      "assumptions": ["$\\bm{U}\\in\\md{R}^{n\\times k}$, $\\bm{V}\\in\\md{R}^{k\\times n}$", "$\\bm{I}_n+\\bm{U}\\bm{V}$ invertible"],
+      "conclusions": ["$(\\bm{I}_n+\\bm{U}\\bm{V})^{-1}=\\bm{I}_n-\\bm{U}(\\bm{I}_k+\\bm{V}\\bm{U})^{-1}\\bm{V}$"],
+      "origin": "external",
+      "origin_citation": "Woodbury 1950"
+    },
+    {
+      "id": "LP451.2",
+      "type": "lemma",
+      "name": "Gradient of $c(\\bm{S})$",
+      "section": "3",
+      "statement": "$\\nabla c(\\bm{S})=-\\frac{2\\gamma}{n}\\sum_{i=1}^n\\bm{B}^T\\bm{\\gamma}_i(\\bm{S})\\bm{\\gamma}_i(\\bm{S})^T\\bm{V}$, where $\\bm{\\gamma}_i(\\bm{S})=\\left(\\bm{I}_m-\\bm{V}(\\frac{\\bm{I}_k}{\\gamma}+\\bm{V}^T\\bm{W}_i\\bm{V})^{-1}\\bm{V}^T\\right)\\overline{\\bm{a}}_i^T$.",
+      "assumptions": ["$c(\\bm{S})$ as in Proposition \\ref{prop:maintheo}", "$\\bm{V}=\\bm{B}\\bm{S}$"],
+      "conclusions": ["Closed-form expression for $\\nabla c(\\bm{S})$ used in gradient descent"],
+      "origin": "paper",
+      "tags": ["gradient", "computation"]
+    },
+    {
+      "id": "AP451.1",
+      "type": "algorithm",
+      "name": "projImpute",
+      "section": "3",
+      "statement": "Full projected gradient descent with Nesterov acceleration on the hypersphere $\\|\\bm{S}\\|_2=1$ to minimize $c(\\bm{S})$, followed by closed-form recovery of $\\bm{A}$.",
+      "input": [
+        "Masked matrix $\\bm{A}\\in\\md{R}^{n\\times m}$",
+        "Feature matrix $\\bm{B}\\in\\md{R}^{p\\times m}$",
+        "Desired rank $k$",
+        "Step size $\\theta$",
+        "Number of steps $t_{max}$"
+      ],
+      "output": [
+        "Filled matrix $\\bm{A}$"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "projected-gradient", "nesterov"]
+    },
+    {
+      "id": "ASP451.1",
+      "type": "algorithm_step",
+      "parent_id": "AP451.1",
+      "step_order": 1,
+      "subclass": "initialize",
+      "name": "Random initialization",
+      "section": "3",
+      "statement": "$\\bm{S}_1\\gets$ random matrix with $\\|\\bm{S}_1\\|_2=1$; $\\eta_0\\gets\\infty$; compute initial $\\eta_1,\\bm{G}_1=c(\\bm{S}_1),\\nabla c(\\bm{S}_1)$; $\\nabla\\tilde{\\bm{S}}_1\\gets\\bm{0}^{p\\times k}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP451.2",
+      "type": "algorithm_step",
+      "parent_id": "AP451.1",
+      "step_order": 2,
+      "subclass": "loop",
+      "name": "Nesterov-accelerated projected gradient loop",
+      "section": "3",
+      "statement": "While $t<t_{max}$: $\\nabla\\tilde{\\bm{S}}_{t+1}=\\bm{G}_t+\\frac{t-1}{t+2}\\nabla\\tilde{\\bm{S}}_t$; project to tangent plane $\\overline{\\nabla\\bm{S}_{t+1}}=-\\nabla\\tilde{\\bm{S}}_{t+1}+(\\nabla\\tilde{\\bm{S}}_{t+1}\\cdot\\bm{S}_t)\\bm{S}_t$; rotate on sphere $\\bm{S}_{t+1}\\gets\\bm{S}_t\\cos\\theta+\\frac{\\overline{\\nabla\\bm{S}_{t+1}}}{\\|\\overline{\\nabla\\bm{S}_{t+1}}\\|_2}\\sin\\theta$; recompute $\\eta_{t+1},\\bm{G}_{t+1}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP451.3",
+      "type": "algorithm_step",
+      "parent_id": "AP451.1",
+      "step_order": 3,
+      "subclass": "return",
+      "name": "Final matrix recovery",
+      "section": "3",
+      "statement": "Set $\\bm{S}^*\\gets\\bm{S}_t$; for $i=1,\\ldots,n$: $\\bm{a}_i\\gets\\overline{\\bm{a}}_i\\bm{B}\\bm{S}^*(\\bm{B}\\bm{S}^*\\bm{W}_i\\bm{B}\\bm{S}^{*T}\\bm{B}^T)^{-1}\\bm{S}^{*T}\\bm{B}^T$; return $\\bm{A}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PrP451.2",
+      "type": "proposition",
+      "name": "Computational Complexity of projImpute Steps",
+      "section": "3.1",
+      "statement": "The cost-and-gradient step has complexity $O\\left(|\\Omega|(p+k^2+\\frac{pk+k^3}{m\\alpha})\\right)$; the final matrix-fill step has complexity $O\\left(|\\Omega|(k^2+\\frac{k}{\\alpha}+\\frac{k^3}{m\\alpha})\\right)$, where $\\alpha=|\\Omega|/(mn)$.",
+      "assumptions": ["$|\\Omega|$ known entries", "$\\alpha=|\\Omega|/(mn)$ density"],
+      "conclusions": [
+        "Step \\ref{calc_cost} complexity: $O(|\\Omega|(p+k^2+(pk+k^3)/(m\\alpha)))$",
+        "Step \\ref{calc_final} complexity: $O(|\\Omega|(k^2+k/\\alpha+k^3/(m\\alpha)))$"
+      ],
+      "origin": "paper",
+      "tags": ["complexity"]
+    },
+    {
+      "id": "CP451.1",
+      "type": "corollary",
+      "name": "projImpute Termination and Total Complexity",
+      "section": "3.1",
+      "statement": "projImpute terminates in $t_{max}$ steps with overall complexity $O\\left(|\\Omega|(p+k^2+\\frac{pk+k^3}{m\\alpha})\\right)$.",
+      "assumptions": ["Proposition \\ref{prop:complexproj} holds"],
+      "conclusions": ["Total complexity per run is bounded as stated"],
+      "origin": "paper"
+    },
+    {
+      "id": "AP451.2",
+      "type": "algorithm",
+      "name": "fastImpute",
+      "section": "4",
+      "statement": "Adaptive stochastic projected gradient descent variant of projImpute that subsamples $n_0$ rows and $m_0$ columns per row at each iteration to estimate the gradient.",
+      "input": [
+        "Masked matrix $\\bm{A}\\in\\md{R}^{n\\times m}$",
+        "Feature matrix $\\bm{B}\\in\\md{R}^{p\\times m}$",
+        "Desired rank $k$",
+        "Step size $\\theta$",
+        "Number of gradient steps $t_{max}$"
+      ],
+      "output": [
+        "Filled matrix $\\bm{A}$"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "stochastic", "projected-gradient", "nesterov"]
+    },
+    {
+      "id": "ASP451.4",
+      "type": "algorithm_step",
+      "parent_id": "AP451.2",
+      "step_order": 1,
+      "subclass": "initialize",
+      "name": "Sampling-size initialization",
+      "section": "4",
+      "statement": "$\\alpha\\gets|\\Omega|/(mn)$; $m_0\\gets\\min(2p,m)$; $n_0\\gets\\lfloor\\frac{k\\sqrt{nm}\\log(\\sqrt{nm})}{8m_0\\alpha}\\rfloor$; pick initial $[n_0]\\subset\\{1,\\ldots,n\\}$ and per-row $[m_0^i]\\subset\\{1,\\ldots,m\\}$; random $\\bm{S}_1$ with $\\|\\bm{S}_1\\|_2=1$; compute $\\eta_1,\\bm{G}_1=c_t(\\bm{S}_1),\\nabla c_t(\\bm{S}_1)$; $\\nabla\\tilde{\\bm{S}}_1\\gets\\bm{0}^{k\\times p}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP451.5",
+      "type": "algorithm_step",
+      "parent_id": "AP451.2",
+      "step_order": 2,
+      "subclass": "loop",
+      "name": "Stochastic Nesterov-projected gradient loop",
+      "section": "4",
+      "statement": "While $t<t_{max}$: resample $[n_t]$ and per-row $[m_t^i]$; Nesterov update $\\nabla\\tilde{\\bm{S}}_{t+1}=\\bm{G}_t+\\frac{t-1}{t+2}\\nabla\\tilde{\\bm{S}}_t$; project to tangent plane; rotate on sphere $\\bm{S}_{t+1}\\gets\\bm{S}_t\\cos\\theta+\\frac{\\overline{\\nabla\\bm{S}_{t+1}}}{\\|\\overline{\\nabla\\bm{S}_{t+1}}\\|_2}\\sin\\theta$; recompute stochastic $c_t,\\nabla c_t$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP451.6",
+      "type": "algorithm_step",
+      "parent_id": "AP451.2",
+      "step_order": 3,
+      "subclass": "return",
+      "name": "Final matrix fill",
+      "section": "4",
+      "statement": "Set $\\bm{S}^*\\gets\\bm{S}_t$; for $i=1,\\ldots,n$ compute $\\bm{a}_i\\gets\\overline{\\bm{a}}_i\\bm{B}\\bm{S}^*(\\bm{B}\\bm{S}^*\\bm{W}_i\\bm{B}\\bm{S}^{*T}\\bm{B}^T)^{-1}\\bm{S}^{*T}\\bm{B}^T$; return $\\bm{A}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "TP451.1",
+      "type": "theorem",
+      "name": "Stochastic Gradient Approximation Bound",
+      "section": "4",
+      "statement": "With probability at least $1-\\epsilon$, for any $t$ and $\\bm{S}$ with $\\|\\bm{S}\\|=1$: $|c_t(\\bm{S})-c(\\bm{S})|\\leq\\sqrt{\\frac{Ak\\log(k/\\epsilon)}{n_0}}$ and $\\|\\nabla c_t(\\bm{S})-\\nabla c(\\bm{S})\\|_2\\leq\\sqrt{\\frac{Bk\\log(k/\\epsilon)}{n_0}}$.",
+      "assumptions": [
+        "$\\bm{A}$ partially known, $\\bm{B}$ known feature matrix",
+        "$\\bm{W}_i$ as in Proposition \\ref{prop:maintheo}",
+        "$\\|\\bm{S}\\|=1$"
+      ],
+      "conclusions": [
+        "$|c_t(\\bm{S})-c(\\bm{S})|\\leq\\sqrt{Ak\\log(k/\\epsilon)/n_0}$ w.p. $\\geq1-\\epsilon$",
+        "$\\|\\nabla c_t(\\bm{S})-\\nabla c(\\bm{S})\\|_2\\leq\\sqrt{Bk\\log(k/\\epsilon)/n_0}$ w.p. $\\geq1-\\epsilon$"
+      ],
+      "origin": "external",
+      "origin_citation": "Adapted from Bertsimas & Li 2018 (interpretable matrix completion)",
+      "tags": ["concentration", "approximation"]
+    },
+    {
+      "id": "TP451.2",
+      "type": "theorem",
+      "name": "Strict-Saddle SGD Convergence",
+      "section": "4.1",
+      "statement": "If $f$ is $(\\theta,\\zeta,\\eta)$-strict saddle then SGD with stochastic gradient $\\tilde{\\nabla}f$ and Gaussian noise $\\frac{\\sigma}{\\sqrt{d}}\\bm{\\epsilon}$ converges in $O(\\poly(1/\\delta))$ iterations to a point $\\delta$-close to a local minimum, given $\\md{P}(\\|\\tilde{\\nabla}f-\\nabla f\\|>\\epsilon)\\leq e^{-\\epsilon^2/(2\\sigma^2)}$.",
+      "assumptions": [
+        "$f:\\md{R}^d\\to\\md{R}$ is $(\\theta,\\zeta,\\eta)$-strict saddle",
+        "Noise bound on stochastic gradient as stated"
+      ],
+      "conclusions": [
+        "SGD with added Gaussian perturbation reaches a $\\delta$-neighborhood of a local minimum in $O(\\poly(1/\\delta))$ iterations"
+      ],
+      "origin": "external",
+      "origin_citation": "Fang, Lin, Zhang 2019; Daneshmand et al. 2018; Ge et al. 2015",
+      "tags": ["convergence", "saddle"]
+    },
+    {
+      "id": "LP451.3",
+      "type": "lemma",
+      "name": "Gradient Orthogonality at $1/\\gamma=0$",
+      "section": "4.1",
+      "statement": "When $1/\\gamma=0$, for all $\\bm{S}$ and any sample $[n_t],[m_t]$: $\\bm{S}^T\\nabla c_t(\\bm{S})=0$.",
+      "assumptions": ["$1/\\gamma=0$"],
+      "conclusions": ["$\\bm{S}^T\\nabla c_t(\\bm{S})=0$, so the tangent-plane projection step is trivial"],
+      "origin": "paper"
+    },
+    {
+      "id": "TP451.3",
+      "type": "theorem",
+      "name": "Strict-Saddle Property and No-Spurious-Minima of $c(\\bm{S})$",
+      "section": "4.1",
+      "statement": "Under row sampling with $r=l/m>Ck/m$ (large $C$), Assumptions \\ref{ass:ripweak}-\\ref{ass:Vrestrict}, $1/\\gamma=0$, $\\bm{B}=\\bm{I}_m$: w.p. $1-O(1/n)$, $c(\\bm{S})$ is $(\\epsilon,O(\\epsilon/k),O(\\sqrt{\\epsilon}))$-strict saddle for sufficiently small $\\epsilon$, and all local minima are global.",
+      "assumptions": [
+        "Row-sampling model with $r>Ck/m$, $C$ large",
+        "Assumptions \\ref{ass:ripweak}-\\ref{ass:Vrestrict}",
+        "$1/\\gamma=0$ and $\\bm{B}=\\bm{I}_m$"
+      ],
+      "conclusions": [
+        "$c(\\bm{S})$ is $(\\epsilon,O(\\epsilon/k),O(\\sqrt{\\epsilon}))$-strict saddle w.p. $1-O(1/n)$",
+        "All local minima of $c(\\bm{S})$ are global minima"
+      ],
+      "origin": "paper",
+      "tags": ["landscape", "saddle", "global-minima"]
+    },
+    {
+      "id": "PP451.1",
+      "type": "proof",
+      "parent_id": "TP451.3",
+      "proves": "TP451.3",
+      "name": "Proof of Strict Saddle and No Spurious Minima",
+      "section": "Appendix A",
+      "statement": "Show that whenever $\\|\\nabla c(\\bm{S})\\|\\leq\\epsilon$ and $\\bm{S}$ is $\\eta$-far from a global min, $\\nabla^2 c(\\bm{S})$ has a negative eigenvalue, by constructing $\\bm{M}=\\bm{z}^T\\bm{x}$ that makes the quadratic form negative.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP451.1",
+      "type": "proof_step",
+      "parent_id": "PP451.1",
+      "step_order": 1,
+      "subclass": "setup",
+      "name": "Reduction to single negative-eigenvalue claim",
+      "section": "Appendix A",
+      "statement": "It suffices to show: for all $\\bm{S}$ with $\\|\\nabla c(\\bm{S})\\|\\leq\\epsilon$ and $\\bm{S}$ more than $\\eta$-away from any global minimum, $\\lambda_{\\min}(\\nabla^2 c(\\bm{S}))\\leq-\\zeta$ for some $\\zeta>0$. This implies both strict saddle and no-spurious-minima.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP451.2",
+      "type": "proof_step",
+      "parent_id": "PP451.1",
+      "step_order": 2,
+      "subclass": "algebraic_manipulation",
+      "name": "Hessian decomposition into four terms",
+      "section": "Appendix A",
+      "statement": "Decompose $\\bm{M}:\\nabla^2c(\\bm{S}):\\bm{M}=\\frac{2}{nm}\\sum_i(T1+T2-T3+T4)$ as in Lemma \\ref{lem:second_deriv}.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP451.3",
+      "type": "proof_step",
+      "parent_id": "PP451.1",
+      "step_order": 3,
+      "subclass": "bound_estimate",
+      "name": "Bound terms T2 and T4 via first-derivative condition",
+      "section": "Appendix A",
+      "statement": "By Lemma \\ref{lem:term_24_bound}, w.p. $\\geq1-O(1/n)$ both T2 and T4 sums are $\\leq Kr\\epsilon\\|\\bm{M}\\|^2$ for absolute constants.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP451.4",
+      "type": "proof_step",
+      "parent_id": "PP451.1",
+      "step_order": 4,
+      "subclass": "introduce_variable",
+      "name": "Construct $\\bm{M}=\\bm{z}^T\\bm{x}$",
+      "section": "Appendix A",
+      "statement": "Set $\\bm{z}^T$ as a non-zero rescaled column of $\\bm{P}_{\\bm{S}}\\bm{S}^*$ and $\\bm{x}^T$ as the small eigenvector from Lemma \\ref{lem:eigvec_existence}, with $\\|\\bm{M}\\|=1$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP451.5",
+      "type": "proof_step",
+      "parent_id": "PP451.1",
+      "step_order": 5,
+      "subclass": "bound_estimate",
+      "name": "Bound T1 (small) and T3 (large positive)",
+      "section": "Appendix A",
+      "statement": "By Lemma \\ref{lem:term_1_bound}, $T1=O(r\\epsilon)$. By Lemma \\ref{lem:term_3_bound}, $T3\\geq O(r\\eta^2/k)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP451.6",
+      "type": "proof_step",
+      "parent_id": "PP451.1",
+      "step_order": 6,
+      "subclass": "conclude",
+      "name": "Combine to negative quadratic form",
+      "section": "Appendix A",
+      "statement": "$\\bm{M}:\\nabla^2c(\\bm{S}):\\bm{M}\\leq O(r\\epsilon)+O(r\\epsilon)-O(r\\eta^2/k)+O(r\\epsilon)=-O(r\\eta^2/k)$ when $\\epsilon\\leq O(\\eta^2/k)$, giving $\\lambda_{\\min}(\\nabla^2 c(\\bm{S}))\\leq-O(r\\epsilon/k)$ for $\\eta=O(\\sqrt{\\epsilon})$.",
+      "origin": "paper"
+    },
+    {
+      "id": "LP451.4",
+      "type": "lemma",
+      "name": "First Derivative of $c(\\bm{S})$ (Appendix form)",
+      "section": "Appendix A",
+      "statement": "$\\nabla c(\\bm{S})=\\frac{1}{nm}\\sum_{i=1}^n\\bm{P}_{\\bm{S}_i}\\bm{a}_i^T\\bm{a}_i\\bm{S}_i(\\bm{S}_i^T\\bm{S}_i)^{-1}$. Each summand is orthogonal to $\\bm{S}$ since $\\bm{S}^T\\bm{P}_{\\bm{S}_i}=\\bm{0}$.",
+      "assumptions": ["$1/\\gamma=0$, $\\bm{B}=\\bm{I}_m$ form of $c(\\bm{S})$"],
+      "conclusions": ["Closed-form derivative; orthogonality to $\\bm{S}$"],
+      "origin": "paper"
+    },
+    {
+      "id": "LP451.5",
+      "type": "lemma",
+      "name": "Hessian Quadratic Form of $c(\\bm{S})$",
+      "section": "Appendix A",
+      "statement": "For $\\bm{M}\\in\\md{R}^{m\\times k}$: $\\bm{M}:\\nabla^2 c(\\bm{S}):\\bm{M}=\\frac{2}{nm}\\sum_{i=1}^n(T_1+T_2-T_3+T_4)$, where the four terms are explicit quadratic-rational expressions in $\\bm{a}_i,\\bm{S}_i,\\bm{P}_{\\bm{S}_i},\\bm{M}$.",
+      "assumptions": ["$\\bm{M}\\in\\md{R}^{m\\times k}$"],
+      "conclusions": ["Explicit Hessian-direction formula used to analyze the saddle structure"],
+      "origin": "paper"
+    },
+    {
+      "id": "LP451.6",
+      "type": "lemma",
+      "name": "Bound on Hessian Terms T2 and T4",
+      "section": "Appendix A",
+      "statement": "Under Assumptions \\ref{ass:ripweak}-\\ref{ass:Vrestrict}, $\\|\\nabla c(\\bm{S})\\|\\leq\\epsilon$, $r>Ck/m$ (large $C$): w.p. $\\geq1-O(1/n)$, the T2 and T4 sums are bounded by $Kr\\epsilon\\|\\bm{M}\\|^2$ and $Lr\\epsilon\\|\\bm{M}\\|^2$ for absolute constants $K,L$.",
+      "assumptions": [
+        "Assumptions \\ref{ass:ripweak}-\\ref{ass:Vrestrict}",
+        "$\\|\\nabla c(\\bm{S})\\|\\leq\\epsilon$",
+        "$r=l/m>Ck/m$ for sufficiently large $C$"
+      ],
+      "conclusions": [
+        "T2 sum norm $\\leq Kr\\epsilon\\|\\bm{M}\\|^2$ w.p. $\\geq 1-O(1/n)$",
+        "T4 sum norm $\\leq Lr\\epsilon\\|\\bm{M}\\|^2$ w.p. $\\geq 1-O(1/n)$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "LP451.7",
+      "type": "lemma",
+      "name": "Existence of Small-Eigenvalue Eigenvector",
+      "section": "Appendix A",
+      "statement": "Under Assumptions \\ref{ass:ripweak}-\\ref{ass:Vrestrict}, $\\|\\nabla c(\\bm{S})\\|\\leq\\epsilon$ small, and $\\min_{\\bm{R}^T\\bm{R}=\\bm{I}}\\|\\bm{S}-\\bm{S}^*\\bm{R}\\|\\geq\\eta$: $\\bm{S}^{*T}\\bm{S}(\\bm{S}^T\\bm{S})^{-1}$ has an eigenvector with eigenvalue of size $O(\\epsilon)$.",
+      "assumptions": [
+        "Assumptions \\ref{ass:ripweak}-\\ref{ass:Vrestrict}",
+        "$\\|\\nabla c(\\bm{S})\\|\\leq\\epsilon$ for $\\epsilon$ small",
+        "$\\bm{S}$ is $\\eta$-far from any rotation of $\\bm{S}^*$"
+      ],
+      "conclusions": ["$\\bm{S}^{*T}\\bm{S}(\\bm{S}^T\\bm{S})^{-1}$ has eigenvalue of magnitude $O(\\epsilon)$"],
+      "origin": "paper"
+    },
+    {
+      "id": "LP451.8",
+      "type": "lemma",
+      "name": "Bound on Hessian Term T1",
+      "section": "Appendix A",
+      "statement": "Under the same hypotheses and with $\\bm{M}=\\bm{z}^T\\bm{x}$ as constructed: w.p. $\\geq 1-O(1/n)$, $\\left\\|\\frac{1}{nm}\\sum_{i=1}^n\\bm{a}_i\\bm{S}_i(\\bm{S}_i^T\\bm{S}_i)^{-1}\\bm{M}^T\\bm{P}_{\\bm{S}_i}\\bm{M}(\\bm{S}_i^T\\bm{S}_i)^{-1}\\bm{S}_i^T\\bm{a}_i^T\\right\\|\\leq O(r\\epsilon)$.",
+      "assumptions": [
+        "Assumptions \\ref{ass:ripweak}-\\ref{ass:Vrestrict}",
+        "$\\|\\nabla c(\\bm{S})\\|\\leq\\epsilon$ small",
+        "$\\min_{\\bm{R}^T\\bm{R}=\\bm{I}}\\|\\bm{S}-\\bm{S}^*\\bm{R}\\|\\geq\\eta$",
+        "$\\bm{M}=\\bm{z}^T\\bm{x}$ as constructed"
+      ],
+      "conclusions": ["T1 norm $\\leq O(r\\epsilon)$ w.p. $\\geq 1-O(1/n)$"],
+      "origin": "paper"
+    },
+    {
+      "id": "LP451.9",
+      "type": "lemma",
+      "name": "Lower Bound on Hessian Term T3",
+      "section": "Appendix A",
+      "statement": "Under the same hypotheses and with $\\bm{M}=\\bm{z}^T\\bm{x}$: w.p. $\\geq 1-O(1/n)$, $\\frac{1}{nm}\\sum_{i=1}^n\\bm{a}_i\\bm{M}(\\bm{S}_i^T\\bm{S}_i)^{-1}\\bm{M}^T\\bm{P}_{\\bm{S}_i}\\bm{a}_i^T\\geq O(r\\eta^2/k)$.",
+      "assumptions": [
+        "Assumptions \\ref{ass:ripweak}-\\ref{ass:Vrestrict}",
+        "$\\min_{\\bm{R}^T\\bm{R}=\\bm{I}}\\|\\bm{S}^*-\\bm{S}\\bm{R}\\|\\geq\\eta$",
+        "$\\|\\nabla c(\\bm{S})\\|\\leq\\epsilon$ small",
+        "$\\bm{M}=\\bm{z}^T\\bm{x}$"
+      ],
+      "conclusions": ["T3 sum $\\geq O(r\\eta^2/k)$ w.p. $\\geq 1-O(1/n)$"],
+      "origin": "paper"
+    },
+    {
+      "id": "LP451.10",
+      "type": "lemma",
+      "name": "General Hoeffding-Type Concentration",
+      "section": "Appendix B",
+      "statement": "If $X_1,\\ldots,X_n$ are independent with $\\md{P}(|X_i-a_i|\\geq\\sigma_i\\sqrt{\\log(1/\\epsilon)})\\leq\\epsilon$, then $\\md{P}\\left(\\left|\\frac{\\sum_i(X_i-a_i)}{n}\\right|\\geq\\frac{2\\sqrt{\\sum_i\\sigma_i^2}}{n}\\sqrt{\\log(1/(4\\epsilon))}\\right)\\leq\\epsilon$.",
+      "assumptions": ["$X_i$ independent with sub-Gaussian tail $\\md{P}(|X_i-a_i|\\geq\\sigma_i\\sqrt{\\log(1/\\epsilon)})\\leq\\epsilon$"],
+      "conclusions": ["Concentration of $\\frac{1}{n}\\sum(X_i-a_i)$ at the stated rate"],
+      "origin": "external",
+      "origin_citation": "Bertsimas & Li 2018"
+    },
+    {
+      "id": "LP451.11",
+      "type": "lemma",
+      "name": "Sample-Population Inverse Deviation Bound",
+      "section": "Appendix B",
+      "statement": "Under Assumption \\ref{ass:Vrestrict}: $\\md{P}\\left(\\left\\|(\\bm{S}^T\\bm{S}/m)^{-1}-(\\bm{S}_i^T\\bm{S}_i/l)^{-1}\\right\\|\\leq\\sqrt{D\\log(1/\\epsilon)/l}\\right)\\geq1-\\epsilon$.",
+      "assumptions": ["Assumption \\ref{ass:Vrestrict}"],
+      "conclusions": ["Inverse-Gram matrix deviation bound at rate $\\sqrt{\\log(1/\\epsilon)/l}$"],
+      "origin": "paper"
+    },
+    {
+      "id": "LP451.12",
+      "type": "lemma",
+      "name": "Matrix Perturbation Inversion Inequality",
+      "section": "Appendix B",
+      "statement": "If $\\bm{A},\\bm{B}=\\bm{A}+\\bm{\\Delta}$ are invertible: $\\|\\bm{A}^{-1}-\\bm{B}^{-1}\\|\\leq\\|\\bm{A}^{-1}\\|\\|\\bm{B}^{-1}\\|\\|\\bm{\\Delta}\\|$.",
+      "assumptions": ["$\\bm{A},\\bm{B}$ invertible, $\\bm{B}=\\bm{A}+\\bm{\\Delta}$"],
+      "conclusions": ["$\\|\\bm{A}^{-1}-\\bm{B}^{-1}\\|\\leq\\|\\bm{A}^{-1}\\|\\|\\bm{B}^{-1}\\|\\|\\bm{\\Delta}\\|$"],
+      "origin": "external",
+      "origin_citation": "Stewart & Sun 1990 (matrix perturbation theory)"
+    },
+    {
+      "id": "LP451.13",
+      "type": "lemma",
+      "name": "Sample-Population Gram Matrix Deviation",
+      "section": "Appendix B",
+      "statement": "$\\md{P}\\left(\\left\\|\\bm{S}^T\\bm{S}/m-\\bm{S}_i^T\\bm{S}_i/l\\right\\|\\leq\\sqrt{C\\log(1/\\epsilon)/l}\\right)\\geq1-\\epsilon$.",
+      "conclusions": ["Gram-matrix sample-vs-population deviation $\\sim\\sqrt{\\log(1/\\epsilon)/l}$"],
+      "origin": "paper"
+    },
+    {
+      "id": "LP451.14",
+      "type": "lemma",
+      "name": "Matrix Chernoff Bound",
+      "section": "Appendix B",
+      "statement": "For $\\mathcal{X}\\subset\\md{R}^{k\\times k}$ PSD with $\\max\\lambda_{\\max}(\\bm{X})\\leq D$, sampling $\\ell$ matrices uniformly without replacement: $\\md{P}(\\lambda_{\\min}(\\sum_j\\bm{X}_j)\\leq(1-\\delta)\\mu_{\\min})\\leq k\\exp(-\\delta^2\\mu_{\\min}/(4D))$ for $\\delta\\in[0,1)$, and analogously for $\\lambda_{\\max}$.",
+      "assumptions": ["$\\mathcal{X}$ finite set of PSD $k\\times k$ matrices with bounded $\\lambda_{\\max}\\leq D$"],
+      "conclusions": ["Tail bounds on extreme eigenvalues of random PSD sums"],
+      "origin": "external",
+      "origin_citation": "Tropp 2012 (user-friendly tail bounds for matrix sums)"
+    },
+    {
+      "id": "CP451.2",
+      "type": "corollary",
+      "name": "fastImpute Per-Step Complexity (with side info)",
+      "section": "4.2",
+      "statement": "With $m_0=O(p)$ and $n_0=\\max\\{O(nk\\log n/(m_0\\alpha)),\\underline{n}\\}$, the gradient-update step of fastImpute has complexity $O\\left(\\frac{(pk+k^3)n\\log n}{\\alpha}\\right)$.",
+      "assumptions": ["Step \\ref{calc_cost} formula from Proposition \\ref{prop:complexproj}", "$m_0,n_0$ chosen as stated"],
+      "conclusions": ["fastImpute step complexity $O((pk+k^3)n\\log n/\\alpha)$ — independent of $m$"],
+      "origin": "paper",
+      "tags": ["complexity"]
+    },
+    {
+      "id": "CP451.3",
+      "type": "corollary",
+      "name": "Global Convergence under Row Sampling",
+      "section": "4.1",
+      "statement": "Under Assumptions \\ref{ass:ripweak}-\\ref{ass:Vrestrict}, $1/\\gamma=0$, $\\bm{B}=\\bm{I}_m$, row-sampling rate $r>Ck/m$ for $C$ large: fastImpute (with perturbation) outputs a point $\\delta$-close to a global minimum in $\\poly(1/\\delta)$ iterations w.p. $1-O(1/n)$.",
+      "assumptions": ["Assumptions \\ref{ass:ripweak}-\\ref{ass:Vrestrict}", "$1/\\gamma=0$, $\\bm{B}=\\bm{I}_m$", "Row-sampling with $r>Ck/m$, $C$ large"],
+      "conclusions": ["fastImpute reaches $\\delta$-neighborhood of global min in $\\poly(1/\\delta)$ steps w.p. $1-O(1/n)$"],
+      "origin": "paper",
+      "tags": ["convergence", "global"]
+    },
+    {
+      "id": "CP451.4",
+      "type": "corollary",
+      "name": "Global Convergence under Uniform (Bernoulli) Sampling",
+      "section": "4.1",
+      "statement": "Under the same setting but uniform sampling at rate $r_0>\\frac{Cnk\\log n}{mn}$: fastImpute outputs a point $\\delta$-close to a global minimum in $\\poly(1/\\delta)$ iterations w.p. $1-O(1/n)$.",
+      "assumptions": ["Assumptions \\ref{ass:ripweak}-\\ref{ass:Vrestrict}", "$1/\\gamma=0$, $\\bm{B}=\\bm{I}_m$", "Uniform sampling rate $r_0>Cnk\\log(n)/(mn)$"],
+      "conclusions": ["Same global convergence guarantee under Bernoulli sampling, gaining a $\\log n$ factor"],
+      "origin": "paper",
+      "tags": ["convergence", "sampling"]
+    },
+    {
+      "id": "CP451.5",
+      "type": "corollary",
+      "name": "fastImpute Step Complexity without Side Information",
+      "section": "6",
+      "statement": "For $m=p$ and $\\bm{B}=\\bm{I}_m$, the gradient-update step of fastImpute has complexity $O\\left(\\frac{k^3 d\\log d}{\\alpha}\\right)$ where $d=\\min\\{m,n\\}$.",
+      "assumptions": ["$m=p$, $\\bm{B}=\\bm{I}_m$ (no side info)", "$d=\\min\\{m,n\\}$"],
+      "conclusions": ["Symmetric problem yields $O(k^3 d\\log d/\\alpha)$ per step"],
+      "origin": "paper",
+      "tags": ["complexity"]
+    },
+    {
+      "id": "ExP451.1",
+      "type": "example",
+      "name": "Pathological Sparse Matrix",
+      "section": "4.1",
+      "statement": "$\\bm{A}$ with $A_{11}=1$ and all other entries $0$ cannot be recovered from sub-sampled entries unless $A_{11}$ is observed; this motivates Assumption \\ref{ass:ripweak} (no element of the decomposition is special).",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP451.2",
+      "type": "example",
+      "name": "Synthetic-Data Experiments (with side info)",
+      "section": "5.1",
+      "statement": "Generate $\\bm{A}=\\bm{U}\\bm{S}^T\\bm{B}^T$ with uniform $[0,1]$ entries and missing fraction $\\mu$; sweep $(m,n,p,k,\\mu)$; compare fastImpute vs. projImpute vs. IMC on time and MAPE.",
+      "origin": "paper",
+      "tags": ["synthetic", "benchmark"]
+    },
+    {
+      "id": "ExP451.3",
+      "type": "example",
+      "name": "Netflix Real-World Experiment (with side info)",
+      "section": "5.2",
+      "statement": "Five Netflix subsets ranging from $3{,}923\\times 103$ (Base) to $471{,}268\\times 14{,}538$ (Full), with 59 TMDB features; fastImpute beats IMC on time and MAPE at every scale (e.g. Full: 2934s vs. 7605s, MAPE 20.7\\% vs. 21.0\\%).",
+      "origin": "paper",
+      "tags": ["real-world", "benchmark"]
+    },
+    {
+      "id": "ExP451.4",
+      "type": "example",
+      "name": "Synthetic-Data Experiments (no side info)",
+      "section": "6.1",
+      "statement": "Sweep $(m,n,k,\\mu)$ comparing fastImpute against SIALS, SISVD, MFSGD, GROUSE; on large realistic combinations fastImpute is on average $\\sim$10\\% of competitors' time and reduces MAPE by 40-70\\%.",
+      "origin": "paper",
+      "tags": ["synthetic", "benchmark"]
+    },
+    {
+      "id": "ExP451.5",
+      "type": "example",
+      "name": "Netflix Real-World Experiment (no side info)",
+      "section": "6.2",
+      "statement": "Same five Netflix subsets without features; fastImpute beats SIALS at every scale (e.g. Full: 2098s vs. 38256s, MAPE 13.8\\% vs. 20.1\\%).",
+      "origin": "paper",
+      "tags": ["real-world", "benchmark"]
+    },
+    {
+      "id": "AP451.3",
+      "type": "algorithm",
+      "name": "IMC (Inductive Matrix Completion)",
+      "section": "5.1 (cited)",
+      "statement": "Benchmark inductive matrix completion algorithm with regularization parameter $\\lambda$ tuned per problem; used as the comparison baseline for fastImpute with side information.",
+      "origin": "external",
+      "origin_citation": "Natarajan & Dhillon 2014"
+    },
+    {
+      "id": "AP451.4",
+      "type": "algorithm",
+      "name": "softImpute-ALS (SIALS)",
+      "section": "6.1 (cited)",
+      "statement": "Alternating least squares matrix completion baseline with spectral regularization, recognized as a state-of-the-art scalable method.",
+      "origin": "external",
+      "origin_citation": "Hastie, Mazumder, Lee, Zadeh 2015"
+    },
+    {
+      "id": "AP451.5",
+      "type": "algorithm",
+      "name": "softImpute-SVD (SISVD)",
+      "section": "6.1 (cited)",
+      "statement": "Original softImpute algorithm using truncated SVDs and spectral regularization.",
+      "origin": "external",
+      "origin_citation": "Mazumder, Hastie, Tibshirani 2010"
+    },
+    {
+      "id": "AP451.6",
+      "type": "algorithm",
+      "name": "Matrix Factorization SGD (MFSGD)",
+      "section": "6.1 (cited)",
+      "statement": "Stochastic gradient descent on the factorization $\\bm{A}=\\bm{U}\\bm{V}$ with separate updates for $\\bm{U}$ and $\\bm{V}$.",
+      "origin": "external",
+      "origin_citation": "Jin, Kakade, Netrapalli 2016 (Fancyimpute implementation)"
+    },
+    {
+      "id": "AP451.7",
+      "type": "algorithm",
+      "name": "GROUSE",
+      "section": "6.1 (cited)",
+      "statement": "Online matrix completion via sequential gradient updates on the Grassmann manifold.",
+      "origin": "external",
+      "origin_citation": "Balzano, Nowak, Recht 2010"
+    },
+    {
+      "id": "RP451.1",
+      "type": "remark",
+      "name": "Necessity of Regularization",
+      "section": "4.1",
+      "statement": "Tikhonov regularization is needed (a) for robustness when $\\bm{A}$ is not exactly low-rank and (b) when row $\\bm{a}_i$ has fewer than $k$ known entries so that $\\bm{S}^T\\bm{W}_i\\bm{S}$ is singular.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP451.2",
+      "type": "remark",
+      "name": "General Matrix Completion as Special Case",
+      "section": "2",
+      "statement": "Setting $p=m$ and $\\bm{B}=\\bm{I}_m$ in the side-information formulation reduces it to the standard low-rank matrix completion problem with no features.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP451.3",
+      "type": "remark",
+      "name": "Row vs. Uniform Sampling Equivalence",
+      "section": "4.1",
+      "statement": "Convergence under row-sampling rate $r$ implies convergence under uniform (Bernoulli) sampling rate $r_0=O(\\log n)\\,r$, with the $\\log n$ factor arising from a coupon-collector argument (Cand\\`es, Recht; Gross).",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "LP451.1", "target": "PrP451.1", "type": "uses"},
+    {"source": "DP451.1", "target": "PrP451.1", "type": "defines"},
+    {"source": "DP451.2", "target": "PrP451.1", "type": "defines"},
+    {"source": "PrP451.1", "target": "LP451.2", "type": "uses"},
+    {"source": "PrP451.1", "target": "AP451.1", "type": "uses"},
+    {"source": "LP451.2", "target": "AP451.1", "type": "uses"},
+    {"source": "AP451.1", "target": "ProbP451.2", "type": "solves"},
+    {"source": "AP451.1", "target": "ProbP451.1", "type": "solves"},
+    {"source": "PrP451.1", "target": "PrP451.2", "type": "uses"},
+    {"source": "PrP451.2", "target": "CP451.1", "type": "uses"},
+    {"source": "AP451.1", "target": "AP451.2", "type": "specializes"},
+    {"source": "AP451.2", "target": "ProbP451.2", "type": "solves"},
+    {"source": "AP451.2", "target": "ProbP451.1", "type": "solves"},
+    {"source": "LP451.2", "target": "AP451.2", "type": "uses"},
+    {"source": "LP451.2", "target": "TP451.1", "type": "uses"},
+    {"source": "TP451.1", "target": "AP451.2", "type": "uses"},
+    {"source": "DP451.4", "target": "TP451.2", "type": "defines"},
+    {"source": "DP451.4", "target": "TP451.3", "type": "defines"},
+    {"source": "DP451.5", "target": "TP451.3", "type": "defines"},
+    {"source": "DP451.3", "target": "AssumP451.1", "type": "defines"},
+    {"source": "DP451.3", "target": "AssumP451.2", "type": "defines"},
+    {"source": "DP451.6", "target": "LP451.4", "type": "defines"},
+    {"source": "DP451.6", "target": "LP451.5", "type": "defines"},
+    {"source": "AssumP451.1", "target": "TP451.3", "type": "uses"},
+    {"source": "AssumP451.2", "target": "TP451.3", "type": "uses"},
+    {"source": "LP451.3", "target": "TP451.3", "type": "uses"},
+    {"source": "TP451.1", "target": "TP451.2", "type": "uses"},
+    {"source": "TP451.3", "target": "CP451.3", "type": "uses"},
+    {"source": "TP451.2", "target": "CP451.3", "type": "uses"},
+    {"source": "CP451.3", "target": "CP451.4", "type": "uses"},
+    {"source": "TP451.1", "target": "CP451.2", "type": "uses"},
+    {"source": "PrP451.2", "target": "CP451.2", "type": "uses"},
+    {"source": "CP451.2", "target": "CP451.5", "type": "specializes"},
+    {"source": "PP451.1", "target": "TP451.3", "type": "proves"},
+    {"source": "LP451.4", "target": "PP451.1", "type": "uses"},
+    {"source": "LP451.5", "target": "PP451.1", "type": "uses"},
+    {"source": "LP451.6", "target": "PP451.1", "type": "uses"},
+    {"source": "LP451.7", "target": "PP451.1", "type": "uses"},
+    {"source": "LP451.8", "target": "PP451.1", "type": "uses"},
+    {"source": "LP451.9", "target": "PP451.1", "type": "uses"},
+    {"source": "LP451.4", "target": "LP451.6", "type": "uses"},
+    {"source": "LP451.4", "target": "LP451.7", "type": "uses"},
+    {"source": "LP451.7", "target": "LP451.8", "type": "uses"},
+    {"source": "LP451.6", "target": "LP451.8", "type": "uses"},
+    {"source": "LP451.6", "target": "LP451.9", "type": "uses"},
+    {"source": "LP451.10", "target": "LP451.6", "type": "uses"},
+    {"source": "LP451.11", "target": "LP451.6", "type": "uses"},
+    {"source": "LP451.12", "target": "LP451.11", "type": "uses"},
+    {"source": "LP451.13", "target": "LP451.11", "type": "uses"},
+    {"source": "LP451.14", "target": "LP451.13", "type": "uses"},
+    {"source": "PSP451.1", "target": "PSP451.2", "type": "uses"},
+    {"source": "PSP451.2", "target": "PSP451.3", "type": "uses"},
+    {"source": "PSP451.2", "target": "PSP451.4", "type": "uses"},
+    {"source": "PSP451.4", "target": "PSP451.5", "type": "uses"},
+    {"source": "PSP451.3", "target": "PSP451.6", "type": "uses"},
+    {"source": "PSP451.5", "target": "PSP451.6", "type": "uses"},
+    {"source": "ExP451.1", "target": "AssumP451.1", "type": "illustrates"},
+    {"source": "AP451.2", "target": "ExP451.2", "type": "illustrates"},
+    {"source": "AP451.2", "target": "ExP451.3", "type": "illustrates"},
+    {"source": "AP451.2", "target": "ExP451.4", "type": "illustrates"},
+    {"source": "AP451.2", "target": "ExP451.5", "type": "illustrates"},
+    {"source": "AP451.1", "target": "ExP451.2", "type": "illustrates"},
+    {"source": "AP451.3", "target": "ExP451.2", "type": "illustrates"},
+    {"source": "AP451.3", "target": "ExP451.3", "type": "illustrates"},
+    {"source": "AP451.4", "target": "ExP451.4", "type": "illustrates"},
+    {"source": "AP451.4", "target": "ExP451.5", "type": "illustrates"},
+    {"source": "AP451.5", "target": "ExP451.4", "type": "illustrates"},
+    {"source": "AP451.6", "target": "ExP451.4", "type": "illustrates"},
+    {"source": "AP451.7", "target": "ExP451.4", "type": "illustrates"}
+  ]
+}

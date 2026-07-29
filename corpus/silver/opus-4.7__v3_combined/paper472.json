@@ -1,0 +1,742 @@
+{
+  "metadata": {
+    "title": "Graph Sparsification by Effective Resistances",
+    "paper_num": 472,
+    "authors": "Daniel A. Spielman, Nikhil Srivastava",
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "ProbP472.1",
+      "type": "problem",
+      "subclass": "approximation",
+      "name": "Spectral Sparsification Problem",
+      "section": "1 Introduction",
+      "statement": "Given a weighted graph $G=(V,E,w)$ and $\\epsilon>0$, produce a weighted subgraph $H=(V,\\tilde{E},\\tilde{w})$ with $|\\tilde{E}|=O(n\\log n/\\epsilon^2)$ such that $(1-\\epsilon)\\sum_{uv\\in E}(x(u)-x(v))^2 w_{uv}\\le \\sum_{uv\\in \\tilde{E}}(x(u)-x(v))^2\\tilde{w}_{uv}\\le(1+\\epsilon)\\sum_{uv\\in E}(x(u)-x(v))^2 w_{uv}$ for all $x\\in\\R^V$.",
+      "statement_clean": "Approximate a weighted graph by a sparse subgraph that preserves quadratic forms of the Laplacian to within a $(1\\pm\\epsilon)$ factor for all vectors.",
+      "origin": "paper",
+      "tags": ["approximation", "graph-sparsification"]
+    },
+    {
+      "id": "DP472.1",
+      "type": "definition",
+      "name": "Signed Edge-Vertex Incidence Matrix",
+      "section": "2.1 Preliminaries",
+      "statement": "$B_{m\\times n}$ defined by $B(e,v)=1$ if $v$ is $e$'s head, $-1$ if $v$ is $e$'s tail, $0$ otherwise. Then $L=B^TWB$ where $W(e,e)=w_e$.",
+      "statement_clean": "The signed edge-vertex incidence matrix encodes edge orientations and yields the Laplacian as $L=B^TWB$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP472.2",
+      "type": "definition",
+      "name": "Laplacian of a Weighted Graph",
+      "section": "1 Introduction",
+      "statement": "$L=D-A$, where $A$ is the weighted adjacency matrix $(a_{ij})=w_{ij}$ and $D$ is the diagonal matrix $(d_{ii})=\\sum_{j\\ne i}w_{ij}$. Equivalently $x^TLx=\\sum_{uv\\in E}(x(u)-x(v))^2 w_{uv}$.",
+      "statement_clean": "The graph Laplacian is the difference of the degree matrix and the weighted adjacency matrix.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP472.3",
+      "type": "definition",
+      "name": "Moore-Penrose Pseudoinverse of $L$",
+      "section": "2.2 The Pseudoinverse",
+      "statement": "$L^{+}=\\sum_{i=1}^{n-1}\\frac{1}{\\lambda_i}u_i u_i^T$, where $\\lambda_i, u_i$ are nonzero eigenvalues and corresponding eigenvectors of $L$. Then $LL^{+}=L^{+}L$ is the projection onto $\\mathrm{span}(\\mathbf{1})^{\\perp}$.",
+      "statement_clean": "The Moore-Penrose pseudoinverse of the Laplacian inverts on the non-kernel eigenspace.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP472.4",
+      "type": "definition",
+      "name": "Effective Resistance",
+      "section": "2.3 Electrical Flows",
+      "statement": "The effective resistance $R_{uv}$ between vertices $u,v$ is the potential difference induced when a unit current is injected at one and extracted at the other; equivalently $R_{uv}=(\\chi_u-\\chi_v)^T L^{+}(\\chi_u-\\chi_v)$, and across an edge $e$, $R_e=b_e L^{+} b_e^T$.",
+      "statement_clean": "Effective resistance is the potential difference under unit current flow; algebraically a quadratic form in the Laplacian pseudoinverse.",
+      "origin": "paper",
+      "tags": ["electrical-network"]
+    },
+    {
+      "id": "DP472.5",
+      "type": "definition",
+      "name": "Projection Matrix $\\Pi$",
+      "section": "3 The Main Result",
+      "statement": "$\\Pi = W^{1/2} B L^{+} B^T W^{1/2}$. Diagonal entries are $\\Pi(e,e)=w_e R_e$.",
+      "statement_clean": "The matrix $\\Pi$ encodes effective resistances on its diagonal and is the projection onto $W^{1/2}\\mathbb{B}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP472.6",
+      "type": "definition",
+      "name": "Sampling-Outcome Diagonal Matrix $S$",
+      "section": "3 The Main Result",
+      "statement": "$S(e,e)=\\tilde{w}_e/w_e=(\\#\\text{ of times $e$ is sampled})/(qp_e)$, so that $\\tilde{L}=B^TW^{1/2}SW^{1/2}B$ and $\\E S=I$, $\\E\\tilde{L}=L$.",
+      "statement_clean": "The random diagonal matrix $S$ encodes how often each edge is sampled by Sparsify, with $\\E S=I$.",
+      "origin": "paper"
+    },
+    {
+      "id": "AP472.1",
+      "type": "algorithm",
+      "subclass": "randomized",
+      "name": "Sparsify",
+      "section": "1 Introduction",
+      "statement": "Randomized sampling algorithm that builds $H$ by drawing $q$ independent edges of $G$ with probability $p_e\\propto w_e R_e$ and assigning weight $w_e/(q p_e)$ to each chosen edge.",
+      "input": [
+        "Weighted graph $G=(V,E,w)$",
+        "Sampling count $q$",
+        "Effective resistances $R_e$ (or approximations)"
+      ],
+      "output": [
+        "Weighted subgraph $H=(V,\\tilde{E},\\tilde{w})$ with $|\\tilde{E}|=O(n\\log n/\\epsilon^2)$",
+        "Sparsifier Laplacian $\\tilde{L}$ approximating $L$ in quadratic form"
+      ],
+      "origin": "paper",
+      "tags": ["randomized", "sampling"]
+    },
+    {
+      "id": "AP472.2",
+      "type": "algorithm",
+      "subclass": "approximation",
+      "name": "Approximate-Effective-Resistance Construction (build $\\widetilde{Z}$)",
+      "section": "4 Computing Approximate Resistances Quickly",
+      "statement": "Builds a $(24\\log n/\\epsilon^2)\\times n$ matrix $\\widetilde{Z}$ via Johnson-Lindenstrauss projection composed with $W^{1/2}BL^{+}$, computed approximately by repeated linear-system solves.",
+      "input": [
+        "Weighted graph $G=(V,E,w)$",
+        "Error parameter $\\epsilon>0$",
+        "Weight ratio $r=w_{max}/w_{min}$"
+      ],
+      "output": [
+        "Matrix $\\widetilde{Z}$ such that $\\|\\widetilde{Z}(\\chi_u-\\chi_v)\\|^2\\approx R_{uv}$",
+        "Allows $O(\\log n/\\epsilon^2)$-time queries of approximate effective resistance"
+      ],
+      "origin": "paper",
+      "tags": ["dimensionality-reduction", "linear-system-solve"]
+    },
+    {
+      "id": "ASP472.1",
+      "type": "algorithm_step",
+      "parent_id": "AP472.2",
+      "step_order": 1,
+      "subclass": "initialize",
+      "name": "Sample JL projection matrix $Q$",
+      "statement": "Let $Q$ be a random $\\pm 1/\\sqrt{k}$ matrix of dimension $k\\times n$ with $k=24\\log n/\\epsilon^2$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP472.2",
+      "type": "algorithm_step",
+      "parent_id": "AP472.2",
+      "step_order": 2,
+      "subclass": "update",
+      "name": "Compute $Y=QW^{1/2}B$",
+      "statement": "Multiply $Q$ by $W^{1/2}B$; takes $\\widetilde{O}(m/\\epsilon^2)$ time since $B$ has $2m$ entries and $W^{1/2}$ is diagonal.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP472.3",
+      "type": "algorithm_step",
+      "parent_id": "AP472.2",
+      "step_order": 3,
+      "subclass": "loop",
+      "name": "Solve for each row using STSolve",
+      "statement": "For each row $y_i$ of $Y$ ($1\\le i\\le k$), compute $\\tilde{z}_i=\\mathtt{STSolve}(L,y_i,\\delta)$ with $\\delta=\\frac{\\epsilon}{3}\\sqrt{\\frac{2(1-\\epsilon)w_{min}}{(1+\\epsilon)n^3 w_{max}}}$; assemble rows into $\\widetilde{Z}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "TP472.1",
+      "type": "theorem",
+      "name": "Main Theorem (Spectral Sparsification by Effective Resistance)",
+      "section": "1 Introduction / 3 The Main Result",
+      "statement": "If $q=9C^2 n\\log n/\\epsilon^2$ where $C$ is the constant of Lemma \\ref{lemrud}, and $n$ is sufficiently large, then with probability $\\ge 1/2$, $\\forall x\\in\\R^n$: $(1-\\epsilon)x^TLx\\le x^T\\tilde{L}x\\le (1+\\epsilon)x^TLx$.",
+      "assumptions": [
+        "$G$ a weighted graph with Laplacian $L$",
+        "$H=\\mathbf{Sparsify}(G,q)$ with Laplacian $\\tilde{L}$",
+        "$1/\\sqrt{n}<\\epsilon\\le 1$",
+        "$q=9C^2 n\\log n/\\epsilon^2$",
+        "$n$ sufficiently large"
+      ],
+      "conclusions": [
+        "With probability $\\ge 1/2$, $\\forall x\\in\\R^n$: $(1-\\epsilon)x^TLx\\le x^T\\tilde{L}x\\le (1+\\epsilon)x^TLx$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "spectral", "high-probability"]
+    },
+    {
+      "id": "TP472.2",
+      "type": "theorem",
+      "name": "Fast Effective-Resistance Approximation",
+      "section": "1 Introduction / 4 Computing Approximate Resistances Quickly",
+      "statement": "There is an $\\widetilde{O}(m(\\log r)/\\epsilon^2)$-time algorithm that, given $\\epsilon>0$ and $G=(V,E,w)$ with $r=w_{max}/w_{min}$, computes a $(24\\log n/\\epsilon^2)\\times n$ matrix $\\widetilde{Z}$ such that with probability $\\ge 1-1/n$: $(1-\\epsilon)R_{uv}\\le\\|\\widetilde{Z}(\\chi_u-\\chi_v)\\|^2\\le (1+\\epsilon)R_{uv}$ for every $u,v\\in V$.",
+      "assumptions": [
+        "$G=(V,E,w)$ connected weighted graph",
+        "$\\epsilon>0$",
+        "$r=w_{max}/w_{min}$"
+      ],
+      "conclusions": [
+        "Algorithm runs in $\\widetilde{O}(m(\\log r)/\\epsilon^2)$ time",
+        "With probability $\\ge 1-1/n$, $(1-\\epsilon)R_{uv}\\le\\|\\widetilde{Z}(\\chi_u-\\chi_v)\\|^2\\le(1+\\epsilon)R_{uv}$ for all $u,v\\in V$"
+      ],
+      "origin": "paper",
+      "tags": ["complexity", "high-probability"]
+    },
+    {
+      "id": "TP472.3",
+      "type": "theorem",
+      "name": "Sparsifier with Bounded-Edge-Weight-Blowup Property",
+      "section": "5 An Additional Property",
+      "statement": "There is an $\\widetilde{O}(m/\\epsilon^2)$-time algorithm which on input $G=(V,E,w),\\epsilon>0$ produces $H=(V,\\tilde{E},\\tilde{w})$ with $O(n\\log n/\\epsilon^2)$ edges that, with probability $\\ge 1/2$, satisfies both the spectral guarantee (\\ref{xtlx}) and the bound $\\sum_{e\\ni v}\\tilde{w}_e/w_e\\le 2\\deg(v)$ for all $v$.",
+      "assumptions": [
+        "$G=(V,E,w)$ weighted graph",
+        "$\\epsilon>0$"
+      ],
+      "conclusions": [
+        "There exists an $\\widetilde{O}(m/\\epsilon^2)$-time algorithm",
+        "Output $H$ has $O(n\\log n/\\epsilon^2)$ edges",
+        "With probability $\\ge 1/2$, $H$ satisfies both the spectral approximation and the per-vertex weight-blowup bound"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "spectral", "complexity"]
+    },
+    {
+      "id": "TP472.4",
+      "type": "theorem",
+      "name": "Spielman-Teng Linear System Solver",
+      "section": "4 (cited)",
+      "statement": "There is an algorithm $x=\\mathtt{STSolve}(L,y,\\delta)$ that, given a Laplacian $L$, vector $y$, and error parameter $\\delta>0$, returns $x$ with $\\|x-L^{+}y\\|_L\\le \\delta\\|L^{+}y\\|_L$ in expected time $\\widetilde{O}(m\\log(1/\\delta))$.",
+      "assumptions": [
+        "$L$ a Laplacian matrix with $m$ nonzero entries",
+        "$y$ a column vector",
+        "$\\delta>0$"
+      ],
+      "conclusions": [
+        "Output $x$ satisfies $\\|x-L^{+}y\\|_L\\le \\delta\\|L^{+}y\\|_L$",
+        "Expected runtime $\\widetilde{O}(m\\log(1/\\delta))$"
+      ],
+      "origin": "external",
+      "origin_citation": "Spielman & Teng (st04, st06)"
+    },
+    {
+      "id": "LP472.1",
+      "type": "lemma",
+      "name": "Projection Matrix Lemma",
+      "section": "3 The Main Result",
+      "statement": "(i) $\\Pi$ is a projection matrix; (ii) $\\im(\\Pi)=\\im(W^{1/2}B)=W^{1/2}\\mathbb{B}$; (iii) eigenvalues of $\\Pi$ are $1$ with multiplicity $n-1$ and $0$ with multiplicity $m-n+1$; (iv) $\\Pi(e,e)=\\|\\Pi(\\cdot,e)\\|^2$.",
+      "assumptions": [
+        "$\\Pi=W^{1/2}BL^{+}B^TW^{1/2}$",
+        "$G$ connected weighted graph"
+      ],
+      "conclusions": [
+        "$\\Pi^2=\\Pi$ (projection)",
+        "$\\im(\\Pi)=W^{1/2}\\mathbb{B}$",
+        "Eigenvalues are $1$ (mult $n-1$) and $0$ (mult $m-n+1$)",
+        "$\\Pi(e,e)=\\|\\Pi(\\cdot,e)\\|^2$"
+      ],
+      "origin": "paper",
+      "tags": ["spectral", "projection"]
+    },
+    {
+      "id": "LP472.2",
+      "type": "lemma",
+      "name": "Reduction to Spectral Approximation of $\\Pi$",
+      "section": "3 The Main Result",
+      "statement": "If $S$ is nonnegative diagonal with $\\|\\Pi S\\Pi - \\Pi\\Pi\\|_2\\le\\epsilon$, then $\\forall x\\in\\R^n$: $(1-\\epsilon)x^TLx\\le x^T\\tilde{L}x\\le (1+\\epsilon)x^TLx$, where $L=B^TWB$ and $\\tilde{L}=B^TW^{1/2}SW^{1/2}B$.",
+      "assumptions": [
+        "$S$ nonnegative diagonal $m\\times m$ matrix",
+        "$\\|\\Pi S\\Pi-\\Pi\\Pi\\|_2\\le\\epsilon$"
+      ],
+      "conclusions": [
+        "$\\forall x\\in\\R^n$: $(1-\\epsilon)x^TLx\\le x^T\\tilde{L}x\\le(1+\\epsilon)x^TLx$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "reduction"]
+    },
+    {
+      "id": "LP472.3",
+      "type": "lemma",
+      "name": "Rudelson-Vershynin Concentration Inequality",
+      "section": "3 (cited)",
+      "statement": "Let $\\mathbf{p}$ be a probability distribution on $\\Omega\\subseteq\\R^d$ with $\\sup_{y\\in\\Omega}\\|y\\|_2\\le M$ and $\\|\\E_{\\mathbf{p}}yy^T\\|_2\\le 1$. For independent samples $y_1,\\ldots,y_q$: $\\E\\|\\frac{1}{q}\\sum_{i=1}^q y_iy_i^T-\\E yy^T\\|_2\\le \\min(CM\\sqrt{\\log q/q},1)$ for an absolute constant $C$.",
+      "assumptions": [
+        "Probability distribution $\\mathbf{p}$ on $\\Omega\\subseteq\\R^d$",
+        "$\\sup_{y\\in\\Omega}\\|y\\|_2\\le M$",
+        "$\\|\\E_{\\mathbf{p}}yy^T\\|_2\\le 1$",
+        "$y_1,\\ldots,y_q$ i.i.d. from $\\mathbf{p}$"
+      ],
+      "conclusions": [
+        "$\\E\\|\\frac{1}{q}\\sum_i y_iy_i^T-\\E yy^T\\|_2\\le \\min(CM\\sqrt{\\log q/q},1)$"
+      ],
+      "origin": "external",
+      "origin_citation": "Rudelson & Vershynin, J. ACM 2007 (Thm 3.1)",
+      "tags": ["concentration", "high-probability"]
+    },
+    {
+      "id": "LP472.4",
+      "type": "lemma",
+      "name": "Johnson-Lindenstrauss Lemma (Achlioptas form)",
+      "section": "4 (cited)",
+      "statement": "Given fixed vectors $v_1,\\ldots,v_n\\in\\R^d$ and $\\epsilon>0$, let $Q_{k\\times d}$ be a random $\\pm 1/\\sqrt{k}$ matrix with $k\\ge 24\\log n/\\epsilon^2$. Then with probability $\\ge 1-1/n$: $(1-\\epsilon)\\|v_i-v_j\\|_2^2\\le \\|Qv_i-Qv_j\\|_2^2\\le (1+\\epsilon)\\|v_i-v_j\\|_2^2$ for all $i,j\\le n$.",
+      "assumptions": [
+        "Fixed vectors $v_1,\\ldots,v_n\\in\\R^d$",
+        "$\\epsilon>0$",
+        "$Q$ random $\\pm 1/\\sqrt{k}$ matrix with $k\\ge 24\\log n/\\epsilon^2$"
+      ],
+      "conclusions": [
+        "With probability $\\ge 1-1/n$, all pairwise squared distances are preserved within factor $(1\\pm\\epsilon)$"
+      ],
+      "origin": "external",
+      "origin_citation": "Achlioptas, PODS 2001 / Johnson-Lindenstrauss 1984",
+      "tags": ["dimensionality-reduction", "concentration"]
+    },
+    {
+      "id": "LP472.5",
+      "type": "lemma",
+      "name": "STSolve-Error to Effective-Resistance-Error Bound",
+      "section": "4 Computing Approximate Resistances Quickly",
+      "statement": "If $(1-\\epsilon)R_{uv}\\le\\|Z(\\chi_u-\\chi_v)\\|^2\\le (1+\\epsilon)R_{uv}$ for all $u,v$, and $\\|z_i-\\tilde{z}_i\\|_L\\le\\delta\\|z_i\\|_L$ for all $i$ with $\\delta\\le\\frac{\\epsilon}{3}\\sqrt{\\frac{2(1-\\epsilon)w_{min}}{(1+\\epsilon)n^3 w_{max}}}$, then $(1-\\epsilon)^2 R_{uv}\\le\\|\\widetilde{Z}(\\chi_u-\\chi_v)\\|^2\\le (1+\\epsilon)^2 R_{uv}$ for every $uv$.",
+      "assumptions": [
+        "$Z$ already a $(1\\pm\\epsilon)$-approximation of resistances on all pairs",
+        "Row-wise STSolve error bound $\\|z_i-\\tilde{z}_i\\|_L\\le\\delta\\|z_i\\|_L$",
+        "$\\delta\\le\\frac{\\epsilon}{3}\\sqrt{\\frac{2(1-\\epsilon)w_{min}}{(1+\\epsilon)n^3 w_{max}}}$"
+      ],
+      "conclusions": [
+        "$(1-\\epsilon)^2 R_{uv}\\le\\|\\widetilde{Z}(\\chi_u-\\chi_v)\\|^2\\le (1+\\epsilon)^2 R_{uv}$ for all $u,v$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "approximation"]
+    },
+    {
+      "id": "LP472.6",
+      "type": "lemma",
+      "name": "Bounded Edge-Weight Blowup Lemma",
+      "section": "5 An Additional Property",
+      "statement": "If we sample $q>4n\\log n/\\beta$ edges of $G$ in $\\mathbf{Sparsify}$ with $p_{(u,v)}\\ge\\beta/(n\\min(\\deg(u),\\deg(v)))$ for some $0<\\beta<1$, then with probability $\\ge 1-1/n$: $\\sum_{e\\ni v}\\tilde{w}_e/w_e\\le 2\\deg(v)$ for all $v\\in V$.",
+      "assumptions": [
+        "Sample count $q>4n\\log n/\\beta$",
+        "$p_{(u,v)}\\ge\\beta/(n\\min(\\deg(u),\\deg(v)))$",
+        "$0<\\beta<1$"
+      ],
+      "conclusions": [
+        "With probability $\\ge 1-1/n$, $\\sum_{e\\ni v}\\tilde{w}_e/w_e\\le 2\\deg(v)$ for all $v\\in V$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "concentration", "high-probability"]
+    },
+    {
+      "id": "CP472.1",
+      "type": "corollary",
+      "name": "Sparsifier Robustness to Approximate Resistances",
+      "section": "3 The Main Result",
+      "statement": "If $Z_e\\ge R_e/\\alpha$ and $\\sum_e w_eZ_e\\le \\alpha\\sum_e w_eR_e$ for $\\alpha\\ge 1$, and we sample with $p_e'=w_eZ_e/\\sum_e w_eZ_e$, then with probability $\\ge 1/2$: $(1-\\epsilon\\alpha)x^T\\tilde{L}x\\le x^TLx\\le(1+\\epsilon\\alpha)x^T\\tilde{L}x$ for all $x\\in\\R^n$.",
+      "assumptions": [
+        "Numbers $Z_e\\ge R_e/\\alpha$ for some $\\alpha\\ge 1$",
+        "$\\sum_e w_eZ_e\\le\\alpha\\sum_e w_eR_e$",
+        "Sampling probabilities $p_e'=w_eZ_e/\\sum_e w_eZ_e$"
+      ],
+      "conclusions": [
+        "With probability $\\ge 1/2$, $(1-\\epsilon\\alpha)x^T\\tilde{L}x\\le x^TLx\\le(1+\\epsilon\\alpha)x^T\\tilde{L}x$ for all $x\\in\\R^n$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "robustness"]
+    },
+    {
+      "id": "PrP472.1",
+      "type": "proposition",
+      "name": "Lower Bound on Effective Resistance",
+      "section": "4 Computing Approximate Resistances Quickly",
+      "statement": "If $G=(V,E,w)$ is a connected graph, then for all $u,v\\in V$: $R_{uv}\\ge\\frac{2}{n w_{max}}$.",
+      "assumptions": [
+        "$G=(V,E,w)$ connected weighted graph"
+      ],
+      "conclusions": [
+        "$R_{uv}\\ge \\frac{2}{n w_{max}}$ for all $u,v\\in V$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "PP472.1",
+      "type": "proof",
+      "name": "Proof of Projection Matrix Lemma",
+      "section": "3 The Main Result",
+      "parent_id": "LP472.1",
+      "proves": "LP472.1",
+      "statement": "Direct algebraic manipulation using $L=B^TWB$ and the identity $L^{+}L=$ projection onto $\\im(L^{+})$, combined with rank counting.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP472.1",
+      "type": "proof_step",
+      "parent_id": "PP472.1",
+      "step_order": 1,
+      "subclass": "algebraic_manipulation",
+      "name": "Show $\\Pi^2=\\Pi$",
+      "statement": "Expand $\\Pi^2=W^{1/2}BL^{+}(B^TWB)L^{+}B^TW^{1/2}=W^{1/2}BL^{+}LL^{+}B^TW^{1/2}=\\Pi$ using $L=B^TWB$ and $L^{+}L$ being the identity on $\\im(L^{+})$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP472.2",
+      "type": "proof_step",
+      "parent_id": "PP472.1",
+      "step_order": 2,
+      "subclass": "algebraic_manipulation",
+      "name": "Identify $\\im(\\Pi)$ with $\\im(W^{1/2}B)$",
+      "statement": "One inclusion follows from $\\Pi=W^{1/2}B(\\cdot)$. The reverse inclusion follows by taking $y=W^{1/2}Bx$ with $x\\perp\\ker(L)$ and computing $\\Pi y=y$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP472.3",
+      "type": "proof_step",
+      "parent_id": "PP472.1",
+      "step_order": 3,
+      "subclass": "conclude",
+      "name": "Eigenvalue counting",
+      "statement": "Since $\\dim\\im(W^{1/2}B)=n-1$ and $\\Pi^2=\\Pi$, eigenvalues are $0/1$ with multiplicities $m-n+1$ and $n-1$. Part (iv) follows from symmetry.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP472.2",
+      "type": "proof",
+      "name": "Proof of Reduction Lemma",
+      "section": "3 The Main Result",
+      "parent_id": "LP472.2",
+      "proves": "LP472.2",
+      "statement": "Restrict the spectral-norm bound to $\\im(W^{1/2}B)$ where $\\Pi$ acts as identity, parametrize $y=W^{1/2}Bx$, and reduce to the Laplacian quadratic form.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP472.3",
+      "type": "proof",
+      "name": "Proof of Main Theorem",
+      "section": "3 The Main Result",
+      "parent_id": "TP472.1",
+      "proves": "TP472.1",
+      "statement": "Express $\\Pi S\\Pi$ as a sum of i.i.d. rank-1 outer products, apply Rudelson-Vershynin to bound the spectral norm of the deviation, then invoke Markov's inequality and Lemma LP472.2.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP472.4",
+      "type": "proof_step",
+      "parent_id": "PP472.3",
+      "step_order": 1,
+      "subclass": "setup",
+      "name": "Identify sampling distribution",
+      "statement": "Since $\\sum_e w_e R_e=\\mathrm{Tr}(\\Pi)=n-1$ by Lemma \\ref{lempi}.(iii), $p_e=w_eR_e/(n-1)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP472.5",
+      "type": "proof_step",
+      "parent_id": "PP472.3",
+      "step_order": 2,
+      "subclass": "introduce_variable",
+      "name": "Rewrite $\\Pi S\\Pi$ as sum of rank-1 outer products",
+      "statement": "$\\Pi S\\Pi=\\frac{1}{q}\\sum_{i=1}^q y_iy_i^T$ with $y=\\Pi(\\cdot,e)/\\sqrt{p_e}$ drawn with probability $p_e$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP472.6",
+      "type": "proof_step",
+      "parent_id": "PP472.3",
+      "step_order": 3,
+      "subclass": "bound_estimate",
+      "name": "Bound moments of $y$",
+      "statement": "$\\E yy^T=\\Pi$, so $\\|\\E yy^T\\|_2=1$; norm bound $\\|y\\|_2=\\sqrt{n-1}$ via $\\Pi(e,e)=w_e R_e$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP472.7",
+      "type": "proof_step",
+      "parent_id": "PP472.3",
+      "step_order": 4,
+      "subclass": "apply_lemma",
+      "name": "Apply Rudelson-Vershynin",
+      "statement": "With $q=9C^2 n\\log n/\\epsilon^2$, $\\E\\|\\Pi S\\Pi-\\Pi\\Pi\\|_2\\le \\epsilon/2$ for $n$ large enough since $\\epsilon\\ge 1/\\sqrt{n}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP472.8",
+      "type": "proof_step",
+      "parent_id": "PP472.3",
+      "step_order": 5,
+      "subclass": "conclude",
+      "name": "Markov + Lemma LP472.2",
+      "statement": "By Markov's inequality, $\\|\\Pi S\\Pi-\\Pi\\|_2\\le\\epsilon$ with probability $\\ge 1/2$. Lemma LP472.2 then yields the spectral bound.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP472.4",
+      "type": "proof",
+      "name": "Proof of Sparsifier Robustness Corollary",
+      "section": "3 The Main Result",
+      "parent_id": "CP472.1",
+      "proves": "CP472.1",
+      "statement": "Show $p_e'\\ge p_e/\\alpha^2$ from the hypotheses and rerun the proof of TP472.1; the norm bound on $y$ acquires a factor $\\alpha$, giving the $\\epsilon\\alpha$ guarantee.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP472.5",
+      "type": "proof",
+      "name": "Proof of Theorem TP472.2",
+      "section": "4 Computing Approximate Resistances Quickly",
+      "parent_id": "TP472.2",
+      "proves": "TP472.2",
+      "statement": "Express $R_{uv}$ as $\\|W^{1/2}BL^{+}(\\chi_u-\\chi_v)\\|^2$, project via Johnson-Lindenstrauss, then approximate the projected vectors using STSolve and bound the propagated error via LP472.5.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP472.9",
+      "type": "proof_step",
+      "parent_id": "PP472.5",
+      "step_order": 1,
+      "subclass": "algebraic_manipulation",
+      "name": "Rewrite $R_{uv}$ as squared Euclidean distance",
+      "statement": "$R_{uv}=\\|W^{1/2}BL^{+}(\\chi_u-\\chi_v)\\|_2^2$, so resistances become pairwise squared distances among $\\{W^{1/2}BL^{+}\\chi_v\\}_{v\\in V}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP472.10",
+      "type": "proof_step",
+      "parent_id": "PP472.5",
+      "step_order": 2,
+      "subclass": "apply_lemma",
+      "name": "Apply Johnson-Lindenstrauss",
+      "statement": "Project onto $k=24\\log n/\\epsilon^2$ random directions via $Q$; with probability $\\ge 1-1/n$, all pairwise squared distances are preserved up to $(1\\pm\\epsilon)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP472.11",
+      "type": "proof_step",
+      "parent_id": "PP472.5",
+      "step_order": 3,
+      "subclass": "introduce_variable",
+      "name": "Set $Z=QW^{1/2}BL^{+}$ and approximate by STSolve",
+      "statement": "Compute each row $\\tilde{z}_i=\\mathtt{STSolve}(L,y_i,\\delta)$ where $y_i$ are rows of $Y=QW^{1/2}B$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP472.12",
+      "type": "proof_step",
+      "parent_id": "PP472.5",
+      "step_order": 4,
+      "subclass": "bound_estimate",
+      "name": "Bound STSolve-induced error via Lemma LP472.5",
+      "statement": "Choose $\\delta=\\frac{\\epsilon}{3}\\sqrt{\\frac{2(1-\\epsilon)w_{min}}{(1+\\epsilon)n^3 w_{max}}}$ so that $\\|\\widetilde{Z}(\\chi_u-\\chi_v)\\|^2\\approx R_{uv}$ within $(1\\pm\\epsilon)^2$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP472.13",
+      "type": "proof_step",
+      "parent_id": "PP472.5",
+      "step_order": 5,
+      "subclass": "conclude",
+      "name": "Total runtime $\\widetilde{O}(m\\log r/\\epsilon^2)$",
+      "statement": "$O(\\log n/\\epsilon^2)$ STSolve calls of cost $\\widetilde{O}(m\\log(1/\\delta))=\\widetilde{O}(m\\log r)$ each.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP472.6",
+      "type": "proof",
+      "name": "Proof of Lemma LP472.5",
+      "section": "4 Computing Approximate Resistances Quickly",
+      "parent_id": "LP472.5",
+      "proves": "LP472.5",
+      "statement": "Use the triangle inequality along a simple path $P$ from $u$ to $v$, Cauchy-Schwarz, the Frobenius-norm rewrite, and the lower bound $R_{uv}\\ge 2/(nw_{max})$ from Proposition PrP472.1.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP472.7",
+      "type": "proof",
+      "name": "Proof of Proposition PrP472.1",
+      "section": "4 Computing Approximate Resistances Quickly",
+      "parent_id": "PrP472.1",
+      "proves": "PrP472.1",
+      "statement": "By Rayleigh's monotonicity law, $R_{uv}\\ge R_{uv}'$ for $G'=w_{max}\\cdot K_n$. By symmetry, every $R_{uv}'=2/(nw_{max})$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP472.8",
+      "type": "proof",
+      "name": "Proof of Bounded-Blowup Lemma",
+      "section": "5 An Additional Property",
+      "parent_id": "LP472.6",
+      "proves": "LP472.6",
+      "statement": "Define i.i.d. variables $X_i$ with $\\E X_i=\\deg(v)$ and $\\mathrm{Var}(X_i)\\le n\\deg(v)^2/\\beta$. Apply Bennett's inequality with $q\\ge 4n\\log n/\\beta$ to get failure probability $1/n^2$ per vertex; union bound.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP472.14",
+      "type": "proof_step",
+      "parent_id": "PP472.8",
+      "step_order": 1,
+      "subclass": "introduce_variable",
+      "name": "Define i.i.d. random variables $X_i$",
+      "statement": "$X_i=1/p_e$ if edge $e\\ni v$ is the $i$th sampled edge, else $0$; then $D_v=\\frac{1}{q}\\sum_i X_i=\\sum_{e\\ni v}\\tilde{w}_e/w_e$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP472.15",
+      "type": "proof_step",
+      "parent_id": "PP472.8",
+      "step_order": 2,
+      "subclass": "bound_estimate",
+      "name": "Compute moments of $X_i$",
+      "statement": "$\\E X_i=\\deg(v)$ and $\\mathrm{Var}(X_i)\\le n\\deg(v)^2/\\beta$ via the assumed lower bound on $p_{(u,v)}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP472.16",
+      "type": "proof_step",
+      "parent_id": "PP472.8",
+      "step_order": 3,
+      "subclass": "apply_lemma",
+      "name": "Apply Bennett's inequality",
+      "statement": "$\\P[D_v>2\\deg(v)]\\le\\exp(-\\beta q/(2n))\\le 1/n^2$ once $q\\ge 4n\\log n/\\beta$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP472.17",
+      "type": "proof_step",
+      "parent_id": "PP472.8",
+      "step_order": 4,
+      "subclass": "conclude",
+      "name": "Union bound over vertices",
+      "statement": "Take a union bound over all $n$ vertices to get probability $\\ge 1-1/n$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP472.1",
+      "type": "equation",
+      "name": "Spectral Sparsifier Quadratic-Form Guarantee",
+      "section": "1 Introduction",
+      "statement": "$(1-\\epsilon)\\sum_{uv\\in E}(x(u)-x(v))^2 w_{uv}\\le \\sum_{uv\\in\\tilde{E}}(x(u)-x(v))^2\\tilde{w}_{uv}\\le(1+\\epsilon)\\sum_{uv\\in E}(x(u)-x(v))^2 w_{uv}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP472.2",
+      "type": "equation",
+      "name": "Ultrasparsifier Property",
+      "section": "5 An Additional Property",
+      "statement": "$\\sum_{e\\ni v}\\tilde{w}_e/w_e\\le 2\\deg(v)$ for every vertex $v\\in V$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP472.3",
+      "type": "equation",
+      "name": "Sampling Probability with Min-Degree Mixing",
+      "section": "5 An Additional Property",
+      "statement": "$p'_e=p'_{(u,v)}=\\frac{1}{2}\\left(\\frac{\\|Zb_e^T\\|^2 w_e}{\\sum_e\\|Zb_e^T\\|^2 w_e}+\\frac{1}{n\\min(\\deg(u),\\deg(v))}\\right)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP472.1",
+      "type": "remark",
+      "name": "Sparsifiers Approximately Preserve Effective Resistances",
+      "section": "1 Introduction",
+      "statement": "Condition (\\ref{xtlx}) implies $\\frac{1}{1+\\epsilon}x^TL^{+}x\\le x^T\\tilde{L}^{+}x\\le\\frac{1}{1-\\epsilon}x^TL^{+}x$, so effective resistances $(\\chi_u-\\chi_v)^TL^{+}(\\chi_u-\\chi_v)$ are also approximately preserved by the sparsifier.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP472.2",
+      "type": "remark",
+      "name": "Eigenvalue Approximation via Courant-Fischer",
+      "section": "1 Introduction",
+      "statement": "If $\\lambda_i,\\tilde{\\lambda}_i$ are eigenvalues of $L$ and $\\tilde{L}$, then $(1-\\epsilon)\\lambda_i\\le\\tilde{\\lambda}_i\\le(1+\\epsilon)\\lambda_i$ by Courant-Fischer; the same relation holds for the normalized Laplacian $D^{-1/2}LD^{-1/2}$ and the random-walk matrix $D^{-1}L$.",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "DP472.1", "target": "DP472.2", "type": "uses"},
+    {"source": "DP472.2", "target": "DP472.3", "type": "uses"},
+    {"source": "DP472.3", "target": "DP472.4", "type": "uses"},
+    {"source": "DP472.1", "target": "DP472.4", "type": "uses"},
+    {"source": "DP472.1", "target": "DP472.5", "type": "uses"},
+    {"source": "DP472.3", "target": "DP472.5", "type": "uses"},
+    {"source": "DP472.4", "target": "DP472.5", "type": "uses"},
+    {"source": "AP472.1", "target": "DP472.6", "type": "uses"},
+    {"source": "DP472.4", "target": "AP472.1", "type": "uses"},
+
+    {"source": "PP472.1", "target": "LP472.1", "type": "proves"},
+    {"source": "PSP472.1", "target": "PSP472.2", "type": "uses"},
+    {"source": "PSP472.2", "target": "PSP472.3", "type": "uses"},
+
+    {"source": "DP472.5", "target": "LP472.1", "type": "uses"},
+    {"source": "DP472.1", "target": "LP472.1", "type": "uses"},
+
+    {"source": "LP472.1", "target": "LP472.2", "type": "uses"},
+    {"source": "DP472.5", "target": "LP472.2", "type": "uses"},
+    {"source": "DP472.6", "target": "LP472.2", "type": "uses"},
+    {"source": "PP472.2", "target": "LP472.2", "type": "proves"},
+
+    {"source": "LP472.2", "target": "TP472.1", "type": "uses"},
+    {"source": "LP472.3", "target": "TP472.1", "type": "uses"},
+    {"source": "LP472.1", "target": "TP472.1", "type": "uses"},
+    {"source": "AP472.1", "target": "TP472.1", "type": "uses"},
+    {"source": "PP472.3", "target": "TP472.1", "type": "proves"},
+
+    {"source": "PSP472.4", "target": "PSP472.5", "type": "uses"},
+    {"source": "PSP472.5", "target": "PSP472.6", "type": "uses"},
+    {"source": "PSP472.6", "target": "PSP472.7", "type": "uses"},
+    {"source": "PSP472.7", "target": "PSP472.8", "type": "uses"},
+    {"source": "LP472.3", "target": "PSP472.7", "type": "uses"},
+    {"source": "LP472.2", "target": "PSP472.8", "type": "uses"},
+    {"source": "LP472.1", "target": "PSP472.4", "type": "uses"},
+
+    {"source": "TP472.1", "target": "CP472.1", "type": "uses"},
+    {"source": "PP472.4", "target": "CP472.1", "type": "proves"},
+
+    {"source": "PrP472.1", "target": "LP472.5", "type": "uses"},
+    {"source": "PP472.7", "target": "PrP472.1", "type": "proves"},
+    {"source": "PP472.6", "target": "LP472.5", "type": "proves"},
+
+    {"source": "TP472.4", "target": "AP472.2", "type": "uses"},
+    {"source": "LP472.4", "target": "AP472.2", "type": "uses"},
+    {"source": "DP472.4", "target": "AP472.2", "type": "uses"},
+    {"source": "DP472.3", "target": "AP472.2", "type": "uses"},
+    {"source": "DP472.1", "target": "AP472.2", "type": "uses"},
+
+    {"source": "ASP472.1", "target": "ASP472.2", "type": "uses"},
+    {"source": "ASP472.2", "target": "ASP472.3", "type": "uses"},
+    {"source": "TP472.4", "target": "ASP472.3", "type": "uses"},
+    {"source": "LP472.4", "target": "ASP472.1", "type": "uses"},
+
+    {"source": "AP472.2", "target": "TP472.2", "type": "uses"},
+    {"source": "LP472.4", "target": "TP472.2", "type": "uses"},
+    {"source": "TP472.4", "target": "TP472.2", "type": "uses"},
+    {"source": "LP472.5", "target": "TP472.2", "type": "uses"},
+    {"source": "PP472.5", "target": "TP472.2", "type": "proves"},
+
+    {"source": "PSP472.9", "target": "PSP472.10", "type": "uses"},
+    {"source": "PSP472.10", "target": "PSP472.11", "type": "uses"},
+    {"source": "PSP472.11", "target": "PSP472.12", "type": "uses"},
+    {"source": "PSP472.12", "target": "PSP472.13", "type": "uses"},
+    {"source": "LP472.4", "target": "PSP472.10", "type": "uses"},
+    {"source": "TP472.4", "target": "PSP472.11", "type": "uses"},
+    {"source": "LP472.5", "target": "PSP472.12", "type": "uses"},
+
+    {"source": "AP472.2", "target": "CP472.1", "type": "uses"},
+    {"source": "TP472.2", "target": "CP472.1", "type": "uses"},
+
+    {"source": "PSP472.14", "target": "PSP472.15", "type": "uses"},
+    {"source": "PSP472.15", "target": "PSP472.16", "type": "uses"},
+    {"source": "PSP472.16", "target": "PSP472.17", "type": "uses"},
+
+    {"source": "PP472.8", "target": "LP472.6", "type": "proves"},
+    {"source": "AP472.1", "target": "LP472.6", "type": "uses"},
+
+    {"source": "CP472.1", "target": "TP472.3", "type": "uses"},
+    {"source": "LP472.6", "target": "TP472.3", "type": "uses"},
+    {"source": "TP472.2", "target": "TP472.3", "type": "uses"},
+    {"source": "AP472.1", "target": "TP472.3", "type": "uses"},
+
+    {"source": "TP472.1", "target": "EP472.1", "type": "uses"},
+    {"source": "TP472.3", "target": "EP472.2", "type": "uses"},
+    {"source": "AP472.2", "target": "EP472.3", "type": "uses"},
+
+    {"source": "AP472.1", "target": "ProbP472.1", "type": "solves"},
+    {"source": "TP472.3", "target": "ProbP472.1", "type": "uses"},
+
+    {"source": "TP472.1", "target": "RP472.1", "type": "uses"},
+    {"source": "TP472.1", "target": "RP472.2", "type": "uses"}
+  ]
+}

@@ -1,0 +1,1036 @@
+{
+  "metadata": {
+    "title": "A statistical model for tensor PCA",
+    "authors": "Andrea Montanari and Emile Richard",
+    "paper_num": 402,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "DP402.1",
+      "type": "definition",
+      "name": "Spiked Tensor Model",
+      "section": "1 Introduction",
+      "statement": "Observation model: $\\bX = \\beta\\, \\bvz^{\\otimes k} + \\bZ$, where $\\bvz \\in \\bbS^{n-1}$ is the unknown signal, $\\beta$ is the signal-to-noise ratio, and $\\bZ$ is a symmetric Gaussian noise tensor.",
+      "statement_clean": "A rank-one-plus-noise tensor model: a $k$-th order tensor equals $\\beta$ times a rank-one symmetric tensor built from an unknown unit vector $\\bvz$, plus symmetric Gaussian noise.",
+      "origin": "paper",
+      "tags": ["statistical_model"]
+    },
+    {
+      "id": "DP402.2",
+      "type": "definition",
+      "name": "Symmetric standard normal noise tensor",
+      "section": "1.1 Notations",
+      "statement": "$\\bZ = \\frac{1}{k!}\\sqrt{\\frac{k}{n}} \\sum_{\\pi \\in \\mathfrak{S}_k} \\bG^\\pi$, where $\\bG \\in \\bigotimes^k \\reals^n$ has i.i.d. $\\normal(0,1)$ entries.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP402.3",
+      "type": "definition",
+      "name": "Tensor operator norm",
+      "section": "1.1 Notations",
+      "statement": "$\\|\\bX\\|_{op} \\equiv \\max\\{\\<\\bX, \\bu_1 \\otimes \\cdots \\otimes \\bu_k\\> : \\forall i \\in [k], \\|\\bu_i\\|_2 \\le 1\\}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP402.4",
+      "type": "definition",
+      "name": "Tensor-vector product map",
+      "section": "1.1 Notations",
+      "statement": "For a tensor $\\bX \\in \\bigotimes^k \\reals^n$ and $\\bv \\in \\reals^n$: $\\bX\\{\\bv\\}_i = \\sum_{j_1,\\dots,j_{k-1} \\in [n]} \\bX_{i,j_1,\\dots,j_{k-1}} \\bv_{j_1}\\cdots\\bv_{j_{k-1}}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP402.5",
+      "type": "definition",
+      "name": "Loss function for sign-symmetric estimator",
+      "section": "1.1 Notations",
+      "statement": "$\\Loss(\\hbv,\\bvz) \\equiv \\min(\\|\\hbv-\\bvz\\|_2^2, \\|\\hbv+\\bvz\\|_2^2) = 2 - 2|\\<\\hbv,\\bvz\\>|$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP402.6",
+      "type": "definition",
+      "name": "Unfolding (matricization) operator $\\M_q$",
+      "section": "3.1 Symmetric noise",
+      "statement": "$\\M_q : \\otimes^k \\reals^n \\to \\reals^{n^q \\times n^{k-q}}$ is defined by $[\\M_q(\\bX)]_{a,b} = \\bX_{i_1,\\dots,i_k}$ where $a = 1+\\sum_{j=1}^q (i_j-1) n^{j-1}$ and $b = 1+\\sum_{j=q+1}^k (i_j-1) n^{j-q-1}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP402.7",
+      "type": "definition",
+      "name": "Random cost function $H_\\bZ$ (spherical $p$-spin)",
+      "section": "Appendix B.1 Operator norm",
+      "statement": "$H_\\bZ : \\bbS^{n-1} \\to \\reals$, $H_\\bZ(\\bv) \\equiv \\<\\bZ, \\bv^{\\otimes k}\\>$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP402.8",
+      "type": "definition",
+      "name": "PSD-cone-constrained principal component",
+      "section": "5.1 PSD-constrained principal component",
+      "statement": "$(\\hbw,\\hbv) \\equiv \\arg\\max\\{\\<\\bw, \\M(\\bX)\\bv\\> : \\mathtt{reshape}_{n\\times n}(\\bw) \\succeq 0, \\|\\bw\\|_2 \\le 1, \\|\\bv\\|_2 \\le 1\\}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP402.9",
+      "type": "definition",
+      "name": "Desired local optimum (AMP)",
+      "section": "4 Asymptotics via AMP",
+      "statement": "$\\{\\bv^t\\}_t$ converges almost surely to a desired local optimum if a.s. $\\lim_{t\\to\\infty}\\lim_{n\\to\\infty} \\Loss(\\bv^t/\\|\\bv^t\\|_2, \\bvz) \\le 6/\\beta^2$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP402.1",
+      "type": "problem",
+      "name": "Tensor PCA",
+      "section": "1 Introduction",
+      "statement": "$\\text{maximize}\\;\\<\\bX, \\bv^{\\otimes k}\\>\\;\\text{subject to}\\;\\|\\bv\\|_2 = 1$. The maximum-likelihood estimator $\\hbv^{\\sML}$ is a solution.",
+      "statement_clean": "Find a unit vector that maximizes the multilinear form $\\<\\bX, \\bv^{\\otimes k}\\>$; this is NP-hard in general.",
+      "origin": "paper",
+      "tags": ["optimization", "non_convex"]
+    },
+    {
+      "id": "ProbP402.2",
+      "type": "problem",
+      "name": "Spiked-tensor signal recovery with side information",
+      "section": "4 Asymptotics via AMP",
+      "statement": "Recover $\\bvz$ given $\\bX = \\beta \\bvz^{\\otimes k} + \\bZ$ together with side information $\\by = \\gamma \\bvz + \\bz$, $\\bz \\sim \\normal(0, \\id_n/n)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "TP402.1",
+      "type": "theorem",
+      "name": "Information-theoretic lower bound",
+      "section": "2 Ideal estimation",
+      "statement": "For any unit-norm estimator $\\hbv : \\otimes^k \\reals^n \\to \\bbS^{n-1}$ and $n \\ge 4$: $\\beta \\le \\sqrt{k/10} \\Rightarrow \\E\\,\\Loss(\\hbv,\\bvz) \\ge 1/32$.",
+      "assumptions": [
+        "$\\hbv : \\otimes^k \\reals^n \\to \\bbS^{n-1}$ a unit-norm estimator",
+        "$n \\ge 4$",
+        "$\\beta \\le \\sqrt{k/10}$"
+      ],
+      "conclusions": [
+        "$\\E\\,\\Loss(\\hbv,\\bvz) \\ge \\frac{1}{32}$"
+      ],
+      "origin": "paper",
+      "tags": ["lower_bound", "information_theoretic"]
+    },
+    {
+      "id": "LP402.1",
+      "type": "lemma",
+      "name": "Operator norm of symmetric Gaussian noise tensor",
+      "section": "2 Ideal estimation",
+      "statement": "There exists a sequence $\\{\\mu_k\\}_{k\\ge 2}$ with $\\mu_k = \\sqrt{k\\log k}(1+o_k(1))$ such that $\\limsup_{n\\to\\infty}\\|\\bZ\\|_{op} \\le \\mu_k$ ($k$ odd) or $\\lim_{n\\to\\infty}\\|\\bZ\\|_{op} = \\mu_k$ ($k$ even), with concentration $\\prob(|\\|\\bZ\\|_{op} - \\E\\|\\bZ\\|_{op}| \\ge s) \\le 2 e^{-ns^2/(2k)}$.",
+      "assumptions": [
+        "$\\bZ$ symmetric standard normal noise tensor of order $k$"
+      ],
+      "conclusions": [
+        "$\\limsup_{n\\to\\infty}\\|\\bZ\\|_{op} \\le \\mu_k$ ($k$ odd) and $\\lim \\|\\bZ\\|_{op} = \\mu_k$ ($k$ even)",
+        "Concentration: $\\prob(|\\|\\bZ\\|_{op}-\\E\\|\\bZ\\|_{op}| \\ge s) \\le 2 e^{-ns^2/(2k)}$",
+        "$\\mu_k = \\sqrt{k\\log k}(1+o_k(1))$"
+      ],
+      "origin": "paper",
+      "tags": ["concentration", "bound"]
+    },
+    {
+      "id": "TP402.2",
+      "type": "theorem",
+      "name": "Maximum-likelihood error bound (nonconvex optimization)",
+      "section": "2 Ideal estimation",
+      "statement": "For $\\beta \\ge \\mu_k$ and large $n$: $\\Loss(\\hbv^{\\sML},\\bvz) \\le \\frac{2}{\\beta}(\\mu_k + s)$ with probability at least $1 - 2e^{-ns^2/(16k)}$.",
+      "assumptions": [
+        "$\\hbv^{\\sML}$ solves Tensor PCA (Spiked Tensor Model)",
+        "$\\beta \\ge \\mu_k$",
+        "$n$ large enough",
+        "$s > 0$"
+      ],
+      "conclusions": [
+        "$\\Loss(\\hbv^{\\sML},\\bvz) \\le \\frac{2}{\\beta}(\\mu_k + s)$ with probability $\\ge 1-2e^{-ns^2/(16k)}$"
+      ],
+      "origin": "paper",
+      "tags": ["upper_bound"]
+    },
+    {
+      "id": "LP402.2",
+      "type": "lemma",
+      "name": "Sudakov-Fernique upper bound on $\\E\\|\\bX\\|_{op}$",
+      "section": "2 Ideal estimation",
+      "statement": "Under the Spiked Tensor Model: $\\limsup_{n\\to\\infty} \\E\\|\\bX\\|_{op} \\le \\max_{\\tau \\ge 0}\\{\\beta(\\tau/\\sqrt{1+\\tau^2})^k + k/\\sqrt{1+\\tau^2}\\}$, with concentration $\\prob(|\\|\\bX\\|_{op}-\\E\\|\\bX\\|_{op}| \\ge s) \\le 2e^{-ns^2/(2k)}$.",
+      "assumptions": [
+        "$\\bX$ follows Spiked Tensor Model"
+      ],
+      "conclusions": [
+        "$\\limsup_n \\E\\|\\bX\\|_{op} \\le \\max_{\\tau \\ge 0}\\{\\beta(\\tau/\\sqrt{1+\\tau^2})^k + k/\\sqrt{1+\\tau^2}\\}$",
+        "Concentration: $\\prob(|\\|\\bX\\|_{op}-\\E\\|\\bX\\|_{op}| \\ge s) \\le 2e^{-ns^2/(2k)}$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "LP402.3",
+      "type": "lemma",
+      "name": "Operator-norm bound for unfolded noise $\\M_q(\\bZ)$",
+      "section": "3.1 Symmetric noise",
+      "statement": "For any $0 \\le q \\le k$: $\\frac{n^{\\max(q-1,k-q-1)/2}}{\\sqrt{(k-1)!}}(1-C_k/n^{\\max(q,k-q)}) \\le \\E\\|\\M_q(\\bZ)\\|_{op} \\le \\sqrt{k}(n^{(q-1)/2}+n^{(k-q-1)/2})$. Both bounds are minimized at $q=\\lceil k/2 \\rceil$, with concentration $\\prob(|\\|\\M_q(\\bZ)\\|_{op}-\\E\\|\\M_q(\\bZ)\\|_{op}| \\ge t) \\le 2e^{-nt^2/(2k)}$.",
+      "assumptions": [
+        "$\\bZ$ symmetric standard normal noise tensor of order $k$",
+        "$0 \\le q \\le k$"
+      ],
+      "conclusions": [
+        "$\\frac{1}{\\sqrt{(k-1)!}}n^{\\max(q-1,k-q-1)/2}(1-C_k/n^{\\max(q,k-q)}) \\le \\E\\|\\M_q(\\bZ)\\|_{op} \\le \\sqrt{k}(n^{(q-1)/2}+n^{(k-q-1)/2})$",
+        "Both bounds minimized at $q = \\lceil k/2 \\rceil$ for $n$ large",
+        "Gaussian concentration with rate $-nt^2/(2k)$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "concentration"]
+    },
+    {
+      "id": "TP402.3",
+      "type": "theorem",
+      "name": "Wedin perturbation theorem",
+      "section": "3.1 Symmetric noise (cited)",
+      "statement": "Let $\\bM = \\beta \\buz \\bwz^\\sT + \\bE \\in \\reals^{m\\times p}$ with $\\|\\buz\\|_2 = \\|\\bwz\\|_2 = 1$; let $\\hbw$ be the right singular vector of $\\bM$. If $\\beta > 2\\|\\bE\\|_{op}$, then $\\Loss(\\hbw,\\bwz) \\le 8\\|\\bE\\|_{op}^2/\\beta^2$.",
+      "assumptions": [
+        "$\\bM = \\beta \\buz \\bwz^\\sT + \\bE$ with unit $\\buz, \\bwz$",
+        "$\\beta > 2\\|\\bE\\|_{op}$"
+      ],
+      "conclusions": [
+        "$\\Loss(\\hbw,\\bwz) \\le 8\\|\\bE\\|_{op}^2/\\beta^2$"
+      ],
+      "origin": "external",
+      "origin_citation": "Wedin 1972"
+    },
+    {
+      "id": "TP402.4",
+      "type": "theorem",
+      "name": "Tensor unfolding success threshold",
+      "section": "3.1 Symmetric noise",
+      "statement": "Let $\\bw(\\bX)$ be the top right singular vector of $\\M(\\bX)$ with $q = \\lceil k/2 \\rceil$ and $b = (\\lceil k/2 \\rceil - 1)/2$. If $\\beta \\ge 5 k^{1/2} n^b$, then with probability $\\ge 1-n^{-2}$: $\\Loss(\\bw, \\vec(\\bvz^{\\otimes \\lfloor k/2 \\rfloor})) \\le C k n^{2b}/\\beta^2$.",
+      "assumptions": [
+        "Spiked Tensor Model with symmetric Gaussian noise $\\bZ$",
+        "$b = (\\lceil k/2 \\rceil -1)/2$",
+        "$\\beta \\ge 5 k^{1/2} n^b$"
+      ],
+      "conclusions": [
+        "With probability $\\ge 1-n^{-2}$: $\\Loss(\\bw, \\vec(\\bvz^{\\otimes \\lfloor k/2\\rfloor})) \\le C_k k n^{2b}/\\beta^2$"
+      ],
+      "origin": "paper",
+      "tags": ["upper_bound", "phase_transition"]
+    },
+    {
+      "id": "TP402.5",
+      "type": "theorem",
+      "name": "Recursive unfolding under asymmetric noise (sharp threshold)",
+      "section": "3.2 Asymmetric noise and recursive unfolding",
+      "statement": "For non-symmetric noise $\\btX = \\beta \\bvz^{\\otimes k} + \\bG/\\sqrt{n}$ with $k \\ge 4$ even and $b = (k-2)/4$: if $\\beta \\ge (1+\\eps) n^b$ then a.s. $\\lim_{n\\to\\infty} \\Loss(\\hbv,\\bvz) = 0$, where $\\hbv$ is the recursive-unfolding estimator.",
+      "assumptions": [
+        "$\\btX = \\beta \\bvz^{\\otimes k} + \\bG/\\sqrt n$, asymmetric Gaussian $\\bG$",
+        "$k \\ge 4$ even",
+        "$b = (k-2)/4$",
+        "$\\beta \\ge (1+\\eps) n^b$"
+      ],
+      "conclusions": [
+        "Almost surely $\\lim_{n\\to\\infty}\\Loss(\\hbv,\\bvz) = 0$"
+      ],
+      "origin": "paper",
+      "tags": ["phase_transition", "sharp_threshold"]
+    },
+    {
+      "id": "TP402.6",
+      "type": "theorem",
+      "name": "Power iteration convergence",
+      "section": "3 Power Iteration",
+      "statement": "Assume $\\beta \\ge 2e(k-1)\\|\\bZ\\|_{op}$ and $\\<\\by,\\bvz\\>/\\|\\by\\|_2 \\ge [(k-1)\\|\\bZ\\|_{op}/\\beta]^{1/(k-1)}$. Then for all $t \\ge t_0(k)$: $\\Loss(\\bv^t,\\bvz) \\le 2e\\|\\bZ\\|_{op}/\\beta$. For standard normal $\\bZ$, both conditions hold w.h.p. provided $\\beta \\ge 2ek\\mu_k$ and $\\<\\by,\\bvz\\>/\\|\\by\\|_2 \\ge (k\\mu_k/\\beta)^{1/(k-1)}$.",
+      "assumptions": [
+        "Spiked Tensor Model",
+        "$\\beta \\ge 2e(k-1)\\|\\bZ\\|_{op}$",
+        "$\\<\\by,\\bvz\\>/\\|\\by\\|_2 \\ge [(k-1)\\|\\bZ\\|_{op}/\\beta]^{1/(k-1)}$ (warm-start condition)"
+      ],
+      "conclusions": [
+        "For all $t \\ge t_0(k)$: $\\Loss(\\bv^t,\\bvz) \\le 2e\\|\\bZ\\|_{op}/\\beta$",
+        "For standard normal $\\bZ$, conditions hold w.h.p. with $\\beta \\ge 2ek\\mu_k = 6\\sqrt{k^3 \\log k}(1+o_k(1))$"
+      ],
+      "origin": "paper",
+      "tags": ["upper_bound", "iterative"]
+    },
+    {
+      "id": "PrP402.1",
+      "type": "proposition",
+      "name": "AMP state evolution",
+      "section": "4 Asymptotics via AMP",
+      "statement": "Let $\\bv^t$ be the AMP iterate with side info $\\by = \\gamma \\bvz + \\bz$, $\\bz \\sim \\normal(0,\\id_n/n)$. Decomposing $\\bv^t = \\bv^t_\\parallel + \\bv^t_\\perp$, the perpendicular part is uniformly random conditional on its norm, and a.s. $\\lim_n \\<\\bv^t,\\bvz\\> = \\tau_t$, $\\lim_n \\|\\bv^t_\\perp\\|_2 = 1$, with $\\tau_0 = \\gamma$ and $\\tau_{t+1}^2 = \\beta^2 (\\tau_t^2/(1+\\tau_t^2))^{k-1}$.",
+      "assumptions": [
+        "$k \\ge 2$ fixed integer",
+        "$\\bX(n)$ from Spiked Tensor Model",
+        "AMP initialized with $\\by = \\gamma \\bvz + \\bz$"
+      ],
+      "conclusions": [
+        "$\\bv^t_\\perp$ uniformly random conditional on its norm",
+        "$\\lim_n \\<\\bv^t,\\bvz\\> = \\tau_t$, $\\lim_n \\|\\bv^t_\\perp\\| = 1$ a.s.",
+        "State evolution: $\\tau_0 = \\gamma$, $\\tau_{t+1}^2 = \\beta^2(\\tau_t^2/(1+\\tau_t^2))^{k-1}$"
+      ],
+      "origin": "paper",
+      "tags": ["asymptotic", "phase_transition"]
+    },
+    {
+      "id": "TP402.7",
+      "type": "theorem",
+      "name": "AMP convergence threshold (with side information)",
+      "section": "4 Asymptotics via AMP",
+      "statement": "For $k \\ge 3$ and $\\beta > \\omega_k \\equiv \\sqrt{(k-1)^{k-1}/(k-2)^{k-2}} \\sim \\sqrt{ek}$, AMP converges a.s. to a desired local optimum iff $\\gamma > \\sqrt{1/\\epsilon_k(\\beta) - 1}$, where $\\epsilon_k(\\beta)$ is the largest solution of $(1-\\epsilon)^{k-2}\\epsilon = \\beta^{-2}$.",
+      "assumptions": [
+        "$k \\ge 3$",
+        "$\\beta > \\omega_k = \\sqrt{(k-1)^{k-1}/(k-2)^{k-2}}$",
+        "Side information $\\by = \\gamma \\bvz + \\bz$"
+      ],
+      "conclusions": [
+        "AMP converges a.s. to a desired local optimum iff $\\gamma > \\sqrt{1/\\epsilon_k(\\beta) - 1}$",
+        "$\\epsilon_k(\\beta)$ = largest solution of $(1-\\epsilon)^{k-2}\\epsilon = \\beta^{-2}$"
+      ],
+      "origin": "paper",
+      "tags": ["sharp_threshold", "phase_transition"]
+    },
+    {
+      "id": "TP402.8",
+      "type": "theorem",
+      "name": "Auffinger-Ben Arous-Cerny complexity formula",
+      "section": "Appendix B.1 (cited)",
+      "statement": "For any $k \\ge 3$: $\\lim_{n\\to\\infty} (1/n) \\log \\E\\,{\\sf C}_k(\\bZ_n,x) = g_k(x)$, where for $x \\ge \\eta_k = 2\\sqrt{k-1}$: $g_k(x) = \\frac{1}{2}\\{\\frac{2-k}{k} - \\log(kz^2/2) + \\frac{k-1}{2}z^2 - 2/(k^2 z^2)\\}$ with $z = \\frac{1}{(k-1)\\sqrt{2k}}(x - \\sqrt{x^2 - 4(k-1)})$.",
+      "assumptions": [
+        "$k \\ge 3$",
+        "$\\bZ_n$ symmetric standard normal tensor"
+      ],
+      "conclusions": [
+        "$\\lim_n (1/n)\\log \\E\\,{\\sf C}_k(\\bZ_n,x) = g_k(x)$",
+        "Explicit formula for $g_k(x)$ on $x \\ge \\eta_k$",
+        "$g_k(x) = g_k(\\eta_k)$ for $x < \\eta_k$"
+      ],
+      "origin": "external",
+      "origin_citation": "Auffinger, Ben Arous, Cerny 2013 (Theorem 2.5 and Lemma 6.3)"
+    },
+    {
+      "id": "TP402.9",
+      "type": "theorem",
+      "name": "Convergence of $\\E\\|\\bZ\\|_{op}$ to $\\mu_k$",
+      "section": "Appendix B.1 (cited)",
+      "statement": "Let $\\mu_k$ be the unique non-negative root of $g_k(x) = 0$ for $x \\ge \\eta_k$. Then $\\lim_{n\\to\\infty} \\E\\|\\bZ\\|_{op} = \\mu_k$.",
+      "assumptions": [
+        "$\\mu_k$ = unique nonneg root of $g_k(x)=0$, $x \\ge \\eta_k$"
+      ],
+      "conclusions": [
+        "$\\lim_{n\\to\\infty}\\E\\|\\bZ\\|_{op} = \\mu_k$"
+      ],
+      "origin": "external",
+      "origin_citation": "Auffinger, Ben Arous, Cerny 2013 (Theorem 2.12)"
+    },
+    {
+      "id": "LP402.4",
+      "type": "lemma",
+      "name": "KL bound between conditional laws",
+      "section": "Appendix A",
+      "statement": "For any $\\bw, \\bw' \\in \\bbS^{n-1}$: $D(P_\\bw \\Vert P_{\\bw'}) \\le 2(n/k)\\beta^2$, where $P_\\bw$ is the law of $\\sU(\\bX)$ conditional on $\\bvz = \\bw$.",
+      "assumptions": [
+        "$P_\\bw$ Gaussian law of $\\sU(\\bX)$ conditional on $\\bvz=\\bw$",
+        "$\\bw, \\bw' \\in \\bbS^{n-1}$"
+      ],
+      "conclusions": [
+        "$D(P_\\bw \\Vert P_{\\bw'}) \\le 2(n/k)\\beta^2$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "information_theoretic"]
+    },
+    {
+      "id": "LP402.5",
+      "type": "lemma",
+      "name": "Uniform norm convergence for Gaussian shift",
+      "section": "Appendix B.3 Proof of Lemma upperBoundX",
+      "statement": "For $\\bg \\sim \\normal(0,\\id_n/n)$ and $\\|\\bvz(n)\\|_2 = 1$, there exists $\\delta_n \\to 0$ such that almost surely, for $n \\ge n_0$: $\\sup_{\\tau \\in [0,\\tau_{\\max}]} |\\,\\|\\bg + \\tau\\bvz\\|_2 - \\sqrt{1+\\tau^2}\\,| \\le \\delta_n$.",
+      "assumptions": [
+        "$\\bg \\sim \\normal(0,\\id_n/n)$",
+        "$\\|\\bvz(n)\\|_2 = 1$"
+      ],
+      "conclusions": [
+        "$\\exists \\delta_n \\to 0$ s.t. a.s. for $n$ large: $\\sup_{\\tau \\in [0,\\tau_{\\max}]} |\\|\\bg+\\tau\\bvz\\|_2 - \\sqrt{1+\\tau^2}| \\le \\delta_n$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "AP402.1",
+      "type": "algorithm",
+      "name": "Tensor Unfolding (matrix PCA on $\\M_q(\\bX)$)",
+      "section": "3.1 Symmetric noise",
+      "statement": "Form the matricization $\\M_q(\\bX) \\in \\reals^{n^q \\times n^{k-q}}$ with $q = \\lceil k/2 \\rceil$, take its top right singular vector as estimate of $\\vec(\\bvz^{\\otimes \\lceil k/2\\rceil})$.",
+      "input": [
+        "Tensor $\\bX \\in \\bigotimes^k \\reals^n$",
+        "Choice of unfolding parameter $q$ (default $q = \\lceil k/2\\rceil$)"
+      ],
+      "output": [
+        "Top right singular vector $\\bw$ of $\\M_q(\\bX)$",
+        "Estimate of $\\bvz$ derived from $\\bw$"
+      ],
+      "origin": "paper",
+      "tags": ["spectral", "polynomial_time"]
+    },
+    {
+      "id": "AP402.2",
+      "type": "algorithm",
+      "name": "Recursive unfolding",
+      "section": "3.2 Asymmetric noise and recursive unfolding",
+      "statement": "Two-step unfolding: take top singular vector of $\\M(\\bX)$, reshape it as $\\M_1(\\bw) \\in \\reals^{n \\times n^{2b}}$, take its left principal vector as estimate $\\hbv$.",
+      "input": [
+        "Tensor $\\btX \\in \\bigotimes^k \\reals^n$ (asymmetric noise model, $k$ even)"
+      ],
+      "output": [
+        "Estimate $\\hbv$ of $\\bvz$"
+      ],
+      "origin": "paper",
+      "tags": ["spectral", "iterative", "polynomial_time"]
+    },
+    {
+      "id": "AP402.3",
+      "type": "algorithm",
+      "name": "Tensor power iteration",
+      "section": "3 Power Iteration",
+      "statement": "Iterate $\\bv^{t+1} = \\bX\\{\\bv^t\\}/\\|\\bX\\{\\bv^t\\}\\|_2$, starting from $\\bv^0 = \\by/\\|\\by\\|_2$.",
+      "input": [
+        "Tensor $\\bX$",
+        "Initialization $\\by$ (random or warm-start)"
+      ],
+      "output": [
+        "Estimate $\\bv^t$ of $\\bvz$ after $t \\ge t_0(k)$ iterations"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "polynomial_time"]
+    },
+    {
+      "id": "AP402.4",
+      "type": "algorithm",
+      "name": "Warm-start power iteration",
+      "section": "3.2 Comparison with Tensor Unfolding",
+      "statement": "Initialize tensor power iteration with $\\bv^0 = \\hbv^{\\rm Unfold}$ from tensor unfolding, then iterate.",
+      "input": [
+        "Tensor $\\bX$",
+        "Initial estimate $\\hbv^{\\rm Unfold}$ from unfolding"
+      ],
+      "output": [
+        "Refined estimate of $\\bvz$"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "warm_start"]
+    },
+    {
+      "id": "AP402.5",
+      "type": "algorithm",
+      "name": "Approximate Message Passing (AMP) for tensor PCA",
+      "section": "4 Asymptotics via AMP",
+      "statement": "Iterate $\\bv^{t+1} = \\bX\\{f(\\bv^t)\\} - \\ons_t\\,f(\\bv^{t-1})$ with $\\ons_t = (k-1)(\\<f(\\bv^t),f(\\bv^{t-1})\\>)^{k-2}$ and $f(\\bx) = \\bx/\\|\\bx\\|_2$, $\\bv^0 = \\by$, $f(\\bv^{-1}) = 0$.",
+      "input": [
+        "Tensor $\\bX$",
+        "Initialization $\\by$ (with side information $\\by = \\gamma \\bvz + \\bz$)"
+      ],
+      "output": [
+        "Iterates $\\bv^t$ converging to a fixed point of state evolution"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "message_passing", "polynomial_time"]
+    },
+    {
+      "id": "AP402.6",
+      "type": "algorithm",
+      "name": "PSD-cone-constrained projected power iteration",
+      "section": "5.1 PSD-constrained principal component",
+      "statement": "Random init $\\bu^0 \\in \\reals^n$; for $t \\ge 0$: $\\bw^t = \\P(\\M(\\bX)\\bv^t)$ then $\\bv^{t+1} = \\M(\\bX)^\\sT \\bw^t/\\|\\M(\\bX)^\\sT \\bw^t\\|_2$, where $\\P$ is the orthogonal projector onto the PSD cone in $\\reals^{n^2}$.",
+      "input": [
+        "Tensor $\\bX$ with $k=3$",
+        "Random initial $\\bu^0$"
+      ],
+      "output": [
+        "PSD-constrained principal pair $(\\hbw,\\hbv)$"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "projected"]
+    },
+    {
+      "id": "PP402.1",
+      "type": "proof",
+      "name": "Proof of Theorem 1 (information-theoretic lower bound)",
+      "section": "Appendix A",
+      "statement": "Fano's-inequality / packing argument: bound $D(P_\\bw\\Vert P_{\\bw'})$, use a packing of $\\bbS^{n-1}$, apply Markov to convert error probability to expected loss.",
+      "parent_id": "TP402.1",
+      "proves": "TP402.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP402.2",
+      "type": "proof",
+      "name": "Proof of Lemma upperBoundMatricized (operator norm of $\\M_q(\\bZ)$)",
+      "section": "3.1",
+      "statement": "Concentration via Lipschitz bound and Gaussian isoperimetry; upper bound via triangular inequality over permutation symmetrization; lower bound by Frobenius-norm comparison and concentration.",
+      "parent_id": "LP402.3",
+      "proves": "LP402.3",
+      "origin": "paper"
+    },
+    {
+      "id": "PP402.3",
+      "type": "proof",
+      "name": "Proof of Wedin perturbation theorem",
+      "section": "3.1",
+      "statement": "Apply Wedin's $\\sin\\theta$ bound, then use $|\\cos(\\hbw,\\bwz)| \\ge \\sqrt{1 - 4\\|\\bE\\|_{op}^2/\\beta^2}$.",
+      "parent_id": "TP402.3",
+      "proves": "TP402.3",
+      "origin": "paper"
+    },
+    {
+      "id": "PP402.4",
+      "type": "proof",
+      "name": "Proof of Theorem unfold (unfolding success threshold)",
+      "section": "3.1",
+      "statement": "Decompose $\\M(\\bX) = \\beta \\buz \\bwz^\\sT + \\M(\\bZ)$ and apply Wedin's theorem with the noise bound from Lemma upperBoundMatricized.",
+      "parent_id": "TP402.4",
+      "proves": "TP402.4",
+      "origin": "paper"
+    },
+    {
+      "id": "PP402.5",
+      "type": "proof",
+      "name": "Proof of Theorem unfoldNonsymm (recursive unfolding)",
+      "section": "3.2",
+      "statement": "Use rotational invariance of $\\bG$ to write $\\bw(\\btX) = \\rho_n \\vec(\\bvz^{\\otimes k/2}) + (\\orho_n/n^{k/4})\\bg$; control limits of $\\rho_n,\\orho_n$ via random matrix theory; apply Wedin to $\\M_1(\\bw)$.",
+      "parent_id": "TP402.5",
+      "proves": "TP402.5",
+      "origin": "paper"
+    },
+    {
+      "id": "PP402.6",
+      "type": "proof",
+      "name": "Proof of Theorem powerIterationPositiveResult",
+      "section": "Appendix C",
+      "statement": "Track $\\tau_t = \\<\\bvz,\\bv^t\\>$; show inductively $\\tau_t \\ge \\tau_{\\rm min}$, derive $\\tau_{t+1} \\ge 1 - \\xi/\\tau_t^{k-1}$, study fixed-point map $f(x) = 1 - \\xi x^{1-k}$, conclude exponential convergence to $\\tau_*$.",
+      "parent_id": "TP402.6",
+      "proves": "TP402.6",
+      "origin": "paper"
+    },
+    {
+      "id": "PP402.7",
+      "type": "proof",
+      "name": "Proof of Theorem AMPisGood",
+      "section": "Appendix D",
+      "statement": "Reparametrize $x = \\tau^2/(1+\\tau^2)$; reduce fixed-point equation to $h_k(x) = 1/\\beta^2$ with $h_k(x) = x^{k-2}(1-x)$; analyze monotonicity to find two roots when $\\beta>\\omega_k$, show largest fixed point $\\ge 1-2/\\beta^2$, then convert via state evolution.",
+      "parent_id": "TP402.7",
+      "proves": "TP402.7",
+      "origin": "paper"
+    },
+    {
+      "id": "PP402.8",
+      "type": "proof",
+      "name": "Proof of Theorem nonconvexOpt (ML upper bound)",
+      "section": "Appendix B.2",
+      "statement": "By optimality of $\\hbv^{\\sML}$: $\\<\\bvz,\\hbv\\>^k \\ge 1 - (1/\\beta)(\\|\\bZ\\|_{op} - \\<\\bZ,\\bvz^{\\otimes k}\\>)$; apply Gaussian isoperimetry on the Lipschitz functional and use $(1-\\alpha)^{1/k} \\ge 1-\\alpha$.",
+      "parent_id": "TP402.2",
+      "proves": "TP402.2",
+      "origin": "paper"
+    },
+    {
+      "id": "PP402.9",
+      "type": "proof",
+      "name": "Proof of Lemma upperBoundX (Sudakov-Fernique)",
+      "section": "Appendix B.3",
+      "statement": "Slice the sphere by $\\<\\bv,\\bvz\\> = \\kappa$, prove $\\kappa \\mapsto M_\\bX(\\kappa)$ is uniformly continuous, apply Gaussian concentration on a grid, then use Sudakov-Fernique by comparing to a centered Gaussian process indexed by $\\bv \\in \\cW_\\kappa$.",
+      "parent_id": "LP402.2",
+      "proves": "LP402.2",
+      "origin": "paper"
+    },
+    {
+      "id": "PP402.10",
+      "type": "proof",
+      "name": "Proof of Lemma Kullback (KL bound)",
+      "section": "Appendix A",
+      "statement": "Identify $P_\\bw$ as a Gaussian with mean $\\beta \\sU(\\bw^{\\otimes k})$ and isotropic covariance, compute KL via Frobenius distance, use $\\|\\sU(\\bW)\\|_2^2 \\le \\|\\bW\\|_F^2/k!$ and $\\|\\bw^{\\otimes k} - \\bw'^{\\otimes k}\\|_F^2 = 2(1-\\<\\bw,\\bw'\\>^k)$.",
+      "parent_id": "LP402.4",
+      "proves": "LP402.4",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP402.1",
+      "type": "example",
+      "name": "Numerical comparison of algorithms ($k=3$)",
+      "section": "5.2 Comparison of different algorithms",
+      "statement": "For $k=3$, $n \\in \\{25,50,100,200,400,800\\}$, $\\beta \\in [2,10]$: compares unfold, recursive unfold, PSD s.v., tensor power iteration with random/unfold/PSD/recursive-unfold initializations. Findings: unfolding-based methods dominate random init; recursive processing improves accuracy above threshold.",
+      "origin": "paper",
+      "tags": ["numerical_experiment"]
+    },
+    {
+      "id": "ExP402.2",
+      "type": "example",
+      "name": "Scaling of threshold SNR with $n$",
+      "section": "5.2 Comparison of different algorithms",
+      "statement": "Empirical scaling test: plot $|\\<\\hbv,\\bvz\\>|$ versus $\\beta/n^{1/2}$ (power iteration) and $\\beta/n^{1/4}$ (unfolding); curves superpose for $n \\ge 50$, confirming heuristic predictions.",
+      "origin": "paper",
+      "tags": ["numerical_experiment", "scaling"]
+    },
+    {
+      "id": "ExP402.3",
+      "type": "example",
+      "name": "Simultaneous matrix-and-tensor PCA at $\\beta = 3$",
+      "section": "5.3 The value of side information",
+      "statement": "Tensor $\\bX$ from spiked model ($k=3$, $\\beta=3$) plus side observation $\\bM = \\lambda \\bvz \\bvz^\\sT + \\bN$, $\\lambda \\in [0,2]$. Use leading eigenvector of $\\bM$ to initialize AMP. AMP threshold given by $\\gamma > \\beta(1/2 - \\sqrt{1/4 - 1/\\beta^2})$ matches simulations for $n=500$.",
+      "origin": "paper",
+      "tags": ["numerical_experiment", "side_information"]
+    },
+    {
+      "id": "RP402.1",
+      "type": "remark",
+      "name": "Auffinger notation correspondence",
+      "section": "Appendix B.1",
+      "statement": "To match notations in [Auffinger13], rescale $H_{n,k}(\\bv) = (n/\\sqrt{k})\\,L_\\bZ(\\bv/\\sqrt{n})$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP402.2",
+      "type": "remark",
+      "name": "Looseness of Sudakov-Fernique upper bound",
+      "section": "Appendix B.1",
+      "statement": "Setting $\\beta = 0$ in Lemma upperBoundX yields the loose bound $\\|\\bZ\\|_{op} \\le k$, which is off by roughly $\\sqrt{k}$ except in the $k=2$ case.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP402.3",
+      "type": "remark",
+      "name": "AMP solves Tensor PCA asymptotically",
+      "section": "4 Asymptotics via AMP",
+      "statement": "Under the assumptions of Theorem AMPisGood, for $\\beta > \\beta_k$ sufficiently large, AMP asymptotically solves the Tensor PCA optimization: $\\lim_t \\lim_n |\\<\\bX,(\\bv^t)^{\\otimes k}\\> - \\|\\bX\\|_{op}| = 0$ a.s.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP402.1",
+      "type": "equation",
+      "name": "First-iteration distribution for power iteration",
+      "section": "3 Power Iteration",
+      "statement": "$\\bv^1 = (\\beta\\tau_0^{k-1}\\bvz + n^{-1/2}\\bg)/\\sqrt{\\beta^2\\tau_0^{2(k-1)}+1} + \\bo(1)$, hence $\\ttau_1 = \\beta\\ttau_0^{k-1}/\\sqrt{\\beta^2 \\ttau_0^{2(k-1)}+1} + o(1)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP402.2",
+      "type": "equation",
+      "name": "AMP state evolution recursion",
+      "section": "4 Asymptotics via AMP",
+      "statement": "$\\tau_{t+1}^2 = \\beta^2 (\\tau_t^2/(1+\\tau_t^2))^{k-1}$ with $\\tau_0 = \\gamma$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP402.3",
+      "type": "equation",
+      "name": "AMP fixed-point equation in $x = \\tau^2/(1+\\tau^2)$",
+      "section": "Appendix D",
+      "statement": "$1/\\beta^2 = x^{k-2}(1-x) \\equiv h_k(x)$, with maximum $1/\\omega_k^2$ at $x_* = (k-2)/(k-1)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP402.1",
+      "type": "proof_step",
+      "parent_id": "PP402.1",
+      "step_order": 1,
+      "name": "Pack the sphere",
+      "statement": "Let $\\cN$ be an $\\eps$-packing of $\\bbS^{n-1}$ with $|\\cN| \\ge N_n(\\eps) \\ge (1/\\eps)^{n-1}$.",
+      "subclass": "setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP402.2",
+      "type": "proof_step",
+      "parent_id": "PP402.1",
+      "step_order": 2,
+      "name": "Markov: error probability bounds expected loss",
+      "statement": "Define $G(\\hbv(\\bX)) = \\arg\\min_{\\bw\\in\\cN}\\|\\hbv-\\bw\\|_2$. Then $\\prob\\{G \\ne \\bvz\\} \\le (4/\\eps^2)\\inf_\\hbv \\sup_\\bvz \\E\\Loss$.",
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP402.3",
+      "type": "proof_step",
+      "parent_id": "PP402.1",
+      "step_order": 3,
+      "name": "Apply Fano with KL bound",
+      "statement": "Use Fano's inequality with $\\Delta = \\max D(P_\\bw\\Vert P_{\\bw'}) \\le 2n\\beta^2/k$ from Lemma Kullback to bound $\\prob\\{G \\ne \\bvz\\}$ from below.",
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP402.4",
+      "type": "proof_step",
+      "parent_id": "PP402.1",
+      "step_order": 4,
+      "name": "Choose $\\eps = 1/2$ and conclude",
+      "statement": "For $\\eps = 1/2$, $\\beta \\le \\sqrt{k/10}$, $n \\ge 4$: $\\prob\\{G \\ne \\bvz\\} \\ge 1/2$, so $\\inf_\\hbv \\sup_\\bvz \\E\\Loss \\ge 1/32$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP402.5",
+      "type": "proof_step",
+      "parent_id": "PP402.6",
+      "step_order": 1,
+      "name": "Define $\\tau_t = \\<\\bvz,\\bv^t\\>$ and noise ratio $\\xi$",
+      "statement": "Set $\\xi = \\|\\bZ\\|_{op}/\\beta$; let $\\tau_{\\min}, \\tau_*$ be the two solutions in $[0,1]$ of $\\tau^{k-1}(1-\\tau) = \\xi$.",
+      "subclass": "setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP402.6",
+      "type": "proof_step",
+      "parent_id": "PP402.6",
+      "step_order": 2,
+      "name": "Inductive lower bound on $\\tau_t$",
+      "statement": "Use $\\bX\\{\\bv^t\\} = \\beta\\tau_t^{k-1}\\bvz + \\bZ\\{\\bv^t\\}$ and triangular inequalities to get $\\tau_{t+1} \\ge (\\tau_t^{k-1}-\\xi)/(\\tau_t^{k-1}+\\xi)$, then $\\tau_t \\ge \\ttau_t$ where $\\ttau_{t+1} = 1 - \\xi \\ttau_t^{1-k}$.",
+      "subclass": "induction_step",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP402.7",
+      "type": "proof_step",
+      "parent_id": "PP402.6",
+      "step_order": 3,
+      "name": "Fixed-point analysis of $f(x) = 1 - \\xi x^{1-k}$",
+      "statement": "$f$ is concave monotone increasing on $[\\tau_{\\min},\\tau_*]$ with $f'(\\tau_{\\min}) > 1$, $f'(\\tau_*) < 1$, so $\\ttau_t \\to \\tau_*$ exponentially.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP402.8",
+      "type": "proof_step",
+      "parent_id": "PP402.6",
+      "step_order": 4,
+      "name": "Bound $\\tau_*$ and $\\tau_{\\min}$ to extract loss bound",
+      "statement": "For $\\xi \\le 1/(2e(k-1))$: $\\tau_* > 1 - e\\xi$ via $g_k(x) \\ge e^{-1}(1-x)$; $\\tau_{\\min} < [(k-1)\\xi]^{1/(k-1)}$ via $g_k(x) \\ge x^{k-1}/(k-1)$. Specialize to standard normal $\\bZ$ via Lemma BenArous.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP402.9",
+      "type": "proof_step",
+      "parent_id": "PP402.7",
+      "step_order": 1,
+      "name": "Reparametrize fixed-point equation",
+      "statement": "Set $x = \\tau^2/(1+\\tau^2) \\in [0,1)$. Fixed-point becomes $1/\\beta^2 = x^{k-2}(1-x) = h_k(x)$.",
+      "subclass": "introduce_variable",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP402.10",
+      "type": "proof_step",
+      "parent_id": "PP402.7",
+      "step_order": 2,
+      "name": "Two roots when $\\beta > \\omega_k$",
+      "statement": "$h_k$ is continuously differentiable on $(0,1)$, $h_k(0)=h_k(1)=0$, with unique max $h_k(x_*) = 1/\\omega_k^2$ at $x_* = (k-2)/(k-1)$. So $\\beta > \\omega_k$ gives two solutions $0<x_2(\\beta)<x_*<x_1(\\beta)<1$.",
+      "subclass": "case_split",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP402.11",
+      "type": "proof_step",
+      "parent_id": "PP402.7",
+      "step_order": 3,
+      "name": "Lower bound on largest fixed point",
+      "statement": "$x_2 = 1 - 1/(x_2^{k-2}\\beta^2) \\ge 1 - 1/(x_*^{k-2}\\beta^2) \\ge 1 - 3/\\beta^2$.",
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP402.12",
+      "type": "proof_step",
+      "parent_id": "PP402.7",
+      "step_order": 4,
+      "name": "State evolution + loss bound",
+      "statement": "$\\tau_t \\to \\tau_2$ with $\\tau_2^2/(1+\\tau_2^2) = x_2$, so $\\Loss(\\bv^t/\\|\\bv^t\\|_2,\\bvz) \\to 2(1-\\sqrt{x_2}) \\le 2(1-x_2) \\le 6/\\beta^2$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP402.13",
+      "type": "proof_step",
+      "parent_id": "PP402.5",
+      "step_order": 1,
+      "name": "Decompose $\\bw(\\btX)$ along signal and noise",
+      "statement": "By rotational invariance: $\\bw(\\btX) = \\rho_n\\,\\vec(\\bvz^{\\otimes k/2}) + (\\orho_n/n^{k/4})\\bg$, $\\bg \\sim \\normal(0,\\id_{n^{k/2}})$.",
+      "subclass": "setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP402.14",
+      "type": "proof_step",
+      "parent_id": "PP402.5",
+      "step_order": 2,
+      "name": "Almost-sure limits of $\\rho_n,\\orho_n$",
+      "statement": "From the Paul / Benaych-Georges-Nadakuditi phase transition: $\\rho_n \\to \\sqrt{\\eps/(1+\\eps)}$, $\\orho_n \\to \\sqrt{1/(1+\\eps)}$ a.s.",
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP402.15",
+      "type": "proof_step",
+      "parent_id": "PP402.5",
+      "step_order": 3,
+      "name": "Reshape and apply Wedin",
+      "statement": "$\\M_1(\\bw) = \\rho_n \\bvz \\bu^\\sT + (\\orho_n/n^{(2b+1)/2}) \\bG'$ with i.i.d. Gaussian $\\bG'$. Davidson-Szarek bound gives $\\|\\bG'\\|_{op}/n^{(2b+1)/2} \\le 2/\\sqrt{n}$. Wedin then yields $|\\<\\hbv,\\bvz\\>| \\to 1$.",
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP402.1",
+      "type": "algorithm_step",
+      "parent_id": "AP402.1",
+      "step_order": 1,
+      "name": "Form matricization",
+      "statement": "Compute $\\M_q(\\bX) \\in \\reals^{n^q \\times n^{k-q}}$ with $q = \\lceil k/2 \\rceil$.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP402.2",
+      "type": "algorithm_step",
+      "parent_id": "AP402.1",
+      "step_order": 2,
+      "name": "Top singular vector",
+      "statement": "Compute the top right singular vector $\\bw$ of $\\M(\\bX)$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP402.3",
+      "type": "algorithm_step",
+      "parent_id": "AP402.1",
+      "step_order": 3,
+      "name": "Return estimate",
+      "statement": "Return $\\bw$ as estimate of $\\vec(\\bvz^{\\otimes \\lceil k/2 \\rceil})$.",
+      "subclass": "return",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP402.4",
+      "type": "algorithm_step",
+      "parent_id": "AP402.2",
+      "step_order": 1,
+      "name": "First unfolding PCA",
+      "statement": "Compute $\\bw = $ top right singular vector of $\\M(\\btX)$.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP402.5",
+      "type": "algorithm_step",
+      "parent_id": "AP402.2",
+      "step_order": 2,
+      "name": "Reshape singular vector",
+      "statement": "Form $\\M_1(\\bw)_{i,j} = \\bw_{i+(j-1)n} \\in \\reals^{n \\times n^{2b}}$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP402.6",
+      "type": "algorithm_step",
+      "parent_id": "AP402.2",
+      "step_order": 3,
+      "name": "Second PCA on reshaped vector",
+      "statement": "Set $\\hbv$ = left principal vector of $\\M_1(\\bw)$. Return $\\hbv$.",
+      "subclass": "return",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP402.7",
+      "type": "algorithm_step",
+      "parent_id": "AP402.3",
+      "step_order": 1,
+      "name": "Initialize $\\bv^0$",
+      "statement": "$\\bv^0 = \\by/\\|\\by\\|_2$, where $\\by$ is the supplied initialization (random or warm-start).",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP402.8",
+      "type": "algorithm_step",
+      "parent_id": "AP402.3",
+      "step_order": 2,
+      "name": "Power iteration loop",
+      "statement": "For $t = 0, 1, \\dots$ (until convergence): $\\bv^{t+1} = \\bX\\{\\bv^t\\}/\\|\\bX\\{\\bv^t\\}\\|_2$.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP402.9",
+      "type": "algorithm_step",
+      "parent_id": "AP402.3",
+      "step_order": 3,
+      "name": "Return final iterate",
+      "statement": "Return $\\bv^t$ for $t \\ge t_0(k)$.",
+      "subclass": "return",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP402.10",
+      "type": "algorithm_step",
+      "parent_id": "AP402.5",
+      "step_order": 1,
+      "name": "Initialize iterates",
+      "statement": "$\\bv^0 = \\by$, $f(\\bv^{-1}) = 0$, with $f(\\bx) = \\bx/\\|\\bx\\|_2$.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP402.11",
+      "type": "algorithm_step",
+      "parent_id": "AP402.5",
+      "step_order": 2,
+      "name": "AMP iteration with Onsager memory term",
+      "statement": "For $t \\ge 0$: $\\bv^{t+1} = \\bX\\{f(\\bv^t)\\} - \\ons_t f(\\bv^{t-1})$, $\\ons_t = (k-1)(\\<f(\\bv^t),f(\\bv^{t-1})\\>)^{k-2}$.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP402.12",
+      "type": "algorithm_step",
+      "parent_id": "AP402.5",
+      "step_order": 3,
+      "name": "Return normalized iterate",
+      "statement": "Return $\\bv^t/\\|\\bv^t\\|_2$ as estimate of $\\bvz$.",
+      "subclass": "return",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP402.13",
+      "type": "algorithm_step",
+      "parent_id": "AP402.6",
+      "step_order": 1,
+      "name": "Random initialization",
+      "statement": "Sample $\\bu^0 \\in \\reals^n$ uniformly at random, set $\\bv^0$ accordingly.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP402.14",
+      "type": "algorithm_step",
+      "parent_id": "AP402.6",
+      "step_order": 2,
+      "name": "Projected power iteration loop",
+      "statement": "For $t \\ge 0$: $\\bw^t = \\P(\\M(\\bX)\\bv^t)$; $\\bv^{t+1} = \\M(\\bX)^\\sT \\bw^t/\\|\\M(\\bX)^\\sT \\bw^t\\|_2$, where $\\P$ projects onto the PSD cone in $\\reals^{n^2}$.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP402.15",
+      "type": "algorithm_step",
+      "parent_id": "AP402.6",
+      "step_order": 3,
+      "name": "Return PSD-constrained pair",
+      "statement": "Return $(\\hbw,\\hbv)$ satisfying the cone-constrained optimum.",
+      "subclass": "return",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "DP402.1", "target": "ProbP402.1", "type": "uses"},
+    {"source": "DP402.3", "target": "ProbP402.1", "type": "uses"},
+    {"source": "DP402.4", "target": "ProbP402.1", "type": "uses"},
+    {"source": "DP402.2", "target": "DP402.1", "type": "uses"},
+    {"source": "DP402.5", "target": "TP402.1", "type": "uses"},
+    {"source": "DP402.5", "target": "TP402.2", "type": "uses"},
+    {"source": "DP402.5", "target": "TP402.3", "type": "uses"},
+    {"source": "DP402.5", "target": "TP402.4", "type": "uses"},
+    {"source": "DP402.5", "target": "TP402.5", "type": "uses"},
+    {"source": "DP402.5", "target": "TP402.6", "type": "uses"},
+
+    {"source": "DP402.7", "target": "TP402.8", "type": "uses"},
+    {"source": "DP402.7", "target": "TP402.9", "type": "uses"},
+    {"source": "TP402.8", "target": "TP402.9", "type": "uses"},
+    {"source": "TP402.8", "target": "LP402.1", "type": "uses"},
+    {"source": "TP402.9", "target": "LP402.1", "type": "uses"},
+
+    {"source": "LP402.1", "target": "TP402.2", "type": "uses"},
+    {"source": "LP402.4", "target": "TP402.1", "type": "uses"},
+
+    {"source": "DP402.6", "target": "AP402.1", "type": "uses"},
+    {"source": "DP402.6", "target": "LP402.3", "type": "uses"},
+    {"source": "LP402.3", "target": "TP402.4", "type": "uses"},
+    {"source": "TP402.3", "target": "TP402.4", "type": "uses"},
+    {"source": "TP402.3", "target": "TP402.5", "type": "uses"},
+    {"source": "AP402.1", "target": "ProbP402.1", "type": "uses"},
+    {"source": "DP402.6", "target": "AP402.2", "type": "uses"},
+    {"source": "AP402.2", "target": "ProbP402.1", "type": "uses"},
+
+    {"source": "DP402.4", "target": "AP402.3", "type": "uses"},
+    {"source": "AP402.3", "target": "ProbP402.1", "type": "uses"},
+    {"source": "LP402.1", "target": "TP402.6", "type": "uses"},
+    {"source": "AP402.1", "target": "AP402.4", "type": "uses"},
+    {"source": "AP402.3", "target": "AP402.4", "type": "uses"},
+
+    {"source": "AP402.5", "target": "ProbP402.2", "type": "uses"},
+    {"source": "AP402.3", "target": "AP402.5", "type": "uses"},
+    {"source": "PrP402.1", "target": "TP402.7", "type": "uses"},
+    {"source": "DP402.9", "target": "TP402.7", "type": "uses"},
+    {"source": "EP402.2", "target": "PrP402.1", "type": "uses"},
+    {"source": "EP402.2", "target": "TP402.7", "type": "uses"},
+    {"source": "EP402.3", "target": "TP402.7", "type": "uses"},
+
+    {"source": "DP402.8", "target": "AP402.6", "type": "uses"},
+    {"source": "AP402.6", "target": "ProbP402.1", "type": "uses"},
+
+    {"source": "PP402.1", "target": "TP402.1", "type": "proves"},
+    {"source": "PP402.2", "target": "LP402.3", "type": "proves"},
+    {"source": "PP402.3", "target": "TP402.3", "type": "proves"},
+    {"source": "PP402.4", "target": "TP402.4", "type": "proves"},
+    {"source": "PP402.5", "target": "TP402.5", "type": "proves"},
+    {"source": "PP402.6", "target": "TP402.6", "type": "proves"},
+    {"source": "PP402.7", "target": "TP402.7", "type": "proves"},
+    {"source": "PP402.8", "target": "TP402.2", "type": "proves"},
+    {"source": "PP402.9", "target": "LP402.2", "type": "proves"},
+    {"source": "PP402.10", "target": "LP402.4", "type": "proves"},
+
+    {"source": "LP402.4", "target": "PP402.1", "type": "uses"},
+    {"source": "LP402.5", "target": "PP402.9", "type": "uses"},
+    {"source": "LP402.1", "target": "PP402.8", "type": "uses"},
+    {"source": "LP402.3", "target": "PP402.4", "type": "uses"},
+    {"source": "TP402.3", "target": "PP402.5", "type": "uses"},
+    {"source": "TP402.3", "target": "PP402.4", "type": "uses"},
+
+    {"source": "AP402.1", "target": "ExP402.1", "type": "illustrates"},
+    {"source": "AP402.2", "target": "ExP402.1", "type": "illustrates"},
+    {"source": "AP402.3", "target": "ExP402.1", "type": "illustrates"},
+    {"source": "AP402.4", "target": "ExP402.1", "type": "illustrates"},
+    {"source": "AP402.5", "target": "ExP402.1", "type": "illustrates"},
+    {"source": "AP402.6", "target": "ExP402.1", "type": "illustrates"},
+    {"source": "AP402.1", "target": "ExP402.2", "type": "illustrates"},
+    {"source": "AP402.3", "target": "ExP402.2", "type": "illustrates"},
+    {"source": "AP402.5", "target": "ExP402.3", "type": "illustrates"},
+    {"source": "TP402.7", "target": "ExP402.3", "type": "illustrates"},
+    {"source": "PrP402.1", "target": "ExP402.3", "type": "illustrates"},
+
+    {"source": "EP402.1", "target": "PrP402.1", "type": "uses"},
+
+    {"source": "PSP402.1", "target": "PSP402.2", "type": "uses"},
+    {"source": "PSP402.2", "target": "PSP402.3", "type": "uses"},
+    {"source": "PSP402.3", "target": "PSP402.4", "type": "uses"},
+
+    {"source": "PSP402.5", "target": "PSP402.6", "type": "uses"},
+    {"source": "PSP402.6", "target": "PSP402.7", "type": "uses"},
+    {"source": "PSP402.7", "target": "PSP402.8", "type": "uses"},
+
+    {"source": "PSP402.9", "target": "PSP402.10", "type": "uses"},
+    {"source": "PSP402.10", "target": "PSP402.11", "type": "uses"},
+    {"source": "PSP402.11", "target": "PSP402.12", "type": "uses"},
+
+    {"source": "PSP402.13", "target": "PSP402.14", "type": "uses"},
+    {"source": "PSP402.14", "target": "PSP402.15", "type": "uses"},
+
+    {"source": "ASP402.1", "target": "ASP402.2", "type": "uses"},
+    {"source": "ASP402.2", "target": "ASP402.3", "type": "uses"},
+    {"source": "ASP402.4", "target": "ASP402.5", "type": "uses"},
+    {"source": "ASP402.5", "target": "ASP402.6", "type": "uses"},
+    {"source": "ASP402.7", "target": "ASP402.8", "type": "uses"},
+    {"source": "ASP402.8", "target": "ASP402.9", "type": "uses"},
+    {"source": "ASP402.10", "target": "ASP402.11", "type": "uses"},
+    {"source": "ASP402.11", "target": "ASP402.12", "type": "uses"},
+    {"source": "ASP402.13", "target": "ASP402.14", "type": "uses"},
+    {"source": "ASP402.14", "target": "ASP402.15", "type": "uses"}
+  ]
+}

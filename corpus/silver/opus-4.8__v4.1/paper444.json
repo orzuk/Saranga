@@ -1,0 +1,865 @@
+{
+  "metadata": {
+    "paper_num": "T34",
+    "title": "Provable Inductive Matrix Completion",
+    "arxiv_id": "1306.0626",
+    "annotator": "agent-extraction",
+    "prompt_version": "v4.1",
+    "model": "claude-opus-4-8",
+    "extraction_date": "2026-07-28"
+  },
+  "nodes": [
+    {
+      "id": "EP34.1",
+      "type": "equation",
+      "name": "Linear measurement operator $\\calA(W)$",
+      "section": "2 Low-rank Matrix Estimation using Rank-one Measurements",
+      "origin": "paper",
+      "statement": "Let $\\calA: \\mathbb{R}^{d_1\\times d_2}\\rightarrow \\R^m$ be a linear measurement operator parameterized by $\\calA=\\{A_1, A_2, \\dots, A_m\\}$, where $A_i\\in \\mathbb{R}^{d_1\\times d_2}$. Then, the linear measurements of a given matrix $W\\in \\R^{d_1\\times d_2}$ are given by: \\begin{equation} \\calA(W)=[\\Tr(A_1^TW)\\ \\Tr(A_2^TW)\\ \\dots\\ \\Tr(A_m^TW)]^T, \\end{equation} where $\\Tr$ denotes the trace operator."
+    },
+    {
+      "id": "ProbP34.1",
+      "type": "problem",
+      "name": "Low-Rank matrix estimation using Rank One Measurements (LRROM)",
+      "section": "2 Low-rank Matrix Estimation using Rank-one Measurements",
+      "subclass": "optimization",
+      "origin": "paper",
+      "statement": "Then, given $\\calA, \\b$, the goal of the \\lrrom problem is to recover back $\\Wo$ efficiently. This problem can be reformulated as the following non-convex optimization problem: \\begin{equation} {\\bf (\\lrrom)}:\\ \\ \\ \\min_{W=U\\tp{V}, U\\in \\R^{d_1\\times k}, V\\in \\R^{d_2\\times k}} \\sum_{i=1}^m (b_i -\\tp{\\x}_i W \\y_i)^2. \\end{equation} Note that $W$ to be recovered is restricted to have at most rank-$k$ and hence $W$ can be re-written as $W=U\\tp{V}$."
+    },
+    {
+      "id": "AP34.1",
+      "type": "algorithm",
+      "name": "AltMin-LRROM: Alternating Minimization for LRROM",
+      "section": "2 Low-rank Matrix Estimation using Rank-one Measurements",
+      "origin": "paper",
+      "statement": "\\STATE {\\bf Input}: Measurements: $\\b_{all}$, Measurement matrices: $\\calA_{all}$, Number of iterations: $H$ \\STATE Divide $(\\calA_{all}, \\b_{all})$ into $2H+1$ sets (each of size $m$) with $h$-th set being $\\calA^h=\\{A_1^h,A_2^h,\\dots,A_m^h\\}$ and $\\b^h=[b_1^h\\ b_2^h\\ \\dots\\ b_m^h]^T$ \\STATE {\\bf Initialization}: $U_0=$top-$k$ left singular vectors of $\\frac{1}{m}\\sum_{i=1}^m b_i^0 A_i^0$ \\FOR{$h=0$ to $H-1$} \\STATE $b\\leftarrow b^{2h+1}, \\calA\\leftarrow \\calA^{2h+1}$ \\STATE $\\widehat{V}_{h+1}\\leftarrow \\argmin_{V\\in \\R^{d_2\\times k}} \\sum_i (b_i-\\x_i^TU_h\\tp{V}\\y_i)^2$ \\STATE $V_{h+1}=QR(\\widehat{V}_{h+1})$ //orthonormalization of $\\widehat{V}_{h+1}$ \\STATE $b\\leftarrow b^{2h+2}, \\calA\\leftarrow \\calA^{2h+2}$ \\STATE $\\widehat{U}_{h+1}\\leftarrow \\argmin_{U\\in \\mathbb{R}^{d_1\\times k}} \\ \\sum_i (b_i-\\x_i^TU\\tp{V}_{h+1}\\y_i)^2$ \\STATE $U_{h+1}=QR(\\widehat{U}_{h+1})$ //orthonormalization of $\\widehat{U}_{h+1}$ \\ENDFOR \\STATE {\\bf Output}: $W_H=U_H(\\widehat{V}_H)^T$",
+      "input": [
+        "Measurements: $\\b_{all}$",
+        "Measurement matrices: $\\calA_{all}$",
+        "Number of iterations: $H$"
+      ],
+      "output": [
+        "$W_H=U_H(\\widehat{V}_H)^T$"
+      ]
+    },
+    {
+      "id": "TP34.1",
+      "type": "theorem",
+      "name": "General Theorem for Low-rank Matrix Estimation (Theorem~\\ref{thm:general})",
+      "section": "2 Low-rank Matrix Estimation using Rank-one Measurements",
+      "origin": "paper",
+      "statement": "Let $\\Wo =\\Uo\\So\\Vot\\in \\mathbb{R}^{d_1\\times d_2}$ be a rank-$k$ matrix with $k$-singular values $\\so^1\\geq \\so^2\\dots\\geq \\so^k$. Also, let $\\mathcal{A}: \\R^{d_1\\times d_2}\\rightarrow \\R^m$ be a linear measurement operator parameterized by $m$ matrices, i.e., $\\mathcal{A}=\\{A_1, A_2, \\dots, A_m\\}$ where $A_i=\\x_i\\y_i^T$. Let $\\mathcal{A}(W)$ be as given by \\eqref{eq:linA}. Now, let $\\mathcal{A}$ satisfy the following properties with parameter $\\delta=\\frac{1}{k^{3/2} \\cdot \\beta \\cdot 100}\\ \\ $ ($\\beta=\\so^1/\\so^k$): \\begin{enumerate} \\item {\\bf Initialization}: $\\|\\frac{1}{m}\\sum_i b_i A_i-\\Wo\\|_2\\leq \\|\\Wo\\|_2\\cdot \\delta$. \\item {\\bf Concentration of operators $B_x, B_y$}: Let $B_x=\\frac{1}{m}\\sum_{i=1}^m (\\y_i^T\\v)^2\\x_i\\tp{\\x}_i$\\\\ and $B_y=\\frac{1}{m}\\sum_{i=1}^m (\\tp{\\x}_i\\u)^2\\y_i\\tp{\\y}_i$, where $\\u\\in \\mathbb{R}^{d_1}, \\v\\in \\mathbb{R}^{d_2}$ are two unit vectors that are {\\em independent} of randomness in $\\x_i, \\y_i,\\ \\forall i$. Then the following holds: $\\|B_x-I\\|_2\\leq \\delta$ and $\\|B_y-I\\|_2\\leq \\delta$. \\item {\\bf Concentration of operators $G_x, G_y$}: Let $G_x=\\frac{1}{m}\\sum_i (\\y_i^T\\v)(\\y_i\\v_\\perp)\\x_i\\tp{\\x}_i$,\\\\ $G_y=\\frac{1}{m}\\sum_i (\\tp{\\x}_i\\u)(\\tp{\\u}_\\perp\\x_i)\\y_i\\tp{\\y}_i$, where $\\u,\\u_\\perp\\in \\mathbb{R}^{d_1},\\ \\ \\v,\\v_\\perp\\in \\mathbb{R}^{d_2}$ are unit vectors, s.t., $\\tp{\\u}\\u_\\perp=0$ and $\\tp{\\v}\\v_\\perp=0$. Furthermore, let $\\u, \\u_\\perp, \\v, \\v_\\perp$ be independent of randomness in $\\x_i, \\y_i, \\forall i$. Then, $\\|G_x\\|_2\\leq \\delta$ and $\\|G_y\\|_2\\leq \\delta$. \\end{enumerate} Then, after $H$-iterations of the alternating minimization method (Algorithm~\\ref{alg:altmin}), we obtain $W_H=U_H\\tp{V}_H$ s.t., $\\|W_H-\\Wo\\|_2\\leq \\epsilon$, where $H\\leq 100\\log(\\|\\Wo\\|_F/\\epsilon)$.",
+      "assumptions": [
+        "Let $\\Wo =\\Uo\\So\\Vot\\in \\mathbb{R}^{d_1\\times d_2}$ be a rank-$k$ matrix with $k$-singular values $\\so^1\\geq \\so^2\\dots\\geq \\so^k$.",
+        "Also, let $\\mathcal{A}: \\R^{d_1\\times d_2}\\rightarrow \\R^m$ be a linear measurement operator parameterized by $m$ matrices, i.e., $\\mathcal{A}=\\{A_1, A_2, \\dots, A_m\\}$ where $A_i=\\x_i\\y_i^T$.",
+        "Now, let $\\mathcal{A}$ satisfy the following properties with parameter $\\delta=\\frac{1}{k^{3/2} \\cdot \\beta \\cdot 100}\\ \\ $ ($\\beta=\\so^1/\\so^k$)"
+      ],
+      "conclusions": [
+        "Then, after $H$-iterations of the alternating minimization method (Algorithm~\\ref{alg:altmin}), we obtain $W_H=U_H\\tp{V}_H$ s.t., $\\|W_H-\\Wo\\|_2\\leq \\epsilon$, where $H\\leq 100\\log(\\|\\Wo\\|_F/\\epsilon)$."
+      ]
+    },
+    {
+      "id": "PP34.1",
+      "type": "proof",
+      "name": "Proof of Theorem~\\ref{thm:general} (rank-$1$ case)",
+      "section": "2 Low-rank Matrix Estimation using Rank-one Measurements",
+      "origin": "paper",
+      "proves": "TP34.1",
+      "statement": "We explain the key ideas of the proof by first presenting the proof for the special case of rank-$1$ $\\Wo=\\so \\uo \\vot$. Later in Appendix~\\ref{app:general}, we extend the proof to general rank-$k$ case. Similar to \\cite{JainNS13}, we first characterize the update for $h+1$-th step iterates $\\widehat{\\v}_{h+1}$ of Algorithm~\\ref{alg:altmin} and its normalized form $\\v_{h+1}=\\widehat{\\v}_{h+1}/\\|\\widehat{\\v}_{h+1}\\|_2$. Now, by gradient of \\eqref{eq:r1ms} w.r.t. $\\vh$ to be zero while keeping $\\ut$ to be fixed. That is, \\begin{align} & \\sum_{i=1}^m (b_i-\\xti\\ut\\hvtnt\\y_i)(\\xti\\ut)\\y_i=0,\\nonumber\\\\ i.e.,\\ &\\sum_{i=1}^m (\\ut^T\\x_i)\\y_i(\\so\\yti\\vo\\uot\\x_i-\\yti\\vh_{h+1}\\ut^T\\x_i)=0,\\nonumber\\\\ i.e.,\\ &\\left(\\sum_{i=1}^m (\\xti\\ut\\utt\\x_i)\\y_i\\yti\\right)\\hvtn=\\sigma_*\\left(\\sum_{i=1}^m (\\xti\\ut\\uot\\x_i)\\y_i\\yti\\right)\\vo,\\nonumber\\\\ i.e.,\\ &\\ \\hvtn=\\so (\\uot\\ut)\\vo-\\so B^{-1}( (\\uot\\ut) B-\\Bo)\\vo, \\end{align} where, $$B=\\frac{1}{m}\\sum_{i=1}^m (\\xti\\ut\\utt\\x_i)\\y_i\\yti,\\ \\ \\ \\Bo=\\frac{1}{m}\\sum_{i=1}^m (\\xti\\ut\\uot\\x_i)\\y_i\\yti.$$ Note that \\eqref{eq:r1pm} shows that $\\hvtn$ is a perturbation of $\\vo$ and the goal now is to bound the spectral norm of the perturbation term: \\begin{equation}\\|G\\|_2= \\|B^{-1}( \\uot\\ut B-\\Bo)\\vo\\|_2\\leq \\|B^{-1}\\|_2\\|\\uot\\ut B-\\Bo\\|_2\\|\\vo\\|_2.\\end{equation} Now,, using Property 2 mentioned in the theorem, we get: \\begin{equation}\\|B-I\\|_2\\leq 1/100, \\ \\ \\ i.e.,\\ \\sigma_{min}(B)\\geq 1-1/100,\\ \\ \\ i.e.,\\ \\|B^{-1}\\|_2\\leq 1/(1-1/100).\\end{equation} Now, \\begin{align} (\\uot\\ut) B-\\Bo&=\\frac{1}{m}\\sum_{i=1}^m \\yi\\yti \\xti((\\uot\\ut)\\ut\\utt-\\uo\\utt)\\x_i,\\nonumber\\\\ &=\\frac{1}{m}\\sum_{i=1}^m \\yi\\yti \\xti(\\ut\\utt-I)\\uo\\utt\\x_i,\\nonumber\\\\ &\\stackrel{\\zeta_1}{\\leq} \\frac{1}{100}\\|(\\ut\\utt-I)\\uo\\|_2 \\|\\utt\\|_2= \\frac{1}{100}\\sqrt{1-(\\utt\\uo)^2}, \\end{align} where $\\zeta_1$ follows by observing that $(\\ut\\utt-I)\\uo$ and $\\ut$ are orthogonal set of vectors and then using Property 3 given in the Theorem~\\ref{thm:general}. Hence, using \\eqref{eq:blb}, \\eqref{eq:cup}, and $\\|\\vo\\|_2=1$ along with \\eqref{eq:gub}, we get: \\begin{equation} \\|G\\|_2\\leq \\frac{1}{99}\\sqrt{1-(\\utt\\uo)^2}. \\end{equation} We are now ready to lower bound the component of $\\widehat{\\v}_h$ along the correct direction $\\vo$ and the component of $\\widehat{\\v}_h$ that is perpendicular to the optimal direction $\\vo$. Now, by left-multiplying \\eqref{eq:r1pm} by $\\vo$ and using \\eqref{eq:blb} we obtain: \\begin{equation} \\vot\\vhn=\\so(\\utt\\uo)-\\so\\vot G\\geq \\so(\\utt\\uo)-\\frac{\\so}{99}\\sqrt{1-(\\utt\\uo)^2}. \\end{equation} Similarly, by multiplying \\eqref{eq:r1pm} by $\\vo^\\perp$, where $\\vo^\\perp$ is a unit norm vector that is orthogonal to $\\vo$, we get: \\begin{equation} \\ip{\\vo^\\perp}{\\vhn}\\leq \\frac{\\so}{99}\\sqrt{1-(\\utt\\uo)^2}. \\end{equation} Using \\eqref{eq:vvo}, \\eqref{eq:vp}, and $\\|\\vhn\\|_2^2=(\\vot\\vhn)^2+((\\vo^\\perp)^T\\vhn)^2$, we get: \\begin{align} 1-(\\vtnt\\vo)^2 &= \\frac{\\ip{\\vo^\\perp}{\\vhn}^2}{\\ip{\\vo}{\\vhn}^2+\\ip{\\vo^\\perp}{\\vhn}^2},\\nonumber\\\\ &\\leq \\frac{1}{99\\cdot 99\\cdot (\\utt\\uo-\\frac{1}{99}\\sqrt{1-(\\utt\\uo)^2})^2+1} (1-(\\ut\\uo)^2). \\end{align} Also, using Property 1 of Theorem~\\ref{thm:general}, for $S=\\frac{1}{m}\\sum_{i=1}^m b_i A_i$, we get: $\\|S\\|_2\\geq \\frac{99\\so}{100}$. Moreover, by multiplying $S-\\Wo$ by $\\u_0$ on left and $\\v_0$ on the right and using the fact that $(\\u_0, \\v_0)$ are the largest singular vectors of $S$, we get: $\\|S\\|_2-\\so\\v_0^T\\vo \\u_0^T\\uo\\leq \\so/100$. Hence, $\\u_0^T\\uo\\geq 9/10$. Using the \\eqref{eq:vnorm} along with the above given observation and by the ``inductive'' assumption $\\u_h^T\\uo\\geq \\u_0^T\\uo\\geq 9/10$ (proof of the inductive step follows directly from the below equation) , we get: \\begin{equation} 1-(\\vtnt\\vo)^2 \\leq \\frac{1}{2} (1-(\\utt\\uo)^2). \\end{equation} Similarly, we can show that $ 1-(\\utnt\\uo)^2 \\leq \\frac{1}{2} (1-(\\vtnt\\vo)^2).$ Hence, after $H=O(\\log(\\so/\\epsilon))$ iterations, we obtain $W_H=\\u_H \\widehat{\\v}^T_H$, s.t., $\\|W_H-\\Wo\\|_2\\leq \\epsilon$."
+    },
+    {
+      "id": "RP34.1",
+      "type": "remark",
+      "name": "Measurement complexity via fresh partitions",
+      "section": "2 Low-rank Matrix Estimation using Rank-one Measurements",
+      "origin": "paper",
+      "statement": "Note that we require intermediate vectors $\\u, \\v, \\u_\\perp, \\v_\\perp$ to be independent of randomness in $A_i$'s. Hence, we partition $\\calA_{all}$ into $2H+1$ partitions and at each step $(\\calA^h, \\b^h)$ and $(\\calA^{h+1}, \\b^{h+1})$ are supplied to the algorithm. This implies that the measurement complexity of the algorithm is given $m\\cdot H=m\\log(\\|\\Wo\\|_F/\\epsilon)$. That is, given $O(m \\log(\\|(d_1+d_2)\\Wo\\|_F)$ samples, we can estimate matrix $W_H$, s.t., $\\|W_H-\\Wo\\|_2 \\leq \\frac{1}{(d_1+d_2)^c}$, where $c>0$ is any constant."
+    },
+    {
+      "id": "DP34.1",
+      "type": "definition",
+      "name": "Restricted Isometry Property (RIP)",
+      "section": "3 Rank-one Matrix Sensing using Gaussian Measurements",
+      "origin": "external",
+      "origin_citation": "Restricted Isometry Property (RIP), cf. \\cite{RechtFP2007}",
+      "statement": "A linear operator $\\calA: \\mathbb{R}^{d_1\\times d_2}\\rightarrow \\mathbb{R}^{m}$ satisfies RIP iff, $\\forall W$ s.t. $rank(W)\\leq k$, the following holds: $$(1-\\delta_k)\\|W\\|_F^2\\leq \\|\\calA(W)\\|_F^2 \\leq (1+\\delta_k) \\|W\\|_F^2,$$ where $\\delta_k>0$ is a constant dependent only on $k$."
+    },
+    {
+      "id": "ClP34.1",
+      "type": "claim",
+      "name": "$\\calA_{Gauss}$ does not satisfy RIP (Claim~\\ref{claim:notrip})",
+      "section": "3 Rank-one Matrix Sensing using Gaussian Measurements",
+      "origin": "paper",
+      "statement": "Let $\\calA_{Gauss}=\\{A_1, A_2, \\dots A_m\\}$ be a measurement operator with each $A_i=\\x_i\\y_i^T$, where $\\x_i \\in \\R^{d_1}\\sim \\calN(0, I),\\ \\y_i \\in \\R^{d_2}\\sim \\calN(0, I), 1\\leq i\\leq m$. Let $m=O((d_1+d_2)\\log^c(d_1+d_2)$, for any constant $c>0$. Then, with probability at least $1-1/m^{10}$, $\\calA_{Gauss}$ does not satisfy RIP for rank-$1$ matrices with a constant $\\delta$.",
+      "assumptions": [
+        "Let $\\calA_{Gauss}=\\{A_1, A_2, \\dots A_m\\}$ be a measurement operator with each $A_i=\\x_i\\y_i^T$, where $\\x_i \\in \\R^{d_1}\\sim \\calN(0, I),\\ \\y_i \\in \\R^{d_2}\\sim \\calN(0, I), 1\\leq i\\leq m$.",
+        "Let $m=O((d_1+d_2)\\log^c(d_1+d_2)$, for any constant $c>0$."
+      ],
+      "conclusions": [
+        "Then, with probability at least $1-1/m^{10}$, $\\calA_{Gauss}$ does not satisfy RIP for rank-$1$ matrices with a constant $\\delta$."
+      ]
+    },
+    {
+      "id": "PP34.2",
+      "type": "proof",
+      "name": "Proof of Claim~\\ref{claim:notrip}",
+      "section": "3 Rank-one Matrix Sensing using Gaussian Measurements",
+      "origin": "paper",
+      "proves": "ClP34.1",
+      "statement": "The main idea behind our proof is to show that there exists two rank-$1$ matrices $Z_U, Z_L$ s.t. $\\|\\mathcal{A}_{Gauss}(Z_U)\\|_2^2$ is large while $\\|\\mathcal{A}_{Gauss}(Z_L)\\|_2^2$ is much smaller than $\\|\\mathcal{A}_{Gauss}(Z_U)\\|_2^2$. In particular, let $Z_U=\\x_1 \\y_1^T$ and let $Z_L=\\u \\v^T$ where $\\u, \\v$ are sampled from normal distribution independent of $X, Y$. Now, $$\\|\\mathcal{A}_{Gauss}(Z_U)\\|_2^2=\\sum_{i=1}^m \\|\\x_1\\|_2^4\\|\\y_1\\|_2^4+\\sum_{i=2}^m (\\x_1^T\\x_i)^2(\\y_1^T\\y_i)^2.$$ Now, as $\\x_i, \\y_i, \\forall i$ are multi-variate normal random variables, $\\|\\x_1\\|_2^4\\|\\y_1\\|_2^4\\geq 0.5 d_1^2d_2^2$ w.p. $\\geq 1-2\\exp(-d_1-d_2)$. \\begin{equation}\\|\\mathcal{A}_{Gauss}(Z_U)\\|_2^2\\geq .5 d_1^2 d_2^2.\\end{equation} Moreover, $\\|Z_U\\|_F^2\\leq 2d_1d_2$ w.p. $\\geq 1-2\\exp(-d_1-d_2)$. Now, consider $$\\|\\mathcal{A}_{Gauss}(Z_L)\\|_2^2=\\sum_{i=2}^m (\\u^T\\x_i)^2(\\v^T\\y_i)^2,$$ where $Z_L=\\u\\v^T$ and $\\u, \\v$ are sampled from standard normal distribution, independent of $\\x_i, \\y_i, \\forall i$. Since, $\\u, \\v$ are independent of $\\u^T\\x_i \\sim N(0, \\|\\u\\|_2)$ and $\\v^T\\y_i\\sim N(0, \\|\\v\\|_2)$. Hence, w.p. $\\geq 1-1/m^{3}$, $|\\u^T\\x_i| \\leq \\log(m)\\|\\u\\|_2, |\\v^T\\y_i| \\leq \\log(m)\\|\\v\\|_2, \\forall i\\geq 2$. Moreover, w.p. $\\geq 1-\\exp(-d_1-d_2)$, $\\|\\u\\|_2\\leq 2 \\sqrt{d_1}$ and $\\|\\v\\|_2\\leq 2 \\sqrt{d_2}$. That is, w.p. $1-1/m^3$: \\begin{equation}\\|\\mathcal{A}_{Gauss}(Z_L)\\|_2^2\\leq 4m\\cdot d_1\\cdot d_2 \\log^4m .\\end{equation} Furthermore, $\\|Z_L\\|_F^2\\leq 2d_1d_2$ w.p. $\\geq 1-2\\exp(-d_1-d_2)$. Using \\eqref{eq:nrlb}, \\eqref{eq:nrub}, we get that w.p. $\\geq 1-2/m^3-10 \\exp(-d_1-d_2)$: $$40m \\log^4m\\leq \\|\\calA_{Gauss}(Z/\\|Z\\|_F)\\|^2\\leq .05 d_1d_2.$$ Now, for RIP to be satisfied with a constant $\\delta$, the lower and upper bound on $\\|\\calA_{Gauss}(Z/\\|Z\\|_F)\\|^2$ for all rank-$1$ $Z$ should be at most a constant factor apart. However, the above equation clearly shows that the upper and lower bound can match only when $m=\\Omega(d_1d_2/\\log(5d_1d_2))$. Hence, for $m$ that is at most linear in both $d_1$, $d_2$, RIP cannot be satisfied with probability $\\geq 1-1/(d_1+d_2)^3$."
+    },
+    {
+      "id": "ProbP34.2",
+      "type": "problem",
+      "name": "Rank-one Matrix Sensing using Gaussian Measurements",
+      "section": "3 Rank-one Matrix Sensing using Gaussian Measurements",
+      "subclass": "signal_acquisition",
+      "origin": "paper",
+      "statement": "Consider a measurement operator $\\calA_{Gauss}=\\{A_1, A_2, \\dots, A_m\\}$ where each measurement matrix $A_i=\\x_i\\y_i^T$ is sampled using normal distribution, i.e., $\\x_i \\sim N(0, I),\\ y_i\\sim N(0, I), \\forall i$. Now, for this operator $\\calA_{Gauss}$, we show that if $m=\\Omega(k^4 \\beta^2 \\cdot (d_1+d_2) \\cdot \\log^2(d_1+d_2))$, then w.p. $\\geq 1-1/(d_1+d_2)^{100}$, {\\em any} fixed rank-$k$ matrix $\\Wo$ can be recovered by AltMin-\\lrrom (Algorithm~\\ref{alg:altmin}). Here $\\beta=\\so^1/\\so^k$ is the condition number of $\\Wo$. That is, using nearly linear number of measurements in $d_1, d_2$, one can exactly recover the $d_1\\times d_2$ rank-$k$ matrix $\\Wo$."
+    },
+    {
+      "id": "LP34.1",
+      "type": "lemma",
+      "name": "Rank-One Gaussian Measurements",
+      "section": "3 Rank-one Matrix Sensing using Gaussian Measurements",
+      "origin": "paper",
+      "statement": "Let $\\calA_{Gauss}=\\{A_1, A_2, \\dots A_m\\}$ be a measurement operator with each $A_i=\\x_i\\y_i^T$, where $\\x_i \\in \\R^{d_1}\\sim \\calN(0, I),\\ \\y_i \\in \\R^{d_2}\\sim \\calN(0, I), 1\\leq i\\leq m$. Let $m=\\Omega(k^4 \\beta^2 (d_1+d_2)\\log^3(d_1+d_2)$. Then, Property 1, 2, 3 required by Theorem~\\ref{thm:general} are satisfied with probability at least $1-1/(d_1+d_2)^{100}$.",
+      "assumptions": [
+        "Let $\\calA_{Gauss}=\\{A_1, A_2, \\dots A_m\\}$ be a measurement operator with each $A_i=\\x_i\\y_i^T$, where $\\x_i \\in \\R^{d_1}\\sim \\calN(0, I),\\ \\y_i \\in \\R^{d_2}\\sim \\calN(0, I), 1\\leq i\\leq m$.",
+        "Let $m=\\Omega(k^4 \\beta^2 (d_1+d_2)\\log^3(d_1+d_2)$."
+      ],
+      "conclusions": [
+        "Then, Property 1, 2, 3 required by Theorem~\\ref{thm:general} are satisfied with probability at least $1-1/(d_1+d_2)^{100}$."
+      ]
+    },
+    {
+      "id": "PP34.3",
+      "type": "proof",
+      "name": "Proof of Lemma~\\ref{lemma:sense}",
+      "section": "3 Rank-one Matrix Sensing using Gaussian Measurements",
+      "origin": "paper",
+      "proves": "LP34.1",
+      "statement": "We divide the proof into three parts where each part proves a property mentioned in Theorem~\\ref{thm:general}. \\begin{proof}[Proof of Property 1] Now, $$S=\\frac{1}{m}\\sum_{i=1}^m b_i \\x_i \\tp{\\y}_i=\\frac{1}{m}\\sum_{i=1}^m \\x_i\\tp{\\x}_i\\Uo\\So\\tp{V}_*\\y_i\\tp{\\y}_i=\\frac{1}{m}\\sum_{i=1}^m Z_i,$$ where $Z_i=\\x_i\\tp{\\x}_i\\Uo\\So\\Vot\\y_i\\y_i^T$. Note that $\\mathbb{E}[Z_i]=\\Uo\\So\\Vot$. Also, both $\\x_i$ and $\\y_i$ are spherical Gaussian variables and hence are rotationally invariant. Therefore, wlog, we can assume that $\\Uo=[\\e_1 \\e_2 \\dots \\e_k]$ and $\\Vo=[\\e_1 \\e_2 \\dots \\e_k]$ where $e_i$ is the $i$-th canonical basis vector. As $S$ is a sum of $m$ random matrices, the goal is to apply matrix concentration bounds to show that $S$ is close to $\\E[S]=W=\\Uo\\So\\Vot$ for large enough $m$. To this end, we use Theorem~\\ref{thm:tropp} by \\cite{Tropp11} given below. However, Theorem~\\ref{thm:tropp} requires bounded random variable while $Z_i$ is an unbounded variable. We handle this issue by clipping $Z_i$ to ensure that its spectral norm is always bounded. In particular, consider the following random variable: \\begin{equation} \\wt{x}_{ij}= \\begin{cases}x_{ij},& \\ |x_{ij}|\\leq C \\sqrt{\\log(m(d_1+d_2))},\\\\ 0,&\\text{ otherwise},\\end{cases}\\end{equation} where $x_{ij}$ is the $j$-th co-ordinate of $\\x_i$. Similarly, define: \\begin{equation} \\wt{y}_{ij}= \\begin{cases}y_{ij},& \\ |y_{ij}|\\leq C \\sqrt{\\log(m(d_1+d_2))},\\\\ 0,&\\text{ otherwise}.\\end{cases} \\end{equation} Note that, $\\mathbb{P}(x_{ij}=\\wt{x}_{ij})\\geq 1-\\frac{1}{(m(d_1+d_2))^C}$ and $\\mathbb{P}(y_{ij}=\\wt{y}_{ij})\\geq 1-\\frac{1}{(m(d_1+d_2))^C}$. Also, $\\wt{x}_{ij}, \\wt{y}_{ij}$ are still symmetric and independent random variables, i.e., $\\E[\\wt{x}_{ij}]=\\E[\\wt{y}_{ij}]=0,\\ \\forall i, j$. Hence, $\\E[\\wt{x}_{ij}\\wt{x}_{i\\ell}]=0, \\forall j\\neq \\ell$. Furthermore, $\\forall j$, \\begin{align} \\E[\\wt{x}_{ij}^2]&=\\E[x_{ij}^2]-\\frac{2}{\\sqrt{2\\pi}}\\int_{C\\sqrt{\\log(m(d_1+d_2))}}^{\\infty} x^2 \\exp(-x^2/2)dx, \\nonumber\\\\ &=1-\\frac{2}{\\sqrt{2\\pi}}\\frac{C\\sqrt{\\log(m(d_1+d_2))}}{(m(d_1+d_2))^{C^2/2}}-\\frac{2}{\\sqrt{2\\pi}}\\int_{C\\sqrt{\\log(m(d_1+d_2))}}^{\\infty} \\exp(-x^2/2)dx, \\nonumber\\\\ &\\geq 1-\\frac{2C\\sqrt{\\log(m(d_1+d_2))}}{(m(d_1+d_2))^{C^2/2}}. \\end{align} Similarly, \\begin{equation} \\E[\\wt{y}_{ij}^2]\\geq 1-\\frac{2C\\sqrt{\\log(m(d_1+d_2))}}{(m(d_1+d_2))^{C^2/2}}. \\end{equation} Now, consider RV, $\\wt{Z}_i=\\wt{\\x}_i\\tp{\\wt{\\x}}_i \\Uo\\So\\Vot \\wt{\\y}_i\\tp{\\wt{\\y}}_i.$ Note that, $\\|\\wt{Z}_i\\|_2\\leq C^4 \\sqrt{d_1d_2}k\\log^2(m(d_1+d_2)) \\so^1$ and $\\|\\E[\\wt{Z}_i]\\|_2\\leq \\so^1$. Also, \\begin{align} \\|\\E[\\wt{Z}_i\\tp{\\wt{Z}}_i]\\|_2&=\\|\\E[\\|\\wt{\\y}_i\\|_2^2\\wt{\\x}_i\\tp{\\wt{\\x}}_i \\Uo\\So\\Vot \\wt{\\y}_i\\tp{\\wt{\\y}}_i\\Vo\\So\\tp{U}_*\\wt{\\x}_i\\tp{\\wt{\\x}_i}]\\|_2,\\nonumber\\\\ &\\leq C^2d_2\\log(m(d_1+d_2))\\E[\\wt{\\x}_i\\tp{\\wt{\\x}}_i \\Uo\\So^2\\Uot\\wt{\\x}_i\\tp{\\wt{\\x}}_i]\\|_2,\\nonumber\\\\ &\\leq C^2d_2\\log(m(d_1+d_2))(\\so^1)^2\\|\\E[\\|\\Uot\\wt{\\x}_i\\|_2^2 \\wt{\\x}_i\\tp{\\wt{\\x}}_i]\\|_2,\\nonumber\\\\ &\\leq C^4kd_2\\log^2(m(d_1+d_2))(\\so^1)^2. \\end{align} Similarly, \\begin{equation} \\|\\E[\\wt{Z}_i]\\E[\\tp{\\wt{Z}}_i]\\|_2\\leq (\\sigma_*^{max})^2. \\end{equation} Similarly, we can obtain bounds for $\\|\\E[\\tp{\\wt{Z}}_i\\wt{Z}_i]\\|_2$, $\\|\\tp{\\E[\\wt{Z}_i]}\\E[\\wt{Z}_i]\\|_2$. Finally, by selecting $m=\\frac{C_1 k (d_1+d_2) \\log^2(d_1+d_2)}{\\delta^2}$ and applying Theorem~\\ref{thm:tropp} we get (w.p. $1-\\frac{1}{(d_1+d_2)^{10}}$), \\begin{equation} \\|\\frac{1}{m}\\sum_{i=1}^m \\wt{Z}_i - \\E[\\wt{Z}_i]\\|_2 \\leq \\delta. \\end{equation} Note that $\\E[\\wt{Z}_i]=\\E[\\wt{x}_{i1}^2]\\E[\\wt{y}_{i1}^2]\\Uo\\So\\Vot $. Hence, by using \\eqref{eq:tz2}, \\eqref{eq:scx}, \\eqref{eq:scy}, $$\\|\\frac{1}{m}\\sum_{i=1}^m \\wt{Z}_i - \\Uo\\So\\Vot\\|_2\\leq \\delta+\\frac{\\sigma_*^{1}}{(d_1+d_2)^{100}}.$$ Finally, by observing that by selecting $C$ to be large enough in the definition of $\\wt{\\x_i},\\wt{\\y}_i$ (see \\eqref{eq:clipx}, \\eqref{eq:clipy}), we get $P(\\|Z_i-\\wt{Z_i}\\|_2=0)\\geq 1-\\frac{1}{(d_1+d_2)^5}$. Hence, by assuming $\\delta$ to be a constant wrt $d_1, d_2$ and by union bound, w.p. $1-\\frac{2\\delta^{10}}{(d_1+d_2)^5}$, $$\\|\\frac{1}{m}\\sum_{i=1}^m Z_i -\\Wo\\|_2\\leq 5\\delta\\|\\Wo\\|_2.$$ Now, the theorem follows directly by setting $\\delta= \\frac{1}{100 k^{3/2} \\beta}$. \\end{proof}"
+    },
+    {
+      "id": "RP34.2",
+      "type": "remark",
+      "name": "Randomness vs universality trade-off of $\\calA_{Gauss}$",
+      "section": "3 Rank-one Matrix Sensing using Gaussian Measurements",
+      "origin": "paper",
+      "statement": "Global optimality of the rate of convergence of the Alternating Minimization procedure for this problem now follows directly by using Theorem~\\ref{thm:general} with the above given lemma. We would like to note that while the above result shows that the $\\calA_{Gauss}$ operator is almost as powerful as the RIP based operators for matrix sensing, there is one critical drawback: while RIP based operators are universal that is they can be used to recover any rank-$k$ $\\Wo$, $\\calA_{Gauss}$ needs to be resampled for each $\\Wo$. We believe that the two operators are at two extreme ends of randomness vs universality trade-off and intermediate operators with higher success probability but using larger number of random bits should be possible."
+    },
+    {
+      "id": "ProbP34.3",
+      "type": "problem",
+      "name": "Inductive Matrix Completion",
+      "section": "1 Introduction",
+      "subclass": "matrix_completion",
+      "origin": "paper",
+      "statement": "{\\bf (b) Inductive Matrix Completion}: As motivated earlier, consider a movie recommendation system with $n_1$ users and $n_2$ movies. Let $X\\in \\mathbb{R}^{n_1\\times d_1},\\ Y\\in \\mathbb{R}^{n_2\\times d_2}$ be feature matrices of the users and the movies, respectively. Then, the user-movie rating $R_{ij}$ can be modeled as $R_{ij}=\\tp{\\x}_iW\\y_j$ and the goal is to learn $W$ using a small number of random ratings indexed by the set of observations $\\Omega \\in [n_1]\\times [n_2]$. Note that matrix completion is a special case of this problem when $\\x_i=\\e_i$ and $\\y_j=\\e_j$. Also, unlike standard matrix completion, accurate ratings can be predicted for users who have not rated any prior movies and vice versa."
+    },
+    {
+      "id": "DP34.2",
+      "type": "definition",
+      "name": "$\\mu$-incoherence",
+      "section": "4 Inductive Matrix Completion",
+      "origin": "paper",
+      "statement": "$X\\in \\mathbb{R}^{d\\times n}$ ($d<n$) is $\\mu$-incoherent if: $\\|U_X^i\\|_2\\leq \\frac{\\mu\\sqrt{d}}{\\sqrt{n}}, 1\\leq i\\leq d$, where $X^T=U_X\\Sigma_X\\tp{V}_X$ is the SVD of $X^T$ and $U_X^i\\in \\R^d$ is the $i$-th row of $U_X\\in \\mathbb{R}^{n\\times d}$."
+    },
+    {
+      "id": "LP34.2",
+      "type": "lemma",
+      "name": "Inductive Matrix Completion (Lemma~\\ref{lemma:indmc})",
+      "section": "4 Inductive Matrix Completion",
+      "origin": "paper",
+      "statement": "Let both $X\\in \\mathbb{R}^{d_1\\times n_1}$ and $Y\\in \\mathbb{R}^{d_2\\times n_2}$ be $\\mu$-incoherent matrices. Let $R=\\tp{X}\\Wo Y$ be the ``ratings'' matrix and let $\\Wo\\in \\mathbb{R}^{d_1\\times d_2}$ be any fixed rank-$k$ matrix. Let $\\Omega$ be a uniformly random subset of $[n_1]\\times [n_2]$, s.t., $|\\Omega|=m\\geq C k^3\\cdot \\beta^2\\cdot d_1 d_2\\cdot \\log(d_1+d_2)$, where $\\beta=\\sigma_R^1/\\sigma_R^k$ is the condition number of $R$. Then, w.p. $\\geq 1-1/(d_1+d_2)^{100}$, the measurement operators $A_{ij}=\\sqrt{n_1n_2}\\x_i \\tp{\\y}_j$ satisfy\\footnote{We multiply $\\x_i, \\y_j$ by $\\sqrt{n_1}, \\sqrt{n_2}$ for normalization so that $\\E_{i}[n_1\\x_i\\x_i^T]=I$ and $\\E_{j}[n_2\\yj\\ytj]=I$.} Properties 1,2,3 required by Theorem~\\ref{thm:general}.",
+      "assumptions": [
+        "Let both $X\\in \\mathbb{R}^{d_1\\times n_1}$ and $Y\\in \\mathbb{R}^{d_2\\times n_2}$ be $\\mu$-incoherent matrices.",
+        "Let $R=\\tp{X}\\Wo Y$ be the ``ratings'' matrix and let $\\Wo\\in \\mathbb{R}^{d_1\\times d_2}$ be any fixed rank-$k$ matrix.",
+        "Let $\\Omega$ be a uniformly random subset of $[n_1]\\times [n_2]$, s.t., $|\\Omega|=m\\geq C  k^3\\cdot \\beta^2\\cdot d_1 d_2\\cdot \\log(d_1+d_2)$, where $\\beta=\\sigma_R^1/\\sigma_R^k$ is the condition number of $R$."
+      ],
+      "conclusions": [
+        "Then, w.p. $\\geq 1-1/(d_1+d_2)^{100}$, the measurement operators $A_{ij}=\\sqrt{n_1n_2}\\x_i \\tp{\\y}_j$ satisfy Properties 1,2,3 required by Theorem~\\ref{thm:general}."
+      ]
+    },
+    {
+      "id": "PP34.4",
+      "type": "proof",
+      "name": "Proof of Lemma~\\ref{lemma:indmc}",
+      "section": "4 Inductive Matrix Completion",
+      "origin": "paper",
+      "proves": "LP34.2",
+      "statement": "We first observe that both $X, Y$ can be thought of as orthonormal matrices. The reason being, $X^T\\Wo Y =U_X \\Sigma_X V_X^T \\Wo V_Y \\Sigma_Y U_Y^T$, where $X^T=U_X \\Sigma_X V_X^T$ and $Y^T=U_Y \\Sigma_Y V_Y^T$. Hence, $R=X^T \\Wo Y=U_X (\\Sigma_X V_X^T \\Wo V_Y \\Sigma_Y) U_Y^T$. That is, $U_X $, $U_Y$ can be treated as the true ``X'', ``Y'' matrices and $\\Wo\\leftarrow (\\Sigma_X V_X^T \\Wo V_Y \\Sigma_Y)$ can be thought of as $\\Wo$. Then the ``true'' $\\Wo$ can be recovered using the obtained $W_H$ as: $W_H\\leftarrow V_X \\Sigma_X^{-1} W_H \\Sigma_Y^{-1} V_Y^T$. We also note that such a transformation implies that the condition number of $R$ and that of $\\Wo\\leftarrow (\\Sigma_X V_X^T \\Wo V_Y \\Sigma_Y)$ are exactly the same. Hence, we prove the theorem with the assumption that $X$, $Y$ are orthonormal and that $\\beta$ is the condition number of $\\Wo$. We now present the proof for each of the three properties mentioned in Theorem~\\ref{thm:general}. \\begin{proof}[Proof of Property 1] As mentioned above, wlog, we can assume that both $X, Y$ are orthonormal matrices and that the condition number of $R$ is same as condition number of $\\Wo$. We first recall the definition of $S$: $$S=\\frac{n_1n_2}{m}\\sum_{(i,j)\\in \\Omega}^m \\x_i\\xti \\Uo\\So\\Vot \\y_j\\ytj=\\frac{n_1n_2}{m}\\sum_{(i,j)\\in \\Omega}^m Z_{ij},$$ where $Z_{ij}=\\x_i\\xti \\Uo\\So\\Vot \\y_j\\ytj = X \\e_i \\eit X^T \\Uo\\So\\Vot Y \\e_j \\ejt Y^T$, where $\\e_i, \\e_j$ denotes the $i$-th, $j$-th canonical basis vectors, respectively. Also, since $(i,j)$ is sampled uniformly at random from $[n_1]\\times [n_2]$. Hence, $\\E_{i}[\\e_i\\eit]=\\frac{1}{n_1}I$ and $\\E_{j}[\\e_j\\ejt]=\\frac{1}{n_2}I$. That is, $$\\E_{ij}[Z_{ij}]=\\frac{1}{n_1n_2} XX^T\\Uo\\So\\Vot YY^T=\\Uo\\So\\Vot=\\Wo/(n_1\\cdot n_2),$$ where $XX^T=I$, $YY^T=I$ follows by orthonormality of both $X$ and $Y$. We now use the matrix concentration bound of Theorem~\\ref{thm:tropp} to bound $\\|S-\\Wo\\|_2$. To apply the bound of Theorem~\\ref{thm:tropp}, we first need to bound the following two quantities: \\begin{itemize} \\item {\\bf Bound $\\max_{ij} \\|Z_{ij}\\|_2$}: Now, $$\\|Z_{ij}\\|_2=\\|\\x_i\\xti \\Uo\\So\\Vot \\y_j\\ytj\\|_2\\leq \\so^1 \\|\\x_i\\|_2^2 \\|\\y_j\\|_2^2\\leq \\frac{\\so^1\\mu^4d_1d_2}{n_1n_2},$$ where the last inequality follows using incoherence of $X, Y$. \\item {\\bf Bound $\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}Z_{ij}^T]\\|_2$ and $\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}^TZ_{ij}]\\|_2$}: We first consider $\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}Z_{ij}^T]\\|_2$: \\begin{align} &\\left\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}Z_{ij}^T]\\right\\|_2=\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[\\x_i\\xti\\Wo\\yj\\ytj\\yj\\ytj\\Wo^T \\x_i \\xti]\\right\\|_2,\\nonumber\\\\ &\\stackrel{\\zeta_1}{\\leq} \\frac{\\mu^2 d_2}{n_2}\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[\\x_i\\xti\\Wo\\yj\\ytj\\Wo^T \\x_i \\xti]\\right\\|_2\\stackrel{\\zeta_2}{=}\\frac{\\mu^2 d_2}{n_2^2}\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[\\x_i\\xti\\Wo\\Wo^T \\x_i \\xti]\\right\\|_2,\\nonumber\\\\ &\\stackrel{\\zeta_3}{\\leq }\\frac{(\\so^1)^2\\mu^4 d_1d_2}{n_1n_2^2}\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[\\x_i\\xti]\\right\\|_2\\stackrel{\\zeta_4}{= }\\frac{(\\so^1)^2\\mu^4 d_1d_2}{n_1^2n_2^2}\\cdot m, \\end{align} where $\\zeta_1$, $\\zeta_3$ follows by using incoherent of $X, Y$ and $\\|\\Wo\\|_2\\leq \\so^1$. $\\zeta_2, \\zeta_4$ follows by using $\\E_{i}[\\e_i\\eit]=\\frac{1}{n_1}I$ and $\\E_{j}[\\e_j\\ejt]=\\frac{1}{n_2}I$. Now, bound for $\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}^TZ_{ij}]\\|_2$ also turns out to be exactly the same and can be easily computed using exactly same arguments as above. \\end{itemize} Now, by applying Theorem~\\ref{thm:tropp} and using the above computed bounds we get: \\begin{equation} Pr(\\|S-\\Wo\\|_2\\geq \\so^1\\gamma)\\leq 2(d_1+d_2)\\exp\\left(-\\frac{m\\gamma^2}{\\mu^4 d_1d_2(1+\\gamma/3)}\\right). \\end{equation} That is, w.p. $\\geq 1-\\gamma$: \\begin{equation} \\|S-\\Wo\\|_2 \\leq \\frac{\\so^1\\mu^2\\sqrt{d_1d_2\\log(2(d_1+d_2)/\\gamma)}}{\\sqrt{m}}. \\end{equation} Hence, by selecting $m=\\Omega(\\mu^4k^3\\cdot \\beta^2\\cdot d_1d_2\\log(2(d_1+d_2)/\\gamma))$ where $\\beta=\\so^1/\\so^k$, the following holds w.p. $\\geq 1-\\gamma$: $$\\|S-\\Wo\\|_2 \\leq \\|\\Wo\\|_2\\cdot \\delta, $$ where $\\delta= 1/(k^{3/2}\\cdot \\beta\\cdot 100)$. \\end{proof} \\begin{proof}[Proof of Property 2] We prove the property for $B_y$; proof for $B_y$ follows analogously. Now, let $B_y=\\frac{n_1n_2}{m}\\sum_{(i,j)\\in \\Omega} Z_{ij}$ where $Z_i=\\xit\\u\\u^T\\x_i\\yi\\yti$. Then, \\begin{align} \\E[B_y]=\\frac{n_1n_2}{m}\\sum_{(i,j)\\in \\Omega} Z_{ij}=\\frac{n_1n_2}{m}\\sum_{i=1}^m\\E_{(i,j)\\in \\Omega}[\\xit\\u\\u^T\\x_i\\yi\\yti]=I. \\end{align} Here again, we apply Theorem~\\ref{thm:tropp} to bound $\\|B_y-I\\|_2$. To this end, we need to bound the following quantities: \\begin{itemize} \\item {\\bf Bound $\\max_{ij} \\|Z_{ij}\\|_2$}: Now, $$\\|Z_{ij}\\|_2=\\|\\xit\\u\\u^T\\x_i\\yi\\yti\\|_2\\leq \\|\\yi\\|_2^2\\|\\x_i\\|_2^2\\leq \\frac{\\mu^4 d_1d_2}{n_1n_2}.$$ \\item {\\bf Bound $\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}Z_{ij}^T]\\|_2$ and $\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}^TZ_{ij}]\\|_2$}: We first consider $\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}Z_{ij}^T]\\|_2$: \\begin{align} \\hspace*{-20pt}\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[Z_{ij}Z_{ij}^T]\\right\\|_2&=\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[(\\xit\\u\\u^T\\x_i)^2\\|\\y_i\\|_2^2 \\yi\\yti]\\right\\|_2\\stackrel{\\zeta_1}{\\leq}\\frac{\\mu^2d_2}{n_2}\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[(\\xit\\u\\u^T\\x_i)^2\\yi\\yti]\\right\\|_2,\\nonumber\\\\ &\\stackrel{\\zeta_2}{=}\\frac{\\mu^2d_2}{n_2^2}\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[(\\xit\\u\\u^T\\x_i)^2\\right\\|_2\\stackrel{\\zeta_3}{\\leq}\\frac{\\mu^4d_1d_2}{n_1n_2^2}\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[(\\xit\\u)^2]\\right\\|_2\\stackrel{\\zeta_4}{=}\\frac{\\mu^4d_1d_2}{n_1^2n_2^2}\\cdot m. \\end{align} \\end{itemize} Note that the above given bounds that we obtain are exactly the same as the ones obtained in the Initialization Property's proof. Hence, by applying Theorem~\\ref{thm:tropp} in a similar manner, and selecting $m=\\Omega(k^3\\beta^2 d_1\\cdot d_2 \\log(1/\\gamma))$ and $\\delta= 1/(k^{3/2}\\cdot \\beta\\cdot 100)$, we get w.p. $\\geq 1-\\gamma$: $$\\|B_y-I\\|_2 \\leq \\delta.$$ Hence Proved. $\\|B_x-I\\|_2 \\leq \\delta$ can be proved similarly. \\end{proof} \\begin{proof}[Proof of Property 3] Note that $\\E[C_y]=\\E[\\sum_{(i,j)\\in \\Omega}Z_{ij}]=0$.\\\\ Furthermore, both $\\|Z_{ij}\\|_2$ and $\\|\\E[\\sum_{(i,j)\\in \\Omega} Z_{ij}Z_{ij}^T]\\|_2$ have exactly the same bounds as those given in the Property 2's proof above. Hence, we obtain similar bounds. That is, if $m=\\Omega(k^3\\beta^2 d_1\\cdot d_2 \\log(1/\\gamma))$ and $\\delta= 1/(k^{3/2}\\cdot \\beta\\cdot 100)$, we get w.p. $\\geq 1-\\gamma$: $$\\|C_y\\|_2 \\leq \\delta.$$ Hence Proved. $\\|C_x\\|_2$ can also be bounded analogously. \\end{proof}"
+    },
+    {
+      "id": "ProbP34.4",
+      "type": "problem",
+      "name": "Multi-label Regression with Missing Data",
+      "section": "5 Multi-label Learning",
+      "subclass": "regression",
+      "origin": "paper",
+      "statement": "In this section, we study the problem of multi-label regression with missing values. Let $X=[\\x_1 \\dots \\x_{n_1}]\\in \\R^{d_1\\times n_1}$ be the training matrix where $\\x_i$ is the feature vector of the $i$-th data point. Also, let $R\\in \\mathbb{R}^{n_1\\times L}$ be the corresponding matrix of target variables. That is, $R^i=[R_{i1} \\dots R_{ij} \\dots R_{iL}]$ denotes $L$ target variables for $\\x_i$. The goal is to learn a (low-rank) parameter matrix $\\Wo$ s.t. $\\tp{X}\\Wo=R$."
+    },
+    {
+      "id": "LP34.3",
+      "type": "lemma",
+      "name": "Multi-label Learning (Lemma~\\ref{lemma:mult})",
+      "section": "5 Multi-label Learning",
+      "origin": "paper",
+      "statement": "Let $X\\in \\mathbb{R}^{d_1\\times n_1}$ be $\\mu$-incoherent. Let $R=\\tp{X}\\Wo \\in \\mathbb{R}^{n_1\\times L}$ be the ``labels'' matrix. Let $\\Omega$ be a uniformly random subset of $[n_1]\\times [L]$, s.t., $|\\Omega|=m\\geq C \\beta^2\\cdot d_1 n_2\\cdot \\log(d_1+n_2)$, where $\\beta=\\sigma_R^1/\\sigma_R^k$ is the condition number of $R$. Then, w.p. $\\geq 1-1/(d_1+L)^{100}$, the measurement operators $A_{ij}=\\sqrt{n_1n_2}\\x_i \\tp{\\e}_j$ satisfy\\footnote{We multiply $\\x_i, \\y_j$ by $\\sqrt{n_1}, \\sqrt{n_2}$ for normalization so that $\\E_{i}[n_1\\x_i\\x_i^T]=I$ and $\\E_{j}[n_2\\yj\\ytj]=I$} Properties 1,2,3 required by Theorem~\\ref{thm:general}.",
+      "assumptions": [
+        "Let  $X\\in \\mathbb{R}^{d_1\\times n_1}$ be $\\mu$-incoherent. Let $R=\\tp{X}\\Wo \\in \\mathbb{R}^{n_1\\times L}$ be the ``labels'' matrix.",
+        "Let $\\Omega$ be a uniformly random subset of $[n_1]\\times [L]$, s.t., $|\\Omega|=m\\geq C  \\beta^2\\cdot d_1 n_2\\cdot \\log(d_1+n_2)$, where $\\beta=\\sigma_R^1/\\sigma_R^k$ is the condition number of $R$."
+      ],
+      "conclusions": [
+        "Then, w.p. $\\geq 1-1/(d_1+L)^{100}$, the measurement operators $A_{ij}=\\sqrt{n_1n_2}\\x_i \\tp{\\e}_j$ satisfy Properties 1,2,3 required by Theorem~\\ref{thm:general}."
+      ]
+    },
+    {
+      "id": "PP34.5",
+      "type": "proof",
+      "name": "Proof of Lemma~\\ref{lemma:mult}",
+      "section": "5 Multi-label Learning",
+      "origin": "paper",
+      "proves": "LP34.3",
+      "statement": "Here again, we divide the proof into three parts where each part proves a property mentioned in Theorem~\\ref{thm:general}. \\begin{proof}[Proof of Property 1] As mentioned in the proof of Lemma~\\ref{lemma:indmc}, wlog, we can assume that both $X, Y$ are orthonormal matrices and that the condition number of $R$ is same as condition number of $\\Wo$. We first recall the definition of $S$: $$S=\\frac{n_1n_2}{m}\\sum_{(i,j)\\in \\Omega}^m \\x_i\\xti \\Uo\\So\\Vot \\e_j\\etj=\\frac{n_1n_2}{m}\\sum_{(i,j)\\in \\Omega}^m Z_{ij},$$ where $Z_{ij}=\\x_i\\xti \\Uo\\So\\Vot \\e_j\\etj = X \\e_i \\eit X^T \\Uo\\So\\Vot \\e_j \\ejt $, where $\\e_i, \\e_j$ denotes the $i$-th, $j$-th canonical basis vectors, respectively. Now using the fact that $(i,j)$ is sampled uniformly at random from $[n_1]\\times [n_2]$: $$\\E_{ij}[Z_{ij}]=\\frac{1}{n_1n_2} XX^T\\Uo\\So\\Vot=\\Uo\\So\\Vot=\\Wo/(n_1\\cdot n_2),$$ where $XX^T=I$ follows by orthonormality of both $X$ and $Y$. As in the previous section, we first bound the following two quantities: \\begin{itemize} \\item {\\bf Bound $\\max_{ij} \\|Z_{ij}\\|_2$}: Now, $$\\|Z_{ij}\\|_2=\\|\\x_i\\xti \\Uo\\So\\Vot \\e_j\\etj\\|_2\\leq \\so^1 \\|\\x_i\\|_2^2 \\leq \\frac{\\so^1\\mu^2d_1}{n_1},$$ where the last inequality follows using incoherence of $X$ and $\\Vo$. \\item {\\bf Bound $\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}Z_{ij}^T]\\|_2$}: \\begin{align} &\\left\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}Z_{ij}^T]\\right\\|_2=\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[\\x_i\\xti\\Wo\\ej\\etj\\ej\\etj\\Wo^T \\x_i \\xti]\\right\\|_2,\\nonumber\\\\ &\\stackrel{\\zeta_1}{=} \\frac{1}{n_2} \\left\\|\\sum_{(i,j)\\in \\Omega}\\E[\\x_i\\xti\\Wo\\Wo^T\\x_i \\xti]\\right\\|_2\\stackrel{\\zeta_2}{\\leq} \\frac{(\\so^1)^2\\mu^2d_1}{n_1n_2}\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[\\x_i \\xti]\\right\\|_2\\stackrel{\\zeta_3}{=} \\frac{(\\so^1)^2\\mu^2d_1}{n_1^2n_2}\\cdot m, \\end{align} where $\\zeta_1$ follows from $\\E_j[\\e_j\\etj]=\\frac{1}{n_2}I$, $\\ \\zeta_2$ follows from incoherence of $\\x_i$, and $\\zeta_3$ follows from $\\E_i[\\x_i\\xti]=\\frac{1}{n_1}I$. \\item {Bound $\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}^TZ_{ij}]\\|_2$}: \\begin{align} &\\left\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}^TZ_{ij}]\\right\\|_2=\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[\\ej\\etj\\Wot\\x_i\\xti\\x_i\\xti\\Wo\\ej\\etj]\\right\\|_2,\\nonumber\\\\ &\\stackrel{\\zeta_1}{\\leq } \\frac{\\mu^2d_1}{n_1} \\left\\|\\sum_{(i,j)\\in \\Omega}\\E[\\ej\\etj\\Wot\\x_i\\xti\\Wo\\ej\\etj]\\right\\|_2\\stackrel{\\zeta_2}{=} \\frac{\\mu^2d_1}{n_1^2}\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[\\ej\\etj\\Wot\\Wo\\ej\\etj]\\right\\|_2,\\nonumber\\\\ &\\stackrel{\\zeta_3}{\\leq} \\frac{(\\so^1)^2\\mu^2d_1}{n_1^2n_2}\\cdot m, \\end{align} where $\\zeta_1$ follows from incoherence of $X$, $\\zeta_2, \\zeta_3$ follows from uniform sampling of $\\e_i$ and $\\e_j$, respectively. \\end{itemize} Using \\eqref{eq:mult_zub}, \\eqref{eq:mult_zub1} we get: $$\\max\\left(\\left\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}Z_{ij}^T]\\right\\|_2,\\ \\left\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}^TZ_{ij}]\\right\\|_2\\right)\\leq \\frac{(\\so^1)^2\\mu^2d_1}{n_1^2n_2}\\cdot m.$$ \\noindent Using the above given bounds, and Theorem~\\ref{thm:tropp}, we get: \\begin{equation} Pr(\\|S-\\Wo\\|_2\\geq \\frac{n_2\\so^1\\gamma}{\\mu\\sqrt{k}})\\leq 2(d_1+n_2)\\exp\\left(-\\frac{m\\gamma^2}{\\mu^4\\cdot k\\cdot d_1(1+\\gamma/3)}\\right). \\end{equation} That is, by selecting $m=\\Omega(k^3 \\beta^2 \\mu^2 d_1n_2\\log(2(d_1+n_2)/\\gamma)$ with $\\beta=\\frac{\\so^1}{\\so^k}$, the following holds w.p. $\\geq 1-\\gamma$: $$\\|S-\\Wo\\|\\leq \\delta\\|\\Wo\\|_2,$$ where $\\delta\\leq \\frac{1}{k^{3/2}\\cdot \\beta \\cdot 100} $. \\end{proof} \\begin{proof}[Proof of Property 2] Here, we first prove the property for $B_y$. Now, $B_y=\\frac{n_1n_2}{m}\\sum_{(i,j)\\in \\Omega} Z_{ij}$ where $Z_i=\\xit\\u\\u^T\\x_i\\ej\\etj$. Note that, $\\E[B_y]=I$. Next, we bound the quantities required by Theorem~\\ref{thm:tropp}: \\begin{itemize} \\item {\\bf Bound $\\max_{ij} \\|Z_{ij}\\|_2$}: Now, $$\\|Z_{ij}\\|_2=\\|\\xit\\u\\u^T\\x_i \\e_j\\etj\\|_2\\leq \\|\\x_i\\|_2^2 \\leq \\frac{\\mu^2d_1}{n_1},$$ where the second inequality follows from incoherence of $X$. \\item {\\bf Bound $\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}Z_{ij}^T]\\|_2$}: \\begin{align*} \\hspace*{-20pt}\\left\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}Z_{ij}^T]\\right\\|_2=\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[(\\xit\\u\\u^T\\x_i)^2 \\e_j\\etj]\\right\\|_2\\stackrel{\\zeta_1}{=}\\frac{1}{n_2}\\sum_{(i,j)\\in \\Omega}\\E[(\\xit\\u\\u^T\\x_i)^2]\\stackrel{\\zeta_2}{\\leq} \\frac{\\mu^2 d_1}{n_1^2n_2}, \\end{align*} where $\\zeta_1$ follows as $\\e_j$ is sampled uniformly and $\\zeta_2$ follows by using incoherence of $X$ and uniform sampling of $\\e_i$. Hence, using $m=\\Omega(k^3 \\cdot \\beta^2 \\cdot d \\cdot n_2 \\log(2(d_1+n_2)/\\gamma)$, then we have (w.p. $\\geq 1-\\gamma$): $$\\|B_y-I\\|_2\\leq \\delta,$$ where $\\delta=1/(k^{3/2}\\cdot \\beta\\cdot 100)$. \\end{itemize} Now, we bound $B_x=\\frac{n_1n_2}{m}\\sum_{(i,j)\\in \\Omega} Z_{ij}$ where $Z_i=\\etj\\v\\v^T\\ej\\x_i\\xit$. Note that, $\\E[B_y]=I$. Next, we bound the quantities required by Theorem~\\ref{thm:tropp}: \\begin{itemize} \\item {\\bf Bound $\\max_{ij} \\|Z_{ij}\\|_2$}: Now, $$\\|Z_{ij}\\|_2=\\|\\etj\\v\\v^T\\ej\\x_i\\xit\\|_2\\leq \\|\\x_i\\|_2^2 \\leq \\frac{\\mu^2d_1}{n_1},$$ where the second inequality follows from incoherence of $X$. \\item {\\bf Bound $\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}Z_{ij}^T]\\|_2$}: \\begin{align} \\left\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}^TZ_{ij}]\\right\\|_2&=\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[(\\etj\\v\\v^T\\ej)^2\\|\\x_i\\|^2\\x_i\\xit]\\right\\|_2,\\nonumber\\\\ &\\stackrel{\\zeta_1}{\\leq }\\frac{1}{n_2}\\sum_{(i,j)\\in \\Omega}\\E[\\|\\x_i\\|^2\\x_i\\xit],\\nonumber\\\\ &\\stackrel{\\zeta_2}{\\leq} \\frac{\\mu^2 d_1}{n_1^2n_2}, \\end{align} where $\\zeta_1$ follows as $\\e_j$ is sampled uniformly and $\\zeta_2$ follows by using incoherence of $X$ and uniform sampling of $\\e_i$. Hence, using $m=\\Omega(k^3 \\cdot \\beta^2 \\cdot d \\cdot n_2 \\log(2(d_1+n_2)/\\gamma)$, we have (w.p. $\\geq 1-\\gamma$): $$\\|B_x-I\\|_2\\leq \\delta,$$ where $\\delta=1/(k^{3/2}\\cdot \\beta\\cdot 100)$. \\end{itemize} \\end{proof} \\begin{proof}[Proof of Property 3] We first note that $\\E[C_x]=\\E[C_y]=0$. Now, here again we use Theorem~\\ref{thm:tropp} to say that $C_x, C_y$ converge to their mean. The quantities we need to bound are similar to the ones proved above for Property 2. Hence, the Property 3 follows using $m=\\Omega(k^3 \\cdot \\beta^2 \\cdot d \\cdot n_2 \\log(2(d_1+n_2)/\\gamma)$ samples. \\end{proof}"
+    },
+    {
+      "id": "TP34.2",
+      "type": "theorem",
+      "name": "Theorem 1.6 of Tropp (Matrix Bernstein)",
+      "section": "Appendix A Preliminaries",
+      "origin": "external",
+      "origin_citation": "Theorem 1.6 of \\cite{Tropp11}",
+      "statement": "Consider a finite sequence $Z_i$ of independent, random matrices with dimensions $d_1\\times d_2$. Assume that each random matrix satisfies $\\mathbb{E}[Z_i] = 0$ and $\\|Z_i\\|_2\\leq R$ almost surely. Define, $\\sigma^2 := \\max \\{\\|\\sum_i\\mathbb{E}[Z_iZ_i^T]\\|_2,\\|\\sum_i\\mathbb{E}[Z_i^TZ_i]\\|_2\\}.$ Then, for all $\\gamma\\geq 0$, $$\\mathbb{P}\\left(\\left\\|\\frac{1}{m}\\sum_{i=1}^mZ_i\\right\\|_2\\geq \\gamma\\right)\\leq (d_1+d_2)\\exp\\left(\\frac{-m^2\\gamma^2}{\\sigma^2+Rm\\gamma/3}\\right).$$",
+      "assumptions": [
+        "Consider a finite sequence $Z_i$ of independent, random matrices with dimensions $d_1\\times d_2$.",
+        "Assume that each random matrix satisfies $\\mathbb{E}[Z_i] = 0$ and $\\|Z_i\\|_2\\leq R$ almost surely.",
+        "Define, $\\sigma^2 := \\max \\{\\|\\sum_i\\mathbb{E}[Z_iZ_i^T]\\|_2,\\|\\sum_i\\mathbb{E}[Z_i^TZ_i]\\|_2\\}.$"
+      ],
+      "conclusions": [
+        "Then, for all  $\\gamma\\geq 0$, $$\\mathbb{P}\\left(\\left\\|\\frac{1}{m}\\sum_{i=1}^mZ_i\\right\\|_2\\geq \\gamma\\right)\\leq (d_1+d_2)\\exp\\left(\\frac{-m^2\\gamma^2}{\\sigma^2+Rm\\gamma/3}\\right).$$"
+      ]
+    },
+    {
+      "id": "DP34.3",
+      "type": "definition",
+      "name": "Principle angle based subspace distance",
+      "section": "Appendix B Proof of General Theorem for Low-rank Matrix Estimation",
+      "origin": "paper",
+      "statement": "Let $U_1, U_2 \\in \\mathbb{R}^{d\\times k}$ be $k$-dimensional subspaces. Then the principle angle based distance $\\dist(U_1, U_2)$ between $U_1, U_2$ is given by: $$\\dist(U_1, U_2)=\\|U_\\perp^TU_2\\|_2,$$ where $U_\\perp$ is the subspace orthogonal to $U_1$."
+    },
+    {
+      "id": "PP34.6",
+      "type": "proof",
+      "name": "Proof of Theorem~\\ref{thm:general}: General Rank-$k$ Case",
+      "section": "Appendix B Proof of General Theorem for Low-rank Matrix Estimation",
+      "origin": "paper",
+      "proves": "TP34.1",
+      "statement": "For simplicity of notation, we denote $U_h$ by $U$, $\\widehat{V}_{h+1}$ by $\\widehat{V}$, and $V_{h+1}$ by $V$. Similar to the above given proof, we first present the update equation for $\\widehat{V}_{(t+1)}$. Recall that $\\widehat{V}_{(t+1)}=\\argmin_{V\\in \\R^{d_2\\times k}} \\sum_i (\\xit\\Wo\\yi-\\xit\\Ut \\tp{\\Vh}\\yi)^2$. Hence, by setting gradient of this objective function to $0$, using the above given notation and by simplifications, we get: \\begin{equation}\\Vh=\\tp{\\Wo}U-F,\\end{equation} where $F=[F_1 F_2 \\dots F_k]$ is the ``error'' matrix. Before specifying $F$, we first introduce {\\em block matrices} $B, C, D, S \\in \\mathbb{R}^{k d_2 \\times k d_2}$ with $(p,q)$-th block $B_{pq}, C_{pq}, S_{pq}, D_{pq}$ given by: \\begin{align} B_{pq}&=\\sum_i \\yi\\yit (\\xit \\u_{p})(\\xit \\u_{q}),\\\\ C_{pq}&=\\sum_i \\yi\\yit (\\xit \\u_{p})(\\xit \\u_{*q}),\\\\ D_{pq}&=\\u_p^T\\u_{*q}I,\\\\ S_{pq}&=\\so^p I \\ \\ \\text{ if }p=q,\\ \\ \\ \\ \\text{and }\\ \\ 0\\ \\ \\text{ if }p\\neq q. \\end{align} where $\\so^p=\\So(p,p)$, i.e., the $p$-th singular value of $\\Wo$ and $\\u_{*q}$ is the $q$-th column of $\\Uo$. Then, using the definitions given above, we get: \\begin{equation} \\left[\\begin{matrix}F_1\\\\\\vdots\\\\ F_k\\end{matrix}\\right]=B^{-1}(BD-C)S\\cdot \\mvec(\\Vo). \\end{equation} Now, recall that in the $t+1$-th iteration of Algorithm~\\ref{alg:altmin}, $V_{t+1}$ is obtained by QR decomposition of $\\widehat{V}_{t+1}$. Using notation mentioned above, $\\Vh=V R$ where $R$ denotes the lower triangular matrix $R_{t+1}$ obtained by the QR decomposition of $V_{t+1}$. Now, using \\eqref{eq:vh}, $V=\\Vh R^{-1}=(\\Wo^TU-F)R^{-1}.$ Multiplying both the sides by $\\Vop$, where $\\Vop$ is a fixed orthonormal basis of the subspace orthogonal to $span(\\Vo)$, we get: \\begin{equation} (\\Vop)^TV=-(\\Vop)^TFR^{-1} \\Rightarrow dist(\\Vo, V_{t+1})=\\|(\\Vop)^TV\\|_2 \\leq \\|F\\|_2\\|R^{-1}\\|_2. \\end{equation} Also, note that using the initialization property (1) mentioned in Theorem~\\ref{thm:general}, we get $\\|S-\\Wo\\|_2\\leq \\frac{\\so^k}{100}$. Now, using the standard sin theta theorem for singular vector perturbation\\cite{Li94}, we get: $\\dist(U_0, \\Uo)\\leq \\frac{1}{100}$. Theorem now follows by using Lemma~\\ref{lem:F}, Lemma~\\ref{lem:R} along with the above mentioned bound on $\\dist(U_0, \\Uo)$."
+    },
+    {
+      "id": "LP34.4",
+      "type": "lemma",
+      "name": "Bound on error matrix $\\|F\\|_2$ (Lemma~\\ref{lem:F})",
+      "section": "Appendix B Proof of General Theorem for Low-rank Matrix Estimation",
+      "origin": "paper",
+      "statement": "Let $\\calA$ be a rank-one measurement operator where $A_i=\\x_i\\tp{\\y}_i$. Also, let $\\calA$ satisfy Property 1, 2, 3 mentioned in Theorem~\\ref{thm:general} and let $\\so^1\\geq \\so^2\\geq \\dots \\geq\\so^k$ be the singular values of $\\Wo$. Then, $$\\|F\\|_2\\leq \\frac{\\so^k}{100}\\dist(U_t, \\Uo). $$"
+    },
+    {
+      "id": "LP34.5",
+      "type": "lemma",
+      "name": "Bound on $\\|R^{-1}\\|_2$ (Lemma~\\ref{lem:R})",
+      "section": "Appendix B Proof of General Theorem for Low-rank Matrix Estimation",
+      "origin": "external",
+      "origin_citation": "Lemma 4.7 of \\cite{JainNS13}",
+      "statement": "Let $\\calA$ be a rank-one measurement operator where $A_i=\\x_i\\tp{\\y}_i$. Also, let $\\calA$ satisfy Property 1, 2, 3 mentioned in Theorem~\\ref{thm:general}. Then, $$\\|R^{-1}\\|_2\\leq\\frac{1}{ \\so^k\\cdot \\sqrt{1-dist^2(U_t, \\Uo)}-\\|F\\|_2}.$$"
+    },
+    {
+      "id": "PP34.7",
+      "type": "proof",
+      "name": "Proof of Lemma~\\ref{lem:F}",
+      "section": "Appendix B Proof of General Theorem for Low-rank Matrix Estimation",
+      "origin": "paper",
+      "proves": "LP34.4",
+      "statement": "Recall that $\\mvec(F)=B^{-1}(BD-C)S\\cdot \\mvec(\\Vo)$. Hence, \\begin{equation}\\|F\\|_2\\leq \\|F\\|_F\\leq \\|B^{-1}\\|_2\\|BD-C\\|_2\\|S\\|_2\\|\\mvec(\\Vo)\\|_2=\\so^1\\sqrt{k}\\|B^{-1}\\|_2\\|BD-C\\|_2.\\end{equation} Now, we first bound $\\|B^{-1}\\|_2=1/(\\sigma_{\\text{min}}(B))$. Also, let $Z=[\\z_1 \\z_2 \\dots \\z_k]$ and let $\\z=\\mvec(Z)$. Then, \\begin{align} \\sigma_{\\text{min}}(B)&=\\min_{\\z, \\|\\z\\|_2=1}\\z^TB\\z=\\min_{\\z, \\|\\z\\|_2=1}\\sum_{1\\leq p\\leq k, 1\\leq q\\leq k}\\z_p^TB_{pq}\\z_q\\nonumber\\\\&=\\min_{\\z, \\|\\z\\|_2=1}\\sum_{p}\\z_p^TB_{pp}\\z_p+\\sum_{pq, p\\neq q}\\z_p^TB_{pq}\\z_q. \\end{align} Recall that, $B_{pp}=\\frac{1}{m}\\sum_{i=1}^m \\yi\\yit (\\xit\\u_p)^2$ and $\\u_p$ is independent of $\\xi, \\yi, \\forall i$. Hence, using Property 2 given in Theorem~\\ref{thm:general}, we get: \\begin{equation} \\sigma_{\\text{min}}(B_{pp})\\geq 1- \\delta, \\end{equation} where, $$\\delta=\\frac{1}{k^{3/2}\\cdot \\beta\\cdot 100},$$ and $\\beta=\\so^1/\\so^k$ is the condition number of $\\Wo$. Similarly, using Property (3), we get: \\begin{equation} \\|B_{pq}\\|_2\\leq \\delta. \\end{equation} Hence, using \\eqref{eq:bp0}, \\eqref{eq:bp1}, \\eqref{eq:bp2}, we get: \\begin{equation} \\sigma_{\\text{min}}(B)\\geq \\min_{\\z, \\|\\z\\|_2=1}(1-\\delta)\\sum_{p}\\|\\z_p\\|_2^2-\\delta\\sum_{pq, p\\neq q}\\|\\z_p\\|_2\\|\\z_q\\|_2=\\min_{\\z, \\|\\z\\|_2=1}1-\\delta\\sum_{pq}\\|\\z_p\\|_2\\|\\z_q\\|_2\\geq 1-k\\delta. \\end{equation} Now, consider $BD-C$: \\begin{align} \\|BD-C\\|_2&= \\max_{\\z, \\|\\z\\|_2=1}|\\z^T(BD-C)\\z|,\\nonumber\\\\ &=\\max_{\\z, \\|\\z\\|_2=1}\\left|\\sum_{1\\leq p\\leq k, 1\\leq q\\leq k}\\z_p^T\\yi\\yit\\z_q\\xit\\left(\\sum_{1\\leq \\ell\\leq k}\\ip{\\u_\\ell}{\\u_{*q}}\\u_p\\u_\\ell^T-\\u_{p}\\u_{*q}^T\\right)\\x_i\\right|,\\nonumber\\\\ &=\\max_{\\z, \\|\\z\\|_2=1}\\left|\\sum_{1\\leq p\\leq k, 1\\leq q\\leq k}\\z_p^T\\yi\\yit\\z_q\\xit\\u_p\\u_{*q}^T(UU^T-I)\\x_i\\right|,\\nonumber\\\\ &\\stackrel{\\zeta_1}{\\leq}\\delta \\max_{\\z, \\|\\z\\|_2=1} \\sum_{1\\leq p\\leq k, 1\\leq q\\leq k} \\|(UU^T-I)\\u_{*q}\\|_2\\|\\z_p\\|_2\\|\\z_q\\|_2\\leq k\\cdot \\delta\\cdot \\dist(U, \\Uo), \\end{align} where $\\zeta_1$ follows by observing that $\\u_{*q}^T(UU^T-I) \\u_p=0$ and then by applying Property (3) mentioned in Theorem~\\ref{thm:general}. Lemma now follows by using \\eqref{eq:bp4} along with \\eqref{eq:f1} and \\eqref{eq:bp3}."
+    },
+    {
+      "id": "PP34.8",
+      "type": "proof",
+      "name": "Proof of Lemma~\\ref{lem:R}",
+      "section": "Appendix B Proof of General Theorem for Low-rank Matrix Estimation",
+      "origin": "paper",
+      "proves": "LP34.5",
+      "statement": "The lemma is exactly the same as Lemma 4.7 of \\cite{JainNS13}. We reproduce their proof here for completeness. Let $\\sigma_{\\text{min}}(R)$ be the smallest singular value of $R$, then: \\begin{align} \\sigma_{\\text{min}}(R)&=\\min_{\\z, \\|\\z\\|_2=1}\\|R\\z\\|_2=\\min_{z, \\|z\\|_2=1}\\|VR\\z\\|_2=\\min_{\\z, \\|\\z\\|_2=1}\\|\\Vo\\So\\Uot U\\z-F\\z\\|_2, \\nonumber\\\\ &\\geq \\min_{\\z, \\|\\z\\|_2=1}\\|\\Vo\\So\\Uot U\\z\\|_2-\\|F\\z\\|_2\\geq \\so^k\\sigma_{\\text{min}}(U^T\\Uo)-\\|F\\|_2,\\nonumber\\\\ &\\geq \\so^k\\sqrt{1-\\twonorm{U^T\\Uo^\\perp}^2}-\\|F\\|_2=\\so^k\\sqrt{1-\\dist(\\Uo, U)^2}-\\|F\\|_2. \\end{align} Lemma now follows by using the above inequality along with the fact that $\\|R^{-1}\\|_2\\leq 1/\\sigma_{\\text{min}}(R)$."
+    },
+    {
+      "id": "PSP34.1",
+      "type": "proof_step",
+      "parent_id": "PP34.1",
+      "step_order": 1,
+      "name": "Characterize the update $\\hvtn$ via gradient=0",
+      "statement": "We explain the key ideas of the proof by first presenting the proof for the special case of rank-$1$ $\\Wo=\\so \\uo \\vot$. Later in Appendix~\\ref{app:general}, we extend the proof to general rank-$k$ case. Similar to \\cite{JainNS13}, we first characterize the update for $h+1$-th step iterates $\\widehat{\\v}_{h+1}$ of Algorithm~\\ref{alg:altmin} and its normalized form $\\v_{h+1}=\\widehat{\\v}_{h+1}/\\|\\widehat{\\v}_{h+1}\\|_2$. Now, by gradient of \\eqref{eq:r1ms} w.r.t. $\\vh$ to be zero while keeping $\\ut$ to be fixed. That is, \\begin{align} & \\sum_{i=1}^m (b_i-\\xti\\ut\\hvtnt\\y_i)(\\xti\\ut)\\y_i=0,\\nonumber\\\\ i.e.,\\ &\\sum_{i=1}^m (\\ut^T\\x_i)\\y_i(\\so\\yti\\vo\\uot\\x_i-\\yti\\vh_{h+1}\\ut^T\\x_i)=0,\\nonumber\\\\ i.e.,\\ &\\left(\\sum_{i=1}^m (\\xti\\ut\\utt\\x_i)\\y_i\\yti\\right)\\hvtn=\\sigma_*\\left(\\sum_{i=1}^m (\\xti\\ut\\uot\\x_i)\\y_i\\yti\\right)\\vo,\\nonumber\\\\ i.e.,\\ &\\ \\hvtn=\\so (\\uot\\ut)\\vo-\\so B^{-1}( (\\uot\\ut) B-\\Bo)\\vo, \\end{align} where, $$B=\\frac{1}{m}\\sum_{i=1}^m (\\xti\\ut\\utt\\x_i)\\y_i\\yti,\\ \\ \\ \\Bo=\\frac{1}{m}\\sum_{i=1}^m (\\xti\\ut\\uot\\x_i)\\y_i\\yti.$$",
+      "section": "2 Low-rank Matrix Estimation using Rank-one Measurements",
+      "origin": "paper",
+      "subclass": "setup"
+    },
+    {
+      "id": "PSP34.2",
+      "type": "proof_step",
+      "parent_id": "PP34.1",
+      "step_order": 2,
+      "name": "Bound spectral norm of perturbation $\\|G\\|_2$",
+      "statement": "Note that \\eqref{eq:r1pm} shows that $\\hvtn$ is a perturbation of $\\vo$ and the goal now is to bound the spectral norm of the perturbation term: \\begin{equation}\\|G\\|_2= \\|B^{-1}( \\uot\\ut B-\\Bo)\\vo\\|_2\\leq \\|B^{-1}\\|_2\\|\\uot\\ut B-\\Bo\\|_2\\|\\vo\\|_2.\\end{equation} Now,, using Property 2 mentioned in the theorem, we get: \\begin{equation}\\|B-I\\|_2\\leq 1/100, \\ \\ \\ i.e.,\\ \\sigma_{min}(B)\\geq 1-1/100,\\ \\ \\ i.e.,\\ \\|B^{-1}\\|_2\\leq 1/(1-1/100).\\end{equation} Now, \\begin{align} (\\uot\\ut) B-\\Bo&=\\frac{1}{m}\\sum_{i=1}^m \\yi\\yti \\xti((\\uot\\ut)\\ut\\utt-\\uo\\utt)\\x_i,\\nonumber\\\\ &=\\frac{1}{m}\\sum_{i=1}^m \\yi\\yti \\xti(\\ut\\utt-I)\\uo\\utt\\x_i,\\nonumber\\\\ &\\stackrel{\\zeta_1}{\\leq} \\frac{1}{100}\\|(\\ut\\utt-I)\\uo\\|_2 \\|\\utt\\|_2= \\frac{1}{100}\\sqrt{1-(\\utt\\uo)^2}, \\end{align} where $\\zeta_1$ follows by observing that $(\\ut\\utt-I)\\uo$ and $\\ut$ are orthogonal set of vectors and then using Property 3 given in the Theorem~\\ref{thm:general}. Hence, using \\eqref{eq:blb}, \\eqref{eq:cup}, and $\\|\\vo\\|_2=1$ along with \\eqref{eq:gub}, we get: \\begin{equation} \\|G\\|_2\\leq \\frac{1}{99}\\sqrt{1-(\\utt\\uo)^2}. \\end{equation}",
+      "section": "2 Low-rank Matrix Estimation using Rank-one Measurements",
+      "origin": "paper",
+      "subclass": "bound_estimate"
+    },
+    {
+      "id": "PSP34.3",
+      "type": "proof_step",
+      "parent_id": "PP34.1",
+      "step_order": 3,
+      "name": "Bound components of $\\widehat{\\v}_h$ along and perpendicular to $\\vo$",
+      "statement": "We are now ready to lower bound the component of $\\widehat{\\v}_h$ along the correct direction $\\vo$ and the component of $\\widehat{\\v}_h$ that is perpendicular to the optimal direction $\\vo$. Now, by left-multiplying \\eqref{eq:r1pm} by $\\vo$ and using \\eqref{eq:blb} we obtain: \\begin{equation} \\vot\\vhn=\\so(\\utt\\uo)-\\so\\vot G\\geq \\so(\\utt\\uo)-\\frac{\\so}{99}\\sqrt{1-(\\utt\\uo)^2}. \\end{equation} Similarly, by multiplying \\eqref{eq:r1pm} by $\\vo^\\perp$, where $\\vo^\\perp$ is a unit norm vector that is orthogonal to $\\vo$, we get: \\begin{equation} \\ip{\\vo^\\perp}{\\vhn}\\leq \\frac{\\so}{99}\\sqrt{1-(\\utt\\uo)^2}. \\end{equation}",
+      "section": "2 Low-rank Matrix Estimation using Rank-one Measurements",
+      "origin": "paper",
+      "subclass": "bound_estimate"
+    },
+    {
+      "id": "PSP34.4",
+      "type": "proof_step",
+      "parent_id": "PP34.1",
+      "step_order": 4,
+      "name": "Combine with initialization and inductive assumption to get geometric decay",
+      "statement": "Using \\eqref{eq:vvo}, \\eqref{eq:vp}, and $\\|\\vhn\\|_2^2=(\\vot\\vhn)^2+((\\vo^\\perp)^T\\vhn)^2$, we get: \\begin{align} 1-(\\vtnt\\vo)^2 &= \\frac{\\ip{\\vo^\\perp}{\\vhn}^2}{\\ip{\\vo}{\\vhn}^2+\\ip{\\vo^\\perp}{\\vhn}^2},\\nonumber\\\\ &\\leq \\frac{1}{99\\cdot 99\\cdot (\\utt\\uo-\\frac{1}{99}\\sqrt{1-(\\utt\\uo)^2})^2+1} (1-(\\ut\\uo)^2). \\end{align} Also, using Property 1 of Theorem~\\ref{thm:general}, for $S=\\frac{1}{m}\\sum_{i=1}^m b_i A_i$, we get: $\\|S\\|_2\\geq \\frac{99\\so}{100}$. Moreover, by multiplying $S-\\Wo$ by $\\u_0$ on left and $\\v_0$ on the right and using the fact that $(\\u_0, \\v_0)$ are the largest singular vectors of $S$, we get: $\\|S\\|_2-\\so\\v_0^T\\vo \\u_0^T\\uo\\leq \\so/100$. Hence, $\\u_0^T\\uo\\geq 9/10$. Using the \\eqref{eq:vnorm} along with the above given observation and by the ``inductive'' assumption $\\u_h^T\\uo\\geq \\u_0^T\\uo\\geq 9/10$ (proof of the inductive step follows directly from the below equation) , we get: \\begin{equation} 1-(\\vtnt\\vo)^2 \\leq \\frac{1}{2} (1-(\\utt\\uo)^2). \\end{equation} Similarly, we can show that $ 1-(\\utnt\\uo)^2 \\leq \\frac{1}{2} (1-(\\vtnt\\vo)^2).$ Hence, after $H=O(\\log(\\so/\\epsilon))$ iterations, we obtain $W_H=\\u_H \\widehat{\\v}^T_H$, s.t., $\\|W_H-\\Wo\\|_2\\leq \\epsilon$.",
+      "section": "2 Low-rank Matrix Estimation using Rank-one Measurements",
+      "origin": "paper",
+      "subclass": "conclude"
+    },
+    {
+      "id": "PSP34.5",
+      "type": "proof_step",
+      "parent_id": "PP34.2",
+      "step_order": 1,
+      "name": "Lower bound $\\|\\mathcal{A}_{Gauss}(Z_U)\\|_2^2$",
+      "statement": "The main idea behind our proof is to show that there exists two rank-$1$ matrices $Z_U, Z_L$ s.t. $\\|\\mathcal{A}_{Gauss}(Z_U)\\|_2^2$ is large while $\\|\\mathcal{A}_{Gauss}(Z_L)\\|_2^2$ is much smaller than $\\|\\mathcal{A}_{Gauss}(Z_U)\\|_2^2$. In particular, let $Z_U=\\x_1 \\y_1^T$ and let $Z_L=\\u \\v^T$ where $\\u, \\v$ are sampled from normal distribution independent of $X, Y$. Now, $$\\|\\mathcal{A}_{Gauss}(Z_U)\\|_2^2=\\sum_{i=1}^m \\|\\x_1\\|_2^4\\|\\y_1\\|_2^4+\\sum_{i=2}^m (\\x_1^T\\x_i)^2(\\y_1^T\\y_i)^2.$$ Now, as $\\x_i, \\y_i, \\forall i$ are multi-variate normal random variables, $\\|\\x_1\\|_2^4\\|\\y_1\\|_2^4\\geq 0.5 d_1^2d_2^2$ w.p. $\\geq 1-2\\exp(-d_1-d_2)$. \\begin{equation}\\|\\mathcal{A}_{Gauss}(Z_U)\\|_2^2\\geq .5 d_1^2 d_2^2.\\end{equation} Moreover, $\\|Z_U\\|_F^2\\leq 2d_1d_2$ w.p. $\\geq 1-2\\exp(-d_1-d_2)$.",
+      "section": "3 Rank-one Matrix Sensing using Gaussian Measurements",
+      "origin": "paper",
+      "subclass": "bound_estimate"
+    },
+    {
+      "id": "PSP34.6",
+      "type": "proof_step",
+      "parent_id": "PP34.2",
+      "step_order": 2,
+      "name": "Upper bound $\\|\\mathcal{A}_{Gauss}(Z_L)\\|_2^2$",
+      "statement": "Now, consider $$\\|\\mathcal{A}_{Gauss}(Z_L)\\|_2^2=\\sum_{i=2}^m (\\u^T\\x_i)^2(\\v^T\\y_i)^2,$$ where $Z_L=\\u\\v^T$ and $\\u, \\v$ are sampled from standard normal distribution, independent of $\\x_i, \\y_i, \\forall i$. Since, $\\u, \\v$ are independent of $\\u^T\\x_i \\sim N(0, \\|\\u\\|_2)$ and $\\v^T\\y_i\\sim N(0, \\|\\v\\|_2)$. Hence, w.p. $\\geq 1-1/m^{3}$, $|\\u^T\\x_i| \\leq \\log(m)\\|\\u\\|_2, |\\v^T\\y_i| \\leq \\log(m)\\|\\v\\|_2, \\forall i\\geq 2$. Moreover, w.p. $\\geq 1-\\exp(-d_1-d_2)$, $\\|\\u\\|_2\\leq 2 \\sqrt{d_1}$ and $\\|\\v\\|_2\\leq 2 \\sqrt{d_2}$. That is, w.p. $1-1/m^3$: \\begin{equation}\\|\\mathcal{A}_{Gauss}(Z_L)\\|_2^2\\leq 4m\\cdot d_1\\cdot d_2 \\log^4m .\\end{equation} Furthermore, $\\|Z_L\\|_F^2\\leq 2d_1d_2$ w.p. $\\geq 1-2\\exp(-d_1-d_2)$.",
+      "section": "3 Rank-one Matrix Sensing using Gaussian Measurements",
+      "origin": "paper",
+      "subclass": "bound_estimate"
+    },
+    {
+      "id": "PSP34.7",
+      "type": "proof_step",
+      "parent_id": "PP34.2",
+      "step_order": 3,
+      "name": "Conclude RIP cannot hold for near-linear $m$",
+      "statement": "Using \\eqref{eq:nrlb}, \\eqref{eq:nrub}, we get that w.p. $\\geq 1-2/m^3-10 \\exp(-d_1-d_2)$: $$40m \\log^4m\\leq \\|\\calA_{Gauss}(Z/\\|Z\\|_F)\\|^2\\leq .05 d_1d_2.$$ Now, for RIP to be satisfied with a constant $\\delta$, the lower and upper bound on $\\|\\calA_{Gauss}(Z/\\|Z\\|_F)\\|^2$ for all rank-$1$ $Z$ should be at most a constant factor apart. However, the above equation clearly shows that the upper and lower bound can match only when $m=\\Omega(d_1d_2/\\log(5d_1d_2))$. Hence, for $m$ that is at most linear in both $d_1$, $d_2$, RIP cannot be satisfied with probability $\\geq 1-1/(d_1+d_2)^3$.",
+      "section": "3 Rank-one Matrix Sensing using Gaussian Measurements",
+      "origin": "paper",
+      "subclass": "conclude"
+    },
+    {
+      "id": "PSP34.8",
+      "type": "proof_step",
+      "parent_id": "PP34.3",
+      "step_order": 1,
+      "name": "Set up $S$ and reduce to canonical basis",
+      "statement": "Now, $$S=\\frac{1}{m}\\sum_{i=1}^m b_i \\x_i \\tp{\\y}_i=\\frac{1}{m}\\sum_{i=1}^m \\x_i\\tp{\\x}_i\\Uo\\So\\tp{V}_*\\y_i\\tp{\\y}_i=\\frac{1}{m}\\sum_{i=1}^m Z_i,$$ where $Z_i=\\x_i\\tp{\\x}_i\\Uo\\So\\Vot\\y_i\\y_i^T$. Note that $\\mathbb{E}[Z_i]=\\Uo\\So\\Vot$. Also, both $\\x_i$ and $\\y_i$ are spherical Gaussian variables and hence are rotationally invariant. Therefore, wlog, we can assume that $\\Uo=[\\e_1 \\e_2 \\dots \\e_k]$ and $\\Vo=[\\e_1 \\e_2 \\dots \\e_k]$ where $e_i$ is the $i$-th canonical basis vector. As $S$ is a sum of $m$ random matrices, the goal is to apply matrix concentration bounds to show that $S$ is close to $\\E[S]=W=\\Uo\\So\\Vot$ for large enough $m$. To this end, we use Theorem~\\ref{thm:tropp} by \\cite{Tropp11} given below. However, Theorem~\\ref{thm:tropp} requires bounded random variable while $Z_i$ is an unbounded variable. We handle this issue by clipping $Z_i$ to ensure that its spectral norm is always bounded. In particular, consider the following random variable:",
+      "section": "3 Rank-one Matrix Sensing using Gaussian Measurements",
+      "origin": "paper",
+      "subclass": "setup"
+    },
+    {
+      "id": "PSP34.9",
+      "type": "proof_step",
+      "parent_id": "PP34.3",
+      "step_order": 2,
+      "name": "Define clipped variables and their second moments",
+      "statement": "\\begin{equation} \\wt{x}_{ij}= \\begin{cases}x_{ij},& \\ |x_{ij}|\\leq C \\sqrt{\\log(m(d_1+d_2))},\\\\ 0,&\\text{ otherwise},\\end{cases}\\end{equation} where $x_{ij}$ is the $j$-th co-ordinate of $\\x_i$. Similarly, define: \\begin{equation} \\wt{y}_{ij}= \\begin{cases}y_{ij},& \\ |y_{ij}|\\leq C \\sqrt{\\log(m(d_1+d_2))},\\\\ 0,&\\text{ otherwise}.\\end{cases} \\end{equation} Note that, $\\mathbb{P}(x_{ij}=\\wt{x}_{ij})\\geq 1-\\frac{1}{(m(d_1+d_2))^C}$ and $\\mathbb{P}(y_{ij}=\\wt{y}_{ij})\\geq 1-\\frac{1}{(m(d_1+d_2))^C}$. Also, $\\wt{x}_{ij}, \\wt{y}_{ij}$ are still symmetric and independent random variables, i.e., $\\E[\\wt{x}_{ij}]=\\E[\\wt{y}_{ij}]=0,\\ \\forall i, j$. Hence, $\\E[\\wt{x}_{ij}\\wt{x}_{i\\ell}]=0, \\forall j\\neq \\ell$. Furthermore, $\\forall j$, \\begin{align} \\E[\\wt{x}_{ij}^2]&=\\E[x_{ij}^2]-\\frac{2}{\\sqrt{2\\pi}}\\int_{C\\sqrt{\\log(m(d_1+d_2))}}^{\\infty} x^2 \\exp(-x^2/2)dx, \\nonumber\\\\ &=1-\\frac{2}{\\sqrt{2\\pi}}\\frac{C\\sqrt{\\log(m(d_1+d_2))}}{(m(d_1+d_2))^{C^2/2}}-\\frac{2}{\\sqrt{2\\pi}}\\int_{C\\sqrt{\\log(m(d_1+d_2))}}^{\\infty} \\exp(-x^2/2)dx, \\nonumber\\\\ &\\geq 1-\\frac{2C\\sqrt{\\log(m(d_1+d_2))}}{(m(d_1+d_2))^{C^2/2}}. \\end{align} Similarly, \\begin{equation} \\E[\\wt{y}_{ij}^2]\\geq 1-\\frac{2C\\sqrt{\\log(m(d_1+d_2))}}{(m(d_1+d_2))^{C^2/2}}. \\end{equation}",
+      "section": "3 Rank-one Matrix Sensing using Gaussian Measurements",
+      "origin": "paper",
+      "subclass": "introduce_variable"
+    },
+    {
+      "id": "PSP34.10",
+      "type": "proof_step",
+      "parent_id": "PP34.3",
+      "step_order": 3,
+      "name": "Bound $\\|\\wt{Z}_i\\|_2$ and variance terms",
+      "statement": "Now, consider RV, $\\wt{Z}_i=\\wt{\\x}_i\\tp{\\wt{\\x}}_i \\Uo\\So\\Vot \\wt{\\y}_i\\tp{\\wt{\\y}}_i.$ Note that, $\\|\\wt{Z}_i\\|_2\\leq C^4 \\sqrt{d_1d_2}k\\log^2(m(d_1+d_2)) \\so^1$ and $\\|\\E[\\wt{Z}_i]\\|_2\\leq \\so^1$. Also, \\begin{align} \\|\\E[\\wt{Z}_i\\tp{\\wt{Z}}_i]\\|_2&=\\|\\E[\\|\\wt{\\y}_i\\|_2^2\\wt{\\x}_i\\tp{\\wt{\\x}}_i \\Uo\\So\\Vot \\wt{\\y}_i\\tp{\\wt{\\y}}_i\\Vo\\So\\tp{U}_*\\wt{\\x}_i\\tp{\\wt{\\x}_i}]\\|_2,\\nonumber\\\\ &\\leq C^2d_2\\log(m(d_1+d_2))\\E[\\wt{\\x}_i\\tp{\\wt{\\x}}_i \\Uo\\So^2\\Uot\\wt{\\x}_i\\tp{\\wt{\\x}}_i]\\|_2,\\nonumber\\\\ &\\leq C^2d_2\\log(m(d_1+d_2))(\\so^1)^2\\|\\E[\\|\\Uot\\wt{\\x}_i\\|_2^2 \\wt{\\x}_i\\tp{\\wt{\\x}}_i]\\|_2,\\nonumber\\\\ &\\leq C^4kd_2\\log^2(m(d_1+d_2))(\\so^1)^2. \\end{align} Similarly, \\begin{equation} \\|\\E[\\wt{Z}_i]\\E[\\tp{\\wt{Z}}_i]\\|_2\\leq (\\sigma_*^{max})^2. \\end{equation} Similarly, we can obtain bounds for $\\|\\E[\\tp{\\wt{Z}}_i\\wt{Z}_i]\\|_2$, $\\|\\tp{\\E[\\wt{Z}_i]}\\E[\\wt{Z}_i]\\|_2$.",
+      "section": "3 Rank-one Matrix Sensing using Gaussian Measurements",
+      "origin": "paper",
+      "subclass": "bound_estimate"
+    },
+    {
+      "id": "PSP34.11",
+      "type": "proof_step",
+      "parent_id": "PP34.3",
+      "step_order": 4,
+      "name": "Apply Theorem~\\ref{thm:tropp} and conclude initialization",
+      "statement": "Finally, by selecting $m=\\frac{C_1 k (d_1+d_2) \\log^2(d_1+d_2)}{\\delta^2}$ and applying Theorem~\\ref{thm:tropp} we get (w.p. $1-\\frac{1}{(d_1+d_2)^{10}}$), \\begin{equation} \\|\\frac{1}{m}\\sum_{i=1}^m \\wt{Z}_i - \\E[\\wt{Z}_i]\\|_2 \\leq \\delta. \\end{equation} Note that $\\E[\\wt{Z}_i]=\\E[\\wt{x}_{i1}^2]\\E[\\wt{y}_{i1}^2]\\Uo\\So\\Vot $. Hence, by using \\eqref{eq:tz2}, \\eqref{eq:scx}, \\eqref{eq:scy}, $$\\|\\frac{1}{m}\\sum_{i=1}^m \\wt{Z}_i - \\Uo\\So\\Vot\\|_2\\leq \\delta+\\frac{\\sigma_*^{1}}{(d_1+d_2)^{100}}.$$ Finally, by observing that by selecting $C$ to be large enough in the definition of $\\wt{\\x_i},\\wt{\\y}_i$ (see \\eqref{eq:clipx}, \\eqref{eq:clipy}), we get $P(\\|Z_i-\\wt{Z_i}\\|_2=0)\\geq 1-\\frac{1}{(d_1+d_2)^5}$. Hence, by assuming $\\delta$ to be a constant wrt $d_1, d_2$ and by union bound, w.p. $1-\\frac{2\\delta^{10}}{(d_1+d_2)^5}$, $$\\|\\frac{1}{m}\\sum_{i=1}^m Z_i -\\Wo\\|_2\\leq 5\\delta\\|\\Wo\\|_2.$$ Now, the theorem follows directly by setting $\\delta= \\frac{1}{100 k^{3/2} \\beta}$.",
+      "section": "3 Rank-one Matrix Sensing using Gaussian Measurements",
+      "origin": "paper",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP34.12",
+      "type": "proof_step",
+      "parent_id": "PP34.4",
+      "step_order": 1,
+      "name": "Reduce to orthonormal $X,Y$",
+      "statement": "We first observe that both $X, Y$ can be thought of as orthonormal matrices. The reason being, $X^T\\Wo Y =U_X \\Sigma_X V_X^T \\Wo V_Y \\Sigma_Y U_Y^T$, where $X^T=U_X \\Sigma_X V_X^T$ and $Y^T=U_Y \\Sigma_Y V_Y^T$. Hence, $R=X^T \\Wo Y=U_X (\\Sigma_X V_X^T \\Wo V_Y \\Sigma_Y) U_Y^T$. That is, $U_X $, $U_Y$ can be treated as the true ``X'', ``Y'' matrices and $\\Wo\\leftarrow (\\Sigma_X V_X^T \\Wo V_Y \\Sigma_Y)$ can be thought of as $\\Wo$. Then the ``true'' $\\Wo$ can be recovered using the obtained $W_H$ as: $W_H\\leftarrow V_X \\Sigma_X^{-1} W_H \\Sigma_Y^{-1} V_Y^T$. We also note that such a transformation implies that the condition number of $R$ and that of $\\Wo\\leftarrow (\\Sigma_X V_X^T \\Wo V_Y \\Sigma_Y)$ are exactly the same. Hence, we prove the theorem with the assumption that $X$, $Y$ are orthonormal and that $\\beta$ is the condition number of $\\Wo$.",
+      "section": "4 Inductive Matrix Completion",
+      "origin": "paper",
+      "subclass": "setup"
+    },
+    {
+      "id": "PSP34.13",
+      "type": "proof_step",
+      "parent_id": "PP34.4",
+      "step_order": 2,
+      "name": "Proof of Property 1 (Initialization)",
+      "statement": "\\begin{proof}[Proof of Property 1] As mentioned above, wlog, we can assume that both $X, Y$ are orthonormal matrices and that the condition number of $R$ is same as condition number of $\\Wo$. We first recall the definition of $S$: $$S=\\frac{n_1n_2}{m}\\sum_{(i,j)\\in \\Omega}^m \\x_i\\xti \\Uo\\So\\Vot \\y_j\\ytj=\\frac{n_1n_2}{m}\\sum_{(i,j)\\in \\Omega}^m Z_{ij},$$ where $Z_{ij}=\\x_i\\xti \\Uo\\So\\Vot \\y_j\\ytj = X \\e_i \\eit X^T \\Uo\\So\\Vot Y \\e_j \\ejt Y^T$, where $\\e_i, \\e_j$ denotes the $i$-th, $j$-th canonical basis vectors, respectively. Also, since $(i,j)$ is sampled uniformly at random from $[n_1]\\times [n_2]$. Hence, $\\E_{i}[\\e_i\\eit]=\\frac{1}{n_1}I$ and $\\E_{j}[\\e_j\\ejt]=\\frac{1}{n_2}I$. That is, $$\\E_{ij}[Z_{ij}]=\\frac{1}{n_1n_2} XX^T\\Uo\\So\\Vot YY^T=\\Uo\\So\\Vot=\\Wo/(n_1\\cdot n_2),$$ where $XX^T=I$, $YY^T=I$ follows by orthonormality of both $X$ and $Y$. We now use the matrix concentration bound of Theorem~\\ref{thm:tropp} to bound $\\|S-\\Wo\\|_2$. To apply the bound of Theorem~\\ref{thm:tropp}, we first need to bound the following two quantities: \\begin{itemize} \\item {\\bf Bound $\\max_{ij} \\|Z_{ij}\\|_2$}: Now, $$\\|Z_{ij}\\|_2=\\|\\x_i\\xti \\Uo\\So\\Vot \\y_j\\ytj\\|_2\\leq \\so^1 \\|\\x_i\\|_2^2 \\|\\y_j\\|_2^2\\leq \\frac{\\so^1\\mu^4d_1d_2}{n_1n_2},$$ where the last inequality follows using incoherence of $X, Y$. \\item {\\bf Bound $\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}Z_{ij}^T]\\|_2$ and $\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}^TZ_{ij}]\\|_2$}: We first consider $\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}Z_{ij}^T]\\|_2$: \\begin{align} &\\left\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}Z_{ij}^T]\\right\\|_2=\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[\\x_i\\xti\\Wo\\yj\\ytj\\yj\\ytj\\Wo^T \\x_i \\xti]\\right\\|_2,\\nonumber\\\\ &\\stackrel{\\zeta_1}{\\leq} \\frac{\\mu^2 d_2}{n_2}\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[\\x_i\\xti\\Wo\\yj\\ytj\\Wo^T \\x_i \\xti]\\right\\|_2\\stackrel{\\zeta_2}{=}\\frac{\\mu^2 d_2}{n_2^2}\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[\\x_i\\xti\\Wo\\Wo^T \\x_i \\xti]\\right\\|_2,\\nonumber\\\\ &\\stackrel{\\zeta_3}{\\leq }\\frac{(\\so^1)^2\\mu^4 d_1d_2}{n_1n_2^2}\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[\\x_i\\xti]\\right\\|_2\\stackrel{\\zeta_4}{= }\\frac{(\\so^1)^2\\mu^4 d_1d_2}{n_1^2n_2^2}\\cdot m, \\end{align} where $\\zeta_1$, $\\zeta_3$ follows by using incoherent of $X, Y$ and $\\|\\Wo\\|_2\\leq \\so^1$. $\\zeta_2, \\zeta_4$ follows by using $\\E_{i}[\\e_i\\eit]=\\frac{1}{n_1}I$ and $\\E_{j}[\\e_j\\ejt]=\\frac{1}{n_2}I$. Now, bound for $\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}^TZ_{ij}]\\|_2$ also turns out to be exactly the same and can be easily computed using exactly same arguments as above. \\end{itemize} Now, by applying Theorem~\\ref{thm:tropp} and using the above computed bounds we get: \\begin{equation} Pr(\\|S-\\Wo\\|_2\\geq \\so^1\\gamma)\\leq 2(d_1+d_2)\\exp\\left(-\\frac{m\\gamma^2}{\\mu^4 d_1d_2(1+\\gamma/3)}\\right). \\end{equation} That is, w.p. $\\geq 1-\\gamma$: \\begin{equation} \\|S-\\Wo\\|_2 \\leq \\frac{\\so^1\\mu^2\\sqrt{d_1d_2\\log(2(d_1+d_2)/\\gamma)}}{\\sqrt{m}}. \\end{equation} Hence, by selecting $m=\\Omega(\\mu^4k^3\\cdot \\beta^2\\cdot d_1d_2\\log(2(d_1+d_2)/\\gamma))$ where $\\beta=\\so^1/\\so^k$, the following holds w.p. $\\geq 1-\\gamma$: $$\\|S-\\Wo\\|_2 \\leq \\|\\Wo\\|_2\\cdot \\delta, $$ where $\\delta= 1/(k^{3/2}\\cdot \\beta\\cdot 100)$. \\end{proof}",
+      "section": "4 Inductive Matrix Completion",
+      "origin": "paper",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP34.14",
+      "type": "proof_step",
+      "parent_id": "PP34.4",
+      "step_order": 3,
+      "name": "Proof of Property 2 (concentration of $B_x,B_y$)",
+      "statement": "\\begin{proof}[Proof of Property 2] We prove the property for $B_y$; proof for $B_y$ follows analogously. Now, let $B_y=\\frac{n_1n_2}{m}\\sum_{(i,j)\\in \\Omega} Z_{ij}$ where $Z_i=\\xit\\u\\u^T\\x_i\\yi\\yti$. Then, \\begin{align} \\E[B_y]=\\frac{n_1n_2}{m}\\sum_{(i,j)\\in \\Omega} Z_{ij}=\\frac{n_1n_2}{m}\\sum_{i=1}^m\\E_{(i,j)\\in \\Omega}[\\xit\\u\\u^T\\x_i\\yi\\yti]=I. \\end{align} Here again, we apply Theorem~\\ref{thm:tropp} to bound $\\|B_y-I\\|_2$. To this end, we need to bound the following quantities: \\begin{itemize} \\item {\\bf Bound $\\max_{ij} \\|Z_{ij}\\|_2$}: Now, $$\\|Z_{ij}\\|_2=\\|\\xit\\u\\u^T\\x_i\\yi\\yti\\|_2\\leq \\|\\yi\\|_2^2\\|\\x_i\\|_2^2\\leq \\frac{\\mu^4 d_1d_2}{n_1n_2}.$$ \\item {\\bf Bound $\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}Z_{ij}^T]\\|_2$ and $\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}^TZ_{ij}]\\|_2$}: We first consider $\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}Z_{ij}^T]\\|_2$: \\begin{align} \\hspace*{-20pt}\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[Z_{ij}Z_{ij}^T]\\right\\|_2&=\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[(\\xit\\u\\u^T\\x_i)^2\\|\\y_i\\|_2^2 \\yi\\yti]\\right\\|_2\\stackrel{\\zeta_1}{\\leq}\\frac{\\mu^2d_2}{n_2}\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[(\\xit\\u\\u^T\\x_i)^2\\yi\\yti]\\right\\|_2,\\nonumber\\\\ &\\stackrel{\\zeta_2}{=}\\frac{\\mu^2d_2}{n_2^2}\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[(\\xit\\u\\u^T\\x_i)^2\\right\\|_2\\stackrel{\\zeta_3}{\\leq}\\frac{\\mu^4d_1d_2}{n_1n_2^2}\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[(\\xit\\u)^2]\\right\\|_2\\stackrel{\\zeta_4}{=}\\frac{\\mu^4d_1d_2}{n_1^2n_2^2}\\cdot m. \\end{align} \\end{itemize} Note that the above given bounds that we obtain are exactly the same as the ones obtained in the Initialization Property's proof. Hence, by applying Theorem~\\ref{thm:tropp} in a similar manner, and selecting $m=\\Omega(k^3\\beta^2 d_1\\cdot d_2 \\log(1/\\gamma))$ and $\\delta= 1/(k^{3/2}\\cdot \\beta\\cdot 100)$, we get w.p. $\\geq 1-\\gamma$: $$\\|B_y-I\\|_2 \\leq \\delta.$$ Hence Proved. $\\|B_x-I\\|_2 \\leq \\delta$ can be proved similarly. \\end{proof}",
+      "section": "4 Inductive Matrix Completion",
+      "origin": "paper",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP34.15",
+      "type": "proof_step",
+      "parent_id": "PP34.4",
+      "step_order": 4,
+      "name": "Proof of Property 3 (concentration of $C_x,C_y$)",
+      "statement": "\\begin{proof}[Proof of Property 3] Note that $\\E[C_y]=\\E[\\sum_{(i,j)\\in \\Omega}Z_{ij}]=0$.\\\\ Furthermore, both $\\|Z_{ij}\\|_2$ and $\\|\\E[\\sum_{(i,j)\\in \\Omega} Z_{ij}Z_{ij}^T]\\|_2$ have exactly the same bounds as those given in the Property 2's proof above. Hence, we obtain similar bounds. That is, if $m=\\Omega(k^3\\beta^2 d_1\\cdot d_2 \\log(1/\\gamma))$ and $\\delta= 1/(k^{3/2}\\cdot \\beta\\cdot 100)$, we get w.p. $\\geq 1-\\gamma$: $$\\|C_y\\|_2 \\leq \\delta.$$ Hence Proved. $\\|C_x\\|_2$ can also be bounded analogously. \\end{proof}",
+      "section": "4 Inductive Matrix Completion",
+      "origin": "paper",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP34.16",
+      "type": "proof_step",
+      "parent_id": "PP34.5",
+      "step_order": 1,
+      "name": "Proof of Property 1 (Initialization)",
+      "statement": "\\begin{proof}[Proof of Property 1] As mentioned in the proof of Lemma~\\ref{lemma:indmc}, wlog, we can assume that both $X, Y$ are orthonormal matrices and that the condition number of $R$ is same as condition number of $\\Wo$. We first recall the definition of $S$: $$S=\\frac{n_1n_2}{m}\\sum_{(i,j)\\in \\Omega}^m \\x_i\\xti \\Uo\\So\\Vot \\e_j\\etj=\\frac{n_1n_2}{m}\\sum_{(i,j)\\in \\Omega}^m Z_{ij},$$ where $Z_{ij}=\\x_i\\xti \\Uo\\So\\Vot \\e_j\\etj = X \\e_i \\eit X^T \\Uo\\So\\Vot \\e_j \\ejt $, where $\\e_i, \\e_j$ denotes the $i$-th, $j$-th canonical basis vectors, respectively. Now using the fact that $(i,j)$ is sampled uniformly at random from $[n_1]\\times [n_2]$: $$\\E_{ij}[Z_{ij}]=\\frac{1}{n_1n_2} XX^T\\Uo\\So\\Vot=\\Uo\\So\\Vot=\\Wo/(n_1\\cdot n_2),$$ where $XX^T=I$ follows by orthonormality of both $X$ and $Y$. As in the previous section, we first bound the following two quantities: \\begin{itemize} \\item {\\bf Bound $\\max_{ij} \\|Z_{ij}\\|_2$}: Now, $$\\|Z_{ij}\\|_2=\\|\\x_i\\xti \\Uo\\So\\Vot \\e_j\\etj\\|_2\\leq \\so^1 \\|\\x_i\\|_2^2 \\leq \\frac{\\so^1\\mu^2d_1}{n_1},$$ where the last inequality follows using incoherence of $X$ and $\\Vo$. \\item {\\bf Bound $\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}Z_{ij}^T]\\|_2$}: \\begin{align} &\\left\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}Z_{ij}^T]\\right\\|_2=\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[\\x_i\\xti\\Wo\\ej\\etj\\ej\\etj\\Wo^T \\x_i \\xti]\\right\\|_2,\\nonumber\\\\ &\\stackrel{\\zeta_1}{=} \\frac{1}{n_2} \\left\\|\\sum_{(i,j)\\in \\Omega}\\E[\\x_i\\xti\\Wo\\Wo^T\\x_i \\xti]\\right\\|_2\\stackrel{\\zeta_2}{\\leq} \\frac{(\\so^1)^2\\mu^2d_1}{n_1n_2}\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[\\x_i \\xti]\\right\\|_2\\stackrel{\\zeta_3}{=} \\frac{(\\so^1)^2\\mu^2d_1}{n_1^2n_2}\\cdot m, \\end{align} where $\\zeta_1$ follows from $\\E_j[\\e_j\\etj]=\\frac{1}{n_2}I$, $\\ \\zeta_2$ follows from incoherence of $\\x_i$, and $\\zeta_3$ follows from $\\E_i[\\x_i\\xti]=\\frac{1}{n_1}I$. \\item {Bound $\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}^TZ_{ij}]\\|_2$}: \\begin{align} &\\left\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}^TZ_{ij}]\\right\\|_2=\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[\\ej\\etj\\Wot\\x_i\\xti\\x_i\\xti\\Wo\\ej\\etj]\\right\\|_2,\\nonumber\\\\ &\\stackrel{\\zeta_1}{\\leq } \\frac{\\mu^2d_1}{n_1} \\left\\|\\sum_{(i,j)\\in \\Omega}\\E[\\ej\\etj\\Wot\\x_i\\xti\\Wo\\ej\\etj]\\right\\|_2\\stackrel{\\zeta_2}{=} \\frac{\\mu^2d_1}{n_1^2}\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[\\ej\\etj\\Wot\\Wo\\ej\\etj]\\right\\|_2,\\nonumber\\\\ &\\stackrel{\\zeta_3}{\\leq} \\frac{(\\so^1)^2\\mu^2d_1}{n_1^2n_2}\\cdot m, \\end{align} where $\\zeta_1$ follows from incoherence of $X$, $\\zeta_2, \\zeta_3$ follows from uniform sampling of $\\e_i$ and $\\e_j$, respectively. \\end{itemize} Using \\eqref{eq:mult_zub}, \\eqref{eq:mult_zub1} we get: $$\\max\\left(\\left\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}Z_{ij}^T]\\right\\|_2,\\ \\left\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}^TZ_{ij}]\\right\\|_2\\right)\\leq \\frac{(\\so^1)^2\\mu^2d_1}{n_1^2n_2}\\cdot m.$$ \\noindent Using the above given bounds, and Theorem~\\ref{thm:tropp}, we get: \\begin{equation} Pr(\\|S-\\Wo\\|_2\\geq \\frac{n_2\\so^1\\gamma}{\\mu\\sqrt{k}})\\leq 2(d_1+n_2)\\exp\\left(-\\frac{m\\gamma^2}{\\mu^4\\cdot k\\cdot d_1(1+\\gamma/3)}\\right). \\end{equation} That is, by selecting $m=\\Omega(k^3 \\beta^2 \\mu^2 d_1n_2\\log(2(d_1+n_2)/\\gamma)$ with $\\beta=\\frac{\\so^1}{\\so^k}$, the following holds w.p. $\\geq 1-\\gamma$: $$\\|S-\\Wo\\|\\leq \\delta\\|\\Wo\\|_2,$$ where $\\delta\\leq \\frac{1}{k^{3/2}\\cdot \\beta \\cdot 100} $. \\end{proof}",
+      "section": "5 Multi-label Learning",
+      "origin": "paper",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP34.17",
+      "type": "proof_step",
+      "parent_id": "PP34.5",
+      "step_order": 2,
+      "name": "Proof of Property 2 (concentration of $B_x,B_y$)",
+      "statement": "\\begin{proof}[Proof of Property 2] Here, we first prove the property for $B_y$. Now, $B_y=\\frac{n_1n_2}{m}\\sum_{(i,j)\\in \\Omega} Z_{ij}$ where $Z_i=\\xit\\u\\u^T\\x_i\\ej\\etj$. Note that, $\\E[B_y]=I$. Next, we bound the quantities required by Theorem~\\ref{thm:tropp}: \\begin{itemize} \\item {\\bf Bound $\\max_{ij} \\|Z_{ij}\\|_2$}: Now, $$\\|Z_{ij}\\|_2=\\|\\xit\\u\\u^T\\x_i \\e_j\\etj\\|_2\\leq \\|\\x_i\\|_2^2 \\leq \\frac{\\mu^2d_1}{n_1},$$ where the second inequality follows from incoherence of $X$. \\item {\\bf Bound $\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}Z_{ij}^T]\\|_2$}: \\begin{align*} \\hspace*{-20pt}\\left\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}Z_{ij}^T]\\right\\|_2=\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[(\\xit\\u\\u^T\\x_i)^2 \\e_j\\etj]\\right\\|_2\\stackrel{\\zeta_1}{=}\\frac{1}{n_2}\\sum_{(i,j)\\in \\Omega}\\E[(\\xit\\u\\u^T\\x_i)^2]\\stackrel{\\zeta_2}{\\leq} \\frac{\\mu^2 d_1}{n_1^2n_2}, \\end{align*} where $\\zeta_1$ follows as $\\e_j$ is sampled uniformly and $\\zeta_2$ follows by using incoherence of $X$ and uniform sampling of $\\e_i$. Hence, using $m=\\Omega(k^3 \\cdot \\beta^2 \\cdot d \\cdot n_2 \\log(2(d_1+n_2)/\\gamma)$, then we have (w.p. $\\geq 1-\\gamma$): $$\\|B_y-I\\|_2\\leq \\delta,$$ where $\\delta=1/(k^{3/2}\\cdot \\beta\\cdot 100)$. \\end{itemize} Now, we bound $B_x=\\frac{n_1n_2}{m}\\sum_{(i,j)\\in \\Omega} Z_{ij}$ where $Z_i=\\etj\\v\\v^T\\ej\\x_i\\xit$. Note that, $\\E[B_y]=I$. Next, we bound the quantities required by Theorem~\\ref{thm:tropp}: \\begin{itemize} \\item {\\bf Bound $\\max_{ij} \\|Z_{ij}\\|_2$}: Now, $$\\|Z_{ij}\\|_2=\\|\\etj\\v\\v^T\\ej\\x_i\\xit\\|_2\\leq \\|\\x_i\\|_2^2 \\leq \\frac{\\mu^2d_1}{n_1},$$ where the second inequality follows from incoherence of $X$. \\item {\\bf Bound $\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}Z_{ij}^T]\\|_2$}: \\begin{align} \\left\\|\\sum_{(i,j)\\in \\Omega}E[Z_{ij}^TZ_{ij}]\\right\\|_2&=\\left\\|\\sum_{(i,j)\\in \\Omega}\\E[(\\etj\\v\\v^T\\ej)^2\\|\\x_i\\|^2\\x_i\\xit]\\right\\|_2,\\nonumber\\\\ &\\stackrel{\\zeta_1}{\\leq }\\frac{1}{n_2}\\sum_{(i,j)\\in \\Omega}\\E[\\|\\x_i\\|^2\\x_i\\xit],\\nonumber\\\\ &\\stackrel{\\zeta_2}{\\leq} \\frac{\\mu^2 d_1}{n_1^2n_2}, \\end{align} where $\\zeta_1$ follows as $\\e_j$ is sampled uniformly and $\\zeta_2$ follows by using incoherence of $X$ and uniform sampling of $\\e_i$. Hence, using $m=\\Omega(k^3 \\cdot \\beta^2 \\cdot d \\cdot n_2 \\log(2(d_1+n_2)/\\gamma)$, we have (w.p. $\\geq 1-\\gamma$): $$\\|B_x-I\\|_2\\leq \\delta,$$ where $\\delta=1/(k^{3/2}\\cdot \\beta\\cdot 100)$. \\end{itemize} \\end{proof}",
+      "section": "5 Multi-label Learning",
+      "origin": "paper",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP34.18",
+      "type": "proof_step",
+      "parent_id": "PP34.5",
+      "step_order": 3,
+      "name": "Proof of Property 3 (concentration of $C_x,C_y$)",
+      "statement": "\\begin{proof}[Proof of Property 3] We first note that $\\E[C_x]=\\E[C_y]=0$. Now, here again we use Theorem~\\ref{thm:tropp} to say that $C_x, C_y$ converge to their mean. The quantities we need to bound are similar to the ones proved above for Property 2. Hence, the Property 3 follows using $m=\\Omega(k^3 \\cdot \\beta^2 \\cdot d \\cdot n_2 \\log(2(d_1+n_2)/\\gamma)$ samples. \\end{proof}",
+      "section": "5 Multi-label Learning",
+      "origin": "paper",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP34.19",
+      "type": "proof_step",
+      "parent_id": "PP34.6",
+      "step_order": 1,
+      "name": "Set up notation and update equation $\\Vh=\\tp{\\Wo}U-F$",
+      "statement": "For simplicity of notation, we denote $U_h$ by $U$, $\\widehat{V}_{h+1}$ by $\\widehat{V}$, and $V_{h+1}$ by $V$. Similar to the above given proof, we first present the update equation for $\\widehat{V}_{(t+1)}$. Recall that $\\widehat{V}_{(t+1)}=\\argmin_{V\\in \\R^{d_2\\times k}} \\sum_i (\\xit\\Wo\\yi-\\xit\\Ut \\tp{\\Vh}\\yi)^2$. Hence, by setting gradient of this objective function to $0$, using the above given notation and by simplifications, we get: \\begin{equation}\\Vh=\\tp{\\Wo}U-F,\\end{equation} where $F=[F_1 F_2 \\dots F_k]$ is the ``error'' matrix.",
+      "section": "Appendix B Proof of General Theorem for Low-rank Matrix Estimation",
+      "origin": "paper",
+      "subclass": "setup"
+    },
+    {
+      "id": "PSP34.20",
+      "type": "proof_step",
+      "parent_id": "PP34.6",
+      "step_order": 2,
+      "name": "Introduce block matrices $B,C,D,S$ and error matrix $F$",
+      "statement": "Before specifying $F$, we first introduce {\\em block matrices} $B, C, D, S \\in \\mathbb{R}^{k d_2 \\times k d_2}$ with $(p,q)$-th block $B_{pq}, C_{pq}, S_{pq}, D_{pq}$ given by: \\begin{align} B_{pq}&=\\sum_i \\yi\\yit (\\xit \\u_{p})(\\xit \\u_{q}),\\\\ C_{pq}&=\\sum_i \\yi\\yit (\\xit \\u_{p})(\\xit \\u_{*q}),\\\\ D_{pq}&=\\u_p^T\\u_{*q}I,\\\\ S_{pq}&=\\so^p I \\ \\ \\text{ if }p=q,\\ \\ \\ \\ \\text{and }\\ \\ 0\\ \\ \\text{ if }p\\neq q. \\end{align} where $\\so^p=\\So(p,p)$, i.e., the $p$-th singular value of $\\Wo$ and $\\u_{*q}$ is the $q$-th column of $\\Uo$. Then, using the definitions given above, we get: \\begin{equation} \\left[\\begin{matrix}F_1\\\\\\vdots\\\\ F_k\\end{matrix}\\right]=B^{-1}(BD-C)S\\cdot \\mvec(\\Vo). \\end{equation}",
+      "section": "Appendix B Proof of General Theorem for Low-rank Matrix Estimation",
+      "origin": "paper",
+      "subclass": "introduce_variable"
+    },
+    {
+      "id": "PSP34.21",
+      "type": "proof_step",
+      "parent_id": "PP34.6",
+      "step_order": 3,
+      "name": "QR step, project onto $\\Vop$, bound $dist(\\Vo,V_{t+1})$",
+      "statement": "Now, recall that in the $t+1$-th iteration of Algorithm~\\ref{alg:altmin}, $V_{t+1}$ is obtained by QR decomposition of $\\widehat{V}_{t+1}$. Using notation mentioned above, $\\Vh=V R$ where $R$ denotes the lower triangular matrix $R_{t+1}$ obtained by the QR decomposition of $V_{t+1}$. Now, using \\eqref{eq:vh}, $V=\\Vh R^{-1}=(\\Wo^TU-F)R^{-1}.$ Multiplying both the sides by $\\Vop$, where $\\Vop$ is a fixed orthonormal basis of the subspace orthogonal to $span(\\Vo)$, we get: \\begin{equation} (\\Vop)^TV=-(\\Vop)^TFR^{-1} \\Rightarrow dist(\\Vo, V_{t+1})=\\|(\\Vop)^TV\\|_2 \\leq \\|F\\|_2\\|R^{-1}\\|_2. \\end{equation}",
+      "section": "Appendix B Proof of General Theorem for Low-rank Matrix Estimation",
+      "origin": "paper",
+      "subclass": "bound_estimate"
+    },
+    {
+      "id": "PSP34.22",
+      "type": "proof_step",
+      "parent_id": "PP34.6",
+      "step_order": 4,
+      "name": "Use initialization and sin-theta theorem, conclude via Lemmas",
+      "statement": "Also, note that using the initialization property (1) mentioned in Theorem~\\ref{thm:general}, we get $\\|S-\\Wo\\|_2\\leq \\frac{\\so^k}{100}$. Now, using the standard sin theta theorem for singular vector perturbation\\cite{Li94}, we get: $\\dist(U_0, \\Uo)\\leq \\frac{1}{100}$. Theorem now follows by using Lemma~\\ref{lem:F}, Lemma~\\ref{lem:R} along with the above mentioned bound on $\\dist(U_0, \\Uo)$.",
+      "section": "Appendix B Proof of General Theorem for Low-rank Matrix Estimation",
+      "origin": "paper",
+      "subclass": "conclude"
+    },
+    {
+      "id": "PSP34.23",
+      "type": "proof_step",
+      "parent_id": "PP34.7",
+      "step_order": 1,
+      "name": "Reduce $\\|F\\|_2$ to $\\|B^{-1}\\|_2\\|BD-C\\|_2$",
+      "statement": "Recall that $\\mvec(F)=B^{-1}(BD-C)S\\cdot \\mvec(\\Vo)$. Hence, \\begin{equation}\\|F\\|_2\\leq \\|F\\|_F\\leq \\|B^{-1}\\|_2\\|BD-C\\|_2\\|S\\|_2\\|\\mvec(\\Vo)\\|_2=\\so^1\\sqrt{k}\\|B^{-1}\\|_2\\|BD-C\\|_2.\\end{equation}",
+      "section": "Appendix B Proof of General Theorem for Low-rank Matrix Estimation",
+      "origin": "paper",
+      "subclass": "setup"
+    },
+    {
+      "id": "PSP34.24",
+      "type": "proof_step",
+      "parent_id": "PP34.7",
+      "step_order": 2,
+      "name": "Lower bound $\\sigma_{\\min}(B)\\geq 1-k\\delta$ via Properties 2,3",
+      "statement": "Now, we first bound $\\|B^{-1}\\|_2=1/(\\sigma_{\\text{min}}(B))$. Also, let $Z=[\\z_1 \\z_2 \\dots \\z_k]$ and let $\\z=\\mvec(Z)$. Then, \\begin{align} \\sigma_{\\text{min}}(B)&=\\min_{\\z, \\|\\z\\|_2=1}\\z^TB\\z=\\min_{\\z, \\|\\z\\|_2=1}\\sum_{1\\leq p\\leq k, 1\\leq q\\leq k}\\z_p^TB_{pq}\\z_q\\nonumber\\\\&=\\min_{\\z, \\|\\z\\|_2=1}\\sum_{p}\\z_p^TB_{pp}\\z_p+\\sum_{pq, p\\neq q}\\z_p^TB_{pq}\\z_q. \\end{align} Recall that, $B_{pp}=\\frac{1}{m}\\sum_{i=1}^m \\yi\\yit (\\xit\\u_p)^2$ and $\\u_p$ is independent of $\\xi, \\yi, \\forall i$. Hence, using Property 2 given in Theorem~\\ref{thm:general}, we get: \\begin{equation} \\sigma_{\\text{min}}(B_{pp})\\geq 1- \\delta, \\end{equation} where, $$\\delta=\\frac{1}{k^{3/2}\\cdot \\beta\\cdot 100},$$ and $\\beta=\\so^1/\\so^k$ is the condition number of $\\Wo$. Similarly, using Property (3), we get: \\begin{equation} \\|B_{pq}\\|_2\\leq \\delta. \\end{equation} Hence, using \\eqref{eq:bp0}, \\eqref{eq:bp1}, \\eqref{eq:bp2}, we get: \\begin{equation} \\sigma_{\\text{min}}(B)\\geq \\min_{\\z, \\|\\z\\|_2=1}(1-\\delta)\\sum_{p}\\|\\z_p\\|_2^2-\\delta\\sum_{pq, p\\neq q}\\|\\z_p\\|_2\\|\\z_q\\|_2=\\min_{\\z, \\|\\z\\|_2=1}1-\\delta\\sum_{pq}\\|\\z_p\\|_2\\|\\z_q\\|_2\\geq 1-k\\delta. \\end{equation}",
+      "section": "Appendix B Proof of General Theorem for Low-rank Matrix Estimation",
+      "origin": "paper",
+      "subclass": "bound_estimate"
+    },
+    {
+      "id": "PSP34.25",
+      "type": "proof_step",
+      "parent_id": "PP34.7",
+      "step_order": 3,
+      "name": "Bound $\\|BD-C\\|_2\\leq k\\delta\\,dist(U,\\Uo)$ and conclude",
+      "statement": "Now, consider $BD-C$: \\begin{align} \\|BD-C\\|_2&= \\max_{\\z, \\|\\z\\|_2=1}|\\z^T(BD-C)\\z|,\\nonumber\\\\ &=\\max_{\\z, \\|\\z\\|_2=1}\\left|\\sum_{1\\leq p\\leq k, 1\\leq q\\leq k}\\z_p^T\\yi\\yit\\z_q\\xit\\left(\\sum_{1\\leq \\ell\\leq k}\\ip{\\u_\\ell}{\\u_{*q}}\\u_p\\u_\\ell^T-\\u_{p}\\u_{*q}^T\\right)\\x_i\\right|,\\nonumber\\\\ &=\\max_{\\z, \\|\\z\\|_2=1}\\left|\\sum_{1\\leq p\\leq k, 1\\leq q\\leq k}\\z_p^T\\yi\\yit\\z_q\\xit\\u_p\\u_{*q}^T(UU^T-I)\\x_i\\right|,\\nonumber\\\\ &\\stackrel{\\zeta_1}{\\leq}\\delta \\max_{\\z, \\|\\z\\|_2=1} \\sum_{1\\leq p\\leq k, 1\\leq q\\leq k} \\|(UU^T-I)\\u_{*q}\\|_2\\|\\z_p\\|_2\\|\\z_q\\|_2\\leq k\\cdot \\delta\\cdot \\dist(U, \\Uo), \\end{align} where $\\zeta_1$ follows by observing that $\\u_{*q}^T(UU^T-I) \\u_p=0$ and then by applying Property (3) mentioned in Theorem~\\ref{thm:general}. Lemma now follows by using \\eqref{eq:bp4} along with \\eqref{eq:f1} and \\eqref{eq:bp3}.",
+      "section": "Appendix B Proof of General Theorem for Low-rank Matrix Estimation",
+      "origin": "paper",
+      "subclass": "conclude"
+    },
+    {
+      "id": "ASP34.1",
+      "type": "algorithm_step",
+      "parent_id": "AP34.1",
+      "step_order": 1,
+      "name": "Input",
+      "statement": "\\STATE {\\bf Input}: Measurements: $\\b_{all}$, Measurement matrices: $\\calA_{all}$, Number of iterations: $H$",
+      "section": "2 Low-rank Matrix Estimation using Rank-one Measurements",
+      "origin": "paper",
+      "subclass": "initialize"
+    },
+    {
+      "id": "ASP34.2",
+      "type": "algorithm_step",
+      "parent_id": "AP34.1",
+      "step_order": 2,
+      "name": "Divide measurements into $2H+1$ sets",
+      "statement": "\\STATE Divide $(\\calA_{all}, \\b_{all})$ into $2H+1$ sets (each of size $m$) with $h$-th set being $\\calA^h=\\{A_1^h,A_2^h,\\dots,A_m^h\\}$ and $\\b^h=[b_1^h\\ b_2^h\\ \\dots\\ b_m^h]^T$",
+      "section": "2 Low-rank Matrix Estimation using Rank-one Measurements",
+      "origin": "paper",
+      "subclass": "initialize"
+    },
+    {
+      "id": "ASP34.3",
+      "type": "algorithm_step",
+      "parent_id": "AP34.1",
+      "step_order": 3,
+      "name": "Initialization of $U_0$ via top-$k$ left singular vectors",
+      "statement": "\\STATE {\\bf Initialization}: $U_0=$top-$k$ left singular vectors of $\\frac{1}{m}\\sum_{i=1}^m b_i^0 A_i^0$",
+      "section": "2 Low-rank Matrix Estimation using Rank-one Measurements",
+      "origin": "paper",
+      "subclass": "initialize"
+    },
+    {
+      "id": "ASP34.4",
+      "type": "algorithm_step",
+      "parent_id": "AP34.1",
+      "step_order": 4,
+      "name": "Outer loop over $h=0$ to $H-1$",
+      "statement": "\\FOR{$h=0$ to $H-1$}",
+      "section": "2 Low-rank Matrix Estimation using Rank-one Measurements",
+      "origin": "paper",
+      "subclass": "loop"
+    },
+    {
+      "id": "ASP34.5",
+      "type": "algorithm_step",
+      "parent_id": "AP34.1",
+      "step_order": 5,
+      "name": "Select odd measurement set",
+      "statement": "\\STATE $b\\leftarrow b^{2h+1}, \\calA\\leftarrow \\calA^{2h+1}$",
+      "section": "2 Low-rank Matrix Estimation using Rank-one Measurements",
+      "origin": "paper",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP34.6",
+      "type": "algorithm_step",
+      "parent_id": "AP34.1",
+      "step_order": 6,
+      "name": "Least-squares minimization over $V$",
+      "statement": "\\STATE $\\widehat{V}_{h+1}\\leftarrow \\argmin_{V\\in \\R^{d_2\\times k}} \\sum_i (b_i-\\x_i^TU_h\\tp{V}\\y_i)^2$",
+      "section": "2 Low-rank Matrix Estimation using Rank-one Measurements",
+      "origin": "paper",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP34.7",
+      "type": "algorithm_step",
+      "parent_id": "AP34.1",
+      "step_order": 7,
+      "name": "Orthonormalize $\\widehat{V}_{h+1}$ via QR",
+      "statement": "\\STATE $V_{h+1}=QR(\\widehat{V}_{h+1})$ //orthonormalization of $\\widehat{V}_{h+1}$",
+      "section": "2 Low-rank Matrix Estimation using Rank-one Measurements",
+      "origin": "paper",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP34.8",
+      "type": "algorithm_step",
+      "parent_id": "AP34.1",
+      "step_order": 8,
+      "name": "Select even measurement set",
+      "statement": "\\STATE $b\\leftarrow b^{2h+2}, \\calA\\leftarrow \\calA^{2h+2}$",
+      "section": "2 Low-rank Matrix Estimation using Rank-one Measurements",
+      "origin": "paper",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP34.9",
+      "type": "algorithm_step",
+      "parent_id": "AP34.1",
+      "step_order": 9,
+      "name": "Least-squares minimization over $U$",
+      "statement": "\\STATE $\\widehat{U}_{h+1}\\leftarrow \\argmin_{U\\in \\mathbb{R}^{d_1\\times k}} \\ \\sum_i (b_i-\\x_i^TU\\tp{V}_{h+1}\\y_i)^2$",
+      "section": "2 Low-rank Matrix Estimation using Rank-one Measurements",
+      "origin": "paper",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP34.10",
+      "type": "algorithm_step",
+      "parent_id": "AP34.1",
+      "step_order": 10,
+      "name": "Orthonormalize $\\widehat{U}_{h+1}$ via QR",
+      "statement": "\\STATE $U_{h+1}=QR(\\widehat{U}_{h+1})$ //orthonormalization of $\\widehat{U}_{h+1}$",
+      "section": "2 Low-rank Matrix Estimation using Rank-one Measurements",
+      "origin": "paper",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP34.11",
+      "type": "algorithm_step",
+      "parent_id": "AP34.1",
+      "step_order": 11,
+      "name": "Output $W_H$",
+      "statement": "\\STATE {\\bf Output}: $W_H=U_H(\\widehat{V}_H)^T$",
+      "section": "2 Low-rank Matrix Estimation using Rank-one Measurements",
+      "origin": "paper",
+      "subclass": "return"
+    }
+  ],
+  "edges": [
+    {
+      "source": "PP34.1",
+      "target": "TP34.1",
+      "type": "proves"
+    },
+    {
+      "source": "PP34.6",
+      "target": "TP34.1",
+      "type": "proves"
+    },
+    {
+      "source": "PP34.2",
+      "target": "ClP34.1",
+      "type": "proves"
+    },
+    {
+      "source": "PP34.3",
+      "target": "LP34.1",
+      "type": "proves"
+    },
+    {
+      "source": "PP34.4",
+      "target": "LP34.2",
+      "type": "proves"
+    },
+    {
+      "source": "PP34.5",
+      "target": "LP34.3",
+      "type": "proves"
+    },
+    {
+      "source": "PP34.7",
+      "target": "LP34.4",
+      "type": "proves"
+    },
+    {
+      "source": "PP34.8",
+      "target": "LP34.5",
+      "type": "proves"
+    },
+    {
+      "source": "AP34.1",
+      "target": "TP34.1",
+      "type": "uses"
+    },
+    {
+      "source": "EP34.1",
+      "target": "TP34.1",
+      "type": "uses"
+    },
+    {
+      "source": "EP34.1",
+      "target": "ProbP34.1",
+      "type": "uses"
+    },
+    {
+      "source": "TP34.1",
+      "target": "LP34.1",
+      "type": "uses"
+    },
+    {
+      "source": "TP34.1",
+      "target": "LP34.2",
+      "type": "uses"
+    },
+    {
+      "source": "TP34.1",
+      "target": "LP34.3",
+      "type": "uses"
+    },
+    {
+      "source": "TP34.2",
+      "target": "PP34.3",
+      "type": "uses"
+    },
+    {
+      "source": "TP34.2",
+      "target": "PP34.4",
+      "type": "uses"
+    },
+    {
+      "source": "TP34.2",
+      "target": "PP34.5",
+      "type": "uses"
+    },
+    {
+      "source": "DP34.2",
+      "target": "LP34.2",
+      "type": "uses"
+    },
+    {
+      "source": "DP34.2",
+      "target": "LP34.3",
+      "type": "uses"
+    },
+    {
+      "source": "DP34.1",
+      "target": "ClP34.1",
+      "type": "uses"
+    },
+    {
+      "source": "LP34.4",
+      "target": "PP34.6",
+      "type": "uses"
+    },
+    {
+      "source": "LP34.5",
+      "target": "PP34.6",
+      "type": "uses"
+    },
+    {
+      "source": "DP34.3",
+      "target": "LP34.5",
+      "type": "uses"
+    },
+    {
+      "source": "DP34.3",
+      "target": "PP34.6",
+      "type": "uses"
+    },
+    {
+      "source": "AP34.1",
+      "target": "ProbP34.1",
+      "type": "solves"
+    },
+    {
+      "source": "AP34.1",
+      "target": "ProbP34.2",
+      "type": "solves"
+    },
+    {
+      "source": "AP34.1",
+      "target": "ProbP34.3",
+      "type": "solves"
+    },
+    {
+      "source": "AP34.1",
+      "target": "ProbP34.4",
+      "type": "solves"
+    },
+    {
+      "source": "ProbP34.2",
+      "target": "ProbP34.1",
+      "type": "specializes"
+    },
+    {
+      "source": "ProbP34.3",
+      "target": "ProbP34.1",
+      "type": "specializes"
+    },
+    {
+      "source": "ProbP34.4",
+      "target": "ProbP34.1",
+      "type": "specializes"
+    },
+    {
+      "source": "LP34.1",
+      "target": "ProbP34.2",
+      "type": "uses"
+    },
+    {
+      "source": "LP34.2",
+      "target": "ProbP34.3",
+      "type": "uses"
+    },
+    {
+      "source": "LP34.3",
+      "target": "ProbP34.4",
+      "type": "uses"
+    }
+  ]
+}

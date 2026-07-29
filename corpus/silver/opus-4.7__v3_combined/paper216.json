@@ -1,0 +1,739 @@
+{
+  "metadata": {
+    "title": "Deep Residual Learning for Image Recognition",
+    "paper_num": 216,
+    "authors": "Kaiming He, Xiangyu Zhang, Shaoqing Ren, Jian Sun",
+    "year": 2015,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "ProbP216.1",
+      "type": "problem",
+      "name": "Degradation problem in deep networks",
+      "section": "1 Introduction",
+      "statement": "When network depth increases, training accuracy gets saturated and then degrades rapidly; adding more layers to a suitably deep model leads to higher training error, and this degradation is not caused by overfitting.",
+      "statement_latex": "When network depth increases, accuracy gets saturated and then degrades rapidly; adding more layers to a suitably deep model leads to higher training error, and this degradation is not caused by overfitting.",
+      "tags": ["optimization", "deep_learning"],
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP216.2",
+      "type": "problem",
+      "name": "Vanishing/exploding gradients",
+      "section": "1 Introduction",
+      "statement": "The notorious problem of vanishing/exploding gradients hampers convergence of deep networks from the beginning; largely addressed by normalized initialization and intermediate normalization layers (BN).",
+      "tags": ["optimization"],
+      "origin": "external",
+      "origin_citation": "Bengio 1994; Glorot & Bengio 2010"
+    },
+    {
+      "id": "ProbP216.3",
+      "type": "problem",
+      "name": "ImageNet classification (1000 classes)",
+      "section": "4.1",
+      "statement": "Classify images from the ImageNet 2012 dataset (1000 classes), measured by top-1 and top-5 error on 50k validation and 100k test images.",
+      "tags": ["benchmark", "classification"],
+      "origin": "external",
+      "origin_citation": "Russakovsky et al. 2014 (ImageNet ILSVRC)"
+    },
+    {
+      "id": "ProbP216.4",
+      "type": "problem",
+      "name": "CIFAR-10 classification",
+      "section": "4.2",
+      "statement": "Classify $32 \\times 32$ images into 10 classes from the CIFAR-10 dataset (50k training, 10k test images).",
+      "tags": ["benchmark", "classification"],
+      "origin": "external",
+      "origin_citation": "Krizhevsky 2009"
+    },
+    {
+      "id": "ProbP216.5",
+      "type": "problem",
+      "name": "Object detection on PASCAL VOC and MS COCO",
+      "section": "4.3",
+      "statement": "Detect and localize objects in images from PASCAL VOC 2007/2012 and MS COCO datasets, measured by mAP.",
+      "tags": ["benchmark", "detection"],
+      "origin": "external",
+      "origin_citation": "Everingham 2010 (PASCAL VOC); Lin 2014 (COCO)"
+    },
+    {
+      "id": "ProbP216.6",
+      "type": "problem",
+      "name": "ImageNet localization (LOC)",
+      "section": "Appendix C",
+      "statement": "Classify and localize the dominant object in an ImageNet image, evaluated by top-5 localization error.",
+      "tags": ["benchmark", "localization"],
+      "origin": "external",
+      "origin_citation": "Russakovsky et al. 2014"
+    },
+    {
+      "id": "DP216.1",
+      "type": "definition",
+      "name": "Underlying mapping $\\mathcal{H}(\\mathbf{x})$",
+      "section": "3.1 Residual Learning",
+      "statement": "$\\mathcal{H}(\\mathbf{x})$ is the underlying mapping to be fit by a few stacked nonlinear layers, with $\\mathbf{x}$ the input to the first of these layers.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP216.2",
+      "type": "definition",
+      "name": "Residual function $\\mathcal{F}(\\mathbf{x})$",
+      "section": "3.1 Residual Learning",
+      "statement": "Given desired underlying mapping $\\mathcal{H}(\\mathbf{x})$, the residual function is $\\mathcal{F}(\\mathbf{x}) := \\mathcal{H}(\\mathbf{x}) - \\mathbf{x}$, so that the original mapping becomes $\\mathcal{F}(\\mathbf{x}) + \\mathbf{x}$.",
+      "tags": ["fundamental"],
+      "origin": "paper"
+    },
+    {
+      "id": "DP216.3",
+      "type": "definition",
+      "name": "Residual building block (identity shortcut)",
+      "section": "3.2 Identity Mapping by Shortcuts",
+      "statement": "$\\mathbf{y} = \\mathcal{F}(\\mathbf{x}, \\{W_i\\}) + \\mathbf{x}$, where $\\mathbf{x},\\mathbf{y}$ are input/output vectors and $\\mathcal{F}$ is the residual mapping (e.g. $\\mathcal{F} = W_2 \\sigma(W_1 \\mathbf{x})$ with $\\sigma$ ReLU).",
+      "tags": ["fundamental", "architecture"],
+      "origin": "paper"
+    },
+    {
+      "id": "DP216.4",
+      "type": "definition",
+      "name": "Projection shortcut",
+      "section": "3.2 Identity Mapping by Shortcuts",
+      "statement": "When dimensions of $\\mathbf{x}$ and $\\mathcal{F}$ differ, a linear projection $W_s$ is applied: $\\mathbf{y} = \\mathcal{F}(\\mathbf{x}, \\{W_i\\}) + W_s \\mathbf{x}$.",
+      "tags": ["architecture"],
+      "origin": "paper"
+    },
+    {
+      "id": "DP216.5",
+      "type": "definition",
+      "name": "Bottleneck building block",
+      "section": "4.1 (Deeper Bottleneck Architectures)",
+      "statement": "A 3-layer residual block with $1\\times 1$, $3\\times 3$, $1\\times 1$ convolutions; the $1\\times 1$ layers reduce then restore dimensions, leaving the $3\\times 3$ layer a bottleneck.",
+      "tags": ["architecture"],
+      "origin": "paper"
+    },
+    {
+      "id": "DP216.6",
+      "type": "definition",
+      "name": "Plain network (VGG-style baseline)",
+      "section": "3.3 Network Architectures",
+      "statement": "A baseline CNN inspired by VGG: convolutional layers with mostly $3\\times 3$ filters following two rules: same #filters for same output map size, and #filters doubled when feature map size is halved; ends with global average pooling and a 1000-way FC + softmax.",
+      "tags": ["architecture", "baseline"],
+      "origin": "paper"
+    },
+    {
+      "id": "DP216.7",
+      "type": "definition",
+      "name": "Residual network (ResNet)",
+      "section": "3.3 Network Architectures",
+      "statement": "The plain network with shortcut connections inserted across each pair of $3\\times 3$ filters, turning it into its residual counterpart; identity shortcuts are used when input/output dimensions match, projection shortcuts otherwise.",
+      "tags": ["architecture"],
+      "origin": "paper"
+    },
+    {
+      "id": "DP216.8",
+      "type": "definition",
+      "name": "Shortcut option A (zero-padding)",
+      "section": "3.3 / 4.1",
+      "statement": "When dimensions increase, the shortcut performs identity mapping with extra zero entries padded for the new channels; introduces no extra parameter.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP216.9",
+      "type": "definition",
+      "name": "Shortcut option B (projection on dim-increase)",
+      "section": "3.3 / 4.1",
+      "statement": "Identity shortcuts when dimensions match; $1\\times 1$ projection shortcuts (Eqn.\\ref{eq:transform}) used only when dimensions increase.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP216.10",
+      "type": "definition",
+      "name": "Shortcut option C (all projections)",
+      "section": "4.1",
+      "statement": "All shortcuts are $1\\times 1$ projection shortcuts $W_s \\mathbf{x}$, regardless of whether dimensions change.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP216.1",
+      "type": "equation",
+      "name": "Identity-shortcut block equation",
+      "section": "3.2",
+      "statement": "$\\mathbf{y} = \\mathcal{F}(\\mathbf{x}, \\{W_i\\}) + \\mathbf{x}$",
+      "origin": "paper"
+    },
+    {
+      "id": "EP216.2",
+      "type": "equation",
+      "name": "Projection-shortcut block equation",
+      "section": "3.2",
+      "statement": "$\\mathbf{y} = \\mathcal{F}(\\mathbf{x}, \\{W_i\\}) + W_s \\mathbf{x}$",
+      "origin": "paper"
+    },
+    {
+      "id": "AP216.1",
+      "type": "algorithm",
+      "name": "ResNet training procedure (ImageNet)",
+      "section": "3.4 Implementation",
+      "statement": "End-to-end SGD training of plain/residual networks on ImageNet with batch normalization, He initialization, and a stepwise learning rate schedule.",
+      "input": [
+        "Training images resized so shorter side $\\in [256, 480]$, $224\\times 224$ random crops with horizontal flip and per-pixel mean subtraction",
+        "Standard color augmentation",
+        "Network architecture (plain or residual; depth 18/34/50/101/152)"
+      ],
+      "output": [
+        "Trained CNN classifier evaluated by top-1 / top-5 error on ImageNet validation/test"
+      ],
+      "pseudocode": "Initialize weights as in He 2015. Apply BN after each convolution and before activation. Use SGD with mini-batch 256, momentum 0.9, weight decay 1e-4, no dropout. Learning rate starts at 0.1; divide by 10 when error plateaus; train for up to $60\\times 10^4$ iterations. At test time use 10-crop testing, or fully-convolutional multi-scale with shorter sides $\\{224,256,384,480,640\\}$.",
+      "tags": ["sgd", "training"],
+      "origin": "paper"
+    },
+    {
+      "id": "AP216.2",
+      "type": "algorithm",
+      "name": "ResNet training procedure (CIFAR-10)",
+      "section": "4.2",
+      "statement": "Training of $6n+2$-layer plain/residual nets on CIFAR-10 with identity shortcuts (option A) and a stepwise learning rate schedule.",
+      "input": [
+        "$32 \\times 32$ images with per-pixel mean subtracted; 4-pixel padding plus random $32\\times 32$ crop and horizontal flip",
+        "Number of stacked layers $n \\in \\{3,5,7,9,18,200\\}$ giving 20/32/44/56/110/1202-layer nets"
+      ],
+      "output": [
+        "Trained classifier evaluated by error on the 10k CIFAR-10 test set"
+      ],
+      "pseudocode": "Initial learning rate 0.1, divided by 10 at 32k and 48k iterations; terminate at 64k iterations; weight decay 1e-4, momentum 0.9, mini-batch 128 on 2 GPUs; BN, no dropout, He initialization. For $n=18$ (110-layer): warm up with lr 0.01 until training error $<80\\%$ ($\\sim$400 iters), then switch to 0.1.",
+      "tags": ["sgd", "training"],
+      "origin": "paper"
+    },
+    {
+      "id": "AP216.3",
+      "type": "algorithm",
+      "name": "Faster R-CNN with ResNet-101 (object detection)",
+      "section": "Appendix A",
+      "statement": "Faster R-CNN detection system with the VGG-16 backbone replaced by ResNet-101, using shared conv1--conv4_x feature maps for RPN and Fast R-CNN, and conv5_x as per-region head.",
+      "input": [
+        "Pre-trained ResNet-101 ImageNet classification model",
+        "Detection training data (PASCAL VOC 07+12 / 07++12, MS COCO)"
+      ],
+      "output": [
+        "Detected bounding boxes with class labels; mAP on VOC/COCO test sets"
+      ],
+      "pseudocode": "Compute shared conv feature maps using layers with stride $\\le 16$ (conv1, conv2_x, conv3_x, conv4_x; total 91 conv layers). Share these between an RPN (300 proposals) and Fast R-CNN. RoI pooling before conv5_1; conv5_x and above act as per-region head. Replace final classification with two sibling layers (cls and box reg). After pre-training, fix BN statistics during fine-tuning.",
+      "tags": ["detection", "transfer"],
+      "origin": "paper"
+    },
+    {
+      "id": "AP216.4",
+      "type": "algorithm",
+      "name": "Per-class RPN localization with R-CNN refinement",
+      "section": "Appendix C",
+      "statement": "Localization algorithm using a per-class RPN (1000-d binary cls layer + $1000\\times 4$-d reg layer) on ResNet-101, with R-CNN re-scoring of top proposals.",
+      "input": [
+        "ImageNet-pretrained ResNet-101",
+        "$224\\times 224$ random crops; mini-batch 256; 8 anchors per image at 1:1 pos/neg ratio"
+      ],
+      "output": [
+        "Bounding boxes per class; top-5 localization error on ImageNet validation/test"
+      ],
+      "pseudocode": "Per-class RPN with two sibling $1\\times 1$ conv layers (cls and reg). Train on per-class anchors. Apply RPN to predict GT-class boxes and use the top-200 as class-dependent proposals to fine-tune an R-CNN classifier (RoI-centric, mini-batch 256). At test time, RPN generates top-200 proposals per predicted class; R-CNN updates scores and box positions.",
+      "tags": ["localization", "transfer"],
+      "origin": "paper"
+    },
+    {
+      "id": "AP216.5",
+      "type": "algorithm",
+      "name": "Faster R-CNN baseline",
+      "section": "(cited)",
+      "statement": "Two-stage detector combining a region proposal network and a Fast R-CNN detection head with shared conv features.",
+      "tags": ["detection"],
+      "origin": "external",
+      "origin_citation": "Ren, He, Girshick, Sun 2015 (Faster R-CNN)"
+    },
+    {
+      "id": "AP216.6",
+      "type": "algorithm",
+      "name": "Batch Normalization",
+      "section": "(cited)",
+      "statement": "Layer that normalizes activations to zero mean / unit variance per mini-batch, then applies learnable scale/shift; placed after each convolution and before activation.",
+      "tags": ["normalization"],
+      "origin": "external",
+      "origin_citation": "Ioffe & Szegedy 2015"
+    },
+    {
+      "id": "AP216.7",
+      "type": "algorithm",
+      "name": "He initialization",
+      "section": "(cited)",
+      "statement": "Variance-scaling weight initialization tailored for ReLU networks; used to start plain/residual nets from scratch.",
+      "tags": ["initialization"],
+      "origin": "external",
+      "origin_citation": "He et al. 2015 (PReLU-net)"
+    },
+    {
+      "id": "AP216.8",
+      "type": "algorithm",
+      "name": "VGG network (baseline architecture)",
+      "section": "(cited)",
+      "statement": "Very deep CNN with $3\\times 3$ convolutions, used as the design philosophy basis for the plain baseline; VGG-19 has 19.6 billion FLOPs.",
+      "tags": ["architecture", "baseline"],
+      "origin": "external",
+      "origin_citation": "Simonyan & Zisserman 2015 (VGG)"
+    },
+    {
+      "id": "AP216.9",
+      "type": "algorithm",
+      "name": "Highway networks",
+      "section": "(cited)",
+      "statement": "Networks with shortcut connections gated by data-dependent gating functions with parameters; when a gate is closed, layers represent non-residual functions.",
+      "tags": ["architecture", "baseline"],
+      "origin": "external",
+      "origin_citation": "Srivastava, Greff, Schmidhuber 2015"
+    },
+    {
+      "id": "ClP216.1",
+      "type": "claim",
+      "name": "Constructed-solution argument for non-degradation",
+      "section": "1 Introduction",
+      "statement": "There exists by construction a deeper model with training error no greater than its shallower counterpart: copy the shallower layers and set added layers to identity. Hence current solvers, not capacity, cause the degradation problem.",
+      "assumptions": [
+        "A shallower model has been trained to a given training error",
+        "Added layers can be configured as identity mappings"
+      ],
+      "conclusions": [
+        "The deeper model should produce no higher training error than its shallower counterpart"
+      ],
+      "tags": ["existence"],
+      "origin": "paper"
+    },
+    {
+      "id": "ClP216.2",
+      "type": "claim",
+      "name": "Residual reformulation eases optimization near identity",
+      "section": "3.1",
+      "statement": "If the optimal function is closer to an identity mapping than to a zero mapping, it is easier for the solver to find perturbations relative to identity than to learn the function as new; in the limit, if the identity is optimal, pushing residuals to zero is easier than fitting an identity by stacked nonlinear layers.",
+      "assumptions": [
+        "The optimal function is closer to identity than to zero",
+        "Residual reformulation $\\mathcal{F}(\\mathbf{x})+\\mathbf{x}$ is used"
+      ],
+      "conclusions": [
+        "Solver can find optimum more easily than for the unreferenced formulation"
+      ],
+      "tags": ["motivation"],
+      "origin": "paper"
+    },
+    {
+      "id": "ClP216.3",
+      "type": "claim",
+      "name": "Identity shortcuts add no parameters or computation",
+      "section": "3.2",
+      "statement": "The identity shortcut $\\mathbf{y} = \\mathcal{F}(\\mathbf{x}, \\{W_i\\}) + \\mathbf{x}$ introduces neither extra parameter nor computational complexity (beyond a negligible element-wise addition), enabling fair comparison between plain and residual networks of equal depth, width, and FLOPs.",
+      "assumptions": [
+        "Dimensions of $\\mathbf{x}$ and $\\mathcal{F}$ are equal"
+      ],
+      "conclusions": [
+        "No additional parameters or FLOPs are added by the shortcut",
+        "Plain vs. residual nets can be compared with identical capacity"
+      ],
+      "tags": ["complexity"],
+      "origin": "paper"
+    },
+    {
+      "id": "ClP216.4",
+      "type": "claim",
+      "name": "Bottleneck identity shortcut saves complexity",
+      "section": "4.1",
+      "statement": "Replacing the identity shortcut in a bottleneck block with a projection doubles the time complexity and model size, since the shortcut connects to the two high-dimensional ends.",
+      "conclusions": [
+        "Identity shortcuts lead to more efficient bottleneck designs"
+      ],
+      "tags": ["complexity"],
+      "origin": "paper"
+    },
+    {
+      "id": "ExP216.1",
+      "type": "example",
+      "name": "20- vs 56-layer plain CIFAR-10 (degradation teaser)",
+      "section": "1 (Fig. 1)",
+      "statement": "On CIFAR-10, a 56-layer plain network has higher training and test error than a 20-layer plain network, illustrating the degradation problem.",
+      "tags": ["empirical"],
+      "origin": "paper"
+    },
+    {
+      "id": "ExP216.2",
+      "type": "example",
+      "name": "Plain-18 vs plain-34 on ImageNet",
+      "section": "4.1 (Table tab:plain_vs_shortcut)",
+      "statement": "34-layer plain net has top-1 error 28.54% vs 27.94% for the 18-layer plain net on ImageNet validation (10-crop), confirming the degradation problem on ImageNet.",
+      "tags": ["empirical"],
+      "origin": "paper"
+    },
+    {
+      "id": "ExP216.3",
+      "type": "example",
+      "name": "ResNet-18 vs ResNet-34 on ImageNet",
+      "section": "4.1 (Table tab:plain_vs_shortcut)",
+      "statement": "ResNet-34 (25.03%) is 2.85% better than ResNet-18 (27.88%) and 3.5% better than plain-34 (28.54%) in top-1 error on ImageNet, showing residual learning resolves the degradation problem and gains accuracy from depth.",
+      "tags": ["empirical"],
+      "origin": "paper"
+    },
+    {
+      "id": "ExP216.4",
+      "type": "example",
+      "name": "Identity vs projection shortcuts (A/B/C)",
+      "section": "4.1 (Table tab:10crop)",
+      "statement": "On ResNet-34: option A (zero-padding) 25.03%, option B (projection on dim-increase) 24.52%, option C (all projections) 24.19% top-1 error; differences are small, so projection shortcuts are not essential for resolving degradation.",
+      "tags": ["ablation"],
+      "origin": "paper"
+    },
+    {
+      "id": "ExP216.5",
+      "type": "example",
+      "name": "Deeper bottleneck ResNets on ImageNet",
+      "section": "4.1 (Table tab:single)",
+      "statement": "ResNet-50 (20.74/5.25%), ResNet-101 (19.87/4.60%), ResNet-152 (19.38/4.49%) single-model top-1/top-5 errors on ImageNet validation; the 152-layer ResNet has lower complexity (11.3 GFLOPs) than VGG-16/19 (15.3/19.6 GFLOPs).",
+      "tags": ["empirical"],
+      "origin": "paper"
+    },
+    {
+      "id": "ExP216.6",
+      "type": "example",
+      "name": "ILSVRC 2015 classification ensemble (3.57%)",
+      "section": "4.1 (Table tab:ensemble)",
+      "statement": "An ensemble of six ResNets (with two 152-layer at submission) achieves 3.57% top-5 error on the ImageNet test set, winning 1st place at ILSVRC 2015 classification.",
+      "tags": ["empirical", "competition"],
+      "origin": "paper"
+    },
+    {
+      "id": "ExP216.7",
+      "type": "example",
+      "name": "CIFAR-10 ResNet-110 (6.43%)",
+      "section": "4.2 (Table tab:cifar)",
+      "statement": "ResNet-110 (1.7M params) achieves 6.43% (best) / 6.61$\\pm$0.16% (mean) test error on CIFAR-10, comparable to state-of-the-art with fewer parameters than FitNet/Highway.",
+      "tags": ["empirical"],
+      "origin": "paper"
+    },
+    {
+      "id": "ExP216.8",
+      "type": "example",
+      "name": "1202-layer CIFAR ResNet",
+      "section": "4.2 (Exploring Over 1000 Layers)",
+      "statement": "A 1202-layer ResNet ($n=200$) trains with no optimization difficulty (training error $<0.1\\%$) and achieves 7.93% test error, worse than ResNet-110 due to overfitting on this small dataset.",
+      "tags": ["empirical"],
+      "origin": "paper"
+    },
+    {
+      "id": "ExP216.9",
+      "type": "example",
+      "name": "Layer response std analysis",
+      "section": "4.2 (Analysis of Layer Responses)",
+      "statement": "Standard deviations of CIFAR layer responses show ResNets have generally smaller responses than plain counterparts, and deeper ResNets have smaller magnitudes — supporting that residual functions are closer to zero.",
+      "tags": ["empirical"],
+      "origin": "paper"
+    },
+    {
+      "id": "ExP216.10",
+      "type": "example",
+      "name": "PASCAL VOC / COCO baseline detection",
+      "section": "4.3 (Tables tab:detection_voc, tab:detection_coco)",
+      "statement": "Replacing VGG-16 with ResNet-101 in baseline Faster R-CNN: VOC07 73.2$\\to$76.4 mAP, VOC12 70.4$\\to$73.8 mAP; COCO mAP@.5 41.5$\\to$48.4, mAP@[.5,.95] 21.2$\\to$27.2 (a 28% relative improvement).",
+      "tags": ["empirical"],
+      "origin": "paper"
+    },
+    {
+      "id": "ExP216.11",
+      "type": "example",
+      "name": "COCO detection improvements + ensemble",
+      "section": "Appendix B (Table tab:detection_coco_improve)",
+      "statement": "On COCO: baseline ResNet-101 48.4/27.2 mAP, +box refinement 49.9/29.9, +context 51.1/30.0, +multi-scale testing 53.8/32.5 (val); ensemble of 3 nets achieves 59.0/37.4 on test-dev, winning 1st place at COCO 2015 detection.",
+      "tags": ["empirical", "competition"],
+      "origin": "paper"
+    },
+    {
+      "id": "ExP216.12",
+      "type": "example",
+      "name": "ImageNet detection (DET) result",
+      "section": "Appendix B (Table tab:imagenet_det)",
+      "statement": "Single ResNet-101 model achieves 58.8% mAP on ImageNet DET test; ensemble of 3 models achieves 62.1% mAP, winning 1st place at ILSVRC 2015 detection (8.5 absolute points over 2nd place).",
+      "tags": ["empirical", "competition"],
+      "origin": "paper"
+    },
+    {
+      "id": "ExP216.13",
+      "type": "example",
+      "name": "ImageNet localization (9.0%)",
+      "section": "Appendix C (Tables tab:localization, tab:localization_all)",
+      "statement": "Per-class RPN with ResNet-101 achieves 11.7% LOC error on GT classes; RPN+RCNN reaches 10.6% top-5 LOC error (single model) and 8.9/9.0% (ensemble) on val/test, winning 1st place at ILSVRC 2015 localization (64% relative reduction vs ILSVRC 14).",
+      "tags": ["empirical", "competition"],
+      "origin": "paper"
+    },
+    {
+      "id": "RP216.1",
+      "type": "remark",
+      "name": "Optimization difficulty not from vanishing gradients",
+      "section": "4.1",
+      "statement": "Plain nets trained with BN have non-zero forward variances and healthy backward gradient norms, so the degradation is unlikely caused by vanishing gradients; the authors conjecture exponentially low convergence rates.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP216.2",
+      "type": "remark",
+      "name": "$W_s$ used only when matching dimensions",
+      "section": "3.2",
+      "statement": "A square $W_s$ in the identity equation is permissible, but experiments show identity mapping is sufficient and economical for addressing degradation; $W_s$ is therefore used only when dimensions must be matched.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP216.3",
+      "type": "remark",
+      "name": "Residual learning principle is generic",
+      "section": "1 / Conclusion (implicit)",
+      "statement": "The strong evidence on classification, detection, localization, and segmentation suggests the residual learning principle is generic and applicable in other vision and non-vision problems.",
+      "origin": "paper"
+    },
+    {
+      "id": "OpenP216.1",
+      "type": "open_problem",
+      "name": "Reason for plain-net optimization difficulty",
+      "section": "4.1",
+      "statement": "Why deep plain networks exhibit exponentially low convergence rates / degradation despite BN and healthy gradients is left for future study.",
+      "origin": "paper"
+    },
+    {
+      "id": "OpenP216.2",
+      "type": "open_problem",
+      "name": "Universal approximation of residuals",
+      "section": "3.1 (footnote)",
+      "statement": "Whether multiple nonlinear layers can asymptotically approximate complicated functions remains an open question (cited Montufar 2014).",
+      "origin": "paper"
+    },
+    {
+      "id": "OpenP216.3",
+      "type": "open_problem",
+      "name": "Regularization for very deep ResNets",
+      "section": "4.2 (Exploring Over 1000 Layers)",
+      "statement": "Combining residual networks with stronger regularization (maxout/dropout) to overcome overfitting on small datasets like CIFAR-10 is left for future work.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP216.1",
+      "type": "algorithm_step",
+      "name": "Data preprocessing and augmentation",
+      "parent_id": "AP216.1",
+      "step_order": 1,
+      "subclass": "initialize",
+      "statement": "Resize image so the shorter side is sampled in $[256, 480]$; randomly crop $224\\times 224$ from the image or its horizontal flip; subtract per-pixel mean; apply standard color augmentation.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP216.2",
+      "type": "algorithm_step",
+      "name": "Initialize weights and BN",
+      "parent_id": "AP216.1",
+      "step_order": 2,
+      "subclass": "initialize",
+      "statement": "Initialize weights as in He 2015 and insert BN after each convolution and before activation; train all plain/residual nets from scratch.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP216.3",
+      "type": "algorithm_step",
+      "name": "SGD training loop",
+      "parent_id": "AP216.1",
+      "step_order": 3,
+      "subclass": "loop",
+      "statement": "Run SGD with mini-batch 256, momentum 0.9, weight decay $10^{-4}$, no dropout; learning rate 0.1, divided by 10 when error plateaus; train up to $60\\times 10^4$ iterations.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP216.4",
+      "type": "algorithm_step",
+      "name": "Test-time evaluation",
+      "parent_id": "AP216.1",
+      "step_order": 4,
+      "subclass": "return",
+      "statement": "For comparison, use 10-crop testing (Krizhevsky 2012); for best results, fully-convolutional multi-scale evaluation with shorter sides $\\in \\{224,256,384,480,640\\}$, averaging scores.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP216.5",
+      "type": "algorithm_step",
+      "name": "CIFAR data preparation and augmentation",
+      "parent_id": "AP216.2",
+      "step_order": 1,
+      "subclass": "initialize",
+      "statement": "Per-pixel mean subtracted from $32\\times 32$ inputs; pad 4 pixels on each side and randomly crop $32\\times 32$ from the padded image or horizontal flip.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP216.6",
+      "type": "algorithm_step",
+      "name": "CIFAR SGD with stepwise schedule",
+      "parent_id": "AP216.2",
+      "step_order": 2,
+      "subclass": "loop",
+      "statement": "Train with mini-batch 128 on 2 GPUs; lr starts at 0.1, divided by 10 at 32k and 48k iterations; terminate at 64k iterations; weight decay $10^{-4}$, momentum 0.9, BN, no dropout.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP216.7",
+      "type": "algorithm_step",
+      "name": "Warm-up for 110-layer ResNet",
+      "parent_id": "AP216.2",
+      "step_order": 3,
+      "subclass": "branch",
+      "statement": "If $n=18$ (110-layer): start with lr 0.01 until training error $<80\\%$ ($\\sim 400$ iterations), then switch back to 0.1 and continue with the standard schedule.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP216.8",
+      "type": "algorithm_step",
+      "name": "Compute shared conv feature maps",
+      "parent_id": "AP216.3",
+      "step_order": 1,
+      "subclass": "initialize",
+      "statement": "Use ResNet-101 layers with stride $\\le 16$ (conv1, conv2_x, conv3_x, conv4_x; total 91 conv layers) to compute full-image conv feature maps shared between RPN and Fast R-CNN.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP216.9",
+      "type": "algorithm_step",
+      "name": "RPN proposal generation",
+      "parent_id": "AP216.3",
+      "step_order": 2,
+      "subclass": "update",
+      "statement": "Run an RPN on the shared feature maps to generate 300 region proposals.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP216.10",
+      "type": "algorithm_step",
+      "name": "RoI pooling and per-region head",
+      "parent_id": "AP216.3",
+      "step_order": 3,
+      "subclass": "update",
+      "statement": "Apply RoI pooling before conv5_1; use conv5_x and above as the per-region head; replace the final classifier with two sibling layers for classification and box regression.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP216.11",
+      "type": "algorithm_step",
+      "name": "Fix BN during fine-tuning",
+      "parent_id": "AP216.3",
+      "step_order": 4,
+      "subclass": "update",
+      "statement": "After ImageNet pre-training, compute BN means/variances on ImageNet and freeze them during detection fine-tuning, turning BN into linear activations with constant offset/scale to reduce memory.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP216.12",
+      "type": "algorithm_step",
+      "name": "Pre-train ResNet for ImageNet classification",
+      "parent_id": "AP216.4",
+      "step_order": 1,
+      "subclass": "initialize",
+      "statement": "Pre-train ResNet-101 on ImageNet 1000-class classification; then fine-tune for localization with $224\\times 224$ random crops and mini-batch size 256.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP216.13",
+      "type": "algorithm_step",
+      "name": "Train per-class RPN",
+      "parent_id": "AP216.4",
+      "step_order": 2,
+      "subclass": "update",
+      "statement": "Per-class RPN ends with two sibling $1\\times 1$ conv layers: a 1000-d cls (binary logistic regression per class) and a $1000\\times 4$-d reg layer (per-class box regressors). 8 anchors sampled per image at 1:1 pos/neg ratio.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP216.14",
+      "type": "algorithm_step",
+      "name": "Generate per-class proposals and train R-CNN",
+      "parent_id": "AP216.4",
+      "step_order": 3,
+      "subclass": "update",
+      "statement": "Apply per-class RPN to predict GT-class boxes on training images; use top-200 per image as class-dependent proposals to train an R-CNN classifier (mini-batch 256, RoI-centric).",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP216.15",
+      "type": "algorithm_step",
+      "name": "Test-time RPN+R-CNN scoring",
+      "parent_id": "AP216.4",
+      "step_order": 4,
+      "subclass": "return",
+      "statement": "At test time, RPN generates top-200 proposals per predicted class; R-CNN updates these proposals' scores and box positions to produce final localization output.",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "ProbP216.1", "target": "DP216.2", "type": "uses"},
+    {"source": "ProbP216.1", "target": "ClP216.1", "type": "uses"},
+    {"source": "DP216.1", "target": "DP216.2", "type": "uses"},
+    {"source": "DP216.2", "target": "DP216.3", "type": "uses"},
+    {"source": "DP216.2", "target": "EP216.1", "type": "uses"},
+    {"source": "DP216.3", "target": "EP216.1", "type": "uses"},
+    {"source": "DP216.4", "target": "EP216.2", "type": "uses"},
+    {"source": "DP216.3", "target": "DP216.4", "type": "specializes"},
+    {"source": "DP216.3", "target": "DP216.5", "type": "generalizes"},
+    {"source": "DP216.6", "target": "DP216.7", "type": "uses"},
+    {"source": "DP216.3", "target": "DP216.7", "type": "uses"},
+    {"source": "DP216.4", "target": "DP216.7", "type": "uses"},
+    {"source": "DP216.8", "target": "DP216.7", "type": "uses"},
+    {"source": "DP216.9", "target": "DP216.7", "type": "uses"},
+    {"source": "DP216.10", "target": "DP216.7", "type": "uses"},
+    {"source": "AP216.8", "target": "DP216.6", "type": "uses"},
+    {"source": "DP216.7", "target": "AP216.1", "type": "uses"},
+    {"source": "DP216.6", "target": "AP216.1", "type": "uses"},
+    {"source": "AP216.6", "target": "AP216.1", "type": "uses"},
+    {"source": "AP216.7", "target": "AP216.1", "type": "uses"},
+    {"source": "DP216.7", "target": "AP216.2", "type": "uses"},
+    {"source": "AP216.6", "target": "AP216.2", "type": "uses"},
+    {"source": "AP216.7", "target": "AP216.2", "type": "uses"},
+    {"source": "DP216.8", "target": "AP216.2", "type": "uses"},
+    {"source": "AP216.1", "target": "ProbP216.3", "type": "solves"},
+    {"source": "AP216.2", "target": "ProbP216.4", "type": "solves"},
+    {"source": "AP216.3", "target": "ProbP216.5", "type": "solves"},
+    {"source": "AP216.4", "target": "ProbP216.6", "type": "solves"},
+    {"source": "AP216.5", "target": "AP216.3", "type": "uses"},
+    {"source": "AP216.1", "target": "AP216.3", "type": "uses"},
+    {"source": "AP216.1", "target": "AP216.4", "type": "uses"},
+    {"source": "AP216.1", "target": "ExP216.2", "type": "illustrates"},
+    {"source": "AP216.1", "target": "ExP216.3", "type": "illustrates"},
+    {"source": "AP216.1", "target": "ExP216.4", "type": "illustrates"},
+    {"source": "AP216.1", "target": "ExP216.5", "type": "illustrates"},
+    {"source": "AP216.1", "target": "ExP216.6", "type": "illustrates"},
+    {"source": "AP216.2", "target": "ExP216.1", "type": "illustrates"},
+    {"source": "AP216.2", "target": "ExP216.7", "type": "illustrates"},
+    {"source": "AP216.2", "target": "ExP216.8", "type": "illustrates"},
+    {"source": "AP216.2", "target": "ExP216.9", "type": "illustrates"},
+    {"source": "AP216.3", "target": "ExP216.10", "type": "illustrates"},
+    {"source": "AP216.3", "target": "ExP216.11", "type": "illustrates"},
+    {"source": "AP216.3", "target": "ExP216.12", "type": "illustrates"},
+    {"source": "AP216.4", "target": "ExP216.13", "type": "illustrates"},
+    {"source": "ProbP216.1", "target": "ExP216.1", "type": "illustrates"},
+    {"source": "ProbP216.1", "target": "ExP216.2", "type": "illustrates"},
+    {"source": "ProbP216.1", "target": "ExP216.3", "type": "illustrates"},
+    {"source": "DP216.5", "target": "ExP216.5", "type": "illustrates"},
+    {"source": "ClP216.4", "target": "DP216.5", "type": "uses"},
+    {"source": "ClP216.3", "target": "DP216.3", "type": "uses"},
+    {"source": "ClP216.1", "target": "DP216.2", "type": "uses"},
+    {"source": "ClP216.2", "target": "DP216.2", "type": "uses"},
+    {"source": "RP216.1", "target": "ProbP216.2", "type": "uses"},
+    {"source": "RP216.2", "target": "DP216.4", "type": "uses"},
+    {"source": "AP216.9", "target": "DP216.7", "type": "specializes"},
+    {"source": "ProbP216.1", "target": "OpenP216.1", "type": "uses"},
+    {"source": "ASP216.1", "target": "ASP216.2", "type": "uses"},
+    {"source": "ASP216.2", "target": "ASP216.3", "type": "uses"},
+    {"source": "ASP216.3", "target": "ASP216.4", "type": "uses"},
+    {"source": "ASP216.5", "target": "ASP216.6", "type": "uses"},
+    {"source": "ASP216.6", "target": "ASP216.7", "type": "uses"},
+    {"source": "ASP216.8", "target": "ASP216.9", "type": "uses"},
+    {"source": "ASP216.9", "target": "ASP216.10", "type": "uses"},
+    {"source": "ASP216.10", "target": "ASP216.11", "type": "uses"},
+    {"source": "ASP216.12", "target": "ASP216.13", "type": "uses"},
+    {"source": "ASP216.13", "target": "ASP216.14", "type": "uses"},
+    {"source": "ASP216.14", "target": "ASP216.15", "type": "uses"}
+  ]
+}

@@ -1,0 +1,1072 @@
+{
+  "metadata": {
+    "title": "Score-Based Generative Modeling through Stochastic Differential Equations",
+    "paper_num": 231,
+    "authors": "Yang Song, Jascha Sohl-Dickstein, Diederik P. Kingma, Abhishek Kumar, Stefano Ermon, Ben Poole",
+    "year": 2021,
+    "venue": "ICLR 2021",
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "DP231.1",
+      "type": "definition",
+      "name": "Score (gradient of log-density)",
+      "section": "1 Introduction",
+      "statement": "The $\\emph{score}$ of a distribution $p(\\bfx)$ is the gradient of its log-density with respect to data, $\\nabla_\\bfx \\log p(\\bfx)$.",
+      "statement_clean": "The score is the gradient of the log probability density with respect to the data.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP231.2",
+      "type": "definition",
+      "name": "Perturbation kernel and perturbed data distribution (SMLD)",
+      "section": "2.1 SMLD",
+      "statement": "$p_{\\sigma}(\\tilde{\\bfx} \\mid \\bfx) \\coloneqq \\mcal{N}(\\tilde{\\bfx}; \\bfx, \\sigma^2 \\bfI)$ and $p_{\\sigma}(\\tilde{\\bfx}) \\coloneqq \\int p_\\text{data}(\\bfx) p_{\\sigma}(\\tilde{\\bfx} \\mid \\bfx)\\,\\ud \\bfx$, with noise scales $\\sm = \\sigma_1 < \\cdots < \\sigma_N = \\sM$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP231.3",
+      "type": "definition",
+      "name": "Noise Conditional Score Network (NCSN)",
+      "section": "2.1 SMLD",
+      "statement": "A neural network $\\bfs_\\bftheta(\\bfx, \\sigma)$ trained to approximate $\\nabla_\\bfx \\log p_{\\sigma}(\\bfx)$ at every noise scale $\\sigma$.",
+      "origin": "external",
+      "origin_citation": "Song & Ermon 2019"
+    },
+    {
+      "id": "DP231.4",
+      "type": "definition",
+      "name": "DDPM forward Markov chain and perturbation kernel",
+      "section": "2.2 DDPM",
+      "statement": "Discrete Markov chain $p(\\bfx_i \\mid \\bfx_{i-1}) = \\mcal{N}(\\bfx_i; \\sqrt{1-\\beta_i}\\,\\bfx_{i-1}, \\beta_i \\bfI)$ with $\\alpha_i := \\prod_{j=1}^{i}(1-\\beta_j)$, giving $p_{\\alpha_i}(\\bfx_i \\mid \\bfx_0) = \\mcal{N}(\\bfx_i; \\sqrt{\\alpha_i}\\,\\bfx_0, (1-\\alpha_i)\\bfI)$.",
+      "origin": "external",
+      "origin_citation": "Sohl-Dickstein et al. 2015; Ho et al. 2020"
+    },
+    {
+      "id": "DP231.5",
+      "type": "definition",
+      "name": "Forward Itô SDE for diffusion process",
+      "section": "3.1 Perturbing data with SDEs",
+      "statement": "$\\ud \\bfx = \\bff(\\bfx, t)\\, \\ud t + g(t)\\, \\ud \\bfw$, where $\\bfw$ is a standard Wiener process, $\\bff(\\cdot, t)$ is the drift coefficient, and $g(t)$ is the diffusion coefficient.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP231.6",
+      "type": "definition",
+      "name": "Reverse-time SDE",
+      "section": "3.2 Generating samples by reversing the SDE",
+      "statement": "$\\ud \\bfx = [\\bff(\\bfx, t) - g(t)^2 \\nabla_\\bfx \\log p_t(\\bfx)]\\, \\ud t + g(t)\\, \\ud \\bar{\\bfw}$, where $\\bar{\\bfw}$ is a Wiener process running backward in time.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP231.7",
+      "type": "definition",
+      "name": "Variance Exploding (VE) SDE",
+      "section": "3.4 Examples",
+      "statement": "$\\ud \\bfx = \\sqrt{\\frac{\\ud[\\sigma^2(t)]}{\\ud t}}\\, \\ud \\bfw$. The continuous-time limit of the SMLD perturbation Markov chain; its variance diverges as $t \\to \\infty$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP231.8",
+      "type": "definition",
+      "name": "Variance Preserving (VP) SDE",
+      "section": "3.4 Examples",
+      "statement": "$\\ud \\bfx = -\\tfrac{1}{2}\\beta(t)\\bfx\\, \\ud t + \\sqrt{\\beta(t)}\\, \\ud \\bfw$. The continuous-time limit of the DDPM Markov chain; preserves unit variance when started from unit-variance data.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP231.9",
+      "type": "definition",
+      "name": "sub-VP SDE",
+      "section": "3.4 Examples",
+      "statement": "$\\ud \\bfx = -\\tfrac{1}{2}\\beta(t)\\bfx\\, \\ud t + \\sqrt{\\beta(t)(1 - e^{-2\\int_0^t \\beta(s)\\ud s})}\\, \\ud \\bfw$. A new SDE whose variance is upper-bounded by the corresponding VP SDE at every $t$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP231.10",
+      "type": "definition",
+      "name": "Probability flow ODE",
+      "section": "4.3 Probability flow",
+      "statement": "$\\ud \\bfx = [\\bff(\\bfx, t) - \\tfrac{1}{2} g(t)^2 \\nabla_\\bfx \\log p_t(\\bfx)]\\, \\ud t$. A deterministic ODE whose marginals match those of the forward SDE.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP231.11",
+      "type": "definition",
+      "name": "General matrix-diffusion SDE",
+      "section": "Appendix A",
+      "statement": "$\\ud \\bfx = \\bff(\\bfx, t)\\, \\ud t + \\bfG(\\bfx, t)\\, \\ud \\bfw$ with $\\bfG: \\mbb{R}^d \\to \\mbb{R}^{d\\times d}$, with reverse-time form $\\ud \\bfx = \\{\\bff - \\nabla\\cdot[\\bfG\\bfG\\tran] - \\bfG\\bfG\\tran \\nabla_\\bfx \\log p_t(\\bfx)\\}\\, \\ud t + \\bfG\\, \\ud \\bar{\\bfw}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP231.12",
+      "type": "definition",
+      "name": "Conditional reverse-time SDE",
+      "section": "5 Controllable generation",
+      "statement": "$\\ud \\bfx = \\{\\bff(\\bfx, t) - g(t)^2[\\nabla_\\bfx \\log p_t(\\bfx) + \\nabla_\\bfx \\log p_t(\\bfy \\mid \\bfx)]\\}\\, \\ud t + g(t)\\, \\ud \\bar{\\bfw}$, sampling from $p_0(\\bfx \\mid \\bfy)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP231.1",
+      "type": "equation",
+      "name": "SMLD denoising score-matching objective",
+      "section": "2.1 SMLD",
+      "statement": "$\\bftheta^* = \\argmin_\\bftheta \\sum_{i=1}^N \\sigma_i^2\\, \\mbb{E}_{p_\\text{data}(\\bfx)} \\mbb{E}_{p_{\\sigma_i}(\\tilde{\\bfx}\\mid\\bfx)} \\big[\\norm{\\bfs_\\bftheta(\\tilde{\\bfx}, \\sigma_i) - \\nabla_{\\tilde{\\bfx}}\\log p_{\\sigma_i}(\\tilde{\\bfx}\\mid\\bfx)}_2^2\\big]$.",
+      "origin": "external",
+      "origin_citation": "Song & Ermon 2019 (cited and reformulated)"
+    },
+    {
+      "id": "EP231.2",
+      "type": "equation",
+      "name": "DDPM re-weighted ELBO objective",
+      "section": "2.2 DDPM",
+      "statement": "$\\bftheta^* = \\argmin_\\bftheta \\sum_{i=1}^N (1-\\alpha_i)\\, \\mbb{E}_{p_\\text{data}}\\mbb{E}_{p_{\\alpha_i}(\\tilde{\\bfx}\\mid\\bfx)} [\\norm{\\bfs_\\bftheta(\\tilde{\\bfx}, i) - \\nabla_{\\tilde{\\bfx}}\\log p_{\\alpha_i}(\\tilde{\\bfx}\\mid\\bfx)}_2^2]$ ($L_\\text{simple}$ rewritten as denoising score matching).",
+      "origin": "external",
+      "origin_citation": "Ho et al. 2020"
+    },
+    {
+      "id": "EP231.3",
+      "type": "equation",
+      "name": "Continuous-time score-matching training objective",
+      "section": "3.3 Estimating scores",
+      "statement": "$\\bftheta^* = \\argmin_\\bftheta \\mbb{E}_t\\{\\lambda(t)\\, \\mbb{E}_{\\bfx(0)}\\mbb{E}_{\\bfx(t)\\mid\\bfx(0)} [\\norm{\\bfs_\\bftheta(\\bfx(t), t) - \\nabla_{\\bfx(t)}\\log p_{0t}(\\bfx(t)\\mid\\bfx(0))}_2^2]\\}$, with $t \\sim \\mcal{U}(0, T)$ and weight $\\lambda(t) > 0$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP231.4",
+      "type": "equation",
+      "name": "Sliced-score-matching variant of the training objective",
+      "section": "Appendix A",
+      "statement": "$\\bftheta^* = \\argmin_\\bftheta \\mbb{E}_t\\{\\lambda(t)\\,\\mbb{E}_{\\bfx(0)}\\mbb{E}_{\\bfx(t)}\\mbb{E}_{\\bfv\\sim p_\\bfv}[\\tfrac{1}{2}\\norm{\\bfs_\\bftheta(\\bfx(t), t)}_2^2 + \\bfv\\tran \\bfs_\\bftheta(\\bfx(t), t)\\bfv]\\}$ for non-affine drifts where the transition kernel is intractable.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP231.5",
+      "type": "equation",
+      "name": "Closed-form Gaussian perturbation kernels for VE/VP/sub-VP",
+      "section": "Appendix B",
+      "statement": "$p_{0t}(\\bfx(t)\\mid\\bfx(0))$ is Gaussian with explicit mean and covariance for each of the VE, VP, and sub-VP SDEs (Eq.~(perturb_kernel)).",
+      "origin": "paper"
+    },
+    {
+      "id": "EP231.6",
+      "type": "equation",
+      "name": "Skilling-Hutchinson trace estimator for log-likelihood divergence",
+      "section": "Appendix D.2",
+      "statement": "$\\nabla \\cdot \\tilde{\\bff}_\\bftheta(\\bfx, t) = \\mbb{E}_{p(\\bfe)}[\\bfe\\tran \\nabla \\tilde{\\bff}_\\bftheta(\\bfx, t)\\, \\bfe]$ with $\\mbb{E}[\\bfe] = \\bfzero$, $\\operatorname{Cov}[\\bfe] = \\bfI$.",
+      "origin": "external",
+      "origin_citation": "Skilling 1989; Hutchinson 1990; FFJORD (Grathwohl et al. 2018)"
+    },
+    {
+      "id": "TP231.1",
+      "type": "theorem",
+      "name": "Anderson's reverse-time SDE",
+      "section": "3.2 Generating samples by reversing the SDE",
+      "statement": "The reverse of the diffusion process $\\ud \\bfx = \\bff(\\bfx, t)\\, \\ud t + g(t)\\, \\ud \\bfw$ is itself a diffusion, satisfying $\\ud \\bfx = [\\bff(\\bfx, t) - g(t)^2 \\nabla_\\bfx \\log p_t(\\bfx)]\\, \\ud t + g(t)\\, \\ud \\bar{\\bfw}$.",
+      "assumptions": [
+        "$\\bfx(t)$ solves the forward SDE $\\ud \\bfx = \\bff(\\bfx, t)\\, \\ud t + g(t)\\, \\ud \\bfw$",
+        "Coefficients $\\bff, g$ are sufficiently regular for a unique strong solution"
+      ],
+      "conclusions": [
+        "There exists a reverse-time diffusion equal in law (running $t: T \\to 0$) to the forward process whose drift involves the score $\\nabla_\\bfx \\log p_t(\\bfx)$"
+      ],
+      "origin": "external",
+      "origin_citation": "Anderson 1982",
+      "tags": ["existence"]
+    },
+    {
+      "id": "TP231.2",
+      "type": "theorem",
+      "name": "Probability flow ODE matches SDE marginals",
+      "section": "4.3 Probability flow / Appendix D.1",
+      "statement": "For the forward SDE in $\\ud\\bfx = \\bff\\, \\ud t + \\bfG\\, \\ud \\bfw$, the deterministic ODE $\\ud \\bfx = \\{\\bff - \\tfrac{1}{2}\\nabla\\cdot[\\bfG\\bfG\\tran] - \\tfrac{1}{2}\\bfG\\bfG\\tran \\nabla_\\bfx \\log p_t(\\bfx)\\}\\, \\ud t$ induces the same time-marginal densities $\\{p_t(\\bfx)\\}_{t=0}^T$ as the SDE.",
+      "assumptions": [
+        "$\\bfx(t)$ solves $\\ud\\bfx = \\bff(\\bfx, t)\\, \\ud t + \\bfG(\\bfx, t)\\, \\ud \\bfw$",
+        "Score $\\nabla_\\bfx \\log p_t(\\bfx)$ is well-defined for all $t$"
+      ],
+      "conclusions": [
+        "The probability flow ODE has the same marginal densities $p_t(\\bfx)$ as the forward SDE for all $t \\in [0, T]$"
+      ],
+      "origin": "paper",
+      "tags": ["equivalence", "deterministic"]
+    },
+    {
+      "id": "TP231.3",
+      "type": "theorem",
+      "name": "Variance bound: sub-VP $\\preccurlyeq$ VP",
+      "section": "Appendix B",
+      "statement": "For the sub-VP and VP SDEs sharing $\\beta(s)$ and initial covariance $\\bfsigma(0)$: $\\bfsigma_\\text{sub-VP}(t) \\preccurlyeq \\bfsigma_\\text{VP}(t)$ for all $t \\geq 0$, and both converge to $\\bfI$ as $t \\to \\infty$ provided $\\int_0^\\infty \\beta(s)\\, \\ud s = \\infty$.",
+      "assumptions": [
+        "Same $\\beta(t) > 0$ in both SDEs",
+        "$\\bfsigma_\\text{sub-VP}(0) = \\bfsigma_\\text{VP}(0)$",
+        "$\\lim_{t\\to\\infty} \\int_0^t \\beta(s)\\, \\ud s = \\infty$ for the asymptotic claim"
+      ],
+      "conclusions": [
+        "$\\bfsigma_\\text{sub-VP}(t) \\preccurlyeq \\bfsigma_\\text{VP}(t)$ for all $t \\geq 0$",
+        "$\\lim_{t\\to\\infty} \\bfsigma_\\text{sub-VP}(t) = \\lim_{t\\to\\infty} \\bfsigma_\\text{VP}(t) = \\bfI$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "TP231.4",
+      "type": "theorem",
+      "name": "Conditional reverse-time SDE for posterior sampling",
+      "section": "5 Controllable generation",
+      "statement": "Given the forward SDE and a known forward likelihood $p_t(\\bfy \\mid \\bfx(t))$, the process $p_0(\\bfx \\mid \\bfy)$ is sampled by the conditional reverse-time SDE $\\ud \\bfx = \\{\\bff - g^2[\\nabla_\\bfx \\log p_t(\\bfx) + \\nabla_\\bfx \\log p_t(\\bfy \\mid \\bfx)]\\}\\, \\ud t + g\\, \\ud \\bar{\\bfw}$.",
+      "assumptions": [
+        "$\\bfx(t)$ solves the forward SDE in $\\ud\\bfx = \\bff\\, \\ud t + g\\, \\ud \\bfw$",
+        "$\\nabla_\\bfx \\log p_t(\\bfy \\mid \\bfx)$ is available (from auxiliary model or estimator)"
+      ],
+      "conclusions": [
+        "Solving the conditional reverse-time SDE from $\\bfx(T) \\sim p_T(\\bfx \\mid \\bfy)$ produces samples $\\bfx(0) \\sim p_0(\\bfx \\mid \\bfy)$"
+      ],
+      "origin": "paper",
+      "tags": ["existence", "conditional"]
+    },
+    {
+      "id": "PrP231.1",
+      "type": "proposition",
+      "name": "Closed-form transition kernel for affine drift",
+      "section": "3.3 Estimating scores",
+      "statement": "When $\\bff(\\cdot, t)$ is affine, the transition kernel $p_{0t}(\\bfx(t) \\mid \\bfx(0))$ is Gaussian with mean and covariance computable in closed form via standard linear-SDE techniques.",
+      "assumptions": [
+        "The drift $\\bff(\\cdot, t)$ is affine in $\\bfx$"
+      ],
+      "conclusions": [
+        "$p_{0t}(\\bfx(t)\\mid\\bfx(0))$ is Gaussian with closed-form mean and covariance"
+      ],
+      "origin": "external",
+      "origin_citation": "Särkkä & Solin 2019, Section 5.5",
+      "tags": ["closed-form"]
+    },
+    {
+      "id": "PrP231.2",
+      "type": "proposition",
+      "name": "Reverse-diffusion sampler matches DDPM ancestral sampler in the limit",
+      "section": "Appendix F",
+      "statement": "The DDPM ancestral sampling rule (Eq.~\\eqref{eqn:ddpm_sampling}) is recovered from the reverse-diffusion discretization \\eqref{eqn:discrete_backward} of the reverse-time VP SDE in the limit $\\beta_i \\to 0$, i.e.\\ both reduce to the same continuous-time reverse SDE.",
+      "assumptions": [
+        "$\\beta_i \\to 0$ for all $i$ (i.e.\\ $\\Delta t \\to 0$)",
+        "$\\bfs_{\\bftheta^*} \\approx \\nabla_\\bfx \\log p_t$"
+      ],
+      "conclusions": [
+        "Ancestral sampling and reverse-diffusion sampling correspond to two consistent discretizations of the same reverse-time VP SDE"
+      ],
+      "origin": "paper",
+      "tags": ["equivalence"]
+    },
+    {
+      "id": "PP231.1",
+      "type": "proof",
+      "name": "Proof of probability flow ODE marginal equivalence",
+      "section": "Appendix D.1",
+      "statement": "Manipulate the Fokker-Planck equation for $p_t$ to express it as a continuity equation with effective drift $\\tilde{\\bff} = \\bff - \\tfrac{1}{2}\\nabla\\cdot[\\bfG\\bfG\\tran] - \\tfrac{1}{2}\\bfG\\bfG\\tran \\nabla_\\bfx \\log p_t$, which is the Liouville equation of the corresponding ODE.",
+      "proves": "TP231.2",
+      "parent_id": "TP231.2",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP231.1",
+      "type": "proof_step",
+      "name": "Write Fokker-Planck (Kolmogorov forward) equation",
+      "parent_id": "PP231.1",
+      "step_order": 1,
+      "subclass": "setup",
+      "statement": "Express $\\partial_t p_t(\\bfx) = -\\sum_i \\partial_{x_i}[f_i p_t] + \\tfrac{1}{2}\\sum_{i,j}\\partial^2_{x_ix_j}[\\sum_k G_{ik}G_{jk} p_t]$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP231.2",
+      "type": "proof_step",
+      "name": "Refactor second-order term using $\\nabla_\\bfx \\log p_t$",
+      "parent_id": "PP231.1",
+      "step_order": 2,
+      "subclass": "algebraic_manipulation",
+      "statement": "Use $\\partial_{x_j}[\\cdot p_t] = (\\partial_{x_j}\\cdot)p_t + (\\partial_{x_j}\\log p_t) \\cdot p_t$ to rewrite the diffusion term as $p_t \\nabla\\cdot[\\bfG\\bfG\\tran] + p_t \\bfG\\bfG\\tran \\nabla_\\bfx \\log p_t$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP231.3",
+      "type": "proof_step",
+      "name": "Combine into a continuity equation",
+      "parent_id": "PP231.1",
+      "step_order": 3,
+      "subclass": "algebraic_manipulation",
+      "statement": "Collapse the equation into $\\partial_t p_t = -\\sum_i \\partial_{x_i}[\\tilde{f}_i p_t]$ with $\\tilde{\\bff} := \\bff - \\tfrac{1}{2}\\nabla\\cdot[\\bfG\\bfG\\tran] - \\tfrac{1}{2}\\bfG\\bfG\\tran \\nabla_\\bfx \\log p_t$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP231.4",
+      "type": "proof_step",
+      "name": "Identify with Liouville equation of ODE",
+      "parent_id": "PP231.1",
+      "step_order": 4,
+      "subclass": "conclude",
+      "statement": "The continuity equation is Kolmogorov's forward equation of the ODE $\\ud\\bfx = \\tilde{\\bff}(\\bfx, t)\\, \\ud t$ (zero diffusion), so this ODE has the same marginals $p_t$ as the original SDE.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP231.2",
+      "type": "proof",
+      "name": "Derivation of VE SDE as continuum limit of SMLD chain",
+      "section": "Appendix B",
+      "statement": "Identify $\\sigma(i/N) = \\sigma_i$ in the SMLD update, take $\\Delta t = 1/N$, expand $\\sqrt{\\sigma^2(t+\\Delta t) - \\sigma^2(t)} \\approx \\sqrt{(\\ud[\\sigma^2]/\\ud t)\\,\\Delta t}$, and let $\\Delta t \\to 0$.",
+      "proves": "DP231.7",
+      "parent_id": "DP231.7",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP231.5",
+      "type": "proof_step",
+      "name": "Re-index the SMLD Markov chain in continuous time",
+      "parent_id": "PP231.2",
+      "step_order": 1,
+      "subclass": "setup",
+      "statement": "Let $\\bfx(i/N) = \\bfx_i$, $\\sigma(i/N) = \\sigma_i$, $\\bfz(i/N) = \\bfz_i$, with $\\Delta t = 1/N$ and $t \\in \\{0, 1/N, \\ldots, (N-1)/N\\}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP231.6",
+      "type": "proof_step",
+      "name": "Taylor-expand the noise increment",
+      "parent_id": "PP231.2",
+      "step_order": 2,
+      "subclass": "algebraic_manipulation",
+      "statement": "$\\bfx(t+\\Delta t) = \\bfx(t) + \\sqrt{\\sigma^2(t+\\Delta t) - \\sigma^2(t)}\\,\\bfz(t) \\approx \\bfx(t) + \\sqrt{(\\ud[\\sigma^2(t)]/\\ud t)\\,\\Delta t}\\,\\bfz(t)$ for $\\Delta t \\ll 1$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP231.7",
+      "type": "proof_step",
+      "name": "Take $\\Delta t \\to 0$ limit",
+      "parent_id": "PP231.2",
+      "step_order": 3,
+      "subclass": "conclude",
+      "statement": "The discrete update converges to $\\ud \\bfx = \\sqrt{\\ud[\\sigma^2(t)]/\\ud t}\\, \\ud \\bfw$, the VE SDE.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP231.3",
+      "type": "proof",
+      "name": "Derivation of VP SDE as continuum limit of DDPM chain",
+      "section": "Appendix B",
+      "statement": "Re-parameterize $\\bbeta_i = N\\beta_i$, identify $\\beta(i/N) = \\bbeta_i$, expand $\\sqrt{1 - \\beta(t+\\Delta t)\\Delta t} \\approx 1 - \\tfrac{1}{2}\\beta(t)\\Delta t$, and let $\\Delta t \\to 0$.",
+      "proves": "DP231.8",
+      "parent_id": "DP231.8",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP231.8",
+      "type": "proof_step",
+      "name": "Re-scale $\\beta_i$ to keep finite limit",
+      "parent_id": "PP231.3",
+      "step_order": 1,
+      "subclass": "introduce_variable",
+      "statement": "Define $\\bbeta_i = N \\beta_i$ so that $\\bfx_i = \\sqrt{1 - \\bbeta_i/N}\\,\\bfx_{i-1} + \\sqrt{\\bbeta_i/N}\\,\\bfz_{i-1}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP231.9",
+      "type": "proof_step",
+      "name": "Continuous-time reindexing",
+      "parent_id": "PP231.3",
+      "step_order": 2,
+      "subclass": "setup",
+      "statement": "Let $\\beta(i/N) = \\bbeta_i$, $\\bfx(i/N) = \\bfx_i$, $\\bfz(i/N) = \\bfz_i$, with $\\Delta t = 1/N$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP231.10",
+      "type": "proof_step",
+      "name": "Taylor-expand the rescaling factor",
+      "parent_id": "PP231.3",
+      "step_order": 3,
+      "subclass": "algebraic_manipulation",
+      "statement": "$\\bfx(t+\\Delta t) \\approx \\bfx(t) - \\tfrac{1}{2}\\beta(t)\\Delta t\\,\\bfx(t) + \\sqrt{\\beta(t)\\Delta t}\\,\\bfz(t)$ for $\\Delta t \\ll 1$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP231.11",
+      "type": "proof_step",
+      "name": "Take $\\Delta t \\to 0$ limit",
+      "parent_id": "PP231.3",
+      "step_order": 4,
+      "subclass": "conclude",
+      "statement": "The chain converges to $\\ud \\bfx = -\\tfrac{1}{2}\\beta(t)\\bfx\\, \\ud t + \\sqrt{\\beta(t)}\\, \\ud \\bfw$, the VP SDE.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP231.4",
+      "type": "proof",
+      "name": "Proof of variance bound $\\bfsigma_\\text{sub-VP} \\preccurlyeq \\bfsigma_\\text{VP}$",
+      "section": "Appendix B",
+      "statement": "Solve the ODE for $\\bfsigma(t)$ (Eq.~5.51 in Särkkä) for both VP and sub-VP SDEs and compare term-by-term.",
+      "proves": "TP231.3",
+      "parent_id": "TP231.3",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP231.12",
+      "type": "proof_step",
+      "name": "Derive variance ODE for VP",
+      "parent_id": "PP231.4",
+      "step_order": 1,
+      "subclass": "apply_lemma",
+      "statement": "Use Särkkä Eq.~(5.51) for affine SDEs to obtain $\\ud\\bfsigma_\\text{VP}/\\ud t = \\beta(t)(\\bfI - \\bfsigma_\\text{VP}(t))$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP231.13",
+      "type": "proof_step",
+      "name": "Solve VP variance ODE in closed form",
+      "parent_id": "PP231.4",
+      "step_order": 2,
+      "subclass": "algebraic_manipulation",
+      "statement": "$\\bfsigma_\\text{VP}(t) = \\bfI + e^{-\\int_0^t \\beta(s)\\,\\ud s}(\\bfsigma_\\text{VP}(0) - \\bfI)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP231.14",
+      "type": "proof_step",
+      "name": "Solve sub-VP variance",
+      "parent_id": "PP231.4",
+      "step_order": 3,
+      "subclass": "algebraic_manipulation",
+      "statement": "$\\bfsigma_\\text{sub-VP}(t) = \\bfI + e^{-2\\int_0^t \\beta(s)\\,\\ud s}\\bfI + e^{-\\int_0^t \\beta(s)\\,\\ud s}(\\bfsigma_\\text{sub-VP}(0) - 2\\bfI)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP231.15",
+      "type": "proof_step",
+      "name": "Compare and conclude",
+      "parent_id": "PP231.4",
+      "step_order": 4,
+      "subclass": "conclude",
+      "statement": "With shared $\\beta(s)$ and $\\bfsigma(0)$, term-by-term inspection yields $\\bfsigma_\\text{sub-VP}(t) \\preccurlyeq \\bfsigma_\\text{VP}(t)$, and both tend to $\\bfI$ as $t \\to \\infty$ when $\\int_0^\\infty \\beta(s)\\,\\ud s = \\infty$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP231.5",
+      "type": "proof",
+      "name": "Proof that ancestral sampling matches reverse-diffusion sampling",
+      "section": "Appendix F",
+      "statement": "Substitute $1/\\sqrt{1-\\beta_{i+1}} = 1 + \\tfrac{1}{2}\\beta_{i+1} + o(\\beta_{i+1})$ into the DDPM ancestral update; drop $O(\\beta_{i+1}^2)$ terms; identify the resulting form with the reverse-diffusion discretization of the reverse-time VP SDE.",
+      "proves": "PrP231.2",
+      "parent_id": "PrP231.2",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP231.16",
+      "type": "proof_step",
+      "name": "Taylor-expand $1/\\sqrt{1-\\beta_{i+1}}$",
+      "parent_id": "PP231.5",
+      "step_order": 1,
+      "subclass": "algebraic_manipulation",
+      "statement": "$1/\\sqrt{1-\\beta_{i+1}} = 1 + \\tfrac{1}{2}\\beta_{i+1} + o(\\beta_{i+1})$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP231.17",
+      "type": "proof_step",
+      "name": "Substitute into DDPM ancestral update",
+      "parent_id": "PP231.5",
+      "step_order": 2,
+      "subclass": "substitute",
+      "statement": "$\\bfx_i = (1 + \\tfrac{1}{2}\\beta_{i+1})(\\bfx_{i+1} + \\beta_{i+1}\\bfs_{\\bftheta^*}) + \\sqrt{\\beta_{i+1}}\\bfz_{i+1}$ up to $o(\\beta_{i+1})$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP231.18",
+      "type": "proof_step",
+      "name": "Drop second-order $\\beta_{i+1}^2$ terms",
+      "parent_id": "PP231.5",
+      "step_order": 3,
+      "subclass": "algebraic_manipulation",
+      "statement": "Keep only $O(\\beta_{i+1})$ terms: $\\bfx_i \\approx (2 - \\sqrt{1 - \\beta_{i+1}})\\bfx_{i+1} + \\beta_{i+1}\\bfs_{\\bftheta^*} + \\sqrt{\\beta_{i+1}}\\bfz_{i+1}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP231.19",
+      "type": "proof_step",
+      "name": "Identify with reverse-diffusion discretization",
+      "parent_id": "PP231.5",
+      "step_order": 4,
+      "subclass": "conclude",
+      "statement": "The result matches \\eqref{eqn:discrete_backward} for the VP SDE, so DDPM ancestral sampling is a discretization of the same reverse-time VP SDE.",
+      "origin": "paper"
+    },
+    {
+      "id": "AP231.1",
+      "type": "algorithm",
+      "name": "Predictor-Corrector (PC) sampler (general)",
+      "section": "Appendix G, Alg.~1",
+      "statement": "Iterative reverse-time SDE sampler that alternates between a predictor (numerical SDE solver step) and a corrector (score-based MCMC step) at each discretization level.",
+      "input": [
+        "Number of discretization steps $N$ for the reverse-time SDE",
+        "Number of corrector steps $M$ per noise level",
+        "Score-based model $\\bfs_{\\bftheta^*}(\\bfx, t)$",
+        "Predictor and corrector subroutines"
+      ],
+      "output": [
+        "Approximate sample $\\bfx_0 \\sim p_0$"
+      ],
+      "pseudocode": "Initialize $\\bfx_N \\sim p_T$; for $i = N-1$ down to $0$: $\\bfx_i \\gets \\operatorname{Predictor}(\\bfx_{i+1})$; for $j = 1$ to $M$: $\\bfx_i \\gets \\operatorname{Corrector}(\\bfx_i)$; return $\\bfx_0$.",
+      "origin": "paper",
+      "tags": ["iterative", "sampling"]
+    },
+    {
+      "id": "ASP231.1",
+      "type": "algorithm_step",
+      "name": "Initialize from prior",
+      "parent_id": "AP231.1",
+      "step_order": 1,
+      "subclass": "initialize",
+      "statement": "$\\bfx_N \\sim p_T(\\bfx)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP231.2",
+      "type": "algorithm_step",
+      "name": "Outer loop over reverse-time discretization",
+      "parent_id": "AP231.1",
+      "step_order": 2,
+      "subclass": "loop",
+      "statement": "For $i = N-1$ down to $0$, run a predictor step then $M$ corrector steps.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP231.3",
+      "type": "algorithm_step",
+      "name": "Predictor step",
+      "parent_id": "AP231.1",
+      "step_order": 3,
+      "subclass": "update",
+      "statement": "$\\bfx_i \\gets \\operatorname{Predictor}(\\bfx_{i+1})$ using a numerical SDE solver (e.g.\\ reverse-diffusion or ancestral) for the reverse-time SDE.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP231.4",
+      "type": "algorithm_step",
+      "name": "Inner corrector loop",
+      "parent_id": "AP231.1",
+      "step_order": 4,
+      "subclass": "loop",
+      "statement": "For $j = 1$ to $M$: $\\bfx_i \\gets \\operatorname{Corrector}(\\bfx_i)$, where the corrector is a score-based MCMC step (e.g.\\ Langevin) targeting $p_{t_i}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP231.5",
+      "type": "algorithm_step",
+      "name": "Return final sample",
+      "parent_id": "AP231.1",
+      "step_order": 5,
+      "subclass": "return",
+      "statement": "Return $\\bfx_0$ as approximate draw from $p_0$.",
+      "origin": "paper"
+    },
+    {
+      "id": "AP231.2",
+      "type": "algorithm",
+      "name": "PC sampler for VE SDE (Alg.~2)",
+      "section": "Appendix G, Alg.~2",
+      "statement": "Specialization of the PC sampler for the VE SDE: predictor uses the reverse-diffusion update for VE; corrector is annealed Langevin dynamics with $\\sigma_i$-conditioned scores.",
+      "input": [
+        "Noise scales $\\{\\sigma_i\\}_{i=1}^N$",
+        "Number of corrector steps $M$",
+        "Step sizes $\\{\\epsilon_i\\}_{i=0}^{N-1}$",
+        "Score model $\\bfs_{\\bftheta^*}(\\bfx, \\sigma)$"
+      ],
+      "output": [
+        "Sample $\\bfx_0 \\approx \\pd$"
+      ],
+      "pseudocode": "$\\bfx_N \\sim \\mcal{N}(\\bfzero, \\sM^2 \\bfI)$; for $i = N-1$ down to $0$: $\\bfx_i' \\gets \\bfx_{i+1} + (\\sigma_{i+1}^2 - \\sigma_i^2)\\bfs_{\\bftheta^*}(\\bfx_{i+1}, \\sigma_{i+1})$; $\\bfz \\sim \\mcal{N}(\\bfzero, \\bfI)$; $\\bfx_i \\gets \\bfx_i' + \\sqrt{\\sigma_{i+1}^2 - \\sigma_i^2}\\,\\bfz$; for $j = 1$ to $M$: $\\bfz \\sim \\mcal{N}(\\bfzero, \\bfI)$; $\\bfx_i \\gets \\bfx_i + \\epsilon_i \\bfs_{\\bftheta^*}(\\bfx_i, \\sigma_i) + \\sqrt{2\\epsilon_i}\\,\\bfz$; return $\\bfx_0$.",
+      "origin": "paper",
+      "tags": ["iterative", "sampling"]
+    },
+    {
+      "id": "ASP231.6",
+      "type": "algorithm_step",
+      "name": "Initialize $\\bfx_N$ from $\\mcal{N}(0, \\sM^2 \\bfI)$",
+      "parent_id": "AP231.2",
+      "step_order": 1,
+      "subclass": "initialize",
+      "statement": "$\\bfx_N \\sim \\mcal{N}(\\bfzero, \\sM^2 \\bfI)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP231.7",
+      "type": "algorithm_step",
+      "name": "Reverse-diffusion predictor step (VE)",
+      "parent_id": "AP231.2",
+      "step_order": 2,
+      "subclass": "update",
+      "statement": "$\\bfx_i' \\gets \\bfx_{i+1} + (\\sigma_{i+1}^2 - \\sigma_i^2) \\bfs_{\\bftheta^*}(\\bfx_{i+1}, \\sigma_{i+1})$; then $\\bfx_i \\gets \\bfx_i' + \\sqrt{\\sigma_{i+1}^2 - \\sigma_i^2}\\,\\bfz$ with $\\bfz \\sim \\mcal{N}(\\bfzero, \\bfI)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP231.8",
+      "type": "algorithm_step",
+      "name": "Langevin corrector inner loop (VE)",
+      "parent_id": "AP231.2",
+      "step_order": 3,
+      "subclass": "loop",
+      "statement": "For $j = 1, \\ldots, M$: $\\bfz \\sim \\mcal{N}(\\bfzero, \\bfI)$; $\\bfx_i \\gets \\bfx_i + \\epsilon_i \\bfs_{\\bftheta^*}(\\bfx_i, \\sigma_i) + \\sqrt{2\\epsilon_i}\\,\\bfz$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP231.9",
+      "type": "algorithm_step",
+      "name": "Return $\\bfx_0$",
+      "parent_id": "AP231.2",
+      "step_order": 4,
+      "subclass": "return",
+      "statement": "Return $\\bfx_0$.",
+      "origin": "paper"
+    },
+    {
+      "id": "AP231.3",
+      "type": "algorithm",
+      "name": "PC sampler for VP SDE (Alg.~3)",
+      "section": "Appendix G, Alg.~3",
+      "statement": "Specialization of the PC sampler for the VP SDE: predictor uses the reverse-diffusion update for VP; corrector is annealed Langevin dynamics with discrete-step-conditioned scores.",
+      "input": [
+        "$\\{\\beta_i\\}_{i=1}^N$",
+        "Number of corrector steps $M$",
+        "Step sizes $\\{\\epsilon_i\\}_{i=0}^{N-1}$",
+        "Score model $\\bfs_{\\bftheta^*}(\\bfx, i)$"
+      ],
+      "output": [
+        "Sample $\\bfx_0 \\approx \\pd$"
+      ],
+      "pseudocode": "$\\bfx_N \\sim \\mcal{N}(\\bfzero, \\bfI)$; for $i = N-1$ down to $0$: $\\bfx_i' \\gets (2 - \\sqrt{1 - \\beta_{i+1}})\\bfx_{i+1} + \\beta_{i+1} \\bfs_{\\bftheta^*}(\\bfx_{i+1}, i+1)$; $\\bfz \\sim \\mcal{N}(\\bfzero, \\bfI)$; $\\bfx_i \\gets \\bfx_i' + \\sqrt{\\beta_{i+1}}\\,\\bfz$; for $j = 1$ to $M$: $\\bfz \\sim \\mcal{N}(\\bfzero, \\bfI)$; $\\bfx_i \\gets \\bfx_i + \\epsilon_i \\bfs_{\\bftheta^*}(\\bfx_i, i) + \\sqrt{2\\epsilon_i}\\,\\bfz$; return $\\bfx_0$.",
+      "origin": "paper",
+      "tags": ["iterative", "sampling"]
+    },
+    {
+      "id": "ASP231.10",
+      "type": "algorithm_step",
+      "name": "Initialize $\\bfx_N \\sim \\mcal{N}(0, \\bfI)$",
+      "parent_id": "AP231.3",
+      "step_order": 1,
+      "subclass": "initialize",
+      "statement": "$\\bfx_N \\sim \\mcal{N}(\\bfzero, \\bfI)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP231.11",
+      "type": "algorithm_step",
+      "name": "Reverse-diffusion predictor step (VP)",
+      "parent_id": "AP231.3",
+      "step_order": 2,
+      "subclass": "update",
+      "statement": "$\\bfx_i' \\gets (2 - \\sqrt{1 - \\beta_{i+1}})\\bfx_{i+1} + \\beta_{i+1}\\bfs_{\\bftheta^*}(\\bfx_{i+1}, i+1)$; then $\\bfx_i \\gets \\bfx_i' + \\sqrt{\\beta_{i+1}}\\,\\bfz$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP231.12",
+      "type": "algorithm_step",
+      "name": "Langevin corrector inner loop (VP)",
+      "parent_id": "AP231.3",
+      "step_order": 3,
+      "subclass": "loop",
+      "statement": "For $j = 1, \\ldots, M$: $\\bfz \\sim \\mcal{N}(\\bfzero, \\bfI)$; $\\bfx_i \\gets \\bfx_i + \\epsilon_i \\bfs_{\\bftheta^*}(\\bfx_i, i) + \\sqrt{2\\epsilon_i}\\,\\bfz$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP231.13",
+      "type": "algorithm_step",
+      "name": "Return $\\bfx_0$",
+      "parent_id": "AP231.3",
+      "step_order": 4,
+      "subclass": "return",
+      "statement": "Return $\\bfx_0$.",
+      "origin": "paper"
+    },
+    {
+      "id": "AP231.4",
+      "type": "algorithm",
+      "name": "Reverse diffusion sampler",
+      "section": "Appendix E",
+      "statement": "Discretize the reverse-time SDE in the same functional form as the forward discretization: $\\bfx_i = \\bfx_{i+1} - \\bff_{i+1}(\\bfx_{i+1}) + \\bfG_{i+1}\\bfG_{i+1}\\tran \\bfs_{\\bftheta^*}(\\bfx_{i+1}, i+1) + \\bfG_{i+1}\\bfz_{i+1}$.",
+      "input": [
+        "Forward discretization $(\\bff_i, \\bfG_i)$",
+        "Trained score model $\\bfs_{\\bftheta^*}$"
+      ],
+      "output": [
+        "Samples $\\bfx_0$ approximating $p_0$"
+      ],
+      "pseudocode": "For $i = N-1, N-2, \\ldots, 0$: $\\bfx_i \\gets \\bfx_{i+1} - \\bff_{i+1}(\\bfx_{i+1}) + \\bfG_{i+1}\\bfG_{i+1}\\tran \\bfs_{\\bftheta^*}(\\bfx_{i+1}, i+1) + \\bfG_{i+1}\\bfz_{i+1}$.",
+      "origin": "paper",
+      "tags": ["iterative", "sampling"]
+    },
+    {
+      "id": "AP231.5",
+      "type": "algorithm",
+      "name": "Probability flow ODE sampler (deterministic)",
+      "section": "Appendix D.3 / 4.3",
+      "statement": "Numerically integrate the probability flow ODE backward from $\\bfx_N \\sim p_T$, e.g.\\ via the iteration $\\bfx_i = \\bfx_{i+1} - \\bff_{i+1}(\\bfx_{i+1}) + \\tfrac{1}{2}\\bfG_{i+1}\\bfG_{i+1}\\tran \\bfs_{\\bftheta^*}(\\bfx_{i+1}, i+1)$, or with a black-box ODE solver (RK45).",
+      "input": [
+        "Score model $\\bfs_{\\bftheta^*}$",
+        "Initial $\\bfx_N \\sim p_T$",
+        "ODE solver (fixed-discretization or RK45)"
+      ],
+      "output": [
+        "Sample $\\bfx_0$ approximating $p_0$",
+        "Optionally an exact log-likelihood via the instantaneous change-of-variables formula"
+      ],
+      "pseudocode": "Solve $\\ud\\bfx = [\\bff(\\bfx, t) - \\tfrac{1}{2} g(t)^2 \\bfs_{\\bftheta^*}(\\bfx, t)]\\, \\ud t$ from $t = T$ to $t = 0$ starting from $\\bfx(T) \\sim p_T$.",
+      "origin": "paper",
+      "tags": ["deterministic", "sampling"]
+    },
+    {
+      "id": "AP231.6",
+      "type": "algorithm",
+      "name": "Ancestral sampler for SMLD models",
+      "section": "Appendix F",
+      "statement": "$\\bfx_{i-1} = \\bfx_i + (\\sigma_i^2 - \\sigma_{i-1}^2)\\bfs_{\\bftheta^*}(\\bfx_i, i) + \\sqrt{(\\sigma_{i-1}^2(\\sigma_i^2 - \\sigma_{i-1}^2))/\\sigma_i^2}\\,\\bfz_i$, derived by adapting the DDPM-style ancestral sampling rule to SMLD.",
+      "input": [
+        "Noise scales $\\{\\sigma_i\\}_{i=1}^N$",
+        "Score model $\\bfs_{\\bftheta^*}(\\bfx, i)$",
+        "$\\bfx_N \\sim \\mcal{N}(\\bfzero, \\sigma_N^2 \\bfI)$"
+      ],
+      "output": [
+        "Sample $\\bfx_0 \\approx \\pd$"
+      ],
+      "pseudocode": "For $i = N, N-1, \\ldots, 1$: $\\bfx_{i-1} \\gets \\bfx_i + (\\sigma_i^2 - \\sigma_{i-1}^2)\\bfs_{\\bftheta^*}(\\bfx_i, i) + \\sqrt{(\\sigma_{i-1}^2(\\sigma_i^2 - \\sigma_{i-1}^2))/\\sigma_i^2}\\,\\bfz_i$.",
+      "origin": "paper",
+      "tags": ["iterative", "sampling"]
+    },
+    {
+      "id": "AP231.7",
+      "type": "algorithm",
+      "name": "Imputation via reverse-time SDE on unknown dimensions",
+      "section": "Appendix I.2",
+      "statement": "Sample $\\bomega(\\bfx(0)) \\mid \\Omega(\\bfx(0)) = \\bfy$ by solving the reverse-time SDE for $\\bfz(t) = \\bomega(\\bfx(t))$ with conditional score $\\nabla_\\bfz \\log p_t([\\bfz(t); \\hat{\\Omega}(\\bfx(t))])$, where $\\hat{\\Omega}(\\bfx(t)) \\sim p_t(\\Omega(\\bfx(t)) \\mid A)$.",
+      "input": [
+        "Observation $\\bfy = \\Omega(\\bfx(0))$",
+        "Score model $\\bfs_{\\bftheta^*}$ trained unconditionally",
+        "Forward SDE coefficients $\\bff, \\bfG$"
+      ],
+      "output": [
+        "Sample $\\bfx(0)$ with $\\Omega(\\bfx(0)) = \\bfy$"
+      ],
+      "origin": "paper",
+      "tags": ["sampling", "inverse-problem"]
+    },
+    {
+      "id": "AP231.8",
+      "type": "algorithm",
+      "name": "Colorization via orthogonal-decoupled imputation",
+      "section": "Appendix I.3",
+      "statement": "Apply an orthogonal $3\\times 3$ matrix $Q$ that maps RGB to a luminance channel plus two chroma channels; impute the chroma channels using AP231.7; transform back with $Q\\tran$.",
+      "input": [
+        "Gray-scale image (one channel of the orthogonally-decoupled space)",
+        "Score model $\\bfs_{\\bftheta^*}$"
+      ],
+      "output": [
+        "Colorized image"
+      ],
+      "origin": "paper",
+      "tags": ["sampling", "inverse-problem"]
+    },
+    {
+      "id": "AP231.9",
+      "type": "algorithm",
+      "name": "Time-dependent classifier-guided class-conditional sampling",
+      "section": "Appendix I.1",
+      "statement": "Train a time-dependent classifier $p_t(\\bfy \\mid \\bfx(t))$ on noisy data, and sample from the conditional reverse-time SDE using $\\nabla_\\bfx \\log p_t(\\bfx \\mid \\bfy) = \\bfs_{\\bftheta^*}(\\bfx, t) + \\nabla_\\bfx \\log p_t(\\bfy \\mid \\bfx)$.",
+      "input": [
+        "Trained unconditional score model $\\bfs_{\\bftheta^*}$",
+        "Trained noise-conditional classifier $p_t(\\bfy \\mid \\bfx(t))$",
+        "Class label $\\bfy$"
+      ],
+      "output": [
+        "Sample $\\bfx(0) \\sim p_0(\\bfx \\mid \\bfy)$"
+      ],
+      "origin": "paper",
+      "tags": ["sampling", "conditional"]
+    },
+    {
+      "id": "AP231.10",
+      "type": "algorithm",
+      "name": "Exact-likelihood computation via probability flow + Hutchinson",
+      "section": "Appendix D.2",
+      "statement": "Solve the probability flow ODE forward from $\\bfx(0)$ to $\\bfx(T)$ while accumulating $\\int_0^T \\nabla\\cdot \\tilde{\\bff}_\\bftheta(\\bfx(t), t)\\, \\ud t$ using the Skilling-Hutchinson trace estimator; then $\\log p_0(\\bfx(0)) = \\log p_T(\\bfx(T)) + \\int_0^T \\nabla\\cdot \\tilde{\\bff}_\\bftheta(\\bfx(t), t)\\, \\ud t$.",
+      "input": [
+        "Datapoint $\\bfx(0)$",
+        "Score model $\\bfs_{\\bftheta^*}$",
+        "Black-box ODE solver (RK45)",
+        "Random vectors $\\bfe$ for trace estimator"
+      ],
+      "output": [
+        "Estimate of $\\log p_0(\\bfx(0))$ in bits/dim"
+      ],
+      "origin": "paper",
+      "tags": ["likelihood", "deterministic"]
+    },
+    {
+      "id": "AP231.11",
+      "type": "algorithm",
+      "name": "Annealed Langevin dynamics (corrector)",
+      "section": "Appendix G, Alg.~4-5",
+      "statement": "Score-based MCMC corrector that updates $\\bfx \\gets \\bfx + \\epsilon\\,\\bfs_{\\bftheta^*}(\\bfx, \\sigma_i) + \\sqrt{2\\epsilon}\\,\\bfz$ for $M$ steps per noise level, with step size $\\epsilon = 2(r\\,\\norm{\\bfz}_2/\\norm{\\bfs_{\\bftheta^*}}_2)^2$ controlled by signal-to-noise ratio $r$.",
+      "input": [
+        "Noise schedule (e.g.\\ $\\{\\sigma_i\\}$ or $\\{\\beta_i\\}, \\{\\alpha_i\\}$)",
+        "Signal-to-noise ratio $r$",
+        "Number of corrector steps $M$ per noise level",
+        "Score model $\\bfs_{\\bftheta^*}$"
+      ],
+      "output": [
+        "Updated sample $\\bfx$ approximately distributed as $p_t$ at the current noise level"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "MCMC"]
+    },
+    {
+      "id": "AP231.12",
+      "type": "algorithm",
+      "name": "Annealed Langevin dynamics (Song & Ermon 2019)",
+      "section": "2.1 SMLD (cited)",
+      "statement": "Run $M$ Langevin updates $\\bfx_i^m = \\bfx_i^{m-1} + \\epsilon_i \\bfs_{\\bftheta^*}(\\bfx_i^{m-1}, \\sigma_i) + \\sqrt{2\\epsilon_i}\\,\\bfz_i^m$ at each noise scale $\\sigma_i$ for $i = N, N-1, \\ldots, 1$.",
+      "input": [
+        "Noise scales $\\{\\sigma_i\\}_{i=1}^N$",
+        "Step sizes $\\{\\epsilon_i\\}$",
+        "NCSN $\\bfs_{\\bftheta^*}(\\bfx, \\sigma)$"
+      ],
+      "output": [
+        "Sample $\\bfx_1^M \\approx p_{\\sm}(\\bfx) \\approx \\pd(\\bfx)$"
+      ],
+      "origin": "external",
+      "origin_citation": "Song & Ermon 2019",
+      "tags": ["iterative", "MCMC"]
+    },
+    {
+      "id": "AP231.13",
+      "type": "algorithm",
+      "name": "DDPM ancestral sampling",
+      "section": "2.2 DDPM (cited)",
+      "statement": "$\\bfx_{i-1} = \\frac{1}{\\sqrt{1-\\beta_i}}(\\bfx_i + \\beta_i \\bfs_{\\bftheta^*}(\\bfx_i, i)) + \\sqrt{\\beta_i}\\,\\bfz_i$ for $i = N, \\ldots, 1$ starting from $\\bfx_N \\sim \\mcal{N}(\\bfzero, \\bfI)$.",
+      "input": [
+        "$\\{\\beta_i\\}_{i=1}^N$",
+        "Score model $\\bfs_{\\bftheta^*}(\\bfx, i)$"
+      ],
+      "output": [
+        "Sample $\\bfx_0 \\approx \\pd$"
+      ],
+      "origin": "external",
+      "origin_citation": "Ho et al. 2020",
+      "tags": ["iterative", "sampling"]
+    },
+    {
+      "id": "ProbP231.1",
+      "type": "problem",
+      "name": "Score-based generative modeling via SDEs",
+      "section": "1 Introduction",
+      "statement": "Given iid samples from an unknown data distribution $\\pd$, learn to draw new samples by perturbing data with a forward SDE that ends at a tractable prior $p_T$, then simulating the corresponding reverse-time SDE driven by the time-dependent score $\\nabla_\\bfx \\log p_t(\\bfx)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP231.2",
+      "type": "problem",
+      "name": "Conditional / inverse-problem sampling with score models",
+      "section": "5 Controllable generation",
+      "statement": "Given a forward likelihood $p(\\bfy \\mid \\bfx)$, sample from the posterior $p_0(\\bfx \\mid \\bfy)$ using only an unconditional score model $\\bfs_{\\bftheta^*}(\\bfx, t) \\approx \\nabla_\\bfx \\log p_t(\\bfx)$ plus an estimate of $\\nabla_\\bfx \\log p_t(\\bfy \\mid \\bfx(t))$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP231.3",
+      "type": "problem",
+      "name": "Exact likelihood evaluation under a score-based model",
+      "section": "4.3 Probability flow",
+      "statement": "Compute exact $\\log p_0(\\bfx)$ for a score-based model defined by a forward SDE / probability flow ODE.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP231.1",
+      "type": "example",
+      "name": "CIFAR-10 unconditional generation (FID 2.20, IS 9.89)",
+      "section": "4.4 / Appendix H",
+      "statement": "NCSN++ cont. (deep, VE) trained with the continuous objective and PC sampling sets new state-of-the-art on $32\\times 32$ CIFAR-10 unconditional generation, with Inception score $9.89$ and FID $2.20$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP231.2",
+      "type": "example",
+      "name": "CIFAR-10 likelihood (2.99 bits/dim)",
+      "section": "4.3 / Appendix H",
+      "statement": "DDPM++ cont. (deep, sub-VP) achieves $2.99$ bits/dim on uniformly dequantized CIFAR-10, computed exactly via the probability flow ODE.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP231.3",
+      "type": "example",
+      "name": "CelebA-HQ $1024\\times 1024$ samples",
+      "section": "Appendix H.3",
+      "statement": "First high-fidelity $1024\\times 1024$ images generated by a score-based model, trained on CelebA-HQ with a modified NCSN++ and the VE SDE using PC sampling at $2000$ steps.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP231.4",
+      "type": "example",
+      "name": "Class-conditional CIFAR-10 generation",
+      "section": "5 / Appendix I.1",
+      "statement": "Class-conditional samples from CIFAR-10 obtained by combining an unconditional NCSN++ score with a noise-conditional Wide-ResNet-28-10 classifier $p_t(\\bfy \\mid \\bfx(t))$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP231.5",
+      "type": "example",
+      "name": "LSUN inpainting and colorization at $256\\times 256$",
+      "section": "5 / Appendix I.2-3",
+      "statement": "Inpainting and colorization on $256\\times 256$ LSUN bedroom and church images using only an unconditional score-based model via the imputation algorithm AP231.7 / colorization algorithm AP231.8.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP231.6",
+      "type": "example",
+      "name": "Empirical verification of unique identifiability",
+      "section": "Appendix D.5",
+      "statement": "Two independently-trained models (NCSN++ with 4 vs.\\ 8 layers per resolution) trained with the VE SDE on CIFAR-10 produce nearly identical latent codes for the same input image, confirming the uniquely-identifiable encoding property of the probability flow ODE.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP231.7",
+      "type": "example",
+      "name": "Latent-space interpolation and temperature rescaling on CelebA-HQ",
+      "section": "Appendix D.4",
+      "statement": "Spherical interpolations and temperature rescaling on $256\\times 256$ CelebA-HQ latent codes obtained by integrating the VP probability flow ODE.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP231.1",
+      "type": "remark",
+      "name": "Equivalence of SMLD/DDPM weighting to inverse expected score-norm",
+      "section": "2.2 DDPM",
+      "statement": "Both $\\sigma_i^2$ in the SMLD objective and $(1-\\alpha_i)$ in the DDPM objective satisfy $\\propto 1/\\mbb{E}[\\norm{\\nabla_\\bfx \\log p_{\\sigma_i}(\\tilde{\\bfx}\\mid\\bfx)}_2^2]$, exposing SMLD and DDPM as the same weighted denoising score-matching family.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP231.2",
+      "type": "remark",
+      "name": "Tweedie denoising step at the end of sampling",
+      "section": "Appendix G",
+      "statement": "Because raw SDE samples carry residual noise that hurts FID, every reported sampler in this paper applies a single denoising step at $t = 0$ via Tweedie's formula.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP231.3",
+      "type": "remark",
+      "name": "Numerical $t = 0$ regularization",
+      "section": "Appendix C",
+      "statement": "Both VE and VP SDEs are integrated only on $t \\in [\\epsilon, 1]$ with $\\epsilon = 10^{-5}$ (training, likelihood) or $\\epsilon = 10^{-3}$ (VP sampling) to avoid singularities at $t = 0$.",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "DP231.1", "target": "DP231.6", "type": "uses"},
+    {"source": "DP231.1", "target": "DP231.10", "type": "uses"},
+    {"source": "DP231.2", "target": "DP231.3", "type": "uses"},
+    {"source": "DP231.2", "target": "EP231.1", "type": "uses"},
+    {"source": "DP231.3", "target": "EP231.1", "type": "uses"},
+    {"source": "DP231.3", "target": "AP231.12", "type": "uses"},
+    {"source": "DP231.4", "target": "EP231.2", "type": "uses"},
+    {"source": "DP231.4", "target": "AP231.13", "type": "uses"},
+    {"source": "DP231.5", "target": "DP231.6", "type": "uses"},
+    {"source": "DP231.5", "target": "DP231.10", "type": "uses"},
+    {"source": "DP231.5", "target": "DP231.7", "type": "uses"},
+    {"source": "DP231.5", "target": "DP231.8", "type": "uses"},
+    {"source": "DP231.5", "target": "DP231.11", "type": "specializes"},
+    {"source": "TP231.1", "target": "DP231.6", "type": "proves"},
+    {"source": "TP231.1", "target": "TP231.4", "type": "uses"},
+    {"source": "DP231.6", "target": "DP231.12", "type": "specializes"},
+    {"source": "TP231.4", "target": "DP231.12", "type": "proves"},
+    {"source": "DP231.5", "target": "EP231.3", "type": "uses"},
+    {"source": "EP231.1", "target": "EP231.3", "type": "uses"},
+    {"source": "EP231.2", "target": "EP231.3", "type": "uses"},
+    {"source": "EP231.4", "target": "EP231.3", "type": "generalizes"},
+    {"source": "PrP231.1", "target": "EP231.5", "type": "uses"},
+    {"source": "DP231.7", "target": "EP231.5", "type": "uses"},
+    {"source": "DP231.8", "target": "EP231.5", "type": "uses"},
+    {"source": "DP231.9", "target": "EP231.5", "type": "uses"},
+    {"source": "DP231.7", "target": "DP231.9", "type": "uses"},
+    {"source": "DP231.8", "target": "DP231.9", "type": "uses"},
+    {"source": "TP231.3", "target": "DP231.9", "type": "uses"},
+    {"source": "PP231.4", "target": "TP231.3", "type": "proves"},
+    {"source": "PrP231.1", "target": "PP231.4", "type": "uses"},
+    {"source": "PP231.2", "target": "DP231.7", "type": "proves"},
+    {"source": "PP231.3", "target": "DP231.8", "type": "proves"},
+    {"source": "PP231.1", "target": "TP231.2", "type": "proves"},
+    {"source": "TP231.2", "target": "DP231.10", "type": "uses"},
+    {"source": "DP231.10", "target": "AP231.5", "type": "uses"},
+    {"source": "DP231.10", "target": "AP231.10", "type": "uses"},
+    {"source": "TP231.2", "target": "AP231.10", "type": "uses"},
+    {"source": "EP231.6", "target": "AP231.10", "type": "uses"},
+    {"source": "DP231.6", "target": "AP231.1", "type": "uses"},
+    {"source": "DP231.6", "target": "AP231.4", "type": "uses"},
+    {"source": "AP231.4", "target": "AP231.1", "type": "uses"},
+    {"source": "AP231.11", "target": "AP231.1", "type": "uses"},
+    {"source": "AP231.12", "target": "AP231.11", "type": "specializes"},
+    {"source": "DP231.7", "target": "AP231.2", "type": "uses"},
+    {"source": "DP231.8", "target": "AP231.3", "type": "uses"},
+    {"source": "AP231.1", "target": "AP231.2", "type": "generalizes"},
+    {"source": "AP231.1", "target": "AP231.3", "type": "generalizes"},
+    {"source": "AP231.4", "target": "AP231.2", "type": "uses"},
+    {"source": "AP231.4", "target": "AP231.3", "type": "uses"},
+    {"source": "AP231.13", "target": "AP231.6", "type": "uses"},
+    {"source": "PP231.5", "target": "PrP231.2", "type": "proves"},
+    {"source": "AP231.13", "target": "PrP231.2", "type": "uses"},
+    {"source": "AP231.4", "target": "PrP231.2", "type": "uses"},
+    {"source": "TP231.4", "target": "AP231.9", "type": "uses"},
+    {"source": "DP231.12", "target": "AP231.9", "type": "uses"},
+    {"source": "DP231.12", "target": "AP231.7", "type": "uses"},
+    {"source": "AP231.7", "target": "AP231.8", "type": "uses"},
+    {"source": "AP231.1", "target": "ExP231.1", "type": "illustrates"},
+    {"source": "AP231.10", "target": "ExP231.2", "type": "illustrates"},
+    {"source": "AP231.2", "target": "ExP231.3", "type": "illustrates"},
+    {"source": "AP231.9", "target": "ExP231.4", "type": "illustrates"},
+    {"source": "AP231.7", "target": "ExP231.5", "type": "illustrates"},
+    {"source": "AP231.8", "target": "ExP231.5", "type": "illustrates"},
+    {"source": "AP231.5", "target": "ExP231.6", "type": "illustrates"},
+    {"source": "AP231.5", "target": "ExP231.7", "type": "illustrates"},
+    {"source": "AP231.1", "target": "ProbP231.1", "type": "uses"},
+    {"source": "AP231.4", "target": "ProbP231.1", "type": "uses"},
+    {"source": "AP231.5", "target": "ProbP231.1", "type": "uses"},
+    {"source": "AP231.6", "target": "ProbP231.1", "type": "uses"},
+    {"source": "AP231.13", "target": "ProbP231.1", "type": "uses"},
+    {"source": "AP231.12", "target": "ProbP231.1", "type": "uses"},
+    {"source": "AP231.9", "target": "ProbP231.2", "type": "uses"},
+    {"source": "AP231.7", "target": "ProbP231.2", "type": "uses"},
+    {"source": "AP231.8", "target": "ProbP231.2", "type": "uses"},
+    {"source": "AP231.10", "target": "ProbP231.3", "type": "uses"},
+    {"source": "RP231.1", "target": "EP231.3", "type": "uses"},
+    {"source": "PSP231.1", "target": "PSP231.2", "type": "uses"},
+    {"source": "PSP231.2", "target": "PSP231.3", "type": "uses"},
+    {"source": "PSP231.3", "target": "PSP231.4", "type": "uses"},
+    {"source": "PSP231.5", "target": "PSP231.6", "type": "uses"},
+    {"source": "PSP231.6", "target": "PSP231.7", "type": "uses"},
+    {"source": "PSP231.8", "target": "PSP231.9", "type": "uses"},
+    {"source": "PSP231.9", "target": "PSP231.10", "type": "uses"},
+    {"source": "PSP231.10", "target": "PSP231.11", "type": "uses"},
+    {"source": "PSP231.12", "target": "PSP231.13", "type": "uses"},
+    {"source": "PSP231.13", "target": "PSP231.15", "type": "uses"},
+    {"source": "PSP231.14", "target": "PSP231.15", "type": "uses"},
+    {"source": "PSP231.16", "target": "PSP231.17", "type": "uses"},
+    {"source": "PSP231.17", "target": "PSP231.18", "type": "uses"},
+    {"source": "PSP231.18", "target": "PSP231.19", "type": "uses"},
+    {"source": "ASP231.1", "target": "ASP231.2", "type": "uses"},
+    {"source": "ASP231.2", "target": "ASP231.3", "type": "uses"},
+    {"source": "ASP231.3", "target": "ASP231.4", "type": "uses"},
+    {"source": "ASP231.4", "target": "ASP231.5", "type": "uses"},
+    {"source": "ASP231.6", "target": "ASP231.7", "type": "uses"},
+    {"source": "ASP231.7", "target": "ASP231.8", "type": "uses"},
+    {"source": "ASP231.8", "target": "ASP231.9", "type": "uses"},
+    {"source": "ASP231.10", "target": "ASP231.11", "type": "uses"},
+    {"source": "ASP231.11", "target": "ASP231.12", "type": "uses"},
+    {"source": "ASP231.12", "target": "ASP231.13", "type": "uses"}
+  ]
+}

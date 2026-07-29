@@ -1,0 +1,504 @@
+{
+  "metadata": {
+    "title": "A Simple Framework for Contrastive Learning of Visual Representations",
+    "paper_num": 228,
+    "authors": "Ting Chen, Simon Kornblith, Mohammad Norouzi, Geoffrey Hinton",
+    "year": 2020,
+    "venue": "ICML 2020",
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "DP228.1",
+      "type": "definition",
+      "name": "Stochastic data augmentation module",
+      "section": "2.1 The Contrastive Learning Framework",
+      "statement": "A stochastic transformation that maps a data example $\\bm{x}$ to two correlated augmented views $\\tilde{\\bm{x}}_i = t(\\bm{x})$ and $\\tilde{\\bm{x}}_j = t'(\\bm{x})$ with $t,t'\\sim \\mathcal{T}$, treated as a positive pair.",
+      "statement_clean": "A random augmentation operator that produces two correlated views of the same input image, forming a positive pair.",
+      "origin": "paper",
+      "tags": ["augmentation", "positive_pair"]
+    },
+    {
+      "id": "DP228.2",
+      "type": "definition",
+      "name": "Base encoder $f(\\cdot)$",
+      "section": "2.1 The Contrastive Learning Framework",
+      "statement": "A neural network $f(\\cdot)$ extracting representation vectors from augmented views: $\\bm{h}_i = f(\\tilde{\\bm{x}}_i) = \\mathrm{ResNet}(\\tilde{\\bm{x}}_i)$ with $\\bm{h}_i\\in \\mathbb{R}^d$ taken after average pooling.",
+      "statement_clean": "Encoder network mapping an augmented image to a representation vector h.",
+      "origin": "paper",
+      "tags": ["encoder", "ResNet"]
+    },
+    {
+      "id": "DP228.3",
+      "type": "definition",
+      "name": "Projection head $g(\\cdot)$",
+      "section": "2.1 The Contrastive Learning Framework",
+      "statement": "A small MLP with one hidden layer mapping representations to the contrastive-loss space: $\\bm{z}_i = g(\\bm{h}_i) = W^{(2)}\\sigma(W^{(1)}\\bm{h}_i)$ where $\\sigma$ is ReLU.",
+      "statement_clean": "Two-layer MLP that maps representations h to the embedding space z where the contrastive loss is computed.",
+      "origin": "paper",
+      "tags": ["projection_head", "MLP"]
+    },
+    {
+      "id": "DP228.4",
+      "type": "definition",
+      "name": "Contrastive prediction task",
+      "section": "2.1 The Contrastive Learning Framework",
+      "statement": "Given a set $\\{\\tilde{\\bm{x}}_k\\}$ that contains a positive pair $(\\tilde{\\bm{x}}_i,\\tilde{\\bm{x}}_j)$, the task is to identify $\\tilde{\\bm{x}}_j$ in $\\{\\tilde{\\bm{x}}_k\\}_{k\\ne i}$ for a given $\\tilde{\\bm{x}}_i$.",
+      "statement_clean": "Identify which augmented view in the batch is the matching positive for a given anchor view.",
+      "origin": "paper",
+      "tags": ["contrastive_task"]
+    },
+    {
+      "id": "DP228.5",
+      "type": "definition",
+      "name": "Cosine similarity $\\mathrm{sim}(\\bm{u},\\bm{v})$",
+      "section": "2.1 The Contrastive Learning Framework",
+      "statement": "$\\mathrm{sim}(\\bm{u},\\bm{v}) = \\bm{u}^\\top \\bm{v}/(\\lVert\\bm{u}\\rVert\\,\\lVert\\bm{v}\\rVert)$, the dot product between $\\ell_2$-normalized $\\bm{u}$ and $\\bm{v}$.",
+      "statement_clean": "Cosine similarity between two vectors, equal to their dot product after l2 normalization.",
+      "origin": "paper",
+      "tags": ["similarity"]
+    },
+    {
+      "id": "DP228.6",
+      "type": "definition",
+      "name": "NT-Xent loss",
+      "section": "2.1 The Contrastive Learning Framework",
+      "statement": "Normalized Temperature-scaled Cross Entropy loss for a positive pair $(i,j)$: $\\ell_{i,j} = -\\log \\frac{\\exp(\\mathrm{sim}(\\bm{z}_i,\\bm{z}_j)/\\tau)}{\\sum_{k=1}^{2N}\\mathbbm{1}_{[k\\ne i]}\\exp(\\mathrm{sim}(\\bm{z}_i,\\bm{z}_k)/\\tau)}$, with temperature $\\tau$ and $2N$ in-batch examples.",
+      "statement_clean": "Per-pair contrastive loss combining cosine similarity, temperature scaling and softmax cross-entropy over in-batch negatives.",
+      "origin": "paper",
+      "tags": ["loss", "contrastive"]
+    },
+    {
+      "id": "DP228.7",
+      "type": "definition",
+      "name": "NT-Logistic loss",
+      "section": "4.1 Loss Functions and Batch Size",
+      "statement": "Negative loss for a positive pair $(\\bm{u},\\bm{v}^+)$ and negative $\\bm{v}^-$: $\\log\\sigma(\\bm{u}^\\top\\bm{v}^+/\\tau) + \\log\\sigma(-\\bm{u}^\\top\\bm{v}^-/\\tau)$ with $\\ell_2$-normalized inputs.",
+      "statement_clean": "Logistic contrastive loss applied to temperature-scaled cosine similarities.",
+      "origin": "paper",
+      "tags": ["loss"]
+    },
+    {
+      "id": "DP228.8",
+      "type": "definition",
+      "name": "Margin Triplet loss",
+      "section": "4.1 Loss Functions and Batch Size",
+      "statement": "Negative loss $-\\max(\\bm{u}^\\top\\bm{v}^- - \\bm{u}^\\top\\bm{v}^+ + m, 0)$ for $\\ell_2$-normalized $\\bm{u},\\bm{v}^+,\\bm{v}^-$ and margin $m$.",
+      "statement_clean": "Hinge-style triplet loss enforcing positive similarity exceeds negative similarity by at least m.",
+      "origin": "paper",
+      "tags": ["loss", "margin"]
+    },
+    {
+      "id": "DP228.9",
+      "type": "definition",
+      "name": "Linear evaluation protocol",
+      "section": "2.3 Evaluation Protocol",
+      "statement": "Quality of a learned representation is measured by training a linear classifier on top of the frozen base encoder $f(\\cdot)$ and reporting test accuracy.",
+      "statement_clean": "Standard probe protocol: freeze the encoder, fit a linear classifier, measure accuracy.",
+      "origin": "external",
+      "origin_citation": "Zhang et al. 2016; Oord et al. 2018; Kolesnikov et al. 2019",
+      "tags": ["evaluation"]
+    },
+    {
+      "id": "DP228.10",
+      "type": "definition",
+      "name": "Global BN",
+      "section": "2.2 Training with Large Batch Size",
+      "statement": "Batch normalization in which the BN mean and variance are aggregated across all devices during distributed training, instead of being computed per device.",
+      "statement_clean": "Batch normalization with statistics aggregated across all replicas to remove local information leakage between positives.",
+      "origin": "paper",
+      "tags": ["batch_norm", "distributed"]
+    },
+    {
+      "id": "AP228.1",
+      "type": "algorithm",
+      "name": "SimCLR main learning algorithm",
+      "section": "2.1 The Contrastive Learning Framework (Algorithm 1)",
+      "statement": "Iterative minibatch SGD that, for each minibatch, applies two random augmentations to every example, encodes them with $f$ then $g$, computes pairwise cosine similarities, minimizes the symmetric NT-Xent loss, and returns the trained encoder $f(\\cdot)$.",
+      "statement_clean": "End-to-end training procedure that learns f and g by minimizing NT-Xent over augmented in-batch positive/negative pairs and discards g at the end.",
+      "input": [
+        "Batch size $N$",
+        "Temperature constant $\\tau$",
+        "Encoder structure $f$, projection head $g$, augmentation distribution $\\mathcal{T}$"
+      ],
+      "output": [
+        "Trained encoder network $f(\\cdot)$",
+        "(Projection head $g(\\cdot)$ is discarded after training)"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "self_supervised", "SGD"]
+    },
+    {
+      "id": "ASP228.1",
+      "type": "algorithm_step",
+      "parent_id": "AP228.1",
+      "step_order": 1,
+      "name": "Sample two augmentations per example",
+      "section": "2.1 (Algorithm 1)",
+      "statement": "For each $k\\in\\{1,\\dots,N\\}$ draw $t,t'\\sim \\mathcal{T}$ and form $\\tilde{\\bm{x}}_{2k-1}=t(\\bm{x}_k)$, $\\tilde{\\bm{x}}_{2k}=t'(\\bm{x}_k)$.",
+      "subclass": "loop",
+      "tags": ["augmentation"]
+    },
+    {
+      "id": "ASP228.2",
+      "type": "algorithm_step",
+      "parent_id": "AP228.1",
+      "step_order": 2,
+      "name": "Encode and project all $2N$ views",
+      "section": "2.1 (Algorithm 1)",
+      "statement": "Compute $\\bm{h}_{2k-1}=f(\\tilde{\\bm{x}}_{2k-1})$, $\\bm{z}_{2k-1}=g(\\bm{h}_{2k-1})$ and similarly for $\\tilde{\\bm{x}}_{2k}$.",
+      "subclass": "update",
+      "tags": ["encoder", "projection"]
+    },
+    {
+      "id": "ASP228.3",
+      "type": "algorithm_step",
+      "parent_id": "AP228.1",
+      "step_order": 3,
+      "name": "Pairwise cosine similarities",
+      "section": "2.1 (Algorithm 1)",
+      "statement": "For all $i,j\\in\\{1,\\dots,2N\\}$ compute $s_{i,j}=\\bm{z}_i^\\top \\bm{z}_j/(\\lVert\\bm{z}_i\\rVert\\,\\lVert\\bm{z}_j\\rVert)$.",
+      "subclass": "update",
+      "tags": ["similarity"]
+    },
+    {
+      "id": "ASP228.4",
+      "type": "algorithm_step",
+      "parent_id": "AP228.1",
+      "step_order": 4,
+      "name": "Symmetric NT-Xent objective",
+      "section": "2.1 (Algorithm 1)",
+      "statement": "Define $\\ell(i,j) = -\\log \\frac{\\exp(s_{i,j}/\\tau)}{\\sum_{k=1}^{2N}\\mathbbm{1}_{[k\\ne i]}\\exp(s_{i,k}/\\tau)}$ and $\\mathcal{L} = \\frac{1}{2N}\\sum_{k=1}^{N}[\\ell(2k-1,2k)+\\ell(2k,2k-1)]$.",
+      "subclass": "update",
+      "tags": ["loss"]
+    },
+    {
+      "id": "ASP228.5",
+      "type": "algorithm_step",
+      "parent_id": "AP228.1",
+      "step_order": 5,
+      "name": "Update networks",
+      "section": "2.1 (Algorithm 1)",
+      "statement": "Update parameters of $f$ and $g$ with one optimizer step (LARS) to minimize $\\mathcal{L}$.",
+      "subclass": "update",
+      "tags": ["optimizer", "LARS"]
+    },
+    {
+      "id": "ASP228.6",
+      "type": "algorithm_step",
+      "parent_id": "AP228.1",
+      "step_order": 6,
+      "name": "Return encoder, drop projection head",
+      "section": "2.1 (Algorithm 1)",
+      "statement": "After training, return $f(\\cdot)$ and discard $g(\\cdot)$; use $\\bm{h}=f(\\tilde{\\bm{x}})$ as the representation for downstream tasks.",
+      "subclass": "return",
+      "tags": ["return"]
+    },
+    {
+      "id": "AP228.2",
+      "type": "algorithm",
+      "name": "Color distortion augmentation",
+      "section": "Appendix A (Data Augmentation Details)",
+      "statement": "Composite color augmentation that randomly applies (with prob.\\ 0.8) brightness/contrast/saturation/hue jitter scaled by strength $s$, and (with prob.\\ 0.2) drops color by converting to grayscale.",
+      "input": [
+        "Image with values in $[0,1]$",
+        "Strength parameter $s$"
+      ],
+      "output": [
+        "Color-jittered (and possibly grayscale) image"
+      ],
+      "origin": "paper",
+      "tags": ["augmentation"]
+    },
+    {
+      "id": "EP228.1",
+      "type": "equation",
+      "name": "NT-Xent per-pair loss (Eq.\\ 1)",
+      "section": "2.1 The Contrastive Learning Framework",
+      "statement": "$\\ell_{i,j} = -\\log \\frac{\\exp(\\mathrm{sim}(\\bm{z}_i,\\bm{z}_j)/\\tau)}{\\sum_{k=1}^{2N} \\mathbbm{1}_{[k\\ne i]}\\exp(\\mathrm{sim}(\\bm{z}_i,\\bm{z}_k)/\\tau)}$.",
+      "origin": "paper",
+      "tags": ["loss"]
+    },
+    {
+      "id": "EP228.2",
+      "type": "equation",
+      "name": "Symmetric minibatch loss",
+      "section": "2.1 (Algorithm 1)",
+      "statement": "$\\mathcal{L} = \\frac{1}{2N}\\sum_{k=1}^{N}\\bigl[\\ell(2k-1,2k) + \\ell(2k,2k-1)\\bigr]$.",
+      "origin": "paper",
+      "tags": ["loss"]
+    },
+    {
+      "id": "ProbP228.1",
+      "type": "problem",
+      "name": "Self-supervised visual representation learning",
+      "section": "1 Introduction",
+      "statement": "Learn a representation $\\bm{h}=f(\\bm{x})$ from unlabeled images such that simple downstream classifiers (linear, semi-supervised, or fine-tuned) attain high accuracy on tasks like ImageNet ILSVRC-2012.",
+      "statement_clean": "Learn useful image features without labels and evaluate them on ImageNet and transfer benchmarks.",
+      "origin": "paper",
+      "tags": ["representation_learning", "self_supervised"]
+    },
+    {
+      "id": "ClP228.1",
+      "type": "claim",
+      "name": "Composition of augmentations is crucial",
+      "section": "3.1",
+      "statement": "No single data augmentation suffices to learn good representations; the combination of random cropping with random color distortion is critical for strong contrastive features on ImageNet.",
+      "assumptions": [
+        "SimCLR framework with default architecture",
+        "ImageNet pretraining under linear evaluation"
+      ],
+      "conclusions": [
+        "Composing two augmentations (especially crop $+$ color distortion) yields markedly higher linear-evaluation top-1 accuracy than any single augmentation"
+      ],
+      "origin": "paper",
+      "tags": ["empirical"]
+    },
+    {
+      "id": "ClP228.2",
+      "type": "claim",
+      "name": "Contrastive learning needs stronger color augmentation than supervised",
+      "section": "3.2",
+      "statement": "Stronger color distortion substantially improves SimCLR's linear-evaluation accuracy, whereas it does not help (and may hurt) supervised ResNet-50 trained on the same pipeline.",
+      "assumptions": [
+        "ResNet-50 backbone",
+        "Color distortion strength varied from $1/8$ to $1$ (+Blur)"
+      ],
+      "conclusions": [
+        "SimCLR top-1 monotonically improves from $59.6\\%$ to $64.5\\%$ with stronger color augmentation",
+        "Supervised top-1 mildly degrades from $77.0\\%$ to $75.4\\%$ over the same range"
+      ],
+      "origin": "paper",
+      "tags": ["empirical", "augmentation"]
+    },
+    {
+      "id": "ClP228.3",
+      "type": "claim",
+      "name": "Unsupervised contrastive learning benefits more from bigger models",
+      "section": "4.1 (Architectures)",
+      "statement": "Increasing depth and width improves SimCLR more than supervised baselines, so the gap between supervised and self-supervised linear-eval accuracy shrinks as model size grows.",
+      "assumptions": [
+        "ResNet-50 family with width multipliers $1\\times,2\\times,4\\times$",
+        "Linear evaluation on ImageNet"
+      ],
+      "conclusions": [
+        "Self-supervised top-1 catches up to supervised as parameter count grows, matching at ResNet-50 ($4\\times$)"
+      ],
+      "origin": "paper",
+      "tags": ["empirical", "scaling"]
+    },
+    {
+      "id": "ClP228.4",
+      "type": "claim",
+      "name": "Nonlinear projection head improves representation quality",
+      "section": "3.3",
+      "statement": "A nonlinear MLP projection head $g$ yields substantially better linear-eval accuracy than a linear or identity head, and the layer $\\bm{h}$ before $g$ is a better representation than $\\bm{z}=g(\\bm{h})$.",
+      "assumptions": [
+        "Three head choices: identity, linear, MLP with ReLU",
+        "Linear evaluation on ImageNet, $\\dim(\\bm{h})=2048$"
+      ],
+      "conclusions": [
+        "Nonlinear head outperforms linear by $\\sim 3\\%$ and identity by $>10\\%$",
+        "$\\bm{h}$ retains $>10\\%$ more linear-eval accuracy than $\\bm{z}$ even with the nonlinear head"
+      ],
+      "origin": "paper",
+      "tags": ["empirical", "projection_head"]
+    },
+    {
+      "id": "ClP228.5",
+      "type": "claim",
+      "name": "$\\ell_2$ normalization and temperature matter",
+      "section": "4.1",
+      "statement": "Without $\\ell_2$ normalization or with poorly chosen temperature $\\tau$, NT-Xent's linear-eval accuracy drops sharply, even though the contrastive task accuracy may rise.",
+      "assumptions": [
+        "NT-Xent loss on ImageNet pretraining",
+        "Vary $\\ell_2$ normalization on/off and $\\tau\\in\\{0.05,0.1,0.5,1,10,100\\}$"
+      ],
+      "conclusions": [
+        "Best top-1 ($\\sim 64.4\\%$) at normalized embeddings with $\\tau=0.1$",
+        "Removing $\\ell_2$ normalization drops top-1 to $\\sim 57\\%$ even with tuned $\\tau$"
+      ],
+      "origin": "paper",
+      "tags": ["empirical", "loss"]
+    },
+    {
+      "id": "ClP228.6",
+      "type": "claim",
+      "name": "Larger batch sizes and longer training help more in contrastive learning",
+      "section": "4.2",
+      "statement": "When training epochs are limited, larger batch sizes give SimCLR significant gains; the advantage shrinks with longer training because both effects supply more negatives.",
+      "assumptions": [
+        "ResNet-50, batch size $\\in\\{256,\\dots,8192\\}$",
+        "Epochs $\\in\\{100,\\dots,1000\\}$"
+      ],
+      "conclusions": [
+        "Large-batch advantage is largest at $100$ epochs and diminishes by $1000$ epochs",
+        "Performance keeps improving with longer training; saturates near batch size $8192$"
+      ],
+      "origin": "paper",
+      "tags": ["empirical", "batch_size"]
+    },
+    {
+      "id": "ClP228.7",
+      "type": "claim",
+      "name": "NT-Xent outperforms logistic and margin losses",
+      "section": "4.1",
+      "statement": "Even with semi-hard negative mining and tuned hyperparameters, logistic and margin contrastive losses fall well short of NT-Xent on ImageNet linear evaluation.",
+      "assumptions": [
+        "Same $\\ell_2$ normalization and tuned hyperparameters per loss",
+        "Single-side negatives for fair comparison"
+      ],
+      "conclusions": [
+        "NT-Xent: $63.9\\%$ top-1; best alternative (NT-Logistic with semi-hard mining): $57.9\\%$"
+      ],
+      "origin": "paper",
+      "tags": ["empirical", "loss"]
+    },
+    {
+      "id": "ExP228.1",
+      "type": "example",
+      "name": "ImageNet linear evaluation, ResNet-50 ($4\\times$)",
+      "section": "5 Comparison with State-of-the-art",
+      "statement": "SimCLR with ResNet-50 ($4\\times$) achieves $76.5\\%$ top-1 / $93.2\\%$ top-5 ImageNet accuracy under linear evaluation, matching a supervised ResNet-50 and improving the best prior self-supervised result by $\\sim 7\\%$ relative.",
+      "origin": "paper",
+      "tags": ["benchmark", "ImageNet"]
+    },
+    {
+      "id": "ExP228.2",
+      "type": "example",
+      "name": "Semi-supervised ImageNet with $1\\%$ / $10\\%$ labels",
+      "section": "5 Comparison with State-of-the-art",
+      "statement": "Fine-tuning SimCLR ResNet-50 ($4\\times$) on $1\\%$ ($10\\%$) of ImageNet labels yields $85.8\\%$ ($92.6\\%$) top-5 accuracy, surpassing prior self-supervised and label-propagation methods.",
+      "origin": "paper",
+      "tags": ["benchmark", "semi_supervised"]
+    },
+    {
+      "id": "ExP228.3",
+      "type": "example",
+      "name": "Transfer learning across $12$ image datasets",
+      "section": "5 / Appendix B.6",
+      "statement": "When fine-tuned, SimCLR ResNet-50 ($4\\times$) is statistically tied with or beats a supervised ResNet-50 ($4\\times$) baseline on $10$ of $12$ natural-image classification datasets (Food, CIFAR-10/100, Birdsnap, SUN397, Cars, Aircraft, VOC2007, DTD, Pets, Caltech-101, Flowers).",
+      "origin": "paper",
+      "tags": ["transfer_learning"]
+    },
+    {
+      "id": "ExP228.4",
+      "type": "example",
+      "name": "CIFAR-10 ablation",
+      "section": "Appendix B.5",
+      "statement": "On CIFAR-10 with a ResNet-50 (modified stem), SimCLR pretraining attains $94.0\\%$ linear-evaluation accuracy versus $95.1\\%$ supervised, confirming the ImageNet observations on a smaller dataset.",
+      "origin": "paper",
+      "tags": ["ablation", "CIFAR-10"]
+    },
+    {
+      "id": "ExP228.5",
+      "type": "example",
+      "name": "Color-histogram leakage of cropping",
+      "section": "3.1",
+      "statement": "Histograms of pixel intensities for crops of the same image are nearly identical and differ across images, demonstrating that without color distortion the network can solve the contrastive task using color shortcuts.",
+      "origin": "paper",
+      "tags": ["diagnostic"]
+    },
+    {
+      "id": "ExP228.6",
+      "type": "example",
+      "name": "Representation invariance probe",
+      "section": "3.3",
+      "statement": "MLPs trained to predict applied transformations achieve much higher accuracy from $\\bm{h}$ than from $\\bm{z}=g(\\bm{h})$ (e.g.\\ rotation: $67.6\\%$ vs.\\ $25.6\\%$), indicating $g$ removes transformation-related information.",
+      "origin": "paper",
+      "tags": ["diagnostic", "projection_head"]
+    },
+    {
+      "id": "RP228.1",
+      "type": "remark",
+      "name": "Why $\\bm{h}$ beats $\\bm{z}$",
+      "section": "3.3",
+      "statement": "The contrastive loss makes $\\bm{z}=g(\\bm{h})$ invariant to data transformations, so $g$ may discard information (color, orientation) useful downstream; preserving it in $\\bm{h}$ gives a richer representation.",
+      "origin": "paper",
+      "tags": ["interpretation"]
+    },
+    {
+      "id": "RP228.2",
+      "type": "remark",
+      "name": "LARS optimizer for large batches",
+      "section": "2.2",
+      "statement": "Standard SGD/Momentum with linear LR scaling is unstable at large batch size; the LARS optimizer is used for all batch sizes to stabilize training.",
+      "origin": "paper",
+      "tags": ["optimizer"]
+    },
+    {
+      "id": "RP228.3",
+      "type": "remark",
+      "name": "Square-root LR scaling for LARS",
+      "section": "Appendix B.1",
+      "statement": "With LARS, square-root LR scaling $\\mathrm{LR}=0.075\\sqrt{\\mathrm{BatchSize}}$ outperforms linear scaling at small batch sizes / fewer epochs while matching at the default batch size $4096$.",
+      "origin": "paper",
+      "tags": ["optimizer", "lr_schedule"]
+    },
+    {
+      "id": "RP228.4",
+      "type": "remark",
+      "name": "Discarding the projection head at deployment",
+      "section": "2.1",
+      "statement": "After training, the projection head $g$ is discarded; only $f$ and $\\bm{h}$ are used for downstream tasks, since $\\bm{h}$ is empirically the better representation.",
+      "origin": "paper",
+      "tags": ["design"]
+    }
+  ],
+  "edges": [
+    {"source": "DP228.5", "target": "DP228.6", "type": "uses"},
+    {"source": "DP228.5", "target": "EP228.1", "type": "uses"},
+    {"source": "DP228.6", "target": "EP228.1", "type": "uses"},
+    {"source": "DP228.1", "target": "AP228.1", "type": "uses"},
+    {"source": "DP228.2", "target": "AP228.1", "type": "uses"},
+    {"source": "DP228.3", "target": "AP228.1", "type": "uses"},
+    {"source": "DP228.4", "target": "AP228.1", "type": "uses"},
+    {"source": "DP228.6", "target": "AP228.1", "type": "uses"},
+    {"source": "EP228.1", "target": "EP228.2", "type": "uses"},
+    {"source": "AP228.1", "target": "ProbP228.1", "type": "solves"},
+    {"source": "ASP228.1", "target": "ASP228.2", "type": "uses"},
+    {"source": "ASP228.2", "target": "ASP228.3", "type": "uses"},
+    {"source": "ASP228.3", "target": "ASP228.4", "type": "uses"},
+    {"source": "ASP228.4", "target": "ASP228.5", "type": "uses"},
+    {"source": "ASP228.5", "target": "ASP228.6", "type": "uses"},
+    {"source": "DP228.1", "target": "ASP228.1", "type": "uses"},
+    {"source": "DP228.2", "target": "ASP228.2", "type": "uses"},
+    {"source": "DP228.3", "target": "ASP228.2", "type": "uses"},
+    {"source": "DP228.5", "target": "ASP228.3", "type": "uses"},
+    {"source": "EP228.1", "target": "ASP228.4", "type": "uses"},
+    {"source": "EP228.2", "target": "ASP228.4", "type": "uses"},
+    {"source": "AP228.2", "target": "DP228.1", "type": "uses"},
+    {"source": "DP228.10", "target": "AP228.1", "type": "uses"},
+    {"source": "AP228.1", "target": "ExP228.1", "type": "illustrates"},
+    {"source": "AP228.1", "target": "ExP228.2", "type": "illustrates"},
+    {"source": "AP228.1", "target": "ExP228.3", "type": "illustrates"},
+    {"source": "AP228.1", "target": "ExP228.4", "type": "illustrates"},
+    {"source": "AP228.1", "target": "ExP228.5", "type": "illustrates"},
+    {"source": "AP228.1", "target": "ExP228.6", "type": "illustrates"},
+    {"source": "AP228.1", "target": "ClP228.1", "type": "uses"},
+    {"source": "AP228.1", "target": "ClP228.2", "type": "uses"},
+    {"source": "AP228.1", "target": "ClP228.3", "type": "uses"},
+    {"source": "AP228.1", "target": "ClP228.4", "type": "uses"},
+    {"source": "AP228.1", "target": "ClP228.5", "type": "uses"},
+    {"source": "AP228.1", "target": "ClP228.6", "type": "uses"},
+    {"source": "AP228.1", "target": "ClP228.7", "type": "uses"},
+    {"source": "DP228.6", "target": "ClP228.5", "type": "uses"},
+    {"source": "DP228.6", "target": "ClP228.7", "type": "uses"},
+    {"source": "DP228.7", "target": "ClP228.7", "type": "uses"},
+    {"source": "DP228.8", "target": "ClP228.7", "type": "uses"},
+    {"source": "DP228.3", "target": "ClP228.4", "type": "uses"},
+    {"source": "AP228.2", "target": "ClP228.2", "type": "uses"},
+    {"source": "ClP228.4", "target": "RP228.1", "type": "uses"},
+    {"source": "ClP228.4", "target": "RP228.4", "type": "uses"},
+    {"source": "ExP228.5", "target": "ClP228.1", "type": "uses"},
+    {"source": "ExP228.6", "target": "ClP228.4", "type": "uses"},
+    {"source": "DP228.9", "target": "ExP228.1", "type": "uses"},
+    {"source": "DP228.9", "target": "ExP228.3", "type": "uses"},
+    {"source": "DP228.9", "target": "ExP228.4", "type": "uses"},
+    {"source": "RP228.2", "target": "AP228.1", "type": "uses"},
+    {"source": "RP228.3", "target": "AP228.1", "type": "uses"}
+  ]
+}

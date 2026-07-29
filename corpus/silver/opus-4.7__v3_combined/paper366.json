@@ -1,0 +1,596 @@
+{
+  "metadata": {
+    "title": "Improved Approximation Algorithms for Maximum Cut and Satisfiability Problems Using Semidefinite Programming",
+    "paper_num": 366,
+    "authors": "Michel X. Goemans, David P. Williamson",
+    "year": 1995,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-03",
+    "source_note": "Extracted from PDF->text fallback; .tex source not available. Math fidelity reduced."
+  },
+  "nodes": [
+    {
+      "id": "ProbP366.1",
+      "type": "problem",
+      "subclass": "optimization",
+      "name": "MAX CUT problem",
+      "section": "1",
+      "statement": "Given undirected graph $G=(V,E)$ with nonnegative edge weights $w_{ij}=w_{ji}$, find $S \\subseteq V$ that maximizes $w(S,\\bar{S}) = \\sum_{i \\in S, j \\in \\bar{S}} w_{ij}$.",
+      "statement_clean": "Find a vertex subset $S$ that maximizes the total weight of edges crossing between $S$ and its complement.",
+      "tags": ["NP-complete", "graph", "combinatorial-optimization"],
+      "origin": "external",
+      "origin_citation": "Karp 1972"
+    },
+    {
+      "id": "ProbP366.2",
+      "type": "problem",
+      "subclass": "optimization",
+      "name": "MAX 2SAT problem",
+      "section": "7.2",
+      "statement": "Given a collection $\\mathcal{C}$ of Boolean clauses, each of length at most 2, with nonnegative weights $w_j$, find an assignment of truth values that maximizes the total weight of satisfied clauses.",
+      "tags": ["NP-complete", "satisfiability"],
+      "origin": "external",
+      "origin_citation": "Garey, Johnson, Stockmeyer 1976"
+    },
+    {
+      "id": "ProbP366.3",
+      "type": "problem",
+      "subclass": "optimization",
+      "name": "MAX SAT problem",
+      "section": "7.2.2",
+      "statement": "Given a collection $\\mathcal{C}$ of weighted Boolean clauses (any length), find an assignment maximizing total weight of satisfied clauses.",
+      "tags": ["NP-complete", "satisfiability"],
+      "origin": "external"
+    },
+    {
+      "id": "ProbP366.4",
+      "type": "problem",
+      "subclass": "optimization",
+      "name": "MAX DICUT problem",
+      "section": "7.3",
+      "statement": "Given a directed graph $G=(V,A)$ with arc weights $w_{ij}$, find $S \\subseteq V$ maximizing the weight of arcs with tail in $S$ and head in $\\bar{S}$.",
+      "tags": ["NP-hard", "directed-graph"],
+      "origin": "external",
+      "origin_citation": "Papadimitriou & Yannakakis 1991"
+    },
+    {
+      "id": "ProbP366.5",
+      "type": "problem",
+      "subclass": "optimization",
+      "name": "MAX RES CUT problem",
+      "section": "7.1",
+      "statement": "Variant of MAX CUT where pairs of vertices in $E^+$ must lie on the same side and pairs in $E^-$ on different sides of the cut."
+    },
+    {
+      "id": "DP366.1",
+      "type": "definition",
+      "name": "$p$-approximation algorithm",
+      "section": "1",
+      "statement": "A polynomial-time algorithm that delivers a solution of value at least $p$ times the optimal value (for randomized variants, expected value at least $p \\cdot \\mathrm{OPT}$). The constant $p$ is the performance guarantee.",
+      "origin": "external"
+    },
+    {
+      "id": "DP366.2",
+      "type": "definition",
+      "name": "Semidefinite program",
+      "section": "1",
+      "statement": "Optimization of a linear function of a symmetric matrix $Y$ subject to linear equality constraints and the constraint that $Y$ is positive semidefinite.",
+      "origin": "external"
+    },
+    {
+      "id": "DP366.3",
+      "type": "definition",
+      "name": "Positive semidefinite matrix",
+      "section": "4.1",
+      "statement": "An $n \\times n$ symmetric matrix $A$ such that $x^T A x \\geq 0$ for every $x \\in \\mathbb{R}^n$. Equivalent: all eigenvalues nonnegative; or $A = B^T B$ for some matrix $B$.",
+      "origin": "external"
+    },
+    {
+      "id": "DP366.4",
+      "type": "definition",
+      "name": "Gram matrix",
+      "section": "4.1",
+      "statement": "For unit vectors $u_1,\\ldots,u_n \\in S_n$, the matrix $Y$ with $y_{ij}=u_i \\cdot u_j$. Any positive semidefinite $Y$ with $y_{ii}=1$ corresponds to such a set of unit vectors via $Y=B^T B$.",
+      "origin": "external",
+      "origin_citation": "Lancaster & Tismenetsky 1985"
+    },
+    {
+      "id": "DP366.5",
+      "type": "definition",
+      "name": "Laplacian matrix",
+      "section": "4.3",
+      "statement": "For a weighted graph, $L=(l_{ij})$ defined by $l_{ij}=-w_{ij}$ for $i \\neq j$ and $l_{ii}=\\sum_k w_{ik}$.",
+      "origin": "external"
+    },
+    {
+      "id": "DP366.6",
+      "type": "definition",
+      "name": "Correcting vector",
+      "section": "4.3",
+      "statement": "A vector $u \\in \\mathbb{R}^n$ satisfying $\\sum_{i=1}^n u_i = 0$, used in the Delorme-Poljak eigenvalue bound.",
+      "origin": "external",
+      "origin_citation": "Delorme & Poljak 1993"
+    },
+    {
+      "id": "DP366.7",
+      "type": "definition",
+      "name": "Strongly self-dual polytope",
+      "section": "5",
+      "statement": "A polytope $P \\subseteq \\mathbb{R}^n$ inscribed in the unit sphere, circumscribed around a sphere of radius $r$ ($0<r \\leq 1$), with a bijection $\\sigma$ between vertices and facets such that facet $\\sigma(v)$ is orthogonal to vertex $v$.",
+      "origin": "external",
+      "origin_citation": "Lovasz 1983"
+    },
+    {
+      "id": "DP366.8",
+      "type": "definition",
+      "name": "Constant $\\alpha$ (MAX CUT performance guarantee)",
+      "section": "1",
+      "statement": "$\\alpha = \\min_{0 < \\theta \\leq \\pi} \\frac{2}{\\pi} \\cdot \\frac{\\theta}{1-\\cos\\theta} > 0.87856$, achieved at $\\theta=2.331122\\ldots$, the nonzero root of $\\cos\\theta + \\theta\\sin\\theta = 1$."
+    },
+    {
+      "id": "DP366.9",
+      "type": "definition",
+      "name": "Constant $\\beta$ (MAX DICUT performance guarantee)",
+      "section": "1",
+      "statement": "$\\beta = \\min_{0 \\leq \\theta \\leq \\arccos(-1/3)} \\frac{2}{\\pi} \\cdot \\frac{2\\theta - \\pi}{1 + 3\\cos\\theta} > 0.79607$."
+    },
+    {
+      "id": "EP366.Q",
+      "type": "equation",
+      "name": "Integer quadratic program (Q) for MAX CUT",
+      "section": "2",
+      "statement": "Maximize $\\tfrac{1}{2}\\sum_{i<j} w_{ij}(1 - y_i y_j)$ subject to $y_i \\in \\{-1,1\\}$ for all $i \\in V$. The set $S=\\{i : y_i=1\\}$ realizes a cut of weight $\\tfrac{1}{2}\\sum_{i<j} w_{ij}(1-y_i y_j)$."
+    },
+    {
+      "id": "EP366.P",
+      "type": "equation",
+      "name": "Vector relaxation (P) of MAX CUT",
+      "section": "2",
+      "statement": "Maximize $\\tfrac{1}{2}\\sum_{i<j} w_{ij}(1 - u_i \\cdot u_j)$ subject to $u_i \\in S_n$ (unit sphere in $\\mathbb{R}^n$) for all $i \\in V$."
+    },
+    {
+      "id": "EP366.SD",
+      "type": "equation",
+      "name": "Semidefinite program (SD) for MAX CUT",
+      "section": "4.1",
+      "statement": "Maximize $\\tfrac{1}{2}\\sum_{i<j} w_{ij}(1-y_{ij})$ subject to $y_{ii}=1$ and $Y=(y_{ij})$ symmetric positive semidefinite."
+    },
+    {
+      "id": "EP366.D",
+      "type": "equation",
+      "name": "Dual semidefinite program (D)",
+      "section": "4.2",
+      "statement": "Minimize $\\tfrac{1}{4}\\sum_i \\gamma_i + \\tfrac{1}{4}\\sum_{i<j} w_{ij}$ subject to $W + \\mathrm{diag}(\\gamma)$ positive semidefinite."
+    },
+    {
+      "id": "AP366.1",
+      "type": "algorithm",
+      "name": "Goemans-Williamson MAX CUT algorithm",
+      "section": "2",
+      "statement": "Randomized $(\\alpha-\\epsilon)$-approximation: solve the SDP relaxation, then use a uniformly random hyperplane through the origin to partition the vectors.",
+      "input": [
+        "Undirected graph $G=(V,E)$ with nonnegative edge weights $w_{ij}$",
+        "Tolerance $\\epsilon > 0$"
+      ],
+      "output": [
+        "A cut $(S, \\bar{S})$ whose expected weight is at least $(\\alpha - \\epsilon) \\cdot Z_{MC}^*$"
+      ],
+      "pseudocode": "(1) Solve relaxation (P) (via SDP) to obtain optimal unit vectors $u_i$. (2) Draw $r$ uniformly from the unit sphere $S_n$. (3) Set $S = \\{i : u_i \\cdot r \\geq 0\\}$.",
+      "tags": ["randomized", "approximation", "hyperplane-rounding", "SDP"]
+    },
+    {
+      "id": "ASP366.1",
+      "type": "algorithm_step",
+      "parent_id": "AP366.1",
+      "step_order": 1,
+      "subclass": "initialize",
+      "name": "Solve SDP relaxation",
+      "section": "2",
+      "statement": "Solve the relaxation (P), obtaining an optimal set of unit vectors $u_1,\\ldots,u_n \\in S_n$ (computed via the equivalent SDP up to additive error $\\epsilon$)."
+    },
+    {
+      "id": "ASP366.2",
+      "type": "algorithm_step",
+      "parent_id": "AP366.1",
+      "step_order": 2,
+      "subclass": "initialize",
+      "name": "Draw random hyperplane",
+      "section": "2",
+      "statement": "Draw $r$ uniformly distributed on the unit sphere $S_n$ (e.g., normalize $n$ i.i.d. standard normals; normalization unnecessary for the sign test)."
+    },
+    {
+      "id": "ASP366.3",
+      "type": "algorithm_step",
+      "parent_id": "AP366.1",
+      "step_order": 3,
+      "subclass": "return",
+      "name": "Hyperplane rounding",
+      "section": "2",
+      "statement": "Return $S = \\{i : u_i \\cdot r \\geq 0\\}$, partitioning the vectors into those above and below the random hyperplane normal to $r$."
+    },
+    {
+      "id": "AP366.2",
+      "type": "algorithm",
+      "name": "MAX RES CUT algorithm",
+      "section": "7.1",
+      "statement": "Apply the MAX CUT algorithm to relaxation (P) augmented with constraints $u_i \\cdot u_j = 1$ for $(i,j) \\in E^+$ and $u_i \\cdot u_j = -1$ for $(i,j) \\in E^-$.",
+      "tags": ["randomized", "approximation"]
+    },
+    {
+      "id": "AP366.3",
+      "type": "algorithm",
+      "name": "MAX 2SAT algorithm",
+      "section": "7.2.1",
+      "statement": "Randomized $(\\alpha-\\epsilon)$-approximation for MAX 2SAT via vector relaxation (P') of (Q'), with hyperplane rounding using auxiliary vector $u_0$ to define truth values.",
+      "input": [
+        "MAX 2SAT instance with weighted clauses of length $\\leq 2$"
+      ],
+      "output": [
+        "Truth assignment with expected weight $\\geq (\\alpha - \\epsilon) \\cdot \\mathrm{OPT}$"
+      ],
+      "tags": ["randomized", "approximation"]
+    },
+    {
+      "id": "AP366.4",
+      "type": "algorithm",
+      "name": "MAX SAT $.7584$-approximation algorithm",
+      "section": "7.2.2",
+      "statement": "Randomized algorithm picking with probabilities $p_1,p_2,p_3$ among: (1) $x_i$ true with prob $1/2$; (2) $x_i$ true with prob $v(x_i)$ from SDP; (3) hyperplane rounding $\\mathrm{sgn}(u_i \\cdot r) = \\mathrm{sgn}(u_0 \\cdot r)$. With $p_1=p_2=.467, p_3=.066$ achieves $.7584$.",
+      "tags": ["randomized", "approximation"]
+    },
+    {
+      "id": "AP366.5",
+      "type": "algorithm",
+      "name": "MAX DICUT algorithm",
+      "section": "7.3",
+      "statement": "Same hyperplane rounding applied to vector relaxation (P'') of integer quadratic program (Q'') for directed cut, yielding $(\\beta-\\epsilon)$-approximation with $\\beta > 0.79607$.",
+      "tags": ["randomized", "approximation"]
+    },
+    {
+      "id": "TP366.3.1",
+      "type": "theorem",
+      "name": "Expected cut value (Theorem 3.1)",
+      "section": "3",
+      "statement": "Given any unit vectors $u_i \\in S_n$, the expected weight of the cut produced by the random hyperplane algorithm equals $E[W] = \\sum_{i<j} w_{ij} \\cdot \\frac{\\arccos(u_i \\cdot u_j)}{\\pi}$.",
+      "assumptions": ["$u_1,\\ldots,u_n \\in S_n$ unit vectors", "$r$ uniform on $S_n$"],
+      "conclusions": ["$E[W] = \\sum_{i<j} w_{ij} \\frac{\\arccos(u_i \\cdot u_j)}{\\pi}$"],
+      "tags": ["expectation"]
+    },
+    {
+      "id": "LP366.3.2",
+      "type": "lemma",
+      "name": "Hyperplane separation probability (Lemma 3.2)",
+      "section": "3",
+      "statement": "$\\Pr[\\mathrm{sgn}(u_i \\cdot r) \\neq \\mathrm{sgn}(u_j \\cdot r)] = \\frac{1}{\\pi}\\arccos(u_i \\cdot u_j)$.",
+      "assumptions": ["$r$ uniform on $S_n$"],
+      "conclusions": ["$\\Pr[\\mathrm{sgn}(u_i \\cdot r) \\neq \\mathrm{sgn}(u_j \\cdot r)] = \\arccos(u_i \\cdot u_j)/\\pi$"]
+    },
+    {
+      "id": "PP366.3.2",
+      "type": "proof",
+      "parent_id": "LP366.3.2",
+      "proves": "LP366.3.2",
+      "name": "Proof of Lemma 3.2",
+      "section": "3",
+      "statement": "By symmetry, the probability the random hyperplane separates $u_i,u_j$ equals $2\\Pr[u_i \\cdot r \\geq 0, u_j \\cdot r < 0]$. The set $\\{r: u_i \\cdot r \\geq 0, u_j \\cdot r < 0\\}$ is a spherical digon of angle $\\theta = \\arccos(u_i \\cdot u_j)$, so it has measure $\\theta/(2\\pi)$ of the sphere; result follows."
+    },
+    {
+      "id": "TP366.3.3",
+      "type": "theorem",
+      "name": "Performance guarantee (Theorem 3.3)",
+      "section": "3",
+      "statement": "$E[W] \\geq \\alpha \\cdot \\tfrac{1}{2}\\sum_{i<j} w_{ij}(1 - u_i \\cdot u_j)$, where $\\alpha = \\min_{0<\\theta\\leq\\pi} \\frac{2}{\\pi}\\frac{\\theta}{1-\\cos\\theta}$.",
+      "assumptions": ["$u_i \\in S_n$ unit vectors", "$w_{ij} \\geq 0$"],
+      "conclusions": ["$E[W] \\geq \\alpha \\cdot \\tfrac{1}{2}\\sum_{i<j} w_{ij}(1-u_i \\cdot u_j)$"],
+      "tags": ["bound", "approximation-ratio"]
+    },
+    {
+      "id": "LP366.3.4",
+      "type": "lemma",
+      "name": "Arccos lower bound (Lemma 3.4)",
+      "section": "3",
+      "statement": "For $-1 \\leq y \\leq 1$, $\\frac{1}{\\pi}\\arccos(y) \\geq \\alpha \\cdot \\tfrac{1}{2}(1-y)$.",
+      "assumptions": ["$-1 \\leq y \\leq 1$"],
+      "conclusions": ["$\\arccos(y)/\\pi \\geq \\alpha(1-y)/2$"]
+    },
+    {
+      "id": "LP366.3.5",
+      "type": "lemma",
+      "name": "Numerical bound on $\\alpha$ (Lemma 3.5)",
+      "section": "3",
+      "statement": "$\\alpha > 0.87856$.",
+      "assumptions": [],
+      "conclusions": ["$\\alpha > 0.87856$"]
+    },
+    {
+      "id": "PP366.3.5",
+      "type": "proof",
+      "parent_id": "LP366.3.5",
+      "proves": "LP366.3.5",
+      "name": "Proof of Lemma 3.5",
+      "section": "3",
+      "statement": "Calculus shows $\\alpha$ is achieved at $\\theta = 2.331122\\ldots$, the nonzero root of $\\cos\\theta + \\theta\\sin\\theta = 1$. Use concavity of $1-\\cos\\theta$ on $[\\pi/2,\\pi]$ to derive $\\alpha \\geq 2/(\\pi \\sin\\theta_0) > 0.87856$ at $\\theta_0=2.331122$."
+    },
+    {
+      "id": "TP366.3.1.1",
+      "type": "theorem",
+      "name": "Refined bound when MAX CUT is large (Theorem 3.1.1)",
+      "section": "3.1",
+      "statement": "Define $A = \\frac{1}{W_{\\mathrm{tot}}}\\sum_{i<j} w_{ij}\\frac{1-u_i \\cdot u_j}{2}$. If $A \\geq \\gamma \\approx 0.84458$, then $E[W] \\geq W_{\\mathrm{tot}} \\cdot h(A)$ where $h(t) = \\arccos(1-2t)/\\pi$, giving performance guarantee $h(A)/A - \\epsilon$.",
+      "assumptions": ["$A \\geq \\gamma$"],
+      "conclusions": ["$E[W] \\geq W_{\\mathrm{tot}} \\cdot h(A)$"]
+    },
+    {
+      "id": "PP366.3.1.1",
+      "type": "proof",
+      "parent_id": "TP366.3.1.1",
+      "proves": "TP366.3.1.1",
+      "name": "Proof of Theorem 3.1.1",
+      "section": "3.1",
+      "statement": "Set $\\lambda_e = w_e/W_{\\mathrm{tot}}$, $x_e=(1-u_i \\cdot u_j)/2$. Replace $h$ with its largest pointwise-convex minorant $\\bar{h}$ (linear of slope $\\alpha$ on $[0,\\gamma]$, equal to $h$ on $[\\gamma,1]$). For $A \\geq \\gamma$, $\\sum \\lambda_e h(x_e) \\geq \\sum \\lambda_e \\bar{h}(x_e) \\geq \\bar{h}(\\sum \\lambda_e x_e) = h(A)$ by Jensen on $\\bar{h}$."
+    },
+    {
+      "id": "TP366.3.2.1",
+      "type": "theorem",
+      "name": "Negative weights bound (Theorem 3.2.1)",
+      "section": "3.2",
+      "statement": "Let $W_- = \\sum_{i<j} w_{ij}^-$ where $x^- = \\min(0,x)$. Then $E[W] - W_- \\geq \\alpha \\left(\\tfrac{1}{2}\\sum_{i<j} w_{ij}(1-u_i \\cdot u_j) - W_-\\right)$.",
+      "assumptions": ["arbitrary edge weights $w_{ij}$"],
+      "conclusions": ["$E[W] - W_- \\geq \\alpha(\\tfrac{1}{2}\\sum w_{ij}(1-u_i \\cdot u_j) - W_-)$"]
+    },
+    {
+      "id": "LP366.3.2.2",
+      "type": "lemma",
+      "name": "Arccos variant bound (Lemma 3.2.2)",
+      "section": "3.2",
+      "statement": "For $-1 \\leq z \\leq 1$, $1 - \\frac{1}{\\pi}\\arccos(z) \\geq \\alpha \\cdot \\tfrac{1}{2}(1+z)$.",
+      "assumptions": ["$-1 \\leq z \\leq 1$"],
+      "conclusions": ["$1 - \\arccos(z)/\\pi \\geq \\alpha(1+z)/2$"]
+    },
+    {
+      "id": "TP366.3.3.1",
+      "type": "theorem",
+      "name": "MAX CUT alternative formulation (Theorem 3.3.1)",
+      "section": "3.3",
+      "statement": "$Z_R^* = Z_{MC}^*$, where (R) is the nonlinear program: maximize $\\sum_{i<j} w_{ij} \\arccos(u_i \\cdot u_j)/\\pi$ subject to $u_i \\in S_n$.",
+      "conclusions": ["Optimum of (R) equals the maximum cut value"]
+    },
+    {
+      "id": "PP366.3.3.1",
+      "type": "proof",
+      "parent_id": "TP366.3.3.1",
+      "proves": "TP366.3.3.1",
+      "name": "Proof of Theorem 3.3.1",
+      "section": "3.3",
+      "statement": "$Z_R^* \\geq Z_{MC}^*$ since (R) relaxes (Q) (the objective reduces correctly on $\\pm 1$ vectors). Conversely, by Theorem 3.1, given optimal vectors of (R), the random hyperplane algorithm produces a cut of expected value exactly $Z_R^*$, so some realized cut achieves at least this value."
+    },
+    {
+      "id": "LP366.4.3.1",
+      "type": "lemma",
+      "name": "Delorme-Poljak eigenvalue bound (Lemma 4.3.1)",
+      "section": "4.3",
+      "statement": "Let $u \\in \\mathbb{R}^n$ with $\\sum_i u_i = 0$. Then $\\frac{n}{4}\\lambda_{\\max}(L + \\mathrm{diag}(u))$ is an upper bound on $Z_{MC}^*$.",
+      "assumptions": ["$u$ correcting vector ($\\sum u_i = 0$)"],
+      "conclusions": ["$Z_{MC}^* \\leq \\tfrac{n}{4}\\lambda_{\\max}(L+\\mathrm{diag}(u))$"],
+      "origin": "external",
+      "origin_citation": "Delorme & Poljak 1993b"
+    },
+    {
+      "id": "PP366.4.3.1",
+      "type": "proof",
+      "parent_id": "LP366.4.3.1",
+      "proves": "LP366.4.3.1",
+      "name": "Proof of Lemma 4.3.1",
+      "section": "4.3",
+      "statement": "Let $y$ be optimal for (Q); then $y^T L y = 4 Z_{MC}^*$. By Rayleigh, $\\lambda_{\\max}(L+\\mathrm{diag}(u)) \\geq y^T(L+\\mathrm{diag}(u))y/(y^Ty) = (1/n)(4Z_{MC}^* + \\sum y_i^2 u_i) = 4 Z_{MC}^*/n$ since $y_i^2=1$ and $\\sum u_i = 0$."
+    },
+    {
+      "id": "EP366.EIG",
+      "type": "equation",
+      "name": "Eigenvalue minimization (EIG)",
+      "section": "4.3",
+      "statement": "$Z_{EIG}^* = \\inf g(u)$ subject to $\\sum_i u_i = 0$, where $g(u) = (n/4)\\lambda_{\\max}(L+\\mathrm{diag}(u))$.",
+      "origin": "external",
+      "origin_citation": "Delorme & Poljak 1993b"
+    },
+    {
+      "id": "CP366.5.1",
+      "type": "corollary",
+      "name": "Worst-case ratio (Corollary 5.1)",
+      "section": "5",
+      "statement": "For any MAX CUT instance, $Z_{MC}^*/Z_P^* \\geq \\alpha$.",
+      "conclusions": ["$Z_{MC}^*/Z_P^* \\geq \\alpha > 0.87856$"]
+    },
+    {
+      "id": "TP366.7.2.1.1",
+      "type": "theorem",
+      "name": "MAX 2SAT performance guarantee (Theorem 7.2.1.1)",
+      "section": "7.2.1",
+      "statement": "$E[V] \\geq \\alpha \\sum_{i<j}[a_{ij}(1-u_i \\cdot u_j) + b_{ij}(1+u_i \\cdot u_j)]$, implying $(\\alpha-\\epsilon)$-approximation for (Q') and MAX 2SAT.",
+      "assumptions": ["$a_{ij}, b_{ij} \\geq 0$"],
+      "conclusions": ["$E[V] \\geq \\alpha \\sum_{i<j}[a_{ij}(1-u_i \\cdot u_j) + b_{ij}(1+u_i \\cdot u_j)]$"]
+    },
+    {
+      "id": "LP366.7.3.1",
+      "type": "lemma",
+      "name": "Three-vector same-sign probability (Lemma 7.3.1)",
+      "section": "7.3",
+      "statement": "$\\Pr[\\mathrm{sgn}(u_i \\cdot r) = \\mathrm{sgn}(u_j \\cdot r) = \\mathrm{sgn}(u_k \\cdot r)] = 1 - \\frac{1}{2\\pi}(\\arccos(u_i \\cdot u_j) + \\arccos(u_i \\cdot u_k) + \\arccos(u_j \\cdot u_k))$.",
+      "assumptions": ["$r$ uniform on $S_n$", "$u_i,u_j,u_k \\in S_n$"],
+      "conclusions": ["formula for joint sign probability"]
+    },
+    {
+      "id": "PP366.7.3.1",
+      "type": "proof",
+      "parent_id": "LP366.7.3.1",
+      "proves": "LP366.7.3.1",
+      "name": "Proof of Lemma 7.3.1",
+      "section": "7.3",
+      "statement": "Define events $A$ (all sgn equal), $B_i,B_j,B_k$ (one differs), and $C_i,C_j,C_k$ (the pair excluding the index agrees). Use $\\Pr[A]+\\sum \\Pr[B_l]=1$, $\\Pr[C_l]=\\Pr[A]+\\Pr[B_l]$, sum to get $\\sum \\Pr[C_l] = 1+2\\Pr[A]$, then apply Lemma 3.2 to each $\\Pr[C_l]$.",
+      "tags": ["spherical-geometry", "Girard"]
+    },
+    {
+      "id": "LP366.7.3.2",
+      "type": "lemma",
+      "name": "Three-vector inequality for MAX DICUT (Lemma 7.3.2)",
+      "section": "7.3",
+      "statement": "For any $u_i,u_j,u_k \\in S_n$, $1 - \\frac{1}{2\\pi}(\\arccos(u_i \\cdot u_j) + \\arccos(u_i \\cdot u_k) + \\arccos(u_j \\cdot u_k)) \\geq \\frac{\\beta}{4}(1 + u_i \\cdot u_j + u_i \\cdot u_k + u_j \\cdot u_k)$.",
+      "assumptions": ["$u_i,u_j,u_k \\in S_n$"],
+      "conclusions": ["inequality involving $\\beta > 0.79607$"]
+    },
+    {
+      "id": "PP366.7.3.2",
+      "type": "proof",
+      "parent_id": "LP366.7.3.2",
+      "proves": "LP366.7.3.2",
+      "name": "Proof of Lemma 7.3.2",
+      "section": "7.3",
+      "statement": "Let $a=\\arccos(u_i \\cdot u_j), b=\\arccos(u_i \\cdot u_k), c=\\arccos(u_j \\cdot u_k)$ ranging over the spherical-triangle set $S$. Minimize $h(a,b,c)$ over $S$ via case analysis: boundary cases $a+b+c=2\\pi$, $c=a+b$ (and symmetric), zero / $\\pi$ cases reduce to interior; interior critical point yields $a=b=c$ giving $h \\geq 0$ from definition of $\\beta$."
+    },
+    {
+      "id": "PSP366.7.3.2.1",
+      "type": "proof_step",
+      "parent_id": "PP366.7.3.2",
+      "step_order": 1,
+      "subclass": "case_split",
+      "name": "Case 1: $a+b+c = 2\\pi$",
+      "section": "7.3",
+      "statement": "Then $1 - (a+b+c)/(2\\pi) = 0$ and trigonometric identities give $1+\\cos a + \\cos b + \\cos c = 2\\cos((a+b)/2)[\\cos((a+b)/2)+\\cos((a-b)/2)] \\leq 0$, so $h \\geq 0$."
+    },
+    {
+      "id": "PSP366.7.3.2.2",
+      "type": "proof_step",
+      "parent_id": "PP366.7.3.2",
+      "step_order": 2,
+      "subclass": "case_split",
+      "name": "Case 2: $c=a+b$ (or symmetric)",
+      "section": "7.3",
+      "statement": "Setting $x=(a+b)/2$, claim reduces to $1 - 2x/\\pi \\geq (\\beta/2)\\cos(x)(1+\\cos x)$, verifiable as $1 - 2x/\\pi \\geq (0.81989/2)\\cos x(1+\\cos x)$ for $0<x<\\pi/2$."
+    },
+    {
+      "id": "PSP366.7.3.2.3",
+      "type": "proof_step",
+      "parent_id": "PP366.7.3.2",
+      "step_order": 3,
+      "subclass": "case_split",
+      "name": "Cases 3-4: degenerate boundary",
+      "section": "7.3",
+      "statement": "If $a=0$ then $b=c$ and reduces to Case 2; if $a=\\pi$ then $b+c=\\pi$ and reduces to Case 1."
+    },
+    {
+      "id": "PSP366.7.3.2.4",
+      "type": "proof_step",
+      "parent_id": "PP366.7.3.2",
+      "step_order": 4,
+      "subclass": "case_split",
+      "name": "Case 5: interior critical point",
+      "section": "7.3",
+      "statement": "Gradient vanishes implies $\\sin a=\\sin b=\\sin c=2/(\\beta\\pi)$ with $\\cos a,\\cos b,\\cos c \\geq 0$, giving $a=b=c$. Then $h(a,a,a) = 1 - 3a/(2\\pi) - (\\beta/4)(1+3\\cos a) \\geq 0$ from $a \\leq 2\\pi/3$ and definition of $\\beta$."
+    },
+    {
+      "id": "RP366.1",
+      "type": "remark",
+      "name": "MAX SNP-hardness limits",
+      "section": "1",
+      "statement": "MAX CUT, MAX 2SAT, MAX DICUT are MAX SNP-hard, so a constant $c<1$ exists such that $c$-approximation implies $P=NP$. Bellare et al. show $c \\leq 83/84$ for MAX CUT and $95/96$ for MAX 2SAT.",
+      "origin": "external"
+    },
+    {
+      "id": "RP366.2",
+      "type": "remark",
+      "name": "5-cycle gap",
+      "section": "5",
+      "statement": "For the 5-cycle, $Z_{MC}^*/Z_{EIG}^* = 32/(25+5\\sqrt{5}) \\approx 0.88445$, very close to $\\alpha$, showing the worst-case analysis is nearly tight.",
+      "origin": "external",
+      "origin_citation": "Delorme & Poljak 1993b"
+    },
+    {
+      "id": "ExP366.1",
+      "type": "example",
+      "name": "Computational results on random graphs and TSPLIB",
+      "section": "6",
+      "statement": "Implementation using Vanderbei's SDP code with 50 random hyperplanes: on random graphs (Types A-D, sizes 50-200), cuts within 4% of SDP bound on average; on 10 TSPLIB instances, optimal cut found in 5 cases, all within 0.5% of bound.",
+      "tags": ["empirical", "experiment"]
+    },
+    {
+      "id": "ExP366.2",
+      "type": "example",
+      "name": "11-vertex instance with ratio $<.8796$",
+      "section": "5",
+      "statement": "Unweighted 11-vertex graph (Figure 2) for which $E[W]/Z_P^* < 0.8796$, with optimum vectors having a 3-dimensional representation; a 103-vertex weighted instance gives ratio $<0.8786$. Based on Lovasz's strongly self-dual polytopes."
+    },
+    {
+      "id": "OpenP366.1",
+      "type": "open_problem",
+      "name": "Combinatorial $.878$-approximation for MAX CUT",
+      "section": "8",
+      "statement": "Can a $0.878$-approximation algorithm for MAX CUT be obtained without explicitly solving the semidefinite program (analogous to primal-dual LP-free vertex cover)?"
+    },
+    {
+      "id": "OpenP366.2",
+      "type": "open_problem",
+      "name": "Tighter SDP relaxations",
+      "section": "8",
+      "statement": "Does adding additional constraints to the semidefinite program (e.g., constraints exact for planar graphs) lead to a better worst-case approximation bound for MAX CUT?"
+    }
+  ],
+  "edges": [
+    {"source": "DP366.1", "target": "AP366.1", "type": "uses"},
+    {"source": "EP366.Q", "target": "EP366.P", "type": "uses"},
+    {"source": "EP366.P", "target": "AP366.1", "type": "uses"},
+    {"source": "DP366.3", "target": "EP366.SD", "type": "uses"},
+    {"source": "DP366.4", "target": "EP366.SD", "type": "uses"},
+    {"source": "EP366.P", "target": "EP366.SD", "type": "uses"},
+    {"source": "DP366.2", "target": "EP366.SD", "type": "uses"},
+    {"source": "EP366.SD", "target": "AP366.1", "type": "uses"},
+    {"source": "EP366.SD", "target": "EP366.D", "type": "uses"},
+    {"source": "DP366.5", "target": "LP366.4.3.1", "type": "uses"},
+    {"source": "DP366.6", "target": "LP366.4.3.1", "type": "uses"},
+    {"source": "LP366.4.3.1", "target": "EP366.EIG", "type": "uses"},
+    {"source": "PP366.4.3.1", "target": "LP366.4.3.1", "type": "proves"},
+    {"source": "EP366.D", "target": "EP366.EIG", "type": "uses"},
+    {"source": "LP366.3.2", "target": "TP366.3.1", "type": "uses"},
+    {"source": "PP366.3.2", "target": "LP366.3.2", "type": "proves"},
+    {"source": "TP366.3.1", "target": "TP366.3.3", "type": "uses"},
+    {"source": "LP366.3.4", "target": "TP366.3.3", "type": "uses"},
+    {"source": "DP366.8", "target": "TP366.3.3", "type": "uses"},
+    {"source": "DP366.8", "target": "LP366.3.5", "type": "uses"},
+    {"source": "PP366.3.5", "target": "LP366.3.5", "type": "proves"},
+    {"source": "LP366.3.5", "target": "TP366.3.3", "type": "uses"},
+    {"source": "TP366.3.3", "target": "AP366.1", "type": "uses"},
+    {"source": "AP366.1", "target": "ProbP366.1", "type": "solves"},
+    {"source": "TP366.3.1", "target": "TP366.3.1.1", "type": "uses"},
+    {"source": "PP366.3.1.1", "target": "TP366.3.1.1", "type": "proves"},
+    {"source": "LP366.3.4", "target": "TP366.3.2.1", "type": "uses"},
+    {"source": "LP366.3.2.2", "target": "TP366.3.2.1", "type": "uses"},
+    {"source": "TP366.3.1", "target": "TP366.3.3.1", "type": "uses"},
+    {"source": "PP366.3.3.1", "target": "TP366.3.3.1", "type": "proves"},
+    {"source": "TP366.3.3", "target": "CP366.5.1", "type": "uses"},
+    {"source": "AP366.1", "target": "AP366.2", "type": "uses"},
+    {"source": "AP366.2", "target": "ProbP366.5", "type": "solves"},
+    {"source": "AP366.1", "target": "AP366.3", "type": "uses"},
+    {"source": "LP366.3.4", "target": "TP366.7.2.1.1", "type": "uses"},
+    {"source": "LP366.3.2.2", "target": "TP366.7.2.1.1", "type": "uses"},
+    {"source": "TP366.7.2.1.1", "target": "AP366.3", "type": "uses"},
+    {"source": "AP366.3", "target": "ProbP366.2", "type": "solves"},
+    {"source": "AP366.3", "target": "AP366.4", "type": "uses"},
+    {"source": "AP366.4", "target": "ProbP366.3", "type": "solves"},
+    {"source": "LP366.3.2", "target": "LP366.7.3.1", "type": "uses"},
+    {"source": "PP366.7.3.1", "target": "LP366.7.3.1", "type": "proves"},
+    {"source": "DP366.9", "target": "LP366.7.3.2", "type": "uses"},
+    {"source": "PP366.7.3.2", "target": "LP366.7.3.2", "type": "proves"},
+    {"source": "LP366.7.3.1", "target": "AP366.5", "type": "uses"},
+    {"source": "LP366.7.3.2", "target": "AP366.5", "type": "uses"},
+    {"source": "AP366.5", "target": "ProbP366.4", "type": "solves"},
+    {"source": "AP366.1", "target": "ExP366.1", "type": "illustrates"},
+    {"source": "DP366.7", "target": "ExP366.2", "type": "uses"},
+    {"source": "AP366.1", "target": "ExP366.2", "type": "illustrates"},
+    {"source": "PSP366.7.3.2.1", "target": "PSP366.7.3.2.3", "type": "uses"},
+    {"source": "PSP366.7.3.2.2", "target": "PSP366.7.3.2.3", "type": "uses"},
+    {"source": "ASP366.1", "target": "ASP366.2", "type": "uses"},
+    {"source": "ASP366.2", "target": "ASP366.3", "type": "uses"},
+    {"source": "ASP366.1", "target": "ASP366.3", "type": "uses"}
+  ]
+}

@@ -1,0 +1,412 @@
+{
+  "metadata": {
+    "title": "Generative Adversarial Nets",
+    "paper_num": 15,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "DP15.1",
+      "type": "definition",
+      "name": "Generator $G$",
+      "section": "3 Adversarial nets",
+      "statement": "$G(\\bm{z}; \\theta_g)$ is a differentiable function (multilayer perceptron with parameters $\\theta_g$) mapping noise $\\bm{z} \\sim p_{\\bm{z}}$ to data space, defining an implicit distribution $p_g$ over data $\\bm{x}$.",
+      "statement_clean": "Generator network: a differentiable mapping from noise to data, implicitly defining the model distribution $p_g$.",
+      "origin": "paper",
+      "tags": ["neural-network", "generative-model"]
+    },
+    {
+      "id": "DP15.2",
+      "type": "definition",
+      "name": "Discriminator $D$",
+      "section": "3 Adversarial nets",
+      "statement": "$D(\\bm{x}; \\theta_d)$ is a multilayer perceptron outputting a single scalar; $D(\\bm{x})$ represents the probability that $\\bm{x}$ came from the data distribution rather than from $p_g$.",
+      "statement_clean": "Discriminator network: a scalar-valued classifier estimating $P(\\text{real} \\mid \\bm{x})$.",
+      "origin": "paper",
+      "tags": ["neural-network", "classifier"]
+    },
+    {
+      "id": "DP15.3",
+      "type": "definition",
+      "name": "Adversarial value function $V(G,D)$",
+      "section": "3 Adversarial nets",
+      "statement": "The two-player minimax value function is $V(D,G) = \\mathbb{E}_{\\bm{x} \\sim p_{\\text{data}}}[\\log D(\\bm{x})] + \\mathbb{E}_{\\bm{z} \\sim p_{\\bm{z}}}[\\log (1 - D(G(\\bm{z})))]$.",
+      "statement_clean": "Defines the adversarial objective combining discriminator log-likelihood on real and generated samples.",
+      "origin": "paper",
+      "tags": ["objective-function", "minimax"]
+    },
+    {
+      "id": "DP15.4",
+      "type": "definition",
+      "name": "Virtual training criterion $C(G)$",
+      "section": "4.1 Global Optimality",
+      "statement": "$C(G) = \\max_D V(G,D) = \\mathbb{E}_{\\bm{x} \\sim p_{\\text{data}}}[\\log D^*_G(\\bm{x})] + \\mathbb{E}_{\\bm{x} \\sim p_g}[\\log (1 - D^*_G(\\bm{x}))]$.",
+      "statement_clean": "The generator's objective after maximizing out the discriminator.",
+      "origin": "paper",
+      "tags": ["objective-function"]
+    },
+    {
+      "id": "DP15.5",
+      "type": "definition",
+      "name": "Jensen-Shannon divergence",
+      "section": "4.1 Global Optimality (cited)",
+      "statement": "$\\mathrm{JSD}(p \\| q) = \\tfrac{1}{2} \\mathrm{KL}(p \\| \\tfrac{p+q}{2}) + \\tfrac{1}{2} \\mathrm{KL}(q \\| \\tfrac{p+q}{2})$, a symmetric, non-negative divergence between distributions, zero iff $p=q$.",
+      "statement_clean": "Symmetrized KL divergence used to characterize the GAN global optimum.",
+      "origin": "external",
+      "origin_citation": "Lin 1991, classical information theory"
+    },
+    {
+      "id": "ProbP15.1",
+      "type": "problem",
+      "name": "Adversarial minimax game",
+      "section": "3 Adversarial nets",
+      "statement": "$\\min_G \\max_D V(D,G) = \\mathbb{E}_{\\bm{x} \\sim p_{\\text{data}}}[\\log D(\\bm{x})] + \\mathbb{E}_{\\bm{z} \\sim p_{\\bm{z}}}[\\log (1 - D(G(\\bm{z})))]$.",
+      "statement_clean": "Train $G$ and $D$ as adversaries: $G$ minimizes while $D$ maximizes the value function.",
+      "origin": "paper",
+      "tags": ["optimization", "minimax", "two-player-game"]
+    },
+    {
+      "id": "EP15.1",
+      "type": "equation",
+      "name": "Minimax game definition",
+      "section": "3 Adversarial nets",
+      "statement": "$\\min_G \\max_D V(D,G) = \\mathbb{E}_{\\bm{x} \\sim p_{\\text{data}}(\\bm{x})}[\\log D(\\bm{x})] + \\mathbb{E}_{\\bm{z} \\sim p_{\\bm{z}}(\\bm{z})}[\\log (1 - D(G(\\bm{z})))]$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP15.2",
+      "type": "equation",
+      "name": "Optimal discriminator form",
+      "section": "4.1 Global Optimality",
+      "statement": "$D^*_G(\\bm{x}) = \\dfrac{p_{\\text{data}}(\\bm{x})}{p_{\\text{data}}(\\bm{x}) + p_g(\\bm{x})}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP15.3",
+      "type": "equation",
+      "name": "$C(G)$ as JSD",
+      "section": "4.1 Global Optimality",
+      "statement": "$C(G) = -\\log 4 + 2 \\cdot \\mathrm{JSD}(p_{\\text{data}} \\| p_g)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PrP15.1",
+      "type": "proposition",
+      "name": "Optimal discriminator for fixed $G$",
+      "section": "4.1 Global Optimality",
+      "statement": "For $G$ fixed, the optimal discriminator $D$ is $D^*_G(\\bm{x}) = \\dfrac{p_{\\text{data}}(\\bm{x})}{p_{\\text{data}}(\\bm{x}) + p_g(\\bm{x})}$.",
+      "assumptions": [
+        "$G$ is fixed",
+        "$p_{\\text{data}}, p_g$ are densities on the data space"
+      ],
+      "conclusions": [
+        "$D^*_G(\\bm{x}) = \\dfrac{p_{\\text{data}}(\\bm{x})}{p_{\\text{data}}(\\bm{x}) + p_g(\\bm{x})}$ maximizes $V(G,D)$"
+      ],
+      "origin": "paper",
+      "tags": ["existence", "optimality"]
+    },
+    {
+      "id": "TP15.1",
+      "type": "theorem",
+      "name": "Global optimum of $C(G)$",
+      "section": "4.1 Global Optimality",
+      "statement": "The global minimum of the virtual training criterion $C(G)$ is achieved if and only if $p_g = p_{\\text{data}}$. At that point, $C(G)$ achieves the value $-\\log 4$.",
+      "assumptions": [
+        "$D^*_G$ is the optimal discriminator for $G$ (Proposition 1)",
+        "$p_{\\text{data}}, p_g$ are densities"
+      ],
+      "conclusions": [
+        "$\\min_G C(G) = -\\log 4$",
+        "the minimum is attained iff $p_g = p_{\\text{data}}$"
+      ],
+      "origin": "paper",
+      "tags": ["existence", "uniqueness", "global-optimality"]
+    },
+    {
+      "id": "PrP15.2",
+      "type": "proposition",
+      "name": "Convergence of Algorithm 1",
+      "section": "4.2 Convergence of Algorithm",
+      "statement": "If $G$ and $D$ have enough capacity, and at each step the discriminator reaches its optimum given $G$, and $p_g$ is updated so as to improve $\\mathbb{E}_{\\bm{x} \\sim p_{\\text{data}}}[\\log D^*_G(\\bm{x})] + \\mathbb{E}_{\\bm{x} \\sim p_g}[\\log (1 - D^*_G(\\bm{x}))]$, then $p_g$ converges to $p_{\\text{data}}$.",
+      "assumptions": [
+        "$G$ and $D$ have sufficient capacity (non-parametric setting)",
+        "discriminator reaches its optimum at each step given current $G$",
+        "$p_g$ is updated to improve the criterion at the optimal $D$"
+      ],
+      "conclusions": [
+        "$p_g \\to p_{\\text{data}}$"
+      ],
+      "origin": "paper",
+      "tags": ["convergence"]
+    },
+    {
+      "id": "AP15.1",
+      "type": "algorithm",
+      "name": "Minibatch SGD training of generative adversarial nets",
+      "section": "3 Adversarial nets",
+      "statement": "Iterative minibatch stochastic gradient descent that alternates $k$ discriminator updates with one generator update on the minimax objective.",
+      "input": [
+        "Data distribution $p_{\\text{data}}$ (training set)",
+        "Noise prior $p_g(\\bm{z})$",
+        "Hyperparameter $k$ (number of discriminator steps per generator step)",
+        "Minibatch size $m$"
+      ],
+      "output": [
+        "Trained generator parameters $\\theta_g$",
+        "Trained discriminator parameters $\\theta_d$"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "stochastic-gradient-descent"]
+    },
+    {
+      "id": "PP15.1",
+      "type": "proof",
+      "name": "Proof of Proposition 1 (optimal discriminator)",
+      "section": "4.1 Global Optimality",
+      "statement": "Rewrite $V(G,D)$ as an integral $\\int p_{\\text{data}}(\\bm{x}) \\log D(\\bm{x}) + p_g(\\bm{x}) \\log(1-D(\\bm{x})) d\\bm{x}$, then maximize the integrand pointwise using that $y \\mapsto a \\log y + b \\log(1-y)$ is maximized at $y = a/(a+b)$.",
+      "proves": "PrP15.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP15.2",
+      "type": "proof",
+      "name": "Proof of Theorem 1 (global optimum)",
+      "section": "4.1 Global Optimality",
+      "statement": "Compute $C(G)$ at $p_g = p_{\\text{data}}$ giving $-\\log 4$; rewrite $C(G) - (-\\log 4)$ as the sum of two KL divergences, recognize as $2 \\cdot \\mathrm{JSD}(p_{\\text{data}} \\| p_g)$, and use non-negativity of JSD with equality iff $p_g = p_{\\text{data}}$.",
+      "proves": "TP15.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP15.3",
+      "type": "proof",
+      "name": "Proof of Proposition 2 (convergence)",
+      "section": "4.2 Convergence of Algorithm",
+      "statement": "View $V(G,D) = U(p_g, D)$ as a function of $p_g$; $U$ is convex in $p_g$, and a subderivative of the supremum of convex functions includes the derivative at the attained maximum, so updating $p_g$ at the optimal $D$ is a (sub)gradient step on the convex function $\\sup_D U(p_g, D)$, which by Theorem 1 has unique global optimum at $p_g = p_{\\text{data}}$.",
+      "proves": "PrP15.2",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP15.1",
+      "type": "example",
+      "name": "MNIST, TFD, and CIFAR-10 experiments",
+      "section": "5 Experiments",
+      "statement": "Adversarial nets trained on MNIST, the Toronto Face Database, and CIFAR-10; samples evaluated by Gaussian Parzen-window log-likelihood on the test set, achieving $225 \\pm 2$ on MNIST and $2057 \\pm 26$ on TFD.",
+      "origin": "paper",
+      "tags": ["experiment", "benchmark"]
+    },
+    {
+      "id": "RP15.1",
+      "type": "remark",
+      "name": "Non-saturating generator objective",
+      "section": "3 Adversarial nets",
+      "statement": "Early in learning $\\log(1 - D(G(\\bm{z})))$ saturates because $D$ rejects $G$'s samples confidently; instead, train $G$ to maximize $\\log D(G(\\bm{z}))$, which has the same fixed point but provides much stronger gradients.",
+      "origin": "paper",
+      "tags": ["practical-trick", "gradient"]
+    },
+    {
+      "id": "RP15.2",
+      "type": "remark",
+      "name": "Helvetica scenario / mode collapse",
+      "section": "6 Advantages and disadvantages",
+      "statement": "If $G$ is trained too much without updating $D$, $G$ may collapse many values of $\\bm{z}$ to the same value of $\\bm{x}$, reducing diversity and failing to model $p_{\\text{data}}$.",
+      "origin": "paper",
+      "tags": ["failure-mode"]
+    },
+    {
+      "id": "RP15.3",
+      "type": "remark",
+      "name": "Parametric optimization caveat",
+      "section": "4.2 Convergence of Algorithm",
+      "statement": "In practice $G(\\bm{z}; \\theta_g)$ defines a limited parametric family and one optimizes $\\theta_g$, not $p_g$ itself; this introduces multiple critical points and removes the theoretical guarantee, but multilayer perceptrons perform well empirically.",
+      "origin": "paper",
+      "tags": ["practical-caveat"]
+    },
+    {
+      "id": "PSP15.1",
+      "type": "proof_step",
+      "parent_id": "PP15.1",
+      "step_order": 1,
+      "name": "Rewrite $V(G,D)$ as an $\\bm{x}$-integral",
+      "statement": "By change of variables $\\bm{x} = G(\\bm{z})$, $V(G,D) = \\int_{\\bm{x}} p_{\\text{data}}(\\bm{x}) \\log D(\\bm{x}) + p_g(\\bm{x}) \\log(1 - D(\\bm{x})) d\\bm{x}$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP15.2",
+      "type": "proof_step",
+      "parent_id": "PP15.1",
+      "step_order": 2,
+      "name": "Pointwise maximization of integrand",
+      "statement": "For any $(a,b) \\in \\mathbb{R}^2 \\setminus \\{0,0\\}$, $y \\mapsto a \\log y + b \\log(1-y)$ achieves its maximum on $[0,1]$ at $y^* = a/(a+b)$.",
+      "subclass": "invoke_identity",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP15.3",
+      "type": "proof_step",
+      "parent_id": "PP15.1",
+      "step_order": 3,
+      "name": "Conclude optimal $D^*_G$",
+      "statement": "Setting $a = p_{\\text{data}}(\\bm{x})$, $b = p_g(\\bm{x})$ pointwise yields $D^*_G(\\bm{x}) = p_{\\text{data}}(\\bm{x}) / (p_{\\text{data}}(\\bm{x}) + p_g(\\bm{x}))$ on $\\mathrm{Supp}(p_{\\text{data}}) \\cup \\mathrm{Supp}(p_g)$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP15.4",
+      "type": "proof_step",
+      "parent_id": "PP15.2",
+      "step_order": 1,
+      "name": "Evaluate $C(G)$ at $p_g = p_{\\text{data}}$",
+      "statement": "If $p_g = p_{\\text{data}}$ then $D^*_G(\\bm{x}) = 1/2$, so $C(G) = \\log\\tfrac{1}{2} + \\log\\tfrac{1}{2} = -\\log 4$.",
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP15.5",
+      "type": "proof_step",
+      "parent_id": "PP15.2",
+      "step_order": 2,
+      "name": "Subtract the constant $-\\log 4$ from $C(G)$",
+      "statement": "Using $\\mathbb{E}_{\\bm{x} \\sim p_{\\text{data}}}[-\\log 2] + \\mathbb{E}_{\\bm{x} \\sim p_g}[-\\log 2] = -\\log 4$, subtract this from $C(G)$ to obtain $C(G) = -\\log 4 + \\mathrm{KL}(p_{\\text{data}} \\| \\tfrac{p_{\\text{data}}+p_g}{2}) + \\mathrm{KL}(p_g \\| \\tfrac{p_{\\text{data}}+p_g}{2})$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP15.6",
+      "type": "proof_step",
+      "parent_id": "PP15.2",
+      "step_order": 3,
+      "name": "Identify the JSD",
+      "statement": "Recognize the sum of KL terms as $2 \\cdot \\mathrm{JSD}(p_{\\text{data}} \\| p_g)$, giving $C(G) = -\\log 4 + 2 \\cdot \\mathrm{JSD}(p_{\\text{data}} \\| p_g)$.",
+      "subclass": "invoke_identity",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP15.7",
+      "type": "proof_step",
+      "parent_id": "PP15.2",
+      "step_order": 4,
+      "name": "Conclude global minimum",
+      "statement": "Since $\\mathrm{JSD} \\ge 0$ with equality iff $p_g = p_{\\text{data}}$, the global minimum $C^* = -\\log 4$ is attained uniquely at $p_g = p_{\\text{data}}$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP15.8",
+      "type": "proof_step",
+      "parent_id": "PP15.3",
+      "step_order": 1,
+      "name": "Reformulate $V$ as $U(p_g, D)$ convex in $p_g$",
+      "statement": "View $V(G,D) = U(p_g, D)$; then $U(p_g, D)$ is convex in $p_g$ for every $D$.",
+      "subclass": "setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP15.9",
+      "type": "proof_step",
+      "parent_id": "PP15.3",
+      "step_order": 2,
+      "name": "Subgradient of supremum of convex functions",
+      "statement": "If $f(x) = \\sup_{\\alpha \\in \\mathcal{A}} f_\\alpha(x)$ with each $f_\\alpha$ convex in $x$, then $\\partial f_\\beta(x) \\subseteq \\partial f(x)$ when $\\beta = \\arg\\sup_\\alpha f_\\alpha(x)$; thus updating $p_g$ at the optimal $D$ is a subgradient step on $\\sup_D U(p_g, D)$.",
+      "subclass": "invoke_identity",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP15.10",
+      "type": "proof_step",
+      "parent_id": "PP15.3",
+      "step_order": 3,
+      "name": "Use uniqueness of global optimum",
+      "statement": "$\\sup_D U(p_g, D)$ is convex in $p_g$ with a unique global optimum at $p_g = p_{\\text{data}}$ by Theorem 1; therefore with sufficiently small updates, $p_g$ converges to $p_{\\text{data}}$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP15.1",
+      "type": "algorithm_step",
+      "parent_id": "AP15.1",
+      "step_order": 1,
+      "name": "Outer training loop",
+      "statement": "For number of training iterations: do the inner discriminator updates, then a generator update.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP15.2",
+      "type": "algorithm_step",
+      "parent_id": "AP15.1",
+      "step_order": 2,
+      "name": "Inner discriminator update loop",
+      "statement": "For $k$ steps: sample minibatch of $m$ noise samples $\\{\\bm{z}^{(1)}, \\dots, \\bm{z}^{(m)}\\}$ from $p_g(\\bm{z})$ and $m$ examples $\\{\\bm{x}^{(1)}, \\dots, \\bm{x}^{(m)}\\}$ from $p_{\\text{data}}$.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP15.3",
+      "type": "algorithm_step",
+      "parent_id": "AP15.1",
+      "step_order": 3,
+      "name": "Discriminator gradient ascent",
+      "statement": "Update $\\theta_d$ by ascending the stochastic gradient $\\nabla_{\\theta_d} \\tfrac{1}{m} \\sum_{i=1}^m \\left[\\log D(\\bm{x}^{(i)}) + \\log(1 - D(G(\\bm{z}^{(i)})))\\right]$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP15.4",
+      "type": "algorithm_step",
+      "parent_id": "AP15.1",
+      "step_order": 4,
+      "name": "Sample noise for generator step",
+      "statement": "Sample minibatch of $m$ noise samples $\\{\\bm{z}^{(1)}, \\dots, \\bm{z}^{(m)}\\}$ from $p_g(\\bm{z})$.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP15.5",
+      "type": "algorithm_step",
+      "parent_id": "AP15.1",
+      "step_order": 5,
+      "name": "Generator gradient descent",
+      "statement": "Update $\\theta_g$ by descending the stochastic gradient $\\nabla_{\\theta_g} \\tfrac{1}{m} \\sum_{i=1}^m \\log(1 - D(G(\\bm{z}^{(i)})))$.",
+      "subclass": "update",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "DP15.1", "target": "DP15.3", "type": "uses"},
+    {"source": "DP15.2", "target": "DP15.3", "type": "uses"},
+    {"source": "DP15.3", "target": "ProbP15.1", "type": "uses"},
+    {"source": "DP15.3", "target": "EP15.1", "type": "uses"},
+    {"source": "DP15.1", "target": "AP15.1", "type": "uses"},
+    {"source": "DP15.2", "target": "AP15.1", "type": "uses"},
+    {"source": "ProbP15.1", "target": "AP15.1", "type": "uses"},
+    {"source": "AP15.1", "target": "ProbP15.1", "type": "solves"},
+    {"source": "PrP15.1", "target": "EP15.2", "type": "uses"},
+    {"source": "PrP15.1", "target": "DP15.4", "type": "uses"},
+    {"source": "DP15.4", "target": "TP15.1", "type": "uses"},
+    {"source": "DP15.5", "target": "TP15.1", "type": "uses"},
+    {"source": "TP15.1", "target": "EP15.3", "type": "uses"},
+    {"source": "PrP15.1", "target": "TP15.1", "type": "uses"},
+    {"source": "TP15.1", "target": "PrP15.2", "type": "uses"},
+    {"source": "AP15.1", "target": "PrP15.2", "type": "uses"},
+    {"source": "PP15.1", "target": "PrP15.1", "type": "proves"},
+    {"source": "PP15.2", "target": "TP15.1", "type": "proves"},
+    {"source": "PP15.3", "target": "PrP15.2", "type": "proves"},
+    {"source": "AP15.1", "target": "ExP15.1", "type": "illustrates"},
+    {"source": "PSP15.1", "target": "PSP15.2", "type": "uses"},
+    {"source": "PSP15.2", "target": "PSP15.3", "type": "uses"},
+    {"source": "PSP15.4", "target": "PSP15.5", "type": "uses"},
+    {"source": "PSP15.5", "target": "PSP15.6", "type": "uses"},
+    {"source": "PSP15.6", "target": "PSP15.7", "type": "uses"},
+    {"source": "PSP15.4", "target": "PSP15.7", "type": "uses"},
+    {"source": "PSP15.8", "target": "PSP15.9", "type": "uses"},
+    {"source": "PSP15.9", "target": "PSP15.10", "type": "uses"},
+    {"source": "ASP15.2", "target": "ASP15.3", "type": "uses"},
+    {"source": "ASP15.3", "target": "ASP15.4", "type": "uses"},
+    {"source": "ASP15.4", "target": "ASP15.5", "type": "uses"},
+    {"source": "ASP15.1", "target": "ASP15.2", "type": "uses"}
+  ]
+}

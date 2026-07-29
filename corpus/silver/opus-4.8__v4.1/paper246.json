@@ -1,0 +1,622 @@
+{
+  "metadata": {
+    "paper_num": "T20",
+    "title": "Decoupled Weight Decay Regularization",
+    "arxiv_id": "1711.05101",
+    "annotator": "agent-extraction",
+    "prompt_version": "v4.1",
+    "model": "claude-opus-4-8",
+    "extraction_date": "2026-07-28"
+  },
+  "nodes": [
+    {
+      "id": "EPT20.1",
+      "type": "equation",
+      "name": "Weight decay update",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "origin": "external",
+      "origin_citation": "Hanson & Pratt, 1988 (hanson1988comparing)",
+      "statement": "$\\bm{\\theta}_{t+1} = (1 - \\lambda) \\bm{\\theta}_t - \\alpha \\nabla f_t(\\bm{\\theta}_t),$",
+      "assumptions": [
+        "$\\lambda$ defines the rate of the weight decay per step",
+        "$\\nabla f_t(\\bm{\\theta}_t)$ is the $t$-th batch gradient to be multiplied by a learning rate $\\alpha$"
+      ],
+      "conclusions": [
+        "$\\bm{\\theta}_{t+1} = (1 - \\lambda) \\bm{\\theta}_t - \\alpha \\nabla f_t(\\bm{\\theta}_t)$"
+      ]
+    },
+    {
+      "id": "EPT20.2",
+      "type": "equation",
+      "name": "Bayesian filtering mean update",
+      "section": "3 Justification of Decoupled Weight Decay via a View of Adaptive Gradient Methods as Bayesian Filtering",
+      "origin": "external",
+      "origin_citation": "Aitchison, 2018 (aitchison18)",
+      "statement": "$\\bm{\\mu}_{post} = \\bm{\\mu}_{prior} + \\bm{\\Sigma}_{post} \\times \\bm{g},$",
+      "assumptions": [
+        "$\\bm{g}$ is the gradient of the log likelihood of the mini batch at time $t$"
+      ],
+      "conclusions": [
+        "$\\bm{\\mu}_{post} = \\bm{\\mu}_{prior} + \\bm{\\Sigma}_{post} \\times \\bm{g}$"
+      ]
+    },
+    {
+      "id": "EPT20.3",
+      "type": "equation",
+      "name": "Gaussian state-transition distribution",
+      "section": "3 Justification of Decoupled Weight Decay via a View of Adaptive Gradient Methods as Bayesian Filtering",
+      "origin": "external",
+      "origin_citation": "Aitchison, 2018 (aitchison18)",
+      "statement": "$P(\\bm{\\theta}_{t+1} \\mid \\bm{\\theta}_t) = \\mathcal{N}((\\bm{I}-\\bm{A}) \\bm{\\theta}_t, \\bm{Q}),$",
+      "assumptions": [
+        "$\\bm{Q}$ is the covariance of Gaussian perturbations of the weights",
+        "$\\bm{A}$ is a regularizer to avoid values growing unboundedly over time"
+      ],
+      "conclusions": [
+        "$P(\\bm{\\theta}_{t+1} \\mid \\bm{\\theta}_t) = \\mathcal{N}((\\bm{I}-\\bm{A}) \\bm{\\theta}_t, \\bm{Q})$"
+      ]
+    },
+    {
+      "id": "EPT20.4",
+      "type": "equation",
+      "name": "Normalized weight decay",
+      "section": "Appendix B.1 Normalized Weight Decay",
+      "origin": "paper",
+      "statement": "$\\lambda = \\lambda_{norm} \\sqrt{ \\frac{b}{B T} }$",
+      "assumptions": [
+        "$b$ is the batch size",
+        "$B$ is the total number of training points",
+        "$T$ is the total number of epochs"
+      ],
+      "conclusions": [
+        "$\\lambda = \\lambda_{norm} \\sqrt{ \\frac{b}{B T} }$"
+      ]
+    },
+    {
+      "id": "EPT20.5",
+      "type": "equation",
+      "name": "Cosine annealing schedule",
+      "section": "Appendix B.2 Adam with Cosine Annealing and Warm Restarts",
+      "origin": "external",
+      "origin_citation": "Loshchilov & Hutter, 2017 SGDR (loshchilov2016sgdr)",
+      "statement": "$\\eta_t = \\eta^{(i)}_{min} + 0.5 (\\eta^{(i)}_{max} - \\eta^{(i)}_{min}) (1 + \\cos(\\pi T_{cur} / {T_i})),$",
+      "assumptions": [
+        "$\\eta^{(i)}_{min}$ and $\\eta^{(i)}_{max}$ are ranges for the multiplier",
+        "$T_{cur}$ accounts for how many epochs have been performed since the last restart"
+      ],
+      "conclusions": [
+        "$\\eta_t = \\eta^{(i)}_{min} + 0.5 (\\eta^{(i)}_{max} - \\eta^{(i)}_{min}) (1 + \\cos(\\pi T_{cur} / {T_i}))$"
+      ]
+    },
+    {
+      "id": "EPT20.6",
+      "type": "equation",
+      "name": "Simplified cosine annealing schedule",
+      "section": "Appendix B.2 Adam with Cosine Annealing and Warm Restarts",
+      "origin": "paper",
+      "statement": "$\\eta_t = 0.5 + 0.5\\cos(\\pi T_{cur} / {T_i}).$",
+      "assumptions": [
+        "For $\\eta^{(i)}_{max}=1$ and $\\eta^{(i)}_{min}=0$"
+      ],
+      "conclusions": [
+        "$\\eta_t = 0.5 + 0.5\\cos(\\pi T_{cur} / {T_i})$"
+      ]
+    },
+    {
+      "id": "PrPT20.1",
+      "type": "proposition",
+      "name": "Weight decay = L$_2$ reg for standard SGD",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "origin": "paper",
+      "statement": "Standard SGD with base learning rate $\\alpha$ executes the same steps on batch loss functions $f_t(\\bm{\\theta})$ with weight decay $\\lambda$ (defined in Equation \\ref{eq:wdecay}) as it executes without weight decay on $f_{t}^{\\text{reg}}(\\bm{\\theta}) = f_t(\\bm{\\theta}) + \\frac{\\lambda'}{2} \\norm{\\bm{\\theta}}_2^2$, with $\\lambda' = \\frac{\\lambda}{\\alpha}$.",
+      "assumptions": [
+        "Standard SGD with base learning rate $\\alpha$",
+        "with weight decay $\\lambda$ (defined in Equation \\ref{eq:wdecay})",
+        "$f_{t}^{\\text{reg}}(\\bm{\\theta}) = f_t(\\bm{\\theta}) + \\frac{\\lambda'}{2} \\norm{\\bm{\\theta}}_2^2$, with $\\lambda' = \\frac{\\lambda}{\\alpha}$"
+      ],
+      "conclusions": [
+        "executes the same steps on batch loss functions $f_t(\\bm{\\theta})$ with weight decay $\\lambda$ ... as it executes without weight decay on $f_{t}^{\\text{reg}}(\\bm{\\theta})$"
+      ]
+    },
+    {
+      "id": "PrPT20.2",
+      "type": "proposition",
+      "name": "Weight decay $\\neq$ L$_2$ reg for adaptive gradients",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "origin": "paper",
+      "statement": "Let $O$ denote an optimizer that has iterates $\\bm{\\theta}_{t+1} \\leftarrow \\bm{\\theta}_t - \\alpha \\mathbf{M}_t \\nabla f_t(\\bm{\\theta}_t)$ when run on batch loss function $f_t(\\bm{\\theta})$ \\emph{without} weight decay, and $\\bm{\\theta}_{t+1} \\leftarrow (1 - \\lambda) \\bm{\\theta}_t - \\alpha \\mathbf{M}_t \\nabla f_t(\\bm{\\theta}_t)$ when run on $f_t(\\bm{\\theta})$ \\emph{with} weight decay, respectively, with $\\mathbf{M}_t \\neq k \\mathbf{I}$ (where $k\\in\\mathbb{R}$). Then, for $O$ there exists no L$_2$ coefficient $\\lambda'$ such that running $O$ on batch loss $f^{\\text{reg}}_t(\\bm{\\theta}) = f_t(\\bm{\\theta}) + \\frac{\\lambda'}{2} \\norm{\\bm{\\theta}}_2^2$ without weight decay is equivalent to running $O$ on $f_t(\\bm{\\theta})$ with decay $\\lambda\\in\\mathbb{R}^+$.",
+      "assumptions": [
+        "Let $O$ denote an optimizer that has iterates $\\bm{\\theta}_{t+1} \\leftarrow \\bm{\\theta}_t - \\alpha \\mathbf{M}_t \\nabla f_t(\\bm{\\theta}_t)$ when run on batch loss function $f_t(\\bm{\\theta})$ \\emph{without} weight decay",
+        "$\\bm{\\theta}_{t+1} \\leftarrow (1 - \\lambda) \\bm{\\theta}_t - \\alpha \\mathbf{M}_t \\nabla f_t(\\bm{\\theta}_t)$ when run on $f_t(\\bm{\\theta})$ \\emph{with} weight decay",
+        "with $\\mathbf{M}_t \\neq k \\mathbf{I}$ (where $k\\in\\mathbb{R}$)"
+      ],
+      "conclusions": [
+        "for $O$ there exists no L$_2$ coefficient $\\lambda'$ such that running $O$ on batch loss $f^{\\text{reg}}_t(\\bm{\\theta}) = f_t(\\bm{\\theta}) + \\frac{\\lambda'}{2} \\norm{\\bm{\\theta}}_2^2$ without weight decay is equivalent to running $O$ on $f_t(\\bm{\\theta})$ with decay $\\lambda\\in\\mathbb{R}^+$"
+      ]
+    },
+    {
+      "id": "PrPT20.3",
+      "type": "proposition",
+      "name": "Weight decay = scale-adjusted $L_2$ reg for adaptive gradient algorithm with fixed preconditioner",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "origin": "paper",
+      "statement": "Let $O$ denote an algorithm with the same characteristics as in Proposition 2, and using a fixed preconditioner matrix $\\textbf{M}_t = \\text{diag}(\\vc{s})^{-1}$ (with $s_i>0$ for all $i$). Then, $O$ with base learning rate $\\alpha$ executes the same steps on batch loss functions $f_t(\\bm{\\theta})$ with weight decay $\\lambda$ as it executes without weight decay on the scale-adjusted regularized batch loss \\begin{equation}f_{t}^{\\text{sreg}}(\\bm{\\theta}) = f_t(\\bm{\\theta}) + \\frac{\\lambda'}{2\\alpha} \\norm{\\bm{\\theta} \\odot{} \\sqrt{\\vc{s}}}_2^2,\\end{equation} where $\\odot$ and $\\sqrt{\\cdot}$ denote element-wise multiplication and square root, respectively, and $\\lambda' = \\frac{\\lambda}{\\alpha}$.",
+      "assumptions": [
+        "Let $O$ denote an algorithm with the same characteristics as in Proposition 2",
+        "using a fixed preconditioner matrix $\\textbf{M}_t = \\text{diag}(\\vc{s})^{-1}$ (with $s_i>0$ for all $i$)",
+        "$O$ with base learning rate $\\alpha$",
+        "$\\lambda' = \\frac{\\lambda}{\\alpha}$"
+      ],
+      "conclusions": [
+        "$O$ ... executes the same steps on batch loss functions $f_t(\\bm{\\theta})$ with weight decay $\\lambda$ as it executes without weight decay on the scale-adjusted regularized batch loss $f_{t}^{\\text{sreg}}(\\bm{\\theta}) = f_t(\\bm{\\theta}) + \\frac{\\lambda'}{2\\alpha} \\norm{\\bm{\\theta} \\odot{} \\sqrt{\\vc{s}}}_2^2$"
+      ]
+    },
+    {
+      "id": "APT20.1",
+      "type": "algorithm",
+      "name": "SGD with L$_2$ regularization and SGDW (SGD with decoupled weight decay), both with momentum",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "origin": "paper",
+      "statement": "\\STATE{\\textbf{given} initial learning rate $\\alpha \\in \\R$, momentum factor $\\beta_1 \\in \\R$, weight decay/L$_2$ regularization factor $\\lambda \\in \\R$} \\STATE{\\textbf{initialize} time step $t \\leftarrow 0$, parameter vector $\\bm{\\theta}_{t=0} \\in \\R^n$, first moment vector $\\vc{m}_{t=0} \\leftarrow \\vc{0}$, schedule multiplier $\\eta_{t=0} \\in \\R$} \\REPEAT \\STATE{$t \\leftarrow t + 1$} \\STATE{$\\nabla f_t(\\bm{\\theta}_{t-1}) \\leftarrow \\text{SelectBatch}(\\bm{\\theta}_{t-1})$} \\COMMENT{select batch and return the corresponding gradient} \\STATE{$\\vc{g}_t \\leftarrow \\nabla f_t(\\bm{\\theta}_{t-1})$ \\adam{+ \\lambda\\bm{\\theta}_{t-1}}} \\STATE{$\\eta_t \\leftarrow \\text{SetScheduleMultiplier}(t)$} \\COMMENT{can be fixed, decay, be used for warm restarts} \\STATE{$\\vc{m}_t \\leftarrow \\beta_1 \\vc{m}_{t-1} + \\eta_t \\alpha \\vc{g}_t $} \\STATE{$\\bm{\\theta}_t \\leftarrow \\bm{\\theta}_{t-1} - \\vc{m}_t$ \\ouradam{- \\eta_t \\lambda\\bm{\\theta}_{t-1}}} \\UNTIL{ \\textit{stopping criterion is met} } \\RETURN{optimized parameters $\\bm{\\theta}_t$}",
+      "input": [
+        "initial learning rate $\\alpha \\in \\R$",
+        "momentum factor $\\beta_1 \\in \\R$",
+        "weight decay/L$_2$ regularization factor $\\lambda \\in \\R$"
+      ],
+      "output": [
+        "optimized parameters $\\bm{\\theta}_t$"
+      ]
+    },
+    {
+      "id": "ASPT20.1",
+      "type": "algorithm_step",
+      "parent_id": "APT20.1",
+      "step_order": 1,
+      "name": "Algorithm 1 line 1",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "initialize",
+      "statement": "\\STATE{\\textbf{given} initial learning rate $\\alpha \\in \\R$, momentum factor $\\beta_1 \\in \\R$, weight decay/L$_2$ regularization factor $\\lambda \\in \\R$}"
+    },
+    {
+      "id": "ASPT20.2",
+      "type": "algorithm_step",
+      "parent_id": "APT20.1",
+      "step_order": 2,
+      "name": "Algorithm 1 line 2",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "initialize",
+      "statement": "\\STATE{\\textbf{initialize} time step $t \\leftarrow 0$, parameter vector $\\bm{\\theta}_{t=0} \\in \\R^n$, first moment vector $\\vc{m}_{t=0} \\leftarrow \\vc{0}$, schedule multiplier $\\eta_{t=0} \\in \\R$}"
+    },
+    {
+      "id": "ASPT20.3",
+      "type": "algorithm_step",
+      "parent_id": "APT20.1",
+      "step_order": 3,
+      "name": "Algorithm 1 line 3",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "loop",
+      "statement": "\\REPEAT"
+    },
+    {
+      "id": "ASPT20.4",
+      "type": "algorithm_step",
+      "parent_id": "APT20.1",
+      "step_order": 4,
+      "name": "Algorithm 1 line 4",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "update",
+      "statement": "\\STATE{$t \\leftarrow t + 1$}"
+    },
+    {
+      "id": "ASPT20.5",
+      "type": "algorithm_step",
+      "parent_id": "APT20.1",
+      "step_order": 5,
+      "name": "Algorithm 1 line 5",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "update",
+      "statement": "\\STATE{$\\nabla f_t(\\bm{\\theta}_{t-1}) \\leftarrow \\text{SelectBatch}(\\bm{\\theta}_{t-1})$} \\COMMENT{select batch and return the corresponding gradient}"
+    },
+    {
+      "id": "ASPT20.6",
+      "type": "algorithm_step",
+      "parent_id": "APT20.1",
+      "step_order": 6,
+      "name": "Algorithm 1 line 6",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "update",
+      "statement": "\\STATE{$\\vc{g}_t \\leftarrow \\nabla f_t(\\bm{\\theta}_{t-1})$ \\adam{+ \\lambda\\bm{\\theta}_{t-1}}}"
+    },
+    {
+      "id": "ASPT20.7",
+      "type": "algorithm_step",
+      "parent_id": "APT20.1",
+      "step_order": 7,
+      "name": "Algorithm 1 line 7",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "update",
+      "statement": "\\STATE{$\\eta_t \\leftarrow \\text{SetScheduleMultiplier}(t)$} \\COMMENT{can be fixed, decay, be used for warm restarts}"
+    },
+    {
+      "id": "ASPT20.8",
+      "type": "algorithm_step",
+      "parent_id": "APT20.1",
+      "step_order": 8,
+      "name": "Algorithm 1 line 8",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "update",
+      "statement": "\\STATE{$\\vc{m}_t \\leftarrow \\beta_1 \\vc{m}_{t-1} + \\eta_t \\alpha \\vc{g}_t $}"
+    },
+    {
+      "id": "ASPT20.9",
+      "type": "algorithm_step",
+      "parent_id": "APT20.1",
+      "step_order": 9,
+      "name": "Algorithm 1 line 9",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "update",
+      "statement": "\\STATE{$\\bm{\\theta}_t \\leftarrow \\bm{\\theta}_{t-1} - \\vc{m}_t$ \\ouradam{- \\eta_t \\lambda\\bm{\\theta}_{t-1}}}"
+    },
+    {
+      "id": "ASPT20.10",
+      "type": "algorithm_step",
+      "parent_id": "APT20.1",
+      "step_order": 10,
+      "name": "Algorithm 1 line 10",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "branch",
+      "statement": "\\UNTIL{ \\textit{stopping criterion is met} }"
+    },
+    {
+      "id": "ASPT20.11",
+      "type": "algorithm_step",
+      "parent_id": "APT20.1",
+      "step_order": 11,
+      "name": "Algorithm 1 line 11",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "return",
+      "statement": "\\RETURN{optimized parameters $\\bm{\\theta}_t$}"
+    },
+    {
+      "id": "APT20.2",
+      "type": "algorithm",
+      "name": "Adam with L$_2$ regularization and AdamW (Adam with decoupled weight decay)",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "origin": "paper",
+      "statement": "\\STATE{\\textbf{given} $\\alpha = 0.001, \\beta_1 = 0.9, \\beta_2 =0.999, \\epsilon = 10^{-8}, \\lambda\\in \\R$} \\STATE{\\textbf{initialize} time step $t \\leftarrow 0$, parameter vector $\\bm{\\theta}_{t=0} \\in \\R^n$, first moment vector $\\vc{m}_{t=0} \\leftarrow \\vc{0}$, second moment vector $\\vc{v}_{t=0} \\leftarrow \\vc{0}$, schedule multiplier $\\eta_{t=0} \\in \\R$} \\REPEAT \\STATE{$t \\leftarrow t + 1$} \\STATE{$\\nabla f_t(\\bm{\\theta}_{t-1}) \\leftarrow \\text{SelectBatch}(\\bm{\\theta}_{t-1})$} \\COMMENT{select batch and return the corresponding gradient} \\STATE{$\\vc{g}_t \\leftarrow \\nabla f_t(\\bm{\\theta}_{t-1})$ \\adam{+ \\lambda\\bm{\\theta}_{t-1}}} \\STATE{$\\vc{m}_t \\leftarrow \\beta_1 \\vc{m}_{t-1} + (1 - \\beta_1) \\vc{g}_t $} \\COMMENT{here and below all operations are element-wise} \\STATE{$\\vc{v}_t \\leftarrow \\beta_2 \\vc{v}_{t-1} + (1 - \\beta_2) \\vc{g}^2_t $} \\STATE{$\\hat{\\vc{m}}_t \\leftarrow \\vc{m}_t/(1 - \\beta_1^t) $} \\COMMENT{$\\beta_1$ is taken to the power of $t$} \\STATE{$\\hat{\\vc{{v}}}_t \\leftarrow \\vc{v}_t/(1 - \\beta_2^t) $} \\COMMENT{$\\beta_2$ is taken to the power of $t$} \\STATE{$\\eta_t \\leftarrow \\text{SetScheduleMultiplier}(t)$} \\COMMENT{can be fixed, decay, or also be used for warm restarts} \\STATE{$\\bm{\\theta}_t \\leftarrow \\bm{\\theta}_{t-1} - \\eta_t \\left( \\alpha \\hat{\\vc{m}}_t / (\\sqrt{\\hat{\\vc{v}}_t} + \\epsilon) \\ouradam{+ \\lambda\\bm{\\theta}_{t-1}} \\right)$} \\UNTIL{ \\textit{stopping criterion is met} } \\RETURN{optimized parameters $\\bm{\\theta}_t$}",
+      "input": [
+        "$\\alpha = 0.001, \\beta_1 = 0.9, \\beta_2 =0.999, \\epsilon = 10^{-8}, \\lambda\\in \\R$"
+      ],
+      "output": [
+        "optimized parameters $\\bm{\\theta}_t$"
+      ]
+    },
+    {
+      "id": "ASPT20.12",
+      "type": "algorithm_step",
+      "parent_id": "APT20.2",
+      "step_order": 1,
+      "name": "Algorithm 2 line 1",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "initialize",
+      "statement": "\\STATE{\\textbf{given} $\\alpha = 0.001, \\beta_1 = 0.9, \\beta_2 =0.999, \\epsilon = 10^{-8}, \\lambda\\in \\R$}"
+    },
+    {
+      "id": "ASPT20.13",
+      "type": "algorithm_step",
+      "parent_id": "APT20.2",
+      "step_order": 2,
+      "name": "Algorithm 2 line 2",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "initialize",
+      "statement": "\\STATE{\\textbf{initialize} time step $t \\leftarrow 0$, parameter vector $\\bm{\\theta}_{t=0} \\in \\R^n$, first moment vector $\\vc{m}_{t=0} \\leftarrow \\vc{0}$, second moment vector $\\vc{v}_{t=0} \\leftarrow \\vc{0}$, schedule multiplier $\\eta_{t=0} \\in \\R$}"
+    },
+    {
+      "id": "ASPT20.14",
+      "type": "algorithm_step",
+      "parent_id": "APT20.2",
+      "step_order": 3,
+      "name": "Algorithm 2 line 3",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "loop",
+      "statement": "\\REPEAT"
+    },
+    {
+      "id": "ASPT20.15",
+      "type": "algorithm_step",
+      "parent_id": "APT20.2",
+      "step_order": 4,
+      "name": "Algorithm 2 line 4",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "update",
+      "statement": "\\STATE{$t \\leftarrow t + 1$}"
+    },
+    {
+      "id": "ASPT20.16",
+      "type": "algorithm_step",
+      "parent_id": "APT20.2",
+      "step_order": 5,
+      "name": "Algorithm 2 line 5",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "update",
+      "statement": "\\STATE{$\\nabla f_t(\\bm{\\theta}_{t-1}) \\leftarrow \\text{SelectBatch}(\\bm{\\theta}_{t-1})$} \\COMMENT{select batch and return the corresponding gradient}"
+    },
+    {
+      "id": "ASPT20.17",
+      "type": "algorithm_step",
+      "parent_id": "APT20.2",
+      "step_order": 6,
+      "name": "Algorithm 2 line 6",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "update",
+      "statement": "\\STATE{$\\vc{g}_t \\leftarrow \\nabla f_t(\\bm{\\theta}_{t-1})$ \\adam{+ \\lambda\\bm{\\theta}_{t-1}}}"
+    },
+    {
+      "id": "ASPT20.18",
+      "type": "algorithm_step",
+      "parent_id": "APT20.2",
+      "step_order": 7,
+      "name": "Algorithm 2 line 7",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "update",
+      "statement": "\\STATE{$\\vc{m}_t \\leftarrow \\beta_1 \\vc{m}_{t-1} + (1 - \\beta_1) \\vc{g}_t $} \\COMMENT{here and below all operations are element-wise}"
+    },
+    {
+      "id": "ASPT20.19",
+      "type": "algorithm_step",
+      "parent_id": "APT20.2",
+      "step_order": 8,
+      "name": "Algorithm 2 line 8",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "update",
+      "statement": "\\STATE{$\\vc{v}_t \\leftarrow \\beta_2 \\vc{v}_{t-1} + (1 - \\beta_2) \\vc{g}^2_t $}"
+    },
+    {
+      "id": "ASPT20.20",
+      "type": "algorithm_step",
+      "parent_id": "APT20.2",
+      "step_order": 9,
+      "name": "Algorithm 2 line 9",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "update",
+      "statement": "\\STATE{$\\hat{\\vc{m}}_t \\leftarrow \\vc{m}_t/(1 - \\beta_1^t) $} \\COMMENT{$\\beta_1$ is taken to the power of $t$}"
+    },
+    {
+      "id": "ASPT20.21",
+      "type": "algorithm_step",
+      "parent_id": "APT20.2",
+      "step_order": 10,
+      "name": "Algorithm 2 line 10",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "update",
+      "statement": "\\STATE{$\\hat{\\vc{{v}}}_t \\leftarrow \\vc{v}_t/(1 - \\beta_2^t) $} \\COMMENT{$\\beta_2$ is taken to the power of $t$}"
+    },
+    {
+      "id": "ASPT20.22",
+      "type": "algorithm_step",
+      "parent_id": "APT20.2",
+      "step_order": 11,
+      "name": "Algorithm 2 line 11",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "update",
+      "statement": "\\STATE{$\\eta_t \\leftarrow \\text{SetScheduleMultiplier}(t)$} \\COMMENT{can be fixed, decay, or also be used for warm restarts}"
+    },
+    {
+      "id": "ASPT20.23",
+      "type": "algorithm_step",
+      "parent_id": "APT20.2",
+      "step_order": 12,
+      "name": "Algorithm 2 line 12",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "update",
+      "statement": "\\STATE{$\\bm{\\theta}_t \\leftarrow \\bm{\\theta}_{t-1} - \\eta_t \\left( \\alpha \\hat{\\vc{m}}_t / (\\sqrt{\\hat{\\vc{v}}_t} + \\epsilon) \\ouradam{+ \\lambda\\bm{\\theta}_{t-1}} \\right)$}"
+    },
+    {
+      "id": "ASPT20.24",
+      "type": "algorithm_step",
+      "parent_id": "APT20.2",
+      "step_order": 13,
+      "name": "Algorithm 2 line 13",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "branch",
+      "statement": "\\UNTIL{ \\textit{stopping criterion is met} }"
+    },
+    {
+      "id": "ASPT20.25",
+      "type": "algorithm_step",
+      "parent_id": "APT20.2",
+      "step_order": 14,
+      "name": "Algorithm 2 line 14",
+      "section": "2 Decoupling the Weight Decay from the Gradient-based Update",
+      "subclass": "return",
+      "statement": "\\RETURN{optimized parameters $\\bm{\\theta}_t$}"
+    },
+    {
+      "id": "APT20.3",
+      "type": "algorithm",
+      "name": "AdamWR",
+      "section": "Appendix B.2 Adam with Cosine Annealing and Warm Restarts",
+      "origin": "paper",
+      "statement": "Our proposed \\textbf{AdamWR} algorithm represents AdamW (see Algorithm 2) with $\\eta_t$ following Eq.\\ (\\ref{eq:t2}) and $\\lambda$ computed at each iteration using normalized weight decay described in Section \\ref{sec:normw}."
+    },
+    {
+      "id": "PPT20.1",
+      "type": "proof",
+      "name": "Proof of Proposition 1",
+      "section": "Appendix A Formal Analysis of Weight Decay vs L$_2$ Regularization",
+      "origin": "paper",
+      "proves": "PrPT20.1",
+      "statement": "The proof for this well-known fact is straight-forward. SGD without weight decay has the following iterates on $f_{t}^{\\text{reg}}(\\bm{\\theta}) = f_t(\\bm{\\theta}) + \\frac{\\lambda'}{2} \\norm{\\bm{\\theta}}_2^2$: \\begin{equation} \\bm{\\theta}_{t+1} \\leftarrow \\bm{\\theta}_t - \\alpha \\nabla f_{t}^{\\text{reg}}(\\bm{\\theta}_t) = \\bm{\\theta}_t - \\alpha \\nabla f_t(\\bm{\\theta}_t) - \\alpha \\lambda' \\bm{\\theta}_t. \\end{equation} SGD with weight decay has the following iterates on $f_t(\\bm{\\theta})$: \\begin{equation} \\bm{\\theta}_{t+1} \\leftarrow (1 - \\lambda) \\bm{\\theta}_t - \\alpha \\nabla f_t(\\bm{\\theta}_t). \\end{equation} These iterates are identical since $\\lambda' = \\frac{\\lambda}{\\alpha}$. \\qed"
+    },
+    {
+      "id": "PPT20.2",
+      "type": "proof",
+      "name": "Proof of Proposition 2",
+      "section": "Appendix A Formal Analysis of Weight Decay vs L$_2$ Regularization",
+      "origin": "paper",
+      "proves": "PrPT20.2",
+      "statement": "Similarly to the proof of Proposition 1, the iterates of $O$ without weight decay on $f^{\\text{reg}}_t(\\bm{\\theta}) = f_t(\\bm{\\theta}) + \\frac{1}{2} \\lambda' \\norm{\\bm{\\theta}}_2^2$ and $O$ with weight decay $\\lambda$ on $f_t$ are, respectively: \\begin{eqnarray} \\bm{\\theta}_{t+1} &\\leftarrow& \\bm{\\theta}_t - \\alpha \\lambda' \\mathbf{M}_t \\bm{\\theta}_t - \\alpha \\mathbf{M}_t \\nabla f_t(\\bm{\\theta}_t).\\\\ \\bm{\\theta}_{t+1} &\\leftarrow& (1 - \\lambda) \\bm{\\theta}_t - \\alpha \\mathbf{M}_t \\nabla f_t(\\bm{\\theta}_t). \\end{eqnarray} The equality of these iterates for all $\\bm{\\theta}_t$ would imply $\\lambda\\bm{\\theta}_t = \\alpha \\lambda' \\mathbf{M}_t\\bm{\\theta}_t$. This can only hold for all $\\bm{\\theta}_t$ if $\\mathbf{M}_t = k \\mathbf{I}$, with $k\\in\\mathbb{R}$, which is not the case for $O$. Therefore, no L$_2$ regularizer $\\lambda' \\norm{\\bm{\\theta}}_2^2$ exists that makes the iterates equivalent. \\qed"
+    },
+    {
+      "id": "PPT20.3",
+      "type": "proof",
+      "name": "Proof of Proposition 3",
+      "section": "Appendix A Formal Analysis of Weight Decay vs L$_2$ Regularization",
+      "origin": "paper",
+      "proves": "PrPT20.3",
+      "statement": "$O$ without weight decay has the following iterates on $f_{t}^{\\text{sreg}}(\\bm{\\theta}) = f_t(\\bm{\\theta}) + \\frac{\\lambda'}{2} \\norm{\\bm{\\theta} \\odot{} \\sqrt{\\vc{s}}}_2^2$: \\begin{eqnarray} \\bm{\\theta}_{t+1} & \\leftarrow &\\bm{\\theta}_t - \\alpha \\nabla f_{t}^{\\text{sreg}}(\\bm{\\theta}_t)/\\vc{s}\\\\ &=& \\bm{\\theta}_t - \\alpha \\nabla f_t(\\bm{\\theta}_t)/\\vc{s} - \\alpha \\lambda' \\bm{\\theta}_t \\odot \\vc{s} / \\vc{s}\\\\ &=& \\bm{\\theta}_t - \\alpha \\nabla f_t(\\bm{\\theta}_t)/\\vc{s} - \\alpha \\lambda' \\bm{\\theta}_t, \\end{eqnarray} where the division by $\\vc{s}$ is element-wise. $O$ with weight decay has the following iterates on $f_t(\\bm{\\theta})$: \\begin{eqnarray} \\bm{\\theta}_{t+1} &\\leftarrow& (1 - \\lambda) \\bm{\\theta}_t - \\alpha \\nabla f(\\bm{\\theta}_t) / \\vc{s}\\\\ &=& \\bm{\\theta}_t - \\alpha \\nabla f(\\bm{\\theta}_t) / \\vc{s} -\\lambda \\bm{\\theta}_t , \\end{eqnarray} These iterates are identical since $\\lambda' = \\frac{\\lambda}{\\alpha}$. \\qed"
+    },
+    {
+      "id": "PSPT20.1",
+      "type": "proof_step",
+      "parent_id": "PPT20.1",
+      "step_order": 1,
+      "name": "PPT20.1 step 1",
+      "section": "Appendix A Formal Analysis of Weight Decay vs L$_2$ Regularization",
+      "subclass": "setup",
+      "statement": "SGD without weight decay has the following iterates on $f_{t}^{\\text{reg}}(\\bm{\\theta}) = f_t(\\bm{\\theta}) + \\frac{\\lambda'}{2} \\norm{\\bm{\\theta}}_2^2$: \\begin{equation} \\bm{\\theta}_{t+1} \\leftarrow \\bm{\\theta}_t - \\alpha \\nabla f_{t}^{\\text{reg}}(\\bm{\\theta}_t) = \\bm{\\theta}_t - \\alpha \\nabla f_t(\\bm{\\theta}_t) - \\alpha \\lambda' \\bm{\\theta}_t. \\end{equation}"
+    },
+    {
+      "id": "PSPT20.2",
+      "type": "proof_step",
+      "parent_id": "PPT20.1",
+      "step_order": 2,
+      "name": "PPT20.1 step 2",
+      "section": "Appendix A Formal Analysis of Weight Decay vs L$_2$ Regularization",
+      "subclass": "case_split",
+      "statement": "SGD with weight decay has the following iterates on $f_t(\\bm{\\theta})$: \\begin{equation} \\bm{\\theta}_{t+1} \\leftarrow (1 - \\lambda) \\bm{\\theta}_t - \\alpha \\nabla f_t(\\bm{\\theta}_t). \\end{equation}"
+    },
+    {
+      "id": "PSPT20.3",
+      "type": "proof_step",
+      "parent_id": "PPT20.1",
+      "step_order": 3,
+      "name": "PPT20.1 step 3",
+      "section": "Appendix A Formal Analysis of Weight Decay vs L$_2$ Regularization",
+      "subclass": "conclude",
+      "statement": "These iterates are identical since $\\lambda' = \\frac{\\lambda}{\\alpha}$. \\qed"
+    },
+    {
+      "id": "PSPT20.4",
+      "type": "proof_step",
+      "parent_id": "PPT20.2",
+      "step_order": 1,
+      "name": "PPT20.2 step 1",
+      "section": "Appendix A Formal Analysis of Weight Decay vs L$_2$ Regularization",
+      "subclass": "setup",
+      "statement": "Similarly to the proof of Proposition 1, the iterates of $O$ without weight decay on $f^{\\text{reg}}_t(\\bm{\\theta}) = f_t(\\bm{\\theta}) + \\frac{1}{2} \\lambda' \\norm{\\bm{\\theta}}_2^2$ and $O$ with weight decay $\\lambda$ on $f_t$ are, respectively: \\begin{eqnarray} \\bm{\\theta}_{t+1} &\\leftarrow& \\bm{\\theta}_t - \\alpha \\lambda' \\mathbf{M}_t \\bm{\\theta}_t - \\alpha \\mathbf{M}_t \\nabla f_t(\\bm{\\theta}_t).\\\\ \\bm{\\theta}_{t+1} &\\leftarrow& (1 - \\lambda) \\bm{\\theta}_t - \\alpha \\mathbf{M}_t \\nabla f_t(\\bm{\\theta}_t). \\end{eqnarray}"
+    },
+    {
+      "id": "PSPT20.5",
+      "type": "proof_step",
+      "parent_id": "PPT20.2",
+      "step_order": 2,
+      "name": "PPT20.2 step 2",
+      "section": "Appendix A Formal Analysis of Weight Decay vs L$_2$ Regularization",
+      "subclass": "algebraic_manipulation",
+      "statement": "The equality of these iterates for all $\\bm{\\theta}_t$ would imply $\\lambda\\bm{\\theta}_t = \\alpha \\lambda' \\mathbf{M}_t\\bm{\\theta}_t$. This can only hold for all $\\bm{\\theta}_t$ if $\\mathbf{M}_t = k \\mathbf{I}$, with $k\\in\\mathbb{R}$, which is not the case for $O$."
+    },
+    {
+      "id": "PSPT20.6",
+      "type": "proof_step",
+      "parent_id": "PPT20.2",
+      "step_order": 3,
+      "name": "PPT20.2 step 3",
+      "section": "Appendix A Formal Analysis of Weight Decay vs L$_2$ Regularization",
+      "subclass": "conclude",
+      "statement": "Therefore, no L$_2$ regularizer $\\lambda' \\norm{\\bm{\\theta}}_2^2$ exists that makes the iterates equivalent. \\qed"
+    },
+    {
+      "id": "PSPT20.7",
+      "type": "proof_step",
+      "parent_id": "PPT20.3",
+      "step_order": 1,
+      "name": "PPT20.3 step 1",
+      "section": "Appendix A Formal Analysis of Weight Decay vs L$_2$ Regularization",
+      "subclass": "setup",
+      "statement": "$O$ without weight decay has the following iterates on $f_{t}^{\\text{sreg}}(\\bm{\\theta}) = f_t(\\bm{\\theta}) + \\frac{\\lambda'}{2} \\norm{\\bm{\\theta} \\odot{} \\sqrt{\\vc{s}}}_2^2$: \\begin{eqnarray} \\bm{\\theta}_{t+1} & \\leftarrow &\\bm{\\theta}_t - \\alpha \\nabla f_{t}^{\\text{sreg}}(\\bm{\\theta}_t)/\\vc{s}\\\\ &=& \\bm{\\theta}_t - \\alpha \\nabla f_t(\\bm{\\theta}_t)/\\vc{s} - \\alpha \\lambda' \\bm{\\theta}_t \\odot \\vc{s} / \\vc{s}\\\\ &=& \\bm{\\theta}_t - \\alpha \\nabla f_t(\\bm{\\theta}_t)/\\vc{s} - \\alpha \\lambda' \\bm{\\theta}_t, \\end{eqnarray} where the division by $\\vc{s}$ is element-wise."
+    },
+    {
+      "id": "PSPT20.8",
+      "type": "proof_step",
+      "parent_id": "PPT20.3",
+      "step_order": 2,
+      "name": "PPT20.3 step 2",
+      "section": "Appendix A Formal Analysis of Weight Decay vs L$_2$ Regularization",
+      "subclass": "case_split",
+      "statement": "$O$ with weight decay has the following iterates on $f_t(\\bm{\\theta})$: \\begin{eqnarray} \\bm{\\theta}_{t+1} &\\leftarrow& (1 - \\lambda) \\bm{\\theta}_t - \\alpha \\nabla f(\\bm{\\theta}_t) / \\vc{s}\\\\ &=& \\bm{\\theta}_t - \\alpha \\nabla f(\\bm{\\theta}_t) / \\vc{s} -\\lambda \\bm{\\theta}_t , \\end{eqnarray}"
+    },
+    {
+      "id": "PSPT20.9",
+      "type": "proof_step",
+      "parent_id": "PPT20.3",
+      "step_order": 3,
+      "name": "PPT20.3 step 3",
+      "section": "Appendix A Formal Analysis of Weight Decay vs L$_2$ Regularization",
+      "subclass": "conclude",
+      "statement": "These iterates are identical since $\\lambda' = \\frac{\\lambda}{\\alpha}$. \\qed"
+    }
+  ],
+  "edges": [
+    {
+      "source": "PPT20.1",
+      "target": "PrPT20.1",
+      "type": "proves"
+    },
+    {
+      "source": "PPT20.2",
+      "target": "PrPT20.2",
+      "type": "proves"
+    },
+    {
+      "source": "PPT20.3",
+      "target": "PrPT20.3",
+      "type": "proves"
+    },
+    {
+      "source": "EPT20.1",
+      "target": "PrPT20.1",
+      "type": "uses"
+    },
+    {
+      "source": "PrPT20.2",
+      "target": "PrPT20.3",
+      "type": "uses"
+    },
+    {
+      "source": "EPT20.1",
+      "target": "APT20.1",
+      "type": "uses"
+    },
+    {
+      "source": "EPT20.1",
+      "target": "APT20.2",
+      "type": "uses"
+    },
+    {
+      "source": "APT20.2",
+      "target": "APT20.3",
+      "type": "uses"
+    },
+    {
+      "source": "EPT20.4",
+      "target": "APT20.3",
+      "type": "uses"
+    },
+    {
+      "source": "EPT20.6",
+      "target": "APT20.3",
+      "type": "uses"
+    },
+    {
+      "source": "EPT20.5",
+      "target": "EPT20.6",
+      "type": "uses"
+    },
+    {
+      "source": "EPT20.1",
+      "target": "EPT20.3",
+      "type": "uses"
+    }
+  ]
+}

@@ -1,0 +1,232 @@
+{
+  "metadata": {
+    "paper_num": "T12",
+    "title": "A Simple Framework for Contrastive Learning of Visual Representations",
+    "arxiv_id": "2002.05709",
+    "annotator": "agent-extraction",
+    "prompt_version": "v4.1",
+    "model": "claude-opus-4-8",
+    "extraction_date": "2026-07-28"
+  },
+  "nodes": [
+    {
+      "id": "DP12.1",
+      "type": "definition",
+      "name": "Data augmentation module",
+      "statement": "A stochastic \\textit{data augmentation} module that transforms any given data example randomly resulting in two correlated views of the same example, denoted $\\tilde{\\bm x}_i$ and $\\tilde{\\bm x}_j$, which we consider as a positive pair. In this work, we sequentially apply three simple augmentations: \\textit{random cropping} followed by resize back to the original size, \\textit{random color distortions}, and \\textit{random Gaussian blur}. As shown in Section~\\ref{sec:da}, the combination of random crop and color distortion is crucial to achieve a good performance.",
+      "section": "The Contrastive Learning Framework",
+      "origin": "paper"
+    },
+    {
+      "id": "DP12.2",
+      "type": "definition",
+      "name": "Base encoder $f(\\cdot)$",
+      "statement": "A neural network \\textit{base encoder} $f(\\cdot)$ that extracts representation vectors from augmented data examples. Our framework allows various choices of the network architecture without any constraints. We opt for simplicity and adopt the commonly used ResNet~\\cite{he2016deep} to obtain $\\bm h_i = f(\\tilde{\\bm x}_i) = \\mathrm{ResNet}(\\tilde{\\bm x}_i)$ where $\\bm h_i\\in \\mathbb{R}^d$ is the output after the average pooling layer.",
+      "section": "The Contrastive Learning Framework",
+      "origin": "paper"
+    },
+    {
+      "id": "DP12.3",
+      "type": "definition",
+      "name": "Projection head $g(\\cdot)$",
+      "statement": "A small neural network \\textit{projection head} $g(\\cdot)$ that maps representations to the space where contrastive loss is applied. We use a MLP with one hidden layer to obtain $\\bm z_i = g(\\bm h_i)=W^{(2)}\\sigma(W^{(1)}\\bm h_i)$ where $\\sigma$ is a ReLU non-linearity. As shown in section~\\ref{sec:arch}, we find it beneficial to define the contrastive loss on $\\bm z_i$'s rather than $\\bm h_i$'s.",
+      "section": "The Contrastive Learning Framework",
+      "origin": "paper"
+    },
+    {
+      "id": "DP12.4",
+      "type": "definition",
+      "name": "Contrastive loss function / contrastive prediction task",
+      "statement": "A \\textit{contrastive loss function} defined for a contrastive prediction task. Given a set $\\{\\tilde{\\bm x}_k\\}$ including a positive pair of examples $\\tilde{\\bm x}_i$ and $\\tilde{\\bm x}_j$, the \\textit{contrastive prediction task} aims to identify $\\tilde{\\bm x}_j$ in $\\{\\tilde{\\bm x}_k\\}_{k\\ne i}$ for a given $\\tilde{\\bm x}_i$.",
+      "section": "The Contrastive Learning Framework",
+      "origin": "paper"
+    },
+    {
+      "id": "DP12.5",
+      "type": "definition",
+      "name": "Cosine similarity $\\mathrm{sim}(\\bm u,\\bm v)$",
+      "statement": "Let $\\mathrm{sim}(\\bm u,\\bm v) = \\bm u^\\top \\bm v / \\lVert\\bm u\\rVert \\lVert\\bm v\\rVert$ denote the dot product between $\\ell_2$ normalized $\\bm u$ and $\\bm v$ (i.e. cosine similarity).",
+      "section": "The Contrastive Learning Framework",
+      "origin": "paper"
+    },
+    {
+      "id": "EP12.1",
+      "type": "equation",
+      "name": "NT-Xent loss (normalized temperature-scaled cross entropy loss)",
+      "statement": "Then the loss function for a positive pair of examples $(i, j)$ is defined as \\begin{equation} \\ell_{i,j} = -\\log \\frac{\\exp(\\mathrm{sim}(\\bm z_i, \\bm z_j)/\\tau)}{\\sum_{k=1}^{2N} \\one{k \\neq i}\\exp(\\mathrm{sim}(\\bm z_i, \\bm z_k)/\\tau)}~, \\end{equation} where $\\one{k \\neq i} \\in \\{ 0,  1\\}$ is an indicator function evaluating to $1$ iff $k \\neq i$ and $\\tau$ denotes a temperature parameter. The final loss is computed across all positive pairs, both $(i, j)$ and $(j, i)$, in a mini-batch. This loss has been used in previous work~\\cite{sohn2016improved,wu2018unsupervised,oord2018representation}; for convenience, we term it \\textit{NT-Xent} (the normalized temperature-scaled cross entropy loss).",
+      "section": "The Contrastive Learning Framework",
+      "origin": "paper"
+    },
+    {
+      "id": "AP12.1",
+      "type": "algorithm",
+      "name": "SimCLR's main learning algorithm",
+      "statement": "\\begin{algorithmic} \\STATE \\textbf{input:} batch size $N$, constant $\\tau$, structure of $f$, $g$, $\\mathcal{T}$. \\FOR{sampled minibatch $\\{\\bm x_k\\}_{k=1}^N$} \\STATE \\textbf{for all} $k\\in \\{1, \\ldots, N\\}$ \\textbf{do} \\STATE $~~~~$draw two augmentation functions $t \\!\\sim\\! \\mathcal{T}$, $t' \\!\\sim\\! \\mathcal{T}$ \\STATE $~~~~$\\textcolor{gray}{\\# the first augmentation} \\STATE $~~~~$$\\tilde{\\bm x}_{2k-1} = t(\\bm x_k)$ \\STATE $~~~~$$\\bm h_{2k-1} = f(\\tilde{\\bm x}_{2k-1})$ \\textcolor{gray}{\\# representation} \\STATE $~~~~$$\\bm z_{2k-1} = g({\\bm h}_{2k-1})$ \\textcolor{gray}{\\# projection} \\STATE $~~~~$\\textcolor{gray}{\\# the second augmentation} \\STATE $~~~~$$\\tilde{\\bm x}_{2k} = t'(\\bm x_k)$ \\STATE $~~~~$$\\bm h_{2k} = f(\\tilde{\\bm x}_{2k})$ \\textcolor{gray}{\\# representation} \\STATE $~~~~$$\\bm z_{2k} = g({\\bm h}_{2k})$ \\textcolor{gray}{\\# projection} \\STATE \\textbf{end for} \\STATE \\textbf{for all} $i\\in\\{1, \\ldots, 2N\\}$ and $j\\in\\{1, \\dots, 2N\\}$ \\textbf{do} \\STATE $~~~~$ $s_{i,j} = \\bm z_i^\\top \\bm z_j / (\\lVert\\bm z_i\\rVert \\lVert\\bm z_j\\rVert)$ \\textcolor{gray}{\\# pairwise similarity} \\STATE \\textbf{end for} \\STATE \\textbf{define} $\\ell(i, j)$ \\textbf{as}~ $\\ell(i, j) \\!=\\! -\\log \\frac{\\exp(s_{i,j}/\\tau)}{\\sum_{k=1}^{2N} \\one{k \\neq i}\\exp(s_{i, k}/\\tau)}$ \\STATE $\\mathcal{L} = \\frac{1}{2N} \\sum_{k=1}^N \\left[ \\ell(2k\\!-\\!1, 2k) + \\ell(2k, 2k\\!-\\!1)\\right]$ \\STATE update networks $f$ and $g$ to minimize $\\mathcal{L}$ \\ENDFOR \\STATE \\textbf{return} encoder network $f(\\cdot)$, and throw away $g(\\cdot)$ \\end{algorithmic}",
+      "section": "The Contrastive Learning Framework",
+      "origin": "paper",
+      "input": [
+        "batch size $N$",
+        "constant $\\tau$",
+        "structure of $f$, $g$, $\\mathcal{T}$"
+      ],
+      "output": [
+        "encoder network $f(\\cdot)$, and throw away $g(\\cdot)$"
+      ]
+    },
+    {
+      "id": "ASP12.1",
+      "type": "algorithm_step",
+      "name": "Input declaration",
+      "statement": "\\STATE \\textbf{input:} batch size $N$, constant $\\tau$, structure of $f$, $g$, $\\mathcal{T}$.",
+      "section": "The Contrastive Learning Framework",
+      "parent_id": "AP12.1",
+      "step_order": 1,
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP12.2",
+      "type": "algorithm_step",
+      "name": "Sample minibatch (outer loop)",
+      "statement": "\\FOR{sampled minibatch $\\{\\bm x_k\\}_{k=1}^N$}",
+      "section": "The Contrastive Learning Framework",
+      "parent_id": "AP12.1",
+      "step_order": 2,
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP12.3",
+      "type": "algorithm_step",
+      "name": "Augment and encode both views for all examples",
+      "statement": "\\STATE \\textbf{for all} $k\\in \\{1, \\ldots, N\\}$ \\textbf{do} \\STATE $~~~~$draw two augmentation functions $t \\!\\sim\\! \\mathcal{T}$, $t' \\!\\sim\\! \\mathcal{T}$ \\STATE $~~~~$\\textcolor{gray}{\\# the first augmentation} \\STATE $~~~~$$\\tilde{\\bm x}_{2k-1} = t(\\bm x_k)$ \\STATE $~~~~$$\\bm h_{2k-1} = f(\\tilde{\\bm x}_{2k-1})$ \\textcolor{gray}{\\# representation} \\STATE $~~~~$$\\bm z_{2k-1} = g({\\bm h}_{2k-1})$ \\textcolor{gray}{\\# projection} \\STATE $~~~~$\\textcolor{gray}{\\# the second augmentation} \\STATE $~~~~$$\\tilde{\\bm x}_{2k} = t'(\\bm x_k)$ \\STATE $~~~~$$\\bm h_{2k} = f(\\tilde{\\bm x}_{2k})$ \\textcolor{gray}{\\# representation} \\STATE $~~~~$$\\bm z_{2k} = g({\\bm h}_{2k})$ \\textcolor{gray}{\\# projection} \\STATE \\textbf{end for}",
+      "section": "The Contrastive Learning Framework",
+      "parent_id": "AP12.1",
+      "step_order": 3,
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP12.4",
+      "type": "algorithm_step",
+      "name": "Compute pairwise similarities",
+      "statement": "\\STATE \\textbf{for all} $i\\in\\{1, \\ldots, 2N\\}$ and $j\\in\\{1, \\dots, 2N\\}$ \\textbf{do} \\STATE $~~~~$ $s_{i,j} = \\bm z_i^\\top \\bm z_j / (\\lVert\\bm z_i\\rVert \\lVert\\bm z_j\\rVert)$ \\textcolor{gray}{\\# pairwise similarity} \\STATE \\textbf{end for}",
+      "section": "The Contrastive Learning Framework",
+      "parent_id": "AP12.1",
+      "step_order": 4,
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP12.5",
+      "type": "algorithm_step",
+      "name": "Define pairwise loss",
+      "statement": "\\STATE \\textbf{define} $\\ell(i, j)$ \\textbf{as}~ $\\ell(i, j) \\!=\\! -\\log \\frac{\\exp(s_{i,j}/\\tau)}{\\sum_{k=1}^{2N} \\one{k \\neq i}\\exp(s_{i, k}/\\tau)}$",
+      "section": "The Contrastive Learning Framework",
+      "parent_id": "AP12.1",
+      "step_order": 5,
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP12.6",
+      "type": "algorithm_step",
+      "name": "Compute total loss",
+      "statement": "\\STATE $\\mathcal{L} = \\frac{1}{2N} \\sum_{k=1}^N \\left[ \\ell(2k\\!-\\!1, 2k) + \\ell(2k, 2k\\!-\\!1)\\right]$",
+      "section": "The Contrastive Learning Framework",
+      "parent_id": "AP12.1",
+      "step_order": 6,
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP12.7",
+      "type": "algorithm_step",
+      "name": "Update networks",
+      "statement": "\\STATE update networks $f$ and $g$ to minimize $\\mathcal{L}$",
+      "section": "The Contrastive Learning Framework",
+      "parent_id": "AP12.1",
+      "step_order": 7,
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP12.8",
+      "type": "algorithm_step",
+      "name": "Return encoder",
+      "statement": "\\STATE \\textbf{return} encoder network $f(\\cdot)$, and throw away $g(\\cdot)$",
+      "section": "The Contrastive Learning Framework",
+      "parent_id": "AP12.1",
+      "step_order": 8,
+      "subclass": "return",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {
+      "source": "DP12.5",
+      "target": "EP12.1",
+      "type": "uses"
+    },
+    {
+      "source": "DP12.4",
+      "target": "EP12.1",
+      "type": "uses"
+    },
+    {
+      "source": "EP12.1",
+      "target": "AP12.1",
+      "type": "uses"
+    },
+    {
+      "source": "DP12.1",
+      "target": "AP12.1",
+      "type": "uses"
+    },
+    {
+      "source": "DP12.2",
+      "target": "AP12.1",
+      "type": "uses"
+    },
+    {
+      "source": "DP12.3",
+      "target": "AP12.1",
+      "type": "uses"
+    },
+    {
+      "source": "ASP12.1",
+      "target": "ASP12.2",
+      "type": "uses"
+    },
+    {
+      "source": "ASP12.2",
+      "target": "ASP12.3",
+      "type": "uses"
+    },
+    {
+      "source": "ASP12.3",
+      "target": "ASP12.4",
+      "type": "uses"
+    },
+    {
+      "source": "ASP12.4",
+      "target": "ASP12.5",
+      "type": "uses"
+    },
+    {
+      "source": "ASP12.5",
+      "target": "ASP12.6",
+      "type": "uses"
+    },
+    {
+      "source": "ASP12.6",
+      "target": "ASP12.7",
+      "type": "uses"
+    },
+    {
+      "source": "ASP12.7",
+      "target": "ASP12.8",
+      "type": "uses"
+    }
+  ]
+}

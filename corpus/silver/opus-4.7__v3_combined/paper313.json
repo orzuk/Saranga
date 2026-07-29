@@ -1,0 +1,704 @@
+{
+  "metadata": {
+    "title": "HyperLogLog: the analysis of a near-optimal cardinality estimation algorithm",
+    "authors": "Philippe Flajolet, Eric Fusy, Olivier Gandouet, Frederic Meunier",
+    "year": "2007",
+    "paper_num": 313,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-03",
+    "source_note": "Extracted from PDF->text fallback; .tex source not available. Math fidelity reduced."
+  },
+  "nodes": [
+    {
+      "id": "DP313.1",
+      "type": "definition",
+      "name": "Hash function (idealized)",
+      "section": "Introduction",
+      "statement": "A hash function $h : D \\to \\{0,1\\}^{\\infty}$ assigns to each element of the data domain $D$ an infinite binary string whose bits are independent and each take value $0$ or $1$ with probability $1/2$.",
+      "statement_clean": "Hash function mapping data elements to uniformly random infinite bit strings.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP313.2",
+      "type": "definition",
+      "name": "Observable",
+      "section": "Introduction",
+      "statement": "An observable of a multiset $S \\equiv h(\\mathcal{M})$ of $\\{0,1\\}^{\\infty}$ strings is a function that depends only on the underlying set of $S$, i.e., a quantity invariant under replications.",
+      "statement_clean": "A function of a multiset that ignores duplicate elements.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP313.3",
+      "type": "definition",
+      "name": "Leftmost-1-bit position $\\rho(s)$",
+      "section": "1",
+      "statement": "For $s \\in \\{0,1\\}^{\\infty}$, $\\rho(s)$ is the position of the leftmost $1$-bit (equivalently, one plus the length of the initial run of $0$'s); e.g., $\\rho(0001\\cdots) = 4$.",
+      "statement_clean": "Position of the leftmost 1-bit in a binary string.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP313.4",
+      "type": "definition",
+      "name": "Stochastic averaging",
+      "section": "Introduction",
+      "statement": "A technique that emulates $m$ parallel experiments using a single hash function by partitioning the unit interval of hashed values into $m$ equal subintervals indexed by the first $b$ bits, where $m = 2^b$.",
+      "statement_clean": "Splitting the hashed stream into m substreams via leading bits to simulate m parallel runs with one hash.",
+      "origin": "external",
+      "origin_citation": "Flajolet & Martin 1985"
+    },
+    {
+      "id": "DP313.5",
+      "type": "definition",
+      "name": "Max-observable per substream",
+      "section": "1",
+      "statement": "For substream $\\mathcal{N} \\equiv \\mathcal{M}_j$ (hashed values stripped of their first $b$ bits), the substream observable is $\\mathrm{Max}(\\mathcal{N}) := \\max_{x \\in \\mathcal{N}} \\rho(x)$, with the convention $\\mathrm{Max}(\\emptyset) = -\\infty$.",
+      "statement_clean": "Per-substream observable: maximum leftmost-1-bit position over hashed values.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP313.6",
+      "type": "definition",
+      "name": "HyperLogLog indicator $Z$",
+      "section": "1",
+      "statement": "After processing all elements, the indicator is $Z := \\bigl( \\sum_{j=1}^{m} 2^{-M^{(j)}} \\bigr)^{-1}$, where $M^{(j)}$ is the value of $\\mathrm{Max}(\\mathcal{M}_j)$ stored in register $j$.",
+      "statement_clean": "Reciprocal of the sum of 2^{-M[j]}; proportional to the harmonic mean of 2^{M[j]}.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP313.7",
+      "type": "definition",
+      "name": "HyperLogLog cardinality estimate $E$",
+      "section": "1",
+      "statement": "The HyperLogLog estimate is $E := \\dfrac{\\alpha_m m^2}{\\sum_{j=1}^m 2^{-M^{(j)}}}$, where $\\alpha_m := \\Bigl( m \\int_0^{\\infty} \\log_2\\bigl(\\tfrac{2+u}{1+u}\\bigr)^m du \\Bigr)^{-1}$ is a bias-correction constant.",
+      "statement_clean": "Estimator: alpha_m times m^2 times harmonic-mean-like aggregate Z.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP313.8",
+      "type": "definition",
+      "name": "Ideal multiset",
+      "section": "1",
+      "statement": "An ideal multiset of cardinality $n$ is a sequence obtained by arbitrary replications and permutations of $n$ i.i.d. uniform random variables on the real interval $[0,1]$.",
+      "statement_clean": "Multiset modeled as iid Uniform[0,1] variables (with arbitrary repetitions).",
+      "origin": "paper"
+    },
+    {
+      "id": "DP313.9",
+      "type": "definition",
+      "name": "Mellin transform",
+      "section": "2.2",
+      "statement": "For $f : \\mathbb{R}_{>0} \\to \\mathbb{C}$, the Mellin transform is $f^{\\star}(s) := \\int_0^{+\\infty} f(t)\\, t^{s-1}\\, dt$.",
+      "statement_clean": "Integral transform mapping a positive-real function to a complex function of s.",
+      "origin": "external",
+      "origin_citation": "Flajolet, Gourdon & Dumas 1995"
+    },
+    {
+      "id": "DP313.10",
+      "type": "definition",
+      "name": "Poisson model",
+      "section": "2.1",
+      "statement": "Under the Poisson model of rate $\\lambda$, the multiset has a random cardinality $N$ with $P(N=n) = e^{-\\lambda} \\lambda^n / n!$.",
+      "statement_clean": "Replace fixed sample size n by a Poisson(lambda) random size.",
+      "origin": "external",
+      "origin_citation": "classical (analysis-of-algorithms folklore)"
+    },
+    {
+      "id": "EP313.1",
+      "type": "equation",
+      "name": "Bias-correction constant $\\alpha_m$",
+      "section": "1",
+      "statement": "$\\alpha_m = \\Bigl( m \\int_0^{\\infty} \\log_2\\!\\bigl(\\tfrac{2+u}{1+u}\\bigr)^m du \\Bigr)^{-1}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP313.2",
+      "type": "equation",
+      "name": "Geometric distribution of $\\rho$",
+      "section": "2.1",
+      "statement": "Each $Y = \\rho(x)$ is geometrically distributed: $P(Y \\geq k) = 2^{1-k}$ for $k \\geq 1$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP313.3",
+      "type": "equation",
+      "name": "Identity $1/a = \\int_0^{\\infty} e^{-at} dt$",
+      "section": "2.2",
+      "statement": "$\\dfrac{1}{a} = \\int_0^{\\infty} e^{-at}\\, dt$, used to decouple the harmonic-mean factor.",
+      "origin": "external",
+      "origin_citation": "elementary calculus"
+    },
+    {
+      "id": "EP313.4",
+      "type": "equation",
+      "name": "Integral form $H(x)$",
+      "section": "2.2",
+      "statement": "$E_{P(x)}(Z) = H(x/m)$, where $H(x) := x \\int_0^{+\\infty} G(x, xu)^m du$ and $G(x,t) := \\sum_{k \\geq 1} g(x/2^k) e^{-t/2^k}$, $g(x) = e^{-x} - e^{-2x}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP313.5",
+      "type": "equation",
+      "name": "Mellin factorization of $h_u^{\\star}(s)$",
+      "section": "2.2",
+      "statement": "$h_u^{\\star}(s) = \\dfrac{2^s\\, \\Gamma(s)}{1 - 2^s}\\bigl((1+u)^{-s} - (2+u)^{-s}\\bigr)$ in the fundamental strip $\\langle -1, 0\\rangle$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP313.6",
+      "type": "equation",
+      "name": "Asymptotic constants $\\alpha_m, \\beta_m$",
+      "section": "3.2",
+      "statement": "$\\alpha_m \\sim \\dfrac{1}{2 \\log 2} \\doteq 0.72134$ and $\\beta_m \\sim \\sqrt{3 \\log 2 - 1} \\doteq 1.03896$ as $m \\to \\infty$.",
+      "origin": "paper"
+    },
+    {
+      "id": "AssumP313.1",
+      "type": "assumption",
+      "name": "Ideal-multiset hypothesis",
+      "section": "1",
+      "statement": "Throughout the analytical Sections 2 and 3, the hashed-value collection $h(\\mathcal{M})$ is assumed to constitute an ideal multiset (cf. Definition DP313.8); the number of distinct elements then equals $n$ with probability $1$.",
+      "origin": "paper"
+    },
+    {
+      "id": "TP313.1",
+      "type": "theorem",
+      "name": "Main theorem: bias and standard error of HyperLogLog",
+      "section": "1",
+      "statement": "For HyperLogLog applied to an ideal multiset of cardinality $n$ with $m \\geq 3$ registers: (i) $\\tfrac{1}{n}\\, E_n(E) = 1 + \\delta_1(n) + o(1)$ with $|\\delta_1(n)| < 5 \\cdot 10^{-5}$ when $m \\geq 16$; (ii) $\\tfrac{1}{n}\\sqrt{V_n(E)} = \\beta_m/\\sqrt{m} + \\delta_2(n) + o(1)$ with $|\\delta_2(n)| < 5 \\cdot 10^{-4}$ when $m \\geq 16$, where $\\beta_{\\infty} = \\sqrt{3 \\log 2 - 1} \\doteq 1.03896$.",
+      "statement_clean": "HyperLogLog is asymptotically nearly unbiased and has standard error roughly 1.04/sqrt(m).",
+      "assumptions": [
+        "Algorithm HyperLogLog of Figure 2 is applied",
+        "Input is an ideal multiset of cardinality $n$",
+        "Number of registers $m \\geq 3$"
+      ],
+      "conclusions": [
+        "(i) Asymptotically almost unbiased: $\\tfrac{1}{n} E_n(E) = 1 + \\delta_1(n) + o(1)$ with $|\\delta_1(n)| < 5\\cdot 10^{-5}$ for $m \\geq 16$",
+        "(ii) Standard error $\\tfrac{1}{n}\\sqrt{V_n(E)} \\to \\beta_m/\\sqrt{m}$ with $\\beta_{\\infty} = \\sqrt{3\\log 2 - 1}$"
+      ],
+      "tags": ["bias", "variance", "asymptotic"],
+      "origin": "paper"
+    },
+    {
+      "id": "PrP313.1",
+      "type": "proposition",
+      "name": "Exact expectation of $Z$ (fixed-$n$ model)",
+      "section": "2.1",
+      "statement": "$E_n(Z) = \\sum_{k_1,\\ldots,k_m \\geq 1} \\dfrac{1}{\\sum_{j=1}^m 2^{-k_j}} \\sum_{n_1+\\cdots+n_m = n} \\binom{n}{n_1,\\ldots,n_m} \\dfrac{1}{m^n} \\prod_{j=1}^m \\gamma_{n_j, k_j}$, where $\\gamma_{\\nu,k} = (1 - 2^{-k})^{\\nu} - (1 - 2^{1-k})^{\\nu}$ for $\\nu, k \\geq 1$ and $\\gamma_{0,k} = 0$.",
+      "statement_clean": "Closed-form (multinomial) expression for E_n(Z).",
+      "assumptions": [
+        "Ideal multiset of cardinality $n$ split into $m$ submultisets with multinomial sizes"
+      ],
+      "conclusions": [
+        "Exact formula for $E_n(Z)$ summing over register-value vectors $(k_1,\\ldots,k_m)$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "PrP313.2",
+      "type": "proposition",
+      "name": "Asymptotics of Poisson expectation",
+      "section": "2.2",
+      "statement": "With $\\alpha_m$ as in (3), $E_{P(\\lambda)}(Z) = \\dfrac{\\lambda}{m \\alpha_m}\\bigl(1 + \\epsilon_m(\\lambda/m) + o(1)\\bigr)$ as $\\lambda \\to \\infty$, with $|\\epsilon_m(t)| < 5 \\cdot 10^{-5}/m$ when $m \\geq 16$.",
+      "statement_clean": "Under Poisson sampling, the expectation of Z is asymptotically lambda/(m*alpha_m).",
+      "assumptions": [
+        "Poisson model of rate $\\lambda$",
+        "Number of registers $m \\geq 16$ for the explicit numerical bound"
+      ],
+      "conclusions": [
+        "$E_{P(\\lambda)}(Z) \\sim \\lambda/(m \\alpha_m)$ up to a tiny oscillating correction $\\epsilon_m$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "LP313.1",
+      "type": "lemma",
+      "name": "Mellin asymptotics of $G(x, xu)$",
+      "section": "2.2",
+      "statement": "For each fixed $u > 0$, as $x \\to +\\infty$: $G(x, xu) = f(u)\\bigl(1 + O(x^{-1})\\bigr) + \\epsilon(x,u)$ for $u \\leq 1$, and $G(x, xu) = f(u)\\bigl(1 + 2 \\widetilde{\\epsilon}(x,u) + O(x^{-1})\\bigr)$ for $u > 1$, where $f(u) = \\log_2\\!\\bigl(\\tfrac{2+u}{1+u}\\bigr)$ and $|\\epsilon|, |\\widetilde{\\epsilon}| \\leq \\epsilon_0 \\simeq 7 \\cdot 10^{-6}$ for $x \\geq 0$.",
+      "statement_clean": "Mellin-based asymptotic expansion of the integrand G(x,xu) with tiny uniform error.",
+      "assumptions": [
+        "$u > 0$ fixed",
+        "$x \\to +\\infty$"
+      ],
+      "conclusions": [
+        "$G(x,xu) = f(u)(1 + O(x^{-1})) + \\epsilon(x,u)$ for $u \\leq 1$",
+        "$G(x,xu) = f(u)(1 + 2\\widetilde{\\epsilon}(x,u) + O(x^{-1}))$ for $u > 1$"
+      ],
+      "tags": ["asymptotic", "Mellin"],
+      "origin": "paper"
+    },
+    {
+      "id": "PrP313.3",
+      "type": "proposition",
+      "name": "Depoissonization of $E_n(Z)$",
+      "section": "2.3",
+      "statement": "$E_n(Z) = E_{P(n)}(Z) + O(1)$ as $n \\to \\infty$.",
+      "statement_clean": "Fixed-size and Poisson expectations of Z agree up to a bounded error.",
+      "assumptions": [
+        "$n \\to \\infty$",
+        "Analytic-depoissonization conditions $C_1, C_2$ are satisfied for $f(z) = H(z/m)$"
+      ],
+      "conclusions": [
+        "$E_n(Z) = E_{P(n)}(Z) + O(1)$"
+      ],
+      "tags": ["asymptotic", "depoissonization"],
+      "origin": "paper"
+    },
+    {
+      "id": "TP313.2",
+      "type": "theorem",
+      "name": "Analytic depoissonization (Jacquet-Szpankowski)",
+      "section": "2.3",
+      "statement": "Let $f(z) = e^{-z} \\sum f_k z^k/k!$ be the Poisson generating function of $(f_k)$, entire. If there exist a cone $S_{\\theta} = \\{z = re^{i\\varphi}, |\\varphi| \\leq \\theta\\}$ with $\\theta < \\pi/2$ and $\\alpha < 1$ such that ($C_1$) $|f(z)| = O(|z|)$ for $z \\in S_{\\theta}$ and ($C_2$) $|f(z) e^z| = O(e^{\\alpha |z|})$ for $z \\notin S_{\\theta}$, then $f_n = f(n) + O(1)$.",
+      "statement_clean": "Saddle-point / cone conditions yielding f_n = f(n) + O(1) for entire Poisson GFs.",
+      "assumptions": [
+        "$f(z)$ entire Poisson generating function of $(f_k)$",
+        "Cone $S_{\\theta}$ with $\\theta < \\pi/2$",
+        "Real $\\alpha < 1$",
+        "($C_1$) $|f(z)| = O(|z|)$ for $z \\in S_{\\theta}$",
+        "($C_2$) $|f(z) e^z| = O(e^{\\alpha |z|})$ for $z \\notin S_{\\theta}$"
+      ],
+      "conclusions": [
+        "$f_n = f(n) + O(1)$ as $n \\to \\infty$"
+      ],
+      "tags": ["asymptotic", "depoissonization"],
+      "origin": "external",
+      "origin_citation": "Jacquet & Szpankowski 1998"
+    },
+    {
+      "id": "EP313.7",
+      "type": "equation",
+      "name": "Variance integral form $K(x)$",
+      "section": "3.1",
+      "statement": "$E_{P(\\lambda)}(Z^2) = K(\\lambda/m)$, where $K(x) := x^2 \\int_0^{+\\infty} u\\, G(x, xu)^m du$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP313.8",
+      "type": "equation",
+      "name": "Asymptotic Poisson variance",
+      "section": "3.1",
+      "statement": "$V_{P(\\lambda)}(Z) = \\lambda^2 \\Bigl( \\int_0^{\\infty} u\\, f(u)^m du - \\bigl(\\int_0^{\\infty} f(u)^m du\\bigr)^2 + \\epsilon''(\\lambda) + o(1) \\Bigr)$ with $\\epsilon''$ small.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP313.9",
+      "type": "equation",
+      "name": "Depoissonized variance",
+      "section": "3.1",
+      "statement": "$V_n(Z) = V_{P(n)}(Z) + O(n)$ as $n \\to \\infty$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP313.1",
+      "type": "remark",
+      "name": "Arithmetic nature of $\\alpha_m, \\beta_m$",
+      "section": "3.2",
+      "statement": "The integrals $J_0(m), J_1(m)$ that determine $\\alpha_m$ and $\\beta_m$ are rational combinations of $L = \\log 2$, values of $\\zeta$ at integers, and polylogarithms at $1/2$; e.g. $J_0(2) = \\tfrac{\\pi^2}{6 L^2} - 2$, $J_0(3) = \\tfrac{3\\zeta(3)}{4 L^3} - 2$.",
+      "origin": "paper"
+    },
+    {
+      "id": "AP313.1",
+      "type": "algorithm",
+      "name": "HyperLogLog algorithm",
+      "section": "1",
+      "statement": "Single-pass cardinality estimator that maintains $m = 2^b$ registers $M[1\\ldots m]$, updates $M[j] := \\max(M[j], \\rho(w))$ for each item, and returns $E := \\alpha_m m^2 / \\sum_j 2^{-M[j]}$.",
+      "input": [
+        "Multiset $\\mathcal{M}$ of items from a domain $D$ (read sequentially, single pass)",
+        "Hash function $h : D \\to \\{0,1\\}^{\\infty}$ producing uniform random bits",
+        "Parameter $b \\in \\mathbb{Z}_{>0}$, with $m := 2^b$ registers"
+      ],
+      "output": [
+        "Cardinality estimate $E := \\alpha_m m^2 / \\sum_{j=1}^m 2^{-M[j]}$ of the number of distinct elements of $\\mathcal{M}$"
+      ],
+      "tags": ["streaming", "approximation", "single-pass"],
+      "origin": "paper"
+    },
+    {
+      "id": "ASP313.1",
+      "type": "algorithm_step",
+      "name": "Initialize registers",
+      "parent_id": "AP313.1",
+      "step_order": 1,
+      "subclass": "initialize",
+      "statement": "Set $M[1], \\ldots, M[m] := -\\infty$ (in the analytical algorithm) or $0$ (in the practical program of Figure 3).",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP313.2",
+      "type": "algorithm_step",
+      "name": "Stream loop: hash, address, update",
+      "parent_id": "AP313.1",
+      "step_order": 2,
+      "subclass": "loop",
+      "statement": "For each $v \\in \\mathcal{M}$: set $x := h(v)$; let $j := 1 + \\langle x_1 x_2 \\cdots x_b \\rangle_2$ (binary address from first $b$ bits); set $w := x_{b+1} x_{b+2}\\cdots$; update $M[j] := \\max(M[j], \\rho(w))$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP313.3",
+      "type": "algorithm_step",
+      "name": "Compute indicator $Z$",
+      "parent_id": "AP313.1",
+      "step_order": 3,
+      "subclass": "update",
+      "statement": "Compute $Z := \\bigl( \\sum_{j=1}^{m} 2^{-M[j]} \\bigr)^{-1}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP313.4",
+      "type": "algorithm_step",
+      "name": "Return estimate",
+      "parent_id": "AP313.1",
+      "step_order": 4,
+      "subclass": "return",
+      "statement": "Return $E := \\alpha_m m^2 Z$ with $\\alpha_m$ as in equation (3).",
+      "origin": "paper"
+    },
+    {
+      "id": "AP313.2",
+      "type": "algorithm",
+      "name": "HyperLogLog program (with small/large range corrections)",
+      "section": "4",
+      "statement": "Practical version: registers initialized to $0$; raw estimate $E$ then post-corrected for small ($E \\leq \\tfrac{5}{2} m$) and large ($E > \\tfrac{1}{30} 2^{32}$) ranges via $m \\log(m/V)$ and $-2^{32} \\log(1 - E/2^{32})$, respectively.",
+      "input": [
+        "Multiset $\\mathcal{M}$ of items from a domain $D$",
+        "Hash function $h : D \\to \\{0,1\\}^{32}$ (32-bit hashing)",
+        "Parameter $b \\in [4..16]$, $m := 2^b$"
+      ],
+      "output": [
+        "Corrected cardinality estimate $E^{\\star}$ with typical relative error $\\pm 1.04/\\sqrt{m}$, valid for $n$ in range $[0, 10^9]$"
+      ],
+      "tags": ["streaming", "approximation", "iterative"],
+      "origin": "paper"
+    },
+    {
+      "id": "ASP313.5",
+      "type": "algorithm_step",
+      "name": "Initialize registers to 0",
+      "parent_id": "AP313.2",
+      "step_order": 1,
+      "subclass": "initialize",
+      "statement": "Initialize $M[1], \\ldots, M[m]$ to $0$ (instead of $-\\infty$) so that small-cardinality estimates remain usable.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP313.6",
+      "type": "algorithm_step",
+      "name": "Streaming update loop",
+      "parent_id": "AP313.2",
+      "step_order": 2,
+      "subclass": "loop",
+      "statement": "For each $v \\in \\mathcal{M}$: $x := h(v)$; $j := 1 + \\langle x_1\\cdots x_b\\rangle_2$; $w := x_{b+1} x_{b+2}\\cdots$; $M[j] := \\max(M[j], \\rho(w))$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP313.7",
+      "type": "algorithm_step",
+      "name": "Compute raw estimate $E$",
+      "parent_id": "AP313.2",
+      "step_order": 3,
+      "subclass": "update",
+      "statement": "Compute $E := \\alpha_m m^2 \\cdot \\bigl( \\sum_{j=1}^m 2^{-M[j]} \\bigr)^{-1}$ (raw HyperLogLog estimate).",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP313.8",
+      "type": "algorithm_step",
+      "name": "Range-dependent correction",
+      "parent_id": "AP313.2",
+      "step_order": 4,
+      "subclass": "branch",
+      "statement": "If $E \\leq \\tfrac{5}{2} m$: let $V$ be the number of zero registers; if $V \\neq 0$ set $E^{\\star} := m \\log(m/V)$ else $E^{\\star} := E$ (small-range, linear-counting correction). If $\\tfrac{5}{2} m < E \\leq \\tfrac{1}{30} 2^{32}$: $E^{\\star} := E$ (intermediate range). If $E > \\tfrac{1}{30} 2^{32}$: $E^{\\star} := -2^{32} \\log(1 - E/2^{32})$ (large-range hash-collision correction).",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP313.9",
+      "type": "algorithm_step",
+      "name": "Return corrected estimate",
+      "parent_id": "AP313.2",
+      "step_order": 5,
+      "subclass": "return",
+      "statement": "Return cardinality estimate $E^{\\star}$ with typical relative error $\\pm 1.04/\\sqrt{m}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "AP313.3",
+      "type": "algorithm",
+      "name": "LogLog (Durand-Flajolet)",
+      "section": "Introduction (cited)",
+      "statement": "Cardinality estimator using $m$ registers of $\\leq 5$ bits with relative accuracy $1.30/\\sqrt{m}$, based on the same bit-pattern observable $\\rho$ but using a geometric-mean evaluator.",
+      "input": [
+        "Multiset $\\mathcal{M}$",
+        "Hash function $h$",
+        "Number of registers $m$"
+      ],
+      "output": [
+        "Cardinality estimate with typical relative error $1.30/\\sqrt{m}$"
+      ],
+      "origin": "external",
+      "origin_citation": "Durand & Flajolet 2003"
+    },
+    {
+      "id": "AP313.4",
+      "type": "algorithm",
+      "name": "Probabilistic Counting (Flajolet-Martin)",
+      "section": "Introduction (cited)",
+      "statement": "Bit-pattern-based cardinality estimator using $m$ words ($\\leq 32$ bits each) with relative accuracy $0.78/\\sqrt{m}$.",
+      "origin": "external",
+      "origin_citation": "Flajolet & Martin 1985"
+    },
+    {
+      "id": "AP313.5",
+      "type": "algorithm",
+      "name": "MinCount",
+      "section": "Introduction (cited)",
+      "statement": "Order-statistics-based cardinality estimator (smallest hashed values) using $m$ words with relative accuracy $1.00/\\sqrt{m}$.",
+      "origin": "external",
+      "origin_citation": "Bar-Yossef et al. 2002; Giroire 2005, 2006"
+    },
+    {
+      "id": "AP313.6",
+      "type": "algorithm",
+      "name": "Adaptive Sampling",
+      "section": "Introduction (cited)",
+      "statement": "Cardinality estimator using $m$ words ($\\approx 32$ bits each) with relative accuracy $1.20/\\sqrt{m}$.",
+      "origin": "external",
+      "origin_citation": "Flajolet 1990"
+    },
+    {
+      "id": "AP313.7",
+      "type": "algorithm",
+      "name": "Hit Counting (Whang et al.)",
+      "section": "Introduction (cited)",
+      "statement": "Linear-time probabilistic counting using a bitmap of $\\approx N/10$ bits with $\\approx 2\\%$ accuracy; the count of empty bins $V$ relates to cardinality via $n \\approx m \\log(m/V)$.",
+      "origin": "external",
+      "origin_citation": "Whang, Vander-Zanden & Taylor 1990"
+    },
+    {
+      "id": "ProbP313.1",
+      "type": "problem",
+      "name": "Cardinality estimation of a streamed multiset",
+      "section": "Introduction",
+      "statement": "Given a (possibly very large) data stream $\\mathcal{M}$ from a domain $D$, estimate the cardinality $n = |\\mathrm{set}(\\mathcal{M})|$ in a single pass using sublinear (typically $O(\\log \\log N)$ per register) auxiliary memory.",
+      "subclass": "approximation",
+      "tags": ["streaming", "approximation"],
+      "origin": "paper"
+    },
+    {
+      "id": "RP313.2",
+      "type": "remark",
+      "name": "Memory $\\log_2 \\log_2 N + O(1)$ bits per register",
+      "section": "1",
+      "statement": "HyperLogLog needs registers of at most $\\log_2 \\log_2 N + O(1)$ bits to estimate cardinalities $\\leq N$; with $m = 2048$, 32-bit hashing, and 5-bit registers, $n$ up to $> 10^9$ is estimated at $\\approx 2\\%$ accuracy using $\\approx 1.5$ kB.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP313.3",
+      "type": "remark",
+      "name": "Optimal parallelization / sliding window",
+      "section": "Discussion",
+      "statement": "Given an arbitrary partition of the input file, register vectors can be combined componentwise by $\\max$, yielding optimal parallel/distributed implementation; the algorithm also adapts to the sliding-window model.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP313.4",
+      "type": "remark",
+      "name": "Information-theoretic lower bound $\\Omega(\\log\\log N)$",
+      "section": "Discussion",
+      "statement": "Maintaining $\\epsilon$-approximate counts up to $N$ necessitates $\\Omega(\\log \\log N)$ bits, since cardinalities lie on an exponential scale $1, (1+\\epsilon), \\ldots, (1+\\epsilon)^L = N$ requiring $\\log_2 \\log_{1+\\epsilon} N$ bits.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP313.5",
+      "type": "remark",
+      "name": "Lower bound from order-statistics class",
+      "section": "Discussion",
+      "statement": "For a wide class of order-statistics-based cardinality estimators, the best achievable accuracy is bounded below by a quantity close to $1/\\sqrt{m}$; HyperLogLog is within about $4\\%$ of this information-theoretic optimum.",
+      "origin": "external",
+      "origin_citation": "Chassaing & Gerin 2006"
+    },
+    {
+      "id": "ExP313.1",
+      "type": "example",
+      "name": "Real-life test on Analytic Combinatorics PostScript dump",
+      "section": "4",
+      "statement": "With $m = 2048$ (predicted standard error $\\pm 2\\%$), HyperLogLog was run on $458$ chunks of $\\approx 40{,}000$ lines each obtained from octal dumps of the PostScript source of the book Analytic Combinatorics; the empirical relative-error histogram closely matches the theoretical Gaussian.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP313.2",
+      "type": "example",
+      "name": "Simulations on ideal multisets",
+      "section": "4",
+      "statement": "Traces of four typical executions on ideal random multisets for $\\langle N, m \\rangle \\in \\{ \\langle 10^4, 256\\rangle, \\langle 10^7, 1024\\rangle, \\langle 10^8, 1024\\rangle, \\langle 10^7, 65536\\rangle\\}$ confirm relative errors within the predicted $\\pm 1.04/\\sqrt{m}$ band, and 500/250 simulations at $(n,m) = (10^4, 256), (10^6, 1024)$ produce empirical histograms approximated by Gaussians.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP313.1",
+      "type": "proof",
+      "name": "Proof of Proposition PrP313.2 (Mellin asymptotics of Poisson expectation)",
+      "section": "2.2",
+      "parent_id": "PrP313.2",
+      "proves": "PrP313.2",
+      "statement": "By integral representation (9) of the Poisson expectation, Mellin analysis of the integrand $G(x, xu)$ (Lemma LP313.1), and integration over $u \\in [0,1]$ and $u \\in [1, \\infty)$ to extract the dominant term $H(x) = x \\bigl( \\int_0^{\\infty} f(u)^m du + \\epsilon_m(x) + o(1) \\bigr)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP313.1",
+      "type": "proof_step",
+      "name": "Integral representation via $1/a = \\int_0^{\\infty} e^{-at} dt$",
+      "parent_id": "PP313.1",
+      "step_order": 1,
+      "subclass": "invoke_identity",
+      "statement": "Apply the identity $1/a = \\int_0^{\\infty} e^{-at} dt$ to the harmonic factor $(\\sum 2^{-k_j})^{-1}$, separating variables and producing $E_{P(mx)}(Z) = \\int_0^{\\infty} G(x,t)^m dt$ (Equation EP313.4).",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP313.2",
+      "type": "proof_step",
+      "name": "Mellin analysis of integrand",
+      "parent_id": "PP313.1",
+      "step_order": 2,
+      "subclass": "apply_lemma",
+      "statement": "Apply Lemma LP313.1 to $h_u(x) = G(x, xu)$, using factorization $h_u^{\\star}(s) = 2^s \\Gamma(s) ((1+u)^{-s} - (2+u)^{-s})/(1 - 2^s)$ in the strip $\\langle -1, 0\\rangle$, and bound the residue series and remainder integral.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP313.3",
+      "type": "proof_step",
+      "name": "Split integral $A + B$ and bound on $[0,1], [1, \\infty)$",
+      "parent_id": "PP313.1",
+      "step_order": 3,
+      "subclass": "bound_estimate",
+      "statement": "Split $\\frac{1}{x} H(x) = A + B + o(1)$ with $A = \\int_0^1$ and $B = \\int_1^{\\infty}$. Use $f(u) \\leq 1 - 2u/5$ on $[0,1]$ and $f(u) \\leq 1/((1+u)\\log 2)$ on $[1, \\infty)$ to get $|A - \\int_0^1 f^m| \\leq 6.26\\, \\epsilon_0/(m+1)$ and $|B - \\int_1^{\\infty} f^m| \\leq \\tfrac{2}{m-1} \\bigl((1+2\\epsilon_0)^m - 1\\bigr)/(2 \\log 2)^m$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP313.4",
+      "type": "proof_step",
+      "name": "Conclude $H(x) = x ( \\int_0^{\\infty} f(u)^m du + \\epsilon_m(x) + o(1))$",
+      "parent_id": "PP313.1",
+      "step_order": 4,
+      "subclass": "conclude",
+      "statement": "Combine the bounds on $A$ and $B$ with Equation (9) to obtain $H(x) = x\\bigl(\\int_0^{\\infty} f(u)^m du + \\epsilon_m(x) + o(1)\\bigr)$ with $|\\epsilon_m(x)| < 5 \\cdot 10^{-5}/m$ for $m \\geq 16$, finishing Proposition PrP313.2.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP313.2",
+      "type": "proof",
+      "name": "Proof of Proposition PrP313.3 (depoissonization of $E_n(Z)$)",
+      "section": "2.3",
+      "parent_id": "PrP313.3",
+      "proves": "PrP313.3",
+      "statement": "Apply Theorem TP313.2 (analytic depoissonization) to $f(z) := H(z/m)$ with cone half-angle $\\theta = \\pi/3$ and $\\alpha = 3/5$; verify conditions $C_1$ inside and $C_2$ outside the cone using bounds on $G(z/m, t)$ revisited from the Mellin analysis.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP313.5",
+      "type": "proof_step",
+      "name": "Verify $C_1$ inside cone",
+      "parent_id": "PP313.2",
+      "step_order": 1,
+      "subclass": "case",
+      "statement": "For $z = r e^{i\\varphi}$ with $|\\varphi| \\leq \\pi/3$: $|z^{-s}| = r^{-\\sigma} e^{\\tau \\varphi}$ stays controlled within the cone; the residue series in (13) and the remainder integral remain $O(1)$, so Lemma LP313.1 extends and $H(z) = O(|z|)$, hence $H(z/m) = O(|z|)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP313.6",
+      "type": "proof_step",
+      "name": "Verify $C_2$ outside cone, case $\\Re(z) < 0$",
+      "parent_id": "PP313.2",
+      "step_order": 2,
+      "subclass": "case",
+      "statement": "Set $L := \\lfloor \\log_2(|z|/m) \\rfloor$, split the sum defining $G(z/m, t)$ at $k = L$, use $(X+Y)^m \\leq 2^m X^m + 2^m Y^m$ and the convergent integral $\\Gamma_m := \\int_0^{\\infty} (\\sum_k 2^{-k} e^{-t/2^k})^m dt$ to bound $|H(z/m)| \\leq A e^{-z} z \\log_2|z|^m + B|z^m|$, hence $|e^z H(z/m)| = O(e^{\\alpha |z|})$ with $\\alpha = 3/5$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP313.7",
+      "type": "proof_step",
+      "name": "Verify $C_2$ outside cone, case $\\Re(z) \\geq 0$",
+      "parent_id": "PP313.2",
+      "step_order": 3,
+      "subclass": "case",
+      "statement": "For $\\Re(z) \\geq 0$ outside the cone: $|G(z/m, t)| \\leq |z| \\sum_k 2^{-k} e^{-t/2^k}$, so $|H(z/m)| \\leq |z|^m \\Gamma_m$; since $\\Re(z) < |z|/2$ outside the cone, $|e^z H(z/m)| = O(e^{|z|/2} z^m) = O(e^{3|z|/5})$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP313.8",
+      "type": "proof_step",
+      "name": "Conclude $E_n(Z) = E_{P(n)}(Z) + O(1)$",
+      "parent_id": "PP313.2",
+      "step_order": 4,
+      "subclass": "conclude",
+      "statement": "By Theorem TP313.2 with $C_1, C_2$ both verified, $f_n = f(n) + O(1)$ where $f(z) = H(z/m)$, i.e., $E_n(Z) = E_{P(n)}(Z) + O(1)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP313.3",
+      "type": "proof",
+      "name": "Proof of Theorem TP313.1 (sketch)",
+      "section": "2-3",
+      "parent_id": "TP313.1",
+      "proves": "TP313.1",
+      "statement": "Combine Propositions PrP313.2 (Poisson asymptotics of $E(Z)$) and PrP313.3 (depoissonization) for part (i); for part (ii), repeat the parallel analysis on $E(Z^2)$ via integral $K(x)$ and depoissonize to get $V_n(Z) = V_{P(n)}(Z) + O(n)$, then bound $\\beta_m$ via the integrals $J_0(m), J_1(m)$ in Section 3.2.",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "DP313.1", "target": "AP313.1", "type": "uses"},
+    {"source": "DP313.3", "target": "AP313.1", "type": "uses"},
+    {"source": "DP313.4", "target": "AP313.1", "type": "uses"},
+    {"source": "DP313.5", "target": "AP313.1", "type": "uses"},
+    {"source": "DP313.6", "target": "AP313.1", "type": "uses"},
+    {"source": "DP313.7", "target": "AP313.1", "type": "uses"},
+    {"source": "EP313.1", "target": "AP313.1", "type": "uses"},
+    {"source": "AP313.1", "target": "ProbP313.1", "type": "solves"},
+    {"source": "AP313.1", "target": "AP313.2", "type": "uses"},
+    {"source": "AP313.7", "target": "AP313.2", "type": "uses"},
+    {"source": "AP313.2", "target": "ProbP313.1", "type": "solves"},
+    {"source": "AP313.2", "target": "ExP313.1", "type": "illustrates"},
+    {"source": "AP313.2", "target": "ExP313.2", "type": "illustrates"},
+    {"source": "AP313.1", "target": "ExP313.2", "type": "illustrates"},
+    {"source": "AP313.3", "target": "ProbP313.1", "type": "solves"},
+    {"source": "AP313.4", "target": "ProbP313.1", "type": "solves"},
+    {"source": "AP313.5", "target": "ProbP313.1", "type": "solves"},
+    {"source": "AP313.6", "target": "ProbP313.1", "type": "solves"},
+    {"source": "AP313.7", "target": "ProbP313.1", "type": "solves"},
+    {"source": "AssumP313.1", "target": "TP313.1", "type": "uses"},
+    {"source": "DP313.8", "target": "AssumP313.1", "type": "uses"},
+    {"source": "DP313.6", "target": "TP313.1", "type": "uses"},
+    {"source": "DP313.7", "target": "TP313.1", "type": "uses"},
+    {"source": "AP313.1", "target": "TP313.1", "type": "uses"},
+    {"source": "PP313.3", "target": "TP313.1", "type": "proves"},
+    {"source": "EP313.2", "target": "PrP313.1", "type": "uses"},
+    {"source": "DP313.6", "target": "PrP313.1", "type": "uses"},
+    {"source": "PrP313.1", "target": "PrP313.2", "type": "uses"},
+    {"source": "DP313.10", "target": "PrP313.2", "type": "uses"},
+    {"source": "EP313.3", "target": "PSP313.1", "type": "uses"},
+    {"source": "EP313.4", "target": "PSP313.1", "type": "uses"},
+    {"source": "DP313.9", "target": "LP313.1", "type": "uses"},
+    {"source": "EP313.5", "target": "LP313.1", "type": "uses"},
+    {"source": "LP313.1", "target": "PSP313.2", "type": "uses"},
+    {"source": "PSP313.1", "target": "PSP313.2", "type": "uses"},
+    {"source": "PSP313.2", "target": "PSP313.3", "type": "uses"},
+    {"source": "PSP313.3", "target": "PSP313.4", "type": "uses"},
+    {"source": "PP313.1", "target": "PrP313.2", "type": "proves"},
+    {"source": "TP313.2", "target": "PP313.2", "type": "uses"},
+    {"source": "EP313.4", "target": "PSP313.5", "type": "uses"},
+    {"source": "LP313.1", "target": "PSP313.5", "type": "uses"},
+    {"source": "PSP313.5", "target": "PSP313.8", "type": "uses"},
+    {"source": "PSP313.6", "target": "PSP313.8", "type": "uses"},
+    {"source": "PSP313.7", "target": "PSP313.8", "type": "uses"},
+    {"source": "PP313.2", "target": "PrP313.3", "type": "proves"},
+    {"source": "PrP313.2", "target": "PP313.3", "type": "uses"},
+    {"source": "PrP313.3", "target": "PP313.3", "type": "uses"},
+    {"source": "EP313.7", "target": "PP313.3", "type": "uses"},
+    {"source": "EP313.8", "target": "PP313.3", "type": "uses"},
+    {"source": "EP313.9", "target": "PP313.3", "type": "uses"},
+    {"source": "EP313.6", "target": "PP313.3", "type": "uses"},
+    {"source": "RP313.4", "target": "RP313.2", "type": "uses"},
+    {"source": "RP313.5", "target": "TP313.1", "type": "uses"}
+  ]
+}

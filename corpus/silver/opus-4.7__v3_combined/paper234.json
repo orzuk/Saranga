@@ -1,0 +1,598 @@
+{
+  "metadata": {
+    "title": "Mastering the Game of Go with Deep Neural Networks and Tree Search",
+    "authors": "Silver, Huang, Maddison, Guez, Sifre, et al.",
+    "year": 2016,
+    "paper_num": 234,
+    "bid": "paper234",
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-03",
+    "source_note": "Extracted from PDF->text fallback; .tex source not available. Math fidelity reduced."
+  },
+  "nodes": [
+    {
+      "id": "DP234.1",
+      "type": "definition",
+      "name": "Alternating Markov Game",
+      "section": "Methods: Problem setting",
+      "statement": "Two-player game with state space $\\mathcal{S}$, action space $\\mathcal{A}(s)$, deterministic transition $f(s,a)$, and reward $r_i(s)$, restricted to two-player zero-sum: $r_1(s) = -r_2(s) = r(s)$ with zero rewards except at terminal step $T$.",
+      "statement_clean": "Two-player zero-sum game with deterministic transitions and reward only at the terminal state.",
+      "origin": "external",
+      "origin_citation": "Littman 1994"
+    },
+    {
+      "id": "DP234.2",
+      "type": "definition",
+      "name": "Policy",
+      "section": "Methods: Problem setting",
+      "statement": "A policy $p(a \\mid s)$ is a probability distribution over legal actions $a \\in \\mathcal{A}(s)$.",
+      "statement_clean": "A probability distribution over legal actions in each state."
+    },
+    {
+      "id": "DP234.3",
+      "type": "definition",
+      "name": "Value Function under Policy $p$",
+      "section": "Methods: Problem setting",
+      "statement": "$v^p(s) = \\mathbb{E}[z_t \\mid s_t = s, a_{t \\ldots T} \\sim p]$, the expected terminal outcome when both players follow policy $p$.",
+      "statement_clean": "Expected game outcome from state $s$ when both players follow policy $p$."
+    },
+    {
+      "id": "DP234.4",
+      "type": "definition",
+      "name": "Optimal Value Function $v^*(s)$",
+      "section": "Introduction / Methods",
+      "statement": "Unique value function determining the outcome from state $s$ under perfect play: $v^*(s) = z_T$ if $s = s_T$, else $v^*(s) = \\max_a -v^*(f(s,a))$.",
+      "statement_clean": "The minimax value of a state under optimal play by both players.",
+      "tags": ["minimax"]
+    },
+    {
+      "id": "DP234.5",
+      "type": "definition",
+      "name": "SL Policy Network $p_\\sigma$",
+      "section": "Supervised learning of policy networks",
+      "statement": "A 13-layer convolutional neural network $p_\\sigma(a \\mid s)$ with weights $\\sigma$ that alternates convolutional layers with rectifier nonlinearities and outputs a softmax probability distribution over legal moves on the $19 \\times 19$ board.",
+      "statement_clean": "Deep CNN trained by supervised learning to predict expert human moves.",
+      "tags": ["neural-network", "policy"]
+    },
+    {
+      "id": "DP234.6",
+      "type": "definition",
+      "name": "Fast Rollout Policy $p_\\pi$",
+      "section": "Supervised learning of policy networks / Methods: Rollout policy",
+      "statement": "Linear softmax policy $p_\\pi(a \\mid s)$ over local 3x3 pattern features and 12-point diamond response patterns, achieving ~24.2% expert-move accuracy in ~2 microseconds per move.",
+      "statement_clean": "Fast linear policy used for Monte Carlo rollouts during MCTS."
+    },
+    {
+      "id": "DP234.7",
+      "type": "definition",
+      "name": "RL Policy Network $p_\\rho$",
+      "section": "Reinforcement learning of policy networks",
+      "statement": "Policy network with weights $\\rho$ identical in structure to $p_\\sigma$ and initialized to $\\rho = \\sigma$, then improved by self-play policy gradient against randomly sampled previous iterations.",
+      "statement_clean": "Policy network refined by self-play reinforcement learning to maximize game-winning probability.",
+      "tags": ["neural-network", "reinforcement-learning"]
+    },
+    {
+      "id": "DP234.8",
+      "type": "definition",
+      "name": "Value Network $v_\\theta$",
+      "section": "Reinforcement learning of value networks",
+      "statement": "Convolutional network $v_\\theta(s)$ with similar architecture to the policy network but with a single scalar tanh output, approximating $v^{p_\\rho}(s) \\approx v^*(s)$.",
+      "statement_clean": "Deep CNN that predicts the probability of winning from a board position.",
+      "tags": ["neural-network", "value-function"]
+    },
+    {
+      "id": "DP234.9",
+      "type": "definition",
+      "name": "Tree Policy $p_\\tau$",
+      "section": "Methods: Search algorithm",
+      "statement": "Policy similar to the rollout policy $p_\\pi$ but with more features, used to provide placeholder prior probabilities for newly expanded tree nodes before the SL policy network evaluation completes.",
+      "statement_clean": "Auxiliary policy that supplies placeholder priors at newly expanded MCTS nodes."
+    },
+    {
+      "id": "DP234.10",
+      "type": "definition",
+      "name": "Edge Statistics $(P, N_v, N_r, W_v, W_r, Q)$",
+      "section": "Methods: Search algorithm",
+      "statement": "Each search-tree edge $(s,a)$ stores $\\{P(s,a), N_v(s,a), N_r(s,a), W_v(s,a), W_r(s,a), Q(s,a)\\}$: prior probability, value- and rollout-visit counts, accumulated value-net and rollout values, and the combined mean action value $Q$.",
+      "statement_clean": "Statistics maintained at each MCTS edge: prior, two visit counts, two cumulative values, and combined mean action value."
+    },
+    {
+      "id": "DP234.11",
+      "type": "definition",
+      "name": "Combined Action Value $Q(s,a)$",
+      "section": "Methods: Search algorithm / Backup",
+      "statement": "$Q(s,a) = (1-\\lambda)\\, W_v(s,a)/N_v(s,a) + \\lambda\\, W_r(s,a)/N_r(s,a)$, a weighted average of value-network and rollout estimates with mixing parameter $\\lambda$.",
+      "statement_clean": "Mixed action-value estimate combining value-network output and Monte Carlo rollout returns."
+    },
+    {
+      "id": "DP234.12",
+      "type": "definition",
+      "name": "Leaf Evaluation $V(s_L)$",
+      "section": "Searching with policy and value networks",
+      "statement": "$V(s_L) = (1-\\lambda)\\, v_\\theta(s_L) + \\lambda\\, z_L$, mixing the value-network estimate with a fast-rollout outcome from leaf $s_L$.",
+      "statement_clean": "Mixture of value-network output and rollout outcome at a freshly expanded leaf."
+    },
+    {
+      "id": "EP234.1",
+      "type": "equation",
+      "name": "SL Policy Gradient Update",
+      "section": "Supervised learning of policy networks",
+      "statement": "$\\Delta \\sigma \\propto \\partial \\log p_\\sigma(a \\mid s) / \\partial \\sigma$.",
+      "statement_clean": "Stochastic gradient ascent on log-likelihood of human moves."
+    },
+    {
+      "id": "EP234.2",
+      "type": "equation",
+      "name": "REINFORCE Policy Gradient Update",
+      "section": "Reinforcement learning of policy networks",
+      "statement": "$\\Delta \\rho \\propto (\\partial \\log p_\\rho(a_t \\mid s_t) / \\partial \\rho)\\, z_t$.",
+      "statement_clean": "Policy-gradient update weighted by terminal game outcome.",
+      "origin": "external",
+      "origin_citation": "Williams 1992 (REINFORCE)"
+    },
+    {
+      "id": "EP234.3",
+      "type": "equation",
+      "name": "Value Network MSE Update",
+      "section": "Reinforcement learning of value networks",
+      "statement": "$\\Delta \\theta \\propto (\\partial v_\\theta(s) / \\partial \\theta)(z - v_\\theta(s))$, minimizing mean squared error between predicted value and observed game outcome.",
+      "statement_clean": "Stochastic gradient descent on MSE between predicted value and outcome."
+    },
+    {
+      "id": "EP234.4",
+      "type": "equation",
+      "name": "PUCT Action-Selection Bonus",
+      "section": "Methods: Search algorithm / Selection",
+      "statement": "$u(s,a) = c_{puct}\\, P(s,a)\\, \\sqrt{\\sum_b N_r(s,b)} / (1 + N_r(s,a))$, with selection rule $a_t = \\arg\\max_a (Q(s_t,a) + u(s_t,a))$.",
+      "statement_clean": "Variant of PUCT bonus encouraging exploration of high-prior, low-visit moves.",
+      "origin": "external",
+      "origin_citation": "Rosin 2011 (PUCT)"
+    },
+    {
+      "id": "TP234.1",
+      "type": "theorem",
+      "name": "MCTS Convergence to Optimal Value",
+      "section": "Methods: Prior work (cited)",
+      "statement": "Under MCTS with UCT-style action selection, the simulation-policy value converges to the optimal value: $\\lim_{n\\to\\infty} V^n(s) = \\lim_{n\\to\\infty} v^{P^n}(s) = v^*(s)$.",
+      "statement_clean": "Asymptotic convergence of MCTS value estimates to the minimax optimal value.",
+      "origin": "external",
+      "origin_citation": "Kocsis & Szepesvari 2006 (UCT)",
+      "assumptions": [
+        "Two-player zero-sum game with finite state and action spaces",
+        "MCTS with UCT-style search-control function $\\arg\\max_a (Q^n(s,a) + u(s,a))$"
+      ],
+      "conclusions": [
+        "$\\lim_{n\\to\\infty} V^n(s) = v^*(s)$"
+      ],
+      "tags": ["convergence", "asymptotic"]
+    },
+    {
+      "id": "AP234.1",
+      "type": "algorithm",
+      "name": "Supervised Learning of SL Policy Network",
+      "section": "Methods: Policy network: classification",
+      "statement": "Asynchronous SGD that maximizes log-likelihood of expert moves to train $p_\\sigma$ on 30M positions from the KGS Go Server.",
+      "input": [
+        "Augmented KGS data set $\\{s^k, a^k\\}_{k=1}^m$ (29.4M positions, 8 reflections/rotations)",
+        "13-layer CNN architecture with $k=192$ filters",
+        "Step size $\\alpha = 0.003$ (halved every 80M steps)",
+        "Mini-batch size $m=16$"
+      ],
+      "output": [
+        "Trained SL policy network $p_\\sigma(a \\mid s)$"
+      ],
+      "pseudocode": "Repeat for 340M steps: sample mini-batch from KGS; compute $\\Delta\\sigma = (\\alpha/m)\\sum_k \\partial \\log p_\\sigma(a^k \\mid s^k)/\\partial\\sigma$; apply asynchronously across 50 GPUs; halve $\\alpha$ every 80M steps.",
+      "tags": ["supervised-learning", "stochastic-gradient"]
+    },
+    {
+      "id": "AP234.2",
+      "type": "algorithm",
+      "name": "Reinforcement Learning of RL Policy Network",
+      "section": "Methods: Policy network: reinforcement learning",
+      "statement": "Self-play policy-gradient training of $p_\\rho$ by REINFORCE with baseline against a pool of previous opponents.",
+      "input": [
+        "SL policy network $p_\\sigma$ used as initialization $\\rho = \\rho^- = \\sigma$",
+        "Pool of past opponent parameters $\\rho^-$",
+        "Baseline $v(s_t)$ (value network on second pass)"
+      ],
+      "output": [
+        "Trained RL policy network $p_\\rho(a \\mid s)$"
+      ],
+      "pseudocode": "For 10,000 mini-batches of 128 self-play games: sample opponent $\\rho^-$ from pool; play games to termination scoring $z^i_t$; update $\\Delta\\rho = \\alpha \\sum_i \\sum_t (\\partial \\log p_\\rho(a^i_t \\mid s^i_t)/\\partial\\rho)(z^i_t - v(s^i_t))$; every 500 iterations append current $\\rho$ to opponent pool.",
+      "tags": ["reinforcement-learning", "self-play", "policy-gradient"]
+    },
+    {
+      "id": "AP234.3",
+      "type": "algorithm",
+      "name": "Value Network Regression",
+      "section": "Methods: Value network: regression",
+      "statement": "MSE-regression training of $v_\\theta$ on 30M decorrelated self-play positions, each drawn from a unique game.",
+      "input": [
+        "Self-play data set of 30M (state, outcome) pairs $(s, z)$",
+        "Each game generated by sampling $U \\sim \\mathrm{unif}\\{1,450\\}$, playing $t < U$ with $p_\\sigma$, $a_U \\sim \\mathrm{unif}\\{1,361\\}$, then $t > U$ with $p_\\rho$",
+        "Mini-batch size 32"
+      ],
+      "output": [
+        "Trained value network $v_\\theta(s) \\approx v^{p_\\rho}(s)$"
+      ],
+      "pseudocode": "For 50M mini-batches across 50 GPUs: sample $\\{s^k, z^k\\}$; compute $\\Delta\\theta = (\\alpha/m)\\sum_k (z^k - v_\\theta(s^k))\\, \\partial v_\\theta(s^k)/\\partial\\theta$; train for ~1 week.",
+      "tags": ["regression", "supervised-learning"]
+    },
+    {
+      "id": "AP234.4",
+      "type": "algorithm",
+      "name": "APV-MCTS (Asynchronous Policy and Value MCTS)",
+      "section": "Methods: Search algorithm",
+      "statement": "Asynchronous multi-threaded MCTS that combines policy and value networks via four stages (Selection, Expansion, Evaluation, Backup).",
+      "input": [
+        "Root state $s$ of search",
+        "SL policy network $p_\\sigma$, RL value network $v_\\theta$, fast rollout policy $p_\\pi$, tree policy $p_\\tau$",
+        "Parameters $\\beta = 0.67$, $\\lambda = 0.5$, $n_{vl} = 3$, $n_{thr} = 40$, $c_{puct} = 5$",
+        "Computation budget (e.g. 5 s per move; $n$ simulations per second)"
+      ],
+      "output": [
+        "Selected action $a^* = \\arg\\max_a N_r(s_{root}, a)$ (most-visited move from root)"
+      ],
+      "pseudocode": "While time remains, run simulations in parallel across CPU/GPU threads; each simulation: 1) Selection (descend tree by $a_t = \\arg\\max_a (Q + u)$ until leaf $s_L$); 2) Evaluation (queue $s_L$ for value network and run a rollout with $p_\\pi$ to terminal); 3) Backup (apply virtual loss; on completion update $N_r, W_r, N_v, W_v, Q$); 4) Expansion (when $N_r(s,a) > n_{thr}$, add successor and set $P \\leftarrow p_\\sigma^\\beta(\\cdot \\mid s')$). Return $\\arg\\max_a N_r$ at the root.",
+      "tags": ["mcts", "iterative", "parallel", "asynchronous"]
+    },
+    {
+      "id": "AP234.5",
+      "type": "algorithm",
+      "name": "Distributed APV-MCTS",
+      "section": "Methods: Search algorithm",
+      "statement": "Distributed variant of APV-MCTS with a master holding the search tree, remote worker CPUs running rollouts, and remote worker GPUs evaluating policy/value networks asynchronously.",
+      "input": [
+        "Master machine storing the search tree",
+        "Worker CPUs (up to 1202) executing asynchronous rollouts",
+        "Worker GPUs (up to 176) evaluating policy and value networks"
+      ],
+      "output": [
+        "Selected action $a^*$ at the root, as in single-machine APV-MCTS"
+      ],
+      "pseudocode": "Master executes only the in-tree phase; communicates leaf positions to worker CPUs (rollouts) and worker GPUs (network evaluations); workers return rollout outcomes and network outputs which the master backs up along the originating path; placeholder priors at newly expanded nodes are atomically replaced once policy network outputs return.",
+      "tags": ["mcts", "distributed", "parallel"]
+    },
+    {
+      "id": "AP234.6",
+      "type": "algorithm",
+      "name": "Cached-Move Rollout Heuristic",
+      "section": "Methods: Rollout policy",
+      "statement": "Caches each tree-traversal move in a hash table keyed by 3x3 pattern context; during rollouts, if the current pattern matches, the cached move is played with high probability (a generalization of the 'last good reply' heuristic).",
+      "input": [
+        "Hash table of (pattern context $\\to$ stored move) populated during MCTS tree traversal",
+        "Current 3x3 pattern context (colour, liberty, stone counts) at each rollout step"
+      ],
+      "output": [
+        "Move selected for the current rollout step (cached if a context match exists, else $p_\\pi$ sample)"
+      ],
+      "pseudocode": "During tree traversal: insert (3x3 context $\\to$ most-probable action) into hash table. During rollout: look up current context; on hit, play stored move with high probability; on miss, sample from $p_\\pi$.",
+      "tags": ["heuristic"]
+    },
+    {
+      "id": "AP234.7",
+      "type": "algorithm",
+      "name": "Symmetry Ensemble for Network Evaluation",
+      "section": "Methods: Symmetries",
+      "statement": "At evaluation time, transforms a position $s$ via the dihedral group $\\{d_1, \\ldots, d_8\\}$ of eight reflections/rotations and averages outputs (explicit) or selects one orientation per evaluation (implicit, used inside APV-MCTS).",
+      "input": [
+        "Position $s$",
+        "Dihedral-group transformations $d_1(s), \\ldots, d_8(s)$"
+      ],
+      "output": [
+        "Ensembled value $v_\\theta(s) = (1/8)\\sum_{j=1}^{8} v_\\theta(d_j(s))$ (explicit) or single-orientation evaluation $v_\\theta(d_j(s_L))$ for randomly sampled $j$ (implicit)"
+      ],
+      "tags": ["ensemble"]
+    },
+    {
+      "id": "AP234.8",
+      "type": "algorithm",
+      "name": "Alpha-Beta Pruning",
+      "section": "Methods: Prior work (cited)",
+      "statement": "Depth-first minimax tree search with alpha-beta pruning truncated by an approximate value function; achieved superhuman performance in chess, checkers, othello, but not Go.",
+      "origin": "external",
+      "origin_citation": "Knuth & Moore 1975",
+      "tags": ["search", "minimax"]
+    },
+    {
+      "id": "AP234.9",
+      "type": "algorithm",
+      "name": "UCT (Upper Confidence Bounds for Trees)",
+      "section": "Methods: Prior work (cited)",
+      "statement": "MCTS with UCB1-style action selection: $a_t = \\arg\\max_a (Q^n(s,a) + u(s,a))$, converging asymptotically to the optimal value function.",
+      "origin": "external",
+      "origin_citation": "Kocsis & Szepesvari 2006",
+      "tags": ["mcts", "bandit"]
+    },
+    {
+      "id": "AP234.10",
+      "type": "algorithm",
+      "name": "Pachi (Baseline Go Program)",
+      "section": "Reinforcement learning of policy networks (cited)",
+      "statement": "Open-source MCTS-based Go program ranked at 2 amateur dan on KGS, executing 100,000 simulations per move; used as a baseline against the RL policy network.",
+      "origin": "external",
+      "origin_citation": "Baudis & Gailly 2012 (Pachi)"
+    },
+    {
+      "id": "ProbP234.1",
+      "type": "problem",
+      "name": "Computer Go: Position Evaluation and Move Selection",
+      "section": "Introduction",
+      "statement": "Play Go at superhuman level despite enormous search space (branching $b \\approx 250$, depth $d \\approx 150$); requires effective approximation $v(s) \\approx v^*(s)$ and a sampling policy $p(a \\mid s)$.",
+      "statement_clean": "Build a Go program that plays at the level of human professionals.",
+      "subclass": "decision-making",
+      "tags": ["game-playing"]
+    },
+    {
+      "id": "ExP234.1",
+      "type": "example",
+      "name": "Strength of Policy Networks vs Training Accuracy (Fig. 2a)",
+      "section": "Supervised learning of policy networks",
+      "statement": "Plot of AlphaGo win rate vs SL policy network training accuracy on KGS, for networks with 128/192/256/384 filters; small accuracy gains yield large strength gains. SL network reached 57.0% expert-move accuracy.",
+      "statement_clean": "Empirical demonstration that policy-network accuracy correlates strongly with playing strength.",
+      "tags": ["benchmark"]
+    },
+    {
+      "id": "ExP234.2",
+      "type": "example",
+      "name": "Value Network vs Rollouts Position Evaluation (Fig. 2b)",
+      "section": "Reinforcement learning of value networks",
+      "statement": "Comparison of MSE between predicted value and game outcome across game stages: $v_\\theta$ is consistently more accurate than rollouts with $p_\\pi$ and approaches accuracy of rollouts with $p_\\rho$ at $\\sim 1/15{,}000$ the compute.",
+      "statement_clean": "Empirical demonstration that the value network matches RL-policy rollouts at a fraction of the cost.",
+      "tags": ["benchmark"]
+    },
+    {
+      "id": "ExP234.3",
+      "type": "example",
+      "name": "Tournament: AlphaGo vs Other Go Programs (Fig. 4a)",
+      "section": "Evaluating the playing strength of AlphaGo",
+      "statement": "Internal tournament with 5 s/move: single-machine AlphaGo (Elo 2890) and distributed AlphaGo (Elo 3140) defeated Crazy Stone, Zen, Pachi, Fuego, GnuGo; AlphaGo won 494/495 (99.8%) games against other programs.",
+      "statement_clean": "Tournament showing AlphaGo dominates all prior Go programs.",
+      "tags": ["benchmark", "experiment"]
+    },
+    {
+      "id": "ExP234.4",
+      "type": "example",
+      "name": "Component Ablation Study (Fig. 4b, ED Table 7)",
+      "section": "Evaluating the playing strength of AlphaGo",
+      "statement": "AlphaGo variants with $\\lambda = 0$ (value only), $\\lambda = 1$ (rollouts only), and $\\lambda = 0.5$ (mixed): mixed evaluation wins $\\geq 95\\%$ against single-method variants.",
+      "statement_clean": "Ablation showing the mixture of value network and rollouts outperforms either alone."
+    },
+    {
+      "id": "ExP234.5",
+      "type": "example",
+      "name": "Hardware Scalability of MCTS (Fig. 4c, ED Table 8)",
+      "section": "Evaluating the playing strength of AlphaGo",
+      "statement": "Elo rating as a function of search threads (1 to 64) and GPUs (1 to 280); distributed AlphaGo with 64 threads/280 GPUs achieves Elo 3168.",
+      "statement_clean": "Scalability study: AlphaGo strength scales with parallelism in CPUs and GPUs."
+    },
+    {
+      "id": "ExP234.6",
+      "type": "example",
+      "name": "Match against Fan Hui (European Go Champion)",
+      "section": "Evaluating the playing strength of AlphaGo",
+      "statement": "Five-game formal match (5-9 October 2015): distributed AlphaGo defeated Fan Hui (2 dan professional) 5-0; first time a computer defeated a human professional Go player at full board without handicap.",
+      "statement_clean": "Historic match: AlphaGo beats a human Go professional 5-0.",
+      "tags": ["historical", "benchmark"]
+    },
+    {
+      "id": "ExP234.7",
+      "type": "example",
+      "name": "Move-Selection Visualization (Fig. 5)",
+      "section": "Searching with policy and value networks",
+      "statement": "Visualization of how AlphaGo selected its move in an informal game vs Fan Hui: value-network estimates $v_\\theta(s')$, action values $Q(s,a)$ at $\\lambda=0$ and $\\lambda=1$, raw SL policy $p_\\sigma$, simulation frequencies, and principal variation.",
+      "statement_clean": "Visualization of AlphaGo's internal evaluations during a real game position."
+    },
+    {
+      "id": "RP234.1",
+      "type": "remark",
+      "name": "SL Policy Better than RL Policy in MCTS",
+      "section": "Searching with policy and value networks",
+      "statement": "The SL policy network $p_\\sigma$ performed better than the stronger RL policy $p_\\rho$ as the prior in MCTS, presumably because humans select a diverse beam of promising moves whereas RL optimizes for the single best move.",
+      "statement_clean": "Diverse expert priors outperform sharp self-play priors inside MCTS.",
+      "tags": ["empirical", "design-choice"]
+    },
+    {
+      "id": "RP234.2",
+      "type": "remark",
+      "name": "RL-derived Value Network Outperforms SL-derived",
+      "section": "Searching with policy and value networks",
+      "statement": "$v_\\theta \\approx v^{p_\\rho}$ derived from the RL policy performed better in AlphaGo than $v_\\theta \\approx v^{p_\\sigma}$ derived from the SL policy.",
+      "statement_clean": "Stronger underlying policy yields a more useful value-network target."
+    },
+    {
+      "id": "RP234.3",
+      "type": "remark",
+      "name": "Avoiding Overfitting via Self-Play Data Set",
+      "section": "Reinforcement learning of value networks",
+      "statement": "Training $v_\\theta$ on complete KGS games causes overfitting (test MSE 0.37, train MSE 0.19); training instead on 30M decorrelated self-play positions (one per game) yields train MSE 0.226 and test MSE 0.234.",
+      "statement_clean": "Decorrelating training positions across distinct games eliminated value-network overfitting."
+    },
+    {
+      "id": "RP234.4",
+      "type": "remark",
+      "name": "Symmetries Hurt Large Networks",
+      "section": "Methods: Symmetries",
+      "statement": "Rotationally and reflectionally invariant filters help small networks but hurt large networks because they prevent intermediate filters from identifying specific asymmetric patterns; AlphaGo therefore exploits symmetries only at run-time via dihedral ensembling.",
+      "statement_clean": "Dihedral-invariant filters degrade large CNNs; only run-time ensembling is used."
+    },
+    {
+      "id": "RP234.5",
+      "type": "remark",
+      "name": "AlphaGo Parameters Used in Match",
+      "section": "Methods: Search algorithm / ED Table 5",
+      "statement": "Match parameters: softmax temperature $\\beta = 0.67$; mixing $\\lambda = 0.5$; virtual loss $n_{vl} = 3$; expansion threshold $n_{thr} = 40$; exploration constant $c_{puct} = 5$.",
+      "statement_clean": "Hyperparameter values used by the match version of AlphaGo."
+    },
+    {
+      "id": "ASP234.1",
+      "type": "algorithm_step",
+      "parent_id": "AP234.4",
+      "step_order": 1,
+      "name": "Selection",
+      "section": "Methods: Search algorithm",
+      "statement": "From the root, descend the tree by selecting at each step $a_t = \\arg\\max_a (Q(s_t,a) + u(s_t,a))$ with $u(s,a) = c_{puct} P(s,a) \\sqrt{\\sum_b N_r(s,b)} / (1 + N_r(s,a))$ until reaching a leaf $s_L$ at depth $L$.",
+      "subclass": "loop"
+    },
+    {
+      "id": "ASP234.2",
+      "type": "algorithm_step",
+      "parent_id": "AP234.4",
+      "step_order": 2,
+      "name": "Evaluation (Value Network + Rollout)",
+      "section": "Methods: Search algorithm",
+      "statement": "Queue $s_L$ for asynchronous evaluation by $v_\\theta$; in parallel run a rollout with $p_\\pi$ until terminal step $T$, scoring $z_t = \\pm r(s_T)$.",
+      "subclass": "branch"
+    },
+    {
+      "id": "ASP234.3",
+      "type": "algorithm_step",
+      "parent_id": "AP234.4",
+      "step_order": 3,
+      "name": "Backup with Virtual Loss",
+      "section": "Methods: Search algorithm",
+      "statement": "Apply virtual loss on descent ($N_r \\mathrel{+}= n_{vl}$, $W_r \\mathrel{-}= n_{vl}$). On rollout completion, replace virtual losses with the outcome ($N_r \\mathrel{+}= 1 - n_{vl}$, $W_r \\mathrel{+}= n_{vl} + z_t$). On value-network completion, update $N_v \\mathrel{+}= 1$, $W_v \\mathrel{+}= v_\\theta(s_L)$.",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP234.4",
+      "type": "algorithm_step",
+      "parent_id": "AP234.4",
+      "step_order": 4,
+      "name": "Expansion",
+      "section": "Methods: Search algorithm",
+      "statement": "When $N_r(s,a) > n_{thr}$, add successor $s' = f(s,a)$ to the tree initialized with placeholder priors from $p_\\tau$; queue $s'$ for asynchronous SL-policy evaluation; on completion atomically replace priors with $P(s',a) \\leftarrow p_\\sigma^\\beta(a \\mid s')$. The threshold $n_{thr}$ is dynamically adjusted to match policy-queue rate to GPU capacity.",
+      "subclass": "branch"
+    },
+    {
+      "id": "ASP234.5",
+      "type": "algorithm_step",
+      "parent_id": "AP234.4",
+      "step_order": 5,
+      "name": "Final Move Selection",
+      "section": "Methods: Search algorithm",
+      "statement": "After search budget is exhausted, return $a^* = \\arg\\max_a N_r(s_{root}, a)$ (most-visited child); resign if $\\max_a Q(s,a) < -0.8$.",
+      "subclass": "return"
+    },
+    {
+      "id": "ASP234.6",
+      "type": "algorithm_step",
+      "parent_id": "AP234.2",
+      "step_order": 1,
+      "name": "Initialize Self-Play Pool",
+      "section": "Methods: Policy network: reinforcement learning",
+      "statement": "Initialize $\\rho = \\rho^- = \\sigma$ (RL weights start from SL); maintain a pool of past opponent parameter snapshots $\\rho^-$ for self-play sampling.",
+      "subclass": "initialize"
+    },
+    {
+      "id": "ASP234.7",
+      "type": "algorithm_step",
+      "parent_id": "AP234.2",
+      "step_order": 2,
+      "name": "Self-Play Game Loop",
+      "section": "Methods: Policy network: reinforcement learning",
+      "statement": "For each iteration play $n=128$ games in parallel between $p_\\rho$ and a randomly sampled $p_{\\rho^-}$ until termination, scoring $z^i_t = \\pm r(s_{T_i})$.",
+      "subclass": "loop"
+    },
+    {
+      "id": "ASP234.8",
+      "type": "algorithm_step",
+      "parent_id": "AP234.2",
+      "step_order": 3,
+      "name": "REINFORCE Update with Baseline",
+      "section": "Methods: Policy network: reinforcement learning",
+      "statement": "Replay games to compute the policy-gradient update $\\Delta\\rho = \\alpha \\sum_{i=1}^{n} \\sum_{t=1}^{T_i} (\\partial \\log p_\\rho(a^i_t \\mid s^i_t)/\\partial\\rho)(z^i_t - v(s^i_t))$ with $v(s) = v_\\theta(s)$ on the second pass.",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP234.9",
+      "type": "algorithm_step",
+      "parent_id": "AP234.2",
+      "step_order": 4,
+      "name": "Append to Opponent Pool",
+      "section": "Methods: Policy network: reinforcement learning",
+      "statement": "Every 500 iterations, snapshot the current parameters $\\rho$ and add to the opponent pool to stabilize training and prevent overfitting to the current policy.",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP234.10",
+      "type": "algorithm_step",
+      "parent_id": "AP234.3",
+      "step_order": 1,
+      "name": "Generate Decorrelated Self-Play Position",
+      "section": "Methods: Value network: regression",
+      "statement": "Sample $U \\sim \\mathrm{unif}\\{1,450\\}$; play $t=1,\\ldots,U-1$ with $a_t \\sim p_\\sigma(\\cdot \\mid s_t)$; play $a_U \\sim \\mathrm{unif}\\{1,361\\}$ (resampled until legal); play $t = U+1, \\ldots, T$ with $a_t \\sim p_\\rho(\\cdot \\mid s_t)$.",
+      "subclass": "initialize"
+    },
+    {
+      "id": "ASP234.11",
+      "type": "algorithm_step",
+      "parent_id": "AP234.3",
+      "step_order": 2,
+      "name": "Score Game and Add Single Sample",
+      "section": "Methods: Value network: regression",
+      "statement": "Score the game to obtain $z_t = \\pm r(s_T)$; add only the single training pair $(s_{U+1}, z_{U+1})$ to the data set, providing an unbiased sample of $v^{p_\\rho}(s_{U+1})$.",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP234.12",
+      "type": "algorithm_step",
+      "parent_id": "AP234.3",
+      "step_order": 3,
+      "name": "MSE Gradient Update",
+      "section": "Methods: Value network: regression",
+      "statement": "For each mini-batch of 32 positions, compute $\\Delta\\theta = (\\alpha/m) \\sum_{k=1}^m (z^k - v_\\theta(s^k))\\, \\partial v_\\theta(s^k)/\\partial\\theta$; train for 50M mini-batches across 50 GPUs (~1 week).",
+      "subclass": "update"
+    }
+  ],
+  "edges": [
+    {"source": "DP234.1", "target": "DP234.4", "type": "uses"},
+    {"source": "DP234.1", "target": "DP234.3", "type": "uses"},
+    {"source": "DP234.2", "target": "DP234.3", "type": "uses"},
+    {"source": "DP234.3", "target": "DP234.4", "type": "uses"},
+    {"source": "DP234.5", "target": "DP234.7", "type": "uses"},
+    {"source": "DP234.5", "target": "AP234.4", "type": "uses"},
+    {"source": "DP234.6", "target": "AP234.4", "type": "uses"},
+    {"source": "DP234.7", "target": "DP234.8", "type": "uses"},
+    {"source": "DP234.8", "target": "AP234.4", "type": "uses"},
+    {"source": "DP234.9", "target": "AP234.4", "type": "uses"},
+    {"source": "DP234.10", "target": "AP234.4", "type": "uses"},
+    {"source": "DP234.11", "target": "AP234.4", "type": "uses"},
+    {"source": "DP234.12", "target": "AP234.4", "type": "uses"},
+    {"source": "EP234.1", "target": "AP234.1", "type": "uses"},
+    {"source": "EP234.2", "target": "AP234.2", "type": "uses"},
+    {"source": "EP234.3", "target": "AP234.3", "type": "uses"},
+    {"source": "EP234.4", "target": "AP234.4", "type": "uses"},
+    {"source": "AP234.1", "target": "DP234.5", "type": "uses"},
+    {"source": "AP234.2", "target": "DP234.7", "type": "uses"},
+    {"source": "AP234.3", "target": "DP234.8", "type": "uses"},
+    {"source": "AP234.1", "target": "AP234.2", "type": "uses"},
+    {"source": "AP234.2", "target": "AP234.3", "type": "uses"},
+    {"source": "AP234.4", "target": "AP234.5", "type": "uses"},
+    {"source": "AP234.6", "target": "AP234.4", "type": "uses"},
+    {"source": "AP234.7", "target": "AP234.4", "type": "uses"},
+    {"source": "TP234.1", "target": "AP234.4", "type": "uses"},
+    {"source": "AP234.9", "target": "AP234.4", "type": "uses"},
+    {"source": "AP234.4", "target": "ProbP234.1", "type": "solves"},
+    {"source": "AP234.5", "target": "ProbP234.1", "type": "solves"},
+    {"source": "AP234.1", "target": "ExP234.1", "type": "illustrates"},
+    {"source": "AP234.3", "target": "ExP234.2", "type": "illustrates"},
+    {"source": "AP234.4", "target": "ExP234.3", "type": "illustrates"},
+    {"source": "AP234.4", "target": "ExP234.4", "type": "illustrates"},
+    {"source": "AP234.5", "target": "ExP234.5", "type": "illustrates"},
+    {"source": "AP234.5", "target": "ExP234.6", "type": "illustrates"},
+    {"source": "AP234.4", "target": "ExP234.7", "type": "illustrates"},
+    {"source": "AP234.10", "target": "ExP234.3", "type": "illustrates"},
+    {"source": "ASP234.1", "target": "ASP234.2", "type": "uses"},
+    {"source": "ASP234.2", "target": "ASP234.3", "type": "uses"},
+    {"source": "ASP234.3", "target": "ASP234.4", "type": "uses"},
+    {"source": "ASP234.4", "target": "ASP234.5", "type": "uses"},
+    {"source": "ASP234.6", "target": "ASP234.7", "type": "uses"},
+    {"source": "ASP234.7", "target": "ASP234.8", "type": "uses"},
+    {"source": "ASP234.8", "target": "ASP234.9", "type": "uses"},
+    {"source": "ASP234.10", "target": "ASP234.11", "type": "uses"},
+    {"source": "ASP234.11", "target": "ASP234.12", "type": "uses"}
+  ]
+}

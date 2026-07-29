@@ -1,0 +1,554 @@
+{
+  "metadata": {
+    "title": "Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift",
+    "authors": "Sergey Ioffe, Christian Szegedy",
+    "year": 2015,
+    "paper_num": 218,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "DP218.1",
+      "type": "definition",
+      "name": "Internal Covariate Shift",
+      "section": "2",
+      "statement": "The change in the distribution of network activations due to the change in network parameters during training.",
+      "statement_clean": "Drift in the distribution of inner-layer inputs as upstream parameters update during training.",
+      "origin": "paper",
+      "tags": ["named-concept"]
+    },
+    {
+      "id": "DP218.2",
+      "type": "definition",
+      "name": "Covariate Shift",
+      "section": "1 (cited)",
+      "statement": "A change in the input distribution to a learning system, typically handled via domain adaptation.",
+      "origin": "external",
+      "origin_citation": "Shimodaira 2000 (covariate-shift)"
+    },
+    {
+      "id": "DP218.3",
+      "type": "definition",
+      "name": "Whitening",
+      "section": "2 (cited)",
+      "statement": "A linear transformation of inputs to have zero mean, unit variance, and decorrelated coordinates; known to speed up convergence.",
+      "origin": "external",
+      "origin_citation": "LeCun et al., Efficient BackProp"
+    },
+    {
+      "id": "DP218.4",
+      "type": "definition",
+      "name": "Normalization Transform $\\Norm(\\vx, \\setX)$",
+      "section": "2",
+      "statement": "$\\widehat{\\mathrm{x}} = \\Norm(\\mathrm{x}, \\setX)$ denoting a normalization that depends on the example $\\mathrm{x}$ and on the full set $\\setX$ of training inputs; backpropagation must include $\\partial \\Norm/\\partial \\setX$ to avoid blow-up.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP218.5",
+      "type": "definition",
+      "name": "Per-dimension Normalization",
+      "section": "3",
+      "statement": "For a $d$-dimensional input $\\vx = (x^{(1)},\\ldots,x^{(d)})$, normalize each coordinate independently as $\\widehat{x}^{(k)} = \\frac{x^{(k)} - \\E[x^{(k)}]}{\\sqrt{\\Var[x^{(k)}]}}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP218.6",
+      "type": "definition",
+      "name": "Affine Restoration $y^{(k)} = \\gamma^{(k)} \\widehat{x}^{(k)} + \\beta^{(k)}$",
+      "section": "3",
+      "statement": "Per-activation learnable scale $\\gamma^{(k)}$ and shift $\\beta^{(k)}$ applied after normalization so the transform can represent the identity (recovered by $\\gamma^{(k)} = \\sqrt{\\Var[x^{(k)}]}$, $\\beta^{(k)} = \\E[x^{(k)}]$).",
+      "origin": "paper"
+    },
+    {
+      "id": "DP218.7",
+      "type": "definition",
+      "name": "Batch Normalizing Transform $\\BatchNorm_{\\gamma,\\beta}$",
+      "section": "3",
+      "statement": "The mapping $\\BatchNorm_{\\gamma,\\beta}: x_{1\\ldots m} \\to y_{1\\ldots m}$ that normalizes a single activation across a mini-batch $\\setB = \\{x_{1\\ldots m}\\}$ and then applies the affine restoration $y_i = \\gamma \\widehat{x}_i + \\beta$.",
+      "origin": "paper",
+      "tags": ["named-concept"]
+    },
+    {
+      "id": "DP218.8",
+      "type": "definition",
+      "name": "Convolutional BN",
+      "section": "3.2",
+      "statement": "For a feature map of size $p \\times q$ over a mini-batch of size $m$, jointly normalize all $m' = m \\cdot p\\, q$ activations and learn a single $(\\gamma^{(k)}, \\beta^{(k)})$ pair per feature map.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP218.9",
+      "type": "definition",
+      "name": "Inference Normalization with Population Statistics",
+      "section": "3.1",
+      "statement": "At inference, replace mini-batch statistics with population estimates: $\\widehat{x} = \\frac{x - \\E[x]}{\\sqrt{\\Var[x] + \\epsilon}}$ using the unbiased variance $\\Var[x] = \\frac{m}{m-1} \\E_\\setB[\\sigma_\\setB^2]$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP218.1",
+      "type": "problem",
+      "name": "SGD Loss Minimization",
+      "section": "1",
+      "statement": "$\\Theta = \\arg\\min_\\Theta \\frac{1}{N} \\sum_{i=1}^N \\ell(\\mathrm{x}_i, \\Theta)$ where the loss over the training set $\\mathrm{x}_{1\\ldots N}$ is minimized over network parameters $\\Theta$.",
+      "origin": "paper",
+      "subclass": "optimization"
+    },
+    {
+      "id": "ProbP218.2",
+      "type": "problem",
+      "name": "Differentiable Whitening that Accounts for $\\Theta$",
+      "section": "2",
+      "statement": "Find a normalization $\\widehat{\\vx} = \\Norm(\\vx, \\setX)$ that (i) depends on $\\Theta$ in a differentiable way and (ii) does not require reanalyzing the entire training set $\\setX$ after every parameter update.",
+      "origin": "paper"
+    },
+    {
+      "id": "AP218.1",
+      "type": "algorithm",
+      "name": "Batch Normalizing Transform",
+      "section": "3 (Algorithm 1)",
+      "statement": "Computes $\\BN{x_i}{\\gamma,\\beta}$ for each activation $x_i$ in a mini-batch by subtracting the mini-batch mean, dividing by $\\sqrt{\\sigma_\\setB^2 + \\epsilon}$, and applying the learned affine $\\gamma\\widehat{x}_i + \\beta$.",
+      "input": [
+        "Values of $x$ over a mini-batch: $\\setB = \\{x_{1\\ldots m}\\}$",
+        "Parameters to be learned: $\\gamma$, $\\beta$"
+      ],
+      "output": [
+        "$\\{y_i = \\BN{x_i}{\\gamma,\\beta}\\}$"
+      ],
+      "pseudocode": "$\\mu_\\setB \\leftarrow \\frac{1}{m}\\sum_i x_i$; $\\sigma_\\setB^2 \\leftarrow \\frac{1}{m}\\sum_i (x_i - \\mu_\\setB)^2$; $\\widehat{x}_i \\leftarrow \\frac{x_i - \\mu_\\setB}{\\sqrt{\\sigma_\\setB^2 + \\epsilon}}$; $y_i \\leftarrow \\gamma \\widehat{x}_i + \\beta$.",
+      "origin": "paper",
+      "tags": ["iterative", "differentiable"]
+    },
+    {
+      "id": "AP218.2",
+      "type": "algorithm",
+      "name": "Training a Batch-Normalized Network",
+      "section": "3.1 (Algorithm 2)",
+      "statement": "Wraps a network $\\norig$ by inserting a BN transform before each chosen activation, trains the augmented parameters, then freezes the BN transforms with population statistics for inference.",
+      "input": [
+        "Network $\\norig$ with trainable parameters $\\Theta$",
+        "Subset of activations $\\{x^{(k)}\\}_{k=1}^K$"
+      ],
+      "output": [
+        "Batch-normalized inference network $\\ninf$"
+      ],
+      "pseudocode": "Build $\\ntrain$ by adding $y^{(k)} = \\BN{x^{(k)}}{\\gamma^{(k)},\\beta^{(k)}}$ for each $k$; train on $\\Theta \\cup \\{\\gamma^{(k)},\\beta^{(k)}\\}$; for inference, set $\\E[x] \\leftarrow \\E_\\setB[\\mu_\\setB]$, $\\Var[x] \\leftarrow \\frac{m}{m-1} \\E_\\setB[\\sigma_\\setB^2]$; replace each BN with the linear transform $y = \\frac{\\gamma}{\\sqrt{\\Var[x]+\\epsilon}} x + \\big(\\beta - \\frac{\\gamma\\,\\E[x]}{\\sqrt{\\Var[x]+\\epsilon}}\\big)$.",
+      "origin": "paper",
+      "tags": ["iterative"]
+    },
+    {
+      "id": "EP218.1",
+      "type": "equation",
+      "name": "BN Backprop Chain Rule",
+      "section": "3",
+      "statement": "$\\partial \\ell / \\partial \\widehat{x}_i = (\\partial \\ell/\\partial y_i)\\gamma$; $\\partial \\ell/\\partial \\sigma_\\setB^2 = \\sum_i (\\partial \\ell/\\partial \\widehat{x}_i)(x_i - \\mu_\\setB)\\,\\frac{-1}{2}(\\sigma_\\setB^2 + \\epsilon)^{-3/2}$; $\\partial \\ell/\\partial \\mu_\\setB$, $\\partial \\ell/\\partial x_i$, $\\partial \\ell/\\partial \\gamma = \\sum_i (\\partial \\ell/\\partial y_i)\\widehat{x}_i$, $\\partial \\ell/\\partial \\beta = \\sum_i \\partial \\ell/\\partial y_i$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP218.2",
+      "type": "equation",
+      "name": "Scale-Invariance Identity for BN",
+      "section": "3.3",
+      "statement": "$\\BatchNorm(W \\vu) = \\BatchNorm((aW)\\vu)$ for any scalar $a$, with derivative $\\partial \\BatchNorm((aW)\\vu)/\\partial \\vu = \\partial \\BatchNorm(W\\vu)/\\partial \\vu$ and $\\partial \\BatchNorm((aW)\\vu)/\\partial(aW) = \\frac{1}{a}\\,\\partial \\BatchNorm(W\\vu)/\\partial W$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ClP218.1",
+      "type": "claim",
+      "name": "Identity Recoverable by BN",
+      "section": "3",
+      "statement": "By choosing $\\gamma^{(k)} = \\sqrt{\\Var[x^{(k)}]}$ and $\\beta^{(k)} = \\E[x^{(k)}]$, the BN transform recovers the original (unnormalized) activations, so it can represent the identity transformation.",
+      "assumptions": [
+        "Per-activation BN with learnable $\\gamma^{(k)}, \\beta^{(k)}$"
+      ],
+      "conclusions": [
+        "$y^{(k)} = x^{(k)}$ at the optimum where $(\\gamma^{(k)}, \\beta^{(k)}) = (\\sqrt{\\Var[x^{(k)}]}, \\E[x^{(k)}])$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "ClP218.2",
+      "type": "claim",
+      "name": "Zero Mean / Unit Variance of $\\widehat{x}$",
+      "section": "3",
+      "statement": "The normalized values satisfy $\\sum_{i=1}^m \\widehat{x}_i = 0$ and $\\frac{1}{m}\\sum_{i=1}^m \\widehat{x}_i^2 = 1$, so each $\\widehat{x}^{(k)}$ has expected mean $0$ and variance $1$ (neglecting $\\epsilon$) when mini-batch elements are i.i.d.",
+      "assumptions": [
+        "Mini-batch elements sampled from the same distribution",
+        "$\\epsilon$ neglected"
+      ],
+      "conclusions": [
+        "$\\E[\\widehat{x}] = 0$, $\\Var[\\widehat{x}] = 1$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "PrP218.1",
+      "type": "proposition",
+      "name": "BN is Invariant to Weight Rescaling",
+      "section": "3.3",
+      "statement": "BatchNorm is invariant to a scalar rescaling $W \\mapsto aW$ of layer weights, so the layer Jacobian (and gradient with respect to the input) is unaffected by the parameter scale, while the gradient with respect to $W$ scales by $1/a$.",
+      "assumptions": [
+        "BN applied to $W\\vu$",
+        "Scalar $a \\neq 0$"
+      ],
+      "conclusions": [
+        "$\\BatchNorm(W\\vu) = \\BatchNorm((aW)\\vu)$",
+        "$\\partial \\BatchNorm/\\partial \\vu$ is independent of $a$",
+        "$\\partial \\BatchNorm/\\partial(aW) = (1/a)\\,\\partial \\BatchNorm/\\partial W$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "CnjP218.1",
+      "type": "conjecture",
+      "name": "Singular Values of Layer Jacobians Near 1",
+      "section": "3.3",
+      "statement": "Batch Normalization may lead the layer Jacobians to have singular values close to 1, which is known to be beneficial for training; under a Gaussian/uncorrelated linearization $\\vzhat = J \\vxhat$, $JJ^T = I$.",
+      "assumptions": [
+        "$\\vxhat, \\vzhat$ are Gaussian and uncorrelated",
+        "$F(\\vxhat) \\approx J\\vxhat$ is locally linear"
+      ],
+      "conclusions": [
+        "$JJ^T = I$, hence all singular values of $J$ equal $1$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "RP218.1",
+      "type": "remark",
+      "name": "Bias Subsumed by $\\beta$",
+      "section": "3.2",
+      "statement": "Since BN subtracts the mean of $W\\vu + \\vb$, the bias $\\vb$ is canceled and its role is absorbed by $\\beta$; the layer becomes $\\vz = g(\\BatchNorm(W\\vu))$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP218.2",
+      "type": "remark",
+      "name": "BN as Regularizer",
+      "section": "3.4",
+      "statement": "Because each example is normalized in conjunction with the rest of its mini-batch, the network output is no longer deterministic for a given input, which empirically improves generalization and lets Dropout be reduced or removed.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP218.3",
+      "type": "remark",
+      "name": "Per-dimension Variances Avoid Singular Covariance",
+      "section": "3",
+      "statement": "Mini-batch use is enabled by per-dimension variances rather than joint covariances; jointly whitening would require regularization since the mini-batch size is typically smaller than the number of activations.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP218.4",
+      "type": "remark",
+      "name": "Comparison to Standardization Layer",
+      "section": "Conclusion",
+      "statement": "BN resembles the standardization layer of Gulcehre and Bengio but applies before the nonlinearity, learns a scale/shift to recover identity, handles convolutional layers, and gives deterministic inference.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP218.1",
+      "type": "example",
+      "name": "Naive Mean-Subtraction Bias Blow-up",
+      "section": "2",
+      "statement": "If $\\widehat{x} = x - \\E[x]$ with $x = u + b$ and the gradient step ignores $\\partial \\E[x]/\\partial b$, then $b \\leftarrow b + \\Delta b$ leaves the layer output unchanged, so $b$ grows indefinitely while the loss stays fixed.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP218.2",
+      "type": "example",
+      "name": "MNIST Sigmoid Network with BN",
+      "section": "4.1",
+      "statement": "A 3-hidden-layer (100 sigmoid units) network on MNIST trained for 50000 steps with mini-batches of 60: BN improves test accuracy and yields more stable input distributions to the sigmoid (Fig. 1).",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP218.3",
+      "type": "example",
+      "name": "ImageNet Inception with BN",
+      "section": "4.2",
+      "statement": "BN applied to a $13.6 \\cdot 10^6$-parameter Inception variant on LSVRC2012; BN-Baseline matches Inception in less than half the steps, BN-x5 reaches 72.2\\% accuracy in 14$\\times$ fewer steps, BN-x30 reaches 74.8\\%, BN-x5-Sigmoid reaches 69.8\\%.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP218.4",
+      "type": "example",
+      "name": "BN-Inception Ensemble on ImageNet",
+      "section": "4.2.2",
+      "statement": "An ensemble of 6 networks based on BN-x30 reaches top-5 validation error 4.9\\% (test error 4.82\\%), exceeding human-rater accuracy and the prior best results.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP218.1",
+      "type": "proof",
+      "name": "Derivation of BN Backprop",
+      "section": "3",
+      "statement": "Apply the chain rule to $\\BatchNorm_{\\gamma,\\beta}$ accounting for the dependence of $\\widehat{x}_i$ on $\\mu_\\setB$ and $\\sigma_\\setB^2$, both of which depend on every $x_j$ in the mini-batch.",
+      "proves": "EP218.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP218.2",
+      "type": "proof",
+      "name": "Identity-Recoverability Argument",
+      "section": "3",
+      "statement": "Substitute $\\gamma^{(k)} = \\sqrt{\\Var[x^{(k)}]}$ and $\\beta^{(k)} = \\E[x^{(k)}]$ into $y^{(k)} = \\gamma^{(k)} \\widehat{x}^{(k)} + \\beta^{(k)}$ and use $\\widehat{x}^{(k)} = (x^{(k)} - \\E[x^{(k)}])/\\sqrt{\\Var[x^{(k)}]}$ to recover $y^{(k)} = x^{(k)}$.",
+      "proves": "ClP218.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP218.3",
+      "type": "proof",
+      "name": "Scale-Invariance Derivation",
+      "section": "3.3",
+      "statement": "Mini-batch mean and variance of $aW\\vu$ scale by $a$ and $a^2$, so the standardized $\\widehat{x}$ is unchanged; differentiate to obtain the Jacobian identities.",
+      "proves": "PrP218.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP218.4",
+      "type": "proof",
+      "name": "Singular-Values-Near-1 Argument",
+      "section": "3.3",
+      "statement": "Under Gaussian, uncorrelated $\\vxhat, \\vzhat$ with $\\vzhat = J \\vxhat$, both have unit covariance, hence $I = \\Cov[\\vzhat] = J \\Cov[\\vxhat] J^T = J J^T$.",
+      "proves": "CnjP218.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP218.1",
+      "type": "proof_step",
+      "parent_id": "PP218.1",
+      "step_order": 1,
+      "name": "Differentiate $y_i$ in $\\widehat{x}_i$",
+      "statement": "From $y_i = \\gamma \\widehat{x}_i + \\beta$, $\\partial \\ell/\\partial \\widehat{x}_i = (\\partial \\ell/\\partial y_i)\\,\\gamma$.",
+      "subclass": "algebraic_manipulation"
+    },
+    {
+      "id": "PSP218.2",
+      "type": "proof_step",
+      "parent_id": "PP218.1",
+      "step_order": 2,
+      "name": "Differentiate w.r.t. $\\sigma_\\setB^2$",
+      "statement": "$\\partial \\ell/\\partial \\sigma_\\setB^2 = \\sum_i (\\partial \\ell/\\partial \\widehat{x}_i)\\,(x_i - \\mu_\\setB)\\,\\frac{-1}{2}(\\sigma_\\setB^2 + \\epsilon)^{-3/2}$.",
+      "subclass": "algebraic_manipulation"
+    },
+    {
+      "id": "PSP218.3",
+      "type": "proof_step",
+      "parent_id": "PP218.1",
+      "step_order": 3,
+      "name": "Differentiate w.r.t. $\\mu_\\setB$",
+      "statement": "$\\partial \\ell/\\partial \\mu_\\setB = \\big(\\sum_i (\\partial \\ell/\\partial \\widehat{x}_i)\\,\\frac{-1}{\\sqrt{\\sigma_\\setB^2 + \\epsilon}}\\big) + (\\partial \\ell/\\partial \\sigma_\\setB^2)\\,\\frac{\\sum_i -2(x_i - \\mu_\\setB)}{m}$.",
+      "subclass": "algebraic_manipulation"
+    },
+    {
+      "id": "PSP218.4",
+      "type": "proof_step",
+      "parent_id": "PP218.1",
+      "step_order": 4,
+      "name": "Combine for $\\partial \\ell/\\partial x_i$",
+      "statement": "$\\partial \\ell/\\partial x_i = (\\partial \\ell/\\partial \\widehat{x}_i)\\,\\frac{1}{\\sqrt{\\sigma_\\setB^2 + \\epsilon}} + (\\partial \\ell/\\partial \\sigma_\\setB^2)\\,\\frac{2(x_i - \\mu_\\setB)}{m} + (\\partial \\ell/\\partial \\mu_\\setB)\\,\\frac{1}{m}$.",
+      "subclass": "conclude"
+    },
+    {
+      "id": "PSP218.5",
+      "type": "proof_step",
+      "parent_id": "PP218.1",
+      "step_order": 5,
+      "name": "Gradients w.r.t. parameters",
+      "statement": "$\\partial \\ell/\\partial \\gamma = \\sum_i (\\partial \\ell/\\partial y_i)\\widehat{x}_i$; $\\partial \\ell/\\partial \\beta = \\sum_i \\partial \\ell/\\partial y_i$.",
+      "subclass": "conclude"
+    },
+    {
+      "id": "PSP218.6",
+      "type": "proof_step",
+      "parent_id": "PP218.3",
+      "step_order": 1,
+      "name": "Mean and variance scale with $a$",
+      "statement": "Replacing $W$ by $aW$ scales mini-batch mean of $W\\vu$ by $a$ and variance by $a^2$, leaving $\\widehat{x}_i = (a\\,x_i - a\\mu_\\setB)/\\sqrt{a^2 \\sigma_\\setB^2 + \\epsilon}$ unchanged (modulo $\\epsilon$).",
+      "subclass": "algebraic_manipulation"
+    },
+    {
+      "id": "PSP218.7",
+      "type": "proof_step",
+      "parent_id": "PP218.3",
+      "step_order": 2,
+      "name": "Equate BN outputs",
+      "statement": "Conclude $\\BatchNorm(W\\vu) = \\BatchNorm((aW)\\vu)$.",
+      "subclass": "conclude"
+    },
+    {
+      "id": "PSP218.8",
+      "type": "proof_step",
+      "parent_id": "PP218.3",
+      "step_order": 3,
+      "name": "Differentiate to obtain Jacobian identities",
+      "statement": "Differentiate w.r.t. $\\vu$ and $aW$ to get $\\partial \\BatchNorm((aW)\\vu)/\\partial \\vu = \\partial \\BatchNorm(W\\vu)/\\partial \\vu$ and $\\partial \\BatchNorm((aW)\\vu)/\\partial(aW) = (1/a)\\,\\partial \\BatchNorm(W\\vu)/\\partial W$.",
+      "subclass": "conclude"
+    },
+    {
+      "id": "PSP218.9",
+      "type": "proof_step",
+      "parent_id": "PP218.4",
+      "step_order": 1,
+      "name": "Both vectors have unit covariance",
+      "statement": "By assumption $\\vxhat$ and $\\vzhat$ are Gaussian, uncorrelated, and normalized, so $\\Cov[\\vxhat] = I$ and $\\Cov[\\vzhat] = I$.",
+      "subclass": "setup"
+    },
+    {
+      "id": "PSP218.10",
+      "type": "proof_step",
+      "parent_id": "PP218.4",
+      "step_order": 2,
+      "name": "Apply linearization $\\vzhat = J\\vxhat$",
+      "statement": "Then $\\Cov[\\vzhat] = J\\,\\Cov[\\vxhat]\\,J^T = J J^T$.",
+      "subclass": "apply_lemma"
+    },
+    {
+      "id": "PSP218.11",
+      "type": "proof_step",
+      "parent_id": "PP218.4",
+      "step_order": 3,
+      "name": "Conclude $JJ^T = I$",
+      "statement": "Combining, $JJ^T = I$, so all singular values of $J$ equal 1.",
+      "subclass": "conclude"
+    },
+    {
+      "id": "ASP218.1",
+      "type": "algorithm_step",
+      "parent_id": "AP218.1",
+      "step_order": 1,
+      "name": "Mini-batch mean",
+      "statement": "$\\mu_\\setB \\leftarrow \\frac{1}{m}\\sum_{i=1}^m x_i$.",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP218.2",
+      "type": "algorithm_step",
+      "parent_id": "AP218.1",
+      "step_order": 2,
+      "name": "Mini-batch variance",
+      "statement": "$\\sigma_\\setB^2 \\leftarrow \\frac{1}{m}\\sum_{i=1}^m (x_i - \\mu_\\setB)^2$.",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP218.3",
+      "type": "algorithm_step",
+      "parent_id": "AP218.1",
+      "step_order": 3,
+      "name": "Normalize",
+      "statement": "$\\widehat{x}_i \\leftarrow \\frac{x_i - \\mu_\\setB}{\\sqrt{\\sigma_\\setB^2 + \\epsilon}}$.",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP218.4",
+      "type": "algorithm_step",
+      "parent_id": "AP218.1",
+      "step_order": 4,
+      "name": "Scale and shift",
+      "statement": "$y_i \\leftarrow \\gamma \\widehat{x}_i + \\beta \\equiv \\BN{x_i}{\\gamma,\\beta}$.",
+      "subclass": "return"
+    },
+    {
+      "id": "ASP218.5",
+      "type": "algorithm_step",
+      "parent_id": "AP218.2",
+      "step_order": 1,
+      "name": "Initialize training network",
+      "statement": "$\\ntrain \\leftarrow \\norig$.",
+      "subclass": "initialize"
+    },
+    {
+      "id": "ASP218.6",
+      "type": "algorithm_step",
+      "parent_id": "AP218.2",
+      "step_order": 2,
+      "name": "Insert BN before each chosen activation",
+      "statement": "For $k = 1,\\ldots,K$: add $y^{(k)} = \\BN{x^{(k)}}{\\gamma^{(k)},\\beta^{(k)}}$ to $\\ntrain$ and rewire each downstream layer to consume $y^{(k)}$ instead of $x^{(k)}$.",
+      "subclass": "loop"
+    },
+    {
+      "id": "ASP218.7",
+      "type": "algorithm_step",
+      "parent_id": "AP218.2",
+      "step_order": 3,
+      "name": "Train augmented parameters",
+      "statement": "Train $\\ntrain$ to optimize $\\Theta \\cup \\{\\gamma^{(k)}, \\beta^{(k)}\\}_{k=1}^K$.",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP218.8",
+      "type": "algorithm_step",
+      "parent_id": "AP218.2",
+      "step_order": 4,
+      "name": "Initialize inference network",
+      "statement": "$\\ninf \\leftarrow \\ntrain$ (BN parameters frozen for inference).",
+      "subclass": "initialize"
+    },
+    {
+      "id": "ASP218.9",
+      "type": "algorithm_step",
+      "parent_id": "AP218.2",
+      "step_order": 5,
+      "name": "Estimate population statistics",
+      "statement": "For each BN, process multiple training mini-batches $\\setB$ of size $m$ and average: $\\E[x] \\leftarrow \\E_\\setB[\\mu_\\setB]$ and $\\Var[x] \\leftarrow \\frac{m}{m-1}\\E_\\setB[\\sigma_\\setB^2]$.",
+      "subclass": "loop"
+    },
+    {
+      "id": "ASP218.10",
+      "type": "algorithm_step",
+      "parent_id": "AP218.2",
+      "step_order": 6,
+      "name": "Replace BN with single linear transform",
+      "statement": "In $\\ninf$ replace $y = \\BN{x}{\\gamma,\\beta}$ by $y = \\frac{\\gamma}{\\sqrt{\\Var[x]+\\epsilon}}\\,x + \\big(\\beta - \\frac{\\gamma\\,\\E[x]}{\\sqrt{\\Var[x]+\\epsilon}}\\big)$.",
+      "subclass": "return"
+    }
+  ],
+  "edges": [
+    {"source": "DP218.2", "target": "DP218.1", "type": "generalizes"},
+    {"source": "DP218.1", "target": "ProbP218.2", "type": "uses"},
+    {"source": "DP218.3", "target": "ProbP218.2", "type": "uses"},
+    {"source": "DP218.4", "target": "ProbP218.2", "type": "uses"},
+    {"source": "DP218.4", "target": "AP218.1", "type": "uses"},
+    {"source": "DP218.5", "target": "AP218.1", "type": "uses"},
+    {"source": "DP218.6", "target": "AP218.1", "type": "uses"},
+    {"source": "DP218.7", "target": "AP218.1", "type": "uses"},
+    {"source": "AP218.1", "target": "AP218.2", "type": "uses"},
+    {"source": "DP218.8", "target": "AP218.2", "type": "uses"},
+    {"source": "DP218.9", "target": "AP218.2", "type": "uses"},
+    {"source": "AP218.1", "target": "EP218.1", "type": "uses"},
+    {"source": "PP218.1", "target": "EP218.1", "type": "proves"},
+    {"source": "PP218.2", "target": "ClP218.1", "type": "proves"},
+    {"source": "PP218.3", "target": "PrP218.1", "type": "proves"},
+    {"source": "PP218.4", "target": "CnjP218.1", "type": "proves"},
+    {"source": "EP218.2", "target": "PrP218.1", "type": "uses"},
+    {"source": "DP218.6", "target": "ClP218.1", "type": "uses"},
+    {"source": "AP218.1", "target": "ClP218.2", "type": "uses"},
+    {"source": "AP218.2", "target": "ExP218.2", "type": "illustrates"},
+    {"source": "AP218.2", "target": "ExP218.3", "type": "illustrates"},
+    {"source": "AP218.2", "target": "ExP218.4", "type": "illustrates"},
+    {"source": "ExP218.1", "target": "ProbP218.2", "type": "uses"},
+    {"source": "ExP218.3", "target": "ExP218.4", "type": "uses"},
+    {"source": "ProbP218.1", "target": "AP218.2", "type": "uses"},
+    {"source": "PrP218.1", "target": "RP218.1", "type": "uses"},
+    {"source": "PSP218.1", "target": "PSP218.2", "type": "uses"},
+    {"source": "PSP218.2", "target": "PSP218.3", "type": "uses"},
+    {"source": "PSP218.3", "target": "PSP218.4", "type": "uses"},
+    {"source": "PSP218.2", "target": "PSP218.4", "type": "uses"},
+    {"source": "PSP218.1", "target": "PSP218.5", "type": "uses"},
+    {"source": "PSP218.6", "target": "PSP218.7", "type": "uses"},
+    {"source": "PSP218.7", "target": "PSP218.8", "type": "uses"},
+    {"source": "PSP218.9", "target": "PSP218.10", "type": "uses"},
+    {"source": "PSP218.10", "target": "PSP218.11", "type": "uses"},
+    {"source": "ASP218.1", "target": "ASP218.2", "type": "uses"},
+    {"source": "ASP218.2", "target": "ASP218.3", "type": "uses"},
+    {"source": "ASP218.1", "target": "ASP218.3", "type": "uses"},
+    {"source": "ASP218.3", "target": "ASP218.4", "type": "uses"},
+    {"source": "ASP218.5", "target": "ASP218.6", "type": "uses"},
+    {"source": "ASP218.6", "target": "ASP218.7", "type": "uses"},
+    {"source": "ASP218.7", "target": "ASP218.8", "type": "uses"},
+    {"source": "ASP218.8", "target": "ASP218.9", "type": "uses"},
+    {"source": "ASP218.9", "target": "ASP218.10", "type": "uses"}
+  ]
+}

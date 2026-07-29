@@ -1,0 +1,914 @@
+{
+  "metadata": {
+    "title": "Moser-Tardos Algorithm with small number of random bits",
+    "paper_num": 427,
+    "authors": "Endre Csoka, Lukasz Grabowski, Andras Mathe, Oleg Pikhurko, Konstantinos Tyros",
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "DP427.1",
+      "type": "definition",
+      "name": "Local rule and colouring problem",
+      "section": "1 / 2.b",
+      "statement": "A local rule for a digraph $G$ is a function $\\mathbf R$ on $V(G)$ with $\\mathbf R(x)\\subset b^{\\Var(x)}$ (and $\\mathbf R(x)=b^{\\emptyset}$ when $\\Var(x)=\\emptyset$). A colouring problem is a pair $(G,\\mathbf R)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP427.2",
+      "type": "definition",
+      "name": "Satisfying colouring",
+      "section": "2.b",
+      "statement": "A function $f\\in b^{V(G)}$ satisfies $\\mathbf R$ if for every $x\\in V(G)$ the restriction $\\res_x(f)\\in \\mathbf R(x)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP427.3",
+      "type": "definition",
+      "name": "Dependency digraph $\\Rel(G)$",
+      "section": "1 / 2.a",
+      "statement": "$\\Rel(G)$ is the symmetric digraph on $V(G)$ with edge $(x,y)$ iff $\\Var_G(x)\\cap \\Var_G(y)\\neq \\emptyset$; self-loops allowed.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP427.4",
+      "type": "definition",
+      "name": "Bad set $\\B_{\\mathbf R}(f)$",
+      "section": "2.b",
+      "statement": "$\\B_{\\mathbf R}(f):=\\{x\\in V(G):\\res_x(f)\\in \\mathbf R^c(x)\\}$, the set of clauses violated by $f$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP427.5",
+      "type": "definition",
+      "name": "Independence function and $\\IB(f)$",
+      "section": "2.b",
+      "statement": "$\\I_G:\\Pow(V)\\to\\Pow(V)$ assigns to each $X$ a maximal independent subset of $X$ in $G$; we set $\\IB(f):=\\I_{\\Rel(G)}(\\B_{\\mathbf R}(f))$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP427.6",
+      "type": "definition",
+      "name": "$r$-sparse partition",
+      "section": "2.b",
+      "statement": "A partition $\\pi$ of $V(G)$ is $r$-sparse if for every $x\\in V(G)$ all distinct points of $N_G(x,r)$ lie in different parts of $\\pi$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP427.7",
+      "type": "definition",
+      "name": "Moser-Tardos tuple",
+      "section": "2.b",
+      "statement": "A triple $\\cal M=(G,\\mathbf R,\\pi)$ where $G$ is a digraph, $\\mathbf R$ a local rule on $G$, and $\\pi$ a partition of $V(G)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP427.8",
+      "type": "definition",
+      "name": "Subexponential growth class $\\subexp(\\nn,\\eps,d)$",
+      "section": "2.c",
+      "statement": "The class of digraphs $G$ with $\\maxdeg(G)\\le d$ and $|N_G(x,3\\nn)|\\le (1+\\eps)^{\\nn}$ for all $x\\in V(G)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP427.9",
+      "type": "definition",
+      "name": "Class $\\colsubexp(\\nn,d,\\de)$",
+      "section": "2.c",
+      "statement": "Class of finite colouring problems $(G,\\mathbf R)$ with $G\\in \\subexp(\\nn,\\eps,d)$ and $\\max_x |\\mathbf R^c(x)|/b^{|\\Var(x)|}\\le 1/((\\me\\De)^{1+\\delta} b^{\\eps d})$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP427.10",
+      "type": "definition",
+      "name": "Canvas $\\Canvas(G)$ and $G$-forest",
+      "section": "3.1",
+      "statement": "$\\Canvas(G)$ has vertex set $V(G)\\times \\NN$ with edges $((x,i),(y,i+1))$ for $(x,y)\\in E(\\Rel(G))$. A $G$-forest $\\cal F$ is a subdigraph of $\\Canvas(G)$ with each vertex in-degree $\\le 1$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP427.11",
+      "type": "definition",
+      "name": "$\\cal M$-landscape",
+      "section": "3.1",
+      "statement": "An $\\cal M$-landscape is $\\cal L=(\\cal F,\\prev)$ with $\\cal F$ an independent $G$-forest and $\\prev(x,i)\\in \\mathbf R^c(x)$ for $(x,i)\\in V(\\cal F)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP427.12",
+      "type": "definition",
+      "name": "Finalised landscape",
+      "section": "3.1",
+      "statement": "A finalised $\\cal M$-landscape is $(\\cal F,\\prev,\\final)$ with $(\\cal F,\\prev)$ an $\\cal M$-landscape of finite height and $\\final\\in b^{V(G)}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP427.13",
+      "type": "definition",
+      "name": "$\\used_{\\cal L}$ and $\\unused$ functions",
+      "section": "3.1.2 / 3",
+      "statement": "$\\used_{\\cal L}(x)$ lists $\\prev(y_j,s_j)(x)$ over $(y_j,s_j)\\in V(\\cal F)$ with $x\\in \\Var(y_j)$ in increasing $s_j$ order, then $\\final(x)$. $\\unused$ records the remaining bits.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP427.14",
+      "type": "definition",
+      "name": "$\\De$-labelled tree",
+      "section": "3.2",
+      "statement": "A finite directed tree where each vertex has in-degree 0 or 1, and out-edges at each vertex carry distinct labels in $\\{0,\\ldots,\\De-1\\}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP427.15",
+      "type": "definition",
+      "name": "$\\pi$-unique set and landscape restriction $\\Res_U$",
+      "section": "3.4",
+      "statement": "$U\\subset V(G)$ is $\\pi$-unique if $S_\\pi$ is injective on $U$; $\\Res_U(\\cal M)$ and $\\Res_U(\\cal L)$ restrict the Moser-Tardos tuple and landscape to $U$ via $S_\\pi$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP427.16",
+      "type": "definition",
+      "name": "Equivalent landscapes",
+      "section": "3.5",
+      "statement": "Finalised $\\cal M$-landscapes $\\cal L,\\cal K$ are equivalent if $|V(\\cal L)|=|V(\\cal K)|$ and $\\used_{\\cal L}=\\used_{\\cal K}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP427.17",
+      "type": "definition",
+      "name": "Borel digraph and Borel local rule",
+      "section": "4",
+      "statement": "$G=(V,\\mathcal B,E)$ is a Borel digraph if $(V,\\mathcal B)$ is standard Borel and $E\\subset V^2$ Borel. A local rule $\\mathbf R$ is Borel if its encoding $\\ell_{\\mathbf R}:V\\to \\Pow(b^\\pi)$ via a Borel 2-sparse partition is Borel.",
+      "origin": "paper"
+    },
+    {
+      "id": "TP427.1",
+      "type": "theorem",
+      "name": "Lovasz Local Lemma",
+      "section": "1 (cited)",
+      "statement": "If $G$ is a digraph, $\\De=\\maxdeg(\\Rel(G))$, and $1-|\\mathbf R(x)|/b^{|\\Var(x)|}<1/(\\me\\De)$ for every $x$, then there is $f\\in b^{V(G)}$ satisfying $\\mathbf R$.",
+      "assumptions": [
+        "$G$ is a digraph",
+        "$\\De=\\maxdeg(\\Rel(G))$",
+        "for every $x$: $1-|\\mathbf R(x)|/b^{|\\Var(x)|}<1/(\\me\\De)$"
+      ],
+      "conclusions": [
+        "$\\exists f\\in b^{V(G)}$ which satisfies $\\mathbf R$"
+      ],
+      "origin": "external",
+      "origin_citation": "Erdos & Lovasz 1975; Spencer 1977"
+    },
+    {
+      "id": "TP427.2",
+      "type": "theorem",
+      "name": "Main theorem (subexponential MTA)",
+      "section": "2.c",
+      "statement": "Under $G\\in \\subexp(\\nn,\\eps,d)$, $3\\nn$-sparse $\\pi$, and $\\max_x |\\mathbf R^c(x)|/b^{|\\Var(x)|}\\le 1/((\\me\\De)^{1+\\delta} b^{\\eps d})$, there is $K=K(b,\\de,d,|\\pi|)$ with $\\Pr_{\\rnd}(\\max_x h^\\infty_{\\cal M,\\rnd}(x)\\ge m)\\le K(m+1)^{|\\pi|}/(\\me\\De)^{\\de m}$.",
+      "assumptions": [
+        "$\\cal M=(G,\\mathbf R,\\pi)$ Moser-Tardos tuple",
+        "$\\De=\\maxdeg(\\Rel(G))$",
+        "$G\\in \\subexp(\\nn,\\eps,d)$",
+        "$\\pi$ is $3\\nn$-sparse",
+        "$\\max_{x\\in V(G)} |\\mathbf R^c(x)|/b^{|\\Var(x)|}\\le 1/((\\me\\De)^{1+\\delta} b^{\\eps d})$"
+      ],
+      "conclusions": [
+        "$\\exists K=K(b,\\de,d,|\\pi|)$ such that for all $m\\in\\NN$: $\\Pr_{\\rnd}(\\max_{x\\in V(G)} h^\\infty_{\\cal M,\\rnd}(x)\\ge m)\\le K(m+1)^{|\\pi|}/(\\me\\De)^{\\de m}$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "probabilistic"]
+    },
+    {
+      "id": "TP427.3",
+      "type": "theorem",
+      "name": "Classical MTA bound (interlude)",
+      "section": "3.3",
+      "statement": "For finite $G$, $\\pi$ all singletons, and $\\be\\le 1/(\\me\\De)^{1+\\delta}$: $\\Pr_{\\rnd}(|V(\\cal L^k_{\\cal M,\\rnd})|=m)\\le d|V(G)|(m+1)^{|V(G)|}/(\\me\\De)^{\\delta m}$.",
+      "assumptions": [
+        "$G$ finite digraph",
+        "$\\cal M=(G,\\mathbf R,\\pi)$ with $\\pi$ singletons",
+        "$\\De=\\maxdeg(\\Rel(G))$, $d=\\maxoutdeg(G)$",
+        "$\\be:=\\max_x |\\mathbf R^c(x)|/b^{|\\Var(x)|}\\le 1/(\\me\\De)^{1+\\delta}$"
+      ],
+      "conclusions": [
+        "$\\Pr_{\\rnd}(|V(\\cal L^k_{\\cal M,\\rnd})|=m)\\le d|V(G)|(m+1)^{|V(G)|}/(\\me\\De)^{\\delta m}$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "probabilistic"]
+    },
+    {
+      "id": "TP427.4",
+      "type": "theorem",
+      "name": "Main analysis theorem",
+      "section": "3.7",
+      "statement": "Same hypotheses as Theorem~\\ref{thm-main}: there is $K(b,\\de,d,|\\pi|)$ with $\\Pr_{\\rnd}(\\max_x h^k_{\\cal M,\\rnd}(x)\\ge m)\\le K(m+1)^{|\\pi|}/(\\me\\De)^{\\de m}$ for all $m,k$.",
+      "assumptions": [
+        "$\\cal M=(G,\\mathbf R,\\pi)$ with $\\De:=\\maxdeg(\\Rel(G))<\\infty$",
+        "$G\\in \\subexp(\\nn,\\eps,d)$",
+        "$\\pi$ is $3\\nn$-sparse",
+        "$\\eps\\in(0,1)$, $\\delta>0$",
+        "$\\max_x |\\mathbf R^c(x)|/b^{|\\Var(x)|}\\le 1/((\\me\\De)^{1+\\delta} b^{\\eps d})$"
+      ],
+      "conclusions": [
+        "$\\exists K=K(b,\\de,d,|\\pi|)$ such that for all $m,k\\in\\NN$: $\\Pr_{\\rnd}(\\max_{x\\in V(G)} h^k_{\\cal M,\\rnd}(x)\\ge m)\\le K(m+1)^{|\\pi|}/(\\me\\De)^{\\de m}$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "probabilistic"]
+    },
+    {
+      "id": "TP427.5",
+      "type": "theorem",
+      "name": "Borel Lovasz Local Lemma (subexponential growth)",
+      "section": "4",
+      "statement": "If $(G,\\mathbf R)$ is a Borel colouring problem with $G\\in \\subexp(\\nn,\\eps,d)$ and $\\max_x b^{\\eps d}|\\mathbf R^c(x)|/b^{|\\Var(x)|}<1/(\\me\\De)$, then there exists a Borel satisfying colouring $f\\in b^{V(G)}$.",
+      "assumptions": [
+        "$(G,\\mathbf R)$ is a Borel colouring problem",
+        "$G\\in \\subexp(\\nn,\\eps,d)$",
+        "$\\De:=\\maxdeg(\\Rel(G))$",
+        "$\\max_{x\\in V(G)} b^{\\eps d}|\\mathbf R^c(x)|/b^{|\\Var(x)|}<1/(\\me\\De)$"
+      ],
+      "conclusions": [
+        "$\\exists$ Borel satisfying colouring $f\\in b^{V(G)}$"
+      ],
+      "origin": "paper",
+      "tags": ["existence", "borel"]
+    },
+    {
+      "id": "CP427.1",
+      "type": "corollary",
+      "name": "Linear-time deterministic algorithm for $\\colsubexp$",
+      "section": "2.c",
+      "statement": "For each $(\\nn,d,\\de)$ there is a sequential deterministic algorithm that, given $(G,\\mathbf R)\\in \\colsubexp(\\nn,d,\\de)$, finds a satisfying assignment in time $O(|V(G)|)$.",
+      "assumptions": [
+        "$(\\nn,d,\\de)$ fixed",
+        "$(G,\\mathbf R)\\in \\colsubexp(\\nn,d,\\de)$"
+      ],
+      "conclusions": [
+        "$\\exists$ deterministic sequential algorithm finding satisfying assignment in time $O(|V(G)|)$"
+      ],
+      "origin": "paper",
+      "tags": ["algorithmic", "linear-time"]
+    },
+    {
+      "id": "LP427.1",
+      "type": "lemma",
+      "name": "Predecessor lemma",
+      "section": "3.1.1",
+      "statement": "If $(x,i+1)\\in V(\\cal F_{\\cal M,\\rnd})$ then there exists $(y,i)\\in V(\\cal F_{\\cal M,\\rnd})$ with $\\Var_G(x)\\cap \\Var_G(y)\\neq \\emptyset$ ($x=y$ allowed).",
+      "assumptions": [
+        "$(x,i+1)\\in V(\\cal F_{\\cal M,\\rnd})$"
+      ],
+      "conclusions": [
+        "$\\exists (y,i)\\in V(\\cal F)$ with $\\Var_G(x)\\cap \\Var_G(y)\\neq \\emptyset$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "LP427.2",
+      "type": "lemma",
+      "name": "Used bits recovered from landscape",
+      "section": "3.1.2",
+      "statement": "$\\used_{\\cal L^k_{\\cal M,\\rnd}} = \\used^k_{\\cal M,\\rnd}$ for all $k\\in\\NN$ and $\\rnd\\in b^{\\pi\\times \\NN}$.",
+      "assumptions": [
+        "$\\cal M=(G,\\mathbf R,\\pi)$ Moser-Tardos tuple",
+        "$k\\in \\NN$, $\\rnd\\in b^{\\pi\\times \\NN}$"
+      ],
+      "conclusions": [
+        "$\\used_{\\cal L^k_{\\cal M,\\rnd}} = \\used^k_{\\cal M,\\rnd}$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "LP427.3",
+      "type": "lemma",
+      "name": "Length identities for $\\used$ and $\\varcount$",
+      "section": "3.1.2",
+      "statement": "$\\len(\\used_{\\cal L})=\\varcount(\\cal F)$, and if $\\cal L=\\cal L^k_{\\cal M,\\rnd}$ then $\\sum_{x} h^k_{\\cal M,\\rnd}(x)=\\len(\\used_{\\cal L})$.",
+      "assumptions": [
+        "$\\cal L=(\\cal F,\\prev,\\final)$ a finalised $\\cal M$-landscape"
+      ],
+      "conclusions": [
+        "$\\len(\\used_{\\cal L}) = \\varcount(\\cal F)$",
+        "if $\\cal L=\\cal L^k_{\\cal M,\\rnd}$: $\\sum_{x\\in V(G)} h^k_{\\cal M,\\rnd}(x)=\\len(\\used_{\\cal L})$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "LP427.4",
+      "type": "lemma",
+      "name": "Counting $\\De$-labelled trees",
+      "section": "3.2",
+      "statement": "(a) $P_i\\le (\\me\\De)^i$ where $P_i$ counts iso-classes of $\\De$-labelled trees on $i$ vertices. (b) $R_{k,i}\\le (i+1)^{k-1}(\\me\\De)^i$ counts $k$-tuples of trees with total size $i$.",
+      "assumptions": [
+        "$\\De\\in \\NN$",
+        "$P_i$, $R_{k,i}$ as defined above"
+      ],
+      "conclusions": [
+        "$P_i\\le (\\me\\De)^i$",
+        "$R_{k,i}\\le (i+1)^{k-1}(\\me\\De)^i$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "combinatorial"]
+    },
+    {
+      "id": "LP427.5",
+      "type": "lemma",
+      "name": "Counting landscapes with fixed forest",
+      "section": "3.2",
+      "statement": "For finite $G$ and a $G$-forest $\\cal F$ of finite height, the number of $\\cal M$-landscapes $(\\cal F,\\prev)$ is at most $\\be^{|V(\\cal F)|}\\cdot b^{\\varcount(\\cal F)-|V(G)|}$, where $\\be=\\max_x |\\mathbf R^c(x)|/b^{|\\Var(x)|}$.",
+      "assumptions": [
+        "$G$ finite digraph, $\\cal M=(G,\\mathbf R,\\pi)$",
+        "$\\cal F$ a $G$-forest of finite height",
+        "$\\be:=\\max_x |\\mathbf R^c(x)|/b^{|\\Var(x)|}$"
+      ],
+      "conclusions": [
+        "$\\#\\{\\prev:(\\cal F,\\prev)$ is an $\\cal M$-landscape$\\}\\le \\be^{|V(\\cal F)|}\\cdot b^{\\varcount(\\cal F)-|V(G)|}$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "combinatorial"]
+    },
+    {
+      "id": "LP427.6",
+      "type": "lemma",
+      "name": "Restriction preserves used bits at interior",
+      "section": "3.4",
+      "statement": "If $U\\subset V(G)$ is $\\pi$-unique and $x\\in U$ with $\\Var_G(\\Cl_G(x))\\cup \\Cl_G(x)\\subset U$, then $\\used_{\\cal L}(x)=\\used_{\\Res_U(\\cal L)}(S_\\pi(x))$.",
+      "assumptions": [
+        "$\\cal M=(G,\\mathbf R,\\pi)$, $\\cal L$ a finalised $\\cal M$-landscape",
+        "$U\\subset V(G)$ is $\\pi$-unique",
+        "$x\\in U$ with $\\Var_G(\\Cl_G(x))\\cup \\Cl_G(x)\\subset U$"
+      ],
+      "conclusions": [
+        "$\\used_{\\cal L}(x)=\\used_{\\Res_U(\\cal L)}(S_\\pi(x))$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "LP427.7",
+      "type": "lemma",
+      "name": "Reducing airborne trees",
+      "section": "3.5",
+      "statement": "For finite $G$, if $\\cal L$ is a finalised $\\cal M$-landscape with $|\\Trees^\\vee(\\cal L)|>0$ then there exists an equivalent landscape $\\cal L'$ with $|\\Trees^\\vee(\\cal L')|<|\\Trees^\\vee(\\cal L)|$.",
+      "assumptions": [
+        "$G$ finite, $\\cal M=(G,\\mathbf R,\\pi)$",
+        "$\\cal L$ a finalised $\\cal M$-landscape with $|\\Trees^\\vee(\\cal L)|>0$"
+      ],
+      "conclusions": [
+        "$\\exists$ equivalent finalised $\\cal M$-landscape $\\cal L'$ with $|\\Trees^\\vee(\\cal L')|<|\\Trees^\\vee(\\cal L)|$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "LP427.8",
+      "type": "lemma",
+      "name": "Subexponential growth lemma",
+      "section": "3.6",
+      "statement": "If $|N(x,3\\nn)|\\le (1+\\eps)^{\\nn}$ for all $x$, $h:V(G)\\to \\NN$ bounded, and $h(y)$ is maximum, then there is $r\\in\\{3,\\ldots,3\\nn\\}$ with $\\sum_{x\\in N(y,r)} h(x)\\le (1+\\eps)\\sum_{x\\in N(y,r-3)} h(x)$.",
+      "assumptions": [
+        "$G$ digraph, $\\eps>0$, $\\nn\\in\\NN$",
+        "$|N(x,3\\nn)|\\le (1+\\eps)^{\\nn}$ for all $x\\in V(G)$",
+        "$h:V(G)\\to\\NN$ bounded, $y\\in V(G)$ with $h(y)=\\max_x h(x)$"
+      ],
+      "conclusions": [
+        "$\\exists r\\in\\{3,\\ldots,3\\nn\\}$: $\\sum_{x\\in N(y,r)} h(x)\\le (1+\\eps)\\sum_{x\\in N(y,r-3)} h(x)$"
+      ],
+      "origin": "paper",
+      "tags": ["growth"]
+    },
+    {
+      "id": "LP427.9",
+      "type": "lemma",
+      "name": "Borel finite sparse partition exists",
+      "section": "4",
+      "statement": "For any Borel digraph $G=(V,\\mathcal B,E)$ with bounded degrees and any $r\\in \\NN$, there is a Borel finite $r$-sparse partition of $V$.",
+      "assumptions": [
+        "$G=(V,\\mathcal B,E)$ Borel digraph with all degrees bounded",
+        "$r\\in \\NN$"
+      ],
+      "conclusions": [
+        "$\\exists$ Borel finite $r$-sparse partition of $V$"
+      ],
+      "origin": "paper",
+      "tags": ["borel", "existence"]
+    },
+    {
+      "id": "LP427.10",
+      "type": "lemma",
+      "name": "$r$-local Borel labellings stay Borel",
+      "section": "4",
+      "statement": "Let $G$ be a Borel digraph with bounded degrees, $\\ell$ a Borel countable-valued labelling, and $\\ell'$ an $r$-local function of $(G,\\ell)$. Then $\\ell'$ is Borel.",
+      "assumptions": [
+        "$G$ Borel digraph with bounded degrees",
+        "$r\\in\\NN$",
+        "$\\ell$ Borel labelling assuming countably many values",
+        "$\\ell'$ is an $r$-local function of $(G,\\ell)$"
+      ],
+      "conclusions": [
+        "$\\ell'$ is Borel"
+      ],
+      "origin": "external",
+      "origin_citation": "Pikhurko 2021 (folklore)"
+    },
+    {
+      "id": "LP427.11",
+      "type": "lemma",
+      "name": "Borel maximal independent sets and Borel bad sets",
+      "section": "4",
+      "statement": "(a) Every Borel $A\\subset V$ admits a Borel maximal independent subset $B\\subset A$. (b) For Borel local rule $\\mathbf R$ and Borel $f:V\\to b$, the failed-clause set $B_{\\mathbf R}(f)$ is Borel.",
+      "assumptions": [
+        "$G=(V,\\mathcal B,E)$ Borel digraph with $\\maxdeg(G)<\\infty$"
+      ],
+      "conclusions": [
+        "(a) for every Borel $A\\subset V$ there is Borel maximal independent $B\\subset A$",
+        "(b) if $\\mathbf R$ Borel and $f:V\\to b$ Borel, then $B_{\\mathbf R}(f)\\subset V$ is Borel"
+      ],
+      "origin": "paper",
+      "tags": ["borel"]
+    },
+    {
+      "id": "PrP427.1",
+      "type": "proposition",
+      "name": "Existence of equivalent grounded landscape",
+      "section": "3.5",
+      "statement": "For finite $G$ and any finalised $\\cal M$-landscape $\\cal L$, there exists a grounded finalised landscape $\\cal K$ equivalent to $\\cal L$.",
+      "assumptions": [
+        "$G$ finite digraph, $\\cal M=(G,\\mathbf R,\\pi)$",
+        "$\\cal L$ a finalised $\\cal M$-landscape"
+      ],
+      "conclusions": [
+        "$\\exists$ grounded finalised landscape $\\cal K$ equivalent to $\\cal L$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "PrP427.2",
+      "type": "proposition",
+      "name": "Counting grounded forests and finalised landscapes",
+      "section": "3.2",
+      "statement": "For finite $G$ and $\\De=\\maxdeg(\\Rel(G))$: (a) the number of grounded $G$-forests with $|V(\\cal F)|=m$ is at most $(m+1)^{|V(G)|-1}(\\me\\De)^m$; (b) for fixed $\\cal F$ with $m,v$ as above, $\\#(\\prev,\\final)\\le \\be^m b^v$.",
+      "assumptions": [
+        "$G$ finite digraph, $\\cal M=(G,\\mathbf R,\\pi)$, $\\De=\\maxdeg(\\Rel(G))$"
+      ],
+      "conclusions": [
+        "(a) $\\#$ grounded $G$-forests with $|V(\\cal F)|=m$ is at most $(m+1)^{|V(G)|-1}(\\me\\De)^m$",
+        "(b) given grounded $\\cal F$ with $m=|V(\\cal F)|$, $v=\\varcount(\\cal F)$, $\\be=\\max_x|\\mathbf R^c(x)|/b^{|\\Var(x)|}$: $\\#\\{(\\prev,\\final)\\}\\le \\be^m b^v$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "combinatorial"]
+    },
+    {
+      "id": "AP427.1",
+      "type": "algorithm",
+      "name": "Parallel Moser-Tardos Algorithm (with shared randomness over $\\pi$)",
+      "section": "2.b",
+      "statement": "Iterative parallel resampler that, given $(\\cal M,\\rnd)$ with $\\cal M=(G,\\mathbf R,\\pi)$ and $\\rnd\\in b^{\\pi\\times \\NN}$, produces colourings $\\MT^0,\\MT^1,\\ldots$ by resampling variables of a maximal independent set of violated clauses each step using shared randomness across each part of $\\pi$.",
+      "input": [
+        "Moser-Tardos tuple $\\cal M=(G,\\mathbf R,\\pi)$",
+        "Source of random bits $\\rnd\\in b^{\\pi\\times \\NN}$",
+        "Independence function $\\I$ on $\\Rel(G)$"
+      ],
+      "output": [
+        "Sequence of colourings $\\MT^i\\in b^{V(G)}$",
+        "Counter functions $h^j$ tracking resamplings"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "parallel", "randomised"]
+    },
+    {
+      "id": "AP427.2",
+      "type": "algorithm",
+      "name": "Sequential deterministic MTA via external/internal loops",
+      "section": "2.c",
+      "statement": "Linear-time deterministic algorithm: enumerate all candidate $\\rnd_m\\in b^{\\pi\\times m}$ in an external loop, simulate the parallel MTA in an internal loop using lists Currently-Violated and Potentially-Violated, abort branches that exhaust $\\rnd_m$.",
+      "input": [
+        "Colouring problem $(G,\\mathbf R)\\in \\colsubexp(\\nn,d,\\de)$"
+      ],
+      "output": [
+        "Satisfying assignment $f\\in b^{V(G)}$ (computed in time $O(|V(G)|)$)"
+      ],
+      "origin": "paper",
+      "tags": ["deterministic", "linear-time", "sequential"]
+    },
+    {
+      "id": "AP427.3",
+      "type": "algorithm",
+      "name": "Original Moser-Tardos algorithm",
+      "section": "1 (cited)",
+      "statement": "Randomised resampling algorithm of Moser-Tardos that, under the LLL gap condition, finds a satisfying assignment using $O(|V(G)|)$ random bits in expectation.",
+      "input": [
+        "Colouring problem $(G,\\mathbf R)$ satisfying LLL with constant slack"
+      ],
+      "output": [
+        "Satisfying assignment $f\\in b^{V(G)}$"
+      ],
+      "origin": "external",
+      "origin_citation": "Moser & Tardos 2010 (MR2606086)",
+      "tags": ["iterative", "randomised"]
+    },
+    {
+      "id": "PP427.1",
+      "type": "proof",
+      "name": "Proof of Corollary 2.c (linear-time deterministic)",
+      "section": "2.c",
+      "statement": "Build $3\\nn$-sparse partition $\\pi$ of size $\\le d^{6\\nn}$ via greedy power-graph colouring, choose $m$ from inequality (2.6), iterate over $\\rnd_m\\in b^{\\pi\\times m}$ running internal-loop simulation of parallel MTA; each pass uses lists Currently-Violated/Potentially-Violated.",
+      "proves": "CP427.1",
+      "parent_id": "CP427.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP427.2",
+      "type": "proof",
+      "name": "Proof of Lemma 3.1.1 (predecessor lemma)",
+      "section": "3.1.1",
+      "statement": "If no $(y,i)\\in V(\\cal F)$ shares a variable with $x$, then no variable of $x$ was resampled and $x\\in \\B(\\MT^i)$; maximality of $\\IB(\\MT^i)$ then forces a neighbour, contradiction.",
+      "proves": "LP427.1",
+      "parent_id": "LP427.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP427.3",
+      "type": "proof",
+      "name": "Proof of Lemma 3.1.2 (length identities)",
+      "section": "3.1.2",
+      "statement": "Double counting on $V(\\cal F)$ pairs $(x,(y,i))$ with $x\\in \\Var(y)$ gives $\\len(\\used_{\\cal L})=\\varcount(\\cal F)$; combined with $h^k_{\\cal M,\\rnd}(x)=\\len(\\used^k_{\\cal M,\\rnd}(x))$ and Lemma 3.1.2 (used-equality) gives the second identity.",
+      "proves": "LP427.3",
+      "parent_id": "LP427.3",
+      "origin": "paper"
+    },
+    {
+      "id": "PP427.4",
+      "type": "proof",
+      "name": "Proof of Lemma 3.2 (counting $\\De$-labelled trees)",
+      "section": "3.2",
+      "statement": "Use generating function $P(X)=\\sum P_i X^i$, bound polynomial $Q_i(\\rho)\\le \\De/(\\De-1)$ inductively from $Q_{i+1}(X)=1+XQ_i(X)^\\De$, deduce $P_i\\le (\\De^\\De/(\\De-1)^{\\De-1})^i$ then convert via $(\\De/(\\De-1))^{\\De-1}\\le \\me$. For (b), bound coefficients of $P(X)^k$ by induction.",
+      "proves": "LP427.4",
+      "parent_id": "LP427.4",
+      "origin": "paper"
+    },
+    {
+      "id": "PP427.5",
+      "type": "proof",
+      "name": "Proof of Lemma 3.2 (counting landscapes per forest)",
+      "section": "3.2",
+      "statement": "Multiply $|\\mathbf R^c(x)|=(|\\mathbf R^c(x)|/b^{|\\Var(x)|})\\cdot b^{|\\Var(x)|}$ over $(x,i)\\in V(\\cal F)$ and apply $\\sum_{(x,i)} |\\Var(x)|=\\varcount(\\cal F)-|V(G)|$.",
+      "proves": "LP427.5",
+      "parent_id": "LP427.5",
+      "origin": "paper"
+    },
+    {
+      "id": "PP427.6",
+      "type": "proof",
+      "name": "Proof of Corollary 3.2 (counting forests/landscapes)",
+      "section": "3.2",
+      "statement": "(a) Specifying a grounded forest of size $m$ amounts to picking, for each $x\\in V(G)$, an iso-class of $\\De$-labelled tree summing to $m$ vertices; bound by Lemma 3.2(b). (b) Combine Lemma 3.5 and $\\final\\in b^{V(G)}$.",
+      "proves": "PrP427.2",
+      "parent_id": "PrP427.2",
+      "origin": "paper"
+    },
+    {
+      "id": "PP427.7",
+      "type": "proof",
+      "name": "Proof of Theorem 3.3 (classical MTA)",
+      "section": "3.3",
+      "statement": "Recover $\\rnd_k$ from $(\\cal L^k_{\\cal M,\\rnd},\\unused^k)$; bound $P_{m,v}$ by counting grounded landscapes (Corollary 3.2) and complementary $\\unused$ functions (Remark 3.0); $P_m$ follows by summing $v\\le dm+|V(G)|$.",
+      "proves": "TP427.3",
+      "parent_id": "TP427.3",
+      "origin": "paper"
+    },
+    {
+      "id": "PP427.8",
+      "type": "proof",
+      "name": "Proof of Lemma 3.4 (restriction preserves $\\used$)",
+      "section": "3.4",
+      "statement": "When $\\Var(\\Cl(x))\\cup \\Cl(x)\\subset U$, every $y$ with $x\\in \\Var(y)$ satisfies $\\Var(y)\\subset U$, so $\\mathbf R'(S_\\pi(y))$ and $\\prev'(S_\\pi(y),i)$ are obtained by composition with $T_U$; equality of $\\used$ follows.",
+      "proves": "LP427.6",
+      "parent_id": "LP427.6",
+      "origin": "paper"
+    },
+    {
+      "id": "PP427.9",
+      "type": "proof",
+      "name": "Proof of Lemma 3.5 (airborne reduction)",
+      "section": "3.5",
+      "statement": "Argue by contradiction with minimal counterexample $\\cal L$ and minimal-size airborne tree $\\tau$. Three cases: push $\\tau$ down one level (Step 1); reroute non-root vertex $x$ (Step 2); reroute root $x$ (Step 3). Each yields equivalent landscape contradicting minimality.",
+      "proves": "LP427.7",
+      "parent_id": "LP427.7",
+      "origin": "paper"
+    },
+    {
+      "id": "PP427.10",
+      "type": "proof",
+      "name": "Proof of Lemma 3.6 (subexponential growth)",
+      "section": "3.6",
+      "statement": "If the desired inequality fails for all $r$, iterating gives $\\sum_{N(y,3\\nn)} h>(1+\\eps)^{\\nn} h(y)$; combined with $|N(y,3\\nn)|\\le (1+\\eps)^{\\nn}$, some $z$ has $h(z)>h(y)$, contradicting maximality.",
+      "proves": "LP427.8",
+      "parent_id": "LP427.8",
+      "origin": "paper"
+    },
+    {
+      "id": "PP427.11",
+      "type": "proof",
+      "name": "Proof of Theorem 3.7 (main analysis)",
+      "section": "3.7",
+      "statement": "For each $\\rnd$ pick max-resample vertex $y$ and radius $r$ via Lemma 3.6; restrict landscape to $N(y,r)$ and replace by grounded equivalent $\\cal K_{\\rnd}$; bound $P_{m,v}$ by enumerating $(\\cal N,\\cal K,\\C)$ with constraint $\\len_Y(\\used_{\\cal K})>(1-\\eps)\\len(\\used_{\\cal K})$; sum tail series.",
+      "proves": "TP427.4",
+      "parent_id": "TP427.4",
+      "origin": "paper"
+    },
+    {
+      "id": "PP427.12",
+      "type": "proof",
+      "name": "Proof of Theorem 4 (Borel LLL)",
+      "section": "4",
+      "statement": "Choose $\\de>0$ realising the strict inequality, build a Borel $3\\nn$-sparse partition $\\pi$, apply Theorem 2.c almost surely $h^\\infty<\\infty$, fix such $\\rnd$, show $\\MT^k$ stabilises and $\\MT^\\infty$ is a Borel satisfying colouring.",
+      "proves": "TP427.5",
+      "parent_id": "TP427.5",
+      "origin": "paper"
+    },
+    {
+      "id": "RP427.1",
+      "type": "remark",
+      "name": "Bounded $|\\pi|$ via greedy colouring of $G^{6\\nn}$",
+      "section": "2.c",
+      "statement": "There is a $3\\nn$-sparse partition $\\pi$ of $V(G)$ with $|\\pi|\\le d^{6\\nn}$, obtained by greedy proper colouring of the graph $H$ where vertices are joined iff at distance $\\le 6\\nn$ in $G$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP427.2",
+      "type": "remark",
+      "name": "Borel LLL fails on exponential-growth graphs",
+      "section": "4",
+      "statement": "Marks's Borel chromatic-number construction yields a $d$-regular acyclic Borel graph whose LLL instance has $p<1/(\\me\\De)$ but admits no Borel satisfying colouring; Conley et al strengthened this to hyperfinite graphs.",
+      "origin": "paper",
+      "tags": ["counterexample"]
+    },
+    {
+      "id": "PSP427.1",
+      "type": "proof_step",
+      "name": "Push tree down one level (Step 1)",
+      "parent_id": "PP427.9",
+      "step_order": 1,
+      "subclass": "case_split",
+      "section": "3.5",
+      "statement": "If for all $(x,i)\\in V(\\tau)$ and $(y,i-1)\\in V(\\cal F)\\setminus V(\\tau)$ we have $\\Var_G(x)\\cap \\Var_G(y)=\\emptyset$, then push $\\tau$ down one level; the resulting forest stays independent and $\\used$ is preserved.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP427.2",
+      "type": "proof_step",
+      "name": "Reroute non-root vertex (Step 2)",
+      "parent_id": "PP427.9",
+      "step_order": 2,
+      "subclass": "case_split",
+      "section": "3.5",
+      "statement": "If $x$ is not the root of $\\tau$ and there exist $(y,i-1)\\in V(\\cal F)\\setminus V(\\tau)$ with $\\Var(x)\\cap \\Var(y)\\neq \\emptyset$: remove $x$'s incoming edge in $\\tau$, add edge $((y,i-1),(x,i))$. This produces an equivalent landscape with a smaller airborne tree, contradicting minimality of $m_2$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP427.3",
+      "type": "proof_step",
+      "name": "Reroute root vertex (Step 3)",
+      "parent_id": "PP427.9",
+      "step_order": 3,
+      "subclass": "case_split",
+      "section": "3.5",
+      "statement": "If $x$ is the root of $\\tau$: add edge $((y,i-1),(x,i))$ to the forest. The resulting equivalent landscape has one less airborne tree than $\\cal L$, contradicting minimality of $m_1$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP427.4",
+      "type": "proof_step",
+      "name": "Choose maximally-resampled vertex and radius",
+      "parent_id": "PP427.11",
+      "step_order": 1,
+      "subclass": "setup",
+      "section": "3.7",
+      "statement": "Fix $\\rnd\\in b^{\\pi\\times k}$, set $h:=h^k_{\\cal M,\\rnd}$, pick $y$ maximising $h$, apply Lemma 3.6 to obtain $r\\in\\{3,\\ldots,3\\nn\\}$ with the boundary growth bound.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP427.5",
+      "type": "proof_step",
+      "name": "Restrict landscape to ball $N(y,r)$ and ground it",
+      "parent_id": "PP427.11",
+      "step_order": 2,
+      "subclass": "introduce_variable",
+      "section": "3.7",
+      "statement": "Set $\\cal N_{\\rnd}:=\\Res_{N(y,r)}(\\cal M)$ and pick a grounded finalised $\\cal N_{\\rnd}$-landscape $\\cal K_{\\rnd}$ equivalent to $\\Res_{N(y,r)}(\\cal L^k_{\\cal M,\\rnd})$, using Proposition 3.5.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP427.6",
+      "type": "proof_step",
+      "name": "Recover $\\rnd$ from $(\\cal N_{\\rnd},\\cal K_{\\rnd},\\C_{\\rnd})$",
+      "parent_id": "PP427.11",
+      "step_order": 3,
+      "subclass": "apply_lemma",
+      "section": "3.7",
+      "statement": "Define $\\C_{\\rnd}:\\pi\\to b^{\\oplus \\NN}$ via $\\unused$ on the interior and full $\\rnd$ outside; using Lemma 3.4 and Lemma 3.1.2, $\\rnd$ is recoverable from the triple, giving the union-bound inequality on $P_{m,v}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP427.7",
+      "type": "proof_step",
+      "name": "Bound $\\#\\cal N$, $\\#(\\cal K,\\C)$ and combine",
+      "parent_id": "PP427.11",
+      "step_order": 4,
+      "subclass": "bound_estimate",
+      "section": "3.7",
+      "statement": "Bound $\\#\\cal N\\le (|\\pi|^d 2^{b^d})^{|\\pi|}$, $\\#\\cal K\\le (m+1)^{|\\pi|-1}/(\\me\\De)^{\\delta m}\\cdot b^{(1-\\eps)v+\\eps|\\pi|}$ via Corollary 3.2 and the gap (3.5), and $\\#\\C\\le 2^{|\\pi|} b^{k|\\pi|-(1-\\eps)v}$ via the boundary inequality (3.10).",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP427.8",
+      "type": "proof_step",
+      "name": "Sum tail series to conclude (3.11)",
+      "parent_id": "PP427.11",
+      "step_order": 5,
+      "subclass": "conclude",
+      "section": "3.7",
+      "statement": "Summing $\\sum_{i\\ge m} (i+1)^{|\\pi|}/(\\me\\De)^{\\de i}\\le (m+1)^{|\\pi|}/(\\me\\De)^{\\de m}\\cdot |\\pi|!/(1-(\\me\\De)^{-\\de})^{|\\pi|}$ gives $\\Pr_{\\rnd}(|V(\\cal K_{\\rnd})|\\ge m)\\le K(m+1)^{|\\pi|}/(\\me\\De)^{\\de m}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP427.9",
+      "type": "proof_step",
+      "name": "Generating-function setup",
+      "parent_id": "PP427.4",
+      "step_order": 1,
+      "subclass": "setup",
+      "section": "3.2",
+      "statement": "Define $P(X):=\\sum_i P_i X^i$ and $\\rho:=(\\De-1)^{\\De-1}/\\De^\\De$; reduce the bound to showing $P(\\rho)\\le \\De/(\\De-1)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP427.10",
+      "type": "proof_step",
+      "name": "Inductive bound $Q_i(\\rho)\\le \\De/(\\De-1)$",
+      "parent_id": "PP427.4",
+      "step_order": 2,
+      "subclass": "induction_step",
+      "section": "3.2",
+      "statement": "Using $Q_{i+1}(X)=1+XQ_i(X)^\\De$ and the inductive assumption, $Q_{i+1}(\\rho)\\le 1+\\rho(\\De/(\\De-1))^\\De=\\De/(\\De-1)$. Combined with $(\\De/(\\De-1))^{\\De-1}\\le \\me$, conclude (a).",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP427.11",
+      "type": "proof_step",
+      "name": "Bound $S_{k,i}$ inductively for part (b)",
+      "parent_id": "PP427.4",
+      "step_order": 3,
+      "subclass": "induction_step",
+      "section": "3.2",
+      "statement": "Set $R_k(X)=P(X)^k$ bounded by $S_k(X)=(\\sum_i (\\me\\De X)^i)^k$. Inductively show $S_{k,i}\\le (i+1)^{k-1}(\\me\\De)^i$ via $S_{k+1,i}=\\sum_j S_{k,j}(\\me\\De)^{i-j}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP427.1",
+      "type": "algorithm_step",
+      "name": "Initialise $\\MT^0$",
+      "parent_id": "AP427.1",
+      "step_order": 1,
+      "subclass": "initialize",
+      "section": "2.b",
+      "statement": "$\\MT^0(x):=\\rnd(S_\\pi(x),0)$ for all $x\\in V(G)$; set $h^0\\equiv 0$, $h^1\\equiv 1$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP427.2",
+      "type": "algorithm_step",
+      "name": "Iterative resampling loop",
+      "parent_id": "AP427.1",
+      "step_order": 2,
+      "subclass": "loop",
+      "section": "2.b",
+      "statement": "For each $j\\in \\NN$: compute $\\IB(\\MT^j)$ (maximal independent subset of bad clauses in $\\Rel(G)$); set $\\MT^{j+1}(x):=\\rnd(S_\\pi(x),h^{j+1}(x))$ if $x\\in \\Var(\\IB(\\MT^j))$, else $\\MT^j(x)$; increment $h^{j+2}$ accordingly.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP427.3",
+      "type": "algorithm_step",
+      "name": "Termination criterion",
+      "parent_id": "AP427.1",
+      "step_order": 3,
+      "subclass": "return",
+      "section": "2.b",
+      "statement": "The algorithm succeeds after $i$ steps if $\\B(\\MT^{i-1})=\\emptyset$; output $\\MT^{i-1}$, which then satisfies $\\mathbf R$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP427.4",
+      "type": "algorithm_step",
+      "name": "Build $3\\nn$-sparse partition",
+      "parent_id": "AP427.2",
+      "step_order": 1,
+      "subclass": "initialize",
+      "section": "2.c",
+      "statement": "Compute graph power $G^{6\\nn}$ and apply greedy vertex colouring to obtain a $3\\nn$-sparse partition $\\pi$ of $V(G)$ with $|\\pi|\\le d^{6\\nn}$ in linear time.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP427.5",
+      "type": "algorithm_step",
+      "name": "External loop over $\\rnd_m\\in b^{\\pi\\times m}$",
+      "parent_id": "AP427.2",
+      "step_order": 2,
+      "subclass": "loop",
+      "section": "2.c",
+      "statement": "For each candidate $\\rnd_m$ in the constantly-many possibilities, run the internal loop; abort and move to the next $\\rnd_m$ as soon as $\\rnd(\\ast,m)$ would be accessed.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP427.6",
+      "type": "algorithm_step",
+      "name": "Internal loop with Currently/Potentially-Violated lists",
+      "parent_id": "AP427.2",
+      "step_order": 3,
+      "subclass": "loop",
+      "section": "2.c",
+      "statement": "Each pass: for $C\\in$ Currently-Violated, resample $\\Var(C)$ via $\\rnd$ unless an already-resampled $\\Rel(G)$-neighbour exists in this pass; then refresh Currently-Violated as the entries of old Potentially-Violated still violated, and Potentially-Violated as Currently-Violated together with their $\\Rel(G)$-neighbours.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP427.7",
+      "type": "algorithm_step",
+      "name": "Output upon empty Currently-Violated",
+      "parent_id": "AP427.2",
+      "step_order": 4,
+      "subclass": "return",
+      "section": "2.c",
+      "statement": "Halt and output $\\MT^i$ as the satisfying assignment when Currently-Violated becomes empty after some pass.",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "DP427.1", "target": "DP427.2", "type": "uses"},
+    {"source": "DP427.1", "target": "DP427.4", "type": "uses"},
+    {"source": "DP427.3", "target": "DP427.5", "type": "uses"},
+    {"source": "DP427.4", "target": "DP427.5", "type": "uses"},
+    {"source": "DP427.6", "target": "DP427.7", "type": "uses"},
+    {"source": "DP427.1", "target": "DP427.7", "type": "uses"},
+    {"source": "DP427.7", "target": "AP427.1", "type": "uses"},
+    {"source": "DP427.5", "target": "AP427.1", "type": "uses"},
+    {"source": "DP427.3", "target": "DP427.10", "type": "uses"},
+    {"source": "DP427.10", "target": "DP427.11", "type": "uses"},
+    {"source": "DP427.11", "target": "DP427.12", "type": "uses"},
+    {"source": "DP427.12", "target": "DP427.13", "type": "uses"},
+    {"source": "DP427.10", "target": "DP427.15", "type": "uses"},
+    {"source": "DP427.15", "target": "DP427.16", "type": "uses"},
+    {"source": "DP427.13", "target": "DP427.16", "type": "uses"},
+    {"source": "DP427.8", "target": "DP427.9", "type": "uses"},
+    {"source": "TP427.1", "target": "AP427.3", "type": "uses"},
+    {"source": "AP427.1", "target": "AP427.3", "type": "specializes"},
+    {"source": "TP427.2", "target": "TP427.1", "type": "specializes"},
+    {"source": "DP427.8", "target": "TP427.2", "type": "uses"},
+    {"source": "DP427.6", "target": "TP427.2", "type": "uses"},
+    {"source": "DP427.7", "target": "TP427.2", "type": "uses"},
+    {"source": "AP427.1", "target": "TP427.2", "type": "uses"},
+    {"source": "TP427.4", "target": "TP427.2", "type": "uses"},
+    {"source": "TP427.2", "target": "CP427.1", "type": "uses"},
+    {"source": "DP427.9", "target": "CP427.1", "type": "uses"},
+    {"source": "AP427.2", "target": "CP427.1", "type": "solves"},
+    {"source": "TP427.2", "target": "AP427.2", "type": "uses"},
+    {"source": "RP427.1", "target": "AP427.2", "type": "uses"},
+    {"source": "LP427.1", "target": "DP427.10", "type": "uses"},
+    {"source": "LP427.2", "target": "LP427.3", "type": "uses"},
+    {"source": "DP427.13", "target": "LP427.3", "type": "uses"},
+    {"source": "LP427.4", "target": "PrP427.2", "type": "uses"},
+    {"source": "LP427.5", "target": "PrP427.2", "type": "uses"},
+    {"source": "PrP427.2", "target": "TP427.3", "type": "uses"},
+    {"source": "LP427.2", "target": "TP427.3", "type": "uses"},
+    {"source": "LP427.3", "target": "TP427.3", "type": "uses"},
+    {"source": "DP427.15", "target": "LP427.6", "type": "uses"},
+    {"source": "DP427.16", "target": "LP427.7", "type": "uses"},
+    {"source": "LP427.7", "target": "PrP427.1", "type": "uses"},
+    {"source": "DP427.8", "target": "LP427.8", "type": "uses"},
+    {"source": "LP427.8", "target": "TP427.4", "type": "uses"},
+    {"source": "PrP427.1", "target": "TP427.4", "type": "uses"},
+    {"source": "LP427.6", "target": "TP427.4", "type": "uses"},
+    {"source": "LP427.2", "target": "TP427.4", "type": "uses"},
+    {"source": "PrP427.2", "target": "TP427.4", "type": "uses"},
+    {"source": "LP427.4", "target": "TP427.4", "type": "uses"},
+    {"source": "DP427.17", "target": "TP427.5", "type": "uses"},
+    {"source": "LP427.9", "target": "TP427.5", "type": "uses"},
+    {"source": "LP427.10", "target": "LP427.11", "type": "uses"},
+    {"source": "LP427.11", "target": "TP427.5", "type": "uses"},
+    {"source": "TP427.2", "target": "TP427.5", "type": "uses"},
+    {"source": "PSP427.1", "target": "PSP427.2", "type": "uses"},
+    {"source": "PSP427.1", "target": "PSP427.3", "type": "uses"},
+    {"source": "PSP427.4", "target": "PSP427.5", "type": "uses"},
+    {"source": "PSP427.5", "target": "PSP427.6", "type": "uses"},
+    {"source": "PSP427.6", "target": "PSP427.7", "type": "uses"},
+    {"source": "PSP427.7", "target": "PSP427.8", "type": "uses"},
+    {"source": "PSP427.9", "target": "PSP427.10", "type": "uses"},
+    {"source": "PSP427.10", "target": "PSP427.11", "type": "uses"},
+    {"source": "ASP427.1", "target": "ASP427.2", "type": "uses"},
+    {"source": "ASP427.2", "target": "ASP427.3", "type": "uses"},
+    {"source": "ASP427.4", "target": "ASP427.5", "type": "uses"},
+    {"source": "ASP427.5", "target": "ASP427.6", "type": "uses"},
+    {"source": "ASP427.6", "target": "ASP427.7", "type": "uses"}
+  ]
+}

@@ -1,0 +1,304 @@
+{
+  "metadata": {
+    "paper_num": "T27",
+    "title": "Communication-Efficient Learning of Deep Networks from Decentralized Data",
+    "arxiv_id": "1602.05629",
+    "annotator": "agent-extraction",
+    "prompt_version": "v4.1",
+    "model": "claude-opus-4-8",
+    "extraction_date": "2026-07-28"
+  },
+  "nodes": [
+    {
+      "id": "DP27.1",
+      "type": "definition",
+      "name": "Federated Learning",
+      "section": "Introduction",
+      "origin": "paper",
+      "statement": "We term our approach \\emph{Federated Learning}, since the learning task is solved by a loose federation of participating devices (which we refer to as \\emph{clients}) which are coordinated by a central \\emph{server}. Each client has a local training dataset which is never uploaded to the server. Instead, each client computes an update to the current global model maintained by the server, and only this update is communicated.",
+      "tags": [
+        "distributed_learning",
+        "privacy"
+      ]
+    },
+    {
+      "id": "ProbP27.1",
+      "type": "problem",
+      "name": "Federated optimization objective (finite-sum)",
+      "section": "Introduction",
+      "subclass": "optimization",
+      "origin": "paper",
+      "statement": "While we focus on non-convex neural network objectives, the algorithm we consider is applicable to any finite-sum objective of the form \\begin{equation} \\min_{w \\in \\R^d} f(w) \\qqwhere f(w) \\eqdef \\frac{1}{n} \\sum_{i=1}^n f_i(w). \\end{equation} For a machine learning problem, we typically take $f_i(w) = \\ell(x_i, y_i; w)$, that is, the loss of the prediction on example $(x_i, y_i)$ made with model parameters $w$.",
+      "assumptions": [
+        "While we focus on non-convex neural network objectives, the algorithm we consider is applicable to any finite-sum objective of the form",
+        "For a machine learning problem, we typically take $f_i(w) = \\ell(x_i, y_i; w)$, that is, the loss of the prediction on example $(x_i, y_i)$ made with model parameters $w$"
+      ],
+      "conclusions": [
+        "$\\min_{w \\in \\R^d} f(w) \\qqwhere f(w) \\eqdef \\frac{1}{n} \\sum_{i=1}^n f_i(w)$"
+      ]
+    },
+    {
+      "id": "EP27.1",
+      "type": "equation",
+      "name": "Distributed reformulation of the objective",
+      "section": "Introduction",
+      "origin": "paper",
+      "statement": "We assume there are $\\nc$ clients over which the data is partitioned, with $\\pp_k$ the set of indexes of data points on client $k$, with $n_k = |\\pp_k|$. Thus, we can re-write the objective \\eqref{eq:problem} as \\begin{equation*} f(w) = \\sum_{k = 1}^K \\frac{n_k}{n} F_k(w) \\quad \\text{where} \\quad F_k(w) = \\frac{1}{n_k} \\sum_{i \\in \\mathcal{P}_k} f_i(w). \\end{equation*}"
+    },
+    {
+      "id": "AP27.1",
+      "type": "algorithm",
+      "name": "FederatedAveraging",
+      "section": "The FederatedAveraging Algorithm",
+      "origin": "paper",
+      "statement": "\\SUB{Server executes:} \\STATE initialize $w_0$ \\FOR{each round $t = 1, 2, \\dots$} \\STATE $m \\leftarrow \\max(\\clientfrac\\cdot K, 1)$ \\STATE $S_t \\leftarrow$ (random set of $m$ clients) \\FOR{each client $k \\in S_t$ \\textbf{in parallel}} \\STATE $w_{t+1}^k \\leftarrow \\text{ClientUpdate}(k, w_t)$ \\ENDFOR \\STATE $m_t \\leftarrow \\sum_{k \\in S_t} n_k$ \\STATE $w_{t+1} \\leftarrow \\sum_{k \\in S_t} \\frac{n_k}{m_t} w_{t+1}^k$\\ \\ // \\emph{Erratum} \\ENDFOR \\STATE \\SUB{ClientUpdate($k, w$):}\\ \\ \\ // \\emph{Run on client $k$} \\STATE $\\mathcal{B} \\leftarrow$ (split $\\pp_k$ into batches of size $\\lbs$) \\FOR{each local epoch $i$ from $1$ to $\\lepochs$} \\FOR{batch $b \\in \\mathcal{B}$} \\STATE $w \\leftarrow w - \\eta \\grad \\loss(w; b)$ \\ENDFOR \\ENDFOR \\STATE return $w$ to server",
+      "input": [
+        "The $\\nc$ clients are indexed by $k$",
+        "$\\lbs$ is the local minibatch size",
+        "$\\lepochs$ is the number of local epochs",
+        "$\\eta$ is the learning rate"
+      ],
+      "output": [
+        "return $w$ to server"
+      ],
+      "tags": [
+        "optimization",
+        "iterative"
+      ]
+    },
+    {
+      "id": "AP27.2",
+      "type": "algorithm",
+      "name": "FederatedSGD",
+      "section": "The FederatedAveraging Algorithm",
+      "origin": "paper",
+      "statement": "A typical implementation of \\fedsgdshort with $\\clientfrac=1$ and a fixed learning rate $\\eta$ has each client $k$ compute $g_k = \\grad F_k(w_t)$, the average gradient on its local data at the current model $w_t$, and the central server aggregates these gradients and applies the update $ w_{t+1} \\leftarrow w_t - \\eta \\sum_{k=1}^K \\frac{n_k}{n} g_k, $ since $\\sum_{k=1}^K \\frac{n_k}{n} g_k = \\grad f(w_t)$. An equivalent update is given by $\\forall k,\\ w_{t+1}^k \\leftarrow w_t - \\eta g_k$ and then $w_{t+1} \\leftarrow \\sum_{k=1}^K \\frac{n_k}{n} w_{t+1}^k$. That is, each client locally takes one step of gradient descent on the current model using its local data, and the server then takes a weighted average of the resulting models.",
+      "tags": [
+        "optimization",
+        "baseline"
+      ]
+    },
+    {
+      "id": "ASP27.1",
+      "type": "algorithm_step",
+      "name": "Initialize global model",
+      "section": "The FederatedAveraging Algorithm",
+      "parent_id": "AP27.1",
+      "step_order": 1,
+      "subclass": "initialize",
+      "statement": "\\STATE initialize $w_0$"
+    },
+    {
+      "id": "ASP27.2",
+      "type": "algorithm_step",
+      "name": "Round loop",
+      "section": "The FederatedAveraging Algorithm",
+      "parent_id": "AP27.1",
+      "step_order": 2,
+      "subclass": "loop",
+      "statement": "\\FOR{each round $t = 1, 2, \\dots$}"
+    },
+    {
+      "id": "ASP27.3",
+      "type": "algorithm_step",
+      "name": "Compute number of participating clients",
+      "section": "The FederatedAveraging Algorithm",
+      "parent_id": "AP27.1",
+      "step_order": 3,
+      "subclass": "update",
+      "statement": "\\STATE $m \\leftarrow \\max(\\clientfrac\\cdot K, 1)$"
+    },
+    {
+      "id": "ASP27.4",
+      "type": "algorithm_step",
+      "name": "Sample random client set",
+      "section": "The FederatedAveraging Algorithm",
+      "parent_id": "AP27.1",
+      "step_order": 4,
+      "subclass": "update",
+      "statement": "\\STATE $S_t \\leftarrow$ (random set of $m$ clients)"
+    },
+    {
+      "id": "ASP27.5",
+      "type": "algorithm_step",
+      "name": "Parallel client loop",
+      "section": "The FederatedAveraging Algorithm",
+      "parent_id": "AP27.1",
+      "step_order": 5,
+      "subclass": "loop",
+      "statement": "\\FOR{each client $k \\in S_t$ \\textbf{in parallel}}"
+    },
+    {
+      "id": "ASP27.6",
+      "type": "algorithm_step",
+      "name": "Invoke ClientUpdate",
+      "section": "The FederatedAveraging Algorithm",
+      "parent_id": "AP27.1",
+      "step_order": 6,
+      "subclass": "update",
+      "statement": "\\STATE $w_{t+1}^k \\leftarrow \\text{ClientUpdate}(k, w_t)$"
+    },
+    {
+      "id": "ASP27.7",
+      "type": "algorithm_step",
+      "name": "Aggregate client dataset sizes",
+      "section": "The FederatedAveraging Algorithm",
+      "parent_id": "AP27.1",
+      "step_order": 7,
+      "subclass": "update",
+      "statement": "\\STATE $m_t \\leftarrow \\sum_{k \\in S_t} n_k$"
+    },
+    {
+      "id": "ASP27.8",
+      "type": "algorithm_step",
+      "name": "Weighted model averaging",
+      "section": "The FederatedAveraging Algorithm",
+      "parent_id": "AP27.1",
+      "step_order": 8,
+      "subclass": "update",
+      "statement": "\\STATE $w_{t+1} \\leftarrow \\sum_{k \\in S_t} \\frac{n_k}{m_t} w_{t+1}^k$"
+    },
+    {
+      "id": "ASP27.9",
+      "type": "algorithm_step",
+      "name": "Split local data into batches",
+      "section": "The FederatedAveraging Algorithm",
+      "parent_id": "AP27.1",
+      "step_order": 9,
+      "subclass": "initialize",
+      "statement": "\\STATE $\\mathcal{B} \\leftarrow$ (split $\\pp_k$ into batches of size $\\lbs$)"
+    },
+    {
+      "id": "ASP27.10",
+      "type": "algorithm_step",
+      "name": "Local epoch loop",
+      "section": "The FederatedAveraging Algorithm",
+      "parent_id": "AP27.1",
+      "step_order": 10,
+      "subclass": "loop",
+      "statement": "\\FOR{each local epoch $i$ from $1$ to $\\lepochs$}"
+    },
+    {
+      "id": "ASP27.11",
+      "type": "algorithm_step",
+      "name": "Batch loop",
+      "section": "The FederatedAveraging Algorithm",
+      "parent_id": "AP27.1",
+      "step_order": 11,
+      "subclass": "loop",
+      "statement": "\\FOR{batch $b \\in \\mathcal{B}$}"
+    },
+    {
+      "id": "ASP27.12",
+      "type": "algorithm_step",
+      "name": "Local SGD update",
+      "section": "The FederatedAveraging Algorithm",
+      "parent_id": "AP27.1",
+      "step_order": 12,
+      "subclass": "update",
+      "statement": "\\STATE $w \\leftarrow w - \\eta \\grad \\loss(w; b)$"
+    },
+    {
+      "id": "ASP27.13",
+      "type": "algorithm_step",
+      "name": "Return model to server",
+      "section": "The FederatedAveraging Algorithm",
+      "parent_id": "AP27.1",
+      "step_order": 13,
+      "subclass": "return",
+      "statement": "\\STATE return $w$ to server"
+    }
+  ],
+  "edges": [
+    {
+      "source": "DP27.1",
+      "target": "ProbP27.1",
+      "type": "uses"
+    },
+    {
+      "source": "ProbP27.1",
+      "target": "EP27.1",
+      "type": "uses"
+    },
+    {
+      "source": "ProbP27.1",
+      "target": "AP27.1",
+      "type": "uses"
+    },
+    {
+      "source": "EP27.1",
+      "target": "AP27.1",
+      "type": "uses"
+    },
+    {
+      "source": "ProbP27.1",
+      "target": "AP27.2",
+      "type": "uses"
+    },
+    {
+      "source": "EP27.1",
+      "target": "AP27.2",
+      "type": "uses"
+    },
+    {
+      "source": "AP27.1",
+      "target": "AP27.2",
+      "type": "generalizes"
+    },
+    {
+      "source": "ASP27.1",
+      "target": "ASP27.2",
+      "type": "uses"
+    },
+    {
+      "source": "ASP27.2",
+      "target": "ASP27.3",
+      "type": "uses"
+    },
+    {
+      "source": "ASP27.3",
+      "target": "ASP27.4",
+      "type": "uses"
+    },
+    {
+      "source": "ASP27.4",
+      "target": "ASP27.5",
+      "type": "uses"
+    },
+    {
+      "source": "ASP27.5",
+      "target": "ASP27.6",
+      "type": "uses"
+    },
+    {
+      "source": "ASP27.6",
+      "target": "ASP27.7",
+      "type": "uses"
+    },
+    {
+      "source": "ASP27.7",
+      "target": "ASP27.8",
+      "type": "uses"
+    },
+    {
+      "source": "ASP27.9",
+      "target": "ASP27.10",
+      "type": "uses"
+    },
+    {
+      "source": "ASP27.10",
+      "target": "ASP27.11",
+      "type": "uses"
+    },
+    {
+      "source": "ASP27.11",
+      "target": "ASP27.12",
+      "type": "uses"
+    },
+    {
+      "source": "ASP27.12",
+      "target": "ASP27.13",
+      "type": "uses"
+    }
+  ]
+}

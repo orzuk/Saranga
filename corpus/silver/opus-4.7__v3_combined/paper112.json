@@ -1,0 +1,644 @@
+{
+  "metadata": {
+    "title": "A Fast Iterative Shrinkage-Thresholding Algorithm for Linear Inverse Problems",
+    "paper_num": 112,
+    "authors": "Beck, Teboulle",
+    "year": 2009,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-03",
+    "source_note": "Extracted from PDF->text fallback; .tex source not available. Math fidelity reduced."
+  },
+  "nodes": [
+    {
+      "id": "ProbP112.1",
+      "type": "problem",
+      "subclass": "linear_inverse",
+      "name": "Linear Inverse Problem",
+      "section": "1",
+      "statement": "Estimate unknown signal $x$ from observations $Ax = b + w$, where $A \\in \\mathbb{R}^{m \\times n}$, $b \\in \\mathbb{R}^m$ are known and $w$ is an unknown noise vector.",
+      "statement_clean": "Recover the true signal x from a noisy linear measurement model Ax = b + w."
+    },
+    {
+      "id": "ProbP112.2",
+      "type": "problem",
+      "subclass": "optimization",
+      "name": "Least Squares (LS) Problem",
+      "section": "1.1",
+      "statement": "$\\hat{x}_{LS} = \\arg\\min_x \\|Ax - b\\|^2$.",
+      "statement_clean": "Choose the estimator that minimizes the squared data error.",
+      "origin": "external",
+      "origin_citation": "Bjorck 1996"
+    },
+    {
+      "id": "ProbP112.3",
+      "type": "problem",
+      "subclass": "optimization",
+      "name": "Tikhonov Regularization",
+      "section": "1.1",
+      "statement": "$\\hat{x}_{TIK} = \\arg\\min_x \\{\\|Ax - b\\|^2 + \\lambda \\|Lx\\|^2\\}$, with regularization parameter $\\lambda > 0$.",
+      "statement_clean": "Add a quadratic penalty to the LS objective to stabilize ill-conditioned problems.",
+      "origin": "external",
+      "origin_citation": "Tikhonov & Arsenin 1977"
+    },
+    {
+      "id": "ProbP112.4",
+      "type": "problem",
+      "subclass": "optimization",
+      "name": "$\\ell_1$-Regularized Least Squares Problem",
+      "section": "1.1",
+      "statement": "$\\min_x \\{F(x) \\equiv \\|Ax - b\\|^2 + \\lambda \\|x\\|_1\\}$, where $\\|x\\|_1 = \\sum_i |x_i|$.",
+      "statement_clean": "Minimize least-squares fit plus an l1 penalty to induce sparsity in x.",
+      "tags": ["sparse", "convex", "nonsmooth"]
+    },
+    {
+      "id": "ProbP112.5",
+      "type": "problem",
+      "subclass": "optimization",
+      "name": "General Composite Convex Problem (P)",
+      "section": "2.2",
+      "statement": "$(P)\\quad \\min_x \\{F(x) \\equiv f(x) + g(x) : x \\in \\mathbb{R}^n\\}$, with $f$ smooth convex and $g$ continuous convex (possibly nonsmooth).",
+      "statement_clean": "Generic convex problem: minimize the sum of a smooth convex f and a possibly nonsmooth convex g.",
+      "tags": ["composite", "convex"]
+    },
+    {
+      "id": "AssumP112.1",
+      "type": "assumption",
+      "name": "Standing Assumptions on (P)",
+      "section": "2.2",
+      "statement": "(i) $g: \\mathbb{R}^n \\to \\mathbb{R}$ is continuous convex (possibly nonsmooth); (ii) $f: \\mathbb{R}^n \\to \\mathbb{R}$ is $C^{1,1}$ with Lipschitz gradient $\\|\\nabla f(x) - \\nabla f(y)\\| \\le L(f) \\|x - y\\|$; (iii) $X_* := \\arg\\min F \\ne \\emptyset$, and for $x_* \\in X_*$ set $F_* := F(x_*)$.",
+      "statement_clean": "g is convex continuous; f is convex with L-Lipschitz gradient; the problem has a solution."
+    },
+    {
+      "id": "DP112.1",
+      "type": "definition",
+      "name": "Shrinkage (Soft-Threshold) Operator",
+      "section": "1.1",
+      "statement": "$\\mathcal{T}_\\alpha: \\mathbb{R}^n \\to \\mathbb{R}^n$ defined componentwise by $\\mathcal{T}_\\alpha(x)_i = (|x_i| - \\alpha)_+ \\, \\mathrm{sgn}(x_i)$.",
+      "statement_clean": "Componentwise soft-thresholding: shrink each coordinate by alpha and set to zero if smaller."
+    },
+    {
+      "id": "DP112.2",
+      "type": "definition",
+      "name": "Quadratic Approximation $Q_L(x,y)$",
+      "section": "2.3",
+      "statement": "For any $L > 0$, $Q_L(x,y) := f(y) + \\langle x - y, \\nabla f(y) \\rangle + \\frac{L}{2} \\|x - y\\|^2 + g(x)$.",
+      "statement_clean": "Quadratic upper-bound model of F at y: linearize f and add an L/2 proximal term plus g(x)."
+    },
+    {
+      "id": "DP112.3",
+      "type": "definition",
+      "name": "Proximal-Type Map $p_L(y)$",
+      "section": "2.3",
+      "statement": "$p_L(y) := \\arg\\min_{x \\in \\mathbb{R}^n} Q_L(x, y) = \\arg\\min_x \\{ g(x) + \\frac{L}{2} \\| x - (y - \\frac{1}{L} \\nabla f(y)) \\|^2 \\}$.",
+      "statement_clean": "The unique minimizer of the quadratic approximation Q_L(x, y); a proximal/forward-backward step."
+    },
+    {
+      "id": "ExP112.1",
+      "type": "example",
+      "name": "Smooth Unconstrained Case ($g \\equiv 0$)",
+      "section": "2.2",
+      "statement": "When $g(x) \\equiv 0$, problem (P) reduces to the general unconstrained smooth convex minimization $\\min_x f(x)$.",
+      "statement_clean": "Setting g = 0 recovers ordinary smooth convex minimization."
+    },
+    {
+      "id": "ExP112.2",
+      "type": "example",
+      "name": "$\\ell_1$-Regularization as Special Case of (P)",
+      "section": "2.2",
+      "statement": "Problem (1.3) is an instance of (P) with $f(x) = \\|Ax - b\\|^2$ and $g(x) = \\|x\\|_1$. The smallest Lipschitz constant of $\\nabla f$ is $L(f) = 2 \\lambda_{\\max}(A^T A)$.",
+      "statement_clean": "The l1-LS problem fits the framework with f = squared residual and g = l1 norm; L(f) = 2 lambda_max(A^T A)."
+    },
+    {
+      "id": "ExP112.3",
+      "type": "example",
+      "name": "Cameraman Deblurring",
+      "section": "5.1",
+      "statement": "On a $256 \\times 256$ cameraman image with $9 \\times 9$ Gaussian blur ($\\sigma = 4$) and additive Gaussian noise ($\\sigma = 10^{-3}$), with $\\lambda = 2 \\times 10^{-5}$ and a three-stage Haar wavelet transform, FISTA achieves $F_{100} = 2.40 \\times 10^{-1}$ vs ISTA $5.44 \\times 10^{-1}$ and MTWIST $3.09 \\times 10^{-1}$.",
+      "statement_clean": "Wavelet-based deblurring of the cameraman image: FISTA reaches lower function values than ISTA and MTWIST."
+    },
+    {
+      "id": "ExP112.4",
+      "type": "example",
+      "name": "Simple Test Image Deblurring",
+      "section": "5.2",
+      "statement": "On a $256 \\times 256$ image from the regularization toolbox blur function with $\\lambda = 10^{-4}$, FISTA at iteration 100 reaches $F = 0.321$, beating ISTA ($0.427$) and MTWIST ($0.341$) at iteration 200; FISTA reaches accuracy $\\approx 10^{-7}$ after 10000 iterations vs $10^{-3}$ (ISTA) and $10^{-4}$ (MTWIST) on a noiseless $64 \\times 64$ variant.",
+      "statement_clean": "On a synthetic blurred image FISTA dramatically outperforms ISTA and MTWIST in iterations to reach a target accuracy."
+    },
+    {
+      "id": "LP112.1",
+      "type": "lemma",
+      "name": "Descent Lemma for $C^{1,1}$ Functions",
+      "section": "2.4",
+      "statement": "Let $f: \\mathbb{R}^n \\to \\mathbb{R}$ be continuously differentiable with Lipschitz gradient and constant $L(f)$. Then for any $L \\ge L(f)$: $f(x) \\le f(y) + \\langle x - y, \\nabla f(y) \\rangle + \\frac{L}{2}\\|x - y\\|^2$ for every $x, y \\in \\mathbb{R}^n$.",
+      "assumptions": ["$f \\in C^{1,1}$ with Lipschitz constant $L(f)$", "$L \\ge L(f)$"],
+      "conclusions": ["$f(x) \\le f(y) + \\langle x - y, \\nabla f(y) \\rangle + \\frac{L}{2}\\|x - y\\|^2$ for all $x, y$"],
+      "origin": "external",
+      "origin_citation": "Ortega & Rheinboldt 2000; Bertsekas 1999",
+      "tags": ["bound"]
+    },
+    {
+      "id": "LP112.2",
+      "type": "lemma",
+      "name": "Optimality Characterization of $p_L(\\cdot)$",
+      "section": "2.4",
+      "statement": "For any $y \\in \\mathbb{R}^n$, $z = p_L(y)$ if and only if there exists $\\gamma(y) \\in \\partial g(z)$ such that $\\nabla f(y) + L(z - y) + \\gamma(y) = 0$.",
+      "assumptions": ["$y \\in \\mathbb{R}^n$"],
+      "conclusions": ["$z = p_L(y)$ iff $\\exists \\gamma(y) \\in \\partial g(z)$ with $\\nabla f(y) + L(z - y) + \\gamma(y) = 0$"],
+      "tags": ["existence", "optimality"]
+    },
+    {
+      "id": "LP112.3",
+      "type": "lemma",
+      "name": "Key Three-Point Inequality",
+      "section": "2.4",
+      "statement": "Let $y \\in \\mathbb{R}^n$ and $L > 0$ satisfy $F(p_L(y)) \\le Q(p_L(y), y)$. Then for any $x \\in \\mathbb{R}^n$: $F(x) - F(p_L(y)) \\ge \\frac{L}{2}\\|p_L(y) - y\\|^2 + L \\langle y - x, p_L(y) - y \\rangle$.",
+      "assumptions": ["$y \\in \\mathbb{R}^n$, $L > 0$", "$F(p_L(y)) \\le Q(p_L(y), y)$ (sufficient-decrease condition)"],
+      "conclusions": ["$F(x) - F(p_L(y)) \\ge \\frac{L}{2}\\|p_L(y) - y\\|^2 + L\\langle y - x, p_L(y) - y\\rangle$ for all $x$"],
+      "tags": ["bound"]
+    },
+    {
+      "id": "PP112.1",
+      "type": "proof",
+      "name": "Proof of Lemma 2.3",
+      "section": "2.4",
+      "parent_id": "LP112.3",
+      "proves": "LP112.3",
+      "statement": "Combine convexity of $f, g$ at $y$ and at $p_L(y)$, the optimality condition (Lemma 2.2), and the definition of $Q$ to obtain the stated lower bound."
+    },
+    {
+      "id": "PSP112.1",
+      "type": "proof_step",
+      "parent_id": "PP112.1",
+      "step_order": 1,
+      "subclass": "setup",
+      "name": "Apply sufficient-decrease hypothesis",
+      "statement": "From $F(p_L(y)) \\le Q(p_L(y), y)$ obtain $F(x) - F(p_L(y)) \\ge F(x) - Q(p_L(y), y)$."
+    },
+    {
+      "id": "PSP112.2",
+      "type": "proof_step",
+      "parent_id": "PP112.1",
+      "step_order": 2,
+      "subclass": "invoke_identity",
+      "name": "Lower-bound $F(x)$ via convexity",
+      "statement": "Using convexity of $f$ at $y$ and of $g$ at $p_L(y)$ with subgradient $\\gamma(y)$: $F(x) \\ge f(y) + \\langle x - y, \\nabla f(y)\\rangle + g(p_L(y)) + \\langle x - p_L(y), \\gamma(y)\\rangle$."
+    },
+    {
+      "id": "PSP112.3",
+      "type": "proof_step",
+      "parent_id": "PP112.1",
+      "step_order": 3,
+      "subclass": "substitute",
+      "name": "Insert definition of $Q(p_L(y), y)$",
+      "statement": "Substitute $Q(p_L(y), y) = f(y) + \\langle p_L(y) - y, \\nabla f(y)\\rangle + \\frac{L}{2}\\|p_L(y) - y\\|^2 + g(p_L(y))$ and use Lemma 2.2 to replace $\\nabla f(y) + \\gamma(y)$ with $L(y - p_L(y))$."
+    },
+    {
+      "id": "PSP112.4",
+      "type": "proof_step",
+      "parent_id": "PP112.1",
+      "step_order": 4,
+      "subclass": "conclude",
+      "name": "Algebraic simplification",
+      "statement": "Collect terms to obtain $F(x) - F(p_L(y)) \\ge \\frac{L}{2}\\|p_L(y) - y\\|^2 + L\\langle y - x, p_L(y) - y\\rangle$."
+    },
+    {
+      "id": "AP112.1",
+      "type": "algorithm",
+      "subclass": "iterative",
+      "name": "ISTA with Constant Stepsize",
+      "section": "3",
+      "statement": "Iterative shrinkage-thresholding algorithm for problem (P): repeatedly apply $x_k = p_L(x_{k-1})$ with $L = L(f)$.",
+      "input": ["Lipschitz constant $L := L(f)$ of $\\nabla f$", "Initial point $x_0 \\in \\mathbb{R}^n$"],
+      "output": ["Sequence $\\{x_k\\}$ converging to a minimizer of $F$"],
+      "pseudocode": "Step 0. Take $x_0 \\in \\mathbb{R}^n$.\nStep k ($k \\ge 1$): Compute $x_k = p_L(x_{k-1})$.",
+      "tags": ["iterative", "first_order"]
+    },
+    {
+      "id": "ASP112.1",
+      "type": "algorithm_step",
+      "parent_id": "AP112.1",
+      "step_order": 1,
+      "subclass": "initialize",
+      "name": "Initialize $x_0$",
+      "statement": "Set $x_0 \\in \\mathbb{R}^n$ arbitrarily; receive Lipschitz constant $L = L(f)$."
+    },
+    {
+      "id": "ASP112.2",
+      "type": "algorithm_step",
+      "parent_id": "AP112.1",
+      "step_order": 2,
+      "subclass": "loop",
+      "name": "Proximal/shrinkage update",
+      "statement": "For $k \\ge 1$: compute $x_k = p_L(x_{k-1})$. For the $\\ell_1$ case this becomes $x_k = \\mathcal{T}_{\\lambda/L}(x_{k-1} - \\frac{1}{L} \\nabla f(x_{k-1}))$."
+    },
+    {
+      "id": "AP112.2",
+      "type": "algorithm",
+      "subclass": "iterative",
+      "name": "ISTA with Backtracking",
+      "section": "3",
+      "statement": "ISTA variant where the stepsize $1/L_k$ is chosen by a backtracking line search to satisfy a sufficient-decrease condition $F(p_{\\bar L}(x_{k-1})) \\le Q_{\\bar L}(p_{\\bar L}(x_{k-1}), x_{k-1})$.",
+      "input": ["Initial $L_0 > 0$", "Backtracking factor $\\eta > 1$", "Initial point $x_0 \\in \\mathbb{R}^n$"],
+      "output": ["Sequence $\\{x_k\\}$ converging to a minimizer of $F$"],
+      "pseudocode": "Step 0. Take $L_0 > 0$, $\\eta > 1$, $x_0$.\nStep k: Find smallest integer $i_k \\ge 0$ such that with $\\bar L = \\eta^{i_k} L_{k-1}$: $F(p_{\\bar L}(x_{k-1})) \\le Q_{\\bar L}(p_{\\bar L}(x_{k-1}), x_{k-1})$.\nSet $L_k = \\eta^{i_k} L_{k-1}$, $x_k = p_{L_k}(x_{k-1})$.",
+      "tags": ["iterative", "first_order", "adaptive_stepsize"]
+    },
+    {
+      "id": "ASP112.3",
+      "type": "algorithm_step",
+      "parent_id": "AP112.2",
+      "step_order": 1,
+      "subclass": "initialize",
+      "name": "Initialize $L_0, \\eta, x_0$",
+      "statement": "Choose $L_0 > 0$, $\\eta > 1$, $x_0 \\in \\mathbb{R}^n$."
+    },
+    {
+      "id": "ASP112.4",
+      "type": "algorithm_step",
+      "parent_id": "AP112.2",
+      "step_order": 2,
+      "subclass": "loop",
+      "name": "Backtracking line search",
+      "statement": "Find smallest $i_k \\ge 0$ such that $\\bar L = \\eta^{i_k} L_{k-1}$ satisfies $F(p_{\\bar L}(x_{k-1})) \\le Q_{\\bar L}(p_{\\bar L}(x_{k-1}), x_{k-1})$."
+    },
+    {
+      "id": "ASP112.5",
+      "type": "algorithm_step",
+      "parent_id": "AP112.2",
+      "step_order": 3,
+      "subclass": "update",
+      "name": "Set $L_k$ and update $x_k$",
+      "statement": "Set $L_k = \\eta^{i_k} L_{k-1}$ and $x_k = p_{L_k}(x_{k-1})$."
+    },
+    {
+      "id": "RP112.1",
+      "type": "remark",
+      "name": "Monotonicity of ISTA Function Values",
+      "section": "3",
+      "statement": "The sequence $\\{F(x_k)\\}$ produced by ISTA is nonincreasing: for every $k \\ge 1$, $F(x_k) \\le Q_{L_k}(x_k, x_{k-1}) \\le Q_{L_k}(x_{k-1}, x_{k-1}) = F(x_{k-1})$."
+    },
+    {
+      "id": "RP112.2",
+      "type": "remark",
+      "name": "Bounds on $L_k$",
+      "section": "3",
+      "statement": "For both stepsize rules, $\\beta L(f) \\le L_k \\le \\alpha L(f)$, with $\\alpha = \\beta = 1$ in the constant case and $\\alpha = \\eta$, $\\beta = L_0/L(f)$ in the backtracking case."
+    },
+    {
+      "id": "TP112.1",
+      "type": "theorem",
+      "name": "$O(1/k)$ Convergence Rate of ISTA",
+      "section": "3",
+      "statement": "Let $\\{x_k\\}$ be generated by ISTA (constant or backtracking stepsize). Then for any $k \\ge 1$: $F(x_k) - F(x_*) \\le \\frac{\\alpha L(f) \\|x_0 - x_*\\|^2}{2k}$ for all $x_* \\in X_*$, with $\\alpha = 1$ (constant) or $\\alpha = \\eta$ (backtracking).",
+      "assumptions": ["$\\{x_k\\}$ generated by ISTA via (3.1) or (3.3)", "Standing assumptions on $(P)$"],
+      "conclusions": ["$F(x_k) - F(x_*) \\le \\frac{\\alpha L(f) \\|x_0 - x_*\\|^2}{2k}$ for all $k \\ge 1$ and any $x_* \\in X_*$"],
+      "tags": ["bound", "convergence_rate"]
+    },
+    {
+      "id": "PP112.2",
+      "type": "proof",
+      "name": "Proof of Theorem 3.1",
+      "section": "3",
+      "parent_id": "TP112.1",
+      "proves": "TP112.1",
+      "statement": "Apply Lemma 2.3 twice (with $x = x_*$ and with $x = y = x_n$), telescope the resulting inequalities over $n = 0, \\ldots, k-1$, and combine with the bounds on $L_k$ from Remark 3.2."
+    },
+    {
+      "id": "PSP112.5",
+      "type": "proof_step",
+      "parent_id": "PP112.2",
+      "step_order": 1,
+      "subclass": "apply_lemma",
+      "name": "First application of Lemma 2.3",
+      "statement": "Set $x = x_*$, $y = x_n$, $L = L_{n+1}$ in Lemma 2.3 to get $\\frac{2}{L_{n+1}}(F(x_*) - F(x_{n+1})) \\ge \\|x_* - x_{n+1}\\|^2 - \\|x_* - x_n\\|^2$, then use $L_{n+1} \\ge \\beta L(f)$."
+    },
+    {
+      "id": "PSP112.6",
+      "type": "proof_step",
+      "parent_id": "PP112.2",
+      "step_order": 2,
+      "subclass": "algebraic_manipulation",
+      "name": "Telescope to bound $kF(x_*) - \\sum F(x_{n+1})$",
+      "statement": "Sum the previous inequality over $n = 0, \\ldots, k-1$ to obtain $\\frac{2}{\\alpha L(f)}(kF(x_*) - \\sum_{n=0}^{k-1} F(x_{n+1})) \\ge \\|x_* - x_k\\|^2 - \\|x_* - x_0\\|^2$."
+    },
+    {
+      "id": "PSP112.7",
+      "type": "proof_step",
+      "parent_id": "PP112.2",
+      "step_order": 3,
+      "subclass": "apply_lemma",
+      "name": "Second application of Lemma 2.3",
+      "statement": "Apply Lemma 2.3 with $x = y = x_n$, $L = L_{n+1}$ to get $\\frac{2}{L_{n+1}}(F(x_n) - F(x_{n+1})) \\ge \\|x_n - x_{n+1}\\|^2$, multiply by $n$ and sum to bound $-kF(x_k) + \\sum F(x_{n+1})$."
+    },
+    {
+      "id": "PSP112.8",
+      "type": "proof_step",
+      "parent_id": "PP112.2",
+      "step_order": 4,
+      "subclass": "conclude",
+      "name": "Combine telescoped sums",
+      "statement": "Add the two telescoped sums (with weight $\\beta/\\alpha$) to obtain $\\frac{2k}{\\alpha L(f)}(F(x_*) - F(x_k)) \\ge -\\|x_* - x_0\\|^2$, yielding $F(x_k) - F(x_*) \\le \\frac{\\alpha L(f) \\|x_0 - x_*\\|^2}{2k}$."
+    },
+    {
+      "id": "AP112.3",
+      "type": "algorithm",
+      "subclass": "iterative",
+      "name": "FISTA with Constant Stepsize",
+      "section": "4",
+      "statement": "Fast iterative shrinkage-thresholding algorithm: applies $p_L$ at an extrapolated point $y_k$ rather than $x_{k-1}$, achieving $O(1/k^2)$ rate.",
+      "input": ["Lipschitz constant $L = L(f)$ of $\\nabla f$", "Initial point $x_0 \\in \\mathbb{R}^n$"],
+      "output": ["Sequence $\\{x_k\\}$ with $F(x_k) - F_* = O(1/k^2)$"],
+      "pseudocode": "Step 0. $y_1 = x_0 \\in \\mathbb{R}^n$, $t_1 = 1$.\nStep k ($k \\ge 1$):\n  $x_k = p_L(y_k)$\n  $t_{k+1} = \\frac{1 + \\sqrt{1 + 4 t_k^2}}{2}$\n  $y_{k+1} = x_k + \\frac{t_k - 1}{t_{k+1}}(x_k - x_{k-1})$.",
+      "tags": ["iterative", "first_order", "accelerated", "optimal"]
+    },
+    {
+      "id": "ASP112.6",
+      "type": "algorithm_step",
+      "parent_id": "AP112.3",
+      "step_order": 1,
+      "subclass": "initialize",
+      "name": "Initialize $y_1, x_0, t_1$",
+      "statement": "Set $y_1 = x_0 \\in \\mathbb{R}^n$ and $t_1 = 1$."
+    },
+    {
+      "id": "ASP112.7",
+      "type": "algorithm_step",
+      "parent_id": "AP112.3",
+      "step_order": 2,
+      "subclass": "update",
+      "name": "Proximal step at extrapolated point",
+      "statement": "Compute $x_k = p_L(y_k)$ (a single proximal/shrinkage step at the auxiliary point $y_k$)."
+    },
+    {
+      "id": "ASP112.8",
+      "type": "algorithm_step",
+      "parent_id": "AP112.3",
+      "step_order": 3,
+      "subclass": "update",
+      "name": "Update momentum parameter $t_{k+1}$",
+      "statement": "Compute $t_{k+1} = \\frac{1 + \\sqrt{1 + 4 t_k^2}}{2}$, satisfying $t_k^2 = t_{k+1}^2 - t_{k+1}$."
+    },
+    {
+      "id": "ASP112.9",
+      "type": "algorithm_step",
+      "parent_id": "AP112.3",
+      "step_order": 4,
+      "subclass": "update",
+      "name": "Extrapolation step for $y_{k+1}$",
+      "statement": "Set $y_{k+1} = x_k + \\frac{t_k - 1}{t_{k+1}}(x_k - x_{k-1})$, a linear combination of the two previous iterates."
+    },
+    {
+      "id": "AP112.4",
+      "type": "algorithm",
+      "subclass": "iterative",
+      "name": "FISTA with Backtracking",
+      "section": "4",
+      "statement": "FISTA variant in which the Lipschitz constant is estimated by backtracking on the sufficient-decrease condition at $y_k$.",
+      "input": ["Initial $L_0 > 0$", "Backtracking factor $\\eta > 1$", "Initial point $x_0 \\in \\mathbb{R}^n$"],
+      "output": ["Sequence $\\{x_k\\}$ with $F(x_k) - F_* = O(1/k^2)$"],
+      "pseudocode": "Step 0. $L_0 > 0$, $\\eta > 1$, $x_0 \\in \\mathbb{R}^n$, $y_1 = x_0$, $t_1 = 1$.\nStep k: Find smallest $i_k$ such that with $\\bar L = \\eta^{i_k} L_{k-1}$: $F(p_{\\bar L}(y_k)) \\le Q_{\\bar L}(p_{\\bar L}(y_k), y_k)$.\nSet $L_k = \\eta^{i_k} L_{k-1}$, $x_k = p_{L_k}(y_k)$, then update $t_{k+1}, y_{k+1}$ as above.",
+      "tags": ["iterative", "first_order", "accelerated", "adaptive_stepsize"]
+    },
+    {
+      "id": "LP112.4",
+      "type": "lemma",
+      "name": "Recursive Relation for FISTA",
+      "section": "4",
+      "statement": "The sequences $\\{x_k, y_k\\}$ generated by FISTA (constant or backtracking) satisfy, for every $k \\ge 1$: $\\frac{2}{L_k} t_k^2 v_k - \\frac{2}{L_{k+1}} t_{k+1}^2 v_{k+1} \\ge \\|u_{k+1}\\|^2 - \\|u_k\\|^2$, where $v_k := F(x_k) - F(x_*)$ and $u_k := t_k x_k - (t_k - 1) x_{k-1} - x_*$.",
+      "assumptions": ["FISTA iterates $\\{x_k, y_k\\}$ with the update $t_k^2 = t_{k+1}^2 - t_{k+1}$"],
+      "conclusions": ["$\\frac{2}{L_k} t_k^2 v_k - \\frac{2}{L_{k+1}} t_{k+1}^2 v_{k+1} \\ge \\|u_{k+1}\\|^2 - \\|u_k\\|^2$ for all $k \\ge 1$"],
+      "tags": ["bound", "recursion"]
+    },
+    {
+      "id": "PP112.3",
+      "type": "proof",
+      "name": "Proof of Lemma 4.1",
+      "section": "4",
+      "parent_id": "LP112.4",
+      "proves": "LP112.4",
+      "statement": "Apply Lemma 2.3 at $(x_k, y_{k+1})$ and $(x_*, y_{k+1})$, combine via the recursion $t_k^2 = t_{k+1}^2 - t_{k+1}$, then use the Pythagoras identity to assemble the recursive bound."
+    },
+    {
+      "id": "PSP112.9",
+      "type": "proof_step",
+      "parent_id": "PP112.3",
+      "step_order": 1,
+      "subclass": "apply_lemma",
+      "name": "Two applications of Lemma 2.3 at $y_{k+1}$",
+      "statement": "Apply Lemma 2.3 with $(x := x_k, y := y_{k+1}, L = L_{k+1})$ and with $(x := x_*, y := y_{k+1}, L = L_{k+1})$ using $x_{k+1} = p_{L_{k+1}}(y_{k+1})$."
+    },
+    {
+      "id": "PSP112.10",
+      "type": "proof_step",
+      "parent_id": "PP112.3",
+      "step_order": 2,
+      "subclass": "algebraic_manipulation",
+      "name": "Combine via the $t$-recursion",
+      "statement": "Multiply the first inequality by $(t_{k+1} - 1)$ and add to the second; then multiply by $t_{k+1}$ and use $t_k^2 = t_{k+1}^2 - t_{k+1}$."
+    },
+    {
+      "id": "PSP112.11",
+      "type": "proof_step",
+      "parent_id": "PP112.3",
+      "step_order": 3,
+      "subclass": "invoke_identity",
+      "name": "Apply Pythagoras identity",
+      "statement": "Use $\\|b - a\\|^2 + 2 \\langle b - a, a - c \\rangle = \\|b - c\\|^2 - \\|a - c\\|^2$ with $a := t_{k+1} y_{k+1}$, $b := t_{k+1} x_{k+1}$, $c := (t_{k+1} - 1) x_k + x_*$."
+    },
+    {
+      "id": "PSP112.12",
+      "type": "proof_step",
+      "parent_id": "PP112.3",
+      "step_order": 4,
+      "subclass": "conclude",
+      "name": "Use $L_{k+1} \\ge L_k$",
+      "statement": "Express both sides in terms of $u_k := t_k x_k - (t_k - 1) x_{k-1} - x_*$ and use $L_{k+1} \\ge L_k$ to obtain the stated inequality."
+    },
+    {
+      "id": "LP112.5",
+      "type": "lemma",
+      "name": "Telescoping Lemma for Positive Sequences",
+      "section": "4",
+      "statement": "Let $\\{a_k, b_k\\}$ be positive sequences satisfying $a_k - a_{k+1} \\ge b_{k+1} - b_k$ for all $k \\ge 1$, with $a_1 + b_1 \\le c$, $c > 0$. Then $a_k \\le c$ for every $k \\ge 1$.",
+      "assumptions": ["$\\{a_k\\}, \\{b_k\\}$ positive", "$a_k - a_{k+1} \\ge b_{k+1} - b_k$ for all $k \\ge 1$", "$a_1 + b_1 \\le c$"],
+      "conclusions": ["$a_k \\le c$ for every $k \\ge 1$"],
+      "tags": ["bound"]
+    },
+    {
+      "id": "LP112.6",
+      "type": "lemma",
+      "name": "Lower Bound on $t_k$",
+      "section": "4",
+      "statement": "The positive sequence $\\{t_k\\}$ generated in FISTA via $t_{k+1} = (1 + \\sqrt{1 + 4 t_k^2})/2$ with $t_1 = 1$ satisfies $t_k \\ge (k+1)/2$ for all $k \\ge 1$.",
+      "assumptions": ["$t_1 = 1$", "$t_{k+1} = \\frac{1 + \\sqrt{1 + 4 t_k^2}}{2}$"],
+      "conclusions": ["$t_k \\ge (k+1)/2$ for all $k \\ge 1$"],
+      "tags": ["bound"]
+    },
+    {
+      "id": "TP112.2",
+      "type": "theorem",
+      "name": "$O(1/k^2)$ Convergence Rate of FISTA",
+      "section": "4",
+      "statement": "Let $\\{x_k\\}, \\{y_k\\}$ be generated by FISTA. Then for any $k \\ge 1$: $F(x_k) - F(x_*) \\le \\frac{2 \\alpha L(f) \\|x_0 - x_*\\|^2}{(k+1)^2}$ for all $x_* \\in X_*$, with $\\alpha = 1$ (constant stepsize) or $\\alpha = \\eta$ (backtracking).",
+      "assumptions": ["$\\{x_k\\}, \\{y_k\\}$ generated by FISTA (constant or backtracking)", "Standing assumptions on $(P)$"],
+      "conclusions": ["$F(x_k) - F(x_*) \\le \\frac{2 \\alpha L(f) \\|x_0 - x_*\\|^2}{(k+1)^2}$ for any $x_* \\in X_*$"],
+      "tags": ["bound", "convergence_rate", "optimal"]
+    },
+    {
+      "id": "PP112.4",
+      "type": "proof",
+      "name": "Proof of Theorem 4.4",
+      "section": "4",
+      "parent_id": "TP112.2",
+      "proves": "TP112.2",
+      "statement": "Set $a_k := \\frac{2}{L_k} t_k^2 v_k$, $b_k := \\|u_k\\|^2$, $c := \\|x_0 - x_*\\|^2$. By Lemma 4.1, $a_k - a_{k+1} \\ge b_{k+1} - b_k$. Verify $a_1 + b_1 \\le c$ via Lemma 2.3 at $(x_*, y_1)$, apply Lemma 4.2, then use $t_k \\ge (k+1)/2$ (Lemma 4.3) and the upper bound on $L_k$."
+    },
+    {
+      "id": "PSP112.13",
+      "type": "proof_step",
+      "parent_id": "PP112.4",
+      "step_order": 1,
+      "subclass": "setup",
+      "name": "Define $a_k, b_k, c$",
+      "statement": "Let $a_k := \\frac{2}{L_k} t_k^2 v_k$, $b_k := \\|u_k\\|^2$, and $c := \\|y_1 - x_*\\|^2 = \\|x_0 - x_*\\|^2$."
+    },
+    {
+      "id": "PSP112.14",
+      "type": "proof_step",
+      "parent_id": "PP112.4",
+      "step_order": 2,
+      "subclass": "apply_lemma",
+      "name": "Verify base case $a_1 + b_1 \\le c$",
+      "statement": "Apply Lemma 2.3 at $(x := x_*, y := y_1, L = L_1)$: with $t_1 = 1$, $a_1 = \\frac{2}{L_1} v_1$, $b_1 = \\|x_1 - x_*\\|^2$. The lemma yields $\\frac{2}{L_1} v_1 \\le \\|y_1 - x_*\\|^2 - \\|x_1 - x_*\\|^2$, i.e., $a_1 + b_1 \\le c$."
+    },
+    {
+      "id": "PSP112.15",
+      "type": "proof_step",
+      "parent_id": "PP112.4",
+      "step_order": 3,
+      "subclass": "apply_lemma",
+      "name": "Invoke Lemma 4.2",
+      "statement": "Lemma 4.1 gives $a_k - a_{k+1} \\ge b_{k+1} - b_k$, and the base case is $a_1 + b_1 \\le c$. By Lemma 4.2, $a_k \\le c$ for all $k$, i.e., $\\frac{2}{L_k} t_k^2 v_k \\le \\|x_0 - x_*\\|^2$."
+    },
+    {
+      "id": "PSP112.16",
+      "type": "proof_step",
+      "parent_id": "PP112.4",
+      "step_order": 4,
+      "subclass": "conclude",
+      "name": "Apply $t_k \\ge (k+1)/2$ and bound on $L_k$",
+      "statement": "Combine $t_k \\ge (k+1)/2$ (Lemma 4.3) and $L_k \\le \\alpha L(f)$ to obtain $v_k \\le \\frac{2 L_k \\|x_0 - x_*\\|^2}{(k+1)^2} \\le \\frac{2 \\alpha L(f) \\|x_0 - x_*\\|^2}{(k+1)^2}$."
+    },
+    {
+      "id": "EP112.1",
+      "type": "equation",
+      "name": "ISTA $\\ell_1$ Iteration",
+      "section": "1.1",
+      "statement": "$x_{k+1} = \\mathcal{T}_{\\lambda t}\\bigl(x_k - 2 t A^T (A x_k - b)\\bigr)$, with $t$ a stepsize and $\\mathcal{T}_\\alpha$ the shrinkage operator (1.5)."
+    },
+    {
+      "id": "EP112.2",
+      "type": "equation",
+      "name": "Proximal Form of $p_L(y)$",
+      "section": "2.3",
+      "statement": "$p_L(y) = \\arg\\min_x \\{ g(x) + \\frac{L}{2} \\| x - (y - \\frac{1}{L} \\nabla f(y)) \\|^2 \\}$."
+    },
+    {
+      "id": "RP112.3",
+      "type": "remark",
+      "name": "Hilbert Space and Constrained Extension",
+      "section": "2.4",
+      "statement": "All results extend to any real Hilbert space and to problem (P) with convex constraints; the constrained case requires that $p_L(\\cdot)$ remain easy to compute (e.g., when the feasible set is the nonnegative orthant)."
+    },
+    {
+      "id": "RP112.4",
+      "type": "remark",
+      "name": "Iteration Complexity",
+      "section": "3-4",
+      "statement": "ISTA needs $\\lceil C/\\varepsilon \\rceil$ iterations for an $\\varepsilon$-optimal solution with $C = \\alpha L(f) \\|x_0 - x_*\\|^2 / 2$, whereas FISTA needs $\\lceil C'/\\sqrt{\\varepsilon} - 1 \\rceil$ with $C' = \\sqrt{2 \\alpha L(f) \\|x_0 - x_*\\|^2}$, a strict improvement."
+    }
+  ],
+  "edges": [
+    {"source": "ProbP112.1", "target": "ProbP112.2", "type": "uses"},
+    {"source": "ProbP112.1", "target": "ProbP112.3", "type": "uses"},
+    {"source": "ProbP112.1", "target": "ProbP112.4", "type": "uses"},
+    {"source": "ProbP112.4", "target": "ProbP112.5", "type": "specializes"},
+    {"source": "ProbP112.4", "target": "ExP112.2", "type": "illustrates"},
+    {"source": "AssumP112.1", "target": "ProbP112.5", "type": "uses"},
+    {"source": "DP112.1", "target": "EP112.1", "type": "uses"},
+    {"source": "DP112.1", "target": "ASP112.2", "type": "uses"},
+    {"source": "DP112.2", "target": "DP112.3", "type": "uses"},
+    {"source": "DP112.3", "target": "AP112.1", "type": "uses"},
+    {"source": "DP112.3", "target": "AP112.2", "type": "uses"},
+    {"source": "DP112.3", "target": "AP112.3", "type": "uses"},
+    {"source": "DP112.3", "target": "AP112.4", "type": "uses"},
+    {"source": "DP112.3", "target": "EP112.2", "type": "uses"},
+    {"source": "EP112.2", "target": "AP112.1", "type": "uses"},
+    {"source": "AssumP112.1", "target": "LP112.3", "type": "uses"},
+    {"source": "LP112.1", "target": "LP112.3", "type": "uses"},
+    {"source": "LP112.2", "target": "LP112.3", "type": "uses"},
+    {"source": "LP112.2", "target": "PP112.1", "type": "uses"},
+    {"source": "LP112.1", "target": "PP112.1", "type": "uses"},
+    {"source": "PP112.1", "target": "LP112.3", "type": "proves"},
+    {"source": "PSP112.1", "target": "PSP112.2", "type": "uses"},
+    {"source": "PSP112.2", "target": "PSP112.3", "type": "uses"},
+    {"source": "PSP112.3", "target": "PSP112.4", "type": "uses"},
+    {"source": "AP112.1", "target": "ProbP112.5", "type": "solves"},
+    {"source": "AP112.2", "target": "ProbP112.5", "type": "solves"},
+    {"source": "AP112.3", "target": "ProbP112.5", "type": "solves"},
+    {"source": "AP112.4", "target": "ProbP112.5", "type": "solves"},
+    {"source": "AP112.1", "target": "ProbP112.4", "type": "solves"},
+    {"source": "AP112.3", "target": "ProbP112.4", "type": "solves"},
+    {"source": "AP112.1", "target": "RP112.1", "type": "uses"},
+    {"source": "AP112.2", "target": "RP112.1", "type": "uses"},
+    {"source": "AP112.2", "target": "RP112.2", "type": "uses"},
+    {"source": "AP112.4", "target": "RP112.2", "type": "uses"},
+    {"source": "LP112.3", "target": "TP112.1", "type": "uses"},
+    {"source": "RP112.2", "target": "TP112.1", "type": "uses"},
+    {"source": "AP112.1", "target": "TP112.1", "type": "uses"},
+    {"source": "AP112.2", "target": "TP112.1", "type": "uses"},
+    {"source": "PP112.2", "target": "TP112.1", "type": "proves"},
+    {"source": "LP112.3", "target": "PP112.2", "type": "uses"},
+    {"source": "RP112.2", "target": "PP112.2", "type": "uses"},
+    {"source": "PSP112.5", "target": "PSP112.6", "type": "uses"},
+    {"source": "PSP112.5", "target": "PSP112.7", "type": "uses"},
+    {"source": "PSP112.6", "target": "PSP112.8", "type": "uses"},
+    {"source": "PSP112.7", "target": "PSP112.8", "type": "uses"},
+    {"source": "AP112.1", "target": "AP112.3", "type": "specializes"},
+    {"source": "AP112.2", "target": "AP112.4", "type": "specializes"},
+    {"source": "LP112.3", "target": "LP112.4", "type": "uses"},
+    {"source": "AP112.3", "target": "LP112.4", "type": "uses"},
+    {"source": "AP112.4", "target": "LP112.4", "type": "uses"},
+    {"source": "PP112.3", "target": "LP112.4", "type": "proves"},
+    {"source": "LP112.3", "target": "PP112.3", "type": "uses"},
+    {"source": "PSP112.9", "target": "PSP112.10", "type": "uses"},
+    {"source": "PSP112.10", "target": "PSP112.11", "type": "uses"},
+    {"source": "PSP112.11", "target": "PSP112.12", "type": "uses"},
+    {"source": "LP112.4", "target": "TP112.2", "type": "uses"},
+    {"source": "LP112.5", "target": "TP112.2", "type": "uses"},
+    {"source": "LP112.6", "target": "TP112.2", "type": "uses"},
+    {"source": "RP112.2", "target": "TP112.2", "type": "uses"},
+    {"source": "AP112.3", "target": "TP112.2", "type": "uses"},
+    {"source": "AP112.4", "target": "TP112.2", "type": "uses"},
+    {"source": "PP112.4", "target": "TP112.2", "type": "proves"},
+    {"source": "LP112.4", "target": "PP112.4", "type": "uses"},
+    {"source": "LP112.5", "target": "PP112.4", "type": "uses"},
+    {"source": "LP112.6", "target": "PP112.4", "type": "uses"},
+    {"source": "LP112.3", "target": "PP112.4", "type": "uses"},
+    {"source": "PSP112.13", "target": "PSP112.14", "type": "uses"},
+    {"source": "PSP112.13", "target": "PSP112.15", "type": "uses"},
+    {"source": "PSP112.14", "target": "PSP112.15", "type": "uses"},
+    {"source": "PSP112.15", "target": "PSP112.16", "type": "uses"},
+    {"source": "TP112.1", "target": "RP112.4", "type": "uses"},
+    {"source": "TP112.2", "target": "RP112.4", "type": "uses"},
+    {"source": "AP112.1", "target": "ExP112.3", "type": "illustrates"},
+    {"source": "AP112.3", "target": "ExP112.3", "type": "illustrates"},
+    {"source": "AP112.1", "target": "ExP112.4", "type": "illustrates"},
+    {"source": "AP112.3", "target": "ExP112.4", "type": "illustrates"},
+    {"source": "ExP112.1", "target": "AP112.3", "type": "uses"},
+    {"source": "ExP112.2", "target": "AP112.1", "type": "uses"},
+    {"source": "ExP112.2", "target": "AP112.3", "type": "uses"}
+  ]
+}

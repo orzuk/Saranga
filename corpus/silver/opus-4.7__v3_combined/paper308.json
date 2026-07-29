@@ -1,0 +1,765 @@
+{
+  "metadata": {
+    "title": "Parallelized Stochastic Gradient Descent",
+    "authors": "Martin A. Zinkevich, Markus Weimer, Alex Smola, Lihong Li",
+    "year": 2010,
+    "paper_num": 308,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-03",
+    "source_note": "Extracted from PDF->text fallback; .tex source not available. Math fidelity reduced.",
+    "registry_mismatch_note": "PDF title and authors match metadata.json (paper308: Parallelized Stochastic Gradient Descent, Zinkevich/Weimer/Smola/Li 2010)."
+  },
+  "nodes": [
+    {
+      "id": "DP308.1",
+      "type": "definition",
+      "name": "Per-example loss $c^i(w)$ and overall risk $c(w)$",
+      "section": "2.1",
+      "statement": "For convex losses $c^i: \\ell_2 \\to [0,\\infty)$, $c^i(w) = \\tfrac{\\lambda}{2}\\|w\\|^2 + L(x^i,y^i,w\\cdot x^i)$, and the overall risk is $c(w) = \\tfrac{1}{m}\\sum_{i=1}^m c^i(w)$.",
+      "statement_clean": "Defines the regularized per-example loss and the average risk to be minimized.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP308.2",
+      "type": "definition",
+      "name": "Lipschitz continuity",
+      "section": "2.1",
+      "statement": "$f: X \\to \\mathbb{R}$ is Lipschitz continuous with constant $L$ w.r.t. distance $d$ if $|f(x)-f(y)| \\leq L\\, d(x,y)$ for all $x,y \\in X$.",
+      "statement_clean": "Standard Lipschitz continuity definition.",
+      "origin": "external",
+      "origin_citation": "Classical analysis"
+    },
+    {
+      "id": "DP308.3",
+      "type": "definition",
+      "name": "Holder continuity",
+      "section": "2.1",
+      "statement": "$f$ is Holder continuous with constant $L$ and exponent $\\alpha$ if $|f(x)-f(y)| \\leq L\\, d^{\\alpha}(x,y)$ for all $x,y \\in X$.",
+      "statement_clean": "Standard Holder continuity definition.",
+      "origin": "external",
+      "origin_citation": "Classical analysis"
+    },
+    {
+      "id": "DP308.4",
+      "type": "definition",
+      "name": "Lipschitz seminorm $\\|f\\|_{\\mathrm{Lip}}$",
+      "section": "2.1",
+      "statement": "$\\|f\\|_{\\mathrm{Lip}} := \\inf\\{ l : |f(x)-f(y)| \\leq l\\, d(x,y) \\text{ for all } x,y \\in X \\}$, the smallest Lipschitz constant.",
+      "statement_clean": "The infimum of valid Lipschitz constants.",
+      "origin": "external",
+      "origin_citation": "von Luxburg & Bousquet 2004 [10]"
+    },
+    {
+      "id": "DP308.5",
+      "type": "definition",
+      "name": "Holder seminorm $\\|f\\|_{\\mathrm{Lip}_\\alpha}$",
+      "section": "2.1",
+      "statement": "For $\\alpha \\geq 1$: $\\|f\\|_{\\mathrm{Lip}_\\alpha} := \\inf\\{ l : |f(x)-f(y)| \\leq l\\, d^{\\alpha}(x,y) \\text{ for all } x,y \\in X \\}$.",
+      "statement_clean": "Holder analogue of the Lipschitz seminorm.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP308.6",
+      "type": "definition",
+      "name": "Contraction mapping",
+      "section": "2.1",
+      "statement": "For a metric space $(M,d)$, $f: M \\to M$ is a contraction mapping if $\\|f\\|_{\\mathrm{Lip}} < 1$.",
+      "statement_clean": "A self-map of a metric space whose Lipschitz constant is strictly less than 1.",
+      "origin": "external",
+      "origin_citation": "Classical analysis"
+    },
+    {
+      "id": "DP308.7",
+      "type": "definition",
+      "name": "SGD update map $\\phi^i$",
+      "section": "2.1",
+      "statement": "$\\phi^i(w) := w - \\eta \\nabla c^i(w)$, the stochastic gradient step on the $i$-th example.",
+      "statement_clean": "The single-step SGD update viewed as a map on weight vectors.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP308.8",
+      "type": "definition",
+      "name": "Critical learning rate $\\eta^*$",
+      "section": "2.1",
+      "statement": "$\\eta^* := \\min_i (\\|x^i\\|^2 c^* + \\lambda)^{-1}$, the upper bound on $\\eta$ ensuring contraction.",
+      "statement_clean": "The largest learning rate guaranteeing the SGD update is a contraction.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP308.9",
+      "type": "definition",
+      "name": "Wasserstein metric $W_z$",
+      "section": "2.2",
+      "statement": "For a Radon space $(M,d)$ and distributions $X,Y \\in P(M,d)$: $W_z(X,Y) = \\inf_{\\gamma \\in \\Gamma(X,Y)} \\big( \\int_{x,y} d^z(x,y)\\, d\\gamma(x,y) \\big)^{1/z}$.",
+      "statement_clean": "The Monge-Kantorovich-Wasserstein earth-mover distance of order $z$.",
+      "origin": "external",
+      "origin_citation": "Classical optimal transport"
+    },
+    {
+      "id": "DP308.10",
+      "type": "definition",
+      "name": "Lifted distribution map $p$",
+      "section": "2.2",
+      "statement": "Given $\\phi: M \\to M$, define $p: P(M,d) \\to P(M,d)$ by applying $\\phi$ pointwise: $X'(E) = X(\\phi^{-1}(E))$.",
+      "statement_clean": "Pushforward of a distribution under a pointwise map.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP308.11",
+      "type": "definition",
+      "name": "Mixture SGD operator $p^*$ and parameter distribution $D_\\eta^t$",
+      "section": "2.2",
+      "statement": "$p^* = \\tfrac{1}{m}\\sum_{i=1}^m p^i$ is the one-step stochastic operation; $D_\\eta^t = p^*(D_\\eta^{t-1})$ is the parameter distribution after $t$ SGD steps starting from $D_\\eta^0$.",
+      "statement_clean": "The averaged update operator and its iterates on distributions.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP308.12",
+      "type": "definition",
+      "name": "Strong convexity",
+      "section": "Appendix A",
+      "statement": "$c$ is $\\lambda$-strongly convex if $\\tfrac{\\lambda}{2}(y-x)^2 + \\nabla c(x)\\cdot(y-x) + c(x) \\leq c(y)$ for all $x,y \\in M$.",
+      "statement_clean": "Standard strong convexity inequality.",
+      "origin": "external",
+      "origin_citation": "Classical convex analysis"
+    },
+    {
+      "id": "DP308.13",
+      "type": "definition",
+      "name": "Relative standard deviation $\\sigma_X^c$",
+      "section": "Appendix D.2",
+      "statement": "$\\sigma_X^c = \\sqrt{\\mathbb{E}[(X-c)^2]}$; with $\\sigma_X = \\sigma_X^{\\mu_X}$.",
+      "statement_clean": "Root-mean-square deviation of $X$ from a reference point $c$.",
+      "origin": "paper"
+    },
+    {
+      "id": "AssumP308.1",
+      "type": "assumption",
+      "name": "Lipschitz-bounded loss gradient",
+      "section": "2.1",
+      "statement": "$\\|L(x,y,y')\\|_{\\mathrm{Lip}} \\leq G$ as a function of $y'$ for all data $(x,y) \\in X \\times Y$ and all $w$ in a suitably chosen (often compact) domain.",
+      "statement_clean": "The loss gradient is uniformly bounded by $G$.",
+      "origin": "paper"
+    },
+    {
+      "id": "AP308.1",
+      "type": "algorithm",
+      "name": "SGD (single-machine inner routine)",
+      "section": "1",
+      "statement": "Single-machine stochastic gradient descent over $\\{c^1,\\ldots,c^m\\}$ with fixed learning rate $\\eta$ for $T$ steps.",
+      "statement_clean": "Plain fixed-rate SGD over $T$ random index draws.",
+      "input": [
+        "Loss functions $\\{c^1,\\ldots,c^m\\}$",
+        "Number of iterations $T$",
+        "Learning rate $\\eta$",
+        "Initial weight $w_0$"
+      ],
+      "output": [
+        "Final weight $w_T$"
+      ],
+      "pseudocode": "for t=1..T: draw j uniformly from {1..m}; $w_t \\leftarrow w_{t-1} - \\eta \\partial_w c^j(w_{t-1})$; return $w_T$.",
+      "origin": "paper"
+    },
+    {
+      "id": "AP308.2",
+      "type": "algorithm",
+      "name": "ParallelSGD",
+      "section": "1",
+      "statement": "Run SGD independently on $k$ clients and average the resulting weight vectors.",
+      "statement_clean": "Single-pass averaging of $k$ independent SGD runs.",
+      "input": [
+        "Loss functions $\\{c^1,\\ldots,c^m\\}$",
+        "Number of iterations $T$",
+        "Learning rate $\\eta$",
+        "Initial weight $w_0$",
+        "Number of machines $k$"
+      ],
+      "output": [
+        "Aggregated weight $v = \\tfrac{1}{k}\\sum_{i=1}^k v_i$"
+      ],
+      "pseudocode": "for i=1..k in parallel: $v_i =$ SGD($\\{c^1,\\ldots,c^m\\}$, $T$, $\\eta$, $w_0$); return $v = \\tfrac{1}{k}\\sum_i v_i$.",
+      "origin": "paper",
+      "tags": ["iterative", "parallel"]
+    },
+    {
+      "id": "AP308.3",
+      "type": "algorithm",
+      "name": "SimuParallelSGD",
+      "section": "1",
+      "statement": "MapReduce-friendly variant: partition data across $k$ machines, run a local SGD pass on each, average the results.",
+      "statement_clean": "Partition-then-average single-pass parallel SGD.",
+      "input": [
+        "Examples $\\{c^1,\\ldots,c^m\\}$",
+        "Learning rate $\\eta$",
+        "Number of machines $k$"
+      ],
+      "output": [
+        "Aggregated weight $v = \\tfrac{1}{k}\\sum_i w_{i,T}$"
+      ],
+      "pseudocode": "Define $T = \\lfloor m/k \\rfloor$; partition examples into $k$ blocks of size $T$; for each machine $i$ in parallel: shuffle local data, $w_{i,0}=0$, for $t=1..T$: $w_{i,t} \\leftarrow w_{i,t-1} - \\eta \\partial_w c_{i,t}(w_{i,t-1})$; return $v = \\tfrac{1}{k}\\sum_i w_{i,T}$.",
+      "origin": "paper",
+      "tags": ["iterative", "parallel", "mapreduce"]
+    },
+    {
+      "id": "ASP308.1",
+      "type": "algorithm_step",
+      "name": "Partition data across machines",
+      "parent_id": "AP308.3",
+      "step_order": 1,
+      "subclass": "initialize",
+      "statement": "Define $T = \\lfloor m/k \\rfloor$ and randomly partition the examples, giving $T$ examples to each machine."
+    },
+    {
+      "id": "ASP308.2",
+      "type": "algorithm_step",
+      "name": "Local shuffle and initialize $w_{i,0}=0$",
+      "parent_id": "AP308.3",
+      "step_order": 2,
+      "subclass": "initialize",
+      "statement": "Each machine $i$ shuffles its local data and sets $w_{i,0} = 0$."
+    },
+    {
+      "id": "ASP308.3",
+      "type": "algorithm_step",
+      "name": "Local SGD loop",
+      "parent_id": "AP308.3",
+      "step_order": 3,
+      "subclass": "loop",
+      "statement": "For $t = 1,\\ldots,T$ on machine $i$: read local example $c_{i,t}$ and update $w_{i,t} \\leftarrow w_{i,t-1} - \\eta \\partial_w c_i(w_{i,t-1})$."
+    },
+    {
+      "id": "ASP308.4",
+      "type": "algorithm_step",
+      "name": "Aggregate by averaging",
+      "parent_id": "AP308.3",
+      "step_order": 4,
+      "subclass": "return",
+      "statement": "Aggregate from all computers $v = \\tfrac{1}{k}\\sum_{i=1}^k w_{i,T}$ and return $v$."
+    },
+    {
+      "id": "TP308.1",
+      "type": "theorem",
+      "name": "Banach's Fixed Point Theorem",
+      "section": "2.1 (cited)",
+      "statement": "If $(M,d)$ is a non-empty complete metric space, then any contraction mapping $f$ on $(M,d)$ has a unique fixed point $x^* = f(x^*)$.",
+      "statement_clean": "Contractions on complete metric spaces have unique fixed points.",
+      "assumptions": ["$(M,d)$ is a non-empty complete metric space", "$f: M \\to M$ is a contraction mapping"],
+      "conclusions": ["$f$ has a unique fixed point $x^* = f(x^*)$"],
+      "origin": "external",
+      "origin_citation": "Banach 1922"
+    },
+    {
+      "id": "CP308.1",
+      "type": "corollary",
+      "name": "Linear convergence of fixed-point iteration",
+      "section": "2.1",
+      "statement": "The sequence $x_t = f(x_{t-1})$ converges linearly with $d(x^*, x_t) \\leq \\|f\\|_{\\mathrm{Lip}}^t\\, d(x_0, x^*)$.",
+      "statement_clean": "Banach iteration converges geometrically.",
+      "assumptions": ["$f$ contraction with constant $\\|f\\|_{\\mathrm{Lip}} < 1$", "fixed point $x^* = f(x^*)$"],
+      "conclusions": ["$d(x^*, x_t) \\leq \\|f\\|_{\\mathrm{Lip}}^t d(x_0, x^*)$"],
+      "origin": "external",
+      "origin_citation": "Banach 1922"
+    },
+    {
+      "id": "LP308.1",
+      "type": "lemma",
+      "name": "SGD step is a contraction (Lemma 3)",
+      "section": "2.1",
+      "statement": "Let $c^* \\geq \\|\\partial_{\\hat y} L(x^i,y^i,\\hat y)\\|_{\\mathrm{Lip}}$. If $\\eta \\leq (\\|x^i\\|^2 c^* + \\lambda)^{-1}$, then the update $\\phi^i$ is a contraction in $\\ell_2$ with constant $1 - \\eta\\lambda$.",
+      "statement_clean": "Sufficiently small $\\eta$ makes the per-example gradient step a contraction.",
+      "assumptions": ["$L$ has Lipschitz gradient with constant $c^*$ in $\\hat y$", "$\\eta \\leq (\\|x^i\\|^2 c^* + \\lambda)^{-1}$"],
+      "conclusions": ["$\\phi^i$ is a contraction in $\\ell_2$ with Lipschitz constant $1 - \\eta\\lambda$"],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "PP308.1",
+      "type": "proof",
+      "name": "Proof of Lemma 3",
+      "section": "Appendix B",
+      "parent_id": "LP308.1",
+      "proves": "LP308.1",
+      "statement": "Decompose $w$ into components parallel and perpendicular to $x^i$, bound each component, and show the combined map shrinks distances by $1-\\eta\\lambda$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP308.1",
+      "type": "proof_step",
+      "name": "Rewrite update via $u(z)$",
+      "parent_id": "PP308.1",
+      "step_order": 1,
+      "subclass": "introduce_variable",
+      "statement": "Define $u(z) = \\partial_z L(y^i, z)$, which is increasing and Lipschitz with constant $c^*$. Then $\\phi^i(w) = (1-\\eta\\lambda)w - \\eta u(w\\cdot x^i)x^i$."
+    },
+    {
+      "id": "PSP308.2",
+      "type": "proof_step",
+      "name": "Decompose $w = w_\\parallel + w_\\perp$",
+      "parent_id": "PP308.1",
+      "step_order": 2,
+      "subclass": "case_split",
+      "statement": "Split $w$ into the component $w_\\parallel$ along $x^i$ and $w_\\perp$ orthogonal. Then $\\phi^i(w)_\\perp = (1-\\eta\\lambda)w_\\perp$ and $\\phi^i(w)_\\parallel = (1-\\eta\\lambda)w_\\parallel - \\eta u(w_\\parallel\\cdot x^i)x^i$."
+    },
+    {
+      "id": "PSP308.3",
+      "type": "proof_step",
+      "name": "Bound parallel component",
+      "parent_id": "PP308.1",
+      "step_order": 3,
+      "subclass": "bound_estimate",
+      "statement": "Using $|u(\\alpha(w))-u(\\alpha(v))| \\leq c^*|\\alpha(w)-\\alpha(v)|$ and $\\eta \\leq (\\beta^2 c^* + \\lambda)^{-1}$, derive $d(\\phi^i(w)_\\parallel,\\phi^i(v)_\\parallel) \\leq (1-\\eta\\lambda) d(w_\\parallel,v_\\parallel)$."
+    },
+    {
+      "id": "PSP308.4",
+      "type": "proof_step",
+      "name": "Combine components",
+      "parent_id": "PP308.1",
+      "step_order": 4,
+      "subclass": "conclude",
+      "statement": "Since $d(w,v) = \\sqrt{d^2(w_\\parallel,v_\\parallel) + d^2(w_\\perp,v_\\perp)}$, conclude $d(\\phi^i(w),\\phi^i(v)) \\leq (1-\\eta\\lambda) d(w,v)$."
+    },
+    {
+      "id": "LP308.2",
+      "type": "lemma",
+      "name": "Pointwise contraction lifts to distributions (Lemma 5)",
+      "section": "2.2",
+      "statement": "Given a metric space $(M,d)$ and a contraction $\\phi$ on $(M,d)$ with constant $c$, the induced map $p$ on $(P(M,d), W_z)$ is a contraction with the same constant $c$.",
+      "statement_clean": "Lifting a contraction pointwise yields a contraction in Wasserstein.",
+      "assumptions": ["$\\phi$ is a contraction on $(M,d)$ with constant $c$"],
+      "conclusions": ["$p$ is a contraction on $(P(M,d), W_z)$ with constant $c$"],
+      "origin": "paper"
+    },
+    {
+      "id": "LP308.3",
+      "type": "lemma",
+      "name": "Mixture of contractions is a contraction (Lemma 6)",
+      "section": "2.2",
+      "statement": "If $p_1,\\ldots,p_k$ are contractions with constants $c_1,\\ldots,c_k$ w.r.t. $W_z$ and $a_i \\geq 0$ with $\\sum_i a_i = 1$, then $p = \\sum_i a_i p_i$ is a contraction with constant at most $(\\sum_i a_i c_i^z)^{1/z}$.",
+      "statement_clean": "Convex mixtures of Wasserstein contractions remain contractions.",
+      "assumptions": ["$p_i$ contractions with constants $c_i$", "$a_i \\geq 0, \\sum_i a_i = 1$"],
+      "conclusions": ["$p = \\sum_i a_i p_i$ is a contraction with constant $\\leq (\\sum_i a_i c_i^z)^{1/z}$"],
+      "origin": "paper"
+    },
+    {
+      "id": "CP308.2",
+      "type": "corollary",
+      "name": "Uniform contraction constant for mixtures (Corollary 7)",
+      "section": "2.2",
+      "statement": "If $c_i \\leq c$ for all $i$, then $p = \\sum_i a_i p_i$ is a contraction with constant at most $c$.",
+      "statement_clean": "Mixture inherits the worst component constant.",
+      "origin": "paper"
+    },
+    {
+      "id": "TP308.2",
+      "type": "theorem",
+      "name": "SGD operator is a contraction with stationary distribution (Theorem 8)",
+      "section": "2.2",
+      "statement": "For any $z \\in \\mathbb{N}$, if $\\eta \\leq \\eta^*$, then $p^*$ is a contraction on $(M, W_z)$ with rate $1-\\eta\\lambda$; there is a unique fixed point $D_\\eta^*$ with $p^*(D_\\eta^*) = D_\\eta^*$, and if $w_0=0$ a.s. then $W_z(D_\\eta^0, D_\\eta^*) = G/\\lambda$ and $W_z(D_\\eta^T, D_\\eta^*) \\leq (G/\\lambda)(1-\\eta\\lambda)^T$.",
+      "statement_clean": "Mixture SGD operator contracts in Wasserstein and converges geometrically to a unique stationary distribution.",
+      "assumptions": ["$\\eta \\leq \\eta^*$", "$z \\in \\mathbb{N}$"],
+      "conclusions": [
+        "$p^*$ is a contraction on $(M, W_z)$ with rate $1-\\eta\\lambda$",
+        "Unique fixed point $D_\\eta^*$ exists",
+        "If $w_0 = 0$: $W_z(D_\\eta^0, D_\\eta^*) = G/\\lambda$",
+        "$W_z(D_\\eta^T, D_\\eta^*) \\leq (G/\\lambda)(1-\\eta\\lambda)^T$"
+      ],
+      "origin": "paper",
+      "tags": ["existence", "uniqueness", "convergence"]
+    },
+    {
+      "id": "PP308.2",
+      "type": "proof",
+      "name": "Proof of Theorem 8",
+      "section": "Appendix F",
+      "parent_id": "TP308.2",
+      "proves": "TP308.2",
+      "statement": "Combine Lemma 3, Lemma 5, and Corollary 7 to get the contraction rate; bound $\\|w_t\\|$ by $G/\\lambda$ via Theorem 44; apply Corollary 2 (Banach iteration) for the geometric convergence rate.",
+      "origin": "paper"
+    },
+    {
+      "id": "TP308.3",
+      "type": "theorem",
+      "name": "Bias of stationary mean (Theorem 9)",
+      "section": "2.3",
+      "statement": "$c(\\mathbb{E}_{w \\in D_\\eta^*}[w]) - \\min_{w \\in \\mathbb{R}^n} c(w) \\leq 2\\eta G^2$.",
+      "statement_clean": "The cost at the stationary mean is within $2\\eta G^2$ of the optimum.",
+      "assumptions": ["$\\eta \\leq \\eta^*$", "stationary distribution $D_\\eta^*$ from Theorem 8"],
+      "conclusions": ["$c(\\mathbb{E}_{w \\in D_\\eta^*}[w]) - \\min_w c(w) \\leq 2\\eta G^2$"],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "PP308.3",
+      "type": "proof",
+      "name": "Proof of Theorem 9",
+      "section": "Appendix G",
+      "parent_id": "TP308.3",
+      "proves": "TP308.3",
+      "statement": "Use a regret-minimization argument with potential $\\Phi_t = (w_{t+1}-w^*)^2/(2\\eta)$ to bound regret by $T\\eta M^2/2 + D^2/(2\\eta)$, then apply Cesaro limits and Jensen.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP308.5",
+      "type": "proof_step",
+      "name": "Online-to-batch via potential",
+      "parent_id": "PP308.3",
+      "step_order": 1,
+      "subclass": "apply_lemma",
+      "statement": "Apply Theorem 46: regret of fixed-rate SGD on convex losses bounded by $T\\eta M^2/2 + D^2/(2\\eta)$."
+    },
+    {
+      "id": "PSP308.6",
+      "type": "proof_step",
+      "name": "Cesaro limit of regret bound",
+      "parent_id": "PP308.3",
+      "step_order": 2,
+      "subclass": "apply_lemma",
+      "statement": "Using Theorem 48, $\\lim_{T\\to\\infty} \\tfrac{1}{T}\\mathbb{E}[R_T] \\geq \\mathbb{E}_{w \\in D_\\eta^*}[c(w)] - \\min_w c(w)$. Combine to get $\\eta M^2/2 \\geq \\mathbb{E}_{w \\in D_\\eta^*}[c(w)] - \\min_w c(w)$."
+    },
+    {
+      "id": "PSP308.7",
+      "type": "proof_step",
+      "name": "Jensen at the mean",
+      "parent_id": "PP308.3",
+      "step_order": 3,
+      "subclass": "conclude",
+      "statement": "By Jensen (since $c$ convex), $c(\\mathbb{E}[w]) \\leq \\mathbb{E}[c(w)]$, so $c(\\mathbb{E}_{w \\in D_\\eta^*}[w]) - \\min_w c(w) \\leq \\eta M^2/2$. Substitute $M = 2G$ (Corollary 45) to get $2\\eta G^2$."
+    },
+    {
+      "id": "TP308.4",
+      "type": "theorem",
+      "name": "Variance of stationary distribution (Theorem 10)",
+      "section": "2.3",
+      "statement": "$\\mathbb{E}_{w \\in D_\\eta^*}[(w-w^*)^2] \\leq \\tfrac{4\\eta G^2}{(2-\\eta\\lambda)\\lambda}$, i.e. $O(\\eta G^2/\\lambda)$.",
+      "statement_clean": "Stationary distribution concentrates near the optimum with variance $O(\\eta G^2/\\lambda)$.",
+      "assumptions": ["$\\eta \\leq \\eta^*$", "stationary distribution $D_\\eta^*$"],
+      "conclusions": ["$\\mathbb{E}_{w \\in D_\\eta^*}[(w-w^*)^2] \\leq 4\\eta G^2 / ((2-\\eta\\lambda)\\lambda)$"],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "PP308.4",
+      "type": "proof",
+      "name": "Proof of Theorem 10",
+      "section": "Appendix I",
+      "parent_id": "TP308.4",
+      "proves": "TP308.4",
+      "statement": "Embed SGD into an infinite-horizon average-reward MDP with reward $w^2$; solve the supremum Bellman equation explicitly (Theorem 65); apply Theorem 66 with $r=\\eta\\lambda$ and $M=2\\eta G$.",
+      "origin": "paper"
+    },
+    {
+      "id": "TP308.5",
+      "type": "theorem",
+      "name": "Cost gap from a near-mean distribution (Theorem 11)",
+      "section": "2.3",
+      "statement": "Given $c$ with $\\|c\\|_{\\mathrm{Lip}}, \\|\\nabla c\\|_{\\mathrm{Lip}}$ bounded and bounded $\\sigma_D$, for any $v$: $\\mathbb{E}_{w \\in D}[c(w)] - \\min_w c(w) \\leq W_2(v,D)\\sqrt{2\\|\\nabla c\\|_{\\mathrm{Lip}}(c(v)-\\min_w c(w))} + \\tfrac{\\|\\nabla c\\|_{\\mathrm{Lip}}}{2}W_2(v,D)^2 + (c(v)-\\min_w c(w))$.",
+      "statement_clean": "Bounds the expected suboptimality of a distribution by its $W_2$-distance to a reference point and the reference's suboptimality.",
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "PP308.5",
+      "type": "proof",
+      "name": "Proof of Theorem 11",
+      "section": "Appendix K",
+      "parent_id": "TP308.5",
+      "proves": "TP308.5",
+      "statement": "Decompose $c(w') - c(v)$ into linear and quadratic remainders via Taylor with Lipschitz $\\nabla c$, then bound each piece using extended Kantorovich-Rubinstein (Theorem 24) and Lemma 13.",
+      "origin": "paper"
+    },
+    {
+      "id": "TP308.6",
+      "type": "theorem",
+      "name": "Main bound for ParallelSGD (Theorem 12)",
+      "section": "2.3",
+      "statement": "If $\\eta \\leq \\eta^*$ and $T = \\tfrac{\\ln k - (\\ln \\eta + \\ln \\lambda)}{2\\eta\\lambda}$, then $\\mathbb{E}_{w \\in D_\\eta^{T,k}}[c(w)] - \\min_w c(w) \\leq \\tfrac{8\\eta G^2}{\\sqrt{k}\\lambda}\\sqrt{\\|\\nabla c\\|_{\\mathrm{Lip}}} + \\tfrac{8\\eta G^2 \\|\\nabla c\\|_{\\mathrm{Lip}}}{k\\lambda} + 2\\eta G^2$.",
+      "statement_clean": "Final convergence guarantee for parallel SGD with $k$ machines and $T$ local steps.",
+      "assumptions": ["$\\eta \\leq \\eta^*$", "$T = (\\ln k - \\ln \\eta - \\ln \\lambda)/(2\\eta\\lambda)$"],
+      "conclusions": ["$\\mathbb{E}_{w \\in D_\\eta^{T,k}}[c(w)] - \\min_w c(w) \\leq \\tfrac{8\\eta G^2}{\\sqrt{k}\\lambda}\\sqrt{\\|\\nabla c\\|_{\\mathrm{Lip}}} + \\tfrac{8\\eta G^2 \\|\\nabla c\\|_{\\mathrm{Lip}}}{k\\lambda} + 2\\eta G^2$"],
+      "origin": "paper",
+      "tags": ["bound", "convergence"]
+    },
+    {
+      "id": "PP308.6",
+      "type": "proof",
+      "name": "Proof of Theorem 12",
+      "section": "Appendix K",
+      "parent_id": "TP308.6",
+      "proves": "TP308.6",
+      "statement": "Combine variance reduction by averaging $k$ machines (Theorem 34), the bias decay $G(1-\\eta\\lambda)^T/\\lambda$ from Theorem 8, the choice of $T$ to balance bias and variance, and apply Theorem 11 with $v = \\mu_{D_\\eta^*}$ and Theorem 9.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP308.8",
+      "type": "proof_step",
+      "name": "Variance shrinks by $\\sqrt{k}$",
+      "parent_id": "PP308.6",
+      "step_order": 1,
+      "subclass": "apply_lemma",
+      "statement": "By Theorem 34, $\\mu_{D_\\eta^{T,k}} = \\mu_{D_\\eta^T}$ and $\\sigma_{D_\\eta^{T,k}} \\leq \\sigma_{D_\\eta^T}/\\sqrt{k}$."
+    },
+    {
+      "id": "PSP308.9",
+      "type": "proof_step",
+      "name": "Bias decays geometrically",
+      "parent_id": "PP308.6",
+      "step_order": 2,
+      "subclass": "apply_lemma",
+      "statement": "By Corollary 71, $d(\\mu_{D_\\eta^{T,k}}, \\mu_{D_\\eta^*}) \\leq (G/\\lambda)(1-\\eta\\lambda)^T$ and $\\sigma_{D_\\eta^{T,k}} \\leq \\sigma_{D_\\eta^{T,k}}^{\\mu_{D_\\eta^*}}$ controlled similarly."
+    },
+    {
+      "id": "PSP308.10",
+      "type": "proof_step",
+      "name": "Choose $T$ to balance terms",
+      "parent_id": "PP308.6",
+      "step_order": 3,
+      "subclass": "substitute",
+      "statement": "Setting $T = (\\ln k - \\ln\\eta - \\ln\\lambda)/(2\\eta\\lambda)$ gives $\\sigma_{D_\\eta^{T,k}}^{\\mu_{D_\\eta^*}} \\leq 4\\sqrt{\\eta} G/\\sqrt{k\\lambda}$."
+    },
+    {
+      "id": "PSP308.11",
+      "type": "proof_step",
+      "name": "Apply Theorem 11 and Theorem 9",
+      "parent_id": "PP308.6",
+      "step_order": 4,
+      "subclass": "conclude",
+      "statement": "Apply Theorem 11 with $v = \\mu_{D_\\eta^*}$ and substitute $c(\\mu_{D_\\eta^*}) - \\min_w c(w) \\leq 2\\eta G^2$ from Theorem 9 to obtain the stated three-term bound."
+    },
+    {
+      "id": "LP308.4",
+      "type": "lemma",
+      "name": "Gradient norm bound for convex Lipschitz-gradient $f$ (Lemma 13)",
+      "section": "Appendix A",
+      "statement": "If $f$ convex with $\\nabla f$ Lipschitz with constant $H$ and $x^*$ minimizes $f$, then $\\|\\nabla f(x)\\|^2 \\leq 2H[f(x) - f(x^*)]$.",
+      "statement_clean": "Gradient magnitude bounded by suboptimality times smoothness.",
+      "origin": "external",
+      "origin_citation": "Langford, Smola, Zinkevich [6]"
+    },
+    {
+      "id": "LP308.5",
+      "type": "lemma",
+      "name": "Strongly convex centering (Lemma 14)",
+      "section": "Appendix A",
+      "statement": "If $c$ is $\\lambda$-strongly convex with minimizer $x^*$, then $f(x) = c(x) - \\tfrac{\\lambda}{2}(x-x^*)^2$ is convex and $x^*$ minimizes $f$.",
+      "statement_clean": "Subtracting the strongly-convex quadratic at the minimizer yields a convex function with the same minimizer.",
+      "origin": "paper"
+    },
+    {
+      "id": "LP308.6",
+      "type": "lemma",
+      "name": "Strongly convex contraction in distance (Lemma 15)",
+      "section": "Appendix A",
+      "statement": "If $c$ is $\\lambda$-strongly convex with minimizer $x^*$, $\\nabla c$ is Lipschitz, $f(x) = c(x) - \\tfrac{\\lambda}{2}(x-x^*)^2$, $\\eta < (\\lambda + \\|\\nabla f\\|_{\\mathrm{Lip}})^{-1}$, $\\eta < 1$, then for all $x$: $d(x - \\eta\\nabla c(x), x^*) \\leq (1-\\eta\\lambda) d(x, x^*)$.",
+      "statement_clean": "Gradient step contracts toward optimum with rate $1-\\eta\\lambda$.",
+      "origin": "paper"
+    },
+    {
+      "id": "LP308.7",
+      "type": "lemma",
+      "name": "Contraction toward optimum for regularized loss (Lemma 16)",
+      "section": "Appendix A",
+      "statement": "Given convex $L$ with Lipschitz $\\nabla L$ and $c(x) = \\tfrac{\\lambda}{2}x^2 + L(x)$, if $\\eta < (\\lambda + \\|\\nabla L\\|_{\\mathrm{Lip}})^{-1}$, then $d(x - \\eta\\nabla c(x), x^*) \\leq (1-\\eta\\lambda) d(x, x^*)$ for all $x$.",
+      "statement_clean": "Lemma 15 specialized to the regularized-loss form.",
+      "origin": "paper"
+    },
+    {
+      "id": "TP308.7",
+      "type": "theorem",
+      "name": "Pairwise contraction of gradient step (Theorem 17)",
+      "section": "Appendix A",
+      "statement": "Given convex $L$ with Lipschitz $\\nabla L$ and $c(x) = \\tfrac{\\lambda}{2}x^2 + L(x)$, if $\\eta < (\\lambda + \\|\\nabla L\\|_{\\mathrm{Lip}})^{-1}$, then $d(x - \\eta\\nabla c(x), y - \\eta\\nabla c(y)) \\leq (1-\\eta\\lambda) d(x,y)$ for all $x,y$.",
+      "statement_clean": "Pairwise contraction property of one batch gradient step.",
+      "origin": "paper"
+    },
+    {
+      "id": "TP308.8",
+      "type": "theorem",
+      "name": "Kantorovich-Rubinstein theorem (Theorem 22)",
+      "section": "Appendix D.1 (cited)",
+      "statement": "If $(M,d)$ is a separable metric space, then for any distributions $P,Q$, $W_1(P,Q) = \\sup_{\\|f\\|_{\\mathrm{Lip}} \\leq 1} (\\int f\\, dP - \\int f\\, dQ)$.",
+      "statement_clean": "Dual representation of the $W_1$ distance.",
+      "origin": "external",
+      "origin_citation": "Kantorovich-Rubinstein"
+    },
+    {
+      "id": "CP308.3",
+      "type": "corollary",
+      "name": "Means closer than $W_1$ (Corollary 23)",
+      "section": "Appendix D.1",
+      "statement": "If $d$ is Euclidean, then $d(\\mu_P, \\mu_Q) \\leq W_1(P, Q)$.",
+      "statement_clean": "Means of distributions are no farther than $W_1$ distance.",
+      "origin": "paper"
+    },
+    {
+      "id": "TP308.9",
+      "type": "theorem",
+      "name": "Higher-order Kantorovich-Rubinstein extension (Theorem 24)",
+      "section": "Appendix D.1",
+      "statement": "For any $i \\geq 1$ and $f$ with $\\|f\\|_{\\mathrm{Lip}_i}$ bounded, and distributions $X,Y$: $|\\mathbb{E}_{x \\in X}[f(x)] - \\mathbb{E}_{y \\in Y}[f(y)]| \\leq \\|f\\|_{\\mathrm{Lip}_i}(W_i(X,Y))^i$.",
+      "statement_clean": "Generalization of Kantorovich-Rubinstein to Holder-$i$ functions.",
+      "origin": "paper"
+    },
+    {
+      "id": "TP308.10",
+      "type": "theorem",
+      "name": "Variance of an i.i.d. average (Theorem 34)",
+      "section": "Appendix D.2",
+      "statement": "If $X^1,\\ldots,X^k$ are i.i.d. random vectors over $\\mathbb{R}^n$ and $A = \\tfrac{1}{k}\\sum_i X^i$, then $\\mu_A = \\mu_{X^1}$ and $\\sigma_A \\leq \\sigma_{X^1}/\\sqrt{k}$.",
+      "statement_clean": "Standard $1/\\sqrt{k}$ variance reduction by averaging.",
+      "origin": "external",
+      "origin_citation": "Classical probability"
+    },
+    {
+      "id": "TP308.11",
+      "type": "theorem",
+      "name": "Boundedness of SGD iterates (Theorem 44)",
+      "section": "Appendix E",
+      "statement": "If $w_0 = 0$, $\\lambda \\leq 1$, and $0 \\leq \\eta \\leq 1/\\lambda$, then $\\|w_t\\| \\leq G/\\lambda$ for all SGD iterates.",
+      "statement_clean": "SGD iterates remain in a ball of radius $G/\\lambda$.",
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "TP308.12",
+      "type": "theorem",
+      "name": "Online regret bound for fixed-rate SGD (Theorem 46)",
+      "section": "Appendix G",
+      "statement": "For convex losses $\\{c_t\\}$ on domain $F$ of diameter $D$ with gradient bound $M$, fixed-rate SGD has regret $R_T \\leq \\tfrac{T\\eta M^2}{2} + \\tfrac{D^2}{2\\eta}$.",
+      "statement_clean": "Standard fixed-rate online gradient descent regret.",
+      "origin": "external",
+      "origin_citation": "Zinkevich 2003 [11]"
+    },
+    {
+      "id": "TP308.13",
+      "type": "theorem",
+      "name": "Closed-form Bellman solution (Theorem 65)",
+      "section": "Appendix I",
+      "statement": "The solution to the Bellman equation $V_\\gamma^*(w) = w^2 + \\gamma \\sup_{a \\in A(w)} \\mathbb{E}[V_\\gamma^*(a)]$ is $V_\\gamma^*(w) = \\tfrac{1}{1 - \\gamma(1-r)^2}\\big(w^2 + \\tfrac{\\gamma}{1-\\gamma}M^2\\big)$.",
+      "statement_clean": "Closed-form value function for the auxiliary contractive MDP.",
+      "origin": "paper"
+    },
+    {
+      "id": "TP308.14",
+      "type": "theorem",
+      "name": "Stationary $\\mathbb{E}[w^2]$ bound (Theorem 66)",
+      "section": "Appendix I",
+      "statement": "If $p$ is a contraction on $(P(S,d),W_z)$ with $p(I_w) \\in A(w)$, then there is a unique fixed point $D^*$ and $\\mathbb{E}_{w \\in D^*}[w^2] \\leq \\tfrac{M^2}{(2-r)r}$.",
+      "statement_clean": "Bellman value bound transferred to any contractive stationary distribution.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP308.1",
+      "type": "equation",
+      "name": "Stochastic gradient update with $L_2$ regularization",
+      "section": "Appendix J",
+      "statement": "$w_{t+1} = w_t - \\eta(\\lambda w_t + \\nabla f^i(w_t))$, the SGD update for $c^i(w) = \\tfrac{\\lambda}{2}w^2 + L(y^i, w \\cdot x^i)$.",
+      "statement_clean": "Update equation used throughout the analysis.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP308.1",
+      "type": "example",
+      "name": "Email-system experiments with Huber and squared loss",
+      "section": "3",
+      "statement": "Train SimuParallelSGD on a proprietary email dataset with $3{,}189{,}235$ time-stamped instances, $785{,}751{,}531$ hashed binary features (218-dim hashed space, ~313 features/instance, sparsity 0.0012); compare $1$, $10$, $100$ machines under Huber and squared loss with $\\lambda \\in \\{10^{-3}, 10^{-6}\\}$ and $\\eta = 10^{-3}$.",
+      "statement_clean": "Empirical evaluation showing parallelization reduces wall-clock time and helps more when $\\lambda$ is small.",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP308.1",
+      "type": "problem",
+      "name": "Regularized risk minimization",
+      "section": "2.1",
+      "statement": "Find $w^* = \\arg\\min_w c(w)$ where $c(w) = \\tfrac{1}{m}\\sum_i c^i(w)$ and $c^i(w) = \\tfrac{\\lambda}{2}\\|w\\|^2 + L(x^i, y^i, w \\cdot x^i)$.",
+      "statement_clean": "Convex regularized empirical risk minimization solved by ParallelSGD.",
+      "subclass": "optimization",
+      "origin": "paper"
+    },
+    {
+      "id": "RP308.1",
+      "type": "remark",
+      "name": "Discussion of the bound",
+      "section": "2.4",
+      "statement": "The bound has no explicit dependence on $m$; modulo logs, with $G=1, \\|\\nabla c\\|_{\\mathrm{Lip}}=1$, $\\kappa = 1/\\lambda$, and target $\\rho = \\eta$, ParallelSGD needs $k = 1/\\lambda$ machines running for $1/(\\eta\\lambda)$ time, matching the [2] iteration count modulo logs but with a $1/\\lambda$ wall-clock speedup. Halving $\\eta$ and roughly doubling $T$ halves the error; if $k > \\|\\nabla c\\|_{\\mathrm{Lip}}/\\lambda$ the $\\eta G^2$ term dominates.",
+      "statement_clean": "Discusses how the bound translates to wall-clock speedups versus baseline SGD analyses.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP308.2",
+      "type": "remark",
+      "name": "Comparison to prior parallel-SGD approaches",
+      "section": "1",
+      "statement": "Prior approaches: distributed subgradient [3,9] (high IO, many MapReduce passes), distributed convex solver [7] (single MapReduce, but full batch solver per machine and only variance reduction), multicore SGD [5] (low-latency only). This paper: high latency tolerance, MapReduce, low IO, linear scalability.",
+      "statement_clean": "Positions ParallelSGD against [3,9], [7], and [5] in a feature table.",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "DP308.1", "target": "AP308.1", "type": "uses"},
+    {"source": "DP308.1", "target": "AP308.3", "type": "uses"},
+    {"source": "DP308.1", "target": "ProbP308.1", "type": "defines"},
+    {"source": "AP308.1", "target": "AP308.2", "type": "uses"},
+    {"source": "AP308.2", "target": "AP308.3", "type": "uses"},
+    {"source": "AP308.3", "target": "ProbP308.1", "type": "solves"},
+    {"source": "AP308.3", "target": "ExP308.1", "type": "illustrates"},
+    {"source": "DP308.6", "target": "DP308.7", "type": "uses"},
+    {"source": "DP308.4", "target": "DP308.6", "type": "uses"},
+    {"source": "DP308.7", "target": "LP308.1", "type": "uses"},
+    {"source": "DP308.8", "target": "LP308.1", "type": "uses"},
+    {"source": "AssumP308.1", "target": "LP308.1", "type": "uses"},
+    {"source": "DP308.6", "target": "TP308.1", "type": "uses"},
+    {"source": "TP308.1", "target": "CP308.1", "type": "uses"},
+    {"source": "DP308.9", "target": "LP308.2", "type": "uses"},
+    {"source": "DP308.6", "target": "LP308.2", "type": "uses"},
+    {"source": "DP308.10", "target": "LP308.2", "type": "uses"},
+    {"source": "LP308.2", "target": "LP308.3", "type": "uses"},
+    {"source": "LP308.3", "target": "CP308.2", "type": "uses"},
+    {"source": "DP308.11", "target": "TP308.2", "type": "uses"},
+    {"source": "DP308.8", "target": "TP308.2", "type": "uses"},
+    {"source": "LP308.1", "target": "TP308.2", "type": "uses"},
+    {"source": "LP308.2", "target": "TP308.2", "type": "uses"},
+    {"source": "CP308.2", "target": "TP308.2", "type": "uses"},
+    {"source": "CP308.1", "target": "TP308.2", "type": "uses"},
+    {"source": "TP308.11", "target": "TP308.2", "type": "uses"},
+    {"source": "PP308.1", "target": "LP308.1", "type": "proves"},
+    {"source": "PP308.2", "target": "TP308.2", "type": "proves"},
+    {"source": "PP308.3", "target": "TP308.3", "type": "proves"},
+    {"source": "PP308.4", "target": "TP308.4", "type": "proves"},
+    {"source": "PP308.5", "target": "TP308.5", "type": "proves"},
+    {"source": "PP308.6", "target": "TP308.6", "type": "proves"},
+    {"source": "TP308.12", "target": "PP308.3", "type": "uses"},
+    {"source": "TP308.2", "target": "TP308.3", "type": "uses"},
+    {"source": "TP308.2", "target": "TP308.4", "type": "uses"},
+    {"source": "TP308.13", "target": "TP308.14", "type": "uses"},
+    {"source": "TP308.14", "target": "TP308.4", "type": "uses"},
+    {"source": "LP308.4", "target": "TP308.5", "type": "uses"},
+    {"source": "TP308.9", "target": "TP308.5", "type": "uses"},
+    {"source": "TP308.8", "target": "CP308.3", "type": "uses"},
+    {"source": "CP308.3", "target": "TP308.6", "type": "uses"},
+    {"source": "TP308.10", "target": "TP308.6", "type": "uses"},
+    {"source": "TP308.5", "target": "TP308.6", "type": "uses"},
+    {"source": "TP308.3", "target": "TP308.6", "type": "uses"},
+    {"source": "TP308.4", "target": "TP308.6", "type": "uses"},
+    {"source": "TP308.6", "target": "AP308.3", "type": "uses"},
+    {"source": "DP308.12", "target": "LP308.5", "type": "uses"},
+    {"source": "LP308.5", "target": "LP308.6", "type": "uses"},
+    {"source": "LP308.4", "target": "LP308.6", "type": "uses"},
+    {"source": "LP308.6", "target": "LP308.7", "type": "uses"},
+    {"source": "LP308.7", "target": "TP308.7", "type": "uses"},
+    {"source": "EP308.1", "target": "AP308.1", "type": "uses"},
+    {"source": "PSP308.1", "target": "PSP308.2", "type": "uses"},
+    {"source": "PSP308.2", "target": "PSP308.3", "type": "uses"},
+    {"source": "PSP308.3", "target": "PSP308.4", "type": "uses"},
+    {"source": "PSP308.5", "target": "PSP308.6", "type": "uses"},
+    {"source": "PSP308.6", "target": "PSP308.7", "type": "uses"},
+    {"source": "PSP308.8", "target": "PSP308.10", "type": "uses"},
+    {"source": "PSP308.9", "target": "PSP308.10", "type": "uses"},
+    {"source": "PSP308.10", "target": "PSP308.11", "type": "uses"},
+    {"source": "ASP308.1", "target": "ASP308.2", "type": "uses"},
+    {"source": "ASP308.2", "target": "ASP308.3", "type": "uses"},
+    {"source": "ASP308.3", "target": "ASP308.4", "type": "uses"}
+  ]
+}

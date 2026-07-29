@@ -1,0 +1,723 @@
+{
+  "metadata": {
+    "title": "Denoising Diffusion Probabilistic Models",
+    "paper_num": 230,
+    "authors": ["Jonathan Ho", "Ajay Jain", "Pieter Abbeel"],
+    "year": 2020,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "DP230.1",
+      "type": "definition",
+      "name": "Diffusion model (reverse process)",
+      "section": "2 Background",
+      "statement": "A diffusion model is a latent variable model $p_\\theta(\\bx_0) \\defeq \\int p_\\theta(\\bx_{0:T})\\, d\\bx_{1:T}$ whose joint, the reverse process, is a Markov chain $p_\\theta(\\bx_{0:T}) = p(\\bx_T)\\prod_{t=1}^T p_\\theta(\\bx_{t-1}|\\bx_t)$ with learned Gaussian transitions $p_\\theta(\\bx_{t-1}|\\bx_t) = \\mathcal{N}(\\bx_{t-1};\\bmu_\\theta(\\bx_t,t),\\bSigma_\\theta(\\bx_t,t))$ starting at $p(\\bx_T)=\\mathcal{N}(\\bzero,\\bI)$.",
+      "statement_clean": "A diffusion model is a latent-variable model whose joint distribution (the reverse process) is a Markov chain of learned Gaussian transitions starting from a standard-normal prior.",
+      "origin": "paper",
+      "tags": ["latent-variable", "Markov-chain"]
+    },
+    {
+      "id": "DP230.2",
+      "type": "definition",
+      "name": "Forward (diffusion) process",
+      "section": "2 Background",
+      "statement": "The approximate posterior $q(\\bx_{1:T}|\\bx_0)\\defeq\\prod_{t=1}^T q(\\bx_t|\\bx_{t-1})$ with $q(\\bx_t|\\bx_{t-1}) = \\mathcal{N}(\\bx_t;\\sqrt{1-\\beta_t}\\,\\bx_{t-1},\\beta_t\\bI)$ is a fixed Markov chain that gradually adds Gaussian noise according to a variance schedule $\\beta_1,\\dotsc,\\beta_T$.",
+      "statement_clean": "The forward process is a fixed Markov chain that adds Gaussian noise step-by-step according to a variance schedule.",
+      "origin": "paper",
+      "tags": ["Markov-chain", "noise-schedule"]
+    },
+    {
+      "id": "DP230.3",
+      "type": "definition",
+      "name": "Notation $\\alpha_t,\\bar\\alpha_t$",
+      "section": "2 Background",
+      "statement": "Set $\\alpha_t \\defeq 1-\\beta_t$ and $\\bar\\alpha_t \\defeq \\prod_{s=1}^t \\alpha_s$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP230.4",
+      "type": "definition",
+      "name": "Discrete reverse-process decoder $p_\\theta(\\bx_0|\\bx_1)$",
+      "section": "3.3 Data scaling and reverse process decoder",
+      "statement": "$p_\\theta(\\bx_0|\\bx_1) = \\prod_{i=1}^D \\int_{\\delta_-(x_0^i)}^{\\delta_+(x_0^i)} \\mathcal{N}(x;\\mu_\\theta^i(\\bx_1,1),\\sigma_1^2)\\,dx$ with bin endpoints $\\delta_\\pm(x)$ extending to $\\pm\\infty$ at the image-range boundaries; ensures the variational bound is a lossless codelength of discrete pixel data.",
+      "origin": "paper",
+      "tags": ["discrete-likelihood", "decoder"]
+    },
+    {
+      "id": "DP230.5",
+      "type": "definition",
+      "name": "$\\bepsilon$-prediction parameterization",
+      "section": "3.2 Reverse process and $L_{1:T-1}$",
+      "statement": "Parameterize the reverse-process mean as $\\bmu_\\theta(\\bx_t,t) = \\frac{1}{\\sqrt{\\alpha_t}}\\!\\left(\\bx_t - \\frac{\\beta_t}{\\sqrt{1-\\bar\\alpha_t}}\\bepsilon_\\theta(\\bx_t,t)\\right)$, where $\\bepsilon_\\theta$ is a function approximator predicting the noise $\\bepsilon$ from $\\bx_t$.",
+      "origin": "paper",
+      "tags": ["parameterization", "score-matching"]
+    },
+    {
+      "id": "EP230.1",
+      "type": "equation",
+      "name": "Variational bound on NLL",
+      "section": "2 Background",
+      "statement": "$\\E[-\\log p_\\theta(\\bx_0)] \\le \\Eb{q}{-\\log p(\\bx_T) - \\sum_{t\\ge 1}\\log\\frac{p_\\theta(\\bx_{t-1}|\\bx_t)}{q(\\bx_t|\\bx_{t-1})}} =: L$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP230.2",
+      "type": "equation",
+      "name": "KL-decomposed variational bound",
+      "section": "2 Background",
+      "statement": "$L = \\E_q\\!\\left[\\underbrace{\\kl{q(\\bx_T|\\bx_0)}{p(\\bx_T)}}_{L_T} + \\sum_{t>1}\\underbrace{\\kl{q(\\bx_{t-1}|\\bx_t,\\bx_0)}{p_\\theta(\\bx_{t-1}|\\bx_t)}}_{L_{t-1}} \\underbrace{-\\log p_\\theta(\\bx_0|\\bx_1)}_{L_0}\\right]$.",
+      "origin": "paper",
+      "tags": ["variance-reduction", "Rao-Blackwell"]
+    },
+    {
+      "id": "EP230.3",
+      "type": "equation",
+      "name": "Closed-form forward marginal",
+      "section": "2 Background",
+      "statement": "$q(\\bx_t|\\bx_0) = \\mathcal{N}(\\bx_t;\\sqrt{\\bar\\alpha_t}\\,\\bx_0,(1-\\bar\\alpha_t)\\bI)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP230.4",
+      "type": "equation",
+      "name": "Forward-process posterior $q(\\bx_{t-1}|\\bx_t,\\bx_0)$",
+      "section": "2 Background",
+      "statement": "$q(\\bx_{t-1}|\\bx_t,\\bx_0)=\\mathcal{N}(\\bx_{t-1};\\tilde\\bmu_t(\\bx_t,\\bx_0),\\tilde\\beta_t\\bI)$ with $\\tilde\\bmu_t(\\bx_t,\\bx_0)=\\frac{\\sqrt{\\bar\\alpha_{t-1}}\\beta_t}{1-\\bar\\alpha_t}\\bx_0+\\frac{\\sqrt{\\alpha_t}(1-\\bar\\alpha_{t-1})}{1-\\bar\\alpha_t}\\bx_t$ and $\\tilde\\beta_t=\\frac{1-\\bar\\alpha_{t-1}}{1-\\bar\\alpha_t}\\beta_t$.",
+      "origin": "paper",
+      "tags": ["Gaussian-posterior"]
+    },
+    {
+      "id": "EP230.5",
+      "type": "equation",
+      "name": "$L_{t-1}$ as $\\bepsilon$-prediction MSE",
+      "section": "3.2 Reverse process and $L_{1:T-1}$",
+      "statement": "$L_{t-1}-C = \\Eb{\\bx_0,\\bepsilon}{\\frac{\\beta_t^2}{2\\sigma_t^2\\alpha_t(1-\\bar\\alpha_t)}\\big\\|\\bepsilon - \\bepsilon_\\theta(\\sqrt{\\bar\\alpha_t}\\bx_0+\\sqrt{1-\\bar\\alpha_t}\\bepsilon,t)\\big\\|^2}$.",
+      "origin": "paper",
+      "tags": ["denoising-score-matching"]
+    },
+    {
+      "id": "EP230.6",
+      "type": "equation",
+      "name": "Simplified training objective $L_{\\mathrm{simple}}$",
+      "section": "3.4 Simplified training objective",
+      "statement": "$L_{\\mathrm{simple}}(\\theta) \\defeq \\Eb{t,\\bx_0,\\bepsilon}{\\big\\|\\bepsilon - \\bepsilon_\\theta(\\sqrt{\\bar\\alpha_t}\\bx_0+\\sqrt{1-\\bar\\alpha_t}\\bepsilon,t)\\big\\|^2}$ with $t\\sim\\mathrm{Unif}\\{1,\\dotsc,T\\}$.",
+      "origin": "paper",
+      "tags": ["training-objective", "weighted-vb"]
+    },
+    {
+      "id": "EP230.7",
+      "type": "equation",
+      "name": "Alternate variational bound (autoregressive form)",
+      "section": "B Extended derivations / 4.3 Progressive coding",
+      "statement": "$L = \\kl{q(\\bx_T)}{p(\\bx_T)} + \\E_q\\!\\left[\\sum_{t\\ge 1} \\kl{q(\\bx_{t-1}|\\bx_t)}{p_\\theta(\\bx_{t-1}|\\bx_t)}\\right] + H(\\bx_0)$.",
+      "origin": "paper",
+      "tags": ["alternate-bound"]
+    },
+    {
+      "id": "EP230.8",
+      "type": "equation",
+      "name": "Progressive estimate $\\hat\\bx_0$",
+      "section": "4.3 Progressive coding",
+      "statement": "$\\hat\\bx_0 = (\\bx_t - \\sqrt{1-\\bar\\alpha_t}\\,\\bepsilon_\\theta(\\bx_t))/\\sqrt{\\bar\\alpha_t}$.",
+      "origin": "paper",
+      "tags": ["lossy-reconstruction"]
+    },
+    {
+      "id": "PrP230.1",
+      "type": "proposition",
+      "name": "Equivalence: $\\bepsilon$-prediction VB equals denoising score matching",
+      "section": "3.2 Reverse process and $L_{1:T-1}$",
+      "statement": "Under the parameterization $\\bmu_\\theta(\\bx_t,t)=\\frac{1}{\\sqrt{\\alpha_t}}(\\bx_t - \\frac{\\beta_t}{\\sqrt{1-\\bar\\alpha_t}}\\bepsilon_\\theta(\\bx_t,t))$, the per-step variational bound term $L_{t-1}$ equals (up to a $t$-dependent weight) a denoising score matching loss $\\E\\|\\bepsilon - \\bepsilon_\\theta(\\bx_t,t)\\|^2$, so VB training matches a Langevin-like sampler to the data via variational inference.",
+      "assumptions": [
+        "Forward process $q(\\bx_t|\\bx_{t-1})=\\mathcal{N}(\\sqrt{1-\\beta_t}\\bx_{t-1},\\beta_t\\bI)$",
+        "Reverse-process variance set to $\\bSigma_\\theta=\\sigma_t^2\\bI$ (untrained)",
+        "$\\bmu_\\theta$ uses the $\\bepsilon$-prediction parameterization (DP230.5)"
+      ],
+      "conclusions": [
+        "$L_{t-1}-C = \\Eb{\\bx_0,\\bepsilon}{\\frac{\\beta_t^2}{2\\sigma_t^2\\alpha_t(1-\\bar\\alpha_t)}\\|\\bepsilon-\\bepsilon_\\theta(\\sqrt{\\bar\\alpha_t}\\bx_0+\\sqrt{1-\\bar\\alpha_t}\\bepsilon,t)\\|^2}$",
+        "Optimizing this objective is equivalent to fitting a Langevin-like sampling chain by variational inference."
+      ],
+      "origin": "paper",
+      "tags": ["equivalence", "score-matching"]
+    },
+    {
+      "id": "PrP230.2",
+      "type": "proposition",
+      "name": "Reduced-variance KL decomposition of $L$",
+      "section": "2 Background / Appendix B",
+      "statement": "The variational bound $L = \\Eb{q}{-\\log p_\\theta(\\bx_{0:T})/q(\\bx_{1:T}|\\bx_0)}$ admits the closed-form decomposition $L = \\E_q[\\,L_T + \\sum_{t>1} L_{t-1} + L_0\\,]$ with $L_T,L_{t-1}$ KL divergences between Gaussians and $L_0=-\\log p_\\theta(\\bx_0|\\bx_1)$.",
+      "assumptions": [
+        "Forward process $q$ is a Gaussian Markov chain (DP230.2)",
+        "Reverse process $p_\\theta$ has Gaussian transitions (DP230.1)"
+      ],
+      "conclusions": [
+        "$L = \\E_q\\!\\left[\\kl{q(\\bx_T|\\bx_0)}{p(\\bx_T)} + \\sum_{t>1}\\kl{q(\\bx_{t-1}|\\bx_t,\\bx_0)}{p_\\theta(\\bx_{t-1}|\\bx_t)} - \\log p_\\theta(\\bx_0|\\bx_1)\\right]$",
+        "All KL terms are between Gaussians and admit closed-form (Rao-Blackwellized) evaluation."
+      ],
+      "origin": "paper",
+      "tags": ["variance-reduction"]
+    },
+    {
+      "id": "PrP230.3",
+      "type": "proposition",
+      "name": "Diffusion as generalized autoregressive model",
+      "section": "4.3 Progressive coding (Connection to autoregressive decoding)",
+      "statement": "If $T = D$ (data dimension) and the forward process masks one new coordinate per step with $p(\\bx_T)$ a point mass on a blank image, then minimizing $\\kl{q(\\bx_{t-1}|\\bx_t)}{p_\\theta(\\bx_{t-1}|\\bx_t)}$ trains $p_\\theta$ to copy unmasked coordinates and predict the next coordinate, which is exactly autoregressive training; hence the Gaussian diffusion is an autoregressive model with a generalized bit ordering not expressible by reordering coordinates.",
+      "assumptions": [
+        "$T = D$",
+        "$q(\\bx_t|\\bx_0)$ places all mass on $\\bx_0$ with first $t$ coordinates masked",
+        "$p(\\bx_T)$ is a point mass on a blank image",
+        "$p_\\theta(\\bx_{t-1}|\\bx_t)$ is fully expressive"
+      ],
+      "conclusions": [
+        "$\\kl{q(\\bx_T)}{p(\\bx_T)} = 0$",
+        "Training on the alternate VB EP230.7 reduces to training an autoregressive model coordinate-by-coordinate."
+      ],
+      "origin": "paper",
+      "tags": ["interpretation", "autoregressive"]
+    },
+    {
+      "id": "AP230.1",
+      "type": "algorithm",
+      "name": "Training (DDPM)",
+      "section": "3 (Algorithm 1)",
+      "statement": "Sample $(\\bx_0,t,\\bepsilon)$, then take a gradient step on $\\|\\bepsilon - \\bepsilon_\\theta(\\sqrt{\\bar\\alpha_t}\\bx_0+\\sqrt{1-\\bar\\alpha_t}\\bepsilon,\\,t)\\|^2$ until convergence.",
+      "input": [
+        "Data distribution $q(\\bx_0)$",
+        "Number of timesteps $T$",
+        "Noise-schedule constants $\\bar\\alpha_t$"
+      ],
+      "output": [
+        "Trained noise predictor $\\bepsilon_\\theta(\\bx_t,t)$"
+      ],
+      "pseudocode": "repeat: $\\bx_0\\sim q(\\bx_0)$; $t\\sim\\mathrm{Uniform}\\{1,\\dots,T\\}$; $\\bepsilon\\sim\\mathcal{N}(\\bzero,\\bI)$; gradient step on $\\nabla_\\theta \\|\\bepsilon - \\bepsilon_\\theta(\\sqrt{\\bar\\alpha_t}\\bx_0+\\sqrt{1-\\bar\\alpha_t}\\bepsilon,t)\\|^2$; until converged.",
+      "origin": "paper",
+      "tags": ["iterative", "SGD"]
+    },
+    {
+      "id": "AP230.2",
+      "type": "algorithm",
+      "name": "Sampling (DDPM)",
+      "section": "3 (Algorithm 2)",
+      "statement": "Starting from $\\bx_T\\sim\\mathcal{N}(\\bzero,\\bI)$, iteratively denoise via $\\bx_{t-1} = \\frac{1}{\\sqrt{\\alpha_t}}(\\bx_t - \\frac{1-\\alpha_t}{\\sqrt{1-\\bar\\alpha_t}}\\bepsilon_\\theta(\\bx_t,t)) + \\sigma_t \\bz$ for $t=T,\\dots,1$, returning $\\bx_0$.",
+      "input": [
+        "Trained $\\bepsilon_\\theta$",
+        "Noise schedule $\\{\\beta_t\\}$ (and derived $\\alpha_t,\\bar\\alpha_t,\\sigma_t$)"
+      ],
+      "output": [
+        "Sample $\\bx_0$ from $p_\\theta$"
+      ],
+      "pseudocode": "$\\bx_T\\sim\\mathcal{N}(\\bzero,\\bI)$; for $t=T,\\dots,1$: $\\bz\\sim\\mathcal{N}(\\bzero,\\bI)$ if $t>1$ else $\\bzero$; $\\bx_{t-1} = \\frac{1}{\\sqrt{\\alpha_t}}(\\bx_t - \\frac{1-\\alpha_t}{\\sqrt{1-\\bar\\alpha_t}}\\bepsilon_\\theta(\\bx_t,t)) + \\sigma_t\\bz$; return $\\bx_0$.",
+      "origin": "paper",
+      "tags": ["iterative", "Langevin-like"]
+    },
+    {
+      "id": "AP230.3",
+      "type": "algorithm",
+      "name": "Sending $\\bx_0$ (progressive lossy code)",
+      "section": "4.3 Progressive coding (Algorithm 3)",
+      "statement": "Send $\\bx_T\\sim q(\\bx_T|\\bx_0)$ using $p(\\bx_T)$, then for $t=T-1,\\dots,1$ send $\\bx_t\\sim q(\\bx_t|\\bx_{t+1},\\bx_0)$ using $p_\\theta(\\bx_t|\\bx_{t+1})$, and finally send $\\bx_0$ using $p_\\theta(\\bx_0|\\bx_1)$; total expected codelength equals $L$.",
+      "input": [
+        "Source $\\bx_0\\sim q(\\bx_0)$",
+        "Trained $p_\\theta$",
+        "Minimal random coding subroutine"
+      ],
+      "output": [
+        "Bitstream of expected length $L$ encoding $\\bx_T,\\dotsc,\\bx_0$"
+      ],
+      "origin": "paper",
+      "tags": ["compression", "rate-distortion"]
+    },
+    {
+      "id": "AP230.4",
+      "type": "algorithm",
+      "name": "Receiving (progressive lossy decode)",
+      "section": "4.3 Progressive coding (Algorithm 4)",
+      "statement": "Receive $\\bx_T$ using $p(\\bx_T)$, then for $t=T-1,\\dots,0$ receive $\\bx_t$ using $p_\\theta(\\bx_t|\\bx_{t+1})$; return $\\bx_0$.",
+      "input": [
+        "Bitstream from AP230.3",
+        "Trained $p_\\theta$"
+      ],
+      "output": [
+        "Reconstructed $\\bx_0$ (with progressive estimates $\\hat\\bx_0$ available at each step)"
+      ],
+      "origin": "paper",
+      "tags": ["decoder", "progressive"]
+    },
+    {
+      "id": "ProbP230.1",
+      "type": "problem",
+      "name": "High-fidelity image generation with diffusion models",
+      "section": "1 Introduction",
+      "statement": "Train a diffusion probabilistic model that produces high-quality image samples (competitive Inception/FID scores) on natural-image benchmarks such as CIFAR10, CelebA-HQ $256\\times 256$, and LSUN.",
+      "origin": "paper",
+      "tags": ["generative-modeling"]
+    },
+    {
+      "id": "ExP230.1",
+      "type": "example",
+      "name": "Unconditional CIFAR10 generation (IS 9.46, FID 3.17)",
+      "section": "4.1 Sample quality",
+      "statement": "Trained on CIFAR10 with $T=1000$ and a linear $\\beta_t$ schedule from $10^{-4}$ to $0.02$, the $L_{\\mathrm{simple}}$ model achieves Inception Score $9.46\\pm 0.11$ and FID $3.17$ (state-of-the-art among unconditional models reported in the paper) with NLL $\\le 3.75$ bits/dim.",
+      "origin": "paper",
+      "tags": ["benchmark", "CIFAR10"]
+    },
+    {
+      "id": "ExP230.2",
+      "type": "example",
+      "name": "CelebA-HQ $256\\times 256$ samples and interpolations",
+      "section": "4.1 / 4.4 Interpolation",
+      "statement": "Diffusion model trained on CelebA-HQ $256\\times 256$ produces high-quality samples and supports latent-space interpolations $\\bar\\bx_t=(1-\\lambda)\\bx_t+\\lambda\\bx'_t$ that smoothly vary pose, skin tone, hair, expression, and background, with coarser variation as the diffusion depth $t$ grows.",
+      "origin": "paper",
+      "tags": ["interpolation", "CelebA-HQ"]
+    },
+    {
+      "id": "ExP230.3",
+      "type": "example",
+      "name": "LSUN $256\\times 256$ Bedroom/Church/Cat samples",
+      "section": "4.1 / Appendix",
+      "statement": "On LSUN $256\\times 256$, the $L_{\\mathrm{simple}}$ model attains FID $6.36$ (Bedroom; $4.90$ for the larger model), $7.89$ (Church), and $19.75$ (Cat), comparable to ProgressiveGAN/StyleGAN baselines.",
+      "origin": "paper",
+      "tags": ["benchmark", "LSUN"]
+    },
+    {
+      "id": "ExP230.4",
+      "type": "example",
+      "name": "Rate-distortion on CIFAR10 test set",
+      "section": "4.3 Progressive coding",
+      "statement": "Treating $L_1+\\dots+L_T$ as rate and $L_0$ as distortion gives rate $1.78$ bits/dim and distortion $1.97$ bits/dim (RMSE $0.95/255$); the rate-distortion curve drops steeply at low rate, showing most bits encode imperceptible distortions.",
+      "origin": "paper",
+      "tags": ["rate-distortion", "lossy-compression"]
+    },
+    {
+      "id": "ExP230.5",
+      "type": "example",
+      "name": "Progressive generation of $\\hat\\bx_0$",
+      "section": "4.3 Progressive coding (Progressive generation)",
+      "statement": "Running AP230.2 and reading off $\\hat\\bx_0$ at each step shows large-scale image features appearing first and fine details last, consistent with conceptual compression.",
+      "origin": "paper",
+      "tags": ["progressive-generation"]
+    },
+    {
+      "id": "RP230.1",
+      "type": "remark",
+      "name": "Choice of $\\bSigma_\\theta=\\sigma_t^2\\bI$ (untrained)",
+      "section": "3.2 Reverse process and $L_{1:T-1}$",
+      "statement": "Setting $\\sigma_t^2=\\beta_t$ and $\\sigma_t^2=\\tilde\\beta_t$ both yield similar empirical results; the two are optimal endpoints corresponding to data-distribution upper/lower bounds on reverse-process entropy. Learning a diagonal $\\bSigma_\\theta$ instead led to unstable training.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP230.2",
+      "type": "remark",
+      "name": "$L_T$ is a constant when $\\beta_t$ are fixed",
+      "section": "3.1 Forward process and $L_T$",
+      "statement": "Because $q$ has no learnable parameters in our implementation, $L_T = \\kl{q(\\bx_T|\\bx_0)}{\\mathcal{N}(\\bzero,\\bI)} \\approx 10^{-5}$ bits/dim is constant during training and ignored.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP230.3",
+      "type": "remark",
+      "name": "Limitations of the lossy-compression argument",
+      "section": "Appendix A (Progressive compression)",
+      "statement": "AP230.3/AP230.4 are a proof of concept: they rely on minimal random coding, which is not tractable in high dimensions, so they constitute a compression interpretation of the variational bound rather than a deployable codec.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP230.4",
+      "type": "remark",
+      "name": "Differences from NCSN",
+      "section": "C Discussion on related work",
+      "statement": "Vs. NCSN: U-Net with self-attention (not RefineNet), per-layer time conditioning via sinusoidal embedding, $\\sqrt{1-\\beta_t}$ scaling so variance does not grow, very small $\\beta_t$ ensuring forward-process reversibility, and Langevin-like sampler coefficients derived from the forward process rather than tuned by hand.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP230.1",
+      "type": "proof",
+      "name": "Derivation of the KL-decomposed VB (Proposition PrP230.2)",
+      "section": "Appendix B Extended derivations",
+      "statement": "Algebraic re-grouping of $L = \\E_q[-\\log p_\\theta(\\bx_{0:T})/q(\\bx_{1:T}|\\bx_0)]$ using $q(\\bx_t|\\bx_{t-1})=q(\\bx_{t-1}|\\bx_t,\\bx_0)q(\\bx_t|\\bx_0)/q(\\bx_{t-1}|\\bx_0)$ yields the KL decomposition.",
+      "proves": "PrP230.2",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP230.1",
+      "type": "proof_step",
+      "name": "Expand $L$ as a sum of log-ratios",
+      "parent_id": "PP230.1",
+      "step_order": 1,
+      "statement": "Write $L = \\E_q[-\\log p(\\bx_T) - \\sum_{t\\ge 1}\\log\\frac{p_\\theta(\\bx_{t-1}|\\bx_t)}{q(\\bx_t|\\bx_{t-1})}]$ by substituting the chain factorizations of $p_\\theta(\\bx_{0:T})$ and $q(\\bx_{1:T}|\\bx_0)$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP230.2",
+      "type": "proof_step",
+      "name": "Split off the $t=1$ term",
+      "parent_id": "PP230.1",
+      "step_order": 2,
+      "statement": "Separate the $t=1$ contribution as $-\\log\\frac{p_\\theta(\\bx_0|\\bx_1)}{q(\\bx_1|\\bx_0)}$ and group the $t>1$ terms.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP230.3",
+      "type": "proof_step",
+      "name": "Apply Bayes' rule for the conditioned forward posterior",
+      "parent_id": "PP230.1",
+      "step_order": 3,
+      "statement": "Use $q(\\bx_t|\\bx_{t-1}) = q(\\bx_t|\\bx_{t-1},\\bx_0) = q(\\bx_{t-1}|\\bx_t,\\bx_0) q(\\bx_t|\\bx_0)/q(\\bx_{t-1}|\\bx_0)$ inside each $t>1$ log-ratio.",
+      "subclass": "invoke_identity",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP230.4",
+      "type": "proof_step",
+      "name": "Telescope the marginal ratios",
+      "parent_id": "PP230.1",
+      "step_order": 4,
+      "statement": "The product $\\prod_{t>1} q(\\bx_{t-1}|\\bx_0)/q(\\bx_t|\\bx_0)$ telescopes, leaving $q(\\bx_1|\\bx_0)/q(\\bx_T|\\bx_0)$, which combines with the $-\\log p(\\bx_T)$ term and the split-off $t=1$ term.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP230.5",
+      "type": "proof_step",
+      "name": "Identify KL divergences and conclude",
+      "parent_id": "PP230.1",
+      "step_order": 5,
+      "statement": "Recognize the resulting expectations as $\\kl{q(\\bx_T|\\bx_0)}{p(\\bx_T)} + \\sum_{t>1}\\kl{q(\\bx_{t-1}|\\bx_t,\\bx_0)}{p_\\theta(\\bx_{t-1}|\\bx_t)} - \\log p_\\theta(\\bx_0|\\bx_1)$, which is EP230.2.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PP230.2",
+      "type": "proof",
+      "name": "Derivation of Equation EP230.5 ($\\bepsilon$-form of $L_{t-1}$) and Proposition PrP230.1",
+      "section": "3.2 Reverse process and $L_{1:T-1}$",
+      "statement": "Starting from the Gaussian KL closed form $L_{t-1} = \\Eb{q}{\\frac{1}{2\\sigma_t^2}\\|\\tilde\\bmu_t(\\bx_t,\\bx_0) - \\bmu_\\theta(\\bx_t,t)\\|^2}+C$, reparameterize $\\bx_t=\\sqrt{\\bar\\alpha_t}\\bx_0+\\sqrt{1-\\bar\\alpha_t}\\bepsilon$, simplify $\\tilde\\bmu_t$, then substitute the $\\bepsilon$-prediction parameterization to obtain the noise-prediction MSE.",
+      "proves": "PrP230.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP230.6",
+      "type": "proof_step",
+      "name": "KL between Gaussians gives mean-difference squared",
+      "parent_id": "PP230.2",
+      "step_order": 1,
+      "statement": "Since $q(\\bx_{t-1}|\\bx_t,\\bx_0)$ and $p_\\theta(\\bx_{t-1}|\\bx_t)$ are both Gaussian with covariance $\\sigma_t^2\\bI$, $L_{t-1}=\\Eb{q}{\\frac{1}{2\\sigma_t^2}\\|\\tilde\\bmu_t(\\bx_t,\\bx_0)-\\bmu_\\theta(\\bx_t,t)\\|^2}+C$.",
+      "subclass": "invoke_identity",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP230.7",
+      "type": "proof_step",
+      "name": "Reparameterize $\\bx_t$ via $\\bepsilon$",
+      "parent_id": "PP230.2",
+      "step_order": 2,
+      "statement": "Use the closed form $q(\\bx_t|\\bx_0)$ to write $\\bx_t(\\bx_0,\\bepsilon)=\\sqrt{\\bar\\alpha_t}\\bx_0 + \\sqrt{1-\\bar\\alpha_t}\\bepsilon$ for $\\bepsilon\\sim\\mathcal{N}(\\bzero,\\bI)$.",
+      "subclass": "introduce_variable",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP230.8",
+      "type": "proof_step",
+      "name": "Express $\\tilde\\bmu_t$ in terms of $(\\bx_t,\\bepsilon)$",
+      "parent_id": "PP230.2",
+      "step_order": 3,
+      "statement": "Substitute $\\bx_0 = (\\bx_t-\\sqrt{1-\\bar\\alpha_t}\\bepsilon)/\\sqrt{\\bar\\alpha_t}$ in $\\tilde\\bmu_t$ and simplify to $\\tilde\\bmu_t = \\frac{1}{\\sqrt{\\alpha_t}}(\\bx_t-\\frac{\\beta_t}{\\sqrt{1-\\bar\\alpha_t}}\\bepsilon)$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP230.9",
+      "type": "proof_step",
+      "name": "Adopt $\\bepsilon$-prediction parameterization",
+      "parent_id": "PP230.2",
+      "step_order": 4,
+      "statement": "Choose $\\bmu_\\theta(\\bx_t,t)=\\frac{1}{\\sqrt{\\alpha_t}}(\\bx_t-\\frac{\\beta_t}{\\sqrt{1-\\bar\\alpha_t}}\\bepsilon_\\theta(\\bx_t,t))$ so the difference $\\tilde\\bmu_t-\\bmu_\\theta = \\frac{\\beta_t}{\\sqrt{\\alpha_t}\\sqrt{1-\\bar\\alpha_t}}(\\bepsilon_\\theta-\\bepsilon)$.",
+      "subclass": "introduce_variable",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP230.10",
+      "type": "proof_step",
+      "name": "Collect and conclude $\\bepsilon$-MSE form",
+      "parent_id": "PP230.2",
+      "step_order": 5,
+      "statement": "Squaring and pulling out constants gives $L_{t-1}-C = \\Eb{\\bx_0,\\bepsilon}{\\frac{\\beta_t^2}{2\\sigma_t^2\\alpha_t(1-\\bar\\alpha_t)}\\|\\bepsilon-\\bepsilon_\\theta(\\sqrt{\\bar\\alpha_t}\\bx_0+\\sqrt{1-\\bar\\alpha_t}\\bepsilon,t)\\|^2}$, matching denoising score matching weighted by $\\beta_t^2/(2\\sigma_t^2\\alpha_t(1-\\bar\\alpha_t))$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PP230.3",
+      "type": "proof",
+      "name": "Derivation of alternate VB EP230.7",
+      "section": "Appendix B Extended derivations",
+      "statement": "Replace $q(\\bx_t|\\bx_{t-1})$ by $q(\\bx_{t-1}|\\bx_t)q(\\bx_{t-1})/q(\\bx_t)$ inside $L$, telescope the marginal ratios down to $q(\\bx_0)$, and rewrite $-\\E[\\log q(\\bx_0)]=H(\\bx_0)$.",
+      "proves": "EP230.7",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP230.11",
+      "type": "proof_step",
+      "name": "Bayes-rule rewrite of forward conditionals",
+      "parent_id": "PP230.3",
+      "step_order": 1,
+      "statement": "Use $q(\\bx_t|\\bx_{t-1}) = q(\\bx_{t-1}|\\bx_t)\\,q(\\bx_t)/q(\\bx_{t-1})$ in each summand of $L$.",
+      "subclass": "invoke_identity",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP230.12",
+      "type": "proof_step",
+      "name": "Telescope marginal ratios",
+      "parent_id": "PP230.3",
+      "step_order": 2,
+      "statement": "The product $\\prod_{t\\ge 1} q(\\bx_{t-1})/q(\\bx_t)$ collapses to $q(\\bx_0)/q(\\bx_T)$, giving $L = \\E_q[-\\log p(\\bx_T)/q(\\bx_T) - \\sum_{t\\ge 1}\\log p_\\theta(\\bx_{t-1}|\\bx_t)/q(\\bx_{t-1}|\\bx_t) - \\log q(\\bx_0)]$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP230.13",
+      "type": "proof_step",
+      "name": "Identify KLs and entropy and conclude",
+      "parent_id": "PP230.3",
+      "step_order": 3,
+      "statement": "Read off $\\kl{q(\\bx_T)}{p(\\bx_T)}$, $\\sum_{t\\ge 1}\\kl{q(\\bx_{t-1}|\\bx_t)}{p_\\theta(\\bx_{t-1}|\\bx_t)}$, and $H(\\bx_0)$, yielding EP230.7.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP230.1",
+      "type": "algorithm_step",
+      "name": "Sample data, timestep, noise",
+      "parent_id": "AP230.1",
+      "step_order": 1,
+      "statement": "$\\bx_0\\sim q(\\bx_0)$; $t\\sim\\mathrm{Uniform}\\{1,\\dotsc,T\\}$; $\\bepsilon\\sim\\mathcal{N}(\\bzero,\\bI)$.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP230.2",
+      "type": "algorithm_step",
+      "name": "Take gradient step on $L_{\\mathrm{simple}}$",
+      "parent_id": "AP230.1",
+      "step_order": 2,
+      "statement": "Update $\\theta$ along $\\nabla_\\theta\\|\\bepsilon - \\bepsilon_\\theta(\\sqrt{\\bar\\alpha_t}\\bx_0+\\sqrt{1-\\bar\\alpha_t}\\bepsilon,\\,t)\\|^2$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP230.3",
+      "type": "algorithm_step",
+      "name": "Repeat until convergence",
+      "parent_id": "AP230.1",
+      "step_order": 3,
+      "statement": "Iterate steps 1-2 until the loss converges.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP230.4",
+      "type": "algorithm_step",
+      "name": "Initialize $\\bx_T$ from prior",
+      "parent_id": "AP230.2",
+      "step_order": 1,
+      "statement": "$\\bx_T \\sim \\mathcal{N}(\\bzero,\\bI)$.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP230.5",
+      "type": "algorithm_step",
+      "name": "Reverse-process loop $t=T,\\dots,1$",
+      "parent_id": "AP230.2",
+      "step_order": 2,
+      "statement": "For each $t$, draw $\\bz\\sim\\mathcal{N}(\\bzero,\\bI)$ if $t>1$ else $\\bz=\\bzero$ and update $\\bx_{t-1} = \\frac{1}{\\sqrt{\\alpha_t}}(\\bx_t - \\frac{1-\\alpha_t}{\\sqrt{1-\\bar\\alpha_t}}\\bepsilon_\\theta(\\bx_t,t)) + \\sigma_t\\bz$.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP230.6",
+      "type": "algorithm_step",
+      "name": "Return $\\bx_0$",
+      "parent_id": "AP230.2",
+      "step_order": 3,
+      "statement": "Return the final $\\bx_0$.",
+      "subclass": "return",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP230.7",
+      "type": "algorithm_step",
+      "name": "Send $\\bx_T$ using prior",
+      "parent_id": "AP230.3",
+      "step_order": 1,
+      "statement": "Send $\\bx_T \\sim q(\\bx_T|\\bx_0)$ using $p(\\bx_T)$ via minimal random coding.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP230.8",
+      "type": "algorithm_step",
+      "name": "Loop $t=T-1,\\dots,1$ sending intermediate $\\bx_t$",
+      "parent_id": "AP230.3",
+      "step_order": 2,
+      "statement": "For each $t$, send $\\bx_t \\sim q(\\bx_t|\\bx_{t+1},\\bx_0)$ using $p_\\theta(\\bx_t|\\bx_{t+1})$.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP230.9",
+      "type": "algorithm_step",
+      "name": "Send $\\bx_0$ via discrete decoder",
+      "parent_id": "AP230.3",
+      "step_order": 3,
+      "statement": "Send $\\bx_0$ using $p_\\theta(\\bx_0|\\bx_1)$ (the discretized Gaussian decoder DP230.4).",
+      "subclass": "return",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP230.10",
+      "type": "algorithm_step",
+      "name": "Receive $\\bx_T$",
+      "parent_id": "AP230.4",
+      "step_order": 1,
+      "statement": "Receive $\\bx_T$ using $p(\\bx_T)$.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP230.11",
+      "type": "algorithm_step",
+      "name": "Loop receiving $\\bx_t$",
+      "parent_id": "AP230.4",
+      "step_order": 2,
+      "statement": "For $t=T-1,\\dots,0$, receive $\\bx_t$ using $p_\\theta(\\bx_t|\\bx_{t+1})$. At each $t$, the receiver may form the progressive estimate $\\hat\\bx_0$ via EP230.8.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP230.12",
+      "type": "algorithm_step",
+      "name": "Return $\\bx_0$",
+      "parent_id": "AP230.4",
+      "step_order": 3,
+      "statement": "Return $\\bx_0$.",
+      "subclass": "return",
+      "origin": "paper"
+    },
+    {
+      "id": "TP230.1",
+      "type": "theorem",
+      "name": "Diffusion probabilistic model (Sohl-Dickstein et al., 2015)",
+      "section": "1 / 2 (cited)",
+      "statement": "Existence of a learnable Gaussian Markov chain that reverses a fixed Gaussian-noise diffusion process and admits a tractable variational lower bound on the log-likelihood.",
+      "origin": "external",
+      "origin_citation": "Sohl-Dickstein et al., 2015 (sohl2015deep)"
+    },
+    {
+      "id": "TP230.2",
+      "type": "theorem",
+      "name": "Denoising score matching with annealed Langevin dynamics (NCSN)",
+      "section": "1 / 3.2 (cited)",
+      "statement": "Score matching $\\bs_\\theta(\\bx,\\sigma)$ over multiple noise scales $\\sigma$ trains a noise-conditional score network that, combined with annealed Langevin dynamics, produces high-quality samples.",
+      "origin": "external",
+      "origin_citation": "Song & Ermon 2019 (NCSN); Vincent 2011 (denoising score matching)"
+    }
+  ],
+  "edges": [
+    {"source": "DP230.2", "target": "DP230.1", "type": "uses", "rationale": "Reverse process is defined relative to the forward / approximate posterior."},
+    {"source": "DP230.2", "target": "EP230.3", "type": "uses", "rationale": "Closed-form forward marginal is derived from the forward Gaussian Markov chain."},
+    {"source": "DP230.3", "target": "EP230.3", "type": "uses", "rationale": "Notation $\\alpha_t,\\bar\\alpha_t$ used in the closed-form marginal."},
+    {"source": "DP230.2", "target": "EP230.4", "type": "uses", "rationale": "Forward process determines the analytic form of the conditioned posterior."},
+    {"source": "EP230.3", "target": "EP230.4", "type": "uses", "rationale": "Posterior $q(\\bx_{t-1}|\\bx_t,\\bx_0)$ is derived using the closed-form marginal."},
+    {"source": "DP230.1", "target": "EP230.1", "type": "uses", "rationale": "Variational bound is on $-\\log p_\\theta(\\bx_0)$ defined by the reverse process."},
+    {"source": "DP230.2", "target": "EP230.1", "type": "uses", "rationale": "Bound uses the forward process as variational distribution."},
+    {"source": "EP230.1", "target": "EP230.2", "type": "uses", "rationale": "KL decomposition is a rewrite of the original variational bound."},
+    {"source": "EP230.4", "target": "EP230.2", "type": "uses", "rationale": "Tractable Gaussian posterior enables the closed-form KL terms."},
+    {"source": "EP230.1", "target": "PrP230.2", "type": "uses", "rationale": "Proposition asserts the decomposition of $L$."},
+    {"source": "EP230.4", "target": "PrP230.2", "type": "uses", "rationale": "Decomposition relies on the conditioned forward posterior."},
+    {"source": "PP230.1", "target": "PrP230.2", "type": "proves", "rationale": "Appendix B derivation establishes the KL decomposition."},
+    {"source": "EP230.2", "target": "PP230.1", "type": "uses", "rationale": "Proof produces equation EP230.2."},
+
+    {"source": "PSP230.1", "target": "PSP230.2", "type": "uses"},
+    {"source": "PSP230.2", "target": "PSP230.3", "type": "uses"},
+    {"source": "PSP230.3", "target": "PSP230.4", "type": "uses"},
+    {"source": "PSP230.4", "target": "PSP230.5", "type": "uses"},
+
+    {"source": "EP230.4", "target": "EP230.5", "type": "uses", "rationale": "Mean-difference KL relies on Gaussian posterior."},
+    {"source": "EP230.3", "target": "EP230.5", "type": "uses", "rationale": "Reparameterization $\\bx_t=\\sqrt{\\bar\\alpha_t}\\bx_0+\\sqrt{1-\\bar\\alpha_t}\\bepsilon$ uses the marginal."},
+    {"source": "DP230.5", "target": "EP230.5", "type": "uses", "rationale": "$\\bepsilon$-prediction parameterization yields the noise-MSE form."},
+    {"source": "EP230.5", "target": "PrP230.1", "type": "uses", "rationale": "Equivalence statement is exactly EP230.5."},
+    {"source": "PP230.2", "target": "PrP230.1", "type": "proves"},
+    {"source": "EP230.5", "target": "PP230.2", "type": "uses"},
+    {"source": "EP230.4", "target": "PP230.2", "type": "uses"},
+    {"source": "EP230.3", "target": "PP230.2", "type": "uses"},
+    {"source": "DP230.5", "target": "PP230.2", "type": "uses"},
+
+    {"source": "PSP230.6", "target": "PSP230.7", "type": "uses"},
+    {"source": "PSP230.7", "target": "PSP230.8", "type": "uses"},
+    {"source": "PSP230.8", "target": "PSP230.9", "type": "uses"},
+    {"source": "PSP230.9", "target": "PSP230.10", "type": "uses"},
+
+    {"source": "EP230.5", "target": "EP230.6", "type": "uses", "rationale": "Simplified objective drops the per-$t$ weight from EP230.5."},
+    {"source": "DP230.4", "target": "EP230.6", "type": "uses", "rationale": "$t=1$ case approximates the discrete decoder integral."},
+    {"source": "EP230.6", "target": "AP230.1", "type": "uses", "rationale": "Training algorithm minimizes $L_{\\mathrm{simple}}$."},
+    {"source": "DP230.5", "target": "AP230.1", "type": "uses", "rationale": "Training assumes the $\\bepsilon$-prediction model class."},
+    {"source": "EP230.3", "target": "AP230.1", "type": "uses", "rationale": "Closed-form marginal is used to sample $\\bx_t$ in one step."},
+
+    {"source": "ASP230.1", "target": "ASP230.2", "type": "uses"},
+    {"source": "ASP230.2", "target": "ASP230.3", "type": "uses"},
+
+    {"source": "DP230.5", "target": "AP230.2", "type": "uses", "rationale": "Sampling step uses the $\\bepsilon$-prediction mean."},
+    {"source": "DP230.1", "target": "AP230.2", "type": "uses", "rationale": "Sampling implements the reverse-process Markov chain."},
+    {"source": "RP230.1", "target": "AP230.2", "type": "uses", "rationale": "Choice of $\\sigma_t$ determines the additive noise scale."},
+
+    {"source": "ASP230.4", "target": "ASP230.5", "type": "uses"},
+    {"source": "ASP230.5", "target": "ASP230.6", "type": "uses"},
+
+    {"source": "AP230.2", "target": "ExP230.1", "type": "illustrates", "rationale": "CIFAR10 Inception/FID results illustrate the trained sampler."},
+    {"source": "AP230.1", "target": "ExP230.1", "type": "illustrates"},
+    {"source": "AP230.2", "target": "ExP230.2", "type": "illustrates"},
+    {"source": "AP230.2", "target": "ExP230.3", "type": "illustrates"},
+    {"source": "AP230.2", "target": "ExP230.5", "type": "illustrates", "rationale": "Progressive generation reads off $\\hat\\bx_0$ during sampling."},
+    {"source": "EP230.8", "target": "ExP230.5", "type": "uses", "rationale": "Progressive estimate formula is used to display $\\hat\\bx_0$."},
+
+    {"source": "AP230.1", "target": "ProbP230.1", "type": "uses", "rationale": "Training algorithm contributes to solving the high-fidelity image generation problem."},
+    {"source": "AP230.2", "target": "ProbP230.1", "type": "uses", "rationale": "Sampling algorithm produces the images that solve the problem."},
+
+    {"source": "EP230.2", "target": "EP230.7", "type": "uses", "rationale": "Alternate VB is derived from the same $L$."},
+    {"source": "PP230.3", "target": "EP230.7", "type": "proves"},
+    {"source": "EP230.1", "target": "PP230.3", "type": "uses"},
+    {"source": "PSP230.11", "target": "PSP230.12", "type": "uses"},
+    {"source": "PSP230.12", "target": "PSP230.13", "type": "uses"},
+
+    {"source": "EP230.7", "target": "PrP230.3", "type": "uses", "rationale": "Autoregressive interpretation uses the alternate VB."},
+    {"source": "DP230.2", "target": "PrP230.3", "type": "uses"},
+
+    {"source": "EP230.2", "target": "AP230.3", "type": "uses", "rationale": "Sending procedure mirrors the term structure of $L$."},
+    {"source": "DP230.4", "target": "AP230.3", "type": "uses", "rationale": "Last step sends $\\bx_0$ via the discrete decoder."},
+    {"source": "AP230.3", "target": "AP230.4", "type": "uses", "rationale": "Receiving inverts the sender's protocol."},
+    {"source": "EP230.3", "target": "EP230.8", "type": "uses", "rationale": "Progressive estimate inverts the closed-form marginal."},
+    {"source": "DP230.5", "target": "EP230.8", "type": "uses", "rationale": "Estimate uses the trained $\\bepsilon_\\theta$."},
+
+    {"source": "AP230.3", "target": "ExP230.4", "type": "illustrates", "rationale": "Rate-distortion experiment is a concrete instance of the sending/receiving protocol."},
+    {"source": "AP230.4", "target": "ExP230.4", "type": "illustrates"},
+
+    {"source": "ASP230.7", "target": "ASP230.8", "type": "uses"},
+    {"source": "ASP230.8", "target": "ASP230.9", "type": "uses"},
+    {"source": "ASP230.10", "target": "ASP230.11", "type": "uses"},
+    {"source": "ASP230.11", "target": "ASP230.12", "type": "uses"},
+
+    {"source": "TP230.1", "target": "DP230.1", "type": "uses", "rationale": "Diffusion-model definition is built on Sohl-Dickstein's framework."},
+    {"source": "TP230.1", "target": "DP230.2", "type": "uses", "rationale": "Forward Gaussian process formulation is from Sohl-Dickstein et al."},
+    {"source": "TP230.1", "target": "EP230.2", "type": "uses", "rationale": "Reduced-variance bound is from Sohl-Dickstein et al. (re-derived in Appendix B)."},
+    {"source": "TP230.2", "target": "PrP230.1", "type": "uses", "rationale": "Equivalence is to denoising score matching with Langevin dynamics."},
+    {"source": "TP230.2", "target": "AP230.2", "type": "uses", "rationale": "Sampling resembles annealed Langevin dynamics from NCSN."}
+  ]
+}

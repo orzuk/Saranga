@@ -1,0 +1,370 @@
+{
+  "metadata": {
+    "paper_num": "T04",
+    "title": "Deep Reinforcement Learning with Double Q-learning",
+    "arxiv_id": "1509.06461",
+    "annotator": "agent-extraction",
+    "prompt_version": "v4.1",
+    "model": "claude-opus-4-8",
+    "extraction_date": "2026-07-28"
+  },
+  "nodes": [
+    {
+      "id": "DP04.1",
+      "type": "definition",
+      "name": "Optimal action value $Q_*$",
+      "section": "Background",
+      "origin": "external",
+      "origin_citation": "Sutton and Barto 1998 (standard reinforcement learning)",
+      "statement": "To solve sequential decision problems we can learn estimates for the optimal value of each action, defined as the expected sum of future rewards when taking that action and following the optimal policy thereafter.  Under a given policy $\\pi$, the true value of an action $a$ in a state $s$ is \\[ Q_{\\pi}(s,a) \\equiv \\E{ R_1 + \\g R_2 + \\ldots \\mid S_0 = s, A_0 = a, \\pi } \\,, \\] where $\\g \\in [0,1]$ is a discount factor that trades off the importance of immediate and later rewards. The optimal value is then $Q_*(s,a) = \\max_{\\pi} Q_{\\pi}(s,a)$. An optimal policy is easily derived from the optimal values by selecting the highest-valued action in each state."
+    },
+    {
+      "id": "EP04.1",
+      "type": "equation",
+      "name": "Standard Q-learning update",
+      "section": "Background",
+      "origin": "external",
+      "origin_citation": "Watkins 1989",
+      "statement": "The standard Q-learning update for the parameters after taking action $A_t$ in state $S_t$ and observing the immediate reward $R_{t+1}$ and resulting state $S_{t+1}$ is then \\begin{equation} \\th_{t+1} = \\th_t + \\alpha (Y^{\\text{Q}}_t - Q(S_t,A_t;\\th_t)) \\nabla_{\\th_t} Q(S_t,A_t;\\th_t) \\,. \\end{equation}"
+    },
+    {
+      "id": "EP04.2",
+      "type": "equation",
+      "name": "Q-learning target $Y^{\\text{Q}}_t$",
+      "section": "Background",
+      "origin": "external",
+      "origin_citation": "Watkins 1989",
+      "statement": "where $\\alpha$ is a scalar step size and the target $Y^{\\text{Q}}_t$ is defined as \\begin{equation} Y^{\\text{Q}}_t \\equiv R_{t+1} + \\gamma \\max_a Q(S_{t+1}, a; \\th_t) \\,. \\end{equation}"
+    },
+    {
+      "id": "EP04.3",
+      "type": "equation",
+      "name": "DQN target $Y^{\\text{DQN}}_t$",
+      "section": "Deep Q Networks",
+      "origin": "external",
+      "origin_citation": "Mnih et al. 2015",
+      "statement": "The target used by DQN is then \\begin{equation} Y^{\\text{DQN}}_t \\equiv R_{t+1} + \\gamma \\max_a Q(S_{t+1}, a; \\th^-_t) \\,. \\end{equation}"
+    },
+    {
+      "id": "EP04.4",
+      "type": "equation",
+      "name": "Double Q-learning error $Y^{\\text{DoubleQ}}_t$",
+      "section": "Double Q-learning",
+      "origin": "external",
+      "origin_citation": "van Hasselt 2010",
+      "statement": "The Double Q-learning error can then be written as \\begin{equation} Y^{\\text{DoubleQ}}_t \\!\\equiv R_{t+1} + \\g Q(S_{t+1}, \\argmax_a Q(S_{t+1}, a; \\th_t); \\th'_t ) \\,. \\end{equation}"
+    },
+    {
+      "id": "EP04.5",
+      "type": "equation",
+      "name": "Normalized score",
+      "section": "Quality of the learned policies",
+      "origin": "paper",
+      "statement": "To obtain summary statistics across games, we normalize the score for each game as follows: \\begin{equation} \\text{score}_{\\text{normalized}} = \\frac{\\text{score}_\\text{agent} - \\text{score}_\\text{random}}{\\text{score}_\\text{human} - \\text{score}_\\text{random}}. \\end{equation}"
+    },
+    {
+      "id": "AP04.2",
+      "type": "algorithm",
+      "name": "Deep Q Network (DQN)",
+      "section": "Deep Q Networks",
+      "origin": "external",
+      "origin_citation": "Mnih et al. 2015",
+      "statement": "A deep Q network (DQN) is a multi-layered neural network that for a given state $s$ outputs a vector of action values $Q(s,\\cdot\\,;\\th)$, where $\\th$ are the parameters of the network.  For an $n$-dimensional state space and an action space containing $m$ actions, the neural network is a function from $\\reals^n$ to $\\reals^m$. Two important ingredients of the DQN algorithm as proposed by \\citet{Mnih:2015} are the use of a target network, and the use of experience replay. The target network, with parameters $\\th^-$, is the same as the online network except that its parameters are copied every $\\tau$ steps from the online network, so that then $\\th^-_t = \\th_t$, and kept fixed on all other steps.  The target used by DQN is then \\begin{equation} Y^{\\text{DQN}}_t \\equiv R_{t+1} + \\gamma \\max_a Q(S_{t+1}, a; \\th^-_t) \\,. \\end{equation} For the experience replay \\citep{Lin:1992}, observed transitions are stored for some time and sampled uniformly from this memory bank to update the network. Both the target network and the experience replay dramatically improve the performance of the algorithm \\citep{Mnih:2015}."
+    },
+    {
+      "id": "AP04.3",
+      "type": "algorithm",
+      "name": "Double Q-learning",
+      "section": "Double Q-learning",
+      "origin": "external",
+      "origin_citation": "van Hasselt 2010",
+      "statement": "The max operator in standard Q-learning and DQN, in \\eqref{TDQ} and \\eqref{DQN}, uses the same values both to select and to evaluate an action.  This makes it more likely to select overestimated values, resulting in overoptimistic value estimates. To prevent this, we can decouple the selection from the evaluation.  This is the idea behind Double Q-learning \\citep{vanHasselt:2010}. In the original Double Q-learning algorithm, two value functions are learned by assigning each experience randomly to update one of the two value functions, such that there are two sets of weights, $\\th$ and $\\th'$.  For each update, one set of weights is used to determine the greedy policy and the other to determine its value. For a clear comparison, we can first untangle the selection and evaluation in Q-learning and rewrite its target \\eqref{TDQ} as \\[ Y^{\\text{Q}}_t = R_{t+1} + \\g Q(S_{t+1}, \\argmax_a Q(S_{t+1}, a; \\th_t); \\th_t ) \\,. \\] The Double Q-learning error can then be written as \\begin{equation} Y^{\\text{DoubleQ}}_t \\!\\equiv R_{t+1} + \\g Q(S_{t+1}, \\argmax_a Q(S_{t+1}, a; \\th_t); \\th'_t ) \\,. \\end{equation} Notice that the selection of the action, in the $\\argmax$, is still due to the online weights $\\th_t$.  This means that, as in Q-learning, we are still estimating the value of the greedy policy according to the current values, as defined by $\\th_t$.  However, we use the second set of weights $\\th_t'$ to fairly evaluate the value of this policy.  This second set of weights can be updated symmetrically by switching the roles of $\\th$ and $\\th'$."
+    },
+    {
+      "id": "AP04.1",
+      "type": "algorithm",
+      "name": "Double DQN",
+      "section": "Double DQN",
+      "origin": "paper",
+      "statement": "The idea of Double Q-learning is to reduce overestimations by decomposing the max operation in the target into action selection and action evaluation. Although not fully decoupled, the target network in the DQN architecture provides a natural candidate for the second value function, without having to introduce additional networks. We therefore propose to evaluate the greedy policy according to the online network, but using the target network to estimate its value. In reference to both Double Q-learning and DQN, we refer to the resulting algorithm as Double DQN. Its update is the same as for DQN, but replacing the target $Y^{\\text{DQN}}_t$ with \\[ Y^\\text{DoubleDQN}_t \\equiv R_{t+1} + \\g Q( S_{t+1}, \\argmax_a Q( S_{t+1}, a ; \\th_t ), \\th^-_t ) \\,. \\] In comparison to Double Q-learning \\eqref{TDDQ}, the weights of the second network $\\th'_t$ are replaced with the weights of the target network $\\th^-_t$ for the evaluation of the current greedy policy.  The update to the target network stays unchanged from DQN, and remains a periodic copy of the online network."
+    },
+    {
+      "id": "OpenP04.1",
+      "type": "open_problem",
+      "name": "Open question on performance impact of overestimations",
+      "section": "Introduction",
+      "origin": "paper",
+      "statement": "It is an open question whether, if the overestimations do occur, this negatively affects performance in practice."
+    },
+    {
+      "id": "TP04.1",
+      "type": "theorem",
+      "name": "Theorem 1 (lower bound on overestimation)",
+      "section": "Overoptimism due to estimation errors",
+      "origin": "paper",
+      "statement": "Consider a state $s$ in which all the true optimal action values are equal at $Q_*(s,a) = V_*(s)$ for some $V_*(s)$. Let $Q_t$ be arbitrary value estimates that are on the whole unbiased in the sense that $\\sum_a ( Q_t(s,a) - V_*(s) ) = 0$, but that are not all correct, such that $\\frac{1}{m} \\sum_a ( Q_t(s,a) - V_*(s) )^2 = C$ for some $C > 0$, where $m \\ge 2$ is the number of actions in $s$. Under these conditions, $\\max_a Q_t(s,a) \\ge V_*(s) + \\sqrt{\\frac{C}{m-1}}$.  This lower bound is tight. Under the same conditions, the lower bound on the absolute error of the Double Q-learning estimate is zero. (Proof in appendix.)",
+      "assumptions": [
+        "Consider a state $s$ in which all the true optimal action values are equal at $Q_*(s,a) = V_*(s)$ for some $V_*(s)$.",
+        "Let $Q_t$ be arbitrary value estimates that are on the whole unbiased in the sense that $\\sum_a ( Q_t(s,a) - V_*(s) ) = 0$, but that are not all correct, such that $\\frac{1}{m} \\sum_a ( Q_t(s,a) - V_*(s) )^2 = C$ for some $C > 0$, where $m \\ge 2$ is the number of actions in $s$."
+      ],
+      "conclusions": [
+        "Under these conditions, $\\max_a Q_t(s,a) \\ge V_*(s) + \\sqrt{\\frac{C}{m-1}}$.",
+        "This lower bound is tight.",
+        "Under the same conditions, the lower bound on the absolute error of the Double Q-learning estimate is zero."
+      ]
+    },
+    {
+      "id": "TP04.2",
+      "type": "theorem",
+      "name": "Theorem 2 (expected overoptimism for uniform errors)",
+      "section": "Appendix",
+      "origin": "paper",
+      "statement": "Consider a state $s$ in which all the true optimal action values are equal at $Q_*(s,a) = V_*(s)$.  Suppose that the estimation errors $Q_t(s,a) - Q_*(s,a)$ are independently distributed uniformly randomly in $[-1,1]$.  Then, \\begin{align*} \\E{ \\max_a Q_t(s,a) - V_*(s) } = \\frac{m-1}{m+1} \\, \\end{align*}",
+      "assumptions": [
+        "Consider a state $s$ in which all the true optimal action values are equal at $Q_*(s,a) = V_*(s)$.",
+        "Suppose that the estimation errors $Q_t(s,a) - Q_*(s,a)$ are independently distributed uniformly randomly in $[-1,1]$."
+      ],
+      "conclusions": [
+        "$\\E{ \\max_a Q_t(s,a) - V_*(s) } = \\frac{m-1}{m+1}$"
+      ]
+    },
+    {
+      "id": "RP04.1",
+      "type": "remark",
+      "name": "Remark on independence assumption",
+      "section": "Overoptimism due to estimation errors",
+      "origin": "paper",
+      "statement": "Note that we did not need to assume that estimation errors for different actions are independent."
+    },
+    {
+      "id": "PP04.1",
+      "type": "proof",
+      "name": "Proof of Theorem 1",
+      "section": "Appendix",
+      "origin": "paper",
+      "proves": "TP04.1",
+      "statement": "Define the errors for each action $a$ as $\\epsilon_a = Q_t(s,a) - V_*(s)$. Suppose that there exists a setting of $\\{ \\epsilon_a \\}$ such that $\\max_a \\epsilon_a < \\sqrt{\\frac{C}{m-1}}$. Let $\\{ \\epsilon^+_i \\}$ be the set of positive $\\epsilon$ of size $n$, and $\\{ \\epsilon^-_j \\}$ the set of strictly negative $\\epsilon$ of size $m-n$ (such that $\\{ \\epsilon\\} = \\{ \\epsilon^+_i \\} \\cup \\{ \\epsilon^-_j \\}$). If $n=m$, then $\\sum_a \\epsilon_a = 0 \\implies \\epsilon_a = 0 \\;\\forall a$, which contradicts $\\sum_a \\epsilon_a^2 = m C$. Hence, it must be that $n \\leq m-1$. Then, $\\sum_{i=1}^n \\epsilon^+_i \\le n \\max_i \\epsilon^+_i < n \\sqrt{\\frac{C}{m-1}}$, and therefore (using the constraint $\\sum_a \\epsilon_a = 0$) we also have that $\\sum_{j=1}^{m-n} |\\epsilon^-_j| < n \\sqrt{\\frac{C}{m-1}}$. This implies $\\max_j |\\epsilon^-_j| < n \\sqrt{\\frac{C}{m-1}}$. By H\\\"{o}lder's inequality, then \\begin{align*} \\sum_{j=1}^{m-n} (\\epsilon^-_j)^2 &\\leq \\sum_{j=1}^{m-n} |\\epsilon^-_j| \\cdot \\max_j |\\epsilon^-_j| \\\\ &< n \\sqrt{\\frac{C}{m-1}} n \\sqrt{\\frac{C}{m-1}}\\,. \\end{align*} We can now combine these relations to compute an upper-bound on the sum of squares for all $\\epsilon_a$: \\begin{align*} \\sum_{a=1}^m (\\epsilon_a)^2 &= \\sum_{i=1}^{n} (\\epsilon^+_i)^2 + \\sum_{j=1}^{m-n} (\\epsilon^-_j)^2 \\\\ &< n \\frac{C}{m-1} +  n \\sqrt{\\frac{C}{m-1}} n \\sqrt{\\frac{C}{m-1}} \\\\ &= C \\frac{n(n+1)}{m-1}\\\\ &\\leq m C. \\end{align*} This contradicts the assumption that $\\sum_{a=1}^m \\epsilon_a^2 < m C$, and therefore $\\max_a \\epsilon_a \\geq \\sqrt{\\frac{C}{m-1}}$ for all settings of $\\epsilon$ that satisfy the constraints. We can check that the lower-bound is tight by setting $\\epsilon_a = \\sqrt{\\frac{C}{m-1}}$ for $a=1,\\dots,m-1$ and $\\epsilon_m = - \\sqrt{(m-1)C}$. This verifies $\\sum_a \\epsilon_a^2 = m C$ and $\\sum_a \\epsilon_a = 0$. The only tight lower bound on the absolute error for Double Q-learning $|Q'_t(s,\\argmax_a Q_t(s,a) ) - V_*(s)|$ is zero. This can be seen by because we can have \\[ Q_t(s,a_1) = V_*(s) + \\sqrt{C\\frac{m-1}{m}}\\,, \\] and \\[ Q_t(s,a_i) = V_*(s)-\\sqrt{C\\frac{1}{m(m-1)}}\\,\\text{, for $i > 1$.} \\] Then the conditions of the theorem hold.  If then, furthermore, we have $Q'_t(s,a_1) = V_*(s)$ then the error is zero.  The remaining action values $Q'_t(s,a_i)$, for $i>1$, are arbitrary."
+    },
+    {
+      "id": "PP04.2",
+      "type": "proof",
+      "name": "Proof of Theorem 2",
+      "section": "Appendix",
+      "origin": "paper",
+      "proves": "TP04.2",
+      "statement": "Define $\\epsilon_a = Q_t(s,a) - Q_*(s,a)$; this is a uniform random variable in $[-1,1]$.  The probability that $\\max_a Q_t(s,a) \\le x$ for some $x$ is equal to the probability that $\\epsilon_a \\le x$ for all $a$ simultaneously.  Because the estimation errors are independent, we can derive \\begin{align*} P( \\max_a \\epsilon_a \\le x ) & = P( X_1 \\le x \\land X_2 \\le x \\land \\ldots \\land X_m \\le x )\\\\ & = \\prod_{a=1}^m P( \\epsilon_a \\le x )\\,. \\end{align*} The function $P( \\epsilon_a \\le x )$ is the cumulative distribution function (CDF) of $\\epsilon_a$, which here is simply defined as \\[ P( \\epsilon_a \\le x ) = \\left\\{ \\begin{array}{ll} 0 & \\text{if $x \\le -1$} \\\\ \\frac{1+x}{2} & \\text{if $x \\in (-1,1)$} \\\\ 1 & \\text{if $x \\ge 1$} \\\\ \\end{array} \\right. \\] This implies that \\begin{align*} P( \\max_a \\epsilon_a \\le x ) & = \\prod_{a=1}^m P( \\epsilon_a \\le x )\\\\ & = \\left\\{ \\begin{array}{ll} 0 & \\text{if $x \\le -1$} \\\\ \\left(\\frac{1+x}{2}\\right)^m & \\text{if $x \\in (-1,1)$} \\\\ 1 & \\text{if $x \\ge 1$} \\\\ \\end{array} \\right. \\end{align*} This gives us the CDF of the random variable $\\max_a \\epsilon_a$.  Its expectation can be written as an integral \\[ \\E{ \\max_a \\epsilon_a } = \\int_{-1}^{1} \\! x f_{\\max}(x)\\,\\text{d}x \\,, \\] where $f_{\\max}$ is the probability density function of this variable, defined as the derivative of the CDF: $f_{\\max}(x) = \\frac{\\text{d}}{\\text{d}x} P( \\max_a \\epsilon_a \\le x )$, so that for $x \\in [-1,1]$ we have $f_{\\max}(x) = \\frac{m}{2} \\left(\\frac{1+x}{2}\\right)^{m-1}$.  Evaluating the integral yields \\begin{align*} \\E{ \\max_a \\epsilon_a } &= \\int_{-1}^{1} \\! x f_{\\max}(x)\\,\\text{d}x \\\\ &= \\left[ \\left(\\frac{x+1}{2}\\right)^m \\frac{m x - 1}{m+1} \\right]_{-1}^1 \\\\ &= \\frac{m-1}{m+1} \\,. \\qedhere \\end{align*}"
+    },
+    {
+      "id": "PSP04.1",
+      "type": "proof_step",
+      "name": "Set up errors and contradiction assumption",
+      "section": "Appendix",
+      "origin": "paper",
+      "parent_id": "PP04.1",
+      "step_order": 1,
+      "subclass": "contradiction_setup",
+      "statement": "Define the errors for each action $a$ as $\\epsilon_a = Q_t(s,a) - V_*(s)$. Suppose that there exists a setting of $\\{ \\epsilon_a \\}$ such that $\\max_a \\epsilon_a < \\sqrt{\\frac{C}{m-1}}$. Let $\\{ \\epsilon^+_i \\}$ be the set of positive $\\epsilon$ of size $n$, and $\\{ \\epsilon^-_j \\}$ the set of strictly negative $\\epsilon$ of size $m-n$ (such that $\\{ \\epsilon\\} = \\{ \\epsilon^+_i \\} \\cup \\{ \\epsilon^-_j \\}$). If $n=m$, then $\\sum_a \\epsilon_a = 0 \\implies \\epsilon_a = 0 \\;\\forall a$, which contradicts $\\sum_a \\epsilon_a^2 = m C$. Hence, it must be that $n \\leq m-1$. Then, $\\sum_{i=1}^n \\epsilon^+_i \\le n \\max_i \\epsilon^+_i < n \\sqrt{\\frac{C}{m-1}}$, and therefore (using the constraint $\\sum_a \\epsilon_a = 0$) we also have that $\\sum_{j=1}^{m-n} |\\epsilon^-_j| < n \\sqrt{\\frac{C}{m-1}}$. This implies $\\max_j |\\epsilon^-_j| < n \\sqrt{\\frac{C}{m-1}}$."
+    },
+    {
+      "id": "PSP04.2",
+      "type": "proof_step",
+      "name": "Apply H\\\"{o}lder's inequality",
+      "section": "Appendix",
+      "origin": "paper",
+      "parent_id": "PP04.1",
+      "step_order": 2,
+      "subclass": "apply_lemma",
+      "statement": "By H\\\"{o}lder's inequality, then \\begin{align*} \\sum_{j=1}^{m-n} (\\epsilon^-_j)^2 &\\leq \\sum_{j=1}^{m-n} |\\epsilon^-_j| \\cdot \\max_j |\\epsilon^-_j| \\\\ &< n \\sqrt{\\frac{C}{m-1}} n \\sqrt{\\frac{C}{m-1}}\\,. \\end{align*}"
+    },
+    {
+      "id": "PSP04.3",
+      "type": "proof_step",
+      "name": "Combine relations to bound sum of squares",
+      "section": "Appendix",
+      "origin": "paper",
+      "parent_id": "PP04.1",
+      "step_order": 3,
+      "subclass": "algebraic_manipulation",
+      "statement": "We can now combine these relations to compute an upper-bound on the sum of squares for all $\\epsilon_a$: \\begin{align*} \\sum_{a=1}^m (\\epsilon_a)^2 &= \\sum_{i=1}^{n} (\\epsilon^+_i)^2 + \\sum_{j=1}^{m-n} (\\epsilon^-_j)^2 \\\\ &< n \\frac{C}{m-1} +  n \\sqrt{\\frac{C}{m-1}} n \\sqrt{\\frac{C}{m-1}} \\\\ &= C \\frac{n(n+1)}{m-1}\\\\ &\\leq m C. \\end{align*}"
+    },
+    {
+      "id": "PSP04.4",
+      "type": "proof_step",
+      "name": "Reach contradiction and verify tightness",
+      "section": "Appendix",
+      "origin": "paper",
+      "parent_id": "PP04.1",
+      "step_order": 4,
+      "subclass": "conclude",
+      "statement": "This contradicts the assumption that $\\sum_{a=1}^m \\epsilon_a^2 < m C$, and therefore $\\max_a \\epsilon_a \\geq \\sqrt{\\frac{C}{m-1}}$ for all settings of $\\epsilon$ that satisfy the constraints. We can check that the lower-bound is tight by setting $\\epsilon_a = \\sqrt{\\frac{C}{m-1}}$ for $a=1,\\dots,m-1$ and $\\epsilon_m = - \\sqrt{(m-1)C}$. This verifies $\\sum_a \\epsilon_a^2 = m C$ and $\\sum_a \\epsilon_a = 0$."
+    },
+    {
+      "id": "PSP04.5",
+      "type": "proof_step",
+      "name": "Zero lower bound for Double Q-learning",
+      "section": "Appendix",
+      "origin": "paper",
+      "parent_id": "PP04.1",
+      "step_order": 5,
+      "subclass": "conclude",
+      "statement": "The only tight lower bound on the absolute error for Double Q-learning $|Q'_t(s,\\argmax_a Q_t(s,a) ) - V_*(s)|$ is zero. This can be seen by because we can have \\[ Q_t(s,a_1) = V_*(s) + \\sqrt{C\\frac{m-1}{m}}\\,, \\] and \\[ Q_t(s,a_i) = V_*(s)-\\sqrt{C\\frac{1}{m(m-1)}}\\,\\text{, for $i > 1$.} \\] Then the conditions of the theorem hold.  If then, furthermore, we have $Q'_t(s,a_1) = V_*(s)$ then the error is zero.  The remaining action values $Q'_t(s,a_i)$, for $i>1$, are arbitrary."
+    },
+    {
+      "id": "PSP04.6",
+      "type": "proof_step",
+      "name": "Set up errors and independence product",
+      "section": "Appendix",
+      "origin": "paper",
+      "parent_id": "PP04.2",
+      "step_order": 1,
+      "subclass": "setup",
+      "statement": "Define $\\epsilon_a = Q_t(s,a) - Q_*(s,a)$; this is a uniform random variable in $[-1,1]$.  The probability that $\\max_a Q_t(s,a) \\le x$ for some $x$ is equal to the probability that $\\epsilon_a \\le x$ for all $a$ simultaneously.  Because the estimation errors are independent, we can derive \\begin{align*} P( \\max_a \\epsilon_a \\le x ) & = P( X_1 \\le x \\land X_2 \\le x \\land \\ldots \\land X_m \\le x )\\\\ & = \\prod_{a=1}^m P( \\epsilon_a \\le x )\\,. \\end{align*}"
+    },
+    {
+      "id": "PSP04.7",
+      "type": "proof_step",
+      "name": "CDF of $\\epsilon_a$",
+      "section": "Appendix",
+      "origin": "paper",
+      "parent_id": "PP04.2",
+      "step_order": 2,
+      "subclass": "invoke_identity",
+      "statement": "The function $P( \\epsilon_a \\le x )$ is the cumulative distribution function (CDF) of $\\epsilon_a$, which here is simply defined as \\[ P( \\epsilon_a \\le x ) = \\left\\{ \\begin{array}{ll} 0 & \\text{if $x \\le -1$} \\\\ \\frac{1+x}{2} & \\text{if $x \\in (-1,1)$} \\\\ 1 & \\text{if $x \\ge 1$} \\\\ \\end{array} \\right. \\]"
+    },
+    {
+      "id": "PSP04.8",
+      "type": "proof_step",
+      "name": "CDF of $\\max_a \\epsilon_a$",
+      "section": "Appendix",
+      "origin": "paper",
+      "parent_id": "PP04.2",
+      "step_order": 3,
+      "subclass": "algebraic_manipulation",
+      "statement": "This implies that \\begin{align*} P( \\max_a \\epsilon_a \\le x ) & = \\prod_{a=1}^m P( \\epsilon_a \\le x )\\\\ & = \\left\\{ \\begin{array}{ll} 0 & \\text{if $x \\le -1$} \\\\ \\left(\\frac{1+x}{2}\\right)^m & \\text{if $x \\in (-1,1)$} \\\\ 1 & \\text{if $x \\ge 1$} \\\\ \\end{array} \\right. \\end{align*} This gives us the CDF of the random variable $\\max_a \\epsilon_a$."
+    },
+    {
+      "id": "PSP04.9",
+      "type": "proof_step",
+      "name": "Expectation as integral of density",
+      "section": "Appendix",
+      "origin": "paper",
+      "parent_id": "PP04.2",
+      "step_order": 4,
+      "subclass": "substitute",
+      "statement": "Its expectation can be written as an integral \\[ \\E{ \\max_a \\epsilon_a } = \\int_{-1}^{1} \\! x f_{\\max}(x)\\,\\text{d}x \\,, \\] where $f_{\\max}$ is the probability density function of this variable, defined as the derivative of the CDF: $f_{\\max}(x) = \\frac{\\text{d}}{\\text{d}x} P( \\max_a \\epsilon_a \\le x )$, so that for $x \\in [-1,1]$ we have $f_{\\max}(x) = \\frac{m}{2} \\left(\\frac{1+x}{2}\\right)^{m-1}$."
+    },
+    {
+      "id": "PSP04.10",
+      "type": "proof_step",
+      "name": "Evaluate the integral",
+      "section": "Appendix",
+      "origin": "paper",
+      "parent_id": "PP04.2",
+      "step_order": 5,
+      "subclass": "conclude",
+      "statement": "Evaluating the integral yields \\begin{align*} \\E{ \\max_a \\epsilon_a } &= \\int_{-1}^{1} \\! x f_{\\max}(x)\\,\\text{d}x \\\\ &= \\left[ \\left(\\frac{x+1}{2}\\right)^m \\frac{m x - 1}{m+1} \\right]_{-1}^1 \\\\ &= \\frac{m-1}{m+1} \\,. \\qedhere \\end{align*}"
+    }
+  ],
+  "edges": [
+    {
+      "source": "PP04.1",
+      "target": "TP04.1",
+      "type": "proves"
+    },
+    {
+      "source": "PP04.2",
+      "target": "TP04.2",
+      "type": "proves"
+    },
+    {
+      "source": "DP04.1",
+      "target": "TP04.1",
+      "type": "uses"
+    },
+    {
+      "source": "DP04.1",
+      "target": "TP04.2",
+      "type": "uses"
+    },
+    {
+      "source": "EP04.2",
+      "target": "EP04.1",
+      "type": "uses"
+    },
+    {
+      "source": "EP04.2",
+      "target": "EP04.4",
+      "type": "uses"
+    },
+    {
+      "source": "EP04.3",
+      "target": "AP04.2",
+      "type": "uses"
+    },
+    {
+      "source": "EP04.4",
+      "target": "AP04.3",
+      "type": "uses"
+    },
+    {
+      "source": "AP04.2",
+      "target": "AP04.1",
+      "type": "uses"
+    },
+    {
+      "source": "AP04.3",
+      "target": "AP04.1",
+      "type": "uses"
+    },
+    {
+      "source": "EP04.3",
+      "target": "AP04.1",
+      "type": "uses"
+    },
+    {
+      "source": "TP04.1",
+      "target": "RP04.1",
+      "type": "uses"
+    },
+    {
+      "source": "PSP04.1",
+      "target": "PSP04.2",
+      "type": "uses"
+    },
+    {
+      "source": "PSP04.2",
+      "target": "PSP04.3",
+      "type": "uses"
+    },
+    {
+      "source": "PSP04.3",
+      "target": "PSP04.4",
+      "type": "uses"
+    },
+    {
+      "source": "PSP04.4",
+      "target": "PSP04.5",
+      "type": "uses"
+    },
+    {
+      "source": "PSP04.6",
+      "target": "PSP04.7",
+      "type": "uses"
+    },
+    {
+      "source": "PSP04.7",
+      "target": "PSP04.8",
+      "type": "uses"
+    },
+    {
+      "source": "PSP04.8",
+      "target": "PSP04.9",
+      "type": "uses"
+    },
+    {
+      "source": "PSP04.9",
+      "target": "PSP04.10",
+      "type": "uses"
+    }
+  ]
+}

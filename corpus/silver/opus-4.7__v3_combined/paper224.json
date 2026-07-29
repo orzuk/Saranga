@@ -1,0 +1,532 @@
+{
+  "metadata": {
+    "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+    "authors": "Jacob Devlin, Ming-Wei Chang, Kenton Lee, Kristina Toutanova",
+    "year": 2019,
+    "paper_num": 224,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "DP224.1",
+      "type": "definition",
+      "name": "BERT Model Architecture",
+      "section": "3 BERT",
+      "statement": "A multi-layer bidirectional Transformer encoder with $L$ layers, hidden size $H$, $A$ self-attention heads, and feed-forward size $4H$; reported in two configurations $\\text{BERT}_\\text{BASE}$ ($L{=}12, H{=}768, A{=}12$, 110M params) and $\\text{BERT}_\\text{LARGE}$ ($L{=}24, H{=}1024, A{=}16$, 340M params).",
+      "statement_clean": "BERT is a multi-layer bidirectional Transformer encoder; two sizes BASE (110M) and LARGE (340M) are reported.",
+      "tags": ["architecture", "neural_network"],
+      "origin": "paper"
+    },
+    {
+      "id": "DP224.2",
+      "type": "definition",
+      "name": "BERT Input Representation",
+      "section": "3 BERT (Input/Output Representations)",
+      "statement": "Each input token's representation is the sum of its WordPiece token embedding (vocab size 30,000), a learned segment embedding (sentence $A$ vs $B$), and a learned position embedding; sequences begin with a classification token $\\texttt{[CLS]}$ and sentence pairs are separated by $\\texttt{[SEP]}$. The final hidden vector of $\\texttt{[CLS]}$ is $C \\in \\mathbb{R}^H$ and that of token $i$ is $T_i \\in \\mathbb{R}^H$.",
+      "statement_clean": "BERT input embedding sums WordPiece token, segment, and position embeddings, with [CLS] and [SEP] special tokens.",
+      "tags": ["embedding", "representation"],
+      "origin": "paper"
+    },
+    {
+      "id": "DP224.3",
+      "type": "definition",
+      "name": "Masked Language Model (MLM) Objective",
+      "section": "3.1 Pre-training BERT (Task #1)",
+      "statement": "A pre-training objective where 15\\% of WordPiece tokens are randomly chosen for prediction; the chosen position is replaced by $\\texttt{[MASK]}$ 80\\% of the time, by a random token 10\\% of the time, and left unchanged 10\\% of the time, and the original token is predicted from the corresponding final hidden vector $T_i$ via cross-entropy loss.",
+      "statement_clean": "MLM masks 15% of input tokens (with 80/10/10 mask/random/keep policy) and trains the model to predict the originals.",
+      "tags": ["objective", "pretraining", "self-supervised"],
+      "origin": "paper"
+    },
+    {
+      "id": "DP224.4",
+      "type": "definition",
+      "name": "Next Sentence Prediction (NSP) Objective",
+      "section": "3.1 Pre-training BERT (Task #2)",
+      "statement": "A binarized pre-training task: given a sentence pair $(A,B)$, with probability $1/2$ $B$ is the actual next sentence in the corpus ($\\texttt{IsNext}$) and with probability $1/2$ it is a random sentence ($\\texttt{NotNext}$); the $\\texttt{[CLS]}$ representation $C$ is fed to a classifier predicting the binary label.",
+      "statement_clean": "NSP is a binary task predicting whether sentence B truly follows sentence A, using the [CLS] vector.",
+      "tags": ["objective", "pretraining", "classification"],
+      "origin": "paper"
+    },
+    {
+      "id": "DP224.5",
+      "type": "definition",
+      "name": "Pre-training / Fine-tuning Framework",
+      "section": "3 BERT",
+      "statement": "Two-stage framework: (i) pre-train BERT on unlabeled data with MLM and NSP objectives; (ii) for each downstream task, initialize a task-specific model with the pre-trained parameters and fine-tune all parameters end-to-end with one additional output layer.",
+      "statement_clean": "BERT is first pre-trained on unlabeled text (MLM+NSP) and then fine-tuned end-to-end for each downstream task.",
+      "tags": ["transfer_learning", "framework"],
+      "origin": "paper"
+    },
+    {
+      "id": "DP224.6",
+      "type": "definition",
+      "name": "WordPiece Embeddings",
+      "section": "3 BERT (Input/Output Representations, cited)",
+      "statement": "Subword tokenization scheme producing a fixed vocabulary (here 30,000 tokens) of word pieces; rare words are split into pieces marked with $\\texttt{\\#\\#}$.",
+      "statement_clean": "WordPiece is a subword tokenizer used here with a 30k vocabulary.",
+      "origin": "external",
+      "origin_citation": "Wu et al. 2016 (Google's NMT)"
+    },
+    {
+      "id": "DP224.7",
+      "type": "definition",
+      "name": "Cloze Task",
+      "section": "3.1 Pre-training BERT (cited)",
+      "statement": "Classical psycholinguistic task in which a word is deleted from a passage and the reader must restore it from surrounding context; the inspiration for the masked LM objective.",
+      "origin": "external",
+      "origin_citation": "Taylor 1953 (Cloze procedure)"
+    },
+    {
+      "id": "DP224.8",
+      "type": "definition",
+      "name": "Transformer Encoder",
+      "section": "3 BERT (cited)",
+      "statement": "A stack of self-attention and position-wise feed-forward layers introduced by Vaswani et al.; BERT instantiates a multi-layer Transformer encoder with bidirectional self-attention.",
+      "origin": "external",
+      "origin_citation": "Vaswani et al. 2017 (Attention Is All You Need)"
+    },
+    {
+      "id": "AP224.1",
+      "type": "algorithm",
+      "name": "BERT Pre-training Procedure",
+      "section": "3.1, A.2 Pre-training Procedure",
+      "statement": "Joint pre-training of a bidirectional Transformer encoder on unlabeled text using the MLM and NSP objectives.",
+      "input": [
+        "Unlabeled corpus (BooksCorpus 800M words + English Wikipedia 2,500M words)",
+        "Model hyperparameters $L, H, A$",
+        "Optimizer settings: Adam, learning rate $1\\mathrm{e}{-4}$, $\\beta_1{=}0.9$, $\\beta_2{=}0.999$, L2 weight decay $0.01$, warmup over first 10,000 steps, linear decay",
+        "Batch size 256 sequences of up to 512 tokens, 1{,}000{,}000 training steps",
+        "Dropout $0.1$, $\\texttt{gelu}$ activation"
+      ],
+      "output": [
+        "Pre-trained BERT parameters $\\theta$ to initialize all downstream fine-tuning models"
+      ],
+      "pseudocode": "Sample two text spans (A, B) with combined length $\\le 512$ tokens; with prob 1/2, B is actual next-of-A else random sentence (NSP label). Apply WordPiece tokenization; mask 15\\% of token positions (80\\% [MASK], 10\\% random, 10\\% unchanged). Compute MLM cross-entropy over masked positions plus NSP cross-entropy on $C$; sum losses; update $\\theta$ via Adam.",
+      "tags": ["iterative", "pretraining", "self-supervised"],
+      "origin": "paper"
+    },
+    {
+      "id": "AP224.2",
+      "type": "algorithm",
+      "name": "BERT Fine-tuning Procedure",
+      "section": "3.2, A.3 Fine-tuning Procedure",
+      "statement": "Initialize the task model with pre-trained BERT parameters and fine-tune all parameters end-to-end on labeled data, swapping in task-specific inputs and a single new output layer.",
+      "input": [
+        "Pre-trained BERT parameters from $\\text{AP224.1}$",
+        "Labeled task data (single sentence or sentence pair)",
+        "Task-specific output head (e.g. classification weights $W \\in \\mathbb{R}^{K \\times H}$)",
+        "Hyperparameters: batch size $\\in \\{16,32\\}$, learning rate $\\in \\{5\\mathrm{e}{-5}, 3\\mathrm{e}{-5}, 2\\mathrm{e}{-5}\\}$, epochs $\\in \\{2,3,4\\}$, dropout $0.1$"
+      ],
+      "output": [
+        "Task-specific fine-tuned BERT parameters",
+        "Task predictions (classification logits, span scores, etc.)"
+      ],
+      "pseudocode": "Encode the (single or paired) input with BERT; for sequence-level tasks read out $C$ and apply $\\log\\,\\mathrm{softmax}(C W^\\top)$; for token-level tasks read out $T_i$ and apply a per-token head; back-propagate task loss through all parameters with Adam.",
+      "tags": ["transfer_learning", "supervised"],
+      "origin": "paper"
+    },
+    {
+      "id": "AP224.3",
+      "type": "algorithm",
+      "name": "BERT SQuAD Span Prediction",
+      "section": "4.2 SQuAD v1.1, 4.3 SQuAD v2.0",
+      "statement": "Fine-tune BERT to predict an answer span in a passage by introducing start and end vectors $S, E \\in \\mathbb{R}^H$ and scoring each position via dot products with token representations.",
+      "input": [
+        "Question encoded with $A$ embeddings, passage encoded with $B$ embeddings, packed into one sequence",
+        "Token representations $T_i$ from BERT",
+        "Trainable start/end vectors $S, E \\in \\mathbb{R}^H$"
+      ],
+      "output": [
+        "Predicted answer span $(i,j)$ with $j \\ge i$ maximizing $S{\\cdot}T_i + E{\\cdot}T_j$ (or the no-answer span when $\\hat{s}_{i,j} \\le s_{\\texttt{null}} + \\tau$ for SQuAD 2.0)"
+      ],
+      "pseudocode": "Compute $P_i^{\\text{start}} = \\frac{e^{S\\cdot T_i}}{\\sum_j e^{S\\cdot T_j}}$ and analogously $P_i^{\\text{end}}$; train with sum of log-likelihoods of true start and end positions. For SQuAD 2.0, also compute $s_{\\texttt{null}} = S\\cdot C + E\\cdot C$ and predict no-answer when $\\hat{s}_{i,j} \\le s_{\\texttt{null}} + \\tau$.",
+      "tags": ["span_prediction", "fine_tuning"],
+      "origin": "paper"
+    },
+    {
+      "id": "EP224.1",
+      "type": "equation",
+      "name": "GLUE Classification Loss",
+      "section": "4.1 GLUE",
+      "statement": "$\\mathcal{L} = -\\log\\,\\mathrm{softmax}(C W^\\top)$, where $C \\in \\mathbb{R}^H$ is the $\\texttt{[CLS]}$ representation and $W \\in \\mathbb{R}^{K\\times H}$ is the new classification head with $K$ class labels.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP224.2",
+      "type": "equation",
+      "name": "SQuAD Span Start Probability",
+      "section": "4.2 SQuAD v1.1",
+      "statement": "$P_i = \\dfrac{e^{S\\cdot T_i}}{\\sum_j e^{S\\cdot T_j}}$, the probability that token $i$ is the start of the answer span.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP224.3",
+      "type": "equation",
+      "name": "SQuAD 2.0 No-Answer Decision Rule",
+      "section": "4.3 SQuAD v2.0",
+      "statement": "Predict a non-null answer iff $\\hat{s}_{i,j} > s_{\\texttt{null}} + \\tau$, where $s_{\\texttt{null}} = S\\cdot C + E\\cdot C$ and $\\hat{s}_{i,j} = \\max_{j\\ge i} S\\cdot T_i + E\\cdot T_j$, with threshold $\\tau$ chosen on dev to maximize F1.",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP224.1",
+      "type": "problem",
+      "name": "Bidirectional Language Representation Pre-training",
+      "section": "1 Introduction",
+      "statement": "Learn deep bidirectional language representations from unlabeled text such that, with one additional output layer and fine-tuning, the model attains state-of-the-art performance on a wide range of sentence- and token-level NLP tasks.",
+      "tags": ["pretraining", "representation_learning"],
+      "subclass": "learning",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP224.2",
+      "type": "problem",
+      "name": "GLUE Benchmark",
+      "section": "4.1 GLUE (cited)",
+      "statement": "Suite of diverse natural-language understanding tasks (MNLI, QQP, QNLI, SST-2, CoLA, STS-B, MRPC, RTE) evaluated through a single leaderboard score.",
+      "origin": "external",
+      "origin_citation": "Wang et al. 2018 (GLUE)"
+    },
+    {
+      "id": "ProbP224.3",
+      "type": "problem",
+      "name": "SQuAD v1.1 Question Answering",
+      "section": "4.2 SQuAD v1.1 (cited)",
+      "statement": "Given a question and a Wikipedia passage containing the answer, predict the contiguous text span in the passage that answers the question.",
+      "origin": "external",
+      "origin_citation": "Rajpurkar et al. 2016 (SQuAD)"
+    },
+    {
+      "id": "ProbP224.4",
+      "type": "problem",
+      "name": "SQuAD v2.0 Question Answering with No-Answer",
+      "section": "4.3 SQuAD v2.0 (cited)",
+      "statement": "Extension of SQuAD 1.1 that allows the question to have no answer in the provided passage; the model must either predict the answer span or abstain.",
+      "origin": "external",
+      "origin_citation": "Rajpurkar et al. 2018 (SQuAD 2.0)"
+    },
+    {
+      "id": "ProbP224.5",
+      "type": "problem",
+      "name": "SWAG Grounded Commonsense Inference",
+      "section": "4.4 SWAG (cited)",
+      "statement": "Given a sentence, choose the most plausible continuation among four candidate sentences; 113k examples evaluating grounded commonsense.",
+      "origin": "external",
+      "origin_citation": "Zellers et al. 2018 (SWAG)"
+    },
+    {
+      "id": "ProbP224.6",
+      "type": "problem",
+      "name": "CoNLL-2003 Named Entity Recognition",
+      "section": "5.3 Feature-based Approach with BERT (cited)",
+      "statement": "Token-level sequence-tagging task: assign a named-entity label (Person, Location, Organization, Misc, O) to every token of an English news article.",
+      "origin": "external",
+      "origin_citation": "Tjong Kim Sang & De Meulder 2003"
+    },
+    {
+      "id": "ExP224.1",
+      "type": "example",
+      "name": "MLM Masking Procedure on \"my dog is hairy\"",
+      "section": "A.1 Illustration of the Pre-training Tasks",
+      "statement": "With the 4-th token (\"hairy\") chosen for prediction: 80\\% of the time replace with $\\texttt{[MASK]}$ (`my dog is [MASK]'); 10\\% replace with a random word (`my dog is apple'); 10\\% leave unchanged (`my dog is hairy').",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP224.2",
+      "type": "example",
+      "name": "Next Sentence Prediction Pair Examples",
+      "section": "A.1 Illustration of the Pre-training Tasks",
+      "statement": "Positive example labeled $\\texttt{IsNext}$: \"[CLS] the man went to [MASK] store [SEP] he bought a gallon [MASK] milk [SEP]\". Negative example labeled $\\texttt{NotNext}$: \"[CLS] the man [MASK] to the store [SEP] penguin [MASK] are flight \\#\\#less birds [SEP]\".",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP224.3",
+      "type": "example",
+      "name": "GLUE Fine-tuning Results",
+      "section": "4.1 GLUE",
+      "statement": "Both $\\text{BERT}_\\text{BASE}$ and $\\text{BERT}_\\text{LARGE}$ outperform all prior systems on every GLUE task, with absolute average accuracy improvements of 4.5\\% and 7.0\\% respectively over the previous state of the art; $\\text{BERT}_\\text{LARGE}$ obtains a leaderboard score of 80.5 vs. 72.8 for OpenAI GPT.",
+      "tags": ["empirical", "benchmark"],
+      "origin": "paper"
+    },
+    {
+      "id": "ExP224.4",
+      "type": "example",
+      "name": "SQuAD v1.1 Fine-tuning Results",
+      "section": "4.2 SQuAD v1.1",
+      "statement": "BERT outperforms the top SQuAD 1.1 leaderboard system by $+1.5$ F1 in ensembling and $+1.3$ F1 as a single system; with TriviaQA fine-tuning data the single BERT model also exceeds the top ensemble. Test F1 reaches 93.2.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP224.5",
+      "type": "example",
+      "name": "SQuAD v2.0 Fine-tuning Results",
+      "section": "4.3 SQuAD v2.0",
+      "statement": "Using the start/end + null-score thresholding rule, BERT achieves $+5.1$ F1 over the previous best system on SQuAD 2.0 (Test F1 83.1).",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP224.6",
+      "type": "example",
+      "name": "SWAG Fine-tuning Results",
+      "section": "4.4 SWAG",
+      "statement": "$\\text{BERT}_\\text{LARGE}$ outperforms the ESIM+ELMo baseline by $+27.1\\%$ and OpenAI GPT by $+8.3\\%$ on SWAG.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP224.7",
+      "type": "example",
+      "name": "Pre-training Task Ablation (No NSP, LTR & No NSP)",
+      "section": "5.1 Effect of Pre-training Tasks",
+      "statement": "Removing NSP significantly hurts QNLI, MNLI, and SQuAD 1.1; replacing the MLM with a left-to-right LM (LTR \\& No NSP) is worse on all tasks, with large drops on MRPC and SQuAD; adding a randomly initialized BiLSTM atop the LTR model improves SQuAD but is still far below the bidirectional model.",
+      "tags": ["ablation", "empirical"],
+      "origin": "paper"
+    },
+    {
+      "id": "ExP224.8",
+      "type": "example",
+      "name": "Model Size Ablation",
+      "section": "5.2 Effect of Model Size",
+      "statement": "Across BERT models with varying $(L, H, A)$, larger models give strictly higher Dev accuracy on MNLI, MRPC, and SST-2 — including for MRPC, which has only 3{,}600 labeled training examples and is far from the pre-training distribution; this is the first demonstration that extreme scale also helps very small downstream tasks given sufficient pre-training.",
+      "tags": ["ablation", "scaling"],
+      "origin": "paper"
+    },
+    {
+      "id": "ExP224.9",
+      "type": "example",
+      "name": "Feature-based Approach on CoNLL-2003 NER",
+      "section": "5.3 Feature-based Approach with BERT",
+      "statement": "Using BERT activations as fixed features fed into a randomly-initialized two-layer 768-dim BiLSTM, $\\text{BERT}_\\text{LARGE}$ is competitive with state-of-the-art NER systems; the best variant — concatenation of the top four hidden layers — is only $0.3$ F1 behind full fine-tuning.",
+      "tags": ["ablation", "feature_based"],
+      "origin": "paper"
+    },
+    {
+      "id": "ExP224.10",
+      "type": "example",
+      "name": "Number of Pre-training Steps Ablation",
+      "section": "C.1 Effect of Number of Training Steps",
+      "statement": "$\\text{BERT}_\\text{BASE}$ gains nearly $1.0\\%$ MNLI accuracy when pre-trained for 1M steps versus 500k steps; the MLM model converges slightly slower than the LTR model in steps but outperforms it almost immediately in absolute accuracy.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP224.11",
+      "type": "example",
+      "name": "Different Masking Procedures Ablation",
+      "section": "C.2 Ablation for Different Masking Procedures",
+      "statement": "Fine-tuning is robust to varying the (MASK, SAME, RND) probabilities; however the feature-based NER setting degrades sharply if the masking strategy uses only $\\texttt{[MASK]}$ or only random replacement, justifying the 80/10/10 mix.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP224.1",
+      "type": "remark",
+      "name": "Why Standard Bidirectional Conditioning Fails",
+      "section": "3.1 Pre-training BERT (Task #1)",
+      "statement": "Standard left-to-right or right-to-left LMs cannot be naively made bidirectional because doing so would let each word indirectly \"see itself\" through multiple layers, allowing trivial prediction; this motivates the masked-LM workaround.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP224.2",
+      "type": "remark",
+      "name": "Pre-training / Fine-tuning Mismatch",
+      "section": "3.1 Pre-training BERT (Task #1)",
+      "statement": "The $\\texttt{[MASK]}$ token never appears at fine-tuning, creating a distributional mismatch; the 80/10/10 replacement policy partially mitigates this and forces the encoder to maintain a contextual representation of every token.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP224.3",
+      "type": "remark",
+      "name": "BERT vs OpenAI GPT vs ELMo",
+      "section": "Appendix B",
+      "statement": "Among the three: BERT is the only deeply bidirectional model jointly conditioning on both left and right context in all layers; GPT is a left-to-right Transformer fine-tuning approach; ELMo concatenates independently trained left-to-right and right-to-left LSTMs and is feature-based.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP224.4",
+      "type": "remark",
+      "name": "Computational Efficiency of Fine-tuning",
+      "section": "3.2 Fine-tuning BERT",
+      "statement": "Compared to pre-training, fine-tuning is inexpensive: every result in the paper can be reproduced in at most 1 hour on a single Cloud TPU (or a few hours on a GPU) starting from the same pre-trained checkpoint.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP224.5",
+      "type": "remark",
+      "name": "Sequence-Length Schedule for Pre-training",
+      "section": "A.2 Pre-training Procedure",
+      "statement": "To save compute (attention is quadratic in sequence length), pre-training uses sequence length 128 for 90\\% of steps and length 512 for the remaining 10\\% to learn long-range positional embeddings.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP224.1",
+      "type": "algorithm_step",
+      "name": "Sample sentence pair $(A, B)$ and assign NSP label",
+      "parent_id": "AP224.1",
+      "step_order": 1,
+      "statement": "Sample two text spans from the corpus with combined length $\\le 512$ tokens; with probability $1/2$, $B$ is the actual successor of $A$ (label $\\texttt{IsNext}$), else a random sentence (label $\\texttt{NotNext}$).",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP224.2",
+      "type": "algorithm_step",
+      "name": "WordPiece tokenize and embed with [CLS]/[SEP] and segment ids",
+      "parent_id": "AP224.1",
+      "step_order": 2,
+      "statement": "Tokenize $A$ and $B$ via WordPiece (30k vocab); prepend $\\texttt{[CLS]}$, separate with $\\texttt{[SEP]}$, append $\\texttt{[SEP]}$; build input embedding as the sum of token, segment, and position embeddings.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP224.3",
+      "type": "algorithm_step",
+      "name": "Apply 15\\% MLM masking with 80/10/10 policy",
+      "parent_id": "AP224.1",
+      "step_order": 3,
+      "statement": "Choose 15\\% of token positions; for each chosen position, with probabilities $0.8/0.1/0.1$ replace with $\\texttt{[MASK]}$ / a random token / leave unchanged.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP224.4",
+      "type": "algorithm_step",
+      "name": "Forward pass through bidirectional Transformer encoder",
+      "parent_id": "AP224.1",
+      "step_order": 4,
+      "statement": "Run the $L$-layer bidirectional Transformer to produce $C$ (final hidden of $\\texttt{[CLS]}$) and $T_1, \\ldots, T_n$ (per-token final hiddens).",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP224.5",
+      "type": "algorithm_step",
+      "name": "Compute MLM + NSP loss and backpropagate",
+      "parent_id": "AP224.1",
+      "step_order": 5,
+      "statement": "Compute MLM cross-entropy on masked positions (softmax over vocabulary on $T_i$) plus NSP binary cross-entropy on $C$; sum and minimize via Adam (lr $1\\mathrm{e}{-4}$, warmup 10k, linear decay) for 1M steps.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP224.6",
+      "type": "algorithm_step",
+      "name": "Initialize task model from pre-trained BERT",
+      "parent_id": "AP224.2",
+      "step_order": 1,
+      "statement": "Copy the pre-trained encoder parameters $\\theta$ produced by $\\text{AP224.1}$; add one task-specific output head with the few new parameters required (e.g. $W \\in \\mathbb{R}^{K\\times H}$ for classification, or $S, E \\in \\mathbb{R}^H$ for span prediction).",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP224.7",
+      "type": "algorithm_step",
+      "name": "Pack task input as single or paired sequence",
+      "parent_id": "AP224.2",
+      "step_order": 2,
+      "statement": "For single-sentence tasks use a degenerate pair $(\\text{text}, \\varnothing)$; for paired tasks (paraphrase, NLI, QA) pack the two pieces with $\\texttt{[CLS]}$ and $\\texttt{[SEP]}$ as in pre-training so cross-attention is bidirectional.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP224.8",
+      "type": "algorithm_step",
+      "name": "Read out [CLS] or token representations for the task head",
+      "parent_id": "AP224.2",
+      "step_order": 3,
+      "statement": "For sequence-level tasks read $C$ and apply $\\log\\,\\mathrm{softmax}(C W^\\top)$; for token-level tasks (NER, span QA) apply a head per $T_i$.",
+      "subclass": "branch",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP224.9",
+      "type": "algorithm_step",
+      "name": "Fine-tune all parameters end-to-end with task loss",
+      "parent_id": "AP224.2",
+      "step_order": 4,
+      "statement": "Backpropagate the task loss into all of BERT plus the new head with Adam; sweep batch size $\\in \\{16, 32\\}$, learning rate $\\in \\{5\\mathrm{e}{-5}, 3\\mathrm{e}{-5}, 2\\mathrm{e}{-5}\\}$ and epochs $\\in \\{2,3,4\\}$ on the dev set.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP224.10",
+      "type": "algorithm_step",
+      "name": "Pack question (segment $A$) and passage (segment $B$)",
+      "parent_id": "AP224.3",
+      "step_order": 1,
+      "statement": "Encode the question with $A$ embeddings and the passage with $B$ embeddings as one packed sequence and run BERT to obtain $C$ and the per-token vectors $T_i$.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP224.11",
+      "type": "algorithm_step",
+      "name": "Score each token as a span start / end via $S, E$",
+      "parent_id": "AP224.3",
+      "step_order": 2,
+      "statement": "Compute $P_i^{\\text{start}} = \\frac{e^{S\\cdot T_i}}{\\sum_j e^{S\\cdot T_j}}$ and the analogous $P_i^{\\text{end}}$; train with the sum of log-likelihoods of the gold start and end positions.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP224.12",
+      "type": "algorithm_step",
+      "name": "Decode best span; for SQuAD 2.0, compare to no-answer score",
+      "parent_id": "AP224.3",
+      "step_order": 3,
+      "statement": "Predict the span $(i,j)$ with $j \\ge i$ maximizing $S\\cdot T_i + E\\cdot T_j$; for SQuAD 2.0, predict no-answer when $\\hat{s}_{i,j} \\le s_{\\texttt{null}} + \\tau$ where $s_{\\texttt{null}} = S\\cdot C + E\\cdot C$ and $\\tau$ is tuned on the dev set.",
+      "subclass": "branch",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "DP224.6", "target": "DP224.2", "type": "uses"},
+    {"source": "DP224.8", "target": "DP224.1", "type": "uses"},
+    {"source": "DP224.7", "target": "DP224.3", "type": "uses"},
+    {"source": "DP224.1", "target": "DP224.5", "type": "uses"},
+    {"source": "DP224.2", "target": "DP224.5", "type": "uses"},
+    {"source": "DP224.3", "target": "DP224.5", "type": "uses"},
+    {"source": "DP224.4", "target": "DP224.5", "type": "uses"},
+    {"source": "DP224.1", "target": "AP224.1", "type": "uses"},
+    {"source": "DP224.2", "target": "AP224.1", "type": "uses"},
+    {"source": "DP224.3", "target": "AP224.1", "type": "uses"},
+    {"source": "DP224.4", "target": "AP224.1", "type": "uses"},
+    {"source": "DP224.6", "target": "AP224.1", "type": "uses"},
+    {"source": "AP224.1", "target": "AP224.2", "type": "uses"},
+    {"source": "DP224.5", "target": "AP224.2", "type": "uses"},
+    {"source": "AP224.2", "target": "AP224.3", "type": "uses"},
+    {"source": "EP224.2", "target": "AP224.3", "type": "uses"},
+    {"source": "EP224.3", "target": "AP224.3", "type": "uses"},
+    {"source": "EP224.1", "target": "AP224.2", "type": "uses"},
+    {"source": "AP224.1", "target": "ProbP224.1", "type": "uses"},
+    {"source": "AP224.2", "target": "ProbP224.1", "type": "uses"},
+    {"source": "AP224.2", "target": "ProbP224.2", "type": "uses"},
+    {"source": "AP224.3", "target": "ProbP224.3", "type": "uses"},
+    {"source": "AP224.3", "target": "ProbP224.4", "type": "uses"},
+    {"source": "AP224.2", "target": "ProbP224.5", "type": "uses"},
+    {"source": "AP224.2", "target": "ProbP224.6", "type": "uses"},
+    {"source": "DP224.3", "target": "ExP224.1", "type": "illustrates"},
+    {"source": "DP224.4", "target": "ExP224.2", "type": "illustrates"},
+    {"source": "AP224.2", "target": "ExP224.3", "type": "illustrates"},
+    {"source": "AP224.3", "target": "ExP224.4", "type": "illustrates"},
+    {"source": "AP224.3", "target": "ExP224.5", "type": "illustrates"},
+    {"source": "AP224.2", "target": "ExP224.6", "type": "illustrates"},
+    {"source": "AP224.1", "target": "ExP224.7", "type": "illustrates"},
+    {"source": "DP224.4", "target": "ExP224.7", "type": "illustrates"},
+    {"source": "DP224.3", "target": "ExP224.7", "type": "illustrates"},
+    {"source": "DP224.1", "target": "ExP224.8", "type": "illustrates"},
+    {"source": "AP224.2", "target": "ExP224.9", "type": "illustrates"},
+    {"source": "AP224.1", "target": "ExP224.10", "type": "illustrates"},
+    {"source": "DP224.3", "target": "ExP224.11", "type": "illustrates"},
+    {"source": "RP224.1", "target": "DP224.3", "type": "uses"},
+    {"source": "RP224.2", "target": "DP224.3", "type": "uses"},
+    {"source": "ASP224.1", "target": "ASP224.2", "type": "uses"},
+    {"source": "ASP224.2", "target": "ASP224.3", "type": "uses"},
+    {"source": "ASP224.3", "target": "ASP224.4", "type": "uses"},
+    {"source": "ASP224.4", "target": "ASP224.5", "type": "uses"},
+    {"source": "ASP224.6", "target": "ASP224.7", "type": "uses"},
+    {"source": "ASP224.7", "target": "ASP224.8", "type": "uses"},
+    {"source": "ASP224.8", "target": "ASP224.9", "type": "uses"},
+    {"source": "ASP224.10", "target": "ASP224.11", "type": "uses"},
+    {"source": "ASP224.11", "target": "ASP224.12", "type": "uses"}
+  ]
+}

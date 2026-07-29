@@ -1,0 +1,615 @@
+{
+  "metadata": {
+    "title": "Asynchronous Methods for Deep Reinforcement Learning",
+    "paper_num": 240,
+    "authors": "V. Mnih, A. Puigdomenech Badia, M. Mirza, A. Graves, T. Harley, T. P. Lillicrap, D. Silver, K. Kavukcuoglu",
+    "year": 2016,
+    "venue": "ICML 2016",
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "DP240.1",
+      "type": "definition",
+      "name": "Reinforcement Learning Setting",
+      "section": "3 Background",
+      "statement": "An agent interacts with environment $\\mathcal{E}$ over discrete time steps; at time $t$ it observes state $s_t$, picks action $a_t \\in \\mathcal{A}$ via policy $\\pi$, and receives reward $r_t$ and next state $s_{t+1}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP240.2",
+      "type": "definition",
+      "name": "Discounted Return",
+      "section": "3 Background",
+      "statement": "$R_t = \\sum_{k=0}^{\\infty} \\gamma^k r_{t+k}$ is the total accumulated return from time step $t$ with discount factor $\\gamma \\in (0,1]$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP240.3",
+      "type": "definition",
+      "name": "Action-Value Function $Q^{\\pi}$",
+      "section": "3 Background",
+      "statement": "$Q^{\\pi}(s,a) = \\mathbb{E}\\left[R_t \\mid s_t = s, a\\right]$ is the expected return for taking action $a$ in state $s$ and following policy $\\pi$ thereafter.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP240.4",
+      "type": "definition",
+      "name": "Optimal Action-Value $Q^*$",
+      "section": "3 Background",
+      "statement": "$Q^*(s,a) = \\max_{\\pi} Q^{\\pi}(s,a)$ is the maximum action value for state $s$ and action $a$ achievable by any policy.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP240.5",
+      "type": "definition",
+      "name": "State-Value Function $V^{\\pi}$",
+      "section": "3 Background",
+      "statement": "$V^{\\pi}(s) = \\mathbb{E}\\left[R_t \\mid s_t = s\\right]$, the expected return for following policy $\\pi$ from state $s$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP240.6",
+      "type": "definition",
+      "name": "Advantage Function",
+      "section": "3 Background",
+      "statement": "$A(a_t,s_t) = Q(a_t,s_t) - V(s_t)$, the advantage of action $a_t$ in state $s_t$ over the average value of state $s_t$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP240.7",
+      "type": "definition",
+      "name": "$n$-step Return",
+      "section": "3 Background",
+      "statement": "The $n$-step return is $r_t + \\gamma r_{t+1} + \\cdots + \\gamma^{n-1} r_{t+n-1} + \\gamma^n \\max_a Q(s_{t+n}, a)$, propagating a reward to $n$ preceding state-action pairs.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP240.8",
+      "type": "definition",
+      "name": "Forward View",
+      "section": "4 Method",
+      "statement": "Computation of $n$-step returns by explicitly waiting for $n$ steps of experience before updating, as opposed to the backward view of eligibility traces.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP240.9",
+      "type": "definition",
+      "name": "Entropy Regularization Term",
+      "section": "4 Method",
+      "statement": "An additional term $\\beta\\, H(\\pi(s_t;\\theta'))$ added to the policy objective, where $H$ is the entropy of the policy and $\\beta$ controls its strength; it discourages premature convergence to deterministic policies.",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP240.1",
+      "type": "problem",
+      "name": "Expected Return Maximization (RL Objective)",
+      "section": "3 Background",
+      "statement": "Find a policy $\\pi$ that maximizes the expected discounted return $\\mathbb{E}[R_t]$ from each state $s_t$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP240.1",
+      "type": "equation",
+      "name": "One-step Q-learning Loss",
+      "section": "3 Background",
+      "statement": "$L_i(\\theta_i) = \\mathbb{E}\\left(r + \\gamma \\max_{a'} Q(s', a'; \\theta_{i-1}) - Q(s,a;\\theta_i)\\right)^2$, where $s'$ is the next state.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP240.2",
+      "type": "equation",
+      "name": "REINFORCE Policy Gradient with Baseline",
+      "section": "3 Background",
+      "statement": "$\\nabla_{\\theta} \\log\\pi(a_t|s_t;\\theta)\\, (R_t - b_t(s_t))$, where $b_t(s_t) \\approx V^{\\pi}(s_t)$ is a learned baseline.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP240.3",
+      "type": "equation",
+      "name": "A3C Policy Gradient with Entropy Regularization",
+      "section": "4 Method",
+      "statement": "$\\nabla_{\\theta'} \\log\\pi(a_t|s_t;\\theta')\\, (R_t - V(s_t;\\theta_v)) + \\beta\\, \\nabla_{\\theta'} H(\\pi(s_t;\\theta'))$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP240.4",
+      "type": "equation",
+      "name": "A3C Advantage Estimator",
+      "section": "4 Method",
+      "statement": "$A(s_t,a_t;\\theta,\\theta_v) = \\sum_{i=0}^{k-1} \\gamma^i r_{t+i} + \\gamma^k V(s_{t+k};\\theta_v) - V(s_t;\\theta_v)$, with $k$ upper-bounded by $t_{max}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP240.5",
+      "type": "equation",
+      "name": "Non-centered RMSProp Update",
+      "section": "4 Method / Supplement Sec. A.1",
+      "statement": "$g = \\alpha g + (1-\\alpha)\\Delta\\theta^2$ and $\\theta \\gets \\theta - \\eta\\, \\frac{\\Delta\\theta}{\\sqrt{g+\\epsilon}}$, with all operations elementwise.",
+      "origin": "paper"
+    },
+    {
+      "id": "AP240.1",
+      "type": "algorithm",
+      "name": "Asynchronous one-step Q-learning",
+      "section": "4 Method (Algorithm 1)",
+      "statement": "Multi-threaded actor-learner variant of Q-learning: each thread interacts with its own environment copy, computes Q-learning gradients, and asynchronously updates a shared parameter vector $\\theta$ via Hogwild!-style updates.",
+      "input": [
+        "Global shared parameters $\\theta$, target network $\\theta^-$, counter $T=0$",
+        "Update intervals $I_{target}$, $I_{AsyncUpdate}$, max steps $T_{max}$",
+        "Exploration rate $\\epsilon$ (per-thread)"
+      ],
+      "output": [
+        "Trained Q-network parameters $\\theta$"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "asynchronous", "off-policy"]
+    },
+    {
+      "id": "AP240.2",
+      "type": "algorithm",
+      "name": "Asynchronous one-step Sarsa",
+      "section": "4 Method",
+      "statement": "Same as Asynchronous one-step Q-learning except the target value is $r + \\gamma Q(s', a'; \\theta^-)$ where $a'$ is the action actually taken in $s'$ (on-policy target).",
+      "input": [
+        "Global shared parameters $\\theta$, target network $\\theta^-$, counter $T$",
+        "Update intervals $I_{target}$, $I_{AsyncUpdate}$, max steps $T_{max}$"
+      ],
+      "output": [
+        "Trained Q-network parameters $\\theta$"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "asynchronous", "on-policy"]
+    },
+    {
+      "id": "AP240.3",
+      "type": "algorithm",
+      "name": "Asynchronous $n$-step Q-learning",
+      "section": "4 Method / Supplement (Algorithm S2)",
+      "statement": "Forward-view multi-step Q-learning: each thread rolls out up to $t_{max}$ steps, then accumulates $n$-step Q-learning gradients for each visited state-action pair before performing one asynchronous update.",
+      "input": [
+        "Global shared $\\theta$, target $\\theta^-$, counter $T=0$",
+        "Rollout length $t_{max}$, target update interval $I_{target}$, max steps $T_{max}$"
+      ],
+      "output": [
+        "Trained Q-network parameters $\\theta$"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "asynchronous", "off-policy", "n-step"]
+    },
+    {
+      "id": "AP240.4",
+      "type": "algorithm",
+      "name": "Asynchronous Advantage Actor-Critic (A3C)",
+      "section": "4 Method / Supplement (Algorithm S3)",
+      "statement": "Forward-view actor-critic that maintains a policy $\\pi(a_t|s_t;\\theta)$ and value function $V(s_t;\\theta_v)$, updates both with the $n$-step advantage estimator, and uses entropy regularization to encourage exploration.",
+      "input": [
+        "Global shared parameters $\\theta$, $\\theta_v$ and counter $T=0$",
+        "Thread-specific parameters $\\theta'$, $\\theta'_v$",
+        "Rollout length $t_{max}$, entropy weight $\\beta$, max steps $T_{max}$"
+      ],
+      "output": [
+        "Trained policy parameters $\\theta$ and value parameters $\\theta_v$"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "asynchronous", "on-policy", "actor-critic"]
+    },
+    {
+      "id": "AP240.5",
+      "type": "algorithm",
+      "name": "Asynchronous Momentum SGD (Hogwild!-style)",
+      "section": "Supplement Sec. A.1",
+      "statement": "Each thread $i$ independently applies momentum SGD with its own momentum vector: $m_i = \\alpha m_i + (1-\\alpha) \\Delta\\theta_i$ then $\\theta \\gets \\theta - \\eta m_i$ on the shared $\\theta$ without locks.",
+      "input": [
+        "Shared parameter vector $\\theta$",
+        "Per-thread accumulated gradient $\\Delta\\theta_i$",
+        "Learning rate $\\eta$, momentum $\\alpha$"
+      ],
+      "output": [
+        "Updated shared parameters $\\theta$"
+      ],
+      "origin": "paper",
+      "tags": ["asynchronous", "lock-free"]
+    },
+    {
+      "id": "AP240.6",
+      "type": "algorithm",
+      "name": "Shared RMSProp",
+      "section": "Supplement Sec. A.1",
+      "statement": "RMSProp variant where the moving average of squared gradients $g$ is shared across threads and updated asynchronously without locking, reducing memory and improving robustness vs per-thread RMSProp.",
+      "input": [
+        "Shared $\\theta$, shared $g$",
+        "Per-step gradient $\\Delta\\theta$",
+        "Learning rate $\\eta$, decay $\\alpha$, stability $\\epsilon$"
+      ],
+      "output": [
+        "Updated $\\theta$ and $g$"
+      ],
+      "origin": "paper",
+      "tags": ["asynchronous", "lock-free", "adaptive"]
+    },
+    {
+      "id": "AP240.7",
+      "type": "algorithm",
+      "name": "DQN",
+      "section": "1 Introduction (cited)",
+      "statement": "Deep Q-Network using experience replay and a slowly-updated target network to stabilize off-policy Q-learning with deep neural function approximators.",
+      "origin": "external",
+      "origin_citation": "Mnih et al., Nature 2015 (mnih-dqn-2015)"
+    },
+    {
+      "id": "AP240.8",
+      "type": "algorithm",
+      "name": "Gorila (General Reinforcement Learning Architecture)",
+      "section": "2 Related Work (cited)",
+      "statement": "Massively distributed asynchronous DQN: separate actor processes with local replay memories send DQN gradients to a central parameter server (e.g., 130 machines), reaching DQN-level scores >20x faster.",
+      "origin": "external",
+      "origin_citation": "Nair et al. 2015 (nair2015gorila)"
+    },
+    {
+      "id": "AP240.9",
+      "type": "algorithm",
+      "name": "REINFORCE",
+      "section": "3 Background (cited)",
+      "statement": "Policy-gradient algorithm that updates $\\theta$ in the direction $\\nabla_{\\theta} \\log\\pi(a_t|s_t;\\theta) R_t$, an unbiased estimate of $\\nabla_{\\theta} \\mathbb{E}[R_t]$.",
+      "origin": "external",
+      "origin_citation": "Williams 1992"
+    },
+    {
+      "id": "ExP240.1",
+      "type": "example",
+      "name": "Atari 2600 Learning-Speed Comparison",
+      "section": "5.1 Atari 2600 Games",
+      "statement": "On five Atari games (Beamrider, Breakout, Pong, Q*bert, Space Invaders), the four asynchronous methods (using 16 CPU cores) match or beat DQN trained on a K40 GPU; A3C performs best.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP240.2",
+      "type": "example",
+      "name": "A3C on 57 Atari Games",
+      "section": "5.1 Atari 2600 Games",
+      "statement": "A3C trained for 4 days on 16 CPU cores improves the state-of-the-art mean and median human-normalized scores on 57 Atari games, with hyperparameters tuned on six games (Beamrider, Breakout, Pong, Q*bert, Seaquest, Space Invaders).",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP240.3",
+      "type": "example",
+      "name": "TORCS Car Racing",
+      "section": "5.2 TORCS",
+      "statement": "On the TORCS 3D car-racing simulator (slow/fast car, with/without bots) using only RGB visual input, A3C reaches roughly 75-90% of human tester score in about 12 hours of training.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP240.4",
+      "type": "example",
+      "name": "MuJoCo Continuous Control",
+      "section": "5.3 MuJoCo",
+      "statement": "Asynchronous Advantage Actor-Critic with a Gaussian policy ($\\mu$ from linear layer, $\\sigma^2$ from SoftPlus) solves rigid-body manipulation and locomotion tasks from physical state or pixels in under 24 hours of CPU training.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP240.5",
+      "type": "example",
+      "name": "Labyrinth Random-Maze Navigation",
+      "section": "5.4 Labyrinth",
+      "statement": "An A3C LSTM agent trained on $84\\times 84$ RGB inputs learns to find apples (+1) and portals (+10) in randomly generated 3D mazes, achieving an average score of around 50.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP240.6",
+      "type": "example",
+      "name": "Scalability vs Number of Threads",
+      "section": "5.5 Scalability and Data Efficiency",
+      "statement": "On seven Atari games, training-time speedups with $\\{1,2,4,8,16\\}$ threads reach $\\{1.0,3.0,6.3,13.3,24.1\\}$ for 1-step Q (superlinear) and $\\{1.0,2.1,3.7,6.9,12.5\\}$ for A3C; one-step methods exhibit superlinear scaling attributed to bias reduction from parallel actors.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP240.7",
+      "type": "example",
+      "name": "Robustness to Learning Rate",
+      "section": "5.6 Robustness and Stability",
+      "statement": "Across 50 random learning rates and initializations on five Atari games, A3C and the other three asynchronous methods exhibit a wide range of learning rates that yield good scores with virtually no diverging runs.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP240.8",
+      "type": "example",
+      "name": "Optimization-Method Comparison",
+      "section": "Supplement Sec. A.1",
+      "statement": "Comparison of Momentum SGD, RMSProp (per-thread), and Shared RMSProp on Async $n$-step Q and A3C across four Atari games (Breakout, Beamrider, Seaquest, Space Invaders); Shared RMSProp is the most robust to learning-rate and initialization choices.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP240.1",
+      "type": "remark",
+      "name": "Parallel Actors Decorrelate Updates",
+      "section": "1 Introduction / 4 Method",
+      "statement": "Running multiple actor-learners in parallel with different exploration policies decorrelates the data stream and stabilizes online updates, removing the need for experience replay and enabling on-policy methods like Sarsa and actor-critic with deep nets.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP240.2",
+      "type": "remark",
+      "name": "Forward vs Backward View for $n$-step Methods",
+      "section": "4 Method",
+      "statement": "We use the forward view (explicit $n$-step returns as targets) instead of eligibility-trace backward view because it is easier to combine with momentum-based optimization and backpropagation through time on neural networks.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP240.3",
+      "type": "remark",
+      "name": "Shared Network for Policy and Value",
+      "section": "4 Method",
+      "statement": "In practice, A3C uses a single convolutional network with one softmax output for $\\pi(a_t|s_t;\\theta)$ and one linear output for $V(s_t;\\theta_v)$, sharing all non-output layers.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP240.4",
+      "type": "remark",
+      "name": "Superlinear Speedup of One-step Methods",
+      "section": "5.5 Scalability and Data Efficiency",
+      "statement": "Asynchronous one-step Q-learning and Sarsa exhibit superlinear training-time speedups in the number of threads, attributed to multiple parallel actors reducing the bias of one-step bootstrapped targets.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP240.1",
+      "type": "algorithm_step",
+      "parent_id": "AP240.1",
+      "step_order": 1,
+      "name": "Initialize thread-local and shared state",
+      "section": "4 Method (Algorithm 1)",
+      "statement": "Set thread step counter $t \\gets 0$, target weights $\\theta^- \\gets \\theta$, gradients $d\\theta \\gets 0$, and obtain initial state $s$.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP240.2",
+      "type": "algorithm_step",
+      "parent_id": "AP240.1",
+      "step_order": 2,
+      "name": "Outer loop: act, observe, accumulate",
+      "section": "4 Method (Algorithm 1)",
+      "statement": "Repeat: take action $a$ via $\\epsilon$-greedy on $Q(s,a;\\theta)$, observe $r$ and $s'$; compute target $y = r$ if $s'$ terminal else $r + \\gamma \\max_{a'} Q(s',a';\\theta^-)$; accumulate $d\\theta \\gets d\\theta + \\partial(y - Q(s,a;\\theta))^2 / \\partial\\theta$; set $s \\gets s'$ and increment $T,t$.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP240.3",
+      "type": "algorithm_step",
+      "parent_id": "AP240.1",
+      "step_order": 3,
+      "name": "Periodic target-network sync",
+      "section": "4 Method (Algorithm 1)",
+      "statement": "If $T \\bmod I_{target} == 0$, set $\\theta^- \\gets \\theta$ to refresh the slowly-updated target network.",
+      "subclass": "branch",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP240.4",
+      "type": "algorithm_step",
+      "parent_id": "AP240.1",
+      "step_order": 4,
+      "name": "Periodic asynchronous parameter update",
+      "section": "4 Method (Algorithm 1)",
+      "statement": "If $t \\bmod I_{AsyncUpdate} == 0$ or $s$ is terminal, perform asynchronous (Hogwild!-style) update of shared $\\theta$ using $d\\theta$, then clear $d\\theta \\gets 0$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP240.5",
+      "type": "algorithm_step",
+      "parent_id": "AP240.1",
+      "step_order": 5,
+      "name": "Termination",
+      "section": "4 Method (Algorithm 1)",
+      "statement": "Continue until global counter exceeds $T_{max}$, then return.",
+      "subclass": "return",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP240.6",
+      "type": "algorithm_step",
+      "parent_id": "AP240.3",
+      "step_order": 1,
+      "name": "Initialize and synchronize parameters",
+      "section": "Supplement Algorithm S2",
+      "statement": "Set thread step counter $t \\gets 1$, $\\theta^- \\gets \\theta$, $\\theta' = \\theta$, $d\\theta \\gets 0$.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP240.7",
+      "type": "algorithm_step",
+      "parent_id": "AP240.3",
+      "step_order": 2,
+      "name": "Roll out up to $t_{max}$ steps",
+      "section": "Supplement Algorithm S2",
+      "statement": "From $t_{start}=t$, repeatedly take $a_t$ via $\\epsilon$-greedy on $Q(s_t,a;\\theta')$, observe $r_t$ and $s_{t+1}$, increment $t$ and $T$, until $s_t$ terminal or $t - t_{start} == t_{max}$.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP240.8",
+      "type": "algorithm_step",
+      "parent_id": "AP240.3",
+      "step_order": 3,
+      "name": "Bootstrap return $R$",
+      "section": "Supplement Algorithm S2",
+      "statement": "Set $R = 0$ if $s_t$ terminal, else $R = \\max_a Q(s_t, a; \\theta^-)$.",
+      "subclass": "branch",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP240.9",
+      "type": "algorithm_step",
+      "parent_id": "AP240.3",
+      "step_order": 4,
+      "name": "Backward accumulate $n$-step gradients",
+      "section": "Supplement Algorithm S2",
+      "statement": "For $i \\in \\{t-1, \\ldots, t_{start}\\}$: $R \\gets r_i + \\gamma R$; $d\\theta \\gets d\\theta + \\partial(R - Q(s_i,a_i;\\theta'))^2 / \\partial\\theta'$.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP240.10",
+      "type": "algorithm_step",
+      "parent_id": "AP240.3",
+      "step_order": 5,
+      "name": "Async update and target sync",
+      "section": "Supplement Algorithm S2",
+      "statement": "Perform asynchronous update of shared $\\theta$ using $d\\theta$; if $T \\bmod I_{target} == 0$, set $\\theta^- \\gets \\theta$. Repeat outer loop until $T > T_{max}$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP240.11",
+      "type": "algorithm_step",
+      "parent_id": "AP240.4",
+      "step_order": 1,
+      "name": "Reset gradients and synchronize parameters",
+      "section": "Supplement Algorithm S3",
+      "statement": "Set $d\\theta \\gets 0$, $d\\theta_v \\gets 0$; synchronize $\\theta' = \\theta$ and $\\theta'_v = \\theta_v$.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP240.12",
+      "type": "algorithm_step",
+      "parent_id": "AP240.4",
+      "step_order": 2,
+      "name": "Roll out trajectory of length up to $t_{max}$",
+      "section": "Supplement Algorithm S3",
+      "statement": "From $t_{start}=t$, sample $a_t \\sim \\pi(a_t|s_t;\\theta')$, observe $r_t$, $s_{t+1}$, increment $t$ and $T$ until $s_t$ terminal or $t - t_{start} == t_{max}$.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP240.13",
+      "type": "algorithm_step",
+      "parent_id": "AP240.4",
+      "step_order": 3,
+      "name": "Bootstrap value $R$",
+      "section": "Supplement Algorithm S3",
+      "statement": "Set $R = 0$ if $s_t$ terminal, else $R = V(s_t, \\theta'_v)$ as bootstrap from the last state.",
+      "subclass": "branch",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP240.14",
+      "type": "algorithm_step",
+      "parent_id": "AP240.4",
+      "step_order": 4,
+      "name": "Backward accumulate policy and value gradients",
+      "section": "Supplement Algorithm S3",
+      "statement": "For $i \\in \\{t-1, \\ldots, t_{start}\\}$: $R \\gets r_i + \\gamma R$; $d\\theta \\gets d\\theta + \\nabla_{\\theta'} \\log\\pi(a_i|s_i;\\theta')(R - V(s_i;\\theta'_v))$; $d\\theta_v \\gets d\\theta_v + \\partial(R - V(s_i;\\theta'_v))^2 / \\partial\\theta'_v$.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP240.15",
+      "type": "algorithm_step",
+      "parent_id": "AP240.4",
+      "step_order": 5,
+      "name": "Asynchronous update of $\\theta$ and $\\theta_v$",
+      "section": "Supplement Algorithm S3",
+      "statement": "Perform asynchronous (Hogwild!-style) update of shared $\\theta$ using $d\\theta$ and of $\\theta_v$ using $d\\theta_v$; repeat outer loop until $T > T_{max}$.",
+      "subclass": "update",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "DP240.1", "target": "DP240.2", "type": "uses"},
+    {"source": "DP240.2", "target": "DP240.3", "type": "uses"},
+    {"source": "DP240.2", "target": "DP240.5", "type": "uses"},
+    {"source": "DP240.3", "target": "DP240.4", "type": "uses"},
+    {"source": "DP240.3", "target": "DP240.6", "type": "uses"},
+    {"source": "DP240.5", "target": "DP240.6", "type": "uses"},
+    {"source": "DP240.2", "target": "DP240.7", "type": "uses"},
+    {"source": "DP240.3", "target": "EP240.1", "type": "uses"},
+    {"source": "DP240.5", "target": "EP240.2", "type": "uses"},
+    {"source": "DP240.6", "target": "EP240.3", "type": "uses"},
+    {"source": "DP240.7", "target": "EP240.4", "type": "uses"},
+    {"source": "DP240.9", "target": "EP240.3", "type": "uses"},
+    {"source": "DP240.1", "target": "ProbP240.1", "type": "uses"},
+    {"source": "DP240.2", "target": "ProbP240.1", "type": "uses"},
+
+    {"source": "EP240.1", "target": "AP240.1", "type": "uses"},
+    {"source": "DP240.4", "target": "AP240.1", "type": "uses"},
+    {"source": "AP240.7", "target": "AP240.1", "type": "uses"},
+    {"source": "AP240.8", "target": "AP240.1", "type": "uses"},
+
+    {"source": "AP240.1", "target": "AP240.2", "type": "specializes"},
+    {"source": "EP240.1", "target": "AP240.2", "type": "uses"},
+
+    {"source": "DP240.7", "target": "AP240.3", "type": "uses"},
+    {"source": "DP240.8", "target": "AP240.3", "type": "uses"},
+    {"source": "EP240.1", "target": "AP240.3", "type": "uses"},
+
+    {"source": "DP240.6", "target": "AP240.4", "type": "uses"},
+    {"source": "DP240.7", "target": "AP240.4", "type": "uses"},
+    {"source": "DP240.8", "target": "AP240.4", "type": "uses"},
+    {"source": "DP240.9", "target": "AP240.4", "type": "uses"},
+    {"source": "EP240.3", "target": "AP240.4", "type": "uses"},
+    {"source": "EP240.4", "target": "AP240.4", "type": "uses"},
+    {"source": "AP240.9", "target": "AP240.4", "type": "uses"},
+
+    {"source": "AP240.1", "target": "ProbP240.1", "type": "uses"},
+    {"source": "AP240.2", "target": "ProbP240.1", "type": "uses"},
+    {"source": "AP240.3", "target": "ProbP240.1", "type": "uses"},
+    {"source": "AP240.4", "target": "ProbP240.1", "type": "uses"},
+
+    {"source": "EP240.5", "target": "AP240.6", "type": "uses"},
+    {"source": "AP240.5", "target": "AP240.1", "type": "uses"},
+    {"source": "AP240.6", "target": "AP240.1", "type": "uses"},
+    {"source": "AP240.5", "target": "AP240.4", "type": "uses"},
+    {"source": "AP240.6", "target": "AP240.4", "type": "uses"},
+
+    {"source": "AP240.1", "target": "ExP240.1", "type": "illustrates"},
+    {"source": "AP240.2", "target": "ExP240.1", "type": "illustrates"},
+    {"source": "AP240.3", "target": "ExP240.1", "type": "illustrates"},
+    {"source": "AP240.4", "target": "ExP240.1", "type": "illustrates"},
+    {"source": "AP240.4", "target": "ExP240.2", "type": "illustrates"},
+    {"source": "AP240.1", "target": "ExP240.3", "type": "illustrates"},
+    {"source": "AP240.2", "target": "ExP240.3", "type": "illustrates"},
+    {"source": "AP240.3", "target": "ExP240.3", "type": "illustrates"},
+    {"source": "AP240.4", "target": "ExP240.3", "type": "illustrates"},
+    {"source": "AP240.4", "target": "ExP240.4", "type": "illustrates"},
+    {"source": "AP240.4", "target": "ExP240.5", "type": "illustrates"},
+    {"source": "AP240.1", "target": "ExP240.6", "type": "illustrates"},
+    {"source": "AP240.2", "target": "ExP240.6", "type": "illustrates"},
+    {"source": "AP240.3", "target": "ExP240.6", "type": "illustrates"},
+    {"source": "AP240.4", "target": "ExP240.6", "type": "illustrates"},
+    {"source": "AP240.4", "target": "ExP240.7", "type": "illustrates"},
+    {"source": "AP240.5", "target": "ExP240.8", "type": "illustrates"},
+    {"source": "AP240.6", "target": "ExP240.8", "type": "illustrates"},
+    {"source": "AP240.3", "target": "ExP240.8", "type": "illustrates"},
+    {"source": "AP240.4", "target": "ExP240.8", "type": "illustrates"},
+
+    {"source": "RP240.1", "target": "AP240.1", "type": "uses"},
+    {"source": "RP240.1", "target": "AP240.2", "type": "uses"},
+    {"source": "RP240.1", "target": "AP240.4", "type": "uses"},
+    {"source": "RP240.2", "target": "AP240.3", "type": "uses"},
+    {"source": "RP240.2", "target": "AP240.4", "type": "uses"},
+    {"source": "RP240.3", "target": "AP240.4", "type": "uses"},
+    {"source": "RP240.4", "target": "ExP240.6", "type": "uses"},
+
+    {"source": "ASP240.1", "target": "ASP240.2", "type": "uses"},
+    {"source": "ASP240.2", "target": "ASP240.3", "type": "uses"},
+    {"source": "ASP240.2", "target": "ASP240.4", "type": "uses"},
+    {"source": "ASP240.3", "target": "ASP240.5", "type": "uses"},
+    {"source": "ASP240.4", "target": "ASP240.5", "type": "uses"},
+
+    {"source": "ASP240.6", "target": "ASP240.7", "type": "uses"},
+    {"source": "ASP240.7", "target": "ASP240.8", "type": "uses"},
+    {"source": "ASP240.8", "target": "ASP240.9", "type": "uses"},
+    {"source": "ASP240.9", "target": "ASP240.10", "type": "uses"},
+
+    {"source": "ASP240.11", "target": "ASP240.12", "type": "uses"},
+    {"source": "ASP240.12", "target": "ASP240.13", "type": "uses"},
+    {"source": "ASP240.13", "target": "ASP240.14", "type": "uses"},
+    {"source": "ASP240.14", "target": "ASP240.15", "type": "uses"}
+  ]
+}

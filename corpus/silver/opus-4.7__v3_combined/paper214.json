@@ -1,0 +1,987 @@
+{
+  "metadata": {
+    "title": "Adam: A Method for Stochastic Optimization",
+    "paper_num": 214,
+    "authors": "Diederik P. Kingma, Jimmy Lei Ba",
+    "year": 2015,
+    "venue": "ICLR 2015 (arXiv:1412.6980)",
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "ProbP214.1",
+      "type": "problem",
+      "name": "Stochastic optimization of a noisy objective",
+      "section": "1, 2",
+      "statement": "Minimize the expected value $\\mathbb{E}[f(\\theta)]$ of a stochastic, differentiable scalar objective $f(\\theta)$ with parameters $\\theta \\in \\mathbb{R}^d$, given access only to noisy gradients $g_t = \\nabla_\\theta f_t(\\theta)$.",
+      "statement_clean": "Find parameters that minimize the expectation of a noisy objective using only first-order stochastic gradients.",
+      "subclass": "optimization",
+      "origin": "paper",
+      "tags": ["stochastic", "first-order", "high-dimensional"]
+    },
+    {
+      "id": "ProbP214.2",
+      "type": "problem",
+      "name": "Online convex optimization with regret",
+      "section": "4",
+      "statement": "Given an arbitrary unknown sequence of convex cost functions $f_1(\\theta), \\dots, f_T(\\theta)$, predict $\\theta_t$ at each step and bound the regret $R(T) = \\sum_{t=1}^{T} [f_t(\\theta_t) - f_t(\\theta^*)]$ where $\\theta^* = \\arg\\min_{\\theta \\in \\mathcal{X}} \\sum_{t=1}^{T} f_t(\\theta)$.",
+      "statement_clean": "Bound the cumulative regret of an online learner against the best fixed parameter on a sequence of convex losses.",
+      "subclass": "online_learning",
+      "origin": "external",
+      "origin_citation": "Zinkevich 2003"
+    },
+    {
+      "id": "DP214.1",
+      "type": "definition",
+      "name": "Stochastic objective function",
+      "section": "2",
+      "statement": "A noisy scalar function $f(\\theta)$, differentiable in $\\theta$, with realisations $f_1(\\theta), \\dots, f_T(\\theta)$ at successive timesteps; stochasticity may arise from minibatch sampling or inherent function noise.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP214.2",
+      "type": "definition",
+      "name": "Stochastic gradient $g_t$",
+      "section": "2",
+      "statement": "$g_t = \\nabla_\\theta f_t(\\theta)$, the vector of partial derivatives of the realisation $f_t$ w.r.t.\\ $\\theta$ at timestep $t$. We write $g_{t,i}$ for its $i$th coordinate and $g_{1:t,i} = [g_{1,i}, \\dots, g_{t,i}] \\in \\mathbb{R}^t$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP214.3",
+      "type": "definition",
+      "name": "Biased first moment estimate $m_t$",
+      "section": "2",
+      "statement": "Exponential moving average of the gradient: $m_t = \\beta_1 \\cdot m_{t-1} + (1-\\beta_1)\\cdot g_t$ with $m_0 = 0$ and decay rate $\\beta_1 \\in [0,1)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP214.4",
+      "type": "definition",
+      "name": "Biased second raw moment estimate $v_t$",
+      "section": "2",
+      "statement": "Exponential moving average of the squared gradient: $v_t = \\beta_2 \\cdot v_{t-1} + (1-\\beta_2) \\cdot g_t^2$ with $v_0 = 0$ and decay rate $\\beta_2 \\in [0,1)$, where $g_t^2$ is elementwise.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP214.5",
+      "type": "definition",
+      "name": "Bias-corrected moment estimates $\\hat{m}_t, \\hat{v}_t$",
+      "section": "2, 3",
+      "statement": "$\\hat{m}_t = m_t / (1 - \\beta_1^t)$ and $\\hat{v}_t = v_t / (1 - \\beta_2^t)$, correcting the zero-initialisation bias of the exponential moving averages.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP214.6",
+      "type": "definition",
+      "name": "Effective stepsize $\\Delta_t$ and signal-to-noise ratio",
+      "section": "2.1",
+      "statement": "With $\\epsilon = 0$, the parameter-space step is $\\Delta_t = \\alpha \\cdot \\hat{m}_t / \\sqrt{\\hat{v}_t}$. The ratio $\\hat{m}_t / \\sqrt{\\hat{v}_t}$ is called the signal-to-noise ratio (SNR).",
+      "origin": "paper"
+    },
+    {
+      "id": "DP214.7",
+      "type": "definition",
+      "name": "Exponentially weighted infinity norm $u_t$",
+      "section": "7.1",
+      "statement": "$u_t = \\lim_{p \\to \\infty} (v_t)^{1/p} = \\max(\\beta_2 \\cdot u_{t-1}, |g_t|)$ with $u_0 = 0$; the $L_\\infty$-analogue of the second moment estimate used by AdaMax.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP214.8",
+      "type": "definition",
+      "name": "Regret $R(T)$",
+      "section": "4",
+      "statement": "$R(T) = \\sum_{t=1}^{T} [f_t(\\theta_t) - f_t(\\theta^*)]$, the cumulative excess loss of the online predictions $\\theta_t$ over the best fixed comparator $\\theta^* = \\arg\\min_{\\theta \\in \\mathcal{X}} \\sum_t f_t(\\theta)$.",
+      "origin": "external",
+      "origin_citation": "Zinkevich 2003"
+    },
+    {
+      "id": "DP214.9",
+      "type": "definition",
+      "name": "Convex function (Definition 10.1)",
+      "section": "10.1",
+      "statement": "A function $f : \\mathbb{R}^d \\to \\mathbb{R}$ is convex if for all $x, y \\in \\mathbb{R}^d$ and $\\lambda \\in [0,1]$, $\\lambda f(x) + (1-\\lambda) f(y) \\geq f(\\lambda x + (1-\\lambda) y)$.",
+      "origin": "external",
+      "origin_citation": "standard convex analysis"
+    },
+    {
+      "id": "DP214.10",
+      "type": "definition",
+      "name": "Auxiliary constant $\\gamma$",
+      "section": "4",
+      "statement": "$\\gamma \\triangleq \\beta_1 / \\sqrt{\\beta_2}$; assumed to satisfy $\\gamma < 1$ in the convergence analysis.",
+      "origin": "paper"
+    },
+    {
+      "id": "AssumP214.1",
+      "type": "assumption",
+      "name": "Bounded gradients and bounded iterates",
+      "section": "4",
+      "statement": "$\\|\\nabla f_t(\\theta)\\|_2 \\leq G$ and $\\|\\nabla f_t(\\theta)\\|_\\infty \\leq G_\\infty$ for all $\\theta \\in \\mathbb{R}^d$; $\\|\\theta_n - \\theta_m\\|_2 \\leq D$ and $\\|\\theta_m - \\theta_n\\|_\\infty \\leq D_\\infty$ for any $m,n \\in \\{1,\\dots,T\\}$; $\\beta_1, \\beta_2 \\in [0,1)$ with $\\beta_1 / \\sqrt{\\beta_2} < 1$.",
+      "origin": "paper"
+    },
+    {
+      "id": "AssumP214.2",
+      "type": "assumption",
+      "name": "Decaying schedules $\\alpha_t = \\alpha/\\sqrt{t}$, $\\beta_{1,t} = \\beta_1 \\lambda^{t-1}$",
+      "section": "4",
+      "statement": "Learning rate decays as $\\alpha_t = \\alpha/\\sqrt{t}$ and the first-moment running-average coefficient decays as $\\beta_{1,t} = \\beta_1 \\lambda^{t-1}$ with $\\lambda \\in (0,1)$ typically close to $1$ (e.g.\\ $1 - 10^{-8}$).",
+      "origin": "paper"
+    },
+    {
+      "id": "EP214.1",
+      "type": "equation",
+      "name": "Closed form of $v_t$ as weighted gradient sum (eq. 1)",
+      "section": "3",
+      "statement": "$v_t = (1-\\beta_2) \\sum_{i=1}^{t} \\beta_2^{t-i} \\cdot g_i^2$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP214.2",
+      "type": "equation",
+      "name": "Expected $v_t$ vs.\\ true second moment (eq. 4)",
+      "section": "3",
+      "statement": "$\\mathbb{E}[v_t] = \\mathbb{E}[g_t^2] \\cdot (1 - \\beta_2^t) + \\zeta$, with $\\zeta = 0$ when $\\mathbb{E}[g_i^2]$ is stationary; otherwise $\\zeta$ can be kept small by appropriate choice of $\\beta_1$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP214.3",
+      "type": "equation",
+      "name": "AdaMax recursion (eq. 12)",
+      "section": "7.1",
+      "statement": "$u_t = \\max(\\beta_2 \\cdot u_{t-1}, |g_t|)$ with $u_0 = 0$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP214.4",
+      "type": "equation",
+      "name": "Effective-stepsize bounds for Adam",
+      "section": "2.1",
+      "statement": "$|\\Delta_t| \\leq \\alpha \\cdot (1-\\beta_1)/\\sqrt{1-\\beta_2}$ when $(1-\\beta_1) > \\sqrt{1-\\beta_2}$, and $|\\Delta_t| \\leq \\alpha$ otherwise.",
+      "origin": "paper"
+    },
+    {
+      "id": "AP214.1",
+      "type": "algorithm",
+      "name": "Adam",
+      "section": "2",
+      "statement": "Iterative first-order stochastic optimizer that maintains bias-corrected exponential moving averages of the gradient and its elementwise square and updates parameters by their ratio $\\hat{m}_t / (\\sqrt{\\hat{v}_t} + \\epsilon)$.",
+      "input": [
+        "Stepsize $\\alpha$",
+        "Exponential decay rates $\\beta_1, \\beta_2 \\in [0,1)$",
+        "Stochastic objective $f(\\theta)$",
+        "Initial parameter vector $\\theta_0$"
+      ],
+      "output": [
+        "Resulting parameters $\\theta_t$"
+      ],
+      "pseudocode": "Initialize $m_0 \\gets 0$, $v_0 \\gets 0$, $t \\gets 0$. While $\\theta_t$ not converged: $t \\gets t+1$; $g_t \\gets \\nabla_\\theta f_t(\\theta_{t-1})$; $m_t \\gets \\beta_1 m_{t-1} + (1-\\beta_1) g_t$; $v_t \\gets \\beta_2 v_{t-1} + (1-\\beta_2) g_t^2$; $\\hat{m}_t \\gets m_t/(1-\\beta_1^t)$; $\\hat{v}_t \\gets v_t/(1-\\beta_2^t)$; $\\theta_t \\gets \\theta_{t-1} - \\alpha \\hat{m}_t / (\\sqrt{\\hat{v}_t} + \\epsilon)$. Return $\\theta_t$.",
+      "origin": "paper",
+      "tags": ["iterative", "adaptive_learning_rate", "first_order"]
+    },
+    {
+      "id": "AP214.2",
+      "type": "algorithm",
+      "name": "AdaMax",
+      "section": "7.1",
+      "statement": "Variant of Adam that replaces the $L_2$ second-moment estimate with an exponentially weighted $L_\\infty$ norm $u_t = \\max(\\beta_2 u_{t-1}, |g_t|)$, requiring no bias correction in the denominator.",
+      "input": [
+        "Stepsize $\\alpha$",
+        "Exponential decay rates $\\beta_1, \\beta_2 \\in [0,1)$",
+        "Stochastic objective $f(\\theta)$",
+        "Initial parameter vector $\\theta_0$"
+      ],
+      "output": [
+        "Resulting parameters $\\theta_t$"
+      ],
+      "pseudocode": "Initialize $m_0 \\gets 0$, $u_0 \\gets 0$, $t \\gets 0$. While $\\theta_t$ not converged: $t \\gets t+1$; $g_t \\gets \\nabla_\\theta f_t(\\theta_{t-1})$; $m_t \\gets \\beta_1 m_{t-1} + (1-\\beta_1) g_t$; $u_t \\gets \\max(\\beta_2 u_{t-1}, |g_t|)$; $\\theta_t \\gets \\theta_{t-1} - (\\alpha/(1-\\beta_1^t)) \\cdot m_t / u_t$. Return $\\theta_t$.",
+      "origin": "paper",
+      "tags": ["iterative", "adaptive_learning_rate", "infinity_norm"]
+    },
+    {
+      "id": "AP214.3",
+      "type": "algorithm",
+      "name": "Temporal averaging extension",
+      "section": "7.2",
+      "statement": "Maintains an exponential moving average of parameters $\\bar{\\theta}_t \\gets \\beta_2 \\bar{\\theta}_{t-1} + (1-\\beta_2)\\theta_t$ inside the inner loop, with bias-corrected estimator $\\hat{\\theta}_t = \\bar{\\theta}_t / (1 - \\beta_2^t)$, to improve generalization.",
+      "input": [
+        "Sequence of iterates $\\theta_t$ from Algorithm 1 or 2",
+        "Decay rate $\\beta_2$"
+      ],
+      "output": [
+        "Bias-corrected averaged parameters $\\hat{\\theta}_t$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "AP214.4",
+      "type": "algorithm",
+      "name": "AdaGrad",
+      "section": "5",
+      "statement": "Adaptive subgradient method updating $\\theta_{t+1} = \\theta_t - \\alpha \\cdot g_t / \\sqrt{\\sum_{i=1}^{t} g_i^2}$; works well with sparse gradients.",
+      "origin": "external",
+      "origin_citation": "Duchi, Hazan, Singer 2011"
+    },
+    {
+      "id": "AP214.5",
+      "type": "algorithm",
+      "name": "RMSProp (with momentum)",
+      "section": "5",
+      "statement": "Adaptive method that rescales the gradient by a running RMS and (in some variants) applies momentum on the rescaled gradient; lacks the bias-correction term used by Adam.",
+      "origin": "external",
+      "origin_citation": "Tieleman & Hinton 2012; Graves 2013"
+    },
+    {
+      "id": "AP214.6",
+      "type": "algorithm",
+      "name": "Sum-of-Functions Optimizer (SFO)",
+      "section": "5, 6.2",
+      "statement": "Quasi-Newton stochastic optimizer using minibatches; memory cost grows linearly with the number of minibatch partitions.",
+      "origin": "external",
+      "origin_citation": "Sohl-Dickstein, Poole, Ganguli 2014"
+    },
+    {
+      "id": "AP214.7",
+      "type": "algorithm",
+      "name": "SGD with Nesterov momentum",
+      "section": "5, 6",
+      "statement": "Accelerated stochastic gradient method using Nesterov-style momentum on parameter updates; baseline in the experiments.",
+      "origin": "external",
+      "origin_citation": "Sutskever, Martens, Dahl, Hinton 2013"
+    },
+    {
+      "id": "AP214.8",
+      "type": "algorithm",
+      "name": "AdaDelta",
+      "section": "5, 6.2",
+      "statement": "Adaptive learning-rate method using running averages of squared gradients and squared updates; baseline in the multilayer-NN experiment.",
+      "origin": "external",
+      "origin_citation": "Zeiler 2012"
+    },
+    {
+      "id": "AP214.9",
+      "type": "algorithm",
+      "name": "Polyak-Ruppert averaging",
+      "section": "7.2",
+      "statement": "Averages SGD iterates as $\\bar{\\theta}_t = \\frac{1}{t} \\sum_{k=1}^{t} \\theta_k$ to improve convergence of stochastic approximation.",
+      "origin": "external",
+      "origin_citation": "Polyak & Juditsky 1992; Ruppert 1988"
+    },
+    {
+      "id": "LP214.1",
+      "type": "lemma",
+      "name": "Lemma 10.2 (convex first-order lower bound)",
+      "section": "10.1",
+      "statement": "If $f : \\mathbb{R}^d \\to \\mathbb{R}$ is convex, then for all $x,y \\in \\mathbb{R}^d$, $f(y) \\geq f(x) + \\nabla f(x)^T (y-x)$.",
+      "assumptions": ["$f : \\mathbb{R}^d \\to \\mathbb{R}$ is convex"],
+      "conclusions": ["$f(y) \\geq f(x) + \\nabla f(x)^T (y-x)$ for all $x,y \\in \\mathbb{R}^d$"],
+      "origin": "external",
+      "origin_citation": "standard convex analysis"
+    },
+    {
+      "id": "LP214.2",
+      "type": "lemma",
+      "name": "Lemma 10.3 (sum-of-$g_{t,i}^2/t$ bound)",
+      "section": "10.1",
+      "statement": "Let $g_t = \\nabla f_t(\\theta_t)$ with $\\|g_t\\|_2 \\leq G$ and $\\|g_t\\|_\\infty \\leq G_\\infty$. Then $\\sum_{t=1}^{T} \\sqrt{g_{t,i}^2 / t} \\leq 2 G_\\infty \\|g_{1:T,i}\\|_2$.",
+      "assumptions": [
+        "$\\|g_t\\|_2 \\leq G$ and $\\|g_t\\|_\\infty \\leq G_\\infty$ for all $t$"
+      ],
+      "conclusions": [
+        "$\\sum_{t=1}^{T} \\sqrt{g_{t,i}^2 / t} \\leq 2 G_\\infty \\|g_{1:T,i}\\|_2$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "scaffolding"]
+    },
+    {
+      "id": "LP214.3",
+      "type": "lemma",
+      "name": "Lemma 10.4 ($\\hat{m}_t^2/\\sqrt{t \\hat{v}_t}$ bound)",
+      "section": "10.1",
+      "statement": "Let $\\gamma = \\beta_1/\\sqrt{\\beta_2}$. For $\\beta_1, \\beta_2 \\in [0,1)$ with $\\gamma < 1$ and bounded $g_t$ ($\\|g_t\\|_2 \\leq G$, $\\|g_t\\|_\\infty \\leq G_\\infty$), $\\sum_{t=1}^{T} \\hat{m}_{t,i}^2 / \\sqrt{t \\hat{v}_{t,i}} \\leq \\frac{2}{1-\\gamma} \\cdot \\frac{1}{\\sqrt{1-\\beta_2}} \\|g_{1:T,i}\\|_2$.",
+      "assumptions": [
+        "$\\gamma = \\beta_1/\\sqrt{\\beta_2} < 1$",
+        "$\\|g_t\\|_2 \\leq G$ and $\\|g_t\\|_\\infty \\leq G_\\infty$"
+      ],
+      "conclusions": [
+        "$\\sum_{t=1}^{T} \\hat{m}_{t,i}^2 / \\sqrt{t \\hat{v}_{t,i}} \\leq \\frac{2}{1-\\gamma} \\cdot \\frac{1}{\\sqrt{1-\\beta_2}} \\|g_{1:T,i}\\|_2$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "scaffolding"]
+    },
+    {
+      "id": "TP214.1",
+      "type": "theorem",
+      "name": "Theorem 4.1 / 10.5 (Adam regret bound)",
+      "section": "4, 10.1",
+      "statement": "Under bounded gradients and iterates, with $\\alpha_t = \\alpha/\\sqrt{t}$ and $\\beta_{1,t} = \\beta_1 \\lambda^{t-1}$, Adam achieves $R(T) \\leq \\frac{D^2}{2\\alpha(1-\\beta_1)} \\sum_{i=1}^{d} \\sqrt{T \\hat{v}_{T,i}} + \\frac{\\alpha(1+\\beta_1) G_\\infty}{(1-\\beta_1)\\sqrt{1-\\beta_2}(1-\\gamma)^2} \\sum_{i=1}^{d} \\|g_{1:T,i}\\|_2 + \\sum_{i=1}^{d} \\frac{D_\\infty^2 G_\\infty \\sqrt{1-\\beta_2}}{2\\alpha(1-\\beta_1)(1-\\lambda)^2}$ for all $T \\geq 1$.",
+      "assumptions": [
+        "$\\|\\nabla f_t(\\theta)\\|_2 \\leq G$, $\\|\\nabla f_t(\\theta)\\|_\\infty \\leq G_\\infty$ for all $\\theta \\in \\mathbb{R}^d$",
+        "$\\|\\theta_n - \\theta_m\\|_2 \\leq D$ and $\\|\\theta_m - \\theta_n\\|_\\infty \\leq D_\\infty$",
+        "$\\beta_1, \\beta_2 \\in [0,1)$ with $\\gamma = \\beta_1/\\sqrt{\\beta_2} < 1$",
+        "$\\alpha_t = \\alpha/\\sqrt{t}$ and $\\beta_{1,t} = \\beta_1 \\lambda^{t-1}$ with $\\lambda \\in (0,1)$",
+        "$\\{f_t\\}$ are convex"
+      ],
+      "conclusions": [
+        "$R(T) \\leq \\frac{D^2}{2\\alpha(1-\\beta_1)} \\sum_{i=1}^{d} \\sqrt{T \\hat{v}_{T,i}} + \\frac{\\alpha(1+\\beta_1) G_\\infty}{(1-\\beta_1)\\sqrt{1-\\beta_2}(1-\\gamma)^2} \\sum_{i=1}^{d} \\|g_{1:T,i}\\|_2 + \\sum_{i=1}^{d} \\frac{D_\\infty^2 G_\\infty \\sqrt{1-\\beta_2}}{2\\alpha(1-\\beta_1)(1-\\lambda)^2}$"
+      ],
+      "origin": "paper",
+      "tags": ["bound", "regret", "online_convex"]
+    },
+    {
+      "id": "CP214.1",
+      "type": "corollary",
+      "name": "Corollary 4.2 (average regret vanishes)",
+      "section": "4",
+      "statement": "Under the same boundedness assumptions, Adam achieves $R(T)/T = O(1/\\sqrt{T})$, so $\\lim_{T \\to \\infty} R(T)/T = 0$.",
+      "assumptions": [
+        "$\\|\\nabla f_t(\\theta)\\|_2 \\leq G$, $\\|\\nabla f_t(\\theta)\\|_\\infty \\leq G_\\infty$ for all $\\theta \\in \\mathbb{R}^d$",
+        "$\\|\\theta_n - \\theta_m\\|_2 \\leq D$, $\\|\\theta_m - \\theta_n\\|_\\infty \\leq D_\\infty$",
+        "$\\{f_t\\}$ convex; $T \\geq 1$"
+      ],
+      "conclusions": [
+        "$R(T)/T = O(1/\\sqrt{T})$",
+        "$\\lim_{T \\to \\infty} R(T)/T = 0$"
+      ],
+      "origin": "paper",
+      "tags": ["convergence", "average_regret"]
+    },
+    {
+      "id": "PP214.1",
+      "type": "proof",
+      "name": "Derivation of bias correction for $v_t$ (section 3)",
+      "section": "3",
+      "statement": "Expand $v_t$ as a weighted sum of past squared gradients (eq. 1), take expectations to get $\\mathbb{E}[v_t] = \\mathbb{E}[g_t^2](1-\\beta_2^t) + \\zeta$ (eq. 4), and divide by $(1-\\beta_2^t)$ to remove the initialization-induced bias.",
+      "proves": "EP214.2",
+      "origin": "paper"
+    },
+    {
+      "id": "PP214.2",
+      "type": "proof",
+      "name": "Derivation of AdaMax (eqs. 6-12)",
+      "section": "7.1",
+      "statement": "Generalize the second-moment update to an $L_p$ norm and take $p \\to \\infty$ to obtain the closed-form recursion $u_t = \\max(\\beta_2 u_{t-1}, |g_t|)$, removing the need for bias correction in the denominator.",
+      "proves": "EP214.3",
+      "origin": "paper"
+    },
+    {
+      "id": "PP214.3",
+      "type": "proof",
+      "name": "Proof of Lemma 10.3 (induction on $T$)",
+      "section": "10.1",
+      "statement": "Induction on $T$: base case $T=1$ is direct; the inductive step bounds $\\sqrt{\\|g_{1:T,i}\\|_2^2 - g_{T,i}^2}$ via $\\|g_{1:T,i}\\|_2 - g_{T,i}^2/(2\\sqrt{T} G_\\infty^2)$ and recombines terms.",
+      "proves": "LP214.2",
+      "origin": "paper"
+    },
+    {
+      "id": "PP214.4",
+      "type": "proof",
+      "name": "Proof of Lemma 10.4",
+      "section": "10.1",
+      "statement": "Expand the last term of $\\sum_t \\hat{m}_{t,i}^2/\\sqrt{t \\hat{v}_{t,i}}$ via the Adam update, bound it using $(1-\\beta_2^t) \\geq (1-\\beta_2)$ in the denominator and the geometric series in $\\beta_1^{T-k}$, then iterate and apply the arithmetic-geometric series bound $\\sum_t t \\gamma^t < 1/(1-\\gamma)^2$ and Lemma 10.3.",
+      "proves": "LP214.3",
+      "origin": "paper"
+    },
+    {
+      "id": "PP214.5",
+      "type": "proof",
+      "name": "Proof of Theorem 10.5 (Adam regret bound)",
+      "section": "10.1",
+      "statement": "Apply Lemma 10.2 to upper-bound $f_t(\\theta_t) - f_t(\\theta^*)$ by $g_t^T(\\theta_t - \\theta^*)$, substitute the Adam update for $g_{t,i}(\\theta_{t,i} - \\theta^*_{,i})$ using Young's inequality, telescope the squared-distance differences, apply Lemma 10.4 to the moment terms, and bound the residual $\\beta_{1,t}\\sqrt{t}$ series via $\\sum \\lambda^{t-1}\\sqrt{t} \\leq 1/(1-\\beta_1)(1-\\lambda)^2$.",
+      "proves": "TP214.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP214.6",
+      "type": "proof",
+      "name": "Proof of Corollary 4.2",
+      "section": "4",
+      "statement": "Combine Theorem 4.1 with the bound $\\sum_{i=1}^{d} \\|g_{1:T,i}\\|_2 \\leq d G_\\infty \\sqrt{T}$ to obtain $R(T)/T = O(1/\\sqrt{T})$.",
+      "proves": "CP214.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.1",
+      "type": "proof_step",
+      "parent_id": "PP214.1",
+      "step_order": 1,
+      "name": "Expand $v_t$ recursively",
+      "statement": "Unroll $v_t = \\beta_2 v_{t-1} + (1-\\beta_2) g_t^2$ from $v_0 = 0$ to obtain $v_t = (1-\\beta_2)\\sum_{i=1}^{t} \\beta_2^{t-i} g_i^2$ (eq. 1).",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.2",
+      "type": "proof_step",
+      "parent_id": "PP214.1",
+      "step_order": 2,
+      "name": "Take expectations",
+      "statement": "Apply $\\mathbb{E}$ to both sides; pull $\\mathbb{E}[g_t^2]$ out and absorb the discrepancy from non-stationarity into $\\zeta$ (eqs. 2-3).",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.3",
+      "type": "proof_step",
+      "parent_id": "PP214.1",
+      "step_order": 3,
+      "name": "Recognize geometric sum",
+      "statement": "Use $(1-\\beta_2)\\sum_{i=1}^{t} \\beta_2^{t-i} = 1 - \\beta_2^t$ to obtain $\\mathbb{E}[v_t] = \\mathbb{E}[g_t^2](1-\\beta_2^t) + \\zeta$ (eq. 4).",
+      "subclass": "invoke_identity",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.4",
+      "type": "proof_step",
+      "parent_id": "PP214.1",
+      "step_order": 4,
+      "name": "Divide by $(1-\\beta_2^t)$ to debias",
+      "statement": "Conclude that dividing by $(1-\\beta_2^t)$ removes the initialization bias, motivating $\\hat{v}_t = v_t/(1-\\beta_2^t)$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.5",
+      "type": "proof_step",
+      "parent_id": "PP214.2",
+      "step_order": 1,
+      "name": "Generalize to $L_p$ norm",
+      "statement": "Replace squared gradients with $|g_t|^p$: $v_t = \\beta_2^p v_{t-1} + (1-\\beta_2^p)|g_t|^p$ and unroll to $v_t = (1-\\beta_2^p)\\sum_{i=1}^{t} \\beta_2^{p(t-i)} |g_i|^p$ (eqs. 6-7).",
+      "subclass": "introduce_variable",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.6",
+      "type": "proof_step",
+      "parent_id": "PP214.2",
+      "step_order": 2,
+      "name": "Take limit $p \\to \\infty$",
+      "statement": "Set $u_t = \\lim_{p \\to \\infty} (v_t)^{1/p}$; the prefactor $(1-\\beta_2^p)^{1/p}$ tends to $1$, and the inner $L_p$ norm converges to $\\max_i \\beta_2^{t-i}|g_i|$ (eqs. 8-11).",
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.7",
+      "type": "proof_step",
+      "parent_id": "PP214.2",
+      "step_order": 3,
+      "name": "Recognize recursive form",
+      "statement": "Observe that $\\max(\\beta_2^{t-1}|g_1|, \\dots, |g_t|) = \\max(\\beta_2 \\cdot u_{t-1}, |g_t|)$, giving the recursion (eq. 12) with $u_0 = 0$ and no need for bias correction.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.8",
+      "type": "proof_step",
+      "parent_id": "PP214.3",
+      "step_order": 1,
+      "name": "Base case $T=1$",
+      "statement": "$\\sqrt{g_{1,i}^2} = |g_{1,i}| \\leq 2 G_\\infty \\|g_{1,i}\\|_2$ since $|g_{1,i}| \\leq G_\\infty$ and $\\|g_{1,i}\\|_2 = |g_{1,i}|$.",
+      "subclass": "induction_step",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.9",
+      "type": "proof_step",
+      "parent_id": "PP214.3",
+      "step_order": 2,
+      "name": "Inductive split of the $T$-th term",
+      "statement": "Write $\\sum_{t=1}^{T} \\sqrt{g_{t,i}^2/t} = \\sum_{t=1}^{T-1} \\sqrt{g_{t,i}^2/t} + \\sqrt{g_{T,i}^2/T}$ and apply the inductive hypothesis to the first sum.",
+      "subclass": "induction_step",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.10",
+      "type": "proof_step",
+      "parent_id": "PP214.3",
+      "step_order": 3,
+      "name": "Bound the residual square-root",
+      "statement": "Use $\\sqrt{\\|g_{1:T,i}\\|_2^2 - g_{T,i}^2} \\leq \\|g_{1:T,i}\\|_2 - g_{T,i}^2/(2\\sqrt{T} G_\\infty^2)$ (rearranged from $\\|g_{1:T,i}\\|_2^2 - g_{T,i}^2 + g_{T,i}^4/(4\\|g_{1:T,i}\\|_2^2) \\geq (\\|g_{1:T,i}\\|_2 - g_{T,i}^2/(2\\|g_{1:T,i}\\|_2))^2$).",
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.11",
+      "type": "proof_step",
+      "parent_id": "PP214.3",
+      "step_order": 4,
+      "name": "Recombine and conclude",
+      "statement": "Substitute back to get $G_\\infty\\sqrt{\\|g_{1:T,i}\\|_2^2 - g_{T,i}^2} + \\sqrt{g_{T,i}^2/T} \\leq 2 G_\\infty \\|g_{1:T,i}\\|_2$, completing the induction.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.12",
+      "type": "proof_step",
+      "parent_id": "PP214.4",
+      "step_order": 1,
+      "name": "Substitute Adam update for last term",
+      "statement": "Expand the $T$-th term $\\hat{m}_{T,i}^2/\\sqrt{T \\hat{v}_{T,i}}$ via $\\hat{m}_T = (\\sum_k (1-\\beta_1) \\beta_1^{T-k} g_k)/(1-\\beta_1^T)$ and similarly for $\\hat{v}_T$.",
+      "subclass": "substitute",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.13",
+      "type": "proof_step",
+      "parent_id": "PP214.4",
+      "step_order": 2,
+      "name": "Bound denominator with single-term lower bound",
+      "statement": "Use $\\sqrt{T \\sum_j (1-\\beta_2)\\beta_2^{T-j} g_j^2} \\geq \\sqrt{T(1-\\beta_2)\\beta_2^{T-k} g_k^2}$ to bound the per-$k$ contribution by $\\beta_1^{2(T-k)}/\\beta_2^{T-k}$.",
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.14",
+      "type": "proof_step",
+      "parent_id": "PP214.4",
+      "step_order": 3,
+      "name": "Iterate over $t$ and collapse to $\\gamma^{T-k}$",
+      "statement": "Apply the same expansion to all terms to obtain $\\sum_t \\sum_{k} \\gamma^{T-k} \\|g_{k,i}\\|_2 / \\sqrt{t(1-\\beta_2)}$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.15",
+      "type": "proof_step",
+      "parent_id": "PP214.4",
+      "step_order": 4,
+      "name": "Bound arithmetic-geometric series",
+      "statement": "Use $\\sum_t t \\gamma^t < 1/(1-\\gamma)^2$ for $\\gamma < 1$ to absorb the inner geometric factors.",
+      "subclass": "invoke_identity",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.16",
+      "type": "proof_step",
+      "parent_id": "PP214.4",
+      "step_order": 5,
+      "name": "Apply Lemma 10.3",
+      "statement": "Conclude $\\sum_{t=1}^{T} \\hat{m}_{t,i}^2/\\sqrt{t \\hat{v}_{t,i}} \\leq \\frac{2 G_\\infty}{(1-\\gamma)^2 \\sqrt{1-\\beta_2}} \\|g_{1:T,i}\\|_2$ via Lemma 10.3 (note: the stated form simplifies the constant to $\\frac{2}{(1-\\gamma)\\sqrt{1-\\beta_2}}$).",
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.17",
+      "type": "proof_step",
+      "parent_id": "PP214.5",
+      "step_order": 1,
+      "name": "Linearize regret with Lemma 10.2",
+      "statement": "Apply Lemma 10.2: $f_t(\\theta_t) - f_t(\\theta^*) \\leq g_t^T(\\theta_t - \\theta^*) = \\sum_i g_{t,i}(\\theta_{t,i} - \\theta^*_{,i})$.",
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.18",
+      "type": "proof_step",
+      "parent_id": "PP214.5",
+      "step_order": 2,
+      "name": "Substitute Adam update and square",
+      "statement": "From $\\theta_{t+1} = \\theta_t - \\alpha_t \\hat{m}_t / \\sqrt{\\hat{v}_t}$, subtract $\\theta^*_{,i}$ and square both sides to obtain $(\\theta_{t+1,i} - \\theta^*_{,i})^2 = (\\theta_{t,i} - \\theta^*_{,i})^2 - \\frac{2\\alpha_t}{1-\\beta_1^t}(\\beta_{1,t} m_{t-1,i}/\\sqrt{\\hat{v}_{t,i}} + (1-\\beta_{1,t}) g_{t,i}/\\sqrt{\\hat{v}_{t,i}})(\\theta_{t,i} - \\theta^*_{,i}) + \\alpha_t^2 (\\hat{m}_{t,i}/\\sqrt{\\hat{v}_{t,i}})^2$.",
+      "subclass": "substitute",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.19",
+      "type": "proof_step",
+      "parent_id": "PP214.5",
+      "step_order": 3,
+      "name": "Solve for $g_{t,i}(\\theta_{t,i} - \\theta^*_{,i})$ via Young's inequality",
+      "statement": "Rearrange and apply Young's inequality $ab \\leq a^2/2 + b^2/2$, plus the bound $\\sqrt{\\hat{v}_{t,i}} \\leq \\|g_{1:t,i}\\|_2/\\sqrt{(1-\\beta_2^t)t}$, to upper-bound $g_{t,i}(\\theta_{t,i} - \\theta^*_{,i})$ by a sum of telescoping squared-distance terms plus moment terms.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.20",
+      "type": "proof_step",
+      "parent_id": "PP214.5",
+      "step_order": 4,
+      "name": "Apply Lemma 10.4 to moment terms",
+      "statement": "Sum across $t$ and apply Lemma 10.4 to bound $\\sum_t \\hat{m}_{t,i}^2/\\sqrt{t \\hat{v}_{t,i}}$ and the $m_{t-1,i}^2/\\sqrt{\\hat{v}_{t-1,i}}$ contribution.",
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.21",
+      "type": "proof_step",
+      "parent_id": "PP214.5",
+      "step_order": 5,
+      "name": "Telescope squared-distance terms with $D, D_\\infty$",
+      "statement": "Use $\\|\\theta_t - \\theta^*\\|_2 \\leq D$ and $\\|\\theta_m - \\theta_n\\|_\\infty \\leq D_\\infty$ to bound the telescoping terms by $D^2/(2\\alpha(1-\\beta_1)) \\sum_i \\sqrt{T \\hat{v}_{T,i}}$ and a residual involving $D_\\infty^2$.",
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.22",
+      "type": "proof_step",
+      "parent_id": "PP214.5",
+      "step_order": 6,
+      "name": "Bound $\\sum_t (\\beta_{1,t}/(1-\\beta_{1,t}))\\sqrt{t}$",
+      "statement": "Since $\\beta_{1,t} = \\beta_1 \\lambda^{t-1}$, bound $\\sum_t \\beta_{1,t}\\sqrt{t}/(1-\\beta_{1,t}) \\leq \\sum_t \\lambda^{t-1}\\sqrt{t}/(1-\\beta_1) \\leq 1/((1-\\beta_1)(1-\\lambda)^2)$ via the arithmetic-geometric series.",
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.23",
+      "type": "proof_step",
+      "parent_id": "PP214.5",
+      "step_order": 7,
+      "name": "Combine to obtain regret bound",
+      "statement": "Combine the three families of bounds to obtain the stated regret bound for all $T \\geq 1$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.24",
+      "type": "proof_step",
+      "parent_id": "PP214.6",
+      "step_order": 1,
+      "name": "Bound $\\sum_i \\|g_{1:T,i}\\|_2$",
+      "statement": "Use $\\sum_{i=1}^{d} \\|g_{1:T,i}\\|_2 \\leq d G_\\infty \\sqrt{T}$ from the gradient-bound assumption.",
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP214.25",
+      "type": "proof_step",
+      "parent_id": "PP214.6",
+      "step_order": 2,
+      "name": "Divide by $T$ and conclude",
+      "statement": "Divide Theorem 4.1 by $T$ to get $R(T)/T = O(1/\\sqrt{T})$, hence $\\lim_{T\\to\\infty} R(T)/T = 0$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP214.1",
+      "type": "algorithm_step",
+      "parent_id": "AP214.1",
+      "step_order": 1,
+      "name": "Initialize moments and timestep",
+      "statement": "$m_0 \\gets 0$; $v_0 \\gets 0$; $t \\gets 0$.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP214.2",
+      "type": "algorithm_step",
+      "parent_id": "AP214.1",
+      "step_order": 2,
+      "name": "Main loop until convergence",
+      "statement": "while $\\theta_t$ not converged do (body in steps 3-9)",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP214.3",
+      "type": "algorithm_step",
+      "parent_id": "AP214.1",
+      "step_order": 3,
+      "name": "Increment timestep and sample gradient",
+      "statement": "$t \\gets t+1$; $g_t \\gets \\nabla_\\theta f_t(\\theta_{t-1})$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP214.4",
+      "type": "algorithm_step",
+      "parent_id": "AP214.1",
+      "step_order": 4,
+      "name": "Update biased first moment",
+      "statement": "$m_t \\gets \\beta_1 \\cdot m_{t-1} + (1-\\beta_1) \\cdot g_t$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP214.5",
+      "type": "algorithm_step",
+      "parent_id": "AP214.1",
+      "step_order": 5,
+      "name": "Update biased second raw moment",
+      "statement": "$v_t \\gets \\beta_2 \\cdot v_{t-1} + (1-\\beta_2) \\cdot g_t^2$ (elementwise square).",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP214.6",
+      "type": "algorithm_step",
+      "parent_id": "AP214.1",
+      "step_order": 6,
+      "name": "Bias-correct first moment",
+      "statement": "$\\hat{m}_t \\gets m_t / (1 - \\beta_1^t)$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP214.7",
+      "type": "algorithm_step",
+      "parent_id": "AP214.1",
+      "step_order": 7,
+      "name": "Bias-correct second moment",
+      "statement": "$\\hat{v}_t \\gets v_t / (1 - \\beta_2^t)$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP214.8",
+      "type": "algorithm_step",
+      "parent_id": "AP214.1",
+      "step_order": 8,
+      "name": "Update parameters",
+      "statement": "$\\theta_t \\gets \\theta_{t-1} - \\alpha \\cdot \\hat{m}_t / (\\sqrt{\\hat{v}_t} + \\epsilon)$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP214.9",
+      "type": "algorithm_step",
+      "parent_id": "AP214.1",
+      "step_order": 9,
+      "name": "Return parameters",
+      "statement": "return $\\theta_t$ once converged.",
+      "subclass": "return",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP214.10",
+      "type": "algorithm_step",
+      "parent_id": "AP214.2",
+      "step_order": 1,
+      "name": "Initialize $m_0, u_0, t$",
+      "statement": "$m_0 \\gets 0$; $u_0 \\gets 0$; $t \\gets 0$.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP214.11",
+      "type": "algorithm_step",
+      "parent_id": "AP214.2",
+      "step_order": 2,
+      "name": "Main loop body",
+      "statement": "while $\\theta_t$ not converged: $t \\gets t+1$; $g_t \\gets \\nabla_\\theta f_t(\\theta_{t-1})$.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP214.12",
+      "type": "algorithm_step",
+      "parent_id": "AP214.2",
+      "step_order": 3,
+      "name": "Update first moment",
+      "statement": "$m_t \\gets \\beta_1 \\cdot m_{t-1} + (1-\\beta_1) \\cdot g_t$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP214.13",
+      "type": "algorithm_step",
+      "parent_id": "AP214.2",
+      "step_order": 4,
+      "name": "Update infinity norm $u_t$",
+      "statement": "$u_t \\gets \\max(\\beta_2 \\cdot u_{t-1}, |g_t|)$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP214.14",
+      "type": "algorithm_step",
+      "parent_id": "AP214.2",
+      "step_order": 5,
+      "name": "Update parameters",
+      "statement": "$\\theta_t \\gets \\theta_{t-1} - (\\alpha/(1-\\beta_1^t)) \\cdot m_t / u_t$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP214.15",
+      "type": "algorithm_step",
+      "parent_id": "AP214.2",
+      "step_order": 6,
+      "name": "Return parameters",
+      "statement": "return $\\theta_t$ once converged.",
+      "subclass": "return",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP214.1",
+      "type": "example",
+      "name": "MNIST L2-regularized multi-class logistic regression",
+      "section": "6.1",
+      "statement": "Logistic regression on the 784-dimensional MNIST images with stepsize $\\alpha_t = \\alpha/\\sqrt{t}$ decay and minibatch size $128$; Adam yields convergence comparable to SGD with Nesterov momentum and faster than AdaGrad (Figure 1, left).",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP214.2",
+      "type": "example",
+      "name": "IMDB BoW logistic regression with sparse features",
+      "section": "6.1",
+      "statement": "Logistic regression on 10{,}000-dim BoW features from the IMDB movie review dataset with 50% dropout; Adam converges as fast as AdaGrad and faster than SGD with momentum, demonstrating Adam's effectiveness on sparse features (Figure 1, right).",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP214.3",
+      "type": "example",
+      "name": "MNIST multi-layer neural network",
+      "section": "6.2",
+      "statement": "Two-hidden-layer fully connected ReLU network with 1000 units per layer trained on MNIST with cross-entropy loss; Adam outperforms SFO, AdaGrad, RMSProp, SGDNesterov, and AdaDelta in iterations and wall-clock time both with and without dropout (Figure 2).",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP214.4",
+      "type": "example",
+      "name": "CIFAR-10 convolutional neural network",
+      "section": "6.3",
+      "statement": "CNN with three 5x5 conv + 3x3 max-pool stages and a 1000-unit ReLU fully connected layer on CIFAR-10; Adam matches or beats SGD with Nesterov momentum and beats AdaGrad over 45 epochs (Figure 3).",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP214.5",
+      "type": "example",
+      "name": "Bias-correction ablation on a Variational Auto-Encoder",
+      "section": "6.4",
+      "statement": "VAE with single 500-unit softplus hidden layer and 50-dim Gaussian latent, trained over $\\beta_1 \\in [0, 0.9]$, $\\beta_2 \\in \\{0.99, 0.999, 0.9999\\}$, $\\log_{10}\\alpha \\in [-5, -1]$; bias correction prevents instability for $\\beta_2$ close to $1$ (Figure 4).",
+      "origin": "paper"
+    },
+    {
+      "id": "RP214.1",
+      "type": "remark",
+      "name": "Efficient reordering of Adam update",
+      "section": "2",
+      "statement": "The last three lines in the Adam loop can be replaced by $\\alpha_t = \\alpha \\sqrt{1-\\beta_2^t}/(1-\\beta_1^t)$ and $\\theta_t \\gets \\theta_{t-1} - \\alpha_t \\cdot m_t/(\\sqrt{v_t} + \\hat{\\epsilon})$ for slight efficiency at the cost of clarity.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP214.2",
+      "type": "remark",
+      "name": "Sparse-gradients motivation for bias correction",
+      "section": "3",
+      "statement": "For sparse gradients a small $\\beta_2$ is required for a reliable second-moment estimate; without bias correction, this regime causes initial steps to be much larger than $\\alpha$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP214.3",
+      "type": "remark",
+      "name": "Adam as preconditioned method",
+      "section": "5",
+      "statement": "$\\hat{v}_t$ approximates the diagonal of the Fisher information matrix; Adam uses the square root of its inverse, making it more conservative than vanilla natural gradient descent.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP214.4",
+      "type": "remark",
+      "name": "Adam reduces to AdaGrad in a limit",
+      "section": "5",
+      "statement": "With $\\beta_1 = 0$, $\\beta_2 \\to 1^-$ infinitesimally, and $\\alpha$ replaced by an annealed $\\alpha_t = \\alpha \\cdot t^{-1/2}$, Adam's update reduces to AdaGrad's $\\theta_t - \\alpha g_t / \\sqrt{\\sum_{i=1}^{t} g_i^2}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP214.5",
+      "type": "remark",
+      "name": "Adaptive methods improve dependence on $d$",
+      "section": "4",
+      "statement": "When $\\sum_i \\|g_{1:T,i}\\|_2 \\ll d G_\\infty \\sqrt{T}$ and $\\sum_i \\sqrt{T \\hat{v}_{T,i}} \\ll d G_\\infty \\sqrt{T}$ (sparse-feature regime), Adam and AdaGrad achieve $O(\\log d \\sqrt{T})$, improving on $O(\\sqrt{dT})$ for non-adaptive methods.",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "DP214.1", "target": "DP214.2", "type": "uses"},
+    {"source": "DP214.2", "target": "DP214.3", "type": "uses"},
+    {"source": "DP214.2", "target": "DP214.4", "type": "uses"},
+    {"source": "DP214.3", "target": "DP214.5", "type": "uses"},
+    {"source": "DP214.4", "target": "DP214.5", "type": "uses"},
+    {"source": "DP214.4", "target": "EP214.1", "type": "uses"},
+    {"source": "DP214.5", "target": "DP214.6", "type": "uses"},
+    {"source": "DP214.7", "target": "DP214.4", "type": "generalizes"},
+    {"source": "DP214.1", "target": "AP214.1", "type": "uses"},
+    {"source": "DP214.2", "target": "AP214.1", "type": "uses"},
+    {"source": "DP214.3", "target": "AP214.1", "type": "uses"},
+    {"source": "DP214.4", "target": "AP214.1", "type": "uses"},
+    {"source": "DP214.5", "target": "AP214.1", "type": "uses"},
+    {"source": "AP214.1", "target": "ProbP214.1", "type": "solves"},
+    {"source": "AP214.1", "target": "ProbP214.2", "type": "solves"},
+    {"source": "DP214.7", "target": "AP214.2", "type": "uses"},
+    {"source": "EP214.3", "target": "AP214.2", "type": "uses"},
+    {"source": "AP214.2", "target": "AP214.1", "type": "generalizes"},
+    {"source": "AP214.2", "target": "ProbP214.1", "type": "solves"},
+    {"source": "AP214.1", "target": "AP214.3", "type": "uses"},
+    {"source": "AP214.2", "target": "AP214.3", "type": "uses"},
+    {"source": "AP214.9", "target": "AP214.3", "type": "uses"},
+    {"source": "EP214.1", "target": "PP214.1", "type": "uses"},
+    {"source": "EP214.1", "target": "EP214.2", "type": "uses"},
+    {"source": "DP214.4", "target": "PP214.2", "type": "uses"},
+    {"source": "DP214.7", "target": "PP214.2", "type": "uses"},
+    {"source": "AssumP214.1", "target": "TP214.1", "type": "uses"},
+    {"source": "AssumP214.2", "target": "TP214.1", "type": "uses"},
+    {"source": "DP214.8", "target": "TP214.1", "type": "uses"},
+    {"source": "DP214.10", "target": "TP214.1", "type": "uses"},
+    {"source": "AP214.1", "target": "TP214.1", "type": "uses"},
+    {"source": "ProbP214.2", "target": "TP214.1", "type": "uses"},
+    {"source": "PP214.5", "target": "TP214.1", "type": "proves"},
+    {"source": "LP214.1", "target": "PP214.5", "type": "uses"},
+    {"source": "LP214.3", "target": "PP214.5", "type": "uses"},
+    {"source": "LP214.2", "target": "LP214.3", "type": "uses"},
+    {"source": "PP214.3", "target": "LP214.2", "type": "proves"},
+    {"source": "PP214.4", "target": "LP214.3", "type": "proves"},
+    {"source": "LP214.2", "target": "PP214.4", "type": "uses"},
+    {"source": "TP214.1", "target": "CP214.1", "type": "uses"},
+    {"source": "PP214.6", "target": "CP214.1", "type": "proves"},
+    {"source": "AP214.1", "target": "ExP214.1", "type": "illustrates"},
+    {"source": "AP214.1", "target": "ExP214.2", "type": "illustrates"},
+    {"source": "AP214.1", "target": "ExP214.3", "type": "illustrates"},
+    {"source": "AP214.1", "target": "ExP214.4", "type": "illustrates"},
+    {"source": "AP214.1", "target": "ExP214.5", "type": "illustrates"},
+    {"source": "DP214.5", "target": "ExP214.5", "type": "tests"},
+    {"source": "AP214.4", "target": "ExP214.1", "type": "illustrates"},
+    {"source": "AP214.7", "target": "ExP214.1", "type": "illustrates"},
+    {"source": "AP214.4", "target": "ExP214.2", "type": "illustrates"},
+    {"source": "AP214.5", "target": "ExP214.2", "type": "illustrates"},
+    {"source": "AP214.7", "target": "ExP214.2", "type": "illustrates"},
+    {"source": "AP214.4", "target": "ExP214.3", "type": "illustrates"},
+    {"source": "AP214.5", "target": "ExP214.3", "type": "illustrates"},
+    {"source": "AP214.6", "target": "ExP214.3", "type": "illustrates"},
+    {"source": "AP214.7", "target": "ExP214.3", "type": "illustrates"},
+    {"source": "AP214.8", "target": "ExP214.3", "type": "illustrates"},
+    {"source": "AP214.4", "target": "ExP214.4", "type": "illustrates"},
+    {"source": "AP214.7", "target": "ExP214.4", "type": "illustrates"},
+    {"source": "AP214.4", "target": "AP214.1", "type": "uses"},
+    {"source": "AP214.5", "target": "AP214.1", "type": "uses"},
+    {"source": "AP214.1", "target": "EP214.4", "type": "uses"},
+    {"source": "DP214.6", "target": "EP214.4", "type": "uses"},
+    {"source": "DP214.9", "target": "LP214.1", "type": "uses"},
+    {"source": "PSP214.1", "target": "PSP214.2", "type": "uses"},
+    {"source": "PSP214.2", "target": "PSP214.3", "type": "uses"},
+    {"source": "PSP214.3", "target": "PSP214.4", "type": "uses"},
+    {"source": "PSP214.5", "target": "PSP214.6", "type": "uses"},
+    {"source": "PSP214.6", "target": "PSP214.7", "type": "uses"},
+    {"source": "PSP214.8", "target": "PSP214.9", "type": "uses"},
+    {"source": "PSP214.9", "target": "PSP214.10", "type": "uses"},
+    {"source": "PSP214.10", "target": "PSP214.11", "type": "uses"},
+    {"source": "PSP214.12", "target": "PSP214.13", "type": "uses"},
+    {"source": "PSP214.13", "target": "PSP214.14", "type": "uses"},
+    {"source": "PSP214.14", "target": "PSP214.15", "type": "uses"},
+    {"source": "PSP214.15", "target": "PSP214.16", "type": "uses"},
+    {"source": "PSP214.17", "target": "PSP214.18", "type": "uses"},
+    {"source": "PSP214.18", "target": "PSP214.19", "type": "uses"},
+    {"source": "PSP214.19", "target": "PSP214.20", "type": "uses"},
+    {"source": "PSP214.20", "target": "PSP214.21", "type": "uses"},
+    {"source": "PSP214.21", "target": "PSP214.23", "type": "uses"},
+    {"source": "PSP214.22", "target": "PSP214.23", "type": "uses"},
+    {"source": "PSP214.24", "target": "PSP214.25", "type": "uses"},
+    {"source": "ASP214.1", "target": "ASP214.2", "type": "uses"},
+    {"source": "ASP214.2", "target": "ASP214.3", "type": "uses"},
+    {"source": "ASP214.3", "target": "ASP214.4", "type": "uses"},
+    {"source": "ASP214.3", "target": "ASP214.5", "type": "uses"},
+    {"source": "ASP214.4", "target": "ASP214.6", "type": "uses"},
+    {"source": "ASP214.5", "target": "ASP214.7", "type": "uses"},
+    {"source": "ASP214.6", "target": "ASP214.8", "type": "uses"},
+    {"source": "ASP214.7", "target": "ASP214.8", "type": "uses"},
+    {"source": "ASP214.8", "target": "ASP214.9", "type": "uses"},
+    {"source": "ASP214.10", "target": "ASP214.11", "type": "uses"},
+    {"source": "ASP214.11", "target": "ASP214.12", "type": "uses"},
+    {"source": "ASP214.11", "target": "ASP214.13", "type": "uses"},
+    {"source": "ASP214.12", "target": "ASP214.14", "type": "uses"},
+    {"source": "ASP214.13", "target": "ASP214.14", "type": "uses"},
+    {"source": "ASP214.14", "target": "ASP214.15", "type": "uses"}
+  ]
+}

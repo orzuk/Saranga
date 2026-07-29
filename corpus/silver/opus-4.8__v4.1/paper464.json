@@ -1,0 +1,1217 @@
+{
+  "metadata": {
+    "paper_num": "T39",
+    "title": "Transformers Meet In-Context Learning: A Universal Approximation Theory",
+    "arxiv_id": "2506.05200",
+    "annotator": "agent-extraction",
+    "prompt_version": "v4.1",
+    "model": "claude-opus-4-8",
+    "extraction_date": "2026-07-28"
+  },
+  "nodes": [
+    {
+      "id": "DP39.1",
+      "type": "definition",
+      "name": "Attention layer (multi-head self-attention)",
+      "statement": "{\\em Attention layer.} For any input matrix $\\bm{H}$ of the form \\eqref{eq:input-matrix-H}, the (self)-attention operator is defined as \\begin{align} \\att(\\bm{H}; \\bm{Q}, \\bm{K}, \\bm{V}) \\coloneqq \\frac{1}{N}\\bm{V}\\bm{H}\\sigma_{\\att}\\big((\\bm{Q}\\bm{H})^{\\top}\\bm{K}\\bm{H} \\big), \\end{align} where $\\bm{Q},\\bm{K},\\bm{V}\\in \\mathbb{R}^{D\\times D}$ represent the parameter matrices, commonly referred to as the query, key, and value matrices, respectively, and the activation function $\\sigma_{\\att}(\\cdot)$ is applied either columnwise or entrywise to the input. A multi-head (self)-attention layer, which we denote by $\\Att_{\\bm{\\Theta}}(\\cdot)$ as parameterized by $\\bm{\\Theta}=\\{\\bm{Q}_m, \\bm{K}_m, \\bm{V}_m\\}_{1\\leq m\\leq M} \\subset \\mathbb{R}^{D\\times D}$, computes a superposition of the input and the outputs from $M$ attention operators (or attention heads). Namely, given an input matrix $\\bm{H}$, the output of the attention layer with $M$ attention heads is defined as \\begin{align} \\Att_{\\bm{\\Theta}}(\\bm{H}) \\coloneqq \\bm{H} + \\sum_{m = 1}^M \\att(\\bm{H}; \\bm{Q}_m, \\bm{K}_m, \\bm{V}_m). \\end{align} This attention mechanism plays a pivotal role in the transformer architecture \\citep{vaswani2017attention}, allowing one to dynamically attend to different parts of the input data.",
+      "section": "2.2 Transformer architecture",
+      "origin": "paper",
+      "tags": [
+        "structural"
+      ]
+    },
+    {
+      "id": "DP39.2",
+      "type": "definition",
+      "name": "Feed-forward (MLP) layer",
+      "statement": "{\\em Feed-forward layer (or multilayer perceptron (MLP) layer).} Given an input matrix $\\bm{H}$, the feed-forward layer produces an output as follows: \\begin{align} \\MLP_{\\bm{\\Theta}}(\\bm{H} ) \\coloneqq \\bm{H} + \\bm{U}\\sigma_{\\ff}(\\bm{W}\\bm{H}), \\end{align} where $\\bm{\\Theta}=\\{\\bm{U},\\bm{W}\\}\\subset \\mathbb{R}^{D\\times D}$ bundles the parameter matrices $\\bm{U}$ and $\\bm{W}$ together, and the activation function $\\sigma_{\\mlp}(\\cdot)$ is applied entrywise to the input.",
+      "section": "2.2 Transformer architecture",
+      "origin": "paper",
+      "tags": [
+        "structural"
+      ]
+    },
+    {
+      "id": "DP39.3",
+      "type": "definition",
+      "name": "Multi-layer transformer",
+      "statement": "With the aforementioned building blocks in place, we can readily introduce the multi-layer transformer architecture. Given an input $\\bm{H}^{(0)}\\in \\mathbb{R}^{D\\times (N+1)}$ of the form \\eqref{eq:input-matrix-H}, a transformer comprising $L$ attention layers --- each coupled with a feed-forward layer --- carries out the following computation: \\begin{subequations} \\begin{align} \\bm{H}^{(l)} & =\\MLP_{\\bm{\\Theta}_{\\mlp}^{(l)}}\\Big(\\Att_{\\bm{\\Theta}_{\\att}^{(l)}}\\big(\\bm{H}^{(l-1)}\\big)\\Big), \\qquad l = 1, \\dots, L, \\end{align} with the final output given by \\begin{align} \\TF_{\\bm{\\Theta}}\\big(\\bm{H}^{(0)}\\big) & \\coloneqq \\bm{H}^{(L)}. \\end{align} \\end{subequations} Here, $\\bm{\\Theta}$ encapsulates all parameter matrices: $$ \\bm{\\Theta}= \\big\\{ \\bm{\\Theta}^{(l)}_{\\att}, \\bm{\\Theta}^{(l)}_{\\mlp} \\big\\}_{1\\leq l\\leq L} \\quad \\text{with }~\\bm{\\Theta}^{(l)}_{\\att}= \\big\\{\\bm{Q}_m^{(l)}, \\bm{K}_m^{(l)}, \\bm{V}_m^{(l)} \\big\\}_{1\\leq m\\leq M} ,\\, \\bm{\\Theta}^{(l)}_{\\mlp}= \\big\\{\\bm{U}^{(l)}, \\bm{W}^{(l)} \\big\\}\\subset \\mathbb{R}^{D\\times D}. $$ In particular, the transformer's prediction for the $(N+1)$-th input can be read out from the very last entry of $\\TF_{\\bm{\\Theta}}(\\bm{H}^{(0)})$, i.e., \\begin{equation} \\widehat{y}_{N+1} = \\mathsf{ReadOut}\\big(\\TF_{\\bm{\\Theta}}\\big(\\bm{H}^{(0)}\\big)\\big) \\coloneqq \\big[ \\bm{H}^{(L)}\\big]_{D,N+1}. \\end{equation}",
+      "section": "2.2 Transformer architecture",
+      "origin": "paper",
+      "tags": [
+        "structural"
+      ]
+    },
+    {
+      "id": "DP39.4",
+      "type": "definition",
+      "name": "Barron-style parameter $C_{\\mathcal{F}}$",
+      "statement": "\\paragraph{Barron-style parameter.} For any absolutely integrable function $f: \\mathbb{R}^{d} \\rightarrow \\mathbb{R}$, we denote by $F_f$ its Fourier transform, which allows one to express \\begin{subequations} \\begin{align} F_f(\\bm{\\omega} ) &= \\frac{1}{(2\\pi)^d}\\int_{\\bm{x}} e^{-j \\bm{\\omega}^{\\top}{\\bm x}}f({\\bm x}) \\mathrm{d} \\bm{x} \\\\ f({\\bm x}) &= \\int_{\\bm{\\omega}} e^{j \\bm{\\omega}^{\\top}{\\bm x}}F_f(\\bm{\\omega} ) \\mathrm{d} \\bm{\\omega} \\end{align} \\end{subequations} with $j=\\sqrt{-1}$ the imaginary unit. It is also helpful to define, for each $\\bm{\\omega}$, the maximum magnitude of the Fourier transform over the function class $\\mathcal{F}$ as: \\begin{align} F^{\\mathsf{sup}}(\\bm{\\omega}) \\coloneqq \\sup_{f \\in \\mathcal{F}} \\big| F_f(\\bm{\\omega}) \\big|. \\end{align} Inspired by the seminal work \\citet{Barron1993Universal}, we introduce the key quantity: \\begin{align} C_{\\mathcal{F}} \\coloneqq \\sup_{f\\in \\mathcal{F}}|f(\\bm{0})| + \\int_{\\bm{\\omega}} \\|\\bm{\\omega}\\|_2F^{\\mathsf{sup}}(\\bm{\\omega})\\mathrm{d}\\bm{\\omega} < \\infty, \\end{align} which we shall refer to as the Barron parameter for $\\mathcal{F}$.",
+      "section": "2.3 Key quantities",
+      "origin": "paper"
+    },
+    {
+      "id": "DP39.5",
+      "type": "definition",
+      "name": "$\\varepsilon$-cover and covering number of $\\mathcal{F}$",
+      "statement": "\\paragraph{Covering number.} Recall that we have restricted our input space to reside within the unit Euclidean ball $\\mathcal{B} = \\{{\\bm x}\\in\\mathbb{R}^d:\\|{\\bm x}\\|_2\\le 1\\}$. A set, denoted by $\\mathcal{N}_{\\varepsilon}$, is said to be an $\\varepsilon$-cover of $\\mathcal{F}\\times \\mathcal{B}$ if, for every $(f, {\\bm x}) \\in \\mathcal{F}\\times \\mathcal{B}$, there exists some $(\\widehat{f}, \\widehat{{\\bm x}}) \\in \\mathcal{N}_{\\varepsilon}$ such that \\begin{align} \\|{\\bm x} - \\widehat{{\\bm x}}\\|_2 \\le \\varepsilon \\quad\\text{and}\\quad \\big|f({\\bm x}) - f({\\bm 0}) - (\\widehat{f}(\\widehat{{\\bm x}}) - \\widehat{f}({\\bm 0}))\\big| \\le C_{\\mathcal{F}}\\varepsilon. \\end{align} In this paper, we shall take $\\mathcal{N}_{\\varepsilon}$ to be an $\\varepsilon$-cover of $\\mathcal{F}$ with the smallest cardinality, and refer to $|\\mathcal{N}_{\\varepsilon}|$ as the covering number of $\\mathcal{F}$ with precision $\\varepsilon$.",
+      "section": "2.3 Key quantities",
+      "origin": "paper"
+    },
+    {
+      "id": "DP39.6",
+      "type": "definition",
+      "name": "Sigmoid function $\\phi$",
+      "statement": "Throughout the proof, we let $\\phi(x)$ denote the following sigmoid function: \\begin{align} \\phi(z) = \\left(z+\\frac12\\right)\\ind\\left\\{z+\\frac12 > 0\\right\\} - \\left(z-\\frac12\\right)\\ind\\left\\{z-\\frac12 > 0\\right\\}, \\end{align} which satisfies $\\lim_{z\\to-\\infty} \\phi(z) = 0$, $\\lim_{z\\to\\infty} \\phi(z) = 1$, and $\\phi(0) = 1/2$.",
+      "section": "3 Analysis",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP39.1",
+      "type": "problem",
+      "name": "In-context prediction problem (universal design goal)",
+      "statement": "\\paragraph{Goal.} The aim is to design a transformer that, given an input sequence as in \\eqref{eq:prompt-defn} at test time, outputs a prediction $\\widehat{y}_{N+1}$ with vanishingly small $\\ell_2$ risk, namely, $$ \\mathbb{E}\\big[ \\big( \\widehat{y}_{N+1} - f(\\bm{x}_{N+1}) \\big)^2\\big] \\approx 0 $$ in some average sense. Here, the input sequence \\eqref{eq:prompt-defn} can be produced by any (a priori unknown) function $f$ from a prescribed, general function class $\\mathcal{F}$. Particular emphasis is placed on {\\em universal design}, where the objective is to find a single transformer (to be described next) that makes reliable predictions simultaneously for all $f\\in \\mathcal{F}$, without knowing which task $f$ to tackle in advance. This universal design requirement aligns closely with the concept of ICL, as the goal is for the pre-trained transformer to predict in-context, without performing any prompt-specific parameter updates of the transformer.",
+      "section": "2.1 Setting: in-context learning",
+      "origin": "paper",
+      "subclass": "statistical_learning"
+    },
+    {
+      "id": "ProbP39.2",
+      "type": "problem",
+      "name": "Lasso estimator (regularized least squares)",
+      "statement": "we attempt estimating $\\{\\rho^{\\star}_{f,i}\\}$ from the in-context demonstration $\\{(\\bm{x}_i,y_i)\\}_{1\\leq i\\leq N}$ by means of the following regularized estimator (a.k.a.~the Lasso estimator): \\begin{align} \\mathop{\\text{minimize}}\\limits_{\\bm{\\rho}\\in \\mathbb{R}^{n+1}}~~\\ell({\\bm \\rho}) \\coloneqq \\frac{1}{N}\\sum_{i = 1}^N (y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho})^2 + \\lambda \\|{\\bm \\rho}\\|_1, \\end{align} where $\\lambda$ denotes the regularized parameter to be suitably chosen, and ${\\bm \\phi}_i \\in \\mathbb{R}^{n+1}$ is defined as \\begin{align} \\bm{\\phi}_{i}=\\big[\\phi_{1}^{\\mathsf{feature}}(\\bm{x}_i),\\phi_{2}^{\\mathsf{feature}}(\\bm{x}_i),\\cdots,\\phi_{n}^{\\mathsf{feature}}(\\bm{x}_i),1\\big]^{\\top}. \\end{align}",
+      "section": "3 Analysis (Step 2)",
+      "origin": "paper",
+      "subclass": "optimization"
+    },
+    {
+      "id": "AP39.1",
+      "type": "algorithm",
+      "name": "Inexact proximal gradient method for Lasso",
+      "statement": "Here, we propose to run the (inexact) proximal gradient method in an attempt to solve \\eqref{eq:opt-regularized}. More precisely, starting from the initialization ${\\bm \\rho}_0^{\\mathsf{proximal}} = {\\bm 0}$, the update rule for each iteration $t= 0,\\dots, T$ is given by \\begin{subequations} \\begin{align} {\\bm \\rho}_{t+1}^{\\mathsf{proximal}} &= \\mathsf{prox}^{\\mathsf{proximal}}_{\\eta\\lambda\\|\\cdot\\|_1}\\Big({\\bm \\rho}_t^{\\mathsf{proximal}} + \\frac{2\\eta}{N}\\sum_{i = 1}^N (y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho}_t^{\\mathsf{proximal}}){\\bm \\phi}_i\\Big) + {\\bm e}_{t+1} \\\\ &= \\mathsf{ST}_{\\eta\\lambda}\\Big({\\bm \\rho}_t^{\\mathsf{proximal}} + \\frac{2\\eta}{N}\\sum_{i = 1}^N (y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho}_t^{\\mathsf{proximal}}){\\bm \\phi}_i\\Big) + {\\bm e}_{t+1}, \\end{align} \\end{subequations} where $\\eta>0$ stands for the stepsize, and we have included an additive term $\\bm{e}_{t+1}$ that allows for inexact updates. Here, the proximal operator $\\mathsf{prox}_{\\eta\\lambda\\|\\cdot\\|_1}(\\cdot)$ and the soft thresholding operator $\\mathsf{ST}_{\\eta\\lambda}(\\cdot)$ are given respectively by \\begin{subequations} \\begin{align} \\mathsf{prox}_{\\eta\\lambda\\|\\cdot\\|_1}^{\\mathsf{proximal}}({\\bm x}) &\\coloneqq \\arg\\min_{\\bm \\rho}\\left\\{\\frac12\\|{\\bm x}-{\\bm \\rho}\\|_2^2 + \\eta\\lambda\\|{\\bm \\rho}\\|_1 \\right\\}, \\\\ \\mathsf{ST}_{\\eta\\lambda}(z) &\\coloneqq \\mathsf{sign}(z)\\max\\{|z|-\\eta\\lambda,0\\}. \\end{align} \\end{subequations} Note that $\\mathsf{ST}_{\\eta\\lambda}(\\cdot)$ is applied entrywise in \\eqref{eq:update-rule-PGD}.",
+      "section": "3 Analysis (Step 3)",
+      "origin": "paper",
+      "input": [
+        "Initialization ${\\bm \\rho}_0^{\\mathsf{proximal}} = {\\bm 0}$",
+        "Stepsize $\\eta>0$",
+        "Regularization parameter $\\lambda$",
+        "In-context features $\\{{\\bm \\phi}_i\\}$ and outputs $\\{y_i\\}$"
+      ],
+      "output": [
+        "Iterate ${\\bm \\rho}_{t+1}^{\\mathsf{proximal}}$ for $t=0,\\dots,T$"
+      ],
+      "subclass": "iterative"
+    },
+    {
+      "id": "TP39.1",
+      "type": "theorem",
+      "name": "Theorem 1 (universal in-context approximation)",
+      "statement": "Assume that $\\mathcal{F}$ is a subset of absolutely integrable functions $f$ mapping from the Euclidean ball $\\mathcal{B}\\subset\\mathbb{R}^d$ to $\\mathbb{R}$, and that it satisfies $C_{\\mathcal{F}}<\\infty$, where $C_{\\mathcal{F}}$ is defined in \\eqref{eq:condition-Fourier}. Let $\\mathcal{N}_\\varepsilon$ be an $\\varepsilon$-cover of $\\mathcal{F}\\times \\mathcal{B}$ (see \\eqref{eq:defn-eps-cover}). Then one can construct a transformer such that: \\begin{itemize} \\item[i)] it has $L$ layers, $M=O(1)$ attention heads per layer, and input dimension $D=d+2n+7$ for some $n\\gtrsim \\log|\\mathcal{N}_\\varepsilon|$; \\item[ii)] for every $f\\in \\mathcal{F}$ and any random input sequence $\\{({\\bm x}_i,y_i)\\}_{1\\le i\\le N} \\cup \\{\\bm{x}_{N+1}\\}$ generated according to \\eqref{eq:prompt-defn}, with probability at least $1-O(N^{-10})$, this transformer's prediction $\\widehat{y}_{N+1}$ (cf.~\\eqref{eq:y-hat-N-plus-1-readout}) satisfies \\begin{align} \\mathbb{E}\\big[\\big(\\widehat{y}_{N+1} - f( \\bm{x}_{N+1}) \\big)^2 \\big] \\lesssim \\left(\\sqrt{\\frac{\\log N}{N}} + \\frac{n}{L}\\right)C_{\\mathcal{F}}(C_{\\mathcal{F}} + \\sigma) + \\frac{C_{\\mathcal{F}}^2\\log|\\mathcal{N}_\\varepsilon|}{n}, \\end{align} \\end{itemize} Here, the precision of the $\\varepsilon$-cover is taken to satisfy $\\varepsilon\\lesssim \\sqrt{\\frac{\\log N}{N}} + \\frac{n}{L}$; the expectation in \\eqref{eq:prediction-error-thm1} is taken over the randomness of ${\\bm x}_{N+1}$; and the probability that the event \\eqref{eq:prediction-error-thm1} occurs is governed by the randomness in the input sequence $\\{({\\bm x}_i, y_i)\\}_{1\\le i\\le N}$.",
+      "section": "3 Main results",
+      "origin": "paper",
+      "assumptions": [
+        "$\\mathcal{F}$ is a subset of absolutely integrable functions $f$ mapping from the Euclidean ball $\\mathcal{B}\\subset\\mathbb{R}^d$ to $\\mathbb{R}$",
+        "it satisfies $C_{\\mathcal{F}}<\\infty$, where $C_{\\mathcal{F}}$ is defined in \\eqref{eq:condition-Fourier}",
+        "Let $\\mathcal{N}_\\varepsilon$ be an $\\varepsilon$-cover of $\\mathcal{F}\\times \\mathcal{B}$",
+        "the precision of the $\\varepsilon$-cover is taken to satisfy $\\varepsilon\\lesssim \\sqrt{\\frac{\\log N}{N}} + \\frac{n}{L}$"
+      ],
+      "conclusions": [
+        "it has $L$ layers, $M=O(1)$ attention heads per layer, and input dimension $D=d+2n+7$ for some $n\\gtrsim \\log|\\mathcal{N}_\\varepsilon|$",
+        "with probability at least $1-O(N^{-10})$, $\\mathbb{E}\\big[\\big(\\widehat{y}_{N+1} - f( \\bm{x}_{N+1}) \\big)^2 \\big] \\lesssim \\left(\\sqrt{\\frac{\\log N}{N}} + \\frac{n}{L}\\right)C_{\\mathcal{F}}(C_{\\mathcal{F}} + \\sigma) + \\frac{C_{\\mathcal{F}}^2\\log|\\mathcal{N}_\\varepsilon|}{n}$"
+      ],
+      "tags": [
+        "approximation",
+        "existence"
+      ]
+    },
+    {
+      "id": "LP39.1",
+      "type": "lemma",
+      "name": "Lemma 1 (universal features for the function class)",
+      "statement": "Consider any $\\tau > 4$ and any $n \\ge c_0\\log|\\mathcal{N}_{\\varepsilon}|$ for some large enough constant $c_0>0$. There exist a collection of functions $\\phi^{\\mathsf{feature}}_i: \\mathbb{R}^d \\rightarrow \\mathbb{R}$ ($1\\leq i\\leq n$) such that: for every $f \\in \\mathcal{F}$ and ${\\bm x} \\in \\mathcal{B}$, one has \\begin{align} \\bigg|f({\\bm x}) - f(\\bm{0}) - \\frac{1}{n}\\sum_{i = 1}^n\\rho^{\\star}_{f, i}\\phi^{\\mathsf{feature}}_i(\\bm{x})\\bigg| \\lesssim C_{\\mathcal{F}}\\bigg(\\frac{1}{\\tau} + \\tau\\varepsilon + \\sqrt{\\frac{\\log|\\mathcal{N}_{\\varepsilon}|}{n}}\\bigg) \\end{align} for some $f$-dependent coefficients $\\{\\rho^{\\star}_{f,i}\\}_{1\\leq i\\leq n} \\subset \\mathbb{R}$ obeying \\begin{align} |f({\\bm 0})| + \\frac{1}{n}\\sum_{i = 1}^n|\\rho^{\\star}_{f, i}| < 4C_{\\mathcal{F}}. \\end{align} Here, the functions $\\{\\phi^{\\mathsf{feature}}_i(\\cdot)\\}_{1\\leq i\\leq n}$ are given by \\begin{align} \\phi_{i}^{\\mathsf{feature}}(\\bm{x})=\\phi\\bigg(\\tau\\Big(\\frac{1}{\\|\\bm{\\omega}_{i}\\|_{2}}\\bm{\\omega}_{i}^{\\top}\\bm{x}-t_{i}\\Big)\\bigg) \\end{align} for some $\\{(t_i, {\\bm \\omega}_i)\\}_{1 \\le i \\le n} \\subset \\mathbb{R}\\times \\mathbb{R}^{d}$ independent of any specific $f$, where $\\phi(\\cdot)$ is defined in \\eqref{eq:def-func-phi}.",
+      "section": "3 Analysis (Step 1)",
+      "origin": "paper",
+      "tags": [
+        "approximation"
+      ],
+      "assumptions": [
+        "Consider any $\\tau > 4$ and any $n \\ge c_0\\log|\\mathcal{N}_{\\varepsilon}|$ for some large enough constant $c_0>0$"
+      ],
+      "conclusions": [
+        "There exist a collection of functions $\\phi^{\\mathsf{feature}}_i: \\mathbb{R}^d \\rightarrow \\mathbb{R}$ ($1\\leq i\\leq n$) such that: for every $f \\in \\mathcal{F}$ and ${\\bm x} \\in \\mathcal{B}$, one has $\\big|f({\\bm x}) - f(\\bm{0}) - \\frac{1}{n}\\sum_{i = 1}^n\\rho^{\\star}_{f, i}\\phi^{\\mathsf{feature}}_i(\\bm{x})\\big| \\lesssim C_{\\mathcal{F}}\\big(\\frac{1}{\\tau} + \\tau\\varepsilon + \\sqrt{\\frac{\\log|\\mathcal{N}_{\\varepsilon}|}{n}}\\big)$",
+        "for some $f$-dependent coefficients $\\{\\rho^{\\star}_{f,i}\\}_{1\\leq i\\leq n} \\subset \\mathbb{R}$ obeying $|f({\\bm 0})| + \\frac{1}{n}\\sum_{i = 1}^n|\\rho^{\\star}_{f, i}| < 4C_{\\mathcal{F}}$"
+      ]
+    },
+    {
+      "id": "LP39.2",
+      "type": "lemma",
+      "name": "Lemma 2 (prediction error of the Lasso estimator)",
+      "statement": "Consider any given $\\lambda \\ge c_{\\lambda}\\left( \\sqrt{\\frac{\\log N}{N}}\\sigma + C_{\\mathcal{F}}^{-1}\\varepsilon_{\\mathsf{dis}}^2\\right)$ for some sufficiently large constant $c_{\\lambda}>0$, where $\\varepsilon_{\\mathsf{dis}}$ is defined in \\eqref{eq:eps-dis}. For any $\\widehat{{\\bm \\rho}}$ that is statistically independent from $\\bm{x}_{N+1}$ and satisfies \\eqref{eq:def-hatrho-opt} with $\\varepsilon_{\\mathsf{opt}}\\geq 0$, we have \\begin{align} \\mathbb{E}\\Big[\\big({\\bm \\phi}_{N+1}^{\\top}\\widehat{{\\bm \\rho}} - f({\\bm x}_{N+1})\\big)^2\\Big] &\\lesssim \\sqrt{\\frac{\\log N}{N}}\\big(C_{\\mathcal{F}}^2 + \\lambda^{-2}\\varepsilon_{\\mathsf{opt}}^2 + \\sigma\\varepsilon_{\\mathsf{dis}}\\big) + \\varepsilon_{\\mathsf{dis}}^2 + \\lambda C_{\\mathcal{F}} + \\varepsilon_{\\mathsf{opt}} \\\\ \\|\\widehat{{\\bm \\rho}}\\|_1 &\\lesssim C_{\\mathcal{F}} + \\lambda^{-1}\\varepsilon_{\\mathsf{opt}} \\end{align} with probability at least $1-O(N^{-10})$. Here, the expectation in \\eqref{eq:lem-estimator-1} is taken over the randomness of $\\bm{x}_{N+1}$.",
+      "section": "3 Analysis (Step 2)",
+      "origin": "paper",
+      "tags": [
+        "bound"
+      ],
+      "assumptions": [
+        "Consider any given $\\lambda \\ge c_{\\lambda}\\left( \\sqrt{\\frac{\\log N}{N}}\\sigma + C_{\\mathcal{F}}^{-1}\\varepsilon_{\\mathsf{dis}}^2\\right)$ for some sufficiently large constant $c_{\\lambda}>0$",
+        "For any $\\widehat{{\\bm \\rho}}$ that is statistically independent from $\\bm{x}_{N+1}$ and satisfies \\eqref{eq:def-hatrho-opt} with $\\varepsilon_{\\mathsf{opt}}\\geq 0$"
+      ],
+      "conclusions": [
+        "$\\mathbb{E}\\big[\\big({\\bm \\phi}_{N+1}^{\\top}\\widehat{{\\bm \\rho}} - f({\\bm x}_{N+1})\\big)^2\\big] \\lesssim \\sqrt{\\frac{\\log N}{N}}\\big(C_{\\mathcal{F}}^2 + \\lambda^{-2}\\varepsilon_{\\mathsf{opt}}^2 + \\sigma\\varepsilon_{\\mathsf{dis}}\\big) + \\varepsilon_{\\mathsf{dis}}^2 + \\lambda C_{\\mathcal{F}} + \\varepsilon_{\\mathsf{opt}}$",
+        "$\\|\\widehat{{\\bm \\rho}}\\|_1 \\lesssim C_{\\mathcal{F}} + \\lambda^{-1}\\varepsilon_{\\mathsf{opt}}$ with probability at least $1-O(N^{-10})$"
+      ]
+    },
+    {
+      "id": "LP39.3",
+      "type": "lemma",
+      "name": "Lemma 3 (convergence of the inexact proximal gradient method)",
+      "statement": "Take $T=(L-1)/2$. Assume that \\begin{align} {\\bm \\rho}_0^{\\mathsf{proximal}} = {\\bm 0}, ~~ \\|{\\bm \\rho}^{\\star}\\|_1\\lesssim C_{\\mathcal{F}},~~ \\lambda\\gtrsim \\sqrt{\\frac{\\log N}{N}}(C_{\\mathcal{F}} + \\sigma),~~ \\eta = \\frac{1}{2n},~~ \\text{and} ~~\\|{\\bm e}_t\\|_1 \\le \\varepsilon_{\\mathsf{approx}}\\lesssim C_{\\mathcal{F}} ~\\text{for all }t \\le T. \\end{align} Then with probability at least $1-O(N^{-10})$, the output of the algorithm \\eqref{eq:update-rule-PGD} at the $T$-th iteration satisfies \\begin{align} \\ell({\\bm \\rho}_T^{\\mathsf{proximal}}) \\le \\ell({\\bm \\rho}^{\\star}) + \\frac{c_1nC_{\\mathcal{F}}^2}{L} + c_1(L+n)\\varepsilon_{\\mathsf{approx}}\\bigg(C_{\\mathcal{F}} + \\sigma + \\max_{1\\le k\\le T}\\|{\\bm \\rho}_{k}^{\\mathsf{proximal}}\\|_1 + \\lambda\\bigg) \\end{align} for some universal constant $c_1>0$, and for every $t \\le T$ we have \\begin{align} \\|{\\bm \\rho}_t^{\\mathsf{proximal}}\\|_1 \\lesssim C_{\\mathcal{F}} + \\frac{nC_{\\mathcal{F}}^2}{t\\lambda} + \\sqrt{N}(t+n)\\max_{1\\le k\\le t}\\|{\\bm e}_{k}\\|_1 + \\frac{t+n}{\\lambda}\\max_{1\\le k\\le t}\\big\\{\\|{\\bm e}_k\\|_1\\|{\\bm \\rho}_k^{\\mathsf{proximal}}\\|_1\\big\\}. \\end{align}",
+      "section": "3 Analysis (Step 3)",
+      "origin": "paper",
+      "tags": [
+        "convergence",
+        "bound"
+      ],
+      "assumptions": [
+        "Take $T=(L-1)/2$",
+        "${\\bm \\rho}_0^{\\mathsf{proximal}} = {\\bm 0}$, $\\|{\\bm \\rho}^{\\star}\\|_1\\lesssim C_{\\mathcal{F}}$, $\\lambda\\gtrsim \\sqrt{\\frac{\\log N}{N}}(C_{\\mathcal{F}} + \\sigma)$, $\\eta = \\frac{1}{2n}$, and $\\|{\\bm e}_t\\|_1 \\le \\varepsilon_{\\mathsf{approx}}\\lesssim C_{\\mathcal{F}}$ for all $t \\le T$"
+      ],
+      "conclusions": [
+        "with probability at least $1-O(N^{-10})$, $\\ell({\\bm \\rho}_T^{\\mathsf{proximal}}) \\le \\ell({\\bm \\rho}^{\\star}) + \\frac{c_1nC_{\\mathcal{F}}^2}{L} + c_1(L+n)\\varepsilon_{\\mathsf{approx}}\\big(C_{\\mathcal{F}} + \\sigma + \\max_{1\\le k\\le T}\\|{\\bm \\rho}_{k}^{\\mathsf{proximal}}\\|_1 + \\lambda\\big)$",
+        "for every $t \\le T$, $\\|{\\bm \\rho}_t^{\\mathsf{proximal}}\\|_1 \\lesssim C_{\\mathcal{F}} + \\frac{nC_{\\mathcal{F}}^2}{t\\lambda} + \\sqrt{N}(t+n)\\max_{1\\le k\\le t}\\|{\\bm e}_{k}\\|_1 + \\frac{t+n}{\\lambda}\\max_{1\\le k\\le t}\\big\\{\\|{\\bm e}_k\\|_1\\|{\\bm \\rho}_k^{\\mathsf{proximal}}\\|_1\\big\\}$"
+      ]
+    },
+    {
+      "id": "LP39.4",
+      "type": "lemma",
+      "name": "Lemma 4 (transformer construction emulating proximal gradient)",
+      "statement": "One can construct a transformer such that: \\begin{itemize} \\item[i)] it has $L$ layers, $M=O(1)$ attention heads per layer, and takes the matrix ${\\bm H}^{(0)}$ (cf.~\\eqref{eq:H0-input}) as input; \\item[ii)] the component ${\\bm \\rho}^{(L)}$ in the final output matrix ${\\bm H}^{(L)}$ coincides with ${\\bm \\rho}_{(L-1)/2}^{\\mathsf{proximal}}$ (cf.~\\eqref{eq:update-rule-PGD}) for some $\\bm{e}_t$, where we choose \\begin{subequations} \\begin{align} \\lambda &\\asymp \\Big(\\frac{\\log N}{N}\\Big)^{1/6} C_{\\mathcal{F}}^{-1/3}\\widehat{\\varepsilon}^{2/3} + \\sqrt{\\frac{\\log N}{N}}\\Big(C_{\\mathcal{F}} + \\sigma\\Big) + C_{\\mathcal{F}}^{-1}\\varepsilon_{\\mathsf{dis}}^2,\\\\ \\max_{1\\le t\\le T}\\|{\\bm e}_t\\|_1&\\lesssim \\frac{C_{\\mathcal{F}}}{(L+n)nN}, \\end{align} with \\begin{align} \\widehat{\\varepsilon} \\coloneqq \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}(\\sigma + C_{\\mathcal{F}}) +\\varepsilon_{\\mathsf{dis}}^2 + \\frac{nC_{\\mathcal{F}}^2}{L}; \\end{align} \\end{subequations} \\item[iii)] for every $f\\in\\mathcal{F}$, the components ${\\bm \\rho}^{(L)}$ and $\\widehat{y}^{(L)}$ in the final output matrix ${\\bm H}^{(L)}$ (cf.~\\eqref{eq:construction-Hl}) satisfy \\begin{subequations} \\begin{align} \\ell({\\bm \\rho}^{(L)}) - \\ell({\\bm \\rho}^{\\star}) &\\lesssim \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}(\\sigma + C_{\\mathcal{F}}) +\\varepsilon_{\\mathsf{dis}}^2 + \\frac{nC_{\\mathcal{F}}^2}{L}\\\\ \\big({\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}^{(L)} - \\widehat{y}^{(L)}\\big)^2&\\lesssim \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}^2 \\end{align} \\end{subequations} with probability at least $1-O(N^{-10})$. \\end{itemize}",
+      "section": "3 Analysis (Step 4)",
+      "origin": "paper",
+      "tags": [
+        "existence"
+      ],
+      "assumptions": [
+        "the transformer takes the matrix ${\\bm H}^{(0)}$ (cf.~\\eqref{eq:H0-input}) as input",
+        "$\\lambda \\asymp \\big(\\frac{\\log N}{N}\\big)^{1/6} C_{\\mathcal{F}}^{-1/3}\\widehat{\\varepsilon}^{2/3} + \\sqrt{\\frac{\\log N}{N}}(C_{\\mathcal{F}} + \\sigma) + C_{\\mathcal{F}}^{-1}\\varepsilon_{\\mathsf{dis}}^2$ and $\\max_{1\\le t\\le T}\\|{\\bm e}_t\\|_1\\lesssim \\frac{C_{\\mathcal{F}}}{(L+n)nN}$"
+      ],
+      "conclusions": [
+        "One can construct a transformer with $L$ layers, $M=O(1)$ attention heads per layer, whose component ${\\bm \\rho}^{(L)}$ coincides with ${\\bm \\rho}_{(L-1)/2}^{\\mathsf{proximal}}$",
+        "for every $f\\in\\mathcal{F}$, $\\ell({\\bm \\rho}^{(L)}) - \\ell({\\bm \\rho}^{\\star}) \\lesssim \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}(\\sigma + C_{\\mathcal{F}}) +\\varepsilon_{\\mathsf{dis}}^2 + \\frac{nC_{\\mathcal{F}}^2}{L}$ and $\\big({\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}^{(L)} - \\widehat{y}^{(L)}\\big)^2\\lesssim \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}^2$ with probability at least $1-O(N^{-10})$"
+      ]
+    },
+    {
+      "id": "LP39.5",
+      "type": "lemma",
+      "name": "Lemma 5 (integral feature representation)",
+      "statement": "For any $f \\in \\mathcal{F}$, any $\\bm{x}$ obeying $\\|\\bm{x}\\|_2\\le 1$, and any $\\tau > 2$, we have \\begin{align} \\big|f({\\bm x}) - f(\\bm{0}) - f^{\\mathsf{approx}}({\\bm x}) \\big| \\le 3C_{\\mathcal{F}}\\delta_{\\tau}, \\end{align} where for any $f\\in \\mathcal{F}$ we define \\begin{align} f^{\\mathsf{approx}}({\\bm x}) \\coloneqq \\int_{{\\bm \\omega}\\ne 0}\\int_t \\rho_f(t, {\\bm \\omega})\\phi\\big(\\tau(\\|{\\bm \\omega}\\|_2^{-1}{\\bm \\omega}^{\\top}{\\bm x} - t)\\big)\\Lambda(\\mathrm{d}t, \\mathrm{d}{\\bm \\omega}) \\end{align} with $\\phi(\\cdot)$ defined in \\eqref{eq:def-func-phi}. Here, $\\Lambda(\\mathrm{d}t, \\mathrm{d}\\bm{\\omega})$ is a probability measure on $\\mathbb{R}\\times\\mathbb{R}^d$ independent from $f$, while $\\rho_f(t, \\bm{\\omega})$ denotes some weight function depending on $f, t, \\bm{\\omega}$ such that \\begin{align} |\\rho_f(t, \\bm{\\omega})| \\le 3\\Big(C_{\\mathcal{F}} - \\sup_{\\tilde{f}\\in\\mathcal{F}}|\\tilde{f}(\\bm{0})|\\Big) \\quad\\text{and}\\quad \\mathbb{E}_{(t, \\bm{\\omega}) \\sim \\Lambda}\\big[|\\rho_f(t, \\bm{\\omega})|\\big] \\le 3\\Big(C_{\\mathcal{F}} - \\sup_{\\tilde{f}\\in\\mathcal{F}}|\\tilde{f}(\\bm{0})|\\Big). \\end{align}",
+      "section": "A.1 Proof of Lemma 1",
+      "origin": "paper",
+      "tags": [
+        "approximation"
+      ],
+      "assumptions": [
+        "For any $f \\in \\mathcal{F}$, any $\\bm{x}$ obeying $\\|\\bm{x}\\|_2\\le 1$, and any $\\tau > 2$"
+      ],
+      "conclusions": [
+        "$\\big|f({\\bm x}) - f(\\bm{0}) - f^{\\mathsf{approx}}({\\bm x}) \\big| \\le 3C_{\\mathcal{F}}\\delta_{\\tau}$, where $f^{\\mathsf{approx}}({\\bm x}) \\coloneqq \\int_{{\\bm \\omega}\\ne 0}\\int_t \\rho_f(t, {\\bm \\omega})\\phi\\big(\\tau(\\|{\\bm \\omega}\\|_2^{-1}{\\bm \\omega}^{\\top}{\\bm x} - t)\\big)\\Lambda(\\mathrm{d}t, \\mathrm{d}{\\bm \\omega})$",
+        "$\\Lambda(\\mathrm{d}t, \\mathrm{d}\\bm{\\omega})$ is a probability measure on $\\mathbb{R}\\times\\mathbb{R}^d$ independent from $f$, while $\\rho_f(t, \\bm{\\omega})$ satisfies $|\\rho_f(t, \\bm{\\omega})| \\le 3\\big(C_{\\mathcal{F}} - \\sup_{\\tilde{f}\\in\\mathcal{F}}|\\tilde{f}(\\bm{0})|\\big)$ and $\\mathbb{E}_{(t, \\bm{\\omega}) \\sim \\Lambda}\\big[|\\rho_f(t, \\bm{\\omega})|\\big] \\le 3\\big(C_{\\mathcal{F}} - \\sup_{\\tilde{f}\\in\\mathcal{F}}|\\tilde{f}(\\bm{0})|\\big)$"
+      ]
+    },
+    {
+      "id": "LP39.6",
+      "type": "lemma",
+      "name": "Lemma 6 (empirical concentration of the loss)",
+      "statement": "With probability at least $1-O(N^{-11})$, for any ${\\bm \\rho} \\in \\mathbb{R}^{n+1}$ (which can be statistically dependent on $\\{(\\bm{x}_i,y_i)\\}_{1\\leq i\\leq N}$ but not on $\\bm{x}_{N+1}$), we have \\begin{align} & \\bigg|\\frac{1}{N}\\sum_{i = 1}^N \\big[(y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho})^2 - z_i^2\\big] - \\mathbb{E}\\big[\\big(f({\\bm x}_{N+1}) - {\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}\\big)^2\\big]\\bigg| \\notag\\\\ &\\qquad \\lesssim \\sqrt{\\frac{\\log N}{N}}\\big(\\varepsilon_{\\mathsf{dis}}^2 + \\|{\\bm \\rho}-{\\bm \\rho}^{\\star}\\|_1^2 + \\sigma(\\varepsilon_{\\mathsf{dis}} + \\|{\\bm \\rho}-{\\bm \\rho}^{\\star}\\|_1)\\big) \\end{align} \\begin{align} \\text{and} \\qquad \\frac{1}{N}\\sum_{i = 1}^N \\big[(y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho})^2 - (y_i - {\\bm \\phi}_i^{\\top}{{\\bm \\rho}}^{\\star})^2\\big] \\gtrsim - \\varepsilon_{\\mathsf{dis}}^2-\\sqrt{\\frac{\\log N}{N}}\\sigma\\|{\\bm \\rho}-{{\\bm \\rho}}^{\\star}\\|_1. \\end{align} Here, the expectation in \\eqref{eq:lem-empirical-1} is taken over the randomness of $\\bm{x}_{N+1}$.",
+      "section": "A.2 Proof of Lemma 2",
+      "origin": "paper",
+      "tags": [
+        "concentration",
+        "bound"
+      ],
+      "assumptions": [
+        "for any ${\\bm \\rho} \\in \\mathbb{R}^{n+1}$ (which can be statistically dependent on $\\{(\\bm{x}_i,y_i)\\}_{1\\leq i\\leq N}$ but not on $\\bm{x}_{N+1}$)"
+      ],
+      "conclusions": [
+        "With probability at least $1-O(N^{-11})$, $\\big|\\frac{1}{N}\\sum_{i = 1}^N [(y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho})^2 - z_i^2] - \\mathbb{E}[(f({\\bm x}_{N+1}) - {\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho})^2]\\big| \\lesssim \\sqrt{\\frac{\\log N}{N}}\\big(\\varepsilon_{\\mathsf{dis}}^2 + \\|{\\bm \\rho}-{\\bm \\rho}^{\\star}\\|_1^2 + \\sigma(\\varepsilon_{\\mathsf{dis}} + \\|{\\bm \\rho}-{\\bm \\rho}^{\\star}\\|_1)\\big)$",
+        "$\\frac{1}{N}\\sum_{i = 1}^N [(y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho})^2 - (y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho}^{\\star})^2] \\gtrsim - \\varepsilon_{\\mathsf{dis}}^2-\\sqrt{\\frac{\\log N}{N}}\\sigma\\|{\\bm \\rho}-{\\bm \\rho}^{\\star}\\|_1$"
+      ]
+    },
+    {
+      "id": "LP39.7",
+      "type": "lemma",
+      "name": "Lemma 7 (uniform bounds on the errors and iterates)",
+      "statement": "Suppose that $\\lambda\\ge C\\sqrt{\\log N/N} (C_{\\mathcal{F}} + \\sigma) + C_{\\mathcal{F}}^{-1}\\varepsilon_{\\mathsf{dis}}^2$, and take $\\tau$ to be sufficiently large such that $$ \\tau \\ge CNn^2(L+n)\\left(N+ n\\right)C_{\\mathcal{F}}, $$ with $C>0$ some large enough constant. Then for all $t\\ge 0$, it holds that \\begin{align*} \\|{\\bm e}_t\\|_1&\\lesssim \\frac{C_{\\mathcal{F}}}{(L+n)nN}\\qquad\\text{and}\\qquad \\big\\|{\\bm \\rho}_t^{\\mathsf{proximal}}\\big\\|_1\\lesssim n\\sqrt{N}C_{\\mathcal{F}}. \\end{align*}",
+      "section": "A.4 Proof of Lemma 4",
+      "origin": "paper",
+      "tags": [
+        "bound"
+      ],
+      "assumptions": [
+        "Suppose that $\\lambda\\ge C\\sqrt{\\log N/N} (C_{\\mathcal{F}} + \\sigma) + C_{\\mathcal{F}}^{-1}\\varepsilon_{\\mathsf{dis}}^2$",
+        "take $\\tau$ to be sufficiently large such that $\\tau \\ge CNn^2(L+n)(N+ n)C_{\\mathcal{F}}$, with $C>0$ some large enough constant"
+      ],
+      "conclusions": [
+        "for all $t\\ge 0$, $\\|{\\bm e}_t\\|_1\\lesssim \\frac{C_{\\mathcal{F}}}{(L+n)nN}$ and $\\big\\|{\\bm \\rho}_t^{\\mathsf{proximal}}\\big\\|_1\\lesssim n\\sqrt{N}C_{\\mathcal{F}}$"
+      ]
+    },
+    {
+      "id": "LP39.8",
+      "type": "lemma",
+      "name": "Barron's ridge approximation lemma",
+      "statement": "It has been shown by~\\citet[Lemma~5]{Barron1993Universal} that: for any ${\\bm \\omega}\\in\\mathbb{R}^d$, $\\theta\\in[0,2\\pi)$ and any $\\tau\\ge 2$, there exists some function $\\gamma_{{\\bm \\omega},\\theta}(\\cdot)$ such that \\begin{subequations} \\begin{align} \\bigg|\\frac{\\cos(\\bm{\\omega}^{\\top}{\\bm x} + \\theta) - \\cos(\\theta)}{\\|\\bm{\\omega}\\|_2} - \\int_{t\\in[-2, 1]} \\gamma_{\\bm{\\omega}, \\theta}(t)\\phi\\big(\\tau(\\|\\bm{\\omega}\\|_2^{-1}\\bm{\\omega}^{\\top}{\\bm x} - t)\\big)\\mathrm{d}t\\bigg| &\\le 3\\delta_{\\tau}, \\\\ |\\gamma_{\\bm{\\omega}, \\theta}(t)| &\\le 1. \\end{align} \\end{subequations}",
+      "section": "A.1 Proof of Lemma 1",
+      "origin": "external",
+      "origin_citation": "Barron (1993), Lemma 5",
+      "tags": [
+        "approximation"
+      ],
+      "assumptions": [
+        "for any ${\\bm \\omega}\\in\\mathbb{R}^d$, $\\theta\\in[0,2\\pi)$ and any $\\tau\\ge 2$"
+      ],
+      "conclusions": [
+        "there exists some function $\\gamma_{{\\bm \\omega},\\theta}(\\cdot)$ such that $\\big|\\frac{\\cos(\\bm{\\omega}^{\\top}{\\bm x} + \\theta) - \\cos(\\theta)}{\\|\\bm{\\omega}\\|_2} - \\int_{t\\in[-2, 1]} \\gamma_{\\bm{\\omega}, \\theta}(t)\\phi\\big(\\tau(\\|\\bm{\\omega}\\|_2^{-1}\\bm{\\omega}^{\\top}{\\bm x} - t)\\big)\\mathrm{d}t\\big| \\le 3\\delta_{\\tau}$ and $|\\gamma_{\\bm{\\omega}, \\theta}(t)| \\le 1$"
+      ]
+    },
+    {
+      "id": "RP39.1",
+      "type": "remark",
+      "name": "Remark 1 (choice of $(t_i,\\omega_i)$)",
+      "statement": "The specific choices of $\\{(t_i, {\\bm \\omega}_i)\\}_{1 \\le i \\le n} $ can be found in the proof in Appendix~\\ref{subsec:proof-lem-discrete}.",
+      "section": "3 Analysis (Step 1)",
+      "origin": "paper"
+    },
+    {
+      "id": "RP39.2",
+      "type": "remark",
+      "name": "Remark 2 (dependence of $\\widehat{\\rho}$)",
+      "statement": "In the statement of Lemma~\\ref{lem:estimator}, $\\widehat{\\bm{\\rho}}$ is allowed to be statistically dependent on $\\{(\\bm{x}_i,y_i)\\}_{1\\leq i\\leq N}$ but not on $\\bm{x}_{N+1}$.",
+      "section": "3 Analysis (Step 2)",
+      "origin": "paper"
+    },
+    {
+      "id": "RP39.3",
+      "type": "remark",
+      "name": "Remark 3 (intricacy of the convergence bounds)",
+      "statement": "The careful reader might remark that the upper bounds in Lemma~\\ref{lem:convergence} appear somewhat intricate, as they depend on the $\\ell_1$ norm of the previous iterates. Fortunately, once $\\{\\|\\bm{e}_k\\|_1\\}$ are determined, we can apply mathematical induction to derive more concise bounds --- an approach to be carried out in Step 4.",
+      "section": "3 Analysis (Step 3)",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP39.1",
+      "type": "example",
+      "name": "Class of linear functions",
+      "statement": "{\\em Class of linear functions.} For a class of linear functions \\begin{align} \\mathcal{F}^{\\mathsf{linear}} \\coloneqq \\big\\{ f_{\\bm{a},b} \\mid \\|{\\bm a}\\|_2\\le C_a,|b|\\le C_b \\big\\} \\qquad \\text{with } f_{\\bm{a},b}(\\bm{x}) = {\\bm a}^{\\top}{\\bm x} + b, \\end{align} we have $C_{\\mathcal{F}^{\\mathsf{linear}}}\\le C_a + C_b$.",
+      "section": "2.3 Key quantities",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP39.2",
+      "type": "example",
+      "name": "Linear combination of function classes",
+      "statement": "{\\em Linear combination of function classes.} For any $i=1,\\dots, M$, let $\\mathcal{F}_i$ be a function class with Barron-style parameter $C_{\\mathcal{F}_i}<\\infty$. Consider the following class of functions: \\begin{align} \\mathcal{F}^{\\mathsf{comp}} \\coloneqq \\{ g_{\\bm{a},b} \\mid \\|{\\bm a}\\|_1\\le C_a,|b|\\le C_b, f_i\\in\\mathcal{F}_i, \\forall i\\}, \\qquad \\text{with } g_{\\bm{a},b}(\\bm{x}) = \\langle {\\bm a}, {\\bm f}({\\bm x}) \\rangle + b, \\end{align} where ${\\bm f}(\\bm{x}) = [f_i(\\bm{x})]_{1\\leq i\\leq M}$ is a vector with the $i$-th component being $f_i(\\bm{x})$. Its Barron-style parameter satisfies $C_{\\mathcal{F}^{\\mathsf{comp}}}\\le 2C_a\\max_{1\\leq i\\leq M}C_{\\mathcal{F}_i} + C_b$.",
+      "section": "2.3 Key quantities",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP39.3",
+      "type": "example",
+      "name": "Two-layer neural network with logistic activation",
+      "statement": "{\\em Two-layer neural network with logistic activation.} Consider the class of functions parameterized by a two-layer neural network, whose activation functions are the logistic (sigmoid) function; more precisely, consider \\begin{align*} \\mathcal{F}^{\\mathsf{neural}} &\\coloneqq \\left\\{f_{\\rho}({\\bm x}) \\mid {\\rho} : \\mathbb{R}^d \\to \\mathbb{R}\\text{, with } |{\\rho}({\\bm a})|\\le {\\rho}_{\\max}({\\bm a})\\text{ for any }\\bm{a} \\right\\}, \\end{align*} where \\begin{align*} f_{\\rho}({\\bm x}) = \\int_{\\bm a}{\\rho}({\\bm a})\\sigma({\\bm a}^{\\top}{\\bm x})\\mathrm{d} {\\bm a},\\quad \\text{with }\\sigma(x) = \\frac{1}{1+{\\rm e}^{-x}} . \\end{align*} The associated Barron-style parameter obeys $C_{\\mathcal{F}^{\\mathsf{neural}}}\\le \\frac{1}{4}\\int_{\\bm a}{\\rho}_{\\max}({\\bm a}) (\\|{\\bm a}\\|_2+2)\\mathrm{d} {\\bm a}$.",
+      "section": "2.3 Key quantities",
+      "origin": "paper"
+    },
+    {
+      "id": "PP39.1",
+      "type": "proof",
+      "name": "Proof of Theorem 1 (putting everything together)",
+      "statement": "Equipped with the above results, we are ready to put all pieces together towards establishing our theory. In view of \\eqref{eq:lem-opt}, the output ${\\bm \\rho}^{(L)}$ of our constructed transformer in Lemma~\\ref{lem:opt} satisfies \\begin{align} \\ell({{\\bm \\rho}^{(L)}}) - \\ell\\left({\\bm \\rho}^{\\star}\\right) &\\le \\varepsilon_{\\mathsf{opt}},\\notag\\\\ \\text{by taking }\\quad {\\varepsilon}_{\\mathsf{opt}} &\\asymp \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}(\\sigma + C_{\\mathcal{F}}) +\\varepsilon_{\\mathsf{dis}}^2 + \\frac{nC_{\\mathcal{F}}^2}{L}. \\end{align} Invoking Lemma~\\ref{lem:estimator} with $\\widehat{\\bm \\rho} = {\\bm \\rho}^{(L)}$ reveals the following bound concerning the estimate ${\\bm \\rho}^{(L)}$: \\begin{align} \\mathbb{E}\\big[\\big({\\bm \\phi}_{N+1}^{\\top}{{\\bm \\rho}}^{(L)} - f({\\bm x}_{N+1})\\big)^2\\big] &\\overset{\\text{(a)}}{\\lesssim} \\sqrt{\\frac{\\log N}{N}}\\big(C_{\\mathcal{F}}^2 + \\lambda^{-2}\\varepsilon_{\\mathsf{opt}}^2 + \\sigma C_\\mathcal{F}\\big) + \\varepsilon_{\\mathsf{dis}}^2 + \\lambda C_{\\mathcal{F}} + \\varepsilon_{\\mathsf{opt}}\\notag\\\\ &\\overset{\\text{(b)}}{\\lesssim} \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}(C_{\\mathcal{F}} + \\sigma) + C_{\\mathcal{F}}^2\\varepsilon + \\frac{C_{\\mathcal{F}}^2\\log|\\mathcal{N}_\\varepsilon|}{n}\\notag\\\\ &\\quad + \\varepsilon_{\\mathsf{opt}} + \\lambda C_{\\mathcal{F}} + \\sqrt{\\frac{\\log N}{N}}\\lambda^{-2}\\varepsilon_{\\mathsf{opt}}^2\\notag\\\\ &\\overset{\\text{(c)}}{\\lesssim} \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}(C_{\\mathcal{F}} + \\sigma) + C_{\\mathcal{F}}^2\\varepsilon + \\frac{C_{\\mathcal{F}}^2\\log|\\mathcal{N}_\\varepsilon|}{n}\\notag\\\\ &\\quad + \\frac{nC_{\\mathcal{F}}^2}{L} + \\lambda C_{\\mathcal{F}} + \\sqrt{\\frac{\\log N}{N}}\\lambda^{-2}\\varepsilon_{\\mathsf{opt}}^2 \\end{align} holds with probability at least $1-O(N^{-10})$, where in (a) we have used \\eqref{eq:lem-estimator-1} and a basic bound $\\varepsilon_{\\mathsf{dis}}\\lesssim C_\\mathcal{F}$ that holds under our assumptions, (b) arises from \\eqref{eq:eps-dis}, and (c) results from \\eqref{eq:eps-opt}. Next, let us bound the last two terms in \\eqref{eq:MSE-1}. \\begin{itemize} \\item To begin with, with $\\lambda$ as specified in \\eqref{eq:lambda}, we obtain \\begin{align} \\lambda C_{\\mathcal{F}} &\\overset{\\text{}}{\\lesssim} \\Big(\\frac{\\log N}{N}\\Big)^{1/6} C_{\\mathcal{F}}^{2/3}\\widehat{\\varepsilon}^{2/3} + \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}\\big(C_{\\mathcal{F}} + \\sigma\\big) + \\varepsilon_{\\mathsf{dis}}^2\\notag\\\\ &\\overset{\\text{(a)}}{\\lesssim} \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}\\big(C_{\\mathcal{F}} + \\sigma\\big) + \\varepsilon_{\\mathsf{dis}}^2 + \\widehat{\\varepsilon}\\\\ &\\overset{\\text{(b)}}{\\lesssim} \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}\\big(C_{\\mathcal{F}} + \\sigma\\big) + C_{\\mathcal{F}}^2\\varepsilon + \\frac{C_{\\mathcal{F}}^2\\log|\\mathcal{N}_\\varepsilon|}{n}+ \\widehat{\\varepsilon}, \\end{align} where (a) invokes Young's inequality to derive \\begin{align} \\Big(\\frac{\\log N}{N}\\Big)^{1/6} C_{\\mathcal{F}}^{2/3}\\widehat{\\varepsilon}^{2/3} \\le\\frac13\\left(\\Big(\\frac{\\log N}{N}\\Big)^{1/6} C_{\\mathcal{F}}^{2/3}\\right)^3 + \\frac23(\\widehat{\\varepsilon}^{2/3})^{3/2} \\le \\frac13\\sqrt{\\frac{\\log N}{N}} C_{\\mathcal{F}}^{2} + \\frac23\\widehat{\\varepsilon}, \\end{align} and (b) applies \\eqref{eq:eps-dis}. \\item Moreover, the last term in \\eqref{eq:MSE-1} satisfies \\begin{align} \\sqrt{\\frac{\\log N}{N}}\\lambda^{-2}\\varepsilon_{\\mathsf{opt}}^2&\\overset{\\text{(a)}}{\\lesssim} \\Big(\\frac{\\log N}{N}\\Big)^{1/2}\\Big(\\frac{\\log N}{N}\\Big)^{-1/3} C_{\\mathcal{F}}^{2/3}\\widehat{\\varepsilon}^{-4/3}\\varepsilon_{\\mathsf{opt}}^2 \\overset{\\text{(b)}}{\\lesssim} \\Big(\\frac{\\log N}{N}\\Big)^{1/6} C_{\\mathcal{F}}^{2/3}\\widehat{\\varepsilon}^{2/3}\\nonumber\\\\ &\\overset{\\text{(c)}}{\\lesssim}\\sqrt{\\frac{\\log N}{N}} C_{\\mathcal{F}}^{2} + \\widehat{\\varepsilon}. \\end{align} Here, (a) results from the fact that $\\lambda^2\\gtrsim \\Big(\\frac{\\log N}{N}\\Big)^{1/3} C_{\\mathcal{F}}^{-2/3}\\widehat{\\varepsilon}^{2/3}$, (b) is valid since $\\widehat{\\varepsilon} \\asymp \\varepsilon_{\\mathsf{opt}}$ (see \\eqref{eq:def-hat-eps} and \\eqref{eq:eps-opt}), whereas (c) makes use of~\\eqref{eq:proof-young-1}. \\end{itemize} Substituting \\eqref{eq:proof-young} and \\eqref{eq:proof-lambda-2epsopt} into \\eqref{eq:MSE-1}, and recalling the definition of $\\widehat{\\varepsilon}$ in \\eqref{eq:def-hat-eps}, we arrive at \\begin{align} \\mathbb{E}\\big[\\big({\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}^{(L)} - f({\\bm x}_{N+1})\\big)^2\\big] &\\lesssim \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}(\\sigma + C_{\\mathcal{F}}) +C_{\\mathcal{F}}^2\\varepsilon + \\frac{C_{\\mathcal{F}}^2\\log|\\mathcal{N}_{\\varepsilon}|}{n} + \\frac{nC_{\\mathcal{F}}^2}{L} \\end{align} with probability exceeding $1-O(N^{-10})$, where we have used the fact that (see \\eqref{eq:def-hat-eps} and \\eqref{eq:eps-dis}) \\begin{align*} \\widehat{\\varepsilon} \\lesssim \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}(\\sigma + C_{\\mathcal{F}}) + C_{\\mathcal{F}}^2\\varepsilon + \\frac{C_{\\mathcal{F}}^2\\log|\\mathcal{N}_\\varepsilon|}{n} +\\frac{nC_{\\mathcal{F}}^2}{L}. \\end{align*} Combining \\eqref{eq:approx-fxN+1} with \\eqref{eq:approx-haty} and recalling $\\widehat{y}_{N+1} = \\widehat{y}^{(L)}$ (cf.~\\eqref{eq:y-hat-N-plus-1-readout}), we reach \\begin{align*} \\mathbb{E}\\big[\\big(\\widehat{y}_{N+1} - f({\\bm x}_{N+1})\\big)^2\\big] &\\le 2\\mathbb{E}\\big[\\big(\\widehat{y}_{N+1} - {\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}^{(L)}\\big)^2\\big] + 2\\mathbb{E}\\big[\\big({\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}^{(L)} - f({\\bm x}_{N+1})\\big)^2\\big]\\notag\\\\ &\\lesssim \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}^2 + \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}(\\sigma + C_{\\mathcal{F}}) +C_{\\mathcal{F}}^2\\varepsilon + \\frac{C_{\\mathcal{F}}^2\\log|\\mathcal{N}_{\\varepsilon}|}{n} + \\frac{nC_{\\mathcal{F}}^2}{L} \\notag\\\\ &\\asymp \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}(\\sigma + C_{\\mathcal{F}}) +C_{\\mathcal{F}}^2\\varepsilon + \\frac{C_{\\mathcal{F}}^2\\log|\\mathcal{N}_{\\varepsilon}|}{n} + \\frac{nC_{\\mathcal{F}}^2}{L}. \\end{align*} We can therefore conclude the proof of Theorem~\\ref{thm:main} by taking $\\varepsilon \\le \\sqrt{\\log N/N} + n/L$.",
+      "section": "3 Analysis (Step 5)",
+      "origin": "paper",
+      "proves": "TP39.1"
+    },
+    {
+      "id": "PSP39.1.1",
+      "type": "proof_step",
+      "name": "Set optimization accuracy from Lemma 4",
+      "statement": "In view of \\eqref{eq:lem-opt}, the output ${\\bm \\rho}^{(L)}$ of our constructed transformer in Lemma~\\ref{lem:opt} satisfies \\begin{align} \\ell({{\\bm \\rho}^{(L)}}) - \\ell\\left({\\bm \\rho}^{\\star}\\right) &\\le \\varepsilon_{\\mathsf{opt}},\\notag\\\\ \\text{by taking }\\quad {\\varepsilon}_{\\mathsf{opt}} &\\asymp \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}(\\sigma + C_{\\mathcal{F}}) +\\varepsilon_{\\mathsf{dis}}^2 + \\frac{nC_{\\mathcal{F}}^2}{L}. \\end{align}",
+      "section": "3 Analysis (Step 5)",
+      "parent_id": "PP39.1",
+      "step_order": 1,
+      "subclass": "setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.1.2",
+      "type": "proof_step",
+      "name": "Invoke Lemma 2 for the prediction error",
+      "statement": "Invoking Lemma~\\ref{lem:estimator} with $\\widehat{\\bm \\rho} = {\\bm \\rho}^{(L)}$ reveals the following bound concerning the estimate ${\\bm \\rho}^{(L)}$: \\begin{align} \\mathbb{E}\\big[\\big({\\bm \\phi}_{N+1}^{\\top}{{\\bm \\rho}}^{(L)} - f({\\bm x}_{N+1})\\big)^2\\big] &\\overset{\\text{(a)}}{\\lesssim} \\sqrt{\\frac{\\log N}{N}}\\big(C_{\\mathcal{F}}^2 + \\lambda^{-2}\\varepsilon_{\\mathsf{opt}}^2 + \\sigma C_\\mathcal{F}\\big) + \\varepsilon_{\\mathsf{dis}}^2 + \\lambda C_{\\mathcal{F}} + \\varepsilon_{\\mathsf{opt}}\\notag\\\\ &\\overset{\\text{(b)}}{\\lesssim} \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}(C_{\\mathcal{F}} + \\sigma) + C_{\\mathcal{F}}^2\\varepsilon + \\frac{C_{\\mathcal{F}}^2\\log|\\mathcal{N}_\\varepsilon|}{n}\\notag\\\\ &\\quad + \\varepsilon_{\\mathsf{opt}} + \\lambda C_{\\mathcal{F}} + \\sqrt{\\frac{\\log N}{N}}\\lambda^{-2}\\varepsilon_{\\mathsf{opt}}^2\\notag\\\\ &\\overset{\\text{(c)}}{\\lesssim} \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}(C_{\\mathcal{F}} + \\sigma) + C_{\\mathcal{F}}^2\\varepsilon + \\frac{C_{\\mathcal{F}}^2\\log|\\mathcal{N}_\\varepsilon|}{n}\\notag\\\\ &\\quad + \\frac{nC_{\\mathcal{F}}^2}{L} + \\lambda C_{\\mathcal{F}} + \\sqrt{\\frac{\\log N}{N}}\\lambda^{-2}\\varepsilon_{\\mathsf{opt}}^2 \\end{align} holds with probability at least $1-O(N^{-10})$, where in (a) we have used \\eqref{eq:lem-estimator-1} and a basic bound $\\varepsilon_{\\mathsf{dis}}\\lesssim C_\\mathcal{F}$ that holds under our assumptions, (b) arises from \\eqref{eq:eps-dis}, and (c) results from \\eqref{eq:eps-opt}.",
+      "section": "3 Analysis (Step 5)",
+      "parent_id": "PP39.1",
+      "step_order": 2,
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.1.3",
+      "type": "proof_step",
+      "name": "Bound the term $\\lambda C_{\\mathcal{F}}$",
+      "statement": "To begin with, with $\\lambda$ as specified in \\eqref{eq:lambda}, we obtain \\begin{align} \\lambda C_{\\mathcal{F}} &\\overset{\\text{}}{\\lesssim} \\Big(\\frac{\\log N}{N}\\Big)^{1/6} C_{\\mathcal{F}}^{2/3}\\widehat{\\varepsilon}^{2/3} + \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}\\big(C_{\\mathcal{F}} + \\sigma\\big) + \\varepsilon_{\\mathsf{dis}}^2\\notag\\\\ &\\overset{\\text{(a)}}{\\lesssim} \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}\\big(C_{\\mathcal{F}} + \\sigma\\big) + \\varepsilon_{\\mathsf{dis}}^2 + \\widehat{\\varepsilon}\\\\ &\\overset{\\text{(b)}}{\\lesssim} \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}\\big(C_{\\mathcal{F}} + \\sigma\\big) + C_{\\mathcal{F}}^2\\varepsilon + \\frac{C_{\\mathcal{F}}^2\\log|\\mathcal{N}_\\varepsilon|}{n}+ \\widehat{\\varepsilon}, \\end{align} where (a) invokes Young's inequality to derive \\begin{align} \\Big(\\frac{\\log N}{N}\\Big)^{1/6} C_{\\mathcal{F}}^{2/3}\\widehat{\\varepsilon}^{2/3} \\le\\frac13\\left(\\Big(\\frac{\\log N}{N}\\Big)^{1/6} C_{\\mathcal{F}}^{2/3}\\right)^3 + \\frac23(\\widehat{\\varepsilon}^{2/3})^{3/2} \\le \\frac13\\sqrt{\\frac{\\log N}{N}} C_{\\mathcal{F}}^{2} + \\frac23\\widehat{\\varepsilon}, \\end{align} and (b) applies \\eqref{eq:eps-dis}.",
+      "section": "3 Analysis (Step 5)",
+      "parent_id": "PP39.1",
+      "step_order": 3,
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.1.4",
+      "type": "proof_step",
+      "name": "Bound the term $\\sqrt{\\log N/N}\\,\\lambda^{-2}\\varepsilon_{\\mathsf{opt}}^2$",
+      "statement": "Moreover, the last term in \\eqref{eq:MSE-1} satisfies \\begin{align} \\sqrt{\\frac{\\log N}{N}}\\lambda^{-2}\\varepsilon_{\\mathsf{opt}}^2&\\overset{\\text{(a)}}{\\lesssim} \\Big(\\frac{\\log N}{N}\\Big)^{1/2}\\Big(\\frac{\\log N}{N}\\Big)^{-1/3} C_{\\mathcal{F}}^{2/3}\\widehat{\\varepsilon}^{-4/3}\\varepsilon_{\\mathsf{opt}}^2 \\overset{\\text{(b)}}{\\lesssim} \\Big(\\frac{\\log N}{N}\\Big)^{1/6} C_{\\mathcal{F}}^{2/3}\\widehat{\\varepsilon}^{2/3}\\nonumber\\\\ &\\overset{\\text{(c)}}{\\lesssim}\\sqrt{\\frac{\\log N}{N}} C_{\\mathcal{F}}^{2} + \\widehat{\\varepsilon}. \\end{align} Here, (a) results from the fact that $\\lambda^2\\gtrsim \\Big(\\frac{\\log N}{N}\\Big)^{1/3} C_{\\mathcal{F}}^{-2/3}\\widehat{\\varepsilon}^{2/3}$, (b) is valid since $\\widehat{\\varepsilon} \\asymp \\varepsilon_{\\mathsf{opt}}$ (see \\eqref{eq:def-hat-eps} and \\eqref{eq:eps-opt}), whereas (c) makes use of~\\eqref{eq:proof-young-1}.",
+      "section": "3 Analysis (Step 5)",
+      "parent_id": "PP39.1",
+      "step_order": 4,
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.1.5",
+      "type": "proof_step",
+      "name": "Combine bounds and conclude",
+      "statement": "Substituting \\eqref{eq:proof-young} and \\eqref{eq:proof-lambda-2epsopt} into \\eqref{eq:MSE-1}, and recalling the definition of $\\widehat{\\varepsilon}$ in \\eqref{eq:def-hat-eps}, we arrive at \\begin{align} \\mathbb{E}\\big[\\big({\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}^{(L)} - f({\\bm x}_{N+1})\\big)^2\\big] &\\lesssim \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}(\\sigma + C_{\\mathcal{F}}) +C_{\\mathcal{F}}^2\\varepsilon + \\frac{C_{\\mathcal{F}}^2\\log|\\mathcal{N}_{\\varepsilon}|}{n} + \\frac{nC_{\\mathcal{F}}^2}{L} \\end{align} with probability exceeding $1-O(N^{-10})$. Combining \\eqref{eq:approx-fxN+1} with \\eqref{eq:approx-haty} and recalling $\\widehat{y}_{N+1} = \\widehat{y}^{(L)}$ (cf.~\\eqref{eq:y-hat-N-plus-1-readout}), we reach \\begin{align*} \\mathbb{E}\\big[\\big(\\widehat{y}_{N+1} - f({\\bm x}_{N+1})\\big)^2\\big] &\\le 2\\mathbb{E}\\big[\\big(\\widehat{y}_{N+1} - {\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}^{(L)}\\big)^2\\big] + 2\\mathbb{E}\\big[\\big({\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}^{(L)} - f({\\bm x}_{N+1})\\big)^2\\big]\\notag\\\\ &\\asymp \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}(\\sigma + C_{\\mathcal{F}}) +C_{\\mathcal{F}}^2\\varepsilon + \\frac{C_{\\mathcal{F}}^2\\log|\\mathcal{N}_{\\varepsilon}|}{n} + \\frac{nC_{\\mathcal{F}}^2}{L}. \\end{align*} We can therefore conclude the proof of Theorem~\\ref{thm:main} by taking $\\varepsilon \\le \\sqrt{\\log N/N} + n/L$.",
+      "section": "3 Analysis (Step 5)",
+      "parent_id": "PP39.1",
+      "step_order": 5,
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PP39.2",
+      "type": "proof",
+      "name": "Proof of Lemma 1",
+      "statement": "For notational convenience, we shall write the Fourier transform $F_f$ as \\begin{equation} F_f(\\bm{\\omega}) = |F_f(\\bm{\\omega})| e^{j \\theta_f(\\bm{\\omega})}, \\end{equation} with $\\theta_f(\\bm{\\omega})$ representing the angle. By virtue of the Fourier transform of $f({\\bm x})$, we have \\begin{align} f({\\bm x}) -f(\\bm{0}) &= \\int_{\\bm{\\omega}} e^{j{\\bm{\\omega}}^{\\top}{\\bm x}} F_f({\\bm{\\omega}})\\mathrm{d} {\\bm{\\omega}} - \\int_{\\bm{\\omega}} F_f({\\bm{\\omega}})\\mathrm{d} {\\bm{\\omega}} \\notag\\\\ &= \\int_{\\bm{\\omega}} \\big(e^{j{\\bm{\\omega}}^{\\top}{\\bm x}}e^{j\\theta_f(\\bm{\\omega})} - e^{j\\theta_f(\\bm{\\omega})}\\big)|F_f({\\bm{\\omega}})|\\mathrm{d} {\\bm{\\omega}}\\notag\\\\ &\\overset{\\text{(a)}}{=} \\int_{\\bm{\\omega}\\ne \\bm{0}}\\Big(\\cos\\big({\\bm{\\omega}}^{\\top}{\\bm x} + \\theta_f(\\bm{\\omega})\\big) - \\cos\\big(\\theta_f(\\bm{\\omega})\\big)\\Big)|F_f({\\bm{\\omega}})| \\mathrm{d}\\bm{\\omega}, \\end{align} where (a) follows since $f({\\bm x})$ is real-valued. In view of \\eqref{eq:Fourier}, we would like to construct a finite collection of features to approximately represent $f(\\bm{x})-f(\\bm{0})$, using the logistic function defined in \\eqref{eq:def-func-phi}. Towards this end, we first introduce a quantity related to the difference between $\\phi(\\tau x)$ and the unit step function $\\ind(x > 0)$ as follows: \\begin{align} \\delta_{\\tau} \\coloneqq \\inf_{0 < \\varepsilon \\le 1/2} \\Big\\{2\\varepsilon + \\sup_{|x| \\ge \\varepsilon} \\big|\\phi(\\tau x) - \\ind(x > 0) \\big|\\Big\\}. \\end{align} The proof of Lemma \\ref{lem:discrete} relies heavily upon the following result [Lemma \\ref{lem:expression}], whose proof is postponed to Appendix~\\ref{sec:proof:lem:expression}. Next, we would like to obtain a more succinct finite-sum approximation of the integration in \\eqref{eq:f-approx-x} via random subsampling. Let us draw $n$ independent samples $(t_i, \\bm{\\omega}_i)$ ($1\\leq i\\leq n$) from the probability measure $\\Lambda(\\mathrm{d}t, \\mathrm{d}\\bm{\\omega})$. Applying the Hoeffding's inequality and the union bound over $\\mathcal{N}_{\\varepsilon}$ reveals that: with probability at least $3/4$, \\begin{align*} \\bigg| \\widehat{f}^{\\mathsf{approx}}(\\widehat{\\bm x}) - \\frac{1}{n}\\sum_{i = 1}^n\\rho_{\\widehat{f}}(t_i, \\bm{\\omega}_i)\\phi\\big(\\tau(\\|\\bm{\\omega}_i\\|_2^{-1}\\bm{\\omega}_i^{\\top}\\widehat{\\bm x} - t_i)\\big)\\bigg| \\lesssim \\widetilde{C}_{\\mathcal{F}}\\sqrt{\\frac{\\log|\\mathcal{N}_{\\varepsilon}|}{n}} \\end{align*} holds simultaneously for all $(\\widehat{f}, \\widehat{\\bm x}) \\in \\mathcal{N}_{\\varepsilon}$, where $\\widehat{f}^{\\mathsf{approx}}(\\widehat{\\bm x})$ is defined in \\eqref{eq:f-approx-x} with $f$ and $\\bm{x}$ taken respectively to be $\\widehat{f}$ and $\\widehat{\\bm{x}}$, and \\begin{align} \\widetilde{C}_\\mathcal{F} \\coloneqq C_\\mathcal{F} - \\sup_{\\tilde{f}\\in\\mathcal{F}}|\\tilde{f}({\\bm 0})|. \\end{align} Note that the above application of the Hoeffding's inequality has used the following bounds for any fixed $\\widehat{f}$ and $\\widehat{\\bm{x}}$: \\begin{align*} \\mathbb{E}\\big[\\rho_{\\widehat{f}}(t_i, \\bm{\\omega}_i)\\phi\\big(\\tau(\\|\\bm{\\omega}_i\\|_2^{-1}\\bm{\\omega}_i^{\\top}\\widehat{\\bm x} - t_i)\\big)\\big] &= \\widehat{f}^{\\mathsf{approx}}(\\widehat{\\bm x}), \\\\ \\big|\\rho_{\\widehat{f}}(t_i, \\bm{\\omega}_i)\\phi\\big(\\tau(\\|\\bm{\\omega}_i\\|_2^{-1}\\bm{\\omega}_i^{\\top}\\widehat{\\bm x} - t_i)\\big)\\big| &\\le 3\\widetilde{C}_{\\mathcal{F}}. \\end{align*} Similarly, applying the Hoeffding's inequality and the union bound once again yields that: with probability at least $3/4$, \\begin{align*} \\bigg|\\mathbb{E}_{(t, \\bm{\\omega}) \\sim \\Lambda}\\big[\\big|\\rho_{\\widehat{f}}(t, \\bm{\\omega})\\big|\\big] - \\frac{1}{n}\\sum_{i = 1}^n\\big|\\rho_{\\widehat{f}}(t_i, \\bm{\\omega}_i)\\big|\\bigg| \\lesssim \\widetilde{C}_{\\mathcal{F}}\\sqrt{\\frac{\\log|\\mathcal{N}_{\\varepsilon}|}{n}} \\end{align*} holds simultaneously for all $(\\widehat{f},\\widehat{\\bm x})\\in\\mathcal{N}_\\varepsilon$, where we have used the following bound: \\begin{align*} \\big|\\rho_{\\widehat{f}}(t_i, \\bm{\\omega}_i)\\big| &\\le 3\\widetilde{C}_{\\mathcal{F}}. \\end{align*} Thus with probability at least $3/4$, one has \\begin{align*} \\frac{1}{n}\\sum_{i = 1}^n\\big|\\rho_{\\widehat{f}}(t_i, \\bm{\\omega}_i)\\big| < \\mathbb{E}_{(t, \\bm{\\omega}) \\sim \\Lambda}\\big[\\big|\\rho_{\\widehat{f}}(t, \\bm{\\omega})\\big|\\big] + \\widetilde{C}_{\\mathcal{F}}\\sqrt{\\frac{c_1\\log|\\mathcal{N}_{\\varepsilon}|}{n}} \\overset{\\text{(a)}}{\\le} 3\\widetilde{C}_{\\mathcal{F}} + \\widetilde{C}_{\\mathcal{F}} = 4\\widetilde{C}_{\\mathcal{F}} \\end{align*} simultaneously for all $(\\widehat{f}, \\widehat{\\bm x}) \\in \\mathcal{N}_{\\varepsilon}$, where $c_1>0$ is some universal constant, and (a) is valid under the condition that $n\\ge c_1\\log |\\mathcal{N}_{\\varepsilon}|$. This further shows that, with probability at least $3/4$, $$ |f({\\bm 0})| + \\frac{1}{n}\\sum_{i = 1}^n\\big|\\rho_{\\widehat{f}}(t_i, \\bm{\\omega}_i)\\big| < |f({\\bm 0})| + 4\\widetilde{C}_\\mathcal{F} \\le 4C_\\mathcal{F} $$ simultaneously for all $(\\widehat{f},\\widehat{\\bm{x}})\\in \\mathcal{N}_{\\varepsilon}$. Having established several key properties for the epsilon-cover $\\mathcal{N}_{\\varepsilon}$, we now extend these properties to all $f\\in \\mathcal{F}$. For any $f \\in \\mathcal{F}$, there exists some $(\\widehat{f}, \\widehat{\\bm x}) \\in \\mathcal{N}_{\\varepsilon}$, such that for all $\\|{\\bm x}\\|_2\\le 1$, \\begin{align*} &\\bigg|f({\\bm x}) - f(\\bm{0}) - \\frac{1}{n}\\sum_{i = 1}^n\\rho_{\\widehat{f}}(t_i, \\bm{\\omega}_i)\\phi\\big(\\tau(\\|\\bm{\\omega}_i\\|_2^{-1}\\bm{\\omega}_i^{\\top}{\\bm x} - t_i)\\big)\\bigg|\\notag\\\\ &\\quad\\le \\big|f({\\bm x}) - f({\\bm 0}) - \\widehat{f}(\\widehat{\\bm x}) + \\widehat{f}({\\bm 0}) \\big| + \\bigg|\\widehat{f}(\\widehat{\\bm x}) - \\widehat{f}(\\bm{0}) - \\frac{1}{n}\\sum_{i = 1}^n\\rho_{\\widehat{f}}(t_i, \\bm{\\omega}_i)\\phi\\big(\\tau(\\|\\bm{\\omega}_i\\|_2^{-1}\\bm{\\omega}_i^{\\top}\\widehat{\\bm x} - t_i)\\big)\\bigg|\\notag\\\\ &\\quad\\quad + \\bigg|\\frac{1}{n}\\sum_{i = 1}^n\\left(\\rho_{\\widehat{f}}(t_i, \\bm{\\omega}_i)\\phi\\big(\\tau(\\|\\bm{\\omega}_i\\|_2^{-1}\\bm{\\omega}_i^{\\top}\\widehat{\\bm x} - t_i)\\big)-\\rho_{\\widehat{f}}(t_i, \\bm{\\omega}_i)\\phi\\big(\\tau(\\|\\bm{\\omega}_i\\|_2^{-1}\\bm{\\omega}_i^{\\top}{\\bm x} - t_i)\\big)\\right)\\bigg|\\notag\\\\ &\\quad\\overset{\\text{(a)}}{\\le} C_{\\mathcal{F}}\\Big(\\varepsilon + 3\\delta_{\\tau} + \\sqrt{\\frac{c_1\\log|\\mathcal{N}_{\\varepsilon}|}{n}} + 4\\tau\\varepsilon\\Big), \\end{align*} where $c_1$ is a universal constant, (a) uses the definition of the epsilon-cover \\eqref{eq:defn-eps-cover}, and takes advantage of the fact that \\begin{align*} & \\bigg|\\frac{1}{n}\\sum_{i = 1}^n\\left(\\rho_{\\widehat{f}}(t_i, \\bm{\\omega}_i)\\phi\\big(\\tau(\\|\\bm{\\omega}_i\\|_2^{-1}\\bm{\\omega}_i^{\\top}\\widehat{\\bm x} - t_i)\\big)-\\rho_{\\widehat{f}}( t_i, \\bm{\\omega}_i)\\phi\\big(\\tau(\\|\\bm{\\omega}_i\\|_2^{-1}\\bm{\\omega}_i^{\\top}{\\bm x} - t_i)\\big)\\right)\\bigg|\\notag\\\\ &\\quad= \\frac{1}{n}\\sum_{i = 1}^n\\big|\\rho_{\\widehat{f}}(t_i, \\bm{\\omega}_i)\\big|\\Big|\\phi\\big(\\tau(\\|\\bm{\\omega}_i\\|_2^{-1}\\bm{\\omega}_i^{\\top}\\widehat{\\bm x} - t_i)\\big)-\\phi\\big(\\tau(\\|\\bm{\\omega}_i\\|_2^{-1}\\bm{\\omega}_i^{\\top}{\\bm x} - t_i)\\big)\\Big|\\notag\\\\ &\\quad\\le \\frac{1}{n}\\sum_{i = 1}^n\\big|\\rho_{\\widehat{f}}(t_i, \\bm{\\omega}_i)\\big|\\left|\\tau\\|\\bm{\\omega}_i\\|_2^{-1}\\bm{\\omega}_i^{\\top}(\\widehat{\\bm x}- {\\bm x})\\right|\\notag\\\\ &\\quad\\le \\frac{1}{n}\\sum_{i = 1}^n\\big|\\rho_{\\widehat{f}}(t_i, \\bm{\\omega}_i)\\big|\\tau\\|\\widehat{\\bm x}- {\\bm x}\\|_2\\le \\frac{1}{n}\\sum_{i = 1}^n\\big|\\rho_{\\widehat{f}}(t_i, \\bm{\\omega}_i)\\big|\\tau \\varepsilon\\le 4C_{\\mathcal{F}}\\tau\\varepsilon. \\end{align*} Recalling that $\\tau>4$, we arrive at \\begin{align} \\bigg|f({\\bm x}) - f(\\bm{0}) - \\frac{1}{n}\\sum_{i = 1}^n\\rho_{\\widehat{f}}(t_i, \\bm{\\omega}_i)\\phi\\big(\\tau(\\|\\bm{\\omega}_i\\|_2^{-1}\\bm{\\omega}_i^{\\top}{\\bm x} - t_i)\\big)\\bigg|\\lesssim C_{\\mathcal{F}}\\Big(\\delta_{\\tau} + \\sqrt{\\frac{\\log|\\mathcal{N}_{\\varepsilon}|}{n}} + \\tau\\varepsilon\\Big). \\end{align} To finish up, it suffices to prove that $\\delta_\\tau\\le 1/\\tau$. Recalling the definition of $\\delta_\\tau$ in \\eqref{eq:defn-delta-tau} and the function $\\phi(\\tau x)$, we have $$|\\phi(\\tau x) - \\ind(x>0)| = (1/2-\\tau|x|)\\ind\\{\\tau|x|\\le 1/2\\},$$ and as a result, $$ \\sup_{|x|\\ge \\varepsilon'} \\big|\\phi(\\tau x) - \\ind(x>0) \\big| = \\sup_{|x|\\ge \\varepsilon'}(1/2-\\tau|x|)\\ind(\\tau|x|\\le 1/2) = \\max\\left\\{\\frac12 - \\tau\\varepsilon',0\\right\\}. $$ This reveals that $$ \\delta_\\tau = \\inf_{0\\le \\varepsilon'\\le 1/2}\\left\\{2\\varepsilon + \\max\\left\\{\\frac12 - \\tau\\varepsilon',0\\right\\}\\right\\}= \\frac{1}{\\tau} $$ for any $\\tau \\ge 2$. Substituting it into \\eqref{eq:proof-lem-discrete-temp-1} and recalling the definition of $\\phi_i^{\\mathsf{feature}}({\\bm x})$ in \\eqref{eq:defn-phi-feature-lemma}, we establish the claimed result \\eqref{eq:lem-discrete} with $\\rho_{f,i}^{\\star} = \\rho_{\\widehat{f}}(t_i,{\\bm \\omega}_i).$",
+      "section": "A.1 Proof of Lemma 1",
+      "origin": "paper",
+      "proves": "LP39.1"
+    },
+    {
+      "id": "PSP39.2.1",
+      "type": "proof_step",
+      "name": "Fourier representation of $f(x)-f(0)$",
+      "statement": "For notational convenience, we shall write the Fourier transform $F_f$ as \\begin{equation} F_f(\\bm{\\omega}) = |F_f(\\bm{\\omega})| e^{j \\theta_f(\\bm{\\omega})}, \\end{equation} with $\\theta_f(\\bm{\\omega})$ representing the angle. By virtue of the Fourier transform of $f({\\bm x})$, we have \\begin{align} f({\\bm x}) -f(\\bm{0}) &\\overset{\\text{(a)}}{=} \\int_{\\bm{\\omega}\\ne \\bm{0}}\\Big(\\cos\\big({\\bm{\\omega}}^{\\top}{\\bm x} + \\theta_f(\\bm{\\omega})\\big) - \\cos\\big(\\theta_f(\\bm{\\omega})\\big)\\Big)|F_f({\\bm{\\omega}})| \\mathrm{d}\\bm{\\omega}, \\end{align} where (a) follows since $f({\\bm x})$ is real-valued.",
+      "section": "A.1 Proof of Lemma 1",
+      "parent_id": "PP39.2",
+      "step_order": 1,
+      "subclass": "setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.2.2",
+      "type": "proof_step",
+      "name": "Introduce $\\delta_\\tau$ and invoke integral representation (Lemma 5)",
+      "statement": "Towards this end, we first introduce a quantity related to the difference between $\\phi(\\tau x)$ and the unit step function $\\ind(x > 0)$ as follows: \\begin{align} \\delta_{\\tau} \\coloneqq \\inf_{0 < \\varepsilon \\le 1/2} \\Big\\{2\\varepsilon + \\sup_{|x| \\ge \\varepsilon} \\big|\\phi(\\tau x) - \\ind(x > 0) \\big|\\Big\\}. \\end{align} The proof of Lemma \\ref{lem:discrete} relies heavily upon the following result [Lemma \\ref{lem:expression}], whose proof is postponed to Appendix~\\ref{sec:proof:lem:expression}.",
+      "section": "A.1 Proof of Lemma 1",
+      "parent_id": "PP39.2",
+      "step_order": 2,
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.2.3",
+      "type": "proof_step",
+      "name": "Finite-sum approximation via Hoeffding subsampling",
+      "statement": "Next, we would like to obtain a more succinct finite-sum approximation of the integration in \\eqref{eq:f-approx-x} via random subsampling. Let us draw $n$ independent samples $(t_i, \\bm{\\omega}_i)$ ($1\\leq i\\leq n$) from the probability measure $\\Lambda(\\mathrm{d}t, \\mathrm{d}\\bm{\\omega})$. Applying the Hoeffding's inequality and the union bound over $\\mathcal{N}_{\\varepsilon}$ reveals that: with probability at least $3/4$, \\begin{align*} \\bigg| \\widehat{f}^{\\mathsf{approx}}(\\widehat{\\bm x}) - \\frac{1}{n}\\sum_{i = 1}^n\\rho_{\\widehat{f}}(t_i, \\bm{\\omega}_i)\\phi\\big(\\tau(\\|\\bm{\\omega}_i\\|_2^{-1}\\bm{\\omega}_i^{\\top}\\widehat{\\bm x} - t_i)\\big)\\bigg| \\lesssim \\widetilde{C}_{\\mathcal{F}}\\sqrt{\\frac{\\log|\\mathcal{N}_{\\varepsilon}|}{n}} \\end{align*} holds simultaneously for all $(\\widehat{f}, \\widehat{\\bm x}) \\in \\mathcal{N}_{\\varepsilon}$, where $\\widetilde{C}_\\mathcal{F} \\coloneqq C_\\mathcal{F} - \\sup_{\\tilde{f}\\in\\mathcal{F}}|\\tilde{f}({\\bm 0})|$.",
+      "section": "A.1 Proof of Lemma 1",
+      "parent_id": "PP39.2",
+      "step_order": 3,
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.2.4",
+      "type": "proof_step",
+      "name": "Control the $\\ell_1$ norm of the coefficients",
+      "statement": "Similarly, applying the Hoeffding's inequality and the union bound once again yields that: with probability at least $3/4$, \\begin{align*} \\bigg|\\mathbb{E}_{(t, \\bm{\\omega}) \\sim \\Lambda}\\big[\\big|\\rho_{\\widehat{f}}(t, \\bm{\\omega})\\big|\\big] - \\frac{1}{n}\\sum_{i = 1}^n\\big|\\rho_{\\widehat{f}}(t_i, \\bm{\\omega}_i)\\big|\\bigg| \\lesssim \\widetilde{C}_{\\mathcal{F}}\\sqrt{\\frac{\\log|\\mathcal{N}_{\\varepsilon}|}{n}} \\end{align*} holds simultaneously for all $(\\widehat{f},\\widehat{\\bm x})\\in\\mathcal{N}_\\varepsilon$. This further shows that, with probability at least $3/4$, $$ |f({\\bm 0})| + \\frac{1}{n}\\sum_{i = 1}^n\\big|\\rho_{\\widehat{f}}(t_i, \\bm{\\omega}_i)\\big| < |f({\\bm 0})| + 4\\widetilde{C}_\\mathcal{F} \\le 4C_\\mathcal{F} $$ simultaneously for all $(\\widehat{f},\\widehat{\\bm{x}})\\in \\mathcal{N}_{\\varepsilon}$.",
+      "section": "A.1 Proof of Lemma 1",
+      "parent_id": "PP39.2",
+      "step_order": 4,
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.2.5",
+      "type": "proof_step",
+      "name": "Extend the properties from the cover to all $f\\in\\mathcal{F}$",
+      "statement": "Having established several key properties for the epsilon-cover $\\mathcal{N}_{\\varepsilon}$, we now extend these properties to all $f\\in \\mathcal{F}$. For any $f \\in \\mathcal{F}$, there exists some $(\\widehat{f}, \\widehat{\\bm x}) \\in \\mathcal{N}_{\\varepsilon}$, such that for all $\\|{\\bm x}\\|_2\\le 1$, ... $\\overset{\\text{(a)}}{\\le} C_{\\mathcal{F}}\\Big(\\varepsilon + 3\\delta_{\\tau} + \\sqrt{\\frac{c_1\\log|\\mathcal{N}_{\\varepsilon}|}{n}} + 4\\tau\\varepsilon\\Big)$. Recalling that $\\tau>4$, we arrive at \\begin{align} \\bigg|f({\\bm x}) - f(\\bm{0}) - \\frac{1}{n}\\sum_{i = 1}^n\\rho_{\\widehat{f}}(t_i, \\bm{\\omega}_i)\\phi\\big(\\tau(\\|\\bm{\\omega}_i\\|_2^{-1}\\bm{\\omega}_i^{\\top}{\\bm x} - t_i)\\big)\\bigg|\\lesssim C_{\\mathcal{F}}\\Big(\\delta_{\\tau} + \\sqrt{\\frac{\\log|\\mathcal{N}_{\\varepsilon}|}{n}} + \\tau\\varepsilon\\Big). \\end{align}",
+      "section": "A.1 Proof of Lemma 1",
+      "parent_id": "PP39.2",
+      "step_order": 5,
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.2.6",
+      "type": "proof_step",
+      "name": "Bound $\\delta_\\tau \\le 1/\\tau$ and conclude",
+      "statement": "To finish up, it suffices to prove that $\\delta_\\tau\\le 1/\\tau$. This reveals that $$ \\delta_\\tau = \\inf_{0\\le \\varepsilon'\\le 1/2}\\left\\{2\\varepsilon + \\max\\left\\{\\frac12 - \\tau\\varepsilon',0\\right\\}\\right\\}= \\frac{1}{\\tau} $$ for any $\\tau \\ge 2$. Substituting it into \\eqref{eq:proof-lem-discrete-temp-1} and recalling the definition of $\\phi_i^{\\mathsf{feature}}({\\bm x})$ in \\eqref{eq:defn-phi-feature-lemma}, we establish the claimed result \\eqref{eq:lem-discrete} with $\\rho_{f,i}^{\\star} = \\rho_{\\widehat{f}}(t_i,{\\bm \\omega}_i).$",
+      "section": "A.1 Proof of Lemma 1",
+      "parent_id": "PP39.2",
+      "step_order": 6,
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PP39.3",
+      "type": "proof",
+      "name": "Proof of Lemma 5",
+      "statement": "It has been shown by~\\citet[Lemma~5]{Barron1993Universal} that: for any ${\\bm \\omega}\\in\\mathbb{R}^d$, $\\theta\\in[0,2\\pi)$ and any $\\tau\\ge 2$, there exists some function $\\gamma_{{\\bm \\omega},\\theta}(\\cdot)$ such that \\begin{subequations} \\begin{align} \\bigg|\\frac{\\cos(\\bm{\\omega}^{\\top}{\\bm x} + \\theta) - \\cos(\\theta)}{\\|\\bm{\\omega}\\|_2} - \\int_{t\\in[-2, 1]} \\gamma_{\\bm{\\omega}, \\theta}(t)\\phi\\big(\\tau(\\|\\bm{\\omega}\\|_2^{-1}\\bm{\\omega}^{\\top}{\\bm x} - t)\\big)\\mathrm{d}t\\bigg| &\\le 3\\delta_{\\tau}, \\\\ |\\gamma_{\\bm{\\omega}, \\theta}(t)| &\\le 1. \\end{align} \\end{subequations} To make it self-contained, we will present the proof of \\eqref{eq:proof-lem-expression-g} towards the end of this section. Based on the conclusion in \\eqref{eq:proof-lem-expression-g}, we define an approximation of $f({\\bm x}) - f({\\bm 0})$ as \\begin{align} \\widetilde{f}^{\\mathsf{approx}}({\\bm x}) \\coloneqq \\int_{\\bm{\\omega}\\ne \\bm{0}}\\bigg( \\int_{t\\in[-2,1]} \\phi\\big(\\tau(\\|\\bm{\\omega}\\|_2^{-1}\\bm{\\omega}^{\\top}{\\bm x} - t)\\big)\\gamma_{\\bm{\\omega}, \\theta_f({\\bm \\omega})}(t)\\mathrm{d}t \\bigg)\\|\\bm{\\omega}\\|_2|F_f(\\bm{\\omega})|\\mathrm{d}\\bm{\\omega}. \\end{align} Combining \\eqref{eq:proof-lem-expression-barf} and the Fourier transform of $f({\\bm x}) - f(\\bm{0})$ given in \\eqref{eq:Fourier} yields \\begin{align} &\\quad \\bigg|f({\\bm x}) - f(\\bm{0}) - \\widetilde{f}^{\\mathsf{approx}}({\\bm x})\\bigg| \\notag\\\\ &= \\bigg| \\int_{\\bm{\\omega}\\ne \\bm{0}}\\Big(\\frac{\\cos\\big({\\bm{\\omega}}^{\\top}{\\bm x} + \\theta_f(\\bm{\\omega})\\big) - \\cos\\big(\\theta_f(\\bm{\\omega})\\big)}{\\|{\\bm \\omega}\\|_2} - \\int_{t\\in[-2,1]} \\phi\\big(\\tau(\\|\\bm{\\omega}\\|_2^{-1}\\bm{\\omega}^{\\top}{\\bm x} - t)\\big)\\gamma_{\\bm{\\omega}, \\theta_f({\\bm \\omega})}(t)\\mathrm{d}t\\Big)\\|{\\bm \\omega}\\|_2|F_f({\\bm{\\omega}})| \\mathrm{d}\\bm{\\omega} \\bigg|\\notag\\\\ &\\overset{\\text{(a)}}{\\le} 3\\delta_{\\tau}\\int_{\\bm{\\omega}} \\|\\bm{\\omega}\\|_2|F_f(\\bm{\\omega})|\\mathrm{d}\\bm{\\omega}\\overset{\\text{(b)}}{\\le} 3C_{\\mathcal{F}}\\delta_{\\tau}, \\end{align} where (a) inserts \\eqref{eq:proof-lem-expression-temp-2}, and (b) applies the definition of $C_{\\mathcal{F}}$ in \\eqref{eq:condition-Fourier}. Next, let us define the following key quantity independent of $f$: \\begin{align*} \\Gamma_{\\mathcal{F}} \\coloneqq 3\\int_{\\bm{\\omega}} \\|{\\bm \\omega}\\|_2F^{\\mathsf{sup}}({\\bm \\omega})\\mathrm{d}{\\bm \\omega}, \\end{align*} which can be bounded by \\begin{align} \\Gamma_{\\mathcal{F}} \\le 3\\big(C_{\\mathcal{F}} - \\sup_{f\\in\\mathcal{F}}|f({\\bm 0})|\\big) < \\infty \\end{align} for any $f\\in \\mathcal{F}$. As a result, \\begin{align} \\Lambda(\\mathrm{d}t, \\mathrm{d}{\\bm \\omega}) \\coloneqq \\Gamma_{\\mathcal{F}}^{-1}\\ind(-2\\le t\\le 1)\\,\\|{\\bm \\omega}\\|_2F^{\\mathsf{sup}}({\\bm \\omega})\\mathrm{d}t\\mathrm{d}{\\bm \\omega} \\end{align} forms a valid probability measure on $\\mathbb{R}\\times\\mathbb{R}^d$, given that $$\\Lambda(\\mathrm{d}t, \\mathrm{d}{\\bm \\omega})\\ge 0 \\qquad \\text{and}\\qquad \\int_{\\bm \\omega}\\int_t\\Lambda(\\mathrm{d}t, \\mathrm{d}{\\bm \\omega}) = 1.$$ Importantly, the probability measure $\\Lambda(\\mathrm{d}t, \\mathrm{d}{\\bm \\omega})$ allows one to show that the function $\\widetilde{f}^{\\mathsf{approx}}({\\bm x})$ (cf.~\\eqref{eq:proof-lem-expression-barf}) coincides with the approximation $f^{\\mathsf{approx}}({\\bm x})$ defined in \\eqref{eq:f-approx-x}: \\begin{align*} \\widetilde{f}^{\\mathsf{approx}}({\\bm x}) = \\int_{{\\bm \\omega}\\ne \\bm{0}}\\int_t \\rho_f(t, {\\bm \\omega})\\phi\\big(\\tau(\\|{\\bm \\omega}\\|_2^{-1}{\\bm \\omega}^{\\top}{\\bm x} - t)\\big)\\Lambda(\\mathrm{d}t, \\mathrm{d}{\\bm \\omega}) = f^{\\mathsf{approx}}({\\bm x}), \\end{align*} where \\begin{align} \\rho_f(t, {\\bm \\omega}) \\coloneqq \\frac{\\gamma_{{\\bm \\omega}, \\theta_f({\\bm \\omega})}(t)\\|{\\bm \\omega}\\|_2|F_f({\\bm \\omega})|\\mathrm{d}t\\mathrm{d}{\\bm \\omega}}{\\Lambda(\\mathrm{d}t, \\mathrm{d}{\\bm \\omega})}. \\end{align} Substitution into \\eqref{eq:lem_expression} immediately establishes the advertised result \\eqref{eq:expression}. To finish up, it suffices to note the following two facts: \\begin{itemize} \\item Combining \\eqref{eq:defn-Lambda} and \\eqref{eq:defn-rho-f}, we have $$ |\\rho_f(t, {\\bm \\omega})|\\le \\frac{|\\gamma_{{\\bm \\omega}, \\theta_f({\\bm \\omega})}(t)|\\|{\\bm \\omega}\\|_2|F_f({\\bm \\omega})|}{\\Gamma_{\\mathcal{F}}^{-1}\\,\\|{\\bm \\omega}\\|_2F^{\\mathsf{sup}}({\\bm \\omega})} \\overset{\\text{(a)}}{\\le} \\Gamma_{\\mathcal{F}}\\overset{\\text{(b)}}{\\le} 3\\Big(C_{\\mathcal{F}} - \\sup_{\\tilde{f}\\in\\mathcal{F}}|\\tilde{f}({\\bm 0})| \\Big), $$ where (a) follows from \\eqref{eq:proof-lem-expression-int-gamma} and (b) from \\eqref{eq:UB-Gamma-F1}. \\item Substituting \\eqref{eq:defn-rho-f} into the expectation of $|\\rho_f(t, \\bm{\\omega})|$ gives \\begin{align*} \\mathbb{E}_{(t, \\bm{\\omega}) \\sim \\Lambda}\\big[|\\rho_f(t, \\bm{\\omega})|\\big] &=\\int_{{\\bm \\omega}\\ne \\bm{0}}\\int_t |\\rho_f(t, {\\bm \\omega})|\\Lambda(\\mathrm{d}t, \\mathrm{d}{\\bm \\omega}) = \\int_{{\\bm \\omega}\\ne \\bm{0}}\\int_{t\\in[-2, 1]} \\big|\\gamma_{{\\bm \\omega}, \\theta_f({\\bm \\omega})}(t)\\big|\\mathrm{d}t\\|{\\bm \\omega}\\|_2| F_f({\\bm \\omega})|\\mathrm{d}{\\bm \\omega} \\notag\\\\ &\\overset{\\text{(a)}}{\\le} 3\\int_{{\\bm \\omega}\\ne \\bm{0}}\\|{\\bm \\omega}\\|_2| F_f({\\bm \\omega})|\\mathrm{d}{\\bm \\omega} \\overset{\\text{(b)}}{\\le} 3\\Big(C_{\\mathcal{F}} - \\sup_{\\tilde{f}\\in\\mathcal{F}}|\\tilde{f}({\\bm 0})|\\Big), \\end{align*} where (a) uses \\eqref{eq:proof-lem-expression-int-gamma} and (b) applies the definition of $C_{\\mathcal{F}}$ in \\eqref{eq:condition-Fourier} \\end{itemize} \\paragraph{Proof of relation~\\eqref{eq:proof-lem-expression-g}.} This proof is similar to the proof of Lemma 5 in \\cite{Barron1993Universal}. We begin by claiming the following result (to be proven shortly): for any function $g:[-1,1]\\to \\mathbb{R}$ satisfying $|g'(z)|\\le 1$, $|g(-1)|\\le 1$, and for any $\\tau >0$, there exists a function $\\gamma(\\cdot)$ such that \\begin{subequations} \\begin{align} \\left|g(z) - \\int_{t\\in[-2, 1]}\\gamma(t)\\phi\\big(\\tau(z + t)\\big)\\mathrm{d}t\\right|\\le 3\\delta_\\tau, \\end{align} where \\begin{align} \\int_{t\\in[-2, 1]}|\\gamma(t)|\\mathrm{d} t\\le 3. \\end{align} \\end{subequations} Here, $\\delta_\\tau$ and $\\phi(\\cdot)$ have been defined in \\eqref{eq:defn-delta-tau} and \\eqref{eq:def-func-phi}, respectively. Suppose for the moment that this claim is valid. To establish \\eqref{eq:proof-lem-expression-g}, we find it convenient to introduce another auxiliary function $$g_{\\bm{\\omega},\\theta}(z) \\coloneqq \\frac{\\cos(\\|\\bm{\\omega}\\|_2z + \\theta) - \\cos(\\theta)}{\\|\\bm{\\omega}\\|_2}$$ defined on $[-1,1]$, which clearly satisfies $$ \\big|g_{{\\bm \\omega},\\theta}'(z)\\big|\\le 1\\qquad \\text{for all }z\\in [-1,1],\\qquad \\text{and}\\qquad |g_{{\\bm \\omega},\\theta}(-1)|= |g_{{\\bm \\omega},\\theta}(-1)-g_{{\\bm \\omega},\\theta}(0)| \\le 1. $$ Applying inequality \\eqref{eq:Barron-bound} to $g_{{\\bm \\omega},\\theta}(\\cdot)$ and recognizing that $g_{{\\bm \\omega},\\theta}\\big(\\frac{\\bm{\\omega}^{\\top}\\bm{x}}{\\|\\bm{\\omega}\\|_2}\\big)=\\frac{\\cos(\\bm{\\omega}^{\\top}{\\bm x} + \\theta) - \\cos(\\theta)}{\\|\\bm{\\omega}\\|_2}$ establish \\eqref{eq:proof-lem-expression-g}. To finish up, it remains to establish \\eqref{eq:Barron-bound}. Define \\begin{align} \\gamma(t) = \\begin{cases} g'(t), & \\text{if }t\\in [-1,1], \\\\ \\mathsf{sign}\\big(g(-1)\\big),\\qquad & \\text{if }-1-|g(-1)|\\le t < -1, \\\\ 0, & \\text{else}. \\end{cases} \\end{align} which clearly satisfies $|\\gamma(t)| \\le 1$. Observe that for any $z\\in[-1,1]$, it holds that \\begin{align*} \\int_{t\\in[-2, 1]} \\gamma(t)\\ind(z-t>0)\\mathrm{d} t = \\int_{-2}^{z} \\gamma(t)\\mathrm{d} t = \\int_{-1-|g(-1)|}^{-1}\\mathsf{sign}\\big(g(-1)\\big)\\mathrm{d} t + \\int_{-1}^z g'(t)\\mathrm{d} t = g(-1) + g(z) - g(-1) = g(z). \\end{align*} Recalling the definition of $\\delta_\\tau$ in \\eqref{eq:defn-delta-tau}, we arrive at \\begin{align*} &\\left|g(z) - \\int_{t\\in[-2, 1]} \\gamma(t)\\phi\\big(\\tau(z-t)\\big)\\mathrm{d} t\\right| = \\left|\\int_{t\\in[-2, 1]} \\gamma(t)\\big(\\ind(z-t>0)-\\phi\\big(\\tau(z-t)\\big)\\big)\\mathrm{d} t\\right|\\notag\\\\ &\\qquad \\le\\inf_{0<\\varepsilon\\le 1/2}\\left\\{ \\int_{t:|z-t|\\le \\varepsilon}|\\gamma(t)|\\mathrm{d}t + \\int_{t:|z-t|\\ge \\varepsilon} |\\gamma(t)|\\big|\\ind(z-t>0)-\\phi\\big(\\tau(z-t)\\big)\\big|\\mathrm{d} t\\right\\}\\notag\\\\ &\\qquad \\le \\inf_{0<\\varepsilon\\le 1/2}\\left\\{2\\varepsilon + 3\\sup_{x:|x|\\ge \\varepsilon} \\big|\\phi(\\tau x) - \\ind(x>0) \\big|\\right\\}\\le 3\\delta_\\tau \\end{align*} as claimed.",
+      "section": "A.1.1 Proof of Lemma 5",
+      "origin": "paper",
+      "proves": "LP39.5"
+    },
+    {
+      "id": "PSP39.3.1",
+      "type": "proof_step",
+      "name": "Invoke Barron's ridge approximation of the cosine",
+      "statement": "It has been shown by~\\citet[Lemma~5]{Barron1993Universal} that: for any ${\\bm \\omega}\\in\\mathbb{R}^d$, $\\theta\\in[0,2\\pi)$ and any $\\tau\\ge 2$, there exists some function $\\gamma_{{\\bm \\omega},\\theta}(\\cdot)$ such that \\begin{subequations} \\begin{align} \\bigg|\\frac{\\cos(\\bm{\\omega}^{\\top}{\\bm x} + \\theta) - \\cos(\\theta)}{\\|\\bm{\\omega}\\|_2} - \\int_{t\\in[-2, 1]} \\gamma_{\\bm{\\omega}, \\theta}(t)\\phi\\big(\\tau(\\|\\bm{\\omega}\\|_2^{-1}\\bm{\\omega}^{\\top}{\\bm x} - t)\\big)\\mathrm{d}t\\bigg| &\\le 3\\delta_{\\tau}, \\\\ |\\gamma_{\\bm{\\omega}, \\theta}(t)| &\\le 1. \\end{align} \\end{subequations}",
+      "section": "A.1.1 Proof of Lemma 5",
+      "parent_id": "PP39.3",
+      "step_order": 1,
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.3.2",
+      "type": "proof_step",
+      "name": "Define $\\widetilde{f}^{\\mathsf{approx}}$ and bound the difference",
+      "statement": "Based on the conclusion in \\eqref{eq:proof-lem-expression-g}, we define an approximation of $f({\\bm x}) - f({\\bm 0})$ as \\begin{align} \\widetilde{f}^{\\mathsf{approx}}({\\bm x}) \\coloneqq \\int_{\\bm{\\omega}\\ne \\bm{0}}\\bigg( \\int_{t\\in[-2,1]} \\phi\\big(\\tau(\\|\\bm{\\omega}\\|_2^{-1}\\bm{\\omega}^{\\top}{\\bm x} - t)\\big)\\gamma_{\\bm{\\omega}, \\theta_f({\\bm \\omega})}(t)\\mathrm{d}t \\bigg)\\|\\bm{\\omega}\\|_2|F_f(\\bm{\\omega})|\\mathrm{d}\\bm{\\omega}. \\end{align} Combining \\eqref{eq:proof-lem-expression-barf} and the Fourier transform of $f({\\bm x}) - f(\\bm{0})$ given in \\eqref{eq:Fourier} yields $\\big|f({\\bm x}) - f(\\bm{0}) - \\widetilde{f}^{\\mathsf{approx}}({\\bm x})\\big| \\overset{\\text{(a)}}{\\le} 3\\delta_{\\tau}\\int_{\\bm{\\omega}} \\|\\bm{\\omega}\\|_2|F_f(\\bm{\\omega})|\\mathrm{d}\\bm{\\omega}\\overset{\\text{(b)}}{\\le} 3C_{\\mathcal{F}}\\delta_{\\tau}$.",
+      "section": "A.1.1 Proof of Lemma 5",
+      "parent_id": "PP39.3",
+      "step_order": 2,
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.3.3",
+      "type": "proof_step",
+      "name": "Construct the probability measure $\\Lambda$ and identify $\\rho_f$",
+      "statement": "Next, let us define the following key quantity independent of $f$: $\\Gamma_{\\mathcal{F}} \\coloneqq 3\\int_{\\bm{\\omega}} \\|{\\bm \\omega}\\|_2F^{\\mathsf{sup}}({\\bm \\omega})\\mathrm{d}{\\bm \\omega}$, which can be bounded by $\\Gamma_{\\mathcal{F}} \\le 3\\big(C_{\\mathcal{F}} - \\sup_{f\\in\\mathcal{F}}|f({\\bm 0})|\\big) < \\infty$ for any $f\\in \\mathcal{F}$. As a result, \\begin{align} \\Lambda(\\mathrm{d}t, \\mathrm{d}{\\bm \\omega}) \\coloneqq \\Gamma_{\\mathcal{F}}^{-1}\\ind(-2\\le t\\le 1)\\,\\|{\\bm \\omega}\\|_2F^{\\mathsf{sup}}({\\bm \\omega})\\mathrm{d}t\\mathrm{d}{\\bm \\omega} \\end{align} forms a valid probability measure on $\\mathbb{R}\\times\\mathbb{R}^d$. Importantly, $\\widetilde{f}^{\\mathsf{approx}}({\\bm x})$ coincides with $f^{\\mathsf{approx}}({\\bm x})$ with \\begin{align} \\rho_f(t, {\\bm \\omega}) \\coloneqq \\frac{\\gamma_{{\\bm \\omega}, \\theta_f({\\bm \\omega})}(t)\\|{\\bm \\omega}\\|_2|F_f({\\bm \\omega})|\\mathrm{d}t\\mathrm{d}{\\bm \\omega}}{\\Lambda(\\mathrm{d}t, \\mathrm{d}{\\bm \\omega})}. \\end{align}",
+      "section": "A.1.1 Proof of Lemma 5",
+      "parent_id": "PP39.3",
+      "step_order": 3,
+      "subclass": "introduce_variable",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.3.4",
+      "type": "proof_step",
+      "name": "Verify the two bounds on $\\rho_f$",
+      "statement": "To finish up, it suffices to note the following two facts: Combining \\eqref{eq:defn-Lambda} and \\eqref{eq:defn-rho-f}, we have $|\\rho_f(t, {\\bm \\omega})|\\le \\Gamma_{\\mathcal{F}}\\le 3\\big(C_{\\mathcal{F}} - \\sup_{\\tilde{f}\\in\\mathcal{F}}|\\tilde{f}({\\bm 0})| \\big)$; and $\\mathbb{E}_{(t, \\bm{\\omega}) \\sim \\Lambda}\\big[|\\rho_f(t, \\bm{\\omega})|\\big] \\le 3\\int_{{\\bm \\omega}\\ne \\bm{0}}\\|{\\bm \\omega}\\|_2| F_f({\\bm \\omega})|\\mathrm{d}{\\bm \\omega} \\le 3\\big(C_{\\mathcal{F}} - \\sup_{\\tilde{f}\\in\\mathcal{F}}|\\tilde{f}({\\bm 0})|\\big)$.",
+      "section": "A.1.1 Proof of Lemma 5",
+      "parent_id": "PP39.3",
+      "step_order": 4,
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.3.5",
+      "type": "proof_step",
+      "name": "Prove the auxiliary claim (construction of $\\gamma$)",
+      "statement": "\\paragraph{Proof of relation~\\eqref{eq:proof-lem-expression-g}.} We begin by claiming the following result: for any function $g:[-1,1]\\to \\mathbb{R}$ satisfying $|g'(z)|\\le 1$, $|g(-1)|\\le 1$, and for any $\\tau >0$, there exists a function $\\gamma(\\cdot)$ such that $\\left|g(z) - \\int_{t\\in[-2, 1]}\\gamma(t)\\phi\\big(\\tau(z + t)\\big)\\mathrm{d}t\\right|\\le 3\\delta_\\tau$ with $\\int_{t\\in[-2, 1]}|\\gamma(t)|\\mathrm{d} t\\le 3$. Define \\begin{align} \\gamma(t) = \\begin{cases} g'(t), & \\text{if }t\\in [-1,1], \\\\ \\mathsf{sign}\\big(g(-1)\\big),\\qquad & \\text{if }-1-|g(-1)|\\le t < -1, \\\\ 0, & \\text{else}. \\end{cases} \\end{align} which clearly satisfies $|\\gamma(t)| \\le 1$; then $\\int_{t\\in[-2, 1]} \\gamma(t)\\ind(z-t>0)\\mathrm{d} t = g(z)$, and $\\left|g(z) - \\int_{t\\in[-2, 1]} \\gamma(t)\\phi\\big(\\tau(z-t)\\big)\\mathrm{d} t\\right| \\le \\inf_{0<\\varepsilon\\le 1/2}\\left\\{2\\varepsilon + 3\\sup_{x:|x|\\ge \\varepsilon} \\big|\\phi(\\tau x) - \\ind(x>0) \\big|\\right\\}\\le 3\\delta_\\tau$ as claimed.",
+      "section": "A.1.1 Proof of Lemma 5",
+      "parent_id": "PP39.3",
+      "step_order": 5,
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PP39.4",
+      "type": "proof",
+      "name": "Proof of Lemma 2",
+      "statement": "In view of \\eqref{eq:lem-discrete-2} in Lemma~\\ref{lem:discrete}, we have $$\\|{\\bm \\rho}^{\\star}\\|_1\\lesssim C_{\\mathcal{F}}.$$ A key step in this proof is to establish the following lemma [Lemma \\ref{lem:empirical}], whose proof is postponed to Appendix~\\ref{sec:proof:lem:empirical}. Armed with this lemma, we can proceed to the proof of Lemma~\\ref{lem:estimator}. \\paragraph{Proof of \\eqref{eq:lem-estimator-2}.} Suppose for the moment that \\begin{align} \\|\\widehat{{\\bm \\rho}}\\|_1> 4\\|{\\bm \\rho}^{\\star}\\|_1 + C_{\\mathcal{F}} + 4\\lambda^{-1}\\varepsilon_{\\mathsf{opt}}, \\end{align} then it follows from Lemma~\\ref{lem:empirical} that \\begin{align} \\ell(\\widehat{{\\bm \\rho}}) - \\ell({\\bm \\rho}^{\\star}) &= \\frac{1}{N}\\sum_{i = 1}^N (y_i - {\\bm \\phi}_i^{\\top}\\widehat{{\\bm \\rho}})^2 + \\lambda \\|\\widehat{{\\bm \\rho}}\\|_1 - \\frac{1}{N}\\sum_{i = 1}^N (y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho}^{\\star})^2 - \\lambda \\|{\\bm \\rho}^{\\star}\\|_1 \\notag \\\\ &\\overset{\\text{(a)}}{\\ge} \\lambda \\|\\widehat{{\\bm \\rho}}\\|_1 - \\lambda \\|{\\bm \\rho}^{\\star}\\|_1 - C\\varepsilon_{\\mathsf{dis}}^2 - C\\sqrt{\\frac{\\log N}{N}}\\sigma \\|\\widehat{\\bm \\rho}-{\\bm \\rho}^{\\star}\\|_1 \\notag\\\\ &\\overset{\\text{(b)}}{>} \\lambda \\|\\widehat{\\bm \\rho}\\|_1 - \\frac{\\lambda\\|\\widehat{\\bm \\rho}\\|_1}{4} - C\\varepsilon_{\\mathsf{dis}}^2 - 2C\\sqrt{\\frac{\\log N}{N}}\\sigma \\|\\widehat{\\bm \\rho}\\|_1 \\end{align} for some universal constant $C>0$. Here, (a) results from \\eqref{eq:lem-empirical-2}, whereas (b) invokes the properties (see \\eqref{eq:proof-lem-estimator-assu}) that $\\|\\widehat{\\bm \\rho}\\|_1 > 4\\|{\\bm \\rho}^{\\star}\\|_1$ and $\\|\\widehat{\\bm \\rho} - {\\bm \\rho}^{\\star}\\|_1 \\le \\|\\widehat{\\bm \\rho}\\|_1 + \\|{\\bm \\rho}^{\\star}\\|_1 < 2\\|\\widehat{\\bm \\rho}\\|_1$. In addition, under our assumption on $\\lambda$, we have \\begin{align} \\lambda \\ge 4C C_{\\mathcal{F}}^{-1}\\varepsilon_{\\mathsf{dis}}^2 + 8C\\sqrt{\\log N/N}\\sigma \\end{align} as long as $c_{\\lambda}$ is large enough, which then gives \\begin{align*} C\\varepsilon_{\\mathsf{dis}}^2\\le \\frac{\\lambda C_{\\mathcal{F}}}{4} < \\frac{\\lambda \\|\\widehat{\\bm \\rho}\\|_1}{4}\\qquad \\text{and}\\qquad 2C\\sqrt{\\frac{\\log N}{N}}\\sigma \\|\\widehat{\\bm \\rho}\\|_1 < \\frac{\\lambda \\|\\widehat{\\bm \\rho}\\|_1}{4}. \\end{align*} These combined with \\eqref{eq:l-rhohat-rho-star-LB1} result in \\begin{align*} \\ell(\\widehat{\\bm \\rho}) - \\ell({\\bm \\rho}^{\\star}) >\\lambda \\|\\widehat{\\bm \\rho}\\|_1 - \\frac{\\lambda\\|\\widehat{\\bm \\rho}\\|_1}{4} - \\frac{\\lambda\\|\\widehat{\\bm \\rho}\\|_1}{4} - \\frac{\\lambda\\|\\widehat{\\bm \\rho}\\|_1}{4} = \\frac{\\lambda}{4} \\|\\widehat{\\bm \\rho}\\|_1 > \\varepsilon_{\\mathsf{opt}} \\end{align*} with the last inequality due to \\eqref{eq:proof-lem-estimator-assu}. This, however, contradicts the $\\varepsilon_{\\mathsf{opt}}$-optimality of $\\widehat{\\bm \\rho}$, which in turn justifies that the assumption \\eqref{eq:proof-lem-estimator-assu} cannot possibly hold. As a result, we can conclude that \\begin{align} \\|\\widehat{\\bm \\rho}_1\\|\\le 4\\|{\\bm \\rho}^{\\star}\\|_1 + C_{\\mathcal{F}} + 4\\lambda^{-1}\\varepsilon_{\\mathsf{opt}}\\asymp C_{\\mathcal{F}} + \\lambda^{-1}\\varepsilon_{\\mathsf{opt}}, \\end{align} where the last relation is valid since $\\|{\\bm \\rho}^{\\star}\\|_1\\lesssim C_{\\mathcal{F}}$ (see \\eqref{eq:lem-discrete-2} and \\eqref{eq:def-rho-star}). \\paragraph{Proof of \\eqref{eq:lem-estimator-1}.} Applying \\eqref{eq:lem-empirical-1} in Lemma~\\ref{lem:empirical} and making use of the fact that $\\|\\widehat{\\bm \\rho} - {\\bm \\rho}^{\\star}\\|_1 \\le \\|\\widehat{\\bm \\rho}\\|_1 + \\| {\\bm \\rho}^{\\star}\\|_1\\lesssim C_{\\mathcal{F}} + \\lambda^{-1}\\varepsilon_{\\mathsf{opt}}$ (see \\eqref{eq:rho-hat-UB-123}), one can demonstrate that \\begin{align} & \\bigg| \\mathbb{E}\\big[\\big({\\bm \\phi}_{N+1}^{\\top}\\widehat{\\bm \\rho} - f({\\bm x}_{N+1})\\big)^2\\big] - \\frac{1}{N}\\sum_{i = 1}^N \\big[(y_i - {\\bm \\phi}_i^{\\top}\\widehat{\\bm \\rho})^2 - z_i^2\\big] \\bigg| \\notag\\\\ &\\qquad \\lesssim \\sqrt{\\frac{\\log N}{N}}\\big(\\varepsilon_{\\mathsf{dis}}^2 + C_{\\mathcal{F}}^2 + \\lambda^{-2}\\varepsilon_{\\mathsf{opt}}^2 + \\sigma(\\varepsilon_{\\mathsf{dis}} + C_{\\mathcal{F}} + \\lambda^{-1}\\varepsilon_{\\mathsf{opt}})\\big). \\end{align} Moreover, we make the observation that \\begin{align} \\frac{1}{N}\\sum_{i = 1}^N (y_i - {\\bm \\phi}_i^{\\top}\\widehat{\\bm \\rho})^2 &\\le \\ell(\\widehat{\\bm \\rho})\\le \\ell({\\bm \\rho}^{\\star}) + \\varepsilon_{\\mathsf{opt}}\\le \\frac{1}{N}\\sum_{i = 1}^N (y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho}^{\\star})^2 + \\lambda \\|{\\bm \\rho}^{\\star}\\|_1 + \\varepsilon_{\\mathsf{opt}} \\notag\\\\ &= \\frac{1}{N}\\sum_{i = 1}^N z_i^2 + \\frac1N\\sum_{i=1}^N\\big(f({\\bm x}_i)-{\\bm \\phi}_i^{\\top}{\\bm \\rho}^{\\star}\\big)^2 + \\frac2N\\sum_{i=1}^Nz_i\\big(f({\\bm x}_i)-{\\bm \\phi}_i^{\\top}{\\bm \\rho}^{\\star}\\big) + \\lambda\\|{\\bm \\rho}^{\\star}\\|_1 + \\varepsilon_{\\mathsf{opt}}\\notag\\\\ &\\le \\frac{1}{N}\\sum_{i = 1}^N z_i^2 + O\\Big(\\varepsilon_{\\mathsf{dis}}^2 + \\sqrt{\\frac{\\log N}{N}}\\sigma\\varepsilon_{\\mathsf{dis}} + \\lambda C_{\\mathcal{F}}\\Big) + \\varepsilon_{\\mathsf{opt}}, \\end{align} where the last inequality follows from the properties $(f({\\bm x}_i)-\\bm{\\phi}_i^{\\top}{\\bm \\rho}^{\\star})^2\\lesssim \\varepsilon_{\\mathsf{dis}}^2$ and $\\|{\\bm \\rho}^{\\star}\\|_1\\lesssim C_{\\mathcal{F}}$ (see \\eqref{eq:f-approx-epsilon-dis} and \\eqref{eq:lem-discrete-2}), as well as the concentration bound for $\\frac1N\\sum_{i=1}^Nz_i\\big(f({\\bm x}_i)-{\\bm \\phi}_i^{\\top}{\\bm \\rho}^{\\star}\\big)$ to be derived in \\eqref{eq:proof-lem-empirical-boundE3}. Combine \\eqref{eq:proof-lem-estimator-temp-1} and \\eqref{eq:proof-lem-estimator-temp-2} to derive \\begin{align*} \\mathbb{E}\\big[\\big({\\bm \\phi}_{N+1}^{\\top}\\widehat{\\bm \\rho}-f({\\bm x}_{N+1})\\big)^2] &\\lesssim \\sqrt{\\frac{\\log N}{N}}\\big(\\varepsilon_{\\mathsf{dis}}^2 + C_{\\mathcal{F}}^2 + \\lambda^{-2}\\varepsilon_{\\mathsf{opt}}^2 + \\sigma(\\varepsilon_{\\mathsf{dis}} + C_{\\mathcal{F}} + \\lambda^{-1}\\varepsilon_{\\mathsf{opt}})\\big) + \\varepsilon_{\\mathsf{dis}}^2 + \\lambda C_{\\mathcal{F}} + \\varepsilon_{\\mathsf{opt}}\\notag\\\\ &\\asymp \\sqrt{\\frac{\\log N}{N}}\\big(C_{\\mathcal{F}}^2 + \\lambda^{-2}\\varepsilon_{\\mathsf{opt}}^2 + \\sigma\\varepsilon_{\\mathsf{dis}}\\big) + \\varepsilon_{\\mathsf{dis}}^2 + \\lambda C_{\\mathcal{F}} + \\varepsilon_{\\mathsf{opt}}, \\end{align*} where the last line follows since $\\sqrt{\\frac{\\log N}{N}}\\sigma C_{\\mathcal{F}}\\lesssim \\lambda C_{\\mathcal{F}}$ and $\\sqrt{\\frac{\\log N}{N}}\\sigma\\lambda^{-1}\\varepsilon_{\\mathsf{opt}}\\lesssim \\varepsilon_{\\mathsf{opt}}$ (see \\eqref{eq:lambda-LB-1357}).",
+      "section": "A.2 Proof of Lemma 2",
+      "origin": "paper",
+      "proves": "LP39.2"
+    },
+    {
+      "id": "PSP39.4.1",
+      "type": "proof_step",
+      "name": "Proof of the $\\ell_1$-norm bound (by contradiction)",
+      "statement": "\\paragraph{Proof of \\eqref{eq:lem-estimator-2}.} Suppose for the moment that \\begin{align} \\|\\widehat{{\\bm \\rho}}\\|_1> 4\\|{\\bm \\rho}^{\\star}\\|_1 + C_{\\mathcal{F}} + 4\\lambda^{-1}\\varepsilon_{\\mathsf{opt}}, \\end{align} then it follows from Lemma~\\ref{lem:empirical} that $\\ell(\\widehat{{\\bm \\rho}}) - \\ell({\\bm \\rho}^{\\star}) > \\frac{\\lambda}{4} \\|\\widehat{\\bm \\rho}\\|_1 > \\varepsilon_{\\mathsf{opt}}$. This, however, contradicts the $\\varepsilon_{\\mathsf{opt}}$-optimality of $\\widehat{\\bm \\rho}$, which in turn justifies that the assumption cannot possibly hold. As a result, we can conclude that \\begin{align} \\|\\widehat{\\bm \\rho}_1\\|\\le 4\\|{\\bm \\rho}^{\\star}\\|_1 + C_{\\mathcal{F}} + 4\\lambda^{-1}\\varepsilon_{\\mathsf{opt}}\\asymp C_{\\mathcal{F}} + \\lambda^{-1}\\varepsilon_{\\mathsf{opt}}. \\end{align}",
+      "section": "A.2 Proof of Lemma 2",
+      "parent_id": "PP39.4",
+      "step_order": 1,
+      "subclass": "contradiction_setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.4.2",
+      "type": "proof_step",
+      "name": "Proof of the prediction-error bound",
+      "statement": "\\paragraph{Proof of \\eqref{eq:lem-estimator-1}.} Applying \\eqref{eq:lem-empirical-1} in Lemma~\\ref{lem:empirical} and making use of the fact that $\\|\\widehat{\\bm \\rho} - {\\bm \\rho}^{\\star}\\|_1 \\lesssim C_{\\mathcal{F}} + \\lambda^{-1}\\varepsilon_{\\mathsf{opt}}$, together with the observation $\\frac{1}{N}\\sum_{i = 1}^N (y_i - {\\bm \\phi}_i^{\\top}\\widehat{\\bm \\rho})^2 \\le \\frac{1}{N}\\sum_{i = 1}^N z_i^2 + O\\Big(\\varepsilon_{\\mathsf{dis}}^2 + \\sqrt{\\frac{\\log N}{N}}\\sigma\\varepsilon_{\\mathsf{dis}} + \\lambda C_{\\mathcal{F}}\\Big) + \\varepsilon_{\\mathsf{opt}}$, one derives $\\mathbb{E}\\big[\\big({\\bm \\phi}_{N+1}^{\\top}\\widehat{\\bm \\rho}-f({\\bm x}_{N+1})\\big)^2] \\asymp \\sqrt{\\frac{\\log N}{N}}\\big(C_{\\mathcal{F}}^2 + \\lambda^{-2}\\varepsilon_{\\mathsf{opt}}^2 + \\sigma\\varepsilon_{\\mathsf{dis}}\\big) + \\varepsilon_{\\mathsf{dis}}^2 + \\lambda C_{\\mathcal{F}} + \\varepsilon_{\\mathsf{opt}}$.",
+      "section": "A.2 Proof of Lemma 2",
+      "parent_id": "PP39.4",
+      "step_order": 2,
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PP39.5",
+      "type": "proof",
+      "name": "Proof of Lemma 6",
+      "statement": "We begin by establishing \\eqref{eq:lem-empirical-1}. Given that $y_i=f(\\bm{x}_i)+z_i$, we make note of the following decomposition: \\begin{align} & \\bigg|\\frac{1}{N}\\sum_{i = 1}^N \\big[(y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho})^2 - z_i^2\\big] - \\mathbb{E}\\big[\\big(f({\\bm x}_{N+1}) - {\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}\\big)^2\\big]\\bigg| \\notag\\\\ &~~ = \\bigg|\\frac{1}{N}\\sum_{i = 1}^N \\Big\\{\\big(f({\\bm x}_i) - {\\bm \\phi}_i^{\\top}{\\bm \\rho}\\big)^2 - \\mathbb{E}\\big[\\big(f({\\bm x}_{N+1}) - {\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}\\big)^2\\big] + 2z_i\\big(f({\\bm x}_i) - {\\bm \\phi}_i^{\\top}{\\bm \\rho}\\big)\\Big\\}\\bigg|\\notag\\\\ &~~ \\le \\bigg|\\frac{1}{N}\\sum_{i = 1}^N \\Big\\{\\big(f({\\bm x}_i) - {\\bm \\phi}_i^{\\top}{\\bm \\rho}\\big)^2 - \\big(f({\\bm x}_i) - {\\bm \\phi}_i^{\\top}{\\bm \\rho}^{\\star}\\big)^2\\Big\\}+\\mathbb{E}\\big[\\big(f({\\bm x}_{N+1}) - {\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}^{\\star}\\big)^2\\big]-\\mathbb{E}\\big[\\big(f({\\bm x}_{N+1}) - {\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}\\big)^2\\big]\\bigg|\\notag\\\\ &~~\\quad + \\bigg|\\frac{1}{N}\\sum_{i = 1}^N \\big(f({\\bm x}_i) - {\\bm \\phi}_i^{\\top}{\\bm \\rho}^{\\star}\\big)^2- \\mathbb{E}\\big[\\big(f({\\bm x}_{N+1}) - {\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}^{\\star}\\big)^2\\big]\\bigg| + 2\\bigg|\\sum_{i=1}^Nz_i\\big(f({\\bm x}_i) - {\\bm \\phi}_i^{\\top}{\\bm \\rho}\\big)\\bigg|\\eqqcolon \\mathcal{E}_1 + \\mathcal{E}_2 + \\mathcal{E}_3, \\end{align} leaving us with three terms to cope with. \\begin{itemize} \\item Regarding the term $\\mathcal{E}_1$, we can apply a little algebra to derive \\begin{align} \\mathcal{E}_1 &\\leq \\bigg|\\frac2N\\sum_{i=1}^N ({\\bm \\rho}^{\\star} - {\\bm \\rho})^{\\top}{\\bm \\phi}_i\\big(f({\\bm x}_i)-{\\bm \\phi}_i^{\\top}{\\bm \\rho}^{\\star}\\big)-2\\mathbb{E}\\big[({\\bm \\rho}^{\\star} - {\\bm \\rho})^{\\top}{\\bm \\phi}_{N+1}\\big(f({\\bm x}_{N+1})-{\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}^{\\star}\\big)\\big]\\bigg|\\notag\\\\ &\\quad + \\bigg|\\frac1N\\sum_{i=1}^N \\big(({\\bm \\rho}^{\\star} - {\\bm \\rho})^{\\top}{\\bm \\phi}_i\\big)^2-\\mathbb{E}\\big[\\big(({\\bm \\rho}^{\\star} - {\\bm \\rho})^{\\top}{\\bm \\phi}_{N+1}\\big)^2\\big]\\bigg|\\notag\\\\ &\\le 2\\left\\|{\\bm \\rho}^{\\star} - {\\bm \\rho}\\right\\|_1\\bigg\\|\\frac1N\\sum_{i=1}^N {\\bm \\phi}_i\\big(f({\\bm x}_i)-{\\bm \\phi}_i^{\\top}{\\bm \\rho}^{\\star}\\big)-\\mathbb{E}\\big[{\\bm \\phi}_{N+1}\\big(f({\\bm x}_{N+1})-{\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}^{\\star}\\big)\\big]\\bigg\\|_{\\infty}\\notag\\\\ &\\quad + \\left\\|{\\bm \\rho}^{\\star} - {\\bm \\rho}\\right\\|_1^2\\bigg\\|\\frac1N\\sum_{i=1}^N {\\bm \\phi}_i{\\bm \\phi}_i^{\\top}-\\mathbb{E}\\big[{\\bm \\phi}_{N+1}{\\bm \\phi}_{N+1}^{\\top}\\big]\\bigg\\|_{\\infty}, \\end{align} where the first line arises from the elementary inequality $(a-b)^{2}-(a-c)^{2}=-(c-b)^{2}+2(c-b)(a-b)$ in conjunction with the triangle inequality. Here, for any matrix $\\bm{A}$ we denote by $\\|\\bm{A}\\|_{\\infty}=\\max_{i,j}|A_{i,j}|$ the entrywise $\\ell_{\\infty}$ norm. Recognizing that $\\|{\\bm \\phi}_i\\|_{\\infty}\\le 1$ (see \\eqref{eq:defn-phi-i-features} and \\eqref{eq:defn-phi-feature-lemma}, as well as $\\phi(z)\\in [-1,1]$ as in \\eqref{eq:def-func-phi}), we obtain \\begin{align*} \\big\\|{\\bm \\phi}_i \\big(f({\\bm x}_i)-{\\bm \\phi}_i^{\\top}{\\bm \\rho}^{\\star} \\big)\\big\\|_{\\infty} &\\le\\|\\bm{\\phi}_i\\|_{\\infty} \\sup_{{\\bm x}\\in \\mathcal{B}} \\big|f({\\bm x})-\\widetilde{\\bm \\phi}({\\bm x})^{\\top}{\\bm \\rho}^{\\star} \\big|\\overset{\\text{(a)}}{\\lesssim} \\varepsilon_{\\mathsf{dis}},\\\\ \\big\\|{\\bm \\phi}_i{\\bm \\phi}_i^{\\top}\\big\\|_{\\infty} &\\le \\|{\\bm \\phi}_i\\|_{\\infty}^2 \\le 1 \\end{align*} with $\\widetilde{\\bm \\phi}({\\bm x}) = [\\phi_1^{\\mathsf{feature}}({\\bm x}),\\cdots, \\phi_n^{\\mathsf{feature}}({\\bm x}),1]^{\\top}$ and $\\varepsilon_{\\mathsf{dis}}$ defined in \\eqref{eq:eps-dis}. Here, (a) follows since \\begin{align} \\sup_{{\\bm x}\\in \\mathcal{B}} \\big|f({\\bm x})-\\widetilde{\\bm \\phi}({\\bm x})^{\\top}{\\bm \\rho}^{\\star}\\big| \\le \\varepsilon_{\\mathsf{dis}} + \\big|f(\\bm{0})-\\rho^{\\star}_{f,0} \\big| = \\varepsilon_{\\mathsf{dis}}, \\end{align} which holds due to \\eqref{eq:f-approx-epsilon-dis} as well as our choice $\\rho^{\\star}_{f,0}=f(\\bm{0})$ (see \\eqref{eq:def-rho-star}). Then applying Hoeffding's inequality shows that, with probability at least $1-O(N^{-12})$, \\begin{align*} \\bigg\\|\\frac1N\\sum_{i=1}^N {\\bm \\phi}_i\\big(f({\\bm x}_i)-{\\bm \\phi}_i^{\\top}{\\bm \\rho}^{\\star}\\big)-\\mathbb{E}\\big[{\\bm \\phi}_{N+1}\\big(f({\\bm x}_{N+1})-{\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}^{\\star}\\big)\\big]\\bigg\\|_{\\infty} &\\lesssim \\sqrt{\\frac{\\log N}{N}}\\varepsilon_{\\mathsf{dis}} ,\\\\ \\bigg\\|\\frac1N\\sum_{i=1}^N {\\bm \\phi}_i{\\bm \\phi}_i^{\\top}-\\mathbb{E}\\big[{\\bm \\phi}_{N+1}{\\bm \\phi}_{N+1}^{\\top}\\big]\\bigg\\|_{\\infty} &\\lesssim \\sqrt{\\frac{\\log N}{N}}. \\end{align*} Substitution into \\eqref{eq:proof-lem-empirical-boundE1-pre} yields \\begin{align} \\mathcal{E}_1\\lesssim \\sqrt{\\frac{\\log N}{N}}\\|{\\bm \\rho}-{\\bm \\rho}^{\\star}\\|_1\\big(\\|{\\bm \\rho}-{\\bm \\rho}^{\\star}\\|_1 + \\varepsilon_{\\mathsf{dis}}\\big) \\end{align} with probability exceeding $1-O(N^{-12})$. \\item With regards to $\\mathcal{E}_2$, taking the Hoeffding inequality in conjunction with \\eqref{eq:proof-lem-empirical-temp-1} tell us that, with probability exceeding $1-O(N^{-12})$, \\begin{align} \\mathcal{E}_2\\lesssim \\sqrt{\\frac{\\log N}{N}}\\varepsilon_{\\mathsf{dis}}^2. \\end{align} \\item We now turn to $\\mathcal{E}_3$. Recalling that $\\|{\\bm \\phi}_i\\|_{\\infty}\\le 1$ and making use of \\eqref{eq:proof-lem-empirical-temp-1}, we apply the triangle inequality to obtain \\begin{align} \\mathcal{E}_3 &\\le 2\\bigg|\\frac{1}{N}\\sum_{i = 1}^N z_i\\big(f({\\bm x}_i) - {\\bm \\phi}_i^{\\top}{\\bm \\rho}^{\\star}\\big)\\bigg| + 2\\bigg|\\frac{1}{N}\\sum_{i = 1}^N z_i{\\bm \\phi}_i^{\\top}({\\bm \\rho}-{\\bm \\rho}^{\\star})\\bigg| \\notag\\\\ &\\le 2\\bigg|\\frac{1}{N}\\sum_{i = 1}^N z_i\\big(f({\\bm x}_i) - {\\bm \\phi}_i^{\\top}{\\bm \\rho}^{\\star}\\big)\\bigg| + 2\\bigg\\|\\frac{1}{N}\\sum_{i = 1}^N z_i{\\bm \\phi}_i\\bigg\\|_{\\infty}\\|{\\bm \\rho}-{\\bm \\rho}^{\\star}\\|_1\\notag\\\\ &\\lesssim \\sqrt{\\frac{\\log N}{N}}\\sigma\\big(\\varepsilon_{\\mathsf{dis}} + \\|{\\bm \\rho}-{\\bm \\rho}^{\\star}\\|_1\\big), \\end{align} where we have used the sub-Gaussian assumption on $\\{z_i\\}$. \\end{itemize} Substituting \\eqref{eq:proof-lem-empirical-boundE1}, \\eqref{eq:proof-lem-empirical-boundE2} and \\eqref{eq:proof-lem-empirical-boundE3} into \\eqref{eq:proof-lem-empirical-1-decomp} reveals that, with probability at least $1-O(N^{-12})$, \\begin{align*} & \\bigg|\\frac{1}{N}\\sum_{i = 1}^N \\big[(y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho})^2 - z_i^2\\big] - \\mathbb{E}\\big[\\big(f({\\bm x}_{N+1}) - {\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}\\big)^2\\big]\\bigg|\\notag\\\\ &\\quad \\lesssim \\sqrt{\\frac{\\log N}{N}}\\left(\\|{\\bm \\rho}-{\\bm \\rho}^{\\star}\\|_1^2 + \\|{\\bm \\rho}-{\\bm \\rho}^{\\star}\\|_1\\varepsilon_{\\mathsf{dis}} + \\varepsilon_{\\mathsf{dis}}^2 + \\sigma\\|{\\bm \\rho}-{\\bm \\rho}^{\\star}\\|_1 + \\sigma\\varepsilon_{\\mathsf{dis}}\\right)\\notag\\\\ &\\quad \\asymp \\sqrt{\\frac{\\log N}{N}}\\left(\\|{\\bm \\rho}-{\\bm \\rho}^{\\star}\\|_1^2 + \\varepsilon_{\\mathsf{dis}}^2 + \\sigma\\|{\\bm \\rho}-{\\bm \\rho}^{\\star}\\|_1 + \\sigma\\varepsilon_{\\mathsf{dis}}\\right) . \\end{align*} Next, we turn to proving \\eqref{eq:lem-empirical-2}. In view of the Hoeffding inequality, with probability at least $1-O(N^{-12})$ we have \\begin{align*} \\frac{1}{N}\\sum_{i = 1}^N \\big[(y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho})^2 - (y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho}^{\\star})^2\\big] &=\\frac{1}{N}\\sum_{i = 1}^N \\big[\\big(f({\\bm x}_i) - {\\bm \\phi}_i^{\\top}{\\bm \\rho}\\big)^2 - \\big(f({\\bm x}_i) - {\\bm \\phi}_i^{\\top}{\\bm \\rho}^{\\star}\\big)^2\\big] + \\frac{2}{N}\\sum_{i = 1}^N z_i{\\bm \\phi}_i^{\\top}({\\bm \\rho}^{\\star}- {\\bm \\rho})\\notag\\\\ &\\ge- \\frac1N\\sum_{i=1}^N\\big(f({\\bm x}_i) - {\\bm \\phi}_i^{\\top}{\\bm \\rho}^{\\star}\\big)^2 - \\bigg\\|\\frac{2}{N}\\sum_{i = 1}^N z_i{\\bm \\phi}_i\\bigg\\|_{\\infty}\\|{\\bm \\rho}^{\\star}- {\\bm \\rho}\\|_1\\notag\\\\ &\\gtrsim -\\varepsilon_{\\mathsf{dis}}^2 -\\sqrt{\\frac{\\log N}{N}}\\sigma\\|{\\bm \\rho}^{\\star}-{\\bm \\rho}\\|_1. \\end{align*} where we have used the following facts (already proven previously): \\begin{align*} |f({\\bm x}_i) - {\\bm \\phi}_i^{\\top}{\\bm \\rho}^{\\star}|\\lesssim \\varepsilon_{\\mathsf{dis}},\\qquad \\bigg\\|\\frac1N\\sum_{i = 1}^N z_i{\\bm \\phi}_i\\bigg\\|_{\\infty}\\lesssim \\sqrt{\\frac{\\log N}{N}}\\sigma. \\end{align*}",
+      "section": "A.2.1 Proof of Lemma 6",
+      "origin": "paper",
+      "proves": "LP39.6"
+    },
+    {
+      "id": "PSP39.5.1",
+      "type": "proof_step",
+      "name": "Decompose the loss discrepancy into $\\mathcal{E}_1,\\mathcal{E}_2,\\mathcal{E}_3$",
+      "statement": "We begin by establishing \\eqref{eq:lem-empirical-1}. Given that $y_i=f(\\bm{x}_i)+z_i$, we make note of the following decomposition: $\\bigg|\\frac{1}{N}\\sum_{i = 1}^N \\big[(y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho})^2 - z_i^2\\big] - \\mathbb{E}\\big[\\big(f({\\bm x}_{N+1}) - {\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}\\big)^2\\big]\\bigg| \\le \\mathcal{E}_1 + \\mathcal{E}_2 + \\mathcal{E}_3$, leaving us with three terms to cope with.",
+      "section": "A.2.1 Proof of Lemma 6",
+      "parent_id": "PP39.5",
+      "step_order": 1,
+      "subclass": "setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.5.2",
+      "type": "proof_step",
+      "name": "Bound $\\mathcal{E}_1$",
+      "statement": "Regarding the term $\\mathcal{E}_1$, we can apply a little algebra together with $\\|{\\bm \\phi}_i\\|_{\\infty}\\le 1$ and Hoeffding's inequality; substitution yields \\begin{align} \\mathcal{E}_1\\lesssim \\sqrt{\\frac{\\log N}{N}}\\|{\\bm \\rho}-{\\bm \\rho}^{\\star}\\|_1\\big(\\|{\\bm \\rho}-{\\bm \\rho}^{\\star}\\|_1 + \\varepsilon_{\\mathsf{dis}}\\big) \\end{align} with probability exceeding $1-O(N^{-12})$.",
+      "section": "A.2.1 Proof of Lemma 6",
+      "parent_id": "PP39.5",
+      "step_order": 2,
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.5.3",
+      "type": "proof_step",
+      "name": "Bound $\\mathcal{E}_2$",
+      "statement": "With regards to $\\mathcal{E}_2$, taking the Hoeffding inequality in conjunction with \\eqref{eq:proof-lem-empirical-temp-1} tell us that, with probability exceeding $1-O(N^{-12})$, \\begin{align} \\mathcal{E}_2\\lesssim \\sqrt{\\frac{\\log N}{N}}\\varepsilon_{\\mathsf{dis}}^2. \\end{align}",
+      "section": "A.2.1 Proof of Lemma 6",
+      "parent_id": "PP39.5",
+      "step_order": 3,
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.5.4",
+      "type": "proof_step",
+      "name": "Bound $\\mathcal{E}_3$",
+      "statement": "We now turn to $\\mathcal{E}_3$. Recalling that $\\|{\\bm \\phi}_i\\|_{\\infty}\\le 1$ and making use of \\eqref{eq:proof-lem-empirical-temp-1}, we apply the triangle inequality to obtain $\\mathcal{E}_3 \\lesssim \\sqrt{\\frac{\\log N}{N}}\\sigma\\big(\\varepsilon_{\\mathsf{dis}} + \\|{\\bm \\rho}-{\\bm \\rho}^{\\star}\\|_1\\big)$, where we have used the sub-Gaussian assumption on $\\{z_i\\}$.",
+      "section": "A.2.1 Proof of Lemma 6",
+      "parent_id": "PP39.5",
+      "step_order": 4,
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.5.5",
+      "type": "proof_step",
+      "name": "Establish the second inequality (lower bound)",
+      "statement": "Next, we turn to proving \\eqref{eq:lem-empirical-2}. In view of the Hoeffding inequality, with probability at least $1-O(N^{-12})$ we have $\\frac{1}{N}\\sum_{i = 1}^N \\big[(y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho})^2 - (y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho}^{\\star})^2\\big] \\gtrsim -\\varepsilon_{\\mathsf{dis}}^2 -\\sqrt{\\frac{\\log N}{N}}\\sigma\\|{\\bm \\rho}^{\\star}-{\\bm \\rho}\\|_1$, where we have used the facts $|f({\\bm x}_i) - {\\bm \\phi}_i^{\\top}{\\bm \\rho}^{\\star}|\\lesssim \\varepsilon_{\\mathsf{dis}}$ and $\\big\\|\\frac1N\\sum_{i = 1}^N z_i{\\bm \\phi}_i\\big\\|_{\\infty}\\lesssim \\sqrt{\\frac{\\log N}{N}}\\sigma$.",
+      "section": "A.2.1 Proof of Lemma 6",
+      "parent_id": "PP39.5",
+      "step_order": 5,
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PP39.6",
+      "type": "proof",
+      "name": "Proof of Lemma 3",
+      "statement": "To begin with, we find it convenient to introduce an auxiliary sequence ${\\bm \\rho}_{t+1}^{\\star}$ obeying ${\\bm \\rho}_0^{\\star} = {\\bm 0}$ and \\begin{align*} {\\bm \\rho}_{t+1}^{\\star} = \\mathsf{ST}_{\\eta\\lambda}\\left({\\bm \\rho}_t^{\\mathsf{proximal}} + \\frac{2\\eta}{N}\\sum_{i=1}^N\\big(y_i-{\\bm \\phi}_i^{\\top}{\\bm \\rho}_t^{\\mathsf{proximal}}\\big){\\bm \\phi}_i\\right), \\end{align*} where $\\bm{\\rho}_{t+1}^{\\star}$ is obtained by running one {\\em exact} proximal gradient iteration from $\\bm{\\rho}_t^{\\mathsf{proximal}}$. Standard convergence analysis for the proximal gradient method (e.g., \\citet{beck2017first}) reveals that \\begin{subequations} \\begin{align} \\ell({\\bm \\rho}_{t+1}^{\\star}) &\\le \\ell({\\bm \\rho}_{t}^{\\mathsf{proximal}}),\\\\ \\ell({\\bm \\rho}_{t+1}^{\\star}) - \\ell({\\bm \\rho}^{\\star}) &\\le n\\big(\\|{\\bm \\rho}_t^{\\mathsf{proximal}} - {\\bm \\rho}^{\\star}\\|_2^2 - \\|{\\bm \\rho}_{t+1}^{\\star} - {\\bm \\rho}^{\\star}\\|_2^2\\big), \\end{align} \\end{subequations} where we recall our choice that $\\eta = 1/(2n)$. For completeness, we shall provide the proof of \\eqref{eq:proof-lem-convergence-PGD-12} towards the end of this subsection. Recognizing that ${\\bm \\rho}_{t}^{\\mathsf{proximal}} = {\\bm \\rho}_t^{\\star} + {\\bm e}_t$ for some additive term $\\bm{e}_t$, we can invoke \\eqref{eq:proof-lem-convergence-PGD-2} to show that \\begin{align} \\ell({\\bm \\rho}_{t+1}^{\\star}) - \\ell({\\bm \\rho}^{\\star}) &\\le n\\big(\\|{\\bm \\rho}_t^{\\mathsf{proximal}} - {\\bm \\rho}^{\\star}\\|_2^2 - \\|{\\bm \\rho}_{t+1}^{\\star} - {\\bm \\rho}^{\\star}\\|_2^2 \\big) \\notag\\\\ &= n\\big(\\|{\\bm \\rho}_t^{\\star} - {\\bm \\rho}^{\\star}\\|_2^2 - \\|{\\bm \\rho}_{t+1}^{\\star} - {\\bm \\rho}^{\\star}\\|_2^2 + \\|{\\bm e}_t\\|_2^2 + 2\\bm{e}_t^{\\top} (\\bm{\\rho}_t^{\\star} - \\bm{\\rho}^{\\star}) \\big) \\notag\\\\ &\\le n\\big(\\|{\\bm \\rho}_t^{\\star} - {\\bm \\rho}^{\\star}\\|_2^2 - \\|{\\bm \\rho}_{t+1}^{\\star} - {\\bm \\rho}^{\\star}\\|_2^2 + \\|{\\bm e}_t\\|_1^2 + 2\\|{\\bm e}_t\\|_1(O(C_{\\mathcal{F}})+\\|{\\bm \\rho}_t^{\\star}\\|_1)\\big)\\notag\\\\ &\\le n\\big(\\|{\\bm \\rho}_t^{\\star} - {\\bm \\rho}^{\\star}\\|_2^2 - \\|{\\bm \\rho}_{t+1}^{\\star} - {\\bm \\rho}^{\\star}\\|_2^2 + \\|{\\bm e}_t\\|_1^2 +2\\|{\\bm e}_t\\|_1(O(C_{\\mathcal{F}})+\\|{\\bm \\rho}_t^{\\mathsf{proximal}}\\|_1 + \\|{\\bm e}_t\\|_1)\\big)\\notag\\\\ &\\le n\\big(\\|{\\bm \\rho}_t^{\\star} - {\\bm \\rho}^{\\star}\\|_2^2 - \\|{\\bm \\rho}_{t+1}^{\\star} - {\\bm \\rho}^{\\star}\\|_2^2 +c_1\\|{\\bm e}_t\\|_1(C_{\\mathcal{F}}+\\|{\\bm \\rho}_t^{\\mathsf{proximal}}\\|_1)\\big) \\end{align} for some universal constant $c_1>0$, where we have used $\\|{\\bm \\rho}^{\\star}\\|_1\\lesssim C_{\\mathcal{F}}$ (cf.~\\eqref{eq:lem-discrete-2} and \\eqref{eq:def-rho-star}) and the assumption $\\|{\\bm e}_t\\|_1\\lesssim C_{\\mathcal{F}}$. Define $$ k_t = \\arg\\min_{1\\le k\\le t} \\ell({\\bm \\rho}_k^{\\star}). $$ Summing \\eqref{eq:proof-lem-convergence-optdiff} over iterations $0$ to $t$, we obtain a telescoping sum and can then deduce that \\begin{align} \\ell({\\bm \\rho}_{k_t}^{\\star}) - \\ell({\\bm \\rho}^{\\star}) &= \\min_{1\\le k\\le t}\\ell({\\bm \\rho}_k^{\\star}) - \\ell({\\bm \\rho}^{\\star})\\notag\\\\ &\\le \\frac{1}{t}\\sum_{k=1}^t \\big( \\ell({\\bm \\rho}_k^{\\star}) - \\ell({\\bm \\rho}^{\\star}) \\big) \\le \\frac{n\\|{\\bm \\rho}_0^{\\mathsf{proximal}} - {\\bm \\rho}^{\\star}\\|_2^2}{t} + c_1n\\max_{1\\le k< t} \\big\\{\\|{\\bm e}_k\\|_1(C_{\\mathcal{F}}+\\|{\\bm \\rho}_k^{\\mathsf{proximal}}\\|_1) \\big\\}\\notag\\\\ &{=} \\frac{n\\|{\\bm \\rho}^{\\star}\\|_1^2}{t} + c_1n\\max_{1\\le k< t}\\big\\{\\|{\\bm e}_k\\|_1(C_{\\mathcal{F}}+\\|{\\bm \\rho}_k^{\\mathsf{proximal}}\\|_1)\\big\\}, \\end{align} where the last line follows since ${\\bm \\rho}_0^{\\mathsf{proximal}} = {\\bm 0}$. In addition, it is seen that \\begin{align} \\ell({\\bm \\rho}_{t+1}^{\\mathsf{proximal}}) - \\ell({\\bm \\rho}_{t+1}^{\\star}) &= \\frac1N\\sum_{i=1}^N\\big(y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho}_{t+1}^{\\mathsf{proximal}}\\big)^2 - \\frac1N\\sum_{i=1}^N\\big(y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho}_{t+1}^{\\star}\\big)^2 + \\lambda\\big\\|{\\bm \\rho}_{t+1}^{\\mathsf{proximal}}\\big\\|_1 - \\lambda\\|{\\bm \\rho}_{t+1}^{\\star}\\|_1\\notag\\\\ &\\le \\frac2N\\sum_{i=1}^N{\\bm \\phi}_i^{\\top}\\big({\\bm \\rho}_{t+1}^{\\star} - {\\bm \\rho}_{t+1}^{\\mathsf{proximal}}\\big)\\big(y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho}_{t+1}^{\\mathsf{proximal}}\\big) + \\lambda\\big\\|{\\bm \\rho}_{t+1}^{\\mathsf{proximal}} - {\\bm \\rho}_{t+1}^{\\star}\\big\\|_1\\notag\\\\ &\\le \\big\\|{\\bm \\rho}_{t+1}^{\\star} - {\\bm \\rho}_{t+1}^{\\mathsf{proximal}}\\big\\|_1\\left(\\left\\|\\frac2N\\sum_{i=1}^N\\big(y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho}_{t+1}^{\\mathsf{proximal}}\\big){\\bm \\phi}_i\\right\\|_{\\infty} + \\lambda\\right)\\notag\\\\ &\\overset{\\text{(a)}}{\\le} c_2\\|{\\bm e}_{t+1}\\|_1 \\big(C_{\\mathcal{F}} + \\sigma + \\|{\\bm \\rho}_{t+1}^{\\mathsf{proximal}}\\|_1 + \\lambda \\big) \\end{align} for some universal constant $c_2>0$, where the first inequality comes from the elementary inequality $(a-b)^{2}-(a-c)^{2}=-(c-b)^{2}+(c-b)(2a-2b)\\leq 2(c-b)(a-b)$ as well as the triangle inequality. Here, (a) follows since \\begin{align*} \\frac1N\\sum_{i=1}^N|y_i|&\\le \\frac1N\\sum_{i=1}^N|f({\\bm x}_i)| + \\frac1N\\sum_{i=1}^N|z_i| \\le \\max_{1\\le i\\le N}|{\\bm \\phi}_i^{\\top}{\\bm \\rho}^{\\star}| + \\varepsilon_{\\mathsf{dis}} + \\left|\\frac1N\\sum_{i=1}^N|z_i| - \\mathbb{E}[|z|]\\right| + \\mathbb{E}[|z|] \\notag\\\\ & \\lesssim \\|\\bm{\\rho}^{\\star}\\|_1 \\max_{1\\leq i\\leq N} \\|\\bm{\\phi}_i\\|_{\\infty} + \\varepsilon_{\\mathsf{dis}} + \\sigma \\lesssim \\|\\bm{\\rho}^{\\star}\\|_1 + \\varepsilon_{\\mathsf{dis}} + C_{\\mathcal{F}} + \\sigma \\asymp C_{\\mathcal{F}} + \\sigma , \\end{align*} a consequence of the sub-Gaussian assumption on $\\{z_i\\}$ and the facts that $\\|\\bm{\\phi}_i\\|_{\\infty}\\leq 1$, $\\|\\bm{\\rho}^{\\star}\\|_1\\lesssim C_{\\mathcal{F}}$, and $\\varepsilon_{\\mathsf{dis}} = C_{\\mathcal{F}}\\left( \\sqrt{\\varepsilon} + (\\frac{\\log|N_\\varepsilon|}{n})^{1/3}\\right) \\lesssim C_{\\mathcal{F}}$ for the assumption that $\\varepsilon\\lesssim \\sqrt{\\log N/N} + n/L $ and $n\\gtrsim \\log|N_{\\varepsilon}|$. Recalling that $\\ell({\\bm \\rho}_{t+1}^{\\star}) \\le \\ell({\\bm \\rho}_t^{\\mathsf{proximal}})$ (see \\eqref{eq:proof-lem-convergence-PGD-1}), we can invoke the bound \\eqref{eq:UB-l-rho-tplus1-tstar} recursively to derive \\begin{align} \\ell({\\bm \\rho}_{t+1}^{\\mathsf{proximal}}) &\\le \\ell({\\bm \\rho}_{t+1}^{\\star}) + c_2\\|{\\bm e}_{t+1}\\|_1\\big(C_{\\mathcal{F}} + \\sigma + \\|{\\bm \\rho}_{t+1}^{\\mathsf{proximal}}\\|_1 + \\lambda\\big)\\notag\\\\ &\\le \\ell({\\bm \\rho}_t^{\\mathsf{proximal}}) + c_2\\|{\\bm e}_{t+1}\\|_1\\big(C_{\\mathcal{F}} + \\sigma + \\|{\\bm \\rho}_{t+1}^{\\mathsf{proximal}}\\|_1 + \\lambda\\big)\\\\ &\\le \\ell({\\bm \\rho}_t^{\\star}) + 2c_2\\max_{t\\le k\\le t+1}\\big\\{\\|{\\bm e}_{k}\\|_1\\big(C_{\\mathcal{F}} + \\sigma + \\|{\\bm \\rho}_{k}^{\\mathsf{proximal}}\\|_1 + \\lambda\\big)\\big\\}\\notag\\\\ &\\le \\ell({\\bm \\rho}_{k_t}^{\\star}) + c_2(t+1-k_t)\\max_{1\\le k\\le t+1}\\big\\{\\|{\\bm e}_{k}\\|_1(C_{\\mathcal{F}} + \\sigma + \\|{\\bm \\rho}_{k}^{\\mathsf{proximal}}\\|_1 + \\lambda)\\big\\}. \\end{align} It then follows from \\eqref{eq:proof-lem-convergence-lrhostar} that \\begin{align*} \\ell({\\bm \\rho}_{t+1}^{\\mathsf{proximal}}) - \\ell({\\bm \\rho}^{\\star}) &\\le \\frac{n\\|{\\bm \\rho}^{\\star}\\|_1^2}{t} + c_1n\\max_{1\\le k\\le t-1} \\big\\{\\|{\\bm e}_k\\|_1(C_{\\mathcal{F}}+\\|{\\bm \\rho}_k^{\\mathsf{proximal}}\\|_1) \\big\\} + c_2(t+1)\\max_{1\\le k\\le t+1}\\big\\{\\|{\\bm e}_{k}\\|_1(C_{\\mathcal{F}} + \\sigma + \\|{\\bm \\rho}_{k}^{\\mathsf{proximal}}\\|_1 + \\lambda)\\big\\}\\notag\\\\ &\\le \\frac{n\\|{\\bm \\rho}^{\\star}\\|_1^2}{t} + c_3(t+n+1)\\max_{1\\le k\\le t+1}\\big\\{\\|{\\bm e}_{k}\\|_1(C_{\\mathcal{F}} + \\sigma + \\|{\\bm \\rho}_{k}^{\\mathsf{proximal}}\\|_1 + \\lambda)\\big\\}, \\end{align*} where $c_3 = \\max\\{c_1,c_2\\}$. Recalling that $\\|{\\bm \\rho}^{\\star}\\|_1\\lesssim C_{\\mathcal{F}}$ (cf.~\\eqref{eq:lem-discrete-2} and \\eqref{eq:def-rho-star}) as well as our parameter choice $T=\\frac{L-1}{2}$, we have thus completed the proof of \\eqref{eq:convergence-rho}. In addition, combining \\eqref{eq:lem-estimator-2} in Lemma~\\ref{lem:estimator} with the above result, we know that for $\\lambda\\gtrsim \\sqrt{\\frac{\\log N}{N}}(C_{\\mathcal{F}} + \\sigma)$, \\begin{align*} \\|{\\bm \\rho}_t^{\\mathsf{proximal}}\\|_1 &\\lesssim C_{\\mathcal{F}} + \\lambda^{-1}\\left(\\frac{n\\|{\\bm \\rho}^{\\star}\\|_1^2}{t-1} + (t+n)\\max_{1\\le k\\le t} \\big\\{ \\|{\\bm e}_{k}\\|_1(C_{\\mathcal{F}} + \\sigma + \\|{\\bm \\rho}_{k}^{\\mathsf{proximal}}\\|_1 + \\lambda)\\big\\}\\right) \\notag\\\\ &\\lesssim C_{\\mathcal{F}} + \\frac{n\\|{\\bm \\rho}^{\\star}\\|_1^2}{t\\lambda} + \\sqrt{N}(t+n)\\max_{1\\le k\\le t}\\|{\\bm e}_{k}\\|_1 + \\frac{t+n}{\\lambda}\\max_{1\\le k\\le t}\\big\\{\\|{\\bm e}_k\\|_1\\|{\\bm \\rho}_k^{\\mathsf{proximal}}\\|_1\\big\\},\\quad t\\ge 2. \\end{align*} For $t=0$ and $t=1$, we have $\\|{\\bm \\rho}_0^{\\mathsf{proximal}} \\|_1=0$, and with probability at least $1-O(N^{-20})$, \\begin{align*} \\|{\\bm \\rho}_1^{\\mathsf{proximal}}\\|_1 &\\le \\sum_{k=1}^n\\max\\left\\{\\left\\|\\frac{2\\eta}{N}\\sum_{i=1}^Ny_i{\\bm \\phi}_i\\right\\|_{\\infty} +|{e}_{1,k}| - \\lambda\\eta ,0\\right\\} \\le \\sum_{k=1}^n\\max\\left\\{\\frac{c}{n}\\left(C_{\\mathcal{F}} + \\sqrt{\\frac{\\log N}{N}}\\sigma\\right) + |{e}_{1,k}| -\\frac{\\lambda}{2n} ,0\\right\\}\\lesssim C_{\\mathcal{F}}+ \\|{\\bm e}_1\\|_1, \\end{align*} provided that $\\lambda\\ge 2c\\sqrt{\\frac{\\log N}{N}}\\sigma$. Here, $e_{1,k}$ denotes the $k$-th element of ${\\bm e}_1$. \\paragraph{Proof of \\eqref{eq:proof-lem-convergence-PGD-1} and \\eqref{eq:proof-lem-convergence-PGD-2}.} Define \\begin{align*} g({\\bm \\rho}) &= \\frac1N \\sum_{i=1}^N(y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho})^2 , \\\\ \\psi({\\bm \\rho}) &= g({\\bm \\rho}_t^{\\mathsf{proximal}}) + ({\\bm \\rho} - {\\bm \\rho}_t^{\\mathsf{proximal}})^{\\top}\\nabla g({\\bm \\rho}_t^{\\mathsf{proximal}}) + n\\|{\\bm \\rho} - {\\bm \\rho}_t^{\\mathsf{proximal}}\\|_2^2 + \\lambda\\|{\\bm \\rho}\\|_1. \\end{align*} Recall that $\\eta = 1/(2n)$. It is self-evident that ${\\bm \\rho}_{t+1}^{\\star} = \\arg\\min_{\\bm{\\rho}} \\psi({\\bm \\rho})$ and $\\psi(\\cdot)$ is $(2n)$-strongly convex. Thus, for any $\\widehat{\\bm \\rho}$, we have \\begin{align} \\psi(\\widehat{\\bm \\rho})\\ge \\psi({\\bm \\rho}_{t+1}^{\\star}) + n\\|{\\bm \\rho}_{t+1}^{\\star} - \\widehat{\\bm \\rho}\\|_2^2. \\end{align} In addition, observe that \\begin{align*} & g({\\bm \\rho}_t^{\\mathsf{proximal}}) + ({\\bm \\rho} - {\\bm \\rho}_t^{\\mathsf{proximal}})^{\\top}\\nabla g({\\bm \\rho}_t^{\\mathsf{proximal}}) + n\\|{\\bm \\rho} - {\\bm \\rho}_t^{\\mathsf{proximal}}\\|_2^2 \\notag\\\\ &\\quad= g({\\bm \\rho}_t^{\\mathsf{proximal}}) - \\frac2N\\sum_{i=1}^N({\\bm \\rho} - {\\bm \\rho}_t^{\\mathsf{proximal}})^{\\top}(y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho}){\\bm \\phi}_i + n\\|{\\bm \\rho} - {\\bm \\rho}_t^{\\mathsf{proximal}}\\|_2^2\\notag\\\\ &\\quad \\ge g({\\bm \\rho}_t^{\\mathsf{proximal}}) - \\frac2N\\sum_{i=1}^N({\\bm \\rho} - {\\bm \\rho}_t^{\\mathsf{proximal}})^{\\top}(y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho}){\\bm \\phi}_i + \\frac1N\\sum_{i=1}^N\\big({\\bm \\phi}_i^{\\top}({\\bm \\rho} - {\\bm \\rho}_t^{\\mathsf{proximal}})\\big)^2=g({\\bm \\rho}), \\end{align*} where the last inequality applies the fact that $\\sum_{i=1}^N\\|{\\bm \\phi}_i\\|_2^2 \\le Nn$. Thus, we can conclude that \\begin{align} \\psi({\\bm \\rho}_{t+1}^{\\star})\\ge g({\\bm \\rho}_{t+1}^{\\star}) + \\lambda \\|{\\bm \\rho}_{t+1}^{\\star}\\|_1 = \\ell ({\\bm \\rho}_{t+1}^{\\star}). \\end{align} Similarly, we can also demonstrate that \\begin{align*} g({\\bm \\rho}_t^{\\mathsf{proximal}}) + ({\\bm \\rho} - {\\bm \\rho}_t^{\\mathsf{proximal}})^{\\top}\\nabla g({\\bm \\rho}_t^{\\mathsf{proximal}}) &= g({\\bm \\rho}_t^{\\mathsf{proximal}}) - \\frac2N\\sum_{i=1}^N({\\bm \\rho} - {\\bm \\rho}_t^{\\mathsf{proximal}})^{\\top}(y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho}){\\bm \\phi}_i\\notag\\\\ &= g({\\bm \\rho}) - \\frac1N\\sum_{i=1}^N\\big({\\bm \\phi}_i^{\\top}({\\bm \\rho} - {\\bm \\rho}_t^{\\mathsf{proximal}})\\big)^2 \\le g({\\bm \\rho}), \\end{align*} and as a consequence, \\begin{align} \\psi(\\widehat{\\bm \\rho}) \\le g(\\widehat{\\bm \\rho}) + n\\|\\widehat{\\bm \\rho} - {\\bm \\rho}_t^{\\mathsf{proximal}}\\|_2^2 + \\lambda\\|\\widehat{\\bm \\rho}\\|_1 = \\ell(\\widehat{\\bm \\rho}) + n\\|\\widehat{\\bm \\rho} - {\\bm \\rho}_t^{\\mathsf{proximal}}\\|_2^2. \\end{align} Substituting \\eqref{eq:proof-eq-PGD-temp-2} and \\eqref{eq:proof-eq-PGD-temp-3} into \\eqref{eq:proof-eq-PGD-temp-1}, we see that for any $\\widehat{\\bm \\rho}$, \\begin{align*} \\ell(\\widehat{\\bm \\rho}) \\ge \\ell({\\bm \\rho}_{t+1}^{\\star}) + n\\big(\\|\\widehat{\\bm \\rho} - {\\bm \\rho}_{t+1}^{\\star}\\|_2^2 - \\|\\widehat{\\bm \\rho} - {\\bm \\rho}_t^{\\mathsf{proximal}}\\|_2^2\\big). \\end{align*} Taking $\\widehat{\\bm \\rho} = {\\bm \\rho}_t^{\\mathsf{proximal}}$ yields \\begin{align*} \\ell({\\bm \\rho}_t^{\\mathsf{proximal}}) \\ge \\ell({\\bm \\rho}_{t+1}^{\\star}) + n\\|{\\bm \\rho}_t^{\\mathsf{proximal}} - {\\bm \\rho}_{t+1}^{\\star}\\|_2^2 \\ge \\ell({\\bm \\rho}_{t+1}^{\\star}), \\end{align*} which completes the proof of \\eqref{eq:proof-lem-convergence-PGD-1}. In addition, taking $\\widehat{\\bm{\\rho}}=\\bm{\\rho}^{\\star}$ gives \\begin{align*} \\ell({\\bm \\rho}^{\\star}) \\ge \\ell({\\bm \\rho}_{t+1}^{\\star}) + n\\big(\\|{\\bm \\rho}^{\\star} - {\\bm \\rho}_{t+1}^{\\star}\\|_2^2 -\\|{\\bm \\rho}^{\\star} - {\\bm \\rho}_t^{\\mathsf{proximal}}\\|_2^2\\big), \\end{align*} thus concluding the proof of \\eqref{eq:proof-lem-convergence-PGD-2}.",
+      "section": "A.3 Proof of Lemma 3",
+      "origin": "paper",
+      "proves": "LP39.3"
+    },
+    {
+      "id": "PSP39.6.1",
+      "type": "proof_step",
+      "name": "Introduce exact auxiliary sequence and invoke PGD inequalities",
+      "statement": "To begin with, we find it convenient to introduce an auxiliary sequence ${\\bm \\rho}_{t+1}^{\\star}$ obeying ${\\bm \\rho}_0^{\\star} = {\\bm 0}$ and ${\\bm \\rho}_{t+1}^{\\star} = \\mathsf{ST}_{\\eta\\lambda}\\left({\\bm \\rho}_t^{\\mathsf{proximal}} + \\frac{2\\eta}{N}\\sum_{i=1}^N\\big(y_i-{\\bm \\phi}_i^{\\top}{\\bm \\rho}_t^{\\mathsf{proximal}}\\big){\\bm \\phi}_i\\right)$. Standard convergence analysis for the proximal gradient method (e.g., \\citet{beck2017first}) reveals that $\\ell({\\bm \\rho}_{t+1}^{\\star}) \\le \\ell({\\bm \\rho}_{t}^{\\mathsf{proximal}})$ and $\\ell({\\bm \\rho}_{t+1}^{\\star}) - \\ell({\\bm \\rho}^{\\star}) \\le n\\big(\\|{\\bm \\rho}_t^{\\mathsf{proximal}} - {\\bm \\rho}^{\\star}\\|_2^2 - \\|{\\bm \\rho}_{t+1}^{\\star} - {\\bm \\rho}^{\\star}\\|_2^2\\big)$.",
+      "section": "A.3 Proof of Lemma 3",
+      "parent_id": "PP39.6",
+      "step_order": 1,
+      "subclass": "setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.6.2",
+      "type": "proof_step",
+      "name": "Telescope the optimality-gap recursion",
+      "statement": "Recognizing that ${\\bm \\rho}_{t}^{\\mathsf{proximal}} = {\\bm \\rho}_t^{\\star} + {\\bm e}_t$, we invoke the PGD bound to show $\\ell({\\bm \\rho}_{t+1}^{\\star}) - \\ell({\\bm \\rho}^{\\star}) \\le n\\big(\\|{\\bm \\rho}_t^{\\star} - {\\bm \\rho}^{\\star}\\|_2^2 - \\|{\\bm \\rho}_{t+1}^{\\star} - {\\bm \\rho}^{\\star}\\|_2^2 +c_1\\|{\\bm e}_t\\|_1(C_{\\mathcal{F}}+\\|{\\bm \\rho}_t^{\\mathsf{proximal}}\\|_1)\\big)$. Summing over iterations yields the telescoping bound $\\ell({\\bm \\rho}_{k_t}^{\\star}) - \\ell({\\bm \\rho}^{\\star}) \\le \\frac{n\\|{\\bm \\rho}^{\\star}\\|_1^2}{t} + c_1n\\max_{1\\le k< t}\\big\\{\\|{\\bm e}_k\\|_1(C_{\\mathcal{F}}+\\|{\\bm \\rho}_k^{\\mathsf{proximal}}\\|_1)\\big\\}$.",
+      "section": "A.3 Proof of Lemma 3",
+      "parent_id": "PP39.6",
+      "step_order": 2,
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.6.3",
+      "type": "proof_step",
+      "name": "Bound the inexact iterate loss $\\ell({\\bm \\rho}_{t+1}^{\\mathsf{proximal}})$",
+      "statement": "In addition, it is seen that $\\ell({\\bm \\rho}_{t+1}^{\\mathsf{proximal}}) - \\ell({\\bm \\rho}_{t+1}^{\\star}) \\overset{\\text{(a)}}{\\le} c_2\\|{\\bm e}_{t+1}\\|_1 \\big(C_{\\mathcal{F}} + \\sigma + \\|{\\bm \\rho}_{t+1}^{\\mathsf{proximal}}\\|_1 + \\lambda \\big)$, where (a) uses $\\frac1N\\sum_{i=1}^N|y_i| \\asymp C_{\\mathcal{F}} + \\sigma$. Applying this recursively gives $\\ell({\\bm \\rho}_{t+1}^{\\mathsf{proximal}}) - \\ell({\\bm \\rho}^{\\star}) \\le \\frac{n\\|{\\bm \\rho}^{\\star}\\|_1^2}{t} + c_3(t+n+1)\\max_{1\\le k\\le t+1}\\big\\{\\|{\\bm e}_{k}\\|_1(C_{\\mathcal{F}} + \\sigma + \\|{\\bm \\rho}_{k}^{\\mathsf{proximal}}\\|_1 + \\lambda)\\big\\}$, completing the proof of \\eqref{eq:convergence-rho}.",
+      "section": "A.3 Proof of Lemma 3",
+      "parent_id": "PP39.6",
+      "step_order": 3,
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.6.4",
+      "type": "proof_step",
+      "name": "Bound the $\\ell_1$ norm of the iterates",
+      "statement": "Combining \\eqref{eq:lem-estimator-2} in Lemma~\\ref{lem:estimator} with the above result, for $\\lambda\\gtrsim \\sqrt{\\frac{\\log N}{N}}(C_{\\mathcal{F}} + \\sigma)$, $\\|{\\bm \\rho}_t^{\\mathsf{proximal}}\\|_1 \\lesssim C_{\\mathcal{F}} + \\frac{n\\|{\\bm \\rho}^{\\star}\\|_1^2}{t\\lambda} + \\sqrt{N}(t+n)\\max_{1\\le k\\le t}\\|{\\bm e}_{k}\\|_1 + \\frac{t+n}{\\lambda}\\max_{1\\le k\\le t}\\big\\{\\|{\\bm e}_k\\|_1\\|{\\bm \\rho}_k^{\\mathsf{proximal}}\\|_1\\big\\}$ for $t\\ge 2$; and $\\|{\\bm \\rho}_1^{\\mathsf{proximal}}\\|_1 \\lesssim C_{\\mathcal{F}}+ \\|{\\bm e}_1\\|_1$.",
+      "section": "A.3 Proof of Lemma 3",
+      "parent_id": "PP39.6",
+      "step_order": 4,
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.6.5",
+      "type": "proof_step",
+      "name": "Prove the exact proximal-gradient inequalities",
+      "statement": "\\paragraph{Proof of \\eqref{eq:proof-lem-convergence-PGD-1} and \\eqref{eq:proof-lem-convergence-PGD-2}.} Define $g({\\bm \\rho}) = \\frac1N \\sum_{i=1}^N(y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho})^2$ and $\\psi({\\bm \\rho}) = g({\\bm \\rho}_t^{\\mathsf{proximal}}) + ({\\bm \\rho} - {\\bm \\rho}_t^{\\mathsf{proximal}})^{\\top}\\nabla g({\\bm \\rho}_t^{\\mathsf{proximal}}) + n\\|{\\bm \\rho} - {\\bm \\rho}_t^{\\mathsf{proximal}}\\|_2^2 + \\lambda\\|{\\bm \\rho}\\|_1$. Since ${\\bm \\rho}_{t+1}^{\\star} = \\arg\\min_{\\bm{\\rho}} \\psi({\\bm \\rho})$ and $\\psi(\\cdot)$ is $(2n)$-strongly convex, for any $\\widehat{\\bm \\rho}$, $\\ell(\\widehat{\\bm \\rho}) \\ge \\ell({\\bm \\rho}_{t+1}^{\\star}) + n\\big(\\|\\widehat{\\bm \\rho} - {\\bm \\rho}_{t+1}^{\\star}\\|_2^2 - \\|\\widehat{\\bm \\rho} - {\\bm \\rho}_t^{\\mathsf{proximal}}\\|_2^2\\big)$. Taking $\\widehat{\\bm \\rho} = {\\bm \\rho}_t^{\\mathsf{proximal}}$ proves \\eqref{eq:proof-lem-convergence-PGD-1}, and $\\widehat{\\bm{\\rho}}=\\bm{\\rho}^{\\star}$ proves \\eqref{eq:proof-lem-convergence-PGD-2}.",
+      "section": "A.3 Proof of Lemma 3",
+      "parent_id": "PP39.6",
+      "step_order": 5,
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PP39.7",
+      "type": "proof",
+      "name": "Proof of Lemma 4",
+      "statement": "In this proof, we first show how to construct the desirable transformer, followed by an analysis of this construction. In particular, we would like to show that the transformer as illustrated in Figure~\\ref{fig:transformer}, with parameters specified below, satisfy properties i) and ii) in Lemma \\ref{lem:opt}. For ease of presentation, we denote \\begin{align} \\bm{H}^{(l)} & =\\MLP_{\\bm{\\Theta}_{\\mlp}^{(l)}}\\big(\\bm{H}^{(l-1/2)}\\big), \\quad \\bm{H}^{(l-1/2)} = \\Att_{\\bm{\\Theta}_{\\att}^{(l)}}\\big(\\bm{H}^{(l-1)}\\big),\\qquad l = 1, \\dots, L. \\end{align} Throughout this subsection, all components in ${\\bm H}^{(l-1/2)}$ share the same superscript $l-1/2$ (e.g., ${\\bm \\phi}_j^{(l-1/2)}$, $\\lambda_j^{(l-1/2)}$), which help distinguish between different layers. \\subsubsection{High-level structure} The overall structure of the transformer is shown in Figure~\\ref{fig:transformer}. \\begin{itemize} \\item The architecture begins with an attention layer \\textbf{Attn0} and a feedforward layer \\textbf{FF0}, which serve to initialize certain variables (particularly the features identified in Lemma~\\ref{lem:discrete}) based on the in-context inputs $\\{{\\bm x}_i\\}$. \\item The remaining $(L-1)$ layers are divided into $(L-1)/2$ blocks with identical structure and parameters. More concretely, each block consists of two attention layers and two feed-forward layers, $(\\textbf{Attn1}, \\textbf{FF1})$ and $(\\textbf{Attn2}, \\textbf{FF2})$, which are designed to perform inexact proximal gradient iterations and update the corresponding prediction. \\end{itemize} In the sequel, we shall first describe what update rule each layer is designed to implement, followed by detailed explanation about how they can be realized using the transformer architecture. \\subsubsection{Intended updates for each layer} Our transformer construction comprises multiple layers (as illustrated in Figure~\\ref{fig:transformer}) designed to emulate the iterations of the inexact proximal gradient method \\eqref{eq:update-rule-PGD}. Let us begin by describing the desired update to be performed at each layer, abstracting away the specifics of the transformer implementation. \\begin{itemize} \\item \\textbf{FF0}: This feed-forward layer intends to update the components ${\\bm \\phi}_j$ and $\\lambda$ as follows: \\begin{subequations} \\begin{align} {\\bm \\phi}_j^{(l)} &= {\\bm \\phi}_j^{(l-1/2)} + \\big[\\phi_1^{\\mathsf{feature}}\\big({\\bm x}_j^{(l-1/2)}\\big),\\cdots,\\phi_n^{\\mathsf{feature}}\\big({\\bm x}_j^{(l-1/2)}\\big), 1 \\big]^{\\top},\\quad 1\\le j\\le N+1; \\\\ \\lambda^{(l)} &=c_1\\Big(\\frac{\\log N}{N}\\Big)^{1/6} C_{\\mathcal{F}}^{-1/3}\\widehat{\\varepsilon}^{2/3} + c_1\\sqrt{\\frac{\\log N}{N}}\\Big(C_{\\mathcal{F}} + \\sigma\\Big) + c_1C_{\\mathcal{F}}^{-1}\\varepsilon_{\\mathsf{dis}}^2\\eqqcolon \\overline{\\lambda}, \\end{align} \\end{subequations} where $\\phi_i^{\\mathsf{feature}}({\\bm x})$ is defined in \\eqref{eq:def-func-phi}, $\\widehat{\\varepsilon}$ is defined in Lemma \\ref{lem:opt} (see \\eqref{eq:def-hat-eps}), and $c_1>0$ is some large enough universal constant. \\item \\textbf{Attn1}: In this attention layer, we attempt to implement the following updates: \\begin{align} {\\bm \\rho}^{(l-1/2)} &={\\bm \\rho}^{(l-1)} + \\frac{2\\eta}{N}\\sum_{i = 1}^{N} {\\bm \\phi}_i^{(l-1)}\\Big\\{y_i^{(l-1)} - \\big({\\bm \\phi}_i^{(l-1)}\\big)^{\\top}{\\bm \\rho}^{(l-1)}\\Big\\} + {\\bm e}^{(l-1)} \\end{align} for some residual (or error) term $\\bm{e}^{(l-1)}$, corresponding to an iteration of gradient descent in \\eqref{eq:update-rule-PGD-prox} before the proximal operator is applied. This residual term $\\bm{e}^{(l-1)}$ shall be bounded shortly. \\item \\textbf{FF1}: This feed-forward layer is designed to implement the following updates: \\begin{subequations} \\begin{align} {\\bm \\rho}^{(l)} &=\\mathsf{ST}_{\\eta\\lambda^{(l-1/2)}}\\big({\\bm \\rho}^{(l-1/2)}\\big), \\\\ \\widehat{y}^{(l)} &=0, \\end{align} \\end{subequations} which applies the proximal operator (i.e., soft-thresholding) to the output in \\eqref{eq:Attn1-true-update-e}. As a result, this in conjunction with \\eqref{eq:Attn1-true-update-e} in $\\bf{Attn1}$ completes one (inexact) proximal gradient iteration \\eqref{eq:update-rule-PGD-prox}. \\item \\textbf{Attn2}: This attention layer intends to update the prediction $\\widehat{y}$ based on $\\bm{\\rho}^{(l)}$, namely, \\begin{align} \\widehat{y}^{(l+1/2)} &= \\big({\\bm \\phi}_{N+1}^{(l)}\\big)^{\\top}{\\bm \\rho}^{(l)} + \\widetilde{e}^{(l)}, \\end{align} where $\\widetilde{e}^{(l)}$ is some residual term that will be bounded momentarily. \\item \\textbf{Attn0, FF2}: These layers do not update the hidden representation ${\\bm H}^{(l)}$; instead, they are included to ensure consistency with the transformer architecture defined in \\eqref{eq:transformer-structure-defn}. \\end{itemize} On a high level, this transformer implements the inexact proximal gradient method in \\eqref{eq:update-rule-PGD}. In particular, after passing the input through \\textbf{Attn0} and \\textbf{FF0}, we obtain \\begin{align*} {\\bm \\phi}_j^{(1)} = {\\bm \\phi}_j,\\quad \\lambda^{(1)} = \\overline{\\lambda},\\quad 1\\le j\\le N+1. \\end{align*} The remaining layers then proceed as follows: \\begin{itemize} \\item All parameters except ${\\bm \\rho}^{(l)}$ and $\\widehat{y}^{(l)}$ will stay fixed throughout the remaining layers, i.e., \\begin{align} {\\bm \\phi}_j^{(l)} = {\\bm \\phi}_j,\\quad \\lambda^{(l)} = \\lambda^{(l+1/2)} = \\overline{\\lambda},\\quad y_j^{(l)} = y_j^{(0)} = y_j,\\quad w_j^{(l)} = w_j^{(0)},\\quad \\forall 1\\le l\\le L,~ 1\\le j\\le N+1. \\end{align} where $w_j^{(0)} = 1$ for $1\\le j\\le N$ and $w_{N+1}^{(0)} = 0$, as previously defined in \\eqref{eq:edf-initial-yw} and \\eqref{eq:edf-initial-wrholamyhat}. \\item The components ${\\bm \\rho}^{(l)}$ are updated in a way that resembles \\eqref{eq:update-rule-PGD}, namely, \\begin{align} {\\bm \\rho}^{(2t+1)} = {\\bm \\rho}_t^{\\mathsf{proximal}}\\quad \\text{for }t\\ge 1 \\qquad \\text{and}\\qquad {\\bm \\rho}^{(0)} = {\\bm \\rho}_0^{\\mathsf{proximal}} = {\\bm 0},\\quad \\lambda = \\overline{\\lambda}. \\end{align} \\item The components $\\widehat{y}^{(l)}$ are computed to approximate the prediction of $f({\\bm x}_{N+1})$, namely, $$ \\widehat{y}^{(2t)} = 0,\\quad \\widehat{y}^{(2t+1)}\\approx {\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}_t^{\\mathsf{proximal}}\\quad \\text{for }t\\ge 1. $$ \\end{itemize} \\subsubsection{Parameter design in our transformer construction} Next, we explain how the transformer architecture can be designed to implement the updates described above for each layer. \\begin{itemize} \\item \\textbf{FF0}: Note that the function $\\phi(z)$ (cf.~\\eqref{eq:def-func-phi}) is intimately connected with the ReLU function $\\sigma_{\\mathsf{ff}}(\\cdot)$ as: \\begin{align} \\phi(z) = \\sigma_{\\mathsf{ff}}(z+1/2) - \\sigma_{\\mathsf{ff}}(z-1/2). \\end{align} This allows us to decompose \\eqref{eq:def-func-phi} as \\begin{align} \\phi_i^{\\mathsf{feature}}({\\bm x}) &= \\sigma_{\\mathsf{ff}}\\left(\\tau_{\\mathsf{ff}}\\left(\\frac{{\\bm \\omega}_i^{\\top}{\\bm x}}{\\|{\\bm \\omega}_i\\|_2} - t_i\\right)+\\frac12\\right) - \\sigma_{\\mathsf{ff}}\\left(\\tau_{\\mathsf{ff}}\\left(\\frac{{\\bm \\omega}_i^{\\top}{\\bm x}}{\\|{\\bm \\omega}_i\\|_2} - t_i\\right)-\\frac12\\right) ,\\quad 1\\le i\\le n, \\end{align} where we take \\begin{align} \\tau_{\\mathsf{ff}} = 1/\\sqrt{\\varepsilon}. \\end{align} Moreover, the last entry in ${\\bm \\phi}_j^{(l)}$ can be expressed by $1 = \\sigma_{\\mathsf{ff}}(1) - \\sigma_{\\mathsf{ff}}(-1)$. In order for this layer to carry out \\eqref{eq:update-rule-FF0-effective}, we take the parameter matrices ${\\bm W}^{(l)}\\in\\mathbb{R}^{D\\times D}$ and ${\\bm U}^{(l)}\\in\\mathbb{R}^{D\\times D}$ (see \\eqref{eq:defn-FF-MLP-layer}) to satisfy \\begin{subequations} \\begin{align} {\\bm W}_{1:2n+2,\\,1:d+1}^{(l)} &= \\left[ \\begin{array}{cc} \\|{\\bm \\omega}_1\\|_2^{-1}\\tau_\\mathsf{ff}{\\bm \\omega}_1^{\\top} & -t_1\\tau_\\mathsf{ff} + \\frac12\\\\ \\vdots & \\vdots \\\\ \\|{\\bm \\omega}_n\\|_2^{-1}\\tau_\\mathsf{ff}{\\bm \\omega}_n^{\\top} & -t_n\\tau_\\mathsf{ff} + \\frac12\\\\ {\\bm 0}^{\\top} & 1\\\\ \\|{\\bm \\omega}_1\\|_2^{-1}\\tau_\\mathsf{ff}{\\bm \\omega}_1^{\\top} & -t_1\\tau_\\mathsf{ff} - \\frac12\\\\ \\vdots & \\vdots \\\\ \\|{\\bm \\omega}_n\\|_2^{-1}\\tau_\\mathsf{ff}{\\bm \\omega}_n^{\\top} & -t_n\\tau_\\mathsf{ff} - \\frac12\\\\ {\\bm 0}^{\\top} & -1 \\end{array} \\right], \\qquad {\\bm W}_{2n+3,:}^{(l)} = \\overline{\\lambda} {\\bm u}_{d+1}^{\\top},\\\\ {\\bm U}^{(l)}_{d+4:d+n+4,\\,1:2n+2} &= [{\\bm I}_{n+1}, -{\\bm I}_{n+1}],\\qquad {\\bm U}_{d+2n+6,:}^{(l)} = {\\bm u}_{2n+3}^{\\top}, \\end{align} \\end{subequations} with all remaining entries set to zero. Here, $\\overline{\\lambda}$ has been defined in \\eqref{eq:defn-lambda-bar-FF0}, and ${\\bm W}_{i:j,\\,r:h}$ denotes a submatrix of ${\\bm W}$ consisting of rows $i$ through $j$ and columns $r$ through $h$, $\\bm{W}_{i,:}$ represents the $i$-th row of $\\bm{W}$, whereas ${\\bm u}_i\\in\\mathbb{R}^{D}$ stands for the $i$-th standard basis vector. \\item \\textbf{Attn1}: First, we discuss how the logistic function $\\sigma_{\\mathsf{attn}}(\\cdot)$ defined in \\eqref{eq:sigma-attn-ff-choice} can help us implement \\eqref{eq:Attn1-true-update-e}. Note that $\\sigma_{\\mathsf{attn}}'(0) = 1/4$ and observe the Taylor expansion $\\sigma_{\\mathsf{attn}}(\\tau^{-1}x) = \\sigma_{\\mathsf{attn}}(0) + \\frac{x}{4\\tau} + O\\big(\\frac{x^2}{\\tau^2}\\big),$ which allow us to express \\begin{align} x\\approx 4\\tau\\big(\\sigma_{\\mathsf{attn}}(\\tau^{-1}x) - \\sigma_{\\mathsf{attn}}(0)\\big). \\end{align} In light of this observation, we propose to carry out~\\eqref{eq:Attn1-true-update-e} via the following updates that exploit the logistic function: \\begin{align} {\\bm \\rho}^{(l-1/2)} &={\\bm \\rho}^{(l-1)} + \\frac{2}{N}\\sum_{i=1}^{N+1}4\\tau\\Big(\\sigma_{\\mathsf{attn}}\\big(\\tau^{-1}\\eta y_i^{(l-1)}\\big) - \\sigma_{\\mathsf{attn}}(0)\\Big){\\bm \\phi}_i^{(l-1)} \\notag\\\\ &\\quad - \\frac{2}{N}\\sum_{i=1}^{N+1}4\\tau\\left(\\sigma_{\\mathsf{attn}}\\left(\\tau^{-1}\\eta \\big({\\bm \\phi}_i^{(l-1)}\\big)^{\\top}{\\bm \\rho}^{(l-1)}\\right) - \\sigma_{\\mathsf{attn}}(0)\\right){\\bm \\phi}_i^{(l-1)} \\notag\\\\ &\\quad + \\frac{2}{N}\\sum_{i=1}^{N+1}4\\tau\\left(\\sigma_{\\mathsf{attn}}\\big(\\tau^{-1}\\eta (1-{w}_i^{(l-1)})\\widehat{y}^{(l-1)}\\big) - \\sigma_{\\mathsf{attn}}(0)\\right){\\bm \\phi}_i^{(l-1)}, \\end{align} where the error vector $\\bm{e}^{(l-1)}$ can be straightforwardly determined by checking the difference between \\eqref{eq:Attn1-true-update-e} and \\eqref{eq:Attn1-true-update-no-e}. Next, to fully realize \\eqref{eq:Attn1-true-update-no-e} via a attention layer, we use 4 attention heads in this layer and take the parameter matrices ${\\bm V}_m^{(l)}$, ${\\bm Q}_m^{(l)}$, and ${\\bm K}_m^{(l)}\\in\\mathbb{R}^{D\\times D}$ for $m = 1,2,3,4$ to be: \\begin{table}[H] \\begin{tabular}{ l l l } ${\\bm V}_{1,(d+n+5:d+2n+5,\\,d+4:d+n+4)}^{(l)} = 8\\tau {\\bm I}_{n+1}$ & ${\\bm Q}_{1,(1,:)}^{(l)} = \\tau^{-1}\\eta {\\bm u}_{d+2}^{\\top}$ & ${\\bm K}_{1,(1,:)}^{(l)} ={\\bm u}_{d+1}^{\\top}$\\\\ ${\\bm V}_2^{(l)} = -{\\bm V}_1^{(l)}$ & $ {\\bm Q}_{2,(1:n+1,\\,d+4:d+n+4)}^{(l)} = \\tau^{-1}\\eta {\\bm I}_{n+1}$ & $ {\\bm K}_{2,(1:n+1,\\,d+n+5:d+2n+5)}^{(l)} = {\\bm I}_{n+1}$\\\\ ${\\bm V}_3^{(l)} = {\\bm V}_1^{(l)}$ & $ {\\bm Q}_{3,(1,:)}^{(l)} = \\tau^{-1}\\eta({\\bm u}_{d+1} - {\\bm u}_{d+3})^{\\top}$ & ${\\bm K}_{3,(1,:)} = {\\bm u}_{d+2n+7}^{\\top}$ \\end{tabular} \\end{table} with all remaining entries set to zero. Here, ${\\bm V}_{m,(i:j,\\,r:h)}^{(l)}$ denotes a submatrix of ${\\bm V}_m^{(l)}$ comprising rows $i$ through $j$ and columns $r$ through $h$, ${\\bm V}_{m,(i,\\,:)}^{(l)}$ denotes the $i$-th row of ${\\bm V}_m^{(l)}$, and ${\\bm u}_i\\in\\mathbb{R}^{D}$ represents the $i$-th standard basis vector. Before proceeding, let us bound the residual vector ${\\bm e}^{(l-1)}$ in \\eqref{eq:Attn1-true-update-e}. Observing that $\\sigma_{\\mathsf{attn}}'(0) = 1/4$ and $|\\sigma_{\\mathsf{attn}}''(x)|=|{\\rm e}^x - {\\rm e}^{-x}|/({\\rm e}^{x/2} + {\\rm e}^{-x/2})^4 < 0.5$ for all $x$, we can show that \\begin{align} \\Big|x - 4\\tau\\big[\\sigma_{\\mathsf{attn}}(\\tau^{-1} x) - \\sigma_{\\mathsf{attn}}(0)\\big]\\Big| \\le 0.5\\times 4\\tau \\tau^{-2} |x|^2 = 2\\tau^{-1}|x|^2,\\qquad \\forall x\\in\\mathbb{R}. \\end{align} Taking this collectively with \\eqref{eq:Attn1-true-update-no-e} and the choice that $1-w_i\\neq 0$ only for $i=N+1$, we arrive at \\begin{align} \\|{\\bm e}^{(l)}\\|_{\\infty} &\\le \\frac{4\\eta^2}{N\\tau}\\sum_{i=1}^{N}\\big(y_i^{(l)}\\big)^2 + \\frac{4\\eta^2}{N\\tau}\\sum_{i=1}^{N+1}\\left(\\big({\\bm \\phi}_i^{(l)}\\big)^{\\top}{\\bm \\rho}^{(l)}\\right)^2 + \\frac{4\\eta^2\\left(\\widehat{y}^{(l)}\\right)^2}{N\\tau} + \\frac{2\\eta}{N}\\left|\\widehat{y}^{(l)} - \\big({\\bm \\phi}_{N+1}^{(l)}\\big)^{\\top}{\\bm \\rho}^{(l)}\\right|\\notag\\\\ &\\lesssim \\frac{\\eta^2}{\\tau}\\left(C_{\\mathcal{F}}^2 + \\sigma^2 + \\|{\\bm \\rho}^{(l)}\\|_1^2 + \\big(\\widehat{y}^{(l)}\\big)^2\\right)+ \\frac{2\\eta}{N}\\left|\\widehat{y}^{(l)} - \\big({\\bm \\phi}_{N+1}^{(l)}\\big)^{\\top}{\\bm \\rho}^{(l)}\\right|, \\end{align} where we have used the facts that \\begin{align*} |y_i^{(l)}| &= |y_i|\\le |f({\\bm x}_i)| + |z_i|\\le|{\\bm \\phi}_i^{\\top}{\\bm \\rho}^{\\star}| + \\varepsilon_{\\mathsf{dis}} + |z_1|\\lesssim \\|{\\bm \\rho}^{\\star}\\|_1 + C_{\\mathcal{F}} + \\sigma \\asymp C_{\\mathcal{F}} + \\sigma, \\\\ |\\big({\\bm \\phi}_{i}^{(l)}\\big)^{\\top}{\\bm \\rho}^{(l)}| &= |{\\bm \\phi}_{i}^{\\top}{\\bm \\rho}^{(l)}|\\le \\|{\\bm \\phi}_{i}\\|_{\\infty}\\|{\\bm \\rho}^{(l)}\\|_1\\le \\|{\\bm \\rho}^{(l)}\\|_1. \\end{align*} \\item \\textbf{FF1}: In order to implement the soft-thresholding operator using the feed-forward layer, we first need to inspect the connection between the soft-thresholding operator and the ReLU function $\\sigma_{\\mathsf{ff}}(\\cdot)$. Towards this end, observe that \\begin{align} \\mathsf{ST}_{\\eta\\lambda}(z) &= z +\\eta\\lambda - (z+\\eta\\lambda)\\ind(z+\\eta\\lambda>0) + (z-\\eta\\lambda)\\ind(z-\\eta\\lambda>0) \\notag\\\\ &=z +\\sigma_{\\mathsf{ff}}(\\eta\\lambda) - \\sigma_{\\mathsf{ff}}(z+\\eta\\lambda) + \\sigma_{\\mathsf{ff}}(z-\\eta\\lambda). \\end{align} Consequently, we propose to design a feed-forward layer capable of implementing the following updates (in an attempt to carry out the proposed update \\eqref{eq:equiv-update-FF1}): \\begin{align*} {\\bm \\rho}^{(l)} &= {\\bm \\rho}^{(l-1/2)} +\\sigma_{\\mathsf{ff}}(\\eta\\lambda^{(l-1/2)})- \\sigma_{\\mathsf{ff}}({\\bm \\rho}^{(l-1/2)} + \\eta\\lambda^{(l-1/2)}) + \\sigma_{\\mathsf{ff}}\\big({\\bm \\rho}^{(l-1/2)} - \\eta\\lambda^{(l-1/2)}\\big) = \\mathsf{ST}_{\\eta\\lambda^{(l-1/2)}}\\big({\\bm \\rho}^{(l-1/2)}\\big),\\notag\\\\ \\widehat{y}^{(l)} &= \\widehat{y}^{(l-1/2)} -\\sigma_{\\mathsf{ff}}\\big(\\widehat{y}^{(l-1/2)}\\big) + \\sigma_{\\mathsf{ff}}\\big(-\\widehat{y}^{(l-1/2)}\\big)= 0. \\end{align*} To do so, it suffices to set ${\\bm W}^{(l)}\\in\\mathbb{R}^{D\\times D}$, ${\\bm U}^{(l)}\\in\\mathbb{R}^{D\\times D}$ to be \\begin{subequations} \\begin{align} {\\bm W}^{(l)}_{1:2n+5,\\,:} &= \\left[ \\begin{array}{cccc} {\\bm 0}_{(n+1)\\times (d+n+4)} &{\\bm I}_{n+1} & \\eta{\\bm 1} &{\\bm 0}\\\\ {\\bm 0}_{(n+1)\\times (d+n+4)}& {\\bm I}_{n+1}& -\\eta{\\bm 1}& {\\bm 0}\\\\ & \\eta{\\bm u}_{d+2n+6}^{\\top} && \\\\ & {\\bm u}_{d+2n+7}^{\\top} && \\\\ & -{\\bm u}_{d+2n+7}^{\\top} && \\end{array} \\right],\\\\ {\\bm U}_{d+n+5:d+2n+5,\\,1:2n+5}^{(l)} &= [-{\\bm I}_{n+1},{\\bm I}_{n+1},{\\bm 1}_{n+1},{\\bm 0},{\\bm 0}],\\qquad {\\bm U}_{D,1:2n+5}^{(l)} = [{\\bm 0}_{2n+3}^{\\top},-1,1], \\end{align} with all remaining entries set to zero. \\end{subequations} \\item \\textbf{Attn2}: Recall that \\eqref{eq:approx-sigma-attn} tells us that \\begin{align} \\big({\\bm \\phi}_{i}^{(l)}\\big)^{\\top}{\\bm \\rho}^{(l)}\\approx 4\\tau\\Big\\{\\sigma_{\\mathsf{attn}}\\left(\\tau^{-1}\\big({\\bm \\phi}_{i}^{(l)}\\big)^{\\top}{\\bm \\rho}^{(l)}\\right) - \\sigma_{\\mathsf{attn}}(0)\\Big\\}. \\end{align} As a result, we would like to design this attention layer to actually implement \\begin{align} \\widehat{y}^{(l+1/2)} &= \\widehat{y}^{(l)} +4\\tau \\sum_{i = 1}^{N+1} \\big(1-{w}_i^{(l)}\\big)\\left[\\sigma_{\\mathsf{attn}}\\left(\\tau^{-1}\\big({\\bm \\phi}_{i}^{(l)}\\big)^{\\top}{\\bm \\rho}^{(l)}\\right) - \\sigma_{\\mathsf{attn}}(0) \\right], \\end{align} and hence the residual term $\\widetilde{e}^{(l)}$ in \\eqref{eq:update-haty} can be easily determined by comparing \\eqref{eq:update-haty} with \\eqref{eq:Attn2-actual-update}. To realize \\eqref{eq:Attn2-actual-update}, it suffices to use 2 attention heads, and set ${\\bm V}_1^{(l+1)},{\\bm V}_2^{(l+1)}\\in\\mathbb{R}^{D\\times D}$, ${\\bm Q}_1^{(l+1)},{\\bm Q}_2^{(l+1)}\\in\\mathbb{R}^{D\\times D}$, and ${\\bm K}_1^{(l+1)},{\\bm K}_2^{(l+1)}\\in\\mathbb{R}^{D\\times D}$ to be: \\begin{align*} {\\bm V}_{1,(D,\\,:)}^{(l+1)} &= 4\\tau({\\bm u}_{d+1} - {\\bm u}_{d+3})^{\\top},\\quad {\\bm Q}_{1,(1:n+1,\\,d+4:d+n+4)}^{(l+1)} = \\tau^{-1}{\\bm I}_{n+1},\\quad {\\bm K}_{1,(1:n+1,\\,d+n+5:d+2n+5)}^{(l+1)} = {\\bm I}_{n+1},\\notag\\\\ {\\bm V}_2^{(l+1)} &= -{\\bm V}_1^{(l+1)},\\quad {\\bm Q}_2^{(l+1)} = {\\bm 0}, \\quad {\\bm K}_2^{(l+1)} = {\\bm 0}, \\end{align*} with all remaining entries set to zero. Here, we recall that $\\bm{u}_i$ denotes the $i$-th standard basis vector. Before moving on, let us single out some bounds on $\\widetilde{e}^{(l)}$. Recalling that $1-{{w}}_i^{(l)} = 0$ for all $1\\le i\\le N$ and making use of \\eqref{eq:phi-rho-inner-approx-attn} and \\eqref{eq:approx-sigma-att}, we can demonstrate that \\begin{align} |\\widetilde{e}^{(l)}|\\le \\frac{2\\big(({\\bm \\phi}_{N+1}^{(l)})^{\\top}{\\bm \\rho}^{(l)}\\big)^2}{\\tau}. \\end{align} \\item \\textbf{Attn0, FF2}: The parameter matrices in these layers are taken to be \\begin{align} {\\bm U}^{(l+1)} = {\\bm W}^{(l+1)} = {\\bm Q}^{(1)} = {\\bm K}^{(1)} = {\\bm V}^{(1)} = {\\bm 0}, \\end{align} so as to ensure that $$ {\\bm H}^{(1/2)} = {\\bm H}^{(0)}\\qquad \\text{and}\\qquad {\\bm H}^{(l+1)} = {\\bm H}^{(l+1/2)}. $$ \\end{itemize} \\subsubsection{Verifying \\eqref{eq:rela-rhol-rhot} and controlling the size of ${\\bm e}_t$} We now verify \\eqref{eq:rela-rhol-rhot} by induction, and establish upper bounds on ${\\bm e}_t$ in \\eqref{eq:update-rule-PGD}. First, it is self-evident that ${\\bm \\rho}^{(1)} = {\\bm \\rho}_0^{\\mathsf{proximal}} = {\\bm 0}$. Now, let us assume that ${\\bm \\rho}^{(2t-1)} = {\\bm \\rho}_{t-1}^{\\mathsf{proximal}}$, and proceed to prove ${\\bm \\rho}^{(2t+1)} = {\\bm \\rho}_t^{\\mathsf{proximal}}$. In the $t$-th block (which contains $\\textbf{Attn1},\\textbf{FF1},\\textbf{Attn2},\\textbf{FF2}$), we have \\begin{align*} {\\bm \\rho}^{(2t+1)} &= {\\bm \\rho}^{(2t)} =\\mathsf{ST}_{\\eta\\overline{\\lambda}}\\big({\\bm \\rho}^{(2t-1/2)}\\big) = \\mathsf{ST}_{\\eta\\overline{\\lambda}}\\bigg({\\bm \\rho}^{(2t-1)} + \\frac{2\\eta}{N}\\sum_{i = 1}^{N} {\\bm \\phi}_i\\big\\{y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho}^{(2t-1)}\\big\\} + {\\bm e}^{(2t-1)}\\bigg)\\nonumber\\\\ &=\\mathsf{ST}_{\\eta\\overline{\\lambda}}\\bigg({\\bm \\rho}_{t-1}^{\\mathsf{proximal}} + \\frac{2\\eta}{N}\\sum_{i = 1}^{N} {\\bm \\phi}_i\\big\\{y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho}_{t-1}^{\\mathsf{proximal}}\\big\\}\\bigg) + {\\bm e}_{t} = {\\bm \\rho}_t^{\\mathsf{proximal}}, \\end{align*} where $$ {\\bm e}_{t} \\coloneqq \\mathsf{ST}_{\\eta\\overline{\\lambda}}\\bigg({\\bm \\rho}_{t-1}^{\\mathsf{proximal}} + \\frac{2\\eta}{N}\\sum_{i = 1}^{N} {\\bm \\phi}_i\\big\\{y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho}_{t-1}^{\\mathsf{proximal}}\\big\\}+ {\\bm e}^{(2t-1)}\\bigg) - \\mathsf{ST}_{\\eta\\overline{\\lambda}}\\bigg({\\bm \\rho}_{t-1}^{\\mathsf{proximal}} + \\frac{2\\eta}{N}\\sum_{i = 1}^{N} {\\bm \\phi}_i\\big\\{y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho}_{t-1}^{\\mathsf{proximal}}\\big\\}\\bigg). $$ Recalling that $\\mathsf{ST}(\\cdot)$ is a contraction operator and using \\eqref{eq:proof-bound-e-pre}, we can show that \\begin{align} \\|{\\bm e}_{t}\\|_\\infty &\\le \\|{\\bm e}^{(2t-1)}\\|_\\infty \\lesssim \\frac{\\eta^2}{\\tau}\\left(C_{\\mathcal{F}}^2 + \\sigma^2 + \\|{\\bm \\rho}^{(2t-1)}\\|_1^2 + \\big(\\widehat{y}^{(2t-1)}\\big)^2\\right)+ \\frac{\\eta}{N}\\left|\\widehat{y}^{(2t-1)} - {\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}^{(2t-1)}\\right|\\notag\\\\ &\\lesssim \\frac{\\eta^2}{\\tau}\\left(C_{\\mathcal{F}}^2 + \\sigma^2 + \\|{\\bm \\rho}_{t-1}^{\\mathsf{proximal}}\\|_1^2 + \\big(\\widehat{y}^{(2t-1)}\\big)^2\\right)+ \\frac{\\eta}{N}\\left|\\widehat{y}^{(2t-1)} - {\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}_{t-1}^{\\mathsf{proximal}}\\right|, \\end{align} which is valid since $ {\\bm \\rho}^{(2t-1)} = {\\bm \\rho}_{t-1}^{\\mathsf{proximal}}$. Also, it follows from \\eqref{eq:update-haty} that \\begin{align*} \\widehat{y}^{(2t-1)} = \\widehat{y}^{(2t-3/2)} &= {\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}^{(2t-2)} + \\widetilde{e}^{(2t-2)} = {\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}_{t-1}^{\\mathsf{proximal}} + \\widetilde{e}^{(2t-2)}, \\end{align*} where we have used ${\\bm \\rho}^{(2t-2)} = {\\bm \\rho}^{(2t-1)} = {\\bm \\rho}_{t-1}^{\\mathsf{proximal}}$. Moreover, it is seen from \\eqref{eq:proof-bound-e-prime} that \\begin{align*} |\\widetilde{e}^{(2t-2)}|\\le \\frac{2\\left({\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}^{(2t-2)}\\right)^2}{\\tau} = \\frac{2\\left({\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}_{t-1}^{\\mathsf{proximal}}\\right)^2}{\\tau}. \\end{align*} Substituting these into \\eqref{eq:proof-bound-e-pre-2} and using $\\|\\bm{\\phi}_{N+1}\\|_{\\infty}\\leq 1$ then yield \\begin{align} \\|{\\bm e}_{t}\\|_{\\infty} &\\lesssim \\frac{\\eta^2}{\\tau}\\left(C_{\\mathcal{F}}^2 + \\sigma^2 + \\|{\\bm \\rho}_{t-1}^{\\mathsf{proximal}}\\|_1^2 + ({\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}_{t-1}^{\\mathsf{proximal}})^2 + (\\widetilde{e}^{(2t-2)})^2\\right)+ \\frac{\\eta}{N}|\\widetilde{e}^{(2t-2)}|\\notag\\\\ &\\lesssim \\frac{\\eta^2}{\\tau}\\left(C_{\\mathcal{F}}^2 +\\sigma^2 + \\|{\\bm \\rho}_t^{\\mathsf{proximal}}\\|_1^2 + ({\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}_{t-1}^{\\mathsf{proximal}})^2 + \\frac{({\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}_{t-1}^{\\mathsf{proximal}})^4}{\\tau^2}\\right)+ \\frac{\\eta({\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}_{t-1}^{\\mathsf{proximal}})^2}{N\\tau}\\notag\\\\ &\\lesssim \\frac{\\eta^2}{\\tau}\\left(C_{\\mathcal{F}}^2 + \\sigma^2 + \\|{\\bm \\rho}_{t-1}^{\\mathsf{proximal}}\\|_1^2 + \\frac{\\|{\\bm \\rho}_{t-1}^{\\mathsf{proximal}}\\|_1^4}{\\tau^2}\\right)+ \\frac{\\eta\\|{\\bm \\rho}_{t-1}^{\\mathsf{proximal}}\\|_1^2}{N\\tau}. \\end{align} \\subsubsection{Proof of property iii) in Lemma \\ref{lem:opt}} Equipped with the above transformer parameters, we are now positioned to establish property iii) in Lemma \\ref{lem:opt}. To this end, we first establish the following lemma [Lemma \\ref{lem:bound-rho}], whose proof is postponed to Appendix~\\ref{sec:proof-lem:bound-rho}. When $L = 2T+1$ is an odd number, it holds that ${\\bm \\rho}^{(L)} = {\\bm \\rho}_T^{\\mathsf{proximal}}$ and $\\widehat{y}^{(L)} = \\widehat{y}^{(L-1/2)}$. Combining Lemma \\ref{lem:bound-rho} with \\eqref{eq:proof-bound-e-prime} then reveals that: by taking $$ \\tau \\ge CNn^2(L+n)\\left(N+ n\\right)C_{\\mathcal{F}} \\ge C n^2N^{5/4}C_{\\mathcal{F}}$$ for some large enough constant $C>0$, we have \\begin{align*} \\big|{\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}^{(L)} - \\widehat{y}^{(L)}\\big| &= \\big|{\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}^{(L-1)} - \\widehat{y}^{(L-1/2)}\\big| =|\\widetilde{e}^{(L-1)}| \\le \\frac{2({\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}_{\\frac{L-1}{2}}^{\\mathsf{proximal}})^2}{\\tau} \\le \\frac{2\\|{\\bm \\phi}_{N+1}\\|_{\\infty}^2 \\big\\|{\\bm \\rho}_{\\frac{L-1}{2}}^{\\mathsf{proximal}} \\big\\|_1^2}{\\tau} \\le \\left(\\frac{\\log N}{N}\\right)^{1/4}C_{\\mathcal{F}}. \\end{align*} Additionally, taking Lemma \\ref{lem:bound-rho} together with \\eqref{eq:convergence-rho} leads to \\begin{align} \\ell({\\bm \\rho}_T^{\\mathsf{proximal}}) -\\ell({\\bm \\rho}^{\\star}) &\\lesssim \\frac{nC_{\\mathcal{F}}^2}{L} + (L+n)\\frac{C_{\\mathcal{F}}}{(L+n)nN}(C_{\\mathcal{F}} + \\sigma + n\\sqrt{N}C_{\\mathcal{F}} + \\lambda)\\notag\\\\ &\\lesssim \\frac{nC_{\\mathcal{F}}^2}{L}+ \\frac{1}{\\sqrt{N}}C_{\\mathcal{F}}(C_{\\mathcal{F}} + \\sigma) + \\lambda C_{\\mathcal{F}}. \\end{align} Recalling the bound on $\\lambda C_\\mathcal{F}$ in \\eqref{eq:bound-lambda-C} and the definition of $\\widehat{\\varepsilon}$ in \\eqref{eq:def-hat-eps}, we have \\begin{align*} \\lambda C_\\mathcal{F}\\lesssim \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}\\Big(C_{\\mathcal{F}} + \\sigma\\Big) + \\varepsilon_{\\mathsf{dis}}^2 + \\widehat{\\varepsilon} \\lesssim \\sqrt{\\frac{\\log N}{N}}C_{\\mathcal{F}}\\Big(C_{\\mathcal{F}} + \\sigma\\Big) + \\varepsilon_{\\mathsf{dis}}^2 + \\frac{n C_\\mathcal{F}^2}{L}, \\end{align*} which combined with \\eqref{eq:convergence} completes the proof.",
+      "section": "A.4 Proof of Lemma 4",
+      "origin": "paper",
+      "proves": "LP39.4"
+    },
+    {
+      "id": "PSP39.7.1",
+      "type": "proof_step",
+      "name": "High-level structure of the constructed transformer",
+      "statement": "The architecture begins with an attention layer \\textbf{Attn0} and a feedforward layer \\textbf{FF0}, which serve to initialize certain variables (particularly the features identified in Lemma~\\ref{lem:discrete}) based on the in-context inputs $\\{{\\bm x}_i\\}$. The remaining $(L-1)$ layers are divided into $(L-1)/2$ blocks with identical structure and parameters. More concretely, each block consists of two attention layers and two feed-forward layers, $(\\textbf{Attn1}, \\textbf{FF1})$ and $(\\textbf{Attn2}, \\textbf{FF2})$, which are designed to perform inexact proximal gradient iterations and update the corresponding prediction.",
+      "section": "A.4 Proof of Lemma 4",
+      "parent_id": "PP39.7",
+      "step_order": 1,
+      "subclass": "setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.7.2",
+      "type": "proof_step",
+      "name": "Intended per-layer updates (FF0, Attn1, FF1, Attn2, Attn0/FF2)",
+      "statement": "\\textbf{FF0} updates ${\\bm \\phi}_j^{(l)}$ and $\\lambda^{(l)}=\\overline{\\lambda}$; \\textbf{Attn1} implements ${\\bm \\rho}^{(l-1/2)} ={\\bm \\rho}^{(l-1)} + \\frac{2\\eta}{N}\\sum_{i = 1}^{N} {\\bm \\phi}_i^{(l-1)}\\{y_i^{(l-1)} - ({\\bm \\phi}_i^{(l-1)})^{\\top}{\\bm \\rho}^{(l-1)}\\} + {\\bm e}^{(l-1)}$; \\textbf{FF1} applies ${\\bm \\rho}^{(l)} =\\mathsf{ST}_{\\eta\\lambda^{(l-1/2)}}({\\bm \\rho}^{(l-1/2)})$, $\\widehat{y}^{(l)}=0$; \\textbf{Attn2} sets $\\widehat{y}^{(l+1/2)} = ({\\bm \\phi}_{N+1}^{(l)})^{\\top}{\\bm \\rho}^{(l)} + \\widetilde{e}^{(l)}$; and \\textbf{Attn0, FF2} do not update ${\\bm H}^{(l)}$.",
+      "section": "A.4 Proof of Lemma 4",
+      "parent_id": "PP39.7",
+      "step_order": 2,
+      "subclass": "introduce_variable",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.7.3",
+      "type": "proof_step",
+      "name": "Parameter design realizing each update via ReLU/logistic identities",
+      "statement": "\\textbf{FF0}: using $\\phi(z) = \\sigma_{\\mathsf{ff}}(z+1/2) - \\sigma_{\\mathsf{ff}}(z-1/2)$ we specify ${\\bm W}^{(l)}$, ${\\bm U}^{(l)}$. \\textbf{Attn1}: using the Taylor expansion $x\\approx 4\\tau(\\sigma_{\\mathsf{attn}}(\\tau^{-1}x) - \\sigma_{\\mathsf{attn}}(0))$ we use 4 attention heads with specified ${\\bm V}_m,{\\bm Q}_m,{\\bm K}_m$, and bound $\\|{\\bm e}^{(l)}\\|_{\\infty}\\lesssim \\frac{\\eta^2}{\\tau}(C_{\\mathcal{F}}^2 + \\sigma^2 + \\|{\\bm \\rho}^{(l)}\\|_1^2 + (\\widehat{y}^{(l)})^2)+ \\frac{2\\eta}{N}|\\widehat{y}^{(l)} - ({\\bm \\phi}_{N+1}^{(l)})^{\\top}{\\bm \\rho}^{(l)}|$. \\textbf{FF1}: using $\\mathsf{ST}_{\\eta\\lambda}(z)=z +\\sigma_{\\mathsf{ff}}(\\eta\\lambda) - \\sigma_{\\mathsf{ff}}(z+\\eta\\lambda) + \\sigma_{\\mathsf{ff}}(z-\\eta\\lambda)$ we specify ${\\bm W}^{(l)},{\\bm U}^{(l)}$. \\textbf{Attn2}: uses 2 heads and $|\\widetilde{e}^{(l)}|\\le \\frac{2(({\\bm \\phi}_{N+1}^{(l)})^{\\top}{\\bm \\rho}^{(l)})^2}{\\tau}$.",
+      "section": "A.4 Proof of Lemma 4",
+      "parent_id": "PP39.7",
+      "step_order": 3,
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.7.4",
+      "type": "proof_step",
+      "name": "Verify ${\\bm \\rho}^{(2t+1)}={\\bm \\rho}_t^{\\mathsf{proximal}}$ by induction and bound $\\|{\\bm e}_t\\|_\\infty$",
+      "statement": "We verify \\eqref{eq:rela-rhol-rhot} by induction. First ${\\bm \\rho}^{(1)} = {\\bm \\rho}_0^{\\mathsf{proximal}} = {\\bm 0}$; assuming ${\\bm \\rho}^{(2t-1)} = {\\bm \\rho}_{t-1}^{\\mathsf{proximal}}$, the $t$-th block gives ${\\bm \\rho}^{(2t+1)} = \\mathsf{ST}_{\\eta\\overline{\\lambda}}({\\bm \\rho}_{t-1}^{\\mathsf{proximal}} + \\frac{2\\eta}{N}\\sum_{i = 1}^{N} {\\bm \\phi}_i\\{y_i - {\\bm \\phi}_i^{\\top}{\\bm \\rho}_{t-1}^{\\mathsf{proximal}}\\}) + {\\bm e}_{t} = {\\bm \\rho}_t^{\\mathsf{proximal}}$, with $\\|{\\bm e}_{t}\\|_{\\infty}\\lesssim \\frac{\\eta^2}{\\tau}(C_{\\mathcal{F}}^2 + \\sigma^2 + \\|{\\bm \\rho}_{t-1}^{\\mathsf{proximal}}\\|_1^2 + \\frac{\\|{\\bm \\rho}_{t-1}^{\\mathsf{proximal}}\\|_1^4}{\\tau^2})+ \\frac{\\eta\\|{\\bm \\rho}_{t-1}^{\\mathsf{proximal}}\\|_1^2}{N\\tau}$.",
+      "section": "A.4 Proof of Lemma 4",
+      "parent_id": "PP39.7",
+      "step_order": 4,
+      "subclass": "induction_step",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.7.5",
+      "type": "proof_step",
+      "name": "Establish property iii) via Lemma 7 and the convergence bound",
+      "statement": "\\subsubsection{Proof of property iii) in Lemma \\ref{lem:opt}} We first establish Lemma \\ref{lem:bound-rho}. When $L = 2T+1$, ${\\bm \\rho}^{(L)} = {\\bm \\rho}_T^{\\mathsf{proximal}}$; taking $\\tau$ large gives $\\big|{\\bm \\phi}_{N+1}^{\\top}{\\bm \\rho}^{(L)} - \\widehat{y}^{(L)}\\big| \\le (\\frac{\\log N}{N})^{1/4}C_{\\mathcal{F}}$. Taking Lemma \\ref{lem:bound-rho} with \\eqref{eq:convergence-rho} leads to $\\ell({\\bm \\rho}_T^{\\mathsf{proximal}}) -\\ell({\\bm \\rho}^{\\star}) \\lesssim \\frac{nC_{\\mathcal{F}}^2}{L}+ \\frac{1}{\\sqrt{N}}C_{\\mathcal{F}}(C_{\\mathcal{F}} + \\sigma) + \\lambda C_{\\mathcal{F}}$, which combined with the bound on $\\lambda C_\\mathcal{F}$ completes the proof.",
+      "section": "A.4 Proof of Lemma 4",
+      "parent_id": "PP39.7",
+      "step_order": 5,
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PP39.8",
+      "type": "proof",
+      "name": "Proof of Lemma 7",
+      "statement": "We intend to prove the following inequalities by induction: \\begin{align} \\|{\\bm e}_t\\|_1&\\le \\frac{c_1C_{\\mathcal{F}}}{(L+n)Nn},\\\\ \\|{\\bm \\rho}_t^{\\mathsf{proximal}}\\|_1&\\le c_2n\\sqrt{N}C_{\\mathcal{F}}, \\end{align} for some sufficiently small (resp.~large) constant $c_1>0$ (resp.~$c_2>0$). For the base case, we have $$\\|{\\bm e}_0\\|_1=\\|{\\bm \\rho}_0^{\\mathsf{proximal}} - {\\bm \\rho}_0^{\\star}\\|_1 = 0,$$ and thus \\eqref{eq:lem-bound-e} holds for $t=0$. Next, we intend to prove that \\eqref{eq:lem-bound-rho} holds for $t=k$ under the assumption that \\eqref{eq:lem-bound-e} holds for $t\\le k$ and \\eqref{eq:lem-bound-rho} holds for $t\\le k-1$. According to \\eqref{eq:lem-convergence-bound-rho}, it holds that \\begin{align*} \\|{\\bm \\rho}_{k}^{\\mathsf{proximal}}\\|_1 &\\le c_5C_{\\mathcal{F}} + \\frac{c_5nC_{\\mathcal{F}}^2}{k\\lambda} + c_5\\sqrt{N}(k+n)\\max_{1\\le i\\le k}\\|{\\bm e}_{i}\\|_1 + \\frac{c_5(k+n)}{\\lambda}\\max_{1\\le i\\le k}\\big\\{\\|{\\bm e}_i\\|_1\\|{\\bm \\rho}_i^{\\mathsf{proximal}}\\|_1\\big\\}\\notag\\\\ &\\overset{\\text{(a)}}{\\le} c_5C_{\\mathcal{F}} + \\frac{c_5n\\sqrt{N}C_{\\mathcal{F}}}{c_{\\lambda}} + c_5c_1 C_{\\mathcal{F}} + \\frac{c_5c_1c_2C_{\\mathcal{F}}}{c_{\\lambda}}+ \\frac{c_5c_1}{c_{\\lambda}\\sqrt{N}n}\\|{\\bm \\rho}_k^{\\mathsf{proximal}}\\|_1, \\end{align*} where (a) results from the fact that $\\lambda\\ge c_{\\lambda}C_{\\mathcal{F}}/\\sqrt{N}$. For some sufficiently small constant $c_1>0$ obeying $c_1c_5/c_{\\lambda} \\le 1/4$, we have \\begin{align*} \\|{\\bm \\rho}_{k}^{\\mathsf{proximal}}\\|_1 &\\le \\frac{4c_5C_{\\mathcal{F}}}{3}\\left(1+\\frac{n\\sqrt{N}}{c_{\\lambda}} + c_1\\right) + \\frac{c_2C_{\\mathcal{F}}}{3}\\le c_2n\\sqrt{N}C_{\\mathcal{F}}, \\end{align*} provided that $c_2\\ge 2c_5\\left(1+c_{\\lambda}^{-1} + c_1\\right)$. Next, we intend to establish that \\eqref{eq:lem-bound-e} holds for $t=k+1$. By virtue of \\eqref{eq:proof-bound-e}, one has \\begin{align*} \\|{\\bm e}_{k+1}\\|_1 &\\le \\frac{c_3n\\eta^2}{\\tau}\\left(C_{\\mathcal{F}}^2 + \\sigma^2 + \\|{\\bm \\rho}_k^{\\mathsf{proximal}}\\|_1^2 + \\frac{\\|{\\bm \\rho}_k^{\\mathsf{proximal}}\\|_1^4}{\\tau^2}\\right)+ \\frac{c_3n\\eta\\|{\\bm \\rho}_k^{\\mathsf{proximal}}\\|_1^2}{N\\tau} \\le \\frac{c_3}{4n\\tau}\\left(1+2c_2^2n^2N+ 2c_2^2n^3\\right)C_{\\mathcal{F}}^2 + \\frac{c_3\\sigma^2}{4n\\tau}, \\end{align*} for $\\tau \\ge c_2n\\sqrt{N}C_{\\mathcal{F}}$. Without loss of generality, we assume that $\\sqrt{\\log N/N}\\sigma \\le \\sqrt{c_4}C_{\\mathcal{F}}$, since otherwise the upper bound in Theorem \\ref{thm:main} is larger than $C_{\\mathcal{F}}^2$ and holds trivially by outputting $\\widehat{\\bm \\rho} = {\\bm 0}$. It is then seen that \\begin{align*} \\|{\\bm e}_{k+1}\\|_1 &\\le \\frac{c_3}{4n\\tau}\\left(1+2c_2^2n^2N+ 2c_2^2n^3\\right)C_{\\mathcal{F}}^2 + \\frac{c_3c_4NC_{\\mathcal{F}}^2}{4n\\tau} =\\frac{C_{\\mathcal{F}}^2}{\\tau}\\left(\\frac{c_3}{4n}(1+2c_2^2n^2N+ 2c_2^2n^3 + c_4N)\\right) \\le \\frac{c_1C_{\\mathcal{F}}}{(L+n)Nn}, \\end{align*} with the proviso that $$ \\tau \\ge \\frac{Nn(L+n)C_{\\mathcal{F}}}{c_1}\\left(\\frac{c_3}{4n}(1+2c_2^2n^2N+ 2n^3c_2^2 + c_4N)\\right) + c_2n\\sqrt{N}C_{\\mathcal{F}}. $$ This completes the proof.",
+      "section": "A.4.1 Proof of Lemma 7",
+      "origin": "paper",
+      "proves": "LP39.7"
+    },
+    {
+      "id": "PSP39.8.1",
+      "type": "proof_step",
+      "name": "Base case $t=0$",
+      "statement": "We intend to prove the two inequalities by induction. For the base case, we have $\\|{\\bm e}_0\\|_1=\\|{\\bm \\rho}_0^{\\mathsf{proximal}} - {\\bm \\rho}_0^{\\star}\\|_1 = 0$, and thus \\eqref{eq:lem-bound-e} holds for $t=0$.",
+      "section": "A.4.1 Proof of Lemma 7",
+      "parent_id": "PP39.8",
+      "step_order": 1,
+      "subclass": "induction_step",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.8.2",
+      "type": "proof_step",
+      "name": "Inductive step for $\\|{\\bm \\rho}_k^{\\mathsf{proximal}}\\|_1$",
+      "statement": "We prove that \\eqref{eq:lem-bound-rho} holds for $t=k$ under the assumption that \\eqref{eq:lem-bound-e} holds for $t\\le k$ and \\eqref{eq:lem-bound-rho} holds for $t\\le k-1$. According to \\eqref{eq:lem-convergence-bound-rho} and $\\lambda\\ge c_{\\lambda}C_{\\mathcal{F}}/\\sqrt{N}$, $\\|{\\bm \\rho}_{k}^{\\mathsf{proximal}}\\|_1 \\le \\frac{4c_5C_{\\mathcal{F}}}{3}(1+\\frac{n\\sqrt{N}}{c_{\\lambda}} + c_1) + \\frac{c_2C_{\\mathcal{F}}}{3}\\le c_2n\\sqrt{N}C_{\\mathcal{F}}$, provided that $c_2\\ge 2c_5(1+c_{\\lambda}^{-1} + c_1)$.",
+      "section": "A.4.1 Proof of Lemma 7",
+      "parent_id": "PP39.8",
+      "step_order": 2,
+      "subclass": "induction_step",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.8.3",
+      "type": "proof_step",
+      "name": "Inductive step for $\\|{\\bm e}_{k+1}\\|_1$",
+      "statement": "We establish that \\eqref{eq:lem-bound-e} holds for $t=k+1$. By virtue of \\eqref{eq:proof-bound-e} and $\\tau \\ge c_2n\\sqrt{N}C_{\\mathcal{F}}$, and assuming w.l.o.g.~$\\sqrt{\\log N/N}\\sigma \\le \\sqrt{c_4}C_{\\mathcal{F}}$, we obtain $\\|{\\bm e}_{k+1}\\|_1 \\le \\frac{c_1C_{\\mathcal{F}}}{(L+n)Nn}$ provided $\\tau$ is large enough. This completes the proof.",
+      "section": "A.4.1 Proof of Lemma 7",
+      "parent_id": "PP39.8",
+      "step_order": 3,
+      "subclass": "induction_step",
+      "origin": "paper"
+    },
+    {
+      "id": "PP39.9",
+      "type": "proof",
+      "name": "Barron-style parameters for several function classes",
+      "statement": "We now upper bound the Barron-style parameters for several function classes mentioned in Section \\ref{sec:Barron-pars}. \\paragraph{Class of linear functions.} Consider any linear function $f_{\\bm{a},b}({\\bm x}) \\coloneqq {\\bm a}^{\\top}{\\bm x} + b$, which clearly satisfies $f_{\\bm{a},b}({\\bm 0})=b$. As can be readily seen, the gradient of $f_{\\bm{a},b}({\\bm x})$ w.r.t.~$\\bm{x}$ and its Fourier transform are given by $$ \\nabla f_{\\bm{a},b}({\\bm x}) = {\\bm a},\\qquad F_{\\nabla f_{\\bm{a},b}}({\\bm \\omega}) = {\\bm a}\\delta({\\bm \\omega}), $$ where $\\delta(\\cdot)$ denotes the Dirac function. Thus, it follows from property \\eqref{eq:condition-Fourier-gradient} that $$ C_{\\mathcal{F}^{\\mathsf{linear}}} = \\sup_{|b|\\le C_b}|b| + \\sup_{\\|{\\bm a}\\|_2\\le C_a}\\|{\\bm a}\\|_2\\int \\delta({\\bm \\omega})\\mathrm{d}{\\bm \\omega} = C_a + C_b. $$ \\paragraph{Linear composition of function classes.} For function $g_{\\bm{a},b}(\\bm{x}) = \\langle {\\bm a}, {\\bm f}({\\bm x}) \\rangle + b$, its gradient with respect to ${\\bm x}$ and its Fourier transform can be computed as $$ \\nabla g_{\\bm{a},b}({\\bm x}) = \\sum_{i=1}^M a_i\\nabla f_i({\\bm x}),\\qquad F_{\\nabla g_{\\bm{a},b}}({\\bm \\omega}) = \\sum_{i=1}^M a_iF_{\\nabla f_i}({\\bm \\omega}). $$ This linearity property combined with property \\eqref{eq:condition-Fourier-gradient} then gives $$ C_{\\mathcal{F}^{\\mathsf{comp}}}\\le C_b + \\sup_{\\|{\\bm a}\\|_1\\le C_a} \\|{\\bm a}\\|_1\\|{\\bm f}({\\bm 0})\\|_{\\infty} + \\sup_{\\|{\\bm a}\\|_1\\le C_a} \\|{\\bm a}\\|_1\\int \\max_{1\\leq i\\leq M}\\|F_{\\nabla f_i}({\\bm \\omega})\\|_2 \\mathrm{d} {\\bm\\omega}\\le 2C_a\\max_{1\\leq i\\leq M} C_{\\mathcal{F}_i} + C_b. $$ \\paragraph{Class of two-layer neural networks.} We first claim that \\begin{align} F_{\\nabla f_{\\rho}}({\\bm \\omega}) &=\\int \\rho({\\bm a})\\prod_{s=2}^d\\delta(\\widetilde{\\omega}_s)\\frac{\\overline{\\bm a}}{2\\sinh\\big(\\pi\\frac{\\widetilde{\\omega}_1}{\\|{\\bm a}\\|_2}\\big)}\\frac{\\widetilde{\\omega}_1}{\\|{\\bm a}\\|_2} \\mathrm{d} {\\bm a}, \\end{align} where $\\sinh(x) = {\\rm e}^x/2 - {\\rm e}^{-x}/2$. Here, $\\overline{\\bm a} \\coloneqq {\\bm a}/\\|{\\bm a}\\|_2$ represents the direction of ${\\bm a}$, $\\widetilde{\\omega}_s$ denotes the $s$-th entry of $\\widetilde{\\bm \\omega} \\coloneqq {\\bm Q}{\\bm \\omega}$, and ${\\bm Q}^{\\top} \\coloneqq [\\overline{\\bm a},\\widetilde{\\bm Q}]\\in\\mathbb{R}^{d\\times d}$ is an orthogonal matrix whose 2nd-through-$d$th rows $\\widetilde{\\bm Q}$ satisfy $\\widetilde{\\bm Q}^{\\top}\\widetilde{\\bm Q} = {\\bm I}_{d-1}$ and $\\widetilde{\\bm Q}^{\\top}{\\bm a} = {\\bm 0}$. The proof of \\eqref{eq:gradient-Fourier-frho} is postponed to the end of this subsection. Recalling that $|\\rho({\\bm a})|\\le \\rho_{\\mathsf{max}}({\\bm a})$, we can invoke the claim \\eqref{eq:gradient-Fourier-frho} to reach \\begin{align*} \\sup_{\\rho}\\|F_{\\nabla f_{\\rho}}({\\bm \\omega})\\|_2 &\\le \\int \\rho_{\\mathsf{max}}({\\bm a})\\prod_{s=2}^d\\delta(\\widetilde{\\omega}_s)\\frac{1}{2\\big|\\sinh\\big(\\pi\\frac{\\widetilde{\\omega}_1}{\\|{\\bm a}\\|_2}\\big)\\big|}\\frac{|\\widetilde{\\omega}_1|}{\\|{\\bm a}\\|_2} \\mathrm{d} {\\bm a}. \\end{align*} By computing the above integral, we obtain \\begin{align*} \\int \\sup_{\\rho}\\|F_{\\nabla f_{\\rho}}({\\bm \\omega})\\|_2 \\mathrm{d}{\\bm \\omega} &\\le \\int \\rho_{\\mathsf{max}}({\\bm a})\\left(\\prod_{s=2}^d\\int\\delta(\\widetilde{\\omega}_s)\\mathrm{d} \\widetilde{\\omega}_s\\right)\\int \\frac{1}{2|\\sinh\\big(\\pi\\frac{\\widetilde{\\omega}_1}{\\|{\\bm a}\\|_2}\\big)|}\\frac{|\\widetilde{\\omega}_1|}{\\|{\\bm a}\\|_2} \\mathrm{d} \\widetilde{\\omega}_1 \\mathrm{d} {\\bm a}\\notag\\\\ &= \\int \\rho_{\\mathsf{max}}({\\bm a})\\int_0^{\\infty} \\frac{\\|{\\bm a}\\|_2\\omega}{\\sinh\\big(\\pi\\omega\\big)}\\mathrm{d} {\\omega}\\mathrm{d} {\\bm a} \\overset{\\text{(i)}}{=} \\frac14\\int \\rho_{\\mathsf{max}}({\\bm a})\\|{\\bm a}\\|_2\\mathrm{d} {\\bm a}, \\end{align*} where (i) results from the fact that $$\\int_{0}^{\\infty} \\frac{\\omega}{\\sinh\\left(\\pi\\omega\\right)} \\mathrm{d} {\\omega} = 2\\sum_{n=0}^{\\infty}\\int_{0}^{\\infty}\\omega{\\rm e}^{-(2n+1)\\pi \\omega}\\mathrm{d}\\omega = 2\\sum_{n=0}^{\\infty}\\frac{1}{(2n+1)^2\\pi^2} = 1/4.$$ Furthermore, it is readily seen that $$ \\sup_{\\rho} |f_{\\rho}({\\bm 0})| = \\frac12\\bigg|\\sup_{\\rho}\\int \\rho({\\bm a}) \\mathrm{d}{\\bm a}\\bigg| \\le \\frac12\\int \\rho_{\\mathsf{max}}({\\bm a}) \\mathrm{d}{\\bm a}. $$ Putting the above results together completes the proof. \\paragraph{Proof of Claim~\\eqref{eq:gradient-Fourier-frho}.} Basic calculus tells us that the gradient of $\\sigma({\\bm a}^{\\top}{\\bm x})$ w.r.t.~${\\bm x}$ is \\begin{align} \\nabla \\sigma({\\bm a}^{\\top}{\\bm x}) = \\frac{\\exp(-{\\bm a}^{\\top}{\\bm x})}{\\left(1+\\exp(-{\\bm a}^{\\top}{\\bm x})\\right)^2} {\\bm a}. \\end{align} Recall that the Fourier transform of scalar function ${\\rm e}^{-x}(1+{\\rm e}^{-x})^{-2}$ can be calculated as \\begin{align} \\frac{1}{2\\pi}\\int \\frac{{\\rm e}^{-x}}{(1+{\\rm e}^{-x})^2}{\\rm e}^{-j\\omega x}\\mathrm{d} x = \\frac{\\omega}{2\\sinh(\\pi\\omega)}= \\frac{\\omega}{{\\rm e}^{\\pi\\omega} - {\\rm e}^{-\\pi\\omega}} \\end{align} for any $\\omega \\in \\mathbb{R}$, where $\\sinh(x) = {\\rm e}^x/2 - {\\rm e}^{-x}/2$. Define $\\widetilde{\\bm x} \\coloneqq {\\bm Q}{\\bm x}$, where ${\\bm Q}^{\\top}$ is the orthogonal matrix defined previously. Denoting by $\\widetilde{x}_s$ the $s$-th entry of $\\widetilde{\\bm{x}}$, we can then compute the Fourier transform of $\\nabla \\sigma({\\bm a}^{\\top}{\\bm x})$ (cf.~\\eqref{eq:grad-f-logistic}) as \\begin{align*} F_{\\nabla \\sigma({\\bm a}^{\\top}\\cdot)}({\\bm \\omega}) &=\\frac{{\\bm a}}{(2\\pi)^d}\\int \\frac{{\\rm e}^{-j{\\bm \\omega}^{\\top}{\\bm x}}\\exp(-{\\bm a}^{\\top}{\\bm x})}{(1+\\exp(-{\\bm a}^{\\top}{\\bm x}))^2}\\mathrm{d}{\\bm x} =\\frac{{\\bm a}}{2\\pi}\\int \\frac{{\\rm e}^{-j\\widetilde{\\omega}_1\\widetilde{x}_1}\\exp(-\\|{\\bm a}\\|_2\\widetilde{x}_1)}{(1+\\exp(-\\|{\\bm a}\\|_2\\widetilde{x}_1))^2}\\mathrm{d} \\widetilde{x}_1 \\frac{1}{(2\\pi)^{d-1}}\\prod_{s=2}^d\\int {\\rm e}^{-j\\widetilde{w}_s\\widetilde{x}_s}\\mathrm{d} \\widetilde{x}_s\\notag\\\\ &=\\prod_{s=2}^d\\delta(\\widetilde{\\omega}_s)\\frac{\\overline{\\bm a}}{2\\sinh\\big(\\pi\\frac{\\overline{\\bm a}^{\\top}{\\bm \\omega}}{\\|{\\bm a}\\|_2}\\big)}\\frac{\\overline{\\bm a}^{\\top}{\\bm \\omega}}{\\|{\\bm a}\\|_2}, \\end{align*} where $\\delta(\\cdot)$ represents the Dirac function as before and we have used \\eqref{eq:FT-sigmoid}. Taking this together with the definition of $f_{\\rho}({\\bm x})$ establishes the claim ~\\eqref{eq:gradient-Fourier-frho}.",
+      "section": "B Barron-style parameters for several examples",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.9.1",
+      "type": "proof_step",
+      "name": "Linear function class",
+      "statement": "\\paragraph{Class of linear functions.} Consider any linear function $f_{\\bm{a},b}({\\bm x}) \\coloneqq {\\bm a}^{\\top}{\\bm x} + b$, with $\\nabla f_{\\bm{a},b}({\\bm x}) = {\\bm a}$ and $F_{\\nabla f_{\\bm{a},b}}({\\bm \\omega}) = {\\bm a}\\delta({\\bm \\omega})$. Thus $C_{\\mathcal{F}^{\\mathsf{linear}}} = \\sup_{|b|\\le C_b}|b| + \\sup_{\\|{\\bm a}\\|_2\\le C_a}\\|{\\bm a}\\|_2\\int \\delta({\\bm \\omega})\\mathrm{d}{\\bm \\omega} = C_a + C_b$.",
+      "section": "B Barron-style parameters for several examples",
+      "parent_id": "PP39.9",
+      "step_order": 1,
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.9.2",
+      "type": "proof_step",
+      "name": "Linear composition of function classes",
+      "statement": "\\paragraph{Linear composition of function classes.} For $g_{\\bm{a},b}(\\bm{x}) = \\langle {\\bm a}, {\\bm f}({\\bm x}) \\rangle + b$, $F_{\\nabla g_{\\bm{a},b}}({\\bm \\omega}) = \\sum_{i=1}^M a_iF_{\\nabla f_i}({\\bm \\omega})$, whence $C_{\\mathcal{F}^{\\mathsf{comp}}}\\le C_b + \\sup_{\\|{\\bm a}\\|_1\\le C_a} \\|{\\bm a}\\|_1\\|{\\bm f}({\\bm 0})\\|_{\\infty} + \\sup_{\\|{\\bm a}\\|_1\\le C_a} \\|{\\bm a}\\|_1\\int \\max_{1\\leq i\\leq M}\\|F_{\\nabla f_i}({\\bm \\omega})\\|_2 \\mathrm{d} {\\bm\\omega}\\le 2C_a\\max_{1\\leq i\\leq M} C_{\\mathcal{F}_i} + C_b$.",
+      "section": "B Barron-style parameters for several examples",
+      "parent_id": "PP39.9",
+      "step_order": 2,
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.9.3",
+      "type": "proof_step",
+      "name": "Two-layer neural network class",
+      "statement": "\\paragraph{Class of two-layer neural networks.} Using the claim \\eqref{eq:gradient-Fourier-frho}, $\\int \\sup_{\\rho}\\|F_{\\nabla f_{\\rho}}({\\bm \\omega})\\|_2 \\mathrm{d}{\\bm \\omega} \\overset{\\text{(i)}}{=} \\frac14\\int \\rho_{\\mathsf{max}}({\\bm a})\\|{\\bm a}\\|_2\\mathrm{d} {\\bm a}$ where $\\int_{0}^{\\infty} \\frac{\\omega}{\\sinh(\\pi\\omega)} \\mathrm{d} {\\omega} = 1/4$, and $\\sup_{\\rho} |f_{\\rho}({\\bm 0})| \\le \\frac12\\int \\rho_{\\mathsf{max}}({\\bm a}) \\mathrm{d}{\\bm a}$. Putting the above results together completes the proof.",
+      "section": "B Barron-style parameters for several examples",
+      "parent_id": "PP39.9",
+      "step_order": 3,
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP39.9.4",
+      "type": "proof_step",
+      "name": "Proof of the Fourier-gradient claim",
+      "statement": "\\paragraph{Proof of Claim~\\eqref{eq:gradient-Fourier-frho}.} Using $\\nabla \\sigma({\\bm a}^{\\top}{\\bm x}) = \\frac{\\exp(-{\\bm a}^{\\top}{\\bm x})}{(1+\\exp(-{\\bm a}^{\\top}{\\bm x}))^2} {\\bm a}$ and the Fourier transform $\\frac{1}{2\\pi}\\int \\frac{{\\rm e}^{-x}}{(1+{\\rm e}^{-x})^2}{\\rm e}^{-j\\omega x}\\mathrm{d} x = \\frac{\\omega}{2\\sinh(\\pi\\omega)}$, we compute $F_{\\nabla \\sigma({\\bm a}^{\\top}\\cdot)}({\\bm \\omega}) =\\prod_{s=2}^d\\delta(\\widetilde{\\omega}_s)\\frac{\\overline{\\bm a}}{2\\sinh(\\pi\\frac{\\overline{\\bm a}^{\\top}{\\bm \\omega}}{\\|{\\bm a}\\|_2})}\\frac{\\overline{\\bm a}^{\\top}{\\bm \\omega}}{\\|{\\bm a}\\|_2}$, which establishes the claim.",
+      "section": "B Barron-style parameters for several examples",
+      "parent_id": "PP39.9",
+      "step_order": 4,
+      "subclass": "conclude",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {
+      "source": "PP39.1",
+      "target": "TP39.1",
+      "type": "proves"
+    },
+    {
+      "source": "PSP39.1.1",
+      "target": "PSP39.1.2",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.1.2",
+      "target": "PSP39.1.3",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.1.3",
+      "target": "PSP39.1.4",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.1.4",
+      "target": "PSP39.1.5",
+      "type": "uses"
+    },
+    {
+      "source": "PP39.2",
+      "target": "LP39.1",
+      "type": "proves"
+    },
+    {
+      "source": "PSP39.2.1",
+      "target": "PSP39.2.2",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.2.2",
+      "target": "PSP39.2.3",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.2.3",
+      "target": "PSP39.2.4",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.2.4",
+      "target": "PSP39.2.5",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.2.5",
+      "target": "PSP39.2.6",
+      "type": "uses"
+    },
+    {
+      "source": "PP39.3",
+      "target": "LP39.5",
+      "type": "proves"
+    },
+    {
+      "source": "PSP39.3.1",
+      "target": "PSP39.3.2",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.3.2",
+      "target": "PSP39.3.3",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.3.3",
+      "target": "PSP39.3.4",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.3.4",
+      "target": "PSP39.3.5",
+      "type": "uses"
+    },
+    {
+      "source": "PP39.4",
+      "target": "LP39.2",
+      "type": "proves"
+    },
+    {
+      "source": "PSP39.4.1",
+      "target": "PSP39.4.2",
+      "type": "uses"
+    },
+    {
+      "source": "PP39.5",
+      "target": "LP39.6",
+      "type": "proves"
+    },
+    {
+      "source": "PSP39.5.1",
+      "target": "PSP39.5.2",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.5.2",
+      "target": "PSP39.5.3",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.5.3",
+      "target": "PSP39.5.4",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.5.4",
+      "target": "PSP39.5.5",
+      "type": "uses"
+    },
+    {
+      "source": "PP39.6",
+      "target": "LP39.3",
+      "type": "proves"
+    },
+    {
+      "source": "PSP39.6.1",
+      "target": "PSP39.6.2",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.6.2",
+      "target": "PSP39.6.3",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.6.3",
+      "target": "PSP39.6.4",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.6.4",
+      "target": "PSP39.6.5",
+      "type": "uses"
+    },
+    {
+      "source": "PP39.7",
+      "target": "LP39.4",
+      "type": "proves"
+    },
+    {
+      "source": "PSP39.7.1",
+      "target": "PSP39.7.2",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.7.2",
+      "target": "PSP39.7.3",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.7.3",
+      "target": "PSP39.7.4",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.7.4",
+      "target": "PSP39.7.5",
+      "type": "uses"
+    },
+    {
+      "source": "PP39.8",
+      "target": "LP39.7",
+      "type": "proves"
+    },
+    {
+      "source": "PSP39.8.1",
+      "target": "PSP39.8.2",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.8.2",
+      "target": "PSP39.8.3",
+      "type": "uses"
+    },
+    {
+      "source": "PP39.9",
+      "target": "ExP39.1",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.9.1",
+      "target": "PSP39.9.2",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.9.2",
+      "target": "PSP39.9.3",
+      "type": "uses"
+    },
+    {
+      "source": "PSP39.9.3",
+      "target": "PSP39.9.4",
+      "type": "uses"
+    },
+    {
+      "source": "PP39.9",
+      "target": "ExP39.2",
+      "type": "uses"
+    },
+    {
+      "source": "PP39.9",
+      "target": "ExP39.3",
+      "type": "uses"
+    },
+    {
+      "source": "DP39.1",
+      "target": "DP39.3",
+      "type": "uses"
+    },
+    {
+      "source": "DP39.2",
+      "target": "DP39.3",
+      "type": "uses"
+    },
+    {
+      "source": "DP39.3",
+      "target": "TP39.1",
+      "type": "uses"
+    },
+    {
+      "source": "DP39.4",
+      "target": "TP39.1",
+      "type": "uses"
+    },
+    {
+      "source": "DP39.5",
+      "target": "TP39.1",
+      "type": "uses"
+    },
+    {
+      "source": "ProbP39.1",
+      "target": "TP39.1",
+      "type": "uses"
+    },
+    {
+      "source": "LP39.1",
+      "target": "TP39.1",
+      "type": "uses"
+    },
+    {
+      "source": "LP39.2",
+      "target": "TP39.1",
+      "type": "uses"
+    },
+    {
+      "source": "LP39.3",
+      "target": "TP39.1",
+      "type": "uses"
+    },
+    {
+      "source": "LP39.4",
+      "target": "TP39.1",
+      "type": "uses"
+    },
+    {
+      "source": "DP39.6",
+      "target": "LP39.1",
+      "type": "uses"
+    },
+    {
+      "source": "DP39.4",
+      "target": "LP39.1",
+      "type": "uses"
+    },
+    {
+      "source": "DP39.5",
+      "target": "LP39.1",
+      "type": "uses"
+    },
+    {
+      "source": "LP39.5",
+      "target": "LP39.1",
+      "type": "uses"
+    },
+    {
+      "source": "LP39.8",
+      "target": "LP39.5",
+      "type": "uses"
+    },
+    {
+      "source": "DP39.6",
+      "target": "ProbP39.2",
+      "type": "uses"
+    },
+    {
+      "source": "LP39.1",
+      "target": "ProbP39.2",
+      "type": "uses"
+    },
+    {
+      "source": "AP39.1",
+      "target": "ProbP39.2",
+      "type": "solves"
+    },
+    {
+      "source": "ProbP39.2",
+      "target": "LP39.2",
+      "type": "uses"
+    },
+    {
+      "source": "AP39.1",
+      "target": "LP39.3",
+      "type": "uses"
+    },
+    {
+      "source": "LP39.6",
+      "target": "LP39.2",
+      "type": "uses"
+    },
+    {
+      "source": "LP39.3",
+      "target": "LP39.4",
+      "type": "uses"
+    },
+    {
+      "source": "LP39.7",
+      "target": "LP39.4",
+      "type": "uses"
+    },
+    {
+      "source": "DP39.3",
+      "target": "LP39.4",
+      "type": "uses"
+    },
+    {
+      "source": "AP39.1",
+      "target": "LP39.4",
+      "type": "uses"
+    },
+    {
+      "source": "LP39.2",
+      "target": "LP39.4",
+      "type": "uses"
+    },
+    {
+      "source": "LP39.1",
+      "target": "RP39.1",
+      "type": "uses"
+    },
+    {
+      "source": "LP39.2",
+      "target": "RP39.2",
+      "type": "uses"
+    },
+    {
+      "source": "LP39.3",
+      "target": "RP39.3",
+      "type": "uses"
+    },
+    {
+      "source": "DP39.4",
+      "target": "ExP39.1",
+      "type": "uses"
+    },
+    {
+      "source": "DP39.4",
+      "target": "ExP39.2",
+      "type": "uses"
+    },
+    {
+      "source": "DP39.4",
+      "target": "ExP39.3",
+      "type": "uses"
+    }
+  ]
+}

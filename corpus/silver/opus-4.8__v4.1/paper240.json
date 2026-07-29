@@ -1,0 +1,925 @@
+{
+  "metadata": {
+    "paper_num": "T17",
+    "title": "Asynchronous Methods for Deep Reinforcement Learning",
+    "arxiv_id": "1602.01783",
+    "annotator": "agent-extraction",
+    "prompt_version": "v4.1",
+    "model": "claude-opus-4-8",
+    "extraction_date": "2026-07-28"
+  },
+  "nodes": [
+    {
+      "id": "DP17.1",
+      "type": "definition",
+      "name": "Return $R_t$",
+      "section": "3 Reinforcement Learning Background",
+      "origin": "external",
+      "origin_citation": "standard reinforcement learning setting",
+      "statement": "The return $R_t = \\sum_{k=0}^{\\infty} \\gamma^k r_{t+k}$ is the total accumulated return from time step $t$ with discount factor $\\gamma \\in (0,1]$."
+    },
+    {
+      "id": "DP17.2",
+      "type": "definition",
+      "name": "Action value $Q^{\\pi}(s,a)$",
+      "section": "3 Reinforcement Learning Background",
+      "origin": "external",
+      "origin_citation": "standard reinforcement learning setting",
+      "statement": "The action value $Q^{\\pi}(s,a) = \\mathbb{E}\\left[R_t|s_t=s, a\\right]$ is the expected return for selecting action $a$ in state $s$ and following policy $\\pi$."
+    },
+    {
+      "id": "DP17.3",
+      "type": "definition",
+      "name": "Optimal value function $Q^*(s,a)$",
+      "section": "3 Reinforcement Learning Background",
+      "origin": "external",
+      "origin_citation": "standard reinforcement learning setting",
+      "statement": "The optimal value function $Q^*(s,a) = \\max_{\\pi} Q^{\\pi}(s,a)$ gives the maximum action value for state $s$ and action $a$ achievable by any policy."
+    },
+    {
+      "id": "DP17.4",
+      "type": "definition",
+      "name": "State value $V^{\\pi}(s)$",
+      "section": "3 Reinforcement Learning Background",
+      "origin": "external",
+      "origin_citation": "standard reinforcement learning setting",
+      "statement": "Similarly, the value of state $s$ under policy $\\pi$ is defined as $V^{\\pi}(s) = \\mathbb{E}\\left[R_t|s_t=s\\right]$ and is simply the expected return for following policy $\\pi$ from state $s$."
+    },
+    {
+      "id": "DP17.5",
+      "type": "definition",
+      "name": "Advantage $A(a_t,s_t)$",
+      "section": "3 Reinforcement Learning Background",
+      "origin": "external",
+      "origin_citation": "actor-critic; \\citep{sutton:book,degris2012model}",
+      "statement": "When an approximate value function is used as the baseline, the quantity $R_t-b_t$ used to scale the policy gradient can be seen as an estimate of the \\emph{advantage} of action $a_t$ in state $s_t$, or $A(a_t,s_t)=Q(a_t,s_t)-V(s_t)$, because $R_t$ is an estimate of $Q^{\\pi}(a_t,s_t)$ and $b_t$ is an estimate of $V^{\\pi}(s_t)$."
+    },
+    {
+      "id": "EP17.1",
+      "type": "equation",
+      "name": "One-step Q-learning loss $L_i(\\theta_i)$",
+      "section": "3 Reinforcement Learning Background",
+      "origin": "external",
+      "origin_citation": "one-step Q-learning (DQN loss)",
+      "statement": "In one-step Q-learning, the parameters $\\theta$ of the action value function $Q(s,a;\\theta)$ are learned by iteratively minimizing a sequence of loss functions, where the $i$th loss function defined as \\begin{equation*} L_i(\\theta_i) = \\mathbb{E}\\left(r + \\gamma \\max_{a'}Q(s', a';\\theta_{i-1}) - Q(s,a;\\theta_i) \\right)^2 \\end{equation*} where $s'$ is the state encountered after state $s$."
+    },
+    {
+      "id": "EP17.2",
+      "type": "equation",
+      "name": "$n$-step return",
+      "section": "3 Reinforcement Learning Background",
+      "origin": "external",
+      "origin_citation": "\\citep{watkins1989learning,peng1996msq}",
+      "statement": "In $n$-step Q-learning, $Q(s,a)$ is updated toward the $n$-step return defined as $r_t + \\gamma r_{t+1} + \\cdots + \\gamma^{n-1} r_{t+n-1} + \\max_a \\gamma^n Q(s_{t+n}, a)$."
+    },
+    {
+      "id": "EP17.3",
+      "type": "equation",
+      "name": "REINFORCE policy gradient",
+      "section": "3 Reinforcement Learning Background",
+      "origin": "external",
+      "origin_citation": "REINFORCE, Williams~\\yrcite{Williams1992}",
+      "statement": "One example of such a method is the REINFORCE family of algorithms due to Williams~\\yrcite{Williams1992}. Standard REINFORCE updates the policy parameters $\\theta$ in the direction $\\nabla_{\\theta}\\log\\pi(a_t|s_t;\\theta) R_t$, which is an unbiased estimate of $\\nabla_{\\theta} \\mathbb{E}[R_t]$."
+    },
+    {
+      "id": "EP17.4",
+      "type": "equation",
+      "name": "A3C advantage estimate and update",
+      "section": "4 Asynchronous RL Framework",
+      "origin": "paper",
+      "statement": "The update performed by the algorithm can be seen as $\\nabla_{\\theta'} \\log\\pi(a_t|s_t;\\theta') A(s_t,a_t;\\theta,\\theta_v)$ where $A(s_t,a_t;\\theta,\\theta_v)$ is an estimate of the advantage function given by $\\sum_{i=0}^{k-1}\\gamma^i r_{t+i} + \\gamma^k V(s_{t+k};\\theta_v)-V(s_t;\\theta_v)$, where $k$ can vary from state to state and is upper-bounded by $t_{max}$."
+    },
+    {
+      "id": "EP17.5",
+      "type": "equation",
+      "name": "Entropy-regularized policy gradient objective",
+      "section": "4 Asynchronous RL Framework",
+      "origin": "paper",
+      "statement": "The gradient of the full objective function including the entropy regularization term with respect to the policy parameters takes the form $\\nabla_{\\theta'} \\log\\pi(a_t|s_t;\\theta') (R_t - V(s_t;\\theta_v)) + \\beta \\nabla_{\\theta'} H(\\pi(s_t;\\theta'))$, where $H$ is the entropy.  The hyperparameter $\\beta$ controls the strength of the entropy regularization term."
+    },
+    {
+      "id": "EP17.6",
+      "type": "equation",
+      "name": "Non-centered RMSProp update",
+      "section": "4 Asynchronous RL Framework",
+      "origin": "external",
+      "origin_citation": "RMSProp~\\citep{tieleman2012lecture}",
+      "statement": "We used the standard non-centered RMSProp update given by \\begin{eqnarray} g = \\alpha g + (1-\\alpha)\\Delta\\theta^2 \\text{ and } \\theta \\gets \\theta - \\eta \\frac{\\Delta\\theta}{\\sqrt{g+\\epsilon}}, \\end{eqnarray} where all operations are performed elementwise."
+    },
+    {
+      "id": "EP17.7",
+      "type": "equation",
+      "name": "Momentum SGD update",
+      "section": "Supplementary A: Optimization Details",
+      "origin": "external",
+      "origin_citation": "momentum SGD~\\citep{recht2011hogwild}",
+      "statement": "Let $\\theta$ be the parameter vector that is shared across all threads and let $\\Delta\\theta_i$ be the accumulated gradients of the loss with respect to parameters $\\theta$ computed by thread number $i$. Each thread $i$ independently applies the standard momentum SGD update $m_i = \\alpha m_i + (1-\\alpha) \\Delta\\theta_i$ followed by $\\theta \\gets \\theta - \\eta m_i$ with learning rate $\\eta$, momentum $\\alpha$ and without any locks."
+    },
+    {
+      "id": "EP17.8",
+      "type": "equation",
+      "name": "Non-centered RMSProp update (supplementary)",
+      "section": "Supplementary A: Optimization Details",
+      "origin": "external",
+      "origin_citation": "RMSProp~\\citep{tieleman2012lecture}",
+      "statement": "The standard non-centered RMSProp update is given by \\begin{eqnarray} g = \\alpha g + (1-\\alpha)\\Delta\\theta^2 \\\\ \\theta \\gets \\theta - \\eta \\frac{\\Delta\\theta}{\\sqrt{g+\\epsilon}}, \\end{eqnarray} where all operations are performed elementwise."
+    },
+    {
+      "id": "AP17.1",
+      "type": "algorithm",
+      "name": "Asynchronous one-step Q-learning",
+      "section": "4 Asynchronous RL Framework",
+      "origin": "paper",
+      "input": [
+        "Global shared $\\theta$, $\\theta^-$, and counter $T=0$"
+      ],
+      "output": [
+        "Updated shared parameters $\\theta$"
+      ],
+      "statement": "\\caption{Asynchronous one-step Q-learning - pseudocode for each actor-learner thread.} \\begin{algorithmic} \\small \\State \\emph{// Assume global shared $\\theta$, $\\theta^-$, and counter $T=0$.} \\State Initialize thread step counter $t\\gets 0$ \\State Initialize target network weights $\\theta^- \\gets \\theta$ \\State Initialize network gradients $d\\theta \\gets 0$ \\State Get initial state $s$ \\Repeat \\State Take action $a$ with $\\epsilon$-greedy policy based on $Q(s,a;\\theta)$ \\State Receive new state $s'$ and reward $r$ \\State $y = \\left\\{ \\begin{array}{l l} r  \\quad & \\text{for terminal } s'\\\\ r + \\gamma \\max_{a'} Q(s', a'; \\theta^-) \\quad & \\text{for non-terminal } s' \\end{array} \\right.$ \\State Accumulate gradients wrt $\\theta$: $d\\theta \\gets d\\theta + \\frac{\\partial\\left(y - Q(s,a;\\theta)\\right)^2}{\\partial \\theta}$ \\State $s=s'$ \\State $T \\gets T + 1$ and $t \\gets t + 1$ \\If {$T\\mod I_{target} == 0$} \\State Update the target network $\\theta^- \\gets \\theta$ \\EndIf \\If {$t\\mod I_{AsyncUpdate} == 0$ or $s$ is terminal} \\State Perform asynchronous update of $\\theta$ using $d\\theta$. \\State Clear gradients $d\\theta \\gets 0$. \\EndIf \\Until $T > T_{max}$ \\end{algorithmic}"
+    },
+    {
+      "id": "AP17.2",
+      "type": "algorithm",
+      "name": "Asynchronous one-step Sarsa",
+      "section": "4 Asynchronous RL Framework",
+      "origin": "paper",
+      "statement": "\\textbf{Asynchronous one-step Sarsa:} The asynchronous one-step Sarsa algorithm is the same as asynchronous one-step Q-learning as given in Algorithm~\\ref{alg:targetq} except that it uses a different target value for $Q(s,a)$. The target value used by one-step Sarsa is $r + \\gamma Q(s', a'; \\theta^-)$ where $a'$ is the action taken in state $s'$~\\citep{rummery1994sarsa,sutton:book}. We again use a target network and updates accumulated over multiple timesteps to stabilize learning."
+    },
+    {
+      "id": "AP17.3",
+      "type": "algorithm",
+      "name": "Asynchronous $n$-step Q-learning",
+      "section": "Supplementary Algorithm S2",
+      "origin": "paper",
+      "input": [
+        "Global shared parameter vector $\\theta$",
+        "Global shared target parameter vector $\\theta^-$",
+        "Global shared counter $T=0$"
+      ],
+      "output": [
+        "Updated shared parameters $\\theta$"
+      ],
+      "statement": "\\caption{Asynchronous n-step Q-learning - pseudocode for each actor-learner thread.} \\begin{algorithmic} \\small \\State \\emph{// Assume global shared parameter vector $\\theta$.} \\State \\emph{// Assume global shared target parameter vector $\\theta^-$.} \\State \\emph{// Assume global shared counter $T=0$.} \\State Initialize thread step counter $t\\gets 1$ \\State Initialize target network parameters $\\theta^- \\gets \\theta$ \\State Initialize thread-specific parameters $\\theta' = \\theta$ \\State Initialize network gradients $d\\theta \\gets 0$ \\Repeat \\State Clear gradients $d\\theta \\gets 0$ \\State Synchronize thread-specific parameters $\\theta'=\\theta$ \\State $t_{start} = t$ \\State Get state $s_t$ \\Repeat \\State Take action $a_t$ according to the $\\epsilon$-greedy policy based on $Q(s_t,a;\\theta')$ \\State Receive reward $r_t$ and new state $s_{t+1}$ \\State $t \\gets t + 1$ \\State $T \\gets T + 1$ \\Until terminal $s_t$ \\textbf{or} $t - t_{start} == t_{max}$ \\State $R = \\left\\{ \\begin{array}{l l} 0  \\quad & \\text{for terminal } s_t\\\\ \\max_a Q(s_t,a;\\theta^-) \\quad & \\text{for non-terminal } s_t \\end{array} \\right.$ \\For {$i \\in \\{t-1,\\ldots,t_{start} \\}$} \\State $R \\gets r_i + \\gamma R$ \\State Accumulate gradients wrt $\\theta'$: $d\\theta \\gets d\\theta + \\frac{\\partial\\left(R - Q(s_i,a_i;\\theta')\\right)^2}{\\partial \\theta'}$ \\EndFor \\State Perform asynchronous update of $\\theta$ using $d\\theta$. \\If {$T\\mod I_{target} == 0$} \\State $\\theta^- \\gets \\theta$ \\EndIf \\Until $T > T_{max}$ \\end{algorithmic}"
+    },
+    {
+      "id": "AP17.4",
+      "type": "algorithm",
+      "name": "Asynchronous advantage actor-critic (A3C)",
+      "section": "Supplementary Algorithm S3",
+      "origin": "paper",
+      "input": [
+        "Global shared parameter vectors $\\theta$ and $\\theta_v$ and global shared counter $T=0$",
+        "Thread-specific parameter vectors $\\theta'$ and $\\theta'_v$"
+      ],
+      "output": [
+        "Updated shared parameters $\\theta$ and $\\theta_v$"
+      ],
+      "statement": "\\caption{Asynchronous advantage actor-critic - pseudocode for each actor-learner thread.} \\begin{algorithmic} \\small \\State \\emph{// Assume global shared parameter vectors $\\theta$ and $\\theta_v$ and global shared counter $T=0$} \\State \\emph{// Assume thread-specific parameter vectors $\\theta'$ and $\\theta'_v$} \\State Initialize thread step counter $t\\gets 1$ \\Repeat \\State Reset gradients: $d\\theta \\gets 0$ and $d\\theta_v \\gets 0$. \\State Synchronize thread-specific parameters  $\\theta'=\\theta$ and $\\theta'_v=\\theta_v$ \\State $t_{start} = t$ \\State Get state $s_t$ \\Repeat \\State Perform $a_t$ according to policy $\\pi (a_t|s_t;\\theta')$ \\State Receive reward $r_t$ and new state $s_{t+1}$ \\State $t \\gets t + 1$ \\State $T \\gets T + 1$ \\Until terminal $s_t$ \\textbf{or} $t-t_{start}==t_{max}$ \\State $R = \\left\\{ \\begin{array}{l l} 0  \\quad & \\text{for terminal } s_t\\\\ V(s_t,\\theta'_v) \\quad & \\text{for non-terminal } s_t \\text{// Bootstrap from last state} \\end{array}\\right.$ \\For {$i \\in \\{t-1,\\ldots,t_{start} \\}$} \\State $R \\gets r_i + \\gamma R$ \\State Accumulate gradients wrt $\\theta'$: $d\\theta \\gets d\\theta + \\nabla_{\\theta'} \\log\\pi(a_i|s_i;\\theta') (R - V(s_i;\\theta'_v))$ \\State Accumulate gradients wrt $\\theta'_v$: $d\\theta_v \\gets d\\theta_v + {\\partial\\left(R - V(s_i;\\theta'_v)\\right)^2}/{\\partial \\theta'_v}$ \\EndFor \\State Perform asynchronous update of $\\theta$ using $d\\theta$ and of $\\theta_v$ using $d\\theta_v$. \\Until $T > T_{max}$ \\end{algorithmic}"
+    },
+    {
+      "id": "ASP17.1.1",
+      "type": "algorithm_step",
+      "name": "Assume global shared variables",
+      "parent_id": "AP17.1",
+      "step_order": 1,
+      "subclass": "initialize",
+      "statement": "\\emph{// Assume global shared $\\theta$, $\\theta^-$, and counter $T=0$.}"
+    },
+    {
+      "id": "ASP17.1.2",
+      "type": "algorithm_step",
+      "name": "Initialize thread step counter",
+      "parent_id": "AP17.1",
+      "step_order": 2,
+      "subclass": "initialize",
+      "statement": "Initialize thread step counter $t\\gets 0$"
+    },
+    {
+      "id": "ASP17.1.3",
+      "type": "algorithm_step",
+      "name": "Initialize target network weights",
+      "parent_id": "AP17.1",
+      "step_order": 3,
+      "subclass": "initialize",
+      "statement": "Initialize target network weights $\\theta^- \\gets \\theta$"
+    },
+    {
+      "id": "ASP17.1.4",
+      "type": "algorithm_step",
+      "name": "Initialize network gradients",
+      "parent_id": "AP17.1",
+      "step_order": 4,
+      "subclass": "initialize",
+      "statement": "Initialize network gradients $d\\theta \\gets 0$"
+    },
+    {
+      "id": "ASP17.1.5",
+      "type": "algorithm_step",
+      "name": "Get initial state",
+      "parent_id": "AP17.1",
+      "step_order": 5,
+      "subclass": "initialize",
+      "statement": "Get initial state $s$"
+    },
+    {
+      "id": "ASP17.1.6",
+      "type": "algorithm_step",
+      "name": "Take action ($\\epsilon$-greedy)",
+      "parent_id": "AP17.1",
+      "step_order": 6,
+      "subclass": "loop",
+      "statement": "Take action $a$ with $\\epsilon$-greedy policy based on $Q(s,a;\\theta)$"
+    },
+    {
+      "id": "ASP17.1.7",
+      "type": "algorithm_step",
+      "name": "Receive new state and reward",
+      "parent_id": "AP17.1",
+      "step_order": 7,
+      "subclass": "update",
+      "statement": "Receive new state $s'$ and reward $r$"
+    },
+    {
+      "id": "ASP17.1.8",
+      "type": "algorithm_step",
+      "name": "Compute Q-learning target $y$",
+      "parent_id": "AP17.1",
+      "step_order": 8,
+      "subclass": "update",
+      "statement": "$y = \\left\\{ \\begin{array}{l l} r  \\quad & \\text{for terminal } s'\\\\ r + \\gamma \\max_{a'} Q(s', a'; \\theta^-) \\quad & \\text{for non-terminal } s' \\end{array} \\right.$"
+    },
+    {
+      "id": "ASP17.1.9",
+      "type": "algorithm_step",
+      "name": "Accumulate gradients wrt $\theta$",
+      "parent_id": "AP17.1",
+      "step_order": 9,
+      "subclass": "update",
+      "statement": "Accumulate gradients wrt $\\theta$: $d\\theta \\gets d\\theta + \\frac{\\partial\\left(y - Q(s,a;\\theta)\\right)^2}{\\partial \\theta}$"
+    },
+    {
+      "id": "ASP17.1.10",
+      "type": "algorithm_step",
+      "name": "Advance state",
+      "parent_id": "AP17.1",
+      "step_order": 10,
+      "subclass": "update",
+      "statement": "$s=s'$"
+    },
+    {
+      "id": "ASP17.1.11",
+      "type": "algorithm_step",
+      "name": "Increment counters $T$ and $t$",
+      "parent_id": "AP17.1",
+      "step_order": 11,
+      "subclass": "update",
+      "statement": "$T \\gets T + 1$ and $t \\gets t + 1$"
+    },
+    {
+      "id": "ASP17.1.12",
+      "type": "algorithm_step",
+      "name": "Periodically update target network",
+      "parent_id": "AP17.1",
+      "step_order": 12,
+      "subclass": "branch",
+      "statement": "\\If {$T\\mod I_{target} == 0$} \\State Update the target network $\\theta^- \\gets \\theta$ \\EndIf"
+    },
+    {
+      "id": "ASP17.1.13",
+      "type": "algorithm_step",
+      "name": "Perform asynchronous update and clear gradients",
+      "parent_id": "AP17.1",
+      "step_order": 13,
+      "subclass": "branch",
+      "statement": "\\If {$t\\mod I_{AsyncUpdate} == 0$ or $s$ is terminal} \\State Perform asynchronous update of $\\theta$ using $d\\theta$. \\State Clear gradients $d\\theta \\gets 0$. \\EndIf"
+    },
+    {
+      "id": "ASP17.1.14",
+      "type": "algorithm_step",
+      "name": "Repeat until $T > T_{max}$",
+      "parent_id": "AP17.1",
+      "step_order": 14,
+      "subclass": "loop",
+      "statement": "\\Repeat ... \\Until $T > T_{max}$"
+    },
+    {
+      "id": "ASP17.3.1",
+      "type": "algorithm_step",
+      "name": "Assume global shared variables",
+      "parent_id": "AP17.3",
+      "step_order": 1,
+      "subclass": "initialize",
+      "statement": "\\emph{// Assume global shared parameter vector $\\theta$.} \\emph{// Assume global shared target parameter vector $\\theta^-$.} \\emph{// Assume global shared counter $T=0$.}"
+    },
+    {
+      "id": "ASP17.3.2",
+      "type": "algorithm_step",
+      "name": "Initialize thread step counter",
+      "parent_id": "AP17.3",
+      "step_order": 2,
+      "subclass": "initialize",
+      "statement": "Initialize thread step counter $t\\gets 1$"
+    },
+    {
+      "id": "ASP17.3.3",
+      "type": "algorithm_step",
+      "name": "Initialize target network parameters",
+      "parent_id": "AP17.3",
+      "step_order": 3,
+      "subclass": "initialize",
+      "statement": "Initialize target network parameters $\\theta^- \\gets \\theta$"
+    },
+    {
+      "id": "ASP17.3.4",
+      "type": "algorithm_step",
+      "name": "Initialize thread-specific parameters",
+      "parent_id": "AP17.3",
+      "step_order": 4,
+      "subclass": "initialize",
+      "statement": "Initialize thread-specific parameters $\\theta' = \\theta$"
+    },
+    {
+      "id": "ASP17.3.5",
+      "type": "algorithm_step",
+      "name": "Initialize network gradients",
+      "parent_id": "AP17.3",
+      "step_order": 5,
+      "subclass": "initialize",
+      "statement": "Initialize network gradients $d\\theta \\gets 0$"
+    },
+    {
+      "id": "ASP17.3.6",
+      "type": "algorithm_step",
+      "name": "Clear gradients",
+      "parent_id": "AP17.3",
+      "step_order": 6,
+      "subclass": "update",
+      "statement": "Clear gradients $d\\theta \\gets 0$"
+    },
+    {
+      "id": "ASP17.3.7",
+      "type": "algorithm_step",
+      "name": "Synchronize thread-specific parameters",
+      "parent_id": "AP17.3",
+      "step_order": 7,
+      "subclass": "update",
+      "statement": "Synchronize thread-specific parameters $\\theta'=\\theta$"
+    },
+    {
+      "id": "ASP17.3.8",
+      "type": "algorithm_step",
+      "name": "Record start step",
+      "parent_id": "AP17.3",
+      "step_order": 8,
+      "subclass": "update",
+      "statement": "$t_{start} = t$"
+    },
+    {
+      "id": "ASP17.3.9",
+      "type": "algorithm_step",
+      "name": "Get state $s_t$",
+      "parent_id": "AP17.3",
+      "step_order": 9,
+      "subclass": "update",
+      "statement": "Get state $s_t$"
+    },
+    {
+      "id": "ASP17.3.10",
+      "type": "algorithm_step",
+      "name": "Take action ($\\epsilon$-greedy)",
+      "parent_id": "AP17.3",
+      "step_order": 10,
+      "subclass": "loop",
+      "statement": "Take action $a_t$ according to the $\\epsilon$-greedy policy based on $Q(s_t,a;\\theta')$"
+    },
+    {
+      "id": "ASP17.3.11",
+      "type": "algorithm_step",
+      "name": "Receive reward and new state",
+      "parent_id": "AP17.3",
+      "step_order": 11,
+      "subclass": "update",
+      "statement": "Receive reward $r_t$ and new state $s_{t+1}$"
+    },
+    {
+      "id": "ASP17.3.12",
+      "type": "algorithm_step",
+      "name": "Increment $t$",
+      "parent_id": "AP17.3",
+      "step_order": 12,
+      "subclass": "update",
+      "statement": "$t \\gets t + 1$"
+    },
+    {
+      "id": "ASP17.3.13",
+      "type": "algorithm_step",
+      "name": "Increment $T$",
+      "parent_id": "AP17.3",
+      "step_order": 13,
+      "subclass": "update",
+      "statement": "$T \\gets T + 1$"
+    },
+    {
+      "id": "ASP17.3.14",
+      "type": "algorithm_step",
+      "name": "Inner loop until terminal or $t_{max}$",
+      "parent_id": "AP17.3",
+      "step_order": 14,
+      "subclass": "loop",
+      "statement": "\\Until terminal $s_t$ \\textbf{or} $t - t_{start} == t_{max}$"
+    },
+    {
+      "id": "ASP17.3.15",
+      "type": "algorithm_step",
+      "name": "Compute bootstrap return $R$",
+      "parent_id": "AP17.3",
+      "step_order": 15,
+      "subclass": "update",
+      "statement": "$R = \\left\\{ \\begin{array}{l l} 0  \\quad & \\text{for terminal } s_t\\\\ \\max_a Q(s_t,a;\\theta^-) \\quad & \\text{for non-terminal } s_t \\end{array} \\right.$"
+    },
+    {
+      "id": "ASP17.3.16",
+      "type": "algorithm_step",
+      "name": "Accumulate $n$-step gradients",
+      "parent_id": "AP17.3",
+      "step_order": 16,
+      "subclass": "loop",
+      "statement": "\\For {$i \\in \\{t-1,\\ldots,t_{start} \\}$} \\State $R \\gets r_i + \\gamma R$ \\State Accumulate gradients wrt $\\theta'$: $d\\theta \\gets d\\theta + \\frac{\\partial\\left(R - Q(s_i,a_i;\\theta')\\right)^2}{\\partial \\theta'}$ \\EndFor"
+    },
+    {
+      "id": "ASP17.3.17",
+      "type": "algorithm_step",
+      "name": "Perform asynchronous update of $\theta$",
+      "parent_id": "AP17.3",
+      "step_order": 17,
+      "subclass": "update",
+      "statement": "Perform asynchronous update of $\\theta$ using $d\\theta$."
+    },
+    {
+      "id": "ASP17.3.18",
+      "type": "algorithm_step",
+      "name": "Periodically update target network",
+      "parent_id": "AP17.3",
+      "step_order": 18,
+      "subclass": "branch",
+      "statement": "\\If {$T\\mod I_{target} == 0$} \\State $\\theta^- \\gets \\theta$ \\EndIf"
+    },
+    {
+      "id": "ASP17.3.19",
+      "type": "algorithm_step",
+      "name": "Repeat until $T > T_{max}$",
+      "parent_id": "AP17.3",
+      "step_order": 19,
+      "subclass": "loop",
+      "statement": "\\Until $T > T_{max}$"
+    },
+    {
+      "id": "ASP17.4.1",
+      "type": "algorithm_step",
+      "name": "Assume global and thread-specific variables",
+      "parent_id": "AP17.4",
+      "step_order": 1,
+      "subclass": "initialize",
+      "statement": "\\emph{// Assume global shared parameter vectors $\\theta$ and $\\theta_v$ and global shared counter $T=0$} \\emph{// Assume thread-specific parameter vectors $\\theta'$ and $\\theta'_v$}"
+    },
+    {
+      "id": "ASP17.4.2",
+      "type": "algorithm_step",
+      "name": "Initialize thread step counter",
+      "parent_id": "AP17.4",
+      "step_order": 2,
+      "subclass": "initialize",
+      "statement": "Initialize thread step counter $t\\gets 1$"
+    },
+    {
+      "id": "ASP17.4.3",
+      "type": "algorithm_step",
+      "name": "Reset gradients",
+      "parent_id": "AP17.4",
+      "step_order": 3,
+      "subclass": "update",
+      "statement": "Reset gradients: $d\\theta \\gets 0$ and $d\\theta_v \\gets 0$."
+    },
+    {
+      "id": "ASP17.4.4",
+      "type": "algorithm_step",
+      "name": "Synchronize thread-specific parameters",
+      "parent_id": "AP17.4",
+      "step_order": 4,
+      "subclass": "update",
+      "statement": "Synchronize thread-specific parameters  $\\theta'=\\theta$ and $\\theta'_v=\\theta_v$"
+    },
+    {
+      "id": "ASP17.4.5",
+      "type": "algorithm_step",
+      "name": "Record start step",
+      "parent_id": "AP17.4",
+      "step_order": 5,
+      "subclass": "update",
+      "statement": "$t_{start} = t$"
+    },
+    {
+      "id": "ASP17.4.6",
+      "type": "algorithm_step",
+      "name": "Get state $s_t$",
+      "parent_id": "AP17.4",
+      "step_order": 6,
+      "subclass": "update",
+      "statement": "Get state $s_t$"
+    },
+    {
+      "id": "ASP17.4.7",
+      "type": "algorithm_step",
+      "name": "Perform action according to policy",
+      "parent_id": "AP17.4",
+      "step_order": 7,
+      "subclass": "loop",
+      "statement": "Perform $a_t$ according to policy $\\pi (a_t|s_t;\\theta')$"
+    },
+    {
+      "id": "ASP17.4.8",
+      "type": "algorithm_step",
+      "name": "Receive reward and new state",
+      "parent_id": "AP17.4",
+      "step_order": 8,
+      "subclass": "update",
+      "statement": "Receive reward $r_t$ and new state $s_{t+1}$"
+    },
+    {
+      "id": "ASP17.4.9",
+      "type": "algorithm_step",
+      "name": "Increment $t$",
+      "parent_id": "AP17.4",
+      "step_order": 9,
+      "subclass": "update",
+      "statement": "$t \\gets t + 1$"
+    },
+    {
+      "id": "ASP17.4.10",
+      "type": "algorithm_step",
+      "name": "Increment $T$",
+      "parent_id": "AP17.4",
+      "step_order": 10,
+      "subclass": "update",
+      "statement": "$T \\gets T + 1$"
+    },
+    {
+      "id": "ASP17.4.11",
+      "type": "algorithm_step",
+      "name": "Inner loop until terminal or $t_{max}$",
+      "parent_id": "AP17.4",
+      "step_order": 11,
+      "subclass": "loop",
+      "statement": "\\Until terminal $s_t$ \\textbf{or} $t-t_{start}==t_{max}$"
+    },
+    {
+      "id": "ASP17.4.12",
+      "type": "algorithm_step",
+      "name": "Compute bootstrap return $R$",
+      "parent_id": "AP17.4",
+      "step_order": 12,
+      "subclass": "update",
+      "statement": "$R = \\left\\{ \\begin{array}{l l} 0  \\quad & \\text{for terminal } s_t\\\\ V(s_t,\\theta'_v) \\quad & \\text{for non-terminal } s_t \\text{// Bootstrap from last state} \\end{array}\\right.$"
+    },
+    {
+      "id": "ASP17.4.13",
+      "type": "algorithm_step",
+      "name": "Accumulate policy and value gradients",
+      "parent_id": "AP17.4",
+      "step_order": 13,
+      "subclass": "loop",
+      "statement": "\\For {$i \\in \\{t-1,\\ldots,t_{start} \\}$} \\State $R \\gets r_i + \\gamma R$ \\State Accumulate gradients wrt $\\theta'$: $d\\theta \\gets d\\theta + \\nabla_{\\theta'} \\log\\pi(a_i|s_i;\\theta') (R - V(s_i;\\theta'_v))$ \\State Accumulate gradients wrt $\\theta'_v$: $d\\theta_v \\gets d\\theta_v + {\\partial\\left(R - V(s_i;\\theta'_v)\\right)^2}/{\\partial \\theta'_v}$ \\EndFor"
+    },
+    {
+      "id": "ASP17.4.14",
+      "type": "algorithm_step",
+      "name": "Perform asynchronous update of $\theta$ and $\theta_v$",
+      "parent_id": "AP17.4",
+      "step_order": 14,
+      "subclass": "update",
+      "statement": "Perform asynchronous update of $\\theta$ using $d\\theta$ and of $\\theta_v$ using $d\\theta_v$."
+    },
+    {
+      "id": "ASP17.4.15",
+      "type": "algorithm_step",
+      "name": "Repeat until $T > T_{max}$",
+      "parent_id": "AP17.4",
+      "step_order": 15,
+      "subclass": "loop",
+      "statement": "\\Until $T > T_{max}$"
+    }
+  ],
+  "edges": [
+    {
+      "source": "DP17.1",
+      "target": "DP17.2",
+      "type": "uses"
+    },
+    {
+      "source": "DP17.1",
+      "target": "DP17.4",
+      "type": "uses"
+    },
+    {
+      "source": "DP17.2",
+      "target": "DP17.3",
+      "type": "uses"
+    },
+    {
+      "source": "DP17.2",
+      "target": "DP17.5",
+      "type": "uses"
+    },
+    {
+      "source": "DP17.4",
+      "target": "DP17.5",
+      "type": "uses"
+    },
+    {
+      "source": "DP17.3",
+      "target": "EP17.1",
+      "type": "uses"
+    },
+    {
+      "source": "EP17.1",
+      "target": "AP17.1",
+      "type": "uses"
+    },
+    {
+      "source": "AP17.1",
+      "target": "AP17.2",
+      "type": "uses"
+    },
+    {
+      "source": "EP17.2",
+      "target": "AP17.3",
+      "type": "uses"
+    },
+    {
+      "source": "EP17.3",
+      "target": "AP17.4",
+      "type": "uses"
+    },
+    {
+      "source": "DP17.5",
+      "target": "EP17.4",
+      "type": "uses"
+    },
+    {
+      "source": "EP17.4",
+      "target": "AP17.4",
+      "type": "uses"
+    },
+    {
+      "source": "EP17.5",
+      "target": "AP17.4",
+      "type": "uses"
+    },
+    {
+      "source": "EP17.6",
+      "target": "AP17.1",
+      "type": "uses"
+    },
+    {
+      "source": "EP17.6",
+      "target": "AP17.3",
+      "type": "uses"
+    },
+    {
+      "source": "EP17.6",
+      "target": "AP17.4",
+      "type": "uses"
+    },
+    {
+      "source": "AP17.3",
+      "target": "AP17.1",
+      "type": "generalizes"
+    },
+    {
+      "source": "ASP17.1.1",
+      "target": "ASP17.1.2",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.1.2",
+      "target": "ASP17.1.3",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.1.3",
+      "target": "ASP17.1.4",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.1.4",
+      "target": "ASP17.1.5",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.1.5",
+      "target": "ASP17.1.6",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.1.6",
+      "target": "ASP17.1.7",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.1.7",
+      "target": "ASP17.1.8",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.1.8",
+      "target": "ASP17.1.9",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.1.9",
+      "target": "ASP17.1.10",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.1.10",
+      "target": "ASP17.1.11",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.1.11",
+      "target": "ASP17.1.12",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.1.12",
+      "target": "ASP17.1.13",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.1.13",
+      "target": "ASP17.1.14",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.3.1",
+      "target": "ASP17.3.2",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.3.2",
+      "target": "ASP17.3.3",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.3.3",
+      "target": "ASP17.3.4",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.3.4",
+      "target": "ASP17.3.5",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.3.5",
+      "target": "ASP17.3.6",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.3.6",
+      "target": "ASP17.3.7",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.3.7",
+      "target": "ASP17.3.8",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.3.8",
+      "target": "ASP17.3.9",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.3.9",
+      "target": "ASP17.3.10",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.3.10",
+      "target": "ASP17.3.11",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.3.11",
+      "target": "ASP17.3.12",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.3.12",
+      "target": "ASP17.3.13",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.3.13",
+      "target": "ASP17.3.14",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.3.14",
+      "target": "ASP17.3.15",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.3.15",
+      "target": "ASP17.3.16",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.3.16",
+      "target": "ASP17.3.17",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.3.17",
+      "target": "ASP17.3.18",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.3.18",
+      "target": "ASP17.3.19",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.4.1",
+      "target": "ASP17.4.2",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.4.2",
+      "target": "ASP17.4.3",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.4.3",
+      "target": "ASP17.4.4",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.4.4",
+      "target": "ASP17.4.5",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.4.5",
+      "target": "ASP17.4.6",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.4.6",
+      "target": "ASP17.4.7",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.4.7",
+      "target": "ASP17.4.8",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.4.8",
+      "target": "ASP17.4.9",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.4.9",
+      "target": "ASP17.4.10",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.4.10",
+      "target": "ASP17.4.11",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.4.11",
+      "target": "ASP17.4.12",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.4.12",
+      "target": "ASP17.4.13",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.4.13",
+      "target": "ASP17.4.14",
+      "type": "uses"
+    },
+    {
+      "source": "ASP17.4.14",
+      "target": "ASP17.4.15",
+      "type": "uses"
+    }
+  ]
+}

@@ -1,0 +1,948 @@
+{
+  "metadata": {
+    "title": "Testing Graph Properties with the Container Method",
+    "authors": "Eric Blais, Cameron Seth",
+    "year": 2023,
+    "paper_num": 432,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "DP432.1",
+      "type": "definition",
+      "name": "$\\epsilon$-far from a graph property",
+      "section": "1",
+      "statement": "A simple undirected graph $G$ on $n$ vertices is $\\epsilon$-far from a graph property $\\Pi$ if at least $\\epsilon n^2$ edges must be added or removed from $G$ to obtain a graph that has property $\\Pi$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP432.2",
+      "type": "definition",
+      "name": "Canonical $\\epsilon$-tester",
+      "section": "1",
+      "statement": "A bounded-error randomized algorithm that samples a set $S$ of $s$ vertices of an unknown graph $G$, examines the induced subgraph $G[S]$, and based only on this local view distinguishes between $G$ having property $\\Pi$ and $G$ being $\\epsilon$-far from $\\Pi$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP432.3",
+      "type": "definition",
+      "name": "Sample complexity $\\mathcal{S}_\\Pi(n,\\epsilon)$",
+      "section": "1",
+      "statement": "The sample complexity of property $\\Pi$, denoted $\\mathcal{S}_\\Pi(n,\\epsilon)$, is the minimum value $s$ for which there is a canonical $\\epsilon$-tester for $\\Pi$ with sample cost $s$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP432.4",
+      "type": "definition",
+      "name": "$\\rho$-Clique property",
+      "section": "1.1",
+      "statement": "The set of all graphs on $n$ vertices that contain a clique on $\\rho n$ vertices.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP432.5",
+      "type": "definition",
+      "name": "$\\rho$-IndepSet property",
+      "section": "3",
+      "statement": "The set of all graphs on $n$ vertices that contain an independent set on $\\rho n$ vertices (the complement of the $\\rho$-Clique property).",
+      "origin": "paper"
+    },
+    {
+      "id": "DP432.6",
+      "type": "definition",
+      "name": "$k$-Colorable property",
+      "section": "1.2",
+      "statement": "The set of all graphs on $n$ vertices that are $k$-colorable. The case $k=2$ corresponds to bipartiteness.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP432.7",
+      "type": "definition",
+      "name": "Fingerprint and Container of an independent set",
+      "section": "2.1",
+      "statement": "Given a graph $G$ and independent set $I$, the $t$-th fingerprint $F_t(I)$ and $t$-th container $C_t(I)$ are produced by the greedy procedure of Algorithm 1, with the convention $C_t = F_t = I$ for $t > |I|$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP432.1",
+      "type": "problem",
+      "name": "Testing the $\\rho$-Clique property",
+      "section": "1.1",
+      "statement": "Determine $\\mathcal{S}_{\\rho\\textsc{-Clique}}(n,\\epsilon)$: the minimum sample size $s$ such that a canonical tester can distinguish graphs containing a $\\rho n$-clique from graphs $\\epsilon$-far from the $\\rho$-Clique property.",
+      "subclass": "decision",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP432.2",
+      "type": "problem",
+      "name": "Testing $k$-Colorability",
+      "section": "1.2",
+      "statement": "Determine $\\mathcal{S}_{k\\textsc{-Colorable}}(n,\\epsilon)$: the minimum sample size $s$ such that a canonical tester can distinguish $k$-colorable graphs from those $\\epsilon$-far from $k$-colorable.",
+      "subclass": "decision",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP432.3",
+      "type": "problem",
+      "name": "Densest $k$-Subgraph (D$k$S) decision problem",
+      "section": "1.1",
+      "statement": "Distinguish graphs that contain a $k$-clique from graphs whose $k$-subgraphs all contain at most $(1-\\delta)\\binom{k}{2}$ edges.",
+      "origin": "external",
+      "origin_citation": "Manurangsi 2017"
+    },
+    {
+      "id": "ProbP432.4",
+      "type": "problem",
+      "name": "Planted $k$-Clique Detection",
+      "section": "1.1",
+      "statement": "Distinguish random graphs with edge probability $(1-\\delta)$ from random graphs with edge probability $(1-\\delta)$ containing a planted $k$-clique.",
+      "origin": "external",
+      "origin_citation": "Racz & Schiffer 2019; Huleihel, Mazumdar, Pal 2021"
+    },
+    {
+      "id": "AP432.1",
+      "type": "algorithm",
+      "name": "Fingerprint & Container Generator",
+      "section": "2.1",
+      "statement": "Greedy procedure (variant of Kleitman-Winston) that, given graph $G$ and independent set $I$, produces sequences of fingerprints $F_1,\\dots,F_{|I|}$ and containers $C_1,\\dots,C_{|I|}$ by repeatedly selecting the highest-degree remaining vertex of $I$ and pruning higher-degree vertices and neighbours.",
+      "input": [
+        "Graph $G = (V,E)$",
+        "Independent set $I \\subseteq V$"
+      ],
+      "output": [
+        "Fingerprints $F_1, \\ldots, F_{|I|}$",
+        "Containers $C_1, \\ldots, C_{|I|}$"
+      ],
+      "origin": "paper",
+      "tags": ["greedy", "iterative"]
+    },
+    {
+      "id": "AP432.2",
+      "type": "algorithm",
+      "name": "Canonical tester for $\\rho$-IndepSet",
+      "section": "3.3",
+      "statement": "Sample $s = c \\cdot \\frac{\\rho^3}{\\epsilon^2} \\ln^3(1/\\epsilon)$ vertices uniformly without replacement and accept iff the induced subgraph $G[S]$ contains an independent set of size $\\rho s$.",
+      "input": [
+        "Graph $G = (V,E)$ on $n$ vertices",
+        "Parameters $\\rho$ and $\\epsilon$"
+      ],
+      "output": [
+        "Accept if $G[S]$ contains a $\\rho s$-independent set; reject otherwise"
+      ],
+      "origin": "paper",
+      "tags": ["sampling", "property-testing"]
+    },
+    {
+      "id": "AP432.3",
+      "type": "algorithm",
+      "name": "Canonical tester for $k$-Colorable",
+      "section": "4.2",
+      "statement": "Sample $s = c \\cdot \\frac{k}{\\epsilon} \\ln^2(1/\\epsilon)$ vertices uniformly without replacement and accept iff the induced subgraph $G[S]$ is $k$-colorable.",
+      "input": [
+        "Graph $G = (V,E)$ on $n$ vertices",
+        "Parameters $k$ and $\\epsilon$"
+      ],
+      "output": [
+        "Accept if $G[S]$ is $k$-colorable; reject otherwise"
+      ],
+      "origin": "paper",
+      "tags": ["sampling", "property-testing"]
+    },
+    {
+      "id": "TP432.1",
+      "type": "theorem",
+      "name": "Sample complexity of $\\rho$-Clique testing (Theorem 1)",
+      "section": "1.1",
+      "statement": "The sample complexity of the $\\rho$-Clique property is $\\mathcal{S}_{\\rho\\textsc{-Clique}}(n,\\epsilon) = \\tilde{O}\\!\\left(\\frac{\\rho^3}{\\epsilon^2}\\right)$.",
+      "assumptions": [
+        "$G$ is a graph on $n$ vertices",
+        "$\\rho \\in (0,1)$ and $\\epsilon > 0$"
+      ],
+      "conclusions": [
+        "$\\mathcal{S}_{\\rho\\textsc{-Clique}}(n,\\epsilon) = \\tilde{O}(\\rho^3/\\epsilon^2)$"
+      ],
+      "origin": "paper",
+      "tags": ["upper-bound", "sample-complexity"]
+    },
+    {
+      "id": "TP432.2",
+      "type": "theorem",
+      "name": "Theorem 1' (Alternative formulation, Densest $k$-Subgraph)",
+      "section": "1.1",
+      "statement": "For every $n$, $k = k(n) < n$, and $\\delta = \\delta(n) > 0$, there is a bounded-error randomized algorithm that distinguishes graphs containing a $k$-clique from graphs whose $k$-subgraphs all contain at most $(1-\\delta)\\binom{k}{2}$ edges by inspecting an induced subgraph on $|S| = O\\!\\left(\\frac{n}{\\delta^2 k}\\ln^3\\!\\left(\\frac{n}{\\delta^2 k}\\right)\\right)$ random vertices.",
+      "assumptions": [
+        "$n \\in \\mathbb{N}$, $k = k(n) < n$, $\\delta = \\delta(n) > 0$"
+      ],
+      "conclusions": [
+        "Sample size $|S| = O\\!\\left(\\frac{n}{\\delta^2 k}\\ln^3\\!\\left(\\frac{n}{\\delta^2 k}\\right)\\right)$ suffices for the stated distinguishing task"
+      ],
+      "origin": "paper",
+      "tags": ["sample-complexity", "densest-k-subgraph"]
+    },
+    {
+      "id": "TP432.3",
+      "type": "theorem",
+      "name": "Sample complexity of $k$-Colorable testing (Theorem 2)",
+      "section": "1.2",
+      "statement": "The $k$-Colorable property has sample complexity $\\mathcal{S}_{k\\textsc{-Colorable}}(n,\\epsilon) = \\tilde{O}\\!\\left(\\frac{k}{\\epsilon}\\right)$.",
+      "assumptions": [
+        "$G$ is a graph on $n$ vertices",
+        "$k \\geq 3$ and $\\epsilon > 0$"
+      ],
+      "conclusions": [
+        "$\\mathcal{S}_{k\\textsc{-Colorable}}(n,\\epsilon) = \\tilde{O}(k/\\epsilon)$"
+      ],
+      "origin": "paper",
+      "tags": ["upper-bound", "sample-complexity"]
+    },
+    {
+      "id": "TP432.4",
+      "type": "theorem",
+      "name": "Theorem 1 (precise) for $\\rho$-IndepSet",
+      "section": "3.3",
+      "statement": "The sample complexity of the $\\rho$-IndepSet property is $\\mathcal{S}_{\\rho\\textsc{-IndepSet}}(n,\\epsilon) = O\\!\\left(\\frac{\\rho^3}{\\epsilon^2}\\ln^3(1/\\epsilon)\\right)$.",
+      "assumptions": [
+        "$G$ is a graph on $n$ vertices",
+        "$\\epsilon < \\rho^2$"
+      ],
+      "conclusions": [
+        "$\\mathcal{S}_{\\rho\\textsc{-IndepSet}}(n,\\epsilon) = O(\\rho^3/\\epsilon^2 \\cdot \\ln^3(1/\\epsilon))$"
+      ],
+      "origin": "paper",
+      "tags": ["upper-bound", "sample-complexity"]
+    },
+    {
+      "id": "TP432.5",
+      "type": "theorem",
+      "name": "Theorem 2 (precise) for $k$-Colorable",
+      "section": "4.2",
+      "statement": "The sample complexity of the $k$-Colorable property is $\\mathcal{S}_{k\\textsc{-Colorable}}(n,\\epsilon) = O\\!\\left(\\frac{k}{\\epsilon}\\ln^2(1/\\epsilon)\\right)$.",
+      "assumptions": [
+        "$G$ is a graph on $n$ vertices",
+        "$k \\geq 3$ and $\\epsilon < 1/k$"
+      ],
+      "conclusions": [
+        "$\\mathcal{S}_{k\\textsc{-Colorable}}(n,\\epsilon) = O(k/\\epsilon \\cdot \\ln^2(1/\\epsilon))$"
+      ],
+      "origin": "paper",
+      "tags": ["upper-bound", "sample-complexity"]
+    },
+    {
+      "id": "LP432.1",
+      "type": "lemma",
+      "name": "Graph Container Lemma I",
+      "section": "1.3",
+      "statement": "For any graph $G$ on $n$ vertices that is $\\epsilon$-far from $\\rho$-IndepSet, there exist a fingerprint family $\\mathcal{F} \\subseteq 2^V$ and container function $\\mathcal{C}: \\mathcal{F} \\to 2^V$ such that every large independent set $I$ has some $F \\in \\mathcal{F}$ with $F \\subseteq I \\subseteq \\mathcal{C}(F)$, with $|F| \\le \\frac{8\\rho^2 \\ln(2\\rho/\\epsilon)}{\\epsilon}$ and $|\\mathcal{C}(F)| \\le (\\rho - |F|\\cdot \\frac{\\epsilon}{8\\rho \\ln(2\\rho/\\epsilon)}) n$.",
+      "assumptions": [
+        "$G = (V,E)$ on $n$ vertices",
+        "$G$ is $\\epsilon$-far from the $\\rho$-IndepSet property"
+      ],
+      "conclusions": [
+        "Existence of $(\\mathcal{F},\\mathcal{C})$ covering every $I$ with $|I| \\geq \\frac{8\\rho^2 \\ln(2\\rho/\\epsilon)}{\\epsilon}$",
+        "Cardinality bounds $|F| \\le \\frac{8\\rho^2 \\ln(2\\rho/\\epsilon)}{\\epsilon}$ and $|\\mathcal{C}(F)| \\le (\\rho - |F|\\cdot \\frac{\\epsilon}{8\\rho \\ln(2\\rho/\\epsilon)}) n$"
+      ],
+      "origin": "paper",
+      "tags": ["existence", "bound"]
+    },
+    {
+      "id": "LP432.2",
+      "type": "lemma",
+      "name": "Graph Container Lemma II",
+      "section": "1.3",
+      "statement": "If $G$ is $\\epsilon$-far from $k$-colorable, then there exist a fingerprint family $\\mathcal{F} \\subseteq (2^V)^k$ and container function $\\mathcal{C}: \\mathcal{F} \\to 2^V$ such that every $k$-colorable $U \\subseteq V$ with $|U| \\geq 4k/\\epsilon$ has some $F = (T_1,\\ldots,T_k)$ with $\\bigcup_i T_i \\subseteq U \\subseteq \\mathcal{C}(F)$, $|T_i| \\le 4/\\epsilon$, and $|\\mathcal{C}(F)| \\le (1 - \\frac{\\epsilon}{4\\ln(1/\\epsilon)}\\max_i |T_i|) n$.",
+      "assumptions": [
+        "$G$ is $\\epsilon$-far from $k$-colorable"
+      ],
+      "conclusions": [
+        "Existence of $(\\mathcal{F},\\mathcal{C})$ covering every $k$-colorable $U$ with $|U|\\ge 4k/\\epsilon$",
+        "$|T_i|\\le 4/\\epsilon$ and $|\\mathcal{C}(F)| \\le (1 - \\frac{\\epsilon}{4\\ln(1/\\epsilon)}\\max_i |T_i|)n$"
+      ],
+      "origin": "paper",
+      "tags": ["existence", "bound"]
+    },
+    {
+      "id": "LP432.3",
+      "type": "lemma",
+      "name": "Container Shrinking Lemma",
+      "section": "3.1",
+      "statement": "Let $G$ be $\\epsilon$-far from $\\rho$-IndepSet, $I$ an independent set in $G$, and $t < |I|$ with $|C_t| \\ge \\rho n$. For any $\\alpha > 0$, if $C \\subseteq C_{t+1}$ has $|C| = (\\rho - \\alpha)n$ and $G[C]$ has at most $\\frac{\\epsilon}{4} n^2$ edges, then $|C_{t+1}\\setminus C| \\le (1 - \\frac{\\epsilon}{4\\rho\\alpha})|C_t \\setminus C|$.",
+      "assumptions": [
+        "$G$ is $\\epsilon$-far from $\\rho$-IndepSet",
+        "$I$ is an independent set in $G$",
+        "$t < |I|$ with $|C_t| \\geq \\rho n$",
+        "$C \\subseteq C_{t+1}$, $|C| = (\\rho - \\alpha) n$, $G[C]$ has $\\le \\epsilon n^2/4$ edges"
+      ],
+      "conclusions": [
+        "$|C_{t+1}\\setminus C| \\le (1 - \\frac{\\epsilon}{4\\rho\\alpha})|C_t \\setminus C|$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "LP432.4",
+      "type": "lemma",
+      "name": "Graph Container Lemma I (alternative formulation)",
+      "section": "3.2",
+      "statement": "Let $G$ be $\\epsilon$-far from $\\rho$-IndepSet. For any independent set $I$ there exists $t \\le \\frac{8\\rho^2}{\\epsilon}\\ln(2\\rho/\\epsilon)$ such that $|C_t| \\le (\\rho - t \\cdot \\frac{\\epsilon}{8\\rho\\ln(2\\rho/\\epsilon)}) n$ and $G[C_t]$ contains at most $\\epsilon n^2/4$ edges.",
+      "assumptions": [
+        "$G = (V,E)$ on $n$ vertices, $\\epsilon$-far from $\\rho$-IndepSet",
+        "$I$ is an independent set in $G$"
+      ],
+      "conclusions": [
+        "Exists $t \\le \\frac{8\\rho^2}{\\epsilon}\\ln(2\\rho/\\epsilon)$ with $|C_t| \\le (\\rho - t\\cdot \\frac{\\epsilon}{8\\rho \\ln(2\\rho/\\epsilon)})n$",
+        "$G[C_t]$ has $\\le \\epsilon n^2/4$ edges"
+      ],
+      "origin": "paper",
+      "tags": ["existence", "bound"]
+    },
+    {
+      "id": "LP432.5",
+      "type": "lemma",
+      "name": "Graph Container Lemma II (alternative formulation)",
+      "section": "4.1",
+      "statement": "Let $G$ be $\\epsilon$-far from $k$-colorable, $I_1,\\dots,I_k$ independent sets in $G$. There exists $t \\le 4/\\epsilon$ with $|\\bigcup_{i=1}^k C_t(I_i)| \\le (1 - t\\cdot \\frac{\\epsilon}{4\\ln(1/\\epsilon)}) n$.",
+      "assumptions": [
+        "$G$ is $\\epsilon$-far from $k$-colorable",
+        "$I_1, \\ldots, I_k$ independent sets in $G$"
+      ],
+      "conclusions": [
+        "Exists $t \\le 4/\\epsilon$ with $|\\bigcup_i C_t(I_i)| \\le (1 - t\\cdot \\frac{\\epsilon}{4\\ln(1/\\epsilon)})n$"
+      ],
+      "origin": "paper",
+      "tags": ["existence", "bound"]
+    },
+    {
+      "id": "LP432.6",
+      "type": "lemma",
+      "name": "Chernoff's Bound for hypergeometric distribution",
+      "section": "3.3",
+      "statement": "Let $X \\sim H(N,K,m)$ be hypergeometric. For any $\\vartheta \\geq \\E[X]$, $\\Pr[X \\ge \\vartheta] \\le \\exp\\!\\left(-\\frac{(\\vartheta - \\E[X])^2}{\\vartheta + \\E[X]}\\right)$.",
+      "assumptions": [
+        "$X \\sim H(N,K,m)$ hypergeometric",
+        "$\\vartheta \\ge \\E[X]$"
+      ],
+      "conclusions": [
+        "$\\Pr[X \\ge \\vartheta] \\le \\exp(-(\\vartheta - \\E[X])^2/(\\vartheta + \\E[X]))$"
+      ],
+      "origin": "external",
+      "origin_citation": "Mulzer 2018",
+      "tags": ["bound", "concentration"]
+    },
+    {
+      "id": "PrP432.1",
+      "type": "proposition",
+      "name": "Container closure property",
+      "section": "2.2",
+      "statement": "For any graph $G$, independent set $I$, and index $t$: $C_t(F_t(I)) = C_t(I)$.",
+      "assumptions": [
+        "$G = (V,E)$",
+        "$I$ independent set in $G$",
+        "$t \\geq 1$"
+      ],
+      "conclusions": [
+        "$C_t(F_t(I)) = C_t(I)$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "PrP432.2",
+      "type": "proposition",
+      "name": "Container maximum-degree bound",
+      "section": "2.2",
+      "statement": "For any graph $G$ on $n$ vertices, independent set $I$, and $t \\ge 1$, the $t$-th container of $I$ satisfies $\\Delta(G[C_t]) \\le n/t$.",
+      "assumptions": [
+        "$G = (V,E)$ on $n$ vertices",
+        "$I$ independent set in $G$",
+        "$t \\ge 1$"
+      ],
+      "conclusions": [
+        "$\\Delta(G[C_t]) \\le n/t$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "EP432.1",
+      "type": "equation",
+      "name": "Container chain inclusion",
+      "section": "2.2",
+      "statement": "$F_1 \\subseteq F_2 \\subseteq \\cdots \\subseteq F_{|I|} = I \\subseteq C_{|I|} \\subseteq \\cdots \\subseteq C_2 \\subseteq C_1$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PP432.1",
+      "type": "proof",
+      "name": "Proof of Container closure property",
+      "section": "2.2",
+      "statement": "If $t > |I|$, $F_t(I) = I = C_t(I)$ trivially. Otherwise, the greedy algorithm selects the same first $t$ vertices and produces the same container when given $F_t(I)$ as when given $I$.",
+      "proves": "PrP432.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP432.2",
+      "type": "proof",
+      "name": "Proof of Container maximum-degree bound",
+      "section": "2.2",
+      "statement": "By averaging on the telescoping sum $\\sum_i |C_{i-1}\\setminus C_i| \\le n$, some round $j \\le t$ removes at most $n/t$ vertices, forcing the chosen $v_j$ and all surviving vertices in $C_j \\supseteq C_t$ to have degree $\\le n/t$ in their induced subgraph.",
+      "proves": "PrP432.2",
+      "origin": "paper"
+    },
+    {
+      "id": "PP432.3",
+      "type": "proof",
+      "name": "Proof of Container Shrinking Lemma",
+      "section": "3.1",
+      "statement": "Lower-bound $|C_t \\setminus C_{t+1}|$ by case analysis on whether $C$ contains a high-degree vertex; otherwise show $G[C_t \\setminus C]$ is dense via a random-subset argument using $\\epsilon$-farness.",
+      "proves": "LP432.3",
+      "origin": "paper"
+    },
+    {
+      "id": "PP432.4",
+      "type": "proof",
+      "name": "Proof of Graph Container Lemma I (alternative)",
+      "section": "3.2",
+      "statement": "Take $C$ as the first container with $\\le \\epsilon n^2/4$ edges and $|C| = (\\rho - \\alpha)n$. Apply the Container Shrinking Lemma iteratively to bound $t^*$, then bound the remaining iterations to obtain the index bound.",
+      "proves": "LP432.4",
+      "origin": "paper"
+    },
+    {
+      "id": "PP432.5",
+      "type": "proof",
+      "name": "Proof of Graph Container Lemma I",
+      "section": "3.2",
+      "statement": "Define $\\mathcal{F}$ as the fingerprints $F_{t_I}(I)$ over large independent sets $I$ and $\\mathcal{C}(F) = C_{|F|}(F)$; cardinality bounds and the covering property follow from the alternative formulation and container closure.",
+      "proves": "LP432.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP432.6",
+      "type": "proof",
+      "name": "Proof of Graph Container Lemma II (alternative)",
+      "section": "4.1",
+      "statement": "Argue by contradiction: if every container union were too large, build a $k$-partition by allocating the $A_t$ layers and bound the resulting monochromatic edges by $< \\epsilon n^2$, contradicting $\\epsilon$-farness from $k$-colorable.",
+      "proves": "LP432.5",
+      "origin": "paper"
+    },
+    {
+      "id": "PP432.7",
+      "type": "proof",
+      "name": "Proof of Graph Container Lemma II",
+      "section": "4.1",
+      "statement": "Define $\\mathcal{F}$ from arbitrary $k$-partitions of $k$-colorable $U$ and $\\mathcal{C}(F) = \\bigcup_i C_{\\max_j |T_j|}(T_i)$; combine the alternative formulation with container closure to obtain the bounds.",
+      "proves": "LP432.2",
+      "origin": "paper"
+    },
+    {
+      "id": "PP432.8",
+      "type": "proof",
+      "name": "Proof of Chernoff's Bound for hypergeometric",
+      "section": "3.3",
+      "statement": "Apply the standard multiplicative Chernoff inequality with $\\delta = (\\vartheta - \\E[X])/\\E[X]$ and simplify; the multiplicative bound also applies to hypergeometric variables.",
+      "proves": "LP432.6",
+      "origin": "paper"
+    },
+    {
+      "id": "PP432.9",
+      "type": "proof",
+      "name": "Proof of Theorem 1 (precise) for $\\rho$-IndepSet",
+      "section": "3.3",
+      "statement": "Sample $s = c \\rho^3 \\epsilon^{-2} \\ln^3(1/\\epsilon)$ vertices. Completeness via hypergeometric median. Soundness: union-bound over $\\mathcal{F}$ from Lemma I, applying the Chernoff bound to the conditional containment probability.",
+      "proves": "TP432.4",
+      "origin": "paper"
+    },
+    {
+      "id": "PP432.10",
+      "type": "proof",
+      "name": "Proof of Theorem 2 (precise) for $k$-Colorable",
+      "section": "4.2",
+      "statement": "Sample $s = c k\\epsilon^{-1} \\ln^2(1/\\epsilon)$ vertices. Completeness is immediate. Soundness: union-bound over fingerprint sequences from Lemma II, bounding the conditional containment probability by $(1 - \\frac{\\epsilon}{4\\ln(1/\\epsilon)}\\cdot \\frac{t}{k})^{s-t}$.",
+      "proves": "TP432.5",
+      "origin": "paper"
+    },
+    {
+      "id": "RP432.1",
+      "type": "remark",
+      "name": "Tight version of Lemma I covering all $I$",
+      "section": "3.2",
+      "statement": "Lemma I can be extended to cover any independent set (not only those with $|I| \\geq \\frac{8\\rho^2}{\\epsilon}\\ln(2\\rho/\\epsilon)$) by a slight variation in the fingerprint definition; this strengthening is unnecessary for Theorem 1.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP432.2",
+      "type": "remark",
+      "name": "Completeness probability and error reduction",
+      "section": "3.3",
+      "statement": "The tester's $1/2$ completeness can be boosted to $2/3$ via standard error reduction at a $\\ln(1/\\gamma)$ multiplicative cost, or directly by relaxing the inner check to the $(\\rho-\\tau)$-IndepSet property.",
+      "origin": "paper"
+    },
+    {
+      "id": "OpenP432.1",
+      "type": "open_problem",
+      "name": "Optimality of $\\tilde{O}(k/\\epsilon)$ bound",
+      "section": "1.2",
+      "statement": "Determine whether the bound $\\mathcal{S}_{k\\textsc{-Colorable}}(n,\\epsilon) = \\tilde{O}(k/\\epsilon)$ in Theorem 2 is optimal; the best known lower bound in the polychromatic regime is $\\tilde{\\Omega}(1/\\epsilon)$, leaving a quadratic gap.",
+      "origin": "paper"
+    },
+    {
+      "id": "OpenP432.2",
+      "type": "open_problem",
+      "name": "Container method for broader testing problems",
+      "section": "1.4",
+      "statement": "Identify the largest class of graph (and hypergraph) properties for which the (hyper)graph container method yields tight property-testing bounds, beyond the 0--1 graph partition properties studied in subsequent work.",
+      "origin": "paper"
+    },
+    {
+      "id": "CnjP432.1",
+      "type": "conjecture",
+      "name": "Bogdanov-Li bipartiteness query conjecture",
+      "section": "1.4",
+      "statement": "It is possible to $\\frac{1}{n}$-test 2-colorability (bipartiteness) with $o(n^2)$ queries.",
+      "origin": "external",
+      "origin_citation": "Bogdanov & Li 2010"
+    },
+    {
+      "id": "TP432.6",
+      "type": "theorem",
+      "name": "Goldreich-Goldwasser-Ron clique upper bound",
+      "section": "1.1 (cited)",
+      "statement": "$\\mathcal{S}_{\\rho\\textsc{-Clique}}(n,\\epsilon) = \\tilde{O}(\\rho/\\epsilon^4)$.",
+      "assumptions": ["$G$ is a graph on $n$ vertices", "$\\rho \\in (0,1)$, $\\epsilon > 0$"],
+      "conclusions": ["$\\mathcal{S}_{\\rho\\textsc{-Clique}}(n,\\epsilon) = \\tilde{O}(\\rho/\\epsilon^4)$"],
+      "origin": "external",
+      "origin_citation": "Goldreich, Goldwasser, Ron 1998"
+    },
+    {
+      "id": "TP432.7",
+      "type": "theorem",
+      "name": "Feige-Langberg-Schechtman clique bounds",
+      "section": "1.1 (cited)",
+      "statement": "$\\mathcal{S}_{\\rho\\textsc{-Clique}}(n,\\epsilon) = \\tilde{O}(\\rho^4/\\epsilon^3)$ and $\\mathcal{S}_{\\rho\\textsc{-Clique}}(n,\\epsilon) = \\tilde{\\Omega}(\\rho^3/\\epsilon^2)$.",
+      "assumptions": ["$G$ is a graph on $n$ vertices", "$\\rho \\in (0,1)$, $\\epsilon > 0$"],
+      "conclusions": [
+        "$\\mathcal{S}_{\\rho\\textsc{-Clique}}(n,\\epsilon) = \\tilde{O}(\\rho^4/\\epsilon^3)$",
+        "$\\mathcal{S}_{\\rho\\textsc{-Clique}}(n,\\epsilon) = \\tilde{\\Omega}(\\rho^3/\\epsilon^2)$"
+      ],
+      "origin": "external",
+      "origin_citation": "Feige, Langberg, Schechtman 2004"
+    },
+    {
+      "id": "TP432.8",
+      "type": "theorem",
+      "name": "Alon-Krivelevich $k$-colorability bound",
+      "section": "1.2 (cited)",
+      "statement": "$\\mathcal{S}_{k\\textsc{-Colorable}}(n,\\epsilon) = \\tilde{O}(k/\\epsilon^2)$ for all $k \\ge 3$.",
+      "assumptions": ["$G$ on $n$ vertices", "$k \\ge 3$, $\\epsilon > 0$"],
+      "conclusions": ["$\\mathcal{S}_{k\\textsc{-Colorable}}(n,\\epsilon) = \\tilde{O}(k/\\epsilon^2)$"],
+      "origin": "external",
+      "origin_citation": "Alon & Krivelevich 2002"
+    },
+    {
+      "id": "TP432.9",
+      "type": "theorem",
+      "name": "Sohler $k$-colorability bound",
+      "section": "1.2 (cited)",
+      "statement": "$\\mathcal{S}_{k\\textsc{-Colorable}}(n,\\epsilon) = \\tilde{O}(k^6/\\epsilon)$; in particular for constant $k$, $\\tilde{\\Theta}(1/\\epsilon)$.",
+      "assumptions": ["$G$ on $n$ vertices", "$k \\ge 3$, $\\epsilon > 0$"],
+      "conclusions": [
+        "$\\mathcal{S}_{k\\textsc{-Colorable}}(n,\\epsilon) = \\tilde{O}(k^6/\\epsilon)$",
+        "For constant $k$, $\\mathcal{S}_{k\\textsc{-Colorable}}(n,\\epsilon) = \\tilde{\\Theta}(1/\\epsilon)$"
+      ],
+      "origin": "external",
+      "origin_citation": "Sohler 2012"
+    },
+    {
+      "id": "PSP432.1",
+      "type": "proof_step",
+      "parent_id": "PP432.3",
+      "step_order": 1,
+      "name": "Setup: relate $|C_{t+1}\\setminus C|$ to $|C_t\\setminus C|$",
+      "statement": "Use $C \\subseteq C_{t+1} \\subseteq C_t$ to obtain $|C_{t+1}\\setminus C| = |C_t\\setminus C| - |C_t\\setminus C_{t+1}|$ and aim to lower-bound $|C_t\\setminus C_{t+1}|$.",
+      "subclass": "setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.2",
+      "type": "proof_step",
+      "parent_id": "PP432.3",
+      "step_order": 2,
+      "name": "Case 1: high-degree vertex in $C$",
+      "statement": "If some $v \\in C$ has degree $\\ge \\frac{\\epsilon}{4\\rho\\alpha}|C_t\\setminus C|$ in $G[C_t]$, then the greedy choice $v_{t+1}$ has degree at least as large, so at least this many vertices are removed.",
+      "subclass": "case_split",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.3",
+      "type": "proof_step",
+      "parent_id": "PP432.3",
+      "step_order": 3,
+      "name": "Case 2: claim $G[C_t\\setminus C]$ is dense",
+      "statement": "If all $v \\in C$ have low degree in $G[C_t]$, claim $G[C_t\\setminus C]$ has $\\ge \\frac{\\epsilon}{4\\rho\\alpha}|C_t\\setminus C|^2$ edges, which forces $\\frac{\\epsilon}{4\\rho\\alpha}|C_t\\setminus C|$ removals.",
+      "subclass": "case_split",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.4",
+      "type": "proof_step",
+      "parent_id": "PP432.3",
+      "step_order": 4,
+      "name": "Random-subset argument for density",
+      "statement": "Pick a uniform random $R \\subseteq C_t\\setminus C$ of size $\\alpha n$; using $\\epsilon$-farness, $G[R\\cup C]$ has $\\ge \\epsilon n^2$ edges, while $G[C]$ contributes $\\le \\epsilon n^2/4$ and $C\\textrm{-to-}C_t\\setminus C$ edges contribute at most $\\frac{\\epsilon}{4} n^2$ in expectation.",
+      "subclass": "introduce_variable",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.5",
+      "type": "proof_step",
+      "parent_id": "PP432.3",
+      "step_order": 5,
+      "name": "Conclude expected density of $G[R]$",
+      "statement": "Combine the bounds: $\\E[\\textrm{edges in }G[R]] \\ge \\frac{\\epsilon}{2}n^2 \\ge \\frac{\\epsilon}{\\alpha^2}\\binom{|R|}{2}$, so $G[C_t\\setminus C]$ has density $\\ge \\epsilon/\\alpha^2$ and the desired edge bound follows.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.6",
+      "type": "proof_step",
+      "parent_id": "PP432.4",
+      "step_order": 1,
+      "name": "Choose first sparse container $C$",
+      "statement": "Let $C$ be the first container with $\\le \\epsilon n^2/4$ edges; existence follows since $C_{|I|+1} = I$ has no edges. Write $|C| = (\\rho - \\alpha) n$ with $\\frac{\\epsilon}{2\\rho} \\le \\alpha \\le \\rho$.",
+      "subclass": "introduce_variable",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.7",
+      "type": "proof_step",
+      "parent_id": "PP432.4",
+      "step_order": 2,
+      "name": "Iterate Container Shrinking up to $t^*$",
+      "statement": "Let $t^*$ be the largest index with $|C_{t^*}| \\ge \\rho n$. Apply the Container Shrinking Lemma for $t = 0,\\dots,t^*-1$ to get $|C_{t^*}\\setminus C| \\le (1 - \\frac{\\epsilon}{4\\rho\\alpha})^{t^*} n$; conclude $t^* \\le \\frac{4\\rho\\alpha}{\\epsilon}\\ln(2\\rho/\\epsilon)$.",
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.8",
+      "type": "proof_step",
+      "parent_id": "PP432.4",
+      "step_order": 3,
+      "name": "Bound iterations beyond $t^*$",
+      "statement": "For $t > t^*$, while $G[C_t]$ has $> \\epsilon n^2/4$ edges, at least $\\epsilon n/(4\\rho)$ vertices are removed per round; hence at most $4\\rho\\alpha/\\epsilon$ such rounds occur before $C_t$ becomes $C$.",
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.9",
+      "type": "proof_step",
+      "parent_id": "PP432.4",
+      "step_order": 4,
+      "name": "Combine and rearrange",
+      "statement": "Total iterations are $\\le \\frac{8\\rho\\alpha}{\\epsilon}\\ln(2\\rho/\\epsilon)$; rearranging for $\\alpha$ recovers the conclusion of the lemma.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.10",
+      "type": "proof_step",
+      "parent_id": "PP432.6",
+      "step_order": 1,
+      "name": "Setup contradiction",
+      "statement": "Assume that for all $t \\le 4/\\epsilon$, $|\\bigcup_i C_t(I_i)| > (1 - t\\cdot \\frac{\\epsilon}{4\\ln(1/\\epsilon)}) n$, and aim to construct a $k$-partition violating $\\epsilon$-farness from $k$-colorable.",
+      "subclass": "contradiction_setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.11",
+      "type": "proof_step",
+      "parent_id": "PP432.6",
+      "step_order": 2,
+      "name": "Initialize partition from final containers",
+      "statement": "Set $V_i = C_{4/\\epsilon}(I_i)$ for each $i$, prune duplicates so $V_1,\\dots,V_k$ partition $\\bigcup_i C_{4/\\epsilon}(I_i)$. By Proposition 2.2 each vertex has degree $\\le \\epsilon n/4$ in its set, contributing $\\le \\epsilon n^2/4$ edges total.",
+      "subclass": "introduce_variable",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.12",
+      "type": "proof_step",
+      "parent_id": "PP432.6",
+      "step_order": 3,
+      "name": "Define removal layers $A_t$",
+      "statement": "Let $A_t = \\{v \\in V : v \\in \\bigcup_i C_{t-1}(I_i),\\ v \\notin \\bigcup_i C_t(I_i)\\}$ for $t = 1,\\dots,4/\\epsilon$; the $A_t$'s partition $V \\setminus \\bigcup_i C_{4/\\epsilon}(I_i)$.",
+      "subclass": "introduce_variable",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.13",
+      "type": "proof_step",
+      "parent_id": "PP432.6",
+      "step_order": 4,
+      "name": "Allocate remaining vertices and bound new edges",
+      "statement": "For each $v \\in A_t$, add $v$ to some $V_i$ with $v \\in C_{t-1}(I_i)$. Processing in reverse order ensures $V_i \\subseteq C_{t-1}(I_i)$ at the time of addition; by Proposition 2.2, $v$ contributes $\\le n/(t-1)$ new edges (or $n$ for $t=1$).",
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.14",
+      "type": "proof_step",
+      "parent_id": "PP432.6",
+      "step_order": 5,
+      "name": "Bound total edges via harmonic sum",
+      "statement": "Total edges $\\le \\frac{\\epsilon n^2}{4} + |A_1| n + \\sum_{t=2}^{4/\\epsilon} |A_t| \\frac{n}{t-1}$. Using $\\sum_{\\ell\\le t}|A_\\ell| \\le \\frac{t\\epsilon n}{4\\ln(1/\\epsilon)}$ and the harmonic bound $H(m)\\le \\ln m + 1$, conclude total $< \\epsilon n^2$, contradicting $\\epsilon$-farness.",
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.15",
+      "type": "proof_step",
+      "parent_id": "PP432.9",
+      "step_order": 1,
+      "name": "Completeness via hypergeometric median",
+      "statement": "If $G$ contains a $\\rho n$ independent set, then $|S \\cap I| \\ge \\rho s$ with probability $\\ge 1/2$ since the hypergeometric distribution's median is $\\ge \\rho s$.",
+      "subclass": "setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.16",
+      "type": "proof_step",
+      "parent_id": "PP432.9",
+      "step_order": 2,
+      "name": "Cover bad event by fingerprint family",
+      "statement": "Apply Lemma I: if $G[S]$ contains an independent set of size $\\rho s > \\frac{8\\rho^2}{\\epsilon}\\ln(2\\rho/\\epsilon)$, some $F \\in \\mathcal{F}$ satisfies $F \\subseteq S$ and $|S \\cap \\mathcal{C}(F)| \\ge \\rho s$.",
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.17",
+      "type": "proof_step",
+      "parent_id": "PP432.9",
+      "step_order": 3,
+      "name": "Bound $\\Pr[F \\subseteq S]$",
+      "statement": "Standard counting gives $\\Pr[F \\subseteq S] \\le \\binom{n-|F|}{s-|F|}/\\binom{n}{s} = \\binom{s}{|F|}/\\binom{n}{|F|}$.",
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.18",
+      "type": "proof_step",
+      "parent_id": "PP432.9",
+      "step_order": 4,
+      "name": "Apply Chernoff to conditional containment",
+      "statement": "With $t = |F|$, bound $\\E[X] < \\rho s - t - \\frac{t\\epsilon s}{16\\rho\\ln(2\\rho/\\epsilon)}$ and apply Lemma 4 to obtain $\\Pr[X \\ge \\rho s - t] \\le \\exp(-\\frac{t^2\\epsilon^2 s}{512\\rho^3\\ln^2(2\\rho/\\epsilon)})$.",
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.19",
+      "type": "proof_step",
+      "parent_id": "PP432.9",
+      "step_order": 5,
+      "name": "Union bound over fingerprints",
+      "statement": "Sum over $t \\le \\frac{8\\rho^2 \\ln(2\\rho/\\epsilon)}{\\epsilon}$ and over $F$ of size $t$ using $\\binom{s}{t} \\le s^t$; the total is $< 1/3$ for $s = c\\rho^3 \\epsilon^{-2}\\ln^3(1/\\epsilon)$ with large enough $c$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.20",
+      "type": "proof_step",
+      "parent_id": "PP432.10",
+      "step_order": 1,
+      "name": "Completeness",
+      "statement": "If $G$ is $k$-colorable then $G[S]$ is $k$-colorable, so the tester always accepts.",
+      "subclass": "setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.21",
+      "type": "proof_step",
+      "parent_id": "PP432.10",
+      "step_order": 2,
+      "name": "Cover bad event using Lemma II",
+      "statement": "By Lemma II, $G[S]$ being $k$-colorable forces some $F = (T_1,\\dots,T_k) \\in \\mathcal{F}$ with $\\bigcup_i T_i \\subseteq S \\subseteq \\mathcal{C}(F)$.",
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.22",
+      "type": "proof_step",
+      "parent_id": "PP432.10",
+      "step_order": 3,
+      "name": "Bound $\\Pr[\\bigcup_i T_i \\subseteq S]$ and $\\Pr[S \\subseteq \\mathcal{C}(F) \\mid \\cdot]$",
+      "statement": "With $t = |\\bigcup_i T_i|$: $\\Pr[\\bigcup_i T_i \\subseteq S] \\le \\binom{s}{t}/\\binom{n}{t}$; conditional containment $\\le (1 - \\frac{\\epsilon}{4\\ln(1/\\epsilon)}\\max_i |T_i|)^{s-t}$ from Lemma II.",
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.23",
+      "type": "proof_step",
+      "parent_id": "PP432.10",
+      "step_order": 4,
+      "name": "Sum over fingerprint sequences",
+      "statement": "There are $\\le \\binom{n}{t}\\cdot k^t$ choices of $F$ with $|\\bigcup_i T_i| = t$; using $\\max_i |T_i| \\ge t/k$, total bound becomes $\\sum_t k^t \\binom{s}{t}(1 - \\frac{\\epsilon t}{4k\\ln(1/\\epsilon)})^{s-t}$.",
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP432.24",
+      "type": "proof_step",
+      "parent_id": "PP432.10",
+      "step_order": 5,
+      "name": "Final exponent estimate",
+      "statement": "Use $s > 2t$, $\\binom{s}{t} \\le s^t$ and $\\ln(k/\\epsilon)\\le 2\\ln(1/\\epsilon)$ to bound the sum by $\\sum_t \\exp(t\\ln(sk) - \\frac{\\epsilon t s}{8k\\ln(1/\\epsilon)}) < 1/3$ for $s = ck\\epsilon^{-1}\\ln^2(1/\\epsilon)$ with large enough $c$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP432.1",
+      "type": "algorithm_step",
+      "parent_id": "AP432.1",
+      "step_order": 1,
+      "name": "Initialize $F_0$ and $C_0$",
+      "statement": "Set $F_0 \\gets \\emptyset$ and $C_0 \\gets V$.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP432.2",
+      "type": "algorithm_step",
+      "parent_id": "AP432.1",
+      "step_order": 2,
+      "name": "Greedy selection loop over $t = 1,\\dots,|I|$",
+      "statement": "For each $t$: choose $v_t$ as the vertex in $I \\setminus F_{t-1}$ with the largest degree in $G[C_{t-1}]$ (ties broken by a fixed vertex ordering); update $F_t \\gets F_{t-1}\\cup\\{v_t\\}$; remove from $C_{t-1}$ all neighbours of $v_t$ and all vertices with strictly higher degree than $v_t$ in $G[C_{t-1}]$ to obtain $C_t$.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP432.3",
+      "type": "algorithm_step",
+      "parent_id": "AP432.1",
+      "step_order": 3,
+      "name": "Return fingerprint and container sequences",
+      "statement": "Return $F_1,\\ldots,F_{|I|}$ and $C_1,\\ldots,C_{|I|}$.",
+      "subclass": "return",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP432.4",
+      "type": "algorithm_step",
+      "parent_id": "AP432.2",
+      "step_order": 1,
+      "name": "Sample vertex set $S$",
+      "statement": "Draw $s = c\\cdot \\frac{\\rho^3}{\\epsilon^2}\\ln^3(1/\\epsilon)$ vertices uniformly without replacement from $V$.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP432.5",
+      "type": "algorithm_step",
+      "parent_id": "AP432.2",
+      "step_order": 2,
+      "name": "Test induced subgraph for large independent set",
+      "statement": "Accept iff $G[S]$ contains an independent set of size $\\rho s$.",
+      "subclass": "branch",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP432.6",
+      "type": "algorithm_step",
+      "parent_id": "AP432.3",
+      "step_order": 1,
+      "name": "Sample vertex set $S$",
+      "statement": "Draw $s = c\\cdot \\frac{k}{\\epsilon}\\ln^2(1/\\epsilon)$ vertices uniformly without replacement from $V$.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP432.7",
+      "type": "algorithm_step",
+      "parent_id": "AP432.3",
+      "step_order": 2,
+      "name": "Test induced subgraph for $k$-colorability",
+      "statement": "Accept iff $G[S]$ is $k$-colorable.",
+      "subclass": "branch",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "DP432.4", "target": "ProbP432.1", "type": "uses"},
+    {"source": "DP432.6", "target": "ProbP432.2", "type": "uses"},
+    {"source": "DP432.1", "target": "ProbP432.1", "type": "uses"},
+    {"source": "DP432.1", "target": "ProbP432.2", "type": "uses"},
+    {"source": "DP432.2", "target": "ProbP432.1", "type": "uses"},
+    {"source": "DP432.2", "target": "ProbP432.2", "type": "uses"},
+    {"source": "DP432.3", "target": "ProbP432.1", "type": "uses"},
+    {"source": "DP432.3", "target": "ProbP432.2", "type": "uses"},
+    {"source": "DP432.4", "target": "DP432.5", "type": "uses"},
+    {"source": "DP432.5", "target": "TP432.4", "type": "uses"},
+    {"source": "DP432.6", "target": "TP432.5", "type": "uses"},
+    {"source": "AP432.1", "target": "DP432.7", "type": "uses"},
+    {"source": "AP432.1", "target": "PrP432.1", "type": "uses"},
+    {"source": "AP432.1", "target": "PrP432.2", "type": "uses"},
+    {"source": "AP432.1", "target": "EP432.1", "type": "uses"},
+    {"source": "AP432.1", "target": "LP432.3", "type": "uses"},
+    {"source": "AP432.1", "target": "LP432.4", "type": "uses"},
+    {"source": "AP432.1", "target": "LP432.5", "type": "uses"},
+    {"source": "AP432.1", "target": "LP432.1", "type": "uses"},
+    {"source": "AP432.1", "target": "LP432.2", "type": "uses"},
+    {"source": "PrP432.1", "target": "LP432.1", "type": "uses"},
+    {"source": "PrP432.1", "target": "LP432.2", "type": "uses"},
+    {"source": "PrP432.2", "target": "LP432.5", "type": "uses"},
+    {"source": "LP432.3", "target": "LP432.4", "type": "uses"},
+    {"source": "LP432.4", "target": "LP432.1", "type": "uses"},
+    {"source": "LP432.5", "target": "LP432.2", "type": "uses"},
+    {"source": "LP432.1", "target": "TP432.4", "type": "uses"},
+    {"source": "LP432.6", "target": "TP432.4", "type": "uses"},
+    {"source": "LP432.2", "target": "TP432.5", "type": "uses"},
+    {"source": "TP432.4", "target": "TP432.1", "type": "specializes"},
+    {"source": "TP432.4", "target": "TP432.2", "type": "specializes"},
+    {"source": "TP432.5", "target": "TP432.3", "type": "specializes"},
+    {"source": "AP432.2", "target": "ProbP432.1", "type": "uses"},
+    {"source": "AP432.2", "target": "ProbP432.3", "type": "uses"},
+    {"source": "AP432.3", "target": "ProbP432.2", "type": "uses"},
+    {"source": "TP432.4", "target": "AP432.2", "type": "uses"},
+    {"source": "TP432.5", "target": "AP432.3", "type": "uses"},
+    {"source": "PP432.1", "target": "PrP432.1", "type": "proves"},
+    {"source": "PP432.2", "target": "PrP432.2", "type": "proves"},
+    {"source": "PP432.3", "target": "LP432.3", "type": "proves"},
+    {"source": "PP432.4", "target": "LP432.4", "type": "proves"},
+    {"source": "PP432.5", "target": "LP432.1", "type": "proves"},
+    {"source": "PP432.6", "target": "LP432.5", "type": "proves"},
+    {"source": "PP432.7", "target": "LP432.2", "type": "proves"},
+    {"source": "PP432.8", "target": "LP432.6", "type": "proves"},
+    {"source": "PP432.9", "target": "TP432.4", "type": "proves"},
+    {"source": "PP432.10", "target": "TP432.5", "type": "proves"},
+    {"source": "TP432.6", "target": "TP432.1", "type": "uses"},
+    {"source": "TP432.7", "target": "TP432.1", "type": "uses"},
+    {"source": "TP432.8", "target": "TP432.3", "type": "uses"},
+    {"source": "TP432.9", "target": "TP432.3", "type": "uses"},
+    {"source": "PSP432.1", "target": "PSP432.2", "type": "uses"},
+    {"source": "PSP432.1", "target": "PSP432.3", "type": "uses"},
+    {"source": "PSP432.3", "target": "PSP432.4", "type": "uses"},
+    {"source": "PSP432.4", "target": "PSP432.5", "type": "uses"},
+    {"source": "PSP432.6", "target": "PSP432.7", "type": "uses"},
+    {"source": "PSP432.7", "target": "PSP432.8", "type": "uses"},
+    {"source": "PSP432.8", "target": "PSP432.9", "type": "uses"},
+    {"source": "PSP432.10", "target": "PSP432.11", "type": "uses"},
+    {"source": "PSP432.11", "target": "PSP432.12", "type": "uses"},
+    {"source": "PSP432.12", "target": "PSP432.13", "type": "uses"},
+    {"source": "PSP432.13", "target": "PSP432.14", "type": "uses"},
+    {"source": "PSP432.15", "target": "PSP432.16", "type": "uses"},
+    {"source": "PSP432.16", "target": "PSP432.17", "type": "uses"},
+    {"source": "PSP432.17", "target": "PSP432.18", "type": "uses"},
+    {"source": "PSP432.18", "target": "PSP432.19", "type": "uses"},
+    {"source": "PSP432.20", "target": "PSP432.21", "type": "uses"},
+    {"source": "PSP432.21", "target": "PSP432.22", "type": "uses"},
+    {"source": "PSP432.22", "target": "PSP432.23", "type": "uses"},
+    {"source": "PSP432.23", "target": "PSP432.24", "type": "uses"},
+    {"source": "ASP432.1", "target": "ASP432.2", "type": "uses"},
+    {"source": "ASP432.2", "target": "ASP432.3", "type": "uses"},
+    {"source": "ASP432.4", "target": "ASP432.5", "type": "uses"},
+    {"source": "ASP432.6", "target": "ASP432.7", "type": "uses"},
+    {"source": "LP432.3", "target": "PSP432.7", "type": "uses"},
+    {"source": "LP432.4", "target": "PSP432.16", "type": "uses"},
+    {"source": "LP432.6", "target": "PSP432.18", "type": "uses"},
+    {"source": "LP432.2", "target": "PSP432.21", "type": "uses"},
+    {"source": "PrP432.2", "target": "PSP432.11", "type": "uses"},
+    {"source": "PrP432.2", "target": "PSP432.13", "type": "uses"}
+  ]
+}

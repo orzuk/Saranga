@@ -1,0 +1,366 @@
+{
+  "metadata": {
+    "title": "Improving Language Understanding by Generative Pre-Training",
+    "authors": "Radford, Narasimhan, Salimans, Sutskever",
+    "year": 2018,
+    "paper_num": 225,
+    "bid": "paper225",
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-03",
+    "source_note": "Extracted from PDF->text fallback; .tex source not available. Math fidelity reduced."
+  },
+  "nodes": [
+    {
+      "id": "DP225.1",
+      "type": "definition",
+      "name": "Unsupervised Token Corpus",
+      "section": "3.1",
+      "statement": "An unsupervised corpus of tokens $\\mathcal{U} = \\{u_1, \\dots, u_n\\}$ used to train the language model.",
+      "statement_clean": "Unlabeled token sequence used as the pre-training corpus.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP225.2",
+      "type": "definition",
+      "name": "Labeled Target Dataset",
+      "section": "3.2",
+      "statement": "A labeled dataset $\\mathcal{C}$ where each instance is a sequence of input tokens $x^1, \\dots, x^m$ together with a label $y$.",
+      "statement_clean": "Supervised target dataset of token sequences with labels.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP225.3",
+      "type": "definition",
+      "name": "Transformer Decoder Block",
+      "section": "3.1",
+      "statement": "A multi-layer Transformer decoder applying multi-headed self-attention over input context tokens followed by position-wise feedforward layers; defined recursively by $h_0 = U W_e + W_p$, $h_l = \\mathrm{transformer\\_block}(h_{l-1})$ for $l \\in [1,n]$.",
+      "statement_clean": "Stacked self-attention plus feedforward blocks producing layer-wise hidden states.",
+      "origin": "external",
+      "origin_citation": "Vaswani et al., Attention is all you need, 2017; Liu et al. 2018"
+    },
+    {
+      "id": "DP225.4",
+      "type": "definition",
+      "name": "Byte-Pair Encoding (BPE) Vocabulary",
+      "section": "4.1",
+      "statement": "A subword vocabulary built via byte-pair encoding with $40{,}000$ merges, used to tokenize the input text.",
+      "statement_clean": "Subword tokenization using BPE with 40K merges.",
+      "origin": "external",
+      "origin_citation": "Sennrich, Haddow, Birch 2015"
+    },
+    {
+      "id": "DP225.5",
+      "type": "definition",
+      "name": "Gaussian Error Linear Unit (GELU)",
+      "section": "4.1",
+      "statement": "Activation function used throughout the model, bridging nonlinearities and stochastic regularizers.",
+      "statement_clean": "GELU activation used in the Transformer.",
+      "origin": "external",
+      "origin_citation": "Hendrycks & Gimpel 2016"
+    },
+    {
+      "id": "EP225.1",
+      "type": "equation",
+      "name": "Language Modeling Objective $L_1$",
+      "section": "3.1",
+      "statement": "$L_1(\\mathcal{U}) = \\sum_i \\log P(u_i \\mid u_{i-k}, \\dots, u_{i-1}; \\Theta)$, where $k$ is the context window size and $P$ is parameterized by a neural network with parameters $\\Theta$.",
+      "statement_clean": "Maximize the log-likelihood of each token given the previous k tokens.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP225.2",
+      "type": "equation",
+      "name": "Transformer Forward Pass",
+      "section": "3.1",
+      "statement": "$h_0 = U W_e + W_p$; $h_l = \\mathrm{transformer\\_block}(h_{l-1})\\ \\forall l \\in [1,n]$; $P(u) = \\mathrm{softmax}(h_n W_e^T)$.",
+      "statement_clean": "Recursive Transformer hidden states with tied embedding output projection.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP225.3",
+      "type": "equation",
+      "name": "Supervised Prediction Distribution",
+      "section": "3.2",
+      "statement": "$P(y \\mid x^1, \\dots, x^m) = \\mathrm{softmax}(h_l^m W_y)$, where $h_l^m$ is the final transformer block's activation on the last token and $W_y$ is the added linear output layer.",
+      "statement_clean": "Class probability obtained by softmax over the final hidden state times added output weights.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP225.4",
+      "type": "equation",
+      "name": "Supervised Objective $L_2$",
+      "section": "3.2",
+      "statement": "$L_2(\\mathcal{C}) = \\sum_{(x,y)} \\log P(y \\mid x^1, \\dots, x^m)$.",
+      "statement_clean": "Sum of log-likelihoods of labels over the supervised dataset.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP225.5",
+      "type": "equation",
+      "name": "Combined Fine-tuning Objective $L_3$",
+      "section": "3.2",
+      "statement": "$L_3(\\mathcal{C}) = L_2(\\mathcal{C}) + \\lambda \\cdot L_1(\\mathcal{C})$, where $\\lambda$ weights the auxiliary language modeling loss during fine-tuning.",
+      "statement_clean": "Fine-tuning loss combining the supervised loss with a weighted language modeling auxiliary loss.",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP225.1",
+      "type": "problem",
+      "name": "Semi-supervised Language Understanding",
+      "section": "1",
+      "statement": "Learn a universal text representation from a large unlabeled corpus and adapt it with little task-specific change to a wide range of supervised target tasks (NLI, QA, similarity, classification).",
+      "statement_clean": "Build one model that pre-trains on raw text and transfers to many supervised NLP tasks.",
+      "subclass": "transfer_learning",
+      "origin": "paper"
+    },
+    {
+      "id": "AP225.1",
+      "type": "algorithm",
+      "name": "Generative Pre-Training + Discriminative Fine-Tuning",
+      "section": "3",
+      "statement": "Two-stage training: first maximize the language modeling objective $L_1$ on unlabeled tokens, then maximize the combined objective $L_3 = L_2 + \\lambda L_1$ on each labeled target task using task-specific input transformations.",
+      "statement_clean": "Pre-train Transformer LM, then fine-tune with auxiliary LM loss on each task.",
+      "input": [
+        "Unlabeled token corpus $\\mathcal{U}$",
+        "Labeled target datasets $\\mathcal{C}$",
+        "Transformer architecture (12 layers, 768 dim, 12 heads, 3072 inner)",
+        "Weight $\\lambda$ for auxiliary LM loss"
+      ],
+      "output": [
+        "Pre-trained Transformer parameters $\\Theta$",
+        "Fine-tuned classifier weights $W_y$ for each task"
+      ],
+      "subclass": "two_stage_training",
+      "tags": ["iterative", "neural_network", "transfer_learning"],
+      "origin": "paper"
+    },
+    {
+      "id": "ASP225.1",
+      "type": "algorithm_step",
+      "parent_id": "AP225.1",
+      "step_order": 1,
+      "name": "Unsupervised Pre-training",
+      "section": "3.1",
+      "statement": "Train the multi-layer Transformer decoder on $\\mathcal{U}$ by maximizing $L_1(\\mathcal{U}) = \\sum_i \\log P(u_i \\mid u_{i-k}, \\dots, u_{i-1}; \\Theta)$ via stochastic gradient descent.",
+      "subclass": "initialize"
+    },
+    {
+      "id": "ASP225.2",
+      "type": "algorithm_step",
+      "parent_id": "AP225.1",
+      "step_order": 2,
+      "name": "Apply Task-Specific Input Transformation",
+      "section": "3.3",
+      "statement": "Convert each structured task input (entailment pair, similarity pair, QA tuple) into a single contiguous token sequence with delimiter token \\$ and randomly initialized $\\langle s \\rangle, \\langle e \\rangle$ start/end tokens.",
+      "subclass": "branch"
+    },
+    {
+      "id": "ASP225.3",
+      "type": "algorithm_step",
+      "parent_id": "AP225.1",
+      "step_order": 3,
+      "name": "Add Linear Output Head and Fine-tune",
+      "section": "3.2",
+      "statement": "Pass inputs through the pre-trained model to obtain $h_l^m$, add a linear output layer $W_y$ giving $P(y \\mid x^1,\\dots,x^m) = \\mathrm{softmax}(h_l^m W_y)$, and maximize the combined objective $L_3 = L_2 + \\lambda L_1$ on the labeled task data.",
+      "subclass": "update"
+    },
+    {
+      "id": "ASP225.4",
+      "type": "algorithm_step",
+      "parent_id": "AP225.1",
+      "step_order": 4,
+      "name": "Return Fine-tuned Model",
+      "section": "3.2",
+      "statement": "Return the fine-tuned parameters $(\\Theta, W_y)$ together with the embeddings of any added delimiter tokens.",
+      "subclass": "return"
+    },
+    {
+      "id": "AP225.2",
+      "type": "algorithm",
+      "name": "Task-Specific Input Transformations",
+      "section": "3.3",
+      "statement": "Traversal-style scheme that converts structured task inputs into a single token sequence using delimiter token \\$ and start/end tokens $\\langle s \\rangle, \\langle e \\rangle$, so the pre-trained Transformer needs minimal architectural changes per task.",
+      "input": [
+        "Structured task input (premise/hypothesis pair, sentence pair, or document/question/answers)",
+        "Delimiter token \\$",
+        "Start token $\\langle s \\rangle$ and end token $\\langle e \\rangle$"
+      ],
+      "output": [
+        "A single contiguous token sequence consumable by the pre-trained Transformer"
+      ],
+      "subclass": "input_processing",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP225.5",
+      "type": "algorithm_step",
+      "parent_id": "AP225.2",
+      "step_order": 1,
+      "name": "Textual Entailment Encoding",
+      "section": "3.3",
+      "statement": "For an entailment task, concatenate premise $p$ and hypothesis $h$ token sequences with a delimiter token \\$ in between: $[\\langle s \\rangle; p; \\$; h; \\langle e \\rangle]$.",
+      "subclass": "branch"
+    },
+    {
+      "id": "ASP225.6",
+      "type": "algorithm_step",
+      "parent_id": "AP225.2",
+      "step_order": 2,
+      "name": "Similarity Encoding",
+      "section": "3.3",
+      "statement": "For similarity, encode both possible orderings of the two sentences with a delimiter, run each through the model independently, and add their final representations $h_l^m$ element-wise before the linear output layer.",
+      "subclass": "branch"
+    },
+    {
+      "id": "ASP225.7",
+      "type": "algorithm_step",
+      "parent_id": "AP225.2",
+      "step_order": 3,
+      "name": "QA / Commonsense Encoding",
+      "section": "3.3",
+      "statement": "Given context document $z$, question $q$, and answer set $\\{a_k\\}$, form sequences $[z; q; \\$; a_k]$ for each $k$, run each independently through the model, and normalize via softmax to produce a distribution over answers.",
+      "subclass": "branch"
+    },
+    {
+      "id": "AP225.3",
+      "type": "algorithm",
+      "name": "Adam Optimizer",
+      "section": "4.1",
+      "statement": "Adaptive moment-estimation optimizer used to train the model with max learning rate $2.5 \\times 10^{-4}$, linear warmup over the first 2000 updates, and cosine annealing to zero.",
+      "input": [
+        "Gradient estimates of the loss",
+        "Learning-rate schedule (linear warmup + cosine decay)"
+      ],
+      "output": [
+        "Updated parameters $\\Theta$"
+      ],
+      "tags": ["iterative", "stochastic"],
+      "origin": "external",
+      "origin_citation": "Kingma & Ba, Adam, 2014"
+    },
+    {
+      "id": "ExP225.1",
+      "type": "example",
+      "name": "BooksCorpus Pre-training",
+      "section": "4.1",
+      "statement": "Pre-train the 12-layer Transformer LM on BooksCorpus (over 7{,}000 unpublished books with long stretches of contiguous text), achieving a token-level perplexity of $18.4$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP225.2",
+      "type": "example",
+      "name": "NLI Benchmarks (MNLI, SNLI, SciTail, QNLI, RTE)",
+      "section": "4.2",
+      "statement": "Apply the fine-tuned Transformer LM to five NLI datasets; achieves absolute gains up to $1.5\\%$ on MNLI, $5\\%$ on SciTail, $5.8\\%$ on QNLI, and $0.6\\%$ on SNLI over previous best, while underperforming on the smallest set RTE ($56\\%$ vs $61.7\\%$).",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP225.3",
+      "type": "example",
+      "name": "Question Answering (RACE, Story Cloze)",
+      "section": "4.2",
+      "statement": "Fine-tuned Transformer LM achieves $86.5\\%$ on Story Cloze and $59.0\\%$ on RACE, outperforming previous best by $8.9\\%$ on Story Cloze and $5.7\\%$ on RACE.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP225.4",
+      "type": "example",
+      "name": "Semantic Similarity (MRPC, QQP, STS-B)",
+      "section": "4.2",
+      "statement": "Achieves SOTA on two of three semantic similarity datasets with $1$-point absolute gain on STS-B and $4.2\\%$ absolute improvement on QQP F1 over Single-task BiLSTM + ELMo + Attn.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP225.5",
+      "type": "example",
+      "name": "Classification (CoLA, SST-2) and GLUE",
+      "section": "4.2",
+      "statement": "Achieves Matthews correlation $45.4$ on CoLA (vs previous best $35.0$), accuracy $91.3\\%$ on SST-2, and an overall GLUE score of $72.8$ (vs previous best $68.9$).",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP225.6",
+      "type": "example",
+      "name": "Layer Transfer Analysis",
+      "section": "5",
+      "statement": "Transferring an increasing number of pre-trained Transformer layers to MultiNLI/RACE yields monotone gains, with up to $9\\%$ improvement on MultiNLI for full transfer.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP225.7",
+      "type": "example",
+      "name": "Zero-shot Heuristic Tasks",
+      "section": "5",
+      "statement": "Heuristic zero-shot evaluations using only the generative model (CoLA via average token log-prob threshold; SST-2 via comparing 'positive' vs 'negative' after appending 'very'; RACE via highest avg token log-prob; DPRD via referent substitution) improve steadily over pre-training, indicating the LM acquires task-relevant functionality.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP225.8",
+      "type": "example",
+      "name": "Ablation Studies",
+      "section": "5",
+      "statement": "Three ablations: (i) without auxiliary LM during fine-tuning helps NLI/QQP overall; (ii) replacing the Transformer with a single-layer 2048-unit LSTM drops average score by $5.6$; (iii) without pre-training accuracy drops by $14.8\\%$ across tasks.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP225.1",
+      "type": "remark",
+      "name": "Auxiliary LM Helps Larger Datasets",
+      "section": "5",
+      "statement": "The auxiliary language modeling objective during fine-tuning helps larger datasets (e.g., NLI, QQP) but not smaller ones, suggesting the auxiliary loss acts as a regularizer most useful when ample supervised data is available.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP225.2",
+      "type": "remark",
+      "name": "Long-range Context Justifies BooksCorpus",
+      "section": "4.1",
+      "statement": "BooksCorpus is preferred over the 1B Word Benchmark because it preserves long stretches of contiguous text, enabling the generative model to condition on long-range information.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP225.3",
+      "type": "remark",
+      "name": "Transformer Inductive Bias Aids Transfer",
+      "section": "5",
+      "statement": "The structured attentional memory of the Transformer yields more stable zero-shot heuristic performance than an LSTM, suggesting its inductive bias is better suited for transfer.",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "DP225.1", "target": "EP225.1", "type": "uses"},
+    {"source": "DP225.3", "target": "EP225.2", "type": "uses"},
+    {"source": "EP225.1", "target": "ASP225.1", "type": "uses"},
+    {"source": "EP225.2", "target": "ASP225.1", "type": "uses"},
+    {"source": "DP225.2", "target": "EP225.3", "type": "uses"},
+    {"source": "EP225.3", "target": "ASP225.3", "type": "uses"},
+    {"source": "EP225.4", "target": "EP225.5", "type": "uses"},
+    {"source": "EP225.1", "target": "EP225.5", "type": "uses"},
+    {"source": "EP225.5", "target": "ASP225.3", "type": "uses"},
+    {"source": "DP225.3", "target": "AP225.1", "type": "uses"},
+    {"source": "DP225.4", "target": "AP225.1", "type": "uses"},
+    {"source": "DP225.5", "target": "AP225.1", "type": "uses"},
+    {"source": "AP225.3", "target": "ASP225.1", "type": "uses"},
+    {"source": "AP225.2", "target": "ASP225.2", "type": "uses"},
+    {"source": "ASP225.5", "target": "ASP225.7", "type": "uses"},
+    {"source": "ASP225.1", "target": "ASP225.2", "type": "uses"},
+    {"source": "ASP225.2", "target": "ASP225.3", "type": "uses"},
+    {"source": "ASP225.3", "target": "ASP225.4", "type": "uses"},
+    {"source": "AP225.1", "target": "ProbP225.1", "type": "solves"},
+    {"source": "AP225.1", "target": "ExP225.1", "type": "illustrates"},
+    {"source": "AP225.1", "target": "ExP225.2", "type": "illustrates"},
+    {"source": "AP225.1", "target": "ExP225.3", "type": "illustrates"},
+    {"source": "AP225.1", "target": "ExP225.4", "type": "illustrates"},
+    {"source": "AP225.1", "target": "ExP225.5", "type": "illustrates"},
+    {"source": "AP225.1", "target": "ExP225.6", "type": "illustrates"},
+    {"source": "AP225.1", "target": "ExP225.7", "type": "illustrates"},
+    {"source": "AP225.1", "target": "ExP225.8", "type": "illustrates"},
+    {"source": "AP225.2", "target": "ExP225.2", "type": "illustrates"},
+    {"source": "AP225.2", "target": "ExP225.3", "type": "illustrates"},
+    {"source": "ExP225.8", "target": "RP225.1", "type": "uses"},
+    {"source": "ExP225.7", "target": "RP225.3", "type": "uses"},
+    {"source": "ExP225.1", "target": "RP225.2", "type": "uses"}
+  ]
+}

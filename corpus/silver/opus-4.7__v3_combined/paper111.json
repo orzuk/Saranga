@@ -1,0 +1,915 @@
+{
+  "metadata": {
+    "title": "An iterative thresholding algorithm for linear inverse problems with a sparsity constraint",
+    "paper_num": 111,
+    "authors": ["Ingrid Daubechies", "Michel Defrise", "Christine De Mol"],
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "DP111.1",
+      "type": "definition",
+      "name": "Linear inverse problem",
+      "section": "1.1",
+      "statement": "Given a bounded operator $K: \\cB_{\\mathrm{OBJ}} \\to \\cB_{\\mathrm{IM}}$ and observed data $g = Kf + e$ with noise $e$ of bounded $L^2$-norm, recover $f$ from $g$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP111.2",
+      "type": "definition",
+      "name": "Pseudo-solution and generalized solution",
+      "section": "1.1",
+      "statement": "A pseudo-solution minimizes the discrepancy $\\Delta(f) = \\|Kf - g\\|^2$. The generalized solution $f^{\\dagger}$ is the minimum-norm element among pseudo-solutions: $f^{\\dagger} = \\arg\\min\\{\\|f\\|;\\, f \\text{ minimizes } \\Delta(f)\\} \\in \\mathrm{N}(K)^{\\perp}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP111.3",
+      "type": "definition",
+      "name": "Tikhonov regularization functional",
+      "section": "1.2",
+      "statement": "The quadratic-penalized functional $\\Delta(f) + \\mu \\|f\\|_{\\cH}^2 = \\|Kf - g\\|^2 + \\mu \\|f\\|_{\\cH}^2$ with regularization parameter $\\mu > 0$, whose minimizer is $f_\\mu = (K^*K + \\mu I)^{-1} K^* g$.",
+      "origin": "external",
+      "origin_citation": "Tikhonov; reviewed via Bertero & Boccacci 1998"
+    },
+    {
+      "id": "DP111.4",
+      "type": "definition",
+      "name": "Weighted $\\ell^p$-penalized functional $\\Phi_{\\mathbf{w},p}$",
+      "section": "1.3",
+      "statement": "Given an orthonormal basis $(\\varphi_\\gamma)_{\\gamma \\in \\Gamma}$ of $\\cH$ and positive weights $\\mathbf{w} = (w_\\gamma)$, define $\\Phi_{\\mathbf{w},p}(f) = \\|Kf - g\\|^2 + \\sum_{\\gamma} w_\\gamma |\\langle f, \\varphi_\\gamma \\rangle|^p$ for $1 \\le p \\le 2$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP111.5",
+      "type": "definition",
+      "name": "Soft-thresholding operator $S_\\mu$",
+      "section": "1.3",
+      "statement": "$S_\\mu(x) = x - \\mu/2$ if $x \\geq \\mu/2$; $S_\\mu(x) = 0$ if $|x| < \\mu/2$; $S_\\mu(x) = x + \\mu/2$ if $x \\leq -\\mu/2$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP111.6",
+      "type": "definition",
+      "name": "Frame in Hilbert space",
+      "section": "1.4.3",
+      "statement": "A set $\\{\\psi_n\\}_{n \\in \\N} \\subset \\cH$ is a frame if there exist $A, B > 0$ such that $B^{-1} \\sum_n |\\langle v, \\psi_n \\rangle|^2 \\leq \\|v\\|^2 \\leq A^{-1} \\sum_n |\\langle v, \\psi_n \\rangle|^2$ for all $v \\in \\cH$. The frame is tight when $A = B$.",
+      "origin": "external",
+      "origin_citation": "Duffin & Schaeffer 1952"
+    },
+    {
+      "id": "DP111.7",
+      "type": "definition",
+      "name": "Surrogate functional ${\\Phi}^{\\mathrm{SUR}}_{\\mathbf{w},p}(f;a)$",
+      "section": "2",
+      "statement": "${\\Phi}^{\\mathrm{SUR}}_{\\mathbf{w},p}(f;a) = \\Phi_{\\mathbf{w},p}(f) + \\|f - a\\|^2 - \\|K(f - a)\\|^2$, designed so the variational equations decouple in the $\\varphi_\\gamma$-basis.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP111.8",
+      "type": "definition",
+      "name": "Generalized scalar shrinkage $S_{w,p}$",
+      "section": "2",
+      "statement": "For $p > 1$, $S_{w,p} = (F_{w,p})^{-1}$ where $F_{w,p}(x) = x + \\frac{wp}{2}\\mathrm{sign}(x)|x|^{p-1}$. For $p = 1$, $S_{w,1}$ coincides with the soft-threshold $S_w$ of definition DP111.5.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP111.9",
+      "type": "definition",
+      "name": "Vector shrinkage operator $\\mathbf{S}_{\\mathbf{w},p}$",
+      "section": "2",
+      "statement": "$\\mathbf{S}_{\\mathbf{w},p}(h) = \\sum_\\gamma S_{w_\\gamma,p}(h_\\gamma)\\, \\varphi_\\gamma$ where $h_\\gamma = \\langle h, \\varphi_\\gamma\\rangle$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP111.10",
+      "type": "definition",
+      "name": "Iteration operator $\\mathbf{T}$",
+      "section": "3",
+      "statement": "$\\mathbf{T} f = \\mathbf{S}_{\\mathbf{w},p}\\left(f + K^*(g - Kf)\\right)$, so that the iterates of the algorithm satisfy $f^n = \\mathbf{T}^n f^0$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP111.11",
+      "type": "definition",
+      "name": "Triple-bar norm $\\Vvert f \\Vvert_{\\mathbf{w},p}$",
+      "section": "3",
+      "statement": "$\\Vvert f \\Vvert_{\\mathbf{w},p} = \\left[\\sum_\\gamma w_\\gamma |\\langle f, \\varphi_\\gamma\\rangle|^p\\right]^{1/p}$ for $1 \\le p \\le 2$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP111.12",
+      "type": "definition",
+      "name": "Regularized solution and regularization method",
+      "section": "4",
+      "statement": "$f^*_{\\mu(\\epsilon),\\mathbf{w},p;g}$ is a regularized solution if $\\mu(\\epsilon) \\to 0$ and $\\sup_{\\|g - Kf_o\\| \\le \\epsilon} \\|f^*_{\\mu(\\epsilon)} - f_o\\| \\to 0$ as $\\epsilon \\to 0$. The minimization defines a regularization method.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP111.13",
+      "type": "definition",
+      "name": "Modulus of continuity $M(\\epsilon, \\rho)$",
+      "section": "4.2",
+      "statement": "$M(\\epsilon, \\rho) = \\sup\\{\\|h\\|;\\, \\|Kh\\| \\le \\epsilon,\\, \\Vvert h \\Vvert_{\\mathbf{w},p} \\le \\rho\\}$, the best-possible reconstruction-error rate under a prior $\\Vvert f_o\\Vvert_{\\mathbf{w},p} \\le \\rho$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP111.14",
+      "type": "definition",
+      "name": "Modulus of convergence $M_\\mu(\\epsilon, \\rho)$",
+      "section": "4.2",
+      "statement": "$M_\\mu(\\epsilon,\\rho) = \\sup\\{\\|f^*_{\\mu;g} - f\\|;\\, f \\in \\cH,\\, g \\in \\cH',\\, \\|Kf - g\\| \\le \\epsilon,\\, \\Vvert f \\Vvert_{\\mathbf{w},p} \\le \\rho\\}$, the worst-case error of the proposed estimator.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP111.15",
+      "type": "definition",
+      "name": "Besov-equivalent wavelet norm",
+      "section": "Appendix A",
+      "statement": "For wavelet basis $(\\Psi_\\lambda)$ and $\\sigma = s + d(\\frac{1}{2} - \\frac{1}{p}) \\ge 0$, $\\VVert f \\VVert_{s,p} = \\left(\\sum_\\lambda 2^{\\sigma p|\\lambda|} |\\langle f, \\Psi_\\lambda\\rangle|^p\\right)^{1/p}$ is equivalent to the Besov norm on $B^s_{p,p}(\\mathbb{R}^d)$.",
+      "origin": "external",
+      "origin_citation": "Meyer 1992; Cohen 2000"
+    },
+    {
+      "id": "DP111.16",
+      "type": "definition",
+      "name": "Smoothing operator of order $\\alpha$",
+      "section": "4.2",
+      "statement": "$K$ is smoothing of order $\\alpha$ if there exist $A_\\ell, A_u > 0$ such that $A_\\ell^2 \\sum_\\lambda 2^{-2|\\lambda|\\alpha} |h_\\lambda|^2 \\le \\|Kh\\|^2 \\le A_u^2 \\sum_\\lambda 2^{-2|\\lambda|\\alpha} |h_\\lambda|^2$ for all $h$.",
+      "origin": "external",
+      "origin_citation": "Engl, Hanke, Neubauer 1996"
+    },
+    {
+      "id": "EP111.1",
+      "type": "equation",
+      "name": "Iteration formula $f^n = \\mathbf{S}_{\\mathbf{w},p}(f^{n-1} + K^*(g - Kf^{n-1}))$",
+      "section": "2",
+      "statement": "$f^n = \\mathbf{S}_{\\mathbf{w},p}\\left(f^{n-1} + K^*(g - Kf^{n-1})\\right)$, $n = 1, 2, \\ldots$, with $f^0 \\in \\cH$ arbitrary.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP111.2",
+      "type": "equation",
+      "name": "Variational equation for $\\Phi_{\\mathbf{w},p}$",
+      "section": "1.5",
+      "statement": "$\\langle K^*Kf, \\varphi_\\gamma\\rangle - \\langle K^*g, \\varphi_\\gamma\\rangle + \\frac{w_\\gamma p}{2} |\\langle f, \\varphi_\\gamma\\rangle|^{p-1} \\mathrm{sign}(\\langle f, \\varphi_\\gamma\\rangle) = 0$ for all $\\gamma \\in \\Gamma$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PrP111.1",
+      "type": "proposition",
+      "name": "Minimizer of the surrogate functional",
+      "section": "2",
+      "statement": "Under $\\|K^*K\\| < 1$ and any $a \\in \\cH$, ${\\Phi}^{\\mathrm{SUR}}_{\\mathbf{w},p}(\\cdot; a)$ has a unique minimizer $f = \\mathbf{S}_{\\mathbf{w},p}(a + K^*(g - Ka))$, and ${\\Phi}^{\\mathrm{SUR}}_{\\mathbf{w},p}(f + h; a) \\geq {\\Phi}^{\\mathrm{SUR}}_{\\mathbf{w},p}(f; a) + \\|h\\|^2$ for all $h$.",
+      "assumptions": [
+        "$K: \\cH \\to \\cH'$ bounded with $\\|K^*K\\| < 1$",
+        "$g \\in \\cH'$",
+        "$(\\varphi_\\gamma)_{\\gamma \\in \\Gamma}$ orthonormal basis of $\\cH$",
+        "$\\mathbf{w} = (w_\\gamma)$ strictly positive sequence",
+        "$p \\geq 1$, $a \\in \\cH$"
+      ],
+      "conclusions": [
+        "${\\Phi}^{\\mathrm{SUR}}_{\\mathbf{w},p}(\\cdot;a)$ has unique minimizer $f = \\mathbf{S}_{\\mathbf{w},p}(a + K^*(g - Ka))$",
+        "Quadratic excess inequality ${\\Phi}^{\\mathrm{SUR}}_{\\mathbf{w},p}(f+h;a) \\geq {\\Phi}^{\\mathrm{SUR}}_{\\mathbf{w},p}(f;a) + \\|h\\|^2$"
+      ],
+      "origin": "paper",
+      "tags": ["existence", "uniqueness"]
+    },
+    {
+      "id": "LP111.1",
+      "type": "lemma",
+      "name": "Non-expansivity of $\\mathbf{S}_{\\mathbf{w},p}$",
+      "section": "2",
+      "statement": "For all $v, v' \\in \\cH$, $\\|\\mathbf{S}_{\\mathbf{w},p} v - \\mathbf{S}_{\\mathbf{w},p} v'\\| \\le \\|v - v'\\|$.",
+      "assumptions": [
+        "$1 \\le p \\le 2$",
+        "$\\mathbf{w} = (w_\\gamma)$ with $w_\\gamma \\ge 0$"
+      ],
+      "conclusions": [
+        "$\\|\\mathbf{S}_{\\mathbf{w},p} v - \\mathbf{S}_{\\mathbf{w},p} v'\\| \\le \\|v - v'\\|$ for all $v, v' \\in \\cH$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "CP111.1",
+      "type": "corollary",
+      "name": "Iterative algorithm formula (Corollary 2.2)",
+      "section": "2",
+      "statement": "Under the hypotheses of Proposition 2.1, the iterates from the surrogate-minimization scheme satisfy $f^n = \\mathbf{S}_{\\mathbf{w},p}(f^{n-1} + K^*(g - Kf^{n-1}))$.",
+      "assumptions": [
+        "Hypotheses of Proposition PrP111.1",
+        "$f^0 \\in \\cH$ arbitrary"
+      ],
+      "conclusions": [
+        "$f^n = \\mathbf{S}_{\\mathbf{w},p}(f^{n-1} + K^*(g - Kf^{n-1}))$ for $n = 1, 2, \\ldots$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "RP111.1",
+      "type": "remark",
+      "name": "Generalization to diagonal operator $D$",
+      "section": "2",
+      "statement": "If $D$ is diagonal in the $\\varphi_\\gamma$-basis with $D \\geq K^*K + \\eta I$ for some $\\eta > 0$, the same construction yields $f^n = \\mathbf{S}_{\\mathbf{w}/\\mathbf{d},p}(f^{n-1} + D^{-1}K^*(g - Kf^{n-1}))$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP111.2",
+      "type": "remark",
+      "name": "Complex-valued functions (Remark 2.5)",
+      "section": "2",
+      "statement": "For complex $f_\\gamma$, extending $S_{\\mu,p}(re^{i\\theta}) = S_{\\mu,p}(r) e^{i\\theta}$ preserves the formula $f_\\gamma = S_{w_\\gamma,p}(a_\\gamma + [K^*(g - Ka)]_\\gamma)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "TP111.1",
+      "type": "theorem",
+      "name": "Strong convergence of iterative thresholded Landweber (Theorem 3.1)",
+      "section": "3",
+      "statement": "If $\\|K\\| < 1$, $1 \\le p \\le 2$, and $w_\\gamma \\ge c > 0$ uniformly, then $f^n = \\mathbf{S}_{\\mathbf{w},p}(f^{n-1} + K^*(g - Kf^{n-1}))$ converges strongly to a minimizer $f^*$ of $\\Phi_{\\mathbf{w},p}$. If $p > 1$ or $\\mathrm{N}(K) = \\{0\\}$, the minimizer is unique and the limit is independent of $f^0$.",
+      "assumptions": [
+        "$K: \\cH \\to \\cH'$ bounded, $\\|K\\| < 1$",
+        "$p \\in [1, 2]$",
+        "$w_\\gamma \\ge c > 0$ uniformly in $\\gamma$",
+        "$f^0 \\in \\cH$ arbitrary"
+      ],
+      "conclusions": [
+        "$f^n$ converges strongly (in $\\cH$-norm) to a minimizer of $\\Phi_{\\mathbf{w},p}$",
+        "If $p > 1$ or $\\mathrm{N}(K) = \\{0\\}$, the minimizer $f^*$ is unique and $\\lim f^n = f^*$ regardless of $f^0$"
+      ],
+      "origin": "paper",
+      "tags": ["existence", "uniqueness", "convergence"]
+    },
+    {
+      "id": "TP111.2",
+      "type": "theorem",
+      "name": "Opial's fixed-point theorem (cited)",
+      "section": "3.1 (cited)",
+      "statement": "Let $\\mathbf{A}: \\cH \\to \\cH$ be (i) non-expansive, (ii) asymptotically regular, with (iii) non-empty fixed-point set $\\mathcal{F}$. Then $(\\mathbf{A}^n v)_{n \\in \\N}$ converges weakly to a fixed point in $\\mathcal{F}$ for any $v \\in \\cH$.",
+      "assumptions": [
+        "$\\mathbf{A}$ is non-expansive",
+        "$\\mathbf{A}$ is asymptotically regular",
+        "Fixed-point set $\\mathcal{F}$ non-empty"
+      ],
+      "conclusions": [
+        "$(\\mathbf{A}^n v)$ converges weakly to a fixed point of $\\mathbf{A}$ for every $v \\in \\cH$"
+      ],
+      "origin": "external",
+      "origin_citation": "Opial 1967"
+    },
+    {
+      "id": "LP111.2",
+      "type": "lemma",
+      "name": "Weak limit of subsequence is fixed point (Lemma 3.2)",
+      "section": "3.1",
+      "statement": "If $\\mathbf{A}$ is non-expansive and asymptotically regular, and a subsequence $(\\mathbf{A}^{n_k} v)$ converges weakly, its weak limit is a fixed point of $\\mathbf{A}$.",
+      "assumptions": [
+        "$\\mathbf{A}$ satisfies (i)-(ii) of Opial's theorem",
+        "Subsequence $(\\mathbf{A}^{n_k} v)$ converges weakly"
+      ],
+      "conclusions": [
+        "Weak limit of $(\\mathbf{A}^{n_k} v)$ is a fixed point of $\\mathbf{A}$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "LP111.3",
+      "type": "lemma",
+      "name": "Non-expansivity of $\\mathbf{T}$ (Lemma 3.3)",
+      "section": "3.1",
+      "statement": "$\\|\\mathbf{T} v - \\mathbf{T} v'\\| \\le \\|v - v'\\|$ for all $v, v' \\in \\cH$.",
+      "assumptions": [
+        "$\\|K\\| < 1$",
+        "Hypotheses of Theorem 3.1"
+      ],
+      "conclusions": [
+        "$\\|\\mathbf{T} v - \\mathbf{T} v'\\| \\le \\|v - v'\\|$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "LP111.4",
+      "type": "lemma",
+      "name": "Monotone decrease of $\\Phi_{\\mathbf{w},p}(f^n)$ (Lemma 3.4)",
+      "section": "3.1",
+      "statement": "Both $(\\Phi_{\\mathbf{w},p}(f^n))_{n \\in \\N}$ and $({\\Phi}^{\\mathrm{SUR}}_{\\mathbf{w},p}(f^{n+1}; f^n))_{n \\in \\N}$ are non-increasing.",
+      "assumptions": [
+        "$f^n$ is the iterate from EP111.1",
+        "Hypotheses of Theorem 3.1"
+      ],
+      "conclusions": [
+        "$(\\Phi_{\\mathbf{w},p}(f^n))_n$ is non-increasing",
+        "$({\\Phi}^{\\mathrm{SUR}}_{\\mathbf{w},p}(f^{n+1}; f^n))_n$ is non-increasing"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "LP111.5",
+      "type": "lemma",
+      "name": "Uniform boundedness of $\\|f^n\\|$ (Lemma 3.5)",
+      "section": "3.1",
+      "statement": "If $w_\\gamma \\ge c > 0$ uniformly, then $\\|f^n\\|$ is bounded uniformly in $n$.",
+      "assumptions": [
+        "$w_\\gamma \\ge c > 0$ uniformly in $\\gamma$",
+        "Hypotheses of Theorem 3.1"
+      ],
+      "conclusions": [
+        "$\\sup_n \\|f^n\\| < \\infty$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "LP111.6",
+      "type": "lemma",
+      "name": "Convergent step-size series (Lemma 3.6)",
+      "section": "3.1",
+      "statement": "$\\sum_{n=0}^{\\infty} \\|f^{n+1} - f^n\\|^2 < \\infty$.",
+      "assumptions": [
+        "$\\|K\\| < 1$ (hence $L = \\sqrt{I - K^*K}$ is strictly positive)",
+        "Hypotheses of Theorem 3.1"
+      ],
+      "conclusions": [
+        "$\\sum_n \\|f^{n+1} - f^n\\|^2$ converges"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "LP111.7",
+      "type": "lemma",
+      "name": "Asymptotic regularity of $\\mathbf{T}$ (Lemma 3.7)",
+      "section": "3.1",
+      "statement": "$\\|\\mathbf{T}^{n+1} f^0 - \\mathbf{T}^n f^0\\| = \\|f^{n+1} - f^n\\| \\to 0$ as $n \\to \\infty$.",
+      "assumptions": [
+        "Hypotheses of Theorem 3.1"
+      ],
+      "conclusions": [
+        "$\\|\\mathbf{T}^{n+1} f^0 - \\mathbf{T}^n f^0\\| \\to 0$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "PrP111.2",
+      "type": "proposition",
+      "name": "Weak convergence of $f^n$ to a fixed point",
+      "section": "3.1",
+      "statement": "The sequence $f^n = \\mathbf{T}^n f^0$, $n = 1, 2, \\ldots$ converges weakly, and its limit is a fixed point of $\\mathbf{T}$.",
+      "assumptions": [
+        "Hypotheses of Theorem 3.1"
+      ],
+      "conclusions": [
+        "$f^n \\rightharpoonup f^*$ for some $f^* \\in \\cH$",
+        "$f^*$ is a fixed point of $\\mathbf{T}$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "PrP111.3",
+      "type": "proposition",
+      "name": "Fixed point of $\\mathbf{T}$ is a minimizer of $\\Phi_{\\mathbf{w},p}$",
+      "section": "3.1",
+      "statement": "If $f^* = \\mathbf{T} f^*$, then $f^*$ minimizes $\\Phi_{\\mathbf{w},p}$.",
+      "assumptions": [
+        "$f^*$ is a fixed point of $\\mathbf{T}$",
+        "Hypotheses of Theorem 3.1"
+      ],
+      "conclusions": [
+        "$\\Phi_{\\mathbf{w},p}(f^* + h) \\geq \\Phi_{\\mathbf{w},p}(f^*) + \\|Kh\\|^2$ for all $h \\in \\cH$",
+        "$f^*$ is a minimizer of $\\Phi_{\\mathbf{w},p}$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "PrP111.4",
+      "type": "proposition",
+      "name": "Weak convergence summary (Proposition 3.10)",
+      "section": "3.1",
+      "statement": "Under the assumptions of Theorem 3.1, $f^n \\rightharpoonup$ a minimizer of $\\Phi_{\\mathbf{w},p}$. If $\\mathrm{N}(K) = \\{0\\}$ or $p > 1$, the minimizer is unique and all sequences converge weakly to it independently of $f^0$.",
+      "assumptions": [
+        "Hypotheses of Theorem 3.1"
+      ],
+      "conclusions": [
+        "$f^n$ converges weakly to a minimizer of $\\Phi_{\\mathbf{w},p}$",
+        "Uniqueness when $\\mathrm{N}(K) = \\{0\\}$ or $p > 1$"
+      ],
+      "origin": "paper",
+      "tags": ["uniqueness", "convergence"]
+    },
+    {
+      "id": "LP111.8",
+      "type": "lemma",
+      "name": "$\\|Ku^n\\| \\to 0$ (Lemma 3.13)",
+      "section": "3.2",
+      "statement": "Setting $u^n = f^n - f^*$, $\\|K u^n\\| \\to 0$ as $n \\to \\infty$.",
+      "assumptions": [
+        "$f^n \\rightharpoonup f^*$ from PrP111.2",
+        "Hypotheses of Theorem 3.1"
+      ],
+      "conclusions": [
+        "$\\|K u^n\\| \\to 0$ as $n \\to \\infty$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "LP111.9",
+      "type": "lemma",
+      "name": "Auxiliary bound for $\\mathbf{S}_{\\mathbf{w},p}(h + u^n)$ (Lemma 3.15)",
+      "section": "3.2",
+      "statement": "For $h = f^* + K^*(g - K f^*)$, $\\|\\mathbf{S}_{\\mathbf{w},p}(h + u^n) - \\mathbf{S}_{\\mathbf{w},p}(h) - u^n\\| \\to 0$ as $n \\to \\infty$.",
+      "assumptions": [
+        "$h$ as in (3.16) of paper",
+        "Hypotheses of Theorem 3.1",
+        "Lemmas LP111.7, LP111.8"
+      ],
+      "conclusions": [
+        "$\\|\\mathbf{S}_{\\mathbf{w},p}(h + u^n) - \\mathbf{S}_{\\mathbf{w},p}(h) - u^n\\| \\to 0$"
+      ],
+      "origin": "paper"
+    },
+    {
+      "id": "LP111.10",
+      "type": "lemma",
+      "name": "Norm-convergence under shrinkage residual decay (Lemma 3.16)",
+      "section": "3.2",
+      "statement": "If $v^n \\rightharpoonup 0$ and $\\|\\mathbf{S}_{\\mathbf{w},p}(a + v^n) - \\mathbf{S}_{\\mathbf{w},p}(a) - v^n\\| \\to 0$, then $\\|v^n\\| \\to 0$ as $n \\to \\infty$.",
+      "assumptions": [
+        "$a \\in \\cH$",
+        "$v^n \\rightharpoonup 0$",
+        "$\\|\\mathbf{S}_{\\mathbf{w},p}(a + v^n) - \\mathbf{S}_{\\mathbf{w},p}(a) - v^n\\| \\to 0$",
+        "$w_\\gamma \\ge c > 0$ uniformly; $p \\in [1, 2]$"
+      ],
+      "conclusions": [
+        "$\\|v^n\\| \\to 0$ as $n \\to \\infty$"
+      ],
+      "origin": "paper",
+      "tags": ["convergence"]
+    },
+    {
+      "id": "TP111.3",
+      "type": "theorem",
+      "name": "Regularization theorem (Theorem 4.1)",
+      "section": "4.1",
+      "statement": "Under the standing assumptions, if $\\mu(\\epsilon) \\to 0$ and $\\epsilon^2/\\mu(\\epsilon) \\to 0$, then $\\sup_{\\|g - Kf_o\\|\\le \\epsilon} \\|f^*_{\\mu(\\epsilon),\\mathbf{w},p;g} - f^{\\dagger}\\| \\to 0$ where $f^{\\dagger}$ is the unique element of minimum $\\Vvert\\cdot\\Vvert_{\\mathbf{w},p}$-norm in $\\mathrm{N}(K) + f_o$.",
+      "assumptions": [
+        "$K$ bounded, $\\|K\\| < 1$, $1 \\le p \\le 2$",
+        "$w_\\gamma \\ge c > 0$ uniformly",
+        "$p > 1$ or $\\mathrm{N}(K) = \\{0\\}$",
+        "$\\mu(\\epsilon) \\to 0$ and $\\epsilon^2/\\mu(\\epsilon) \\to 0$ as $\\epsilon \\to 0$"
+      ],
+      "conclusions": [
+        "$\\lim_{\\epsilon \\to 0} \\sup_{\\|g - Kf_o\\| \\le \\epsilon} \\|f^*_{\\mu(\\epsilon)} - f^{\\dagger}\\| = 0$ for all $f_o \\in \\cH$",
+        "$f^{\\dagger}$ is the unique element of minimal $\\Vvert\\cdot\\Vvert_{\\mathbf{w},p}$-norm in $\\{f: Kf = Kf_o\\}$"
+      ],
+      "origin": "paper",
+      "tags": ["convergence", "bound"]
+    },
+    {
+      "id": "LP111.11",
+      "type": "lemma",
+      "name": "Pointwise bound $|S_{w,p}(x) - x| \\le \\frac{wp}{2}|x|^{p-1}$ (Lemma 4.2)",
+      "section": "4.1",
+      "statement": "For $1 \\le p \\le 2$, $|S_{w,p}(x) - x| \\le \\frac{wp}{2}|x|^{p-1}$.",
+      "assumptions": [
+        "$1 \\le p \\le 2$",
+        "$w \\geq 0$",
+        "$x \\in \\R$"
+      ],
+      "conclusions": [
+        "$|S_{w,p}(x) - x| \\le \\frac{wp}{2}|x|^{p-1}$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "LP111.12",
+      "type": "lemma",
+      "name": "Weak + norm-equality implies norm convergence (Lemma 4.3)",
+      "section": "4.1",
+      "statement": "If $v_k \\rightharpoonup v$ in $\\cH$ and $\\Vvert v_k\\Vvert_{\\mathbf{w},p} \\to \\Vvert v\\Vvert_{\\mathbf{w},p}$, then $\\|v - v_k\\| \\to 0$.",
+      "assumptions": [
+        "$v_k \\rightharpoonup v$ in $\\cH$",
+        "$\\lim_k \\Vvert v_k\\Vvert_{\\mathbf{w},p} = \\Vvert v\\Vvert_{\\mathbf{w},p}$",
+        "$w_\\gamma \\ge c > 0$ uniformly; $1 \\le p \\le 2$"
+      ],
+      "conclusions": [
+        "$\\lim_k \\|v - v_k\\| = 0$"
+      ],
+      "origin": "paper",
+      "tags": ["convergence"]
+    },
+    {
+      "id": "PrP111.5",
+      "type": "proposition",
+      "name": "Modulus of convergence vs. modulus of continuity (Proposition 4.4)",
+      "section": "4.2",
+      "statement": "$M(\\epsilon, \\rho) \\le M_\\mu(\\epsilon, \\rho) \\le M(\\epsilon + \\epsilon', \\rho + \\rho')$ where $\\epsilon' = (\\epsilon^2 + \\mu \\rho^p)^{1/2}$ and $\\rho' = (\\rho^p + \\epsilon^2/\\mu)^{1/p}$.",
+      "assumptions": [
+        "Standing assumptions of Section 4 (in particular $\\mathrm{N}(K) = \\{0\\}$, $\\Vvert f_o\\Vvert_{\\mathbf{w},p} \\le \\rho$, $\\|g - Kf_o\\| \\le \\epsilon$, $\\mu > 0$)"
+      ],
+      "conclusions": [
+        "$M(\\epsilon, \\rho) \\le M_\\mu(\\epsilon, \\rho) \\le M(\\epsilon + \\epsilon', \\rho + \\rho')$",
+        "with $\\epsilon' = (\\epsilon^2 + \\mu \\rho^p)^{1/2}$, $\\rho' = (\\rho^p + \\epsilon^2/\\mu)^{1/p}$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "PrP111.6",
+      "type": "proposition",
+      "name": "Bilateral bracket bounds for $M(\\epsilon, \\rho)$ under spectral bounds on $K$ (Proposition 4.6)",
+      "section": "4.2",
+      "statement": "If $\\sum_\\gamma b_\\gamma |h_\\gamma|^2 \\le \\|Kh\\|^2 \\le \\sum_\\gamma B_\\gamma |h_\\gamma|^2$, then $\\max_\\gamma \\min(\\rho w_\\gamma^{-1/p}, \\epsilon B_\\gamma^{-1/2}) \\le M(\\epsilon, \\rho) \\le \\min_{\\Gamma = \\Gamma_1 \\cup \\Gamma_2} \\sqrt{\\epsilon^2/\\min_{\\Gamma_1} b_\\gamma + \\rho^2/\\min_{\\Gamma_2} w_\\gamma^{2/p}}$.",
+      "assumptions": [
+        "Existence of $0 < b_\\gamma, B_\\gamma < \\infty$ with the spectral inequalities $\\sum b_\\gamma |h_\\gamma|^2 \\le \\|Kh\\|^2 \\le \\sum B_\\gamma |h_\\gamma|^2$"
+      ],
+      "conclusions": [
+        "Lower bound: $M(\\epsilon, \\rho) \\geq \\max_\\gamma \\min(\\rho w_\\gamma^{-1/p}, \\epsilon B_\\gamma^{-1/2})$",
+        "Upper bound: $M(\\epsilon, \\rho) \\leq \\min_{\\Gamma = \\Gamma_1 \\cup \\Gamma_2} \\sqrt{\\epsilon^2/\\min_{\\Gamma_1} b_\\gamma + \\rho^2/\\min_{\\Gamma_2} w_\\gamma^{2/p}}$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "PrP111.7",
+      "type": "proposition",
+      "name": "Convergence rate for smoothing operator with Besov prior",
+      "section": "4.2",
+      "statement": "Under the smoothness assumption $A_\\ell^2 \\sum 2^{-2|\\lambda|\\alpha} |h_\\lambda|^2 \\le \\|Kh\\|^2 \\le A_u^2 \\sum 2^{-2|\\lambda|\\alpha} |h_\\lambda|^2$, $c (\\epsilon/A_u)^{\\sigma/(\\sigma + \\alpha)} \\rho^{\\alpha/(\\sigma + \\alpha)} \\le M(\\epsilon, \\rho) \\le C (\\epsilon/A_\\ell)^{\\sigma/(\\sigma + \\alpha)} \\rho^{\\alpha/(\\sigma + \\alpha)}$, where $\\sigma = s + d(\\frac{1}{2} - \\frac{1}{p}) \\ge 0$.",
+      "assumptions": [
+        "$K$ smoothing operator of order $\\alpha$ in the Besov sense (DP111.16)",
+        "$\\sigma = s + d(\\frac{1}{2} - \\frac{1}{p}) \\ge 0$"
+      ],
+      "conclusions": [
+        "Lower bound: $M(\\epsilon, \\rho) \\geq c (\\epsilon/A_u)^{\\sigma/(\\sigma + \\alpha)} \\rho^{\\alpha/(\\sigma + \\alpha)}$",
+        "Upper bound: $M(\\epsilon, \\rho) \\leq C (\\epsilon/A_\\ell)^{\\sigma/(\\sigma + \\alpha)} \\rho^{\\alpha/(\\sigma + \\alpha)}$"
+      ],
+      "origin": "paper",
+      "tags": ["bound"]
+    },
+    {
+      "id": "PP111.1",
+      "type": "proof",
+      "name": "Proof of Proposition 2.1",
+      "section": "2",
+      "statement": "By substitution and case analysis on $\\Gamma_0 = \\{\\gamma : f_\\gamma = 0\\}$ vs $\\Gamma_1$, we show ${\\Phi}^{\\mathrm{SUR}}_{\\mathbf{w},1}(f + h; a) - {\\Phi}^{\\mathrm{SUR}}_{\\mathbf{w},1}(f; a) \\geq \\|h\\|^2$, treating the $p = 1$ case in detail.",
+      "proves": "PrP111.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP111.2",
+      "type": "proof",
+      "name": "Proof of non-expansivity (Lemma 2.2)",
+      "section": "2",
+      "statement": "It suffices to show $|S_{w,p}(x) - S_{w,p}(x')| \\le |x - x'|$. For $p > 1$, $F'_{w,p} \\geq 1$ gives the bound. For $p = 1$ all cases are checked directly.",
+      "proves": "LP111.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP111.3",
+      "type": "proof",
+      "name": "Proof of Theorem 3.1",
+      "section": "3",
+      "statement": "Combine weak convergence (Proposition PrP111.2 + PrP111.3) with the $\\|Ku^n\\| \\to 0$ estimate (Lemma LP111.8) and Lemma LP111.10 to upgrade to norm convergence.",
+      "proves": "TP111.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP111.4",
+      "type": "proof",
+      "name": "Proof of Theorem 4.1 (regularization)",
+      "section": "4.1",
+      "statement": "Establish weak convergence of $f^*_{\\mu_n; g_n}$ via boundedness and Banach-Alaoglu, identify the weak limit as $f^{\\dagger}$ via the fixed-point equation and Lemma 4.2, then upgrade to norm convergence via Lemma 4.3.",
+      "proves": "TP111.3",
+      "origin": "paper"
+    },
+    {
+      "id": "PP111.5",
+      "type": "proof",
+      "name": "Proof of Proposition 4.4 (modulus of convergence bracket)",
+      "section": "4.2",
+      "statement": "Use $\\Phi_{\\mu;g}(f^*_{\\mu;g}) \\le \\Phi_{\\mu;g}(f_o) \\le \\epsilon^2 + \\mu \\rho^p$ to place $f^*_{\\mu;g} \\in \\mathcal{F}(\\epsilon', \\rho')$, then triangle inequality and the choice $g = 0$ for the lower bound.",
+      "proves": "PrP111.5",
+      "origin": "paper"
+    },
+    {
+      "id": "PP111.6",
+      "type": "proof",
+      "name": "Proof of Proposition 4.6 (bracket bounds for $M$)",
+      "section": "4.2",
+      "statement": "Lower bound: exhibit single-coordinate $h = \\nu \\varphi_{\\gamma_m}$ achieving the max-min. Upper bound: split $\\Gamma$ into $\\Gamma_1 \\cup \\Gamma_2$ and bound each piece using the spectral inequalities.",
+      "proves": "PrP111.6",
+      "origin": "paper"
+    },
+    {
+      "id": "PP111.7",
+      "type": "proof",
+      "name": "Proof of Besov-rate proposition",
+      "section": "4.2",
+      "statement": "Apply Proposition 4.6 with $b_\\lambda = A_\\ell^2 2^{-2|\\lambda|\\alpha}$ and $B_\\lambda = A_u^2 2^{-2|\\lambda|\\alpha}$ and optimize over $|\\lambda|$ (lower bound) or $J$ (upper bound).",
+      "proves": "PrP111.7",
+      "origin": "paper"
+    },
+    {
+      "id": "AP111.1",
+      "type": "algorithm",
+      "name": "Iterative thresholded Landweber algorithm",
+      "section": "2-3",
+      "statement": "Iterative matrix-free scheme: at each step apply $K^*$-residual update followed by component-wise shrinkage $\\mathbf{S}_{\\mathbf{w},p}$ to compute the minimizer of $\\Phi_{\\mathbf{w},p}$.",
+      "input": [
+        "Bounded operator $K: \\cH \\to \\cH'$ with $\\|K\\| < 1$",
+        "Data $g \\in \\cH'$",
+        "Orthonormal basis $(\\varphi_\\gamma)_{\\gamma \\in \\Gamma}$ of $\\cH$",
+        "Weight sequence $\\mathbf{w} = (w_\\gamma)$ with $w_\\gamma \\ge c > 0$",
+        "Sparsity parameter $p \\in [1, 2]$",
+        "Initial guess $f^0 \\in \\cH$"
+      ],
+      "output": [
+        "Sequence $(f^n)_{n \\in \\N}$ converging strongly to a minimizer $f^*$ of $\\Phi_{\\mathbf{w},p}$"
+      ],
+      "pseudocode": "f^0 arbitrary; for n = 1, 2, ...: f^n = S_{w,p}( f^{n-1} + K^*(g - K f^{n-1}) ); stop when ||f^n - f^{n-1}|| is small.",
+      "origin": "paper",
+      "tags": ["iterative", "approximation"]
+    },
+    {
+      "id": "AP111.2",
+      "type": "algorithm",
+      "name": "Landweber iteration (cited)",
+      "section": "2 (cited)",
+      "statement": "$f^n = f^{n-1} + K^*(g - K f^{n-1})$, the classical iterative method for $K f = g$.",
+      "input": [
+        "Bounded operator $K$ with $\\|K\\| < 1$",
+        "Data $g$"
+      ],
+      "output": [
+        "Sequence $(f^n)$ converging to the generalized solution of $Kf = g$"
+      ],
+      "origin": "external",
+      "origin_citation": "Landweber 1951"
+    },
+    {
+      "id": "ProbP111.1",
+      "type": "problem",
+      "name": "Sparsity-penalized regularized inverse problem",
+      "section": "1.3",
+      "statement": "Find $f^* = \\arg\\min_f \\Phi_{\\mathbf{w},p}(f) = \\|Kf - g\\|^2 + \\sum_\\gamma w_\\gamma |\\langle f, \\varphi_\\gamma\\rangle|^p$ for $1 \\le p \\le 2$.",
+      "origin": "paper",
+      "tags": ["optimization"]
+    },
+    {
+      "id": "ExP111.1",
+      "type": "example",
+      "name": "Pure-denoising special case ($K = I$, $p = 1$, $\\mathbf{w} = \\mu \\mathbf{w}_0$)",
+      "section": "1.3",
+      "statement": "When $K$ is the identity, the minimizer is $f^* = \\sum_\\gamma S_\\mu(g_\\gamma) \\varphi_\\gamma$, recovering Donoho-Johnstone soft-threshold denoising.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP111.2",
+      "type": "example",
+      "name": "Thresholded SVD expansion ($p = 1$)",
+      "section": "1.4.2",
+      "statement": "For compact $K$ with SVD $\\{(u_k, v_k, \\sigma_k)\\}$, the minimizer of $\\Phi_{\\mu \\mathbf{w}_0, 1}$ is $f^* = \\sum_k \\sigma_k^{-2} S_\\mu(\\sigma_k \\langle g, u_k\\rangle) v_k$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP111.3",
+      "type": "example",
+      "name": "2D deconvolution illustration",
+      "section": "5",
+      "statement": "$256 \\times 256$ image of four small bright ellipses convolved with a radially symmetric low-pass filter and corrupted with Poisson noise; reconstructed with 2000 iterations of the algorithm for $p = 1, 2$ with and without positivity constraint $P_{\\mathcal{C}}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP111.3",
+      "type": "remark",
+      "name": "Positivity / convex-set projection extension",
+      "section": "3.1",
+      "statement": "If the object lies in a closed convex subset $\\mathcal{C} \\subset \\cH$, replace $\\mathbf{S}_{\\mathbf{w},p}$ by $P_{\\mathcal{C}} \\mathbf{S}_{\\mathbf{w},p}$ where $P_{\\mathcal{C}}$ projects onto $\\mathcal{C}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP111.4",
+      "type": "remark",
+      "name": "Numerical complexity of one iteration",
+      "section": "6",
+      "statement": "Each iteration costs $O(N^2)$ in general; $O(N)$ when $K^*K$ is sparse in $\\varphi_\\gamma$; $O(N \\log N)$ if $K^*K$ is implementable via FFT (e.g., convolution with a wavelet basis).",
+      "origin": "paper"
+    },
+    {
+      "id": "RP111.5",
+      "type": "remark",
+      "name": "Asymmetric penalty extension",
+      "section": "6",
+      "statement": "Replacing $w_\\gamma |f_\\gamma|^p$ by $w^+_\\gamma [f_\\gamma]_+^p + w^-_\\gamma [f_\\gamma]_-^p$ and using $S_{w^+, w^-, p}$ in place of $S_{w, p}$ preserves all results.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP111.1",
+      "type": "proof_step",
+      "parent_id": "PP111.3",
+      "step_order": 1,
+      "name": "Set up shorthand $\\mathbf{T}$ and notation $u^n = f^n - f^*$",
+      "statement": "Define $\\mathbf{T} f = \\mathbf{S}_{\\mathbf{w},p}(f + K^*(g - Kf))$ and let $f^*$ be the weak limit guaranteed by Proposition PrP111.2; set $u^n = f^n - f^*$ and $h = f^* + K^*(g - K f^*)$.",
+      "subclass": "setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP111.2",
+      "type": "proof_step",
+      "parent_id": "PP111.3",
+      "step_order": 2,
+      "name": "Establish $\\|K u^n\\| \\to 0$",
+      "statement": "Use $\\|u^{n+1} - u^n\\| \\to 0$ (Lemma 3.7) and non-expansivity of $\\mathbf{S}_{\\mathbf{w},p}$ to derive $\\|u^n\\| - \\|(I - K^*K) u^n\\| \\to 0$, then conclude $\\|K u^n\\|^2 \\to 0$ (Lemma 3.13).",
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP111.3",
+      "type": "proof_step",
+      "parent_id": "PP111.3",
+      "step_order": 3,
+      "name": "Reduce to shrinkage residual identity",
+      "statement": "From the bound on $\\|\\mathbf{S}_{\\mathbf{w},p}(h + u^n - K^*K u^n) - \\mathbf{S}_{\\mathbf{w},p}(h) - u^n\\|$ and $\\|K u^n\\| \\to 0$, deduce $\\|\\mathbf{S}_{\\mathbf{w},p}(h + u^n) - \\mathbf{S}_{\\mathbf{w},p}(h) - u^n\\| \\to 0$ (Lemma 3.15).",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP111.4",
+      "type": "proof_step",
+      "parent_id": "PP111.3",
+      "step_order": 4,
+      "name": "Apply Lemma 3.16 to conclude norm convergence",
+      "statement": "With $u^n \\rightharpoonup 0$ and the shrinkage-residual decay from PSP111.3, Lemma 3.16 (LP111.10) gives $\\|u^n\\| \\to 0$, i.e. $f^n \\to f^*$ in norm.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP111.5",
+      "type": "proof_step",
+      "parent_id": "PP111.4",
+      "step_order": 1,
+      "name": "Establish uniform boundedness of $f^*_{\\mu_n; g_n}$",
+      "statement": "From $f^*_{\\mu_n; g_n}$ minimizing $\\Phi_{\\mu_n; g_n}$ and $K f^{\\dagger} = K f_o$, derive $\\|f^*_{\\mu_n; g_n}\\|^p \\le c^{-1}(\\epsilon_n^2/\\mu_n + \\Vvert f^{\\dagger}\\Vvert_{\\mathbf{w},p}^p)$, which is bounded under (4.4).",
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP111.6",
+      "type": "proof_step",
+      "parent_id": "PP111.4",
+      "step_order": 2,
+      "name": "Extract weakly convergent subsequence",
+      "statement": "By Banach-Alaoglu the bounded sequence has a weakly convergent subsequence $\\widetilde{f}_k \\rightharpoonup \\widetilde{f}$ with controlled $\\Vvert\\widetilde{f}_k\\Vvert_{\\mathbf{w},p}$.",
+      "subclass": "introduce_variable",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP111.7",
+      "type": "proof_step",
+      "parent_id": "PP111.4",
+      "step_order": 3,
+      "name": "Identify weak limit $\\widetilde{f}$ via fixed-point equation and Lemma 4.2",
+      "statement": "Since each $\\widetilde{f}_k$ is a fixed point of $\\mathbf{T}_{\\widetilde{\\mu}_k}$, taking limits and using $|S_{\\widetilde{\\mu}_k w_\\gamma, p}(x) - x| \\le \\frac{p w_\\gamma \\widetilde{\\mu}_k}{2}|x|^{p-1}$ yields $K^*K(f^{\\dagger} - \\widetilde{f}) = 0$, hence $f^{\\dagger} - \\widetilde{f} \\in \\mathrm{N}(K)$.",
+      "subclass": "apply_lemma",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP111.8",
+      "type": "proof_step",
+      "parent_id": "PP111.4",
+      "step_order": 4,
+      "name": "Equate triple-bar norms via Fatou and the upper bound",
+      "statement": "Fatou's lemma gives $\\Vvert\\widetilde{f}\\Vvert_{\\mathbf{w},p}^p \\le \\liminf \\Vvert\\widetilde{f}_k\\Vvert_{\\mathbf{w},p}^p \\le \\Vvert f^{\\dagger}\\Vvert_{\\mathbf{w},p}^p \\le \\Vvert\\widetilde{f}\\Vvert_{\\mathbf{w},p}^p$, forcing all three to coincide.",
+      "subclass": "bound_estimate",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP111.9",
+      "type": "proof_step",
+      "parent_id": "PP111.4",
+      "step_order": 5,
+      "name": "Conclude $\\widetilde{f} = f^{\\dagger}$ and upgrade to norm convergence",
+      "statement": "Uniqueness of the minimum $\\Vvert\\cdot\\Vvert_{\\mathbf{w},p}$-norm element in $\\mathcal{S}$ forces $\\widetilde{f} = f^{\\dagger}$, and Lemma 4.3 (norm-from-weak) gives $\\|f^*_{\\mu_n; g_n} - f^{\\dagger}\\| \\to 0$.",
+      "subclass": "conclude",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP111.1",
+      "type": "algorithm_step",
+      "parent_id": "AP111.1",
+      "step_order": 1,
+      "name": "Initialize $f^0$",
+      "statement": "Choose $f^0 \\in \\cH$ arbitrarily (often $f^0 = 0$).",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP111.2",
+      "type": "algorithm_step",
+      "parent_id": "AP111.1",
+      "step_order": 2,
+      "name": "Iterative update loop",
+      "statement": "For $n = 1, 2, \\ldots$: compute residual $r^{n-1} = g - K f^{n-1}$, update $a^n = f^{n-1} + K^* r^{n-1}$, then apply component-wise shrinkage $f^n = \\mathbf{S}_{\\mathbf{w},p}(a^n) = \\sum_\\gamma S_{w_\\gamma, p}(\\langle a^n, \\varphi_\\gamma\\rangle) \\varphi_\\gamma$.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP111.3",
+      "type": "algorithm_step",
+      "parent_id": "AP111.1",
+      "step_order": 3,
+      "name": "Stop and return $f^n$",
+      "statement": "Stop when $\\|f^n - f^{n-1}\\|$ falls below a tolerance; return $f^n$ as approximation to the minimizer of $\\Phi_{\\mathbf{w},p}$.",
+      "subclass": "return",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "DP111.1", "target": "DP111.2", "type": "uses"},
+    {"source": "DP111.1", "target": "DP111.3", "type": "uses"},
+    {"source": "DP111.1", "target": "DP111.4", "type": "uses"},
+    {"source": "DP111.4", "target": "ProbP111.1", "type": "uses"},
+    {"source": "DP111.5", "target": "DP111.8", "type": "uses"},
+    {"source": "DP111.8", "target": "DP111.9", "type": "uses"},
+    {"source": "DP111.9", "target": "DP111.10", "type": "uses"},
+    {"source": "DP111.4", "target": "DP111.7", "type": "uses"},
+    {"source": "DP111.7", "target": "PrP111.1", "type": "uses"},
+    {"source": "DP111.9", "target": "PrP111.1", "type": "uses"},
+    {"source": "PrP111.1", "target": "CP111.1", "type": "uses"},
+    {"source": "DP111.10", "target": "CP111.1", "type": "uses"},
+    {"source": "DP111.9", "target": "LP111.1", "type": "uses"},
+    {"source": "LP111.1", "target": "LP111.3", "type": "uses"},
+    {"source": "DP111.10", "target": "LP111.3", "type": "uses"},
+    {"source": "PrP111.1", "target": "LP111.4", "type": "uses"},
+    {"source": "LP111.4", "target": "LP111.5", "type": "uses"},
+    {"source": "DP111.11", "target": "LP111.5", "type": "uses"},
+    {"source": "LP111.4", "target": "LP111.6", "type": "uses"},
+    {"source": "LP111.6", "target": "LP111.7", "type": "uses"},
+    {"source": "TP111.2", "target": "PrP111.2", "type": "uses"},
+    {"source": "LP111.3", "target": "PrP111.2", "type": "uses"},
+    {"source": "LP111.7", "target": "PrP111.2", "type": "uses"},
+    {"source": "LP111.5", "target": "PrP111.2", "type": "uses"},
+    {"source": "LP111.2", "target": "PrP111.2", "type": "uses"},
+    {"source": "PrP111.1", "target": "PrP111.3", "type": "uses"},
+    {"source": "PrP111.2", "target": "PrP111.4", "type": "uses"},
+    {"source": "PrP111.3", "target": "PrP111.4", "type": "uses"},
+    {"source": "LP111.1", "target": "LP111.8", "type": "uses"},
+    {"source": "LP111.7", "target": "LP111.8", "type": "uses"},
+    {"source": "LP111.8", "target": "LP111.9", "type": "uses"},
+    {"source": "LP111.1", "target": "LP111.9", "type": "uses"},
+    {"source": "LP111.9", "target": "LP111.10", "type": "uses"},
+    {"source": "PrP111.4", "target": "TP111.1", "type": "uses"},
+    {"source": "LP111.10", "target": "TP111.1", "type": "uses"},
+    {"source": "LP111.8", "target": "TP111.1", "type": "uses"},
+    {"source": "DP111.8", "target": "LP111.11", "type": "uses"},
+    {"source": "DP111.11", "target": "LP111.12", "type": "uses"},
+    {"source": "LP111.5", "target": "TP111.3", "type": "uses"},
+    {"source": "LP111.11", "target": "TP111.3", "type": "uses"},
+    {"source": "LP111.12", "target": "TP111.3", "type": "uses"},
+    {"source": "PrP111.3", "target": "TP111.3", "type": "uses"},
+    {"source": "DP111.12", "target": "TP111.3", "type": "uses"},
+    {"source": "DP111.13", "target": "DP111.14", "type": "uses"},
+    {"source": "DP111.13", "target": "PrP111.5", "type": "uses"},
+    {"source": "DP111.14", "target": "PrP111.5", "type": "uses"},
+    {"source": "DP111.13", "target": "PrP111.6", "type": "uses"},
+    {"source": "PrP111.6", "target": "PrP111.7", "type": "uses"},
+    {"source": "DP111.16", "target": "PrP111.7", "type": "uses"},
+    {"source": "DP111.15", "target": "PrP111.7", "type": "uses"},
+    {"source": "PP111.1", "target": "PrP111.1", "type": "proves"},
+    {"source": "PP111.2", "target": "LP111.1", "type": "proves"},
+    {"source": "PP111.3", "target": "TP111.1", "type": "proves"},
+    {"source": "PP111.4", "target": "TP111.3", "type": "proves"},
+    {"source": "PP111.5", "target": "PrP111.5", "type": "proves"},
+    {"source": "PP111.6", "target": "PrP111.6", "type": "proves"},
+    {"source": "PP111.7", "target": "PrP111.7", "type": "proves"},
+    {"source": "CP111.1", "target": "AP111.1", "type": "uses"},
+    {"source": "DP111.9", "target": "AP111.1", "type": "uses"},
+    {"source": "TP111.1", "target": "AP111.1", "type": "uses"},
+    {"source": "AP111.2", "target": "AP111.1", "type": "specializes"},
+    {"source": "AP111.1", "target": "ProbP111.1", "type": "uses"},
+    {"source": "AP111.1", "target": "ExP111.1", "type": "illustrates"},
+    {"source": "AP111.1", "target": "ExP111.2", "type": "illustrates"},
+    {"source": "AP111.1", "target": "ExP111.3", "type": "illustrates"},
+    {"source": "DP111.5", "target": "ExP111.1", "type": "uses"},
+    {"source": "DP111.6", "target": "DP111.4", "type": "uses"},
+    {"source": "PSP111.1", "target": "PSP111.2", "type": "uses"},
+    {"source": "PSP111.2", "target": "PSP111.3", "type": "uses"},
+    {"source": "PSP111.3", "target": "PSP111.4", "type": "uses"},
+    {"source": "LP111.8", "target": "PSP111.2", "type": "uses"},
+    {"source": "LP111.9", "target": "PSP111.3", "type": "uses"},
+    {"source": "LP111.10", "target": "PSP111.4", "type": "uses"},
+    {"source": "PSP111.5", "target": "PSP111.6", "type": "uses"},
+    {"source": "PSP111.6", "target": "PSP111.7", "type": "uses"},
+    {"source": "PSP111.7", "target": "PSP111.8", "type": "uses"},
+    {"source": "PSP111.8", "target": "PSP111.9", "type": "uses"},
+    {"source": "LP111.11", "target": "PSP111.7", "type": "uses"},
+    {"source": "LP111.12", "target": "PSP111.9", "type": "uses"},
+    {"source": "ASP111.1", "target": "ASP111.2", "type": "uses"},
+    {"source": "ASP111.2", "target": "ASP111.3", "type": "uses"}
+  ]
+}

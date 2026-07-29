@@ -1,0 +1,630 @@
+{
+  "metadata": {
+    "title": "Auto-Encoding Variational Bayes",
+    "authors": "Diederik P. Kingma, Max Welling",
+    "year": 2013,
+    "paper_num": 210,
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "DP210.1",
+      "type": "definition",
+      "name": "Generative model with continuous latent variables",
+      "section": "2.1 Problem scenario",
+      "statement": "A two-step random process generating dataset $\\bX = \\{\\bx^{(i)}\\}_{i=1}^N$: latent $\\bz^{(i)} \\sim p_{\\bT^*}(\\bz)$, then $\\bx^{(i)} \\sim p_{\\bT^*}(\\bx|\\bz)$, with PDFs differentiable a.e. in $\\bT$ and $\\bz$.",
+      "statement_clean": "Directed model with continuous latent variable z generating x, with parametric prior and likelihood differentiable in parameters and latents.",
+      "origin": "paper",
+      "tags": ["model"]
+    },
+    {
+      "id": "DP210.2",
+      "type": "definition",
+      "name": "Recognition model (probabilistic encoder)",
+      "section": "2.1 Problem scenario",
+      "statement": "An approximate posterior $q_{\\bphi}(\\bz|\\bx)$ that approximates the intractable true posterior $p_{\\bT}(\\bz|\\bx)$; not necessarily factorial; parameters $\\bphi$ learned jointly with $\\bT$.",
+      "statement_clean": "Encoder distribution q_phi(z|x) approximating the intractable posterior, learned jointly with the generative model.",
+      "origin": "paper",
+      "tags": ["model", "encoder"]
+    },
+    {
+      "id": "DP210.3",
+      "type": "definition",
+      "name": "Probabilistic decoder",
+      "section": "2.1 Problem scenario",
+      "statement": "The conditional generative distribution $p_{\\bT}(\\bx|\\bz)$, which given a latent code $\\bz$ produces a distribution over corresponding values of $\\bx$.",
+      "origin": "paper",
+      "tags": ["model", "decoder"]
+    },
+    {
+      "id": "DP210.4",
+      "type": "definition",
+      "name": "Variational lower bound (ELBO)",
+      "section": "2.2 The variational bound",
+      "statement": "$\\mathcal{L}(\\bT,\\bphi;\\bx^{(i)}) = \\mathbb{E}_{q_{\\bphi}(\\bz|\\bx)}[-\\log q_{\\bphi}(\\bz|\\bx) + \\log p_{\\bT}(\\bx,\\bz)] = -D_{KL}(q_{\\bphi}(\\bz|\\bx^{(i)})\\,\\|\\,p_{\\bT}(\\bz)) + \\mathbb{E}_{q_{\\bphi}(\\bz|\\bx^{(i)})}[\\log p_{\\bT}(\\bx^{(i)}|\\bz)]$.",
+      "statement_clean": "Lower bound on log marginal likelihood, equal to negative KL from prior plus expected log likelihood under the approximate posterior.",
+      "origin": "paper",
+      "tags": ["objective"]
+    },
+    {
+      "id": "DP210.5",
+      "type": "definition",
+      "name": "Reparameterization of latent variable",
+      "section": "2.4 The reparameterization trick",
+      "statement": "Express $\\tilde{\\bz} \\sim q_{\\bphi}(\\bz|\\bx)$ as $\\tilde{\\bz} = g_{\\bphi}(\\beps,\\bx)$ with auxiliary noise $\\beps \\sim p(\\beps)$, where $g_{\\bphi}$ is a differentiable transformation.",
+      "statement_clean": "Write the latent sample as a deterministic function of input and independent noise so that gradients pass through the sampling step.",
+      "origin": "paper",
+      "tags": ["technique"]
+    },
+    {
+      "id": "DP210.6",
+      "type": "definition",
+      "name": "Variational auto-encoder",
+      "section": "3 Example: Variational Auto-Encoder",
+      "statement": "An instance of the AEVB algorithm in which the recognition model $q_{\\bphi}(\\bz|\\bx)$ is parameterized by a neural network (MLP) producing the mean and variance of a diagonal-covariance Gaussian over $\\bz$.",
+      "origin": "paper",
+      "tags": ["model"]
+    },
+    {
+      "id": "DP210.7",
+      "type": "definition",
+      "name": "Bernoulli MLP decoder",
+      "section": "Appendix C.1",
+      "statement": "$\\log p(\\bx|\\bz) = \\sum_{i=1}^D x_i \\log y_i + (1-x_i)\\log(1-y_i)$ with $\\by = f_\\sigma(\\bW_2 \\tanh(\\bW_1 \\bz + \\bbb_1) + \\bbb_2)$.",
+      "origin": "paper",
+      "tags": ["model"]
+    },
+    {
+      "id": "DP210.8",
+      "type": "definition",
+      "name": "Gaussian MLP encoder/decoder",
+      "section": "Appendix C.2",
+      "statement": "$\\log p(\\bx|\\bz) = \\log \\mathcal{N}(\\bx;\\bmu,\\bsigma^2 \\bI)$ with $\\bmu = \\bW_4 \\bh + \\bbb_4$, $\\log \\bsigma^2 = \\bW_5 \\bh + \\bbb_5$, $\\bh = \\tanh(\\bW_3 \\bz + \\bbb_3)$.",
+      "origin": "paper",
+      "tags": ["model"]
+    },
+    {
+      "id": "EP210.1",
+      "type": "equation",
+      "name": "Decomposition of log marginal likelihood",
+      "section": "2.2 The variational bound",
+      "statement": "$\\log p_{\\bT}(\\bx^{(i)}) = D_{KL}(q_{\\bphi}(\\bz|\\bx^{(i)})\\,\\|\\,p_{\\bT}(\\bz|\\bx^{(i)})) + \\mathcal{L}(\\bT,\\bphi;\\bx^{(i)})$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP210.2",
+      "type": "equation",
+      "name": "Naive score-function gradient estimator",
+      "section": "2.2 The variational bound",
+      "statement": "$\\nabla_{\\bphi} \\mathbb{E}_{q_{\\bphi}(\\bz)}[f(\\bz)] = \\mathbb{E}_{q_{\\bphi}(\\bz)}[f(\\bz) \\nabla_{q_{\\bphi}(\\bz)} \\log q_{\\bphi}(\\bz)]$ — known to have very high variance.",
+      "origin": "external",
+      "origin_citation": "Blei et al. 2012; Ranganath et al. 2013"
+    },
+    {
+      "id": "EP210.3",
+      "type": "equation",
+      "name": "Generic SGVB estimator (estimator A)",
+      "section": "2.3 The SGVB estimator",
+      "statement": "$\\widetilde{\\mathcal{L}}^A(\\bT,\\bphi;\\bx^{(i)}) = \\frac{1}{L}\\sum_{l=1}^L \\log p_{\\bT}(\\bx^{(i)},\\bz^{(i,l)}) - \\log q_{\\bphi}(\\bz^{(i,l)}|\\bx^{(i)})$, $\\bz^{(i,l)} = g_{\\bphi}(\\bepsilon^{(i,l)},\\bx^{(i)})$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP210.4",
+      "type": "equation",
+      "name": "KL-form SGVB estimator (estimator B)",
+      "section": "2.3 The SGVB estimator",
+      "statement": "$\\widetilde{\\mathcal{L}}^B(\\bT,\\bphi;\\bx^{(i)}) = -D_{KL}(q_{\\bphi}(\\bz|\\bx^{(i)})\\,\\|\\,p_{\\bT}(\\bz)) + \\frac{1}{L}\\sum_{l=1}^L \\log p_{\\bT}(\\bx^{(i)}|\\bz^{(i,l)})$, with the KL term integrated analytically when possible.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP210.5",
+      "type": "equation",
+      "name": "Minibatch SGVB estimator",
+      "section": "2.3 The SGVB estimator",
+      "statement": "$\\mathcal{L}(\\bT,\\bphi;\\bX) \\simeq \\widetilde{\\mathcal{L}}^M(\\bT,\\bphi;\\bX^M) = \\frac{N}{M} \\sum_{i=1}^M \\widetilde{\\mathcal{L}}(\\bT,\\bphi;\\bx^{(i)})$ for a random minibatch $\\bX^M$ of size $M$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP210.6",
+      "type": "equation",
+      "name": "Gaussian-Gaussian KL closed form",
+      "section": "Appendix B / Section 3",
+      "statement": "$-D_{KL}(q_{\\bphi}(\\bz)\\,\\|\\,p_{\\bT}(\\bz)) = \\frac{1}{2}\\sum_{j=1}^J \\big(1 + \\log(\\sigma_j^2) - \\mu_j^2 - \\sigma_j^2 \\big)$ when prior and posterior approximation are Gaussian with $p_{\\bT}(\\bz)=\\mathcal{N}(\\bzero,\\bI)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP210.7",
+      "type": "equation",
+      "name": "VAE Gaussian estimator",
+      "section": "3 Example: Variational Auto-Encoder",
+      "statement": "$\\mathcal{L}(\\bT,\\bphi;\\bx^{(i)}) \\simeq \\frac{1}{2}\\sum_{j=1}^J(1 + \\log((\\sigma_j^{(i)})^2) - (\\mu_j^{(i)})^2 - (\\sigma_j^{(i)})^2) + \\frac{1}{L}\\sum_{l=1}^L \\log p_{\\bT}(\\bx^{(i)}|\\bz^{(i,l)})$, $\\bz^{(i,l)} = \\bmu^{(i)} + \\bsigma^{(i)} \\odot \\bepsilon^{(l)}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP210.8",
+      "type": "equation",
+      "name": "Marginal likelihood estimator (importance form)",
+      "section": "Appendix D",
+      "statement": "$p_{\\bT}(\\bx^{(i)}) \\simeq \\big(\\frac{1}{L}\\sum_{l=1}^L \\frac{q(\\bz^{(l)})}{p_{\\bT}(\\bz)\\,p_{\\bT}(\\bx^{(i)}|\\bz^{(l)})}\\big)^{-1}$ with $\\bz^{(l)} \\sim p_{\\bT}(\\bz|\\bx^{(i)})$ via HMC.",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP210.1",
+      "type": "problem",
+      "name": "Efficient inference and learning in directed models with intractable posteriors",
+      "section": "1 Introduction / 2.1",
+      "statement": "Given i.i.d. data $\\bX$ from $p_{\\bT^*}(\\bx) = \\int p_{\\bT^*}(\\bz)p_{\\bT^*}(\\bx|\\bz)\\,d\\bz$ with intractable marginal and posterior, compute (1) approximate ML/MAP estimate of $\\bT$, (2) approximate posterior $p_{\\bT}(\\bz|\\bx)$, (3) approximate marginal $p_{\\bT}(\\bx)$, scalably for large $N$.",
+      "statement_clean": "Jointly do ML/MAP parameter learning and posterior/marginal inference in directed continuous-latent models with intractable integrals and large datasets.",
+      "origin": "paper",
+      "tags": ["inference", "learning"]
+    },
+    {
+      "id": "ProbP210.2",
+      "type": "problem",
+      "name": "High-variance score-function gradient",
+      "section": "2.2",
+      "statement": "Standard Monte Carlo (REINFORCE-style) gradient $\\nabla_{\\bphi} \\mathbb{E}_{q_{\\bphi}(\\bz)}[f(\\bz)]$ via the score function exhibits very high variance and is impractical for variational learning of $\\bphi$.",
+      "origin": "paper",
+      "tags": ["gradient-estimation"]
+    },
+    {
+      "id": "AssumP210.1",
+      "type": "assumption",
+      "name": "Mild differentiability conditions for reparameterization",
+      "section": "2.3 / 2.4",
+      "statement": "The PDFs $p_{\\bT}(\\bz)$ and $p_{\\bT}(\\bx|\\bz)$ are differentiable almost everywhere in $\\bT$ and $\\bz$, and $q_{\\bphi}(\\bz|\\bx)$ admits a differentiable reparameterization $\\bz = g_{\\bphi}(\\beps,\\bx)$ with $\\beps \\sim p(\\beps)$ independent of $\\bphi$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PrP210.1",
+      "type": "proposition",
+      "name": "Differentiable reparameterized expectation",
+      "section": "2.4 The reparameterization trick",
+      "statement": "If $\\bz = g_{\\bphi}(\\beps,\\bx)$ with $\\beps \\sim p(\\beps)$ independent of $\\bphi$, then $\\int q_{\\bphi}(\\bz|\\bx) f(\\bz)\\,d\\bz = \\int p(\\beps) f(g_{\\bphi}(\\beps,\\bx))\\,d\\beps \\simeq \\frac{1}{L}\\sum_{l=1}^L f(g_{\\bphi}(\\bx,\\bepsilon^{(l)}))$, giving an estimator that is differentiable in $\\bphi$.",
+      "assumptions": [
+        "$\\bz$ continuous random variable with $\\bz \\sim q_{\\bphi}(\\bz|\\bx)$",
+        "$\\bz = g_{\\bphi}(\\beps,\\bx)$ deterministic, differentiable in $\\bphi$",
+        "$\\beps \\sim p(\\beps)$ independent of $\\bphi$"
+      ],
+      "conclusions": [
+        "$\\mathbb{E}_{q_{\\bphi}(\\bz|\\bx)}[f(\\bz)] = \\mathbb{E}_{p(\\beps)}[f(g_{\\bphi}(\\beps,\\bx))]$",
+        "The Monte Carlo estimator $\\frac{1}{L}\\sum_l f(g_{\\bphi}(\\bx,\\bepsilon^{(l)}))$ is differentiable in $\\bphi$"
+      ],
+      "origin": "paper",
+      "tags": ["technique"]
+    },
+    {
+      "id": "PrP210.2",
+      "type": "proposition",
+      "name": "Variational lower bound identity",
+      "section": "2.2 The variational bound",
+      "statement": "For any $q_{\\bphi}$, $\\log p_{\\bT}(\\bx^{(i)}) = D_{KL}(q_{\\bphi}(\\bz|\\bx^{(i)})\\,\\|\\,p_{\\bT}(\\bz|\\bx^{(i)})) + \\mathcal{L}(\\bT,\\bphi;\\bx^{(i)})$, hence $\\log p_{\\bT}(\\bx^{(i)}) \\geq \\mathcal{L}(\\bT,\\bphi;\\bx^{(i)})$ (KL is non-negative).",
+      "assumptions": [
+        "$p_{\\bT}(\\bx,\\bz)$ is a joint density with marginal $p_{\\bT}(\\bx)$",
+        "$q_{\\bphi}(\\bz|\\bx)$ is any density with the same support as $p_{\\bT}(\\bz|\\bx)$"
+      ],
+      "conclusions": [
+        "$\\log p_{\\bT}(\\bx^{(i)}) \\geq \\mathcal{L}(\\bT,\\bphi;\\bx^{(i)})$",
+        "Equality holds iff $q_{\\bphi}(\\bz|\\bx^{(i)}) = p_{\\bT}(\\bz|\\bx^{(i)})$"
+      ],
+      "origin": "external",
+      "origin_citation": "Classical variational inference (Jordan et al. 1999)",
+      "tags": ["bound"]
+    },
+    {
+      "id": "PrP210.3",
+      "type": "proposition",
+      "name": "Closed-form Gaussian KL term",
+      "section": "Appendix B (Solution of KL, Gaussian case)",
+      "statement": "For $\\pT(\\bz) = \\mathcal{N}(\\bzero,\\bI)$ and $q_{\\bphi}(\\bz|\\bx^{(i)}) = \\mathcal{N}(\\bmu^{(i)},(\\bsigma^{(i)})^2 \\bI)$, $-D_{KL}(q_{\\bphi}\\,\\|\\,\\pT(\\bz)) = \\frac{1}{2}\\sum_{j=1}^J(1 + \\log\\sigma_j^2 - \\mu_j^2 - \\sigma_j^2)$.",
+      "assumptions": [
+        "Prior $\\pT(\\bz) = \\mathcal{N}(\\bzero,\\bI)$",
+        "Approximate posterior $q_{\\bphi}(\\bz|\\bx^{(i)}) = \\mathcal{N}(\\bmu,\\bsigma^2 \\bI)$",
+        "Latent dimension $J$"
+      ],
+      "conclusions": [
+        "$-D_{KL}(q_{\\bphi}\\,\\|\\,\\pT(\\bz)) = \\tfrac{1}{2}\\sum_{j=1}^J\\big(1 + \\log\\sigma_j^2 - \\mu_j^2 - \\sigma_j^2\\big)$"
+      ],
+      "origin": "paper",
+      "tags": ["identity", "Gaussian"]
+    },
+    {
+      "id": "PP210.1",
+      "type": "proof",
+      "name": "Proof of reparameterized differentiable estimator",
+      "section": "2.4 The reparameterization trick",
+      "statement": "Change of variables on $q_{\\bphi}(\\bz|\\bx)\\prod_i dz_i = p(\\beps)\\prod_i d\\epsilon_i$, then form a Monte Carlo estimate of the resulting integral over $p(\\beps)$.",
+      "proves": "PrP210.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PP210.2",
+      "type": "proof",
+      "name": "Derivation of the marginal likelihood estimator",
+      "section": "Appendix D",
+      "statement": "Multiply $1/p_{\\bT}(\\bx^{(i)})$ by $\\int q(\\bz)\\,d\\bz$, rewrite as an expectation under the true posterior, and approximate by Monte Carlo with samples from HMC.",
+      "proves": "EP210.8",
+      "origin": "paper"
+    },
+    {
+      "id": "PP210.3",
+      "type": "proof",
+      "name": "Derivation of Gaussian-Gaussian KL closed form",
+      "section": "Appendix B",
+      "statement": "Compute $\\int q(\\bz)\\log p(\\bz)\\,d\\bz$ and $\\int q(\\bz)\\log q(\\bz)\\,d\\bz$ for Gaussians with diagonal covariance and subtract.",
+      "proves": "PrP210.3",
+      "origin": "paper"
+    },
+    {
+      "id": "AP210.1",
+      "type": "algorithm",
+      "name": "Auto-Encoding Variational Bayes (AEVB) algorithm",
+      "section": "2.3 The SGVB estimator and AEVB algorithm",
+      "statement": "Stochastic-gradient procedure that jointly learns generative parameters $\\bT$ and recognition parameters $\\bphi$ by maximizing the SGVB lower bound on minibatches.",
+      "input": [
+        "Dataset $\\bX = \\{\\bx^{(i)}\\}_{i=1}^N$",
+        "Generative model $p_{\\bT}(\\bz)\\,p_{\\bT}(\\bx|\\bz)$",
+        "Recognition model $q_{\\bphi}(\\bz|\\bx)$ with reparameterization $\\bz = g_{\\bphi}(\\beps,\\bx)$, $\\beps \\sim p(\\beps)$",
+        "Minibatch size $M$, samples per datapoint $L$"
+      ],
+      "output": [
+        "Learned generative parameters $\\bT$",
+        "Learned variational parameters $\\bphi$"
+      ],
+      "pseudocode": "Initialize $\\bT,\\bphi$; repeat: sample minibatch $\\bX^M$, draw $\\beps$, compute $\\bg = \\nabla_{\\bT,\\bphi} \\widetilde{\\mathcal{L}}^M(\\bT,\\bphi;\\bX^M,\\beps)$, update $(\\bT,\\bphi)$ with SGD/Adagrad until convergence.",
+      "origin": "paper",
+      "tags": ["iterative", "stochastic-gradient"]
+    },
+    {
+      "id": "AP210.2",
+      "type": "algorithm",
+      "name": "Full-VB stochastic-gradient procedure",
+      "section": "Appendix E (Full VB)",
+      "statement": "Stochastic-gradient procedure for the fully Bayesian extension that places a variational posterior $q_{\\bphi}(\\bT)$ over parameters in addition to $q_{\\bphi}(\\bz|\\bx)$, both reparameterized.",
+      "input": [
+        "Hyperprior $p_{\\balpha}(\\bT)$",
+        "Reparameterizations $\\bz = g_{\\bphi}(\\beps,\\bx)$, $\\bT = h_{\\bphi}(\\bzeta)$",
+        "Dataset $\\bX$"
+      ],
+      "output": [
+        "Stochastic gradient $\\bg$ of the variational lower bound w.r.t. $\\bphi$"
+      ],
+      "pseudocode": "Initialize $\\bg \\gets 0$; for $l=1..L$: draw $\\bx \\sim \\bX$, $\\beps \\sim p(\\beps)$, $\\bzeta \\sim p(\\bzeta)$; $\\bg \\mathrel{+}= \\frac{1}{L}\\nabla_{\\bphi} f_{\\bphi}(\\bx, g_{\\bphi}(\\beps,\\bx), h_{\\bphi}(\\bzeta))$; return $\\bg$.",
+      "origin": "paper",
+      "tags": ["stochastic-gradient", "fully-bayesian"]
+    },
+    {
+      "id": "AP210.3",
+      "type": "algorithm",
+      "name": "Wake-Sleep algorithm",
+      "section": "4 Related work / 5 Experiments (cited)",
+      "statement": "Online learning algorithm for directed latent-variable models that alternates between wake-phase updates of the generative model and sleep-phase updates of the recognition model.",
+      "origin": "external",
+      "origin_citation": "Hinton et al. 1995"
+    },
+    {
+      "id": "AP210.4",
+      "type": "algorithm",
+      "name": "Monte Carlo EM with HMC",
+      "section": "Appendix E (Monte Carlo EM)",
+      "statement": "EM-style algorithm that, instead of using an encoder, samples latents from the per-datapoint posterior using Hybrid Monte Carlo with leapfrog steps and then performs weight updates with Adagrad.",
+      "input": [
+        "Generative model $p_{\\bT}(\\bx,\\bz)$",
+        "HMC step size and number of leapfrog steps"
+      ],
+      "output": [
+        "Updated parameters $\\bT$"
+      ],
+      "pseudocode": "Per datapoint: run 10 HMC leapfrog steps with adaptive step size targeting 90% acceptance, then 5 weight updates using the obtained sample; repeat.",
+      "origin": "external",
+      "origin_citation": "Wei & Tanner 1990; Duane et al. 1987 (HMC)"
+    },
+    {
+      "id": "ExP210.1",
+      "type": "example",
+      "name": "Univariate Gaussian reparameterization",
+      "section": "2.4 The reparameterization trick",
+      "statement": "For $z \\sim \\mathcal{N}(\\mu,\\sigma^2)$, take $z = \\mu + \\sigma\\epsilon$ with $\\epsilon \\sim \\mathcal{N}(0,1)$; then $\\mathbb{E}_{\\mathcal{N}(z;\\mu,\\sigma^2)}[f(z)] = \\mathbb{E}_{\\mathcal{N}(\\epsilon;0,1)}[f(\\mu+\\sigma\\epsilon)]$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP210.2",
+      "type": "example",
+      "name": "Variational Auto-Encoder on MNIST and Frey Face",
+      "section": "5 Experiments / Appendix A",
+      "statement": "Train AEVB with MLP encoder/decoder ($500$ hidden units for MNIST, $200$ for Frey Face) using Adagrad, $M=100$, $L=1$; compare against wake-sleep and Monte Carlo EM on the variational lower bound and estimated marginal likelihood.",
+      "statement_clean": "MNIST and Frey Face experiments comparing AEVB to wake-sleep and MCEM on lower bound and marginal likelihood.",
+      "origin": "paper",
+      "tags": ["empirical"]
+    },
+    {
+      "id": "ExP210.3",
+      "type": "example",
+      "name": "2D latent manifold visualization",
+      "section": "Appendix A (Visualisations)",
+      "statement": "Train AEVB with $J=2$ latent dimensions and visualize the learned manifold by passing inverse-CDF-transformed grid points through the decoder for MNIST and Frey Face.",
+      "origin": "paper"
+    },
+    {
+      "id": "ExP210.4",
+      "type": "example",
+      "name": "Full-VB Gaussian example",
+      "section": "Appendix E.1",
+      "statement": "With Gaussian prior on $\\bT$ and $\\bz$ and Gaussian variational posteriors, four terms of $f_{\\bphi}$ collapse analytically, yielding a low-variance estimator combining two closed-form Gaussian-KL contributions and one Monte Carlo log-likelihood term.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP210.1",
+      "type": "remark",
+      "name": "Connection between AEVB and auto-encoders",
+      "section": "2.3",
+      "statement": "Estimator B can be read as auto-encoder objective: the KL term acts as a regularizer driving $q_{\\bphi}(\\bz|\\bx)$ toward the prior, and $\\log p_{\\bT}(\\bx^{(i)}|\\bz^{(i,l)})$ is a negative reconstruction error.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP210.2",
+      "type": "remark",
+      "name": "Three families of reparameterizable distributions",
+      "section": "2.4",
+      "statement": "Differentiable transformations $g_{\\bphi}$ exist when (i) the inverse CDF is tractable, (ii) the distribution is location-scale, or (iii) the variable is a composition of reparameterizable variates (Log-Normal, Gamma, Dirichlet, Beta, Chi-squared, F).",
+      "origin": "paper"
+    },
+    {
+      "id": "RP210.3",
+      "type": "remark",
+      "name": "PCA as ML solution of linear-Gaussian generative model",
+      "section": "4 Related work",
+      "statement": "PCA arises as the maximum-likelihood solution of a linear-Gaussian model with $p(\\bz) = \\mathcal{N}(0,\\bI)$ and $p(\\bx|\\bz) = \\mathcal{N}(\\bx;\\bW \\bz,\\epsilon \\bI)$ in the limit $\\epsilon \\to 0$.",
+      "origin": "external",
+      "origin_citation": "Roweis 1998 (EM algorithms for PCA and SPCA)"
+    },
+    {
+      "id": "PSP210.1",
+      "type": "proof_step",
+      "name": "Change-of-variables identity for $q_{\\bphi}$",
+      "parent_id": "PP210.1",
+      "step_order": 1,
+      "subclass": "invoke_identity",
+      "statement": "Given $\\bz = g_{\\bphi}(\\beps,\\bx)$, the densities transform as $q_{\\bphi}(\\bz|\\bx)\\prod_i dz_i = p(\\beps)\\prod_i d\\epsilon_i$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP210.2",
+      "type": "proof_step",
+      "name": "Rewrite the expectation under $p(\\beps)$",
+      "parent_id": "PP210.1",
+      "step_order": 2,
+      "subclass": "algebraic_manipulation",
+      "statement": "Substitute the change-of-variables identity to get $\\int q_{\\bphi}(\\bz|\\bx) f(\\bz)\\,d\\bz = \\int p(\\beps) f(g_{\\bphi}(\\beps,\\bx))\\,d\\beps$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP210.3",
+      "type": "proof_step",
+      "name": "Form the Monte Carlo estimator",
+      "parent_id": "PP210.1",
+      "step_order": 3,
+      "subclass": "conclude",
+      "statement": "Approximate the integral over $p(\\beps)$ by sampling $\\beps^{(l)} \\sim p(\\beps)$, giving $\\frac{1}{L}\\sum_{l=1}^L f(g_{\\bphi}(\\bx,\\beps^{(l)}))$, which is differentiable in $\\bphi$ since $\\beps$ does not depend on $\\bphi$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP210.4",
+      "type": "proof_step",
+      "name": "Insert $\\int q(\\bz)\\,d\\bz = 1$",
+      "parent_id": "PP210.2",
+      "step_order": 1,
+      "subclass": "setup",
+      "statement": "Write $\\frac{1}{p_{\\bT}(\\bx^{(i)})} = \\frac{\\int q(\\bz)\\,d\\bz}{p_{\\bT}(\\bx^{(i)})}$ and multiply numerator and denominator by $p_{\\bT}(\\bx^{(i)},\\bz)$ inside the integral.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP210.5",
+      "type": "proof_step",
+      "name": "Identify true posterior",
+      "parent_id": "PP210.2",
+      "step_order": 2,
+      "subclass": "algebraic_manipulation",
+      "statement": "Recognize $p_{\\bT}(\\bx^{(i)},\\bz)/p_{\\bT}(\\bx^{(i)}) = p_{\\bT}(\\bz|\\bx^{(i)})$ to obtain $\\int p_{\\bT}(\\bz|\\bx^{(i)})\\,\\frac{q(\\bz)}{p_{\\bT}(\\bx^{(i)},\\bz)}\\,d\\bz$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP210.6",
+      "type": "proof_step",
+      "name": "Monte Carlo estimate via HMC",
+      "parent_id": "PP210.2",
+      "step_order": 3,
+      "subclass": "conclude",
+      "statement": "Approximate the expectation by samples $\\bz^{(l)} \\sim p_{\\bT}(\\bz|\\bx^{(i)})$ drawn with HMC, giving $\\frac{1}{p_{\\bT}(\\bx^{(i)})} \\simeq \\frac{1}{L}\\sum_l \\frac{q(\\bz^{(l)})}{p_{\\bT}(\\bz)\\,p_{\\bT}(\\bx^{(i)}|\\bz^{(l)})}$ and invert.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP210.7",
+      "type": "proof_step",
+      "name": "Compute $\\int q\\log p$ for Gaussian prior",
+      "parent_id": "PP210.3",
+      "step_order": 1,
+      "subclass": "algebraic_manipulation",
+      "statement": "$\\int \\mathcal{N}(\\bz;\\bmu,\\bsigma^2) \\log \\mathcal{N}(\\bz;\\bzero,\\bI)\\,d\\bz = -\\frac{J}{2}\\log(2\\pi) - \\frac{1}{2}\\sum_j (\\mu_j^2 + \\sigma_j^2)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP210.8",
+      "type": "proof_step",
+      "name": "Compute $\\int q\\log q$ for Gaussian $q$",
+      "parent_id": "PP210.3",
+      "step_order": 2,
+      "subclass": "algebraic_manipulation",
+      "statement": "$\\int \\mathcal{N}(\\bz;\\bmu,\\bsigma^2)\\log \\mathcal{N}(\\bz;\\bmu,\\bsigma^2)\\,d\\bz = -\\frac{J}{2}\\log(2\\pi) - \\frac{1}{2}\\sum_j(1 + \\log \\sigma_j^2)$ (Gaussian differential entropy).",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP210.9",
+      "type": "proof_step",
+      "name": "Subtract to obtain $-D_{KL}$",
+      "parent_id": "PP210.3",
+      "step_order": 3,
+      "subclass": "conclude",
+      "statement": "Subtract the two integrals: $-D_{KL} = \\int q(\\log p - \\log q) = \\frac{1}{2}\\sum_j(1 + \\log\\sigma_j^2 - \\mu_j^2 - \\sigma_j^2)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP210.1",
+      "type": "algorithm_step",
+      "name": "Initialize parameters",
+      "parent_id": "AP210.1",
+      "step_order": 1,
+      "subclass": "initialize",
+      "statement": "$\\bT,\\bphi \\gets$ initial values (e.g. random sampling from $\\mathcal{N}(0,0.01)$).",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP210.2",
+      "type": "algorithm_step",
+      "name": "Outer training loop",
+      "parent_id": "AP210.1",
+      "step_order": 2,
+      "subclass": "loop",
+      "statement": "Repeat the following stochastic-gradient updates until convergence of $(\\bT,\\bphi)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP210.3",
+      "type": "algorithm_step",
+      "name": "Sample minibatch",
+      "parent_id": "AP210.1",
+      "step_order": 3,
+      "subclass": "update",
+      "statement": "$\\bX^M \\gets$ random minibatch of $M$ datapoints drawn from $\\bX$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP210.4",
+      "type": "algorithm_step",
+      "name": "Sample noise",
+      "parent_id": "AP210.1",
+      "step_order": 4,
+      "subclass": "update",
+      "statement": "$\\beps \\gets$ random samples from noise distribution $p(\\beps)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP210.5",
+      "type": "algorithm_step",
+      "name": "Compute SGVB gradient",
+      "parent_id": "AP210.1",
+      "step_order": 5,
+      "subclass": "update",
+      "statement": "$\\bg \\gets \\nabla_{\\bT,\\bphi} \\widetilde{\\mathcal{L}}^M(\\bT,\\bphi;\\bX^M,\\beps)$ using the minibatch SGVB estimator.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP210.6",
+      "type": "algorithm_step",
+      "name": "Update parameters",
+      "parent_id": "AP210.1",
+      "step_order": 6,
+      "subclass": "update",
+      "statement": "$\\bT,\\bphi \\gets$ stochastic-gradient update using $\\bg$ (SGD or Adagrad).",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP210.7",
+      "type": "algorithm_step",
+      "name": "Return parameters",
+      "parent_id": "AP210.1",
+      "step_order": 7,
+      "subclass": "return",
+      "statement": "Return $\\bT, \\bphi$ at convergence.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP210.8",
+      "type": "algorithm_step",
+      "name": "Initialize accumulator",
+      "parent_id": "AP210.2",
+      "step_order": 1,
+      "subclass": "initialize",
+      "statement": "$\\bg \\gets 0$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP210.9",
+      "type": "algorithm_step",
+      "name": "Loop over $L$ Monte Carlo draws",
+      "parent_id": "AP210.2",
+      "step_order": 2,
+      "subclass": "loop",
+      "statement": "For $l=1,\\dots,L$: draw $\\bx \\sim \\bX$, $\\beps \\sim p(\\beps)$, $\\bzeta \\sim p(\\bzeta)$ and accumulate $\\bg \\mathrel{+}= \\frac{1}{L}\\nabla_{\\bphi} f_{\\bphi}(\\bx, g_{\\bphi}(\\beps,\\bx), h_{\\bphi}(\\bzeta))$.",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP210.10",
+      "type": "algorithm_step",
+      "name": "Return gradient",
+      "parent_id": "AP210.2",
+      "step_order": 3,
+      "subclass": "return",
+      "statement": "Return $\\bg$, an unbiased stochastic gradient of the full-VB lower bound w.r.t. $\\bphi$.",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "DP210.1", "target": "ProbP210.1", "type": "uses"},
+    {"source": "DP210.1", "target": "DP210.2", "type": "uses"},
+    {"source": "DP210.1", "target": "DP210.3", "type": "uses"},
+    {"source": "DP210.2", "target": "DP210.4", "type": "uses"},
+    {"source": "DP210.3", "target": "DP210.4", "type": "uses"},
+    {"source": "EP210.1", "target": "PrP210.2", "type": "uses"},
+    {"source": "PrP210.2", "target": "DP210.4", "type": "uses"},
+    {"source": "EP210.2", "target": "ProbP210.2", "type": "uses"},
+    {"source": "DP210.5", "target": "PrP210.1", "type": "uses"},
+    {"source": "AssumP210.1", "target": "PrP210.1", "type": "uses"},
+    {"source": "PP210.1", "target": "PrP210.1", "type": "proves"},
+    {"source": "PSP210.1", "target": "PSP210.2", "type": "uses"},
+    {"source": "PSP210.2", "target": "PSP210.3", "type": "uses"},
+    {"source": "PrP210.1", "target": "EP210.3", "type": "uses"},
+    {"source": "DP210.4", "target": "EP210.3", "type": "uses"},
+    {"source": "DP210.4", "target": "EP210.4", "type": "uses"},
+    {"source": "PrP210.3", "target": "EP210.4", "type": "uses"},
+    {"source": "EP210.3", "target": "EP210.5", "type": "uses"},
+    {"source": "EP210.4", "target": "EP210.5", "type": "uses"},
+    {"source": "PP210.3", "target": "PrP210.3", "type": "proves"},
+    {"source": "PSP210.7", "target": "PSP210.9", "type": "uses"},
+    {"source": "PSP210.8", "target": "PSP210.9", "type": "uses"},
+    {"source": "PrP210.3", "target": "EP210.6", "type": "uses"},
+    {"source": "EP210.5", "target": "AP210.1", "type": "uses"},
+    {"source": "PrP210.1", "target": "AP210.1", "type": "uses"},
+    {"source": "DP210.5", "target": "AP210.1", "type": "uses"},
+    {"source": "AP210.1", "target": "ProbP210.1", "type": "uses"},
+    {"source": "ASP210.1", "target": "ASP210.2", "type": "uses"},
+    {"source": "ASP210.2", "target": "ASP210.3", "type": "uses"},
+    {"source": "ASP210.3", "target": "ASP210.5", "type": "uses"},
+    {"source": "ASP210.4", "target": "ASP210.5", "type": "uses"},
+    {"source": "ASP210.5", "target": "ASP210.6", "type": "uses"},
+    {"source": "ASP210.6", "target": "ASP210.7", "type": "uses"},
+    {"source": "DP210.6", "target": "ExP210.2", "type": "uses"},
+    {"source": "DP210.7", "target": "DP210.6", "type": "uses"},
+    {"source": "DP210.8", "target": "DP210.6", "type": "uses"},
+    {"source": "AP210.1", "target": "DP210.6", "type": "uses"},
+    {"source": "EP210.6", "target": "EP210.7", "type": "uses"},
+    {"source": "DP210.6", "target": "EP210.7", "type": "uses"},
+    {"source": "EP210.7", "target": "ExP210.2", "type": "uses"},
+    {"source": "AP210.1", "target": "ExP210.2", "type": "illustrates"},
+    {"source": "AP210.1", "target": "ExP210.3", "type": "illustrates"},
+    {"source": "DP210.5", "target": "ExP210.1", "type": "illustrates"},
+    {"source": "AP210.3", "target": "ExP210.2", "type": "illustrates"},
+    {"source": "AP210.4", "target": "ExP210.2", "type": "illustrates"},
+    {"source": "PP210.2", "target": "EP210.8", "type": "proves"},
+    {"source": "PSP210.4", "target": "PSP210.5", "type": "uses"},
+    {"source": "PSP210.5", "target": "PSP210.6", "type": "uses"},
+    {"source": "AP210.4", "target": "EP210.8", "type": "uses"},
+    {"source": "PrP210.1", "target": "AP210.2", "type": "uses"},
+    {"source": "AP210.2", "target": "ExP210.4", "type": "illustrates"},
+    {"source": "ASP210.8", "target": "ASP210.9", "type": "uses"},
+    {"source": "ASP210.9", "target": "ASP210.10", "type": "uses"}
+  ]
+}

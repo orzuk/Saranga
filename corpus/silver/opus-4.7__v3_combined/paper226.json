@@ -1,0 +1,461 @@
+{
+  "metadata": {
+    "title": "NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis",
+    "paper_num": 226,
+    "authors": "Ben Mildenhall, Pratul P. Srinivasan, Matthew Tancik, Jonathan T. Barron, Ravi Ramamoorthi, Ren Ng",
+    "year": 2020,
+    "venue": "ECCV 2020",
+    "annotator": "agent-extraction",
+    "model": "claude-opus-4-7",
+    "prompt_version": "v3_combined",
+    "extraction_date": "2026-05-01"
+  },
+  "nodes": [
+    {
+      "id": "DP226.1",
+      "type": "definition",
+      "name": "Neural Radiance Field (NeRF)",
+      "section": "3 Neural Radiance Field Scene Representation",
+      "statement": "A continuous 5D vector-valued function $F_\\Theta : (\\mathbf{x}, \\mathbf{d}) \\to (\\mathbf{c}, \\sigma)$ approximated by an MLP, mapping 3D location $\\mathbf{x}=(x,y,z)$ and 2D viewing direction $\\mathbf{d}$ to emitted RGB color $\\mathbf{c}$ and volume density $\\sigma$.",
+      "statement_clean": "A 5D continuous scene function (location + viewing direction to color + density) parameterized by an MLP.",
+      "origin": "paper",
+      "tags": ["scene_representation", "MLP"]
+    },
+    {
+      "id": "DP226.2",
+      "type": "definition",
+      "name": "Volume density",
+      "section": "4 Volume Rendering with Radiance Fields",
+      "statement": "$\\sigma(\\mathbf{x})$ is the differential probability of a ray terminating at an infinitesimal particle at location $\\mathbf{x}$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP226.3",
+      "type": "definition",
+      "name": "Accumulated transmittance",
+      "section": "4 Volume Rendering with Radiance Fields",
+      "statement": "$T(t) = \\exp\\left(-\\int_{t_n}^{t} \\sigma(\\mathbf{r}(s))\\,ds\\right)$ denotes the probability that the ray travels from $t_n$ to $t$ without hitting any other particle.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP226.4",
+      "type": "definition",
+      "name": "Camera ray",
+      "section": "4 Volume Rendering with Radiance Fields",
+      "statement": "$\\mathbf{r}(t) = \\mathbf{o} + t\\mathbf{d}$ with origin $\\mathbf{o}$, direction $\\mathbf{d}$, and near/far bounds $t_n, t_f$.",
+      "origin": "paper"
+    },
+    {
+      "id": "DP226.5",
+      "type": "definition",
+      "name": "Positional encoding",
+      "section": "5.1 Positional encoding",
+      "statement": "Mapping $\\gamma : \\mathbb{R} \\to \\mathbb{R}^{2L}$ defined by $\\gamma(p) = (\\sin(2^0 \\pi p), \\cos(2^0 \\pi p), \\ldots, \\sin(2^{L-1} \\pi p), \\cos(2^{L-1} \\pi p))$, applied separately to each coordinate of $\\mathbf{x}$ and $\\mathbf{d}$.",
+      "statement_clean": "A sinusoidal embedding lifting each scalar coordinate into a $2L$-dimensional Fourier-feature vector.",
+      "origin": "paper",
+      "tags": ["fourier_features", "embedding"]
+    },
+    {
+      "id": "DP226.6",
+      "type": "definition",
+      "name": "Stratified sampling for ray integration",
+      "section": "4 Volume Rendering with Radiance Fields",
+      "statement": "Partition $[t_n, t_f]$ into $N$ evenly-spaced bins and draw $t_i \\sim \\mathcal{U}[t_n + \\frac{i-1}{N}(t_f-t_n),\\, t_n + \\frac{i}{N}(t_f-t_n)]$ for $i=1,\\ldots,N$.",
+      "origin": "paper",
+      "tags": ["quadrature", "sampling"]
+    },
+    {
+      "id": "DP226.7",
+      "type": "definition",
+      "name": "Normalized device coordinates (NDC) space",
+      "section": "Appendix C (NDC ray space derivation)",
+      "statement": "Space obtained by the standard 3D perspective projection that maps the original viewing frustum to the cube $[-1,1]^3$ and converts the camera $z$-axis to be linear in disparity (inverse depth).",
+      "origin": "external",
+      "origin_citation": "Standard graphics rasterization pipeline"
+    },
+    {
+      "id": "EP226.1",
+      "type": "equation",
+      "name": "Continuous volume rendering integral",
+      "section": "4 Volume Rendering with Radiance Fields",
+      "statement": "$C(\\mathbf{r}) = \\int_{t_n}^{t_f} T(t)\\,\\sigma(\\mathbf{r}(t))\\,\\mathbf{c}(\\mathbf{r}(t),\\mathbf{d})\\,dt$, where $T(t) = \\exp(-\\int_{t_n}^{t}\\sigma(\\mathbf{r}(s))\\,ds)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP226.2",
+      "type": "equation",
+      "name": "Quadrature estimator of ray color",
+      "section": "4 Volume Rendering with Radiance Fields",
+      "statement": "$\\hat{C}(\\mathbf{r}) = \\sum_{i=1}^{N} T_i\\,(1-\\exp(-\\sigma_i \\delta_i))\\,\\mathbf{c}_i$, where $T_i = \\exp(-\\sum_{j=1}^{i-1} \\sigma_j \\delta_j)$ and $\\delta_i = t_{i+1}-t_i$.",
+      "origin": "external",
+      "origin_citation": "Max 1995, Optical models for direct volume rendering"
+    },
+    {
+      "id": "EP226.3",
+      "type": "equation",
+      "name": "Coarse-network weight formula",
+      "section": "5.2 Hierarchical volume sampling",
+      "statement": "$\\hat{C}_c(\\mathbf{r}) = \\sum_{i=1}^{N_c} w_i c_i$ with $w_i = T_i(1-\\exp(-\\sigma_i \\delta_i))$; normalized weights $\\hat{w}_i = w_i / \\sum_{j=1}^{N_c} w_j$ define a piecewise-constant PDF along the ray.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP226.4",
+      "type": "equation",
+      "name": "NeRF training loss",
+      "section": "5.3 Implementation details",
+      "statement": "$\\mathcal{L} = \\sum_{\\mathbf{r} \\in \\mathcal{R}} \\left[\\,\\lVert \\hat{C}_c(\\mathbf{r}) - C(\\mathbf{r}) \\rVert_2^2 + \\lVert \\hat{C}_f(\\mathbf{r}) - C(\\mathbf{r}) \\rVert_2^2\\,\\right]$ over a minibatch $\\mathcal{R}$ of camera rays.",
+      "origin": "paper"
+    },
+    {
+      "id": "EP226.5",
+      "type": "equation",
+      "name": "NDC-space ray origin and direction",
+      "section": "Appendix C (NDC ray space derivation)",
+      "statement": "$\\mathbf{o}' = (-\\frac{f_{cam}}{W/2}\\frac{o_x}{o_z},\\, -\\frac{f_{cam}}{H/2}\\frac{o_y}{o_z},\\, 1+\\frac{2n}{o_z})$ and $\\mathbf{d}' = (-\\frac{f_{cam}}{W/2}(\\frac{d_x}{d_z}-\\frac{o_x}{o_z}),\\, -\\frac{f_{cam}}{H/2}(\\frac{d_y}{d_z}-\\frac{o_y}{o_z}),\\, -\\frac{2n}{o_z})$ for the far plane at infinity.",
+      "origin": "paper"
+    },
+    {
+      "id": "ProbP226.1",
+      "type": "problem",
+      "name": "Novel view synthesis from sparse RGB images",
+      "section": "1 Introduction",
+      "statement": "Given a set of input RGB images of a scene with known camera poses, synthesize photorealistic novel views from previously unseen viewpoints.",
+      "statement_clean": "Synthesize new views of a scene from a sparse set of posed RGB images.",
+      "origin": "paper",
+      "tags": ["view_synthesis", "inverse_rendering"]
+    },
+    {
+      "id": "AP226.1",
+      "type": "algorithm",
+      "name": "NeRF rendering and optimization",
+      "section": "3-5 (Method)",
+      "statement": "Optimize an MLP $F_\\Theta$ representing a 5D radiance field by rendering rays via stratified + hierarchical sampling and minimizing photometric loss between rendered and observed pixels.",
+      "input": [
+        "RGB images of a scene with known camera poses and intrinsics",
+        "Scene bounds $t_n, t_f$ (or NDC mapping for forward-facing scenes)",
+        "MLP architecture $F_\\Theta$ (8 layers, 256 channels for $\\mathbf{x}$ branch; 1 layer, 128 channels for $\\mathbf{d}$ branch)",
+        "Number of coarse and fine samples $N_c, N_f$ per ray",
+        "Positional-encoding frequencies $L$ for $\\gamma(\\mathbf{x})$ and $\\gamma(\\mathbf{d})$"
+      ],
+      "output": [
+        "Trained MLP weights $\\Theta$ that encode the scene as a continuous neural radiance field",
+        "Rendered novel-view images $\\hat{C}_f(\\mathbf{r})$ for any specified camera"
+      ],
+      "origin": "paper",
+      "tags": ["iterative", "differentiable_rendering", "MLP_training"]
+    },
+    {
+      "id": "AP226.2",
+      "type": "algorithm",
+      "name": "Hierarchical volume sampling",
+      "section": "5.2 Hierarchical volume sampling",
+      "statement": "Two-pass sampling: a coarse network is evaluated at $N_c$ stratified samples, then a fine network is evaluated at the union of those samples and $N_f$ additional samples drawn via inverse-CDF sampling from the coarse network's normalized weights.",
+      "input": [
+        "Camera ray $\\mathbf{r}(t) = \\mathbf{o} + t\\mathbf{d}$ with bounds $t_n, t_f$",
+        "Coarse network $F_\\Theta^{c}$ and fine network $F_\\Theta^{f}$",
+        "Sample counts $N_c$ (coarse) and $N_f$ (fine)"
+      ],
+      "output": [
+        "Coarse rendered color $\\hat{C}_c(\\mathbf{r})$",
+        "Fine rendered color $\\hat{C}_f(\\mathbf{r})$ using all $N_c+N_f$ samples"
+      ],
+      "origin": "paper",
+      "tags": ["importance_sampling", "two_pass"]
+    },
+    {
+      "id": "ExP226.1",
+      "type": "example",
+      "name": "Realistic Synthetic 360 dataset",
+      "section": "6.1 Datasets",
+      "statement": "Pathtraced 800x800 renderings of 8 objects with complex geometry and non-Lambertian materials (chair, drums, ficus, hotdog, lego, materials, mic, ship), with 100 input views and 200 test views per scene.",
+      "origin": "paper",
+      "tags": ["benchmark", "synthetic"]
+    },
+    {
+      "id": "ExP226.2",
+      "type": "example",
+      "name": "Diffuse Synthetic 360 dataset",
+      "section": "6.1 Datasets",
+      "statement": "DeepVoxels dataset: four Lambertian objects with simple geometry, rendered at 512x512 from 479 input and 1000 test viewpoints on the upper hemisphere.",
+      "origin": "external",
+      "origin_citation": "Sitzmann et al., DeepVoxels"
+    },
+    {
+      "id": "ExP226.3",
+      "type": "example",
+      "name": "Real Forward-Facing dataset",
+      "section": "6.1 Datasets",
+      "statement": "Eight real-world scenes captured with a handheld cellphone (5 from LLFF, 3 new), 20-62 images each at 1008x756 pixels, with $\\nicefrac{1}{8}$ held out for testing.",
+      "origin": "paper",
+      "tags": ["real_world"]
+    },
+    {
+      "id": "ExP226.4",
+      "type": "example",
+      "name": "Ablation study on Realistic Synthetic 360",
+      "section": "6.4 Ablation studies",
+      "statement": "Removing positional encoding, view-dependence, or hierarchical sampling each individually degrades quality; positional encoding and view-dependence give the largest gains; performance saturates around $L=10$ for $\\gamma(\\mathbf{x})$.",
+      "origin": "paper",
+      "tags": ["ablation"]
+    },
+    {
+      "id": "AP226.3",
+      "type": "algorithm",
+      "name": "Neural Volumes (NV)",
+      "section": "6.2 Comparisons (cited baseline)",
+      "statement": "Optimizes a deep 3D convolutional network to predict a discretized $128^3$ RGB$\\alpha$ voxel grid plus a $32^3$ warp grid, rendering by marching camera rays through the warped voxel grid.",
+      "origin": "external",
+      "origin_citation": "Lombardi et al., Neural Volumes (SIGGRAPH 2019)"
+    },
+    {
+      "id": "AP226.4",
+      "type": "algorithm",
+      "name": "Scene Representation Networks (SRN)",
+      "section": "6.2 Comparisons (cited baseline)",
+      "statement": "Represents a scene as an opaque surface defined by an MLP from $(x,y,z)$ to a feature vector; a recurrent neural network marches along each ray and the final feature is decoded into a single color.",
+      "origin": "external",
+      "origin_citation": "Sitzmann et al., Scene Representation Networks (NeurIPS 2019)"
+    },
+    {
+      "id": "AP226.5",
+      "type": "algorithm",
+      "name": "Local Light Field Fusion (LLFF)",
+      "section": "6.2 Comparisons (cited baseline)",
+      "statement": "A trained 3D CNN predicts per-view discretized frustum-sampled RGB$\\alpha$ multiplane images (MPIs); novel views are rendered by alpha-compositing and blending nearby MPIs.",
+      "origin": "external",
+      "origin_citation": "Mildenhall et al., LLFF (SIGGRAPH 2019)"
+    },
+    {
+      "id": "RP226.1",
+      "type": "remark",
+      "name": "Differentiability of the alpha-compositing renderer",
+      "section": "4 Volume Rendering with Radiance Fields",
+      "statement": "The quadrature estimator $\\hat{C}(\\mathbf{r})$ is trivially differentiable in $(\\mathbf{c}_i, \\sigma_i)$ and reduces to traditional alpha compositing with $\\alpha_i = 1-\\exp(-\\sigma_i \\delta_i)$.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP226.2",
+      "type": "remark",
+      "name": "Multiview consistency via $\\sigma$ as function of $\\mathbf{x}$ alone",
+      "section": "3 Neural Radiance Field Scene Representation",
+      "statement": "Restricting the volume density $\\sigma$ to depend only on location $\\mathbf{x}$ (while letting RGB depend on both $\\mathbf{x}$ and $\\mathbf{d}$) enforces multiview-consistent geometry and lets the model represent non-Lambertian view-dependent appearance.",
+      "origin": "paper"
+    },
+    {
+      "id": "RP226.3",
+      "type": "remark",
+      "name": "Implementation hyperparameters",
+      "section": "5.3 Implementation details",
+      "statement": "Batch of 4096 rays, $N_c=64$ coarse and $N_f=128$ fine samples per ray, Adam with learning rate decaying from $5\\times 10^{-4}$ to $5\\times 10^{-5}$; 100k-300k iterations on a single NVIDIA V100 (1-2 days).",
+      "origin": "paper"
+    },
+    {
+      "id": "RP226.4",
+      "type": "remark",
+      "name": "Why Fourier features help",
+      "section": "5.1 Positional encoding",
+      "statement": "Deep MLPs are biased towards low-frequency functions (Rahaman et al. 2018); mapping inputs through high-frequency sinusoids before the MLP enables fitting high-frequency variation in color and geometry.",
+      "origin": "paper"
+    },
+    {
+      "id": "PrP226.1",
+      "type": "proposition",
+      "name": "NDC ray-space transformation preserves projected ray geometry",
+      "section": "Appendix C (NDC ray space derivation)",
+      "statement": "For a ray $\\mathbf{o}+t\\mathbf{d}$ in camera space, the NDC ray $\\mathbf{o}'+t'\\mathbf{d}'$ defined by the perspective-projection formulas above satisfies $\\pi(\\mathbf{o}+t\\mathbf{d}) = \\mathbf{o}'+t'\\mathbf{d}'$ for all $t \\geq 0$, with $t'=0 \\Leftrightarrow t=0$ and $t' \\to 1$ as $t \\to \\infty$.",
+      "assumptions": [
+        "Pinhole camera with focal length $f_{cam}$, image dimensions $W \\times H$, near plane $n$, far plane $f$",
+        "Camera looks in the $-z$ direction"
+      ],
+      "conclusions": [
+        "The map sends camera rays to NDC-space rays that trace the same projected points",
+        "Sampling $t' \\in [0,1]$ linearly yields linear sampling in disparity from $n$ to $\\infty$ in the original space"
+      ],
+      "origin": "paper",
+      "tags": ["ray_geometry", "reparameterization"]
+    },
+    {
+      "id": "PP226.1",
+      "type": "proof",
+      "name": "Derivation of NDC ray-space transformation",
+      "section": "Appendix C (NDC ray space derivation)",
+      "statement": "Project the standard perspective matrix, equate components of $\\pi(\\mathbf{o}+t\\mathbf{d})$ with $\\mathbf{o}'+t'\\mathbf{d}'$, fix the gauge $t=0 \\Leftrightarrow t'=0$, and factor out a common $t$-dependent expression to read off $\\mathbf{o}', \\mathbf{d}', t'$.",
+      "proves": "PrP226.1",
+      "parent_id": "PrP226.1",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP226.1",
+      "type": "proof_step",
+      "name": "Write the perspective projection in homogeneous form",
+      "parent_id": "PP226.1",
+      "step_order": 1,
+      "statement": "Write the perspective matrix $M$ with entries $\\frac{n}{r}, \\frac{n}{t}, \\frac{-(f+n)}{f-n}, \\frac{-2fn}{f-n}, -1$ acting on $(x,y,z,1)^\\top$, then divide by the fourth coordinate to obtain $\\pi(x,y,z) = (a_x x/z, a_y y/z, a_z + b_z/z)$.",
+      "subclass": "setup",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP226.2",
+      "type": "proof_step",
+      "name": "Match origin via the gauge $t=t'=0$",
+      "parent_id": "PP226.1",
+      "step_order": 2,
+      "statement": "Substituting $t=0,\\,t'=0$ into the equality $\\pi(\\mathbf{o}+t\\mathbf{d}) = \\mathbf{o}'+t'\\mathbf{d}'$ yields $\\mathbf{o}' = \\pi(\\mathbf{o}) = (a_x o_x/o_z,\\, a_y o_y/o_z,\\, a_z + b_z/o_z)$.",
+      "subclass": "introduce_variable",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP226.3",
+      "type": "proof_step",
+      "name": "Solve for direction and reparameterize $t'$",
+      "parent_id": "PP226.1",
+      "step_order": 3,
+      "statement": "Subtracting $\\mathbf{o}'$ from both sides and simplifying gives $t'\\mathbf{d}'$ as a common factor $\\frac{t d_z}{o_z + t d_z}$ times direction-only entries; defining $t' = \\frac{t d_z}{o_z + t d_z}$ reads off $\\mathbf{d}'$ with the components $a_x(d_x/d_z - o_x/o_z)$, $a_y(d_y/d_z - o_y/o_z)$, $-b_z/o_z$.",
+      "subclass": "algebraic_manipulation",
+      "origin": "paper"
+    },
+    {
+      "id": "PSP226.4",
+      "type": "proof_step",
+      "name": "Specialize to $f \\to \\infty$ and pinhole camera",
+      "parent_id": "PP226.1",
+      "step_order": 4,
+      "statement": "Letting $f \\to \\infty$ gives $a_z = 1, b_z = 2n$; and using $a_x = -f_{cam}/(W/2),\\, a_y = -f_{cam}/(H/2)$ from the pinhole camera yields the final NDC ray formulas in Eq. EP226.5.",
+      "subclass": "substitute",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP226.1",
+      "type": "algorithm_step",
+      "name": "Initialize MLP weights and sample a ray batch",
+      "parent_id": "AP226.1",
+      "step_order": 1,
+      "statement": "Initialize the coarse and fine MLP weights $\\Theta_c, \\Theta_f$; at each iteration sample a batch $\\mathcal{R}$ of 4096 camera rays uniformly across all training pixels.",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP226.2",
+      "type": "algorithm_step",
+      "name": "Positional-encode coordinates",
+      "parent_id": "AP226.1",
+      "step_order": 2,
+      "statement": "For each sampled 5D coordinate $(\\mathbf{x},\\mathbf{d})$, apply $\\gamma(\\cdot)$ component-wise with $L=10$ for $\\mathbf{x}$ and $L=4$ for $\\mathbf{d}$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP226.3",
+      "type": "algorithm_step",
+      "name": "Hierarchical sampling and forward pass",
+      "parent_id": "AP226.1",
+      "step_order": 3,
+      "statement": "Run AP226.2 to obtain $N_c$ coarse and $N_c+N_f$ fine 3D query points along each ray; query $F_\\Theta^{c}, F_\\Theta^{f}$ to get $(\\mathbf{c}_i, \\sigma_i)$; alpha-composite via Eq. EP226.2 to obtain $\\hat{C}_c(\\mathbf{r}), \\hat{C}_f(\\mathbf{r})$.",
+      "subclass": "loop",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP226.4",
+      "type": "algorithm_step",
+      "name": "Compute loss and gradient step",
+      "parent_id": "AP226.1",
+      "step_order": 4,
+      "statement": "Compute $\\mathcal{L} = \\sum_{\\mathbf{r} \\in \\mathcal{R}}[\\lVert\\hat{C}_c(\\mathbf{r})-C(\\mathbf{r})\\rVert_2^2 + \\lVert\\hat{C}_f(\\mathbf{r})-C(\\mathbf{r})\\rVert_2^2]$ and update $\\Theta_c,\\Theta_f$ via Adam with learning rate decaying from $5\\times 10^{-4}$ to $5\\times 10^{-5}$.",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP226.5",
+      "type": "algorithm_step",
+      "name": "Iterate until convergence",
+      "parent_id": "AP226.1",
+      "step_order": 5,
+      "statement": "Repeat steps 1-4 for 100k-300k iterations on a single NVIDIA V100; return trained weights $\\Theta_c,\\Theta_f$ and use the fine network to render novel views.",
+      "subclass": "return",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP226.6",
+      "type": "algorithm_step",
+      "name": "Coarse stratified sampling",
+      "parent_id": "AP226.2",
+      "step_order": 1,
+      "statement": "Draw $N_c$ coarse sample positions $\\{t_i\\}_{i=1}^{N_c}$ along the ray via stratified sampling on $[t_n, t_f]$ (Eq. EP226.6 / DP226.6).",
+      "subclass": "initialize",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP226.7",
+      "type": "algorithm_step",
+      "name": "Evaluate coarse network and rendered color",
+      "parent_id": "AP226.2",
+      "step_order": 2,
+      "statement": "Query coarse network $F_\\Theta^{c}$ at each of the $N_c$ samples; compute $\\hat{C}_c(\\mathbf{r}) = \\sum_i w_i c_i$ with $w_i = T_i(1-\\exp(-\\sigma_i \\delta_i))$ (Eq. EP226.3).",
+      "subclass": "update",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP226.8",
+      "type": "algorithm_step",
+      "name": "Inverse-CDF importance sampling for fine network",
+      "parent_id": "AP226.2",
+      "step_order": 3,
+      "statement": "Normalize weights $\\hat{w}_i = w_i / \\sum_j w_j$ to obtain a piecewise-constant PDF, then draw $N_f$ additional samples via inverse transform sampling on this PDF.",
+      "subclass": "branch",
+      "origin": "paper"
+    },
+    {
+      "id": "ASP226.9",
+      "type": "algorithm_step",
+      "name": "Evaluate fine network on the union of samples",
+      "parent_id": "AP226.2",
+      "step_order": 4,
+      "statement": "Query fine network $F_\\Theta^{f}$ at the $N_c + N_f$ pooled samples and compute $\\hat{C}_f(\\mathbf{r})$ via the quadrature rule (Eq. EP226.2).",
+      "subclass": "return",
+      "origin": "paper"
+    }
+  ],
+  "edges": [
+    {"source": "DP226.4", "target": "EP226.1", "type": "uses"},
+    {"source": "DP226.2", "target": "EP226.1", "type": "uses"},
+    {"source": "DP226.3", "target": "EP226.1", "type": "uses"},
+    {"source": "DP226.1", "target": "EP226.1", "type": "uses"},
+    {"source": "EP226.1", "target": "EP226.2", "type": "uses"},
+    {"source": "DP226.6", "target": "EP226.2", "type": "uses"},
+    {"source": "EP226.2", "target": "EP226.3", "type": "uses"},
+    {"source": "DP226.1", "target": "AP226.1", "type": "uses"},
+    {"source": "DP226.5", "target": "AP226.1", "type": "uses"},
+    {"source": "EP226.1", "target": "AP226.1", "type": "uses"},
+    {"source": "EP226.2", "target": "AP226.1", "type": "uses"},
+    {"source": "EP226.4", "target": "AP226.1", "type": "uses"},
+    {"source": "AP226.2", "target": "AP226.1", "type": "uses"},
+    {"source": "DP226.6", "target": "AP226.2", "type": "uses"},
+    {"source": "EP226.3", "target": "AP226.2", "type": "uses"},
+    {"source": "AP226.1", "target": "ProbP226.1", "type": "solves"},
+    {"source": "AP226.1", "target": "ExP226.1", "type": "illustrates"},
+    {"source": "AP226.1", "target": "ExP226.2", "type": "illustrates"},
+    {"source": "AP226.1", "target": "ExP226.3", "type": "illustrates"},
+    {"source": "AP226.1", "target": "ExP226.4", "type": "illustrates"},
+    {"source": "AP226.3", "target": "ProbP226.1", "type": "solves"},
+    {"source": "AP226.4", "target": "ProbP226.1", "type": "solves"},
+    {"source": "AP226.5", "target": "ProbP226.1", "type": "solves"},
+    {"source": "PP226.1", "target": "PrP226.1", "type": "proves"},
+    {"source": "DP226.7", "target": "PrP226.1", "type": "uses"},
+    {"source": "DP226.4", "target": "PrP226.1", "type": "uses"},
+    {"source": "PrP226.1", "target": "AP226.1", "type": "uses"},
+    {"source": "EP226.5", "target": "PrP226.1", "type": "uses"},
+    {"source": "RP226.1", "target": "AP226.1", "type": "uses"},
+    {"source": "RP226.2", "target": "DP226.1", "type": "uses"},
+    {"source": "RP226.4", "target": "DP226.5", "type": "uses"},
+    {"source": "PSP226.1", "target": "PSP226.2", "type": "uses"},
+    {"source": "PSP226.2", "target": "PSP226.3", "type": "uses"},
+    {"source": "PSP226.3", "target": "PSP226.4", "type": "uses"},
+    {"source": "ASP226.1", "target": "ASP226.2", "type": "uses"},
+    {"source": "ASP226.2", "target": "ASP226.3", "type": "uses"},
+    {"source": "ASP226.3", "target": "ASP226.4", "type": "uses"},
+    {"source": "ASP226.4", "target": "ASP226.5", "type": "uses"},
+    {"source": "ASP226.6", "target": "ASP226.7", "type": "uses"},
+    {"source": "ASP226.7", "target": "ASP226.8", "type": "uses"},
+    {"source": "ASP226.8", "target": "ASP226.9", "type": "uses"}
+  ]
+}
