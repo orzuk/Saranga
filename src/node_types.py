@@ -182,6 +182,16 @@ SUBCLASS_VALUES = {
 # ── Type-specific extra fields (beyond subclass) ────────────────────────
 # These carry structured information unique to certain node types.
 
+# Definition (Aristotelian genus + differentia — the base-class + mixin bridge
+# to Mathlib concept structure; all optional, best-effort):
+#   definiendum:         str | null        — the term being defined (head noun/name)
+#   genus:               str | null        — the parent category it belongs to
+#                                            (e.g. "a commutative ring")
+#   differentia:         list[str] | null  — distinguishing conditions that separate
+#                                            it within the genus (e.g. ["every nonzero
+#                                            element is invertible"])
+DEFINITION_EXTRA_FIELDS = {"definiendum", "genus", "differentia"}
+
 # Algorithm:
 #   solves:              str | null   — ID of the problem node this algorithm solves
 #   approximation_ratio: str | null   — e.g. "1.5", "O(log n)", null if exact

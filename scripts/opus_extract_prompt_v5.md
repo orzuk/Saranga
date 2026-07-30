@@ -379,6 +379,8 @@ statement_short:
   input/output description strings, one per element. Drop the
   `pseudocode` field — verbatim algorithm body lives in `statement`,
   decomposed steps live in `algorithm_step` children.
+- `definiendum`, `genus`, `differentia[]` — for `definition` nodes only
+  (see "Definition decomposition" below).
 - `parent_id`, `proves` — relational pointers
 - `tags[]` — topical labels only (per rule 11)
 - `proof_strategy[]` — proof strategy labels, on `proof` nodes only
@@ -392,6 +394,34 @@ When you split a verbatim statement into `assumptions[]` and
 not paraphrasing it. The union of the spans should reconstruct the
 mathematical content of the statement; the wording must match the
 source.
+
+### Definition decomposition — definiendum / genus / differentia (definitions)
+
+For `definition` nodes, optionally decompose the definition in the
+classical (Aristotelian) way — this is the bridge to Mathlib concept
+structure (genus = Lean base class, differentia = the mixin). All three
+fields are **optional and best-effort**; emit them when the definition
+has a clear "X is a Y that satisfies Z" shape, and omit any that do not
+apply. They do **not** replace `statement` (which stays verbatim).
+
+- `definiendum` — the term being defined (the head noun / name). Prefer a
+  verbatim span; a canonicalized name is acceptable.
+- `genus` — the parent category the definiendum belongs to. Prefer a
+  verbatim span from the definition body.
+- `differentia[]` — the distinguishing conditions that separate it within
+  the genus, one per element, each a **verbatim span** where possible.
+
+Examples:
+- "A **field** is a **commutative ring** in which **every nonzero element
+  is invertible**." → `definiendum="field"`, `genus="commutative ring"`,
+  `differentia=["every nonzero element is invertible"]`.
+- "A **Banach space** is a **normed vector space** that is **complete**."
+  → `definiendum="Banach space"`, `genus="normed vector space"`,
+  `differentia=["complete"]`.
+
+When a definition is purely stipulative notation with no genus ("Let
+$X := \{...\}$"), omit `genus`/`differentia` and keep only `statement`
+(and `definiendum` if a name is introduced).
 
 - **Regime A — explicit if/then.** Statement contains "if X, then Y"
   / "let X. Then Y" / "suppose X. Y". Copy the antecedent span(s) into
@@ -460,24 +490,26 @@ Emit an edge only when the text explicitly cross-references the
 dependency or when the logical dependency is clear-cut. A graph with 2
 well-justified edges beats one with 10 speculative ones.
 
-Convention: edge `source → target` means "source is a prerequisite /
-support for target".
+Convention: an edge `A → B` means "A supports B / B depends on A"; the edge
+name reads **"B [type] A"**. These are the ONLY valid edge types (canonical
+source: `src/edge_types.py`) — do not invent others (e.g. there is no
+`defines`; a definition→user link is just `uses`).
 
-| Edge type | Semantics | Direction |
-|---|---|---|
-| `uses` | Source is invoked by target as a prerequisite | prereq → user |
-| `proves` | Source is the proof of the target theorem | proof → theorem |
-| `solves` | Source algorithm computes/solves target problem | algorithm → problem |
-| `defines` | Source definition introduces the object referenced in target | definition → user |
-| `illustrates` | Source example illustrates target | algorithm/thm → example |
-| `special_case_of` | Source is a special case of target | specific → general |
-| `generalizes` | Source generalizes target | general → specific |
-| `resolves` | Source open_problem/conjecture is settled by target theorem-like | open_problem/conjecture → theorem-like |
+| Edge type | Reads "B [type] A" |
+|---|---|
+| `uses` | B uses A — generic dependency (default) |
+| `specializes` | B specializes A — B is a special case of A (subtype of `uses`) |
+| `generalizes` | B generalizes A — B is more general than A (subtype of `uses`) |
+| `proves` | B proves A — B is a proof establishing theorem A |
+| `solves` | B solves A — B is an algorithm solving problem A |
+| `illustrates` | B illustrates A — B is an example demonstrating concept A |
+| `tests` | B tests A — B is an exercise testing concept A |
+| `resolves` | B resolves A — B is a theorem-like result settling open_problem/conjecture A |
 
-**Critical direction rule for `illustrates`:** an example *demonstrates*
-or *applies* an algorithm/theorem. The example is the **dependent**, the
-algorithm/theorem is the **prerequisite**. Edges go
-`algorithm → example`, NOT `example → algorithm`.
+**Critical direction rule for `illustrates`:** an example *demonstrates* or
+*applies* a concept/algorithm/theorem. The concept is the prerequisite (`A`),
+the example is the dependent (`B`), so the edge is `concept → example`
+(reads "example illustrates concept"), NOT `example → concept`.
 
 **Theorem/definition → algorithm dependency:** when a paper introduces
 a theorem (e.g. existence of a factorization) and an algorithm that
