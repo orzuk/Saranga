@@ -25,6 +25,7 @@ extraction configuration and carries the prompt file that produced it:
 | `opus-4.7__v3_combined/` | 268 | `prompt_opus_v3_combined.md` | old "pool" extraction |
 | `opus-4.8__v4.1/` | 74 | `prompt_opus_v4.md` | v4.1 train + test |
 | `opus-4.7__v4.1/` | 3 | `prompt_opus_v4.md` | 3 train JSONs tagged opus-4.7 |
+| **`opus-5__v5.1/`** | **100** | **`prompt_opus_v5.1.md`** | **current uniform corpus — see below** |
 
 - The directory reflects each JSON's **actual** `metadata` (model + prompt), not
   what any email claimed — so mislabeled files sort honestly. Model tokens drop
@@ -34,6 +35,52 @@ extraction configuration and carries the prompt file that produced it:
   config later runs tag plainly `v3_combined`; both contain `proof_step`/
   `algorithm_step` nodes. The original label is preserved in the
   `prompt_version_raw` column.
+
+## `opus-5__v5.1/` — the current uniform corpus (100 papers)
+
+The corpus to use for new work. Every paper here was extracted with
+**`claude-opus-5[1m]`** under **one frozen prompt**, `prompt_opus_v5.1.md`
+(sha256 prefix **`100e6cf6fdbb3aea`**, verified unchanged before every launch).
+Uniformity was the design constraint: an earlier partial run was discarded and
+re-done from scratch rather than mixing two prompt revisions.
+
+- **Filenames are `<arxiv_id>.json`** here (e.g. `1104.0194v1.json`), not
+  `paperNNN.json` — this corpus is keyed by arXiv id, sampled fresh rather than
+  inherited from the old pool.
+- **Sampling:** 5 papers x 20 arXiv categories, drawn from the 1000-paper pool in
+  `extraction_targets_opus5.csv`. The pool deliberately carries **no split
+  column** — train/test is assigned later so the split can be redrawn.
+- **Schema additions in v5.1:** definition decomposition
+  (`definiendum`/`genus`/`differentia`) and `confidence` on both nodes and edges.
+
+**Quality (full report: `CORPUS_REPORT_100.md`):**
+
+| metric | value |
+|---|---|
+| nodes / edges | 12,817 / 21,601 |
+| nodes per paper | mean 128.2, **median 104** |
+| verbatim fidelity | **99.96%** (12,812/12,817 traced to source) |
+| genuine fabrication | **2 nodes = 0.016%** |
+| integrity failures | **0** — all valid, acyclic, endpoints resolve |
+| mis-sliced spans | **0** of 14 boundary-spanning statements |
+
+**Read before using this data:**
+
+- `confidence` scores the *extraction judgment*, not mathematical rigor, and is
+  **not comparable across papers** (no shared rubric anchor).
+- Use the **median** for per-category comparison — n=5 cells are dominated by
+  single large papers (`math_AT` mean 251 vs median 169).
+- `category` in the pool CSV is the **sampled** category, not the arXiv primary;
+  30/100 differ (`true_categories.csv`, ROADMAP 7.5.1).
+- `rigor` is missing from ~95% of nodes: declared universal in `node_types.py`
+  but never requested by the prompt (issue E130).
+- Some real dependency edges were dropped to preserve acyclicity, notably
+  induction hypotheses (issue E120). This is **not** post-hoc detectable.
+
+Known issues are catalogued in `scripts/opus_extract_prompt_v6_TODO.md` (137
+items). The high-severity ones are **spec defects, not model failures** — the
+prompt contradicts itself and `src/*_types.py` in several places, and the corpus
+faithfully inherited both sides of each disagreement.
 
 ## Paper identity, versions, and splits
 

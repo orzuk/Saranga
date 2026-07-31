@@ -90,21 +90,30 @@ EDGE_METADATA = {
         "source_types": lambda: {"proof"},
         "target_types": _theorem_like_provable,
     },
+    # NOTE (2026-07-30): SOLVES / ILLUSTRATES / TESTS previously declared the
+    # *actor* as the source (algorithm/example/exercise), which contradicted the
+    # module's own direction convention ("arrow A → B means A supports B / B
+    # depends on A"). They now follow the uniform dependency convention: the
+    # prerequisite is the source, the dependent thing is the target. So an
+    # example DEPENDS ON the concept it illustrates → concept → example.
     SOLVES: {
         "group": "structural",
-        "description": "B solves A — algorithm B solves problem A.",
-        "source_types": lambda: {"algorithm"},
-        "target_types": lambda: {"problem"},
+        "description": "B solves A — arrow problem → algorithm; the algorithm "
+                       "(target) solves the problem (source).",
+        "source_types": lambda: {"problem"},
+        "target_types": lambda: {"algorithm"},
     },
     ILLUSTRATES: {
         "group": "structural",
-        "description": "B illustrates A — example B demonstrates concept A.",
-        "source_types": lambda: {"example"},
+        "description": "B illustrates A — arrow concept → example; the example "
+                       "(target) demonstrates the concept (source).",
+        "target_types": lambda: {"example"},
     },
     TESTS: {
         "group": "structural",
-        "description": "B tests A — exercise B tests concept A.",
-        "source_types": lambda: {"exercise"},
+        "description": "B tests A — arrow concept → exercise; the exercise "
+                       "(target) tests the concept (source).",
+        "target_types": lambda: {"exercise"},
     },
     RESOLVES: {
         "group": "structural",

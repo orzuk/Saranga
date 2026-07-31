@@ -1,0 +1,3102 @@
+{
+ "metadata": {
+  "title": "Decoupled Greedy Learning of CNNs",
+  "arxiv_id": "1901.08164v4",
+  "category": "cs_LG",
+  "paper_num": 1,
+  "annotator": "agent-extraction",
+  "model": "claude-opus-5[1m]",
+  "prompt_version": "v5.1",
+  "extraction_date": "2026-07-30"
+ },
+ "nodes": [
+  {
+   "id": "DP1.1",
+   "type": "definition",
+   "name": "Update locking problem",
+   "section": "Abstract",
+   "origin": "external",
+   "origin_citation": "Jaderberg et al. 2016",
+   "confidence": 0.75,
+   "statement": "A commonly cited inefficiency of neural network training by back-propagation is the \\textit{update locking} problem: each layer must wait for the signal to propagate through the full network before updating.",
+   "definiendum": "\\textit{update locking} problem",
+   "genus": "inefficiency of neural network training by back-propagation",
+   "differentia": [
+    "each layer must wait for the signal to propagate through the full network before updating"
+   ],
+   "tags": [
+    "parallelism",
+    "back-propagation",
+    "foundational"
+   ]
+  },
+  {
+   "id": "DP1.2",
+   "type": "definition",
+   "name": "Backward unlocking",
+   "section": "1 Introduction",
+   "origin": "external",
+   "origin_citation": "Jaderberg et al. 2016",
+   "confidence": 0.7,
+   "statement": "Backward \\textit{\\textbf{un}locking} would permit updates of all modules once forward signals have propagated to all subsequent modules",
+   "definiendum": "Backward \\textit{\\textbf{un}locking}",
+   "genus": "property of a training procedure permitting module updates",
+   "differentia": [
+    "would permit updates of all modules once forward signals have propagated to all subsequent modules"
+   ],
+   "tags": [
+    "parallelism",
+    "foundational"
+   ]
+  },
+  {
+   "id": "DP1.3",
+   "type": "definition",
+   "name": "Update unlocking",
+   "section": "1 Introduction",
+   "origin": "external",
+   "origin_citation": "Jaderberg et al. 2016",
+   "confidence": 0.7,
+   "statement": "update \\textit{\\textbf{un}locking} would permit updates of a module \\textit{before} a signal has reached all subsequent modules",
+   "definiendum": "update \\textit{\\textbf{un}locking}",
+   "genus": "property of a training procedure permitting module updates",
+   "differentia": [
+    "would permit updates of a module \\textit{before} a signal has reached all subsequent modules"
+   ],
+   "tags": [
+    "parallelism",
+    "foundational"
+   ]
+  },
+  {
+   "id": "DP1.4",
+   "type": "definition",
+   "name": "Forward unlocking",
+   "section": "1 Introduction",
+   "origin": "external",
+   "origin_citation": "Jaderberg et al. 2016",
+   "confidence": 0.7,
+   "statement": "forward \\textit{\\textbf{un}locking} would permit a module to operate asynchronously from its predecessor and dependent modules.",
+   "definiendum": "forward \\textit{\\textbf{un}locking}",
+   "genus": "property of a training procedure permitting module updates",
+   "differentia": [
+    "would permit a module to operate asynchronously from its predecessor and dependent modules"
+   ],
+   "tags": [
+    "parallelism",
+    "asynchronous",
+    "foundational"
+   ]
+  },
+  {
+   "id": "DP1.5",
+   "type": "definition",
+   "name": "Decoupled Neural Interfaces (DNI)",
+   "section": "2.1 Preliminaries",
+   "origin": "external",
+   "origin_citation": "Jaderberg et al. 2016",
+   "confidence": 0.7,
+   "statement": "There, each network module has an associated \\textit{auxiliary net} which, given the output activation of the module, predicts the gradient signal from subsequent modules: the module can thus perform an update while modules above are still forward processing.",
+   "statement_short": "DNI: a per-module auxiliary net predicts the gradient coming from later modules, so the module can update immediately.",
+   "definiendum": "\\textit{auxiliary net}",
+   "genus": "network module associated to each network module",
+   "differentia": [
+    "given the output activation of the module, predicts the gradient signal from subsequent modules"
+   ],
+   "tags": [
+    "synthetic_gradients",
+    "parallelism"
+   ]
+  },
+  {
+   "id": "DP1.6",
+   "type": "definition",
+   "name": "Per-module objective function $\\hat{\\mathcal{L}}$",
+   "section": "2.2 Optimization for Greedy Objective",
+   "origin": "paper",
+   "confidence": 0.8,
+   "statement": "Let $\\bm{X}_0$ and $Y$ be the data and labels, $\\bm{X_j}$ be the output representation for module $j$. We will denote the per-module objective function $\\hat{\\mathcal{L}}(\\bm{X}_{j}, Y;\\theta_{j},\\gamma_{j})$, where the parameters $\\theta_j$ correspond to the module parameter (i.e. $\\bm{X}_{j+1} =f_{\\theta_{j}}(\\bm{X}_{j})$). Here $\\gamma_j$ represents parameters of a auxiliary networks used to predict the final target and compute the local objective. $\\hat{\\mathcal{L}}$ in our case will be the empirical risk with a cross-entropy loss.",
+   "statement_short": "Notation for the local loss of module $j$ over module parameters $\\theta_j$ and auxiliary parameters $\\gamma_j$.",
+   "definiendum": "per-module objective function $\\hat{\\mathcal{L}}(\\bm{X}_{j}, Y;\\theta_{j},\\gamma_{j})$",
+   "genus": "empirical risk with a cross-entropy loss",
+   "differentia": [
+    "the parameters $\\theta_j$ correspond to the module parameter (i.e. $\\bm{X}_{j+1} =f_{\\theta_{j}}(\\bm{X}_{j})$)",
+    "$\\gamma_j$ represents parameters of a auxiliary networks used to predict the final target and compute the local objective"
+   ],
+   "tags": [
+    "optimization",
+    "greedy_learning",
+    "foundational"
+   ]
+  },
+  {
+   "id": "DP1.7",
+   "type": "definition",
+   "name": "Stream of samples $\\mathcal{S}$",
+   "section": "2 Parallel Decoupled Greedy Learning",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement": "We mainly consider the online setting and assume a stream of samples or mini-batches denoted $\\mathcal{S}\\triangleq\\{(x_0^t,y^t)\\}_{t\\leq T}$, run during $T$ iterations.",
+   "definiendum": "stream of samples or mini-batches denoted $\\mathcal{S}\\triangleq\\{(x_0^t,y^t)\\}_{t\\leq T}$",
+   "tags": [
+    "online_learning",
+    "foundational"
+   ]
+  },
+  {
+   "id": "DP1.8",
+   "type": "definition",
+   "name": "Replay buffer $B_j$ and its read/write protocol",
+   "section": "2.3 Asynchronous DGL with Replay",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement": "Each worker $j$ has a buffer that it writes to and that worker $j+1$ can read from. The buffer uses a simple read/write protocol. A buffer $B_j$ lets layer $j$ write new samples. When it reaches capacity it overwrites the oldest sample. Layer $j+1$ requests samples from the buffer $B_j$. They are selected by a last-in-first-out (LIFO) rule, with precedence for the least reused samples.",
+   "statement_short": "Each worker owns a capacity-$M$ buffer; writes overwrite the oldest sample and reads are LIFO with preference for least-reused samples.",
+   "definiendum": "buffer $B_j$",
+   "genus": "simple read/write protocol",
+   "differentia": [
+    "lets layer $j$ write new samples",
+    "When it reaches capacity it overwrites the oldest sample",
+    "They are selected by a last-in-first-out (LIFO) rule, with precedence for the least reused samples"
+   ],
+   "tags": [
+    "replay_buffer",
+    "asynchronous"
+   ]
+  },
+  {
+   "id": "DP1.9",
+   "type": "definition",
+   "name": "Delay probability mass function $p(j)$",
+   "section": "2.3 Asynchronous DGL with Replay",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement": "Alg. \\ref{algo:buffer_sym} simulates potential delays in such a setup by the use of a probability mass function (pmf) $p(j)$ over workers, analogous to typical asynchronous settings such as \\citep{leblond2017asaga}. At each iteration, a layer is chosen at random according to $p(j)$ to perform a computation.",
+   "statement_short": "Delays are simulated by drawing which worker computes at each iteration from a pmf $p(j)$ over workers.",
+   "definiendum": "probability mass function (pmf) $p(j)$ over workers",
+   "genus": "probability mass function (pmf)",
+   "differentia": [
+    "over workers",
+    "At each iteration, a layer is chosen at random according to $p(j)$ to perform a computation"
+   ],
+   "tags": [
+    "asynchronous",
+    "randomized"
+   ]
+  },
+  {
+   "id": "DP1.10",
+   "type": "definition",
+   "name": "CNN-aux",
+   "section": "4.1 Other Approaches and Auxiliary Network Designs",
+   "origin": "external",
+   "origin_citation": "Belilovsky et al. (shallow); Jaderberg et al. 2016",
+   "confidence": 0.8,
+   "statement": "The baseline auxiliary strategy based on \\citep{shallow} and \\citep{jaderberg2016decoupled} applies 2 CNN layers followed by a $2\\times 2$ averaging and projection, denoted as \\textit{CNN-aux}.",
+   "definiendum": "\\textit{CNN-aux}",
+   "genus": "baseline auxiliary strategy",
+   "differentia": [
+    "applies 2 CNN layers followed by a $2\\times 2$ averaging and projection"
+   ],
+   "tags": [
+    "auxiliary_network",
+    "architecture"
+   ]
+  },
+  {
+   "id": "DP1.11",
+   "type": "definition",
+   "name": "MLP-aux",
+   "section": "4.1 Other Approaches and Auxiliary Network Designs",
+   "origin": "paper",
+   "confidence": 0.8,
+   "statement": "First, we explore a direct application of the spatial averaging to $2\\times2$ output shape (regardless of the resolution) followed by a 3-layer MLP (of constant width). This is denoted \\textit{MLP-aux} and drastically reduces the FLOP count with minimal accuracy loss compared to \\textit{CNN-aux}.",
+   "statement_short": "MLP-aux: spatially average to $2\\times2$ then apply a constant-width 3-layer MLP.",
+   "definiendum": "\\textit{MLP-aux}",
+   "genus": "auxiliary network",
+   "differentia": [
+    "a direct application of the spatial averaging to $2\\times2$ output shape (regardless of the resolution) followed by a 3-layer MLP (of constant width)"
+   ],
+   "tags": [
+    "auxiliary_network",
+    "architecture"
+   ]
+  },
+  {
+   "id": "DP1.12",
+   "type": "definition",
+   "name": "MLP-SR-aux",
+   "section": "4.1 Other Approaches and Auxiliary Network Designs",
+   "origin": "paper",
+   "confidence": 0.8,
+   "statement": "Finally, we study a staged spatial resolution, first reducing the spatial resolution by 4$\\times$ (and total size 16$\\times$), then applying 3 $1\\times 1$ convolutions followed by a reduction to $2\\times 2$ and a 3 layer MLP, that we denote as \\textit{MLP-SR-aux}.",
+   "statement_short": "MLP-SR-aux: staged spatial reduction, then $1\\times1$ convolutions, then average to $2\\times2$ and a 3-layer MLP.",
+   "definiendum": "\\textit{MLP-SR-aux}",
+   "genus": "auxiliary network with staged spatial resolution",
+   "differentia": [
+    "first reducing the spatial resolution by 4$\\times$ (and total size 16$\\times$)",
+    "then applying 3 $1\\times 1$ convolutions followed by a reduction to $2\\times 2$ and a 3 layer MLP"
+   ],
+   "tags": [
+    "auxiliary_network",
+    "architecture"
+   ]
+  },
+  {
+   "id": "DP1.13",
+   "type": "definition",
+   "name": "Primary CIFAR-10 CNN architecture",
+   "section": "4.1 Other Approaches and Auxiliary Network Designs",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement": "The primary network architecture we use for this study is a simple CNN similar to VGG family models \\citep{simonyan2014very} and those used in \\citep{shallow}. It consists of 6 convolutions of size $3\\times 3$, batchnorm and shape preserving padding, with $2\\times2$ maxpooling at layers 1 and 3. The width of the first layer is 128 and is doubled at each downsampling operation. The final layer does not have an auxiliary model-- it is followed by a pooling and 2-hidden layer fully connected network, for all experiments.",
+   "statement_short": "A 6-layer VGG-style CNN with two maxpoolings, width 128 doubling at each downsample, and no auxiliary net on the last layer.",
+   "definiendum": "primary network architecture",
+   "genus": "simple CNN similar to VGG family models",
+   "differentia": [
+    "It consists of 6 convolutions of size $3\\times 3$, batchnorm and shape preserving padding, with $2\\times2$ maxpooling at layers 1 and 3",
+    "The width of the first layer is 128 and is doubled at each downsampling operation",
+    "The final layer does not have an auxiliary model"
+   ],
+   "tags": [
+    "architecture",
+    "experimental_setup"
+   ]
+  },
+  {
+   "id": "DP1.14",
+   "type": "definition",
+   "name": "Distance $c^t_{j-1}$ to the converged input density",
+   "section": "3 Theoretical Analysis",
+   "origin": "paper",
+   "confidence": 0.85,
+   "statement": "Let us fix a depth $j$, such that $j>1$ and consider the converged density of the previous layer, $p^*_{j-1}(z)$. We define the following distance: $c^t_{j-1}\\triangleq \\int |p_{j-1}^t(z)-p_{j-1}^*(z)|\\,dz$.",
+   "statement_short": "Total-variation-type distance between the time-$t$ input density of layer $j$ and its converged limit.",
+   "definiendum": "$c^t_{j-1}$",
+   "genus": "distance",
+   "differentia": [
+    "\\int |p_{j-1}^t(z)-p_{j-1}^*(z)|\\,dz"
+   ],
+   "tags": [
+    "foundational",
+    "time_varying_distribution"
+   ]
+  },
+  {
+   "id": "DP1.15",
+   "type": "definition",
+   "name": "Expected risk $\\mathcal{L}(\\Theta_j)$",
+   "section": "3 Theoretical Analysis",
+   "origin": "paper",
+   "confidence": 0.85,
+   "statement": "Denoting $\\ell$ the composition of the non-negative loss function and the network, we will study the expected risk $\\mathcal{L}(\\Theta_{j})\\triangleq \\mathbb{E}_{p^*_{j-1}}[\\ell(Z_{j-1};\\Theta_j)]$.",
+   "definiendum": "expected risk $\\mathcal{L}(\\Theta_{j})$",
+   "genus": "expected risk",
+   "differentia": [
+    "\\mathbb{E}_{p^*_{j-1}}[\\ell(Z_{j-1};\\Theta_j)]",
+    "$\\ell$ the composition of the non-negative loss function and the network"
+   ],
+   "tags": [
+    "optimization",
+    "foundational"
+   ]
+  },
+  {
+   "id": "DP1.16",
+   "type": "definition",
+   "name": "Module parameter and sample notation $\\Theta_j^t$, $Z_j^t$",
+   "section": "3 Theoretical Analysis",
+   "origin": "paper",
+   "confidence": 0.8,
+   "statement": "At time step $t$, for simplicity we will denote all parameters of a module (including auxiliary) as $\\Theta_j^t\\triangleq(\\theta_j^t,\\gamma_j^t)$, and samples as $Z_j^t\\triangleq (X_j^t,Y^t)$, which follow the density $p_j^t(z)$.",
+   "definiendum": "$\\Theta_j^t\\triangleq(\\theta_j^t,\\gamma_j^t)$, $Z_j^t\\triangleq (X_j^t,Y^t)$",
+   "tags": [
+    "notation",
+    "foundational"
+   ]
+  },
+  {
+   "id": "DP1.17",
+   "type": "definition",
+   "name": "Slowdown factor $S$",
+   "section": "4.3 Asynchronous DGL with Replay",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement": "One layer is slowed down by decreasing its selection probability in the pmf $p(j)$ by a factor $S$.",
+   "definiendum": "factor $S$",
+   "genus": "factor decreasing the selection probability in the pmf $p(j)$",
+   "differentia": [
+    "One layer is slowed down"
+   ],
+   "tags": [
+    "asynchronous",
+    "experimental_setup"
+   ]
+  },
+  {
+   "id": "DP1.18",
+   "type": "definition",
+   "name": "Number of modules $K$",
+   "section": "4.1 Other Approaches and Auxiliary Network Designs",
+   "origin": "paper",
+   "confidence": 0.85,
+   "statement": "From here on we will denote $K$ the number of total modules a network is split into.",
+   "definiendum": "$K$",
+   "genus": "number of total modules a network is split into",
+   "tags": [
+    "notation",
+    "parallelism"
+   ]
+  },
+  {
+   "id": "ProbP1.1",
+   "type": "problem",
+   "name": "Greedy training objective $(P_j)$",
+   "section": "2.2 Optimization for Greedy Objective",
+   "origin": "paper",
+   "confidence": 0.9,
+   "statement": "The greedy training objective is thus given recursively by defining $P_j$: \\begin{equation} \\min_{\\theta_j,\\gamma_j}\\hat{\\mathcal{L}}(\\bm{X}_{j}, Y;\\theta_{j},\\gamma_{j})\\tag{$P_j$}, \\end{equation} where $\\bm{X}_{j} =f_{\\theta_{j-1}^*}(\\bm{X}_{j-1})$ and $\\theta_{j-1}^*$ is the minimizer of Problem (\\(P_{j-1}\\)).",
+   "statement_short": "Minimize each module's local loss on the representation produced by the already-optimal previous module.",
+   "tags": [
+    "optimization",
+    "greedy_learning",
+    "recursive"
+   ]
+  },
+  {
+   "id": "AssumP1.1",
+   "type": "assumption",
+   "name": "Assumption 1 ($L$-smoothness)",
+   "section": "3 Theoretical Analysis",
+   "origin": "external",
+   "origin_citation": "Bottou et al. 2018",
+   "confidence": 1.0,
+   "statement": "$\\mathcal{L}$ is differentiable and its gradient is $L$-Lipschitz.",
+   "tags": [
+    "smoothness",
+    "foundational"
+   ]
+  },
+  {
+   "id": "AssumP1.2",
+   "type": "assumption",
+   "name": "Assumption 2 (Robbins-Monro conditions)",
+   "section": "3 Theoretical Analysis",
+   "origin": "external",
+   "origin_citation": "Robbins & Monro; Bottou et al. 2018",
+   "confidence": 1.0,
+   "statement": "The step sizes satisfy $\\sum_t\\eta_t=\\infty$ yet $\\sum_t\\eta_t^2<\\infty$.",
+   "tags": [
+    "step_size",
+    "foundational"
+   ]
+  },
+  {
+   "id": "AssumP1.3",
+   "type": "assumption",
+   "name": "Assumption 3 (Finite variance)",
+   "section": "3 Theoretical Analysis",
+   "origin": "external",
+   "origin_citation": "Bottou et al. 2018; Huo et al. 2018",
+   "confidence": 1.0,
+   "statement": "There exists $G>0$ such that $\\forall t,\\Theta_j, \\mathbb{E}_{p^t_{j-1}}\\big[\\Vert\\nabla_{\\Theta_j}\\ell(Z_{j-1};\\Theta_j)\\Vert^2\\big]\\leq G$.",
+   "tags": [
+    "bound",
+    "foundational"
+   ]
+  },
+  {
+   "id": "AssumP1.4",
+   "type": "assumption",
+   "name": "Assumption 4 (Convergence of the previous layer)",
+   "section": "3 Theoretical Analysis",
+   "origin": "paper",
+   "confidence": 1.0,
+   "statement": "We assume that $\\sum_{t} c^t_{j-1}<\\infty$.",
+   "tags": [
+    "time_varying_distribution",
+    "convergence"
+   ]
+  },
+  {
+   "id": "EP1.1",
+   "type": "equation",
+   "name": "Per-module SGD scheme",
+   "section": "3 Theoretical Analysis",
+   "origin": "paper",
+   "confidence": 0.9,
+   "statement": "We consider the SGD scheme with learning rate $\\{\\eta_t\\}_t$: \\begin{equation} \\hspace{-0.5em}\\Theta^{t+1}_{j}=\\Theta^t_j-\\eta_t \\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t), \\end{equation} where \\(Z^t_{j-1}\\sim p_{j-1}^t\\).",
+   "statement_short": "Stochastic gradient step on module $j$'s parameters using a sample drawn from the current (time-varying) input density.",
+   "tags": [
+    "optimization",
+    "identity"
+   ]
+  },
+  {
+   "id": "LP1.1",
+   "type": "lemma",
+   "name": "Lemma 3.1",
+   "section": "3 Theoretical Analysis",
+   "origin": "paper",
+   "confidence": 1.0,
+   "statement": "Under Assumption 3 and 4, for all $\\Theta_j,$ one has $ \\mathbb{E}_{p^*_{j-1}}\\big[\\Vert\\nabla_{\\Theta_j}\\ell(Z_{j-1};\\Theta_j)\\Vert^2\\big]\\leq G$.",
+   "statement_short": "The gradient second moment stays bounded by $G$ also under the limiting input density $p^*_{j-1}$.",
+   "assumptions": [
+    "Under Assumption 3 and 4",
+    "for all $\\Theta_j,$"
+   ],
+   "conclusions": [
+    "$ \\mathbb{E}_{p^*_{j-1}}\\big[\\Vert\\nabla_{\\Theta_j}\\ell(Z_{j-1};\\Theta_j)\\Vert^2\\big]\\leq G$"
+   ],
+   "tags": [
+    "bound",
+    "foundational"
+   ]
+  },
+  {
+   "id": "LP1.2",
+   "type": "lemma",
+   "name": "Lemma 3.2",
+   "section": "3 Theoretical Analysis",
+   "origin": "paper",
+   "confidence": 1.0,
+   "statement": "Under Assumptions 1, 3 and 4, we have: \\begin{eqnarray*} \\mathbb{E}[\\mathcal{L}(\\Theta_j^{t+1})] & \\leq & \\mathbb{E}[\\mathcal{L}(\\Theta_j^{t})]+\\frac{LG}{2}\\eta_t^2\\,\\\\ {} & {} & -\\eta_t\\big(\\mathbb{E}[\\Vert\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2] -\\sqrt{2}Gc^t_{j-1}\\big). \\end{eqnarray*}",
+   "statement_short": "One-step descent inequality for the expected risk, with an extra $\\sqrt{2}Gc^t_{j-1}$ penalty from the time-varying input density.",
+   "assumptions": [
+    "Under Assumptions 1, 3 and 4"
+   ],
+   "conclusions": [
+    "\\mathbb{E}[\\mathcal{L}(\\Theta_j^{t+1})] & \\leq & \\mathbb{E}[\\mathcal{L}(\\Theta_j^{t})]+\\frac{LG}{2}\\eta_t^2\\,\\\\ {} & {} & -\\eta_t\\big(\\mathbb{E}[\\Vert\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2] -\\sqrt{2}Gc^t_{j-1}\\big)."
+   ],
+   "tags": [
+    "bound",
+    "convergence",
+    "optimization"
+   ]
+  },
+  {
+   "id": "PrP1.1",
+   "type": "proposition",
+   "name": "Proposition 3.1",
+   "section": "3 Theoretical Analysis",
+   "origin": "paper",
+   "confidence": 1.0,
+   "statement": "Under Assumptions 1, 2, 3 and 4, each term of the following equation converges: \\begin{align} \\sum_{t=0}^T \\eta_t \\mathbb{E}[\\Vert\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2] &\\leq \\mathbb{E}[\\mathcal{L}(\\Theta^0_j)]\\nonumber\\\\ &+G\\sum_{t=0}^T\\eta_t\\left(\\sqrt{2c_{j-1}^t}+\\frac{L\\eta_t}{2}\\right)\\nonumber. \\end{align}",
+   "statement_short": "The weighted sum of expected squared gradient norms is finite, so DGL converges in the usual non-convex sense.",
+   "assumptions": [
+    "Under Assumptions 1, 2, 3 and 4"
+   ],
+   "conclusions": [
+    "each term of the following equation converges",
+    "\\sum_{t=0}^T \\eta_t \\mathbb{E}[\\Vert\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2] &\\leq \\mathbb{E}[\\mathcal{L}(\\Theta^0_j)]\\nonumber\\\\ &+G\\sum_{t=0}^T\\eta_t\\left(\\sqrt{2c_{j-1}^t}+\\frac{L\\eta_t}{2}\\right)\\nonumber."
+   ],
+   "tags": [
+    "convergence",
+    "bound",
+    "optimization"
+   ]
+  },
+  {
+   "id": "CP1.1",
+   "type": "corollary",
+   "name": "Corollary 3.1",
+   "section": "3 Theoretical Analysis",
+   "origin": "paper",
+   "confidence": 1.0,
+   "statement": "The sequence of expected gradient norm accumulates around 0 at the following rate: \\begin{equation} \\inf_{t\\leq T}\\mathbb{E}[\\Vert \\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2]\\leq\\mathcal{O}\\left(\\frac{\\sum_{t=0}^T\\sqrt{c_{j-1}^t}\\eta_t}{\\sum_{t=0}^T\\eta_t}\\right)\\,.\\end{equation}",
+   "statement_short": "Explicit non-convex convergence rate, degraded only by the accumulated input-distribution drift $\\sqrt{c_{j-1}^t}$.",
+   "assumptions": [
+    "The sequence of expected gradient norm accumulates around 0"
+   ],
+   "conclusions": [
+    "\\inf_{t\\leq T}\\mathbb{E}[\\Vert \\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2]\\leq\\mathcal{O}\\left(\\frac{\\sum_{t=0}^T\\sqrt{c_{j-1}^t}\\eta_t}{\\sum_{t=0}^T\\eta_t}\\right)\\,."
+   ],
+   "tags": [
+    "rate",
+    "convergence",
+    "bound"
+   ]
+  },
+  {
+   "id": "LP1.3",
+   "type": "lemma",
+   "name": "Lemma 4.1",
+   "section": "Proofs",
+   "origin": "paper",
+   "confidence": 1.0,
+   "statement": "Under Assumption 3 and 4, one has: $\\forall \\Theta_j, \\mathbb{E}_{p^*_{j-1}}\\big[\\Vert\\nabla_{\\Theta_j}\\ell(Z_{j-1};\\Theta_j)\\Vert^2\\big]\\leq G$.",
+   "statement_short": "Appendix restatement of the bounded-gradient-second-moment lemma under the limiting density.",
+   "assumptions": [
+    "Under Assumption 3 and 4"
+   ],
+   "conclusions": [
+    "$\\forall \\Theta_j, \\mathbb{E}_{p^*_{j-1}}\\big[\\Vert\\nabla_{\\Theta_j}\\ell(Z_{j-1};\\Theta_j)\\Vert^2\\big]\\leq G$"
+   ],
+   "tags": [
+    "bound",
+    "foundational"
+   ]
+  },
+  {
+   "id": "LP1.4",
+   "type": "lemma",
+   "name": "Lemma 4.2",
+   "section": "Proofs",
+   "origin": "paper",
+   "confidence": 1.0,
+   "statement": "Under Assumptions 1, 3 and 4, we have: \\begin{align*} \\mathbb{E}[\\mathcal{L}(\\Theta_j^{t+1})]\\leq\\mathbb{E}[\\mathcal{L}(\\Theta_j^{t})]-\\eta_t\\big(\\mathbb{E}[\\Vert\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2]-\\sqrt{2}Gc^t_{j-1}\\big)+\\frac{LG}{2}\\eta_t^2\\,, \\end{align*} Observe that the expectation is taken over each random variable.",
+   "statement_short": "Appendix restatement of the one-step descent inequality, noting the expectation is over all random variables.",
+   "assumptions": [
+    "Under Assumptions 1, 3 and 4"
+   ],
+   "conclusions": [
+    "\\mathbb{E}[\\mathcal{L}(\\Theta_j^{t+1})]\\leq\\mathbb{E}[\\mathcal{L}(\\Theta_j^{t})]-\\eta_t\\big(\\mathbb{E}[\\Vert\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2]-\\sqrt{2}Gc^t_{j-1}\\big)+\\frac{LG}{2}\\eta_t^2\\,,"
+   ],
+   "tags": [
+    "bound",
+    "convergence",
+    "optimization"
+   ]
+  },
+  {
+   "id": "PrP1.2",
+   "type": "proposition",
+   "name": "Proposition 4.2",
+   "section": "Proofs",
+   "origin": "paper",
+   "confidence": 1.0,
+   "statement": "Under Assumptions 1, 2, 3 and 4, each term of the following equation converges: \\begin{align} \\hspace{-0.2cm} \\begin{split} \\sum_{t=0}^T \\eta_t \\mathbb{E}[\\Vert\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2] \\leq \\mathbb{E}[\\mathcal{L}(\\Theta^0_j)] +G\\sum_{t=0}^T\\eta_t(\\sqrt{2c_{j-1}^t}+\\frac{L\\eta_t}{2}) \\end{split} \\end{align}",
+   "statement_short": "Appendix restatement of the convergence proposition for the DGL scheme.",
+   "assumptions": [
+    "Under Assumptions 1, 2, 3 and 4"
+   ],
+   "conclusions": [
+    "each term of the following equation converges",
+    "\\sum_{t=0}^T \\eta_t \\mathbb{E}[\\Vert\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2] \\leq \\mathbb{E}[\\mathcal{L}(\\Theta^0_j)] +G\\sum_{t=0}^T\\eta_t(\\sqrt{2c_{j-1}^t}+\\frac{L\\eta_t}{2})"
+   ],
+   "tags": [
+    "convergence",
+    "bound",
+    "optimization"
+   ]
+  },
+  {
+   "id": "ClP1.1",
+   "type": "claim",
+   "name": "Sync-DGL achieves update unlocking",
+   "section": "2.2 Optimization for Greedy Objective",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement": "Note that at line $5$ the subsequent layer can already begin computing line $4$. Therefore, this algorithm achieves update unlocking. Once $x_j^t$ has been computed, subsequent layers can begin processing.",
+   "statement_short": "Because a layer's update does not block the next layer's forward pass, Sync-DGL is update unlocked.",
+   "assumptions": [
+    "Note that at line $5$ the subsequent layer can already begin computing line $4$",
+    "Once $x_j^t$ has been computed, subsequent layers can begin processing"
+   ],
+   "conclusions": [
+    "this algorithm achieves update unlocking"
+   ],
+   "tags": [
+    "parallelism",
+    "update_unlocking"
+   ]
+  },
+  {
+   "id": "ClP1.2",
+   "type": "claim",
+   "name": "Update unlocking scales better than backward unlocking",
+   "section": "5 Related work",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement": "However, update locking is a more severe inefficiency. Consider the case where each layer's forward processing time is $T_F$ and is equal across a network of $L$ layers. Given that the backward pass is a constant multiple in time of the forward, in the most ideal case the backward unlocking will still only scale as $\\mathcal{O}(LT_F)$ with $L$ parallel nodes, while update unlocking could scale as $\\mathcal{O}(T_F)$.",
+   "statement_short": "Backward unlocking can at best reach $\\mathcal{O}(LT_F)$, whereas update unlocking can reach $\\mathcal{O}(T_F)$.",
+   "assumptions": [
+    "Consider the case where each layer's forward processing time is $T_F$ and is equal across a network of $L$ layers",
+    "Given that the backward pass is a constant multiple in time of the forward"
+   ],
+   "conclusions": [
+    "in the most ideal case the backward unlocking will still only scale as $\\mathcal{O}(LT_F)$ with $L$ parallel nodes, while update unlocking could scale as $\\mathcal{O}(T_F)$"
+   ],
+   "tags": [
+    "parallelism",
+    "bound",
+    "complexity"
+   ]
+  },
+  {
+   "id": "ClP1.3",
+   "type": "claim",
+   "name": "DGL is by construction faster than feedback-based methods",
+   "section": "Detailed Discussion of Relative Speed of Competing Methods",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement": "We will argue that if we take the assumption that each approach runs for the same number of epochs or iterations and applies the same splits of the network then DGL is by construction faster than the other methods which rely on feedback.",
+   "statement_short": "At equal epochs and equal network splits, DGL is faster than any method that needs feedback.",
+   "assumptions": [
+    "if we take the assumption that each approach runs for the same number of epochs or iterations and applies the same splits of the network"
+   ],
+   "conclusions": [
+    "DGL is by construction faster than the other methods which rely on feedback"
+   ],
+   "tags": [
+    "parallelism",
+    "wall_clock_time"
+   ]
+  },
+  {
+   "id": "ClP1.4",
+   "type": "claim",
+   "name": "Wall clock speedup over DDG",
+   "section": "4.1 Other Approaches and Auxiliary Network Designs",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement": "We compare to the parallel implementation of \\citep{ddg} using the same communication protocols and run on the same hardware. We find for $K=2,4$ GPU gives a $~5\\%, 18\\%$ respectively speedup over DDG. With DDG $K=4$ giving approximately $2.3\\times$ speedup over standard backprop on same hardware (close to results from \\citep{ddg}).",
+   "statement_short": "DGL gives about 5% and 18% wall-clock speedup over DDG at $K=2$ and $K=4$.",
+   "assumptions": [
+    "We compare to the parallel implementation of \\citep{ddg} using the same communication protocols and run on the same hardware"
+   ],
+   "conclusions": [
+    "We find for $K=2,4$ GPU gives a $~5\\%, 18\\%$ respectively speedup over DDG"
+   ],
+   "tags": [
+    "empirical",
+    "wall_clock_time",
+    "parallelism"
+   ]
+  },
+  {
+   "id": "ClP1.5",
+   "type": "claim",
+   "name": "DGL reduces single-worker memory consumption",
+   "section": "4.2 Large-scale Experiments",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement": "Although not our focus, the single worker version of DGL has favorable memory usage compared to standard backprop training. For example, the ResNet-152 DGL $K=2$ setting can fit $38\\%$ more samples on a single 16GB GPU than the standard end-to-end training.",
+   "statement_short": "Even on a single worker DGL saves memory, fitting 38% more ResNet-152 samples on one 16GB GPU.",
+   "assumptions": [
+    "the single worker version of DGL",
+    "the ResNet-152 DGL $K=2$ setting"
+   ],
+   "conclusions": [
+    "can fit $38\\%$ more samples on a single 16GB GPU than the standard end-to-end training"
+   ],
+   "tags": [
+    "empirical",
+    "memory"
+   ]
+  },
+  {
+   "id": "ClP1.6",
+   "type": "claim",
+   "name": "DGL catches up with sequential greedy training",
+   "section": "4.1 Other Approaches and Auxiliary Network Designs",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement": "Fig.~\\ref{fig:greedy_v_parallel} shows comparisons of the learning curves for sequential training and DGL at layer 4 (layer 1 is the same for both as the input representation is not varying over the training period). DGL quickly catches up with the sequential training scheme and appears to sometimes generalize better.",
+   "statement_short": "Parallel DGL matches sequential greedy learning curves and sometimes generalizes better.",
+   "assumptions": [
+    "comparisons of the learning curves for sequential training and DGL at layer 4"
+   ],
+   "conclusions": [
+    "DGL quickly catches up with the sequential training scheme and appears to sometimes generalize better"
+   ],
+   "tags": [
+    "empirical",
+    "generalization",
+    "greedy_learning"
+   ]
+  },
+  {
+   "id": "ClP1.7",
+   "type": "claim",
+   "name": "DGL outperforms DNI and cDNI",
+   "section": "4.1 Other Approaches and Auxiliary Network Designs",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement": "The DGL method outperforms DNI and the cDNI by a substantial amount both in test accuracy and training loss. Also in this setting, DGL can generalize better than standard backprop and obtains a close final training loss.",
+   "statement_short": "On the reproduced CIFAR-10 DNI benchmark DGL beats DNI/cDNI and even generalizes better than backprop.",
+   "assumptions": [
+    "in this setting"
+   ],
+   "conclusions": [
+    "The DGL method outperforms DNI and the cDNI by a substantial amount both in test accuracy and training loss",
+    "DGL can generalize better than standard backprop and obtains a close final training loss"
+   ],
+   "tags": [
+    "empirical",
+    "generalization"
+   ]
+  },
+  {
+   "id": "ClP1.8",
+   "type": "claim",
+   "name": "DGL matches end-to-end training on ImageNet",
+   "section": "4.2 Large-scale Experiments",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement": "We see that for all the models DGL can perform as well and sometimes better than the end-to-end trained models, while permitting parallel training. In all these cases the auxiliary networks are neglibile (see Appendix Table ~\\ref{tab:flop_im} for more details). For the VGG-13 architecture we also evaluate the case where the model is trained layer by layer ($K=10$). Although here performance is slightly degraded, we find it is suprisingly high given that no backward communication is performed.",
+   "statement_short": "On ImageNet, DGL matches or beats end-to-end backprop, and even fully layer-wise ($K=10$) VGG-13 degrades only slightly.",
+   "assumptions": [
+    "the shortened optimization schedule prescribed in \\citep{Xiao2019}",
+    "For the VGG-13 architecture we also evaluate the case where the model is trained layer by layer ($K=10$)"
+   ],
+   "conclusions": [
+    "for all the models DGL can perform as well and sometimes better than the end-to-end trained models, while permitting parallel training",
+    "Although here performance is slightly degraded, we find it is suprisingly high given that no backward communication is performed"
+   ],
+   "tags": [
+    "empirical",
+    "large_scale",
+    "generalization"
+   ]
+  },
+  {
+   "id": "ClP1.9",
+   "type": "claim",
+   "name": "Async DGL accuracy is robust to worker slowdown",
+   "section": "4.3 Asynchronous DGL with Replay",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement": "First, observe that the accuracy of the synchronous algorithm is maintained in the setting where $S=1.0$ and the pmf is uniform. Note that even this is a non-trivial case, as it will mean that layers inherently have random delays (as compared to Alg. ~\\ref{algo:basic}). Secondly, observe that accuracy is maintained until approximately $1.2\\times$ and accuracy losses after that the difference remains small.",
+   "statement_short": "Async DGL keeps synchronous accuracy up to a $1.2\\times$ slowdown and degrades only mildly beyond it.",
+   "assumptions": [
+    "the setting where $S=1.0$ and the pmf is uniform"
+   ],
+   "conclusions": [
+    "the accuracy of the synchronous algorithm is maintained",
+    "accuracy is maintained until approximately $1.2\\times$ and accuracy losses after that the difference remains small"
+   ],
+   "tags": [
+    "empirical",
+    "asynchronous",
+    "robustness"
+   ]
+  },
+  {
+   "id": "ClP1.10",
+   "type": "claim",
+   "name": "Tiny replay buffers suffice",
+   "section": "4.3 Asynchronous DGL with Replay",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement": "We now consider the performance with respect to the buffer size. Results are shown in Fig.~\\ref{fig:buffer2}. For this experiment we set $S=1.2\\times$. Observe that even a tiny buffer size can yield only a slight loss in performance accuracy.",
+   "statement_short": "Accuracy degrades only slightly even for very small replay buffers.",
+   "assumptions": [
+    "For this experiment we set $S=1.2\\times$"
+   ],
+   "conclusions": [
+    "even a tiny buffer size can yield only a slight loss in performance accuracy"
+   ],
+   "tags": [
+    "empirical",
+    "replay_buffer",
+    "asynchronous"
+   ]
+  },
+  {
+   "id": "CnjP1.1",
+   "type": "conjecture",
+   "name": "Improved auxiliary models may further improve DGL",
+   "section": "4.2 Large-scale Experiments",
+   "origin": "paper",
+   "confidence": 0.9,
+   "statement": "We conjecture that improved auxiliary models and combinations with methods such as \\citep{Huo2018} to allow feedback on top of the local model, may further improve performance.",
+   "assumptions": [
+    "improved auxiliary models and combinations with methods such as \\citep{Huo2018} to allow feedback on top of the local model"
+   ],
+   "conclusions": [
+    "may further improve performance"
+   ],
+   "tags": [
+    "auxiliary_network",
+    "open_direction"
+   ]
+  },
+  {
+   "id": "OpenP1.1",
+   "type": "open_problem",
+   "name": "Combining async DGL with distributed synchronous SGD",
+   "section": "2.3 Asynchronous DGL with Replay",
+   "origin": "paper",
+   "confidence": 0.65,
+   "statement": "Combining asynchronous DGL with distributed synchronous SGD for sub-problem optimization is a promising direction. For example it can alleviate a common issue of the popular distributed synchronous SGD in deep CNNs, which is the often limiting maximum batch size \\citep{im1hr}.",
+   "statement_short": "Whether async DGL plus distributed synchronous SGD can lift the maximum-batch-size limit is left open.",
+   "tags": [
+    "data_parallelism",
+    "open_direction"
+   ]
+  },
+  {
+   "id": "OpenP1.2",
+   "type": "open_problem",
+   "name": "Improving Async DGL with replay",
+   "section": "4.3 Asynchronous DGL with Replay",
+   "origin": "paper",
+   "confidence": 0.65,
+   "statement": "Building on this demonstration there are multiple directions to improve Async DGL with replay. For example improving the efficiency of the buffer~\\cite{oyallon2018compressing}, by including data augmentation in feature space \\citep{verma2018manifold}, mixing samples in batches, or improved batch sampling, among others.",
+   "statement_short": "How best to make the replay buffer more efficient (compression, feature-space augmentation, batch mixing) is open.",
+   "tags": [
+    "replay_buffer",
+    "open_direction"
+   ]
+  },
+  {
+   "id": "OpenP1.3",
+   "type": "open_problem",
+   "name": "Improved auxiliary problem objectives and delayed feedback",
+   "section": "6 Conclusion",
+   "origin": "paper",
+   "confidence": 0.65,
+   "statement": "Future work can develop improved auxiliary problem objectives and combinations with delayed feedback.",
+   "tags": [
+    "auxiliary_network",
+    "open_direction"
+   ]
+  },
+  {
+   "id": "RP1.1",
+   "type": "remark",
+   "name": "Sync-DGL generalizes a biologically plausible method",
+   "section": "2.2 Optimization for Greedy Objective",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement": "Sync-DGL can also be seen as a generalization of the biologically plausible learning method proposed in concurrent work \\citep{nokland2019training}.",
+   "tags": [
+    "biologically_plausible",
+    "related_work"
+   ]
+  },
+  {
+   "id": "RP1.2",
+   "type": "remark",
+   "name": "Any iterative solver applies to the sub-problems",
+   "section": "2.2 Optimization for Greedy Objective",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement": "In this work we solve the sub-problems $P_j$ by backpropagation, but we note that any iterative solver available for $P_j$ will be applicable (e.g. \\cite{choromanska2018beyond}).",
+   "tags": [
+    "optimization",
+    "generality"
+   ]
+  },
+  {
+   "id": "RP1.3",
+   "type": "remark",
+   "name": "Time-varying sub-problem input distribution is unstudied",
+   "section": "2.2 Optimization for Greedy Objective",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement": "Finally we emphasize that unlike the sequential solvers of (e.g. \\citet{bengio2007greedy,shallow}) the distribution of inputs to each sub-problem solver changes over time, resulting in a learning dynamic whose properties have never been studied nor contrasted with sequential solvers.",
+   "statement_short": "Unlike sequential greedy solvers, DGL sub-problems see a drifting input distribution whose dynamics are unstudied.",
+   "tags": [
+    "time_varying_distribution",
+    "learning_dynamics"
+   ]
+  },
+  {
+   "id": "RP1.4",
+   "type": "remark",
+   "name": "Reduction to Bottou et al. Lemma 4.4 when the drift vanishes",
+   "section": "3 Theoretical Analysis",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement": "The expectation is taken over each random variable. Also, note that without the temporal dependency (i.e. $c_j^t=0$), this becomes analogous to Lemma 4.4 in \\citep{bottou2018optimization}.",
+   "statement_short": "With no distribution drift ($c_j^t=0$) the descent inequality reduces to the classical SGD lemma.",
+   "tags": [
+    "special_case",
+    "related_work"
+   ]
+  },
+  {
+   "id": "RP1.5",
+   "type": "remark",
+   "name": "DGL converges in the standard sense",
+   "section": "3 Theoretical Analysis",
+   "origin": "paper",
+   "confidence": 0.8,
+   "statement": "Thus the DGL scheme converges in the sense of \\citep{bottou2018optimization,Huo2018}.",
+   "tags": [
+    "convergence"
+   ]
+  },
+  {
+   "id": "RP1.6",
+   "type": "remark",
+   "name": "Parallel setting adds a drift-controlled delay",
+   "section": "3 Theoretical Analysis",
+   "origin": "paper",
+   "confidence": 0.8,
+   "statement": "Thus compared to the sequential case, the parallel setting adds a delay that is controlled by $\\sqrt{c_{j-1}^t}$.",
+   "tags": [
+    "rate",
+    "parallelism"
+   ]
+  },
+  {
+   "id": "RP1.7",
+   "type": "remark",
+   "name": "Assumptions 1-3 are standard",
+   "section": "3 Theoretical Analysis",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement": "The Assumptions 1, 2 and 3 are standard \\citep{bottou2018optimization, Huo2018}, and we show in the following that our proof of convergence leads to similar rates, up to a multiplicative constant.",
+   "tags": [
+    "related_work",
+    "rate"
+   ]
+  },
+  {
+   "id": "RP1.8",
+   "type": "remark",
+   "name": "Four factors governing relative speed",
+   "section": "Detailed Discussion of Relative Speed of Competing Methods",
+   "origin": "paper",
+   "confidence": 0.8,
+   "statement": "The relative speeds of these methods are governed by the following: \\begin{enumerate} \\item Computation besides forward and backward passes on primary network modules (e.g. auxiliary networks forward and backward passes) \\item Communication time of sending activations from one module to the next module \\item Communication time of sending feedback to the previous module \\item Waiting time for signal to reach final module \\end{enumerate}",
+   "statement_short": "Relative speed depends on auxiliary computation, forward activation communication, feedback communication, and waiting for the top module.",
+   "tags": [
+    "wall_clock_time",
+    "parallelism"
+   ]
+  },
+  {
+   "id": "RP1.9",
+   "type": "remark",
+   "name": "Async DGL needs no master node",
+   "section": "2.3 Asynchronous DGL with Replay",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement": "Unlike common data-parallel asynchronous algorithms \\citep{elasticSGD}, the asynchronous DGL does not rely on a master node and requires only local communication similar to recent decentralized schemes \\citep{lian2017asynchronous}. Contrary to decentralized SGD, DGL nodes only need to maintain and update the parameters of their local module, permitting much larger modules.",
+   "statement_short": "Async DGL is master-free, needs only neighbour communication, and each node stores only its own module.",
+   "tags": [
+    "asynchronous",
+    "decentralized",
+    "related_work"
+   ]
+  },
+  {
+   "id": "RP1.10",
+   "type": "remark",
+   "name": "$S=2.0$ is a drastic slowdown",
+   "section": "4.3 Asynchronous DGL with Replay",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement": "Note that even case $S=2.0$ is somewhat drastic: for 50 epochs, the slowed-down layer is only on epoch 25 while those following it are at epoch 50.",
+   "tags": [
+    "asynchronous",
+    "experimental_setup"
+   ]
+  },
+  {
+   "id": "RP1.11",
+   "type": "remark",
+   "name": "Auxiliary networks restricted to 5% of the main network",
+   "section": "2.4 Auxiliary and Primary Network Design",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement": "The primary consideration is the relative speed of the auxiliary network with respect to its associated main network module. We will use primarily FLOP count in our analysis and aim to restrict our auxiliary networks to be $5\\%$ of the main network.",
+   "statement_short": "Design constraint: the auxiliary net should cost at most 5% of the main module's FLOPs.",
+   "tags": [
+    "auxiliary_network",
+    "design_constraint"
+   ]
+  },
+  {
+   "id": "ExP1.1",
+   "type": "example",
+   "name": "Auxiliary network sizes for ImageNet VGG-13",
+   "section": "Auxiliary Network Sizes and FLOP comparisons on ImageNet",
+   "origin": "paper",
+   "confidence": 0.8,
+   "statement": "Lets take as an example the ImageNet experiments for VGG-13. At the first layer the output is $224\\times224\\times64$. The MLP-aux here would be applied after averaging to $2\\times2\\times 64$, and would consists of 3 fully connected layers of size $256$ ($2*2*64$) followed by a projection to $1000$ image categories. The MLP-SR-aux network used would first reduce to $56\\times56\\times64$ and then apply 3 layers of $1\\times1$ convolutions of width 64. This is followed by reduction to $2\\times2$ and 3 FC layers as in the MLP-aux network.",
+   "statement_short": "Concrete MLP-aux and MLP-SR-aux instantiations for the first VGG-13 layer on ImageNet.",
+   "tags": [
+    "auxiliary_network",
+    "architecture"
+   ]
+  },
+  {
+   "id": "AP1.1",
+   "type": "algorithm",
+   "name": "Synchronous DGL (Sync-DGL)",
+   "section": "2.2 Optimization for Greedy Objective",
+   "origin": "paper",
+   "confidence": 1.0,
+   "statement": "\\caption{Synchronous DGL} \\SetAlgoLined \\DontPrintSemicolon \\KwIn{Stream $\\mathcal{S}\\triangleq\\{(x_0^t,y^t)\\}_{t\\leq T}$ of samples or mini-batches.} \\textbf{Initialize} Parameters $\\{\\theta_j,\\gamma_j\\}_{j\\leq J}$.\\; \\For { $(x_0^t,y^t) \\in \\mathcal{S}$ } { \\For {$j \\in 1,..., J$} {$x^t_j \\leftarrow f_{\\theta_{j-1}}(x^t_{j-1})$.\\; Compute $\\nabla_{(\\gamma_j,\\theta_j)}\\hat{ \\mathcal{L}}(y^t,x^t_j;\\gamma_j,\\theta_j)$.\\; $(\\theta_j,\\gamma_j)\\leftarrow$Update parameters $(\\theta_j,\\gamma_j)$. } }",
+   "statement_short": "Every layer, in parallel, forwards its mini-batch to the next layer and immediately updates from its own local auxiliary loss.",
+   "input": [
+    "Stream $\\mathcal{S}\\triangleq\\{(x_0^t,y^t)\\}_{t\\leq T}$ of samples or mini-batches.",
+    "Parameters $\\{\\theta_j,\\gamma_j\\}_{j\\leq J}$"
+   ],
+   "output": [
+    "$(\\theta_j,\\gamma_j)\\leftarrow$Update parameters $(\\theta_j,\\gamma_j)$."
+   ],
+   "tags": [
+    "greedy_learning",
+    "parallelism",
+    "update_unlocking"
+   ]
+  },
+  {
+   "id": "AP1.2",
+   "type": "algorithm",
+   "name": "Asynchronous DGL with Replay",
+   "section": "2.3 Asynchronous DGL with Replay",
+   "origin": "paper",
+   "confidence": 1.0,
+   "statement": "\\SetAlgoLined \\DontPrintSemicolon \\KwIn{Stream $\\mathcal{S}\\triangleq\\{(x_0^t,y^t)\\}_{t\\leq T}$; Distribution of the delay $p=\\{p(j)\\}_{j}$; Buffer size $M$.} \\textbf{Initialize:} Buffers $\\{B_j\\}_{j}$; params $\\{\\theta_j,\\gamma_j\\}_{j}$.\\\\ \\While{\\normalfont{\\textbf{ training}}}{Sample $j$ in $\\{1,...,J\\}$ following $p$.\\\\ \\uIf{$j=1$}{ $ (x_{0},y)\\gets \\mathcal{S}$}\\Else{ $(x_{j-1},y)\\gets B_{j-1}$.} $x_j \\leftarrow f_{\\theta_{j-1}}(x_{j-1})$.\\; Compute $\\nabla_{(\\gamma_j,\\theta_j)}\\hat{ \\mathcal{L}}(y,x_j;\\gamma_j,\\theta_j)$.\\; $(\\theta_j,\\gamma_j)\\leftarrow$ Update parameters $(\\theta_j,\\gamma_j)$.\\; \\lIf{$j<J$}{ $B_{j} \\gets (x^{j},y)$. }} \\caption{Asynchronous DGL with Replay}",
+   "statement_short": "At each iteration a randomly chosen worker reads from its predecessor's replay buffer, updates locally, and writes its output to its own buffer.",
+   "input": [
+    "Stream $\\mathcal{S}\\triangleq\\{(x_0^t,y^t)\\}_{t\\leq T}$",
+    "Distribution of the delay $p=\\{p(j)\\}_{j}$",
+    "Buffer size $M$."
+   ],
+   "output": [
+    "$(\\theta_j,\\gamma_j)\\leftarrow$ Update parameters $(\\theta_j,\\gamma_j)$.",
+    "$B_{j} \\gets (x^{j},y)$."
+   ],
+   "tags": [
+    "greedy_learning",
+    "asynchronous",
+    "replay_buffer",
+    "forward_unlocking"
+   ]
+  },
+  {
+   "id": "AP1.3",
+   "type": "algorithm",
+   "name": "Sequential solution of the greedy objective",
+   "section": "2.2 Optimization for Greedy Objective",
+   "origin": "external",
+   "origin_citation": "Bengio et al. 2007; Belilovsky et al. (shallow); Huang et al. 2017; Marquez et al.",
+   "confidence": 0.7,
+   "statement": "A natural way to solve the optimization problem for $J$ modules, $(P_J)$, is thus by sequentially solving the problems $\\{P_{j}\\}_{j\\leq J}$ starting with $j=1$. This is the approach taken in e.g. \\citet{Marquez,huang2017learning,bengio2007greedy,shallow}.",
+   "statement_short": "Baseline: fully optimize each module's sub-problem in order, from the first layer upward.",
+   "input": [
+    "the optimization problem for $J$ modules, $(P_J)$"
+   ],
+   "output": [
+    "the problems $\\{P_{j}\\}_{j\\leq J}$ starting with $j=1$"
+   ],
+   "tags": [
+    "greedy_learning",
+    "sequential",
+    "baseline"
+   ]
+  },
+  {
+   "id": "AP1.4",
+   "type": "algorithm",
+   "name": "DGL Parallel Implementation",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "confidence": 1.0,
+   "statement": "\\caption{DGL Parallel Implementation} \\SetAlgoLined \\DontPrintSemicolon \\KwIn{Stream $\\mathcal{S}\\triangleq\\{(x_0^t,y^t)\\}_{t\\leq T}$ of samples or mini-batches;} \\textbf{Initialize} Parameters $\\{\\theta_j,\\gamma_j\\}_{j\\leq J}$\\\\ Worker 0:\\; \\For {$x_0^t \\in \\mathcal{S}$}{ $x^t_1 \\leftarrow f_{\\theta^t_{0}}(x^t_{0})$\\\\ Send $x_0^t$ to worker $1$\\; Compute $\\nabla_{(\\gamma_1,\\theta_1)}\\hat{ \\mathcal{L}}(y^t,x^t_0;\\gamma^t_0,\\theta^t_0)$\\; $(\\theta^{t+1}_0,\\gamma^{t+1}_0)\\leftarrow$ Step of parameters $(\\theta^t_0,\\gamma^t_0)$} Worker $j$:\\; \\For{$t \\in 0 ... T$}{ Wait until $x^t_{j-1}$ is available\\; $x^t_j \\leftarrow f_{\\theta^t_{j-1}}(x^t_{j-1})$ \\\\ Compute $\\nabla_{(\\gamma_j,\\theta_j)}\\hat{ \\mathcal{L}}(y^t,x^t_j;\\gamma^t_j,\\theta^t_j)$\\\\ Send $x^t_{j}$ to worker $x^t_{j+1}$\\\\ $(\\theta^{t+1}_j,\\gamma^{t+1}_j)\\leftarrow$ Step of parameters $(\\theta^t_j,\\gamma^t_j)$}",
+   "statement_short": "Per-worker restatement of Sync-DGL: each worker waits for its predecessor's activation, forwards it on, then takes a local parameter step.",
+   "input": [
+    "Stream $\\mathcal{S}\\triangleq\\{(x_0^t,y^t)\\}_{t\\leq T}$ of samples or mini-batches;",
+    "Parameters $\\{\\theta_j,\\gamma_j\\}_{j\\leq J}$"
+   ],
+   "output": [
+    "$(\\theta^{t+1}_j,\\gamma^{t+1}_j)\\leftarrow$ Step of parameters $(\\theta^t_j,\\gamma^t_j)$"
+   ],
+   "tags": [
+    "parallelism",
+    "pseudocode",
+    "greedy_learning"
+   ]
+  },
+  {
+   "id": "AP1.5",
+   "type": "algorithm",
+   "name": "DGL Async Buffer Parallel Impl.",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "confidence": 1.0,
+   "statement": "\\caption{DGL Async Buffer Parallel Impl.} \\SetAlgoLined \\DontPrintSemicolon \\KwIn{Stream $\\mathcal{S}\\triangleq\\{(x_0^t,y^t)\\}_{t\\leq T}$; Distribution of the delay $p=\\{p_j\\}_{j}$; Buffer size $M$ } \\textbf{Initialize:} Buffers $\\{B_j\\}_{j}$ with size $M$; params $\\{\\theta_j,\\gamma_j\\}_{j}$\\\\ Worker $j$: \\\\ \\While{\\normalfont{\\textbf{ training}}}{ \\lIf{ $ j=1$}{ $ (x_{0},y)\\gets \\mathcal{S}$} \\lElse{ $(x_{j-1},y)\\gets B_{j-1}$}\\; $x_j \\leftarrow f_{\\theta_{j-1}}(x_{j-1})$\\; Compute $\\nabla_{(\\gamma_j,\\theta_j)}\\hat{ \\mathcal{L}}(y,x_j;\\gamma_j,\\theta_j)$\\; $(\\theta_j,\\gamma_j)\\leftarrow$ Step of parameters $(\\theta_j,\\gamma_j)$\\; \\lIf{$j<J$}{ $B_{j} \\gets (x^{j},y)$ }}",
+   "statement_short": "Per-worker restatement of async DGL: loop forever reading from the predecessor's buffer, stepping locally, and writing to one's own buffer.",
+   "input": [
+    "Stream $\\mathcal{S}\\triangleq\\{(x_0^t,y^t)\\}_{t\\leq T}$",
+    "Distribution of the delay $p=\\{p_j\\}_{j}$",
+    "Buffer size $M$"
+   ],
+   "output": [
+    "$(\\theta_j,\\gamma_j)\\leftarrow$ Step of parameters $(\\theta_j,\\gamma_j)$",
+    "$B_{j} \\gets (x^{j},y)$"
+   ],
+   "tags": [
+    "asynchronous",
+    "pseudocode",
+    "replay_buffer"
+   ]
+  },
+  {
+   "id": "PP1.1",
+   "type": "proof",
+   "name": "Proof of Lemma 4.1",
+   "proves": "LP1.3",
+   "section": "Proofs",
+   "origin": "paper",
+   "confidence": 1.0,
+   "statement": "First of all, observe that under Assumption 4 and via Fubini's theorem: \\begin{equation} \\sum_t c_{j-1}^t = \\sum_t \\int |p_{j-1}^t(z)-p_{j-1}^*(z)|\\,dz=\\int\\sum_t |p_{j-1}^t(z)-p_{j-1}^*(z)|\\,dz <\\infty \\end{equation} thus, $\\sum_t |p_j^t-p_j^*|$ is convergent a.s. and $|p_j^t-p_j^*|\\rightarrow 0$ a.s as well. From Fatou's lemma, one has: \\begin{align} \\int p^*_{j-1}(z)\\Vert\\nabla_{\\Theta_j} \\ell(z;\\Theta_j)\\Vert^2 \\,dz&= \\int \\lim\\inf_t p^t_{j-1}(z)\\Vert\\nabla_{\\Theta_j} \\ell(z;\\Theta_j)\\Vert^2 \\,dz\\\\ &\\leq \\lim\\inf_t \\int p^t_{j-1}(z)\\Vert\\nabla_{\\Theta_j} \\ell(z;\\Theta_j)\\Vert^2 \\,dz\\leq G \\end{align}",
+   "statement_short": "Fubini gives summable total variation, hence $p^t_{j-1}\\to p^*_{j-1}$ a.s.; then Fatou's lemma transfers the bound $G$ to the limit density.",
+   "proof_strategy": [
+    "direct"
+   ],
+   "tags": [
+    "bound",
+    "measure_theory"
+   ]
+  },
+  {
+   "id": "PSP1.1",
+   "type": "proof_step",
+   "parent_id": "PP1.1",
+   "step_order": 1,
+   "name": "Fubini's theorem gives summable total variation",
+   "section": "Proofs",
+   "origin": "paper",
+   "statement": "First of all, observe that under Assumption 4 and via Fubini's theorem: \\begin{equation} \\sum_t c_{j-1}^t = \\sum_t \\int |p_{j-1}^t(z)-p_{j-1}^*(z)|\\,dz=\\int\\sum_t |p_{j-1}^t(z)-p_{j-1}^*(z)|\\,dz <\\infty \\end{equation}",
+   "statement_short": "Swap sum and integral by Fubini to get $\\sum_t c_{j-1}^t<\\infty$.",
+   "subclass": "invoke_identity",
+   "confidence": 0.95
+  },
+  {
+   "id": "PSP1.2",
+   "type": "proof_step",
+   "parent_id": "PP1.1",
+   "step_order": 2,
+   "name": "Almost sure convergence of the densities",
+   "section": "Proofs",
+   "origin": "paper",
+   "statement": "thus, $\\sum_t |p_j^t-p_j^*|$ is convergent a.s. and $|p_j^t-p_j^*|\\rightarrow 0$ a.s as well.",
+   "statement_short": "Deduce $|p_j^t-p_j^*|\\to0$ almost surely.",
+   "subclass": "algebraic_manipulation",
+   "confidence": 0.95
+  },
+  {
+   "id": "PSP1.3",
+   "type": "proof_step",
+   "parent_id": "PP1.1",
+   "step_order": 3,
+   "name": "Fatou's lemma bounds the limiting second moment",
+   "section": "Proofs",
+   "origin": "paper",
+   "statement": "From Fatou's lemma, one has: \\begin{align} \\int p^*_{j-1}(z)\\Vert\\nabla_{\\Theta_j} \\ell(z;\\Theta_j)\\Vert^2 \\,dz&= \\int \\lim\\inf_t p^t_{j-1}(z)\\Vert\\nabla_{\\Theta_j} \\ell(z;\\Theta_j)\\Vert^2 \\,dz\\\\ &\\leq \\lim\\inf_t \\int p^t_{j-1}(z)\\Vert\\nabla_{\\Theta_j} \\ell(z;\\Theta_j)\\Vert^2 \\,dz\\leq G \\end{align}",
+   "statement_short": "Apply Fatou's lemma and Assumption 3 to conclude the bound $G$ under $p^*_{j-1}$.",
+   "subclass": "conclude",
+   "confidence": 0.95
+  },
+  {
+   "id": "PP1.2",
+   "type": "proof",
+   "name": "Proof of Lemma 4.2",
+   "proves": "LP1.4",
+   "section": "Proofs",
+   "origin": "paper",
+   "confidence": 1.0,
+   "statement": "By $L$-smoothness: \\begin{align} \\mathcal{L}(\\Theta_j^{t+1})\\leq\\mathcal{L}(\\Theta_j^t)&+\\nabla\\mathcal{L}(\\Theta_j^t)^{T}(\\Theta^{t+1}_{j}-\\Theta_{j}^t)+\\frac{L}{2}\\Vert\\Theta_{j}^{t+1}-\\Theta_{j}^t\\Vert^{2} \\end{align} Substituting $\\Theta_{j}^{t+1}-\\Theta_{j}^{t}$ on the right: \\begin{align} \\mathcal{L}(\\Theta_j^{t+1})&\\leq\\mathcal{L}(\\Theta_j^t)-\\eta_t\\nabla\\mathcal{L}(\\Theta_j^t)^{T} \\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)+\\frac{L\\eta_t^2}{2}\\Vert\\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)\\Vert^{2} \\end{align} Taking the expectation w.r.t. $Z_{j-1}^t$ which has a density $p_{j-1}^t$, we get: \\begin{align*} \\mathbb{E}_{p^t_{j-1}}[\\mathcal{L}(\\Theta_j^{t+1})]&\\leq\\mathcal{L}(\\Theta_j^t)-\\eta_t\\nabla\\mathcal{L}(\\Theta_j^t)^{T}\\mathbb{E}_{p_{j-1}^t}[\\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)] +\\frac{L\\eta_t^2}{2}\\mathbb{E}_{p_{j-1}^t}\\big[\\Vert\\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)\\Vert^{2}\\big] \\end{align*} From Assumption 3, we obtain that: \\begin{equation} \\frac{L\\eta_t^2}{2}\\mathbb{E}_{p_{j-1}^t}\\big[\\Vert \\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)\\Vert^{2}\\big]\\leq \\frac{L\\eta_t^2G}{2} \\end{equation} Then, as a side computation, observe that: \\begin{align} \\Vert \\mathbb{E}_{p_{j-1}^t}\\big[\\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)\\big]-\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert&=\\Vert \\int \\nabla \\ell(z,\\Theta_j^t)p^t_{j-1}(z)\\,d z -\\int \\nabla \\ell(z,\\Theta_j^t)p^*_{j-1}(z)\\,d z\\Vert\\\\ &\\leq \\int \\Vert\\nabla \\ell(z,\\Theta_j^t)\\Vert ~ |p^t_{j-1}(z)-p^*_{j-1}(z)|\\,d z\\\\ &= \\int \\big(\\Vert\\nabla \\ell(z,\\Theta_j^t)\\Vert\\sqrt{|p^t_{j-1}(z)-p^*_{j-1}(z)|}\\big) ~ \\sqrt{|p^t_{j-1}(z)-p^*_{j-1}(z)|}\\,d z\\\\ \\end{align} Let us apply the Cauchy-Swchartz inequality, we obtain: \\begin{align} \\Vert \\mathbb{E}_{p_{j-1}^t}\\big[\\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)\\big]-\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert&\\leq \\sqrt{\\int \\Vert\\nabla \\ell(z,\\Theta_j^t)\\Vert^2 |p^t_{j-1}(z)-p^*_{j-1}(z)|\\,d z} \\sqrt{\\int |p^t_{j-1}(z)-p^*_{j-1}(z)|\\,d z }\\\\ &= \\sqrt{\\int \\Vert\\nabla \\ell(z,\\Theta_j^t)\\Vert^2 |p^t_{j-1}(z)-p^*_{j-1}(z)|\\,d z} \\sqrt{c_{j-1}^t} \\end{align} Then, observe that: \\begin{align} \\int \\Vert\\nabla \\ell(z,\\Theta_j^t)\\Vert^2 |p^t_{j-1}(z)-p^*_{j-1}(z)|\\,d z &\\leq \\int \\Vert\\nabla \\ell(z,\\Theta_j^t)\\Vert^2 \\big(p^t_{j-1}(z)+p^*_{j-1}(z)\\big)\\,d z\\\\ &=\\mathbb{E}_{p^t_{j-1}}[ \\Vert\\nabla \\ell(Z_{j-1},\\Theta_j^t)\\Vert^2 ]+\\mathbb{E}_{p^*_{j-1}}[ \\Vert\\nabla \\ell(Z_{j-1},\\Theta_j^t)\\Vert^2 ]\\\\ &\\leq 2G \\end{align} The last inequality follows from Lemma 4.1 and Assumption 3. Then, using again Cauchy-Schwartz inequality: \\begin{align} \\bigg|\\Vert\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2- \\nabla\\mathcal{L}(\\Theta_j^t)^{T}\\mathbb{E}_{p_{j-1}^t}[\\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)]\\bigg| &=\\bigg|\\nabla\\mathcal{L}(\\Theta_j^t)^T\\big(\\nabla\\mathcal{L}(\\Theta_j^t)-\\mathbb{E}_{p_{j-1}^t}[\\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)]\\big)\\bigg|\\\\ &\\leq \\Vert \\nabla \\mathcal{L}(\\Theta^t_j)\\Vert~\\Vert \\mathbb{E}_{p_{j-1}^t}\\big[\\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)\\big]-\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert \\\\ &\\leq \\Vert \\nabla \\mathcal{L}(\\Theta^t_j)\\Vert \\sqrt{2Gc^t_{j-1}} \\end{align} Then, taking the expectation leads to \\begin{align} \\big|\\mathbb{E}\\bigg[\\Vert\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2- \\nabla\\mathcal{L}(\\Theta_j^t)^{T}\\mathbb{E}_{p_{j-1}^t}[\\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)]\\bigg]\\big|&\\leq \\mathbb{E}[\\bigg|\\Vert\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2- \\nabla\\mathcal{L}(\\Theta_j^t)^{T}\\mathbb{E}_{p_{j-1}^t}[\\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)]\\bigg|]\\\\ &\\leq \\mathbb{E}[\\Vert\\nabla \\mathcal{L}(\\Theta^t_j)\\Vert] \\sqrt{2Gc^t_{j-1}}\\\\ &\\leq \\sqrt{ \\mathbb{E}[\\Vert\\nabla \\mathcal{L}(\\Theta^t_j)\\Vert^2] }\\sqrt{2Gc^t_{j-1}}\\\\ \\end{align} However, observe that by Lemma 4.1 and Jensen inequality: \\begin{align} \\Vert \\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2 =\\Vert \\mathbb{E}_{p^*_j}[\\nabla_{\\Theta_j} \\ell(Z,\\Theta_j^t)]\\Vert^2\\leq \\mathbb{E}_{p^*_j}[ \\Vert \\nabla_{\\Theta_j} \\ell(Z,\\Theta_j^t)\\Vert^2]\\leq G \\end{align} Combining this inequality and Assumption 3, we get: \\begin{align*} \\mathbb{E}[\\mathcal{L}(\\Theta_j^{t+1})]\\leq\\mathbb{E}[\\mathcal{L}(\\Theta_j^{t})]-\\eta_t\\big(\\mathbb{E}[\\Vert\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2]-\\sqrt{2}Gc^t_{j-1}\\big)+\\frac{LG}{2}\\eta_t^2\\,, \\end{align*}",
+   "statement_short": "Descent lemma from $L$-smoothness, then two Cauchy-Schwarz bounds on the gradient bias induced by the input-density mismatch $c^t_{j-1}$.",
+   "proof_strategy": [
+    "direct",
+    "algebraic_manipulation"
+   ],
+   "tags": [
+    "bound",
+    "convergence",
+    "optimization"
+   ]
+  },
+  {
+   "id": "PSP1.4",
+   "type": "proof_step",
+   "parent_id": "PP1.2",
+   "step_order": 1,
+   "name": "Expand by $L$-smoothness",
+   "section": "Proofs",
+   "origin": "paper",
+   "statement": "By $L$-smoothness: \\begin{align} \\mathcal{L}(\\Theta_j^{t+1})\\leq\\mathcal{L}(\\Theta_j^t)&+\\nabla\\mathcal{L}(\\Theta_j^t)^{T}(\\Theta^{t+1}_{j}-\\Theta_{j}^t)+\\frac{L}{2}\\Vert\\Theta_{j}^{t+1}-\\Theta_{j}^t\\Vert^{2} \\end{align}",
+   "statement_short": "Start from the descent lemma implied by $L$-smoothness of $\\mathcal{L}$.",
+   "subclass": "setup",
+   "confidence": 0.95
+  },
+  {
+   "id": "PSP1.5",
+   "type": "proof_step",
+   "parent_id": "PP1.2",
+   "step_order": 2,
+   "name": "Substitute the SGD increment",
+   "section": "Proofs",
+   "origin": "paper",
+   "statement": "Substituting $\\Theta_{j}^{t+1}-\\Theta_{j}^{t}$ on the right: \\begin{align} \\mathcal{L}(\\Theta_j^{t+1})&\\leq\\mathcal{L}(\\Theta_j^t)-\\eta_t\\nabla\\mathcal{L}(\\Theta_j^t)^{T} \\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)+\\frac{L\\eta_t^2}{2}\\Vert\\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)\\Vert^{2} \\end{align}",
+   "statement_short": "Replace the parameter increment by the SGD update $-\\eta_t\\nabla_{\\Theta_j}\\ell$.",
+   "subclass": "substitute",
+   "confidence": 0.95
+  },
+  {
+   "id": "PSP1.6",
+   "type": "proof_step",
+   "parent_id": "PP1.2",
+   "step_order": 3,
+   "name": "Take expectation under the current density",
+   "section": "Proofs",
+   "origin": "paper",
+   "statement": "Taking the expectation w.r.t. $Z_{j-1}^t$ which has a density $p_{j-1}^t$, we get: \\begin{align*} \\mathbb{E}_{p^t_{j-1}}[\\mathcal{L}(\\Theta_j^{t+1})]&\\leq\\mathcal{L}(\\Theta_j^t)-\\eta_t\\nabla\\mathcal{L}(\\Theta_j^t)^{T}\\mathbb{E}_{p_{j-1}^t}[\\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)] +\\frac{L\\eta_t^2}{2}\\mathbb{E}_{p_{j-1}^t}\\big[\\Vert\\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)\\Vert^{2}\\big] \\end{align*}",
+   "statement_short": "Average over the time-$t$ input density $p^t_{j-1}$.",
+   "subclass": "algebraic_manipulation",
+   "confidence": 0.95
+  },
+  {
+   "id": "PSP1.7",
+   "type": "proof_step",
+   "parent_id": "PP1.2",
+   "step_order": 4,
+   "name": "Bound the second-order term by Assumption 3",
+   "section": "Proofs",
+   "origin": "paper",
+   "statement": "From Assumption 3, we obtain that: \\begin{equation} \\frac{L\\eta_t^2}{2}\\mathbb{E}_{p_{j-1}^t}\\big[\\Vert \\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)\\Vert^{2}\\big]\\leq \\frac{L\\eta_t^2G}{2} \\end{equation}",
+   "statement_short": "Use the finite-variance assumption to bound the quadratic term by $L\\eta_t^2G/2$.",
+   "subclass": "bound_estimate",
+   "confidence": 0.95
+  },
+  {
+   "id": "PSP1.8",
+   "type": "proof_step",
+   "parent_id": "PP1.2",
+   "step_order": 5,
+   "name": "Side computation: gradient bias from the density mismatch",
+   "section": "Proofs",
+   "origin": "paper",
+   "statement": "Then, as a side computation, observe that: \\begin{align} \\Vert \\mathbb{E}_{p_{j-1}^t}\\big[\\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)\\big]-\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert&=\\Vert \\int \\nabla \\ell(z,\\Theta_j^t)p^t_{j-1}(z)\\,d z -\\int \\nabla \\ell(z,\\Theta_j^t)p^*_{j-1}(z)\\,d z\\Vert\\\\ &\\leq \\int \\Vert\\nabla \\ell(z,\\Theta_j^t)\\Vert ~ |p^t_{j-1}(z)-p^*_{j-1}(z)|\\,d z\\\\ &= \\int \\big(\\Vert\\nabla \\ell(z,\\Theta_j^t)\\Vert\\sqrt{|p^t_{j-1}(z)-p^*_{j-1}(z)|}\\big) ~ \\sqrt{|p^t_{j-1}(z)-p^*_{j-1}(z)|}\\,d z\\\\ \\end{align}",
+   "statement_short": "Write the gradient bias as an integral against $|p^t_{j-1}-p^*_{j-1}|$ split into two square-root factors.",
+   "subclass": "introduce_variable",
+   "confidence": 0.95
+  },
+  {
+   "id": "PSP1.9",
+   "type": "proof_step",
+   "parent_id": "PP1.2",
+   "step_order": 6,
+   "name": "Apply Cauchy-Schwarz to the bias integral",
+   "section": "Proofs",
+   "origin": "paper",
+   "statement": "Let us apply the Cauchy-Swchartz inequality, we obtain: \\begin{align} \\Vert \\mathbb{E}_{p_{j-1}^t}\\big[\\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)\\big]-\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert&\\leq \\sqrt{\\int \\Vert\\nabla \\ell(z,\\Theta_j^t)\\Vert^2 |p^t_{j-1}(z)-p^*_{j-1}(z)|\\,d z} \\sqrt{\\int |p^t_{j-1}(z)-p^*_{j-1}(z)|\\,d z }\\\\ &= \\sqrt{\\int \\Vert\\nabla \\ell(z,\\Theta_j^t)\\Vert^2 |p^t_{j-1}(z)-p^*_{j-1}(z)|\\,d z} \\sqrt{c_{j-1}^t} \\end{align}",
+   "statement_short": "Cauchy-Schwarz factors out $\\sqrt{c_{j-1}^t}$.",
+   "subclass": "bound_estimate",
+   "confidence": 0.95
+  },
+  {
+   "id": "PSP1.10",
+   "type": "proof_step",
+   "parent_id": "PP1.2",
+   "step_order": 7,
+   "name": "Bound the remaining integral by $2G$",
+   "section": "Proofs",
+   "origin": "paper",
+   "statement": "Then, observe that: \\begin{align} \\int \\Vert\\nabla \\ell(z,\\Theta_j^t)\\Vert^2 |p^t_{j-1}(z)-p^*_{j-1}(z)|\\,d z &\\leq \\int \\Vert\\nabla \\ell(z,\\Theta_j^t)\\Vert^2 \\big(p^t_{j-1}(z)+p^*_{j-1}(z)\\big)\\,d z\\\\ &=\\mathbb{E}_{p^t_{j-1}}[ \\Vert\\nabla \\ell(Z_{j-1},\\Theta_j^t)\\Vert^2 ]+\\mathbb{E}_{p^*_{j-1}}[ \\Vert\\nabla \\ell(Z_{j-1},\\Theta_j^t)\\Vert^2 ]\\\\ &\\leq 2G \\end{align} The last inequality follows from Lemma 4.1 and Assumption 3.",
+   "statement_short": "Bound the mismatch integral by the sum of the two second moments, i.e. $2G$, via Lemma 4.1 and Assumption 3.",
+   "subclass": "apply_lemma",
+   "confidence": 0.95
+  },
+  {
+   "id": "PSP1.11",
+   "type": "proof_step",
+   "parent_id": "PP1.2",
+   "step_order": 8,
+   "name": "Second Cauchy-Schwarz on the inner product",
+   "section": "Proofs",
+   "origin": "paper",
+   "statement": "Then, using again Cauchy-Schwartz inequality: \\begin{align} \\bigg|\\Vert\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2- \\nabla\\mathcal{L}(\\Theta_j^t)^{T}\\mathbb{E}_{p_{j-1}^t}[\\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)]\\bigg| &=\\bigg|\\nabla\\mathcal{L}(\\Theta_j^t)^T\\big(\\nabla\\mathcal{L}(\\Theta_j^t)-\\mathbb{E}_{p_{j-1}^t}[\\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)]\\big)\\bigg|\\\\ &\\leq \\Vert \\nabla \\mathcal{L}(\\Theta^t_j)\\Vert~\\Vert \\mathbb{E}_{p_{j-1}^t}\\big[\\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)\\big]-\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert \\\\ &\\leq \\Vert \\nabla \\mathcal{L}(\\Theta^t_j)\\Vert \\sqrt{2Gc^t_{j-1}} \\end{align}",
+   "statement_short": "Control the difference between the true and sampled inner products by $\\Vert\\nabla\\mathcal{L}\\Vert\\sqrt{2Gc^t_{j-1}}$.",
+   "subclass": "bound_estimate",
+   "confidence": 0.95
+  },
+  {
+   "id": "PSP1.12",
+   "type": "proof_step",
+   "parent_id": "PP1.2",
+   "step_order": 9,
+   "name": "Take expectation and use Jensen",
+   "section": "Proofs",
+   "origin": "paper",
+   "statement": "Then, taking the expectation leads to \\begin{align} \\big|\\mathbb{E}\\bigg[\\Vert\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2- \\nabla\\mathcal{L}(\\Theta_j^t)^{T}\\mathbb{E}_{p_{j-1}^t}[\\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)]\\bigg]\\big|&\\leq \\mathbb{E}[\\bigg|\\Vert\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2- \\nabla\\mathcal{L}(\\Theta_j^t)^{T}\\mathbb{E}_{p_{j-1}^t}[\\nabla_{\\Theta_j} \\ell(Z_{j-1}^t;\\Theta_j^t)]\\bigg|]\\\\ &\\leq \\mathbb{E}[\\Vert\\nabla \\mathcal{L}(\\Theta^t_j)\\Vert] \\sqrt{2Gc^t_{j-1}}\\\\ &\\leq \\sqrt{ \\mathbb{E}[\\Vert\\nabla \\mathcal{L}(\\Theta^t_j)\\Vert^2] }\\sqrt{2Gc^t_{j-1}}\\\\ \\end{align}",
+   "statement_short": "Move to expectations and apply Jensen to replace $\\mathbb{E}\\Vert\\nabla\\mathcal{L}\\Vert$ by its root second moment.",
+   "subclass": "algebraic_manipulation",
+   "confidence": 0.95
+  },
+  {
+   "id": "PSP1.13",
+   "type": "proof_step",
+   "parent_id": "PP1.2",
+   "step_order": 10,
+   "name": "Bound the expected gradient norm by $G$",
+   "section": "Proofs",
+   "origin": "paper",
+   "statement": "However, observe that by Lemma 4.1 and Jensen inequality: \\begin{align} \\Vert \\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2 =\\Vert \\mathbb{E}_{p^*_j}[\\nabla_{\\Theta_j} \\ell(Z,\\Theta_j^t)]\\Vert^2\\leq \\mathbb{E}_{p^*_j}[ \\Vert \\nabla_{\\Theta_j} \\ell(Z,\\Theta_j^t)\\Vert^2]\\leq G \\end{align}",
+   "statement_short": "Jensen plus Lemma 4.1 give $\\Vert\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2\\leq G$.",
+   "subclass": "apply_lemma",
+   "confidence": 0.95
+  },
+  {
+   "id": "PSP1.14",
+   "type": "proof_step",
+   "parent_id": "PP1.2",
+   "step_order": 11,
+   "name": "Combine into the descent inequality",
+   "section": "Proofs",
+   "origin": "paper",
+   "statement": "Combining this inequality and Assumption 3, we get: \\begin{align*} \\mathbb{E}[\\mathcal{L}(\\Theta_j^{t+1})]\\leq\\mathbb{E}[\\mathcal{L}(\\Theta_j^{t})]-\\eta_t\\big(\\mathbb{E}[\\Vert\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2]-\\sqrt{2}Gc^t_{j-1}\\big)+\\frac{LG}{2}\\eta_t^2\\,, \\end{align*}",
+   "statement_short": "Assemble all bounds into the claimed one-step descent inequality.",
+   "subclass": "conclude",
+   "confidence": 0.95
+  },
+  {
+   "id": "PP1.3",
+   "type": "proof",
+   "name": "Proof of Proposition 4.2",
+   "proves": "PrP1.2",
+   "section": "Proofs",
+   "origin": "paper",
+   "confidence": 1.0,
+   "statement": "Applying Lemma \\ref{lemma:main} for $t=0,...,T-1$, we obtain (observe the telescoping sum), for our non-negative loss: \\begin{align}\\sum_{t=0}^T \\eta_t \\mathbb{E}[\\Vert\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2]& \\leq \\mathbb{E}[\\mathcal{L}(\\Theta^0_j)]-\\mathbb{E}[\\mathcal{L}(\\Theta^{T+1}_j)] +\\sqrt 2G\\sum_{t=0}^T\\sqrt{c_j^t}\\eta_t +\\frac{LG}{2}\\sum_{t=0}^T \\eta_t^2\\\\ &\\leq \\mathbb{E}[\\mathcal{L}(\\Theta^0_j)] +\\sqrt 2G\\sum_{t=0}^T\\sqrt{c_j^t}\\eta_t +\\frac{LG}{2}\\sum_{t=0}^T \\eta_t^2\\\\ \\end{align} Yet, $\\sum \\sqrt{c_j^t}\\eta_t$ is convergent, as $\\sum c_j^t$ and $\\sum_t \\eta_t^2$ are convergent, thus the right term is bounded.",
+   "statement_short": "Telescoping sum of Lemma 4.2 over $t$, then boundedness of $\\sum\\sqrt{c_j^t}\\eta_t$ and $\\sum\\eta_t^2$.",
+   "proof_strategy": [
+    "direct",
+    "algebraic_manipulation"
+   ],
+   "tags": [
+    "convergence",
+    "bound"
+   ]
+  },
+  {
+   "id": "PSP1.15",
+   "type": "proof_step",
+   "parent_id": "PP1.3",
+   "step_order": 1,
+   "name": "Telescope the per-step descent inequality",
+   "section": "Proofs",
+   "origin": "paper",
+   "statement": "Applying Lemma \\ref{lemma:main} for $t=0,...,T-1$, we obtain (observe the telescoping sum), for our non-negative loss: \\begin{align}\\sum_{t=0}^T \\eta_t \\mathbb{E}[\\Vert\\nabla\\mathcal{L}(\\Theta_j^t)\\Vert^2]& \\leq \\mathbb{E}[\\mathcal{L}(\\Theta^0_j)]-\\mathbb{E}[\\mathcal{L}(\\Theta^{T+1}_j)] +\\sqrt 2G\\sum_{t=0}^T\\sqrt{c_j^t}\\eta_t +\\frac{LG}{2}\\sum_{t=0}^T \\eta_t^2\\\\ &\\leq \\mathbb{E}[\\mathcal{L}(\\Theta^0_j)] +\\sqrt 2G\\sum_{t=0}^T\\sqrt{c_j^t}\\eta_t +\\frac{LG}{2}\\sum_{t=0}^T \\eta_t^2\\\\ \\end{align}",
+   "statement_short": "Sum Lemma 4.2 over $t$ and drop the non-negative final loss term.",
+   "subclass": "apply_lemma",
+   "confidence": 0.95
+  },
+  {
+   "id": "PSP1.16",
+   "type": "proof_step",
+   "parent_id": "PP1.3",
+   "step_order": 2,
+   "name": "Conclude boundedness of the right-hand side",
+   "section": "Proofs",
+   "origin": "paper",
+   "statement": "Yet, $\\sum \\sqrt{c_j^t}\\eta_t$ is convergent, as $\\sum c_j^t$ and $\\sum_t \\eta_t^2$ are convergent, thus the right term is bounded.",
+   "statement_short": "Robbins-Monro and Assumption 4 make the right-hand side finite.",
+   "subclass": "conclude",
+   "confidence": 0.95
+  },
+  {
+   "id": "PP1.4",
+   "type": "proof",
+   "name": "Argument that DGL is faster by construction",
+   "proves": "ClP1.3",
+   "section": "Detailed Discussion of Relative Speed of Competing Methods",
+   "origin": "paper",
+   "confidence": 0.65,
+   "statement": "As discussed in the text our auxiliary modules which govern (1) for DGL are negligible thus the overhead of (1) is negligible. DNI will inherently have large auxiliary models as it must predict gradients, thus (1) will be much greater than in DGL. (2) should be of equal speed across all methods given the same implementation and hardware. (3) does not exist for the case of DGL but exists for all other cases. (4) applies only in the case of backward unlocking methods (DDG/FA) and does not exist for DNI or DGL as they are update unlocked. Thus we observe that DGL by construction is faster than the other methods.",
+   "statement_short": "Case analysis over the four speed-governing factors, showing DGL is never worse and strictly better on factors (1) and (3).",
+   "proof_strategy": [
+    "direct",
+    "case_analysis"
+   ],
+   "tags": [
+    "wall_clock_time",
+    "parallelism"
+   ]
+  },
+  {
+   "id": "PSP1.17",
+   "type": "proof_step",
+   "parent_id": "PP1.4",
+   "step_order": 1,
+   "name": "Auxiliary computation overhead (factor 1)",
+   "section": "Detailed Discussion of Relative Speed of Competing Methods",
+   "origin": "paper",
+   "statement": "As discussed in the text our auxiliary modules which govern (1) for DGL are negligible thus the overhead of (1) is negligible. DNI will inherently have large auxiliary models as it must predict gradients, thus (1) will be much greater than in DGL.",
+   "statement_short": "DGL's auxiliary overhead is negligible whereas DNI's is large.",
+   "subclass": "case_split",
+   "confidence": 0.95
+  },
+  {
+   "id": "PSP1.18",
+   "type": "proof_step",
+   "parent_id": "PP1.4",
+   "step_order": 2,
+   "name": "Forward activation communication (factor 2)",
+   "section": "Detailed Discussion of Relative Speed of Competing Methods",
+   "origin": "paper",
+   "statement": "(2) should be of equal speed across all methods given the same implementation and hardware.",
+   "statement_short": "Forward communication cost is identical across methods.",
+   "subclass": "case_split",
+   "confidence": 0.95
+  },
+  {
+   "id": "PSP1.19",
+   "type": "proof_step",
+   "parent_id": "PP1.4",
+   "step_order": 3,
+   "name": "Feedback communication (factor 3)",
+   "section": "Detailed Discussion of Relative Speed of Competing Methods",
+   "origin": "paper",
+   "statement": "(3) does not exist for the case of DGL but exists for all other cases.",
+   "statement_short": "DGL pays no feedback-communication cost.",
+   "subclass": "case_split",
+   "confidence": 0.95
+  },
+  {
+   "id": "PSP1.20",
+   "type": "proof_step",
+   "parent_id": "PP1.4",
+   "step_order": 4,
+   "name": "Waiting for the final module (factor 4)",
+   "section": "Detailed Discussion of Relative Speed of Competing Methods",
+   "origin": "paper",
+   "statement": "(4) applies only in the case of backward unlocking methods (DDG/FA) and does not exist for DNI or DGL as they are update unlocked.",
+   "statement_short": "Only backward-unlocked methods wait for the top module.",
+   "subclass": "case_split",
+   "confidence": 0.95
+  },
+  {
+   "id": "PSP1.21",
+   "type": "proof_step",
+   "parent_id": "PP1.4",
+   "step_order": 5,
+   "name": "Conclude the speed comparison",
+   "section": "Detailed Discussion of Relative Speed of Competing Methods",
+   "origin": "paper",
+   "statement": "Thus we observe that DGL by construction is faster than the other methods.",
+   "statement_short": "Combining the four factors gives the speed conclusion.",
+   "subclass": "conclude",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.1",
+   "type": "algorithm_step",
+   "parent_id": "AP1.1",
+   "step_order": 1,
+   "name": "Initialize all module and auxiliary parameters",
+   "section": "2.2 Optimization for Greedy Objective",
+   "origin": "paper",
+   "statement": "\\textbf{Initialize} Parameters $\\{\\theta_j,\\gamma_j\\}_{j\\leq J}$.\\;",
+   "subclass": "initialize",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.2",
+   "type": "algorithm_step",
+   "parent_id": "AP1.1",
+   "step_order": 2,
+   "name": "Loop over the sample stream",
+   "section": "2.2 Optimization for Greedy Objective",
+   "origin": "paper",
+   "statement": "\\For { $(x_0^t,y^t) \\in \\mathcal{S}$ }",
+   "subclass": "loop",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.3",
+   "type": "algorithm_step",
+   "parent_id": "AP1.1",
+   "step_order": 3,
+   "name": "Loop over the modules",
+   "section": "2.2 Optimization for Greedy Objective",
+   "origin": "paper",
+   "statement": "\\For {$j \\in 1,..., J$}",
+   "subclass": "loop",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.4",
+   "type": "algorithm_step",
+   "parent_id": "AP1.1",
+   "step_order": 4,
+   "name": "Forward the activation through module $j-1$",
+   "section": "2.2 Optimization for Greedy Objective",
+   "origin": "paper",
+   "statement": "$x^t_j \\leftarrow f_{\\theta_{j-1}}(x^t_{j-1})$.\\;",
+   "subclass": "update",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.5",
+   "type": "algorithm_step",
+   "parent_id": "AP1.1",
+   "step_order": 5,
+   "name": "Compute the local gradient",
+   "section": "2.2 Optimization for Greedy Objective",
+   "origin": "paper",
+   "statement": "Compute $\\nabla_{(\\gamma_j,\\theta_j)}\\hat{ \\mathcal{L}}(y^t,x^t_j;\\gamma_j,\\theta_j)$.\\;",
+   "statement_short": "Differentiate the local auxiliary loss w.r.t. module and auxiliary parameters.",
+   "subclass": "update",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.6",
+   "type": "algorithm_step",
+   "parent_id": "AP1.1",
+   "step_order": 6,
+   "name": "Update the local parameters",
+   "section": "2.2 Optimization for Greedy Objective",
+   "origin": "paper",
+   "statement": "$(\\theta_j,\\gamma_j)\\leftarrow$Update parameters $(\\theta_j,\\gamma_j)$.",
+   "statement_short": "Apply the local parameter update, without waiting for upper modules.",
+   "subclass": "update",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.7",
+   "type": "algorithm_step",
+   "parent_id": "AP1.2",
+   "step_order": 1,
+   "name": "Initialize buffers and parameters",
+   "section": "2.3 Asynchronous DGL with Replay",
+   "origin": "paper",
+   "statement": "\\textbf{Initialize:} Buffers $\\{B_j\\}_{j}$; params $\\{\\theta_j,\\gamma_j\\}_{j}$.",
+   "statement_short": "Create one replay buffer per worker and initialize all parameters.",
+   "subclass": "initialize",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.8",
+   "type": "algorithm_step",
+   "parent_id": "AP1.2",
+   "step_order": 2,
+   "name": "Loop while training",
+   "section": "2.3 Asynchronous DGL with Replay",
+   "origin": "paper",
+   "statement": "\\While{\\normalfont{\\textbf{ training}}}",
+   "statement_short": "Repeat until training ends.",
+   "subclass": "loop",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.9",
+   "type": "algorithm_step",
+   "parent_id": "AP1.2",
+   "step_order": 3,
+   "name": "Sample which worker computes",
+   "section": "2.3 Asynchronous DGL with Replay",
+   "origin": "paper",
+   "statement": "Sample $j$ in $\\{1,...,J\\}$ following $p$.",
+   "subclass": "other",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.10",
+   "type": "algorithm_step",
+   "parent_id": "AP1.2",
+   "step_order": 4,
+   "name": "Read the input from the stream or the predecessor buffer",
+   "section": "2.3 Asynchronous DGL with Replay",
+   "origin": "paper",
+   "statement": "\\uIf{$j=1$}{ $ (x_{0},y)\\gets \\mathcal{S}$}\\Else{ $(x_{j-1},y)\\gets B_{j-1}$.}",
+   "statement_short": "The first worker reads the stream; others read the previous worker's buffer.",
+   "subclass": "branch",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.11",
+   "type": "algorithm_step",
+   "parent_id": "AP1.2",
+   "step_order": 5,
+   "name": "Forward through the previous module",
+   "section": "2.3 Asynchronous DGL with Replay",
+   "origin": "paper",
+   "statement": "$x_j \\leftarrow f_{\\theta_{j-1}}(x_{j-1})$.\\;",
+   "statement_short": "Compute the activation for module $j$.",
+   "subclass": "update",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.12",
+   "type": "algorithm_step",
+   "parent_id": "AP1.2",
+   "step_order": 6,
+   "name": "Compute the local gradient",
+   "section": "2.3 Asynchronous DGL with Replay",
+   "origin": "paper",
+   "statement": "Compute $\\nabla_{(\\gamma_j,\\theta_j)}\\hat{ \\mathcal{L}}(y,x_j;\\gamma_j,\\theta_j)$.\\;",
+   "statement_short": "Differentiate the local auxiliary loss.",
+   "subclass": "update",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.13",
+   "type": "algorithm_step",
+   "parent_id": "AP1.2",
+   "step_order": 7,
+   "name": "Update the local parameters",
+   "section": "2.3 Asynchronous DGL with Replay",
+   "origin": "paper",
+   "statement": "$(\\theta_j,\\gamma_j)\\leftarrow$ Update parameters $(\\theta_j,\\gamma_j)$.\\;",
+   "statement_short": "Apply the local parameter update.",
+   "subclass": "update",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.14",
+   "type": "algorithm_step",
+   "parent_id": "AP1.2",
+   "step_order": 8,
+   "name": "Write the activation to the worker's buffer",
+   "section": "2.3 Asynchronous DGL with Replay",
+   "origin": "paper",
+   "statement": "\\lIf{$j<J$}{ $B_{j} \\gets (x^{j},y)$. }",
+   "subclass": "branch",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.15",
+   "type": "algorithm_step",
+   "parent_id": "AP1.4",
+   "step_order": 1,
+   "name": "Initialize parameters",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "statement": "\\textbf{Initialize} Parameters $\\{\\theta_j,\\gamma_j\\}_{j\\leq J}$",
+   "statement_short": "Initialize all module and auxiliary parameters.",
+   "subclass": "initialize",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.16",
+   "type": "algorithm_step",
+   "parent_id": "AP1.4",
+   "step_order": 2,
+   "name": "Worker 0 block",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "statement": "Worker 0:\\;",
+   "subclass": "other",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.17",
+   "type": "algorithm_step",
+   "parent_id": "AP1.4",
+   "step_order": 3,
+   "name": "Worker 0 loops over the stream",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "statement": "\\For {$x_0^t \\in \\mathcal{S}$}",
+   "subclass": "loop",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.18",
+   "type": "algorithm_step",
+   "parent_id": "AP1.4",
+   "step_order": 4,
+   "name": "Worker 0 forward pass",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "statement": "$x^t_1 \\leftarrow f_{\\theta^t_{0}}(x^t_{0})$",
+   "statement_short": "Worker 0 computes its output activation.",
+   "subclass": "update",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.19",
+   "type": "algorithm_step",
+   "parent_id": "AP1.4",
+   "step_order": 5,
+   "name": "Worker 0 sends its activation onward",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "statement": "Send $x_0^t$ to worker $1$\\;",
+   "subclass": "other",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.20",
+   "type": "algorithm_step",
+   "parent_id": "AP1.4",
+   "step_order": 6,
+   "name": "Worker 0 computes its local gradient",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "statement": "Compute $\\nabla_{(\\gamma_1,\\theta_1)}\\hat{ \\mathcal{L}}(y^t,x^t_0;\\gamma^t_0,\\theta^t_0)$\\;",
+   "statement_short": "Differentiate worker 0's local loss.",
+   "subclass": "update",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.21",
+   "type": "algorithm_step",
+   "parent_id": "AP1.4",
+   "step_order": 7,
+   "name": "Worker 0 parameter step",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "statement": "$(\\theta^{t+1}_0,\\gamma^{t+1}_0)\\leftarrow$ Step of parameters $(\\theta^t_0,\\gamma^t_0)$",
+   "statement_short": "Worker 0 takes its local optimizer step.",
+   "subclass": "update",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.22",
+   "type": "algorithm_step",
+   "parent_id": "AP1.4",
+   "step_order": 8,
+   "name": "Worker $j$ block",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "statement": "Worker $j$:\\;",
+   "subclass": "other",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.23",
+   "type": "algorithm_step",
+   "parent_id": "AP1.4",
+   "step_order": 9,
+   "name": "Worker $j$ loops over iterations",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "statement": "\\For{$t \\in 0 ... T$}",
+   "subclass": "loop",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.24",
+   "type": "algorithm_step",
+   "parent_id": "AP1.4",
+   "step_order": 10,
+   "name": "Worker $j$ waits for its input",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "statement": "Wait until $x^t_{j-1}$ is available\\;",
+   "subclass": "other",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.25",
+   "type": "algorithm_step",
+   "parent_id": "AP1.4",
+   "step_order": 11,
+   "name": "Worker $j$ forward pass",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "statement": "$x^t_j \\leftarrow f_{\\theta^t_{j-1}}(x^t_{j-1})$",
+   "statement_short": "Compute worker $j$'s activation.",
+   "subclass": "update",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.26",
+   "type": "algorithm_step",
+   "parent_id": "AP1.4",
+   "step_order": 12,
+   "name": "Worker $j$ computes its local gradient",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "statement": "Compute $\\nabla_{(\\gamma_j,\\theta_j)}\\hat{ \\mathcal{L}}(y^t,x^t_j;\\gamma^t_j,\\theta^t_j)$",
+   "statement_short": "Differentiate worker $j$'s local loss.",
+   "subclass": "update",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.27",
+   "type": "algorithm_step",
+   "parent_id": "AP1.4",
+   "step_order": 13,
+   "name": "Worker $j$ sends its activation onward",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "statement": "Send $x^t_{j}$ to worker $x^t_{j+1}$",
+   "subclass": "other",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.28",
+   "type": "algorithm_step",
+   "parent_id": "AP1.4",
+   "step_order": 14,
+   "name": "Worker $j$ parameter step",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "statement": "$(\\theta^{t+1}_j,\\gamma^{t+1}_j)\\leftarrow$ Step of parameters $(\\theta^t_j,\\gamma^t_j)$",
+   "statement_short": "Worker $j$ takes its local optimizer step.",
+   "subclass": "update",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.29",
+   "type": "algorithm_step",
+   "parent_id": "AP1.5",
+   "step_order": 1,
+   "name": "Initialize buffers of size $M$ and parameters",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "statement": "\\textbf{Initialize:} Buffers $\\{B_j\\}_{j}$ with size $M$; params $\\{\\theta_j,\\gamma_j\\}_{j}$",
+   "statement_short": "Allocate size-$M$ buffers and initialize parameters.",
+   "subclass": "initialize",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.30",
+   "type": "algorithm_step",
+   "parent_id": "AP1.5",
+   "step_order": 2,
+   "name": "Worker $j$ block",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "statement": "Worker $j$: \\\\",
+   "subclass": "other",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.31",
+   "type": "algorithm_step",
+   "parent_id": "AP1.5",
+   "step_order": 3,
+   "name": "Loop while training",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "statement": "\\While{\\normalfont{\\textbf{ training}}}",
+   "statement_short": "Each worker loops until training ends.",
+   "subclass": "loop",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.32",
+   "type": "algorithm_step",
+   "parent_id": "AP1.5",
+   "step_order": 4,
+   "name": "Read from the stream or the predecessor buffer",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "statement": "\\lIf{ $ j=1$}{ $ (x_{0},y)\\gets \\mathcal{S}$} \\lElse{ $(x_{j-1},y)\\gets B_{j-1}$}\\;",
+   "statement_short": "First worker reads the stream, others read the predecessor's buffer.",
+   "subclass": "branch",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.33",
+   "type": "algorithm_step",
+   "parent_id": "AP1.5",
+   "step_order": 5,
+   "name": "Forward pass",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "statement": "$x_j \\leftarrow f_{\\theta_{j-1}}(x_{j-1})$\\;",
+   "statement_short": "Compute the worker's output activation.",
+   "subclass": "update",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.34",
+   "type": "algorithm_step",
+   "parent_id": "AP1.5",
+   "step_order": 6,
+   "name": "Compute the local gradient",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "statement": "Compute $\\nabla_{(\\gamma_j,\\theta_j)}\\hat{ \\mathcal{L}}(y,x_j;\\gamma_j,\\theta_j)$\\;",
+   "statement_short": "Differentiate the local auxiliary loss.",
+   "subclass": "update",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.35",
+   "type": "algorithm_step",
+   "parent_id": "AP1.5",
+   "step_order": 7,
+   "name": "Parameter step",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "statement": "$(\\theta_j,\\gamma_j)\\leftarrow$ Step of parameters $(\\theta_j,\\gamma_j)$\\;",
+   "statement_short": "Take the local optimizer step.",
+   "subclass": "update",
+   "confidence": 0.95
+  },
+  {
+   "id": "ASP1.36",
+   "type": "algorithm_step",
+   "parent_id": "AP1.5",
+   "step_order": 8,
+   "name": "Write to the worker's buffer",
+   "section": "Additional pseudo-code",
+   "origin": "paper",
+   "statement": "\\lIf{$j<J$}{ $B_{j} \\gets (x^{j},y)$ }",
+   "subclass": "branch",
+   "confidence": 0.95
+  }
+ ],
+ "edges": [
+  {
+   "source": "PSP1.1",
+   "target": "PSP1.2",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "PSP1.2",
+   "target": "PSP1.3",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "PSP1.4",
+   "target": "PSP1.5",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "PSP1.5",
+   "target": "PSP1.6",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "PSP1.6",
+   "target": "PSP1.7",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "PSP1.7",
+   "target": "PSP1.8",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "PSP1.8",
+   "target": "PSP1.9",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "PSP1.9",
+   "target": "PSP1.10",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "PSP1.10",
+   "target": "PSP1.11",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "PSP1.11",
+   "target": "PSP1.12",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "PSP1.12",
+   "target": "PSP1.13",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "PSP1.13",
+   "target": "PSP1.14",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "PSP1.15",
+   "target": "PSP1.16",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "PSP1.17",
+   "target": "PSP1.18",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "PSP1.18",
+   "target": "PSP1.19",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "PSP1.19",
+   "target": "PSP1.20",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "PSP1.20",
+   "target": "PSP1.21",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.1",
+   "target": "ASP1.2",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.2",
+   "target": "ASP1.3",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.3",
+   "target": "ASP1.4",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.4",
+   "target": "ASP1.5",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.5",
+   "target": "ASP1.6",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.7",
+   "target": "ASP1.8",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.8",
+   "target": "ASP1.9",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.9",
+   "target": "ASP1.10",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.10",
+   "target": "ASP1.11",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.11",
+   "target": "ASP1.12",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.12",
+   "target": "ASP1.13",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.13",
+   "target": "ASP1.14",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.15",
+   "target": "ASP1.16",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.16",
+   "target": "ASP1.17",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.17",
+   "target": "ASP1.18",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.18",
+   "target": "ASP1.19",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.19",
+   "target": "ASP1.20",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.20",
+   "target": "ASP1.21",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.21",
+   "target": "ASP1.22",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.22",
+   "target": "ASP1.23",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.23",
+   "target": "ASP1.24",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.24",
+   "target": "ASP1.25",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.25",
+   "target": "ASP1.26",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.26",
+   "target": "ASP1.27",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.27",
+   "target": "ASP1.28",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.29",
+   "target": "ASP1.30",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.30",
+   "target": "ASP1.31",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.31",
+   "target": "ASP1.32",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.32",
+   "target": "ASP1.33",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.33",
+   "target": "ASP1.34",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.34",
+   "target": "ASP1.35",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ASP1.35",
+   "target": "ASP1.36",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1.1",
+   "target": "DP1.2",
+   "type": "uses",
+   "confidence": 0.6
+  },
+  {
+   "source": "DP1.1",
+   "target": "DP1.3",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1.1",
+   "target": "DP1.4",
+   "type": "uses",
+   "confidence": 0.65
+  },
+  {
+   "source": "DP1.1",
+   "target": "DP1.5",
+   "type": "uses",
+   "confidence": 0.7
+  },
+  {
+   "source": "DP1.3",
+   "target": "ClP1.1",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "DP1.2",
+   "target": "ClP1.2",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1.3",
+   "target": "ClP1.2",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1.4",
+   "target": "AP1.2",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "DP1.3",
+   "target": "AP1.1",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1.6",
+   "target": "ProbP1.1",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "DP1.7",
+   "target": "AP1.1",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "DP1.7",
+   "target": "AP1.2",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1.7",
+   "target": "AP1.4",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP1.7",
+   "target": "AP1.5",
+   "type": "uses",
+   "confidence": 0.7
+  },
+  {
+   "source": "ProbP1.1",
+   "target": "AP1.1",
+   "type": "solves",
+   "confidence": 0.9
+  },
+  {
+   "source": "ProbP1.1",
+   "target": "AP1.3",
+   "type": "solves",
+   "confidence": 0.9
+  },
+  {
+   "source": "ProbP1.1",
+   "target": "AP1.2",
+   "type": "solves",
+   "confidence": 0.8
+  },
+  {
+   "source": "ProbP1.1",
+   "target": "RP1.2",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "AP1.1",
+   "target": "AP1.2",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "AP1.1",
+   "target": "AP1.4",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "AP1.2",
+   "target": "AP1.5",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "AP1.1",
+   "target": "ClP1.1",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "AP1.1",
+   "target": "RP1.1",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "AP1.3",
+   "target": "RP1.3",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1.1",
+   "target": "RP1.3",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP1.8",
+   "target": "AP1.2",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "DP1.8",
+   "target": "AP1.5",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1.9",
+   "target": "AP1.2",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "DP1.9",
+   "target": "AP1.5",
+   "type": "uses",
+   "confidence": 0.7
+  },
+  {
+   "source": "DP1.9",
+   "target": "DP1.17",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "AP1.2",
+   "target": "RP1.9",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "AP1.2",
+   "target": "OpenP1.1",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1.5",
+   "target": "RP1.11",
+   "type": "uses",
+   "confidence": 0.7
+  },
+  {
+   "source": "RP1.11",
+   "target": "DP1.11",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "RP1.11",
+   "target": "DP1.12",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP1.10",
+   "target": "DP1.11",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1.11",
+   "target": "DP1.12",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP1.11",
+   "target": "ExP1.1",
+   "type": "illustrates",
+   "confidence": 0.9
+  },
+  {
+   "source": "DP1.12",
+   "target": "ExP1.1",
+   "type": "illustrates",
+   "confidence": 0.9
+  },
+  {
+   "source": "DP1.6",
+   "target": "DP1.10",
+   "type": "uses",
+   "confidence": 0.7
+  },
+  {
+   "source": "DP1.6",
+   "target": "DP1.11",
+   "type": "uses",
+   "confidence": 0.7
+  },
+  {
+   "source": "DP1.6",
+   "target": "DP1.12",
+   "type": "uses",
+   "confidence": 0.7
+  },
+  {
+   "source": "DP1.16",
+   "target": "DP1.14",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1.16",
+   "target": "DP1.15",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "DP1.16",
+   "target": "EP1.1",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "DP1.16",
+   "target": "AssumP1.3",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "DP1.15",
+   "target": "AssumP1.1",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "DP1.14",
+   "target": "AssumP1.4",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "EP1.1",
+   "target": "AssumP1.2",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "AP1.1",
+   "target": "EP1.1",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1.6",
+   "target": "DP1.15",
+   "type": "uses",
+   "confidence": 0.7
+  },
+  {
+   "source": "AssumP1.3",
+   "target": "LP1.1",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "AssumP1.4",
+   "target": "LP1.1",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "DP1.15",
+   "target": "LP1.1",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AssumP1.1",
+   "target": "LP1.2",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "AssumP1.3",
+   "target": "LP1.2",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "AssumP1.4",
+   "target": "LP1.2",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "DP1.14",
+   "target": "LP1.2",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "DP1.15",
+   "target": "LP1.2",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "EP1.1",
+   "target": "LP1.2",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "LP1.1",
+   "target": "LP1.2",
+   "type": "uses",
+   "confidence": 0.7
+  },
+  {
+   "source": "AssumP1.1",
+   "target": "PrP1.1",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "AssumP1.2",
+   "target": "PrP1.1",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "AssumP1.3",
+   "target": "PrP1.1",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "AssumP1.4",
+   "target": "PrP1.1",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "LP1.2",
+   "target": "PrP1.1",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "DP1.14",
+   "target": "PrP1.1",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "DP1.15",
+   "target": "PrP1.1",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "PrP1.1",
+   "target": "CP1.1",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "DP1.14",
+   "target": "CP1.1",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "DP1.15",
+   "target": "CP1.1",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "AssumP1.3",
+   "target": "LP1.3",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "AssumP1.4",
+   "target": "LP1.3",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "AssumP1.1",
+   "target": "LP1.4",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "AssumP1.3",
+   "target": "LP1.4",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "AssumP1.4",
+   "target": "LP1.4",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "LP1.3",
+   "target": "LP1.4",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "AssumP1.1",
+   "target": "PrP1.2",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "AssumP1.2",
+   "target": "PrP1.2",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "AssumP1.3",
+   "target": "PrP1.2",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "AssumP1.4",
+   "target": "PrP1.2",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "LP1.4",
+   "target": "PrP1.2",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "PP1.1",
+   "target": "LP1.3",
+   "type": "proves",
+   "confidence": 1.0
+  },
+  {
+   "source": "PP1.1",
+   "target": "LP1.1",
+   "type": "proves",
+   "confidence": 0.85
+  },
+  {
+   "source": "PP1.2",
+   "target": "LP1.4",
+   "type": "proves",
+   "confidence": 1.0
+  },
+  {
+   "source": "PP1.2",
+   "target": "LP1.2",
+   "type": "proves",
+   "confidence": 0.85
+  },
+  {
+   "source": "PP1.3",
+   "target": "PrP1.2",
+   "type": "proves",
+   "confidence": 1.0
+  },
+  {
+   "source": "PP1.3",
+   "target": "PrP1.1",
+   "type": "proves",
+   "confidence": 0.85
+  },
+  {
+   "source": "PP1.4",
+   "target": "ClP1.3",
+   "type": "proves",
+   "confidence": 0.9
+  },
+  {
+   "source": "LP1.2",
+   "target": "RP1.4",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "PrP1.1",
+   "target": "RP1.5",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "CP1.1",
+   "target": "RP1.6",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "DP1.14",
+   "target": "RP1.6",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "AssumP1.1",
+   "target": "RP1.7",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "AssumP1.2",
+   "target": "RP1.7",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "AssumP1.3",
+   "target": "RP1.7",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "AssumP1.4",
+   "target": "PSP1.1",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "AssumP1.1",
+   "target": "PSP1.4",
+   "type": "uses",
+   "confidence": 0.95
+  },
+  {
+   "source": "EP1.1",
+   "target": "PSP1.5",
+   "type": "uses",
+   "confidence": 0.95
+  },
+  {
+   "source": "AssumP1.3",
+   "target": "PSP1.7",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "LP1.3",
+   "target": "PSP1.10",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "AssumP1.3",
+   "target": "PSP1.10",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "LP1.3",
+   "target": "PSP1.13",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "LP1.4",
+   "target": "PSP1.15",
+   "type": "uses",
+   "confidence": 1.0
+  },
+  {
+   "source": "AssumP1.2",
+   "target": "PSP1.16",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "AssumP1.4",
+   "target": "PSP1.16",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "RP1.8",
+   "target": "PSP1.17",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "RP1.8",
+   "target": "PSP1.18",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "RP1.8",
+   "target": "PSP1.19",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "RP1.8",
+   "target": "PSP1.20",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "DP1.5",
+   "target": "PSP1.17",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "DP1.8",
+   "target": "ASP1.10",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "DP1.9",
+   "target": "ASP1.9",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "DP1.8",
+   "target": "ASP1.14",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "DP1.8",
+   "target": "ASP1.36",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "RP1.8",
+   "target": "ClP1.3",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "RP1.8",
+   "target": "PP1.4",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "DP1.5",
+   "target": "PP1.4",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ClP1.2",
+   "target": "ClP1.3",
+   "type": "uses",
+   "confidence": 0.6
+  },
+  {
+   "source": "DP1.5",
+   "target": "ClP1.7",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "AP1.1",
+   "target": "ClP1.7",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1.13",
+   "target": "ClP1.6",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP1.12",
+   "target": "ClP1.6",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1.1",
+   "target": "ClP1.6",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1.3",
+   "target": "ClP1.6",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1.12",
+   "target": "ClP1.4",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1.18",
+   "target": "ClP1.4",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1.1",
+   "target": "ClP1.4",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP1.18",
+   "target": "ClP1.5",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "AP1.1",
+   "target": "ClP1.5",
+   "type": "uses",
+   "confidence": 0.7
+  },
+  {
+   "source": "DP1.12",
+   "target": "ClP1.8",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1.18",
+   "target": "ClP1.8",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1.1",
+   "target": "ClP1.8",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "ClP1.8",
+   "target": "CnjP1.1",
+   "type": "uses",
+   "confidence": 0.65
+  },
+  {
+   "source": "DP1.17",
+   "target": "ClP1.9",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1.2",
+   "target": "ClP1.9",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "DP1.17",
+   "target": "RP1.10",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1.13",
+   "target": "DP1.17",
+   "type": "uses",
+   "confidence": 0.6
+  },
+  {
+   "source": "DP1.8",
+   "target": "ClP1.10",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1.2",
+   "target": "ClP1.10",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "ClP1.10",
+   "target": "OpenP1.2",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1.11",
+   "target": "ClP1.9",
+   "type": "uses",
+   "confidence": 0.7
+  },
+  {
+   "source": "DP1.6",
+   "target": "OpenP1.3",
+   "type": "uses",
+   "confidence": 0.65
+  },
+  {
+   "source": "CnjP1.1",
+   "target": "OpenP1.3",
+   "type": "uses",
+   "confidence": 0.6
+  },
+  {
+   "source": "DP1.10",
+   "target": "ClP1.7",
+   "type": "uses",
+   "confidence": 0.6
+  }
+ ]
+}

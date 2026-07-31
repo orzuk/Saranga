@@ -182,6 +182,15 @@ SUBCLASS_VALUES = {
 # ── Type-specific extra fields (beyond subclass) ────────────────────────
 # These carry structured information unique to certain node types.
 
+# Universal optional field on EVERY node:
+#   confidence: float | null  — extraction confidence 0-1. Captures how much
+#     judgment the node required, NOT how rigorous the mathematics is (that is
+#     `rigor`). 1.0 = lifted from an explicit LaTeX environment; ~0.6-0.75 =
+#     promoted from prose, where type and span boundaries are a judgment call.
+#     Lets consumers filter speculative promotions (e.g. for a fair
+#     rules-vs-silver comparison) instead of guessing.
+NODE_CONFIDENCE_FIELD = "confidence"
+
 # Definition (Aristotelian genus + differentia — the base-class + mixin bridge
 # to Mathlib concept structure; all optional, best-effort):
 #   definiendum:         str | null        — the term being defined (head noun/name)

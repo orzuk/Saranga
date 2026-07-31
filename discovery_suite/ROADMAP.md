@@ -198,3 +198,243 @@ log it separately. This turns the eval into a live discovery loop.
 - Whether T-OPEN eval leans on retrospective real resolutions (defensible, scarce) vs
   synthetic twins (plentiful, less "real") — probably both, reported separately.
 - Corpus scope for first full run: portal 15.7k vs full 100k on cluster.
+
+---
+
+## 7. Status snapshot & prioritized next steps (2026-07)
+
+Where each task actually stands (code-grounded), then the ordered work list. Owner
+tags: **[O]** Or, **[Y]** Yaron, **[O+Y]** joint.
+
+### 7.1 Task status — done vs TODO
+
+- **T-OPEN — runs end-to-end on the full 100k.** Sweep→triage→judge→citation-gate all
+  exist as code (`open_problems/{sweep_open,triage_open,batch_o4}.py`, `--citations`).
+  Last run: 15,143 problem statements × 1,589,327 theorem-like nodes → **300,204
+  candidate pairs → 166 shortlist → judged (154 NO / 7 YES / 5 PARTIAL)**. Citation
+  gate (S2) now run on the 12 yes/partial: the strong ones (Friedl–Tillmann,
+  Christensen–Wang, inverse-Gowers, maximal-green-sequence) are all **cited → known
+  resolutions**; **no confirmed undiscovered resolution yet** (expected at this depth).
+  *Gap:* matching is **lexical** — only near-verbatim resolutions reach the shortlist;
+  the judge only ever sees 166 (an Opus-cost cutoff, not a discovery boundary).
+- **T-PLAG — sweep + gates run on 100k; judge not run at scale.** 384,115 candidate
+  reuse pairs → 15,003 strong → self-reuse (S2 author) gate → 6,116 cross-author →
+  IDF/promiscuity filter → **737-pair cross-author shortlist**. The LLM judge
+  (`plagiarism/p4_judge.py`) is coded but **not yet run** over the 737; the math.NT
+  standout (1109.0956→1304.6179, 223 shared statements) is unverified.
+- **T-ALIGN — engine exists, not wired to suite/eval at scale.** `src/graph_alignment.py`
+  (signature prefilter → Hungarian → structural refinement → permutation significance,
+  `jaccard` **and** `embedding` σ). Needs the shared ANN index + planted eval.
+- **Erdős probe — data ready, only a fixture run.** `open_problems/erdos_problems.csv`
+  = **1217 problems** with `yaml_status` (**~609 open / ~556 resolved**, incl. Lean
+  formalization variants). `erdos_coverage.py` maps each to its best corpus
+  `open_problem`/`conjecture` node + T-OPEN resolving theorem — but has only run on a
+  **10-row fixture over ~87 local papers**. No solved-by-**human** vs solved-by-**AI**
+  label exists (that is *not* derivable from `yaml_status` and must be curated).
+- **Eval harness (planted ground truth, §4) — NOT built.** All three tasks still lack
+  ground-truth labels, so hits can only be eyeballed. This is the largest missing
+  methodological piece.
+
+### 7.2 In-suite next steps (ordered)
+
+1. **[O+Y] Build the planted-ground-truth eval harness (§4).** Turns discovery from
+   anecdotes into precision/recall + detection-vs-obfuscation curves — the TMLR-grade
+   result. Everything below is more credible once this exists.
+2. **[Y] Semantic (BERT-class) retrieval at the *generation* stage of T-OPEN/T-PLAG.**
+   The blind spot is recall at candidate generation, not the judge — a paraphrased
+   resolution never enters the 166. Bi-encoder embeddings (**Qwen3-Embedding**, already
+   on the cluster, or `bge-m3`) + ANN index for recall; **cross-encoder reranker**
+   (`bge-reranker`/`Qwen3-Reranker`) for precision. Decisions: canonicalized vs raw
+   text (ablate + optionally score-fuse, don't vector-concat); context from the **typed
+   graph** (embed a node with its linked `definition`/`assumption` neighbors via late
+   chunking), not arbitrary preceding prose. Watch the runtime blow-up — that's the
+   real engineering constraint.
+3. **[Y] Scale past the top-166 with a local free judge.** Host Qwen/Kimi on the
+   cluster (`scripts/launch_qwen_judge_server.sh` exists) as a cheap first-pass judge
+   over thousands of (BERT-surfaced) candidates → Opus only adjudicates survivors.
+   Validate the open judge against Opus on the current 166 *before* trusting it at 10k.
+4. **[Y] Run the T-PLAG LLM judge over the 737-pair shortlist** and verify the NT standout.
+5. **[O] Erdős at 100k scale + persist edges.** Copy the 1217-CSV to the cluster, run
+   `erdos_coverage.py` over the parsed 100k (retune `--threshold` on the real score
+   histogram), and **write `resolves`/`erdos_ref` edges back into the graph** (linkage
+   currently lives only in an output CSV). Target classification = **open /
+   solved-in-corpus / solved-elsewhere**, with a small **curated** AI-solved subset,
+   and the "found-in-literature vs genuinely-new" split (the citation-gate logic)
+   applied to that subset only.
+6. **[O] Feed Mathlib *structure* to the matcher.** Grounding is currently pure
+   string-match against a flat name index; the `uses`/`proves` edges already extracted
+   into `mathlib4_midlevel.json` are discarded, and `extends` inheritance is never
+   parsed. Ingest `extends` → concept→concept `specializes` edges, load the dependency
+   edges, and let relevance **propagate over the concept DAG** so grounding recall and
+   the cross-paper "related-concept" signal both improve. (The CLAUDE.md
+   concept-inheritance DAG is still aspirational — this makes it real.)
+
+### 7.3 Cross-cutting (outside the suite, but blocking the paper)
+
+Tracked here for visibility; detailed plans live with each subsystem.
+
+- **[O+Y] Proper silver train/test at scale (TMLR-critical).** Re-extract 200–300+
+  papers with **Opus-5** (uniform model/prompt) into `corpus/silver/` (already
+  organized by model/prompt with a `split` column), then a **random train/test split /
+  k-fold** — replacing the current 17-paper **in-sample** setup. Freeze the schema first.
+- **[Y] Held-out distillation eval.** Current numbers (`merged_eval_silver_001_011_v3`):
+  base F1 **0.711 → 0.735** (distillation) **→ 0.810** (LLM-judge) are **in-sample on 17
+  papers**. Report on the held-out set, and **separate the two effects** — regex
+  distillation alone is only **+0.024** (and lowers precision); most of the headline
+  lift is the LLM-judge FP-correction, a different mechanism. The 60-paper test set is
+  already in `corpus/silver/` (`split=test`), so this can start now.
+- **[O] Portal graph re-render + repo reconciliation.** Graphs are **pre-baked
+  matplotlib SVG-in-HTML** committed under `portal/graphs/` and served statically by the
+  Space — *not* rendered on the fly. The recurring "text out of the box" bug lives in
+  `src/visualize_annotation.py` (fixed `fontsize=12` vs `CHARS_PER_UNIT`/`_display_width`
+  width estimate); a fix only shows after re-running `scripts/render_tier2_graphs.sh`
+  (+ tier-1) **and re-committing** to the Space. Reconcile the git-repo portal vs the HF
+  Space repo (they appear to have diverged). Durable fix: move to **client-side
+  rendering** (revive the vendored cytoscape, draw from JSON) to kill the stale-HTML
+  bug class.
+
+### 7.4 Held-out distillation with α-tuning — algorithm spec (to implement, not yet built)
+
+Replaces the in-sample 17-paper number with a **held-out** result and tunes the FDR
+prune threshold **α** (`prune_alpha`/`max_fdr`) properly — on **one API budget**.
+
+**Key idea.** The LLM cost is in rule *generation* (`analyze`/`aggregate`); **α only
+affects *pruning*, which is free CPU compute.** So generate the candidate pool **once,
+unpruned (α = 1)**, cache each rule's stats, then sweep α **post-hoc**. Never run
+generation once per α.
+
+**Data.** `corpus/silver/metadata.csv` `split` → train / val / test (on this small a
+corpus, prefer **k-fold CV over train to pick α** and keep one untouched test set).
+Silver-gold node sets come from the JSONs; matching uses greedy Jaccard ≥ 0.7 (as today).
+
+**Phase 1 — Generate the candidate pool (once, on train, α = 1).**
+- **Dark-knowledge is defined against a *fixed baseline*** (the original manual rules,
+  never updated mid-run) so the pool is α-independent. Dark-knowledge = gold items
+  the baseline **misses (FN)** and **≥1 LLM extraction catches (TP)**.
+- Maintain a growing **unpruned** pool `P` of candidate rules. Per train paper, in order:
+  - candidates-needed = dark-knowledge items **not already covered by any rule in `P`**
+    (coverage dedup is against the *unpruned* pool → no redundant regeneration);
+  - `analyze`: batch those items → LLM proposes *generalizing* rules;
+  - `aggregate`/validate: merge into `P` (dedup + codegen/backtracking guards).
+- **No FDR pruning in this phase.** (Dedup by coverage, not by pruning.)
+
+**Phase 2 — Cache per-rule stats (deterministic, no LLM).**
+Run every rule in `P` over all train papers; attribute spans to gold by greedy Jaccard
+→ per-rule `(TP, FP)` → `FDR`. Store per-paper hits so subset re-scoring is cheap.
+
+**Phase 3 — α-sweep (free).**
+For α on a grid (e.g. 0.0–0.5): `R(α) = {rules in P with FDR ≤ α}` (a **nested** family —
+raising α only *adds* rules). **Re-score `R(α)`** by re-running the parse with that
+subset (this correctly handles rule interaction, unlike a pure per-rule filter) →
+validation F1 (or CV-F1). Pick `α* = argmax` val/CV F1. Emit the **F1-vs-α curve** (a
+paper figure / ablation).
+
+**Phase 4 — Optional targeted regeneration at α\* (pay once, not per α).**
+regression-set = gold items covered somewhere in `P` but **not** by `R(α*)` (lost purely
+to trimming). Run **one** `analyze` pass on just those items → new (aimed-to-be-precise)
+candidates → keep those with train-FDR ≤ α* → add to `R(α*)`. Skip in v1 unless the
+sweep shows meaningful recall lost at α*.
+
+**Phase 5 — Report once, on TEST.**
+Freeze `R(α*)` (+ optional top-up). On the held-out test set report **three stages
+separately**, per node type, with CIs: **base** (manual rules only) vs **distilled**
+`R(α*)` vs **+LLM-judge** (FP-correction). Do *not* conflate them — regex distillation
+and the judge are different mechanisms.
+
+**Cost.** One generation pass over train (~$1/paper, Anthropic API, runs locally — no
+GPU/cluster) + one optional top-up. The α-sweep and all F1 evaluation are free (Jaccard,
+no LLM); only the optional FP-judge stage adds calls. Entry point to build:
+`scripts/eval_distill_heldout.py`, wrapping `distillation_analysis.py` +
+`silver_distillation_merged.py`, reading the `split` column.
+
+### 7.5 Report results PER MATH SUBFIELD, not pooled (paper framing)
+
+**Motivation (Or, 2026-07-30).** Public discussion of "AI doing math" treats
+mathematics as one monolith. It isn't: it is many subfields with different
+cultures, and AI's impact plausibly differs across them. (Framing prompted by
+@johnennis: many AI proofs amount to importing a known result from another
+subfield, which is legitimate but leaves the "native" proof — and the questions
+it would unlock — still open.) Our sampling design makes the per-subfield cut
+free, so pooling would discard our most structural finding.
+
+**We already measure a large subfield effect.** Formal-environment density
+(does the field use `\begin{theorem}` at all?), 5 papers/category over the
+staged 100:
+
+| category | envs/paper | zero-env papers |
+|---|---|---|
+| math_ph | 5.0 | 3/5 |
+| math_OC | 8.8 | 1/5 |
+| cs_LG | 14.8 | 2/5 |
+| math_CO | 19.8 | 1/5 |
+| math_NT | 36.2 | 0/5 |
+| math_RT | 45.2 | 0/5 |
+| **math_AT** | **150.2** | 0/5 |
+
+A ~30x spread. It propagates into extraction: v5.1 mean *node confidence* was
+0.765 for a prose-only math_OC paper vs 0.965 for a formally-structured math_CA
+paper — i.e. **the subfield determines how much of the extraction is judgment
+rather than mechanical transcription.**
+
+**What to do in the paper.**
+1. **Per-category tables as first-class results**, not an appendix: rules-vs-silver
+   F1, node/edge density, orphan rate, and the new node/edge `confidence`
+   distributions — all broken out by the 20 `CORPUS_CATEGORIES`.
+2. **Report formal-environment density as the explanatory variable.** It is the
+   mechanism behind per-category differences in extractability, and it predicts
+   where a regex extractor is structurally blind (11% of papers have zero
+   environments, 17% fewer than five).
+3. **T-OPEN: report cross-category vs within-category resolution rates
+   separately.** This is the most direct engagement with the "cross-subfield
+   transfer" thesis — and note that the 100k sweep's 5 candidates all came from
+   cross-category pairs (the filter Yaron now wants to relax, which would let us
+   quantify the contrast).
+4. **Use `confidence` per category** to separate "the extractor struggled" from
+   "this field writes less formally" — previously indistinguishable.
+
+**Caveats to state explicitly (do not overclaim).**
+- We measure **documentation culture** (LaTeX conventions), which is a *proxy*
+  for mathematical culture, not the same thing. A field with few
+  `\begin{theorem}` blocks is not less rigorous — math_ph and math_OC papers are
+  rigorous but written differently. Say this plainly.
+- 50 papers/category supports per-category point estimates with **wide CIs**;
+  it does not support confident pairwise category rankings. Report intervals.
+- Category labels are the arXiv primary category, which is author-chosen and
+  noisy (many papers are genuinely cross-listed).
+
+### 7.5.1 Category provenance — measured, and it changes the analysis design
+
+`extraction_targets_opus5.csv` records the category each paper was **sampled
+from**, not its arXiv primary listing. arXiv returns cross-listed papers for a
+category query, so the two differ. Measured against the arXiv API for all 100
+extracted papers (`corpus/silver/true_categories.csv`,
+`scripts/fetch_true_categories.py`):
+
+- **30/100** have a primary category genuinely different from the sampled one.
+- A further **8/100** differ only notationally or by arXiv alias
+  (`math.ST`≡`stat.TH`, `cs.IT`≡`math.IT`, `cs.SY`≡`eess.SY`, `math-ph` spelling).
+  These are NOT misfiled; an earlier count of "38" conflated them.
+
+**This does not mean the sampling is wrong — it means the two labels answer
+different questions**, and the choice of axis matters:
+
+| axis | property | problem |
+|---|---|---|
+| `sampled_from` | **designed, balanced** — exactly 5 papers per category x 20 | a paper may be primarily elsewhere |
+| `primary_category` | authoritative single label | **unbalanced**, long tail of singletons (q-bio.NC, gr-qc, cond-mat.stat-mech, cs.CL, math.KT, math.CT ... each n=1) |
+
+Re-bucketing by primary would scatter the 100 papers across ~35 categories with
+many n=1 cells — useless for per-subfield comparison, which needs cell counts
+large enough to say anything.
+
+**Recommendation for the paper:** report per-subfield results along
+`sampled_from` (the balanced design; cross-listing means the authors *did* file
+the paper under that category), and use `primary_category` as a robustness check
+on any subfield claim that looks large.
+
+**The 30% cross-list rate is itself a finding worth reporting.** It is direct
+evidence that mathematical subfields are porous rather than cleanly partitioned
+— relevant to the "math is many subfields with different cultures" framing in
+7.5. Notable flows: math_LO -> cs.LO (2), math_AG -> math.AC (2), cs_CC ->
+quant-ph/math.OC, math_DG -> hep-th/gr-qc, math_CO & math_GR & math_NA ->
+math.DS (3).
