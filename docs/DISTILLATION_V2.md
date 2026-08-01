@@ -1,8 +1,8 @@
 # Distillation v2 — design for review
 
-**Status:** registry implemented + tested (`scripts/distill_registry.py`).
-Incremental aggregate and the driver loop are specified below but **not yet
-wired** — review this first.
+**Status:** all four pieces built and tested. Not yet run live (needs an API key
+or the Max-plan route). Open questions at the bottom are still open — in
+particular Q6, whether the incremental aggregate costs F1.
 
 ---
 
@@ -116,6 +116,24 @@ keeps working; its snapshot machinery simply becomes unnecessary.
 
 ---
 
+## Measured on a 3-paper dry run
+
+| | v1 | v2 |
+|---|---|---|
+| aggregate prompt growth | **+11K tokens/paper** (19K→184K over 17) | **−4,507 chars** over 3 papers |
+| prompt size driver | every suggestion ever made | current rules + this paper's misses only |
+
+v2's prompt tracks the current paper's dark-knowledge count (12→5→2 items =
+7,347→4,009→2,840 chars) rather than accumulating, so the paper-18 context wall
+is gone and cost becomes ~linear.
+
+Verified by test: a rule renamed by the model keeps its uid; a rule whose
+`# @uid:` marker the model *drops* is recovered by body match; a retired rule is
+commented out in the emitted file but retained in the registry and returns when
+alpha rises; helper regexes (`_HELPER`) are never minted as rules.
+
+---
+
 ## Open questions for Or
 
 1. **Recycle threshold.** Currently a retired rule is revived if it matches ≥1
@@ -152,8 +170,8 @@ keeps working; its snapshot machinery simply becomes unnecessary.
 |---|---|---|
 | `scripts/distill_registry.py` | registry, stats, gating, recycling | **built + tested** |
 | `scripts/eval_distill_heldout.py` | k-fold CV α-tuning wrapper | built (v1-compatible) |
-| `scripts/distill_v2.py` | driver loop (steps 1–6) | **not yet written** |
-| aggregate prompt change | emit `# @uid:N`; send current rules not all suggestions | **not yet written** |
+| `scripts/distill_v2.py` | driver loop (steps 1–6) | **built + tested** |
+| `aggregate_incremental` (in `distill_v2.py`) | emit `# @uid:N`; send current rules not all suggestions | **built + tested** |
 
 The aggregate prompt lives in `src/LLMVersion/distillation_analysis.py`
 (`aggregate_rules_merged`) — **Yaron's file**. v2 adds a parallel function rather
