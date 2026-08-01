@@ -347,6 +347,51 @@ no LLM); only the optional FP-judge stage adds calls. Entry point to build:
 `scripts/eval_distill_heldout.py`, wrapping `distillation_analysis.py` +
 `silver_distillation_merged.py`, reading the `split` column.
 
+### 7.4.1 Status: IMPLEMENTED — `scripts/eval_distill_heldout.py`
+
+Phases 1, 2, 3 and 5 of 7.4 are built. Phase 4 (targeted regeneration at alpha*)
+is deliberately deferred per the spec's "skip in v1".
+
+**It is a wrapper — nothing under `src/LLMVersion/` was modified.** Generation is
+`run_sequential`, pruning is `prune_rules`, scoring is `evaluate_single_paper`.
+
+Mechanics worth knowing:
+
+- **Pool built at `alpha=1.0`, then snapshotted** to `distilled_rules.POOL.py`.
+  `prune_rules` *mutates* `distilled_rules.py` in place (commenting rules out
+  with `# PRUNED`), so every alpha in the sweep restores from the snapshot
+  first. Without that, each alpha would prune the previous alpha's output.
+- **`--skip-generation` makes the whole run zero-API-call**, so alpha can be
+  re-tuned or results re-reported for free.
+- **`--flat-tex`** stages `portal/data/tier2_tex/<pid>.tex` (and the new
+  `corpus/silver/tex_pool/<arxiv_id>.tex`) into the `<pid>/source/` layout the
+  pipeline expects, instead of patching the loader.
+- CV defaults to **pool-once** (per the spec's one-API-budget constraint), which
+  leaks val papers into generation and makes **CV F1 optimistic — it selects
+  alpha, it does not get reported**. The headline number comes from the untouched
+  test set. `--strict-cv` regenerates per fold (k x cost, no leakage).
+
+**BLOCKER for Yaron — FP-to-rule attribution can silently no-op the sweep.**
+Validated end-to-end with a synthetic pool: pruning removed **0 rules at every
+alpha**, every FP landing in `<unattributed>`, giving an identical F1 at all
+alphas and an arbitrary "alpha*". Two failure modes in
+`distillation_analysis.prune_rules`:
+
+1. The fast path requires `all(r.get('rule_name') ...)` over FP results — a
+   **single** result dict missing `rule_name` drops the entire run to the slow
+   path.
+2. The slow path only collects patterns whose variable name **starts with `_`**
+   (`name.startswith('_')`), but the codegen prompt tells the LLM to name rules
+   like `P1_TEXTIT_IS` / `ENV_NOTATION`. So it can match nothing and attribute
+   every FP to `<unattributed>` — pruning becomes a no-op **with no error**.
+
+Real generated rules do emit `rule_name`, so the fast path normally holds and
+the sweep works; the risk is a partial/missing `rule_name` degrading silently to
+a broken fallback. `eval_distill_heldout.py` now **detects this and refuses to
+present alpha\* as tuned** (`cv_degenerate` in the report), but the underlying
+attribution should be fixed in `prune_rules` — Yaron's call, since that file is
+his.
+
 ### 7.5 Report results PER MATH SUBFIELD, not pooled (paper framing)
 
 **Motivation (Or, 2026-07-30).** Public discussion of "AI doing math" treats
