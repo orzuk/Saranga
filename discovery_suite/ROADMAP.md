@@ -249,6 +249,22 @@ tags: **[O]** Or, **[Y]** Yaron, **[O+Y]** joint.
    graph** (embed a node with its linked `definition`/`assumption` neighbors via late
    chunking), not arbitrary preceding prose. Watch the runtime blow-up — that's the
    real engineering constraint.
+   **BUILT for T-OPEN (see `open_problems/SEMANTIC_RETRIEVAL.md`).** Shared engine in
+   `discovery_suite/embed/` (textstore → encode → index → fuse), T-OPEN head in
+   `open_problems/{o1b_dense_sweep,o1c_fuse,o5_rerank,bench_retrieval,watch_open}.py`
+   plus sbatch scripts. Purely additive — `sweep_open.py` is untouched and is now the
+   lexical arm; dense output keeps sweep_open's nine leading CSV columns so triage →
+   `batch_o4.py` → citation gate all run unchanged. Six embedders, four views
+   (`node` / `ctx-concat` / `ctx-late` / `concepts-only`; ctx-late is free — it mixes
+   cached node vectors, so α is swept without re-encoding), raw vs canonical vs
+   score-fused, RRF/z-norm fusion, cross-encoder rerank. Runtime is *not* the blow-up
+   feared: a bi-encoder is O(N), so 100k scoring is a ~2.4e13-FLOP GEMM (<1 GPU-min vs
+   57 CPU-min lexical); only the reranker is per-pair and it sees ~1e-5 of the pairs.
+   Whole champion config ≈ 3 GPU-hours, no API spend. Verified locally: backend
+   exactness, bitwise-reproducible encoding, filter correctness, triage contract.
+   **Still to run:** the GPU model roster, and the obfuscation curve with `--llm`
+   (without it the rule-based L2–L4 fallback isn't paraphrase, so the lexical baseline
+   looks perfect at every level — a harness property, not a result).
 3. **[Y] Scale past the top-166 with a local free judge.** Host Qwen/Kimi on the
    cluster (`scripts/launch_qwen_judge_server.sh` exists) as a cheap first-pass judge
    over thousands of (BERT-surfaced) candidates → Opus only adjudicates survivors.
