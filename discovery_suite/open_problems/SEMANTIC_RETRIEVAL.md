@@ -191,6 +191,46 @@ open_problems/watch_open.py        live progress across array tasks
 open_problems/{textstore,encode,dense,rerank}_cluster.sh + embed_cluster.sh
 ```
 
+## First benchmark run (local, 150 papers, 40 twins, MiniLM, CPU)
+
+`runs/bench_local_minilm.{csv,md}` — 25 arms. **This is a machinery check, not a
+result about embedders**: MiniLM is the weakest model in the roster and the
+obfuscation is rule-based (see caveat 2), so read it for what the pipeline does,
+not for who wins.
+
+| arm | AP | R@50 | encode_s |
+|---|---|---|---|
+| lexical-jaccard | 0.807 | 0.925 | 0 |
+| minilm/ctx-late/raw + lexical (RRF) | 0.704 | 0.675 | 0 |
+| minilm/node/raw + lexical (RRF) | 0.704 | 0.675 | 533 |
+| minilm/node/raw | 0.534 | 0.625 | 533 |
+| minilm/ctx-concat/raw | 0.431 | 0.550 | 317 |
+| minilm/concepts-only/raw | 0.386 | 0.450 | 147 |
+
+What this does establish:
+
+- **ctx-late really is free.** 0.2s per arm — including the α = 0.5/0.7/0.9 sweep —
+  against 317–533s for every arm that needs its own forward pass. Same for
+  `concepts-only/canon`, which reuses the raw encode at 0.0s.
+- **Hybrid beats dense alone every time** (0.70 vs 0.53 AP), which is the expected
+  IR result and the reason `o1c_fuse.py` exists.
+- **Lexical wins outright** — as predicted, because the rule-based obfuscator leaves
+  content words in place. Lexical scores recall 1.00 at L0, L1 *and* L2.
+
+Three things that would be wrong to conclude from this table:
+
+1. **That context views don't help.** MiniLM's context window is **256 tokens**, and
+   a `ctx-concat` string is the statement plus up to 600 chars of neighbours — so
+   most of the context block is *truncated away* before the model sees it. The
+   context views need a long-context backbone (`bge-m3` 8k, `qwen3` 32k) to be
+   evaluated at all. This is a property of the smallest model in the roster.
+2. **That canonicalization hurts.** It loses to raw here on every view, but on
+   planted twins whose problem side was posed from already-cleaned text there is
+   less notation variance to normalize than in a real problem→theorem pair.
+3. **Anything from the per-level recalls.** They read L0 = 0.64, L1 = 0.77,
+   L2 = 0.62 — L1 scoring *above* verbatim L0 is backwards and is small-sample
+   noise: 40 twins over 3 levels is ~13 per cell.
+
 ## Verified so far (local, 300 papers, MiniLM)
 
 - `numpy-flat` and `torch` backends return **identical** top-k (max score delta 6e-7).
@@ -200,5 +240,9 @@ open_problems/{textstore,encode,dense,rerank}_cluster.sh + embed_cluster.sh
   routing, per-problem cap all apply normally); fused CSV likewise.
 - Retrieved node types are theorem-like only (theorem/lemma/corollary/proposition/claim).
 
+- 25-arm factorial completes end to end and writes CSV + markdown + a run manifest.
+
 Not yet run: the full model roster (needs a GPU), the LLM-paraphrase obfuscation
-curve, and any corpus-scale run.
+curve, and any corpus-scale run. **Do the roster and `--llm` together** — with a
+256-token model and non-paraphrased twins, neither the context axis nor the
+semantic-vs-lexical question has actually been tested yet.
