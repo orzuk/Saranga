@@ -99,6 +99,11 @@ if ! mkdir -p "$HF_HOME" 2>/dev/null; then
     unset HF_HOME
 fi
 
+if [ -e "$OUT" ]; then
+    echo "[bench] NOTE: $OUT exists and WILL BE OVERWRITTEN."
+    echo "        Pass OUT=<other>.csv to keep both runs side by side."
+fi
+
 echo "[bench] root=$ROOT papers=$PAPERS twins=$TWINS"
 echo "[bench] models=$MODELS"
 echo "[bench] views=$VIEWS canons=$CANONS levels=$LEVELS llm=${LLM:-<rule-based>}"

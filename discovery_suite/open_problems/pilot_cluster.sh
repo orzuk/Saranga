@@ -104,6 +104,16 @@ stamp() {  # stamp <label> <seconds>
                  l, s, f/p, s*f/p/60, f }' | tee -a "$TIMING"
 }
 
+# Every stage is resumable by design: finished shards carry a .done marker and
+# are skipped. That is right for a production re-run and WRONG for a timing run —
+# the stages would report seconds and the extrapolation would be meaningless.
+if [ -d "$STORE" ] || [ -d "$VECS" ]; then
+    echo "[pilot] WARNING: $RUN already has a text store / vector store."
+    echo "         Finished shards will be SKIPPED, so the timings below will be"
+    echo "         far too low. Use a fresh RUN=... for numbers you can trust,"
+    echo "         or delete $STORE and $VECS first."
+fi
+
 echo "[pilot] root=$ROOT papers=$PAPERS model=$MODEL view=$VIEW canon=$CANON"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
 
