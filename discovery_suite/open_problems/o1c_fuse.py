@@ -66,6 +66,18 @@ def main() -> None:
     ap.add_argument("--top-per-problem", type=int, default=20)
     ap.add_argument("--head", type=int, default=200,
                     help="shortlist depth used for the composition report")
+    ap.add_argument("--emit-unique", default=None, metavar="LABEL",
+                    help="also write the pairs found ONLY by this arm (e.g. "
+                         "'dense'), ranked by that arm's own score, to "
+                         "<out>.only-LABEL.csv. RRF ranks agreement highest, so "
+                         "an arm's unique candidates never reach the top of the "
+                         "fused list — but they are exactly what has to be judged "
+                         "to know whether the new arm found anything real.")
+    ap.add_argument("--cap-per-problem", type=int, default=0,
+                    help="before fusing, keep only this many candidates per "
+                         "problem from EACH arm. Use it to compare arms that were "
+                         "swept at different depths (dense top-50 vs lexical "
+                         "top-20 is not a like-for-like overlap).")
     args = ap.parse_args()
 
     paths, labels = [], []
@@ -79,7 +91,32 @@ def main() -> None:
         sys.exit("[o1c] need at least two inputs (--lexical and/or several --dense)")
 
     frames = [_load(p, lab) for p, lab in zip(paths, labels)]
+    if args.cap_per_problem:
+        frames = [f.sort_values("score", ascending=False)
+                   .groupby("problem_key", sort=False)
+                   .head(args.cap_per_problem)
+                   .reset_index(drop=True) for f in frames]
+        print(f"[o1c] capped each arm to {args.cap_per_problem}/problem for a "
+              f"like-for-like comparison", file=sys.stderr)
     print(overlap_report(frames, labels), file=sys.stderr)
+
+    if args.emit_unique:
+        if args.emit_unique not in labels:
+            sys.exit(f"[o1c] --emit-unique {args.emit_unique!r} is not one of "
+                     f"{labels}")
+        mine = frames[labels.index(args.emit_unique)]
+        others = set()
+        for lab, f in zip(labels, frames):
+            if lab != args.emit_unique:
+                others |= set(map(tuple, f[PAIR_KEYS].itertuples(index=False, name=None)))
+        mask = [tuple(r) not in others
+                for r in mine[PAIR_KEYS].itertuples(index=False, name=None)]
+        uniq = mine[mask].sort_values("score", ascending=False)
+        up = Path(args.out).with_suffix(f".only-{args.emit_unique}.csv")
+        uniq.to_csv(up, index=False)
+        print(f"[o1c] {len(uniq):,} pairs found ONLY by '{args.emit_unique}' "
+              f"across {uniq.problem_key.nunique():,} problems -> {up}",
+              file=sys.stderr)
 
     fused = fuse(frames, method=args.method, weights=args.weights,
                  rrf_k=args.rrf_k, top_per_problem=args.top_per_problem)
