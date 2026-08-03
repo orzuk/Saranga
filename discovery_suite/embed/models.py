@@ -282,26 +282,39 @@ _PROBE = [
 
 
 def check(keys: Sequence[str], *, device: Optional[str] = None,
-          batch_size: Optional[int] = None) -> int:
-    """Load each card and report real dim, throughput, and a sanity similarity.
+          batch_size: Optional[int] = None, probe_n: int = 3,
+          corpus_nodes: int = 1_589_327) -> int:
+    """Load each card; report real dim, MEASURED throughput, and a sanity check.
 
     Run this on the cluster BEFORE launching an encode array — a missing model
     should fail in 30 seconds here, not four hours into a job array.
+
+    With ``probe_n`` above a few hundred the texts/s figure becomes a usable
+    planning number rather than a warm-up artifact, so we also project how long
+    the full corpus would take at that rate. That projection is the number worth
+    writing down: everything downstream is scheduled around it.
     """
     failures = 0
     for key in keys:
         card = get_card(key)
         try:
             emb = Embedder(card, device=device, batch_size=batch_size).load()
-            t0 = time.time()
+            # correctness probe: [0] and [1] are the same claim, [2] is unrelated
             vecs = emb.encode(_PROBE, role="doc")
-            dt = time.time() - t0
-            # probe[0]/probe[1] are the same claim; probe[2] is unrelated.
             rel = float(vecs[0].astype(np.float32) @ vecs[1].astype(np.float32))
             unrel = float(vecs[0].astype(np.float32) @ vecs[2].astype(np.float32))
             flag = "ok" if rel > unrel else "SUSPECT (unrelated scored higher)"
-            print(f"  {key:<13} dim={emb.dim:<5} {len(_PROBE)/max(dt,1e-9):6.1f} texts/s  "
-                  f"related={rel:.3f} unrelated={unrel:.3f}  {flag}")
+
+            # throughput on a batch big enough to amortise warm-up
+            batch = (_PROBE * ((probe_n // len(_PROBE)) + 1))[:max(probe_n, len(_PROBE))]
+            t0 = time.time()
+            emb.encode(batch, role="doc")
+            dt = max(time.time() - t0, 1e-9)
+            rate = len(batch) / dt
+            eta_h = corpus_nodes / rate / 3600.0
+            print(f"  {key:<13} dim={emb.dim:<5} {rate:8.1f} texts/s  "
+                  f"→ {eta_h:5.2f} h for {corpus_nodes:,} nodes   "
+                  f"rel={rel:.3f} unrel={unrel:.3f}  {flag}")
         except Exception as exc:
             failures += 1
             print(f"  {key:<13} UNAVAILABLE: {type(exc).__name__}: {exc}")
@@ -315,6 +328,11 @@ def main() -> None:
                     help="comma-separated keys, or 'all' / 'embedders' / 'rerankers'")
     ap.add_argument("--device", default=None)
     ap.add_argument("--batch-size", type=int, default=None)
+    ap.add_argument("--probe-n", type=int, default=3,
+                    help="texts to encode when timing. Use 512+ on a GPU for a "
+                         "throughput number you can actually plan around")
+    ap.add_argument("--corpus-nodes", type=int, default=1_589_327,
+                    help="corpus size used for the 'hours for a full pass' projection")
     ap.add_argument("--list", action="store_true", help="print the registry and exit")
     args = ap.parse_args()
 
@@ -337,8 +355,10 @@ def main() -> None:
         keys = list(RERANKERS)
     else:
         keys = [k.strip() for k in sel.split(",") if k.strip()]
-    print(f"checking {len(keys)} model(s) on device={pick_device(args.device)}")
-    failures = check(keys, device=args.device, batch_size=args.batch_size)
+    print(f"checking {len(keys)} model(s) on device={pick_device(args.device)}, "
+          f"timing on {args.probe_n} text(s)")
+    failures = check(keys, device=args.device, batch_size=args.batch_size,
+                     probe_n=args.probe_n, corpus_nodes=args.corpus_nodes)
     sys.exit(1 if failures else 0)
 
 
