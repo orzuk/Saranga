@@ -33,7 +33,17 @@ CTX_CANON_SCOPE="${CTX_CANON_SCOPE:-paper}"
 CTX_DEPTH="${CTX_DEPTH:-1}"
 MAX_NEIGHBOURS="${MAX_NEIGHBOURS:-4}"
 
-cd "$(dirname "$0")/../.."          # repo root
+# Locate the repo root. NOT via $0: sbatch COPIES the batch script into a spool
+# directory, so inside a SLURM job $0 is /var/spool/slurmd/.../slurm_script and
+# "$(dirname "$0")/../.." lands in /var/spool. Prefer the directory sbatch was
+# invoked from; fall back to $0 only when run directly with bash.
+REPO="${REPO:-${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}}"
+if [ ! -d "$REPO/discovery_suite" ]; then
+    echo "ERROR: no discovery_suite/ under '$REPO'." >&2
+    echo "       Submit from the repo root, or pass REPO=/path/to/Authomathics." >&2
+    exit 2
+fi
+cd "$REPO"
 export PYTHONPATH="$PWD/discovery_suite:${PYTHONPATH:-}"
 
 echo "[textstore] root=$ROOT store=$STORE shard=${SLURM_ARRAY_TASK_ID:-0}/$SHARDS"

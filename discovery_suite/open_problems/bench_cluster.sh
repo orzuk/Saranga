@@ -42,14 +42,29 @@ TOPK="${TOPK:-50}"
 OUT="${OUT:-discovery_suite/open_problems/runs/bench_cluster.csv}"
 JUDGED="${JUDGED:-discovery_suite/open_problems/runs/o4_verdicts_all.csv}"
 
-cd "$(dirname "$0")/../.."
+# Locate the repo root. NOT via $0: sbatch COPIES the batch script into a spool
+# directory, so inside a SLURM job $0 is /var/spool/slurmd/.../slurm_script and
+# "$(dirname "$0")/../.." lands in /var/spool. Prefer the directory sbatch was
+# invoked from; fall back to $0 only when run directly with bash.
+REPO="${REPO:-${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}}"
+if [ ! -d "$REPO/discovery_suite" ]; then
+    echo "ERROR: no discovery_suite/ under '$REPO'." >&2
+    echo "       Submit from the repo root, or pass REPO=/path/to/Authomathics." >&2
+    exit 2
+fi
+cd "$REPO"
 export PYTHONPATH="$PWD/discovery_suite:${PYTHONPATH:-}"
 mkdir -p "$(dirname "$OUT")"
 
-# Keep model weights on the lab filesystem, not in a per-user home quota, and
-# shared across jobs so only the first run pays the download.
-export HF_HOME="${HF_HOME:-/sci/labs/orzuk/orzuk/hf_cache}"
-mkdir -p "$HF_HOME"
+# Model weights on lab storage, not a home quota, and under OUR OWN user dir --
+# a shared path under another user is usually not writable, and with `set -e` a
+# failed mkdir would kill the job before anything ran. Override HF_HOME to point
+# at a genuinely shared cache once one exists.
+export HF_HOME="${HF_HOME:-/sci/labs/orzuk/$USER/hf_cache}"
+if ! mkdir -p "$HF_HOME" 2>/dev/null; then
+    echo "[warn] cannot write $HF_HOME - falling back to the default HF cache" >&2
+    unset HF_HOME
+fi
 
 echo "[bench] root=$ROOT papers=$PAPERS twins=$TWINS"
 echo "[bench] models=$MODELS"

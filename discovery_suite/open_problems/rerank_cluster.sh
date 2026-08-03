@@ -36,7 +36,17 @@ CANON="${CANON:-raw}"
 TOP_PER_PROBLEM="${TOP_PER_PROBLEM:-20}"
 BATCH="${BATCH:-}"
 
-cd "$(dirname "$0")/../.."
+# Locate the repo root. NOT via $0: sbatch COPIES the batch script into a spool
+# directory, so inside a SLURM job $0 is /var/spool/slurmd/.../slurm_script and
+# "$(dirname "$0")/../.." lands in /var/spool. Prefer the directory sbatch was
+# invoked from; fall back to $0 only when run directly with bash.
+REPO="${REPO:-${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}}"
+if [ ! -d "$REPO/discovery_suite" ]; then
+    echo "ERROR: no discovery_suite/ under '$REPO'." >&2
+    echo "       Submit from the repo root, or pass REPO=/path/to/Authomathics." >&2
+    exit 2
+fi
+cd "$REPO"
 export PYTHONPATH="$PWD/discovery_suite:${PYTHONPATH:-}"
 
 echo "[rerank] model=$MODEL view=$VIEW shortlist=$SHORTLIST"
