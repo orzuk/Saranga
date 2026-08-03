@@ -46,6 +46,16 @@ fi
 cd "$REPO"
 export PYTHONPATH="$PWD/discovery_suite:${PYTHONPATH:-}"
 
+# Re-activate the virtualenv: `#!/bin/bash -l` starts a LOGIN shell, which
+# re-sources /etc/profile and RESETS PATH, dropping the venv that was active
+# when you ran sbatch. VIRTUAL_ENV survives in the exported environment.
+VENV="${VENV:-${VIRTUAL_ENV:-}}"
+if [ -n "$VENV" ] && [ -f "$VENV/bin/activate" ]; then
+    # shellcheck disable=SC1091
+    . "$VENV/bin/activate"
+fi
+echo "[env] python: $(command -v python3)"
+
 echo "[textstore] root=$ROOT store=$STORE shard=${SLURM_ARRAY_TASK_ID:-0}/$SHARDS"
 echo "[textstore] canon: node=$CANON_SCOPE ctx=$CTX_CANON_SCOPE depth=$CTX_DEPTH"
 

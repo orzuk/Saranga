@@ -49,6 +49,39 @@ fi
 cd "$REPO"
 export PYTHONPATH="$PWD/discovery_suite:${PYTHONPATH:-}"
 
+# Re-activate the virtualenv. `#!/bin/bash -l` starts a LOGIN shell, which
+# re-sources /etc/profile and RESETS PATH -- silently dropping the venv that was
+# active when you ran sbatch, so `python3` becomes the system one and torch is
+# missing. VIRTUAL_ENV survives in the exported environment, so use that.
+VENV="${VENV:-${VIRTUAL_ENV:-}}"
+if [ -n "$VENV" ] && [ -f "$VENV/bin/activate" ]; then
+    # shellcheck disable=SC1091
+    . "$VENV/bin/activate"
+    echo "[env] venv: $VENV"
+fi
+echo "[env] python: $(command -v python3)"
+# Hard-fail on a missing torch, and REPORT whether the GPU is actually visible.
+# A silent CPU fallback is worse than a crash here: the job still "succeeds",
+# just ~50x slower, and every timing number it produces is meaningless.
+if ! python3 - <<'PYCHK'
+import sys
+try:
+    import torch
+except ImportError as exc:
+    print(f"ERROR: torch not importable: {exc}", file=sys.stderr)
+    sys.exit(3)
+cuda = torch.cuda.is_available()
+name = torch.cuda.get_device_name(0) if cuda else "-"
+print(f"[env] torch {torch.__version__}  cuda_available={cuda}  device={name}")
+if not cuda:
+    print("WARNING: no GPU visible to torch — this job will run on CPU and any "
+          "timing it reports will not reflect the real pipeline.", file=sys.stderr)
+PYCHK
+then
+    echo "       Activate the venv before sbatch, or pass VENV=/path/to/venv." >&2
+    exit 3
+fi
+
 echo "[rerank] model=$MODEL view=$VIEW shortlist=$SHORTLIST"
 echo "[rerank] task ${SLURM_ARRAY_TASK_ID:-0}/${SLURM_ARRAY_TASK_COUNT:-1}"
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
