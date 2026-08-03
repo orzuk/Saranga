@@ -8,17 +8,14 @@
 #   cd /path/to/Authomathics
 #   bash discovery_suite/setup_env.sh
 #
-# Creates a DEDICATED venv (default: ./venv_embed) rather than installing into
-# an existing one. The LLM-extraction venv under src/LLMVersion has its own
-# pinned dependencies, and dropping a ~2.5GB CUDA torch build into it risks
-# breaking work that currently runs. Keeping them separate costs disk and
-# nothing else.
-#
-# Afterwards, point the cluster scripts at it:
-#   VENV=$PWD/venv_embed sbatch discovery_suite/open_problems/pilot_cluster.sh
+# By default it installs into the venv you already have active — the problem is
+# simply that torch was never installed, and a second environment is not needed
+# to fix that. Set VENV_DIR to build a separate one instead, which is only worth
+# doing if you want to keep a ~2.5GB CUDA torch build out of an environment
+# whose dependency set you would rather not perturb.
 #
 # Options (env vars):
-#   VENV_DIR     where to create it            (default ./venv_embed)
+#   VENV_DIR     target venv  (default: the active $VIRTUAL_ENV, else ./venv_embed)
 #   TORCH_INDEX  PyTorch wheel channel         (default CUDA 12.1)
 #                cpu    https://download.pytorch.org/whl/cpu
 #                cu118  https://download.pytorch.org/whl/cu118
@@ -27,7 +24,7 @@
 
 set -euo pipefail
 
-VENV_DIR="${VENV_DIR:-$PWD/venv_embed}"
+VENV_DIR="${VENV_DIR:-${VIRTUAL_ENV:-$PWD/venv_embed}}"
 TORCH_INDEX="${TORCH_INDEX:-https://download.pytorch.org/whl/cu121}"
 PYTHON="${PYTHON:-python3}"
 
@@ -39,6 +36,8 @@ echo
 if [ ! -d "$VENV_DIR" ]; then
     "$PYTHON" -m venv "$VENV_DIR"
     echo "[setup] created $VENV_DIR"
+else
+    echo "[setup] using the existing venv (installing into it, not replacing it)"
 fi
 # shellcheck disable=SC1091
 . "$VENV_DIR/bin/activate"
@@ -82,5 +81,10 @@ echo "  export HF_HOME=/sci/labs/orzuk/\$USER/hf_cache"
 echo "  export PYTHONPATH=\$PWD/discovery_suite:\$PYTHONPATH"
 echo "  python3 -m embed.models --check --models qwen3-0.6b --device cpu --probe-n 8"
 echo
-echo "[setup] then submit with:"
-echo "  VENV=$VENV_DIR sbatch discovery_suite/open_problems/pilot_cluster.sh"
+if [ "$VENV_DIR" = "${VIRTUAL_ENV:-}" ]; then
+    echo "[setup] then submit — the scripts pick up the active venv automatically:"
+    echo "  sbatch discovery_suite/open_problems/pilot_cluster.sh"
+else
+    echo "[setup] then submit, pointing at this venv:"
+    echo "  VENV=$VENV_DIR sbatch discovery_suite/open_problems/pilot_cluster.sh"
+fi
