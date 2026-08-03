@@ -16,16 +16,19 @@
 #
 # Options (env vars):
 #   VENV_DIR     target venv  (default: the active $VIRTUAL_ENV, else ./venv_embed)
-#   TORCH_INDEX  PyTorch wheel channel         (default CUDA 12.1)
+#   TORCH_INDEX  PyTorch wheel channel         (default CUDA 12.4)
 #                cpu    https://download.pytorch.org/whl/cpu
-#                cu118  https://download.pytorch.org/whl/cu118
-#                cu121  https://download.pytorch.org/whl/cu121   <- L40s / Ada
+#                cu124  https://download.pytorch.org/whl/cu124   <- default here
+#                cu126  https://download.pytorch.org/whl/cu126
+#                cu128  https://download.pytorch.org/whl/cu128
+#                Driver 580.95 on this cluster supports all of them; older
+#                channels such as cu121 no longer carry recent torch releases.
 #   PYTHON       interpreter to build from     (default python3)
 
 set -euo pipefail
 
 VENV_DIR="${VENV_DIR:-${VIRTUAL_ENV:-$PWD/venv_embed}}"
-TORCH_INDEX="${TORCH_INDEX:-https://download.pytorch.org/whl/cu121}"
+TORCH_INDEX="${TORCH_INDEX:-https://download.pytorch.org/whl/cu124}"
 PYTHON="${PYTHON:-python3}"
 
 echo "[setup] interpreter : $($PYTHON -V 2>&1)  ($(command -v $PYTHON))"
