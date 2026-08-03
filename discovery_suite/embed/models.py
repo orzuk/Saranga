@@ -23,6 +23,7 @@ measured throughput, and tells you which ones are missing from the HF cache.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from dataclasses import dataclass, field
@@ -317,7 +318,13 @@ def check(keys: Sequence[str], *, device: Optional[str] = None,
                   f"rel={rel:.3f} unrel={unrel:.3f}  {flag}")
         except Exception as exc:
             failures += 1
-            print(f"  {key:<13} UNAVAILABLE: {type(exc).__name__}: {exc}")
+            # STDERR, not stdout: this is the message that explains why a job
+            # died, and SLURM splits the two streams into different files. A
+            # failure reported only on stdout leaves an empty .err next to a
+            # dead job, which is the least helpful possible outcome.
+            msg = f"  {key:<13} UNAVAILABLE: {type(exc).__name__}: {exc}"
+            print(msg, file=sys.stderr, flush=True)
+            print(msg, flush=True)
     return failures
 
 
@@ -359,6 +366,12 @@ def main() -> None:
           f"timing on {args.probe_n} text(s)")
     failures = check(keys, device=args.device, batch_size=args.batch_size,
                      probe_n=args.probe_n, corpus_nodes=args.corpus_nodes)
+    if failures:
+        print(f"\n{failures}/{len(keys)} model(s) unavailable. If this is a compute "
+              f"node with no internet, pre-download on the login node with the same\n"
+              f"HF_HOME:  HF_HOME={os.environ.get('HF_HOME', '<unset>')} "
+              f"python3 -m embed.models --check --models {sel} --device cpu --probe-n 8",
+              file=sys.stderr, flush=True)
     sys.exit(1 if failures else 0)
 
 
