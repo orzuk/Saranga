@@ -338,6 +338,39 @@ def _markdown_table(df) -> str:
     return "\n".join([head, sep] + body)
 
 
+def _recall_by_level_at_k(preds, gold_levels, k: int) -> dict:
+    """Per-obfuscation-level recall@k, ranked WITHIN each problem.
+
+    Replaces scorer.evaluate's recall_by_level for this benchmark. That one
+    counts a gold pair as found if it appears ANYWHERE in the prediction list —
+    with ~33k returned pairs every arm scores 1.00 at every level, and the
+    detection-vs-obfuscation curve carries no information at all.
+
+    What actually matters is whether the resolution lands in the top-k of ITS
+    OWN problem's candidate list, because that list is what gets truncated
+    before the expensive judge ever sees it. Ranking is therefore per problem,
+    not global. scorer.py is left alone so the existing POC numbers stay
+    reproducible.
+    """
+    if not gold_levels:
+        return {}
+    seen: dict[str, int] = {}
+    first_rank: dict = {}
+    for pk, tk, _s in preds:
+        r = seen.get(pk, 0) + 1
+        seen[pk] = r
+        pair = frozenset({pk, tk})
+        if pair in gold_levels and pair not in first_rank:
+            first_rank[pair] = r
+    totals: dict[str, int] = {}
+    hits: dict[str, int] = {}
+    for pair, lv in gold_levels.items():
+        totals[lv] = totals.get(lv, 0) + 1
+        if first_rank.get(pair, 1 << 30) <= k:
+            hits[lv] = hits.get(lv, 0) + 1
+    return {lv: hits.get(lv, 0) / totals[lv] for lv in sorted(totals)}
+
+
 def _hard_neg_rate(preds, hard_negs, k: int = 50) -> Optional[float]:
     """Fraction of judged-NO pairs the arm still ranks in a problem's top-k.
 
@@ -359,7 +392,7 @@ def _hard_neg_rate(preds, hard_negs, k: int = 50) -> Optional[float]:
 
 
 def score_arm(arm: Arm, gold_pairs, gold_levels, gold_problem_keys,
-              hard_negs=None) -> dict:
+              hard_negs=None, curve_k: int = 10) -> dict:
     res = evaluate(arm.preds, gold_pairs, gold_levels=gold_levels, ks=KS)
     row = {
         "arm": arm.name,
@@ -375,8 +408,13 @@ def score_arm(arm: Arm, gold_pairs, gold_levels, gold_problem_keys,
     for k in KS:
         row[f"P@{k}"] = round(res.precision_at_k.get(k, 0.0), 4)
         row[f"R@{k}"] = round(res.recall_at_k.get(k, 0.0), 4)
+    # The informative curve: recall@k WITHIN each problem's own candidate list.
+    for lv, v in _recall_by_level_at_k(arm.preds, gold_levels, curve_k).items():
+        row[f"{lv}@{curve_k}"] = round(v, 4)
+    # Kept for continuity with the earlier POC, but saturates at 1.00 for any arm
+    # returning a long list — do not read it as a detection curve.
     for lv, v in sorted(res.recall_by_level.items()):
-        row[f"recall_{lv}"] = round(v, 4)
+        row[f"anywhere_{lv}"] = round(v, 4)
     hn = _hard_neg_rate(arm.preds, hard_negs)
     if hn is not None:
         row["hardneg@50"] = hn
@@ -409,6 +447,11 @@ def main() -> None:
                          "Needs ANTHROPIC_API_KEY; responses are sqlite-cached")
     ap.add_argument("--twins", type=int, default=40)
     ap.add_argument("--top-k", type=int, default=50)
+    ap.add_argument("--curve-k", type=int, default=10,
+                    help="depth for the detection-vs-obfuscation curve: a gold "
+                         "pair counts as found only if it lands in the top-k of "
+                         "ITS OWN problem's list, which is what a truncated "
+                         "judge shortlist actually sees")
     ap.add_argument("--seed", type=int, default=11)
     ap.add_argument("--planter", choices=("mathaware", "legacy"), default="mathaware")
     ap.add_argument("--judged", default=None, metavar="CSV",
@@ -529,14 +572,18 @@ def main() -> None:
         query_keys = {r.key for r in recs if r.role == "query"}
         gold_problem_keys |= {k for pair in gold_pairs for k in pair
                               if k in query_keys}
-    rows = [score_arm(a, gold_pairs, gold_levels, gold_problem_keys, hard_negs=jneg)
+    rows = [score_arm(a, gold_pairs, gold_levels, gold_problem_keys, hard_negs=jneg,
+                      curve_k=args.curve_k)
             for a in arms if a.preds]
     df = pd.DataFrame(rows).sort_values("AP", ascending=False)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out, index=False)
 
-    lvl_cols = [c for c in df.columns if c.startswith("recall_")]
+    # Show the per-problem curve; the saturating "anywhere_*" columns stay in the
+    # CSV for continuity but are not worth screen space.
+    lvl_cols = sorted(c for c in df.columns if c.endswith(f"@{args.curve_k}")
+                      and c.startswith("L"))
     extra_cols = [c for c in ("hardneg@50",) if c in df.columns]
     show = (["arm", "AP", "MRR", "R@50", "R@100"] + lvl_cols + extra_cols
             + ["encode_s", "texts_per_s"])
