@@ -45,6 +45,17 @@ fi
 # shellcheck disable=SC1091
 . "$VENV_DIR/bin/activate"
 
+# Scratch and cache on LAB DISK. pip unpacks wheels in $TMPDIR, which defaults
+# to /tmp — usually a RAM-backed tmpfs on a login node. Extracting the 664MB
+# cuDNN wheel there gets the process SIGKILLed (exit 137, "Killed", no useful
+# message). The home quota is only 5GB, so that is no good either. Same fix
+# scripts/launch_qwen_judge_server.sh already applies for vLLM's caches.
+export TMPDIR="${TMPDIR:-/sci/labs/orzuk/$USER/tmp_install}"
+export PIP_CACHE_DIR="${PIP_CACHE_DIR:-/sci/labs/orzuk/$USER/pip-cache}"
+mkdir -p "$TMPDIR" "$PIP_CACHE_DIR"
+echo "[setup] TMPDIR      : $TMPDIR"
+echo "[setup] pip cache   : $PIP_CACHE_DIR"
+
 pip install --quiet --upgrade pip wheel
 
 # torch FIRST, from the CUDA channel. sentence-transformers depends on torch and
@@ -52,6 +63,11 @@ pip install --quiet --upgrade pip wheel
 # CPU-only one — the job then runs happily and ~50x too slowly.
 echo "[setup] installing torch (this is the big one, several minutes) …"
 pip install --index-url "$TORCH_INDEX" torch
+
+# torch must already be satisfied at this point, or pip resolves
+# `sentence-transformers` -> `torch>=1.11` against PyPI and downloads a SECOND,
+# non-CUDA torch on top of the one just installed.
+python3 -c "import torch" 2>/dev/null || { echo "ERROR: torch did not install; not continuing" >&2; exit 1; }
 
 echo "[setup] installing the rest …"
 pip install "transformers>=4.40" "sentence-transformers>=3.0" numpy pandas
