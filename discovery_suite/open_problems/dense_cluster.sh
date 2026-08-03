@@ -62,6 +62,19 @@ if [ -n "$VENV" ] && [ -f "$VENV/bin/activate" ]; then
     echo "[env] venv: $VENV"
 fi
 echo "[env] python: $(command -v python3)"
+
+# Model weights on lab storage. NOT a silent fallback to $HOME: the home quota is
+# ~5GB and HuggingFace will fill it and then fail mid-array with ENOSPC, which is
+# exactly what happened on the first 100k encode run.
+export HF_HOME="${HF_HOME:-/sci/labs/orzuk/$USER/hf_cache}"
+if ! mkdir -p "$HF_HOME" 2>/dev/null; then
+    echo "ERROR: cannot create HF_HOME=$HF_HOME" >&2
+    echo "       Refusing to fall back to \$HOME (quota ~5GB). Set HF_HOME to a" >&2
+    echo "       writable lab path and resubmit." >&2
+    exit 4
+fi
+echo "[env] HF_HOME: $HF_HOME"
+
 # Hard-fail on a missing torch, and REPORT whether the GPU is actually visible.
 # A silent CPU fallback is worse than a crash here: the job still "succeeds",
 # just ~50x slower, and every timing number it produces is meaningless.

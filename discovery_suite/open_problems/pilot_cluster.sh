@@ -80,15 +80,17 @@ then
     echo "       Activate the venv before sbatch, or pass VENV=/path/to/venv." >&2
     exit 3
 fi
-# Model weights on lab storage, not a home quota, and under OUR OWN user dir --
-# a shared path under another user is usually not writable, and with `set -e` a
-# failed mkdir would kill the job before anything ran. Override HF_HOME to point
-# at a genuinely shared cache once one exists.
+# Model weights on lab storage. NOT a silent fallback to $HOME: the home quota is
+# ~5GB and HuggingFace will fill it and then fail mid-array with ENOSPC, which is
+# exactly what happened on the first 100k encode run.
 export HF_HOME="${HF_HOME:-/sci/labs/orzuk/$USER/hf_cache}"
 if ! mkdir -p "$HF_HOME" 2>/dev/null; then
-    echo "[warn] cannot write $HF_HOME - falling back to the default HF cache" >&2
-    unset HF_HOME
+    echo "ERROR: cannot create HF_HOME=$HF_HOME" >&2
+    echo "       Refusing to fall back to \$HOME (quota ~5GB). Set HF_HOME to a" >&2
+    echo "       writable lab path and resubmit." >&2
+    exit 4
 fi
+echo "[env] HF_HOME: $HF_HOME"
 mkdir -p "$RUN"
 
 STORE="$RUN/textstore"
