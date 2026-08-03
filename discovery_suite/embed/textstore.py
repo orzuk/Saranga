@@ -124,9 +124,13 @@ def plan_files(root: Path, out_dir: Path, *, limit: Optional[int] = None,
             except (ValueError, IndexError):
                 continue
         files.append(str(p))
-        if len(files) % 20000 == 0:
-            print(f"[plan] {len(files):,} files ({time.time()-t0:.0f}s)",
-                  file=sys.stderr, flush=True)
+        # Report often: this walk crosses ~100k files on a networked FS and a
+        # sparse heartbeat is indistinguishable from a hang (it got killed once
+        # for exactly that reason).
+        if len(files) % 2000 == 0:
+            el = time.time() - t0
+            print(f"[plan] {len(files):,} files  {len(files)/max(el,1e-9):,.0f}/s  "
+                  f"{el:.0f}s elapsed", file=sys.stderr, flush=True)
         if limit is not None and len(files) >= limit:
             break
     target = out_dir / FILES_NAME

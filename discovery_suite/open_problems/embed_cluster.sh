@@ -45,17 +45,31 @@ export VECS="$RUN/vectors"
 mkdir -p "$RUN" logs
 export PYTHONPATH="$PWD/discovery_suite:${PYTHONPATH:-}"
 
-# ── plan: enumerate the corpus once, on the login node (seconds) ─────────────
-if [ ! -f "$STORE/files.txt" ]; then
-    echo "[submit] planning file list …"
-    python3 -m embed.textstore plan --root "$ROOT" --out "$STORE"
+# ── plan: enumerate the corpus once ─────────────────────────────────────────
+# As a SLURM job, NOT inline: walking ~100k files over Lustre takes minutes, and
+# a login-node foreground process that looks hung tends to get killed (it was).
+# Everything else depends on it, so it runs first and the rest wait on afterok.
+DEP=""
+if [ -f "$STORE/files.txt" ]; then
+    echo "[submit] reusing existing file list ($(wc -l < "$STORE/files.txt") files)"
+else
+    mkdir -p "$STORE"
+    # Resolve the interpreter HERE, at submit time, and bake the absolute path
+    # into the wrap. `--wrap` runs under /bin/sh, where sourcing a venv activate
+    # script is not reliably portable — and nesting quotes deep enough to do it
+    # is its own bug source. The plan step needs no torch, only the repo modules.
+    PY_BIN="${VIRTUAL_ENV:+$VIRTUAL_ENV/bin/}python3"
+    PLAN_JOB=$(sbatch --parsable --job-name=open_plan --partition=glacier \
+        --time=02:00:00 --mem=4G --cpus-per-task=1 \
+        --output=logs/%x_%j.out --error=logs/%x_%j.err \
+        --wrap "cd '$PWD' && PYTHONPATH='$PWD/discovery_suite' '$PY_BIN' -m embed.textstore plan --root '$ROOT' --out '$STORE'")
+    echo "[submit] plan job = $PLAN_JOB  (writes $STORE/files.txt)"
+    DEP="--dependency=afterok:$PLAN_JOB"
 fi
-N_FILES=$(wc -l < "$STORE/files.txt")
-echo "[submit] $N_FILES corpus files, $SHARDS shards"
 
 # ── stage 1: text store (CPU array) ─────────────────────────────────────────
 TS_JOB=$(ROOT="$ROOT" STORE="$STORE" SHARDS="$SHARDS" \
-    sbatch --parsable --array=0-$((SHARDS-1))%${TEXT_TASKS} "$HERE/textstore_cluster.sh")
+    sbatch --parsable $DEP --array=0-$((SHARDS-1))%${TEXT_TASKS} "$HERE/textstore_cluster.sh")
 echo "[submit] textstore array = $TS_JOB"
 
 # ── stage 2+3: one encode array and one retrieval job per arm ───────────────
