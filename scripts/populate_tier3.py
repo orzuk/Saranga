@@ -44,7 +44,7 @@ def build_manifest_entry(paper_id: str, json_path: str, graph_path: str,
         tc[t] = tc.get(t, 0) + 1
     return {
         "paper_id": paper_id,
-        "display_id": paper_id.replace("_manual", ""),
+        "display_id": paper_id.replace("_manual", "").replace("_rules", ""),
         "title": "",
         "n_nodes": len(nodes),
         "type_counts": tc,
@@ -99,7 +99,7 @@ def list_category_htmls(api: HfApi, category: str) -> list[str]:
     names = []
     for item in items:
         fname = item.path.split("/")[-1] if hasattr(item, "path") else str(item).split("/")[-1]
-        if fname.endswith(".html") and "_manual" in fname:
+        if fname.endswith(".html") and ("_manual" in fname or "_rules" in fname):
             names.append(fname)
     return sorted(names)
 
@@ -128,6 +128,8 @@ def main():
                         help="List what would be downloaded without doing it")
     parser.add_argument("--skip-upload", action="store_true",
                         help="Download and build manifest but don't upload to space")
+    parser.add_argument("--local-src", type=str, default=None,
+                        help="Stage from a local corpus dir (<cat>/json, <cat>/html) instead of downloading from HF")
     args = parser.parse_args()
 
     api = HfApi()
@@ -228,11 +230,21 @@ def main():
 
         print(f"  [{i+1}/{len(all_papers)}] {cat_display}/{year}/{paper_id}...", end=" ", flush=True)
 
-        json_url = f"{dataset_base}/{cat_raw}/json/{jname}"
-        html_url = f"{dataset_base}/{cat_raw}/html/{hname}"
-
-        ok_j = download_file(json_url, json_dest)
-        ok_h = download_file(html_url, graph_dest)
+        if args.local_src:
+            import shutil
+            src_j = Path(args.local_src) / cat_raw / "json" / jname
+            src_h = Path(args.local_src) / cat_raw / "html" / hname
+            ok_j = ok_h = False
+            try:
+                if src_j.exists(): shutil.copy2(src_j, json_dest); ok_j = True
+                if src_h.exists(): shutil.copy2(src_h, graph_dest); ok_h = True
+            except Exception as e:
+                print(f"copy error: {e}")
+        else:
+            json_url = f"{dataset_base}/{cat_raw}/json/{jname}"
+            html_url = f"{dataset_base}/{cat_raw}/html/{hname}"
+            ok_j = download_file(json_url, json_dest)
+            ok_h = download_file(html_url, graph_dest)
 
         if ok_j and ok_h:
             try:
@@ -263,7 +275,7 @@ def main():
     manifest["papers"]["tier3"] = sorted(by_id.values(), key=lambda e: e["paper_id"])
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False))
     total = len(manifest["papers"]["tier3"])
-    print(f"Manifest updated: {len(tier3_entries)} new + {len(kept)} existing = {total} tier3 entries")
+    print(f"Manifest updated: {len(tier3_entries)} new + {len(existing)} existing = {total} tier3 entries")
 
     if args.skip_upload:
         print("Skipping upload.")

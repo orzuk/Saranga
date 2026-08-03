@@ -25,7 +25,7 @@ def build_manifest_entry(paper_id, json_rel, graph_rel, category, nodes):
         tc[t] = tc.get(t, 0) + 1
     return {
         "paper_id": paper_id,
-        "display_id": paper_id.replace("_manual", ""),
+        "display_id": paper_id.replace("_manual", "").replace("_rules", ""),
         "title": "",
         "n_nodes": len(nodes),
         "type_counts": tc,
