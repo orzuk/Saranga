@@ -199,7 +199,12 @@ class Embedder:
                                              self._model.max_seq_length or self.max_tokens)
             if self.device.startswith("cuda"):
                 self._model = self._model.half()
-            self.dim = int(self._model.get_sentence_embedding_dimension())
+            # sentence-transformers 5 renamed get_sentence_embedding_dimension ->
+            # get_embedding_dimension and deprecated the old name. Prefer the new
+            # one, keep the old as a fallback so this runs on 3.x and 5.x alike.
+            get_dim = (getattr(self._model, "get_embedding_dimension", None)
+                       or self._model.get_sentence_embedding_dimension)
+            self.dim = int(get_dim())
         else:
             from transformers import AutoModel, AutoTokenizer
             self._tok = AutoTokenizer.from_pretrained(
