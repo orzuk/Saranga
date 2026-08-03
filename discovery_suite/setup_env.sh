@@ -1,0 +1,86 @@
+#!/bin/bash
+#
+# Build the Python environment the semantic-retrieval pipeline needs.
+#
+# RUN THIS ON THE LOGIN NODE — it needs internet. Compute nodes usually have
+# none, which is why a missing package only ever surfaces as a dead job.
+#
+#   cd /path/to/Authomathics
+#   bash discovery_suite/setup_env.sh
+#
+# Creates a DEDICATED venv (default: ./venv_embed) rather than installing into
+# an existing one. The LLM-extraction venv under src/LLMVersion has its own
+# pinned dependencies, and dropping a ~2.5GB CUDA torch build into it risks
+# breaking work that currently runs. Keeping them separate costs disk and
+# nothing else.
+#
+# Afterwards, point the cluster scripts at it:
+#   VENV=$PWD/venv_embed sbatch discovery_suite/open_problems/pilot_cluster.sh
+#
+# Options (env vars):
+#   VENV_DIR     where to create it            (default ./venv_embed)
+#   TORCH_INDEX  PyTorch wheel channel         (default CUDA 12.1)
+#                cpu    https://download.pytorch.org/whl/cpu
+#                cu118  https://download.pytorch.org/whl/cu118
+#                cu121  https://download.pytorch.org/whl/cu121   <- L40s / Ada
+#   PYTHON       interpreter to build from     (default python3)
+
+set -euo pipefail
+
+VENV_DIR="${VENV_DIR:-$PWD/venv_embed}"
+TORCH_INDEX="${TORCH_INDEX:-https://download.pytorch.org/whl/cu121}"
+PYTHON="${PYTHON:-python3}"
+
+echo "[setup] interpreter : $($PYTHON -V 2>&1)  ($(command -v $PYTHON))"
+echo "[setup] venv        : $VENV_DIR"
+echo "[setup] torch wheels: $TORCH_INDEX"
+echo
+
+if [ ! -d "$VENV_DIR" ]; then
+    "$PYTHON" -m venv "$VENV_DIR"
+    echo "[setup] created $VENV_DIR"
+fi
+# shellcheck disable=SC1091
+. "$VENV_DIR/bin/activate"
+
+pip install --quiet --upgrade pip wheel
+
+# torch FIRST, from the CUDA channel. sentence-transformers depends on torch and
+# would otherwise pull the default PyPI build, which on many clusters is the
+# CPU-only one — the job then runs happily and ~50x too slowly.
+echo "[setup] installing torch (this is the big one, several minutes) …"
+pip install --index-url "$TORCH_INDEX" torch
+
+echo "[setup] installing the rest …"
+pip install "transformers>=4.40" "sentence-transformers>=3.0" numpy pandas
+
+echo
+echo "[setup] verifying …"
+python3 - <<'PY'
+import importlib, sys
+ok = True
+for mod in ("numpy", "pandas", "transformers", "sentence_transformers", "torch"):
+    try:
+        m = importlib.import_module(mod)
+        print(f"  {mod:<22} {getattr(m, '__version__', '?')}")
+    except ImportError as exc:
+        ok = False
+        print(f"  {mod:<22} MISSING ({exc})")
+import torch
+print(f"  torch.cuda.is_available  {torch.cuda.is_available()}")
+if not torch.cuda.is_available():
+    print("\n  NOTE: no GPU on the login node — this is EXPECTED here. What matters\n"
+          "  is whether it reports True inside a GPU job; the cluster scripts print\n"
+          "  it in their [env] banner. If it is False there too, this venv has a\n"
+          "  CPU-only torch: re-run with TORCH_INDEX set to a cu* channel.")
+sys.exit(0 if ok else 1)
+PY
+
+echo
+echo "[setup] done. Warm the model cache now (also needs internet):"
+echo "  export HF_HOME=/sci/labs/orzuk/\$USER/hf_cache"
+echo "  export PYTHONPATH=\$PWD/discovery_suite:\$PYTHONPATH"
+echo "  python3 -m embed.models --check --models qwen3-0.6b --device cpu --probe-n 8"
+echo
+echo "[setup] then submit with:"
+echo "  VENV=$VENV_DIR sbatch discovery_suite/open_problems/pilot_cluster.sh"
