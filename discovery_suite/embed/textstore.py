@@ -38,7 +38,7 @@ for _p in (_SUITE, _HERE):
         sys.path.insert(0, str(_p))
 
 from shared.corpus import _lazy_walk, _build_paper  # noqa: E402
-from embed.progress import Heartbeat, banner  # noqa: E402
+from embed.progress import Heartbeat, banner, task_id  # noqa: E402
 from embed import views as V  # noqa: E402
 
 SHARD_FMT = "shard_%05d.jsonl.gz"
@@ -273,11 +273,28 @@ def _write_manifest(out_dir: Path, cfg: dict, root: Path, n_shards: int,
                       f"store at {out_dir}: {drift}. Shards built under both "
                       f"configs are NOT comparable — use a fresh --out or --force.",
                       file=sys.stderr, flush=True)
-        except json.JSONDecodeError:
+        except (OSError, json.JSONDecodeError):
+            # A concurrent replace by another array task shows up as a stale NFS
+            # handle here. The drift check is advisory; never fail the job for it.
             pass
-    tmp = p.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    os.replace(tmp, p)
+
+    # PER-TASK temp name. Every array task writes this manifest at startup, and a
+    # shared "manifest.json.tmp" makes them race: one task's os.replace removes
+    # the file another is about to rename, and that one dies with FileNotFoundError
+    # BEFORE doing any work. That is what lost 47 of 64 shards on the first 100k
+    # run. The payload is identical across tasks, so last-writer-wins is correct.
+    tmp = p.with_suffix(f".json.{task_id()}.tmp")
+    try:
+        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        os.replace(tmp, p)
+    except OSError as exc:
+        print(f"[textstore] note: manifest not written ({exc}); shard work "
+              f"continues — the manifest is metadata, not an input.",
+              file=sys.stderr, flush=True)
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def main() -> None:
