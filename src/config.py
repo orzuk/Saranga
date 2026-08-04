@@ -40,6 +40,14 @@ else:
     cluster_code_legacy = Path('/sci/labs/orzuk/orzuk/github/Authomathics')
     cluster_data_legacy = Path('/sci/labs/orzuk/orzuk/projects/Authomathics')
 
+    # The actual large arXiv corpus (full_papers YYYY/MM/DD + all_json/all_png)
+    # lives OUTSIDE the projects/Saranga tree above, under the class_52017
+    # ("big_data_project_52017") teaching dir. It predates the current layout
+    # and is stored as EXTRACTED source trees — this is the directory that blew
+    # the Isilon inode/file-count quota (2026-07); migrate to per-paper .tar.gz.
+    cluster_arxiv_corpus_legacy = Path(
+        '/sci/labs/orzuk/orzuk/teaching/big_data_project_52017/2024_25/arxiv_data')
+
     home_data = Path.home() / 'Datasets' / 'Saranga_data'
     home_code = Path.home() / 'Code' / 'Saranga'
 
