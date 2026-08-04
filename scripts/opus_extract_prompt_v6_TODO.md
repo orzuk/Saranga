@@ -1405,3 +1405,179 @@ The other 3 (`1512.04893v3`, `1611.01043v4`, `1710.09079v3`) are cleanup-scope
 gaps (E131 `\begin{comment}`, E123 formatting macros), not fabrication. Closing
 those two v6 items raises measured fidelity 99.96% -> 99.98% with no change to
 model behaviour.
+
+**E138 (spec self-contradiction). Rule 13 vs core rule #2 on trivial steps.**
+Rule 13: every step gets a `statement_short`. Core rule #2: a `statement_short`
+must be real compression and never longer than `statement`. For bare loop
+terminators (`End Inner Iteration Loop;`) both cannot hold. The agent let core
+rule #2 win and omitted the field, so step coverage read 10/12 rather than 12/12
+— i.e. the contradiction shows up as an apparent metric shortfall rather than as
+an error. *(reported: `1701.03237v1`)*
+*v6 fix:* exempt steps whose statement is under ~N chars from the mandatory
+`statement_short`, and say so, so the metric means the same thing everywhere.
+
+**E139. `equation` vs theorem-like for closed-form evaluations.** Rule 9 forbids
+demoting a *stated result* to `equation`, but gives no test for a closed-form
+formula that asserts no existence/uniqueness/optimality. In `1701.03237v1` four
+BSC/MSC mutual-information formulas were typed `equation`; read as asserted
+results they would have been 4 propositions. A one-line test would stop this
+swinging theorem-like counts between papers.
+
+**E140. Non-contiguous proof bodies (worst case of B1 so far).** In
+`1612.00206v1` the proof of Theorem 2 is *interrupted*: Lemma 4, Claim 5, and
+both of their proofs are interleaved inside it. Rule 1 demands a single verbatim
+contiguous `statement`, so `PP1.5` must span the whole region — which means the
+Lemma 4 and Claim 5 statements AND their proofs appear verbatim inside
+`PP1.5.statement` as well as in their own five nodes.
+
+Distinct from earlier B1 reports (a proof merely *quoting* an auxiliary lemma):
+here the outer proof's span necessarily swallows several complete sibling nodes,
+so one region of source is emitted up to 3x at different levels. The
+offset-based `spans: [[start,end],...]` design in section F fixes exactly this —
+the outer proof would list its own fragments and skip the holes.
+
+### E138 addendum — CONFIRMED to produce opposite resolutions across papers
+
+Two batch-6 agents hit the Rule 13 / core-rule-#2 contradiction on short steps
+and resolved it **opposite ways**, under the same frozen prompt:
+
+| paper | resolution | effect on the metric |
+|---|---|---|
+| `1701.03237v1` | core rule #2 wins -> field OMITTED | step coverage 10/12 |
+| `1509.06688v1` | rule 13 wins -> terse sub-length short EMITTED | step coverage 19/19 |
+
+So `statement_short` coverage is **not comparable across papers**: the number
+partly reports which horn of a contradiction that agent picked. Any table
+reporting it per paper or per category is measuring spec ambiguity as well as
+extraction behaviour. Must be settled in v6, and the existing figures should
+carry the caveat.
+
+### E126 addendum — the `origin` tiebreaker measurably shifts external-node counts
+
+`1509.06688v1` adopted an explicit uniform rule and flagged the consequence:
+`external` iff the span itself attributes the content ("From \cite{MMZ}"),
+`paper` otherwise — including hedged attributions ("notation similar to
+\cite{KM}", "constructed in a similar manner as described in \cite{KM}"). It
+noted this "materially changes external-node counts across the corpus."
+
+Combined with `1609.00771v2` (marked uncited "well-known in convex geometry"
+material `external`) and `1003.2518v1` (marked uncited classical setup `paper`),
+that is **three different tiebreakers across three papers**. `origin` counts are
+therefore not cross-paper comparable either.
+
+**E141. `\\` (line break) is not in the permitted-cleanup list**, so statements
+retain formatting noise (`and \\$|\Delta_0(...)|=1$`). Spec should say whether it
+may be collapsed. *(reported: `1509.06688v1`)*
+
+## E142 (HIGH). Rule 9's node-count floor FORCES duplicate nodes for restated theorems
+
+`1409.3255v2`: Theorem B appears twice as two textually *distinct*
+`\begin{theoremB}` blocks (Introduction and Section 5). The source has 9 labelled
+theorem-like environments and rule 9 requires `theorem-like nodes >= env count`,
+so the agent emitted **both** (TP1.2, TP1.3) rather than deduping — and `PP1.7`
+carries `proves` edges to both (1.0 and 0.9). It flagged: "Downstream dedupe
+should be aware these are the same result."
+
+So rule 9, written to prevent *under*-extraction, mandates *duplicate truth* for
+the common "state it in the intro, restate it before proving it" pattern. The two
+nodes are not near-duplicates a matcher would catch by string equality either,
+since the two blocks are textually different.
+
+*v6 fix:* let rule 9's floor count *distinct results*, not environments, and add
+an explicit `restates: <node_id>` field (or reuse `specializes` with a
+`same_result` flag) so the relation is recorded instead of the duplication being
+silent. This is the 6th distinct restatement encoding seen in the corpus.
+
+## E143 (HIGH — affects T-PLAG / T-ALIGN, not just extraction). Unexpanded custom macros make spans un-comparable across papers
+
+Macro expansion is not in the permitted-cleanup list, so verbatim `statement`
+values retain each paper's private macros — `1409.3255v2` keeps
+`\CQ \G \PP \Ocal \s \D`; `1102.4533v1` keeps `\gl \sgl \Ws`; `1809.03369v2`
+keeps `\tjnew{} \wa{} \Era \phif \Kry`; `1705.08048v2` keeps `\bC \vL \roi`.
+
+Consequence: a statement is only renderable with its own paper's preamble, and
+**any cross-paper string or token matcher compares macro spellings rather than
+mathematical content.** That is precisely the matching step T-PLAG and T-ALIGN
+depend on, so this is a data-quality issue for the discovery suite, not only a
+readability one.
+
+*Options:* (a) expand macros during cleanup and store both raw and expanded;
+(b) keep raw but emit a per-paper macro table in `metadata` so downstream can
+expand; (c) leave as-is and require matchers to normalise. (b) is cheapest and
+loses nothing.
+
+### E143 REVISED — do NOT expand macros. Measured: expansion manufactures false positives
+
+Initial framing ("expand macros so spans are comparable") was wrong. Measured
+over 120 staged papers, both normalisation directions are lossy:
+
+**Same expansion, different meaning — 341 expansions collide across papers.**
+The macro NAME is the only disambiguator:
+
+| renders as | names used |
+|---|---|
+| `\mathcal{C}` | `C`, `Casimir`, `Cc`, `Ccal`, `Cir` |
+| `\mathcal{M}` | `Intw`, `M`, `MM`, `Mabs`, `Mm` |
+| `\mathcal{D}` | `D`, `DC`, `Dcal`, `Dd`, `EssD` |
+
+Expanding `Casimir` and `Cir` both to `\mathcal{C}` asserts a match between a
+Casimir element and a circle.
+
+**Same name, different meaning — 473 names collide.** So the name alone is no
+better: `\e` -> {`\begin{equation}`, `\epsilon`, `\eta`, `\mathbb{E}`};
+`\R` -> {`\mathbb{R}`, `\mathcal{R}`}; `\MM` -> {`\mathbb{M}`,
+`\boldsymbol{M}`, `\mathcal{M}`}.
+
+**Conclusion: the (name, expansion) PAIR is the unit of meaning.**
+
+*Revised plan:*
+1. `statement` stays RAW — no expansion. Keeps the corpus uniform and preserves
+   within-paper co-reference.
+2. Add `metadata.macros: {name: expansion}` — a per-paper **glossary**, parsed
+   from the preamble by regex, no LLM, no re-extraction. Additive, so it can be
+   backfilled onto all existing papers.
+3. Matchers consume the pair, and may derive an expanded form on demand. Never
+   store an expanded span as if it were the source.
+4. **Macro co-occurrence is unused graph signal.** Measured: a median of 7
+   custom macros per paper appear in >1 node, each linking a median ~13 nodes.
+   That is author-certified evidence those nodes concern the same object, and the
+   extractor currently emits edges only from explicit `\ref`s and clear-cut
+   prose. Worth testing as an edge source — including for the dependencies E120
+   loses. Precision must be measured first: check what fraction of EXISTING
+   edges macro co-occurrence recovers before trusting the pairs it adds.
+
+*For the discovery suite:* embed the macro NAME text (`Casimir`, `Intw`, `EssD`
+are English-ish mnemonics), not only the rendered symbol. This gives a principled
+reason to expect name+symbol concatenation to beat either alone.
+
+### E120 addendum 2 — third instance, third distinct cause
+
+`1705.02177v2` dropped a correct edge to break a cycle. New cause: **this paper
+completes a CITED prior theorem's proof.** Theorem 1 is Langer-Singer's, but
+sections 5.4/5.5 supply its missing winding-number and selfintersection proofs.
+So `PrP1.9 -> TP1.1` and `PrP1.10 -> TP1.1` are real, and the equally real
+`TP1.1 -> DP1.9` ("orbitlike" names the curvature family from Thm 1) closes a
+cycle. The agent dropped `TP1.1 -> DP1.9` and re-pointed DP1.9 elsewhere.
+
+**Running total: 3 papers, 5 dropped edges, THREE independent causes:**
+
+| cause | paper | why it cycles |
+|---|---|---|
+| forward reference ("see Remark 5 below") | `1707.01421v4` | cited material appears later |
+| **mathematical induction** | `1104.0194v1` | proof assumes the theorem in a quotient |
+| **completing a cited theorem's proof** | `1705.02177v2` | paper both uses and proves the prior result |
+
+Three unrelated mechanisms in three papers means this is not a tail case — the
+acyclicity invariant is structurally at odds with ordinary mathematical practice,
+and the only escape the spec offers is silent deletion. Still unmeasurable
+post-hoc (nodes keep no source label), so 5 is a floor, not an estimate.
+
+### E142 addendum — restatements are sometimes byte-identical, sometimes not
+
+`1705.02177v2`: TP1.2/TP1.3 and CP1.1/CP1.2 have **byte-identical** statements;
+rule 9 requires all four nodes. Contrast `1409.3255v2`, where the two Theorem B
+blocks were textually *distinct*.
+
+So a downstream dedupe by string equality catches the first case and misses the
+second. Any dedupe must be semantic, or the spec must record the relation
+explicitly (`restates: <node_id>`), which is the cheaper fix.
