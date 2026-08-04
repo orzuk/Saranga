@@ -2,8 +2,9 @@
 
 Question this answers
 ---------------------
-Of the ~1070 catalogued Erdős problems (statements + resolution status from
-github.com/teorth/erdosproblems, exported to `erdos_problems_extracted.csv`),
+Of the 1217 catalogued Erdős problems (statements + resolution status from
+github.com/teorth/erdosproblems — the repo behind erdosproblems.com — committed
+here as `erdos_problems.csv`; 1063 have statements long enough to match),
 
   1. which ones are actually PRESENT in our parsed corpus — i.e. some paper we
      parsed states that problem as an `open_problem` / `conjecture` node; and
@@ -42,18 +43,21 @@ IMPORTANT caveats (see ERDOS_COVERAGE.md for the long version)
 
 Runs locally and on the cluster unchanged — only `--corpus-dir` changes.
 
-    # Local proof-of-concept (bare test dirs need --accept-bare):
+    # Local sanity run (bare test dirs need --accept-bare). The local corpus has
+    # ~15 matchable nodes, so this validates the PATH, not the science:
     python discovery_suite/open_problems/erdos_coverage.py \
-        --erdos-csv discovery_suite/open_problems/erdos_sample.csv \
-        --corpus-dir portal/data/tier1 portal/data/tier2 portal/data/tier2_test \
+        --erdos-csv discovery_suite/open_problems/erdos_problems.csv \
+        --corpus-dir portal/data/tier1 portal/data/tier2 \
         --accept-bare \
         --out discovery_suite/open_problems/runs/erdos_coverage_local.csv
 
-    # Cluster (full 100k parsed knowledge-graph corpus, parent of the category dirs):
-    python discovery_suite/open_problems/erdos_coverage.py \
-        --erdos-csv /sci/labs/orzuk/orzuk/projects/Saranga/erdos_problems_extracted.csv \
-        --corpus-dir /sci/labs/orzuk/orzuk/teaching/big_data_project_52017/2024_25/arxiv_data/parsed_100k_v4 \
-        --out discovery_suite/open_problems/runs/erdos_coverage_100k.csv
+    # Cluster (full 100k parsed corpus) — use the sbatch wrapper:
+    export ROOT=/sci/labs/orzuk/.../parsed_100k_v4
+    sbatch discovery_suite/open_problems/erdos_cluster.sh
+
+READ THE PRINTED SCORE HISTOGRAM before believing any coverage number: the score
+is a max over every corpus node, so the noise floor rises with corpus size and
+`--threshold` MUST be recalibrated per corpus (see ERDOS_COVERAGE.md §2).
 """
 from __future__ import annotations
 
@@ -93,11 +97,30 @@ THEOREM_TYPES = {"theorem", "lemma", "proposition", "corollary", "claim"}
 
 # Which yaml_status values count as "resolved" (mirrors the scoping note:
 # proved / disproved / solved, including the Lean-formalized variants).
+# NOTE the real CSV spells the Lean variants "proved (lean)" — `_norm_status`
+# folds that to the underscored form before this set is consulted.
 RESOLVED_STATUSES = {
     "proved", "disproved", "solved",
     "proved_lean", "disproved_lean", "solved_lean",
     "proven", "resolved",
 }
+
+# Genuinely-unsolved. Everything else (falsifiable, decidable, verifiable,
+# independent, "not provable", ...) is a logical-status label, neither open nor
+# resolved, and is reported as "other" rather than silently inflating "open".
+OPEN_STATUSES = {"open"}
+
+_LEAN = re.compile(r"\s*\((?:lean)\)\s*$")
+
+
+def _norm_status(raw: str) -> str:
+    """Fold the CSV's status spellings onto the canonical keys.
+
+    The export writes `proved (lean)` / `disproved (lean)` / `solved (lean)`
+    (205 rows). Without this, those count as unresolved and the headline
+    resolved/open split comes out 351/866 instead of the true 556/608."""
+    s = (raw or "").strip().lower()
+    return _LEAN.sub("_lean", s) if _LEAN.search(s) else s
 
 
 # ── Erdős CSV ────────────────────────────────────────────────────────────────
@@ -138,8 +161,11 @@ def load_erdos(csv_path: Path) -> list[dict]:
     that have a real (non-trivial) statement. Each record carries its tokenized
     statement so we tokenize once."""
     rows: list[dict] = []
-    with csv_path.open(encoding="utf-8", newline="") as fh:
-        reader = csv.DictReader(fh)
+    with csv_path.open(encoding="utf-8-sig", newline="") as fh:
+        # The export carries ~841 stray NUL bytes; Python <= 3.10's csv module
+        # hard-errors ("line contains NUL") on those, so strip them up front
+        # rather than depend on the cluster's interpreter version.
+        reader = csv.DictReader(l.replace("\x00", "") for l in fh)
         # normalize header lookup (case-insensitive)
         lower = {c.lower(): c for c in (reader.fieldnames or [])}
 
@@ -164,11 +190,12 @@ def load_erdos(csv_path: Path) -> list[dict]:
             toks = string_to_tokens(stmt)
             if len(toks) < 4:  # skip placeholder / empty statements
                 continue
-            status = (r.get(c_status) or "").strip().lower() if c_status else ""
+            status = _norm_status(r.get(c_status)) if c_status else ""
             rows.append({
                 "number": (r.get(c_num) or "").strip() if c_num else str(len(rows)),
                 "status": status,
                 "resolved": status in RESOLVED_STATUSES,
+                "open": status in OPEN_STATUSES,
                 "statement": stmt,
                 "solving_prose": (r.get(c_prose) or "").strip() if c_prose else "",
                 "cite_keys": (r.get(c_cite) or "").strip() if c_cite else "",
@@ -275,6 +302,48 @@ def load_run_index(runs_dir: Path) -> dict:
     return idx, str(src)
 
 
+# ── score distribution ───────────────────────────────────────────────────────
+
+def print_histogram(scores: list[float], threshold: float, bins: int = 20) -> None:
+    """Print the best-match score distribution + percentiles.
+
+    This is the instrument for retuning `--threshold` on a new corpus. Because
+    each score is a max over every corpus node, the distribution's bulk is the
+    null (problems not in the corpus at all) and it drifts upward as the corpus
+    grows — which is exactly why a constant default cannot be trusted."""
+    if not scores:
+        return
+    s = sorted(scores)
+    n = len(s)
+
+    def pct(p: float) -> float:
+        return s[min(n - 1, int(p * n))]
+
+    print("\n--- best-match score distribution (retune --threshold from this) ---",
+          flush=True)
+    marks = [("p50", 0.50), ("p90", 0.90), ("p95", 0.95), ("p99", 0.99),
+             ("max", 1.0)]
+    print("  " + "  ".join(f"{lbl}={pct(p) if p < 1.0 else s[-1]:.3f}"
+                           for lbl, p in marks), flush=True)
+
+    hi = s[-1] or 1.0
+    width = hi / bins
+    counts = Counter(min(bins - 1, int(v / width)) for v in s)
+    peak = max(counts.values()) or 1
+    for b in range(bins):
+        lo_e, hi_e = b * width, (b + 1) * width
+        c = counts.get(b, 0)
+        bar = "#" * max(0, round(40 * c / peak))
+        flag = " <- threshold" if lo_e <= threshold < hi_e else ""
+        print(f"  [{lo_e:.3f},{hi_e:.3f})  {c:>5}  {bar}{flag}", flush=True)
+    over = sum(1 for v in s if v >= threshold)
+    print(f"  at --threshold {threshold}: {over} of {n} problems counted as "
+          f"covered ({over/n:.1%})", flush=True)
+    print("  NOTE p99 is still noise if most problems are absent from the "
+          "corpus; prefer a cut above p99 and LLM-judge the band below it.",
+          flush=True)
+
+
 # ── main ─────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -308,9 +377,11 @@ def main() -> None:
     # 1. Erdős problems
     erdos = load_erdos(args.erdos_csv)
     n_res = sum(1 for e in erdos if e["resolved"])
+    n_open = sum(1 for e in erdos if e["open"])
+    n_other = len(erdos) - n_res - n_open
     print(f"[erdos] loaded {len(erdos)} problems with real statements "
-          f"({n_res} resolved / {len(erdos) - n_res} open) from {args.erdos_csv}",
-          flush=True)
+          f"({n_res} resolved / {n_open} open / {n_other} other-status) "
+          f"from {args.erdos_csv}", flush=True)
 
     # 2. Corpus nodes
     nodes = load_corpus_nodes(args.corpus_dir, args.match_theorems,
@@ -366,13 +437,21 @@ def main() -> None:
     print("\n===== ERDŐS COVERAGE SUMMARY =====", flush=True)
     print(f"threshold (Jaccard) : {args.threshold}", flush=True)
     print(f"Erdős problems       : {len(erdos)}  "
-          f"(resolved {n_res} / open {len(erdos)-n_res})", flush=True)
+          f"(resolved {n_res} / open {n_open} / other {n_other})", flush=True)
     print(f"COVERED in corpus    : {len(covered)}  "
           f"(resolved {cov_res} / open {cov_open})", flush=True)
     if erdos:
         print(f"coverage rate        : {len(covered)/len(erdos):.1%}", flush=True)
     print(f"covered + resolving  : {len(with_resolution)}  "
           f"(matched node had a T-OPEN theorem candidate)", flush=True)
+
+    # Score distribution — retune --threshold FROM THIS, never from the default.
+    # The reported score is a max over all corpus nodes, so the noise floor
+    # RISES with corpus size: a threshold calibrated on a small corpus lets
+    # through pure noise on a large one. Read the percentiles as the null: the
+    # bulk of the 1217 problems are genuinely absent from the corpus, so p50/p90
+    # ARE the noise distribution, and a defensible cut sits above p99.
+    print_histogram([r["score"] for r in results], args.threshold)
 
     print(f"\n--- top {args.show} matches ---", flush=True)
     for r in results[:args.show]:

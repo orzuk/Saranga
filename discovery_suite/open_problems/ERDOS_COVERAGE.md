@@ -1,11 +1,19 @@
 # Erdős-problems coverage over the Saranga corpus (T-OPEN)
 
-**Goal.** Of the ~1070 catalogued Erdős problems (statements + resolution status,
+**Goal.** Of the **1217** catalogued Erdős problems (statements + resolution status,
 exported from [github.com/teorth/erdosproblems](https://github.com/teorth/erdosproblems)
-plus a Wayback scrape, into `erdos_problems_extracted.csv`), determine **which are
-present in our parsed corpus** — i.e. some paper we parsed states that problem as
-an `open_problem`/`conjecture` node — and, for the resolved ones, whether the
-T-OPEN sweep already surfaced a corpus theorem that could resolve the matched node.
+— the repo behind [erdosproblems.com](https://www.erdosproblems.com) — plus a Wayback
+scrape), determine **which are present in our parsed corpus** — i.e. some paper we
+parsed states that problem as an `open_problem`/`conjecture` node — and, for the
+resolved ones, whether the T-OPEN sweep already surfaced a corpus theorem that could
+resolve the matched node.
+
+**The CSV ships in this directory** as `erdos_problems.csv` (committed `ccb720a0`);
+there is nothing to fetch or mount. Status split: **556 resolved / 608 open /
+53 other** (`falsifiable`, `decidable`, `independent`, … — logical-status labels that
+are neither). Before importing any newer export, diff it with
+`erdos_reconcile.py --theirs <csv>` (stdlib-only, runs anywhere); it exits non-zero
+when the files differ and prints the id / status / statement changes.
 
 **Script:** `erdos_coverage.py` (this dir). Cheap, dependency-free rung: same
 math-aware token-Jaccard the T-OPEN sweep uses
@@ -30,85 +38,89 @@ tier3 corpus.
 
 `--resolved` statuses: `proved, disproved, solved` (+ `_lean` variants).
 
-## Local proof-of-concept results
+## Status: never yet run at scale
 
-The full 100K corpus is cluster-only; `portal/data/tier3` is empty locally. The
-PoC ran over the **~87 local parsed papers** — `tier1` (canonical, arXiv-id'd) +
-`tier2` + `tier2_test` (bare `paperNNN.json`, loaded with `--accept-bare` since
-`corpus_io` structurally skips files without an arXiv id). Those papers yield
-**43 `open_problem`/`conjecture` nodes** (28 conjecture, 15 open_problem).
+The script has **only ever produced numbers on a 10-row fixture** (`erdos_sample.csv`,
+since removed) against a local corpus that no longer exists in that form — the
+earlier write-up's headline result (Erdős #88 ↔ `paper394::CnjP44.1` at 0.800,
+#3 ↔ `paper294::CnjP43.1` at 0.412) came from `portal/data/tier2_test`, which is
+gone. Today `tier1` + `tier2` yield **15** `open_problem`/`conjecture` nodes, so no
+local run can say anything about coverage. **Treat the 100k cluster run as the first
+real measurement.**
 
-Because the real 1070-row CSV lives on Or's Google-Drive stream (`/mnt/g/My Drive/...`)
-which was **not mountable in this environment** ("No such device"), the PoC used a
-committed 10-row fixture of **real** Erdős statements, `erdos_sample.csv`, chosen
-to include a known positive control.
+Two defects were fixed (Aug 2026) while validating the full CSV end-to-end — both
+would have hit the cluster run:
+
+1. **NUL bytes.** The export carries 841 stray `\x00`s. Python ≤ 3.10's `csv`
+   hard-errors `line contains NUL`, so on any older cluster interpreter the job
+   died before doing work. `load_erdos` now strips them.
+2. **Lean statuses counted as unsolved.** `RESOLVED_STATUSES` expected
+   `proved_lean`; the CSV spells it `proved (lean)`. 205 resolved problems were
+   being reported as open — a **351/866** split instead of the true **556/608**.
+   `_norm_status` now folds the spellings, and the summary reports a three-way
+   resolved / open / other split so the 53 logical-status rows stop inflating "open".
+
+Note `load_erdos` keeps **1063 of 1217** rows: 154 have statements too short to
+tokenize (147 are under 10 characters — placeholder/figure-only entries). Coverage
+rates are over 1063, not 1217.
+
+### Local sanity run (validates the path, not the science)
 
 ```
 python discovery_suite/open_problems/erdos_coverage.py \
-    --erdos-csv discovery_suite/open_problems/erdos_sample.csv \
-    --corpus-dir portal/data/tier1 portal/data/tier2 portal/data/tier2_test \
+    --erdos-csv discovery_suite/open_problems/erdos_problems.csv \
+    --corpus-dir portal/data/tier1 portal/data/tier2 \
     --accept-bare \
     --out discovery_suite/open_problems/runs/erdos_coverage_local.csv
 ```
 
-**Result — 2 of 10 Erdős problems covered (both genuine):**
-
-| Erdős # | status | score | matched corpus node | note |
-|---|---|---|---|---|
-| 88 (prime k-tuples) | open | **0.800** | `paper394::CnjP44.1` | paper394 states the prime k-tuples conjecture verbatim |
-| 3 (Erdős conj. on APs) | proved | **0.412** | `paper294::CnjP43.1` | paper294 states "Erdős conjecture on arithmetic progressions" |
-
-Everything else scored **<= 0.21** and is generic-word noise (e.g. an Erdős
-problem "matching" a `middlelevels` or category-theory node on shared tokens like
-`conjecture`, `positive`, `integers`). The default `--threshold 0.25` cleanly
-separates the two true matches (0.41–0.80) from that noise. `covered + resolving`
-= 0: neither paper394 nor paper294 is in the existing T-OPEN sweep runs (those
-were produced on the cluster corpus), so there is no cross-referenced resolving
-theorem locally — expected.
-
-**Takeaway:** tiny local coverage (as anticipated), but the matcher demonstrably
-works — it recovered the two real Erdős statements that are actually in the local
-corpus and rejected the rest.
+All 1217 rows parse, all 1063 statements tokenize, the histogram prints. The four
+rows it marks "covered" at the 0.25 default are **pure noise** (an Erdős problem on
+group orders "matching" a category-theory corollary at 0.269) — with 15 corpus nodes
+every problem's best match is noise, and a few cross the line. That is the point of
+the next section.
 
 ## Running on the full 100K corpus (HUJI cluster)
 
-### 1. Get the Erdős CSV onto the cluster
-
-The CSV is derived from `teorth/erdosproblems` + a Wayback scrape and currently
-lives only on Or's local G-drive. Copy it up once (from Or's WSL box):
-
-```bash
-scp "/mnt/g/My Drive/Research/Automath/erdos_problems_extracted.csv" \
-    orzuk@glacier-13:/sci/labs/orzuk/orzuk/projects/Saranga/erdos_problems_extracted.csv
-```
-
-(It's a single small CSV — no inode concern.)
-
-### 2. Run the coverage script
-
-The parsed 100K knowledge-graph corpus root is the **parent of the ~20 category
-dirs** (same `ROOT` the T-OPEN sweep uses, per `sweep_cluster.sh`):
+The CSV is already in the repo — pull, then submit. One command:
 
 ```bash
 cd /sci/labs/orzuk/orzuk/github/Saranga   # (legacy: .../Authomathics)
 
-python3 discovery_suite/open_problems/erdos_coverage.py \
-    --erdos-csv /sci/labs/orzuk/orzuk/projects/Saranga/erdos_problems_extracted.csv \
-    --corpus-dir /sci/labs/orzuk/orzuk/teaching/big_data_project_52017/2024_25/arxiv_data/parsed_100k_v4 \
-    --threshold 0.25 \
-    --out discovery_suite/open_problems/runs/erdos_coverage_100k.csv
+export ROOT=/sci/labs/orzuk/orzuk/teaching/big_data_project_52017/2024_25/arxiv_data/parsed_100k_v4
+sbatch discovery_suite/open_problems/erdos_cluster.sh
 ```
+
+`erdos_cluster.sh` (32G/4cpu/4h, glacier — same profile as `sweep_cluster.sh`)
+knobs, all env-overridable: `THRESHOLD` (default **0.15**, deliberately low — see
+calibration below), `MATCH_THEOREMS=1` for the wider theorem-node pass, `ERDOS_CSV`,
+`OUT`.
+
+### 2. Calibrate the threshold — do NOT trust the default
+
+**The score is a max over every corpus node, so the noise floor rises with corpus
+size.** A threshold tuned on a small corpus admits pure noise on a large one. The
+local run makes this concrete: at `--threshold 0.15` against a **2-node** corpus,
+314 of 1063 problems (29.5%) come out "covered" — all of it noise.
+
+So the first cluster run is a **calibration run**, not the answer:
+
+1. Submit at `THRESHOLD=0.15`. Read the score histogram + percentiles printed to
+   `logs/erdos_cov_<jobid>.out`.
+2. Most of the 1217 problems are genuinely absent from a 100k arXiv corpus, so the
+   bulk of that distribution **is the null**. p50/p90/p99 describe noise, not signal.
+3. Re-run with a cut **above p99**. Hand-check the survivors; LLM-judge the band
+   just below with `o4_judge.py`.
 
 Notes:
 - **No `--accept-bare`** on the cluster — tier3 files carry `_rules.json` suffixes
   and arXiv ids, so the canonical loader picks them up directly.
-- Add `--match-theorems` to also test Erdős statements against theorem-like nodes
-  (wider recall; more noise — intended for feeding an LLM judge, not for a headline
-  coverage number).
-- Single-threaded O(#Erdős × #corpus-nodes). At 1070 problems × the corpus's
+- `MATCH_THEOREMS=1` also tests Erdős statements against theorem-like nodes (wider
+  recall, much more noise — for feeding an LLM judge, not for a headline number).
+- Single-threaded O(#Erdős × #corpus-nodes). At 1063 problems × the corpus's
   `open_problem`+`conjecture` nodes (~tens of thousands) this is a few minutes;
-  it never holds the whole corpus in memory (`stream_papers`). Wrap in `sbatch`
-  (32G/4cpu) only if you also pass `--match-theorems` (millions of theorem nodes).
+  it never holds the whole corpus in memory (`stream_papers`). The 4h wall is
+  sized for `MATCH_THEOREMS=1` (millions of theorem nodes).
 
 ### 3. Output & interpretation
 
@@ -148,9 +160,16 @@ Read it as:
   problem stated with very different wording than its arXiv restatement can be
   missed (false negative) and unrelated nodes sharing math boilerplate can score
   low-but-nonzero (handled by the threshold).
-- **The 0.25 threshold was tuned on the tiny local PoC.** On the 100K corpus,
-  re-check the score histogram; you may want 0.20 for recall (then LLM-judge the
-  0.20–0.25 band) or 0.30 for precision.
-- **The G-drive CSV was not reachable in the dev environment**, so the local PoC
-  numbers above are against the 10-row `erdos_sample.csv` fixture, not the full
-  1070. The script is unchanged for the real CSV — just point `--erdos-csv` at it.
+- **The threshold is not a constant.** `--threshold 0.25` was tuned against a
+  handful of corpus nodes. Because each score is a max over the whole corpus, the
+  null distribution shifts right as the corpus grows — the same cut means something
+  different at 15 nodes than at 10⁵. Always recalibrate from the printed histogram
+  (§2); never carry a threshold across corpora.
+- **154 of 1217 problems never enter the match** (statement too short to tokenize,
+  147 of them under 10 characters). They are silently dropped by `load_erdos`, so
+  the denominator is 1063. If those entries matter, they need re-scraping.
+- **Token-Jaccard is the cheap rung, and prose-vs-LaTeX is exactly its weak spot.**
+  Erdős statements are natural-language prose; corpus nodes are LaTeX-derived. The
+  dense/rerank arm built after this probe (`o1b_dense_sweep` → `o1c_fuse` →
+  `o5_rerank`, see `SEMANTIC_RETRIEVAL.md`) is the intended fix and has never been
+  pointed at the Erdős set — run lexical as the baseline, then dense, and compare.
