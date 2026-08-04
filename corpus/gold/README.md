@@ -52,3 +52,26 @@ Idempotent, offline. Inputs: root `gold/*.json` and
 `$SARANGA_DATA_ROOT/tier1/*_*.json` (left untouched — this is a mirror).
 
 See `corpus/silver/README.md` for the silver corpus.
+
+## Migrated from the legacy root `gold/` (2026-08)
+
+The repo-root `gold/` directory was folded into this one and removed, so gold
+lives in exactly one place. The migration was verified **lossless by content
+hash: all 40 files accounted for**.
+
+| here | from | what |
+|---|---|---|
+| `human__gold/` | `gold/<id>.json` | the 5 primary human annotations (byte-identical) |
+| `templates/` | `gold/<id>_manual_template.json` | **annotation scaffolds, NOT gold** — `_EXAMPLE_T1` placeholders + an `instructions` field. Kept apart so they can never be mistaken for ground truth (`role=annotation_template`). |
+| `human__diagram/` | `gold/1805.11176v1_gold_from_diagram_and_tex.json` | alternative gold derived from a diagram + tex, carries `concept_registry_refs` (`role=gold_variant`) |
+| `figures/` | `gold/figures/` | diagrams. The file tracked as `gold/figures/.png` (a real 305 KB image with a broken name) is now `1805.11176v1_diagram.png`. |
+| `pdf/` | `gold/pdf/` | rendered paper PDFs |
+| `tex_source/<arxiv_id>/` | `gold/tex/YYYY/MM/DD/tex/` | full LaTeX sources incl. tarballs, `.cls`, `.bbl`, figure PDFs |
+
+Note `tex/` (flat, 5 files) holds just the main `.tex` per paper for quick use;
+`tex_source/` holds the complete original trees.
+
+**Consumers updated:** `scripts/run_gold_eval.sh` now defaults `GOLD_DIR` to
+`corpus/gold/human__gold`. `scripts/build_gold_corpus.py` is marked HISTORICAL —
+it built this dir *from* `gold/`, which no longer exists; `corpus/gold/` is now a
+canonical store, not a derived artifact.
