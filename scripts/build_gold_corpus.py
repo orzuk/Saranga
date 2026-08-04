@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Consolidate research gold (human-annotated) papers into corpus/gold/, mirroring
+"""
+HISTORICAL — do not re-run. This built corpus/gold/ from the legacy root
+`gold/` dir, which was migrated INTO corpus/gold/ and removed. corpus/gold/ is
+now the canonical store, not a derived artifact, so there is nothing to rebuild.
+Kept for provenance: it documents how each subdir was assembled.
+Consolidate research gold (human-annotated) papers into corpus/gold/, mirroring
 the silver corpus layout.
 
 Sources (research gold only -- the class_52017 student golds are intentionally

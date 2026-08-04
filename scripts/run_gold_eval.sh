@@ -1,7 +1,7 @@
 #!/bin/bash -l
 #
 # Tier C — Hand-gold evaluation. Grade silver-gold (or any extracted)
-# JSONs against the ~10 hand-annotated reference JSONs in gold/.
+# JSONs against the ~10 hand-annotated reference JSONs in corpus/gold/human__gold/.
 #
 # Thin wrapper around src/run_pipeline.py. The "eval" operation runs a
 # T1 grading pass: matches predicted nodes/edges to gold via the same
@@ -17,7 +17,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-GOLD_DIR=${GOLD_DIR:-$REPO_ROOT/gold}
+GOLD_DIR=${GOLD_DIR:-$REPO_ROOT/corpus/gold/human__gold}
 PRED_DIR=${PRED_DIR:-$REPO_ROOT/gold_paper_output}
 OUT_DIR=${OUT_DIR:-$PRED_DIR}
 OPERATIONS=${OPERATIONS:-validate,eval}

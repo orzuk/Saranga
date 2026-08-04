@@ -339,7 +339,7 @@ Saranga/
 │   │   └── annotate_chapter_solution.py
 │   └── gold_standards/                # BHK chapters 2-12 as unified JSON
 │
-└── gold/                              # Gold-standard arXiv papers (10)
+└── corpus/gold/                       # Gold-standard arXiv papers (see corpus/gold/README.md)
     ├── *.json                         # Annotations
     └── tex/ / pdf/ / figures/         # Source material
 ```
