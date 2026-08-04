@@ -47,6 +47,11 @@ from embed.models import EMBEDDERS, Embedder, get_card, pick_device  # noqa: E40
 from embed.progress import Heartbeat, banner  # noqa: E402
 
 #: Metadata carried alongside every vector — the minimum search needs.
+#: Roles encoded with the QUERY-side instruction wrapper of an asymmetric model.
+#: "query" is the corpus's own question nodes; "erdos" is the external Erdős
+#: problem set injected by open_problems/erdos_textstore.py.
+QUERY_LIKE_ROLES = frozenset({"query", "erdos"})
+
 META_FIELDS = ("key", "paper_id", "year", "yymm", "category", "ntype", "role",
                "n_words", "ctx_keys", "ctx_weights")
 
@@ -132,7 +137,7 @@ def encode_shard(
     *,
     view: str,
     canon: str,
-    roles: Sequence[str] = ("query", "doc", "ctx"),
+    roles: Sequence[str] = ("query", "doc", "ctx", "erdos"),
     status_dir: Optional[Path] = None,
     log_every: int = 2000,
     force: bool = False,
@@ -175,8 +180,12 @@ def encode_shard(
                           "canon": canon, "shard": shard_id})
 
     # Split by role so asymmetric models get the right instruction wrapper.
-    q_idx = [i for i, m in enumerate(metas) if m["role"] == "query"]
-    d_idx = [i for i, m in enumerate(metas) if m["role"] != "query"]
+    # Any role in QUERY_LIKE_ROLES is wrapped as a query, not just the literal
+    # "query": external query sets carry their own role so the search side can
+    # select them (e.g. "erdos"), and wrapping those as documents is exactly the
+    # silent recall loss this module's docstring warns about.
+    q_idx = [i for i, m in enumerate(metas) if m["role"] in QUERY_LIKE_ROLES]
+    d_idx = [i for i, m in enumerate(metas) if m["role"] not in QUERY_LIKE_ROLES]
     out: Optional[np.ndarray] = None
     for idx, role in ((q_idx, "query"), (d_idx, "doc")):
         if not idx:
@@ -227,8 +236,13 @@ def main() -> None:
               f"is built from instead (no extra GPU pass needed)", file=sys.stderr)
         view = "node"
 
+    # "erdos" rides along in every default: an injected external query set has no
+    # ctx text, so it only ever lives in the node view, and omitting it from the
+    # default silently encodes ZERO of it (the failure is a 0-vector store, not
+    # an error). Drop it explicitly with --roles if you want a corpus-only run.
     roles = tuple(r.strip() for r in args.roles.split(",")) if args.roles else (
-        ("query", "doc", "ctx") if view == "node" else ("query", "doc"))
+        ("query", "doc", "ctx", "erdos") if view == "node"
+        else ("query", "doc", "erdos"))
 
     vdir = variant_dir(Path(args.out), args.model, view, args.canon)
     vdir.mkdir(parents=True, exist_ok=True)
