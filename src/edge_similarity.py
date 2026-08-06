@@ -22,39 +22,66 @@ refinement disagreement, not a wrong edge.
 from __future__ import annotations
 
 # ── Edge-type compatibility ──────────────────────────────────────────────────
-# Grounded in edge_types.py's own grouping: DEPENDENCY_TYPES = {uses,
-# generalizes, specializes}; STRUCTURAL_TYPES = {proves, solves, illustrates,
+# CANONICAL policy, moved here verbatim from graph_alignment.edge_sim (which
+# now re-exports it). It is group-based rather than a hand-listed pair table,
+# deriving from edge_types.py's own grouping: DEPENDENCY_TYPES = {uses,
+# generalizes, specializes}, STRUCTURAL_TYPES = {proves, solves, illustrates,
 # tests, resolves}. Within-group confusions are cheap, cross-group are not.
-EDGE_TYPE_COMPAT = {
-    # generalizes/specializes ARE uses, refined. Calling one plain `uses` is
-    # under-specification, not error.
-    ("uses", "generalizes"): 0.8,
-    ("uses", "specializes"): 0.8,
-    # ...but generalizes vs specializes is a direction error in disguise.
+EDGE_SAME = 1.0
+EDGE_BOTH_DEPENDENCY = 0.8
+EDGE_PROVES_SOLVES = 0.8
+EDGE_PROVES_RESOLVES = 0.6
+EDGE_BOTH_STRUCTURAL = 0.5
+EDGE_MIXED = 0.2
+
+# Refinements the group rule cannot express, kept OPT-IN so nothing moves:
+# `generalizes` vs `specializes` are both dependency subtypes and so score 0.8
+# under the group rule, but they point opposite ways — arguably a direction
+# error wearing a type label. Pass `pair_table=EDGE_TYPE_COMPAT_PROPOSED`.
+EDGE_TYPE_COMPAT_PROPOSED = {
     ("generalizes", "specializes"): 0.3,
-    # Structural pairs that annotators genuinely confuse.
-    ("proves", "uses"): 0.4,
-    ("solves", "uses"): 0.4,
-    ("illustrates", "uses"): 0.4,
     ("tests", "illustrates"): 0.6,
-    ("resolves", "proves"): 0.5,
-    ("solves", "resolves"): 0.5,
 }
 
-EDGE_TYPE_UNKNOWN = 0.15   # different types, no listed affinity
 FLIPPED_FACTOR = 0.5       # credit for a correct edge stated backwards
 
 
-def edge_type_compat(ta, tb, table=None, unknown=EDGE_TYPE_UNKNOWN):
-    """Symmetric edge-type compatibility. Same type = 1.0."""
-    if ta == tb:
-        return 1.0
-    table = EDGE_TYPE_COMPAT if table is None else table
-    if (ta, tb) in table:
-        return table[(ta, tb)]
-    if (tb, ta) in table:
-        return table[(tb, ta)]
-    return unknown
+def _normalize(t):
+    try:
+        from edge_types import normalize_edge_type
+        return normalize_edge_type(t)
+    except Exception:
+        return t
+
+
+def edge_type_compat(ta, tb, pair_table=None):
+    """Symmetric edge-type compatibility in [0, 1]. Same type = 1.0.
+
+    `pair_table` overrides the group rule for specific pairs.
+    """
+    ra, rb = _normalize(ta), _normalize(tb)
+    if pair_table:
+        if (ra, rb) in pair_table:
+            return pair_table[(ra, rb)]
+        if (rb, ra) in pair_table:
+            return pair_table[(rb, ra)]
+    if ra == rb:
+        return EDGE_SAME
+    try:
+        from edge_types import DEPENDENCY_TYPES, STRUCTURAL_TYPES
+    except Exception:
+        DEPENDENCY_TYPES = {"uses", "generalizes", "specializes"}
+        STRUCTURAL_TYPES = {"proves", "solves", "illustrates", "tests",
+                            "resolves"}
+    if ra in DEPENDENCY_TYPES and rb in DEPENDENCY_TYPES:
+        return EDGE_BOTH_DEPENDENCY
+    if {ra, rb} <= {"proves", "solves"}:
+        return EDGE_PROVES_SOLVES
+    if {ra, rb} == {"proves", "resolves"}:
+        return EDGE_PROVES_RESOLVES
+    if ra in STRUCTURAL_TYPES and rb in STRUCTURAL_TYPES:
+        return EDGE_BOTH_STRUCTURAL
+    return EDGE_MIXED
 
 
 def edge_key(edge, node_map=None):
@@ -70,7 +97,7 @@ def edge_key(edge, node_map=None):
 
 
 def edge_sim(edge_a, edge_b, *, map_a=None, map_b=None,
-             use_type=True, flipped_factor=FLIPPED_FACTOR):
+             use_type=True, flipped_factor=FLIPPED_FACTOR, pair_table=None):
     """Similarity of two edges in [0, 1].
 
     0 unless the endpoints correspond. Same direction scores the type
@@ -88,8 +115,10 @@ def edge_sim(edge_a, edge_b, *, map_a=None, map_b=None,
         return 0.0
     if not use_type:
         return direction
-    return direction * edge_type_compat(edge_a.get("type", ""),
-                                        edge_b.get("type", ""))
+    return direction * edge_type_compat(
+        edge_a.get("type") or edge_a.get("relation_type") or "",
+        edge_b.get("type") or edge_b.get("relation_type") or "",
+        pair_table=pair_table)
 
 
 def match_edges(edges_a, edges_b, *, map_a=None, map_b=None, use_type=True,

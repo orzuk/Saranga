@@ -141,32 +141,17 @@ SIGMA_FUNCTIONS = {
 
 # ── Edge similarity ──────────────────────────────────────────────────────────
 def edge_sim(e_a, e_b):
-    """Edge similarity: 1 if same type, 0.8 if both dependency subtypes,
-    0.5 if both structural, 0.2 otherwise."""
-    from edge_types import normalize_edge_type, DEPENDENCY_TYPES, STRUCTURAL_TYPES
-    ra = normalize_edge_type(e_a.get("type") or e_a.get("relation_type"))
-    rb = normalize_edge_type(e_b.get("type") or e_b.get("relation_type"))
-    if ra == rb:
-        return 1.0
-    # Both dependency subtypes (uses/generalizes/specializes): high credit
-    if ra in DEPENDENCY_TYPES and rb in DEPENDENCY_TYPES:
-        return 0.8
-    # proves↔solves: high (both "establishes" relationships)
-    if {ra, rb} <= {"proves", "solves"}:
-        return 0.8
-    # proves↔resolves: high-ish (both "settles the truth of A", but
-    # different source/target shapes: proof→theorem vs. theorem-like→
-    # open_problem/conjecture).
-    if {ra, rb} == {"proves", "resolves"}:
-        return 0.6
-    # Both structural (proves/solves/illustrates/tests/resolves): moderate credit
-    if ra in STRUCTURAL_TYPES and rb in STRUCTURAL_TYPES:
-        return 0.5
-    # Mixed dependency/structural: low credit
-    return 0.2
+    """Edge-type similarity: 1 same type, 0.8 both dependency subtypes,
+    0.5 both structural, 0.2 mixed.
 
+    Canonical implementation now in src/edge_similarity.py so that alignment
+    and extraction evaluation share one edge policy; behaviour unchanged
+    (regression-checked over all type pairs).
+    """
+    from edge_similarity import edge_type_compat
+    return edge_type_compat(e_a.get("type") or e_a.get("relation_type"),
+                            e_b.get("type") or e_b.get("relation_type"))
 
-# ── Core alignment algorithm ─────────────────────────────────────────────────
 def build_cost_matrix(nodes_a, nodes_b, sigma_fn):
     """Compute -similarity cost matrix (Hungarian minimizes)."""
     C = np.zeros((len(nodes_a), len(nodes_b)))

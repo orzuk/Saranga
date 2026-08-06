@@ -21,6 +21,11 @@ behaviour is preserved as a named profile. Callers migrate by naming their
 current profile (numbers unchanged), and switching to CANONICAL later is then a
 deliberate, reviewable decision rather than a side effect of refactoring.
 
+METRICS
+-------
+"jaccard" | "containment" (lexical set metrics) | "embedding" (cosine over
+sentence embeddings, via scripts/embedding_sigma.py, imported lazily).
+
   ALIGNMENT     graph_alignment.py       LaTeX-command-aware tokens, no braces
   EXTRACTION    evaluate_extraction.py   punctuation-stripped (loses backslashes)
   DISTILLATION  distillation_analysis    LaTeX + brace/dollar tokens
@@ -284,6 +289,70 @@ def containment_sets(a, b, *, empty_empty=0.0):
 _METRICS = {"jaccard": jaccard_sets, "containment": containment_sets}
 
 
+# ── Embedding backend ────────────────────────────────────────────────────────
+# A third way to ask "how similar are these two nodes?": embed both texts and
+# take cosine. Lexical and embedding similarity fail differently — Jaccard
+# cannot see that "is bounded" and "is finite" agree, and cosine cannot see
+# that one span is literally a substring of another — so this is a selectable
+# metric, not a replacement.
+#
+# The heavy dependency (sentence-transformers) is imported lazily, so nothing
+# here costs anything unless `metric="embedding"` is actually requested.
+# Implementation lives in scripts/embedding_sigma.py, which already has the
+# model singleton, an lru_cache over texts, and precompute_paper_embeddings().
+_embedding_module = None
+
+
+def _load_embedding_module():
+    global _embedding_module
+    if _embedding_module is None:
+        import os
+        import sys as _sys
+        scripts = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "scripts")
+        if scripts not in _sys.path:
+            _sys.path.insert(0, scripts)
+        try:
+            import embedding_sigma as _mod
+        except ImportError as e:                       # pragma: no cover
+            raise ImportError(
+                "metric='embedding' needs sentence-transformers "
+                "(pip install sentence-transformers). Underlying error: %s" % e)
+        _embedding_module = _mod
+    return _embedding_module
+
+
+def embedding_available():
+    """True if the embedding backend can actually run here.
+
+    Probes the heavy dependency itself: embedding_sigma imports fine with only
+    numpy present, and would not fail until the model is first loaded.
+    """
+    try:
+        import importlib.util
+        if importlib.util.find_spec("sentence_transformers") is None:
+            return False
+        _load_embedding_module()
+        return True
+    except Exception:
+        return False
+
+
+def embed_node(node):
+    """Vector for a node, via scripts/embedding_sigma (cached)."""
+    return _load_embedding_module().embed_node(node)
+
+
+def embedding_node_sim(node_a, node_b, *, use_type=True):
+    """Cosine similarity of the two node embeddings, optionally damped by
+    `type_compat` — the same composition the lexical path uses, so switching
+    metric does not silently switch type policy too."""
+    mod = _load_embedding_module()
+    return mod.sigma(node_a, node_b) if use_type else mod.sigma_no_type(
+        node_a, node_b)
+
+
 def text_sim(text_a, text_b, *, profile=Profile.CANONICAL, metric="jaccard",
              empty_empty=None):
     """Similarity between two raw strings under `profile`."""
@@ -298,11 +367,21 @@ def node_sim(node_a, node_b, *, profile=Profile.CANONICAL, metric="jaccard",
              type_policy=TypePolicy.GRADED, text_fn=None, **text_kw):
     """Similarity between two nodes: text similarity, modulated by type policy.
 
+    `metric` selects the backend: "jaccard" and "containment" are lexical set
+    metrics; "embedding" is cosine over sentence embeddings (lazy, optional
+    dependency). They fail differently and are meant to be chosen per task —
+    see the embedding-backend note above.
+
     BLIND  -> pure text similarity (use this for retrieval, and report a
               type-confusion matrix separately)
     GRADED -> text × type_compat  (cross-paper alignment default)
     STRICT -> 0 unless types are equal (legacy; double-penalises type confusion)
     """
+    if metric == "embedding":
+        # embedding_sigma applies type_compat itself, so route the policy
+        # through rather than multiplying twice.
+        return embedding_node_sim(node_a, node_b,
+                                  use_type=type_policy == TypePolicy.GRADED)
     get = text_fn or (lambda n: node_text(n, **text_kw))
     s = text_sim(get(node_a), get(node_b), profile=profile, metric=metric)
     if type_policy == TypePolicy.BLIND:

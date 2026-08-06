@@ -155,8 +155,15 @@ def test_edges():
     check("identical edge", ES.edge_sim(e1, same), 1.0)
     check("reversed gets partial credit", ES.edge_sim(e1, flipped), 0.5)
     check("generalizes is a subtype of uses", ES.edge_sim(e1, subtype), 0.8)
-    check("uses vs proves is a real disagreement",
-          ES.edge_sim(e1, other), 0.4)
+    check("uses vs proves: dependency vs structural (canonical 0.2)",
+          ES.edge_sim(e1, other), 0.2)
+    check("edge policy matches graph_alignment's, unchanged",
+          ES.edge_type_compat("proves", "solves"), 0.8)
+    check("opt-in table can refine generalizes/specializes",
+          ES.edge_type_compat("generalizes", "specializes",
+                              pair_table=ES.EDGE_TYPE_COMPAT_PROPOSED), 0.3)
+    check("...which the group rule alone scores 0.8",
+          ES.edge_type_compat("generalizes", "specializes"), 0.8)
     check("disjoint endpoints score 0", ES.edge_sim(e1, unrelated), 0.0)
 
 
