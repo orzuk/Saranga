@@ -903,7 +903,7 @@ def list_arxiv_ids_local(
 
 
 # Compute the directory where we store the full articles
-def arxiv_dates_and_format_to_dir(ids, dates, format, output_dir = DATA_DIR / 'full_papers'):
+def arxiv_dates_and_format_to_dir(ids, dates, format, output_dir = Path(DATA_DIR) / 'full_papers'):
 #    print('format_to_dir: ids: ', ids, 'dates: ', dates, 'format: ', format)
     if format in ['source', 'latex']:
         format = 'tex'  # change dir
@@ -1102,9 +1102,10 @@ def fetch_arxiv_batch(
     author=None,
     title=None,
     formats="metadata", #     batch_size: int   = 200,
-    output_dir = DATA_DIR / 'full_papers', # default: save in tree,  None, # don't save output
+    output_dir = Path(DATA_DIR) / 'full_papers', # default: save in tree,  None, # don't save output
     force_update: bool = False,
-    verbose: bool     = False
+    verbose: bool     = False,
+    top_k: int        = None,
 ) -> Dict[str, Dict[str, Any]]:
     """
     Fetch arXiv items by filtering IDs and retrieving requested formats.
@@ -1119,6 +1120,10 @@ def fetch_arxiv_batch(
     batch_size  : API pagination size (unused for local fetch)
     output_dir  : save files here if provided
     verbose     : print debug
+    top_k       : if set, return only the top-k most recent IDs BEFORE fetching
+                  full metadata (massively faster on broad filters). Sort is by
+                  versioned ID descending, which for arxiv IDs (YYMM.NNNNN and
+                  archive/YYMMNNN) is a reliable proxy for submission date.
 
     Returns dict[id -> {format: data_or_path, ...}]
     """
@@ -1151,6 +1156,31 @@ def fetch_arxiv_batch(
     if verbose:
         print(f"[DEBUG] {len(ids_no_ver)} base IDs, {len(ids_with_ver)} versioned IDs to process")
 
+    # ─── Stage 1.5: Apply top_k early (before the expensive metadata fetch) ───
+    # Arxiv IDs encode submission date in the string itself:
+    #   modern (post-2007):  YYMM.NNNNN  (e.g., 2505.19393v1)
+    #   legacy (pre-2007):   archive/YYMMNNN  (e.g., math/0512345v1)
+    # Sorting descending within each group approximates "newest first" without
+    # needing any metadata. We split on "/" because legacy IDs lexically collate
+    # AFTER modern IDs (ASCII 'm' > '2'), which would otherwise put legacy
+    # papers at the top of "newest first" — wrong.
+    if top_k is not None and top_k > 0 and len(ids_with_ver) > top_k:
+        if verbose:
+            print(f"[DEBUG] Applying top_k={top_k} BEFORE metadata fetch "
+                  f"(sorting {len(ids_with_ver)} versioned IDs by ID descending, "
+                  f"modern IDs first, as proxy for newest-first).")
+        # Split modern vs legacy, sort each descending, concat modern-first.
+        _modern = sorted([x for x in ids_with_ver if "/" not in x], reverse=True)
+        _legacy = sorted([x for x in ids_with_ver if "/" in x], reverse=True)
+        _all_sorted = _modern + _legacy
+        ids_with_ver = _all_sorted[:top_k]
+        # Shrink the base-ID list to match the top_k versioned selection.
+        _keep_base = set(v.split("v")[0] for v in ids_with_ver)
+        ids_no_ver = [b for b in ids_no_ver if b in _keep_base]
+        if verbose:
+            print(f"[DEBUG] After top_k={top_k}: "
+                  f"{len(ids_no_ver)} base IDs, {len(ids_with_ver)} versioned IDs to process")
+
     # ─── Stage 1a: If metadata is requested, fetch in one shot via local JSONL + HDF5 ───
     # If the user explicitly asked for “metadata” itself, we’ll load all:
     if "metadata" in formats:
@@ -1166,7 +1196,15 @@ def fetch_arxiv_batch(
 
     if verbose:
         print("[DEBUG] Fetching metadata for all versioned IDs via local JSONL + HDF5 offsets…")
-        print("IDS After Filtering:", ids_with_ver, "\n Columns needed:", needed)
+        _n_ids = len(ids_with_ver)
+        _preview = 100
+        if _n_ids <= _preview:
+            print(f"IDS After Filtering ({_n_ids} total):", ids_with_ver,
+                  "\n Columns needed:", needed)
+        else:
+            print(f"IDS After Filtering (showing first {_preview} of {_n_ids}):",
+                  list(ids_with_ver)[:_preview], f"... [+{_n_ids - _preview} more]",
+                  "\n Columns needed:", needed)
     all_meta = fetch_arxiv_metadata(versioned_ids = ids_with_ver, verbose = verbose, columns=needed)
     # No further date/category/author/title checks needed: filter_ids_by_regex already did them.
     id_meta = all_meta.copy()
@@ -1174,7 +1212,13 @@ def fetch_arxiv_batch(
     # ─── Early return if only metadata was requested ──────────────────────
     if formats == ['metadata']:
         if verbose:
-            print(f"[DEBUG] Returning all titles: {[id_meta[m]['title'] for m in id_meta]} ")
+            _titles = [id_meta[m].get('title', '') for m in id_meta]
+            _n_titles = len(_titles)
+            if _n_titles <= 20:
+                print(f"[DEBUG] Returning {_n_titles} titles: {_titles}")
+            else:
+                print(f"[DEBUG] Returning {_n_titles} titles (showing first 20):",
+                      _titles[:20], f"... [+{_n_titles - 20} more]")
 
         id_meta = {
             outer_key: {'metadata': inner_dict}
@@ -1191,7 +1235,7 @@ def fetch_arxiv_batch(
     if output_dir: # Not None
         output_dirs = {res: None for res in formats}  # Create empty dict
         for res in formats:
-            if output_dir == DATA_DIR / 'full_papers': # Default place to store all in a tree structure
+            if output_dir == Path(DATA_DIR) / 'full_papers': # Default place to store all in a tree structure
                 output_dirs[res] = arxiv_dates_and_format_to_dir([id for id in id_meta],
                                                                  [id_meta[m]['published'][:10] for m in id_meta], res, output_dir)
             else:
@@ -1206,6 +1250,7 @@ def fetch_arxiv_batch(
 #        if verbose:
 #            print(f"[DEBUG] Processing {aid} for formats: {formats}")
 
+        safe_aid = aid.replace("/", "_")  # old-format IDs: "acc-phys/9411001v1" → "acc-phys_9411001v1"
         entry: Dict[str, Any] = {}
 
         # Include metadata & abstract if needed
@@ -1220,9 +1265,9 @@ def fetch_arxiv_batch(
                 continue
             if output_dir:
                 if res == 'source':
-                    filename = f"{aid}.tex"
+                    filename = f"{safe_aid}.tex"
                 else:
-                    filename = f"{aid}.{ext_map[res]}"
+                    filename = f"{safe_aid}.{ext_map[res]}"
                 local_path = os.path.join(output_dirs[res][aid], filename)
                 if os.path.isfile(local_path):  # Found file locally
                     # Extract locally (different for different formats)
@@ -1311,9 +1356,9 @@ def fetch_arxiv_batch(
                 if res in ('pdf', 'html', 'source') and output_dir: # save locally if needed
                     os.makedirs(output_dirs[res][aid], exist_ok=True)
                     if res == 'source':
-                        filename = f"{aid}.tex"
+                        filename = f"{safe_aid}.tex"
                     else:
-                        filename = f"{aid}.{ext_map[res]}"
+                        filename = f"{safe_aid}.{ext_map[res]}"
                     path = os.path.join(output_dirs[res][aid], filename)
                     if res == 'source':
                         if entry.get('source') is None:  # Couldn't fetch source
@@ -1367,6 +1412,11 @@ def fetch_arxiv_source(arxiv_id: str, dest_dir: Path, verbose: bool = False) -> 
     """
     dest_dir.mkdir(parents=True, exist_ok=True)
 
+    # Legacy pre-2007 IDs contain a slash (e.g. "quant-ph/0001114v2"); the slash
+    # must NOT leak into local file names or it creates a bogus nested dir. Keep
+    # the raw id for the URL, use the sanitized one for on-disk file names.
+    safe_id = arxiv_id.replace("/", "_")
+
     # Clean directory from previous attempts
     for p in dest_dir.iterdir():
         if p.is_file():
@@ -1377,16 +1427,35 @@ def fetch_arxiv_source(arxiv_id: str, dest_dir: Path, verbose: bool = False) -> 
     # -----------------------
     # 1. Download file
     # -----------------------
-    url = f"https://arxiv.org/e-print/{arxiv_id}"
-    if verbose:
-        print(f"[INFO] Downloading {arxiv_id} from {url}")
+    def _download(aid: str):
+        u = f"https://arxiv.org/e-print/{aid}"
+        if verbose:
+            print(f"[INFO] Downloading {aid} from {u}")
+        r = requests.get(u, timeout=60)
+        r.raise_for_status()
+        return r.content, u
 
-    resp = requests.get(url, timeout=60)
-    resp.raise_for_status()
-    raw = resp.content
+    try:
+        raw, url = _download(arxiv_id)
+    except requests.HTTPError as e:
+        # A specific version can 404 on the source endpoint (e.g. metadata-only
+        # version bumps carry no new source). Retry unversioned → arXiv serves
+        # the latest source that actually exists.
+        base_ver = re.sub(r"v\d+$", "", arxiv_id)
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        if status == 404 and base_ver != arxiv_id:
+            if verbose:
+                print(f"[WARN] {arxiv_id} 404 on source; retrying unversioned {base_ver}")
+            raw, url = _download(base_ver)
+        else:
+            raise
+
+    # Skip PDF files (submitted as PDF-only, no LaTeX source)
+    if raw[:4] == b"%PDF":
+        raise ValueError(f"{arxiv_id}: source is PDF, not LaTeX — skipping")
 
     # Save initial bytes
-    gz_path = dest_dir / f"{arxiv_id}.tar.gz"
+    gz_path = dest_dir / f"{safe_id}.tar.gz"
     gz_path.write_bytes(raw)
 
     # -----------------------
@@ -1404,7 +1473,7 @@ def fetch_arxiv_source(arxiv_id: str, dest_dir: Path, verbose: bool = False) -> 
         # → Not gzip; maybe raw tex
         if verbose:
             print("[DEBUG] gzip failed → treat as raw tex.")
-        tex_path = dest_dir / f"{arxiv_id}.tex"
+        tex_path = dest_dir / f"{safe_id}.tex"
         tex_path.write_bytes(raw)
         return tex_path
 
@@ -1416,14 +1485,14 @@ def fetch_arxiv_source(arxiv_id: str, dest_dir: Path, verbose: bool = False) -> 
         # Probably raw tex mislabeled as gzip
         if verbose:
             print("[DEBUG] gzip output is not a tar → treat as raw tex.")
-        tex_path = dest_dir / f"{arxiv_id}.tex"
+        tex_path = dest_dir / f"{safe_id}.tex"
         tex_path.write_bytes(decompressed)
         return tex_path
 
     # -----------------------
     # 4. Try to extract tar
     # -----------------------
-    tar_path = dest_dir / f"{arxiv_id}.tar"
+    tar_path = dest_dir / f"{safe_id}.tar"
     tar_path.write_bytes(decompressed)
 
     if verbose:
@@ -1491,12 +1560,81 @@ def fetch_arxiv_source(arxiv_id: str, dest_dir: Path, verbose: bool = False) -> 
 
 # at top of file you already import shutil, pathlib, etc. (shutil is present)
 
-def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir: Path, verbose: bool = False):
+
+_INPUT_RE = re.compile(r'\\(input|include)\s*\{([^}]+)\}')
+
+
+def flatten_tex(tex_path: Path, root_dir: Path, _seen: frozenset = None) -> str:
+    """
+    Recursively inline \\input{} and \\include{} commands in a .tex file.
+    Returns the fully flattened content as a string.
+
+    - tex_path: path to the .tex file to flatten
+    - root_dir: base directory for resolving relative include paths (the paper's storage dir)
+    - _seen: frozenset of resolved absolute paths already visited (cycle detection)
+    """
+    if _seen is None:
+        _seen = frozenset()
+
+    resolved = str(tex_path.resolve())
+    if resolved in _seen:
+        return f"% [flatten_tex] Circular reference skipped: {tex_path.name}\n"
+    _seen = _seen | {resolved}
+
+    try:
+        content = tex_path.read_text(errors='replace')
+    except Exception as e:
+        return f"% [flatten_tex] Cannot read {tex_path.name}: {e}\n"
+
+    out = []
+    for line in content.splitlines(keepends=True):
+        # Skip lines that are purely comments
+        if line.lstrip().startswith('%'):
+            out.append(line)
+            continue
+
+        match = _INPUT_RE.search(line)
+        if match:
+            # Ignore if the match is after a % comment marker on the same line
+            comment_pos = line.find('%')
+            if comment_pos != -1 and comment_pos < match.start():
+                out.append(line)
+                continue
+
+            arg = match.group(2).strip()
+            arg_tex = arg if arg.endswith('.tex') else arg + '.tex'
+
+            # Search root_dir first, then the including file's own directory
+            sub_path = None
+            for search_dir in (root_dir, tex_path.parent):
+                candidate = search_dir / arg_tex
+                if candidate.exists():
+                    sub_path = candidate
+                    break
+
+            if sub_path is None:
+                # File not found — keep original line with a warning comment
+                out.append(f"% [flatten_tex] Not found: {arg_tex}\n")
+                out.append(line)
+            else:
+                out.append(f"% --- begin {arg_tex} ---\n")
+                out.append(flatten_tex(sub_path, root_dir, _seen))
+                out.append(f"% --- end {arg_tex} ---\n")
+        else:
+            out.append(line)
+
+    return ''.join(out)
+
+def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir: Path,
+                                       verbose: bool = False, use_paper_subdir: bool = False):
     """
     Local-first resolver:
       1. Determine the latest version from metadata.
       2. Determine correct year/month/day directory from metadata.
-      3. Look for tex in full_papers/<year>/<month>/<day>/tex/<versioned_id>.tex
+      3. Look for tex in the appropriate directory:
+         - use_paper_subdir=False (default): full_papers/<year>/<month>/<day>/tex/<versioned_id>.tex
+         - use_paper_subdir=True  (advanced): full_papers/<year>/<month>/<day>/<versioned_id>/<versioned_id>.tex
+           In this mode the original archive and all companion files are preserved inside the paper dir.
       4. If missing → fetch_arxiv_source to that directory and use the main .tex it returns.
     Returns: (Path to canonical tex file, versioned_id)
     """
@@ -1509,6 +1647,10 @@ def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir:
         version_tag = "v1"
 
     versioned_id = f"{base_id}{version_tag}"
+    # Legacy pre-2007 IDs contain a slash ("quant-ph/0001114v2"). Use a
+    # slash-free form for the on-disk paper dir + file names so we get a clean
+    # single-level paper folder; the raw versioned_id is still used for URLs.
+    safe_vid = versioned_id.replace("/", "_")
 
     # --- 2. Determine date directory ---
     pub = meta.get("published") or meta.get("created") or ""
@@ -1518,29 +1660,34 @@ def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir:
     except ValueError:
         year, month, day = ("unknown", "unknown", "unknown")
 
-    # build tex directory path
-    tex_dir = full_papers_dir / year / month / day / "tex"
-    tex_dir.mkdir(parents=True, exist_ok=True)
+    # --- 3. Build storage directory ---
+    if use_paper_subdir:
+        # New structure: one directory per paper, keeps archive + all companion files
+        storage_dir = full_papers_dir / year / month / day / safe_vid
+    else:
+        # Legacy structure: flat tex/ directory shared by all papers on that date
+        storage_dir = full_papers_dir / year / month / day / "tex"
 
-    tex_path = tex_dir / f"{versioned_id}.tex"
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    tex_path = storage_dir / f"{safe_vid}.tex"
 
-    # --- 3. Local-first check ---
+    # --- 4. Local-first check ---
     if tex_path.exists():
         if verbose:
             print(f"[DEBUG] Using local TEX: {tex_path}")
         return tex_path, versioned_id
 
-    # --- 4. If missing -> fetch directly from arXiv ---
+    # --- 5. If missing -> fetch directly from arXiv ---
     if verbose:
-        print(f"[DEBUG] Local TEX missing. Fetching source for {versioned_id} into {tex_dir}")
+        print(f"[DEBUG] Local TEX missing. Fetching source for {versioned_id} into {storage_dir}")
 
     try:
         # IMPORTANT: this returns the path to the main .tex file in the unpacked source
-        main_tex = fetch_arxiv_source(versioned_id, tex_dir, verbose=verbose)
+        main_tex = fetch_arxiv_source(versioned_id, storage_dir, verbose=verbose)
     except Exception as e:
         raise RuntimeError(f"fetch_arxiv_source failed for {versioned_id}: {e}")
 
-    # --- 5. Canonicalise the main tex file ---
+    # --- 6. Canonicalise the main tex file ---
     if main_tex is not None:
         main_tex = Path(main_tex)
         if main_tex.exists():
@@ -1563,10 +1710,10 @@ def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir:
             # main_tex path is bogus → fall back to generic search below
             main_tex = None
 
-    # --- 6. Very defensive fallback: any *.tex in tex_dir ---
+    # --- 7. Very defensive fallback: any *.tex in storage_dir ---
     if not tex_path.exists():
         tex_files = sorted(
-            tex_dir.rglob("*.tex"),
+            storage_dir.rglob("*.tex"),
             key=lambda p: p.stat().st_size,
             reverse=True,
         )
@@ -1578,7 +1725,31 @@ def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir:
                     f"using largest TEX file {tex_path.name}"
                 )
         else:
-            raise FileNotFoundError(f"No .tex found in {tex_dir} after fetching")
+            raise FileNotFoundError(f"No .tex found in {storage_dir} after fetching")
+
+    # --- 8. Flatten \input / \include references (advanced mode only) ---
+    if use_paper_subdir and tex_path.exists():
+        if verbose:
+            print(f"[DEBUG] Flattening \\input/\\include references in {tex_path.name}")
+        try:
+            flattened = flatten_tex(tex_path, storage_dir)
+            tex_path.write_text(flattened, encoding='utf-8', errors='replace')
+            if verbose:
+                print(f"[DEBUG] Flattened tex written to {tex_path}")
+        except Exception as e:
+            if verbose:
+                print(f"[WARN] flatten_tex failed for {tex_path}: {e}")
+
+        # --- 9. Clean up: keep only unified tex + original tar.gz ---
+        keep = {tex_path.resolve(), (storage_dir / f"{safe_vid}.tar.gz").resolve()}
+        for item in list(storage_dir.iterdir()):
+            if item.resolve() not in keep:
+                if item.is_dir():
+                    shutil.rmtree(item)
+                else:
+                    item.unlink()
+        if verbose:
+            print(f"[DEBUG] Cleaned up companion files; kept {tex_path.name} and {versioned_id}.tar.gz")
 
     return tex_path, versioned_id
 
