@@ -1,14 +1,93 @@
 # Silver extraction — session handoff
 
-**Written 2026-08-04.** Read this first if you are continuing the opus-5 / v5.1
-silver extraction in a new session. Everything needed is on disk; nothing depends
-on the previous conversation.
+**Updated 2026-08-04 (session 2).** The 200-paper target is **REACHED**.
+This file now describes what remains *after* extraction.
 
 ---
 
-## Goal
+## State
 
-Reach **200 papers** in `corpus/silver/opus-5__v5.1/`. Currently at **107**.
+| | |
+|---|---|
+| papers in `corpus/silver/opus-5__v5.1/` | **200 / 200** |
+| nodes / edges | 25,162 / 39,839 |
+| mean nodes per paper | 125.8 |
+| acyclic | 200/200 |
+| papers with 0 orphans | 180/200 |
+| partial or unparseable files | 0 |
+| prompt | v5.1, sha256 prefix `100e6cf6fdbb3aea`, unchanged for all 200 |
+
+Done this session: batch 6 leftovers (13) + batches 7-10 (80) = 93 papers.
+`corpus_report.py`, `audit_verbatim.py`, `build_macro_glossary.py` (now 200/200
+macro files) and `fetch_true_categories.py` have all been re-run.
+
+## What is LEFT
+
+1. **Assign the train/test split** — still deliberately deferred; the pool CSV
+   has no split column, so it can be drawn at any time.
+2. **Decide the E144 convention** before any re-extraction.
+
+(Macro merge is DONE — all 200 papers carry `metadata.macros`, 10,085 macros.)
+
+## Macros are now part of the paper JSON
+
+Each paper's `metadata.macros` holds `{name: {expansion, kind, arity}}`, joined
+in from `corpus/silver/macros/`. Macros are **recorded, never expanded** (E143),
+so every `statement` is still a verbatim span of the *unexpanded* source.
+
+`n_macros`/`by_kind` are deliberately not copied into the paper — both are
+derivable from the dict, and a second copy would be a second thing to drift.
+
+For future extractions this is one command; the merge is idempotent and asserts
+the node/edge counts are unchanged before it swaps the file in:
+
+```bash
+python3 scripts/build_macro_glossary.py --merge      # build glossaries + merge
+python3 scripts/merge_macros.py                      # merge only
+python3 scripts/merge_macros.py --dry-run            # report, write nothing
+```
+
+Papers whose glossary is built before their extraction exists are skipped
+silently, so the `--merge` build is safe to run at any point in a run.
+
+**Gold is covered too** — all 46 files across the 6 gold dirs (15 distinct
+papers). Gold tex now lives in `corpus/gold/tex/` (the 10 tier1 papers had none
+and were fetched), glossaries in `corpus/gold/macros/`:
+
+```bash
+python3 scripts/fetch_tex_for_targets.py --out-dir corpus/gold/tex --ids <...>
+python3 scripts/build_macro_glossary.py --tex-dir corpus/gold/tex \
+        --out-dir corpus/gold/macros
+python3 scripts/merge_macros.py --extract-dir corpus/gold/<dir> \
+        --macro-dir corpus/gold/macros [--legacy-metadata]
+```
+
+Gold is **not** schema-uniform: the four tier1 dirs are `{metadata, nodes,
+edges}` like silver, but `human__gold` and `human__diagram` are
+`{paper_id, objects, relations}` with no metadata block. Those need
+`--legacy-metadata`, which creates `metadata: {paper_id, macros}` and leaves the
+existing top-level keys alone; without the flag they are skipped, not crashed
+on. `objects`/`relations` counts are asserted unchanged, same as nodes/edges.
+
+## Two findings that change what you should trust
+
+- **E145 — one paper had the WRONG source file.** `pick_main_tex` took the first
+  `.tex` containing `\documentclass` in arbitrary tar order; `1505.06386v1`
+  shipped a 3 KB standalone figure file that beat the real 64 KB body, giving
+  1 node / 0 edges. Fixed in `scripts/fetch_tex_for_targets.py` (candidates are
+  now scored on documentclass / begin-document / title / size), paper re-fetched
+  and re-extracted (74 nodes / 87 edges). The whole pool was swept — only case.
+
+- **E144 — the verbatim audit's headline is generous.** It reports 99.97%
+  traced, but 107 nodes match only on their *head*, so mid-span differences are
+  invisible to it. A stricter whole-span check finds **84 nodes in 19 papers**
+  that are not one contiguous source substring. These are **excisions, not
+  fabrications**: agents removed TeX-suppressed blocks (`\iffalse`, `comment`,
+  `\ignore{}`, `\exclude{}`, `\suppress{}`) from inside spans, and agents split
+  both ways on whether to do so. Fix the convention in v6, and fix the audit to
+  report head-only matches as their own bucket.
+
+---
 
 ## THE ONE HARD CONSTRAINT
 
@@ -35,24 +114,6 @@ The **filesystem is the source of truth** — this reconciles the 1000-paper poo
 against what has actually been written, so no bookkeeping needs to survive the
 session boundary. A paper counts as done only if its JSON has BOTH nodes and
 edges.
-
-## Where things stand
-
-| | |
-|---|---|
-| done | 107 |
-| batch 6 outstanding | 13 (tex ALREADY staged) |
-| batches 7-10 | 80 (tex NOT yet fetched) |
-| needed for 200 | 93 |
-
-**Batch 6 leftovers** (3 failed mid-write, 10 never launched — a per-session
-agent cap was hit):
-
-```
-1207.0773v2 1002.3951v4 1806.04821v1 1908.05998v1 1011.5266v2 1111.3171v5
-1910.10789v1 1306.2128v2 1505.00362v2 1804.10737v1 1801.06721v2 1910.14559v3
-1803.09015v4
-```
 
 ## Procedure per batch
 
@@ -95,19 +156,21 @@ agent cap was hit):
 ## Do NOT do these
 
 - Do not change the prompt, the schema, or `src/node_types.py` / `edge_types.py`.
-- Do not merge the macro glossary into paper JSONs yet — that is a single pass
-  over all 200 at the end (`corpus/silver/macros/` holds the staged per-paper
-  files; see E143 in the v6 register for why macros must NOT be expanded).
+- Do not EXPAND macros into statements (E143). Merging the glossary into
+  `metadata.macros` is fine and is now automatic — that records the pairs
+  without touching any span.
 - Do not commit `corpus/silver/tex_pool/` (regenerable) or
   `corpus/silver/opus-5__v5/` (superseded run).
 
-## After 200 papers
+## After 200 papers  (1-4 DONE this session; only 5 remains)
 
 1. `python3 scripts/corpus_report.py` — QA report
 2. `python3 scripts/audit_verbatim.py --dir corpus/silver/opus-5__v5.1` —
-   anti-hallucination audit (last run: 99.96% traced, 2 genuine alterations)
+   anti-hallucination audit (last run: 99.97% traced, 7 unmatched — but see
+   E144: head-only matches hide 84 non-contiguous spans across 19 papers)
 3. `python3 scripts/fetch_true_categories.py` — arXiv primary vs sampled category
-4. Merge macro glossaries into `metadata.macros` in ONE pass
+4. ~~Merge macro glossaries into `metadata.macros`~~ — DONE
+   (`build_macro_glossary.py --merge`, or `merge_macros.py`)
 5. Assign the train/test split (deliberately deferred — the pool CSV has no
    split column so it can be drawn later)
 
