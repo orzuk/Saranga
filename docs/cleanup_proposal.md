@@ -1,5 +1,16 @@
 # Phase 4 Cleanup Proposal
 
+> **STATUS 2026-08-06 — Round 1 executed.** The 11 confident-delete files and
+> 2 of the 6 probable ones (`src/LLM_API_parsing.py`, `src/arxiv_word_count.py`)
+> were re-verified against the current repo and removed: 13 files, 956 lines.
+> Kept from the probable list, with reasons:
+> `scripts/run_multidim_benchmark.py` (implements the multi-dimensional
+> analysis that `graph_alignment.jaccard_statement`/`jaccard_proof` exist for —
+> deleting it would orphan those axes), `scripts/audit_foundation_index.py`,
+> `scripts/show_foundation_stats.py`, `scripts/inspect_naturalproofs.py`
+> (recent, small, re-runnable diagnostics). The `merge` and `unsure` tables
+> below are untouched.
+
 > Generated: 2026-04-26 (Or, in main thread — sub-agent was sandboxed
 > without Bash/Grep). **READ-ONLY proposal — no deletions performed.**
 > Owner-of-decision: Author. Reviewer for `unsure` / LLMVersion items: Author.
