@@ -143,11 +143,12 @@ def signature_of(
     )
 
 
-def jaccard(a: frozenset, b: frozenset) -> float:
-    if not a and not b:
-        return 0.0
-    u = a | b
-    return len(a & b) / len(u) if u else 0.0
+# Canonical set metrics live in src/node_similarity.py (verified identical on
+# random set pairs); re-exported here under the historical name.
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.dirname(
+    _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))), "src"))
+from node_similarity import jaccard_sets as jaccard      # noqa: E402,F401
 
 
 @dataclass

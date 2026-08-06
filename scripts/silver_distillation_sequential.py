@@ -56,26 +56,16 @@ _MATCH_METRIC = "jaccard"
 
 
 def jaccard_similarity(text1, text2):
-    """Match score on token sets after `clean_latex_to_text` normalization.
+    """Silver-profile match score; metric selected by `_MATCH_METRIC`.
 
-    Overrides `distillation_analysis.jaccard_similarity` for the silver
-    distillation pipeline so macros (\\Lun, \\hdots) collapse to readable
-    tokens and brace/format-command noise is removed before matching.
-
-    Despite the legacy name, the metric is controlled by `_MATCH_METRIC`:
-      - "jaccard"     -> |A ∩ B| / |A ∪ B|
-      - "containment" -> |A ∩ B| / min(|A|, |B|)
+    Implementation lives in src/node_similarity.py (Profile.SILVER): the same
+    macro-collapsing cleanup as before, with "jaccard" and "containment"
+    selectable. Kept as a module-level function because the monkey-patch below
+    relies on rebinding this name.
     """
-    c1 = clean_latex_to_text(text1 or "").lower()
-    c2 = clean_latex_to_text(text2 or "").lower()
-    t1 = _da.tokenize_latex(c1)
-    t2 = _da.tokenize_latex(c2)
-    if not t1 or not t2:
-        return 0.0
-    inter = len(t1 & t2)
-    if _MATCH_METRIC == "containment":
-        return inter / min(len(t1), len(t2))
-    return inter / len(t1 | t2)
+    from node_similarity import Profile, text_sim
+    return text_sim(text1, text2, profile=Profile.SILVER,
+                    metric=_MATCH_METRIC)
 
 
 # Monkey-patch so identify_dark_knowledge / validate_rules / etc. inside

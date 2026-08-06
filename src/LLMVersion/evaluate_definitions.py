@@ -3,44 +3,14 @@ import argparse
 import re
 from collections import defaultdict
 
-def normalize_latex(text):
-    """Normalize LaTeX for comparison"""
-    if not text or pd.isna(text):
-        return ""
-    # Remove extra whitespace
-    text = re.sub(r'\s+', ' ', text)
-    # Remove formatting commands
-    text = re.sub(r'\\textit\{([^}]+)\}', r'\1', text)
-    text = re.sub(r'\\textbf\{([^}]+)\}', r'\1', text)
-    text = re.sub(r'\\emph\{([^}]+)\}', r'\1', text)
-    # Remove citations
-    text = re.sub(r'\\cite\{[^}]+\}', '', text)
-    text = re.sub(r'~\\cite\{[^}]+\}', '', text)
-    return text.strip().lower()
+# These three were a verbatim copy of distillation_analysis's copy of the same
+# code. Both now come from the one canonical implementation.
+from distillation_analysis import (          # noqa: F401  (re-export)
+    normalize_latex,
+    tokenize_latex,
+    jaccard_similarity,
+)
 
-def tokenize_latex(text):
-    """Split into tokens: LaTeX commands and words"""
-    if not text:
-        return set()
-    # Match LaTeX commands (\command), words, numbers, and important symbols
-    tokens = re.findall(r'\\[a-zA-Z]+|[a-zA-Z]+|[0-9]+|\$|[{}()[\]]', text)
-    return set(tokens)
-
-def jaccard_similarity(text1, text2):
-    """Compute Jaccard similarity between two LaTeX texts"""
-    text1_norm = normalize_latex(text1)
-    text2_norm = normalize_latex(text2)
-    
-    tokens1 = tokenize_latex(text1_norm)
-    tokens2 = tokenize_latex(text2_norm)
-    
-    if not tokens1 or not tokens2:
-        return 0.0
-    
-    intersection = tokens1 & tokens2
-    union = tokens1 | tokens2
-    
-    return len(intersection) / len(union)
 
 def find_best_match(def_text, gold_standards):
     """Find the best matching gold standard and return (index, similarity, gold_text)"""

@@ -29,30 +29,23 @@ from config import FULL_PAPERS_DIR
 # Shared utilities (reused from evaluate_definitions.py for consistency)
 # ---------------------------------------------------------------------------
 
-def normalize_latex(text):
-    if not text:
-        return ""
-    text = re.sub(r'\s+', ' ', text)
-    text = re.sub(r'\\textit\{([^}]+)\}', r'\1', text)
-    text = re.sub(r'\\textbf\{([^}]+)\}', r'\1', text)
-    text = re.sub(r'\\emph\{([^}]+)\}', r'\1', text)
-    text = re.sub(r'\\cite\{[^}]+\}', '', text)
-    text = re.sub(r'~\\cite\{[^}]+\}', '', text)
-    return text.strip().lower()
+# Canonical implementations live in src/node_similarity.py; the DISTILLATION
+# profile reproduces the behaviour this file used to define inline.
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.dirname(
+    _os.path.abspath(__file__)))))
+from node_similarity import Profile as _Profile          # noqa: E402
+from node_similarity import normalize_latex              # noqa: E402,F401
+from node_similarity import text_sim as _text_sim        # noqa: E402
+from node_similarity import tokenize as _ns_tokenize     # noqa: E402
 
 
 def tokenize_latex(text):
-    if not text:
-        return set()
-    return set(re.findall(r'\\[a-zA-Z]+|[a-zA-Z]+|[0-9]+|\$|[{}()[\]]', text))
+    return _ns_tokenize(text, _Profile.DISTILLATION)
 
 
 def jaccard_similarity(text1, text2):
-    t1 = tokenize_latex(normalize_latex(text1))
-    t2 = tokenize_latex(normalize_latex(text2))
-    if not t1 or not t2:
-        return 0.0
-    return len(t1 & t2) / len(t1 | t2)
+    return _text_sim(text1, text2, profile=_Profile.DISTILLATION)
 
 
 def _find_local_tex(paper_id: str, search_dirs: Optional[List[str]] = None) -> Optional[Tuple[str, str]]:

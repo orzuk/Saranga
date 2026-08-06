@@ -50,39 +50,29 @@ def filter_by_origin(nodes, edges, exclude):
     return kept_nodes, kept_edges
 
 
+# Canonical implementations live in src/node_similarity.py. The EXTRACTION
+# profile reproduces this file's historical tokenizer exactly (punctuation
+# stripped, so `\in` and the word "in" collide) — kept for score continuity;
+# switching to Profile.CANONICAL is a deliberate, separate decision.
+from node_similarity import Profile as _Profile
+from node_similarity import text_sim as _text_sim
+from node_similarity import tokenize as _ns_tokenize
+from node_similarity import node_text as _ns_node_text
+
+
 def tokenize(text):
-    """Simple whitespace + punctuation tokenizer for Jaccard computation."""
-    if not text:
-        return set()
-    text = text.lower()
-    for ch in ".,;:!?()[]{}\"'`\\/|<>=+-*^~#@$%&_":
-        text = text.replace(ch, " ")
-    return set(text.split())
+    """Token set under the historical extraction-eval profile."""
+    return _ns_tokenize(text, _Profile.EXTRACTION)
 
 
 def jaccard(text_a, text_b):
     """Jaccard similarity between two text strings."""
-    tokens_a = tokenize(text_a)
-    tokens_b = tokenize(text_b)
-    if not tokens_a and not tokens_b:
-        return 1.0
-    if not tokens_a or not tokens_b:
-        return 0.0
-    intersection = tokens_a & tokens_b
-    union = tokens_a | tokens_b
-    return len(intersection) / len(union)
+    return _text_sim(text_a, text_b, profile=_Profile.EXTRACTION)
 
 
 def node_text(node):
-    """Extract the primary text content of a node for matching."""
-    parts = []
-    if node.get("statement"):
-        parts.append(node["statement"])
-    if node.get("assumptions"):
-        parts.extend(node["assumptions"])
-    if node.get("conclusions"):
-        parts.extend(node["conclusions"])
-    return " ".join(parts)
+    """Primary text content of a node (no `name`, per this evaluator)."""
+    return _ns_node_text(node, include_name=False)
 
 
 def node_id_parts(node):

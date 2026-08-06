@@ -24,166 +24,30 @@ import numpy as np
 from scipy.optimize import linear_sum_assignment
 
 
-# ── Type compatibility matrix ────────────────────────────────────────────────
-# Rewards theorem↔theorem, lemma↔theorem somewhat, etc.
-TYPE_COMPAT = {
-    # ── Same type = 1.0 (diagonal) ──
-    # All 13 types match themselves at 1.0; handled by the fallback in
-    # type_compat() below so we don't need to list them all here.
-
-    # ── Cross-theorem-like (high compatibility) ──
-    # theorem/lemma/proposition/corollary/claim: all state provable claims
-    ("theorem", "lemma"): 0.9,
-    ("theorem", "proposition"): 0.9,
-    ("theorem", "corollary"): 0.85,
-    ("theorem", "claim"): 0.8,
-    ("lemma", "proposition"): 0.9,
-    ("lemma", "corollary"): 0.85,
-    ("lemma", "claim"): 0.8,
-    ("proposition", "corollary"): 0.85,
-    ("proposition", "claim"): 0.8,
-    ("corollary", "claim"): 0.8,
-
-    # conjecture + problem: similar to theorem-like but unproven/open
-    ("conjecture", "theorem"): 0.7,
-    ("conjecture", "lemma"): 0.7,
-    ("conjecture", "proposition"): 0.7,
-    ("conjecture", "corollary"): 0.65,
-    ("conjecture", "claim"): 0.75,
-    ("conjecture", "problem"): 0.8,   # both are "open questions"
-    ("problem", "theorem"): 0.5,      # problem being studied vs proved result
-    ("problem", "conjecture"): 0.8,
-    # problem<->definition: easily confused by annotators. The "problem" of
-    # computing X is often phrased as "define f(X) = ..." (e.g.
-    # $d_M(r,c) = \min_{P \in U(r,c)} \langle P, M\rangle$ can legitimately
-    # be tagged as either by different annotators).
-    ("problem", "definition"): 0.7,
-
-    # ── Definition vs theorem-like (low — different purposes) ──
-    ("definition", "theorem"): 0.1,
-    ("definition", "lemma"): 0.1,
-    ("definition", "proposition"): 0.1,
-    ("definition", "corollary"): 0.1,
-    ("definition", "claim"): 0.1,
-    ("definition", "conjecture"): 0.1,
-
-    # ── Proof: matches proof only (structural, not semantic) ──
-    # proof vs theorem-like: very low (proof text ≠ statement text)
-    ("proof", "theorem"): 0.05,
-    ("proof", "lemma"): 0.05,
-    ("proof", "definition"): 0.0,
-
-    # ── Pedagogical ──
-    # example ↔ exercise: moderate (both are pedagogical)
-    ("example", "exercise"): 0.6,
-    # example/exercise vs theorem-like: low
-    ("example", "theorem"): 0.1,
-    ("example", "definition"): 0.2,
-    ("exercise", "theorem"): 0.1,
-    ("exercise", "definition"): 0.2,
-
-    # ── Algorithm ──
-    ("algorithm", "theorem"): 0.1,
-    ("algorithm", "definition"): 0.1,
-    ("algorithm", "proof"): 0.1,
-    ("algorithm", "example"): 0.3,
-    # algorithm<->problem: an algorithm computes/solves a problem. Distinct
-    # objects (procedure vs question) but tightly coupled in extraction.
-    ("algorithm", "problem"): 0.35,
-
-    # ── Equation vs others ──
-    ("equation", "theorem"): 0.2,
-    # equation<->definition: a numbered equation often *is* an inline
-    # definition (e.g., a defining equation for a quantity). Bumped from
-    # 0.2 to 0.55 so annotators who tag the same line as definition vs
-    # equation don't get heavily penalized.
-    ("equation", "definition"): 0.55,
-    ("equation", "lemma"): 0.2,
-    ("equation", "proof"): 0.1,
-
-    # ── Remark: low compatibility with everything ──
-    ("remark", "theorem"): 0.1,
-    ("remark", "definition"): 0.1,
-    ("remark", "proof"): 0.1,
-    ("remark", "example"): 0.3,
-
-    # ── Off-schema theorem-like aliases (\newtheorem{property} etc.) ──
-    # Authors freely coin custom env names ("property", "fact", "principle",
-    # "observation", "result"). Treat them as near-synonyms of the standard
-    # theorem-like types so cross-LLM consensus doesn't reject "theorem" vs
-    # "property" tagging differences as disagreement.
-    ("property", "proposition"): 0.95,
-    ("property", "theorem"): 0.9,
-    ("property", "lemma"): 0.85,
-    ("property", "corollary"): 0.85,
-    ("property", "claim"): 0.85,
-    ("fact", "proposition"): 0.9,
-    ("fact", "theorem"): 0.85,
-    ("fact", "lemma"): 0.85,
-    ("fact", "claim"): 0.9,
-    ("fact", "remark"): 0.5,
-    ("observation", "remark"): 0.85,
-    ("observation", "claim"): 0.85,
-    ("observation", "proposition"): 0.7,
-    ("principle", "theorem"): 0.85,
-    ("principle", "proposition"): 0.85,
-    ("principle", "claim"): 0.8,
-    ("result", "theorem"): 0.85,
-    ("result", "proposition"): 0.85,
-}
-
-
-def type_compat(ta, tb):
-    """Get type compatibility score, symmetric.
-
-    Same type = 1.0. Cross-type looked up in TYPE_COMPAT table.
-    Unknown pairs default to 0.1 (very low — different node types
-    rarely match across papers).
-    """
-    if ta == tb:
-        return 1.0
-    if (ta, tb) in TYPE_COMPAT:
-        return TYPE_COMPAT[(ta, tb)]
-    if (tb, ta) in TYPE_COMPAT:
-        return TYPE_COMPAT[(tb, ta)]
-    return 0.1  # unknown pair: very low
-
-
-# ── Node similarity functions ────────────────────────────────────────────────
-_TOKEN_RE = re.compile(r"[a-zA-Z]+|\\[a-zA-Z]+|[0-9]+")
+# ── Type compatibility & tokenisation ────────────────────────────────────────
+# Canonical definitions now live in src/node_similarity.py so that cross-paper
+# alignment and same-paper extraction evaluation cannot drift apart. Re-exported
+# here under the historical names; behaviour is byte-identical (regression-
+# checked over 4000 real node pairs).
+from node_similarity import jaccard_sets as _ns_jaccard
+from node_similarity import tokenize as _ns_tokenize
+from node_similarity import (            # noqa: F401  (re-export)
+    TYPE_COMPAT,
+    TYPE_COMPAT_PROPOSED,
+    type_compat,
+    node_text,
+    node_proof_text,
+    Profile as _Profile,
+)
 
 
 def tokenize(text):
-    """Lowercase token set from text (words, LaTeX commands, numbers)."""
-    if not text:
-        return set()
-    return set(t.lower() for t in _TOKEN_RE.findall(str(text)))
-
-
-def node_text(n):
-    """Concatenate all text content of a node (name, statement, assum, concl)."""
-    parts = [n.get("name", ""), n.get("statement", "")]
-    for fld in ("assumptions", "conclusions"):
-        v = n.get(fld)
-        if isinstance(v, list):
-            parts.extend(str(x) for x in v)
-        elif v:
-            parts.append(str(v))
-    return " ".join(parts)
-
-
-def node_proof_text(n):
-    """Proof-side text: proof_strategy field only (empty for non-proof nodes)."""
-    v = n.get("proof_strategy")
-    return str(v) if v else ""
+    """Lowercase token set (words, LaTeX commands, numbers)."""
+    return _ns_tokenize(text, _Profile.ALIGNMENT)
 
 
 def _raw_jaccard(ta, tb):
-    if not ta and not tb:
-        return 0.0
-    if not ta or not tb:
-        return 0.0
-    return len(ta & tb) / max(1, len(ta | tb))
+    return _ns_jaccard(ta, tb)
 
 
 def jaccard_sim(node_a, node_b, use_type=True):
