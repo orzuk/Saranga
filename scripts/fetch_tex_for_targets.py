@@ -78,16 +78,18 @@ def pick_main_tex(members_bytes):
     texs = {n: b for n, b in members_bytes.items() if n.lower().endswith(".tex")}
     if not texs:
         return None, None
-    main = None
-    for n, b in texs.items():                       # prefer the one with a preamble
-        try:
-            if re.search(rb"\\documentclass", b):
-                main = n
-                break
-        except Exception:
-            pass
-    if main is None:
-        main = max(texs, key=lambda k: len(texs[k]))  # else the biggest
+    # Score every candidate rather than taking the first with a preamble: a
+    # submission can ship several compilable .tex files (a standalone figure or
+    # table file carries its own \documentclass), and tar order is arbitrary.
+    # 1505.06386v1 picked a 3 KB fig/all.tex over the 64 KB real body this way.
+    def score(n):
+        b = texs[n]
+        return (bool(re.search(rb"\\documentclass", b)),
+                bool(re.search(rb"\\begin\{document\}", b)),
+                bool(re.search(rb"\\title", b)),
+                len(b))
+
+    main = max(texs, key=score)
     return main, inline_inputs(members_bytes[main], members_bytes)
 
 
@@ -139,9 +141,13 @@ def main():
                     help="batch number (1-based); takes the Nth paper of each category")
     ap.add_argument("--per-cat", type=int, default=1)
     ap.add_argument("--delay", type=float, default=3.0)
+    ap.add_argument("--out-dir", default=OUT,
+                    help="where to write <id>.tex; default = the silver tex pool. "
+                         "Use corpus/gold/tex for the gold set.")
     args = ap.parse_args()
 
-    os.makedirs(OUT, exist_ok=True)
+    out_dir = args.out_dir
+    os.makedirs(out_dir, exist_ok=True)
 
     if args.ids:
         ids = [x.strip() for x in args.ids.split(",") if x.strip()]
@@ -154,11 +160,11 @@ def main():
         hi = lo + args.per_cat
         ids = [r["arxiv_id"] for c in sorted(bycat) for r in bycat[c][lo:hi]]
 
-    print("fetching %d sources -> %s" % (len(ids), os.path.relpath(OUT, REPO)))
+    print("fetching %d sources -> %s" % (len(ids), os.path.relpath(out_dir, REPO)))
     ok = skip = fail = 0
     failures = []
     for i, aid in enumerate(ids, 1):
-        dst = os.path.join(OUT, aid.replace("/", "_") + ".tex")
+        dst = os.path.join(out_dir, aid.replace("/", "_") + ".tex")
         if os.path.isfile(dst) and os.path.getsize(dst) > 500:
             print("  [%2d/%d] %-16s already have" % (i, len(ids), aid))
             skip += 1

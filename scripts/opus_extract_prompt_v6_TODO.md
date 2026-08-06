@@ -1581,3 +1581,48 @@ blocks were textually *distinct*.
 So a downstream dedupe by string equality catches the first case and misses the
 second. Any dedupe must be semantic, or the spec must record the relation
 explicitly (`restates: <node_id>`), which is the cheaper fix.
+
+### E144. Spans are not always contiguous: interior excision of suppressed blocks
+
+Measured on the full 200-paper corpus (2026-08-04). `audit_verbatim.py` reports
+99.97% traced (7/25162 unmatched), but that figure is generous: 107 nodes match
+only on their **head**, so a mid-span difference is invisible to it.
+
+A stricter whole-span, whitespace-insensitive check finds **84 nodes across 19
+papers** whose `statement` is *not* recoverable as one contiguous source
+substring. Reconstructing them greedily takes 2–12 contiguous source chunks,
+with head and tail both present in the source for almost all — i.e. the span
+endpoints are real and **interior material was excised**, not invented. No
+fabrication was found.
+
+The excised material is LaTeX-suppressed content that the permitted-cleanup list
+does not cover, and which several agents explicitly reported removing:
+`\iffalse…\fi` (`1705.02768v1`), `\begin{comment}` (`1612.05419v3`,
+`1909.06098v1`), `\excludeversion` (`1212.6243v1`), `\ignore{}`/`\commentout{}`
+(`1207.0773v2`, `1002.1782v3`), `\exclude{}` (`1811.04151v1`), `\suppress{}`
+(`1404.1366v4`).
+
+Agents split **both ways** on these: some excised (breaking contiguity), some
+kept the text verbatim (preserving contiguity but injecting never-typeset
+content into statements). That is a uniformity defect, not a model failure.
+
+**v6 must state one convention** — the cleanest is to extend the permitted
+cleanup to "TeX-suppressed blocks (`\iffalse`, `comment`/`excludeversion`
+environments, and zero-expansion macros such as `\ignore`/`\exclude`) are
+removed exactly like `%` comments", which makes excision legal and contiguity
+recoverable.
+
+**Also fix the audit**: head-only matching should be reported as its own bucket
+(107 nodes) rather than folded into "traced", and the audit should apply the
+whole-span check.
+
+### E145. Multi-`\documentclass` submissions can yield the wrong main .tex
+
+`1505.06386v1` shipped a standalone `fig/all.tex` (2,974 B) carrying its own
+`\documentclass`, which `pick_main_tex` selected over the real 64 KB body
+because it took the *first* match in arbitrary tar order. The extraction that
+resulted was 1 node / 0 edges; after the fix it is 74 nodes / 87 edges.
+
+Fixed in `scripts/fetch_tex_for_targets.py` by scoring candidates on
+`(\documentclass, \begin{document}, \title, size)` and taking the max. The
+whole 200-paper pool was re-swept; this was the only affected paper.

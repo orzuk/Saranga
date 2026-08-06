@@ -120,6 +120,11 @@ def main():
     ap.add_argument("--tex-dir", default=TEX_DIR)
     ap.add_argument("--out-dir", default=OUT_DIR)
     ap.add_argument("--ids", default=None, help="comma list; default = all staged")
+    ap.add_argument("--merge", action="store_true",
+                    help="after building, merge each glossary into the paper's "
+                         "metadata.macros (see merge_macros.py)")
+    ap.add_argument("--extract-dir", default=None,
+                    help="extraction dir for --merge; default = merge_macros.py's")
     args = ap.parse_args()
 
     os.makedirs(args.out_dir, exist_ok=True)
@@ -157,6 +162,23 @@ def main():
         vals = sorted(per_paper.values())
         print("per paper        : median %d, max %d, papers with none %d"
               % (vals[len(vals) // 2], vals[-1], sum(1 for v in vals if v == 0)))
+
+    if args.merge:
+        import sys
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import merge_macros
+        extract_dir = args.extract_dir or merge_macros.EXTRACT_DIR
+        print("\nmerging into %s" % extract_dir)
+        written = unchanged = 0
+        for aid in sorted(per_paper):
+            paper = os.path.join(extract_dir, aid + ".json")
+            if not os.path.isfile(paper):
+                continue          # glossary built ahead of extraction; fine
+            status, _ = merge_macros.merge_one(
+                paper, os.path.join(args.out_dir, aid + ".json"))
+            written += status == "written"
+            unchanged += status == "unchanged"
+        print("  merged %d, already current %d" % (written, unchanged))
     print("\nwrote -> %s" % os.path.relpath(args.out_dir, REPO))
     print("\nNOTE: statements are NOT modified. This is a side artifact.")
     print("      Structural macros are the ones safe to expand before regex rules;")
