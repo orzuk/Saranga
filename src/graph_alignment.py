@@ -30,6 +30,8 @@ from scipy.optimize import linear_sum_assignment
 # here under the historical names; behaviour is byte-identical (regression-
 # checked over 4000 real node pairs).
 from node_similarity import jaccard_sets as _ns_jaccard
+from node_similarity import node_sim as _ns_node_sim
+from node_similarity import TypePolicy as _TypePolicy
 from node_similarity import tokenize as _ns_tokenize
 from node_similarity import (            # noqa: F401  (re-export)
     TYPE_COMPAT,
@@ -50,53 +52,37 @@ def _raw_jaccard(ta, tb):
     return _ns_jaccard(ta, tb)
 
 
-def jaccard_sim(node_a, node_b, use_type=True):
-    """Jaccard similarity on name+statement+assum+concl (the 'statement' axis).
+def _axis(node_a, node_b, use_type, text_fn):
+    """One sigma axis: Jaccard over `text_fn`'s tokens, damped by type_compat.
 
-    Historical default sigma for the alignment benchmark. Kept for backward
-    compatibility; new multi-dimensional analysis uses jaccard_statement/_proof.
+    The four public axes differ ONLY in which text they read, so the scoring
+    lives here once and delegates to node_similarity.
     """
-    j = _raw_jaccard(tokenize(node_text(node_a)), tokenize(node_text(node_b)))
-    if use_type:
-        j *= type_compat(node_a.get("type", ""), node_b.get("type", ""))
-    return j
+    return _ns_node_sim(node_a, node_b, profile=_Profile.ALIGNMENT,
+                        type_policy=_TypePolicy.GRADED if use_type
+                        else _TypePolicy.BLIND, text_fn=text_fn)
+
+
+def jaccard_sim(node_a, node_b, use_type=True):
+    """Jaccard on name+statement+assum+concl. Historical default sigma."""
+    return _axis(node_a, node_b, use_type, node_text)
 
 
 def jaccard_statement(node_a, node_b, use_type=True):
-    """Sigma axis 1: Jaccard on name+statement+assumptions+conclusions only.
-
-    Identical to jaccard_sim; kept as an explicitly-named axis for the
-    multi-dimensional analysis.
-    """
-    return jaccard_sim(node_a, node_b, use_type=use_type)
+    """Axis 1 — same as jaccard_sim, named for the multi-dim analysis."""
+    return _axis(node_a, node_b, use_type, node_text)
 
 
 def jaccard_proof(node_a, node_b, use_type=True):
-    """Sigma axis 2: Jaccard on proof_strategy text only.
-
-    Non-zero only when both nodes have non-empty proof_strategy fields.
-    Type compatibility still applies so proof<->theorem gets damped.
-    """
-    ta = tokenize(node_proof_text(node_a))
-    tb = tokenize(node_proof_text(node_b))
-    j = _raw_jaccard(ta, tb)
-    if use_type:
-        j *= type_compat(node_a.get("type", ""), node_b.get("type", ""))
-    return j
+    """Axis 2 — proof_strategy only; non-zero only if both nodes have one."""
+    return _axis(node_a, node_b, use_type, node_proof_text)
 
 
 def jaccard_combined(node_a, node_b, use_type=True):
-    """Combined sigma: Jaccard on the UNION of statement and proof_strategy
-    token bags. Richer content per node -> higher signal when dimensions
-    align (the common case). Edge case 'same theorem, different proof' is
-    damped but still detectable when statement similarity dominates.
-    """
-    ta = tokenize(node_text(node_a) + " " + node_proof_text(node_a))
-    tb = tokenize(node_text(node_b) + " " + node_proof_text(node_b))
-    j = _raw_jaccard(ta, tb)
-    if use_type:
-        j *= type_compat(node_a.get("type", ""), node_b.get("type", ""))
-    return j
+    """Union of the statement and proof_strategy token bags: higher signal
+    when both axes agree, 'same theorem different proof' damped but visible."""
+    return _axis(node_a, node_b, use_type,
+                 lambda n: node_text(n) + " " + node_proof_text(n))
 
 
 # ── Embedding-based node similarity ─────────────────────────────────────────

@@ -24,7 +24,7 @@ _REPO_SCRIPTS = Path(__file__).resolve().parents[1]
 if str(_REPO_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_REPO_SCRIPTS))
 
-from graph_alignment import type_compat  # type: ignore
+from graph_alignment import type_compat  # type: ignore  # noqa: F401
 
 # ── Weights (edit here to tune) ──────────────────────────────────────────
 W_NAME = 0.1
@@ -32,22 +32,17 @@ W_ASSUMPTIONS = 0.2
 W_CONCLUSIONS = 0.7
 # Must sum to 1.0 for interpretability, but the pipeline doesn't require it.
 
-# ── Tokenizer (same as graph_alignment.py for consistency) ───────────────
-_TOKEN_RE = re.compile(r"[a-zA-Z]+|\\[a-zA-Z]+|[0-9]+")
+# Tokenizer and set metric come from the one canonical implementation; this
+# file's copies were byte-identical to graph_alignment's (its own comment said
+# "same as graph_alignment.py for consistency" — now enforced rather than
+# hoped for).
+from node_similarity import Profile as _Profile          # noqa: E402
+from node_similarity import jaccard_sets as _jaccard     # noqa: E402
+from node_similarity import tokenize as _ns_tokenize     # noqa: E402
 
 
-def _tokenize(text: str) -> set[str]:
-    if not text:
-        return set()
-    return set(t.lower() for t in _TOKEN_RE.findall(str(text)))
-
-
-def _jaccard(set_a: set, set_b: set) -> float:
-    if not set_a and not set_b:
-        return 0.0
-    if not set_a or not set_b:
-        return 0.0
-    return len(set_a & set_b) / len(set_a | set_b)
+def _tokenize(text: str) -> set:
+    return _ns_tokenize(text, _Profile.ALIGNMENT)
 
 
 def _concat_list(items) -> str:

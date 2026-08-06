@@ -123,21 +123,20 @@ _TOKEN_RE = re.compile(r"[a-zA-Z]+|\\[a-zA-Z]+|[0-9]+")
 
 
 def _tokenize(text: str, node_type: str = "") -> set[str]:
-    """Tokenize text with stop-word removal and leading-label stripping."""
+    """Canonical tokens, minus the leading type label and English stop words.
+
+    Only the label-stripping and stop-word filtering are specific to this
+    sigma; the tokenisation itself comes from node_similarity.
+    """
     if not text:
         return set()
-    # Strip leading type label
     text = _strip_leading_label(text, node_type)
-    # Tokenize
-    raw = set(t.lower() for t in _TOKEN_RE.findall(str(text)))
-    # Remove stop words
-    return raw - ENGLISH_STOP_WORDS
+    return _ns_tokenize(text, _Profile.ALIGNMENT) - ENGLISH_STOP_WORDS
 
 
-def _jaccard(set_a: set, set_b: set) -> float:
-    if not set_a or not set_b:
-        return 0.0
-    return len(set_a & set_b) / len(set_a | set_b)
+from node_similarity import Profile as _Profile          # noqa: E402
+from node_similarity import jaccard_sets as _jaccard     # noqa: E402
+from node_similarity import tokenize as _ns_tokenize     # noqa: E402
 
 
 # ── Field access helpers ─────────────────────────────────────────────────
