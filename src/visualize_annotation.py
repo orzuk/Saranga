@@ -109,6 +109,28 @@ def _normalize_schema(data, source_path=None):
     return data
 
 
+def _as_text(v, sep=", "):
+    """Coerce a list-or-string node field to a single display string.
+
+    Mirror of `_as_list`, for the fields that are rendered as text. The v5.1
+    schema makes `proof_strategy` a LIST of strategy labels
+    (["construction", "compactness", ...]); earlier formats wrote a free-text
+    string, and the rules parser writes the proof body itself. All three must
+    render, so lists are joined rather than assumed away — passing a list to
+    `.strip()` is what used to raise
+    `AttributeError: 'list' object has no attribute 'strip'` on 190 of the 200
+    v5.1 silver papers.
+    """
+    if v is None:
+        return ""
+    if isinstance(v, str):
+        return v
+    if isinstance(v, (list, tuple)):
+        return sep.join(str(x).strip() for x in v
+                        if x is not None and str(x).strip())
+    return str(v)
+
+
 def _as_list(v):
     """Coerce a list-or-string node field to a list of strings."""
     if v is None:
@@ -306,8 +328,8 @@ def _statement_render_source(n):
     it still carries TeX (a $ or a backslash command); strip stray \\label{...}
     and collapse whitespace. Falls back to statement otherwise.
     """
-    raw = (n.get("raw_latex") or "").strip()
-    stmt = n.get("statement") or ""
+    raw = _as_text(n.get("raw_latex")).strip()
+    stmt = _as_text(n.get("statement"))
     src = raw if _re.search(r'[$\\]', raw) else stmt
     src = _re.sub(r'\\label\s*\{[^}]*\}', '', src)
     src = _re.sub(r'\s+', ' ', src).strip()
@@ -945,12 +967,12 @@ def merge_proofs(nodes, edges):
             parent_id = proof_map[n["id"]]
             parent = node_by_id[parent_id]
             parent.setdefault("proof_info", [])
-            body = (n.get("proof_strategy") or n.get("clean_text")
-                    or n.get("statement") or "").strip()
+            body = (_as_text(n.get("proof_strategy")) or _as_text(n.get("clean_text"))
+                    or _as_text(n.get("statement"))).strip()
             if body:
                 parent["proof_info"].append(body)
-            synth_src = (n.get("raw_latex") or n.get("clean_text")
-                         or n.get("statement") or "").strip()
+            synth_src = (_as_text(n.get("raw_latex")) or _as_text(n.get("clean_text"))
+                         or _as_text(n.get("statement"))).strip()
             if synth_src:
                 _proof_bodies_for_synth[parent_id].append(synth_src)
             continue
@@ -1432,7 +1454,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             for x in _as_list(n.get("input")): lines.append(_shorten(x, 60))
             for x in _as_list(n.get("output")): lines.append(_shorten(x, 60))
         else:
-            raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
+            raw = _as_text(n.get("statement")) or _as_text(n.get("proof_strategy"))
             lines.append(_shorten(_prepare_for_display(raw), 150))
             if ntype in _THEOREM_LIKE:
                 _pl = _proof_indicator(n)
@@ -1465,7 +1487,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             for x in _as_list(n.get("output")):
                 texts.append(_shorten(x, 100))
         else:
-            raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
+            raw = _as_text(n.get("statement")) or _as_text(n.get("proof_strategy"))
             texts.append(_prepare_for_display(raw))
             if ntype in _THEOREM_LIKE:
                 _pl = _proof_indicator(n)
@@ -1632,7 +1654,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 h += PADDING
             else:
                 # Use statement, or name as fallback (e.g., proofs with descriptive names)
-                raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
+                raw = _as_text(n.get("statement")) or _as_text(n.get("proof_strategy"))
                 stmt = _prepare_for_display(raw)
                 stmt_lines = _wrap(stmt, wrap_w)[:5]
                 stmt_height = sum(_line_h(l) for l in stmt_lines) if stmt_lines else LINE_H
@@ -1881,7 +1903,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         else:
             # Simple box: wrap statement/name text to box width (up to 5 lines)
             dyn_wrap = max(20, int(node_width.get(nid, 4.0) * CHARS_PER_UNIT) - 4)
-            raw = n.get("statement", "") or n.get("proof_strategy", "") or ""
+            raw = _as_text(n.get("statement")) or _as_text(n.get("proof_strategy"))
             stmt = _prepare_for_display(raw)
             stmt_lines = _wrap(stmt, dyn_wrap)[:5]
             if not stmt_lines:
@@ -2037,8 +2059,8 @@ def _classify_and_merge(nodes, edges):
             # LLM extraction writes the proof body to `proof_strategy`; the
             # rules parser writes it to `statement`/`clean_text`. Accept any
             # non-empty form so the `*` badge + side-panel work for both.
-            body = (n.get("proof_strategy") or n.get("clean_text")
-                    or n.get("statement") or "").strip()
+            body = (_as_text(n.get("proof_strategy")) or _as_text(n.get("clean_text"))
+                    or _as_text(n.get("statement"))).strip()
             if body:
                 parent["proof_info"].append(body)
 
@@ -2130,8 +2152,8 @@ def _classify_and_merge(nodes, edges):
             continue
         # Prefer raw_latex (consistent LaTeX) so we can reliably detect math
         # environments before splitting; fall back to clean_text / statement.
-        body = (n.get("raw_latex") or n.get("clean_text")
-                or n.get("statement") or "").strip()
+        body = (_as_text(n.get("raw_latex")) or _as_text(n.get("clean_text"))
+                or _as_text(n.get("statement"))).strip()
         if not body:
             continue
         pieces = _split_proof_into_steps(body)
