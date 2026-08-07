@@ -336,6 +336,7 @@ def _statement_render_source(n):
 
 
 _CURRENT_MACROS = {}
+_LAST_CYCLE_EDGES = []
 
 
 
@@ -812,6 +813,57 @@ def _split_proof_into_steps(body):
 
 
 # ── Merge proofs into parent theorems ───────────────────────────────────────
+def split_cycle_edges(nodes, edges):
+    """Split `edges` into (acyclic, back_edges) without discarding anything.
+
+    The layered layout needs a DAG, and the extraction spec has been satisfying
+    that by DELETING the offending edge (E120) — irreversibly, and invisibly,
+    which is exactly why its prevalence could never be measured. Forward
+    references ("see Remark 3 below") are normal mathematical writing, so the
+    dependency is real; only the drawing cannot accommodate it.
+
+    Separating the two concerns fixes that: storage keeps every edge, the VIEWER
+    drops the minimum needed to layer, and what it dropped stays visible as a
+    count and a toggle instead of vanishing.
+
+    Deterministic: nodes are visited in input order and edges sorted, so the
+    same graph always yields the same back set.
+    """
+    adj = defaultdict(list)
+    for i, e in enumerate(edges):
+        adj[e.get("source")].append((e.get("target"), i))
+    for k in adj:
+        adj[k].sort()
+
+    WHITE, GREY, BLACK = 0, 1, 2
+    color = defaultdict(int)
+    back = set()
+
+    for start in [n["id"] for n in nodes]:
+        if color[start] != WHITE:
+            continue
+        stack = [(start, iter(adj.get(start, ())))]
+        color[start] = GREY
+        while stack:
+            node, it = stack[-1]
+            advanced = False
+            for tgt, idx in it:
+                if color[tgt] == GREY:      # edge into the current path = cycle
+                    back.add(idx)
+                    continue
+                if color[tgt] == WHITE:
+                    color[tgt] = GREY
+                    stack.append((tgt, iter(adj.get(tgt, ()))))
+                    advanced = True
+                    break
+            if not advanced:
+                color[node] = BLACK
+                stack.pop()
+    keep = [e for i, e in enumerate(edges) if i not in back]
+    drop = [e for i, e in enumerate(edges) if i in back]
+    return keep, drop
+
+
 def merge_proofs(nodes, edges):
     """Collapse proof nodes into their parent theorem.
 
@@ -1357,6 +1409,15 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                  if e["source"] not in hidden_ids and e["target"] not in hidden_ids]
     if HIDE_LOW_CONF:
         edges = [e for e in edges if float(e.get("confidence", 1.0) or 1.0) >= LOW_CONF_THRESHOLD]
+    # Keep cycle-causing edges OUT of the layout but IN the data. draw_dag
+    # stores them so the HTML can offer them as a toggle rather than silently
+    # losing them, which is the failure mode E120 records.
+    edges, _cycle_edges = split_cycle_edges(nodes, edges)
+    global _LAST_CYCLE_EDGES
+    _LAST_CYCLE_EDGES = _cycle_edges
+    if _cycle_edges:
+        print("  [layout] %d edge(s) held out of the layered view to break cycles"
+              % len(_cycle_edges))
     depth = compute_dag_depth(nodes, edges)
 
     # Group by depth level
