@@ -1,9 +1,10 @@
 # Studying AI-assisted mathematics through the dependency graph
 
 **Status: plan + a completed feasibility check.** Written 2026-08-07.
-Section 9 has the measured result of step 1, and it changes the design. Nothing here has been
-measured yet; the point of the document is to say what would have to be true for
-the study to work, and what would sink it.
+Sections 1-8 are the plan as first written; **section 9 is the measured result of
+step 1, and it retires the design proposed in section 6.** The plan is left intact
+above rather than rewritten, so the reasoning that led to the gate — and what the
+gate then overturned — both stay on the record.
 
 ## 1. The question
 
