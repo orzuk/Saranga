@@ -74,6 +74,14 @@ def _normalize_schema(data, source_path=None):
     Fallback to schema B (parse_batch.py: 'label', 'clean_text', 'raw_latex',
     '[MATH]' placeholders). Modifies data in place and returns it.
     """
+    # `proves` is a string in 1216 of 1236 proof nodes across the corpus, but
+    # one paper writes it as a one-element list. Four separate call sites did
+    # `node["proves"] in some_dict`, which raises TypeError on a list. Coerce
+    # once here rather than guarding each reader.
+    for _n in (data.get("nodes") or []):
+        if isinstance(_n, dict) and isinstance(_n.get("proves"), (list, tuple)):
+            _n["proves"] = _n["proves"][0] if _n["proves"] else None
+
     import re as _re_local
     nodes = data.get("nodes", []) or []
     for n in nodes:
@@ -142,6 +150,18 @@ def _as_list(v):
     return [str(v)]
 DEFAULT_COLOR = {"header": "#566573", "body": "#EAECEE"}
 PROOF_COLOR = "#E8DAEF"
+
+# ── Raster budget ──
+# Caps PNG pixels so memory stays bounded regardless of node count. Purely a
+# rasterisation setting — it does not affect layout, and SVG/HTML ignore it.
+PNG_DPI = 100            # 12pt text -> 16.7 px, comfortably readable.
+                         # 200 gave 33 px: ~3x more than any eye needs,
+                         # at 4x the pixels. Unlike a photograph there is
+                         # a hard ceiling on useful resolution here — the
+                         # content is text and rectangles, so once glyph
+                         # edges are crisp, extra dpi stores nothing new.
+MIN_PNG_DPI = 40         # never go below this, however large the figure
+MAX_RASTER_PX = 100_000_000   # ~0.4 GB RGBA before tight-bbox double render
 
 # ── Layout constants (shared between draw_dag and draw_foundation_ghosts) ──
 MIN_BOX_W = 3.0
@@ -335,7 +355,33 @@ def _statement_render_source(n):
     src = _re.sub(r'\s+', ' ', src).strip()
     return src
 
+def _paper_macros():
+    """Macros for the paper currently being drawn (set by draw_dag)."""
+    return _CURRENT_MACROS
+
+
+_CURRENT_MACROS = {}
+
+
+def _resolve_latex(text):
+    """Resolve paper-local macros and brace-normalise, before mathtext sees it.
+
+    matplotlib's mathtext knows neither a paper's `\newcommand`s nor TeX's
+    one-token-argument idiom, and v5.1 statements are verbatim source, so both
+    reach it intact. Implementation is shared in src/latex_macros.py because
+    cross-paper matching needs the same resolution.
+    """
+    if not text:
+        return text
+    try:
+        from latex_macros import normalize_for_mathtext
+        return normalize_for_mathtext(text, _CURRENT_MACROS)
+    except Exception:
+        return text
+
+
 def _sanitize_math(text):
+    text = _resolve_latex(text)
     """Replace unsupported LaTeX commands with matplotlib-compatible equivalents.
 
     Six passes:
@@ -924,7 +970,12 @@ def merge_proofs(nodes, edges):
     for n in nodes:
         if n["type"] == "proof":
             # Support both "proves" and "parent" fields for linking to parent theorem
+            # `proves` is a string in 1216 of 1236 proof nodes, but one paper
+            # (1212.6243v1) writes it as a one-element list. A list is
+            # unhashable, so the membership test below raised TypeError.
             target_id = n.get("proves") or n.get("parent") or ""
+            if isinstance(target_id, (list, tuple)):
+                target_id = target_id[0] if target_id else ""
             if target_id in node_by_id:
                 proof_map[n["id"]] = target_id
 
@@ -1139,10 +1190,15 @@ def compute_foundation_links(nodes_raw, base_ids, foundation_path=None):
                         for nr2 in nodes_raw:
                             if nr2["id"] == nr["parent_proof"] and nr2.get("proves"):
                                 parent = nr2["proves"]
+                                if isinstance(parent, (list, tuple)):
+                                    parent = parent[0] if parent else None
                                 break
                         break
-                    if nr.get("proves") and nr["proves"] in base_ids:
-                        parent = nr["proves"]
+                    _pv = nr.get("proves")
+                    if isinstance(_pv, (list, tuple)):
+                        _pv = _pv[0] if _pv else None
+                    if _pv and _pv in base_ids:
+                        parent = _pv
                         break
             if parent in base_ids:
                 ghost_map.setdefault(fname, set()).add(parent)
@@ -1344,6 +1400,34 @@ def draw_legend(ax, node_data, node_rect, show_foundation=False,
 
 
 # ── Drawing ─────────────────────────────────────────────────────────────────
+def _resolve_nodes(nodes, macros):
+    """Resolve paper macros + brace-normalise every text field, on a COPY.
+
+    mathtext parses lazily at savefig() time, so sanitising inside
+    _sanitize_math only covers the paths that happen to call it — text reaching
+    an artist any other way still blew up during rendering. Doing it once here,
+    before layout, means there is exactly one place where a paper's LaTeX
+    becomes mathtext-safe. Never mutates the caller's data.
+    """
+    from latex_macros import normalize_for_mathtext as _norm
+    TEXT = ("statement", "statement_short", "name", "clean_text", "raw_latex",
+            "genus", "definiendum", "label")
+    LISTS = ("assumptions", "conclusions", "differentia")
+    out = []
+    for n in nodes:
+        m = dict(n)
+        for f in TEXT:
+            v = m.get(f)
+            if isinstance(v, str) and v:
+                m[f] = _norm(v, macros)
+        for f in LISTS:
+            v = m.get(f)
+            if isinstance(v, list):
+                m[f] = [_norm(x, macros) if isinstance(x, str) else x for x in v]
+        out.append(m)
+    return out
+
+
 def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
              resolution="standard", show_legend=True, show_foundation=False,
              foundation_path=None, show_extras=True, write_png=True):
@@ -1376,6 +1460,23 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
       these node types are always drawn already; the HTML toggle buttons hide
       them via JS, so this flag is currently a no-op kept to avoid a TypeError.
     """
+    # Paper-local macros, so mathtext can resolve \Sc, \GL, \PP ... They ride
+    # along in metadata.macros (see scripts/merge_macros.py); a paper without
+    # them simply expands nothing.
+    global _CURRENT_MACROS
+    _CURRENT_MACROS = (metadata or {}).get("macros") or {}
+    try:
+        nodes_raw = _resolve_nodes(nodes_raw, _CURRENT_MACROS)
+        # The title is drawn too, and carries macros just like a statement.
+        if isinstance(metadata, dict):
+            from latex_macros import normalize_for_mathtext as _norm
+            metadata = dict(metadata)
+            for _f in ("title", "subtitle"):
+                if isinstance(metadata.get(_f), str):
+                    metadata[_f] = _norm(metadata[_f], _CURRENT_MACROS)
+    except Exception as _e:
+        print("  [warn] macro resolution skipped: %s" % _e)
+
     if resolution == "full":
         # Full resolution: no merging, show everything
         nodes = list(nodes_raw)
@@ -2028,7 +2129,21 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
     # blows up (time + memory) on large figures. Callers that only need the SVG
     # (interactive HTML) pass write_png=False to skip it entirely.
     if write_png:
-        plt.savefig(str(out_path), dpi=200, bbox_inches="tight", facecolor="white")
+        # Bound the raster, NOT the layout. Figure size is computed in inches
+        # from content and can reach 200+ inches on a large paper; at a fixed
+        # dpi=200 that is a 700-megapixel, multi-GB Agg buffer (and
+        # bbox_inches="tight" renders it twice). Lowering dpi changes only
+        # pixel density: composition, proportions and text wrapping are all
+        # computed in inches/points, so the picture is identical — verified by
+        # downscaling a dpi=200 render to the dpi=50 size (mean pixel
+        # difference 3.9/255, all of it antialiasing). SVG is unaffected: it is
+        # vector and takes no dpi.
+        _w_in, _h_in = fig.get_size_inches()
+        _dpi = PNG_DPI
+        _px = (_w_in * _dpi) * (_h_in * _dpi)
+        if _px > MAX_RASTER_PX:
+            _dpi = max(MIN_PNG_DPI, int(_dpi * (MAX_RASTER_PX / _px) ** 0.5))
+        plt.savefig(str(out_path), dpi=_dpi, bbox_inches="tight", facecolor="white")
 
     # Also save SVG if requested (for interactive HTML).
     # No bbox_inches="tight": for wide-aspect figures it shrinks the saved
@@ -2052,9 +2167,12 @@ def _classify_and_merge(nodes, edges):
         if n.get("type") != "proof" and n["id"] in node_by_id:
             node_by_id[n["id"]]["proof_info"] = []
     for n in nodes:
-        if n.get("type") == "proof" and n.get("proves") and n["proves"] in node_by_id:
-            proof_map[n["id"]] = n["proves"]
-            parent = node_by_id[n["proves"]]
+        _pv = n.get("proves")
+        if isinstance(_pv, (list, tuple)):        # one paper writes ["TP1.2"]
+            _pv = _pv[0] if _pv else None
+        if n.get("type") == "proof" and _pv and _pv in node_by_id:
+            proof_map[n["id"]] = _pv
+            parent = node_by_id[_pv]
             parent.setdefault("proof_info", [])
             # LLM extraction writes the proof body to `proof_strategy`; the
             # rules parser writes it to `statement`/`clean_text`. Accept any
@@ -2961,10 +3079,15 @@ def main():
         if do_html:
             import os
             svg_only_path = str(output_path).replace('.png', '_nolegend.svg')
+            # write_png=False: the HTML embeds the SVG, and the PNG written
+            # here was deleted three lines below anyway. Rasterising it cost
+            # ~6 GB and half the runtime on a 461-node paper. The parameter
+            # existed and was documented but had never been passed.
             draw_dag(nodes, edges, svg_only_path.replace('.svg', '.png'), metadata=metadata,
                      resolution=args.resolution, show_legend=False,
                      show_foundation=True,
-                     foundation_path=args.foundation_path)
+                     foundation_path=args.foundation_path,
+                     write_png=False)
             html_path = input_path.with_suffix(".html")
             n_html = generate_interactive_html(data, svg_only_path, str(html_path))
             for tmp in [svg_only_path, svg_only_path.replace('.svg', '.png')]:
