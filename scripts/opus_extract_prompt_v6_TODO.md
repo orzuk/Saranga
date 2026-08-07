@@ -1679,3 +1679,107 @@ environment header before excision, not from the emitted span.
 renderer can print the target node id. Both are cheap once the mapping is exact
 and impossible while it is a guess. Keep them out of the same prompt revision so
 the label capture can be validated on its own.
+
+### E147. Edge multiplicity is real signal and is currently unrepresentable — but it must be DERIVED, not extracted
+
+An edge is boolean: A supports B, or it does not. The source text is not.
+Measured over the corpus, distinct `\ref` keys / total `\ref` occurrences is
+**0.36**, i.e. a referenced target is pointed at ~2.8 times on average. "This
+lemma is invoked once" and "this lemma is invoked seven times" are the same
+graph today.
+
+*Scope, honestly.* This is a refinement of degree, NOT a replacement for it, and
+an earlier framing of it here was overstated. Of 21,565 `\ref` targets, ~18.6%
+point at equations and only ~10.7% at theorem-like results (51.4% have no
+classifiable prefix); and papers carry a median 70 refs against 169 edges, so
+the graph already encodes more relations than the text cross-references. Edge
+weight is worth having as a tie-breaker for ranking and layout emphasis. It is
+not a new importance signal.
+
+*Division of labour — do NOT ask the model for counts.* This is the same rule
+section F applies to offsets. Counting occurrences is mechanical, deterministic
+and exactly what an LLM is worst at; a hallucinated `weight: 7` is unfalsifiable
+without re-reading the source. Once `label` exists (E146), a script counts
+`\ref{K}` per source node and joins K to its owning node. The extractor's job is
+to record the label; the count is computed afterwards and is reproducible.
+
+*Schema.* Edges already carry optional `type`, `note` and `confidence`
+(`annotation_schema.md`). Add:
+
+  `weight` (O, int) — number of times the source is explicitly cross-referenced
+  from the target's span. Absent means "not computed", NOT 1: a corpus extracted
+  before labels existed must be distinguishable from one where the count is
+  genuinely zero.
+
+Do not overload `confidence`, which means "how sure is the extractor that this
+edge exists" — an orthogonal axis from "how often is it invoked".
+
+### E120 addendum 3 — E146 unblocks the measurement this entry declares impossible
+
+E120 records that prevalence "is NOT recoverable from the corpus", and the stated
+reason is precise: node `name` fields are descriptive rather than numbered, and
+`\label{}` is stripped by the mandated cleanup, so "see Remark 3 below" has
+nothing to resolve against. Capturing `label` (E146) supplies exactly the missing
+anchor — a forward reference becomes `\ref{rem:3}` resolving to a known node id,
+so dropped edges become detectable instead of invisible.
+
+That also changes the recommended fix. While the loss was unmeasurable, deletion
+was at least defensible. Once it is measurable, deleting a true dependency to
+satisfy a representation constraint is not: **keep the edge and mark it** rather
+than dropping it —
+
+  `forward_reference` (O, bool) — the target cites the source as appearing
+  later in the paper; the edge is real but participates in a cycle.
+
+Consumers that require a DAG (layered layout, topological sort) filter on it;
+consumers that want the true dependency structure (T-ALIGN, T-PLAG, discovery)
+keep it. This is strictly better than deletion, which is irreversible and leaves
+no trace — the property that made E120 unmeasurable in the first place.
+
+Sequencing: E146 first and alone, then E147 and this addendum. Both depend on
+labels being exact, and bundling them means a bad label silently manufactures a
+wrong weight or a wrong cycle marker.
+
+### E148. Authors declare their own headline results in prose — ask the model for that judgement, not for counts
+
+Papers say which result matters: "our main theorem", "the key lemma", "the
+principal contribution". Measured over the corpus with a
+`(main|principal|central|key|primary)\s+(theorem|result|lemma|...)` cue:
+
+  * cue in a node's own `name` (self-declaration): **52 nodes, 28/200 papers**
+  * cue in prose pointing elsewhere: **32 nodes, 18/200 papers**
+  * against **5,254** theorem-like nodes in total
+
+So the surface cue is high-precision, very low-recall — usable as a boost, never
+as a ranking. Its precision is also imperfect: of the 52 name hits, 10 are
+`remark` and 6 are `proof_step`. "Remark on the main theorem" is not the main
+theorem, so any regex over this needs a type guard at minimum.
+
+*The real point is the division of labour.* E147 argues counting must be derived
+because counting is mechanical and an LLM is worst at it. The converse holds
+here: "is this the paper's headline contribution?" is an editorial judgement
+that requires having read the abstract and introduction — exactly what the model
+is doing anyway, and exactly what no downstream script can recover, since the
+abstract is not part of any extracted span. Regex over statements only sees the
+14% of papers that spell it out.
+
+  derive deterministically   offsets (F), reference counts (E147), labels->edges
+  ask the model              typing, origin, and this: headline-result judgement
+
+*Proposed field — but state a rubric, or this becomes E130 again.* A subjective
+field mentioned without a closed definition is what produced `rigor` at 5%
+coverage concentrated in 6 papers. Prefer an OBJECTIVE proxy over "is it
+important":
+
+  `announced_in_abstract` (O, bool) — the node's result is stated or explicitly
+  referred to in the abstract or introduction.
+
+That is checkable by a second reader, unlike "salience", and it captures what
+the cue was reaching for: authors announce their headline results up front. Do
+NOT add a free-form importance score.
+
+*Caveat for whoever implements the ranking.* Combining this with descendants and
+type is a reasonable far-zoom heuristic, but there is no ground truth for
+"important" in this corpus, so the combination cannot be validated — only
+inspected. Keep it as display emphasis; do not let it gate what is extracted or
+stored.

@@ -61,6 +61,13 @@ _UNBRACED = re.compile(r"\\(%s)(?:\s*(\\[A-Za-z]+)|\s+([A-Za-z0-9]))"
 
 _MAX_DEPTH = 8          # nested macro definitions; also breaks \a -> \b -> \a
 
+# Loops that rewrite ONE occurrence per pass need an occurrence bound, not a
+# nesting bound. They were sharing _MAX_DEPTH, so a statement with more than 8
+# `\ensuremath{}` wrappers kept the 9th onward verbatim — 180 strings across 55
+# papers. Each pass strictly removes one command, so this terminates; the cap is
+# only a runaway guard.
+_MAX_PASSES = 2000
+
 # Text ending in a control word, e.g. the `\in` of `\in\xmo`. See _splice.
 _CS_TAIL = re.compile(r"\\[A-Za-z]+$")
 
@@ -107,7 +114,7 @@ _TRANSPARENT = ("ensuremath", "mbox", "hbox", "underline", "norm", "abs")
 _TRANSPARENT_RE = re.compile(r"\\(%s)\s*\{" % "|".join(_TRANSPARENT))
 
 
-def unwrap_transparent(text, max_depth=_MAX_DEPTH):
+def unwrap_transparent(text, max_depth=_MAX_PASSES):
     """`\\ensuremath{X}` -> `X`, `\\mbox{X}` -> `X`, nested included."""
     if not text:
         return text
@@ -169,7 +176,7 @@ _ZERO_WIDTH = re.compile(r"\\[/-]|\\hfill\b|\\noindent\b|\\linebreak\b|\\newline
 _EMPTY_GROUP = re.compile(r"\{\s*\}")
 
 
-def resolve_text_fonts(text, max_depth=_MAX_DEPTH):
+def resolve_text_fonts(text, max_depth=_MAX_PASSES):
     """`\\textsf{Push}` -> `\\mathsf{Push}` in math, `Push` in text."""
     if not text:
         return text
