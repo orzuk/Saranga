@@ -1242,7 +1242,8 @@ def _resolve_nodes(nodes, macros):
 
 def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
              resolution="standard", show_legend=True, show_foundation=False,
-             foundation_path=None, show_extras=True, write_png=True):
+             foundation_path=None, show_extras=True, write_png=True,
+             show_title=True):
     """Main entry: draw a layered DAG from student-format nodes/edges.
 
     resolution:
@@ -1701,7 +1702,9 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                       and bool(n.get("proof_info")))
         if _has_proof:
             from matplotlib.patches import Circle
-            _badge_r = HEADER_H * 0.18
+            # 0.18 made the badge 0.13in across on a 74in-wide figure —
+            # sub-pixel at fit-to-window zoom, which reads as 'no badge'.
+            _badge_r = HEADER_H * 0.30
             _badge_cx = bx + bw - _badge_r * 1.6
             _badge_cy = cursor_y - HEADER_H / 2
             _safe_nid_for_badge = str(nid).replace(" ", "_")
@@ -1710,9 +1713,11 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                            linewidth=0.8, zorder=5,
                            gid=f"node_{_safe_nid_for_badge}__proofbadge")
             ax.add_patch(badge)
+            # zorder above the circle: text defaults to 3, the badge patch is
+            # 5, so the asterisk was being painted BEHIND its own badge.
             ax.text(_badge_cx, _badge_cy, "*",
                     ha="center", va="center", fontsize=max(9, header_fontsize * 0.85),
-                    fontweight="bold", color="#5D4037",
+                    fontweight="bold", color="#5D4037", zorder=6,
                     gid=f"node_{_safe_nid_for_badge}__proofbadgetext")
         cursor_y -= HEADER_H + PADDING
 
@@ -1927,8 +1932,14 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         title = f"{metadata['title']} — Knowledge Graph"
     else:
         title = "Knowledge Graph (DAG)"
-    ax.set_title(title, fontsize=24 * _font_scale, fontweight="bold",
-                  pad=20 * _font_scale)
+    if show_title:
+        # Cap the scale. _font_scale grows with sqrt(figure AREA), which on a
+        # 116x46in paper reaches 5.3 — a 127pt title with 105pt of padding,
+        # about 3.2 inches stacked above the axes, far more than the margin
+        # reserved below it, so the glyphs were sliced off at the top edge.
+        _title_scale = min(_font_scale, 1.5)
+        ax.set_title(title, fontsize=24 * _title_scale, fontweight="bold",
+                     pad=20 * _title_scale)
 
     ax.autoscale()
     ax.margins(0.05)
@@ -2940,7 +2951,11 @@ def main():
                      resolution=args.resolution, show_legend=False,
                      show_foundation=True,
                      foundation_path=args.foundation_path,
-                     write_png=False)
+                     write_png=False,
+                     # The HTML page already shows the paper title as an <h1>
+                     # with the arXiv links, so an in-figure title just repeats
+                     # it and eats vertical space above the graph.
+                     show_title=False)
             html_path = input_path.with_suffix(".html")
             n_html = generate_interactive_html(data, svg_only_path, str(html_path))
             for tmp in [svg_only_path, svg_only_path.replace('.svg', '.png')]:

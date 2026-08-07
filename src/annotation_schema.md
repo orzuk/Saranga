@@ -43,7 +43,7 @@ Each node is a mathematical object. Required fields are marked with **R**, optio
 | `statement` | **R** | string | Clean 1-3 sentence summary |
 | `raw_latex` | O | string | Original LaTeX source |
 | `clean_text` | O | string | LaTeX with math replaced by `[MATH]` |
-| `label` | O | string | LaTeX `\label{...}` value |
+| `label` | O | string | LaTeX `\label{...}` key of the source environment, verbatim, **without** the backslash or braces (`thm:main`, not `\label{thm:main}`). Populate whenever the environment carries one — it is what makes the paper's own `\ref`/`\eqref` resolvable to a node id. See E146. |
 | `env_name` | O | string | LaTeX environment name (e.g., `"theorem"`, `"definition"`) |
 | `index` | O | int | Running index per type (1-based) |
 | `spans` | O | list | Fine-grained semantic spans (see below) |

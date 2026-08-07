@@ -1626,3 +1626,56 @@ resulted was 1 node / 0 edges; after the fix it is 74 nodes / 87 edges.
 Fixed in `scripts/fetch_tex_for_targets.py` by scoring candidates on
 `(\documentclass, \begin{document}, \title, size)` and taking the max. The
 whole 200-paper pool was re-swept; this was the only affected paper.
+
+### E146 (HIGH — schema gap, corpus-wide). `label` is declared but never requested, so `\ref` cannot resolve
+
+`src/annotation_schema.md:46` lists `label` (`LaTeX \label{...} value`) as an
+optional field on every node. The v5.1 prompt never mentions it. Measured over
+the full 200-paper silver corpus: **0 of 25,162 nodes carry `label`** — not a
+low rate, an absolute zero. (`src/node_types.py` had never declared it either;
+that half is now synced, see `LABEL_FIELD`.)
+
+This is the same declared-but-unrequested failure as E130 (`rigor`), but with a
+harder consequence, because `label` is what makes internal cross-references
+resolvable.
+
+*Why it matters.* Statements are verbatim spans, so they carry the paper's own
+`\ref`/`\eqref`: **26,102 cross-references, `\ref` in 187 of 200 papers**. Nearly
+all point at another environment in the SAME paper — i.e. at another node in the
+same graph. With no label recorded there is nothing to point at. The renderer can
+only print the raw key, which is why a node reads
+
+    Proposition (prop_eigenvect_transition_matr).
+
+instead of naming the proposition it refers to. Worse, an edge that the paper
+states *explicitly* has to be re-inferred from prose, when the source spelled it
+out unambiguously.
+
+*Why it cannot be recovered afterwards.* The only post-hoc route is positional:
+locate each statement in the `.tex` and attach nearby `\label{}`s. Measured over
+all 200 papers: **43% coverage**, and on the subset where the key names a type
+(`thm:`, `lemma_`, `prop_`, so correctness is independently checkable) **only 40%
+land on a node of the matching type**. That is worse than a coin flip on the
+checkable subset, and a confidently wrong `(PrP1.2)` pointer is more damaging
+than an unresolved key — so this route was implemented, measured, and rejected.
+The extractor has the environment in hand and can read the label exactly; nothing
+downstream can.
+
+*v6 fix.* Add to the extraction spec, in the required-field list for every node
+extracted from a labelled LaTeX environment:
+
+  `label` — the `\label{...}` key of the environment this node came from,
+  verbatim, WITHOUT the backslash or braces (`thm:main`, not `\label{thm:main}`).
+  Omit (or null) when the environment carries no `\label`. Do not invent one, do
+  not normalise case or punctuation, and do not deduplicate — two environments
+  legitimately sharing a key is a source defect worth seeing.
+
+Note the interaction with **E144** (non-contiguous spans): `\label` frequently
+sits in the excised region between span pieces, so it must be read from the
+environment header before excision, not from the emitted span.
+
+*Follow-on, once labels exist (separate change — do NOT bundle).* `\ref{K}` where
+`K` is a known label becomes a real `uses` edge rather than display text, and the
+renderer can print the target node id. Both are cheap once the mapping is exact
+and impossible while it is a guess. Keep them out of the same prompt revision so
+the label capture can be validated on its own.

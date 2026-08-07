@@ -174,7 +174,30 @@ def expand_macros(text, macros, max_depth=_MAX_DEPTH):
             arity = int(spec.get("arity", 0)) if isinstance(spec, dict) else 0
             j = m.end()
             args = []
-            for _a in range(arity):
+            # LaTeX's optional first argument. `\newcommand{\limGs}[1][G]{...}`
+            # declares arity 1, but bare `\limGs` supplies NOTHING and falls
+            # back to `G`; only `\limGs[H]` overrides it. Treating that argument
+            # as mandatory made the expander read the next token instead — for
+            # `$x\in\limGs$` that is the closing `$`, which both broke math mode
+            # and produced an unbalanced brace.
+            opt_default = (spec.get("optional_default")
+                           if isinstance(spec, dict) else None)
+            n_mandatory = arity
+            if opt_default is not None:
+                k = j
+                while k < len(text) and text[k].isspace():
+                    k += 1
+                if k < len(text) and text[k] == "[":
+                    end = text.find("]", k)
+                    if end != -1:
+                        args.append(text[k + 1:end])
+                        j = end + 1
+                    else:
+                        args.append(opt_default)
+                else:
+                    args.append(opt_default)
+                n_mandatory = max(0, arity - 1)
+            for _a in range(n_mandatory):
                 arg, j = _read_group(text, j)
                 args.append(arg)
             sub = _substitute(body, args)
@@ -237,17 +260,29 @@ _LABEL_RE = re.compile(r"\\label\s*\{[^}]*\}")
 _NBSP = re.compile(r"(?<!\\)~")
 
 
-def _safe_key(k):
-    """A bib/label key is drawn as text, but may land inside `$...$`.
+_UNESCAPED_DOLLAR = re.compile(r"(?<!\\)\$")
 
-    `eq:a_b` would then be parsed as a subscript (or, with two underscores,
-    raise "double subscript"). Escaping keeps the key readable in both modes.
+
+def _in_math(text, pos):
+    """Is offset `pos` inside a `$...$` span? (odd number of `$` before it)"""
+    return len(_UNESCAPED_DOLLAR.findall(text, 0, pos)) % 2 == 1
+
+
+def _safe_key(k, in_math):
+    """Escape `_` ONLY in math mode.
+
+    Inside `$...$` a bare `_` is a subscript (two of them raise "double
+    subscript"), so it must be escaped. In ordinary text it needs nothing, and
+    escaping anyway is what turned `mult_n_self_sim` into the very noisy
+    `mult\\_n\\_self\\_sim` on screen. References are overwhelmingly in text.
     """
-    return k.strip().replace("_", r"\_")
+    k = k.strip()
+    return k.replace("_", r"\_") if in_math else k
 
 
-def _fmt_keys(m, open_c, close_c):
-    keys = [_safe_key(k) for k in m.group(1).split(",") if k.strip()]
+def _fmt_keys(m, open_c, close_c, whole):
+    in_math = _in_math(whole, m.start())
+    keys = [_safe_key(k, in_math) for k in m.group(1).split(",") if k.strip()]
     return "%s%s%s" % (open_c, ", ".join(keys), close_c) if keys else ""
 
 
@@ -343,8 +378,8 @@ def resolve_references(text):
     if not text:
         return text
     text = _LABEL_RE.sub("", str(text))
-    text = _CITE_RE.sub(lambda m: _fmt_keys(m, "[", "]"), text)
-    text = _REF_RE.sub(lambda m: _fmt_keys(m, "(", ")"), text)
+    text = _CITE_RE.sub(lambda m: _fmt_keys(m, "[", "]", text), text)
+    text = _REF_RE.sub(lambda m: _fmt_keys(m, "(", ")", text), text)
     return text
 
 

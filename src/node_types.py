@@ -144,6 +144,35 @@ HEURISTIC_CATEGORIES = {
 }
 
 
+# ── Universal label field ────────────────────────────────────────────────
+# The LaTeX `\label{...}` key of the environment the node was extracted from,
+# verbatim and WITHOUT the backslash or braces (`prop_eigenvect_transition_matr`,
+# `thm:main`, `eq:bound`). Null when the source environment carried no `\label`.
+#
+# Declared in annotation_schema.md since the beginning and mirrored here only
+# now: the canonical Python had never carried it. It is also never REQUESTED by
+# the extraction prompt, so 0 of the 25,162 v5.1 silver nodes populate it — the
+# same declared-but-unrequested gap as `rigor` (E130).
+#
+# Why this is worth a universal field. Statements are verbatim spans, so they
+# keep the paper's `\ref`/`\eqref` — 26,102 of them across the 200 v5.1 silver
+# papers, in 187 of 200. Every one of those is a pointer to another node in the
+# SAME graph, but with no label recorded there is nothing to point at: the
+# renderer can only print the raw key, and the cross-reference is invisible to
+# the graph.
+#
+# It has to be captured at extraction time. Recovering it afterwards means
+# locating each statement in the .tex and attaching nearby labels positionally,
+# which was measured over the whole corpus at 43% coverage and — on the subset
+# where the key names a type, so correctness is checkable — only 40% landing on
+# a node of the matching type. A confidently wrong pointer is worse than a raw
+# key, so the positional route was rejected. The extractor has the environment
+# in hand and can read the label exactly.
+#
+# Downstream this upgrades `\ref` from display text into structure: a resolved
+# label is a `uses` edge the extractor would otherwise have to infer from prose.
+LABEL_FIELD = "label"
+
 # ── Universal subclass field ─────────────────────────────────────────────
 # Every node type has an optional "subclass" field that gives a finer
 # categorization. Valid values depend on the node type.

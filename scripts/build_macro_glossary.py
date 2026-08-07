@@ -48,14 +48,19 @@ OUT_DIR = os.path.join(REPO, "corpus/silver/macros")
 # length-capped regex would truncate them.
 FORMS = [
     # \newcommand{\foo}[2][opt]{body} / \newcommand\foo{body}
-    re.compile(r'\\(?:new|renew|provide)command\*?\s*\{?\\([A-Za-z@]+)\}?\s*'
-               r'(?:\[\d+\])?\s*(?:\[[^\]]*\])?\s*\{'),
+    # The SECOND bracket is LaTeX's optional-argument DEFAULT, and dropping it
+    # is not cosmetic: `\newcommand{\limGs}[1][G]{\mathcal{X}_{#1}}` declares
+    # one argument that is OPTIONAL, so bare `\limGs` means `\mathcal{X}_{G}`.
+    # Recording it as plain arity=1 makes an expander read the next token as a
+    # mandatory argument and swallow whatever follows — usually the closing `$`.
+    re.compile(r'\\(?:new|renew|provide)command\*?\s*\{?\\(?P<name>[A-Za-z@]+)\}?\s*'
+               r'(?:\[(?P<nargs>\d+)\])?\s*(?:\[(?P<opt>[^\]]*)\])?\s*\{'),
     # \def\foo{body}  /  \def\foo#1{body}
-    re.compile(r'\\(?:e|g|x)?def\s*\\([A-Za-z@]+)\s*(?:#\d)*\s*\{'),
+    re.compile(r'\\(?:e|g|x)?def\s*\\(?P<name>[A-Za-z@]+)\s*(?:#\d)*\s*\{'),
     # \DeclareMathOperator{\foo}{body} — see OPERATOR_FORM below
-    re.compile(r'\\DeclareMathOperator\*?\s*\{\\([A-Za-z@]+)\}\s*\{'),
+    re.compile(r'\\DeclareMathOperator\*?\s*\{\\(?P<name>[A-Za-z@]+)\}\s*\{'),
     # \newenvironment{foo}{begin}{end} — name has no backslash
-    re.compile(r'\\(?:new|renew)environment\*?\s*\{([A-Za-z@*]+)\}\s*'
+    re.compile(r'\\(?:new|renew)environment\*?\s*\{(?P<name>[A-Za-z@*]+)\}\s*'
                r'(?:\[\d+\])?\s*\{'),
 ]
 
@@ -106,7 +111,7 @@ def extract(src):
     out = {}
     for form in FORMS:
         for m in form.finditer(src):
-            name = m.group(1)
+            name = m.group('name')
             body, _ = balanced_body(src, m.end() - 1)
             if body is None:
                 continue
@@ -118,11 +123,18 @@ def extract(src):
             # renderer cannot recover the intent afterwards, so record it here.
             if _is_operator(form) and re.fullmatch(r'[A-Za-z][A-Za-z0-9]*', expansion or ''):
                 expansion = r'\mathrm{%s}' % expansion
-            out[name] = {
+            rec = {
                 "expansion": expansion,
                 "kind": classify(body),
                 "arity": arity,
             }
+            # Present (even empty) => the first argument is optional.
+            gd = m.groupdict()
+            if gd.get("opt") is not None:
+                rec["optional_default"] = gd["opt"]
+                if gd.get("nargs"):
+                    rec["arity"] = int(gd["nargs"])
+            out[name] = rec
     return out
 
 
