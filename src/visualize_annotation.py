@@ -183,6 +183,31 @@ PNG_DPI = 100            # 12pt text -> 16.7 px, comfortably readable.
 MIN_PNG_DPI = 40         # never go below this, however large the figure
 MAX_RASTER_PX = 100_000_000   # ~0.4 GB RGBA before tight-bbox double render
 
+
+# ── Edge colour by type ──────────────────────────────────────────────────
+# Every edge used to be drawn the same dark grey (only `resolves` and
+# low-confidence differed), so a reader could not tell a proof link from a
+# dependency without clicking. Colours follow the semantic grouping in
+# src/edge_types.py: dependencies blue-grey, the "settles it" family warm,
+# the pedagogical family green, foundation links faint.
+EDGE_COLORS = {
+    "uses":        "#455A64",   # generic dependency (the default, most common)
+    "generalizes": "#00796B",   # subtypes of uses — same family, distinguishable
+    "specializes": "#00838F",
+    "proves":      "#6A1B9A",   # establishes the target
+    "solves":      "#AD1457",
+    "resolves":    "#1976D2",   # kept from the previous hard-coded value
+    "illustrates": "#2E7D32",   # pedagogical
+    "tests":       "#558B2F",
+    "grounded_to": "#9E9E9E",   # foundation link, deliberately faint
+}
+DEFAULT_EDGE_COLOR = "#333333"
+
+
+def edge_type_color(etype):
+    """Colour for an edge type, falling back to the historical dark grey."""
+    return EDGE_COLORS.get(str(etype or "uses"), DEFAULT_EDGE_COLOR)
+
 # ── Layout constants (shared between draw_dag and draw_foundation_ghosts) ──
 MIN_BOX_W = 3.0
 MAX_BOX_W = 6.0
@@ -1623,7 +1648,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         _low_conf = _conf < LOW_CONF_THRESHOLD
         _arrow_kwargs = dict(
             arrowstyle="-|>,head_length=1.2,head_width=0.6",
-            color="#1976D2" if _is_resolves else ("#C0C0C0" if _low_conf else "#333333"),
+            color=("#C0C0C0" if _low_conf else edge_type_color(_etype)),
             lw=1.0 if _low_conf else 2.5,
             alpha=0.4 if _low_conf else 1.0,
             connectionstyle="arc3,rad=0.08" if abs(x0 - x1) > 0.5 else "arc3,rad=0",
@@ -1663,12 +1688,20 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         _lines_start = len(ax.lines)
 
         # Main box background (gid for SVG click handling)
+        # Cited prior results (origin="external") are drawn dashed and paler.
+        # They are hidden by default and appear via the "Cited Results" toggle,
+        # at which point they were indistinguishable from the paper's own
+        # contributions — the one distinction a reader most needs, since it is
+        # what separates "this paper proved it" from "this paper invokes it".
+        _is_external = (n.get("origin", "paper") == "external")
         rect = FancyBboxPatch(
             (bx, by), bw, bh,
             boxstyle="round,pad=0.05",
             facecolor=colors["body"],
             edgecolor=colors["header"],
-            linewidth=1.5,
+            linewidth=1.2 if _is_external else 1.5,
+            linestyle=(0, (4, 2)) if _is_external else "solid",
+            alpha=0.72 if _is_external else 1.0,
             gid=f"node_{nid}",
         )
         ax.add_patch(rect)
@@ -2186,6 +2219,38 @@ def generate_interactive_html(data, svg_path, html_path):
             pass
     low_conf_edge_gids = sorted(set(low_conf_edge_gids))
 
+    # ── Density reduction ────────────────────────────────────────────────
+    # Half the corpus (108/200 papers) exceeds 100 nodes, and the graphs are
+    # genuinely hard to read at that size. Three reductions were measured over
+    # all 200 papers; two of them pay, and they are exposed as toggles rather
+    # than applied unconditionally so nothing is silently hidden.
+    #
+    #   implied edges (transitive reduction)  -24.5% of edges
+    #   backbone (definitions + theorem-like)  keeps 36.7% of nodes
+    #
+    # Splitting by connected component — the obvious third idea — does NOT pay:
+    # the median paper has ONE component, and the largest component holds 100%
+    # of the nodes at both the median and the 90th percentile.
+    implied_edge_gids = []
+    try:
+        import networkx as _nx
+        _g = _nx.DiGraph()
+        _g.add_nodes_from(n["id"] for n in base_nodes)
+        _g.add_edges_from((e["source"], e["target"]) for e in base_edges
+                          if e.get("source") != e.get("target"))
+        if _nx.is_directed_acyclic_graph(_g):
+            _keep = set(_nx.transitive_reduction(_g).edges())
+            implied_edge_gids = sorted(
+                f"edge_{_safe_eid(a)}__to__{_safe_eid(b)}"
+                for a, b in _g.edges() if (a, b) not in _keep)
+    except Exception:
+        implied_edge_gids = []          # cyclic or networkx missing: offer nothing
+
+    _BACKBONE_TYPES = {"definition", "theorem", "lemma", "proposition",
+                       "corollary", "claim", "conjecture"}
+    nonbackbone_node_ids = sorted(n["id"] for n in base_nodes
+                                  if n.get("type") not in _BACKBONE_TYPES)
+
     # Foundation graph linking (shared computation with draw_dag)
     base_ids = {n["id"] for n in base_nodes}
     case2_ghosts, case1_matches, ghost_meta = compute_foundation_links(nodes, base_ids)
@@ -2453,6 +2518,8 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
     <button class="toggle-btn" id="aux-btn" data-showing="1" onclick="toggleAux()"{(' disabled' if not aux_node_ids else '')}>Examples &amp; Remarks ({len(aux_node_ids)})</button>
     <button class="toggle-btn" id="ext-btn" onclick="toggleExternal()"{(' disabled' if not ext_node_ids else '')}>Cited Results ({len(ext_node_ids)})</button>
     <button class="toggle-btn" id="lowconf-btn" data-showing="1" onclick="toggleLowConf()"{(' disabled' if not low_conf_edge_gids else '')}>Low-confidence edges ({len(low_conf_edge_gids)})</button>
+    <button class="toggle-btn" id="implied-btn" data-showing="1" onclick="toggleImplied()"{(' disabled' if not implied_edge_gids else '')} title="Edges also reachable by a longer path — redundant for reading the dependency structure">Implied edges ({len(implied_edge_gids)})</button>
+    <button class="toggle-btn" id="backbone-btn" data-showing="1" onclick="toggleBackbone()"{(' disabled' if not nonbackbone_node_ids else '')} title="Show only definitions and theorem-like results">Backbone only</button>
   </div>
 </div>
 <div id="main">
@@ -2470,6 +2537,8 @@ var CASE1 = {case1_json};
 var AUX_NODE_IDS = {_json.dumps(aux_node_ids, ensure_ascii=True)};
 var EXT_NODE_IDS = {_json.dumps(ext_node_ids, ensure_ascii=True)};
 var LOW_CONF_EDGE_GIDS = {_json.dumps(low_conf_edge_gids, ensure_ascii=True)};
+var IMPLIED_EDGE_GIDS = {_json.dumps(implied_edge_gids, ensure_ascii=True)};
+var NONBACKBONE_NODE_IDS = {_json.dumps(nonbackbone_node_ids, ensure_ascii=True)};
 // Port #1: has-proof targets (theorem-like with non-empty proof_info).
 var HAS_PROOF_NODE_IDS = {_json.dumps(_has_proof_node_ids, ensure_ascii=True)};
 // Port #1: foundation ghost-element index lists split by source.
@@ -2829,18 +2898,69 @@ window.addEventListener("load", function() {{
 
 var currentZoom = 1.0;
 var svgEl = document.querySelector("#svg-container svg");
+function toggleImplied() {{
+  var btn = document.getElementById("implied-btn");
+  if (btn.disabled) return;
+  var nextShowing = !(btn.dataset.showing === "1");
+  btn.dataset.showing = nextShowing ? "1" : "0";
+  var el0 = document.querySelector("#svg-container svg");
+  if (!el0) return;
+  IMPLIED_EDGE_GIDS.forEach(function(gid) {{
+    var el = el0.querySelector('[id="' + gid + '"]');
+    if (el) el.style.display = nextShowing ? "" : "none";
+  }});
+}}
+
+function toggleBackbone() {{
+  var btn = document.getElementById("backbone-btn");
+  if (btn.disabled) return;
+  // data-showing="1" means "everything is showing", i.e. backbone mode OFF.
+  var nextShowing = !(btn.dataset.showing === "1");
+  btn.dataset.showing = nextShowing ? "1" : "0";
+  _setNodeVisibility(NONBACKBONE_NODE_IDS, nextShowing);
+}}
+
 function applyZoom() {{
   if (svgEl) svgEl.style.transform = "scale(" + currentZoom + ")";
 }}
 function zoomIn() {{ currentZoom = Math.min(currentZoom * 1.3, 5.0); applyZoom(); }}
-function zoomOut() {{ currentZoom = Math.max(currentZoom / 1.3, 0.2); applyZoom(); }}
-function zoomFit() {{ currentZoom = 1.0; applyZoom(); }}
+function zoomOut() {{ currentZoom = Math.max(currentZoom / 1.3, 0.02); applyZoom(); }}
+function zoomFit() {{
+  // Actually fit, rather than "reset to 100%". A 188-node paper is a ~116x46
+  // INCH figure; at scale 1 the viewport shows a corner of the top margin,
+  // which is why the page opened on apparently blank space and needed a long
+  // scroll-wheel zoom-out before anything was visible.
+  var el = svgEl || document.querySelector("#svg-container svg");
+  var box = document.getElementById("svg-container");
+  if (!el || !box) return;
+  // Untransformed LAYOUT size, which is what transform:scale() multiplies.
+  // Matplotlib writes width/height in px AND a viewBox at a different scale
+  // (7383x7426 px vs a 5537x5569 viewBox here); fitting against the viewBox
+  // would come out ~33% too large.
+  var w = (el.width && el.width.baseVal && el.width.baseVal.value)
+          || (el.viewBox && el.viewBox.baseVal && el.viewBox.baseVal.width);
+  var h = (el.height && el.height.baseVal && el.height.baseVal.value)
+          || (el.viewBox && el.viewBox.baseVal && el.viewBox.baseVal.height);
+  if (!w || !h) return;
+  var pad = 24;
+  currentZoom = Math.max(0.02, Math.min((box.clientWidth - pad) / w,
+                                        (box.clientHeight - pad) / h));
+  applyZoom();
+}}
+
+// Fit on load. The zoom floor for the buttons is 0.2, but fitting a large
+// graph legitimately needs far less, so applyZoom is driven directly here.
+window.addEventListener("load", function() {{
+  svgEl = svgEl || document.querySelector("#svg-container svg");
+  zoomFit();
+}});
+window.addEventListener("resize", function() {{ zoomFit(); }});
 
 // Mouse wheel zoom on the SVG container
 document.getElementById("svg-container").addEventListener("wheel", function(e) {{
   e.preventDefault();
   if (e.deltaY < 0) {{ currentZoom = Math.min(currentZoom * 1.1, 5.0); }}
-  else {{ currentZoom = Math.max(currentZoom / 1.1, 0.2); }}
+  else {{ currentZoom = Math.max(currentZoom / 1.1, 0.02); }}
   applyZoom();
 }}, {{passive: false}});
 </script>

@@ -35,6 +35,7 @@ import re
 
 __all__ = ["expand_macros", "brace_normalize", "unwrap_transparent",
            "resolve_references", "strip_text_environments",
+           "resolve_text_fonts",
            "strip_dimension_commands", "normalize_for_mathtext"]
 
 # Math-font commands take exactly one argument. TeX lets you omit the braces
@@ -82,8 +83,7 @@ def brace_normalize(text):
 # `\ensuremath{\mathbb{N}}`), and mathtext does not implement them, so a
 # perfectly-resolved macro can still fail to render. Unwrapping keeps the
 # argument and drops the shell.
-_TRANSPARENT = ("ensuremath", "mbox", "hbox", "text", "textnormal",
-                "underline", "norm", "abs", "textup", "textrm")
+_TRANSPARENT = ("ensuremath", "mbox", "hbox", "underline", "norm", "abs")
 _TRANSPARENT_RE = re.compile(r"\\(%s)\s*\{" % "|".join(_TRANSPARENT))
 
 
@@ -99,6 +99,92 @@ def unwrap_transparent(text, max_depth=_MAX_DEPTH):
         arg, end = _read_group(text, m.end() - 1)
         text = text[:m.start()] + arg + text[end:]
     return text
+
+
+# Text-mode FONT SELECTORS. Unlike the wrappers above these do carry meaning —
+# `\textsf{Push}` names an operation and `\textbf{X}` a distinguished object — so
+# they get mapped rather than dropped. 6046 occurrences across the corpus, led by
+# \emph (1753), \textbf (944) and \textit (582).
+#
+# The right answer depends on mode. Inside `$...$` there is an exact equivalent
+# (\textsf -> \mathsf); outside, neither mathtext nor the panel can switch font
+# mid-string, so the content is kept and the wrapper dropped. Leaving them alone
+# was the bug: `\textsf{Push}{}` reached the reader verbatim.
+_FONT_MAP = {
+    "textbf": "mathbf", "bf": "mathbf",
+    "textit": "mathit", "emph": "mathit", "it": "mathit",
+    "texttt": "mathtt", "tt": "mathtt",
+    "textsf": "mathsf", "sf": "mathsf",
+    "textsc": "mathrm", "textrm": "mathrm", "textnormal": "mathrm",
+    "textup": "mathrm", "text": "mathrm", "uppercase": "mathrm",
+}
+_FONT_RE = re.compile(r"\\(%s)\s*\{" % "|".join(sorted(_FONT_MAP, key=len,
+                                                       reverse=True)))
+# `\textcolor{red}{X}` — two arguments; the colour is presentational, X is not.
+_TEXTCOLOR_RE = re.compile(r"\\(?:textcolor|colorbox|fcolorbox)\s*\{")
+# Argument-less mode switches. No braces to key on, so they need deleting
+# outright; mathtext and MathJax both reject them.
+_STYLE_SWITCH = re.compile(
+    r"\\(?:text|display|script|scriptscript)style\b|\\(?:small|foot"
+    r"notesize|large|Large|LARGE|huge|Huge|normalsize|tiny|scriptsize)\b")
+# Old-style font DECLARATIONS: `{\em point-to-point shortest path (PPSP)}`,
+# `{\bf x}`. These take no argument of their own — they switch font for the rest
+# of the enclosing group — so the `\textbf{...}` handling above never matches
+# them and the bare command survived into the output. Dropping the command
+# keeps the group's text, which is the readable outcome in both modes.
+#
+# `(?![A-Za-z])` is load-bearing: without it `\it` would match inside `\item`.
+# Longer names first so `\rmfamily` is not consumed as `\rm` + `family`.
+_FONT_DECL = re.compile(
+    r"\\(?:normalfont|bfseries|mdseries|itshape|slshape|scshape|upshape|"
+    r"rmfamily|sffamily|ttfamily|em|it|bf|rm|sf|tt|sc|sl)(?![A-Za-z])(?!\s*\{)")
+_FONT_DECL_GROUP = re.compile(
+    r"\{\s*\\(?:normalfont|bfseries|mdseries|itshape|slshape|scshape|upshape|"
+    r"rmfamily|sffamily|ttfamily|em|it|bf|rm|sf|tt|sc|sl)(?![A-Za-z])")
+# Control space `\ `, italic correction `\/`, discretionary hyphen `\-`.
+# `(resp.\ $w$)` is the common shape; the backslash reached the reader.
+_CONTROL_SPACE = re.compile(r"\\[ \t]")
+_ZERO_WIDTH = re.compile(r"\\[/-]|\\hfill\b|\\noindent\b|\\linebreak\b|\\newline\b")
+# `{}` left behind by `\textsf{Push}{}` and friends.
+_EMPTY_GROUP = re.compile(r"\{\s*\}")
+
+
+def resolve_text_fonts(text, max_depth=_MAX_DEPTH):
+    """`\\textsf{Push}` -> `\\mathsf{Push}` in math, `Push` in text."""
+    if not text:
+        return text
+    t = str(text)
+    for _ in range(max_depth):
+        m = _TEXTCOLOR_RE.search(t)
+        if not m:
+            break
+        _colour, j = _read_group(t, m.end() - 1)     # discard the colour
+        body, end = _read_group(t, j)
+        t = t[:m.start()] + body + t[end:]
+    for _ in range(max_depth):
+        m = _FONT_RE.search(t)
+        if not m:
+            break
+        body, end = _read_group(t, m.end() - 1)
+        if _in_math(t, m.start()):
+            repl = "\\%s{%s}" % (_FONT_MAP[m.group(1)], body)
+        else:
+            repl = body
+        t = t[:m.start()] + repl + t[end:]
+    # `{\em foo}` — the braces exist ONLY to scope the declaration, so they go
+    # with it. Dropping just the command leaves `{ foo}`, and outside math a
+    # brace is a literal character the reader would see.
+    for _ in range(max_depth):
+        m = _FONT_DECL_GROUP.search(t)
+        if not m:
+            break
+        body, end = _read_group(t, m.start())
+        t = t[:m.start()] + _FONT_DECL.sub("", body, count=1).strip() + t[end:]
+    t = _FONT_DECL.sub("", t)
+    t = _CONTROL_SPACE.sub(" ", t)
+    t = _ZERO_WIDTH.sub("", t)
+    t = _STYLE_SWITCH.sub("", t)
+    return _EMPTY_GROUP.sub("", t)
 
 
 def _read_group(s, i):
@@ -405,6 +491,7 @@ def normalize_for_mathtext(text, macros=None):
     text = expand_macros(text, macros or {})
     text = strip_text_environments(text)
     text = resolve_references(text)
+    text = resolve_text_fonts(text)
     text = unwrap_transparent(text)
     text = strip_dimension_commands(text)
     text = _NBSP.sub(" ", text or "")
