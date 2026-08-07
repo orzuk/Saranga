@@ -254,6 +254,33 @@ def _header_text_for_box(nid, name, w):
     return "%s: %s" % (nid, _shorten(name, avail)), header_chars
 
 
+# ── Semantic zoom (level of detail) ──────────────────────────────────────
+# A 188-node paper is a ~116x46 inch figure. Fitting it to a window puts body
+# text at well under a pixel, so zooming out gave an unreadable smear and
+# zooming in lost the structure — you could never see shape and content at once.
+#
+# Geometric zoom scales pixels; SEMANTIC zoom changes what is drawn. Body lines
+# are tagged here so the page can drop them below the size at which they could
+# be read anyway, leaving labelled boxes and edges — the structure — legible at
+# any scale. Nothing is removed from the SVG, only hidden, so a reader who zooms
+# in gets the detail back.
+#
+# 12pt body text renders at 16 CSS px at zoom 1 (matplotlib writes px and pt at
+# the 96/72 ratio), so it stops being readable at roughly zoom 0.5. That is the
+# threshold the page uses.
+_LOD_SEQ = [0]
+
+
+def _lod_body(artist):
+    """Tag a text artist as body-tier detail, hidden when zoomed far out."""
+    try:
+        artist.set_gid("lodbody_%d" % _LOD_SEQ[0])
+        _LOD_SEQ[0] += 1
+    except Exception:
+        pass
+    return artist
+
+
 def _fit_fontsize(line, avail_units, base=12, floor=7.0):
     """Shrink a body line that cannot fit its box, rather than let it spill.
 
@@ -1786,15 +1813,15 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 c_lines = ["(none)"]
 
             # Assumptions
-            ax.text(bx + PADDING, cursor_y, "Assume:",
-                    ha="left", va="top", fontsize=13, fontweight="bold", color="#333")
+            _lod_body(ax.text(bx + PADDING, cursor_y, "Assume:",
+                    ha="left", va="top", fontsize=13, fontweight="bold", color="#333"))
             cursor_y -= LINE_H * 0.7
             for line in a_lines:
-                ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
+                _lod_body(ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
                         ha="left", va="top",
                         fontsize=_fit_fontsize(f"• {line}", bw - 2 * PADDING - 0.1),
                         color="#222",
-                        fontstyle="italic")
+                        fontstyle="italic"))
                 cursor_y -= _line_h_draw(line)
 
             cursor_y -= PADDING * 0.3
@@ -1804,14 +1831,14 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                     color=colors["header"], lw=0.5, alpha=0.4)
 
             # Conclusions
-            ax.text(bx + PADDING, cursor_y, "Conclude:",
-                    ha="left", va="top", fontsize=13, fontweight="bold", color="#333")
+            _lod_body(ax.text(bx + PADDING, cursor_y, "Conclude:",
+                    ha="left", va="top", fontsize=13, fontweight="bold", color="#333"))
             cursor_y -= LINE_H * 0.7
             for line in c_lines:
-                ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
+                _lod_body(ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
                         ha="left", va="top",
                         fontsize=_fit_fontsize(f"• {line}", bw - 2 * PADDING - 0.1),
-                        color="#222")
+                        color="#222"))
                 cursor_y -= _line_h_draw(line)
 
             _proof_label = _proof_indicator(n)
@@ -1830,26 +1857,26 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             in_lines = [_shorten(x, dyn_wrap) for x in (_as_list(n.get("input")) or ["(none)"])]
             out_lines = [_shorten(x, 70) for x in (_as_list(n.get("output")) or ["(none)"])]
 
-            ax.text(bx + PADDING, cursor_y, "Input:",
-                    ha="left", va="top", fontsize=13, fontweight="bold", color="#333")
+            _lod_body(ax.text(bx + PADDING, cursor_y, "Input:",
+                    ha="left", va="top", fontsize=13, fontweight="bold", color="#333"))
             cursor_y -= LINE_H * 0.7
             for line in in_lines:
-                ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
+                _lod_body(ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
                         ha="left", va="top",
                         fontsize=_fit_fontsize(f"• {line}", bw - 2 * PADDING - 0.1),
-                        color="#222")
+                        color="#222"))
                 cursor_y -= LINE_H
             cursor_y -= PADDING * 0.3
             ax.plot([bx + 0.15, bx + bw - 0.15], [cursor_y + PADDING * 0.2] * 2,
                     color=colors["header"], lw=0.5, alpha=0.4)
-            ax.text(bx + PADDING, cursor_y, "Output:",
-                    ha="left", va="top", fontsize=13, fontweight="bold", color="#333")
+            _lod_body(ax.text(bx + PADDING, cursor_y, "Output:",
+                    ha="left", va="top", fontsize=13, fontweight="bold", color="#333"))
             cursor_y -= LINE_H * 0.7
             for line in out_lines:
-                ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
+                _lod_body(ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
                         ha="left", va="top",
                         fontsize=_fit_fontsize(f"• {line}", bw - 2 * PADDING - 0.1),
-                        color="#222")
+                        color="#222"))
                 cursor_y -= LINE_H
 
         else:
@@ -1861,10 +1888,10 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             if not stmt_lines:
                 stmt_lines = [""]
             for line in stmt_lines:
-                ax.text(bx + PADDING, cursor_y, line,
+                _lod_body(ax.text(bx + PADDING, cursor_y, line,
                         ha="left", va="top",
                         fontsize=_fit_fontsize(line, bw - 2 * PADDING),
-                        color="#222")
+                        color="#222"))
                 cursor_y -= _line_h_draw(line)
             if ntype in _THEOREM_LIKE:
                 _proof_label = _proof_indicator(n)
@@ -2506,6 +2533,7 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
     <button onclick="zoomIn()">Zoom +</button>
     <button onclick="zoomOut()">Zoom -</button>
     <button onclick="zoomFit()">Fit</button>
+    <span id="lod-note" style="margin-left:10px;font-size:12px;color:#888;"></span>
   </div>
 </div>
 <div class="legend">
@@ -2920,8 +2948,32 @@ function toggleBackbone() {{
   _setNodeVisibility(NONBACKBONE_NODE_IDS, nextShowing);
 }}
 
+// Semantic zoom. 12pt body text is 16 CSS px at zoom 1 (matplotlib writes px
+// and pt at the 96/72 ratio), so below ~0.5 it is too small to read and only
+// costs legibility of the structure around it. Hiding it there is what lets a
+// 116-inch figure be understood at a glance and read up close, instead of
+// forcing a choice between the two.
+var LOD_BODY_MIN = 0.5;
+var _lodBodyEls = null, _lodBodyShown = true;
+
+function applyLOD() {{
+  if (!svgEl) return;
+  if (_lodBodyEls === null) {{
+    _lodBodyEls = svgEl.querySelectorAll('[id^="lodbody_"]');
+  }}
+  var want = currentZoom >= LOD_BODY_MIN;
+  if (want === _lodBodyShown) return;        // only touch the DOM on a change
+  _lodBodyShown = want;
+  for (var i = 0; i < _lodBodyEls.length; i++) {{
+    _lodBodyEls[i].style.display = want ? "" : "none";
+  }}
+  var b = document.getElementById("lod-note");
+  if (b) b.textContent = want ? "" : "detail hidden — zoom in to read boxes";
+}}
+
 function applyZoom() {{
   if (svgEl) svgEl.style.transform = "scale(" + currentZoom + ")";
+  applyLOD();
 }}
 function zoomIn() {{ currentZoom = Math.min(currentZoom * 1.3, 5.0); applyZoom(); }}
 function zoomOut() {{ currentZoom = Math.max(currentZoom / 1.3, 0.02); applyZoom(); }}

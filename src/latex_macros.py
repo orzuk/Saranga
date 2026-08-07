@@ -143,6 +143,13 @@ _FONT_MAP = {
     "texttt": "mathtt", "tt": "mathtt",
     "textsf": "mathsf", "sf": "mathsf",
     "textsc": "mathrm", "textrm": "mathrm", "textnormal": "mathrm",
+    "rm": "mathrm", "sc": "mathrm", "sl": "mathit", "em": "mathit",
+    # Declaration names occasionally used WITH braces (`\normalfont{x}`),
+    # which _FONT_DECL deliberately skips via its (?!\s*\{) guard.
+    "normalfont": "mathrm", "rmfamily": "mathrm", "upshape": "mathrm",
+    "mdseries": "mathrm", "bfseries": "mathbf", "itshape": "mathit",
+    "slshape": "mathit", "scshape": "mathrm", "ttfamily": "mathtt",
+    "sffamily": "mathsf",
     "textup": "mathrm", "text": "mathrm", "uppercase": "mathrm",
 }
 _FONT_RE = re.compile(r"\\(%s)\s*\{" % "|".join(sorted(_FONT_MAP, key=len,
@@ -170,10 +177,16 @@ _FONT_DECL_GROUP = re.compile(
     r"rmfamily|sffamily|ttfamily|em|it|bf|rm|sf|tt|sc|sl)(?![A-Za-z])")
 # Control space `\ `, italic correction `\/`, discretionary hyphen `\-`.
 # `(resp.\ $w$)` is the common shape; the backslash reached the reader.
-_CONTROL_SPACE = re.compile(r"\\[ \t]")
+# `(?<!\\)` is essential: without it this matches the SECOND backslash of a row
+# break `\\ `, rewriting it to `\ ` — i.e. the rule manufactures the very leak
+# it exists to remove. That produced 4504 hits across 183 papers.
+_CONTROL_SPACE = re.compile(r"(?<!\\)\\[ \t]")
 _ZERO_WIDTH = re.compile(r"\\[/-]|\\hfill\b|\\noindent\b|\\linebreak\b|\\newline\b")
-# `{}` left behind by `\textsf{Push}{}` and friends.
-_EMPTY_GROUP = re.compile(r"\{\s*\}")
+# `{}` is two different things. After a control word it is the standard idiom
+# for ENDING that word — `\cap{}A_h` means `\cap` then `A_h` — so deleting it
+# welds them into `\capA_h`, the same token-boundary failure as _splice. Only a
+# standalone `{}` (e.g. what `\textsf{Push}{}` leaves behind) is noise.
+_EMPTY_GROUP = re.compile(r"(\\[A-Za-z]+)?\{\s*\}")
 
 
 def resolve_text_fonts(text, max_depth=_MAX_PASSES):
@@ -212,7 +225,8 @@ def resolve_text_fonts(text, max_depth=_MAX_PASSES):
     t = _CONTROL_SPACE.sub(" ", t)
     t = _ZERO_WIDTH.sub("", t)
     t = _STYLE_SWITCH.sub("", t)
-    return _EMPTY_GROUP.sub("", t)
+    return _EMPTY_GROUP.sub(
+        lambda m: (m.group(1) + " ") if m.group(1) else "", t)
 
 
 def _read_group(s, i):
