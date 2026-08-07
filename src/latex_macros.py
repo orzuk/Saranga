@@ -61,8 +61,28 @@ _UNBRACED = re.compile(r"\\(%s)(?:\s*(\\[A-Za-z]+)|\s+([A-Za-z0-9]))"
 
 _MAX_DEPTH = 8          # nested macro definitions; also breaks \a -> \b -> \a
 
-# Text ending in a control word, e.g. the `\in` of `\in\xmo`. See expand_macros.
+# Text ending in a control word, e.g. the `\in` of `\in\xmo`. See _splice.
 _CS_TAIL = re.compile(r"\\[A-Za-z]+$")
+
+
+def _splice(prefix, repl, suffix):
+    """Concatenate three fragments, restoring the token boundary TeX implies.
+
+    EVERY textual substitution in this module can weld a replacement onto the
+    control word in front of it, because TeX ends a control word at the `\\` or
+    `{` that a string-level splice removes:
+
+        `\\geq\\underline{C}`  --unwrap-->  `\\geqC`     (an unknown command)
+        `\\in\\xmo`            --expand-->  `\\inX...`   (likewise)
+
+    The result renders as the literal text "geqC" or "inX". Every splice site
+    goes through here rather than `+`, so the class is fixed once instead of
+    per call site — the expander was fixed on its own first, and the identical
+    bug then surfaced in the unwrapper.
+    """
+    if repl[:1].isalnum() and _CS_TAIL.search(prefix):
+        return prefix + " " + repl + suffix
+    return prefix + repl + suffix
 
 
 def brace_normalize(text):
@@ -97,7 +117,7 @@ def unwrap_transparent(text, max_depth=_MAX_DEPTH):
         if not m:
             break
         arg, end = _read_group(text, m.end() - 1)
-        text = text[:m.start()] + arg + text[end:]
+        text = _splice(text[:m.start()], arg, text[end:])
     return text
 
 
@@ -160,7 +180,7 @@ def resolve_text_fonts(text, max_depth=_MAX_DEPTH):
             break
         _colour, j = _read_group(t, m.end() - 1)     # discard the colour
         body, end = _read_group(t, j)
-        t = t[:m.start()] + body + t[end:]
+        t = _splice(t[:m.start()], body, t[end:])
     for _ in range(max_depth):
         m = _FONT_RE.search(t)
         if not m:
@@ -170,7 +190,7 @@ def resolve_text_fonts(text, max_depth=_MAX_DEPTH):
             repl = "\\%s{%s}" % (_FONT_MAP[m.group(1)], body)
         else:
             repl = body
-        t = t[:m.start()] + repl + t[end:]
+        t = _splice(t[:m.start()], repl, t[end:])
     # `{\em foo}` — the braces exist ONLY to scope the declaration, so they go
     # with it. Dropping just the command leaves `{ foo}`, and outside math a
     # brace is a literal character the reader would see.
@@ -179,7 +199,8 @@ def resolve_text_fonts(text, max_depth=_MAX_DEPTH):
         if not m:
             break
         body, end = _read_group(t, m.start())
-        t = t[:m.start()] + _FONT_DECL.sub("", body, count=1).strip() + t[end:]
+        t = _splice(t[:m.start()],
+                    _FONT_DECL.sub("", body, count=1).strip(), t[end:])
     t = _FONT_DECL.sub("", t)
     t = _CONTROL_SPACE.sub(" ", t)
     t = _ZERO_WIDTH.sub("", t)
@@ -291,8 +312,8 @@ def expand_macros(text, macros, max_depth=_MAX_DEPTH):
             # `\xmo` -> `X^{-\omega}` must not glue them into `\inX^{-\omega}`:
             # `\inX` is an unknown command and renders as the literal text
             # "inX". Restore the boundary the tokeniser implied.
-            if sub[:1].isalpha() and _CS_TAIL.search(tail):
-                out.append(" ")
+            if sub[:1].isalnum() and _CS_TAIL.search(tail):
+                out.append(" ")          # same rule as _splice; see there
             out.append(sub)
             if sub:
                 tail = sub[-16:]
