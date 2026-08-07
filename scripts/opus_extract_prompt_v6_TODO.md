@@ -1783,3 +1783,66 @@ type is a reasonable far-zoom heuristic, but there is no ground truth for
 "important" in this corpus, so the combination cannot be validated — only
 inspected. Keep it as display emphasis; do not let it gate what is extracted or
 stored.
+
+### E149. Node `weight`, `label`/`name` split, and node-level `note` — adopted from Tao's paper-diagram format
+
+Terence Tao's paper-diagram viewer (2026-07-13; see `tao_visualization_paper_Graph.md`
+for the full read) independently arrived at three schema decisions worth taking.
+His corpus is small — 10 diagrams, ~400-600 nodes, 6 node kinds, 2 edge types —
+but the format was designed by a mathematician for reading papers, and it makes
+three moves ours does not.
+
+**(a) `weight` — editorial importance, 1-5.** Drives node size and border
+thickness, and explicitly *never* layout: "Position is derived, not authored;
+weight drives size and emphasis, never layout."
+
+This fills the ranking gap E148 leaves open. It is an extraction-time judgement
+and cannot be recovered downstream — degree is too flat to substitute (70.6% of
+our nodes have 0 or 1 dependents; only 4.7% have 6+).
+
+*It must ship with a rubric.* A free-form 1-5 "importance" is exactly the shape
+that gave `rigor` 5% coverage concentrated in 6 papers (E130). Anchor it to
+observable facts:
+
+    5  stated in the abstract
+    4  stated in the introduction as a main result
+    3  used by 3 or more later results
+    2  used once
+    1  auxiliary / technical
+
+Levels 3-2-1 are derivable from the graph after extraction, so the model is only
+really being asked for 5 and 4 — the part that needs the abstract and
+introduction, which no downstream script can see (they are not in any extracted
+span). That is the same derive-vs-ask boundary as E147/E148. Consider computing
+3/2/1 deterministically and asking the model ONLY to mark 5 and 4, which removes
+most of the subjectivity.
+
+Note that even Tao only has weights on 81 of his 415 nodes — the hand-encoded
+ones. Coverage discipline matters more than the scale itself.
+
+**(b) Split `label` from `name`.** He carries both: `label` is the short display
+tag the paper itself uses ("(1.1)", "thm:1.2"), `name` the descriptive title
+("Gilbreath array"). We conflate them — `name` is descriptive and the display tag
+is synthesised by the renderer (`TP1.2`), which is *ours*, not the paper's. A
+reader holding the PDF cannot match our tag to anything.
+
+This is closely related to E146 but not the same field: E146 captures the
+`\label{}` key for RESOLUTION, `label` here is what to PRINT. In Tao's format the
+two coincide — his node `id` *is* `thm:1.2` — which is further evidence E146 is
+the right shape.
+
+**(c) Node-level `note`.** Free-text editorial annotation, e.g. from his data:
+*"Stated; not used directly — superseded by the variant Lem 3.11 (which handles
+odd $d$)."* We have `note` on edges only. This captures "present but dead" and
+"superseded by", both currently unrepresentable and both useful to a reader.
+
+*Sequencing.* E146 first and alone, as already stated. Then (b) and (c), which
+are cheap and objective. Then (a), which is the only subjective one and the only
+one that can go the way `rigor` did.
+
+*Not adopted from that format, deliberately:* his 6 node kinds and 2 edge types
+cannot carry proofs, proof steps, algorithms, open problems or assumptions, and
+his viewer REJECTS cyclic input — which is precisely the policy that pushes E120's
+silent deletion back into extraction. Our direction (keep the edge, mark it,
+filter at display time) is now implemented on the viewer side
+(`split_cycle_edges`) and is strictly better.

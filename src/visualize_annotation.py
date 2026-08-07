@@ -2271,6 +2271,68 @@ def _classify_and_merge(nodes, edges):
     return base_nodes, base_edges, step_chains, eq_map, orphan_eqs
 
 
+
+# Edge types compose along a path, and a type-blind transitive reduction is
+# therefore wrong. Following the rule Tao's format states — "generalization o
+# generalization stays a generalization; any dependence in the path dominates" —
+# a path is a `generalizes` relation only if EVERY edge on it is `generalizes`;
+# mix in one plain `uses` and the whole path is only a `uses`.
+#
+# Two consequences the previous version got wrong:
+#   * a `generalizes` edge whose only alternative path mixes in a plain `uses`
+#     is NOT implied, and was being hidden anyway. (The converse does hold: an
+#     all-`generalizes` path DOES imply a `uses` edge, because edge_types.py
+#     declares generalizes/specializes to be subtypes of uses.)
+#   * `proves` / `illustrates` / `solves` / `resolves` / `tests` are not
+#     transitive at all — a proof of a proof is not a proof of the conclusion —
+#     so they can never be implied, and were being hidden by any parallel path.
+_DEPENDENCY_EDGE_TYPES = ("uses", "generalizes", "specializes")
+
+
+def _implied_edges(base_nodes, base_edges, safe_eid):
+    """Gids of edges reachable by a longer path OF THE SAME COMPOSED TYPE."""
+    try:
+        import networkx as _nx
+    except Exception:
+        return []
+    ids = {n["id"] for n in base_nodes}
+
+    def _typed(pred):
+        g = _nx.DiGraph()
+        g.add_nodes_from(ids)
+        for e in base_edges:
+            a, b = e.get("source"), e.get("target")
+            if a in ids and b in ids and a != b and pred(str(e.get("type") or "uses")):
+                g.add_edge(a, b)
+        return g
+
+    # `uses` is implied by ANY dependency path; the subtypes only by a path made
+    # entirely of themselves.
+    graphs = {
+        "uses": _typed(lambda t: t in _DEPENDENCY_EDGE_TYPES),
+        "generalizes": _typed(lambda t: t == "generalizes"),
+        "specializes": _typed(lambda t: t == "specializes"),
+    }
+    out = []
+    for e in base_edges:
+        a, b = e.get("source"), e.get("target")
+        t = str(e.get("type") or "uses")
+        g = graphs.get(t)
+        if g is None or a not in ids or b not in ids or a == b:
+            continue            # non-transitive type, or dangling: never implied
+        if not g.has_edge(a, b):
+            continue
+        g.remove_edge(a, b)     # is it still reachable WITHOUT this edge?
+        try:
+            redundant = _nx.has_path(g, a, b)
+        except Exception:
+            redundant = False
+        g.add_edge(a, b)
+        if redundant:
+            out.append("edge_%s__to__%s" % (safe_eid(a), safe_eid(b)))
+    return sorted(set(out))
+
+
 def generate_interactive_html(data, svg_path, html_path):
     """Wrap an SVG figure in an interactive HTML page with click-to-expand detail panel."""
     import json as _json
@@ -2319,20 +2381,7 @@ def generate_interactive_html(data, svg_path, html_path):
     # Splitting by connected component — the obvious third idea — does NOT pay:
     # the median paper has ONE component, and the largest component holds 100%
     # of the nodes at both the median and the 90th percentile.
-    implied_edge_gids = []
-    try:
-        import networkx as _nx
-        _g = _nx.DiGraph()
-        _g.add_nodes_from(n["id"] for n in base_nodes)
-        _g.add_edges_from((e["source"], e["target"]) for e in base_edges
-                          if e.get("source") != e.get("target"))
-        if _nx.is_directed_acyclic_graph(_g):
-            _keep = set(_nx.transitive_reduction(_g).edges())
-            implied_edge_gids = sorted(
-                f"edge_{_safe_eid(a)}__to__{_safe_eid(b)}"
-                for a, b in _g.edges() if (a, b) not in _keep)
-    except Exception:
-        implied_edge_gids = []          # cyclic or networkx missing: offer nothing
+    implied_edge_gids = _implied_edges(base_nodes, base_edges, _safe_eid)
 
     _BACKBONE_TYPES = {"definition", "theorem", "lemma", "proposition",
                        "corollary", "claim", "conjecture"}
