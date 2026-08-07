@@ -1,6 +1,7 @@
 # Studying AI-assisted mathematics through the dependency graph
 
-**Status: research plan, not results.** Written 2026-08-07. Nothing here has been
+**Status: plan + a completed feasibility check.** Written 2026-08-07.
+Section 9 has the measured result of step 1, and it changes the design. Nothing here has been
 measured yet; the point of the document is to say what would have to be true for
 the study to work, and what would sink it.
 
@@ -194,3 +195,76 @@ that number is known.
 the v6 re-extraction, and it *needs* v6-quality extraction to be credible. The
 natural order is v6 first, then this on top — not instead. It is an addition to
 the roadmap, not a substitute for closing the distillation loop.
+
+
+---
+
+## 9. Step 1 executed — the feasibility count (2026-08-07)
+
+Ran the gate described in §7 against the **Formal Conjectures** repo
+(`google-deepmind/formal-conjectures`, 604 formalized Erdős problems). Each
+`.lean` file carries a machine-readable status (`@[category research solved]`),
+an AMS subject code, and a prose paragraph naming who solved the problem and how
+— e.g. *"Somani, using ChatGPT, has given a negative answer … formalized in Lean
+by Wu using Aristotle."* That makes the count exact rather than estimated.
+
+### What the corpus contains
+
+| | count |
+|---|---|
+| Erdős problems formalized | 604 |
+| solved | 273 (open: 292) |
+| **solved, AI-attributed** | **44** |
+| solved, human-attributed | 229 |
+| AI ones carrying a `formal_proof` link | 39 |
+
+Systems: Aristotle 29, ChatGPT 10, GPT-5 8, Claude 3, AlphaProof 2, AlphaEvolve 1,
+Gemini 1.
+
+### Three findings, in order of how much they change the plan
+
+**(a) The strict paired design is dead.** Problems whose write-up names BOTH an AI
+and a human solver: **2** (#650, #1074). Far below the ~15 needed. Same-problem
+pairing is not available.
+
+**(b) The subject-mix confound is milder than §5.1 feared — within this corpus.**
+AI-touched problems are 62% AMS 11 (number theory) and 27% AMS 5 (combinatorics),
+against 55% / 33% for the Erdős corpus overall. So an Erdős-internal control set
+is reasonably matched *by construction*, and the 44-vs-229 comparison is a real
+matched design even without exact pairing. This is better than assumed.
+
+**(c) And the finding that actually decides it: the artifacts are not papers.**
+
+| | problems | distinct arXiv papers referenced |
+|---|---|---|
+| AI-attributed solved | 44 | **3** |
+| human-attributed solved | 229 | **7** |
+
+Erdős solutions are overwhelmingly short notes, gists, MathOverflow answers and
+Lean files. **A three-line construction has no dependency graph**, and our
+instrument extracts graphs from arXiv LaTeX. So the Erdős route gives us plenty
+of *attributed solutions* and almost no *extractable proofs*.
+
+### Consequence
+
+**Drop the Erdős-based design.** Not for lack of n on the problem side (44 is
+fine) but because the population is the wrong kind of object for this instrument.
+Continuing would have meant discovering that after paying for extraction.
+
+**The surviving route is the acknowledgement harvester** (§4, "Detection at
+scale"): arXiv papers whose acknowledgements credit substantial AI assistance —
+the individually-found papers in §4 (2509.03065, 2510.26647, 2511.18828,
+2606.13614, 2606.19681, …) are of exactly the right kind: full papers, real
+structure, human write-up of AI-assisted work.
+
+**The new gate, before any extraction:** how many such papers exist? arXiv's API
+does not search full text and acknowledgements are not in abstracts, so this
+needs either a full-text service or a targeted crawl of recent months in the
+likely categories (math.CO, math.NT, math.PR, cs.LG theory). If that number is
+also in the tens, the study is observational with a small n and should be framed
+as a case study, not a population claim.
+
+**Worth noting what this cost:** an afternoon and no extraction spend. Had the
+gate been skipped, the same conclusion would have arrived after downloading and
+Opus-extracting two arms of a corpus — which is precisely the argument for
+putting a cheap feasibility count in front of an expensive pipeline.
