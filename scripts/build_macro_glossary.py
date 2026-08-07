@@ -52,7 +52,7 @@ FORMS = [
                r'(?:\[\d+\])?\s*(?:\[[^\]]*\])?\s*\{'),
     # \def\foo{body}  /  \def\foo#1{body}
     re.compile(r'\\(?:e|g|x)?def\s*\\([A-Za-z@]+)\s*(?:#\d)*\s*\{'),
-    # \DeclareMathOperator{\foo}{body}
+    # \DeclareMathOperator{\foo}{body} — see OPERATOR_FORM below
     re.compile(r'\\DeclareMathOperator\*?\s*\{\\([A-Za-z@]+)\}\s*\{'),
     # \newenvironment{foo}{begin}{end} — name has no backslash
     re.compile(r'\\(?:new|renew)environment\*?\s*\{([A-Za-z@*]+)\}\s*'
@@ -96,6 +96,10 @@ def classify(expansion):
     return "notational"
 
 
+def _is_operator(form):
+    return 'DeclareMathOperator' in form.pattern
+
+
 def extract(src):
     """name -> {expansion, kind, arity}. Later definitions win (\\renewcommand)."""
     src = strip_comments(src)
@@ -107,8 +111,15 @@ def extract(src):
             if body is None:
                 continue
             arity = len(set(re.findall(r'#(\d)', body)))
+            expansion = re.sub(r'\s+', ' ', body).strip()
+            # \DeclareMathOperator{\eq}{eq} means "typeset `eq` as an OPERATOR
+            # NAME", i.e. upright. Storing the bare `eq` loses that: in math
+            # mode it sets as the product of two italic variables, e * q. The
+            # renderer cannot recover the intent afterwards, so record it here.
+            if _is_operator(form) and re.fullmatch(r'[A-Za-z][A-Za-z0-9]*', expansion or ''):
+                expansion = r'\mathrm{%s}' % expansion
             out[name] = {
-                "expansion": re.sub(r'\s+', ' ', body).strip(),
+                "expansion": expansion,
                 "kind": classify(body),
                 "arity": arity,
             }

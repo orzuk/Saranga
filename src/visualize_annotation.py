@@ -11,6 +11,7 @@ Produces a layered DAG visualization with:
   - Color-coded by node type
 """
 import json
+import re as _re
 import sys
 import textwrap
 from collections import defaultdict
@@ -81,6 +82,25 @@ def _normalize_schema(data, source_path=None):
     for _n in (data.get("nodes") or []):
         if isinstance(_n, dict) and isinstance(_n.get("proves"), (list, tuple)):
             _n["proves"] = _n["proves"][0] if _n["proves"] else None
+
+    # Resolve the paper's own macros HERE, not in draw_dag, because
+    # generate_interactive_html() reads data["nodes"] directly — so the SVG
+    # boxes were getting resolved text while the HTML side panel still showed
+    # raw `\eq`, `\col`, `\rn`. Doing it once at load covers both.
+    # Per-paper on purpose: `\rn` is \mathbb{R}^n in one paper, \real^N in
+    # another and \mathbb{R}_n in a third (E143).
+    try:
+        _macros = (data.get("metadata") or {}).get("macros") or {}
+        if data.get("nodes"):
+            data["nodes"] = _resolve_nodes(data["nodes"], _macros)
+        _md = data.get("metadata")
+        if isinstance(_md, dict):
+            from latex_macros import normalize_for_mathtext as _nfm
+            for _f in ("title", "subtitle"):
+                if isinstance(_md.get(_f), str):
+                    _md[_f] = _nfm(_md[_f], _macros)
+    except Exception as _e:
+        print("  [warn] macro resolution skipped: %s" % _e)
 
     import re as _re_local
     nodes = data.get("nodes", []) or []
@@ -171,174 +191,80 @@ LEVEL_GAP_Y = 5.0
 HEADER_H = 0.45
 LINE_H = 0.28
 PADDING = 0.10
-CHARS_PER_UNIT = 12
+
+# ── The data-unit ↔ inch contract ──────────────────────────────────────────
+# Layout is done in data units; fonts are sized in POINTS, which are absolute.
+# So every chars-per-unit constant below is only meaningful once inches-per-
+# data-unit is fixed. draw_dag pins it: the figure is sized strictly
+# proportionally at IN_PER_UNIT, with the margin bought in data units.
+IN_PER_UNIT = 0.8        # inches of canvas per data unit, inside the axes
+AXES_FRAC = 0.96         # fraction of the figure the axes occupy
+MARGIN_IN = 2.0          # total whitespace margin, in inches
+
+# How many characters of text fit in one data unit, per font role. MEASURED,
+# not derived: render a paper, take each text artist's true window extent and
+# divide _display_width(s) by its width in data units. At IN_PER_UNIT=0.8 the
+# medians are 9.6 (body 12pt) and 7.1 (header 14pt bold); these are the p10s,
+# so ~90% of lines fit with room to spare and the rest lean on the slack in
+# _needed_w. The old values (12 and 9.0) were ~27% too optimistic — they had
+# been calibrated when the canvas was effectively 1.0 in/unit.
+CHARS_PER_UNIT = 9.2
+HEADER_CPU = 6.8         # 14pt bold is ~35% wider per character than 12pt
+HEADER_NAME_MAX = 30     # cap on the name shown in a header, in characters
+
+
+def _header_text_for_box(nid, name, w):
+    """The header string actually drawn in a box of data-unit width `w`.
+
+    Returns `(text, header_chars)`. Used by BOTH the width solver and the
+    renderer, because when they disagreed the header could not fit its own box:
+    the solver assumed CHARS_PER_UNIT and capped the name at HEADER_NAME_MAX,
+    while the renderer hardcoded 9 chars/unit and applied no cap at all — so
+    every wide box drew a longer header than had been measured for it.
+    """
+    header_chars = max(len(nid) + 4, int(w * HEADER_CPU) - 2)
+    if not name:
+        return nid, header_chars
+    avail = min(max(6, header_chars - len(nid) - 2), HEADER_NAME_MAX)
+    return "%s: %s" % (nid, _shorten(name, avail)), header_chars
+
+
+def _fit_fontsize(line, avail_units, base=12, floor=7.0):
+    """Shrink a body line that cannot fit its box, rather than let it spill.
+
+    Wrapping alone cannot bound line width: a display equation is one
+    unbreakable token, so `_wrap` has nowhere to break
+    `\\min_\\mathbf{x}\\{f(\\mathbf{x})\\}` and the line runs past the box edge
+    however narrow the wrap width. Scaling the font is the same last-resort the
+    header has always used, and it is layout-safe — the line COUNT is unchanged,
+    so the box height computed earlier still holds.
+    """
+    if not line or avail_units <= 0:
+        return base
+    # Deliberately more pessimistic than CHARS_PER_UNIT. That constant is the
+    # p10 of the measured distribution, so ~10% of lines are genuinely wider
+    # than it predicts — and those are exactly the lines that reach this
+    # function. Costs nothing for lines that already fit, since the shrink only
+    # applies once `est` exceeds the available width.
+    est = _display_width(line) / (CHARS_PER_UNIT * 0.92)
+    if est <= avail_units:
+        return base
+    return max(floor, base * avail_units / est)
 
 
 # ── Text helpers ────────────────────────────────────────────────────────────
-# LaTeX commands not supported by matplotlib mathtext — replace with equivalents
-# ONLY replace commands that matplotlib mathtext CANNOT render.
-# Tested: \mathbb, \mathcal, \mathrm, \mathbf, \operatorname, \text,
-# \boldsymbol, \triangleq, Greek letters, \nabla, \frac, \sum, \int,
-# \prod, \log, \sim, \in, \leq, \geq, \forall, \exists ALL WORK.
-_LATEX_FIXES = {
-    # These FAIL in matplotlib and need replacement:
-    r"\bm": r"\mathbf",                  # \bm not supported
-    r"\lVert": r"\|", r"\rVert": r"\|",  # \lVert/\rVert not supported
-    r"\coloneqq": r":=",                 # \coloneqq not supported
-    r"\pmod": r"\mathrm{mod}",           # \pmod not supported
-    r"\defeq": r":=",                    # \defeq (custom) → :=
-    r"\eqdef": r":=",                    # \eqdef (custom) → :=
-    # Common author-defined number-set shorthands (\R, \Z, \N, \Q, \C):
-    r"\R": r"\mathbb{R}",
-    r"\Z": r"\mathbb{Z}",
-    r"\N": r"\mathbb{N}",
-    r"\Q": r"\mathbb{Q}",
-    r"\C": r"\mathbb{C}",
-    # Common author shortcuts:
-    r"\eps": r"\varepsilon",
-    r"\hdots": r"\ldots",
-    r"\dotsc": r"\ldots",
-    r"\dotsb": r"\cdots",
-    # Text-style commands matplotlib mathtext does NOT support
-    # (it knows \text but not \textbf/\textit/\texttt/etc.):
-    r"\textbf": r"\mathbf",
-    r"\textit": r"\mathit",
-    r"\texttt": r"\mathtt",
-    r"\textsf": r"\mathsf",
-    r"\textsc": r"\mathrm",
-    r"\textnormal": r"\mathrm",
-    r"\emph": r"\mathit",
-    # Sizing delimiters — not supported standalone, replace with plain:
-    r"\big|": "|", r"\Big|": "|", r"\bigg|": "|",
-    r"\big(": "(", r"\Big(": "(", r"\big)": ")", r"\Big)": ")",
-    r"\bigg(": "(", r"\Bigg(": "(", r"\bigg)": ")", r"\Bigg)": ")",
-}
-
-# Whitelist of LaTeX commands matplotlib mathtext supports natively. Any
-# \command NOT in this set gets wrapped in \mathrm{...} as a graceful
-# fallback so that rendering doesn't crash on author-defined macros.
-# Keep this list LARGE enough to avoid false positives (which render as
-# weird upright text); err toward inclusion.
-_KNOWN_MATHTEXT_COMMANDS = frozenset({
-    # Font/style — note: matplotlib mathtext supports \text{} but NOT
-    # \textbf/\textit/\texttt/etc. Those map to \mathbf/\mathit/\mathtt
-    # via the explicit _LATEX_FIXES table above.
-    'mathbb', 'mathcal', 'mathrm', 'mathbf', 'mathit', 'mathsf', 'mathtt',
-    'boldsymbol', 'bm', 'text', 'operatorname',
-    # Greek lower:
-    'alpha', 'beta', 'gamma', 'delta', 'epsilon', 'varepsilon', 'zeta', 'eta',
-    'theta', 'vartheta', 'iota', 'kappa', 'lambda', 'mu', 'nu', 'xi',
-    'pi', 'varpi', 'rho', 'varrho', 'sigma', 'varsigma', 'tau', 'upsilon',
-    'phi', 'varphi', 'chi', 'psi', 'omega',
-    # Greek upper:
-    'Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta',
-    'Theta', 'Iota', 'Kappa', 'Lambda', 'Mu', 'Nu', 'Xi', 'Omicron',
-    'Pi', 'Rho', 'Sigma', 'Tau', 'Upsilon', 'Phi', 'Chi', 'Psi', 'Omega',
-    # Operators:
-    'frac', 'sqrt', 'sum', 'prod', 'int', 'iint', 'iiint', 'oint',
-    'bigcup', 'bigcap', 'bigsqcup',
-    'lim', 'liminf', 'limsup', 'inf', 'sup', 'min', 'max', 'arg',
-    'log', 'ln', 'exp', 'sin', 'cos', 'tan', 'cot', 'sec', 'csc',
-    'sinh', 'cosh', 'tanh', 'arcsin', 'arccos', 'arctan',
-    'det', 'dim', 'gcd', 'ker', 'deg', 'hom',
-    # Relations:
-    'in', 'notin', 'ni', 'subset', 'supset', 'subseteq', 'supseteq',
-    'subsetneq', 'supsetneq', 'cap', 'cup', 'setminus', 'emptyset',
-    'leq', 'geq', 'neq', 'leqq', 'geqq', 'leqslant', 'geqslant',
-    'lneq', 'gneq', 'approx', 'sim', 'simeq', 'asymp',
-    'equiv', 'cong', 'propto', 'parallel', 'perp', 'mid', 'nmid',
-    'lessgtr', 'gtrless', 'lll', 'ggg',
-    # Logic:
-    'forall', 'exists', 'nexists', 'land', 'lor', 'neg', 'lnot',
-    # Arrows:
-    'to', 'gets', 'mapsto', 'rightarrow', 'leftarrow', 'leftrightarrow',
-    'Rightarrow', 'Leftarrow', 'Leftrightarrow',
-    'longrightarrow', 'longleftarrow', 'longleftrightarrow',
-    'hookrightarrow', 'hookleftarrow', 'rightharpoonup', 'leftharpoonup',
-    # Basic:
-    'pm', 'mp', 'times', 'div', 'cdot', 'cdots', 'ldots', 'vdots', 'ddots',
-    'partial', 'nabla', 'infty', 'aleph', 'hbar',
-    'oplus', 'ominus', 'otimes', 'odot', 'star', 'ast', 'circ',
-    'dagger', 'ddagger', 'top', 'bot',
-    # Modifiers:
-    'tilde', 'hat', 'widetilde', 'widehat', 'bar', 'overline', 'underline',
-    'dot', 'ddot', 'vec', 'check', 'breve', 'acute', 'grave',
-    'overbrace', 'underbrace', 'overrightarrow', 'overleftarrow',
-    # Brackets/sizing (handled separately by regex, but include for safety):
-    'left', 'right', 'big', 'Big', 'bigg', 'Bigg',
-    # Misc:
-    'binom', 'choose', 'atop', 'over', 'pmod', 'mod',
-    'ell', 'wp', 'Re', 'Im', 'imath', 'jmath',
-    'square', 'blacksquare', 'triangle', 'triangledown',
-    'angle', 'sphericalangle', 'measuredangle',
-    'sharp', 'flat', 'natural',
-    'spadesuit', 'clubsuit', 'heartsuit', 'diamondsuit',
-    'triangleq', 'rtimes', 'ltimes', 'between',
-    'quad', 'qquad', 'thinspace',
-    # Colors / spacing — passed through as no-ops by mathtext typically:
-    'displaystyle', 'textstyle', 'scriptstyle', 'scriptscriptstyle',
-    'limits', 'nolimits',
-    # newcommand (not math but appears in raw_text dumps).
-    # NOTE: 'begin', 'end', 'item', 'label', 'ref', 'cite' are handled by
-    # _LATEX_REGEX_FIXES (stripped or replaced) BEFORE this whitelist runs,
-    # so they're intentionally NOT in this set.
-    'newcommand', 'renewcommand',
-})
-
-# Regex-based fixes: commands like \ge that are prefixes of valid commands (\geq)
-# Must use regex with word boundary to avoid breaking \geq -> \geqq
-import re as _re
-_LATEX_REGEX_FIXES = [
-    (_re.compile(r'\\ge(?!q)'), r'\\geq'),
-    (_re.compile(r'\\le(?!q|ft)'), r'\\leq'),
-    (_re.compile(r'\\ne(?!g|wcommand|q)'), r'\\neq'),
-    # \left( → (, \right) → ), \left[ → [, etc.
-    (_re.compile(r'\\left\s*([(\[|.])'), r'\1'),
-    (_re.compile(r'\\right\s*([)\]|.])'), r'\1'),
-    # Strip LaTeX environment markers — mathtext cannot parse them and they
-    # have no rendering meaning inside a math snippet anyway:
-    (_re.compile(r'\\begin\s*\{[^}]*\}'), ''),
-    (_re.compile(r'\\end\s*\{[^}]*\}'), ''),
-    # Convert \item to bullet (mathtext-safe) so list items render readably:
-    (_re.compile(r'\\item\b'), '• '),
-    # Strip cross-reference / metadata commands with one brace argument:
-    (_re.compile(r'\\(?:label|ref|cite|caption|tag|eqref|cref|nameref)\s*\{[^}]*\}'), ''),
-    # Strip stand-alone \\ (line breaks inside math snippets break mathtext):
-    (_re.compile(r'\\\\(?![A-Za-z])'), ' '),
-    # Escaped special chars that mathtext doesn't recognize. Note re.sub
-    # replacement strings: a literal & in the replacement needs to NOT be
-    # `\&` (which would mean the matched group), use a plain `&`.
-    (_re.compile(r'\\&'), '&'),                   # \& → &
-    (_re.compile(r'\\%'), '%'),                   # \% → %
-    (_re.compile(r'\\#'), '#'),                   # \# → #
-    # Accent / modifier commands without braces — mathtext requires \bar{A}
-    # but author LaTeX often writes \bar A. Convert single-letter forms:
-    #   \bar A   →  \bar{A}
-    #   \hat x   →  \hat{x}
-    # Apply for each modifier we know mathtext accepts.
-    (_re.compile(r'\\(bar|hat|tilde|dot|ddot|vec|check|breve|acute|grave|widetilde|widehat|overline|underline)\s+([A-Za-z])\b'),
-     r'\\\1{\2}'),
-]
-
-
-def _fallback_unknown_commands(text):
-    """For any \\command whose name is NOT in _KNOWN_MATHTEXT_COMMANDS, wrap
-    it in \\mathrm{} so it renders as upright text instead of crashing
-    matplotlib's mathtext parser.
-
-    This handles author-defined macros like \\Lun, \\Lsym, \\charfct, \\Ncut
-    that appear in faithful LaTeX-source extractions but aren't in the paper
-    preamble we have access to.
-    """
-    if not text:
-        return text
-
-    def replace(m):
-        cmd = m.group(1)
-        if cmd in _KNOWN_MATHTEXT_COMMANDS:
-            return m.group(0)
-        return r'\mathrm{' + cmd + '}'
-    return _re.sub(r'\\([A-Za-z]+)', replace, text)
+# The matplotlib-mathtext safety layer (the fix tables, the supported-command
+# whitelist, the unknown-command fallback and the dollar-balance repair) moved
+# to latex_macros.py. It is not a rendering concern: scripts/audit_mathtext.py
+# predicts failures with it and cross-paper comparison needs the same rewrite
+# to compare like with like, and neither should have to import a figure module
+# to reach a dict. Re-exported so every existing reference keeps working.
+from latex_macros import (                                       # noqa: E402
+    _LATEX_FIXES, _LATEX_REGEX_FIXES, _KNOWN_MATHTEXT_COMMANDS,
+    _BARE_MATH_NAMES, _fallback_unknown_commands,
+    _restore_bare_math_names, _balance_dollars, _can_render_math,
+    _strip_math_on_error, sanitize_for_mathtext,
+)
 
 def _statement_render_source(n):
     """Pick the best statement text for MathJax rendering in the side panel.
@@ -355,206 +281,22 @@ def _statement_render_source(n):
     src = _re.sub(r'\s+', ' ', src).strip()
     return src
 
-def _paper_macros():
-    """Macros for the paper currently being drawn (set by draw_dag)."""
-    return _CURRENT_MACROS
 
 
 _CURRENT_MACROS = {}
 
 
-def _resolve_latex(text):
-    """Resolve paper-local macros and brace-normalise, before mathtext sees it.
-
-    matplotlib's mathtext knows neither a paper's `\newcommand`s nor TeX's
-    one-token-argument idiom, and v5.1 statements are verbatim source, so both
-    reach it intact. Implementation is shared in src/latex_macros.py because
-    cross-paper matching needs the same resolution.
-    """
-    if not text:
-        return text
-    try:
-        from latex_macros import normalize_for_mathtext
-        return normalize_for_mathtext(text, _CURRENT_MACROS)
-    except Exception:
-        return text
 
 
 def _sanitize_math(text):
-    text = _resolve_latex(text)
-    """Replace unsupported LaTeX commands with matplotlib-compatible equivalents.
+    """Renderer-side wrapper: sanitize with the paper currently being drawn.
 
-    Six passes:
-      0. Collapse display-math markers `$$..$$` → `$..$` (mathtext doesn't
-         support display mode, so treat as inline).
-      1. Explicit literal substitutions in _LATEX_FIXES (\\R → \\mathbb{R}, etc.)
-      2. Regex-based fixes in _LATEX_REGEX_FIXES (\\ge → \\geq, strip \\begin{}, etc.)
-      3. Catch-all fallback: any \\command not in _KNOWN_MATHTEXT_COMMANDS
-         gets wrapped in \\mathrm{} so unknown author macros render as
-         upright text instead of crashing matplotlib mathtext.
-      4. Backslash restoration inside `$..$`: bare math-name tokens like
-         Sigma, sum, in (where Opus / cleaned-up extractions stripped the
-         backslash) get the backslash put back so mathtext renders them
-         as symbols (Σ, ∑, ∈) rather than upright text.
-      5. Dollar-balance check: if the text has an odd number of unescaped
-         $ markers, math mode would be entered but never closed, crashing
-         mathtext. Escape all $ in that case so the text renders as plain
-         text with visible $ signs.
+    draw_dag sets `_CURRENT_MACROS` before laying out each paper. Binding it
+    here keeps that global confined to the renderer rather than letting the
+    shared module read it — an audit run would otherwise inherit whichever
+    paper was drawn last.
     """
-    if not text:
-        return text
-    # 0a: collapse display math (mathtext doesn't support $$..$$)
-    while '$$' in text:
-        text = text.replace('$$', '$')
-    # 0b: replace embedded newlines with spaces. mathtext parses the
-    # full string before line-splitting, so a `\n` between two $..$ blocks
-    # makes the parser see them as one combined token, often crashing.
-    text = text.replace('\n', ' ').replace('\r', ' ')
-    for old, new in _LATEX_FIXES.items():
-        text = text.replace(old, new)
-    for pattern, repl in _LATEX_REGEX_FIXES:
-        text = pattern.sub(repl, text)
-    text = _fallback_unknown_commands(text)
-    # 0c: collapse `$$` (empty math content) — but DO NOT collapse
-    # `$ $` boundaries between adjacent math blocks ($X$ $Y$ stays as
-    # two separate blocks, NOT merged into $XY$). Earlier versions of
-    # this code collapsed `\$\s+\$` aggressively, which incorrectly
-    # merged neighbors.
-    while '$$' in text:
-        text = text.replace('$$', '')
-    text = _restore_bare_math_names(text)
-    text = _balance_dollars(text)
-    # Final safety: actually try to parse the math; on failure, strip $..$
-    # so the text renders as plain unstyled string instead of crashing.
-    text = _strip_math_on_error(text)
-    return text
-
-
-# Bare math-name tokens that should become backslash commands inside $..$.
-# Restricted to $..$ so we don't break English prose containing the same
-# words ("Sigma" the proper noun, "in" the preposition, etc.).
-_BARE_MATH_NAMES = [
-    # Greek letters (lowercase)
-    'alpha', 'beta', 'gamma', 'delta', 'epsilon', 'varepsilon', 'zeta', 'eta',
-    'theta', 'vartheta', 'iota', 'kappa', 'lambda', 'mu', 'nu', 'xi',
-    'pi', 'varpi', 'rho', 'varrho', 'sigma', 'varsigma', 'tau', 'upsilon',
-    'phi', 'varphi', 'chi', 'psi', 'omega',
-    # Greek letters (uppercase)
-    'Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta',
-    'Theta', 'Iota', 'Kappa', 'Lambda', 'Mu', 'Nu', 'Xi',
-    'Pi', 'Rho', 'Sigma', 'Tau', 'Upsilon', 'Phi', 'Chi', 'Psi', 'Omega',
-    # Operators
-    'sum', 'prod', 'int', 'iint', 'oint',
-    'lim', 'liminf', 'limsup', 'inf', 'sup', 'min', 'max', 'arg',
-    'log', 'ln', 'exp',
-    'sin', 'cos', 'tan', 'cot', 'sec', 'csc',
-    'sinh', 'cosh', 'tanh', 'arcsin', 'arccos', 'arctan',
-    'det', 'dim', 'gcd', 'ker',
-    # Relations / set theory
-    'in', 'notin', 'ni', 'subset', 'subseteq', 'supset', 'supseteq',
-    'cap', 'cup', 'emptyset',
-    'forall', 'exists', 'nexists',
-    'leq', 'geq', 'neq',
-    'to', 'mapsto', 'rightarrow', 'leftarrow', 'Rightarrow', 'Leftarrow',
-    # Misc
-    'infty', 'partial', 'nabla', 'ell',
-    'cdot', 'cdots', 'ldots', 'times', 'div',
-    'pm', 'mp', 'mid',
-]
-# One combined regex for performance. The lookbehind ensures we don't
-# match continuation of another identifier ("inflate" doesn't become
-# "\inflate") or already-prefixed commands ("\sigma" stays as "\sigma").
-# Use [a-zA-Z0-9] (NOT \w) for boundaries because \w includes `_` — but
-# `_` is the LaTeX subscript marker, so we WANT `Sigma_d` to match
-# `Sigma` (the underscore is the boundary, not a continuation char).
-_BARE_MATH_NAMES_RE = _re.compile(
-    r'(?<![a-zA-Z0-9\\])(' + '|'.join(sorted(_BARE_MATH_NAMES, key=len, reverse=True)) + r')(?![a-zA-Z0-9])'
-)
-
-
-def _restore_bare_math_names(text):
-    """Inside `$..$` blocks, prefix bare math-name tokens (Sigma, sum, in,
-    ...) with a backslash so matplotlib mathtext renders them as symbols.
-
-    Operates ONLY inside `$..$` regions — leaves English prose alone, so
-    the proper-noun "Sigma" outside math stays as "Sigma" and the
-    preposition "in" outside math stays as "in".
-    """
-    if not text or '$' not in text:
-        return text
-    out = []
-    i = 0
-    while i < len(text):
-        if text[i] == '$':
-            j = text.find('$', i + 1)
-            if j == -1:
-                out.append(text[i:])
-                break
-            content = text[i + 1:j]
-            content = _BARE_MATH_NAMES_RE.sub(r'\\\1', content)
-            out.append('$' + content + '$')
-            i = j + 1
-        else:
-            j = text.find('$', i)
-            if j == -1:
-                out.append(text[i:])
-                break
-            out.append(text[i:j])
-            i = j
-    return ''.join(out)
-
-
-def _balance_dollars(text):
-    """If `text` has an odd number of unescaped `$` markers, escape them
-    all so matplotlib mathtext doesn't enter unterminated math mode and
-    crash. Returns text unchanged if balance is even."""
-    if not text:
-        return text
-    # Count `$` not preceded by a backslash
-    n_unescaped = 0
-    for i, c in enumerate(text):
-        if c == '$' and (i == 0 or text[i - 1] != '\\'):
-            n_unescaped += 1
-    if n_unescaped % 2 == 0:
-        return text
-    # Odd number → escape them all
-    return _re.sub(r'(?<!\\)\$', r'\\$', text)
-
-
-# Lazy mathtext parser for the safety check in _strip_math_on_error
-_MATHTEXT_PARSER = None
-
-
-def _can_render_math(text):
-    """Try parsing each `$..$` block with mathtext. Return True if all
-    blocks parse cleanly, False if any fails."""
-    if not text or '$' not in text:
-        return True
-    global _MATHTEXT_PARSER
-    if _MATHTEXT_PARSER is None:
-        try:
-            from matplotlib.mathtext import MathTextParser
-            _MATHTEXT_PARSER = MathTextParser('agg')
-        except Exception:
-            return True   # if we can't even import, give up checking
-    try:
-        # Validate each $..$ block
-        for match in _re.finditer(r'\$([^$]*)\$', text):
-            content = match.group(0)
-            if len(content) > 2:    # has content between dollars
-                _MATHTEXT_PARSER.parse(content, dpi=100, prop=None)
-        return True
-    except Exception:
-        return False
-
-
-def _strip_math_on_error(text):
-    """If `text` would crash mathtext, strip all `$..$` markers (keeping
-    the inner content as plain text). Last-resort fallback."""
-    if _can_render_math(text):
-        return text
-    # Strip $ but keep content
-    return _re.sub(r'\$([^$]*)\$', r'\1', text)
+    return sanitize_for_mathtext(text, _CURRENT_MACROS)
 
 
 def _display_width(text):
@@ -615,6 +357,55 @@ def _has_tall_math(text):
         r'\\underset|\\overset|\\stackrel|\\binom|\\atop', text))
 
 
+# Display-math delimiters. An equation node's statement is usually a whole
+# display block, which carries no `$`, so the has_math branch below used to send
+# it to _to_display_text and draw it as a backslash-littered plain string —
+# `\[H(\sigma_1,\ldots)\,:=\,\min_\mathbf{x}...` on one unbreakable line, far
+# wider than its box. mathtext has no display mode, but the CONTENT is ordinary
+# math, so re-delimit it as inline math and let it render.
+_DISPLAY_ENVS = ("equation", "align", "eqnarray", "gather", "multline",
+                 "displaymath", "split", "aligned")
+_DISPLAY_PATTERNS = [
+    _re.compile(r"\$\$(.+?)\$\$", _re.S),
+    _re.compile(r"\\\[(.+?)\\\]", _re.S),
+    _re.compile(r"\\begin\{(?:%s)\*?\}(.+?)\\end\{(?:%s)\*?\}"
+                % ("|".join(_DISPLAY_ENVS), "|".join(_DISPLAY_ENVS)), _re.S),
+]
+# Alignment/row separators are layout, not content, and mathtext rejects them.
+_ALIGN_JUNK = _re.compile(r"\\\\|&|\\notag\b|\\nonumber\b|\\qedhere\b")
+
+
+def _inline_display_math(text):
+    """`\\[ x \\]`, `$$x$$`, `\\begin{equation} x \\end{equation}` -> `$x$`."""
+    if not text:
+        return text
+    t = str(text)
+    for pat in _DISPLAY_PATTERNS:
+        t = pat.sub(lambda m: "$%s$" % _ALIGN_JUNK.sub(" ", m.group(1)).strip(), t)
+    return t
+
+
+# Prose detection, so we only try whole-string math wrapping on things that are
+# actually formulas. Setting an English sentence in math mode would render every
+# word in italic math font with the spaces collapsed — worse than the plain-text
+# fallback it replaces. LaTeX command names are removed first so `\varrho` and
+# `\mathbb` don't read as words.
+_TEX_CMD_RE = _re.compile(r"\\[A-Za-z]+")
+_PROSE_WORD_RE = _re.compile(r"[A-Za-z]{4,}")
+
+
+def _looks_like_formula(text):
+    """True if `text` is a bare formula rather than prose containing notation."""
+    if not text:
+        return False
+    if not _re.search(r"[\\_^=]", text):        # no math signal at all
+        return False
+    # TWO words, not one: formulas legitimately contain the odd bare function
+    # name (`Erfc(...)`, `Var`, `Cov`), and disqualifying on a single word sent
+    # 765 real equations down the strip-to-plain-text path. Prose has many.
+    return len(_PROSE_WORD_RE.findall(_TEX_CMD_RE.sub(" ", text))) < 2
+
+
 def _prepare_for_display(text):
     """Prepare text for matplotlib rendering: keep math in $...$, fix unsupported commands.
 
@@ -624,7 +415,7 @@ def _prepare_for_display(text):
     """
     if not text:
         return ""
-    t = text
+    t = _inline_display_math(text)
 
     # If text has $...$ already, just sanitize the math parts
     if "$" in t:
@@ -640,9 +431,22 @@ def _prepare_for_display(text):
     if not has_math:
         return t  # plain text, no math
 
-    # Has math-like notation but no $ delimiters.
-    # Can't reliably auto-wrap arbitrary LaTeX fragments in $...$,
-    # so fall back to clean plain text.
+    # Has math-like notation but no $ delimiters. Historically this gave up and
+    # stripped the LaTeX to plain text, which turns a displayed equation into
+    # unreadable pseudo-text — `\mathbb{T}_b(x)=\mathbb{E}[\mathbf{t}_b^{x,r}]`
+    # came out as `T_b(x)=E[t_b^x,r]`. That hit 5.0% of all text items (1950 of
+    # 38875), mostly equation bodies stored WITHOUT their `\begin{...}` wrapper,
+    # so _inline_display_math above never saw a delimiter to key on.
+    #
+    # We can do better than guessing: wrap the whole thing as math and ask
+    # mathtext whether it actually parses. _sanitize_math already ends in
+    # _strip_math_on_error, so a candidate that fails comes back with its `$`
+    # removed — surviving `$` IS the accept signal. Strictly better than the
+    # old behaviour: anything that fails lands on exactly the old fallback.
+    if _looks_like_formula(t):
+        as_math = _sanitize_math("$%s$" % _ALIGN_JUNK.sub(" ", t).strip())
+        if "$" in as_math:
+            return as_math
     return _to_display_text(t)
 
 
@@ -1410,20 +1214,28 @@ def _resolve_nodes(nodes, macros):
     becomes mathtext-safe. Never mutates the caller's data.
     """
     from latex_macros import normalize_for_mathtext as _norm
-    TEXT = ("statement", "statement_short", "name", "clean_text", "raw_latex",
-            "genus", "definiendum", "label")
-    LISTS = ("assumptions", "conclusions", "differentia")
+    # One list, not a str list plus a list list: `input`/`output` occur as
+    # BOTH shapes in the corpus, and splitting by shape is what let them fall
+    # through. Each of these is either drawn on the figure or shipped to the
+    # HTML side panel, so each has to be resolved.
+    FIELDS = ("statement", "statement_short", "name", "clean_text", "raw_latex",
+              "genus", "definiendum", "label", "proof_strategy",
+              "origin_citation", "assumptions", "conclusions", "differentia",
+              "input", "output")
+
+    def _resolve(v):
+        if isinstance(v, str):
+            return _norm(v, macros) if v else v
+        if isinstance(v, list):
+            return [_resolve(x) for x in v]
+        return v
+
     out = []
     for n in nodes:
         m = dict(n)
-        for f in TEXT:
-            v = m.get(f)
-            if isinstance(v, str) and v:
-                m[f] = _norm(v, macros)
-        for f in LISTS:
-            v = m.get(f)
-            if isinstance(v, list):
-                m[f] = [_norm(x, macros) if isinstance(x, str) else x for x in v]
+        for f in FIELDS:
+            if f in m:
+                m[f] = _resolve(m[f])
         out.append(m)
     return out
 
@@ -1633,17 +1445,13 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             """Header width needed given box width w (renderer shows more name
             chars for wider boxes). Header font is 14-bold ~25% wider than body.
             Cap name display to 30 chars to prevent runaway expansion."""
-            header_chars = max(len(nid) + 4, int(w * CHARS_PER_UNIT) - 2)
-            avail = max(6, header_chars - len(nid) - 2)
-            avail = min(avail, 30)  # cap to prevent circular expansion
-            shown = len(nid) + 2 + min(avail, len(name))
-            HEADER_CPU = 9.0  # chars/unit for fontsize-14 bold
-            return shown / HEADER_CPU + 2 * PADDING + 0.15
+            text, _ = _header_text_for_box(nid, name, w)
+            return len(text) / HEADER_CPU + 2 * PADDING + 0.15
 
         # --- Step 1: find body width via binary search ---
         # Initial header estimate (30-char cap, before circular expansion)
         name_cap = min(len(name), 30)
-        init_header_w = (len(nid) + 2 + name_cap) / 9.0 + 2 * PADDING + 0.15
+        init_header_w = (len(nid) + 2 + name_cap) / HEADER_CPU + 2 * PADDING + 0.15
 
         lo_w = max(MIN_BOX_W, init_header_w)
         hi_w = MAX_BOX_W
@@ -1869,11 +1677,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         # Header — truncate name to box width, but always show full node ID
         # Use ~9 chars/unit for bold header font (vs 12 for body font)
         name_str = n.get("name") or ""
-        header_chars = max(len(nid) + 4, int(node_width.get(nid, 4.0) * 9) - 2)
-        header_text = f"{nid}"
-        if name_str:
-            avail = max(6, header_chars - len(nid) - 2)
-            header_text += f": {_shorten(name_str, avail)}"
+        header_text, header_chars = _header_text_for_box(
+            nid, name_str, node_width.get(nid, 4.0))
         # Choose header font size to fit: shrink if header text is long
         header_fontsize = 14
         if len(header_text) > header_chars:
@@ -1948,7 +1753,9 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             cursor_y -= LINE_H * 0.7
             for line in a_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=12, color="#222",
+                        ha="left", va="top",
+                        fontsize=_fit_fontsize(f"• {line}", bw - 2 * PADDING - 0.1),
+                        color="#222",
                         fontstyle="italic")
                 cursor_y -= _line_h_draw(line)
 
@@ -1964,7 +1771,9 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             cursor_y -= LINE_H * 0.7
             for line in c_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=12, color="#222")
+                        ha="left", va="top",
+                        fontsize=_fit_fontsize(f"• {line}", bw - 2 * PADDING - 0.1),
+                        color="#222")
                 cursor_y -= _line_h_draw(line)
 
             _proof_label = _proof_indicator(n)
@@ -1988,7 +1797,9 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             cursor_y -= LINE_H * 0.7
             for line in in_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=12, color="#222")
+                        ha="left", va="top",
+                        fontsize=_fit_fontsize(f"• {line}", bw - 2 * PADDING - 0.1),
+                        color="#222")
                 cursor_y -= LINE_H
             cursor_y -= PADDING * 0.3
             ax.plot([bx + 0.15, bx + bw - 0.15], [cursor_y + PADDING * 0.2] * 2,
@@ -1998,7 +1809,9 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             cursor_y -= LINE_H * 0.7
             for line in out_lines:
                 ax.text(bx + PADDING + 0.1, cursor_y, f"• {line}",
-                        ha="left", va="top", fontsize=12, color="#222")
+                        ha="left", va="top",
+                        fontsize=_fit_fontsize(f"• {line}", bw - 2 * PADDING - 0.1),
+                        color="#222")
                 cursor_y -= LINE_H
 
         else:
@@ -2011,7 +1824,9 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
                 stmt_lines = [""]
             for line in stmt_lines:
                 ax.text(bx + PADDING, cursor_y, line,
-                        ha="left", va="top", fontsize=12, color="#222")
+                        ha="left", va="top",
+                        fontsize=_fit_fontsize(line, bw - 2 * PADDING),
+                        color="#222")
                 cursor_y -= _line_h_draw(line)
             if ntype in _THEOREM_LIKE:
                 _proof_label = _proof_indicator(n)
@@ -2123,8 +1938,24 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
     _x_rng = max(_xlim) - min(_xlim)
     _y_rng = max(_ylim) - min(_ylim)
     if _x_rng > 0 and _y_rng > 0:
-        fig.set_size_inches(_x_rng * 0.8 + 2, _y_rng * 0.8 + 2)
-    ax.set_position([0.02, 0.02, 0.96, 0.96])
+        # Size STRICTLY proportionally, and buy the margin in data units.
+        #
+        # This used to be `_x_rng * 0.8 + 2`. That `+ 2` is a fixed number of
+        # INCHES, so inches-per-data-unit came out as 0.768 + 1.92/_x_rng —
+        # 0.96 on a 10-unit graph but 0.785 on a 115-unit one. Text is wrapped
+        # in data units against CHARS_PER_UNIT, a single constant, so the
+        # wrapping could only be right at one graph size: small papers fitted
+        # and large ones spilled ~27% past the box edge, which is exactly the
+        # reported overflow. Adding the margin to the LIMITS instead keeps
+        # inches-per-unit pinned at IN_PER_UNIT for every paper.
+        _pad_u = MARGIN_IN / IN_PER_UNIT / 2.0          # per side
+        ax.set_xlim(min(_xlim) - _pad_u, max(_xlim) + _pad_u)
+        ax.set_ylim(min(_ylim) - _pad_u, max(_ylim) + _pad_u)
+        _xs, _ys = _x_rng + 2 * _pad_u, _y_rng + 2 * _pad_u
+        fig.set_size_inches(_xs * IN_PER_UNIT / AXES_FRAC,
+                            _ys * IN_PER_UNIT / AXES_FRAC)
+    ax.set_position([(1 - AXES_FRAC) / 2, (1 - AXES_FRAC) / 2,
+                     AXES_FRAC, AXES_FRAC])
     # The PNG raster is an Agg pixel buffer of ~(fw*dpi)x(fh*dpi)x4 bytes, which
     # blows up (time + memory) on large figures. Callers that only need the SVG
     # (interactive HTML) pass write_png=False to skip it entirely.
@@ -2418,7 +2249,24 @@ def generate_interactive_html(data, svg_path, html_path):
 
     ch = metadata.get("chapter", "")
     ch_title = metadata.get("chapter_title", "")
-    title = f"Chapter {ch}: {ch_title}" if ch_title else "Knowledge Graph"
+    if ch_title:
+        title = f"Chapter {ch}: {ch_title}"
+    else:
+        title = metadata.get("title") or "Knowledge Graph"
+
+    # Links back to the source article, so a node can be checked against the
+    # paper it was extracted from. arXiv serves the LaTeX source at /e-print/.
+    # Old-style ids ("math/9410211") work in the same URL shapes as new ones.
+    _aid = str(metadata.get("arxiv_id") or "").strip()
+    source_links = ""
+    if _aid:
+        _u = "https://arxiv.org/%s/" + _esc(_aid)
+        source_links = (
+            '<div id="srclinks"><span class="aid">%s</span>'
+            '<a href="%s" target="_blank" rel="noopener">abstract</a>'
+            '<a href="%s" target="_blank" rel="noopener">PDF</a>'
+            '<a href="%s" target="_blank" rel="noopener">LaTeX source</a></div>'
+            % (_esc(_aid), _u % "abs", _u % "pdf", _u % "e-print"))
 
     # Read SVG content
     with open(svg_path, "r", encoding="utf-8") as f:
@@ -2567,11 +2415,16 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
 .toggle-btn[data-showing="1"] {{ background: #2E7D32; color: white; border-color: #1B5E20; }}
 .toggle-btn[disabled] {{ opacity: 0.4; cursor: not-allowed; background: #EEE; color: #333; border-color: #BDBDBD; }}
 .node-aux-shown {{ opacity: 0.75; }}
+#srclinks {{ margin: 2px 0 6px; font-size: 12px; color: #666; }}
+#srclinks .aid {{ font-family: monospace; margin-right: 10px; color: #333; }}
+#srclinks a {{ margin-right: 10px; color: #0645ad; text-decoration: none; }}
+#srclinks a:hover {{ text-decoration: underline; }}
 </style>
 </head>
 <body>
 <div id="header">
   <h1>{_esc(title)}<span class="hint">— click nodes for detailed description</span></h1>
+  {source_links}
   <div id="controls">
     <button onclick="resetView()">Reset</button>
     <button onclick="zoomIn()">Zoom +</button>

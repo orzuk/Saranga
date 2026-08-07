@@ -34,7 +34,8 @@ from __future__ import annotations
 import re
 
 __all__ = ["expand_macros", "brace_normalize", "unwrap_transparent",
-           "normalize_for_mathtext"]
+           "resolve_references", "strip_text_environments",
+           "strip_dimension_commands", "normalize_for_mathtext"]
 
 # Math-font commands take exactly one argument. TeX lets you omit the braces
 # and grabs the next single token, so `{\mathbb R}` == `\mathbb{R}` — valid
@@ -44,9 +45,23 @@ _FONT_CMDS = ("mathbb", "mathcal", "mathrm", "mathbf", "mathfrak", "mathsf",
 
 # The argument may be a single character (`\\mathbb R`) or another control
 # sequence (`{\\mathbf \\H}`, where \\H is itself a paper macro).
-_UNBRACED = re.compile(r"\\(%s)\s+(\\[A-Za-z]+|[A-Za-z0-9])" % "|".join(_FONT_CMDS))
+#
+# The two cases need DIFFERENT space rules. A control-sequence argument needs no
+# separator at all — `\\mathbb\\A` is unambiguous, since `\\mathbb` ends at the
+# `\\`. A single-character argument does: `\\mathbbR` is one control word named
+# "mathbbR", not `\\mathbb` applied to `R`.
+#
+# Getting this wrong is not cosmetic. `\\mathbb\\A` with `\\A -> Alpha` must
+# brace to `\\mathbb{\\A}` BEFORE expansion, giving `\\mathbb{Alpha}`. Requiring
+# a space here meant it stayed unbraced, expanded to `\\mathbb Alpha`, and the
+# final brace pass then grabbed one letter — `\\mathbb{A}lpha`.
+_UNBRACED = re.compile(r"\\(%s)(?:\s*(\\[A-Za-z]+)|\s+([A-Za-z0-9]))"
+                       % "|".join(_FONT_CMDS))
 
 _MAX_DEPTH = 8          # nested macro definitions; also breaks \a -> \b -> \a
+
+# Text ending in a control word, e.g. the `\in` of `\in\xmo`. See expand_macros.
+_CS_TAIL = re.compile(r"\\[A-Za-z]+$")
 
 
 def brace_normalize(text):
@@ -58,7 +73,8 @@ def brace_normalize(text):
     """
     if not text:
         return text
-    return _UNBRACED.sub(r"\\\1{\2}", str(text))
+    return _UNBRACED.sub(
+        lambda m: "\\%s{%s}" % (m.group(1), m.group(2) or m.group(3)), str(text))
 
 
 # Wrappers that carry no mathematical meaning: they exist to control MODE or
@@ -66,7 +82,8 @@ def brace_normalize(text):
 # `\ensuremath{\mathbb{N}}`), and mathtext does not implement them, so a
 # perfectly-resolved macro can still fail to render. Unwrapping keeps the
 # argument and drops the shell.
-_TRANSPARENT = ("ensuremath", "mbox", "hbox", "text", "textnormal")
+_TRANSPARENT = ("ensuremath", "mbox", "hbox", "text", "textnormal",
+                "underline", "norm", "abs", "textup", "textrm")
 _TRANSPARENT_RE = re.compile(r"\\(%s)\s*\{" % "|".join(_TRANSPARENT))
 
 
@@ -142,12 +159,16 @@ def expand_macros(text, macros, max_depth=_MAX_DEPTH):
 
     for _ in range(max_depth):
         out, i, changed = [], 0, False
+        tail = ""                      # last few chars already emitted
         while True:
             m = pattern.search(text, i)
             if not m:
                 out.append(text[i:])
                 break
-            out.append(text[i:m.start()])
+            seg = text[i:m.start()]
+            out.append(seg)
+            if seg:
+                tail = seg[-16:]
             spec = macros[m.group(1)] or {}
             body = spec.get("expansion", "") if isinstance(spec, dict) else str(spec)
             arity = int(spec.get("arity", 0)) if isinstance(spec, dict) else 0
@@ -156,12 +177,174 @@ def expand_macros(text, macros, max_depth=_MAX_DEPTH):
             for _a in range(arity):
                 arg, j = _read_group(text, j)
                 args.append(arg)
-            out.append(_substitute(body, args))
+            sub = _substitute(body, args)
+            # TeX tokenises `\in\xmo` as TWO control words, so expanding
+            # `\xmo` -> `X^{-\omega}` must not glue them into `\inX^{-\omega}`:
+            # `\inX` is an unknown command and renders as the literal text
+            # "inX". Restore the boundary the tokeniser implied.
+            if sub[:1].isalpha() and _CS_TAIL.search(tail):
+                out.append(" ")
+            out.append(sub)
+            if sub:
+                tail = sub[-16:]
             i = j
             changed = True
         text = "".join(out)
         if not changed:
             break
+    return text
+
+
+# Spacing commands that take a dimension rather than a braced argument.
+# `\\kern-1pt` and friends are invisible in output but fatal to mathtext.
+_DIMEN_CMD = re.compile(r"\\(?:kern|hskip|vskip|hspace\*?|vspace\*?)\s*"
+                        r"(?:\{[^}]*\}|-?[\d.]+\s*(?:pt|em|ex|mm|cm|in|bp|sp))?")
+
+
+def strip_dimension_commands(text):
+    """Drop `\\kern-1pt`-style spacing; it carries no meaning for a reader."""
+    return _DIMEN_CMD.sub("", str(text)) if text else text
+
+
+# ---------------------------------------------------------------------------
+# Cross-references
+# ---------------------------------------------------------------------------
+# Statements are verbatim spans, so they keep the paper's `\ref`/`\cite` — 26102
+# of them across the 200 v5.1 papers (`\cite` in 191 of them, `\ref` in 187).
+# The bibliography and the \label definitions live in parts of the .tex we never
+# extracted, so nothing downstream can resolve them: MathJax renders an
+# undefined \ref or \eqref as the literal string `???`, and mathtext just draws
+# the command name.
+#
+# The key is the only information actually present, and it usually carries the
+# meaning anyway (`thm:main`, `eq:bound`, `Knuth77`), so surface it and mark it
+# as a reference rather than dropping it — dropping would silently delete the
+# fact that the sentence pointed somewhere.
+_CITE_CMDS = ("cite", "citep", "citet", "citeauthor", "citeyear", "citealp",
+              "citealt", "cites", "nocite", "fullcite", "textcite", "parencite")
+_REF_CMDS = ("eqref", "cref", "Cref", "autoref", "pageref", "vref", "ref")
+# `\cite[p.~5]{a,b}` — one or two optional args, then the mandatory key list.
+_CITE_RE = re.compile(r"\\(?:%s)\*?\s*(?:\[[^\]]*\]){0,2}\s*\{([^}]*)\}"
+                      % "|".join(_CITE_CMDS))
+# `ref` last in the alternation so `\eqref` is never matched as `\e`+`ref`; the
+# (?![A-Za-z]) guard stops `\reflect` being read as `\ref`.
+_REF_RE = re.compile(r"\\(?:%s)(?![A-Za-z])\*?\s*\{([^}]*)\}"
+                     % "|".join(_REF_CMDS))
+_LABEL_RE = re.compile(r"\\label\s*\{[^}]*\}")
+# LaTeX's non-breaking space. Both mathtext and MathJax draw it as a literal
+# `~`, and `Knuth~[Knuth77]` is the common shape once citations resolve, so
+# normalise it to a plain space. `\~` (the tilde accent) is left alone.
+_NBSP = re.compile(r"(?<!\\)~")
+
+
+def _safe_key(k):
+    """A bib/label key is drawn as text, but may land inside `$...$`.
+
+    `eq:a_b` would then be parsed as a subscript (or, with two underscores,
+    raise "double subscript"). Escaping keeps the key readable in both modes.
+    """
+    return k.strip().replace("_", r"\_")
+
+
+def _fmt_keys(m, open_c, close_c):
+    keys = [_safe_key(k) for k in m.group(1).split(",") if k.strip()]
+    return "%s%s%s" % (open_c, ", ".join(keys), close_c) if keys else ""
+
+
+# ---------------------------------------------------------------------------
+# LaTeX environments
+# ---------------------------------------------------------------------------
+# A statement span often carries the environment it was cut from, so the text
+# still contains `\begin{lemma}`, `\begin{proof}`, `\begin{itemize}`. MathJax's
+# TeX input implements only MATH environments and reports anything else as
+# "unknown environment 'lemma'" right in the panel. Measured over the 200 v5.1
+# papers: 1889 occurrences of 64 distinct non-math environments.
+#
+# Listing all 64 would rot, so invert it — name the environments that must
+# SURVIVE (math, handled downstream) and the ones worth replacing wholesale
+# (diagrams and floats, whose content is not readable text), then unwrap
+# everything else. A new environment in some future paper is unwrapped by
+# default, which is the safe outcome.
+_MATH_ENVS = {
+    "equation", "align", "eqnarray", "gather", "multline",
+    "split", "aligned", "gathered", "array", "matrix", "pmatrix", "bmatrix",
+    "Bmatrix", "vmatrix", "Vmatrix", "cases", "numcases", "smallmatrix",
+    "flalign", "alignat", "subarray",
+}
+_MATH_ENVS |= {e + "*" for e in _MATH_ENVS}
+
+# LaTeX2e primitives that MathJax does NOT define, so leaving them intact would
+# produce the same "unknown environment" error as \begin{lemma}. `displaymath`
+# is just `\[..\]`, so re-delimit it; `subequations` is a numbering wrapper, so
+# unwrapping it (the default) leaves the real equations inside untouched.
+_INLINE_MATH_ENVS = {"displaymath", "math"}
+
+# Content is graphics or tabular layout: unwrapping would dump coordinate soup
+# into the panel, so collapse the whole block to a marker instead.
+_OPAQUE_ENVS = {
+    "tikzcd": "diagram", "tikzpicture": "diagram", "xy": "diagram",
+    "CD": "diagram", "ytableau": "diagram", "picture": "diagram",
+    "pspicture": "diagram", "diagram": "diagram", "scope": "diagram",
+    "tabular": "table", "tabularx": "table", "table": "table",
+    "figure": "figure", "algorithmic": "algorithm", "algorithm": "algorithm",
+}
+
+_LIST_ENVS = {"itemize", "enumerate", "description", "compactitem",
+              "compactenum", "enumroman", "rlist", "longlist", "inparaenum"}
+
+# Innermost \begin{X}...\end{X}: no nested \begin of the SAME name inside.
+_ENV_RE = re.compile(
+    r"\\begin\{([A-Za-z*]+)\}\s*(?:\[[^\]]*\])?(?:\{[^}]*\})?"
+    r"((?:(?!\\begin\{\1\}).)*?)"
+    r"\\end\{\1\}", re.S)
+_ITEM_RE = re.compile(r"\\item\s*(?:\[[^\]]*\])?\s*")
+_ORPHAN_RE = re.compile(r"\\(?:begin|end)\{([A-Za-z*]+)\}\s*(?:\[[^\]]*\])?")
+
+
+def strip_text_environments(text, max_depth=_MAX_DEPTH):
+    """Unwrap non-math LaTeX environments; MathJax only understands math ones."""
+    if not text or "\\begin{" not in text:
+        return text
+    t = str(text)
+
+    def _sub(m):
+        name, body = m.group(1), m.group(2)
+        if name in _MATH_ENVS:
+            return m.group(0)                       # leave for the math path
+        if name in _INLINE_MATH_ENVS:
+            return " $%s$ " % body.strip()
+        base = _OPAQUE_ENVS.get(name)
+        if base:
+            return " [%s] " % base
+        if name in _LIST_ENVS:
+            return " " + _ITEM_RE.sub(" • ", body).strip() + " "
+        return " " + body.strip() + " "             # plain wrapper: keep content
+
+    for _ in range(max_depth):                      # inside-out for nesting
+        new = _ENV_RE.sub(_sub, t)
+        if new == t:
+            break
+        t = new
+
+    # Orphans: a statement is a SPAN of the source, so it routinely opens an
+    # environment whose \end fell outside the extracted range (or vice versa).
+    # The paired rule above needs both halves, leaving ~216 unmatched markers
+    # corpus-wide. Drop the bare marker and keep the text around it.
+    t = _ORPHAN_RE.sub(lambda m: m.group(0) if m.group(1) in _MATH_ENVS else " ", t)
+    return t
+
+
+def resolve_references(text):
+    """`\\cite{Knuth77}` -> `[Knuth77]`, `\\ref{thm:main}` -> `(thm:main)`.
+
+    `\\label{...}` is dropped: it defines an anchor rather than pointing at one,
+    so it has no reading value once the numbering is gone.
+    """
+    if not text:
+        return text
+    text = _LABEL_RE.sub("", str(text))
+    text = _CITE_RE.sub(lambda m: _fmt_keys(m, "[", "]"), text)
+    text = _REF_RE.sub(lambda m: _fmt_keys(m, "(", ")"), text)
     return text
 
 
@@ -177,8 +360,413 @@ def normalize_for_mathtext(text, macros=None):
     So: brace-normalise first (while macros are still single tokens), then
     expand, then unwrap, then brace-normalise again to catch unbraced forms
     that the expansions themselves introduced.
+
+    References are resolved AFTER expansion, because papers hide them inside
+    their own macros (`\\ifLongCites{\\cite{Knuth77}}{Knuth~\\cite{Knuth77}}`),
+    and BEFORE the transparent-wrapper pass, since `\\cite` shows up inside
+    `\\mbox{}` often enough to matter.
     """
     text = brace_normalize(text)
     text = expand_macros(text, macros or {})
+    text = strip_text_environments(text)
+    text = resolve_references(text)
     text = unwrap_transparent(text)
+    text = strip_dimension_commands(text)
+    text = _NBSP.sub(" ", text or "")
     return brace_normalize(text)
+
+
+# ===========================================================================
+# matplotlib-mathtext safety layer
+# ===========================================================================
+# Moved here from visualize_annotation.py. mathtext implements a SUBSET of TeX,
+# so a string that is valid LaTeX still has to be rewritten before it can be
+# drawn. That rewrite is not a rendering concern: scripts/audit_mathtext.py
+# needs it to predict failures, and cross-paper comparison needs it to compare
+# like with like. Keeping the tables in the renderer forced those callers to
+# import visualize_annotation (and, with it, matplotlib figure machinery) just
+# to reach a dict.
+#
+# visualize_annotation re-exports every name below, so existing references to
+# _LATEX_FIXES / _sanitize_math keep working unchanged.
+
+import re as _re  # noqa: E402  — the moved code uses this alias throughout
+
+# ── Text helpers ────────────────────────────────────────────────────────────
+# LaTeX commands not supported by matplotlib mathtext — replace with equivalents
+# ONLY replace commands that matplotlib mathtext CANNOT render.
+# Tested: \mathbb, \mathcal, \mathrm, \mathbf, \operatorname, \text,
+# \boldsymbol, \triangleq, Greek letters, \nabla, \frac, \sum, \int,
+# \prod, \log, \sim, \in, \leq, \geq, \forall, \exists ALL WORK.
+_LATEX_FIXES = {
+    # These FAIL in matplotlib and need replacement:
+    r"\bm": r"\mathbf",                  # \bm not supported
+    r"\lVert": r"\|", r"\rVert": r"\|",  # \lVert/\rVert not supported
+    # \Vert AFTER \lVert/\rVert: this table is applied as literal str.replace
+    # in insertion order, so those two must already be gone or `\lVert` would
+    # match as `\l` + `Vert`.
+    r"\Vert": r"\|", r"\vert": r"|",
+    r"\coloneqq": r":=",                 # \coloneqq not supported
+    r"\pmod": r"\mathrm{mod}",           # \pmod not supported
+    r"\defeq": r":=",                    # \defeq (custom) → :=
+    r"\eqdef": r":=",                    # \eqdef (custom) → :=
+    # Common author-defined number-set shorthands (\R, \Z, \N, \Q, \C):
+    r"\R": r"\mathbb{R}",
+    r"\Z": r"\mathbb{Z}",
+    r"\N": r"\mathbb{N}",
+    r"\Q": r"\mathbb{Q}",
+    r"\C": r"\mathbb{C}",
+    # Common author shortcuts:
+    r"\eps": r"\varepsilon",
+    r"\hdots": r"\ldots",
+    r"\dotsc": r"\ldots",
+    r"\dotsb": r"\cdots",
+    # Text-style commands matplotlib mathtext does NOT support
+    # (it knows \text but not \textbf/\textit/\texttt/etc.):
+    r"\textbf": r"\mathbf",
+    r"\textit": r"\mathit",
+    r"\texttt": r"\mathtt",
+    r"\textsf": r"\mathsf",
+    r"\textsc": r"\mathrm",
+    r"\textnormal": r"\mathrm",
+    r"\emph": r"\mathit",
+    # ── Added 2026-08 from scripts/audit_mathtext.py, which parses every math
+    # block in the corpus through mathtext in-process. Each replacement below
+    # was checked: the left side genuinely fails, the right side genuinely
+    # parses. \le / \ge alone accounted for 1253 rejected blocks across 22 of
+    # the first 40 papers — mathtext knows \leq and \geq but not the short
+    # forms, which is not obvious from any docs.
+    # NOTE: \le / \ge are deliberately NOT here. _LATEX_FIXES is applied as
+    # literal substring replacement, so a "\le" -> "\leq" entry rewrites an
+    # existing "\leq" into "\leqq" and "\leqslant" into "\leqqslant".
+    # _LATEX_REGEX_FIXES already handles them with a negative lookahead.
+    r"\Bbb": r"\mathbb",                  # old AMS spelling of \mathbb
+    r"\EuScript": r"\mathcal",
+    r"\dvtx": r":",                       # AMS journal class colon
+    r"\diagdown": r"\backslash",
+    r"\varDelta": r"\Delta", r"\varGamma": r"\Gamma",
+    r"\varSigma": r"\Sigma", r"\varOmega": r"\Omega",
+    r"\varPhi": r"\Phi", r"\varLambda": r"\Lambda",
+    # Sizing prefixes: mathtext has no \bigl family; plain delimiters render.
+    r"\bigl": "", r"\bigr": "", r"\Bigl": "", r"\Bigr": "",
+    r"\biggl": "", r"\biggr": "", r"\Biggl": "", r"\Biggr": "",
+    r"\bigm": "", r"\Bigm": "",
+    r"\limits": "", r"\nolimits": "",
+    # Sizing delimiters — not supported standalone, replace with plain:
+    r"\big|": "|", r"\Big|": "|", r"\bigg|": "|",
+    r"\big(": "(", r"\Big(": "(", r"\big)": ")", r"\Big)": ")",
+    r"\bigg(": "(", r"\Bigg(": "(", r"\bigg)": ")", r"\Bigg)": ")",
+}
+
+# Whitelist of LaTeX commands matplotlib mathtext supports natively. Any
+# \command NOT in this set gets wrapped in \mathrm{...} as a graceful
+# fallback so that rendering doesn't crash on author-defined macros.
+# Keep this list LARGE enough to avoid false positives (which render as
+# weird upright text); err toward inclusion.
+_KNOWN_MATHTEXT_COMMANDS = frozenset({
+    # Font/style — note: matplotlib mathtext supports \text{} but NOT
+    # \textbf/\textit/\texttt/etc. Those map to \mathbf/\mathit/\mathtt
+    # via the explicit _LATEX_FIXES table above.
+    'mathbb', 'mathcal', 'mathrm', 'mathbf', 'mathit', 'mathsf', 'mathtt',
+    'boldsymbol', 'bm', 'text', 'operatorname',
+    # Greek lower:
+    'alpha', 'beta', 'gamma', 'delta', 'epsilon', 'varepsilon', 'zeta', 'eta',
+    'theta', 'vartheta', 'iota', 'kappa', 'lambda', 'mu', 'nu', 'xi',
+    'pi', 'varpi', 'rho', 'varrho', 'sigma', 'varsigma', 'tau', 'upsilon',
+    'phi', 'varphi', 'chi', 'psi', 'omega',
+    # Greek upper:
+    'Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta',
+    'Theta', 'Iota', 'Kappa', 'Lambda', 'Mu', 'Nu', 'Xi', 'Omicron',
+    'Pi', 'Rho', 'Sigma', 'Tau', 'Upsilon', 'Phi', 'Chi', 'Psi', 'Omega',
+    # Operators:
+    'frac', 'sqrt', 'sum', 'prod', 'int', 'iint', 'iiint', 'oint',
+    'bigcup', 'bigcap', 'bigsqcup',
+    'lim', 'liminf', 'limsup', 'inf', 'sup', 'min', 'max', 'arg',
+    'log', 'ln', 'exp', 'sin', 'cos', 'tan', 'cot', 'sec', 'csc',
+    'sinh', 'cosh', 'tanh', 'arcsin', 'arccos', 'arctan',
+    'det', 'dim', 'gcd', 'ker', 'deg', 'hom',
+    # Relations:
+    'in', 'notin', 'ni', 'subset', 'supset', 'subseteq', 'supseteq',
+    'subsetneq', 'supsetneq', 'cap', 'cup', 'setminus', 'emptyset',
+    'leq', 'geq', 'neq', 'leqq', 'geqq', 'leqslant', 'geqslant',
+    'lneq', 'gneq', 'approx', 'sim', 'simeq', 'asymp',
+    'equiv', 'cong', 'propto', 'parallel', 'perp', 'mid', 'nmid',
+    'lessgtr', 'gtrless', 'lll', 'ggg',
+    # Logic:
+    'forall', 'exists', 'nexists', 'land', 'lor', 'neg', 'lnot',
+    # Arrows:
+    'to', 'gets', 'mapsto', 'rightarrow', 'leftarrow', 'leftrightarrow',
+    'Rightarrow', 'Leftarrow', 'Leftrightarrow',
+    'longrightarrow', 'longleftarrow', 'longleftrightarrow',
+    'hookrightarrow', 'hookleftarrow', 'rightharpoonup', 'leftharpoonup',
+    # Basic:
+    'pm', 'mp', 'times', 'div', 'cdot', 'cdots', 'ldots', 'vdots', 'ddots',
+    'partial', 'nabla', 'infty', 'aleph', 'hbar',
+    'oplus', 'ominus', 'otimes', 'odot', 'star', 'ast', 'circ',
+    'dagger', 'ddagger', 'top', 'bot',
+    # Modifiers:
+    'tilde', 'hat', 'widetilde', 'widehat', 'bar', 'overline', 'underline',
+    'dot', 'ddot', 'vec', 'check', 'breve', 'acute', 'grave',
+    'overbrace', 'underbrace', 'overrightarrow', 'overleftarrow',
+    # Brackets/sizing (handled separately by regex, but include for safety):
+    'left', 'right', 'big', 'Big', 'bigg', 'Bigg',
+    # Misc:
+    'binom', 'choose', 'atop', 'over', 'pmod', 'mod',
+    'ell', 'wp', 'Re', 'Im', 'imath', 'jmath',
+    'square', 'blacksquare', 'triangle', 'triangledown',
+    'angle', 'sphericalangle', 'measuredangle',
+    'sharp', 'flat', 'natural',
+    'spadesuit', 'clubsuit', 'heartsuit', 'diamondsuit',
+    'triangleq', 'rtimes', 'ltimes', 'between',
+    'quad', 'qquad', 'thinspace',
+    # Colors / spacing — passed through as no-ops by mathtext typically:
+    'displaystyle', 'textstyle', 'scriptstyle', 'scriptscriptstyle',
+    'limits', 'nolimits',
+    # newcommand (not math but appears in raw_text dumps).
+    # NOTE: 'begin', 'end', 'item', 'label', 'ref', 'cite' are handled by
+    # _LATEX_REGEX_FIXES (stripped or replaced) BEFORE this whitelist runs,
+    # so they're intentionally NOT in this set.
+    'newcommand', 'renewcommand',
+})
+
+# Regex-based fixes: commands like \ge that are prefixes of valid commands (\geq)
+# Must use regex with word boundary to avoid breaking \geq -> \geqq
+import re as _re
+_LATEX_REGEX_FIXES = [
+    (_re.compile(r'\\leqslant\b'), r'\\leq'),
+    (_re.compile(r'\\geqslant\b'), r'\\geq'),
+    (_re.compile(r'\\ge(?!q)'), r'\\geq'),
+    (_re.compile(r'\\le(?!q|ft)'), r'\\leq'),
+    (_re.compile(r'\\ne(?!g|wcommand|q)'), r'\\neq'),
+    # \left( → (, \right) → ), \left[ → [, etc.
+    (_re.compile(r'\\left\s*([(\[|.])'), r'\1'),
+    (_re.compile(r'\\right\s*([)\]|.])'), r'\1'),
+    # Strip LaTeX environment markers — mathtext cannot parse them and they
+    # have no rendering meaning inside a math snippet anyway:
+    (_re.compile(r'\\begin\s*\{[^}]*\}'), ''),
+    (_re.compile(r'\\end\s*\{[^}]*\}'), ''),
+    # Convert \item to bullet (mathtext-safe) so list items render readably:
+    (_re.compile(r'\\item\b'), '• '),
+    # Strip cross-reference / metadata commands with one brace argument:
+    (_re.compile(r'\\(?:label|ref|cite|caption|tag|eqref|cref|nameref)\s*\{[^}]*\}'), ''),
+    # Strip stand-alone \\ (line breaks inside math snippets break mathtext):
+    (_re.compile(r'\\\\(?![A-Za-z])'), ' '),
+    # Escaped special chars that mathtext doesn't recognize. Note re.sub
+    # replacement strings: a literal & in the replacement needs to NOT be
+    # `\&` (which would mean the matched group), use a plain `&`.
+    (_re.compile(r'\\&'), '&'),                   # \& → &
+    (_re.compile(r'\\%'), '%'),                   # \% → %
+    (_re.compile(r'\\#'), '#'),                   # \# → #
+    # Accent / modifier commands without braces — mathtext requires \bar{A}
+    # but author LaTeX often writes \bar A. Convert single-letter forms:
+    #   \bar A   →  \bar{A}
+    #   \hat x   →  \hat{x}
+    # Apply for each modifier we know mathtext accepts.
+    (_re.compile(r'\\(bar|hat|tilde|dot|ddot|vec|check|breve|acute|grave|widetilde|widehat|overline|underline)\s+([A-Za-z])\b'),
+     r'\\\1{\2}'),
+]
+
+
+def _fallback_unknown_commands(text):
+    """For any \\command whose name is NOT in _KNOWN_MATHTEXT_COMMANDS, wrap
+    it in \\mathrm{} so it renders as upright text instead of crashing
+    matplotlib's mathtext parser.
+
+    This handles author-defined macros like \\Lun, \\Lsym, \\charfct, \\Ncut
+    that appear in faithful LaTeX-source extractions but aren't in the paper
+    preamble we have access to.
+    """
+    if not text:
+        return text
+
+    def replace(m):
+        cmd = m.group(1)
+        if cmd in _KNOWN_MATHTEXT_COMMANDS:
+            return m.group(0)
+        return r'\mathrm{' + cmd + '}'
+    return _re.sub(r'\\([A-Za-z]+)', replace, text)
+
+def sanitize_for_mathtext(text, macros=None):
+    """Make `text` safe to hand to matplotlib mathtext.
+
+    `macros` is the paper's own glossary (`metadata.macros`), resolved first —
+    passed EXPLICITLY rather than read from a module global. The renderer used
+    to keep the glossary in a module-level `_CURRENT_MACROS` that draw_dag set
+    per paper, which meant any other caller (the audit, cross-paper comparison)
+    silently inherited whichever paper the renderer happened to touch last.
+
+    Six passes:
+      0. Collapse display-math markers `$$..$$` → `$..$` (mathtext doesn't
+         support display mode, so treat as inline).
+      1. Explicit literal substitutions in _LATEX_FIXES (\\R → \\mathbb{R}, etc.)
+      2. Regex-based fixes in _LATEX_REGEX_FIXES (\\ge → \\geq, strip \\begin{}, etc.)
+      3. Catch-all fallback: any \\command not in _KNOWN_MATHTEXT_COMMANDS
+         gets wrapped in \\mathrm{} so unknown author macros render as
+         upright text instead of crashing matplotlib mathtext.
+      4. Backslash restoration inside `$..$`: bare math-name tokens like
+         Sigma, sum, in (where Opus / cleaned-up extractions stripped the
+         backslash) get the backslash put back so mathtext renders them
+         as symbols (Σ, ∑, ∈) rather than upright text.
+      5. Dollar-balance check: if the text has an odd number of unescaped
+         $ markers, math mode would be entered but never closed, crashing
+         mathtext. Escape all $ in that case so the text renders as plain
+         text with visible $ signs.
+    """
+    if not text:
+        return text
+    # Paper macros FIRST: an unexpanded `\Sc` is an unknown command, so pass 3
+    # below would wrap it as \mathrm{Sc} and the reader would see the macro name
+    # instead of the symbol it stands for.
+    text = normalize_for_mathtext(text, macros)
+    # 0a: collapse display math (mathtext doesn't support $$..$$)
+    while '$$' in text:
+        text = text.replace('$$', '$')
+    # 0b: replace embedded newlines with spaces. mathtext parses the
+    # full string before line-splitting, so a `\n` between two $..$ blocks
+    # makes the parser see them as one combined token, often crashing.
+    text = text.replace('\n', ' ').replace('\r', ' ')
+    for old, new in _LATEX_FIXES.items():
+        text = text.replace(old, new)
+    for pattern, repl in _LATEX_REGEX_FIXES:
+        text = pattern.sub(repl, text)
+    text = _fallback_unknown_commands(text)
+    # 0c: collapse `$$` (empty math content) — but DO NOT collapse
+    # `$ $` boundaries between adjacent math blocks ($X$ $Y$ stays as
+    # two separate blocks, NOT merged into $XY$). Earlier versions of
+    # this code collapsed `\$\s+\$` aggressively, which incorrectly
+    # merged neighbors.
+    while '$$' in text:
+        text = text.replace('$$', '')
+    text = _restore_bare_math_names(text)
+    text = _balance_dollars(text)
+    # Final safety: actually try to parse the math; on failure, strip $..$
+    # so the text renders as plain unstyled string instead of crashing.
+    text = _strip_math_on_error(text)
+    return text
+
+
+# Bare math-name tokens that should become backslash commands inside $..$.
+# Restricted to $..$ so we don't break English prose containing the same
+# words ("Sigma" the proper noun, "in" the preposition, etc.).
+_BARE_MATH_NAMES = [
+    # Greek letters (lowercase)
+    'alpha', 'beta', 'gamma', 'delta', 'epsilon', 'varepsilon', 'zeta', 'eta',
+    'theta', 'vartheta', 'iota', 'kappa', 'lambda', 'mu', 'nu', 'xi',
+    'pi', 'varpi', 'rho', 'varrho', 'sigma', 'varsigma', 'tau', 'upsilon',
+    'phi', 'varphi', 'chi', 'psi', 'omega',
+    # Greek letters (uppercase)
+    'Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta',
+    'Theta', 'Iota', 'Kappa', 'Lambda', 'Mu', 'Nu', 'Xi',
+    'Pi', 'Rho', 'Sigma', 'Tau', 'Upsilon', 'Phi', 'Chi', 'Psi', 'Omega',
+    # Operators
+    'sum', 'prod', 'int', 'iint', 'oint',
+    'lim', 'liminf', 'limsup', 'inf', 'sup', 'min', 'max', 'arg',
+    'log', 'ln', 'exp',
+    'sin', 'cos', 'tan', 'cot', 'sec', 'csc',
+    'sinh', 'cosh', 'tanh', 'arcsin', 'arccos', 'arctan',
+    'det', 'dim', 'gcd', 'ker',
+    # Relations / set theory
+    'in', 'notin', 'ni', 'subset', 'subseteq', 'supset', 'supseteq',
+    'cap', 'cup', 'emptyset',
+    'forall', 'exists', 'nexists',
+    'leq', 'geq', 'neq',
+    'to', 'mapsto', 'rightarrow', 'leftarrow', 'Rightarrow', 'Leftarrow',
+    # Misc
+    'infty', 'partial', 'nabla', 'ell',
+    'cdot', 'cdots', 'ldots', 'times', 'div',
+    'pm', 'mp', 'mid',
+]
+# One combined regex for performance. The lookbehind ensures we don't
+# match continuation of another identifier ("inflate" doesn't become
+# "\inflate") or already-prefixed commands ("\sigma" stays as "\sigma").
+# Use [a-zA-Z0-9] (NOT \w) for boundaries because \w includes `_` — but
+# `_` is the LaTeX subscript marker, so we WANT `Sigma_d` to match
+# `Sigma` (the underscore is the boundary, not a continuation char).
+_BARE_MATH_NAMES_RE = _re.compile(
+    r'(?<![a-zA-Z0-9\\])(' + '|'.join(sorted(_BARE_MATH_NAMES, key=len, reverse=True)) + r')(?![a-zA-Z0-9])'
+)
+
+
+def _restore_bare_math_names(text):
+    """Inside `$..$` blocks, prefix bare math-name tokens (Sigma, sum, in,
+    ...) with a backslash so matplotlib mathtext renders them as symbols.
+
+    Operates ONLY inside `$..$` regions — leaves English prose alone, so
+    the proper-noun "Sigma" outside math stays as "Sigma" and the
+    preposition "in" outside math stays as "in".
+    """
+    if not text or '$' not in text:
+        return text
+    out = []
+    i = 0
+    while i < len(text):
+        if text[i] == '$':
+            j = text.find('$', i + 1)
+            if j == -1:
+                out.append(text[i:])
+                break
+            content = text[i + 1:j]
+            content = _BARE_MATH_NAMES_RE.sub(r'\\\1', content)
+            out.append('$' + content + '$')
+            i = j + 1
+        else:
+            j = text.find('$', i)
+            if j == -1:
+                out.append(text[i:])
+                break
+            out.append(text[i:j])
+            i = j
+    return ''.join(out)
+
+
+def _balance_dollars(text):
+    """If `text` has an odd number of unescaped `$` markers, escape them
+    all so matplotlib mathtext doesn't enter unterminated math mode and
+    crash. Returns text unchanged if balance is even."""
+    if not text:
+        return text
+    # Count `$` not preceded by a backslash
+    n_unescaped = 0
+    for i, c in enumerate(text):
+        if c == '$' and (i == 0 or text[i - 1] != '\\'):
+            n_unescaped += 1
+    if n_unescaped % 2 == 0:
+        return text
+    # Odd number → escape them all
+    return _re.sub(r'(?<!\\)\$', r'\\$', text)
+
+
+# Lazy mathtext parser for the safety check in _strip_math_on_error
+_MATHTEXT_PARSER = None
+
+
+def _can_render_math(text):
+    """Try parsing each `$..$` block with mathtext. Return True if all
+    blocks parse cleanly, False if any fails."""
+    if not text or '$' not in text:
+        return True
+    global _MATHTEXT_PARSER
+    if _MATHTEXT_PARSER is None:
+        try:
+            from matplotlib.mathtext import MathTextParser
+            _MATHTEXT_PARSER = MathTextParser('agg')
+        except Exception:
+            return True   # if we can't even import, give up checking
+    try:
+        # Validate each $..$ block
+        for match in _re.finditer(r'\$([^$]*)\$', text):
+            content = match.group(0)
+            if len(content) > 2:    # has content between dollars
+                _MATHTEXT_PARSER.parse(content, dpi=100, prop=None)
+        return True
+    except Exception:
+        return False
+
+
+def _strip_math_on_error(text):
+    """If `text` would crash mathtext, strip all `$..$` markers (keeping
+    the inner content as plain text). Last-resort fallback."""
+    if _can_render_math(text):
+        return text
+    # Strip $ but keep content
+    return _re.sub(r'\$([^$]*)\$', r'\1', text)
