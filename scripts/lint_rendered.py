@@ -76,6 +76,7 @@ RULES = [
 ]
 
 _ENV = re.compile(r"\\begin\{([A-Za-z*]+)\}")
+_SVG_COMMENT = re.compile(r"<!--.*?-->", re.S)
 _TEXT_FIELDS = ("statement", "statement_short", "name", "clean_text",
                 "raw_latex", "genus", "definiendum", "proof_strategy",
                 "origin_citation", "assumptions", "conclusions",
@@ -147,6 +148,10 @@ def lint_html(html_dir, show=0):
             h = open(f, encoding="utf-8", errors="replace").read()
         except Exception:
             continue
+        # matplotlib writes each text artist's SOURCE into an SVG comment for
+        # accessibility. A reader never sees it, so scanning it reports leaks
+        # that do not exist — 39 of the first 40 hits were this.
+        h = _SVG_COMMENT.sub(" ", h)
         for name, pat, _why in RULES:
             # `\\textsf{` in the page is `\textsf{` inside a JSON string
             esc = re.compile(pat.pattern.replace(r"\\", r"\\\\"))

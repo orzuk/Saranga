@@ -1325,7 +1325,7 @@ def _resolve_nodes(nodes, macros):
     FIELDS = ("statement", "statement_short", "name", "clean_text", "raw_latex",
               "genus", "definiendum", "label", "proof_strategy",
               "origin_citation", "assumptions", "conclusions", "differentia",
-              "input", "output")
+              "input", "output", "section")
 
     def _resolve(v):
         if isinstance(v, str):
