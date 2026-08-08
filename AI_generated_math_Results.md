@@ -431,3 +431,78 @@ which is true, already visible in the metadata, and needs no graph at all.
 **`ten-proofs` keeps a role, but a different one:** as a deep case study of ten
 results with full proofs and — uniquely — the reasoning walkthroughs including
 abandoned branches. Not as the arm of a matched comparison.
+
+---
+
+## 12. What to measure, and which measures survive (2026-08-08)
+
+Implemented in `discovery_suite/ai_math/graph_metrics.py`. Every metric is
+computed from the unified JSON alone — no re-reading the paper, no LLM.
+
+**The check that matters.** Almost every graph quantity grows with paper size,
+and the AI papers are much shorter (median 8 pages against 20–40). A metric
+correlating with node count is measuring "AI papers are shorter", which the
+metadata already says. So the module reports each metric's correlation with
+`n_nodes`, measured over our 200-paper corpus:
+
+| verdict | r vs n_nodes | metrics |
+|---|---|---|
+| **SIZE PROXY — unusable** | >0.80 | `n_edges` 0.91, `width_max` 0.87 |
+| **size-linked, needs size as covariate** | 0.50–0.80 | `aspect` 0.66, `n_headline` 0.63 |
+| **usable** | <0.50 | everything below |
+
+`aspect` was *claimed* size-free in my own source and measured 0.66 — the check
+flagged it. Demoted.
+
+**The usable set, with the human baseline (median / p10 / p90 over 200 papers):**
+
+| metric | what it asks | median | p10 | p90 | r |
+|---|---|---|---|---|---|
+| `depth_longest` | longest dependency chain | 10 | 6 | 16 | 0.29 |
+| `depth_of_main` | scaffolding under the headline results | 4.89 | 2.0 | 10.2 | 0.12 |
+| `depth_mean_thm` | mean depth of theorem-like nodes | 4.54 | 2.1 | 8.3 | 0.10 |
+| `density` | edges per node | 1.79 | 1.47 | 2.29 | −0.06 |
+| `branch_in_thm` | how many things a theorem rests on | 2.60 | 1.78 | 3.86 | −0.09 |
+| `reach_mean` | **sections between statement and use** | 0.44 | 0.0 | 1.06 | −0.09 |
+| `reach_frac_far` | share of edges spanning ≥1 section | 0.226 | 0.0 | 0.43 | −0.17 |
+| `frac_reused` | share of results used more than once | 0.397 | 0.28 | 0.53 | −0.19 |
+| `frac_external` | share of cited prior results | 0.208 | 0.07 | 0.41 | −0.30 |
+| `frac_definition` | share that are definitions | 0.229 | 0.13 | 0.36 | 0.03 |
+| `lemma_per_theorem` | scaffolding ratio | 0.25 | 0.0 | 1.33 | 0.15 |
+
+**The good news is `depth_longest` at r=0.29.** Depth is *not* mostly size, so
+"are AI proofs shallower?" is answerable fairly directly rather than only after
+heavy normalisation.
+
+**`reach` is the answer to "how far a result is used".** For each edge, the
+distance in *sections* between where a result is stated and where it is used,
+from the `section` field (present on 100% of nodes). A lemma proved in §2 and
+used in §7 is doing different work from one used three lines later. Human
+baseline: median 0.44 sections, with 22.6% of edges spanning at least a full
+section.
+
+### The one you asked for that is NOT computable
+
+**Technique distance — how far across mathematics a proof reaches — cannot be
+computed from the JSON today.** Measured:
+
+- 3,576 nodes (14.2%) are `origin: external`, and **100% of them carry an
+  `origin_citation`** — so the hook exists;
+- but the citation is free text with no identifier or subject code:
+  *"Aliprantis & Tourky, Cones and Duality"*, *"Sharafutdinov 1994"*,
+  *"Écalle 1981"*, *"classical"*;
+- and `grounded_to` edges — the foundation-graph link that would supply a subject
+  — number **0** in the stored corpus. The linking exists in code but its output
+  was never persisted.
+
+Making it computable needs entity linking: `origin_citation` → a bibliographic
+record (Semantic Scholar / Crossref / arXiv) → a subject classification, then
+distance between that subject and the paper's own. That is a real sub-project,
+not a metric. It is also the most interesting signal in the list and the one no
+competing project could compute, so it may be worth the cost — but it should be
+costed honestly rather than assumed available.
+
+**Two caveats on the baseline itself.** It comes from 2010–2019 papers, so it is
+an era-mismatched reference for a 2025–26 comparison — usable for sanity, not as
+the control arm. And `reach` depends on `section`, which the extractor populates
+but which is only as good as the extraction.
