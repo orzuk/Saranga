@@ -1,5 +1,34 @@
 # Studying AI-assisted mathematics through the dependency graph
 
+> **SHELVED 2026-08-08 — kept for a future project, not on the current roadmap.**
+>
+> The idea survives scrutiny; the *timing* does not. Shelved because:
+>
+> * it needs a **new corpus** (2025-26 papers), so it competes directly with the
+>   v6 re-extraction for the same budget — and it *needs* v6-quality extraction
+>   to be credible, so it cannot run first;
+> * the most interesting metric, **cross-field technique distance, is mostly
+>   bibliographic** — MSC codes plus a bibliography parser, computable by anyone
+>   with arXiv metadata. The graph adds load-bearing-ness as a refinement (§14),
+>   which is real but secondary and does not by itself justify the pipeline;
+> * the metrics that *are* graph-native — proof shape: depth, branching, reuse,
+>   scaffolding — remain confounded by §5.2: the graph is extracted from a
+>   human-written write-up of AI-assisted work;
+> * n is ~30 and small, though growing fast.
+>
+> **Resume when any of these becomes true:** the arXiv population passes ~100
+> AI-attributed papers (it was 30 in Aug 2026, adding ~10/month, so plausibly
+> early 2027); or citation resolution gets built for another reason; or v6
+> extraction is done and there is budget to spare.
+>
+> **What is already banked, and does not need redoing:**
+> `discovery_suite/ai_math/candidates.csv` (15 papers), `ai_proved_arxiv.csv`
+> (30, with the harvest query), `graph_metrics.py` (metrics + the
+> size-confound check, with human baselines over 200 papers), and the
+> feasibility counts in §9 and §13 that ruled out the Erdős route and the
+> foundation-index grounding.
+
+
 **Status: plan + a completed feasibility check.** Written 2026-08-07.
 Sections 1-8 are the plan as first written; **section 9 is the measured result of
 step 1, and it retires the design proposed in section 6.** The plan is left intact
@@ -625,3 +654,36 @@ straightforward, but citation resolution — and the foundation index we already
 have does not help, because it was built for term spotting rather than subject
 assignment. Anyone planning around this should budget the resolution work
 explicitly rather than assume the grounding is there.
+
+
+---
+
+## 14. Why the graph is secondary here (2026-08-08) — and the reason this is shelved
+
+Challenged on §13's claim that attribution is "the part only Saranga can do".
+The challenge is right and §13 oversold it.
+
+**The core signal is bibliographic.** "Does this proof reach across fields" is the
+citing paper's subject against its cited papers' subjects. That is arXiv metadata
+plus a bibliography parser. No graph.
+
+**What the graph really adds is narrower**, and §13 led with the weakest version.
+Attribution ("which lemma imported it") is only marginally graph-dependent — the
+position of `\cite{X}` in the text approximates it. The genuinely graph-only
+parts are `far_load` (how many later results depend on the node carrying the
+import), whether a path exists from the import to a headline theorem, and how
+deep in the argument it sits. Real, but a refinement of a citation metric.
+
+**What actually needs the graph is proof SHAPE**: `depth_of_main`,
+`branch_in_thm`, `frac_reused`, `lemma_per_theorem`, `density`. "Do AI proofs run
+as long linear chains where humans build branching scaffolds?" cannot be answered
+from metadata at all. That is the Saranga-native question — and it is still
+exposed to §5.2, since the graph comes from a human write-up.
+
+So the honest ordering is: shape is the contribution, field distance is a
+complementary metric that mostly needs metadata. Leading with field distance
+invites the objection above from a reviewer, and answering it costs a citation-
+resolution sub-project.
+
+Given that, and that the whole study needs a corpus we do not have, it is a
+better second paper than a rushed first one.
