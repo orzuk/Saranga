@@ -376,3 +376,58 @@ The study is **substantially more viable** than §9 concluded:
 The §5 confounds still stand, especially 5.2 (the write-up is not the proof).
 But 5.1, selection bias, is much weaker here: comparing an AI proof of Ehrhart
 against the human literature on Ehrhart holds the problem fixed by construction.
+
+---
+
+## 11. Control design, corrected (2026-08-08)
+
+§10.6 proposed controls drawn from "the classical literature on the same ten
+problems — Cohn–Elkies, Kun–Thom, existing Ramsey bounds". **That is wrong, for
+three reasons:**
+
+1. **Those are not proofs of the same statement.** Cohn–Elkies is the *framework*
+   the AI worked inside; Kun–Thom is prior work the nonsofic argument *combines*.
+   They are ancestors and ingredients — dependencies of the AI proof, not
+   independent human proofs of it. Comparing a result to its own inputs measures
+   nothing about authorship.
+2. **Era confound.** Cohn–Elkies is 2003. Comparing a 2026 AI proof against a
+   2003 human paper confounds authorship with twenty years of drift in writing
+   convention, LaTeX practice and journal norms — and our extractor was itself
+   tuned on 2010–2019 papers, so instrument behaviour differs across the gap too.
+3. **By construction there is usually no human counterpart.** These are results
+   *because* they were open. If a human had proved Connes's rigidity conjecture
+   it would not be in this document. Only the Ehrhart chapter has a genuine
+   counterpart paper — and that one (2608.01040) is *also* AI-generated.
+
+**The better design is the arXiv one: the 30 AI-attributed papers, with controls
+matched on category and year.** Same era, same venue conventions, same extraction
+conditions, real LaTeX on both arms, and matching on category handles the math.AG
+concentration (11 of 30).
+
+### It needs one more covariate, and the data says which
+
+Page counts from arXiv comments (available for 23 of 30):
+
+    min 2   median 8   max 77
+    2 4 4 4 4 4 5 5 6 6 7 8 12 12 13 17 20 21 23 23 30 31 77
+
+**These are short notes.** Half are ≤8 pages; six are ≤4. A typical math.AG paper
+is 20–40. Matching on category and year alone would compare 8-page AI notes
+against 30-page human papers, and *every* structural metric — nodes, edges,
+depth, lemma count — would separate on length rather than authorship. That is
+confound 5.1 returning through the back door.
+
+**So match on (primary category, year, page count).** All three are free from
+arXiv metadata before any download, so the control set can be built and inspected
+before spending anything on extraction. Where the page count is missing (7 of 30),
+either recover it from the PDF or drop the paper from the matched analysis rather
+than matching on two covariates for some and three for others.
+
+This also sharpens what the study can claim. With length held fixed, "AI proofs
+are shallower" becomes a statement about structure at equal size — which is the
+interesting version — rather than a restatement of "AI papers are shorter",
+which is true, already visible in the metadata, and needs no graph at all.
+
+**`ten-proofs` keeps a role, but a different one:** as a deep case study of ten
+results with full proofs and — uniquely — the reasoning walkthroughs including
+abandoned branches. Not as the arm of a matched comparison.
