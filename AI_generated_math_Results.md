@@ -269,3 +269,110 @@ as a case study, not a population claim.
 gate been skipped, the same conclusion would have arrived after downloading and
 Opus-extracting two arms of a corpus — which is precisely the argument for
 putting a cheap feasibility count in front of an expensive pipeline.
+
+---
+
+## 10. Correction and major revision (2026-08-08)
+
+**I had missed the central artifact.** §4 cited OpenAI's *Early science
+acceleration experiments with GPT-5* — the wrong document. The one that matters
+is:
+
+### 10.1 *Ten Advances in Mathematics and Theoretical Computer Science* (OpenAI)
+
+<https://cdn.openai.com/pdf/ten-proofs-oai.pdf> — "results obtained by an
+internal OpenAI model". Updated 2026-08-06; the superseded version is preserved
+at `ten-proofs-oai-original.pdf`.
+
+Ten results, each a full chapter with its own proofs and references:
+
+1. High-dimensional sphere packing — asymptotic strength of the Cohn–Elkies LP determined exactly
+2. Binary and spherical codes — classical upper bounds improved by exponential factors
+3. **Nonsofic groups exist** — settles whether every countable group is sofic
+4. **Connes's rigidity conjecture disproved** — plus a finite-to-one question of Popa
+5. Arithmetic circuit complexity — permanent lower bounds
+6. Quantum parallel repetition — for every finite two-player entangled game
+7. Closest vector problem — n^(1/400) hardness from a direct 3SAT reduction
+8. **Ehrhart's volume conjecture** — sharp bound proved in every dimension
+9. Multicolor Ramsey numbers — R_k(3) grows as k^Θ(k)
+10. Extremal graph theory — disproves Erdős–Simonovits compactness AND an Erdős degeneracy conjecture
+
+Measured structure: **111 Theorem, 239 Lemma, 84 Proposition, 30 Corollary**
+references across ~682K characters. This is not a blog exhibit; it is a corpus.
+
+**Not on arXiv** (checked: chapters 1, 3, 8 by title). So there is no LaTeX
+source — extraction needs Mathpix PDF→LaTeX, for which we already have
+infrastructure in `src/structured_math/books/`. That is a real added step, not a
+blocker.
+
+### 10.2 A version pair — and it does NOT show simplification
+
+| | chars | Thm | Lem | Prop | Cor |
+|---|---|---|---|---|---|
+| original | 667,097 | 105 | 238 | 82 | 27 |
+| updated (Aug 6) | 681,613 | 111 | 239 | 84 | 30 |
+
+The revision **grew**. So the "humans later rewrote and simplified" hypothesis is
+not supported by this pair — it reads as correction and expansion. Worth knowing
+before building a study around the simplification story.
+
+### 10.3 *How the Ideas Came Together* — process traces
+
+<https://cdn.openai.com/pdf/reasoning-walkthroughs.pdf> — an AI model read the
+**original chains of thought** plus the finished papers and reconstructed, per
+problem, "which ideas first suggested a path forward, which substantial
+approaches encountered **genuine obstacles**, what changes of perspective
+revealed the underlying structure".
+
+This is a category of data that **does not exist for human papers**: the
+abandoned branches. A published human proof records the path that worked and
+silently discards the rest. If the study wants to say something about *how* AI
+mathematics differs, this is the richest available evidence and nobody has
+touched it. It is prose, not a graph — but the dead ends are nameable, and a
+"path attempted → obstacle → pivot" structure is extractable.
+
+### 10.4 The arXiv population is larger and growing faster than §9 concluded
+
+§9 said the artifacts are not papers. That was true **of the Erdős route** and
+false in general. Searching abstracts for an AI system *plus* an attribution verb
+("obtained by", "proved by", "discovered by") gives **30 arXiv papers, 2025–26**
+— saved as `discovery_suite/ai_math/ai_proved_arxiv.csv`.
+
+By month: 2026-07 **10**, 2026-05 **8**, 2026-06 3, 2026-08 3 (partial), earlier 6.
+By area: **math.AG 11**, math.CO 3, math.NT 2, math.FA 2, cs.DS 2, others.
+
+Two things follow. The population is **growing steeply** — most of it is the last
+four months — so a count taken today understates what will exist at submission.
+And it is **concentrated in algebraic geometry**, which is a specific,
+checkable claim about where this is happening, not a guess.
+
+### 10.5 The paired design is alive after all
+
+`arXiv:2608.01040` — *The equality case of Ehrhart's volume conjecture*:
+
+> "This resolves the equality case of Ehrhart's volume conjecture, as a
+> counterpart of the inequality part **recently proved by OpenAI**. The main
+> result of this paper is obtained by generative AI, particularly GPT-5.6-sol,
+> Fable 5, and the Danus system."
+
+So an ecosystem is forming: OpenAI publishes an AI proof, other groups publish
+AI-assisted arXiv follow-ups on the same problem. That yields same-problem pairs
+— the design §9 retired via the Erdős route — but sourced from *chapters of
+ten-proofs* rather than from the Erdős database.
+
+### 10.6 Revised recommendation
+
+The study is **substantially more viable** than §9 concluded:
+
+1. **`ten-proofs` is the treatment corpus.** Ten results, 464 theorem-like
+   statements, uniform authorship, one PDF. Mathpix it and extract.
+2. **Controls come from the classical literature on the same ten problems** —
+   Cohn–Elkies, Kun–Thom, existing Ramsey bounds. Same problem, human proof.
+   That is the matched design, and it is much better than "AI papers vs arbitrary
+   arXiv".
+3. **`ai_proved_arxiv.csv` (30 and growing) is the second arm**, with real LaTeX.
+4. **The walkthroughs are the differentiator** — no human corpus has dead ends.
+
+The §5 confounds still stand, especially 5.2 (the write-up is not the proof).
+But 5.1, selection bias, is much weaker here: comparing an AI proof of Ehrhart
+against the human literature on Ehrhart holds the problem fixed by construction.
