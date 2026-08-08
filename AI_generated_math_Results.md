@@ -517,3 +517,111 @@ the reason width-based metrics need size as a *covariate* rather than a divisor.
 expression, cancelling exactly to `aspect` — a formula that looked normalised,
 wasn't, and measured identically. Caught by re-running `--check` rather than by
 reading it.)
+
+---
+
+## 13. Technique distance, done properly (2026-08-08)
+
+§12's `reach` measured the wrong thing — distance in *sections within a paper*.
+The question is **distance in mathematics**: a number-theory theorem proved using
+algebraic geometry has reached far; a graph-counting theorem using combinatorics
+has not. Formally: treat mathematics as one DAG, place the new result and each of
+its dependencies in it, and measure the distance between them (e.g. to their most
+recent common ancestor). A proof whose incoming edges are all nearby is
+field-internal; one with a single very distant incoming edge has imported a
+technique.
+
+### One correction to the formulation
+
+**MRCA in the *dependency* DAG will not measure field distance.** In a real
+dependency graph rooted at axioms, everything shares ancestors — `Set`, `Nat`,
+induction. A number-theory result and an algebraic-geometry result would both
+have their MRCA a handful of steps above the axioms, and so would two results in
+the *same* field. MRCA depth ends up dominated by how deep the two nodes sit, not
+how far apart their subjects are.
+
+The tree that encodes what you mean is the **subject taxonomy**, where MRCA is
+exactly right: LCA(11A05, 11B25) = 11, small distance; LCA(11xx, 14xx) = root,
+maximal distance. So:
+
+    d(a, b) = 0  same sub-subject      (11A05 vs 11A07)
+              1  same subject          (11A05 vs 11B25)
+              2  different subject, same discipline  (math.NT vs math.AG)
+              3  across disciplines    (math.NT vs cs.DS)
+
+Use the dependency DAG for *how many steps back* a proof reaches; use the
+taxonomy for *how far across* it reaches. They are different axes and conflating
+them is what makes MRCA-in-the-DAG misleading.
+
+### What we have — and it does not work
+
+`FOUNDATION_INDEX_PATH` (51,415 entries) is a **term lookup, not a DAG**: name →
+`{name, id, type, source, field, categories}`. It has `field` (e.g.
+`Definitions/Examples of Matrices`) but **no dependency edges at all**.
+
+And its matches are unusable for subject assignment. Running the existing linker
+over 25 papers: 90.6% of base nodes get a link, which looks excellent until you
+see what they link to:
+
+    equation 462   Proof 350   theorem 280   Function 233   group 173
+    lemma 157   proposition 137   finite 124   number 123   positive 94
+
+These are the **stop-words of mathematical writing**. A node "linked" to
+*equation* has been assigned no field. The 90.6% is an artifact of matching
+common vocabulary; top source is `book:tanton`, a recreational-maths text. This
+grounding cannot support the metric, and the earlier plan to lean on it was
+wrong.
+
+`grounded_to` edges in the stored corpus: **0**.
+
+### What would work: the bibliography
+
+The external dependencies of a proof *are its citations*. So:
+
+1. parse the bibliography from the `.tex`;
+2. resolve each reference to a bibliographic record (arXiv id / DOI / MR number,
+   else title match against Semantic Scholar or Crossref);
+3. take that record's subject (arXiv primary category, or MSC code);
+4. distance to the citing paper's own subject, in the taxonomy above.
+
+**Feasibility, measured over the 200 staged papers:**
+
+| | coverage |
+|---|---|
+| `\bibitem` entries present | 128/200 (64%), median 26 refs |
+| contains an arXiv id | 67/200 (34%) |
+| contains a DOI | 28/200 (14%) |
+| contains an MR number | 10/200 (5%) |
+
+So about a third resolve by identifier directly; the rest need title matching,
+and 36% use BibTeX with the `.bbl` not staged, which would have to be fetched.
+This is a real sub-project — call it a week — not a metric to be switched on.
+
+### The part only Saranga can do
+
+Per-paper "does this paper cite outside its field" is answerable by anyone with
+arXiv metadata and needs no graph at all. **What the graph adds is attribution:
+which theorem used the distant result.** Our `origin: external` nodes (14.2% of
+all nodes, 100% carrying an `origin_citation`) sit at specific positions with
+specific outgoing edges, so once resolved we can say *"this lemma, and only this
+lemma, imported a technique from algebraic geometry, and three later results
+depend on it"*.
+
+That is the version of the metric worth publishing, and it is the one that needs
+the extraction. Proposed per-node quantities:
+
+    far_max        max taxonomy distance over a node's external dependencies
+    far_frac       share of its external dependencies at distance >= 2
+    has_far_edge   indicator: any dependency at distance >= 2
+    far_load       how many later results depend on a node that has a far edge
+
+`far_load` is the interesting one: it separates "cited a distant paper in
+passing" from "the distant technique is load-bearing".
+
+### Honest status
+
+Not computable today. The blocker is not the metric definition, which is
+straightforward, but citation resolution — and the foundation index we already
+have does not help, because it was built for term spotting rather than subject
+assignment. Anyone planning around this should budget the resolution work
+explicitly rather than assume the grounding is there.
