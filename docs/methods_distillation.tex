@@ -1,0 +1,286 @@
+% ---------------------------------------------------------------------------
+% Methods: rule distillation (NtRED) and its evaluation.
+%
+% Draft for review, 2026-08-08. Replaces the v1/v2 description in
+% docs/DISTILLATION_V2.md. Written to be implementable: every quantity is
+% defined, every hyperparameter is named with the value we measured, and the
+% objective is stated explicitly.
+%
+% The substantive change from v1/v2 is in Section "Alignment": the previous
+% matcher decided both what counts as a miss (the distillation TARGET) and what
+% counts as a false positive (the distillation GATE) using a text-only,
+% one-to-one, per-type rule. Measured on 61 held-out papers, that rule mislabels
+% 39% of false positives and 21% of misses. Since the same rule defines the
+% objective, the loop was optimising against a wrong target, not merely
+% reporting one.
+% ---------------------------------------------------------------------------
+
+\section{Methods}
+\label{sec:methods}
+
+\subsection{Setting and notation}
+\label{sec:notation}
+
+A paper $P$ is processed by an extractor into a set of typed statements. Write
+$\mathcal{T}$ for the node-type vocabulary (Section~\ref{sec:schema};
+$|\mathcal{T}| = 18$), and represent an extracted item as a pair
+$e = (\tau_e, x_e)$ with $\tau_e \in \mathcal{T}$ its type and $x_e$ its
+verbatim text span.
+
+Two extractors are compared throughout:
+
+\begin{itemize}
+  \item $\mathcal{L}$, the \emph{teacher}: a large language model prompted with
+    the schema, producing $\mathcal{L}(P)$. Its output is the silver standard.
+  \item $\mathcal{R}_\Theta$, the \emph{student}: a deterministic rule engine
+    parameterised by an ordered set of regular-expression rules $\Theta$,
+    producing $\mathcal{R}_\Theta(P)$.
+\end{itemize}
+
+The distillation problem is to search for $\Theta$ such that
+$\mathcal{R}_\Theta$ reproduces $\mathcal{L}$ on unseen papers, subject to
+$\Theta$ remaining small and human-readable. The interpretability constraint is
+not decoration: a rule set that reproduced $\mathcal{L}$ perfectly but was
+unreadable would restate the teacher rather than explain it.
+
+We write $D_{\mathrm{train}}$ and $D_{\mathrm{test}}$ for disjoint paper sets,
+and $G(P) = \mathcal{L}(P)$ for the reference (``gold'') items of paper $P$.
+
+\subsection{Alignment between two extractions}
+\label{sec:alignment}
+
+Every quantity below --- the training signal, the rule statistics, and the
+reported scores --- rests on deciding when an extracted item corresponds to a
+reference item. This is stated first because it is the component that changed.
+
+\paragraph{Item similarity.}
+For items $e$ and $g$ define
+\begin{equation}
+  s(e, g) \;=\; \sigma\!\left(x_e, x_g\right) \cdot \kappa(\tau_e, \tau_g),
+  \label{eq:sim}
+\end{equation}
+where $\sigma$ is a text similarity on normalised token sets and $\kappa$ is a
+type-compatibility factor.
+
+For $\sigma$ we use \emph{containment},
+$\sigma(x,y) = |T(x) \cap T(y)| \,/\, \min(|T(x)|, |T(y)|)$, with $T(\cdot)$ the
+token set after LaTeX normalisation (macro expansion against the paper's own
+glossary, environment stripping, case folding; Section~\ref{sec:normalisation}).
+Containment rather than Jaccard because a correct extraction that includes a
+trailing clause the reference omits should not be penalised for length.
+
+$\kappa$ is a graded matrix over $\mathcal{T} \times \mathcal{T}$ with
+$\kappa(\tau,\tau) = 1$, $\kappa$ large for near-synonymous types
+(\texttt{theorem}/\texttt{proposition}), small for structurally distinct ones
+(\texttt{definition}/\texttt{proof}), and $0$ where a match is meaningless. The
+matrix is given in Appendix~\ref{app:typecompat} and is shared with the
+cross-paper alignment task, so a single definition of ``these two statements are
+the same thing'' serves both.
+
+\paragraph{Group alignment.}
+A one-to-one matching cannot express the two commonest disagreements between
+extractors: a reference statement emitted as two items (\emph{split}), and two
+reference statements emitted as one (\emph{merge}). Both are presentational, not
+semantic. We therefore align \emph{groups}.
+
+Given $E = \mathcal{R}_\Theta(P)$ and $G$, construct the alignment $A(E,G)$:
+
+\begin{enumerate}
+  \item \textbf{Unambiguous pairs first.} Form all pairs with
+    $s(e,g) \ge \theta$, sort by $s$ descending, and greedily accept a pair when
+    neither element is already used. This reduces exactly to the classical
+    one-to-one matching when no groups are needed, so the alignment is a strict
+    generalisation of the previous rule.
+  \item \textbf{Splits.} For each unmatched $g \in G$, let
+    $C_g = \{e \text{ unmatched} : \kappa(\tau_e, \tau_g) > 0,\;
+      |T(x_e) \cap T(x_g)| \ge m_{\mathrm{tok}},\;
+      J(x_e, x_g) \ge m_J \}$
+    be its candidate members, capped at the $k_{\max}$ largest by overlap.
+    If $\sigma\big(\bigcup_{e \in C_g} x_e,\; x_g\big) \ge \theta$, accept the
+    group: mark $g$ and all of $C_g$ matched.
+  \item \textbf{Merges.} Symmetrically, for each unmatched $e \in E$ against
+    unmatched reference items.
+\end{enumerate}
+
+The guards $m_{\mathrm{tok}}$ and $m_J$ are load-bearing rather than
+defensive. Without them, pooling enough unrelated text drives containment
+against a short target to $1$ and the group rule accepts anything; in an early
+version this inflated $F_1$ from $0.52$ to $0.86$ before the guards were
+restored. They also matter empirically: with pooling unguarded, measured
+precision on our test set read $0.93$; with the guards it is $0.75$.
+
+\paragraph{Item-level counting.}
+Under group alignment a ``true positive'' is not a pair --- one group match can
+credit three extracted items against two reference items --- so precision and
+recall are computed over \emph{items covered}:
+\begin{equation}
+  \mathrm{Prec} = \frac{|\{e \in E : e \text{ matched}\}|}{|E|},
+  \qquad
+  \mathrm{Rec} = \frac{|\{g \in G : g \text{ matched}\}|}{|G|},
+  \qquad
+  F_1 = \frac{2\,\mathrm{Prec}\,\mathrm{Rec}}{\mathrm{Prec} + \mathrm{Rec}}.
+  \label{eq:prf}
+\end{equation}
+When the alignment is one-to-one these reduce to the usual $TP/(TP{+}FP)$ and
+$TP/(TP{+}FN)$, so the two regimes are directly comparable.
+
+Scores are \emph{pooled} over $(\text{paper})$ rather than macro-averaged: per
+paper and per type, counts are small and unstable, and macro-averaging over
+sparse cells lets a paper with two items dominate one with two hundred.
+
+Hyperparameters: $\theta = 0.7$, $m_{\mathrm{tok}} = 5$ tokens, $m_J = 0.10$,
+$k_{\max} = 12$.
+
+\subsection{Dark knowledge}
+\label{sec:dk}
+
+The teacher's advantage over the student on paper $P$ is the set of reference
+items the student fails to cover,
+\begin{equation}
+  \mathrm{DK}_\Theta(P) \;=\; \{\, g \in G(P) \;:\; g \text{ unmatched in }
+    A(\mathcal{R}_\Theta(P),\, G(P)) \,\}.
+  \label{eq:dk}
+\end{equation}
+This is the object the loop tries to eliminate, and the reason the alignment
+definition matters so much: under a one-to-one matcher, a reference statement
+that the student \emph{did} recover as two items is scored as dark knowledge,
+and the loop then synthesises a rule for a pattern already covered. Such a rule
+cannot improve recall and can only add false positives --- which is the
+mechanism by which precision fell while recall rose in the previous
+configuration (Section~\ref{sec:results}).
+
+\subsection{Distillation loop}
+\label{sec:loop}
+
+Rules live in a persistent registry $\mathcal{G}$, not in the emitted source
+file. Each rule $r$ carries an immutable identifier $\mathrm{uid}(r)$, a regular
+expression, the target type it emits, the paper it was born from, a status in
+$\{\textsc{active}, \textsc{retired}\}$, and per-paper statistics. The emitted
+\texttt{rules.py} is a projection of $\{r : \mathrm{status}(r) =
+\textsc{active}\}$. Identifiers are never reused, and rules are never deleted;
+only the status flips. This makes gating reversible and makes an $\alpha$-sweep
+a dictionary scan rather than a sequence of file snapshots.
+
+\begin{algorithm}
+\caption{Distillation over a training stream}
+\label{alg:distill}
+\begin{algorithmic}[1]
+\Require papers $D_{\mathrm{train}}$, teacher outputs $G(\cdot)$, budget $B$
+\State $\mathcal{G} \gets \textsc{LoadRegistry}()$
+\ForAll{$P \in D_{\mathrm{train}}$}
+  \State $E \gets \mathcal{R}_{\mathrm{active}(\mathcal{G})}(P)$
+    \Comment{deterministic; no model call}
+  \State $\mathrm{DK} \gets \textsc{Unmatched}(A(E, G(P)))$
+    \Comment{Eq.~\ref{eq:dk}, group-aware}
+  \Statex
+  \State \textbf{Recycle.} \textbf{for} $r \in \mathrm{retired}(\mathcal{G})$
+    \textbf{do if} $r$ fires on any $d \in \mathrm{DK}$ \textbf{then}
+    reactivate $r$; remove the items it covers from $\mathrm{DK}$
+    \Comment{no model call}
+  \Statex
+  \If{$\mathrm{DK} \ne \emptyset$ \textbf{and} budget remains}
+    \State $S \gets \textsc{Propose}(\mathrm{DK}, \mathrm{tex}(P))$
+      \Comment{model call 1: candidate patterns}
+    \State $S' \gets \textsc{Integrate}(\mathrm{active}(\mathcal{G}), S)$
+      \Comment{model call 2: merge, do not rewrite}
+    \ForAll{$(\text{pattern}, \tau) \in S'$}
+      \State $\mathcal{G}.\textsc{MintOrUpdate}(\text{pattern}, \tau,
+        \text{born}{=}P)$
+    \EndFor
+  \EndIf
+  \Statex
+  \State \textbf{Attribute.} \textbf{for} $r \in \mathcal{G}$: recompute
+    $(\mathrm{tp}_r(P), \mathrm{fp}_r(P))$ on every paper seen so far
+    \Comment{no model call}
+  \State \textbf{Gate.} $\mathrm{status}(r) \gets \textsc{Active}$ \textbf{iff}
+    $r$ is retained by the selection rule (Section~\ref{sec:objective})
+  \State \textbf{Emit.} write \texttt{rules.py} from
+    $\mathrm{active}(\mathcal{G})$; persist $\mathcal{G}$
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+Three properties are worth stating because they are what make the loop cheap and
+auditable. Only line 8--9 calls a model, so cost is proportional to the number of
+papers with non-empty $\mathrm{DK}$ rather than to $|D_{\mathrm{train}}|$; in
+practice this falls off sharply as coverage grows. \textsc{Integrate} is given
+the current rule set and asked to \emph{add}, never to rewrite, so identifiers
+survive and a rule's statistics accumulate across papers instead of resetting.
+And because every rule retains its per-paper counts even while retired,
+re-gating at a different operating point requires no re-extraction.
+
+\paragraph{Attribution.}
+A rule $r$ is credited with $\mathrm{tp}_r(P)$, the number of items it emitted
+that are matched in $A(E, G(P))$, and $\mathrm{fp}_r(P)$, the number unmatched.
+Where an item is produced by more than one rule, credit is assigned to the
+earliest-firing rule, so the counts sum to the item totals and precision is not
+double-counted.
+
+\subsection{Selection objective}
+\label{sec:objective}
+
+Let $\Theta \subseteq \mathcal{G}$ be a candidate active set and let
+$F_1(\Theta; D)$ be Eq.~\ref{eq:prf} evaluated with $\mathcal{R}_\Theta$ on
+paper set $D$. We select
+\begin{equation}
+  \Theta^\star \;=\; \arg\max_{\Theta \subseteq \mathcal{G}}
+    \; F_1(\Theta;\, D_{\mathrm{val}}) \;-\; \lambda \, |\Theta| .
+  \label{eq:objective}
+\end{equation}
+
+Two comments on this choice, since it differs from what was used previously.
+
+\emph{Why $F_1$ and not per-rule false-discovery rate.} The earlier loop retired
+any rule whose FDR exceeded a threshold $\alpha$. That optimises precision in
+isolation and is blind to what retiring a rule costs in recall: a rule with
+mediocre precision that is the \emph{only} rule covering a class of statements is
+worth keeping. Eq.~\ref{eq:objective} scores the set, not the rule.
+
+\emph{Why the $\lambda|\Theta|$ term.} Without it the objective is monotone in
+rule count --- one can always add a rule that memorises a single paper --- and
+the interpretability claim quietly evaporates. $\lambda$ is the price in $F_1$ we
+are willing to pay per rule, and reporting the frontier over $\lambda$ is more
+honest than reporting a single point, because it exposes the accuracy/complexity
+trade-off the paper is actually making.
+
+Exact maximisation is combinatorial. We use backward greedy elimination: start
+from $\Theta = \mathcal{G}$, repeatedly retire the single rule whose removal most
+increases the objective, and stop when no removal helps. Each step is a lookup
+over cached per-paper counts, so a full pass costs no extraction. The result is a
+local optimum; we report it as such.
+
+$\lambda$ and $\theta$ are chosen by cross-validation on
+$D_{\mathrm{train}}$ only, and $D_{\mathrm{test}}$ is scored once.
+
+\subsection{What is reported}
+\label{sec:reporting}
+
+For the distillation claim to be checkable, three things are reported together
+and never separately:
+
+\begin{enumerate}
+  \item \textbf{Coverage.} $\mathrm{Prec}$, $\mathrm{Rec}$, $F_1$
+    (Eq.~\ref{eq:prf}) for the base extractor, the distilled extractor, and the
+    teacher, on $D_{\mathrm{test}}$. The base extractor is the honest baseline:
+    the gain attributable to distillation is $F_1(\text{distilled}) -
+    F_1(\text{base})$, not the absolute number.
+  \item \textbf{Complexity.} $|\Theta^\star|$ and total pattern length, with the
+    frontier over $\lambda$.
+  \item \textbf{Cost.} Model calls and tokens, split into \textsc{Propose} and
+    \textsc{Integrate}, and the fraction of papers that required either.
+\end{enumerate}
+
+Because the alignment defines the objective, any comparison against previously
+published numbers must state which alignment produced them; the same extractor
+scores differently under the two, by more than the effect being measured
+(Section~\ref{sec:results}).
+
+\subsection{Ablations}
+\label{sec:ablations}
+
+The claims above are separable and each is tested by removing one component:
+group alignment (revert to one-to-one), type grading (revert $\kappa$ to the
+identity), recycling, the complexity penalty ($\lambda = 0$), and
+\textsc{Integrate}'s add-only constraint. The alignment ablation is the
+important one, since it is the only change that moves the training target rather
+than the score.
