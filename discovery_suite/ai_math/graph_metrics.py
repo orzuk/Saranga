@@ -124,7 +124,18 @@ def metrics(path):
     # differ in aspect even at identical node counts.
     m["width_max"] = width
     m["aspect"] = width / max(1, longest)          # r=0.66 with size — not size-free
-    m["aspect_norm"] = width / (math.sqrt(n) * max(1, longest) / math.sqrt(n))
+    # Shape at fixed size. A DAG of n nodes laid out as a balanced tree has
+    # width ~ sqrt(n) and depth ~ sqrt(n), so dividing each by sqrt(n) gives a
+    # ratio that does not inherit n. (An earlier attempt here multiplied and
+    # divided by sqrt(n) in the same expression, which cancels to `aspect`
+    # exactly and measured identically — a formula that looked normalised and
+    # was not.)
+    # Measured: depth/sqrt(n) comes out r=-0.14 with size, but width/sqrt(n) is
+    # still 0.68 — these graphs widen FASTER than sqrt(n) while deepening slower.
+    # So depth normalises cleanly and width does not, and width-based metrics
+    # need size as a covariate rather than a divisor.
+    m["width_norm"] = width / math.sqrt(n)         # r=0.68 — still size-linked
+    m["depth_sqrt_norm"] = longest / math.sqrt(n)  # r=-0.14 — clean
     m["branch_in_thm"] = (sum(ind[i] for i in thm) / len(thm)) if thm else 0
 
     # ── REACH: how far a result travels before it is used ─────────────
@@ -166,7 +177,8 @@ def metrics(path):
 # the 200-paper corpus — the --check flag caught it. Demoted: width_max grows with
 # size faster than depth does, so their ratio inherits it. Use it only with size
 # as a covariate, or replace it with a width normalised by sqrt(n).
-SIZE_FREE_CLAIM = ("depth_norm", "reach_mean", "reach_frac_far",
+SIZE_FREE_CLAIM = ("depth_norm", "depth_sqrt_norm",
+                   "reach_mean", "reach_frac_far",
                    "frac_reused", "frac_external", "frac_edges_from_ext",
                    "frac_definition", "frac_thm_like", "lemma_per_theorem",
                    "density", "branch_in_thm", "depth_of_main")

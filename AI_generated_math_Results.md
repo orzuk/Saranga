@@ -506,3 +506,14 @@ costed honestly rather than assumed available.
 an era-mismatched reference for a 2025–26 comparison — usable for sanity, not as
 the control arm. And `reach` depends on `section`, which the extractor populates
 but which is only as good as the extraction.
+
+**Addendum — depth normalises, width does not.** Trying to make the shape metrics
+size-free: `depth / sqrt(n)` measures r = −0.14 against node count (clean), but
+`width / sqrt(n)` is still 0.68. These graphs **widen faster than sqrt(n) while
+deepening more slowly** — a real structural property of mathematical papers, and
+the reason width-based metrics need size as a *covariate* rather than a divisor.
+
+(An earlier `aspect_norm` here multiplied and divided by sqrt(n) in one
+expression, cancelling exactly to `aspect` — a formula that looked normalised,
+wasn't, and measured identically. Caught by re-running `--check` rather than by
+reading it.)
