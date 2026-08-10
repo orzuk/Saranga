@@ -1402,13 +1402,19 @@ def find_main_tex(root: Path, arxiv_id: str) -> Optional[Path]:
 
 
 
-def fetch_arxiv_source(arxiv_id: str, dest_dir: Path, verbose: bool = False) -> Path:
+def fetch_arxiv_source(arxiv_id: str, dest_dir: Path, verbose: bool = False,
+                       keep_archive: bool = True) -> Path:
     """
     Download arXiv source into dest_dir and return path to the main .tex file.
     Handles:
         - normal .tar.gz source
         - .tar without gzip
         - raw .tex mislabeled as gzip or tar
+
+    keep_archive: if True (default) persist the original {id}.tar.gz in dest_dir.
+                  If False, the archive is decompressed/extracted from memory and
+                  never written to disk — faster (one fewer multi-MB NFS write per
+                  paper) and ~5x less storage; only the .tex is left behind.
     """
     dest_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1454,9 +1460,12 @@ def fetch_arxiv_source(arxiv_id: str, dest_dir: Path, verbose: bool = False) -> 
     if raw[:4] == b"%PDF":
         raise ValueError(f"{arxiv_id}: source is PDF, not LaTeX — skipping")
 
-    # Save initial bytes
-    gz_path = dest_dir / f"{safe_id}.tar.gz"
-    gz_path.write_bytes(raw)
+    # Persist the original archive only when requested. We always decompress from
+    # the in-memory `raw` bytes below, so this write is purely for retention — and
+    # it is large (several MB/paper) and dominated NFS write time + storage.
+    if keep_archive:
+        gz_path = dest_dir / f"{safe_id}.tar.gz"
+        gz_path.write_bytes(raw)
 
     # -----------------------
     # 2. Try GZIP decompress
@@ -1480,8 +1489,15 @@ def fetch_arxiv_source(arxiv_id: str, dest_dir: Path, verbose: bool = False) -> 
     # -----------------------
     # 3. After gzip: tar or raw tex?
     # -----------------------
-    # Heuristic: tar headers contain "ustar" or other magic bits.
-    if b"ustar" not in decompressed[:500] and not tarfile.is_tarfile(gz_path):
+    # Heuristic: tar headers contain "ustar" or other magic bits. Check the
+    # in-memory bytes (gz_path may not have been written when keep_archive=False).
+    is_tar = b"ustar" in decompressed[:512]
+    if not is_tar:
+        try:
+            is_tar = tarfile.is_tarfile(io.BytesIO(decompressed))
+        except Exception:
+            is_tar = False
+    if not is_tar:
         # Probably raw tex mislabeled as gzip
         if verbose:
             print("[DEBUG] gzip output is not a tar → treat as raw tex.")
@@ -1490,21 +1506,22 @@ def fetch_arxiv_source(arxiv_id: str, dest_dir: Path, verbose: bool = False) -> 
         return tex_path
 
     # -----------------------
-    # 4. Try to extract tar
+    # 4. Extract tar straight from memory. Previously the decompressed .tar was
+    #    written to disk and then deleted in cleanup — a redundant multi-MB NFS
+    #    write per paper. Only fall back to an on-disk .tar for edge-case archives
+    #    the Python tarfile module rejects.
     # -----------------------
-    tar_path = dest_dir / f"{safe_id}.tar"
-    tar_path.write_bytes(decompressed)
-
     if verbose:
         print("[DEBUG] Attempting tar extraction…")
 
     try:
-        with tarfile.open(tar_path, "r:") as tf:
+        with tarfile.open(fileobj=io.BytesIO(decompressed), mode="r:") as tf:
             tf.extractall(dest_dir)
     except Exception:
-        # Fallback: system tar
         if verbose:
-            print("[WARN] Python tar failed → trying system `tar`.")
+            print("[WARN] In-memory tar failed → writing .tar and trying system `tar`.")
+        tar_path = dest_dir / f"{safe_id}.tar"
+        tar_path.write_bytes(decompressed)
         try:
             subprocess.run(
                 ["tar", "-xf", str(tar_path), "-C", str(dest_dir)],
@@ -1626,7 +1643,8 @@ def flatten_tex(tex_path: Path, root_dir: Path, _seen: frozenset = None) -> str:
     return ''.join(out)
 
 def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir: Path,
-                                       verbose: bool = False, use_paper_subdir: bool = False):
+                                       verbose: bool = False, use_paper_subdir: bool = False,
+                                       keep_archive: bool = True):
     """
     Local-first resolver:
       1. Determine the latest version from metadata.
@@ -1683,7 +1701,8 @@ def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir:
 
     try:
         # IMPORTANT: this returns the path to the main .tex file in the unpacked source
-        main_tex = fetch_arxiv_source(versioned_id, storage_dir, verbose=verbose)
+        main_tex = fetch_arxiv_source(versioned_id, storage_dir, verbose=verbose,
+                                      keep_archive=keep_archive)
     except Exception as e:
         raise RuntimeError(f"fetch_arxiv_source failed for {versioned_id}: {e}")
 
@@ -1740,8 +1759,10 @@ def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir:
             if verbose:
                 print(f"[WARN] flatten_tex failed for {tex_path}: {e}")
 
-        # --- 9. Clean up: keep only unified tex + original tar.gz ---
-        keep = {tex_path.resolve(), (storage_dir / f"{safe_vid}.tar.gz").resolve()}
+        # --- 9. Clean up: keep the unified tex (+ the original tar.gz if retained) ---
+        keep = {tex_path.resolve()}
+        if keep_archive:
+            keep.add((storage_dir / f"{safe_vid}.tar.gz").resolve())
         for item in list(storage_dir.iterdir()):
             if item.resolve() not in keep:
                 if item.is_dir():
@@ -1749,7 +1770,8 @@ def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir:
                 else:
                     item.unlink()
         if verbose:
-            print(f"[DEBUG] Cleaned up companion files; kept {tex_path.name} and {versioned_id}.tar.gz")
+            _kept = tex_path.name + (f" and {versioned_id}.tar.gz" if keep_archive else " (no tar.gz)")
+            print(f"[DEBUG] Cleaned up companion files; kept {_kept}")
 
     return tex_path, versioned_id
 

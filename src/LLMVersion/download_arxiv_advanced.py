@@ -116,6 +116,11 @@ def main() -> None:
     parser.add_argument("--paper-timeout", type=int, default=300,
                         help="Hard wall-clock cap (seconds) per paper; a hung "
                              "download/flatten is aborted and skipped (0 disables).")
+    parser.add_argument("--no-keep-archive", dest="keep_archive", action="store_false",
+                        help="Do not write/keep the original .tar.gz per paper. "
+                             "Faster (one fewer multi-MB NFS write) and ~5x less "
+                             "storage; only the flattened .tex is kept.")
+    parser.set_defaults(keep_archive=True)
     parser.add_argument("--verbose", action="store_true", help="Verbose debug prints.")
     args = parser.parse_args()
 
@@ -189,6 +194,7 @@ def main() -> None:
                 full_papers_dir=out_dir,
                 verbose=args.verbose,
                 use_paper_subdir=True,
+                keep_archive=args.keep_archive,
             )
             ok += 1
             _safe_log(status_log, [base_id, versioned_id, "OK", str(tex_path)])
