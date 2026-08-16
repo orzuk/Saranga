@@ -57,9 +57,23 @@ TYPE_GUIDE = {
 }
 
 
-def find_fps(extracted, gold_texts, threshold):
-    """Bipartite-match (same as metrics) and return the UNMATCHED extracted
-    items (the false positives) plus the tp count."""
+def find_fps(extracted, gold_texts, threshold, *, match_mode="m1",
+             support_texts=None, cover=0.7):
+    """Return the extracted items that count as false positives, plus tp count.
+
+    Under ``m1`` this is bipartite matching, exactly as before. Under ``m3`` an
+    extraction contained in any gold node of ANY type is not a false positive,
+    so the judge only ever sees the residual — text the silver has nothing like.
+    That is a ~20x smaller queue, and it is the only bucket a model can help
+    with: nesting, labels and span boundaries are settled mechanically.
+    """
+    if match_mode != "m1":
+        import match_modes as _mm
+        verdicts = _mm.classify_extractions(
+            extracted, gold_texts, threshold, mode=match_mode,
+            support_texts=support_texts, cover=cover)
+        fps = [e for e, ok in zip(extracted, verdicts) if not ok]
+        return fps, sum(verdicts)
     pairs = []
     for i, ext in enumerate(extracted):
         for j, g in enumerate(gold_texts):
@@ -76,9 +90,38 @@ def find_fps(extracted, gold_texts, threshold):
     return fps, len(matched_ext)
 
 
-def judge_batch(client, model, stype, snippets):
+def judge_batch(client, model, stype, snippets, match_mode="m1"):
     """Return list of dicts {index, verdict, reason} for one type's FPs."""
     guide = TYPE_GUIDE.get(stype, f"an instance of '{stype}'.")
+    if match_mode != "m1":
+        # Under m3 everything nested / mislabelled / boundary-shifted has
+        # already been resolved mechanically, so "is this really a {stype}?"
+        # is the wrong question — it was asked before and answered GENUINE
+        # 106 times out of 151, correctly, while the real issue was that the
+        # span sat inside a proof the silver kept whole. What is left is only
+        # text the silver has NOTHING resembling, so ask about that.
+        sys_block = (
+            "You are a careful mathematics-annotation judge. Each span below "
+            "was extracted from a paper by a rule-based parser, and the "
+            "reference annotation contains nothing resembling it — it is not a "
+            "differently-labelled, differently-cut or nested version of any "
+            "annotated node.\n\n"
+            f"A '{stype}' is: {guide}\n\n"
+            "So exactly one of these is true. Decide which:\n"
+            "  GENUINE - a real {0} that the reference annotation MISSED "
+            "entirely (the annotation is incomplete here)\n"
+            "  FALSE_POSITIVE - not a {0} at all; the parser grabbed prose, "
+            "boilerplate or a fragment (a real extraction error)\n"
+            .format(stype)
+        )
+        parts = [f"Judge these {len(snippets)} unmatched '{stype}' spans.\n"]
+        for k, sn in enumerate(snippets):
+            parts.append(f"\n### Item {k}\n```\n{sn[:1200]}\n```\n")
+        parts.append(
+            "\nRespond with ONLY a JSON array (no fences), one object per item, "
+            'same order: [{"index": <int>, "verdict": "GENUINE"|"FALSE_POSITIVE", '
+            '"reason": "<short>"}]')
+        return _call_judge(client, model, sys_block, "".join(parts))
     sys_block = (
         "You are a careful mathematics-annotation judge. You decide whether an "
         "extracted text span is a GENUINE instance of a given structure type. "
@@ -98,7 +141,11 @@ def judge_batch(client, model, stype, snippets):
         'same order: [{"index": <int>, "verdict": "GENUINE"|"FALSE_POSITIVE", '
         '"reason": "<short>"}]'
     )
-    user_text = "".join(parts)
+    return _call_judge(client, model, sys_block, "".join(parts))
+
+
+def _call_judge(client, model, sys_block, user_text):
+    """One judge call -> ({index: verdict-dict}, usage). Shared by both modes."""
     try:
         msg = client.messages.create(
             model=model, max_tokens=2048,
@@ -127,6 +174,11 @@ def main():
     p.add_argument("--tex-dir", required=True)
     p.add_argument("--model", default="claude-sonnet-4-6")
     p.add_argument("--threshold", type=float, default=0.7)
+    p.add_argument("--match-mode", default="m1", choices=["m1", "m3"],
+                   help="Must match what the run pruned with. m1 = judge every "
+                        "unmatched extraction (today). m3 = judge only the "
+                        "residual the metric cannot settle mechanically.")
+    p.add_argument("--cover", type=float, default=0.7)
     p.add_argument("--match-metric", default="containment",
                    choices=["jaccard", "containment"])
     p.add_argument("--batch-size", type=int, default=10)
@@ -151,13 +203,19 @@ def main():
 
     # 1. Collect FPs per type (read-only parse with final rules).
     print(f"Final snapshot: {final.name} | papers: {len(papers)} | "
-          f"match: {args.match_metric}\n")
+          f"match: {args.match_metric} | mode: {args.match_mode}\n")
+    if args.match_mode != "m1":
+        print("  [m3] nesting / labels / boundaries already settled by the "
+              "metric; judging only the residual.\n")
     fp_items = {t: [] for t in types}   # (paper_id, snippet)
     tp_count = {t: 0 for t in types}
     for pid in papers:
         buckets = parse_buckets(pid, tex_dir, types, eval_dir=final)
         for t in types:
-            fps, tp = find_fps(buckets[t], gold[t].get(pid, []), args.threshold)
+            support = [g for tt in types for g in gold[tt].get(pid, [])]
+            fps, tp = find_fps(buckets[t], gold[t].get(pid, []), args.threshold,
+                               match_mode=args.match_mode,
+                               support_texts=support, cover=args.cover)
             tp_count[t] += tp
             for s in fps:
                 fp_items[t].append((pid, s))
@@ -177,7 +235,8 @@ def main():
         real_fp = rescued = 0
         for b in range(0, len(snippets), args.batch_size):
             batch = snippets[b:b + args.batch_size]
-            by_index, u = judge_batch(client, args.model, t, batch)
+            by_index, u = judge_batch(client, args.model, t, batch,
+                                      match_mode=args.match_mode)
             usage["llm_calls"] += 1
             _acc_usage(usage, u)
             for k, snip in enumerate(batch):

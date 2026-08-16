@@ -856,6 +856,15 @@ class PaperParser:
             if distilled_tables:
                 tables = self._merge_objects(tables, distilled_tables)
 
+            # NOTE: remark / example / assumption are deliberately NOT wired up
+            # here yet. The distillation pipeline does generate rules for them
+            # (the "simpleenv" group) and the combined importer does export
+            # extract_distilled_{remark,example,assumption}, so those rules are
+            # currently dead code. Enabling them lifts train pooled F1 by +0.063
+            # but only +0.006 on held-out math and -0.002 on held-out ML: the
+            # current simpleenv rules do not generalize. Re-distill them on more
+            # papers before turning this on. See scratchpad both_fixes.patch.
+
         # equations inside theorem/definition/proof/algorithm/example/remark bodies
         containers: List[MathObject] = theorem_like + definitions + proofs + algorithms + examples + remarks
         equations = self._extract_equations(text, containers)
@@ -2067,6 +2076,16 @@ Respond ONLY with JSON array."""
         drop a candidate whose token set is largely contained in (or contains)
         an already-kept same-type object. When the distilled version carries a
         name the base version lacks, backfill it.
+
+        Containment is computed on `raw_latex` re-cleaned through THIS parser's
+        cleaner, never on the stored `clean_text`. The two sides do not share a
+        normalizer: env-extracted objects carry `_clean_latex_to_text` output
+        (math survives as stripped words) while each distilled_rules.py ships its
+        own local `_clean_latex` (math collapses to the literal token `[MATH]`,
+        unknown commands are deleted). Comparing those directly drove containment
+        of genuinely identical statements below the threshold, so re-extractions
+        of theorems/lemmas the base parser already had survived as duplicate
+        nodes -- the dominant source of distillation's apparent precision loss.
         """
         if not llm_objs:
             return manual_objs
@@ -2075,7 +2094,8 @@ Respond ONLY with JSON array."""
         CONTAIN_TH = 0.7
 
         def _tokens(o):
-            return set((o.clean_text or "").strip().lower().split())
+            src = getattr(o, "raw_latex", "") or o.clean_text or ""
+            return set(self._clean_latex_to_text(src).lower().split())
 
         seen_texts = set()
         text_to_obj = {}

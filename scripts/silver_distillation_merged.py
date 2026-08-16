@@ -211,6 +211,68 @@ def _run_with_timeout(fn, arg, seconds: float):
         signal.signal(signal.SIGALRM, old)
 
 
+_SHARED_CLEANER_SHIM = '''
+# --- injected by validate_and_repair_group_file -----------------------------
+# The generated `_clean_latex` is replaced by a delegate to the ONE shared
+# cleaner. Every codegen wrote its own, and they masked math as the literal
+# token `[MATH]` while the base parser preserves math as words. Containment
+# between two *identical* theorem statements cleaned by the two functions
+# measured 0.44 -- under the 0.7 dedup bar -- so identical statements survived
+# as duplicate nodes. `latex_clean` already declares itself the single cleaner
+# for "the base regex parser AND all distilled-rule extractors"; this makes
+# that true. Call sites are untouched: only the body changes.
+try:
+    from latex_clean import clean_latex_to_text as _shared_clean_latex
+except Exception:                                    # standalone import
+    _shared_clean_latex = None
+
+
+def _clean_latex(text: str) -> str:
+    if _shared_clean_latex is not None:
+        return _shared_clean_latex(text or "")
+    import re as _re                                 # math-preserving fallback
+    t = _re.sub(r"%[^\\n]*", "", text or "")
+    t = _re.sub(r"\\\\(?:label|ref|cref|Cref|eqref|cite[a-zA-Z]*)\\{[^}]*\\}", "", t)
+    t = _re.sub(r"\\\\(?:begin|end)\\{[^}]*\\}", " ", t)
+    t = _re.sub(r"[{}$]", "", t)
+    return _re.sub(r"\\s+", " ", t).strip()
+# ---------------------------------------------------------------------------
+'''
+
+
+def canonicalize_clean_latex(src: str) -> tuple:
+    """Point a generated file's `_clean_latex` at the shared cleaner.
+
+    Returns ``(new_src, changed)``. Replaces the module-level `_clean_latex`
+    definition (leaving every call site alone) so the file stops inventing its
+    own LaTeX normalisation. No-op if the file has no such definition or has
+    already been repaired.
+    """
+    if "_shared_clean_latex" in src:                 # already canonical
+        return src, False
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return src, False
+    node = next((n for n in tree.body
+                 if isinstance(n, ast.FunctionDef) and n.name == "_clean_latex"),
+                None)
+    if node is None:
+        return src, False
+    lines = src.splitlines(keepends=True)
+    start = node.lineno - 1
+    # include any decorators, and cut to the end of the function body
+    for d in getattr(node, "decorator_list", []):
+        start = min(start, d.lineno - 1)
+    end = node.end_lineno
+    new = "".join(lines[:start]) + _SHARED_CLEANER_SHIM + "".join(lines[end:])
+    try:
+        ast.parse(new)
+    except SyntaxError:
+        return src, False
+    return new, True
+
+
 def validate_and_repair_group_file(path: Path, gkey: str, prev_src,
                                    probe_text: str = "", timeout_s: float = 30.0) -> str:
     """Make `path` safe to import+run, or fall back. Returns the action taken:
@@ -234,6 +296,13 @@ def validate_and_repair_group_file(path: Path, gkey: str, prev_src,
         src = path.read_text(encoding='utf-8')
     except Exception:
         return _restore()
+
+    # Route the file's LaTeX cleaning through the shared cleaner before any
+    # other check, so a freshly generated file never ships its own normaliser.
+    src, _cleaned = canonicalize_clean_latex(src)
+    if _cleaned:
+        path.write_text(src, encoding='utf-8')
+        print("      [repair] _clean_latex -> shared latex_clean.clean_latex_to_text")
 
     try:
         tree = ast.parse(src)
@@ -416,6 +485,119 @@ def uninstall_importer(types, backups: dict) -> None:
 # ---------------------------------------------------------------------------
 # Per-step rule snapshots (for the paper-by-paper graph filmstrip)
 # ---------------------------------------------------------------------------
+
+SILVER_METADATA = REPO / "corpus" / "silver" / "metadata.csv"
+
+
+def load_splits(metadata_csv: Path = SILVER_METADATA) -> dict:
+    """{paper_id: split} from the silver corpus index — the one source of truth.
+
+    The split lives in metadata.csv, not in the directory tree, precisely so it
+    can be redrawn. Everything that selects papers should consult it rather than
+    hardcoding lists.
+    """
+    # A paper has ONE row per extraction, so every train/test paper ALSO has a
+    # `pool` row (its older v3 extraction). Taking the first row seen would
+    # label the whole train set "pool" and silently defeat the split guard, so
+    # the specific splits win over the catch-all.
+    precedence = {"train": 3, "test": 3, "val": 3, "pool": 1}
+    out, rank = {}, {}
+    if not Path(metadata_csv).exists():
+        return out
+    with open(metadata_csv, encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            pid, split = row.get("paper_id"), row.get("split")
+            if not (pid and split):
+                continue
+            r = precedence.get(split, 2)
+            if r > rank.get(pid, 0):
+                out[pid], rank[pid] = split, r
+    return out
+
+
+def assert_no_test_leak(papers, splits: dict) -> None:
+    """Refuse to distil on anything the corpus marks as test.
+
+    Distillation writes rules FROM these papers, so a test paper here is
+    training on the test set — it would silently invalidate every held-out
+    number we report. Fail loudly rather than warn: a warning in a long run
+    scrolls past.
+    """
+    leaked = [p for p in papers if splits.get(p) == "test"]
+    if leaked:
+        raise SystemExit(
+            f"ABORT: {len(leaked)} test-split paper(s) in the distillation set: "
+            f"{', '.join(sorted(leaked))}\n"
+            f"Distillation writes rules from these papers; including test "
+            f"papers trains on the test set. Fix --pilot-papers, or pass "
+            f"--allow-test-papers if you genuinely intend this.")
+    unknown = [p for p in papers if p not in splits]
+    if unknown:
+        print(f"  [split] {len(unknown)} paper(s) not in metadata.csv "
+              f"(no split recorded): {', '.join(sorted(unknown)[:5])}"
+              f"{' ...' if len(unknown) > 5 else ''}")
+
+
+def rank_worst_first(papers, tex_dir: Path, types, gold_dir: Path,
+                     base_snap: Path, threshold: float,
+                     match_mode: str = "m1", cover: float = 0.7):
+    """Order papers by how much the BASE parser misses on them, worst first.
+
+    Hard-example mining (OHEM, Shrivastava et al. 2016) applied to which paper
+    to distil next: spend the next LLM call where the current student is
+    weakest, rather than in corpus order.
+
+    Ranked by **dark-knowledge count** — gold items the base parser fails to
+    account for — not by base F1. F1 is low both when a paper is genuinely rich
+    in missable structure AND when it is simply pathological (an ML paper with
+    no theorem environments, a broken multi-\\begin{document} file). Ranking on
+    raw badness feeds us the pathological ones; dark-knowledge count is the
+    actual proxy for recoverable gain, and it is what the loop distils from
+    anyway.
+
+    Returns [(paper_id, n_missed, n_gold), ...] sorted by n_missed descending.
+    """
+    import match_modes as _mm
+    gold_by_type = {t: load_gold_texts(gold_dir / FNAME_MAP[t]) for t in types}
+    scored = []
+    for i, pid in enumerate(papers, 1):
+        buckets = parse_buckets(pid, tex_dir, types, eval_dir=base_snap)
+        missed = n_gold = 0
+        for t in types:
+            gold = gold_by_type[t].get(pid, [])
+            n_gold += len(gold)
+            for g in gold:
+                if not _mm.gold_is_found(g, buckets[t], threshold,
+                                         mode=match_mode, cover=cover):
+                    missed += 1
+        scored.append((pid, missed, n_gold))
+        print(f"  [rank {i}/{len(papers)}] {pid}: {missed} missed / {n_gold} gold")
+    scored.sort(key=lambda r: (-r[1], r[0]))
+    return scored
+
+
+def baseline_snapshot(eval_dir: Path, groups: dict) -> Path:
+    """An always-empty rule snapshot, for measuring the TRUE base parser.
+
+    Do not use ``eval_dir=None`` to mean "baseline". That means "whatever is
+    installed", and all 14 production ``*_eval`` dirs are normally symlinked to
+    a previous run's FINAL rules — so the "baseline" would silently include
+    them, and every new rule would be distilled on top of the last run's output.
+
+    Installing this snapshot instead displaces those symlinks for the duration
+    of the parse (``_install_silver_rules`` renames whatever is there to
+    ``.silver_bak`` and puts it back afterwards), so the measurement is honest
+    and the promoted rules survive the run untouched.
+
+    Kept separate from ``step_00`` because ``step_00`` is written from
+    ``groups_dir``, which on ``--resume`` already holds rules.
+    """
+    snap = eval_dir / "snapshots" / "_baseline"
+    for g in groups:
+        (snap / "groups" / g).mkdir(parents=True, exist_ok=True)
+    write_combined_importer(snap, groups)     # no group files -> extracts nothing
+    return snap
+
 
 def snapshot_rules(eval_dir: Path, groups_dir: Path, groups: dict,
                    step_idx: int, label: str) -> Path:
@@ -628,6 +810,8 @@ def run(args):
     print(f"  eval_dir: {eval_dir}")
     print(f"  match_metric: {args.match_metric}  prune_alpha: {args.prune_alpha}"
           f"  resume: {args.resume}")
+    print(f"  match_mode: {args.match_mode}  cover: {args.cover}"
+          f"   (m1 = strict same-type 1:1; m3 = nesting/label tolerant)")
     print()
 
     for pid in pilot_papers:
@@ -703,8 +887,10 @@ def run(args):
     print("PHASE 2: baseline (single combined parse per paper)")
     print("=" * 70)
     baselines = {}  # pid -> {type -> metrics}
+    base_snap = baseline_snapshot(eval_dir, groups)
+    print(f"  baseline rules: {base_snap.relative_to(eval_dir)} (empty by construction)")
     for pid in pilot_papers:
-        b = parse_buckets(pid, tex_dir, types, eval_dir=None)
+        b = parse_buckets(pid, tex_dir, types, eval_dir=base_snap)
         baselines[pid] = {t: metrics(b[t], gold_texts_by_type[t].get(pid, []), threshold)
                           for t in types}
         avg = sum(m['f1'] for m in baselines[pid].values()) / len(types)
@@ -716,6 +902,32 @@ def run(args):
     print("=" * 70)
     print("PHASE 3: merged distillation")
     print("=" * 70)
+
+    # Never distil on a test paper: rules are written FROM these papers.
+    splits = load_splits(Path(args.metadata) if args.metadata else SILVER_METADATA)
+    if splits and not args.allow_test_papers:
+        assert_no_test_leak(pilot_papers, splits)
+    n_train = sum(1 for p in pilot_papers if splits.get(p) == "train")
+    print(f"  [split] {n_train}/{len(pilot_papers)} paper(s) marked train "
+          f"in {'metadata.csv' if splits else '(no metadata found)'}")
+
+    # Hard-example mining: reorder so the worst-parsed papers go first.
+    if args.order == "worst-first":
+        print("\n" + "=" * 70)
+        print("ORDERING: worst-first (dark-knowledge count under base rules)")
+        print("=" * 70)
+        ranked = rank_worst_first(pilot_papers, tex_dir, types, gold_dir,
+                                  base_snap, threshold,
+                                  match_mode=args.match_mode, cover=args.cover)
+        pilot_papers = [pid for pid, _m, _g in ranked]
+        with open(eval_dir / "paper_ranking.csv", "w", newline="",
+                  encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(["rank", "paper_id", "n_missed", "n_gold"])
+            for i, (pid, m, g) in enumerate(ranked, 1):
+                w.writerow([i, pid, m, g])
+        print(f"  order: {', '.join(pilot_papers)}")
+        print(f"  wrote {eval_dir / 'paper_ranking.csv'}\n")
 
     # Step-0 snapshot = no distilled rules yet (clean baseline for the filmstrip).
     if start_idx == 0:
@@ -741,7 +953,9 @@ def run(args):
         per_type_fns = {}
         for t in types:
             dk = identify_dark_knowledge(str(eval_dir / "_dm" / t),
-                                         str(gold_dir / FNAME_MAP[t]), t, threshold)
+                                         str(gold_dir / FNAME_MAP[t]), t, threshold,
+                                         match_mode=args.match_mode,
+                                         cover=args.cover)
             dk = [d for d in dk if d['paper_id'] == pid]
             for d in dk:
                 d['structure_type'] = t
@@ -807,12 +1021,17 @@ def run(args):
         #     subtype isn't pruned over another subtype's FP).
         papers_so_far = prior_papers + pilot_papers[:offset + 1]
         tex_search_dirs = [str(tex_dir / p / "source") for p in papers_so_far]
+        # m3 scores an extraction against gold of EVERY type, not just the
+        # group's — the nesting case we care about (a definition inside a
+        # proof) crosses groups, so group-scoped support would miss it.
+        all_types_gold = build_group_gold(gold_dir, "_alltypes", types)
         for gkey in groups:
             gfile = groups_dir / gkey / "distilled_rules.py"
             if not gfile.exists():
                 continue
             group_gold = build_group_gold(gold_dir, gkey, groups[gkey])
-            print(f"  [5:{gkey}] prune (alpha={args.prune_alpha:.2f}) over "
+            print(f"  [5:{gkey}] prune (mode={args.match_mode} "
+                  f"alpha={args.prune_alpha:.2f}) over "
                   f"{len(papers_so_far)} paper(s) ...")
             pre_prune_src = gfile.read_text(encoding='utf-8')
             n_pruned = prune_rules(
@@ -820,7 +1039,9 @@ def run(args):
                 gold_csv=str(group_gold), eval_dir=str(groups_dir / gkey),
                 threshold=threshold, max_fdr=args.prune_alpha,
                 tex_search_dirs=tex_search_dirs,
-                max_rule_seconds=args.max_rule_seconds)
+                max_rule_seconds=args.max_rule_seconds,
+                match_mode=args.match_mode, cover=args.cover,
+                support_gold_csv=str(all_types_gold))
             if n_pruned:
                 print(f"      pruned {n_pruned} rule(s)")
             # Defense-in-depth: prune output is unguarded codegen too — a
@@ -1011,7 +1232,27 @@ def main():
                    help="Time-guard: prune any distilled pattern whose worst "
                         "per-paper findall exceeds this many seconds "
                         "(catastrophic backtracking). 0 disables.")
-    p.add_argument("--prune-alpha", type=float, default=0.5,
+    p.add_argument("--order", default="given",
+                   choices=["given", "worst-first"],
+                   help="Distillation order. 'worst-first' = hard-example "
+                        "mining: rank the pool by how much the BASE parser "
+                        "misses (dark-knowledge count) and distil the worst "
+                        "first, so each LLM call is spent where the student is "
+                        "weakest.")
+    p.add_argument("--metadata", default=None,
+                   help="Silver corpus index for the train/test split "
+                        "(default corpus/silver/metadata.csv)")
+    p.add_argument("--allow-test-papers", action="store_true",
+                   help="Permit test-split papers in the distillation set. "
+                        "Off by default — distilling on test papers trains on "
+                        "the test set.")
+    p.add_argument("--match-mode", default="m1", choices=["m1", "m3"],
+                   help="Scoring used by the prune gate AND dark-knowledge "
+                        "selection. m1 = strict same-type 1:1 (unchanged). "
+                        "m3 = nesting/label tolerant; see match_modes.py")
+    p.add_argument("--cover", type=float, default=0.7,
+                   help="m3: fraction of a span that must be accounted for")
+    p.add_argument("--prune-alpha", type=float, default=None,
                    help="Per-rule FDR tolerance: prune when FP/(FP+TP) > alpha")
     p.add_argument("--resume", action="store_true",
                    help="Continue a prior run in --eval-dir (per-paper invocation)")
@@ -1020,6 +1261,15 @@ def main():
     p.add_argument("--skip-fp-judge", action="store_true",
                    help="Skip only the LLM FP-judge step (keeps final_eval/report/chart)")
     args = p.parse_args()
+
+    # alpha is mode-dependent: m1's 0.5 was tuned against a signal that is ~98%
+    # labelling noise. Under m3 that noise is gone, so the same 0.5 would almost
+    # never trip and pruning would silently stop happening.
+    if args.prune_alpha is None:
+        import match_modes as _mm
+        args.prune_alpha = _mm.DEFAULT_ALPHA[args.match_mode]
+        print(f"[prune] alpha not given; using {args.prune_alpha} "
+              f"for match-mode={args.match_mode}")
     run(args)
 
 

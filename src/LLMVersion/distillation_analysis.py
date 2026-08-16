@@ -183,11 +183,21 @@ def _load_extractions(eval_dir: str) -> Dict[Tuple[str, str], List[str]]:
 
 
 def identify_dark_knowledge(eval_dir: str, gold_csv: str, structure_type: str,
-                            threshold: float = 0.7) -> List[dict]:
+                            threshold: float = 0.7,
+                            match_mode: str = "m1",
+                            cover: float = 0.7) -> List[dict]:
     """Distillation mode: gold=exists AND manual=FN AND any_LLM=TP.
 
     Returns list of dicts with:
       paper_id, gold_index, gold_text, found_by_llms, manual_best_similarity
+
+    ``match_mode`` decides what "manual already caught it" means, and therefore
+    what we pay the LLM to write rules for:
+      m1  some single extraction matches the gold item (today's behaviour)
+      m3  the UNION of extractions covers ``cover`` of it — several nodes
+          jointly covering one gold node is decomposition, not a miss, so
+          distilling a rule for it would only add a duplicate
+    See ``match_modes`` for why.
     """
     gold_data = _load_gold_csv(gold_csv)
     if not gold_data:
@@ -235,7 +245,13 @@ def identify_dark_knowledge(eval_dir: str, gold_csv: str, structure_type: str,
                 sim = jaccard_similarity(mt, gold_text)
                 manual_best_sim = max(manual_best_sim, sim)
 
-            manual_matched = manual_best_sim >= threshold
+            if match_mode == "m1":
+                manual_matched = manual_best_sim >= threshold
+            else:
+                import match_modes as _mm
+                manual_matched = _mm.gold_is_found(
+                    gold_text, manual_texts, threshold,
+                    mode=match_mode, cover=cover)
 
             if manual_matched:
                 continue  # Manual caught it — not dark knowledge
@@ -1446,9 +1462,14 @@ require hardcoding instance-specific content.
 2. A single function: `{func_name}(text: str) -> List[dict]`
 3. Each returned dict has keys: `raw_latex` (str), `clean_text` (str), `name` (str or None), `env_name` (str), `rule_name` (str), {st_key_req}
 4. `env_name` is `"distilled"`; `rule_name` is the module-level compiled-pattern variable name that produced the match — it MUST equal that variable's name (the prune step keys off it)
-5. Use compiled regex patterns at module level; include `_clean_latex(text)` and `_inside_excluded_env(text, start, end)` helpers
-6. Deduplicate overlapping matches
-- Do NOT import any project module; stdlib `re` only
+5. Use compiled regex patterns at module level; include `_inside_excluded_env(text, start, end)` helper
+6. For `clean_text`, do NOT write your own cleaner. Start the file with exactly:
+   `try:\n    from latex_clean import clean_latex_to_text as _clean_latex\nexcept Exception:\n    _clean_latex = lambda s: s`
+   then use `_clean_latex(raw)`. Never replace math with a `[MATH]` placeholder and never
+   delete math content — the base parser preserves math as words, and a cleaner that
+   disagrees makes identical statements look different and produces duplicate nodes.
+7. Deduplicate overlapping matches
+- Apart from that one guarded import, do NOT import any project module; stdlib `re` only
 - Output ONLY the Python code, no fences, no explanation"""
 
     print(f"  [{group_key}] aggregating {len(rules)} suggestion(s)...")
@@ -1700,7 +1721,10 @@ def prune_rules(paper_ids: List[str], structure_type: str,
                 require_fp_majority: bool = False,
                 max_fdr: Optional[float] = None,
                 tex_search_dirs: Optional[List[str]] = None,
-                max_rule_seconds: Optional[float] = 10.0) -> int:
+                max_rule_seconds: Optional[float] = 10.0,
+                match_mode: str = "m1",
+                cover: float = 0.7,
+                support_gold_csv: Optional[str] = None) -> int:
     """Identify FP-causing distilled rules and comment them out.
 
     Calls the distilled extraction function *directly* (bypassing the full
@@ -1721,6 +1745,15 @@ def prune_rules(paper_ids: List[str], structure_type: str,
     tex_search_dirs : extra directories to search for paper .tex sources
         (passed to ``_find_local_tex``). Useful when papers live outside
         ``FULL_PAPERS_DIR`` (e.g., the alignment-benchmark layout).
+    match_mode : "m1" (default, unchanged behaviour) or "m3". Under m3 an
+        extraction contained in ANY gold node is not a false discovery, so the
+        gate stops killing rules over nesting / labels / span boundaries. Only
+        ~2% of what m1 calls a false positive is content the silver lacks, so
+        m1's alpha is tuned against mostly-noise; use a much tighter alpha with
+        m3 (``match_modes.DEFAULT_ALPHA``) or the gate will never trip.
+    support_gold_csv : gold across ALL types, for m3's containment test. The
+        dominant nesting case crosses groups (a definition inside a proof), so
+        scoping support to this group's gold would miss exactly what m3 is for.
 
     Returns the number of rules pruned.
     """
@@ -1751,6 +1784,19 @@ def prune_rules(paper_ids: List[str], structure_type: str,
 
     # 2. Load gold standard
     gold_data = _load_gold_csv(gold_csv)
+
+    # m3 support set: gold across ALL types, keyed by paper. Falls back to this
+    # group's gold when no all-type CSV was supplied, which makes m3 degrade to
+    # "nesting within the group" rather than failing.
+    support_texts_by_paper: Dict[str, List[str]] = {}
+    if match_mode != "m1":
+        src = support_gold_csv or gold_csv
+        for pid_key, items in _load_gold_csv(src).items():
+            support_texts_by_paper[pid_key] = [
+                (g.get('raw_latex') or g.get('clean_text') or '')
+                for g in items
+                if (g.get('raw_latex') or g.get('clean_text') or '').strip()
+            ]
 
     # 3. Extract from each paper and classify TP / FP
     all_results: List[tuple] = []  # (paper_id, result_dict, is_tp)
@@ -1804,8 +1850,23 @@ def prune_rules(paper_ids: List[str], structure_type: str,
                 matched_ext.add(ei)
                 matched_gold.add(gi)
 
+        if match_mode == "m1":
+            is_tp = [ei in matched_ext for ei in range(len(results))]
+        else:
+            # m3: also accept anything contained in a gold node of ANY type.
+            # Strictly a superset of the m1 verdicts above, so the gate can only
+            # loosen — it can never newly condemn a rule m1 accepted.
+            import match_modes as _mm
+            support = support_texts_by_paper.get(norm_pid, gold_texts)
+            is_tp = [
+                (ei in matched_ext) or any(
+                    _mm.coverage(_mm.tokens(ext), _mm.tokens(s)) >= cover
+                    for s in support)
+                for ei, ext in enumerate(extracted_texts)
+            ]
+
         for ei, r in enumerate(results):
-            all_results.append((paper_id, r, ei in matched_ext))
+            all_results.append((paper_id, r, is_tp[ei]))
 
     fp_results = [(pid, r) for pid, r, is_tp in all_results if not is_tp]
     tp_results = [(pid, r) for pid, r, is_tp in all_results if is_tp]
