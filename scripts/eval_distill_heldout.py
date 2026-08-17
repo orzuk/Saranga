@@ -519,6 +519,12 @@ def sweep_alpha(alphas, prune_papers, score_papers, args, eval_dir: Path,
             # the pool was already time-guarded during generation; re-running the
             # guard on every alpha would dominate sweep runtime for no benefit
             max_rule_seconds=None,
+            # Without these the gate silently reverted to m1 no matter what
+            # --match-mode said. One type means there is no all-types gold to
+            # act as m3's support set, so its own gold serves — m3 then buys
+            # nesting tolerance within the type but not across types.
+            match_mode=args.match_mode, cover=args.cover,
+            support_gold_csv=str(gold_csv),
         )
         n_after = count_active_rules(eval_dir)
         m = score_set(score_papers, args.tex_dir, args.structure_type, gold_csv,
@@ -610,9 +616,11 @@ def main():
     run.add_argument("--batch-size", type=int, default=8,
                      help="merged only: FNs per analyze LLM call")
     run.add_argument("--match-mode", default="m1", choices=["m1", "m3"],
-                     help="merged only: prune-gate scoring (see match_modes.py)")
+                     help="prune-gate scoring, BOTH pipelines (see "
+                          "match_modes.py). m1 = strict same-type 1:1; m3 = "
+                          "nesting/label tolerant.")
     run.add_argument("--cover", type=float, default=0.7,
-                     help="merged only: m3 span-coverage fraction")
+                     help="m3: fraction of a span that must be accounted for")
     run.add_argument("--max-rule-seconds", type=float, default=10.0,
                      help="merged only: time guard during pool generation")
     run.add_argument("--prompt-version", default="v5.1",
@@ -635,6 +643,12 @@ def main():
     if args.pipeline == "merged" and args.structure_type:
         p.error("--structure-type is sequential-only; "
                 "use --structure-types with --pipeline merged")
+
+    # Configure matching BEFORE anything scores. This script previously took
+    # --match-metric and never applied it: the merged path only used containment
+    # because mrg.run() set it as a side effect during generation, so
+    # --skip-generation silently scored the entire sweep on jaccard.
+    seq.set_match_metric(args.match_metric)
 
     MERGED = args.pipeline == "merged"
     types = ([t.strip() for t in args.structure_types.split(",") if t.strip()]
@@ -827,12 +841,20 @@ def main():
     #      and alpha* is arbitrary. Usually a plumbing fault, not a finding.
     #  (b) FLAT: pruning did fire, but F1 is insensitive to it. A real (and
     #      reportable) result: alpha does not matter on this data.
-    per_alpha_rules = {}
+    # Ask whether alpha moved the surviving rule count WITHIN a fold.
+    #
+    # The previous version bucketed rules_after by alpha ACROSS folds and then
+    # kept only buckets of size 1, so as soon as two folds disagreed at the same
+    # alpha — the normal case, since folds hold different papers — every bucket
+    # was discarded and the check reported "degenerate" on a perfectly healthy
+    # sweep. Observed on a 3-fold run where pruning removed 10/6/5/3/2/0 rules
+    # as alpha rose: unmistakably working, flagged as degenerate.
+    rules_by_fold = {}
     for r in all_rows:
-        per_alpha_rules.setdefault(r["alpha"], set()).add(r["rules_after"])
+        rules_by_fold.setdefault(r["label"], {})[r["alpha"]] = r["rules_after"]
+    alpha_moved_rules = any(len(set(d.values())) > 1 for d in rules_by_fold.values())
     total_pruned = sum(r["rules_pruned"] for r in all_rows)
-    distinct_sizes = {next(iter(v)) for v in per_alpha_rules.values() if len(v) == 1}
-    degenerate = (total_pruned == 0) or (len(distinct_sizes) <= 1 and len(per_alpha_rules) > 1)
+    degenerate = (total_pruned == 0) or not alpha_moved_rules
 
     spread = max(r["cv_f1_mean"] for r in cv_curve) - min(r["cv_f1_mean"] for r in cv_curve)
     typical_sd = statistics.mean([r["cv_f1_sd"] for r in cv_curve]) if cv_curve else 0.0
@@ -889,7 +911,9 @@ def main():
             paper_ids=train, structure_type=args.structure_type,
             gold_csv=str(gold_csv), eval_dir=str(eval_dir),
             threshold=args.threshold, max_fdr=alpha_star,
-            tex_search_dirs=tex_search_dirs, max_rule_seconds=None)
+            tex_search_dirs=tex_search_dirs, max_rule_seconds=None,
+            match_mode=args.match_mode, cover=args.cover,
+            support_gold_csv=str(gold_csv))
         n_after = count_active_rules(eval_dir)
     print(f"  rules {n_before} -> {n_after} (pruned {n_pruned})")
 

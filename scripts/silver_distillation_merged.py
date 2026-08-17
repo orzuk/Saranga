@@ -803,8 +803,7 @@ def run(args):
     # BOTH modules must be set. seq's copy scores the baseline/post metrics;
     # _da's scores the prune gate's TP/FP verdict. Setting only seq (the old
     # behaviour) left the prune on jaccard while the metrics used containment.
-    seq._MATCH_METRIC = args.match_metric
-    _da._MATCH_METRIC = args.match_metric
+    seq.set_match_metric(args.match_metric)
 
     print("Silver MERGED Distillation")
     print(f"  types: {types}")
@@ -981,6 +980,7 @@ def run(args):
         for gkey, items in fn_items_by_group.items():
             gdir = groups_dir / gkey
             gdir.mkdir(parents=True, exist_ok=True)
+            rows = []
             if items:
                 print(f"  [3:{gkey}] analyze {len(items)} item(s) (batch={batch_size}) ...")
                 rows, ausage = analyze_patterns_batched(
@@ -998,12 +998,27 @@ def run(args):
                         w.writeheader()
                         w.writerows(group_cum_rows[gkey])
 
-            # aggregate if this group has any accumulated suggestion
+            # Aggregate only when THIS paper actually contributed a suggestion.
+            #
+            # The gate used to be "has this group ever produced a suggestion",
+            # so once a group had any rule it re-aggregated on EVERY subsequent
+            # paper — even those where it found no dark knowledge at all. That
+            # call re-sends the entire accumulated rule set, which grows as the
+            # run proceeds, so the wasted calls also get steadily more
+            # expensive. Measured on a 6-paper run: groups with zero new FNs
+            # still paid full aggregates; over 60 papers that is ~240 aggregate
+            # calls, most of them re-deriving an unchanged pool.
+            #
+            # Still aggregate when the group has accumulated suggestions but no
+            # rules file yet — that is a first build, or a recovery after the
+            # guard rejected generated code.
+            gfile = gdir / "distilled_rules.py"
+            new_sugg = any((r.get('llm_suggested_rule') or '').strip()
+                           for r in rows)
             has_sugg = any((r.get('llm_suggested_rule') or '').strip()
                            for r in group_cum_rows[gkey])
-            if has_sugg:
+            if new_sugg or (has_sugg and not gfile.exists()):
                 print(f"  [4:{gkey}] aggregate {len(group_cum_rows[gkey])} cumulative rule(s) ...")
-                gfile = gdir / "distilled_rules.py"
                 prev_src = gfile.read_text(encoding='utf-8') if gfile.exists() else None
                 _path, gusage = aggregate_rules_merged(
                     str(group_cum_csv[gkey]), gkey, groups[gkey], str(gdir), model)

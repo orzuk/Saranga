@@ -22,7 +22,7 @@ sys.path.insert(0, str(REPO / "scripts"))
 
 def build_chart(eval_dir, tex_dir, match_metric="containment", threshold=0.7):
     import silver_distillation_sequential as seq
-    seq._MATCH_METRIC = match_metric
+    seq.set_match_metric(match_metric)
     from silver_distillation_merged import parse_buckets, metrics, load_gold_texts, FNAME_MAP
     import matplotlib
     matplotlib.use("Agg")

@@ -230,7 +230,7 @@ def main():
     ap.add_argument("--limit", type=int, default=None)
     a = ap.parse_args()
 
-    seq._MATCH_METRIC = "containment"          # what the headline numbers use
+    seq.set_match_metric("containment")         # what the headline numbers use
     types = list(sdm.FNAME_MAP)
     step00 = EVAL_DIR / "snapshots" / "step_00_initial"
     final = EVAL_DIR / "snapshots" / "step_17_paper450"

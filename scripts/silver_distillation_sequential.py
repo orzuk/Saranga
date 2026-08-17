@@ -52,20 +52,30 @@ from latex_clean import clean_latex_to_text
 # Match metric — set by --match-metric flag. "jaccard" preserves prior behavior;
 # "containment" uses |A ∩ B| / min(|A|,|B|) which is forgiving on span asymmetry
 # (rules fragments inside opus paragraphs match cleanly).
-_MATCH_METRIC = "jaccard"
+def set_match_metric(metric: str) -> str:
+    """Set the run-wide match metric. THE way to configure matching.
+
+    Both similarity wrappers (this module's SILVER-profile one and
+    distillation_analysis's DISTILLATION-profile one) read a single variable in
+    node_similarity, so they cannot end up on different metrics. Assigning a
+    module global here does nothing — call this instead.
+    """
+    import node_similarity as _ns
+    return _ns.set_match_metric(metric)
 
 
 def jaccard_similarity(text1, text2):
-    """Silver-profile match score; metric selected by `_MATCH_METRIC`.
+    """Silver-profile match score; metric read from node_similarity.
 
     Implementation lives in src/node_similarity.py (Profile.SILVER): the same
     macro-collapsing cleanup as before, with "jaccard" and "containment"
     selectable. Kept as a module-level function because the monkey-patch below
     relies on rebinding this name.
     """
+    import node_similarity as _ns
     from node_similarity import Profile, text_sim
     return text_sim(text1, text2, profile=Profile.SILVER,
-                    metric=_MATCH_METRIC)
+                    metric=_ns.MATCH_METRIC)
 
 
 # Monkey-patch so identify_dark_knowledge / validate_rules / etc. inside
@@ -404,14 +414,11 @@ def run_sequential(args):
 
     pilot_papers = [p.strip() for p in args.pilot_papers.split(',')]
     origin_filter = args.origin_filter or None
-    # Set the matching metric for this whole run. BOTH modules need it: this
-    # module's copy scores the baseline/post metrics, distillation_analysis's
-    # scores the prune gate's TP/FP verdict. Setting only this one (the old
-    # behaviour, despite the comment that claimed otherwise) left the prune
-    # gate on jaccard while the reported metrics used --match-metric.
-    global _MATCH_METRIC
-    _MATCH_METRIC = args.match_metric
-    _da._MATCH_METRIC = args.match_metric
+    # One setter, one variable — this configures both similarity wrappers at
+    # once (see set_match_metric / node_similarity.MATCH_METRIC). They used to
+    # be separate module globals, which is how the prune gate ended up scoring
+    # on jaccard while the reported metrics used --match-metric.
+    set_match_metric(args.match_metric)
     print(f"Silver Sequential Distillation")
     print(f"  structure_type: {structure_type}")
     print(f"  model: {model}")

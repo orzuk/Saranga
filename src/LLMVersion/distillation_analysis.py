@@ -53,18 +53,23 @@ def tokenize_latex(text):
 # --match-metric containment silently never reached the prune gate while the
 # baseline-metrics path (silver_distillation_sequential.jaccard_similarity) did
 # honour it. The two halves of a run were scored by different metrics.
-_MATCH_METRIC = "jaccard"
-
-
 def jaccard_similarity(text1, text2):
-    """Distillation-profile match score; metric selected by `_MATCH_METRIC`.
+    """Distillation-profile match score; metric read from node_similarity.
 
-    NOTE the profile still differs from the silver path (DISTILLATION here vs
-    SILVER in silver_distillation_sequential) — that is a separate, deliberate
-    tokenisation choice and is NOT changed by the metric selection above.
+    The metric lives in ONE place (node_similarity.MATCH_METRIC) and is read at
+    call time, so this wrapper and the SILVER-profile one in
+    silver_distillation_sequential can never be configured differently. Set it
+    via node_similarity.set_match_metric(); do not reintroduce a module global
+    here — that is precisely what let the prune gate run on jaccard while the
+    reported metrics used containment.
+
+    NOTE the PROFILE still differs from the silver path (DISTILLATION here vs
+    SILVER there) — a separate, deliberate tokenisation choice, unaffected by
+    the metric.
     """
+    import node_similarity as _ns
     return _text_sim(text1, text2, profile=_Profile.DISTILLATION,
-                     metric=_MATCH_METRIC)
+                     metric=_ns.MATCH_METRIC)
 
 
 def _find_local_tex(paper_id: str, search_dirs: Optional[List[str]] = None) -> Optional[Tuple[str, str]]:

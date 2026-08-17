@@ -80,7 +80,7 @@ def main():
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
-    seq._MATCH_METRIC = args.match_metric
+    seq.set_match_metric(args.match_metric)
     cache = json.load(open(args.cache, encoding="utf-8"))
     gold_dir = Path(args.gold_dir) if args.gold_dir else \
         (REPO / args.eval_dir).resolve() / "_split_eval" / "gold"

@@ -67,7 +67,7 @@ def main():
                     help="print N example spurious FPs per group")
     args = ap.parse_args()
 
-    seq._MATCH_METRIC = args.match_metric
+    seq.set_match_metric(args.match_metric)
     cache = json.load(open(args.cache, encoding="utf-8"))
     gold_dir = (REPO / args.eval_dir).resolve() / "_split_eval" / "gold"
     gold = {t: load_gold_texts(gold_dir / FNAME_MAP[t]) for t in TYPES}

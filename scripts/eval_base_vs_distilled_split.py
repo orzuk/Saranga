@@ -96,7 +96,7 @@ def main():
                          "re-scoring (other metric/threshold) needs no re-parse")
     args = ap.parse_args()
 
-    seq._MATCH_METRIC = args.match_metric
+    seq.set_match_metric(args.match_metric)
 
     eval_dir = (REPO / args.eval_dir).resolve()
     snaps = sorted((eval_dir / "snapshots").glob("step_*"))

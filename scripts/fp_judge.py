@@ -186,7 +186,7 @@ def main():
                    help="comma list (default: all with gold)")
     args = p.parse_args()
 
-    seq._MATCH_METRIC = args.match_metric
+    seq.set_match_metric(args.match_metric)
     eval_dir = Path(args.eval_dir).resolve()
     tex_dir = Path(args.tex_dir).resolve()
     gold_dir = eval_dir / "silver_gold"

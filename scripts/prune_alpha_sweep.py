@@ -116,7 +116,7 @@ def main():
     eval_dir = Path(args.eval_dir).resolve()
     tex_dir = Path(args.tex_dir).resolve()
     gold_dir = eval_dir / "silver_gold"
-    seq._MATCH_METRIC = args.match_metric
+    seq.set_match_metric(args.match_metric)
     types = list(FNAME_MAP.keys())
     groups = base_method_groups(types)
     import json

@@ -79,7 +79,7 @@ def main():
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
-    seq._MATCH_METRIC = args.match_metric
+    seq.set_match_metric(args.match_metric)
     eval_dir = (REPO / args.eval_dir).resolve() if not Path(args.eval_dir).is_absolute() \
         else Path(args.eval_dir)
     tex_dir = Path(args.tex_dir)
