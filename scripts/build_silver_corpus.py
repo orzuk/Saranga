@@ -18,6 +18,17 @@ metadata; the rest are filled by a separate title->arXiv lookup pass
 
 Idempotent: rebuilds corpus/silver/{extractions,tex} from scratch each run.
 Offline: makes NO network calls (arXiv lookup is a separate script).
+
+NOT covered here: `corpus/silver/opus-5__v5.1/` (see AUTHORITATIVE_DIRS). It is
+authoritative in place rather than mirrored, so this script neither wipes nor
+indexes it. Because metadata.csv is rewritten from scratch, the required order
+on a full rebuild is:
+
+    python scripts/build_silver_corpus.py     # mirrors + metadata.csv (345 rows)
+    python scripts/index_opus5_v51.py         # adds the 200 v5.1 rows back
+
+Running this on a machine WITHOUT the external pool (POOL_DIR) silently drops
+the 268 `pool` rows — it does not fail. Check the printed row count.
 """
 import csv
 import json
@@ -42,6 +53,14 @@ TEX_SOURCES = [
 OUT = os.path.join(REPO, "corpus/silver")   # model/prompt dirs live directly here
 OUT_TEX = os.path.join(OUT, "tex")
 CACHE = os.path.join(OUT, ".arxiv_cache.json")
+
+# Extraction dirs this builder must NEVER wipe: they are authoritative in place,
+# not mirrors of an external source. opus-5__v5.1 was produced by the agentic
+# extraction campaign directly into corpus/silver/ and is the ONLY copy, so
+# rmtree-ing it on a machine that lacks POOL_DIR would be unrecoverable data
+# loss. It is indexed separately by scripts/index_opus5_v51.py, which is
+# additive and does not touch rows this builder owns.
+AUTHORITATIVE_DIRS = {"opus-5__v5.1"}
 
 ARXIV_RE = re.compile(r"^(\d{4}\.\d{4,5}(v\d+)?|[a-z\-]+/\d{7}(v\d+)?)$", re.I)
 
@@ -183,7 +202,7 @@ def main():
     os.makedirs(OUT_TEX)
     for name in os.listdir(OUT):
         p = os.path.join(OUT, name)
-        if os.path.isdir(p) and "__" in name:
+        if os.path.isdir(p) and "__" in name and name not in AUTHORITATIVE_DIRS:
             shutil.rmtree(p)
     legacy = os.path.join(OUT, "extractions")   # pre-flatten layout
     if os.path.isdir(legacy):
@@ -316,6 +335,16 @@ def main():
     for k, v in sorted(by_sub.items()):
         print("   %-40s %d" % (k, v))
     print("arxiv_id present: %d/%d   tex present: %d papers" % (have_arxiv, len(rows), have_tex))
+
+    # This builder owns only the dirs it mirrors, and it rewrites metadata.csv
+    # from scratch — which drops the opus-5 v5.1 rows and the span_usable
+    # column. Re-add them; the indexer is additive and idempotent.
+    for d in sorted(AUTHORITATIVE_DIRS):
+        if os.path.isdir(os.path.join(OUT, d)):
+            print("\nNOTE %s is authoritative in place (not mirrored, not wiped)."
+                  "\n     Its rows are NOT in the metadata.csv just written."
+                  "\n     Run:  python scripts/index_opus5_v51.py" % d)
+            break
 
 
 if __name__ == "__main__":

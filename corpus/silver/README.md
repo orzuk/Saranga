@@ -20,12 +20,39 @@ corpus/silver/
 Organization is **by model + prompt** — each top-level subdirectory is one
 extraction configuration and carries the prompt file that produced it:
 
-| Directory | Papers | Prompt file | Meaning |
-|---|---|---|---|
-| `opus-4.7__v3_combined/` | 268 | `prompt_opus_v3_combined.md` | old "pool" extraction |
-| `opus-4.8__v4.1/` | 74 | `prompt_opus_v4.md` | v4.1 train + test |
-| `opus-4.7__v4.1/` | 3 | `prompt_opus_v4.md` | 3 train JSONs tagged opus-4.7 |
-| **`opus-5__v5.1/`** | **100** | **`prompt_opus_v5.1.md`** | **current uniform corpus — see below** |
+| Directory | Papers | Prompt file | Verbatim? | Meaning |
+|---|---|---|---|---|
+| `opus-4.7__v3_combined/` | 268 | `prompt_opus_v3_combined.md` | **NO — 0.3%** | old "pool" extraction — **see warning below** |
+| `opus-4.8__v4.1/` | 74 | `prompt_opus_v4.md` | yes — 89.6% | v4.1 train + test |
+| `opus-4.7__v4.1/` | 3 | `prompt_opus_v4.md` | yes — 89.6% | 3 train JSONs tagged opus-4.7 |
+| **`opus-5__v5.1/`** | **200** | **`prompt_opus_v5.1.md`** | **yes — 99.7%** | **current uniform corpus — see below** |
+
+> ### ⚠️ `opus-4.7__v3_combined/` is a SUMMARY corpus, not a verbatim one
+>
+> **Do not use it for distillation, evaluation, plagiarism detection (T-PLAG), or
+> alignment.** Its `statement` fields are paraphrases, not spans of the source
+> `.tex`. A 50-paper random audit (seed 42, 3190 statements) measured:
+>
+> | | literal span of the `.tex` | substantially rewritten |
+> |---|---|---|
+> | `v3_combined` | **0.34%** | **93.26%** |
+> | `v4.1` | 89.57% | 0.47% |
+> | `v5.1` | **99.73%** | **0.00%** |
+>
+> This is **by design, not a defect.** `opus_extract_prompt_v3_combined.md` never
+> asked for verbatim text — it caps `statement` at "≤2 sentences (≤250 chars)" and
+> for algorithms explicitly requires "a 1-sentence summary, NOT the pseudocode".
+> Verbatim extraction became Rule #1 only in v4 ("`statement` IS A COPY, NOT A
+> SUMMARY", no length bound). These 268 papers remain useful as a paper registry
+> and for topic-level work — just never for anything span-level.
+>
+> The `span_usable` column in `metadata.csv` carries this per row (`yes`/`no`), so
+> code can filter on it instead of hardcoding folder names. All 268 `v3_combined`
+> rows are `split=pool`, so they are already outside train/test.
+>
+> Re-run the audit with `python scripts/audit_verbatim.py --dir <folder>`. Note
+> that script's `head` tier passes a statement when only its first 60 chars match,
+> which overstates fidelity — the figures above come from a stricter check.
 
 - The directory reflects each JSON's **actual** `metadata` (model + prompt), not
   what any email claimed — so mislabeled files sort honestly. Model tokens drop
@@ -36,7 +63,7 @@ extraction configuration and carries the prompt file that produced it:
   `algorithm_step` nodes. The original label is preserved in the
   `prompt_version_raw` column.
 
-## `opus-5__v5.1/` — the current uniform corpus (100 papers)
+## `opus-5__v5.1/` — the current uniform corpus (200 papers)
 
 The corpus to use for new work. Every paper here was extracted with
 **`claude-opus-5[1m]`** under **one frozen prompt**, `prompt_opus_v5.1.md`
@@ -47,9 +74,17 @@ re-done from scratch rather than mixing two prompt revisions.
 - **Filenames are `<arxiv_id>.json`** here (e.g. `1104.0194v1.json`), not
   `paperNNN.json` — this corpus is keyed by arXiv id, sampled fresh rather than
   inherited from the old pool.
-- **Sampling:** 5 papers x 20 arXiv categories, drawn from the 1000-paper pool in
-  `extraction_targets_opus5.csv`. The pool deliberately carries **no split
-  column** — train/test is assigned later so the split can be redrawn.
+- **Sampling:** 10 papers x 20 arXiv categories, drawn from the 1000-paper pool in
+  `extraction_targets_opus5.csv` (200 of 1000 extracted so far — exactly balanced
+  at 10 per category).
+- **Split (drawn Aug 2026): 60 train / 140 test**, stratified 3+7 per category.
+  It lives in **`split_opus5.csv`**, which is the source of truth — `metadata.csv`
+  is regenerated and so cannot own it. Assignment is `sha256(arxiv_id)`-ranked
+  within category: it depends on a paper's own id alone, so re-running
+  `scripts/assign_split_opus5.py` as the remaining 800 papers land **never moves
+  a paper already assigned** (verified: corpus doubled to 400 with the quota
+  raised to 6/category → 0 reassignments, 0 test→train leaks). Raise
+  `--train-per-cat` to grow train; existing rows stay put.
 - **Schema additions in v5.1:** definition decomposition
   (`definiendum`/`genus`/`differentia`) and `confidence` on both nodes and edges.
 
@@ -93,19 +128,44 @@ The train/test/pool **split lives in `metadata.csv`, not in the directory tree**
 
 | split | count | what it is |
 |---|---|---|
-| `pool` | 268 | the legacy `v3` set (opus-4-7); superset of everything below |
+| `pool` | 268 | the legacy `v3` set (opus-4-7); **paraphrased — not usable, see warning above** |
 | `train` | 17 | v4.1 papers used for rule **distillation** (`paper001–016` + `paper450`) |
 | `test`  | 60 | held-out v4.1 benchmark: 40 `A_matched_ML` + 20 `B_math_shift` |
+| `train` | 60 | v5.1, 3 per category (`split_opus5.csv`) |
+| `test`  | 140 | v5.1, 7 per category (`split_opus5.csv`) |
 
-Every train/test paper is *also* present as a `pool` row (its older `v3`
-extraction). Total: **345 extractions across 268 distinct papers.**
+Every v4.1 train/test paper is *also* present as a `pool` row (its older `v3`
+extraction) — which is why `load_splits()` in `silver_distillation_merged.py`
+gives the specific splits precedence over the `pool` catch-all. Without that,
+every test paper would read as `pool` and slip past `assert_no_test_leak`.
+
+`pool` is **not a third ML split** — it is the unassigned reservoir. 191 of the
+268 pool papers were never drawn into train or test.
+
+Total: **545 extractions across 468 distinct papers** (345 rows over 268
+`paperNNN` identities, plus 200 v5.1 rows keyed by arXiv id).
 
 ## metadata.csv columns
 
 `paper_id, arxiv_id, arxiv_source, arxiv_match_score, split, test_idx, tier,
 model, prompt_version, prompt_version_raw, prompt_file, extraction_date,
 annotator, primary_category, all_categories, published, title, short_name,
-topic, n_nodes, n_edges, json_path, tex_path, has_tex`
+topic, n_nodes, n_edges, json_path, tex_path, has_tex, span_usable`
+
+- `span_usable` (`yes`/`no`) — whether that extraction's `statement` fields are
+  literal spans of the source `.tex`. **Filter on this** for distillation,
+  evaluation, T-PLAG, or alignment rather than hardcoding folder names. Only
+  `v3_combined` is `no`. Set by `scripts/index_opus5_v51.py` from the audit.
+  **Fails safe:** any config absent from that script's `SPAN_USABLE` table is
+  written as `no`, never blank — a blank would slip through a
+  `span_usable != "no"` filter and silently trust an unaudited prompt revision.
+  Audit a new config, then add it to the table. Note usability is set by the
+  **prompt version, not the model**: `opus-4.7 + v4.1` is `yes`, while
+  `opus-4.7 + v3_combined` is `no`.
+- For v5.1 rows `paper_id` **is** the arXiv id (that corpus has no `paperNNN`
+  identity), and `tex_path` points into `tex_pool/`, which is **gitignored** —
+  `has_tex` therefore describes the current checkout, not the corpus. Refetch
+  with `python scripts/fetch_tex_for_targets.py --ids <comma-list>`.
 
 - `prompt_version` is the canonical/folder version; `prompt_version_raw` is the
   exact string from the JSON metadata (differs only for the 8
@@ -137,7 +197,19 @@ topic, n_nodes, n_edges, json_path, tex_path, has_tex`
 python scripts/build_silver_corpus.py     # offline: copy + metadata.csv (uses arXiv cache if present)
 python scripts/build_silver_arxiv.py      # network: fill missing arxiv_id by title (~3s/req)
 python scripts/build_silver_corpus.py     # re-run to fold resolved arXiv ids into metadata.csv
+python scripts/assign_split_opus5.py      # draw/top-up the v5.1 split -> split_opus5.csv
+python scripts/index_opus5_v51.py         # add the 200 v5.1 rows + span_usable back
 ```
+
+**Order matters.** `build_silver_corpus.py` rewrites `metadata.csv` from scratch
+and knows nothing about v5.1, so `index_opus5_v51.py` must run *after* it or the
+200 rows and the `span_usable` column vanish. The builder prints a reminder.
+
+`opus-5__v5.1/` is **authoritative in place** — unlike the other dirs it is not a
+mirror of an external source, so the builder is explicitly barred from wiping it
+(`AUTHORITATIVE_DIRS`). Also note the builder **silently drops the 268 `pool`
+rows** when run on a machine without `$SARANGA_DATA_ROOT/tier2` — it warns to
+stderr but still writes a truncated `metadata.csv`. Check the printed row count.
 
 Both builders are idempotent. Source-of-truth inputs: external
 `$SARANGA_DATA_ROOT/tier2/` (pool), `portal/data/tier2/` (train),
