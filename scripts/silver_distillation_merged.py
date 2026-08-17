@@ -1231,6 +1231,16 @@ def finalize_run(args, eval_dir):
     except Exception as e:
         print(f"[finalize] report failed: {e}")
 
+    # 3b. TRACE.md — the readable per-paper account of what actually happened.
+    #     REPORT.md answers "how well did it score"; this answers "what did it
+    #     do", untruncated. Pure re-render of artifacts, no LLM, no parsing.
+    try:
+        print("[finalize] TRACE.md ...")
+        from make_run_trace import build_trace
+        print(f"           wrote {build_trace(eval_dir)}")
+    except Exception as e:
+        print(f"[finalize] trace failed: {e}")
+
     # 4. per_type_f1_fp.png chart
     try:
         print("[finalize] per_type_f1_fp.png ...")

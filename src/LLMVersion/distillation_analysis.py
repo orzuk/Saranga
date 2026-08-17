@@ -2028,6 +2028,20 @@ def prune_rules(paper_ids: List[str], structure_type: str,
 
     if not fp_results:
         print("\nNo false positives detected. Nothing to prune.")
+        # Still record the pass: "the gate ran and cleared everything" is a
+        # different fact from "the gate never ran", and the trace needs to be
+        # able to tell them apart.
+        try:
+            with open(os.path.join(eval_dir, "prune_log.jsonl"), "a",
+                      encoding="utf-8") as _f:
+                _f.write(json.dumps({
+                    "structure_type": structure_type,
+                    "papers_scored": list(paper_ids),
+                    "decisions": [],
+                    "note": f"no false positives; {len(tp_results)} TP(s), "
+                            f"nothing pruned"}) + "\n")
+        except Exception as _e:
+            print(f"  [warn] could not write prune_log.jsonl: {_e}")
         return 0
 
     print(f"\nFound {len(fp_results)} FP(s), {len(tp_results)} TP(s)")
@@ -2106,6 +2120,7 @@ def prune_rules(paper_ids: List[str], structure_type: str,
 
     pruned_count = 0
     kept_count = 0
+    decisions = []      # persisted: stdout is otherwise the only record
     for rule_name, fp_papers in fp_by_rule.items():
         if rule_name == '<unattributed>':
             print(f"\n  WARNING: {len(fp_papers)} FP(s) could not be attributed "
@@ -2114,6 +2129,13 @@ def prune_rules(paper_ids: List[str], structure_type: str,
         tp_count = len(tp_by_rule.get(rule_name, []))
         fp_count = len(fp_papers)
         fdr = fp_count / (fp_count + tp_count) if (fp_count + tp_count) else 1.0
+        decisions.append({
+            "rule": rule_name, "fp": fp_count, "tp": tp_count,
+            "fdr": round(fdr, 4), "alpha": max_fdr,
+            "verdict": "keep" if fdr <= max_fdr else "prune",
+            "fp_papers": sorted(set(fp_papers)),
+            "n_papers_scored": len(paper_ids),
+        })
         if fdr <= max_fdr:
             print(f"  KEEP  {rule_name}: {fp_count} FP, {tp_count} TP "
                   f"(FDR={fdr:.2f} <= alpha={max_fdr:.2f})")
@@ -2123,6 +2145,17 @@ def prune_rules(paper_ids: List[str], structure_type: str,
         source_lines = _comment_out_rule_block(
             source_lines, rule_name, unique_papers, tp_count)
         pruned_count += 1
+
+    # Append rather than overwrite: prune runs once per paper, and the history of
+    # WHEN a rule died (and on how much evidence) is the interesting part.
+    try:
+        with open(os.path.join(eval_dir, "prune_log.jsonl"), "a",
+                  encoding="utf-8") as _f:
+            _f.write(json.dumps({"structure_type": structure_type,
+                                 "papers_scored": list(paper_ids),
+                                 "decisions": decisions}) + "\n")
+    except Exception as _e:
+        print(f"  [warn] could not write prune_log.jsonl: {_e}")
     print(f"  (FDR gate alpha={max_fdr:.2f}: kept {kept_count} rule(s) with "
           f"FDR <= alpha)")
 
