@@ -277,7 +277,7 @@ def main():
     p.add_argument("--t2-dir", type=Path, default=REPO / "portal/data/tier2")
     p.add_argument("--eval-dir", required=True, type=Path)
     p.add_argument("--alpha", type=float, default=0.5)
-    p.add_argument("--model", default="claude-sonnet-4-5-20250514")
+    p.add_argument("--model", default="claude-sonnet-4-6")  # was an invalid id (Sonnet 4.5 name + Sonnet 4 date); 404s
     p.add_argument("--threshold", type=float, default=0.7)
     p.add_argument("--no-recycle", action="store_true",
                    help="disable step 2 (for A/B against v1 behaviour)")

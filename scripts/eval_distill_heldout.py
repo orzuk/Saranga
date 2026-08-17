@@ -88,8 +88,202 @@ from silver_distillation_sequential import (          # noqa: E402
 )
 from distillation_analysis import prune_rules         # noqa: E402
 
+import silver_distillation_merged as mrg              # noqa: E402
+
 POOL_SNAPSHOT = "distilled_rules.POOL.py"   # unpruned pool, alpha=1
 RULES_FILE = "distilled_rules.py"           # what the parser actually loads
+
+
+# ---------------------------------------------------------------------------
+# merged-pipeline support
+# ---------------------------------------------------------------------------
+# This evaluator was built around silver_distillation_sequential, which distils
+# ONE type per run into a single rules file. The pipeline actually shipped is
+# silver_distillation_merged, which distils all 14 types into 5 base-method
+# GROUPS sharing one rules file each (`theoremlike` alone covers 8 types). A
+# per-type held-out number is therefore a proxy for a student we do not ship —
+# a shared theoremlike rule is a different object from two per-type rules.
+#
+# The merged path below reuses the same design (generate the pool once at
+# alpha=1.0, then re-prune per fold for free) but snapshots, prunes, and scores
+# per GROUP. Nothing on the sequential path changes; --pipeline selects.
+
+
+def _merged_groups(types):
+    return mrg.base_method_groups(types)
+
+
+def _group_rule_files(eval_dir: Path):
+    """Every per-group rules file the merged run wrote."""
+    return sorted((eval_dir / "groups").glob("*/" + RULES_FILE))
+
+
+def generate_pool_merged(train_papers, args, eval_dir: Path):
+    """Phase 1 (merged) — build the UNPRUNED pool across all groups.
+
+    Delegates to silver_distillation_merged.run with prune_alpha=1.0 so the
+    pool is alpha-independent, and skips every post-run report: finalize, the
+    LLM FP-judge, and the metric ladder all cost time or tokens and are
+    meaningless on an intentionally unpruned pool.
+    """
+    print("=" * 72)
+    print(f"PHASE 1 (merged) — candidate pool on {len(train_papers)} paper(s), "
+          f"alpha=1.0, types={args.structure_types}")
+    print("=" * 72)
+    ns = SimpleNamespace(
+        structure_types=args.structure_types,
+        pilot_papers=",".join(train_papers),
+        t2_dir=str(args.t2_dir), tex_dir=str(args.tex_dir),
+        eval_dir=str(eval_dir),
+        model=args.model, threshold=args.threshold,
+        batch_size=args.batch_size,
+        origin_filter=args.origin_filter,
+        match_metric=args.match_metric,
+        match_mode=args.match_mode, cover=args.cover,
+        prune_alpha=1.0,          # <-- the whole point: no pruning during generation
+        # Distillation is cumulative, so processing order changes the pool. It
+        # does NOT interfere with cross-validation: in pool-once mode generation
+        # happens once over all train papers and the folds only re-prune, and
+        # under --strict-cv each fold ranks its own subset. Set this to match
+        # whatever production uses, so the evaluated student is the shipped one.
+        order=args.order,
+        resume=args.resume,
+        metadata=None,
+        # Train papers come from the caller's fold split; the split guard would
+        # re-derive membership from metadata.csv and reject an intentional
+        # arrangement, so it is bypassed here rather than fought.
+        allow_test_papers=True,
+        skip_finalize=True, skip_fp_judge=True, skip_ladder=True,
+        ladder_prompt_version=args.prompt_version,
+        max_rule_seconds=args.max_rule_seconds,
+    )
+    mrg.run(ns)
+    snaps = snapshot_pool_merged(eval_dir)
+    print(f"\n  pool snapshotted -> {len(snaps)} group file(s) "
+          f"({count_active_rules_merged(eval_dir)} active rules)")
+    return snaps
+
+
+def snapshot_pool_merged(eval_dir: Path):
+    files = _group_rule_files(eval_dir)
+    if not files:
+        raise FileNotFoundError(
+            f"No groups/*/{RULES_FILE} under {eval_dir} — generation produced no rules")
+    out = []
+    for f in files:
+        dst = f.with_name(POOL_SNAPSHOT)
+        shutil.copy2(f, dst)
+        out.append(dst)
+    return out
+
+
+def restore_pool_merged(eval_dir: Path):
+    """Reset every group's rules file to its unpruned pool.
+
+    prune_rules mutates in place, so without this each alpha would prune the
+    already-pruned output of the previous one and the sweep would be nonsense.
+    """
+    snaps = sorted((eval_dir / "groups").glob("*/" + POOL_SNAPSHOT))
+    if not snaps:
+        raise FileNotFoundError(f"No group pool snapshots under {eval_dir}")
+    for s in snaps:
+        shutil.copy2(s, s.with_name(RULES_FILE))
+
+
+def count_active_rules_merged(eval_dir: Path):
+    total = 0
+    for f in _group_rule_files(eval_dir):
+        try:
+            total += seq.count_compiled_patterns(f)
+        except Exception:                           # noqa: BLE001
+            return -1
+    return total
+
+
+def score_set_merged(papers, tex_dir: Path, types, gold_dir: Path,
+                     threshold: float, eval_dir: Path):
+    """Pooled P/R/F1 across ALL types, using the merged parser path.
+
+    Pooled (micro) rather than a per-type macro, per the project convention:
+    a macro over 14 types is dominated by the sparse ones.
+    """
+    gold_by_type = {t: mrg.load_gold_texts(gold_dir / FNAME_MAP[t]) for t in types}
+    tp = fp = fn = 0
+    per_paper, f1s = {}, []
+    for pid in papers:
+        try:
+            buckets = mrg.parse_buckets(pid, Path(tex_dir), types, eval_dir=eval_dir)
+        except Exception as e:                      # noqa: BLE001
+            print(f"    WARNING: scoring {pid} failed: {e}")
+            continue
+        ptp = pfp = pfn = 0
+        for t in types:
+            m = mrg.metrics(buckets[t], gold_by_type[t].get(pid, []), threshold)
+            ptp += m["tp"]; pfp += m["fp"]; pfn += m["fn"]
+        tp += ptp; fp += pfp; fn += pfn
+        p = ptp / (ptp + pfp) if (ptp + pfp) else 0.0
+        r = ptp / (ptp + pfn) if (ptp + pfn) else 0.0
+        f = 2 * p * r / (p + r) if (p + r) else 0.0
+        per_paper[pid] = {"tp": ptp, "fp": pfp, "fn": pfn, "f1": f}
+        f1s.append(f)
+    prec = tp / (tp + fp) if (tp + fp) else 0.0
+    rec = tp / (tp + fn) if (tp + fn) else 0.0
+    f1 = 2 * prec * rec / (prec + rec) if (prec + rec) else 0.0
+    return {"tp": tp, "fp": fp, "fn": fn,
+            "precision": prec, "recall": rec, "f1": f1,
+            "macro_f1": statistics.mean(f1s) if f1s else 0.0,
+            "n_papers": len(per_paper), "per_paper": per_paper}
+
+
+def sweep_alpha_merged(alphas, prune_papers, score_papers, args, eval_dir: Path,
+                       gold_dir: Path, tex_search_dirs, types, label=""):
+    """Phase 3 (merged) — per alpha: restore every group, prune each, re-score.
+
+    One prune_rules call PER GROUP, each with its group's gold, plus the
+    all-types gold as m3's support set — mirroring what the merged runner does
+    per paper. `prune_papers` supplies the FDR statistics; `score_papers` is the
+    held-out set, which is what makes this a validation and not self-fitting.
+    """
+    groups = _merged_groups(types)
+    all_gold = mrg.build_group_gold(gold_dir, "_alltypes", types)
+    rows = []
+    for a in alphas:
+        restore_pool_merged(eval_dir)
+        n_before = count_active_rules_merged(eval_dir)
+        t0 = time.time()
+        n_pruned = 0
+        for gkey, gtypes in groups.items():
+            gfile = eval_dir / "groups" / gkey / RULES_FILE
+            if not gfile.exists():
+                continue
+            n_pruned += prune_rules(
+                paper_ids=list(prune_papers), structure_type=gkey,
+                gold_csv=str(mrg.build_group_gold(gold_dir, gkey, gtypes)),
+                eval_dir=str(eval_dir / "groups" / gkey),
+                threshold=args.threshold, max_fdr=a,
+                tex_search_dirs=tex_search_dirs,
+                # already time-guarded during generation; re-running the guard
+                # per alpha would dominate sweep runtime for no benefit
+                max_rule_seconds=None,
+                match_mode=args.match_mode, cover=args.cover,
+                support_gold_csv=str(all_gold),
+            )
+        n_after = count_active_rules_merged(eval_dir)
+        m = score_set_merged(score_papers, args.tex_dir, types, gold_dir,
+                             args.threshold, eval_dir=eval_dir)
+        rows.append({
+            "label": label, "alpha": a,
+            "rules_before": n_before, "rules_pruned": n_pruned,
+            "rules_after": n_after,
+            "precision": m["precision"], "recall": m["recall"],
+            "f1": m["f1"], "macro_f1": m["macro_f1"],
+            "tp": m["tp"], "fp": m["fp"], "fn": m["fn"],
+            "secs": round(time.time() - t0, 1),
+        })
+        print(f"    alpha={a:<5.2f} rules {n_before}->{n_after} "
+              f"(-{n_pruned})  P={m['precision']:.3f} R={m['recall']:.3f} "
+              f"F1={m['f1']:.3f}")
+    return rows
 
 
 # ---------------------------------------------------------------------------
@@ -352,7 +546,18 @@ def main():
     p = argparse.ArgumentParser(
         description="Held-out distillation with k-fold alpha tuning (ROADMAP 7.4)",
         formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
-    p.add_argument("--structure-type", required=True, choices=list(FNAME_MAP.keys()))
+    p.add_argument("--pipeline", default="sequential",
+                   choices=["sequential", "merged"],
+                   help="Which distillation pipeline to evaluate. 'sequential' "
+                        "distils ONE type into one rules file (the historical "
+                        "behaviour). 'merged' distils --structure-types into 5 "
+                        "base-method GROUPS sharing a rules file each — this is "
+                        "the pipeline actually shipped, so it is the one whose "
+                        "held-out number describes the deployed student.")
+    p.add_argument("--structure-type", default=None, choices=list(FNAME_MAP.keys()),
+                   help="sequential only: the single type to distil")
+    p.add_argument("--structure-types", default=",".join(mrg.ALL_SILVER_TYPES),
+                   help="merged only: comma list of types (default: all 14)")
     p.add_argument("--tex-dir", required=True, type=Path,
                    help="Directory with <paper>/source/*.tex, OR a flat dir of "
                         "<paper>.tex when --flat-tex is given")
@@ -394,13 +599,49 @@ def main():
                           "zero-API-call.")
     run.add_argument("--dry-run", action="store_true",
                      help="Print the plan and exit without running anything.")
-    run.add_argument("--model", default="claude-sonnet-4-5-20250514")
+    # See silver_distillation_sequential.py: the previous default
+    # "claude-sonnet-4-5-20250514" is not a real model id and 404s.
+    run.add_argument("--model", default="claude-sonnet-4-6")
     run.add_argument("--threshold", type=float, default=0.7)
     run.add_argument("--origin-filter", default=None)
     run.add_argument("--match-metric", default="jaccard",
                      choices=["jaccard", "containment"])
     run.add_argument("--resume", action="store_true")
+    run.add_argument("--batch-size", type=int, default=8,
+                     help="merged only: FNs per analyze LLM call")
+    run.add_argument("--match-mode", default="m1", choices=["m1", "m3"],
+                     help="merged only: prune-gate scoring (see match_modes.py)")
+    run.add_argument("--cover", type=float, default=0.7,
+                     help="merged only: m3 span-coverage fraction")
+    run.add_argument("--max-rule-seconds", type=float, default=10.0,
+                     help="merged only: time guard during pool generation")
+    run.add_argument("--prompt-version", default="v5.1",
+                     help="merged only: extraction config tag passed through")
+    run.add_argument("--order", default="worst-first",
+                     choices=["given", "worst-first"],
+                     help="merged only: distillation order. Defaults to "
+                          "'worst-first' (hard-example mining: rank papers by how "
+                          "much the base parser misses and distil the worst "
+                          "first) so the held-out number describes the student "
+                          "production actually ships. Does not conflict with CV — "
+                          "generation is per-pool, folds only re-prune. Pass "
+                          "'given' to distil in the order supplied.")
     args = p.parse_args()
+
+    # The two pipelines take different type arguments; catch the mismatch here
+    # rather than letting it surface as a confusing failure mid-generation.
+    if args.pipeline == "sequential" and not args.structure_type:
+        p.error("--structure-type is required with --pipeline sequential")
+    if args.pipeline == "merged" and args.structure_type:
+        p.error("--structure-type is sequential-only; "
+                "use --structure-types with --pipeline merged")
+
+    MERGED = args.pipeline == "merged"
+    types = ([t.strip() for t in args.structure_types.split(",") if t.strip()]
+             if MERGED else [args.structure_type])
+    bad = [t for t in types if t not in FNAME_MAP]
+    if bad:
+        p.error(f"unknown structure type(s): {bad}")
 
     eval_dir = args.eval_dir.resolve()
     eval_dir.mkdir(parents=True, exist_ok=True)
@@ -435,7 +676,10 @@ def main():
     print("=" * 72)
     print("HELD-OUT DISTILLATION WITH ALPHA TUNING")
     print("=" * 72)
-    print(f"  structure_type : {args.structure_type}")
+    print(f"  pipeline       : {args.pipeline}"
+          + (f"  ({len(_merged_groups(types))} groups over {len(types)} types)"
+             if MERGED else ""))
+    print(f"  structure_type : {', '.join(types)}")
     print(f"  train          : {len(train)} papers")
     print(f"  test (held out): {len(test)} papers")
     print(f"  folds          : {args.folds}  sizes={[len(f) for f in folds]}")
@@ -474,26 +718,46 @@ def main():
 
     # ---- Phase 1: pool ----------------------------------------------------
     if args.skip_generation:
-        snap = eval_dir / POOL_SNAPSHOT
-        if not snap.exists():
-            print(f"ERROR: --skip-generation but no pool snapshot at {snap}.\n"
+        have = (bool(sorted((eval_dir / "groups").glob("*/" + POOL_SNAPSHOT)))
+                if MERGED else (eval_dir / POOL_SNAPSHOT).exists())
+        if not have:
+            where = f"{eval_dir}/groups/*/{POOL_SNAPSHOT}" if MERGED \
+                else f"{eval_dir / POOL_SNAPSHOT}"
+            print(f"ERROR: --skip-generation but no pool snapshot at {where}.\n"
                   f"       Run once without --skip-generation to build it.")
             sys.exit(1)
-        print(f"PHASE 1 — SKIPPED, reusing {snap.name}")
-        restore_pool(eval_dir)
-        print(f"  pool has {count_active_rules(eval_dir)} active rules\n")
+        print("PHASE 1 — SKIPPED, reusing pool snapshot")
+        if MERGED:
+            restore_pool_merged(eval_dir)
+            print(f"  pool has {count_active_rules_merged(eval_dir)} active rules\n")
+        else:
+            restore_pool(eval_dir)
+            print(f"  pool has {count_active_rules(eval_dir)} active rules\n")
+    elif MERGED:
+        generate_pool_merged(train, args, eval_dir)
     else:
         generate_pool(train, args, eval_dir)
 
-    gold_csv = ensure_gold(train + test, args.t2_dir, gold_dir,
-                           args.structure_type, args.origin_filter)
+    # Gold for every type in scope. The merged path needs one CSV per type so
+    # build_group_gold can assemble per-group and all-types views from them.
+    gold_csv = None
+    for t in types:
+        c = ensure_gold(train + test, args.t2_dir, gold_dir, t, args.origin_filter)
+        if t == types[0]:
+            gold_csv = c
 
     # ---- baseline (manual rules only, no distilled rules) -----------------
     print("=" * 72)
     print("BASELINE — manual rules only")
     print("=" * 72)
-    base_test = score_set(test, args.tex_dir, args.structure_type, gold_csv,
-                          args.threshold, eval_dir=None) if test else None
+    if not test:
+        base_test = None
+    elif MERGED:
+        base_test = score_set_merged(test, args.tex_dir, types, gold_dir,
+                                     args.threshold, eval_dir=None)
+    else:
+        base_test = score_set(test, args.tex_dir, args.structure_type, gold_csv,
+                              args.threshold, eval_dir=None)
     if base_test:
         print(f"  TEST  P={base_test['precision']:.3f} R={base_test['recall']:.3f} "
               f"F1={base_test['f1']:.3f} (macro {base_test['macro_f1']:.3f})")
@@ -511,11 +775,26 @@ def main():
             # regenerate the pool using only this fold's training papers
             fold_dir = eval_dir / f"fold{i}"
             fold_dir.mkdir(parents=True, exist_ok=True)
-            generate_pool(tr, args, fold_dir)
-            fold_gold = ensure_gold(tr + val, args.t2_dir, fold_dir / "silver_gold",
-                                    args.structure_type, args.origin_filter)
-            all_rows += sweep_alpha(alphas, tr, val, args, fold_dir, fold_gold,
-                                    tex_search_dirs, label=f"fold{i}")
+            fold_gold_dir = fold_dir / "silver_gold"
+            fold_gold = None
+            for t in types:
+                c = ensure_gold(tr + val, args.t2_dir, fold_gold_dir, t,
+                                args.origin_filter)
+                if t == types[0]:
+                    fold_gold = c
+            if MERGED:
+                generate_pool_merged(tr, args, fold_dir)
+                all_rows += sweep_alpha_merged(alphas, tr, val, args, fold_dir,
+                                               fold_gold_dir, tex_search_dirs,
+                                               types, label=f"fold{i}")
+            else:
+                generate_pool(tr, args, fold_dir)
+                all_rows += sweep_alpha(alphas, tr, val, args, fold_dir, fold_gold,
+                                        tex_search_dirs, label=f"fold{i}")
+        elif MERGED:
+            all_rows += sweep_alpha_merged(alphas, tr, val, args, eval_dir,
+                                           gold_dir, tex_search_dirs, types,
+                                           label=f"fold{i}")
         else:
             all_rows += sweep_alpha(alphas, tr, val, args, eval_dir, gold_csv,
                                     tex_search_dirs, label=f"fold{i}")
@@ -586,20 +865,47 @@ def main():
     print(f"PHASE 5 — refit at alpha*={alpha_star:.2f} on all {len(train)} train papers, "
           f"report on TEST")
     print("=" * 72)
-    restore_pool(eval_dir)
-    n_before = count_active_rules(eval_dir)
-    n_pruned = prune_rules(
-        paper_ids=train, structure_type=args.structure_type,
-        gold_csv=str(gold_csv), eval_dir=str(eval_dir),
-        threshold=args.threshold, max_fdr=alpha_star,
-        tex_search_dirs=tex_search_dirs, max_rule_seconds=None)
-    n_after = count_active_rules(eval_dir)
+    if MERGED:
+        restore_pool_merged(eval_dir)
+        n_before = count_active_rules_merged(eval_dir)
+        n_pruned = 0
+        all_gold = mrg.build_group_gold(gold_dir, "_alltypes", types)
+        for gkey, gtypes in _merged_groups(types).items():
+            if not (eval_dir / "groups" / gkey / RULES_FILE).exists():
+                continue
+            n_pruned += prune_rules(
+                paper_ids=train, structure_type=gkey,
+                gold_csv=str(mrg.build_group_gold(gold_dir, gkey, gtypes)),
+                eval_dir=str(eval_dir / "groups" / gkey),
+                threshold=args.threshold, max_fdr=alpha_star,
+                tex_search_dirs=tex_search_dirs, max_rule_seconds=None,
+                match_mode=args.match_mode, cover=args.cover,
+                support_gold_csv=str(all_gold))
+        n_after = count_active_rules_merged(eval_dir)
+    else:
+        restore_pool(eval_dir)
+        n_before = count_active_rules(eval_dir)
+        n_pruned = prune_rules(
+            paper_ids=train, structure_type=args.structure_type,
+            gold_csv=str(gold_csv), eval_dir=str(eval_dir),
+            threshold=args.threshold, max_fdr=alpha_star,
+            tex_search_dirs=tex_search_dirs, max_rule_seconds=None)
+        n_after = count_active_rules(eval_dir)
     print(f"  rules {n_before} -> {n_after} (pruned {n_pruned})")
 
-    dist_test = score_set(test, args.tex_dir, args.structure_type, gold_csv,
-                          args.threshold, eval_dir=eval_dir) if test else None
+    if not test:
+        dist_test = None
+    elif MERGED:
+        dist_test = score_set_merged(test, args.tex_dir, types, gold_dir,
+                                     args.threshold, eval_dir=eval_dir)
+    else:
+        dist_test = score_set(test, args.tex_dir, args.structure_type, gold_csv,
+                              args.threshold, eval_dir=eval_dir)
 
     report = {
+        "pipeline": args.pipeline,
+        "structure_types": types,
+        "groups": {g: ts for g, ts in _merged_groups(types).items()} if MERGED else None,
         "structure_type": args.structure_type,
         "alpha_star": alpha_star,
         "alpha_grid": alphas,

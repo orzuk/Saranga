@@ -17,7 +17,7 @@ Usage:
         --t2-dir portal/data/tier2 \
         --tex-dir /path/to/alignment/papers \
         --eval-dir src/LLMVersion/definition_eval_silver \
-        --model claude-sonnet-4-5-20250514
+        --model claude-sonnet-4-6
 """
 
 import argparse
@@ -734,7 +734,10 @@ def main():
                    help="Directory with paper*/source/*.tex files")
     p.add_argument("--eval-dir", required=True,
                    help="Output directory for eval artifacts")
-    p.add_argument("--model", default="claude-sonnet-4-5-20250514",
+    # "claude-sonnet-4-5-20250514" was not a real model id — it pairs Sonnet
+    # 4.5's name with Sonnet 4's date (4.5 is -20250929), so it 404s. Matches
+    # silver_distillation_merged.py, which has always used a valid default.
+    p.add_argument("--model", default="claude-sonnet-4-6",
                    help="Anthropic model for LLM calls")
     p.add_argument("--threshold", type=float, default=0.7,
                    help="Jaccard similarity threshold (default: 0.7)")
