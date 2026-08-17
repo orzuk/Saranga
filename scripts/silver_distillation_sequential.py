@@ -404,10 +404,14 @@ def run_sequential(args):
 
     pilot_papers = [p.strip() for p in args.pilot_papers.split(',')]
     origin_filter = args.origin_filter or None
-    # Set the matching metric used by jaccard_similarity (and the monkey-patched
-    # copy inside distillation_analysis) for this whole run.
+    # Set the matching metric for this whole run. BOTH modules need it: this
+    # module's copy scores the baseline/post metrics, distillation_analysis's
+    # scores the prune gate's TP/FP verdict. Setting only this one (the old
+    # behaviour, despite the comment that claimed otherwise) left the prune
+    # gate on jaccard while the reported metrics used --match-metric.
     global _MATCH_METRIC
     _MATCH_METRIC = args.match_metric
+    _da._MATCH_METRIC = args.match_metric
     print(f"Silver Sequential Distillation")
     print(f"  structure_type: {structure_type}")
     print(f"  model: {model}")

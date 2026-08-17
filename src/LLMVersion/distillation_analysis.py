@@ -44,8 +44,27 @@ def tokenize_latex(text):
     return _ns_tokenize(text, _Profile.DISTILLATION)
 
 
+# Match metric for every comparison in this module — most importantly the
+# prune gate's TP/FP verdict. Callers select it (silver_distillation_merged /
+# _sequential set it from --match-metric); "jaccard" keeps the historical
+# default for anything that does not.
+#
+# This used to be hard-wired: `jaccard_similarity` passed no `metric=`, so
+# --match-metric containment silently never reached the prune gate while the
+# baseline-metrics path (silver_distillation_sequential.jaccard_similarity) did
+# honour it. The two halves of a run were scored by different metrics.
+_MATCH_METRIC = "jaccard"
+
+
 def jaccard_similarity(text1, text2):
-    return _text_sim(text1, text2, profile=_Profile.DISTILLATION)
+    """Distillation-profile match score; metric selected by `_MATCH_METRIC`.
+
+    NOTE the profile still differs from the silver path (DISTILLATION here vs
+    SILVER in silver_distillation_sequential) — that is a separate, deliberate
+    tokenisation choice and is NOT changed by the metric selection above.
+    """
+    return _text_sim(text1, text2, profile=_Profile.DISTILLATION,
+                     metric=_MATCH_METRIC)
 
 
 def _find_local_tex(paper_id: str, search_dirs: Optional[List[str]] = None) -> Optional[Tuple[str, str]]:
@@ -138,6 +157,29 @@ def _load_gold_csv(gold_csv: str) -> Dict[str, List[dict]]:
                 'clean_text': row.get('Gold_Standard_clean_text', ''),
             })
     return gold_data
+
+
+def _gold_for_paper(gold_data: Dict[str, List[dict]], paper_id: str) -> List[dict]:
+    """Gold rows for `paper_id`, tolerant of the arXiv version suffix.
+
+    Callers normalise ids with ``re.sub(r'v\\d+$', '', paper_id)``, but the gold
+    CSV is keyed by the JSON filename stem — which for the v5.1 silver corpus IS
+    versioned (``1504.01485v1``). Looking up only the stripped form missed every
+    row, so every extraction scored as a false positive and the FDR gate pruned
+    100% of distilled rules. That never surfaced on the v4.1 corpus because
+    ``paperNNN`` ids carry no version suffix.
+
+    Try the id as given first, then the stripped form, then a stripped-key scan.
+    """
+    if paper_id in gold_data:
+        return gold_data[paper_id]
+    stripped = re.sub(r'v\d+$', '', paper_id).replace('_', '.')
+    if stripped in gold_data:
+        return gold_data[stripped]
+    for k, v in gold_data.items():
+        if re.sub(r'v\d+$', '', k) == stripped:
+            return v
+    return []
 
 
 LLM_PROVIDERS = {'anthropic', 'openai', 'huggingface'}
@@ -893,7 +935,7 @@ def validate_rules(paper_ids: List[str], structure_type: str,
         for paper_id in paper_ids:
             norm_pid = re.sub(r'v\d+$', '', paper_id).replace('_', '.')
             extracted = parsed.get(paper_id, []) or parsed.get(norm_pid, [])
-            gold_items = gold_data.get(norm_pid, [])
+            gold_items = _gold_for_paper(gold_data, paper_id)
             gold_texts = [g['raw_latex'] or g['clean_text'] for g in gold_items if (g['raw_latex'] or g['clean_text']).strip()]
 
             # Match extracted against gold (greedy best-match)
@@ -1828,7 +1870,7 @@ def prune_rules(paper_ids: List[str], structure_type: str,
 
         # Gold items for this paper
         norm_pid = re.sub(r'v\d+$', '', paper_id).replace('_', '.')
-        gold_items = gold_data.get(norm_pid, [])
+        gold_items = _gold_for_paper(gold_data, paper_id)
         gold_texts = [
             g['raw_latex'] or g['clean_text']
             for g in gold_items
@@ -1857,7 +1899,11 @@ def prune_rules(paper_ids: List[str], structure_type: str,
             # Strictly a superset of the m1 verdicts above, so the gate can only
             # loosen — it can never newly condemn a rule m1 accepted.
             import match_modes as _mm
-            support = support_texts_by_paper.get(norm_pid, gold_texts)
+            # Same versioned-id trap as the gold lookup above: this map is keyed
+            # by the gold CSV's paper_id, which is versioned for the v5.1 corpus.
+            support = (support_texts_by_paper.get(paper_id)
+                       or support_texts_by_paper.get(norm_pid)
+                       or gold_texts)
             is_tp = [
                 (ei in matched_ext) or any(
                     _mm.coverage(_mm.tokens(ext), _mm.tokens(s)) >= cover

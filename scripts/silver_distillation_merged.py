@@ -800,7 +800,11 @@ def run(args):
     pilot_papers = [p.strip() for p in args.pilot_papers.split(',') if p.strip()]
 
     groups = base_method_groups(types)
-    seq._MATCH_METRIC = args.match_metric  # drives jaccard_similarity (+ _da copy)
+    # BOTH modules must be set. seq's copy scores the baseline/post metrics;
+    # _da's scores the prune gate's TP/FP verdict. Setting only seq (the old
+    # behaviour) left the prune on jaccard while the metrics used containment.
+    seq._MATCH_METRIC = args.match_metric
+    _da._MATCH_METRIC = args.match_metric
 
     print("Silver MERGED Distillation")
     print(f"  types: {types}")
