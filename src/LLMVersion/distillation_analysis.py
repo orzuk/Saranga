@@ -1226,24 +1226,113 @@ def _acc_usage(dst: dict, msg_usage) -> None:
     dst['cache_creation_input_tokens'] += getattr(msg_usage, 'cache_creation_input_tokens', 0) or 0
 
 
+_JSON_VALID_ESCAPE = set('"\\/bfnrtu')
+
+
+def _repair_json_escapes(text: str) -> str:
+    """Double invalid backslash escapes occurring INSIDE JSON string literals.
+
+    The model embeds LaTeX/regex in its JSON strings and escapes inconsistently:
+    it writes ``{\\it Label.}`` with a single backslash, and ``\\i`` is not a
+    valid JSON escape, so json.loads rejects the whole document. JSON has no
+    structural backslashes outside strings, so doubling them there is safe.
+    """
+    out, in_str, i, n = [], False, 0, len(text)
+    while i < n:
+        c = text[i]
+        if not in_str:
+            if c == '"':
+                in_str = True
+            out.append(c)
+            i += 1
+            continue
+        if c == '\\':
+            nxt = text[i + 1] if i + 1 < n else ''
+            if nxt in _JSON_VALID_ESCAPE and not (
+                    nxt == 'u' and not re.match(r'[0-9a-fA-F]{4}', text[i + 2:i + 6])):
+                out.append(c)
+                out.append(nxt)
+                i += 2
+            else:
+                out.append('\\\\')
+                i += 1
+            continue
+        if c == '"':
+            in_str = False
+        out.append(c)
+        i += 1
+    return ''.join(out)
+
+
+def _salvage_json_objects(t: str) -> list:
+    """Every COMPLETE top-level {...} object in a possibly-truncated array.
+
+    A response cut off at max_tokens used to cost the ENTIRE batch: json.loads
+    raised, [] came back, and all N items were written blank. Scanning for
+    balanced objects (respecting string state) and parsing each one separately
+    means a truncated response costs only its unfinished last item.
+    """
+    objs, depth, start, in_str, esc = [], 0, None, False, False
+    for i, c in enumerate(t):
+        if in_str:
+            if esc:
+                esc = False
+            elif c == '\\':
+                esc = True
+            elif c == '"':
+                in_str = False
+            continue
+        if c == '"':
+            in_str = True
+        elif c == '{':
+            if depth == 0:
+                start = i
+            depth += 1
+        elif c == '}':
+            depth -= 1
+            if depth == 0 and start is not None:
+                objs.append(t[start:i + 1])
+                start = None
+    out = []
+    for o in objs:
+        for cand in (o, _repair_json_escapes(o)):
+            try:
+                d = json.loads(cand)
+                if isinstance(d, dict):
+                    out.append(d)
+                break
+            except json.JSONDecodeError:
+                continue
+    return out
+
+
 def _parse_json_array(text: str) -> list:
-    """Parse a JSON array from an LLM response, tolerating fences / single obj."""
+    """Parse a JSON array from an LLM response.
+
+    Tolerates code fences, a single object, invalid LaTeX/regex escapes, and
+    truncation. Returning [] here silently blanks a whole analyze batch, so
+    every recoverable case is recovered before giving up.
+    """
     t = (text or "").strip()
     if t.startswith("```"):
         t = "\n".join(l for l in t.split("\n") if not l.strip().startswith("```"))
-    try:
-        data = json.loads(t)
-        if isinstance(data, dict):
-            return [data]
-        return data if isinstance(data, list) else []
-    except json.JSONDecodeError:
-        m = re.search(r'\[.*\]', t, re.DOTALL)
-        if m:
+
+    def _coerce(d):
+        return [d] if isinstance(d, dict) else (d if isinstance(d, list) else [])
+
+    for cand in (t, _repair_json_escapes(t)):
+        try:
+            return _coerce(json.loads(cand))
+        except json.JSONDecodeError:
+            continue
+    m = re.search(r'\[.*\]', t, re.DOTALL)
+    if m:
+        for cand in (m.group(0), _repair_json_escapes(m.group(0))):
             try:
-                return json.loads(m.group(0))
+                return _coerce(json.loads(cand))
             except json.JSONDecodeError:
-                return []
-        return []
+                continue
+    return _salvage_json_objects(t)      # truncated: keep the complete objects
 
 
 def _analyze_row(item: dict, context: str, pattern_type: str, group_key: str,
@@ -1260,6 +1349,13 @@ def _analyze_row(item: dict, context: str, pattern_type: str, group_key: str,
         'structure_type': item.get('structure_type', group_key),
         'structure_group': group_key,
     }
+
+
+# Output cap for the batched analyze call. 4096 truncated a batch of 8
+# regex-heavy items mid-string, which made the JSON unparseable and blanked
+# the ENTIRE batch (36 such rows across the historical eval dirs). Generated
+# rule code is verbose; give it room.
+ANALYZE_MAX_TOKENS = 16384
 
 
 def analyze_patterns_batched(items: List[dict], tex_dir: str = None,
@@ -1369,7 +1465,7 @@ def analyze_patterns_batched(items: List[dict], tex_dir: str = None,
         message = None
         try:
             message = client.messages.create(
-                model=model, max_tokens=4096,
+                model=model, max_tokens=ANALYZE_MAX_TOKENS,
                 system=[{"type": "text", "text": sys_text,
                          "cache_control": {"type": "ephemeral"}}],
                 messages=[{"role": "user", "content": user_text}],
@@ -1377,7 +1473,7 @@ def analyze_patterns_batched(items: List[dict], tex_dir: str = None,
         except Exception:
             try:
                 message = client.messages.create(
-                    model=model, max_tokens=4096, system=sys_text,
+                    model=model, max_tokens=ANALYZE_MAX_TOKENS, system=sys_text,
                     messages=[{"role": "user", "content": user_text}],
                 )
             except Exception as e2:
@@ -1394,6 +1490,19 @@ def analyze_patterns_batched(items: List[dict], tex_dir: str = None,
                 by_index[int(obj.get('index'))] = obj
             except (TypeError, ValueError):
                 continue
+        # A short response means teacher signal was LOST, not that the model
+        # declined (a decline still carries `reasoning`). This used to be
+        # completely silent: the batch was written blank and the run reported
+        # success, so a group could learn nothing while looking healthy.
+        if len(by_index) < len(batch):
+            missing = [k for k in range(len(batch)) if k not in by_index]
+            stop = getattr(message, 'stop_reason', None)
+            print(f"  [WARN] {group_key}: recovered {len(by_index)}/{len(batch)} "
+                  f"suggestion(s) from this analyze call "
+                  f"(stop_reason={stop}); LOST items {missing} for "
+                  f"{sorted({batch[k][0]['paper_id'] for k in missing})}. "
+                  f"Truncation? raise ANALYZE_MAX_TOKENS or lower --batch-size.")
+
         for k, (item, context, pattern_type) in enumerate(batch):
             obj = by_index.get(k, {})
             rows.append(_analyze_row(
