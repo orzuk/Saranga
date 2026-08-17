@@ -88,6 +88,12 @@ def main():
     ap.add_argument("--cover", type=float, default=0.7,
                     help="M3: fraction of a span that must be accounted for")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--prompt-version", default="v5.1",
+                    help="metadata.csv extraction config to score, or 'any'. "
+                         "Papers outside it are SKIPPED, so a wrong value here "
+                         "yields a silently empty ladder.")
+    ap.add_argument("--markdown", default=None,
+                    help="also write a markdown table here (for REPORT.md)")
     args = ap.parse_args()
 
     cache = json.load(open(args.cache, encoding="utf-8"))
@@ -96,7 +102,16 @@ def main():
     gold = {t: load_gold_texts(gold_dir / FNAME_MAP[t]) for t in TYPES}
     meta = {r["paper_id"]: r for r in
             csv.DictReader(open(REPO / "corpus/silver/metadata.csv", encoding="utf-8"))
-            if r["prompt_version"] == "v4.1"}
+            if args.prompt_version == "any"
+            or r["prompt_version"] == args.prompt_version}
+    if not meta:
+        sys.exit(f"no metadata.csv rows for --prompt-version {args.prompt_version!r}")
+    missed = [p for p in cache if p not in meta]
+    if missed:
+        print(f"[warn] {len(missed)} cached paper(s) absent from the "
+              f"{args.prompt_version} rows and therefore NOT scored: "
+              f"{', '.join(sorted(missed)[:5])}"
+              f"{' ...' if len(missed) > 5 else ''}")
 
     METRICS = ["M1_strict", "M2_anytype", "M3_nested", "M4_coverage"]
     acc = defaultdict(lambda: defaultdict(lambda: {"tp": 0, "fp": 0, "fn": 0}))
@@ -105,7 +120,13 @@ def main():
         m = meta.get(pid)
         if not m:
             continue
-        grp = "train" if m["split"] == "train" else f"test-{m['tier']}"
+        # `tier` (A_matched_ML / B_math_shift) only exists for the v4.1 test
+        # manifest; v5.1 rows leave it blank, so fall back to a plain "test"
+        # bucket rather than emitting a dangling "test-".
+        if m["split"] == "train":
+            grp = "train"
+        else:
+            grp = f"test-{m['tier']}" if m.get("tier") else "test"
         gold_by_type = {t: [tok(g) for g in gold[t].get(pid, [])] for t in TYPES}
         gold_all = [g for t in TYPES for g in gold_by_type[t]]
 
@@ -163,10 +184,14 @@ def main():
               "M2_anytype": "M2 any-type   (ignore type)",
               "M3_nested": "M3 nested-ok  (+ granularity)",
               "M4_coverage": "M4 coverage   (tokens, no nodes)"}
+    # Discover groups instead of hardcoding the v4.1 tier names, keeping a
+    # stable, readable order (train first, then test buckets alphabetically).
+    def _order(g):
+        return (0 if g == "train" else 1, g)
+    groups = sorted(acc.keys(), key=_order)
+
     rows = []
-    for grp in ["train", "test-B_math_shift", "test-A_matched_ML"]:
-        if grp not in acc:
-            continue
+    for grp in groups:
         print(f"\n{'='*74}\n{grp}\n{'='*74}")
         print(f"{'metric':<34} {'base F1':>8} {'final F1':>9} {'dF1':>7}   "
               f"{'base P/R':>13} {'final P/R':>13}")
@@ -186,12 +211,14 @@ def main():
 
     print(f"\n{'='*74}\nWhat each gap costs the STRICT score (base rules)\n{'='*74}")
     print(f"{'split':<22} {'misclassif.':>12} {'granularity':>12}")
-    for grp in ["train", "test-B_math_shift", "test-A_matched_ML"]:
-        if grp not in acc:
-            continue
+    for grp in groups:
         f = {n: score(acc[grp][(n, "base")], n)[2] for n in METRICS}
         print(f"{grp:<22} {f['M2_anytype']-f['M1_strict']:>+12.3f} "
               f"{f['M3_nested']-f['M2_anytype']:>+12.3f}")
+
+    if not rows:
+        sys.exit("no scored papers — nothing written. Check --prompt-version "
+                 "matches the corpus this eval-dir was built from.")
 
     out = Path(args.out) if args.out else \
         (REPO / args.eval_dir).resolve() / "metric_ladder.csv"
@@ -199,6 +226,29 @@ def main():
         w = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
         w.writeheader(); w.writerows(rows)
     print(f"\nWrote {out}")
+
+    if args.markdown:
+        md = ["## 0b. Metric ladder (each rung relaxes ONE assumption)", "",
+              "_M1 is the strict headline. The GAP between consecutive rungs is the "
+              "cost of that single disagreement: M1→M2 = misclassification, "
+              "M2→M3 = granularity. M3 answers \"did we find the structure at all\"._",
+              ""]
+        for grp in groups:
+            md += [f"**{grp}**", "",
+                   "| rung | base F1 | final F1 | ΔF1 | base P/R | final P/R |",
+                   "|---|---|---|---|---|---|"]
+            for name in METRICS:
+                pb, rb, fb = score(acc[grp][(name, "base")], name)
+                pf, rf, ff = score(acc[grp][(name, "final")], name)
+                md.append(f"| {labels[name]} | {fb:.3f} | {ff:.3f} | {ff-fb:+.3f} | "
+                          f"{pb:.3f}/{rb:.3f} | {pf:.3f}/{rf:.3f} |")
+            f = {n: score(acc[grp][(n, "base")], n)[2] for n in METRICS}
+            md += ["",
+                   f"_Cost to the strict score (base rules): misclassification "
+                   f"{f['M2_anytype']-f['M1_strict']:+.3f}, granularity "
+                   f"{f['M3_nested']-f['M2_anytype']:+.3f}._", ""]
+        Path(args.markdown).write_text("\n".join(md), encoding="utf-8")
+        print(f"Wrote {args.markdown}")
 
 
 if __name__ == "__main__":

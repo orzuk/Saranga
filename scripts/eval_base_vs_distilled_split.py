@@ -23,6 +23,7 @@ Usage:
 
 import argparse
 import csv
+import hashlib
 import json
 import os
 import shutil
@@ -134,19 +135,50 @@ def main():
     out_rows = []
 
     cache_path = Path(args.cache) if args.cache else work / "buckets_cache.json"
+
+    # The two sides age differently, so they cannot share one cache key:
+    #   base  - parsed with NO distilled rules. Independent of the rule set, so
+    #           it stays valid across runs and is the expensive half worth keeping.
+    #   final - parsed with the CURRENT rules. Changes whenever distillation adds
+    #           or prunes a rule, so reusing it across runs silently reports the
+    #           previous run's rules as if they were the new ones.
+    # Fingerprint the rule files and only reuse `final` when they are unchanged.
+    def _rules_fingerprint(snap):
+        h = hashlib.sha256()
+        for f in sorted(Path(snap).rglob("distilled_rules.py")):
+            h.update(f.relative_to(snap).as_posix().encode())
+            h.update(f.read_bytes())
+        return h.hexdigest()[:16]
+
+    fp = _rules_fingerprint(final_snap)
     cache = {}
     if cache_path.exists():
-        cache = json.load(open(cache_path, encoding="utf-8"))
-        print(f"reusing bucket cache: {cache_path} ({len(cache)} papers)")
+        raw = json.load(open(cache_path, encoding="utf-8"))
+        cache = raw.get("papers", {}) if isinstance(raw.get("papers"), dict) else {}
+        old_fp = raw.get("rules_fingerprint") if isinstance(raw, dict) else None
+        stale = old_fp != fp
+        print(f"bucket cache: {cache_path} ({len(cache)} papers), "
+              f"rules fingerprint {old_fp} -> {fp}"
+              + ("  [final side STALE, will re-parse]" if stale else "  [reusable]"))
+        if stale:
+            for v in cache.values():
+                v.pop("final", None)
+    print(f"rules fingerprint: {fp}")
 
+    n_reused_b = n_reused_f = 0
     for i, r in enumerate(rows, 1):
         pid, grp = r["paper_id"], r["group"]
-        if pid in cache:
-            bb, fb = cache[pid]["base"], cache[pid]["final"]
+        ent = cache.setdefault(pid, {})
+        if "base" in ent:
+            bb = ent["base"]
+            n_reused_b += 1
         else:
-            bb = parse_buckets(pid, tex_dir, TYPES, eval_dir=base_snap)
-            fb = parse_buckets(pid, tex_dir, TYPES, eval_dir=final_snap)
-            cache[pid] = {"base": bb, "final": fb}
+            bb = ent["base"] = parse_buckets(pid, tex_dir, TYPES, eval_dir=base_snap)
+        if "final" in ent:
+            fb = ent["final"]
+            n_reused_f += 1
+        else:
+            fb = ent["final"] = parse_buckets(pid, tex_dir, TYPES, eval_dir=final_snap)
         rec = {"paper_id": pid, "group": grp, "tier": r["tier"], "category": r["primary_category"]}
         for tag, buckets in (("base", bb), ("final", fb)):
             for t in TYPES:
@@ -218,9 +250,12 @@ def main():
         print(f"  {grp:<20} base {fb:.3f} | ungated {ff:.3f} | gated {f1:.3f} "
               f"({f1 - fb:+.3f} vs base)  [P {p:.3f} R {rc:.3f}]")
 
-    if not cache_path.exists():
-        json.dump(cache, open(cache_path, "w", encoding="utf-8"))
-        print(f"\nWrote bucket cache {cache_path}")
+    # ALWAYS rewrite: the old `if not exists` guard meant a cache written once
+    # was never refreshed, so a later run reused the earlier run's `final` side.
+    json.dump({"rules_fingerprint": fp, "papers": cache},
+              open(cache_path, "w", encoding="utf-8"))
+    print(f"\nWrote bucket cache {cache_path} "
+          f"(reused base for {n_reused_b}/{len(rows)}, final for {n_reused_f}/{len(rows)})")
 
     out = Path(args.out) if args.out else eval_dir / "split_eval.csv"
     with open(out, "w", newline="", encoding="utf-8") as f:

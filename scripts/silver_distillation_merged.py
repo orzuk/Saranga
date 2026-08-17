@@ -1197,7 +1197,33 @@ def finalize_run(args, eval_dir):
     else:
         print("[finalize] fp_judge skipped (--skip-fp-judge)")
 
-    # 3. consolidated REPORT.md (reads final_eval.csv + fp_judge.csv)
+    # 3. metric ladder M1-M4 (no LLM). Two steps: parse base+final buckets ONCE
+    #    into a cache, then score every rung off it. The parse is the only cost;
+    #    re-scoring at another threshold/rung afterwards is free, which is why
+    #    these stay separate scripts rather than being folded into the loop.
+    if not args.skip_ladder:
+        try:
+            print("[finalize] metric ladder (M1-M4) ...")
+            cache = eval_dir / "buckets_cache.json"
+            subprocess.run(
+                [sys.executable, str(repo / "scripts" / "eval_base_vs_distilled_split.py"),
+                 "--eval-dir", str(eval_dir), "--match-metric", mm,
+                 "--prompt-version", args.ladder_prompt_version,
+                 "--cache", str(cache)],
+                check=True)
+            subprocess.run(
+                [sys.executable, str(repo / "scripts" / "eval_metric_ladder.py"),
+                 "--cache", str(cache), "--eval-dir", str(eval_dir),
+                 "--prompt-version", args.ladder_prompt_version,
+                 "--threshold", str(args.threshold), "--cover", str(args.cover),
+                 "--markdown", str(eval_dir / "metric_ladder.md")],
+                check=True)
+        except Exception as e:
+            print(f"[finalize] metric ladder failed: {e}")
+    else:
+        print("[finalize] metric ladder skipped (--skip-ladder)")
+
+    # 4. consolidated REPORT.md (reads final_eval.csv + fp_judge.csv + ladder)
     try:
         print("[finalize] REPORT.md ...")
         from make_distill_report import build_report
@@ -1264,6 +1290,13 @@ def main():
                    help="Skip the post-run reports (final_eval + judge + report + chart)")
     p.add_argument("--skip-fp-judge", action="store_true",
                    help="Skip only the LLM FP-judge step (keeps final_eval/report/chart)")
+    p.add_argument("--skip-ladder", action="store_true",
+                   help="Skip the M1-M4 metric ladder (no LLM cost; it re-parses "
+                        "every paper once to build the buckets cache)")
+    p.add_argument("--ladder-prompt-version", default="v5.1",
+                   help="Which metadata.csv extraction config the ladder scores. "
+                        "Papers outside it are skipped, so this MUST match the "
+                        "corpus in --t2-dir (v4.1 for portal/data/tier2).")
     args = p.parse_args()
 
     # alpha is mode-dependent: m1's 0.5 was tuned against a signal that is ~98%

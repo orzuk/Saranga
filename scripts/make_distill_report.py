@@ -105,6 +105,14 @@ def build_report(eval_dir):
         w(f"| {label} | {tp} | {fp} | {fn} | {p:.3f} | {r:.3f} | {f:.3f} |")
     w("")
 
+    # ---- Metric ladder, if the finalize step produced one ----
+    # Written by eval_metric_ladder.py --markdown. Absent when --skip-ladder was
+    # used or the ladder failed; the report stays valid either way.
+    ladder = eval_dir / "metric_ladder.md"
+    if ladder.is_file():
+        w(ladder.read_text(encoding="utf-8").rstrip())
+        w("")
+
     tot_calls = sum(e.get("total_llm_calls", 0) for e in log)
     tot_cost = sum(e.get("total_cost_usd", 0) for e in log)
     w("## 1. Run summary\n")
