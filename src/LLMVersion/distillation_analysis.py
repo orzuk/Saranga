@@ -1386,6 +1386,13 @@ def _analyze_row(item: dict, context: str, pattern_type: str, group_key: str,
 # rule code is verbose; give it room.
 ANALYZE_MAX_TOKENS = 16384
 
+#: How many of the MOST RECENT papers keep their full evidence (gold_text,
+#: latex_context, reasoning) in the aggregate prompt. Older papers contribute
+#: their suggested code only. Set high (e.g. 999) to restore the old
+#: send-everything behaviour; see the age-out block in aggregate_rules_merged
+#: for why this exists and what it costs.
+AGGREGATE_FULL_EVIDENCE_PAPERS = 2
+
 
 def analyze_patterns_batched(items: List[dict], tex_dir: str = None,
                              group_key: str = None,
@@ -1583,13 +1590,42 @@ def aggregate_rules_merged(input_csv: str, group_key: str,
     multi = len(types_in_group) > 1
     func_name = f"extract_distilled_{group_key}"
 
+    # ---- Age-out: full evidence for recent papers, code-only for older ones --
+    # This prompt carries EVERY accumulated row, so it grows with the run: the
+    # per-paper cost is linear and the run total quadratic. Measured on the
+    # v5.1 corpus, definition reached 62k tokens by paper 2 (+35k/paper) and
+    # would have exceeded a 200k context around paper 6.
+    #
+    # The rows are not equally useful, though. gold_text, latex_context and
+    # reasoning exist so the model can DERIVE a rule; once derived, the rule
+    # itself is the thing that must survive into the next regeneration. So old
+    # rows keep their code and drop their evidence, while rows from the most
+    # recent papers — the ones still being turned into rules — keep everything.
+    # Nothing is forgotten: every suggestion is still listed, so the model can
+    # still merge variants and retract rules that later evidence contradicts.
+    # Those three fields are 55-70% of the payload, so this cuts the prompt by
+    # roughly 70% once past the recent window.
+    recent_pids = []
+    for rule in reversed(rules):
+        pid = rule['paper_id']
+        if pid and pid not in recent_pids:
+            recent_pids.append(pid)
+        if len(recent_pids) >= AGGREGATE_FULL_EVIDENCE_PAPERS:
+            break
+    recent = set(recent_pids)
+    n_aged = sum(1 for r in rules if r['paper_id'] not in recent)
+
     rules_text = ""
     for i, rule in enumerate(rules, 1):
         rules_text += (f"\n--- Rule {i} (paper {rule['paper_id']}, "
-                       f"type {rule['structure_type']}, gold_index {rule['gold_index']}) ---\n"
-                       f"Reasoning: {rule['reasoning']}\nCode:\n{rule['suggested_code']}\n")
+                       f"type {rule['structure_type']}, gold_index {rule['gold_index']}) ---\n")
+        if rule['paper_id'] in recent and rule['reasoning']:
+            rules_text += f"Reasoning: {rule['reasoning']}\n"
+        rules_text += f"Code:\n{rule['suggested_code']}\n"
     gold_tests_text = ""
     for i, rule in enumerate(rules, 1):
+        if rule['paper_id'] not in recent:
+            continue          # evidence aged out; the rule itself is above
         gold_tests_text += (f"\n--- Example {i} (paper {rule['paper_id']}, "
                             f"type {rule['structure_type']}) ---\n")
         if rule['gold_text']:
@@ -1598,6 +1634,12 @@ def aggregate_rules_merged(input_csv: str, group_key: str,
                                 f"{rule['gold_text']}\n")
         if rule['latex_context']:
             gold_tests_text += f"SURROUNDING LATEX CONTEXT:\n{rule['latex_context'][:1500]}\n"
+    if n_aged:
+        gold_tests_text += (
+            f"\n--- ({n_aged} earlier suggestion(s) from previous papers are "
+            f"listed under 'Individual rule suggestions' as code only; their "
+            f"worked examples are omitted for length. Keep the rules they "
+            f"represent unless a rule is wrong or now redundant.) ---\n")
 
     if multi:
         subtype_block = (
@@ -1895,6 +1937,49 @@ def prune_slow_rules(rules_path: str, paper_texts: Dict[str, str],
     return slow
 
 
+def _run_extract_fn_guarded(extract_fn, text: str, paper_id: str,
+                            timeout: float):
+    """Run a generated extract_fn under a wall-clock cap. None == give up.
+
+    Returns the extraction list, or None if it raised or blew the cap (the
+    caller then skips this paper for this group). SIGALRM can interrupt a
+    regex spinning in C, which is the whole point — a plain try/except cannot.
+
+    Only armed on the main thread; SIGALRM is process-global and setting it
+    from a worker would both fail and stomp on the main thread's handler. Off
+    the main thread this degrades to an unguarded call, which is the current
+    behaviour everywhere and no worse than before.
+    """
+    import signal as _signal
+    import threading as _threading
+
+    use_alarm = (_threading.current_thread() is _threading.main_thread()
+                 and timeout and timeout > 0)
+
+    class _ExtractTimeout(Exception):
+        pass
+
+    def _on_alarm(signum, frame):
+        raise _ExtractTimeout()
+
+    old = _signal.signal(_signal.SIGALRM, _on_alarm) if use_alarm else None
+    if use_alarm:
+        _signal.setitimer(_signal.ITIMER_REAL, timeout)
+    try:
+        return extract_fn(text)
+    except _ExtractTimeout:
+        print(f"  [WARN] extract_fn exceeded {timeout:.0f}s on {paper_id} "
+              f"(runaway regex) — skipping paper for this group")
+        return None
+    except Exception as e:
+        print(f"  [WARN] extract_fn raised on {paper_id}: {e} — skipping paper")
+        return None
+    finally:
+        if use_alarm:
+            _signal.setitimer(_signal.ITIMER_REAL, 0)
+            _signal.signal(_signal.SIGALRM, old)
+
+
 def prune_rules(paper_ids: List[str], structure_type: str,
                 gold_csv: str, eval_dir: str,
                 threshold: float = 0.7,
@@ -1904,8 +1989,14 @@ def prune_rules(paper_ids: List[str], structure_type: str,
                 max_rule_seconds: Optional[float] = 10.0,
                 match_mode: str = "m1",
                 cover: float = 0.7,
-                support_gold_csv: Optional[str] = None) -> int:
+                support_gold_csv: Optional[str] = None,
+                extract_timeout: Optional[float] = None) -> int:
     """Identify FP-causing distilled rules and comment them out.
+
+    ``extract_timeout`` — wall-clock cap per paper on the generated
+    ``extract_fn``. Defaults to ``max(30, 6*max_rule_seconds)``: generous
+    enough that a merely slow group is not skipped, hard enough that a
+    runaway regex cannot stall the run indefinitely.
 
     Calls the distilled extraction function *directly* (bypassing the full
     parser) so we isolate distilled-rule output.  Each FP is attributed to the
@@ -1978,6 +2069,10 @@ def prune_rules(paper_ids: List[str], structure_type: str,
                 if (g.get('raw_latex') or g.get('clean_text') or '').strip()
             ]
 
+    # Default the runaway-regex cap off max_rule_seconds so one knob tunes both.
+    if extract_timeout is None:
+        extract_timeout = max(30.0, 6.0 * (max_rule_seconds or 10.0))
+
     # 3. Extract from each paper and classify TP / FP
     all_results: List[tuple] = []  # (paper_id, result_dict, is_tp)
 
@@ -1999,10 +2094,19 @@ def prune_rules(paper_ids: List[str], structure_type: str,
         # (e.g. a buggy sort key). The parser path already swallows this; mirror
         # it here so one bad codegen degrades the group instead of killing the
         # whole run.
-        try:
-            results = extract_fn(text)
-        except Exception as e:
-            print(f"  [WARN] extract_fn raised on {paper_id}: {e} — skipping paper")
+        #
+        # try/except is NOT sufficient on its own: a catastrophically
+        # backtracking regex does not raise, it spins inside C code where no
+        # Python exception handler can reach it. Observed live — one generated
+        # pattern burned a core for 12 minutes on a single findall and stalled
+        # the entire run with no output and no way to bound it from outside.
+        # prune_slow_rules already guards its per-pattern timings with SIGALRM;
+        # extract_fn composes those patterns and was left unguarded, so the
+        # composed path could hang even when each pattern passed in isolation.
+        # Same mechanism, applied where it was missing.
+        results = _run_extract_fn_guarded(extract_fn, text, paper_id,
+                                          extract_timeout)
+        if results is None:
             continue
         extracted_texts = [r.get('raw_latex', '') for r in results]
 

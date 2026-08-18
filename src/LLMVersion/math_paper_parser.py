@@ -856,14 +856,30 @@ class PaperParser:
             if distilled_tables:
                 tables = self._merge_objects(tables, distilled_tables)
 
-            # NOTE: remark / example / assumption are deliberately NOT wired up
-            # here yet. The distillation pipeline does generate rules for them
-            # (the "simpleenv" group) and the combined importer does export
-            # extract_distilled_{remark,example,assumption}, so those rules are
-            # currently dead code. Enabling them lifts train pooled F1 by +0.063
-            # but only +0.006 on held-out math and -0.002 on held-out ML: the
-            # current simpleenv rules do not generalize. Re-distill them on more
-            # papers before turning this on. See scratchpad both_fixes.patch.
+            # remark / example / assumption — the "simpleenv" group. Wired as
+            # of the v5.1 60-paper distillation; until then these rules were
+            # generated on every run and never applied, so ~40% of the
+            # teacher's output for a typical paper was dead code that could not
+            # move F1 no matter how good it was.
+            #
+            # Left OFF originally for a real reason, recorded here so it is not
+            # rediscovered the hard way: on the ORIGINAL small distillation the
+            # simpleenv rules lifted train pooled F1 by +0.063 but only +0.006
+            # on held-out math and -0.002 on held-out ML — i.e. they overfit.
+            # The stated condition for enabling was "re-distil them on more
+            # papers first". Set APPLY_SIMPLEENV_DISTILLED = False to restore
+            # the old behaviour and measure the difference on held-out data.
+            if self.APPLY_SIMPLEENV_DISTILLED:
+                for _stype in ("remark", "example", "assumption"):
+                    _distilled = self._apply_distilled_rules(text, _stype)
+                    if not _distilled:
+                        continue
+                    if _stype == "remark":
+                        remarks = self._merge_objects(remarks, _distilled)
+                    elif _stype == "example":
+                        examples = self._merge_objects(examples, _distilled)
+                    else:
+                        assumptions = self._merge_objects(assumptions, _distilled)
 
         # equations inside theorem/definition/proof/algorithm/example/remark bodies
         containers: List[MathObject] = theorem_like + definitions + proofs + algorithms + examples + remarks
@@ -1513,6 +1529,11 @@ class PaperParser:
     # ------------------------------------------------------------------
 
     # Maps structure_type -> class constructor used to wrap distilled results
+    #: Apply distilled rules for remark/example/assumption. See the note at
+    #: the simpleenv block in parse_file for why this was off, and what the
+    #: evidence was. Flip to False to restore pre-v5.1 behaviour.
+    APPLY_SIMPLEENV_DISTILLED = True
+
     _DISTILLED_TYPE_MAP = {
         'definition': 'Definition',
         'theorem': 'TheoremLike',
@@ -1523,6 +1544,13 @@ class PaperParser:
         'conjecture': 'Conjecture',
         'problem': 'Problem',
         'proof': 'Proof',
+        # simpleenv types have no class of their own: _extract_simple_envs
+        # builds Definition objects with `kind` set to the target type.
+        # Distilled results must be wrapped identically, or _merge_objects
+        # would be comparing different classes for the same kind.
+        'remark': 'Definition',
+        'example': 'Definition',
+        'assumption': 'Definition',
         'algorithm': 'Algorithm',
         'table': 'TableObject',
     }

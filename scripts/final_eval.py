@@ -46,6 +46,66 @@ def overall(per_type: dict):
     return all9, pres
 
 
+def _f1_from(c: dict) -> dict:
+    """Rebuild a metrics-shaped dict from recorded integer counts.
+
+    Recomputed rather than read back as a float: the stored floats are rounded
+    on write, and a derived number that differs from the parsed one in the
+    third decimal is worse than useless — neither can then check the other.
+    """
+    tp, fp, fn = c["tp"], c["fp"], c["fn"]
+    tpr = c.get("tp_recall", tp)
+    p = tp / (tp + fp) if (tp + fp) else 0.0
+    r = tpr / (tpr + fn) if (tpr + fn) else 0.0
+    return {"tp": tp, "tp_recall": tpr, "fp": fp, "fn": fn,
+            "n_gold": c.get("n_gold", 0), "precision": p, "recall": r,
+            "f1": 2 * p * r / (p + r) if (p + r) else 0.0}
+
+
+def load_recorded(eval_dir: Path, papers, types, metric, threshold):
+    """{state: {paper: {type: counts}}} from trajectory/scores.jsonl, m1 only.
+
+    Returns None unless the file covers every state and paper this script
+    needs, under the same scoring parameters. final_eval scores in m1 with no
+    cross-type support, so only m1 rows are eligible; cover is irrelevant to m1
+    and deliberately not checked.
+
+    The states map onto the run like this:
+      base      -> the no-rules baseline (step_00)
+      after i   -> the rules in effect AFTER the i-th paper, which is also the
+                   state in effect JUST BEFORE paper i+1 was distilled
+    so 'rules so far' for papers[i] is 'base' when i == 0 and 'after i'
+    otherwise, and FINAL is 'after len(papers)'.
+    """
+    path = eval_dir / "trajectory" / "scores.jsonl"
+    if not path.exists():
+        return None
+    out = {}
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if r.get("mode") != "m1" or not r.get("per_type"):
+                continue
+            if r.get("metric") != metric or r.get("threshold") != threshold:
+                continue
+            out.setdefault(r["state"], {})[r["paper_id"]] = r["per_type"]
+    need = ["base"] + [f"after {i}" for i in range(1, len(papers) + 1)]
+    for st in need:
+        if st not in out:
+            return None
+        for pid in papers:
+            row = out[st].get(pid)
+            if not row or any(t not in row for t in types):
+                return None
+    return out
+
+
 def main():
     p = argparse.ArgumentParser(description="Final-rules re-evaluation")
     p.add_argument("--eval-dir", required=True)
@@ -55,6 +115,11 @@ def main():
                    choices=["jaccard", "containment"])
     p.add_argument("--final-snapshot", default=None,
                    help="Snapshot dir name to treat as FINAL (default: highest step_NN)")
+    p.add_argument("--no-cache", action="store_true",
+                   help="ignore trajectory/scores.jsonl and re-parse every "
+                        "paper. Slower, and the two paths are verified to "
+                        "agree — use it to re-verify that, or when the "
+                        "snapshots have changed under a stale scores file.")
     args = p.parse_args()
 
     eval_dir = Path(args.eval_dir).resolve()
@@ -89,14 +154,32 @@ def main():
     # distilled live in snaps[i] — used for the "FN with rules so far" column.
     print(f"\n{'Paper':<10} | {'baseline all9/present':<22} | {'FINAL all9/present':<20} | per-type FINAL f1 (gold>0)")
     print("-" * 110)
+    # The run records these scores itself (--score-every), and this script's
+    # three parses per paper are then pure recomputation: 'base' and the
+    # per-paper 'rules so far' state were both already parsed during the run
+    # and thrown away. Derive when we can; parse only when we must.
+    rec = None if args.no_cache else load_recorded(
+        eval_dir, papers, types, args.match_metric, args.threshold)
+    if rec is not None:
+        print(f"Source: trajectory/scores.jsonl (recorded by the run, no reparse)")
+    else:
+        print("Source: re-parsing (no usable recorded scores)")
+
     for i, pid in enumerate(papers):
-        pre_snap = snaps[i] if i < len(snaps) else step00
-        base_b = parse_buckets(pid, tex_dir, types, eval_dir=step00)
-        sofar_b = parse_buckets(pid, tex_dir, types, eval_dir=pre_snap)
-        fin_b = parse_buckets(pid, tex_dir, types, eval_dir=final)
-        base_m = {t: metrics(base_b[t], gold[t].get(pid, []), args.threshold) for t in types}
-        sofar_m = {t: metrics(sofar_b[t], gold[t].get(pid, []), args.threshold) for t in types}
-        fin_m = {t: metrics(fin_b[t], gold[t].get(pid, []), args.threshold) for t in types}
+        if rec is not None:
+            sofar_state = "base" if i == 0 else f"after {i}"
+            base_m = {t: _f1_from(rec["base"][pid][t]) for t in types}
+            sofar_m = {t: _f1_from(rec[sofar_state][pid][t]) for t in types}
+            fin_m = {t: _f1_from(rec[f"after {len(papers)}"][pid][t])
+                     for t in types}
+        else:
+            pre_snap = snaps[i] if i < len(snaps) else step00
+            base_b = parse_buckets(pid, tex_dir, types, eval_dir=step00)
+            sofar_b = parse_buckets(pid, tex_dir, types, eval_dir=pre_snap)
+            fin_b = parse_buckets(pid, tex_dir, types, eval_dir=final)
+            base_m = {t: metrics(base_b[t], gold[t].get(pid, []), args.threshold) for t in types}
+            sofar_m = {t: metrics(sofar_b[t], gold[t].get(pid, []), args.threshold) for t in types}
+            fin_m = {t: metrics(fin_b[t], gold[t].get(pid, []), args.threshold) for t in types}
         for t in types:
             for k in ('tp', 'fp', 'fn'):
                 pooled['base'][k] += base_m[t][k]

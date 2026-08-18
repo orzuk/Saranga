@@ -275,14 +275,26 @@ def canonicalize_clean_latex(src: str) -> tuple:
 
 
 def validate_and_repair_group_file(path: Path, gkey: str, prev_src,
-                                   probe_text: str = "", timeout_s: float = 30.0) -> str:
+                                   probe_text: str = "", timeout_s: float = 30.0,
+                                   max_rule_seconds: float = 10.0) -> str:
     """Make `path` safe to import+run, or fall back. Returns the action taken:
-    'ok' | 'aliased' | 'reverted' | 'stubbed' | 'slow'.
+    'ok' | 'aliased' | 'reverted' | 'stubbed' | 'slow→...'.
 
     `probe_text` (real LaTeX from the papers seen so far) is run through the
     entry point under a `timeout_s` wall-clock limit, so a regex that is valid
     Python but catastrophically backtracks on real input is caught here and
     reverted — before it can hang the prune/parse steps.
+
+    On a timeout the SLOW PATTERNS ARE PRUNED INDIVIDUALLY before any
+    whole-file fallback is considered. This guard can only run the composed
+    entry point, so it cannot tell which of N suggestions is the slow one —
+    and discarding all of them is a heavy price for one bad regex. Observed
+    live: one pattern among 26 definition suggestions timed out, the group had
+    no previous file to revert to, and the entire type was replaced with
+    ``return []`` — 26 analyzed FNs and a 26.8k-token aggregate call bought
+    nothing, silently. ``prune_slow_rules`` already times each pattern
+    separately and comments out only the offenders; it just ran too late, in
+    step 5, by which point this function had already stubbed the file.
     """
     fn_name = f"extract_distilled_{gkey}"
 
@@ -354,6 +366,33 @@ def validate_and_repair_group_file(path: Path, gkey: str, prev_src,
         try:
             _run_with_timeout(fn, probe_text, timeout_s)
         except _RuleTimeout:
+            # Surgery before amputation: comment out the individual patterns
+            # that are slow, then retry. Only if the file is STILL too slow
+            # with every offender removed do we fall back to the whole-file
+            # revert/stub.
+            try:
+                from distillation_analysis import prune_slow_rules
+                slow = prune_slow_rules(str(path), {"_probe": probe_text},
+                                        max_rule_seconds)
+            except Exception as e:
+                print(f"      [guard] per-pattern prune failed: {e}")
+                slow = {}
+            if slow:
+                print(f"      [guard] slow: pruned {len(slow)} pattern(s) "
+                      f"individually ({', '.join(sorted(slow)[:5])}"
+                      f"{'...' if len(slow) > 5 else ''}) — keeping the rest")
+                try:
+                    src2 = path.read_text(encoding='utf-8')
+                    ns2 = {'__name__': 'distilled_smoke_retry'}
+                    exec(compile(src2, str(path), 'exec'), ns2)
+                    fn2 = ns2.get(fn_name)
+                    if callable(fn2):
+                        _run_with_timeout(fn2, probe_text, timeout_s)
+                        return f"slow→pruned {len(slow)}"
+                except _RuleTimeout:
+                    print("      [guard] still slow after per-pattern prune")
+                except Exception as e:
+                    print(f"      [guard] retry failed to import: {e}")
             return f"slow→{_restore()}"
         except Exception:
             return _restore()
@@ -855,12 +894,19 @@ def score_state(papers, tex_dir: Path, types, eval_dir: Path | None,
             support = _all_gold(gold_texts_by_type, pid, types)
             for mode in ("m1", "m3"):
                 agg = {"tp": 0, "tp_recall": 0, "fp": 0, "fn": 0}
+                # Per-type counts as well as the sum. final_eval's per-type
+                # table is the only reason it re-parses every paper three
+                # times; recording the breakdown here makes that derivable
+                # instead, and costs a few hundred bytes per row.
+                per_type = {}
                 for t in types:
                     m = metrics(buckets.get(t, []),
                                 gold_texts_by_type[t].get(pid, []), threshold,
                                 mode=mode, support_texts=support, cover=cover)
                     for k in agg:
                         agg[k] += m.get(k, 0)
+                    per_type[t] = {k: m.get(k, 0) for k in
+                                   ("tp", "tp_recall", "fp", "fn", "n_gold")}
                 prec = agg["tp"] / (agg["tp"] + agg["fp"]) if agg["tp"] + agg["fp"] else 0.0
                 rec = (agg["tp_recall"] / (agg["tp_recall"] + agg["fn"])
                        if agg["tp_recall"] + agg["fn"] else 0.0)
@@ -875,6 +921,7 @@ def score_state(papers, tex_dir: Path, types, eval_dir: Path | None,
                                   "no" if pid in pilot_set else "heldout"),
                     **agg, "precision": round(prec, 4),
                     "recall": round(rec, 4), "f1": round(f1, 4),
+                    "per_type": per_type,
                 }) + "\n")
     print(f"  [score] {len(papers)} paper(s) @ {state} -> {out_path.name}")
 
@@ -1144,6 +1191,10 @@ def run(args):
     write_combined_importer(eval_dir, groups)
 
     iteration_log = []
+    #: (paper_idx, paper_id, group, error) for aggregate calls that failed and
+    #: fell back to the previous rules. Reported at the end so a degraded run
+    #: is never mistaken for a clean one.
+    agg_failures = []
     cumulative_cost = 0.0
     prior_papers = []
     start_idx = 0
@@ -1161,8 +1212,25 @@ def run(args):
         for g in groups:
             if group_cum_csv[g].exists():
                 group_cum_rows[g] = list(csv.DictReader(open(group_cum_csv[g], encoding='utf-8')))
+        # Drop already-distilled papers from the work list so --resume means
+        # "re-run the exact same command". Without this, --pilot-papers is
+        # taken verbatim and every prior paper is distilled AGAIN: duplicate
+        # rows in the log, wasted LLM spend, and rules re-derived from papers
+        # already learned. The alternative was hand-constructing the remaining
+        # list in the run's own worst-first order, which is not something
+        # anyone should have to do at 3am after a crash at paper 37.
+        done = set(prior_papers)
+        dropped = [p for p in pilot_papers if p in done]
+        pilot_papers = [p for p in pilot_papers if p not in done]
         print(f"  RESUME: {len(prior_papers)} prior paper(s), cumulative ${cumulative_cost:.4f}")
-        print(f"          prior: {prior_papers}\n")
+        print(f"          prior: {prior_papers}")
+        if dropped:
+            print(f"          skipping {len(dropped)} already-distilled paper(s) "
+                  f"from --pilot-papers")
+        print(f"          remaining this run: {len(pilot_papers)}\n")
+        if not pilot_papers:
+            print("  Nothing left to distil — every requested paper is already "
+                  "in the iteration log. Running finalize only.\n")
     else:
         # Clean slate: drop gold + per-group caches so a fresh run starts empty.
         for t in types:
@@ -1405,12 +1473,37 @@ def run(args):
             if new_sugg or (has_sugg and not gfile.exists()):
                 print(f"  [4:{gkey}] aggregate {len(group_cum_rows[gkey])} cumulative rule(s) ...")
                 prev_src = gfile.read_text(encoding='utf-8') if gfile.exists() else None
-                _path, gusage = aggregate_rules_merged(
-                    str(group_cum_csv[gkey]), gkey, groups[gkey], str(gdir), model)
+                # The aggregate prompt carries EVERY cumulative row for this
+                # group, so it grows with the run and is the one call that can
+                # outgrow the context window. A failure here used to propagate
+                # and kill the run mid-paper, discarding everything already
+                # paid for; the group's last-good rules are a far better
+                # outcome than losing the run. Mirrors how a SyntaxError in the
+                # generated code is already handled inside aggregate.
+                try:
+                    _path, gusage = aggregate_rules_merged(
+                        str(group_cum_csv[gkey]), gkey, groups[gkey], str(gdir),
+                        model)
+                except Exception as e:
+                    print(f"      [{gkey}] AGGREGATE FAILED: {type(e).__name__}: "
+                          f"{str(e)[:300]}")
+                    print(f"      [{gkey}] keeping previous rules; this group "
+                          f"learned nothing from paper {paper_idx}")
+                    agg_failures.append((paper_idx, pid, gkey, f"{type(e).__name__}: {str(e)[:200]}"))
+                    gusage = {}
                 for k in agg_usage_tot:
                     agg_usage_tot[k] += gusage.get(k, 0)
+                # Surface the input size: this is the number that tells you
+                # whether the prompt is on track to exceed the context window,
+                # and it is already measured -- it just was not shown.
+                _in = gusage.get('input_tokens', 0) + gusage.get(
+                    'cache_read_input_tokens', 0)
+                if _in:
+                    print(f"      [{gkey}] aggregate input ~{_in:,} tok "
+                          f"({len(group_cum_rows[gkey])} rows)")
                 guard = validate_and_repair_group_file(
-                    gfile, gkey, prev_src, probe_text=guard_probe)
+                    gfile, gkey, prev_src, probe_text=guard_probe,
+                    max_rule_seconds=args.max_rule_seconds)
                 if guard != 'ok':
                     print(f"      [guard] generated rules unsafe → {guard}")
             per_group[gkey] = {
@@ -1451,7 +1544,8 @@ def run(args):
             # Defense-in-depth: prune output is unguarded codegen too — a
             # corrupted comment-out would silently disable the whole group.
             pruned_guard = validate_and_repair_group_file(
-                gfile, gkey, pre_prune_src, probe_text=guard_probe)
+                gfile, gkey, pre_prune_src, probe_text=guard_probe,
+                max_rule_seconds=args.max_rule_seconds)
             if pruned_guard != 'ok':
                 print(f"      [guard:post-prune] {pruned_guard}")
 
@@ -1564,6 +1658,13 @@ def run(args):
               f"{e['baseline_f1']:>7.3f} {e['post_f1']:>8.3f}")
     total_calls = sum(e['total_llm_calls'] for e in iteration_log)
     print(f"\n  Total LLM calls: {total_calls}")
+    if agg_failures:
+        print(f"\n  !! {len(agg_failures)} AGGREGATE CALL(S) FAILED — those "
+              f"groups kept their previous rules and learned nothing from the "
+              f"paper in question. Results below are a FLOOR, not this "
+              f"configuration's ceiling:")
+        for idx, pid, gkey, err in agg_failures:
+            print(f"       paper {idx} ({pid}) / {gkey}: {err}")
     print(f"  Total cost: ${cumulative_cost:.4f}")
     if iteration_log:
         print(f"  Avg cost/paper: ${cumulative_cost/len(iteration_log):.4f}")
