@@ -113,6 +113,32 @@ def _merged_groups(types):
     return mrg.base_method_groups(types)
 
 
+def clean_base_snapshot(eval_dir: Path, types, merged: bool) -> Path:
+    """An empty rule set, for measuring the TRUE base parser.
+
+    `eval_dir=None` does NOT mean "baseline" — it means "whatever is installed",
+    and the production `src/LLMVersion/*_eval/` dirs are normally symlinked to a
+    PREVIOUS run's final rules. Passing None therefore credits the base parser
+    with the last run's distilled output. Measured on the 10-paper smoke set,
+    that inflated the reported baseline by +0.0155 F1 (0.591 -> 0.606) and so
+    understated the distillation delta by the same amount.
+
+    Installing an empty snapshot instead displaces those symlinks for the
+    duration of the parse (`_install_silver_rules` renames whatever is there to
+    `.silver_bak` and restores it afterwards), so the measurement is honest and
+    the promoted rules survive untouched.
+
+    Merged: reuse the runner's own baseline_snapshot. Sequential: an empty dir
+    is enough — with no `distilled_rules.py` to link, the installer removes the
+    stale symlink and creates nothing, leaving the parser with no rules at all.
+    """
+    if merged:
+        return mrg.baseline_snapshot(eval_dir, _merged_groups(types))
+    snap = eval_dir / "snapshots" / "_baseline_seq"
+    snap.mkdir(parents=True, exist_ok=True)
+    return snap
+
+
 def _group_rule_files(eval_dir: Path):
     """Every per-group rules file the merged run wrote."""
     return sorted((eval_dir / "groups").glob("*/" + RULES_FILE))
@@ -201,14 +227,15 @@ def count_active_rules_merged(eval_dir: Path):
 
 
 def score_set_merged(papers, tex_dir: Path, types, gold_dir: Path,
-                     threshold: float, eval_dir: Path):
+                     threshold: float, eval_dir: Path,
+                     mode: str = "m1", cover: float = 0.7):
     """Pooled P/R/F1 across ALL types, using the merged parser path.
 
     Pooled (micro) rather than a per-type macro, per the project convention:
     a macro over 14 types is dominated by the sparse ones.
     """
     gold_by_type = {t: mrg.load_gold_texts(gold_dir / FNAME_MAP[t]) for t in types}
-    tp = fp = fn = 0
+    tp = tpr = fp = fn = 0
     per_paper, f1s = {}, []
     for pid in papers:
         try:
@@ -216,20 +243,25 @@ def score_set_merged(papers, tex_dir: Path, types, gold_dir: Path,
         except Exception as e:                      # noqa: BLE001
             print(f"    WARNING: scoring {pid} failed: {e}")
             continue
-        ptp = pfp = pfn = 0
+        ptp = ptpr = pfp = pfn = 0
+        # m3's support is gold across EVERY type (nesting crosses types).
+        support = [g for t in types for g in gold_by_type[t].get(pid, [])]
         for t in types:
-            m = mrg.metrics(buckets[t], gold_by_type[t].get(pid, []), threshold)
-            ptp += m["tp"]; pfp += m["fp"]; pfn += m["fn"]
-        tp += ptp; fp += pfp; fn += pfn
+            m = mrg.metrics(buckets[t], gold_by_type[t].get(pid, []), threshold,
+                            mode=mode, support_texts=support, cover=cover)
+            ptp += m["tp"]; ptpr += m["tp_recall"]
+            pfp += m["fp"]; pfn += m["fn"]
+        tp += ptp; tpr += ptpr; fp += pfp; fn += pfn
         p = ptp / (ptp + pfp) if (ptp + pfp) else 0.0
-        r = ptp / (ptp + pfn) if (ptp + pfn) else 0.0
+        # recall uses the RECALL numerator; under m3 it differs from ptp
+        r = ptpr / (ptpr + pfn) if (ptpr + pfn) else 0.0
         f = 2 * p * r / (p + r) if (p + r) else 0.0
         per_paper[pid] = {"tp": ptp, "fp": pfp, "fn": pfn, "f1": f}
         f1s.append(f)
     prec = tp / (tp + fp) if (tp + fp) else 0.0
-    rec = tp / (tp + fn) if (tp + fn) else 0.0
+    rec = tpr / (tpr + fn) if (tpr + fn) else 0.0
     f1 = 2 * prec * rec / (prec + rec) if (prec + rec) else 0.0
-    return {"tp": tp, "fp": fp, "fn": fn,
+    return {"tp": tp, "tp_recall": tpr, "fp": fp, "fn": fn,
             "precision": prec, "recall": rec, "f1": f1,
             "macro_f1": statistics.mean(f1s) if f1s else 0.0,
             "n_papers": len(per_paper), "per_paper": per_paper}
@@ -270,7 +302,8 @@ def sweep_alpha_merged(alphas, prune_papers, score_papers, args, eval_dir: Path,
             )
         n_after = count_active_rules_merged(eval_dir)
         m = score_set_merged(score_papers, args.tex_dir, types, gold_dir,
-                             args.threshold, eval_dir=eval_dir)
+                             args.threshold, eval_dir=eval_dir,
+                                     mode=args.match_mode, cover=args.cover)
         rows.append({
             "label": label, "alpha": a,
             "rules_before": n_before, "rules_pruned": n_pruned,
@@ -528,7 +561,8 @@ def sweep_alpha(alphas, prune_papers, score_papers, args, eval_dir: Path,
         )
         n_after = count_active_rules(eval_dir)
         m = score_set(score_papers, args.tex_dir, args.structure_type, gold_csv,
-                      args.threshold, eval_dir=eval_dir)
+                      args.threshold, eval_dir=eval_dir,
+                                     mode=args.match_mode, cover=args.cover)
         rows.append({
             "label": label, "alpha": a,
             "rules_before": n_before, "rules_pruned": n_pruned,
@@ -610,7 +644,7 @@ def main():
     run.add_argument("--model", default="claude-sonnet-4-6")
     run.add_argument("--threshold", type=float, default=0.7)
     run.add_argument("--origin-filter", default=None)
-    run.add_argument("--match-metric", default="jaccard",
+    run.add_argument("--match-metric", default="containment",
                      choices=["jaccard", "containment"])
     run.add_argument("--resume", action="store_true")
     run.add_argument("--batch-size", type=int, default=8,
@@ -764,14 +798,19 @@ def main():
     print("=" * 72)
     print("BASELINE — manual rules only")
     print("=" * 72)
+    # NOT eval_dir=None — see clean_base_snapshot(). None means "whatever rules
+    # happen to be installed", which is normally a previous run's final output.
+    base_snap = clean_base_snapshot(eval_dir, types, MERGED)
     if not test:
         base_test = None
     elif MERGED:
         base_test = score_set_merged(test, args.tex_dir, types, gold_dir,
-                                     args.threshold, eval_dir=None)
+                                     args.threshold, eval_dir=base_snap,
+                                     mode=args.match_mode, cover=args.cover)
     else:
         base_test = score_set(test, args.tex_dir, args.structure_type, gold_csv,
-                              args.threshold, eval_dir=None)
+                              args.threshold, eval_dir=base_snap,
+                                     mode=args.match_mode, cover=args.cover)
     if base_test:
         print(f"  TEST  P={base_test['precision']:.3f} R={base_test['recall']:.3f} "
               f"F1={base_test['f1']:.3f} (macro {base_test['macro_f1']:.3f})")
@@ -921,10 +960,12 @@ def main():
         dist_test = None
     elif MERGED:
         dist_test = score_set_merged(test, args.tex_dir, types, gold_dir,
-                                     args.threshold, eval_dir=eval_dir)
+                                     args.threshold, eval_dir=eval_dir,
+                                     mode=args.match_mode, cover=args.cover)
     else:
         dist_test = score_set(test, args.tex_dir, args.structure_type, gold_csv,
-                              args.threshold, eval_dir=eval_dir)
+                              args.threshold, eval_dir=eval_dir,
+                                     mode=args.match_mode, cover=args.cover)
 
     report = {
         "pipeline": args.pipeline,

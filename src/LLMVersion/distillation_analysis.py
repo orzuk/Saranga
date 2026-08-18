@@ -232,7 +232,8 @@ def _load_extractions(eval_dir: str) -> Dict[Tuple[str, str], List[str]]:
 def identify_dark_knowledge(eval_dir: str, gold_csv: str, structure_type: str,
                             threshold: float = 0.7,
                             match_mode: str = "m1",
-                            cover: float = 0.7) -> List[dict]:
+                            cover: float = 0.7,
+                            support_ext_by_paper: dict = None) -> List[dict]:
     """Distillation mode: gold=exists AND manual=FN AND any_LLM=TP.
 
     Returns list of dicts with:
@@ -245,6 +246,21 @@ def identify_dark_knowledge(eval_dir: str, gold_csv: str, structure_type: str,
           jointly covering one gold node is decomposition, not a miss, so
           distilling a rule for it would only add a duplicate
     See ``match_modes`` for why.
+
+    Coverage is judged WITHIN the type being scored, and that differs from the
+    prune gate on purpose — do not "fix" the inconsistency. The gate asks "is
+    the span I emitted real content anywhere?", so cross-type support is right
+    there. This asks "must I still learn to extract this node AS this type?",
+    and a span filed under another type does not answer that: a definition
+    swallowed by a proof extraction is still a definition the parser cannot
+    find. Measured on a 4-paper probe, cross-type scope here marked 79% of
+    missed items as covered (124 -> 26), suppressing real learning while
+    changing nothing about the parser's actual behaviour.
+
+    ``support_ext_by_paper`` — optional {paper_id: [extraction, ...]} across
+    every type, m3 only, for callers that deliberately want the cross-type
+    question. Left unset by the pipeline. m1 ignores it entirely: it has no
+    notion of support.
     """
     gold_data = _load_gold_csv(gold_csv)
     if not gold_data:
@@ -293,11 +309,19 @@ def identify_dark_knowledge(eval_dir: str, gold_csv: str, structure_type: str,
                 manual_best_sim = max(manual_best_sim, sim)
 
             if match_mode == "m1":
+                # Strict same-type: unchanged, and cross-type support does not
+                # apply — m1 has no support concept.
                 manual_matched = manual_best_sim >= threshold
             else:
                 import match_modes as _mm
+                # Cross-type when supplied, matching the prune gate's scope.
+                cover_texts = manual_texts
+                if support_ext_by_paper:
+                    extra = support_ext_by_paper.get(match_pid) or []
+                    if extra:
+                        cover_texts = list(manual_texts) + list(extra)
                 manual_matched = _mm.gold_is_found(
-                    gold_text, manual_texts, threshold,
+                    gold_text, cover_texts, threshold,
                     mode=match_mode, cover=cover)
 
             if manual_matched:

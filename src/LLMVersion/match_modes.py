@@ -62,9 +62,19 @@ def _ns():
 
 
 def tokens(text):
-    """Token set under the silver profile — the shared tokenizer, not a new one."""
+    """Token set under the silver profile — the shared tokenizer, not a new one.
+
+    Must go through node_similarity._prepare first. Without it this tokenised
+    RAW LaTeX (`\\begin`, `$`, `\\Gamma`, case preserved — 17 tokens on a short
+    definition) while text_sim, which every reported metric used, ran
+    clean_latex_to_text + normalize_latex first (6 tokens on the same string).
+    So the prune gate was matching on markup noise and the reports on cleaned
+    text: two different matchers, despite the claim in this docstring.
+    """
+    import node_similarity as _nsmod
     Profile, tokenize, _ = _ns()
-    return tokenize(text or "", profile=Profile.SILVER)
+    return tokenize(_nsmod._prepare(text or "", Profile.SILVER),
+                    profile=Profile.SILVER)
 
 
 def sym_containment(a, b):

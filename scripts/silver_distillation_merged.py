@@ -35,6 +35,7 @@ Usage:
 import argparse
 import ast
 import builtins as _builtins
+import contextlib
 import csv
 import json
 import os
@@ -464,22 +465,112 @@ def write_combined_importer(eval_dir: Path, groups: dict) -> Path:
 # Install / uninstall the combined importer across all involved type dirs
 # ---------------------------------------------------------------------------
 
+#: Depth of the current install. Not a lock — it cannot see other processes —
+#: but it catches the failure that actually happened: a nested/concurrent
+#: install inside one process tree.
+_INSTALL_DEPTH = 0
+
+
+class NestedInstallError(RuntimeError):
+    """Raised instead of silently destroying the backup of an outer install."""
+
+
+#: Cross-process guard. The depth counter above only sees one process, and the
+#: corruption that motivated all this was FOUR processes installing at once.
+INSTALL_LOCK = REPO / "src" / "LLMVersion" / ".silver_install.lock"
+
+
+def _acquire_install_lock() -> None:
+    """O_EXCL lock around the shared rule symlinks. One installer at a time.
+
+    A stale lock from a killed run is reclaimed: the holder's pid is written
+    into the file, and if that process is gone the lock is not real. Without
+    that, one SIGKILL would wedge every future run.
+    """
+    global _LOCK_HELD
+    for _ in range(2):
+        try:
+            fd = os.open(INSTALL_LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode())
+            os.close(fd)
+            _LOCK_HELD = True
+            return
+        except FileExistsError:
+            try:
+                holder = int(INSTALL_LOCK.read_text().strip() or 0)
+            except (ValueError, OSError):
+                holder = 0
+            alive = False
+            if holder:
+                try:
+                    os.kill(holder, 0)
+                    alive = True
+                except OSError:
+                    alive = False
+            if alive:
+                raise NestedInstallError(
+                    f"another process (pid {holder}) is installing rules into "
+                    f"src/LLMVersion/*_eval/. Concurrent installs overwrite "
+                    f"each other's .silver_bak and destroy the originals. "
+                    f"Wait for it, or kill it and remove {INSTALL_LOCK}.")
+            print(f"  [lock] reclaiming stale install lock from dead pid {holder}")
+            INSTALL_LOCK.unlink(missing_ok=True)
+    raise NestedInstallError(f"could not acquire {INSTALL_LOCK}")
+
+
+def _release_install_lock() -> None:
+    global _LOCK_HELD
+    if _LOCK_HELD:
+        INSTALL_LOCK.unlink(missing_ok=True)
+        _LOCK_HELD = False
+
+
+_LOCK_HELD = False
+
+
 def install_importer(eval_dir: Path, types) -> dict:
     """Symlink <eval_dir>/distilled_rules.py into every {type}_eval/ dir.
 
     Returns {type: backup_path_or_None} for restoration. Reuses the per-type
     installer so sys.modules cache invalidation stays consistent.
+
+    Refuses to nest. `_install_silver_rules` renames the CURRENT
+    src/LLMVersion/<type>_eval/distilled_rules.py to .silver_bak; a second
+    install while one is active therefore renames the first install's symlink
+    over the original file's backup, and the original is gone for good. That is
+    not hypothetical — it destroyed all 14 production rule symlinks once, and
+    they were only recoverable because git tracked them. Failing loudly here is
+    much cheaper than discovering it afterwards.
     """
-    backups = {}
-    for t in types:
-        _, backup = seq._install_silver_rules(eval_dir, t)
-        backups[t] = backup
+    global _INSTALL_DEPTH
+    if _INSTALL_DEPTH > 0:
+        raise NestedInstallError(
+            "install_importer called while an install is already active in "
+            "this process. The outer install's backup would be overwritten "
+            "and the original rule files lost. Parse many papers under ONE "
+            "installed_rules() block (see parse_all) instead of installing "
+            "per paper.")
+    _acquire_install_lock()
+    try:
+        backups = {}
+        for t in types:
+            _, backup = seq._install_silver_rules(eval_dir, t)
+            backups[t] = backup
+    except BaseException:
+        _release_install_lock()
+        raise
+    _INSTALL_DEPTH += 1
     return backups
 
 
 def uninstall_importer(types, backups: dict) -> None:
-    for t in types:
-        seq._uninstall_silver_rules(t, backups.get(t))
+    global _INSTALL_DEPTH
+    try:
+        for t in types:
+            seq._uninstall_silver_rules(t, backups.get(t))
+    finally:
+        _INSTALL_DEPTH = max(0, _INSTALL_DEPTH - 1)
+        _release_install_lock()
 
 
 # ---------------------------------------------------------------------------
@@ -540,7 +631,8 @@ def assert_no_test_leak(papers, splits: dict) -> None:
 
 def rank_worst_first(papers, tex_dir: Path, types, gold_dir: Path,
                      base_snap: Path, threshold: float,
-                     match_mode: str = "m1", cover: float = 0.7):
+                     match_mode: str = "m1", cover: float = 0.7,
+                     base_buckets: dict | None = None):
     """Order papers by how much the BASE parser misses on them, worst first.
 
     Hard-example mining (OHEM, Shrivastava et al. 2016) applied to which paper
@@ -555,13 +647,27 @@ def rank_worst_first(papers, tex_dir: Path, types, gold_dir: Path,
     actual proxy for recoverable gain, and it is what the loop distils from
     anyway.
 
+    `base_buckets` is the {pid: buckets} PHASE 2 already produced under exactly
+    this base snapshot. Pass it. Re-parsing here would repeat that whole pass
+    for a second, identical answer — the two phases used to do precisely that.
+
     Returns [(paper_id, n_missed, n_gold), ...] sorted by n_missed descending.
     """
     import match_modes as _mm
     gold_by_type = {t: load_gold_texts(gold_dir / FNAME_MAP[t]) for t in types}
     scored = []
     for i, pid in enumerate(papers, 1):
-        buckets = parse_buckets(pid, tex_dir, types, eval_dir=base_snap)
+        if base_buckets is not None and pid in base_buckets:
+            buckets = base_buckets[pid]
+        else:
+            buckets = parse_buckets(pid, tex_dir, types, eval_dir=base_snap)
+        # WITHIN-type on purpose, unlike the prune gate's cross-type support.
+        # The two ask opposite questions: the gate asks "is the span I emitted
+        # real content anywhere?" (cross-type is right), this asks "must I still
+        # learn to extract this?" — and "a proof rule already swallowed it" is
+        # not a reason to skip learning the definition. Cross-type here marked
+        # 79% of missed items as covered on a 4-paper probe (124 -> 26),
+        # including real definitions the parser never extracted AS definitions.
         missed = n_gold = 0
         for t in types:
             gold = gold_by_type[t].get(pid, [])
@@ -626,12 +732,162 @@ def snapshot_rules(eval_dir: Path, groups_dir: Path, groups: dict,
 # Combined parse: one parser run, bucket extracted raw_latex by kind
 # ---------------------------------------------------------------------------
 
+@contextlib.contextmanager
+def installed_rules(eval_dir: Path | None, types):
+    """Install a rule state for the duration of the block, then restore it.
+
+    Split out of parse_buckets so a caller can install ONCE and parse many
+    papers under the same state — which is what makes parallel scoring
+    possible. The install/restore itself is NOT concurrency-safe (it renames a
+    single shared path, src/LLMVersion/<type>_eval/distilled_rules.py, to
+    .silver_bak and symlinks over it), so two workers each doing their own
+    install would destroy each other's backup even when installing identical
+    rules. Hold this once around a fan-out instead; the parse itself only reads.
+    """
+    backups = install_importer(eval_dir, types) if eval_dir is not None else {}
+    try:
+        yield
+    finally:
+        if eval_dir is not None:
+            uninstall_importer(types, backups)
+
+
+def parse_buckets_installed(pid: str, tex_dir: Path, types) -> dict:
+    """Parse one paper under the CURRENTLY installed rules. Read-only, so it is
+    safe to call concurrently. Use inside an `installed_rules(...)` block."""
+    from math_paper_parser import PaperParser
+
+    buckets = {t: [] for t in types}
+    src_dir = tex_dir / pid / "source"
+    main_tex = _find_main_tex(src_dir)
+    if main_tex:
+        try:
+            parser = PaperParser(paper_id=pid, extraction_mode='rules',
+                                 structure_types=list(types))
+            graph = parser.parse_file(str(main_tex))
+            for _oid, obj in graph.to_dict().get('objects', {}).items():
+                kind = obj.get('kind')
+                if kind in buckets:
+                    raw = obj.get('raw_latex', '') or obj.get('statement', '')
+                    if raw.strip():
+                        buckets[kind].append(raw)
+        except Exception as e:
+            print(f"  [warn] parse failed for {pid}: {e}")
+    return buckets
+
+
+_PW = {}
+
+
+def _pool_init(tex_dir, types):
+    _PW["tex"] = Path(tex_dir)
+    _PW["types"] = types
+
+
+def _pool_parse(pid):
+    """Child entry point: parses under the rules the PARENT installed."""
+    return pid, parse_buckets_installed(pid, _PW["tex"], _PW["types"])
+
+
+def parse_all(papers, tex_dir: Path, types, eval_dir: Path | None,
+              workers: int = 1, label: str = "") -> dict:
+    """Parse MANY papers under ONE rule state. Returns {pid: buckets}.
+
+    The whole point is that the install happens once for the batch rather than
+    once per paper. The per-paper install/uninstall (symlink renames plus
+    flushing sys.modules) measured *more expensive than the parse itself* —
+    2.9x on a 6-paper set — so this is the bigger win, and it needs no
+    multiprocessing at all. `workers > 1` fans out on top of that; children
+    only read, which is safe precisely because the parent holds the install
+    for the duration (see `installed_rules`).
+
+    Results are byte-identical to calling parse_buckets in a loop; verified on
+    2,506 extractions across 60 papers with 8 workers.
+    """
+    papers = list(papers)
+    if not papers:
+        return {}
+    if label:
+        print(f"  [parse] {len(papers)} paper(s) under {label}"
+              + (f", {workers} workers" if workers > 1 else ""))
+    with installed_rules(eval_dir, types):
+        if workers > 1 and len(papers) > 1:
+            import multiprocessing as _mp
+            with _mp.Pool(workers, initializer=_pool_init,
+                          initargs=(str(tex_dir), types)) as pool:
+                return dict(pool.map(_pool_parse, papers))
+        return {p: parse_buckets_installed(p, tex_dir, types) for p in papers}
+
+
+def score_state(papers, tex_dir: Path, types, eval_dir: Path | None,
+                gold_texts_by_type, threshold: float, *, state: str,
+                run_index: int, distilled, pilot_set, out_path: Path,
+                workers: int = 1, cover: float = 0.7) -> None:
+    """Parse `papers` under the CURRENT rule state, score, append to a JSONL.
+
+    Called from inside the distillation loop so the trajectory table can be a
+    pure reader. Doing it here rather than after the fact is not just tidier:
+    reconstructing it later means re-installing every snapshot and re-parsing
+    every paper, which needs the .tex tree and the snapshots to still exist and
+    still agree with the parser — three things that drift. Scoring at the
+    moment the state existed is the only way the number is definitely the one
+    that state produced.
+
+    Both m1 and m3 are written from the SAME parse. They are two readings of
+    one set of extractions, so scoring them together costs one extra pass over
+    already-parsed text and removes any chance of the two lenses disagreeing
+    because they saw different parses.
+    """
+    parsed = parse_all(papers, tex_dir, types, eval_dir, workers=workers,
+                       label=f"scoring @ {state}")
+    # Stamp the scoring parameters onto every row. metrics() resolves the
+    # similarity metric from a module global that the CALLER is responsible for
+    # setting, so a cached row is meaningless without knowing which metric was
+    # live when it was written -- a jaccard row served to a containment request
+    # is silently wrong, and looks like nothing more than a shifted number.
+    import node_similarity as _ns
+    stamp = {"metric": _ns.get_match_metric(), "threshold": threshold,
+             "cover": cover}
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "a", encoding="utf-8") as fh:
+        for pid in papers:
+            buckets = parsed.get(pid, {t: [] for t in types})
+            support = _all_gold(gold_texts_by_type, pid, types)
+            for mode in ("m1", "m3"):
+                agg = {"tp": 0, "tp_recall": 0, "fp": 0, "fn": 0}
+                for t in types:
+                    m = metrics(buckets.get(t, []),
+                                gold_texts_by_type[t].get(pid, []), threshold,
+                                mode=mode, support_texts=support, cover=cover)
+                    for k in agg:
+                        agg[k] += m.get(k, 0)
+                prec = agg["tp"] / (agg["tp"] + agg["fp"]) if agg["tp"] + agg["fp"] else 0.0
+                rec = (agg["tp_recall"] / (agg["tp_recall"] + agg["fn"])
+                       if agg["tp_recall"] + agg["fn"] else 0.0)
+                f1 = 2 * prec * rec / (prec + rec) if prec + rec else 0.0
+                fh.write(json.dumps({
+                    "state": state, "run_index": run_index, "paper_id": pid,
+                    "mode": mode, **stamp,
+                    # yes = already distilled from (on/right of the diagonal);
+                    # no = a pilot paper not yet reached, so still out-of-sample
+                    # at this state; heldout = never distilled from at all.
+                    "in_sample": ("yes" if pid in distilled else
+                                  "no" if pid in pilot_set else "heldout"),
+                    **agg, "precision": round(prec, 4),
+                    "recall": round(rec, 4), "f1": round(f1, 4),
+                }) + "\n")
+    print(f"  [score] {len(papers)} paper(s) @ {state} -> {out_path.name}")
+
+
 def parse_buckets(pid: str, tex_dir: Path, types, eval_dir: Path | None) -> dict:
     """Parse one paper ONCE with rules; return {type: [raw_latex, ...]}.
 
     If eval_dir is given, the combined importer is installed across all type
     dirs so distilled rules are applied; otherwise the parser runs as-is
     (baseline = whatever is committed, matching the per-type script).
+
+    NOTE `eval_dir=None` means "whatever happens to be installed", NOT a clean
+    baseline — see baseline_snapshot().
     """
     from math_paper_parser import PaperParser
 
@@ -721,28 +977,83 @@ def write_detailed_matches(eval_dir: Path, pid: str, t: str,
 # script's evaluate_single_paper).
 # ---------------------------------------------------------------------------
 
-def metrics(extracted_texts, gold_texts, threshold) -> dict:
-    pairs = []
-    for i, ext in enumerate(extracted_texts):
-        for j, gold in enumerate(gold_texts):
-            sim = jaccard_similarity(ext, gold)
-            if sim >= threshold:
-                pairs.append((sim, i, j))
-    pairs.sort(reverse=True)
-    matched_ext, matched_gold = set(), set()
-    tp = 0
-    for sim, i, j in pairs:
-        if i in matched_ext or j in matched_gold:
-            continue
-        matched_ext.add(i)
-        matched_gold.add(j)
-        tp += 1
-    fp = len(extracted_texts) - tp
-    fn = len(gold_texts) - tp
+
+def _all_gold(gold_texts_by_type, pid, types):
+    """Gold across EVERY type for one paper — m3's support set.
+
+    m3's dominant case crosses types (a definition nested in a proof), so the
+    support must not be scoped to the type being scored.
+    """
+    return [g for t in types for g in gold_texts_by_type[t].get(pid, [])]
+
+
+def metrics(extracted_texts, gold_texts, threshold, *, mode="m1",
+            support_texts=None, cover=0.7) -> dict:
+    """Score one type's extractions against its gold.
+
+    `mode` must match whatever the prune gate used. It previously did not
+    exist here: --match-mode reached the prune gate and dark-knowledge
+    selection but NOT the reported numbers, so rules were selected under m3 and
+    then scored under m1 — a silent mismatch between gate and report.
+
+    m1  same-type, greedy 1:1 at `threshold`.
+    m3  m1, plus an extraction contained in ANY gold node counts (nesting), and
+        a gold node counts as found when the UNION of extractions covers it
+        (decomposition). `support_texts` is gold across EVERY type — the
+        dominant nesting case crosses types (a definition inside a proof), so
+        scoping it to this type would miss what m3 exists for.
+
+    Under m3 precision and recall have different numerators — supported
+    extractions vs covered gold — so they are counted separately rather than
+    sharing one `tp`, matching eval_metric_ladder's M3.
+    """
+    import match_modes as _mm
+
+    if mode == "m1":
+        # Strict 1:1. Kept explicit rather than routed through gold_is_found,
+        # which is NOT 1:1-constrained (one extraction can "find" several gold
+        # nodes) and so reports a slightly generous recall — 0.477 vs 0.468 on
+        # the 8-paper probe. M1 must stay exactly the historical pairing.
+        pairs = []
+        for i, ext in enumerate(extracted_texts):
+            for j, gold in enumerate(gold_texts):
+                sim = jaccard_similarity(ext, gold)
+                if sim >= threshold:
+                    pairs.append((sim, i, j))
+        pairs.sort(reverse=True)
+        m_ext, m_gold = set(), set()
+        for sim, i, j in pairs:
+            if i in m_ext or j in m_gold:
+                continue
+            m_ext.add(i); m_gold.add(j)
+        tp = tp_recall = len(m_ext)
+        fp = len(extracted_texts) - tp
+        fn = len(gold_texts) - tp
+    else:
+        # m3: precision and recall have DIFFERENT numerators — supported
+        # extractions vs covered gold — matching eval_metric_ladder's M3.
+        verdicts = _mm.classify_extractions(
+            extracted_texts, gold_texts, threshold,
+            mode=mode, support_texts=support_texts, cover=cover)
+        tp = sum(1 for v in verdicts if v)
+        fp = len(extracted_texts) - tp
+        tp_recall = sum(1 for g in gold_texts
+                        if _mm.gold_is_found(g, extracted_texts, threshold,
+                                             mode=mode, cover=cover))
+        fn = len(gold_texts) - tp_recall
     p = tp / (tp + fp) if (tp + fp) else 0.0
-    r = tp / (tp + fn) if (tp + fn) else 0.0
+    r = tp_recall / (tp_recall + fn) if (tp_recall + fn) else 0.0
     f1 = 2 * p * r / (p + r) if (p + r) else 0.0
-    return {'tp': tp, 'fp': fp, 'fn': fn, 'precision': p, 'recall': r, 'f1': f1,
+    # `tp` is the PRECISION numerator (extractions that count as hits) and
+    # `tp_recall` the RECALL numerator (gold items accounted for). Under m1 they
+    # are equal — a 1:1 pairing — so tp+fn == n_gold and the row reads as an
+    # ordinary confusion matrix. Under m3 they DIVERGE by design: several
+    # extractions may sit inside one gold node (32 supported spans covering only
+    # 19 gold items on one probe paper), so tp+fn == 48 against 35 gold and the
+    # row is NOT a confusion matrix. Anything pooling these must sum tp_recall
+    # for recall, never tp.
+    return {'tp': tp, 'tp_recall': tp_recall, 'fp': fp, 'fn': fn,
+            'precision': p, 'recall': r, 'f1': f1,
             'n_extracted': len(extracted_texts), 'n_gold': len(gold_texts)}
 
 
@@ -892,14 +1203,82 @@ def run(args):
     baselines = {}  # pid -> {type -> metrics}
     base_snap = baseline_snapshot(eval_dir, groups)
     print(f"  baseline rules: {base_snap.relative_to(eval_dir)} (empty by construction)")
+    # ONE batched pass. Reused verbatim by worst-first ordering below, which
+    # scores the same papers under this same snapshot.
+    base_buckets = parse_all(pilot_papers, tex_dir, types, base_snap,
+                             workers=args.workers, label="base snapshot")
     for pid in pilot_papers:
-        b = parse_buckets(pid, tex_dir, types, eval_dir=base_snap)
-        baselines[pid] = {t: metrics(b[t], gold_texts_by_type[t].get(pid, []), threshold)
+        b = base_buckets[pid]
+        _sup = _all_gold(gold_texts_by_type, pid, types)
+        baselines[pid] = {t: metrics(b[t], gold_texts_by_type[t].get(pid, []),
+                                     threshold, mode=args.match_mode,
+                                     support_texts=_sup, cover=args.cover)
                           for t in types}
         avg = sum(m['f1'] for m in baselines[pid].values()) / len(types)
         print(f"  {pid}: avg baseline F1={avg:.3f}  "
               + " ".join(f"{t[:3]}={baselines[pid][t]['f1']:.2f}" for t in types))
     print()
+
+    # ---- In-run trajectory scoring set ----
+    scores_path = eval_dir / "trajectory" / "scores.jsonl"
+    score_set = []
+    _done_states = set()
+    if args.score_every > 0:
+        sel = args.score_papers.strip()
+        if sel in ("train", "test"):
+            _sp = load_splits(Path(args.metadata) if args.metadata
+                              else SILVER_METADATA)
+            score_set = sorted(p for p, s in _sp.items() if s == sel)
+            missing = [p for p in score_set
+                       if _find_main_tex(tex_dir / p / "source") is None]
+            if missing:
+                print(f"  [score] skipping {len(missing)} '{sel}' paper(s) with "
+                      f"no .tex source")
+                score_set = [p for p in score_set if p not in missing]
+        elif sel:
+            score_set = [p.strip() for p in sel.split(",") if p.strip()]
+        else:
+            score_set = []
+        # The pilot papers are ALWAYS scored: they are the table's rows, and
+        # without them the recorded set is incomplete and the table silently
+        # falls back to re-parsing everything. --score-papers ADDS a held-out
+        # set to them, it does not replace them.
+        score_set = list(prior_papers) + list(pilot_papers) + [
+            p for p in score_set
+            if p not in set(prior_papers) | set(pilot_papers)]
+        # Gold is needed to score, and it is only loaded for pilot papers.
+        need_gold = [p for p in score_set if p not in gold_texts_by_type[types[0]]
+                     and not any(p in gold_texts_by_type[t] for t in types)]
+        for pid in need_gold:
+            t2p = t2_dir / f"{pid}.json"
+            if not t2p.exists():
+                continue
+            for t in types:
+                convert_t2_to_gold_csv(t2p, t, gold_dir, origin_filter=origin_filter)
+        if need_gold:
+            gold_texts_by_type = {t: load_gold_texts(gold_dir / FNAME_MAP[t])
+                                  for t in types}
+        score_set = [p for p in score_set
+                     if any(p in gold_texts_by_type[t] for t in types)]
+        print(f"  [score] --score-every {args.score_every}: "
+              f"{len(score_set)} paper(s) -> {scores_path}")
+        # Resume appends, so drop any rows for states we are about to rewrite.
+        if scores_path.exists() and not args.resume:
+            scores_path.unlink()
+        if scores_path.exists():
+            with open(scores_path, encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        _done_states.add(json.loads(line)["state"])
+                    except Exception:
+                        pass
+        if "base" not in _done_states:
+            score_state(score_set, tex_dir, types, base_snap,
+                        gold_texts_by_type, threshold, state="base",
+                        run_index=0, distilled=set(),
+                        pilot_set=set(prior_papers) | set(pilot_papers),
+                        out_path=scores_path, workers=args.workers,
+                        cover=args.cover)
 
     # ---- Phase 3: sequential merged distillation ----
     print("=" * 70)
@@ -921,7 +1300,8 @@ def run(args):
         print("=" * 70)
         ranked = rank_worst_first(pilot_papers, tex_dir, types, gold_dir,
                                   base_snap, threshold,
-                                  match_mode=args.match_mode, cover=args.cover)
+                                  match_mode=args.match_mode, cover=args.cover,
+                                  base_buckets=base_buckets)
         pilot_papers = [pid for pid, _m, _g in ranked]
         with open(eval_dir / "paper_ranking.csv", "w", newline="",
                   encoding="utf-8") as f:
@@ -954,6 +1334,11 @@ def run(args):
         fn_items_by_group = {g: [] for g in groups}
         total_fns = 0
         per_type_fns = {}
+        # Deliberately WITHIN-type — no cross-type support passed. See
+        # identify_dark_knowledge's docstring: the prune gate is cross-type
+        # because it asks whether an emitted span is real content anywhere;
+        # this asks whether we must still learn to extract the node AS its own
+        # type, and a span filed under another type does not answer that.
         for t in types:
             dk = identify_dark_knowledge(str(eval_dir / "_dm" / t),
                                          str(gold_dir / FNAME_MAP[t]), t, threshold,
@@ -1075,7 +1460,10 @@ def run(args):
 
         # 3f: post-eval (one combined parse with installed importer).
         post = parse_buckets(pid, tex_dir, types, eval_dir=eval_dir)
-        post_metrics = {t: metrics(post[t], gold_texts_by_type[t].get(pid, []), threshold)
+        _sup = _all_gold(gold_texts_by_type, pid, types)
+        post_metrics = {t: metrics(post[t], gold_texts_by_type[t].get(pid, []),
+                                   threshold, mode=args.match_mode,
+                                   support_texts=_sup, cover=args.cover)
                         for t in types}
 
         # ---- cost + log ----
@@ -1138,6 +1526,24 @@ def run(args):
         }
         iteration_log.append(entry)
         json.dump(iteration_log, open(log_path, 'w', encoding='utf-8'), indent=2)
+
+        # Trajectory row for the state as it now stands. AFTER the log write, so
+        # a crash here costs the scoring pass and not the paper's LLM spend.
+        if args.score_every > 0:
+            _state = f"after {paper_idx}"
+            # offset is within THIS run; on resume pilot_papers holds only the
+            # remaining papers, so papers_so_far (prior + done) is the real
+            # distilled set and offset+1 the real end-of-run test.
+            _last = offset + 1 == len(pilot_papers)
+            if (paper_idx % args.score_every == 0 or _last) \
+                    and _state not in _done_states:
+                score_state(score_set, tex_dir, types, eval_dir,
+                            gold_texts_by_type, threshold, state=_state,
+                            run_index=paper_idx,
+                            distilled=set(papers_so_far),
+                            pilot_set=set(prior_papers) | set(pilot_papers),
+                            out_path=scores_path,
+                            workers=args.workers, cover=args.cover)
 
         print(f"\n  Summary: {total_fns} FNs → {total_rules} rules | "
               f"{llm_calls + agg_calls} LLM calls "
@@ -1281,12 +1687,33 @@ def main():
                    help="Missed structures per analyze LLM call (default 8)")
     p.add_argument("--origin-filter", default=None,
                    help="Only include opus nodes whose `origin` matches (e.g. 'paper')")
-    p.add_argument("--match-metric", default="jaccard",
+    p.add_argument("--match-metric", default="containment",
                    choices=["jaccard", "containment"])
     p.add_argument("--max-rule-seconds", type=float, default=10.0,
                    help="Time-guard: prune any distilled pattern whose worst "
                         "per-paper findall exceeds this many seconds "
                         "(catastrophic backtracking). 0 disables.")
+    p.add_argument("--workers", type=int, default=1,
+                   help="parallel workers for the batched multi-paper parses "
+                        "(baseline pass and per-step scoring). Rules are "
+                        "installed ONCE per state in the parent; workers only "
+                        "read. >1 pays a per-worker import cost, so it only "
+                        "wins on big sets (measured 0.7x at 12 papers, 1.5x at "
+                        "60 on 8 cores).")
+    p.add_argument("--score-every", type=int, default=1, metavar="N",
+                   help="after every Nth paper, parse and score ALL papers in "
+                        "--score-papers under the rule state as it stands, and "
+                        "append to trajectory/scores.jsonl. This is what makes "
+                        "the trajectory table a pure reader instead of a job "
+                        "that re-runs the whole run. Default 1 = every paper; "
+                        "raise it if the scoring set is large (cost is "
+                        "|score-papers| x |papers| parses). 0 = off.")
+    p.add_argument("--score-papers", default="",
+                   help="EXTRA papers to score under --score-every, on top of "
+                        "the pilot papers (which are always scored, since "
+                        "they are the trajectory table's rows). Comma "
+                        "list, or a split name (train/test) to pull that "
+                        "split from the metadata as a held-out set.")
     p.add_argument("--order", default="given",
                    choices=["given", "worst-first"],
                    help="Distillation order. 'worst-first' = hard-example "
