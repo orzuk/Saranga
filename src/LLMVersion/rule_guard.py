@@ -63,7 +63,13 @@ DEFAULT_THRESHOLD = 5.0
 #: document via `new_document()`.
 DEFAULT_BUDGET = 10.0
 
-#: {(pattern, flags): seconds} accumulated for the current document.
+#: A pattern whose MEAN call is faster than this is never quarantined on
+#: cumulative time, however many times it is called. Total time alone cannot
+#: distinguish "pathological" from "popular", and disabling a popular pattern
+#: is far more damaging than tolerating a slow one.
+MIN_MEAN_SECONDS = 0.05
+
+#: {(pattern, flags): [seconds, calls]} for the current document.
 _SPENT: dict = {}
 _BUDGET = DEFAULT_BUDGET
 
@@ -207,12 +213,22 @@ def comment_out_rule(path: str, name: str, seconds: float) -> bool:
 class GuardedPattern:
     """A compiled regex that disables itself if one match blows the budget."""
 
-    __slots__ = ("_pat", "_name", "_source")
+    __slots__ = ("_pat", "_name", "_source", "_budgeted")
 
-    def __init__(self, pattern, name=None, source=None):
+    def __init__(self, pattern, name=None, source=None, budgeted=False):
         object.__setattr__(self, "_pat", pattern)
         object.__setattr__(self, "_name", name)
         object.__setattr__(self, "_source", source)
+        # Cumulative budgets apply ONLY to named patterns from generated rule
+        # files. Applied globally they are actively harmful: a hot, healthy
+        # pattern like `\s+` runs hundreds of thousands of times at
+        # microseconds each, crosses any total-time budget, and gets disabled
+        # forever -- taking the LaTeX cleaner and tokenizer with it. That is
+        # not hypothetical. It quarantined `\s+` mid-run, after which nothing
+        # could match gold and every score from that point on was 0.000.
+        # The more useful a pattern is, the faster it would trip. Only the
+        # per-call cap is safe to apply everywhere.
+        object.__setattr__(self, "_budgeted", budgeted)
 
     # -- the timed call ---------------------------------------------------
     def _run(self, meth_name, args, kwargs):
@@ -254,15 +270,17 @@ class GuardedPattern:
             if el > _THRESHOLD:
                 _record(pat, self._name, self._source, el,
                         len(text) if isinstance(text, str) else 0)
-            elif _BUDGET > 0 and key not in _QUARANTINED:
+            elif (self._budgeted and _BUDGET > 0
+                  and key not in _QUARANTINED):
                 # Death by a thousand cuts: no single call is slow, but the
                 # pattern is called tens of thousands of times per document.
-                spent = _SPENT.get(key, 0.0) + el
-                _SPENT[key] = spent
-                if spent > _BUDGET:
-                    _record(pat, self._name, self._source, spent,
+                acc = _SPENT.setdefault(key, [0.0, 0])
+                acc[0] += el
+                acc[1] += 1
+                if acc[0] > _BUDGET and acc[0] / acc[1] >= MIN_MEAN_SECONDS:
+                    _record(pat, self._name, self._source, acc[0],
                             len(text) if isinstance(text, str) else 0,
-                            reason="cumulative")
+                            reason=f"cumulative over {acc[1]} calls")
 
     def finditer(self, *args, **kwargs):
         """Lazy — so the guard must wrap the ITERATOR, not its creation.
@@ -280,7 +298,7 @@ class GuardedPattern:
         if key in _QUARANTINED:
             return
         it = pat.finditer(*args, **kwargs)
-        spent = _SPENT.get(key, 0.0)
+        acc = _SPENT.setdefault(key, [0.0, 0])
         while True:
             if key in _QUARANTINED:
                 return
@@ -305,11 +323,12 @@ class GuardedPattern:
                 if use_alarm:
                     signal.setitimer(signal.ITIMER_REAL, 0)
                     signal.signal(signal.SIGALRM, old_h)
-                spent += time.perf_counter() - t0
-                _SPENT[key] = spent
-            if _BUDGET > 0 and spent > _BUDGET:
-                _record(pat, self._name, self._source, spent, tlen,
-                        reason="cumulative")
+                acc[0] += time.perf_counter() - t0
+                acc[1] += 1
+            if (self._budgeted and _BUDGET > 0 and acc[0] > _BUDGET
+                    and acc[0] / acc[1] >= MIN_MEAN_SECONDS):
+                _record(pat, self._name, self._source, acc[0], tlen,
+                        reason=f"cumulative over {acc[1]} calls")
                 return
             yield m
 
@@ -346,14 +365,16 @@ def guard_module(module, source_path=None) -> int:
         except Exception:
             continue
         if isinstance(val, re.Pattern):
-            setattr(module, attr, GuardedPattern(val, name=attr, source=src))
+            setattr(module, attr,
+                    GuardedPattern(val, name=attr, source=src, budgeted=True))
             n += 1
         elif isinstance(val, GuardedPattern) and val._name is None:
             # install_global already wrapped it at compile time, but anonymously.
             # Re-wrap with the module-level variable name so a quarantine record
             # can name the culprit and comment out the right block at source.
             setattr(module, attr,
-                    GuardedPattern(val._pat, name=attr, source=src))
+                    GuardedPattern(val._pat, name=attr, source=src,
+                                   budgeted=True))
             n += 1
     return n
 
