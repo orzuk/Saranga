@@ -364,7 +364,7 @@ _ORIG_COMPILE = re.compile
 _ORIG_FUNCS = {}
 
 
-def install_global(threshold=None, log_path=None):
+def install_global(threshold=None, log_path=None, budget=None):
     """Guard EVERY regex in this process — compiled, inline, or module-level.
 
     Two entry points must be covered, and covering only one is why the first
@@ -380,7 +380,7 @@ def install_global(threshold=None, log_path=None):
     ``isinstance(x, re.Pattern)`` working everywhere, which wrapping the
     internal cache would quietly break. Idempotent.
     """
-    configure(threshold=threshold, log_path=log_path)
+    configure(threshold=threshold, log_path=log_path, budget=budget)
     if getattr(re.compile, "_rule_guard", False):
         return
 

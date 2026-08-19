@@ -824,12 +824,21 @@ def _pool_init(tex_dir, types):
 
 
 def _pool_parse(pid):
-    """Child entry point: parses under the rules the PARENT installed."""
-    return pid, parse_buckets_installed(pid, _PW["tex"], _PW["types"])
+    """Child entry point: parses under the rules the PARENT installed.
+
+    Returns its own wall-clock time too: with a pool the parent cannot time
+    individual papers, and per-paper parse time is the signal that separates
+    "these rules are slow" from "this paper is big" -- the distinction that
+    took three stalled runs to see.
+    """
+    import time as _t
+    _t0 = _t.perf_counter()
+    b = parse_buckets_installed(pid, _PW["tex"], _PW["types"])
+    return pid, b, _t.perf_counter() - _t0
 
 
 def parse_all(papers, tex_dir: Path, types, eval_dir: Path | None,
-              workers: int = 1, label: str = "") -> dict:
+              workers: int = 1, label: str = "", timings: dict | None = None) -> dict:
     """Parse MANY papers under ONE rule state. Returns {pid: buckets}.
 
     The whole point is that the install happens once for the batch rather than
@@ -844,18 +853,36 @@ def parse_all(papers, tex_dir: Path, types, eval_dir: Path | None,
     2,506 extractions across 60 papers with 8 workers.
     """
     papers = list(papers)
+    timings.clear() if timings is not None else None
     if not papers:
         return {}
     if label:
         print(f"  [parse] {len(papers)} paper(s) under {label}"
               + (f", {workers} workers" if workers > 1 else ""))
+    t_all = time.perf_counter()
     with installed_rules(eval_dir, types):
         if workers > 1 and len(papers) > 1:
             import multiprocessing as _mp
             with _mp.Pool(workers, initializer=_pool_init,
                           initargs=(str(tex_dir), types)) as pool:
-                return dict(pool.map(_pool_parse, papers))
-        return {p: parse_buckets_installed(p, tex_dir, types) for p in papers}
+                out = {}
+                for pid, buckets, secs in pool.map(_pool_parse, papers):
+                    out[pid] = buckets
+                    if timings is not None:
+                        timings[pid] = round(secs, 2)
+        else:
+            out = {}
+            for p in papers:
+                t0 = time.perf_counter()
+                out[p] = parse_buckets_installed(p, tex_dir, types)
+                if timings is not None:
+                    timings[p] = round(time.perf_counter() - t0, 2)
+    if label and timings:
+        wall = time.perf_counter() - t_all
+        worst = sorted(timings.items(), key=lambda kv: -kv[1])[:3]
+        print(f"  [parse] {wall:.1f}s wall  |  slowest: "
+              + ", ".join(f"{k} {v:.1f}s" for k, v in worst))
+    return out
 
 
 def score_state(papers, tex_dir: Path, types, eval_dir: Path | None,
@@ -877,8 +904,9 @@ def score_state(papers, tex_dir: Path, types, eval_dir: Path | None,
     already-parsed text and removes any chance of the two lenses disagreeing
     because they saw different parses.
     """
+    parse_secs = {}
     parsed = parse_all(papers, tex_dir, types, eval_dir, workers=workers,
-                       label=f"scoring @ {state}")
+                       label=f"scoring @ {state}", timings=parse_secs)
     # Stamp the scoring parameters onto every row. metrics() resolves the
     # similarity metric from a module global that the CALLER is responsible for
     # setting, so a cached row is meaningless without knowing which metric was
@@ -921,6 +949,11 @@ def score_state(papers, tex_dir: Path, types, eval_dir: Path | None,
                                   "no" if pid in pilot_set else "heldout"),
                     **agg, "precision": round(prec, 4),
                     "recall": round(rec, 4), "f1": round(f1, 4),
+                    # Per-paper parse time at THIS rule state. Rules only get
+                    # slower as they accumulate, and the cost lands on every
+                    # paper at every checkpoint -- so this is the series that
+                    # shows a bad rule arriving, and which paper it hurts.
+                    "parse_seconds": parse_secs.get(pid),
                     "per_type": per_type,
                 }) + "\n")
     print(f"  [score] {len(papers)} paper(s) @ {state} -> {out_path.name}")

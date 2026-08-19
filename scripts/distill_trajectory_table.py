@@ -110,9 +110,10 @@ def load_recorded(path: Path, *, metric=None, threshold=None, cover=None):
             # decimal (0.658 vs 0.659) -- small, but it means the two paths
             # disagree, and then neither can be used to check the other.
             # Later rows win: a resumed run re-scoring a state should supersede.
-            out[md].setdefault(r["state"], {})[r["paper_id"]] = _prf(
-                r.get("tp", 0), r.get("fp", 0), r.get("fn", 0),
-                r.get("tp_recall", r.get("tp", 0)))
+            _cell = _prf(r.get("tp", 0), r.get("fp", 0), r.get("fn", 0),
+                         r.get("tp_recall", r.get("tp", 0)))
+            _cell["parse_seconds"] = r.get("parse_seconds")
+            out[md].setdefault(r["state"], {})[r["paper_id"]] = _cell
     if mismatched:
         print(f"  [note] dropped {mismatched} recorded row(s) scored under "
               f"different parameters than requested "
@@ -380,7 +381,7 @@ def _emit(out_dir, train, held, labels, n_at, cell, judge_label, args, cells=Non
         w = csv.writer(f)
         w.writerow(["paper_id", "run_index", "state", "mode", "in_sample",
                     "tp", "tp_recall", "fp", "fn",
-                    "precision", "recall", "f1"])
+                    "precision", "recall", "f1", "parse_seconds"])
         by_mode = cells if cells else {args.match_mode: cell}
         for md, cm in by_mode.items():
             for i, p in enumerate(train, 1):
@@ -391,7 +392,7 @@ def _emit(out_dir, train, held, labels, n_at, cell, judge_label, args, cells=Non
                     w.writerow([p, i, l, md, "yes" if i <= n_at[l] else "no",
                                 c["tp"], c["tp_recall"], c["fp"], c["fn"],
                                 f"{c['precision']:.4f}", f"{c['recall']:.4f}",
-                                f"{c['f1']:.4f}"])
+                                f"{c['f1']:.4f}", c.get("parse_seconds", "")])
             for p in held:
                 for l in labels:
                     c = cm.get(l, {}).get(p)
@@ -400,7 +401,8 @@ def _emit(out_dir, train, held, labels, n_at, cell, judge_label, args, cells=Non
                     w.writerow([p, "", l, md, "heldout", c["tp"],
                                 c["tp_recall"], c["fp"], c["fn"],
                                 f"{c['precision']:.4f}",
-                                f"{c['recall']:.4f}", f"{c['f1']:.4f}"])
+                                f"{c['recall']:.4f}", f"{c['f1']:.4f}",
+                                c.get("parse_seconds", "")])
 
     # console view
     wid = max(12, max(len(l) for l in labels) + 1)

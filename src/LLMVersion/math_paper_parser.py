@@ -22,6 +22,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import re
+import sys as _sys
 import argparse
 import requests
 import json
@@ -691,9 +692,27 @@ class PaperParser:
         # every paper the process has seen. Quarantines are NOT reset.
         try:
             import rule_guard
+            # install_global, not just guard_module. guard_module wraps only
+            # module-level compiled patterns; generated rule files also call
+            # re.search(pattern_string, text) directly -- 8 such calls in one
+            # definition file -- and those go through re._compile, never
+            # touching re.compile. Guarding only the named patterns is how a
+            # runaway slipped through a guard that had been tested and shown
+            # to work: the test used install_global, the parser did not.
+            # This also covers the base parser's own inline patterns, which
+            # are compiled inside functions and equally invisible otherwise.
+            rule_guard.install_global(threshold=self.DISTILLED_RULE_TIMEOUT_S,
+                                      budget=self.DISTILLED_RULE_BUDGET_S)
             rule_guard.new_document()
-        except Exception:
-            pass
+        except Exception as _e:
+            # NOT a silent pass. This swallowed a TypeError from a wrong
+            # keyword once, so the guard was never installed at all -- and the
+            # only symptom was the absence of a log line, which looks exactly
+            # like "no slow rules found". A guard that fails silently is worse
+            # than no guard, because it is trusted.
+            print(f"[WARN] rule_guard NOT installed ({type(_e).__name__}: {_e}); "
+                  f"regexes run UNGUARDED and a runaway can hang this parse",
+                  file=_sys.stderr, flush=True)
         text = path.read_text(encoding="utf-8", errors="ignore")
 
         # 1) Merge all included files AND expand simple macros
