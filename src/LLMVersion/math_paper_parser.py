@@ -686,6 +686,14 @@ class PaperParser:
 
     def parse_file(self, path: str | Path) -> PaperGraph:
         path = Path(path)
+        # Per-pattern time budgets are per-document; reset them here so a
+        # pattern is judged on this paper, not on the accumulated total of
+        # every paper the process has seen. Quarantines are NOT reset.
+        try:
+            import rule_guard
+            rule_guard.new_document()
+        except Exception:
+            pass
         text = path.read_text(encoding="utf-8", errors="ignore")
 
         # 1) Merge all included files AND expand simple macros
@@ -1532,6 +1540,18 @@ class PaperParser:
     #: Apply distilled rules for remark/example/assumption. See the note at
     #: the simpleenv block in parse_file for why this was off, and what the
     #: evidence was. Flip to False to restore pre-v5.1 behaviour.
+    #: Wall-clock budget (seconds) for ONE regex match. A pattern that
+    #: exceeds it is quarantined for the rest of the process and commented
+    #: out at source -- see rule_guard. Per-MATCH, not per-paper, so it can
+    #: be tight: a healthy pattern returns in milliseconds. 0 disables.
+    DISTILLED_RULE_TIMEOUT_S = 5.0
+
+    #: Total seconds ONE pattern may spend on ONE document across all its
+    #: calls. The per-call cap misses the commoner failure -- not one
+    #: catastrophic match but tens of thousands of merely-slow ones, which is
+    #: what actually stalled the v5.1 run. 0 disables.
+    DISTILLED_RULE_BUDGET_S = 10.0
+
     APPLY_SIMPLEENV_DISTILLED = True
 
     _DISTILLED_TYPE_MAP = {
@@ -1578,6 +1598,22 @@ class PaperParser:
         except Exception as e:
             print(f"[WARN] Failed to load distilled rules from {rules_path}: {e}")
             return []
+
+        # Guard every pattern this file defines. A rule that cannot finish is
+        # not a rule: the first match to blow the budget disables that pattern
+        # for the rest of the process and comments it out at source, so the
+        # next run never loads it. Wrapping here (rather than timing the whole
+        # extract_fn) is what makes the offender identifiable by name — timing
+        # the composed function only tells you the group was slow, which is how
+        # 26 good definition rules were once thrown away for one bad one.
+        try:
+            import rule_guard
+            rule_guard.configure(threshold=self.DISTILLED_RULE_TIMEOUT_S,
+                                 budget=self.DISTILLED_RULE_BUDGET_S)
+            rule_guard.guard_module(mod, source_path=str(rules_path))
+        except Exception as e:
+            print(f"[WARN] rule_guard unavailable ({e}); "
+                  f"distilled rules run unguarded")
 
         extract_fn = getattr(mod, func_name, None)
         if extract_fn is None:
