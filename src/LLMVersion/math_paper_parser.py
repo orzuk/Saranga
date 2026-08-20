@@ -343,6 +343,7 @@ class PaperParser:
             extract_inline_let: bool = False,
             custom_prompt_file: Optional[str] = None,
             structure_types: Optional[List[str]] = None,
+            rules_dir: Optional[str | Path] = None,
     ):
         """
         Parameters
@@ -359,6 +360,18 @@ class PaperParser:
             Max characters per chunk when calling the LLM.
         structure_types : List[str], optional
             Which structure types to extract via LLM (default: ["definition"]).
+        rules_dir : str | Path, optional
+            Where to look for ``<type>_eval/distilled_rules.py``. Defaults to
+            this file's directory, i.e. the promoted production rules that the
+            14 ``src/LLMVersion/*_eval/distilled_rules.py`` symlinks point at.
+
+            Pass this to run against a specific distillation's output without
+            touching global state. Until it existed the ONLY way to choose a
+            rule set was to repoint those symlinks, which every distillation
+            run does temporarily -- so "which rules produced this result" was a
+            filesystem fact at the moment of the parse rather than a property
+            of the call, and a downstream job running alongside a distillation
+            would silently pick up whatever was installed at that instant.
         """
         self.paper_id = paper_id or "paper"
         # Accept legacy 'manual' as an alias for 'rules' so older callers
@@ -372,6 +385,12 @@ class PaperParser:
         self.extract_inline_let = extract_inline_let
         self.custom_prompt_file = custom_prompt_file
         self.structure_types = structure_types or ["definition"]
+        self.rules_dir = Path(rules_dir) if rules_dir else Path(__file__).resolve().parent
+        # Say which rules are in play, once per parser. Results differ between
+        # rule sets, so a run whose logs do not record this cannot be
+        # reproduced or compared against another.
+        if self.extraction_mode in ("rules", "both"):
+            print(f"[INFO] distilled rules: {self._describe_rules()}")
 
         # these will be updated with \newtheorem info
         self.env_kind_map = dict(self.BASE_ENV_KIND_MAP)
@@ -1594,6 +1613,48 @@ class PaperParser:
         'table': 'TableObject',
     }
 
+    def _describe_rules(self) -> str:
+        """Which rule set is actually in play, resolved through the symlink.
+
+        The 14 <type>_eval/distilled_rules.py entries are normally symlinks
+        into some run's snapshot, so printing the symlink path says nothing --
+        every run looks identical. Resolving it names the run that produced the
+        rules, which is the thing a result needs recorded against it.
+        """
+        probe = self.rules_dir / "definition_eval" / "distilled_rules.py"
+        if not probe.exists():
+            return f"NONE (no distilled_rules.py under {self.rules_dir})"
+        try:
+            real = probe.resolve()
+        except OSError:
+            return f"{probe} (unresolvable)"
+        # Count patterns where they actually live. A merged run's
+        # distilled_rules.py is a combined IMPORTER that re-exports from
+        # groups/<g>/distilled_rules.py and deliberately holds no patterns of
+        # its own -- counting it reports 0 for every run, which reads as
+        # "no rules loaded" and is the opposite of the truth.
+        def _count(f):
+            try:
+                return sum(1 for ln in f.read_text(encoding="utf-8").splitlines()
+                           if not ln.lstrip().startswith("#") and "re.compile(" in ln)
+            except Exception:
+                return 0
+        groups = real.parent / "groups"
+        if groups.is_dir():
+            n = sum(_count(g) for g in groups.glob("*/distilled_rules.py"))
+            where = f"{n} pattern(s) across {len(list(groups.glob('*/distilled_rules.py')))} group(s)"
+        else:
+            n = _count(real)
+            where = f"{n} pattern(s)"
+
+        # Name the run the way a human refers to it: the snapshot under the run
+        # directory, not whichever folder happens to sit under LLMVersion.
+        run = real.parent.name
+        if run.startswith("step_") or run == "_baseline":
+            run = f"{real.parent.parent.parent.name}/{run}"
+        via = " (symlink)" if probe.is_symlink() else ""
+        return f"{run}{via}, {where} — {real}"
+
     def _apply_distilled_rules(self, text: str, structure_type: str) -> List[MathObject]:
         """Load and apply distilled rules for a structure type if available.
 
@@ -1601,8 +1662,7 @@ class PaperParser:
         directory. If found, imports extract_distilled_{structure_type}(text) and
         converts returned dicts to MathObject instances.
         """
-        parser_dir = Path(__file__).resolve().parent
-        rules_path = parser_dir / f"{structure_type}_eval" / "distilled_rules.py"
+        rules_path = self.rules_dir / f"{structure_type}_eval" / "distilled_rules.py"
 
         if not rules_path.is_file():
             return []

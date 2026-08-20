@@ -1391,6 +1391,19 @@ ANALYZE_MAX_TOKENS = 16384
 #: their suggested code only. Set high (e.g. 999) to restore the old
 #: send-everything behaviour; see the age-out block in aggregate_rules_merged
 #: for why this exists and what it costs.
+#: Output ceiling for one aggregate call. Not a model limit -- sonnet-4-6
+#: allows 128K -- but large values require streaming, which the aggregate call
+#: now uses. Generous on purpose: a truncated rule file is worse than a slow
+#: one, and truncation is silent (it compiles, it is callable, it returns None).
+AGGREGATE_MAX_TOKENS = 64000
+
+#: Escape hatch: re-derive the rule file from the FULL analyze CSV instead of
+#: extending the existing file. Off by design -- the CSV is an append-only
+#: archive (498 rows / 1.08 MB at paper 27 for a 32 KB rule file), so sending
+#: all of it is the wrong shape and truncates output. Turn on only to rebuild a
+#: group from scratch, e.g. after its rule file has been lost or corrupted.
+AGGREGATE_FORCE_FULL = False
+
 AGGREGATE_FULL_EVIDENCE_PAPERS = 2
 
 
@@ -1553,7 +1566,9 @@ def analyze_patterns_batched(items: List[dict], tex_dir: str = None,
 
 def aggregate_rules_merged(input_csv: str, group_key: str,
                            types_in_group: List[str], eval_dir: str,
-                           model: str = 'claude-opus-4-7') -> Tuple[str, dict]:
+                           model: str = 'claude-opus-4-7',
+                           new_paper_ids: Optional[List[str]] = None
+                           ) -> Tuple[str, dict]:
     """Aggregate analyze rows for ONE base-method group into
     eval_dir/distilled_rules.py exposing ``extract_distilled_<group_key>``.
 
@@ -1562,6 +1577,33 @@ def aggregate_rules_merged(input_csv: str, group_key: str,
     environment / marker.  The base-method source is cache_control'd.  On a
     syntax error or missing entry function the previous file is kept (fault
     isolation) and that group's last-good rules survive.
+
+    INCREMENTAL MODE (``new_paper_ids`` given and a rule file already exists):
+    the prompt carries the CURRENT distilled_rules.py plus only the rows from
+    those papers, and asks the model to extend/correct the file it is shown.
+
+    Otherwise (first paper of a group, no file yet) it falls back to the
+    original "aggregate all suggestions from scratch" prompt.
+
+    Why: the CSV is an append-only archive of every FN ever analysed, and
+    re-sending all of it to regenerate a much smaller file is the wrong shape.
+    Measured on the v5.1 run at paper 27 -- theoremlike had 498 rows / 1.08 MB
+    of CSV producing a 32 KB rule file with 11 rules, a 33x ratio, and the
+    150-odd distinct names the CSV proposed had ZERO overlap with the 11 the
+    model actually kept. definition passed 144k input tokens and truncated its
+    16k output for 8 consecutive papers, leaving a file with no `return` that
+    silently produced nothing.
+
+    Sending the file instead makes the prompt roughly constant, and it closes
+    the loop that was missing entirely: pruned rules are commented out in that
+    file with their FP/TP counts, so the model finally sees which of its own
+    rules were rejected and why. Pruning now shrinks the prompt instead of
+    leaving dead suggestions in it forever.
+
+    The cost: the model no longer sees all raw suggestions side by side, so it
+    loses some ability to notice that several papers' variants should merge
+    into one general pattern. It was already doing that consolidation and then
+    being handed the same rows again next paper.
     """
     import anthropic
     rows = _read_items_csv(input_csv)
@@ -1589,6 +1631,35 @@ def aggregate_rules_merged(input_csv: str, group_key: str,
     base_method_source = _read_extraction_method(rep_type)
     multi = len(types_in_group) > 1
     func_name = f"extract_distilled_{group_key}"
+
+    current_src = ''
+    if os.path.isfile(out_path):
+        try:
+            current_src = open(out_path, encoding='utf-8').read()
+        except Exception:
+            current_src = ''
+    # Incremental is the DEFAULT whenever a rule file exists. A caller that
+    # forgets new_paper_ids must not silently fall back to re-sending the whole
+    # CSV -- that is the 33x prompt-to-artifact path that truncated definition
+    # for 8 papers, and it fails invisibly (bigger prompt, same API, no error).
+    # With the argument omitted we infer "new" as the rows of the LAST paper in
+    # the CSV, which is append-ordered by paper.
+    if new_paper_ids is None and current_src.strip() and not AGGREGATE_FORCE_FULL:
+        _last = next((r['paper_id'] for r in reversed(rules) if r['paper_id']), None)
+        if _last:
+            new_paper_ids = [_last]
+            print(f"  [{group_key}] new_paper_ids not given; defaulting to the "
+                  f"most recent paper in the CSV ({_last})")
+    incremental = (bool(new_paper_ids) and bool(current_src.strip())
+                   and not AGGREGATE_FORCE_FULL)
+    if incremental:
+        _want = set(new_paper_ids)
+        _new_rules = [r for r in rules if r['paper_id'] in _want]
+        if not _new_rules:
+            print(f"  [{group_key}] no NEW suggestions this paper; keeping "
+                  f"existing rules.")
+            return out_path, _empty_usage()
+        rules = _new_rules
 
     # ---- Age-out: full evidence for recent papers, code-only for older ones --
     # This prompt carries EVERY accumulated row, so it grows with the run: the
@@ -1658,12 +1729,30 @@ def aggregate_rules_merged(input_csv: str, group_key: str,
                          f"`structure_type` set to '{only_type}'.\n")
         st_key_req = "`structure_type` (str), "
 
-    prompt = f"""You are a Python engineer consolidating regex extraction rules for a LaTeX math paper parser.
+    if incremental:
+        task_block = f"""## Task
 
-## Task
+You are MAINTAINING an existing rule file. Below is the CURRENT file, followed by {len(rules)} NEW rule suggestion(s) for structures the current rules still miss.
+
+Return the COMPLETE updated file. Keep every rule that is still useful, add rules for the new misses, and merge a new suggestion into an existing rule when they overlap rather than adding a near-duplicate.
+
+Lines marked `# PRUNED` were disabled because they produced false positives — the marker records how many. Do NOT reinstate them, and do NOT write a new rule that would match the same thing in the same way. Leave them commented where they are.
+
+## CURRENT RULE FILE (this is what you are editing)
+
+```python
+{current_src}
+```
+"""
+    else:
+        task_block = f"""## Task
 
 Below are {len(rules)} individual rule suggestions for extracting "{group_key}" structures from LaTeX source. Aggregate them into a SINGLE, clean, self-contained Python file that runs IN ADDITION to the base parser shown in the system context. Do NOT duplicate what the base method already catches — only fill the gaps.
+"""
 
+    prompt = f"""You are a Python engineer consolidating regex extraction rules for a LaTeX math paper parser.
+
+{task_block}
 {subtype_block}
 ## EXAMPLE INSTANCES (representative of the pattern class — NOT literal targets)
 These show the KINDS of structures to catch. Write rules that capture the
@@ -1671,7 +1760,7 @@ general class; it is acceptable to NOT match an example if matching it would
 require hardcoding instance-specific content.
 {gold_tests_text}
 
-## Individual rule suggestions (for reference)
+## {"NEW rule suggestions to incorporate" if incremental else "Individual rule suggestions (for reference)"}
 {rules_text}
 
 ## Key challenges
@@ -1694,22 +1783,50 @@ require hardcoding instance-specific content.
 - Apart from that one guarded import, do NOT import any project module; stdlib `re` only
 - Output ONLY the Python code, no fences, no explanation"""
 
-    print(f"  [{group_key}] aggregating {len(rules)} suggestion(s)...")
+    print(f"  [{group_key}] {'extending existing rules with' if incremental else 'aggregating'} "
+          f"{len(rules)} suggestion(s)"
+          + (f" (current file {len(current_src):,} chars)" if incremental else "")
+          + "...")
     client = anthropic.Anthropic()
     sys_block = ("## EXISTING BASE EXTRACTION METHOD (already runs — do NOT "
                  f"duplicate)\n```python\n{base_method_source}\n```")
+    # 16384 was OUR constant, not the model's ceiling: sonnet-4-6 supports up
+    # to 128K output tokens. Asking for 16K silently truncated definition's
+    # rule file for 8 consecutive papers, leaving it without a `return` and
+    # therefore returning None -- which the parser reads as "found nothing".
+    # Large max_tokens needs streaming, or the request hits the SDK's HTTP
+    # timeout before the model finishes.
     try:
-        message = client.messages.create(
-            model=model, max_tokens=16384,
+        with client.messages.stream(
+            model=model, max_tokens=AGGREGATE_MAX_TOKENS,
             system=[{"type": "text", "text": sys_block,
                      "cache_control": {"type": "ephemeral"}}],
             messages=[{"role": "user", "content": prompt}],
-        )
+        ) as _st:
+            message = _st.get_final_message()
     except Exception:
-        message = client.messages.create(
-            model=model, max_tokens=16384,
+        with client.messages.stream(
+            model=model, max_tokens=AGGREGATE_MAX_TOKENS,
             messages=[{"role": "user", "content": sys_block + "\n\n" + prompt}],
-        )
+        ) as _st:
+            message = _st.get_final_message()
+
+    # Truncation is a FAILURE, not a result. A cut-off file can still compile
+    # (a trailing comment is valid Python) and still expose a callable, so
+    # every downstream guard passed it. Keep the previous rules instead.
+    if getattr(message, "stop_reason", None) == "max_tokens":
+        print(f"  [{group_key}] TRUNCATED at max_tokens="
+              f"{AGGREGATE_MAX_TOKENS}: generated file is incomplete; "
+              f"keeping previous rules. Raise AGGREGATE_MAX_TOKENS or shrink "
+              f"the prompt.")
+        _u = {
+            'input_tokens': getattr(message.usage, 'input_tokens', 0),
+            'output_tokens': getattr(message.usage, 'output_tokens', 0),
+            'cache_read_input_tokens': getattr(message.usage, 'cache_read_input_tokens', 0) or 0,
+            'cache_creation_input_tokens': getattr(message.usage, 'cache_creation_input_tokens', 0) or 0,
+            'llm_calls': 1,
+        }
+        return (out_path if os.path.isfile(out_path) else ''), _u
     usage = {
         'input_tokens': getattr(message.usage, 'input_tokens', 0),
         'output_tokens': getattr(message.usage, 'output_tokens', 0),
@@ -1837,6 +1954,16 @@ def _comment_out_rule_block(lines: List[str], pattern_name: str,
                     i += 1
                 else:
                     break
+            # Keep the enclosing block syntactically valid. When the usage
+            # block IS the whole body of its function (a one-rule extractor,
+            # which the aggregate writes often), commenting it out leaves
+            # `def f(...):` with nothing under it and the module dies with
+            # IndentationError on import -- taking every other rule in the
+            # group with it. That killed a 60-paper run at paper 27 after
+            # $41 of work. `pass` is legal wherever the statement we just
+            # removed was legal, so this is safe unconditionally and costs a
+            # line when it is not needed.
+            result.append(' ' * indent + 'pass  # PRUNED: body commented out\n')
             continue
 
         result.append(line)

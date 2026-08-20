@@ -357,7 +357,17 @@ def validate_and_repair_group_file(path: Path, gkey: str, prev_src,
         fn = ns.get(fn_name)
         if not callable(fn):
             return _restore()
-        fn("")
+        # The return value matters, not just that it is callable. A truncated
+        # generated file loses its trailing `return results`, so the function
+        # falls off the end and returns None -- and the parser's
+        # `if not raw_results: return []` reads that as "found nothing".
+        # definition died this way for 8 consecutive papers while every guard
+        # reported success. Anything that is not a list is a broken file.
+        _probe = fn("")
+        if not isinstance(_probe, list):
+            print(f"      [guard] {fn_name} returned {type(_probe).__name__}, "
+                  f"expected list — file is incomplete (truncated?)")
+            return _restore()
     except Exception:
         return _restore()
 
@@ -1514,9 +1524,15 @@ def run(args):
                 # outcome than losing the run. Mirrors how a SyntaxError in the
                 # generated code is already handled inside aggregate.
                 try:
+                    # Only THIS paper's rows go into the prompt; the model is
+                    # shown the current rule file and asked to extend it. The
+                    # CSV stays the full archive (the reports read it) but is
+                    # no longer re-sent in full every paper -- that was a 33x
+                    # prompt-to-artifact ratio and it truncated definition's
+                    # output for 8 consecutive papers.
                     _path, gusage = aggregate_rules_merged(
                         str(group_cum_csv[gkey]), gkey, groups[gkey], str(gdir),
-                        model)
+                        model, new_paper_ids=[pid])
                 except Exception as e:
                     print(f"      [{gkey}] AGGREGATE FAILED: {type(e).__name__}: "
                           f"{str(e)[:300]}")
