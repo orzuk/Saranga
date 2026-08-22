@@ -228,6 +228,24 @@ class LLMJudge:
                 kwargs["max_completion_tokens"] = self.max_tokens
             else:
                 kwargs["max_tokens"] = self.max_tokens
+                # Open-weight chat models ship a generation_config.json that
+                # servers adopt as the default -- Qwen3's asks for temperature
+                # 0.6 -- so a judge left unpinned samples a different verdict
+                # each run. Pin it here: reproducibility is the whole reason to
+                # host the model ourselves. top_k is not in the OpenAI schema,
+                # so it travels in extra_body with the vendor extensions.
+                kwargs["temperature"] = 0
+                kwargs["top_p"] = 1
+                kwargs["seed"] = 0
+                # Reasoning models otherwise open with a <think> block, which
+                # is not free: max_tokens is sized for a verdict, and the
+                # thinking alone exhausts it, so the parser sees a response
+                # that never reached its VERDICT line. Harmless for servers
+                # that do not recognise the key.
+                kwargs["extra_body"] = {
+                    "top_k": -1,
+                    "chat_template_kwargs": {"enable_thinking": False},
+                }
             resp = self._client.chat.completions.create(**kwargs)
             return resp.choices[0].message.content or ""
 
