@@ -257,9 +257,69 @@ and `origin: external` chain, arrived at independently for a different purpose.
 And their axiom-count-as-self-containedness readout is a measurement our corpus
 could make at scale and they can only make one paper at a time.
 
-### 3.4 Open item before v6 is finalised
+### 3.4 Numina-Lean-Agent — read, and it changes the picture
 
-**Read Numina-Lean-Agent (Liu et al., arXiv 2601.14027).** It is the actual
-source of the proof-node representation; Theo cites it and does not re-specify
-it. If we are going to align `proof_step` with anything, it should be with that
-spec, not with Theo's one-paragraph summary of it.
+`NuminaLeanAgent_2601.14027.pdf` (Liu, Zhou, Zhu, Dos Santos et al. — CAS /
+Liverpool / XJTLU / Tongji / Cambridge / Project Numina / Imperial / Edinburgh).
+8 pages. Claude Code + a `Numina-Lean-MCP` server; Opus 4.5; 12/12 on Putnam
+2025; formalized Brascamp–Lieb with a mathematician co-author, >8,000 lines of
+Lean and ~70 new definitions/lemmas in under two weeks.
+
+**Theo's citation oversells what is there.** Numina does not specify a
+proof-node schema. What it has is a **blueprint**:
+
+> "A blueprint is a design-document-style artifact consisting of (i) required
+> definitions and notation, (ii) a curated list of intermediate lemmas with
+> suitable granularity, and (iii) the final theorem whose proof largely composes
+> these lemmas. Dependencies are recorded explicitly (e.g., via `\uses{...}`),
+> forming a **DAG** that determines proving order."
+
+Three consequences, and they matter more than anything in Theo:
+
+**(a) It is a DAG, not a tree.** Theo calls its structure a recursive tree;
+Numina, the thing Theo builds on, records dependencies as a DAG. **Saranga is
+already a DAG.** We are closer to the source than the paper that cites it.
+
+**(b) `\uses{...}` is Lean Blueprint syntax** (Patrick Massot's `leanblueprint`).
+Numina does not cite it, but the macro is unmistakable. And Saranga's paper
+*already* cites `leanblueprint` in Related Work, and already says the
+author-curated `\uses{}` annotations in 40+ public Blueprint projects are "a
+free source of evaluation gold for any paper-to-DAG extractor". So the chain is:
+
+    Theo  ->  Numina  ->  Lean Blueprint \uses{} DAG  ==  Saranga's edge model
+
+A blueprint is (definitions + lemmas + theorem) linked by `uses`. That is a
+Saranga paper graph, arrived at from the opposite direction — they *generate* one
+to guide formalization, we *extract* one from a finished paper.
+
+**(c) The gap I described in §3.1(a) is narrower than I said.** At blueprint
+level we already match: nodes are statements, edges are `uses`, order is
+topological. The real difference is not tree-vs-list, it is **provenance**: their
+lemmas are *generated to be provable*, ours are *extracted as written*. Their
+granularity is set by Lean compilation feedback — "compilation feedback and
+proof-state inspection may reveal that an informal step is incorrect,
+underspecified, or **split at an unsuitable granularity**", after which the agent
+revises the blueprint. We have no such oracle, which is exactly why our
+granularity is unspecified and why `proof_step` is our least-confident type.
+
+**So there is less transplantable spec here than Theo's citation implied.** No
+node schema to align with. What we take is confirmation that the target object is
+a `uses`-DAG over definitions/lemmas/theorem — which we already have — plus the
+observation that everyone who builds one ends up needing an explicit granularity
+policy, and gets it from a verifier we do not have.
+
+One further Numina detail worth keeping: they distinguish **two kinds of
+`sorry`** by difficulty — a gap needing only local reasoning inside an
+already-structured proof, versus one standing for a whole lemma's proof. The
+agent handled the first well and the second verbosely. That is the same
+distinction our leaf-or-recurse rubric has to make, observed independently.
+
+---
+
+## 4. Where this lands for v6
+
+See **`docs/v6_decision.md`** for the resulting schema-and-prompt proposal. In
+one line: these two papers argue for *no new node or edge types*, and for
+spending v6 on a **granularity policy** and on the two declared-but-unrequested
+fields — because that is the part a regex student can learn, and the part where
+our own corpus says we are weakest.

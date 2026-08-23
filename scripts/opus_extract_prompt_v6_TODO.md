@@ -1,5 +1,11 @@
 # Prompt v6 — issue register (do NOT apply mid-run)
 
+> **A decision proposal now exists: `docs/v6_decision.md`.** This file stays the
+> issue REGISTER — every item, its measurement, and its history. The decision
+> doc says which of them v6 actually applies, split into schema vs prompt, with
+> a distillability column. Read the decision doc first; come here for detail on
+> any item it names. Neither is applied yet.
+
 **Policy.** The Opus-5 silver run uses **v5.1 frozen** for all 100 papers:
 `scripts/opus_extract_prompt_v5_1_rendered.md`, sha256 prefix `100e6cf6fdbb3aea`.
 Every issue below is deferred to a **v6** that would be applied to *all* papers
