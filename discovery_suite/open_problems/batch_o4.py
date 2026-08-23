@@ -324,6 +324,14 @@ def main() -> None:
                          "(~6 chars/word, so 1800 ~= 300 words/side). Bigger = more "
                          "context but more tokens/$ and risk of pulling in a neighbour.")
     ap.add_argument("--model", default="opus")
+    ap.add_argument("--thinking", action="store_true",
+                    help="local models only: let the model reason before "
+                         "answering. Resolution judging is the hard case where "
+                         "this may pay; raise --max-tokens with it, since the "
+                         "reasoning is charged against the same budget.")
+    ap.add_argument("--max-tokens", type=int, default=400,
+                    help="judge output cap; 400 fits a bare verdict, ~1500 "
+                         "leaves room for --thinking")
     ap.add_argument("--parsed-root", default=None,
                     help="root of the parsed JSON (<category>/<year>/<id>.json). Enables "
                          "the raw_latex fallback: when a symbolic node has no content "
@@ -417,9 +425,10 @@ def main() -> None:
             prompt_template=_PROMPT,
             prompt_version="o4_resolution_ctx_v1",
             response_parser=_parse,
-            max_tokens=400,
+            max_tokens=args.max_tokens,
             system="You are an expert mathematician judging whether one paper's "
                    "theorem resolves another paper's open problem.",
+            enable_thinking=args.thinking,
         )
 
     found = 0

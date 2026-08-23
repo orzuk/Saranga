@@ -96,9 +96,16 @@ def _provider_for(model: str) -> str:
     raise ValueError(f"Cannot infer provider for model {model!r}")
 
 
-def _cache_key(model: str, prompt_version: str, template_vars: dict) -> str:
-    blob = json.dumps({"m": model, "v": prompt_version, "t": template_vars},
-                      sort_keys=True, ensure_ascii=False)
+def _cache_key(model: str, prompt_version: str, template_vars: dict,
+               variant: str = "") -> str:
+    payload = {"m": model, "v": prompt_version, "t": template_vars}
+    # Only present when non-empty: a thinking run and a non-thinking run of the
+    # same model on the same prompt are different judgments and must not share
+    # a cache slot, but adding the field unconditionally would rehash -- and so
+    # discard -- every judgment cached before this parameter existed.
+    if variant:
+        payload["x"] = variant
+    blob = json.dumps(payload, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
@@ -120,6 +127,11 @@ class LLMJudge:
       response_parser  Callable[[str], dict] -> structured judgment
       max_tokens       output cap (default 512)
       system           optional system prompt
+      enable_thinking  local provider only: let a reasoning model emit its
+                       <think> block before answering. Off by default because
+                       the block is charged against max_tokens and starves
+                       short-form answers; worth enabling, with max_tokens
+                       raised to match, for genuinely hard judgments.
     """
 
     def __init__(self, *,
@@ -129,7 +141,8 @@ class LLMJudge:
                  prompt_version: str,
                  response_parser: Callable[[str], dict],
                  max_tokens: int = 512,
-                 system: Optional[str] = None):
+                 system: Optional[str] = None,
+                 enable_thinking: bool = False):
         self.model_short = model
         self.model = _resolve_model(model)
         self.provider = _provider_for(self.model)
@@ -139,6 +152,7 @@ class LLMJudge:
         self.response_parser = response_parser
         self.max_tokens = max_tokens
         self.system = system
+        self.enable_thinking = enable_thinking
         self.conn = _connect(self.cache_path)
         self._client = None
 
@@ -244,7 +258,8 @@ class LLMJudge:
                 # that do not recognise the key.
                 kwargs["extra_body"] = {
                     "top_k": -1,
-                    "chat_template_kwargs": {"enable_thinking": False},
+                    "chat_template_kwargs": {
+                        "enable_thinking": self.enable_thinking},
                 }
             resp = self._client.chat.completions.create(**kwargs)
             return resp.choices[0].message.content or ""
@@ -257,7 +272,8 @@ class LLMJudge:
         If dry_run=True, returns a stub result without calling the LLM —
         useful for end-to-end pipeline tests when API spend is undesired.
         """
-        key = _cache_key(self.model, self.prompt_version, template_vars)
+        key = _cache_key(self.model, self.prompt_version, template_vars,
+                         "thinking" if self.enable_thinking else "")
         hit = self._cache_get(key)
         if hit is not None:
             return JudgeResult(parsed=hit["parsed"], raw=hit["raw"], cached=True)
