@@ -46,7 +46,7 @@ from erdos_coverage import (  # noqa: E402
 
 COLS = ["number", "status", "resolved", "score", "covered", "match_key",
         "match_type", "resolving_theorem", "resolution_verdict",
-        "erdos_stmt", "match_snip"]
+        "resolution_relationship", "erdos_stmt", "match_snip"]
 
 
 def load_shards(patterns: list[str]) -> tuple[dict[str, dict], int]:
@@ -126,10 +126,14 @@ def main() -> None:
         r["covered"] = r["score"] >= args.threshold
         r["resolving_theorem"] = r.get("resolving_theorem") or ""
         r["resolution_verdict"] = r.get("resolution_verdict") or ""
+        # shards predating the taxonomy port have no such column; default it here
+        # so the merged CSV always carries the full schema.
+        r["resolution_relationship"] = r.get("resolution_relationship") or ""
         if r["covered"] and r.get("match_key") in run_idx:
             v = run_idx[r["match_key"]]
             r["resolving_theorem"] = v["theorem_key"]
             r["resolution_verdict"] = v.get("verdict", "") or "(triage only)"
+            r["resolution_relationship"] = v.get("relationship", "")
 
     results.sort(key=lambda r: -r["score"])
     covered = [r for r in results if r["covered"]]
@@ -151,7 +155,8 @@ def main() -> None:
     print(f"\n--- top {args.show} matches ---", flush=True)
     for r in results[:args.show]:
         tag = "COVERED" if r["covered"] else "       "
-        res = (f"  ->RESOLVE {r['resolving_theorem']} [{r['resolution_verdict']}]"
+        res = (f"  ->RESOLVE {r['resolving_theorem']} "
+               f"[{r['resolution_relationship'] or r['resolution_verdict']}]"
                if r["resolving_theorem"] else "")
         print(f"{tag} s={r['score']:.3f} #{r['number']:<6} "
               f"[{r['status'] or '?'}] {r.get('match_key') or '-'}{res}",

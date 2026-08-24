@@ -9,7 +9,13 @@ you need to recover them).
 | Prompt | Loader | Purpose |
 |---|---|---|
 | `<type>_prompt.txt` (12 files) | `src/LLMVersion/math_paper_parser.py:1832` | Per-node-type extraction templates fed to the LLM extractor (`parse_batch.py`). Types: algorithm, claim, conjecture, corollary, definition, lemma, open_problem, problem, proof, proposition, table, theorem. |
-| `method_e_judge.txt` | `src/discovery/method_e/judge.py:load_prompt` | LLM-as-judge for Method E retrieval candidates. Six-way RELATIONSHIP taxonomy + YES/MAYBE/NO verdict. |
+| `method_e_judge.txt` | `src/discovery/method_e/judge.py:load_prompt` | LLM-as-judge for Method E retrieval candidates. Seven-way RELATIONSHIP taxonomy (DIRECT / GENERALIZES / SPECIAL_HARD / SPECIAL_CORNER / INDIRECT_TOOL / COUNTER / UNRELATED) + YES/MAYBE/NO roll-up. |
+
+## Built in code, not loaded from this directory
+
+| Prompt | Built by | Purpose |
+|---|---|---|
+| O4 resolution judge (`o4_resolution_ctx_v2`, `o4_resolution_v2`) | `discovery_suite/open_problems/resolution_taxonomy.py`, assembled in `batch_o4.py` / `o4_judge.py` | T-OPEN's problem→theorem resolution judge. Uses the **same seven-way RELATIONSHIP taxonomy as `method_e_judge.txt`**, rolled up to YES/PARTIAL/NO (O4's `PARTIAL` = Method E's `MAYBE`), plus a separate SAME_OBJECT axis. Kept in code rather than here because the prompt body differs per judge (context window vs. bare statements) while the taxonomy block is shared. |
 
 ## Used by humans / agents (not auto-loaded)
 
@@ -23,7 +29,9 @@ you need to recover them).
 - `*_prompt.txt` — Yaron's per-type extraction templates. Filenames are
   load-key-coupled: `math_paper_parser.py` builds the path as
   `prompts/<type>_prompt.txt`. Don't rename without updating the loader.
-- `method_e_*` — Method E pipeline prompts.
+- `method_e_*` — Method E pipeline prompts. The RELATIONSHIP taxonomy in
+  `method_e_judge.txt` is mirrored in `discovery_suite/open_problems/resolution_taxonomy.py`
+  for T-OPEN's O4 judge — change one, change the other.
 - `alignment.md` — alignment / Benchmark 2 prompt.
 
 ## Versioning

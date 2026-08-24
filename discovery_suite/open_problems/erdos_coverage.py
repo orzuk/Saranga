@@ -297,6 +297,8 @@ def load_run_index(runs_dir: Path) -> dict:
                     "score": score,
                     "theorem_key": r.get("theorem_key", ""),
                     "verdict": r.get("verdict", ""),  # NO if triage-only
+                    # empty for triage-only and for pre-taxonomy verdict CSVs
+                    "relationship": r.get("relationship", ""),
                     "same_object": r.get("same_object", ""),
                 }
     return idx, str(src)
@@ -420,11 +422,13 @@ def main() -> None:
             "erdos_stmt": e["statement"][:200].replace("\n", " "),
             "match_snip": best_n["snip"] if best_n else "",
             "resolving_theorem": "", "resolution_verdict": "",
+            "resolution_relationship": "",
         }
         if covered and best_n and best_n["key"] in run_idx:
             v = run_idx[best_n["key"]]
             row["resolving_theorem"] = v["theorem_key"]
             row["resolution_verdict"] = v.get("verdict", "") or "(triage only)"
+            row["resolution_relationship"] = v.get("relationship", "")
         results.append(row)
 
     results.sort(key=lambda r: -r["score"])
@@ -456,8 +460,9 @@ def main() -> None:
     print(f"\n--- top {args.show} matches ---", flush=True)
     for r in results[:args.show]:
         tag = "COVERED" if r["covered"] else "       "
-        res = f"  ->RESOLVE {r['resolving_theorem']} [{r['resolution_verdict']}]" \
-            if r["resolving_theorem"] else ""
+        rel = r["resolution_relationship"]
+        res = (f"  ->RESOLVE {r['resolving_theorem']} "
+               f"[{rel or r['resolution_verdict']}]") if r["resolving_theorem"] else ""
         print(f"{tag} s={r['score']:.3f} #{r['number']:<6} [{r['status'] or '?'}] "
               f"{r['match_key'] or '-'}{res}", flush=True)
         if r["covered"]:
@@ -468,7 +473,7 @@ def main() -> None:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     cols = ["number", "status", "resolved", "score", "covered", "match_key",
             "match_type", "resolving_theorem", "resolution_verdict",
-            "erdos_stmt", "match_snip"]
+            "resolution_relationship", "erdos_stmt", "match_snip"]
     with args.out.open("w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=cols)
         w.writeheader()

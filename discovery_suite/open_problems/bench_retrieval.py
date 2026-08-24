@@ -294,9 +294,15 @@ def _mrr(preds, gold_pairs, gold_problem_keys) -> float:
 def load_judged(path: Path, *, keys_present: set) -> tuple[set, dict, set]:
     """Real (non-synthetic) gold from the Opus verdicts on the lexical top-166.
 
-    YES/PARTIAL are positives, NO are hard negatives — and they are *hard*: every
-    one of them was ranked in the lexical top-166, so they are exactly the
-    surface-similar-but-wrong pairs an embedder must also learn to rank down.
+    Positive verdicts (YES/PARTIAL) are positives, NO are hard negatives — and
+    they are *hard*: every one of them was ranked in the lexical top-166, so they
+    are exactly the surface-similar-but-wrong pairs an embedder must also learn
+    to rank down.
+
+    Verdicts CSVs written since the taxonomy port carry a `relationship` column;
+    it is authoritative when present (the verdict there is only its roll-up), and
+    pre-port CSVs fall back to the `verdict` column, so both generations of
+    o4_verdicts files score identically.
 
     Two honest caveats, both reported by the caller:
       * these pairs were FOUND by token Jaccard, so recall measured on them is
@@ -306,13 +312,16 @@ def load_judged(path: Path, *, keys_present: set) -> tuple[set, dict, set]:
         twins remain the primary metric.
     """
     import pandas as pd
+    import resolution_taxonomy as T
     df = pd.read_csv(path, dtype=str)
     pos, neg, levels = set(), set(), {}
     for r in df.itertuples(index=False):
         if r.problem_key not in keys_present or r.theorem_key not in keys_present:
             continue
         pair = frozenset({r.problem_key, r.theorem_key})
-        if str(r.verdict).upper() in ("YES", "PARTIAL"):
+        rel = str(getattr(r, "relationship", "") or "").upper()
+        verdict = T.verdict_for(rel) or str(r.verdict)
+        if T.is_positive(verdict):
             pos.add(pair)
             levels[pair] = "judged"
         else:
@@ -457,7 +466,7 @@ def main() -> None:
     ap.add_argument("--judged", default=None, metavar="CSV",
                     help="o4_verdicts CSV (e.g. runs/o4_verdicts_all.csv). Adds the "
                          "real Opus-judged pairs whose nodes are in this slice as "
-                         "gold positives (YES/PARTIAL) and hard negatives (NO). "
+                         "gold positives (YES/PARTIAL verdicts) and hard negatives (NO). "
                          "These were surfaced BY the lexical arm, so they measure "
                          "ranking/precision, not recall")
     ap.add_argument("--no-lexical", action="store_true")

@@ -40,13 +40,15 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
 _REPO = _HERE.parents[1]
-for _p in (_REPO / "src", _REPO / "src" / "discovery",
+for _p in (_HERE, _REPO / "src", _REPO / "src" / "discovery",
            _REPO / "src" / "discovery" / "common", _REPO / "discovery_suite",
            _REPO / "discovery_suite" / "shared"):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
 from arxiv_id import normalize_arxiv_id, year_from_arxiv_id  # noqa: E402
+import resolution_taxonomy as T  # noqa: E402
+from resolution_taxonomy import parse_response as _parse  # noqa: E402
 
 
 def _load_dotenv() -> None:
@@ -267,6 +269,8 @@ def locate_by_label(tex: str, raw_latex: str, radius: int) -> str | None:
 
 
 # ── judge prompt ─────────────────────────────────────────────────────────────
+# The relationship taxonomy and the answer format are shared with o4_judge.py via
+# resolution_taxonomy, so the two judges can never drift apart.
 _PROMPT = (
     "Below are excerpts (with surrounding text for context) from two different "
     "arXiv papers.\n\n"
@@ -274,15 +278,11 @@ _PROMPT = (
     "-----\n{a_text}\n-----\n\n"
     "PAPER B ({b_pid}, same year or later) contains a candidate theorem. Excerpt:\n"
     "-----\n{b_text}\n-----\n\n"
-    "Does paper B's theorem RESOLVE paper A's open problem/conjecture — i.e. prove, "
-    "disprove, or directly settle the SAME mathematical claim about the SAME "
-    "object/quantity? \\-macros (e.g. \\CR) are paper-specific; judge whether the "
-    "objects truly coincide, not the wording. Use the surrounding text to tell what "
-    "each statement is really about and whether B is aware of / cites A.\n\n"
-    "Answer in exactly this format:\n"
-    "VERDICT: YES | NO | PARTIAL\n"
-    "SAME_OBJECT: YES | NO\n"
-    "JUSTIFICATION: <1-3 sentences>"
+    "How does paper B's theorem (T) relate to paper A's open problem (O)? Use the "
+    "surrounding text to tell what each statement is really about and whether B is "
+    "aware of / cites A.\n\n"
+    + T.classification_block() + "\n\n"
+    + T.RESPONSE_FORMAT
 )
 
 
@@ -296,19 +296,6 @@ def _preview(side: str, text: str, edge: int = 320) -> None:
     else:
         print(f"        {side} [{size}c] head: {flat[:edge]}")
         print(f"        {side}       tail: {flat[-edge:]}")
-
-
-def _parse(raw: str) -> dict:
-    out = {"verdict": "", "same_object": "", "justification": "", "raw": raw}
-    for line in raw.splitlines():
-        u = line.upper()
-        if u.startswith("VERDICT:"):
-            out["verdict"] = line.split(":", 1)[1].strip()
-        elif u.startswith("SAME_OBJECT:"):
-            out["same_object"] = line.split(":", 1)[1].strip()
-        elif u.startswith("JUSTIFICATION:"):
-            out["justification"] = line.split(":", 1)[1].strip()
-    return out
 
 
 def main() -> None:
@@ -396,8 +383,9 @@ def main() -> None:
         return snippet, "snip", 0
 
     # citation-novelty gate (#3): does B cite A (a KNOWN resolution) or neither?
-    # NB: run as a SECOND pass, AFTER judging, over only the YES/PARTIAL survivors —
-    # so S2 is queried for a few papers, not every paper in the (large) shortlist.
+    # NB: run as a SECOND pass, AFTER judging, over only the positive-verdict
+    # survivors (T.POSITIVE_VERDICTS = YES/PARTIAL) — so S2 is queried for a few
+    # papers, not every paper in the (large) shortlist.
     cg = None
     if args.citations:
         from citation_graph import S2CitationGraph
@@ -423,7 +411,7 @@ def main() -> None:
             model=args.model,
             cache_path=_HERE.parent / "eval_harness" / "runs" / "o4_judge_cache.sqlite",
             prompt_template=_PROMPT,
-            prompt_version="o4_resolution_ctx_v1",
+            prompt_version="o4_resolution_ctx_v2",
             response_parser=_parse,
             max_tokens=args.max_tokens,
             system="You are an expert mathematician judging whether one paper's "
@@ -432,6 +420,7 @@ def main() -> None:
         )
 
     found = 0
+    n_mismatch = 0
     out_rows = []
     for i, r in enumerate(rows, 1):
         pk, tk = r["problem_key"], r["theorem_key"]
@@ -445,14 +434,19 @@ def main() -> None:
             _preview("A", a_text)
             _preview("B", b_text)
             continue
-        res = judge.judge(a_pid=pk.split("::")[0], a_text=a_text[: args.radius * 2],
-                          b_pid=tk.split("::")[0], b_text=b_text[: args.radius * 2])
-        p = res.parsed
-        print(f"        -> VERDICT={p['verdict']} SAME_OBJECT={p['same_object']} "
-              f"{'(cached)' if res.cached else ''}")
+        try:
+            res = judge.judge(a_pid=pk.split("::")[0], a_text=a_text[: args.radius * 2],
+                              b_pid=tk.split("::")[0], b_text=b_text[: args.radius * 2])
+            p, cached = res.parsed, res.cached
+        except Exception as e:                      # keep the batch alive
+            p, cached = T.error_result(e), False
+        n_mismatch += int(bool(p.get("mismatch")))
+        print(f"        -> {p['relationship']} (VERDICT={p['verdict']}) "
+              f"SAME_OBJECT={p['same_object']} {'(cached)' if cached else ''}")
         print(f"           {p['justification'][:140]}")
         # citation columns filled in the second pass below (-1 = not yet checked)
-        out_rows.append({**r, "verdict": p["verdict"], "same_object": p["same_object"],
+        out_rows.append({**r, "relationship": p["relationship"],
+                         "verdict": p["verdict"], "same_object": p["same_object"],
                          "justification": p["justification"],
                          "ctx_found": int(both_ctx),
                          "b_cites_a": -1, "a_cites_b": -1, "novel": -1})
@@ -462,12 +456,12 @@ def main() -> None:
 
     # ── citation pass: only over YES/PARTIAL survivors (few papers, not all) ──
     if cg is not None and out_rows:
-        hits = [r for r in out_rows if r["verdict"].upper() in ("YES", "PARTIAL")]
+        hits = [r for r in out_rows if T.is_positive(r["verdict"])]
         if hits and not args.no_fetch_citations:
             pids = sorted({r["problem_key"].split("::")[0] for r in hits} |
                           {r["theorem_key"].split("::")[0] for r in hits})
             print(f"\n[batch_o4] citation gate: fetching S2 for {len(pids)} papers "
-                  f"from {len(hits)} YES/PARTIAL pair(s) …")
+                  f"from {len(hits)} positive-verdict pair(s) …")
             cg.fetch_batch(pids)
         for r in hits:
             ba, ab, nov = _cite_gate(r["problem_key"], r["theorem_key"])
@@ -486,18 +480,28 @@ def main() -> None:
         w.writerows(out_rows)
     yes = sum(1 for r in out_rows if r["verdict"].upper() == "YES")
     part = sum(1 for r in out_rows if r["verdict"].upper() == "PARTIAL")
-    # the discovery target: YES + same object + solid context + not a cited resolution
+    # the discovery target: positive verdict + same object + solid context + not a
+    # cited resolution. Unchanged by the taxonomy port — the roll-up is the gate;
+    # the relationship is what tells you WHICH kind of hit each survivor is.
     disc = [r for r in out_rows
-            if r["verdict"].upper() in ("YES", "PARTIAL")
+            if T.is_positive(r["verdict"])
             and str(r["same_object"]).upper() == "YES"
             and r["ctx_found"] == 1 and r["novel"] == 1]
     print(f"[batch_o4] wrote {len(out_rows)} verdicts -> {args.out} "
           f"({yes} YES, {part} PARTIAL)")
+    print("[batch_o4] relationship breakdown: "
+          + ", ".join(f"{k}={v}" for k, v in T.counts(out_rows).items()))
+    if n_mismatch:
+        # The relationship wins; this only says how often the model's own roll-up
+        # disagreed with it, which is a prompt-quality signal worth watching.
+        print(f"[batch_o4] NOTE {n_mismatch} reply(ies) stated a VERDICT that "
+              f"contradicted their RELATIONSHIP; the relationship was used.")
     if args.citations:
         print(f"[batch_o4] {len(disc)} UNDISCOVERED candidate(s) "
-              f"(YES/PARTIAL + same_object + ctx + not-cited):")
+              f"(positive verdict + same_object + ctx + not-cited):")
         for r in disc:
-            print(f"    {r['score']} {r['problem_key']} -> {r['theorem_key']}")
+            print(f"    {r['score']} [{r['relationship']}] "
+                  f"{r['problem_key']} -> {r['theorem_key']}")
 
 
 if __name__ == "__main__":

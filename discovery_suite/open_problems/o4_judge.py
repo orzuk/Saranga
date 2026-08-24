@@ -2,8 +2,9 @@
 
 Reuses common.llm_judge.LLMJudge (cached). Given two node handles
 (paper_id::node_id), pulls their full text (raw LaTeX preferred, so masked
-[MATH] tokens don't hide the distinguishing math) and asks the model whether the
-theorem actually RESOLVES the open problem / conjecture.
+[MATH] tokens don't hide the distinguishing math) and asks the model how the
+theorem relates to the open problem / conjecture, on the seven-way
+resolution_taxonomy RELATIONSHIP axis plus its YES/PARTIAL/NO roll-up.
 
     python discovery_suite/open_problems/o4_judge.py \
         --problem 1107.1630::Cj2 --theorem 1105.2040::T4 --model opus
@@ -17,9 +18,13 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
 _REPO = _HERE.parents[1]   # open_problems -> discovery_suite -> repo root
-for _p in (_REPO / "src", _REPO / "src" / "discovery", _REPO / "discovery_suite"):
+for _p in (_HERE, _REPO / "src", _REPO / "src" / "discovery",
+           _REPO / "discovery_suite"):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
+
+import resolution_taxonomy as T  # noqa: E402
+from resolution_taxonomy import parse_response as _parse  # noqa: E402
 
 
 def _load_dotenv() -> None:
@@ -50,33 +55,18 @@ def _node_text(n) -> str:
     return raw or stmt
 
 
+# Same taxonomy, format and parser as the batch judge (batch_o4.py) — imported
+# rather than restated so a single-pair spot check is directly comparable to the
+# batch run's verdict for that pair.
 _PROMPT = (
-    "Open problem / conjecture stated in paper {a_pid}:\n"
+    "Open problem / conjecture (O) stated in paper {a_pid}:\n"
     "  {a_text}\n\n"
-    "Candidate theorem from a different paper {b_pid}:\n"
+    "Candidate theorem (T) from a different paper {b_pid}:\n"
     "  {b_text}\n\n"
-    "Does the theorem RESOLVE the conjecture/open problem — i.e. does it prove, "
-    "disprove, or directly settle the SAME mathematical claim about the SAME "
-    "object/quantity? Note that \\-macros (e.g. \\CR, \\SymSubMP) are paper-"
-    "specific; judge whether the objects truly coincide, not just the wording.\n\n"
-    "Answer in exactly this format:\n"
-    "VERDICT: YES | NO | PARTIAL\n"
-    "SAME_OBJECT: YES | NO\n"
-    "JUSTIFICATION: <1-3 sentences>"
+    "How does T relate to O?\n\n"
+    + T.classification_block() + "\n\n"
+    + T.RESPONSE_FORMAT
 )
-
-
-def _parse(raw: str) -> dict:
-    out = {"verdict": "", "same_object": "", "justification": "", "raw": raw}
-    for line in raw.splitlines():
-        u = line.upper()
-        if u.startswith("VERDICT:"):
-            out["verdict"] = line.split(":", 1)[1].strip()
-        elif u.startswith("SAME_OBJECT:"):
-            out["same_object"] = line.split(":", 1)[1].strip()
-        elif u.startswith("JUSTIFICATION:"):
-            out["justification"] = line.split(":", 1)[1].strip()
-    return out
 
 
 def main() -> None:
@@ -102,7 +92,7 @@ def main() -> None:
         model=args.model,
         cache_path=_HERE.parent / "eval_harness" / "runs" / "o4_judge_cache.sqlite",
         prompt_template=_PROMPT,
-        prompt_version="o4_resolution_v1",
+        prompt_version="o4_resolution_v2",
         response_parser=_parse,
         max_tokens=400,
         system="You are an expert mathematician judging whether one paper's "
@@ -112,9 +102,14 @@ def main() -> None:
                       b_pid=pb.paper_id, b_text=_node_text(nb))
     p = res.parsed
     print("=== O4 JUDGE ===")
-    print("VERDICT     :", p.get("verdict"))
+    print("RELATIONSHIP:", p.get("relationship"))
+    print("VERDICT     :", p.get("verdict"),
+          "(rolled up from the relationship)")
     print("SAME OBJECT :", p.get("same_object"))
     print("JUSTIFY     :", p.get("justification"))
+    if p.get("mismatch"):
+        print("NOTE        : the reply's own VERDICT line contradicted its "
+              "RELATIONSHIP; the relationship was used.")
     print("(cached)" if res.cached else "(fresh LLM call)")
 
 
