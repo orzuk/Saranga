@@ -22,6 +22,15 @@
 #   l40s  -> salmon  (48GB; comfortable; current default)
 #   a100  -> dogfish (80GB; overkill; often drained anyway)
 #   h200  -> goldfish (way overkill)
+#
+# GPU COUNT: weights land in VRAM roughly at their on-disk size, so a card
+# holds a model only if it also leaves room for the KV cache. On l40s (48GB):
+#   qwen3-32b-awq       18GB  -> 1 GPU   (4-bit; the default here)
+#   mistral-small-24b   44GB  -> 2 GPUs  (bf16; 44 clears 48 only on paper)
+#   gemma-3-27b-it      51GB  -> 2 GPUs  (bf16)
+#   llama-3.3-70b      132GB  -> 4 GPUs  (bf16)
+# Pass BOTH the allocation and the split, and keep them equal:
+#   TP=2 sbatch --gres=gpu:l40s:2 scripts/launch_qwen_judge_server.sh
 #SBATCH --partition=salmon
 #SBATCH --gres=gpu:l40s:1
 #SBATCH --cpus-per-task=4
@@ -47,7 +56,12 @@ mkdir -p /sci/labs/orzuk/orzuk/method_e_jobs
 # `--served-model-name` lets the client refer to a friendly alias
 # (e.g. 'qwen3-32b-awq-int4') without needing to match the real HF model ID.
 MODEL="${QWEN_MODEL:-Qwen/Qwen3-32B-AWQ}"
+# The client picks its provider by sniffing this name (llm_judge._provider_for),
+# so it has to keep the vendor prefix -- 'gemma-3-27b' routes local, 'judge-2'
+# raises. It is otherwise free-form and need not match the HF id.
 SERVED_AS="${QWEN_SERVED_NAME:-qwen3-32b-awq-int4}"
+# Number of GPUs to shard the weights over; must equal the --gres count.
+TP="${TP:-1}"
 PORT="${QWEN_PORT:-8000}"
 HOST="0.0.0.0"
 
@@ -62,7 +76,7 @@ source /sci/labs/orzuk/orzuk/venvs/qwen-vllm/bin/activate
 # tmp wheel extraction). Each of these needs its own env override —
 # vLLM reads XDG_CACHE_HOME for the generic cache root but Triton and
 # torch.inductor have their own variables. HF_HOME alone is not enough.
-export HF_HOME="${HF_HOME:-/sci/labs/orzuk/orzuk/hf-cache}"
+export HF_HOME="${HF_HOME:-/sci/labs/orzuk/orzuk/foundation_models/hf}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-/sci/labs/orzuk/orzuk/xdg-cache}"
 export VLLM_CACHE_ROOT="${VLLM_CACHE_ROOT:-/sci/labs/orzuk/orzuk/xdg-cache/vllm}"
 export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-/sci/labs/orzuk/orzuk/xdg-cache/triton}"
@@ -73,8 +87,12 @@ mkdir -p "$HF_HOME" "$XDG_CACHE_HOME" "$VLLM_CACHE_ROOT" "$TRITON_CACHE_DIR" "$T
 # Optional: speed up downloads on first run
 export HF_HUB_ENABLE_HF_TRANSFER=1
 
+# Files written into the shared model tree must stay group-writable, or the
+# next person to touch this cache is locked out of it.
+umask 002
+
 echo "[launch_qwen] node=$(hostname) port=$PORT"
-echo "[launch_qwen] model=$MODEL"
+echo "[launch_qwen] model=$MODEL  served_as=$SERVED_AS  tp=$TP"
 echo "[launch_qwen] HF_HOME=$HF_HOME"
 echo "[launch_qwen] starting vLLM server at $(date)"
 echo "[launch_qwen]"
@@ -89,7 +107,7 @@ python -m vllm.entrypoints.openai.api_server \
   --served-model-name "$SERVED_AS" \
   --host "$HOST" \
   --port "$PORT" \
-  --tensor-parallel-size 1 \
+  --tensor-parallel-size "$TP" \
   --gpu-memory-utilization 0.90 \
   --max-model-len 32768 \
   --dtype auto \
