@@ -27,6 +27,7 @@ import json
 import os
 import sys
 import time
+import re
 import urllib.error
 import urllib.request
 from collections import Counter, defaultdict
@@ -46,6 +47,36 @@ class _Usage:
     """Stands in for anthropic's usage object; token accounting is not the point."""
     input_tokens = 0
     output_tokens = 0
+
+
+#: A fenced block, with or without a language tag, and any prose either side.
+_FENCE = re.compile(r"^.*?```(?:[A-Za-z0-9_+-]*)?\s*(.*?)\s*```.*$", re.S)
+
+
+def _unwrap(text: str) -> str:
+    """Return the bare JSON array from a chat model's reply.
+
+    The prompt asks for an array and no fences. Qwen complies; Mistral wraps it
+    in ``` anyway, and a wrapped array parses as nothing at all -- every row
+    comes back MISSING, which reads like the model refused rather than like a
+    formatting difference. Strip the wrapper rather than weaken the prompt, so
+    the two judges are still answering the same question.
+
+    Ġ is the byte-level BPE marker for a leading space, and it reaching the
+    client means the detokenizer never mapped it back. Repair it here so the
+    reason text stays legible; the verdict field is unaffected either way.
+    """
+    t = (text or "").strip()
+    m = _FENCE.match(t)
+    if m:
+        t = m.group(1).strip()
+    if "\u0120" in t:
+        t = t.replace("\u0120", " ")
+    # Prose before or after the array is likewise the model being chatty.
+    i, j = t.find("["), t.rfind("]")
+    if i != -1 and j > i:
+        t = t[i:j + 1]
+    return t
 
 
 class _Block:
@@ -103,7 +134,7 @@ class LocalMessages:
                     headers={"Content-Type": "application/json"})
                 with urllib.request.urlopen(req, timeout=self.timeout) as r:
                     body = json.load(r)
-                return _Msg(body["choices"][0]["message"]["content"])
+                return _Msg(_unwrap(body["choices"][0]["message"]["content"]))
             except (urllib.error.URLError, OSError, KeyError, ValueError) as e:
                 last = e
                 time.sleep(2 * (attempt + 1))
