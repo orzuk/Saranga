@@ -35,6 +35,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("csvs", nargs="+")
     ap.add_argument("--names", default=None)
+    ap.add_argument("--sets", action="store_true",
+                    help="print which models called each item positive, counted "
+                         "per pattern -- the input to an intersection plot")
     ap.add_argument("--claude", default=None,
                     help="Claude verdicts CSV; reported as a recall check only")
     args = ap.parse_args()
@@ -91,6 +94,24 @@ def main():
     print(f"  split              {len(split):>5}  {len(split)/len(keys):>6.1%}")
     print(f"  -> escalating only the splits costs {len(split)}/{len(keys)} calls "
           f"({1 - len(split)/len(keys):.0%} fewer)")
+
+    # ---- intersections ----
+    # Which models called an item positive, as a set. Four judges give sixteen
+    # possible patterns, so this is reported as counts per pattern rather than
+    # drawn as circles -- a four-set Venn needs ellipses and stops being
+    # readable well before it stops being drawable.
+    if args.sets:
+        pat = Counter()
+        for k in keys:
+            who = tuple(nm for nm, t in zip(names, tables)
+                        if verdict(t, k) in POSITIVE)
+            pat[who] += 1
+        print("\nintersections — models calling an item POSITIVE")
+        print(f"{'pattern':<40}{'n':>6}")
+        for who, n in sorted(pat.items(), key=lambda kv: (-len(kv[0]), -kv[1])):
+            label = "+".join(who) if who else "(none — all four said NO)"
+            print(f"{label:<40}{n:>6}")
+        print(f"{'TOTAL':<40}{sum(pat.values()):>6}")
 
     # ---- recall against Claude, with the caveat attached ----
     if args.claude:

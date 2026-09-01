@@ -34,6 +34,9 @@ def load(path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("csvs", nargs="+", help="fp_judge_<model>.csv replay outputs")
+    ap.add_argument("--sets", action="store_true",
+                    help="print which models called each row GENUINE, counted "
+                         "per pattern -- the input to an intersection plot")
     ap.add_argument("--names", default=None,
                     help="comma list overriding the names taken from filenames")
     args = ap.parse_args()
@@ -74,6 +77,19 @@ def main():
     for a, b in itertools.combinations(names, 2):
         k = sum(1 for i in range(n) if votes[a][i] == votes[b][i])
         print(f"  {a:<16} vs {b:<16} {k:>4}/{n}  {k/n:>6.1%}")
+
+    # ---- intersections ----
+    if args.sets:
+        pat = Counter()
+        for i in range(n):
+            who = tuple(nm for nm in names if votes[nm][i] == "GENUINE")
+            pat[who] += 1
+        print("\nintersections — models calling a row GENUINE")
+        print(f"{'pattern':<40}{'n':>6}")
+        for who, k in sorted(pat.items(), key=lambda kv: (-len(kv[0]), -kv[1])):
+            label = "+".join(who) if who else "(none — all said FALSE_POSITIVE)"
+            print(f"{label:<40}{k:>6}")
+        print(f"{'TOTAL':<40}{sum(pat.values()):>6}")
 
     # ---- the panel ----
     unanimous = [i for i in range(n)
