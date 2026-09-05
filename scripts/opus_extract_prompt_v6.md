@@ -3,12 +3,20 @@
 
 Extract a mathematics paper or chapter to JSON for the SARANGA project.
 
+**What you are producing.** A typed directed graph of the paper's mathematical
+content. Nodes are the paper's statements — theorems, definitions, proofs,
+algorithms, and the Level-2 sub-steps that decompose proofs and algorithms —
+each carrying a `statement` field copied verbatim from the source `.tex` plus
+the structured fields listed under "Schema". Edges are typed dependencies
+between nodes. The closed node-type and edge-type vocabularies are given in
+the Schema section; read it before you begin.
+
 This prompt is the **v6 EXTRACTION-ONLY** variant. It has TWO core rules.
 
 **Core rule #1 — `statement` is a VERBATIM COPY** from the source `.tex`,
 LaTeX preserved exactly. No paraphrase, no summary, no rewording.
-Verbatim is what enables alignment, plagiarism detection, and
-cross-paper semantic match — the whole point of the dataset.
+A verbatim span can be located in the source and compared with any
+other span; a paraphrase cannot, and the loss is silent.
 
 **Core rule #2 — `statement_short` is the LLM COMPRESSION**, populated
 whenever a meaningful 1-sentence version exists. It is the place where
@@ -73,8 +81,8 @@ verbatim body in `statement`.
 
 If a short display-friendly version is genuinely useful, put it in
 `statement_short` (see core rule #2). `statement_short` is explicitly
-derived and lossy; it is NEVER used as the source for alignment,
-plagiarism, or any analytical task. `statement` is the canonical truth.
+derived and lossy, and is never the source of record. `statement` is
+the source of record.
 
 ## CORE RULE #2 — `statement_short` IS THE LLM COMPRESSION
 
@@ -168,9 +176,9 @@ statement_short:
    & Sun 1990", "Impagliazzo, Levin, Luby", etc.).
 
    The `statement` field for an external node is still verbatim — copy
-   the way THIS paper states the cited result (which may differ from
-   the original source's phrasing; that is fine, the canonical truth
-   for our dataset is how THIS paper presents it).
+   the way THIS paper states the cited result. It may differ from the
+   original source's phrasing; that is fine — record how THIS paper
+   states it.
 
    Trigger phrases: "by X", "as shown in [REF]", "we use the classical
    result of Y", "we compare against the baseline Z" → `origin: "external"`.
@@ -362,9 +370,9 @@ statement_short:
 
     Do NOT emit a step for a sentence the paper presents as immediate
     ("clearly", "trivially", "it follows at once", "by inspection")
-    unless it is itself named. Prefer more steps to fewer: a step that
-    turns out to be trivial is cheap, a missed step is unrecoverable
-    downstream.
+    unless it is itself named. Prefer more steps to fewer: an
+    unnecessary step is cheap to ignore, a missed step cannot be
+    recovered from the output.
 
     **WHEN TO EMIT AN `algorithm_step`.** One per executable line of the
     procedure — each assignment, test, call, loop header, and return.
@@ -605,7 +613,8 @@ should stay isolated — that is a correct output, not a defect. Do NOT treat
 "every node has an edge" as a target to hit.
 
 **Resolve the tension with `confidence`, not by guessing.** Emit the edge and
-score it, so downstream consumers can filter instead of trusting a binary call:
+score it, so a reader can filter on the score instead of trusting a
+yes/no call:
 
 | `confidence` | when |
 |---|---|
