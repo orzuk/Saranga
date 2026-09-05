@@ -390,9 +390,9 @@ statement_short:
       `solve` solve a subproblem, system, or optimisation ·
       `call` invoke another algorithm or named subroutine ·
       `update` modify existing state — use ONLY when none of the above
-      fits. In the v5.1 corpus `update` was 36% of all algorithm steps
-      because it absorbed compute/select/filter/solve. Reach for it
-      last, not first. ·
+      fits. This is the easiest label to over-apply: a step that
+      computes, selects, filters or solves is NOT an `update`. Reach
+      for it last, not first. ·
       `return` output or terminate · `other` none of the above
 
     Steps may reference Level-1 nodes outside the parent
@@ -450,9 +450,9 @@ statement_short:
 
   Judge the **justification**, not the node's type or the paper's arXiv
   category. A `theorem` with a hand-waved proof is `semi_formal`; a
-  `remark` carrying a full proof gets no `rigor` field. Category does not
-  predict this — in the v5.1 corpus one `math.OC` paper was 99% formal
-  and another was 83% non-formal.
+  `remark` carrying a full proof gets no `rigor` field. Do not infer
+  rigor from the category: two papers in the same category can differ
+  completely, so read each node's own justification.
 
   Emit `metadata.rigor_nonformal_count` = the number of nodes you gave a
   `rigor` field. `0` is a valid and meaningful answer: it records that
