@@ -360,26 +360,45 @@ statement_short:
     `step_order` restarts at 1 within each parent, so an outer loop's
     body is 1,2,3… not a continuation of the outer numbering.
 
-    **WHEN TO EMIT A `proof_step`.** Emit one for each move the paper
-    itself marks as a move:
-    - a numbered or named part: "Part (1)", "Case 2", "Step 3", "Claim 4.1"
-    - a paragraph opening with a discourse marker: "First", "Next",
-      "Then", "It remains to show", "We claim that", "Conversely",
-      "Finally"
-    - an inline sub-proof, or a displayed derivation the argument turns on
+    **WHEN TO EMIT A `proof_step`.** Segment the proof body where the
+    argument makes a distinct move: an object is introduced, a case is
+    opened, a lemma or inequality is applied, a bound is established,
+    an intermediate claim is proved, or the conclusion is drawn.
+    Granularity is one sentence to one short paragraph.
 
-    Do NOT emit a step for a sentence the paper presents as immediate
-    ("clearly", "trivially", "it follows at once", "by inspection")
-    unless it is itself named. Prefer more steps to fewer: an
+    Most steps begin with ordinary mathematical prose -- "Let", "By",
+    "Since", "Take", "Suppose", "If", "Now", "Note that", "Consider".
+    **Do NOT require an explicit marker**: most real proof steps carry
+    none, and waiting for one will under-segment badly.
+
+    Where the paper DOES label its own structure -- "Case 2:",
+    "Part (1):", an enumerated list, an inline sub-proof -- follow that
+    labelling exactly: one step per label, no merging, no splitting.
+    Uncommon, but authoritative when present.
+
+    Do NOT emit a separate step for a sentence the paper presents as
+    immediate ("clearly", "trivially", "obvious", "it follows at once",
+    "by inspection") unless it is itself labelled -- attach it to the
+    step it completes. Otherwise prefer more steps to fewer: an
     unnecessary step is cheap to ignore, a missed step cannot be
     recovered from the output.
 
-    **WHEN TO EMIT AN `algorithm_step`.** One per executable line of the
-    procedure — each assignment, test, call, loop header, and return.
-    Emit a step for a control keyword the paper numbers (`\REPEAT`,
-    `\ELSE`, `\ENDIF`): the paper's own line numbering counts these and
-    prose refers to them ("by line 7"). Do NOT emit steps for comments,
-    blank lines, or the caption.
+    **WHEN TO EMIT AN `algorithm_step`.** Algorithms appear in two forms
+    and the rule differs.
+
+    *Pseudocode* -- a `\begin{algorithmic}` block, an enumerated
+    listing, or any body with numbered lines: one step per line,
+    including control keywords the paper numbers (`\REPEAT`, `\ELSE`,
+    `\ENDIF`), since the paper's numbering counts these and prose cites
+    them ("by line 7"). Record `source_line_label`. Skip comments,
+    blank lines and the caption.
+
+    *Prose* -- the procedure described in running text ("first we
+    construct..., then for each component we..."): one step per
+    operation the description performs. Segment on operations, not on
+    sentences; `source_line_label` is null. This is the commoner form
+    in research papers, so do NOT expect `\STATE` markers and do NOT
+    skip an algorithm because it has none.
 
     **`subclass` controlled vocabulary.** The two vocabularies are
     DISJOINT — never use a proof_step value on an algorithm_step or
