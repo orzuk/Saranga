@@ -1,9 +1,9 @@
 <!-- CANONICAL: src/node_types.py and src/edge_types.py.
      This file is derivative; sync it whenever the canonical changes. -->
 
-Extract a mathematics paper or chapter to JSON for the Authomathics project.
+Extract a mathematics paper or chapter to JSON for the SARANGA project.
 
-This prompt is the **v5 EXTRACTION-ONLY** variant. It has TWO core rules.
+This prompt is the **v6 EXTRACTION-ONLY** variant. It has TWO core rules.
 
 **Core rule #1 — `statement` is a VERBATIM COPY** from the source `.tex`,
 LaTeX preserved exactly. No paraphrase, no summary, no rewording.
@@ -702,7 +702,7 @@ computes it, the theorem is a prerequisite of the algorithm:
        "paper_num": N,
        "annotator": "agent-extraction",
        "model": "claude-opus-4-7",
-       "prompt_version": "v5",
+       "prompt_version": "v6",
        "extraction_date": "YYYY-MM-DD"
      },
      "nodes": [...],
