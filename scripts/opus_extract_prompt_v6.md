@@ -383,22 +383,36 @@ statement_short:
     unnecessary step is cheap to ignore, a missed step cannot be
     recovered from the output.
 
-    **WHEN TO EMIT AN `algorithm_step`.** Algorithms appear in two forms
-    and the rule differs.
+    **WHEN TO EMIT AN `algorithm_step`.** As with theorem-likes, the
+    source may or may not mark the structure for you. Extract in both
+    cases; only `confidence` and `source_line_label` differ.
 
-    *Pseudocode* -- a `\begin{algorithmic}` block, an enumerated
-    listing, or any body with numbered lines: one step per line,
-    including control keywords the paper numbers (`\REPEAT`, `\ELSE`,
-    `\ENDIF`), since the paper's numbering counts these and prose cites
-    them ("by line 7"). Record `source_line_label`. Skip comments,
-    blank lines and the caption.
+    *Marked up* -- `\begin{algorithmic}`, a numbered `\begin{enumerate}`,
+    a listing, or any body whose lines the paper numbers. One step per
+    line, including control keywords the paper numbers (`\REPEAT`,
+    `\ELSE`, `\ENDIF`), since prose cites them ("by line 7"). Record
+    `source_line_label` from the paper's own numbering. Skip comments,
+    blank lines and the caption. `confidence` 0.9-1.0.
 
-    *Prose* -- the procedure described in running text ("first we
-    construct..., then for each component we..."): one step per
-    operation the description performs. Segment on operations, not on
-    sentences; `source_line_label` is null. This is the commoner form
-    in research papers, so do NOT expect `\STATE` markers and do NOT
-    skip an algorithm because it has none.
+    *Unmarked* -- an `\begin{algorithm}` float containing prose, or a
+    procedure described in running text ("first we construct..., then
+    for each component we..."). One step per operation the description
+    performs; segment on operations, not on sentences.
+    `source_line_label` is null and `confidence` is 0.6-0.8, since the
+    step boundaries are your judgment.
+
+Unmarked procedures are at least as common as marked-up
+    ones. Do NOT skip an algorithm, or decline to decompose it, because
+    it has no `\STATE` markers -- an unmarked procedure is still an
+    algorithm, exactly as an unwrapped assertion is still a theorem.
+
+    **Markup in a step's `statement`.** Copy the line's CONTENT, not its
+    LaTeX wrapper: for `\STATE {Initialize $v \leftarrow v_0$.}` the
+    `statement` is `Initialize $v \leftarrow v_0$.` Math and all other
+    LaTeX inside the content are preserved verbatim as always. The same
+    applies to `\item` in an enumerated procedure. Keep the control word
+    itself when it IS the line (`\WHILE{not converged}` -> `while not
+    converged`) since that line carries the loop condition.
 
     **`subclass` controlled vocabulary.** The two vocabularies are
     DISJOINT — never use a proof_step value on an algorithm_step or
