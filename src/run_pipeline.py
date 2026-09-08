@@ -265,6 +265,8 @@ def op_parse(args) -> None:
     cmd += ["--structure-types", args.structure_types]
     if args.tex_dir:
         cmd += ["--tex-dir", args.tex_dir]
+    if args.rules_dir:
+        cmd += ["--rules-dir", str(Path(args.rules_dir).resolve())]
     if args.safeguard is not None:
         cmd += ["--safeguard", str(args.safeguard)]
 
@@ -868,6 +870,11 @@ def main():
                                 "claim,conjecture,problem,open_problem,proof,"
                                 "algorithm,assumption,example,exercise,remark,table",
                         help="Comma-separated structure types to extract.")
+    parser.add_argument("--rules-dir", type=str, default=None,
+                        help="Distilled rule set to extract with. Point at an "
+                             "extractor dir (extractors/rules/<id>) or any dir "
+                             "holding <type>_eval/distilled_rules.py. Default: "
+                             "src/LLMVersion/ (the production symlinks).")
     parser.add_argument("--tex-dir", type=str, default=None,
                         help="Directory to search for local .tex files instead of "
                              "the default FULL_PAPERS_DIR from config. Useful when "

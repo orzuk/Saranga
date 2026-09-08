@@ -131,6 +131,7 @@ def run_batch(
         llm_chunk_chars: int = 30000,
         llm_provider: str = "anthropic",
         tex_dir: Optional[str] = None,
+        rules_dir: Optional[str] = None,
         prompt_file: Optional[str] = None,
         structure_types: Optional[list] = None,
         safeguard_timeout: Optional[int] = None,
@@ -252,6 +253,7 @@ def run_batch(
                     llm_provider=llm_provider,
                     custom_prompt_file=prompt_file,
                     structure_types=structure_types,
+                    rules_dir=rules_dir,
                 )
                 if safeguard_timeout:
                     signal.signal(signal.SIGALRM, _timeout_handler)
@@ -386,6 +388,7 @@ def run_batch(
                 llm_provider=llm_provider,
                 custom_prompt_file=prompt_file,
                 structure_types=structure_types,
+                rules_dir=rules_dir,
             )
             if safeguard_timeout:
                 signal.signal(signal.SIGALRM, _timeout_handler)
@@ -590,6 +593,17 @@ def main():
         help="Comma-separated structure types to extract via LLM (default: definition)",
     )
     parser.add_argument(
+        "--rules-dir",
+        type=str,
+        default=None,
+        help=(
+            "Directory holding the distilled rule set to use. Point it at an "
+            "extractor directory (e.g. extractors/rules/<id>) or any dir "
+            "containing <type>_eval/distilled_rules.py. Default: src/LLMVersion/, "
+            "i.e. whatever the production symlinks currently point at."
+        ),
+    )
+    parser.add_argument(
         "--tex-dir",
         type=str,
         default=None,
@@ -637,6 +651,7 @@ def main():
         prompt_file=args.prompt_file,
         structure_types=structure_types,
         tex_dir=args.tex_dir,
+        rules_dir=args.rules_dir,
         safeguard_timeout=args.safeguard,
     )
 

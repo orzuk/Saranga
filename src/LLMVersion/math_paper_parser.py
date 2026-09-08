@@ -1623,6 +1623,8 @@ class PaperParser:
         """
         probe = self.rules_dir / "definition_eval" / "distilled_rules.py"
         if not probe.exists():
+            probe = self.rules_dir / "distilled_rules.py"
+        if not probe.exists():
             return f"NONE (no distilled_rules.py under {self.rules_dir})"
         try:
             real = probe.resolve()
@@ -1662,7 +1664,16 @@ class PaperParser:
         directory. If found, imports extract_distilled_{structure_type}(text) and
         converts returned dicts to MathObject instances.
         """
+        # Two accepted layouts:
+        #   <dir>/<type>_eval/distilled_rules.py  -- the production symlink tree
+        #   <dir>/distilled_rules.py              -- a run/extractor directory,
+        #       whose root file is the merged importer that re-exports every
+        #       extract_distilled_<type> from groups/. Accepting it is what lets
+        #       --rules-dir point straight at an extractor instead of requiring
+        #       the 14 symlinks to be re-pointed first.
         rules_path = self.rules_dir / f"{structure_type}_eval" / "distilled_rules.py"
+        if not rules_path.is_file():
+            rules_path = self.rules_dir / "distilled_rules.py"
 
         if not rules_path.is_file():
             return []
