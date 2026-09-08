@@ -38,6 +38,187 @@ other.
 - TEX SOURCE: {TEX_SOURCE}
 - OUTPUT JSON: {OUTPUT_JSON}
 
+## Schema
+
+<!-- The prompt-builder substitutes the canonical schema block below at
+     extraction time (see src/schema_for_prompts.py: render_prompt). Edit
+     src/node_types.py / src/edge_types.py — NOT this file — to change the
+     schema. -->
+{{SCHEMA_BLOCK}}
+
+### Required node fields (every node)
+
+- `id` — compact ID (see convention below)
+- `type` — from the closed vocabulary in rule 7
+- `name` — display name (canonical name from paper, e.g. "Brooks'
+  Theorem", "Leftover Hash Lemma", "Discrete Fourier Transform")
+- `statement` — VERBATIM source body, math-preserved per rule 5.
+  This is core rule #1.
+- `section` — plain section title (per rule 12)
+- `origin` — `"paper"` or `"external"` (per rule 6)
+
+### Optional node fields
+
+- `statement_short` — LLM compression per core rule #2. Always emit
+  for proofs; almost always for algorithms; selectively for
+  theorem-likes and definitions.
+- `origin_citation` — required when `origin="external"`
+- `assumptions[]`, `conclusions[]` — for theorem-like nodes
+  (theorem/lemma/proposition/corollary/claim/conjecture). **Each
+  element is a VERBATIM SPAN** from the source — not paraphrased.
+  Required when the extractor can decompose; absent only when the
+  statement structure resists clean decomposition. **NOT used for
+  `definition` nodes** (definitions are stipulative, not if-then).
+- `input[]`, `output[]` — for `algorithm` nodes. List of verbatim
+  input/output description strings, one per element. Drop the
+  `pseudocode` field — verbatim algorithm body lives in `statement`,
+  decomposed steps live in `algorithm_step` children.
+- `definiendum`, `genus`, `differentia[]` — for `definition` nodes only
+  (see "Definition decomposition" below).
+- `rigor` — OPTIONAL, **default `formal`**. Omit it on any node whose
+  statement is precise and whose justification is a rigorous proof.
+  That is the common case, so most nodes carry NO `rigor` field. Add it
+  only when the node departs from that:
+
+  | value | when |
+  |---|---|
+  | `semi_formal` | precise statement, but a proof sketch or an appeal to "standard arguments" |
+  | `heuristic` | believed true on physical or intuitive grounds, no proof offered |
+  | `numerical` | supported by simulation or computation only |
+  | `conjectural` | stated with no justification at all |
+
+  Judge the **justification**, not the node's type or the paper's arXiv
+  category. A `theorem` with a hand-waved proof is `semi_formal`; a
+  `remark` carrying a full proof gets no `rigor` field. Do not infer
+  rigor from the category: two papers in the same category can differ
+  completely, so read each node's own justification.
+
+  Emit `metadata.rigor_nonformal_count` = the number of nodes you gave a
+  `rigor` field. `0` is a valid and meaningful answer: it records that
+  you applied the rule and found everything formal. A MISSING key means
+  you skipped the rule, which is not acceptable.
+- `label` — the `\label{...}` key of the environment this node came
+  from, verbatim, WITHOUT the backslash or braces (`thm:main`, not
+  `\label{thm:main}`). Omit when the environment carries no `\label`.
+  Read it from the environment HEADER before span excision — `\label`
+  frequently sits in the region the verbatim rule strips. Do not invent
+  one, do not normalise case or punctuation, and do not deduplicate:
+  two environments sharing a key is a source defect worth seeing.
+- `confidence` — REQUIRED on every node (float 0-1). How much *judgment* the
+  node required — NOT how rigorous the maths is (that is `rigor`, above):
+
+  | `confidence` | when |
+  |---|---|
+  | `1.0` | lifted from an explicit environment (`\begin{theorem}`, `\begin{definition}`) — no judgment |
+  | `0.85`–`0.95` | explicitly labelled in prose ("Theorem 3 states that…", "We define X as…") |
+  | `0.6`–`0.8` | **promoted from prose** — the content is genuinely asserted, but its type and span boundaries are your judgment |
+  | below `0.6` | do not emit the node |
+
+  Be honest here: prose promotions are the most useful thing this field
+  records. Do not inflate them to 1.0.
+- `parent_id`, `proves` — relational pointers
+- `tags[]` — topical labels only (per rule 11)
+- `proof_strategy[]` — proof strategy labels, on `proof` nodes only
+  (per rule 11)
+- `subclass` — on step nodes only, from controlled vocabulary
+
+### Assumption / conclusion decomposition (theorem-likes)
+
+When you split a verbatim statement into `assumptions[]` and
+`conclusions[]`, you are **selecting spans from the verbatim text** —
+not paraphrasing it. The union of the spans should reconstruct the
+mathematical content of the statement; the wording must match the
+source.
+
+### Definition decomposition — definiendum / genus / differentia (definitions)
+
+For `definition` nodes, optionally decompose the definition in the
+classical (Aristotelian) way — this is the bridge to Mathlib concept
+structure (genus = Lean base class, differentia = the mixin). All three
+fields are **optional and best-effort**; emit them when the definition
+has a clear "X is a Y that satisfies Z" shape, and omit any that do not
+apply. They do **not** replace `statement` (which stays verbatim).
+
+- `definiendum` — the term being defined (the head noun / name). Prefer a
+  verbatim span; a canonicalized name is acceptable.
+- `genus` — the parent category the definiendum belongs to. Prefer a
+  verbatim span from the definition body.
+- `differentia[]` — the distinguishing conditions that separate it within
+  the genus, one per element, each a **verbatim span** where possible.
+
+Examples:
+- "A **field** is a **commutative ring** in which **every nonzero element
+  is invertible**." → `definiendum="field"`, `genus="commutative ring"`,
+  `differentia=["every nonzero element is invertible"]`.
+- "A **Banach space** is a **normed vector space** that is **complete**."
+  → `definiendum="Banach space"`, `genus="normed vector space"`,
+  `differentia=["complete"]`.
+
+When a definition is purely stipulative notation with no genus ("Let
+$X := \{...\}$"), omit `genus`/`differentia` and keep only `statement`
+(and `definiendum` if a name is introduced).
+
+- **Regime A — explicit if/then.** Statement contains "if X, then Y"
+  / "let X. Then Y" / "suppose X. Y". Copy the antecedent span(s) into
+  `assumptions`, the consequent span(s) into `conclusions`.
+  Example: *"If $X \sim \mathcal{N}(0,1)$ and $t > 0$, then $P(X > t)
+  \le e^{-t^2/2}$."* →
+  `assumptions: ["$X \sim \mathcal{N}(0,1)$", "$t > 0$"]`,
+  `conclusions: ["$P(X > t) \le e^{-t^2/2}$"]`.
+
+- **Regime B — bare statement with free variables.** Statement is a
+  single inequality/equation with typed variables whose declarations
+  live in surrounding text. Copy the declaration span from surrounding
+  text into `assumptions` (verbatim), copy the asserted fact span into
+  `conclusions`.
+
+- **Regime C — pure identity.** Closed-form equality with no free
+  variables. `assumptions: []`, `conclusions: ["..."]` (verbatim span).
+
+Default to Regime B over Regime C — most theorems have implicit
+declarations in surrounding text; recover them by quoting the relevant
+span verbatim.
+
+### Schema rule for `input` / `output` / `assumptions` / `conclusions`
+
+These MUST be JSON **arrays of strings**, one bullet per element, NOT a
+single concatenated string. Each element is a **verbatim span** from
+the source.
+
+```json
+"input":  ["Cost matrix $M$", "Regularization parameter $\\lambda$",
+           "Marginals $r$ and $c$"],
+"output": ["Dual-Sinkhorn divergence $d_M^\\lambda(r,c)$",
+           "Scaling vectors $u, v$ such that $P^\\lambda = \\mathrm{diag}(u)\\,K\\,\\mathrm{diag}(v)$"]
+```
+
+Do NOT write `"input": "Cost matrix M, regularization parameter ..."`
+as one concatenated string.
+
+### Compact ID convention
+
+`{PREFIX}{paper_num}.{seq}`:
+
+| Type | Prefix | Example |
+|---|---|---|
+| definition | DP | DP5.1 |
+| theorem | TP | TP5.1 |
+| lemma | LP | LP5.1 |
+| proposition | PrP | PrP5.1 |
+| corollary | CP | CP5.1 |
+| proof | PP | PP5.1 |
+| proof_step | PSP | PSP5.1 |
+| algorithm | AP | AP5.1 |
+| algorithm_step | ASP | ASP5.1 |
+| equation | EP | EP5.1 |
+| example | ExP | ExP5.1 |
+| remark | RP | RP5.1 |
+| problem | ProbP | ProbP5.1 |
+| open_problem | OpenP | OpenP5.1 |
+| assumption | AssumP | AssumP5.1 |
+| claim | ClP | ClP5.1 |
+| conjecture | CnjP | CnjP5.1 |
+
 ## CORE RULE #1 — `statement` IS A COPY, NOT A SUMMARY
 
 For every node, the `statement` field must be the **verbatim text of
@@ -265,361 +446,167 @@ statement_short:
     - **Right:** `"section": "1 Introduction"` plus `"origin": "external"`
       on the cited node.
 
-13. **LEVEL-2 STEP EXTRACTION (MANDATORY when triggers fire).**
-    Step decomposition is a **parallel structural extraction**, not a
-    substitute for the parent's verbatim body. The parent `proof` /
-    `algorithm` `statement` MUST hold the full verbatim body
-    (rule 1), AND step nodes MUST be emitted whenever ANY of the
-    triggers below appears in the source. There is no editorial
-    discretion: triggers fire → steps required.
+## Level-2 steps — proof_step and algorithm_step
 
-    **Hard triggers — if you see any of these in a proof/algorithm
-    body, emit one step node per division (no exceptions):**
+Step decomposition is a **parallel structural extraction**, not a substitute for
+the parent's body. The parent `proof` / `algorithm` `statement` MUST hold the
+full verbatim body (core rule #1) AND the step nodes are emitted alongside it.
 
-    - **Explicit "Part (N):" or "Part N:" labels.** Source patterns:
-      `Part (1):`, `Part 1:`, `Part \ref{...}:`. One step per part.
-    - **Explicit "Step N" / "Step N:" labels.** Source patterns:
-      `Step 1.`, `Step~1`, `\textbf{Step 1}`. One step per Step.
-    - **Numbered cases.** Patterns: `Case 1:`, `Case (a):`,
-      `\begin{enumerate}` inside the body where each item is a logical
-      step of the argument.
-    - **Algorithmic environments.** `\begin{algorithmic}`,
-      `\begin{algorithm}`, `\begin{enumerate}` listing procedure
-      steps. One `algorithm_step` per numbered line.
-    - **Phase prose with explicit transitions.** "First, we show...",
-      "Next, we prove...", "It remains to show...", "Finally,...",
-      "Combining the above,...", "We proceed in three parts:...".
-      One step per phase.
-    - **Induction structure.** "By induction on $n$. Base case: ...
-      Inductive step: ...". At minimum two steps (base, inductive).
-    - **Case split + reunion.** "Suppose first that ... . Otherwise
-      ... . In either case, ...". One step per case + one for the
-      conclusion.
+### When to emit a `proof_step`
 
-    **Soft trigger (use judgment):** signposted prose without explicit
-    labels. A paragraph with 2-3 clear logical phases marked by "Now
-    consider...", "Applying [lemma]...", "Therefore..." → emit one
-    step per phase.
+Segment the proof body where the argument makes a distinct move: an object is
+introduced, a case is opened, a lemma or inequality is applied, a bound is
+established, an intermediate claim is proved, or the conclusion is drawn.
+Granularity is one sentence to one short paragraph.
 
-    **Zero-step justification.** You may emit ZERO step nodes only if
-    the body is a single uninterrupted paragraph with no part labels,
-    no enumerated lists, no case splits, no induction structure, and
-    no signposted phase transitions.
+Most steps begin with ordinary mathematical prose — "Let", "By", "Since",
+"Take", "Suppose", "If", "Now", "Note that", "Consider". **Do not require an
+explicit marker.** Most real proof steps carry none, and waiting for one will
+under-segment badly.
 
-    **Each step's `statement` is ALSO verbatim** — copy the sentence(s)
-    or pseudocode line(s) from the source body that constitute that
-    step. **Each step's `statement_short` is the LLM compression of
-    that step's role** (e.g. "Set up induction on $n$", "Apply
-    Cauchy-Schwarz", "Conclude by Markov's inequality").
+**Where the paper labels its own structure, that labelling is authoritative** —
+one step per label, no merging, no splitting:
 
-    **Worked example — a proof with three parts:**
+- `Part (1):` / `Part 1:` — one step per part
+- `Step 1.` / `Step~1` / `\textbf{Step 1}` — one step per Step
+- `Case 1:` / `Case (a):`, or `\begin{enumerate}` whose items are the argument
+- induction structure ("Base case: … Inductive step: …") — at minimum two steps
+- case split + reunion ("Suppose first … Otherwise … In either case …") — one
+  step per case plus one for the conclusion
 
-    Source body:
-    ```
-    Part (1): By the definition of $d_i$, $f' L f = ...$ which yields
-    the quadratic form.
-    Part (2): The symmetry of $L$ follows directly from $W$ and $D$.
-    Positive semi-definiteness follows from Part (1).
-    Part (3): Obvious.
-    ```
+Do NOT emit a separate step for a sentence the paper presents as immediate
+("clearly", "trivially", "obvious", "it follows at once", "by inspection")
+unless it is itself labelled — attach it to the step it completes. Otherwise
+prefer more steps to fewer: an unnecessary step is cheap to ignore, a missed
+step cannot be recovered from the output.
 
-    Required output: ONE `proof` node with `statement` = the full
-    verbatim body above (and `statement_short` = e.g. "Direct
-    expansion + symmetry"), PLUS THREE `proof_step` nodes, each with
-    `statement` = the verbatim text of its "Part (N):" sentence(s),
-    `statement_short` = LLM compression of that step's role,
-    `parent_id` pointing to the proof, and `subclass` from the
-    canonical set.
+Emit zero steps only when the body is a single uninterrupted move — no labels,
+no enumerated list, no case split, no induction, no phase transition.
 
-    **Step-node fields:**
-    - `id` (e.g. `PSP5.1`, `ASP5.1` for paper 5 step 1)
-    - `type` (`proof_step` or `algorithm_step`)
-    - `parent_id` (id of the parent node — see NESTING below)
-    - `step_order` (1-based index within the IMMEDIATE parent)
-    - `source_line_label` (`algorithm_step` only; the line number or
-      label the paper itself prints for this line, e.g. `"7"`, `"3a"`,
-      verbatim. Null when the environment does not number its lines.
-      Do NOT derive it from `step_order` — the two diverge whenever
-      control lines are numbered, and prose citations follow the paper.)
-    - `name` (a short descriptive label)
-    - `statement` (verbatim source span for this step)
-    - `statement_short` (LLM compression of the step's role)
-    - `subclass` (from the controlled vocabulary below)
-    - `tags[]` (optional, topical)
+### When to emit an `algorithm_step`
 
-    **NESTING — steps may parent other steps.** A step node MAY take
-    another step node as its `parent_id`, to any depth:
-    - `proof_step` — when the source nests one argument inside another:
-      a claim proved inline and then used, a `\begin{proof}` inside a
-      proof, a "Proof of Claim N" block.
-    - `algorithm_step` — loop and branch bodies are CHILDREN, not
-      siblings. A line inside a `\FOR` / `\WHILE` / `\IF` block takes
-      that block's step as its `parent_id`, following the source's block
-      structure.
+As with theorem-likes, the source may or may not mark the structure for you.
+Extract in both cases; only `confidence` and `source_line_label` differ.
 
-    `step_order` restarts at 1 within each parent, so an outer loop's
-    body is 1,2,3… not a continuation of the outer numbering.
+*Marked up* — `\begin{algorithmic}`, a numbered `\begin{enumerate}`, a listing,
+or any body whose lines the paper numbers. One step per line, including control
+keywords the paper numbers (`\REPEAT`, `\ELSE`, `\ENDIF`), since prose cites
+them ("by line 7"). Record `source_line_label` from the paper's own numbering.
+Skip comments, blank lines and the caption. `confidence` 0.9–1.0.
 
-    **WHEN TO EMIT A `proof_step`.** Segment the proof body where the
-    argument makes a distinct move: an object is introduced, a case is
-    opened, a lemma or inequality is applied, a bound is established,
-    an intermediate claim is proved, or the conclusion is drawn.
-    Granularity is one sentence to one short paragraph.
+*Unmarked* — an `\begin{algorithm}` float containing prose, or a procedure
+described in running text ("first we construct…, then for each component we…").
+One step per operation the description performs; segment on operations, not on
+sentences. `source_line_label` is null and `confidence` is 0.6–0.8, since the
+step boundaries are your judgment.
 
-    Most steps begin with ordinary mathematical prose -- "Let", "By",
-    "Since", "Take", "Suppose", "If", "Now", "Note that", "Consider".
-    **Do NOT require an explicit marker**: most real proof steps carry
-    none, and waiting for one will under-segment badly.
+Unmarked procedures are at least as common as marked-up ones. Do NOT skip an
+algorithm, or decline to decompose it, because it has no `\STATE` markers — an
+unmarked procedure is still an algorithm, exactly as an unwrapped assertion is
+still a theorem.
 
-    Where the paper DOES label its own structure -- "Case 2:",
-    "Part (1):", an enumerated list, an inline sub-proof -- follow that
-    labelling exactly: one step per label, no merging, no splitting.
-    Uncommon, but authoritative when present.
+**Markup in a step's `statement`.** Copy the line's CONTENT, not its LaTeX
+wrapper: for `\STATE {Initialize $v \leftarrow v_0$.}` the `statement` is
+`Initialize $v \leftarrow v_0$.` Math and all other LaTeX inside the content are
+preserved verbatim as always. The same applies to `\item` in an enumerated
+procedure. Keep the control word itself when it IS the line
+(`\WHILE{not converged}` -> `while not converged`), since that line carries the
+loop condition.
 
-    Do NOT emit a separate step for a sentence the paper presents as
-    immediate ("clearly", "trivially", "obvious", "it follows at once",
-    "by inspection") unless it is itself labelled -- attach it to the
-    step it completes. Otherwise prefer more steps to fewer: an
-    unnecessary step is cheap to ignore, a missed step cannot be
-    recovered from the output.
+### Verbatim requirement
 
-    **WHEN TO EMIT AN `algorithm_step`.** As with theorem-likes, the
-    source may or may not mark the structure for you. Extract in both
-    cases; only `confidence` and `source_line_label` differ.
+Each step's `statement` is ALSO verbatim — copy the sentence(s) or pseudocode
+line(s) from the source body that constitute that step. Each step's
+`statement_short` is your compression of that step's role ("Set up induction on
+$n$", "Apply Cauchy-Schwarz", "Conclude by Markov's inequality").
 
-    *Marked up* -- `\begin{algorithmic}`, a numbered `\begin{enumerate}`,
-    a listing, or any body whose lines the paper numbers. One step per
-    line, including control keywords the paper numbers (`\REPEAT`,
-    `\ELSE`, `\ENDIF`), since prose cites them ("by line 7"). Record
-    `source_line_label` from the paper's own numbering. Skip comments,
-    blank lines and the caption. `confidence` 0.9-1.0.
+### Worked example — a labelled proof
 
-    *Unmarked* -- an `\begin{algorithm}` float containing prose, or a
-    procedure described in running text ("first we construct..., then
-    for each component we..."). One step per operation the description
-    performs; segment on operations, not on sentences.
-    `source_line_label` is null and `confidence` is 0.6-0.8, since the
-    step boundaries are your judgment.
+Source body:
 
-Unmarked procedures are at least as common as marked-up
-    ones. Do NOT skip an algorithm, or decline to decompose it, because
-    it has no `\STATE` markers -- an unmarked procedure is still an
-    algorithm, exactly as an unwrapped assertion is still a theorem.
-
-    **Markup in a step's `statement`.** Copy the line's CONTENT, not its
-    LaTeX wrapper: for `\STATE {Initialize $v \leftarrow v_0$.}` the
-    `statement` is `Initialize $v \leftarrow v_0$.` Math and all other
-    LaTeX inside the content are preserved verbatim as always. The same
-    applies to `\item` in an enumerated procedure. Keep the control word
-    itself when it IS the line (`\WHILE{not converged}` -> `while not
-    converged`) since that line carries the loop condition.
-
-    **`subclass` controlled vocabulary.** The two vocabularies are
-    DISJOINT — never use a proof_step value on an algorithm_step or
-    the reverse.
-    - proof_step: `setup, introduce_variable, apply_lemma, case_split,
-      induction_step, contradiction_setup, algebraic_manipulation,
-      substitute, bound_estimate, invoke_identity, conclude, other`
-    - algorithm_step — choose the most specific that applies:
-      `initialize` set up state before the main body ·
-      `loop` a `\FOR`/`\WHILE`/`\REPEAT` header ·
-      `branch` an `\IF`/`\ELSE`/`\CASE` header ·
-      `test` evaluate a condition or convergence criterion ·
-      `compute` a calculation or assignment ·
-      `select` choose or identify an element / index / candidate ·
-      `filter` discard, prune, or restrict a set ·
-      `solve` solve a subproblem, system, or optimisation ·
-      `call` invoke another algorithm or named subroutine ·
-      `update` modify existing state — use ONLY when none of the above
-      fits. This is the easiest label to over-apply: a step that
-      computes, selects, filters or solves is NOT an `update`. Reach
-      for it last, not first. ·
-      `return` output or terminate · `other` none of the above
-
-    Steps may reference Level-1 nodes outside the parent
-    (e.g. `proof_step uses Lemma 2.3`), but step-to-step edges across
-    different parents are NOT permitted.
-
-## Schema
-
-<!-- The prompt-builder substitutes the canonical schema block below at
-     extraction time (see src/schema_for_prompts.py: render_prompt). Edit
-     src/node_types.py / src/edge_types.py — NOT this file — to change the
-     schema. -->
-{{SCHEMA_BLOCK}}
-
-### Required node fields (every node)
-
-- `id` — compact ID (see convention below)
-- `type` — from the closed vocabulary in rule 7
-- `name` — display name (canonical name from paper, e.g. "Brooks'
-  Theorem", "Leftover Hash Lemma", "Discrete Fourier Transform")
-- `statement` — VERBATIM source body, math-preserved per rule 5.
-  This is core rule #1.
-- `section` — plain section title (per rule 12)
-- `origin` — `"paper"` or `"external"` (per rule 6)
-
-### Optional node fields
-
-- `statement_short` — LLM compression per core rule #2. Always emit
-  for proofs; almost always for algorithms; selectively for
-  theorem-likes and definitions.
-- `origin_citation` — required when `origin="external"`
-- `assumptions[]`, `conclusions[]` — for theorem-like nodes
-  (theorem/lemma/proposition/corollary/claim/conjecture). **Each
-  element is a VERBATIM SPAN** from the source — not paraphrased.
-  Required when the extractor can decompose; absent only when the
-  statement structure resists clean decomposition. **NOT used for
-  `definition` nodes** (definitions are stipulative, not if-then).
-- `input[]`, `output[]` — for `algorithm` nodes. List of verbatim
-  input/output description strings, one per element. Drop the
-  `pseudocode` field — verbatim algorithm body lives in `statement`,
-  decomposed steps live in `algorithm_step` children.
-- `definiendum`, `genus`, `differentia[]` — for `definition` nodes only
-  (see "Definition decomposition" below).
-- `rigor` — OPTIONAL, **default `formal`**. Omit it on any node whose
-  statement is precise and whose justification is a rigorous proof.
-  That is the common case, so most nodes carry NO `rigor` field. Add it
-  only when the node departs from that:
-
-  | value | when |
-  |---|---|
-  | `semi_formal` | precise statement, but a proof sketch or an appeal to "standard arguments" |
-  | `heuristic` | believed true on physical or intuitive grounds, no proof offered |
-  | `numerical` | supported by simulation or computation only |
-  | `conjectural` | stated with no justification at all |
-
-  Judge the **justification**, not the node's type or the paper's arXiv
-  category. A `theorem` with a hand-waved proof is `semi_formal`; a
-  `remark` carrying a full proof gets no `rigor` field. Do not infer
-  rigor from the category: two papers in the same category can differ
-  completely, so read each node's own justification.
-
-  Emit `metadata.rigor_nonformal_count` = the number of nodes you gave a
-  `rigor` field. `0` is a valid and meaningful answer: it records that
-  you applied the rule and found everything formal. A MISSING key means
-  you skipped the rule, which is not acceptable.
-- `label` — the `\label{...}` key of the environment this node came
-  from, verbatim, WITHOUT the backslash or braces (`thm:main`, not
-  `\label{thm:main}`). Omit when the environment carries no `\label`.
-  Read it from the environment HEADER before span excision — `\label`
-  frequently sits in the region the verbatim rule strips. Do not invent
-  one, do not normalise case or punctuation, and do not deduplicate:
-  two environments sharing a key is a source defect worth seeing.
-- `confidence` — REQUIRED on every node (float 0-1). How much *judgment* the
-  node required — NOT how rigorous the maths is (that is `rigor`, above):
-
-  | `confidence` | when |
-  |---|---|
-  | `1.0` | lifted from an explicit environment (`\begin{theorem}`, `\begin{definition}`) — no judgment |
-  | `0.85`–`0.95` | explicitly labelled in prose ("Theorem 3 states that…", "We define X as…") |
-  | `0.6`–`0.8` | **promoted from prose** — the content is genuinely asserted, but its type and span boundaries are your judgment |
-  | below `0.6` | do not emit the node |
-
-  Be honest here: prose promotions are the most useful thing this field
-  records. Do not inflate them to 1.0.
-- `parent_id`, `proves` — relational pointers
-- `tags[]` — topical labels only (per rule 11)
-- `proof_strategy[]` — proof strategy labels, on `proof` nodes only
-  (per rule 11)
-- `subclass` — on step nodes only, from controlled vocabulary
-
-### Assumption / conclusion decomposition (theorem-likes)
-
-When you split a verbatim statement into `assumptions[]` and
-`conclusions[]`, you are **selecting spans from the verbatim text** —
-not paraphrasing it. The union of the spans should reconstruct the
-mathematical content of the statement; the wording must match the
-source.
-
-### Definition decomposition — definiendum / genus / differentia (definitions)
-
-For `definition` nodes, optionally decompose the definition in the
-classical (Aristotelian) way — this is the bridge to Mathlib concept
-structure (genus = Lean base class, differentia = the mixin). All three
-fields are **optional and best-effort**; emit them when the definition
-has a clear "X is a Y that satisfies Z" shape, and omit any that do not
-apply. They do **not** replace `statement` (which stays verbatim).
-
-- `definiendum` — the term being defined (the head noun / name). Prefer a
-  verbatim span; a canonicalized name is acceptable.
-- `genus` — the parent category the definiendum belongs to. Prefer a
-  verbatim span from the definition body.
-- `differentia[]` — the distinguishing conditions that separate it within
-  the genus, one per element, each a **verbatim span** where possible.
-
-Examples:
-- "A **field** is a **commutative ring** in which **every nonzero element
-  is invertible**." → `definiendum="field"`, `genus="commutative ring"`,
-  `differentia=["every nonzero element is invertible"]`.
-- "A **Banach space** is a **normed vector space** that is **complete**."
-  → `definiendum="Banach space"`, `genus="normed vector space"`,
-  `differentia=["complete"]`.
-
-When a definition is purely stipulative notation with no genus ("Let
-$X := \{...\}$"), omit `genus`/`differentia` and keep only `statement`
-(and `definiendum` if a name is introduced).
-
-- **Regime A — explicit if/then.** Statement contains "if X, then Y"
-  / "let X. Then Y" / "suppose X. Y". Copy the antecedent span(s) into
-  `assumptions`, the consequent span(s) into `conclusions`.
-  Example: *"If $X \sim \mathcal{N}(0,1)$ and $t > 0$, then $P(X > t)
-  \le e^{-t^2/2}$."* →
-  `assumptions: ["$X \sim \mathcal{N}(0,1)$", "$t > 0$"]`,
-  `conclusions: ["$P(X > t) \le e^{-t^2/2}$"]`.
-
-- **Regime B — bare statement with free variables.** Statement is a
-  single inequality/equation with typed variables whose declarations
-  live in surrounding text. Copy the declaration span from surrounding
-  text into `assumptions` (verbatim), copy the asserted fact span into
-  `conclusions`.
-
-- **Regime C — pure identity.** Closed-form equality with no free
-  variables. `assumptions: []`, `conclusions: ["..."]` (verbatim span).
-
-Default to Regime B over Regime C — most theorems have implicit
-declarations in surrounding text; recover them by quoting the relevant
-span verbatim.
-
-### Schema rule for `input` / `output` / `assumptions` / `conclusions`
-
-These MUST be JSON **arrays of strings**, one bullet per element, NOT a
-single concatenated string. Each element is a **verbatim span** from
-the source.
-
-```json
-"input":  ["Cost matrix $M$", "Regularization parameter $\\lambda$",
-           "Marginals $r$ and $c$"],
-"output": ["Dual-Sinkhorn divergence $d_M^\\lambda(r,c)$",
-           "Scaling vectors $u, v$ such that $P^\\lambda = \\mathrm{diag}(u)\\,K\\,\\mathrm{diag}(v)$"]
+```
+Part (1): By the definition of $d_i$, $f' L f = ...$ which yields
+the quadratic form.
+Part (2): The symmetry of $L$ follows directly from $W$ and $D$.
+Positive semi-definiteness follows from Part (1).
+Part (3): Obvious.
 ```
 
-Do NOT write `"input": "Cost matrix M, regularization parameter ..."`
-as one concatenated string.
+Required output: ONE `proof` node whose `statement` is the full verbatim body
+(`statement_short` e.g. "Direct expansion + symmetry"), PLUS THREE `proof_step`
+nodes, each with `statement` = the verbatim text of its "Part (N):" sentence(s),
+`statement_short` = the step's role, `parent_id` pointing to the proof, and
+`subclass` from the canonical set.
 
-### Compact ID convention
+### Worked example — an unlabelled proof
 
-`{PREFIX}{paper_num}.{seq}`:
+Source body:
 
-| Type | Prefix | Example |
-|---|---|---|
-| definition | DP | DP5.1 |
-| theorem | TP | TP5.1 |
-| lemma | LP | LP5.1 |
-| proposition | PrP | PrP5.1 |
-| corollary | CP | CP5.1 |
-| proof | PP | PP5.1 |
-| proof_step | PSP | PSP5.1 |
-| algorithm | AP | AP5.1 |
-| algorithm_step | ASP | ASP5.1 |
-| equation | EP | EP5.1 |
-| example | ExP | ExP5.1 |
-| remark | RP | RP5.1 |
-| problem | ProbP | ProbP5.1 |
-| open_problem | OpenP | OpenP5.1 |
-| assumption | AssumP | AssumP5.1 |
-| claim | ClP | ClP5.1 |
-| conjecture | CnjP | CnjP5.1 |
+```
+Take a vertex $v \in \cap_{n\geq 1} V(w_n)$. Let $P_n$ be the set of
+paths of length $n$ ending at $v$. Since each $P_n$ is finite and
+non-empty, Konig's lemma gives an infinite path. This path witnesses
+the claim.
+```
+
+No `Part`, no `Case`, no `Step` — and it is still three moves: introduce $v$ and
+$P_n$; apply Konig's lemma; conclude. Emit three `proof_step` nodes. A rule that
+waited for a label would emit none, which is the common failure.
+
+**Step-node fields:**
+- `id` (e.g. `PSP5.1`, `ASP5.1` for paper 5 step 1)
+- `type` (`proof_step` or `algorithm_step`)
+- `parent_id` (id of the parent node — see NESTING above)
+- `step_order` (1-based index within the IMMEDIATE parent)
+- `source_line_label` (`algorithm_step` only; the line number or
+  label the paper itself prints for this line, e.g. `"7"`, `"3a"`,
+  verbatim. Null when the environment does not number its lines.
+  Do NOT derive it from `step_order` — the two diverge whenever
+  control lines are numbered, and prose citations follow the paper.)
+- `name` (a short descriptive label)
+- `statement` (verbatim source span for this step)
+- `statement_short` (LLM compression of the step's role)
+- `subclass` (from the controlled vocabulary below)
+- `tags[]` (optional, topical)
+
+**NESTING — steps may parent other steps.** A step node MAY take
+another step node as its `parent_id`, to any depth:
+- `proof_step` — when the source nests one argument inside another:
+  a claim proved inline and then used, a `\begin{proof}` inside a
+  proof, a "Proof of Claim N" block.
+- `algorithm_step` — loop and branch bodies are CHILDREN, not
+  siblings. A line inside a `\FOR` / `\WHILE` / `\IF` block takes
+  that block's step as its `parent_id`, following the source's block
+  structure.
+
+`step_order` restarts at 1 within each parent, so an outer loop's
+body is 1,2,3… not a continuation of the outer numbering.
+
+**`subclass` controlled vocabulary.** The two vocabularies are
+DISJOINT — never use a proof_step value on an algorithm_step or
+the reverse.
+- proof_step: `setup, introduce_variable, apply_lemma, case_split,
+  induction_step, contradiction_setup, algebraic_manipulation,
+  substitute, bound_estimate, invoke_identity, conclude, other`
+- algorithm_step — choose the most specific that applies:
+  `initialize` set up state before the main body ·
+  `loop` a `\FOR`/`\WHILE`/`\REPEAT` header ·
+  `branch` an `\IF`/`\ELSE`/`\CASE` header ·
+  `test` evaluate a condition or convergence criterion ·
+  `compute` a calculation or assignment ·
+  `select` choose or identify an element / index / candidate ·
+  `filter` discard, prune, or restrict a set ·
+  `solve` solve a subproblem, system, or optimisation ·
+  `call` invoke another algorithm or named subroutine ·
+  `update` modify existing state — use ONLY when none of the above
+  fits. This is the easiest label to over-apply: a step that
+  computes, selects, filters or solves is NOT an `update`. Reach
+  for it last, not first. ·
+  `return` output or terminate · `other` none of the above
+
+Steps may reference Level-1 nodes outside the parent
+(e.g. `proof_step uses Lemma 2.3`), but step-to-step edges across
+different parents are NOT permitted.
 
 ## Edge taxonomy — with direction conventions
 
@@ -731,7 +718,7 @@ computes it, the theorem is a prerequisite of the algorithm:
    h. For proofs, populate `proof_strategy[]` from the controlled
       vocabulary.
    i. Populate `tags[]` with topical labels only.
-5. Apply step extraction (rule 13) for proofs and algorithms.
+5. Apply step extraction for proofs and algorithms (see "Level-2 steps").
 6. Apply type-promotion (rule 7).
 7. Build edges from explicit cross-references and clear logical
    dependencies.
