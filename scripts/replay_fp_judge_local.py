@@ -104,6 +104,8 @@ class LocalMessages:
         self.model = model
         self.timeout = timeout
         self.retries = retries
+        #: "system" until an endpoint refuses a system turn; then "prepend".
+        self.system_mode = "system"
 
     @staticmethod
     def _system_text(system):
@@ -112,6 +114,34 @@ class LocalMessages:
         return "".join(b.get("text", "") for b in system or [])
 
     def create(self, *, model=None, max_tokens=2048, system=None, messages=None):
+        """Try the system-role envelope; fall back to prepending it.
+
+        Not every chat template accepts a system turn -- several Gemma
+        templates raise outright -- and a template error is a 400, which the
+        retry loop would otherwise burn three attempts on before failing the
+        whole batch. The prompt text is byte-identical either way; only the
+        role envelope differs, and `self.system_mode` records which one the
+        endpoint accepted so the run is reproducible.
+        """
+        try:
+            return self._create(model=model, max_tokens=max_tokens,
+                                system=system, messages=messages)
+        except RuntimeError:
+            if self.system_mode != "system":
+                raise
+            self.system_mode = "prepend"
+            return self._create(model=model, max_tokens=max_tokens,
+                                system=system, messages=messages)
+
+    def _create(self, *, model=None, max_tokens=2048, system=None, messages=None):
+        msgs = list(messages or [])
+        sys_text = self._system_text(system)
+        if self.system_mode == "system":
+            msgs = [{"role": "system", "content": sys_text}] + msgs
+        elif msgs:
+            msgs = ([{"role": msgs[0]["role"],
+                      "content": sys_text + "\n\n" + msgs[0]["content"]}]
+                    + msgs[1:])
         payload = {
             "model": self.model,
             "max_tokens": max_tokens,
@@ -122,8 +152,7 @@ class LocalMessages:
             # Without this Qwen3 wraps every answer in a <think> block and the
             # JSON array never parses.
             "chat_template_kwargs": {"enable_thinking": False},
-            "messages": ([{"role": "system", "content": self._system_text(system)}]
-                         + list(messages or [])),
+            "messages": msgs,
         }
         data = json.dumps(payload).encode()
         last = None
