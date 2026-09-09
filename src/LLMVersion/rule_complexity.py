@@ -29,13 +29,13 @@ time to make the parse faster; rank by static verdict to find what can hang.
 Usage::
 
     # both halves, over one distillation run's group files
-    python scripts/rule_complexity.py \
+    python src/LLMVersion/rule_complexity.py \
         --rules src/LLMVersion/merged_eval_v51_train60_v2/groups \
         --tex   portal/data/tier2_tex \
         --out   rule_complexity_train60.csv
 
     # static verdicts only (no corpus needed, seconds instead of minutes)
-    python scripts/rule_complexity.py --rules <dir> --out static.csv --no-bench
+    python src/LLMVersion/rule_complexity.py --rules <dir> --out static.csv --no-bench
 
 ``--rules`` accepts either a ``groups/`` directory of per-group
 ``distilled_rules.py`` files or a single such file.  Commented-out patterns —
