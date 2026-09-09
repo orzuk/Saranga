@@ -178,3 +178,15 @@ def get_allowed_target_types(edge_type: str) -> set[str] | None:
     meta = EDGE_METADATA.get(normalize_edge_type(edge_type), {})
     tgt = meta.get("target_types")
     return tgt() if callable(tgt) else tgt
+
+# ── Edge field names ─────────────────────────────────────────────────────
+# Every edge in the v5.1 silver corpus carries exactly these four, and
+# `source`/`target` were declared nowhere until now.
+REQUIRED_EDGE_FIELDS = (
+    "source",      # the node relied upon
+    "target",      # the node that depends on it
+    "type",        # from ALL_EDGE_TYPES
+    "confidence",  # 0-1
+)
+OPTIONAL_EDGE_FIELDS = ("note",)
+ALL_EDGE_FIELDS = REQUIRED_EDGE_FIELDS + OPTIONAL_EDGE_FIELDS

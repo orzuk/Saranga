@@ -144,6 +144,67 @@ HEURISTIC_CATEGORIES = {
 }
 
 
+# ── Node field names ─────────────────────────────────────────────────────
+# The field NAMES every node carries, as distinct from the vocabularies of
+# values above. Until now this module declared the values (which type strings
+# are legal, which origin values, which rigor levels) but never the fields
+# themselves, so a validator built from it could not tell a typo'd key from a
+# missing one. Measured against the 200-paper v5.1 silver corpus: `id`, `name`
+# and `section` are present on all 25,162 nodes and appeared in no schema file.
+
+REQUIRED_NODE_FIELDS = (
+    "id",              # unique within the paper; see the compact ID convention
+    "type",            # from the closed vocabulary above
+    "name",            # short human label; preserve the paper's own naming
+    "statement",       # VERBATIM span from the source .tex
+    "section",         # plain section title, no \label or provenance markers
+    "origin",          # "paper" | "external"
+    "confidence",      # 0-1, how much judgment the node required
+)
+
+OPTIONAL_NODE_FIELDS = (
+    "statement_short",   # LLM compression; 78% of v5.1 nodes
+    "tags",              # topical labels, open vocabulary
+    "assumptions",       # theorem-likes: verbatim hypothesis spans
+    "conclusions",       # theorem-likes: verbatim conclusion spans
+    "proof_strategy",    # proof nodes only, controlled vocabulary
+    "definiendum",       # definitions: the term being defined
+    "genus",             # definitions: the category it belongs to
+    "differentia",       # definitions: what distinguishes it
+    "input",             # algorithms: verbatim input descriptions
+    "output",            # algorithms: verbatim output descriptions
+    "origin_citation",   # required when origin == "external"
+    "parent_id",         # Level-2 steps: the parent proof/algorithm/step
+    "step_order",        # Level-2 steps: 1-based within the immediate parent
+    "subclass",          # finer categorisation; see SUBCLASS_VALUES
+    "proves",            # relational pointer
+    "rigor",             # see RIGOR_LEVELS; absent means "formal"
+    "label",             # see LABEL_FIELD
+)
+
+ALL_NODE_FIELDS = REQUIRED_NODE_FIELDS + OPTIONAL_NODE_FIELDS
+
+# ── Universal statement fields ───────────────────────────────────────────
+# Every node carries the source text twice, for two different purposes. Both
+# are declared here because both are universal and both are load-bearing, and
+# neither was declared anywhere canonical until now: `statement_short` is
+# populated on 19,586 of the 25,162 nodes in the v5.1 silver corpus (78%) and
+# is "core rule #2" of the extraction prompt, yet appeared in no schema file.
+# A validator built from this module would have flagged 78% of the corpus as
+# carrying an undeclared field.
+#
+# statement       VERBATIM span copied from the source .tex. The source of
+#                 record: locatable in the original, comparable across papers,
+#                 and the basis of the anti-hallucination audit. Never
+#                 paraphrased, never summarised.
+# statement_short LLM COMPRESSION of the same node — one sentence, freshly
+#                 written, lossy by design. For proofs it carries the strategy
+#                 ("By induction on n", "Density-increment iteration").
+#                 Never used as the source of record; consumers fall back to
+#                 `statement` when it is null.
+STATEMENT_FIELD = "statement"
+STATEMENT_SHORT_FIELD = "statement_short"
+
 # ── Universal label field ────────────────────────────────────────────────
 # The LaTeX `\label{...}` key of the environment the node was extracted from,
 # verbatim and WITHOUT the backslash or braces (`prop_eigenvect_transition_matr`,
