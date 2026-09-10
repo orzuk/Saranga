@@ -1741,7 +1741,16 @@ class PaperParser:
             env_name = item.get('env_name', 'distilled')
 
             kwargs = dict(
-                id=f"DIST_{structure_type[0].upper()}{i}",
+                # Full type name, not its first letter. `structure_type[0]`
+                # collided across three families -- corollary/claim/conjecture,
+                # proof/proposition/problem, algorithm/assumption -- and the
+                # per-type counter restarts at 1, so the n-th distilled
+                # proposition and the n-th distilled proof were both DIST_P<n>.
+                # PaperGraph.add_object is `self.objects[obj.id] = obj`, so the
+                # later one silently replaced the earlier: ~0.78% of objects
+                # dropped, 45% of papers affected, and *which* object survived
+                # varied with dict iteration order between processes.
+                id=f"DIST_{structure_type.upper()}{i}",
                 kind=structure_type,
                 index=i,
                 label=None,
