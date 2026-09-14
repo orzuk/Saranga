@@ -40,6 +40,11 @@
 #
 #   0 lazy   1 greedy   2 distorted   3 localsearch   4 poss   5 porss   6 dinkelbach
 #
+# Outputs are tagged cluster_<algo>, NOT <algo>. Tag "greedy" would name its
+# curve greedy_curve.csv -- the committed Sep-01 file make_sep01_pdf.py reads --
+# so that arm would refuse to start, and forcing it would silently repoint the
+# report at a different run. Override with TAG_PREFIX=... for a second sweep.
+#
 # Re-running an arm refuses to clobber its previous output. To replace it:
 #   OVERWRITE=1 sbatch --array=6 scripts/subset_search_cluster.sh
 #
@@ -99,7 +104,7 @@ python3 -u scripts/rule_subset_search.py search \
     --objective "$OBJECTIVE" \
     --cv "$CV" \
     --search-algo "$ALGO" \
-    --out-tag "$ALGO" \
+    --out-tag "${TAG_PREFIX:-cluster}_$ALGO" \
     $FLAGS
 
 echo "[subset_search] $ALGO done at $(date -Is)"
