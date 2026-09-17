@@ -825,6 +825,7 @@ def cmd_search(args):
         print(f"[search] {args.cv}-fold CV (algo={algo})")
         folds = [papers[i::args.cv] for i in range(args.cv)]
         val_curves, val_points, ladder_kmax = [], [], 0
+        full_points = []
         fold_res = []
         for fi, val in enumerate(folds):
             train = [p for p in papers if p not in val]
@@ -834,8 +835,15 @@ def cmd_search(args):
             vs = Search(st, val, objective=args.objective)
             f_sel = vs.pooled_f1(vs.evaluate(set(res.selected)))
             val_points.append(f_sel)
-            print(f"  [cv{fi}] val F1 of this fold's own selection "
-                  f"(|S|={len(res.selected)}): {f_sel:.4f}")
+            # The baseline the whole exercise is judged against: keeping EVERY
+            # rule, scored on the same held-out papers. Selection only earns
+            # its place in the pipeline if it beats this. Measured per fold so
+            # it can be compared paired, cancelling fold difficulty.
+            f_full = vs.pooled_f1(vs.evaluate(set(st.all_units)))
+            full_points.append(f_full)
+            print(f"  [cv{fi}] val F1: selection (|S|={len(res.selected)}) "
+                  f"{f_sel:.4f} vs all-rules {f_full:.4f} "
+                  f"({f_sel - f_full:+.4f})")
             fold_res.append((vs, res))
             if res.ladder:
                 ladder_kmax = max(ladder_kmax, max(k for k, _ in res.ladder))
@@ -845,6 +853,20 @@ def cmd_search(args):
               f"({', '.join(f'{v:.4f}' for v in val_points)})")
         cv_info["heldout_f1_per_fold"] = [round(v, 4) for v in val_points]
         cv_info["heldout_f1_mean"] = round(mean_sel, 4)
+        mean_full = sum(full_points) / len(full_points)
+        diffs = [a - b for a, b in zip(val_points, full_points)]
+        wins = sum(1 for d in diffs if d > 0)
+        cv_info["heldout_f1_allrules_per_fold"] = [round(v, 4) for v in full_points]
+        cv_info["heldout_f1_allrules_mean"] = round(mean_full, 4)
+        cv_info["heldout_gain_vs_allrules_per_fold"] = [round(d, 4) for d in diffs]
+        cv_info["heldout_gain_vs_allrules_mean"] = round(mean_sel - mean_full, 4)
+        cv_info["folds_beating_allrules"] = wins
+        print(f"[search] CV all-rules baseline: mean {mean_full:.4f} "
+              f"({', '.join(f'{v:.4f}' for v in full_points)})")
+        print(f"[search] CV SELECTION vs ALL RULES: "
+              f"{mean_sel - mean_full:+.4f} mean, wins {wins}/{len(diffs)} folds"
+              + ("  <- selection is NOT paying for itself"
+                 if mean_sel <= mean_full else ""))
 
         # A stopping size is only meaningful for algorithms that expose a
         # size ladder (a greedy path's prefixes, or a Pareto front). Rungs

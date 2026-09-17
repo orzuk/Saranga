@@ -39,6 +39,7 @@
 #   sbatch --array=0 scripts/subset_search_cluster.sh
 #
 #   0 lazy   1 greedy   2 distorted   3 localsearch   4 poss   5 porss   6 dinkelbach
+#   7 poss_empty  (POSS from an empty front -- independent of greedy)
 #
 # Outputs are tagged cluster_<algo>, NOT <algo>. Tag "greedy" would name its
 # curve greedy_curve.csv -- the committed Sep-01 file make_sep01_pdf.py reads --
@@ -65,10 +66,11 @@ OBJECTIVE="${OBJECTIVE:-m3}"
 CV="${CV:-5}"
 OVERWRITE="${OVERWRITE:-0}"
 
-ARMS=(lazy greedy distorted localsearch poss porss dinkelbach)
+ARMS=(lazy greedy distorted localsearch poss porss dinkelbach poss_empty)
 
 IDX="${SLURM_ARRAY_TASK_ID:-${ARM_INDEX:-0}}"
 ALGO="${ARMS[$IDX]}"
+TAG="$ALGO"          # arm label; ALGO may be rewritten below (poss_empty)
 
 # Per-arm flags, as a case rather than a `declare -A` map: bash 3.2 (still the
 # system bash on macOS, where this gets dry-run) has no associative arrays and
@@ -81,6 +83,12 @@ ALGO="${ARMS[$IDX]}"
 # equal compute.
 case "$ALGO" in
   poss)   FLAGS="--poss-iters ${POSS_ITERS:-20000}" ;;
+  # arm 7: POSS as the paper actually states it -- the front starts EMPTY, not
+  # warm-started from greedy. Arms 3/4/5/6 all seed from greedy and returned
+  # its selection unchanged on every fold, so they never tested anything
+  # independent of it. This is the one arm that can disagree with greedy.
+  poss_empty) ALGO=poss
+              FLAGS="--poss-iters ${POSS_ITERS:-40000} --poss-seed empty" ;;
   porss)  FLAGS="--poss-iters ${PORSS_ITERS:-5000}" ;;
   # the default inner solver (distorted) always runs its full k=188 iterations
   # with no early stop, making it the single most expensive arm; the
@@ -104,7 +112,7 @@ python3 -u scripts/rule_subset_search.py search \
     --objective "$OBJECTIVE" \
     --cv "$CV" \
     --search-algo "$ALGO" \
-    --out-tag "${TAG_PREFIX:-cluster}_$ALGO" \
+    --out-tag "${TAG_PREFIX:-cluster}_$TAG" \
     $FLAGS
 
 echo "[subset_search] $ALGO done at $(date -Is)"
