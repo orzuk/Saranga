@@ -39,7 +39,8 @@
 #   sbatch --array=0 scripts/subset_search_cluster.sh
 #
 #   0 lazy   1 greedy   2 distorted   3 localsearch   4 poss   5 porss   6 dinkelbach
-#   7 poss_empty  (POSS from an empty front -- independent of greedy)
+#   7 poss_empty   8 localsearch_empty   9 porss_empty
+#     (the three seeded arms, rebuilt from nothing -- independent of greedy)
 #
 # Outputs are tagged cluster_<algo>, NOT <algo>. Tag "greedy" would name its
 # curve greedy_curve.csv -- the committed Sep-01 file make_sep01_pdf.py reads --
@@ -66,7 +67,8 @@ OBJECTIVE="${OBJECTIVE:-m3}"
 CV="${CV:-5}"
 OVERWRITE="${OVERWRITE:-0}"
 
-ARMS=(lazy greedy distorted localsearch poss porss dinkelbach poss_empty)
+ARMS=(lazy greedy distorted localsearch poss porss dinkelbach poss_empty
+      localsearch_empty porss_empty)
 
 IDX="${SLURM_ARRAY_TASK_ID:-${ARM_INDEX:-0}}"
 ALGO="${ARMS[$IDX]}"
@@ -89,6 +91,13 @@ case "$ALGO" in
   # independent of it. This is the one arm that can disagree with greedy.
   poss_empty) ALGO=poss
               FLAGS="--poss-iters ${POSS_ITERS:-40000} --poss-seed empty" ;;
+  # arms 8/9: the same two, also built from nothing. With arm 7 and distorted
+  # (which always starts empty) this makes all four modern methods tested
+  # head-to-head against greedy on their own terms, not as polishers of it.
+  localsearch_empty) ALGO=localsearch
+              FLAGS="--ls-seed empty --ls-rounds ${LS_ROUNDS:-400}" ;;
+  porss_empty) ALGO=porss
+              FLAGS="--poss-iters ${PORSS_ITERS:-40000} --poss-seed empty" ;;
   porss)  FLAGS="--poss-iters ${PORSS_ITERS:-5000}" ;;
   # the default inner solver (distorted) always runs its full k=188 iterations
   # with no early stop, making it the single most expensive arm; the
