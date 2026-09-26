@@ -972,6 +972,91 @@ def cmd_search(args):
     print(f"[search] wrote {sel_path.name} and {curve_path.name}")
 
 
+def cmd_score(args):
+    """Score already-chosen rule subsets on a paper set they never touched.
+
+    The search phase answers "which subset", using CV inside the papers the
+    rules were distilled from. That comparison cannot settle anything against
+    keeping every rule, because those papers wrote the rules. This scores a
+    finished selection on the held-out split instead: same replay, same exact
+    metrics() replica, papers that entered no stage of distillation OR
+    selection. It needs a precompute pass over THOSE papers first."""
+    eval_dir = Path(args.eval_dir).resolve()
+    papers = resolve_papers(args, eval_dir)
+    print(f"[score] loading precompute for {len(papers)} {args.split} paper(s)")
+    st = Store(eval_dir, papers)
+    papers = st.papers
+    if not papers:
+        raise SystemExit(f"[score] no usable precompute for split {args.split!r};"
+                         f" run `precompute --split {args.split}` first")
+    print(f"[score] {len(papers)} usable papers, {len(st.all_units)} units present")
+
+    sel_files = []
+    for pat in args.selections:
+        sel_files.extend(sorted(Path().glob(pat)) if any(c in pat for c in "*?[")
+                         else [Path(pat)])
+    if not sel_files:
+        raise SystemExit("[score] --selections matched no files")
+
+    all_units = set(st.all_units)
+    rows = []
+
+    def one(label, units, k=None):
+        units = set(units) & all_units      # units absent here never fire
+        pp = {pid: st.score_paper(pid, units) for pid in papers}
+        out = {"arm": label, "rules": len(units) if k is None else k,
+               "rules_active_here": len(units),
+               "parse_secs": round(sum(st.unit_secs[u] for u in units), 1)}
+        for mode in ("m1", "m3"):
+            pr, rc, f1 = prf(pool_counts(pp, papers, mode))
+            out[f"{mode}_p"] = round(pr, 4)
+            out[f"{mode}_r"] = round(rc, 4)
+            out[f"{mode}_f1"] = round(f1, 4)
+        rows.append(out)
+        print(f"  {label:<28} k={out['rules']:>4}  "
+              f"m3 P={out['m3_p']:.4f} R={out['m3_r']:.4f} F1={out['m3_f1']:.4f}  "
+              f"parse={out['parse_secs']:.0f}s")
+        return out
+
+    print("[score] anchors:")
+    base = one("base (no rules)", set())
+    full = one("all rules", all_units)
+
+    print("[score] selections:")
+    for f in sel_files:
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as e:
+            print(f"  [warn] {f.name}: {e}; skipped")
+            continue
+        units = d.get("selected_units")
+        if not units:
+            print(f"  [warn] {f.name}: no selected_units; skipped")
+            continue
+        label = args.label_from and d.get(args.label_from) or f.stem.replace("selection_", "")
+        one(label, units, k=len(units))
+
+    full_parse = full["parse_secs"] or 1.0
+    for r in rows:
+        r["parse_pct_of_all"] = round(100 * r["parse_secs"] / full_parse, 1)
+        r["m3_f1_vs_all"] = round(r["m3_f1"] - full["m3_f1"], 4)
+
+    out_path = Path(args.out) if args.out else (
+        eval_dir / "subset_search" / f"heldout_scores_{args.split}.csv")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    print(f"[score] wrote {out_path}")
+    if args.split == "train" and not args.papers:
+        print(f"[score] NOTE: scored on the {len(papers)} TRAIN papers -- these "
+              f"chose the rules AND wrote them, so this is not a held-out number")
+    else:
+        print(f"[score] every F1 above is on {len(papers)} {args.split} papers "
+              f"that entered no stage of distillation or selection")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -1053,6 +1138,21 @@ def main():
                           "iteration 0); 'empty' is the paper's version")
 
     se.set_defaults(fn=cmd_search)
+
+    sc = sub.add_parser(
+        "score", help="score finished selections on a held-out split")
+    sc.add_argument("--eval-dir", required=True)
+    sc.add_argument("--selections", nargs="+", required=True,
+                    help="selection_*.json paths or globs")
+    sc.add_argument("--split", default="test",
+                    help="split to score on (default test -- the 140 papers "
+                         "that entered no stage of distillation or selection)")
+    sc.add_argument("--papers", help="comma list; overrides --split")
+    sc.add_argument("--objective", choices=["m1", "m3"], default="m3")
+    sc.add_argument("--label-from", default="algo",
+                    help="selection.json field to label each row by")
+    sc.add_argument("--out", help="output CSV (default: under subset_search/)")
+    sc.set_defaults(fn=cmd_score)
 
     args = ap.parse_args()
     # the run scored with containment; match it for any code path that reads
