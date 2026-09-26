@@ -23,7 +23,11 @@
 #   sbatch scripts/heldout_frontier_cluster.sh
 #
 # Step 1 is skipped per-paper if its JSON already exists, so a re-submit after
-# a timeout resumes rather than restarting.
+# a timeout resumes rather than restarting. Pass FORCE=1 to redo them.
+#
+# NOTE: precompute needs <eval-dir>/groups/*/distilled_rules.py. Without
+# them it used to run to completion recording zero units per paper, and
+# every arm then scored identically to the base parser; it now refuses.
 #
 #SBATCH --job-name=heldout_frontier
 #SBATCH --output=logs/%x_%j.out
@@ -39,6 +43,9 @@ EVAL_DIR="${EVAL_DIR:-src/LLMVersion/merged_eval_v51_train60_v2}"
 TEX_DIR="${TEX_DIR:-corpus/silver/tex_staged}"
 SPLIT="${SPLIT:-test}"
 WORKERS="${WORKERS:-${SLURM_CPUS_PER_TASK:-8}}"
+# FORCE=1 re-does papers whose JSON already exists -- needed once, to
+# replace the empty records a run without groups/ left behind.
+FORCE="${FORCE:-0}"
 
 echo "[frontier] eval_dir=$EVAL_DIR tex_dir=$TEX_DIR split=$SPLIT workers=$WORKERS"
 echo "[frontier] host=$(hostname) started=$(date -Is)"
@@ -48,7 +55,8 @@ python3 -u scripts/rule_subset_search.py precompute \
     --eval-dir "$EVAL_DIR" \
     --tex-dir "$TEX_DIR" \
     --split "$SPLIT" \
-    --workers "$WORKERS"
+    --workers "$WORKERS" \
+    ${FORCE:+$([ "$FORCE" = "1" ] && echo --force)}
 
 echo "[frontier] step 2/2: score every selection on the $SPLIT papers"
 python3 -u scripts/rule_subset_search.py score \

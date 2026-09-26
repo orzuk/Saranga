@@ -307,6 +307,21 @@ def cmd_precompute(args):
     eval_dir = Path(args.eval_dir).resolve()
     out_dir = eval_dir / "subset_search" / "precompute"
     out_dir.mkdir(parents=True, exist_ok=True)
+    # Without the group modules every paper still "succeeds" -- it just does
+    # the baseline parse and records zero units, and the whole run looks fine
+    # until every arm scores identically to the base parser. Fail here instead.
+    missing = [g for g in GROUPS
+               if not (eval_dir / "groups" / g / "distilled_rules.py").is_file()]
+    if len(missing) == len(GROUPS):
+        raise SystemExit(
+            f"[precompute] no distilled rule modules under {eval_dir/'groups'}\n"
+            f"  Expected groups/<{'|'.join(GROUPS)}>/distilled_rules.py.\n"
+            f"  Without them every paper records zero units and the scores are\n"
+            f"  silently just the base parser. Nothing has been written.")
+    if missing:
+        print(f"[precompute] WARNING: no rules for group(s) {', '.join(missing)}"
+              f" -- those groups contribute nothing")
+
     papers = resolve_papers(args, eval_dir)
     todo = [p for p in papers
             if args.force or not (out_dir / f"{p}.json").exists()]
