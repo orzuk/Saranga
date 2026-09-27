@@ -144,18 +144,27 @@ def judge_batch(client, model, stype, snippets, match_mode="m1"):
     return _call_judge(client, model, sys_block, "".join(parts))
 
 
+#: Reply budget for one judge call. It covers EVERY item in the batch, so at
+#: batch-size 5 a long-reasoning model can run out mid-array and the tail items
+#: come back unanswered. Those are recorded MISSING rather than guessed at, and
+#: --repair-missing re-asks them singly, but each loss costs a round trip -- and
+#: a row that overflows even alone would stay MISSING and never reach quorum.
+#: 4096 is free unless replies actually grow into it.
+JUDGE_MAX_TOKENS = 4096
+
+
 def _call_judge(client, model, sys_block, user_text):
     """One judge call -> ({index: verdict-dict}, usage). Shared by both modes."""
     try:
         msg = client.messages.create(
-            model=model, max_tokens=2048,
+            model=model, max_tokens=JUDGE_MAX_TOKENS,
             system=[{"type": "text", "text": sys_block,
                      "cache_control": {"type": "ephemeral"}}],
             messages=[{"role": "user", "content": user_text}],
         )
     except Exception:
         msg = client.messages.create(
-            model=model, max_tokens=2048, system=sys_block,
+            model=model, max_tokens=JUDGE_MAX_TOKENS, system=sys_block,
             messages=[{"role": "user", "content": user_text}],
         )
     by_index = {}
