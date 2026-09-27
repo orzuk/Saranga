@@ -23,8 +23,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=96G
 #SBATCH --time=12:00:00
-#SBATCH --output=/sci/labs/orzuk/orzuk/method_e_jobs/fp_panel.%j.log
-#SBATCH --error=/sci/labs/orzuk/orzuk/method_e_jobs/fp_panel.%j.log
+#SBATCH --output=logs/fp_panel.%j.log
+#SBATCH --error=logs/fp_panel.%j.log
 
 set -euo pipefail
 
@@ -44,12 +44,22 @@ case "$JUDGE" in
 esac
 
 source /sci/labs/orzuk/orzuk/venvs/qwen-vllm/bin/activate
+# HF_HOME stays on the shared weights -- they only need reading, and every
+# account should hit the same download rather than its own copy.
 export HF_HOME="${HF_HOME:-/sci/labs/orzuk/orzuk/foundation_models/hf}"
-export XDG_CACHE_HOME="${XDG_CACHE_HOME:-/sci/labs/orzuk/orzuk/xdg-cache}"
-export VLLM_CACHE_ROOT="${VLLM_CACHE_ROOT:-/sci/labs/orzuk/orzuk/xdg-cache/vllm}"
-export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-/sci/labs/orzuk/orzuk/xdg-cache/triton}"
-export TORCH_INDUCTOR_CACHE_DIR="${TORCH_INDUCTOR_CACHE_DIR:-/sci/labs/orzuk/orzuk/xdg-cache/torchinductor}"
-export TMPDIR="${TMPDIR:-/sci/labs/orzuk/orzuk/tmp_install}"
+
+# Everything below is WRITTEN during load: the model-info cache, the torch
+# compile cache, triton and inductor artefacts. Hardcoding orzuk's paths meant
+# any other account died mid-load with EACCES -- twice over, once in the
+# registry cache and again deeper in torch_compile_cache, each a full model
+# load wasted before it failed. Default them per user instead.
+_FP_CACHE_HOME="${XDG_CACHE_HOME:-/sci/labs/orzuk/$USER/xdg-cache}"
+export XDG_CACHE_HOME="$_FP_CACHE_HOME"
+export VLLM_CACHE_ROOT="${VLLM_CACHE_ROOT:-$_FP_CACHE_HOME/vllm}"
+export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-$_FP_CACHE_HOME/triton}"
+export TORCH_INDUCTOR_CACHE_DIR="${TORCH_INDUCTOR_CACHE_DIR:-$_FP_CACHE_HOME/torchinductor}"
+export TMPDIR="${TMPDIR:-/sci/labs/orzuk/$USER/tmp}"
+mkdir -p "$VLLM_CACHE_ROOT" "$TRITON_CACHE_DIR" "$TORCH_INDUCTOR_CACHE_DIR" "$TMPDIR"
 export HF_HUB_ENABLE_HF_TRANSFER=1
 umask 002
 
