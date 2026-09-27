@@ -45,8 +45,19 @@ case "$JUDGE" in
   # not that file -- so it silently started a 28GB download, filled the lab
   # quota and died at model load every time. Force the loader onto the shards
   # that are already there.
+  # Mistral needs two overrides that none of the other judges do, both caused
+  # by files it ships alongside the standard HF ones:
+  #   params.json  -> vLLM reads it as a Mistral-format checkpoint and hunts
+  #                   for consolidated.safetensors, which the cache does not
+  #                   have, so it began a 28GB download that filled the shared
+  #                   quota and killed the job at load with no error.
+  #   tekken.json  -> vLLM switches to Mistral's own tokenizer, whose
+  #                   validate_request_params rejects any chat template, so
+  #                   every /v1/chat/completions request came back 400.
+  # The HF shards and tokenizer.json are both present and complete; point the
+  # loader and the tokenizer at those instead.
   mistral-small-24b)  MODEL=mistralai/Mistral-Small-24B-Instruct-2501; TP=2
-                      EXTRA_LOAD="--load-format safetensors" ;;
+                      EXTRA_LOAD="--load-format safetensors --tokenizer-mode slow" ;;
   gemma-3-27b-it)     MODEL=google/gemma-3-27b-it;                     TP=2 ;;
   llama-3.3-70b)      MODEL=meta-llama/Llama-3.3-70B-Instruct;         TP=4 ;;
   *) echo "unknown judge: $JUDGE" >&2; exit 2 ;;
