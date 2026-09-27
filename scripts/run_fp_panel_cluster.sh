@@ -71,9 +71,16 @@ echo "[panel] judge=$JUDGE model=$MODEL tp=$TP node=$(hostname) port=$PORT"
 # CUDA-graph capture, so it never looks. Generation is somewhat slower, which
 # does not matter for ~1,900 short verdicts. An account with a usable toolkit
 # can set FP_PANEL_EAGER=0 to get the compiled path back.
+# flashinfer JIT-compiles its sampling kernels on first use (top_k_mask_logits),
+# and that path needs nvcc no matter what --enforce-eager does -- it is not
+# torch.compile. Fall back to vLLM's native PyTorch sampler, which is already
+# what the judge's near-greedy decoding wants and compiles nothing.
+export VLLM_USE_FLASHINFER_SAMPLER="${VLLM_USE_FLASHINFER_SAMPLER:-0}"
+
 EAGER_FLAG=""
 [ "${FP_PANEL_EAGER:-1}" = "1" ] && EAGER_FLAG="--enforce-eager"
-echo "[panel] eager=${FP_PANEL_EAGER:-1} (torch $(python -c 'import torch;print(torch.version.cuda)') vs cluster cuda<=12.9)"
+echo "[panel] eager=${FP_PANEL_EAGER:-1} flashinfer_sampler=$VLLM_USE_FLASHINFER_SAMPLER"
+echo "[panel] torch cuda=$(python -c 'import torch;print(torch.version.cuda)') (cluster modules top out at 12.9, hence no JIT)"
 
 # shellcheck disable=SC2086
 python -m vllm.entrypoints.openai.api_server \
