@@ -65,12 +65,23 @@ umask 002
 
 echo "[panel] judge=$JUDGE model=$MODEL tp=$TP node=$(hostname) port=$PORT"
 
+# torch in this venv is built against CUDA 13.0 and the cluster's newest
+# module is 12.9, so there is no nvcc that matches. vLLM only needs one to
+# JIT-compile kernels, and --enforce-eager skips both torch.compile and
+# CUDA-graph capture, so it never looks. Generation is somewhat slower, which
+# does not matter for ~1,900 short verdicts. An account with a usable toolkit
+# can set FP_PANEL_EAGER=0 to get the compiled path back.
+EAGER_FLAG=""
+[ "${FP_PANEL_EAGER:-1}" = "1" ] && EAGER_FLAG="--enforce-eager"
+echo "[panel] eager=${FP_PANEL_EAGER:-1} (torch $(python -c 'import torch;print(torch.version.cuda)') vs cluster cuda<=12.9)"
+
+# shellcheck disable=SC2086
 python -m vllm.entrypoints.openai.api_server \
   --model "$MODEL" --served-model-name "$JUDGE" \
   --host 127.0.0.1 --port "$PORT" \
   --tensor-parallel-size "$TP" \
   --gpu-memory-utilization 0.90 --max-model-len 32768 \
-  --dtype auto --trust-remote-code &
+  --dtype auto --trust-remote-code $EAGER_FLAG &
 SERVER=$!
 # Kill the server on ANY exit path, including a failed judge run: an sbatch
 # job that ends with vLLM still resident holds the GPUs until the walltime.
