@@ -34,10 +34,19 @@ EVAL_DIR="$REPO/src/LLMVersion/heldout_eval_selected146"
 FPS="$EVAL_DIR/heldout_fp_m3.csv"
 PORT="${FP_PANEL_PORT:-8${RANDOM:0:3}}"
 
+EXTRA_LOAD=""
+
 # model key -> HF id, tensor-parallel size. TP must equal the --gres count.
 case "$JUDGE" in
   qwen3-32b-awq)      MODEL=Qwen/Qwen3-32B-AWQ;                        TP=1 ;;
-  mistral-small-24b)  MODEL=mistralai/Mistral-Small-24B-Instruct-2501; TP=2 ;;
+  # Mistral ships params.json alongside the HF shards, and vLLM reads that as
+  # "this is a Mistral-format checkpoint", then goes looking for
+  # consolidated.safetensors. The cache has the ten HF shards, complete, but
+  # not that file -- so it silently started a 28GB download, filled the lab
+  # quota and died at model load every time. Force the loader onto the shards
+  # that are already there.
+  mistral-small-24b)  MODEL=mistralai/Mistral-Small-24B-Instruct-2501; TP=2
+                      EXTRA_LOAD="--load-format safetensors" ;;
   gemma-3-27b-it)     MODEL=google/gemma-3-27b-it;                     TP=2 ;;
   llama-3.3-70b)      MODEL=meta-llama/Llama-3.3-70B-Instruct;         TP=4 ;;
   *) echo "unknown judge: $JUDGE" >&2; exit 2 ;;
@@ -64,6 +73,17 @@ export HF_HUB_ENABLE_HF_TRANSFER=1
 umask 002
 
 echo "[panel] judge=$JUDGE model=$MODEL tp=$TP node=$(hostname) port=$PORT"
+echo "[panel] extra_load=${EXTRA_LOAD:-none}"
+
+# A partial blob means a previous run started fetching a file the cache does
+# not have. Left in place it is both dead weight against the lab quota and a
+# download that will simply restart.
+_INC=$(find "$HF_HOME/hub" -name '*.incomplete' -size +1G 2>/dev/null | head -5)
+if [ -n "$_INC" ]; then
+  echo "[panel] WARNING: partial downloads >1G still in the HF cache:"
+  echo "$_INC" | sed 's/^/    /'
+  echo "[panel] delete them before rerunning, or they will be fetched again"
+fi
 
 # torch in this venv is built against CUDA 13.0 and the cluster's newest
 # module is 12.9, so there is no nvcc that matches. vLLM only needs one to
@@ -88,7 +108,7 @@ python -m vllm.entrypoints.openai.api_server \
   --host 127.0.0.1 --port "$PORT" \
   --tensor-parallel-size "$TP" \
   --gpu-memory-utilization 0.90 --max-model-len 32768 \
-  --dtype auto --trust-remote-code $EAGER_FLAG &
+  --dtype auto --trust-remote-code $EAGER_FLAG $EXTRA_LOAD &
 SERVER=$!
 # Kill the server on ANY exit path, including a failed judge run: an sbatch
 # job that ends with vLLM still resident holds the GPUs until the walltime.
