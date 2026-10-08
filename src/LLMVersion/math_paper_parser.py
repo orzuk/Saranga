@@ -65,6 +65,53 @@ from extract_arxiv_funcs import (
 
 from config import FULL_PAPERS_DIR
 
+# LaTeX syntax -- inlining \input files, cleaning, macro expansion, and which
+# environments and displays exist where -- comes from the shared module
+# src/latex_facts.py, the same one the LLM extraction pipeline uses. This
+# parser builds its objects from those facts.
+_SRC_DIR = str(Path(__file__).resolve().parent.parent)
+if _SRC_DIR not in _sys.path:
+    _sys.path.insert(0, _SRC_DIR)
+import latex_facts  # noqa: E402
+
+# Rule modules are loaded once per process. The parser asks for a rule module
+# per node type per paper, and the generated group importer re-executes a
+# group file (thousands of lines, hundreds of patterns) on every call; with
+# more patterns than Python's regex cache holds, every reload also recompiled
+# every pattern. Only files named distilled_rules.py are cached, and not under
+# SARANGA_REGEX_REFERENCE=1 (the plain path, kept to verify the speed-ups).
+_RULE_MODULES: Dict[str, Any] = {}
+
+
+def _cache_rule_modules() -> None:
+    import importlib.machinery as _ilm
+    if os.environ.get("SARANGA_REGEX_REFERENCE", "") == "1" or \
+            getattr(importlib.util.module_from_spec, "_rule_cache", False):
+        return
+    orig_from_spec = importlib.util.module_from_spec
+    orig_exec = _ilm.SourceFileLoader.exec_module
+
+    def module_from_spec(spec):
+        origin = getattr(spec, "origin", None)
+        if origin in _RULE_MODULES:
+            return _RULE_MODULES[origin]
+        mod = orig_from_spec(spec)
+        if origin and origin.endswith("distilled_rules.py"):
+            mod.__rule_origin__ = origin
+        return mod
+
+    def exec_module(self, module):
+        origin = getattr(module, "__rule_origin__", None)
+        if origin in _RULE_MODULES:
+            return
+        orig_exec(self, module)
+        if origin:
+            _RULE_MODULES[origin] = module
+
+    module_from_spec._rule_cache = True
+    importlib.util.module_from_spec = module_from_spec
+    _ilm.SourceFileLoader.exec_module = exec_module
+
 
 # ---------------------------------------------------------------------
 # Structure type configuration for LLM extraction
@@ -255,73 +302,6 @@ class PaperParser:
         graph = parser.parse_file("paper.tex")
     """
 
-    # canonical mapping from LaTeX environment names to "kind"
-    BASE_ENV_KIND_MAP = {
-        "theorem": "theorem",
-        "Theorem": "theorem",
-        "thm": "theorem",
-
-        "lemma": "lemma",
-        "Lemma": "lemma",
-        "lem": "lemma",
-
-        "proposition": "proposition",
-        "Proposition": "proposition",
-        "prop": "proposition",
-
-        "corollary": "corollary",
-        "Corollary": "corollary",
-        "cor": "corollary",
-
-        "claim": "claim",
-        "Claim": "claim",
-
-        "definition": "definition",
-        "Definition": "definition",
-        "defn": "definition",
-        "dfn": "definition",
-        "Def": "definition",
-        "Defn": "definition",
-
-        "proof": "proof",
-        "Proof": "proof",
-
-        "algorithm": "algorithm",
-        "algorithm*": "algorithm",
-
-        "table": "table",
-
-        "theo": "theorem",
-        "conjecture": "conjecture",
-        "Conjecture": "conjecture",
-
-        "problem": "problem",
-        "Problem": "problem",
-
-        "openproblem": "open_problem",
-        "openProblem": "open_problem",
-        "openquestion": "open_problem",
-        "open": "open_problem",
-
-        "assumption": "assumption",
-        "Assumption": "assumption",
-        "assumptions": "assumption",
-        "Assumptions": "assumption",
-
-        "example": "example",
-        "Example": "example",
-        "exam": "example",
-        "ex": "example",
-
-        "exercise": "exercise",
-        "Exercise": "exercise",
-
-        "remark": "remark",
-        "Remark": "remark",
-        "rem": "remark",
-        "note": "remark",
-    }
-
     THEOREM_LIKE_KINDS = {
         "theorem",
         "lemma",
@@ -391,313 +371,52 @@ class PaperParser:
         # reproduced or compared against another.
         if self.extraction_mode in ("rules", "both"):
             print(f"[INFO] distilled rules: {self._describe_rules()}")
+            _cache_rule_modules()
 
-        # these will be updated with \newtheorem info
-        self.env_kind_map = dict(self.BASE_ENV_KIND_MAP)
-
-    # ------------------------------------------------------------------
-    # Macro / input expansion
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _extract_brace_body(text: str, start: int) -> Optional[Tuple[str, int]]:
-        """Extract a brace-balanced body starting at *text[start]* == '{'.
-
-        Returns (body_contents, end_pos) where end_pos is the index
-        **after** the closing '}'.  Returns None if braces are unbalanced.
-        """
-        if start >= len(text) or text[start] != '{':
-            return None
-        depth = 0
-        for i in range(start, len(text)):
-            if text[i] == '{':
-                depth += 1
-            elif text[i] == '}':
-                depth -= 1
-                if depth == 0:
-                    return text[start + 1 : i], i + 1
-        return None
-
-    def _expand_macros(self, text: str) -> str:
-        """
-        Expand simple \\newcommand / \\renewcommand macros with NO arguments.
-
-        E.g. turns:
-            \\newcommand{\\be}{\\begin{equation}}
-        into removal of the definition and replacement of all '\\be' occurrences
-        by '\\begin{equation}'.
-
-        We ignore macros with arguments like \\newcommand{\\abs}[1]{...}.
-        Handles brace-balanced bodies (e.g. \\newcommand{\\thm}{\\begin{theorem}}).
-        """
-        # Match the preamble: \newcommand*?{\name}  — then we parse the rest
-        # manually to handle balanced braces.
-        preamble = re.compile(
-            r"\\(?:re)?newcommand\*?\s*\{\\([a-zA-Z@]+)\}\s*",
-        )
-
-        macros: Dict[str, str] = {}
-        # Collect all macro definitions, building a cleaned text
-        result_parts: List[str] = []
-        pos = 0
-        for m in preamble.finditer(text):
-            name = m.group(1)
-            after_preamble = m.end()
-
-            # Skip macros with argument count: [N]{body}
-            if after_preamble < len(text) and text[after_preamble] == '[':
-                # has arguments — leave as-is, not a 0-arg macro
-                continue
-
-            # Extract the brace-balanced body
-            body_result = self._extract_brace_body(text, after_preamble)
-            if body_result is None:
-                continue
-            body, end_pos = body_result
-
-            macros[name] = body
-            # Remove the definition from text
-            result_parts.append(text[pos : m.start()])
-            pos = end_pos
-
-        result_parts.append(text[pos:])
-        text = "".join(result_parts)
-
-        # 2) expand occurrences of each macro
-        for name, body in macros.items():
-            # match \name not followed by letter/@ (so we don't hit \nameXYZ)
-            macro_use_pattern = re.compile(rf"\\{name}(?![A-Za-z@])")
-
-            # IMPORTANT: use a function so 'body' is used literally (backslashes ok)
-            text = macro_use_pattern.sub(lambda _: body, text)
-
-        return text
-
-    def _normalize_simple_ref_macros(self, text: str) -> str:
-        """
-        Detect simple 1-argument \\newcommand/\\renewcommand macros that
-        only wrap a \\ref/\\eqref/\\autoref, and rewrite their uses to the
-        underlying standard ref command.
-        """
-        cmd_pat = re.compile(
-            r"\\(?:re)?newcommand\*?\s*{\\([A-Za-z@]+)}\s*\[(\d+)\]\s*{([^}]*)}",
-            flags=re.DOTALL,
-        )
-
-        ref_macros: Dict[str, str] = {}  # name -> 'ref' | 'eqref' | 'autoref'
-
-        def strip_and_collect(m: re.Match) -> str:
-            name = m.group(1)
-            nargs = int(m.group(2))
-            body = m.group(3)
-
-            if nargs != 1:
-                # leave definition as-is for other passes
-                return m.group(0)
-
-            if r"\eqref{#1}" in body:
-                ref_macros[name] = "eqref"
-                return ""  # remove definition
-            elif r"\autoref{#1}" in body:
-                ref_macros[name] = "autoref"
-                return ""
-            elif r"\ref{#1}" in body:
-                ref_macros[name] = "ref"
-                return ""
-            else:
-                # not a simple ref wrapper
-                return m.group(0)
-
-        # 1) Remove the ref-wrapper macro definitions, record mapping
-        text = cmd_pat.sub(strip_and_collect, text)
-
-        # 2) Rewrite uses of those macros
-        for name, kind in ref_macros.items():
-            # match \name{something}
-            use_pat = re.compile(rf"\\{name}\{{([^}}]+)\}}")
-            if kind == "eqref":
-                text = use_pat.sub(r"\\eqref{\1}", text)
-            elif kind == "autoref":
-                text = use_pat.sub(r"\\autoref{\1}", text)
-            else:  # 'ref'
-                text = use_pat.sub(r"\\ref{\1}", text)
-
-        return text
-
-    def _expand_inputs(self, text: str, base_dir: Path, depth: int = 0, max_depth: int = 5) -> str:
-        """
-        Recursively expand \input{...} and \include{...} commands by inlining
-        the contents of those files.
-
-        - Searches relative to base_dir.
-        - Supports filenames with or without extension: tries as-is, then .tex, then .txt.
-        - Stops after max_depth to avoid infinite recursion.
-        - At the top level (depth == 0), also expands simple \\newcommand macros.
-        """
-        if depth > max_depth:
-            return text
-
-        pattern = re.compile(r"\\(input|include)\s*(?:\[[^\]]*\])?\s*{([^}]+)}")
-
-        while True:
-            m = pattern.search(text)
-            if not m:
-                break
-
-            cmd = m.group(1)
-            fname = m.group(2).strip()
-
-            # ignore includes that are clearly macro arguments, like {#1}
-            if "#" in fname:
-                print(f"[WARN] Skipping macro-like \\{cmd}{{{fname}}} (looks like an argument, not a file)")
-                text = text[: m.start()] + "" + text[m.end():]
-                continue
-
-            # Resolve path: fname, fname.tex, fname.txt
-            cand_paths = [
-                base_dir / fname,
-                base_dir / f"{fname}.tex",
-                base_dir / f"{fname}.txt",
-            ]
-            inc_path = None
-            for cp in cand_paths:
-                if cp.exists():
-                    inc_path = cp
-                    break
-
-            if inc_path is None:
-                print(f"[WARN] Could not resolve \\{cmd}{{{fname}}} relative to {base_dir}")
-                included = ""
-            else:
-                try:
-                    included_raw = inc_path.read_text(encoding="utf-8", errors="ignore")
-                except OSError:
-                    print(f"[WARN] Failed to read included file {inc_path}")
-                    included = ""
-                else:
-                    included = self._expand_inputs(
-                        included_raw,
-                        base_dir=inc_path.parent,
-                        depth=depth + 1,
-                        max_depth=max_depth,
-                    )
-
-            # Inline the included text
-            text = text[: m.start()] + included + text[m.end():]
-
-        # At the top level, after all includes are inlined, expand macros
-        if depth == 0:
-            # 1) normalise simple ref macros (1-arg wrappers)
-            text = self._normalize_simple_ref_macros(text)
-            # 2) expand 0-arg macros like \be -> \begin{equation}
-            text = self._expand_macros(text)
-
-        return text
 
     # ------------------------------------------------------------------
     # Equations
     # ------------------------------------------------------------------
 
-    def _extract_equations_from_body(self, body: str, parent_id: Optional[str]) -> List[Equation]:
-        """
-        Extract equation-like displays inside a given LaTeX body.
-        """
-        equations: List[Equation] = []
-
-        # 1) Environment-based displays
-        env_pattern = re.compile(
-            r"\\begin{(?P<env>equation\*?|align\*?|gather\*?|multline\*?)}(?P<body>.*?)\\end{\1}",
-            flags=re.DOTALL,
-        )
-        for m in env_pattern.finditer(body):
-            env_name = m.group("env")
-            inner = m.group("body")
-            label, _ = self._extract_label_and_name(inner)
-            clean_text = self._clean_latex_to_text(inner)
-            eq = Equation(
-                id="",  # will be assigned later
-                kind="equation",
-                index=0,
-                label=label,
-                name=None,
-                raw_latex=m.group(0),
-                clean_text=clean_text,
-                env_name=env_name,
-                display_type="env",
-                parent_id=parent_id,
-            )
-            equations.append(eq)
-
-        # 2) $$ ... $$ blocks
-        dollar_pattern = re.compile(r"\$\$(?P<body>.*?)\$\$", flags=re.DOTALL)
-        for m in dollar_pattern.finditer(body):
-            inner = m.group("body")
-            label, _ = self._extract_label_and_name(inner)
-            clean_text = self._clean_latex_to_text(inner)
-            eq = Equation(
-                id="",
-                kind="equation",
-                index=0,
-                label=label,
-                name=None,
-                raw_latex=m.group(0),
-                clean_text=clean_text,
-                env_name="displaymath",
-                display_type="dollar",
-                parent_id=parent_id,
-            )
-            equations.append(eq)
-
-        # 3) \[ ... \] blocks
-        bracket_pattern = re.compile(r"\\\[(?P<body>.*?)\\\]", flags=re.DOTALL)
-        for m in bracket_pattern.finditer(body):
-            inner = m.group("body")
-            label, _ = self._extract_label_and_name(inner)
-            clean_text = self._clean_latex_to_text(inner)
-            eq = Equation(
-                id="",
-                kind="equation",
-                index=0,
-                label=label,
-                name=None,
-                raw_latex=m.group(0),
-                clean_text=clean_text,
-                env_name="bracket",
-                display_type="bracket",
-                parent_id=parent_id,
-            )
-            equations.append(eq)
-
-        return equations
+    _DISPLAY_TYPE = {"$$": ("displaymath", "dollar"), "\\[": ("bracket", "bracket")}
 
     def _extract_equations(self, full_text: str, containers: List[MathObject]) -> List[Equation]:
         """
-        Extract equations from inside theorem/definition/proof/algorithm bodies,
-        and from the full document (top-level equations).
+        One Equation per displayed formula, numbered or not, from the facts'
+        `displays` (equation environments, \\[..\\] and $$..$$). Its parent is the
+        innermost container (theorem, definition, proof, ...) whose source span
+        holds it; a display outside every container has no parent.
         """
-        all_eqs: List[Equation] = []
-        eq_idx = 0
-
-        # 1) equations inside containers
+        spans = []
         for obj in containers:
-            eqs_here = self._extract_equations_from_body(obj.raw_latex, parent_id=obj.id)
-            for eq in eqs_here:
-                eq_idx += 1
-                eq.id = f"E{eq_idx}"
-                eq.index = eq_idx
-                all_eqs.append(eq)
-
-        # 2) top-level (orphan) equations in the full text, with no parent
-        contained_latex = {eq.raw_latex for eq in all_eqs}
-        top_eqs = self._extract_equations_from_body(full_text, parent_id=None)
-        for eq in top_eqs:
-            if eq.raw_latex in contained_latex:
+            start = getattr(obj, "_source_pos", None)
+            if start is None:
                 continue
-            eq_idx += 1
-            eq.id = f"E{eq_idx}"
-            eq.index = eq_idx
+            end = getattr(obj, "_source_end", None) or start + len(obj.raw_latex or "")
+            spans.append((start, end, obj.id))
+        all_eqs: List[Equation] = []
+        off = self._off
+        displays = [d for d in self._facts["displays"] if d["outer_start"] >= off]
+        for i, d in enumerate(displays, start=1):
+            o_start, o_end = d["outer_start"] - off, d["outer_end"] - off
+            inside = [s for s in spans if s[0] <= o_start and o_end <= s[1]]
+            parent = min(inside, key=lambda s: s[1] - s[0])[2] if inside else None
+            env_name, display_type = self._DISPLAY_TYPE.get(d["env"], (d["env"], "env"))
+            inner = full_text[d["start"] - off:d["end"] - off]
+            eq = Equation(
+                id=f"E{i}",
+                kind="equation",
+                index=i,
+                label=d["labels"][0] if d["labels"] else None,
+                name=None,
+                raw_latex=full_text[o_start:o_end],
+                clean_text=self._clean_latex_to_text(inner),
+                env_name=env_name,
+                display_type=display_type,
+                parent_id=parent,
+            )
+            eq._source_pos = o_start
             all_eqs.append(eq)
-
         return all_eqs
 
     # ------------------------------------------------------------------
@@ -732,42 +451,15 @@ class PaperParser:
             print(f"[WARN] rule_guard NOT installed ({type(_e).__name__}: {_e}); "
                   f"regexes run UNGUARDED and a runaway can hang this parse",
                   file=_sys.stderr, flush=True)
-        text = path.read_text(encoding="utf-8", errors="ignore")
-
-        # 1) Merge all included files AND expand simple macros
-        text = self._expand_inputs(text, base_dir=path.parent)
-
-        # 2) Strip comments and parse \newtheorem from the full document
-        # (preamble + body). Restricting to body first would hide preamble
-        # declarations like \newtheorem{conj}{Conjecture}, causing custom
-        # env names to be missed.
-        text = self._strip_comments(text)
-        self._parse_newtheorem(text)
-
-        # 3) Restrict to the document body/bodies for the actual extraction
-        #    pass. A source may contain MORE THAN ONE \begin{document} (e.g. a
-        #    PDF-wrapper stub `\begin{document}\includepdf{...}\end{document}`
-        #    followed by the real paper) and may be MISSING its final
-        #    \end{document}. A single greedy `\begin{document}(.*)\end{document}`
-        #    would capture first-begin -> last-end, which for a stub-first
-        #    layout is just the tiny stub and drops the entire real paper.
-        #    Instead, take the content of EVERY \begin{document} block (to its
-        #    \end{document} or EOF) and concatenate. Preambles between blocks
-        #    are naturally excluded; a stub's \includepdf yields no nodes; and
-        #    no real content is ever dropped. Duplicate content across blocks
-        #    is later collapsed by cross-source dedup (_merge_objects).
-        begins = list(re.finditer(r"\\begin{document}", text))
-        if begins:
-            bodies = []
-            for b in begins:
-                rest = text[b.end():]
-                e = re.search(r"\\end{document}", rest)
-                bodies.append(rest[: e.start()] if e else rest)
-            text = "\n".join(bodies)
-
-        # 4) Strip \newenvironment definitions so their internal
-        #    \begin{ENV}...\end{ENV} fragments don't get matched as content.
-        text = self._strip_newenvironments(text)
+        # The paper as every extractor sees it (latex_facts): \input files
+        # inlined, comments and disabled text removed, the paper's own macros
+        # expanded; its environments and displays located once. Extraction
+        # reads the document body; `self._off` maps facts offsets into it.
+        self._facts = latex_facts.extract_facts(latex_facts.read_tex(str(path)))
+        source = self._facts["source"]
+        begin = source.find("\\begin{document}")
+        self._off = begin + len("\\begin{document}") if begin != -1 else 0
+        text = source[self._off:]
 
         graph = PaperGraph(paper_id=self.paper_id)
 
@@ -950,119 +642,55 @@ class PaperParser:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _strip_comments(text: str) -> str:
-        """Remove LaTeX comments (%) except escaped \%."""
-        lines = []
-        for line in text.splitlines():
-            m = re.search(r"(?<!\\)%", line)
-            if m:
-                line = line[: m.start()]
-            lines.append(line)
-        return "\n".join(lines)
-
-    def _parse_newtheorem(self, text: str) -> None:
-        """
-        Parse \\newtheorem definitions and populate env_kind_map.
-        """
-        # Start from BASE_ENV_KIND_MAP (which has all aliases like defn, dfn, lem, etc.)
-        self.env_kind_map = dict(self.BASE_ENV_KIND_MAP)
-
-        # \newtheorem{env}[counter]{Printed Name}
-        # Also matches the starred (unnumbered) variant \newtheorem*{env}{Name}.
-        pattern = re.compile(
-            r"\\newtheorem\*?\s*{([^}]+)}(?:\[[^\]]+\])?\s*{([^}]+)}",
-            flags=re.DOTALL,
-        )
-
-        for env_name, printed in pattern.findall(text):
-            env_name = env_name.strip()
-            printed_clean = re.sub(r"[^a-z]", "", printed.lower())
-
-            kind = None
-            for candidate in [
-                "theorem",
-                "lemma",
-                "proposition",
-                "corollary",
-                "definition",
-                "remark",
-                "example",
-                "exercise",
-                "claim",
-                "conclusion",
-                "problem",
-                "conjecture",
-                "assumption",
-            ]:
-                if candidate in printed_clean:
-                    kind = candidate
-                    break
-
-            if kind:
-                self.env_kind_map[env_name] = kind
-
-    def _strip_newenvironments(self, text: str) -> str:
-        r"""Remove \newenvironment{name}{begin-code}{end-code} definitions.
-
-        These definitions contain \begin{ENV}...\end{ENV} fragments that
-        are formatting boilerplate, not actual content.  If left in the
-        text they produce false-positive matches in ``_extract_envs``.
-        """
-        pattern = re.compile(r"\\newenvironment\s*\{[^}]*\}\s*")
-        result_parts: List[str] = []
-        pos = 0
-        for m in pattern.finditer(text):
-            result_parts.append(text[pos : m.start()])
-            cursor = m.end()
-            # Skip the two brace-balanced arguments: {begin-code}{end-code}
-            for _ in range(2):
-                body = self._extract_brace_body(text, cursor)
-                if body is None:
-                    break
-                _, cursor = body
-            pos = cursor
-        result_parts.append(text[pos:])
-        return "".join(result_parts)
-
-    @staticmethod
     def _clean_latex_to_text(latex: str) -> str:
         """Best-effort LaTeX -> plain text cleaner (preserves math content)."""
         from latex_clean import clean_latex_to_text
         return clean_latex_to_text(latex)
 
+    # ------------------------------------------------------------------
+    # Environments, from latex_facts
+    # ------------------------------------------------------------------
+
+    def _extract_envs(self, text: str, kinds) -> List[Tuple[str, Optional[str], str, int, int, dict]]:
+        """
+        The paper's environments of the given node types ("lemma", "proof",
+        "algorithm", ...), as latex_facts found and typed them: declared names,
+        standard names, nesting and optional titles are all handled there.
+
+        Returns (env_name, opt_name, body, start, end, fact); start/end index
+        `text`, the document body.
+        """
+        off, src = self._off, self._facts["source"]
+        return [(f["env"], f["optarg"], src[f["start"]:f["end"]],
+                 f["outer_start"] - off, f["outer_end"] - off, f)
+                for f in self._facts["facts"]
+                if f["kind"] != "equation" and f["type"] in kinds and f["outer_start"] >= off]
+
+    def _named_envs(self, names) -> List[Tuple[str, Optional[str], str, int, int]]:
+        """
+        Environments by name (any case, starred or not) that are not node types:
+        tables, verbatim, pseudocode. Returns (env_name, opt_name, body, start, end).
+        """
+        want = {n.lower().rstrip("*") for n in names}
+        off, src = self._off, self._facts["source"]
+        out = []
+        for e in self._facts["environments"]:
+            if e["env"].lower().rstrip("*") not in want or e["outer_start"] < off:
+                continue
+            body, opt = src[e["start"]:e["end"]], None
+            m = re.match(r"\s*\[([^\]]*)\]", body)          # placement [htbp] or a title
+            if m:
+                opt, body = m.group(1), body[m.end():]
+            out.append((e["env"], opt, body, e["outer_start"] - off, e["outer_end"] - off))
+        return out
+
+    def _fact_by_id(self, fid: str) -> dict:
+        return next((f for f in self._facts["facts"] if f["id"] == fid), {})
+
     @staticmethod
-    def _extract_label_and_name(env_body: str) -> Tuple[Optional[str], Optional[str]]:
-        """Extract \\label{...} from environment body."""
-        label_match = re.search(r"\\label{([^}]*)}", env_body)
-        label = label_match.group(1).strip() if label_match else None
-        return label, None
-
-    # ------------------------------------------------------------------
-    # Generic environment extraction
-    # ------------------------------------------------------------------
-
-    def _extract_envs(self, text: str, env_names: List[str]) -> List[Tuple[str, str, str, int]]:
-        """
-        Generic environment extractor.
-
-        Returns list of (env_name, opt_name, body, source_pos) where:
-          \begin{env_name}[opt_name] body \end{env_name}
-        source_pos is the character offset of \begin in *text*.
-        """
-        env_pattern = (
-                r"\\begin{(" + "|".join(map(re.escape, env_names)) + r")}"
-                                                                     r"(?:\[(?P<opt>[^\]]*)])?"
-                                                                     r"(?P<body>.*?)"
-                                                                     r"\\end{\1}"
-        )
-        regex = re.compile(env_pattern, flags=re.DOTALL | re.IGNORECASE)
-        results = []
-        for m in regex.finditer(text):
-            env = m.group(1)
-            opt = m.group("opt")
-            body = m.group("body")
-            results.append((env, opt, body, m.start()))
-        return results
+    def _label(fact: dict) -> Optional[str]:
+        """The environment's own \\label (not one of an equation inside it)."""
+        return fact["labels"][0] if fact.get("labels") else None
 
     # ------------------------------------------------------------------
     # Theorem-like extraction (theorem / lemma / proposition / corollary /
@@ -1070,23 +698,14 @@ class PaperParser:
     # ------------------------------------------------------------------
 
     def _extract_theorem_like(self, text: str) -> List[TheoremLike]:
-        env_names = [
-            env for env, kind in self.env_kind_map.items()
-            if kind in self.THEOREM_LIKE_KINDS
-        ]
-        print(f"[DEBUG] theorem-like env_names: {env_names}")
-
-        if not env_names:
-            return []
-
-        found = self._extract_envs(text, env_names)
+        found = self._extract_envs(text, self.THEOREM_LIKE_KINDS)
         print(f"[DEBUG] found {len(found)} theorem-like environments")
 
         counters: Dict[str, int] = {k: 0 for k in self.THEOREM_LIKE_KINDS}
         objects: List[TheoremLike] = []
 
-        for env_name, opt_name, body, source_pos in found:
-            kind = self.env_kind_map.get(env_name, "theorem")
+        for env_name, opt_name, body, source_pos, source_end, fact in found:
+            kind = fact["type"]
             counters.setdefault(kind, 0)
             counters[kind] += 1
             idx = counters[kind]
@@ -1096,7 +715,7 @@ class PaperParser:
             prefix = config["id_prefix"] if config else kind[0].upper()
             obj_id = prefix + str(idx)
 
-            label, _ = self._extract_label_and_name(body)
+            label = self._label(fact)
             clean_text = self._clean_latex_to_text(body)
             assumptions, conclusions = self._split_assumptions_conclusions(clean_text)
 
@@ -1142,6 +761,7 @@ class PaperParser:
                 )
 
             obj._source_pos = source_pos
+            obj._source_end = source_end
             objects.append(obj)
 
         return objects
@@ -1258,7 +878,7 @@ class PaperParser:
         Extract Definition objects using only heuristic / rule-based methods.
 
         Includes:
-        A. Definition environments defined via \\newtheorem (env_kind_map=='definition').
+        A. Definition environments (latex_facts type 'definition').
         B. Textual 'Definition 2.1.' style markers.
         C1. Inline 'We define X as/by/to be ...'.
         C2. Inline 'X is defined as/to be ...'.
@@ -1268,26 +888,25 @@ class PaperParser:
         idx = 0
 
         # --- A. Environment-based definitions ---
-        env_names = [env for env, kind in self.env_kind_map.items() if kind == "definition"]
-        if env_names:
-            env_defs = self._extract_envs(text, env_names)
-            for env_name, opt_name, body, source_pos in env_defs:
-                idx += 1
-                obj_id = f"D{idx}"
-                label, _ = self._extract_label_and_name(body)
-                clean_text = self._clean_latex_to_text(body)
-                d = Definition(
-                    id=obj_id,
-                    kind="definition",
-                    index=idx,
-                    label=label,
-                    name=opt_name.strip() if opt_name else None,
-                    raw_latex=body,
-                    clean_text=clean_text,
-                    env_name=env_name,
-                )
-                d._source_pos = source_pos
-                objects.append(d)
+        env_defs = self._extract_envs(text, {"definition"})
+        for env_name, opt_name, body, source_pos, source_end, fact in env_defs:
+            idx += 1
+            obj_id = f"D{idx}"
+            label = self._label(fact)
+            clean_text = self._clean_latex_to_text(body)
+            d = Definition(
+                id=obj_id,
+                kind="definition",
+                index=idx,
+                label=label,
+                name=opt_name.strip() if opt_name else None,
+                raw_latex=body,
+                clean_text=clean_text,
+                env_name=env_name,
+            )
+            d._source_pos = source_pos
+            d._source_end = source_end
+            objects.append(d)
 
         # --- B. Textual 'Definition 2.1.' style definitions ---
         definition_text_pattern = re.compile(
@@ -1335,18 +954,15 @@ class PaperParser:
         _mask_env_kinds = {"theorem", "lemma", "proposition", "corollary",
                            "claim", "conjecture", "problem", "proof",
                            "algorithm"}
-        _mask_env_names = [env for env, kind in self.env_kind_map.items()
-                           if kind in _mask_env_kinds]
         # (Fix-a2) Pseudocode / verbatim blocks: their "let X be ..." and
         # "... is defined as ..." lines are code, not prose definitions.
-        for _pc in ("algorithm", "algorithmic", "algorithmics", "algorithm2e",
-                    "verbatim", "lstlisting", "minted"):
-            if _pc not in _mask_env_names:
-                _mask_env_names.append(_pc)
-        if _mask_env_names:
-            for _, _, body, _ in self._extract_envs(text, _mask_env_names):
-                if body:
-                    inline_text = inline_text.replace(body, " " * len(body), 1)
+        _mask_bodies = [e[2] for e in self._extract_envs(text, _mask_env_kinds)]
+        _mask_bodies += [e[2] for e in self._named_envs(
+            ("algorithm", "algorithmic", "algorithmics", "algorithm2e",
+             "verbatim", "lstlisting", "minted"))]
+        for body in _mask_bodies:
+            if body:
+                inline_text = inline_text.replace(body, " " * len(body), 1)
 
         # C1: "We (also) define X as/by/to be ..." (case insensitive)
         inline_define_pattern = re.compile(
@@ -1774,9 +1390,18 @@ class PaperParser:
                 kwargs['parent_id'] = None
 
             try:
-                objects.append(cls(**kwargs))
+                obj = cls(**kwargs)
             except Exception as e:
                 print(f"[WARN] Could not create {class_name} from distilled rule {i}: {e}")
+                continue
+            # Its place in the paper, so document order (and the proof linker,
+            # which reads it) does not depend on the order rules were applied:
+            # without it, ties broke differently between runs.
+            pos = text.find(raw_latex) if raw_latex else -1
+            if pos >= 0:
+                obj._source_pos = pos
+                obj._source_end = pos + len(raw_latex)
+            objects.append(obj)
 
         if objects:
             print(f"[INFO] Distilled rules ({structure_type}): found {len(objects)} additional items.")
@@ -1963,18 +1588,11 @@ class PaperParser:
         config = STRUCTURE_TYPE_CONFIG.get(target_kind)
         prefix = config["id_prefix"] if config else target_kind[0].upper()
 
-        env_names = [
-            env for env, kind in self.env_kind_map.items()
-            if kind == target_kind
-        ]
-        if not env_names:
-            return []
-
-        found = self._extract_envs(text, env_names)
+        found = self._extract_envs(text, {target_kind})
         objects: List[Definition] = []
 
-        for idx, (env_name, opt_name, body, source_pos) in enumerate(found, start=1):
-            label, _ = self._extract_label_and_name(body)
+        for idx, (env_name, opt_name, body, source_pos, source_end, fact) in enumerate(found, start=1):
+            label = self._label(fact)
             clean_text = self._clean_latex_to_text(body)
             obj = Definition(
                 id=f"{prefix}{idx}",
@@ -1987,6 +1605,7 @@ class PaperParser:
                 env_name=env_name,
             )
             obj._source_pos = source_pos
+            obj._source_end = source_end
             objects.append(obj)
 
         return objects
@@ -2315,10 +1934,7 @@ Respond ONLY with JSON array."""
         stored in proof._target_theorem_label and later used by
         _link_proofs_to_theorems.
         """
-        # We don't rely on env_kind_map here, because _parse_newtheorem
-        # overwrites it and may drop 'proof'. Just hard-code the common envs.
-        env_names = ["proof", "Proof"]
-        found = self._extract_envs(text, env_names)
+        found = self._extract_envs(text, {"proof"})
 
         objects: List[Proof] = []
         idx = 0
@@ -2327,12 +1943,11 @@ Respond ONLY with JSON array."""
         # we want to capture that label.
         header_ref_pattern = re.compile(r"\\(?:ref|eqref|autoref)\{([^}]+)\}")
 
-        for env_name, opt_name, body, source_pos in found:
+        for env_name, opt_name, body, source_pos, source_end, fact in found:
             idx += 1
             obj_id = f"R{idx}"  # Unique id for proofs; prefix doesn't matter elsewhere.
 
-            # Try to pick up a \label{...} inside the proof body (rare, but possible).
-            label, _ = self._extract_label_and_name(body)
+            label = self._label(fact)
             clean_text = self._clean_latex_to_text(body)
 
             proof = Proof(
@@ -2345,13 +1960,20 @@ Respond ONLY with JSON array."""
                 clean_text=clean_text,
             )
             proof._source_pos = source_pos
+            proof._source_end = source_end
 
-            # Optional: header-based theorem label from \begin{proof}[...]
+            # The proved result where syntax states it: \begin{proof}[Proof of
+            # Theorem~\ref{x}], else latex_facts' `proves` (a proof right after
+            # its theorem). Stored as that theorem's label for the linker.
             if opt_name:
                 m = header_ref_pattern.search(opt_name)
                 if m:
                     # Not a dataclass field; just an auxiliary attribute.
                     setattr(proof, "_target_theorem_label", m.group(1))
+            if getattr(proof, "_target_theorem_label", None) is None and fact.get("proves"):
+                target = self._label(self._fact_by_id(fact["proves"]))
+                if target:
+                    setattr(proof, "_target_theorem_label", target)
 
             objects.append(proof)
 
@@ -2372,7 +1994,8 @@ Respond ONLY with JSON array."""
                 continue
             idx += 1
             obj_id = f"R{idx}"
-            label, _ = self._extract_label_and_name(body)
+            m_label = re.search(r"\\label\{([^}]*)\}", body)
+            label = m_label.group(1).strip() if m_label else None
             clean_text = self._clean_latex_to_text(body)
             proof = Proof(
                 id=obj_id,
@@ -2413,19 +2036,16 @@ Respond ONLY with JSON array."""
           - name          : optional argument to \\begin{algorithm}[...] if present
           - input_signature / output_signature : heuristically parsed from text
         """
-        # We *don't* rely on env_kind_map here, because _parse_newtheorem
-        # overwrites it and doesn't know about 'algorithm'. So we hard-code.
-        env_names = ["algorithm", "algorithm*", "Algorithm", "Algorithm*"]
-        found = self._extract_envs(text, env_names)
+        found = self._extract_envs(text, {"algorithm"})
 
         objects: List[Algorithm] = []
         idx = 0
 
-        for env_name, opt_name, body, source_pos in found:
+        for env_name, opt_name, body, source_pos, source_end, fact in found:
             idx += 1
             obj_id = f"A{idx}"
 
-            label, _ = self._extract_label_and_name(body)
+            label = self._label(fact)
             clean_text = self._clean_latex_to_text(body)
 
             # Very crude heuristics for Input / Output:
@@ -2462,6 +2082,7 @@ Respond ONLY with JSON array."""
                 env_name=env_name,
             )
             alg._source_pos = source_pos
+            alg._source_end = source_end
             objects.append(alg)
 
         if objects:
@@ -2483,18 +2104,18 @@ Respond ONLY with JSON array."""
           - label    : any \\label{...} inside the environment
           - caption  : from \\caption{...}, cleaned to text
         """
-        env_names = ["table", "table*", "Table", "Table*"]
-        found = self._extract_envs(text, env_names)
+        found = self._named_envs(["table"])
 
         objects: List[TableObject] = []
         idx = 0
         caption_pattern = re.compile(r"\\caption\s*{([^}]*)}", flags=re.DOTALL)
 
-        for env_name, opt_name, body, source_pos in found:
+        for env_name, opt_name, body, source_pos, source_end in found:
             idx += 1
             obj_id = f"Tb{idx}"
 
-            label, _ = self._extract_label_and_name(body)
+            m_label = re.search(r"\\label\{([^}]*)\}", body)
+            label = m_label.group(1).strip() if m_label else None
             clean_text = self._clean_latex_to_text(body)
 
             caption: Optional[str] = None
@@ -2628,7 +2249,8 @@ Respond ONLY with JSON array."""
           1. Structural edges (canonical types per schema lock):
              - proof 'proves' theorem-like (proof → theorem)
              - container 'uses' equation (equation depends on container)
-             - algorithm 'solves' problem (nearest preceding problem)
+             - algorithm 'resolves' problem (nearest preceding problem;
+               edge problem → algorithm)
              - example 'illustrates' concept (nearest preceding def/theorem-like)
              - exercise 'tests' concept (nearest preceding def/theorem-like)
 
@@ -2721,11 +2343,12 @@ Respond ONLY with JSON array."""
             equation_edge_count += 1
 
         # ------------------------------------------------------------------
-        # 2c. Structural edges: algorithm 'solves' problem
+        # 2c. Structural edges: algorithm 'resolves' problem
         #     Link each algorithm to the nearest preceding problem node.
+        #     Canonical direction: problem (source) → algorithm (target).
         # ------------------------------------------------------------------
 
-        solves_count = 0
+        resolves_count = 0
         obj_ids = list(graph.objects.keys())
         for i, obj_id in enumerate(obj_ids):
             obj = graph.objects[obj_id]
@@ -2735,17 +2358,17 @@ Respond ONLY with JSON array."""
             for j in range(i - 1, -1, -1):
                 candidate = graph.objects[obj_ids[j]]
                 if candidate.kind == "problem":
-                    key = (obj.id, candidate.id, "solves")
+                    key = (candidate.id, obj.id, "resolves")
                     if key not in existing:
                         graph.add_relation(
-                            source_id=obj.id,
-                            target_id=candidate.id,
-                            relation_type="solves",
+                            source_id=candidate.id,
+                            target_id=obj.id,
+                            relation_type="resolves",
                             category="structural",
                             metadata={"source": "proximity", "confidence": 0.5},
                         )
                         existing.add(key)
-                        solves_count += 1
+                        resolves_count += 1
                     break
 
         # ------------------------------------------------------------------
@@ -3037,12 +2660,12 @@ Respond ONLY with JSON array."""
         if cycle_removed:
             print(f"[INFO] _build_relations: broke {cycle_removed} cross-type cycle edge(s) to enforce DAG.")
 
-        structural_total = proves_count + solves_count + illustrates_count + tests_count
+        structural_total = proves_count + resolves_count + illustrates_count + tests_count
         if structural_total or equation_edge_count or uses_ref_count or uses_term_count:
             print(
                 "[INFO] _build_relations: "
                 f"added {proves_count} 'proves', "
-                f"{solves_count} 'solves', "
+                f"{resolves_count} 'resolves', "
                 f"{illustrates_count} 'illustrates', "
                 f"{tests_count} 'tests' edges, "
                 f"{equation_edge_count} 'uses' (equation), "

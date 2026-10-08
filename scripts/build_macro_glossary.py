@@ -36,106 +36,20 @@ Usage:
 import argparse
 import json
 import os
-import re
 from collections import Counter
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEX_DIR = os.path.join(REPO, "corpus/silver/tex_pool")
 OUT_DIR = os.path.join(REPO, "corpus/silver/macros")
 
-# Definition forms. Each yields (name, rest-of-string-index) and we then read a
-# brace-balanced body, because expansions routinely contain nested braces and a
-# length-capped regex would truncate them.
-FORMS = [
-    # \newcommand{\foo}[2][opt]{body} / \newcommand\foo{body}
-    # The SECOND bracket is LaTeX's optional-argument DEFAULT, and dropping it
-    # is not cosmetic: `\newcommand{\limGs}[1][G]{\mathcal{X}_{#1}}` declares
-    # one argument that is OPTIONAL, so bare `\limGs` means `\mathcal{X}_{G}`.
-    # Recording it as plain arity=1 makes an expander read the next token as a
-    # mandatory argument and swallow whatever follows — usually the closing `$`.
-    re.compile(r'\\(?:new|renew|provide)command\*?\s*\{?\\(?P<name>[A-Za-z@]+)\}?\s*'
-               r'(?:\[(?P<nargs>\d+)\])?\s*(?:\[(?P<opt>[^\]]*)\])?\s*\{'),
-    # \def\foo{body}  /  \def\foo#1{body}
-    re.compile(r'\\(?:e|g|x)?def\s*\\(?P<name>[A-Za-z@]+)\s*(?:#\d)*\s*\{'),
-    # \DeclareMathOperator{\foo}{body} — see OPERATOR_FORM below
-    re.compile(r'\\DeclareMathOperator\*?\s*\{\\(?P<name>[A-Za-z@]+)\}\s*\{'),
-    # \newenvironment{foo}{begin}{end} — name has no backslash
-    re.compile(r'\\(?:new|renew)environment\*?\s*\{(?P<name>[A-Za-z@*]+)\}\s*'
-               r'(?:\[\d+\])?\s*\{'),
-]
-
-STRUCT = re.compile(r'\\(label|index|textbf|emph|textit|section|subsection|'
-                    r'paragraph|begin|end|item|footnote|caption|ref|eqref|cite|'
-                    r'ignorespaces|noindent|medskip|smallskip|vspace)\b')
-PRESENT = re.compile(r'\\(textcolor|color|colorbox|hl|st|sout|uline)\b')
-
-
-def strip_comments(src):
-    """Drop % comments (respecting \\%) so definitions inside comments are ignored."""
-    return re.sub(r'(?<!\\)%.*', '', src)
-
-
-def balanced_body(src, open_idx):
-    """Read a brace-balanced body starting at the '{' at open_idx."""
-    depth, i, n = 0, open_idx, len(src)
-    while i < n:
-        c = src[i]
-        if c == '\\':                      # skip escaped char
-            i += 2
-            continue
-        if c == '{':
-            depth += 1
-        elif c == '}':
-            depth -= 1
-            if depth == 0:
-                return src[open_idx + 1:i], i + 1
-        i += 1
-    return None, n                          # unbalanced — give up on this one
-
-
-def classify(expansion):
-    if PRESENT.search(expansion):
-        return "presentational"
-    if STRUCT.search(expansion):
-        return "structural"
-    return "notational"
-
-
-def _is_operator(form):
-    return 'DeclareMathOperator' in form.pattern
+import sys  # noqa: E402
+sys.path.insert(0, os.path.join(REPO, "src"))
+from latex_macros import read_definitions  # noqa: E402  (the one reader, shared)
 
 
 def extract(src):
-    """name -> {expansion, kind, arity}. Later definitions win (\\renewcommand)."""
-    src = strip_comments(src)
-    out = {}
-    for form in FORMS:
-        for m in form.finditer(src):
-            name = m.group('name')
-            body, _ = balanced_body(src, m.end() - 1)
-            if body is None:
-                continue
-            arity = len(set(re.findall(r'#(\d)', body)))
-            expansion = re.sub(r'\s+', ' ', body).strip()
-            # \DeclareMathOperator{\eq}{eq} means "typeset `eq` as an OPERATOR
-            # NAME", i.e. upright. Storing the bare `eq` loses that: in math
-            # mode it sets as the product of two italic variables, e * q. The
-            # renderer cannot recover the intent afterwards, so record it here.
-            if _is_operator(form) and re.fullmatch(r'[A-Za-z][A-Za-z0-9]*', expansion or ''):
-                expansion = r'\mathrm{%s}' % expansion
-            rec = {
-                "expansion": expansion,
-                "kind": classify(body),
-                "arity": arity,
-            }
-            # Present (even empty) => the first argument is optional.
-            gd = m.groupdict()
-            if gd.get("opt") is not None:
-                rec["optional_default"] = gd["opt"]
-                if gd.get("nargs"):
-                    rec["arity"] = int(gd["nargs"])
-            out[name] = rec
-    return out
+    """name -> {expansion, kind, arity}: see latex_macros.read_definitions."""
+    return read_definitions(src)
 
 
 def main():

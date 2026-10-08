@@ -502,7 +502,8 @@ STRUCTURE_EXTRACT_METHODS = {
 def _read_extraction_method(structure_type: str) -> str:
     """Read the source code of the relevant extraction method from math_paper_parser.py.
 
-    Also includes BASE_ENV_KIND_MAP and _extract_envs as shared context.
+    Also includes _extract_envs (environments come from latex_facts) as shared
+    context.
     """
     from math_paper_parser import PaperParser
 
@@ -512,33 +513,14 @@ def _read_extraction_method(structure_type: str) -> str:
 
     parts = []
 
-    # 1) BASE_ENV_KIND_MAP
-    try:
-        src_lines = inspect.getsource(PaperParser).split('\n')
-        in_map = False
-        map_lines = []
-        brace_depth = 0
-        for line in src_lines:
-            if 'BASE_ENV_KIND_MAP' in line and '=' in line and not in_map:
-                in_map = True
-            if in_map:
-                map_lines.append(line)
-                brace_depth += line.count('{') - line.count('}')
-                if brace_depth <= 0 and len(map_lines) > 1:
-                    break
-        if map_lines:
-            parts.append('\n'.join(map_lines))
-    except Exception:
-        pass
-
-    # 2) _extract_envs (shared infrastructure)
+    # 1) _extract_envs (shared infrastructure)
     try:
         envs_method = getattr(PaperParser, '_extract_envs')
         parts.append(inspect.getsource(envs_method))
     except Exception:
         pass
 
-    # 3) The target extraction method
+    # 2) The target extraction method
     try:
         target_method = getattr(PaperParser, method_name)
         parts.append(inspect.getsource(target_method))
