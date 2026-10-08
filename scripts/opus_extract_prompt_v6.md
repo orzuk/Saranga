@@ -523,8 +523,14 @@ remark or problem stated in running text), the `statement` is:
   choose between theorem, lemma and proposition by how important or how long
   the result looks; for an unnamed prose result, the answer is `claim`.
 - **One node per repeated statement.** When the paper states the same result or
-  definition twice (in the abstract or introduction, then formally), emit one
-  node: the environment if there is one, else the fuller statement.
+  definition twice (in the abstract or introduction, then formally; or restated
+  in an appendix), emit one node: the copy that is an environment if only one
+  is, else the numbered one, else the first. The other copy gets no node; add
+  by hand, confidence `0.9`, the edges a `\ref` to it would have given.
+- **A proof proves a result.** When a proof follows an example or a remark, the
+  assertion it proves is a result: emit it as a `claim` nested in the example,
+  whose statement is the sentence that asserts it, or retype as `claim` a remark
+  whose content is that assertion. The proof's `proves` edge points to the claim.
 - **No partial overlap.** Two nodes either do not overlap, or one contains the
   other (a `proof` containing an equation or a nested claim). Two nodes sharing
   some sentences but not others is an error. (Checked by the finishing step.)
@@ -949,7 +955,8 @@ otherwise leave it as an empty string.
 
 0. Run `latex_facts.py` (see "Two layers") and read `facts.json`.
 1. Read the prepared `source` (multiple Read calls with offsets if large).
-2. Emit a node for every environment fact. Then find everything the facts
+2. Emit a node for every environment fact (a restated copy excepted: see "One
+   node per repeated statement"). Then find everything the facts
    do not cover: definitions, results, remarks, claims, problems and
    algorithms stated in prose, including a term or notation defined in a
    sentence ("we denote", "we write", "is called") and a cited result the

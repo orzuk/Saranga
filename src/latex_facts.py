@@ -118,6 +118,8 @@ def read_tex(path: str, _depth: int = 0) -> str:
 
 
 _REF_CMDS = r"ref|eqref|cref|Cref|autoref|pageref|vref|thmref|nameref|Autoref|cpageref"
+_LIST_ENVS = {"enumerate", "compactenum", "inparaenum", "itemize", "compactitem", "description",
+              "asparaenum", "enumerate*"}
 _REF_WITH_ARG = re.compile(r"\\(?:" + _REF_CMDS + r")\*?\s*\{[^{}]*#\d[^{}]*\}")
 
 
@@ -149,6 +151,8 @@ def expand_macros(source: str) -> str:
         body = d["expansion"]
         if d["form"] == "environment" or d.get("optional_default") is not None:
             continue
+        if re.search(r"\\(?:@|futurelet|expandafter|csname|afterassignment)", body):
+            continue                                    # TeX internals: keep the call
         if re.search(r"\\" + re.escape(name) + r"(?![A-Za-z@])", body):
             continue                                    # self-referencing
         if d["arity"] == 0 or _is_ref_wrapper(body):
@@ -244,6 +248,11 @@ _UNDECLARED_STANDARD = {
     "openquestion": "Open question", "open": "Open problem",
     "remark": "Remark", "rem": "Remark", "rmk": "Remark", "note": "Note",
     "assumption": "Assumption", "assumptions": "Assumptions", "hypothesis": "Hypothesis",
+    "theor": "Theorem", "lemm": "Lemma", "propo": "Proposition", "propos": "Proposition",
+    "coro": "Corollary", "corr": "Corollary", "corro": "Corollary", "corol": "Corollary",
+    "defin": "Definition", "rema": "Remark", "remk": "Remark", "examp": "Example",
+    "conjec": "Conjecture", "obs": "Observation", "assum": "Assumption", "assump": "Assumption",
+    "hyp": "Hypothesis", "quest": "Question",
 }
 
 _CLASS_PREDEFINED = {
@@ -578,6 +587,8 @@ def extract_facts(tex: str) -> dict:
             resets[c] = d["within"]
     eq_ctr = 0
     sub_eq: str | None = None            # number of an open subequations block
+    sub_ctr = 0                          # its lines: (sub_eq)a, (sub_eq)b, ...
+    just_closed: tuple | None = None     # (fact, end offset): a \label right after \end{env} is its
 
     stack: list[dict] = []               # open captured environments (facts)
     open_envs: list[str] = []            # every open environment
@@ -632,10 +643,16 @@ def extract_facts(tex: str) -> dict:
                     s["labels"].append(key)
 
     def close_eq_line(fact: dict, final: bool = False):
-        nonlocal line_labels, line_nonumber
-        numbered = not fact["env"].endswith("*") and not line_nonumber and sub_eq is None
-        num = eq_number() if numbered else None
-        if num is None and not fact["env"].endswith("*") and sub_eq is None and not final:
+        nonlocal line_labels, line_nonumber, sub_ctr
+        numbered = not fact["env"].endswith("*") and not line_nonumber
+        if numbered:
+            fact["printed"] = True            # LaTeX prints a number, computable or not
+        if numbered and sub_eq is not None:
+            sub_ctr += 1
+            num = f"{sub_eq}{_alph(sub_ctr).lower()}"
+        else:
+            num = eq_number() if numbered else None
+        if num is None and not fact["env"].endswith("*") and not final:
             line_nonumber = False             # amsmath: a \label on a \notag line
             return                            # takes the next numbered line's number
         for key in line_labels:
@@ -644,7 +661,14 @@ def extract_facts(tex: str) -> dict:
             fact["number"] = num
         line_labels, line_nonumber = [], False
 
-    def handle_label(key: str):
+    def handle_label(key: str, pos: int | None = None):
+        if (pos is not None and just_closed is not None
+                and not source[just_closed[1]:pos].strip()):
+            f = just_closed[0]                # \end{lemma}\label{...}: the lemma's label
+            labels.setdefault(key, {"kind": "env", "id": f["id"], "number": f["number"],
+                                    "enclosing": f["parent"]})
+            f["labels"].append(key)
+            return
         top = stack[-1] if stack else None
         if top and top["kind"] == "equation" and (
                 top["env"].rstrip("*") not in _MULTILINE_EQ
@@ -654,9 +678,11 @@ def extract_facts(tex: str) -> dict:
             add_label(key, target["kind"], target["id"], target["number"])
         else:
             add_label(key, "unknown", None, None)
+        if pos is not None and key in labels:
+            labels[key].setdefault("offset", pos)
 
     def handle_ref(keys: str, cmd: str, pos: int):
-        for key in keys.split(","):
+        for key in [keys]:                    # split after the walk, once every label is known
             r = {"cmd": cmd, "key": key.strip(), "offset": pos,
                  "in": stack[-1]["id"] if stack else None}
             refs.append(r)
@@ -678,6 +704,7 @@ def extract_facts(tex: str) -> dict:
             base = env.rstrip("*")
             if base == "subequations":
                 sub_eq = eq_number()
+                sub_ctr = 0
                 target = {"kind": "equation", "id": None, "number": sub_eq}
                 continue
             is_proof = _is_proof_env(env, decl)
@@ -743,6 +770,8 @@ def extract_facts(tex: str) -> dict:
                     close_eq_line(f, final=True)
                 stack.pop()
                 f["end"], f["outer_end"] = pos, after
+                if f["kind"] != "equation":
+                    just_closed = (f, after)
             if env.rstrip("*") == "subequations":
                 sub_eq = None
             if env in open_envs:
@@ -785,7 +814,7 @@ def extract_facts(tex: str) -> dict:
                 in_appendix = True
                 sec_ctr.update({1: 0, 2: 0, 3: 0})
             elif g.group("label") is not None:
-                handle_label(g.group("label").strip())
+                handle_label(g.group("label").strip(), g.start())
             elif g.group("newline"):
                 top = stack[-1] if stack else None
                 if top and top["kind"] == "equation" and top["env"].rstrip("*") in _MULTILINE_EQ \
@@ -796,7 +825,7 @@ def extract_facts(tex: str) -> dict:
             elif g.groupdict().get("nonumber"):
                 line_nonumber = True
             elif g.group("item"):
-                if open_envs and open_envs[-1] == "enumerate":
+                if open_envs and open_envs[-1] in _LIST_ENVS:
                     target = {"kind": "item", "id": None, "number": None}
             elif g.group("caption"):
                 alg = next((f for f in reversed(stack) if f["kind"] == "algorithm"), None)
@@ -821,6 +850,13 @@ def extract_facts(tex: str) -> dict:
         if f["end"] is None:
             f["end"] = f["outer_end"] = len(source)
         f["statement"] = span_text(source, f["start"], f["end"])
+    split = {}
+    for r in refs:                        # "a,b" is one label if the paper has it, else a list
+        k = r["key"]
+        split[k] = [k] if (k in labels or "," not in k) else [x.strip() for x in k.split(",") if x.strip()]
+    refs[:] = [dict(r, key=k) for r in refs for k in split[r["key"]]]
+    for f in facts:
+        f["refs"] = [k for key in f["refs"] for k in split.get(key, [key])]
     for r in refs:
         t = labels.get(r["key"])
         r["target"] = (t["id"] or t["enclosing"]) if t else None
@@ -850,7 +886,10 @@ def extract_facts(tex: str) -> dict:
     # Equations are facts only when the paper can point at them: a \label, or a
     # printed number that prose can cite as "(3)". An unnumbered display is
     # part of the text of the node that contains it, exactly like inline math.
-    facts = [f for f in facts if f["kind"] != "equation" or f["labels"] or f["number"]]
+    facts = [f for f in facts if f["kind"] != "equation" or f["labels"] or f["number"]
+             or f.get("printed")]
+    for f in facts:
+        f.pop("printed", None)
     # an algorithmic block inside an algorithm float is the same algorithm, not a second one
     kinds = {f["id"]: f["kind"] for f in facts}
     facts = [f for f in facts if not (f["env"] == "algorithmic" and f["parent"]

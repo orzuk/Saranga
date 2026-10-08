@@ -62,7 +62,7 @@ _LEAD_CMDS = re.compile(r"(?:\\(?:par|smallskip|medskip|bigskip|noindent|newline
 # a wrapper (\\footnote{, a revision macro such as \\new{), a bare brace, or a
 # short parenthesised run-in label ("(Injectivity)", "(2)").
 _OPENER = re.compile(r"(?:\\begin\s*\{[^{}]*\}(?:\s*\[[^\]]*\])?|\\label\s*\{[^{}]*\}"
-                     r"|\\setcounter\s*\{[^{}]*\}\s*\{[^{}]*\}|\\[a-zA-Z]+\*?\s*\{|\{"
+                     r"|\\setcounter\s*\{[^{}]*\}\s*\{[^{}]*\}|\\[a-zA-Z]+\*?\s*\{|\{|\\[,;:! ]|\\$"
                      r"|\\[a-zA-Z]+\*?(?![a-zA-Z{])|\((?:[^()$]|\$[^$]*\$){1,60}\))\s*$")
 
 
@@ -121,6 +121,7 @@ _WRAP = r"(?:\{\s*)?(?:\\(?:textbf|emph|textit|textsc|texttt|textsf|textsl|textu
 _LABEL_PATTERNS = {
     "step":   _WRAP + r"Step\s*~?\(?\s*\d+[a-z]?\s*\)?\s*\}?\s*[.:)]",
     "case":   _WRAP + r"Case\s*~?\(?\s*(?:\d+|[ivx]+|[a-dA-D])\s*\)?\s*\}?\s*[.:)]",
+    "case_math": _WRAP + r"Case\s*~?\$[^$]{1,40}\$\s*(?:[.:]\s*\}|\}\s*[.:]?|[.:])",
     "part":   _WRAP + r"Part\s*~?\(?\s*(?:\d+|[ivx]+|[a-d])\s*\)?\s*\}?\s*[.:)]",
     "induct": _WRAP + r"(?:Base case|Basis(?: step)?|Induction step|Inductive step)\s*\}?\s*[.:]",
     "heading": r"\\(?:textbf|emph|textit|texttt|textsf|textsl|underline)\s*\{[^{}$]{2,60}?[.:]?\s*\}\s*[.:]?",

@@ -251,6 +251,12 @@ def compute_hierarchy(graph: dict, spans: dict, report: dict) -> dict[str, str |
     return parent
 
 
+def _innermost(spans: dict, pos: int) -> str | None:
+    """The node with the smallest span containing source offset `pos`."""
+    inside = [(e - s, nid) for nid, (s, e) in spans.items() if s <= pos < e]
+    return min(inside)[1] if inside else None
+
+
 def _ancestors(nid, parent):
     out, seen = set(), set()
     while parent.get(nid) and nid not in seen:
@@ -350,18 +356,30 @@ def check_defined_terms(graph: dict, spans: dict, parent: dict, report: dict) ->
                     fam.add(c)
                     stack.append(c)
         return fam
+    def term_of(d):
+        t = d.get("definiendum") if d.get("type") == "definition" else None
+        t = (t[0] if t else None) if isinstance(t, list) else t
+        return t.strip() if t and len(t.strip()) >= 4 and not re.search(r"[$\\{}]", t) else None
+    terms = {term_of(d) for d in graph["nodes"]} - {None}
+    keys = re.compile(r"\\(?:" + _REF_CMDS + r"|label|cite[a-zA-Z]*)\*?\s*(?:\[[^\]]*\]\s*)?\{[^{}]*\}")
     for d in graph["nodes"]:
-        term = d.get("definiendum") if d.get("type") == "definition" else None
-        if isinstance(term, list):
-            term = term[0] if term else None
-        if not term or len(term) < 4 or re.search(r"[$\\{}]", term) or d["id"] not in spans:
+        term = term_of(d)
+        if not term or d["id"] not in spans:
             continue
-        pat = re.compile(r"(?<![\w-])" + re.escape(term.strip()) + r"(?:s|es)?(?![\w-])", re.I)
+        pat = re.compile(r"(?<![\w-])" + re.escape(term) + r"(?:s|es)?(?![\w-])", re.I)
+        longer = [re.compile(re.escape(u), re.I) for u in terms
+                  if u.lower() != term.lower() and term.lower() in u.lower()]
+
+        def uses(text):
+            text = keys.sub(" ", text or "")
+            for lp in longer:                 # "clone" inside "weighted clone" is the other term
+                text = lp.sub(" ", text)
+            return bool(pat.search(text))
         mine = family(d["id"])
         missing = [n["id"] for n in graph["nodes"]
                    if n["id"] not in mine and n["id"] in spans
                    and spans[n["id"]][0] > spans[d["id"]][0]
-                   and pat.search(n.get("statement") or "")
+                   and uses(n.get("statement"))
                    and not (out.get(d["id"], set()) & family(n["id"]))]
         if missing:
             report["warnings"].append(f"{d['id']} defines {term!r}, used with no edge from it in: "
@@ -421,12 +439,15 @@ def finalize(graph: dict, tex: str) -> dict:
         if n.get("type") == "algorithm_step":
             continue
         for key in _REF.findall(n.get("statement") or ""):
-            for k in key.split(","):
+            keys = [key] if (key.strip() in facts["labels"] or "," not in key) else key.split(",")
+            for k in keys:
                 lab = facts["labels"].get(k.strip())
                 if not lab:
                     continue
                 fid = lab["id"] if lab["kind"] in ("env", "equation") else lab["enclosing"]
                 src = node_of_fact.get(fid) if fid else None
+                if lab["kind"] == "item" and lab.get("offset") is not None:
+                    src = _innermost(spans, lab["offset"]) or src     # the node holding the item
                 if lab["kind"] == "equation" and src is None and lab["enclosing"]:
                     src = node_of_fact.get(lab["enclosing"])
                 tgt = n["id"]
