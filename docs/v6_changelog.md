@@ -287,14 +287,10 @@ flaw beats a fix that correlates with batch index.
 
 Re-render and re-hash before the run; v5.1's frozen hash was `100e6cf6fdbb3aea`.
 
-## Frozen for the 200-paper silver run (2026-10-08)
+## Frozen for the 200-paper silver run (2026-10-09)
 
-Rendered template sha256 prefix `ab6780aeefd54a7d` (scripts/render_v6_prompt.py, code at 087fa92). Output: corpus/silver/opus-5.5__v6/, one claude-opus-5-5 agent per paper.
-
-## Frozen for the 26-paper r2 run (2026-10-09)
-
-Rendered template sha256 prefix `5f34db9a0215ab8f`, code at 9fa06bd. Output: corpus/silver/opus-5.5__v6_r2/. Supersedes the `ab6780aeefd54a7d` run (edge passes, defined-term check, step checks).
-
-## Frozen for the 26-paper r5 run (2026-10-09)
-
-Rendered template sha256 prefix `e5b9067841688fe4`, code at 54f5b1d. Output: corpus/silver/opus-5.5__v6_r5/. Adds rule A (introduced terms and symbols), mention edges and the circular-reasoning check, the cold-review fixes.
+Rendered template sha256 prefix `a6613a6c3d147ec5` (scripts/render_v6_prompt.py), code at 466568d.
+Output: corpus/silver/opus-5.5__v6/, all 200 papers, one claude-opus-5-5 agent per paper,
+each stamped `prompt_version` v6-a6613a6c3d147ec5-<commit>. The trial runs that led to this
+freeze (26-paper runs and reruns, 2026-10-08/09) are archived outside the repository
+(Saranga_v6_trial_runs_2026-10-09.tar.gz).
