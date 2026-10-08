@@ -412,7 +412,9 @@ def find_blocks(tex: str) -> list[Block]:
             blocks.append(Block("algorithm2e", numbered, m.start(),
                                 _parse_a2e(body, numbered, comments_numbered, m.start(3))))
     # A numbered list used as pseudocode inside an algorithm float: enumerate
-    # prints 1, 2, 3 for its top-level items (nested lists are not numbered here).
+    # prints 1, 2, 3 for its top-level items. An item of a nested list is a
+    # child line of the item it sits under (unnumbered here), and that item's
+    # span runs to the end of its last child.
     taken = {b.start for b in blocks}
     for m in re.finditer(r"\\begin\{(algorithm\*?)\}(.*?)\\end\{\1\}", src, re.S):
         body = m.group(2)
@@ -421,22 +423,27 @@ def find_blocks(tex: str) -> list[Block]:
         em = re.search(r"\\begin\{enumerate\}(?:\[[^\]]*\])?(.*)\\end\{enumerate\}", body, re.S)
         if not em:
             continue
-        lines, depth, n = [], 0, 0
+        lines, n = [], 0
+        stack = [None]               # the line each open list's items belong to
         toks = list(re.finditer(r"\\begin\{(?:enumerate|itemize)\}|\\end\{(?:enumerate|itemize)\}|\\item\b", em.group(1)))
         for k, t in enumerate(toks):
             tok = t.group(0)
             if tok.startswith("\\begin"):
-                depth += 1
+                stack.append(len(lines) - 1 if lines else None)
             elif tok.startswith("\\end"):
-                depth -= 1
-            elif depth == 0:
-                n += 1
+                if len(stack) > 1:
+                    stack.pop()
+            else:
+                top = len(stack) == 1
+                if top:
+                    n += 1
                 end = toks[k + 1].start() if k + 1 < len(toks) else len(em.group(1))
                 text, label = _take_label(em.group(1)[t.end():end])
                 text = re.sub(r"^\s*\[[^\]]*\]", "", text)
                 g = m.start(2) + em.start(1)
                 a, b = _trim(src, g + t.end(), g + end)
-                lines.append(Line(n, "state", text.strip(), label, a, b, None))
+                lines.append(Line(n if top else None, "state", text.strip(), label, a, b, stack[-1]))
+        _number(lines, True)
         if lines:
             blocks.append(Block("enumerate", True, m.start(), lines))
     blocks.sort(key=lambda b: b.start)

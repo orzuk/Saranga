@@ -117,16 +117,27 @@ def read_tex(path: str, _depth: int = 0) -> str:
     return _INPUT.sub(inline, text)
 
 
+_REF_CMDS = r"ref|eqref|cref|Cref|autoref|pageref|vref|thmref|nameref|Autoref|cpageref"
+_REF_WITH_ARG = re.compile(r"\\(?:" + _REF_CMDS + r")\*?\s*\{[^{}]*#\d[^{}]*\}")
+
+
+def _is_ref_wrapper(body: str) -> bool:
+    """Every argument of the macro is used only inside a \\ref-like command."""
+    return bool(_REF_WITH_ARG.search(body)) and "#" not in _REF_WITH_ARG.sub("", body)
+
+
 def expand_macros(source: str) -> str:
     """Expand the paper's own argument-free macros, its operators, and its
-    one-argument \\ref wrappers; remove their definitions.
+    \\ref wrappers; remove their definitions.
 
     - \\newcommand / \\renewcommand / \\providecommand / \\def without arguments:
       each use is replaced by the body (\\gr -> \\Gamma, \\be -> \\begin{equation}).
       A macro whose body contains itself is left alone.
     - \\DeclareMathOperator{\\rank}{rank}: each \\rank becomes the operator name.
-    - \\newcommand{\\eqnref}[1]{Eq.~\\eqref{#1}}: \\eqnref{x} -> Eq.~\\eqref{x}, so
-      every reference is a standard \\ref the pipeline turns into an edge.
+    - \\ref wrappers, macros whose arguments are used only inside \\ref-like
+      commands: \\newcommand{\\eqnref}[1]{Eq.~\\eqref{#1}} turns \\eqnref{x} into
+      Eq.~\\eqref{x}, \\newcommand{\\erefs}[2]{(\\ref{eq:#1}--\\ref{eq:#2})} likewise,
+      so every reference is a standard \\ref the finishing step turns into an edge.
     Other macros with arguments are kept as written. Reading the definitions
     and substituting them are latex_macros' (one implementation of each,
     shared with the macro glossary and the renderer). Run on the cleaned
@@ -140,8 +151,7 @@ def expand_macros(source: str) -> str:
             continue
         if re.search(r"\\" + re.escape(name) + r"(?![A-Za-z@])", body):
             continue                                    # self-referencing
-        is_ref = d["arity"] == 1 and re.search(r"\\(?:eqref|autoref|ref)\{#1\}", body)
-        if d["arity"] == 0 or is_ref:
+        if d["arity"] == 0 or _is_ref_wrapper(body):
             defs[name] = d
             cut.extend(d["spans"])           # every copy: an uncut one would be expanded
     if not defs:
@@ -393,7 +403,6 @@ def label_ref_aliases(source: str) -> tuple[dict, dict]:
 
 # ── Main pass ───────────────────────────────────────────────────────────────
 
-_REF_CMDS = r"ref|eqref|cref|Cref|autoref|pageref|vref|thmref|nameref|Autoref|cpageref"
 _SEC_LEVEL = {"part": -1, "chapter": 0, "section": 1, "subsection": 2, "subsubsection": 3}
 _MULTILINE_EQ = {"align", "gather", "eqnarray", "flalign", "alignat"}
 _ALG_LINE_CMD = (r"STATE|State|IF|If|ELSIF|ElsIf|ELSE|Else|ENDIF|EndIf|FOR|For|FORALL|ForAll|"

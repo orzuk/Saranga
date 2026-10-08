@@ -312,8 +312,9 @@ steps, by the nesting rules. Never draw a `uses` edge to express containment.
 - `parent_id` — "is part of": the innermost node containing this one (see "The
   graph is a hierarchy"). You set it on steps; the finishing step sets it on Level-1
   nodes
-- `proves` — on a `proof` node, the id of the result it proves; always the same
-  as the target of its `proves` edge
+- `proves` — on a `proof` node, the id of the result it proves, the target of
+  its `proves` edge. A proof that establishes several results (one argument for
+  both (3.1) and (3.2)) has a `proves` edge to each; `proves` names the first.
 - `tags[]` — topical labels only (per Hard rule 8)
 - `proof_strategy[]` — proof strategy labels, on `proof` nodes only
   (per Hard rule 8)
@@ -487,7 +488,9 @@ remark or problem stated in running text), the `statement` is:
   `proves` edge confidence `0.6`–`0.8`; use `0.85`–`0.95` when the paper labels
   the proof in prose (`\noindent{\it Proof.}`, "Proof of Theorem 2:"); `1.0`
   is for `\begin{proof}` environments only. A single justifying sentence is a
-  `proof` node with zero steps. The deciding question: is there a
+  `proof` node with zero steps. When that sentence leads into the result it
+  justifies ("By Lemma 4.2, we see the following:"), the proof node ends where
+  the result begins, at the colon or at "the following". The deciding question: is there a
   separately stated result that this text justifies? If yes, `proof`. If no,
   it is not a proof: a paragraph that is a self-contained aside,
   arguing and concluding in one go with no separately stated claim ("By

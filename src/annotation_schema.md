@@ -320,7 +320,7 @@ Never create both `uses` and `generalizes` between the same pair — use the mor
 
 | Type | "B [type] A" | Description |
 |------|-------------|-------------|
-| `proves` | "B proves A" | B is a proof establishing theorem A. Each proof has exactly one `proves` edge. |
+| `proves` | "B proves A" | B is a proof establishing theorem A. Each proof has a `proves` edge to every result it establishes (usually one); its `proves` field names the first. |
 | `illustrates` | "B illustrates A" | B is an example demonstrating concept A. |
 | `tests` | "B tests A" | B is an exercise testing concept A. |
 | `resolves` | "B resolves A" | B settles A. A is a `problem`, `open_problem` or `conjecture`; B is a theorem-like result settling it, or an `algorithm` solving a `problem`. |

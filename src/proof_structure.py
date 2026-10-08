@@ -67,8 +67,10 @@ def _sentence_initial(text: str, pos: int) -> bool:
         return True
     if _LEAD_CMDS.search(stripped + " ") or _LEAD_CMDS.search(stripped):
         return True
-    # right after a heading: \section{...}, \subsection*{...}, \paragraph{...}
-    if re.search(r"\\(?:(?:sub)*section|paragraph|subparagraph|caption)\*?\s*\{[^{}]*\}\s*$", stripped):
+    # right after a heading: \section{...}, \subsection*{...}, \paragraph{...},
+    # possibly followed by its \label{...}
+    if re.search(r"\\(?:(?:sub)*section|paragraph|subparagraph|caption)\*?\s*"
+                 r"\{(?:[^{}]|\{[^{}]*\})*\}\s*(?:\\label\{[^{}]*\}\s*)*$", stripped):
         return True
     # A sentence may end inside a display or inline math: "... bounded.} \\end{equation}",
     # "... x.$". Peel closers, labels, \\nonumber, spacing macros and closing braces,
