@@ -173,13 +173,42 @@ def _list_items(body: str, spans) -> list[int]:
     return out
 
 
+# Environments that are layout, lists or math inside a proof, not blocks of their own.
+_LAYOUT_ENVS = {"enumerate", "itemize", "description", "compactenum", "compactitem", "inparaenum",
+                "equation", "align", "gather", "multline", "eqnarray", "flalign", "alignat",
+                "array", "cases", "split", "aligned", "gathered", "matrix", "pmatrix", "bmatrix",
+                "tabular", "center", "flushleft", "flushright", "minipage", "small", "footnotesize",
+                "figure", "table", "subequations", "displaymath", "math", "quote", "quotation"}
+
+
+def _nested_blocks(body: str) -> list[tuple[int, int]]:
+    """Spans of the blocks nested in a proof body (an inner proof, a quoted lemma
+    or definition): the outermost `\\begin{X}...\\end{X}` whose X is not layout."""
+    out, stack = [], []
+    for m in re.finditer(r"\\(begin|end)\s*\{([A-Za-z]+)\*?\}", body):
+        kind, name = m.group(1), m.group(2)
+        if kind == "begin":
+            stack.append((name, m.start()))
+        elif stack and stack[-1][0] == name:
+            n, a = stack.pop()
+            if n not in _LAYOUT_ENVS and not any(x not in _LAYOUT_ENVS for x, _ in stack):
+                out.append((a, m.end()))
+    return out
+
+
 def detect(body: str, nested_proof_offsets: list[int] = ()) -> dict:
-    """Structure of one proof body. Offsets are relative to `body`."""
+    """Structure of one proof body. Offsets are relative to `body`.
+
+    A label inside a nested block (an inner proof, a quoted lemma or definition)
+    belongs to that block: the outer proof sees the block as one step."""
     spans = math_spans(body)
+    blocks = _nested_blocks(body)
     labels = []
 
     def add(kind, pos, end):
         if _inside(pos, spans) or _REFERENCE_AFTER.match(body, end):
+            return
+        if any(a < pos < b for a, b in blocks):
             return
         if any(abs(pos - l["offset"]) < 3 for l in labels):
             return
@@ -239,6 +268,10 @@ _DISPLAY_IN = re.compile(r"\$\$|(?<!\\)\\\[|\\begin\{(?:equation|align|gather|mu
 _CLOSING = re.compile(r"^(?:This|which|That)\s+(?:completes|finishes|proves|concludes)\b|^\\qed\b", re.I)
 _CASE_OPENER = re.compile(r"^\s*(?:So\s+)?(?:first\s+)?(?:Suppose|Assume|If|Let us assume|Base case|Basis|"
                           r"Conversely|Otherwise|Else|Now suppose|Suppose now)\b")
+# an induction base case ("The case $k=1$ is obvious", "For $n=0$ ...") is never immediate
+_BASE_CASE = re.compile(r"^\s*(?:(?:In|For|When)\s+)?(?:the\s+)?(?:base\s+case|initial\s+case"
+                        r"|case\s+(?:of\s+|where\s+)?\$[^$]{1,30}=\s*[012]\s*\$"
+                        r"|\$[^$]{1,20}=\s*[012]\s*\$)", re.I)
 
 
 def _norm_map(text: str) -> tuple[str, list[int]]:
@@ -309,7 +342,8 @@ def check_steps(body: str, structure: dict, steps: list[dict]) -> tuple[list[str
         has_ref = bool(re.search(r"\\(?:ref|eqref|cite|autoref|cref)", st))
         closing = bool(_CLOSING.search(st))
         immediate = (closing or (_IMMEDIATE.search(st) and not has_ref)) and not has_display
-        if (immediate and not at_label and len(st) < 200 and not _CASE_OPENER.match(st)):
+        if (immediate and not at_label and len(st) < 200 and not _CASE_OPENER.match(st)
+                and not _BASE_CASE.match(st)):
             errors.append(f"{s['id']}: step is an immediate sentence (attach it to a neighbour)")
         if (_INTRO.match(st) and _sentences(st) == 1 and len(steps) > 1
                 and not has_display and not has_ref):
