@@ -6,6 +6,8 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2G
 
+export PYTHONHASHSEED=0   # deterministic output (see src/config.py)
+
 # Load your Python environment (so urllib is available, and config.py in PYTHONPATH)
 module load python/3.10
 

@@ -23,6 +23,8 @@
 #SBATCH --output=logs/me_dryrun_%j.out
 #SBATCH --error=logs/me_dryrun_%j.err
 
+export PYTHONHASHSEED=0   # deterministic output (see src/config.py)
+
 set -euo pipefail
 
 # ── Env ────────────────────────────────────────────────────────────────────

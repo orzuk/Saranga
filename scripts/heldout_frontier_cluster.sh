@@ -37,6 +37,8 @@
 #SBATCH --mem=32G
 #SBATCH --cpus-per-task=16
 
+export PYTHONHASHSEED=0   # deterministic output (see src/config.py)
+
 set -euo pipefail
 
 EVAL_DIR="${EVAL_DIR:-src/LLMVersion/merged_eval_v51_train60_v2}"

@@ -82,6 +82,8 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --array=0-19
 
+export PYTHONHASHSEED=0   # deterministic output (see src/config.py)
+
 set -uo pipefail
 
 # ============================================================================

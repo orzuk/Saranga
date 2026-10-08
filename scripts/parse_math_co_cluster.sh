@@ -19,6 +19,8 @@
 #SBATCH --mem=32G
 #SBATCH --cpus-per-task=4
 
+export PYTHONHASHSEED=0   # deterministic output (see src/config.py)
+
 # Strict mode: catch undefined variables and pipefailures, but NOT set -e
 # (set -e is fragile around the python-detection block below).
 set -uo pipefail

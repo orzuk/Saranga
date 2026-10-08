@@ -10,6 +10,25 @@ import sys
 import os
 from pathlib import Path
 
+
+# =============================================================================
+# DETERMINISM
+# =============================================================================
+# Python randomises str hashing per process, so anything that iterates a set or
+# keys on hash order can come out differently on every run. Measured on the
+# rule-based extractor: the same paper parsed twice gave different output.
+# The seed is read when the interpreter starts, so setting it later in the
+# process is too late; an entry point calls this first, and it re-launches the
+# same command once with the seed fixed. Cluster job scripts also export it.
+HASH_SEED = "0"
+
+
+def ensure_deterministic_hashing():
+    """Re-exec this process with PYTHONHASHSEED fixed, unless it already is."""
+    if os.environ.get("PYTHONHASHSEED") != HASH_SEED:
+        os.environ["PYTHONHASHSEED"] = HASH_SEED
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
 # =============================================================================
 # MASTER DIRECTORIES (platform-specific, only these change between environments)
 # =============================================================================

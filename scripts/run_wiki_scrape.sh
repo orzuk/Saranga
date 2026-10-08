@@ -30,6 +30,8 @@
 #SBATCH --output=/sci/home/orzuk/wiki_scrape/wiki_scrape.%j.log
 #SBATCH --error=/sci/home/orzuk/wiki_scrape/wiki_scrape.%j.log
 
+export PYTHONHASHSEED=0   # deterministic output (see src/config.py)
+
 set -euo pipefail
 
 mkdir -p "$HOME/wiki_scrape"

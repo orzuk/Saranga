@@ -26,6 +26,8 @@
 #SBATCH --output=logs/fp_panel.%j.log
 #SBATCH --error=logs/fp_panel.%j.log
 
+export PYTHONHASHSEED=0   # deterministic output (see src/config.py)
+
 set -euo pipefail
 
 JUDGE="${1:?usage: $0 <qwen3-32b-awq|mistral-small-24b|gemma-3-27b-it|llama-3.3-70b>}"

@@ -8,6 +8,8 @@
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=anonymous@example.com
 
+export PYTHONHASHSEED=0   # deterministic output (see src/config.py)
+
 # ProofWiki Comprehensive Scraper
 # ===============================
 # Scrapes all mathematical definitions and theorems from ProofWiki

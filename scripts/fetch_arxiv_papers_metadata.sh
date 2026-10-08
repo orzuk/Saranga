@@ -6,6 +6,8 @@
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=4G
 
+export PYTHONHASHSEED=0   # deterministic output (see src/config.py)
+
 module load python/3.10
 
 # Full path to your extractor script:

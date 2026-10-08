@@ -39,6 +39,8 @@
 #SBATCH --output=/sci/labs/orzuk/orzuk/method_e_jobs/qwen_judge.%j.log
 #SBATCH --error=/sci/labs/orzuk/orzuk/method_e_jobs/qwen_judge.%j.log
 
+export PYTHONHASHSEED=0   # deterministic output (see src/config.py)
+
 set -euo pipefail
 
 mkdir -p /sci/labs/orzuk/orzuk/method_e_jobs

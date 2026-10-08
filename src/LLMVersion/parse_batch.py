@@ -480,6 +480,12 @@ def run_batch(
 
 
 def main():
+    # Deterministic output: fix str hashing, as src/config.py's
+    # ensure_deterministic_hashing does (inlined: LLMVersion/config.py shadows it).
+    import os, sys
+    if os.environ.get("PYTHONHASHSEED") != "0":
+        os.environ["PYTHONHASHSEED"] = "0"
+        os.execv(sys.executable, [sys.executable] + sys.argv)
     parser = argparse.ArgumentParser(
         description=(
             "Batch-run math_paper_parser on many arXiv papers with optional LLM support."

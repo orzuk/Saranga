@@ -6,6 +6,8 @@
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=2
 
+export PYTHONHASHSEED=0   # deterministic output (see src/config.py)
+
 
 cd ../src || exit 1
 

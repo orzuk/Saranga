@@ -803,6 +803,8 @@ def op_cross_paper(args) -> None:
 # =============================================================================
 
 def main():
+    from config import ensure_deterministic_hashing
+    ensure_deterministic_hashing()
     parser = argparse.ArgumentParser(
         description=(
             "Unified Authomathics pipeline: filter arXiv papers by metadata, "

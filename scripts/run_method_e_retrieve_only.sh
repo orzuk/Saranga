@@ -20,6 +20,8 @@
 #SBATCH --output=/sci/home/orzuk/method_e_jobs/me_retrieve.%j.log
 #SBATCH --error=/sci/home/orzuk/method_e_jobs/me_retrieve.%j.log
 
+export PYTHONHASHSEED=0   # deterministic output (see src/config.py)
+
 set -euo pipefail
 
 mkdir -p "$HOME/method_e_jobs"
