@@ -101,7 +101,7 @@ def _sentence_initial_at(text: str, pos: int) -> bool:
     # then look. Authors often omit the period after a display, so text after a
     # display that starts with a capital letter also starts a sentence.
     tail = re.compile(r"(?:\\end\{[a-zA-Z*]+\}|\\\]|\$\$?|\\(?:label|tag)\{[^{}]*\}"
-                      r"|\\[a-zA-Z]+\*?|\\[,;!]|\\\\|[})\s~&])$")
+                      r"|\\[a-zA-Z]+\*?|\\[,;! ]|\\\\|\\|[})\s~&])$")
     display_closer = re.compile(r"(?:\\end\{[a-zA-Z*]+\}|\\\]|\$\$)$")
     after_display = False
     prev = None
@@ -117,18 +117,19 @@ def _sentence_initial_at(text: str, pos: int) -> bool:
 
 # ── Labels ──────────────────────────────────────────────────────────────────
 
-_WRAP = r"(?:\{\s*)?(?:\\(?:textbf|emph|textit|textsc|underline|bf|it|em)\s*\{?\s*)?"
+_WRAP = r"(?:\{\s*)?(?:\\(?:textbf|emph|textit|textsc|texttt|textsf|textsl|textup|underline|bf|it|em|tt|sc)\s*\{?\s*)?"
 _LABEL_PATTERNS = {
     "step":   _WRAP + r"Step\s*~?\(?\s*\d+[a-z]?\s*\)?\s*\}?\s*[.:)]",
     "case":   _WRAP + r"Case\s*~?\(?\s*(?:\d+|[ivx]+|[a-dA-D])\s*\)?\s*\}?\s*[.:)]",
     "part":   _WRAP + r"Part\s*~?\(?\s*(?:\d+|[ivx]+|[a-d])\s*\)?\s*\}?\s*[.:)]",
     "induct": _WRAP + r"(?:Base case|Basis(?: step)?|Induction step|Inductive step)\s*\}?\s*[.:]",
-    "heading": r"\\(?:textbf|emph|textit|underline)\s*\{[^{}$]{2,60}?[.:]?\s*\}\s*[.:]?",
+    "heading": r"\\(?:textbf|emph|textit|texttt|textsf|textsl|underline)\s*\{[^{}$]{2,60}?[.:]?\s*\}\s*[.:]?",
     "degree":  r"\$\s*\d+\s*\^\s*\{?\s*\\circ\s*\}?\s*\$\s*[.:)]?",
     "implication": (r"\(\s*(?:\d+|[ivx]+|[a-d])\s*\)\s*\$?\s*\\(?:Long|long)?(?:[Rr]ightarrow|[Ll]eftrightarrow|implies)"
                     r"\s*\$?\s*\(\s*(?:\d+|[ivx]+|[a-d])\s*\)\s*[.:]?"),
 }
 _PAREN = re.compile(r"\((?:i{1,3}|iv|vi{0,3}|ix|x|[a-h]|\d)\)(?=\s)")
+_RUN_IN = re.compile(r"\((?=[A-Z])(?:[^().,$]|\$[^$]*\$){2,40}\)(?=\s+(?:[A-Z]|\$|\\))")
 _NUMBERED = re.compile(r"(?:\\(?:smallskip|medskip|bigskip|par)\b\s*|\n\s*\n\s*"
                        r"|\\\\\*?(?:\[[^\]]*\])?\s*)(\d{1,2})\.\s")
 _REFERENCE_AFTER = re.compile(r"\s*(?:of|in)\s", re.I)
@@ -195,6 +196,11 @@ def detect(body: str, nested_proof_offsets: list[int] = ()) -> dict:
     if len({m.group(0) for m in paren}) >= 2:
         for m in paren:
             add("item_label", m.start(), m.end())
+    run_in = [m for m in _RUN_IN.finditer(body)
+              if _sentence_initial(body, m.start()) and not _inside(m.start(), spans)]
+    if len(run_in) >= 2:
+        for m in run_in:
+            add("run_in", m.start(), m.end())
     numbered = list(_NUMBERED.finditer(body))
     if len(numbered) >= 2:
         for m in numbered:
@@ -252,7 +258,7 @@ def _norm_map(text: str) -> tuple[str, list[int]]:
 
 def _sentences(text: str) -> int:
     def sub(m):        # a display that ends a sentence keeps its period
-        inner = re.sub(r"(\\end\{[a-zA-Z*]+\}|\\\]|\$\$|\\(?:label|tag)\{[^{}]*\}|\s)+$", "", m.group(0))
+        inner = re.sub(r"(\\end\{[a-zA-Z*]+\}|\\\]|\$\$?|\\(?:label|tag)\{[^{}]*\}|\s)+$", "", m.group(0))
         return " X. " if inner.endswith(".") else " X "
     plain = _MATH.sub(sub, text)
     return max(1, len([s for s in re.split(r"(?<=[.!?:])\s+(?=[A-Z\\])", plain.strip()) if s.strip()]))
