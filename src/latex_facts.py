@@ -143,7 +143,7 @@ def expand_macros(source: str) -> str:
         is_ref = d["arity"] == 1 and re.search(r"\\(?:eqref|autoref|ref)\{#1\}", body)
         if d["arity"] == 0 or is_ref:
             defs[name] = d
-            cut.append(d["span"])
+            cut.extend(d["spans"])           # every copy: an uncut one would be expanded
     if not defs:
         return source
     out, pos = [], 0

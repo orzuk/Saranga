@@ -1018,8 +1018,9 @@ def read_definitions(src, clean=True, spans=False):
     The one reader of a paper's macro definitions (\\newcommand, \\def,
     \\DeclareMathOperator, \\newenvironment). Later definitions win
     (\\renewcommand). `clean=False` for text whose comments are already gone;
-    `spans=True` adds `form` ('command', 'def', 'operator', 'environment') and
-    `span`, the (start, end) of the whole definition in `src`.
+    `spans=True` adds `form` ('command', 'def', 'operator', 'environment'),
+    `span`, the (start, end) of the whole definition in `src`, and `spans`,
+    the spans of every definition of that name (a paper may repeat one).
     """
     if clean:
         src = strip_comments(src)
@@ -1052,5 +1053,6 @@ def read_definitions(src, clean=True, spans=False):
             if spans:
                 rec["form"] = ("command", "def", "operator", "environment")[fi]
                 rec["span"] = (m.start(), end)
+                rec["spans"] = out.get(name, {}).get("spans", []) + [(m.start(), end)]
             out[name] = rec
     return out
