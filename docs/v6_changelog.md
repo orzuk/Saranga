@@ -289,7 +289,8 @@ Re-render and re-hash before the run; v5.1's frozen hash was `100e6cf6fdbb3aea`.
 
 ## Frozen for the 200-paper silver run (2026-10-09)
 
-Rendered template sha256 prefix `a6613a6c3d147ec5` (scripts/render_v6_prompt.py), code at 466568d.
+Frozen prompt: scripts/opus_extract_prompt_v6_rendered.md (sha256 prefix `a6613a6c3d147ec5`;
+per-paper copies by scripts/render_v6_prompt.py), code at 466568d.
 Output: corpus/silver/opus-5.5__v6/, all 200 papers, one claude-opus-5-5 agent per paper,
 each stamped `prompt_version` v6-a6613a6c3d147ec5-<commit>. The trial runs that led to this
 freeze (26-paper runs and reruns, 2026-10-08/09) are archived outside the repository
