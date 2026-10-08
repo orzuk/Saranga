@@ -192,6 +192,32 @@ def node_spans(graph: dict, source: str) -> dict[str, tuple[int, int]]:
         if i >= 0:
             out[n["id"]] = (idx[i], idx[i + len(key) - 1] + 1)
             nxt[key] = i + len(key)
+    # a statement that also occurs inside a larger node of the same type (an
+    # equation repeated within a longer display) takes an occurrence outside it
+    by_type: dict[str, list[str]] = {}
+    for n in graph["nodes"]:
+        if n["id"] in out:
+            by_type.setdefault(n.get("type"), []).append(n["id"])
+
+    def inside_same_type(nid, span):
+        return any(o != nid and out[o][0] <= span[0] and span[1] <= out[o][1] and out[o] != span
+                   for o in by_type.get(types[nid], ()))
+    types = {n["id"]: n.get("type") for n in graph["nodes"]}
+    taken = set(out.values())
+    for n in graph["nodes"]:
+        me = out.get(n["id"])
+        if not me or not inside_same_type(n["id"], me):
+            continue
+        key = _key(n.get("statement"))
+        i = norm.find(key)
+        while i >= 0:
+            span = (idx[i], idx[i + len(key) - 1] + 1)
+            if span not in taken and not inside_same_type(n["id"], span):
+                taken.discard(me)
+                out[n["id"]] = span
+                taken.add(span)
+                break
+            i = norm.find(key, i + 1)
     # a node with a parent lies inside it: re-place a repeated statement there
     pos = {x: k for k, x in enumerate(idx)}
     for n in graph["nodes"]:
@@ -447,7 +473,10 @@ def finalize(graph: dict, tex: str) -> dict:
                 fid = lab["id"] if lab["kind"] in ("env", "equation") else lab["enclosing"]
                 src = node_of_fact.get(fid) if fid else None
                 if lab["kind"] == "item" and lab.get("offset") is not None:
-                    src = _innermost(spans, lab["offset"]) or src     # the node holding the item
+                    # the node holding the item, which may start right after the \\label
+                    after = re.compile(r"\\label\s*\{[^{}]*\}\s*").match(source, lab["offset"])
+                    src = (_innermost(spans, lab["offset"])
+                           or (after and _innermost(spans, after.end())) or src)
                 if lab["kind"] == "equation" and src is None and lab["enclosing"]:
                     src = node_of_fact.get(lab["enclosing"])
                 tgt = n["id"]
