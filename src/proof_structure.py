@@ -57,8 +57,32 @@ _LEAD_CMDS = re.compile(r"(?:\\(?:par|smallskip|medskip|bigskip|noindent|newline
                         r"|\\item\s*(?:\[[^\]]*\])?\s*|\\\\\*?(?:\[[^\]]*\])?\s*)+$")
 
 
+# Markup that may sit right before a sentence start: an environment opener, a
+# label, a counter, an argument-free command (\\bf, \\small), the opening brace of
+# a wrapper (\\footnote{, a revision macro such as \\new{), a bare brace, or a
+# short parenthesised run-in label ("(Injectivity)", "(2)").
+_OPENER = re.compile(r"(?:\\begin\s*\{[^{}]*\}(?:\s*\[[^\]]*\])?|\\label\s*\{[^{}]*\}"
+                     r"|\\setcounter\s*\{[^{}]*\}\s*\{[^{}]*\}|\\[a-zA-Z]+\*?\s*\{|\{"
+                     r"|\\[a-zA-Z]+\*?(?![a-zA-Z{])|\((?:[^()$]|\$[^$]*\$){1,60}\))\s*$")
+
+
 def _sentence_initial(text: str, pos: int) -> bool:
-    """Is `pos` at the start of a sentence, line-label or list item?"""
+    """Is `pos` at the start of a sentence, line-label or list item?
+
+    Also true when only opening markup (`_OPENER`) separates `pos` from such a start."""
+    if text[pos:pos + 5] == "\\item":
+        return True
+    cut = pos
+    while True:
+        if _sentence_initial_at(text, cut):
+            return True
+        m = _OPENER.search(text[:cut].rstrip())
+        if not m:
+            return False
+        cut = m.start()
+
+
+def _sentence_initial_at(text: str, pos: int) -> bool:
     before = text[:pos]
     stripped = before.rstrip()
     if not stripped:
@@ -70,7 +94,7 @@ def _sentence_initial(text: str, pos: int) -> bool:
     # right after a heading: \section{...}, \subsection*{...}, \paragraph{...},
     # possibly followed by its \label{...}
     if re.search(r"\\(?:(?:sub)*section|paragraph|subparagraph|caption)\*?\s*"
-                 r"\{(?:[^{}]|\{[^{}]*\})*\}\s*(?:\\label\{[^{}]*\}\s*)*$", stripped):
+                 r"\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}\s*(?:\\label\{[^{}]*\}\s*)*$", stripped):
         return True
     # A sentence may end inside a display or inline math: "... bounded.} \\end{equation}",
     # "... x.$". Peel closers, labels, \\nonumber, spacing macros and closing braces,
@@ -280,13 +304,13 @@ def check_steps(body: str, structure: dict, steps: list[dict]) -> tuple[list[str
         closing = bool(_CLOSING.search(st))
         immediate = (closing or (_IMMEDIATE.search(st) and not has_ref)) and not has_display
         if (immediate and not at_label and len(st) < 200 and not _CASE_OPENER.match(st)):
-            warnings.append(f"{s['id']}: step is an immediate sentence (attach it to a neighbour)")
+            errors.append(f"{s['id']}: step is an immediate sentence (attach it to a neighbour)")
         if (_INTRO.match(st) and _sentences(st) == 1 and len(steps) > 1
                 and not has_display and not has_ref):
-            warnings.append(f"{s['id']}: lone introduction sentence (join it to the next step)")
+            errors.append(f"{s['id']}: lone introduction sentence (join it to the next step)")
     for lab in structure["labels"]:
         if not any(abs(p - lab["offset"]) <= 12 for p in starts.values()):
             errors.append(f"author label {lab['text']!r} ({lab['kind']}) does not start a step")
     if _sentences(body) <= 2 and not structure["labels"]:
-        warnings.append("steps on a proof of at most two sentences (expected zero)")
+        errors.append("steps on a proof of at most two sentences (expected zero)")
     return errors, warnings

@@ -574,22 +574,26 @@ statement_short:
 
 ## Edge taxonomy — with direction conventions
 
-### Edge coverage — find the edges that exist, invent none
+### Edge coverage — four passes
 
-**Find every real edge.** An isolated node deserves a second look: check
-whether the paper relates it to something. Before you finish, sweep every
-node and ask "does the paper actually relate this to something?" — in
-particular:
-  - each `definition`: which later statement or definition uses this concept?
-    (definition chains are real structure: `flow → subflow → minimal flow`)
-  - each `proof`: it must have a `proves` edge to what it proves;
-  - each result or conjecture: which definitions/assumptions/lemmas does its
-    statement invoke?
-  - each `example`: what concept does it illustrate?
+The finishing step adds only the edges a `\ref` states; every other dependency
+is yours. Build the dependency edges in four passes:
 
-**Invent none.** A node with no real relationship stays isolated; that is
-correct output. Do not
-treat "every node has an edge" as a target to hit.
+1. **References in words.** For every phrase that names another node without a
+   `\ref` ("by Lemma 3", "Theorem 2.1 gives", "as in the previous
+   proposition"), add a `uses` edge from the named node, confidence `0.9`.
+2. **Defined terms.** For each definition, search the prepared source for its
+   `definiendum` and for the symbol it introduces, and add a `uses` edge from
+   the definition to every later node whose statement uses it, proofs and steps
+   included, confidence `0.7`–`0.85`.
+3. **Results built on results.** For each result and proof, add a `uses` edge
+   from every earlier result it applies.
+4. **Inside a proof.** A step that relies on an earlier step's conclusion gets a
+   `uses` edge from that step.
+
+A node left without an edge must be one the paper relates to nothing. Never add
+an edge to make a node non-isolated. Each `proof` has its `proves` edge, and each
+`example` an `illustrates` edge to the concept it shows.
 
 **Score uncertain edges, do not guess.** Emit a borderline edge with its
 `confidence` rather than deciding yes or no:
@@ -940,15 +944,17 @@ otherwise leave it as an empty string.
 1. Read the prepared `source` (multiple Read calls with offsets if large).
 2. Emit a node for every environment fact. Then find everything the facts
    do not cover: definitions, results, remarks, claims, problems and
-   algorithms stated in prose.
+   algorithms stated in prose, including a term or notation defined in a
+   sentence ("we denote", "we write", "is called") and a cited result the
+   paper states in full.
 3. Assign compact IDs as you create nodes; source order within a type is
    preferred but not required (see "Compact ID convention").
 4. For each node: copy its `statement` (core rule #1), write its
    `statement_short` (core rule #2) and fill its fields (see "Schema").
 5. Apply step extraction for proofs and algorithms (see "Level-2 steps").
 6. Apply type-promotion (Hard rule 4).
-7. Build edges for logical dependencies that have no `\ref`. (Edges a `\ref`
-   states are added by the finishing step in step 8.)
+7. Build the dependency edges in the four passes of "Edge coverage". (Edges a
+   `\ref` states are added by the finishing step in step 8.)
 8. In the script you write to build the output (`graph` below is the output
    dict, with `metadata`, `nodes` and `edges`), finish and check it before
    writing it:
@@ -964,7 +970,8 @@ otherwise leave it as an empty string.
    adds the `\ref`-stated `uses` edges and syntax-stated `proves` edges, and
    validates (verbatim spans,
    edge types and endpoints, acyclicity, step parents). Fix every error and
-   re-run. A `\ref` that points backward is added with `"backward": true`;
+   re-run. A warning that a defined term is used with no edge lists the nodes
+   that use it: add each edge, unless the word is used there in another sense. A `\ref` that points backward is added with `"backward": true`;
    list `report["ref_backward"]` in your final report.
 9. Write the JSON to the output file, {OUTPUT_JSON}:
 

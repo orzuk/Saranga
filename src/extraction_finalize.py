@@ -345,6 +345,45 @@ def pseudocode_steps(facts: dict, fact_id: str, algorithm: dict, first_seq: int 
     return steps
 
 
+def check_defined_terms(graph: dict, spans: dict, parent: dict, report: dict) -> None:
+    """Warn when a later node's statement uses a definition's `definiendum` (a
+    plain-word term) and no edge links the definition to it, to the node's
+    container, or to a node it contains. A false match (the word used in another
+    sense) needs no edge; every real use does (prompt: edge pass 2)."""
+    out: dict[str, set] = {}
+    for e in graph["edges"]:
+        out.setdefault(e["source"], set()).add(e["target"])
+    kids: dict[str, set] = {}
+    for c, p in parent.items():
+        if p:
+            kids.setdefault(p, set()).add(c)
+
+    def family(nid):
+        fam, stack = {nid} | _ancestors(nid, parent), [nid]
+        while stack:
+            for c in kids.get(stack.pop(), ()):
+                if c not in fam:
+                    fam.add(c)
+                    stack.append(c)
+        return fam
+    for d in graph["nodes"]:
+        term = d.get("definiendum") if d.get("type") == "definition" else None
+        if isinstance(term, list):
+            term = term[0] if term else None
+        if not term or len(term) < 4 or re.search(r"[$\\{}]", term) or d["id"] not in spans:
+            continue
+        pat = re.compile(r"(?<![\w-])" + re.escape(term.strip()) + r"(?:s|es)?(?![\w-])", re.I)
+        mine = family(d["id"])
+        missing = [n["id"] for n in graph["nodes"]
+                   if n["id"] not in mine and n["id"] in spans
+                   and spans[n["id"]][0] > spans[d["id"]][0]
+                   and pat.search(n.get("statement") or "")
+                   and not (out.get(d["id"], set()) & family(n["id"]))]
+        if missing:
+            report["warnings"].append(f"{d['id']} defines {term!r}, used with no edge from it in: "
+                                      + ", ".join(missing[:12]) + (" ..." if len(missing) > 12 else ""))
+
+
 def finalize(graph: dict, tex: str) -> dict:
     """Fill the syntactic fields and edges of `graph` in place; return a report."""
     facts = extract_facts(tex)
@@ -441,6 +480,9 @@ def finalize(graph: dict, tex: str) -> dict:
     set_backward_flags(graph, spans, report)
     report["ref_backward"] = [(e["source"], e["target"], e.get("note"))
                               for e in graph["edges"] if e.get("backward") and e.get("note")]
+
+    # 6b. defined terms used later with no edge from their definition
+    check_defined_terms(graph, spans, parent, report)
 
     # 7. the paper's full label table, so every \ref kept in a statement resolves
     graph.setdefault("metadata", {})["labels"] = label_table(facts, node_of_fact)
