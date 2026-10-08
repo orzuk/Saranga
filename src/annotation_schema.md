@@ -293,9 +293,16 @@ Each edge represents a dependency or relationship between nodes.
 |-------|-----|------|-------------|
 | `source` | **R** | string | ID of the supporting/source node |
 | `target` | **R** | string | ID of the dependent/target node |
-| `type` | O | string | Relationship type (default: `"dependency"`) |
-| `note` | O | string | Free-text annotation about this edge |
-| `confidence` | O | float | Confidence score (0-1) |
+| `type` | **R** | string | Edge type (see "Edge types" below) |
+| `confidence` | **R** | float | Confidence score (0-1) |
+| `note` | O | string | Free-text annotation; the finishing step writes the `\ref{key}` an edge came from |
+| `backward` | O | bool | `true` when the source comes after the target in the paper (a forward reference, an induction step using the result itself); set by the finishing step |
+| `mention` | O | bool | `true` when the source is only referred to, not relied on ("let $w$ be as in Theorem 1", "the lemma is used in the proof of Proposition 3"); set by the extractor. The circular-reasoning check ignores these edges |
+
+**No circular reasoning.** No cycle may consist only of results, a proof counting
+as the result it proves (with everything nested in it), or only of definitions.
+Edges marked `mention` are not counted. A circular argument that is the paper's
+own is kept and recorded in a `source_problem` extraction note naming its nodes.
 
 **Edge direction convention:** an edge from A to B means "B depends on A" or "A supports B".
 

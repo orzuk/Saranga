@@ -180,6 +180,9 @@ REQUIRED_EDGE_FIELDS = (
 )
 # `backward`: true on an edge that points against the paper's reading order, a
 # forward reference ("by Lemma 5 below") or an induction step using the result
-# itself. Acyclicity is required of the graph without these edges.
-OPTIONAL_EDGE_FIELDS = ("note", "backward")
+# itself; set by the finishing step.
+# `mention`: true on an edge whose source is only referred to, not relied on
+# ("let w be as in Theorem 1", "the lemma is used in the proof of Prop. 3");
+# set by the extractor. The circular-reasoning check ignores mention edges.
+OPTIONAL_EDGE_FIELDS = ("note", "backward", "mention")
 ALL_EDGE_FIELDS = REQUIRED_EDGE_FIELDS + OPTIONAL_EDGE_FIELDS

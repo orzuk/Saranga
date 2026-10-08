@@ -197,14 +197,20 @@ steps, by the nesting rules. Never draw a `uses` edge to express containment.
    Count of result nodes you emit ≥ count of numbered or labelled result
    environments in the source.
 
-7. **Acyclicity, with backward edges flagged.** A `uses` edge `A → B` reads
-    "B uses A". Some real dependencies point against the paper's order: a
-    proof that cites "Remark 5 below", or an induction step that applies the
-    theorem itself at a smaller case. Never delete such an edge to avoid a
-    cycle. The finishing step marks it `"backward": true` by position (its source
-    comes after its target in the paper). The graph
-    with the backward edges removed must be acyclic. No reciprocal `uses` edges between the
-    same pair.
+7. **No circular reasoning; mentions are marked.** A `uses` edge `A → B` reads
+    "B uses A". No cycle may consist only of results, where a proof counts as the
+    result it proves, or only of definitions. Some real dependencies point
+    against the paper's order: a proof that cites "Remark 5 below", or an
+    induction step that applies the theorem itself at a smaller case; the
+    finishing step marks these `"backward": true` by position, and they stay.
+    An edge whose source is only referred to, not relied on ("let $w$ be as in
+    Theorem 1", "the lemma is used in the proof of Proposition 3"), gets
+    `"mention": true`; this includes an edge the finishing step adds from such a
+    `\ref`. When the finishing step reports circular reasoning, mark the edge on
+    the path that is only a mention; if the paper's own argument is circular,
+    keep the edges and add a `source_problem` note naming the nodes. Never delete
+    an edge, retype it, or change a node's span to remove a cycle. No reciprocal
+    `uses` edges between the same pair.
 
 8. **`tags[]` is topical only; `proof_strategy[]` is for proof strategy.**
 
@@ -630,7 +636,8 @@ The table gives the required node type at each endpoint.
 | `resolves` | `problem` / `open_problem` / `conjecture` | result / `algorithm` | the result settles the question, or the algorithm solves the problem |
 
 **Every edge has four required fields: `source`, `target`, `type`, `confidence`**,
-plus `"backward": true`, which the finishing step sets by position (Hard rule 7).
+plus `"backward": true`, which the finishing step sets by position, and
+`"mention": true` on an edge whose source is only referred to (Hard rule 7).
 `confidence` is required (float 0-1, scored per the table above).
 
 **Worked examples — copy these shapes exactly:**
@@ -969,7 +976,7 @@ otherwise leave it as an empty string.
    table to `metadata.labels` (so every `\ref` kept in a statement resolves),
    adds the `\ref`-stated `uses` edges and syntax-stated `proves` edges, and
    validates (verbatim spans,
-   edge types and endpoints, acyclicity, step parents). Fix every error and
+   edge types and endpoints, circular reasoning, step parents). Fix every error and
    re-run. A warning that a defined term is used with no edge lists the nodes
    that use it: add each edge, unless the word is used there in another sense. A `\ref` that points backward is added with `"backward": true`;
    list `report["ref_backward"]` in your final report.

@@ -16,8 +16,9 @@ are for the agent's report.
 
 It also sets `parent_id` on every Level-1 node to the innermost node containing
 it (the hierarchy), and `backward: true` on every uses/generalizes/specializes
-edge whose source comes after its target in the paper. Acyclicity is checked
-without backward edges.
+edge whose source comes after its target in the paper. The graph must contain no
+circular reasoning: no cycle made only of results (a proof standing for the
+result it proves) or only of definitions (validate_annotation.reasoning_cycles).
 
 Also written: `metadata.labels`, the paper's complete \\label table (so a \\ref
 kept verbatim in any statement resolves within the JSON), and
@@ -41,6 +42,7 @@ from algorithm_lines import fill_source_line_labels      # noqa: E402
 from latex_facts import extract_facts, _REF_CMDS         # noqa: E402
 from proof_structure import check_steps as check_proof_steps   # noqa: E402
 from proof_structure import detect as detect_proof_structure   # noqa: E402
+from validate_annotation import CYCLE_HELP, cycle_noted, reasoning_cycles   # noqa: E402
 
 _LEVEL2 = {"proof_step", "algorithm_step"}
 # metadata.paper_style and metadata.extraction_notes[].category; anything else goes in the
@@ -168,24 +170,6 @@ def label_table(facts: dict, node_of_fact: dict[str, str]) -> dict[str, dict]:
         out[key] = {"kind": lab["kind"], "number": lab["number"], "node": node,
                     "within": within if within != node else None, "section": section}
     return out
-
-
-def _has_cycle_with(edges: list[dict], src: str, tgt: str) -> bool:
-    """Would adding src -> tgt close a cycle? (Is src reachable from tgt?)"""
-    adj: dict[str, list[str]] = {}
-    for e in edges:
-        if not e.get("backward"):
-            adj.setdefault(e["source"], []).append(e["target"])
-    seen, stack = set(), [tgt]
-    while stack:
-        x = stack.pop()
-        if x == src:
-            return True
-        if x in seen:
-            continue
-        seen.add(x)
-        stack.extend(adj.get(x, []))
-    return False
 
 
 def node_spans(graph: dict, source: str) -> dict[str, tuple[int, int]]:
@@ -589,29 +573,10 @@ def validate(graph: dict, source: str, report: dict, parent: dict | None = None)
         if ty == ET.USES and (s in _ancestors(t, parent) or t in _ancestors(s, parent)):
             err.append(f"edge {s}->{t}: a `uses` edge between a node and its own "
                        f"container; containment is parent_id, remove the edge")
-    # acyclic, once backward edges (forward references, induction) are set aside
-    adj: dict[str, list[str]] = {}
-    for e in graph["edges"]:
-        if not e.get("backward"):
-            adj.setdefault(e["source"], []).append(e["target"])
-    state: dict[str, int] = {}
-    for root in ids:
-        if state.get(root):
-            continue
-        stack = [(root, iter(adj.get(root, [])))]
-        state[root] = 1
-        while stack:
-            v, it = stack[-1]
-            nxt = next(it, None)
-            if nxt is None:
-                state[v] = 2
-                stack.pop()
-            elif state.get(nxt) == 1:
-                err.append(f"cycle through {v} -> {nxt}")
-                stack = []
-            elif not state.get(nxt):
-                state[nxt] = 1
-                stack.append((nxt, iter(adj.get(nxt, []))))
+    # no circular reasoning (validate_annotation.reasoning_cycles)
+    for cyc in reasoning_cycles(graph["nodes"], graph["edges"]):
+        (warn if cycle_noted(cyc, graph.get("metadata")) else err).append(
+            "circular reasoning: " + " -> ".join(cyc) + ": " + CYCLE_HELP)
     has_edge = {e["source"] for e in graph["edges"]} | {e["target"] for e in graph["edges"]}
     has_child = {p for p in parent.values() if p}
     orphans = [i for i in ids if i not in has_edge and not parent.get(i) and i not in has_child]

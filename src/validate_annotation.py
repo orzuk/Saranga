@@ -35,6 +35,7 @@ from node_types import (  # noqa: E402
     is_known_tag,
     has_antecedent,
     PROVABLE,
+    THEOREM_LIKE,
 )
 from edge_types import (  # noqa: E402
     ALL_TYPES as ALL_EDGE_TYPES,
@@ -250,14 +251,12 @@ def validate(data: dict) -> list[str]:
             if in_deg[neighbor] == 0:
                 queue.append(neighbor)
 
+    for cyc in reasoning_cycles(nodes, edges_all):
+        (warnings if cycle_noted(cyc, data.get("metadata")) else errors).append(
+            f"{'WARNING' if cycle_noted(cyc, data.get('metadata')) else 'ERROR'}: "
+            f"circular reasoning: {' -> '.join(cyc)}: {CYCLE_HELP}.")
     if visited < len(all_nodes_in_graph):
-        # Find nodes in cycle(s)
-        cycle_nodes = {n for n in all_nodes_in_graph if in_deg[n] > 0}
-        errors.append(
-            f"ERROR: Graph contains a cycle! Nodes involved: {sorted(cycle_nodes)}. "
-            f"Mathematical dependencies should form a DAG (no circular reasoning). "
-            f"Check if an edge direction is reversed."
-        )
+        warnings.append("INFO: the graph without backward edges has a cycle; depth not computed.")
     else:
         depth = compute_depth(adj, all_nodes_in_graph, in_deg)
         max_depth = max(depth.values()) if depth else 0
@@ -275,6 +274,82 @@ def validate(data: dict) -> list[str]:
         warnings.append(f"WARNING: {len(disconnected)} node(s) have no edges: {sorted(disconnected)}")
 
     return errors + warnings
+
+
+_DEPENDENCY = {"uses", "generalizes", "specializes"}
+
+
+def reasoning_cycles(nodes: list[dict], edges: list[dict]) -> list[list[str]]:
+    """Circular reasoning: a cycle made only of results, or only of definitions.
+
+    A proof, and everything nested in it (its steps, its equations), stands for
+    the result it proves; results and definitions keep their own identity, so a
+    lemma stated inside a proof stays separate. Dependency edges are mapped onto
+    these representatives, backward ones included (a circular argument can run
+    through a forward reference); self-loops (an induction step applying the
+    theorem itself) are dropped, and so are edges marked `"mention": true`. A
+    cycle through a remark, an example or a top-level equation is not reported.
+    Returns one node-id path per cycle found."""
+    by_id = {n.get("id"): n for n in nodes}
+    proved = {}
+    for e in edges:
+        if e.get("type") == "proves":
+            proved.setdefault(e.get("source"), e.get("target"))
+    for n in nodes:
+        if n.get("type") == "proof" and n.get("proves") in by_id:
+            proved.setdefault(n["id"], n["proves"])
+
+    def rep(x):
+        seen = set()
+        while x in by_id and x not in seen:
+            seen.add(x)
+            t = by_id[x].get("type")
+            if t in THEOREM_LIKE or t == "definition":
+                return x
+            if t == "proof" and x in proved:
+                return proved[x]
+            x = by_id[x].get("parent_id")
+        return None
+
+    found = []
+    for group in (THEOREM_LIKE, {"definition"}):
+        adj = defaultdict(set)
+        for e in edges:
+            if e.get("type") not in _DEPENDENCY or e.get("mention"):
+                continue
+            a, b = rep(e.get("source")), rep(e.get("target"))
+            if a and b and a != b and by_id[a].get("type") in group and by_id[b].get("type") in group:
+                adj[a].add(b)
+        state, path = {}, []
+
+        def dfs(v):
+            state[v] = 1
+            path.append(v)
+            for w in sorted(adj[v]):
+                if state.get(w) == 1:
+                    found.append(path[path.index(w):] + [w])
+                elif not state.get(w):
+                    dfs(w)
+            path.pop()
+            state[v] = 2
+        for v in sorted(adj):
+            if not state.get(v):
+                dfs(v)
+    return found
+
+
+def cycle_noted(cycle: list[str], metadata: dict) -> bool:
+    """Did the extractor record this cycle as the paper's own (a source_problem
+    note naming at least two of its nodes)?"""
+    on = set(cycle)
+    return any(n.get("category") == "source_problem" and len(on & set(n.get("nodes") or [])) >= 2
+               for n in (metadata or {}).get("extraction_notes") or [])
+
+
+CYCLE_HELP = ("if an edge on this path only refers to a result without relying on its truth "
+              "(\"as in Theorem 1\", \"used in the proof of Proposition 3\"), set \"mention\": true on it; "
+              "if the paper's own argument is circular, keep the edges and add a source_problem note "
+              "naming these nodes")
 
 
 def compute_depth(adj, nodes, in_deg_orig):
