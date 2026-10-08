@@ -258,7 +258,7 @@ An optimization formulation is `type: "problem"` with `subclass: "optimization"`
 
 | Field | Req | Type | Description |
 |-------|-----|------|-------------|
-| `definiendum` | O | Span | The thing being defined |
+| `definiendum` | O | Span | The term being defined, or an introduced symbol written as `$...$` |
 | `genus` | O | Span | What category it belongs to (e.g., "is a matrix") |
 | `differentia` | O | list of Span | Distinguishing conditions |
 

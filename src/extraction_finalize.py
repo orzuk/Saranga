@@ -361,9 +361,34 @@ def pseudocode_steps(facts: dict, fact_id: str, algorithm: dict, first_seq: int 
     return steps
 
 
+_KEYS = re.compile(r"\\(?:" + _REF_CMDS + r"|label|cite[a-zA-Z]*)\*?\s*(?:\[[^\]]*\]\s*)?\{[^{}]*\}")
+
+
+def _sym(text: str) -> str:
+    """A math symbol in comparable form: no $, spaces or braces (L^{\\lambda} = L^\\lambda)."""
+    return re.sub(r"[\s${}]", "", text or "")
+
+
+def _trivial_sym(sym: str) -> bool:
+    """A single letter or a single command (x, \\beta): too common to track."""
+    return bool(re.fullmatch(r"[A-Za-z0-9]|\\[A-Za-z]+", sym)) or len(sym) < 2
+
+
+def _sym_in(sym: str, text: str) -> bool:
+    flat = _sym(_KEYS.sub(" ", text or ""))
+    i = flat.find(sym)
+    while i >= 0:
+        before = flat[i - 1] if i else ""
+        after = flat[i + len(sym)] if i + len(sym) < len(flat) else ""
+        if not re.match(r"[A-Za-z\\]", before) and not re.match(r"[A-Za-z0-9_^,']", after):
+            return True
+        i = flat.find(sym, i + 1)
+    return False
+
+
 def check_defined_terms(graph: dict, spans: dict, parent: dict, report: dict) -> None:
-    """Warn when a later node's statement uses a definition's `definiendum` (a
-    plain-word term) and no edge links the definition to it, to the node's
+    """Warn when a later node uses a definition's `definiendum` (a plain-word term,
+    or a `$...$` symbol) and no edge links the definition to it, to the node's
     container, or to a node it contains. A false match (the word used in another
     sense) needs no edge; every real use does (prompt: edge pass 2)."""
     out: dict[str, set] = {}
@@ -382,25 +407,36 @@ def check_defined_terms(graph: dict, spans: dict, parent: dict, report: dict) ->
                     fam.add(c)
                     stack.append(c)
         return fam
+
     def term_of(d):
+        """("word", term) or ("symbol", normalized symbol) or None."""
         t = d.get("definiendum") if d.get("type") == "definition" else None
         t = (t[0] if t else None) if isinstance(t, list) else t
-        return t.strip() if t and len(t.strip()) >= 4 and not re.search(r"[$\\{}]", t) else None
-    terms = {term_of(d) for d in graph["nodes"]} - {None}
-    keys = re.compile(r"\\(?:" + _REF_CMDS + r"|label|cite[a-zA-Z]*)\*?\s*(?:\[[^\]]*\]\s*)?\{[^{}]*\}")
+        if not t or not t.strip():
+            return None
+        t = t.strip()
+        if re.fullmatch(r"\$[^$]+\$", t):
+            sym = _sym(t)
+            return None if _trivial_sym(sym) else ("symbol", sym)
+        return ("word", t) if len(t) >= 4 and not re.search(r"[$\\{}]", t) else None
+    words = {t[1] for t in map(term_of, graph["nodes"]) if t and t[0] == "word"}
     for d in graph["nodes"]:
         term = term_of(d)
         if not term or d["id"] not in spans:
             continue
-        pat = re.compile(r"(?<![\w-])" + re.escape(term) + r"(?:s|es)?(?![\w-])", re.I)
-        longer = [re.compile(re.escape(u), re.I) for u in terms
-                  if u.lower() != term.lower() and term.lower() in u.lower()]
+        kind, term = term
+        if kind == "symbol":
+            uses = lambda text, sym=term: _sym_in(sym, text)
+        else:
+            pat = re.compile(r"(?<![\w-])" + re.escape(term) + r"(?:s|es)?(?![\w-])", re.I)
+            longer = [re.compile(re.escape(u), re.I) for u in words
+                      if u.lower() != term.lower() and term.lower() in u.lower()]
 
-        def uses(text):
-            text = keys.sub(" ", text or "")
-            for lp in longer:                 # "clone" inside "weighted clone" is the other term
-                text = lp.sub(" ", text)
-            return bool(pat.search(text))
+            def uses(text, pat=pat, longer=longer):
+                text = _KEYS.sub(" ", text or "")
+                for lp in longer:             # "clone" inside "weighted clone" is the other term
+                    text = lp.sub(" ", text)
+                return bool(pat.search(text))
         mine = family(d["id"])
         missing = [n["id"] for n in graph["nodes"]
                    if n["id"] not in mine and n["id"] in spans
@@ -408,8 +444,51 @@ def check_defined_terms(graph: dict, spans: dict, parent: dict, report: dict) ->
                    and uses(n.get("statement"))
                    and not (out.get(d["id"], set()) & family(n["id"]))]
         if missing:
-            report["warnings"].append(f"{d['id']} defines {term!r}, used with no edge from it in: "
+            shown = term if kind == "word" else f"${term}$"
+            report["warnings"].append(f"{d['id']} defines {shown!r}, used with no edge from it in: "
                                       + ", ".join(missing[:12]) + (" ..." if len(missing) > 12 else ""))
+
+
+_INTRO_SYM = [re.compile(r"\b[Ll]et\s+\$([^$]{1,40})\$\s+(?:be|denote)\b"),
+              re.compile(r"\b[Ww]e\s+(?:denote|write)\b[^.$]{0,60}\$([^$]{1,40})\$"),
+              re.compile(r"\$([^$=]{1,30}?)\s*:=")]
+
+
+def check_introduced_symbols(graph: dict, source: str, spans: dict, facts: dict,
+                             report: dict) -> None:
+    """Warn when running text outside proofs and outside every node introduces a
+    symbol ("Let $X$ be", "we denote ... $X$", "$X :=") that a later node uses:
+    that sentence should be a definition node (prompt: introduced terms)."""
+    proofs = [(f["start"], f["end"]) for f in facts["facts"] if f["kind"] == "proof"]
+    proofs += [spans[n["id"]] for n in graph["nodes"] if n.get("type") == "proof" and n["id"] in spans]
+    covered = list(spans.values())
+    seen = set()
+    for d in graph["nodes"]:                  # one introduced symbol per definition node
+        if d.get("type") != "definition":
+            continue
+        st = d.get("statement") or ""
+        hits = sorted({(m.start(), _sym(m.group(1))) for p in _INTRO_SYM for m in p.finditer(st)
+                       if not _trivial_sym(_sym(m.group(1)))})
+        apart = [b for a, b in zip(hits, hits[1:])
+                 if re.search(r"[.;]\s", st[a[0]:b[0]]) and a[1] != b[1]]
+        if apart:
+            report["warnings"].append(f"{d['id']}: introduces {len(apart) + 1} symbols in separate "
+                                      f"sentences; each is its own definition node")
+    for pat in _INTRO_SYM:
+        for m in pat.finditer(source):
+            pos, sym = m.start(), _sym(m.group(1))
+            if sym in seen or _trivial_sym(sym):
+                continue
+            if any(a <= pos < b for a, b in proofs) or any(a <= pos < b for a, b in covered):
+                continue
+            later = [n["id"] for n in graph["nodes"] if n["id"] in spans
+                     and spans[n["id"]][0] > pos and _sym_in(sym, n.get("statement"))]
+            if later:
+                seen.add(sym)
+                line = re.sub(r"\s+", " ", source[pos:pos + 70])
+                report["warnings"].append(
+                    f"introduced symbol ${sym}$ ({line!r}) is used in {', '.join(later[:6])}"
+                    f"{' ...' if len(later) > 6 else ''} but no definition node covers its introduction")
 
 
 def finalize(graph: dict, tex: str) -> dict:
@@ -517,6 +596,7 @@ def finalize(graph: dict, tex: str) -> dict:
 
     # 6b. defined terms used later with no edge from their definition
     check_defined_terms(graph, spans, parent, report)
+    check_introduced_symbols(graph, source, spans, facts, report)
 
     # 7. the paper's full label table, so every \ref kept in a statement resolves
     graph.setdefault("metadata", {})["labels"] = label_table(facts, node_of_fact)

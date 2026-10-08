@@ -22,7 +22,7 @@ instructions are named by their headings in quotes.)
 - *`latex_facts.py`*: a command in `{REPO}/src/` that you run first; it reads
   the LaTeX syntax and writes `facts.json` (see "Two layers").
 - *Finishing step*: the function `finalize()` in `{REPO}/src/extraction_finalize.py`,
-  which your build script calls last (Workflow step 8): it fills some fields
+  which your build script calls last (Workflow step 7): it fills some fields
   and edges and checks your graph.
 - *Environment node*: a node taken from an environment the facts report (`\begin{theorem}`...). 
   *Prose node*: a node you find in running text, whose boundaries are your judgment.
@@ -106,18 +106,19 @@ and find what it states in prose, however much or little that is.
 Add the prose nodes that the rules under "Where a prose node starts and ends"
 give, and only those.
 
-The finishing step fills `label`, `source_line_label`, `backward` and the
-`parent_id` of Level-1 nodes, and adds the `uses` edges that a `\ref` states
-and the `proves` edges that syntax states; leave these out. You add every
-dependency that has no `\ref`.
+The finishing step fills `label`, `source_line_label`, `backward`,
+`metadata.labels` (the paper's whole `\label` table, so every `\ref` kept in a
+statement resolves) and the `parent_id` of Level-1 nodes, and adds the `uses`
+edges that a `\ref` states and the `proves` edges that syntax states; leave these
+out. You add every dependency that has no `\ref`.
 
 **The graph is a hierarchy.** `parent_id` means "is part of": every node is
 either top-level or has exactly one parent, the innermost node whose statement
 contains its own. A proof step belongs to its proof (or to a parent step); an
 equation to the theorem, proof, definition or step it sits in; a lemma stated
-inside a proof to that proof, and so does that lemma's own proof. For Level-1
-nodes the finishing step computes `parent_id` from the spans; you set it only for
-steps, by the nesting rules. Never draw a `uses` edge to express containment.
+inside a proof to that proof, and so does that lemma's own proof. You set
+`parent_id` only on steps (see "Nesting"); the finishing step computes it for
+Level-1 nodes from their spans. Never draw a `uses` edge to express containment.
 
 ## HARD RULES
 
@@ -154,10 +155,9 @@ steps, by the nesting rules. Never draw a `uses` edge to express containment.
    others is `external` even if the paper re-proves it; that proof is `paper`.
 
    `external` marks a node that states a cited result ("Theorem 2.1 (Brooks
-   [12]). Every connected graph ...", "As shown in [REF], every $X$ is $Y$.").
-   A citation used inside an argument ("by X", "applying [REF]") creates no
-   node: it stays in the text of the node that uses it (see "Where a prose
-   node starts and ends").
+   [12]). Every connected graph ..."); a citation only applied inside an
+   argument creates no node (see "A cited result that is only applied is not a
+   node").
 
 4. **Closed node type vocabulary.** A node's `type` is determined by
    semantic content, not LaTeX environment, but the resulting type must
@@ -251,8 +251,7 @@ steps, by the nesting rules. Never draw a `uses` edge to express containment.
 - `type` — from the closed vocabulary in Hard rule 4
 - `name` — display name (canonical name from paper, e.g. "Brooks'
   Theorem", "Leftover Hash Lemma", "Discrete Fourier Transform")
-- `statement` — verbatim source body, math-preserved per core rule #1 ("LaTeX math").
-  This is core rule #1.
+- `statement` — the verbatim source span (core rule #1).
 - `section` — plain section title (per Hard rule 9)
 - `origin` — `"paper"` or `"external"` (per Hard rule 3)
 - `confidence` — float 0-1. How much *judgment* the
@@ -277,7 +276,7 @@ steps, by the nesting rules. Never draw a `uses` edge to express containment.
   (theorem/lemma/proposition/corollary/claim/conjecture). Each
   element is a verbatim span from the source — not paraphrased.
   Required when you can decompose; absent only when the
-  statement structure resists clean decomposition. not used for
+  statement structure resists clean decomposition. Not used for
   `definition` nodes (definitions are stipulative, not if-then).
 - `input[]`, `output[]` — for `algorithm` nodes: the verbatim input and output
   descriptions. These and `assumptions[]`/`conclusions[]` are JSON arrays of
@@ -310,14 +309,13 @@ steps, by the nesting rules. Never draw a `uses` edge to express containment.
   completely, so read each node's own justification.
 
   Emit `metadata.rigor_nonformal_count` (in the output's `metadata`, Workflow
-  step 9) = the number of nodes you gave a
+  step 8) = the number of nodes you gave a
   `rigor` field. Always emit it, `0` included: a missing key is read as
   "rule not applied".
 - `label` — the `\label{...}` key of the environment this node came
   from. Filled by the finishing step from `facts.json`.
 - `parent_id` — "is part of": the innermost node containing this one (see "The
-  graph is a hierarchy"). You set it on steps; the finishing step sets it on Level-1
-  nodes
+  graph is a hierarchy").
 - `proves` — on a `proof` node, the id of the result it proves, the target of
   its `proves` edge. A proof that establishes several results (one argument for
   both (3.1) and (3.2)) has a `proves` edge to each; `proves` names the first.
@@ -379,8 +377,9 @@ Examples:
   `differentia=["complete"]`.
 
 When a definition is purely stipulative notation with no genus ("Let
-$X := \{...\}$"), omit `genus`/`differentia` and keep only `statement`
-(and `definiendum` if a name is introduced).
+$X := \{...\}$"), omit `genus`/`differentia`; `definiendum` is the
+introduced symbol, written as `$...$` (see "Introduced terms and symbols are
+definitions").
 
 ### Compact ID convention
 
@@ -481,6 +480,14 @@ remark or problem stated in running text), the `statement` is:
   are two nodes, even in consecutive sentences: "The weights are assumed
   i.i.d. normal. I assume the inputs are i.i.d. with variance 1." is two
   `assumption` nodes, one on the weights and one on the inputs.
+- **Introduced terms and symbols are definitions.** In running text outside
+  proofs, a sentence that introduces a term or symbol ("Let $X$ be ...", "we
+  denote", "we write", "is called", "$X := ...$") is a `definition` node when the
+  term or symbol is used again in a later node; its `definiendum` is the term,
+  or the symbol written as `$...$`. Each introduced term or symbol is its own
+  node, even in consecutive sentences. A symbol used only within its own
+  paragraph stays in the text that contains it, and inside a proof such a
+  sentence is a step (step rule 4). (Checked by the finishing step.)
 - **Minimal but self-contained.** The fewest whole sentences that state it on
   their own: include its hypotheses and a following "where ..." sentence that
   defines its symbols; leave out motivation before it ("Note that", "Recall
@@ -600,8 +607,8 @@ is yours. Build the dependency edges in four passes:
    included, confidence `0.7`–`0.85`.
 3. **Results built on results.** For each result and proof, add a `uses` edge
    from every earlier result it applies.
-4. **Inside a proof.** A step that relies on an earlier step's conclusion gets a
-   `uses` edge from that step.
+4. **Inside a proof.** A step that relies on an earlier step's conclusion, in the
+   same proof, gets a `uses` edge from that step.
 
 A node left without an edge must be one the paper relates to nothing. Never add
 an edge to make a node non-isolated. Each `proof` has its `proves` edge, and each
@@ -616,9 +623,6 @@ an edge to make a node non-isolated. Each `proof` has its `proves` edge, and eac
 | `0.7`–`0.85` | no explicit reference, but the logical dependency is clear-cut (the statement uses a term this definition introduces) |
 | `0.5`–`0.65` | plausible but genuinely uncertain — emit only if you actually believe it |
 | below `0.5` | do not emit |
-
-Report your orphan count (nodes with no edge) in the final summary, with a one-line reason for any
-node you deliberately left isolated.
 
 These are the only valid edge types — do not invent others (e.g. there is no `defines` and no `special_case_of`; a
 definition→user link is just `uses`, and "special case" is `specializes`).
@@ -891,9 +895,9 @@ the reverse.
   `update`. ·
   `return` output or terminate · `other` none of the above
 
-Steps may reference Level-1 nodes outside the parent
-(e.g. `proof_step uses Lemma 2.3`), but step-to-step edges across
-different parents are not permitted.
+Steps may reference Level-1 nodes outside their proof or algorithm
+(e.g. `proof_step uses Lemma 2.3`), but an edge between steps of different
+proofs or algorithms is not permitted.
 
 ## Extraction notes
 
@@ -958,18 +962,18 @@ otherwise leave it as an empty string.
 2. Emit a node for every environment fact (a restated copy excepted: see "One
    node per repeated statement"). Then find everything the facts
    do not cover: definitions, results, remarks, claims, problems and
-   algorithms stated in prose, including a term or notation defined in a
-   sentence ("we denote", "we write", "is called") and a cited result the
+   algorithms stated in prose, including introduced terms and symbols (see
+   "Introduced terms and symbols are definitions") and a cited result the
    paper states in full.
 3. Assign compact IDs as you create nodes; source order within a type is
    preferred but not required (see "Compact ID convention").
-4. For each node: copy its `statement` (core rule #1), write its
-   `statement_short` (core rule #2) and fill its fields (see "Schema").
+4. For each node: decide its type (Hard rule 4, type-promotion included), copy
+   its `statement` (core rule #1), write its `statement_short` (core rule #2)
+   and fill its fields (see "Schema").
 5. Apply step extraction for proofs and algorithms (see "Level-2 steps").
-6. Apply type-promotion (Hard rule 4).
-7. Build the dependency edges in the four passes of "Edge coverage". (Edges a
-   `\ref` states are added by the finishing step in step 8.)
-8. In the script you write to build the output (`graph` below is the output
+6. Build the dependency edges in the four passes of "Edge coverage". (Edges a
+   `\ref` states are added by the finishing step in step 7.)
+7. In the script you write to build the output (`graph` below is the output
    dict, with `metadata`, `nodes` and `edges`), finish and check it before
    writing it:
 
@@ -979,15 +983,14 @@ otherwise leave it as an empty string.
        report = finalize(graph, read_tex("{TEX_SOURCE}"))
        assert not report["errors"], report["errors"]
 
-   It fills `label` and `source_line_label`, writes the paper's full `\label`
-   table to `metadata.labels` (so every `\ref` kept in a statement resolves),
-   adds the `\ref`-stated `uses` edges and syntax-stated `proves` edges, and
-   validates (verbatim spans,
-   edge types and endpoints, circular reasoning, step parents). Fix every error and
-   re-run. A warning that a defined term is used with no edge lists the nodes
-   that use it: add each edge, unless the word is used there in another sense. A `\ref` that points backward is added with `"backward": true`;
-   list `report["ref_backward"]` in your final report.
-9. Write the JSON to the output file, {OUTPUT_JSON}:
+   It fills the fields and edges listed under "Two layers" and validates
+   (verbatim spans, edge types and endpoints, circular reasoning, step
+   parents). Fix every error and re-run. Act on each warning: a defined term or
+   symbol used with no edge (add each edge, unless the word is used there in
+   another sense), an introduced symbol with no definition node, or a definition
+   node that introduces several symbols (split it). List
+   `report["ref_backward"]`, the `\ref`s that point backward, in your report.
+8. Write the JSON to the output file, {OUTPUT_JSON}:
 
    ```json
    {
