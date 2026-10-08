@@ -1,1 +1,1 @@
-../merged_eval_silver_001_011_v3/snapshots/step_17_paper450/distilled_rules.py
+../../../extractors/rules/silver_v5.1__subset_selection__2026-08/distilled_rules.py
