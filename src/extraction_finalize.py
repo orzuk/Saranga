@@ -52,6 +52,8 @@ PAPER_STYLES = {"theorem_proof", "formal", "derivation", "modeling", "computatio
 NOTE_CATEGORIES = {"type_uncertain", "boundary_uncertain", "unexpected_construct", "rule_conflict",
                    "source_problem", "not_extracted"}
 _REF = re.compile(r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}")
+_REF_RANGE = re.compile(r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}\)?\s*(?:--|–|-|to)\s*\(?"
+                        r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}")
 
 
 def _key(s: str) -> str:
@@ -438,9 +440,13 @@ def check_defined_terms(graph: dict, spans: dict, parent: dict, report: dict) ->
                     text = lp.sub(" ", text)
                 return bool(pat.search(text))
         mine = family(d["id"])
+        # a later definition of the same term or symbol takes over from there
+        until = min((spans[e["id"]][0] for e in graph["nodes"] if e["id"] != d["id"]
+                     and e["id"] in spans and spans[e["id"]][0] > spans[d["id"]][0]
+                     and term_of(e) == (kind, term)), default=float("inf"))
         missing = [n["id"] for n in graph["nodes"]
                    if n["id"] not in mine and n["id"] in spans
-                   and spans[n["id"]][0] > spans[d["id"]][0]
+                   and spans[d["id"]][0] < spans[n["id"]][0] < until
                    and uses(n.get("statement"))
                    and not (out.get(d["id"], set()) & family(n["id"]))]
         if missing:
@@ -449,7 +455,7 @@ def check_defined_terms(graph: dict, spans: dict, parent: dict, report: dict) ->
                                       + ", ".join(missing[:12]) + (" ..." if len(missing) > 12 else ""))
 
 
-_INTRO_SYM = [re.compile(r"\b[Ll]et\s+\$([^$]{1,40})\$\s+(?:be|denote)\b"),
+_INTRO_SYM = [re.compile(r"\b[Ll]et\s+\$([^$]{1,40})\$\s+(?:be|denote)\b(?!\s+(?:as\s+(?:in|above|before|defined)|defined\s+(?:in|as\s+in)))"),
               re.compile(r"\b[Ww]e\s+(?:denote|write)\b[^.$]{0,60}\$([^$]{1,40})\$"),
               re.compile(r"\$([^$=]{1,30}?)\s*:=")]
 
@@ -549,7 +555,15 @@ def finalize(graph: dict, tex: str) -> dict:
     for n in graph["nodes"]:
         if n.get("type") == "algorithm_step":
             continue
-        for key in _REF.findall(n.get("statement") or ""):
+        stmt = n.get("statement") or ""
+        found = _REF.findall(stmt)
+        order = list(facts["labels"])           # document order
+        for a, b in _REF_RANGE.findall(stmt):   # \eqref{a}--\eqref{b}: everything between
+            if a in facts["labels"] and b in facts["labels"]:
+                i, j = order.index(a), order.index(b)
+                kind = facts["labels"][a]["kind"]
+                found += [k for k in order[i + 1:j] if facts["labels"][k]["kind"] == kind]
+        for key in found:
             keys = [key] if (key.strip() in facts["labels"] or "," not in key) else key.split(",")
             for k in keys:
                 lab = facts["labels"].get(k.strip())

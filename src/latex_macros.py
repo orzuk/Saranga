@@ -1055,4 +1055,13 @@ def read_definitions(src, clean=True, spans=False):
                 rec["span"] = (m.start(), end)
                 rec["spans"] = out.get(name, {}).get("spans", []) + [(m.start(), end)]
             out[name] = rec
+    # \newcommand\phif\varphi: a body of one control word, without braces
+    for m in re.finditer(r"\\(?:new|renew|provide)command\*?\s*\\(?P<name>[A-Za-z@]+)"
+                         r"\s*(?P<body>\\[A-Za-z@]+)(?![A-Za-z@{\[])", src):
+        rec = {"expansion": m.group("body"), "kind": classify(m.group("body")), "arity": 0}
+        if spans:
+            rec["form"] = "command"
+            rec["span"] = (m.start(), m.end())
+            rec["spans"] = out.get(m.group("name"), {}).get("spans", []) + [(m.start(), m.end())]
+        out[m.group("name")] = rec
     return out

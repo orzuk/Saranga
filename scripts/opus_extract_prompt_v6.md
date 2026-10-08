@@ -235,7 +235,8 @@ Level-1 nodes from their spans. Never draw a `uses` edge to express containment.
     **Wrong:** putting `"contradiction"` in `tags[]` of a proof node.
     **Right:** `tags: ["graph_coloring"]`, `proof_strategy: ["contradiction", "minimal_counterexample"]`.
 
-9. **`section` is the plain section title.** Do not include LaTeX labels,
+9. **`section` is the plain section title,** taken from the facts entry
+    (`sections`), never written by you. Do not include LaTeX labels,
     cross-reference identifiers, or parenthesized provenance markers.
 
     - **Wrong:** `"section": "3 Monotonic Improvement (alg:pialg)"`
@@ -539,8 +540,14 @@ remark or problem stated in running text), the `statement` is:
 - **One node per repeated statement.** When the paper states the same result or
   definition twice (in the abstract or introduction, then formally; or restated
   in an appendix), emit one node: the copy that is an environment if only one
-  is, else the numbered one, else the first. The other copy gets no node; for every `\ref`
+  is, else the numbered one, else the fuller statement (never the abstract's
+  copy when the body states it). The other copy gets no node; for every `\ref`
   to its `\label`, add by hand the `uses` edge from the kept node, confidence `0.9`.
+- **Parts proved separately are claims.** When the paper proves the parts of a
+  result at different places (part (a) in Section 3, part (b) in Section 5) and
+  other nodes rely on single parts, emit each part as a `claim` nested in the
+  result, whose statement is that part's text; `proves` and `uses` edges go to
+  the part they concern.
 - **A proof proves a result.** When a proof follows an example or a remark, the
   assertion it proves is a result: emit it as a `claim` nested in the example,
   whose statement is the sentence that asserts it, or retype as `claim` a remark
@@ -606,9 +613,9 @@ is yours. Build the dependency edges in four passes:
    proposition"), add a `uses` edge from the named node, confidence `0.9`.
 2. **Defined terms.** For each definition, search the prepared source for its
    `definiendum` and for the symbol it introduces, and add a `uses` edge from
-   the definition to every later node that uses it, confidence `0.7`–`0.85`.
-   The edge goes to the innermost node that uses it: an edge to a step covers its
-   proof.
+   the definition to every later Level-1 node that uses it, confidence
+   `0.7`–`0.85`. A use inside a proof gets one edge, to the proof, not one per
+   step.
 3. **Results built on results.** For each result and proof, add a `uses` edge
    from every result it applies, earlier or later.
 4. **Inside a proof.** A step that relies on an earlier step's conclusion, in the
@@ -1005,7 +1012,7 @@ otherwise leave it as an empty string.
        "annotator": "agent-extraction",
        "model": "{MODEL}",
        "effort": "{EFFORT}",
-       "prompt_version": "v6",
+       "prompt_version": "{PROMPT_VERSION}",
        "extraction_date": "YYYY-MM-DD",
        "rigor_nonformal_count": 0,
        "paper_style": ["theorem_proof"],

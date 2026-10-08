@@ -125,11 +125,12 @@ _LABEL_PATTERNS = {
     "part":   _WRAP + r"Part\s*~?\(?\s*(?:\d+|[ivx]+|[a-d])\s*\)?\s*\}?\s*[.:)]",
     "induct": _WRAP + r"(?:Base case|Basis(?: step)?|Induction step|Inductive step)\s*\}?\s*[.:]",
     "heading": r"\\(?:textbf|emph|textit|texttt|textsf|textsl|underline)\s*\{[^{}$]{2,60}?[.:]?\s*\}\s*[.:]?",
+    "heading_switch": r"\{\s*\\(?:it|bf|em|sc|sl)\b\s*[A-Z][^{}$]{1,58}?[.:]?\s*\}\s*[.:]?",
     "degree":  r"\$\s*\d+\s*\^\s*\{?\s*\\circ\s*\}?\s*\$\s*[.:)]?",
     "implication": (r"\(\s*(?:\d+|[ivx]+|[a-d])\s*\)\s*\$?\s*\\(?:Long|long)?(?:[Rr]ightarrow|[Ll]eftrightarrow|implies)"
                     r"\s*\$?\s*\(\s*(?:\d+|[ivx]+|[a-d])\s*\)\s*[.:]?"),
 }
-_PAREN = re.compile(r"\((?:i{1,3}|iv|vi{0,3}|ix|x|[a-h]|\d)\)(?=\s)")
+_PAREN = re.compile(r"\{?\((?:i{1,3}|iv|vi{0,3}|ix|x|[a-h]|\d)\)\}?(?=\s)")
 _RUN_IN = re.compile(r"\((?=[A-Z])(?:[^().,$]|\$[^$]*\$){2,40}\)(?=\s+(?:[A-Z]|\$|\\))")
 _NUMBERED = re.compile(r"(?:\\(?:smallskip|medskip|bigskip|par)\b\s*|\n\s*\n\s*"
                        r"|\\\\\*?(?:\[[^\]]*\])?\s*)(\d{1,2})\.\s")
@@ -320,7 +321,7 @@ def check_steps(body: str, structure: dict, steps: list[dict]) -> tuple[list[str
             errors.append(f"{s['id']}: exactly one child step; give it none or at least two")
     norm, idx = _norm_map(body)
     spans = math_spans(body)
-    starts = {}
+    starts, setups = {}, []
     for s in steps:
         key = re.sub(r"\s+", "", re.sub(r"\\(?:label|index)\s*\{[^{}]*\}", "", s.get("statement") or ""))
         i = norm.find(key[:40]) if key else -1
@@ -328,6 +329,10 @@ def check_steps(body: str, structure: dict, steps: list[dict]) -> tuple[list[str
             continue                      # verbatim errors are reported elsewhere
         pos = idx[i]
         starts[s["id"]] = pos
+        if s.get("subclass") == "setup":
+            j = norm.find(key, i)
+            if j >= 0:
+                setups.append((pos, idx[j + len(key) - 1] + 1))
         if _strictly_inside(pos, spans):
             errors.append(f"{s['id']}: step starts inside math")
         elif not _sentence_initial(body, pos) and not any(
@@ -351,6 +356,8 @@ def check_steps(body: str, structure: dict, steps: list[dict]) -> tuple[list[str
                 and not has_display and not has_ref):
             errors.append(f"{s['id']}: lone introduction sentence (join it to the next step)")
     for lab in required:                      # a nested proof sits inside a setup step (rule 10)
+        if any(a < lab["offset"] < b for a, b in setups):
+            continue                          # inside a quoted restatement (rule 5)
         if not any(abs(p - lab["offset"]) <= 12 for p in starts.values()):
             errors.append(f"author label {lab['text']!r} ({lab['kind']}) does not start a step")
     if _sentences(body) <= 2 and not structure["labels"]:

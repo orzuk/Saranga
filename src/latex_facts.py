@@ -284,6 +284,8 @@ def _is_proof_env(env: str, decl: dict) -> bool:
     a \\newtheorem{Proof}{Proof}): named like a proof, or titled "Proof"."""
     if re.fullmatch(r"[A-Za-z]*(?:proof|Proof|PROOF)s?(?:of|Of)?\*?", env):
         return True
+    if re.fullmatch(r"(?:proof|Proof)(?:outline|Outline|sketch|Sketch|idea|Idea)\*?", env):
+        return True
     if env.rstrip("*").lower() in ("pf", "prf", "demo", "dem", "demostracion", "preuve",
                                    "beweis", "dimostrazione", "proofof"):
         return True
@@ -1021,7 +1023,9 @@ def _associate_proofs(facts: list[dict], labels: dict, source: str) -> None:
                     break
         if f["proves"] is None:
             prev_end = max((e for e in by_end if e <= f["outer_start"]), default=None)
-            if prev_end is not None and not source[prev_end:f["outer_start"]].strip():
+            gap = source[prev_end:f["outer_start"]] if prev_end is not None else None
+            # only whitespace between them, or the opening of a wrapper (\new{\begin{proof})
+            if gap is not None and not re.sub(r"\\[A-Za-z]+\s*\{|\{|\s", "", gap):
                 f["proves"], f["proves_basis"] = by_end[prev_end]["id"], "adjacent"
 
 

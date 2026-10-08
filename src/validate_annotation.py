@@ -283,8 +283,9 @@ def reasoning_cycles(nodes: list[dict], edges: list[dict]) -> list[list[str]]:
     """Circular reasoning: a cycle made only of results, or only of definitions.
 
     A proof, and everything nested in it (its steps, its equations), stands for
-    the result it proves; results and definitions keep their own identity, so a
-    lemma stated inside a proof stays separate. Dependency edges are mapped onto
+    the result it proves, and so does a lemma or definition stated inside that
+    proof and used only there; a result or definition used outside the proof
+    it sits in, or not in a proof, keeps its own identity. Dependency edges are mapped onto
     these representatives, backward ones included (a circular argument can run
     through a forward reference); self-loops (an induction step applying the
     theorem itself) are dropped, and so are edges marked `"mention": true`. A
@@ -299,17 +300,38 @@ def reasoning_cycles(nodes: list[dict], edges: list[dict]) -> list[list[str]]:
         if n.get("type") == "proof" and n.get("proves") in by_id:
             proved.setdefault(n["id"], n["proves"])
 
+    def ancestors(x):
+        out, seen = [], set()
+        while x in by_id and x not in seen:
+            seen.add(x)
+            out.append(x)
+            x = by_id[x].get("parent_id")
+        return out
+
+    users = defaultdict(set)
+    for e in edges:
+        if e.get("type") in _DEPENDENCY and not e.get("mention"):
+            users[e.get("source")].add(e.get("target"))
+
+    def local_to(x, p):
+        """Every use of x lies inside proof p or is the result p proves."""
+        return all(p in ancestors(u) or u == proved.get(p) for u in users[x])
+
     def rep(x):
-        seen = set()
+        """The node, or the result of the proof it serves."""
+        own, seen = None, set()
         while x in by_id and x not in seen:
             seen.add(x)
             t = by_id[x].get("type")
-            if t in THEOREM_LIKE or t == "definition":
-                return x
             if t == "proof" and x in proved:
-                return proved[x]
+                if own is not None and not local_to(own, x):
+                    return own            # used elsewhere: keeps its identity
+                own, x = None, proved[x]  # part of what the proof proves,
+                continue                  # which may itself sit inside a proof
+            if own is None and (t in THEOREM_LIKE or t == "definition"):
+                own = x
             x = by_id[x].get("parent_id")
-        return None
+        return own
 
     found = []
     for group in (THEOREM_LIKE, {"definition"}):

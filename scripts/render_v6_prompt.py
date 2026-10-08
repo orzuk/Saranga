@@ -11,6 +11,7 @@ import argparse
 import csv
 import hashlib
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -20,7 +21,7 @@ from schema_for_prompts import render_prompt  # noqa: E402
 
 PROMPT = REPO / "scripts" / "opus_extract_prompt_v6.md"
 PLACEHOLDERS = ("BID", "TITLE", "AUTHORS", "YEAR", "TEX_SOURCE", "OUTPUT_JSON",
-                "REPO", "MODEL", "EFFORT")
+                "REPO", "MODEL", "EFFORT", "PROMPT_VERSION")
 
 
 def paper_row(bid):
@@ -40,7 +41,11 @@ def main():
     a = ap.parse_args()
     template = render_prompt(PROMPT.read_text())
     Path(a.prompt_dir).mkdir(parents=True, exist_ok=True)
-    print(f"prompt sha256 {hashlib.sha256(template.encode()).hexdigest()[:16]}")
+    sha = hashlib.sha256(template.encode()).hexdigest()[:16]
+    commit = subprocess.run(["git", "-C", str(REPO), "rev-parse", "--short", "HEAD"],
+                            capture_output=True, text=True).stdout.strip() or "unknown"
+    version = f"v6-{sha}-{commit}"             # the exact prompt and code of this run
+    print(f"prompt sha256 {sha}  version {version}")
     for bid in a.bids:
         r = paper_row(bid)
         tex = REPO / r["tex_path"]
@@ -54,6 +59,7 @@ def main():
             "REPO": str(REPO),
             "MODEL": a.model,
             "EFFORT": a.effort,
+            "PROMPT_VERSION": version,
         }
         text = template
         for k, v in values.items():
