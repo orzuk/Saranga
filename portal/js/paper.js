@@ -409,7 +409,6 @@
     generalizes: { color: "#3f7fbf", style: "solid" },
     specializes: { color: "#3f7fbf", style: "dashed" },
     illustrates: { color: "#8a8a8a", style: "dotted" },
-    solves:      { color: "#2c8a4d", style: "solid" },
     resolves:    { color: "#2c8a4d", style: "solid" },
     defines:     { color: "#8a8a8a", style: "dashed" }
   };

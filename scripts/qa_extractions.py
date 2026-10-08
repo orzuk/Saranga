@@ -12,7 +12,7 @@ This one sweeps for *structural and schema* problems:
   GRAPH       dangling edge endpoints; self-loops; duplicate node ids;
               duplicate edges; CYCLES (the graph must be a DAG)
   DIRECTION   edges whose endpoint types violate edge_types.py
-              (i.e. flipped `proves`/`illustrates`/`solves`/`tests`/`resolves`)
+              (i.e. flipped `proves`/`illustrates`/`tests`/`resolves`)
   SEMANTICS   proof nodes with no `proves` edge; Level-2 steps with no
               parent_id / dangling parent; theorem-like nodes with no proof;
               orphan nodes (no edges at all)
@@ -38,7 +38,7 @@ import edge_types as ET  # noqa: E402
 import node_types as NT  # noqa: E402
 
 VALID_NODES = set(NT.ALL_NODE_TYPES) if hasattr(NT, "ALL_NODE_TYPES") else set()
-VALID_EDGES = set(ET.ALL_EDGE_TYPES) | {"grounded_to", "solves"}
+VALID_EDGES = set(ET.ALL_EDGE_TYPES) | {"grounded_to"}
 LEVEL2 = {"proof_step", "algorithm_step"}
 THEOREM_LIKE = {"theorem", "lemma", "proposition", "corollary", "claim"}
 

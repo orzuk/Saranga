@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Normalize edge directions in extracted JSONs against the canonical schema.
 
-Some extractions emit structural edges (`proves`, `illustrates`, `solves`,
-`tests`, `resolves`) with source/target swapped, because the grammatical reading
+Some extractions emit structural edges (`proves`, `illustrates`, `tests`,
+`resolves`) with source/target swapped, because the grammatical reading
 ("B proves A") runs opposite to the wire direction that `src/edge_types.py`
 declares via source_types/target_types. This flips them to canonical form.
 

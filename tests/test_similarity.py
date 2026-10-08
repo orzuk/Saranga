@@ -157,8 +157,8 @@ def test_edges():
     check("generalizes is a subtype of uses", ES.edge_sim(e1, subtype), 0.8)
     check("uses vs proves: dependency vs structural (canonical 0.2)",
           ES.edge_sim(e1, other), 0.2)
-    check("edge policy matches graph_alignment's, unchanged",
-          ES.edge_type_compat("proves", "solves"), 0.8)
+    check("proves vs resolves: related structural types",
+          ES.edge_type_compat("proves", "resolves"), 0.6)
     check("opt-in table can refine generalizes/specializes",
           ES.edge_type_compat("generalizes", "specializes",
                               pair_table=ES.EDGE_TYPE_COMPAT_PROPOSED), 0.3)

@@ -10,7 +10,7 @@ Usage: python scripts/corpus_report.py [--dir <extraction dir>] [--md <out.md>]
 import argparse, collections, csv, glob, json, os, statistics
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CANON_EDGES = {"uses", "proves", "solves", "illustrates", "tests",
+CANON_EDGES = {"uses", "proves", "illustrates", "tests",
                "grounded_to", "specializes", "generalizes", "resolves"}
 
 
@@ -112,7 +112,7 @@ def main():
     w("| type | n | %% | canonical in `edge_types.py`? |"); w("|---|---|---|---|")
     for t, c in etype.most_common():
         w("| `%s` | %d | %.1f%% | %s |" % (t, c, 100 * c / te,
-          "yes" if t in {"uses","proves","solves","illustrates","tests","grounded_to","specializes","generalizes"} else "**NO — see E113**"))
+          "yes" if t in CANON_EDGES else "**NO — see E113**"))
     w("")
     w("## Field coverage\n")
     w("| field | nodes | %% |"); w("|---|---|---|")

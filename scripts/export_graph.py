@@ -92,7 +92,7 @@ def drop_implied(nodes, edges):
 
     Same rule as the viewer: a path is `generalizes` only if every edge on it
     is; anything else composes to `uses`; and the non-transitive types
-    (proves/illustrates/solves/resolves/tests) are never implied.
+    (proves/illustrates/resolves/tests) are never implied.
     """
     try:
         import networkx as nx

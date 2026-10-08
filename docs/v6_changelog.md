@@ -155,19 +155,128 @@ on cycles, not a prompt line.
 
 ---
 
+## 5. Two-layer extractor: LaTeX facts, then the LLM (2026-10-07)
+
+v6 extraction is a LaTeX-syntax parser plus an LLM for everything syntax cannot
+state. The parser knows LaTeX and nothing about distillation (it imports nothing
+from `src/LLMVersion/` or `extractors/`). It is the extractor a newcomer who knows
+LaTeX would write first; the distilled rule-based extractor comes later.
+
+- `src/latex_facts.py`: cleaned source; `\newtheorem` / `\declaretheorem` /
+  wrapper-environment declarations; environment spans; `\label`s attributed the way
+  LaTeX does (last numbered thing in the current group: section, theorem, equation
+  line, enumerate item, algorithm line, float); printed numbers replayed from the
+  counters, including `\theX` formats and resets; `\ref`s and `\cite`s; proof
+  targets from `[Proof of ...\ref]` or adjacency; shorthand macros (`\be`, `\Eq{}`,
+  `\nn`). Anything it cannot replay is null, never guessed.
+- `src/extraction_finalize.py`: fills `label` and `source_line_label`, adds
+  `\ref`-stated `uses` and syntax-stated `proves` edges, validates. The agent's
+  builder calls it before writing and must fix every error.
+- `src/algorithm_lines.py`: printed pseudocode line numbers (decision 2).
+
+Measured on the 200 v5.1 papers (2.2 s for the facts, 4.5 s for finalize):
+- 96% of environment facts match a v5.1 silver node span exactly; 98% of those
+  agree on type. 9,429 silver nodes (61%) have no environment: that is the LLM's job.
+- Printed numbers vs LaTeX's own .aux, on 15 compiled papers not used while
+  building it: theorem-likes 452 right / 2 wrong / 5 null; equations 681 / 6 / 177;
+  sections 114 / 6 / 2.
+- Proof targets: syntax and the v5.1 agents agree on 1,468 of 1,475 (99.5%).
+- Finalize would fill 2,948 labels (v5.1 has none) and add 1,005 `\ref`-stated
+  `uses` edges the agents missed; 93 `\ref`s would close a cycle (decision 5).
+- **v5.1 silver defect found:** 243 nodes in 2 papers (217 in `1403.5799v2`, 26 in
+  `1103.5544v1`) were extracted from text after `\end{document}`, which is not in
+  the paper. The cleaned `source` removes it.
+
+The cleaner removes TeX-disabled regions ("always cut"), which presumes the
+recommendation on E144 (decision 6).
+
+## 6. After the pilot (2026-10-07/08): hierarchy, positional backward edges, rule fixes
+
+**The graph is a hierarchy.** `parent_id` now means "is part of" for every node
+type: the innermost node whose statement contains this one. Equations inside a
+theorem/proof/definition, a lemma stated inside a proof, its proof, and steps all
+get a parent. For Level-1 nodes the post-pass computes it exactly from spans; the
+extractor sets it for steps, and a step with children must span them.
+Containment is never a `uses` edge (the post-pass rejects such edges). Schema:
+`node_types.py` (HIERARCHY), `annotation_schema.md` (Hierarchy section); legacy
+`parent_step`/`parent_proof`/`parent_algorithm` still read.
+
+**`backward` is set by position** in the post-pass (a uses/generalizes/specializes
+edge whose source comes after its target), not by whichever edge closes a cycle.
+
+**Model:** Opus 5.5 at `high` (pilot: 10 papers x 4 arms; see compare_pilot_arms.py).
+
+**Prompt rules added from the pilot** (40 agent reports, 53 issues: 9 already
+resolved, 14 won't-fix, the rest fixed): prose-node boundaries (whole sentences,
+one statement per node, minimal, asides are one remark, applied citations are not
+nodes, no partial overlap); unnamed prose results are `claim`; prose arguments are
+`proof` nodes at 0.6-0.8 (0.85-0.95 if labelled), before or after the result;
+interrupted proofs; rigor for routine facts; rule-7 claim openers/closers; rule-8
+case openers; equation facts that name a result; folklore and re-proved results'
+origin; restatements; inline claims as `claim` nodes only if numbered or cited;
+step confidence/section/origin; containers' subclass; one printed line = one
+step; consistency pass (regex rule vs builder scripts, `\WHILE{...}` verbatim,
+`proves` confidence, `exercise` in the type list, cleaned source, duplicate
+instructions removed).
+
+**Tool fixes:** proof environments `proofof`/`demo`/`pf`; `{\bf Case 1}`, `$1^\circ$`,
+"(1)=>(3)" labels; top-level list items only; step checks on every proof node;
+false alarms (displays, `\ref`, labels, `)`, `:`); `\begin{appendix}`; `\ref` in
+section titles; `\enum`/`\eref` label/ref macros; nested algorithmic dropped;
+line numbering (control words, `\\`, enumerate inside algorithm floats);
+sub-span verbatim checks; `\ref` edges into proof steps; old validator aligned.
+
 ## Open decisions before this can be frozen
 
-1. **`solves`** — four sources disagree: `SOLVES` is defined in `edge_types.py` but
-   excluded from `ALL_EDGE_TYPES`; `schema_for_prompts._EDGE_ORDER` omits it; prompt
-   L366 "EDGE TYPES (7)" omits it; the prompt's own direction table and a worked example
-   include it; the paper omits it; the corpus fired 24. Either make it canonical (count
-   → 8, paper macros change) or delete it (count stays 7, 24 edges migrate to `uses`).
-   **Left untouched in the v6 draft pending this decision.**
-2. **`source_line_label`** — accept as a new field this cycle, or defer with §F?
-3. **Rubric wording** — the trigger phrase lists in §3 and §4 are a first draft and
-   should be checked against real spans before freezing.
-4. **Scope confirmation** — is "no new node/edge types this cycle" right, or promote
-   `notation` now and update the paper's counts?
+1. **`solves`**: DECIDED 2026-10-07, merged into `resolves`. `resolves` now runs
+   from a `problem` / `open_problem` / `conjecture` (source) to the theorem-like
+   result or `algorithm` that settles it (target). `solves` is gone from
+   `edge_types.py`, `schema_for_prompts.py`, the v6 direction table and worked
+   example, `annotation_schema.md`, the algorithm `solves` field, every consumer,
+   and the rule extractor. The extractor now emits `problem → algorithm`, where it
+   used to emit `algorithm → problem`. There is no compatibility alias. The count
+   stays at 7. (The register's "24 edges" was a mid-run count; the finished v5.1
+   corpus has 141 `solves` + 30 `problem→algorithm uses` + 4 reversed.)
+2. **`source_line_label`**: DECIDED 2026-10-07. Kept, and filled by a deterministic
+   script, not by the LLM: `src/algorithm_lines.py` replays the numbering rules of
+   algorithmic, algpseudocode and algorithm2e. The extraction agent's builder calls
+   `fill_source_line_labels()` before the final write and must split any step the
+   script reports as MERGED (spanning several printed lines). Checked on the v5.1
+   corpus: the two papers that cite line numbers (1310.6780v3, 1604.03695v3) resolve
+   to the cited lines (spot-checked lines 4, 7, 13; 33 citations, all in range).
+   The script is a post-processor on any graph plus .tex, so the rule-based
+   extractor can call it too.
+3. **Rubric wording**: DONE 2026-10-07. Checked against 30 proofs (65 ambiguities
+   found). The proof_step rule is rewritten as nine ordered rules: author labels from
+   `facts.json` start steps; boundaries only at sentence ends; sentence-final paragraph
+   breaks are a strong hint; runs of Let/Take sentences form one step; meta/reduction/
+   recall sentences are `setup`; immediate sentences never stand alone; inline claims
+   nest; case-split openers and reunions; 0 steps for a body of at most 2 sentences,
+   never exactly 1. Subclass glosses added. `src/proof_structure.py` detects labels,
+   claim openers and paragraph breaks (facts) and checks steps (post-pass): a label not
+   starting a step, a step starting inside math or mid-sentence in lowercase, and
+   exactly one step are errors. On v5.1 data: 8.5% of 1,915 proofs carry author labels;
+   a sentence-final paragraph break coincides with a v5.1 step start 75% of the time
+   (49% next to a display, 33% mid-sentence).
+4. **Scope**: DECIDED 2026-10-07: no new types. 18 node types (16 + 2 Level-2),
+   7 edge types. `notation` stays a `definition` subclass.
+5. **E120, forward references and induction**: DECIDED 2026-10-07: keep the edge
+   and flag it `backward: true`. Acyclicity is required of the graph with flagged
+   edges removed. Silent deletion of a real edge is no longer allowed.
+6. **E144, TeX-disabled text inside spans**: DECIDED 2026-10-07: always cut, in the
+   deterministic first stage (`latex_facts.clean_source`: `%` comments, `\iffalse`,
+   `\if0`, `comment` environments, text after `\end{document}`), before the LLM sees
+   the source. The verbatim audit checks against the same cleaned source.
+7. **E12, `\ref`/`\cite` inside statements**: keep verbatim (recommendation, applied
+   for the pilot; not yet confirmed). The post-pass turns `\ref`s into `uses` edges.
+8. **`rigor`**: DECIDED 2026-10-07: confirmed as in section 1 (optional, default
+   `formal`, plus `metadata.rigor_nonformal_count`).
+9. **Extraction model**: DECIDED 2026-10-08: Opus 5.5, effort `high`; 200 papers first.
+10. **Extraction notes**: DECIDED 2026-10-08: the extractor writes
+    `metadata.paper_style`, `metadata.extraction_notes` (closed categories, short
+    free text, empty for an ordinary paper) and `metadata.extraction_comment` (free
+    text, at most 3 sentences, for what fits no category), for people to filter papers and revise the
+    prompt. The post-pass checks the categories; distillation ignores the notes.
 
 ## Before running
 

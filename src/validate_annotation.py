@@ -128,8 +128,9 @@ def validate(data: dict) -> list[str]:
 
         if n.get("type") == "proof":
             proves = n.get("proves")
-            if not proves:
-                warnings.append(f"WARNING: Proof '{nid}' has no 'proves' field.")
+            has_edge = any(e.get("source") == nid and e.get("type") == "proves" for e in edges)
+            if not proves and not has_edge:
+                warnings.append(f"WARNING: Proof '{nid}' has no 'proves' edge or field.")
             elif proves not in node_ids and proves not in {nd.get("id") for nd in nodes}:
                 errors.append(f"ERROR: Proof '{nid}' references '{proves}' which is not a node.")
 
@@ -158,12 +159,21 @@ def validate(data: dict) -> list[str]:
             continue
         expected_parent_type = LEVEL_2_PARENT_TYPE.get(ntype)
         actual_parent_type = node_type_by_id.get(parent_ref)
-        if expected_parent_type and actual_parent_type != expected_parent_type:
+        # steps nest: a step's parent is its proof/algorithm or another step of its kind
+        if expected_parent_type and actual_parent_type not in (expected_parent_type, ntype):
             errors.append(
                 f"ERROR: Level-2 node '{nid}' (type='{ntype}') references "
                 f"parent '{parent_ref}' of type '{actual_parent_type}'; "
                 f"expected parent type '{expected_parent_type}'."
             )
+
+    # --- 1c. Hierarchy: any node may have a parent ("is part of"); it must exist ---
+    for n in nodes:
+        if n.get("type") in LEVEL_2_TYPES or not n.get("parent_id"):
+            continue
+        if n["parent_id"] not in node_type_by_id:
+            errors.append(f"ERROR: node '{n.get('id')}' has parent_id "
+                          f"'{n['parent_id']}' which is not a node in this annotation.")
 
     # --- 2. Edge references ---
     for i, e in enumerate(edges):

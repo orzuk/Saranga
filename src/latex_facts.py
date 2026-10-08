@@ -1,0 +1,978 @@
+#!/usr/bin/env python3
+"""LaTeX facts: what a paper's source states by syntax alone, before any judgment.
+
+The v6 extractor has two layers. This is the first: a parser that knows LaTeX
+syntax and nothing else. It reads the commands any LaTeX user would recognise
+(\\newtheorem, \\begin{...}/\\end{...}, \\label, \\ref, \\cite, \\section, \\appendix)
+and reports what they say: which environments exist, where their bodies start
+and end, what the author named them, what number the PDF prints for them, which
+section they sit in, and what they reference. The second layer, the LLM, reads
+these facts and does everything syntax cannot: results stated in prose, typing
+environments whose name is ambiguous, assumptions and conclusions, proof steps,
+dependencies with no \\ref.
+
+Deliberately independent of the rule-based extractor and of distillation: it
+imports nothing from LLMVersion/ or extractors/, and makes no judgment beyond
+mapping an author-declared environment name ("Lemma") to its node type.
+
+Offsets refer to the CLEANED source (`facts["source"]`), produced by
+`clean_source`: comments and TeX-disabled regions removed, nothing else
+changed. A node's `statement` is `span_text(source, start, end)`, which applies
+the extraction spec's remaining mechanical cleanup (drop \\label/\\index,
+collapse whitespace).
+
+Usage:
+    python3 src/latex_facts.py paper.tex                  # summary
+    python3 src/latex_facts.py paper.tex --out facts.json # full facts
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from proof_structure import detect as detect_proof_structure   # noqa: E402
+
+# ── Mechanical cleanup (the extraction spec's permitted edits) ──────────────
+
+_COMMENT = re.compile(r"(?<!\\)%[^\n]*")
+_DISABLED_ENV = re.compile(r"\\begin\{comment\}.*?\\end\{comment\}", re.S)
+# TeX's own conditionals. Anything else starting with "if" is not one: \\iff is
+# logical "if and only if", and must not be counted as an opening \\if.
+_TEX_CONDITIONALS = {"if", "ifx", "ifnum", "ifdim", "ifodd", "ifcase", "ifcat",
+                     "ifmmode", "ifvmode", "ifhmode", "ifinner", "ifvoid", "ifhbox",
+                     "ifvbox", "ifeof", "iftrue", "iffalse", "ifdefined", "ifcsname",
+                     "ifincsname", "ifpdf"}
+_IF_TOKEN = re.compile(r"\\(if[a-zA-Z@]*|fi)(?![a-zA-Z@])")
+
+
+def _drop_iffalse(s: str) -> str:
+    """Remove \\iffalse ... \\fi and \\if0 ... \\fi regions, respecting nested \\if...\\fi."""
+    conditionals = _TEX_CONDITIONALS | set(re.findall(r"\\newif\s*\\(if[a-zA-Z@]+)", s))
+    out, i = [], 0
+    pat = re.compile(r"\\iffalse(?![a-zA-Z@])|\\if\s*0(?![0-9])")
+    while True:
+        m = pat.search(s, i)
+        if not m:
+            out.append(s[i:])
+            return "".join(out)
+        out.append(s[i:m.start()])
+        depth, j = 1, m.end()
+        for t in _IF_TOKEN.finditer(s, j):
+            name = t.group(1)
+            if name == "fi":
+                depth -= 1
+            elif name in conditionals:
+                depth += 1
+            if depth == 0:
+                j = t.end()
+                break
+        else:
+            j = len(s)
+        i = j
+
+
+def clean_source(tex: str) -> str:
+    """Comments, \\iffalse/\\if0 regions and comment environments removed;
+    text after \\end{document} dropped. Everything else, including \\label and
+    whitespace, is kept so offsets stay meaningful."""
+    s = _COMMENT.sub("", tex)
+    s = _DISABLED_ENV.sub("", s)
+    s = _drop_iffalse(s)
+    # The paper ends at the first \end{document} after the LAST \begin{document}:
+    # LaTeX ignores everything after it (leftover sections, notes), and a source
+    # can hold a stub document (\begin{document}\includepdf{..}\end{document})
+    # before the real one. Cleaning a cleaned source is then a no-op.
+    end = s.find("\\end{document}", max(s.rfind("\\begin{document}"), 0))
+    return s[:end] if end != -1 else s
+
+
+# ── Preprocessing shared by every extractor: one source, before extraction ──
+
+_INPUT = re.compile(r"(?<!\\)\\(input|include|subfile)\s*\{([^{}#]+)\}")
+
+
+def read_tex(path: str, _depth: int = 0) -> str:
+    """The paper's source with every \\input / \\include / \\subfile inlined.
+
+    Files are looked up relative to the including file: as given, then with
+    .tex and .txt appended. An unresolvable file is left as the command, so
+    nothing is invented.
+    """
+    from pathlib import Path
+    p = Path(path)
+    text = p.read_text(encoding="utf-8", errors="replace")
+    if _depth >= 8:
+        return text
+
+    def inline(m):
+        name = m.group(2).strip()
+        for cand in (p.parent / name, p.parent / f"{name}.tex", p.parent / f"{name}.txt"):
+            if cand.is_file():
+                return read_tex(str(cand), _depth + 1)
+        return m.group(0)
+    return _INPUT.sub(inline, text)
+
+
+def expand_macros(source: str) -> str:
+    """Expand the paper's own argument-free macros, its operators, and its
+    one-argument \\ref wrappers; remove their definitions.
+
+    - \\newcommand / \\renewcommand / \\providecommand / \\def without arguments:
+      each use is replaced by the body (\\gr -> \\Gamma, \\be -> \\begin{equation}).
+      A macro whose body contains itself is left alone.
+    - \\DeclareMathOperator{\\rank}{rank}: each \\rank becomes the operator name.
+    - \\newcommand{\\eqnref}[1]{Eq.~\\eqref{#1}}: \\eqnref{x} -> Eq.~\\eqref{x}, so
+      every reference is a standard \\ref the pipeline turns into an edge.
+    Other macros with arguments are kept as written. Reading the definitions
+    and substituting them are latex_macros' (one implementation of each,
+    shared with the macro glossary and the renderer). Run on the cleaned
+    source (comments already removed).
+    """
+    from latex_macros import read_definitions, expand_macros as _expand
+    defs, cut = {}, []
+    for name, d in read_definitions(source, clean=False, spans=True).items():
+        body = d["expansion"]
+        if d["form"] == "environment" or d.get("optional_default") is not None:
+            continue
+        if re.search(r"\\" + re.escape(name) + r"(?![A-Za-z@])", body):
+            continue                                    # self-referencing
+        is_ref = d["arity"] == 1 and re.search(r"\\(?:eqref|autoref|ref)\{#1\}", body)
+        if d["arity"] == 0 or is_ref:
+            defs[name] = d
+            cut.append(d["span"])
+    if not defs:
+        return source
+    out, pos = [], 0
+    for a, b in sorted(cut):
+        if a >= pos:
+            out.append(source[pos:a])
+            pos = b
+    out.append(source[pos:])
+    return _expand("".join(out), defs)
+
+
+def prepare_source(tex: str) -> str:
+    """The single preprocessing step every extractor uses before extraction:
+    clean (comments, disabled text, after \\end{document}), then expand macros.
+    Idempotent, so applying it to an already prepared source changes nothing.
+    Expansion repeats until stable, because expanding one macro can reveal new
+    definitions (\\newcommand{\\nc}{\\newcommand} then \\nc{\\I}{\\mathbf{I}})."""
+    s = clean_source(tex)
+    for _ in range(4):
+        new = expand_macros(s)
+        if new == s:
+            break
+        s = new
+    return s
+
+
+_LABEL_OR_INDEX = re.compile(r"\\(?:label|index)\s*\{[^{}]*\}")
+
+
+def span_text(source: str, start: int, end: int) -> str:
+    """The verbatim `statement` for a span: drop \\label/\\index, collapse whitespace."""
+    s = _LABEL_OR_INDEX.sub("", source[start:end])
+    return re.sub(r"\s+", " ", s).strip()
+
+
+# ── Brace helpers ───────────────────────────────────────────────────────────
+
+def _group(s: str, i: int, open_="{", close="}") -> tuple[str | None, int]:
+    """Read one balanced group starting at s[i] (after optional spaces)."""
+    j = i
+    while j < len(s) and s[j] in " \t\n":
+        j += 1
+    if j >= len(s) or s[j] != open_:
+        return None, i
+    depth, k = 0, j
+    while k < len(s):
+        c = s[k]
+        if c == "\\":
+            k += 2
+            continue
+        if c == open_:
+            depth += 1
+        elif c == close:
+            depth -= 1
+            if depth == 0:
+                return s[j + 1:k], k + 1
+        k += 1
+    return None, i
+
+
+# ── Environment names → node types (the author's own word, not a judgment) ──
+
+_NAME_TO_TYPE = {
+    "theorem": "theorem", "lemma": "lemma", "proposition": "proposition",
+    "corollary": "corollary", "claim": "claim", "fact": "claim",
+    "observation": "claim", "conjecture": "conjecture", "definition": "definition",
+    "definitions": "definition", "notation": "definition", "example": "example",
+    "examples": "example", "exercise": "exercise", "problem": "problem",
+    "open problem": "open_problem", "question": "open_problem",
+    "open question": "open_problem", "remark": "remark", "remarks": "remark",
+    "note": "remark", "assumption": "assumption", "assumptions": "assumption",
+    "hypothesis": "assumption", "condition": "assumption", "algorithm": "algorithm",
+    "proof": "proof",
+}
+
+# Environments some document classes define without a \newtheorem in the paper.
+# Environment names whose meaning is standard even when no \\newtheorem in the
+# source declares them (see theorem_declarations).
+_UNDECLARED_STANDARD = {
+    "theorem": "Theorem", "thm": "Theorem", "theo": "Theorem",
+    "lemma": "Lemma", "lem": "Lemma", "proposition": "Proposition", "prop": "Proposition",
+    "corollary": "Corollary", "cor": "Corollary", "claim": "Claim", "fact": "Fact",
+    "observation": "Observation", "conjecture": "Conjecture", "conj": "Conjecture",
+    "definition": "Definition", "defn": "Definition", "dfn": "Definition", "defi": "Definition",
+    "def": "Definition", "notation": "Notation", "example": "Example", "exa": "Example",
+    "exm": "Example", "exam": "Example", "ex": "Example", "exercise": "Exercise",
+    "problem": "Problem", "question": "Question", "openproblem": "Open problem",
+    "openquestion": "Open question", "open": "Open problem",
+    "remark": "Remark", "rem": "Remark", "rmk": "Remark", "note": "Note",
+    "assumption": "Assumption", "assumptions": "Assumptions", "hypothesis": "Hypothesis",
+}
+
+_CLASS_PREDEFINED = {
+    "llncs": ["theorem", "lemma", "corollary", "proposition", "definition", "example",
+              "exercise", "problem", "remark", "claim", "conjecture", "note",
+              "property", "question", "solution", "case"],
+    "svjour3": ["theorem", "lemma", "corollary", "proposition", "definition", "example",
+                "exercise", "problem", "remark", "claim", "conjecture", "note",
+                "property", "question", "solution", "case"],
+    "svmult": ["theorem", "lemma", "corollary", "proposition", "definition", "example",
+               "exercise", "problem", "remark", "claim", "conjecture", "note",
+               "property", "question", "solution", "case"],
+}
+
+_ALGORITHM_ENVS = {"algorithm", "algorithm*", "algorithmic", "procedure", "function"}
+_EQUATION_ENVS = {"equation", "multline", "align", "gather", "eqnarray", "flalign", "alignat"}
+
+
+def _name_to_type(display: str | None) -> str | None:
+    if not display:
+        return None
+    d = re.sub(r"\\[a-zA-Z]+\s*", "", display)      # "\bf Theorem" -> "Theorem"
+    d = re.sub(r"[{}]", "", d).strip().lower()
+    return _NAME_TO_TYPE.get(d)
+
+
+def _is_proof_env(env: str, decl: dict) -> bool:
+    """proof, proof*, and the papers' own proof environments (proofs, scproof,
+    a \\newtheorem{Proof}{Proof}): named like a proof, or titled "Proof"."""
+    if re.fullmatch(r"[A-Za-z]*(?:proof|Proof|PROOF)s?(?:of|Of)?\*?", env):
+        return True
+    if env.rstrip("*").lower() in ("pf", "prf", "demo", "dem", "demostracion", "preuve",
+                                   "beweis", "dimostrazione", "proofof"):
+        return True
+    d = decl.get(env)
+    return bool(d and _name_to_type(d["display"]) == "proof")
+
+
+def theorem_declarations(source: str) -> dict[str, dict]:
+    """env name -> {display, counter, within, starred} from the preamble and class."""
+    decl: dict[str, dict] = {}
+    m = re.search(r"\\documentclass\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}", source)
+    cls = m.group(1).strip() if m else ""
+    for env in _CLASS_PREDEFINED.get(cls, []):
+        decl[env] = {"display": env.capitalize(), "counter": None, "within": None,
+                     "starred": False, "source": f"class:{cls}"}
+    for m in re.finditer(r"\\(?:sp)?newtheorem(\*?)", source):
+        starred = bool(m.group(1))
+        env, j = _group(source, m.end())
+        if env is None:
+            continue
+        shared, j2 = _group(source, j, "[", "]")
+        j = j2 if shared is not None else j
+        display, j = _group(source, j)
+        if display is None:
+            continue
+        within, _ = _group(source, j, "[", "]")
+        env = env.strip()
+        decl[env] = {"display": display.strip(),
+                     "counter": None if starred else (shared.strip() if shared else env),
+                     "within": within.strip() if within else None,
+                     "starred": starred, "source": "newtheorem"}
+    for m in re.finditer(r"\\declaretheorem\s*(?:\[([^\]]*)\])?\s*\{([^}]*)\}", source):
+        opts, env = m.group(1) or "", m.group(2).strip()
+        name = re.search(r"name\s*=\s*\{?([^,}\]]+)", opts)
+        sibling = re.search(r"(?:sibling|sharenumber)\s*=\s*([^,\]]+)", opts)
+        within = re.search(r"(?:parent|numberwithin)\s*=\s*([^,\]]+)", opts)
+        starred = "numbered=no" in opts.replace(" ", "")
+        decl[env] = {"display": name.group(1).strip() if name else env.capitalize(),
+                     "counter": None if starred else (sibling.group(1).strip() if sibling else env),
+                     "within": within.group(1).strip() if within else None,
+                     "starred": starred, "source": "declaretheorem"}
+    # Wrapper environments: \newenvironment{remark}{\begin{rmk}\em}{\end{rmk}} is
+    # the theorem environment it opens, under another name (same counter and title).
+    for _ in range(2):                    # twice, for a wrapper of a wrapper
+        for m in re.finditer(r"\\(?:re)?newenvironment\*?\s*\{([^}]+)\}", source):
+            name, j = m.group(1).strip(), m.end()
+            for _opt in range(2):         # [nargs][default]
+                o, j2 = _group(source, j, "[", "]")
+                if o is None:
+                    break
+                j = j2
+            begin_code, _ = _group(source, j)
+            inner = re.match(r"\s*\\begin\s*\{([^}]+)\}", begin_code or "")
+            if inner and inner.group(1).strip() in decl and name not in decl:
+                decl[name] = dict(decl[inner.group(1).strip()],
+                                  source=f"wrapper:{inner.group(1).strip()}")
+    # A standard name the paper uses but never declares is defined by a class or
+    # package we do not see (a journal class such as arxbj, a missing .sty):
+    # it is still that environment. Its numbering is unknown.
+    for m in re.finditer(r"\\begin\s*\{([A-Za-z]+)(\*?)\}", source):
+        env, star = m.group(1) + m.group(2), m.group(2)
+        display = _UNDECLARED_STANDARD.get(m.group(1).lower())
+        if display and env not in decl:
+            decl[env] = {"display": display, "counter": None, "within": None,
+                         "starred": bool(star), "source": "undeclared"}
+    # Counters numbered within another theorem's counter inherit its `within`.
+    for env, d in decl.items():
+        c = d["counter"]
+        if c and c != env and c in decl and d["within"] is None:
+            d["within"] = decl[c]["within"]
+    return decl
+
+
+# ── Shorthand macros for environments (\be ... \ee, \Eq{...}) ───────────────
+
+def env_aliases(source: str) -> tuple[dict, dict, dict, dict]:
+    """Macros whose whole body is \\begin{X}, \\end{X}, or \\begin{X}#1\\end{X}.
+
+    Returns (begin_alias, end_alias, wrap_alias, nonumber_alias): macro name ->
+    environment (or, for the last, -> \\nonumber).
+    Only these exact shapes are recognised; any other macro is left alone.
+    """
+    begin, end, wrap, nonum = {}, {}, {}, {}
+    pat = re.compile(r"\\(?:re)?newcommand\*?\s*\{?\\([a-zA-Z]+)\}?\s*(\[\d\])?\s*\{"
+                     r"|\\def\s*\\([a-zA-Z]+)\s*(#1)?\s*\{")
+    for m in pat.finditer(source):
+        name = m.group(1) or m.group(3)
+        nargs = m.group(2) or m.group(4)
+        body, _ = _group(source, m.end() - 1)
+        if body is None:
+            continue
+        b = body.strip()
+        mb = re.fullmatch(r"\\begin\s*\{([^}]+)\}", b)
+        me = re.fullmatch(r"\\end\s*\{([^}]+)\}", b)
+        mw = re.fullmatch(r"\\begin\s*\{([^}]+)\}\s*#1\s*\\end\s*\{\1\}", b)
+        if mw and nargs:
+            wrap[name] = mw.group(1)
+        elif mb and not nargs:
+            begin[name] = mb.group(1)
+        elif me and not nargs:
+            end[name] = me.group(1)
+        elif re.fullmatch(r"\\(?:nonumber|notag)", b) and not nargs:
+            nonum[name] = b
+    return begin, end, wrap, nonum
+
+
+def label_ref_aliases(source: str) -> tuple[dict, dict]:
+    """One-argument macros that set a label or make a reference, e.g.
+    \\newcommand{\\enum}[1]{\\label{#1}} or \\newcommand{\\eref}[1]{(\\ref{#1})}.
+    Returns (label_aliases, ref_aliases): macro name -> key template ("eq:#1")."""
+    lab, ref = {}, {}
+    for m in re.finditer(r"\\(?:re)?newcommand\*?\s*\{?\\([a-zA-Z]+)\}?\s*\[1\]\s*\{"
+                         r"|\\def\s*\\([a-zA-Z]+)\s*#1\s*\{", source):
+        name = m.group(1) or m.group(2)
+        body, _ = _group(source, m.end() - 1)
+        if body is None:
+            continue
+        ml = re.search(r"\\label\s*\{([^{}]*#1[^{}]*)\}", body)
+        mr = re.search(r"\\(?:eq)?ref\s*\{([^{}]*#1[^{}]*)\}", body)
+        if ml:
+            lab[name] = ml.group(1).strip()          # key template, e.g. "eq:#1"
+        elif mr:
+            ref[name] = mr.group(1).strip()
+    return lab, ref
+
+
+# ── Main pass ───────────────────────────────────────────────────────────────
+
+_REF_CMDS = r"ref|eqref|cref|Cref|autoref|pageref|vref|thmref|nameref|Autoref|cpageref"
+_SEC_LEVEL = {"part": -1, "chapter": 0, "section": 1, "subsection": 2, "subsubsection": 3}
+_MULTILINE_EQ = {"align", "gather", "eqnarray", "flalign", "alignat"}
+_ALG_LINE_CMD = (r"STATE|State|IF|If|ELSIF|ElsIf|ELSE|Else|ENDIF|EndIf|FOR|For|FORALL|ForAll|"
+                 r"ENDFOR|EndFor|WHILE|While|ENDWHILE|EndWhile|REPEAT|Repeat|UNTIL|Until|"
+                 r"LOOP|Loop|ENDLOOP|EndLoop|RETURN|Function|Procedure")
+
+
+def _token_regex(aliases: set[str]) -> re.Pattern:
+    alias = (r"|\\(?P<alias>" + "|".join(sorted(map(re.escape, aliases), key=len, reverse=True))
+             + r")(?![a-zA-Z])") if aliases else ""
+    return re.compile(
+        r"\\(?P<sec>part|chapter|section|subsection|subsubsection)(?P<sstar>\*?)(?![a-zA-Z])"
+        r"|\\(?P<appendix>appendix)(?![a-zA-Z])"
+        r"|\\begin\s*\{(?P<begin>[^}]+)\}"
+        r"|\\end\s*\{(?P<end>[^}]+)\}"
+        r"|\\label\s*\{(?P<label>[^}]*)\}"
+        r"|\\(?P<refcmd>" + _REF_CMDS + r")\*?\s*\{(?P<ref>[^}]*)\}"
+        r"|\\(?P<citecmd>cite[a-zA-Z]*)\*?\s*(?:\[[^\]]*\]\s*){0,2}\{(?P<cite>[^}]*)\}"
+        r"|\\numberwithin\s*\{(?P<nw_ctr>[^}]*)\}\s*\{(?P<nw_in>[^}]*)\}"
+        r"|\\(?P<item>item)(?![a-zA-Z])"
+        r"|\\(?P<caption>caption)(?![a-zA-Z])"
+        r"|\\(?P<nonumber>nonumber|notag)(?![a-zA-Z])"
+        r"|(?P<newline>\\\\)"
+        r"|\\(?P<algline>" + _ALG_LINE_CMD + r")(?![a-zA-Z])"
+        + alias)
+
+
+def _brace_depth(s: str, start: int, end: int) -> int:
+    """Unescaped { minus } in s[start:end]: a \\\\ inside \\substack{...} is not a line break."""
+    seg = re.sub(r"\\.", "", s[start:end])   # drop escaped chars: \{ \} \\
+    return seg.count("{") - seg.count("}")
+
+
+_STYLE = {"arabic": str, "Alph": lambda n: _alph(n), "alph": lambda n: _alph(n).lower(),
+          "Roman": lambda n: _roman(n), "roman": lambda n: _roman(n).lower()}
+
+
+def _roman(n: int) -> str:
+    out = ""
+    for v, r in ((1000, "M"), (900, "CM"), (500, "D"), (400, "CD"), (100, "C"), (90, "XC"),
+                 (50, "L"), (40, "XL"), (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")):
+        while n >= v:
+            out, n = out + r, n - v
+    return out
+
+
+def counter_formats(source: str, counters: set[str]) -> tuple[dict, dict, set]:
+    r"""How the paper prints and resets its counters, where it says so explicitly.
+
+    Returns (formats, resets, unknown):
+      formats  counter -> list of parts: ("sec",) | ("lit", text) | ("ctr", style)
+               from \renewcommand{\theX}{...} or \def\theX{...}
+      resets   counter -> "section" from \@addtoreset / \counterwithin / \numberwithin
+      unknown  counters whose numbering we cannot replay: set or advanced by hand,
+               defined more than once, or printed by a format we do not parse.
+    Numbers for an unknown counter are reported as null, never guessed.
+    """
+    formats, resets, unknown = {}, {}, set()
+    defs: dict[str, list[str]] = {}
+    for m in re.finditer(r"\\(?:re)?newcommand\*?\s*\{?\\the([a-zA-Z]+)\}?\s*\{"
+                         r"|\\def\s*\\the([a-zA-Z]+)\s*\{", source):
+        ctr = m.group(1) or m.group(2)
+        if ctr not in counters:
+            continue                       # \theta, \therefore, ...
+        body, _ = _group(source, m.end() - 1)
+        if body is not None:
+            defs.setdefault(ctr, []).append(body)
+    for ctr, bodies in defs.items():
+        if len(set(b.strip() for b in bodies)) > 1:
+            unknown.add(ctr)
+            continue
+        parts, rest = [], bodies[0].strip()
+        while rest:
+            m = (re.match(r"\\thesection", rest) or re.match(r"\\arabic\s*\{section\}", rest))
+            if m:
+                parts.append(("sec",))
+            elif (m := re.match(r"\\(arabic|Alph|alph|Roman|roman)\s*\{" + re.escape(ctr) + r"\}", rest)):
+                parts.append(("ctr", m.group(1)))
+            elif (m := re.match(r"[0-9A-Za-z.\-]+", rest)):
+                parts.append(("lit", m.group(0)))
+            else:
+                unknown.add(ctr)
+                break
+            rest = rest[m.end():].lstrip()
+        else:
+            formats[ctr] = parts
+    for m in re.finditer(r"\\@addtoreset\s*\{([^}]*)\}\s*\{([^}]*)\}"
+                         r"|\\counterwithin\*?\s*\{([^}]*)\}\s*\{([^}]*)\}"
+                         r"|\\numberwithin\s*\{([^}]*)\}\s*\{([^}]*)\}", source):
+        ctr = (m.group(1) or m.group(3) or m.group(5)).strip()
+        within = (m.group(2) or m.group(4) or m.group(6)).strip()
+        resets[ctr] = within
+        star = m.group(0).startswith("\\counterwithin*") or m.group(0).startswith("\\@addtoreset")
+        if m.group(5) or (m.group(3) and not star):
+            formats.setdefault(ctr, [("sec",), ("lit", "."), ("ctr", "arabic")]) \
+                if within == "section" else unknown.add(ctr)
+    for m in re.finditer(r"\\(?:setcounter|addtocounter|stepcounter|refstepcounter)\s*\{([^}]*)\}",
+                         source):
+        if m.group(1).strip() in counters:
+            unknown.add(m.group(1).strip())
+    return formats, resets, unknown
+
+
+def _alph(n: int) -> str:
+    s = ""
+    while n > 0:
+        n, r = divmod(n - 1, 26)
+        s = chr(65 + r) + s
+    return s
+
+
+def extract_facts(tex: str) -> dict:
+    """Facts about a paper's LaTeX source. See the module docstring."""
+    source = prepare_source(tex)
+    decl = theorem_declarations(source)
+    a_begin, a_end, a_wrap, a_nonum = env_aliases(source)
+    body_start = source.find("\\begin{document}")
+    body_start = body_start if body_start != -1 else 0
+
+    # Events in document order: the tokenizer's matches, plus the synthetic
+    # \end that a wrapper macro (\Eq{...}) implies at its closing brace.
+    events = []
+    a_label, a_ref = label_ref_aliases(source)
+    aliases = set(a_begin) | set(a_end) | set(a_wrap) | set(a_nonum) | set(a_label) | set(a_ref)
+    for m in _token_regex(aliases).finditer(source, body_start):
+        if m.groupdict().get("alias"):
+            name = m.group("alias")
+            if name in a_wrap:
+                arg_start = source.find("{", m.end())
+                _, close = _group(source, m.end())
+                events.append((m.start(), "begin", a_wrap[name], arg_start + 1, m))
+                events.append((close - 1, "end", a_wrap[name], close, m))
+            elif name in a_begin:
+                events.append((m.start(), "begin", a_begin[name], m.end(), m))
+            elif name in a_nonum:
+                events.append((m.start(), "nonumber", None, m.end(), m))
+            elif name in a_label or name in a_ref:
+                arg, close = _group(source, m.end())
+                if arg is not None:
+                    tmpl = a_label.get(name) or a_ref.get(name)
+                    events.append((m.start(), "labelx" if name in a_label else "refx",
+                                   tmpl.replace("#1", arg.strip()), close, m))
+            else:
+                events.append((m.start(), "end", a_end[name], m.end(), m))
+        elif m.group("begin"):
+            events.append((m.start(), "begin", m.group("begin").strip(), m.end(), m))
+        elif m.group("end"):
+            events.append((m.start(), "end", m.group("end").strip(), m.end(), m))
+        else:
+            events.append((m.start(), "tok", None, m.end(), m))
+    events.sort(key=lambda e: e[0])
+    # \(re)newenvironment definitions written in the body hold \begin/\end
+    # fragments that are formatting code, not content.
+    defs = _newenvironment_spans(source, body_start)
+    if defs:
+        events = [e for e in events if not any(a <= e[0] < b for a, b in defs)]
+
+    facts: list[dict] = []
+    sections: list[dict] = []
+    labels: dict[str, dict] = {}
+    refs: list[dict] = []
+    cites: list[dict] = []
+
+    sec_ctr = {1: 0, 2: 0, 3: 0}
+    in_appendix = False
+    thm_ctr: dict[str, int] = {}
+    thm_counters = {d["counter"] for d in decl.values() if d["counter"]}
+    formats, resets, unknown = counter_formats(
+        source, thm_counters | {"equation", "section", "subsection", "subsubsection"})
+    for env, d in decl.items():          # a theorem counter's reset/format, from its declaration
+        c = d["counter"]
+        if c and d["within"] and c not in resets:
+            resets[c] = d["within"]
+    eq_ctr = 0
+    sub_eq: str | None = None            # number of an open subequations block
+
+    stack: list[dict] = []               # open captured environments (facts)
+    open_envs: list[str] = []            # every open environment
+    open_spans: list[tuple[int, int]] = []    # (\begin offset, body start), parallel to open_envs
+    environments: list[dict] = []        # the span of every environment, whatever its name
+    # LaTeX's \label refers to the last \refstepcounter in the current group;
+    # \begin opens a group, \end restores the target the group started with.
+    target: dict | None = None
+    group_targets: list = []
+    line_labels: list[str] = []          # labels waiting for a multi-line equation's line number
+    line_nonumber = False
+
+    def sec_number(level: int) -> str:
+        top = _alph(sec_ctr[1]) if in_appendix else str(sec_ctr[1])
+        return ".".join([top] + [str(sec_ctr[k]) for k in range(2, level + 1)])
+
+    def render(ctr: str, n: int, default_within: str | None) -> str | None:
+        if ctr in unknown:
+            return None
+        parts = formats.get(ctr)
+        if parts is None:
+            if default_within in ("section", "subsection", "subsubsection"):
+                lv = {"section": 1, "subsection": 2, "subsubsection": 3}[default_within]
+                return f"{sec_number(lv)}.{n}"
+            return str(n) if default_within is None else None
+        out = ""
+        for p in parts:
+            out += (sec_number(1) if p[0] == "sec" else p[1] if p[0] == "lit"
+                    else _STYLE[p[1]](n))
+        return out
+
+    def eq_number() -> str | None:
+        nonlocal eq_ctr
+        eq_ctr += 1
+        return render("equation", eq_ctr, None)
+
+    def enclosing() -> str | None:
+        for f in reversed(stack):
+            if f["kind"] != "equation":
+                return f["id"]
+        return None
+
+    def add_label(key: str, kind: str, id_: str | None, number: str | None):
+        labels.setdefault(key, {"kind": kind, "id": id_, "number": number,
+                                "enclosing": enclosing()})
+        if id_:
+            obj = next((f for f in reversed(stack) if f["id"] == id_), None)
+            if obj is not None:
+                obj["labels"].append(key)
+            for s in sections:
+                if s["id"] == id_:
+                    s["labels"].append(key)
+
+    def close_eq_line(fact: dict, final: bool = False):
+        nonlocal line_labels, line_nonumber
+        numbered = not fact["env"].endswith("*") and not line_nonumber and sub_eq is None
+        num = eq_number() if numbered else None
+        if num is None and not fact["env"].endswith("*") and sub_eq is None and not final:
+            line_nonumber = False             # amsmath: a \label on a \notag line
+            return                            # takes the next numbered line's number
+        for key in line_labels:
+            add_label(key, "equation", fact["id"], num)
+        if num and fact["number"] is None:
+            fact["number"] = num
+        line_labels, line_nonumber = [], False
+
+    def handle_label(key: str):
+        top = stack[-1] if stack else None
+        if top and top["kind"] == "equation" and (
+                top["env"].rstrip("*") not in _MULTILINE_EQ
+                or (open_envs and open_envs[-1] == top["env"])):
+            line_labels.append(key)
+        elif target is not None:
+            add_label(key, target["kind"], target["id"], target["number"])
+        else:
+            add_label(key, "unknown", None, None)
+
+    def handle_ref(keys: str, cmd: str, pos: int):
+        for key in keys.split(","):
+            r = {"cmd": cmd, "key": key.strip(), "offset": pos,
+                 "in": stack[-1]["id"] if stack else None}
+            refs.append(r)
+            for f in stack:
+                f["refs"].append(r["key"])
+
+    for pos, ev, env, after, m in events:
+        if ev == "begin" and env == "appendix":     # \begin{appendix} acts like \appendix
+            open_envs.append(env)
+            open_spans.append((pos, after))
+            group_targets.append(target)
+            in_appendix = True
+            sec_ctr.update({1: 0, 2: 0, 3: 0})
+            continue
+        if ev == "begin":
+            open_envs.append(env)
+            open_spans.append((pos, after))
+            group_targets.append(target)
+            base = env.rstrip("*")
+            if base == "subequations":
+                sub_eq = eq_number()
+                target = {"kind": "equation", "id": None, "number": sub_eq}
+                continue
+            is_proof = _is_proof_env(env, decl)
+            captured = (env in decl or is_proof or env in _ALGORITHM_ENVS
+                        or base in _EQUATION_ENVS)
+            if not captured:
+                continue
+            j = after
+            opt = None
+            if base not in _EQUATION_ENVS and base != "algorithmic":
+                o, j2 = _group(source, j, "[", "]")
+                if o is not None:
+                    opt, j = o, j2
+            d = decl.get(env)
+            number = None
+            if d and d["counter"]:
+                thm_ctr[d["counter"]] = thm_ctr.get(d["counter"], 0) + 1
+                n = thm_ctr[d["counter"]]
+                if d["source"].startswith("class:"):
+                    number = None                       # class numbering not replayed
+                else:
+                    number = render(d["counter"], n, d["within"])
+            if is_proof:
+                kind, ntype, display = "proof", "proof", "Proof"
+            elif env in _ALGORITHM_ENVS:
+                kind, ntype, display = "algorithm", "algorithm", "Algorithm"
+            elif base in _EQUATION_ENVS:
+                kind, ntype, display = "equation", "equation", None
+            else:
+                kind, display = "theorem_env", d["display"]
+                ntype = _name_to_type(display)
+            fact = {"id": f"F{len(facts) + 1}", "kind": kind, "env": env,
+                    "display": display, "type": ntype, "optarg": opt, "number": number,
+                    "labels": [], "refs": [], "cites": [],
+                    "section": sections[-1]["id"] if sections else None,
+                    "outer_start": pos, "start": j, "end": None, "outer_end": None,
+                    "parent": stack[-1]["id"] if stack else None}
+            facts.append(fact)
+            stack.append(fact)
+            if kind == "theorem_env":
+                target = {"kind": "env", "id": fact["id"], "number": number}
+            elif kind == "algorithm" and env != "algorithmic":
+                target = {"kind": "env", "id": fact["id"], "number": None}
+            elif kind == "equation":
+                # Numbered when the line ends, not when it opens: a \\nonumber
+                # anywhere in it suppresses the number.
+                line_labels, line_nonumber = [], False
+                target = None                         # labels wait for the line's number
+        elif ev == "nonumber":                        # a \nonumber shorthand such as \nn
+            line_nonumber = True
+        elif ev == "labelx":                          # a \label shorthand such as \enum{x}
+            handle_label(env)
+        elif ev == "refx":                            # a \ref shorthand such as \eref{x}
+            handle_ref(env, "alias", pos)
+        elif ev == "end":
+            if stack and stack[-1]["env"] == env:
+                f = stack[-1]
+                if f["kind"] == "equation" and env.rstrip("*") in _MULTILINE_EQ:
+                    last_line = source[f.get("_line_start", f["start"]):pos]
+                    if last_line.strip() or line_labels:
+                        close_eq_line(f, final=True)
+                elif f["kind"] == "equation":
+                    close_eq_line(f, final=True)
+                stack.pop()
+                f["end"], f["outer_end"] = pos, after
+            if env.rstrip("*") == "subequations":
+                sub_eq = None
+            if env in open_envs:
+                while open_envs:
+                    top = open_envs.pop()
+                    o_start, b_start = open_spans.pop()
+                    target = group_targets.pop() if group_targets else None
+                    if top == env:
+                        environments.append({"env": env, "outer_start": o_start,
+                                             "start": b_start, "end": pos, "outer_end": after})
+                        break
+        else:
+            g = m
+            if g.group("sec"):
+                level = _SEC_LEVEL[g.group("sec")]
+                title, _ = _group(source, g.end())
+                if title is None:
+                    continue
+                number = None
+                if not g.group("sstar") and level >= 1:
+                    sec_ctr[level] += 1
+                    for k in range(level + 1, 4):
+                        sec_ctr[k] = 0
+                    names = {1: "section", 2: "subsection", 3: "subsubsection"}
+                    reset_by = {names[lv] for lv in range(level, 4)}
+                    for c, within in resets.items():
+                        if within in reset_by:
+                            if c == "equation":
+                                eq_ctr = 0
+                            else:
+                                thm_ctr[c] = 0
+                    number = None if names[level] in unknown or "section" in unknown \
+                        else sec_number(level)
+                sec = {"id": f"S{len(sections) + 1}", "level": level,
+                       "title": re.sub(r"\s+", " ", _LABEL_OR_INDEX.sub("", title)).strip(),
+                       "number": number, "start": pos, "labels": []}
+                sections.append(sec)
+                target = {"kind": "section", "id": sec["id"], "number": number}
+            elif g.group("appendix"):
+                in_appendix = True
+                sec_ctr.update({1: 0, 2: 0, 3: 0})
+            elif g.group("label") is not None:
+                handle_label(g.group("label").strip())
+            elif g.group("newline"):
+                top = stack[-1] if stack else None
+                if top and top["kind"] == "equation" and top["env"].rstrip("*") in _MULTILINE_EQ \
+                        and open_envs and open_envs[-1] == top["env"] \
+                        and _brace_depth(source, top["start"], pos) == 0:
+                    close_eq_line(top)
+                    top["_line_start"] = g.end()
+            elif g.groupdict().get("nonumber"):
+                line_nonumber = True
+            elif g.group("item"):
+                if open_envs and open_envs[-1] == "enumerate":
+                    target = {"kind": "item", "id": None, "number": None}
+            elif g.group("caption"):
+                alg = next((f for f in reversed(stack) if f["kind"] == "algorithm"), None)
+                target = ({"kind": "env", "id": alg["id"], "number": None} if alg
+                          else {"kind": "float", "id": None, "number": None})
+            elif g.group("algline"):
+                if open_envs and open_envs[-1] == "algorithmic":
+                    target = {"kind": "line", "id": None, "number": None}
+            elif g.group("ref") is not None:
+                handle_ref(g.group("ref"), g.group("refcmd"), pos)
+            elif g.group("cite") is not None:
+                keys = [k.strip() for k in g.group("cite").split(",") if k.strip()]
+                cites.append({"keys": keys, "offset": pos,
+                              "in": stack[-1]["id"] if stack else None})
+                for f in stack:
+                    f["cites"].extend(keys)
+            elif g.group("nw_ctr") is not None:
+                pass                      # \numberwithin is read up front by counter_formats
+
+    for f in facts:                       # unclosed environments end at document end
+        f.pop("_line_start", None)
+        if f["end"] is None:
+            f["end"] = f["outer_end"] = len(source)
+        f["statement"] = span_text(source, f["start"], f["end"])
+    for r in refs:
+        t = labels.get(r["key"])
+        r["target"] = (t["id"] or t["enclosing"]) if t else None
+
+    _associate_proofs(facts, labels, source)
+    for f in facts:                       # author structure inside each proof
+        if f["kind"] == "proof":
+            nested = [g["outer_start"] - f["start"] for g in facts
+                      if g["kind"] == "proof" and g["parent"] == f["id"]]
+            st = detect_proof_structure(source[f["start"]:f["end"]], nested)
+            for item in st["labels"] + st["claims"]:
+                item["offset"] += f["start"]
+            st["paragraph_breaks"] = [b + f["start"] for b in st["paragraph_breaks"]]
+            f["structure"] = st
+    number_index = {}
+    for f in facts:
+        if f["number"] and f["display"]:
+            number_index[f"{_clean_display(f['display'])} {f['number']}"] = f["id"]
+    # Every display, numbered or not: the equation environments, plus \[..\] and
+    # $$..$$, which are not environments. Not facts (see below), but syntax.
+    displays = [{k: f[k] for k in ("env", "start", "end", "outer_start", "outer_end",
+                                   "labels", "number")}
+                for f in facts if f["kind"] == "equation"]
+    displays += _bare_displays(source, body_start, facts)
+    displays.sort(key=lambda d: d["outer_start"])
+    environments.sort(key=lambda e: e["outer_start"])
+    # Equations are facts only when the paper can point at them: a \label, or a
+    # printed number that prose can cite as "(3)". An unnumbered display is
+    # part of the text of the node that contains it, exactly like inline math.
+    facts = [f for f in facts if f["kind"] != "equation" or f["labels"] or f["number"]]
+    # an algorithmic block inside an algorithm float is the same algorithm, not a second one
+    kinds = {f["id"]: f["kind"] for f in facts}
+    facts = [f for f in facts if not (f["env"] == "algorithmic" and f["parent"]
+                                      and kinds.get(f["parent"]) == "algorithm")]
+    # section titles: \ref{key} rendered as the number it prints (rule 12: no raw refs)
+    for sec in sections:
+        sec["title"] = re.sub(r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}",
+                              lambda m: (labels.get(m.group(1).strip()) or {}).get("number")
+                              or m.group(1).strip(), sec["title"])
+    return {"source": source, "declarations": decl,
+            "aliases": {"begin": a_begin, "end": a_end, "wrap": a_wrap, "nonumber": a_nonum},
+            "facts": facts, "sections": sections, "labels": labels, "refs": refs,
+            "cites": cites, "number_index": number_index,
+            "environments": environments, "displays": displays}
+
+
+def _bare_displays(source: str, start: int, facts: list[dict]) -> list[dict]:
+    """\\[..\\] and $$..$$ displays from `start` on, outside equation environments.
+
+    `\\[` opens a display only when its backslash is itself unescaped: in
+    `\\\\[2pt]` (a line break with spacing) it does not.
+    """
+    toks = []
+    for m in re.finditer(r"(\\+)([\[\]])|(?<!\\)\$\$", source[start:]):
+        if m.group(1) is None:
+            toks.append((start + m.start(), "$$"))
+        elif len(m.group(1)) % 2 == 1:
+            toks.append((start + m.end() - 2, "\\" + m.group(2)))
+    eqs = [(f["outer_start"], f["outer_end"]) for f in facts if f["kind"] == "equation"]
+    out, opened = [], None
+    for pos, tok in toks:
+        if opened is None:
+            if tok in ("\\[", "$$"):
+                opened = (pos, tok)
+            continue
+        o_pos, o_tok = opened
+        if (o_tok, tok) in (("\\[", "\\]"), ("$$", "$$")):
+            if "\n\n" not in source[o_pos + 2:pos].strip() and not any(
+                    a <= o_pos and pos + 2 <= b for a, b in eqs):
+                body = source[o_pos + 2:pos]
+                out.append({"env": o_tok, "start": o_pos + 2, "end": pos,
+                            "outer_start": o_pos, "outer_end": pos + 2,
+                            "labels": re.findall(r"\\label\s*\{([^{}]*)\}", body),
+                            "number": None})
+            opened = None
+        elif tok in ("\\[", "$$"):                 # unclosed: restart at the new opener
+            opened = (pos, tok)
+    return out
+
+
+def _newenvironment_spans(source: str, start: int) -> list[tuple[int, int]]:
+    """Spans of \\newenvironment / \\renewenvironment definitions from `start` on."""
+    out = []
+    for m in re.finditer(r"\\(?:re)?newenvironment\*?\s*\{[^{}]*\}", source[start:]):
+        j = start + m.end()
+        for _ in range(2):                    # [nargs] [default]
+            arg, k = _group(source, j, "[", "]")
+            if arg is None:
+                break
+            j = k
+        for _ in range(2):                    # {begin code} {end code}
+            arg, k = _group(source, j)
+            if arg is None:
+                break
+            j = k
+        out.append((start + m.start(), j))
+    return out
+
+
+def _clean_display(display: str) -> str:
+    d = re.sub(r"\\[a-zA-Z]+\s*", "", display)
+    return re.sub(r"[{}]", "", d).strip().lower()
+
+
+_THEOREM_LIKE = {"theorem", "lemma", "proposition", "corollary", "claim", "conjecture"}
+
+
+def _associate_proofs(facts: list[dict], labels: dict, source: str) -> None:
+    """A proof's target, where syntax states it.
+
+    `optarg`: \\begin{proof}[Proof of Theorem~\\ref{x}] names the result.
+    `adjacent`: the proof begins right after a theorem-like environment ends,
+    with only whitespace between them (the amsthm convention).
+    Otherwise None: that is a judgment for the LLM.
+    """
+    by_end = {}
+    for f in facts:
+        if f["kind"] == "theorem_env" and f["type"] in _THEOREM_LIKE:
+            by_end[f["outer_end"]] = f
+    for f in facts:
+        if f["kind"] != "proof":
+            continue
+        f["proves"], f["proves_basis"] = None, None
+        if f["optarg"]:
+            for key in re.findall(r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}", f["optarg"]):
+                t = labels.get(key.strip())
+                if t and t["kind"] == "env":
+                    f["proves"], f["proves_basis"] = t["id"], "optarg"
+                    break
+        if f["proves"] is None:
+            prev_end = max((e for e in by_end if e <= f["outer_start"]), default=None)
+            if prev_end is not None and not source[prev_end:f["outer_start"]].strip():
+                f["proves"], f["proves_basis"] = by_end[prev_end]["id"], "adjacent"
+
+
+def summary(fx: dict) -> str:
+    from collections import Counter
+    kinds = Counter((f["kind"], f["type"]) for f in fx["facts"])
+    resolved = sum(r["target"] is not None for r in fx["refs"])
+    proves = Counter(f.get("proves_basis") for f in fx["facts"] if f["kind"] == "proof")
+    lines = [f"declared environments: {len(fx['declarations'])}",
+             f"facts: {len(fx['facts'])}  sections: {len(fx['sections'])}  "
+             f"labels: {len(fx['labels'])}",
+             f"refs: {len(fx['refs'])} ({resolved} resolve to a label in this paper)",
+             f"proofs: {dict(proves)}"]
+    for (k, t), n in sorted(kinds.items(), key=lambda x: -x[1]):
+        lines.append(f"  {n:5d}  {k:12s} {t}")
+    return "\n".join(lines)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("tex")
+    ap.add_argument("--out", help="write the full facts as JSON")
+    args = ap.parse_args()
+    fx = extract_facts(read_tex(args.tex))
+    print(summary(fx))
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as f:
+            json.dump(fx, f, ensure_ascii=False, indent=1)
+
+
+if __name__ == "__main__":
+    main()

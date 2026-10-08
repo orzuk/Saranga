@@ -22,7 +22,7 @@ Output columns:
     n_theorem_like (sum of the 7 theorem-like types),
     dag_acyclic (bool), dag_depth (int, -1 if cyclic),
     n_uses_edges, n_generalizes_edges, n_specializes_edges,
-    n_proves_edges, n_solves_edges, n_illustrates_edges,
+    n_proves_edges, n_illustrates_edges,
     n_tests_edges, n_resolves_edges,
     n_dependency_edges, n_structural_edges,
     n_orphan_proofs, n_isolated_nodes
@@ -63,7 +63,7 @@ TRACKED_TYPES = [
 # Edge types (matches edge_types.py canonical set)
 TRACKED_EDGE_TYPES = [
     "uses", "generalizes", "specializes",          # dependency
-    "proves", "solves", "illustrates", "tests", "resolves",  # structural
+    "proves", "illustrates", "tests", "resolves",  # structural
 ]
 
 # CSV column order
@@ -84,7 +84,7 @@ STAT_COLUMNS = [
     "dag_acyclic", "dag_depth",
     # Edge type breakdown
     "n_uses_edges", "n_generalizes_edges", "n_specializes_edges",
-    "n_proves_edges", "n_solves_edges", "n_illustrates_edges",
+    "n_proves_edges", "n_illustrates_edges",
     "n_tests_edges", "n_resolves_edges",
     "n_dependency_edges", "n_structural_edges",
     "n_orphan_proofs", "n_isolated_nodes",
@@ -422,7 +422,6 @@ def print_summary(stats_list: List[Dict[str, Any]]) -> None:
     print(_line("    specializes:    ", "n_specializes_edges"))
     print(f"  Structural edges:  {_total('n_structural_edges'):>8,}   (avg {_avg('n_structural_edges'):.1f})")
     print(_line("    proves:         ", "n_proves_edges"))
-    print(_line("    solves:         ", "n_solves_edges"))
     print(_line("    illustrates:    ", "n_illustrates_edges"))
     print(_line("    tests:          ", "n_tests_edges"))
     print(_line("    resolves:       ", "n_resolves_edges"))

@@ -25,11 +25,10 @@ from __future__ import annotations
 # CANONICAL policy, moved here verbatim from graph_alignment.edge_sim (which
 # now re-exports it). It is group-based rather than a hand-listed pair table,
 # deriving from edge_types.py's own grouping: DEPENDENCY_TYPES = {uses,
-# generalizes, specializes}, STRUCTURAL_TYPES = {proves, solves, illustrates,
-# tests, resolves}. Within-group confusions are cheap, cross-group are not.
+# generalizes, specializes}, STRUCTURAL_TYPES = {proves, illustrates, tests,
+# resolves}. Within-group confusions are cheap, cross-group are not.
 EDGE_SAME = 1.0
 EDGE_BOTH_DEPENDENCY = 0.8
-EDGE_PROVES_SOLVES = 0.8
 EDGE_PROVES_RESOLVES = 0.6
 EDGE_BOTH_STRUCTURAL = 0.5
 EDGE_MIXED = 0.2
@@ -71,12 +70,9 @@ def edge_type_compat(ta, tb, pair_table=None):
         from edge_types import DEPENDENCY_TYPES, STRUCTURAL_TYPES
     except Exception:
         DEPENDENCY_TYPES = {"uses", "generalizes", "specializes"}
-        STRUCTURAL_TYPES = {"proves", "solves", "illustrates", "tests",
-                            "resolves"}
+        STRUCTURAL_TYPES = {"proves", "illustrates", "tests", "resolves"}
     if ra in DEPENDENCY_TYPES and rb in DEPENDENCY_TYPES:
         return EDGE_BOTH_DEPENDENCY
-    if {ra, rb} <= {"proves", "solves"}:
-        return EDGE_PROVES_SOLVES
     if {ra, rb} == {"proves", "resolves"}:
         return EDGE_PROVES_RESOLVES
     if ra in STRUCTURAL_TYPES and rb in STRUCTURAL_TYPES:

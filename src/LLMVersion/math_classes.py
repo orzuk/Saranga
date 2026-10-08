@@ -634,7 +634,7 @@ class PaperGraph:
         """
         # --- Map edge type names to canonical schema ---
         # Canonical edge types: uses, generalizes, specializes, proves,
-        # solves, illustrates, tests, resolves (see src/edge_types.py)
+        # illustrates, tests, resolves (see src/edge_types.py)
         EDGE_TYPE_MAP = {
             "uses": "uses",
             "depends_on": "uses",
@@ -645,7 +645,6 @@ class PaperGraph:
             "related_to": "uses",
             "equivalent_to": "uses",
             "proves": "proves",
-            "solves": "solves",
             "illustrates": "illustrates",
             "tests": "tests",
             "resolves": "resolves",

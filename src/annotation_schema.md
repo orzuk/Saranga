@@ -25,6 +25,11 @@ Used by all extractors (baseline, LLM, student submissions) and evaluation tools
 | `paper_id` | string | arXiv ID (e.g., `"0711.0189"`) |
 | `sections` | string | Section range covered |
 | `annotator` | string | Who/what produced this annotation |
+| `labels` | object | Every `\label` in the paper: key → `{kind, number, node, within, section}`. `kind` is `env`, `equation`, `section`, `item`, `line`, `float` or `unknown`; `number` is the printed number when it can be replayed (else null); `node` is the node the label is on, `within` the node containing it when it is not a node itself. Written by `src/extraction_finalize.py`, so a `\ref{key}` kept in any statement resolves inside the JSON. |
+| `unresolved_refs` | list | `\ref` keys with no `\label` in this source (e.g. references into another file). |
+| `paper_style` | list | Set by the extractor: how the paper establishes its content, 1-2 of `theorem_proof`, `formal`, `derivation`, `modeling`, `computational`, `problem_list`, `expository`, `discursive`, `other`, dominant first. For filtering papers. (Environments vs prose is not recorded here; it is computed from how many nodes match environment facts.) |
+| `extraction_notes` | list | Set by the extractor: what was unusual about extracting this paper, each `{category, nodes, note}`. `category` is `type_uncertain`, `boundary_uncertain`, `unexpected_construct`, `rule_conflict`, `source_problem` or `not_extracted`; `nodes` lists the node ids concerned (may be empty). Free text for people (prompt revision, paper filtering); not used by distillation. Empty for an ordinary paper. |
+| `extraction_comment` | string | Set by the extractor: free text, at most 3 sentences, for anything unusual that fits no `extraction_notes` category (or explaining `paper_style: other`). Usually empty. |
 
 ---
 
@@ -126,6 +131,25 @@ drawn from `TAGS_VOCABULARY` in `src/node_types.py`. Validators warn but
 do not reject unknown tag values. Examples: `theorem` → `["existence",
 "uniqueness", "bound"]`; `algorithm` → `["iterative", "approximation"]`.
 
+### Hierarchy (`parent_id`)
+
+`parent_id` means **"is part of"**, for every node type. Each node is either
+top-level or has exactly one parent: the innermost node whose `statement` span
+contains its own span.
+
+- a `proof_step` belongs to its `proof`, or to a parent step (nesting);
+- an `algorithm_step` belongs to its `algorithm`, or to a loop/branch step;
+- an `equation` belongs to the theorem, proof, definition or step it sits in;
+- a lemma or claim stated inside a proof belongs to that proof (or step), and so
+  does that lemma's own proof.
+
+For Level-1 nodes the pipeline computes `parent_id` from the spans
+(`src/extraction_finalize.py`), so it is exact; for steps the extractor sets it
+by the step-nesting rules and the pipeline checks that the parent's span
+contains the child's. Containment is not also encoded as a `uses` edge, and a
+node with a parent does not count as an orphan. Legacy fields `parent_proof`,
+`parent_algorithm` and `parent_step` are accepted on input.
+
 ### Extra fields by type
 
 **Theorems, lemmas, corollaries, propositions, conjectures:**
@@ -149,7 +173,7 @@ do not reject unknown tag values. Examples: `theorem` → `["existence",
 
 | Field | Req | Type | Description |
 |-------|-----|------|-------------|
-| `parent_id` | **R** | string | ID of the parent Level 1 `proof` node (preferred). Legacy field `parent_proof` is still accepted. |
+| `parent_id` | **R** | string | ID of the enclosing `proof`, or of a parent `proof_step` when nested (see Hierarchy). Legacy field `parent_proof` is still accepted. |
 | `step_order` | O | int | 1-based sequential index within the parent proof |
 | `depends_on_step_ids` | O | list of strings | Other `proof_step` IDs in same proof this step uses |
 | `uses_node_ids` | O | list of strings | External nodes (lemmas/defs) invoked in this step |
@@ -159,11 +183,12 @@ do not reject unknown tag values. Examples: `theorem` → `["existence",
 
 | Field | Req | Type | Description |
 |-------|-----|------|-------------|
-| `parent_id` | **R** | string | ID of the parent Level 1 `algorithm` node (preferred). Legacy field `parent_algorithm` is still accepted. |
+| `parent_id` | **R** | string | ID of the enclosing `algorithm`, or of a loop/branch `algorithm_step` (see Hierarchy). Legacy field `parent_algorithm` is still accepted. |
 | `step_order` | O | int | 1-based sequential index within the parent algorithm |
 | `pseudocode` | O | string | The raw pseudocode line for this step |
+| `source_line_label` | O | string | The line number the PDF prints for this line (prose cites it: "line 7"). Set by `src/algorithm_lines.py`, not by the extractor; null when the paper does not number its lines. |
 
-**Design note:** proof steps are modeled as **first-class nodes** (with their own IDs, appearing in the top-level `nodes` list), not as a nested `steps[]` array inside the parent `proof`. This matches the course-chapter corpus convention and allows equations to reference a specific step via `parent_step`. The legacy nested `steps[]` form is deprecated — if encountered in older JSONs, migrate to first-class `proof_step` nodes.
+**Design note:** proof steps are modeled as **first-class nodes** (with their own IDs, appearing in the top-level `nodes` list), not as a nested `steps[]` array inside the parent `proof`. This matches the course-chapter corpus convention and lets an equation inside a step take that step as its `parent_id` (legacy `parent_step`). The legacy nested `steps[]` form is deprecated — if encountered in older JSONs, migrate to first-class `proof_step` nodes.
 
 **Universal `rigor` field** (available on ALL node types):
 
@@ -215,7 +240,6 @@ An optimization formulation is `type: "problem"` with `subclass: "optimization"`
 
 | Field | Req | Type | Description |
 |-------|-----|------|-------------|
-| `solves` | O | string | ID of the problem node this algorithm addresses |
 | `approximation_ratio` | O | string | e.g. `"1.5"`, `"O(log n)"`. null if exact. |
 | `complexity` | O | string | Time complexity: `"O(n^2)"`, `"O(m log m)"`, etc. |
 | `space_complexity` | O | string | Space complexity (optional) |
@@ -294,9 +318,9 @@ Never create both `uses` and `generalizes` between the same pair — use the mor
 | Type | "B [type] A" | Description |
 |------|-------------|-------------|
 | `proves` | "B proves A" | B is a proof establishing theorem A. Each proof has exactly one `proves` edge. |
-| `solves` | "B solves A" | B is an algorithm solving/addressing problem A. Parallels `proves`. |
 | `illustrates` | "B illustrates A" | B is an example demonstrating concept A. |
 | `tests` | "B tests A" | B is an exercise testing concept A. |
+| `resolves` | "B resolves A" | B settles A. A is a `problem`, `open_problem` or `conjecture`; B is a theorem-like result settling it, or an `algorithm` solving a `problem`. |
 
 **External edges:**
 

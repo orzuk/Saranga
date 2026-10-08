@@ -17,6 +17,7 @@ Public API:
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -48,12 +49,6 @@ _EDGE_ORDER = [
     ET.USES, ET.GENERALIZES, ET.SPECIALIZES,
     ET.PROVES, ET.ILLUSTRATES, ET.TESTS, ET.RESOLVES,
 ]
-# `solves` exists in edge_types.py but is not in the canonical 7-edge list
-# the manuscript advertises; emit it only in verbose mode.
-_EDGE_ORDER_VERBOSE = [
-    ET.USES, ET.GENERALIZES, ET.SPECIALIZES,
-    ET.PROVES, ET.SOLVES, ET.ILLUSTRATES, ET.TESTS, ET.RESOLVES,
-]
 
 
 # ── One-line descriptions per type (kept short for "standard" verbosity) ─
@@ -84,11 +79,11 @@ _EDGE_ONE_LINER = {
     ET.GENERALIZES: "B generalizes A — B is more general than A (subtype of `uses`)",
     ET.SPECIALIZES: "B specializes A — B is a special case of A (subtype of `uses`)",
     ET.PROVES:      "B proves A — B is a proof establishing theorem A",
-    ET.SOLVES:      "B solves A — B is an algorithm solving problem A",
     ET.ILLUSTRATES: "B illustrates A — B is an example demonstrating concept A",
     ET.TESTS:       "B tests A — B is an exercise testing concept A",
-    ET.RESOLVES:    ("B resolves A — B is a theorem-like result settling the "
-                     "truth of open_problem/conjecture A"),
+    ET.RESOLVES:    ("B resolves A — B is a theorem-like result settling "
+                     "problem/open_problem/conjecture A, or an algorithm "
+                     "solving problem A"),
 }
 
 
@@ -219,7 +214,7 @@ def get_schema_block(verbosity: str = "standard") -> str:
     lines.append("")
 
     # ── Edge types ──
-    edge_order = _EDGE_ORDER_VERBOSE if verbosity == "verbose" else _EDGE_ORDER
+    edge_order = _EDGE_ORDER
     lines.append(
         f"EDGE TYPES ({len(edge_order)}): " + ", ".join(edge_order) + "."
     )
@@ -274,8 +269,10 @@ def get_tags_for_type(node_type: str) -> str:
 def render_prompt(prompt_text: str, node_type_for_tags: str | None = None) -> str:
     """Substitute `{{SCHEMA_BLOCK}}` and `{{TAGS_FOR_THIS_TYPE}}` placeholders
     in a prompt template. Use this everywhere a prompt is loaded for an
-    LLM call.
+    LLM call. `<!-- ... -->` comments are notes for maintainers and are
+    removed, so the model never sees them.
     """
+    prompt_text = re.sub(r"<!--.*?-->\n?", "", prompt_text, flags=re.S)
     rendered = prompt_text.replace("{{SCHEMA_BLOCK}}", get_schema_block("standard"))
     if "{{TAGS_FOR_THIS_TYPE}}" in rendered:
         if node_type_for_tags is None:

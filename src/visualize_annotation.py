@@ -195,7 +195,6 @@ EDGE_COLORS = {
     "generalizes": "#00796B",   # subtypes of uses — same family, distinguishable
     "specializes": "#00838F",
     "proves":      "#6A1B9A",   # establishes the target
-    "solves":      "#AD1457",
     "resolves":    "#1976D2",   # kept from the previous hard-coded value
     "illustrates": "#2E7D32",   # pedagogical
     "tests":       "#558B2F",
@@ -2283,7 +2282,7 @@ def _classify_and_merge(nodes, edges):
 #     is NOT implied, and was being hidden anyway. (The converse does hold: an
 #     all-`generalizes` path DOES imply a `uses` edge, because edge_types.py
 #     declares generalizes/specializes to be subtypes of uses.)
-#   * `proves` / `illustrates` / `solves` / `resolves` / `tests` are not
+#   * `proves` / `illustrates` / `resolves` / `tests` are not
 #     transitive at all — a proof of a proof is not a proof of the conclusion —
 #     so they can never be implied, and were being hidden by any parallel path.
 _DEPENDENCY_EDGE_TYPES = ("uses", "generalizes", "specializes")
@@ -2446,7 +2445,7 @@ def generate_interactive_html(data, svg_path, html_path):
             # Port #5: HEAD-style "Decomposition" panel reads from step_info.
             "step_info": _steps,
             "equations": [{"id": e["id"], "statement": e.get("statement",""), "section": e.get("section",""),
-                          "context": e.get("context",""), "parent_step": e.get("parent_step","")}
+                          "context": e.get("context",""), "parent_step": e.get("parent_step") or e.get("parent_id","")}
                           for e in eq_map.get(nid, [])],
         }
     # Has-proof toggle (#1.a): collect ids of theorem-like nodes that

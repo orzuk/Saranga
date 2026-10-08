@@ -131,7 +131,7 @@ def compare_one(pid, pa, pb, args):
     print("  edge types A: %s" % dict(et_a))
     print("  edge types B: %s" % dict(et_b))
     noncanon = {t for t in et_b if t not in {
-        "uses", "specializes", "generalizes", "proves", "solves",
+        "uses", "specializes", "generalizes", "proves",
         "illustrates", "tests", "resolves", "grounded_to"}}
     if noncanon:
         print("  !! NON-CANONICAL edge types in B: %s" % sorted(noncanon))

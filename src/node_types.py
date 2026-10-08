@@ -32,8 +32,8 @@ PROOF = "proof"
 # Proof decomposition (Level 2 — optional fine-grained resolution):
 #   proof_step — one logical move within a proof. First-class node, NOT a
 #   nested array inside PROOF. Linked back to its parent via the
-#   `parent_proof` field (str: id of the PROOF node) or generic `parent_id`.
-#   Equations can attach to a specific proof_step via `parent_step`.
+#   `parent_id` (legacy: `parent_proof`). Equations and other nodes inside a
+#   step take the step as their `parent_id` (legacy: `parent_step`).
 #   Emitted only when extraction runs at "with_proof_steps" granularity;
 #   omitted at the default "theorem_level" granularity.
 PROOF_STEP = "proof_step"
@@ -174,7 +174,7 @@ OPTIONAL_NODE_FIELDS = (
     "input",             # algorithms: verbatim input descriptions
     "output",            # algorithms: verbatim output descriptions
     "origin_citation",   # required when origin == "external"
-    "parent_id",         # Level-2 steps: the parent proof/algorithm/step
+    "parent_id",         # any node: the innermost node whose text contains it (see HIERARCHY)
     "step_order",        # Level-2 steps: 1-based within the immediate parent
     "subclass",          # finer categorisation; see SUBCLASS_VALUES
     "proves",            # relational pointer
@@ -291,12 +291,11 @@ NODE_CONFIDENCE_FIELD = "confidence"
 #                                            element is invertible"])
 DEFINITION_EXTRA_FIELDS = {"definiendum", "genus", "differentia"}
 
-# Algorithm:
-#   solves:              str | null   — ID of the problem node this algorithm solves
+# Algorithm (the problem it solves is a `resolves` edge, not a field):
 #   approximation_ratio: str | null   — e.g. "1.5", "O(log n)", null if exact
 #   complexity:          str | null   — time complexity, e.g. "O(n^2)"
 #   space_complexity:    str | null   — space complexity
-ALGORITHM_EXTRA_FIELDS = {"solves", "approximation_ratio", "complexity",
+ALGORITHM_EXTRA_FIELDS = {"approximation_ratio", "complexity",
                           "space_complexity"}
 
 # Problem:
@@ -334,12 +333,15 @@ PROOF_STEP_EXTRA_FIELDS = {"parent_proof", "parent_id", "step_order",
 #   parent_id:           str          — generic Level 2 → Level 1 parent reference
 #   step_order:          int | null   — sequential index within the algorithm (1-based)
 #   pseudocode:          str | null   — the pseudocode line itself
+#   source_line_label:   str | null   — the line number the PDF prints for this line;
+#                                       set by algorithm_lines.fill_source_line_labels,
+#                                       never by hand, never derived from step_order
 ALGORITHM_STEP_EXTRA_FIELDS = {"parent_algorithm", "parent_id", "step_order",
-                               "pseudocode"}
+                               "pseudocode", "source_line_label"}
 
-# Equation (optional enrichment when attached to a proof step):
-#   parent_step:         str | null   — ID of a proof_step node that derives this equation
-EQUATION_EXTRA_FIELDS = {"parent_step"}
+# Equation: no extra fields. (Legacy `parent_step`, the proof_step an equation
+# sits in, is subsumed by the universal `parent_id`; readers still accept it.)
+EQUATION_EXTRA_FIELDS: set = set()
 
 # Assumption:
 #   scope:               str | null   — section/theorem ID(s) covered by this assumption
@@ -511,6 +513,16 @@ ALGORITHM_DECOMPOSITION = {ALGORITHM_STEP}
 #          fine-grained granularity (`with_proof_steps` / `with_algo_steps`).
 # Each Level 2 node MUST reference its Level 1 parent via `parent_id`
 # (or the legacy type-specific field `parent_proof` / `parent_algorithm`).
+#
+# HIERARCHY — `parent_id` means "is part of". Every node is either top-level
+# or has exactly one parent: the innermost node whose `statement` span contains
+# its own. That covers Level-2 steps (a proof_step in its proof or in a parent
+# step) and Level-1 nodes alike: an equation inside a theorem, proof or step; a
+# lemma stated inside a proof; that lemma's own proof. For Level-1 nodes the
+# pipeline computes it from the spans (src/extraction_finalize.py); for steps
+# the extractor sets it, following the step-nesting rules, and the pipeline
+# checks it. Containment is never also encoded as a `uses` edge, and a node
+# with a parent is not an orphan.
 
 LEVEL_1_TYPES = {
     THEOREM, LEMMA, PROPOSITION, COROLLARY, CLAIM, CONJECTURE,

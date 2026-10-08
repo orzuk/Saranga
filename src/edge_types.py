@@ -22,10 +22,9 @@ SPECIALIZES = "specializes"     # B specializes A (subtype of uses)
 
 # Structural edges
 PROVES = "proves"               # B proves A (proof → theorem)
-SOLVES = "solves"               # B solves A (algorithm → problem)
 ILLUSTRATES = "illustrates"     # B illustrates A (example → concept)
 TESTS = "tests"                 # B tests A (exercise → concept)
-RESOLVES = "resolves"           # B resolves A (theorem-like → open_problem/conjecture)
+RESOLVES = "resolves"           # B resolves A (problem/open_problem/conjecture → theorem-like or algorithm)
 
 # External edges
 GROUNDED_TO = "grounded_to"     # linked to foundation graph entry
@@ -36,7 +35,7 @@ GROUNDED_TO = "grounded_to"     # linked to foundation graph entry
 DEPENDENCY_TYPES = {USES, GENERALIZES, SPECIALIZES}
 
 # All structural types
-STRUCTURAL_TYPES = {PROVES, SOLVES, ILLUSTRATES, TESTS, RESOLVES}
+STRUCTURAL_TYPES = {PROVES, ILLUSTRATES, TESTS, RESOLVES}
 # Backward-compat alias matching the naming used elsewhere in the codebase.
 STRUCTURAL_EDGES = STRUCTURAL_TYPES
 
@@ -46,13 +45,10 @@ ALL_INTERNAL_TYPES = DEPENDENCY_TYPES | STRUCTURAL_TYPES
 # All edge types including external
 ALL_TYPES = ALL_INTERNAL_TYPES | {GROUNDED_TO}
 
-# Public alias used by smoke tests / external tooling. Refers to the
-# manuscript-advertised canonical edge taxonomy: 3 dependency + 4 structural
-# = 7 edge types. Excludes `solves` (legacy) and `grounded_to` (external
-# foundation-linker edge). Use `ALL_INTERNAL_TYPES` to also include `solves`,
-# or `ALL_TYPES` for the full set including `grounded_to`.
-ALL_EDGE_TYPES = (DEPENDENCY_TYPES |
-                  {PROVES, ILLUSTRATES, TESTS, RESOLVES})
+# The manuscript-advertised canonical edge taxonomy: 3 dependency + 4
+# structural = 7 edge types. Excludes `grounded_to` (external foundation-linker
+# edge); use `ALL_TYPES` for the full set.
+ALL_EDGE_TYPES = ALL_INTERNAL_TYPES
 
 
 # ── Source/target type constraints (theorem-like target sets) ───────────
@@ -90,19 +86,12 @@ EDGE_METADATA = {
         "source_types": lambda: {"proof"},
         "target_types": _theorem_like_provable,
     },
-    # NOTE (2026-07-30): SOLVES / ILLUSTRATES / TESTS previously declared the
-    # *actor* as the source (algorithm/example/exercise), which contradicted the
+    # NOTE (2026-07-30): ILLUSTRATES / TESTS previously declared the
+    # *actor* as the source (example/exercise), which contradicted the
     # module's own direction convention ("arrow A → B means A supports B / B
     # depends on A"). They now follow the uniform dependency convention: the
     # prerequisite is the source, the dependent thing is the target. So an
     # example DEPENDS ON the concept it illustrates → concept → example.
-    SOLVES: {
-        "group": "structural",
-        "description": "B solves A — arrow problem → algorithm; the algorithm "
-                       "(target) solves the problem (source).",
-        "source_types": lambda: {"problem"},
-        "target_types": lambda: {"algorithm"},
-    },
     ILLUSTRATES: {
         "group": "structural",
         "description": "B illustrates A — arrow concept → example; the example "
@@ -118,11 +107,12 @@ EDGE_METADATA = {
     RESOLVES: {
         "group": "structural",
         "description": (
-            "B resolves A — theorem-like B settles the truth of "
-            "open_problem or conjecture A."
+            "B resolves A — B settles A: a theorem-like result settles a "
+            "problem, open_problem or conjecture, or an algorithm solves a "
+            "problem."
         ),
-        "source_types": lambda: {"open_problem", "conjecture"},
-        "target_types": _theorem_like_provable,
+        "source_types": lambda: {"problem", "open_problem", "conjecture"},
+        "target_types": lambda: _theorem_like_provable() | {"algorithm"},
     },
     GROUNDED_TO: {
         "group": "external",
@@ -188,5 +178,8 @@ REQUIRED_EDGE_FIELDS = (
     "type",        # from ALL_EDGE_TYPES
     "confidence",  # 0-1
 )
-OPTIONAL_EDGE_FIELDS = ("note",)
+# `backward`: true on an edge that points against the paper's reading order, a
+# forward reference ("by Lemma 5 below") or an induction step using the result
+# itself. Acyclicity is required of the graph without these edges.
+OPTIONAL_EDGE_FIELDS = ("note", "backward")
 ALL_EDGE_FIELDS = REQUIRED_EDGE_FIELDS + OPTIONAL_EDGE_FIELDS
