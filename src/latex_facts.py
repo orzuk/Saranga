@@ -918,6 +918,12 @@ def extract_facts(tex: str) -> dict:
                    and f["outer_start"] < sec["start"] < f["outer_end"]]
         sec["inside"] = (min(holders, key=lambda f: f["outer_end"] - f["outer_start"])["id"]
                          if holders else None)
+    by_sec = {sec["id"]: k for k, sec in enumerate(sections)}
+    for f in facts:                       # a fact's section is the last heading of the paper,
+        k = by_sec.get(f["section"])      # not a \subsection{Step 1} inside an environment
+        while k is not None and k >= 0 and sections[k]["inside"] is not None:
+            k -= 1
+        f["section"] = sections[k]["id"] if k is not None and k >= 0 else None
     # section titles: \ref{key} rendered as the number it prints (rule 12: no raw refs)
     for sec in sections:
         sec["title"] = re.sub(r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}",

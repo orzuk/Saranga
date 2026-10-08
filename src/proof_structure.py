@@ -304,9 +304,10 @@ def check_steps(body: str, structure: dict, steps: list[dict]) -> tuple[list[str
     `steps` are the step nodes; their statements are verbatim spans of `body`.
     """
     errors, warnings = [], []
+    required = [lab for lab in structure["labels"] if lab["kind"] != "nested_proof"]
     if not steps:
-        if structure["labels"]:
-            errors.append(f"author labels present ({len(structure['labels'])}) but no proof_steps")
+        if len(required) >= 2:                # a single label alone is one move: zero steps
+            errors.append(f"author labels present ({len(required)}) but no proof_steps")
         return errors, warnings
     if len(steps) == 1:
         errors.append("exactly one proof_step: a one-move proof gets zero steps")
@@ -349,7 +350,7 @@ def check_steps(body: str, structure: dict, steps: list[dict]) -> tuple[list[str
         if (_INTRO.match(st) and _sentences(st) == 1 and len(steps) > 1
                 and not has_display and not has_ref):
             errors.append(f"{s['id']}: lone introduction sentence (join it to the next step)")
-    for lab in structure["labels"]:
+    for lab in required:                      # a nested proof sits inside a setup step (rule 10)
         if not any(abs(p - lab["offset"]) <= 12 for p in starts.values()):
             errors.append(f"author label {lab['text']!r} ({lab['kind']}) does not start a step")
     if _sentences(body) <= 2 and not structure["labels"]:

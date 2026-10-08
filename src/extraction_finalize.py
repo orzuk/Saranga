@@ -455,7 +455,7 @@ _INTRO_SYM = [re.compile(r"\b[Ll]et\s+\$([^$]{1,40})\$\s+(?:be|denote)\b"),
 
 
 def check_introduced_symbols(graph: dict, source: str, spans: dict, facts: dict,
-                             report: dict) -> None:
+                             report: dict, env_nodes: set = frozenset()) -> None:
     """Warn when running text outside proofs and outside every node introduces a
     symbol ("Let $X$ be", "we denote ... $X$", "$X :=") that a later node uses:
     that sentence should be a definition node (prompt: introduced terms)."""
@@ -464,8 +464,8 @@ def check_introduced_symbols(graph: dict, source: str, spans: dict, facts: dict,
     covered = list(spans.values())
     seen = set()
     for d in graph["nodes"]:                  # one introduced symbol per definition node
-        if d.get("type") != "definition":
-            continue
+        if d.get("type") != "definition" or d["id"] in env_nodes:
+            continue                          # an environment cannot be split
         st = d.get("statement") or ""
         hits = sorted({(m.start(), _sym(m.group(1))) for p in _INTRO_SYM for m in p.finditer(st)
                        if not _trivial_sym(_sym(m.group(1)))})
@@ -501,6 +501,9 @@ def finalize(graph: dict, tex: str) -> dict:
     for nid, fid in n2f.items():
         node_of_fact.setdefault(fid, nid)
     nodes = {n["id"]: n for n in graph["nodes"]}
+    for n in graph["nodes"]:                  # \label and \index are dropped (mechanical cleanup)
+        if n.get("statement"):
+            n["statement"] = re.sub(r"\s*\\(?:label|index)\s*\{[^{}]*\}\s*", " ", n["statement"]).strip()
     report = {"matched_to_environment": len(n2f), "labels_filled": 0,
               "proves_added": [], "ref_uses_added": [], "ref_backward": [],
               "errors": [], "warnings": []}
@@ -519,6 +522,9 @@ def finalize(graph: dict, tex: str) -> dict:
 
     # 3. hierarchy: parent_id = innermost containing node
     spans = node_spans(graph, source)
+    for nid, fid in n2f.items():             # an environment node is where its environment is
+        f = fact_by_id[fid]
+        spans[nid] = (f["start"], f["end"])
     parent = compute_hierarchy(graph, spans, report)
 
     pairs = {(e["source"], e["target"]) for e in graph["edges"]}
@@ -596,7 +602,7 @@ def finalize(graph: dict, tex: str) -> dict:
 
     # 6b. defined terms used later with no edge from their definition
     check_defined_terms(graph, spans, parent, report)
-    check_introduced_symbols(graph, source, spans, facts, report)
+    check_introduced_symbols(graph, source, spans, facts, report, set(n2f))
 
     # 7. the paper's full label table, so every \ref kept in a statement resolves
     graph.setdefault("metadata", {})["labels"] = label_table(facts, node_of_fact)
@@ -675,8 +681,7 @@ def validate(graph: dict, source: str, report: dict, parent: dict | None = None)
         if not st:
             err.append(f"{n['id']}: empty statement")
         elif _key(st) not in src_key:
-            (warn if n.get("type") in _LEVEL2 else err).append(
-                f"{n['id']}: statement is not a verbatim span of the cleaned source")
+            err.append(f"{n['id']}: statement is not a verbatim span of the cleaned source")
         for field in _SUBSPAN_FIELDS_STRICT + _SUBSPAN_FIELDS_SOFT:
             vals = n.get(field)
             vals = [vals] if isinstance(vals, str) else (vals or [])

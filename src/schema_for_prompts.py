@@ -144,7 +144,7 @@ def get_schema_block(verbosity: str = "standard") -> str:
             + ", ".join(_OTHER_LEVEL1_ORDER) + "."
         )
         lines.append(
-            f"Level-2 sub-block ({len(_LEVEL2_ORDER)}, optional): "
+            f"Level-2 sub-block ({len(_LEVEL2_ORDER)}; when to emit them: \"Level-2 steps\"): "
             + ", ".join(_LEVEL2_ORDER) + "."
         )
         lines.append("")
@@ -201,7 +201,7 @@ def get_schema_block(verbosity: str = "standard") -> str:
         lines.append("")
 
     lines.append(
-        f"Level-2 sub-block (optional, {len(_LEVEL2_ORDER)}): "
+        f"Level-2 sub-block ({len(_LEVEL2_ORDER)}; when to emit them: \"Level-2 steps\"): "
         + ", ".join(_LEVEL2_ORDER) + "."
     )
     if verbosity == "verbose":
