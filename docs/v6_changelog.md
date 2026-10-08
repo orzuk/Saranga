@@ -290,8 +290,11 @@ Re-render and re-hash before the run; v5.1's frozen hash was `100e6cf6fdbb3aea`.
 ## Frozen for the 200-paper silver run (2026-10-09)
 
 Frozen prompt: scripts/opus_extract_prompt_v6_rendered.md (sha256 prefix `a6613a6c3d147ec5`;
-per-paper copies by scripts/render_v6_prompt.py), code at 466568d.
+per-paper copies by scripts/render_v6_prompt.py), code at 466568d, then 8afe66e from the 7th paper on:
+text-discarding macros (\\ignore{...}) are removed and line-broken \\ref keys resolve. Of the six papers
+finished before it, five get the same facts under both (1001.2291v2 already had the one edge by hand);
+1002.1782v3 was re-extracted.
 Output: corpus/silver/opus-5.5__v6/, all 200 papers, one claude-opus-5-5 agent per paper,
 each stamped `prompt_version` v6-a6613a6c3d147ec5-<commit>. The trial runs that led to this
 freeze (26-paper runs and reruns, 2026-10-08/09) are archived outside the repository
-(Saranga_v6_trial_runs_2026-10-09.tar.gz).
+(G:/My Drive/Research/Automath/Saranga_v6_trial_runs_2026-10-09.tar.gz).
