@@ -49,7 +49,24 @@ from pathlib import Path
 _REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO))
 
-from scripts.canonicalize.core import canonicalize_paper  # noqa: E402
+from scripts.canonicalize.core import canonicalize_paper, canonicalize_text  # noqa: E402
+
+
+def canonicalize_paper_no_rename(paper_json: dict) -> dict:
+    """Like canonicalize_paper, but with no variable renaming (the views'
+    scope 'none': canonicalize_text with rename_map={}). Fills the
+    *_canonical_local fields that jaccard_canonical_sigma reads."""
+    result = deepcopy(paper_json)
+    nodes = result.get("nodes", {})
+    for node in (nodes.values() if isinstance(nodes, dict) else nodes):
+        for f in ("name", "statement", "raw_latex"):
+            if isinstance(node.get(f), str):
+                node[f + "_canonical_local"] = canonicalize_text(node[f], rename_map={})
+        for f in ("assumptions", "conclusions"):
+            if isinstance(node.get(f), list):
+                node[f + "_canonical_local"] = [canonicalize_text(x or "", rename_map={})
+                                                for x in node[f]]
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +109,8 @@ def _find_paper_refs(config: dict, papers_dir: Path) -> list[Path]:
 # Step 1 -- canonicalize every referenced paper JSON
 # ---------------------------------------------------------------------------
 
-def preprocess_papers(paper_paths: list[Path], force: bool = False) -> dict:
+def preprocess_papers(paper_paths: list[Path], force: bool = False, suffix: str = "_canonical",
+                      no_rename: bool = False) -> dict:
     """Canonicalize each referenced paper. Writes <basename>_canonical.json
     alongside the original. Returns a mapping  original_name -> canonical_name.
     """
@@ -101,9 +119,9 @@ def preprocess_papers(paper_paths: list[Path], force: bool = False) -> dict:
         # From paper2_gold.json -> paper2_canonical.json
         name = p.name
         if "_gold" in name:
-            canonical_name = name.replace("_gold.json", "_canonical.json")
+            canonical_name = name.replace("_gold.json", f"{suffix}.json")
         else:
-            canonical_name = name.replace(".json", "_canonical.json")
+            canonical_name = name.replace(".json", f"{suffix}.json")
         canonical_path = p.with_name(canonical_name)
         mapping[name] = canonical_name
 
@@ -119,7 +137,8 @@ def preprocess_papers(paper_paths: list[Path], force: bool = False) -> dict:
             continue
 
         try:
-            canonical = canonicalize_paper(paper, prose_rewrites=False)
+            canonical = (canonicalize_paper_no_rename(paper) if no_rename
+                         else canonicalize_paper(paper, prose_rewrites=False))
         except Exception as e:
             print(f"  [fail] {p.name}: canonicalize error ({e})")
             continue
@@ -301,16 +320,20 @@ def main():
                     help="Re-canonicalize even if *_canonical.json exists")
     ap.add_argument("--dry-run", action="store_true",
                     help="Print the plan without executing the benchmark")
+    ap.add_argument("--no-rename", action="store_true",
+                    help="Canonicalize without variable renaming (scope 'none'); "
+                         "outputs get a _norename suffix")
     args = ap.parse_args()
+    tag = "_norename" if args.no_rename else ""
 
     benchmark_dir = Path(args.benchmark_dir).resolve()
     papers_dir = benchmark_dir / "papers"
     config_path = benchmark_dir / "config" / "benchmark_config.json"
-    canonical_config_path = benchmark_dir / "config" / "benchmark_config_canonical.json"
-    canonical_csv = benchmark_dir / "results_jaccard_canonical.csv"
+    canonical_config_path = benchmark_dir / "config" / f"benchmark_config_canonical{tag}.json"
+    canonical_csv = benchmark_dir / f"results_jaccard_canonical{tag}.csv"
     baseline_csv = (Path(args.baseline_csv) if args.baseline_csv
                     else benchmark_dir / "baseline_results" / "results_jaccard_combined.csv")
-    report_path = benchmark_dir / "results_jaccard_canonical_vs_baseline.md"
+    report_path = benchmark_dir / f"results_jaccard_canonical{tag}_vs_baseline.md"
 
     # Sanity checks
     if not config_path.exists():
@@ -331,13 +354,14 @@ def main():
         name_map = {}
         for p in paper_paths:
             src = p.name
-            dst = src.replace("_gold.json", "_canonical.json") if "_gold" in src \
-                else src.replace(".json", "_canonical.json")
+            dst = src.replace("_gold.json", f"_canonical{tag}.json") if "_gold" in src \
+                else src.replace(".json", f"_canonical{tag}.json")
             if (papers_dir / dst).exists():
                 name_map[src] = dst
         print(f"  --skip-preprocess: found {len(name_map)} existing canonical JSONs")
     else:
-        name_map = preprocess_papers(paper_paths, force=args.force_preprocess)
+        name_map = preprocess_papers(paper_paths, force=args.force_preprocess,
+                                     suffix=f"_canonical{tag}", no_rename=args.no_rename)
 
     print()
     print("=" * 72)

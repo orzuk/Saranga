@@ -57,6 +57,9 @@ GREEK_VARIABLE_COMMANDS = {
     r"\eta", r"\theta", r"\iota", r"\kappa", r"\lambda", r"\mu",
     r"\nu", r"\xi", r"\rho", r"\sigma", r"\tau", r"\upsilon",
     r"\phi", r"\chi", r"\psi", r"\omega",
+    # Variant forms: variables of their own when a text keeps them apart
+    r"\varepsilon", r"\vartheta", r"\varrho", r"\varsigma", r"\varphi",
+    r"\varkappa", r"\varpi",
     # Uppercase (distinct-from-Latin ones)
     r"\Gamma", r"\Delta", r"\Theta", r"\Lambda", r"\Xi",
     r"\Sigma", r"\Upsilon", r"\Phi", r"\Psi", r"\Omega",
@@ -114,9 +117,9 @@ RULES_SPACING = {
     r"\:": "",
     r"\;": "",
     r"\ ": " ",           # explicit space -> regular space
-    # Large spaces
-    r"\quad": " ",
-    r"\qquad": " ",
+    # Large spaces. \quad is NOT a space: it separates two formulas
+    # (x > 0 \quad y > 1); as a space they would fuse into x > 0 y > 1.
+    r"\qquad": r"\quad",  # the same separator, only wider
     r"\thinspace": "",
     r"\enspace": "",
     r"\medspace": "",
@@ -187,12 +190,15 @@ RULES_BRACKETS = {
 RULES_GREEK_UNICODE_TO_COMMAND = {
     # Lowercase
     "α": r"\alpha",    "β": r"\beta",     "γ": r"\gamma",   "δ": r"\delta",
-    "ε": r"\epsilon",  "ϵ": r"\epsilon",  "ζ": r"\zeta",    "η": r"\eta",
-    "θ": r"\theta",    "ϑ": r"\theta",    "ι": r"\iota",    "κ": r"\kappa",
+    # Each character maps to the command that prints it; whether the variant
+    # forms then merge is decided by RULES_GREEK_VARIANTS (only when a text
+    # does not use both forms as different symbols).
+    "ε": r"\varepsilon", "ϵ": r"\epsilon", "ζ": r"\zeta",    "η": r"\eta",
+    "θ": r"\theta",    "ϑ": r"\vartheta", "ι": r"\iota",    "κ": r"\kappa",
     "λ": r"\lambda",   "μ": r"\mu",       "ν": r"\nu",      "ξ": r"\xi",
-    "π": r"\pi",       "ϖ": r"\pi",       "ρ": r"\rho",     "ϱ": r"\rho",
-    "σ": r"\sigma",    "ς": r"\sigma",    "τ": r"\tau",     "υ": r"\upsilon",
-    "φ": r"\phi",      "ϕ": r"\phi",      "χ": r"\chi",     "ψ": r"\psi",
+    "π": r"\pi",       "ϖ": r"\varpi",    "ρ": r"\rho",     "ϱ": r"\varrho",
+    "σ": r"\sigma",    "ς": r"\varsigma", "τ": r"\tau",     "υ": r"\upsilon",
+    "φ": r"\varphi",   "ϕ": r"\phi",      "χ": r"\chi",     "ψ": r"\psi",
     "ω": r"\omega",
     # Uppercase (only distinct-from-Latin ones need a command)
     "Γ": r"\Gamma",    "Δ": r"\Delta",    "Θ": r"\Theta",   "Λ": r"\Lambda",
@@ -200,11 +206,13 @@ RULES_GREEK_UNICODE_TO_COMMAND = {
     "Φ": r"\Phi",      "Ψ": r"\Psi",      "Ω": r"\Omega",
 }
 
-# Greek command variants that should collapse to the canonical form.
+# Greek command variants that collapse to the plain form -- but only in a text
+# that does not use both forms. A paper may write \phi and \varphi for two
+# different functions; merging them there would identify two symbols.
 RULES_GREEK_VARIANTS = {
     r"\varepsilon": r"\epsilon",
     r"\vartheta":   r"\theta",
-    r"\varpi":      r"\pi",
+    # NOT \varpi -> \pi: \varpi is a variable, \pi the constant.
     r"\varrho":     r"\rho",
     r"\varsigma":   r"\sigma",
     r"\varphi":     r"\phi",
@@ -213,8 +221,34 @@ RULES_GREEK_VARIANTS = {
 
 
 # ==========================================================================
+# CONDITIONAL MERGES
+# source -> (target, blockers): the source is merged into the target only in
+# a text whose math uses none of the blockers (core._greek_variants_for), and
+# never when a rename map renames the source or the target. The blockers are
+# the target and the other spellings that print differently from the source.
+# ==========================================================================
+_IMPLIES_BLOCKERS = {r"\implies", r"\Longrightarrow", "\u27f9"}          # long double arrow
+_IFF_BLOCKERS = {r"\iff", r"\Longleftrightarrow", "\u27fa"}
+CONDITIONAL_MERGES = {
+    **{k: (v, {v}) for k, v in RULES_GREEK_VARIANTS.items()},
+    # l_1 and \ell_1 are the same space; but a text with both a length l and
+    # an index \ell keeps them apart.
+    r"\ell": ("l", {"l"}),
+    # => and ==> both mean implication, but => also denotes weak convergence
+    # (X_n => X); a text that uses both lengths keeps them apart.
+    r"\Rightarrow": (r"\implies", _IMPLIES_BLOCKERS),
+    "\u21d2": (r"\implies", _IMPLIES_BLOCKERS),
+    r"\Leftrightarrow": (r"\iff", _IFF_BLOCKERS),
+    "\u21d4": (r"\iff", _IFF_BLOCKERS),
+}
+
+
+# ==========================================================================
 # CATEGORY 4 -- NUMBER-SET NOTATION UNIFICATION
 # All common encodings of R, N, Z, Q, C, F -> \mathbb{·}.
+# Not \mathbf{X} or \mathcal{X}: a bold or calligraphic capital is usually a
+# matrix, a vector or a family (\mathbf{Z} a design matrix, \mathcal{R} a
+# range or a ring), not a number set.
 # ==========================================================================
 
 RULES_NUMBER_SETS = {
@@ -222,32 +256,25 @@ RULES_NUMBER_SETS = {
     r"\R":          r"\mathbb{R}",
     r"\reals":      r"\mathbb{R}",
     r"\Reals":      r"\mathbb{R}",
-    r"\mathbf{R}":  r"\mathbb{R}",
     r"\mathds{R}":  r"\mathbb{R}",
-    r"\mathcal{R}": r"\mathbb{R}",  # occasional conflation; double-check in context
     # Naturals
     r"\N":          r"\mathbb{N}",
     r"\Naturals":   r"\mathbb{N}",
-    r"\mathbf{N}":  r"\mathbb{N}",
     r"\mathds{N}":  r"\mathbb{N}",
     # Integers
     r"\Z":          r"\mathbb{Z}",
     r"\Integers":   r"\mathbb{Z}",
-    r"\mathbf{Z}":  r"\mathbb{Z}",
     r"\mathds{Z}":  r"\mathbb{Z}",
     # Rationals
     r"\Q":          r"\mathbb{Q}",
     r"\Rationals":  r"\mathbb{Q}",
-    r"\mathbf{Q}":  r"\mathbb{Q}",
     r"\mathds{Q}":  r"\mathbb{Q}",
     # Complexes
     r"\C":          r"\mathbb{C}",
     r"\Complexes":  r"\mathbb{C}",
-    r"\mathbf{C}":  r"\mathbb{C}",
     r"\mathds{C}":  r"\mathbb{C}",
     # Finite field F_q sometimes written \F_q
     r"\F":          r"\mathbb{F}",
-    r"\mathbf{F}":  r"\mathbb{F}",
     r"\mathds{F}":  r"\mathbb{F}",
 }
 
@@ -259,8 +286,8 @@ RULES_NUMBER_SETS = {
 # ==========================================================================
 
 RULES_OPERATORS = {
-    # SAFE to unify: \star and * are generic "multiplication" in most contexts
-    r"\star":  "*",
+    # NOT unified: \star vs * -- x^\star (an optimum) and x^* (an adjoint or
+    # conjugate) often appear in the same paper with different meanings.
     # \div -> / is always division
     r"\div":   "/",
     # NOT unified (context-dependent — distinct math operations):
@@ -349,7 +376,7 @@ RULES_ARROWS = {
     r"\hookleftarrow":      r"\hookleftarrow",
     r"\twoheadrightarrow":  r"\twoheadrightarrow",
     r"\rightharpoonup":     r"\rightharpoonup",
-    r"\xrightarrow":        r"\to",
+    # \xrightarrow{f} -> \overset{f}{\to} (core._rewrite_xarrows): the label stays.
     # Unicode
     "→": r"\to",
     "⇒": r"\implies",
@@ -408,13 +435,10 @@ RULES_FUNCTION_ALIASES = {
     r"\ctg":    r"\cot",
     r"\arctg":  r"\arctan",
     r"\arcctg": r"\arccot",
-    r"\sh":     r"\sinh",
-    r"\ch":     r"\cosh",
-    r"\th":     r"\tanh",
-    r"\cth":    r"\coth",
-    r"\Exp":    r"\exp",
-    r"\Log":    r"\log",
-    r"\Ln":     r"\ln",
+    # NOT aliased, each has a common different meaning: \ch (the Chern
+    # character), \th (the thorn character, or a macro for theta), \sh and
+    # \cth by symmetry with them; \Exp (often an expectation macro); \Log
+    # and \Ln (the principal branch of the complex logarithm).
     # exp(x) -> e^x and \log -> \ln (when no subscript): applied as regex in
     # core.py, not as literals here, because they need word boundaries and
     # subscript detection.
@@ -460,7 +484,8 @@ RULES_FRAC_ALIASES = {
 FRAC_PATTERN = r"\\frac\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}"
 FRAC_REPLACEMENT = r"{\1}/{\2}"
 
-# \binom{n}{k} -> C(n,k)  (informative but destructive; disable if binomials carry meaning)
+# \binom{n}{k} -> C(n,k): NOT APPLIED. C(n,k) reads as a function of a
+# variable C and collides with any C the paper uses; \binom stays.
 BINOM_PATTERN = r"\\binom\s*\{([^{}]*)\}\s*\{([^{}]*)\}"
 BINOM_REPLACEMENT = r"C(\1,\2)"
 
@@ -468,19 +493,15 @@ BINOM_REPLACEMENT = r"C(\1,\2)"
 EXP_PATTERN = r"\\exp\s*\(([^)]*)\)"
 EXP_REPLACEMENT = r"e^{\1}"
 
-# \ln -> \log  (treat any unsubscripted log as natural log, canonical form = \log)
-# If author writes \log_{10} or \log_2, the subscript stays — that's explicit.
-# Rationale: \ln and \log (without base) both mean natural log in math/ML/stats.
-# If it's log base 10, the author should specify \log_{10}.
+# \ln -> \log: NOT APPLIED. In computer science \log is base 2, and a paper
+# that writes both (\log_2 n = \ln n / \ln 2) would become a false identity.
 LN_TO_LOG_PATTERN = r"\\ln(?![A-Za-z])"
 LN_TO_LOG_REPLACEMENT = r"\\log"
 
-# \overset{X}{Y}, \underset{X}{Y}, \stackrel{X}{Y} -> Y
-# Used e.g. in "f(x) \overset{x\to\infty}{\to} c" where the decoration
-# carries semantic info but varies across authors for the same limit.
-# We strip the decoration for canonical form; the main symbol is kept.
-# Implemented as a balanced-brace function, not simple regex, because
-# the Y half can contain braces.
+# \stackrel{X}{Y} -> \overset{X}{Y} (the same output). The decoration X is
+# KEPT: X \overset{d}{=} Y (equal in distribution) and X_n
+# \overset{a.s.}{\to} X (almost sure convergence) mean something else than
+# = and \to.
 OVERSET_COMMANDS = [r"\overset", r"\underset", r"\stackrel"]
 
 # Multiplication clean-up: multiple spaces/tabs -> single space
@@ -520,16 +541,26 @@ RULES_INEQUALITY_FLIP = {
 # Applied by a dedicated function in core.py; listed here for documentation.
 # ==========================================================================
 
+# Style switches and commands that take arguments or act on what follows:
+# {\displaystyle} or {\rm} unbraced would change everything after them.
+_KEEP_BRACED = (r"rm|bf|it|sf|tt|cal|mit|sl|sc|em|frak|Bbb|bold|displaystyle|textstyle|"
+                r"scriptstyle|scriptscriptstyle|limits|nolimits|left|right|middle|over|atop|"
+                r"choose|above|not|big|Big|bigg|Bigg|bigl|bigr|Bigl|Bigr|biggl|biggr|Biggl|Biggr|"
+                r"color|tiny|small|large|Large|normalsize|footnotesize|scriptsize|huge|Huge")
+
 REDUNDANT_BRACE_PATTERNS = [
-    # {x} where x is a single alphanumeric or a single command.
+    # {x} where x is a single letter, digit or command.
     # CRITICAL: negative lookbehind (?<![A-Za-z\\]) prevents stripping
     # braces that are arguments to a LaTeX command, e.g. \mathbb{R} --
     # the `b` before `{` is a letter, so the lookbehind rejects the match.
     # Same for \mathbf{X}, \mathcal{F}, etc.
-    (r"(?<![A-Za-z\\])\{([A-Za-z0-9])\}",   r"\1"),
-    (r"(?<![A-Za-z\\])\{(\\[A-Za-z]+)\}",   r"\1"),
-    # {{x}} -> {x}
-    (r"\{\{([^{}]+)\}\}",                   r"{\1}"),
+    (r"(?<![A-Za-z\\])\{([A-Za-z])\}",   r"\1"),
+    # a digit only when no digit or point touches it: 10{3}/2 is not 103/2
+    (r"(?<![A-Za-z\\0-9.])\{([0-9])\}(?![0-9.])",   r"\1"),
+    # a command only when no letter follows: x_{\alpha}d is not x_\alphad
+    (r"(?<![A-Za-z\\])\{(\\(?!(?:" + _KEEP_BRACED + r")(?![A-Za-z]))[A-Za-z]+)\}(?![A-Za-z])", r"\1"),
+    # {{x}} -> {x}  (not \{{x}}, and not when x ends in an escaping backslash)
+    (r"(?<!\\)\{\{([^{}]*[^{}\\])\}\}",                   r"{\1}"),
 ]
 
 # Space inside brackets: ( a + b ) -> (a + b), { x + 1 } -> {x + 1}
@@ -554,6 +585,8 @@ BRACKET_INNER_SPACE_PATTERNS = [
 # Case-insensitive substring match.
 # ==========================================================================
 
+# WARNING: these change meaning in ordinary sentences ("we have not shown" ->
+# "then not shown", substrings inside longer words). Nothing turns them on.
 RULES_PROSE = {
     # Hypothesis introduction
     "suppose that": "let",
