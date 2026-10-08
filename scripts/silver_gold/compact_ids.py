@@ -1,33 +1,18 @@
 #!/usr/bin/env python3
 """Compact verbose extraction-JSON IDs to the project convention.
 
-Many extractions invent verbose IDs like `paper5_ch01_def07` when the
-project uses compact `DP5.7` (Definition Paper-5 #7). This script
-remaps IDs in-place using the convention from the existing 270-paper
-Opus extractions:
-
-    definition  → DP<paper_num>.<idx>
-    theorem     → TP<paper_num>.<idx>
-    lemma       → LP<paper_num>.<idx>
-    proposition → PrP<paper_num>.<idx>     (avoid clash with Proof's PP)
-    corollary   → CP<paper_num>.<idx>
-    proof       → PP<paper_num>.<idx>
-    proof_step  → PSP<paper_num>.<idx>
-    algorithm   → AP<paper_num>.<idx>
-    equation    → EP<paper_num>.<idx>
-    example     → ExP<paper_num>.<idx>
-    remark      → RP<paper_num>.<idx>
-    problem     → ProbP<paper_num>.<idx>
-    claim       → ClP<paper_num>.<idx>
-    conjecture  → CnjP<paper_num>.<idx>
+Some extractions invent verbose IDs like `paper5_ch01_def07`. This script
+renames them to the v6 convention, `<prefix><seq>` with a counter per type
+(`DP7`, `TP2`, `PSP15`), the prefixes being the schema's
+(`node_types.ID_PREFIX`, the table the extraction prompt shows). IDs already
+compact (v6 `DP7`, or the earlier `DP5.7`) are left alone.
 
 Edge endpoint IDs are remapped consistently. Edits in place; backs up
 the original to <stem>.bak unless --no-backup. Idempotent (running
 twice on the same file is safe).
 
 Usage:
-    python3 compact_ids.py path/to/gold_opus4_7_new.json
-    python3 compact_ids.py --paper-num 5 path/to/file.json   # explicit paper-num
+    python3 compact_ids.py path/to/file.json [more.json ...]
 """
 
 from __future__ import annotations
@@ -40,55 +25,19 @@ import sys
 from pathlib import Path
 from typing import Dict, List
 
-# Type → ID prefix
-_TYPE_PREFIX = {
-    "definition":  "DP",
-    "theorem":     "TP",
-    "lemma":       "LP",
-    "proposition": "PrP",
-    "corollary":   "CP",
-    "proof":       "PP",
-    "proof_step":  "PSP",
-    "algorithm":   "AP",
-    "equation":    "EP",
-    "example":     "ExP",
-    "remark":      "RP",
-    "problem":     "ProbP",
-    "claim":       "ClP",
-    "conjecture":  "CnjP",
-}
+# Type → ID prefix: the schema's table (node_types.ID_PREFIX), so this script
+# and the extraction prompt cannot disagree.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+from node_types import ID_PREFIX as _TYPE_PREFIX  # noqa: E402
 
-# Match an ID that is ALREADY in the compact form (any known prefix
-# followed by NUM.NUM). If matched, the script leaves it alone.
+# An ID ALREADY in a compact form is left alone: v6 `DP3`, or the earlier
+# `DP1.3`.
 _COMPACT_RE = re.compile(
-    r'^(?:' + '|'.join(_TYPE_PREFIX.values()) + r')\d+\.\d+(?:[a-z])?$'
+    r'^(?:' + '|'.join(sorted(_TYPE_PREFIX.values(), key=len, reverse=True)) + r')\d+(?:\.\d+)?(?:[a-z])?$'
 )
 
 
-def infer_paper_num(json_path: Path, override: int | None) -> int:
-    if override is not None:
-        return override
-    # Try to extract from path: .../papers/paperN/...
-    for part in json_path.parts:
-        m = re.match(r'paper(\d+)$', part)
-        if m:
-            return int(m.group(1))
-    # Fallback: from filename or metadata.json sibling
-    metadata = json_path.parent / "metadata.json"
-    if metadata.exists():
-        try:
-            md = json.loads(metadata.read_text())
-            pn = md.get("paper_num")
-            if pn is not None:
-                return int(pn)
-        except Exception:
-            pass
-    raise ValueError(
-        f"Could not infer paper_num from {json_path}; pass --paper-num."
-    )
-
-
-def compact_one(json_path: Path, paper_num: int, no_backup: bool = False) -> int:
+def compact_one(json_path: Path, no_backup: bool = False) -> int:
     data = json.loads(json_path.read_text(encoding="utf-8"))
     nodes = data.get("nodes", [])
     if not nodes:
@@ -109,7 +58,7 @@ def compact_one(json_path: Path, paper_num: int, no_backup: bool = False) -> int
         ntype = n.get("type", "definition")
         prefix = _TYPE_PREFIX.get(ntype, "XP")  # XP for unknown types
         counters[prefix] = counters.get(prefix, 0) + 1
-        new_id = f"{prefix}{paper_num}.{counters[prefix]}"
+        new_id = f"{prefix}{counters[prefix]}"          # v6 form: DP3
         id_map[old_id] = new_id
 
     if not any(o != n for o, n in id_map.items()):
@@ -152,15 +101,13 @@ def compact_one(json_path: Path, paper_num: int, no_backup: bool = False) -> int
     json_path.write_text(json.dumps(data, ensure_ascii=False, indent=2),
                          encoding="utf-8")
     n_changed = sum(1 for o, n in id_map.items() if o != n)
-    print(f"  {json_path.name}: remapped {n_changed} IDs (paper_num={paper_num})")
+    print(f"  {json_path.name}: remapped {n_changed} IDs")
     return n_changed
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Compact verbose JSON IDs to project convention")
     ap.add_argument("files", nargs="+", help="JSON files to compact")
-    ap.add_argument("--paper-num", type=int, default=None,
-                    help="Override paper number (inferred from path otherwise)")
     ap.add_argument("--no-backup", action="store_true",
                     help="Don't write a .bak alongside the modified file")
     args = ap.parse_args()
@@ -172,8 +119,7 @@ def main() -> int:
             print(f"[WARN] {f} not found; skip")
             continue
         try:
-            pn = infer_paper_num(p, args.paper_num)
-            total += compact_one(p, pn, args.no_backup)
+            total += compact_one(p, args.no_backup)
         except Exception as e:
             print(f"[WARN] {f}: {type(e).__name__}: {e}")
     print(f"\n[DONE] total IDs remapped: {total}")

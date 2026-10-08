@@ -60,6 +60,29 @@ class Line:
     kind: str               # state / if / else / end / repeat / until / return / ...
     content: str            # the line's text (condition for block headers)
     label: str | None = None  # \label / \nllabel key placed on this line
+    start: int | None = None  # the line's verbatim span in the text given to
+    end: int | None = None    #   find_blocks (None: printed but not in the source)
+    parent: int | None = None  # index of the enclosing block header in Block.lines
+
+
+def _trim(text: str, a: int, b: int) -> tuple[int, int]:
+    """Shrink [a, b) to exclude surrounding whitespace and a trailing line break
+    (\\\\ or \\;), which is layout, not content."""
+    while a < b and text[a].isspace():
+        a += 1
+    while True:
+        while b > a and text[b - 1].isspace():
+            b -= 1
+        if b - a >= 2 and text[b - 2:b] in ("\\\\", "\\;") and not (b - a >= 3 and text[b - 3] == "\\"):
+            b -= 2
+            continue
+        return a, b
+
+
+# Block structure, shared by both parsers: a header opens a block, else/elsif
+# continues the open if-block, end/until closes it. The lines inside a block are
+# its children; a header, an else and an end are siblings of each other.
+_OPENS = {"if", "for", "while", "loop", "repeat", "function", "switch", "case", "begin"}
 
 
 @dataclass
@@ -93,6 +116,13 @@ def _brace_arg(s: str, i: int) -> tuple[str, int]:
 
 
 def _number(lines: list[Line], numbered: bool) -> list[Line]:
+    # A header with children spans them: its span runs to the end of its last
+    # descendant, so the header's step contains its body (the hierarchy rule).
+    for ln in reversed(lines):
+        if ln.parent is not None and ln.end is not None:
+            p = lines[ln.parent]
+            if p.end is not None and ln.end > p.end:
+                p.end = ln.end
     n = 0
     for ln in lines:
         if ln.number == -1:          # sentinel: this kind of line is printed and counted
@@ -135,8 +165,10 @@ _ALGX_TOKEN = re.compile(
     r"\\(" + "|".join(sorted(_ALGX_NAMES, key=len, reverse=True)) + r")(?![A-Za-z])")
 
 
-def _parse_algorithmic(body: str, numbered: bool, noend: bool, package: str) -> list[Line]:
+def _parse_algorithmic(body: str, numbered: bool, noend: bool, package: str,
+                       base: int = 0) -> list[Line]:
     lines: list[Line] = []
+    stack: list[int] = []          # open block headers (indices into lines)
     toks = list(_ALGX_TOKEN.finditer(body))
     for k, m in enumerate(toks):
         cmd = _ALGX_NAMES[m.group(1)]
@@ -144,24 +176,43 @@ def _parse_algorithmic(body: str, numbered: bool, noend: bool, package: str) -> 
         if cmd in _ALGX_UNNUMBERED:
             continue
         kind, has_cond = _ALGX_LINE[cmd]
-        if kind == "end" and noend:
-            continue
         # algpseudocode's \Return is inline inside \State; algorithmic's \RETURN is a line
         if cmd == "return" and package == "algpseudocode":
             continue
+        # where this line sits in the block structure (also for unprinted ends)
+        if kind == "else":
+            while stack and lines[stack[-1]].kind not in ("if", "else"):
+                stack.pop()
+            if stack:
+                stack.pop()
+        elif kind in ("end", "until"):
+            if stack:
+                stack.pop()
+        parent = stack[-1] if stack else None
+        if kind == "end" and noend:
+            continue                   # closes its block, but is not a printed line
         if has_cond:
             cond, after = _brace_arg(body, m.end())
             if cmd in ("function", "procedure"):   # \Function{name}{args}
                 args, after = _brace_arg(body, after)
                 cond = cond + "(" + args + ")"
             text = cond
+            a, b = m.start(), after                # a header keeps its command
         else:
             text = body[m.end():end]
             text = re.sub(r"\\(?:COMMENT|Comment)\s*\{[^{}]*\}", "", text)
+            if kind == "state":
+                a, b = _trim(body, m.end(), end)   # a statement without its \STATE
+            elif kind == "return":
+                a, b = _trim(body, m.start(), end)
+            else:
+                a, b = m.start(), m.end()          # \ELSE, \ENDIF, \REPEAT
         text, label = _take_label(text)
         if label is None:
             _, label = _take_label(body[m.end():end])
-        lines.append(Line(-1, kind, text.strip(), label))
+        lines.append(Line(-1, kind, text.strip(), label, base + a, base + b, parent))
+        if kind in _OPENS or kind == "else":
+            stack.append(len(lines) - 1)
     return _number(lines, numbered)
 
 
@@ -182,71 +233,103 @@ _A2E_IGNORE = {"KwIn", "KwOut", "KwData", "KwResult", "Input", "Output", "captio
 _A2E_CMD = re.compile(r"\\([A-Za-z]+\*?)")
 
 
-def _parse_a2e(body: str, numbered: bool, comments_numbered: bool) -> list[Line]:
+def _parse_a2e(body: str, numbered: bool, comments_numbered: bool, base: int = 0) -> list[Line]:
     lines: list[Line] = []
+    cur = {"parent": None}             # header of the block being walked
 
-    def flush(buf: list[str]):
+    def add(kind, text, label=None, a=None, b=None):
+        if a is not None:
+            a, b = _trim(body, a, b)
+        lines.append(Line(-1, kind, text, label,
+                          None if a is None else base + a, None if a is None else base + b,
+                          cur["parent"]))
+        return len(lines) - 1
+
+    def flush(buf: list[str], span: list):
         text = "".join(buf)
         if text.strip():
             text, label = _take_label(text)
             if text.strip() or label:
-                lines.append(Line(-1, "state", text.strip(), label))
+                add("state", text.strip(), label, span[0], span[1])
         buf.clear()
+        span[0] = None
 
-    def walk(s: str):
+    def inner_walk(header: int, off: int, content: str):
+        saved = cur["parent"]
+        cur["parent"] = header
+        walk(content, off)
+        cur["parent"] = saved
+
+    def walk(s: str, off: int = 0):
+        """`off` is the offset of s[0] in `body`."""
         buf: list[str] = []
+        span: list = [None, None]
         i = 0
+
+        def keep(c, at, upto):
+            if span[0] is None:
+                span[0] = off + at
+            span[1] = off + upto
+            buf.append(c)
         while i < len(s):
             if s.startswith("\\;", i):
-                flush(buf)
+                flush(buf, span)
                 i += 2
                 continue
             m = _A2E_CMD.match(s, i)
             if not m:
-                buf.append(s[i])
+                keep(s[i], i, i + 1)
                 i += 1
                 continue
             name = m.group(1)
             j = m.end()
+
+            def arg_at(pos):
+                """(content, end, offset of content in s)"""
+                p = pos
+                while p < len(s) and s[p].isspace():
+                    p += 1
+                content, e = _brace_arg(s, pos)
+                return content, e, p + 1
             if name in _A2E_BLOCK:
-                flush(buf)
-                cond, j = _brace_arg(s, j)
+                flush(buf, span)
+                cond, j, _ = arg_at(j)
                 cond, label = _take_label(cond)
-                lines.append(Line(-1, _A2E_BLOCK[name], cond.strip(), label))
-                inner, j = _brace_arg(s, j)
-                walk(inner)
+                h = add(_A2E_BLOCK[name], cond.strip(), label, off + i, off + j)
+                inner, j, io = arg_at(j)
+                inner_walk(h, off + io, inner)
             elif name == "eIf":
-                flush(buf)
-                cond, j = _brace_arg(s, j)
-                lines.append(Line(-1, "if", cond.strip()))
-                then, j = _brace_arg(s, j)
-                walk(then)
-                lines.append(Line(-1, "else", ""))
-                other, j = _brace_arg(s, j)
-                walk(other)
+                flush(buf, span)
+                cond, j, _ = arg_at(j)
+                h = add("if", cond.strip(), None, off + i, off + j)
+                then, j, to = arg_at(j)
+                inner_walk(h, off + to, then)
+                e = add("else", "")          # printed, but no source text of its own
+                other, j, oo = arg_at(j)
+                inner_walk(e, off + oo, other)
             elif name in _A2E_ONE_ARG_BLOCK:
-                flush(buf)
-                lines.append(Line(-1, _A2E_ONE_ARG_BLOCK[name], ""))
-                inner, j = _brace_arg(s, j)
-                walk(inner)
+                flush(buf, span)
+                h = add(_A2E_ONE_ARG_BLOCK[name], "", None, off + i, off + j)
+                inner, j, io = arg_at(j)
+                inner_walk(h, off + io, inner)
             elif name == "Repeat":          # \Repeat{until-cond}{body}
-                flush(buf)
-                cond, j = _brace_arg(s, j)
-                lines.append(Line(-1, "repeat", ""))
-                inner, j = _brace_arg(s, j)
-                walk(inner)
-                lines.append(Line(-1, "until", cond.strip()))
+                flush(buf, span)
+                cond, j, co = arg_at(j)
+                h = add("repeat", "", None, off + i, off + m.end())
+                inner, j, io = arg_at(j)
+                inner_walk(h, off + io, inner)
+                add("until", cond.strip(), None, off + co, off + co + len(cond))
             elif name in _A2E_ONE_LINE or name in ("leIf", "lElse"):
-                flush(buf)
+                flush(buf, span)
                 nargs = {"leIf": 3, "lElse": 1}.get(name, 2)
                 parts = []
                 for _ in range(nargs):
                     a, j = _brace_arg(s, j)
                     parts.append(a)
                 text, label = _take_label(" ".join(parts))
-                lines.append(Line(-1, "state", text.strip(), label))
+                add("state", text.strip(), label, off + i, off + j)
             elif name in ("Return", "KwRet"):
-                flush(buf)
+                flush(buf, span)
                 arg, j2 = _brace_arg(s, j)
                 if not s[j:j2].strip().startswith("{"):   # \Return without braces: rest of the line
                     k = s.find("\\;", j)
@@ -254,13 +337,13 @@ def _parse_a2e(body: str, numbered: bool, comments_numbered: bool) -> list[Line]
                     stop = min(x for x in (k, nl, len(s)) if x != -1)
                     arg, j2 = s[j:stop], stop
                 text, label = _take_label(arg)
-                lines.append(Line(-1, "return", text.strip(), label))
+                add("return", text.strip(), label, off + i, off + j2)
                 j = j2
             elif name in ("tcp", "tcc"):
-                flush(buf)
+                flush(buf, span)
                 arg, j = _brace_arg(s, j)
                 if comments_numbered:
-                    lines.append(Line(-1, "comment", arg.strip()))
+                    add("comment", arg.strip(), None, off + i, off + j)
             elif name in _A2E_IGNORE:
                 if name in ("KwIn", "KwOut", "KwData", "KwResult", "Input", "Output",
                             "caption", "SetKwFunction", "SetKwProg", "SetKwInOut",
@@ -274,9 +357,9 @@ def _parse_a2e(body: str, numbered: bool, comments_numbered: bool) -> list[Line]
                                     "SetKwInput": 2, "SetKw": 2, "SetKwData": 2}.get(name, 1)):
                         _, j = _brace_arg(s, j)
             else:
-                buf.append(m.group(0))
+                keep(m.group(0), i, j)
             i = j
-        flush(buf)
+        flush(buf, span)
 
     walk(body)
     return _number(lines, numbered)
@@ -300,8 +383,9 @@ def _drop_float_label(body: str) -> str:
     m = re.search(r"\\caption\s*(?:\[[^\]]*\])?", body)
     if m:
         _, end = _brace_arg(body, m.end())
-        body = body[:m.start()] + " " + body[end:]
-    return re.sub(r"^\s*\\label\s*\{[^{}]*\}", " ", body)
+        body = body[:m.start()] + " " * (end - m.start()) + body[end:]
+    # same length: line offsets must still index the original text
+    return re.sub(r"^\s*\\label\s*\{[^{}]*\}", lambda x: " " * len(x.group(0)), body)
 
 
 def find_blocks(tex: str) -> list[Block]:
@@ -314,7 +398,7 @@ def find_blocks(tex: str) -> list[Block]:
         opt = (m.group(1) or "").strip("[]").strip()
         numbered = opt.isdigit() and int(opt) >= 1
         blocks.append(Block(algx, numbered, m.start(),
-                            _parse_algorithmic(m.group(2), numbered, noend, algx)))
+                            _parse_algorithmic(m.group(2), numbered, noend, algx, m.start(2))))
     if "algorithm2e" in pk:
         opts = pk["algorithm2e"]
         numbered = "linesnumbered" in opts or bool(re.search(r"\\LinesNumbered(?!Hidden)", src))
@@ -326,7 +410,7 @@ def find_blocks(tex: str) -> list[Block]:
                 continue
             body = _drop_float_label(body)
             blocks.append(Block("algorithm2e", numbered, m.start(),
-                                _parse_a2e(body, numbered, comments_numbered)))
+                                _parse_a2e(body, numbered, comments_numbered, m.start(3))))
     # A numbered list used as pseudocode inside an algorithm float: enumerate
     # prints 1, 2, 3 for its top-level items (nested lists are not numbered here).
     taken = {b.start for b in blocks}
@@ -350,7 +434,9 @@ def find_blocks(tex: str) -> list[Block]:
                 end = toks[k + 1].start() if k + 1 < len(toks) else len(em.group(1))
                 text, label = _take_label(em.group(1)[t.end():end])
                 text = re.sub(r"^\s*\[[^\]]*\]", "", text)
-                lines.append(Line(n, "state", text.strip(), label))
+                g = m.start(2) + em.start(1)
+                a, b = _trim(src, g + t.end(), g + end)
+                lines.append(Line(n, "state", text.strip(), label, a, b, None))
         if lines:
             blocks.append(Block("enumerate", True, m.start(), lines))
     blocks.sort(key=lambda b: b.start)
@@ -436,7 +522,29 @@ def fill_source_line_labels(graph: dict, tex: str) -> dict:
         covered: set[int] = set()
         children = {s["id"] for s in steps}
         last = 0
+        # A step whose statement IS a line's span (as pseudocode_steps builds
+        # them) is that line: match it exactly, before any approximate matching.
+        src = strip_comments(tex)
+        exact, taken = {}, set()
+        spans = [(k, norm(src[l.start:l.end])) for k, l in enumerate(b.lines) if l.start is not None]
+        for st in steps:
+            stn = norm(st.get("statement") or "")
+            for k, t in spans:
+                if k not in taken and t == stn:
+                    taken.add(k)
+                    exact[st["id"]] = b.lines[k]
+                    break
         for s, sn in zip(steps, snorm):
+            if s["id"] in exact:
+                ln = exact[s["id"]]
+                if ln.number:
+                    s["source_line_label"] = str(ln.number)
+                    if ln.label and not s.get("label"):
+                        s["label"] = ln.label
+                    covered.add(ln.number)
+                    last = ln.number
+                    report["matched"].append((s["id"], ln.number))
+                continue
             # Steps are in document order, so a step's line comes after the previous
             # step's. This separates repeated lines (two identical loop headers).
             hit = [l for l in b.lines if l.number and l.number > last

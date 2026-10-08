@@ -131,7 +131,7 @@ def validate(data: dict) -> list[str]:
             has_edge = any(e.get("source") == nid and e.get("type") == "proves" for e in edges)
             if not proves and not has_edge:
                 warnings.append(f"WARNING: Proof '{nid}' has no 'proves' edge or field.")
-            elif proves not in node_ids and proves not in {nd.get("id") for nd in nodes}:
+            elif proves and proves not in node_ids and proves not in {nd.get("id") for nd in nodes}:
                 errors.append(f"ERROR: Proof '{nid}' references '{proves}' which is not a node.")
 
     # --- 1b. Level 2 nodes must reference a Level 1 parent of correct type ---
@@ -215,6 +215,11 @@ def validate(data: dict) -> list[str]:
             )
 
     # --- 3. DAG check (cycle detection) ---
+    # Edges marked "backward": true (a forward reference, an induction step using
+    # the result itself) are real dependencies against the reading order; the
+    # graph must be acyclic WITHOUT them, as the extraction spec states.
+    edges_all = edges
+    edges = [e for e in edges if not e.get("backward")]
     adj = defaultdict(list)
     in_degree = defaultdict(int)
     all_nodes_in_graph = set()
@@ -259,9 +264,13 @@ def validate(data: dict) -> list[str]:
         warnings.append(f"INFO: DAG verified. {len(all_nodes_in_graph)} nodes in graph, "
                         f"max depth {max_depth}.")
 
+    edges = edges_all
     # --- 4. Disconnected nodes ---
-    connected = all_nodes_in_graph
-    disconnected = node_ids - connected
+    # A node with no edge is an orphan only if it has no parent either: a proof
+    # step or an equation inside a theorem is tied to the graph by parent_id.
+    connected = {x for e in edges for x in (e.get("source"), e.get("target"))}
+    has_parent = {nd.get("id") for nd in nodes if nd.get("parent_id")}
+    disconnected = node_ids - connected - has_parent
     if disconnected:
         warnings.append(f"WARNING: {len(disconnected)} node(s) have no edges: {sorted(disconnected)}")
 

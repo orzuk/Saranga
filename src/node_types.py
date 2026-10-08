@@ -255,7 +255,8 @@ SUBCLASS_VALUES = {
     PROOF_STEP:    {"setup", "introduce_variable", "apply_lemma", "case_split",
                     "induction_step", "contradiction_setup", "algebraic_manipulation",
                     "substitute", "bound_estimate", "invoke_identity", "conclude", "other"},
-    ALGORITHM_STEP:{"initialize", "loop", "branch", "update", "return", "other"},
+    ALGORITHM_STEP:{"initialize", "loop", "branch", "test", "compute", "select",
+                    "filter", "solve", "call", "update", "return", "other"},
     EXAMPLE:       {"illustrative", "counterexample", "computational", "applied"},
     EXERCISE:      {"computational", "theoretical", "proof_exercise", "programming"},
     PROBLEM:       {"optimization", "decision", "search", "counting", "sampling",
@@ -312,6 +313,16 @@ OPEN_PROBLEM_EXTRA_FIELDS = {"first_posed", "prize"}
 #   proves:              str          — ID of the theorem this proves
 #   proof_strategy:      str | null   — alias for subclass (backward compat)
 PROOF_EXTRA_FIELDS = {"proves", "proof_strategy"}
+
+# `proof_strategy`: a LIST, controlled vocabulary (the v6 extraction prompt, Hard
+# rule 11). Distinct from the proof `subclass` values above; v6 fills
+# `proof_strategy`, and `subclass` only on proof and algorithm steps.
+PROOF_STRATEGY_VALUES = {
+    "induction", "strong_induction", "contradiction", "minimal_counterexample",
+    "construction", "probabilistic", "case_analysis", "density_increment",
+    "direct", "contrapositive", "dual_argument", "geometric",
+    "algebraic_manipulation", "compactness", "fixed_point", "other",
+}
 
 # Proof step:
 #   parent_proof:        str          — ID of the PROOF node this step belongs to
@@ -535,6 +546,19 @@ LEVEL_2_TYPES = {PROOF_STEP, ALGORITHM_STEP}  # 2 types
 
 # All node types (16 + 2 = 18)
 ALL_TYPES = LEVEL_1_TYPES | LEVEL_2_TYPES
+
+# ── Node IDs ─────────────────────────────────────────────────────────────
+# v6: `<prefix><seq>`, a counter within each type (DP1, TP3, ASP12), unique
+# within the paper. The extraction prompt's ID table must match this one
+# (tests/test_prompt_schema.py checks it). Files before v6 used
+# `<prefix><paper>.<seq>` (DP1.1).
+ID_PREFIX = {
+    DEFINITION: "DP", THEOREM: "TP", LEMMA: "LP", PROPOSITION: "PrP",
+    COROLLARY: "CP", PROOF: "PP", PROOF_STEP: "PSP", ALGORITHM: "AP",
+    ALGORITHM_STEP: "ASP", EQUATION: "EP", EXAMPLE: "ExP", EXERCISE: "ExerP",
+    REMARK: "RP", PROBLEM: "ProbP", OPEN_PROBLEM: "OpenP", ASSUMPTION: "AssumP",
+    CLAIM: "ClP", CONJECTURE: "CnjP",
+}
 
 # Compatibility map: which Level 1 parent type each Level 2 type belongs to.
 LEVEL_2_PARENT_TYPE = {

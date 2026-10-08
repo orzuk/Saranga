@@ -96,8 +96,13 @@ def _sentence_end(text: str, end: int) -> bool:
     return bool(re.match(r"\s*(?:\n\s*\n|\\begin\{|\\end\{|\\item|\\(?:sub)*section|$)", nxt))
 
 
-def check_prose_boundaries(graph: dict, source: str, env_nodes: set, report: dict) -> None:
-    """Spec "Where a prose node starts and ends": whole sentences; no partial overlap.
+def check_prose_boundaries(graph: dict, source: str, env_nodes: set, report: dict,
+                           headings: list[int] | None = None) -> None:
+    """Spec "Where a prose node starts and ends": whole sentences, within one
+    section, no partial overlap.
+
+    `headings` are the offsets of the paper's top-level section headings (not
+    those inside an environment); a prose node that contains one is an error.
 
     A mid-sentence start or end that continues in lowercase is an error; one at
     unusual markup is a warning (it may be a false alarm). Partial overlap between
@@ -125,6 +130,9 @@ def check_prose_boundaries(graph: dict, source: str, env_nodes: set, report: dic
             nxt = source[end:end + 3].lstrip()[:1]
             (report["errors"] if nxt.islower() or nxt in ",;" else report["warnings"]).append(
                 f"{n['id']}: prose node ends mid-sentence")
+        if any(start < h < end for h in headings or ()):
+            report["errors"].append(f"{n['id']}: prose node crosses a section heading "
+                                    "(a proof continued elsewhere is one node per part)")
     spans.sort()
     for a in range(len(spans)):
         s1, e1, id1 = spans[a]
@@ -288,6 +296,55 @@ def set_backward_flags(graph: dict, spans: dict, report: dict) -> None:
     report["backward_edges"] = n
 
 
+_LINE_SUBCLASS = {"for": "loop", "while": "loop", "loop": "loop", "repeat": "loop",
+                  "if": "branch", "else": "branch", "switch": "branch", "case": "branch",
+                  "return": "return", "until": "test", "end": "other", "comment": "other",
+                  "function": "other", "begin": "other"}
+
+
+def pseudocode_steps(facts: dict, fact_id: str, algorithm: dict, first_seq: int = 1) -> list[dict]:
+    """The algorithm_step nodes of a pseudocode algorithm, built from its lines.
+
+    `facts` is extract_facts' output, `fact_id` the algorithm's fact, `algorithm`
+    your algorithm node (its id, section and origin are used). One step per
+    printed line, in order: `statement` is the line's verbatim span (a loop or
+    branch line spans its body), `parent_id` the enclosing loop or branch step
+    (or the algorithm), `step_order` counts within each parent. `subclass` is set
+    for control lines and is None for ordinary lines: choose it. Add a
+    `statement_short` where the line is not self-explanatory. IDs run
+    ASP<first_seq>, ASP<first_seq + 1>, ...; pass the next free number.
+    """
+    fact = next(f for f in facts["facts"] if f["id"] == fact_id)
+    src, lines = facts["source"], fact.get("lines") or []
+    ids: dict[int, str] = {}
+    order: dict[str, int] = {}
+    steps, seq = [], first_seq
+
+    def parent_of(i):
+        p = lines[i]["parent"]
+        while p is not None and p not in ids:      # a line printed but not in the source
+            p = lines[p]["parent"]
+        return algorithm["id"] if p is None else ids[p]
+    for i, ln in enumerate(lines):
+        if ln["start"] is None:
+            continue
+        pid = parent_of(i)
+        order[pid] = order.get(pid, 0) + 1
+        sid = f"ASP{seq}"
+        seq += 1
+        ids[i] = sid
+        steps.append({
+            "id": sid, "type": "algorithm_step", "parent_id": pid,
+            "step_order": order[pid],
+            "name": f"Line {ln['number']}" if ln["number"] else f"Step {len(steps) + 1}",
+            "statement": src[ln["start"]:ln["end"]],
+            "subclass": _LINE_SUBCLASS.get(ln["kind"]),
+            "section": algorithm.get("section"), "origin": algorithm.get("origin", "paper"),
+            "confidence": 1.0,
+        })
+    return steps
+
+
 def finalize(graph: dict, tex: str) -> dict:
     """Fill the syntactic fields and edges of `graph` in place; return a report."""
     facts = extract_facts(tex)
@@ -362,6 +419,24 @@ def finalize(graph: dict, tex: str) -> dict:
                 pairs.add((src, tgt))
                 report["ref_uses_added"].append((src, tgt, k.strip()))
 
+    # 5b. a proof's `proves` field names the result its `proves` edge points to
+    #     (the prompt: "always the same as the target of its proves edge")
+    for n in graph["nodes"]:
+        if n.get("type") != "proof":
+            continue
+        targets = [e["target"] for e in graph["edges"]
+                   if e.get("source") == n["id"] and e.get("type") == ET.PROVES]
+        if targets:
+            if n.get("proves") not in targets:
+                n["proves"] = targets[0]
+        elif n.get("proves") in nodes:
+            graph["edges"].append({"source": n["id"], "target": n["proves"], "type": ET.PROVES,
+                                   "confidence": n.get("confidence", 0.7)})
+            pairs.add((n["id"], n["proves"]))
+            report["proves_added"].append((n["id"], n["proves"], "field"))
+        else:
+            n.pop("proves", None)            # null or not a node: no claim at all
+
     # 6. backward flags by position (after every edge is in)
     set_backward_flags(graph, spans, report)
     report["ref_backward"] = [(e["source"], e["target"], e.get("note"))
@@ -375,7 +450,8 @@ def finalize(graph: dict, tex: str) -> dict:
     report["unresolved_refs"] = unresolved
 
     # 8. prose nodes: whole sentences, and no partial overlap between nodes
-    check_prose_boundaries(graph, source, set(n2f), report)
+    headings = [x["start"] for x in facts["sections"] if x.get("inside") is None]
+    check_prose_boundaries(graph, source, set(n2f), report, headings)
 
     # 9. proof steps against the proof's author structure, for EVERY proof node
     kids: dict[str, list[dict]] = {}

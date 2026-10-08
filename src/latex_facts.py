@@ -846,6 +846,30 @@ def extract_facts(tex: str) -> dict:
     kinds = {f["id"]: f["kind"] for f in facts}
     facts = [f for f in facts if not (f["env"] == "algorithmic" and f["parent"]
                                       and kinds.get(f["parent"]) == "algorithm")]
+    # Pseudocode lines, from the same parser that numbers them (algorithm_lines):
+    # each algorithm fact lists its printed lines with their spans and the index
+    # of the loop or branch line they sit in.
+    from algorithm_lines import find_blocks
+    algs = [f for f in facts if f["kind"] == "algorithm"]
+    for b in find_blocks(source):
+        holders = [f for f in algs if f["outer_start"] <= b.start < f["outer_end"]]
+        if not holders:
+            continue
+        fact = min(holders, key=lambda f: f["outer_end"] - f["outer_start"])
+        shift = len(fact.setdefault("lines", []))
+        fact["lines_numbered"] = b.numbered
+        for ln in b.lines:
+            fact["lines"].append({"number": ln.number, "kind": ln.kind, "start": ln.start,
+                                  "end": ln.end, "label": ln.label,
+                                  "parent": None if ln.parent is None else ln.parent + shift})
+    # A heading inside an environment (\subsection{Step 1} in a long proof) is
+    # part of that environment; only the others divide the paper. `inside` is
+    # the innermost fact containing the heading, or None for a top-level one.
+    for sec in sections:
+        holders = [f for f in facts if f["kind"] != "equation"
+                   and f["outer_start"] < sec["start"] < f["outer_end"]]
+        sec["inside"] = (min(holders, key=lambda f: f["outer_end"] - f["outer_start"])["id"]
+                         if holders else None)
     # section titles: \ref{key} rendered as the number it prints (rule 12: no raw refs)
     for sec in sections:
         sec["title"] = re.sub(r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}",

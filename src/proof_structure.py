@@ -244,6 +244,13 @@ def check_steps(body: str, structure: dict, steps: list[dict]) -> tuple[list[str
         return errors, warnings
     if len(steps) == 1:
         errors.append("exactly one proof_step: a one-move proof gets zero steps")
+    # the same at every level: a step with one child would be that child
+    n_children: dict = {}
+    for s in steps:
+        n_children[s.get("parent_id")] = n_children.get(s.get("parent_id"), 0) + 1
+    for s in steps:
+        if n_children.get(s["id"]) == 1:
+            errors.append(f"{s['id']}: exactly one child step; give it none or at least two")
     norm, idx = _norm_map(body)
     spans = math_spans(body)
     starts = {}

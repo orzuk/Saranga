@@ -21,7 +21,7 @@ Used by all extractors (baseline, LLM, student submissions) and evaluation tools
 | Field | Type | Description |
 |-------|------|-------------|
 | `title` | string | Paper/chapter title |
-| `paper_num` | int | Paper number in the course dataset |
+| `paper_num` | int | Paper number in the course dataset (not used in v6, where each file is one paper) |
 | `paper_id` | string | arXiv ID (e.g., `"0711.0189"`) |
 | `sections` | string | Section range covered |
 | `annotator` | string | Who/what produced this annotation |
@@ -29,6 +29,8 @@ Used by all extractors (baseline, LLM, student submissions) and evaluation tools
 | `unresolved_refs` | list | `\ref` keys with no `\label` in this source (e.g. references into another file). |
 | `paper_style` | list | Set by the extractor: how the paper establishes its content, 1-2 of `theorem_proof`, `formal`, `derivation`, `modeling`, `computational`, `problem_list`, `expository`, `discursive`, `other`, dominant first. For filtering papers. (Environments vs prose is not recorded here; it is computed from how many nodes match environment facts.) |
 | `extraction_notes` | list | Set by the extractor: what was unusual about extracting this paper, each `{category, nodes, note}`. `category` is `type_uncertain`, `boundary_uncertain`, `unexpected_construct`, `rule_conflict`, `source_problem` or `not_extracted`; `nodes` lists the node ids concerned (may be empty). Free text for people (prompt revision, paper filtering); not used by distillation. Empty for an ordinary paper. |
+| `model`, `effort`, `prompt_version`, `extraction_date` | string | Set by the extractor: which model, at which effort, under which prompt version, on which date. |
+| `rigor_nonformal_count` | int | Set by the extractor: how many nodes carry a `rigor` field (`0` is valid; a missing key means the rule was not applied). |
 | `extraction_comment` | string | Set by the extractor: free text, at most 3 sentences, for anything unusual that fits no `extraction_notes` category (or explaining `paper_style: other`). Usually empty. |
 
 ---
@@ -41,7 +43,7 @@ Each node is a mathematical object. Required fields are marked with **R**, optio
 
 | Field | Req | Type | Description |
 |-------|-----|------|-------------|
-| `id` | **R** | string | Unique identifier. Convention: `<type_letter>P<paper>.<seq>` (e.g., `DP1.1`, `TP3.2`) or simple `T1`, `D2` |
+| `id` | **R** | string | Unique within the paper. v6: `<prefix><seq>`, the type's prefix and a counter within the type (e.g. `DP1`, `TP3`, `ASP12`). Files before v6 use `<prefix><paper>.<seq>` (`DP1.1`) |
 | `type` | **R** | string | One of the types below |
 | `name` | **R** | string or null | Descriptive name (e.g., "Markov's Inequality") |
 | `section` | O | string | Section number (e.g., `"3.1"`) |
@@ -119,7 +121,7 @@ Constants defined in `src/node_types.py`.
 | Type | Description |
 |------|-------------|
 | `proof_step` | One logical move within a `proof`. **First-class node**, linked via `parent_id` (or legacy `parent_proof`) to its enclosing proof. |
-| `algorithm_step` | One numbered line of pseudocode within an `algorithm` node. Linked via `parent_id` (or legacy `parent_algorithm`). |
+| `algorithm_step` | One step of an `algorithm` node: for pseudocode, one printed line (a loop or branch line spans its body, whose lines are its children; built from the source by `extraction_finalize.pseudocode_steps`); for a procedure in prose, one operation. Linked via `parent_id` (or legacy `parent_algorithm`). |
 
 **Note:** `exercise` ≠ `problem` ≠ `open_problem`. An exercise is pedagogical
 (author knows the answer). A problem is a formally formulated mathematical
@@ -166,7 +168,7 @@ node with a parent does not count as an orphan. Legacy fields `parent_proof`,
 | Field | Req | Type | Description |
 |-------|-----|------|-------------|
 | `proves` | **R** | string | ID of the theorem/lemma this proves |
-| `proof_strategy` | O | string | Short tag: `"contradiction"`, `"induction"`, `"direct"`, etc. |
+| `proof_strategy` | O | list | Controlled vocabulary (`node_types.PROOF_STRATEGY_VALUES`): `induction`, `strong_induction`, `contradiction`, `minimal_counterexample`, `construction`, `probabilistic`, `case_analysis`, `density_increment`, `direct`, `contrapositive`, `dual_argument`, `geometric`, `algebraic_manipulation`, `compactness`, `fixed_point`, `other`. Older files may hold a single string. |
 | `strategy_tags` | O | list of strings | Multiple strategy tags |
 
 **Proof steps** [Level 2 — emitted only at `with_proof_steps` granularity]:
@@ -208,7 +210,7 @@ Example: a math "Claim 1" with a full proof → `type: "claim", rigor: "formal"`
 A physics result without rigorous proof → `type: "claim", rigor: "heuristic"`.
 A physics paper that explicitly labels something "Theorem" → `type: "theorem", rigor: "heuristic"`.
 
-**Universal `subclass` field** (available on ALL node types):
+**Universal `subclass` field** (available on ALL node types; the v6 extraction fills it on proof and algorithm steps only):
 
 | Field | Req | Type | Description |
 |-------|-----|------|-------------|
@@ -226,6 +228,7 @@ Subclass values by type:
 | `claim` | `existence`, `bound`, `convergence`, `characterization` |
 | `proof` | `direct`, `contradiction`, `induction`, `construction`, `probabilistic`, `combinatorial`, `algebraic` |
 | `proof_step` | `setup`, `introduce_variable`, `apply_lemma`, `case_split`, `induction_step`, `contradiction_setup`, `algebraic_manipulation`, `substitute`, `bound_estimate`, `invoke_identity`, `conclude`, `other` |
+| `algorithm_step` | `initialize`, `loop`, `branch`, `test`, `compute`, `select`, `filter`, `solve`, `call`, `update`, `return`, `other` |
 | `algorithm` | `exact`, `approximation`, `heuristic`, `randomized`, `online`, `greedy`, `iterative` |
 | `problem` | `optimization`, `decision`, `search`, `counting`, `sampling`, `estimation` |
 | `example` | `illustrative`, `counterexample`, `computational`, `applied` |

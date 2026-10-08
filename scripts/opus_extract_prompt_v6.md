@@ -5,83 +5,231 @@ Extract a mathematics paper or chapter to JSON for the SARANGA project.
 
 **What you are producing.** A typed directed graph of the paper's mathematical
 content. Each node is one statement of the paper (a definition, a
-theorem-like result, a proof, a proof step, an equation, an algorithm, a
-remark, ...), of exactly one type from the closed vocabulary in the Schema
-section, and carries a `statement` copied verbatim from the source plus the
-fields listed under "Schema". Nodes nest: a node that lies inside another (a
+theorem or other result, a proof, a proof step, an equation, an algorithm, a
+remark, ...), of exactly one type from the closed vocabulary under "Schema"
+below, and carries a `statement` copied verbatim from the source plus the
+fields listed there. Nodes nest: a node that lies inside another (a
 proof step in its proof, an equation in a theorem, a lemma inside a proof) is
 part of it, recorded by `parent_id`. Edges are typed dependencies between
-nodes, from the closed edge vocabulary. Read the Schema section before you
-begin.
+nodes, from the closed edge vocabulary. Read "Schema" before you begin. (In
+these instructions, a *section* is always a section of the paper; parts of the
+instructions are named by their headings in quotes.)
 
-There are two core rules.
+**Terms used below.**
+- *Prepared source*: the paper's text as `latex_facts.py` delivers it in
+  `facts.json` (see "Two layers"). Everything you copy comes from it.
+- *Span*: one contiguous piece of the prepared source.
+- *`latex_facts.py`*: a command in `{REPO}/src/` that you run first; it reads
+  the LaTeX syntax and writes `facts.json` (see "Two layers").
+- *Finishing step*: the function `finalize()` in `{REPO}/src/extraction_finalize.py`,
+  which your build script calls last (Workflow step 8): it fills some fields
+  and edges and checks your graph.
+- *Environment node*: a node taken from an environment the facts report (`\begin{theorem}`...). 
+  *Prose node*: a node you find in running text, whose boundaries are your judgment.
+- *Level-2 nodes* are the steps, `proof_step` and `algorithm_step`; every other node is *Level-1*.
+- *Result*: a node of type theorem, lemma, proposition, corollary or claim
+  (what a proof proves). A `conjecture` is stated like a result but unproven;
+  an `open_problem` is a question, not a statement. Both can be resolved by a result.
+- *Hard rule N* is rule N under "HARD RULES"; *step rule N* is rule N under
+  "When to emit a `proof_step`".
+- *Orphan*: a node with no edge and no `parent_id` (a step or a nested equation
+  is tied to the graph by its parent, not by edges).
 
-**Core rule #1 — `statement` is a VERBATIM COPY** from the source `.tex`,
-LaTeX preserved exactly. No paraphrase, no summary, no rewording.
+There are two core rules:
 
-**Core rule #2 — `statement_short` is the LLM COMPRESSION**, populated
-whenever a meaningful 1-sentence version exists. For proofs especially,
+**Core rule #1 — `statement` is a verbatim copy** from the prepared source,
+LaTeX preserved exactly.
+
+**Core rule #2 — `statement_short` is your compression**, populated
+whenever a meaningful short version exists: one sentence, or two for a long
+proof or algorithm (see "CORE RULE #2"). For proofs especially,
 `statement_short` should capture the strategy ("By induction on $n$",
 "Density-increment iteration").
 
-## Source
+## This paper
 
-- BID: {BID}
+The paper you extract in this run, and where its files are:
+
+- ARXIV ID: {BID}
 - TITLE: {TITLE}
 - AUTHORS: {AUTHORS}
 - YEAR: {YEAR}
-- TEX SOURCE: {TEX_SOURCE}
-- OUTPUT JSON: {OUTPUT_JSON}
+- LATEX SOURCE (input): {TEX_SOURCE}
+- OUTPUT FILE (write your JSON here): {OUTPUT_JSON}
+- CODE (the Saranga repository, with the tools below): {REPO}
 
 ## Two layers: LaTeX facts first, then your judgment
 
 Part of this paper's structure is stated by LaTeX syntax, and a parser reads
-it exactly. Run it before anything else:
+it exactly. Run it before anything else (`<scratch>` is any scratch directory):
 
-    python3 /mnt/c/Code/Github/Saranga/src/latex_facts.py {TEX_SOURCE} --out <scratch>/facts.json
+    python3 {REPO}/src/latex_facts.py {TEX_SOURCE} --out <scratch>/facts.json
 
 `facts.json` gives you:
-- `source`: the PREPARED source: `\input`/`\include` files inlined, the
+- `source`: the prepared source: `\input`/`\include` files inlined, the
   paper's own argument-free macros expanded (`\gr` becomes `\Gamma`), and
   comments, `\iffalse`/`\if0` regions, `comment` environments and everything
   after `\end{document}` removed. Slice every verbatim field from this text,
-  never from the raw `.tex`: the pipeline checks statements against it.
-- `facts`: every theorem-like, proof, algorithm and numbered equation
-  ENVIRONMENT, with its body span (`start`, `end`), the author's name for it
+  never from the raw `.tex`: the finishing step checks statements against it.
+- `facts`: every theorem-style environment (`\newtheorem` ones: theorem,
+  lemma, definition, remark, ...), proof, algorithm and numbered equation, 
+  with its body span (`start`, `end`), the author's name for it
   (`display`) and the node type that name maps to (`type`, null when the name
-  is not a standard one), its `\label`, its printed number, its section, and
-  for proofs the result it proves where syntax says so (`proves`).
-- `labels`, `refs`, `sections`: every `\label`, every `\ref`, every section.
+  is not a standard one), its `\label`, its printed number, its section (an
+  `id` in `sections`; a node's `section` field is that entry's number and
+  title, e.g. "3 Monotonic Improvement"), and
+  for proofs the result it proves where syntax says so (`proves`) and the
+  proof's own structure (`structure`: the author's step labels, inline claims
+  and paragraph breaks; see the step rules); for pseudocode algorithms, its
+  printed lines (`lines`; see "When to emit an `algorithm_step`").
+- `labels`, `refs`, `sections`: every `\label`, every `\ref`, every section
+  heading (with `inside`: the environment it sits in, or null for a heading of
+  the paper itself).
 
 For an environment fact, emit its node with exactly the fact's span. That
 includes every numbered equation (labelled or not), wherever it sits: inside a
 theorem, a proof or a definition it is still its own `equation` node, because
-the paper can cite it as "(3.2)". An unnumbered display (`\[...\]`, `$$...$$`,
+the paper can cite it as "(3.2)". An unnumbered displayed equation (`\[...\]`, `$$...$$`,
 `equation*`, `align*`) is not a node of its own: like inline math, it is part
 of the text of the node that contains it. Confirm or correct `type`
-(a `display` of "Fact" or "Property" is yours to classify, and a cited result
-inside a theorem environment is still `origin: external`). A numbered equation
+(a `display` of "Fact" or "Property" is yours to classify; when `type` is null,
+choose the type by content, Hard rule 4, and an environment with no
+mathematical content, such as acknowledgements, gets no node; a cited result
+inside a theorem environment is still `origin: external`, Hard rule 3). A numbered equation
 stays `equation` unless the text names it as a result ("Weyl's relation", "the
 Ehrenfest theorem"); then it takes that type (a cited result: `theorem`,
-`origin: external`), confidence `0.9`.
+`origin: external`), confidence `0.9` (see `confidence` under Schema).
 
-**The facts cover environments only.** Most definitions, remarks, claims and
-problems in a paper are written in ordinary prose, with no environment, and
-none of them is in `facts.json`. Finding them is your main job. Do not treat
-the facts as the list of nodes; treat them as the part already done.
+**The facts cover environments only.** Definitions, results, remarks and
+problems stated in running text are not in `facts.json`. Read the whole paper
+and find what it states in prose, however much or little that is.
+Add the prose nodes that the rules under "Where a prose node starts and ends"
+give, and only those.
 
-You do not fill `label`, `source_line_label`, `backward`, or the `parent_id`
-of a Level-1 node, and you do not add the `uses` edges that a `\ref` states or
-the `proves` edges that syntax states: the pipeline does all of these in the
-last step (see Workflow). You add every dependency that has no `\ref`.
+The finishing step fills `label`, `source_line_label`, `backward` and the
+`parent_id` of Level-1 nodes, and adds the `uses` edges that a `\ref` states
+and the `proves` edges that syntax states; leave these out. You add every
+dependency that has no `\ref`.
 
 **The graph is a hierarchy.** `parent_id` means "is part of": every node is
 either top-level or has exactly one parent, the innermost node whose statement
 contains its own. A proof step belongs to its proof (or to a parent step); an
 equation to the theorem, proof, definition or step it sits in; a lemma stated
 inside a proof to that proof, and so does that lemma's own proof. For Level-1
-nodes the pipeline computes `parent_id` from the spans; you set it only for
+nodes the finishing step computes `parent_id` from the spans; you set it only for
 steps, by the nesting rules. Never draw a `uses` edge to express containment.
+
+## HARD RULES
+
+1. **You decide what is a node by reading; scripts only move text.** Read the
+   prepared source with the Read tool (with offsets for large files) and decide
+   each node, its type and its span by reading it. Scripts are for slicing the
+   spans you chose out of the source, building the JSON, and running the
+   finishing step. Never let a regex decide what is a node: do not write a
+   script that greps for "Theorem N.M" or "we define" and emits whatever matches.
+   (The environment facts are the one exception, and `latex_facts.py` provides them.)
+
+2. **Preserve canonical names.** When the paper introduces a named
+   object ("Sinkhorn-Knopp algorithm", "Markov's inequality", "PCA"),
+   use that exact name in the `name` field: `name` is how the node is
+   matched to the same result in other papers.
+
+3. **`origin` is required on every node:**
+
+   - `"paper"` — node is a contribution introduced by this paper.
+   - `"external"` — node is a cited prior result the paper uses but
+     does not establish (classical theorems invoked, foundational
+     definitions imported, baseline algorithms compared against).
+
+   For `origin: "external"` nodes, also set `origin_citation` to a
+   short free-text identifier ("Brooks 1941", "Davis & Kahan; Stewart
+   & Sun 1990", "Impagliazzo, Levin, Luby", etc.).
+
+   The `statement` field for an external node is still verbatim — copy
+   the way this paper states the cited result, even where it differs
+   from the original's wording.
+
+   An uncited standard notion or folklore result is `external` with
+   `origin_citation: "standard (uncited)"`. A result the paper attributes to
+   others is `external` even if the paper re-proves it; that proof is `paper`.
+
+   `external` marks a node that states a cited result ("Theorem 2.1 (Brooks
+   [12]). Every connected graph ...", "As shown in [REF], every $X$ is $Y$.").
+   A citation used inside an argument ("by X", "applying [REF]") creates no
+   node: it stays in the text of the node that uses it (see "Where a prose
+   node starts and ends").
+
+4. **Closed node type vocabulary.** A node's `type` is determined by
+   semantic content, not LaTeX environment, but the resulting type must
+   come from the closed set listed under "Schema". Do not invent new types (`fact`, `property`, `observation`, etc).
+   Map non-standard `\newtheorem{...}` environments to the closest
+   standard type that fits its content.
+
+   Type-promotion within the closed set:
+   - A `\begin{definition}` whose body is an optimization formulation
+     (e.g. `x^* = \arg\min_x f(x)`) → `type="problem"`, not `definition`.
+   - A `\begin{definition}` whose body is a step-by-step procedure →
+     `type="algorithm"`.
+   - A `\begin{lemma}` whose body is a numerical bound used as
+     scaffolding stays `lemma`.
+   - A custom `\newtheorem{property}` or `\newtheorem{fact}` → `theorem` with
+     `origin: external` if it states a cited result, otherwise `claim`.
+
+5. **`problem` vs `open_problem` distinction:**
+   - `problem` = a formally stated computational/optimization/decision
+     problem the paper studies (e.g. "$\maximize_\theta L(\theta)$
+     s.t. $D_{KL}(\theta_{old},\theta) \le \delta$", "3-SAT").
+   - `open_problem` = an unresolved mathematical question with no known
+     solution ("It is unknown whether...", "An important open question
+     is...").
+
+6. **Completeness: do not drop results.** Every numbered
+   or labelled stated result in the paper must produce a
+   result node (theorem, lemma, proposition, corollary or claim).
+
+   **Do not demote a stated result to an `equation` node** even if the
+   paper presents it inside `\begin{equation}...\end{equation}` blocks.
+   If the prose says "the optimal $P^\lambda$ has the unique form
+   $P^\lambda = \diag(u) K \diag(v)$ [Sinkhorn's theorem]" — that is a
+   **theorem** with `origin: external`: the paper names it and states it in
+   full (see "Type of a result stated in prose").
+
+   Count of result nodes you emit ≥ count of numbered or labelled result
+   environments in the source.
+
+7. **Acyclicity, with backward edges flagged.** A `uses` edge `A → B` reads
+    "B uses A". Some real dependencies point against the paper's order: a
+    proof that cites "Remark 5 below", or an induction step that applies the
+    theorem itself at a smaller case. Never delete such an edge to avoid a
+    cycle. The finishing step marks it `"backward": true` by position (its source
+    comes after its target in the paper). The graph
+    with the backward edges removed must be acyclic. No reciprocal `uses` edges between the
+    same pair.
+
+8. **`tags[]` is topical only; `proof_strategy[]` is for proof strategy.**
+
+    - `tags[]` on any node — topical/role labels:
+      `existence, uniqueness, bound, identity, foundational, optimization,
+      combinatorial, randomized, sampling, constrained_optimization,
+      monotonic_improvement, ...` (open vocabulary, but semantically TOPICAL).
+    - `proof_strategy[]` on `proof` nodes only — the strategy of the
+      proof, controlled vocabulary:
+      `induction, strong_induction, contradiction, minimal_counterexample,
+      construction, probabilistic, case_analysis, density_increment,
+      direct, contrapositive, dual_argument, geometric, algebraic_manipulation,
+      compactness, fixed_point, other`.
+
+    **Wrong:** putting `"contradiction"` in `tags[]` of a proof node.
+    **Right:** `tags: ["graph_coloring"]`, `proof_strategy: ["contradiction", "minimal_counterexample"]`.
+
+9. **`section` is the plain section title.** Do not include LaTeX labels,
+    cross-reference identifiers, or parenthesized provenance markers.
+
+    - **Wrong:** `"section": "3 Monotonic Improvement (alg:pialg)"`
+    - **Wrong:** `"section": "1 (cited)"`
+    - **Right:** `"section": "3 Monotonic Improvement"`
+    - **Right:** `"section": "1 Introduction"` plus `"origin": "external"`
+      on the cited node.
 
 ## Schema
 
@@ -94,36 +242,48 @@ steps, by the nesting rules. Never draw a `uses` edge to express containment.
 ### Required node fields (every node)
 
 - `id` — compact ID (see convention below)
-- `type` — from the closed vocabulary in rule 7
+- `type` — from the closed vocabulary in Hard rule 4
 - `name` — display name (canonical name from paper, e.g. "Brooks'
   Theorem", "Leftover Hash Lemma", "Discrete Fourier Transform")
-- `statement` — VERBATIM source body, math-preserved per rule 5.
+- `statement` — verbatim source body, math-preserved per core rule #1 ("LaTeX math").
   This is core rule #1.
-- `section` — plain section title (per rule 12)
-- `origin` — `"paper"` or `"external"` (per rule 6)
+- `section` — plain section title (per Hard rule 9)
+- `origin` — `"paper"` or `"external"` (per Hard rule 3)
+- `confidence` — float 0-1. How much *judgment* the
+  node required — not how rigorous the maths is (that is `rigor`, below):
+
+  | `confidence` | when |
+  |---|---|
+  | `1.0` | lifted from an explicit environment whose name gives the type (`\begin{theorem}`, `\begin{definition}`) — no judgment |
+  | `0.9` | an environment whose type you chose or corrected (a non-standard name, a retyped equation) |
+  | `0.85`–`0.95` | explicitly labelled in prose ("Theorem 3 states that…", "We define X as…") |
+  | `0.6`–`0.8` | promoted from prose — the content is genuinely asserted, but its type and span boundaries are your judgment |
+  | below `0.6` | do not emit the node |
+
+  Do not round a prose node up to `1.0`: `1.0` is how a reader tells an
+  environment from a judgment call.
 
 ### Optional node fields
 
-- `statement_short` — LLM compression per core rule #2. Always emit
-  for proofs; almost always for algorithms; selectively for
-  theorem-likes and definitions.
+- `statement_short` — your compression (core rule #2).
 - `origin_citation` — required when `origin="external"`
-- `assumptions[]`, `conclusions[]` — for theorem-like nodes
-  (theorem/lemma/proposition/corollary/claim/conjecture). **Each
-  element is a VERBATIM SPAN** from the source — not paraphrased.
-  Required when the extractor can decompose; absent only when the
-  statement structure resists clean decomposition. **NOT used for
-  `definition` nodes** (definitions are stipulative, not if-then).
-- `input[]`, `output[]` — for `algorithm` nodes. List of verbatim
-  input/output description strings, one per element. There is no
+- `assumptions[]`, `conclusions[]` — for results and conjectures
+  (theorem/lemma/proposition/corollary/claim/conjecture). Each
+  element is a verbatim span from the source — not paraphrased.
+  Required when you can decompose; absent only when the
+  statement structure resists clean decomposition. not used for
+  `definition` nodes (definitions are stipulative, not if-then).
+- `input[]`, `output[]` — for `algorithm` nodes: the verbatim input and output
+  descriptions. These and `assumptions[]`/`conclusions[]` are JSON arrays of
+  strings, one verbatim span per element (`"input": ["Cost matrix $M$",
+  "Marginals $r$ and $c$"]`), never one concatenated string. There is no
   `pseudocode` field: the verbatim algorithm body is the `statement`, and
   its steps are `algorithm_step` children.
 - `definiendum`, `genus`, `differentia[]` — for `definition` nodes only
   (see "Definition decomposition" below).
-- `rigor` — OPTIONAL, **default `formal`**. Omit it on any node whose
+- `rigor` — optional, default `formal`. Omit it on any node whose
   statement is precise and whose justification is a rigorous proof.
-  That is the common case, so most nodes carry NO `rigor` field. Add it
-  only when the node departs from that:
+  Add it only when the node departs from that:
 
   | value | when |
   |---|---|
@@ -132,44 +292,37 @@ steps, by the nesting rules. Never draw a `uses` edge to express containment.
   | `numerical` | supported by simulation or computation only |
   | `conjectural` | presented as unproven: a belief, an expectation or a conjecture ("we believe", "it is expected") |
 
-  Give no `rigor` to `origin: external` nodes or to `assumption` nodes.
-  Judge the **justification**, not the node's type or the paper's arXiv
+  `rigor` belongs only on nodes that assert something true: results (not
+  conjectures, whose type already says they are unproven), equations
+  and remarks that assert a result. Never on definitions, assumptions,
+  examples, exercises, problems, open problems, algorithms, proofs or steps,
+  and never on `origin: external` nodes.
+  Judge the justification, not the node's type or the paper's arXiv
   category. A `theorem` with a hand-waved proof is `semi_formal`; a
   `remark` carrying a full proof gets no `rigor` field. Do not infer
   rigor from the category: two papers in the same category can differ
   completely, so read each node's own justification.
 
-  Emit `metadata.rigor_nonformal_count` = the number of nodes you gave a
+  Emit `metadata.rigor_nonformal_count` (in the output's `metadata`, Workflow
+  step 9) = the number of nodes you gave a
   `rigor` field. Always emit it, `0` included: a missing key is read as
   "rule not applied".
 - `label` — the `\label{...}` key of the environment this node came
-  from. Filled by the pipeline from `facts.json`; do not set it.
-- `confidence` — REQUIRED on every node (float 0-1). How much *judgment* the
-  node required — NOT how rigorous the maths is (that is `rigor`, above):
-
-  | `confidence` | when |
-  |---|---|
-  | `1.0` | lifted from an explicit environment (`\begin{theorem}`, `\begin{definition}`) — no judgment |
-  | `0.85`–`0.95` | explicitly labelled in prose ("Theorem 3 states that…", "We define X as…") |
-  | `0.6`–`0.8` | **promoted from prose** — the content is genuinely asserted, but its type and span boundaries are your judgment |
-  | below `0.6` | do not emit the node |
-
-  Do not round a prose node up to `1.0`: `1.0` is how a reader tells an
-  environment from a judgment call.
+  from. Filled by the finishing step from `facts.json`.
 - `parent_id` — "is part of": the innermost node containing this one (see "The
-  graph is a hierarchy"). You set it on steps; the pipeline sets it on Level-1
+  graph is a hierarchy"). You set it on steps; the finishing step sets it on Level-1
   nodes
 - `proves` — on a `proof` node, the id of the result it proves; always the same
   as the target of its `proves` edge
-- `tags[]` — topical labels only (per rule 11)
+- `tags[]` — topical labels only (per Hard rule 8)
 - `proof_strategy[]` — proof strategy labels, on `proof` nodes only
-  (per rule 11)
-- `subclass` — on step nodes only, from controlled vocabulary
+  (per Hard rule 8)
+- `subclass` — on step nodes only, from the `subclass` vocabulary (see "Level-2 steps")
 
-### Assumption / conclusion decomposition (theorem-likes)
+### Assumption / conclusion decomposition (results and conjectures)
 
 When you split a verbatim statement into `assumptions[]` and
-`conclusions[]`, you are **selecting spans from the verbatim text** —
+`conclusions[]`, you are selecting spans from the verbatim text —
 not paraphrasing it. The union of the spans should reconstruct the
 mathematical content of the statement; the wording must match the
 source.
@@ -191,30 +344,30 @@ source.
 - **Regime C — pure identity.** Closed-form equality with no free
   variables. `assumptions: []`, `conclusions: ["..."]` (verbatim span).
 
-Default to Regime B over Regime C — most theorems have implicit
-declarations in surrounding text; recover them by quoting the relevant
-span verbatim.
+Before choosing Regime C, check the surrounding text for declarations of the
+statement's variables; if there are any, use Regime B and quote them
+verbatim.
 
 ### Definition decomposition — definiendum / genus / differentia (definitions)
 
 For `definition` nodes, optionally decompose the definition in the
 classical way: the term, the category it belongs to, and the conditions
-that single it out. All three fields are **optional and best-effort**; emit them when the definition
+that single it out. All three fields are optional and best-effort; emit them when the definition
 has a clear "X is a Y that satisfies Z" shape, and omit any that do not
-apply. They do **not** replace `statement` (which stays verbatim).
+apply. They do not replace `statement` (which stays verbatim).
 
 - `definiendum` — the term being defined (the head noun / name). Prefer a
   verbatim span; a canonicalized name is acceptable.
 - `genus` — the parent category the definiendum belongs to. Prefer a
   verbatim span from the definition body.
 - `differentia[]` — the distinguishing conditions that separate it within
-  the genus, one per element, each a **verbatim span** where possible.
+  the genus, one per element, each a verbatim span where possible.
 
 Examples:
-- "A **field** is a **commutative ring** in which **every nonzero element
-  is invertible**." → `definiendum="field"`, `genus="commutative ring"`,
+- "A field is a commutative ring in which every nonzero element
+  is invertible." → `definiendum="field"`, `genus="commutative ring"`,
   `differentia=["every nonzero element is invertible"]`.
-- "A **Banach space** is a **normed vector space** that is **complete**."
+- "A Banach space is a normed vector space that is complete."
   → `definiendum="Banach space"`, `genus="normed vector space"`,
   `differentia=["complete"]`.
 
@@ -222,56 +375,40 @@ When a definition is purely stipulative notation with no genus ("Let
 $X := \{...\}$"), omit `genus`/`differentia` and keep only `statement`
 (and `definiendum` if a name is introduced).
 
-### Schema rule for `input` / `output` / `assumptions` / `conclusions`
-
-These MUST be JSON **arrays of strings**, one bullet per element, NOT a
-single concatenated string. Each element is a **verbatim span** from
-the source.
-
-```json
-"input":  ["Cost matrix $M$", "Regularization parameter $\\lambda$",
-           "Marginals $r$ and $c$"],
-"output": ["Dual-Sinkhorn divergence $d_M^\\lambda(r,c)$",
-           "Scaling vectors $u, v$ such that $P^\\lambda = \\mathrm{diag}(u)\\,K\\,\\mathrm{diag}(v)$"]
-```
-
-Do NOT write `"input": "Cost matrix M, regularization parameter ..."`
-as one concatenated string.
-
 ### Compact ID convention
 
-`{PREFIX}{paper_num}.{seq}`:
+`{PREFIX}{seq}`: the type's prefix and a counter from 1 within each type, e.g.
+`TP3` (source order preferred; never renumber).
 
 | Type | Prefix | Example |
 |---|---|---|
-| definition | DP | DP5.1 |
-| theorem | TP | TP5.1 |
-| lemma | LP | LP5.1 |
-| proposition | PrP | PrP5.1 |
-| corollary | CP | CP5.1 |
-| proof | PP | PP5.1 |
-| proof_step | PSP | PSP5.1 |
-| algorithm | AP | AP5.1 |
-| algorithm_step | ASP | ASP5.1 |
-| equation | EP | EP5.1 |
-| example | ExP | ExP5.1 |
-| exercise | ExerP | ExerP5.1 |
-| remark | RP | RP5.1 |
-| problem | ProbP | ProbP5.1 |
-| open_problem | OpenP | OpenP5.1 |
-| assumption | AssumP | AssumP5.1 |
-| claim | ClP | ClP5.1 |
-| conjecture | CnjP | CnjP5.1 |
+| definition | DP | DP1 |
+| theorem | TP | TP1 |
+| lemma | LP | LP1 |
+| proposition | PrP | PrP1 |
+| corollary | CP | CP1 |
+| proof | PP | PP1 |
+| proof_step | PSP | PSP1 |
+| algorithm | AP | AP1 |
+| algorithm_step | ASP | ASP1 |
+| equation | EP | EP1 |
+| example | ExP | ExP1 |
+| exercise | ExerP | ExerP1 |
+| remark | RP | RP1 |
+| problem | ProbP | ProbP1 |
+| open_problem | OpenP | OpenP1 |
+| assumption | AssumP | AssumP1 |
+| claim | ClP | ClP1 |
+| conjecture | CnjP | CnjP1 |
 
 ## CORE RULE #1 — `statement` IS A COPY, NOT A SUMMARY
 
-For every node, the `statement` field must be the **verbatim text of
-the corresponding block in the source `.tex`**, with LaTeX preserved
-exactly. You are an **extractor**, not a writer, editor, or summarizer.
-Do not paraphrase even slightly: the pipeline locates every `statement` in
-the source by exact match, and a statement it cannot find fails the check.
+You are an extractor, not a writer, editor, or summarizer. Do not
+paraphrase even slightly: the finishing step locates every `statement` in the
+prepared source by exact match, and a statement it cannot find fails the
+check.
 
-The ONLY edits permitted to the source text are mechanical cleanup that
+The only edits permitted to the source text are mechanical cleanup that
 does not change wording:
 
 - Collapse runs of whitespace and newlines into single spaces.
@@ -282,36 +419,57 @@ does not change wording:
   do not undo the macro expansion.
 - Drop `\label{...}` and `\index{...}` commands.
 - Keep `\ref{...}`, `\eqref{...}`, `\cite{...}` and their variants exactly as
-  written: the pipeline turns each `\ref` into an edge.
-- Escape backslashes for JSON (`\Sigma` in source → `"\\Sigma"` in JSON).
+  written: the finishing step turns each `\ref` into an edge.
+- Build the output with a JSON library (`json.dump`), which escapes backslashes
+  for you (`\Sigma` in the source becomes `"\\Sigma"` in the file). Never escape
+  by hand: doing both doubles the backslashes.
 
-Everything else — every word, every math symbol, every named object,
-every qualifying clause, every "Let X be...", every "Suppose that..."
-— stays.
+Everything else stays: every word, math symbol, named object and qualifying
+clause, including "Let X be..." and "Suppose that...".
+
+### No fabrication
+
+Every node `statement` must be text that
+literally appears in the prepared source (`facts.json`'s `source`; the
+permitted cleanup above aside). Do not synthesize from
+general knowledge, external papers, or your own understanding of
+the result. If you cannot point to the exact span in the source
+that a `statement` was copied from, the node is invalid.
+`statement_short`, by contrast, is your own compression — you may
+write it freshly. Do not confuse the two.
+
+### LaTeX math
+
+Copy math exactly as the source writes it: every `$`, every backslash command
+(`\Sigma`, `\mathbb`, `\frac`, ...), every brace and subscript, and display math
+(`\[ ... \]`, `\begin{equation} ... \end{equation}`) as display math. Do not
+rewrite, normalize or "fix" notation, not even to add missing braces: the
+statement must match the source character for character. Let the JSON library
+escape backslashes (see the cleanup list above).
 
 ### Anti-paraphrase catalogue
 
 | ❌ DO NOT (in `statement`) | ✅ DO (in `statement`) |
 |---|---|
-| Shorten a statement to fit a layout. | Copy the full body. Length is fine. |
 | Rewrite "Let $X$ be a Banach space and $T:X\to X$ a bounded linear operator. Then ..." as "If $X$ is Banach and $T$ is bounded linear, then ...". | Keep the original "Let ... . Then ..." phrasing. |
-| Translate math into prose ("$\arg\min_x f(x)$" → "the $x$ that minimizes $f$"). | Keep the math symbols exactly. |
 | Replace a named object with a generic description ("Sinkhorn-Knopp algorithm" → "fixed-point iteration"). | Keep the canonical name. |
-| "Clean up" notation ("$P^\lambda = \diag(u) K \diag(v)$" → "P = diag(u) K diag(v)"). | Keep the LaTeX exactly. |
 | Merge two source sentences into one. | Preserve the source's sentence structure. |
-| For a proof: replace the body with "By induction on $n$." in `statement`. | Copy the full proof body into `statement`. (Put "By induction on $n$" in `statement_short` instead.) |
-| For an algorithm: replace the pseudocode with a 1-sentence summary in `statement`. | Copy the full pseudocode body into `statement`. (Put the summary in `statement_short`.) |
-| Convert "$\sum_{i=1}^n a_i$" to "the sum of $a_i$". | Keep the sigma exactly. |
+| Replace a proof or an algorithm body with a summary ("By induction on $n$."). | Copy the full body, however long; the summary goes in `statement_short`. |
 | Drop a hypothesis you think is "implied" or "obvious". | Copy every hypothesis. |
 | Smooth out awkward phrasing. | Preserve awkward phrasing — it is part of the source. |
 
 ### Where a prose node starts and ends
 
-For a node that is NOT an environment fact (a result, definition, assumption,
+For a node that is not an environment fact (a result, definition, assumption,
 remark or problem stated in running text), the `statement` is:
 
 - **Whole sentences.** It starts at the beginning of a sentence and ends at the
-  end of one. Never start or stop mid-sentence. (Checked by the post-pass.)
+  end of one. (Checked by the finishing step.)
+- **Within one section.** It never crosses a section heading of the paper
+  (`\section`, `\chapter`, `\subsection`, ...). A heading inside an environment,
+  such as `\subsection{Step 1}` within a long proof, belongs to that environment
+  and is not a boundary; `facts.json` marks it (`sections[].inside`).
+  (Checked by the finishing step.)
 - **One statement per node.** Two separate assumptions, definitions or results
   are two nodes, even in consecutive sentences: "The weights are assumed
   i.i.d. normal. I assume the inputs are i.i.d. with variance 1." is two
@@ -322,22 +480,27 @@ remark or problem stated in running text), the `statement` is:
   that", "In this section we ...") and discussion after it.
 - **The argument is not the claim.** If the paper states a result and argues
   for it in running text (no proof environment), before or after stating it
-  ("By Lemma 4.2 ... we see the following"), the argument is NOT part of the result's node: it is a
-  separate `proof` node with a `proves` edge to the result. Displayed equations
-  inside it may also be `equation` nodes, nested inside the proof. Because the
-  span and the proved result are your judgment, give such a proof node AND its
+  ("By Lemma 4.2 ... we see the following"), the argument is not part of the result's node: it is a
+  separate `proof` node with a `proves` edge to the result. Numbered equations
+  inside it are `equation` nodes, nested inside the proof. Because the
+  span and the proved result are your judgment, give such a proof node and its
   `proves` edge confidence `0.6`–`0.8`; use `0.85`–`0.95` when the paper labels
   the proof in prose (`\noindent{\it Proof.}`, "Proof of Theorem 2:"); `1.0`
   is for `\begin{proof}` environments only. A single justifying sentence is a
   `proof` node with zero steps. The deciding question: is there a
-  separately stated result that this text justifies? If yes, `proof`; if no,
-  see the next point. But a paragraph that is a self-contained aside,
+  separately stated result that this text justifies? If yes, `proof`. If no,
+  it is not a proof: a paragraph that is a self-contained aside,
   arguing and concluding in one go with no separately stated claim ("By
   Gelfond's inequality ... Liouville's inequality then implies ... Combined
-  with (3), this gives ... must be irreducible."), is ONE `remark` node. Do not
+  with (3), this gives ... Must be irreducible."), is one `remark` node. Do not
   split it.
+- **A proof continued elsewhere is one node per part.** When a proof stops and
+  resumes in another section ("The rest of the proof is in Appendix C"), each
+  part is its own `proof` node, inside its own section, with a `proves` edge to
+  the result. Add a `uses` edge with the continuation as `source` and the first
+  part as `target`: the first part relies on the rest.
 - **A cited result that is only applied is not a node.** Create an
-  `origin: external` node only when the paper STATES the external result. A
+  `origin: external` node only when the paper states the external result. A
   sentence that applies one ("Liouville's inequality then implies that
   $|x_n - y| \gg n^{-2\delta-1}$") is part of the node that uses it; the
   `\cite` stays in its text.
@@ -355,34 +518,30 @@ remark or problem stated in running text), the `statement` is:
   node: the environment if there is one, else the fuller statement.
 - **No partial overlap.** Two nodes either do not overlap, or one contains the
   other (a `proof` containing an equation or a nested claim). Two nodes sharing
-  some sentences but not others is an error. (Checked by the post-pass.)
+  some sentences but not others is an error. (Checked by the finishing step.)
 
-### Statement length
+## CORE RULE #2 — `statement_short` IS YOUR COMPRESSION
 
-There is **no upper bound** on `statement` length. A 30-line algorithm
-body or a multi-paragraph theorem statement is FINE — put the full
-verbatim body in `statement`.
-
-Never shorten `statement` to fit; put a short version in
-`statement_short` (core rule #2).
-
-## CORE RULE #2 — `statement_short` IS THE LLM COMPRESSION
-
-For every node, emit `statement_short` whenever the LLM can produce a
-1-sentence compression that meaningfully adds value over `statement`.
+For every node, emit `statement_short` whenever you can write a short
+compression that meaningfully adds value over `statement`.
 
 **When to emit:**
-- Proofs: ALWAYS emit, as the 1-sentence strategy ("By induction on
-  $n$", "Density-increment iteration", "Apply Cauchy-Schwarz to bound
-  LHS, then integrate").
-- Algorithms: ALMOST ALWAYS emit. 1-sentence "what does this algorithm
-  do" ("Spectral clustering via bottom-$k$ eigenvectors then $k$-means").
+- Proofs: always emit. Give the strategy ("By induction on $n$",
+  "Density-increment iteration", "Apply Cauchy-Schwarz to bound LHS, then
+  integrate"). For a proof of 10 or more sentences whose argument turns on one
+  key step, add a second sentence naming that step ("Induction on $n$. The
+  inductive step applies a density increment on a progression of length
+  $\sqrt{N}$.").
+- Algorithms: always emit. Say what the algorithm does ("Spectral
+  clustering via bottom-$k$ eigenvectors then $k$-means"); for one with 10 or
+  more steps, a second sentence may name its key step.
 - Theorems / Lemmas / Propositions: emit when the verbatim statement
   is dense with notation and a plain-English compression is informative.
-- Definitions: SKIP if the verbatim statement is already a short
+- Definitions: skip if the verbatim statement is already a short
   English sentence; emit when the definition is long, multi-clause, or
   notation-heavy.
-- Remarks / examples: usually skip unless long.
+- Remarks / examples: emit only when long, multi-clause, or notation-heavy,
+  as for definitions.
 
 **When to skip:** if `statement_short` would be nearly identical to
 `statement` (i.e., no real compression value), leave `statement_short`
@@ -390,8 +549,11 @@ absent.
 
 **Style:**
 - Plain English, math symbols allowed where natural ($\delta$, $\Delta$, etc.).
-- ≤ 1 sentence, ≤ ~150 characters as a soft target (no hard cap).
-- Capture the IDEA, not all the technical conditions.
+- One sentence, about 150 characters; two sentences, at most about 300
+  characters, only for the proofs and algorithms above. Never a paraphrase of
+  the whole argument: if a second sentence would only restate details, leave
+  it out.
+- Capture the idea, not all the technical conditions.
 - For proofs: lead with the strategy/technique name; concrete first
   step is OK but optional.
 
@@ -407,157 +569,81 @@ statement_short:
    products to autocorrelation."
 ```
 
-## HARD RULES
+## Edge taxonomy — with direction conventions
 
-1. **The two core rules above come first.** Every rule below refines them.
+### Edge coverage — find the edges that exist, invent none
 
-2. **YOU DECIDE WHAT IS A NODE BY READING; SCRIPTS ONLY MOVE TEXT.** Read the
-   prepared source with the Read tool (with offsets for large files) and decide
-   each node, its type and its span by reading it. Scripts are for slicing the
-   spans you chose out of the source, building the JSON, and running the
-   pipeline's checks. Never let a regex decide what is a node: do not write a
-   script that greps for "Theorem N.M" or "we define" and emits whatever matches.
-   (The environment facts are the one exception, and the pipeline provides them.)
+**Find every real edge.** An isolated node deserves a second look: check
+whether the paper relates it to something. Before you finish, sweep every
+node and ask "does the paper actually relate this to something?" — in
+particular:
+  - each `definition`: which later statement or definition uses this concept?
+    (definition chains are real structure: `flow → subflow → minimal flow`)
+  - each `proof`: it must have a `proves` edge to what it proves;
+  - each result or conjecture: which definitions/assumptions/lemmas does its
+    statement invoke?
+  - each `example`: what concept does it illustrate?
 
-3. **NO FABRICATION.** Every node `statement` must be text that
-   LITERALLY APPEARS in the prepared source (`facts.json`'s `source`; the
-   permitted mechanical cleanup above aside). Do not synthesize from
-   general knowledge, external papers, or your own understanding of
-   the result. If you cannot point to the exact span in the source
-   that a `statement` was copied from, the node is invalid.
-   `statement_short`, by contrast, is your OWN compression — you may
-   write it freshly. Do not confuse the two.
+**Invent none.** A node with no real relationship stays isolated; that is
+correct output. Do not
+treat "every node has an edge" as a target to hit.
 
-4. **PRESERVE CANONICAL NAMES.** When the paper introduces a named
-   object ("Sinkhorn-Knopp algorithm", "Markov's inequality", "PCA"),
-   use that exact name in the `name` field. Do NOT abstract or
-   generalize it: `name` is how the node is matched to the same result in
-   other papers.
+**Score uncertain edges, do not guess.** Emit a borderline edge with its
+`confidence` rather than deciding yes or no:
 
-5. **PRESERVE LaTeX MATH EXACTLY** (in `statement`).
-   - Wrap inline math in `$..$` exactly as in the source.
-   - Keep every backslash command: `\Sigma`, `\sum`, `\int`, `\in`,
-     `\subset`, `\mathbb`, `\mathcal`, `\langle`, `\rangle`, `\nabla`,
-     `\defeq`, `\bar`, `\hat`, `\tilde`, `\frac`, etc.
-   - Greek letters: `$\alpha, \beta, ..., \omega, \Gamma, \Delta, ..., \Omega$`.
-   - Operators: `$\arg\min, \arg\max, \log, \exp, \min, \max, \sup, \inf$`.
-   - Sets/spaces: `$\mathbb{R}, \mathbb{Z}, \mathbb{N}, \mathbb{P}$`.
-   - Subscripts `_{ij}` and superscripts `^{T}` use braces when >1 char.
-   - In JSON, escape backslashes properly: source `\Sigma` → JSON `"\\Sigma"`.
-   - Display math (`\[ ... \]`, `\begin{equation} ... \end{equation}`)
-     stays as display math inside the statement — preserve it.
+| `confidence` | when |
+|---|---|
+| `0.9`–`1.0` | the text explicitly cross-references it in words (`by Lemma 3`; edges a `\ref` states are added by the finishing step), or it is the `proves` edge of a `\begin{proof}` environment (a proof argued in prose: see "Where a prose node starts and ends", `0.6`–`0.95`) |
+| `0.7`–`0.85` | no explicit reference, but the logical dependency is clear-cut (the statement uses a term this definition introduces) |
+| `0.5`–`0.65` | plausible but genuinely uncertain — emit only if you actually believe it |
+| below `0.5` | do not emit |
 
-6. **`origin` IS REQUIRED ON EVERY NODE.** No defaults, no omissions:
+Report your orphan count (nodes with no edge) in the final summary, with a one-line reason for any
+node you deliberately left isolated.
 
-   - `"paper"` — node is a contribution introduced by THIS paper.
-   - `"external"` — node is a CITED PRIOR RESULT the paper uses but
-     does not establish (classical theorems invoked, foundational
-     definitions imported, baseline algorithms compared against).
+These are the only valid edge types — do not invent others (e.g. there is no `defines` and no `special_case_of`; a
+definition→user link is just `uses`, and "special case" is `specializes`).
 
-   For `origin: "external"` nodes, also set `origin_citation` to a
-   short free-text identifier ("Brooks 1941", "Davis & Kahan; Stewart
-   & Sun 1990", "Impagliazzo, Levin, Luby", etc.).
+**One rule for every edge, no exceptions:**
 
-   The `statement` field for an external node is still verbatim — copy
-   the way THIS paper states the cited result, even where it differs
-   from the original's wording.
+> The arrow points **from the thing that comes first / is relied upon**
+> (`source`) **to the thing that relies on it** (`target`).
+> Equivalently: `source` supports `target`; `target` depends on `source`.
 
-   An uncited standard notion or folklore result is `external` with
-   `origin_citation: "standard (uncited)"`. A result the paper attributes to
-   others is `external` even if the paper re-proves it; that proof is `paper`.
+The table gives the required node type at each endpoint.
 
-   `external` marks a node that STATES a cited result ("Theorem 2.1 (Brooks
-   [12]). Every connected graph ...", "As shown in [REF], every $X$ is $Y$.").
-   A citation used inside an argument ("by X", "applying [REF]") creates no
-   node: it stays in the text of the node that uses it (see "Where a prose
-   node starts and ends").
+| Edge type | `source` (relied upon) | `target` (relies on source) | Reading |
+|---|---|---|---|
+| `uses` | any | any | target uses source (generic dependency, the default) |
+| `specializes` | any (general) | any (specific) | target is a special case of source |
+| `generalizes` | any (specific) | any (general) | target is a generalization of source |
+| `proves` | `proof` | result | the result's validity rests on the proof |
+| `illustrates` | any (the concept) | `example` | the example depends on the concept it shows |
+| `tests` | any (the concept) | `exercise` | the exercise depends on the concept it tests |
+| `resolves` | `problem` / `open_problem` / `conjecture` | result / `algorithm` | the result settles the question, or the algorithm solves the problem |
 
-7. **CLOSED NODE TYPE VOCABULARY.** A node's `type` is determined by
-   semantic CONTENT, not LaTeX environment, BUT the resulting type MUST
-   come from this closed set:
+**Every edge has four required fields: `source`, `target`, `type`, `confidence`**,
+plus `"backward": true`, which the finishing step sets by position (Hard rule 7).
+`confidence` is required (float 0-1, scored per the table above).
 
-   `definition, theorem, lemma, proposition, corollary, claim,
-   conjecture, remark, example, exercise, open_problem, problem, algorithm,
-   proof, proof_step, algorithm_step, equation, assumption`
+**Worked examples — copy these shapes exactly:**
+- definition DP1 used by theorem TP1, explicit `\ref` in the text:
+  `{"source": "DP1", "target": "TP1", "type": "uses", "confidence": 0.95}`
+- proof PP1 of theorem TP1, a `\begin{proof}` environment:
+  `{"source": "PP1", "target": "TP1", "type": "proves", "confidence": 1.0}`
+- example ExP1 illustrating definition DP1:
+  `{"source": "DP1", "target": "ExP1", "type": "illustrates", "confidence": 0.9}`
+- algorithm AP1 solving problem ProbP1:
+  `{"source": "ProbP1", "target": "AP1", "type": "resolves", "confidence": 0.9}`
+- theorem TP2 resolving open problem OpenP1:
+  `{"source": "OpenP1", "target": "TP2", "type": "resolves", "confidence": 0.8}`
+- definition DP2 whose statement uses a term DP1 introduces, no explicit ref:
+  `{"source": "DP1", "target": "DP2", "type": "uses", "confidence": 0.75}`
 
-   Do NOT invent new types (`fact`, `property`, `observation`, etc).
-   Map non-standard `\newtheorem{...}` environments to the closest
-   standard type — typically `proposition`, `remark`, or `claim`.
-
-   Type-promotion within the closed set:
-   - A `\begin{definition}` whose body is an OPTIMIZATION FORMULATION
-     (e.g. `x^* = \arg\min_x f(x)`) → `type="problem"`, not `definition`.
-   - A `\begin{definition}` whose body is a step-by-step procedure →
-     `type="algorithm"`.
-   - A `\begin{lemma}` whose body is a numerical bound used as
-     scaffolding stays `lemma`.
-   - A custom `\newtheorem{property}` or `\newtheorem{fact}` → `theorem` with
-     `origin: external` if it states a cited result, otherwise `claim`.
-
-8. **`problem` vs `open_problem` distinction:**
-   - `problem` = a FORMALLY STATED computational/optimization/decision
-     problem the paper studies (e.g. "$\maximize_\theta L(\theta)$
-     s.t. $D_{KL}(\theta_{old},\theta) \le \delta$", "3-SAT").
-   - `open_problem` = an UNRESOLVED mathematical question with no known
-     solution ("It is unknown whether...", "An important open question
-     is...").
-
-9. **COMPLETENESS — DO NOT DROP THEOREM-LIKE RESULTS.** Every numbered
-   or labeled stated result in the `.tex` source MUST produce a
-   theorem-like node (type ∈ {theorem, lemma, proposition, corollary,
-   claim}):
-
-   - Every `\begin{theorem}` → `theorem` node
-   - Every `\begin{lemma}` → `lemma` node
-   - Every `\begin{proposition}` → `proposition` node
-   - Every `\begin{corollary}` → `corollary` node
-   - Every `\begin{claim}` → `claim` node
-   - Every custom theorem-like env → mapped per rule 7
-
-   **Do NOT demote a stated result to an `equation` node** even if the
-   paper presents it inside `\begin{equation}...\end{equation}` blocks.
-   If the prose says "the optimal $P^\lambda$ has the unique form
-   $P^\lambda = \diag(u) K \diag(v)$ [Sinkhorn's theorem]" — that is a
-   **theorem** with `origin: external`: the paper names it and states it in
-   full (see "Type of a result stated in prose").
-
-   Count of theorem-like nodes you emit ≥ count of labeled theorem-like
-   environments in the source.
-
-10. **ACYCLICITY, WITH BACKWARD EDGES FLAGGED.** A `uses` edge `A → B` reads
-    "B uses A". Some real dependencies point against the paper's order: a
-    proof that cites "Remark 5 below", or an induction step that applies the
-    theorem itself at a smaller case. NEVER delete such an edge to avoid a
-    cycle. The pipeline marks it `"backward": true` by position (its source
-    comes after its target in the paper); you do not set the flag. The graph
-    with the backward edges removed must be acyclic. No reciprocal `uses` edges between the
-    same pair.
-
-11. **`tags[]` IS TOPICAL ONLY. `proof_strategy[]` IS FOR PROOF STRATEGY.**
-    Do not mix the two.
-
-    - `tags[]` on any node — topical/role labels:
-      `existence, uniqueness, bound, identity, foundational, optimization,
-      combinatorial, randomized, sampling, MM_algorithm, constrained_optimization,
-      monotonic_improvement, ...` (open vocabulary, but semantically TOPICAL).
-    - `proof_strategy[]` on `proof` nodes ONLY — the strategy of the
-      proof, controlled vocabulary:
-      `induction, strong_induction, contradiction, minimal_counterexample,
-      construction, probabilistic, case_analysis, density_increment,
-      direct, contrapositive, dual_argument, geometric, algebraic_manipulation,
-      compactness, fixed_point, other`.
-
-    **Wrong:** putting `"contradiction"` in `tags[]` of a proof node.
-    **Right:** `tags: ["graph_coloring"]`, `proof_strategy: ["contradiction", "minimal_counterexample"]`.
-
-12. **`section` IS PLAIN SECTION TITLE.** Do not include LaTeX labels,
-    cross-reference identifiers, or parenthesized provenance markers.
-
-    - **Wrong:** `"section": "3 Monotonic Improvement (alg:pialg)"`
-    - **Wrong:** `"section": "1 (cited)"`
-    - **Right:** `"section": "3 Monotonic Improvement"`
-    - **Right:** `"section": "1 Introduction"` plus `"origin": "external"`
-      on the cited node.
+**Theorem/definition → algorithm dependency:** when a paper introduces
+a theorem (e.g. existence of a factorization) and an algorithm that
+computes it, the theorem is a prerequisite of the algorithm:
+`theorem → algorithm` with type `uses`. Same for definitions.
 
 ## Level-2 steps — proof_step and algorithm_step
 
@@ -569,24 +655,26 @@ emitted alongside it.
 
 A step is one move of the argument: an object is introduced, a case is opened, a
 lemma or inequality is applied, a bound is established, an intermediate claim is
-proved, or the conclusion is drawn. Most steps carry no marker ("Let", "By",
-"Since", "Now"…); do not wait for one. Apply the rules below in order.
+proved, or the conclusion is drawn. A step need not carry a marker ("Let", "By",
+"Since", "Now"…). Decide first by step rule 9 whether the
+proof gets steps at all; then apply the step rules below in order.
 
-**1. Author labels (from `facts.json`).** Each proof fact carries
+**1. Author labels (from `facts.json`).** For a proof in prose (no
+environment), look for the same kinds of label yourself. Each proof fact carries
 `structure.labels`: the places where the paper itself labels its structure,
-already detected by the parser (anchored `Step N`, `Case N`, `Part N`, `(i)`/`(a)`
+already detected by the parser (`Step N`, `Case N`, `Part N` at the start of a line, `(i)`/`(a)`
 item labels, `1.` after `\smallskip`/`\par`/a blank line, prose items of a list
 inside the proof, `\textbf{...}`/`\emph{...}` headings, Base case / Inductive step,
-nested `\begin{proof}`). Every one of them starts a step; never merge two labels.
+nested `\begin{proof}`). Every one of them starts a step.
 Keep the label token in the step's `statement` (strip only `\item`). The
-post-pass checks this. A label body longer than 2 sentences gets CHILD steps
+finishing step checks this. A label body longer than 2 sentences gets child steps
 (`parent_id` = the label's step), segmented by the rules below. Text before the
 first label is its own `setup` step.
 
 **2. Steps end only at sentence ends.** A boundary falls after a `.`, `!`, `?` or
 `:` outside math, or at a label. Never inside a display, at a comma, at `;`, or
-before "where", "which", "because" continuing the same sentence. The post-pass
-checks this.
+before "where", "which", "because" continuing the same sentence. The finishing
+step checks this.
 
 **3. Paragraph breaks are a strong hint.** `structure.paragraph_breaks` lists the
 breaks that follow a complete sentence. Such a break normally starts a new step;
@@ -596,15 +684,15 @@ listed.)
 
 **4. Introductions group.** A run of consecutive sentences that only introduce
 objects (start with Let, Take, Consider, Define, Fix, Denote, Set, and contain no
-`\ref`, `\cite`, display, or hence/so/then/thus) is ONE `introduce_variable`
+`\ref`, `\cite`, display, or hence/so/then/thus) is one `introduce_variable`
 step. A run of a single such sentence is joined to the step that follows it.
 
 **5. Meta, reduction and recall form `setup` steps.** A sentence that starts with
 "it suffices to", "it is enough to", "it remains to", "we only need
 to", "the proof is (similar|analogous) to", "is proven exactly as", "we will use",
 "recall", "we have remarked" is a `setup` step. A contiguous restatement of a
-definition or a cited theorem (including a theorem-like environment quoted inside
-the proof) is ONE `setup` step; do not segment inside it.
+definition or a cited theorem (including a theorem-style environment quoted inside
+the proof) is one `setup` step.
 
 **6. Immediate sentences never stand alone.** A sentence is immediate when it has
 no display and no `\ref`/`\eqref`/`\cite`, and contains one of: clear(ly),
@@ -613,7 +701,7 @@ tautological, by inspection, similarly, a similar argument, the same argument, a
 above, we can verify, left to the reader; or is a closing formula ("This
 completes / finishes / proves the …", `\qed`). An unlabelled immediate sentence
 is appended to the preceding step, or, if it comes first in the body or label,
-prepended to the following step. A case opener or an induction base case (rule 8)
+prepended to the following step. A case opener or an induction base case (step rule 8)
 is never immediate; a closing formula is immediate even when it contains a
 `\ref` ("The proof of Theorem \ref{t1} is complete").
 
@@ -624,8 +712,8 @@ found). The following sentences are its children, up to and including the first
 sentence matching "(proves|completes|establishes) the claim", "This proves", "Now
 that", "as claimed", or the first sentence that restates the claim's conclusion
 or says it follows, or the next paragraph break, or the end of the enclosing
-label, whichever comes first. Nesting is REQUIRED when at least 2 sentences
-follow the opener. Only a numbered or later-cited inline claim is ALSO a
+label, whichever comes first. Nesting is required when at least 2 sentences
+follow the opener. Only a numbered or later-cited inline claim is also a
 Level-1 `claim` node (its statement is the claim sentence); its argument stays
 as the steps under it, not a separate `proof` node.
 
@@ -640,15 +728,15 @@ case(s)", or Thus/Hence after the last case). Cases stated inside one sentence
 a case. Induction ("Base case: … Inductive step: …") gives at least two
 `induction_step` steps.
 
-**9. Short proofs.** Emit ZERO steps when the body has at most 2 sentences outside
+**9. Short proofs.** Emit zero steps when the body has at most 2 sentences outside
 displays and no label. Never emit exactly one step: a body that is one move gets
-zero.
+zero. Likewise a step never has exactly one child.
 
 **10. A proof interrupted by an inner result.** When a proof is interrupted by a
 lemma or claim and its own proof, the outer `proof` statement spans the whole
 text, inner result included. The inner result and its proof are their own nodes
-(their `parent_id` is the outer proof, set by the pipeline). Among the outer
-proof's steps the inner block is ONE `setup` step with no children; the inner
+(their `parent_id` is the outer proof, set by the finishing step). Among the outer
+proof's steps the inner block is one `setup` step with no children; the inner
 steps belong to the inner proof only.
 
 **Step fields.** A step's `confidence` is `0.95` when it starts at an author
@@ -656,46 +744,39 @@ label, `0.75` otherwise. A step takes its parent's `section` and `origin`.
 
 ### When to emit an `algorithm_step`
 
-As with theorem-likes, the source may or may not mark the structure for you.
-Extract in both cases; only `confidence` differs.
+*Pseudocode* — an algorithm fact with `lines` (pseudocode in `algorithmic`,
+`algpseudocode`, `algorithm2e`, or a numbered list in an algorithm float). Its
+structure is syntax, so do not segment it yourself. In your build script call
 
-*Marked up* — `\begin{algorithmic}`, a numbered `\begin{enumerate}`, a listing,
-or any body whose lines the paper numbers. One step per line, including control
-keywords the paper numbers (`\REPEAT`, `\ELSE`, `\ENDIF`), since prose cites
-them ("by line 7"). A loop or branch header is its own step, separate from the
-lines in its body; but one printed line is always one step, even when it holds a
-header and its body. Skip comments, blank lines and the caption. `confidence`
-0.9–1.0.
+    from extraction_finalize import pseudocode_steps
+    steps = pseudocode_steps(facts, fact_id, algorithm_node, first_seq=next_free_ASP_number)
 
-Do NOT fill `source_line_label` yourself: LaTeX computes the printed line
-numbers, so they cannot be read off the source. The pipeline's finishing step (Workflow step 8)
-fills `source_line_label` on every `algorithm_step` it can place (null where the
-paper does not number its lines), and reports an error for a step that spans
-several printed lines: split it into one step per line and re-run.
+It returns one `algorithm_step` per printed line, with the verbatim `statement`
+(a loop or branch line spans its body), `parent_id` (the enclosing loop or
+branch, or the algorithm), `step_order`, a placeholder `name`, `confidence` 1.0,
+and `subclass` for control lines. Then, per step: choose `subclass` where it is
+None; write `statement_short` only where the line is not self-explanatory
+(`$x \leftarrow x + 1$` needs none); improve `name` if you like. Drop a step
+only when its line is not an operation (an algorithm title or input declaration
+that the package prints as a line). A line whose text describes several
+operations in prose may get child steps of its own, segmented as for
+unmarked procedures below. Keep `statement`, `parent_id` and `step_order` as returned;
+the finishing step sets `source_line_label` from the line LaTeX prints.
 
 *Unmarked* — an `\begin{algorithm}` float containing prose, or a procedure
 described in running text ("first we construct…, then for each component we…").
 One step per operation the description performs; segment on operations, not on
 sentences. `confidence` is 0.6–0.8, since the step boundaries are your judgment.
 
-Do NOT skip an algorithm, or decline to decompose it, because it has no
+Do not skip an algorithm, or decline to decompose it, because it has no
 `\STATE` markers: an unmarked procedure is still an algorithm.
-
-**Markup in a step's `statement`.** Copy the line's CONTENT, not its LaTeX
-wrapper: for `\STATE {Initialize $v \leftarrow v_0$.}` the `statement` is
-`Initialize $v \leftarrow v_0$.` Math and all other LaTeX inside the content are
-preserved verbatim as always. The same applies to `\item` in an enumerated
-procedure. When the control word IS the line, keep it verbatim, command and all:
-the statement of `\WHILE{not converged}` is `\WHILE{not converged}`, since that
-line carries the loop condition. A statement is always a span of the source:
-never rewrite markup into words.
 
 ### Verbatim requirement
 
-Each step's `statement` is ALSO verbatim — copy the sentence(s) or pseudocode
-line(s) from the source body that constitute that step. Each step's
-`statement_short` is your compression of that step's role ("Set up induction on
-$n$", "Apply Cauchy-Schwarz", "Conclude by Markov's inequality").
+Each step's `statement` is also verbatim — the sentence(s) from the source body
+that constitute that step (for pseudocode, `pseudocode_steps` gives it). A proof
+step's `statement_short` is your compression of that step's role ("Set up
+induction on $n$", "Apply Cauchy-Schwarz", "Conclude by Markov's inequality").
 
 ### Worked example — a labelled proof
 
@@ -709,11 +790,11 @@ Positive semi-definiteness follows from Part (1).
 Part (3): Obvious.
 ```
 
-Required output: ONE `proof` node whose `statement` is the full verbatim body
-(`statement_short` e.g. "Direct expansion + symmetry"), PLUS THREE `proof_step`
+Required output: one `proof` node whose `statement` is the full verbatim body
+(`statement_short` e.g. "Direct expansion + symmetry"), plus three `proof_step`
 nodes, each with `statement` = the verbatim text of its "Part (N):" sentence(s),
 `statement_short` = the step's role, `parent_id` pointing to the proof, and
-`subclass` from the canonical set.
+`subclass` from the `subclass` vocabulary below.
 
 ### Worked example — an unlabelled proof
 
@@ -727,32 +808,29 @@ the claim.
 ```
 
 No `Part`, no `Case`, no `Step` — and it is still three moves: introduce $v$ and
-$P_n$; apply Konig's lemma; conclude. Emit three `proof_step` nodes; do not wait
-for a label.
+$P_n$; apply Konig's lemma; conclude. Emit three `proof_step` nodes.
 
 **Step-node fields:**
-- `id` (e.g. `PSP5.1`, `ASP5.1` for paper 5 step 1)
+- `id` (e.g. `PSP1`, `ASP1`)
 - `type` (`proof_step` or `algorithm_step`)
-- `parent_id` (id of the parent node — see NESTING below)
-- `step_order` (1-based index within the IMMEDIATE parent)
-- `source_line_label` (`algorithm_step` only; the line number the PDF
-  prints for this line. Filled by the pipeline's finishing step, never by
-  hand, and never derived from `step_order`.)
+- `parent_id` (id of the parent node — see "Nesting" below)
+- `step_order` (1-based index within the immediate parent)
+- `source_line_label` (`algorithm_step` only; filled by the finishing step,
+  never by hand)
 - `name` (a short descriptive label)
 - `statement` (verbatim source span for this step)
-- `statement_short` (LLM compression of the step's role)
+- `statement_short` (your compression of the step's role)
 - `subclass` (from the controlled vocabulary below)
 - `tags[]` (optional, topical)
 
-**NESTING — steps may parent other steps.** A step node MAY take
+**Nesting: steps may parent other steps.** A step node may take
 another step node as its `parent_id`, to any depth:
-- `proof_step` — a label body longer than 2 sentences (rule 1), an
-  inline claim with at least 2 following sentences (rule 7, REQUIRED),
+- `proof_step` — a label body longer than 2 sentences (step rule 1), an
+  inline claim with at least 2 following sentences (step rule 7, required),
   a `\begin{proof}` inside a proof, a "Proof of Claim N" block.
-- `algorithm_step` — loop and branch bodies are CHILDREN, not
-  siblings. A line inside a `\FOR` / `\WHILE` / `\IF` block takes
-  that block's step as its `parent_id`, following the source's block
-  structure.
+- `algorithm_step` — loop and branch bodies are children, not
+  siblings: a line inside a `\FOR` / `\WHILE` / `\IF` block takes that
+  block's step as its `parent_id` (`pseudocode_steps` sets this for you).
 
 `step_order` restarts at 1 within each parent, so an outer loop's
 body is 1,2,3… not a continuation of the outer numbering.
@@ -761,11 +839,11 @@ body is 1,2,3… not a continuation of the outer numbering.
 sentence through the end of its last child: a label step is the whole label
 body; a claim step runs from the opener through the claim's last sentence; a
 loop step covers its body. Do not end a parent step before its last child:
-`parent_id` means "is part of", and the pipeline warns when a parent's statement
+`parent_id` means "is part of", and the finishing step warns when a parent's statement
 does not contain its child.
 
 **`subclass` controlled vocabulary.** The two vocabularies are
-DISJOINT — never use a proof_step value on an algorithm_step or
+disjoint — never use a proof_step value on an algorithm_step or
 the reverse.
 - proof_step: `setup, introduce_variable, apply_lemma, case_split,
   induction_step, contradiction_setup, algebraic_manipulation,
@@ -788,171 +866,26 @@ the reverse.
   `filter` discard, prune, or restrict a set ·
   `solve` solve a subproblem, system, or optimisation ·
   `call` invoke another algorithm or named subroutine ·
-  `update` modify existing state — use ONLY when none of the above
-  fits: a step that computes, selects, filters or solves is NOT an
+  `update` modify existing state — use only when none of the above
+  fits: a step that computes, selects, filters or solves is not an
   `update`. ·
   `return` output or terminate · `other` none of the above
 
 Steps may reference Level-1 nodes outside the parent
 (e.g. `proof_step uses Lemma 2.3`), but step-to-step edges across
-different parents are NOT permitted.
-
-## Edge taxonomy — with direction conventions
-
-### Edge coverage — find the edges that exist, invent none
-
-**Find every real edge.** An isolated node is almost always an omission: a
-definition that is never used anywhere is rare. Before you finish, sweep every
-node and ask "does the paper actually relate this to something?" — in
-particular:
-  - each `definition`: which later statement or definition uses this concept?
-    (definition chains are real structure: `flow → subflow → minimal flow`)
-  - each `proof`: it MUST have a `proves` edge to what it proves;
-  - each theorem-like node: which definitions/assumptions/lemmas does its
-    statement invoke?
-  - each `example`: what concept does it illustrate?
-
-**Invent none.** Never invent a relationship to make a node non-isolated. A
-node with no real relationship stays isolated; that is correct output. Do NOT
-treat "every node has an edge" as a target to hit.
-
-**Score uncertain edges, do not guess.** Emit a borderline edge with its
-`confidence` rather than deciding yes or no:
-
-| `confidence` | when |
-|---|---|
-| `0.9`–`1.0` | the text explicitly cross-references it (`by Lemma 3`, `\ref{}`), or it is the `proves` edge of a `\begin{proof}` environment (a proof argued in prose: see "Where a prose node starts and ends", `0.6`–`0.95`) |
-| `0.7`–`0.85` | no explicit reference, but the logical dependency is clear-cut (the statement uses a term this definition introduces) |
-| `0.5`–`0.65` | plausible but genuinely uncertain — emit only if you actually believe it |
-| below `0.5` | do not emit |
-
-Report your orphan count in the final summary, with a one-line reason for any
-node you deliberately left isolated.
-
-These are the ONLY valid edge types — do not invent others (e.g. there is no `defines` and no `special_case_of`; a
-definition→user link is just `uses`, and "special case" is `specializes`).
-
-**ONE RULE FOR EVERY EDGE — no exceptions:**
-
-> The arrow points **from the thing that comes first / is relied upon**
-> (`source`) **to the thing that relies on it** (`target`).
-> Equivalently: `source` supports `target`; `target` depends on `source`.
-
-The table gives the required node type at each endpoint.
-
-| Edge type | `source` (relied upon) | `target` (relies on source) | Reading |
-|---|---|---|---|
-| `uses` | any | any | target uses source (generic dependency, the default) |
-| `specializes` | any (general) | any (specific) | target is a special case of source |
-| `generalizes` | any (specific) | any (general) | target is a generalization of source |
-| `proves` | `proof` | theorem-like | the theorem's validity rests on the proof |
-| `illustrates` | any (the concept) | `example` | the example depends on the concept it shows |
-| `tests` | any (the concept) | `exercise` | the exercise depends on the concept it tests |
-| `resolves` | `problem` / `open_problem` / `conjecture` | theorem-like / `algorithm` | the theorem settles the question, or the algorithm solves the problem |
-
-(theorem-like = theorem, lemma, proposition, corollary, claim.)
-
-**Every edge has four required fields: `source`, `target`, `type`, `confidence`**,
-plus `"backward": true`, which the pipeline sets by position (Hard rule 10).
-`confidence` is REQUIRED (float 0-1, scored per the table above).
-
-**Worked examples — copy these shapes exactly:**
-- definition DF1 used by theorem TH1, explicit `\ref` in the text:
-  `{"source": "DF1", "target": "TH1", "type": "uses", "confidence": 0.95}`
-- proof PP1 of theorem TH1 (structural fact):
-  `{"source": "PP1", "target": "TH1", "type": "proves", "confidence": 1.0}`
-- example EX1 illustrating definition DF1:
-  `{"source": "DF1", "target": "EX1", "type": "illustrates", "confidence": 0.9}`
-- algorithm AP1 solving problem PR1:
-  `{"source": "PR1", "target": "AP1", "type": "resolves", "confidence": 0.9}`
-- theorem TH2 resolving open problem OP1:
-  `{"source": "OP1", "target": "TH2", "type": "resolves", "confidence": 0.8}`
-- definition DF2 whose statement uses a term DF1 introduces, no explicit ref:
-  `{"source": "DF1", "target": "DF2", "type": "uses", "confidence": 0.75}`
-
-Acyclicity and `backward: true` edges: see Hard rule 10.
-
-**Theorem/definition → algorithm dependency:** when a paper introduces
-a theorem (e.g. existence of a factorization) and an algorithm that
-computes it, the theorem is a prerequisite of the algorithm:
-`theorem → algorithm` with type `uses`. Same for definitions.
-
-## Workflow
-
-0. Run `latex_facts.py` (see "Two layers") and read `facts.json`.
-1. Read the cleaned `source` (multiple Read calls with offsets if large).
-2. Emit a node for every environment fact. Then find everything the facts
-   do not cover: definitions, results, remarks, claims, problems and
-   algorithms stated in prose.
-3. Assign compact IDs in source order per type.
-4. For each node:
-   a. **COPY** the source body into `statement` (verbatim, LaTeX
-      preserved, JSON-escaped). Core rule #1.
-   b. **WRITE** a 1-sentence `statement_short` per core rule #2
-      (always for proofs and algorithms; selectively elsewhere).
-   c. Set `origin` ("paper" or "external"). Required.
-   d. Set `name` to the canonical name from the paper.
-   e. Set `section` to the plain section title (no labels, no parens).
-   f. For theorem-likes, decompose into `assumptions[]`/`conclusions[]`
-      (verbatim spans).
-   g. For algorithms, populate `input[]`/`output[]` (verbatim spans).
-   h. For proofs, populate `proof_strategy[]` from the controlled
-      vocabulary.
-   i. Populate `tags[]` with topical labels only.
-5. Apply step extraction for proofs and algorithms (see "Level-2 steps").
-6. Apply type-promotion (rule 7).
-7. Build edges for logical dependencies that have no `\ref`. (Edges a `\ref`
-   states are added by the pipeline in step 8.)
-8. In your builder script, finish and check the graph before writing it:
-
-       import sys; sys.path.insert(0, "/mnt/c/Code/Github/Saranga/src")
-       from extraction_finalize import finalize
-       from latex_facts import read_tex
-       report = finalize(graph, read_tex("{TEX_SOURCE}"))
-       assert not report["errors"], report["errors"]
-
-   It fills `label` and `source_line_label`, writes the paper's full `\label`
-   table to `metadata.labels` (so every `\ref` kept in a statement resolves),
-   adds the `\ref`-stated `uses` edges and syntax-stated `proves` edges, and
-   validates (verbatim spans,
-   edge types and endpoints, acyclicity, step parents). Fix every error and
-   re-run. A `\ref` that points backward is added with `"backward": true`;
-   list `report["ref_backward"]` in your final report.
-9. Write the JSON to OUTPUT_JSON:
-
-   ```json
-   {
-     "metadata": {
-       "title": "...",
-       "paper_num": 1,
-       "annotator": "agent-extraction",
-       "model": "{MODEL}",
-       "effort": "{EFFORT}",
-       "prompt_version": "v6",
-       "extraction_date": "YYYY-MM-DD",
-       "rigor_nonformal_count": 0,
-       "paper_style": ["theorem_proof"],
-       "extraction_notes": [
-         {"category": "type_uncertain", "nodes": ["RP1.3"],
-          "note": "remark or lemma: stated without proof, used once in PP1.2"}
-       ],
-       "extraction_comment": ""
-     },
-     "nodes": [...],
-     "edges": [...]
-   }
-   ```
+different parents are not permitted.
 
 ## Extraction notes
 
-Alongside the graph, record what was unusual about extracting THIS paper, in
+Alongside the graph, record what was unusual about extracting this paper, in
 `metadata.paper_style`, `metadata.extraction_notes` and
 `metadata.extraction_comment`. People read these to
 filter papers and to improve these instructions, so write plainly and
 specifically. Add a note when the situation arises, not only at the end.
 
 `paper_style` is how the paper establishes what it says: a list of one or two
-of the values below, the dominant one first. Judge the reasoning, not the
+of the values below, the dominant one first. Decide it after extracting, from
+what you found; it describes the paper and changes none of the rules above. Judge the reasoning, not the
 layout (a proof written in prose is still `theorem_proof`).
 - `theorem_proof`: results stated and proved, including proofs that rest on a
   computer calculation;
@@ -991,12 +924,68 @@ may be empty for a note about the whole paper.
 | `not_extracted` | content you deliberately left out, and why |
 
 Do not summarize the paper, and do not restate what the graph already records
-(types, counts, confidence scores). An ordinary paper gets an empty list; do
-not write a note just to have one.
+(types, counts, confidence scores). If nothing was unusual, leave the list
+empty; do not write a note just to have one.
 
 `extraction_comment` is free text, at most 3 sentences, for something a reader of
 this graph should know that fits none of the categories above. Use it only then;
 otherwise leave it as an empty string.
+
+## Workflow
+
+0. Run `latex_facts.py` (see "Two layers") and read `facts.json`.
+1. Read the prepared `source` (multiple Read calls with offsets if large).
+2. Emit a node for every environment fact. Then find everything the facts
+   do not cover: definitions, results, remarks, claims, problems and
+   algorithms stated in prose.
+3. Assign compact IDs as you create nodes; source order within a type is
+   preferred but not required (see "Compact ID convention").
+4. For each node: copy its `statement` (core rule #1), write its
+   `statement_short` (core rule #2) and fill its fields (see "Schema").
+5. Apply step extraction for proofs and algorithms (see "Level-2 steps").
+6. Apply type-promotion (Hard rule 4).
+7. Build edges for logical dependencies that have no `\ref`. (Edges a `\ref`
+   states are added by the finishing step in step 8.)
+8. In the script you write to build the output (`graph` below is the output
+   dict, with `metadata`, `nodes` and `edges`), finish and check it before
+   writing it:
+
+       import sys; sys.path.insert(0, "{REPO}/src")
+       from extraction_finalize import finalize
+       from latex_facts import read_tex
+       report = finalize(graph, read_tex("{TEX_SOURCE}"))
+       assert not report["errors"], report["errors"]
+
+   It fills `label` and `source_line_label`, writes the paper's full `\label`
+   table to `metadata.labels` (so every `\ref` kept in a statement resolves),
+   adds the `\ref`-stated `uses` edges and syntax-stated `proves` edges, and
+   validates (verbatim spans,
+   edge types and endpoints, acyclicity, step parents). Fix every error and
+   re-run. A `\ref` that points backward is added with `"backward": true`;
+   list `report["ref_backward"]` in your final report.
+9. Write the JSON to the output file, {OUTPUT_JSON}:
+
+   ```json
+   {
+     "metadata": {
+       "title": "...",
+       "annotator": "agent-extraction",
+       "model": "{MODEL}",
+       "effort": "{EFFORT}",
+       "prompt_version": "v6",
+       "extraction_date": "YYYY-MM-DD",
+       "rigor_nonformal_count": 0,
+       "paper_style": ["theorem_proof"],
+       "extraction_notes": [
+         {"category": "type_uncertain", "nodes": ["RP3"],
+          "note": "remark or lemma: stated without proof, used once in PP2"}
+       ],
+       "extraction_comment": ""
+     },
+     "nodes": [...],
+     "edges": [...]
+   }
+   ```
 
 ## Pre-output self-check (MANDATORY)
 
@@ -1004,7 +993,7 @@ Before emitting the JSON, walk every node and verify:
 
 1. **`statement` is verbatim.** In the prepared source (`facts.json`), find
    the originating environment body or the whole sentences of prose it came
-   from, and confirm `statement` is that span **verbatim**, with:
+   from, and confirm `statement` is that span verbatim, with:
    - All math preserved (`$..$`, all backslashes, all subscripts).
    - All hypotheses preserved (no dropped "Let X be..." clauses).
    - All named objects preserved (no generic substitutions).
@@ -1012,18 +1001,18 @@ Before emitting the JSON, walk every node and verify:
      `\index`; the prepared source has already removed comments and disabled
      text and expanded macros).
 2. **`statement_short`, when present, is meaningful compression** —
-   NOT a copy-paste of `statement`, NOT longer than `statement`,
+   not a copy-paste of `statement`, not longer than `statement`,
    captures the idea. For proof nodes, verify `statement_short`
    exists.
-3. **`origin` is set on every node.** No nulls, no missing keys.
+3. **`origin` is set on every node.**
 4. **`section` is clean** — plain title, no `\label`s, no `(cited)` /
    `(alg:...)` parens.
-5. **`type` is in the closed vocabulary** (rule 7). No invented types.
+5. **`type` is in the closed vocabulary** (Hard rule 4).
 6. **`tags[]` is topical only.** Strategy labels live in
    `proof_strategy[]` on proof nodes.
-7. **Theorem-like nodes have `assumptions[]`/`conclusions[]`** unless
-   the statement structure genuinely resists decomposition (rare).
-   Definitions do NOT have these.
+7. **Results and conjectures have `assumptions[]`/`conclusions[]`** unless
+   the statement structure genuinely resists decomposition.
+   Definitions do not have these.
 
 ## Report (<200 words)
 
@@ -1034,11 +1023,10 @@ When complete, output:
   any warnings left
 - orphan count, with a one-line reason for any node deliberately left isolated
 - **step counts per parent**: for each `proof` and `algorithm` node,
-  report `<parent_id>: N steps` (e.g. `PP1.1: 4 steps`). If N=0,
+  report `<parent_id>: N steps` (e.g. `PP1: 4 steps`). If N=0,
   justify in one phrase ("single-paragraph body, no part/step labels").
 - **`statement_short` coverage**: percentage of nodes that have a
-  populated `statement_short`. Expected: 100% for proofs, ~80%+ for
-  algorithms, 30–70% for theorem-likes, low for definitions/remarks.
+  populated `statement_short`, by type
 - edge count by type
 - count of `origin: "external"` nodes
 - 3 sample node names (drawn from the body)
