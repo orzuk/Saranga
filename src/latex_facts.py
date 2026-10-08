@@ -140,6 +140,8 @@ def expand_macros(source: str) -> str:
       commands: \\newcommand{\\eqnref}[1]{Eq.~\\eqref{#1}} turns \\eqnref{x} into
       Eq.~\\eqref{x}, \\newcommand{\\erefs}[2]{(\\ref{eq:#1}--\\ref{eq:#2})} likewise,
       so every reference is a standard \\ref the finishing step turns into an edge.
+    - Macros that discard their arguments (\\newcommand{\\ignore}[1]{}): each use
+      is removed with its arguments, as in the PDF.
     Other macros with arguments are kept as written. Reading the definitions
     and substituting them are latex_macros' (one implementation of each,
     shared with the macro glossary and the renderer). Run on the cleaned
@@ -155,7 +157,7 @@ def expand_macros(source: str) -> str:
             continue                                    # TeX internals: keep the call
         if re.search(r"\\" + re.escape(name) + r"(?![A-Za-z@])", body):
             continue                                    # self-referencing
-        if d["arity"] == 0 or _is_ref_wrapper(body):
+        if d["arity"] == 0 or _is_ref_wrapper(body) or not body.strip():
             defs[name] = d
             cut.extend(d["spans"])           # every copy: an uncut one would be expanded
     if not defs:
@@ -181,7 +183,11 @@ def prepare_source(tex: str) -> str:
         if new == s:
             break
         s = new
-    return s
+    # a label or reference key broken across lines reads as one space, as in LaTeX
+    return _KEY_BREAK.sub(lambda m: m.group(1) + re.sub(r"\s*\n\s*", " ", m.group(2)) + "}", s)
+
+
+_KEY_BREAK = re.compile(r"(\\[A-Za-z]*(?:ref|label)\*?\s*\{)([^{}]*\n[^{}]*)\}")
 
 
 _LABEL_OR_INDEX = re.compile(r"\\(?:label|index)\s*\{[^{}]*\}")

@@ -963,7 +963,8 @@ FORMS = [
     re.compile(r'\\(?:new|renew|provide)command\*?\s*\{?\\(?P<name>[A-Za-z@]+)\}?\s*'
                r'(?:\[(?P<nargs>\d+)\])?\s*(?:\[(?P<opt>[^\]]*)\])?\s*\{'),
     # \def\foo{body}  /  \def\foo#1{body}
-    re.compile(r'\\(?:e|g|x)?def\s*\\(?P<name>[A-Za-z@]+)\s*(?:#\d)*\s*\{'),
+    re.compile(r'(?:\\(?:long|global|protected|outer)\s*)*'
+               r'\\(?:e|g|x)?def\s*\\(?P<name>[A-Za-z@]+)\s*(?:#\d)*\s*\{'),
     # \DeclareMathOperator{\foo}{body} — see OPERATOR_FORM below
     re.compile(r'\\DeclareMathOperator\*?\s*\{\\(?P<name>[A-Za-z@]+)\}\s*\{'),
     # \newenvironment{foo}{begin}{end} — name has no backslash
@@ -1031,7 +1032,10 @@ def read_definitions(src, clean=True, spans=False):
             body, end = balanced_body(src, m.end() - 1)
             if body is None:
                 continue
-            arity = len(set(re.findall(r'#(\d)', body)))
+            # Declared arguments count even when the body ignores them:
+            # \newcommand{\ignore}[1]{} consumes its argument.
+            declared = m.groupdict().get("nargs") or len(re.findall(r'#\d', m.group(0)))
+            arity = max(len(set(re.findall(r'#(\d)', body))), int(declared or 0))
             expansion = re.sub(r'\s+', ' ', body).strip()
             # \DeclareMathOperator{\eq}{eq} means "typeset `eq` as an OPERATOR
             # NAME", i.e. upright. Storing the bare `eq` loses that: in math
