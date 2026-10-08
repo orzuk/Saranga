@@ -45,6 +45,8 @@ import node_similarity as NS                               # noqa: E402
 import graph_similarity as GS                              # noqa: E402
 
 THRESHOLD = 0.7
+MAX_GROUP_MEMBERS = 3      # a split is 2, sometimes 3; more is the rule failing
+MIN_MEMBER_SHARE = 0.25    # each member must cover >=25% of the target's tokens
 SILVER_JSON = REPO / "portal/data/tier2_test/json"
 # parse_buckets expects <tex_dir>/<pid>/source/*.tex, but tier2_test stores the
 # sources flat. Stage the expected layout rather than changing the harness, so
@@ -115,6 +117,9 @@ def score_crosstype(ext, gold):
     return len(mi), len(mj), len(E), len(G)
 
 
+GROUP_LOG = []   # (kind, target_text, [member_texts]) for auditing
+
+
 def score_grouped(ext, gold):
     """crosstype + n:m groups, so a split or merged statement can match.
 
@@ -152,6 +157,7 @@ def score_grouped(ext, gold):
             continue
         pooled = " ".join(E[i][1] for i in cand)
         if _sim(pooled, sg) >= THRESHOLD:
+            GROUP_LOG.append(("split", G[j][0], sg, [E[i][1] for i in cand]))
             used_g.add(j)
             for i in cand:
                 used_e.add(i)
@@ -166,6 +172,7 @@ def score_grouped(ext, gold):
             continue
         pooled = " ".join(G[j][1] for j in cand)
         if _sim(se, pooled) >= THRESHOLD:
+            GROUP_LOG.append(("merge", E[i][0], se, [G[j][1] for j in cand]))
             used_e.add(i)
             for j in cand:
                 used_g.add(j)
@@ -203,7 +210,17 @@ def _group_members(_unused, target, candidate_idx, pool):
             continue
         keep.append((inter, i))
     keep.sort(reverse=True)
-    return [i for _n, i in keep[:GS.MAX_GROUP_SIZE]]
+    # A genuine split is a statement written as two pieces, occasionally three.
+    # Groups of 8-12 are the rule running away, not a real disagreement: audited
+    # over 60 papers, 49 accepted groups swallowed 263 items at a mean of 5.4
+    # each, four of them pinned at the old cap of 12 -- and 4 of the 5 inspected
+    # by hand were plainly wrong (one algorithm caption matched against nine
+    # algorithm bodies; one definition against three unrelated definitions).
+    # Cap at 3, and require each member to carry real weight relative to the
+    # target rather than merely clearing an absolute token floor.
+    keep = [(nn, i) for nn, i in keep
+            if nn >= MIN_MEMBER_SHARE * len(tt)]
+    return [i for _n, i in keep[:MAX_GROUP_MEMBERS]]
 
 def prf(tp_e, tp_g, n_e, n_g):
     p = tp_e / n_e if n_e else 0.0

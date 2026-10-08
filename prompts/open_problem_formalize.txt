@@ -1,0 +1,80 @@
+You are formalizing an open research problem extracted from a math
+paper into a self-contained, machine-graderable specification, in the
+style used by OpenAI's internal model on Erdős's unit-distance problem
+(May 2026). The goal is to produce a "rigid prompt" that another LLM
+(or expert) could attempt cold, without access to the source paper.
+
+============================ INPUT ============================
+
+SOURCE PAPER: arXiv:{paper_id} ({year})
+
+OPEN PROBLEM (id={open_problem_id}, section={section}):
+NAME: {name}
+RAW STATEMENT: {statement}
+
+CONTEXT NODES FROM THE SAME PAPER (definitions, theorems, lemmas,
+propositions, notation the open problem may refer to). Use these to
+expand symbols and back-references like "Theorem 3" or "$\delta$":
+
+{context_block}
+
+============================ INSTRUCTIONS ============================
+
+Produce a JSON object with these fields:
+
+  open_problem_id        Echo the id from input.
+  binary_form            One of:
+                           "yes-no"            Naturally Affirmative-vs-Negative.
+                           "quantitative"      Asks for a value/exponent/bound;
+                                               formalize against the conjectured value.
+                           "non-binary"        Open question with no clear resolution
+                                               criterion (e.g. "find good rules of thumb").
+  rigid_prompt           The full self-contained prompt text. See REQUIREMENTS below.
+  notation_defined       List of symbols you defined inside rigid_prompt.
+  context_nodes_used     List of context node ids you pulled definitions from.
+  issues                 List of strings. Flag any: missing definitions, ambiguous
+                         scope, references to objects not in context, judgment calls
+                         you made about how to interpret the problem.
+  confidence             "high" | "medium" | "low" — your confidence that the
+                         rigid_prompt is a faithful, self-contained, gradeable
+                         formalization.
+
+REQUIREMENTS FOR rigid_prompt:
+
+  1. Definitions section. Define EVERY non-standard symbol used in the
+     question, from scratch. Do not assume the reader has seen the
+     source paper. Pull from context nodes; if a needed definition is
+     missing from context, write what you can and add it to "issues".
+
+  2. Statement of the question. Precise mathematical form. If the raw
+     statement is informal ("we wonder whether..."), tighten it.
+
+  3. (Optional) Equivalent reformulation, if it clarifies.
+
+  4. Resolution criterion.
+     For binary_form = "yes-no", end with:
+       "A complete solution must prove exactly one of the following.
+        Affirmative resolution. <prove the claim>.
+        Negative resolution. <disprove the claim — counterexample or
+        proof of the opposite>."
+     For binary_form = "quantitative", frame against the conjectured
+     value if one exists in the statement or context. Otherwise fall
+     back to "non-binary".
+     For binary_form = "non-binary", state the question as-is and add
+     "A complete solution must give a precise mathematical answer with
+      proof. Partial progress, heuristic evidence, or empirical
+      validation are insufficient."
+
+  5. Convention clarifications. Quantifier scope ("for all sufficiently
+     large n" vs "infinitely many"), log base, equality vs equivalence,
+     etc. Only include conventions that are actually ambiguous in the
+     question.
+
+  6. Partial-progress disclaimer. Explicitly rule out near-misses
+     (improved constants, special cases that don't reduce to the full
+     question, finite verification, heuristic arguments).
+
+STYLE: terse, precise, no commentary about the problem's importance or
+history. The rigid_prompt is for solving, not for context.
+
+OUTPUT JSON ONLY. No surrounding commentary, no markdown fencing.
