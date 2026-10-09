@@ -62,19 +62,47 @@ def _key(s: str) -> str:
 
 
 def match_nodes_to_facts(graph: dict, facts: dict) -> dict[str, str]:
-    """node id -> fact id, for Level-1 nodes whose statement IS an environment body."""
-    by_key: dict[str, str] = {}
+    """node id -> fact id, for Level-1 nodes whose statement IS an environment body.
+
+    Environments with identical text (an equation restated in the introduction)
+    are told apart by the node's `label`, then by its parent's environment, and
+    otherwise taken from the last copy back: a node kept for a repeated
+    statement is the body's copy, not the earlier preview."""
+    by_key: dict[str, list[dict]] = {}
     for f in facts["facts"]:
         k = _key(f["statement"])
         if len(k) > 10:
-            by_key.setdefault(k, f["id"])
-    out = {}
-    for n in graph["nodes"]:
-        if n.get("type") in _LEVEL2:
-            continue
-        fid = by_key.get(_key(n.get("statement")))
-        if fid:
-            out[n["id"]] = fid
+            by_key.setdefault(k, []).append(f)
+    level1 = [n for n in graph["nodes"] if n.get("type") not in _LEVEL2]
+    out, taken = {}, set()
+    for n in level1:                          # unique text: the one environment
+        cands = by_key.get(_key(n.get("statement")))
+        if cands and len(cands) == 1:
+            out[n["id"]] = cands[0]["id"]
+            taken.add(cands[0]["id"])
+    fact = {f["id"]: f for f in facts["facts"]}
+    groups: dict[str, list[dict]] = {}
+    for n in level1:
+        k = _key(n.get("statement"))
+        if len(by_key.get(k, ())) > 1:
+            groups.setdefault(k, []).append(n)
+    for k, nodes in groups.items():
+        free = lambda: [f for f in by_key[k] if f["id"] not in taken]
+        rest = []
+        for n in nodes:
+            f = next((f for f in free() if n.get("label") and n["label"] in f["labels"]), None)
+            if f is None and out.get(n.get("parent_id")):
+                p = fact[out[n["parent_id"]]]
+                f = next((f for f in free() if p["start"] <= f["start"] and f["end"] <= p["end"]), None)
+            if f is None:
+                rest.append(n)
+            else:
+                out[n["id"]] = f["id"]
+                taken.add(f["id"])
+        left = free()[-len(rest):] if rest else []
+        for n, f in zip(rest, left):
+            out[n["id"]] = f["id"]
+            taken.add(f["id"])
     return out
 
 
@@ -517,7 +545,7 @@ def finalize(graph: dict, tex: str) -> dict:
     # 1. label
     for nid, fid in n2f.items():
         f = fact_by_id[fid]
-        if f["labels"] and not nodes[nid].get("label"):
+        if f["labels"] and nodes[nid].get("label") not in f["labels"]:   # an environment's own label
             nodes[nid]["label"] = f["labels"][0]
             report["labels_filled"] += 1
 
