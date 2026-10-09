@@ -128,6 +128,30 @@ def _is_ref_wrapper(body: str) -> bool:
     return bool(_REF_WITH_ARG.search(body)) and "#" not in _REF_WITH_ARG.sub("", body)
 
 
+def _uses_braced(source: str, name: str, arity: int) -> bool:
+    """Every use of \\name (outside its definitions) takes `arity` braced
+    arguments, so discarding them cannot swallow a closing brace."""
+    if "@" in name:
+        return False
+    for m in re.finditer(r"\\" + re.escape(name) + r"(?![A-Za-z@])", source):
+        before = source[max(0, m.start() - 40):m.start()]
+        if re.search(r"\\(?:new|renew|provide)command\*?\s*\{?$|\\def\s*$", before):
+            continue                                    # the definition itself
+        j = m.end()
+        for _ in range(arity):
+            while j < len(source) and source[j].isspace():
+                j += 1
+            if j >= len(source) or source[j] != "{":
+                return False
+            depth = 0
+            while j < len(source):
+                depth += {"{": 1, "}": -1}.get(source[j], 0)
+                j += 1
+                if depth == 0:
+                    break
+    return True
+
+
 def expand_macros(source: str) -> str:
     """Expand the paper's own argument-free macros, its operators, and its
     \\ref wrappers; remove their definitions.
@@ -157,7 +181,10 @@ def expand_macros(source: str) -> str:
             continue                                    # TeX internals: keep the call
         if re.search(r"\\" + re.escape(name) + r"(?![A-Za-z@])", body):
             continue                                    # self-referencing
-        if d["arity"] == 0 or _is_ref_wrapper(body) or not body.strip():
+        discard = not body.strip() and d["arity"] > 0
+        if discard and not _uses_braced(source, name, d["arity"]):
+            continue                                    # internal or bare-argument use: keep
+        if d["arity"] == 0 or _is_ref_wrapper(body) or discard:
             defs[name] = d
             cut.extend(d["spans"])           # every copy: an uncut one would be expanded
     if not defs:
