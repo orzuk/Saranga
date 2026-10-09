@@ -52,7 +52,7 @@ PAPER_STYLES = {"theorem_proof", "formal", "derivation", "modeling", "computatio
 NOTE_CATEGORIES = {"type_uncertain", "boundary_uncertain", "unexpected_construct", "rule_conflict",
                    "source_problem", "not_extracted"}
 _REF = re.compile(r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}")
-_REF_RANGE = re.compile(r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}\)?\s*(?:--|–|-|to)\s*\(?"
+_REF_RANGE = re.compile(r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}\)?\s*(?:--|–|-)\s*\(?"
                         r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}")
 
 
