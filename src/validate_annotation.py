@@ -284,8 +284,10 @@ def reasoning_cycles(nodes: list[dict], edges: list[dict]) -> list[list[str]]:
 
     A proof, and everything nested in it (its steps, its equations), stands for
     the result it proves, and so does a lemma or definition stated inside that
-    proof and used only there; a result or definition used outside the proof
-    it sits in, or not in a proof, keeps its own identity. Dependency edges are mapped onto
+    proof and used only there. Anything used outside the proof it sits in (a
+    lemma, or an equation that defines a symbol) is not part of what that proof
+    proves: a result or definition keeps its own identity, anything else drops
+    out of the check. Dependency edges are mapped onto
     these representatives, backward ones included (a circular argument can run
     through a forward reference); self-loops (an induction step applying the
     theorem itself) are dropped, and so are edges marked `"mention": true`. A
@@ -319,13 +321,13 @@ def reasoning_cycles(nodes: list[dict], edges: list[dict]) -> list[list[str]]:
 
     def rep(x):
         """The node, or the result of the proof it serves."""
-        own, seen = None, set()
+        own, seen, start = None, set(), x
         while x in by_id and x not in seen:
             seen.add(x)
             t = by_id[x].get("type")
             if t == "proof" and x in proved:
-                if own is not None and not local_to(own, x):
-                    return own            # used elsewhere: keeps its identity
+                if not local_to(own if own is not None else start, x):
+                    return own            # used elsewhere: not part of what the proof proves
                 own, x = None, proved[x]  # part of what the proof proves,
                 continue                  # which may itself sit inside a proof
             if own is None and (t in THEOREM_LIKE or t == "definition"):
