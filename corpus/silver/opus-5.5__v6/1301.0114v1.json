@@ -1,0 +1,3179 @@
+{
+ "metadata": {
+  "title": "Tree-based Arithmetic and Compressed Representations of Giant Numbers",
+  "annotator": "agent-extraction",
+  "model": "claude-opus-5-5",
+  "effort": "default",
+  "prompt_version": "v6-a6613a6c3d147ec5-75a541a",
+  "extraction_date": "2026-10-09",
+  "rigor_nonformal_count": 8,
+  "paper_style": [
+   "modeling",
+   "computational"
+  ],
+  "extraction_notes": [
+   {
+    "category": "unexpected_construct",
+    "nodes": [],
+    "note": "The paper is a literate Haskell program: its content lives in `code` blocks, which latex_facts does not report. Each block with its introducing sentence became an algorithm node (functions) or a definition node (type classes, datatypes, instances); algorithm steps are one per function or per equation clause."
+   },
+   {
+    "category": "unexpected_construct",
+    "nodes": [
+     "ClP5"
+    ],
+    "note": "The benchmark timing table (Fig. perf) is a figure with no node; its conclusion is captured as the numerical claim ClP5."
+   },
+   {
+    "category": "type_uncertain",
+    "nodes": [
+     "DP8"
+    ],
+    "note": "definition or claim: the block defines fermat/mersenne/perfect but its first sentence asserts their compactness; kept as definition since the compactness is shown by the following examples."
+   },
+   {
+    "category": "type_uncertain",
+    "nodes": [
+     "ClP7"
+    ],
+    "note": "claim or algorithm: Haskell test assertions encoding identities between o/i iteration, powers of 2 and multiplication; typed claim with numerical rigor since they are only tested."
+   },
+   {
+    "category": "source_problem",
+    "nodes": [],
+    "note": "The header file TOOLS/chheader12.tex (defining \\N, \\FIG and the code environments) is not inlined, so \\N remains unexpanded and figure-only content (the Mersenne/perfect DAGs) is unavailable."
+   },
+   {
+    "category": "rule_conflict",
+    "nodes": [],
+    "note": "The whole-sentence rule does not fit nodes that end with a Haskell code block; finalize warns 'ends mid-sentence' for every such node (and 'starts mid-sentence' for ExP7, which follows the unexpanded \\FIG macro). Spans were kept ending at \\end{code}."
+   },
+   {
+    "category": "not_extracted",
+    "nodes": [],
+    "note": "Related-work assertions (e.g. Knuth arrow notation not closed under addition, Goodstein's theorem mention), the conclusion's restatements of the benchmark findings and compact representations, the benchmark harness code (benchmark, bm*, test_syr, compress_syr) and the Integer-valued tsize were not extracted."
+   }
+  ],
+  "extraction_comment": "",
+  "labels": {
+   "sharing": {
+    "kind": "section",
+    "number": "2",
+    "node": null,
+    "within": null,
+    "section": "Sharing axiomatizations with type classes"
+   },
+   "gen": {
+    "kind": "section",
+    "number": "3",
+    "node": null,
+    "within": null,
+    "section": "Efficient arithmetic operations, generically"
+   },
+   "T": {
+    "kind": "section",
+    "number": "4",
+    "node": null,
+    "within": null,
+    "section": "Computing with our compressed tree representations"
+   },
+   "theo": {
+    "kind": "section",
+    "number": "5",
+    "node": null,
+    "within": null,
+    "section": "Efficient representation of some important number-theoretical entities"
+   },
+   "sparse": {
+    "kind": "section",
+    "number": "6",
+    "node": null,
+    "within": null,
+    "section": "Representing sparse sets, multisets and lists"
+   },
+   "iso": {
+    "kind": "section",
+    "number": "7",
+    "node": null,
+    "within": null,
+    "section": "Isomorphisms between data types, generically"
+   },
+   "red": {
+    "kind": "section",
+    "number": "8",
+    "node": null,
+    "within": null,
+    "section": "Complexity reduction in other computations"
+   },
+   "perfcomp": {
+    "kind": "section",
+    "number": "9",
+    "node": null,
+    "within": null,
+    "section": "A performance comparison"
+   },
+   "perf": {
+    "kind": "float",
+    "number": null,
+    "node": null,
+    "within": null,
+    "section": null
+   },
+   "related": {
+    "kind": "section",
+    "number": "10",
+    "node": null,
+    "within": null,
+    "section": "Related work"
+   },
+   "concl": {
+    "kind": "section",
+    "number": "11",
+    "node": null,
+    "within": null,
+    "section": "Conclusion and future work"
+   }
+  },
+  "unresolved_refs": [
+   "mersenne45",
+   "perfect45"
+  ]
+ },
+ "nodes": [
+  {
+   "id": "DP1",
+   "type": "definition",
+   "name": "Type class N",
+   "statement": "The class {\\tt N} assumes only a theory of structural equality (as\nimplemented by the class {\\tt Eq} in Haskell).\n\nIt implements a representation-independent\nabstraction of natural numbers, allowing us to compare our\ntree representation with ``ordinary'' natural numbers represented\nas non-negative arbitrary large {\\tt Integers} in Haskell,\nas well as with a binary representation using bijective base-2\n\\cite{wiki:bijbase}.\n\n\\begin{code}\nclass Eq n => N n where\n\\end{code}\nAn instance of this class is required to implement the following 6\nprimitive operations:\n\\begin{code}\n  e :: n\n  o,o',i,i' :: n->n\n  o_ :: n->Bool\n\\end{code}",
+   "section": "2 Sharing axiomatizations with type classes",
+   "origin": "paper",
+   "confidence": 0.85,
+   "statement_short": "Haskell type class N over Eq abstracting bijective base-2 naturals via primitives e, o, o', i, i', o_.",
+   "definiendum": "type class {\\tt N}",
+   "genus": "type class",
+   "differentia": [
+    "assumes only a theory of structural equality",
+    "required to implement the following 6\nprimitive operations"
+   ],
+   "tags": [
+    "natural_numbers",
+    "type_class",
+    "foundational"
+   ]
+  },
+  {
+   "id": "RP1",
+   "type": "remark",
+   "name": "Interpretation of the primitive operations",
+   "statement": "The constant function {\\tt e} can be seen as representing the empty sequence of \nbinary digits. \nWith the usual representation of natural numbers, {\\tt e} will be interpreted as\n{\\tt 0}.  The constructors {\\tt o} and {\\tt i} can be seen as\napplying a function that adds a {\\tt 0} or {\\tt 1} digit to a binary\nstring on {\\tt \\{0,1\\}$^*$}. The deconstructors {\\tt o'} and {\\tt i'} undo\nthese operations by removing the corresponding digit. The recognizer\n{\\tt o\\_} detects that the constructor {\\tt o} is the last one applied,\ni.e. that the``string ends with the {\\tt 0} symbol. It will be interpreted\non $\\mathbb{N}$ as a recognizer of odd numbers.",
+   "section": "2 Sharing axiomatizations with type classes",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "e is the empty digit string (0); o, i append digit 0/1; o', i' remove it; o_ recognizes the o-ending case (odd numbers).",
+   "tags": [
+    "bijective_base_2"
+   ]
+  },
+  {
+   "id": "DP2",
+   "type": "definition",
+   "name": "Derived recognizers e_ and i_",
+   "statement": "This type class also endows its instances with generic implementations of\nthe following derived operations:\n\\begin{code}\n  e_,i_ :: n->Bool\n  e_ x = x == e\n  i_ x = not (e_ x || o_ x)\n\\end{code}\nwith structural equality used implicitly \nin the definition of the recognizer predicate for\nempty sequences {\\tt e\\_}\nand with the assumption that the domain is exhausted by the three recognizers\nin the definition of the recognizer {\\tt i\\_} of\nsequences ending with {\\tt 1}, representing {\\rm even} positive numbers\nin bijective base 2.",
+   "section": "2 Sharing axiomatizations with type classes",
+   "origin": "paper",
+   "confidence": 0.8,
+   "statement_short": "Recognizer e_ tests equality with e; i_ holds when neither e_ nor o_ does (even positive numbers).",
+   "definiendum": "{\\tt e\\_}, {\\tt i\\_}",
+   "tags": [
+    "recognizer"
+   ]
+  },
+  {
+   "id": "AP1",
+   "type": "algorithm",
+   "name": "Successor and predecessor",
+   "statement": "Successor {\\tt s} and predecessor {\\tt s'} functions are implemented in terms\nof these operations as follows:\n\\begin{code}  \n  s,s' :: n->n\n  \n  s x | e_ x = o x\n  s x | o_ x = i (o' x)\n  s x | i_ x = o (s (i' x))\n  \n  s' x | x == o e = e\n  s' x | i_ x = o (i' x)\n  s' x | o_ x = i (s' (o' x))\n\\end{code}",
+   "section": "2 Sharing axiomatizations with type classes",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Generic successor s and predecessor s' defined by recursion on the last bijective base-2 digit.",
+   "tags": [
+    "successor",
+    "bijective_base_2"
+   ]
+  },
+  {
+   "id": "ASP1",
+   "type": "algorithm_step",
+   "parent_id": "AP1",
+   "step_order": 1,
+   "name": "Successor s",
+   "statement": "s x | e_ x = o x\n  s x | o_ x = i (o' x)\n  s x | i_ x = o (s (i' x))",
+   "subclass": "compute",
+   "section": "2 Sharing axiomatizations with type classes",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Successor by case on the last digit (empty, o, i)",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP2",
+   "type": "algorithm_step",
+   "parent_id": "AP1",
+   "step_order": 2,
+   "name": "Predecessor s'",
+   "statement": "s' x | x == o e = e\n  s' x | i_ x = o (i' x)\n  s' x | o_ x = i (s' (o' x))",
+   "subclass": "compute",
+   "section": "2 Sharing axiomatizations with type classes",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Predecessor by case on the last digit",
+   "source_line_label": null
+  },
+  {
+   "id": "RP2",
+   "type": "remark",
+   "name": "Generic operations mimic bijective base-2 numbers",
+   "statement": "By looking at the code, one might notice that our generic definitions\nof operations mimic recognizers, constructors and destructors for bijective\nbase-2 numbers, i.e. sequences in the language $\\{0,1\\}^{*}$, similar to binary\nnumbers, except that 0 is represented as the empty sequence and left-delimiting by 1 is\nomitted.",
+   "section": "2 Sharing axiomatizations with type classes",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "The generic operations are recognizers/constructors/destructors of bijective base-2 numbers: binary strings with 0 as empty and no leading 1.",
+   "tags": [
+    "bijective_base_2"
+   ]
+  },
+  {
+   "id": "PrP1",
+   "type": "proposition",
+   "name": "Average constant time of successor and predecessor",
+   "statement": "Assuming average constant time for recognizers, constructors and destructors {\\tt e\\_,o\\_o,i\\_,i,o',i'}, successor\nand predecessor {\\tt s} and {\\tt s'} are constant time, on the average.",
+   "section": "2 Sharing axiomatizations with type classes",
+   "origin": "paper",
+   "confidence": 1.0,
+   "statement_short": "If recognizers, constructors and destructors are average O(1), then s and s' are average O(1).",
+   "assumptions": [
+    "Assuming average constant time for recognizers, constructors and destructors {\\tt e\\_,o\\_o,i\\_,i,o',i'}"
+   ],
+   "conclusions": [
+    "successor\nand predecessor {\\tt s} and {\\tt s'} are constant time, on the average."
+   ],
+   "rigor": "semi_formal",
+   "tags": [
+    "complexity",
+    "average_case",
+    "bound"
+   ]
+  },
+  {
+   "id": "PP1",
+   "type": "proof",
+   "name": "Proof of average constant time of s and s'",
+   "statement": "Clearly the first two  rules are constant time for both {\\tt s} and {\\tt s'} as they do not make recursive calls. \nTo show that the third rule applies recursion a\nconstant number of times on the average, we observe that the recursion steps are exactly given by the number of 0s or 1s\nthat a (bijective base-2 number) ends with. As only half of them end with a 0 and another half of those end with another 0\netc. one can see that the average number of 0s is bounded by ${1 \\over 2}+{1 \\over 4}+ \\ldots=1$. The same reasoning\napplies to the average number of 1s a number can end with.",
+   "section": "2 Sharing axiomatizations with type classes",
+   "origin": "paper",
+   "confidence": 1.0,
+   "statement_short": "Averaging argument: recursion depth equals the number of trailing equal digits, whose mean is bounded by the geometric series 1/2+1/4+...=1.",
+   "proves": "PrP1",
+   "proof_strategy": [
+    "direct"
+   ],
+   "tags": [
+    "complexity",
+    "average_case"
+   ]
+  },
+  {
+   "id": "PSP1",
+   "type": "proof_step",
+   "parent_id": "PP1",
+   "step_order": 1,
+   "name": "Reduce to the recursive rule",
+   "statement": "Clearly the first two  rules are constant time for both {\\tt s} and {\\tt s'} as they do not make recursive calls. \nTo show that the third rule applies recursion a\nconstant number of times on the average, we observe that the recursion steps are exactly given by the number of 0s or 1s\nthat a (bijective base-2 number) ends with.",
+   "subclass": "setup",
+   "section": "2 Sharing axiomatizations with type classes",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "First two rules are non-recursive; the recursive rule's depth equals the count of trailing equal digits"
+  },
+  {
+   "id": "PSP2",
+   "type": "proof_step",
+   "parent_id": "PP1",
+   "step_order": 2,
+   "name": "Bound average trailing 0s",
+   "statement": "As only half of them end with a 0 and another half of those end with another 0\netc. one can see that the average number of 0s is bounded by ${1 \\over 2}+{1 \\over 4}+ \\ldots=1$.",
+   "subclass": "bound_estimate",
+   "section": "2 Sharing axiomatizations with type classes",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Geometric series bounds the average number of trailing 0s by 1"
+  },
+  {
+   "id": "PSP3",
+   "type": "proof_step",
+   "parent_id": "PP1",
+   "step_order": 3,
+   "name": "Same bound for trailing 1s",
+   "statement": "The same reasoning\napplies to the average number of 1s a number can end with.",
+   "subclass": "conclude",
+   "section": "2 Sharing axiomatizations with type classes",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Same reasoning bounds trailing 1s"
+  },
+  {
+   "id": "AP2",
+   "type": "algorithm",
+   "name": "allFrom",
+   "statement": "The infinite stream of generic natural numbers is generated \nby iterating over the successor operation {\\tt s}:\n\\begin{code}\n  allFrom :: n->[n]\n  allFrom x = iterate s x\n\\end{code}",
+   "section": "2 Sharing axiomatizations with type classes",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Generates the infinite stream of naturals by iterating the successor s.",
+   "tags": [
+    "stream"
+   ]
+  },
+  {
+   "id": "AP3",
+   "type": "algorithm",
+   "name": "Generic addition and subtraction",
+   "statement": "We start with addition ({\\tt add}) and subtraction ({\\tt sub}):\n\\begin{code} \n  add :: n->n->n\n  add x y | e_ x = y\n  add x y | e_ y  = x\n  add x y | o_ x && o_ y = i (add (o' x) (o' y))\n  add x y | o_ x && i_ y = o (s (add (o' x) (i' y)))\n  add x y | i_ x && o_ y = o (s (add (i' x) (o' y)))\n  add x y | i_ x && i_ y = i (s (add (i' x) (i' y)))\n  \n  sub :: n->n->n\n  sub x y | e_ y = x\n  sub y x | o_ y && o_ x = s' (o (sub (o' y) (o' x))) \n  sub y x | o_ y && i_ x = s' (s' (o (sub (o' y) (i' x))))\n  sub y x | i_ y && o_ x = o (sub (i' y) (o' x))  \n  sub y x | i_ y && i_ x = s' (o (sub (i' y) (i' x))) \n\\end{code}",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Addition add and subtraction sub by recursion on the last bijective base-2 digits of both operands.",
+   "tags": [
+    "arithmetic",
+    "addition"
+   ]
+  },
+  {
+   "id": "ASP3",
+   "type": "algorithm_step",
+   "parent_id": "AP3",
+   "step_order": 1,
+   "name": "Addition add",
+   "statement": "add :: n->n->n\n  add x y | e_ x = y\n  add x y | e_ y  = x\n  add x y | o_ x && o_ y = i (add (o' x) (o' y))\n  add x y | o_ x && i_ y = o (s (add (o' x) (i' y)))\n  add x y | i_ x && o_ y = o (s (add (i' x) (o' y)))\n  add x y | i_ x && i_ y = i (s (add (i' x) (i' y)))",
+   "subclass": "compute",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Six-case recursive addition on last digits",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP4",
+   "type": "algorithm_step",
+   "parent_id": "AP3",
+   "step_order": 2,
+   "name": "Subtraction sub",
+   "statement": "sub :: n->n->n\n  sub x y | e_ y = x\n  sub y x | o_ y && o_ x = s' (o (sub (o' y) (o' x))) \n  sub y x | o_ y && i_ x = s' (s' (o (sub (o' y) (i' x))))\n  sub y x | i_ y && o_ x = o (sub (i' y) (o' x))  \n  sub y x | i_ y && i_ x = s' (o (sub (i' y) (i' x)))",
+   "subclass": "compute",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Recursive subtraction with predecessor corrections",
+   "source_line_label": null
+  },
+  {
+   "id": "ClP1",
+   "type": "claim",
+   "name": "Linear complexity of addition and subtraction",
+   "statement": "It is easy to see that addition  and subtraction  are\nimplemented generically, with asymptotic complexity proportional \nto the size of the operands.",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Generic addition and subtraction run in time proportional to the operand sizes.",
+   "assumptions": [],
+   "conclusions": [
+    "addition  and subtraction  are\nimplemented generically, with asymptotic complexity proportional \nto the size of the operands."
+   ],
+   "rigor": "semi_formal",
+   "tags": [
+    "complexity"
+   ]
+  },
+  {
+   "id": "AP4",
+   "type": "algorithm",
+   "name": "Generic comparison cmp",
+   "statement": "Comparison provides the expected total order of $\\N$ on our type class:\n\\begin{code}\n  cmp :: n->n->Ordering\n  cmp x y | e_ x && e_ y = EQ\n  cmp x _ | e_ x = LT\n  cmp _ y | e_ y = GT\n  cmp x y | o_ x && o_ y = cmp (o' x) (o' y)\n  cmp x y | i_ x && i_ y = cmp (i' x) (i' y)\n  cmp x y | o_ x && i_ y = down (cmp (o' x) (i' y)) where\n    down EQ = LT\n    down r = r\n  cmp x y | i_ x && o_ y = up (cmp (i' x) (o' y)) where\n    up EQ = GT\n    up r = r\n\\end{code}",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Three-way comparison giving the total order of N by recursion on last digits, adjusting ties when last digits differ.",
+   "tags": [
+    "order",
+    "comparison"
+   ]
+  },
+  {
+   "id": "ASP5",
+   "type": "algorithm_step",
+   "parent_id": "AP4",
+   "step_order": 1,
+   "name": "Base cases with empty operand",
+   "statement": "cmp x y | e_ x && e_ y = EQ\n  cmp x _ | e_ x = LT\n  cmp _ y | e_ y = GT",
+   "subclass": "test",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Compare when one operand is empty",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP6",
+   "type": "algorithm_step",
+   "parent_id": "AP4",
+   "step_order": 2,
+   "name": "Same last digit",
+   "statement": "cmp x y | o_ x && o_ y = cmp (o' x) (o' y)\n  cmp x y | i_ x && i_ y = cmp (i' x) (i' y)",
+   "subclass": "compute",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Recurse when last digits agree",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP7",
+   "type": "algorithm_step",
+   "parent_id": "AP4",
+   "step_order": 3,
+   "name": "o-ending versus i-ending",
+   "statement": "cmp x y | o_ x && i_ y = down (cmp (o' x) (i' y)) where\n    down EQ = LT\n    down r = r",
+   "subclass": "compute",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Recurse; a tie becomes LT",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP8",
+   "type": "algorithm_step",
+   "parent_id": "AP4",
+   "step_order": 4,
+   "name": "i-ending versus o-ending",
+   "statement": "cmp x y | i_ x && o_ y = up (cmp (i' x) (o' y)) where\n    up EQ = GT\n    up r = r",
+   "subclass": "compute",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Recurse; a tie becomes GT",
+   "source_line_label": null
+  },
+  {
+   "id": "AP5",
+   "type": "algorithm",
+   "name": "Minimum and maximum",
+   "statement": "And based on it one can define the minimum {\\tt min2} and maximum \n{\\tt max2} functions as follows:\n\\begin{code}\n  min2,max2 :: n->n->n\n  min2 x y = if LT==cmp x y then x else y\n  max2 x y = if LT==cmp x y then y else x\n\\end{code}",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "min2 and max2 defined from cmp.",
+   "tags": [
+    "order"
+   ]
+  },
+  {
+   "id": "ASP9",
+   "type": "algorithm_step",
+   "parent_id": "AP5",
+   "step_order": 1,
+   "name": "min2",
+   "statement": "min2 x y = if LT==cmp x y then x else y",
+   "subclass": "select",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP10",
+   "type": "algorithm_step",
+   "parent_id": "AP5",
+   "step_order": 2,
+   "name": "max2",
+   "statement": "max2 x y = if LT==cmp x y then y else x",
+   "subclass": "select",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "AP6",
+   "type": "algorithm",
+   "name": "Generic multiplication, double and half",
+   "statement": "Next, we define multiplication:\n\\begin{code}\n  mul :: n->n->n\n  mul x _ | e_ x = e\n  mul _ y | e_ y = e\n  mul x y = s (m (s' x) (s' y)) where\n    m x y | e_ x = y\n    m x y | o_ x = o (m (o' x) y)\n    m x y | i_ x = s (add y  (o (m (i' x) y)))\n\\end{code}\nas well as double of a number {\\tt db} and \nhalf of an even number {\\tt hf},\nhaving both simple expressions:\n\\begin{code}  \n  db,hf :: n->n \n  db = s' . o\n  hf = s . i'\n\\end{code}",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Multiplication via recursion on predecessors of operands, plus double db = s'.o and half hf = s.i'.",
+   "tags": [
+    "arithmetic",
+    "multiplication"
+   ]
+  },
+  {
+   "id": "ASP11",
+   "type": "algorithm_step",
+   "parent_id": "AP6",
+   "step_order": 1,
+   "name": "Multiplication mul",
+   "statement": "mul :: n->n->n\n  mul x _ | e_ x = e\n  mul _ y | e_ y = e\n  mul x y = s (m (s' x) (s' y)) where\n    m x y | e_ x = y\n    m x y | o_ x = o (m (o' x) y)\n    m x y | i_ x = s (add y  (o (m (i' x) y)))",
+   "subclass": "compute",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Multiply s' x by s' y with helper m and take successor",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP12",
+   "type": "algorithm_step",
+   "parent_id": "AP6",
+   "step_order": 2,
+   "name": "Double db and half hf",
+   "statement": "db,hf :: n->n \n  db = s' . o\n  hf = s . i'",
+   "subclass": "compute",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "db and hf as compositions of primitives",
+   "source_line_label": null
+  },
+  {
+   "id": "AP7",
+   "type": "algorithm",
+   "name": "Generic power, exp2 and leftshift",
+   "statement": "Power is defined as follows:\n\\begin{code}\n  pow :: n->n->n\n  pow _ y | e_ y = o e\n  pow x y | o_ y = mul x (pow (mul x x) (o' y))\n  pow x y | i_ y = mul (mul x x) (pow (mul x x) (i' y)) \n\\end{code}\ntogether with more efficient special instances,\nexponent of 2 ({\\tt exp2}) and multiplication by a power of 2\n({\\tt leftshift}):\n\\begin{code}\n  exp2 :: n->n\n  exp2 x | e_ x = o e\n  exp2 x = db (exp2 (s' x)) \n  \n  leftshift :: n->n->n\n  leftshift x y = mul (exp2 x) y\n\\end{code}",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Power by repeated squaring on the exponent's digits, with exp2 by iterated doubling and leftshift as multiplication by exp2.",
+   "tags": [
+    "arithmetic",
+    "exponentiation"
+   ]
+  },
+  {
+   "id": "ASP13",
+   "type": "algorithm_step",
+   "parent_id": "AP7",
+   "step_order": 1,
+   "name": "Power pow",
+   "statement": "\\begin{code}\n  pow :: n->n->n\n  pow _ y | e_ y = o e\n  pow x y | o_ y = mul x (pow (mul x x) (o' y))\n  pow x y | i_ y = mul (mul x x) (pow (mul x x) (i' y))",
+   "subclass": "compute",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Square-and-multiply on bijective base-2 exponent digits",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP14",
+   "type": "algorithm_step",
+   "parent_id": "AP7",
+   "step_order": 2,
+   "name": "exp2",
+   "statement": "exp2 :: n->n\n  exp2 x | e_ x = o e\n  exp2 x = db (exp2 (s' x))",
+   "subclass": "compute",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "2^x by doubling exp2 (s' x)",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP15",
+   "type": "algorithm_step",
+   "parent_id": "AP7",
+   "step_order": 3,
+   "name": "leftshift",
+   "statement": "leftshift :: n->n->n\n  leftshift x y = mul (exp2 x) y",
+   "subclass": "compute",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Multiply y by 2^x",
+   "source_line_label": null
+  },
+  {
+   "id": "AP8",
+   "type": "algorithm",
+   "name": "Generic division with remainder",
+   "statement": "Finally, division and reminder on $\\N$ is a bit trickier but\ncan be expressed generically as well:\n\\begin{code}\n  div_and_rem :: n->n->(n,n)\n  \n  div_and_rem x y | LT == cmp x y = (e,x)\n  div_and_rem x y | not (e_ y) = (q,r) where \n    (qt,rm) = divstep x y\n    (z,r) = div_and_rem rm y\n    q = add (exp2 qt) z\n    \n    divstep :: N n => n->n->(n,n)\n    divstep n m = (q, sub n p) where\n      q = try_to_double n m e\n      p = mul (exp2 q) m    \n    \n      try_to_double x y k = \n        if (LT==cmp x y) \n          then s' k\n          else try_to_double x (db y) (s k)   \n          \n  divide,reminder :: n->n->n\n  \n  divide n m = fst (div_and_rem n m)\n  reminder n m = snd (div_and_rem n m)\n\\end{code}",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Division with remainder by repeatedly subtracting the largest doubled multiple of the divisor (found by try_to_double).",
+   "tags": [
+    "arithmetic",
+    "division"
+   ]
+  },
+  {
+   "id": "ASP16",
+   "type": "algorithm_step",
+   "parent_id": "AP8",
+   "step_order": 1,
+   "name": "div_and_rem",
+   "statement": "div_and_rem :: n->n->(n,n)\n  \n  div_and_rem x y | LT == cmp x y = (e,x)\n  div_and_rem x y | not (e_ y) = (q,r) where \n    (qt,rm) = divstep x y\n    (z,r) = div_and_rem rm y\n    q = add (exp2 qt) z",
+   "subclass": "compute",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Recursive quotient/remainder accumulation",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP17",
+   "type": "algorithm_step",
+   "parent_id": "AP8",
+   "step_order": 2,
+   "name": "divstep",
+   "statement": "divstep :: N n => n->n->(n,n)\n    divstep n m = (q, sub n p) where\n      q = try_to_double n m e\n      p = mul (exp2 q) m    \n    \n      try_to_double x y k = \n        if (LT==cmp x y) \n          then s' k\n          else try_to_double x (db y) (s k)",
+   "subclass": "select",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Find largest power of 2 times divisor below dividend and subtract",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP18",
+   "type": "algorithm_step",
+   "parent_id": "AP8",
+   "step_order": 3,
+   "name": "divide and reminder",
+   "statement": "divide,reminder :: n->n->n\n  \n  divide n m = fst (div_and_rem n m)\n  reminder n m = snd (div_and_rem n m)",
+   "subclass": "compute",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Project quotient and remainder",
+   "source_line_label": null
+  },
+  {
+   "id": "DP3",
+   "type": "definition",
+   "name": "Integer instance of N",
+   "statement": "And for the reader curious by now about how this maps to ``arithmetic as\nusual\", here is an instance built around \nthe (arbitrary length) {\\tt Integer}\ntype, also usable as a witness on the time/space complexity \nof our operations.\n\\begin{code}\ninstance N Integer where\n  e = 0\n  \n  o_ x = odd x\n  \n  o  x = 2*x+1\n  o' x | odd x && x >  0 = (x-1) `div` 2\n  \n  i  x = 2*x+2\n  i' x | even x && x > 0 = (x-2) `div` 2\n\\end{code}",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.8,
+   "statement_short": "Instance of N on Haskell Integer: e=0, o x=2x+1, i x=2x+2 with inverses, o_ = odd.",
+   "definiendum": "instance {\\tt N Integer}",
+   "tags": [
+    "instance"
+   ]
+  },
+  {
+   "id": "DP4",
+   "type": "definition",
+   "name": "Bijective base-2 datatype B",
+   "statement": "An instance mapping our abstract operations to actual constructors,\nfollows in the form of the datatype {\\tt B}\n\\begin{code}\ndata B = B | O B | I B deriving (Show, Read, Eq)\n\ninstance N B where\n  e = B\n  o = O\n  i = I\n  \n  o' (O x) = x\n  i' (I x) = x\n  \n  o_ (O _) = True\n  o_ _ = False\n  \n\n\\end{code}",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.8,
+   "statement_short": "Datatype B with constructors B, O, I as an instance of N mapping primitives to constructors.",
+   "definiendum": "datatype {\\tt B}",
+   "tags": [
+    "instance",
+    "bijective_base_2"
+   ]
+  },
+  {
+   "id": "ExP1",
+   "type": "example",
+   "name": "Operations on the Integer and B instances",
+   "statement": "One can try out various operations on these instances:\n\\begin{codex}\n*Giant> mul 10 5\n50\n*Giant> exp2 5\n32\n*Giant> add (O B) (I (O B))\nO (I B)\n\\end{codex}",
+   "section": "3 Efficient arithmetic operations, generically",
+   "origin": "paper",
+   "confidence": 0.75,
+   "tags": [
+    "example"
+   ]
+  },
+  {
+   "id": "DP5",
+   "type": "definition",
+   "name": "Tree datatype T",
+   "statement": "First, we define the data type for our tree represented natural numbers:\n\\begin{code}\ndata T = T | V T [T] | W T [T] deriving (Eq,Show,Read)\n\\end{code}",
+   "section": "4 Computing with our compressed tree representations",
+   "origin": "paper",
+   "confidence": 0.85,
+   "definiendum": "data type {\\tt T}",
+   "genus": "union type",
+   "tags": [
+    "tree_representation",
+    "foundational"
+   ]
+  },
+  {
+   "id": "RP3",
+   "type": "remark",
+   "name": "Intuition of type T as run-length compressed bijective base-2",
+   "statement": "The intuition behind this ``union type'' is the following:\n\\begin{itemize}\n\\item The type {\\tt T} corresponds to an empty sequence \n\\item the type {\\tt V x xs} counts the number {\\tt x} of {\\tt o} applications followed by an alternation\nof similar counts of {\\tt i} and {\\tt o} applications\n\n\\item the type {\\tt W x xs} counts the number {\\tt x} of {\\tt i} applications followed by an alternation\nof similar counts of {\\tt o} and {\\tt i} applications\n\n\\item the same principle is applied recursively for the counters, until the empty sequence is reached\n\\end{itemize}\nOne can see this process as run-length compressed bijective base-2 numbers, represented as trees\nwith either empty leaves or at least one branch, after applying the encoding recursively.",
+   "section": "4 Computing with our compressed tree representations",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "V x xs / W x xs count runs of o / i applications alternating, with counters encoded recursively: recursive run-length compression of bijective base-2.",
+   "tags": [
+    "run_length_encoding",
+    "tree_representation"
+   ]
+  },
+  {
+   "id": "DP6",
+   "type": "definition",
+   "name": "Instance N T",
+   "statement": "First we define the 6 primitive operations:\n\\begin{code}\ninstance N T where\n  e = T\n  \n  o T = V T []\n  o (V x xs) = V (s x) xs\n  o (W x xs) = V T (x:xs)\n\n  i T = W T []\n  i (V x xs) = W T (x:xs)\n  i (W x xs) = W (s x) xs\n  \n  o' (V T []) = T\n  o' (V T (x:xs)) = W x xs\n  o' (V x xs) = V (s' x) xs\n\n  i' (W T []) = T\n  i' (W T (x:xs)) = V x xs\n  i' (W x xs) = W (s' x) xs\n  \n  o_ (V _ _ ) = True\n  o_ _ = False\n\\end{code}",
+   "section": "4 Computing with our compressed tree representations",
+   "origin": "paper",
+   "confidence": 0.8,
+   "statement_short": "The six primitive operations on trees T, incrementing or splitting the run-length counters.",
+   "definiendum": "instance {\\tt N T}",
+   "tags": [
+    "instance",
+    "tree_representation"
+   ]
+  },
+  {
+   "id": "AP9",
+   "type": "algorithm",
+   "name": "Tree-specific exp2 and leftshift",
+   "statement": "Next, we override two operations involving exponents of  {\\tt 2} as follows\n\\begin{code}\n  exp2 = exp2' where\n    exp2' T = V T []\n    exp2' x = s (V (s' x) [])\n\n  leftshift = leftshift' where\n    leftshift' _ T = T\n    leftshift' n y | o_ y = s (vmul n (s' y))\n    leftshift' n y | i_ y = s (vmul (s n) (s' y))\n\\end{code}",
+   "section": "4 Computing with our compressed tree representations",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Overrides exp2 and leftshift on T: exp2 builds a single V run, leftshift uses vmul to add n o-applications at once.",
+   "tags": [
+    "exponentiation",
+    "tree_representation"
+   ]
+  },
+  {
+   "id": "ASP19",
+   "type": "algorithm_step",
+   "parent_id": "AP9",
+   "step_order": 1,
+   "name": "exp2'",
+   "statement": "exp2 = exp2' where\n    exp2' T = V T []\n    exp2' x = s (V (s' x) [])",
+   "subclass": "compute",
+   "section": "4 Computing with our compressed tree representations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "2^x as successor of a single run V (s' x) []",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP20",
+   "type": "algorithm_step",
+   "parent_id": "AP9",
+   "step_order": 2,
+   "name": "leftshift'",
+   "statement": "leftshift = leftshift' where\n    leftshift' _ T = T\n    leftshift' n y | o_ y = s (vmul n (s' y))\n    leftshift' n y | i_ y = s (vmul (s n) (s' y))",
+   "subclass": "call",
+   "section": "4 Computing with our compressed tree representations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Multiply by 2^n via vmul, adjusted by parity",
+   "source_line_label": null
+  },
+  {
+   "id": "AP10",
+   "type": "algorithm",
+   "name": "vmul",
+   "statement": "The {\\tt leftshift'} operation uses\nan efficient implementation, specialized for the type {\\tt T}, of the\nrepeated application (n times) of constructor {\\tt o}, over the second argument\nof the function {\\tt vmul}:\n\n\\begin{code}\nvmul T y = y\nvmul n T = V (s' n) []\nvmul n (V y ys) = V (add (s' n) y) ys\nvmul n (W y ys) = V (s' n) (y:ys)\n\\end{code}",
+   "section": "4 Computing with our compressed tree representations",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Applies constructor o n times to a tree in O(1) tree operations by adjusting the leading V counter.",
+   "tags": [
+    "tree_representation"
+   ]
+  },
+  {
+   "id": "ASP21",
+   "type": "algorithm_step",
+   "parent_id": "AP10",
+   "step_order": 1,
+   "name": "n=0",
+   "statement": "vmul T y = y",
+   "subclass": "return",
+   "section": "4 Computing with our compressed tree representations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP22",
+   "type": "algorithm_step",
+   "parent_id": "AP10",
+   "step_order": 2,
+   "name": "Empty argument",
+   "statement": "vmul n T = V (s' n) []",
+   "subclass": "compute",
+   "section": "4 Computing with our compressed tree representations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP23",
+   "type": "algorithm_step",
+   "parent_id": "AP10",
+   "step_order": 3,
+   "name": "V-headed argument",
+   "statement": "vmul n (V y ys) = V (add (s' n) y) ys",
+   "subclass": "update",
+   "section": "4 Computing with our compressed tree representations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP24",
+   "type": "algorithm_step",
+   "parent_id": "AP10",
+   "step_order": 4,
+   "name": "W-headed argument",
+   "statement": "vmul n (W y ys) = V (s' n) (y:ys)",
+   "subclass": "compute",
+   "section": "4 Computing with our compressed tree representations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ClP2",
+   "type": "claim",
+   "name": "exp2' runs in average constant time",
+   "statement": "For instance, the operation\n{\\tt exp2'} works in time proportional to {\\tt s} and {\\tt s'}, that can be shown to\nbe constant on the average.",
+   "section": "4 Computing with our compressed tree representations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "On T, exp2' costs as much as s and s', hence average constant time.",
+   "assumptions": [],
+   "conclusions": [
+    "the operation\n{\\tt exp2'} works in time proportional to {\\tt s} and {\\tt s'}, that can be shown to\nbe constant on the average."
+   ],
+   "rigor": "semi_formal",
+   "tags": [
+    "complexity",
+    "average_case"
+   ]
+  },
+  {
+   "id": "ClP3",
+   "type": "claim",
+   "name": "leftshift' implements multiplication by a power of 2",
+   "statement": "The more complex {\\tt leftshift'} operation observes\nthat repeated application of the {\\tt o} operation, when adjusted \nbased on being even or odd, provides an efficient implementation of multiplication\nwith an exponent of 2.",
+   "section": "4 Computing with our compressed tree representations",
+   "origin": "paper",
+   "confidence": 0.65,
+   "statement_short": "Repeated o applications adjusted by parity give an efficient multiplication by a power of 2.",
+   "assumptions": [],
+   "conclusions": [
+    "repeated application of the {\\tt o} operation, when adjusted \nbased on being even or odd, provides an efficient implementation of multiplication\nwith an exponent of 2."
+   ],
+   "rigor": "semi_formal",
+   "tags": [
+    "multiplication"
+   ]
+  },
+  {
+   "id": "AP11",
+   "type": "algorithm",
+   "name": "Generic converter view",
+   "statement": "It is convenient at this point, as we target a diversity of interpretations\nmaterialized as Haskell instances, to provide a polymorphic converter between\ntwo different instances of the type class {\\tt N} as well as their\nassociated lists, implemented by structural recursion over the representation\nto convert. The function {\\tt view} allows importing a wrapped\nobject of a different instance of {\\tt N}, generically.\n\\begin{code}\nview :: (N a,N b)=>a->b\nview x | e_ x = e\nview x | o_ x = o (view (o' x))\nview x | i_ x = i (view (i' x))\n\\end{code}",
+   "section": "4 Computing with our compressed tree representations",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Polymorphic conversion between any two instances of N by structural recursion on the source.",
+   "tags": [
+    "conversion"
+   ]
+  },
+  {
+   "id": "ASP25",
+   "type": "algorithm_step",
+   "parent_id": "AP11",
+   "step_order": 1,
+   "name": "Empty case",
+   "statement": "view x | e_ x = e",
+   "subclass": "return",
+   "section": "4 Computing with our compressed tree representations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP26",
+   "type": "algorithm_step",
+   "parent_id": "AP11",
+   "step_order": 2,
+   "name": "o case",
+   "statement": "view x | o_ x = o (view (o' x))",
+   "subclass": "compute",
+   "section": "4 Computing with our compressed tree representations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP27",
+   "type": "algorithm_step",
+   "parent_id": "AP11",
+   "step_order": 3,
+   "name": "i case",
+   "statement": "view x | i_ x = i (view (i' x))",
+   "subclass": "compute",
+   "section": "4 Computing with our compressed tree representations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "DP7",
+   "type": "definition",
+   "name": "Converters t, b, n",
+   "statement": "We can specialize {\\tt view} to provide conversions to\nour three data types, each denoted with the corresponding\nlower case letter, {tt t}, {\\tt b} and {\\tt n} for the usual natural numbers.\n\\begin{code}\nt :: (N n) => n -> T\nt = view\n\nb :: (N n) => n -> B\nb = view\n\nn :: (N n) => n -> Integer\nn = view\n\\end{code}",
+   "section": "4 Computing with our compressed tree representations",
+   "origin": "paper",
+   "confidence": 0.8,
+   "statement_short": "t, b, n specialize view to convert to types T, B and Integer.",
+   "definiendum": "{tt t}, {\\tt b} and {\\tt n}",
+   "tags": [
+    "conversion"
+   ]
+  },
+  {
+   "id": "ExP2",
+   "type": "example",
+   "name": "Converting 42 between representations",
+   "statement": "One can try them out as follows:\n\\begin{codex}\n*Giant> t 42\nW (V T []) [T,T,T]\n*Giant> b it\nI (I (O (I (O B))))\n*Giant> n it\n42\n\\end{codex}",
+   "section": "4 Computing with our compressed tree representations",
+   "origin": "paper",
+   "confidence": 0.75
+  },
+  {
+   "id": "ExP3",
+   "type": "example",
+   "name": "Usage of exp2' and leftshift'",
+   "statement": "While space constraints forbid us from providing the correctness\nproofs of operations like {\\tt exp2'} and {\\tt leftshift'}, we are\nable to illustrate their expected usage\nas follows:\n\\begin{codex}\n*Giant> t 5\nV T [T]\n*Giant> exp2 it\nW T [V (V T []) []]\n*Giant> n it\n32\n*Giant> t 10\nW (V T []) [T]\n*Giant> leftshift it (t 1)\nW T [W T [V T []]]\n*Giant> n it\n1024\n\n\\end{codex}",
+   "section": "4 Computing with our compressed tree representations",
+   "origin": "paper",
+   "confidence": 0.75
+  },
+  {
+   "id": "DP8",
+   "type": "definition",
+   "name": "Fermat, Mersenne and perfect numbers on T",
+   "statement": "Let's first observe that Fermat, Mersenne and perfect numbers have all compact\nexpressions with our tree representation of type {\\tt T}.\n\n\\begin{code}\nfermat n = s (exp2 (exp2 n))\n\nmersenne p = s' (exp2 p)\n\nperfect p = s (V q [q]) where q = s' (s' p)\n\\end{code}",
+   "section": "5 Efficient representation of some important number-theoretical entities",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Fermat 2^(2^n)+1, Mersenne 2^p-1 and perfect numbers expressed compactly via exp2, s, s' and a V node.",
+   "definiendum": "{\\tt fermat}, {\\tt mersenne}, {\\tt perfect}",
+   "tags": [
+    "number_theory",
+    "mersenne",
+    "perfect_number",
+    "fermat"
+   ]
+  },
+  {
+   "id": "ExP4",
+   "type": "example",
+   "name": "Mersenne number 2^127-1 in three representations",
+   "statement": "And one can also observe that this contrasts with both the {\\tt Integer} representation and\nthe bijective base-2 numbers {\\tt B}:\n\n\\begin{codex}\n*Giant> mersenne (b 127)\nO (O (O (O (O (O (O (O (O (O (O (O (O (O (O \n  ... a few lines of Os and Is\n  )))))))))))))))))))))))))))))))))))))))))\n  *Giant> mersenne (n 127)\n170141183460469231731687303715884105727\n*Giant> mersenne (t 127)\nV (W (V T [T]) []) []\n\\end{codex}",
+   "section": "5 Efficient representation of some important number-theoretical entities",
+   "origin": "paper",
+   "confidence": 0.75
+  },
+  {
+   "id": "DP9",
+   "type": "definition",
+   "name": "45th Mersenne prime mersenne45",
+   "statement": "The largest known prime number, found by the GIMP distributed computing \nproject \\cite{wiki:gimp} is the 45-th Mersenne prime = $2^{43112609}-1$.\nIt is defined in Haskell as follows:\n\\begin{code}\n-- its exponent\nprime45 = 43112609 :: Integer\n\n-- the actual Mersenne prime\nmersenne45 = s' (exp2 (t p)) where \n  p = prime45::Integer\n\n\\end{code}",
+   "section": "5 Efficient representation of some important number-theoretical entities",
+   "origin": "paper",
+   "confidence": 0.8,
+   "statement_short": "The largest known prime 2^43112609-1 (GIMP) defined in Haskell as s'(exp2(t p)).",
+   "definiendum": "{\\tt mersenne45}",
+   "tags": [
+    "mersenne",
+    "prime"
+   ]
+  },
+  {
+   "id": "ExP5",
+   "type": "example",
+   "name": "Compact tree and DAG of the 45th Mersenne prime",
+   "statement": "While it has a bitsize of 43112609, we have observed that its \ncompressed tree representation using our type {\\tt T} is rather small:\n\\begin{codex}\n*Giant> mersenne45\nV (W T [V (V T []) [],T,T,T,W T [],V T [],T,W T [],W T [],T,V T [],T,T]) []\n\\end{codex}\nOne the other hand, displaying it with a decimal or binary representation\nwould take millions of digits.\n\nAnd by folding replicated subtrees to obtain an equivalent DAG representation,\none can save even more memory. Figure \\ref{mersenne45} shows this representation,\ninvolving only 6 nodes.",
+   "section": "5 Efficient representation of some important number-theoretical entities",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "The 43112609-bit prime is a small T tree, and a 6-node DAG after sharing subtrees."
+  },
+  {
+   "id": "ExP6",
+   "type": "example",
+   "name": "Largest known perfect number",
+   "statement": "It is interesting to note that similar compact representations can also\nbe derived for perfect numbers. For instance, the largest known perfect number, derived\nfrom the largest known Mersenne prime as $2^{43112609-1}(2^{43112609}-1)$,\nis:\n\\begin{code}\nperfect45 = perfect (t prime45)\n\\end{code}\nFig. \\ref{perfect45} shows its DAG representation involving only 7 nodes.",
+   "section": "5 Efficient representation of some important number-theoretical entities",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "The perfect number 2^(p-1)(2^p-1) for the 45th Mersenne exponent is a 7-node DAG."
+  },
+  {
+   "id": "ExP7",
+   "type": "example",
+   "name": "Fermat number F11",
+   "statement": "Similarly, the largest Fermat number that has been factored so far, F11=$2^{2^{11}}+1$ is compactly represented as \n\\begin{codex}\n*Giant> fermat (t 11)\nV T [T,V T [W T [V T []]]]\n\\end{codex}\nBy contrast, its (bijective base-2) binary representation consists of 2048 digits.",
+   "section": "5 Efficient representation of some important number-theoretical entities",
+   "origin": "paper",
+   "confidence": 0.75
+  },
+  {
+   "id": "DP10",
+   "type": "definition",
+   "name": "Type class Collections",
+   "statement": "The type class {\\tt Collections} will convert between natural numbers and lists,\nby using the bijection $f(x,y)=2^{x}(2y+1)$, implemented by the function {\\tt c}\nand its first and second projections\n{\\tt c'} and {\\tt c''}, inverting it.\n\\begin{code}\nclass (N n) => Collections n where\n  c :: n->n->n\n  c',c'' :: n->n\n \n  c x y = mul (exp2 x) (o y)\n  \n  c' x | not (e_ x) = if o_ x then e else s (c'  (hf x))\n  c'' x | not (e_ x) = if o_ x then o' x else c'' (hf x)\n\\end{code}",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.8,
+   "statement_short": "Type class extending N with the bijection c(x,y)=2^x(2y+1) and its projections c', c''.",
+   "definiendum": "type class {\\tt Collections}",
+   "tags": [
+    "bijection",
+    "pairing_function"
+   ]
+  },
+  {
+   "id": "AP12",
+   "type": "algorithm",
+   "name": "Bijection between naturals and lists",
+   "statement": "The bijection between natural numbers and lists of natural numbers, {\\tt to\\_list}\nand its inverse {\\tt from\\_list} apply repeatedly {\\tt c}\nand respectively {\\tt c'} and {\\tt c''}.\n\n\\begin{code}\n  to_list :: n->[n]\n  to_list x | e_ x = []\n  to_list x = (c' x) : (to_list (c'' x))\n\n  from_list:: [n]->n\n  from_list [] = e\n  from_list (x:xs) = c x (from_list xs)\n\\end{code}",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "to_list/from_list: naturals to lists of naturals by repeatedly applying c' and c'' (and c inversely).",
+   "tags": [
+    "bijection",
+    "ranking"
+   ]
+  },
+  {
+   "id": "ASP28",
+   "type": "algorithm_step",
+   "parent_id": "AP12",
+   "step_order": 1,
+   "name": "to_list",
+   "statement": "to_list :: n->[n]\n  to_list x | e_ x = []\n  to_list x = (c' x) : (to_list (c'' x))",
+   "subclass": "compute",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP29",
+   "type": "algorithm_step",
+   "parent_id": "AP12",
+   "step_order": 2,
+   "name": "from_list",
+   "statement": "from_list:: [n]->n\n  from_list [] = e\n  from_list (x:xs) = c x (from_list xs)",
+   "subclass": "compute",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "AP13",
+   "type": "algorithm",
+   "name": "Lists to multisets and sets",
+   "statement": "Incremental sums are used to transform arbitrary\nlists to multisets and sets, inverted by pairwise differences.\n\\begin{code}  \n  list2mset, mset2list, list2set, set2list :: [n]->[n]\n \n  list2mset ns = tail (scanl add e ns)\n  mset2list ms =  zipWith sub ms (e:ms)\n    \n  list2set = (map s') . list2mset . (map s)\n  set2list = (map s') . mset2list . (map s) \n\\end{code}",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Lists to multisets by prefix sums (inverse: pairwise differences); sets via shifting by s/s'.",
+   "tags": [
+    "bijection",
+    "multiset",
+    "set"
+   ]
+  },
+  {
+   "id": "ASP30",
+   "type": "algorithm_step",
+   "parent_id": "AP13",
+   "step_order": 1,
+   "name": "list2mset / mset2list",
+   "statement": "list2mset ns = tail (scanl add e ns)\n  mset2list ms =  zipWith sub ms (e:ms)",
+   "subclass": "compute",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP31",
+   "type": "algorithm_step",
+   "parent_id": "AP13",
+   "step_order": 2,
+   "name": "list2set / set2list",
+   "statement": "list2set = (map s') . list2mset . (map s)\n  set2list = (map s') . mset2list . (map s)",
+   "subclass": "compute",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "AP14",
+   "type": "algorithm",
+   "name": "Bijections of naturals to multisets and sets",
+   "statement": "By composing with natural number-to-list bijections, we obtain bijections\nto multisets and sets.\n\\begin{code}  \n  to_mset, to_set :: n->[n]\n  from_mset, from_set :: [n]->n\n\n  to_mset = list2mset . to_list\n  from_mset = from_list . mset2list\n  \n  to_set = list2set . to_list\n  from_set = from_list . set2list\n\\end{code}",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Compose list bijections with list-to-multiset/set conversions.",
+   "tags": [
+    "bijection"
+   ]
+  },
+  {
+   "id": "ASP32",
+   "type": "algorithm_step",
+   "parent_id": "AP14",
+   "step_order": 1,
+   "name": "to_mset / from_mset",
+   "statement": "to_mset = list2mset . to_list\n  from_mset = from_list . mset2list",
+   "subclass": "call",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP33",
+   "type": "algorithm_step",
+   "parent_id": "AP14",
+   "step_order": 2,
+   "name": "to_set / from_set",
+   "statement": "to_set = list2set . to_list\n  from_set = from_list . set2list",
+   "subclass": "call",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "AP15",
+   "type": "algorithm",
+   "name": "Tree-specific c, c', c''",
+   "statement": "We will add the usual instances to the type class Collections. \nA simple number-theoretic observation connecting $2^{n}$ and $n$ \napplications of the constructor {\\tt i}, implemented by the \nfunction {\\tt vmul}, allows a shortcut that speeds up the \nbijection from lists to natural numbers, by overriding the \nfunctions {\\tt c, c', c''} in instance {\\tt T}. \n\\begin{code}\ninstance Collections B\ninstance Collections Integer\ninstance Collections T where\n  c = cons where\n    cons n y = s (vmul n (s' (o y)))\n    \n  c' = hd where  \n    hd z | o_ z = T\n    hd z = s x where\n      V x _ = s' z\n      \n  c'' = tl where\n    tl z | o_ z = o' z \n    tl z = f xs where\n      V _ xs = s' z\n \n      f [] = T\n      f (y:ys) = s (i' (W y ys))\n \n\\end{code}",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Overrides the pairing function and projections in instance T using vmul and direct access to V/W fields.",
+   "tags": [
+    "bijection",
+    "tree_representation"
+   ]
+  },
+  {
+   "id": "ASP34",
+   "type": "algorithm_step",
+   "parent_id": "AP15",
+   "step_order": 1,
+   "name": "cons (c)",
+   "statement": "c = cons where\n    cons n y = s (vmul n (s' (o y)))",
+   "subclass": "call",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP35",
+   "type": "algorithm_step",
+   "parent_id": "AP15",
+   "step_order": 2,
+   "name": "hd (c')",
+   "statement": "c' = hd where  \n    hd z | o_ z = T\n    hd z = s x where\n      V x _ = s' z",
+   "subclass": "select",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP36",
+   "type": "algorithm_step",
+   "parent_id": "AP15",
+   "step_order": 3,
+   "name": "tl (c'')",
+   "statement": "c'' = tl where\n    tl z | o_ z = o' z \n    tl z = f xs where\n      V _ xs = s' z\n \n      f [] = T\n      f (y:ys) = s (i' (W y ys))",
+   "subclass": "select",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ExP8",
+   "type": "example",
+   "name": "Compact encoding of a sparse set",
+   "statement": "As the following example shows, trees of type {\\tt T} offer a significantly more compact\nrepresentation of sparse sets.\n\\begin{codex}\n*Giant> from_set (map t [1,100,123,234])\nW (V T []) [V T [T,W T [],T],T,V T [V T [],T],T,V T [W T [],T,T]]\n*Giant> from_set (map n [1,100,123,234])\n27606985387162255149739023449108112443629669818608757680508075841159170\n*Giant> from_set (map b [1,100,123,234])\nI (I (O (O (O (O (O (O (O (O (O (O (O (O (O (O (O (O (O ...\n... a few lines ...\n..)))))))))))\n\\end{codex}",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "The set {1,100,123,234} encodes to a small T tree versus a 70-digit Integer and a long B term."
+  },
+  {
+   "id": "ExP9",
+   "type": "example",
+   "name": "Compression of nearly full sets via dual",
+   "statement": "Note that a similar compression occurs for sets of natural numbers with only a few elements missing, as\nthey have the same representation size with type {\\tt T} as the {\\tt dual} of their sparse counterpart.\n\\begin{codex}\nGiant> from_set ([1,3,5]++[6..220])\n3369993333393829974333376885877453834204643052817571560137951281130\n*Giant> t it\nW (V T []) [T,T,T,W (W T []) [T,T,T,T]]\n*Giant> dual it\nV (V T []) [T,T,T,W (W T []) [T,T,T,T]]\n*Giant> to_set it\n[T,V T [],W T [T],W T [T,W T [],T,T]]\n*Giant> map n it\n[0,1,4,220]\n\\end{codex}",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Sets missing only a few elements are as compact on T as their sparse duals."
+  },
+  {
+   "id": "DP11",
+   "type": "definition",
+   "name": "Type class BitwiseOperations and l_op",
+   "statement": "First we define the type class {\\tt BitwiseOperations}\nand the higher order function {\\tt l\\_op} transporting\na binary operation from ordered sets to natural numbers.\n\\begin{code}\nclass Collections n => BitwiseOperations n where \n  l_op :: ([n]->[n]->[n])->n->n->n\n  l_op op x y = from_set (op (to_set x) (to_set y))\n\\end{code}",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.8,
+   "statement_short": "Type class transporting binary ordered-set operations to naturals via to_set/from_set.",
+   "definiendum": "type class {\\tt BitwiseOperations}",
+   "tags": [
+    "bitwise"
+   ]
+  },
+  {
+   "id": "AP16",
+   "type": "algorithm",
+   "name": "Bitwise and, or, xor, difference",
+   "statement": "Next we define the bitwise {\\tt and}, {\\tt or} and {\\tt xor} operations:\n\\begin{code}  \n  l_and,l_or,l_xor,l_dif:: n->n->n\n  l_and = l_op (isectBy cmp)\n  l_or = l_op (unionBy cmp)\n  l_xor = l_op (xunionBy cmp)\n  l_dif = l_op (minusBy cmp)\n\\end{code}",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Bitwise operations as transported set intersection, union, symmetric difference and difference.",
+   "tags": [
+    "bitwise"
+   ]
+  },
+  {
+   "id": "ASP37",
+   "type": "algorithm_step",
+   "parent_id": "AP16",
+   "step_order": 1,
+   "name": "l_and",
+   "statement": "l_and = l_op (isectBy cmp)",
+   "subclass": "call",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP38",
+   "type": "algorithm_step",
+   "parent_id": "AP16",
+   "step_order": 2,
+   "name": "l_or",
+   "statement": "l_or = l_op (unionBy cmp)",
+   "subclass": "call",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP39",
+   "type": "algorithm_step",
+   "parent_id": "AP16",
+   "step_order": 3,
+   "name": "l_xor",
+   "statement": "l_xor = l_op (xunionBy cmp)",
+   "subclass": "call",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP40",
+   "type": "algorithm_step",
+   "parent_id": "AP16",
+   "step_order": 4,
+   "name": "l_dif",
+   "statement": "l_dif = l_op (minusBy cmp)",
+   "subclass": "call",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "AP17",
+   "type": "algorithm",
+   "name": "Bitwise if-then-else",
+   "statement": "More complex operations like the ternary {\\tt if-the-else}\ncan be defined as a combination of binary operations:\n\\begin{code}  \n  l_ite :: n->n->n->n\n  l_ite x y z = from_set (ite (to_set x) (to_set y) (to_set z)) where\n    ite d a b =  xunionBy cmp e b where\n      c = xunionBy cmp a b\n      e = isectBy cmp c d\n\\end{code}",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Ternary if-then-else via xor and intersection of the operand sets.",
+   "tags": [
+    "bitwise"
+   ]
+  },
+  {
+   "id": "AP18",
+   "type": "algorithm",
+   "name": "Bitwise negation",
+   "statement": "Finally, bitwise negation (requiring additional parameter {\\tt l}\ndefining the bitlength of the operand) can be defined using\nset complement with respect to $2^{l}-1$, corresponding to the set of all\nelements up to {\\tt l}.\n\\begin{code}   \n  l_not :: Integer->n->n\n  l_not l x |xl<=l = from_set (minusBy cmp ms xs) where\n    xs = to_set x\n    xl = genericLength xs\n    ms = genericTake l (allFrom e)\n\\end{code}",
+   "section": "6 Representing sparse sets, multisets and lists",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Negation for bitlength l as set complement within the first l naturals.",
+   "tags": [
+    "bitwise"
+   ]
+  },
+  {
+   "id": "DP12",
+   "type": "definition",
+   "name": "Isomorphism data type Iso",
+   "statement": "Along the lines of \\cite{everything} we can define\nisomorphisms between data types as follows:\n\\begin{code}\ndata Iso a b = Iso (a->b) (b->a)\n\nfrom (Iso f _) = f\nto (Iso _ f') = f'\n\\end{code}",
+   "section": "7 Isomorphisms between data types, generically",
+   "origin": "paper",
+   "confidence": 0.8,
+   "definiendum": "{\\tt Iso a b}",
+   "tags": [
+    "isomorphism"
+   ]
+  },
+  {
+   "id": "AP19",
+   "type": "algorithm",
+   "name": "Combinators as, lend1, lend2",
+   "statement": "Morphing between data types as well as ``lending'' operations from\none to another is provided by the combinators {\\tt as}, {\\tt land1} and {\\tt land2}:\n\\begin{code}\nas that this x = to that (from this x)\n\nlend1 op1 (Iso f f') x = f' (op1 (f x))\nlend2 op2 (Iso f f') x y = f' (op2 (f x) (f y))\n\\end{code}",
+   "section": "7 Isomorphisms between data types, generically",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Morph values between isomorphic types (as) and lend unary/binary operations across an Iso.",
+   "tags": [
+    "isomorphism"
+   ]
+  },
+  {
+   "id": "ASP41",
+   "type": "algorithm_step",
+   "parent_id": "AP19",
+   "step_order": 1,
+   "name": "as",
+   "statement": "as that this x = to that (from this x)",
+   "subclass": "call",
+   "section": "7 Isomorphisms between data types, generically",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP42",
+   "type": "algorithm_step",
+   "parent_id": "AP19",
+   "step_order": 2,
+   "name": "lend1 / lend2",
+   "statement": "lend1 op1 (Iso f f') x = f' (op1 (f x))\nlend2 op2 (Iso f f') x y = f' (op2 (f x) (f y))",
+   "subclass": "call",
+   "section": "7 Isomorphisms between data types, generically",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "DP13",
+   "type": "definition",
+   "name": "Virtual types nat, list, mset, set",
+   "statement": "Assuming that the Haskell option {\\tt NoMonomorphismRestriction} is set on, we can\nnow define generically ``virtual types'' centered around type class {\\tt N}:\n\\begin{code}\nnat = Iso id id\nlist = Iso from_list to_list\nmset = Iso from_mset to_mset\nset = Iso from_set to_set\n\\end{code}",
+   "section": "7 Isomorphisms between data types, generically",
+   "origin": "paper",
+   "confidence": 0.8,
+   "statement_short": "Isomorphisms nat, list, mset, set built from the natural-number bijections.",
+   "definiendum": "{\\tt nat}, {\\tt list}, {\\tt mset}, {\\tt set}",
+   "tags": [
+    "isomorphism"
+   ]
+  },
+  {
+   "id": "ExP10",
+   "type": "example",
+   "name": "Morphing between virtual types",
+   "statement": "This results in a small ``embedded language'' that morphs between\nvarious instances of type class {\\tt N} and their corresponding\nlist, multiset and set types, as follows:\n\\begin{codex}\n*Giant> as set nat 1234\n[1,4,6,7,10]\n*Giant> map t it\n[V T [],W T [T],W (V T []) [],V (W T []) [],W (V T []) [T]]\n*Giant> as nat set it\nW (V T []) [V T [],T,T,V T [],V T []]\n*Giant> n it\n1234\n*Giant> lend1 s set [0,2,3]\n[1,2,3]\n*Giant> lend2 add set [0,2,3] [4,5]\n[0,2,3,4,5]\n\\end{codex}",
+   "section": "7 Isomorphisms between data types, generically",
+   "origin": "paper",
+   "confidence": 0.75
+  },
+  {
+   "id": "DP14",
+   "type": "definition",
+   "name": "Type class SpecialComputations and dual",
+   "statement": "The type class {\\tt SpecialComputations} groups them together and provides their bitstring\ninspired generic implementations.\n\nThe function {\\tt dual} flips {\\tt o} and {\\tt i} operations\nfor a natural number seen as written in bijective base 2. \n\\begin{code}\nclass Collections n => SpecialComputations n where\n  dual :: n->n\n  dual x | e_ x = e\n  dual x | o_ x = i (dual (o' x))\n  dual x | i_ x = o (dual (i' x))\n\\end{code}",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.8,
+   "statement_short": "Type class grouping special computations; dual swaps o and i applications in bijective base 2.",
+   "definiendum": "{\\tt dual}",
+   "tags": [
+    "special_computations"
+   ]
+  },
+  {
+   "id": "AP20",
+   "type": "algorithm",
+   "name": "Generic bitsize",
+   "statement": "The function {\\tt bitsize} computes  the number of applications of the \n{\\tt o} and {\\tt i} operations:\n\\begin{code}    \n  bitsize :: n->n\n  bitsize x | e_ x = e\n  bitsize x | o_ x = s (bitsize (o' x))\n  bitsize x | i_ x = s (bitsize (i' x))\n\\end{code}",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Counts the o and i applications building a number.",
+   "tags": [
+    "bitsize"
+   ]
+  },
+  {
+   "id": "ASP43",
+   "type": "algorithm_step",
+   "parent_id": "AP20",
+   "step_order": 1,
+   "name": "Empty case",
+   "statement": "bitsize x | e_ x = e",
+   "subclass": "return",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP44",
+   "type": "algorithm_step",
+   "parent_id": "AP20",
+   "step_order": 2,
+   "name": "o case",
+   "statement": "bitsize x | o_ x = s (bitsize (o' x))",
+   "subclass": "compute",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP45",
+   "type": "algorithm_step",
+   "parent_id": "AP20",
+   "step_order": 3,
+   "name": "i case",
+   "statement": "bitsize x | i_ x = s (bitsize (i' x))",
+   "subclass": "compute",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "AP21",
+   "type": "algorithm",
+   "name": "Representation size repsize",
+   "statement": "The function {\\tt repsize} computes the representation size, which defaults to\nthe bit-size in bijective base 2: \n\\begin{code}  \n  -- representation size - defaults to bitsize\n  repsize :: n->n\n  repsize = bitsize\n\\end{code}",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Representation size, defaulting to bitsize.",
+   "tags": [
+    "size"
+   ]
+  },
+  {
+   "id": "AP22",
+   "type": "algorithm",
+   "name": "Generic decons and cons",
+   "statement": "The functions {\\tt decons} and {\\tt cons} provide bijections\nbetween $\\N-\\{0\\}$ and $\\N \\times \\N$ and can be used as\nan alternative mechanism for building bijections\nbetween lists, multisets and sets of natural numbers and natural numbers.\nThey are based on separating {\\tt o} and {\\tt i} applications\nthat build up a natural number represented in bijective base 2.\n\\begin{code}\n  decons ::n->(n,n)\n  cons :: (n,n)->n\n   \n  decons z | o_ z = (x,y) where\n    x0 = s' (ocount z)\n    y = otrim z\n    x = if e_ y then (s'.o) x0 else x0 \n  decons z | i_ z = (x,y) where\n    x0 = s' (icount z)\n    y = itrim z\n    x = if e_ y then (s'.i) x0 else x0 \n    \n  cons (x,y) | e_ x && e_ y = s e\n  cons (x,y) | o_ x && e_ y = itimes (s (i' (s x))) e\n  cons (x,y) | i_ x && e_ y = otimes (s (o' (s x))) e\n  cons (x,y) | o_ y = itimes (s x) y\n  cons (x,y) | i_ y = otimes (s x) y\n\\end{code}",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Bijection between N-{0} and NxN by splitting off the leading run of o or i applications.",
+   "tags": [
+    "bijection",
+    "pairing_function"
+   ]
+  },
+  {
+   "id": "ASP46",
+   "type": "algorithm_step",
+   "parent_id": "AP22",
+   "step_order": 1,
+   "name": "decons",
+   "statement": "decons z | o_ z = (x,y) where\n    x0 = s' (ocount z)\n    y = otrim z\n    x = if e_ y then (s'.o) x0 else x0 \n  decons z | i_ z = (x,y) where\n    x0 = s' (icount z)\n    y = itrim z\n    x = if e_ y then (s'.i) x0 else x0",
+   "subclass": "compute",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Count and trim the trailing run of o or i",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP47",
+   "type": "algorithm_step",
+   "parent_id": "AP22",
+   "step_order": 2,
+   "name": "cons",
+   "statement": "cons (x,y) | e_ x && e_ y = s e\n  cons (x,y) | o_ x && e_ y = itimes (s (i' (s x))) e\n  cons (x,y) | i_ x && e_ y = otimes (s (o' (s x))) e\n  cons (x,y) | o_ y = itimes (s x) y\n  cons (x,y) | i_ y = otimes (s x) y",
+   "subclass": "compute",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Rebuild by applying a run of i or o",
+   "source_line_label": null
+  },
+  {
+   "id": "AP23",
+   "type": "algorithm",
+   "name": "Run counting and trimming helpers",
+   "statement": "Implementing {\\tt decons} and {\\tt cons} requires\ncounting the number of applications of {\\tt o} and {\\tt i}\nprovided by {\\tt ocount} and {\\tt icount}, as well trimming\nthe applications of {\\tt o} and {\\tt i}, performed\nby {\\tt otrim} and {\\tt itrim}.\n\\begin{code}    \n  ocount,icount,otrim,itrim :: n->n\n  \n  ocount x | o_ x = s (ocount (o' x))\n  ocount _ = e\n  \n  icount x | i_ x = s (icount (i' x))\n  icount _ = e\n  \n  otrim x | o_ x = otrim (o' x)\n  otrim x = x\n  \n  itrim x | i_ x = itrim (i' x)\n  itrim x = x\n\\end{code}\n\n\\begin{code}\n  otimes,itimes :: n->n->n\n  \n  otimes x y | e_ x = y\n  otimes x y = otimes (s' x) (o y)\n   \n  itimes x y | e_ x = y\n  itimes x y = itimes (s' x) (i y)\n\\end{code}",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "ocount/icount count trailing o/i runs, otrim/itrim remove them, otimes/itimes apply o/i repeatedly.",
+   "tags": [
+    "run_length_encoding"
+   ]
+  },
+  {
+   "id": "ASP48",
+   "type": "algorithm_step",
+   "parent_id": "AP23",
+   "step_order": 1,
+   "name": "ocount / icount",
+   "statement": "ocount x | o_ x = s (ocount (o' x))\n  ocount _ = e\n  \n  icount x | i_ x = s (icount (i' x))\n  icount _ = e",
+   "subclass": "compute",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP49",
+   "type": "algorithm_step",
+   "parent_id": "AP23",
+   "step_order": 2,
+   "name": "otrim / itrim",
+   "statement": "otrim x | o_ x = otrim (o' x)\n  otrim x = x\n  \n  itrim x | i_ x = itrim (i' x)\n  itrim x = x",
+   "subclass": "filter",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP50",
+   "type": "algorithm_step",
+   "parent_id": "AP23",
+   "step_order": 3,
+   "name": "otimes / itimes",
+   "statement": "otimes,itimes :: n->n->n\n  \n  otimes x y | e_ x = y\n  otimes x y = otimes (s' x) (o y)\n   \n  itimes x y | e_ x = y\n  itimes x y = itimes (s' x) (i y)",
+   "subclass": "compute",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "AP24",
+   "type": "algorithm",
+   "name": "Alternative list bijection to_list', from_list'",
+   "statement": "An alternative bijection between natural numbers and \nlists of natural numbers, {\\tt to\\_list'}\nand its inverse {\\tt from\\_list'} is obtained by \napplying repeatedly {\\tt cons}\nand respectively {\\tt decons}.\n\n\\begin{code}\n  to_list' :: n->[n]\n  to_list' x | e_ x = []\n  to_list' x = hd : (to_list' tl) where (hd,tl)=decons x\n\n  from_list' :: [n]->n\n  from_list' [] = e\n  from_list' (x:xs) = cons (x,from_list' xs)\n\\end{code}",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Alternative naturals-to-lists bijection by repeated decons, inverted by cons.",
+   "tags": [
+    "bijection"
+   ]
+  },
+  {
+   "id": "ASP51",
+   "type": "algorithm_step",
+   "parent_id": "AP24",
+   "step_order": 1,
+   "name": "to_list'",
+   "statement": "to_list' :: n->[n]\n  to_list' x | e_ x = []\n  to_list' x = hd : (to_list' tl) where (hd,tl)=decons x",
+   "subclass": "call",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP52",
+   "type": "algorithm_step",
+   "parent_id": "AP24",
+   "step_order": 2,
+   "name": "from_list'",
+   "statement": "from_list' :: [n]->n\n  from_list' [] = e\n  from_list' (x:xs) = cons (x,from_list' xs)",
+   "subclass": "call",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "AP25",
+   "type": "algorithm",
+   "name": "Tree-specific bitsize, dual and repsize",
+   "statement": "One can observe the significant reduction of asymptotic complexity\nwith respect to the default operations provided by the type\nclass {\\tt SpecialComputations}\nwhen overriding with {\\tt tbitsize} and {\\tt tdual} in instance {\\tt T}.\n\\begin{code}  \ninstance SpecialComputations Integer\ninstance SpecialComputations B\ninstance SpecialComputations T where\n  bitsize = tbitsize where\n    tbitsize T = T\n    tbitsize (V x xs) = s (foldr add1 x xs)\n    tbitsize (W x xs) = s (foldr add1 x xs)\n    \n    add1 x y = s (add x y)\n    \n  dual = tdual where\n    tdual T = T\n    tdual (V x xs) = W x xs\n    tdual (W x xs) = V x xs \n    \n  repsize = tsize where\n    tsize T = T\n    tsize (V x xs) = s (foldr add T (map tsize (x:xs)))\n    tsize (W x xs) = s (foldr add T (map tsize (x:xs)))\n\\end{code}",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "On T, bitsize sums run counters, dual swaps V and W in O(1), and repsize counts tree nodes.",
+   "tags": [
+    "tree_representation",
+    "complexity"
+   ]
+  },
+  {
+   "id": "ASP53",
+   "type": "algorithm_step",
+   "parent_id": "AP25",
+   "step_order": 1,
+   "name": "tbitsize",
+   "statement": "bitsize = tbitsize where\n    tbitsize T = T\n    tbitsize (V x xs) = s (foldr add1 x xs)\n    tbitsize (W x xs) = s (foldr add1 x xs)\n    \n    add1 x y = s (add x y)",
+   "subclass": "compute",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP54",
+   "type": "algorithm_step",
+   "parent_id": "AP25",
+   "step_order": 2,
+   "name": "tdual",
+   "statement": "dual = tdual where\n    tdual T = T\n    tdual (V x xs) = W x xs\n    tdual (W x xs) = V x xs",
+   "subclass": "compute",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP55",
+   "type": "algorithm_step",
+   "parent_id": "AP25",
+   "step_order": 3,
+   "name": "tsize",
+   "statement": "repsize = tsize where\n    tsize T = T\n    tsize (V x xs) = s (foldr add T (map tsize (x:xs)))\n    tsize (W x xs) = s (foldr add T (map tsize (x:xs)))",
+   "subclass": "compute",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "AP26",
+   "type": "algorithm",
+   "name": "Tree-specific decons and cons",
+   "statement": "The replacement with special purpose code for the {\\tt cons / decons} functions\nis even more significant:\n\\begin{code}\n  decons (V x []) = ((s'.o) x,T)\n  decons (V x (y:ys)) = (x,W y ys)\n  decons (W x []) = ((s'.i) x,T)\n  decons (W x (y:ys)) = (x,V y ys)\n\n  cons (T,T) = V T []\n  cons (x,T) | o_ x =  W (i' (s x)) []\n  cons (x,T) | i_ x = V (o' (s x)) []\n  cons (x,V y ys) = W x (y:ys)\n  cons (x,W y ys) = V x (y:ys)\n\\end{code}",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "On T, decons and cons read or build the first run counter directly in the V/W node.",
+   "tags": [
+    "tree_representation",
+    "bijection"
+   ]
+  },
+  {
+   "id": "ASP56",
+   "type": "algorithm_step",
+   "parent_id": "AP26",
+   "step_order": 1,
+   "name": "decons on T",
+   "statement": "decons (V x []) = ((s'.o) x,T)\n  decons (V x (y:ys)) = (x,W y ys)\n  decons (W x []) = ((s'.i) x,T)\n  decons (W x (y:ys)) = (x,V y ys)",
+   "subclass": "select",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP57",
+   "type": "algorithm_step",
+   "parent_id": "AP26",
+   "step_order": 2,
+   "name": "cons on T",
+   "statement": "cons (T,T) = V T []\n  cons (x,T) | o_ x =  W (i' (s x)) []\n  cons (x,T) | i_ x = V (o' (s x)) []\n  cons (x,V y ys) = W x (y:ys)\n  cons (x,W y ys) = V x (y:ys)",
+   "subclass": "compute",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ClP4",
+   "type": "claim",
+   "name": "cons/decons on T cost as much as s and s'",
+   "statement": "One can also see that their complexity is now proportional to {\\tt s} and {\\tt s'}\ngiven that the {\\tt V} and {\\tt W} operations perform in constant time the \nwork of {\\tt otimes} and {\\tt itimes}.",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Tree cons/decons have the complexity of s and s', since V and W do the work of otimes/itimes in constant time.",
+   "assumptions": [
+    "given that the {\\tt V} and {\\tt W} operations perform in constant time the \nwork of {\\tt otimes} and {\\tt itimes}."
+   ],
+   "conclusions": [
+    "their complexity is now proportional to {\\tt s} and {\\tt s'}"
+   ],
+   "rigor": "semi_formal",
+   "tags": [
+    "complexity"
+   ]
+  },
+  {
+   "id": "ExP11",
+   "type": "example",
+   "name": "to_list' on 0..20",
+   "statement": "The following example illustrates their work:\n\\begin{codex}\n*Giant> map to_list' [0..20]\n[[],[0],[1],[2],[0,0],[0,1],[3],[4],[0,2],[0,0,0],[1,0],[1,1],\n    [0,0,1],[0,3],[5],[6],[0,4],[0,0,2],[1,2],[1,0,0],[0,0,0,0]]\n*Giant> map from_list' it\n[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]\\end{codex}\nNote the shorter lists created close to powers of 2, coming from\nthe longer sequences of consecutive \n{\\tt o} and {\\tt i}m operations in that region.",
+   "section": "8 Complexity reduction in other computations",
+   "origin": "paper",
+   "confidence": 0.75
+  },
+  {
+   "id": "ClP5",
+   "type": "claim",
+   "name": "Tree representation is competitive with bitstring arithmetic",
+   "statement": "Together they indicate that our tree-based representations are likely to be competitive with existing bitstring-based packages on typical computations and significantly outperform them on some number-theoretically interesting computations.",
+   "section": "9 A performance comparison",
+   "origin": "paper",
+   "confidence": 0.65,
+   "statement_short": "Benchmarks indicate T is competitive on typical arithmetic and much faster on number-theoretically special computations.",
+   "assumptions": [],
+   "conclusions": [
+    "our tree-based representations are likely to be competitive with existing bitstring-based packages on typical computations and significantly outperform them on some number-theoretically interesting computations."
+   ],
+   "rigor": "numerical",
+   "tags": [
+    "performance",
+    "benchmark"
+   ]
+  },
+  {
+   "id": "OpenP1",
+   "type": "open_problem",
+   "name": "Succinct expression of further operations",
+   "statement": "The fundamental theoretical challenge raised at this point is the following:\n{\\em can other number-theoretically interesting operations, with possible\napplications to cryptography be also\nexpressed succinctly in terms of our tree-based data type? Is it possible to reduce the\ncomplexity of some other important operations, besides those found so far?}",
+   "section": "11 Conclusion and future work",
+   "origin": "paper",
+   "confidence": 0.85,
+   "statement_short": "Can other number-theoretic operations (e.g. for cryptography) be expressed succinctly or with reduced complexity on tree type T?",
+   "tags": [
+    "complexity",
+    "cryptography"
+   ]
+  },
+  {
+   "id": "AP27",
+   "type": "algorithm",
+   "name": "Generic prime number generator",
+   "statement": "This appendix contains some additional code, used for testing\nand benchmarking our functions, grouped in the type class {\\tt Benchmarks}.\nFirst we define a prime number generator working with all our instances.\n\\begin{code}\nclass SpecialComputations n => Benchmarks n where\n  primes :: [n]\n\n  primes = s (s e) : filter is_prime (odds_from (s (s (s e)))) where\n    odds_from x = x : odds_from (s (s x))\n    \n    is_prime p = [p]==to_primes p\n    \n    to_primes n = to_factors n p ps where\n       (p:ps) = primes\n    \n    to_factors n p ps | cmp (mul p p) n == GT = [n]\n    to_factors n p ps | e_ r =  p : to_factors q p ps where\n       (q,r) = div_and_rem n p\n    to_factors n p (hd:tl) = to_factors n hd tl\n\\end{code}",
+   "section": "Appendix",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Generates primes by trial division of odd numbers by previously found primes, generic over instances.",
+   "tags": [
+    "prime",
+    "benchmark"
+   ]
+  },
+  {
+   "id": "ASP58",
+   "type": "algorithm_step",
+   "parent_id": "AP27",
+   "step_order": 1,
+   "name": "primes list",
+   "statement": "primes = s (s e) : filter is_prime (odds_from (s (s (s e)))) where",
+   "subclass": "filter",
+   "section": "Appendix",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Start with 2 and filter odd numbers from 3 by primality",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP59",
+   "type": "algorithm_step",
+   "parent_id": "AP27",
+   "step_order": 2,
+   "name": "odds_from",
+   "statement": "odds_from x = x : odds_from (s (s x))",
+   "subclass": "compute",
+   "section": "Appendix",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP60",
+   "type": "algorithm_step",
+   "parent_id": "AP27",
+   "step_order": 3,
+   "name": "is_prime",
+   "statement": "is_prime p = [p]==to_primes p",
+   "subclass": "test",
+   "section": "Appendix",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "A number is prime iff its factorization is itself",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP61",
+   "type": "algorithm_step",
+   "parent_id": "AP27",
+   "step_order": 4,
+   "name": "to_primes",
+   "statement": "to_primes n = to_factors n p ps where\n       (p:ps) = primes",
+   "subclass": "call",
+   "section": "Appendix",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP62",
+   "type": "algorithm_step",
+   "parent_id": "AP27",
+   "step_order": 5,
+   "name": "to_factors",
+   "statement": "to_factors n p ps | cmp (mul p p) n == GT = [n]\n    to_factors n p ps | e_ r =  p : to_factors q p ps where\n       (q,r) = div_and_rem n p\n    to_factors n p (hd:tl) = to_factors n hd tl",
+   "subclass": "compute",
+   "section": "Appendix",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Trial division by successive primes up to the square root",
+   "source_line_label": null
+  },
+  {
+   "id": "AP28",
+   "type": "algorithm",
+   "name": "Lucas-Lehmer primality test",
+   "statement": "Next we define the Lucas-Lehmer fast primality test for Mersenne numbers:\n\\begin{code}\n  lucas_lehmer :: n -> Bool\n  lucas_lehmer p = e_ y where\n    p_2 = s' (s' p)\n    four = i (o e)\n    m  = exp2 p\n    m' = s' m\n    y = f p_2 four\n \n    f k n | e_ k = n\n    f k n = r where \n      x = f (s' k) n\n      y = s' (s' (mul x x))\n      --r = reminder y m'\n      r = fastmod y m \n\n    -- fast computation of k mod 2^p-1  \n    fastmod k m | k == s' m = e\n    fastmod k m | LT == cmp k m = k\n    fastmod k m = fastmod (add q r) m where\n       (q,r) = div_and_rem k m\n  \n  -- exponents leading to Mersenne primes\n  mersenne_prime_exps :: [n]\n  mersenne_prime_exps = filter lucas_lehmer primes\n  \n  -- actual Mersenne primes\n  mersenne_primes :: [n]\n  mersenne_primes = map f mersenne_prime_exps where\n    f p = s' (exp2 p)   \n\\end{code}",
+   "section": "Appendix",
+   "origin": "external",
+   "confidence": 0.85,
+   "origin_citation": "standard (uncited)",
+   "statement_short": "Lucas-Lehmer test for Mersenne numbers: iterate x -> x^2-2 mod 2^p-1 p-2 times from 4, with a fast mod 2^p-1; filters Mersenne prime exponents.",
+   "tags": [
+    "prime",
+    "mersenne",
+    "primality_test"
+   ]
+  },
+  {
+   "id": "ASP63",
+   "type": "algorithm_step",
+   "parent_id": "AP28",
+   "step_order": 1,
+   "name": "Setup",
+   "statement": "p_2 = s' (s' p)\n    four = i (o e)\n    m  = exp2 p\n    m' = s' m\n    y = f p_2 four",
+   "subclass": "initialize",
+   "section": "Appendix",
+   "origin": "external",
+   "confidence": 0.7,
+   "statement_short": "Set p-2, four, m=2^p and run f",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP64",
+   "type": "algorithm_step",
+   "parent_id": "AP28",
+   "step_order": 2,
+   "name": "Iterate squaring minus 2",
+   "statement": "f k n | e_ k = n\n    f k n = r where \n      x = f (s' k) n\n      y = s' (s' (mul x x))\n      --r = reminder y m'\n      r = fastmod y m",
+   "subclass": "loop",
+   "section": "Appendix",
+   "origin": "external",
+   "confidence": 0.7,
+   "statement_short": "Recursive x^2-2 reduced mod 2^p-1",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP65",
+   "type": "algorithm_step",
+   "parent_id": "AP28",
+   "step_order": 3,
+   "name": "fastmod",
+   "statement": "fastmod k m | k == s' m = e\n    fastmod k m | LT == cmp k m = k\n    fastmod k m = fastmod (add q r) m where\n       (q,r) = div_and_rem k m",
+   "subclass": "compute",
+   "section": "Appendix",
+   "origin": "external",
+   "confidence": 0.7,
+   "statement_short": "Reduce mod 2^p-1 by adding quotient and remainder",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP66",
+   "type": "algorithm_step",
+   "parent_id": "AP28",
+   "step_order": 4,
+   "name": "mersenne_prime_exps",
+   "statement": "mersenne_prime_exps :: [n]\n  mersenne_prime_exps = filter lucas_lehmer primes",
+   "subclass": "filter",
+   "section": "Appendix",
+   "origin": "external",
+   "confidence": 0.7,
+   "statement_short": "Keep primes passing the test",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP67",
+   "type": "algorithm_step",
+   "parent_id": "AP28",
+   "step_order": 5,
+   "name": "mersenne_primes",
+   "statement": "mersenne_primes :: [n]\n  mersenne_primes = map f mersenne_prime_exps where\n    f p = s' (exp2 p)",
+   "subclass": "compute",
+   "section": "Appendix",
+   "origin": "external",
+   "confidence": 0.7,
+   "statement_short": "Map exponents to 2^p-1",
+   "source_line_label": null
+  },
+  {
+   "id": "AP29",
+   "type": "algorithm",
+   "name": "Ackermann function",
+   "statement": "The Ackerman function is a good benchmark for\nsuccessor and predecessor operations:\n\\begin{code}    \n  ack :: n->n->n\n  ack x n | e_ x = s n\n  ack m1 x | e_ x = ack (s' m1) (s e)\n  ack m1 n1 = ack (s' m1) (ack m1 (s' n1))\n\\end{code}",
+   "section": "Appendix",
+   "origin": "external",
+   "confidence": 0.85,
+   "origin_citation": "standard (uncited)",
+   "statement_short": "Ackermann function, used as a successor/predecessor benchmark.",
+   "tags": [
+    "benchmark",
+    "recursion"
+   ]
+  },
+  {
+   "id": "ASP68",
+   "type": "algorithm_step",
+   "parent_id": "AP29",
+   "step_order": 1,
+   "name": "x = 0",
+   "statement": "ack x n | e_ x = s n",
+   "subclass": "compute",
+   "section": "Appendix",
+   "origin": "external",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP69",
+   "type": "algorithm_step",
+   "parent_id": "AP29",
+   "step_order": 2,
+   "name": "n = 0",
+   "statement": "ack m1 x | e_ x = ack (s' m1) (s e)",
+   "subclass": "call",
+   "section": "Appendix",
+   "origin": "external",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP70",
+   "type": "algorithm_step",
+   "parent_id": "AP29",
+   "step_order": 3,
+   "name": "General case",
+   "statement": "ack m1 n1 = ack (s' m1) (ack m1 (s' n1))",
+   "subclass": "call",
+   "section": "Appendix",
+   "origin": "external",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "AP30",
+   "type": "algorithm",
+   "name": "Syracuse function and its iterates",
+   "statement": "Next we define a variant of the 3x+1 problem / Collatz conjecture / Syracuse\nfunction \n(see \\url{http://en.wikipedia.org/wiki/Collatz_conjecture})\nthat, somewhat surprisingly, can be expressed as\na mix of arithmetic operations and reflected list operations, to test\nthe relative performance of some of our instances. It is easy to show\nthat the Collatz conjecture is true iff the function {\\tt nsyr}, implementing the\nn-th iterate of the {\\em Syracuse function}, always\nterminates:\n\\begin{code}\n  syracuse  :: n->n\n  -- n->c'' (3n+2)\n  syracuse n = c'' (add n (i n))\n\n  nsyr :: n->[n]\n  nsyr n | e_ n = [e]\n  nsyr n = n : nsyr (syracuse n)\n\\end{code}",
+   "section": "Appendix",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Syracuse (3x+1 variant) map n -> c''(3n+2) and the list of its iterates nsyr, as a benchmark.",
+   "tags": [
+    "collatz",
+    "benchmark"
+   ]
+  },
+  {
+   "id": "ClP6",
+   "type": "claim",
+   "name": "Collatz conjecture equivalent to termination of nsyr",
+   "statement": "It is easy to show\nthat the Collatz conjecture is true iff the function {\\tt nsyr}, implementing the\nn-th iterate of the {\\em Syracuse function}, always\nterminates:",
+   "section": "Appendix",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "The Collatz conjecture holds iff nsyr always terminates.",
+   "assumptions": [],
+   "conclusions": [
+    "the Collatz conjecture is true iff the function {\\tt nsyr}, implementing the\nn-th iterate of the {\\em Syracuse function}, always\nterminates"
+   ],
+   "rigor": "semi_formal",
+   "tags": [
+    "collatz"
+   ],
+   "parent_id": "AP30"
+  },
+  {
+   "id": "ASP71",
+   "type": "algorithm_step",
+   "parent_id": "AP30",
+   "step_order": 1,
+   "name": "syracuse",
+   "statement": "syracuse  :: n->n\n  -- n->c'' (3n+2)\n  syracuse n = c'' (add n (i n))",
+   "subclass": "compute",
+   "section": "Appendix",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP72",
+   "type": "algorithm_step",
+   "parent_id": "AP30",
+   "step_order": 2,
+   "name": "nsyr",
+   "statement": "nsyr :: n->[n]\n  nsyr n | e_ n = [e]\n  nsyr n = n : nsyr (syracuse n)",
+   "subclass": "loop",
+   "section": "Appendix",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "AP31",
+   "type": "algorithm",
+   "name": "k-th iterate kth",
+   "statement": "The function {\\tt kth} computes the k-th iteration of a function\napplication.\n\\begin{code}\nkth _ k x | e_ k  = x\nkth f k x  = f (kth f (s' k) x)\n\\end{code}",
+   "section": "Appendix",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "k-fold iteration of a function application.",
+   "tags": [
+    "iteration"
+   ]
+  },
+  {
+   "id": "ASP73",
+   "type": "algorithm_step",
+   "parent_id": "AP31",
+   "step_order": 1,
+   "name": "k = 0",
+   "statement": "kth _ k x | e_ k  = x",
+   "subclass": "return",
+   "section": "Appendix",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ASP74",
+   "type": "algorithm_step",
+   "parent_id": "AP31",
+   "step_order": 2,
+   "name": "Recursive case",
+   "statement": "kth f k x  = f (kth f (s' k) x)",
+   "subclass": "call",
+   "section": "Appendix",
+   "origin": "paper",
+   "confidence": 0.7,
+   "source_line_label": null
+  },
+  {
+   "id": "ClP7",
+   "type": "claim",
+   "name": "Test assertions relating o/i iteration, powers of 2 and multiplication",
+   "statement": "The following assertions are used for testing some of our operations:\n\n\\begin{code}\n-- relation between iterations of o,i and power of 2 \na1 k = pow (i e) k == s (kth o k e) \na2 k = pow (i e) k == s (s (kth i (s'  k) e))\n\n-- relations between power operations and multiplication\na3 n b = (u==v,u,v) where\n m = pow (i e) n\n u = kth o n b\n v = s' (mul m (s b))\n \na4 x y = (a==b,a,b) where \n  a = mul (pow (i e) x) y\n  b = s (kth o x (s' y))\n\\end{code}",
+   "section": "Appendix",
+   "origin": "paper",
+   "confidence": 0.6,
+   "statement_short": "Tested identities: 2^k = s(o^k e) = s(s(i^{k-1} e)), o^n b = s'(2^n (s b)), 2^x y = s(o^x(s' y)).",
+   "assumptions": [],
+   "conclusions": [
+    "a1 k = pow (i e) k == s (kth o k e)"
+   ],
+   "rigor": "numerical",
+   "tags": [
+    "identity",
+    "power_of_two"
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "source": "PP1",
+   "target": "PrP1",
+   "type": "proves",
+   "confidence": 1.0
+  },
+  {
+   "source": "DP1",
+   "target": "RP1",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1",
+   "target": "DP2",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1",
+   "target": "AP1",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1",
+   "target": "DP3",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1",
+   "target": "DP4",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1",
+   "target": "DP6",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1",
+   "target": "AP11",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1",
+   "target": "DP10",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP1",
+   "target": "PrP1",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP2",
+   "target": "AP1",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP2",
+   "target": "AP3",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP2",
+   "target": "AP4",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP2",
+   "target": "AP6",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP2",
+   "target": "AP7",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP2",
+   "target": "AP8",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP2",
+   "target": "AP11",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP2",
+   "target": "AP12",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP2",
+   "target": "DP10",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP2",
+   "target": "AP20",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP2",
+   "target": "AP22",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP2",
+   "target": "AP23",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP2",
+   "target": "AP28",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP2",
+   "target": "AP29",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP2",
+   "target": "AP30",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP2",
+   "target": "AP31",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP2",
+   "target": "PrP1",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "RP1",
+   "target": "DP2",
+   "type": "uses",
+   "confidence": 0.6
+  },
+  {
+   "source": "AP1",
+   "target": "PrP1",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "AP1",
+   "target": "PP1",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "RP2",
+   "target": "PP1",
+   "type": "uses",
+   "confidence": 0.7
+  },
+  {
+   "source": "AP1",
+   "target": "AP2",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1",
+   "target": "AP3",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1",
+   "target": "AP6",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1",
+   "target": "AP7",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1",
+   "target": "AP8",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1",
+   "target": "DP6",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1",
+   "target": "AP9",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1",
+   "target": "AP10",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1",
+   "target": "DP8",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1",
+   "target": "AP13",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1",
+   "target": "AP15",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1",
+   "target": "AP22",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1",
+   "target": "AP23",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1",
+   "target": "AP25",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1",
+   "target": "AP26",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1",
+   "target": "ClP2",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1",
+   "target": "ClP4",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1",
+   "target": "AP27",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1",
+   "target": "AP28",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1",
+   "target": "AP29",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP1",
+   "target": "AP31",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "PrP1",
+   "target": "ClP2",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "PrP1",
+   "target": "ClP4",
+   "type": "uses",
+   "confidence": 0.6
+  },
+  {
+   "source": "AP2",
+   "target": "AP18",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP3",
+   "target": "ClP1",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "AP3",
+   "target": "AP6",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP3",
+   "target": "AP8",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP3",
+   "target": "AP10",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP3",
+   "target": "AP13",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP3",
+   "target": "AP25",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP3",
+   "target": "AP30",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP3",
+   "target": "AP28",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP4",
+   "target": "AP5",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP4",
+   "target": "AP8",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP4",
+   "target": "AP16",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP4",
+   "target": "AP17",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP4",
+   "target": "AP18",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP4",
+   "target": "AP27",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP4",
+   "target": "AP28",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP6",
+   "target": "AP7",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP6",
+   "target": "AP8",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP6",
+   "target": "DP10",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP6",
+   "target": "AP27",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP6",
+   "target": "AP28",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP6",
+   "target": "ClP7",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP7",
+   "target": "AP8",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP7",
+   "target": "AP9",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP7",
+   "target": "DP8",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP7",
+   "target": "DP10",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP7",
+   "target": "AP28",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP7",
+   "target": "ClP7",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP7",
+   "target": "DP9",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP8",
+   "target": "AP27",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP8",
+   "target": "AP28",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP5",
+   "target": "RP3",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "DP5",
+   "target": "DP6",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP5",
+   "target": "AP9",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP5",
+   "target": "AP10",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP5",
+   "target": "AP15",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP5",
+   "target": "AP25",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP5",
+   "target": "AP26",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP5",
+   "target": "DP7",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP5",
+   "target": "DP8",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP5",
+   "target": "OpenP1",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP5",
+   "target": "ClP5",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "RP3",
+   "target": "DP6",
+   "type": "uses",
+   "confidence": 0.6
+  },
+  {
+   "source": "DP6",
+   "target": "AP9",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP6",
+   "target": "DP7",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "AP10",
+   "target": "AP9",
+   "type": "uses",
+   "confidence": 0.9,
+   "backward": true
+  },
+  {
+   "source": "AP10",
+   "target": "AP15",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "AP10",
+   "target": "ClP3",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "AP9",
+   "target": "ClP2",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "AP9",
+   "target": "ClP3",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "AP9",
+   "target": "ClP5",
+   "type": "uses",
+   "confidence": 0.7
+  },
+  {
+   "source": "AP11",
+   "target": "DP7",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "DP3",
+   "target": "DP7",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP4",
+   "target": "DP7",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP7",
+   "target": "ExP4",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP7",
+   "target": "DP9",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP7",
+   "target": "ExP6",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP7",
+   "target": "ExP7",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP7",
+   "target": "ExP8",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP7",
+   "target": "ExP9",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP7",
+   "target": "ExP10",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP8",
+   "target": "DP9",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP9",
+   "target": "ClP5",
+   "type": "uses",
+   "confidence": 0.75
+  },
+  {
+   "source": "DP10",
+   "target": "AP12",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP10",
+   "target": "AP15",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP10",
+   "target": "DP11",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP10",
+   "target": "DP14",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP10",
+   "target": "AP30",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP12",
+   "target": "AP14",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "AP13",
+   "target": "AP14",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "AP12",
+   "target": "DP13",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "AP14",
+   "target": "DP11",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "AP14",
+   "target": "AP17",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "AP14",
+   "target": "AP18",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "AP14",
+   "target": "DP13",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "DP11",
+   "target": "AP16",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "DP11",
+   "target": "AP17",
+   "type": "uses",
+   "confidence": 0.7
+  },
+  {
+   "source": "DP11",
+   "target": "AP18",
+   "type": "uses",
+   "confidence": 0.7
+  },
+  {
+   "source": "DP12",
+   "target": "AP19",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "DP12",
+   "target": "DP13",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "DP14",
+   "target": "AP20",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP14",
+   "target": "AP21",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP14",
+   "target": "AP22",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP14",
+   "target": "AP25",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP14",
+   "target": "AP27",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP20",
+   "target": "AP21",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "AP20",
+   "target": "AP25",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP20",
+   "target": "ClP5",
+   "type": "uses",
+   "confidence": 0.7
+  },
+  {
+   "source": "AP23",
+   "target": "AP22",
+   "type": "uses",
+   "confidence": 0.9,
+   "backward": true
+  },
+  {
+   "source": "AP22",
+   "target": "AP24",
+   "type": "uses",
+   "confidence": 0.9
+  },
+  {
+   "source": "AP22",
+   "target": "AP26",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "AP26",
+   "target": "ClP4",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "AP23",
+   "target": "ClP4",
+   "type": "uses",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP25",
+   "target": "ClP5",
+   "type": "uses",
+   "confidence": 0.7
+  },
+  {
+   "source": "AP27",
+   "target": "AP28",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "AP27",
+   "target": "ClP5",
+   "type": "uses",
+   "confidence": 0.7,
+   "backward": true
+  },
+  {
+   "source": "AP28",
+   "target": "ClP5",
+   "type": "uses",
+   "confidence": 0.7,
+   "backward": true
+  },
+  {
+   "source": "AP29",
+   "target": "ClP5",
+   "type": "uses",
+   "confidence": 0.7,
+   "backward": true
+  },
+  {
+   "source": "AP31",
+   "target": "ClP7",
+   "type": "uses",
+   "confidence": 0.85
+  },
+  {
+   "source": "AP3",
+   "target": "ExP1",
+   "type": "illustrates",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP6",
+   "target": "ExP1",
+   "type": "illustrates",
+   "confidence": 0.8
+  },
+  {
+   "source": "AP7",
+   "target": "ExP1",
+   "type": "illustrates",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP3",
+   "target": "ExP1",
+   "type": "illustrates",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP4",
+   "target": "ExP1",
+   "type": "illustrates",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP7",
+   "target": "ExP2",
+   "type": "illustrates",
+   "confidence": 0.85
+  },
+  {
+   "source": "AP11",
+   "target": "ExP2",
+   "type": "illustrates",
+   "confidence": 0.7
+  },
+  {
+   "source": "AP9",
+   "target": "ExP3",
+   "type": "illustrates",
+   "confidence": 0.9
+  },
+  {
+   "source": "DP8",
+   "target": "ExP4",
+   "type": "illustrates",
+   "confidence": 0.85
+  },
+  {
+   "source": "DP9",
+   "target": "ExP5",
+   "type": "illustrates",
+   "confidence": 0.9
+  },
+  {
+   "source": "DP8",
+   "target": "ExP6",
+   "type": "illustrates",
+   "confidence": 0.85
+  },
+  {
+   "source": "DP9",
+   "target": "ExP6",
+   "type": "uses",
+   "confidence": 0.7
+  },
+  {
+   "source": "DP8",
+   "target": "ExP7",
+   "type": "illustrates",
+   "confidence": 0.85
+  },
+  {
+   "source": "AP14",
+   "target": "ExP8",
+   "type": "illustrates",
+   "confidence": 0.85
+  },
+  {
+   "source": "AP14",
+   "target": "ExP9",
+   "type": "illustrates",
+   "confidence": 0.8
+  },
+  {
+   "source": "DP14",
+   "target": "ExP9",
+   "type": "uses",
+   "confidence": 0.8,
+   "backward": true
+  },
+  {
+   "source": "AP19",
+   "target": "ExP10",
+   "type": "illustrates",
+   "confidence": 0.85
+  },
+  {
+   "source": "DP13",
+   "target": "ExP10",
+   "type": "illustrates",
+   "confidence": 0.85
+  },
+  {
+   "source": "AP24",
+   "target": "ExP11",
+   "type": "illustrates",
+   "confidence": 0.9
+  }
+ ]
+}
