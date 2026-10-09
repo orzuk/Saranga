@@ -304,3 +304,4 @@ step alone is re-run on the earlier outputs at the end of the run (no extraction
 From the 44th paper on, the cycle check is at 4f4b446: a node inside a proof that other results use is not
 folded into the proof's result. Earlier outputs may carry `mention` marks added to get around the old
 check (1007.0740v1, 1204.5115v1, 1203.0186v1); they are reviewed after the run.
+From the 96th paper on, finalize is at 4b1f874: a repeated statement's copy is chosen by its neighbours' positions.
