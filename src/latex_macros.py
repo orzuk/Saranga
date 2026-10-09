@@ -292,7 +292,9 @@ def expand_macros(text, macros, max_depth=_MAX_DEPTH):
     names = sorted(macros, key=len, reverse=True)
     if not names:
         return text
-    pattern = re.compile(r"\\(%s)(?![A-Za-z])"
+    # @ continues a control word inside \makeatletter code (\v@rt is one name,
+    # not \v followed by "@rt"); expanding the prefix corrupts the definition
+    pattern = re.compile(r"\\(%s)(?![A-Za-z@])"
                          % "|".join(re.escape(n) for n in names))
 
     for _ in range(max_depth):
