@@ -310,3 +310,6 @@ are braced; only 1511.06275v2's preamble differs, and its facts and output are u
 latex_macros at 90622c2 (from the 140th paper on): @ continues a control word during macro expansion (a
 pre-existing bug that turned \\mathcal into V in 1705.03359v2). That paper is re-extracted; 1309.2370v6
 has two statements to repair; 1103.5544v1 and 1211.7155v1 are unaffected.
+latex_macros at 9be9de2 (from the 158th paper on): a macro in a definition's name slot is never expanded (a
+pre-existing bug that turned \\mathrm into G in 1711.05651v2). 1711.05651v2 and 1201.4897v6 are re-extracted;
+1403.5799v2 is unaffected; 1804.10149v1 and 1909.06098v1 were not yet extracted.
