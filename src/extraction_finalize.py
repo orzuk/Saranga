@@ -65,9 +65,9 @@ def match_nodes_to_facts(graph: dict, facts: dict) -> dict[str, str]:
     """node id -> fact id, for Level-1 nodes whose statement IS an environment body.
 
     Environments with identical text (an equation restated in the introduction)
-    are told apart by the node's `label`, then by its parent's environment, and
-    otherwise taken from the last copy back: a node kept for a repeated
-    statement is the body's copy, not the earlier preview."""
+    are told apart by the node's `label`, then by its parent's environment, then
+    by position: the copy that lies between the node's neighbours in node order
+    (nodes are listed in document order), else the last copy."""
     by_key: dict[str, list[dict]] = {}
     for f in facts["facts"]:
         k = _key(f["statement"])
@@ -99,11 +99,23 @@ def match_nodes_to_facts(graph: dict, facts: dict) -> dict[str, str]:
             else:
                 out[n["id"]] = f["id"]
                 taken.add(f["id"])
-        left = free()[-len(rest):] if rest else []
-        for n, f in zip(rest, left):
-            out[n["id"]] = f["id"]
-            taken.add(f["id"])
+        for n in rest:                        # the copy between its neighbours in node order
+            lo, hi = _neighbour_bounds(level1, n["id"], out, fact)
+            cands = free()
+            inside = [f for f in cands if lo <= f["start"] <= hi]
+            f = (inside or cands[-1:])[0] if len(inside) <= 1 else inside[-1]
+            if f:
+                out[n["id"]] = f["id"]
+                taken.add(f["id"])
     return out
+
+
+def _neighbour_bounds(nodes: list, nid: str, out: dict, fact: dict) -> tuple:
+    """Start of the nearest earlier and later nodes already matched to a fact."""
+    i = next(k for k, n in enumerate(nodes) if n["id"] == nid)
+    lo = next((fact[out[n["id"]]]["start"] for n in reversed(nodes[:i]) if n["id"] in out), 0)
+    hi = next((fact[out[n["id"]]]["start"] for n in nodes[i + 1:] if n["id"] in out), float("inf"))
+    return (lo, hi) if lo <= hi else (0, float("inf"))
 
 
 def _sentence_end(text: str, end: int) -> bool:
