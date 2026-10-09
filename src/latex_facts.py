@@ -39,40 +39,79 @@ from proof_structure import detect as detect_proof_structure   # noqa: E402
 # ── Mechanical cleanup (the extraction spec's permitted edits) ──────────────
 
 _COMMENT = re.compile(r"(?<!\\)%[^\n]*")
-_DISABLED_ENV = re.compile(r"\\begin\{comment\}.*?\\end\{comment\}", re.S)
+_DISABLED_ENV = re.compile(r"\\begin\s*\{comment\}.*?\\end\s*\{comment\}", re.S)
 # TeX's own conditionals. Anything else starting with "if" is not one: \\iff is
 # logical "if and only if", and must not be counted as an opening \\if.
 _TEX_CONDITIONALS = {"if", "ifx", "ifnum", "ifdim", "ifodd", "ifcase", "ifcat",
                      "ifmmode", "ifvmode", "ifhmode", "ifinner", "ifvoid", "ifhbox",
                      "ifvbox", "ifeof", "iftrue", "iffalse", "ifdefined", "ifcsname",
                      "ifincsname", "ifpdf"}
-_IF_TOKEN = re.compile(r"\\(if[a-zA-Z@]*|fi)(?![a-zA-Z@])")
+_IF_TOKEN = re.compile(r"\\(if[a-zA-Z@]*|fi|else)(?![a-zA-Z@])")
+# a conditional whose value the source fixes: \iffalse, \iftrue, \if0, \if with
+# two different letters (\if False: F against a), or a \newif switch
+_KNOWN_IF = re.compile(r"\\(iffalse|iftrue|if[a-zA-Z@]+)(?![a-zA-Z@])"
+                       r"|\\if\s*0(?![0-9])|\\if(?![a-zA-Z@])\s*([A-Za-z0-9])([A-Za-z0-9])")
+_IF_IN_DEFINITION = re.compile(
+    r"(?:\\let\s*\\[A-Za-z@]+\s*=?\s*"
+    r"|\\[egx]?def\s*\\[A-Za-z@]+\s*(?:#\d)*\s*\{\s*"
+    r"|\\(?:re|provide)?newcommand\*?\s*\{?\\[A-Za-z@]+\}?\s*(?:\[\d\])?\s*\{\s*)\Z")
 
 
 def _drop_iffalse(s: str) -> str:
-    """Remove \\iffalse ... \\fi and \\if0 ... \\fi regions, respecting nested \\if...\\fi."""
-    conditionals = _TEX_CONDITIONALS | set(re.findall(r"\\newif\s*\\(if[a-zA-Z@]+)", s))
-    out, i = [], 0
-    pat = re.compile(r"\\iffalse(?![a-zA-Z@])|\\if\s*0(?![0-9])")
+    """Resolve the conditionals whose value the source fixes, as TeX would.
+
+    \\iffalse, \\if0 and \\if with two different letters are false, \\iftrue is
+    true, and a \\newif switch \\ifX has the value of the last \\Xtrue / \\Xfalse
+    before it (false if none). The branch TeX skips is removed with the
+    \\if, \\else and \\fi tokens; the branch it reads is kept. Nested \\if...\\fi
+    are respected; conditionals of unknown value are left as written."""
+    switches = set(re.findall(r"\\newif\s*\\if([a-zA-Z@]+)", s))
+    conditionals = _TEX_CONDITIONALS | {"if" + x for x in switches}
+    i = 0
     while True:
-        m = pat.search(s, i)
+        m = _KNOWN_IF.search(s, i)
         if not m:
-            out.append(s[i:])
-            return "".join(out)
-        out.append(s[i:m.start()])
-        depth, j = 1, m.end()
-        for t in _IF_TOKEN.finditer(s, j):
-            name = t.group(1)
-            if name == "fi":
+            return s
+        if _IF_IN_DEFINITION.search(s[max(0, m.start() - 80):m.start()]):
+            i = m.end()                      # \let\ifA\iftrue, \def\c{\iffalse}: code, not a branch
+            continue
+        name = m.group(1)
+        if name and name not in ("iffalse", "iftrue"):
+            x = name[2:]
+            if x not in switches or re.search(r"\\(?:newif|let|def|global)\s*\Z",
+                                              s[max(0, m.start() - 12):m.start()]):
+                i = m.end()                  # an unknown conditional, or a switch's declaration
+                continue
+            sets = re.findall(r"\\" + re.escape(x) + r"(true|false)(?![a-zA-Z@])", s[:m.start()])
+            value = bool(sets) and sets[-1] == "true"
+        elif name == "iftrue":
+            value = True
+        elif m.group(2) and m.group(2) == m.group(3):
+            i = m.end()                      # \if aa: true, but too rare to resolve
+            continue
+        else:
+            value = False
+        depth, els, fi = 1, None, None
+        for t in _IF_TOKEN.finditer(s, m.end()):
+            tok = t.group(1)
+            if tok == "fi":
                 depth -= 1
-            elif name in conditionals:
+            elif tok == "else":
+                if depth == 1 and els is None:
+                    els = t
+            elif tok in conditionals:
                 depth += 1
             if depth == 0:
-                j = t.end()
+                fi = t
                 break
+        if fi is None:                       # unclosed: TeX skips to the end
+            return s[:m.start()] if not value else s
+        if value:
+            kept = s[m.end():els.start()] if els else s[m.end():fi.start()]
         else:
-            j = len(s)
-        i = j
+            kept = s[els.end():fi.start()] if els else ""
+        s = s[:m.start()] + kept + s[fi.end():]
+        i = m.start()                        # the kept branch may hold more conditionals
 
 
 def clean_source(tex: str) -> str:
@@ -301,7 +340,8 @@ _CLASS_PREDEFINED = {
 }
 
 _ALGORITHM_ENVS = {"algorithm", "algorithm*", "algorithmic", "procedure", "function"}
-_EQUATION_ENVS = {"equation", "multline", "align", "gather", "eqnarray", "flalign", "alignat"}
+_EQUATION_ENVS = {"equation", "multline", "align", "gather", "eqnarray", "flalign", "alignat",
+                  "numcases", "subnumcases"}
 
 
 def _name_to_type(display: str | None) -> str | None:
@@ -322,8 +362,14 @@ def _is_proof_env(env: str, decl: dict) -> bool:
     if env.rstrip("*").lower() in ("pf", "prf", "demo", "dem", "demostracion", "preuve",
                                    "beweis", "dimostrazione", "proofof"):
         return True
+    # a name with spaces: \newenvironment{Proof of lemma}{...}{...}
+    if re.fullmatch(r"(?:proof|proofs)(?:\s+of)?(?:\s+[a-z]+)*", env.rstrip("*").lower()):
+        return True
     d = decl.get(env)
-    return bool(d and _name_to_type(d["display"]) == "proof")
+    if not d or not d["display"]:
+        return False
+    shown = re.sub(r"[{}]", "", re.sub(r"\\[a-zA-Z]+\s*", "", d["display"])).strip()
+    return _name_to_type(d["display"]) == "proof" or bool(re.match(r"Proofs?\b", shown))
 
 
 def theorem_declarations(source: str) -> dict[str, dict]:
@@ -360,8 +406,26 @@ def theorem_declarations(source: str) -> dict[str, dict]:
                      "counter": None if starred else (sibling.group(1).strip() if sibling else env),
                      "within": within.group(1).strip() if within else None,
                      "starred": starred, "source": "declaretheorem"}
+    for m in re.finditer(r"\\newproof\s*\{([^}]*)\}\s*\{([^}]*)\}", source):   # elsarticle
+        decl.setdefault(m.group(1).strip(), {"display": m.group(2).strip(), "counter": None,
+                                             "within": None, "starred": True,
+                                             "source": "newproof"})
     # Wrapper environments: \newenvironment{remark}{\begin{rmk}\em}{\end{rmk}} is
     # the theorem environment it opens, under another name (same counter and title).
+    # An environment whose opening code prints a "Proof" heading is a proof
+    # environment: \newenvironment{prf}{\noindent{\bf Proof.}}{\hfill$\Box$}.
+    for m in re.finditer(r"\\(?:re)?newenvironment\*?\s*\{([^}]+)\}", source):
+        name, j = m.group(1).strip(), m.end()
+        for _opt in range(2):
+            o, j2 = _group(source, j, "[", "]")
+            if o is None:
+                break
+            j = j2
+        begin_code, _ = _group(source, j)
+        shown = re.sub(r"\\[a-zA-Z]+\*?|[{}\[\]$]|\d+(?:pt|mm|em|ex)", " ", begin_code or "")
+        if name not in decl and re.match(r"\s*Proof\b", shown):
+            decl[name] = {"display": "Proof", "counter": None, "within": None,
+                          "starred": True, "source": "newenvironment"}
     for _ in range(2):                    # twice, for a wrapper of a wrapper
         for m in re.finditer(r"\\(?:re)?newenvironment\*?\s*\{([^}]+)\}", source):
             name, j = m.group(1).strip(), m.end()
@@ -448,7 +512,7 @@ def label_ref_aliases(source: str) -> tuple[dict, dict]:
 # ── Main pass ───────────────────────────────────────────────────────────────
 
 _SEC_LEVEL = {"part": -1, "chapter": 0, "section": 1, "subsection": 2, "subsubsection": 3}
-_MULTILINE_EQ = {"align", "gather", "eqnarray", "flalign", "alignat"}
+_MULTILINE_EQ = {"align", "gather", "eqnarray", "flalign", "alignat", "numcases", "subnumcases"}
 _ALG_LINE_CMD = (r"STATE|State|IF|If|ELSIF|ElsIf|ELSE|Else|ENDIF|EndIf|FOR|For|FORALL|ForAll|"
                  r"ENDFOR|EndFor|WHILE|While|ENDWHILE|EndWhile|REPEAT|Repeat|UNTIL|Until|"
                  r"LOOP|Loop|ENDLOOP|EndLoop|RETURN|Function|Procedure")
@@ -724,6 +788,36 @@ def extract_facts(tex: str) -> dict:
             for f in stack:
                 f["refs"].append(r["key"])
 
+    def heading(level: int, starred: bool, k: int, pos: int):
+        """A sectioning command at `pos`; its [short] and {title} arguments start at `k`."""
+        nonlocal eq_ctr, target
+        short, k2 = _group(source, k, "[", "]")          # \subsection[short]{long}
+        if short is not None:
+            k = k2
+        title, _ = _group(source, k)
+        if title is None or "#" in title:              # no title, or a macro's body
+            return
+        number = None
+        if not starred and level >= 1:
+            sec_ctr[level] += 1
+            for lv in range(level + 1, 4):
+                sec_ctr[lv] = 0
+            names = {1: "section", 2: "subsection", 3: "subsubsection"}
+            reset_by = {names[lv] for lv in range(level, 4)}
+            for c, within in resets.items():
+                if within in reset_by:
+                    if c == "equation":
+                        eq_ctr = 0
+                    else:
+                        thm_ctr[c] = 0
+            number = None if names[level] in unknown or "section" in unknown \
+                else sec_number(level)
+        sec = {"id": f"S{len(sections) + 1}", "level": level,
+               "title": re.sub(r"\s+", " ", _LABEL_OR_INDEX.sub("", title)).strip(),
+               "number": number, "start": pos, "labels": []}
+        sections.append(sec)
+        target = {"kind": "section", "id": sec["id"], "number": number}
+
     for pos, ev, env, after, m in events:
         if ev == "begin" and env == "appendix":     # \begin{appendix} acts like \appendix
             open_envs.append(env)
@@ -737,23 +831,34 @@ def extract_facts(tex: str) -> dict:
             open_spans.append((pos, after))
             group_targets.append(target)
             base = env.rstrip("*")
+            if base in ("section", "subsection", "subsubsection"):   # \begin{section}{Title}
+                heading(_SEC_LEVEL[base], env.endswith("*"), after, pos)
+                continue
             if base == "subequations":
                 sub_eq = eq_number()
                 sub_ctr = 0
                 target = {"kind": "equation", "id": None, "number": sub_eq}
                 continue
-            is_proof = _is_proof_env(env, decl)
-            captured = (env in decl or is_proof or env in _ALGORITHM_ENVS
-                        or base in _EQUATION_ENVS)
-            if not captured:
-                continue
+            kind_env = env                       # the environment that decides the kind
             j = after
             opt = None
-            if base not in _EQUATION_ENVS and base != "algorithmic":
+            if base == "restatable":             # thmtools: [title]{theorem}{\macroname}
+                o, j2 = _group(source, j, "[", "]")
+                inner, j3 = _group(source, j2 if o is not None else j)
+                name_arg, j4 = _group(source, j3) if inner is not None else (None, j)
+                if inner is None or name_arg is None:
+                    continue
+                opt, kind_env, j = o, inner.strip(), j4
+            is_proof = _is_proof_env(kind_env, decl)
+            captured = (kind_env in decl or is_proof or kind_env in _ALGORITHM_ENVS
+                        or kind_env.rstrip("*") in _EQUATION_ENVS)
+            if not captured:
+                continue
+            if base not in _EQUATION_ENVS and base not in ("algorithmic", "restatable"):
                 o, j2 = _group(source, j, "[", "]")
                 if o is not None:
                     opt, j = o, j2
-            d = decl.get(env)
+            d = decl.get(kind_env)
             number = None
             if d and d["counter"]:
                 thm_ctr[d["counter"]] = thm_ctr.get(d["counter"], 0) + 1
@@ -764,9 +869,9 @@ def extract_facts(tex: str) -> dict:
                     number = render(d["counter"], n, d["within"])
             if is_proof:
                 kind, ntype, display = "proof", "proof", "Proof"
-            elif env in _ALGORITHM_ENVS:
+            elif kind_env in _ALGORITHM_ENVS:
                 kind, ntype, display = "algorithm", "algorithm", "Algorithm"
-            elif base in _EQUATION_ENVS:
+            elif kind_env.rstrip("*") in _EQUATION_ENVS:
                 kind, ntype, display = "equation", "equation", None
             else:
                 kind, display = "theorem_env", d["display"]
@@ -821,30 +926,7 @@ def extract_facts(tex: str) -> dict:
         else:
             g = m
             if g.group("sec"):
-                level = _SEC_LEVEL[g.group("sec")]
-                title, _ = _group(source, g.end())
-                if title is None:
-                    continue
-                number = None
-                if not g.group("sstar") and level >= 1:
-                    sec_ctr[level] += 1
-                    for k in range(level + 1, 4):
-                        sec_ctr[k] = 0
-                    names = {1: "section", 2: "subsection", 3: "subsubsection"}
-                    reset_by = {names[lv] for lv in range(level, 4)}
-                    for c, within in resets.items():
-                        if within in reset_by:
-                            if c == "equation":
-                                eq_ctr = 0
-                            else:
-                                thm_ctr[c] = 0
-                    number = None if names[level] in unknown or "section" in unknown \
-                        else sec_number(level)
-                sec = {"id": f"S{len(sections) + 1}", "level": level,
-                       "title": re.sub(r"\s+", " ", _LABEL_OR_INDEX.sub("", title)).strip(),
-                       "number": number, "start": pos, "labels": []}
-                sections.append(sec)
-                target = {"kind": "section", "id": sec["id"], "number": number}
+                heading(_SEC_LEVEL[g.group("sec")], bool(g.group("sstar")), g.end(), pos)
             elif g.group("appendix"):
                 in_appendix = True
                 sec_ctr.update({1: 0, 2: 0, 3: 0})
@@ -896,6 +978,7 @@ def extract_facts(tex: str) -> dict:
         t = labels.get(r["key"])
         r["target"] = (t["id"] or t["enclosing"]) if t else None
 
+    _manual_facts(source, body_start, facts, sections, refs, cites)
     _associate_proofs(facts, labels, source)
     for f in facts:                       # author structure inside each proof
         if f["kind"] == "proof":
@@ -969,6 +1052,108 @@ def extract_facts(tex: str) -> dict:
             "facts": facts, "sections": sections, "labels": labels, "refs": refs,
             "cites": cites, "number_index": number_index,
             "environments": environments, "displays": displays}
+
+
+# A proof written by hand: a "Proof" heading at the start of a line, in a font
+# switch or a font command ({\bf Proof.}, \noindent{\it Proof of Theorem~\ref{x}.},
+# \emph{Proof:}, \mbox{\em Proof.}), after optional spacing commands.
+_MANUAL_PROOF = re.compile(
+    r"(?m)^[ \t]*(?P<pre>(?:\\(?:noindent|par|medskip|smallskip|bigskip|indent)(?![a-zA-Z])\s*"
+    r"|\\vspace\*?\s*\{[^{}]*\}\s*|\\vskip\s*-?[\d.]+\s*[a-z]+\s*)*)"
+    r"(?P<open>\{\s*\\(?:bf|it|em|sc|sl|bfseries|itshape|scshape|slshape)(?![a-zA-Z])"
+    r"|\\(?:textbf|textit|emph|textsc|textsl|mbox|underline)\s*\{)"
+    r"\s*(?:\\(?:textbf|textit|emph|bf|it|em|sc|sl)(?![a-zA-Z])\s*\{?\s*)?Proof(?![a-zA-Z])")
+# where a hand-written proof ends: its last end-of-proof mark before the next structure
+_QED = re.compile(r"\\(?:qed|qedhere|Box|square|blacksquare|qedsymbol|endproof|QED|qedsquare"
+                  r"|hfill\s*\$\s*\\(?:Box|square|blacksquare)\s*\$)(?![a-zA-Z])"
+                  r"|Q\.\s?E\.\s?D\.?")
+_EQNO = re.compile(r"\\l?eqno\s*(\([^()$]*\)|\{[^{}]*\}|[^\s$]+)")
+
+
+def _manual_facts(source: str, body_start: int, facts: list[dict], sections: list[dict],
+                  refs: list[dict], cites: list[dict]) -> None:
+    """Facts LaTeX states without an environment: hand-written proofs and
+    hand-numbered displays ($$ ... \\eqno(3) $$). Added to `facts` in document order.
+
+    A hand-written proof starts at its heading and ends at its last end-of-proof
+    mark (\\qed, \\Box, ...) before the next theorem-like environment, heading or
+    hand-written proof; with no mark it ends there (`end_basis`). A heading inside
+    a proof environment is a part of that proof, not a new proof."""
+    n = max((int(f["id"][1:]) for f in facts), default=0)
+    blocks = [f for f in facts if f["kind"] != "equation"]
+
+    def container(a: int, b: int):
+        holders = [f for f in blocks if f["outer_start"] <= a and b <= f["outer_end"]]
+        return min(holders, key=lambda f: f["outer_end"] - f["outer_start"]) if holders else None
+
+    def section_at(pos: int):
+        top = [s for s in sections if s["start"] < pos]
+        return top[-1]["id"] if top else None
+
+    heads = []
+    for m in _MANUAL_PROOF.finditer(source, body_start):
+        g0 = m.start("open") if m.group("open").startswith("{") else m.end("open") - 1
+        title, close = _group(source, g0)
+        if title is None:
+            continue
+        shown = re.sub(r"\s+", " ", re.sub(r"\\(?:textbf|textit|emph|bf|it|em|sc|sl|hspace\*?\{[^}]*\}|,|;|quad)", " ",
+                                           title).replace("{", "").replace("}", "")).strip()
+        if not shown.startswith("Proof") or len(shown) > 150:
+            continue
+        if any(f["kind"] == "proof" and f["start"] <= m.start("open") < f["end"] for f in blocks):
+            continue                                  # a part of a proof environment
+        heads.append((m.start("pre"), close, title.strip()))
+    added = []
+    for k, (a, close, title) in enumerate(heads):
+        parent = container(a, close)
+        bound = min([f["outer_start"] for f in blocks if f["outer_start"] > a
+                     and f["kind"] in ("theorem_env", "proof", "algorithm")
+                     and (parent is None or f["parent"] == parent["id"])]
+                    + [s["start"] for s in sections if s["start"] > a]
+                    + ([heads[k + 1][0]] if k + 1 < len(heads) else [])
+                    + ([parent["end"]] if parent else [len(source)]))
+        marks = list(_QED.finditer(source, close, bound))
+        end, basis = (marks[-1].end(), "qed") if marks else (bound, "next_structure")
+        if marks and re.match(r"[ \t]*\$", source[end:end + 4]):
+            end = source.index("$", end) + 1          # the mark's math: \hfill $Q.E.D.$
+        tail = re.compile(r"(?:\s|\\(?:par|medskip|smallskip|bigskip|newline|noindent)(?![a-zA-Z])"
+                          r"|\\\\|\\vspace\*?\s*\{[^{}]*\}|\\vskip\s*-?[\d.]+\s*[a-z]+)+\Z")
+        t = tail.search(source, close, end)
+        if t and t.start() > close:
+            end = t.start()                           # trailing spacing is not the proof
+        n += 1
+        f = {"id": f"F{n}", "kind": "proof", "env": None, "display": "Proof", "type": "proof",
+             "optarg": title, "number": None, "labels": [], "cites": [],
+             "refs": [r["key"] for r in refs if close <= r["offset"] < end],
+             "section": section_at(a), "outer_start": a, "start": close, "end": end,
+             "outer_end": end, "parent": parent["id"] if parent else None,
+             "manual": True, "end_basis": basis}
+        f["cites"] = [k_ for c in cites if close <= c["offset"] < end for k_ in c["keys"]]
+        f["statement"] = span_text(source, f["start"], f["end"])
+        added.append(f)
+    for d in _bare_displays(source, body_start, facts):
+        body = source[d["start"]:d["end"]]
+        e = _EQNO.search(body)
+        if not e:
+            continue
+        parent = container(d["outer_start"], d["outer_end"])
+        n += 1
+        added.append({"id": f"F{n}", "kind": "equation", "env": d["env"], "display": None,
+                      "type": "equation", "optarg": None,
+                      "number": e.group(1).strip("(){} "), "labels": d["labels"],
+                      "refs": [r["key"] for r in refs if d["start"] <= r["offset"] < d["end"]],
+                      "cites": [], "section": section_at(d["outer_start"]),
+                      "outer_start": d["outer_start"], "start": d["start"], "end": d["end"],
+                      "outer_end": d["outer_end"], "parent": parent["id"] if parent else None,
+                      "statement": span_text(source, d["start"], d["end"])})
+    for f in added:                                   # what a hand-written proof contains is its
+        if f["kind"] != "proof":
+            continue
+        for g in facts + added:
+            if g is not f and f["start"] <= g["outer_start"] < f["end"] and g["parent"] == f["parent"]:
+                g["parent"] = f["id"]
+    facts.extend(added)
+    facts.sort(key=lambda f: (f["outer_start"], -f["outer_end"]))
 
 
 def _bare_displays(source: str, start: int, facts: list[dict]) -> list[dict]:

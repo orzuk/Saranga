@@ -297,14 +297,29 @@ def expand_macros(text, macros, max_depth=_MAX_DEPTH):
     names = sorted(macros, key=len, reverse=True)
     if not names:
         return text
-    # @ continues a control word inside \makeatletter code (\v@rt is one name,
-    # not \v followed by "@rt"); expanding the prefix corrupts the definition
-    pattern = re.compile(r"\\(%s)(?![A-Za-z@])"
+    # @ is a letter only between \makeatletter and \makeatother: there \v@rt is
+    # one name, not \v followed by "@rt", and expanding the prefix corrupts the
+    # definition. Elsewhere @ ends a control word (\Cbar@>>> in a CD diagram).
+    pattern = re.compile(r"\\(%s)(?![A-Za-z])"
                          % "|".join(re.escape(n) for n in names))
+
+    def at_letter_regions(s):
+        """Where @ may be a letter: the preamble (macro code, often pasted
+        package code that sets \\catcode`\\@=11), and \\makeatletter or
+        \\catcode`\\@=11 regions in the body."""
+        doc = re.search(r"\\begin\s*\{document\}", s)
+        regions = [(0, doc.start())] if doc else []
+        for opener, closer in ((r"\\makeatletter(?![A-Za-z])", r"\\makeatother(?![A-Za-z])"),
+                               (r"\\catcode\s*`\\?@\s*=\s*11", r"\\catcode\s*`\\?@\s*=\s*12")):
+            for a in re.finditer(opener, s):
+                b = re.compile(closer).search(s, a.end())
+                regions.append((a.end(), b.start() if b else len(s)))
+        return regions
 
     for _ in range(max_depth):
         out, i, changed = [], 0, False
         tail = ""                      # last few chars already emitted
+        at_regions = at_letter_regions(text)
         while True:
             m = pattern.search(text, i)
             if not m:
@@ -314,6 +329,11 @@ def expand_macros(text, macros, max_depth=_MAX_DEPTH):
             out.append(seg)
             if seg:
                 tail = seg[-16:]
+            if (m.end() < len(text) and text[m.end()] == "@"
+                    and any(a <= m.start() < b for a, b in at_regions)):
+                out.append(m.group(0))   # a prefix of a longer @-name
+                i = m.end()
+                continue
             if _DEF_SLOT.search(text, max(0, m.start() - 30), m.start()):
                 out.append(m.group(0))   # the name being (re)defined, not a use:
                 i = m.end()              # \def\G_2{..} must not become \def\mathrm{G}_2

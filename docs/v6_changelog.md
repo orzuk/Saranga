@@ -313,3 +313,24 @@ has two statements to repair; 1103.5544v1 and 1211.7155v1 are unaffected.
 latex_macros at 9be9de2 (from the 158th paper on): a macro in a definition's name slot is never expanded (a
 pre-existing bug that turned \\mathrm into G in 1711.05651v2). 1711.05651v2 and 1201.4897v6 are re-extracted;
 1403.5799v2 is unaffected; 1804.10149v1 and 1909.06098v1 were not yet extracted.
+
+## After the 200-paper run: the LaTeX layer for the rule-based extractor (2026-10-09)
+
+The rule-based extractor builds on latex_facts, and it cannot rebuild by hand what the layer misses, as the
+agents did. Before distillation, latex_facts and latex_macros report:
+- proofs written by hand: a "Proof" heading at the start of a line in a font switch or command
+  ({\bf Proof.}, \noindent{\it Proof of Theorem~\ref{x}.}, \emph{Proof:}, \mbox{\em Proof.}), ending at its
+  last end-of-proof mark before the next theorem-like environment, heading or proof (`manual`, `end_basis`);
+  \newproof environments; \newenvironment whose opening prints "Proof"; proof environments named with spaces;
+- displays numbered by hand ($$ ... \eqno(3) $$), numcases, and thmtools restatable environments;
+- conditionals the source fixes, resolved as TeX would: \iffalse/\iftrue/\if0, \if with two different
+  letters (\if False), \newif switches by their last \Xtrue/\Xfalse; the \else branch is kept;
+  \begin {comment} with a space;
+- \subsection[short]{long} headings, \begin{section}{...}, and no heading from a macro's body (\section{#1});
+- @ in a control word only in the preamble, \makeatletter or \catcode`\@=11 code (\Cbar@>>> in a CD
+  diagram expands \Cbar).
+On the 200 silver papers: +103 proofs, +105 numbered equations, +5 restatable results, sections fixed in 5
+papers, disabled text removed in 3. The finishing step re-run on all 200 outputs passes with no errors after
+three deterministic repairs: 1309.2370v6 (DP152, EP279 back to the agent's text), 1611.03739v3 (\iflong
+tokens resolved in 8 statements), 1901.08164v4 (EP6, EP7 dropped and PP3 trimmed: they were \if False text).
+1710.09079v3 gains 21 edges and its labels from the restatable environments.
