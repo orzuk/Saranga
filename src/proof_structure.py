@@ -299,6 +299,13 @@ def _sentences(text: str) -> int:
     return max(1, len([s for s in re.split(r"(?<=[.!?:])\s+(?=[A-Z\\])", plain.strip()) if s.strip()]))
 
 
+def _locate(norm: str, key: str) -> int:
+    """Where a step's statement starts: the first place its whole text occurs,
+    so two steps opening with the same 40 characters are told apart."""
+    i = norm.find(key)
+    return i if i >= 0 else norm.find(key[:40])
+
+
 def check_steps(body: str, structure: dict, steps: list[dict]) -> tuple[list[str], list[str]]:
     """Errors and warnings for the proof_steps (all depths) of one proof.
 
@@ -324,7 +331,7 @@ def check_steps(body: str, structure: dict, steps: list[dict]) -> tuple[list[str
     starts, setups = {}, []
     for s in steps:
         key = re.sub(r"\s+", "", re.sub(r"\\(?:label|index)\s*\{[^{}]*\}", "", s.get("statement") or ""))
-        i = norm.find(key[:40]) if key else -1
+        i = _locate(norm, key) if key else -1
         if i < 0:
             continue                      # verbatim errors are reported elsewhere
         pos = idx[i]
