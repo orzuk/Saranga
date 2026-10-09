@@ -307,3 +307,6 @@ check (1007.0740v1, 1204.5115v1, 1203.0186v1); they are reviewed after the run.
 From the 96th paper on, finalize is at 4b1f874: a repeated statement's copy is chosen by its neighbours' positions.
 latex_facts at fc5fff9 (from the 107th paper on): a text-discarding macro is removed only where its arguments
 are braced; only 1511.06275v2's preamble differs, and its facts and output are unchanged.
+latex_macros at 90622c2 (from the 140th paper on): @ continues a control word during macro expansion (a
+pre-existing bug that turned \\mathcal into V in 1705.03359v2). That paper is re-extracted; 1309.2370v6
+has two statements to repair; 1103.5544v1 and 1211.7155v1 are unaffected.
