@@ -348,6 +348,8 @@ def _sanitize_math(text):
     shared module read it — an audit run would otherwise inherit whichever
     paper was drawn last.
     """
+    # mathtext needs braces: \mathcal E -> \mathcal{E}
+    text = _re.sub(r"\\(math(?:cal|bb|bf|rm|frak|scr|sf|it))\s+([A-Za-z0-9])", r"\\\1{\2}", text or "")
     return sanitize_for_mathtext(text, _CURRENT_MACROS)
 
 
@@ -703,14 +705,60 @@ def compute_dag_depth(nodes, edges):
     return depth
 
 
+def _natural_key(s):
+    """Sort key that orders embedded integers numerically: EP2 < EP10.
+
+    v6 ids are {PREFIX}{seq} (TP3, PSP12) and v5.1 ids were {PREFIX}{paper}.{seq}
+    (TP1.3); a plain string sort put EP10 before EP2 in both.
+    """
+    return [(0, int(t), "") if t.isdigit() else (1, 0, t)
+            for t in _re.findall(r"\d+|\D+", str(s or ""))]
+
+
 def _section_sort_key(node):
-    """Sort by section number, then by ID."""
-    sec = node.get("section", "99")
-    try:
-        parts = [float(x) for x in sec.split(".")]
-    except ValueError:
-        parts = [99]
-    return (parts, node["id"])
+    """Sort by section number, then by ID.
+
+    Sections are written "2 The main result" / "3.1 Setup" (the number, then
+    the title), so only the leading dotted number is parsed. Splitting the
+    whole string on "." failed on every titled section and sent all of them
+    to 99.
+    """
+    m = _re.match(r"\s*(\d+(?:\.\d+)*)", str(node.get("section") or ""))
+    parts = [float(x) for x in m.group(1).split(".")] if m else [99]
+    return (parts, _natural_key(node["id"]))
+
+
+# ── Containment (parent_id) ─────────────────────────────────────────────────
+# `parent_id` is containment, not dependency. Up to v5.1 it was set only on
+# proof_step / algorithm_step (child of a proof / algorithm). From v6 it is
+# also set on Level-1 nodes (an equation inside a proof step or theorem, a
+# claim or lemma stated inside a proof), and a step can sit inside another
+# step (a loop body, a sub-claim). The viewer shows it as containment: folded
+# nodes go into the panel of the nearest node that is drawn, and nodes that
+# are drawn get a link to the node they live in.
+def _parent_ref(n):
+    """Id of the node containing `n`: `parent_id`, or the older field names."""
+    return (n or {}).get("parent_id") or (n or {}).get("parent_proof") \
+        or (n or {}).get("parent") or ""
+
+
+def _host_resolver(node_by_id, proof_map, shown_ids):
+    """Return host(nid): the nearest node in `shown_ids` that contains nid.
+
+    Walks up `parent_id`, and from a proof to the result it proves
+    (`proof_map`), so a step nested three deep inside the proof of a claim
+    stated inside another proof still finds the box it belongs to. A shown
+    node is its own host. None when the chain ends without reaching one.
+    """
+    def host(nid):
+        seen = set()
+        cur = nid
+        while cur and cur not in shown_ids and cur not in seen:
+            seen.add(cur)
+            cur = proof_map.get(cur) or _parent_ref(node_by_id.get(cur))
+        return cur if cur in shown_ids else None
+    return host
+
 
 
 def _split_proof_into_steps(body):
@@ -904,13 +952,15 @@ def merge_proofs(nodes, edges):
             node_by_id[n["id"]]["proof_info"] = []
             node_by_id[n["id"]]["proof_step_count"] = 0
 
-    # Count proof_step nodes per theorem (via parent_proof → proof_map).
+    # Count proof_step nodes per theorem. Resolved through the containment
+    # chain, so steps nested inside steps (v6) count toward the theorem too.
+    _host = _host_resolver(node_by_id, proof_map, {
+        n["id"] for n in nodes if n["id"] not in proof_map
+        and n.get("type") not in ("proof_step", "algorithm_step", "equation")})
     for n in nodes:
         if n.get("type") != "proof_step":
             continue
-        parent = (n.get("parent_proof") or n.get("parent_id")
-                  or n.get("parent") or "")
-        thm_id = proof_map.get(parent, parent)
+        thm_id = _host(n["id"])
         if thm_id in node_by_id and node_by_id[thm_id].get("type") != "proof":
             node_by_id[thm_id]["proof_step_count"] = (
                 node_by_id[thm_id].get("proof_step_count", 0) + 1)
@@ -961,9 +1011,16 @@ def merge_proofs(nodes, edges):
             display_map[key] = {"source": s, "target": t,
                                 "type": e.get("type", ""),
                                 "note": e.get("note", ""),
-                                "confidence": conf}
+                                "confidence": conf,
+                                "backward": bool(e.get("backward")),
+                                "mention": bool(e.get("mention"))}
             order.append(key)
-        elif conf > display_map[key].get("confidence", 1.0):
+            continue
+        # A merged edge is backward (or a mention) only if every edge merged
+        # into it is.
+        display_map[key]["backward"] &= bool(e.get("backward"))
+        display_map[key]["mention"] &= bool(e.get("mention"))
+        if conf > display_map[key].get("confidence", 1.0):
             # keep the strongest evidence when several edges merge to (s, t)
             display_map[key]["confidence"] = conf
             display_map[key]["type"] = e.get("type", "")
@@ -1411,12 +1468,23 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
     # Keep cycle-causing edges OUT of the layout but IN the data. draw_dag
     # stores them so the HTML can offer them as a toggle rather than silently
     # losing them, which is the failure mode E120 records.
-    edges, _cycle_edges = split_cycle_edges(nodes, edges)
+    # v6 marks a real dependency that points against paper order with
+    # `backward: true`; the graph is acyclic only once those are set aside.
+    # They are held out of the LAYERING (depth) but still drawn, dash-dotted,
+    # together with any further edge split_cycle_edges must hold out.
+    # A `mention` edge only refers to its source ("as in Theorem 1"); it is
+    # drawn, thin and light, but plays no part in the layering either.
+    _backward = [e for e in edges if e.get("backward") or e.get("mention")]
+    edges, _cycle_edges = split_cycle_edges(
+        nodes, [e for e in edges if not (e.get("backward") or e.get("mention"))])
+    _cycle_edges = _backward + _cycle_edges
     global _LAST_CYCLE_EDGES
     _LAST_CYCLE_EDGES = _cycle_edges
     if _cycle_edges:
-        print("  [layout] %d edge(s) held out of the layered view to break cycles"
-              % len(_cycle_edges))
+        print("  [layout] %d edge(s) held out of the layered view "
+              "(%d marked backward, %d to break cycles); drawn dash-dotted"
+              % (len(_cycle_edges), len(_backward),
+                 len(_cycle_edges) - len(_backward)))
     depth = compute_dag_depth(nodes, edges)
 
     # Group by depth level
@@ -1710,7 +1778,8 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
     ax.axis("off")
 
     # ── Draw edges first (behind boxes) ──
-    for e in edges:
+    _held_ids = {id(e) for e in _cycle_edges}
+    for e in edges + _cycle_edges:
         src, tgt = e["source"], e["target"]
         if src not in node_rect or tgt not in node_rect:
             continue
@@ -1721,6 +1790,10 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         y0 = sy_bottom  # bottom of source
         x1 = tx + tw / 2
         y1 = ty_bottom + th  # top of target
+        if id(e) in _held_ids and sy_bottom < ty_bottom:
+            # Held-out edge whose source was laid out BELOW its target: run
+            # from the source's top to the target's bottom, not through both.
+            y0, y1 = sy_bottom + sh, ty_bottom
 
         # Port #7: `resolves` edges (v2 schema) — dashed line and distinct color.
         _etype = (e.get("type") or e.get("relation") or "").lower()
@@ -1741,7 +1814,18 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             connectionstyle="arc3,rad=0.08" if abs(x0 - x1) > 0.5 else "arc3,rad=0",
             shrinkA=3, shrinkB=3,
         )
-        if _is_resolves:
+        if e.get("mention"):
+            # A reference, not a dependency: thin, light, short dashes.
+            _arrow_kwargs.update(color="#9FA8DA", lw=1.0, alpha=0.8,
+                                 linestyle=(0, (2, 2)),
+                                 connectionstyle="arc3,rad=0.15")
+        elif id(e) in _held_ids:
+            # Backward / cycle-breaking edge: dash-dot (resolves already owns
+            # plain dashes, low confidence owns dots), and bowed so an arrow
+            # running back up the layers does not hide under forward ones.
+            _arrow_kwargs["linestyle"] = (0, (6, 2, 1, 2))
+            _arrow_kwargs["connectionstyle"] = "arc3,rad=0.25"
+        elif _is_resolves:
             _arrow_kwargs["linestyle"] = "--"
         elif _low_conf:
             _arrow_kwargs["linestyle"] = (0, (1, 2))  # dotted
@@ -1786,9 +1870,9 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             boxstyle="round,pad=0.05",
             facecolor=colors["body"],
             edgecolor=colors["header"],
-            linewidth=1.2 if _is_external else 1.5,
-            linestyle=(0, (4, 2)) if _is_external else "solid",
-            alpha=0.72 if _is_external else 1.0,
+            linewidth=2.0 if _is_external else 1.5,
+            linestyle=(0, (6, 3)) if _is_external else "solid",
+            alpha=0.9 if _is_external else 1.0,
             gid=f"node_{nid}",
         )
         ax.add_patch(rect)
@@ -1978,6 +2062,25 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
             if ln.get_gid() is None:
                 ln.set_gid(f"node_{_safe}__line{i}")
 
+    # ── Containment links ──
+    # A drawn node that lives inside another (v6: a claim stated inside a proof
+    # step, a lemma inside a proof; full resolution: a step inside its proof)
+    # is tied to the box it lives in by a grey dotted line with no arrowhead —
+    # containment, not a dependency. Drawn under the boxes, centre to centre,
+    # so only the gap between them shows. Tagged as part of the CHILD, so the
+    # HTML toggles hide it together with the child.
+    _host = _host_resolver({n["id"]: n for n in nodes_raw}, proof_map,
+                           set(node_rect))
+    for nid in node_rect:
+        _par = _parent_ref(node_data[nid])
+        _cont = _host(_par) if _par else None
+        if not _cont or _cont == nid:
+            continue
+        (cx, cy, cw, ch_), (bx, by, bw, bh) = node_rect[_cont], node_rect[nid]
+        ax.plot([cx + cw / 2, bx + bw / 2], [cy + ch_ / 2, by + bh / 2],
+                color="#7F8C8D", lw=2.0, linestyle=(0, (1, 1.5)), alpha=0.9,
+                zorder=0.5, gid=f"node_{_safe_nid(nid)}__nestlink")
+
     # ── Ghost nodes (external foundation dependencies) ──
     _base_ids = set(node_data.keys())
     _ghost_map, _case1_matches, _ghost_meta = compute_foundation_links(
@@ -1987,19 +2090,14 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         draw_foundation_ghosts(ax, _ghost_map, node_rect, ghost_meta=_ghost_meta)
 
     # ── Misc/Orphan equations box ──
-    # Count orphan equations from the FULL node list (before filtering)
-    all_eq_nodes = [n for n in nodes_raw if n.get("type") == "equation"]
-    orphan_eqs = [n for n in all_eq_nodes if n.get("context") == "orphan" or not n.get("context")]
-    # Also count equations not connected to any displayed node
-    displayed_ids = set(node_data.keys())
-    edge_targets = set()
-    for e in edges_raw:
-        if e["source"] in displayed_ids:
-            edge_targets.add(e["target"])
-        if e["target"] in displayed_ids:
-            edge_targets.add(e["source"])
-    truly_orphan = [n for n in all_eq_nodes if n["id"] not in edge_targets and n["id"] not in displayed_ids]
-    n_orphan = len(set(n["id"] for n in orphan_eqs + truly_orphan))
+    # Count orphan equations from the FULL node list (before filtering), with
+    # the classification that builds the HTML orphan list this box opens (on
+    # copies: it annotates the nodes). It used to count every equation without
+    # a `context` field — which no current schema writes — so the box said
+    # "Misc (48 equations)" and then listed 20.
+    n_orphan = sum(1 for n in _classify_and_merge([dict(n) for n in nodes_raw],
+                                                  edges_raw)[4]
+                   if n["id"] not in node_data)
 
     if n_orphan > 0 and node_rect:
         # Position: same height as the bottom layer, to the right
@@ -2143,6 +2241,15 @@ def _classify_and_merge(nodes, edges):
                     or _as_text(n.get("statement"))).strip()
             if body:
                 parent["proof_info"].append(body)
+            # The proof node itself, for the side panel: since v5.1
+            # proof_strategy is a list of labels, and statement_short / rigor /
+            # confidence say more than the joined labels in proof_info.
+            parent.setdefault("proofs", []).append({
+                "id": n["id"], "name": n.get("name", ""),
+                "proof_strategy": _as_list(n.get("proof_strategy")),
+                "statement_short": n.get("statement_short", ""),
+                "rigor": n.get("rigor", ""),
+                "confidence": n.get("confidence")})
 
     base_nodes, proof_steps, algorithm_steps, equations, orphan_eqs = [], [], [], [], []
     has_edge = set()
@@ -2158,7 +2265,7 @@ def _classify_and_merge(nodes, edges):
         elif n["type"] == "algorithm_step":
             algorithm_steps.append(n)
         elif n["type"] == "equation":
-            if n["id"] in has_edge:
+            if n["id"] in has_edge or _parent_ref(n):
                 equations.append(n)
             else:
                 orphan_eqs.append(n)
@@ -2166,23 +2273,19 @@ def _classify_and_merge(nodes, edges):
             base_nodes.append(n)
 
     base_ids = {n["id"] for n in base_nodes}
+    host = _host_resolver(node_by_id, proof_map, base_ids)
 
-    # Build redirect map so edges that pointed at algorithm_step nodes get
-    # rewritten to point at the algorithm parent (mirrors proof_map for proofs).
-    algo_step_map = {}
-    for s in algorithm_steps:
-        parent_id = s.get("parent_id") or s.get("parent_proof") or s.get("parent")
-        if parent_id and parent_id in base_ids:
-            algo_step_map[s["id"]] = parent_id
-
+    # Edges that pointed at a proof are rewritten to the result it proves, and
+    # edges at an algorithm_step to the algorithm box holding it (at any
+    # nesting depth). Edges at proof steps and equations are not drawn.
     def _redirect(nid):
-        # Apply proof_map first then algo_step_map (steps don't nest under proofs).
         nid = proof_map.get(nid, nid)
-        nid = algo_step_map.get(nid, nid)
+        if node_by_id.get(nid, {}).get("type") == "algorithm_step":
+            nid = host(nid) or nid
         return nid
 
     base_edges = []
-    seen = set()
+    seen = {}
     for e in edges:
         s = _redirect(e["source"])
         t = _redirect(e["target"])
@@ -2190,22 +2293,39 @@ def _classify_and_merge(nodes, edges):
             continue
         key = (s, t)
         if key not in seen:
-            base_edges.append({"source": s, "target": t,
-                               "confidence": e.get("confidence", 1.0)})
-            seen.add(key)
+            seen[key] = {"source": s, "target": t,
+                         "type": e.get("type", "uses"),
+                         "backward": bool(e.get("backward")),
+                         "mention": bool(e.get("mention")),
+                         "confidence": e.get("confidence", 1.0)}
+            base_edges.append(seen[key])
+        else:
+            # Backward (or a mention) only if every edge merged into (s, t) is.
+            seen[key]["backward"] &= bool(e.get("backward"))
+            seen[key]["mention"] &= bool(e.get("mention"))
 
+    # Steps go to the box that contains them, through any number of
+    # step-in-step / proof-in-step levels, and are listed as a TREE: each step
+    # is followed by the steps nested in it, with its nesting depth.
+    _step_ids = {s["id"] for s in proof_steps + algorithm_steps}
+    _kids = defaultdict(list)
+    for s in proof_steps + algorithm_steps:
+        _kids[_parent_ref(s)].append(s)
+    _by_order = lambda s: (s.get("step_order") or 0, _natural_key(s.get("id")))
     step_chains = {}
-    for ps in proof_steps:
-        parent = ps.get("parent_proof", "") or ps.get("parent_id", "") or ps.get("parent", "")
-        thm_id = proof_map.get(parent, parent)
-        step_chains.setdefault(thm_id, []).append(ps)
 
-    # v2: algorithm_step → algorithm parent. Use the same step_chains map so the
-    # side panel renders both kinds of decomposition uniformly.
-    for as_ in algorithm_steps:
-        parent_id = as_.get("parent_id") or as_.get("parent_proof") or as_.get("parent")
-        if parent_id and parent_id in base_ids:
-            step_chains.setdefault(parent_id, []).append(as_)
+    def _walk(container, depth, hid):
+        for s in sorted(_kids.get(container, []), key=_by_order):
+            step_chains.setdefault(hid, []).append(
+                dict(s, depth=depth,
+                     parent_step=_parent_ref(s) if _parent_ref(s) in _step_ids else ""))
+            _walk(s["id"], depth + 1, hid)
+
+    for container in sorted((c for c in _kids if c not in _step_ids), key=_natural_key):
+        hid = host(container)
+        if hid:
+            _walk(container, 0, hid)
+    _has_real_steps = {c for c in _kids if c not in _step_ids}
 
     # Synthesize pseudo proof-steps for rules-mode JSONs: those have a single
     # `proof` node carrying the whole body in `statement`/`clean_text`, with
@@ -2228,8 +2348,8 @@ def _classify_and_merge(nodes, edges):
             continue
         seen_proofs.add(n["id"])
         thm_id = n["proves"]
-        if thm_id not in base_ids:
-            continue
+        if thm_id not in base_ids or n["id"] in _has_real_steps:
+            continue        # only for proofs WITHOUT extracted steps (rules mode)
         # Prefer raw_latex (consistent LaTeX) so we can reliably detect math
         # environments before splitting; fall back to clean_text / statement.
         body = (_as_text(n.get("raw_latex")) or _as_text(n.get("clean_text"))
@@ -2255,17 +2375,52 @@ def _classify_and_merge(nodes, edges):
                 "parent_proof":    proof_id,
             })
 
-    # Sort step_chains entries by step_order for stable rendering
-    for k, lst in step_chains.items():
-        lst.sort(key=lambda s: (s.get("step_order") or 0, s.get("id", "")))
+    # Drawn nodes that live inside another drawn node (v6: a claim stated in a
+    # proof step, a lemma inside a proof). Stashed on the nodes like
+    # proof_info, so the side panel can show "inside X" / "contains Y".
+    for n in base_nodes:
+        n["contains"] = []
+    for n in base_nodes:
+        _par = _parent_ref(n)
+        _cont = host(_par) if _par else None
+        n["inside"] = _cont if _cont and _cont != n["id"] else ""
+        if n["inside"]:
+            node_by_id[n["inside"]]["contains"].append(
+                {"id": n["id"], "name": n.get("name", ""), "type": n.get("type", ""),
+                 "parent": _par})
 
+    # Equations with a parent (v6) go to the box that contains them, placed
+    # under the step / proof / statement they sit in. Those without one are
+    # attached to every drawn node they share an edge with — or, when the
+    # edge is to a step or proof, to the box containing it (under that step).
+    # One with neither is an orphan; before, an equation linked only to steps
+    # was in no list at all.
     eq_map = {}
     for eq in equations:
+        _par = _parent_ref(eq)
+        if _par:
+            hid = host(eq["id"])
+            if not hid:
+                orphan_eqs.append(eq)
+                continue
+            _ptype = node_by_id.get(_par, {}).get("type")
+            eq_map.setdefault(hid, []).append(dict(
+                eq,
+                parent_step=_par if _par in _step_ids else "",
+                context=("statement" if _par == hid else
+                         "proof" if _ptype == "proof" else
+                         "" if _par in _step_ids else eq.get("context", ""))))
+            continue
+        _at = {}                      # host -> step it was reached through
         for e in edges:
-            if e["source"] == eq["id"] and e["target"] in base_ids:
-                eq_map.setdefault(e["target"], []).append(eq)
-            if e["target"] == eq["id"] and e["source"] in base_ids:
-                eq_map.setdefault(e["source"], []).append(eq)
+            for a, b in ((e["source"], e["target"]), (e["target"], e["source"])):
+                hid = host(b) if a == eq["id"] else None
+                if hid and (hid not in _at or not _at[hid]):
+                    _at[hid] = b if b in _step_ids else ""
+        for hid, step in _at.items():
+            eq_map.setdefault(hid, []).append(dict(eq, parent_step=step) if step else eq)
+        if not _at:
+            orphan_eqs.append(eq)
 
     return base_nodes, base_edges, step_chains, eq_map, orphan_eqs
 
@@ -2380,7 +2535,19 @@ def generate_interactive_html(data, svg_path, html_path):
     # Splitting by connected component — the obvious third idea — does NOT pay:
     # the median paper has ONE component, and the largest component holds 100%
     # of the nodes at both the median and the 90th percentile.
-    implied_edge_gids = _implied_edges(base_nodes, base_edges, _safe_eid)
+    # Backward edges (v6 `backward: true`, plus whatever else must be held out
+    # to break a cycle — the same split draw_dag makes): drawn dash-dotted,
+    # toggleable, and kept out of the transitive reduction, where an edge
+    # running against the layering would make forward edges look "implied".
+    _forward, _held = split_cycle_edges(
+        base_nodes, [e for e in base_edges if not (e.get("backward") or e.get("mention"))])
+    _held = [e for e in base_edges if e.get("backward") or e.get("mention")] + _held
+    backward_edge_gids = sorted({f"edge_{_safe_eid(e['source'])}__to__{_safe_eid(e['target'])}"
+                                 for e in _held if not e.get("mention")})
+    mention_edge_gids = sorted({f"edge_{_safe_eid(e['source'])}__to__{_safe_eid(e['target'])}"
+                                for e in base_edges if e.get("mention")})
+    implied_edge_gids = _implied_edges(base_nodes, _forward, _safe_eid)
+    nested_node_ids = sorted(n["id"] for n in base_nodes if n.get("inside"))
 
     _BACKBONE_TYPES = {"definition", "theorem", "lemma", "proposition",
                        "corollary", "claim", "conjecture"}
@@ -2417,9 +2584,14 @@ def generate_interactive_html(data, svg_path, html_path):
         nid = n["id"]
         _steps = [{"id": s["id"], "statement": s.get("statement",""),
                    "statement_clean": s.get("statement_clean",""),
+                   "statement_short": s.get("statement_short",""),
                    "name": s.get("name",""), "subclass": s.get("subclass",""),
                    "step_order": s.get("step_order", 0),
-                   "type": s.get("type","")}
+                   "type": s.get("type",""),
+                   # v6: nesting (step inside step) and per-step metadata
+                   "depth": s.get("depth", 0), "parent_step": s.get("parent_step", ""),
+                   "source_line_label": s.get("source_line_label", ""),
+                   "rigor": s.get("rigor", ""), "confidence": s.get("confidence")}
                   for s in step_chains.get(nid, [])]
         js_details[nid] = {
             "name": n.get("name", ""),
@@ -2433,6 +2605,15 @@ def generate_interactive_html(data, svg_path, html_path):
             "statement_render": _statement_render_source(n),
             # Port #4: plain-text summary (HEAD's "Plain-Text Summary" panel).
             "statement_clean": n.get("statement_clean", ""),
+            # Short summary: `statement_short` (v5.1+); older files only had
+            # statement_clean, which _normalize_schema fills from statement.
+            "statement_short": n.get("statement_short", ""),
+            "rigor": n.get("rigor", ""),
+            "confidence": n.get("confidence"),
+            "tags": _as_list(n.get("tags")),
+            "inside": n.get("inside", ""),
+            "contains": n.get("contains", []),
+            "proofs": n.get("proofs", []),
             # Port #1/#2: external-cited badge in side panel.
             "origin": n.get("origin", "paper"),
             "origin_citation": n.get("origin_citation", ""),
@@ -2445,9 +2626,15 @@ def generate_interactive_html(data, svg_path, html_path):
             # Port #5: HEAD-style "Decomposition" panel reads from step_info.
             "step_info": _steps,
             "equations": [{"id": e["id"], "statement": e.get("statement",""), "section": e.get("section",""),
-                          "context": e.get("context",""), "parent_step": e.get("parent_step") or e.get("parent_id","")}
+                          "context": e.get("context",""), "parent_step": e.get("parent_step", "")}
                           for e in eq_map.get(nid, [])],
         }
+    # Folded node -> the drawn box whose panel shows it, so links to steps,
+    # equations and proofs (e.g. from extraction notes) open the right panel.
+    folded_host = {}
+    for nid, d in js_details.items():
+        for x in d["steps"] + d["equations"] + d.get("proofs", []):
+            folded_host.setdefault(x["id"], nid)
     # Has-proof toggle (#1.a): collect ids of theorem-like nodes that
     # actually carry proof_info — these are the highlightable targets.
     _has_proof_node_ids = sorted({
@@ -2470,6 +2657,8 @@ def generate_interactive_html(data, svg_path, html_path):
     # paper it was extracted from. arXiv serves the LaTeX source at /e-print/.
     # Old-style ids ("math/9410211") work in the same URL shapes as new ones.
     _aid = str(metadata.get("arxiv_id") or "").strip()
+    if not _aid and _re.fullmatch(r"\d{4}\.\d{4,5}(v\d+)?", Path(html_path).stem):
+        _aid = Path(html_path).stem   # v6 metadata may omit it; files are named by it
     source_links = ""
     if _aid:
         _u = "https://arxiv.org/%s/" + _esc(_aid)
@@ -2506,6 +2695,20 @@ def generate_interactive_html(data, svg_path, html_path):
     for nid, fnames in case1_matches.items():
         if nid in js_details:
             js_details[nid]["foundation_links"] = list(set(fnames))
+
+    # Paper-level extraction metadata for the "Paper info" panel (v6:
+    # paper_style list, extraction_notes [{category, nodes, note}],
+    # extraction_comment). The bulky `labels` / `macros` maps are left out.
+    paper_info = {k: metadata[k] for k in (
+        "model", "effort", "prompt_version", "extraction_date", "annotator",
+        "paper_style", "extraction_comment", "extraction_notes",
+        "rigor_nonformal_count", "unresolved_refs") if metadata.get(k) not in (None, "", [], {})}
+    paper_info["paper_style"] = _as_list(paper_info.get("paper_style"))
+    paper_info["extraction_notes"] = [x for x in _as_list(paper_info.get("extraction_notes"))
+                                      if isinstance(x, dict)]
+    _style_chips = "".join('<span class="chip">%s</span>' % _esc(str(s).replace("_", " "))
+                           for s in paper_info["paper_style"])
+    n_notes = len(paper_info["extraction_notes"])
 
     details_json = _json.dumps(js_details, ensure_ascii=True)
     orphans_json = _json.dumps(js_orphans, ensure_ascii=True)
@@ -2631,23 +2834,36 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
 #srclinks .aid {{ font-family: monospace; margin-right: 10px; color: #333; }}
 #srclinks a {{ margin-right: 10px; color: #0645ad; text-decoration: none; }}
 #srclinks a:hover {{ text-decoration: underline; }}
+.chip {{ display: inline-block; padding: 1px 7px; margin: 0 4px 2px 0; border-radius: 9px; background: #ECEFF1; border: 1px solid #B0BEC5; font-size: 11px; color: #37474F; }}
+#header .chip {{ background: #3d566e; border-color: #5d7a96; color: #e0e6eb; }}
+.badge {{ display: inline-block; padding: 1px 6px; margin-right: 4px; border-radius: 3px; font-size: 11px; border: 1px solid #999; color: #444; background: #f7f7f7; }}
+.badge.rigor-heuristic, .badge.rigor-conjectural {{ background: #FFEBEE; border-color: #C62828; color: #B71C1C; }}
+.badge.rigor-semi_formal, .badge.rigor-numerical {{ background: #FFF8E1; border-color: #F9A825; color: #6D4C00; }}
+.nodelink {{ color: #2471A3; cursor: pointer; }}
+.nodelink:hover {{ text-decoration: underline; }}
+.step-item details > summary {{ cursor: pointer; font-size: 11px; color: #666; }}
+.note-item {{ background: #FFFDE7; border-left: 3px solid #FBC02D; padding: 6px 10px; font-size: 12px; margin-bottom: 4px; }}
 </style>
 </head>
 <body>
 <div id="header">
   <h1>{_esc(title)}<span class="hint">— click nodes for detailed description</span></h1>
-  {source_links}
+  {source_links}<span id="paper-style">{_style_chips}</span>
   <div id="controls">
+    <button onclick="showPaperInfo()" title="Extraction metadata: paper style, extractor comment and notes">Paper info{(' (%d notes)' % n_notes) if n_notes else ''}</button>
     <button onclick="resetView()">Reset</button>
     <button onclick="zoomIn()">Zoom +</button>
     <button onclick="zoomOut()">Zoom -</button>
     <button onclick="zoomFit()">Fit</button>
-    <span id="lod-note" style="margin-left:10px;font-size:12px;color:#888;"></span>
+    <span id="lod-note" style="margin-left:10px;font-size:13px;font-weight:bold;color:#C0392B;"></span>
   </div>
 </div>
 <div class="legend">
 {legend_items}
   <div class="legend-item" style="margin-left:12px;"><span style="font-size:18px;color:#555;">&#8594;</span> A supports B</div>
+  <div class="legend-item"><svg width="30" height="10"><line x1="0" y1="5" x2="30" y2="5" stroke="#455A64" stroke-width="2" stroke-dasharray="6,2,1,2"/></svg> backward reference</div>
+  <div class="legend-item"><svg width="30" height="10"><line x1="0" y1="5" x2="30" y2="5" stroke="#9FA8DA" stroke-width="1.5" stroke-dasharray="2,2"/></svg> mention (refers to, does not rely on)</div>
+  <div class="legend-item"><svg width="30" height="10"><line x1="0" y1="5" x2="30" y2="5" stroke="#7F8C8D" stroke-width="2" stroke-dasharray="1,1.5"/></svg> stated inside</div>
   <div class="legend-item"><span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:#FFD54F;border:1px solid #5D4037;text-align:center;font-weight:bold;font-size:11px;color:#5D4037;line-height:12px;">*</span>&nbsp;has proof (click)</div>
 {foundation_legend_items}  <div class="toggle-panel" id="toggle-panel">
     <span class="toggle-label">Toggle:</span>
@@ -2657,6 +2873,9 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
     <button class="toggle-btn" id="lowconf-btn" data-showing="1" onclick="toggleLowConf()"{(' disabled' if not low_conf_edge_gids else '')}>Low-confidence edges ({len(low_conf_edge_gids)})</button>
     <button class="toggle-btn" id="implied-btn" data-showing="1" onclick="toggleImplied()"{(' disabled' if not implied_edge_gids else '')} title="Edges also reachable by a longer path — redundant for reading the dependency structure">Implied edges ({len(implied_edge_gids)})</button>
     <button class="toggle-btn" id="backbone-btn" data-showing="1" onclick="toggleBackbone()"{(' disabled' if not nonbackbone_node_ids else '')} title="Show only definitions and theorem-like results">Backbone only</button>
+    <button class="toggle-btn" id="backward-btn" data-showing="1" onclick="toggleBackward()"{(' disabled' if not backward_edge_gids else '')} title="Dependencies that point against paper order (dash-dotted)">Backward edges ({len(backward_edge_gids)})</button>
+    <button class="toggle-btn" id="mention-btn" data-showing="1" onclick="toggleMention()"{(' disabled' if not mention_edge_gids else '')} title="References that do not rely on the source (thin, light dashes)">Mentions ({len(mention_edge_gids)})</button>
+    <button class="toggle-btn" id="nested-btn" data-showing="1" onclick="toggleNested()"{(' disabled' if not nested_node_ids else '')} title="Results stated inside a proof or another result; hiding collapses them into the box that contains them (listed in its panel)">Nested results ({len(nested_node_ids)})</button>
   </div>
 </div>
 <div id="main">
@@ -2683,6 +2902,11 @@ var GHOST_BOOK_INDICES = {_json.dumps(ghost_book_indices, ensure_ascii=True)};
 var GHOST_OTHER_INDICES = {_json.dumps(ghost_other_indices, ensure_ascii=True)};
 // Bug 1 fix: incident-edge map so hiding a node also hides edges touching it.
 var NODE_TO_EDGES = {_json.dumps(node_to_edges, ensure_ascii=True)};
+var BACKWARD_EDGE_GIDS = {_json.dumps(backward_edge_gids, ensure_ascii=True)};
+var MENTION_EDGE_GIDS = {_json.dumps(mention_edge_gids, ensure_ascii=True)};
+var NESTED_NODE_IDS = {_json.dumps(nested_node_ids, ensure_ascii=True)};
+var PAPER_INFO = {_json.dumps(paper_info, ensure_ascii=True)};
+var FOLDED_HOST = {_json.dumps(folded_host, ensure_ascii=True)};
 
 var _lastDetailNode = null;
 function showDetail(nodeId) {{
@@ -2711,7 +2935,19 @@ function showDetail(nodeId) {{
   var d = DETAILS[nodeId];
   if (!d) return;
   var h = '<h3 style="margin:0 0 8px;font-size:16px;">' + esc(nodeId) + ': ' + esc(d.name || d.type) + '</h3>';
-  h += '<div style="font-size:12px;color:#888;margin-bottom:4px;">' + d.type + (d.section ? ' (Sec ' + d.section + ')' : '') + '</div>';
+  h += '<div style="font-size:12px;color:#888;margin-bottom:4px;">' + d.type + (d.section ? ' (Sec ' + esc(d.section) + ')' : '') + '</div>';
+  // v6 node metadata: rigor, confidence, tags; and where the node is stated.
+  var meta = rigorBadge(d.rigor) + confBadge(d.confidence);
+  (d.tags || []).forEach(function(t) {{ meta += '<span class="chip">' + esc(String(t)) + '</span>'; }});
+  if (meta) h += '<div style="margin-bottom:6px;">' + meta + '</div>';
+  if (d.inside) {{
+    var via = '';
+    var host = DETAILS[d.inside];
+    (host && host.contains || []).forEach(function(c) {{
+      if (c.id === nodeId && c.parent && c.parent !== d.inside) via = ' (in ' + esc(c.parent) + ')';
+    }});
+    h += '<div style="font-size:12px;margin-bottom:6px;">Stated inside ' + nodeLink(d.inside) + via + '</div>';
+  }}
   // Origin badge — paper (default) or external (cited prior result)
   if (d.origin === "external") {{
     var citeStr = d.origin_citation ? (' &mdash; ' + esc(d.origin_citation)) : '';
@@ -2722,7 +2958,7 @@ function showDetail(nodeId) {{
     h += '<div style="display:inline-block;padding:2px 8px;background:#E3F2FD;border:1px solid #2471A3;border-radius:3px;font-size:11px;color:#2471A3;margin-bottom:8px;">&#128218; Known result: ' + d.foundation_links.map(esc).join(', ') + '</div>';
   }}
   // Pre-build equation maps by context
-  var eqsByCtx = {{statement:[], assumption:[], conclusion:[], orphan:[]}};
+  var eqsByCtx = {{statement:[], assumption:[], conclusion:[], proof:[], orphan:[]}};
   var eqsByStep = {{}};
   if (d.equations) {{
     d.equations.forEach(function(e) {{
@@ -2748,6 +2984,12 @@ function showDetail(nodeId) {{
     eqsByCtx.statement.forEach(function(e) {{ h += eqBlock(e); }});
     h += '</div>';
   }}
+  // Short summary: statement_short, or (older files) a statement_clean that
+  // actually differs from the statement.
+  var summary = d.statement_short || (d.statement_clean !== d.statement ? d.statement_clean : '');
+  if (summary) {{
+    h += '<div class="detail-section"><h4>Summary</h4><div style="font-size:13px;">' + esc(summary) + '</div></div>';
+  }}
   // Assumptions + inline assumption equations
   if ((d.assumptions && d.assumptions.length > 0) || eqsByCtx.assumption.length > 0) {{
     h += '<div class="detail-section"><h4>Assumptions</h4>';
@@ -2762,8 +3004,20 @@ function showDetail(nodeId) {{
     eqsByCtx.conclusion.forEach(function(e) {{ h += eqBlock(e); }});
     h += '</div>';
   }}
-  // Proof strategy
-  if (d.proof_info && d.proof_info.length > 0) {{
+  // Proofs: one entry per merged proof node (name, strategy labels, rigor,
+  // summary); the joined proof_info strings remain the fallback.
+  if (d.proofs && d.proofs.length > 0) {{
+    h += '<div class="detail-section"><h4>Proof' + (d.proofs.length > 1 ? 's (' + d.proofs.length + ')' : '') + '</h4>';
+    d.proofs.forEach(function(p) {{
+      h += '<div class="step-item"><strong>' + esc(p.id) + (p.name ? ': ' + esc(p.name) : '') + '</strong> ';
+      (p.proof_strategy || []).forEach(function(s) {{ h += '<span class="chip">' + esc(String(s)) + '</span>'; }});
+      h += rigorBadge(p.rigor) + confBadge(p.confidence);
+      if (p.statement_short) h += '<div style="font-size:12px;color:#444;margin-top:2px;">' + esc(p.statement_short) + '</div>';
+      h += '</div>';
+    }});
+    eqsByCtx.proof.forEach(function(e) {{ h += eqBlock(e); }});
+    h += '</div>';
+  }} else if (d.proof_info && d.proof_info.length > 0) {{
     h += '<div class="detail-section"><h4>Proof Strategy</h4>';
     d.proof_info.forEach(function(p) {{
       if (Array.isArray(p)) {{
@@ -2788,26 +3042,75 @@ function showDetail(nodeId) {{
   // Proof / algorithm steps with inline equations. v2: algorithm_step folded
   // into parent algorithm; render same panel but title by parent type.
   // Port #5: heading mirrors HEAD's "Decomposition (N steps)" wording.
+  // v6 steps nest (a loop body, a sub-claim): each step's children are drawn
+  // inside it, indented, behind a collapse/expand toggle. Results stated in a
+  // step (d.contains with parent = that step) are listed under it.
+  var containsByParent = {{}};
+  (d.contains || []).forEach(function(c) {{
+    (containsByParent[c.parent] = containsByParent[c.parent] || []).push(c);
+  }});
+  var placed = {{}};
   if (d.steps && d.steps.length > 0) {{
-    var stepKind = (d.type === 'algorithm') ? 'Decomposition' : 'Decomposition';
-    h += '<div class="detail-section"><h4>' + stepKind + ' (' + d.steps.length + ' steps)</h4>';
-    d.steps.forEach(function(s, i) {{
-      var ord = (s.step_order || (i + 1));
-      var label = s.name ? esc(s.name) : esc(s.id || ('Step ' + ord));
-      var body = s.statement_clean || s.statement || '';
-      h += '<div class="step-item"><strong>' + ord + '. ' + label + '</strong>';
-      if (s.subclass) {{
-        h += ' <span style="font-size:11px;font-style:italic;color:#666;">[' + esc(s.subclass) + ']</span>';
-      }}
-      if (body) {{
-        h += '<div style="font-size:12px;color:#444;margin-top:2px;">' + esc(body) + '</div>';
-      }}
-      if (eqsByStep[s.id]) {{
-        eqsByStep[s.id].forEach(function(e) {{ h += eqBlock(e); }});
-      }}
-      h += '</div>';
-      if (i < d.steps.length - 1) h += '<div class="step-arrow">&#8595;</div>';
+    var stepIds = {{}};
+    d.steps.forEach(function(s) {{ stepIds[s.id] = true; }});
+    var kidsOf = {{}};
+    d.steps.forEach(function(s) {{
+      var p = (s.parent_step && stepIds[s.parent_step]) ? s.parent_step : '';
+      (kidsOf[p] = kidsOf[p] || []).push(s);
     }});
+    var renderSteps = function(parent) {{
+      var out = '';
+      var kids = kidsOf[parent] || [];
+      kids.forEach(function(s, i) {{
+        placed[s.id] = true;
+        var ord = (s.step_order || (i + 1));
+        var label = s.name ? esc(s.name) : esc(s.id || ('Step ' + ord));
+        var full = s.statement_clean || s.statement || '';
+        out += '<div class="step-item"><strong>' + ord + '. ' + label + '</strong>';
+        if (s.subclass) {{
+          out += ' <span style="font-size:11px;font-style:italic;color:#666;">[' + esc(s.subclass) + ']</span>';
+        }}
+        if (s.source_line_label) out += ' <span class="badge">line ' + esc(String(s.source_line_label)) + '</span>';
+        out += rigorBadge(s.rigor) + confBadge(s.confidence);
+        if (s.statement_short) {{
+          out += '<div style="font-size:12px;color:#444;margin-top:2px;">' + esc(s.statement_short) + '</div>';
+          if (full) out += '<details><summary>full text</summary><div style="font-size:12px;color:#444;">' + esc(full) + '</div></details>';
+        }} else if (full) {{
+          out += '<div style="font-size:12px;color:#444;margin-top:2px;">' + esc(full) + '</div>';
+        }}
+        (eqsByStep[s.id] || []).forEach(function(e) {{ out += eqBlock(e); }});
+        (containsByParent[s.id] || []).forEach(function(c) {{
+          placed[c.id] = true;
+          out += '<div style="font-size:12px;margin:3px 0 0 8px;">&#8627; states ' + nodeLink(c.id, c.id + ': ' + (c.name || c.type)) + '</div>';
+        }});
+        if (kidsOf[s.id]) {{
+          out += '<div style="font-size:11px;color:#2471A3;cursor:pointer;margin-top:3px;" onclick="toggleStepKids(this)">&#9662; ' + kidsOf[s.id].length + ' sub-step' + (kidsOf[s.id].length > 1 ? 's' : '') + '</div>';
+          out += '<div style="margin-left:10px;margin-top:4px;">' + renderSteps(s.id) + '</div>';
+        }}
+        out += '</div>';
+        if (i < kids.length - 1) out += '<div class="step-arrow">&#8595;</div>';
+      }});
+      return out;
+    }};
+    h += '<div class="detail-section"><h4>Decomposition (' + d.steps.length + ' steps)</h4>' + renderSteps('') + '</div>';
+  }}
+  // Equations whose step was not rendered, proof equations without a proof
+  // entry, and contained results not placed under a step: never drop them.
+  Object.keys(eqsByStep).forEach(function(k) {{ if (!placed[k]) eqsByCtx.orphan = eqsByCtx.orphan.concat(eqsByStep[k]); }});
+  if (!(d.proofs && d.proofs.length)) eqsByCtx.orphan = eqsByCtx.orphan.concat(eqsByCtx.proof);
+  var looseContains = (d.contains || []).filter(function(c) {{ return !placed[c.id]; }});
+  if (looseContains.length > 0) {{
+    h += '<div class="detail-section"><h4>Contains</h4>';
+    looseContains.forEach(function(c) {{
+      h += '<div style="font-size:13px;padding:2px 0 2px 10px;">&bull; ' + nodeLink(c.id, c.id + ': ' + (c.name || c.type)) + (c.parent !== nodeId ? ' <span style="color:#888;">(in ' + esc(c.parent) + ')</span>' : '') + '</div>';
+    }});
+    h += '</div>';
+  }}
+  // Extraction notes that name this node (v6 metadata.extraction_notes).
+  var myNotes = (PAPER_INFO.extraction_notes || []).filter(function(x) {{ return (x.nodes || []).indexOf(nodeId) >= 0; }});
+  if (myNotes.length > 0) {{
+    h += '<div class="detail-section"><h4>Extractor notes</h4>';
+    myNotes.forEach(function(x) {{ h += noteBlock(x); }});
     h += '</div>';
   }}
   // Orphan equations (collapsible)
@@ -3019,6 +3322,85 @@ function toggleEqPanel(el) {{
   if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
 }}
 function esc(t) {{ return t ? t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;") : ""; }}
+function escAttr(t) {{ return esc(String(t || "")).replace(/"/g, "&quot;"); }}
+// v6 side-panel helpers.
+function rigorBadge(r) {{
+  return r ? '<span class="badge rigor-' + escAttr(r) + '" title="rigor">' + esc(String(r).replace(/_/g, '-')) + '</span>' : '';
+}}
+function confBadge(c) {{
+  if (c === null || c === undefined || c === '' || isNaN(Number(c))) return '';
+  return '<span class="badge" title="extractor confidence">conf ' + Number(c).toFixed(2) + '</span>';
+}}
+// Link to a node's panel. Folded nodes (steps, equations, proofs) open the
+// panel of the box that contains them.
+function nodeLink(id, label) {{
+  var target = DETAILS[id] ? id : FOLDED_HOST[id];
+  if (!target) return esc(label || id);
+  return '<span class="nodelink" data-nid="' + escAttr(target) + '" onclick="showDetail(this.dataset.nid)">' + esc(label || id) + '</span>';
+}}
+function noteBlock(x) {{
+  var h = '<div class="note-item"><span class="chip">' + esc(String(x.category || 'note').replace(/_/g, ' ')) + '</span>';
+  (x.nodes || []).forEach(function(n, i) {{ h += (i ? ', ' : '') + nodeLink(n); }});
+  return h + '<div style="margin-top:3px;">' + esc(x.note || '') + '</div></div>';
+}}
+function toggleStepKids(el) {{
+  var box = el.nextElementSibling;
+  if (!box) return;
+  var hide = box.style.display !== 'none';
+  box.style.display = hide ? 'none' : '';
+  el.innerHTML = (hide ? '&#9656; ' : '&#9662; ') + el.innerHTML.replace(/^\\S+\\s/, '');
+}}
+// Paper-level extraction metadata (paper_style, extraction_comment,
+// extraction_notes), shown in the detail panel.
+function showPaperInfo() {{
+  var panel = document.getElementById("detail-panel");
+  if (_lastDetailNode === '__paperinfo__' && panel.className === "open") {{ resetView(); return; }}
+  _lastDetailNode = '__paperinfo__';
+  var I = PAPER_INFO, h = '<h3 style="margin:0 0 8px;font-size:16px;">Paper info</h3>';
+  var rows = [['Model', I.model], ['Effort', I.effort], ['Prompt version', I.prompt_version],
+              ['Extracted', I.extraction_date], ['Annotator', I.annotator],
+              ['Non-formal rigor tags', I.rigor_nonformal_count]];
+  h += '<div class="detail-section" style="font-size:12px;">';
+  rows.forEach(function(r) {{ if (r[1] !== undefined) h += '<div><span style="color:#888;">' + r[0] + ':</span> ' + esc(String(r[1])) + '</div>'; }});
+  h += '</div>';
+  if (I.paper_style && I.paper_style.length) {{
+    h += '<div class="detail-section"><h4>Paper style</h4>';
+    I.paper_style.forEach(function(s) {{ h += '<span class="chip">' + esc(String(s).replace(/_/g, ' ')) + '</span>'; }});
+    h += '</div>';
+  }}
+  if (I.extraction_comment) h += '<div class="detail-section"><h4>Extractor comment</h4><div style="font-size:13px;">' + esc(String(I.extraction_comment)) + '</div></div>';
+  var notes = I.extraction_notes || [];
+  h += '<div class="detail-section"><h4>Extraction notes (' + notes.length + ')</h4>';
+  notes.forEach(function(x) {{ h += noteBlock(x); }});
+  if (!notes.length) h += '<div style="color:#888;font-size:12px;">None recorded.</div>';
+  h += '</div>';
+  panel.innerHTML = h;
+  panel.className = "open";
+  if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([panel]).catch(function(){{}});
+}}
+function _toggleEdgeSet(btnId, gids) {{
+  var btn = document.getElementById(btnId);
+  if (!btn || btn.disabled) return;
+  var nextShowing = !(btn.dataset.showing === "1");
+  btn.dataset.showing = nextShowing ? "1" : "0";
+  var el0 = document.querySelector("#svg-container svg");
+  if (!el0) return;
+  gids.forEach(function(gid) {{
+    var el = el0.querySelector('[id="' + gid + '"]');
+    if (el) el.style.display = nextShowing ? "" : "none";
+  }});
+}}
+function toggleBackward() {{ _toggleEdgeSet("backward-btn", BACKWARD_EDGE_GIDS); }}
+function toggleMention() {{ _toggleEdgeSet("mention-btn", MENTION_EDGE_GIDS); }}
+// Nested results: hiding collapses them into the box they are stated in
+// (their panel entry stays, under "Contains" / the step that states them).
+function toggleNested() {{
+  var btn = document.getElementById("nested-btn");
+  if (btn.disabled) return;
+  var nextShowing = !(btn.dataset.showing === "1");
+  btn.dataset.showing = nextShowing ? "1" : "0";
+  _setNodeVisibility(NESTED_NODE_IDS, nextShowing);
+}}
 
 // Hide ghost elements on load (wait for SVG to render)
 window.addEventListener("load", function() {{
@@ -3035,18 +3417,7 @@ window.addEventListener("load", function() {{
 
 var currentZoom = 1.0;
 var svgEl = document.querySelector("#svg-container svg");
-function toggleImplied() {{
-  var btn = document.getElementById("implied-btn");
-  if (btn.disabled) return;
-  var nextShowing = !(btn.dataset.showing === "1");
-  btn.dataset.showing = nextShowing ? "1" : "0";
-  var el0 = document.querySelector("#svg-container svg");
-  if (!el0) return;
-  IMPLIED_EDGE_GIDS.forEach(function(gid) {{
-    var el = el0.querySelector('[id="' + gid + '"]');
-    if (el) el.style.display = nextShowing ? "" : "none";
-  }});
-}}
+function toggleImplied() {{ _toggleEdgeSet("implied-btn", IMPLIED_EDGE_GIDS); }}
 
 function toggleBackbone() {{
   var btn = document.getElementById("backbone-btn");
@@ -3111,11 +3482,22 @@ function zoomFit() {{
 
 // Fit on load. The zoom floor for the buttons is 0.2, but fitting a large
 // graph legitimately needs far less, so applyZoom is driven directly here.
+// A graph whose fit would hide the box text opens at a readable zoom on its
+// top-left corner instead; "Fit" still gives the overview.
+function openView() {{
+  zoomFit();
+  if (currentZoom < LOD_BODY_MIN) {{
+    currentZoom = 0.6;
+    applyZoom();
+    var box = document.getElementById("svg-container");
+    if (box) {{ box.scrollTop = 0; box.scrollLeft = 0; }}
+  }}
+}}
 window.addEventListener("load", function() {{
   svgEl = svgEl || document.querySelector("#svg-container svg");
-  zoomFit();
+  openView();
 }});
-window.addEventListener("resize", function() {{ zoomFit(); }});
+window.addEventListener("resize", function() {{ openView(); }});
 
 // Mouse wheel zoom on the SVG container
 document.getElementById("svg-container").addEventListener("wheel", function(e) {{
@@ -3237,7 +3619,7 @@ def main():
                      # with the arXiv links, so an in-figure title just repeats
                      # it and eats vertical space above the graph.
                      show_title=False)
-            html_path = input_path.with_suffix(".html")
+            html_path = output_path.with_suffix(".html")   # next to -o, else next to the input
             n_html = generate_interactive_html(data, svg_only_path, str(html_path))
             for tmp in [svg_only_path, svg_only_path.replace('.svg', '.png')]:
                 if os.path.exists(tmp):
