@@ -275,6 +275,11 @@ def _substitute(expansion, args):
     return out
 
 
+# a control word right after a defining command is the name being defined
+_DEF_SLOT = re.compile(r"\\(?:[egx]?def|let|(?:re)?newcommand\*?|providecommand\*?|"
+                       r"DeclareMathOperator\*?|DeclareRobustCommand\*?)\s*\{?\s*\Z")
+
+
 def expand_macros(text, macros, max_depth=_MAX_DEPTH):
     """Expand a paper's own macros in `text`.
 
@@ -309,6 +314,10 @@ def expand_macros(text, macros, max_depth=_MAX_DEPTH):
             out.append(seg)
             if seg:
                 tail = seg[-16:]
+            if _DEF_SLOT.search(text, max(0, m.start() - 30), m.start()):
+                out.append(m.group(0))   # the name being (re)defined, not a use:
+                i = m.end()              # \def\G_2{..} must not become \def\mathrm{G}_2
+                continue
             spec = macros[m.group(1)] or {}
             body = spec.get("expansion", "") if isinstance(spec, dict) else str(spec)
             arity = int(spec.get("arity", 0)) if isinstance(spec, dict) else 0
