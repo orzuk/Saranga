@@ -298,3 +298,6 @@ Output: corpus/silver/opus-5.5__v6/, all 200 papers, one claude-opus-5-5 agent p
 each stamped `prompt_version` v6-a6613a6c3d147ec5-<commit>. The trial runs that led to this
 freeze (26-paper runs and reruns, 2026-10-08/09) are archived outside the repository
 (G:/My Drive/Research/Automath/Saranga_v6_trial_runs_2026-10-09.tar.gz).
+From the 33rd paper on, finalize is at 0e00c76: environments with identical text are told apart (label,
+parent, else the last copy), so a restated equation no longer takes the preview's place. The finishing
+step alone is re-run on the earlier outputs at the end of the run (no extraction is repeated).
