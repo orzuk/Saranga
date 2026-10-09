@@ -301,3 +301,6 @@ freeze (26-paper runs and reruns, 2026-10-08/09) are archived outside the reposi
 From the 33rd paper on, finalize is at 0e00c76: environments with identical text are told apart (label,
 parent, else the last copy), so a restated equation no longer takes the preview's place. The finishing
 step alone is re-run on the earlier outputs at the end of the run (no extraction is repeated).
+From the 44th paper on, the cycle check is at 4f4b446: a node inside a proof that other results use is not
+folded into the proof's result. Earlier outputs may carry `mention` marks added to get around the old
+check (1007.0740v1, 1204.5115v1, 1203.0186v1); they are reviewed after the run.
