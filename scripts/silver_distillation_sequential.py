@@ -21,6 +21,7 @@ Usage:
 """
 
 import argparse
+import contextlib
 import csv
 import json
 import os
@@ -38,15 +39,16 @@ sys.path.insert(0, str(REPO / "src"))
 
 import distillation_analysis as _da
 from distillation_analysis import (
+    _gold_for_paper,
     _load_gold_csv,
     _load_extractions,
     analyze_patterns,
     aggregate_rules,
     identify_dark_knowledge,
     prune_rules,
-    validate_rules,
 )
 from latex_clean import clean_latex_to_text
+from node_similarity import get_match_metric
 
 
 # Match metric — set by --match-metric flag. "jaccard" preserves prior behavior;
@@ -82,24 +84,9 @@ def jaccard_similarity(text1, text2):
 # distillation_analysis pick up the cleaned matcher transparently.
 _da.jaccard_similarity = jaccard_similarity
 
-# ---------------------------------------------------------------------------
-# Pricing (USD per million tokens) — update as needed
-# ---------------------------------------------------------------------------
-PRICING = {
-    # model-prefix -> (input_per_M, output_per_M)
-    'claude-opus':   (15.0, 75.0),
-    'claude-sonnet': (3.0,  15.0),
-    'claude-haiku':  (0.25, 1.25),
-}
-
-
 def _estimate_cost(input_tokens: int, output_tokens: int, model: str) -> float:
-    """Estimate USD cost from token counts and model name."""
-    for prefix, (inp_rate, out_rate) in PRICING.items():
-        if prefix in model:
-            return (input_tokens * inp_rate + output_tokens * out_rate) / 1_000_000
-    # Fallback: assume Sonnet pricing
-    return (input_tokens * 3.0 + output_tokens * 15.0) / 1_000_000
+    """USD estimate from token counts (the shared pricing table)."""
+    return _da.estimate_cost({'input_tokens': input_tokens, 'output_tokens': output_tokens}, model)
 
 
 # ---------------------------------------------------------------------------
@@ -186,34 +173,30 @@ def build_detailed_matches(paper_id: str, t2_json_path: Path,
     """
     from math_paper_parser import PaperParser
 
-    # Install silver distilled rules so the parser picks them up
-    _, backup = _install_silver_rules(eval_dir, structure_type)
-
     rows = []
 
-    # --- Rules side ---
+    # --- Rules side, with the silver distilled rules installed ---
     src_dir = tex_dir / paper_id / "source"
     main_tex = _find_main_tex(src_dir)
-    if main_tex:
-        try:
-            parser = PaperParser(
-                paper_id=paper_id,
-                extraction_mode='rules',
-                structure_types=[structure_type],
-            )
-            graph = parser.parse_file(str(main_tex))
-            graph_dict = graph.to_dict()
-            for obj_id, obj in graph_dict.get('objects', {}).items():
-                if obj.get('kind') != structure_type:
-                    continue
-                raw = obj.get('raw_latex', '') or obj.get('statement', '')
-                if raw.strip():
-                    rows.append({"paper_id": paper_id, "provider": "manual",
-                                 "definition_text": raw})
-        except Exception as e:
-            print(f"  [warn] Rules parse failed for {paper_id}: {e}")
-
-    _uninstall_silver_rules(structure_type, backup)
+    with silver_rules_installed(eval_dir, structure_type):
+        if main_tex:
+            try:
+                parser = PaperParser(
+                    paper_id=paper_id,
+                    extraction_mode='rules',
+                    structure_types=[structure_type],
+                )
+                graph = parser.parse_file(str(main_tex))
+                graph_dict = graph.to_dict()
+                for obj_id, obj in graph_dict.get('objects', {}).items():
+                    if obj.get('kind') != structure_type:
+                        continue
+                    raw = obj.get('raw_latex', '') or obj.get('statement', '')
+                    if raw.strip():
+                        rows.append({"paper_id": paper_id, "provider": "manual",
+                                     "definition_text": raw})
+            except Exception as e:
+                print(f"  [warn] Rules parse failed for {paper_id}: {e}")
 
     # --- Opus side ---
     d = json.load(open(t2_json_path, encoding='utf-8'))
@@ -276,18 +259,32 @@ def _install_silver_rules(eval_dir: Path, structure_type: str) -> tuple[Path, Pa
     backup = None
     if target_file.exists() or target_file.is_symlink():
         backup = target_file.with_suffix('.py.silver_bak')
+        if backup.exists() or backup.is_symlink():
+            # an earlier install was never undone: renaming over the backup would
+            # destroy the production rules it holds
+            raise RuntimeError(f"{backup} already exists: a previous silver install was "
+                               f"not restored. Restore it by hand before continuing.")
         target_file.rename(backup)
 
     if silver_rules.exists():
         target_dir.mkdir(parents=True, exist_ok=True)
         target_file.symlink_to(silver_rules.resolve())
 
-    # Invalidate any cached module so the parser re-imports the new rules
-    for key in list(sys.modules.keys()):
-        if 'distilled_rules' in key:
-            del sys.modules[key]
-
     return target_dir, backup
+
+
+@contextlib.contextmanager
+def silver_rules_installed(eval_dir: Path | None, structure_type: str):
+    """Install eval_dir's rules for one type for the duration of the block, and
+    restore the original even if the block is interrupted."""
+    backup = None
+    if eval_dir is not None:
+        _, backup = _install_silver_rules(eval_dir, structure_type)
+    try:
+        yield
+    finally:
+        if eval_dir is not None:
+            _uninstall_silver_rules(structure_type, backup)
 
 
 def _uninstall_silver_rules(structure_type: str, backup: Path | None):
@@ -312,41 +309,33 @@ def evaluate_single_paper(paper_id: str, tex_dir: Path, structure_type: str,
     """
     from math_paper_parser import PaperParser
 
-    # Install silver rules if available
-    backup = None
-    if eval_dir is not None:
-        _, backup = _install_silver_rules(eval_dir, structure_type)
-
-    # Load gold for this paper
+    # Load gold for this paper (versioned ids and '_' vs '.' tolerated)
     gold_data = _load_gold_csv(str(gold_csv))
-    gold_items = gold_data.get(paper_id, [])
+    gold_items = _gold_for_paper(gold_data, paper_id)
     gold_texts = [g['raw_latex'] for g in gold_items if g['raw_latex'].strip()]
 
-    # Parse
+    # Parse, with eval_dir's rules installed if given
     src_dir = tex_dir / paper_id / "source"
     main_tex = _find_main_tex(src_dir)
     extracted_texts = []
-    if main_tex:
-        try:
-            parser = PaperParser(
-                paper_id=paper_id,
-                extraction_mode='rules',
-                structure_types=[structure_type],
-            )
-            graph = parser.parse_file(str(main_tex))
-            graph_dict = graph.to_dict()
-            for obj_id, obj in graph_dict.get('objects', {}).items():
-                if obj.get('kind') != structure_type:
-                    continue
-                raw = obj.get('raw_latex', '') or obj.get('statement', '')
-                if raw.strip():
-                    extracted_texts.append(raw)
-        except Exception as e:
-            print(f"  [warn] Parse failed for {paper_id}: {e}")
-
-    # Uninstall silver rules
-    if eval_dir is not None:
-        _uninstall_silver_rules(structure_type, backup)
+    with silver_rules_installed(eval_dir, structure_type):
+        if main_tex:
+            try:
+                parser = PaperParser(
+                    paper_id=paper_id,
+                    extraction_mode='rules',
+                    structure_types=[structure_type],
+                )
+                graph = parser.parse_file(str(main_tex))
+                graph_dict = graph.to_dict()
+                for obj_id, obj in graph_dict.get('objects', {}).items():
+                    if obj.get('kind') != structure_type:
+                        continue
+                    raw = obj.get('raw_latex', '') or obj.get('statement', '')
+                    if raw.strip():
+                        extracted_texts.append(raw)
+            except Exception as e:
+                print(f"  [warn] Parse failed for {paper_id}: {e}")
 
     # Greedy matching (same logic as distillation_analysis.validate_rules)
     matched_gold = set()
@@ -425,7 +414,7 @@ def run_sequential(args):
     print(f"  pilot papers: {pilot_papers}")
     print(f"  eval_dir: {eval_dir}")
     print(f"  origin_filter: {origin_filter}")
-    print(f"  match_metric: {_MATCH_METRIC} (clean_latex_to_text + tokens)")
+    print(f"  match_metric: {get_match_metric()} (clean_latex_to_text + tokens)")
     print(f"  prune_alpha: {args.prune_alpha} (prune when FP/(FP+TP) > alpha)")
     print(f"  resume: {args.resume}")
     print()

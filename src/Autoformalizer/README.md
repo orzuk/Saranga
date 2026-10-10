@@ -4,7 +4,7 @@ usage:
 
 define anthropic key:
 
-export ANTHROPIC_API_KEY="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"
+export ANTHROPIC_API_KEY="<your ANTHROPIC_API_KEY>"
 
 and then execute:
 

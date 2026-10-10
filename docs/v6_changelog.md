@@ -351,3 +351,39 @@ acknowledgements are dropped, one declared restatement is marked (correctly). Th
 on all 200 outputs passes with no errors and changes nothing. The base rule parser now recovers 98.8% of
 the silver's environment nodes with the silver's type (0.1% missed) at 98% precision; of the prose nodes
 it finds about 15%, which is what distillation is for.
+
+## Distillation code review and the unit algorithm (2026-10-10)
+
+Review of the distillation code (drivers, distillation_analysis, sequential driver, match_modes,
+rule_guard, the parser's rule merge, registry, subset search). Fixed:
+- rule_guard: a regex flag passed by position (re.search(p, s, re.I)) was forwarded to the pattern
+  method as its start position, so inside every guarded parse such calls lost their flag and skipped
+  characters. Guarded re.* now equal plain re.* (tests/test_unit_distillation.py).
+- math_paper_parser: the rule-module cache (added 2026-10-08) was keyed by path, but
+  <type>_eval/distilled_rules.py is a symlink to whichever rule set is installed and distillation
+  rewrites rule files in place, so a process kept using the first rule set it loaded. Now keyed by
+  real file, mtime and size, and compiled from source (no shared __pycache__). Earlier distillation
+  runs predate the cache.
+- The prune step, the speed guard and the teacher's context read the raw .tex; the rules run on the
+  prepared document body. They now read the same text (distillation_analysis.paper_text).
+- JSON repair turned single-backslash LaTeX (\textbf, \frac, \begin) into control characters.
+- Malformed rule results crashed a paper's parse; empty clean_text made distinct results duplicates;
+  the parser's duplicate test used other tokens than the scorer.
+- rule_guard's quarantine rewrite counted parentheses inside regex strings (could comment out the
+  rest of a file); it now locates the assignment with ast and writes atomically. Group rule modules
+  are guarded by name (the importer holds no patterns), loaded once per importer, and load or
+  runtime failures are reported.
+- Driver: parse_buckets restores the installed rules on interruption; aggregate calls are counted
+  when made; snapshot order is numeric (step_100 after step_99); finalize passes threshold, match
+  mode and cover on; --t2-dir and the ladder's prompt version default to the current silver.
+- Sequential driver: undefined name in run_sequential; install is interruption-safe and refuses to
+  overwrite an existing backup; gold lookup tolerates versioned ids.
+- Prompts: contradictory output requirements, names of functions that no longer exist; one default
+  teacher model; one pricing table (distillation_analysis.PRICING, longest-prefix match).
+- Removed: scripts/distill_v2.py (never wired in, did not run end to end); dead code in
+  rule_subset_search (its CV estimate is now labelled as the uncut, unpolished selection).
+- Hard-coded API keys removed from src/LLMVersion/distill.sh, evaluation_pipeline.sh and
+  src/Autoformalizer/README.md (they remain in git history and must be revoked).
+New: --alg units (docs/distillation_units.md): src/prose_units.py, src/LLMVersion/unit_rules.py,
+scripts/distill_units.py; distill_registry is format-neutral. Offline test harness:
+tests/stub_teacher (a stand-in Anthropic client) and tests/test_unit_distillation.py.

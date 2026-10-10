@@ -33,7 +33,7 @@ sys.path.insert(0, str(REPO / "scripts"))
 
 import silver_distillation_sequential as seq
 import silver_distillation_merged as merged
-from silver_distillation_merged import (FNAME_MAP, parse_buckets, metrics,
+from silver_distillation_merged import (snapshot_dirs, FNAME_MAP, parse_buckets, metrics,
                                         load_gold_texts)
 
 
@@ -128,7 +128,7 @@ def main():
     seq.set_match_metric(args.match_metric)
 
     types = list(FNAME_MAP.keys())
-    snaps = sorted((eval_dir / "snapshots").glob("step_*"))
+    snaps = snapshot_dirs(eval_dir)
     if not snaps:
         print(f"ERROR: no snapshots under {eval_dir/'snapshots'}")
         sys.exit(1)

@@ -91,22 +91,42 @@ def _cache_rule_modules() -> None:
     orig_from_spec = importlib.util.module_from_spec
     orig_exec = _ilm.SourceFileLoader.exec_module
 
+    def key(origin):
+        """The file's real location and version. The path alone is not enough:
+        <type>_eval/distilled_rules.py is a symlink that points at whichever
+        rule set is installed, and distillation rewrites rule files in place,
+        so a path-keyed cache served the previous rule set's module."""
+        try:
+            st = os.stat(origin)
+            return (os.path.realpath(origin), st.st_mtime_ns, st.st_size)
+        except OSError:
+            return None
+
     def module_from_spec(spec):
         origin = getattr(spec, "origin", None)
-        if origin in _RULE_MODULES:
-            return _RULE_MODULES[origin]
+        if not (origin and origin.endswith("distilled_rules.py")):
+            return orig_from_spec(spec)
+        k = key(origin)
+        if k is not None and k in _RULE_MODULES:
+            return _RULE_MODULES[k]
         mod = orig_from_spec(spec)
-        if origin and origin.endswith("distilled_rules.py"):
-            mod.__rule_origin__ = origin
+        mod.__rule_key__ = k
         return mod
 
     def exec_module(self, module):
-        origin = getattr(module, "__rule_origin__", None)
-        if origin in _RULE_MODULES:
+        k = getattr(module, "__rule_key__", None)
+        if k is None:
+            return orig_exec(self, module)
+        if _RULE_MODULES.get(k) is module:
             return
-        orig_exec(self, module)
-        if origin:
-            _RULE_MODULES[origin] = module
+        # compiled from source, not from __pycache__: the bytecode cache sits
+        # next to the symlink and trusts the source's mtime (in seconds) and
+        # size, so two rule files of equal size written in the same second
+        # would share stale bytecode. Each version is compiled once anyway.
+        with open(module.__spec__.origin, encoding="utf-8") as fh:
+            code = compile(fh.read(), module.__spec__.origin, "exec")
+        exec(code, module.__dict__)
+        _RULE_MODULES[k] = module
 
     module_from_spec._rule_cache = True
     importlib.util.module_from_spec = module_from_spec
@@ -1274,6 +1294,8 @@ class PaperParser:
         via = " (symlink)" if probe.is_symlink() else ""
         return f"{run}{via}, {where} — {real}"
 
+    _WARNED_MISSING: set = set()
+
     def _apply_distilled_rules(self, text: str, structure_type: str) -> List[MathObject]:
         """Load and apply distilled rules for a structure type if available.
 
@@ -1324,7 +1346,10 @@ class PaperParser:
 
         extract_fn = getattr(mod, func_name, None)
         if extract_fn is None:
-            print(f"[WARN] {rules_path} does not define {func_name}()")
+            key = (str(rules_path), func_name)       # once per rule set, not once per paper
+            if key not in PaperParser._WARNED_MISSING:
+                PaperParser._WARNED_MISSING.add(key)
+                print(f"[WARN] {rules_path} does not define {func_name}()")
             return []
 
         try:
@@ -1351,9 +1376,15 @@ class PaperParser:
         cls = class_map.get(class_name, MathObject)
 
         objects = []
+        # A generated rule can return anything; one malformed item must not
+        # abort the whole paper's parse.
+        raw_results = [r for r in raw_results if isinstance(r, dict)
+                       and isinstance(r.get('raw_latex'), str) and r['raw_latex'].strip()]
         for i, item in enumerate(raw_results, 1):
-            raw_latex = item.get('raw_latex', '')
-            clean_text = item.get('clean_text', '')
+            raw_latex = item['raw_latex']
+            clean_text = item.get('clean_text')
+            if not isinstance(clean_text, str) or not clean_text.strip():
+                clean_text = self._clean_latex_to_text(raw_latex)
             name = item.get('name')
             env_name = item.get('env_name', 'distilled')
 
@@ -1517,7 +1548,8 @@ class PaperParser:
                 max_tokens=16384,
                 messages=[{"role": "user", "content": prompt}],
             )
-            return message.content[0].text
+            return "".join(getattr(b, "text", "") for b in message.content
+                           if getattr(b, "type", "text") == "text")  # skip thinking blocks
         else:  # openai_compat (OpenAI + HuggingFace)
             response = client.chat.completions.create(
                 model=model,
@@ -1876,24 +1908,31 @@ Respond ONLY with JSON array."""
         # Containment threshold mirrors the silver-eval matcher (0.7).
         CONTAIN_TH = 0.7
 
+        try:                      # the scorer's own token sets (match_modes / node_similarity),
+            from match_modes import tokens as _score_tokens   # so "duplicate" means what it
+        except Exception:         # means when the output is scored
+            _score_tokens = None
+
         def _tokens(o):
             src = getattr(o, "raw_latex", "") or o.clean_text or ""
+            if _score_tokens is not None:
+                return set(_score_tokens(src))
             return set(self._clean_latex_to_text(src).lower().split())
 
         seen_texts = set()
         text_to_obj = {}
         kept_tokens = []  # (token_set, obj) for every object already in `merged`
         for d in manual_objs:
-            txt = d.clean_text.strip().lower()
+            txt = (d.clean_text or "").strip().lower()
             seen_texts.add(txt)
             text_to_obj[txt] = d
             kept_tokens.append((_tokens(d), d))
 
         merged = list(manual_objs)
         for d in llm_objs:
-            txt = d.clean_text.strip().lower()
-            # 1) exact-text duplicate
-            if txt in seen_texts:
+            txt = (d.clean_text or "").strip().lower()
+            # 1) exact-text duplicate (an empty text is not evidence of anything)
+            if txt and txt in seen_texts:
                 existing = text_to_obj.get(txt)
                 if existing and not existing.name and d.name:
                     existing.name = d.name
@@ -2241,7 +2280,7 @@ Respond ONLY with JSON array."""
     # ------------------------------------------------------------------
 
     def _build_relations(self, graph: PaperGraph) -> None:
-        """
+        r"""
         Populate graph.relations with links between the extracted math objects,
         using the new relation ontology.
 

@@ -1,3 +1,11 @@
+> **Superseded (2026-10-10).** `scripts/distill_v2.py` was removed: it was never
+> wired into a driver and did not run end to end (rule statistics were never
+> recorded, so the gate and recycling did nothing, and its analyze call used a
+> keyword the function does not accept). The registry idea survives as
+> `scripts/distill_registry.py`, now format-neutral, and is used by the unit
+> distillation (`--alg units` in `scripts/silver_distillation_merged.py`,
+> described in `docs/distillation_units.md`).
+
 # Distillation v2 — design for review
 
 **Status:** all four pieces built and tested. Not yet run live (needs an API key

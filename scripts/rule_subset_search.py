@@ -68,7 +68,6 @@ import importlib.util
 import json
 import multiprocessing as mp
 import re
-import signal
 import sys
 import time
 from collections import defaultdict
@@ -631,8 +630,6 @@ class Search:
     def pooled_f1(self, per_paper, mode=None):
         return prf(self.pooled_counts(per_paper, mode))[2]
 
-    _pooled_f1 = pooled_f1                      # legacy name
-
     # -- reporting ----------------------------------------------------------
 
     def row(self, step, unit, per_paper, note=None, eval_papers=None):
@@ -642,19 +639,6 @@ class Search:
             row.update({f"{mode}_p": round(p, 4), f"{mode}_r": round(r, 4),
                         f"{mode}_f1": round(f1, 4)})
         return row
-
-    _row = row                                  # legacy name
-
-    # -- legacy entry points; the algorithms themselves live in
-    #    rule_subset_algos.py so every method sits in one ordered file
-    # -----------------------------------------------------------------------
-
-    def greedy_forward(self, patience=25, log=print, eval_papers=None):
-        res = algos.greedy(self, {"patience": patience}, log)
-        return res.selected, res.curve
-
-    def backward_polish(self, selected, log=print):
-        return algos.polish(self, selected, log)
 
 
 # ---------------------------------------------------------------------------
@@ -863,11 +847,16 @@ def cmd_search(args):
             if res.ladder:
                 ladder_kmax = max(ladder_kmax, max(k for k, _ in res.ladder))
         mean_sel = sum(val_points) / len(val_points)
-        print(f"[search] CV held-out F1 of the per-fold selections: "
+        # NOTE: each fold scores the algorithm's own selection as it comes out,
+        # before the k* cut and the backward polish applied to the final run, so
+        # this estimates the uncut procedure, not the selection written below.
+        print(f"[search] CV held-out F1 of the per-fold selections (uncut, unpolished): "
               f"mean {mean_sel:.4f} "
               f"({', '.join(f'{v:.4f}' for v in val_points)})")
         cv_info["heldout_f1_per_fold"] = [round(v, 4) for v in val_points]
         cv_info["heldout_f1_mean"] = round(mean_sel, 4)
+        cv_info["heldout_f1_note"] = ("per-fold selections before the k* cut and the "
+                                      "polish; not an estimate for the final selection")
         mean_full = sum(full_points) / len(full_points)
         diffs = [a - b for a, b in zip(val_points, full_points)]
         wins = sum(1 for d in diffs if d > 0)
@@ -1163,7 +1152,6 @@ def main():
                     help="split to score on (default test -- the 140 papers "
                          "that entered no stage of distillation or selection)")
     sc.add_argument("--papers", help="comma list; overrides --split")
-    sc.add_argument("--objective", choices=["m1", "m3"], default="m3")
     sc.add_argument("--label-from", default="algo",
                     help="selection.json field to label each row by")
     sc.add_argument("--out", help="output CSV (default: under subset_search/)")

@@ -1,43 +1,20 @@
 #!/usr/bin/env python3
 """
-Rule registry for distillation v2 — stable UIDs, non-destructive gating, recycling.
+Rule registry: stable identities, non-destructive gating, per-paper statistics.
 
-Fixes three defects measured in the v1 sequential run
-(`merged_eval_silver_001_011_v3`, 17 papers):
+The registry is the single source of truth for which rules exist. Every rule
+gets a monotonic ``uid`` that is never reused; rules are never deleted, only
+their ``status`` changes (``active`` / ``retired``), with an audit trail in
+``history``. Per-rule true/false positives are kept per paper, so a rule's
+false-discovery rate on any set of papers is a lookup.
 
-1. **Rule identity is not stable.** `aggregate` regenerates the whole rules file
-   from scratch each paper, so names churn (0 of 10 definition rules survived by
-   name from step_05 to step_06) and bodies are lightly rewritten. A rule's
-   lifetime is therefore untrackable, and "new rules per paper" — the paper's
-   sub-linearity metric — actually measures file regeneration, not accumulation.
+A rule is a regex (``pattern_src``, compiled with ``spec["flags"]``) plus a
+small algorithm-specific record ``spec`` (for the unit distillation: the node
+type, how much text a match claims, an optional context condition). Identity
+is ``pattern_key``: the regex and the spec together, so the same regex with a
+different type or span is a different rule.
 
-2. **Pruning is transient.** `prune_rules` comments rules out in the .py source,
-   but the next paper's `aggregate` rewrites that file from the suggestion list,
-   which carries no record of what was pruned. Observed: cumulative pruned count
-   *falls* across steps (13 -> 12 -> 9 -> 4 -> 3), which is only possible if
-   prunes are being undone.
-
-3. **Cost is quadratic and hits the context wall.** The aggregate prompt re-sends
-   every suggestion ever made: 19K input tokens at paper 1, 184K at paper 17
-   (+~11K/paper). A 200K-context model runs out around paper 18-19 — which is
-   almost certainly why the v1 run stopped at 17.
-
-Design
-------
-The registry is the single source of truth for *what rules exist*; the generated
-`.py` file is a **projection** of the active subset, never the authority.
-
-- Every pattern minted gets a monotonic ``uid`` that is never reused.
-- Rules are never deleted — only their ``status`` changes
-  (``active`` / ``retired``). Gating is a flag, not commented-out code, so a
-  prune can be undone and an alpha sweep needs no file snapshots.
-- Per-rule ``(tp, fp)`` are cached per paper, so FDR at any alpha is a lookup.
-- **Recycling:** before paying for LLM generation, retired rules are tested
-  against the new paper's dark-knowledge items. A rule retired at paper 6 for a
-  high FDR can legitimately return at paper 12 when new evidence lowers it.
-
-This module is pure bookkeeping — no LLM calls, no imports from the pipeline —
-so it is cheap to test and safe to reuse.
+Pure bookkeeping: no LLM calls, no imports from the pipeline.
 """
 
 from __future__ import annotations
@@ -48,11 +25,6 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Dict, List, Optional
 
-# Codegen must emit this above each module-level pattern so UIDs survive a
-# regeneration. Parsed back by `parse_uids_from_source`.
-UID_MARKER = re.compile(r'^#\s*@uid:(\d+)\s*$', re.M)
-PATTERN_DEF = re.compile(r'^([A-Z][A-Z0-9_]*)\s*=\s*re\.compile', re.M)
-
 STATUS_ACTIVE = "active"
 STATUS_RETIRED = "retired"
 
@@ -60,35 +32,27 @@ STATUS_RETIRED = "retired"
 @dataclass
 class Rule:
     uid: int
-    name: str                     # current variable name (may change)
-    group: str                    # definition / proof / theoremlike / ...
-    pattern_src: str              # RAW source of the re.compile(...) argument — compilable
-    born_paper: str               # paper that first caused this rule to exist
-    pattern_key: str = ""         # normalized form — identity only, NEVER compiled
+    name: str                     # short readable name (may change)
+    group: str                    # what the rule produces (node type, or rule group)
+    pattern_src: str              # the regex itself
+    born_paper: str               # where it was first proposed (paper or round)
+    pattern_key: str = ""         # identity: regex + spec, never compiled
     status: str = STATUS_ACTIVE
     # per-paper hit counts: {paper_id: {"tp": n, "fp": n}}
     stats: Dict[str, Dict[str, int]] = field(default_factory=dict)
     history: List[str] = field(default_factory=list)   # audit trail
     aliases: List[str] = field(default_factory=list)   # previous names
+    spec: Dict = field(default_factory=dict)           # algorithm-specific fields
 
     def regex(self):
-        """Compile the actual pattern.
-
-        Uses `pattern_src` (raw), never `pattern_key`: normalization strips
-        whitespace *inside* the expression, which would silently corrupt any
-        regex containing a literal space.
-        """
-        import ast, re as _re
+        """The compiled pattern, or None if it does not compile. Flags come from
+        spec["flags"] (letters of re's inline flags: "i", "s", "m", "x")."""
+        flags = 0
+        for ch in str(self.spec.get("flags", "")):
+            flags |= {"i": re.I, "s": re.S, "m": re.M, "x": re.X}.get(ch, 0)
         try:
-            node = ast.parse("f(" + self.pattern_src + ")", mode="eval").body
-            if node.args and isinstance(node.args[0], ast.Constant) \
-                    and isinstance(node.args[0].value, str):
-                return _re.compile(node.args[0].value, _re.DOTALL)
-        except (SyntaxError, ValueError, _re.error):
-            pass
-        try:
-            return _re.compile(self.pattern_src, _re.DOTALL)
-        except _re.error:
+            return re.compile(self.pattern_src, flags)
+        except re.error:
             return None
 
     # -- derived ---------------------------------------------------------
@@ -105,15 +69,10 @@ class Rule:
         return fp / (fp + tp) if (fp + tp) else 1.0
 
 
-def normalize_pattern(src: str) -> str:
-    """Whitespace/comment-insensitive form used for identity matching.
-
-    v1 rewrote rule bodies between steps, so exact-match identity fails (0 hits
-    across step_05 -> step_17). Normalizing recovers most of it; the rest is
-    handled by explicit UID carry-through in codegen.
-    """
-    s = re.sub(r'#.*', '', src)
-    return re.sub(r'\s+', '', s)
+def rule_key(pattern_src: str, spec: Optional[Dict] = None) -> str:
+    """Identity of a rule: the exact regex plus its spec. Nothing is stripped from
+    the regex (a space, a '#' or a newline can be part of what it matches)."""
+    return json.dumps([pattern_src, spec or {}], sort_keys=True)
 
 
 class RuleRegistry:
@@ -150,21 +109,19 @@ class RuleRegistry:
         tmp.replace(self.path)
 
     # -- minting / lookup ------------------------------------------------
-    def by_pattern(self, group: str, pattern_src: str) -> Optional[Rule]:
-        key = normalize_pattern(pattern_src)
+    def by_pattern(self, group: str, pattern_src: str,
+                   spec: Optional[Dict] = None) -> Optional[Rule]:
+        key = rule_key(pattern_src, spec)
         for r in self.rules.values():
             if r.group == group and r.pattern_key == key:
                 return r
         return None
 
-    def mint(self, name: str, group: str, pattern_src: str, born_paper: str) -> Rule:
-        """Create a new rule, or return the existing one with the same body.
-
-        Returning the existing rule is what makes UIDs stable across the
-        rewrites that broke v1: a lightly-renamed but identical pattern keeps
-        its original identity instead of looking like a brand-new rule.
-        """
-        found = self.by_pattern(group, pattern_src)
+    def mint(self, name: str, group: str, pattern_src: str, born_paper: str,
+             spec: Optional[Dict] = None) -> Rule:
+        """Create a new rule, or return the existing one with the same regex and
+        spec (a renamed but identical rule keeps its uid)."""
+        found = self.by_pattern(group, pattern_src, spec)
         if found is not None:
             if found.name != name:
                 found.aliases.append(found.name)
@@ -173,8 +130,8 @@ class RuleRegistry:
             return found
         r = Rule(uid=self._next_uid, name=name, group=group,
                  pattern_src=pattern_src,
-                 pattern_key=normalize_pattern(pattern_src),
-                 born_paper=born_paper)
+                 pattern_key=rule_key(pattern_src, spec),
+                 born_paper=born_paper, spec=dict(spec or {}))
         r.history.append(f"minted @{born_paper}")
         self.rules[r.uid] = r
         self._next_uid += 1
@@ -221,37 +178,11 @@ class RuleRegistry:
         return [r for r in self.rules.values()
                 if r.status == STATUS_RETIRED and (group is None or r.group == group)]
 
-    # -- recycling -------------------------------------------------------
-    def recycle_candidates(self, dark_items: List[str], paper_text: str,
-                           group: Optional[str] = None,
-                           min_match: int = 1) -> List[Rule]:
-        """Retired rules that would catch >=min_match of this paper's misses.
-
-        Pure CPU. Run before paying for LLM generation: if an already-known rule
-        covers the gap, there is nothing to generate. Directly counteracts the
-        v1 pathology where a pruned rule was silently re-invented under a new
-        name on a later paper.
-        """
-        import difflib
-        out = []
-        for r in self.retired(group):
-            pat = r.regex()
-            if pat is None:
-                continue                      # unparseable source — skip, never crash
-            spans = [m.group(0) for m in pat.finditer(paper_text)]
-            if not spans:
-                continue
-            hits = 0
-            for item in dark_items:
-                it = normalize_pattern(item)
-                for s in spans:
-                    if difflib.SequenceMatcher(None, it, normalize_pattern(s)).ratio() >= 0.7:
-                        hits += 1
-                        break
-            if hits >= min_match:
-                out.append((hits, r))
-        out.sort(key=lambda x: -x[0])
-        return [r for _, r in out]
+    def retire_with(self, rule: "Rule", reason: str) -> None:
+        """Retire one rule, recording why (nothing is deleted)."""
+        if rule.status != STATUS_RETIRED:
+            rule.history.append(f"{rule.status}->{STATUS_RETIRED} ({reason})")
+            rule.status = STATUS_RETIRED
 
     def revive(self, uid: int, paper_id: str, reason: str = "recycled") -> None:
         r = self.rules[uid]
@@ -273,62 +204,3 @@ class RuleRegistry:
                 "renames": len(r.aliases),
             })
         return rows
-
-    def per_paper_deltas(self) -> List[dict]:
-        """True added/retired/revived per paper — needs the history trail."""
-        rows = []
-        for p in self.papers_seen:
-            born = sum(1 for r in self.rules.values() if r.born_paper == p)
-            ret = sum(1 for r in self.rules.values()
-                      for h in r.history if h.startswith("active->retired") and p in h)
-            rev = sum(1 for r in self.rules.values()
-                      for h in r.history if "recycled" in h and p in h)
-            rows.append({"paper": p, "minted": born, "retired": ret, "revived": rev})
-        return rows
-
-
-# ---------------------------------------------------------------------------
-# codegen <-> registry glue
-# ---------------------------------------------------------------------------
-
-def parse_uids_from_source(src: str) -> Dict[str, int]:
-    """Map pattern variable name -> uid, from ``# @uid:N`` markers.
-
-    Codegen is instructed to emit the marker immediately above each pattern; a
-    missing marker just means that pattern is treated as new.
-    """
-    out: Dict[str, int] = {}
-    lines = src.split("\n")
-    pending: Optional[int] = None
-    for line in lines:
-        m = UID_MARKER.match(line.strip())
-        if m:
-            pending = int(m.group(1))
-            continue
-        d = PATTERN_DEF.match(line)
-        if d:
-            if pending is not None:
-                out[d.group(1)] = pending
-            pending = None
-        elif line.strip() and not line.strip().startswith("#"):
-            pending = None
-    return out
-
-
-def extract_patterns(src: str) -> Dict[str, str]:
-    """Map pattern variable name -> raw source of its ``re.compile(...)`` call."""
-    out: Dict[str, str] = {}
-    for m in re.finditer(r'^([A-Z][A-Z0-9_]*)\s*=\s*re\.compile\(', src, re.M):
-        name = m.group(1)
-        i = src.index("(", m.end() - 1)
-        depth, j = 0, i
-        while j < len(src):
-            if src[j] == "(":
-                depth += 1
-            elif src[j] == ")":
-                depth -= 1
-                if depth == 0:
-                    break
-            j += 1
-        out[name] = src[i + 1:j]
-    return out

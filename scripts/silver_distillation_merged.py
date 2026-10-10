@@ -38,6 +38,7 @@ import builtins as _builtins
 import contextlib
 import csv
 import json
+import re
 import os
 import shutil
 import signal
@@ -75,34 +76,7 @@ from silver_distillation_sequential import (
 
 ALL_SILVER_TYPES = list(FNAME_MAP.keys())
 
-# Pricing (USD per million tokens). Mirrors the per-type script.
-PRICING = {
-    'claude-opus':   (15.0, 75.0),
-    'claude-sonnet': (3.0,  15.0),
-    'claude-haiku':  (0.25, 1.25),
-}
-
-
-def _rates(model: str):
-    for prefix, (i, o) in PRICING.items():
-        if prefix in model:
-            return i, o
-    return 3.0, 15.0
-
-
-def estimate_cost(usage: dict, model: str) -> float:
-    """Cache-aware USD estimate.
-
-    Anthropic reports non-cached input in ``input_tokens`` and bills cache reads
-    at ~0.1x and cache writes at ~1.25x the input rate.
-    """
-    i_rate, o_rate = _rates(model)
-    inp = usage.get('input_tokens', 0) or 0
-    cr = usage.get('cache_read_input_tokens', 0) or 0
-    cw = usage.get('cache_creation_input_tokens', 0) or 0
-    out = usage.get('output_tokens', 0) or 0
-    return (inp * i_rate + cr * i_rate * 0.1 + cw * i_rate * 1.25
-            + out * o_rate) / 1_000_000
+from distillation_analysis import estimate_cost   # noqa: E402  (single pricing table)
 
 
 # ---------------------------------------------------------------------------
@@ -413,6 +387,14 @@ def validate_and_repair_group_file(path: Path, gkey: str, prev_src,
 # Combined importer (hand-authored — no codegen risk)
 # ---------------------------------------------------------------------------
 
+def snapshot_dirs(eval_dir: Path) -> list:
+    """<eval_dir>/snapshots/step_NN_* in step order (numeric: step_100 after step_99)."""
+    def step(p):
+        m = re.match(r"step_(\d+)", p.name)
+        return int(m.group(1)) if m else -1
+    return sorted((Path(eval_dir) / "snapshots").glob("step_*"), key=step)
+
+
 def write_combined_importer(eval_dir: Path, groups: dict) -> Path:
     """Write <eval_dir>/distilled_rules.py re-exporting per-type entry points.
 
@@ -448,7 +430,15 @@ def write_combined_importer(eval_dir: Path, groups: dict) -> Path:
         f"_TYPE_TO_GROUP = {json.dumps(type_to_group, indent=4)}",
         "",
         "",
+        "_LOADED = {}",
+        "",
+        "",
         "def _load_group(gkey):",
+        "    # loaded once per process, and its patterns put under rule_guard by name,",
+        "    # so a slow rule is quarantined in ITS file (the importer holds none)",
+        "    if gkey in _LOADED:",
+        "        return _LOADED[gkey]",
+        "    _LOADED[gkey] = None",
         "    rel = _GROUP_FILES.get(gkey)",
         "    if not rel:",
         "        return None",
@@ -459,9 +449,16 @@ def write_combined_importer(eval_dir: Path, groups: dict) -> Path:
         "        spec = _ilu.spec_from_file_location('distilled_group_' + gkey, path)",
         "        m = _ilu.module_from_spec(spec)",
         "        spec.loader.exec_module(m)",
-        "        return m",
-        "    except Exception:",
+        "    except Exception as e:",
+        "        print(f'[WARN] distilled group {gkey} failed to load: {type(e).__name__}: {e}')",
         "        return None",
+        "    try:",
+        "        import rule_guard",
+        "        rule_guard.guard_module(m, source_path=path)",
+        "    except Exception:",
+        "        pass",
+        "    _LOADED[gkey] = m",
+        "    return m",
         "",
         "",
         "def _extract_group(gkey, text):",
@@ -473,7 +470,8 @@ def write_combined_importer(eval_dir: Path, groups: dict) -> Path:
         "        return []",
         "    try:",
         "        return fn(text) or []",
-        "    except Exception:",
+        "    except Exception as e:",
+        "        print(f'[WARN] distilled group {gkey} raised {type(e).__name__}: {e}')",
         "        return []",
         "",
         "",
@@ -646,13 +644,21 @@ def load_splits(metadata_csv: Path = SILVER_METADATA) -> dict:
         return out
     with open(metadata_csv, encoding="utf-8") as f:
         for row in csv.DictReader(f):
-            pid, split = row.get("paper_id"), row.get("split")
+            # metadata.csv names papers by paper_id, a split file (split_v6.csv) by arxiv_id
+            pid, split = row.get("paper_id") or row.get("arxiv_id"), row.get("split")
             if not (pid and split):
                 continue
             r = precedence.get(split, 2)
             if r > rank.get(pid, 0):
                 out[pid], rank[pid] = split, r
     return out
+
+
+def split_file(args) -> Path:
+    """Where the train/val/test split is read from: --splits, else the corpus index."""
+    if getattr(args, "splits", None):
+        return Path(args.splits)
+    return Path(args.metadata) if args.metadata else SILVER_METADATA
 
 
 def assert_no_test_leak(papers, splits: dict) -> None:
@@ -975,37 +981,13 @@ def parse_buckets(pid: str, tex_dir: Path, types, eval_dir: Path | None) -> dict
     If eval_dir is given, the combined importer is installed across all type
     dirs so distilled rules are applied; otherwise the parser runs as-is
     (baseline = whatever is committed, matching the per-type script).
+    The install is restored even if the parse is interrupted (installed_rules).
 
     NOTE `eval_dir=None` means "whatever happens to be installed", NOT a clean
     baseline — see baseline_snapshot().
     """
-    from math_paper_parser import PaperParser
-
-    backups = {}
-    if eval_dir is not None:
-        backups = install_importer(eval_dir, types)
-
-    buckets = {t: [] for t in types}
-    src_dir = tex_dir / pid / "source"
-    main_tex = _find_main_tex(src_dir)
-    if main_tex:
-        try:
-            parser = PaperParser(paper_id=pid, extraction_mode='rules',
-                                 structure_types=list(types))
-            graph = parser.parse_file(str(main_tex))
-            for _oid, obj in graph.to_dict().get('objects', {}).items():
-                kind = obj.get('kind')
-                if kind in buckets:
-                    raw = obj.get('raw_latex', '') or obj.get('statement', '')
-                    if raw.strip():
-                        buckets[kind].append(raw)
-        except Exception as e:
-            print(f"  [warn] parse failed for {pid}: {e}")
-
-    if eval_dir is not None:
-        uninstall_importer(types, backups)
-
-    return buckets
+    with installed_rules(eval_dir, types):
+        return parse_buckets_installed(pid, tex_dir, types)
 
 
 def build_guard_probe(tex_dir: Path, paper_ids, per_paper_cap: int = 20000) -> str:
@@ -1337,8 +1319,7 @@ def run(args):
     if args.score_every > 0:
         sel = args.score_papers.strip()
         if sel in ("train", "test"):
-            _sp = load_splits(Path(args.metadata) if args.metadata
-                              else SILVER_METADATA)
+            _sp = load_splits(split_file(args))
             score_set = sorted(p for p, s in _sp.items() if s == sel)
             missing = [p for p in score_set
                        if _find_main_tex(tex_dir / p / "source") is None]
@@ -1397,7 +1378,7 @@ def run(args):
     print("=" * 70)
 
     # Never distil on a test paper: rules are written FROM these papers.
-    splits = load_splits(Path(args.metadata) if args.metadata else SILVER_METADATA)
+    splits = load_splits(split_file(args))
     if splits and not args.allow_test_papers:
         assert_no_test_leak(pilot_papers, splits)
     n_train = sum(1 for p in pilot_papers if splits.get(p) == "train")
@@ -1617,11 +1598,8 @@ def run(args):
         wall = time.time() - t0
         total_rules = sum(count_compiled_patterns(groups_dir / g / "distilled_rules.py")
                           for g in groups)
-        llm_calls = analyze_usage_tot['llm_calls']  # batched analyze calls
-        # plus one aggregate call per group that had suggestions:
-        agg_calls = sum(1 for g in groups
-                        if any((r.get('llm_suggested_rule') or '').strip()
-                               for r in group_cum_rows[g]))
+        llm_calls = analyze_usage_tot['llm_calls']   # batched analyze calls
+        agg_calls = agg_usage_tot['llm_calls']        # aggregate calls actually made
 
         def _mean(key, d):
             return round(sum(d[t][key] for t in types) / len(types), 4)
@@ -1749,7 +1727,7 @@ def finalize_run(args, eval_dir):
         subprocess.run(
             [sys.executable, str(repo / "scripts" / "final_eval.py"),
              "--eval-dir", str(eval_dir), "--tex-dir", str(args.tex_dir),
-             "--match-metric", mm],
+             "--match-metric", mm, "--threshold", str(args.threshold)],
             check=True)
     except Exception as e:
         print(f"[finalize] final_eval failed: {e}")
@@ -1761,7 +1739,9 @@ def finalize_run(args, eval_dir):
             subprocess.run(
                 [sys.executable, str(repo / "scripts" / "fp_judge.py"),
                  "--eval-dir", str(eval_dir), "--tex-dir", str(args.tex_dir),
-                 "--match-metric", mm, "--model", args.model],
+                 "--match-metric", mm, "--model", args.model,
+                 "--threshold", str(args.threshold), "--match-mode", args.match_mode,
+                 "--cover", str(args.cover)],
                 check=True)
         except Exception as e:
             print(f"[finalize] fp_judge failed: {e}")
@@ -1780,6 +1760,7 @@ def finalize_run(args, eval_dir):
                 [sys.executable, str(repo / "scripts" / "eval_base_vs_distilled_split.py"),
                  "--eval-dir", str(eval_dir), "--match-metric", mm,
                  "--prompt-version", args.ladder_prompt_version,
+                 "--threshold", str(args.threshold),
                  "--cache", str(cache)],
                 check=True)
             subprocess.run(
@@ -1821,13 +1802,33 @@ def finalize_run(args, eval_dir):
         print(f"[finalize] chart failed: {e}")
 
 
+def corpus_prompt_version(metadata: str | None, t2_dir: str) -> str:
+    """The prompt_version of the metadata rows whose silver JSON lies in t2_dir."""
+    md = Path(metadata) if metadata else REPO / "corpus" / "silver" / "metadata.csv"
+    want = str(Path(t2_dir)).rstrip("/") + "/"
+    versions = {r["prompt_version"] for r in csv.DictReader(open(md, encoding="utf-8"))
+                if r.get("json_path", "").startswith(want)} if md.is_file() else set()
+    if len(versions) != 1:
+        raise SystemExit(f"cannot tell the prompt version of {t2_dir} from {md} "
+                         f"(found {sorted(versions) or 'none'}); pass --ladder-prompt-version")
+    return versions.pop()
+
+
 def main():
     p = argparse.ArgumentParser(description="Silver Standard MERGED Distillation")
     p.add_argument("--structure-types", default=",".join(ALL_SILVER_TYPES),
                    help="Comma list of types (default: all 9 silver types)")
+    p.add_argument("--alg", default="merged", choices=["merged", "units"],
+                   help="merged: the teacher writes per-group extractor files, one "
+                        "training paper at a time (analyze -> aggregate -> prune). "
+                        "units: the teacher writes sentence rules for clusters of "
+                        "missed prose nodes, each tested on all training papers "
+                        "before it is accepted (scripts/distill_units.py).")
     p.add_argument("--pilot-papers", required=True,
-                   help="Comma-separated paper IDs (e.g. paper001,paper005)")
-    p.add_argument("--t2-dir", default="portal/data/tier2")
+                   help="Comma-separated paper IDs (e.g. paper001,paper005); "
+                        "with --alg units also a split name (train)")
+    p.add_argument("--t2-dir", default="corpus/silver/opus-5.5__v6",
+                   help="silver graphs, one <paper>.json per paper")
     p.add_argument("--tex-dir", required=True,
                    help="Directory with paper*/source/*.tex files")
     p.add_argument("--eval-dir", required=True, help="Output dir for artifacts")
@@ -1874,6 +1875,9 @@ def main():
     p.add_argument("--metadata", default=None,
                    help="Silver corpus index for the train/test split "
                         "(default corpus/silver/metadata.csv)")
+    p.add_argument("--splits", default=None,
+                   help="CSV with arxiv_id (or paper_id) and split columns, e.g. "
+                        "corpus/silver/split_v6.csv; overrides the split in --metadata")
     p.add_argument("--allow-test-papers", action="store_true",
                    help="Permit test-split papers in the distillation set. "
                         "Off by default — distilling on test papers trains on "
@@ -1895,11 +1899,99 @@ def main():
     p.add_argument("--skip-ladder", action="store_true",
                    help="Skip the M1-M4 metric ladder (no LLM cost; it re-parses "
                         "every paper once to build the buckets cache)")
-    p.add_argument("--ladder-prompt-version", default="v5.1",
+    u = p.add_argument_group("units algorithm (--alg units)")
+    u.add_argument("--rounds", type=int, default=5,
+                   help="maximum rounds of repair -> cluster -> propose -> refine -> cleanup")
+    u.add_argument("--min-cluster", type=int, default=3,
+                   help="smallest cluster of missed nodes the teacher is asked about")
+    u.add_argument("--accept", default="fdr", choices=["fdr", "f1", "precision"],
+                   help="f1: a rule is kept if, added to the rules already accepted, it raises "
+                        "the overall F (all silver nodes, the base parser's included) on the "
+                        "fitting papers by more than --min-gain and does not lower it on the "
+                        "validation papers; refinement maximises that gain. fdr: a rule is kept "
+                        "if, added to the rules already accepted, it finds at least --min-tp new "
+                        "silver nodes at an FDR <= --max-fdr (--fdr-scope: of what it adds, or "
+                        "of the whole extractor), on the fitting and the validation papers; "
+                        "refinement maximises the nodes it adds within that. precision: a rule "
+                        "alone must reach --min-precision; refinement maximises TP - fp_weight*FP")
+    u.add_argument("--max-fdr", type=float, default=0.2,
+                   help="--accept fdr: the false discovery rate allowed (see --fdr-scope)")
+    u.add_argument("--fdr-scope", default="rule", choices=["rule", "overall"],
+                   help="--accept fdr: rule = the FDR of the nodes the rule adds (nodes the base "
+                        "parser or another rule already finds count neither way); every rule "
+                        "within q keeps the extractor within q too. overall = the FDR of the "
+                        "whole extractor, base parser included")
+    u.add_argument("--rule-min-precision", type=float, default=0.0,
+                   help="--accept fdr: also a floor on each rule's own precision (useful with "
+                        "--fdr-scope overall, where noisy rules accepted early could spend the "
+                        "whole FDR budget)")
+    u.add_argument("--beta", type=float, default=1.0,
+                   help="F-beta for --accept f1 (beta < 1 favours precision)")
+    u.add_argument("--min-gain", type=float, default=0.0,
+                   help="overall F gain a rule must add on the fitting papers (--accept f1)")
+    u.add_argument("--min-precision", type=float, default=0.8,
+                   help="--accept precision: precision a rule needs (on the fitting papers, and "
+                        "on the validation papers where it fires --val-min-fired times)")
+    u.add_argument("--min-tp", type=int, default=3,
+                   help="true positives a rule needs on the fitting papers to be accepted")
+    u.add_argument("--max-refine", type=int, default=4,
+                   help="hill-climbing steps per rule (each: tighten and/or broaden); it stops "
+                        "earlier at a local maximum. 0 = accept or reject the first proposal")
+    u.add_argument("--refine-moves", default="tighten,broaden",
+                   help="refinement moves: tighten (on confirmed false positives), "
+                        "broaden (on the cluster's missed nodes)")
+    u.add_argument("--fp-weight", type=float, default=2.0,
+                   help="--accept precision: refinement maximises TP - fp_weight x FP on the "
+                        "fitting papers")
+    u.add_argument("--judge", default="teacher", choices=["teacher", "none"],
+                   help="before tightening, ask a judge which false positives are real "
+                        "errors (the rest are likely silver misses and are not tightened against)")
+    u.add_argument("--judge-model", default=None, help="judge model (default: --model)")
+    u.add_argument("--max-examples", type=int, default=0,
+                   help="cluster members shown when a rule is proposed (0 = all)")
+    u.add_argument("--max-negatives", default="auto",
+                   help="look-alikes shown when a rule is proposed: sentences with the "
+                        "cluster's cue that start no node of its type and lie inside none. "
+                        "auto = max(12, number of positives shown); a number = fixed cap; "
+                        "0 = all")
+    u.add_argument("--max-refine-examples", type=int, default=12,
+                   help="per refinement step: true positives to keep, missed members, and "
+                        "false positives shown to the judge and the teacher (0 = all)")
+    u.add_argument("--val-tolerance", type=float, default=0.0,
+                   help="how much a refinement (and, with --accept f1, an accepted rule) may lower "
+                        "the validation value: the overall F gain (f1) or TP - w*FP (precision)")
+    u.add_argument("--val-min-fired", type=int, default=3,
+                   help="--accept precision: validation precision is checked only if the rule "
+                        "fires this often there")
+    u.add_argument("--val-papers", default="10",
+                   help="validation papers (acceptance and stopping checks): a number = that many "
+                        "of the --pilot-papers, drawn with --seed; a split name (val) = that "
+                        "split's papers, and all --pilot-papers are fitted")
+    u.add_argument("--max-llm-calls", type=int, default=400, help="teacher-call budget")
+    u.add_argument("--parallel", type=int, default=6,
+                   help="clusters worked on at once (their teacher calls overlap); rules are "
+                        "still accepted one at a time, in cluster order, each re-checked "
+                        "against the rules accepted meanwhile")
+    u.add_argument("--prepare-workers", type=int, default=4,
+                   help="processes preparing the papers (base parse, sentences, silver nodes)")
+    u.add_argument("--snapshot-every", type=int, default=5,
+                   help="freeze the rules every N accepted rules (and at each round's end), "
+                        "for the learning curve; 0 = round ends only")
+    u.add_argument("--stop-gain", type=float, default=0.005,
+                   help="stop when a round adds less than this to validation F1")
+    u.add_argument("--seed", type=int, default=0, help="fit/validation split seed")
+    p.add_argument("--ladder-prompt-version", default=None,
                    help="Which metadata.csv extraction config the ladder scores. "
-                        "Papers outside it are skipped, so this MUST match the "
-                        "corpus in --t2-dir (v4.1 for portal/data/tier2).")
+                        "Papers outside it are skipped, so it must match the "
+                        "corpus in --t2-dir; by default it is read from the "
+                        "metadata rows whose json_path lies in --t2-dir.")
     args = p.parse_args()
+    if args.alg == "units":
+        import distill_units                  # alpha defaults to 0.2 there (rule precision >= 0.8)
+        distill_units.run(args)
+        return
+    if args.ladder_prompt_version is None:
+        args.ladder_prompt_version = corpus_prompt_version(args.metadata, args.t2_dir)
 
     # alpha is mode-dependent: m1's 0.5 was tuned against a signal that is ~98%
     # labelling noise. Under m3 that noise is gone, so the same 0.5 would almost

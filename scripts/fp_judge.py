@@ -32,8 +32,8 @@ sys.path.insert(0, str(REPO / "scripts"))
 
 import silver_distillation_sequential as seq
 from silver_distillation_sequential import jaccard_similarity
-from silver_distillation_merged import FNAME_MAP, parse_buckets, load_gold_texts
-from distillation_analysis import _parse_json_array, _acc_usage, _empty_usage
+from silver_distillation_merged import snapshot_dirs, FNAME_MAP, parse_buckets, load_gold_texts
+from distillation_analysis import _parse_json_array, _acc_usage, _empty_usage, reply_text
 
 # One-line working definitions to anchor the judge per type.
 TYPE_GUIDE = {
@@ -168,7 +168,7 @@ def _call_judge(client, model, sys_block, user_text):
             messages=[{"role": "user", "content": user_text}],
         )
     by_index = {}
-    for obj in _parse_json_array(msg.content[0].text):
+    for obj in _parse_json_array(reply_text(msg)):
         try:
             by_index[int(obj.get("index"))] = obj
         except (TypeError, ValueError):
@@ -202,7 +202,7 @@ def main():
     types = ([t.strip() for t in args.types.split(",")] if args.types
              else list(FNAME_MAP.keys()))
 
-    snaps = sorted((eval_dir / "snapshots").glob("step_*"))
+    snaps = snapshot_dirs(eval_dir)
     if not snaps:
         print(f"ERROR: no snapshots under {eval_dir/'snapshots'}"); sys.exit(1)
     final = snaps[-1]

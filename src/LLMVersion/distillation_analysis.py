@@ -38,6 +38,23 @@ from node_similarity import Profile as _Profile          # noqa: E402
 from node_similarity import normalize_latex              # noqa: E402,F401
 from node_similarity import text_sim as _text_sim        # noqa: E402
 from node_similarity import tokenize as _ns_tokenize     # noqa: E402
+import latex_facts as _latex_facts                         # noqa: E402
+
+_TEXT_CACHE: Dict[str, str] = {}
+
+
+def paper_text(path: str) -> str:
+    """The text distilled rules run on in production: the document body of
+    latex_facts' prepared source (\\input inlined, comments and disabled text
+    removed, the paper's own macros expanded), exactly as PaperParser.parse_file
+    hands it to the rules. Pruning, the speed guard and the teacher's context
+    must see this text, not the raw file, or their verdicts are about a
+    different string. Cached per path."""
+    if path not in _TEXT_CACHE:
+        source = _latex_facts.extract_facts(_latex_facts.read_tex(path))["source"]
+        begin = source.find("\\begin{document}")
+        _TEXT_CACHE[path] = source[begin + len("\\begin{document}"):] if begin != -1 else source
+    return _TEXT_CACHE[path]
 
 
 def tokenize_latex(text):
@@ -480,6 +497,42 @@ KNOWN_ENVS = {
 # LLM-powered analysis helpers
 # ---------------------------------------------------------------------------
 
+# List prices, USD per million tokens (input, output), by model-name prefix; the
+# longest matching prefix wins. Estimates for reporting only: check the provider's
+# current price list before quoting a cost.
+PRICING = {
+    'claude-opus':        (5.0, 25.0),
+    'claude-opus-4-1':    (15.0, 75.0),
+    'claude-opus-4-0':    (15.0, 75.0),
+    'claude-sonnet':      (3.0, 15.0),
+    'claude-haiku':       (1.0, 5.0),
+    'claude-haiku-5-5':   (0.10, 0.50),
+    'gpt-6.1-sol':        (2.0, 10.0),
+}
+
+
+def model_rates(model: str) -> Tuple[float, float]:
+    """(input, output) USD per million tokens for `model`; Sonnet rates if unknown."""
+    hits = [p for p in PRICING if p in (model or '')]
+    return PRICING[max(hits, key=len)] if hits else PRICING['claude-sonnet']
+
+
+def estimate_cost(usage: dict, model: str) -> float:
+    """Cache-aware USD estimate for a usage dict (see _empty_usage).
+
+    Anthropic reports non-cached input in ``input_tokens`` and bills cache reads
+    at 0.1x and cache writes at 1.25x the input rate."""
+    i_rate, o_rate = model_rates(model)
+    inp = usage.get('input_tokens', 0) or 0
+    cr = usage.get('cache_read_input_tokens', 0) or 0
+    cw = usage.get('cache_creation_input_tokens', 0) or 0
+    out = usage.get('output_tokens', 0) or 0
+    return (inp * i_rate + cr * i_rate * 0.1 + cw * i_rate * 1.25 + out * o_rate) / 1_000_000
+
+
+# The teacher model used when a caller does not name one (the drivers always do).
+DEFAULT_TEACHER = 'claude-sonnet-4-6'
+
 STRUCTURE_EXTRACT_METHODS = {
     "definition": "_extract_definitions_manual",
     "theorem": "_extract_theorem_like",
@@ -496,6 +549,7 @@ STRUCTURE_EXTRACT_METHODS = {
     "remark": "_extract_simple_envs",
     "example": "_extract_simple_envs",
     "assumption": "_extract_simple_envs",
+    "exercise": "_extract_exercises",
 }
 
 
@@ -566,7 +620,7 @@ The following {structure_type} was NOT extracted by the above code but SHOULD ha
 
 Analyze WHY the current extraction method missed this structure, and output the MINIMAL Python code change needed to catch it. This should be one of:
 - A new regex pattern to add
-- A new environment name to add to BASE_ENV_KIND_MAP
+- A new environment name to recognise
 - A new branch or condition in the extraction method
 - A new textual marker pattern
 
@@ -582,7 +636,7 @@ Respond with JSON (no markdown fences):
             max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
         )
-        response_text = message.content[0].text.strip()
+        response_text = reply_text(message).strip()
 
         # Parse JSON — handle markdown fences if present
         text = response_text
@@ -618,7 +672,7 @@ Respond with JSON (no markdown fences):
 
 
 def analyze_patterns(items: List[dict], tex_dir: str = None,
-                     structure_type: str = None, model: str = None,
+                     structure_type: str = None, model: str = DEFAULT_TEACHER,
                      search_dirs: Optional[List[str]] = None) -> List[dict]:
     """Analyze LaTeX source around missed structures to classify patterns.
 
@@ -630,7 +684,7 @@ def analyze_patterns(items: List[dict], tex_dir: str = None,
     items : list of dicts with at least 'paper_id' and 'gold_text'
     tex_dir : directory to search for .tex files (defaults to FULL_PAPERS_DIR)
     structure_type : e.g. 'proof', 'theorem' — needed for LLM analysis
-    model : Anthropic model ID (e.g. 'claude-opus-4-7')
+    model : Anthropic model ID (default DEFAULT_TEACHER)
     search_dirs : extra directories passed to ``_find_local_tex`` (e.g.
         alignment/papers/paperNNN/source/ for silver-standard papers)
 
@@ -675,8 +729,7 @@ def analyze_patterns(items: List[dict], tex_dir: str = None,
                 found = _find_local_tex(stripped, search_dirs=search_dirs)
             if found:
                 try:
-                    with open(found[0], 'r', encoding='utf-8', errors='replace') as f:
-                        tex_cache[paper_id] = f.read()
+                    tex_cache[paper_id] = paper_text(found[0])
                 except OSError:
                     tex_cache[paper_id] = ''
             else:
@@ -794,7 +847,7 @@ def _classify_pattern(gold_text: str, tex_source: str) -> Tuple[str, str, str]:
     for env in custom_envs:
         if re.search(rf'\\begin\{{{re.escape(env)}\}}', context):
             return (context, 'custom_newtheorem',
-                    f'Add "{env}" to BASE_ENV_KIND_MAP (from \\newtheorem)')
+                    f'Custom environment "{env}" (from \\newtheorem)')
 
     # 2) Check for textual pattern (e.g., **Theorem 3.2.** or \textbf{Theorem 3.2.})
     textual_re = re.compile(
@@ -827,7 +880,7 @@ def _classify_pattern(gold_text: str, tex_source: str) -> Tuple[str, str, str]:
     )
     if inline_re.search(context):
         return (context, 'inline_definition',
-                'Inline phrasing — may need broader regex in _extract_definitions_textual')
+                'Inline phrasing — may need a broader textual definition pattern')
 
     # 5) Fallback
     return (context, 'unclassified', 'Manual inspection needed')
@@ -1007,7 +1060,7 @@ def validate_rules(paper_ids: List[str], structure_type: str,
 # ---------------------------------------------------------------------------
 
 def aggregate_rules(input_csv: str, structure_type: str, eval_dir: str,
-                    model: str = 'claude-opus-4-7') -> 'str | tuple[str, dict]':
+                    model: str = DEFAULT_TEACHER) -> 'str | tuple[str, dict]':
     """Read analyze CSV, aggregate LLM-suggested rules into a distilled_rules.py file.
 
     Parameters
@@ -1107,7 +1160,7 @@ Write a complete, self-contained Python file with:
 2. A single function: `extract_distilled_{structure_type}(text: str) -> List[dict]`
 3. Each returned dict must have keys: `raw_latex` (str), `clean_text` (str), `name` (str or None), `env_name` (str), `rule_name` (str)
 4. The `env_name` should be `"distilled"` for all results
-4b. The `rule_name` should be a short identifier for which pattern produced the match (e.g. 'P1_TEXTIT_IS', 'ENV_NOTATION'). This is used by the prune step to trace FPs back to specific rules.
+4b. The `rule_name` must equal the name of the module-level compiled-pattern variable that produced the match (e.g. `P1_TEXTIT_IS = re.compile(...)` gives rule_name 'P1_TEXTIT_IS'). The prune step finds the rule by that variable name.
 5. `clean_text` should be a simplified version of `raw_latex` (strip LaTeX commands)
 6. Deduplicate overlapping matches
 7. Use compiled regex patterns at module level for efficiency
@@ -1132,7 +1185,7 @@ Write a complete, self-contained Python file with:
         'input_tokens': getattr(message.usage, 'input_tokens', 0),
         'output_tokens': getattr(message.usage, 'output_tokens', 0),
     }
-    generated_code = message.content[0].text.strip()
+    generated_code = reply_text(message).strip()
 
     # Strip markdown fences if present
     if generated_code.startswith("```"):
@@ -1237,7 +1290,87 @@ def _acc_usage(dst: dict, msg_usage) -> None:
     dst['cache_creation_input_tokens'] += getattr(msg_usage, 'cache_creation_input_tokens', 0) or 0
 
 
+_CLIENT = None
+
+
+def reply_text(message) -> str:
+    """The text of a reply. Newer models may send a thinking block first, so the
+    text is every text block joined, never content[0]."""
+    return "".join(getattr(b, "text", "") for b in message.content
+                   if getattr(b, "type", "text") == "text")
+
+
+KEY_FILE = os.path.expanduser("~/.anthropic_env")
+
+
+def ensure_api_key() -> None:
+    """Make ANTHROPIC_API_KEY available, or stop before any work is done.
+
+    A run started from a shell that never sourced the key file used to prepare
+    every paper and then fail on its first teacher call. If the variable is not
+    set, its `export ANTHROPIC_API_KEY=...` line is read from KEY_FILE (the
+    value is never printed)."""
+    import anthropic
+    if os.environ.get("ANTHROPIC_API_KEY") or getattr(anthropic, "STUB", False):
+        return
+    if os.path.isfile(KEY_FILE):
+        for line in open(KEY_FILE, encoding="utf-8"):
+            m = re.match(r"\s*(?:export\s+)?ANTHROPIC_API_KEY\s*=\s*['\"]?([^'\"\s]+)", line)
+            if m:
+                os.environ["ANTHROPIC_API_KEY"] = m.group(1)
+                return
+    raise SystemExit(f"ANTHROPIC_API_KEY is not set and {KEY_FILE} does not define it")
+
+
+def _client():
+    """One Anthropic client per process."""
+    global _CLIENT
+    if _CLIENT is None:
+        import anthropic
+        ensure_api_key()
+        # long runs make thousands of calls, several at a time: ride out transient
+        # overload/rate-limit errors (the SDK backs off) before a call counts as failed
+        _CLIENT = anthropic.Anthropic(max_retries=8)
+    return _CLIENT
+
+
+def call_llm(model: str, system: str, user: str, max_tokens: int,
+             usage: dict | None = None, stream: bool = False):
+    """One teacher call: `system` is sent as a cached block (the part that repeats
+    across calls), `user` as the message. Returns (text, stop_reason).
+
+    If the cached request is rejected, the same request is retried once without
+    cache_control, and the first error is printed rather than swallowed. Token
+    use (including cache reads and writes) and the call itself are added to
+    `usage` (see _empty_usage)."""
+    client = _client()
+    kw = dict(model=model, max_tokens=max_tokens,
+              messages=[{"role": "user", "content": user}])
+
+    def send(**extra):
+        if stream:                    # large outputs: avoids the SDK's HTTP timeout
+            with client.messages.stream(**kw, **extra) as st:
+                return st.get_final_message()
+        return client.messages.create(**kw, **extra)
+    try:
+        msg = send(system=[{"type": "text", "text": system,
+                            "cache_control": {"type": "ephemeral"}}])
+    except Exception as e:
+        print(f"  [llm] cached request failed ({type(e).__name__}: {e}); "
+              f"retrying without cache")
+        msg = send(system=system)
+    if usage is not None:
+        usage['llm_calls'] += 1
+        _acc_usage(usage, msg.usage)
+    return reply_text(msg), getattr(msg, "stop_reason", None)
+
+
 _JSON_VALID_ESCAPE = set('"\\/bfnrtu')
+# \b \f \r \t before a letter, and \n before the rest of a LaTeX command, are LaTeX
+# written with one backslash (\textbf, \frac, \begin, \neq), not JSON escapes:
+# json.loads would accept them and silently turn them into control characters.
+_LATEX_NOT_ESCAPE = re.compile(r"[bfrt][A-Za-z]|n(?:ewcommand|eq\b|abla|oindent|onumber|ewline"
+                               r"|ot\b|u\b|e\b|ormalsize|exists|ewpage|i\b)")
 
 
 def _repair_json_escapes(text: str) -> str:
@@ -1260,7 +1393,8 @@ def _repair_json_escapes(text: str) -> str:
         if c == '\\':
             nxt = text[i + 1] if i + 1 < n else ''
             if nxt in _JSON_VALID_ESCAPE and not (
-                    nxt == 'u' and not re.match(r'[0-9a-fA-F]{4}', text[i + 2:i + 6])):
+                    nxt == 'u' and not re.match(r'[0-9a-fA-F]{4}', text[i + 2:i + 6])) \
+                    and not _LATEX_NOT_ESCAPE.match(text, i + 1):
                 out.append(c)
                 out.append(nxt)
                 i += 2
@@ -1331,14 +1465,15 @@ def _parse_json_array(text: str) -> list:
     def _coerce(d):
         return [d] if isinstance(d, dict) else (d if isinstance(d, list) else [])
 
-    for cand in (t, _repair_json_escapes(t)):
+    # repaired first: unrepaired text with \textbf in it also parses, wrongly
+    for cand in (_repair_json_escapes(t), t):
         try:
             return _coerce(json.loads(cand))
         except json.JSONDecodeError:
             continue
     m = re.search(r'\[.*\]', t, re.DOTALL)
     if m:
-        for cand in (m.group(0), _repair_json_escapes(m.group(0))):
+        for cand in (_repair_json_escapes(m.group(0)), m.group(0)):
             try:
                 return _coerce(json.loads(cand))
             except json.JSONDecodeError:
@@ -1392,7 +1527,7 @@ AGGREGATE_FULL_EVIDENCE_PAPERS = 2
 def analyze_patterns_batched(items: List[dict], tex_dir: str = None,
                              group_key: str = None,
                              types_in_group: Optional[List[str]] = None,
-                             model: str = None,
+                             model: str = DEFAULT_TEACHER,
                              search_dirs: Optional[List[str]] = None,
                              batch_size: int = 8) -> Tuple[List[dict], dict]:
     """Batched, cache-aware analyze for ONE base-method group.
@@ -1407,7 +1542,6 @@ def analyze_patterns_batched(items: List[dict], tex_dir: str = None,
     Returns (rows, usage); rows match analyze_patterns' CSV schema plus
     `structure_type` and `structure_group`.
     """
-    import anthropic
     if tex_dir is None:
         tex_dir = FULL_PAPERS_DIR
     types_in_group = types_in_group or [group_key]
@@ -1432,8 +1566,7 @@ def analyze_patterns_batched(items: List[dict], tex_dir: str = None,
             tex_cache[paper_id] = ''
             if found:
                 try:
-                    with open(found[0], 'r', encoding='utf-8', errors='replace') as f:
-                        tex_cache[paper_id] = f.read()
+                    tex_cache[paper_id] = paper_text(found[0])
                 except OSError:
                     pass
         tex_source = tex_cache[paper_id]
@@ -1451,7 +1584,6 @@ def analyze_patterns_batched(items: List[dict], tex_dir: str = None,
     if not pending:
         return rows, usage
 
-    client = anthropic.Anthropic()
     sys_text = (
         "You are a Python regex engineer for a LaTeX math structure parser.\n\n"
         f"## Base extraction method for the \"{group_key}\" family\n\n"
@@ -1493,30 +1625,16 @@ def analyze_patterns_batched(items: List[dict], tex_dir: str = None,
             "Do NOT rewrite the whole method; output only the minimal addition per item."
         )
         user_text = "".join(parts)
-        message = None
         try:
-            message = client.messages.create(
-                model=model, max_tokens=ANALYZE_MAX_TOKENS,
-                system=[{"type": "text", "text": sys_text,
-                         "cache_control": {"type": "ephemeral"}}],
-                messages=[{"role": "user", "content": user_text}],
-            )
-        except Exception:
-            try:
-                message = client.messages.create(
-                    model=model, max_tokens=ANALYZE_MAX_TOKENS, system=sys_text,
-                    messages=[{"role": "user", "content": user_text}],
-                )
-            except Exception as e2:
-                print(f"  [{group_key}] batched analyze call failed: {e2}")
-                for k, (item, context, pattern_type) in enumerate(batch):
-                    rows.append(_analyze_row(item, context, pattern_type,
-                                             group_key, '', f'LLM call failed: {e2}'))
-                continue
-        usage['llm_calls'] += 1
-        _acc_usage(usage, message.usage)
+            reply, _stop = call_llm(model, sys_text, user_text, ANALYZE_MAX_TOKENS, usage)
+        except Exception as e2:
+            print(f"  [{group_key}] batched analyze call failed: {e2}")
+            for k, (item, context, pattern_type) in enumerate(batch):
+                rows.append(_analyze_row(item, context, pattern_type,
+                                         group_key, '', f'LLM call failed: {e2}'))
+            continue
         by_index = {}
-        for obj in _parse_json_array(message.content[0].text):
+        for obj in _parse_json_array(reply):
             try:
                 by_index[int(obj.get('index'))] = obj
             except (TypeError, ValueError):
@@ -1527,7 +1645,7 @@ def analyze_patterns_batched(items: List[dict], tex_dir: str = None,
         # success, so a group could learn nothing while looking healthy.
         if len(by_index) < len(batch):
             missing = [k for k in range(len(batch)) if k not in by_index]
-            stop = getattr(message, 'stop_reason', None)
+            stop = _stop
             print(f"  [WARN] {group_key}: recovered {len(by_index)}/{len(batch)} "
                   f"suggestion(s) from this analyze call "
                   f"(stop_reason={stop}); LOST items {missing} for "
@@ -1548,7 +1666,7 @@ def analyze_patterns_batched(items: List[dict], tex_dir: str = None,
 
 def aggregate_rules_merged(input_csv: str, group_key: str,
                            types_in_group: List[str], eval_dir: str,
-                           model: str = 'claude-opus-4-7',
+                           model: str = DEFAULT_TEACHER,
                            new_paper_ids: Optional[List[str]] = None
                            ) -> Tuple[str, dict]:
     """Aggregate analyze rows for ONE base-method group into
@@ -1587,7 +1705,6 @@ def aggregate_rules_merged(input_csv: str, group_key: str,
     into one general pattern. It was already doing that consolidation and then
     being handed the same rows again next paper.
     """
-    import anthropic
     rows = _read_items_csv(input_csv)
     rules = []
     for r in rows:
@@ -1751,7 +1868,8 @@ require hardcoding instance-specific content.
 3. GENERALIZATION (critical): patterns MUST work on ANY math paper, not just these examples. Do NOT hardcode author names, paper-specific terminology, theorem/section/equation labels, specific variable names, or custom macro names (e.g. no `Marchenko`, `Sinkhorn`, `\\defeq`, `(P_k)`, `\\ulesalgorithm`). Anchor on STRUCTURE (environment names, `\\begin`/`\\end`, `\\textbf`/`\\emph`, sectioning, leading keywords), never on content tokens. Reject any suggested rule above that only works by matching literal instance text.
 
 ## Output requirements
-1. Only `import re` and `from typing import List, Dict` at the top
+1. At the top only `import re`, `from typing import List, Dict`, and the guarded
+   latex_clean import of requirement 6
 2. A single function: `{func_name}(text: str) -> List[dict]`
 3. Each returned dict has keys: `raw_latex` (str), `clean_text` (str), `name` (str or None), `env_name` (str), `rule_name` (str), {st_key_req}
 4. `env_name` is `"distilled"`; `rule_name` is the module-level compiled-pattern variable name that produced the match — it MUST equal that variable's name (the prune step keys off it)
@@ -1769,53 +1887,22 @@ require hardcoding instance-specific content.
           f"{len(rules)} suggestion(s)"
           + (f" (current file {len(current_src):,} chars)" if incremental else "")
           + "...")
-    client = anthropic.Anthropic()
     sys_block = ("## EXISTING BASE EXTRACTION METHOD (already runs — do NOT "
                  f"duplicate)\n```python\n{base_method_source}\n```")
-    # 16384 was OUR constant, not the model's ceiling: sonnet-4-6 supports up
-    # to 128K output tokens. Asking for 16K silently truncated definition's
-    # rule file for 8 consecutive papers, leaving it without a `return` and
-    # therefore returning None -- which the parser reads as "found nothing".
-    # Large max_tokens needs streaming, or the request hits the SDK's HTTP
-    # timeout before the model finishes.
-    try:
-        with client.messages.stream(
-            model=model, max_tokens=AGGREGATE_MAX_TOKENS,
-            system=[{"type": "text", "text": sys_block,
-                     "cache_control": {"type": "ephemeral"}}],
-            messages=[{"role": "user", "content": prompt}],
-        ) as _st:
-            message = _st.get_final_message()
-    except Exception:
-        with client.messages.stream(
-            model=model, max_tokens=AGGREGATE_MAX_TOKENS,
-            messages=[{"role": "user", "content": sys_block + "\n\n" + prompt}],
-        ) as _st:
-            message = _st.get_final_message()
-
+    # Large max_tokens needs streaming, or the request hits the SDK's HTTP timeout.
+    usage = _empty_usage()
+    generated_code, stop = call_llm(model, sys_block, prompt, AGGREGATE_MAX_TOKENS,
+                                    usage, stream=True)
     # Truncation is a FAILURE, not a result. A cut-off file can still compile
     # (a trailing comment is valid Python) and still expose a callable, so
     # every downstream guard passed it. Keep the previous rules instead.
-    if getattr(message, "stop_reason", None) == "max_tokens":
+    if stop == "max_tokens":
         print(f"  [{group_key}] TRUNCATED at max_tokens="
               f"{AGGREGATE_MAX_TOKENS}: generated file is incomplete; "
               f"keeping previous rules. Raise AGGREGATE_MAX_TOKENS or shrink "
               f"the prompt.")
-        _u = {
-            'input_tokens': getattr(message.usage, 'input_tokens', 0),
-            'output_tokens': getattr(message.usage, 'output_tokens', 0),
-            'cache_read_input_tokens': getattr(message.usage, 'cache_read_input_tokens', 0) or 0,
-            'cache_creation_input_tokens': getattr(message.usage, 'cache_creation_input_tokens', 0) or 0,
-            'llm_calls': 1,
-        }
-        return (out_path if os.path.isfile(out_path) else ''), _u
-    usage = {
-        'input_tokens': getattr(message.usage, 'input_tokens', 0),
-        'output_tokens': getattr(message.usage, 'output_tokens', 0),
-        'cache_read_input_tokens': getattr(message.usage, 'cache_read_input_tokens', 0) or 0,
-        'cache_creation_input_tokens': getattr(message.usage, 'cache_creation_input_tokens', 0) or 0,
-    }
-    generated_code = message.content[0].text.strip()
+        return (out_path if os.path.isfile(out_path) else ''), usage
+    generated_code = generated_code.strip()
     if generated_code.startswith("```"):
         lines = generated_code.split("\n")
         if lines[0].startswith("```"):
@@ -1913,7 +2000,7 @@ def _comment_out_rule_block(lines: List[str], pattern_name: str,
             continue
 
         # ---- Usage block in extract function ----
-        if (pattern_name in stripped
+        if (re.search(rf'(?<![A-Za-z0-9_]){re.escape(pattern_name)}(?![A-Za-z0-9_])', stripped)
                 and not stripped.startswith('#')
                 and any(kw in stripped for kw in
                         ('finditer', 'findall', 'search', 'match('))):
@@ -2196,8 +2283,7 @@ def prune_rules(paper_ids: List[str], structure_type: str,
 
         tex_path, versioned_id = found
         print(f"  Extracting from {paper_id}...")
-        with open(tex_path, 'r', encoding='utf-8', errors='replace') as f:
-            text = f.read()
+        text = paper_text(tex_path)
 
         # Defensive: LLM-generated extract_fn can raise on specific inputs
         # (e.g. a buggy sort key). The parser path already swallows this; mirror
@@ -2321,8 +2407,7 @@ def prune_rules(paper_ids: List[str], structure_type: str,
                 found = _find_local_tex(re.sub(r'v\d+$', '', paper_id),
                                         search_dirs=tex_search_dirs)
             if found:
-                with open(found[0], 'r', encoding='utf-8', errors='replace') as f:
-                    paper_texts[paper_id] = f.read()
+                paper_texts[paper_id] = paper_text(found[0])
 
         def _attribute(pid: str, raw: str) -> Optional[str]:
             text = paper_texts.get(pid, '')
@@ -2417,8 +2502,7 @@ def prune_rules(paper_ids: List[str], structure_type: str,
                      or _find_local_tex(re.sub(r'v\d+$', '', paper_id),
                                         search_dirs=tex_search_dirs))
             if found:
-                with open(found[0], 'r', encoding='utf-8', errors='replace') as f:
-                    guard_texts[paper_id] = f.read()
+                guard_texts[paper_id] = paper_text(found[0])
         slow = prune_slow_rules(rules_path, guard_texts, max_rule_seconds)
         pruned_count += len(slow)
 
@@ -2434,7 +2518,8 @@ def _write_csv(rows: List[dict], path: str) -> None:
         print(f"No results to write to {path}")
         return
     with open(path, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=rows[0].keys())
+        fields = list(dict.fromkeys(k for r in rows for k in r))
+        writer = csv.DictWriter(f, fieldnames=fields, restval='')
         writer.writeheader()
         writer.writerows(rows)
     print(f"Wrote {len(rows)} rows to {path}")
@@ -2482,8 +2567,8 @@ def main():
                      help='CSV from dark-knowledge or discovery (needs paper_id + gold_text columns)')
     ana.add_argument('--structure-type', required=True,
                      help='Structure type (e.g. proof, theorem) — determines which extraction method to show LLM')
-    ana.add_argument('--model', default='claude-opus-4-7',
-                     help='Anthropic model for LLM analysis (default: claude-opus-4-7)')
+    ana.add_argument('--model', default=DEFAULT_TEACHER,
+                     help='Anthropic model for LLM analysis')
     ana.add_argument('--tex-dir', default=None, help=f'TeX directory (default: {FULL_PAPERS_DIR})')
     ana.add_argument('--output', default=None, help='Output CSV path')
 
@@ -2496,8 +2581,8 @@ def main():
                      help='Structure type (e.g. definition, proof)')
     agg.add_argument('--eval-dir', required=True,
                      help='Directory where distilled_rules.py will be written')
-    agg.add_argument('--model', default='claude-opus-4-7',
-                     help='Anthropic model for aggregation (default: claude-opus-4-7)')
+    agg.add_argument('--model', default=DEFAULT_TEACHER,
+                     help='Anthropic model for aggregation')
 
     # -- validate --
     val = sub.add_parser('validate',

@@ -413,24 +413,30 @@ def comment_out_rule(path: str, name: str, seconds: float) -> bool:
     """
     try:
         with open(path, "r", encoding="utf-8") as fh:
-            lines = fh.readlines()
+            text = fh.read()
     except Exception:
         return False
+    lines = text.splitlines(keepends=True)
 
-    start = None
-    for i, ln in enumerate(lines):
-        if re.match(rf"\s*{re.escape(name)}\s*=\s*re\.compile", ln):
-            start = i
-            break
-    if start is None or lines[start].lstrip().startswith("#"):
+    # Locate the assignment with Python's own parser: counting parentheses in
+    # the source miscounts the ones inside regex strings (\(, [^)]), which can
+    # comment out the rest of the file or cut a pattern in half.
+    import ast
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
         return False
-
-    depth, end = 0, start
-    for i in range(start, len(lines)):
-        depth += lines[i].count("(") - lines[i].count(")")
-        end = i
-        if depth <= 0:
+    span = None
+    for node in tree.body:
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name) and node.targets[0].id == name
+                and isinstance(node.value, ast.Call)
+                and getattr(node.value.func, "attr", None) == "compile"):
+            span = (node.lineno - 1, node.end_lineno - 1)
             break
+    if span is None:
+        return False
+    start, end = span
 
     # Rebind to a pattern that can never match, rather than deleting the name.
     # Commenting the assignment out leaves every USE of it — `for m in
@@ -448,8 +454,14 @@ def comment_out_rule(path: str, name: str, seconds: float) -> bool:
                             + [f"{indent}# " + l.lstrip("\n") if l.strip() else l
                                for l in lines[start:end + 1]])
     try:
-        with open(path, "w", encoding="utf-8") as fh:
+        # write a sibling file and rename it over the original: a reader never
+        # sees a half-written file, and a symlinked rule file is replaced at
+        # its target, not turned into a regular file
+        real = os.path.realpath(path)
+        tmp = f"{real}.tmp{os.getpid()}"
+        with open(tmp, "w", encoding="utf-8") as fh:
             fh.writelines(lines)
+        os.replace(tmp, real)
         print(f"[SLOW-RULE] commented out {name} in {path}",
               file=sys.stderr, flush=True)
         return True
@@ -682,6 +694,11 @@ _ORIG_COMPILE = re.compile
 _ORIG_FUNCS = {}
 
 
+# position of `flags` among each re.<function>'s arguments after the pattern
+_FLAGS_AT = {"search": 1, "match": 1, "fullmatch": 1, "findall": 1, "finditer": 1,
+             "sub": 3, "subn": 3, "split": 2}
+
+
 def install_global(threshold=None, log_path=None, budget=None):
     """Guard EVERY regex in this process — compiled, inline, or module-level.
 
@@ -716,7 +733,19 @@ def install_global(threshold=None, log_path=None, budget=None):
         _ORIG_FUNCS[fname] = orig
 
         def _f(pattern, *args, **kwargs):
+            # re.<fname>(pattern, ..., flags): flags may come by position. The
+            # pattern METHODS take a start position there instead (pos for
+            # search, count for sub, maxsplit for split), so a positional flag
+            # must be taken out here, never forwarded: forwarded, re.I silently
+            # became "start at character 2" and the flag was lost.
+            k = _FLAGS_AT[fname]
+            if len(args) > k:
+                if "flags" in kwargs:
+                    raise TypeError(f"{fname}() got multiple values for argument 'flags'")
+                kwargs["flags"], args = args[k], args[:k]
             if isinstance(pattern, GuardedPattern):
+                if kwargs.pop("flags", 0):
+                    raise ValueError("cannot process flags argument with a compiled pattern")
                 return getattr(pattern, fname)(*args, **kwargs)
             flags = kwargs.pop("flags", 0)
             try:
@@ -729,8 +758,7 @@ def install_global(threshold=None, log_path=None, budget=None):
         _f.__name__ = fname
         return _f
 
-    for _fn in ("search", "match", "fullmatch", "findall", "finditer",
-                "sub", "subn", "split"):
+    for _fn in _FLAGS_AT:
         setattr(re, _fn, _make_func(_fn))
 
 

@@ -22,9 +22,9 @@ OPT_META_PROVIDER="anthropic"
 OPT_META_MODEL="claude-sonnet-4-6"
 
 # API Keys
-HF_TOKEN="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"
-ANTHROPIC_API_KEY="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"
-OPENAI_API_KEY="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"
+HF_TOKEN="${HF_TOKEN:?set HF_TOKEN in the environment}"
+ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in the environment}"
+OPENAI_API_KEY="${OPENAI_API_KEY:?set OPENAI_API_KEY in the environment}"
 
 # Parse named arguments
 while [[ $# -gt 0 ]]; do

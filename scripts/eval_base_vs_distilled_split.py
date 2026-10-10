@@ -38,7 +38,7 @@ sys.path.insert(0, str(REPO / "src"))
 
 import silver_distillation_sequential as seq
 from silver_distillation_sequential import FNAME_MAP, convert_t2_to_gold_csv
-from silver_distillation_merged import parse_buckets, metrics, load_gold_texts
+from silver_distillation_merged import snapshot_dirs, parse_buckets, metrics, load_gold_texts
 
 TYPES = list(FNAME_MAP.keys())
 
@@ -99,7 +99,7 @@ def main():
     seq.set_match_metric(args.match_metric)
 
     eval_dir = (REPO / args.eval_dir).resolve()
-    snaps = sorted((eval_dir / "snapshots").glob("step_*"))
+    snaps = snapshot_dirs(eval_dir)
     base_snap = (eval_dir / "snapshots" / args.baseline_snapshot) if args.baseline_snapshot \
         else next(s for s in snaps if s.name.startswith("step_00"))
     final_snap = (eval_dir / "snapshots" / args.final_snapshot) if args.final_snapshot \

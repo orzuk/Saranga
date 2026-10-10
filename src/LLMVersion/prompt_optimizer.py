@@ -656,7 +656,8 @@ Respond with a JSON object (and nothing else):
             max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
-        return message.content[0].text
+        return "".join(getattr(b, "text", "") for b in message.content
+                           if getattr(b, "type", "text") == "text")  # skip thinking blocks
 
     def _call_openai(self, prompt: str) -> str:
         """Call OpenAI API for meta-optimization."""
