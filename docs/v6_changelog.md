@@ -334,3 +334,20 @@ papers, disabled text removed in 3. The finishing step re-run on all 200 outputs
 three deterministic repairs: 1309.2370v6 (DP152, EP279 back to the agent's text), 1611.03739v3 (\iflong
 tokens resolved in 8 statements), 1901.08164v4 (EP6, EP7 dropped and PP3 trimmed: they were \if False text).
 1710.09079v3 gains 21 edges and its labels from the restatable environments.
+
+## Environment typing, non-content environments, declared restatements (2026-10-10)
+
+latex_facts types an environment by its printed title, not only by an exact standard name: a known
+synonym (Statement -> proposition, Comment -> remark, Reduction Rule -> algorithm, Convention ->
+definition, ...; the types the silver corpus gave them), else the first type word in the title
+("Hahn-Banach Theorem", "Lemma B1", "Definition/Remark"); an empty title falls back to the environment's
+own standard name. A block still untyped is typed from evidence only (`type_basis`): a proof right after
+it -> claim, a defining phrase -> definition. Acknowledgement, funding, dedication, keywords and similar
+environments are never facts. A result whose optional argument declares it a restatement of a later one
+([= Theorem~\ref{x}], [see ...]) gets `duplicate_of`; the rule parser skips it. Similar text is not used:
+on the silver corpus most near-identical environments are separate nodes.
+On the 200 silver papers: no environment is left untyped (69 before), 53 more agree with the silver type,
+acknowledgements are dropped, one declared restatement is marked (correctly). The finishing step re-run
+on all 200 outputs passes with no errors and changes nothing. The base rule parser now recovers 98.8% of
+the silver's environment nodes with the silver's type (0.1% missed) at 98% precision; of the prose nodes
+it finds about 15%, which is what distillation is for.

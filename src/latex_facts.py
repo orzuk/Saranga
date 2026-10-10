@@ -344,12 +344,59 @@ _EQUATION_ENVS = {"equation", "multline", "align", "gather", "eqnarray", "flalig
                   "numcases", "subnumcases"}
 
 
+# Titles that name a node type without being one of the standard names, as
+# papers use them (the type each received in the silver corpus).
+_TITLE_SYNONYMS = {
+    "statement": "proposition", "result": "theorem", "comment": "remark",
+    "interpretation": "remark", "reformulation": "remark", "reduction rule": "algorithm",
+    "variant": "definition", "setup": "assumption", "convention": "definition",
+    "construction": "definition", "property": "claim", "procedure": "algorithm",
+}
+# A type word inside a longer title: "Hahn-Banach Theorem", "Theorem A", "Lemma B1",
+# "Definition/Remark" (the first type word decides).
+_TITLE_WORDS = {
+    "theorem": "theorem", "theorems": "theorem", "lemma": "lemma", "lemmas": "lemma",
+    "lemmata": "lemma", "proposition": "proposition", "propositions": "proposition",
+    "corollary": "corollary", "corollaries": "corollary", "claim": "claim",
+    "fact": "claim", "observation": "claim", "conjecture": "conjecture",
+    "definition": "definition", "definitions": "definition", "notation": "definition",
+    "example": "example", "examples": "example", "exercise": "exercise",
+    "question": "open_problem", "remark": "remark", "remarks": "remark", "note": "remark",
+    "assumption": "assumption", "assumptions": "assumption", "hypothesis": "assumption",
+    "algorithm": "algorithm", "problem": "problem",
+}
+
+
+def _title_words(display: str) -> str:
+    """A printed title as plain lower-case words: "\\it \\bf{Remark}\\/" -> "remark"."""
+    d = re.sub(r"\\[a-zA-Z]+\s*", " ", display)
+    return re.sub(r"[^a-z]+", " ", d.lower()).strip()
+
+
 def _name_to_type(display: str | None) -> str | None:
+    """A node type from an environment's printed title: an exact standard name,
+    a known synonym, or else the first type word in the title."""
     if not display:
         return None
     d = re.sub(r"\\[a-zA-Z]+\s*", "", display)      # "\bf Theorem" -> "Theorem"
     d = re.sub(r"[{}]", "", d).strip().lower()
-    return _NAME_TO_TYPE.get(d)
+    if d in _NAME_TO_TYPE:
+        return _NAME_TO_TYPE[d]
+    words = _title_words(display)
+    if words in _NAME_TO_TYPE:
+        return _NAME_TO_TYPE[words]
+    if words in _TITLE_SYNONYMS:
+        return _TITLE_SYNONYMS[words]
+    for w in words.split():
+        if w in _TITLE_WORDS:
+            return _TITLE_WORDS[w]
+    return None
+
+
+# Environments that are not mathematical content: never a fact.
+_IGNORED_TITLE = re.compile(r"acknowledg|thanks|funding|dedicat|data availability|"
+                            r"author contributions?|competing interests?|conflicts? of interest|"
+                            r"keywords")
 
 
 def _is_proof_env(env: str, decl: dict) -> bool:
@@ -852,6 +899,9 @@ def extract_facts(tex: str) -> dict:
             is_proof = _is_proof_env(kind_env, decl)
             captured = (kind_env in decl or is_proof or kind_env in _ALGORITHM_ENVS
                         or kind_env.rstrip("*") in _EQUATION_ENVS)
+            if captured and kind_env in decl and _IGNORED_TITLE.search(
+                    _title_words(decl[kind_env]["display"] or "") + " " + kind_env.lower()):
+                captured = False                      # acknowledgements and the like
             if not captured:
                 continue
             if base not in _EQUATION_ENVS and base not in ("algorithmic", "restatable"):
@@ -875,7 +925,9 @@ def extract_facts(tex: str) -> dict:
                 kind, ntype, display = "equation", "equation", None
             else:
                 kind, display = "theorem_env", d["display"]
-                ntype = _name_to_type(display)
+                ntype = _name_to_type(display) or (
+                    None if (display or "").strip() else _name_to_type(
+                        _UNDECLARED_STANDARD.get(kind_env.rstrip("*").lower(), "")))
             fact = {"id": f"F{len(facts) + 1}", "kind": kind, "env": env,
                     "display": display, "type": ntype, "optarg": opt, "number": number,
                     "labels": [], "refs": [], "cites": [],
@@ -980,6 +1032,8 @@ def extract_facts(tex: str) -> dict:
 
     _manual_facts(source, body_start, facts, sections, refs, cites)
     _associate_proofs(facts, labels, source)
+    _type_by_evidence(facts, source)
+    _mark_duplicates(facts, labels)
     for f in facts:                       # author structure inside each proof
         if f["kind"] == "proof":
             nested = [g["outer_start"] - f["start"] for g in facts
@@ -1245,6 +1299,56 @@ def _associate_proofs(facts: list[dict], labels: dict, source: str) -> None:
             # only whitespace between them, or the opening of a wrapper (\new{\begin{proof})
             if gap is not None and not re.sub(r"\\[A-Za-z]+\s*\{|\{|\s", "", gap):
                 f["proves"], f["proves_basis"] = by_end[prev_end]["id"], "adjacent"
+
+
+# A declared block of unknown type is still a node; its type comes from what it
+# does, and only from evidence that leaves little doubt.
+_DEFINES = re.compile(r"\b(?:is|are)\s+(?:called|said\s+to\s+be|defined\s+(?:as|by|to\s+be))\b"
+                      r"|\bwe\s+(?:say|call|define|write)\b|\bis\s+termed\b")
+
+
+def _type_by_evidence(facts: list[dict], source: str) -> None:
+    """Type an untyped theorem-style block: a proof right after it makes it a
+    result (claim); a definitional phrase makes it a definition. `type_basis`
+    records which; a block with neither stays untyped."""
+    proofs = [f for f in facts if f["kind"] == "proof"]
+    for f in facts:
+        if f["kind"] != "theorem_env" or f["type"] is not None:
+            continue
+        nxt = min((p for p in proofs if p["outer_start"] >= f["outer_end"]),
+                  key=lambda p: p["outer_start"], default=None)
+        if nxt is not None and not source[f["outer_end"]:nxt["outer_start"]].strip():
+            f["type"], f["type_basis"] = "claim", "followed_by_proof"
+            if nxt.get("proves") is None:
+                nxt["proves"], nxt["proves_basis"] = f["id"], "adjacent"
+        elif _DEFINES.search(f["statement"]):
+            f["type"], f["type_basis"] = "definition", "defining_phrase"
+
+
+_RESULT_TYPES = _THEOREM_LIKE | {"definition", "remark", "example", "assumption", "problem",
+                                 "open_problem", "exercise", "algorithm"}
+
+
+def _mark_duplicates(facts: list[dict], labels: dict) -> None:
+    """A result the paper declares to be a restatement of a later one is one node:
+    the later copy (in the body, with its proof) is kept and the earlier one gets
+    `duplicate_of`. Only the declared form is used: an optional argument or an
+    that points at a later result: \\begin{maintheorem}[= Theorem~\\ref{x}],
+    [see Theorem~\\ref{x}]. Similar text is not evidence: on the silver
+    corpus most near-identical environments are separate statements (the same
+    setup sentence in two sections, a theorem and its variant)."""
+    blocks = [f for f in facts if f["kind"] == "theorem_env" and f["type"] in _RESULT_TYPES]
+    by_id = {f["id"]: f for f in blocks}
+    for f in blocks:
+        head = f.get("optarg") or ""             # [= Theorem~\ref{x}], [see Theorem~\ref{x}]
+        if not re.match(r"\s*(?:=|see\b|cf\b|restat|repeat)", head, re.I):
+            continue
+        for key in re.findall(r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}", head):
+            t = labels.get(key.strip())
+            g = by_id.get(t["id"]) if t else None
+            if g is not None and g is not f and g["outer_start"] > f["outer_start"]:
+                f["duplicate_of"], f["duplicate_basis"] = g["id"], "declared"
+                break
 
 
 def summary(fx: dict) -> str:

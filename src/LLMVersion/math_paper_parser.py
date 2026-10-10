@@ -664,7 +664,8 @@ class PaperParser:
         return [(f["env"], f["optarg"], src[f["start"]:f["end"]],
                  f["outer_start"] - off, f["outer_end"] - off, f)
                 for f in self._facts["facts"]
-                if f["kind"] != "equation" and f["type"] in kinds and f["outer_start"] >= off]
+                if f["kind"] != "equation" and f["type"] in kinds and f["outer_start"] >= off
+                and not f.get("duplicate_of")]       # a restated copy: the later one is kept
 
     def _named_envs(self, names) -> List[Tuple[str, Optional[str], str, int, int]]:
         """
