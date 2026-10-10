@@ -95,8 +95,7 @@ TYPE_COMPAT = {
     ("conjecture", "corollary"): 0.65,
     ("conjecture", "claim"): 0.75,
     ("conjecture", "problem"): 0.8,
-    ("problem", "theorem"): 0.5,
-    ("problem", "conjecture"): 0.8,
+    ("problem", "theorem"): 0.3,
     ("problem", "definition"): 0.7,
     ("definition", "theorem"): 0.1,
     ("definition", "lemma"): 0.1,
@@ -136,30 +135,61 @@ TYPE_COMPAT = {
     ("fact", "claim"): 0.9,
     ("fact", "remark"): 0.5,
     ("observation", "remark"): 0.85,
-    ("observation", "claim"): 0.85,
+    ("observation", "claim"): 0.4,
     ("observation", "proposition"): 0.7,
     ("principle", "theorem"): 0.85,
     ("principle", "proposition"): 0.85,
     ("principle", "claim"): 0.8,
     ("result", "theorem"): 0.85,
     ("result", "proposition"): 0.85,
-}
-
-# Pairs NOT in the historical table that the corpus says are real confusions.
-# Kept OPT-IN so migrating changes no numbers: pass
-# `table={**TYPE_COMPAT, **TYPE_COMPAT_PROPOSED}` to opt in. Measured on the
-# tier1 eval dumps, `problem`->`equation` and step<->parent were the common
-# unlisted confusions.
-TYPE_COMPAT_PROPOSED = {
+    # Confusions the corpus showed to be real, first kept opt-in (measured on the
+    # tier1 eval dumps: problem->equation and step<->parent were the common
+    # unlisted ones); part of the table since 2026-10.
     ("proof", "proof_step"): 0.7,
     ("algorithm", "algorithm_step"): 0.7,
     ("problem", "equation"): 0.4,
     ("problem", "open_problem"): 0.85,
     ("open_problem", "conjecture"): 0.8,
     ("assumption", "definition"): 0.5,
+    # 2026-10: the results family scored consistently (what theorem had, its
+    # siblings get), and the proof / problem / open_problem rows filled in, so
+    # that a pair judged dissimilar never scores above the unlisted default.
+    ("proof", "proposition"): 0.05,
+    ("proof", "corollary"): 0.05,
+    ("proof", "claim"): 0.05,
+    ("proof", "conjecture"): 0.05,
+    ("proof", "example"): 0.05,
+    ("proof", "assumption"): 0.05,
+    ("proof", "problem"): 0.05,
+    ("proof", "open_problem"): 0.05,
+    ("remark", "lemma"): 0.1,
+    ("remark", "proposition"): 0.1,
+    ("remark", "corollary"): 0.1,
+    ("example", "lemma"): 0.1,
+    ("example", "proposition"): 0.1,
+    ("example", "corollary"): 0.1,
+    ("example", "claim"): 0.1,
+    ("algorithm", "lemma"): 0.1,
+    ("algorithm", "proposition"): 0.1,
+    ("algorithm", "corollary"): 0.1,
+    ("algorithm", "claim"): 0.1,
+    ("claim", "remark"): 0.4,
+    ("open_problem", "theorem"): 0.5,
+    ("open_problem", "lemma"): 0.5,
+    ("open_problem", "proposition"): 0.5,
+    ("open_problem", "corollary"): 0.5,
+    ("open_problem", "claim"): 0.5,
+    ("problem", "lemma"): 0.3,
+    ("problem", "proposition"): 0.3,
+    ("problem", "corollary"): 0.3,
+    ("problem", "claim"): 0.3,
 }
 
-TYPE_COMPAT_UNKNOWN = 0.1  # different types, no listed affinity
+# Opt-in pairs not yet in TYPE_COMPAT (pass `table={**TYPE_COMPAT,
+# **TYPE_COMPAT_PROPOSED}`). Empty: the last six were merged into the table.
+TYPE_COMPAT_PROPOSED: dict = {}
+
+TYPE_COMPAT_UNKNOWN = 0.2  # different types, no listed affinity (listed dissimilar pairs score below it)
 
 
 def type_compat(ta, tb, table=None, unknown=TYPE_COMPAT_UNKNOWN):

@@ -81,7 +81,9 @@ import silver_distillation_merged as sdm               # noqa: E402
 import silver_distillation_sequential as seq           # noqa: E402
 
 TYPES = list(seq.FNAME_MAP)
-MODES = ("m1", "m3")
+# metrics (src/LLMVersion/node_metrics.py); the first is the headline. Config
+# "metrics" or --metrics overrides.
+DEFAULT_METRICS = ["m1g", "m1", "m3"]
 STRATA = ("all", "env", "prose", "other")
 DRIVER = REPO / "scripts" / "silver_distillation_merged.py"
 # code whose change can change a parse: part of every parse-cache fingerprint
@@ -99,14 +101,17 @@ def rel(p) -> Path:
     return p if p.is_absolute() else REPO / p
 
 
-def load_config(path: str) -> dict:
+def load_config(path: str, metrics: str | None = None) -> dict:
     cfg = json.load(open(path, encoding="utf-8"))
+    if metrics:
+        cfg["metrics"] = [m.strip() for m in metrics.split(",") if m.strip()]
     cfg.setdefault("threshold", 0.7)
     cfg.setdefault("cover", 0.7)
     cfg.setdefault("match_metric", "containment")
     cfg.setdefault("eval_splits", ["train", "val", "test"])
     cfg.setdefault("trajectory_splits", ["val", "test"])
     cfg.setdefault("bootstrap", 1000)
+    cfg.setdefault("metrics", list(DEFAULT_METRICS))
     cfg["out"] = rel(cfg.get("out", f"runs/compare/{cfg['name']}"))
     cfg["tex_dir"] = rel(cfg.get("tex_dir", "corpus/silver/tex_staged"))
     cfg["silver_dir"] = rel(cfg["silver_dir"])
@@ -255,6 +260,15 @@ def code_version() -> dict:
     return {"git": head, "dirty": dirty}
 
 
+def scorer_version() -> str:
+    """Hash of the scoring code: a change re-scores (from the cached parses)."""
+    h = hashlib.sha256()
+    for f in ("src/LLMVersion/node_metrics.py", "src/LLMVersion/match_modes.py",
+              "src/node_similarity.py", "src/prose_units.py"):
+        h.update((REPO / f).read_bytes())
+    return h.hexdigest()[:16]
+
+
 def fingerprint(rules_dir: Path) -> str:
     """The rules a parse uses and the parser code: equal fingerprints, equal parses."""
     h = hashlib.sha256()
@@ -392,38 +406,47 @@ def load_gold(cfg) -> dict:
 
 
 def score_paper(cfg, pid, objs, gold) -> list:
-    """Count rows (mode, stratum, type) for one paper."""
+    """Count rows (metric, stratum, type) for one paper. Each metric matches the
+    paper's predictions and reference nodes once, over all types (node_metrics),
+    and gives every item a credit; a row sums the credits of its items: the
+    predictions of that type and stratum (n_pred, tp) and the reference nodes of
+    that type and stratum (n_gold, tp_recall). So strata and types add up to
+    their totals; credits are fractional under graded metrics."""
+    import node_metrics as NM
     st = Strata(cfg, pid)
-    preds = defaultdict(list)
-    for (t, raw, _prov), s in zip(objs, st.of([o[1] for o in objs], raw=False)):
-        preds[t].append((raw, s))
-    golds = {}
-    for t in TYPES:
-        g = gold[t].get(pid, [])
-        golds[t] = list(zip(g, st.of(g, raw=True)))
+    preds = [(t, raw) for t, raw, _prov in objs]
+    pstr = st.of([x for _, x in preds], raw=False)
+    golds = [(t, g) for t in TYPES for g in gold[t].get(pid, [])]
+    gstr = st.of([g for _, g in golds], raw=True)
     st.save()
-    support = [g for t in TYPES for g, _ in golds[t]]
     rows = []
-    for mode in MODES:
-        for t in TYPES:
-            for stratum in STRATA:
-                P = [x for x, s in preds[t] if stratum == "all" or s == stratum]
-                G = [x for x, s in golds[t] if stratum == "all" or s == stratum]
-                if not P and not G:
-                    continue
-                m = sdm.metrics(P, G, cfg["threshold"], mode=mode, support_texts=support,
-                                cover=cfg["cover"])
-                rows.append({"mode": mode, "stratum": stratum, "type": t, "n_pred": len(P),
-                             "n_gold": len(G), "tp": m["tp"], "tp_recall": m["tp_recall"],
-                             "fp": m["fp"], "fn": m["fn"]})
+    for metric in cfg["metrics"]:
+        pc, gc = NM.score(preds, golds, metric, cfg["threshold"], cfg["cover"])
+        acc = defaultdict(lambda: dict.fromkeys(COUNT_COLS, 0.0))
+        for (t, _), s_, c in zip(preds, pstr, pc):
+            for key in ((s_, t), (s_, "all"), ("all", t), ("all", "all")):
+                acc[key]["n_pred"] += 1
+                acc[key]["tp"] += c
+        for (t, _), s_, c in zip(golds, gstr, gc):
+            for key in ((s_, t), (s_, "all"), ("all", t), ("all", "all")):
+                acc[key]["n_gold"] += 1
+                acc[key]["tp_recall"] += c
+        for (stratum, t), r in acc.items():
+            if t == "all":
+                continue                      # rebuilt from the type rows when reporting
+            r["fp"] = r["n_pred"] - r["tp"]
+            r["fn"] = r["n_gold"] - r["tp_recall"]
+            rows.append({"mode": metric, "stratum": stratum, "type": t,
+                         **{k: round(v, 4) for k, v in r.items()}})
     return rows
 
 
 _S: dict = {}
 
 
-def _score_init(cfg_path, gold_cache):
+def _score_init(cfg_path, gold_cache, metrics):
     _S["cfg"] = load_config(cfg_path)
+    _S["cfg"]["metrics"] = metrics
     seq.set_match_metric(_S["cfg"]["match_metric"])
     _S["gold"] = json.load(open(gold_cache, encoding="utf-8"))
 
@@ -444,7 +467,7 @@ def score_state(cfg, cfg_path, parses: dict, out_csv: Path, workers: int) -> Non
         gold_cache.write_text(json.dumps(load_gold(cfg)), encoding="utf-8")
     split = read_split(cfg)
     rows = []
-    with mp.Pool(workers, initializer=_score_init, initargs=(cfg_path, str(gold_cache))) as pool:
+    with mp.Pool(workers, initializer=_score_init, initargs=(cfg_path, str(gold_cache), cfg["metrics"])) as pool:
         for pid, prs in pool.imap_unordered(_score_one, [(p, d["objects"]) for p, d in parses.items()]):
             for r in prs:
                 rows.append({"paper_id": pid, "split": split[pid][0], "category": split[pid][1],
@@ -483,8 +506,8 @@ def rule_states(cfg, name, arm, trajectory: bool) -> list:
 
 def eval_arm(cfg, cfg_path, name, arm, force: bool, trajectory: bool, workers: int) -> None:
     ev = arm_dir(cfg, name) / "eval"
-    if force and ev.exists():
-        shutil.rmtree(ev)
+    if force and (ev / "scores").exists():
+        shutil.rmtree(ev / "scores")          # re-score; parses are cached by fingerprint
     for label, rdir in rule_states(cfg, name, arm, trajectory):
         splits = cfg["eval_splits"] if label == "final" else cfg["trajectory_splits"]
         pids = papers_of(cfg, splits)
@@ -492,13 +515,14 @@ def eval_arm(cfg, cfg_path, name, arm, force: bool, trajectory: bool, workers: i
         cache = ev / "parses" / f"{label}.jsonl"
         fp = fingerprint(rdir)
         stamp = ev / "scores" / f"{label}.json"
-        if out_csv.is_file() and stamp.is_file() and \
-                json.load(open(stamp)) == {"fingerprint": fp, "papers": pids}:
+        want = {"fingerprint": fp, "papers": pids, "metrics": cfg["metrics"],
+                "scorer": scorer_version(), "threshold": cfg["threshold"], "cover": cfg["cover"]}
+        if out_csv.is_file() and stamp.is_file() and json.load(open(stamp)) == want:
             continue
         print(f"[{name}] eval {label}: {len(pids)} papers ({rdir})", flush=True)
         parses = parse_papers(pids, rdir, cache, workers, cfg["tex_dir"])
         score_state(cfg, cfg_path, parses, out_csv, workers)
-        stamp.write_text(json.dumps({"fingerprint": fp, "papers": pids}))
+        stamp.write_text(json.dumps(want))
 
 
 # ---------------------------------------------------------------------------
@@ -515,7 +539,7 @@ def read_scores(path: Path) -> list:
     rows = list(csv.DictReader(open(path, encoding="utf-8")))
     for r in rows:
         for k in COUNT_COLS:
-            r[k] = int(r[k])
+            r[k] = float(r[k])
         r["seconds"] = float(r["seconds"])
     return rows
 
@@ -662,26 +686,31 @@ def write_markdown(cfg, res, metrics, runtime, arms_meta, deltas) -> None:
     idx = {(m["arm"], m["split"], m["mode"], m["stratum"], m["type"]): m for m in metrics}
     dix = {(d["arm"], d["split"], d["mode"], d["stratum"]): d for d in deltas}
     arms = list(arms_meta)
+    head, others = cfg["metrics"][0], cfg["metrics"][1:]
+    ref = cfg.get("reference_arm", "base")
     lines = [f"# Distiller comparison: {cfg['name']}", "",
-             f"Split `{cfg['split']['file'].name}`, silver `{cfg['silver_dir'].name}`, "
-             f"pooled counts, containment >= {cfg['threshold']}, cover {cfg['cover']}. "
-             "F1 interval: 95% paper bootstrap.", ""]
+             f"Split `{cfg['split']['file'].name}`, silver `{cfg['silver_dir'].name}`, pooled "
+             f"counts, containment >= {cfg['threshold']}. Headline metric **{head}** "
+             f"(src/LLMVersion/node_metrics.py); others: {', '.join(others) or 'none'}. "
+             "F1 interval: 95% paper bootstrap; difference to the reference arm: paired.", ""]
     for split in cfg["eval_splits"]:
-        lines += [f"## {split}", "", "| arm | stratum | M1 P / R / F1 | M3 P / R / F1 [95% CI] | "
-                  f"M3 F1 - {cfg.get('reference_arm', 'base')} [paired 95% CI] | "
-                  "M3 TP / FP / FN | silver nodes |", "|---|---|---|---|---|---|---|"]
+        lines += [f"## {split}", "",
+                  f"| arm | stratum | {head} P / R / F1 [95% CI] | F1 - {ref} [paired 95% CI] | "
+                  f"TP / FP / FN | silver nodes | " + " | ".join(f"{o} F1" for o in others) + " |",
+                  "|---|---|---|---|---|---|" + "---|" * len(others)]
         for a in arms:
             for st in STRATA:
-                m1, m3 = idx.get((a, split, "m1", st, "all")), idx.get((a, split, "m3", st, "all"))
-                if not m3:
+                h = idx.get((a, split, head, st, "all"))
+                if not h:
                     continue
+                d = dix.get((a, split, head, st))
                 lines.append(
-                    f"| {a} | {st} | {m1['precision']:.3f} / {m1['recall']:.3f} / {m1['f1']:.3f} | "
-                    f"{m3['precision']:.3f} / {m3['recall']:.3f} / **{m3['f1']:.3f}** "
-                    f"[{m3.get('f1_lo', 0):.3f}, {m3.get('f1_hi', 0):.3f}] | "
-                    + (lambda d: f"{d['delta_f1']:+.3f} [{d['delta_lo']:+.3f}, {d['delta_hi']:+.3f}]"
-                       if d else "")(dix.get((a, split, "m3", st)))
-                    + f" | {m3['tp']} / {m3['fp']} / {m3['fn']} | {m3['n_gold']} |")
+                    f"| {a} | {st} | {h['precision']:.3f} / {h['recall']:.3f} / **{h['f1']:.3f}** "
+                    f"[{h.get('f1_lo', 0):.3f}, {h.get('f1_hi', 0):.3f}] | "
+                    + (f"{d['delta_f1']:+.3f} [{d['delta_lo']:+.3f}, {d['delta_hi']:+.3f}]" if d else "")
+                    + f" | {h['tp']:.0f} / {h['fp']:.0f} / {h['fn']:.0f} | {h['n_gold']:.0f} | "
+                    + " | ".join(f"{idx[(a, split, o, st, 'all')]['f1']:.3f}"
+                                 if (a, split, o, st, "all") in idx else "" for o in others) + " |")
         lines.append("")
     lines += ["## Cost and speed", "", "| arm | alg | teacher | rules | LLM calls | USD | "
               "training s | parse s / paper |", "|---|---|---|---|---|---|---|---|"]
@@ -749,7 +778,7 @@ def status(cfg) -> None:
 
 def run_job(args) -> None:
     """One arm: its train and eval stages (what `run` launches per arm)."""
-    cfg = load_config(args.config)
+    cfg = load_config(args.config, args.metrics)
     seq.set_match_metric(cfg["match_metric"])
     arm = cfg["arms"][args.arm]
     stages = args.stages.split(",")
@@ -761,7 +790,7 @@ def run_job(args) -> None:
 
 
 def run_all(args) -> None:
-    cfg = load_config(args.config)
+    cfg = load_config(args.config, args.metrics)
     names = list(cfg["arms"]) if args.arms in ("", "all") else args.arms.split(",")
     unknown = [n for n in names if n not in cfg["arms"]]
     if unknown:
@@ -774,7 +803,8 @@ def run_all(args) -> None:
             log = arm_dir(cfg, name) / "job.log"
             log.parent.mkdir(parents=True, exist_ok=True)
             cmd = [sys.executable, "-u", __file__, "job", "--config", args.config, "--arm", name,
-                   "--stages", ",".join(stages), "--workers", str(args.workers)]
+                   "--stages", ",".join(stages), "--workers", str(args.workers),
+                   "--metrics", ",".join(cfg["metrics"])]
             cmd += [f for f, on in (("--force-retrain", args.force_retrain),
                                     ("--force-eval", args.force_eval),
                                     ("--no-trajectory", args.no_trajectory)) if on]
@@ -803,6 +833,9 @@ def main():
     for cmd in ("run", "job", "report", "status"):
         p = sub.add_parser(cmd)
         p.add_argument("--config", required=True)
+        p.add_argument("--metrics", default=None,
+                       help="comma list from node_metrics.METRICS (m1g, m1, m3); the first is "
+                            "the headline. Default: the config's \"metrics\", else m1g,m1,m3")
         if cmd in ("report", "status"):
             continue
         p.add_argument("--stages", default="train,eval,report" if cmd == "run" else "train,eval")
@@ -826,7 +859,7 @@ def main():
     elif args.cmd == "status":
         status(load_config(args.config))
     else:
-        report(load_config(args.config))
+        report(load_config(args.config, args.metrics))
 
 
 if __name__ == "__main__":

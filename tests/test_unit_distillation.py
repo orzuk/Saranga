@@ -120,6 +120,18 @@ check([load(d / "one" / "distilled_rules.py"), load(d / "two" / "distilled_rules
        load(d / "one" / "distilled_rules.py")], ["one", "two", "one"],
       "a re-pointed symlink loads the new rule module")
 
+# ---- FDR prune: a pruned pattern listed by name in a rule table must stay importable ------
+import distillation_analysis as DA                  # noqa: E402
+_src = ("import re\n_PAT_A = re.compile(\n    r\"we say\", re.I)\n_PAT_B = re.compile(r\"is called\")\n"
+        "RULES = [(\"_PAT_A\", _PAT_A), (\"_PAT_B\", _PAT_B)]\n"
+        "def extract_distilled_definition(text):\n"
+        "    return [m.group(0) for _n, p in RULES for m in p.finditer(text)]\n")
+_ns = {}
+exec(compile("".join(DA._comment_out_rule_block(_src.splitlines(keepends=True), "_PAT_A", ["p"], 0)),
+             "rules", "exec"), _ns)
+check(_ns["extract_distilled_definition"]("We say x. It is called y."), ["is called"],
+      "a pruned pattern is rebound to a never-matching one, so references survive")
+
 # ---- the unit algorithm's helpers --------------------------------------------------------
 import distill_units as D                           # noqa: E402
 check(D.signature(r"We say that a set is \emph{open} if it is \cite{x}."),

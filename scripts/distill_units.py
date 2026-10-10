@@ -63,6 +63,8 @@ for p in (REPO / "scripts", REPO / "src" / "LLMVersion", REPO / "src"):
 import distillation_analysis as da                     # noqa: E402
 import latex_facts as L                                # noqa: E402
 import match_modes as mm                               # noqa: E402
+import node_metrics as NM                              # noqa: E402
+import node_similarity as NSIM                         # noqa: E402
 import prose_units as U                                # noqa: E402
 import silver_distillation_merged as merged            # noqa: E402
 import silver_distillation_sequential as seq           # noqa: E402
@@ -113,8 +115,8 @@ class Paper:
     nodes: list                       # silver prose nodes of the scored types
     # the base parser against ALL silver nodes of the paper (environments too):
     # the constant part of the overall F the rules are chosen to raise
-    base_tp: int = 0
-    base_fp: int = 0
+    base_tp: float = 0              # credits under the training metric (fractional for m1g)
+    base_fp: float = 0
     n_silver: int = 0
     anchor: dict = field(default_factory=dict)   # sentence index -> Node starting there
     inside: set = field(default_factory=set)     # sentence indices inside a node, not its anchor
@@ -157,7 +159,14 @@ def signature(sent: str) -> tuple:
 _sq = U._sq
 
 
-def load_paper(pid: str, tex_dir: Path, t2_dir: Path, base_buckets: dict, th: float) -> Paper | None:
+def type_weight(metric: str):
+    """How much a match between two node types counts: the type table for the
+    graded metric (m1g, the headline), same type only for m1."""
+    return NSIM.type_compat if metric == "m1g" else (lambda a, b: 1.0 if a == b else 0.0)
+
+
+def load_paper(pid: str, tex_dir: Path, t2_dir: Path, base_buckets: dict, th: float,
+               metric: str = "m1g") -> Paper | None:
     main = seq._find_main_tex(tex_dir / pid / "source")
     jf = t2_dir / f"{pid}.json"
     if not main or not jf.is_file():
@@ -174,19 +183,12 @@ def load_paper(pid: str, tex_dir: Path, t2_dir: Path, base_buckets: dict, th: fl
     if src[body:] != text:
         print(f"  [warn] {pid}: prepared text differs from the parser's; skipped")
         return None
-    base_tokens = {t: [frozenset(mm.tokens(x)) for x in base_buckets.get(t, [])] for t in SCORED}
     silver = [n for n in json.load(open(jf, encoding="utf-8"))["nodes"]
               if n.get("type") in SCORED and (n.get("statement") or "").strip()]
     toks = [frozenset(mm.tokens(n["statement"])) for n in silver]
-    found, base_fp = set(), 0
-    for t in SCORED:                       # base predictions vs every silver node, 1:1
-        for bt in base_tokens[t]:
-            hit = next((k for k, n in enumerate(silver) if k not in found and n["type"] == t
-                        and mm.sym_containment(toks[k], bt) >= th), None)
-            if hit is None:
-                base_fp += 1
-            else:
-                found.add(hit)
+    # the base parser against every silver node, with the reported metric itself
+    base_preds = [(t, x) for t in SCORED for x in base_buckets.get(t, [])]
+    pc, gc = NM.score(base_preds, [(n["type"], n["statement"]) for n in silver], metric, th)
     nodes = []
     for k, (n, prepared) in enumerate(zip(silver, loc.prepare([n["statement"] for n in silver]))):
         span = loc.locate(prepared)
@@ -196,10 +198,9 @@ def load_paper(pid: str, tex_dir: Path, t2_dir: Path, base_buckets: dict, th: fl
         covered = [k for k, x in enumerate(sents) if x.start < b and a < x.end]
         if not covered:
             continue
-        base = any(mm.sym_containment(toks[k], bt) >= th for bt in base_tokens[n["type"]])
-        nodes.append(Node(n["type"], a, b, covered[0], covered[-1], toks[k], base))
+        nodes.append(Node(n["type"], a, b, covered[0], covered[-1], toks[k], gc[k] > 0))
     p = Paper(pid, text, sents, [text[s.start:s.end] for s in sents], nodes,
-              base_tp=len(found), base_fp=base_fp, n_silver=len(silver))
+              base_tp=sum(gc), base_fp=len(base_preds) - sum(pc), n_silver=len(silver))
     for n in nodes:
         p.anchor.setdefault(n.first, n)
         p.inside.update(range(n.first + 1, n.last + 1))
@@ -216,8 +217,9 @@ class Scorer:
     A prediction of a node the base parser already finds is neutral: the
     parser's merge drops it as a duplicate."""
 
-    def __init__(self, papers: dict, th: float, beta: float = 1.0):
+    def __init__(self, papers: dict, th: float, beta: float = 1.0, metric: str = "m1g"):
         self.papers, self.th, self.beta = papers, th, beta
+        self.weight = type_weight(metric)
         self.fire = defaultdict(dict)          # uid -> pid -> set of sentence indices
 
     def fire_sets(self, rule: dict, pids) -> dict:
@@ -234,14 +236,21 @@ class Scorer:
         self.fire[rule["uid"]].update(self.fire_sets(rule, missing))
 
     def match(self, p: Paper, pred: dict, taken: set):
-        """The silver node a prediction matches, or None."""
+        """(silver node, credit) a prediction matches, or (None, 0): the free node
+        of a compatible type with overlap >= threshold and the highest
+        compatibility x overlap; the credit is the type compatibility."""
         tok = frozenset(mm.tokens(p.text[pred["start"]:pred["end"]]))
+        best, bk, bw = 0.0, None, 0.0
         for k, n in enumerate(p.nodes):
-            if k in taken or n.type != pred["type"]:
+            if k in taken:
                 continue
-            if mm.sym_containment(tok, n.tokens) >= self.th:
-                return k
-        return None
+            w = self.weight(pred["type"], n.type)
+            if w <= 0:
+                continue
+            ov = mm.sym_containment(tok, n.tokens)
+            if ov >= self.th and w * ov > best:
+                best, bk, bw = w * ov, k, w
+        return bk, bw
 
     def score(self, rules: list[dict], pids, fire_override: dict | None = None) -> dict:
         """Counts over papers for a rule set: tp (new silver nodes found), fp,
@@ -258,14 +267,17 @@ class Scorer:
                 fs[r["uid"]] = src[r["uid"]].get(pid, set())
             taken = set()
             for pred in UR.select(p.sents, rules, fs):
-                k = self.match(p, pred, taken)
+                k, w = self.match(p, pred, taken)
                 pr = tot["per_rule"][pred["uid"]]
                 if k is not None and p.nodes[k].base_covered:
                     tot["neutral"] += 1
                     taken.add(k)
-                elif k is not None:
-                    tot["tp"] += 1; pr["tp"] += 1; pr["papers"][pid][0] += 1
-                    taken.add(k); tot["found"].add((pid, k))
+                elif k is not None:               # credit w, the rest an error (graded)
+                    tot["tp"] += w; pr["tp"] += w; pr["papers"][pid][0] += w
+                    tot["fp"] += 1 - w; pr["fp"] += 1 - w; pr["papers"][pid][1] += 1 - w
+                    taken.add(k)
+                    if w >= 1.0:                  # a node found with another type stays a target
+                        tot["found"].add((pid, k))
                 else:
                     tot["fp"] += 1; pr["fp"] += 1; pr["papers"][pid][1] += 1
         tp, fp, tg = tot["tp"], tot["fp"], tot["targets"]
@@ -438,7 +450,7 @@ class UnitDistiller:
         self.dir = eval_dir / "units"
         self.dir.mkdir(parents=True, exist_ok=True)
         self.reg = RuleRegistry.load(self.dir / "registry.json")
-        self.scorer = Scorer(papers, args.threshold, args.beta)
+        self.scorer = Scorer(papers, args.threshold, args.beta, args.train_metric)
         self._current: dict = {}
         self.usage = da._empty_usage()
         self.failures, self.stopped = 0, False
@@ -611,8 +623,8 @@ class UnitDistiller:
         a = res.get("alone", res)
         g = f" F {res['gain'] * 100:+.3f}" if "gain" in res else ""
         if "dtp" in res:
-            g += f" adds {res['dtp']:+d} tp at FDR {res['rule_fdr']:.2f} (overall {res['FDR']:.3f})"
-        return f"tp={a['tp']} fp={a['fp']}{g}"
+            g += f" adds {res['dtp']:+.1f} tp at FDR {res['rule_fdr']:.2f} (overall {res['FDR']:.3f})"
+        return f"tp={a['tp']:g} fp={a['fp']:g}{g}"
 
     def value(self, res: dict) -> float:
         """What refinement maximises. --accept f1: the gain in overall F of the
@@ -830,7 +842,7 @@ class UnitDistiller:
         for pid, (tp, fp) in fit["per_rule"][-1]["papers"].items():
             self.reg.record(r.uid, pid, tp, fp)
         self.scorer.cache(self.as_rule(r), self.fit + self.val)
-        print(f"    ACCEPTED uid {r.uid} {r.name}: precision {prec:.2f}, tp {a['tp']}"
+        print(f"    ACCEPTED uid {r.uid} {r.name}: precision {prec:.2f}, tp {a['tp']:g}"
               + (f", overall F {fit['gain'] * 100:+.3f} points" if "gain" in fit else ""))
         self.state["accepted"] = self.state.get("accepted", 0) + 1
         every = self.lim("snapshot_every")
@@ -981,8 +993,8 @@ def prose_report(dist: UnitDistiller, pids, label: str) -> dict:
 _PREP: dict = {}
 
 
-def _prep_init(tex_dir, t2_dir, th, rules_dir):
-    _PREP.update(tex=Path(tex_dir), t2=Path(t2_dir), th=th, rules=str(rules_dir))
+def _prep_init(tex_dir, t2_dir, th, rules_dir, metric):
+    _PREP.update(tex=Path(tex_dir), t2=Path(t2_dir), th=th, rules=str(rules_dir), metric=metric)
 
 
 def _prep_one(pid):
@@ -1003,7 +1015,7 @@ def _prep_one(pid):
                     buckets[o["kind"]].append(raw)
         except Exception as e:                                         # noqa: BLE001
             print(f"  [warn] base parse failed for {pid}: {e}", flush=True)
-    return pid, load_paper(pid, _PREP["tex"], _PREP["t2"], buckets, _PREP["th"])
+    return pid, load_paper(pid, _PREP["tex"], _PREP["t2"], buckets, _PREP["th"], _PREP["metric"])
 
 
 def load_papers(pids, args, eval_dir: Path) -> dict:
@@ -1014,7 +1026,8 @@ def load_papers(pids, args, eval_dir: Path) -> dict:
     empty.mkdir(parents=True, exist_ok=True)
     out = {}
     with mp.Pool(max(1, args.prepare_workers), initializer=_prep_init,
-                 initargs=(args.tex_dir, args.t2_dir, args.threshold, str(empty))) as pool:
+                 initargs=(args.tex_dir, args.t2_dir, args.threshold, str(empty),
+                           args.train_metric)) as pool:
         for pid, p in pool.imap_unordered(_prep_one, pids):
             if p is None:
                 print(f"  [skip] {pid}: no tex or no silver graph")
@@ -1100,7 +1113,7 @@ def run(args) -> None:
                                             "max_examples", "max_negatives", "max_refine_examples",
                                             "snapshot_every", "accept", "beta", "min_gain",
                                             "max_fdr", "fdr_scope", "rule_min_precision",
-                                            "parallel")}
+                                            "parallel", "effort", "thinking", "train_metric")}
     summary = {"algorithm": "units", "model": args.model, "params": params,
                "rounds": history, "reports": reports,
                "active_rules": dist.active(),

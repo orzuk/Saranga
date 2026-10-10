@@ -1334,6 +1334,19 @@ def _client():
     return _CLIENT
 
 
+# Run-wide request options (set_llm_options), the cost levers of a teacher run:
+#   effort    low | medium | high | xhigh | max: how much the model thinks before
+#             answering (thinking is billed as output); None = the model's default
+#   thinking  "disabled" turns thinking off (Haiku 5.5 allows it, Sonnet 5.5 does
+#             not); None = the model's default (adaptive)
+LLM_OPTIONS: dict = {"effort": None, "thinking": None}
+
+
+def set_llm_options(effort: str | None = None, thinking: str | None = None) -> dict:
+    LLM_OPTIONS.update(effort=effort or None, thinking=thinking or None)
+    return dict(LLM_OPTIONS)
+
+
 def call_llm(model: str, system: str, user: str, max_tokens: int,
              usage: dict | None = None, stream: bool = False):
     """One teacher call: `system` is sent as a cached block (the part that repeats
@@ -1346,6 +1359,10 @@ def call_llm(model: str, system: str, user: str, max_tokens: int,
     client = _client()
     kw = dict(model=model, max_tokens=max_tokens,
               messages=[{"role": "user", "content": user}])
+    if LLM_OPTIONS.get("effort"):
+        kw["output_config"] = {"effort": LLM_OPTIONS["effort"]}
+    if LLM_OPTIONS.get("thinking") == "disabled":
+        kw["thinking"] = {"type": "disabled"}
 
     def send(**extra):
         if stream:                    # large outputs: avoids the SDK's HTTP timeout
@@ -1997,6 +2014,12 @@ def _comment_out_rule_block(lines: List[str], pattern_name: str,
                 i += 1
                 if paren_depth <= 0:
                     break
+            # Rebind the name to a pattern that never matches: a rule file may
+            # also list the pattern by name (a table of (name, pattern, group)),
+            # and with the definition gone that reference raises NameError on
+            # import, losing the whole group (rule_guard.comment_out_rule does
+            # the same for slow rules).
+            result.append(' ' * indent + f"{pattern_name} = re.compile(r'(?!x)x')  # PRUNED\n")
             continue
 
         # ---- Usage block in extract function ----

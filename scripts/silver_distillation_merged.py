@@ -1805,7 +1805,8 @@ def finalize_run(args, eval_dir):
 def corpus_prompt_version(metadata: str | None, t2_dir: str) -> str:
     """The prompt_version of the metadata rows whose silver JSON lies in t2_dir."""
     md = Path(metadata) if metadata else REPO / "corpus" / "silver" / "metadata.csv"
-    want = str(Path(t2_dir)).rstrip("/") + "/"
+    t2 = Path(t2_dir).resolve()
+    want = str(t2.relative_to(REPO) if t2.is_relative_to(REPO) else Path(t2_dir)).rstrip("/") + "/"
     versions = {r["prompt_version"] for r in csv.DictReader(open(md, encoding="utf-8"))
                 if r.get("json_path", "").startswith(want)} if md.is_file() else set()
     if len(versions) != 1:
@@ -1875,6 +1876,12 @@ def main():
     p.add_argument("--metadata", default=None,
                    help="Silver corpus index for the train/test split "
                         "(default corpus/silver/metadata.csv)")
+    p.add_argument("--effort", default=None, choices=["low", "medium", "high", "xhigh", "max"],
+                   help="teacher effort: how much it thinks before answering (thinking is "
+                        "billed as output, most of a run's cost); default: the model's own")
+    p.add_argument("--thinking", default=None, choices=["adaptive", "disabled"],
+                   help="disabled turns the teacher's thinking off (Haiku 5.5 allows it, "
+                        "Sonnet 5.5 does not); default: the model's own (adaptive)")
     p.add_argument("--splits", default=None,
                    help="CSV with arxiv_id (or paper_id) and split columns, e.g. "
                         "corpus/silver/split_v6.csv; overrides the split in --metadata")
@@ -1904,7 +1911,11 @@ def main():
                    help="maximum rounds of repair -> cluster -> propose -> refine -> cleanup")
     u.add_argument("--min-cluster", type=int, default=3,
                    help="smallest cluster of missed nodes the teacher is asked about")
-    u.add_argument("--accept", default="fdr", choices=["fdr", "f1", "precision"],
+    u.add_argument("--train-metric", default="m1g", choices=["m1g", "m1"],
+                   help="how a rule's output is matched to the silver while training "
+                        "(src/LLMVersion/node_metrics.py): m1g = the headline metric, with "
+                        "partial credit for related types (type table); m1 = same type only")
+    u.add_argument("--accept", default="f1", choices=["f1", "fdr", "precision"],
                    help="f1: a rule is kept if, added to the rules already accepted, it raises "
                         "the overall F (all silver nodes, the base parser's included) on the "
                         "fitting papers by more than --min-gain and does not lower it on the "
@@ -1986,6 +1997,7 @@ def main():
                         "corpus in --t2-dir; by default it is read from the "
                         "metadata rows whose json_path lies in --t2-dir.")
     args = p.parse_args()
+    print(f"[llm] request options: {_da.set_llm_options(args.effort, args.thinking)}")
     if args.alg == "units":
         import distill_units                  # alpha defaults to 0.2 there (rule precision >= 0.8)
         distill_units.run(args)

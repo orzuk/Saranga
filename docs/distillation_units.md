@@ -97,6 +97,22 @@ the duplicate).
 Cleanup and the stopping rule use the objective of the criterion: overall recall
 for `fdr`, overall F for `f1`.
 
+## Matching while training, and the cost levers
+
+`--train-metric m1g` (default) matches a rule's output to the silver with the
+headline metric of `src/LLMVersion/node_metrics.py`: one-to-one, overlap >= 0.7,
+and a pair earns the type compatibility of its two types (`node_similarity.
+type_compat`: a claim matched to a proposition counts 0.8, and 0.2 as an error).
+The base parser's counts use the same metric, so what training optimises is
+what the comparison reports. `--train-metric m1` is same-type only.
+
+The teacher's cost is mostly output tokens, and most of those are its thinking:
+`--effort low|medium|high|xhigh|max` (both models) limits it, `--thinking
+disabled` turns it off (Haiku 5.5 only; Sonnet 5.5 always thinks). With
+`--max-examples N` a proposal shows at most N members of a cluster (the largest
+input). Each run records its options in units_summary.json. A full-cost run
+simply leaves them out.
+
 ## Comparing extractors
 
 `scripts/compare_distillers.py` trains and scores several arms (base parser,
