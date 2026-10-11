@@ -732,6 +732,8 @@ class PaperGraph:
                 edge["type"] = mapped_type
             if include_research_fields and r.metadata.get("confidence"):
                 edge["confidence"] = r.metadata["confidence"]
+            if r.metadata.get("mention"):
+                edge["mention"] = True        # refers to the result, does not rely on it
             edges.append(edge)
 
         result: Dict[str, Any] = {

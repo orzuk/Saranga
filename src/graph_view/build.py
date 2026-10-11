@@ -252,7 +252,7 @@ def importance_and_main(base_nodes, layout_edges, numbered):
 
 # ── Classic side panel, reused as-is ──────────────────────────────────────
 _PANEL_FUNCS = ("showDetail", "resetView", "toggleOrphans", "showGhostDetail",
-                "toggleEqPanel", "esc", "escAttr", "rigorBadge", "confBadge",
+                "toggleEqPanel", "esc", "escAttr", "eqTex", "rigorBadge", "confBadge",
                 "nodeLink", "noteBlock", "toggleStepKids", "showPaperInfo")
 
 

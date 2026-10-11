@@ -422,6 +422,7 @@ _CITE_RE = re.compile(r"\\(?:%s)\*?\s*(?:\[[^\]]*\]){0,2}\s*\{([^}]*)\}"
 # (?![A-Za-z]) guard stops `\reflect` being read as `\ref`.
 _REF_RE = re.compile(r"\\(?:%s)(?![A-Za-z])\*?\s*\{([^}]*)\}"
                      % "|".join(_REF_CMDS))
+_EQREF_RE = re.compile(r"\\eqref(?![A-Za-z])\*?\s*\{([^}]*)\}")
 _LABEL_RE = re.compile(r"\\label\s*\{[^}]*\}")
 # LaTeX's non-breaking space. Both mathtext and MathJax draw it as a literal
 # `~`, and `Knuth~[Knuth77]` is the common shape once citations resolve, so
@@ -449,9 +450,10 @@ def _safe_key(k, in_math):
     return k.replace("_", r"\_") if in_math else k
 
 
-def _fmt_keys(m, open_c, close_c, whole):
+def _fmt_keys(m, open_c, close_c, whole, labels=None):
     in_math = _in_math(whole, m.start())
-    keys = [_safe_key(k, in_math) for k in m.group(1).split(",") if k.strip()]
+    keys = [_safe_key((labels or {}).get(k.strip(), k), in_math)
+            for k in m.group(1).split(",") if k.strip()]
     return "%s%s%s" % (open_c, ", ".join(keys), close_c) if keys else ""
 
 
@@ -538,21 +540,26 @@ def strip_text_environments(text, max_depth=_MAX_DEPTH):
     return t
 
 
-def resolve_references(text):
-    """`\\cite{Knuth77}` -> `[Knuth77]`, `\\ref{thm:main}` -> `(thm:main)`.
+def resolve_references(text, labels=None):
+    """`\\cite{Knuth77}` -> `[Knuth77]`, `\\eqref{eq:a}` -> `(eq:a)`,
+    `\\ref{thm:main}` -> `thm:main`.
 
-    `\\label{...}` is dropped: it defines an anchor rather than pointing at one,
-    so it has no reading value once the numbering is gone.
+    `labels` maps a \\label key to what to show instead (the id of the node
+    that carries the label, e.g. `eq:IPS1` -> `EP1`). Only \\eqref adds the
+    parentheses, as LaTeX does: papers write `(\\ref{eq:a})` themselves, and
+    adding a second pair gave `((eq:a))`. `\\label{...}` is dropped: it
+    defines an anchor rather than pointing at one.
     """
     if not text:
         return text
     text = _LABEL_RE.sub("", str(text))
     text = _CITE_RE.sub(lambda m: _fmt_keys(m, "[", "]", text), text)
-    text = _REF_RE.sub(lambda m: _fmt_keys(m, "(", ")", text), text)
+    text = _EQREF_RE.sub(lambda m: _fmt_keys(m, "(", ")", text, labels), text)
+    text = _REF_RE.sub(lambda m: _fmt_keys(m, "", "", text, labels), text)
     return text
 
 
-def normalize_for_mathtext(text, macros=None):
+def normalize_for_mathtext(text, macros=None, labels=None):
     """Everything a matplotlib-mathtext consumer needs, in one call.
 
     ORDER MATTERS. TeX grabs the *unexpanded* token as a one-token argument,
@@ -573,7 +580,7 @@ def normalize_for_mathtext(text, macros=None):
     text = brace_normalize(text)
     text = expand_macros(text, macros or {})
     text = strip_text_environments(text)
-    text = resolve_references(text)
+    text = resolve_references(text, labels)
     text = resolve_text_fonts(text)
     text = unwrap_transparent(text)
     text = strip_dimension_commands(text)

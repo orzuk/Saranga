@@ -37,6 +37,11 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+try:                                    # the validator's cycle check (same definition)
+    from validate_annotation import reasoning_cycles as _reasoning_cycles
+except Exception:                       # pragma: no cover
+    _reasoning_cycles = None
+
 try:
     import networkx as nx
     _HAS_NETWORKX = True
@@ -81,7 +86,7 @@ STAT_COLUMNS = [
     "n_thm_with_both", "n_thm_with_neither",
     "total_assumptions", "total_conclusions",
     "avg_assumptions_per_thm", "avg_conclusions_per_thm",
-    "dag_acyclic", "dag_depth",
+    "dag_acyclic", "dag_depth", "n_reasoning_cycles",
     # Edge type breakdown
     "n_uses_edges", "n_generalizes_edges", "n_specializes_edges",
     "n_proves_edges", "n_illustrates_edges",
@@ -279,7 +284,12 @@ def compute_paper_stats(paper_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
             if s and t:
                 g.add_edge(s, t)
         is_dag = nx.is_directed_acyclic_graph(g)
-        stats["dag_acyclic"] = is_dag
+        # The validator's check: proofs folded into the results they prove,
+        # mention edges ignored. The raw graph can be a DAG while the results
+        # still depend on each other in a circle through their proofs.
+        cycles = _reasoning_cycles(nodes, edges) if _reasoning_cycles else []
+        stats["n_reasoning_cycles"] = len(cycles)
+        stats["dag_acyclic"] = is_dag and not cycles
         if is_dag:
             try:
                 stats["dag_depth"] = nx.dag_longest_path_length(g)

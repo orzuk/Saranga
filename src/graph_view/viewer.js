@@ -52,7 +52,7 @@
     level: G.level, open: {}, proofs: {}, focus: null, k: 1, selected: null,
     show: { ext: false, aux: true, ghosts: false, low: true, implied: true,
             back: true, mention: true, nested: true },
-    tred: false, search: ''
+    tred: false, search: '', openOrder: []
   };
   var cy = null, firstDone = false, layoutSeq = 0, lastNote = '';
 
@@ -803,9 +803,17 @@
 
     document.querySelectorAll('#level-group .seg').forEach(function (b) {
       b.onclick = function () {
-        if (S.level === b.dataset.level && !S.focus) return;
+        if (S.level === b.dataset.level && !S.focus) {
+          if (S.level === 'overview' && anyOpen()) { S.open = {}; render(); }   // back to all boxes
+          return;
+        }
         S.level = b.dataset.level; S.focus = null; render();
       };
+    });
+    document.getElementById('back-btn').onclick = goBack;
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Escape' || /^(INPUT|TEXTAREA)$/.test((ev.target || {}).tagName || '')) return;
+      goBack();
     });
     var mb = document.getElementById('main-btn');
     if (!G.main.length) { mb.disabled = true; mb.title = 'No main-result candidates in this paper'; }
@@ -844,7 +852,21 @@
     cy.zoom({ level: Math.max(0.05, Math.min(4, cy.zoom() * f)), renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } });
   }
 
+  function anyOpen() { return Object.keys(S.open).length > 0; }
+  // One step coarser: leave a focus, else close the last opened section.
+  function goBack() {
+    if (S.focus) { S.focus = null; render(); return; }
+    if (level() === 'overview' && anyOpen()) {
+      var last = S.openOrder.filter(function (g) { return S.open[g]; }).pop();
+      if (last) closeGroup(last); else S.open = {};
+      render(); return;
+    }
+  }
+
   function syncControls() {
+    var back = document.getElementById('back-btn');
+    back.style.display = (S.focus || (level() === 'overview' && anyOpen())) ? 'block' : 'none';
+    back.textContent = S.focus ? '\u2190 Leave focus' : '\u2190 Close section';
     document.querySelectorAll('#level-group .seg').forEach(function (b) {
       b.classList.toggle('on', !S.focus && S.level === b.dataset.level);
     });
@@ -978,6 +1000,7 @@
     var ed = document.createElement('div');
     ed.innerHTML = edgeList(id);
     panel.appendChild(ed);
+    if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([ed]).catch(function () {});   // TeX in node names
   }
 
   function showStep(sid) {
@@ -1079,7 +1102,7 @@
       if (lastTap === ev.originalEvent) return;
       lastTap = ev.originalEvent;
       var n = ev.target, kind = n.data('kind');
-      if (kind === 'secbox') { S.open[n.id()] = true; openSubsIfSmall(n.id()); render(null, n.id()); return; }
+      if (kind === 'secbox') { S.open[n.id()] = true; S.openOrder.push(n.id()); openSubsIfSmall(n.id()); render(null, n.id()); return; }
       if (kind === 'secopen') { closeGroup(n.id()); render(); return; }
       if (kind === 'ghost') { _lastDetailNode = null; showGhostDetail(n.data('name')); return; }
       if (kind === 'proofframe') { select(n.data('of')); return; }
@@ -1127,6 +1150,8 @@
       function () { S.tred = false; Object.keys(S.show).forEach(function (k) { S.show[k] = true; }); },
       function () { S.show.ghosts = false; S.level = 'overview'; },
       function () { var g = G.sections[0]; if (g) { S.open[g.id] = true; openSubsIfSmall(g.id); } },
+      function () { S.level = 'overview'; S.open = {}; var g = G.sections[0]; if (g) { S.open[g.id] = true; S.openOrder.push(g.id); } },
+      function () { goBack(); if (S.level === 'overview' && anyOpen()) throw new Error('back left a section open'); },
       function () { S.search = 'the'; applySearch(); nextMatch(); S.search = ''; },
       function () { S.forceFlat = true; S.level = 'full'; },
       function () { S.forceFlat = false; S.proofs = {}; S.open = {}; S.level = G.level; }

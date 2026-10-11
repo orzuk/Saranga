@@ -60,8 +60,10 @@ check(brace_normalize(r"$\mathbbR$"), r"$\mathbbR$",
 # ── Cross-references: keep the key, escape `_` only inside math.
 check(resolve_references(r"see \cite{a_b, c:d}"), "see [a_b, c:d]",
       "cite keys unescaped in text")
-check(resolve_references(r"$f(\ref{eq:a_b})$"), r"$f((eq:a\_b))$",
-      "ref key escaped inside math")
+check(resolve_references(r"$f(\ref{eq:a_b})$"), r"$f(eq:a\_b)$",
+      "ref key escaped inside math; no second pair of parentheses")
+check(resolve_references(r"under \eqref{eq:x} and (\ref{eq:y})", {"eq:x": "EP1"}),
+      "under (EP1) and (eq:y)", "eqref adds parentheses; known labels show the node id")
 check(resolve_references(r"\label{x}gone"), "gone", "label dropped")
 check(resolve_references(r"\reflect{x}"), r"\reflect{x}",
       "`\\reflect` is not `\\ref`")

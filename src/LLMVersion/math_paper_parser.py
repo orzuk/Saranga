@@ -313,6 +313,33 @@ STRUCTURE_TYPE_CONFIG = {
 # ---------------------------------------------------------------------
 
 
+
+# A \ref preceded by one of these points at a result without relying on it
+# ("as in the proof of Lemma 3", "as eventually proved in Theorem 5", "unlike
+# Theorem 2"); such edges are written with "mention": true. "see Lemma 3" and
+# "by Lemma 3" are real uses and are NOT listed.
+_MENTION_CUE = re.compile(
+    r"(?:\b(?:as|just)\s+in\s+the\s+proof\s+of"
+    r"|\b(?:same|similar|analogous)\s+(?:proof|argument|way|reasoning|line)\s+(?:as|to)(?:\s+in)?(?:\s+the\s+proof\s+of)?"
+    r"|\b(?:similarly|analogously)\s+to(?:\s+the\s+proof\s+of)?"
+    r"|\buse\s+exactly\s+the\s+proof\s+of"
+    r"|\b(?:will\s+be|is|are|was|be|eventually|later)\s+(?:proved|proven|shown|established)\s+(?:later\s+)?in"
+    r"|\b(?:ingredients?|step)\s+(?:of|in)\s+the\s+proof\s+of"
+    r"|\bused\s+in\s+the\s+proof\s+of"
+    r"|\b(?:generali[sz]es|generali[sz]ation\s+of|extends|extension\s+of|strengthens|improves(?:\s+on)?|unlike|in\s+contrast\s+(?:to|with))"
+    # the PROOF of a result (its argument, a figure "Proof of Lemma 3"), or
+    # its CONDITIONS ("satisfy the assumptions of Theorem 2"): neither relies
+    # on the result being true
+    r"|\bproofs?\s+of"
+    r"|\b(?:conditions?|assumptions?|hypothes[ie]s|setting|notation|framework)\s+(?:of|in)"
+    r")\s*(?:the\s+)?(?:[A-Z][a-z]+\.?|[a-z]+)?[\s~]*$",
+    re.IGNORECASE)
+
+
+def _ref_context(raw: str, pos: int, width: int = 90) -> str:
+    """The text just before a \\ref, whitespace and ~ normalised."""
+    return re.sub(r"[\s~]+", " ", raw[max(0, pos - width):pos])
+
 class PaperParser:
     """
     Heuristic LaTeX parser for a single paper.
@@ -2206,12 +2233,23 @@ Respond ONLY with JSON array."""
         Strategy:
           1. Build a mapping label -> object_id for theorem-like objects
              (using their \\label{...}).
-          2. For each proof:
-             a) Use proof._target_theorem_label if present (from proof header).
-             b) Otherwise, look for \\ref/\\eqref/\\autoref in the proof body and
-                use the first label that matches a theorem-like object.
+          2. For each proof, in this order:
+             a) proof._target_theorem_label (from the proof header, or
+                latex_facts' proof-right-after-its-theorem);
+             b) adjacency: the proof is the first proof after a theorem-like
+                object, with only equations / tables / distilled prose
+                fragments in between;
+             c) the first \\ref/\\eqref/\\autoref in the body that names a
+                theorem-like object (proofs cite EARLIER results all the
+                time, so this comes after adjacency);
           3. As a fallback, if still unresolved, attach the proof to the
              nearest previous theorem-like object in document order.
+          A proof made by a distilled sentence rule (id DIST_*) is a prose
+          fragment ("It is easy to see...", "All together, ... as proved in
+          Theorem 3"): it is attached only by (a) or by adjacency with nothing
+          but equations in between, and otherwise proves nothing. Attaching it
+          to whatever result came last turned its references into
+          dependencies of that result and closed false cycles.
           4. If found, set proof.parent_id = theorem_id and also
              proof._parent_link_source = one of:
                  'header_label', 'body_ref', 'prev_theorem_like'.
@@ -2230,11 +2268,36 @@ Respond ONLY with JSON array."""
         ref_pattern = re.compile(r"\\(?:ref|eqref|autoref)\{([^}]+)\}")
 
         linked_count = 0
+        order = list(graph.objects.values())          # document order (sorted by _source_pos)
+        skip_kinds = {"equation", "table"}
+        # A gap longer than this between a result and the next proof is not
+        # "right after it" (a proof deferred to a later section).
+        max_gap = 2000
 
-        # --- pass 1: header label + body ref ---
-        for obj in graph.objects.values():
+        def _adjacent_result(i: int, distilled: bool) -> Optional[str]:
+            p = order[i]
+            for j in range(i - 1, -1, -1):
+                o = order[j]
+                if o.kind in skip_kinds:
+                    continue
+                if not distilled and str(o.id).startswith("DIST_") and o.kind != "proof":
+                    continue                       # a prose fragment between result and proof
+                if o.kind in self.THEOREM_LIKE_KINDS:
+                    end = getattr(o, "_source_end", None)
+                    if end is None:
+                        end = (getattr(o, "_source_pos", 0) or 0) + len(getattr(o, "raw_latex", "") or "")
+                    pos = getattr(p, "_source_pos", None)
+                    if pos is not None and pos - end > max_gap:
+                        return None
+                    return o.id
+                return None                        # a definition, another proof, ...
+            return None
+
+        # --- pass 1: header label, adjacency, body ref ---
+        for i, obj in enumerate(order):
             if obj.kind != "proof":
                 continue
+            distilled = str(obj.id).startswith("DIST_")
 
             parent_id: Optional[str] = getattr(obj, "parent_id", None)
             parent_source: Optional[str] = getattr(obj, "_parent_link_source", None)
@@ -2246,7 +2309,21 @@ Respond ONLY with JSON array."""
                     parent_id = label_to_theorem_id[target_label]
                     parent_source = "header_label"
 
-            # (b) From first \ref/\eqref/\autoref in the proof body
+            # (b) The first proof right after a result proves that result
+            if parent_id is None:
+                adj = _adjacent_result(i, distilled)
+                if adj is not None:
+                    parent_id, parent_source = adj, "adjacent"
+            if distilled:
+                if parent_id is not None:
+                    setattr(obj, "parent_id", parent_id)
+                    setattr(obj, "_parent_link_source", parent_source)
+                    linked_count += 1
+                else:
+                    setattr(obj, "_no_parent", True)   # a fragment: proves nothing
+                continue
+
+            # (c) From first \ref/\eqref/\autoref in the proof body
             if parent_id is None:
                 raw = getattr(obj, "raw_latex", "")
                 for m in ref_pattern.finditer(raw):
@@ -2274,7 +2351,7 @@ Respond ONLY with JSON array."""
 
             # only link proofs that still have no parent_id
             parent_id = getattr(obj, "parent_id", None)
-            if parent_id is not None or last_thm_id is None:
+            if parent_id is not None or last_thm_id is None or getattr(obj, "_no_parent", False):
                 continue
 
             setattr(obj, "parent_id", last_thm_id)
@@ -2480,7 +2557,7 @@ Respond ONLY with JSON array."""
         # 3. Logical 'uses' edges from explicit \ref / \eqref / \autoref
         # ------------------------------------------------------------------
 
-        ref_pattern = re.compile(r"\\(?:ref|eqref|autoref)\{([^}]+)\}")
+        ref_pattern = re.compile(r"\\(?:ref|eqref|autoref|cref|Cref)\{([^}]+)\}")
         uses_ref_count = 0
 
         for obj in graph.objects.values():
@@ -2498,15 +2575,13 @@ Respond ONLY with JSON array."""
                 if key in existing:
                     continue
 
-                graph.add_uses(
-                    user_id=obj.id,
-                    used_id=target_id,
-                    metadata={
-                        "ref_label": lbl,
-                        "source": "latex_ref",
-                        "confidence": 1.0,
-                    },
-                )
+                meta = {"ref_label": lbl, "source": "latex_ref", "confidence": 1.0}
+                if _MENTION_CUE.search(_ref_context(raw, m.start())):
+                    # "as in the proof of Lemma 3", "as eventually proved in
+                    # Theorem 5": the text points at the result without
+                    # relying on it. Kept, but not a dependency.
+                    meta["mention"] = True
+                graph.add_uses(user_id=obj.id, used_id=target_id, metadata=meta)
                 existing.add(key)
                 uses_ref_count += 1
 

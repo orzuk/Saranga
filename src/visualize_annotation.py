@@ -1383,9 +1383,17 @@ def _resolve_nodes(nodes, macros):
               "origin_citation", "assumptions", "conclusions", "differentia",
               "input", "output", "section")
 
+    # \ref{eq:x} / \eqref{eq:x} show the id of the node carrying that label
+    # (EP1), not the raw key.
+    labels = {}
+    for n in nodes:
+        for k in str(n.get("label") or "").split(","):
+            if k.strip() and n.get("id"):
+                labels.setdefault(k.strip(), str(n["id"]))
+
     def _resolve(v):
         if isinstance(v, str):
-            return _norm(v, macros) if v else v
+            return _norm(v, macros, labels) if v else v
         if isinstance(v, list):
             return [_resolve(x) for x in v]
         return v
@@ -2929,7 +2937,7 @@ function showDetail(nodeId) {{
     var h = '<h3 style="margin:0 0 8px;font-size:16px;">Misc: Unconnected Equations</h3>';
     h += '<div style="font-size:12px;color:#888;margin-bottom:10px;">Equations not linked to any theorem or proof step</div>';
     ORPHANS.forEach(function(e) {{
-      h += '<div class="eq-item"><strong>' + e.id + '</strong> (Sec ' + e.section + '): ' + esc(e.statement) + '</div>';
+      h += '<div class="eq-item"><strong>' + e.id + '</strong> (Sec ' + e.section + '): ' + eqTex(e.statement) + '</div>';
     }});
     if (ORPHANS.length === 0) h += '<div style="color:#888;">No orphan equations.</div>';
     panel.innerHTML = h;
@@ -2978,7 +2986,7 @@ function showDetail(nodeId) {{
     }});
   }}
   var eqTag = function(e) {{ return '<span style="color:#2471A3;font-size:11px;"> (' + e.id + ')</span>'; }};
-  var eqBlock = function(e) {{ return '<div style="margin:2px 0 2px 12px;padding:3px 8px;background:#EBF5FB;border-left:2px solid #5DADE2;font-size:12px;">' + esc(e.id) + ': ' + esc(e.statement) + '</div>'; }};
+  var eqBlock = function(e) {{ return '<div style="margin:2px 0 2px 12px;padding:3px 8px;background:#EBF5FB;border-left:2px solid #5DADE2;font-size:12px;">' + esc(e.id) + ': ' + eqTex(e.statement) + '</div>'; }};
 
   // Statement + inline statement equations.
   // Prefer raw_latex (TeX intact -> MathJax can typeset). statement/statement_clean
@@ -3123,7 +3131,7 @@ function showDetail(nodeId) {{
     h += '<div class="detail-section"><h4 style="cursor:pointer;" onclick="toggleEqPanel(this)">Unplaced Equations (' + eqsByCtx.orphan.length + ') &#9660;</h4>';
     h += '<div style="display:none;">';
     eqsByCtx.orphan.forEach(function(e) {{
-      h += '<div class="eq-item"><strong>' + e.id + '</strong> (Sec ' + e.section + '): ' + esc(e.statement) + '</div>';
+      h += '<div class="eq-item"><strong>' + e.id + '</strong> (Sec ' + e.section + '): ' + eqTex(e.statement) + '</div>';
     }});
     h += '</div></div>';
   }}
@@ -3139,7 +3147,7 @@ function toggleOrphans() {{
   var p = document.getElementById("orphan-panel");
   if (p.style.display === "block") {{ p.style.display = "none"; return; }}
   var h = "";
-  ORPHANS.forEach(function(e) {{ h += '<div class="orphan-item"><strong>' + e.id + '</strong> (Sec ' + e.section + '): ' + esc(e.statement) + '</div>'; }});
+  ORPHANS.forEach(function(e) {{ h += '<div class="orphan-item"><strong>' + e.id + '</strong> (Sec ' + e.section + '): ' + eqTex(e.statement) + '</div>'; }});
   document.getElementById("orphan-list").innerHTML = h;
   p.style.display = "block";
   if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([p]).catch(function(){{}});
@@ -3328,6 +3336,8 @@ function toggleEqPanel(el) {{
 }}
 function esc(t) {{ return t ? t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;") : ""; }}
 function escAttr(t) {{ return esc(String(t || "")).replace(/"/g, "&quot;"); }}
+// An equation node's statement is bare TeX (no $): display it as math.
+function eqTex(t) {{ t = String(t || "").trim(); return (!t || t.indexOf("$") >= 0 || t.indexOf("begin{{") >= 0) ? esc(t) : "$$" + esc(t) + "$$"; }}
 // v6 side-panel helpers.
 function rigorBadge(r) {{
   return r ? '<span class="badge rigor-' + escAttr(r) + '" title="rigor">' + esc(String(r).replace(/_/g, '-')) + '</span>' : '';

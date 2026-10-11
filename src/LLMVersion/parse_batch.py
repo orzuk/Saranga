@@ -43,6 +43,8 @@ Preferred (unified pipeline):
 """
 
 import argparse
+import os
+import sys
 import json
 import csv
 import glob as globmod
@@ -234,6 +236,17 @@ def run_batch(
         # Deterministic processing order (by tex path), as before.
         local_items.sort(key=lambda it: it[1])
         print(f"[INFO] Local tex-dir mode: found {len(local_items)} .tex files under {tex_dir}")
+        # SARANGA_SHARD=k/N: parse only every N-th paper, starting at k, so one
+        # category can be split over N parallel cluster jobs (each paper's
+        # JSON is its own file, so the shards never write the same output).
+        _shard = os.environ.get("SARANGA_SHARD", "")
+        if _shard:
+            _k, _n = (int(x) for x in _shard.split("/"))
+            local_items = local_items[_k::_n]
+            print(f"[INFO] shard {_k}/{_n}: {len(local_items)} papers")
+            if not local_items:
+                print("[INFO] empty shard: nothing to parse")
+                sys.exit(0)
 
     if local_items:
         # Skip arXiv API — process local files directly

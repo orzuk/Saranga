@@ -130,6 +130,8 @@ HTML_ONLY=${HTML_ONLY:-0}
 # extractors/rules/silver_v6__sentence_rules_haiku__2026-10 (relative to the repo
 # root or absolute). Unset: whatever rules are installed under src/LLMVersion.
 RULES_DIR=${RULES_DIR:-}
+# Optional: split every category over SHARDS parallel array tasks (default 1).
+SHARDS=${SHARDS:-1}
 
 # Optional: pre-downloaded local source (calibration / re-parse mode).
 # If set, --tex-dir is passed to run_pipeline.py and fetch is skipped.
@@ -205,12 +207,23 @@ fi
 
 if [ -n "${SLURM_ARRAY_TASK_ID:-}" ]; then
     # SLURM array mode: process one category per task
+    # SHARDS=N splits each category over N tasks: task = category * N + shard,
+    # so --array=0-$((20*N-1)). Shards only parse (each paper is its own
+    # JSON); run the per-category reports afterwards with SHARDS unset and
+    # OPERATIONS=validate,link,anomalies,stats (see FINISH below).
     TASK_ID=$SLURM_ARRAY_TASK_ID
+    SHARD=$(( TASK_ID % SHARDS ))
+    TASK_ID=$(( TASK_ID / SHARDS ))
     if [ "$TASK_ID" -ge "${#CATEGORIES[@]}" ]; then
-        echo "ERROR: SLURM_ARRAY_TASK_ID=$TASK_ID but only ${#CATEGORIES[@]} categories defined."
+        echo "ERROR: SLURM_ARRAY_TASK_ID=$SLURM_ARRAY_TASK_ID but only ${#CATEGORIES[@]} categories x $SHARDS shards."
         exit 1
     fi
     RUN_CATEGORIES=("${CATEGORIES[$TASK_ID]}")
+    if [ "$SHARDS" -gt 1 ]; then
+        export SARANGA_SHARD="$SHARD/$SHARDS"
+        OPERATIONS=parse
+        echo "Shard $SARANGA_SHARD of ${CATEGORIES[$TASK_ID]} (parse only)"
+    fi
 else
     # Non-SLURM mode: process all categories sequentially
     RUN_CATEGORIES=("${CATEGORIES[@]}")
