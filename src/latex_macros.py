@@ -559,6 +559,42 @@ def resolve_references(text, labels=None):
     return text
 
 
+_TEXT_SYMBOLS = [
+    (re.compile(r"\\(?:ldots|dots|textellipsis)(?![A-Za-z])(?:\{\})?"), "\u2026"),
+    (re.compile(r"\\cdots(?![A-Za-z])"), "\u22ef"),
+    (re.compile(r"\\S(?![A-Za-z])\s*"), "\u00a7"),
+    (re.compile(r"\\([%&#_])"), r"\1"),      # not \$: a bare $ would open math
+    (re.compile(r"---"), "\u2014"),
+    (re.compile(r"(?<!-)--(?!-)"), "\u2013"),
+    (re.compile(r"``"), "\u201c"),
+    (re.compile(r"''"), "\u201d"),
+]
+
+
+def text_mode_symbols(text):
+    r"""`\\ldots`, `\\S`, `\\%`, `--`, quotes OUTSIDE `$...$` become plain characters.
+
+    MathJax only typesets math, so a text-mode command shows up raw in the
+    side panel: `$P_1$,\\ldots,$P_p$` read as ", \ldots ," (1909.06098).
+    Inside math the commands are left alone; MathJax handles them there.
+    """
+    if not text or "\\" not in text and "--" not in text and "`" not in text:
+        return text
+    parts = re.split(r"(?<!\\)(\$\$?)", text)
+    out, in_math = [], False
+    for part in parts:
+        if part in ("$", "$$"):
+            in_math = not in_math
+            out.append(part)
+        elif in_math:
+            out.append(part)
+        else:
+            for pat, rep in _TEXT_SYMBOLS:
+                part = pat.sub(rep, part)
+            out.append(part)
+    return "".join(out)
+
+
 def normalize_for_mathtext(text, macros=None, labels=None):
     """Everything a matplotlib-mathtext consumer needs, in one call.
 
@@ -582,6 +618,7 @@ def normalize_for_mathtext(text, macros=None, labels=None):
     text = strip_text_environments(text)
     text = resolve_references(text, labels)
     text = resolve_text_fonts(text)
+    text = text_mode_symbols(text)
     text = unwrap_transparent(text)
     text = strip_dimension_commands(text)
     text = _NBSP.sub(" ", text or "")

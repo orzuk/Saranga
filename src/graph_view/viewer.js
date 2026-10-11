@@ -284,7 +284,13 @@
       }
       var open = S.proofs[n.id] && n.nsteps > 0;
       if (open) par = frame(n.id, par, 'proof of ' + n.id);
-      var head = (MAIN[n.id] ? '\u2605 ' : '') + n.id + ': ' + (n.name || n.type);
+      // Nodes made by a distilled sentence rule (DIST_DEFINITION7) carry no
+      // name of their own: show "definition 7 (rule)" rather than the id twice.
+      var dm = /^DIST_[A-Z_]+?(\d+)$/.exec(n.id);
+      var nm = (n.name && n.name !== n.id) ? n.name : '';
+      var head = (MAIN[n.id] ? '\u2605 ' : '') +
+        (dm ? n.type.replace(/_/g, ' ') + ' ' + dm[1] + ' (rule)' + (nm ? ': ' + nm : '')
+            : n.id + ': ' + (nm || n.type));
       var extra = n.nsteps ? (open ? '\u25be proof open (' + n.nsteps + ' steps)' : '\u25b8 proof: ' + n.nsteps + ' step' + (n.nsteps > 1 ? 's' : '')) : '';
       var b = box(head, n.short, extra, n.imp, n.imp >= 4 ? 4 : 3);
       els.push({ group: 'nodes', data: { id: n.id, kind: 'node', type: n.type, parent: par,

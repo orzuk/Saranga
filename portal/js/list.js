@@ -63,6 +63,23 @@
         return;
       }
 
+      if (cfg.tier === 2) {
+        var cat2 = new URL(window.location.href).searchParams.get("cat");
+        if (!cat2) {
+          var counts = {};
+          rows.forEach(function (r) {
+            var c = r.category || "unknown";
+            counts[c] = counts[c] || { category: c, count: 0, avg_nodes: 0 };
+            counts[c].count++; counts[c].avg_nodes += (r.n_nodes || 0);
+          });
+          var cats = Object.keys(counts).map(function (k) {
+            var c = counts[k]; c.avg_nodes = c.avg_nodes / c.count; return c;
+          });
+          renderCategoryGrid(cats, "papers_tier2.html", "all");
+          return;
+        }
+        if (cat2 !== "all") rows = rows.filter(function (r) { return r.category === cat2; });
+      }
       allRows = rows;
       sortKey = "paper_id";
       renderPapers();
@@ -73,7 +90,8 @@
     }
   }
 
-  function renderCategoryGrid(rows) {
+  function renderCategoryGrid(rows, page, allKey) {
+    page = page || "papers_tier3.html";
     var main = document.getElementById("listing");
     if (!main) return;
     main.innerHTML = "";
@@ -88,7 +106,8 @@
 
     var heading = document.createElement("p");
     heading.style.cssText = "color:#6a6a6a;font-size:14px;margin-bottom:18px";
-    heading.textContent = catNames.length + " categories, " + total + " papers total";
+    heading.innerHTML = catNames.length + " categories, " + total + " papers total" +
+      (allKey ? ' &middot; <a href="' + page + '?cat=' + allKey + '">show all</a>' : "");
     main.appendChild(heading);
 
     var grid = document.createElement("div");
@@ -98,7 +117,7 @@
       var name = catNames[ci];
       var info = cats[name];
       var card = document.createElement("a");
-      card.href = "papers_tier3.html?cat=" + encodeURIComponent(name);
+      card.href = page + "?cat=" + encodeURIComponent(name);
       card.style.cssText = "display:block;padding:16px;background:#fff;border:1px solid #e0e0e0;border-radius:8px;text-decoration:none;color:inherit;transition:box-shadow 0.15s;";
       card.onmouseover = function() { this.style.boxShadow = "0 2px 8px rgba(0,0,0,0.12)"; };
       card.onmouseout = function() { this.style.boxShadow = "none"; };
@@ -349,6 +368,7 @@
     }
     document.getElementById("count-line").textContent =
       view.length + " of " + allRows.length + " papers";
+    if (Authomathics.renderMath) Authomathics.renderMath(tbody);   // $...$ in titles
   }
 
   function renderPairs() {

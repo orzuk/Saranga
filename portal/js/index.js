@@ -9,17 +9,23 @@
 
     const t1 = (papers.tier1 || []).length;
     const t2 = (papers.tier2 || []).length;
-    const t3 = (papers.tier3 || []).length;
+    let t3 = (papers.tier3 || []).length;
 
     var uniqueTier1 = 10;
     setText("count-tier1", uniqueTier1 + "");
     setText("count-tier2", t2 + "");
     setText("count-tier3", t3 > 0 ? t3 + "" : "—");
+    if (manifest.tier3_index) {                     // v6: the 100K is indexed per category
+      Authomathics.fetchJson(manifest.tier3_index).then(function (ix) {
+        var n = (ix.categories || []).reduce(function (s, c) { return s + c.count; }, 0);
+        setText("count-tier3", "100,000");
+        setText("blurb-tier3", n.toLocaleString() + " of 100,000 extracted: arXiv math/CS, " + (ix.categories || []).length + " categories, distilled rules; graphs built on click");
+      });
+    }
 
     setText("blurb-tier1", uniqueTier1 + " manual gold papers");
-    setText("blurb-tier2", t2 + " silver-extracted");
-    var t3k = t3 >= 1000 ? (t3 / 1000).toFixed(1) + "k" : t3 + "";
-    setText("blurb-tier3", t3k + "/100k arXiv math/CS papers");
+    setText("blurb-tier2", t2 + " papers (10 per category): Claude Opus graph and distilled-rule graph side by side");
+
 
     setText("count-pairs", pairs.length + "");
     setText("blurb-pairs", pairs.length + " pair alignments");

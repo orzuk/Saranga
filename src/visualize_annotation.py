@@ -3337,7 +3337,7 @@ function toggleEqPanel(el) {{
 function esc(t) {{ return t ? t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;") : ""; }}
 function escAttr(t) {{ return esc(String(t || "")).replace(/"/g, "&quot;"); }}
 // An equation node's statement is bare TeX (no $): display it as math.
-function eqTex(t) {{ t = String(t || "").trim(); return (!t || t.indexOf("$") >= 0 || t.indexOf("begin{{") >= 0) ? esc(t) : "$$" + esc(t) + "$$"; }}
+function eqTex(t) {{ t = String(t || "").trim(); if (!t || t.indexOf("$") >= 0) return esc(t); if (/^\\\\begin\{{(equation|align|gather|multline|eqnarray|flalign|alignat)\*?\}}[\s\S]*\\\\end\{{\\1\*?\}}$/.test(t)) return esc(t); t = t.replace(/\\\\(nonumber|notag)(?![A-Za-z])/g, ""); var top = t.replace(/\\\\begin\{{([a-z]+\*?)\}}[\s\S]*?\\\\end\{{\\1\}}/g, ""); if (/&|\\\\\\\\/.test(top)) t = "\\\\begin{{aligned}}" + t + "\\\\end{{aligned}}"; return "$$" + esc(t) + "$$"; }}
 // v6 side-panel helpers.
 function rigorBadge(r) {{
   return r ? '<span class="badge rigor-' + escAttr(r) + '" title="rigor">' + esc(String(r).replace(/_/g, '-')) + '</span>' : '';
