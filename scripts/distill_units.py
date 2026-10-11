@@ -223,12 +223,20 @@ class Scorer:
         self.fire = defaultdict(dict)          # uid -> pid -> set of sentence indices
 
     def fire_sets(self, rule: dict, pids) -> dict:
+        """Where a rule fires, per paper. A rule that does not compile, or that
+        cannot finish on some sentence (UR.SlowRule), fires nowhere, so it is
+        rejected like any rule that finds nothing."""
         c = UR.compile_rule(rule)
-        out = {}
-        for pid in pids:
-            p = self.papers[pid]
-            out[pid] = ({i for i, s in enumerate(p.sent_text) if UR.fires(c, s)}
-                        if c is not None else set())
+        out = {pid: set() for pid in pids}
+        if c is None:
+            return out
+        try:
+            for pid in pids:
+                out[pid] = {i for i, s in enumerate(self.papers[pid].sent_text) if UR.fires(c, s)}
+        except UR.SlowRule:
+            print(f"    [slow] {rule.get('regex', '')[:60]!r} exceeded {UR.MATCH_TIMEOUT}s on a "
+                  "sentence: rejected", flush=True)
+            return {pid: set() for pid in pids}
         return out
 
     def cache(self, rule: dict, pids) -> None:

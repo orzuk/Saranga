@@ -34,7 +34,22 @@ sys.path.insert(0, os.path.dirname(_HERE))          # src/, for latex_facts, pro
 
 MAX_SPAN = 8
 SPANS = ("1", "2", "3", "4", "para")
-_FLAGS = {"i": re.I, "s": re.S, "m": re.M, "x": re.X}
+
+# Rules are matched with the `regex` package when it is installed (it is
+# compatible with `re` for these patterns): its matcher avoids most
+# catastrophic backtracking, and its per-call timeout works in any thread.
+# `re` cannot be interrupted off the main thread, and one teacher-written
+# pattern that never finished hung a distillation run for hours.
+try:
+    import regex as _engine
+except ImportError:                                    # pragma: no cover
+    _engine = re
+MATCH_TIMEOUT = 0.5      # seconds one sentence may take; beyond it the rule is broken
+_FLAGS = {"i": _engine.I, "s": _engine.S, "m": _engine.M, "x": _engine.X}
+
+
+class SlowRule(Exception):
+    """A rule's match on one sentence took longer than MATCH_TIMEOUT."""
 
 
 def compile_rule(rule: dict):
@@ -43,8 +58,8 @@ def compile_rule(rule: dict):
     for ch in str(rule.get("flags", "")):
         flags |= _FLAGS.get(ch, 0)
     try:
-        return re.compile(rule["regex"], flags)
-    except (re.error, KeyError, TypeError):
+        return _engine.compile(rule["regex"], flags)
+    except Exception:                                  # re.error / regex.error / bad record
         return None
 
 
@@ -65,14 +80,19 @@ def span_end(sents, i: int, span: str) -> int:
 
 
 def fires(compiled, text: str) -> bool:
+    """Whether a compiled rule matches `text`; SlowRule if it cannot finish."""
     try:
+        if _engine is not re:
+            return compiled.search(text, timeout=MATCH_TIMEOUT) is not None
         return compiled.search(text) is not None
+    except TimeoutError as e:
+        raise SlowRule(str(e)) from e
     except Exception:
         return False
 
 
 def fire_set(compiled, text: str, sents) -> set:
-    """Indices of the sentences where a compiled rule fires."""
+    """Indices of the sentences where a compiled rule fires (SlowRule propagates)."""
     return {i for i, s in enumerate(sents) if fires(compiled, text[s.start:s.end])}
 
 
@@ -103,8 +123,13 @@ def apply_rules(text: str, sents, rules: list[dict]) -> list[dict]:
     fire_sets = {}
     for r in rules:
         c = compile_rule(r)
-        if c is not None:
+        if c is None:
+            continue
+        try:
             fire_sets[r.get("uid")] = fire_set(c, text, sents)
+        except SlowRule:
+            print(f"[unit_rules] rule {r.get('uid')} too slow on this paper: skipped",
+                  file=sys.stderr)
     return select(sents, rules, fire_sets)
 
 

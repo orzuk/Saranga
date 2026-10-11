@@ -2058,6 +2058,10 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         for i, t in enumerate(ax.texts[_texts_start:len(ax.texts)]):
             if t.get_gid() is None:
                 t.set_gid(f"node_{_safe}__text{i}")
+            elif t.get_gid().startswith("lodbody_"):
+                # Body lines must carry the node prefix too, or hiding the node
+                # (external, nested, aux, backbone toggles) leaves its text floating.
+                t.set_gid(f"node_{_safe}__{t.get_gid()}")
         for i, ln in enumerate(ax.lines[_lines_start:len(ax.lines)]):
             if ln.get_gid() is None:
                 ln.set_gid(f"node_{_safe}__line{i}")
@@ -2806,6 +2810,7 @@ body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #faf
 #main {{ display: flex; height: calc(100vh - 82px); }}
 #svg-container {{ flex: 1; overflow: auto; padding: 10px; cursor: grab; }}
 #svg-container svg {{ transform-origin: 0 0; }}
+#svg-container svg.lod-far [id*="__lodbody_"] {{ display: none; }}
 #detail-panel {{ width: 0; overflow-y: auto; background: white; border-left: 1px solid #ddd; transition: width 0.3s; }}
 #detail-panel.open {{ width: 380px; padding: 16px; }}
 .detail-section {{ margin-bottom: 12px; }}
@@ -3433,20 +3438,17 @@ function toggleBackbone() {{
 // costs legibility of the structure around it. Hiding it there is what lets a
 // 116-inch figure be understood at a glance and read up close, instead of
 // forcing a choice between the two.
+// Done with a class on the <svg> (see the lod-far CSS rule), not per-element
+// style.display, so it never overrides a node that a toggle has hidden.
 var LOD_BODY_MIN = 0.5;
-var _lodBodyEls = null, _lodBodyShown = true;
+var _lodBodyShown = true;
 
 function applyLOD() {{
   if (!svgEl) return;
-  if (_lodBodyEls === null) {{
-    _lodBodyEls = svgEl.querySelectorAll('[id^="lodbody_"]');
-  }}
   var want = currentZoom >= LOD_BODY_MIN;
   if (want === _lodBodyShown) return;        // only touch the DOM on a change
   _lodBodyShown = want;
-  for (var i = 0; i < _lodBodyEls.length; i++) {{
-    _lodBodyEls[i].style.display = want ? "" : "none";
-  }}
+  svgEl.classList.toggle("lod-far", !want);
   var b = document.getElementById("lod-note");
   if (b) b.textContent = want ? "" : "detail hidden — zoom in to read boxes";
 }}
