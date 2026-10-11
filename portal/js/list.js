@@ -45,14 +45,22 @@
       let rows = (manifest.papers && manifest.papers[tierKey]) || [];
       if (cfg.tier === 1) rows = collapseTier1Versions(rows);
 
-      // Tier 3: show category grid first, paper list only when ?cat= is set.
+      // Tier 3 (100K): an index per category, data/tier3_v6/<cat>/index.json;
+      // the category grid comes from data/tier3_v6/index.json.
       if (cfg.tier === 3) {
         var catParam = new URL(window.location.href).searchParams.get("cat");
         if (!catParam) {
-          renderCategoryGrid(rows);
+          Authomathics.fetchJson(manifest.tier3_index || "data/tier3_v6/index.json").then(function (ix) {
+            renderCategoryGrid(ix.categories || []);
+          });
           return;
         }
-        rows = rows.filter(function (r) { return r.category === catParam; });
+        Authomathics.fetchJson("data/tier3_v6/" + encodeURIComponent(catParam) + "/index.json").then(function (r3) {
+          allRows = r3;
+          sortKey = "paper_id";
+          renderPapers();
+        });
+        return;
       }
 
       allRows = rows;
@@ -70,19 +78,17 @@
     if (!main) return;
     main.innerHTML = "";
 
-    // Count papers per category
-    var cats = {};
+    // rows: [{category, count, avg_nodes}] from the Tier-3 index
+    var cats = {}, total = 0;
     for (var i = 0; i < rows.length; i++) {
-      var c = rows[i].category || "unknown";
-      if (!cats[c]) cats[c] = { count: 0, nodes: 0 };
-      cats[c].count++;
-      cats[c].nodes += (rows[i].n_nodes || 0);
+      cats[rows[i].category] = { count: rows[i].count, nodes: rows[i].avg_nodes * rows[i].count };
+      total += rows[i].count;
     }
     var catNames = Object.keys(cats).sort();
 
     var heading = document.createElement("p");
     heading.style.cssText = "color:#6a6a6a;font-size:14px;margin-bottom:18px";
-    heading.textContent = catNames.length + " categories, " + rows.length + " papers total";
+    heading.textContent = catNames.length + " categories, " + total + " papers total";
     main.appendChild(heading);
 
     var grid = document.createElement("div");
@@ -217,7 +223,8 @@
     tbl.className = "listing";
     const versionHeader = (cfg.tier === 1)
       ? '<th title="Four independent extractions of each gold-standard paper: manual gold (M), rule-based regex (R), Claude Opus (C), and OpenAI GPT-4o (G)">Versions</th>'
-      : "";
+      : (cfg.tier === 2 ? '<th title="The LLM graph and the rule-based graph of the same paper">Graphs</th>'
+         : (cfg.tier === 3 ? '<th title="Built on first click">Graph</th>' : ""));
     tbl.innerHTML =
       "<thead><tr>" +
       '<th data-k="paper_id">Paper ID</th>' +
@@ -249,7 +256,7 @@
     const tbody = document.querySelector("#listing table.listing tbody");
     if (!tbody) return;
     tbody.innerHTML = "";
-    const colspan = (cfg.tier === 1) ? 9 : 8;
+    const colspan = (cfg.tier === 1 || cfg.tier === 2 || cfg.tier === 3) ? 9 : 8;
     if (view.length === 0) {
       const tr = document.createElement("tr");
       tr.innerHTML = '<td colspan="' + colspan + '" class="empty">No papers match.</td>';
@@ -257,7 +264,8 @@
     }
     function fmt(n) { return (n && n > 0) ? String(n) : '<span style="color:#bbb">&ndash;</span>'; }
     function paperUrl(id) {
-      return "paper.html?tier=" + cfg.tier + "&id=" + encodeURIComponent(id);
+      var catq = (cfg.tier === 3) ? "&cat=" + encodeURIComponent(new URL(window.location.href).searchParams.get("cat") || "") : "";
+      return "paper.html?tier=" + cfg.tier + "&id=" + encodeURIComponent(id) + catq;
     }
     for (const r of view) {
       const tr = document.createElement("tr");
@@ -285,6 +293,14 @@
         };
       }
       let versionsCell = "";
+      if (cfg.tier === 2 && r.graph_path) {
+        versionsCell = '<td style="white-space:nowrap">' +
+          '<a href="' + r.graph_path + '" target="_blank" title="Claude Opus extraction">LLM</a>' +
+          (r.graph_rules_path ? ' | <a href="' + r.graph_rules_path + '" target="_blank" title="Distilled rule-based extraction">rules</a>' : '') +
+          '</td>';
+      } else if (cfg.tier === 3 && r.graph_path) {
+        versionsCell = '<td><a href="' + r.graph_path + '" target="_blank">graph</a></td>';
+      }
       if (cfg.tier === 1 && r.versions) {
         const vs = r.versions;
         const link = function (id, label, title) {

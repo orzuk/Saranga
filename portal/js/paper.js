@@ -330,9 +330,14 @@
     // Pull this paper's manifest entry early so we can use json_path/graph_path.
     let manifestEntry = null;
     try {
-      const manifest = await Authomathics.loadManifest();
-      const tierKey = "tier" + tier;
-      const list = (manifest.papers && manifest.papers[tierKey]) || [];
+      const cat = Authomathics.getQueryParam("cat");
+      let list;
+      if (tier === "3" && cat) {
+        list = await Authomathics.fetchJson("data/tier3_v6/" + encodeURIComponent(cat) + "/index.json");
+      } else {
+        const manifest = await Authomathics.loadManifest();
+        list = (manifest.papers && manifest.papers["tier" + tier]) || [];
+      }
       manifestEntry = list.find(function (p) { return p.paper_id === id; }) || null;
     } catch (e) { /* non-fatal */ }
     _manifestEntry = manifestEntry;

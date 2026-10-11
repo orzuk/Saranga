@@ -49,6 +49,23 @@ MANIFEST_PATH = DATA_DIR / "manifest.json"
 PYTHON = sys.executable
 RENDER_TIMEOUT_SEC = 180
 
+# ── v6 data (Oct 2026) ──────────────────────────────────────────────────────
+# Tier 2 = the 200 v6 silver papers: their LLM pages (<id>_new.html) and
+# rule-based pages (<id>_rules.html) are already built, served as they are.
+REPO_DIR = PORTAL_DIR.parent
+SILVER_DIR = Path(os.environ.get("SARANGA_SILVER_DIR", REPO_DIR / "corpus/silver/opus-5.5__v6"))
+GRAPH_BUILD = REPO_DIR / "src" / "graph_view" / "build.py"
+# Tier 3 = the 100K corpus: an index of every paper (data/tier3_v6/<cat>/index.json),
+# a local sample of JSONs (data/tier3_v6/<cat>/json/<id>.json), and, for any
+# other paper, the JSON fetched on first click by SARANGA_T3_REMOTE, a command
+# with {cat} and {id} placeholders that prints the JSON, e.g.
+#   ssh orzuk@moriah-gw.cs.huji.ac.il cat /sci/.../parsed_100k_v6b/{cat}/json/{id}_rules.json
+# The page is then built with the v2 viewer and cached.
+T3_DIR = DATA_DIR / "tier3_v6"
+T3_REMOTE = os.environ.get("SARANGA_T3_REMOTE", "")
+T3_CACHE = CACHE_DIR / "tier3_v6"
+MOUNTS = {"/silver_v6/": SILVER_DIR, "/t3cache/": T3_CACHE}
+
 
 def find_json(paper_id: str, tier: str) -> Path | None:
     """Locate the JSON for a paper in the configured tier dir."""
@@ -555,12 +572,87 @@ def serve_render_alignment(handler: "PortalHandler",
     handler.wfile.write(html_bytes)
 
 
+_SAFE = re.compile(r"^[A-Za-z0-9._\-]+$")
+
+
+def t3_json(cat: str, pid: str) -> Path | None:
+    """The paper's JSON: the local sample, the cache, or fetched by T3_REMOTE."""
+    if not (_SAFE.match(cat) and _SAFE.match(pid)):
+        return None
+    for p in (T3_DIR / cat / "json" / f"{pid}.json", T3_CACHE / cat / f"{pid}.json"):
+        if p.is_file():
+            return p
+    if not T3_REMOTE:
+        return None
+    dst = T3_CACHE / cat / f"{pid}.json"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    cmd = T3_REMOTE.format(cat=cat, id=pid)
+    try:
+        out = subprocess.run(cmd, shell=True, capture_output=True, timeout=120)
+    except subprocess.TimeoutExpired:
+        return None
+    if out.returncode != 0 or not out.stdout.strip().startswith(b"{"):
+        sys.stderr.write(f"[t3] fetch failed for {cat}/{pid}: {out.stderr[-300:]!r}\n")
+        return None
+    dst.write_bytes(out.stdout)
+    return dst
+
+
+def serve_t3_json(handler, query) -> None:
+    cat, pid = (query.get("cat") or [""])[0], (query.get("id") or [""])[0]
+    p = t3_json(cat, pid)
+    if not p:
+        handler.send_error(404, f"no JSON for {cat}/{pid} (set SARANGA_T3_REMOTE to fetch it)")
+        return
+    body = p.read_bytes()
+    handler.send_response(200)
+    handler.send_header("Content-Type", "application/json")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+def serve_render3(handler, query) -> None:
+    """Build (once) the v2 viewer page of a 100K paper and redirect to it."""
+    cat, pid = (query.get("cat") or [""])[0], (query.get("id") or [""])[0]
+    src = t3_json(cat, pid)
+    if not src:
+        handler.send_error(404, f"no JSON for {cat}/{pid} (set SARANGA_T3_REMOTE to fetch it)")
+        return
+    out_dir = T3_CACHE / cat
+    page = out_dir / f"{pid}_new.html"
+    if not page.is_file() or page.stat().st_mtime < src.stat().st_mtime:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        r = subprocess.run([PYTHON, str(GRAPH_BUILD), str(src), "-o", str(out_dir)],
+                           capture_output=True, text=True, timeout=RENDER_TIMEOUT_SEC)
+        if r.returncode != 0 or not page.is_file():
+            handler.send_error(500, f"build failed: {r.stderr[-500:]}")
+            return
+    handler.send_response(302)
+    handler.send_header("Location", f"/t3cache/{cat}/{pid}_new.html")
+    handler.end_headers()
+
+
 class PortalHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(PORTAL_DIR), **kwargs)
 
+    def translate_path(self, path):
+        clean = urllib.parse.urlparse(path).path
+        for prefix, root in MOUNTS.items():
+            if clean.startswith(prefix):
+                rel = urllib.parse.unquote(clean[len(prefix):])
+                p = (Path(root) / rel).resolve()
+                if str(p).startswith(str(Path(root).resolve())):
+                    return str(p)
+        return super().translate_path(path)
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path in ("/render3", "/t3json"):
+            query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+            (serve_render3 if parsed.path == "/render3" else serve_t3_json)(self, query)
+            return
         if parsed.path == "/render":
             query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
             serve_render(self, query)

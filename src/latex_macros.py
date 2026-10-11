@@ -998,16 +998,20 @@ FORMS = [
     # one argument that is OPTIONAL, so bare `\limGs` means `\mathcal{X}_{G}`.
     # Recording it as plain arity=1 makes an expander read the next token as a
     # mandatory argument and swallow whatever follows — usually the closing `$`.
+    # Each optional group carries its own trailing whitespace: three bare \s*
+    # separated only by optional groups backtrack cubically on a long run of
+    # blanks after a definition with no body (1909.03201: `\newcommand{\email}`
+    # then 20K spaces hung the 100K parse).
     re.compile(r'\\(?:new|renew|provide)command\*?\s*\{?\\(?P<name>[A-Za-z@]+)\}?\s*'
-               r'(?:\[(?P<nargs>\d+)\])?\s*(?:\[(?P<opt>[^\]]*)\])?\s*\{'),
+               r'(?:\[(?P<nargs>\d+)\]\s*)?(?:\[(?P<opt>[^\]]*)\]\s*)?\{'),
     # \def\foo{body}  /  \def\foo#1{body}
     re.compile(r'(?:\\(?:long|global|protected|outer)\s*)*'
-               r'\\(?:e|g|x)?def\s*\\(?P<name>[A-Za-z@]+)\s*(?:#\d)*\s*\{'),
+               r'\\(?:e|g|x)?def\s*\\(?P<name>[A-Za-z@]+)\s*(?:#\d\s*)*\{'),
     # \DeclareMathOperator{\foo}{body} — see OPERATOR_FORM below
     re.compile(r'\\DeclareMathOperator\*?\s*\{\\(?P<name>[A-Za-z@]+)\}\s*\{'),
     # \newenvironment{foo}{begin}{end} — name has no backslash
     re.compile(r'\\(?:new|renew)environment\*?\s*\{(?P<name>[A-Za-z@*]+)\}\s*'
-               r'(?:\[\d+\])?\s*\{'),
+               r'(?:\[\d+\]\s*)?\{'),
 ]
 
 STRUCT = re.compile(r'\\(label|index|textbf|emph|textit|section|subsection|'

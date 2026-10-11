@@ -545,9 +545,9 @@ def lib_dir_for(out_dir, mode, src_dir=None):
     return None                                           # cdn: nothing local
 
 
-def target_path(out_dir, stem):
-    """<stem>_new.html, refusing any existing file that is not a v2 page."""
-    p = out_dir / (stem + "_new.html")
+def target_path(out_dir, stem, suffix="_new"):
+    """<stem><suffix>.html, refusing any existing file that is not a v2 page."""
+    p = out_dir / (stem + suffix + ".html")
     if p.exists():
         head = p.read_text(encoding="utf-8", errors="replace")[:4000]
         if 'name="generator" content="saranga-graph-view-v2"' not in head:
@@ -560,6 +560,8 @@ def main():
     ap.add_argument("inputs", nargs="+", help="silver JSON file(s), directories or globs")
     ap.add_argument("-o", "--outdir", default=None,
                     help="output folder (default: <input dir>/graphs)")
+    ap.add_argument("--suffix", default="_new",
+                    help="page name suffix: <id><suffix>.html (e.g. _rules for rule-based graphs)")
     ap.add_argument("--standalone", action="store_true",
                     help="inline the libraries: one self-contained file per paper")
     ap.add_argument("--libs", choices=["local", "cdn"], default="local",
@@ -578,7 +580,7 @@ def main():
         mode = "standalone" if args.standalone else args.libs
         lib_dir = lib_dir_for(out_dir, mode, args.lib_source)
         stem = path.stem
-        dst = target_path(out_dir, stem)
+        dst = target_path(out_dir, stem, args.suffix)
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             with contextlib.redirect_stdout(io.StringIO()):
