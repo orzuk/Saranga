@@ -126,6 +126,10 @@ EXTRACTION_MODE=${EXTRACTION_MODE:-rules}
 OPERATIONS=${OPERATIONS:-parse,validate,link,anomalies,stats}
 HTML=${HTML:-0}
 HTML_ONLY=${HTML_ONLY:-0}
+# Optional: the distilled rule set to parse with, an extractor directory such as
+# extractors/rules/silver_v6__sentence_rules_haiku__2026-10 (relative to the repo
+# root or absolute). Unset: whatever rules are installed under src/LLMVersion.
+RULES_DIR=${RULES_DIR:-}
 
 # Optional: pre-downloaded local source (calibration / re-parse mode).
 # If set, --tex-dir is passed to run_pipeline.py and fetch is skipped.
@@ -253,6 +257,7 @@ for CATEGORY in "${RUN_CATEGORIES[@]}"; do
         echo "  END_DATE        = ${END_DATE:-<all>}"
     fi
     echo "  EXTRACTION_MODE = $EXTRACTION_MODE"
+    echo "  RULES_DIR       = ${RULES_DIR:-<installed>}"
     echo "  OPERATIONS      = $OPERATIONS"
     echo "  OUT_DIR         = $OUT_DIR"
     echo "  PYTHON          = $PYTHON"
@@ -289,6 +294,10 @@ for CATEGORY in "${RUN_CATEGORIES[@]}"; do
     fi
     if [ -n "${SAFEGUARD:-}" ]; then
         CMD+=(--safeguard "$SAFEGUARD")
+    fi
+    if [ -n "$RULES_DIR" ]; then
+        case "$RULES_DIR" in /*) RD="$RULES_DIR" ;; *) RD="$REPO_ROOT/$RULES_DIR" ;; esac
+        CMD+=(--rules-dir "$RD")
     fi
 
     "${CMD[@]}"

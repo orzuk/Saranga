@@ -181,7 +181,25 @@ import sys as _sys
 
 _HERE = _os.path.dirname(_os.path.realpath(__file__))
 _RULES = _os.path.join(_HERE, "unit_rules.json")
-_sys.path.insert(0, {llm_dir!r})
+
+
+def _code_dir():
+    """src/LLMVersion of the repository this file sits in (or $SARANGA_ROOT's),
+    so the rule set works wherever the repository is checked out."""
+    roots = [_os.environ.get("SARANGA_ROOT", "")]
+    d = _HERE
+    while d and d != _os.path.dirname(d):
+        roots.append(d)
+        d = _os.path.dirname(d)
+    roots.append({llm_root!r})              # where it was written, as a last resort
+    for r in roots:
+        cand = _os.path.join(r, "src", "LLMVersion")
+        if r and _os.path.isfile(_os.path.join(cand, "unit_rules.py")):
+            return cand
+    raise ImportError("unit_rules.py not found: set SARANGA_ROOT to the repository")
+
+
+_sys.path.insert(0, _code_dir())
 import unit_rules as _ur
 
 
@@ -190,10 +208,14 @@ def extract_distilled_all(text):
 '''
 
 
+def _os_path_repo_root() -> str:
+    return os.path.dirname(os.path.dirname(_HERE))
+
+
 def write_importer(snapshot_dir: str, types) -> str:
     """distilled_rules.py for a snapshot holding unit_rules.json: one
     extract_distilled_<type>(text) per node type, as the parser expects."""
-    lines = [IMPORTER.format(llm_dir=_HERE)]
+    lines = [IMPORTER.format(llm_root=_os_path_repo_root())]
     for t in types:
         lines.append(f"\ndef extract_distilled_{t}(text):\n"
                      f"    return [d for d in _ur.extract(text, _RULES) "

@@ -1279,7 +1279,16 @@ class PaperParser:
             except Exception:
                 return 0
         groups = real.parent / "groups"
-        if groups.is_dir():
+        units = real.parent / "unit_rules.json"
+        if units.is_file():                     # sentence rules (scripts/distill_units.py)
+            try:
+                import json as _json
+                n = sum(1 for r in _json.loads(units.read_text(encoding="utf-8")).get("rules", [])
+                        if r.get("active", True))
+            except Exception:
+                n = 0
+            where = f"{n} sentence rule(s)"
+        elif groups.is_dir():
             n = sum(_count(g) for g in groups.glob("*/distilled_rules.py"))
             where = f"{n} pattern(s) across {len(list(groups.glob('*/distilled_rules.py')))} group(s)"
         else:

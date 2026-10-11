@@ -95,6 +95,12 @@ import rule_guard                                   # noqa: E402
 rule_guard.install_global(threshold=5)
 check([f() for f in cases], before, "guarded re.* with positional flags = plain re.*")
 
+# ---- rule_guard's anchoring: a literal inside a lookahead gives no start bound ------------
+_pat = r"^(?=.*(?:\\emph\{|\{\\it\b))(?=.*(?:denot|refer)).*"
+_txt = "In a paper, X argues that the {\\it{Y init}} fails (commonly referred to as {\\it{Z}})."
+check(bool(re.compile(_pat, re.I | re.S).search(_txt)), True,
+      "guarded re: a ^-anchored pattern with lookaheads still matches (anchoring off)")
+
 # ---- the parser's rule-module cache follows the installed file, not the path -----------
 import math_paper_parser                            # noqa: E402,F401  (installs the cache)
 math_paper_parser._cache_rule_modules()

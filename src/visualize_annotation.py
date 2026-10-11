@@ -3459,40 +3459,51 @@ function applyZoom() {{
 }}
 function zoomIn() {{ currentZoom = Math.min(currentZoom * 1.3, 5.0); applyZoom(); }}
 function zoomOut() {{ currentZoom = Math.max(currentZoom / 1.3, 0.02); applyZoom(); }}
-function zoomFit() {{
-  // Actually fit, rather than "reset to 100%". A 188-node paper is a ~116x46
-  // INCH figure; at scale 1 the viewport shows a corner of the top margin,
-  // which is why the page opened on apparently blank space and needed a long
-  // scroll-wheel zoom-out before anything was visible.
+// The box, in untransformed layout px, around what is VISIBLE: the hidden
+// foundation ghosts (and any toggled-off group) still occupy the drawing, so
+// fitting or scrolling to the whole SVG opened large papers on a blank band.
+function visibleBox() {{
   var el = svgEl || document.querySelector("#svg-container svg");
+  if (!el) return null;
+  var s = el.getBoundingClientRect(), z = currentZoom || 1;
+  var x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  el.querySelectorAll('[id^="node_"]').forEach(function(n) {{
+    var r = n.getBoundingClientRect();
+    if (!r.width && !r.height) return;          // display:none, or inside a hidden group
+    x0 = Math.min(x0, (r.left - s.left) / z); y0 = Math.min(y0, (r.top - s.top) / z);
+    x1 = Math.max(x1, (r.right - s.left) / z); y1 = Math.max(y1, (r.bottom - s.top) / z);
+  }});
+  return x1 > x0 ? {{x: x0, y: y0, w: x1 - x0, h: y1 - y0}} : null;
+}}
+function scrollToBox(v, pad) {{
   var box = document.getElementById("svg-container");
-  if (!el || !box) return;
-  // Untransformed LAYOUT size, which is what transform:scale() multiplies.
-  // Matplotlib writes width/height in px AND a viewBox at a different scale
-  // (7383x7426 px vs a 5537x5569 viewBox here); fitting against the viewBox
-  // would come out ~33% too large.
-  var w = (el.width && el.width.baseVal && el.width.baseVal.value)
-          || (el.viewBox && el.viewBox.baseVal && el.viewBox.baseVal.width);
-  var h = (el.height && el.height.baseVal && el.height.baseVal.value)
-          || (el.viewBox && el.viewBox.baseVal && el.viewBox.baseVal.height);
-  if (!w || !h) return;
+  if (!box || !v) return;
+  box.scrollLeft = Math.max(0, v.x * currentZoom - pad);
+  box.scrollTop = Math.max(0, v.y * currentZoom - pad);
+}}
+function zoomFit() {{
+  // Fit what is visible (not the whole drawing, see visibleBox) to the window.
+  var box = document.getElementById("svg-container");
+  var v = visibleBox();
+  if (!box || !v) return;
   var pad = 24;
-  currentZoom = Math.max(0.02, Math.min((box.clientWidth - pad) / w,
-                                        (box.clientHeight - pad) / h));
+  currentZoom = Math.max(0.02, Math.min((box.clientWidth - 2 * pad) / v.w,
+                                        (box.clientHeight - 2 * pad) / v.h));
   applyZoom();
+  scrollToBox(v, pad);
 }}
 
 // Fit on load. The zoom floor for the buttons is 0.2, but fitting a large
 // graph legitimately needs far less, so applyZoom is driven directly here.
-// A graph whose fit would hide the box text opens at a readable zoom on its
-// top-left corner instead; "Fit" still gives the overview.
+// A graph whose fit would hide the box text opens at a readable zoom on the
+// top-left of what is visible instead; "Fit" still gives the overview.
 function openView() {{
   zoomFit();
   if (currentZoom < LOD_BODY_MIN) {{
+    var v = visibleBox();
     currentZoom = 0.6;
     applyZoom();
-    var box = document.getElementById("svg-container");
-    if (box) {{ box.scrollTop = 0; box.scrollLeft = 0; }}
+    scrollToBox(v, 24);
   }}
 }}
 window.addEventListener("load", function() {{

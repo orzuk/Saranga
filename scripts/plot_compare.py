@@ -62,6 +62,9 @@ def label(name: str, arm: dict) -> str:
     return arm.get("label") or name
 
 
+METRIC_TEX = {"m1g": r"$\mathrm{M}_1^{\kappa}$", "m1": r"$\mathrm{M}_1$", "m3": r"$\mathrm{M}_3$"}
+
+
 def curve_effort(cfg, traj, refs, arms, split, metric, out: Path) -> None:
     import matplotlib
     matplotlib.use("Agg")
@@ -82,7 +85,7 @@ def curve_effort(cfg, traj, refs, arms, split, metric, out: Path) -> None:
                         ha="right", va="bottom")
         ax.set_xlabel(xl)
         ax.grid(alpha=0.3)
-    axes[0].set_ylabel(f"{split} F$_1$ ({metric})")
+    axes[0].set_ylabel(f"{split} F$_1$ ({METRIC_TEX.get(metric, metric)})")
     axes[0].legend(fontsize=7, loc="lower right")
     fig.tight_layout()
     for ext in ("pdf", "png"):
@@ -106,7 +109,7 @@ def curve_papers(cfg, final, refs, arms, split, metric, out: Path) -> None:
     for k, pts in fams.items():
         pts.sort()
         names = sorted(n for _, _, n in pts)
-        lab = min(names, key=len)
+        lab = label(min(names, key=len), cfg["arms"][min(names, key=len)]).split(",")[0]
         ax.scatter([n for n, _, _ in pts], [f for _, f, _ in pts], s=18)
         means = defaultdict(list)
         for n, f, _ in pts:
@@ -118,7 +121,7 @@ def curve_papers(cfg, final, refs, arms, split, metric, out: Path) -> None:
         ax.annotate(label(name, cfg["arms"][name]), (ax.get_xlim()[0], f1), fontsize=7,
                     ha="left", va="bottom")
     ax.set_xlabel("training papers")
-    ax.set_ylabel(f"{split} F$_1$ ({metric})")
+    ax.set_ylabel(f"{split} F$_1$ ({METRIC_TEX.get(metric, metric)})")
     ax.grid(alpha=0.3)
     ax.legend(fontsize=7)
     fig.tight_layout()

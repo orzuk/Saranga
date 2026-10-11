@@ -261,6 +261,12 @@ def _prefix_bound(tree, group, state) -> int | None:
         run = ""
         one = [(op, av)]
         if group in _required_groups(sre_parse.SubPattern(state, one)):
+            if op in (sre_c.ASSERT, sre_c.ASSERT_NOT):
+                # A lookahead has zero width but reads ahead without limit:
+                # `^(?=.*refer)` finds "refer" anywhere, so it gives no bound.
+                # (Taking its width, 0, anchored the search at the literal's
+                # occurrences, where a `^` pattern cannot match: lost matches.)
+                return None
             if op is sre_c.SUBPATTERN and not (av[1] or av[2]):
                 inner = _prefix_bound(av[-1], group, state)
                 if inner is not None:
