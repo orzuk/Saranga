@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Your paper — SARANGA</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="css/styles.css" />
+  <style>
+    .yours-box { background:#fff; border:1px solid #e3e3e3; border-radius:8px; padding:18px 20px; margin:14px 0; max-width:760px; }
+    .yours-box h3 { margin:0 0 8px; font-size:16px; }
+    .yours-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .yours-row input[type=text] { flex:1; min-width:240px; padding:8px 10px; font-size:14px; border:1px solid #ccc; border-radius:5px; }
+    .yours-row button { padding:8px 16px; font-size:14px; border:0; border-radius:5px; background:#2c3e50; color:#fff; cursor:pointer; }
+    .yours-row button:disabled { background:#999; cursor:wait; }
+    .yours-note { color:#6a6a6a; font-size:13px; margin-top:8px; }
+    #yours-status { margin-top:14px; font-size:14px; }
+    #yours-status.err { color:#c0392b; }
+  </style>
+</head>
+<body>
+  <header class="site">
+    <h1><a href="index.html" style="color:inherit;text-decoration:none">SARANGA Database</a></h1>
+    <span class="crumbs"><a href="index.html" style="color:inherit">Home</a> &rsaquo; Your paper</span>
+  </header>
+  <main>
+    <h2>Your paper</h2>
+    <p style="color:#6a6a6a;font-size:14px;max-width:760px">
+      Build the graph of any paper from its LaTeX source, with the same rule-based extractor that built the
+      100K corpus (the LaTeX parser plus the distilled sentence rules; no language model). It takes a few seconds.
+    </p>
+
+    <div class="yours-box">
+      <h3>From arXiv</h3>
+      <div class="yours-row">
+        <input type="text" id="arxiv-id" placeholder="arXiv id or link, e.g. 2401.00367" />
+        <button id="arxiv-go">Build graph</button>
+      </div>
+      <div class="yours-note">The LaTeX source is downloaded from arXiv. Papers with only a PDF on arXiv are not supported.</div>
+    </div>
+
+    <div class="yours-box">
+      <h3>Upload LaTeX</h3>
+      <div class="yours-row">
+        <input type="file" id="upload-file" accept=".tex,.zip,.gz,.tgz,.tar" />
+        <button id="upload-go">Build graph</button>
+      </div>
+      <div class="yours-note">A single .tex file, or a .zip / .tar.gz of the LaTeX project (up to 50 MB).
+        Uploads are kept for 24 hours, are visible only through their own link, and are never compiled.</div>
+    </div>
+
+    <div id="yours-status"></div>
+  </main>
+<script>
+(function () {
+  var status = document.getElementById('yours-status');
+  var buttons = [document.getElementById('arxiv-go'), document.getElementById('upload-go')];
+  function busy(on, msg) {
+    buttons.forEach(function (b) { b.disabled = on; });
+    status.className = ''; status.textContent = msg || '';
+  }
+  function done(r) {
+    return r.json().then(function (j) {
+      if (!r.ok || j.error) { busy(false); status.className = 'err'; status.textContent = j.error || ('Error ' + r.status); return; }
+      busy(false, j.n_nodes + ' nodes, ' + j.n_edges + ' edges in ' + j.seconds + ' s. Opening the graph…');
+      window.location.href = j.url;
+    });
+  }
+  function fail(e) { busy(false); status.className = 'err'; status.textContent = 'Request failed: ' + e; }
+  document.getElementById('arxiv-go').onclick = function () {
+    var id = document.getElementById('arxiv-id').value.trim();
+    if (!id) return;
+    busy(true, 'Downloading the source from arXiv and extracting…');
+    fetch('yours/arxiv?id=' + encodeURIComponent(id)).then(done).catch(fail);
+  };
+  document.getElementById('arxiv-id').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') document.getElementById('arxiv-go').click();
+  });
+  document.getElementById('upload-go').onclick = function () {
+    var f = document.getElementById('upload-file').files[0];
+    if (!f) return;
+    busy(true, 'Uploading and extracting…');
+    fetch('yours/upload?name=' + encodeURIComponent(f.name), { method: 'POST', body: f }).then(done).catch(fail);
+  };
+})();
+</script>
+</body>
+</html>

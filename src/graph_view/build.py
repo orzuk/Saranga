@@ -128,8 +128,10 @@ def plain_text(s):
     s = re.sub(r"\\(?:left|right|big|Big|bigg|Bigg)\b", "", s)
     s = re.sub(r"\\([A-Za-z]+|.)", lambda m: _SYMBOLS.get(
         m.group(1), m.group(1) if m.group(1) in _FUNCS else ""), s)
-    s = s.replace("$", "").replace("~", " ")
-    s = _scripts(s)
+    # sub/superscripts only inside math: label-derived names such as thm_main keep their "_"
+    parts = re.split(r"(?<!\\)\$", s)
+    s = "".join(_scripts(p) if i % 2 else p for i, p in enumerate(parts))
+    s = s.replace("~", " ")
     s = s.replace("{", "").replace("}", "")
     return re.sub(r"\s+", " ", s).strip()
 

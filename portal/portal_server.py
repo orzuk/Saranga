@@ -32,8 +32,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.parse
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
 PORTAL_DIR = Path(__file__).resolve().parent
@@ -64,7 +65,9 @@ GRAPH_BUILD = REPO_DIR / "src" / "graph_view" / "build.py"
 T3_DIR = DATA_DIR / "tier3_v6"
 T3_REMOTE = os.environ.get("SARANGA_T3_REMOTE", "")
 T3_CACHE = CACHE_DIR / "tier3_v6"
-MOUNTS = {"/silver_v6/": SILVER_DIR, "/t3cache/": T3_CACHE}
+# "Your paper": graphs built on demand from an arXiv id or an upload (see yours.py).
+YOURS_DIR = CACHE_DIR / "yours"
+MOUNTS = {"/silver_v6/": SILVER_DIR, "/t3cache/": T3_CACHE, "/yours_pages/": YOURS_DIR}
 
 
 def find_json(paper_id: str, tier: str) -> Path | None:
@@ -683,6 +686,10 @@ class PortalHandler(SimpleHTTPRequestHandler):
             query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
             (serve_render3 if parsed.path == "/render3" else serve_t3_json)(self, query)
             return
+        if parsed.path == "/yours/arxiv":
+            query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+            serve_yours(self, query, upload=False)
+            return
         if parsed.path == "/render":
             query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
             serve_render(self, query)
@@ -693,9 +700,56 @@ class PortalHandler(SimpleHTTPRequestHandler):
             return
         super().do_GET()
 
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == "/yours/upload":
+            query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+            serve_yours(self, query, upload=True)
+            return
+        self.send_error(404)
+
     def log_message(self, fmt, *args):
         # Slightly tidier than the default
         sys.stderr.write(f"[{self.log_date_time_string()}] {fmt % args}\n")
+
+
+def _json_reply(handler, code: int, obj: dict) -> None:
+    body = json.dumps(obj).encode()
+    handler.send_response(code)
+    handler.send_header("Content-Type", "application/json")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+def serve_yours(handler, query, upload: bool) -> None:
+    """Build a graph from an arXiv id (GET /yours/arxiv?id=) or an upload (POST /yours/upload?name=)."""
+    import yours
+    t0 = time.time()
+    try:
+        rid, work = yours.new_workdir(YOURS_DIR)
+        if upload:
+            n = int(handler.headers.get("Content-Length") or 0)
+            if n <= 0 or n > yours.MAX_UPLOAD:
+                raise yours.YoursError("Empty or too large upload (limit 50 MB).")
+            name = (query.get("name") or ["paper.tex"])[0]
+            yours._unpack(handler.rfile.read(n), name, work / "source")
+            pid = re.sub(r"[^A-Za-z0-9._-]", "_", Path(name).name.split(".")[0]) or "paper"
+            title = ""
+        else:
+            aid = yours.parse_arxiv_id((query.get("id") or [""])[0])
+            title = yours.fetch_arxiv(aid, work / "source")
+            pid = aid.replace("/", "_")
+        info = yours.build(work, pid, title)
+        info.update({"url": f"/yours_pages/{rid}/{info['page']}",
+                     "json_url": f"/yours_pages/{rid}/{info['json']}",
+                     "seconds": round(time.time() - t0, 1)})
+        _json_reply(handler, 200, info)
+    except yours.YoursError as e:
+        _json_reply(handler, 400, {"error": str(e)})
+    except Exception as e:                          # noqa: BLE001
+        sys.stderr.write(f"[yours] {e!r}\n")
+        _json_reply(handler, 500, {"error": f"Extraction failed: {type(e).__name__}"})
 
 
 def main():
@@ -707,7 +761,7 @@ def main():
     print(f"  viz script:  {VIZ_SCRIPT}  (exists: {VIZ_SCRIPT.exists()})")
     print(f"  listening on http://{bind}:{port}")
     print(f"  open http://localhost:{port}/")
-    HTTPServer((bind, port), PortalHandler).serve_forever()
+    ThreadingHTTPServer((bind, port), PortalHandler).serve_forever()
 
 
 if __name__ == "__main__":
