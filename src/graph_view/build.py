@@ -94,6 +94,28 @@ _BB = {"R": "ℝ", "N": "ℕ", "Z": "ℤ", "Q": "ℚ", "C": "ℂ", "P": "ℙ", "
        "F": "𝔽"}
 
 
+_SUP = dict(zip("0123456789+-=()abcdefghijklmnoprstuvwxyzABDEGHIJKLMNOPRTUVWαβγδεθιφχ*′'",
+                "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ᵃᵇᶜᵈᵉᶠᵍʰⁱʲᵏˡᵐⁿᵒᵖʳˢᵗᵘᵛʷˣʸᶻᴬᴮᴰᴱᴳᴴᴵᴶᴷᴸᴹᴺᴼᴾᴿᵀᵁⱽᵂᵅᵝᵞᵟᵋᶿᶥᵠᵡ*′′"))
+_SUB = dict(zip("0123456789+-=()aehijklmnoprstuvxβγρφχ",
+                "₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎ₐₑₕᵢⱼₖₗₘₙₒₚᵣₛₜᵤᵥₓᵦᵧᵨᵩᵪ"))
+_SCRIPT = re.compile(r"([_^])(?:\{([^{}]*)\}|([^\s{}\\]))")
+
+
+def _scripts(s):
+    """`x^{2}` -> x², `W_{m,n}` -> Wₘ,ₙ: Unicode super/subscripts where every
+    character has one (commas and spaces pass through); otherwise `^(..)`."""
+    def rep(m):
+        table = _SUP if m.group(1) == "^" else _SUB
+        body = m.group(2) if m.group(2) is not None else m.group(3)
+        if body and all(c in table or c in ", " for c in body):
+            return "".join(table.get(c, c) for c in body)
+        mark = "\x01" if m.group(1) == "^" else "\x02"     # kept out of the next pass
+        return mark + (body if len(body) == 1 else "(" + body + ")")
+    for _ in range(3):                      # x^{a_{i}}: inner first, then outer
+        s = _SCRIPT.sub(rep, s)
+    return s.replace("\x01", "^").replace("\x02", "_")
+
+
 def plain_text(s):
     """A light TeX-to-Unicode rendering for box text (the panel uses MathJax)."""
     s = va._as_text(s)
@@ -106,7 +128,9 @@ def plain_text(s):
     s = re.sub(r"\\(?:left|right|big|Big|bigg|Bigg)\b", "", s)
     s = re.sub(r"\\([A-Za-z]+|.)", lambda m: _SYMBOLS.get(
         m.group(1), m.group(1) if m.group(1) in _FUNCS else ""), s)
-    s = s.replace("$", "").replace("{", "").replace("}", "").replace("~", " ")
+    s = s.replace("$", "").replace("~", " ")
+    s = _scripts(s)
+    s = s.replace("{", "").replace("}", "")
     return re.sub(r"\s+", " ", s).strip()
 
 

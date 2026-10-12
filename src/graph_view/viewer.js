@@ -1,3 +1,12 @@
+// Display names for node ids: TP5 -> "Thm 5", PSP12 -> "Step 12". Display only; stored ids,
+// links and the URL hash keep the extraction's prefixes. Global: the side panel uses it too.
+window.dispId = window.dispId || function (id) {
+  var SHORT = {PSP: 'Step', ASP: 'Line', ProbP: 'Prob', OpenP: 'Open', AssumP: 'Asm', ExerP: 'Exer',
+    CnjP: 'Conj', ClP: 'Cl', PrP: 'Prop', ExP: 'Ex', DP: 'Def', TP: 'Thm', LP: 'Lem', CP: 'Cor',
+    PP: 'Pf', AP: 'Alg', EP: 'Eq', RP: 'Rem'};
+  var m = /^(PSP|ASP|ProbP|OpenP|AssumP|ExerP|CnjP|ClP|PrP|ExP|DP|TP|LP|CP|PP|AP|EP|RP)(\d+)$/.exec(String(id));
+  return m ? SHORT[m[1]] + ' ' + m[2] : String(id);
+};
 /* Paper-graph viewer v2 (src/graph_view/viewer.js).
  *
  * The page embeds the paper's graph as JSON (#graph-data, written by build.py)
@@ -290,7 +299,7 @@
       var nm = (n.name && n.name !== n.id) ? n.name : '';
       var head = (MAIN[n.id] ? '\u2605 ' : '') +
         (dm ? n.type.replace(/_/g, ' ') + ' ' + dm[1] + ' (rule)' + (nm ? ': ' + nm : '')
-            : n.id + ': ' + (nm || n.type));
+            : (window.dispId ? dispId(n.id) : n.id) + ': ' + (nm || n.type));
       var extra = n.nsteps ? (open ? '\u25be proof open (' + n.nsteps + ' steps)' : '\u25b8 proof: ' + n.nsteps + ' step' + (n.nsteps > 1 ? 's' : '')) : '';
       var b = box(head, n.short, extra, n.imp, n.imp >= 4 ? 4 : 3);
       els.push({ group: 'nodes', data: { id: n.id, kind: 'node', type: n.type, parent: par,
@@ -432,6 +441,10 @@
     { selector: 'node[hc]', style: { 'border-color': 'data(hc)' } },
     { selector: 'node[ext = 1]', style: { 'border-style': 'dashed', 'border-width': 2, 'background-opacity': 0.9 } },
     { selector: 'node[main = 1]', style: { 'border-width': 3.5, 'underlay-color': '#FFD54F', 'underlay-opacity': 0.55, 'underlay-padding': 5, 'underlay-shape': 'round-rectangle' } },
+    // #mark=ID,ID[&markc=#hex]: circle nodes (e.g. the ones another extraction missed)
+    { selector: 'node.marked', style: { 'underlay-color': 'data(mk)', 'underlay-opacity': 0.9, 'underlay-padding': 7, 'underlay-shape': 'round-rectangle' } },
+    // #dim=ID,ID: fade these nodes (e.g. the ones the other extraction does not share)
+    { selector: 'node.dimmed', style: { 'opacity': 0.22 } },
     { selector: 'node[kind = "secbox"]', style: { 'background-color': '#F4F6F7', 'border-color': '#546E7A',
       'border-width': 2, 'color': '#263238' } },
     { selector: 'node[kind = "ghost"], node.ghost', style: { 'background-color': '#E8E8E8', 'border-color': '#777',
@@ -729,6 +742,7 @@
     var el = focusId ? cy.getElementById(focusId) : cy.collection();
     var target = el.nonempty() ? el.union(el.descendants()) : cy.elements();
     cy.fit(target, 30);
+    if (document.body.classList.contains('bare')) return;   // figure mode: always the whole graph
     if (cy.zoom() > 1) { cy.zoom(1); cy.center(target); }
     if (cy.zoom() >= 0.55) return;
     var z = 0.8;
@@ -768,6 +782,14 @@
     });
     paintNodes();
     applySearch();
+    (S.mark || []).forEach(function (id) {             // #mark=: circle these nodes
+      var n = cy.getElementById(id);
+      if (n.nonempty()) n.data('mk', S.markc || '#e74c3c').addClass('marked');
+    });
+    (S.dim || []).forEach(function (id) {              // #dim=: fade these nodes
+      var n = cy.getElementById(id);
+      if (n.nonempty()) n.addClass('dimmed');
+    });
     syncControls();
     cy.resize();                         // the toolbars above may have re-wrapped
     layout(function () {
@@ -839,6 +861,18 @@
     document.getElementById('hop-minus').onclick = function () { if (S.k > 1) { S.k--; if (S.focus && S.focus.mode === 'nbhd') render(); else syncControls(); } };
     document.getElementById('hop-plus').onclick = function () { if (S.k < 9) { S.k++; if (S.focus && S.focus.mode === 'nbhd') render(); else syncControls(); } };
     document.getElementById('fit-btn').onclick = function () { cy.fit(cy.elements(), 30); };
+    // Legend / Filters rows: hidden by default, remembered per browser.
+    [['legend-btn', 'show-legend'], ['filters-btn', 'show-filters']].forEach(function (p) {
+      var btn = document.getElementById(p[0]), key = 'saranga.' + p[1];
+      function set(on) {
+        document.body.classList.toggle(p[1], on); btn.classList.toggle('on', on);
+        try { localStorage.setItem(key, on ? '1' : '0'); } catch (e) {}
+        if (cy) cy.resize();
+      }
+      var saved = null; try { saved = localStorage.getItem(key); } catch (e) {}
+      set(saved === '1');
+      btn.onclick = function () { set(!document.body.classList.contains(p[1])); };
+    });
     document.getElementById('zin-btn').onclick = function () { zoomBy(1.3); };
     document.getElementById('zout-btn').onclick = function () { zoomBy(1 / 1.3); };
     var si = document.getElementById('search');
@@ -975,7 +1009,7 @@
       var n = NODE[other];
       var flags = (e.back ? ' backward' : '') + (e.mention ? ' mention' : '') + (e.implied ? ' implied' : '');
       return '<div>&bull; <span class="nodelink" data-nid="' + escAttr(other) + '" onclick="showDetail(this.dataset.nid)">' +
-        esc(other + ': ' + (n ? n.name || n.type : '')) + '</span> <span style="color:#888;">' + esc(e.type + flags) +
+        esc((window.dispId ? dispId(other) : other) + ': ' + (n ? n.name || n.type : '')) + '</span> <span style="color:#888;">' + esc(e.type + flags) +
         (e.conf !== undefined && e.conf !== null ? ', conf ' + Number(e.conf).toFixed(2) : '') + '</span></div>';
     };
     var h = '';
@@ -1187,6 +1221,10 @@
       else if (k === 'show') v.split(',').forEach(function (t) { if (t in S.show) S.show[t] = true; });
       else if (k === 'hide') v.split(',').forEach(function (t) { if (t in S.show) S.show[t] = false; });
       else if (k === 'tred') S.tred = v === '1';
+      else if (k === 'mark') S.mark = v.split(',');
+      else if (k === 'markc') S.markc = v;
+      else if (k === 'dim') S.dim = v.split(',');
+      else if (k === 'bare' && v === '1') document.body.classList.add('bare');   // figure mode: graph only
       else if (k === 'select') sel = v;
       else if (k === 'focus' && v === 'main') S.focus = { mode: 'main' };
       else if (k === 'focus' && NODE[v]) S.focus = { mode: 'nbhd', id: v };
@@ -1210,7 +1248,7 @@
     render(after, hashFocus);
   }
   if (typeof cytoscape === 'undefined' || typeof ELK === 'undefined') {
-    document.getElementById('status').textContent = 'Could not load the graph libraries (lib/). Open the classic view instead.';
+    document.getElementById('status').textContent = 'Could not load the graph libraries (lib/).';
     console.error('[v2] cytoscape or ELK missing');
     return;
   }

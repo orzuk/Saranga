@@ -124,8 +124,24 @@ _TRANSPARENT = ("ensuremath", "mbox", "hbox", "underline", "norm", "abs")
 _TRANSPARENT_RE = re.compile(r"\\(%s)\s*\{" % "|".join(_TRANSPARENT))
 
 
+# Math regions: $...$, $$...$$, \[...\], \(...\) and the display environments.
+_MATH_SPAN_ENVS = r"(?:equation|align|alignat|gather|multline|eqnarray|displaymath|math|flalign)\*?"
+_MATH_SPAN_RE = re.compile(
+    r"(?<!\\)\$\$.*?(?<!\\)\$\$|(?<!\\)\$.*?(?<!\\)\$|\\\[.*?\\\]|\\\(.*?\\\)"
+    r"|\\begin\{(" + _MATH_SPAN_ENVS + r")\}.*?\\end\{\1\}", re.S)
+
+
+def _in_math_region(text, pos):
+    """Is position `pos` of `text` inside a math region (any delimiter or display environment)?"""
+    return any(m.start() < pos < m.end() for m in _MATH_SPAN_RE.finditer(text))
+
+
 def unwrap_transparent(text, max_depth=_MAX_PASSES):
-    """`\\ensuremath{X}` -> `X`, `\\mbox{X}` -> `X`, nested included."""
+    """`\\ensuremath{X}` -> `X`, `\\mbox{X}` -> `X`, nested included.
+
+    Inside math, `\\mbox{X}` / `\\hbox{X}` become `\\text{X}`: unwrapped there, the
+    words would be set as italic variables with their spaces dropped
+    (`\\Delta_j ~\\mbox{ versus}~ H_1` read "Δ_jversusH_1", 1909.06098)."""
     if not text:
         return text
     text = str(text)
@@ -134,6 +150,8 @@ def unwrap_transparent(text, max_depth=_MAX_PASSES):
         if not m:
             break
         arg, end = _read_group(text, m.end() - 1)
+        if m.group(1) in ("mbox", "hbox") and _in_math_region(text, m.start()):
+            arg = "\\text{" + arg + "}"
         text = _splice(text[:m.start()], arg, text[end:])
     return text
 
@@ -430,6 +448,14 @@ _LABEL_RE = re.compile(r"\\label\s*\{[^}]*\}")
 _NBSP = re.compile(r"(?<!\\)~")
 
 
+def nbsp_to_space(text):
+    """`~` -> a space: a plain one in text, `\\ ` in math, where a plain space is
+    ignored and `\\mbox{ for all }~~x` would lose its gap."""
+    if "~" not in text:
+        return text
+    return _NBSP.sub(lambda m: "\\ " if _in_math_region(text, m.start()) else " ", text)
+
+
 _UNESCAPED_DOLLAR = re.compile(r"(?<!\\)\$")
 
 
@@ -621,7 +647,7 @@ def normalize_for_mathtext(text, macros=None, labels=None):
     text = text_mode_symbols(text)
     text = unwrap_transparent(text)
     text = strip_dimension_commands(text)
-    text = _NBSP.sub(" ", text or "")
+    text = nbsp_to_space(text or "")
     return brace_normalize(text)
 
 

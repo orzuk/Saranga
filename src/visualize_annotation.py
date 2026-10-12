@@ -1364,6 +1364,18 @@ def draw_legend(ax, node_data, node_rect, show_foundation=False,
 
 
 # ── Drawing ─────────────────────────────────────────────────────────────────
+_ID_SHORT = {"PSP": "Step", "ASP": "Line", "ProbP": "Prob", "OpenP": "Open", "AssumP": "Asm",
+             "ExerP": "Exer", "CnjP": "Conj", "ClP": "Cl", "PrP": "Prop", "ExP": "Ex", "DP": "Def",
+             "TP": "Thm", "LP": "Lem", "CP": "Cor", "PP": "Pf", "AP": "Alg", "EP": "Eq", "RP": "Rem"}
+_ID_RE = _re.compile(r"^(%s)(\d+)$" % "|".join(sorted(_ID_SHORT, key=len, reverse=True)))
+
+
+def display_id(nid):
+    """`TP5` -> "Thm 5", `PSP12` -> "Step 12" (display only; same table as dispId in the JS)."""
+    m = _ID_RE.match(str(nid))
+    return "%s %s" % (_ID_SHORT[m.group(1)], m.group(2)) if m else str(nid)
+
+
 def _resolve_nodes(nodes, macros):
     """Resolve paper macros + brace-normalise every text field, on a COPY.
 
@@ -1389,7 +1401,7 @@ def _resolve_nodes(nodes, macros):
     for n in nodes:
         for k in str(n.get("label") or "").split(","):
             if k.strip() and n.get("id"):
-                labels.setdefault(k.strip(), str(n["id"]))
+                labels.setdefault(k.strip(), display_id(n["id"]))
 
     def _resolve(v):
         if isinstance(v, str):
@@ -1398,12 +1410,22 @@ def _resolve_nodes(nodes, macros):
             return [_resolve(x) for x in v]
         return v
 
+    def _resolve_math(v):
+        # An equation node stores a bare formula, with no `$` around it; wrap it
+        # so the normaliser knows it is math (`\mbox{ versus}` -> `\text{ versus}`).
+        if isinstance(v, str) and v and "$" not in v:
+            r = _norm("$" + v + "$", macros, labels)
+            if r.startswith("$") and r.endswith("$"):
+                return r[1:-1]
+        return _resolve(v)
+
     out = []
     for n in nodes:
         m = dict(n)
         for f in FIELDS:
             if f in m:
-                m[f] = _resolve(m[f])
+                eq = n.get("type") == "equation" and f in ("statement", "raw_latex")
+                m[f] = _resolve_math(m[f]) if eq else _resolve(m[f])
         out.append(m)
     return out
 
@@ -2947,7 +2969,7 @@ function showDetail(nodeId) {{
   }}
   var d = DETAILS[nodeId];
   if (!d) return;
-  var h = '<h3 style="margin:0 0 8px;font-size:16px;">' + esc(nodeId) + ': ' + esc(d.name || d.type) + '</h3>';
+  var h = '<h3 style="margin:0 0 8px;font-size:16px;">' + esc(dispId(nodeId)) + ': ' + esc(d.name || d.type) + '</h3>';
   h += '<div style="font-size:12px;color:#888;margin-bottom:4px;">' + d.type + (d.section ? ' (Sec ' + esc(d.section) + ')' : '') + '</div>';
   // v6 node metadata: rigor, confidence, tags; and where the node is stated.
   var meta = rigorBadge(d.rigor) + confBadge(d.confidence);
@@ -2986,7 +3008,7 @@ function showDetail(nodeId) {{
     }});
   }}
   var eqTag = function(e) {{ return '<span style="color:#2471A3;font-size:11px;"> (' + e.id + ')</span>'; }};
-  var eqBlock = function(e) {{ return '<div style="margin:2px 0 2px 12px;padding:3px 8px;background:#EBF5FB;border-left:2px solid #5DADE2;font-size:12px;">' + esc(e.id) + ': ' + eqTex(e.statement) + '</div>'; }};
+  var eqBlock = function(e) {{ return '<div style="margin:2px 0 2px 12px;padding:3px 8px;background:#EBF5FB;border-left:2px solid #5DADE2;font-size:12px;">' + esc(dispId(e.id)) + ': ' + eqTex(e.statement) + '</div>'; }};
 
   // Statement + inline statement equations.
   // Prefer raw_latex (TeX intact -> MathJax can typeset). statement/statement_clean
@@ -3022,7 +3044,7 @@ function showDetail(nodeId) {{
   if (d.proofs && d.proofs.length > 0) {{
     h += '<div class="detail-section"><h4>Proof' + (d.proofs.length > 1 ? 's (' + d.proofs.length + ')' : '') + '</h4>';
     d.proofs.forEach(function(p) {{
-      h += '<div class="step-item"><strong>' + esc(p.id) + (p.name ? ': ' + esc(p.name) : '') + '</strong> ';
+      h += '<div class="step-item"><strong>' + esc(dispId(p.id)) + (p.name ? ': ' + esc(p.name) : '') + '</strong> ';
       (p.proof_strategy || []).forEach(function(s) {{ h += '<span class="chip">' + esc(String(s)) + '</span>'; }});
       h += rigorBadge(p.rigor) + confBadge(p.confidence);
       if (p.statement_short) h += '<div style="font-size:12px;color:#444;margin-top:2px;">' + esc(p.statement_short) + '</div>';
@@ -3077,7 +3099,7 @@ function showDetail(nodeId) {{
       kids.forEach(function(s, i) {{
         placed[s.id] = true;
         var ord = (s.step_order || (i + 1));
-        var label = s.name ? esc(s.name) : esc(s.id || ('Step ' + ord));
+        var label = s.name ? esc(s.name) : esc(s.id ? dispId(s.id) : ('Step ' + ord));
         var full = s.statement_clean || s.statement || '';
         out += '<div class="step-item"><strong>' + ord + '. ' + label + '</strong>';
         if (s.subclass) {{
@@ -3094,7 +3116,7 @@ function showDetail(nodeId) {{
         (eqsByStep[s.id] || []).forEach(function(e) {{ out += eqBlock(e); }});
         (containsByParent[s.id] || []).forEach(function(c) {{
           placed[c.id] = true;
-          out += '<div style="font-size:12px;margin:3px 0 0 8px;">&#8627; states ' + nodeLink(c.id, c.id + ': ' + (c.name || c.type)) + '</div>';
+          out += '<div style="font-size:12px;margin:3px 0 0 8px;">&#8627; states ' + nodeLink(c.id, dispId(c.id) + ': ' + (c.name || c.type)) + '</div>';
         }});
         if (kidsOf[s.id]) {{
           out += '<div style="font-size:11px;color:#2471A3;cursor:pointer;margin-top:3px;" onclick="toggleStepKids(this)">&#9662; ' + kidsOf[s.id].length + ' sub-step' + (kidsOf[s.id].length > 1 ? 's' : '') + '</div>';
@@ -3115,7 +3137,7 @@ function showDetail(nodeId) {{
   if (looseContains.length > 0) {{
     h += '<div class="detail-section"><h4>Contains</h4>';
     looseContains.forEach(function(c) {{
-      h += '<div style="font-size:13px;padding:2px 0 2px 10px;">&bull; ' + nodeLink(c.id, c.id + ': ' + (c.name || c.type)) + (c.parent !== nodeId ? ' <span style="color:#888;">(in ' + esc(c.parent) + ')</span>' : '') + '</div>';
+      h += '<div style="font-size:13px;padding:2px 0 2px 10px;">&bull; ' + nodeLink(c.id, dispId(c.id) + ': ' + (c.name || c.type)) + (c.parent !== nodeId ? ' <span style="color:#888;">(in ' + esc(c.parent) + ')</span>' : '') + '</div>';
     }});
     h += '</div>';
   }}
@@ -3321,7 +3343,7 @@ function showGhostDetail(nameOrEl) {{
   h += '<div class="detail-section"><h4>Referenced by</h4>';
   refs.forEach(function(nid) {{
     var d = DETAILS[nid];
-    var label = d ? (nid + ': ' + (d.name || d.type)) : nid;
+    var label = d ? (dispId(nid) + ': ' + (d.name || d.type)) : dispId(nid);
     h += '<div style="font-size:13px;padding:2px 0 2px 10px;cursor:pointer;color:#2471A3;" data-nid="' + nid + '" onclick="showDetail(this.dataset.nid)">&bull; ' + esc(label) + '</div>';
   }});
   h += '</div>';
@@ -3346,12 +3368,21 @@ function confBadge(c) {{
   if (c === null || c === undefined || c === '' || isNaN(Number(c))) return '';
   return '<span class="badge" title="extractor confidence">conf ' + Number(c).toFixed(2) + '</span>';
 }}
+// Display names for node ids: TP5 -> "Thm 5", PSP12 -> "Step 12". Display only;
+// the stored ids (and every link and hash) keep the extraction's prefixes.
+var ID_SHORT = {{PSP: 'Step', ASP: 'Line', ProbP: 'Prob', OpenP: 'Open', AssumP: 'Asm', ExerP: 'Exer',
+  CnjP: 'Conj', ClP: 'Cl', PrP: 'Prop', ExP: 'Ex', DP: 'Def', TP: 'Thm', LP: 'Lem', CP: 'Cor',
+  PP: 'Pf', AP: 'Alg', EP: 'Eq', RP: 'Rem'}};
+function dispId(id) {{
+  var m = /^(PSP|ASP|ProbP|OpenP|AssumP|ExerP|CnjP|ClP|PrP|ExP|DP|TP|LP|CP|PP|AP|EP|RP)(\d+)$/.exec(String(id));
+  return m ? ID_SHORT[m[1]] + ' ' + m[2] : String(id);
+}}
 // Link to a node's panel. Folded nodes (steps, equations, proofs) open the
 // panel of the box that contains them.
 function nodeLink(id, label) {{
   var target = DETAILS[id] ? id : FOLDED_HOST[id];
-  if (!target) return esc(label || id);
-  return '<span class="nodelink" data-nid="' + escAttr(target) + '" onclick="showDetail(this.dataset.nid)">' + esc(label || id) + '</span>';
+  if (!target) return esc(label || dispId(id));
+  return '<span class="nodelink" data-nid="' + escAttr(target) + '" onclick="showDetail(this.dataset.nid)">' + esc(label || dispId(id)) + '</span>';
 }}
 function noteBlock(x) {{
   var h = '<div class="note-item"><span class="chip">' + esc(String(x.category || 'note').replace(/_/g, ' ')) + '</span>';

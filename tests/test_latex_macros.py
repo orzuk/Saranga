@@ -33,8 +33,12 @@ check(normalize_for_mathtext(r"$\in\xmo$", XMO), r"$\in X^{-\omega}$",
       "expand: macro after a control word")
 check(normalize_for_mathtext(r"$\geq\underline{C}$", {}), r"$\geq C$",
       "unwrap: transparent wrapper after a control word")
-check(normalize_for_mathtext(r"$\in\mbox{Foo}$", {}), r"$\in Foo$",
-      "unwrap: mbox after a control word")
+check(normalize_for_mathtext(r"$\in\underline{Foo}$", {}), r"$\in Foo$",
+      "unwrap: wrapper after a control word")
+check(normalize_for_mathtext(r"$\Delta_j ~\mbox{ versus}~ H_1$", {}), r"$\Delta_j \ \text{ versus}\  H_1$",
+      "in math, mbox keeps its words upright and ~ stays a space")
+check(normalize_for_mathtext(r"Knuth~[1], \mbox{plain}", {}), r"Knuth [1], plain",
+      "outside math, mbox unwraps and ~ is a plain space")
 check(normalize_for_mathtext(r"$x\underline{C}$", {}), r"$xC$",
       "no space when the prefix is NOT a control word")
 check(expand_macros(r"x\xmo", XMO), r"xX^{-\omega}",

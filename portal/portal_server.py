@@ -575,13 +575,43 @@ def serve_render_alignment(handler: "PortalHandler",
 _SAFE = re.compile(r"^[A-Za-z0-9._\-]+$")
 
 
+_T3_TITLES: dict[str, dict[str, str]] = {}
+
+
+def t3_title(cat: str, pid: str) -> str:
+    """The paper's title from its category index (the rule JSONs carry none)."""
+    if cat not in _T3_TITLES:
+        try:
+            rows = json.loads((T3_DIR / cat / "index.json").read_text(encoding="utf-8"))
+            _T3_TITLES[cat] = {r["paper_id"]: r.get("title", "") for r in rows}
+        except (OSError, ValueError):
+            _T3_TITLES[cat] = {}
+    return _T3_TITLES[cat].get(pid.removesuffix("_rules"), "")
+
+
+def with_title(path: Path, cat: str, pid: str) -> Path:
+    """Write the index title into the JSON's metadata once, so the page shows it."""
+    title = t3_title(cat, pid)
+    if not title:
+        return path
+    try:
+        d = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return path
+    md = d.setdefault("metadata", {})
+    if not md.get("title"):
+        md["title"] = title
+        path.write_text(json.dumps(d), encoding="utf-8")
+    return path
+
+
 def t3_json(cat: str, pid: str) -> Path | None:
     """The paper's JSON: the local sample, the cache, or fetched by T3_REMOTE."""
     if not (_SAFE.match(cat) and _SAFE.match(pid)):
         return None
     for p in (T3_DIR / cat / "json" / f"{pid}.json", T3_CACHE / cat / f"{pid}.json"):
         if p.is_file():
-            return p
+            return with_title(p, cat, pid)
     if not T3_REMOTE:
         return None
     dst = T3_CACHE / cat / f"{pid}.json"
@@ -595,7 +625,7 @@ def t3_json(cat: str, pid: str) -> Path | None:
         sys.stderr.write(f"[t3] fetch failed for {cat}/{pid}: {out.stderr[-300:]!r}\n")
         return None
     dst.write_bytes(out.stdout)
-    return dst
+    return with_title(dst, cat, pid)
 
 
 def serve_t3_json(handler, query) -> None:
