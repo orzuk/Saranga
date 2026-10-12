@@ -672,6 +672,7 @@ def guard_module(module, source_path=None) -> int:
     """
     n = 0
     src = source_path or getattr(module, "__file__", None)
+    swapped = {}                       # id(object replaced) -> (object, [its wrappers])
     for attr in dir(module):
         if attr.startswith("__"):
             continue
@@ -680,18 +681,55 @@ def guard_module(module, source_path=None) -> int:
         except Exception:
             continue
         if isinstance(val, re.Pattern):
-            setattr(module, attr,
-                    GuardedPattern(val, name=attr, source=src, budgeted=True))
+            g = GuardedPattern(val, name=attr, source=src, budgeted=True)
+            setattr(module, attr, g)
+            swapped.setdefault(id(val), (val, []))[1].append(g)
             n += 1
         elif isinstance(val, GuardedPattern) and val._name is None:
             # install_global already wrapped it at compile time, but anonymously.
             # Re-wrap with the module-level variable name so a quarantine record
             # can name the culprit and comment out the right block at source.
-            setattr(module, attr,
-                    GuardedPattern(val._pat, name=attr, source=src,
-                                   budgeted=True))
+            g = GuardedPattern(val._pat, name=attr, source=src, budgeted=True)
+            setattr(module, attr, g)
+            swapped.setdefault(id(val), (val, []))[1].append(g)
             n += 1
+    if swapped:
+        _alias_pattern_tables(module, swapped)
     return n
+
+
+def _alias_pattern_tables(module, swapped: dict) -> None:
+    """Keep module-level tables keyed by a pattern working after the swap.
+
+    A generated rule file may build, at import, a dict keyed by its patterns
+    or by their id() (`{id(REMARK_ENV_RE): 'REMARK_ENV_RE'}`) and look a pattern
+    up in it at match time. guard_module runs after the import and replaces
+    each module-level pattern with a wrapper, so the lookup then gets the
+    wrapper and raises KeyError, and the parser drops the whole group (every
+    remark, example and assumption rule of a run, on any paper where one of
+    them matched). Each such key gets its wrapper(s) as further keys (one
+    compiled object can stand behind several names: re caches identical
+    patterns, e.g. the never-matching pattern every pruned rule is rebound to)."""
+    for attr in dir(module):
+        if attr.startswith("__"):
+            continue
+        try:
+            table = getattr(module, attr)
+        except Exception:
+            continue
+        if not isinstance(table, dict):
+            continue
+        extra = {}
+        for k, v in list(table.items()):
+            if isinstance(k, int) and not isinstance(k, bool) and k in swapped:
+                for g in swapped[k][1]:
+                    extra[id(g)] = v
+            elif isinstance(k, (re.Pattern, GuardedPattern)) and id(k) in swapped \
+                    and swapped[id(k)][0] is k:
+                for g in swapped[id(k)][1]:
+                    extra[g] = v
+        if extra:
+            table.update(extra)
 
 
 _ORIG_COMPILE = re.compile

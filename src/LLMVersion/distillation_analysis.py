@@ -1977,7 +1977,8 @@ def _code_paren_delta(line: str) -> int:
 
 def _comment_out_rule_block(lines: List[str], pattern_name: str,
                             fp_papers: List[str], tp_count: int,
-                            reason: Optional[str] = None) -> List[str]:
+                            reason: Optional[str] = None,
+                            comment_usage: bool = True) -> List[str]:
     """Comment out a compiled pattern's definition and its usage block.
 
     Prefixes affected lines with ``# `` and inserts a ``PRUNED`` marker so the
@@ -1985,6 +1986,11 @@ def _comment_out_rule_block(lines: List[str], pattern_name: str,
 
     ``reason`` overrides the default FP-based marker text (used by the
     time-guard, which prunes for slowness rather than false positives).
+
+    ``comment_usage=False`` leaves the code that uses the pattern in place: the
+    name is rebound to a pattern that never matches, so that code finds
+    nothing. _prune_rule_safely falls back to it when commenting the usage out
+    would leave the file broken.
     """
     result: List[str] = []
     i = 0
@@ -2023,7 +2029,8 @@ def _comment_out_rule_block(lines: List[str], pattern_name: str,
             continue
 
         # ---- Usage block in extract function ----
-        if (re.search(rf'(?<![A-Za-z0-9_]){re.escape(pattern_name)}(?![A-Za-z0-9_])', stripped)
+        if (comment_usage
+                and re.search(rf'(?<![A-Za-z0-9_]){re.escape(pattern_name)}(?![A-Za-z0-9_])', stripped)
                 and not stripped.startswith('#')
                 and any(kw in stripped for kw in
                         ('finditer', 'findall', 'search', 'match('))):
@@ -2062,6 +2069,73 @@ def _comment_out_rule_block(lines: List[str], pattern_name: str,
         i += 1
 
     return result
+
+
+def _undefined_names(src: str) -> Optional[set]:
+    """Names a module reads but binds nowhere (None if it does not parse).
+
+    Over-approximates bindings: a name bound in any scope counts as bound
+    everywhere, so a real binding is never reported. Enough to catch what a
+    comment-out breaks: a variable whose only assignment was commented out."""
+    import ast as _ast
+    import builtins as _builtins
+    try:
+        tree = _ast.parse(src)
+    except SyntaxError:
+        return None
+    bound, loads = set(), set()
+    for node in _ast.walk(tree):
+        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.ClassDef)):
+            bound.add(node.name)
+        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef, _ast.Lambda)):
+            a = node.args
+            for arg in list(a.posonlyargs) + list(a.args) + list(a.kwonlyargs):
+                bound.add(arg.arg)
+            for extra in (a.vararg, a.kwarg):
+                if extra is not None:
+                    bound.add(extra.arg)
+        elif isinstance(node, (_ast.Import, _ast.ImportFrom)):
+            for al in node.names:
+                bound.add((al.asname or al.name).split('.')[0])
+        elif isinstance(node, _ast.Name):
+            (bound if isinstance(node.ctx, (_ast.Store, _ast.Del)) else loads).add(node.id)
+        elif isinstance(node, _ast.ExceptHandler) and node.name:
+            bound.add(node.name)
+        elif isinstance(node, (_ast.Global, _ast.Nonlocal)):
+            bound.update(node.names)
+        elif isinstance(node, (_ast.MatchAs, _ast.MatchStar)) and node.name:
+            bound.add(node.name)
+    return loads - bound - set(dir(_builtins)) - {"__name__", "__file__", "__doc__",
+                                                 "__builtins__"}
+
+
+def _prune_rule_safely(lines: List[str], pattern_name: str, fp_papers: List[str],
+                       tp_count: int, reason: Optional[str] = None) -> tuple:
+    """Prune one rule without breaking its file. Returns (lines, how).
+
+    Commenting out a usage line can strand the code after it: a rule computed
+    `distinct = {... _STEP_REF.findall(para)}` and tested `len(distinct)` on the
+    next line, so commenting the first left `distinct` undefined. The file then
+    failed the post-prune check, which restored the whole pre-prune file, and
+    every rule pruned in that step came back (one of them with 322 FP to 5 TP).
+
+    So each prune is checked on its own: the full comment-out if the file still
+    parses and reads no new undefined name; else the definition alone, rebound
+    to a never-matching pattern with the usage left in place; else nothing
+    (the rule is kept and reported), never a broken file.
+      how: "commented" | "rebound" | "skipped"
+    """
+    before = _undefined_names("".join(lines))
+    if before is None:
+        return lines, "skipped"
+    for how, usage in (("commented", True), ("rebound", False)):
+        new = _comment_out_rule_block(lines, pattern_name, fp_papers, tp_count,
+                                      reason=reason, comment_usage=usage)
+        after = _undefined_names("".join(new))
+        if after is not None and not (after - before):
+            return new, how
+    print(f"  [warn] could not prune {pattern_name} without breaking its file: kept")
+    return lines, "skipped"
 
 
 def prune_slow_rules(rules_path: str, paper_texts: Dict[str, str],
@@ -2148,9 +2222,11 @@ def prune_slow_rules(rules_path: str, paper_texts: Dict[str, str],
     for name, secs in sorted(slow.items(), key=lambda kv: -kv[1]):
         shown = "TIMEOUT" if secs == float('inf') else f"{secs:.2f}s"
         print(f"  SLOW  {name}: {shown}")
-        lines = _comment_out_rule_block(
+        lines, how = _prune_rule_safely(
             lines, name, [], 0,
             reason=f"SLOW backtracking ({shown} > {max_rule_seconds:.2f}s/paper cap)")
+        if how == "skipped":
+            slow.pop(name)
     with open(rules_path, 'w', encoding='utf-8') as f:
         f.writelines(lines)
     return slow
@@ -2492,9 +2568,11 @@ def prune_rules(paper_ids: List[str], structure_type: str,
             kept_count += 1
             continue
         unique_papers = sorted(set(fp_papers))
-        source_lines = _comment_out_rule_block(
+        source_lines, how = _prune_rule_safely(
             source_lines, rule_name, unique_papers, tp_count)
-        pruned_count += 1
+        decisions[-1]["applied"] = how
+        if how != "skipped":
+            pruned_count += 1
 
     # Append rather than overwrite: prune runs once per paper, and the history of
     # WHEN a rule died (and on how much evidence) is the interesting part.
