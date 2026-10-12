@@ -9,15 +9,17 @@
         --delete="*"                              # replaces the old static Space's files
 
 Layout: portal/ (pages, js, css, vendor, data), src/ (parser, viewer), extractors/rules/,
-silver_v6/graphs/ (the 200 silver papers, LLM and rule pages).
+silver_v6/graphs/ (the 200 silver papers, LLM and rule pages, built here). Everything comes
+from git, so any clone can stage it.
 """
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-SILVER = REPO / "corpus/silver/opus-5.5__v6/graphs"
-SKIP_DATA = {"tier2_test", "tier2_tex", "tier2.symlink.bak", "manifest_before_v6.json", "tier3-sample"}
+SILVER = REPO / "corpus/silver/opus-5.5__v6"   # LLM graphs; rules_v6/ holds the rule graphs
+SKIP_DATA = {"tier2_test", "tier2_tex", "tier2.symlink.bak", "manifest_before_v6.json", "tier3-sample", "tier2"}
 
 
 def copy(src, dst):
@@ -38,8 +40,11 @@ def main(out):
             continue
         copy(f, out / "portal" / f.name)
     for f in (p / "data").iterdir():
-        if f.name not in SKIP_DATA:
+        if f.name not in SKIP_DATA and f.name != "tier3_v6":
             copy(f, out / "portal/data" / f.name)
+    # 100K index only (titles and counts); the graphs are read from the dataset on demand
+    for f in [p / "data/tier3_v6/index.json"] + sorted((p / "data/tier3_v6").glob("*/index.json")):
+        copy(f, out / "portal/data/tier3_v6" / f.relative_to(p / "data/tier3_v6"))
     for f in sorted((REPO / "src").glob("*.py")):
         copy(f, out / "src" / f.name)
     for f in sorted((REPO / "src/LLMVersion").glob("*.py")):
@@ -49,14 +54,16 @@ def main(out):
             copy(f, out / "src/graph_view" / f.name)
     copy(REPO / "extractors/rules/silver_v6__sentence_rules_haiku__2026-10",
          out / "extractors/rules/silver_v6__sentence_rules_haiku__2026-10")
+    # the 200 silver papers' pages, built here from the JSONs in git (LLM and rule graphs)
     g = out / "silver_v6/graphs"
     g.mkdir(parents=True)
-    for f in SILVER.glob("*_new.html"):
-        shutil.copy2(f, g)
-    for f in SILVER.glob("*_rules.html"):
-        shutil.copy2(f, g)
-    if (SILVER / "lib").is_dir():
-        shutil.copytree(SILVER / "lib", g / "lib")
+    build = [sys.executable, str(REPO / "src/graph_view/build.py")]
+    for jsons, suffix in ((sorted(SILVER.glob("*.json")), "_new"), (sorted((SILVER / "rules_v6").glob("*.json")), "_rules")):
+        r = subprocess.run(build + [str(j) for j in jsons] + ["-o", str(g), "--suffix", suffix],
+                           capture_output=True, text=True)
+        print(f"  {suffix}: " + (r.stdout.strip().splitlines() or ["?"])[-1])
+        if r.returncode:
+            sys.exit(r.stderr[-1000:])
     files = [x for x in out.rglob("*") if x.is_file()]
     print(f"staged {len(files)} files, {sum(x.stat().st_size for x in files) / 2**20:.0f} MB, in {out}")
 
