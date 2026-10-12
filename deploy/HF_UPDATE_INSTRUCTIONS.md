@@ -34,9 +34,8 @@ goes first it still works, but 100K papers show the old v4 graphs until step 2 i
     python3 scripts/stage_hf_portal_space.py /tmp/saranga_portal_space
     huggingface-cli upload RHCPP/saranga /tmp/saranga_portal_space . --repo-type=space --delete="*"
 
-- Run it from a machine that has the portal data: `portal/data/` (tier-3 index with titles)
-  and `corpus/silver/opus-5.5__v6/graphs/` (the 200 silver pages). Or's laptop has them; if
-  you run it elsewhere, check that the staging script reports ~1,365 files / ~300 MB.
+- Works from any clone: the staging script takes everything from git and builds the 200
+  silver pages itself (about a minute). It should report ~830 files / ~170 MB.
 - `--delete="*"` removes the old static files in the same commit; the old site stays in the
   Space's git history and can be restored from there.
 - The Space then rebuilds (a few minutes; watch the "Building" log on the Space page).
