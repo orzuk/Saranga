@@ -32,8 +32,18 @@ The released extractor is `extractors/rules/silver_v6__sentence_tagger__2026-10`
     # 3. compare on the test papers, same harness and metrics as the other algorithms
     python3 scripts/compare_distillers.py run --config alg3/v6_alg3.json --no-trajectory
 
-To compare a new model, add an arm `{"alg": "fixed", "rules_dir": "alg3/runs/<name>"}`
-to the config. Choose between versions on the out-of-fold score and the
+The common driver runs it too, next to the other two algorithms:
+
+    python3 scripts/silver_distillation_merged.py --alg tagger \
+        --pilot-papers train --splits corpus/silver/split_v6_6-2-2.csv \
+        --tex-dir corpus/silver/tex_staged --eval-dir <out> \
+        [--tagger-args "--class-weight sqrt --stack"]
+
+and so does `scripts/compare_distillers.py`, with an arm like
+`{"alg": "tagger", "args": {"tagger-args": "--class-weight sqrt --stack"}}`
+(`train_per_category` works as for the other algorithms; no `model` needed).
+To compare an already trained model, add an arm
+`{"alg": "fixed", "rules_dir": "alg3/runs/<name>"}` to the config. Choose between versions on the out-of-fold score and the
 validation papers (both printed by train.py), not on the test papers.
 
 `cache/` and `runs/` are local (git-ignored).

@@ -9,6 +9,7 @@ and how it is obtained:
     alg "fixed"    an existing rule directory (e.g. a released extractor)
     alg "units"    trained here by the unit algorithm   (scripts/distill_units.py)
     alg "merged"   trained here by the original algorithm (silver_distillation_merged.py)
+    alg "tagger"   trained here by the sentence tagger, no teacher call (alg3/; "model" unused)
 
 with "model" (the teacher) and "args" (any driver option, {"max-llm-calls": 2500}),
 so a parameter variant is just another arm. "train_per_category": k trains on a
@@ -171,7 +172,7 @@ def driver_cmd(cfg, arm, train_dir: Path) -> list:
            "--pilot-papers", ",".join(train_papers(cfg, arm)),
            "--splits", str(cfg["split"]["file"]), "--t2-dir", str(cfg["silver_dir"]),
            "--tex-dir", str(cfg["tex_dir"]), "--eval-dir", str(train_dir),
-           "--model", arm["model"], "--threshold", str(cfg["threshold"]),
+           "--model", arm.get("model", "none"), "--threshold", str(cfg["threshold"]),
            "--match-metric", cfg["match_metric"]]
     if arm["alg"] == "units":
         cmd += ["--val-papers", "val", "--skip-finalize"]
@@ -185,6 +186,11 @@ def driver_cmd(cfg, arm, train_dir: Path) -> list:
 
 def train_summary(alg: str, train_dir: Path) -> dict:
     """Costs and learning curve of a finished training run, from the driver's own logs."""
+    if alg == "tagger":                       # alg3: no teacher call, no snapshots
+        m = json.load(open(train_dir / "sentence_model.json", encoding="utf-8"))
+        return {"stages": {}, "llm_calls": 0, "cost_usd": 0.0, "distill_seconds": 0,
+                "n_rules": len(m["anchor"]["weights"]), "trajectory": [],
+                "params": m.get("meta", {})}
     if alg == "units":
         s = json.load(open(train_dir / "units_summary.json", encoding="utf-8"))
         traj = [json.loads(line) for line in open(train_dir / "units" / "trajectory.jsonl",
@@ -239,7 +245,7 @@ def train_arm(cfg, name, arm, force: bool) -> None:
     if rc != 0:
         raise SystemExit(f"[{name}] training failed (exit {rc}); see {d / 'train.log'}")
     s = train_summary(arm["alg"], d)
-    s.update(alg=arm["alg"], model=arm["model"], args=arm.get("args", {}), command=cmd,
+    s.update(alg=arm["alg"], model=arm.get("model", ""), args=arm.get("args", {}), command=cmd,
              wall_seconds=round(time.time() - t0), finished=time.ctime(), code=code_version())
     done.write_text(json.dumps(s, indent=1), encoding="utf-8")
     print(f"[{name}] trained: {s['n_rules']} rules, {s['llm_calls']} calls, ${s['cost_usd']}")

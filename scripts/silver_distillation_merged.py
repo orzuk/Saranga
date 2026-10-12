@@ -1815,16 +1815,54 @@ def corpus_prompt_version(metadata: str | None, t2_dir: str) -> str:
     return versions.pop()
 
 
+def run_tagger(args) -> None:
+    """--alg tagger: build the training data and train the sentence tagger
+    (alg3/data.py, alg3/train.py) into --eval-dir, which then holds an extractor
+    (distilled_rules.py + sentence_model.json) like any rule set. Training papers:
+    --pilot-papers (a list, or the split name `train`); validation: the split's
+    val papers. No teacher call."""
+    import shlex
+    import subprocess
+    eval_dir = Path(args.eval_dir).resolve()
+    eval_dir.mkdir(parents=True, exist_ok=True)
+    split_csv = split_file(args)
+    pids = [p.strip() for p in args.pilot_papers.split(",") if p.strip()]
+    if pids in (["train"], ["val"]):
+        pids = sorted(p for p, s in load_splits(split_csv).items() if s == pids[0])
+    if not args.allow_test_papers:
+        assert_no_test_leak(pids, load_splits(split_csv))
+    data = eval_dir / "tagger_papers.pkl"
+    a3 = REPO / "alg3"
+    steps = [
+        [sys.executable, "-u", str(a3 / "data.py"), "--splits", "train,val",
+         "--tex-dir", str(Path(args.tex_dir).resolve()), "--out", str(data),
+         "--split-file", str(split_csv), "--silver", str(Path(args.t2_dir).resolve()),
+         "--train-papers", ",".join(pids), "--workers", str(args.prepare_workers)],
+        [sys.executable, "-u", str(a3 / "train.py"), "--data", str(data),
+         "--out", str(eval_dir)] + shlex.split(args.tagger_args),
+    ]
+    for cmd in steps:
+        print("[tagger] " + " ".join(cmd), flush=True)
+        rc = subprocess.run(cmd, cwd=REPO).returncode
+        if rc != 0:
+            raise SystemExit(f"[tagger] failed (exit {rc}): {cmd[2]}")
+
+
 def main():
     p = argparse.ArgumentParser(description="Silver Standard MERGED Distillation")
     p.add_argument("--structure-types", default=",".join(ALL_SILVER_TYPES),
                    help="Comma list of types (default: all 9 silver types)")
-    p.add_argument("--alg", default="merged", choices=["merged", "units"],
+    p.add_argument("--alg", default="merged", choices=["merged", "units", "tagger"],
                    help="merged: the teacher writes per-group extractor files, one "
                         "training paper at a time (analyze -> aggregate -> prune). "
                         "units: the teacher writes sentence rules for clusters of "
                         "missed prose nodes, each tested on all training papers "
-                        "before it is accepted (scripts/distill_units.py).")
+                        "before it is accepted (scripts/distill_units.py). "
+                        "tagger: no teacher call; a weighted clue model is learned "
+                        "from the silver itself (alg3/, see alg3/README.md).")
+    p.add_argument("--tagger-args", default="--class-weight sqrt --stack",
+                   help="with --alg tagger: options passed to alg3/train.py "
+                        "(default: the released v2b settings)")
     p.add_argument("--pilot-papers", required=True,
                    help="Comma-separated paper IDs (e.g. paper001,paper005); "
                         "with --alg units also a split name (train)")
@@ -2001,6 +2039,9 @@ def main():
     if args.alg == "units":
         import distill_units                  # alpha defaults to 0.2 there (rule precision >= 0.8)
         distill_units.run(args)
+        return
+    if args.alg == "tagger":
+        run_tagger(args)
         return
     if args.ladder_prompt_version is None:
         args.ladder_prompt_version = corpus_prompt_version(args.metadata, args.t2_dir)

@@ -30,9 +30,9 @@ SPLIT_FILE = REPO / "corpus/silver/split_v6_6-2-2.csv"
 SILVER = REPO / "corpus/silver/opus-5.5__v6"
 
 
-def split_ids(splits) -> dict:
+def split_ids(splits, split_file=SPLIT_FILE) -> dict:
     out = {}
-    for r in csv.DictReader(open(SPLIT_FILE, encoding="utf-8")):
+    for r in csv.DictReader(open(split_file, encoding="utf-8")):
         pid = r.get("arxiv_id") or r["paper_id"]
         if r["split"] in splits:
             out[pid] = r["split"]
@@ -46,17 +46,26 @@ def main():
     ap.add_argument("--out", default=str(REPO / "alg3/cache/papers.pkl"))
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--allow-test", action="store_true")
+    ap.add_argument("--split-file", default=str(SPLIT_FILE))
+    ap.add_argument("--silver", default=str(SILVER), help="silver graphs, <paper>.json")
+    ap.add_argument("--train-papers", default=None,
+                    help="comma list: train on these papers only (default: the split's train papers)")
     a = ap.parse_args()
     splits = [s.strip() for s in a.splits.split(",")]
     if "test" in splits and not a.allow_test:
         raise SystemExit("test papers are scored only through compare_distillers.py")
-    ids = split_ids(splits)
+    ids = split_ids(splits, a.split_file)
+    if a.train_papers:
+        keep = {p.strip() for p in a.train_papers.split(",") if p.strip()}
+        if not a.allow_test and keep & set(split_ids(["test"], a.split_file)):
+            raise SystemExit("a test paper is among --train-papers")
+        ids = {p: s for p, s in ids.items() if s != "train" or p in keep}
     empty = REPO / "alg3/cache/_empty_rules"
     empty.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
     papers = {}
     with mp.Pool(a.workers, initializer=DU._prep_init,
-                 initargs=(a.tex_dir, str(SILVER), 0.7, str(empty), "m1g")) as pool:
+                 initargs=(a.tex_dir, str(a.silver), 0.7, str(empty), "m1g")) as pool:
         for k, (pid, p) in enumerate(pool.imap_unordered(DU._prep_one, sorted(ids)), 1):
             if p is not None:
                 p._sig = []
