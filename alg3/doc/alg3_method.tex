@@ -1,0 +1,311 @@
+\documentclass[10pt]{article}
+\usepackage[preprint]{tmlr}
+\usepackage[hyphens]{url}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage[table]{xcolor}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{placeins}
+\hypersetup{colorlinks=true,linkcolor=blue!50!black,citecolor=blue!50!black,urlcolor=blue!50!black}
+\newcommand{\nerd}{NtRED}
+\newcommand{\tagger}{\textsc{Tag}}
+\newcommand{\none}{\varnothing}
+\DeclareMathOperator*{\argmax}{arg\,max}
+
+\title{Sentence-Tagging Distillation (\tagger{}):\\ a Third Distillation Mode for \nerd{}}
+\author{Saranga project note, October 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+The two distillation algorithms of \nerd{} ask the teacher for two things at once: to recognise the structures the student misses, and to write the rules that recover them. \tagger{} separates the two. The teacher's only contribution is the supervision itself, the silver standard $\mathcal{S}$; how the evidence in a sentence is weighed is then learned from $\mathcal{S}$ by a regularised linear model over a fixed, deterministic set of clues. The student keeps every property that makes the rule student usable at corpus scale: it is deterministic, needs no model call at parse time, and runs at the speed of the regex students. On the forty held-out papers of the v6 split, the version chosen on validation scores pooled $\mathrm{M}_{1g}$ $\mathrm{F}_1=0.729$, against $0.702$ for the units student and $0.638$ for the base parser, a paired difference of $+0.027$ $[+0.015,+0.043]$, with no teacher call spent in training; every version we built is ahead of the units student, by margins whose intervals exclude zero.
+\end{abstract}
+
+\section{Sentence-Tagging Distillation}
+\label{app:tagger}
+
+This note formalises \tagger{}, a third distillation algorithm alongside the merged algorithm of Appendix~F and the units algorithm. All three share the same supervision, the same split, the same base parser and the same matching regime; they differ in what the student is, and in who decides how it is built. We fix the notation first, then present the student, how it is trained, and how it is evaluated.
+
+\subsection{Shared definitions}
+
+\paragraph{Papers, sentences and the base parser.}
+A paper $P$ is its prepared \LaTeX{} source: inputs inlined, comments and disabled text removed, the author's macros expanded, exactly as the parser hands it to distilled rules. The base parser $\mathcal{R}^{(0)}$ recognises the structures that live in named environments (theorems, proofs, algorithms) and, in the v6 silver, already recovers $98.8\%$ of them with the right type. What remains is \emph{prose}: structures stated in running text, $61\%$ of the scored nodes. Following the units algorithm, the prose of $P$ is cut into sentences
+%
+\begin{equation}
+  \Sigma(P) = (\sigma_1,\dots,\sigma_n),
+\end{equation}
+%
+the document body minus environments, floats, the abstract and the bibliography, split at sentence ends outside mathematics, at paragraph breaks and at \verb|\item|. Each sentence carries its \emph{region} $r(\sigma_i)$, the stretch of prose between two headings or environments, and its paragraph $\pi(\sigma_i)$ within the region. A displayed equation belongs to the sentence it continues.
+
+\paragraph{Supervision.}
+The supervision is the silver standard $\mathcal{S}$ (Claude Opus~5.5, prompt v6), split by category into $\mathcal{S}_{\mathrm{train}}$, $\mathcal{S}_{\mathrm{val}}$ and $\mathcal{S}_{\mathrm{test}}$ of $120$, $40$ and $40$ papers. A silver prose node $s$ is located in the prepared source and mapped to the sentences it covers, $[\,b(s),\,e(s)\,]$; its first sentence $b(s)$ is its \emph{anchor}. Every prose sentence then receives a label and, if it is an anchor, a span:
+%
+\begin{equation}
+  y_i \in \{\none\}\cup\mathcal{T},
+  \qquad
+  \ell_i \in \mathcal{L}=\{1,2,3,4,\mathrm{para}\},
+  \label{eq:labels}
+\end{equation}
+%
+where $\mathcal{T}$ is the set of the fourteen scored node types, $y_i=\none$ marks a sentence that starts no node (inside one or outside all), and $\ell_i$ is the number of sentences the node covers, with $\mathrm{para}$ standing for ``to the end of the paragraph''. A silver node the base parser already finds is \emph{covered}: a prediction that matches it is neutral, since the parser's merge drops the duplicate.
+
+\paragraph{Matching and counting.}
+Matching is the graded strict regime $\mathrm{M}_{1g}$: as $\mathrm{M}_1$ (one output paired with one reference, alignment $a(A,B)=|A\cap B|/\min(|A|,|B|)\ge\theta$, $\theta=0.7$), except that a pair earns the \emph{type compatibility} of its two labels rather than $1$ or $0$,
+%
+\begin{equation}
+  \mathrm{credit}(s',s) \;=\; \kappa\bigl(\mathrm{type}(s'),\mathrm{type}(s)\bigr)\in[0,1],
+\end{equation}
+%
+with $\kappa(t,t)=1$, $0.8$ between a claim and a proposition, $0.4$ between a claim and a remark, $0.05$ between a proof and any statement, and $0.2$ for unlisted pairs. Pairs are taken greedily by credit times alignment. Counts are pooled over papers and types; an emitted structure contributes its credit to the precision numerator and $1-\mathrm{credit}$ to the false positives, so under identical types the counts reduce to those of $\mathrm{M}_1$. We report $\mathrm{M}_1$ and $\mathrm{M}_3$ beside it.
+
+\paragraph{The objective is the whole extractor.}
+\tagger{} adds prose nodes on top of $\mathcal{R}^{(0)}$, so what it is trained and tuned to raise is the score of the \emph{combined} extractor on all silver nodes of a paper set $\mathcal{Q}$, environments included:
+%
+\begin{equation}
+  \mathrm{F}(\mathcal{Q})
+  \;=\;
+  \frac{2\,\mathrm{TP}}{2\,\mathrm{TP}+\mathrm{FP}+\mathrm{FN}},
+  \qquad
+  \mathrm{TP}=\mathrm{TP}_{0}+\!\!\sum_{s'\in e_{\tagger}}\!\!\mathrm{credit}(s'),\quad
+  \mathrm{FP}=\mathrm{FP}_{0}+\!\!\sum_{s'\in e_{\tagger}}\!\!\bigl(1-\mathrm{credit}(s')\bigr),
+  \label{eq:objective}
+\end{equation}
+%
+where $\mathrm{TP}_0,\mathrm{FP}_0$ are the base parser's counts on $\mathcal{Q}$, $e_{\tagger}$ the structures \tagger{} emits, unmatched ones carrying credit $0$, neutral ones counted in neither, and $\mathrm{FN}=|\mathcal{Y}(\mathcal{Q})|-\mathrm{TP}$.
+
+\subsection{The student}
+
+\paragraph{Clues.}
+A \emph{clue} is a deterministic predicate on a sentence and its paper: a regular expression or a string test, true or false. The student sees sentence $\sigma_i$ only through its clue vector
+%
+\begin{equation}
+  \phi(\sigma_i;P)\in\{0,1\}^{d},
+\end{equation}
+%
+assembled from the families in Table~\ref{tab:clues}. Most families are generic (every word, every word pair, every sentence opening becomes a clue); a few are written for the task, and none is specific to a paper. A clue that holds on fewer than three training sentences is dropped, leaving $d\approx4.7\times10^4$.
+
+\begin{table}[h]
+\centering\small
+\caption{Clue families. Mathematics, displays, references, citations and markup are first replaced by tokens (\texttt{<math>}, \texttt{<display>}, \texttt{<ref>}, \texttt{<cite>}, \texttt{<emph>}, \texttt{<bold>}), so ``Let $X$ be a \emph{compact} space'' becomes \texttt{let <math> be a <emph> compact space}.}
+\label{tab:clues}
+\begin{tabular}{@{}lp{9.4cm}@{}}
+\toprule
+\textbf{Family} & \textbf{Clues} \\
+\midrule
+Lexical & every word and every pair of adjacent words; the first one, two and three words; the last word \\
+Cue phrases & 22 gap-tolerant phrase classes: \emph{is called / said to be}, \emph{we call / define / denote}, \emph{we obtain / find / deduce}, \emph{it is easy / known that}, \emph{note / observe}, \emph{we assume / suppose}, \emph{question / open}, \emph{conjecture}, \emph{for example}, \emph{step / iterate / until}, \emph{proved in \textbackslash cite} \ldots \\
+Markup & emphasis, bold, a bold lead-in, \verb|\item|, an enumerator (i), a citation, a reference, a displayed equation, a final colon or question mark \\
+Shape & length, number of inline formulas, share of the sentence that is mathematics (bucketed) \\
+Position & first or last in its paragraph, paragraph length, first after a heading, decile of the paper \\
+Section & the words of the heading the sentence sits under, and its kind (introduction, preliminaries, main results, proofs, examples, open problems, conclusion, methods, appendix) \\
+Context & the opening words of the previous and the next sentence; a colon ending the previous one; a display opening the next one \\
+Environments & the type of an environment ending immediately before the sentence, or starting immediately after it \\
+Document & whether a term the sentence emphasises is used again later in the paper \\
+Conjunctions & first word $\times$ section kind, cue phrase $\times$ section kind, emphasis $\times$ first word and $\times$ cue phrase \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Anchor model.}
+The type a sentence starts is modelled by multinomial logistic regression over its clues,
+%
+\begin{equation}
+  p^{(1)}_i(c) \;=\; \Pr\bigl(y_i=c \mid \phi_i\bigr)
+  \;=\;
+  \frac{\exp\bigl(w_c^{\top}\phi_i+\beta_c\bigr)}{\sum_{c'\in\{\none\}\cup\mathcal{T}}\exp\bigl(w_{c'}^{\top}\phi_i+\beta_{c'}\bigr)},
+  \qquad \phi_i=\phi(\sigma_i;P),
+  \label{eq:anchor}
+\end{equation}
+%
+fitted by weighted, $L_2$-regularised maximum likelihood over the training sentences,
+%
+\begin{equation}
+  \min_{W,\beta}\;
+  -\sum_{i}\omega_{y_i}\log p^{(1)}_i(y_i)
+  \;+\;\frac{1}{2C}\,\lVert W\rVert_2^2,
+  \qquad
+  \omega_c=\Bigl(\frac{\max_{c'}n_{c'}}{n_c}\Bigr)^{1/2},
+  \label{eq:fit}
+\end{equation}
+%
+where $n_c$ is the number of training sentences labelled $c$. The square-root weights lift the rare types (a training set has about $23{,}000$ unlabelled sentences against $40$ conjectures) halfway towards balance without letting them dominate; $C=0.3$. A weight $w_{c,j}$ is a log-odds contribution: clue $j$ being true adds $w_{c,j}$ to the score of type $c$.
+
+\paragraph{Second pass: the neighbours.}
+Structures cluster: a definition is often followed by another, the steps of an algorithm come in runs, a proof follows its claim. A second model of the form~\eqref{eq:anchor} sees, besides $\phi_i$, the first-pass probabilities of the sentence and of its neighbours in the same region, bucketed into indicators,
+%
+\begin{equation}
+  \psi_i = \phi_i \,\oplus\, \bigoplus_{k\in\{-2,-1,0,+1\}}\;\bigoplus_{c\in\mathcal{T}}\;
+  \Bigl[\mathbf{1}\bigl(p^{(1)}_{i+k}(c)\ge q\bigr)\Bigr]_{q\in\{0.10,\,0.25,\,0.50,\,0.75\}},
+  \label{eq:context}
+\end{equation}
+%
+with an indicator that the neighbour lies outside the region. Its output $p_i=p^{(2)}_i$ is what the student acts on. Trained on first-pass probabilities that the model had itself fitted, the second pass would learn to trust them too much; so the $p^{(1)}$ it is trained on are \emph{out-of-fold}: the training papers are split into $K=5$ folds by paper, and each fold's probabilities come from a first-pass model fitted on the other four (stacked generalisation, Wolpert 1992).
+
+\paragraph{Span model.}
+How far a node extends is predicted by a third, small multinomial model over $\mathcal{L}$, trained on the silver anchors, whose clues are the node's type, the number of sentences left in the paragraph, the opening words of the anchor and of the next sentence, and whether the next sentence starts a new paragraph:
+%
+\begin{equation}
+  \hat\ell_i = \argmax_{\ell\in\mathcal{L}}\;\Pr\bigl(\ell \mid \chi(\sigma_i,\hat t_i)\bigr),
+  \qquad
+  \mathrm{end}(i,\ell) = \text{the last sentence of the node anchored at } i,
+\end{equation}
+%
+where $\mathrm{end}(i,\ell)$ takes $\ell$ sentences, or runs to the end of the paragraph, never leaving the region and never past eight sentences.
+
+\paragraph{Decoding.}
+Sentences are read in document order. Sentence $i$ starts a node of its most probable type $\hat t_i$ when that probability clears the type's threshold, and a sentence inside an emitted node starts no other:
+%
+\begin{equation}
+  \hat t_i=\argmax_{c\in\mathcal{T}} p_i(c),
+  \qquad
+  \text{emit}\;\bigl(\hat t_i,\;[\,i,\ \mathrm{end}(i,\hat\ell_i)\,]\bigr)
+  \;\iff\;
+  p_i(\hat t_i)\ge\tau_{\hat t_i}
+  \;\wedge\;
+  i>\mathrm{end}(\text{last emitted node}).
+  \label{eq:decode}
+\end{equation}
+%
+The emitted nodes join the base parser's output through the parser's ordinary merge, exactly as the rule students' do.
+
+\paragraph{Thresholds.}
+The thresholds $\boldsymbol{\tau}=(\tau_t)_{t\in\mathcal{T}}$ are where the objective~\eqref{eq:objective} enters. They are chosen on out-of-fold predictions over the training papers, so that no paper is scored by a model that was fitted on it:
+%
+\begin{equation}
+  \boldsymbol{\tau}^\star
+  \;=\;
+  \argmax_{\boldsymbol{\tau}\in G^{|\mathcal{T}|}}\;
+  \mathrm{F}\bigl(\mathcal{S}_{\mathrm{train}};\ \text{decode}(p^{\mathrm{oof}},\boldsymbol{\tau})\bigr),
+  \qquad
+  G=\{0.15,0.20,\dots,0.95\}\cup\{\mathrm{off}\},
+  \label{eq:tau}
+\end{equation}
+%
+searched by coordinate ascent, one type at a time over the grid, until a full round changes nothing. Each candidate prediction's possible matches are computed once, so a trial threshold costs arithmetic over stored candidates rather than a re-parse.
+
+\begin{algorithm}[t]
+\caption{\tagger{} distillation, for the supervision $\mathcal{S}_{\mathrm{train}}$.}
+\label{alg:tagger}
+\let\AND\relax
+\begin{algorithmic}[1]
+\REQUIRE silver training papers $\mathcal{S}_{\mathrm{train}}$, base parser $\mathcal{R}^{(0)}$, clue map $\phi$, folds $K$, regularisation $C$
+\ENSURE anchor models, span model, thresholds $\boldsymbol{\tau}^\star$
+\FORALL{papers $P\in\mathcal{S}_{\mathrm{train}}$}
+  \STATE cut $P$ into prose sentences $\Sigma(P)$; label each with $y_i$, and each anchor with $\ell_i$ (Eq.~\ref{eq:labels})
+  \STATE run $\mathcal{R}^{(0)}$; record $\mathrm{TP}_0,\mathrm{FP}_0$ and the covered silver nodes
+\ENDFOR
+\STATE split the papers into $K$ folds; for each fold, fit Eq.~\eqref{eq:fit} on the others and predict it: $p^{(1),\mathrm{oof}}$
+\STATE build $\psi$ from $p^{(1),\mathrm{oof}}$ (Eq.~\ref{eq:context}); repeat the $K$-fold fit for the second pass: $p^{\mathrm{oof}}$
+\STATE fit both passes on all training papers; fit the span model on the silver anchors
+\STATE $\boldsymbol{\tau}^\star\gets$ coordinate ascent of Eq.~\eqref{eq:tau} on $p^{\mathrm{oof}}$
+\RETURN the weights, $\boldsymbol{\tau}^\star$ and the clue code, as one extractor directory
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{What is learned, and what is not.}
+The teacher appears in Algorithm~\ref{alg:tagger} only through $\mathcal{S}$, which already exists; training calls no model. What a learned model adds over a rule list is the ability to \emph{combine} weak evidence. In the rule students a pattern must be precise on its own to be admitted; here ``the sentence is emphasised'', ``it sits in the preliminaries'' and ``it opens the paragraph'' are each weak, but together they are strong evidence of a definition, and the weights are fitted jointly, so two clues that say the same thing share the credit instead of being counted twice. The same weights also carry evidence \emph{against} a type, which a rule cannot express except by a guard written into its pattern.
+
+\paragraph{Teacher-invented clues.}
+The teacher can still be asked for something a fixed clue set may lack. From the out-of-fold errors on the training papers, the missed silver anchors of each type and the look-alikes the student fired on, the teacher is shown both sides and asked for regular expressions that separate them. Each proposal enters $\phi$ as one more clue, and its weight, possibly zero, is fitted like any other, so a poor proposal costs little. Validation papers are never shown to the teacher. One such round, ten calls to Claude Haiku~5.5 for \$0.0096, produced $73$ clues and changed the out-of-fold objective by $+0.003$ and the validation score by $0.000$: the phrases the teacher proposes are, almost all, already present as words and word pairs. The released version uses none.
+
+\FloatBarrier
+\subsection{Protocol and results}
+
+\paragraph{Train, validation and test.}
+The model is fitted on the $120$ training papers. Versions are compared on two signals only: the out-of-fold objective on the training papers, which averages over $120$ papers, and the validation papers, $40$ papers no model was fitted on. The version to release, v2b, was fixed on those two signals before any version but the first was scored on the test papers. The test papers enter no stage; every version is then scored on them once, by the same comparison harness and the same parse as the other students, with paired bootstrap intervals over papers, and all are reported. The test scores were not used to choose among the versions.
+
+\paragraph{Development.}
+Table~\ref{tab:tagger-dev} lists the versions. Neither the square-root weights nor stronger regularisation moves the score on its own; the second pass is the one change that does, by $+0.018$ out of fold. Differences under about $0.01$ on the forty validation papers are within their noise, which is why the larger out-of-fold signal is consulted first. The test column bears this out: the seven versions span $0.721$ to $0.729$, and v2b and v2b-fast, which share every setting and differ only in where the clue vocabulary is built, are $0.006$ apart, so differences of that size between versions are run-to-run variation rather than an effect.
+
+\begin{table}[h]
+\centering\small
+\caption{Development of \tagger{}: pooled $\mathrm{M}_{1g}$ F of the whole extractor (Eq.~\ref{eq:objective}). Out-of-fold scores are over the $120$ training papers; validation over $40$ papers no model was fitted on; these two chose the version (bold). The test column is the comparison harness on the $40$ test papers (overall $\mathrm{M}_{1g}$ $\mathrm{F}_1$, the column of Table~\ref{tab:tagger-test}) and played no part in the choice. On the validation papers the base parser scores $0.619$ and the released units student $0.708$; on the test papers $0.638$ and $0.702$.}
+\label{tab:tagger-dev}
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+\textbf{version} & \textbf{class weights} & $C$ & \textbf{second pass} & \textbf{out-of-fold} & \textbf{validation} & \textbf{test} \\
+\midrule
+v1   & none        & 0.3 & no  & 0.676 & 0.720 & 0.724 \\
+v2a  & square root & 0.3 & no  & 0.677 & 0.719 & 0.721 \\
+v2c  & square root & 0.1 & no  & 0.682 & 0.720 & 0.728 \\
+v2d  & square root & 0.1 & yes & 0.688 & 0.726 & 0.729 \\
+\textbf{v2b}  & square root & 0.3 & yes & \textbf{0.694} & \textbf{0.726} & \textbf{0.729} \\
+v2b-fast  & as v2b, fast trainer & 0.3 & yes & 0.694 & 0.723 & 0.723 \\
+v3a  & as v2b, + 73 teacher clues & 0.3 & yes & 0.697 & 0.723 & 0.728 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Held-out comparison.}
+Table~\ref{tab:tagger-test} scores \tagger{} on the forty test papers, beside the base parser and the released units student, all parsed and scored by the same harness; the units student reproduces its published score exactly. The released version is v2b, chosen on validation; the first version, v1, is shown beside it because it was the first scored. Both are ahead under every regime, the paired intervals exclude zero, and the gain is concentrated where distillation has work to do: on the structures stated in running prose, $\mathrm{F}_1$ rises from $0.426$ to $0.491$.
+
+\begin{table}[h]
+\centering\small
+\caption{Held-out comparison, $40$ test papers, pooled. ``Prose'' restricts to silver nodes stated in running text. Differences are paired over papers, $2{,}000$ bootstrap resamples, $95\%$ intervals; both versions of \tagger{} are ahead of the units student in every resample, under every regime.}
+\label{tab:tagger-test}
+\begin{tabular}{@{}lccccccc@{}}
+\toprule
+& \multicolumn{3}{c}{$\mathrm{M}_{1g}$} & $\mathrm{M}_1$ & $\mathrm{M}_3$ & prose $\mathrm{M}_{1g}$ & teacher \\
+\cmidrule(lr){2-4}
+\textbf{student} & P & R & F$_1$ & F$_1$ & F$_1$ & F$_1$ & cost \\
+\midrule
+base parser $\mathcal{R}^{(0)}$ & 0.944 & 0.482 & 0.638 & 0.630 & 0.753 & 0.137 & -- \\
+units (released, 134 rules) & 0.805 & 0.622 & 0.702 & 0.686 & 0.825 & 0.426 & \$1.93 \\
+\tagger{} v1 & 0.821 & 0.647 & 0.724 & 0.706 & 0.853 & 0.476 & \$0 \\
+\tagger{} v2b (released) & 0.819 & 0.656 & \textbf{0.729} & \textbf{0.709} & \textbf{0.858} & \textbf{0.491} & \$0 \\
+\midrule
+v1 $-$ units & & & $+0.022$ & $+0.020$ & $+0.028$ & & \\
+\quad 95\% interval & & & $[+0.012,+0.036]$ & $[+0.010,+0.035]$ & $[+0.016,+0.050]$ & & \\
+v2b $-$ units & & & $\mathbf{+0.027}$ & $\mathbf{+0.023}$ & $\mathbf{+0.033}$ & & \\
+\quad 95\% interval & & & $[+0.015,+0.043]$ & $[+0.012,+0.038]$ & $[+0.021,+0.053]$ & & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Cost.}
+Training takes about nine minutes on a laptop, the five folds fitted in parallel, and no teacher call. At parse time the student runs a fixed set of about twenty-five regular expressions and a dictionary lookup per word of each sentence, then sums the weights of the clues present; Table~\ref{tab:tagger-time} shows that this costs what the rule students cost.
+
+\begin{table}[h]
+\centering\small
+\caption{Parse time per paper, base parser included, over $20$ validation papers in one process. Each student loads its rules once per process.}
+\label{tab:tagger-time}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{student} & \textbf{median} & \textbf{mean} & \textbf{slowest} \\
+\midrule
+base parser only & 0.12\,s & 0.18\,s & 0.7\,s \\
+units (released) & 0.76\,s & 0.96\,s & 3.8\,s \\
+\tagger{} v1 & 0.64\,s & 0.90\,s & 4.6\,s \\
+\tagger{} v2b & 0.54\,s & 0.67\,s & 1.9\,s \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\FloatBarrier
+\subsection{The three algorithms side by side}
+
+\begin{table}[h!]
+\centering\small
+\caption{What each distillation algorithm asks of the teacher, and what its student is.}
+\label{tab:three}
+\begin{tabular}{@{}p{2.3cm}p{3.7cm}p{3.7cm}p{3.7cm}@{}}
+\toprule
+& \textbf{merged} & \textbf{units} & \textbf{\tagger{}} \\
+\midrule
+student & Python extractors written by the teacher, one file per group of types & regular expressions on one sentence, each with a type and a span & a weighted sum of deterministic clues per sentence, thresholds, a span model \\[3pt]
+teacher writes & the extractors, rewritten at every step & one expression per cluster of misses, refined on its errors & nothing (optionally: extra clues) \\[3pt]
+a node is created by & any rule that fires & the most precise rule that fires & the combined evidence, above $\tau_t$ \\[3pt]
+admission & FDR gate after the fact, then subset selection & per-rule acceptance on what it adds & joint fit, then thresholds on out-of-fold F \\[3pt]
+teacher cost & \$95 (40 papers, Sonnet~4.6, v5.1) & \$1.93 (120 papers, Haiku~5.5) & \$0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{What the student is, and what it cannot reach.}
+The released artefact is a directory with the same interface as a rule student: the parser calls it per node type and merges what it returns. It is not, however, a list of standalone rules. Every regular expression in it is evidence, and none creates a node by itself; a node exists when the evidence summed over the clues a sentence satisfies clears the threshold of its type. The student is as inspectable as a rule list, since every weight is a named clue and every decision is the sum of a listed few, and it can be converted into an explicit list of rules at some cost in accuracy, a cost that can be measured. The ceiling it shares with the rule students is the same: structures with no surface marker at all, most low-confidence claims and remarks, are out of reach of any deterministic student. One limit is its own: fitted on $120$ papers, the first version reaches $\mathrm{F}_1=0.897$ on its training papers against $0.716$ on validation, so it partly memorises them, and more silver papers, rather than more clues, is the most likely way to raise it.
+
+\end{document}

@@ -1,0 +1,508 @@
+#!/usr/bin/env python3
+"""Train the alg3 sentence tagger and write it as an extractor directory.
+
+Separation of roles: the teacher's labels (the v6 silver) say WHICH sentences
+start a node and of which type; a statistical learner, not the teacher, decides
+how the cues combine. Every cue is a deterministic string test (alg3/features.py),
+and the learned model is a table of weights over those tests, applied by a few
+lines of Python at parse time: no neural network, no API call.
+
+  anchor model   multinomial logistic regression over sentence features:
+                 none / definition / claim / remark / ... for each prose sentence
+  span model     multinomial logistic regression: how many sentences the node
+                 anchored there covers (1..4 or to the end of its paragraph)
+  decoding       sentences in document order; a sentence starts a node of type t
+                 when P(t) is its largest type probability and >= tau_t; a sentence
+                 inside an emitted node starts no other
+  thresholds     tau_t chosen on out-of-fold predictions over the training papers
+                 (folds by paper) to maximise the overall F of the whole extractor
+                 (base parser + tagger) under the headline metric (m1g)
+
+Model selection uses the validation papers only; the test papers are never read.
+
+    python3 alg3/train.py --data alg3/cache/papers.pkl --out alg3/runs/<name>
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import pickle
+import shutil
+import sys
+import time
+from collections import Counter
+from pathlib import Path
+
+import numpy as np
+from sklearn.feature_extraction import DictVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import GroupKFold
+
+REPO = Path(__file__).resolve().parent.parent
+HERE = Path(__file__).resolve().parent
+for p in (HERE, REPO / "scripts", REPO / "src" / "LLMVersion", REPO / "src"):
+    if str(p) not in sys.path:
+        sys.path.insert(0, str(p))
+
+import distill_units as DU                                   # noqa: E402,F401  (unpickling)
+import features as FT                                        # noqa: E402
+import latex_facts as L                                      # noqa: E402
+import unit_rules as UR                                      # noqa: E402
+
+SPANS = ["1", "2", "3", "4", "para"]
+GRID = [round(x, 2) for x in np.arange(0.15, 0.96, 0.05)]
+
+
+# ---------------------------------------------------------------------------
+# data
+# ---------------------------------------------------------------------------
+
+def views(papers: dict) -> dict:
+    out = {}
+    for pid, (_, p) in papers.items():
+        out[pid] = FT.PaperView(p.text, L.extract_facts(p.text), p.sents)
+    return out
+
+
+def rows(pids, papers, pvs):
+    """Anchor rows: (pid, sentence index, features, label) for every prose sentence."""
+    X, y, g, idx = [], [], [], []
+    for pid in pids:
+        p, pv = papers[pid][1], pvs[pid]
+        for i in range(len(p.sents)):
+            X.append(FT.sentence_features(pv, i))
+            n = p.anchor.get(i)
+            y.append(n.type if n is not None else "none")
+            g.append(pid)
+            idx.append((pid, i))
+    return X, np.array(y), np.array(g), idx
+
+
+def span_label(p, n) -> str:
+    k = n.last - n.first + 1
+    if k <= 4:
+        return str(k)
+    return "para"
+
+
+def span_rows(pids, papers, pvs):
+    X, y, g = [], [], []
+    for pid in pids:
+        p, pv = papers[pid][1], pvs[pid]
+        for i, n in p.anchor.items():
+            X.append(FT.span_features(pv, i, n.type))
+            y.append(span_label(p, n))
+            g.append(pid)
+    return X, np.array(y), np.array(g)
+
+
+def prune_rare(X, min_count: int):
+    c = Counter(k for d in X for k in d)
+    keep = {k for k, v in c.items() if v >= min_count}
+    return [{k: v for k, v in d.items() if k in keep} for d in X], keep
+
+
+# ---------------------------------------------------------------------------
+# decoding and scoring (the unit algorithm's matcher and accounting)
+# ---------------------------------------------------------------------------
+
+def decode(p, probs, classes, span_pred, tau) -> list:
+    """probs: (n_sent, n_class); span_pred: sentence -> span string."""
+    none = classes.index("none")
+    out, covered = [], -1
+    for i in range(len(p.sents)):
+        if i <= covered:
+            continue
+        row = probs[i].copy()
+        row[none] = -1
+        c = int(np.argmax(row))
+        t = classes[c]
+        if row[c] < tau.get(t, 1.01):
+            continue
+        j = UR.span_end(p.sents, i, span_pred.get(i, "1"))
+        out.append({"type": t, "start": p.sents[i].start, "end": p.sents[j].end, "uid": 0})
+        covered = j
+    return out
+
+
+_TOK: dict = {}
+
+
+def match(scorer, p, pred, taken):
+    """DU.Scorer.match with the prediction's token set cached (threshold tuning
+    scores the same spans hundreds of times)."""
+    key = (p.pid, pred["start"], pred["end"])
+    tok = _TOK.get(key)
+    if tok is None:
+        tok = _TOK[key] = frozenset(DU.mm.tokens(p.text[pred["start"]:pred["end"]]))
+    best, bk, bw = 0.0, None, 0.0
+    for k, n in enumerate(p.nodes):
+        if k in taken:
+            continue
+        w = scorer.weight(pred["type"], n.type)
+        if w <= 0:
+            continue
+        ov = DU.mm.sym_containment(tok, n.tokens)
+        if ov >= scorer.th and w * ov > best:
+            best, bk, bw = w * ov, k, w
+    return bk, bw
+
+
+def evaluate(scorer, papers: dict, pids, preds: dict) -> dict:
+    tp = fp = neutral = 0.0
+    targets = 0
+    for pid in pids:
+        p = papers[pid][1]
+        targets += sum(not n.base_covered for n in p.nodes)
+        taken = set()
+        for pred in preds.get(pid, []):
+            k, w = match(scorer, p, pred, taken)
+            if k is not None and p.nodes[k].base_covered:
+                neutral += 1
+                taken.add(k)
+            elif k is not None:
+                tp += w
+                fp += 1 - w
+                taken.add(k)
+            else:
+                fp += 1
+    a_tp = sum(papers[q][1].base_tp for q in pids) + tp
+    a_fp = sum(papers[q][1].base_fp for q in pids) + fp
+    a_fn = max(sum(papers[q][1].n_silver for q in pids) - a_tp, 0)
+    den = 2 * a_tp + a_fn + a_fp
+    return {"tp": round(tp, 1), "fp": round(fp, 1), "neutral": int(neutral), "targets": targets,
+            "P": round(a_tp / (a_tp + a_fp), 4) if a_tp + a_fp else 0.0,
+            "R": round(a_tp / (a_tp + a_fn), 4) if a_tp + a_fn else 0.0,
+            "F": round(2 * a_tp / den, 4) if den else 0.0}
+
+
+def candidates(scorer, papers, pids, prob_by, classes, span_by) -> dict:
+    """Per paper and sentence: the type it would be emitted with, its probability,
+    the last sentence of its span, and every silver node it could match
+    [(node, credit, credit x overlap)], in node order. Thresholds only decide
+    which candidates are emitted, so tuning never touches text again."""
+    none = classes.index("none")
+    out = {}
+    for pid in pids:
+        p = papers[pid][1]
+        rows_ = []
+        for i in range(len(p.sents)):
+            row = prob_by[pid][i].copy()
+            row[none] = -1
+            c = int(np.argmax(row))
+            t = classes[c]
+            j = UR.span_end(p.sents, i, span_by[pid].get(i, "1"))
+            pred = {"type": t, "start": p.sents[i].start, "end": p.sents[j].end}
+            key = (p.pid, pred["start"], pred["end"])
+            tok = _TOK.get(key)
+            if tok is None:
+                tok = _TOK[key] = frozenset(DU.mm.tokens(p.text[pred["start"]:pred["end"]]))
+            m = []
+            for k, n in enumerate(p.nodes):
+                w = scorer.weight(t, n.type)
+                if w <= 0:
+                    continue
+                ov = DU.mm.sym_containment(tok, n.tokens)
+                if ov >= scorer.th and w * ov > 0:
+                    m.append((k, w, w * ov))
+            rows_.append((t, float(row[c]), j, m))
+        out[pid] = rows_
+    return out
+
+
+def fast_eval(cands, papers, pids, tau) -> float:
+    """Overall F of decode + evaluate, from candidates() (same result, no text)."""
+    tp = fp = 0.0
+    for pid in pids:
+        p = papers[pid][1]
+        covered, taken = -1, set()
+        for i, (t, pr, j, m) in enumerate(cands[pid]):
+            if i <= covered or pr < tau.get(t, 1.01):
+                continue
+            covered = j
+            best, bk, bw = 0.0, None, 0.0
+            for k, w, wov in m:
+                if k not in taken and wov > best:
+                    best, bk, bw = wov, k, w
+            if bk is None:
+                fp += 1
+            elif p.nodes[bk].base_covered:
+                taken.add(bk)
+            else:
+                tp += bw
+                fp += 1 - bw
+                taken.add(bk)
+    a_tp = sum(papers[q][1].base_tp for q in pids) + tp
+    a_fp = sum(papers[q][1].base_fp for q in pids) + fp
+    a_fn = max(sum(papers[q][1].n_silver for q in pids) - a_tp, 0)
+    den = 2 * a_tp + a_fn + a_fp
+    return 2 * a_tp / den if den else 0.0
+
+
+def tune_tau(scorer, papers, pids, prob_by, classes, span_by, rounds: int = 3) -> tuple:
+    """Coordinate ascent over per-type thresholds, maximising overall F."""
+    types = [c for c in classes if c != "none"]
+    tau = {t: 0.5 for t in types}
+    cands = candidates(scorer, papers, pids, prob_by, classes, span_by)
+    best = fast_eval(cands, papers, pids, tau)
+    for rnd in range(rounds):
+        print(f"    [tau] round {rnd + 1}: F={best:.4f}", flush=True)
+        changed = False
+        for t in types:
+            for v in GRID + [1.01]:
+                if v == tau[t]:
+                    continue
+                trial = dict(tau, **{t: v})
+                f = fast_eval(cands, papers, pids, trial)
+                if f > best + 1e-5:
+                    best, tau, changed = f, trial, True
+        if not changed:
+            break
+    # the fast path must agree with the full decode + evaluate
+    preds = {pid: decode(papers[pid][1], prob_by[pid], classes, span_by[pid], tau) for pid in pids}
+    full = evaluate(scorer, papers, pids, preds)["F"]
+    assert abs(full - round(best, 4)) < 2e-4, (full, best)
+    return tau, best
+
+
+# ---------------------------------------------------------------------------
+# models
+# ---------------------------------------------------------------------------
+
+def class_weights(y, mode: str):
+    """none | balanced | sqrt: rare node types weighted up (sqrt: halfway)."""
+    if mode == "none":
+        return None
+    c = Counter(y)
+    top = max(c.values())
+    power = 1.0 if mode == "balanced" else 0.5
+    return {k: (top / v) ** power for k, v in c.items()}
+
+
+def fit_lr(X, y, C: float, cw: str = "none"):
+    vec = DictVectorizer(sparse=True)
+    M = vec.fit_transform(X)
+    clf = LogisticRegression(C=C, max_iter=3000, solver="lbfgs",
+                             class_weight=class_weights(y, cw))
+    clf.fit(M, y)
+    return vec, clf
+
+
+def predict_lr(vec, clf, X):
+    return clf.predict_proba(vec.transform(X))
+
+
+def by_paper(idx, probs):
+    out = {}
+    for (pid, i), row in zip(idx, probs):
+        out.setdefault(pid, {})[i] = row
+    return {pid: np.array([d[i] for i in sorted(d)]) for pid, d in out.items()}
+
+
+def span_choices(pids, papers, pvs, svec, sclf, prob_by, classes):
+    """Span chosen for every sentence, for the type it would be emitted with."""
+    out = {}
+    none = classes.index("none")
+    for pid in pids:
+        p, pv = papers[pid][1], pvs[pid]
+        P = prob_by[pid].copy()
+        P[:, none] = -1
+        types = [classes[int(c)] for c in P.argmax(1)]
+        X = [FT.span_features(pv, i, types[i]) for i in range(len(p.sents))]
+        sp = sclf.predict(svec.transform(X)) if X else []
+        out[pid] = {i: str(s) for i, s in enumerate(sp)}
+    return out
+
+
+def export(out: Path, vec, clf, svec, sclf, tau, meta: dict, stage2=None) -> None:
+    out.mkdir(parents=True, exist_ok=True)
+
+    def table(v, c, thresh=1e-4):
+        names = v.get_feature_names_out()
+        W = c.coef_
+        weights = {}
+        for j, name in enumerate(names):
+            col = W[:, j]
+            if np.max(np.abs(col)) >= thresh:
+                weights[name] = [round(float(x), 5) for x in col]
+        return {"classes": [str(x) for x in c.classes_],
+                "intercept": [round(float(x), 5) for x in c.intercept_],
+                "weights": weights}
+
+    model = {"version": FT.FEATURES_VERSION, "anchor": table(vec, clf), "span": table(svec, sclf),
+             "tau": tau, "meta": meta}
+    if stage2 is not None:
+        model["stage2"] = table(*stage2)
+    (out / "sentence_model.json").write_text(json.dumps(model), encoding="utf-8")
+    shutil.copy(HERE / "features.py", out / "alg3_features.py")
+    shutil.copy(HERE / "runtime.py", out / "alg3_runtime.py")
+    types = [t for t in (model.get("stage2") or model["anchor"])["classes"] if t != "none"]
+    lines = [IMPORTER]
+    for t in sorted(set(types) | set(DU.SCORED)):
+        lines.append(f"\ndef extract_distilled_{t}(text):\n"
+                     f"    return [d for d in _rt.extract(text) if d['structure_type'] == {t!r}]\n")
+    (out / "distilled_rules.py").write_text("".join(lines), encoding="utf-8")
+
+
+IMPORTER = '''# AUTO-GENERATED by alg3/train.py: a learned sentence tagger (alg3).
+# The model is data (sentence_model.json next to this file); alg3_runtime.py
+# applies it with the same feature code that trained it (alg3_features.py).
+import os as _os
+import sys as _sys
+
+_HERE = _os.path.dirname(_os.path.realpath(__file__))
+if _HERE not in _sys.path:
+    _sys.path.insert(0, _HERE)
+import alg3_runtime as _rt
+
+
+def extract_distilled_all(text):
+    return _rt.extract(text)
+'''
+
+
+# ---------------------------------------------------------------------------
+
+def _fit_fold(Mtr, ytr, Mte, C, cw, classes):
+    clf = LogisticRegression(C=C, max_iter=3000, solver="lbfgs",
+                             class_weight=class_weights(ytr, cw))
+    clf.fit(Mtr, ytr)
+    cols = [classes.index(str(c)) for c in clf.classes_]
+    return cols, clf.predict_proba(Mte)
+
+
+def stage_probs(X, y, g, C, cw, folds, jobs: int = 5, vocab: str = "fold"):
+    """Out-of-fold class probabilities (folds by paper, fitted in parallel).
+    vocab "fold": each fold's clue vocabulary is built from its own training
+    part (the released v2b); "global": once, from all training papers (v2b-fast).
+    The two differ only in clues that occur in one fold alone."""
+    from joblib import Parallel, delayed
+    classes = sorted(set(y))
+    splits = list(GroupKFold(folds).split(X, y, g))
+    if vocab == "global":
+        M = DictVectorizer(sparse=True).fit_transform(X)
+        parts = [(M[tr], y[tr], M[te]) for tr, te in splits]
+    else:
+        parts = []
+        for tr, te in splits:
+            vec = DictVectorizer(sparse=True)
+            parts.append((vec.fit_transform([X[j] for j in tr]), y[tr],
+                          vec.transform([X[j] for j in te])))
+    res = Parallel(n_jobs=min(jobs, folds))(
+        delayed(_fit_fold)(Mtr, ytr, Mte, C, cw, classes) for Mtr, ytr, Mte in parts)
+    P = np.zeros((len(X), len(classes)))
+    for (tr, te), (cols, Pf) in zip(splits, res):
+        P[np.ix_(te, cols)] = Pf
+    print(f"    [cv] {folds} folds fitted (vocabulary per {vocab})", flush=True)
+    return P, classes
+
+
+def with_context(X, idx, P, classes, papers):
+    """X plus the second-pass context features built from probabilities P."""
+    pb = by_paper(idx, P)
+    out = []
+    for d, (pid, i) in zip(X, idx):
+        e = dict(d)
+        e.update(FT.context_features(pb[pid], i, papers[pid][1].sents, classes))
+        out.append(e)
+    return out
+
+
+def full_probs(vec, clf, X, classes):
+    P = predict_lr(vec, clf, X)
+    cols = [classes.index(str(c)) for c in clf.classes_]
+    out = np.zeros((len(X), len(classes)))
+    out[:, cols] = P
+    return out
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--data", default=str(HERE / "cache/papers.pkl"))
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--C", type=float, default=0.3)
+    ap.add_argument("--class-weight", default="none", choices=["none", "sqrt", "balanced"])
+    ap.add_argument("--stack", action="store_true", help="second pass with neighbours' probabilities")
+    ap.add_argument("--span-C", type=float, default=0.3)
+    ap.add_argument("--min-count", type=int, default=3)
+    ap.add_argument("--folds", type=int, default=5)
+    ap.add_argument("--jobs", type=int, default=5, help="folds fitted at once")
+    ap.add_argument("--vocab", choices=["fold", "global"], default="fold",
+                    help="clue vocabulary of the cross-validation fits: per fold (released v2b) or global")
+    ap.add_argument("--tau-rounds", type=int, default=3, help="coordinate-ascent rounds for the thresholds")
+    ap.add_argument("--clues", default=None, help="teacher-invented clues (alg3/invent.py), JSON")
+    ap.add_argument("--dump-oof", default=None, help="save out-of-fold train predictions (pickle)")
+    a = ap.parse_args()
+    t0 = time.time()
+    clues = json.load(open(a.clues, encoding="utf-8")) if a.clues else []
+    FT.set_clues(clues)
+    papers = pickle.load(open(a.data, "rb"))
+    train = sorted(p for p, (s, _) in papers.items() if s == "train")
+    val = sorted(p for p, (s, _) in papers.items() if s == "val")
+    assert not any(s == "test" for s, _ in papers.values()), "test papers in the training data"
+    print(f"[alg3] {len(train)} train + {len(val)} val papers; C={a.C} class_weight={a.class_weight} "
+          f"stack={a.stack}", flush=True)
+    pvs = views(papers)
+    scorer = DU.Scorer({pid: p for pid, (_, p) in papers.items()}, 0.7, metric="m1g")
+    # the cached matcher must agree with the unit algorithm's own
+    for pid in train[:5]:
+        p = papers[pid][1]
+        for i in range(0, len(p.sents), 7):
+            for t in ("definition", "claim", "remark"):
+                pred = {"type": t, "start": p.sents[i].start,
+                        "end": p.sents[min(i + 1, len(p.sents) - 1)].end}
+                assert match(scorer, p, pred, set()) == scorer.match(p, pred, set()), pred
+    Xtr, ytr, gtr, itr = rows(train, papers, pvs)
+    Xva, yva, gva, iva = rows(val, papers, pvs)
+    Xtr, keep = prune_rare(Xtr, a.min_count)
+    Xva = [{k: v for k, v in d.items() if k in keep} for d in Xva]
+    print(f"[alg3] {len(Xtr)} train sentences, {len(keep)} features ({time.time() - t0:.0f}s)", flush=True)
+    Str, sytr, sgtr = span_rows(train, papers, pvs)
+
+    # stage 1: out-of-fold on train, full model for val
+    P1, classes = stage_probs(Xtr, ytr, gtr, a.C, a.class_weight, a.folds, a.jobs, a.vocab)
+    vec1, clf1 = fit_lr(Xtr, ytr, a.C, a.class_weight)
+    P1va = full_probs(vec1, clf1, Xva, classes)
+    stage2 = None
+    if a.stack:
+        X2tr = with_context(Xtr, itr, P1, classes, papers)
+        X2va = with_context(Xva, iva, P1va, classes, papers)
+        Ptr, _ = stage_probs(X2tr, ytr, gtr, a.C, a.class_weight, a.folds, a.jobs, a.vocab)
+        vec2, clf2 = fit_lr(X2tr, ytr, a.C, a.class_weight)
+        Pva = full_probs(vec2, clf2, X2va, classes)
+        stage2 = (vec2, clf2)
+    else:
+        Ptr, Pva = P1, P1va
+    print(f"[alg3] models fitted ({time.time() - t0:.0f}s)", flush=True)
+
+    # spans (trained on the silver anchors), thresholds on out-of-fold train predictions
+    svec, sclf = fit_lr(Str, sytr, a.span_C)
+    prob_tr, prob_va = by_paper(itr, Ptr), by_paper(iva, Pva)
+    span_tr = span_choices(train, papers, pvs, svec, sclf, prob_tr, classes)
+    tau, f_oof = tune_tau(scorer, papers, train, prob_tr, classes, span_tr, a.tau_rounds)
+    if a.dump_oof:
+        dump = {pid: {"probs": prob_tr[pid], "classes": classes,
+                      "preds": decode(papers[pid][1], prob_tr[pid], classes, span_tr[pid], tau)}
+                for pid in train}
+        with open(a.dump_oof, "wb") as fh:
+            pickle.dump(dump, fh)
+    span_va = span_choices(val, papers, pvs, svec, sclf, prob_va, classes)
+    preds = {pid: decode(papers[pid][1], prob_va[pid], classes, span_va[pid], tau) for pid in val}
+    rv = evaluate(scorer, papers, val, preds)
+    base = evaluate(scorer, papers, val, {})
+    print(f"[alg3] train OOF F={f_oof:.4f}  val {rv}  (base val F {base['F']})  "
+          f"({time.time() - t0:.0f}s)", flush=True)
+    meta = {"C": a.C, "class_weight": a.class_weight, "stack": a.stack, "span_C": a.span_C,
+            "vocab": a.vocab, "tau_rounds": a.tau_rounds,
+            "clues": a.clues, "n_clues": len(clues),
+            "min_count": a.min_count, "folds": a.folds, "train_papers": train, "val_papers": val,
+            "train_oof_F": f_oof, "val": rv, "val_base": base, "n_features": len(keep),
+            "metric": "m1g, overall F (base parser + tagger), threshold 0.7"}
+    export(Path(a.out), vec1, clf1, svec, sclf, tau, meta, stage2=stage2)
+    if clues:
+        (Path(a.out) / "alg3_clues.json").write_text(json.dumps(clues, indent=1), encoding="utf-8")
+    print(f"[alg3] tau {tau}\n[alg3] extractor -> {a.out}  ({time.time() - t0:.0f}s)", flush=True)
+
+
+if __name__ == "__main__":
+    main()
