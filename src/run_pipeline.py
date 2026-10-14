@@ -24,7 +24,7 @@ Operations:
   link         : JSON -> JSON augmented with foundation-graph links
                  Uses src/link_to_foundation.py.
   evaluate     : JSON -> precision/recall/F1 against a gold standard
-                 Uses src/evaluate_annotation.py / evaluate_extraction.py.
+                 Uses src/evaluate_extraction.py.
   anomalies    : JSON -> anomalies_report.csv flagging structural / content
                  weirdness for manual review (uses src/anomaly_detection.py).
                  Useful for catching extraction failures and feeding them

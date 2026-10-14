@@ -7,7 +7,7 @@
 #       from that directory instead of fetching. In this mode TOP_K,
 #       START_DATE, END_DATE are ignored (all pre-downloaded papers parsed).
 #
-# Extends scripts/parse_multi_category.sh (10-category version) to 20
+# The 20-category corpus parse (the earlier 10-category script is in git history); 20
 # categories. Default fetch mode: 20 × 5000 = 100K total for the main run.
 # Local mode: process Author's pre-downloaded ~1200-paper calibration corpus.
 #

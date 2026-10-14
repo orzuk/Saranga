@@ -44,9 +44,8 @@ n_nodes, n_edges, json_path, tex_path, has_tex`
 
 ## Rebuilding
 
-```bash
-python scripts/build_gold_corpus.py
-```
+The corpus was built once by `scripts/build_gold_corpus.py` (historical; removed
+2026-10-14, see git history). It is not meant to be rebuilt.
 
 Idempotent, offline. Inputs: root `gold/*.json` and
 `$SARANGA_DATA_ROOT/tier1/*_*.json` (left untouched — this is a mirror).
@@ -72,6 +71,6 @@ Note `tex/` (flat, 5 files) holds just the main `.tex` per paper for quick use;
 `tex_source/` holds the complete original trees.
 
 **Consumers updated:** `scripts/run_gold_eval.sh` now defaults `GOLD_DIR` to
-`corpus/gold/human__gold`. `scripts/build_gold_corpus.py` is marked HISTORICAL —
+`corpus/gold/human__gold`. `scripts/build_gold_corpus.py` (HISTORICAL, removed 2026-10-14; in git history) —
 it built this dir *from* `gold/`, which no longer exists; `corpus/gold/` is now a
 canonical store, not a derived artifact.

@@ -6,7 +6,7 @@ Design (settled 2026-07): 50 papers per category × the 20 CORPUS_CATEGORIES =
 tier3_v2 corpus (~5k/category). Excludes papers already in corpus/silver/.
 
 This produces only the POOL — it does NOT assign train/test. The split is a
-separate, later decision; run `scripts/assign_split.py` on this file whenever
+separate, later decision; run `scripts/assign_split_v6.py` on this file whenever
 you want a (re-derivable) split, so you can change the ratio/seed freely.
 
 VALIDITY FILTER: each candidate's tier3 `_rules.json` must have at least
@@ -148,7 +148,7 @@ def main():
 
     print("\ntotal pool: %d papers  excluded-already: %d" % (len(rows), len(exclude)))
     print("wrote", os.path.relpath(args.out, REPO))
-    print("(no split assigned — run scripts/assign_split.py when you decide the ratio)")
+    print("(no split assigned — run scripts/assign_split_v6.py when you decide the ratio)")
 
 
 if __name__ == "__main__":

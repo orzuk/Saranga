@@ -145,10 +145,7 @@ sbatch --export=TOP_K=1000,CATEGORY=math.PR scripts/parse_math_co_cluster.sh
 | `src/visualize_annotation.py` | PNG and interactive HTML rendering (dagre-d3) |
 | `src/link_to_foundation.py` | Link paper nodes to the 298K foundation graph |
 | `src/foundation_linker.py` | OOP foundation linker (NaturalProofs + Mathlib) |
-| `src/evaluate_annotation.py` | DAG/schema evaluation utilities |
 | `src/evaluate_extraction.py` | Precision/recall/F1 vs gold standard (Jaccard-based) |
-| `src/parsing_analysis.py` | Post-parse statistics |
-| `src/paper_plot_utils.py` | Low-level graph plotting helpers |
 | `src/annotation_utils.py` | JSON format conversion helpers (research ↔ student) |
 | `src/extract_arxiv_data.py` | CLI wrapper for arXiv metadata/source/PDF fetch |
 | `src/extract_arxiv_funcs.py` | arXiv fetch library (HDF5 index, fetch_arxiv_batch) |
@@ -294,11 +291,8 @@ Saranga/
 │   ├── visualize_annotation.py        # PNG + HTML renderer
 │   ├── link_to_foundation.py          # Foundation linker CLI
 │   ├── foundation_linker.py           # OOP foundation linker
-│   ├── evaluate_annotation.py         # Annotation evaluation helpers
 │   ├── evaluate_extraction.py         # Gold-standard P/R/F1
 │   ├── annotation_utils.py            # Format conversion helpers
-│   ├── parsing_analysis.py            # Post-parse statistics
-│   ├── paper_plot_utils.py            # Graph plotting helpers
 │   │
 │   ├── concept_registry_wikidata.py   # Wikidata concept registry CLI
 │   ├── proofwiki_scraper.py           # ProofWiki scraper
