@@ -175,7 +175,7 @@ def driver_cmd(cfg, arm, train_dir: Path) -> list:
            "--model", arm.get("model", "none"), "--threshold", str(cfg["threshold"]),
            "--match-metric", cfg["match_metric"]]
     if arm["alg"] == "units":
-        cmd += ["--val-papers", "val", "--skip-finalize"]
+        cmd += ["--val-papers", "val"]
     for k, v in arm.get("args", {}).items():
         if v is True:
             cmd.append(f"--{k}")

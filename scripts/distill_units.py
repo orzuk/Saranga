@@ -32,9 +32,9 @@ Algorithm (one call of `run`):
             shown its false positives and asked for a tighter rule, up to
             --max-refine times; then dropped
     cleanup a rule whose removal does not lower F1 on the fitting papers is retired
-  final     snapshots in the layout of the merged algorithm (so final_eval.py and
-            eval_base_vs_distilled_split.py score it unchanged) and a report
-            of prose-stratum precision/recall on the training and test papers
+  final     snapshots in the layout of the merged algorithm and a report of
+            prose-stratum precision/recall on the fitting and validation papers
+            (test scoring: scripts/compare_distillers.py)
 
 Run through the common driver:
 
@@ -1098,22 +1098,6 @@ def run(args) -> None:
     write_rules(eval_dir, dist.active())                # the run's final rules
 
     reports = [prose_report(dist, fit, "fit"), prose_report(dist, val, "val")]
-    test = sorted(p for p, s in splits.items() if s == "test")
-    if test and not args.skip_finalize:
-        tpapers = load_papers(test, args, eval_dir)
-        dist.papers.update(tpapers)
-        tp = [p for p in test if p in tpapers]
-        for r in dist.active():
-            dist.scorer.cache(r, tp)
-        reports.append(prose_report(dist, tp, "test"))
-    if not args.skip_finalize:
-        import subprocess
-        version = merged.corpus_prompt_version(args.metadata, args.t2_dir)
-        print(f"[units] train/test report: base vs final rules ({version} silver)")
-        subprocess.run([sys.executable, str(REPO / "scripts" / "eval_base_vs_distilled_split.py"),
-                        "--eval-dir", str(eval_dir.resolve()), "--prompt-version", version,
-                        "--match-metric", args.match_metric, "--threshold", str(args.threshold)],
-                       check=False)
     params = {k: getattr(args, k) for k in ("min_precision", "min_tp", "fp_weight", "max_refine",
                                             "refine_moves", "judge", "judge_model", "val_tolerance",
                                             "val_min_fired", "min_cluster", "rounds", "val_papers",

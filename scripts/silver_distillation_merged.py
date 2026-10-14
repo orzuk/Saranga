@@ -1698,121 +1698,7 @@ def run(args):
     print(f"\n  Combined importer: {eval_dir}/distilled_rules.py")
     print(f"  Per-group rules:   {groups_dir}/<group>/distilled_rules.py")
 
-    # ---- Finalize: auto-generate eval + report + chart + FP-judge ----
-    # Read-only consumers of the just-produced rules; each is guarded so a
-    # reporting failure never discards the (expensive) distillation result.
-    finalize_run(args, eval_dir)
-
-
-def finalize_run(args, eval_dir):
-    """Run the read-only post-distillation steps: final_eval (per-type F1 CSV),
-    LLM FP-judge (adjusted precision), consolidated REPORT.md, and the
-    per-type F1/FP chart. Controlled by --skip-finalize / --skip-fp-judge.
-    Every step is independently guarded.
-    """
-    import subprocess
-    repo = Path(__file__).resolve().parent.parent
-    eval_dir = Path(eval_dir)
-    mm = args.match_metric
-
-    if getattr(args, "skip_finalize", False):
-        print("\n[finalize] skipped (--skip-finalize)")
-        return
-
-    print(f"\n{'='*70}\nFINALIZE (read-only reports)\n{'='*70}")
-
-    # 1. final_eval.py -> final_eval.csv (subprocess: own argparse, no LLM)
-    try:
-        print("[finalize] final_eval ...")
-        subprocess.run(
-            [sys.executable, str(repo / "scripts" / "final_eval.py"),
-             "--eval-dir", str(eval_dir), "--tex-dir", str(args.tex_dir),
-             "--match-metric", mm, "--threshold", str(args.threshold)],
-            check=True)
-    except Exception as e:
-        print(f"[finalize] final_eval failed: {e}")
-
-    # 2. fp_judge.py -> fp_judge.csv (subprocess: makes LLM calls)
-    if not getattr(args, "skip_fp_judge", False):
-        try:
-            print("[finalize] fp_judge (LLM-as-judge) ...")
-            subprocess.run(
-                [sys.executable, str(repo / "scripts" / "fp_judge.py"),
-                 "--eval-dir", str(eval_dir), "--tex-dir", str(args.tex_dir),
-                 "--match-metric", mm, "--model", args.model,
-                 "--threshold", str(args.threshold), "--match-mode", args.match_mode,
-                 "--cover", str(args.cover)],
-                check=True)
-        except Exception as e:
-            print(f"[finalize] fp_judge failed: {e}")
-    else:
-        print("[finalize] fp_judge skipped (--skip-fp-judge)")
-
-    # 3. metric ladder M1-M4 (no LLM). Two steps: parse base+final buckets ONCE
-    #    into a cache, then score every rung off it. The parse is the only cost;
-    #    re-scoring at another threshold/rung afterwards is free, which is why
-    #    these stay separate scripts rather than being folded into the loop.
-    if not args.skip_ladder:
-        try:
-            print("[finalize] metric ladder (M1-M4) ...")
-            cache = eval_dir / "buckets_cache.json"
-            subprocess.run(
-                [sys.executable, str(repo / "scripts" / "eval_base_vs_distilled_split.py"),
-                 "--eval-dir", str(eval_dir), "--match-metric", mm,
-                 "--prompt-version", args.ladder_prompt_version,
-                 "--threshold", str(args.threshold),
-                 "--cache", str(cache)],
-                check=True)
-            subprocess.run(
-                [sys.executable, str(repo / "scripts" / "eval_metric_ladder.py"),
-                 "--cache", str(cache), "--eval-dir", str(eval_dir),
-                 "--prompt-version", args.ladder_prompt_version,
-                 "--threshold", str(args.threshold), "--cover", str(args.cover),
-                 "--markdown", str(eval_dir / "metric_ladder.md")],
-                check=True)
-        except Exception as e:
-            print(f"[finalize] metric ladder failed: {e}")
-    else:
-        print("[finalize] metric ladder skipped (--skip-ladder)")
-
-    # 4. consolidated REPORT.md (reads final_eval.csv + fp_judge.csv + ladder)
-    try:
-        print("[finalize] REPORT.md ...")
-        from make_distill_report import build_report
-        print(f"           wrote {build_report(eval_dir)}")
-    except Exception as e:
-        print(f"[finalize] report failed: {e}")
-
-    # 3b. TRACE.md — the readable per-paper account of what actually happened.
-    #     REPORT.md answers "how well did it score"; this answers "what did it
-    #     do", untruncated. Pure re-render of artifacts, no LLM, no parsing.
-    try:
-        print("[finalize] TRACE.md ...")
-        from make_run_trace import build_trace
-        print(f"           wrote {build_trace(eval_dir)}")
-    except Exception as e:
-        print(f"[finalize] trace failed: {e}")
-
-    # 4. per_type_f1_fp.png chart
-    try:
-        print("[finalize] per_type_f1_fp.png ...")
-        from plot_type_f1_fp import build_chart
-        print(f"           wrote {build_chart(eval_dir, args.tex_dir, mm)}")
-    except Exception as e:
-        print(f"[finalize] chart failed: {e}")
-
-
-def corpus_prompt_version(metadata: str | None, t2_dir: str) -> str:
-    """The prompt_version of the metadata rows whose silver JSON lies in t2_dir."""
-    md = Path(metadata) if metadata else REPO / "corpus" / "silver" / "metadata.csv"
-    t2 = Path(t2_dir).resolve()
-    want = str(t2.relative_to(REPO) if t2.is_relative_to(REPO) else Path(t2_dir)).rstrip("/") + "/"
-    versions = {r["prompt_version"] for r in csv.DictReader(open(md, encoding="utf-8"))
-                if r.get("json_path", "").startswith(want)} if md.is_file() else set()
-    if len(versions) != 1:
-        raise SystemExit(f"cannot tell the prompt version of {t2_dir} from {md} "
-                         f"(found {sorted(versions) or 'none'}); pass --ladder-prompt-version")
-    return versions.pop()
+    # Scoring and comparison of every algorithm live in scripts/compare_distillers.py.
 
 
 def run_tagger(args) -> None:
@@ -1937,13 +1823,6 @@ def main():
                    help="Per-rule FDR tolerance: prune when FP/(FP+TP) > alpha")
     p.add_argument("--resume", action="store_true",
                    help="Continue a prior run in --eval-dir (per-paper invocation)")
-    p.add_argument("--skip-finalize", action="store_true",
-                   help="Skip the post-run reports (final_eval + judge + report + chart)")
-    p.add_argument("--skip-fp-judge", action="store_true",
-                   help="Skip only the LLM FP-judge step (keeps final_eval/report/chart)")
-    p.add_argument("--skip-ladder", action="store_true",
-                   help="Skip the M1-M4 metric ladder (no LLM cost; it re-parses "
-                        "every paper once to build the buckets cache)")
     u = p.add_argument_group("units algorithm (--alg units)")
     u.add_argument("--rounds", type=int, default=5,
                    help="maximum rounds of repair -> cluster -> propose -> refine -> cleanup")
@@ -2029,11 +1908,6 @@ def main():
     u.add_argument("--stop-gain", type=float, default=0.005,
                    help="stop when a round adds less than this to validation F1")
     u.add_argument("--seed", type=int, default=0, help="fit/validation split seed")
-    p.add_argument("--ladder-prompt-version", default=None,
-                   help="Which metadata.csv extraction config the ladder scores. "
-                        "Papers outside it are skipped, so it must match the "
-                        "corpus in --t2-dir; by default it is read from the "
-                        "metadata rows whose json_path lies in --t2-dir.")
     args = p.parse_args()
     print(f"[llm] request options: {_da.set_llm_options(args.effort, args.thinking)}")
     if args.alg == "units":
@@ -2043,8 +1917,6 @@ def main():
     if args.alg == "tagger":
         run_tagger(args)
         return
-    if args.ladder_prompt_version is None:
-        args.ladder_prompt_version = corpus_prompt_version(args.metadata, args.t2_dir)
 
     # alpha is mode-dependent: m1's 0.5 was tuned against a signal that is ~98%
     # labelling noise. Under m3 that noise is gone, so the same 0.5 would almost

@@ -70,8 +70,8 @@ option that best reproduces the silver spans of the cluster's nodes.
       cleanup  retire a rule whose removal does not lower F1 on the fitting papers
     final    snapshots/step_00_base and step_NN_roundN (same layout as --alg merged),
              unit_rules.json + distilled_rules.py in --eval-dir, REPORT_units.md,
-             units_summary.json, and eval_base_vs_distilled_split.py on all
-             silver papers (base vs final rules, train and test)
+             units_summary.json (test-paper scoring and the comparison with the
+             other algorithms: scripts/compare_distillers.py)
 
 ## Accepting a rule (`--accept`)
 
