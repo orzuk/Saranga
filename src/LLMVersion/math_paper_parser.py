@@ -23,13 +23,9 @@ import importlib.util
 import os
 import re
 import sys as _sys
-import argparse
-import requests
 import json
-import tarfile
-import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any, Union
+from typing import Dict, List, Optional, Tuple, Any
 
 # NOTE: The OpenAI package is imported lazily inside _get_llm_client() below,
 # so that manual-mode extraction works on machines without the openai package.
@@ -50,20 +46,7 @@ from math_classes import (
     PaperGraph,
 )
 
-try:
-    from pyvis.network import Network
-except Exception as e:
-    print(f"[WARN] Could not load pyvis for interactive network html plot: {e}")
 
-import requests  # pip install requests
-
-from extract_arxiv_funcs import (
-    normalize_arxiv_id,
-    fetch_arxiv_metadata,
-    resolve_source_to_tex_local_first,
-)
-
-from config import FULL_PAPERS_DIR
 
 # LaTeX syntax -- inlining \input files, cleaning, macro expansion, and which
 # environments and displays exist where -- comes from the shared module
@@ -367,7 +350,6 @@ class PaperParser:
             llm_model: str = "gpt-4o-mini",
             llm_chunk_chars: int = 30000,
             llm_provider: str = "openai",
-            extract_inline_let: bool = False,
             custom_prompt_file: Optional[str] = None,
             structure_types: Optional[List[str]] = None,
             rules_dir: Optional[str | Path] = None,
@@ -410,7 +392,6 @@ class PaperParser:
         self.llm_model = llm_model
         self.llm_chunk_chars = llm_chunk_chars
         self.llm_provider = llm_provider
-        self.extract_inline_let = extract_inline_let
         self.custom_prompt_file = custom_prompt_file
         self.structure_types = structure_types or ["definition"]
         self.rules_dir = Path(rules_dir) if rules_dir else Path(__file__).resolve().parent
@@ -1232,8 +1213,6 @@ class PaperParser:
         return objects
 
     # Backwards-compatible wrapper
-    def _extract_definitions(self, text: str) -> List[Definition]:
-        return self._extract_definitions_manual(text)
 
     # ------------------------------------------------------------------
     # Distilled rules (NtRED)
@@ -1743,20 +1722,6 @@ class PaperParser:
         return all_objects
 
     # Backward-compatible wrapper
-    def _extract_definitions_llm(
-            self,
-            text: str,
-            llm_type: str = "anthropic",
-            provider: str = "hosted",
-            chunk_chars: int = 30000,
-            model: str = "claude-sonnet-4-6",
-    ) -> List[Definition]:
-        """Extract definitions via LLM. Delegates to _extract_objects_llm."""
-        objects = self._extract_objects_llm(
-            text, structure_type="definition",
-            chunk_chars=chunk_chars, model=model,
-        )
-        return [o for o in objects if isinstance(o, Definition)]
 
     @staticmethod
     def _chunk_text(text: str, chunk_size: int) -> List[str]:
@@ -1830,9 +1795,6 @@ Respond ONLY with JSON array."""
         return prompt
 
     # Backward-compatible wrapper
-    def _create_definition_extraction_prompt(self, latex_chunk: str) -> str:
-        """Create a prompt for LLM to extract definitions."""
-        return self._create_extraction_prompt(latex_chunk, structure_type="definition")
 
     @staticmethod
     def _parse_llm_response(response_text: str) -> List[Dict[str, Any]]:

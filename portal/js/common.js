@@ -128,31 +128,12 @@
       .replace(/'/g, "&#39;");
   }
 
-  function el(tag, attrs, children) {
-    const e = document.createElement(tag);
-    if (attrs) {
-      for (const k in attrs) {
-        if (k === "class") e.className = attrs[k];
-        else if (k === "html") e.innerHTML = attrs[k];
-        else e.setAttribute(k, attrs[k]);
-      }
-    }
-    if (children) {
-      for (const c of children) {
-        if (c == null) continue;
-        e.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
-      }
-    }
-    return e;
-  }
-
   global.Authomathics = {
     relPath: relPath,
     fetchJson: fetchJson,
     loadManifest: loadManifest,
     renderMath: renderMath,
     getQueryParam: getQueryParam,
-    esc: esc,
-    el: el
+    esc: esc
   };
 })(window);

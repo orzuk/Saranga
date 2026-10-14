@@ -1,37 +1,24 @@
-"""Authomathics database portal — local + HF-Space-compatible server.
+"""SARANGA portal server: the static portal pages plus a few dynamic routes.
 
-Serves the static portal files AND a /render endpoint that generates the
-rich knowledge-graph HTML on the fly from a paper's JSON, using the same
-visualize_annotation.py renderer that produced the per-paper HTML files
-on Drive.
+    cd portal && ./run_local.sh            # http://localhost:8000/
 
-Stores ONLY JSON per paper. The HTML is generated on-demand and cached
-under portal/cache/. This is the architecture intended for HF Spaces —
-on a Docker Space, run this same script via `python portal_server.py`.
-
-Usage (local):
-    cd portal && python3 portal_server.py
-    open http://localhost:8000
-
-The /render endpoint:
-    GET /render?id=paper015&tier=2
-    -> reads data/tier2/paper015.json
-    -> runs visualize_annotation.py --html-only on it
-    -> returns the resulting HTML (text/html)
-    -> caches gzipped under cache/paper015_<jsonmtime>.html.gz
-
-Subsequent requests for the same paper hit the cache and return instantly.
-Cache invalidates automatically when the source JSON's mtime changes.
+Routes besides the static files:
+    /silver_v6/...        Tier-2 silver pages (prebuilt, corpus/silver/opus-5.5__v6/graphs)
+    /render3?cat=&id=     a Tier-3 (100K) paper's viewer page, built from its JSON on first
+                          request and cached (the JSON is fetched by SARANGA_T3_REMOTE if absent)
+    /t3json?cat=&id=      that paper's JSON
+    /render_alignment     pair-alignment pages (visualize_alignment.py)
+    /yours/arxiv, /yours/upload   "Your paper": a graph from an arXiv id or uploaded LaTeX
+    /gold_data/, /gold_bp/, /gold/reviews, /gold/review   gold-candidate review pages and reviews
+The same script runs the Hugging Face / Cloud Run Docker Space.
 """
 import gzip
-import hashlib
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 import urllib.parse
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
@@ -44,7 +31,6 @@ WORK_DIR = CACHE_DIR / "_work"
 CACHE_DIR.mkdir(exist_ok=True)
 WORK_DIR.mkdir(exist_ok=True)
 
-VIZ_SCRIPT = PORTAL_DIR.parent / "src" / "visualize_annotation.py"
 ALIGN_SCRIPT = PORTAL_DIR.parent / "src" / "visualize_alignment.py"
 MANIFEST_PATH = DATA_DIR / "manifest.json"
 PYTHON = sys.executable
@@ -76,146 +62,6 @@ def _gold_folders(query) -> Path:
     return GOLD_BP_DIR if (query.get("set") or [""])[0] == "bp" else GOLD_DIR / "papers"
 MOUNTS = {"/silver_v6/": SILVER_DIR, "/t3cache/": T3_CACHE, "/yours_pages/": YOURS_DIR, "/gold_data/": GOLD_DIR,
           "/gold_bp/": GOLD_BP_DIR}
-
-
-def find_json(paper_id: str, tier: str) -> Path | None:
-    """Locate the JSON for a paper in the configured tier dir."""
-    candidate = DATA_DIR / f"tier{tier}" / f"{paper_id}.json"
-    if candidate.exists():
-        return candidate
-    if tier == "3":
-        candidate = DATA_DIR / "tier3-sample" / f"{paper_id}.json"
-        if candidate.exists():
-            return candidate
-    return None
-
-
-def cache_path(paper_id: str, json_path: Path) -> Path:
-    """Cache key includes both the JSON mtime AND the renderer-script mtime,
-    so editing visualize_annotation.py (new colors, buttons, edge routing,
-    etc.) invalidates every cached HTML automatically."""
-    json_mtime = int(json_path.stat().st_mtime)
-    script_mtime = int(VIZ_SCRIPT.stat().st_mtime) if VIZ_SCRIPT.exists() else 0
-    return CACHE_DIR / f"{paper_id}_j{json_mtime}_s{script_mtime}.html.gz"
-
-
-def render_html(paper_id: str, json_path: Path) -> bytes:
-    """Run visualize_annotation.py on the JSON, return the produced HTML bytes."""
-    # Run the renderer in a fresh per-call subdir so concurrent requests for
-    # different papers don't trip over each other's temp files.
-    run_dir = WORK_DIR / paper_id
-    if run_dir.exists():
-        shutil.rmtree(run_dir, ignore_errors=True)
-    run_dir.mkdir(parents=True, exist_ok=True)
-    work_json = run_dir / f"{paper_id}.json"
-    work_json.write_bytes(json_path.read_bytes())
-    work_html = run_dir / f"{paper_id}.html"
-
-    cmd = [PYTHON, str(VIZ_SCRIPT), str(work_json), "--html-only"]
-    proc = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        timeout=RENDER_TIMEOUT_SEC,
-        cwd=str(VIZ_SCRIPT.parent),
-    )
-
-    if proc.returncode != 0 or not work_html.exists():
-        msg = (
-            f"visualize_annotation.py failed for {paper_id}\n"
-            f"exit={proc.returncode}\n"
-            f"stdout:\n{proc.stdout[-1500:]}\n"
-            f"stderr:\n{proc.stderr[-1500:]}\n"
-        )
-        shutil.rmtree(run_dir, ignore_errors=True)
-        raise RuntimeError(msg)
-
-    html_bytes = work_html.read_bytes()
-    shutil.rmtree(run_dir, ignore_errors=True)
-    return html_bytes
-
-
-def serve_render(handler: "PortalHandler", query: dict[str, list[str]]) -> None:
-    import time
-
-    paper_id = (query.get("id", [""])[0] or "").strip()
-    tier = (query.get("tier", ["2"])[0] or "2").strip()
-    nocache = (query.get("nocache", ["0"])[0] or "0").strip() in ("1", "true", "yes")
-
-    if not paper_id:
-        handler.send_error(400, "missing ?id= parameter")
-        return
-
-    json_path = find_json(paper_id, tier)
-    if json_path is None:
-        handler.send_error(
-            404, f"JSON not found for {paper_id} in tier {tier}"
-        )
-        return
-
-    cache = cache_path(paper_id, json_path)
-    cache_status = "MISS"
-    render_ms = 0
-    if cache.exists() and not nocache:
-        with gzip.open(cache, "rb") as f:
-            html_bytes = f.read()
-        cache_status = "HIT"
-    else:
-        if nocache and cache.exists():
-            cache_status = "BYPASS"
-        t0 = time.time()
-        try:
-            html_bytes = render_html(paper_id, json_path)
-        except subprocess.TimeoutExpired:
-            handler.send_error(504, f"render timed out after {RENDER_TIMEOUT_SEC}s")
-            return
-        except Exception as exc:
-            handler.send_error(500, str(exc).splitlines()[0])
-            return
-        render_ms = int((time.time() - t0) * 1000)
-        # Cache for next time
-        with gzip.open(cache, "wb", compresslevel=6) as f:
-            f.write(html_bytes)
-        # Best-effort cleanup of stale cache entries for this paper
-        for old in CACHE_DIR.glob(f"{paper_id}_*.html.gz"):
-            if old != cache:
-                old.unlink(missing_ok=True)
-
-    # Inject a small banner at the top of the HTML so the cache status is
-    # visible to the user (without polluting the headers-only path that
-    # iframes hide). The banner is a fixed-position overlay in the corner.
-    banner = (
-        '<div style="position:fixed;top:6px;right:8px;z-index:9999;'
-        'font:11px sans-serif;background:rgba(0,0,0,0.78);color:#fff;'
-        'padding:3px 8px;border-radius:4px">'
-        f'cache: <b>{cache_status}</b>'
-        + (f' &middot; render: {render_ms} ms' if render_ms else '')
-        + '</div>'
-    )
-    if isinstance(html_bytes, bytes):
-        html_str = html_bytes.decode("utf-8", errors="replace")
-    else:
-        html_str = html_bytes
-    inject_at = html_str.find("<body")
-    if inject_at != -1:
-        end_of_body_tag = html_str.find(">", inject_at)
-        if end_of_body_tag != -1:
-            html_str = (
-                html_str[: end_of_body_tag + 1]
-                + banner
-                + html_str[end_of_body_tag + 1 :]
-            )
-    html_bytes = html_str.encode("utf-8")
-
-    handler.send_response(200)
-    handler.send_header("Content-Type", "text/html; charset=utf-8")
-    handler.send_header("Content-Length", str(len(html_bytes)))
-    handler.send_header("Cache-Control", "no-store")
-    handler.send_header("X-Authomathics-Cache", cache_status)
-    if render_ms:
-        handler.send_header("X-Authomathics-Render-Ms", str(render_ms))
-    handler.end_headers()
-    handler.wfile.write(html_bytes)
 
 
 def find_pair_in_manifest(pair_id: str) -> dict | None:
@@ -701,10 +547,6 @@ class PortalHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/gold/reviews":
             serve_gold_reviews(self, urllib.parse.parse_qs(parsed.query))
             return
-        if parsed.path == "/render":
-            query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
-            serve_render(self, query)
-            return
         if parsed.path == "/render_alignment":
             query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
             serve_render_alignment(self, query)
@@ -806,7 +648,6 @@ def main():
     print(f"Authomathics portal serving from {PORTAL_DIR}")
     print(f"  data dir:    {DATA_DIR}")
     print(f"  cache dir:   {CACHE_DIR}")
-    print(f"  viz script:  {VIZ_SCRIPT}  (exists: {VIZ_SCRIPT.exists()})")
     print(f"  listening on http://{bind}:{port}")
     print(f"  open http://localhost:{port}/")
     ThreadingHTTPServer((bind, port), PortalHandler).serve_forever()

@@ -147,11 +147,6 @@ def normalize_edge_type(raw_type: str | None) -> str:
     return USES  # unknown → default
 
 
-def is_dependency(edge_type: str) -> bool:
-    """True if this edge type represents a logical dependency."""
-    return normalize_edge_type(edge_type) in DEPENDENCY_TYPES
-
-
 def get_allowed_source_types(edge_type: str) -> set[str] | None:
     """Return the canonical allowed source-node-type set for `edge_type`,
     or None if the edge type imposes no source-type constraint.

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field, asdict
-from typing import Dict, List, Optional, Any, Tuple, Type
+from typing import Dict, List, Optional, Any, Type
 
 # Precompiled pattern to detect externally-cited theorem-like nodes.
 # Matches: \cite{...}, [Author Year], (Author, Year), "due to X", "by [ref]",
@@ -276,7 +276,6 @@ REL_USES = "uses"                  # proof/theorem/algorithm uses X
 REL_DEPENDS_ON = "depends_on"      # theorem depends on X (one of several)
 REL_FOLLOWS_FROM = "follows_from"  # A follows_from B (B ⇒ A)
 
-REL_HAS_PART = "has_part"          # structural: A has_part B
 
 REL_GENERALIZES = "generalizes"    # conceptual: A generalizes B (more general → more specific)
 REL_RELATED_TO = "related_to"      # conceptual (usually symmetric, weak)
@@ -295,7 +294,6 @@ RELATION_CATEGORY_MAP: Dict[str, str] = {
     REL_USES: "logical",
     REL_DEPENDS_ON: "logical",
     REL_FOLLOWS_FROM: "logical",
-    REL_HAS_PART: "structural",
     REL_GENERALIZES: "conceptual",
     REL_RELATED_TO: "conceptual",
     REL_EQUIVALENT_TO: "conceptual",
@@ -304,19 +302,6 @@ RELATION_CATEGORY_MAP: Dict[str, str] = {
     REL_HAS_ASSUMPTION: "structural",
     REL_HAS_CONCLUSION: "structural",
 }
-
-
-@dataclass
-class Concept(MathObject):
-    """
-    External/registry concept (typically Wikidata-backed).
-    Stored as a node so papers can link to shared concepts across papers.
-    Note: callers should pass kind="concept" when constructing.
-    """
-    external_ids: Dict[str, str] = field(default_factory=dict)  # e.g. {"wikidata": "Q12345"}
-    aliases: List[str] = field(default_factory=list)
-    description: Optional[str] = None
-    registry_source: Optional[str] = "wikidata"
 
 
 def infer_relation_category(relation_type: str) -> str:
@@ -346,9 +331,6 @@ class Relation:
         follows_from(A, B):
             - A follows from B; B ⇒ A. Typically corollaries or special cases.
               (Once B is known, A is almost immediate.)
-
-        has_part(A, B):
-            - A has_part B (A is a whole, B is a part, e.g. theorem has_part proof).
 
         generalizes(A, B):
             - A generalizes B (A is more general, B is a special case).
@@ -444,151 +426,14 @@ class PaperGraph:
         """
         self.add_relation(used_id, user_id, REL_USES, category="logical", directed=True, **kwargs)
 
-    def add_depends_on(self, theorem_id: str, prereq_id: str, **kwargs: Any) -> None:
-        """
-        theorem_id depends_on prereq_id as one of several prerequisites.
-
-        Canonical direction: theorem_id → prereq_id.
-        """
-        self.add_relation(theorem_id, prereq_id, REL_DEPENDS_ON, category="logical", directed=True, **kwargs)
-
-    def add_follows_from(self, consequence_id: str, premise_id: str, **kwargs: Any) -> None:
-        """
-        consequence_id follows_from premise_id (premise ⇒ consequence).
-
-        Canonical direction: consequence_id → premise_id.
-        """
-        self.add_relation(consequence_id, premise_id, REL_FOLLOWS_FROM, category="logical", directed=True, **kwargs)
-
     # --- structural relations ---
 
-    def add_has_part(self, whole_id: str, part_id: str, **kwargs: Any) -> None:
-        """
-        whole_id has_part part_id.
-
-        Canonical direction: whole_id → part_id.
-
-        Inverse view (not stored): part_id is_part_of whole_id.
-        """
-        self.add_relation(whole_id, part_id, REL_HAS_PART, category="structural", directed=True, **kwargs)
-
     # --- conceptual relations ---
-
-    def add_generalizes(self, more_general_id: str, more_specific_id: str, **kwargs: Any) -> None:
-        """
-        more_general_id generalizes more_specific_id.
-
-        Canonical direction: more_general_id → more_specific_id.
-
-        Inverse view: more_specific_id specializes more_general_id.
-        """
-        self.add_relation(more_general_id, more_specific_id, REL_GENERALIZES, category="conceptual", directed=True, **kwargs)
-
-    def add_related_to(self, a_id: str, b_id: str, **kwargs: Any) -> None:
-        """
-        a_id related_to b_id (weak conceptual relation, usually symmetric).
-
-        Implementation: store a single edge a_id → b_id with symmetric=True
-        and let visualization treat it as undirected. If you want a fully
-        symmetric representation, you can call this twice with swapped ids.
-        """
-        self.add_relation(a_id, b_id, REL_RELATED_TO, category="conceptual", directed=False, symmetric=True, **kwargs)
-
-    def add_equivalent_to(self, a_id: str, b_id: str, **kwargs: Any) -> None:
-        """
-        a_id equivalent_to b_id (conceptual equivalence, symmetric).
-
-        Again, we store one canonical edge with symmetric=True, and let
-        visualization treat it as an undirected edge between a_id and b_id.
-        """
-        self.add_relation(a_id, b_id, REL_EQUIVALENT_TO, category="conceptual", directed=False, symmetric=True, **kwargs)
 
     # ------------------------------------------------------------------
     # Query helpers: outgoing / incoming edges
     # ------------------------------------------------------------------
 
-    def outgoing(self, obj_id: str, relation_type: Optional[str] = None) -> List[Relation]:
-        """
-        All relations with source == obj_id, optionally filtered by relation_type.
-        """
-        return [
-            r for r in self.relations
-            if r.source_id == obj_id and (relation_type is None or r.relation_type == relation_type)
-        ]
-
-    def incoming(self, obj_id: str, relation_type: Optional[str] = None) -> List[Relation]:
-        """
-        All relations with target == obj_id, optionally filtered by relation_type.
-        """
-        return [
-            r for r in self.relations
-            if r.target_id == obj_id and (relation_type is None or r.relation_type == relation_type)
-        ]
-
-    # ------------------------------------------------------------------
-    # Derived inverse views for canonical pairs
-    # ------------------------------------------------------------------
-
-    # --- generalizes / specializes ---
-
-    def specializations_of(self, general_id: str) -> List[str]:
-        """
-        Return IDs of objects that are special cases of the given object.
-
-        These are targets of generalizes(general_id, ·).
-        """
-        return [
-            r.target_id
-            for r in self.outgoing(general_id, REL_GENERALIZES)
-        ]
-
-    def generalizations_of(self, specific_id: str) -> List[str]:
-        """
-        Return IDs of objects that generalize the given object.
-
-        These are sources of generalizes(·, specific_id).
-        """
-        return [
-            r.source_id
-            for r in self.incoming(specific_id, REL_GENERALIZES)
-        ]
-
-    # --- has_part / is_part_of ---
-
-    def parts_of(self, whole_id: str) -> List[str]:
-        """
-        Return IDs of objects that are parts of the given whole object.
-
-        These are targets of has_part(whole_id, ·).
-        """
-        return [
-            r.target_id
-            for r in self.outgoing(whole_id, REL_HAS_PART)
-        ]
-
-    def whole_of(self, part_id: str) -> List[str]:
-        """
-        Return IDs of objects that the given object is a part of.
-
-        These are sources of has_part(·, part_id).
-        """
-        return [
-            r.source_id
-            for r in self.incoming(part_id, REL_HAS_PART)
-        ]
-
-    # ------------------------------------------------------------------
-    # Convenience: edge list for graph libraries
-    # ------------------------------------------------------------------
-
-    def as_edge_list(self) -> List[Tuple[str, str, str]]:
-        """
-        Return (source_id, target_id, relation_type) triples.
-
-        This is a minimal view; for richer graph libraries you may instead
-        use self.relations directly (with category/metadata).
-        """
-        return [(r.source_id, r.target_id, r.relation_type) for r in self.relations]
 
     # ------------------------------------------------------------------
     # Serialization helpers
@@ -639,7 +484,6 @@ class PaperGraph:
             "uses": "uses",
             "depends_on": "uses",
             "follows_from": "uses",
-            "has_part": "uses",
             "generalizes": "generalizes",
             "specializes": "specializes",
             "related_to": "uses",
@@ -742,10 +586,6 @@ class PaperGraph:
             "edges": edges,
         }
         return result
-
-    def to_student_dict(self) -> Dict[str, Any]:
-        """Convenience: output in student-minimal unified format."""
-        return self.to_unified_dict(include_research_fields=False)
 
     @staticmethod
     def from_dict(d: Dict[str, Any]) -> "PaperGraph":

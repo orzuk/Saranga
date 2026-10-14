@@ -92,7 +92,7 @@ Shared by both `src/run_pipeline.py` (recommended) and `parse_batch.py` (direct 
 --structure-types       Comma-separated structure types to extract via LLM (default: definition)
 ```
 
-`src/run_pipeline.py` also takes `--operations parse,validate,visualize,link,evaluate` to chain post-processing steps after extraction in a single invocation.
+`src/run_pipeline.py` also takes `--operations parse,validate,visualize,link,eval` to chain post-processing steps after extraction in a single invocation.
 
 ### Usage Examples
 

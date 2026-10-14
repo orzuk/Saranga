@@ -301,7 +301,7 @@ def run_batch(
             if draw_graphs:
                 try:
                     png_path = out_dir / f"{versioned_id}_graph.png"
-                    paper_to_network(graph, save_to_file=str(png_path))
+                    paper_to_network(graph, out_png=str(png_path))
                     print(f"[INFO]   Wrote {png_path}")
                 except Exception as e:
                     print(f"[WARN]   Graph failed for {base_id}: {e}")

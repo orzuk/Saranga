@@ -34,23 +34,15 @@ sys.path.insert(0, str(HERE.parent))
 
 import visualize_annotation as va                                # noqa: E402
 
-# Pinned library releases, fetched once into lib/ (see lib/README.md).
-# cytoscape-elk and cytoscape-expand-collapse are kept in lib/ but the viewer
-# drives elkjs itself: the adapter discards ELK's edge routes and swallows
-# layout errors, and the overview needs its own summary edges (see viewer.js).
+# Pinned library releases, fetched once into lib/ (see lib/README.md). The viewer
+# drives elkjs itself (no cytoscape-elk adapter): the adapter discards ELK's edge
+# routes and swallows layout errors, and the overview needs its own summary edges.
 LIBS = [
     ("cytoscape.min.js", "cytoscape 3.34.3",
      "https://cdn.jsdelivr.net/npm/cytoscape@3.34.3/dist/cytoscape.min.js"),
     ("elk.bundled.js", "elkjs 0.9.3",
      "https://cdn.jsdelivr.net/npm/elkjs@0.9.3/lib/elk.bundled.js"),
 ]
-EXTRA_LIBS = [
-    ("cytoscape-elk.js", "cytoscape-elk 2.3.0",
-     "https://cdn.jsdelivr.net/npm/cytoscape-elk@2.3.0/dist/cytoscape-elk.js"),
-    ("cytoscape-expand-collapse.js", "cytoscape-expand-collapse 4.1.1",
-     "https://cdn.jsdelivr.net/npm/cytoscape-expand-collapse@4.1.1/cytoscape-expand-collapse.js"),
-]
-
 THEOREM_LIKE = ("theorem", "lemma", "corollary", "proposition", "claim")
 RESULT_TYPES = {"definition", "theorem", "lemma", "proposition", "corollary",
                 "claim", "conjecture", "algorithm"}
@@ -513,7 +505,7 @@ def paper_model(data, stem):
         aid = stem
     n_top = len(out_nodes)
     model = {
-        "id": stem, "title": title, "arxiv": aid, "classic": stem + ".html",
+        "id": stem, "title": title, "arxiv": aid,
         "n_top": n_top, "level": "overview" if n_top > OVERVIEW_ABOVE else "full",
         "colors": va.NODE_COLORS, "default_color": va.DEFAULT_COLOR,
         "edge_colors": va.EDGE_COLORS, "default_edge_color": va.DEFAULT_EDGE_COLOR,
@@ -577,7 +569,6 @@ def render_page(model, panel_vars, funcs, css, mathjax, libs_mode, lib_dir):
         "{{CLASSIC_CSS}}": css,
         "{{VIEWER_CSS}}": (HERE / "viewer.css").read_text(encoding="utf-8"),
         "{{SRCLINKS}}": links,
-        "{{CLASSIC_HREF}}": escape(model["classic"]),
         "{{LIBS}}": lib_tags(libs_mode, lib_dir),
         "{{GRAPH_JSON}}": _script_json(model),
         "{{PANEL_JS}}": panel_js + funcs,
@@ -590,7 +581,7 @@ def render_page(model, panel_vars, funcs, css, mathjax, libs_mode, lib_dir):
 def ensure_lib(lib_dir, src_dir=None):
     """Make sure lib_dir holds the pinned libraries (copied, or downloaded once)."""
     lib_dir.mkdir(parents=True, exist_ok=True)
-    for fname, ver, url in LIBS + EXTRA_LIBS:
+    for fname, ver, url in LIBS:
         dst = lib_dir / fname
         if dst.exists():
             continue
@@ -603,16 +594,14 @@ def ensure_lib(lib_dir, src_dir=None):
             dst.write_bytes(r.read())
     readme = lib_dir / "README.md"
     if not readme.exists():
-        rows = "\n".join("| `%s` | %s | %s |" % (f, v, u) for f, v, u in LIBS + EXTRA_LIBS)
+        rows = "\n".join("| `%s` | %s | %s |" % (f, v, u) for f, v, u in LIBS)
         readme.write_text(
             "# Libraries for the v2 graph pages (`*_new.html`)\n\n"
             "Pinned releases, downloaded once by `src/graph_view/build.py`; every page in\n"
             "this folder loads them by relative path (`lib/...`).\n\n"
             "| file | version | source |\n|---|---|---|\n%s\n\n"
-            "The pages load only cytoscape and elkjs. cytoscape-elk and\n"
-            "cytoscape-expand-collapse are kept for reference: the viewer calls elkjs\n"
-            "directly (to keep ELK's edge routes and catch layout errors) and builds\n"
-            "the overview's collapsed groups and summary edges itself.\n"
+            "The viewer calls elkjs directly (to keep ELK's edge routes and catch layout\n"
+            "errors) and builds the overview's collapsed groups and summary edges itself.\n"
             "MathJax 3 is loaded from jsdelivr, as in the classic pages.\n" % rows,
             encoding="utf-8")
     return lib_dir

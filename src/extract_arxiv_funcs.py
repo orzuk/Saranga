@@ -17,21 +17,14 @@ import os
 import re
 import json
 import requests
-import argparse
-import sys
 import time
-import datetime
 import tarfile
 import io
 import gzip
 import xml.etree.ElementTree as ET
-import urllib.request as urlrequest
-import urllib.parse   as urlparse
 from urllib.error import HTTPError
-from collections import Counter
-from urllib.parse import urlencode
 from email.utils import parsedate_to_datetime
-from typing import Iterator, Dict, List, Union, Optional, Any, Tuple
+from typing import Iterator, Dict, List, Optional, Any, Tuple
 from requests.exceptions import HTTPError, RequestException
 from pathlib import Path
 
@@ -42,7 +35,6 @@ from pathlib import Path
 
 
 
-import pandas as pd
 try:
     import tables
 except ImportError:
@@ -247,104 +239,6 @@ def meta_data_full_to_hdf5(
         print(f"[build] Done. HDF5 written: '{hdf5_path}' with {total:,} rows.")
 
 
-def meta_data_full_to_compact(src_path=ARXIV_META_DATA,
-                              dest_path=ARXIV_META_DATA_COMPACT,
-                              overwrite = False, verbose=False):
-    """
-    Read the full 'arxiv-metadata-oai-snapshot.json' (NDJSON) and produce ONE pickle file
-    containing two dictionaries under a single top‐level object:
-      {
-        "compact": { base_id: { "categories":…, "created":…, "authors":…, "title":… }, … },
-        "offsets": { base_id: byte_offset, … }
-      }
-
-    Parameters
-    ----------
-    src_path : str
-        Path to the 4 GB NDJSON (one JSON object per line).
-    combined_dest : str
-        Where to write the combined pickle.  Example: "arxiv-combined.pkl".
-    overwrite : bool
-        If False and combined_dest already exists, do nothing.
-    verbose : bool
-        If True, print progress every 100 000 records.
-
-    After running, you will have a single pickle file that contains:
-      - combined["compact"]  → trimmed metadata for each base_id
-      - combined["offsets"]  → byte‐offset for each base_id in the original JSONL
-
-    Use `load_combined_index(combined_dest)` to get those two dicts back in memory.
-    """
-    if not overwrite and os.path.exists(dest_path):
-        if verbose:
-            print(f"[skip] '{dest_path}' already exists.")
-        return
-
-    if verbose:
-        print(f"[build] Scanning '{src_path}' to build combined index…")
-
-    compact_index: Dict[str, Dict[str, str]] = {}
-    offsets:        Dict[str, int]          = {}
-
-    with open(src_path, "r", encoding="utf-8") as fin:
-        while True:
-            offset = fin.tell()
-            line = fin.readline()
-            if not line:
-                break
-
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-
-            base_id = rec.get("id")
-            if not base_id:
-                continue
-
-            # Record the byte offset once
-            if base_id not in offsets:
-                offsets[base_id] = offset
-
-            # Parse version-1 creation date into "YYYY-MM-DD"
-            created_full = rec.get("versions", [{}])[0].get("created", "")
-            try:
-                dt = parsedate_to_datetime(created_full)
-                created_iso = dt.date().isoformat()
-            except Exception:
-                created_iso = ""
-
-            # Extract trimmed metadata
-            cats    = rec.get("categories", "")
-            authors = rec.get("authors", "")
-            title   = rec.get("title", "")
-
-            # Only store compact metadata the first time we see base_id
-            if base_id not in compact_index:
-                compact_index[base_id] = {
-                    "categories": cats,
-                    "created":    created_iso,
-                    "authors":    authors,
-                    "title":      title
-                }
-
-            # Progress every 100 000 records
-            if verbose and len(offsets) % 100_000 == 0:
-                print(f"[build] Indexed {len(offsets):,} records so far…")
-
-    # Write out one pickle that holds both dicts
-    combined = {
-        "compact": compact_index,
-        "offsets": offsets
-    }
-    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-    with open(dest_path, "wb") as f:
-        pickle.dump(combined, f, protocol=pickle.HIGHEST_PROTOCOL)
-
-    if verbose:
-        print(f"[build] Wrote combined pickle with {len(compact_index):,} entries to '{dest_path}'")
-
-
 
 def load_meta_data_hdf5(
     hdf5_path: str = ARXIV_META_DATA_HDF5,
@@ -541,38 +435,6 @@ def load_meta_data_hdf5_by_ids(
     return result
 
 
-def load_meta_data_compact(
-        dest_path=ARXIV_META_DATA_COMPACT  # type: str
-) -> Dict[str, Dict[str, str]]:
-    """
-       Fast load of the pickled compact index.
-       Returns a dict mapping each base_id to a dict with keys:
-         - "categories": <space-separated category string>
-         - "created":    <ISO date of version 1, e.g. "2007-03-31">
-         - "authors":    <authors string>
-         - "title":      <title string>
-
-       Example return value:
-         {
-           "2309.00543": {
-             "categories": "cs.LG stat.ML",
-             "created":    "2023-09-01",
-             "authors":    "A. Researcher and B. Scientist",
-             "title":      "An Interesting Paper on Machine Learning"
-           },
-           ...
-         }
-       """
-    if not os.path.exists(dest_path):
-        raise FileNotFoundError(f"No such file: {dest_path}")
-
-    print(f"[load] Unpickling '{dest_path}' …")
-    with open(dest_path, "rb") as fin:
-        index = pickle.load(fin)
-    print(f"[load] Loaded {len(index):,} records.")
-    return index
-
-
 
 
 def list_arxiv_ids(
@@ -620,7 +482,6 @@ def list_arxiv_ids(
         # Load the compact index (pickle)
         if verbose:
             print(f"[list_arxiv_ids] Loading local compact index: {ARXIV_META_DATA_HDF5}")
-#        idx = load_meta_data_compact(ARXIV_META_DATA_COMPACT)
 
         # 1) Figure out which columns are actually needed
         needed_cols = []
@@ -908,10 +769,6 @@ def arxiv_dates_and_format_to_dir(ids, dates, format, output_dir = Path(DATA_DIR
     if format in ['source', 'latex']:
         format = 'tex'  # change dir
     return {id: output_dir + '/' + '/'.join(d.split("-")) + '/' + format for id, d in zip(ids, dates)}
-
-
-def compute_num_paper_by_dates(start_date=None, end_date=None, update_arxiv_ids=False, verbose=False):
-    return len(list_arxiv_ids(start_date=start_date, end_date=end_date, update_arxiv_ids=update_arxiv_ids, verbose=verbose))
 
 
 
@@ -1386,24 +1243,6 @@ def fetch_arxiv_batch(
     return results
 
 # Helper
-def find_main_tex(root: Path, arxiv_id: str) -> Optional[Path]:
-    all_tex = list(root.rglob("*.tex"))
-    if not all_tex:
-        return None
-
-    # 1. exact arXiv id
-    for f in all_tex:
-        if arxiv_id in f.name:
-            return f
-
-    # 2. common names
-    common = ["main.tex", "paper.tex", "ms.tex", "article.tex"]
-    for f in all_tex:
-        if f.name in common:
-            return f
-
-    # 3. fallback: largest file
-    return max(all_tex, key=lambda p: p.stat().st_size)
 
 
 

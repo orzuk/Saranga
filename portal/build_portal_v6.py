@@ -3,7 +3,6 @@
 
   silver   Tier 2 = the 200 v6 silver papers (LLM pages <id>_new.html and
            rule-based pages <id>_rules.html, already built next to the JSON).
-           The previous Tier-2 list is kept in the manifest as tier2_legacy.
   tier3    Tier 3 = the 100K corpus: data/tier3_v6/index.json (categories) and
            data/tier3_v6/<cat>/index.json (one row per paper), built from the
            per-category corpus_stats.csv of a parse run. The main manifest no
@@ -74,8 +73,6 @@ def silver(args):
             "graph_rules_path": f"silver_v6/graphs/{pid}_rules.html",
         })
     m = load_manifest()
-    if "tier2_legacy" not in m["papers"]:
-        m["papers"]["tier2_legacy"] = m["papers"].get("tier2", [])
     m["papers"]["tier2"] = rows
     save_manifest(m)
     print(f"tier2: {len(rows)} v6 silver papers")

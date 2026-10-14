@@ -95,7 +95,6 @@ KNOWN_OPERATIONS = [
     "validate",
     "visualize",
     "link",
-    "evaluate",
     "anomalies",
     "stats",
     "consensus",
@@ -684,42 +683,6 @@ def op_link(args) -> None:
 # =============================================================================
 # OPERATION: evaluate (JSON -> P/R/F1 vs gold)
 # =============================================================================
-
-def op_evaluate(args) -> None:
-    """Evaluate extracted JSONs against gold-standard annotations."""
-    if not args.gold_dir:
-        print(f"[pipeline] evaluate: --gold-dir is required for the evaluate operation")
-        return
-
-    gold_dir = Path(args.gold_dir)
-    if not gold_dir.exists():
-        print(f"[pipeline] evaluate: gold directory does not exist: {gold_dir}")
-        return
-
-    try:
-        from evaluate_extraction import evaluate_pair  # noqa
-    except ImportError:
-        # Fall back to subprocess invocation
-        print(f"[pipeline] evaluate: evaluate_extraction.evaluate_pair not importable;")
-        print(f"[pipeline] evaluate: falling back to subprocess invocation")
-        json_paths = _list_jsons(args.out_dir)
-        for jp in json_paths:
-            gold_candidate = gold_dir / jp.name
-            if not gold_candidate.exists():
-                if args.verbose:
-                    print(f"[pipeline] evaluate: no gold for {jp.name}, skipping")
-                continue
-            cmd = [
-                sys.executable,
-                str(_SRC_DIR / "evaluate_extraction.py"),
-                "--extracted", str(jp),
-                "--gold", str(gold_candidate),
-            ]
-            subprocess.run(cmd, check=False)
-        return
-
-    json_paths = _list_jsons(args.out_dir)
-    print(f"[pipeline] evaluate: comparing {len(json_paths)} extracted JSONs to gold")
     # ... in-process evaluation would go here if evaluate_pair is importable
     # (deferred: the current evaluate_extraction.py CLI is a reasonable fallback)
 
@@ -974,7 +937,6 @@ def main():
         "validate": op_validate,
         "visualize": op_visualize,
         "link": op_link,
-        "evaluate": op_evaluate,
         "anomalies": op_anomalies,
         "stats": op_stats,
         "consensus": op_consensus,
