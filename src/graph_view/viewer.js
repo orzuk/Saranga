@@ -861,7 +861,9 @@ window.dispId = window.dispId || function (id) {
     document.getElementById('hop-minus').onclick = function () { if (S.k > 1) { S.k--; if (S.focus && S.focus.mode === 'nbhd') render(); else syncControls(); } };
     document.getElementById('hop-plus').onclick = function () { if (S.k < 9) { S.k++; if (S.focus && S.focus.mode === 'nbhd') render(); else syncControls(); } };
     document.getElementById('fit-btn').onclick = function () { cy.fit(cy.elements(), 30); };
-    // Legend / Filters rows: hidden by default, remembered per browser.
+    // A page opened from disk (a downloaded graph) has no portal to go back to.
+    if (location.protocol === 'file:') document.getElementById('home-link').style.display = 'none';
+    // Legend / Filters rows: shown by default; hiding one is remembered per browser.
     [['legend-btn', 'show-legend'], ['filters-btn', 'show-filters']].forEach(function (p) {
       var btn = document.getElementById(p[0]), key = 'saranga.' + p[1];
       function set(on) {
@@ -870,7 +872,7 @@ window.dispId = window.dispId || function (id) {
         if (cy) cy.resize();
       }
       var saved = null; try { saved = localStorage.getItem(key); } catch (e) {}
-      set(saved === '1');
+      set(saved !== '0');
       btn.onclick = function () { set(!document.body.classList.contains(p[1])); };
     });
     document.getElementById('zin-btn').onclick = function () { zoomBy(1.3); };
