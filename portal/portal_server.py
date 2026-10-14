@@ -544,6 +544,15 @@ class PortalHandler(SimpleHTTPRequestHandler):
             query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
             serve_yours(self, query, upload=False)
             return
+        if parsed.path == "/yours/existing":
+            q = urllib.parse.parse_qs(parsed.query)
+            import yours
+            try:
+                url = existing_url(yours.parse_arxiv_id((q.get("id") or [""])[0]), (q.get("mode") or ["rules"])[0])
+            except yours.YoursError:
+                url = None
+            _json_reply(self, 200, {"url": url})
+            return
         if parsed.path == "/gold/reviews":
             serve_gold_reviews(self, urllib.parse.parse_qs(parsed.query))
             return
@@ -593,6 +602,23 @@ def _json_reply(handler, code: int, obj: dict) -> None:
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
     handler.wfile.write(body)
+
+
+_EXISTING = {}
+
+
+def existing_url(aid: str, mode: str) -> str | None:
+    """The page of a paper SARANGA already has, for "Your paper": rules -> its 100K graph (else
+    its silver rules graph); llm -> its silver LLM graph. None if we do not have it."""
+    if not _EXISTING:
+        for r in json.loads(MANIFEST_PATH.read_text()).get("papers", {}).get("tier2", []):
+            b = re.sub(r"v\d+$", "", r["paper_id"])
+            _EXISTING.setdefault(("llm", b), r.get("graph_path"))
+            _EXISTING.setdefault(("rules", b), r.get("graph_rules_path"))
+        for f in T3_DIR.glob("*/index.json"):
+            for r in json.loads(f.read_text()):
+                _EXISTING[("rules", re.sub(r"v\d+$", "", r["paper_id"]))] = r["graph_path"]
+    return _EXISTING.get((mode, re.sub(r"v\d+$", "", aid.replace("/", "_"))))
 
 
 def serve_gold_reviews(handler, query) -> None:

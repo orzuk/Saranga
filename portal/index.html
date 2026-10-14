@@ -106,11 +106,12 @@
 <body>
 <header>
   <a class="logo" href="index.html">SARANGA</a>
-  <nav><a href="#dataset">Dataset</a><a href="https://arxiv.org/" target="_blank" rel="noopener">Paper</a><a href="https://github.com/" target="_blank" rel="noopener">GitHub</a></nav>
+  <nav><a href="#dataset">Dataset</a><a href="https://arxiv.org/" target="_blank" rel="noopener">Paper</a><a href="https://github.com/orzuk/Saranga" target="_blank" rel="noopener">GitHub</a></nav>
 </header>
 
 <section class="hero">
   <h1 style="letter-spacing:.12em;font-size:46px">SARANGA</h1>
+  <div style="font-size:15px;color:var(--muted);letter-spacing:.04em;margin:-6px 0 18px"><b>S</b>tructured <b>ar</b>Xiv <b>R</b>epresentation, <b>A</b>utomatic <b>N</b>etwork <b>G</b>eneration and <b>A</b>nalysis</div>
   <p>Turn any math or CS paper into an interactive graph of its definitions, theorems, proofs and how they depend on each other, in seconds.</p>
 
   <div class="bar">
@@ -298,7 +299,13 @@
     if (!file && !idBox.value.trim()) { idBox.focus(); return fail('Enter an arXiv ID or upload your LaTeX.'); }
     go.disabled = true;
     $('result').classList.remove('on');
-    (mode() === 'llm' ? llm : rules)();
+    var run = mode() === 'llm' ? llm : rules;
+    if (file) return run();
+    // a paper SARANGA already has opens directly, without building it again
+    fetch('yours/existing?mode=' + mode() + '&id=' + encodeURIComponent(idBox.value.trim()))
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (!j.url) return run(); show(100, 'SARANGA already has this paper. Opening it…'); window.location.href = j.url; })
+      .catch(run);
   };
 })();
 

@@ -432,9 +432,14 @@ def main():
 
 
 def index_row(m: dict) -> dict:
+    """The list page's row. 'good': >= 3 boxes, >= 2 arrows, >= 70% of the boxes resolved (to our
+    node, a section, or a cited result) -- the page shows these by default."""
+    res = sum(n["status"] in ("mapped", "section", "cited") for n in m.get("nodes", []))
+    n = m.get("n_nodes") or 0
     return ({k: m.get(k) for k in ("id", "arxiv", "title", "n_nodes", "n_edges", "n_mapped", "problems")}
             | {"category": m["survey"]["primary_category"], "granularity": m["survey"]["granularity"],
-               "year": m["survey"]["year"], "pilot": m.get("pilot", False)})
+               "year": m["survey"]["year"], "pilot": m.get("pilot", False), "n_resolved": res,
+               "good": bool(m.get("gold_page")) and n >= 3 and (m.get("n_edges") or 0) >= 2 and res >= 0.7 * n})
 
 
 def write_index(metas: list, replace: bool = False) -> None:

@@ -89,32 +89,46 @@ const inCat = p => !cat || (p.category || "?") === cat ||
   (cat === "math.CO+cs.DM" && /^(math\.CO|cs\.DM)$/.test(p.category || ""));
 const catQ = () => cat ? "&cat=" + encodeURIComponent(cat) : "";
 
+const showAll = params.get("all") === "1";
+const sortKey = params.get("sort") || "category";
+const listQ = extra => "?" + new URLSearchParams(Object.entries(Object.assign(
+  {cat, all: showAll ? "1" : "", sort: sortKey === "category" ? "" : sortKey}, extra)).filter(e => e[1])).toString();
+
 async function listView() {
   const [all, reviews] = await Promise.all([getJSON("/gold_data/index.json"), getJSON("/gold/reviews")]);
+  const pool = showAll ? all : all.filter(p => p.good);
   const counts = {};
-  all.forEach(p => counts[p.category || "?"] = (counts[p.category || "?"] || 0) + 1);
-  const nStat = all.filter(p => /^(math\.ST|stat\.)/.test(p.category || "")).length;
-  const opts = [["", `all areas (${all.length})`], ["statistics", `statistics: math.ST + stat.* (${nStat})`]]
+  pool.forEach(p => counts[p.category || "?"] = (counts[p.category || "?"] || 0) + 1);
+  const nStat = pool.filter(p => /^(math\.ST|stat\.)/.test(p.category || "")).length;
+  const opts = [["", `all areas (${pool.length})`], ["statistics", `statistics: math.ST + stat.* (${nStat})`]]
     .concat(Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([c, n]) => [c, `${c} (${n})`]));
-  const index = all.filter(inCat);
+  const num = k => (a, b) => (b[k] ?? -1) - (a[k] ?? -1);
+  const txt = k => (a, b) => String(a[k] || "").localeCompare(String(b[k] || "")) || a.id.localeCompare(b.id);
+  const SORT = {category: txt("category"), arxiv: txt("id"), title: txt("title"), year: txt("year"),
+    granularity: txt("granularity"), n_nodes: num("n_nodes"), n_resolved: num("n_resolved"), n_edges: num("n_edges")};
+  const index = pool.filter(inCat).sort(SORT[sortKey] || SORT.category);
+  const th = (k, t) => `<th><a href="${listQ({sort: k})}" style="color:inherit">${t}${k === sortKey ? " ▾" : ""}</a></th>`;
   const rows = index.map((p, i) => {
     const r = reviews[p.id];
     const st = r ? `<span class="pill ${esc(r.verdict)}">${esc(r.verdict || "saved")}</span>` : `<span class="muted">–</span>`;
     const prob = (p.problems || []).length ? `<div class="small" style="color:var(--bad)">${esc(p.problems.join("; "))}</div>` : "";
-    const href = `?id=${encodeURIComponent(p.id)}${catQ()}`;
+    const href = `?id=${encodeURIComponent(p.id)}${catQ()}${showAll ? "&all=1" : ""}`;
     return `<tr class="row" onclick="location='${href}'">
       <td>${i+1}</td><td><a href="${href}">${esc(p.arxiv)}</a>${p.pilot ? ' <span class="pill" title="in the random pilot of 30">pilot</span>' : ""}</td>
       <td>${esc(p.title)} ${prob}</td><td>${esc(p.category)}</td><td>${esc(p.year)}</td><td>${esc(p.granularity)}</td>
-      <td>${p.n_nodes ?? "–"}</td><td>${p.n_mapped ?? "–"}</td><td>${p.n_edges ?? "–"}</td><td>${st}</td></tr>`;
+      <td>${p.n_nodes ?? "–"}</td><td>${p.n_resolved ?? "–"}</td><td>${p.n_edges ?? "–"}</td><td>${st}</td></tr>`;
   }).join("");
+  const toggle = showAll
+    ? `<a href="${listQ({all: ""})}">show only the ${all.filter(p => p.good).length} good-quality diagrams</a>`
+    : `<a href="${listQ({all: "1"})}">show all ${all.length}</a>`;
   $("#main").innerHTML =
     `<div class="q"><b>Area</b> <select id="catsel">${opts.map(([v, t]) => `<option value="${esc(v)}" ${v === cat ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>
-     <span class="muted small">Prev/next on a paper page stay within the chosen area.</span></div>` +
+     <span class="muted small">${showAll ? "All candidates." : "Good quality: ≥ 3 boxes, ≥ 2 arrows, ≥ 70% of the boxes resolved (to our node, a section or a cited result)."} ${toggle}</span></div>` +
     summary(index, reviews) +
-    `<p class="muted small">Author dependency diagrams drawn in LaTeX (all ${all.length}), ordered by area. "pilot" marks the 30 drawn at random first.</p>
-     <table><tr><th>#</th><th>arXiv</th><th>Title</th><th>Category</th><th>Year</th><th>Diagram of</th>
-     <th>Boxes</th><th>Mapped to our nodes</th><th>Arrows</th><th>Review</th></tr>${rows}</table>`;
-  $("#catsel").onchange = e => { location = "?" + (e.target.value ? "cat=" + encodeURIComponent(e.target.value) : ""); };
+    `<table><tr><th>#</th>${th("arxiv", "arXiv")}${th("title", "Title")}${th("category", "Category")}${th("year", "Year")}${th("granularity", "Diagram of")}
+     ${th("n_nodes", "Boxes")}${th("n_resolved", "Resolved")}${th("n_edges", "Arrows")}<th>Review</th></tr>${rows}</table>
+     <p class="small">${toggle}</p>`;
+  $("#catsel").onchange = e => { location = listQ({cat: e.target.value}); };
 }
 
 function tabs(el, items) {
@@ -127,7 +141,7 @@ function tabs(el, items) {
 
 async function paperView() {
   const [all, m, reviews] = await Promise.all([getJSON("/gold_data/index.json"), getJSON(D + pid + "/meta.json"), getJSON("/gold/reviews")]);
-  const index = all.filter(inCat);
+  const index = all.filter(p => (showAll || p.good) && inCat(p));
   let gold = null; try { gold = await getJSON(D + pid + "/gold.json"); } catch (e) {}
   const r0 = reviews[pid] || {};
   const k = index.findIndex(p => p.id === pid);
@@ -199,7 +213,7 @@ async function paperView() {
                                                                          body: JSON.stringify(review)});
     const j = await r.json();
     $("#saved").textContent = r.ok ? "saved " + j.saved_at : "save failed: " + (j.error || r.status);
-    if (r.ok && next && $("#gonext")?.checked) location = "?id=" + next.id + catQ();
+    if (r.ok && next && $("#gonext")?.checked) location = "?id=" + next.id + catQ() + (showAll ? "&all=1" : "");
   };
 }
 
