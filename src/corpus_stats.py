@@ -36,6 +36,7 @@ import json
 from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
+from graph_io import load_graph
 
 try:                                    # the validator's cycle check (same definition)
     from validate_annotation import reasoning_cycles as _reasoning_cycles
@@ -100,34 +101,9 @@ STAT_COLUMNS = [
 ]
 
 
-def _get_nodes_edges(data: Dict[str, Any]):
-    """Return (nodes_list, edges_list) handling both schemas."""
-    if "nodes" in data:
-        return data.get("nodes", []) or [], data.get("edges", []) or []
-    if "objects" in data:
-        objs = data.get("objects", {}) or {}
-        rels = data.get("relations", []) or []
-        nodes = []
-        for obj_id, obj in objs.items():
-            node = dict(obj)
-            node.setdefault("id", obj_id)
-            if "kind" in node and "type" not in node:
-                node["type"] = node["kind"]
-            nodes.append(node)
-        edges = []
-        for rel in rels:
-            edges.append({
-                "source": rel.get("source_id") or rel.get("source"),
-                "target": rel.get("target_id") or rel.get("target"),
-                "type": rel.get("relation_type") or rel.get("type"),
-            })
-        return nodes, edges
-    return [], []
-
-
 def compute_paper_stats(paper_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
     """Compute all per-paper statistics from a single JSON. Returns a dict."""
-    nodes, edges = _get_nodes_edges(data)
+    nodes, edges = load_graph(data)
 
     n_nodes = len(nodes)
     n_edges = len(edges)

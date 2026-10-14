@@ -1280,7 +1280,7 @@ def _clean_display(display: str) -> str:
     return re.sub(r"[{}]", "", d).strip().lower()
 
 
-_THEOREM_LIKE = {"theorem", "lemma", "proposition", "corollary", "claim", "conjecture"}
+from node_types import THEOREM_LIKE as _THEOREM_LIKE
 
 
 def _associate_proofs(facts: list[dict], labels: dict, source: str) -> None:

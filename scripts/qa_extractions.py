@@ -36,48 +36,11 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "src"))
 import edge_types as ET  # noqa: E402
 import node_types as NT  # noqa: E402
+import graph_checks  # noqa: E402
 
 VALID_NODES = set(NT.ALL_TYPES)
 VALID_EDGES = set(ET.ALL_EDGE_TYPES) | {"grounded_to"}
 LEVEL2 = {"proof_step", "algorithm_step"}
-THEOREM_LIKE = {"theorem", "lemma", "proposition", "corollary", "claim"}
-
-
-def has_cycle(nodes, edges):
-    """Return a short example cycle, or None. Iterative DFS (no recursion limit)."""
-    adj = defaultdict(list)
-    ids = {n.get("id") for n in nodes}
-    for e in edges:
-        s, t = e.get("source"), e.get("target")
-        if s in ids and t in ids:
-            adj[s].append(t)
-    WHITE, GREY, BLACK = 0, 1, 2
-    color = defaultdict(int)
-    for start in list(ids):
-        if color[start] != WHITE:
-            continue
-        stack = [(start, iter(adj[start]))]
-        path = [start]
-        color[start] = GREY
-        while stack:
-            node, it = stack[-1]
-            advanced = False
-            for nxt in it:
-                if color[nxt] == GREY:
-                    i = path.index(nxt) if nxt in path else 0
-                    return " -> ".join(path[i:] + [nxt])
-                if color[nxt] == WHITE:
-                    color[nxt] = GREY
-                    path.append(nxt)
-                    stack.append((nxt, iter(adj[nxt])))
-                    advanced = True
-                    break
-            if not advanced:
-                color[node] = BLACK
-                stack.pop()
-                if path:
-                    path.pop()
-    return None
 
 
 def qa_one(path):
@@ -181,9 +144,9 @@ def qa_one(path):
     if bad_conf:
         problems.append(("ERROR", "bad-confidence-value", str(bad_conf[:5])))
 
-    cyc = has_cycle(nodes, edges)
+    cyc = graph_checks.find_cycle(nodes, edges)
     if cyc:
-        problems.append(("ERROR", "cycle-not-a-DAG", cyc[:160]))
+        problems.append(("ERROR", "cycle-not-a-DAG", " -> ".join(cyc)[:160]))
 
     # nested/overlapping statements: one node's statement fully contains another's.
     # Legitimate for parent/child (proof ⊃ proof_step, algorithm ⊃ algorithm_step),

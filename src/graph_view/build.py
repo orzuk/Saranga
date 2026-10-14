@@ -43,7 +43,7 @@ LIBS = [
     ("elk.bundled.js", "elkjs 0.9.3",
      "https://cdn.jsdelivr.net/npm/elkjs@0.9.3/lib/elk.bundled.js"),
 ]
-THEOREM_LIKE = ("theorem", "lemma", "corollary", "proposition", "claim")
+from node_types import PROVABLE as THEOREM_LIKE, ID_SHORT  # noqa: E402
 RESULT_TYPES = {"definition", "theorem", "lemma", "proposition", "corollary",
                 "claim", "conjecture", "algorithm"}
 # Weight of a node type in the importance proxy and the main-result ranking.
@@ -528,7 +528,7 @@ def paper_model(data, stem):
             if d.get(k) == d.get("statement"):
                 d.pop(k, None)
     panel_vars = {k: jsvars.get(k) for k in ("DETAILS", "ORPHANS", "GHOSTS",
-                                             "PAPER_INFO", "FOLDED_HOST")}
+                                             "PAPER_INFO", "FOLDED_HOST")} | {"ID_SHORT": ID_SHORT}
     return model, panel_vars, funcs, css, mathjax
 
 

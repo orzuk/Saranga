@@ -37,6 +37,7 @@ import re
 from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from graph_io import load_graph
 
 try:
     import networkx as nx
@@ -63,40 +64,6 @@ EXPECTED_TYPES = {"theorem", "definition", "proof", "equation"}
 AnomalyRecord = Tuple[str, str, str, str, str, str, str]
 
 _SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2, "none": 9}
-
-
-# --- schema compatibility helper ---------------------------------------------
-
-def _get_nodes_edges(data: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """Return (nodes_list, edges_list) from a paper JSON, handling both schemas.
-
-    Unified schema (preferred): {metadata, nodes: [...], edges: [...]}
-    Legacy schema (tolerated):  {paper_id, objects: {id: {...}}, relations: [{...}]}
-    """
-    if "nodes" in data:
-        return data.get("nodes", []) or [], data.get("edges", []) or []
-
-    if "objects" in data:
-        objs = data.get("objects", {}) or {}
-        rels = data.get("relations", []) or []
-        nodes: List[Dict[str, Any]] = []
-        for obj_id, obj in objs.items():
-            node = dict(obj)
-            node.setdefault("id", obj_id)
-            if "kind" in node and "type" not in node:
-                node["type"] = node["kind"]
-            nodes.append(node)
-        edges: List[Dict[str, Any]] = []
-        for rel in rels:
-            edge = {
-                "source": rel.get("source_id") or rel.get("source"),
-                "target": rel.get("target_id") or rel.get("target"),
-                "type": rel.get("relation_type") or rel.get("type") or "uses",
-            }
-            edges.append(edge)
-        return nodes, edges
-
-    return [], []
 
 
 def _build_graph(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]):
@@ -130,7 +97,7 @@ def detect_anomalies_for_paper(
       edges, cycle lengths, etc. for each anomaly. Written to
       anomalies_detail.json by the caller.
     """
-    nodes, edges = _get_nodes_edges(data)
+    nodes, edges = load_graph(data)
     results: List[AnomalyRecord] = []
     details: List[Dict[str, Any]] = []  # per-anomaly detail entries
 
@@ -188,7 +155,7 @@ def detect_anomalies_for_paper(
 
     # A4: DAG has cycles
     if _HAS_NETWORKX and n_edges > 0 and n_nodes >= 2:
-        g = _build_graph(nodes, edges)
+        g = _build_graph(nodes, [e for e in edges if not e.get("backward")])   # as validate_annotation (graph_checks)
         if g is not None and g.number_of_nodes() > 0 and not nx.is_directed_acyclic_graph(g):
             # Collect actual cycles with their lengths and edges
             cycle_details: List[Dict[str, Any]] = []

@@ -560,6 +560,13 @@ ID_PREFIX = {
     CLAIM: "ClP", CONJECTURE: "CnjP",
 }
 
+# Display names for node ids: TP5 -> "Thm 5" (viewer pages and figures; ids themselves keep the prefix)
+ID_SHORT = {ID_PREFIX[t]: s for t, s in {
+    DEFINITION: "Def", THEOREM: "Thm", LEMMA: "Lem", PROPOSITION: "Prop", COROLLARY: "Cor", PROOF: "Pf",
+    PROOF_STEP: "Step", ALGORITHM: "Alg", ALGORITHM_STEP: "Line", EQUATION: "Eq", EXAMPLE: "Ex",
+    EXERCISE: "Exer", REMARK: "Rem", PROBLEM: "Prob", OPEN_PROBLEM: "Open", ASSUMPTION: "Asm",
+    CLAIM: "Cl", CONJECTURE: "Conj"}.items()}
+
 # Compatibility map: which Level 1 parent type each Level 2 type belongs to.
 LEVEL_2_PARENT_TYPE = {
     PROOF_STEP:     PROOF,

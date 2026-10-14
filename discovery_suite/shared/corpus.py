@@ -10,8 +10,7 @@ modified). Adds:
 """
 from __future__ import annotations
 
-import json
-import os
+import itertools
 import re
 import sys
 from pathlib import Path
@@ -22,128 +21,29 @@ for _p in (_REPO_ROOT / "src", _REPO_ROOT / "src" / "discovery"):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from common.corpus_io import Paper, iter_papers  # noqa: E402  (re-exported)
-from arxiv_id import normalize_arxiv_id, year_from_arxiv_id  # noqa: E402
+from common.corpus_io import Paper, iter_papers, walk as _lazy_walk, read_paper as _build_paper  # noqa: E402,F401  (re-exported)
 
 # Local, always-present default (portal mirror). Override with root=... for the
 # full 100k parse on the cluster.
 DEFAULT_ROOT = _REPO_ROOT / "portal" / "data" / "tier3"
 
-_SUFFIXES = ("_rules.json", "_manual.json")
+def stream_papers(root: Optional[Path] = None, *, categories: Optional[Sequence[str]] = None,
+                  year_min: Optional[int] = None, year_max: Optional[int] = None, on_progress=None) -> Iterator[Paper]:
+    """Paper records one at a time, so corpus-scale sweeps never hold the whole corpus (a full
+    100k list with nodes, edges and raw_latex is ~10-20 GB). on_progress(scanned) every 5000 files."""
+    return iter_papers(Path(root) if root else DEFAULT_ROOT, categories=categories, year_min=year_min,
+                       year_max=year_max, on_progress=on_progress)
 
 
-def _lazy_walk(root: Path) -> Iterator[Path]:
-    """Yield paper JSON paths lazily via os.walk — NO upfront global sort.
-
-    corpus_io.iter_papers does ``sorted(root.rglob("*.json"))`` which enumerates
-    and sorts the ENTIRE tree before yielding one path — minutes on a 100k-file
-    networked FS (Lustre). We sort only per-directory (cheap, still deterministic)
-    and yield as we go, so ``limit`` returns almost immediately.
-    """
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames.sort()
-        for fn in sorted(filenames):
-            if fn.endswith(_SUFFIXES):
-                yield Path(dirpath) / fn
-
-
-def _build_paper(path: Path, root: Path) -> Optional[Paper]:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-    if not isinstance(data, dict):
-        return None
-    meta = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
-    stem = path.stem
-    for s in ("_rules", "_manual"):
-        if stem.endswith(s):
-            stem = stem[: -len(s)]
-    pid_raw = meta.get("paper_id") or stem
-    try:
-        pid = normalize_arxiv_id(pid_raw)
-        year = year_from_arxiv_id(pid)
-    except ValueError:
-        return None
-    try:
-        cat = path.relative_to(root).parts[0]
-    except (ValueError, IndexError):
-        cat = ""
-    nodes, edges = data.get("nodes"), data.get("edges")
-    if not isinstance(nodes, list) or not isinstance(edges, list):
-        return None
-    return Paper(paper_id=pid, year=year, category=cat, path=path,
-                 nodes=nodes, edges=edges)
-
-
-def stream_papers(
-    root: Optional[Path] = None,
-    *,
-    categories: Optional[Sequence[str]] = None,
-    year_min: Optional[int] = None,
-    year_max: Optional[int] = None,
-    on_progress=None,
-) -> Iterator[Paper]:
-    """Yield Paper records ONE AT A TIME (lazy) so callers can extract-and-discard
-    without ever holding the whole corpus in memory. Same filters as load_papers.
-    ``on_progress(scanned)`` fires every 5000 files scanned. Use this — not
-    load_papers — for corpus-scale sweeps: a full 100k list of Paper objects
-    (all nodes+edges+raw_latex) is ~10-20GB, but most of it is never needed.
-    """
-    root = Path(root) if root else DEFAULT_ROOT
-    cat_filter = set(categories) if categories else None
-    scanned = 0
-    for path in _lazy_walk(root):
-        scanned += 1
-        if on_progress is not None and scanned % 5000 == 0:
-            on_progress(scanned)
-        p = _build_paper(path, root)
-        if p is None:
-            continue
-        if cat_filter is not None and p.category not in cat_filter:
-            continue
-        if year_min is not None and p.year < year_min:
-            continue
-        if year_max is not None and p.year > year_max:
-            continue
-        yield p
-
-
-def load_papers(
-    root: Optional[Path] = None,
-    *,
-    categories: Optional[Sequence[str]] = None,
-    year_min: Optional[int] = None,
-    year_max: Optional[int] = None,
-    limit: Optional[int] = None,
-    on_progress=None,
-) -> list[Paper]:
-    """Eagerly load Paper records (list, so tools can index/shuffle).
-
-    Uses a lazy per-directory walk (fast on big networked corpora); stops as soon
-    as ``limit`` papers are collected. ``on_progress(scanned, kept)`` (optional)
-    fires every 5000 files scanned so long cluster loads aren't a black box.
-    """
-    root = Path(root) if root else DEFAULT_ROOT
-    cat_filter = set(categories) if categories else None
+def load_papers(root: Optional[Path] = None, *, categories: Optional[Sequence[str]] = None,
+                year_min: Optional[int] = None, year_max: Optional[int] = None, limit: Optional[int] = None,
+                on_progress=None) -> list[Paper]:
+    """The first `limit` Paper records as a list (to index or shuffle). on_progress(scanned, kept)."""
     out: list[Paper] = []
-    scanned = 0
-    for path in _lazy_walk(root):
-        scanned += 1
-        if on_progress is not None and scanned % 5000 == 0:
-            on_progress(scanned, len(out))
-        p = _build_paper(path, root)
-        if p is None:
-            continue
-        if cat_filter is not None and p.category not in cat_filter:
-            continue
-        if year_min is not None and p.year < year_min:
-            continue
-        if year_max is not None and p.year > year_max:
-            continue
+    prog = on_progress and (lambda n: on_progress(n, len(out)))
+    for p in itertools.islice(stream_papers(root, categories=categories, year_min=year_min, year_max=year_max,
+                                            on_progress=prog), limit):
         out.append(p)
-        if limit is not None and len(out) >= limit:
-            break
     return out
 
 

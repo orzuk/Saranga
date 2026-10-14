@@ -25,6 +25,7 @@ from collections import defaultdict
 # Pull canonical type set + origin validators from the single source of truth
 # in node_types.py (avoid hard-coded lists going stale).
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import graph_checks  # noqa: E402
 from node_types import (  # noqa: E402
     ALL_TYPES,
     ORIGIN_VALUES,
@@ -219,51 +220,18 @@ def validate(data: dict) -> list[str]:
     # Edges marked "backward": true (a forward reference, an induction step using
     # the result itself) are real dependencies against the reading order; the
     # graph must be acyclic WITHOUT them, as the extraction spec states.
-    edges_all = edges
-    edges = [e for e in edges if not e.get("backward")]
-    adj = defaultdict(list)
-    in_degree = defaultdict(int)
-    all_nodes_in_graph = set()
-    for e in edges:
-        src, tgt = e.get("source"), e.get("target")
-        if src and tgt and src in node_ids and tgt in node_ids:
-            adj[src].append(tgt)
-            in_degree[tgt] += 0  # ensure key exists
-            in_degree[src] += 0
-            all_nodes_in_graph.add(src)
-            all_nodes_in_graph.add(tgt)
-
-    # Kahn's algorithm
-    queue = [n for n in all_nodes_in_graph if in_degree[n] == 0]
-    # Recompute in-degrees properly
-    in_deg = defaultdict(int)
-    for e in edges:
-        src, tgt = e.get("source"), e.get("target")
-        if src and tgt and src in node_ids and tgt in node_ids:
-            in_deg[tgt] += 1
-    queue = [n for n in all_nodes_in_graph if in_deg[n] == 0]
-    visited = 0
-    while queue:
-        node = queue.pop(0)
-        visited += 1
-        for neighbor in adj[node]:
-            in_deg[neighbor] -= 1
-            if in_deg[neighbor] == 0:
-                queue.append(neighbor)
-
-    for cyc in reasoning_cycles(nodes, edges_all):
+    fwd = graph_checks.forward_edges(edges)
+    in_graph = {x for e in fwd for x in (e.get("source"), e.get("target")) if x in node_ids}
+    depth, acyclic = graph_checks.depths([{"id": i} for i in in_graph], fwd)
+    for cyc in reasoning_cycles(nodes, edges):
         (warnings if cycle_noted(cyc, data.get("metadata")) else errors).append(
             f"{'WARNING' if cycle_noted(cyc, data.get('metadata')) else 'ERROR'}: "
             f"circular reasoning: {' -> '.join(cyc)}: {CYCLE_HELP}.")
-    if visited < len(all_nodes_in_graph):
+    if not acyclic:
         warnings.append("INFO: the graph without backward edges has a cycle; depth not computed.")
     else:
-        depth = compute_depth(adj, all_nodes_in_graph, in_deg)
-        max_depth = max(depth.values()) if depth else 0
-        warnings.append(f"INFO: DAG verified. {len(all_nodes_in_graph)} nodes in graph, "
-                        f"max depth {max_depth}.")
+        warnings.append(f"INFO: DAG verified. {len(in_graph)} nodes in graph, max depth {max(depth.values(), default=0)}.")
 
-    edges = edges_all
     # --- 4. Disconnected nodes ---
     # A node with no edge is an orphan only if it has no parent either: a proof
     # step or an equation inside a theorem is tied to the graph by parent_id.
@@ -374,24 +342,6 @@ CYCLE_HELP = ("if an edge on this path only refers to a result without relying o
               "(\"as in Theorem 1\", \"used in the proof of Proposition 3\"), set \"mention\": true on it; "
               "if the paper's own argument is circular, keep the edges and add a source_problem note "
               "naming these nodes")
-
-
-def compute_depth(adj, nodes, in_deg_orig):
-    """Compute longest-path depth for each node in a DAG."""
-    in_deg = defaultdict(int)
-    for n in nodes:
-        for tgt in adj[n]:
-            in_deg[tgt] += 1
-    depth = {n: 0 for n in nodes}
-    queue = [n for n in nodes if in_deg[n] == 0]
-    while queue:
-        node = queue.pop(0)
-        for neighbor in adj[node]:
-            depth[neighbor] = max(depth[neighbor], depth[node] + 1)
-            in_deg[neighbor] -= 1
-            if in_deg[neighbor] == 0:
-                queue.append(neighbor)
-    return depth
 
 
 def validate_file(path: Path, verbose: bool = True) -> tuple[int, int, int, int]:

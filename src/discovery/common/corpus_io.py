@@ -12,6 +12,7 @@ About 1-2% of files in the local sample are list-typed (older / malformed)
 and skipped silently.
 """
 import json
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -55,6 +56,30 @@ def _category_from_path(p: Path, root: Path) -> str:
     return parts[0] if parts else ""
 
 
+def walk(root: Path, accept_bare_json: bool = False) -> Iterator[Path]:
+    """Paper JSON paths, lazily (os.walk, sorted per directory): a global sort of the
+    whole tree takes minutes on the cluster's 100k-file Lustre before yielding one."""
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames.sort()
+        yield from (Path(dirpath) / f for f in sorted(filenames)
+                    if f.endswith(_SUFFIXES) or accept_bare_json and f.endswith(".json"))
+
+
+def read_paper(jp: Path, root: Path) -> Optional[Paper]:
+    """The Paper in one JSON, or None (unreadable, not a dict, no arXiv id, no node/edge lists)."""
+    try:
+        data = json.loads(jp.read_text(encoding="utf-8"))
+        meta = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+        pid = normalize_arxiv_id(meta.get("paper_id") or _strip_known_suffix(jp.stem))
+        year = year_from_arxiv_id(pid)
+    except (ValueError, AttributeError, OSError):      # JSONDecodeError is a ValueError
+        return None
+    nodes, edges = data.get("nodes"), data.get("edges")
+    if not isinstance(nodes, list) or not isinstance(edges, list):
+        return None
+    return Paper(paper_id=pid, year=year, category=_category_from_path(jp, root), path=jp, nodes=nodes, edges=edges)
+
+
 def iter_papers(
     root: Optional[Path] = None,
     *,
@@ -62,8 +87,9 @@ def iter_papers(
     year_min: Optional[int] = None,
     year_max: Optional[int] = None,
     accept_bare_json: bool = False,
+    on_progress=None,
 ) -> Iterator[Paper]:
-    """Yield Paper records for every JSON under `root` that matches filters.
+    """Yield Paper records for every JSON under `root` that matches filters, lazily.
 
     Args:
         root: defaults to config.TIER3_DIR.
@@ -72,50 +98,17 @@ def iter_papers(
         accept_bare_json: include `.json` files without a `_rules`/`_manual`
             suffix. Off by default — those are usually report files
             (anomalies_detail.json, corpus_stats.csv) not paper extractions.
+        on_progress: called with the number of files scanned, every 5000.
     """
     root = Path(root) if root else TIER3_DIR
-    cat_filter = set(categories) if categories else None
-
-    for jp in sorted(root.rglob("*.json")):
-        name = jp.name
-        if name.endswith(_SUFFIXES):
-            pass
-        elif accept_bare_json:
-            pass
-        else:
+    for i, jp in enumerate(walk(root, accept_bare_json), 1):
+        if on_progress and i % 5000 == 0:
+            on_progress(i)
+        if categories and _category_from_path(jp, root) not in categories:
             continue
-
-        cat = _category_from_path(jp, root)
-        if cat_filter is not None and cat not in cat_filter:
-            continue
-
-        try:
-            data = json.loads(jp.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-        if not isinstance(data, dict):
-            continue
-
-        meta = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
-        pid_raw = meta.get("paper_id") or _strip_known_suffix(jp.stem)
-        try:
-            pid_base = normalize_arxiv_id(pid_raw)
-            year = year_from_arxiv_id(pid_base)
-        except ValueError:
-            continue
-
-        if year_min is not None and year < year_min:
-            continue
-        if year_max is not None and year > year_max:
-            continue
-
-        nodes = data.get("nodes")
-        edges = data.get("edges")
-        if not isinstance(nodes, list) or not isinstance(edges, list):
-            continue
-
-        yield Paper(paper_id=pid_base, year=year, category=cat, path=jp,
-                    nodes=nodes, edges=edges)
+        p = read_paper(jp, root)
+        if p and (year_min is None or p.year >= year_min) and (year_max is None or p.year <= year_max):
+            yield p
 
 
 def count_papers(root: Optional[Path] = None, **kwargs) -> int:

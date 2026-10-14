@@ -61,7 +61,7 @@ def merge_diagrams(graphs: list) -> dict:
             key = labs or (k, n["id"])
             if key not in key_of:
                 key_of[key] = f"d{len(nodes)}"
-                nodes.append(dict(n, id=key_of[key]))
+                nodes.append(dict(n, id=key_of[key], diagram=k))
             local[n["id"]] = key_of[key]
         for e in g.get("edges", []):
             if e["from"] in local and e["to"] in local:
@@ -74,12 +74,21 @@ def merge_diagrams(graphs: list) -> dict:
     return {"nodes": nodes, "edges": out, "n_drawings": len(graphs)}
 
 
-def strip_tex(s: str) -> str:
+def strip_tex(s: str, math=False) -> str:
+    """Box text as plain words; with math=True its $...$ formulas are kept (the viewer typesets them)."""
     s = (s or "").replace("\\\\", " ").replace("\\S", "§")   # TikZ line breaks; section sign
     s = re.sub(r"\\(?:color|textcolor|nodepart)\s*\{[^}]*\}", " ", s)   # formatting, not text
     s = re.sub(r"\\(ref|cref|Cref|eqref|label)\{[^}]*\}", "", s)
-    s = re.sub(r"\\[A-Za-z]+\*?", " ", s)
-    return re.sub(r"[{}$~\\]+", " ", re.sub(r"\s+", " ", s)).strip()
+    plain = lambda t: re.sub(r"[{}$~\\]+", " ", re.sub(r"\s+", " ", re.sub(r"\\[A-Za-z]+\*?", " ", t))).strip()
+    return outside_math(s, plain) if math else plain(s)
+
+
+def outside_math(s: str, f) -> str:
+    """f applied to the text outside $...$ (to all of it if the $ are unbalanced)."""
+    parts = re.split(r"(?<!\\)\$", s)
+    if len(parts) % 2 == 0:
+        return f(s)
+    return re.sub(r"\s+", " ", " ".join(f(p) if i % 2 == 0 else "$" + p.strip() + "$" for i, p in enumerate(parts))).strip()
 
 
 _TYPED_NUM = re.compile(r"(?i)\b(theorems?|thms?|lemmas?|lems?|propositions?|props?|corollar(?:y|ies)|cors?|"
@@ -126,8 +135,9 @@ def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict)
             continue
         for lab in re.findall(r"\\label\{([^}]*)\}", n.get("raw_latex") or ""):
             labels.setdefault(lab, {"node": n["id"], "kind": "env"})
-    nodes, node_rows, idmap = [], [], {}
-    for i, dn in enumerate(diag.get("nodes", [])):
+    nodes, node_rows, idmap, by_hits = [], [], {}, {}
+    linked = {x for e in diag.get("edges", []) for x in (e["from"], e["to"])}
+    for dn in diag.get("nodes", []):
         refs = dn.get("refs", [])
         hits, secs = [], []
         names = []
@@ -158,8 +168,17 @@ def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict)
                                  re.sub(r"\s+", " ", n.get("raw_latex") or "").find(head[:40]) >= 0), None)
                 if node and node in ours:
                     hits.append(node)
-        gid = f"G{i + 1}"
-        idmap[dn["id"]] = gid
+        hits = list(dict.fromkeys(hits))
+        # the same result drawn again is one node; a number typed by hand can be stale (an older draft's
+        # numbering), so a typed box is merged only within its own diagram
+        key = tuple(hits) if refs else (tuple(hits), dn.get("diagram"))
+        if hits and key in by_hits:
+            idmap[dn["id"]] = by_hits[key]
+            continue
+        if not hits and not secs and not cited and dn["id"] not in linked:
+            continue                                     # an unlinked caption or heading, not a box of the graph
+        gid = f"G{len(nodes) + 1}"
+        idmap[dn["id"]] = by_hits.setdefault(key, gid) if hits else gid
         if hits:
             first = ours[hits[0]]
             typ = first.get("type", "theorem")
@@ -172,18 +191,17 @@ def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict)
             typ, stmt, status = "theorem", "Cited: " + (text or ""), "cited"
         else:
             typ, stmt, status = "remark", text or "(empty box)", "unmatched"
-        extra = _TYPED_NUM.sub(" ", re.sub(r"(?i)\b(theorems?|lemmas?|propositions?|corollar(?:y|ies)|definitions?|"
-                                          r"claims?|sections?|and)\b|[&,.:;()]", " ", text or "")).strip()
+        extra = outside_math(expand(strip_tex(dn.get("text", ""), math=True)), lambda t: re.sub(r"\s+", " ", _TYPED_NUM.sub(" ", re.sub(
+            r"(?i)\b(theorems?|lemmas?|propositions?|corollar(?:y|ies)|definitions?|claims?|sections?|and)\b|[&,.:;()]", " ", t))).strip())
         name = ", ".join(dict.fromkeys(names)) or text[:80] or None
         if names and len(extra) > 3:                     # the box also says what the result is
             name = f"{name}: {extra}"
         name = (name or "")[:100] or None
         nodes.append({"id": gid, "type": typ, "name": name, "statement": stmt,
                       "origin": "paper", "tags": ["diagram", status], "maps_to": hits})   # never hidden by the viewer
-        hits = list(dict.fromkeys(hits))
         node_rows.append({"gid": gid, "box_text": text[:200], "refs": [r["label"] for r in refs], "printed": names,
                           "maps_to": hits, "our_types": [ours[h].get("type") for h in hits],
-                          "status": status})
+                          "status": status, "typed": bool(hits) and not refs, "diagram": dn.get("diagram", 0) + 1})
     edges, edge_rows = [], []
     for e in diag.get("edges", []):
         s, t = idmap.get(e["from"]), idmap.get(e["to"])
@@ -296,17 +314,21 @@ def add_pdf(folder: Path, out: dict) -> None:
         tmp = Path(tempfile.mkdtemp())                   # the PDF tools are slow on the Windows drive
         local = tmp / "paper.pdf"
         shutil.copy(folder / "paper.pdf", local)
-        page = find_fig_page(local, page_hint(folder, out))
-        out["fig_page"] = page
-        if page:                                 # the page found and the next (figures float)
-            out["figpages"] = []
-            for k, pg in enumerate((page, page + 1)):
-                name = "figpage" if k == 0 else "figpage2"
+        fj = json.loads((folder / "figure.json").read_text()) if (folder / "figure.json").is_file() else {}
+        figs = [f for f in fj.get("figures", []) if f.get("found") and re.search(r"tikzpicture|tikzcd|xymatrix|\\xy\b|picture", f.get("env", ""))]
+        pages = list(dict.fromkeys(find_fig_page(local, page_hint(folder, {"caption": f.get("caption", ""), "figure_latex": f.get("env", "")}))
+                                   for f in figs[:6])) if len(figs) > 1 else [find_fig_page(local, page_hint(folder, out))]
+        pages = [p for p in pages if p]
+        out["fig_page"] = pages[0] if pages else 0
+        if pages:                                # each diagram's page; one diagram: also the next (figures float)
+            out["figpages"], out["figpage_nums"] = [], []
+            for k, pg in enumerate(pages if len(pages) > 1 else pages + [pages[0] + 1]):
+                name = "figpage" if k == 0 else f"figpage{k + 1}"
                 subprocess.run(["pdftoppm", "-f", str(pg), "-l", str(pg), "-r", "110", "-png", "-singlefile",
                                 str(local), str(tmp / name)], capture_output=True)
                 if (tmp / f"{name}.png").is_file():
                     shutil.copy(tmp / f"{name}.png", folder / f"{name}.png")
-                    out["figpages"].append(f"{name}.png")
+                    out["figpages"].append(f"{name}.png"); out["figpage_nums"].append(pg)
             out["figpage"] = (out["figpages"] or [None])[0]
         shutil.rmtree(tmp, ignore_errors=True)
     else:
@@ -406,7 +428,7 @@ def main():
             m = build_one(folder, not a.no_pdf)
             if a.no_pdf and (folder / "meta.json").is_file():      # keep the figure page found before
                 old_m = json.loads((folder / "meta.json").read_text())
-                for k in ("pdf", "fig_page", "figpage", "figpages"):
+                for k in ("pdf", "fig_page", "figpage", "figpages", "figpage_nums"):
                     if k in old_m and k not in m:
                         m[k] = old_m[k]
         except Exception as e:                           # noqa: BLE001
@@ -425,17 +447,18 @@ def main():
 
 
 def index_row(m: dict) -> dict:
-    """The list page's row. 'good' (shown by default): a math/stat/CS paper whose diagram has >= 3
-    boxes and >= 2 arrows, >= 70% of them resolved (to our node, a section or a cited result) and
-    >= half to our nodes or sections."""
-    res = sum(n["status"] in ("mapped", "section", "cited") for n in m.get("nodes", []))
-    n = m.get("n_nodes") or 0
+    """The list page's row. level: 'results' if >= half of the boxes are our results (theorems, lemmas, ...),
+    'sections' if >= half are sections, else 'mixed'. 'good' (shown by default): a math/stat/CS paper whose
+    diagram is at the results level, with >= 3 boxes, >= 2 arrows and >= 70% of the boxes resolved
+    (to our node, a section or a cited result)."""
+    st = [x["status"] for x in m.get("nodes", [])]
+    n, res = len(st), sum(x in ("mapped", "section", "cited") for x in st)
+    level = "results" if st.count("mapped") >= 0.5 * n else "sections" if st.count("section") >= 0.5 * n else "mixed"
     return ({k: m.get(k) for k in ("id", "arxiv", "title", "n_nodes", "n_edges", "n_mapped", "problems")}
             | {"category": m["survey"]["primary_category"], "granularity": m["survey"]["granularity"],
-               "year": m["survey"]["year"], "pilot": m.get("pilot", False), "n_resolved": res,
+               "year": m["survey"]["year"], "pilot": m.get("pilot", False), "n_resolved": res, "level": level,
                "good": bool(m.get("gold_page")) and n >= 3 and (m.get("n_edges") or 0) >= 2 and res >= 0.7 * n
-                       and sum(x["status"] in ("mapped", "section") for x in m.get("nodes", [])) >= 0.5 * n
-                       and m["survey"]["primary_category"].split(".")[0] in ("math", "stat", "cs")})
+                       and level == "results" and m["survey"]["primary_category"].split(".")[0] in ("math", "stat", "cs")})
 
 
 def write_index(metas: list, replace: bool = False) -> None:

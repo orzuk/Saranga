@@ -1,11 +1,9 @@
 // Display names for node ids: TP5 -> "Thm 5", PSP12 -> "Step 12". Display only; stored ids,
 // links and the URL hash keep the extraction's prefixes. Global: the side panel uses it too.
+// The table (ID_SHORT) is node_types.ID_SHORT, written into the page by build.py.
 window.dispId = window.dispId || function (id) {
-  var SHORT = {PSP: 'Step', ASP: 'Line', ProbP: 'Prob', OpenP: 'Open', AssumP: 'Asm', ExerP: 'Exer',
-    CnjP: 'Conj', ClP: 'Cl', PrP: 'Prop', ExP: 'Ex', DP: 'Def', TP: 'Thm', LP: 'Lem', CP: 'Cor',
-    PP: 'Pf', AP: 'Alg', EP: 'Eq', RP: 'Rem'};
-  var m = /^(PSP|ASP|ProbP|OpenP|AssumP|ExerP|CnjP|ClP|PrP|ExP|DP|TP|LP|CP|PP|AP|EP|RP)(\d+)$/.exec(String(id));
-  return m ? SHORT[m[1]] + ' ' + m[2] : String(id);
+  var m = /^([A-Za-z]+?)(\d+)$/.exec(String(id));
+  return m && ID_SHORT[m[1]] ? ID_SHORT[m[1]] + ' ' + m[2] : String(id);
 };
 /* Paper-graph viewer v2 (src/graph_view/viewer.js).
  *
@@ -753,6 +751,10 @@ window.dispId = window.dispId || function (id) {
     if (cy.zoom() > 1) { cy.zoom(1); cy.center(target); }
     if (cy.zoom() >= 0.55) return;
     var z = 0.8;
+    if (cy.nodes().filter(function (n) { return !n.isParent(); }).length <= 30) {   // small: readable, from its top (Fit shows it whole)
+      var b = target.boundingBox();
+      cy.zoom(0.6); cy.pan({ x: cy.width() / 2 - 0.6 * (b.x1 + b.w / 2), y: 20 - 0.6 * b.y1 }); return;
+    }
     cy.zoom(z);
     if (el.nonempty()) {
       var bb = target.boundingBox();
@@ -906,7 +908,7 @@ window.dispId = window.dispId || function (id) {
     document.getElementById('back-btn').onclick = goBack;
     document.addEventListener('keydown', function (ev) {
       if (ev.key !== 'Escape' || /^(INPUT|TEXTAREA)$/.test((ev.target || {}).tagName || '')) return;
-      goBack();
+      closePanel() || goBack();
     });
     var mb = document.getElementById('main-btn');
     if (!G.main.length) { mb.disabled = true; mb.title = 'No main-result candidates in this paper'; }
@@ -928,7 +930,7 @@ window.dispId = window.dispId || function (id) {
     document.getElementById('fit-btn').onclick = function () { cy.fit(cy.elements(), 30); };
     // A page opened from disk (a downloaded graph) has no portal to go back to.
     if (location.protocol === 'file:') document.getElementById('home-link').style.display = 'none';
-    // Legend / Filters rows: shown by default; hiding one is remembered per browser.
+    // Legend / Filters rows: shown by default (hidden when embedded in another page); the choice is remembered.
     [['legend-btn', 'show-legend'], ['filters-btn', 'show-filters']].forEach(function (p) {
       var btn = document.getElementById(p[0]), key = 'saranga.' + p[1];
       function set(on) {
@@ -937,7 +939,7 @@ window.dispId = window.dispId || function (id) {
         if (cy) cy.resize();
       }
       var saved = null; try { saved = localStorage.getItem(key); } catch (e) {}
-      set(saved !== '0');
+      set(saved ? saved === '1' : window.self === window.top);
       btn.onclick = function () { set(!document.body.classList.contains(p[1])); };
     });
     document.getElementById('zin-btn').onclick = function () { zoomBy(1.3); };
@@ -1127,21 +1129,41 @@ window.dispId = window.dispId || function (id) {
     if (nk) h += '<div class="v2-actions"><button id="v2-step-btn">' + (S.proofs[sid] ? 'Close sub-steps' : 'Open ' + nk + ' sub-step' + (nk > 1 ? 's' : '')) + '</button></div>';
     panel.innerHTML = h;
     panel.className = 'open';
+    addCloseButton();
     var b = document.getElementById('v2-step-btn');
     if (b) b.onclick = function () { toggleProof(sid); };
     if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([panel]).catch(function () {});
   }
 
   // The panel slides in and out (0.3 s): tell cytoscape its box changed.
+  // After the panel opens or closes: keep the selected box in the part of the canvas the panel leaves free
   function panelMoved() {
     setTimeout(function () {
       if (!cy) return;
       cy.resize();
-      var el = S.selected ? cy.getElementById(S.selected) : cy.collection();
+      var el = S.selected ? cy.getElementById(S.selected) : cy.collection(), panel = document.getElementById('detail-panel');
       if (el.empty()) return;
-      var p = el.renderedPosition();
-      if (p.x < 0 || p.y < 0 || p.x > cy.width() || p.y > cy.height()) cy.center(el);
+      var bb = el.renderedBoundingBox(), pr = panel.getBoundingClientRect(), cr = cy.container().getBoundingClientRect();
+      var w = panel.className === 'open' && pr.left < cr.right ? pr.left - cr.left : cy.width();
+      if (bb.x1 < 0 || bb.y1 < 0 || bb.x2 > w || bb.y2 > cy.height())
+        cy.animate({ panBy: { x: w / 2 - (bb.x1 + bb.x2) / 2, y: cy.height() / 2 - (bb.y1 + bb.y2) / 2 } }, { duration: 250 });
     }, 350);
+  }
+
+  function closePanel() {
+    var panel = document.getElementById('detail-panel');
+    if (panel.className !== 'open') return false;
+    panel.className = ''; _lastDetailNode = null;
+    if (cy) { cy.nodes(':selected').unselect(); setTimeout(function () { cy.resize(); }, 350); }
+    return true;
+  }
+
+  function addCloseButton() {
+    var panel = document.getElementById('detail-panel');
+    if (panel.className !== 'open' || panel.querySelector('.v2-close')) return;
+    var b = panel.insertBefore(document.createElement('button'), panel.firstChild);
+    b.className = 'v2-close'; b.title = 'Close (Esc)'; b.textContent = '\u2715';
+    b.onclick = closePanel;
   }
 
   function select(id) {
@@ -1153,6 +1175,7 @@ window.dispId = window.dispId || function (id) {
     if (STEP[id]) { showStep(id); return; }
     classicShowDetail(id);              // the classic panel; a second click closes it
     panelExtras(id);
+    addCloseButton();
     if (S.focus && S.focus.mode === 'nbhd' && S.focus.id !== id && NODE[id]) {
       document.getElementById('status').textContent = 'Neighbourhood of ' + S.focus.id + '; click Neighbourhood to recentre on ' + id + '.';
     }
@@ -1216,6 +1239,7 @@ window.dispId = window.dispId || function (id) {
       if (kind === 'proofframe') { select(n.data('of')); return; }
       select(n.id());
     });
+    cy.on('tap', function (ev) { if (ev.target === cy) closePanel(); });   // a click on the empty canvas
     cy.on('dbltap', 'node', function (ev) {
       var id = ev.target.id();
       if ((NODE[id] && NODE[id].nsteps) || (STEP[id] && KIDS[id])) toggleProof(id);
@@ -1252,6 +1276,12 @@ window.dispId = window.dispId || function (id) {
       function () { if (withSteps) S.proofs[withSteps.id] = true; },
       function () { if (deep) { S.proofs[STEP_HOST[deep]] = true; S.proofs[deep] = true; } },
       function () { if (some) window.showDetail(some); },
+      function () {
+        var p = document.getElementById('detail-panel'), b = p.querySelector('.v2-close');
+        if (some && (p.className !== 'open' || !b)) throw new Error('panel without a close button');
+        if (b) { b.click(); if (p.className === 'open') throw new Error('close button left the panel open'); }
+        if (some) { window.showDetail(some); closePanel(); if (p.className === 'open') throw new Error('Esc close failed'); }
+      },
       function () { if (some) { S.focus = { mode: 'nbhd', id: some }; S.k = 2; } },
       function () { S.focus = G.main.length ? { mode: 'main' } : null; },
       function () { S.focus = null; S.tred = true; },

@@ -7,29 +7,12 @@ it says so rather than reporting a misleading zero.
 
 Usage: python scripts/corpus_report.py [--dir <extraction dir>] [--md <out.md>]
 """
-import argparse, collections, csv, glob, json, os, statistics
+import argparse, collections, csv, glob, json, os, statistics, sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CANON_EDGES = {"uses", "proves", "illustrates", "tests",
-               "grounded_to", "specializes", "generalizes", "resolves"}
-
-
-def acyclic(nodes, edges):
-    g = collections.defaultdict(list)
-    indeg = collections.Counter()
-    ids = {n["id"] for n in nodes}
-    for e in edges:
-        s, t = e.get("source"), e.get("target")
-        if s in ids and t in ids:
-            g[s].append(t); indeg[t] += 1
-    q = [i for i in ids if not indeg[i]]
-    seen = 0
-    while q:
-        u = q.pop(); seen += 1
-        for v in g[u]:
-            indeg[v] -= 1
-            if not indeg[v]: q.append(v)
-    return seen == len(ids)
+sys.path.insert(0, os.path.join(REPO, "src"))
+import graph_checks                                      # noqa: E402
+from edge_types import ALL_TYPES as CANON_EDGES          # noqa: E402
 
 
 def main():
@@ -57,7 +40,7 @@ def main():
         for e in E: etype[e.get("type")] += 1
 
         dangling = [e for e in E if e.get("source") not in ids or e.get("target") not in ids]
-        dag = acyclic(N, E)
+        dag = graph_checks.depths(N, E)[1]
         par = {n["id"] for n in N if n.get("parent_id")}
         touched = {e.get("source") for e in E} | {e.get("target") for e in E}
         orphans = [n["id"] for n in N if n["id"] not in touched and n["id"] not in par]

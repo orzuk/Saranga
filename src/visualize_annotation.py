@@ -672,37 +672,8 @@ def _shorten(text, maxlen=80):
 
 # ── DAG computation ─────────────────────────────────────────────────────────
 def compute_dag_depth(nodes, edges):
-    """Compute longest-path depth for each node. Roots = depth 0."""
-    adj = defaultdict(list)
-    in_deg = defaultdict(int)
-    node_ids = {n["id"] for n in nodes}
-
-    for e in edges:
-        s, t = e["source"], e["target"]
-        if s in node_ids and t in node_ids:
-            adj[s].append(t)
-            in_deg[t] += 0  # ensure exists
-            in_deg[s] += 0
-
-    # recount
-    in_deg = defaultdict(int)
-    for e in edges:
-        s, t = e["source"], e["target"]
-        if s in node_ids and t in node_ids:
-            in_deg[t] += 1
-
-    depth = {nid: 0 for nid in node_ids}
-    queue = [nid for nid in node_ids if in_deg[nid] == 0]
-
-    while queue:
-        nid = queue.pop(0)
-        for tgt in adj[nid]:
-            depth[tgt] = max(depth[tgt], depth[nid] + 1)
-            in_deg[tgt] -= 1
-            if in_deg[tgt] == 0:
-                queue.append(tgt)
-
-    return depth
+    """Longest-path depth of each node; roots = depth 0."""
+    return graph_checks.depths(nodes, edges)[0]
 
 
 def _natural_key(s):
@@ -1364,9 +1335,8 @@ def draw_legend(ax, node_data, node_rect, show_foundation=False,
 
 
 # ── Drawing ─────────────────────────────────────────────────────────────────
-_ID_SHORT = {"PSP": "Step", "ASP": "Line", "ProbP": "Prob", "OpenP": "Open", "AssumP": "Asm",
-             "ExerP": "Exer", "CnjP": "Conj", "ClP": "Cl", "PrP": "Prop", "ExP": "Ex", "DP": "Def",
-             "TP": "Thm", "LP": "Lem", "CP": "Cor", "PP": "Pf", "AP": "Alg", "EP": "Eq", "RP": "Rem"}
+from node_types import ID_SHORT as _ID_SHORT  # noqa: E402
+import graph_checks  # noqa: E402
 _ID_RE = _re.compile(r"^(%s)(\d+)$" % "|".join(sorted(_ID_SHORT, key=len, reverse=True)))
 
 
@@ -1535,7 +1505,7 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
     # CHARS_PER_UNIT defined at module level
     MAX_LINES_PER_SECTION = 3
 
-    _THEOREM_LIKE = ("theorem", "lemma", "corollary", "proposition", "claim")
+    from node_types import PROVABLE as _THEOREM_LIKE
 
     def _theorem_has_inline_content(n):
         """True if a theorem-like node has assume/conclude to render;
@@ -2815,6 +2785,9 @@ def generate_interactive_html(data, svg_path, html_path):
         "bepsilon": r"\boldsymbol{\epsilon}", "btheta":   r"\boldsymbol{\theta}",
         "bmu":      r"\boldsymbol{\mu}",      "bSigma":   r"\boldsymbol{\Sigma}",
         "bm": [r"\boldsymbol{#1}", 1],          # the bm package
+        # blackboard-bold packages (bbm, dsfont) MathJax lacks: plain \mathbb
+        "mathbbm": [r"\mathbb{#1}", 1], "mathbbmss": [r"\mathbb{#1}", 1], "mathds": [r"\mathbb{#1}", 1],
+        "ensuremath": [r"#1", 1],
     }
     for _i in range(26):
         _L = chr(65 + _i)
@@ -3371,11 +3344,9 @@ function confBadge(c) {{
 }}
 // Display names for node ids: TP5 -> "Thm 5", PSP12 -> "Step 12". Display only;
 // the stored ids (and every link and hash) keep the extraction's prefixes.
-var ID_SHORT = {{PSP: 'Step', ASP: 'Line', ProbP: 'Prob', OpenP: 'Open', AssumP: 'Asm', ExerP: 'Exer',
-  CnjP: 'Conj', ClP: 'Cl', PrP: 'Prop', ExP: 'Ex', DP: 'Def', TP: 'Thm', LP: 'Lem', CP: 'Cor',
-  PP: 'Pf', AP: 'Alg', EP: 'Eq', RP: 'Rem'}};
+var ID_SHORT = {_json.dumps(_ID_SHORT)};
 function dispId(id) {{
-  var m = /^(PSP|ASP|ProbP|OpenP|AssumP|ExerP|CnjP|ClP|PrP|ExP|DP|TP|LP|CP|PP|AP|EP|RP)(\d+)$/.exec(String(id));
+  var m = /{_ID_RE.pattern}/.exec(String(id));
   return m ? ID_SHORT[m[1]] + ' ' + m[2] : String(id);
 }}
 // Link to a node's panel. Folded nodes (steps, equations, proofs) open the

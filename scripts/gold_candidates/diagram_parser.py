@@ -104,8 +104,93 @@ NODE_RE = re.compile(r"\bnode\b((?:\s*(?:" + OPT + r"|\([^)]*\)|at\s*\([^)]*\)))
 COORD_RE = re.compile(r"\(\s*([^()]*?(?:\([^()]*\)[^()]*?)*)\s*\)")
 
 
+def _anchorless(c):
+    return re.sub(r"\.(?:north|south|east|west|center|north east|north west|south east|south west|base|mid|\d+)\s*$", "", c.strip()).strip()
+
+
+def _on_segment(p, a, b, eps=1e-3):
+    """p strictly inside the segment a-b."""
+    (px, py), (ax, ay), (bx, by) = p, a, b
+    cross, dot, ll = (bx - ax) * (py - ay) - (by - ay) * (px - ax), (px - ax) * (bx - ax) + (py - ay) * (by - ay), (bx - ax) ** 2 + (by - ay) ** 2
+    return ll > eps and abs(cross) <= eps * ll ** 0.5 and eps < dot < ll - eps
+
+
+def _wire_edges(pending, nodes, resolve, lmap, macros):
+    """Segments -> edges between nodes. Arrows may start or end at junctions (bare coordinates, midpoints
+    $(B)!0.5!(C)$, points on other lines); the plain lines meeting there are wires, so an arrow out of a
+    junction gets one edge per node wired into it (2 -> 1 merges) and arrows out of a junction that a node
+    feeds give one edge each (1 -> 2 splits)."""
+    xy = lambda p: nodes[p]["_xy"] if p in nodes else p[1] if p[0] == "j" else None
+    mids = {}                                            # junction -> the two nodes it is the midpoint of
+    def key(pt):                                         # node name, or a junction ("j", xy) / ("m", a, b)
+        if not isinstance(pt, str) and pt[0] == "mid":
+            pa, pb = nodes[pt[1]]["_xy"], nodes[pt[2]]["_xy"]
+            j = ("j", (round((pa[0] + pb[0]) / 2, 3), round((pa[1] + pb[1]) / 2, 3))) if pa and pb else ("m",) + pt[1:]
+            mids[j] = pt[1:]
+            return j
+        r = resolve(pt)
+        return r or (("j", (round(pt[1][0], 3), round(pt[1][1], 3))) if not isinstance(pt, str) and pt[0] == "xy" else None)
+    segs, labs = [], {}
+    for x, y, rev, arrow, lab in pending:
+        a, b = key(x), key(y)
+        if a is None or b is None or a == b:
+            continue
+        a, b = (b, a) if rev else (a, b)
+        segs.append((a, b, bool(arrow)))
+        if lab and isinstance(a, str) and isinstance(b, str):
+            labs.setdefault((a, b), lab)
+    par = {}
+    def find(j):
+        while par.setdefault(j, j) != j:
+            j = par[j]
+        return j
+    union = lambda u, v: par.__setitem__(find(u), find(v))
+    attach = [(j, n) for j, ab in mids.items() for n in ab]   # (junction, node) joined by a wire
+    wired = {p for ab in mids.values() for p in (ab, ab[::-1])}   # node-node lines that are only wires
+    junctions = {p for s in segs for p in s[:2] if not isinstance(p, str)}
+    for a, b, arrow in segs:
+        if arrow:
+            continue
+        if not isinstance(a, str) and not isinstance(b, str):
+            union(a, b)
+        elif isinstance(a, str) != isinstance(b, str):
+            attach.append((a, b) if not isinstance(a, str) else (b, a))
+        pa, pb = xy(a), xy(b)
+        for j in junctions:                              # T-junctions: a junction lying on this line
+            if pa and pb and j[0] == "j" and _on_segment(j[1], pa, pb):
+                for e in (a, b):
+                    attach.append((j, e)) if isinstance(e, str) else union(j, e)
+                wired |= {(a, b), (b, a)}
+    comp = {}
+    for j, n in attach:
+        comp.setdefault(find(j), {"und": set(), "in": set(), "out": set()})["und"].add(n)
+    for a, b, arrow in segs:
+        if arrow and isinstance(a, str) != isinstance(b, str):
+            c = comp.setdefault(find(b if isinstance(a, str) else a), {"und": set(), "in": set(), "out": set()})
+            c["in" if isinstance(a, str) else "out"].add(a if isinstance(a, str) else b)
+    out = []
+    for a, b, arrow in segs:                             # direct node-node lines and arrows
+        if isinstance(a, str) and isinstance(b, str) and (arrow or (a, b) not in wired):
+            out.append((a, b, arrow))
+    for c in comp.values():
+        src, dst = (c["in"] | c["und"], c["out"]) if c["out"] else (c["in"], c["und"])
+        out += [(a, b, True) for a in sorted(src) for b in sorted(dst) if a != b]
+    edges, seen = [], set()
+    for a, b, arrow in out:
+        if (a, b) not in seen:
+            seen.add((a, b))
+            e = {"from": a, "to": b, "directed": arrow}
+            if (a, b) in labs:
+                e["label"] = labs[a, b][:200]; e["label_refs"] = resolve_refs(labs[a, b], lmap, macros)
+            edges.append(e)
+    return edges
+
+
 def parse_tikz(code, lmap, macros):
     """Statement-level TikZ parser -> nodes (named / positioned) and directed edges."""
+    m = re.search(r"\\begin\{tikzpicture\}\s*(" + OPT + r")?", code)
+    # arrows by default: set in the picture's options or an every path/edge style, not by one \draw[->]
+    styles = ((m.group(1) or "") if m else "") + " ".join(re.findall(r"every (?:path|edge)/\.style\s*=\s*\{[^}]*\}", code))
     code = re.sub(r"\\begin\{tikzpicture\}\s*(" + OPT + r")?|\\end\{tikzpicture\}", "", code)
     # inline \matrix bodies that contain explicit \node statements
     for _ in range(5):
@@ -137,7 +222,7 @@ def parse_tikz(code, lmap, macros):
                     for a_ in groups[k]:
                         for b_ in groups[k + 1]:
                             graph_edges.append((a_, b_, op))
-    global_arrow = bool(re.search(r"(?:^|[\[,\s])(?:->|-latex|-stealth|-Stealth|-Latex|-to|->>|-\{[^}]*\})(?:[\],\s]|$)", code[:2000])) or "every path/.style={draw, -" in code
+    global_arrow = bool(re.search(r"(?:^|[\[,\s{])(?:->|-latex|-stealth|-Stealth|-Latex|-to|->>|-\{[^}]*\})(?:[\],\s}]|$)", styles))
     nodes = {}; anon = 0; edges = []
     def add_node(comps, txt, name_hint=None):
         nonlocal anon
@@ -157,6 +242,7 @@ def parse_tikz(code, lmap, macros):
     pending = []  # (kind, statement)
     for st in stmts:
         s0 = re.sub(r"^(?:\s*\\(?:begin|end)\{scope\}\s*(?:" + OPT + r")?)+", "", st).strip()   # \end{scope} \draw ...
+        s0 = re.sub(r"^[^\\]{1,3}(?=\s*\\(?:draw|path|node)\b)", "", s0).strip()   # a stray character before it ("= \path")
         if re.match(r"\\(?:node|matrix)\b", s0):
             if s0.startswith("\\matrix"):
                 m = re.match(r"\\matrix\s*(\[[^\]]*\])?\s*\(([^)]*)\)\s*(\[[^\]]*\])?\s*(?:at\s*\([^)]*\))?\s*\{", s0)
@@ -193,15 +279,16 @@ def parse_tikz(code, lmap, macros):
                     txt, _ = brace_arg(s0, m.end() - 1)
                     add_node(comps, txt)
             opts = " ".join(re.findall(r"^\\\w+\s*(\[[^\]]*\])", s0))
-            arrow = bool(re.search(r"->|<-|latex|stealth|Stealth|Latex|-to\b|>=|Triangle|pil|arrow", opts)) or global_arrow
+            arrow = bool(re.search(r"->|<-|latex|stealth|Stealth|Latex|-to\b|Triangle|pil|arrow", opts)) \
+                or global_arrow and not re.search(r"[\[,]\s*-\s*[\],]", opts)
             rev = ("<-" in opts and "->" not in opts) or bool(re.search(r"\[\s*<-", opts))
             body = re.sub(r"node\s*(\[[^\]]*\])?\s*(\([^)]*\))?\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", " ", s0)
             body = re.sub(r"\[[^\]]*\]", " ", body)
-            toks = re.finditer(r"\bedge\b|--|\bto\b|\band\b|\.\.(?:\s*controls)?|\(\s*([^()]*?(?:\([^()]*\)[^()]*?)*)\s*\)", body)
+            toks = re.finditer(r"\bedge\b|--|-\||\|-|\bto\b|\band\b|\.\.(?:\s*controls)?|\(\s*([^()]*?(?:\([^()]*\)[^()]*?)*)\s*\)", body)
             cur = None; start = None; op = None; pairs = []; chain = []
             def flush():
                 if len(chain) >= 2:
-                    if all(k == "n" for k, _ in chain):
+                    if not arrow or all(p[0] == "n" for p in chain):     # plain lines: every piece is a wire
                         pairs.extend(zip(chain, chain[1:]))
                     else:
                         pairs.append((chain[0], chain[-1]))
@@ -211,15 +298,29 @@ def parse_tikz(code, lmap, macros):
                     op = "edge"; continue
                 if tok == "and":
                     op = "line"; continue
-                if tok in ("--", "to") or tok.startswith(".."):
+                if tok in ("--", "to", "-|", "|-") or tok.startswith(".."):
                     op = op or "line"; continue
                 c = (t.group(1) or "").strip()
                 if c.startswith("$"):
-                    inner = re.search(r"\(\s*([^()$]+?)\s*\)", c)
-                    c = inner.group(1) if inner and not _num_xy(inner.group(1)) else ""
+                    m = re.match(r"\$\s*\(([^()]+)\)\s*!\s*[\d.]+\s*!\s*\(([^()]+)\)\s*\$$", c)   # $(B)!0.5!(C)$
+                    a_, b_ = (_anchorless(x) for x in m.groups()) if m else (None, None)
+                    if a_ in nodes and b_ in nodes:
+                        pt = ("mid", a_, b_)
+                    else:
+                        inner = re.search(r"\(\s*([^()$]+?)\s*\)", c)
+                        c = inner.group(1) if inner and not _num_xy(inner.group(1)) else ""
+                        pt = None
+                    if pt:
+                        if op == "edge" and cur is not None:
+                            pairs.append((cur, pt))
+                        elif op == "line" and cur is not None:
+                            chain.append(pt); cur = pt
+                        else:
+                            flush(); chain = [pt]; cur = pt
+                        op = None; continue
                 if "|-" in c or "-|" in c or c.startswith("[") or not c:
                     continue
-                nm = re.sub(r"\.(?:north|south|east|west|center|north east|north west|south east|south west|base|mid|\d+)\s*$", "", c).strip()
+                nm = _anchorless(c)
                 if nm in nodes:
                     pt = ("n", nm)
                 elif _num_xy(c):
@@ -256,21 +357,7 @@ def parse_tikz(code, lmap, macros):
         gaps = [b - a for a, b in zip(xs, xs[1:]) if b - a > 1e-6] + [b - a for a, b in zip(ys, ys[1:]) if b - a > 1e-6]
         tol = (min(gaps) if gaps else 2.0) * 0.9
         return best[0] if d <= max(tol, 0.5) else None
-    seen = set()
-    for x, y, rev, arrow, lab in pending:
-        a, b = resolve(x), resolve(y)
-        if not a or not b or a == b:
-            continue
-        if rev:
-            a, b = b, a
-        key = (a, b)
-        if key in seen:
-            continue
-        seen.add(key)
-        e = {"from": a, "to": b, "directed": bool(arrow)}
-        if lab:
-            e["label"] = lab[:200]; e["label_refs"] = resolve_refs(lab, lmap, macros)
-        edges.append(e)
+    edges = _wire_edges(pending, nodes, resolve, lmap, macros)
     for n in nodes.values():
         n.pop("_xy", None)
     return {"nodes": list(nodes.values()), "edges": edges}

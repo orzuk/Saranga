@@ -19,15 +19,6 @@ import csv
 from collections import defaultdict
 
 
-def load_annotation(path):
-    """Load nodes and edges from a JSON annotation file."""
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    nodes = data.get("nodes", data.get("objects", []))
-    edges = data.get("edges", data.get("relations", []))
-    return nodes, edges
-
-
 def filter_by_origin(nodes, edges, exclude):
     """Drop nodes whose `origin` matches `exclude`, plus any incident edges.
 
@@ -58,6 +49,7 @@ from node_similarity import Profile as _Profile
 from node_similarity import text_sim as _text_sim
 from node_similarity import tokenize as _ns_tokenize
 from node_similarity import node_text as _ns_node_text
+from graph_io import load_graph
 
 
 def tokenize(text):
@@ -376,8 +368,8 @@ def main():
                              "Default: include all nodes.")
     args = parser.parse_args()
 
-    ext_nodes, ext_edges = load_annotation(args.extracted)
-    gold_nodes, gold_edges = load_annotation(args.gold)
+    ext_nodes, ext_edges = load_graph(args.extracted)
+    gold_nodes, gold_edges = load_graph(args.gold)
 
     if args.exclude_origin:
         ext_nodes, ext_edges = filter_by_origin(ext_nodes, ext_edges,

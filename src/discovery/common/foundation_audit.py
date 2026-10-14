@@ -40,7 +40,7 @@ for _p in (_SRC, _HERE):
 from corpus_io import iter_papers  # noqa: E402
 
 
-THEOREM_LIKE = {"theorem", "lemma", "proposition", "corollary", "claim"}
+from node_types import PROVABLE as THEOREM_LIKE  # noqa: E402
 QUESTION_LIKE = {"open_problem", "conjecture"}
 
 # Common single-word stop terms suppressed regardless of source. These are

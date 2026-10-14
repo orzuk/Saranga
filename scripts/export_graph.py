@@ -30,8 +30,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from latex_macros import normalize_for_mathtext          # noqa: E402
 
-THEOREM_LIKE = {"theorem", "lemma", "proposition", "corollary", "claim",
-                "conjecture"}
+from node_types import THEOREM_LIKE  # noqa: E402
 BACKBONE = THEOREM_LIKE | {"definition"}
 LEVEL2 = {"proof_step", "algorithm_step"}
 # Same grouping the viewer colours by; see visualize_annotation.EDGE_COLORS.
