@@ -21,7 +21,7 @@ START_DATE=${START_DATE:-2024-01-01}
 END_DATE=${END_DATE:-}
 OUT_DIR=${OUT_DIR:-./corpus_out}
 OPERATIONS=${OPERATIONS:-parse,validate,anomalies,stats,link}
-EXTRACTION_MODE=${EXTRACTION_MODE:-manual}
+EXTRACTION_MODE=${EXTRACTION_MODE:-rules}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"

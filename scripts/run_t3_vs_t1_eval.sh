@@ -1,7 +1,7 @@
 #!/bin/bash
 # Evaluate T3 (rule-based regex) against T1 (manual gold) using the SAME
 # pipeline as run_t3_vs_t2_eval.sh: T3 extraction first, then
-# src/evaluate_extraction.py at tau>=0.7 with --exclude-origin external.
+# src/evaluate_extraction.py (Jaccard threshold TAU, default 0.5) with --exclude-origin external.
 #
 # Sanity-check intent: should reproduce the headline T3-vs-T1 mean F1 ~0.83.
 # If it does, the pipeline is fine and the low T3-vs-T2 number reflects
@@ -33,6 +33,7 @@ EVAL_OUT="$WORK_DIR/eval_results"
 mkdir -p "$T3_OUT" "$EVAL_OUT"
 
 EVAL="src/evaluate_extraction.py"
+TAU=${TAU:-0.5}          # node-match Jaccard threshold: TAU=0.7 ./this_script.sh
 PIPELINE="src/run_pipeline.py"
 
 echo "=== [1/3] Listing T1 papers ==="
@@ -117,6 +118,7 @@ while read -r pid; do
         --gold "$t1_path" \
         --csv "$out_csv" \
         --exclude-origin external \
+        --node-sim-threshold "$TAU" \
         > "$EVAL_OUT/${pid}.log" 2>&1 || {
             echo "  FAIL eval $pid (see ${pid}.log)"
             n_failed=$((n_failed + 1))

@@ -134,24 +134,27 @@ def clean_source(tex: str) -> str:
 _INPUT = re.compile(r"(?<!\\)\\(input|include|subfile)\s*\{([^{}#]+)\}")
 
 
-def read_tex(path: str, _depth: int = 0) -> str:
+def read_tex(path: str, _depth: int = 0, _root=None) -> str:
     """The paper's source with every \\input / \\include / \\subfile inlined.
 
-    Files are looked up relative to the including file: as given, then with
-    .tex and .txt appended. An unresolvable file is left as the command, so
-    nothing is invented.
+    Comments are removed first, so a commented-out \\input is not inlined.
+    Files are looked up relative to the main file's folder (as LaTeX does) and
+    then the including file's: as given, then with .tex and .txt appended. An
+    unresolvable file is left as the command, so nothing is invented.
     """
     from pathlib import Path
     p = Path(path)
-    text = p.read_text(encoding="utf-8", errors="replace")
+    root = _root or p.parent
+    text = _COMMENT.sub("", p.read_text(encoding="utf-8", errors="replace"))
     if _depth >= 8:
         return text
 
     def inline(m):
         name = m.group(2).strip()
-        for cand in (p.parent / name, p.parent / f"{name}.tex", p.parent / f"{name}.txt"):
-            if cand.is_file():
-                return read_tex(str(cand), _depth + 1)
+        for base in dict.fromkeys((root, p.parent)):
+            for cand in (base / name, base / f"{name}.tex", base / f"{name}.txt"):
+                if cand.is_file():
+                    return read_tex(str(cand), _depth + 1, root)
         return m.group(0)
     return _INPUT.sub(inline, text)
 

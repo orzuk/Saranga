@@ -280,7 +280,7 @@ class PromptOptimizer:
             base_id = None
             meta = None
             for vid, entry in data.items():
-                bid = vid.split("v")[0]
+                bid = re.sub(r"v\d+$", "", vid)
                 if bid == paper_id:
                     base_id = bid
                     meta = entry.get("metadata", entry)
@@ -289,7 +289,7 @@ class PromptOptimizer:
             if base_id is None:
                 # Take the first match
                 vid, entry = next(iter(data.items()))
-                base_id = vid.split("v")[0]
+                base_id = re.sub(r"v\d+$", "", vid)
                 meta = entry.get("metadata", entry)
 
             # Resolve TeX source

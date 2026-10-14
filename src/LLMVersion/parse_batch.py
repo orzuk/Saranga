@@ -42,6 +42,7 @@ Preferred (unified pipeline):
       --out-dir parsed_math_pr_30d --extraction-mode both
 """
 
+import re
 import argparse
 import os
 import sys
@@ -161,7 +162,7 @@ def run_batch(
             local = _find_local_tex(plain_id, tex_dir=tex_dir)
             if local:
                 tex_path, versioned_id = local
-                base_id = versioned_id.split("v")[0]
+                base_id = re.sub(r"v\d+$", "", versioned_id)
                 local_items = [(base_id, tex_path, versioned_id)]
                 print(f"[INFO] Found local .tex for {plain_id}: {tex_path}")
 
@@ -339,7 +340,7 @@ def run_batch(
     # ------------------------------------------------------------
     base_to_meta: Dict[str, Dict[str, Any]] = {}
     for vid, entry in data.items():
-        base_id = vid.split("v")[0]
+        base_id = re.sub(r"v\d+$", "", vid)
         md = entry.get("metadata", entry)
         base_to_meta[base_id] = md
 

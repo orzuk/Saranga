@@ -1,1 +1,1 @@
-../../../extractors/rules/silver_v5.1__subset_selection__2026-08/distilled_rules.py
+../../../extractors/rules/silver_v6__sentence_rules_haiku__2026-10/distilled_rules.py

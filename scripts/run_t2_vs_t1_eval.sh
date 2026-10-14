@@ -1,7 +1,7 @@
 #!/bin/bash
 # Evaluate T2 (Opus silver) against T1 (manual gold) using the SAME pipeline
 # as run_t3_vs_t2_eval.sh: src/evaluate_extraction.py with strict greedy
-# Jaccard at tau>=0.7 and --exclude-origin external.
+# Jaccard at threshold TAU (default 0.5) and --exclude-origin external.
 #
 # Sanity-check intent: if this reproduces the headline T2-vs-T1 mean F1 ~0.92
 # we know the pipeline is fine and the low T3-vs-T2 number reflects style
@@ -26,6 +26,7 @@ EVAL_OUT="$WORK_DIR/eval_results"
 mkdir -p "$EVAL_OUT"
 
 EVAL="src/evaluate_extraction.py"
+TAU=${TAU:-0.5}          # node-match Jaccard threshold: TAU=0.7 ./this_script.sh
 OVERLAP="$WORK_DIR/overlap.tsv"
 
 echo "=== [1/2] Finding T1<->T2 overlap by arxiv_id ==="
@@ -76,6 +77,7 @@ while IFS=$'\t' read -r pid_t1 pid_t2 aid; do
         --gold "$t1_path" \
         --csv "$out_csv" \
         --exclude-origin external \
+        --node-sim-threshold "$TAU" \
         > "$EVAL_OUT/${pid_t1}.log" 2>&1 || {
             echo "  FAIL $pid_t1 / $pid_t2 (see ${pid_t1}.log)"
             n_skipped=$((n_skipped + 1))

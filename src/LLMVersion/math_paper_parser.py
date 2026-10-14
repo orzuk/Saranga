@@ -363,7 +363,7 @@ class PaperParser:
     def __init__(
             self,
             paper_id: Optional[str] = None,
-            extraction_mode: str = "both",  # 'rules', 'llm', or 'both'
+            extraction_mode: str = "rules",  # 'rules', 'llm', or 'both' (LLM modes call a paid API)
             llm_model: str = "gpt-4o-mini",
             llm_chunk_chars: int = 30000,
             llm_provider: str = "openai",
@@ -378,9 +378,9 @@ class PaperParser:
         paper_id : Optional[str]
             Identifier for this paper.
         extraction_mode : {'rules', 'llm', 'both'}
-            - 'manual': only use rule-based extraction.
+            - 'rules' : only use rule-based extraction (default).
             - 'llm'   : only use LLM-based extraction.
-            - 'both'  : use both and merge (default).
+            - 'both'  : use both and merge.
         llm_model : str
             Model name for LLM extraction (if used).
         llm_chunk_chars : int
@@ -390,7 +390,8 @@ class PaperParser:
         rules_dir : str | Path, optional
             Where to look for ``<type>_eval/distilled_rules.py``. Defaults to
             this file's directory, i.e. the promoted production rules that the
-            14 ``src/LLMVersion/*_eval/distilled_rules.py`` symlinks point at.
+            14 ``src/LLMVersion/*_eval/distilled_rules.py`` symlinks point at
+            (the v6 sentence rules, extractors/rules/silver_v6__sentence_rules_haiku__2026-10).
 
             Pass this to run against a specific distillation's output without
             touching global state. Until it existed the ONLY way to choose a
@@ -2498,7 +2499,7 @@ Respond ONLY with JSON array."""
                     break
 
         # ------------------------------------------------------------------
-        # 2d. Structural edges: example 'illustrates' concept
+        # 2d. Structural edges: concept --illustrates--> example
         #     Link each example to the nearest preceding definition or
         #     theorem-like node.
         # ------------------------------------------------------------------
@@ -2512,11 +2513,11 @@ Respond ONLY with JSON array."""
             for j in range(i - 1, -1, -1):
                 candidate = graph.objects[obj_ids[j]]
                 if candidate.kind in illustrates_targets:
-                    key = (obj.id, candidate.id, "illustrates")
+                    key = (candidate.id, obj.id, "illustrates")    # concept -> example/exercise (edge_types)
                     if key not in existing:
                         graph.add_relation(
-                            source_id=obj.id,
-                            target_id=candidate.id,
+                            source_id=candidate.id,
+                            target_id=obj.id,
                             relation_type="illustrates",
                             category="structural",
                             metadata={"source": "proximity", "confidence": 0.5},
@@ -2526,7 +2527,7 @@ Respond ONLY with JSON array."""
                     break
 
         # ------------------------------------------------------------------
-        # 2e. Structural edges: exercise 'tests' concept
+        # 2e. Structural edges: concept --tests--> exercise
         #     Link each exercise to the nearest preceding definition or
         #     theorem-like node.
         # ------------------------------------------------------------------
@@ -2540,11 +2541,11 @@ Respond ONLY with JSON array."""
             for j in range(i - 1, -1, -1):
                 candidate = graph.objects[obj_ids[j]]
                 if candidate.kind in tests_targets:
-                    key = (obj.id, candidate.id, "tests")
+                    key = (candidate.id, obj.id, "tests")    # concept -> example/exercise (edge_types)
                     if key not in existing:
                         graph.add_relation(
-                            source_id=obj.id,
-                            target_id=candidate.id,
+                            source_id=candidate.id,
+                            target_id=obj.id,
                             relation_type="tests",
                             category="structural",
                             metadata={"source": "proximity", "confidence": 0.5},

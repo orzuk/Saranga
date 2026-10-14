@@ -40,6 +40,9 @@ THEOREM_LIKE = {"theorem", "lemma", "proposition", "corollary", "claim",
                 "conjecture", "problem", "definition", "proof"}
 
 
+TAU = 0.5          # node-match Jaccard threshold, set by --tau
+
+
 def per_paper_per_type_counts(extracted_path, gold_path):
     """Returns dict {type: (tp, fp, fn)} for the 9 evaluated types."""
     with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tf:
@@ -50,6 +53,7 @@ def per_paper_per_type_counts(extracted_path, gold_path):
         "--gold",      str(gold_path),
         "--csv",       out_csv,
         "--exclude-origin", "external",
+        "--node-sim-threshold", str(TAU),
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     if proc.returncode != 0:
@@ -118,7 +122,10 @@ def main():
                     help="Cache dir for T3 extractions")
     ap.add_argument("--skip-t3", action="store_true")
     ap.add_argument("--n-iter", type=int, default=10000)
+    ap.add_argument("--tau", type=float, default=0.5, help="node-match Jaccard threshold")
     args = ap.parse_args()
+    global TAU
+    TAU = args.tau
 
     # Find the 10 manual gold papers; derive arxiv_id from filename
     manual_papers = sorted(T1_DIR.glob("*_manual.json"))

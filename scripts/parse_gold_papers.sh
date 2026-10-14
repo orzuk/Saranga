@@ -11,7 +11,7 @@
 #   ./scripts/parse_gold_papers.sh                    # all operations
 #   OPERATIONS=validate,anomalies,stats \
 #       ./scripts/parse_gold_papers.sh                # skip re-parsing
-#   EXTRACTION_MODE=both ./scripts/parse_gold_papers.sh  # manual + LLM
+#   EXTRACTION_MODE=both ./scripts/parse_gold_papers.sh  # rules + LLM
 #
 # Output: gold_paper_output/ with JSONs, PNGs, HTMLs, and reports.
 
@@ -20,7 +20,7 @@ set -uo pipefail
 # --- Configuration ---
 
 OPERATIONS=${OPERATIONS:-parse,validate,anomalies,stats,visualize}
-EXTRACTION_MODE=${EXTRACTION_MODE:-manual}
+EXTRACTION_MODE=${EXTRACTION_MODE:-rules}
 HTML=${HTML:-1}
 OUT_DIR=${OUT_DIR:-./gold_paper_output}
 TEX_DIR=${TEX_DIR:-}

@@ -1,12 +1,12 @@
 #!/bin/bash -l
 #
 # Quick smoke test for the unified pipeline.
-# Parses 5 math.CO papers in manual mode via src/run_pipeline.py, no SLURM,
+# Parses 5 math.CO papers in rules mode via src/run_pipeline.py, no SLURM,
 # no LLM API cost. Use this to verify the pipeline works end-to-end before
 # submitting the full cluster job.
 #
 # Usage:
-#   ./scripts/parse_smoke_test.sh               # 5 papers, manual mode
+#   ./scripts/parse_smoke_test.sh               # 5 papers, rules mode
 #   TOP_K=20 ./scripts/parse_smoke_test.sh      # 20 papers
 #   CATEGORY=math.PR ./scripts/parse_smoke_test.sh   # different category
 #   OUT_DIR=./my_test ./scripts/parse_smoke_test.sh  # custom output dir
@@ -23,7 +23,7 @@ set -uo pipefail
 CATEGORY=${CATEGORY:-math.CO}
 TOP_K=${TOP_K:-5}
 OUT_DIR=${OUT_DIR:-./smoke_test_out}
-EXTRACTION_MODE=${EXTRACTION_MODE:-manual}
+EXTRACTION_MODE=${EXTRACTION_MODE:-rules}
 OPERATIONS=${OPERATIONS:-parse}
 START_DATE=${START_DATE:-}
 END_DATE=${END_DATE:-}

@@ -37,6 +37,7 @@ Usage (download one batch of years into all_arxiv_papers):
         --out-dir .../all_arxiv_papers --start-from 0704.1234
 """
 
+import re
 import argparse
 import csv
 import os
@@ -149,7 +150,7 @@ def main() -> None:
     # ---- 2. Collapse versioned -> base id (keep metadata) ----
     base_to_meta: Dict[str, Dict[str, Any]] = {}
     for vid, entry in data.items():
-        base_id = vid.split("v")[0]
+        base_id = re.sub(r"v\d+$", "", vid)
         base_to_meta[base_id] = entry.get("metadata", entry)
 
     # ---- 3. Sort ascending by (date, id) for deterministic, resumable runs ----

@@ -770,7 +770,7 @@ def list_arxiv_ids_remote(
         for e in entries:
             # Extract <id>…</id>, e.g. "http://arxiv.org/abs/2309.00252v1"
             full_id = e.find("atom:id", ns).text.rsplit("/", 1)[-1]
-            base_id = full_id.split("v")[0]
+            base_id = re.sub(r"v\d+$", "", full_id)
 
             # Server-side date double-check (optional)
             if date_clause:
@@ -1175,7 +1175,7 @@ def fetch_arxiv_batch(
         _all_sorted = _modern + _legacy
         ids_with_ver = _all_sorted[:top_k]
         # Shrink the base-ID list to match the top_k versioned selection.
-        _keep_base = set(v.split("v")[0] for v in ids_with_ver)
+        _keep_base = set(re.sub(r"v\d+$", "", v) for v in ids_with_ver)
         ids_no_ver = [b for b in ids_no_ver if b in _keep_base]
         if verbose:
             print(f"[DEBUG] After top_k={top_k}: "
@@ -1330,7 +1330,12 @@ def fetch_arxiv_batch(
                         with tarfile.open(fileobj=buf, mode='r:gz') as tf:
                             tex_files = [n for n in tf.getnames() if n.endswith('.tex')]
                             if tex_files:
-                                fobj = tf.extractfile(tex_files[0])
+                                # the main file: the one with \documentclass, else the largest
+                                def _rank(n):
+                                    f = tf.extractfile(n)
+                                    b = f.read() if f is not None else b''
+                                    return (b'\\documentclass' in b or b'\\documentstyle' in b, len(b))
+                                fobj = tf.extractfile(max(tex_files, key=_rank))
                                 data = fobj.read() if fobj is not None else b''
                                 try:
                                     content = data.decode('utf-8')
@@ -1554,7 +1559,7 @@ def fetch_arxiv_source(arxiv_id: str, dest_dir: Path, verbose: bool = False,
     candidates = doc_candidates if doc_candidates else tex_files
 
     # Normalize arxiv ID (drop version)
-    base_id = arxiv_id.split("v")[0]
+    base_id = re.sub(r"v\d+$", "", arxiv_id)
 
     # 5b. Prefer file that contains arxiv_id or base_id anywhere in filename
     for p in candidates:
@@ -1699,9 +1704,13 @@ def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir:
     if verbose:
         print(f"[DEBUG] Local TEX missing. Fetching source for {versioned_id} into {storage_dir}")
 
+    # fetch_arxiv_source empties and unpacks into the folder it is given: in the
+    # legacy layout tex/ is shared by every paper of the day, so it gets a private
+    # folder of its own, flattened into <id>.tex and removed below.
+    fetch_dir = storage_dir if use_paper_subdir else storage_dir / f".src_{safe_vid}"
     try:
         # IMPORTANT: this returns the path to the main .tex file in the unpacked source
-        main_tex = fetch_arxiv_source(versioned_id, storage_dir, verbose=verbose,
+        main_tex = fetch_arxiv_source(versioned_id, fetch_dir, verbose=verbose,
                                       keep_archive=keep_archive)
     except Exception as e:
         raise RuntimeError(f"fetch_arxiv_source failed for {versioned_id}: {e}")
@@ -1713,7 +1722,12 @@ def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir:
             if verbose:
                 print(f"[DEBUG] fetch_arxiv_source resolved main TEX -> {main_tex}")
             # Prefer to have a canonical <versioned_id>.tex
-            if main_tex.resolve() != tex_path.resolve():
+            if not use_paper_subdir:                     # legacy: the private folder goes away
+                try:
+                    tex_path.write_text(flatten_tex(main_tex, fetch_dir), encoding="utf-8", errors="replace")
+                except Exception:                        # noqa: BLE001
+                    shutil.copy(main_tex, tex_path)
+            elif main_tex.resolve() != tex_path.resolve():
                 try:
                     shutil.copy(main_tex, tex_path)
                     if verbose:
@@ -1732,7 +1746,7 @@ def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir:
     # --- 7. Very defensive fallback: any *.tex in storage_dir ---
     if not tex_path.exists():
         tex_files = sorted(
-            storage_dir.rglob("*.tex"),
+            fetch_dir.rglob("*.tex"),
             key=lambda p: p.stat().st_size,
             reverse=True,
         )
@@ -1744,7 +1758,10 @@ def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir:
                     f"using largest TEX file {tex_path.name}"
                 )
         else:
-            raise FileNotFoundError(f"No .tex found in {storage_dir} after fetching")
+            raise FileNotFoundError(f"No .tex found in {fetch_dir} after fetching")
+    if not use_paper_subdir and tex_path.exists() and fetch_dir.exists() \
+            and fetch_dir not in tex_path.resolve().parents:
+        shutil.rmtree(fetch_dir, ignore_errors=True)
 
     # --- 8. Flatten \input / \include references (advanced mode only) ---
     if use_paper_subdir and tex_path.exists():

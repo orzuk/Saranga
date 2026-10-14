@@ -388,7 +388,7 @@ def _render_guarded(render_fn, mem_cap_bytes):
 def op_visualize(args) -> None:
     """Generate PNG and/or HTML visualizations for all JSONs under out_dir."""
     try:
-        from visualize_annotation import draw_dag, generate_interactive_html  # noqa
+        from visualize_annotation import draw_dag, generate_interactive_html, _normalize_schema  # noqa
     except ImportError as e:
         print(f"[pipeline] visualize: cannot import visualize_annotation: {e}")
         return
@@ -464,6 +464,7 @@ def op_visualize(args) -> None:
 
             with open(jp, "r", encoding="utf-8") as f:
                 data = json.load(f)
+            data = _normalize_schema(data, source_path=jp)   # as visualize_annotation.main does
             nodes = data.get("nodes", [])
             edges = data.get("edges", [])
             if not nodes:

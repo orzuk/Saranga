@@ -71,21 +71,17 @@ def tokenize_latex(text):
 # baseline-metrics path (silver_distillation_sequential.jaccard_similarity) did
 # honour it. The two halves of a run were scored by different metrics.
 def jaccard_similarity(text1, text2):
-    """Distillation-profile match score; metric read from node_similarity.
+    """Match score used by the distillation (SILVER profile; metric read from node_similarity).
 
     The metric lives in ONE place (node_similarity.MATCH_METRIC) and is read at
-    call time, so this wrapper and the SILVER-profile one in
-    silver_distillation_sequential can never be configured differently. Set it
-    via node_similarity.set_match_metric(); do not reintroduce a module global
-    here — that is precisely what let the prune gate run on jaccard while the
-    reported metrics used containment.
-
-    NOTE the PROFILE still differs from the silver path (DISTILLATION here vs
-    SILVER there) — a separate, deliberate tokenisation choice, unaffected by
-    the metric.
+    call time. The profile is SILVER, the one every distillation driver has used:
+    until 2026-10-14 this function defined the DISTILLATION profile and
+    silver_distillation_sequential replaced it at import time, so the
+    DISTILLATION profile never ran in production. Now the two agree by
+    construction rather than by monkey-patch.
     """
     import node_similarity as _ns
-    return _text_sim(text1, text2, profile=_Profile.DISTILLATION,
+    return _text_sim(text1, text2, profile=_Profile.SILVER,
                      metric=_ns.MATCH_METRIC)
 
 

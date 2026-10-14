@@ -3,7 +3,7 @@
 # SLURM job: run Authomathics unified pipeline on cluster.
 #
 # Default configuration: parse operation (tex -> JSON) on 500 math.CO papers
-# with manual extraction mode. No API cost. Uses locally-downloaded .tex files
+# with rules extraction mode. No API cost. Uses locally-downloaded .tex files
 # from ARXIV_DIR if available; falls back to arXiv API if not.
 #
 # Usage:
@@ -33,7 +33,7 @@ CATEGORY=${CATEGORY:-math.CO}
 START_DATE=${START_DATE:-2024-01-01}
 END_DATE=${END_DATE:-2026-04-01}
 TOP_K=${TOP_K:-500}
-EXTRACTION_MODE=${EXTRACTION_MODE:-manual}
+EXTRACTION_MODE=${EXTRACTION_MODE:-rules}
 OPERATIONS=${OPERATIONS:-parse}
 
 STRUCTURE_TYPES=${STRUCTURE_TYPES:-"definition,theorem,lemma,proposition,corollary,claim,conjecture,problem,proof,algorithm,equation"}

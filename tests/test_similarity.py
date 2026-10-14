@@ -60,9 +60,9 @@ def test_profiles_match_legacy():
                       NS.node_text(b, include_name=False),
                       profile=NS.Profile.EXTRACTION),
           E.jaccard(E.node_text(a), E.node_text(b)))
-    check("DISTILLATION == distillation_analysis.jaccard_similarity",
+    check("SILVER == distillation_analysis.jaccard_similarity (what the drivers use)",
           NS.text_sim(a["statement"], b["statement"],
-                      profile=NS.Profile.DISTILLATION),
+                      profile=NS.Profile.SILVER),
           D.jaccard_similarity(a["statement"], b["statement"]))
     check("type_compat table is graph_alignment's, unchanged",
           NS.TYPE_COMPAT == A.TYPE_COMPAT, True)

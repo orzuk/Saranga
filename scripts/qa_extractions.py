@@ -37,7 +37,7 @@ sys.path.insert(0, os.path.join(REPO, "src"))
 import edge_types as ET  # noqa: E402
 import node_types as NT  # noqa: E402
 
-VALID_NODES = set(NT.ALL_NODE_TYPES) if hasattr(NT, "ALL_NODE_TYPES") else set()
+VALID_NODES = set(NT.ALL_TYPES)
 VALID_EDGES = set(ET.ALL_EDGE_TYPES) | {"grounded_to"}
 LEVEL2 = {"proof_step", "algorithm_step"}
 THEOREM_LIKE = {"theorem", "lemma", "proposition", "corollary", "claim"}

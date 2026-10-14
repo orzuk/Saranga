@@ -35,7 +35,7 @@ if __name__ == "__main__":
         output_dir = args.output_dir
         verbose    = args.verbose
         if output_dir is None:
-            output_dir = DATA_DIR + '/full_papers'
+            output_dir = Path(DATA_DIR) / 'full_papers'
 
     # Single unified call
     data = fetch_arxiv_batch(

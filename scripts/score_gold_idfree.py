@@ -1,11 +1,11 @@
 """ID-free Benchmark-1 scoring on the 10 T1 gold papers.
 Text: statement with $...$, \\[..\\], \\(..\\) and display envs replaced by [MATH] (the gold's own convention),
-tokens as in src/evaluate_extraction (Jaccard, threshold 0.5), same type required, greedy one-to-one.
+tokens as in src/evaluate_extraction (Jaccard, threshold --tau, default 0.5), same type required, greedy one-to-one.
 Proofs: matched when the results they prove are matched to each other (else by text).
 External-origin nodes excluded on both sides. Reports corpus macro-F1 over the 9 target types."""
 import json, random, re, sys
 from pathlib import Path
-REPO = Path("/mnt/c/Code/Github/Saranga"); sys.path[:0] = [str(REPO/"src")]
+REPO = Path(__file__).resolve().parent.parent; sys.path[:0] = [str(REPO/"src")]
 import evaluate_extraction as E
 T1 = REPO/"portal/data/tier1"
 TYPES = ["theorem","lemma","proposition","corollary","claim","conjecture","problem","definition","proof"]
@@ -54,12 +54,14 @@ def run(d, suffix, label, show=False):
     L=[]
     for g in sorted(T1.glob("*_manual.json")):
         aid=g.stem.replace("_manual",""); e=Path(d)/f"{aid}{suffix}.json"
-        if e.exists(): L.append(match(load(e), load(g)))
+        if e.exists(): L.append(match(load(e), load(g), TAU))
     m,s=macro(L); rng=random.Random(42); bs=sorted(macro([rng.choice(L) for _ in L])[0] for _ in range(3000))
     print(f"{label:30s} n={len(L)} macro-F1 {m:.3f} [{bs[75]:.3f}, {bs[2925]:.3f}]")
     if show:
         for t in TYPES: print(f"     {t:12s} gold {s[t][0]+s[t][2]:3d} TP {s[t][0]:3d} FP {s[t][1]:3d} F1 {f1(*s[t]):.2f}")
+TAU = 0.5                                   # node-match Jaccard threshold: --tau 0.7
 if __name__=="__main__":
+    if "--tau" in sys.argv: TAU = float(sys.argv[sys.argv.index("--tau") + 1])
     run("portal/data/tier1","_anthropic","Opus 4.6 (old)")
     run("portal/data/tier1","_openai","GPT-4o (old)")
     run("portal/data/tier1","_rules","old manual rules")

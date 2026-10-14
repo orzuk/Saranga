@@ -71,18 +71,13 @@ def jaccard_similarity(text1, text2):
 
     Implementation lives in src/node_similarity.py (Profile.SILVER): the same
     macro-collapsing cleanup as before, with "jaccard" and "containment"
-    selectable. Kept as a module-level function because the monkey-patch below
-    relies on rebinding this name.
+    selectable. distillation_analysis.jaccard_similarity uses the same profile.
     """
     import node_similarity as _ns
     from node_similarity import Profile, text_sim
     return text_sim(text1, text2, profile=Profile.SILVER,
                     metric=_ns.MATCH_METRIC)
 
-
-# Monkey-patch so identify_dark_knowledge / validate_rules / etc. inside
-# distillation_analysis pick up the cleaned matcher transparently.
-_da.jaccard_similarity = jaccard_similarity
 
 def _estimate_cost(input_tokens: int, output_tokens: int, model: str) -> float:
     """USD estimate from token counts (the shared pricing table)."""

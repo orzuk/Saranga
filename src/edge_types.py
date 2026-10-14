@@ -21,9 +21,9 @@ GENERALIZES = "generalizes"     # B generalizes A (subtype of uses)
 SPECIALIZES = "specializes"     # B specializes A (subtype of uses)
 
 # Structural edges
-PROVES = "proves"               # B proves A (proof → theorem)
-ILLUSTRATES = "illustrates"     # B illustrates A (example → concept)
-TESTS = "tests"                 # B tests A (exercise → concept)
+PROVES = "proves"               # proof → theorem: the proof (source) establishes the result (target)
+ILLUSTRATES = "illustrates"     # concept → example: the example (target) shows the concept (source)
+TESTS = "tests"                 # concept → exercise: the exercise (target) tests the concept (source)
 RESOLVES = "resolves"           # B resolves A (problem/open_problem/conjecture → theorem-like or algorithm)
 
 # External edges
@@ -82,7 +82,7 @@ EDGE_METADATA = {
     },
     PROVES: {
         "group": "structural",
-        "description": "B proves A — proof node B establishes theorem-like A.",
+        "description": "proof → result: the proof (source) establishes the theorem-like result (target).",
         "source_types": lambda: {"proof"},
         "target_types": _theorem_like_provable,
     },

@@ -276,7 +276,7 @@ def find_chapter_boundaries(lines: list) -> list:
     """
     Find line indices where real chapters begin.
     Returns list of (line_index, chapter_number, chapter_title).
-    Only matches \section*{N Title} where N is a 1-2 digit number.
+    Only matches \\section*{N Title} where N is a 1-2 digit number.
     Filters out spurious matches (e.g., numbered list items promoted to sections).
     """
     boundaries = []
