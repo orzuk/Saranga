@@ -24,7 +24,7 @@ deliberate, reviewable decision rather than a side effect of refactoring.
 METRICS
 -------
 "jaccard" | "containment" (lexical set metrics) | "embedding" (cosine over
-sentence embeddings, via scripts/embedding_sigma.py, imported lazily).
+sentence embeddings, via embedding_sigma.py, imported lazily).
 
   ALIGNMENT     graph_alignment.py       LaTeX-command-aware tokens, no braces
   EXTRACTION    evaluate_extraction.py   punctuation-stripped (loses backslashes)
@@ -358,59 +358,28 @@ def get_match_metric() -> str:
 #
 # The heavy dependency (sentence-transformers) is imported lazily, so nothing
 # here costs anything unless `metric="embedding"` is actually requested.
-# Implementation lives in scripts/embedding_sigma.py, which already has the
-# model singleton, an lru_cache over texts, and precompute_paper_embeddings().
-_embedding_module = None
-
-
-def _load_embedding_module():
-    global _embedding_module
-    if _embedding_module is None:
-        import os
-        import sys as _sys
-        scripts = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "scripts")
-        if scripts not in _sys.path:
-            _sys.path.insert(0, scripts)
-        try:
-            import embedding_sigma as _mod
-        except ImportError as e:                       # pragma: no cover
-            raise ImportError(
-                "metric='embedding' needs sentence-transformers "
-                "(pip install sentence-transformers). Underlying error: %s" % e)
-        _embedding_module = _mod
-    return _embedding_module
+# Implementation lives in embedding_sigma.py, which has the model singleton, an
+# lru_cache over texts, and precompute_paper_embeddings().
 
 
 def embedding_available():
-    """True if the embedding backend can actually run here.
-
-    Probes the heavy dependency itself: embedding_sigma imports fine with only
-    numpy present, and would not fail until the model is first loaded.
-    """
-    try:
-        import importlib.util
-        if importlib.util.find_spec("sentence_transformers") is None:
-            return False
-        _load_embedding_module()
-        return True
-    except Exception:
-        return False
+    """True if the embedding backend can run here (the model loads on first use)."""
+    import importlib.util
+    return importlib.util.find_spec("sentence_transformers") is not None
 
 
 def embed_node(node):
-    """Vector for a node, via scripts/embedding_sigma (cached)."""
-    return _load_embedding_module().embed_node(node)
+    """Vector for a node, via embedding_sigma (cached)."""
+    import embedding_sigma
+    return embedding_sigma.embed_node(node)
 
 
-def embedding_node_sim(node_a, node_b, *, use_type=True):
+def embedding_node_sim(node_a, node_b, use_type=True):
     """Cosine similarity of the two node embeddings, optionally damped by
     `type_compat` — the same composition the lexical path uses, so switching
     metric does not silently switch type policy too."""
-    mod = _load_embedding_module()
-    return mod.sigma(node_a, node_b) if use_type else mod.sigma_no_type(
-        node_a, node_b)
+    import embedding_sigma as es
+    return es.sigma(node_a, node_b) if use_type else es.sigma_no_type(node_a, node_b)
 
 
 def text_sim(text_a, text_b, *, profile=Profile.CANONICAL, metric="jaccard",
@@ -550,3 +519,13 @@ def type_confusion(matches):
     for a, b, *_ in matches:
         c[(a.get("type", ""), b.get("type", ""))] += 1
     return c
+
+
+# ── Scores ───────────────────────────────────────────────────────────────────
+def prf(tp_p, tp_r, fp, fn):
+    """(precision, recall, F1) from counts. `tp_p` credits the predictions and
+    `tp_r` the reference items; they differ only when matching is graded or not
+    one-to-one."""
+    p = tp_p / (tp_p + fp) if tp_p + fp else 0.0
+    r = tp_r / (tp_r + fn) if tp_r + fn else 0.0
+    return p, r, (2 * p * r / (p + r) if p + r else 0.0)

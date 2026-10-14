@@ -19,6 +19,7 @@ from graph_alignment import (
     align_graphs, significance_test, jaccard_sim,
     build_cost_matrix, edge_sim, soft_metrics,
 )
+from node_similarity import prf
 
 
 def score_matching(matching, graph_a, graph_b, sigma_fn=jaccard_sim, alpha=0.5):
@@ -46,38 +47,70 @@ def score_matching(matching, graph_a, graph_b, sigma_fn=jaccard_sim, alpha=0.5):
             "total": node_score + edge_score}
 
 
-def parse_alignment(alignment_json):
-    """Parse the cs_alignment.json format into a gold matching dict.
+def load_json(p):
+    with open(p) as f:
+        return json.load(f)
 
-    Returns: dict mapping node_a_id -> node_b_id (one-to-one for strong matches).
-    Many-to-many matches are expanded as multiple pairs.
+
+def resolve_path(name: str, paths: dict, config_dir: Path) -> Path:
+    """Resolve a path reference of a benchmark config.
+
+    Accepts these forms:
+      "course:paper1_gold.json"    -> paths['course_papers_dir'] / name
+      "bench:paper101_gold.json"   -> paths['bench_papers_dir'] / name
+      "/abs/path.json"             -> as-is
+      "./rel/path.json"            -> config_dir / path
+      "rel/path.json"              -> config_dir / path
     """
-    gold_pairs = set()  # set of (a_id, b_id)
+    if ":" in name and not name.startswith(("/", ".", "\\")):
+        prefix, _, rest = name.partition(":")
+        # Try {prefix}_papers_dir, {prefix}_dir, then "alignments_dir"
+        # for prefix=="align".
+        keys_to_try = [f"{prefix}_papers_dir", f"{prefix}_dir"]
+        if prefix == "align":
+            keys_to_try.append("alignments_dir")
+        for key in keys_to_try:
+            if key in paths:
+                base = Path(paths[key])
+                if not base.is_absolute():
+                    base = (config_dir / base).resolve()
+                return base / rest
+        # fallback
+        return config_dir / rest
+    p = Path(name)
+    if p.is_absolute():
+        return p
+    return (config_dir / p).resolve()
+
+
+def parse_gold_pairs(alignment_json, key_a, key_b):
+    """Strong (exact/analogous) gold pairs (a_id, b_id) of an alignment JSON;
+    many-to-many matches are expanded as multiple pairs. `key_a`/`key_b` name
+    the node lists (cs_alignment.json: paper2_nodes, paper21_nodes)."""
+    pairs = set()
     for m in alignment_json.get("matches", []):
-        mtype = m.get("match_type", "").lower()
-        # Only consider strong matches for precision/recall
-        if mtype not in ("exact", "analogous"):
+        if (m.get("match_type") or "").lower() not in ("exact", "analogous"):
             continue
-        for a_id in m.get("paper2_nodes", []):  # paper 2 is CT in this alignment
-            for b_id in m.get("paper21_nodes", []):  # paper 21 is Donoho
-                gold_pairs.add((a_id, b_id))
-    return gold_pairs
+        for a in m.get(key_a) or []:
+            for b in m.get(key_b) or []:
+                pairs.add((a, b))
+    return pairs
+
+
+def gold_matching(gold_pairs):
+    """The gold pairs as a matching dict a -> b, for scoring: the first b per a."""
+    out = {}
+    for a, b in gold_pairs:
+        out.setdefault(a, b)
+    return out
 
 
 def precision_recall(pred_matching, gold_pairs):
-    """Compute strict P/R/F1 treating matching as a set of (a, b) pairs.
-
-    Backwards-compatible: existing call sites continue to consume this strict,
-    threshold-based result. Soft (threshold-free) variants are produced
-    separately by precision_recall_soft() below.
-    """
-    pred_pairs = set((a, b) for a, b in pred_matching.items())
-    tp = pred_pairs & gold_pairs
-    fp = pred_pairs - gold_pairs
-    fn = gold_pairs - pred_pairs
-    precision = len(tp) / len(pred_pairs) if pred_pairs else 0.0
-    recall = len(tp) / len(gold_pairs) if gold_pairs else 0.0
-    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+    """Strict P/R/F1 treating matching as a set of (a, b) pairs; tp/fp/fn are
+    the sorted pairs. Soft (threshold-free) variants: precision_recall_soft()."""
+    pred_pairs = set(pred_matching.items())
+    tp, fp, fn = pred_pairs & gold_pairs, pred_pairs - gold_pairs, gold_pairs - pred_pairs
+    precision, recall, f1 = prf(len(tp), len(tp), len(fp), len(fn))
     return {"precision": precision, "recall": recall, "f1": f1,
             "tp": sorted(tp), "fp": sorted(fp), "fn": sorted(fn)}
 
@@ -102,22 +135,12 @@ def main():
                         help="Gold alignment JSON (e.g., cs_alignment.json)")
     parser.add_argument("--n-perms", type=int, default=500)
     parser.add_argument("--alpha", type=float, default=0.5)
+    parser.add_argument("--key-a", default="paper2_nodes", help="node list of paper A in the alignment JSON")
+    parser.add_argument("--key-b", default="paper21_nodes", help="node list of paper B in the alignment JSON")
     args = parser.parse_args()
 
-    with open(args.graph_a) as f:
-        g_a = json.load(f)
-    with open(args.graph_b) as f:
-        g_b = json.load(f)
-    with open(args.alignment) as f:
-        gold_json = json.load(f)
-
-    gold_pairs = parse_alignment(gold_json)
-    # Convert to a matching dict (a -> b) for scoring
-    # If many-to-many, pick one b per a (first)
-    gold_matching = {}
-    for a, b in gold_pairs:
-        if a not in gold_matching:
-            gold_matching[a] = b
+    g_a, g_b = load_json(args.graph_a), load_json(args.graph_b)
+    gold_pairs = parse_gold_pairs(load_json(args.alignment), args.key_a, args.key_b)
 
     print(f"Paper A: {args.graph_a}")
     print(f"  {len(g_a['nodes'])} nodes")
@@ -132,7 +155,7 @@ def main():
           f"score {hung_result['score']:.3f}")
 
     # --- Compute gold score under same sigma
-    gold_score = score_matching(gold_matching, g_a, g_b,
+    gold_score = score_matching(gold_matching(gold_pairs), g_a, g_b,
                                  sigma_fn=jaccard_sim, alpha=args.alpha)
     print(f"Gold matching (under Jaccard sigma): "
           f"score {gold_score['total']:.3f}")

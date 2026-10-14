@@ -25,24 +25,11 @@ Or as a library::
 from __future__ import annotations
 
 import os
-import sys
-from pathlib import Path
 from functools import lru_cache
-from typing import Optional
 
 import numpy as np
 
-# ---------------------------------------------------------------------------
-# Ensure repo root is importable (for graph_alignment.type_compat and
-# scripts.canonicalize).
-# ---------------------------------------------------------------------------
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(_REPO_ROOT / "src") not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT / "src"))
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-from graph_alignment import type_compat  # noqa: E402
+from node_similarity import type_compat
 
 # ---------------------------------------------------------------------------
 # Model loading (lazy singleton)

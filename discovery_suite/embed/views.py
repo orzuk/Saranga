@@ -137,7 +137,7 @@ def _canon(latex: str, scope: str, paper_map: Optional[dict]) -> str:
 
     scope='local' renumbers variables per node (V1 = first variable in THIS
     statement) — that is what makes two papers' notations line up pairwise, and
-    is what scripts/embedding_sigma.py already prefers via ``*_canonical_local``.
+    is what src/embedding_sigma.py already prefers via ``*_canonical_local``.
     scope='paper' numbers across the whole paper (more internally consistent,
     less comparable across papers). Both are offered; local is the default.
     """
@@ -405,7 +405,7 @@ def paper_records(
     # Two canonicalization scopes, on purpose:
     #   node view  -> `canon_scope` (default 'local'): V1 = the first variable in
     #     THIS statement, which is what makes two isolated statements from two
-    #     papers line up pairwise (the same choice scripts/embedding_sigma.py
+    #     papers line up pairwise (the same choice src/embedding_sigma.py
     #     makes by preferring *_canonical_local).
     #   ctx view   -> `ctx_canon_scope` (default 'paper'): one numbering shared by
     #     the theorem and every definition quoted beneath it. With a local map per

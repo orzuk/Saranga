@@ -243,22 +243,13 @@ class Scorer:
         missing = [pid for pid in pids if pid not in self.fire[rule["uid"]]]
         self.fire[rule["uid"]].update(self.fire_sets(rule, missing))
 
-    def match(self, p: Paper, pred: dict, taken: set):
-        """(silver node, credit) a prediction matches, or (None, 0): the free node
-        of a compatible type with overlap >= threshold and the highest
-        compatibility x overlap; the credit is the type compatibility."""
-        tok = frozenset(mm.tokens(p.text[pred["start"]:pred["end"]]))
-        best, bk, bw = 0.0, None, 0.0
-        for k, n in enumerate(p.nodes):
-            if k in taken:
-                continue
-            w = self.weight(pred["type"], n.type)
-            if w <= 0:
-                continue
-            ov = mm.sym_containment(tok, n.tokens)
-            if ov >= self.th and w * ov > best:
-                best, bk, bw = w * ov, k, w
-        return bk, bw
+    def match(self, p: Paper, preds: list, toks=None) -> dict:
+        """{prediction index: (silver node, credit)}: the reported metric's own
+        one-to-one pairing (node_metrics._one_to_one); the credit is the type
+        compatibility. `toks`: the predictions' token sets, if already known."""
+        toks = toks or [frozenset(mm.tokens(p.text[q["start"]:q["end"]])) for q in preds]
+        return NM._one_to_one([(q["type"], t) for q, t in zip(preds, toks)],
+                              [(n.type, n.tokens) for n in p.nodes], self.weight, self.th)
 
     def score(self, rules: list[dict], pids, fire_override: dict | None = None) -> dict:
         """Counts over papers for a rule set: tp (new silver nodes found), fp,
@@ -273,17 +264,16 @@ class Scorer:
             for r in rules:
                 src = fire_override if fire_override and r["uid"] in fire_override else self.fire
                 fs[r["uid"]] = src[r["uid"]].get(pid, set())
-            taken = set()
-            for pred in UR.select(p.sents, rules, fs):
-                k, w = self.match(p, pred, taken)
+            preds = UR.select(p.sents, rules, fs)
+            m = self.match(p, preds)
+            for i, pred in enumerate(preds):
+                k, w = m.get(i, (None, 0.0))
                 pr = tot["per_rule"][pred["uid"]]
                 if k is not None and p.nodes[k].base_covered:
                     tot["neutral"] += 1
-                    taken.add(k)
                 elif k is not None:               # credit w, the rest an error (graded)
                     tot["tp"] += w; pr["tp"] += w; pr["papers"][pid][0] += w
                     tot["fp"] += 1 - w; pr["fp"] += 1 - w; pr["papers"][pid][1] += 1 - w
-                    taken.add(k)
                     if w >= 1.0:                  # a node found with another type stays a target
                         tot["found"].add((pid, k))
                 else:

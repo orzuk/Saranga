@@ -108,16 +108,14 @@ def collect(papers, oof, train, rnd):
         p = papers[pid][1]
         d = oof[pid]
         found_as = {}
-        taken = set()
-        for pred in d["preds"]:
-            k, w = TR.match(scorer, p, pred, taken)
-            if k is None:
-                i = next((j for j, s in enumerate(p.sents) if s.start == pred["start"]), None)
-                if i is not None:
-                    fps[pred["type"]].append((pid, p.sent_text[i]))
-            else:
-                taken.add(k)
-                found_as[k] = pred["type"]
+        m = scorer.match(p, d["preds"], [TR.tokens(p, q) for q in d["preds"]])
+        for q, pred in enumerate(d["preds"]):
+            if q in m:
+                found_as[m[q][0]] = pred["type"]
+                continue
+            i = next((j for j, s in enumerate(p.sents) if s.start == pred["start"]), None)
+            if i is not None:
+                fps[pred["type"]].append((pid, p.sent_text[i]))
         for k, n in enumerate(p.nodes):
             if n.base_covered:
                 continue

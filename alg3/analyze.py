@@ -50,11 +50,11 @@ def main():
         p = papers[pid][1]
         preds = [dict(n, uid=0) for n in rt.tag(p.text, L.extract_facts(p.text), p.sents)]
         preds_all[pid] = preds
-        taken = set()
-        for pred in preds:
-            k, w = TR.match(scorer, p, pred, taken)
+        m = scorer.match(p, preds, [TR.tokens(p, q) for q in preds])
+        taken = {k for k, _ in m.values()}
+        for i, pred in enumerate(preds):
+            k, w = m.get(i, (None, 0.0))
             if k is not None:
-                taken.add(k)
                 n = p.nodes[k]
                 if n.base_covered:
                     by_type[pred["type"]]["neutral"] += 1

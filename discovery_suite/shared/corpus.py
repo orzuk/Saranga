@@ -86,7 +86,7 @@ def normalize_math_text(s: str) -> str:
 def node_text(node: dict, *, include_type: bool = True) -> str:
     """Canonical text for a node: type + name + statement + clean_text.
 
-    Mirrors scripts/embedding_sigma.node_text_for_embedding but without the
+    Mirrors src/embedding_sigma.node_text_for_embedding but without the
     torch/sentence-transformers import, so the light (P1/P2) methods stay
     dependency-free. Prefers ``clean_text`` (parser-cleaned) then ``statement``.
     """

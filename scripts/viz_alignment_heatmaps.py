@@ -24,7 +24,6 @@ Usage::
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -41,21 +40,15 @@ from matplotlib.colors import Normalize
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(REPO_ROOT / "src"))
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
 
 from graph_alignment import jaccard_sim, type_compat  # noqa: E402
-from embedding_sigma import sigma as embedding_sigma, embed_node  # noqa: E402
+from embedding_sigma import sigma as embedding_sigma  # noqa: E402
+from graph_alignment_eval import load_json, parse_gold_pairs, resolve_path  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def load_json(p):
-    with open(p) as f:
-        return json.load(f)
-
 
 def get_nodes(paper_json: dict) -> list[dict]:
     """Return nodes as a list (handle both list and dict formats)."""
@@ -77,23 +70,6 @@ def sort_nodes(nodes: list[dict]) -> list[dict]:
         type_order.get(n.get("type", ""), 99),
         n.get("id", ""),
     ))
-
-
-def parse_gold_pairs(alignment_json: dict,
-                     key_a: str = "paper_a_nodes",
-                     key_b: str = "paper_b_nodes") -> set[tuple[str, str]]:
-    """Extract (node_a_id, node_b_id) gold pairs (exact + analogous)."""
-    pairs = set()
-    for m in alignment_json.get("matches", []):
-        mtype = (m.get("match_type") or "").lower()
-        if mtype not in ("exact", "analogous"):
-            continue
-        a_ids = m.get(key_a, []) or []
-        b_ids = m.get(key_b, []) or []
-        for a in a_ids:
-            for b in b_ids:
-                pairs.add((a, b))
-    return pairs
 
 
 def compute_sim_matrix(nodes_a, nodes_b, sigma_fn):
@@ -286,26 +262,6 @@ def process_pair(paper_a_path, paper_b_path, alignment_path,
 # ---------------------------------------------------------------------------
 # Batch mode: read benchmark_config.json
 # ---------------------------------------------------------------------------
-
-def resolve_path(name: str, paths: dict, config_dir: Path) -> Path:
-    """Same logic as run_alignment_benchmark.resolve_path."""
-    if ":" in name and not name.startswith(("/", ".", "\\")):
-        prefix, _, rest = name.partition(":")
-        keys_to_try = [f"{prefix}_papers_dir", f"{prefix}_dir"]
-        if prefix == "align":
-            keys_to_try.append("alignments_dir")
-        for key in keys_to_try:
-            if key in paths:
-                base = Path(paths[key])
-                if not base.is_absolute():
-                    base = (config_dir / base).resolve()
-                return base / rest
-        return config_dir / rest
-    p = Path(name)
-    if p.is_absolute():
-        return p
-    return (config_dir / p).resolve()
-
 
 def batch_from_config(config_path: str, outdir: str,
                       course_papers_dir: str | None = None):

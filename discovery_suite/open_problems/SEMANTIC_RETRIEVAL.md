@@ -60,7 +60,7 @@ fractions/binomials/inequalities via `scripts/canonicalize`), plus **score-level
 fusion of the two** — never vector concatenation, which would let whichever half has
 the larger norm dominate. Two scopes on purpose: the `node` view uses **local**
 scope (V1 = first variable in *this* statement, which is what aligns two isolated
-statements pairwise, matching `scripts/embedding_sigma.py`), while `ctx-concat` uses
+statements pairwise, matching `src/embedding_sigma.py`), while `ctx-concat` uses
 **paper** scope so the theorem and the definitions quoted beneath it share one
 numbering. A local map per fragment would make the assembled block internally
 inconsistent and unfairly penalize the canonical arm.

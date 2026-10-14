@@ -128,24 +128,13 @@ def decode(p, probs, classes, span_pred, tau) -> list:
 _TOK: dict = {}
 
 
-def match(scorer, p, pred, taken):
-    """DU.Scorer.match with the prediction's token set cached (threshold tuning
-    scores the same spans hundreds of times)."""
+def tokens(p, pred) -> frozenset:
+    """A prediction's token set, cached (threshold tuning scores the same spans
+    hundreds of times)."""
     key = (p.pid, pred["start"], pred["end"])
-    tok = _TOK.get(key)
-    if tok is None:
-        tok = _TOK[key] = frozenset(DU.mm.tokens(p.text[pred["start"]:pred["end"]]))
-    best, bk, bw = 0.0, None, 0.0
-    for k, n in enumerate(p.nodes):
-        if k in taken:
-            continue
-        w = scorer.weight(pred["type"], n.type)
-        if w <= 0:
-            continue
-        ov = DU.mm.sym_containment(tok, n.tokens)
-        if ov >= scorer.th and w * ov > best:
-            best, bk, bw = w * ov, k, w
-    return bk, bw
+    if key not in _TOK:
+        _TOK[key] = frozenset(DU.mm.tokens(p.text[pred["start"]:pred["end"]]))
+    return _TOK[key]
 
 
 def evaluate(scorer, papers: dict, pids, preds: dict) -> dict:
@@ -154,18 +143,17 @@ def evaluate(scorer, papers: dict, pids, preds: dict) -> dict:
     for pid in pids:
         p = papers[pid][1]
         targets += sum(not n.base_covered for n in p.nodes)
-        taken = set()
-        for pred in preds.get(pid, []):
-            k, w = match(scorer, p, pred, taken)
-            if k is not None and p.nodes[k].base_covered:
+        ps = preds.get(pid, [])
+        m = scorer.match(p, ps, [tokens(p, q) for q in ps])
+        for i in range(len(ps)):
+            k, w = m.get(i, (None, 0.0))
+            if k is None:
+                fp += 1
+            elif p.nodes[k].base_covered:
                 neutral += 1
-                taken.add(k)
-            elif k is not None:
+            else:
                 tp += w
                 fp += 1 - w
-                taken.add(k)
-            else:
-                fp += 1
     a_tp = sum(papers[q][1].base_tp for q in pids) + tp
     a_fp = sum(papers[q][1].base_fp for q in pids) + fp
     a_fn = max(sum(papers[q][1].n_silver for q in pids) - a_tp, 0)
@@ -178,13 +166,14 @@ def evaluate(scorer, papers: dict, pids, preds: dict) -> dict:
 
 def candidates(scorer, papers, pids, prob_by, classes, span_by) -> dict:
     """Per paper and sentence: the type it would be emitted with, its probability,
-    the last sentence of its span, and every silver node it could match
-    [(node, credit, credit x overlap)], in node order. Thresholds only decide
+    the last sentence of its span, and every silver node it could match (the
+    matcher's candidate pairs, node_metrics._pairs). Thresholds only decide
     which candidates are emitted, so tuning never touches text again."""
     none = classes.index("none")
     out = {}
     for pid in pids:
         p = papers[pid][1]
+        G = [(n.type, n.tokens) for n in p.nodes]
         rows_ = []
         for i in range(len(p.sents)):
             row = prob_by[pid][i].copy()
@@ -192,20 +181,8 @@ def candidates(scorer, papers, pids, prob_by, classes, span_by) -> dict:
             c = int(np.argmax(row))
             t = classes[c]
             j = UR.span_end(p.sents, i, span_by[pid].get(i, "1"))
-            pred = {"type": t, "start": p.sents[i].start, "end": p.sents[j].end}
-            key = (p.pid, pred["start"], pred["end"])
-            tok = _TOK.get(key)
-            if tok is None:
-                tok = _TOK[key] = frozenset(DU.mm.tokens(p.text[pred["start"]:pred["end"]]))
-            m = []
-            for k, n in enumerate(p.nodes):
-                w = scorer.weight(t, n.type)
-                if w <= 0:
-                    continue
-                ov = DU.mm.sym_containment(tok, n.tokens)
-                if ov >= scorer.th and w * ov > 0:
-                    m.append((k, w, w * ov))
-            rows_.append((t, float(row[c]), j, m))
+            tok = tokens(p, {"start": p.sents[i].start, "end": p.sents[j].end})
+            rows_.append((t, float(row[c]), j, DU.NM._pairs([(t, tok)], G, scorer.weight, scorer.th)))
         out[pid] = rows_
     return out
 
@@ -215,23 +192,18 @@ def fast_eval(cands, papers, pids, tau) -> float:
     tp = fp = 0.0
     for pid in pids:
         p = papers[pid][1]
-        covered, taken = -1, set()
+        covered, pairs = -1, []
         for i, (t, pr, j, m) in enumerate(cands[pid]):
             if i <= covered or pr < tau.get(t, 1.01):
                 continue
             covered = j
-            best, bk, bw = 0.0, None, 0.0
-            for k, w, wov in m:
-                if k not in taken and wov > best:
-                    best, bk, bw = wov, k, w
-            if bk is None:
-                fp += 1
-            elif p.nodes[bk].base_covered:
-                taken.add(bk)
-            else:
-                tp += bw
-                fp += 1 - bw
-                taken.add(bk)
+            fp += 1
+            pairs += [(s, jac, i, k, w) for s, jac, _, k, w in m]
+        for k, w in DU.NM._greedy(pairs).values():
+            fp -= 1
+            if not p.nodes[k].base_covered:
+                tp += w
+                fp += 1 - w
     a_tp = sum(papers[q][1].base_tp for q in pids) + tp
     a_fp = sum(papers[q][1].base_fp for q in pids) + fp
     a_fn = max(sum(papers[q][1].n_silver for q in pids) - a_tp, 0)
@@ -444,14 +416,6 @@ def main():
           f"stack={a.stack}", flush=True)
     pvs = views(papers)
     scorer = DU.Scorer({pid: p for pid, (_, p) in papers.items()}, 0.7, metric="m1g")
-    # the cached matcher must agree with the unit algorithm's own
-    for pid in train[:5]:
-        p = papers[pid][1]
-        for i in range(0, len(p.sents), 7):
-            for t in ("definition", "claim", "remark"):
-                pred = {"type": t, "start": p.sents[i].start,
-                        "end": p.sents[min(i + 1, len(p.sents) - 1)].end}
-                assert match(scorer, p, pred, set()) == scorer.match(p, pred, set()), pred
     Xtr, ytr, gtr, itr = rows(train, papers, pvs)
     Xva, yva, gva, iva = rows(val, papers, pvs)
     Xtr, keep = prune_rare(Xtr, a.min_count)

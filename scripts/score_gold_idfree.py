@@ -7,6 +7,7 @@ import json, random, re, sys
 from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent; sys.path[:0] = [str(REPO/"src")]
 import evaluate_extraction as E
+from node_similarity import prf
 T1 = REPO/"portal/data/tier1"
 TYPES = ["theorem","lemma","proposition","corollary","claim","conjecture","problem","definition","proof"]
 MATH = re.compile(r"\$\$.*?\$\$|\$.*?\$|\\\[.*?\\\]|\\\(.*?\\\)|\\begin\{(equation|align|gather|multline|eqnarray)\*?\}.*?\\end\{\1\*?\}", re.S)
@@ -42,7 +43,7 @@ def match(ext, gold, thr=0.5):
     for j,b in enumerate(gold):
         if j not in ug: c[b["type"]][2] += 1
     return c
-def f1(tp,fp,fn): d=2*tp+fp+fn; return 2*tp/d if d else 0
+def f1(tp,fp,fn): return prf(tp,tp,fp,fn)[2]
 def macro(L):
     s={t:[0,0,0] for t in TYPES}
     for c in L:

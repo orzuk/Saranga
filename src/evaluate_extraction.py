@@ -49,6 +49,7 @@ from node_similarity import Profile as _Profile
 from node_similarity import text_sim as _text_sim
 from node_similarity import tokenize as _ns_tokenize
 from node_similarity import node_text as _ns_node_text
+from node_similarity import prf
 from graph_io import load_graph
 
 
@@ -194,11 +195,8 @@ def compute_metrics(tp, fp, fn, partial_tp=0, partial_weight=0.5):
     partial_weight: credit per partial match (default 0.5)
     """
     effective_tp = tp + partial_tp * partial_weight
-    total_pred = tp + partial_tp + fp
-    total_gold = tp + partial_tp + fn
-    precision = effective_tp / total_pred if total_pred > 0 else 0.0
-    recall = effective_tp / total_gold if total_gold > 0 else 0.0
-    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+    miss = partial_tp * (1 - partial_weight)          # the rest of a partial match: an error both ways
+    precision, recall, f1 = prf(effective_tp, effective_tp, fp + miss, fn + miss)
     return {"tp": tp, "partial_tp": partial_tp, "fp": fp, "fn": fn,
             "effective_tp": effective_tp,
             "precision": precision, "recall": recall, "f1": f1}

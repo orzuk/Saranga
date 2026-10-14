@@ -85,7 +85,7 @@ Directional: "B reuses A" (A older). Ascending complexity:
 ## 2. T-ALIGN — Cross-paper node/subgraph alignment
 
 Prior art (T2): `src/graph_alignment.py` (signature prefilter → Hungarian → structural
-refinement → permutation significance) + `scripts/embedding_sigma.py`. **Already
+refinement → permutation significance) + `src/embedding_sigma.py`. **Already
 strong; extend and scale.** Ascending complexity:
 
 - **A1 — Signature prefilter (existing, cheap).** Foundation-term TF-IDF + type-compat

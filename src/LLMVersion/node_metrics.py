@@ -48,9 +48,9 @@ def _jaccard(a, b) -> float:
     return len(a & b) / u if u else 0.0
 
 
-def _one_to_one(P, G, weight, th):
-    """Greedy one-to-one pairing: pairs with overlap >= th and weight > 0, best
-    weight x overlap first, then the closer length. Returns {i: (j, weight)}."""
+def _pairs(P, G, weight, th):
+    """Candidate pairs (weight x overlap, Jaccard, i, j, weight): overlap >= th
+    and weight > 0."""
     pairs = []
     for i, (tp, a) in enumerate(P):
         for j, (tg, b) in enumerate(G):
@@ -60,14 +60,24 @@ def _one_to_one(P, G, weight, th):
             ov = mm.sym_containment(a, b)
             if ov >= th:
                 pairs.append((w * ov, _jaccard(a, b), i, j, w))
-    pairs.sort(key=lambda x: (-x[0], -x[1], x[2], x[3]))
+    return pairs
+
+
+def _greedy(pairs):
+    """Greedy one-to-one pairing of `_pairs` output: best weight x overlap first,
+    then the closer length. Returns {i: (j, weight)}."""
     out, used = {}, set()
-    for _s, _jac, i, j, w in pairs:
+    for _s, _jac, i, j, w in sorted(pairs, key=lambda x: (-x[0], -x[1], x[2], x[3])):
         if i in out or j in used:
             continue
         out[i] = (j, w)
         used.add(j)
     return out
+
+
+def _one_to_one(P, G, weight, th):
+    """Greedy one-to-one pairing of P with G: {i: (j, weight)}."""
+    return _greedy(_pairs(P, G, weight, th))
 
 
 def _credits(P, G, weight, th):

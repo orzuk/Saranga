@@ -16,9 +16,7 @@ Usage:
 import json
 import math
 import re
-import sys
 from collections import defaultdict
-from pathlib import Path
 
 import numpy as np
 from scipy.optimize import linear_sum_assignment
@@ -40,6 +38,7 @@ from node_similarity import (            # noqa: F401  (re-export)
     node_text,
     node_proof_text,
     Profile as _Profile,
+    embedding_node_sim as embedding_sim,     # needs sentence-transformers
 )
 
 
@@ -83,36 +82,6 @@ def jaccard_combined(node_a, node_b, use_type=True):
     when both axes agree, 'same theorem different proof' damped but visible."""
     return _axis(node_a, node_b, use_type,
                  lambda n: node_text(n) + " " + node_proof_text(n))
-
-
-# ── Embedding-based node similarity ─────────────────────────────────────────
-# Lazy-loaded from scripts/embedding_sigma.py to avoid mandatory heavy
-# dependencies (sentence-transformers) when only Jaccard is needed.
-
-_embedding_module = None
-
-
-def _load_embedding_module():
-    global _embedding_module
-    if _embedding_module is None:
-        repo_root = Path(__file__).resolve().parents[1]
-        scripts_dir = str(repo_root / "scripts")
-        if scripts_dir not in sys.path:
-            sys.path.insert(0, scripts_dir)
-        import embedding_sigma as _mod
-        _embedding_module = _mod
-    return _embedding_module
-
-
-def embedding_sim(node_a, node_b, use_type=True):
-    """Embedding cosine similarity × type compatibility.
-
-    Drop-in replacement for jaccard_sim. Requires sentence-transformers.
-    """
-    mod = _load_embedding_module()
-    if use_type:
-        return mod.sigma(node_a, node_b)
-    return mod.sigma_no_type(node_a, node_b)
 
 
 # Lookup table for --sigma CLI argument

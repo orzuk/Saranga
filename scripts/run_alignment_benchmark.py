@@ -24,7 +24,6 @@ from __future__ import annotations
 import argparse
 import csv
 import importlib
-import json
 import sys
 from pathlib import Path
 
@@ -38,74 +37,10 @@ from graph_alignment import (  # noqa: E402
     jaccard_sim,
     significance_test,
 )
-from graph_alignment_eval import score_matching  # noqa: E402
+from graph_alignment_eval import (  # noqa: E402
+    gold_matching, load_json, parse_gold_pairs, precision_recall, resolve_path, score_matching,
+)
 import numpy as np  # noqa: E402
-
-
-def load_json(p: Path) -> dict:
-    with open(p) as f:
-        return json.load(f)
-
-
-def resolve_path(name: str, paths: dict, config_dir: Path) -> Path:
-    """Resolve a path reference.
-
-    Accepts these forms:
-      "course:paper1_gold.json"    -> paths['course_papers_dir'] / name
-      "bench:paper101_gold.json"   -> paths['bench_papers_dir'] / name
-      "/abs/path.json"             -> as-is
-      "./rel/path.json"            -> config_dir / path
-      "rel/path.json"              -> config_dir / path
-    """
-    if ":" in name and not name.startswith(("/", ".", "\\")):
-        prefix, _, rest = name.partition(":")
-        # Try {prefix}_papers_dir, {prefix}_dir, then "alignments_dir"
-        # for prefix=="align".
-        keys_to_try = [f"{prefix}_papers_dir", f"{prefix}_dir"]
-        if prefix == "align":
-            keys_to_try.append("alignments_dir")
-        for key in keys_to_try:
-            if key in paths:
-                base = Path(paths[key])
-                if not base.is_absolute():
-                    base = (config_dir / base).resolve()
-                return base / rest
-        # fallback
-        return config_dir / rest
-    p = Path(name)
-    if p.is_absolute():
-        return p
-    return (config_dir / p).resolve()
-
-
-def parse_gold_pairs(alignment_json: dict, key_A: str, key_B: str) -> set:
-    """Extract strong (exact/analogous) gold pairs from an alignment JSON.
-
-    Supports the cs_alignment.json style (paper2_nodes, paper21_nodes) and
-    any alignment JSON using configurable key names.
-    """
-    pairs = set()
-    for m in alignment_json.get("matches", []):
-        mtype = (m.get("match_type") or "").lower()
-        if mtype not in ("exact", "analogous"):
-            continue
-        a_ids = m.get(key_A, []) or []
-        b_ids = m.get(key_B, []) or []
-        for a in a_ids:
-            for b in b_ids:
-                pairs.add((a, b))
-    return pairs
-
-
-def precision_recall(pred_matching: dict, gold_pairs: set) -> dict:
-    pred_pairs = set(pred_matching.items())
-    tp = pred_pairs & gold_pairs
-    prec = len(tp) / len(pred_pairs) if pred_pairs else 0.0
-    rec = len(tp) / len(gold_pairs) if gold_pairs else 0.0
-    f1 = 2 * prec * rec / (prec + rec) if (prec + rec) else 0.0
-    return {"precision": prec, "recall": rec, "f1": f1,
-            "tp": len(tp), "fp": len(pred_pairs) - len(tp),
-            "fn": len(gold_pairs) - len(tp)}
 
 
 def eval_pair(pair_cfg: dict, paths: dict, config_dir: Path, sigma_fn,
@@ -156,13 +91,8 @@ def eval_pair(pair_cfg: dict, paths: dict, config_dir: Path, sigma_fn,
         gold_pairs = parse_gold_pairs(
             align_json, pair_cfg["key_A"], pair_cfg["key_B"]
         )
-        gold_matching = {}
-        for a, b in gold_pairs:
-            if a not in gold_matching:
-                gold_matching[a] = b
-
         gold_score_components = score_matching(
-            gold_matching, g_a, g_b, sigma_fn=sigma_fn, alpha=alpha,
+            gold_matching(gold_pairs), g_a, g_b, sigma_fn=sigma_fn, alpha=alpha,
         )
         gold_score = gold_score_components["total"]
         delta = hung["score"] - gold_score
@@ -179,9 +109,9 @@ def eval_pair(pair_cfg: dict, paths: dict, config_dir: Path, sigma_fn,
             "precision": round(pr["precision"], 3),
             "recall": round(pr["recall"], 3),
             "f1": round(pr["f1"], 3),
-            "tp": pr["tp"],
-            "fp": pr["fp"],
-            "fn": pr["fn"],
+            "tp": len(pr["tp"]),
+            "fp": len(pr["fp"]),
+            "fn": len(pr["fn"]),
             "z_gold": round(z_gold, 3),
             "p_gold": round(p_gold, 4),
         })

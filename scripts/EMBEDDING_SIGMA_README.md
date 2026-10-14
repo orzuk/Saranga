@@ -6,7 +6,7 @@ An embedding-based similarity function (`sigma`) that replaces the Jaccard basel
 
 ## Files Created
 
-### `scripts/embedding_sigma.py`
+### `src/embedding_sigma.py`
 The core sigma module. Drop-in replacement for `graph_alignment.jaccard_sim`.
 
 **Key function:** `sigma(node_a, node_b) -> float`
@@ -20,7 +20,7 @@ The core sigma module. Drop-in replacement for `graph_alignment.jaccard_sim`.
 - `sigma_no_type(a, b)` — raw cosine similarity without type compatibility (for ablation)
 - `embed_node(node)` — get the raw embedding vector for a node
 - `precompute_paper_embeddings(paper_json)` — batch compute all embeddings for a paper
-- CLI smoke test: `python scripts/embedding_sigma.py paper_a.json paper_b.json --top-k 10`
+- CLI smoke test: `python src/embedding_sigma.py paper_a.json paper_b.json --top-k 10`
 
 **Configuration:**
 - Set `EMBEDDING_MODEL` env var to switch models (e.g., `BAAI/bge-m3` if torch >= 2.6)

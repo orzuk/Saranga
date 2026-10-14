@@ -78,6 +78,7 @@ for p in (REPO / "scripts", REPO / "src" / "LLMVersion", REPO / "src"):
     if str(p) not in sys.path:
         sys.path.insert(0, str(p))
 
+import node_similarity as NS                           # noqa: E402
 import silver_distillation_merged as sdm               # noqa: E402
 import silver_distillation_sequential as seq           # noqa: E402
 
@@ -534,9 +535,7 @@ def eval_arm(cfg, cfg_path, name, arm, force: bool, trajectory: bool, workers: i
 # ---------------------------------------------------------------------------
 
 def prf(c: dict) -> tuple:
-    p = c["tp"] / (c["tp"] + c["fp"]) if c["tp"] + c["fp"] else 0.0
-    r = c["tp_recall"] / (c["tp_recall"] + c["fn"]) if c["tp_recall"] + c["fn"] else 0.0
-    return p, r, (2 * p * r / (p + r) if p + r else 0.0)
+    return NS.prf(c["tp"], c["tp_recall"], c["fp"], c["fn"])
 
 
 def read_scores(path: Path) -> list:
