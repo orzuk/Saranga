@@ -284,6 +284,17 @@
     function loadGraph(force) {
       const iframe = document.getElementById("graph-iframe");
       const status = document.getElementById("graph-status");
+      // t.b.d.: the side-by-side alignment graphs will be drawn from the v6 re-extraction
+      // of the pair papers (src/visualize_alignment.py); until then the tab says so.
+      const actions = document.getElementById("graph-actions");
+      if (actions) actions.style.display = "none";
+      if (status) status.textContent = "";
+      iframe.removeAttribute("src");
+      iframe.srcdoc = '<div style="font:14px sans-serif;padding:24px;color:#555">' +
+        "<b>Alignment graph: t.b.d.</b><br><br>The two papers' graphs side by side, with the " +
+        "matched nodes linked, will appear here once the pair papers are re-extracted with " +
+        "the current (v6) pipeline. The matches themselves are in the <b>Matches</b> tab.</div>";
+      return;
       const openLink = document.getElementById("graph-open-tab");
       const url = buildGraphUrl(force);
       if (openLink) openLink.href = buildGraphUrl(false);
