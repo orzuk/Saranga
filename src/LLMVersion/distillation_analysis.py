@@ -26,7 +26,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from config import FULL_PAPERS_DIR
 
 # ---------------------------------------------------------------------------
-# Shared utilities (reused from evaluate_definitions.py for consistency)
+# Shared utilities
 # ---------------------------------------------------------------------------
 
 # Canonical implementations live in src/node_similarity.py; the DISTILLATION

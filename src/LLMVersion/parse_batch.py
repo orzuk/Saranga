@@ -6,8 +6,7 @@ papers, with optional LLM support.
 This file is the INTERNAL extraction-engine module. The recommended
 user-facing CLI is `src/run_pipeline.py --operations parse ...`, which
 invokes this module via subprocess. Direct invocation is still supported
-for specialized workflows (evaluation_pipeline.sh, prompt_optimizer.py,
-standalone debugging).
+for standalone debugging.
 
 Public functions:
     run_batch(...)           - main filter + fetch + parse + save loop
@@ -284,7 +283,7 @@ def run_batch(
                 print(f"[WARN]   parse_file failed for {base_id}: {e}")
                 continue
 
-            # Save JSON into json/ subdir so definitions_from_json_to_csv.py glob finds it
+            # Save JSON into the json/ subdir
             if extraction_mode == "rules":
                 suffix = "rules"
             elif extraction_mode == "llm":

@@ -167,7 +167,6 @@ The LLMVersion subdirectory is the active extraction engine:
 - `src/LLMVersion/math_paper_parser.py` — heuristic + LLM-based parser, 11 structure types
 - `src/LLMVersion/math_classes.py` — data model (shared with src/ tools)
 - `src/LLMVersion/prompts/` — per-node-type LLM prompts
-- `src/LLMVersion/prompt_optimizer.py` — iterative prompt optimization against gold standards
 - `src/LLMVersion/distillation_analysis.py` — "dark knowledge" distillation: things LLMs catch that regex misses
 - `src/LLMVersion/Gold_Standard_*.csv` — per-node-type gold annotations across 10 arXiv papers
 - `src/LLMVersion/*_eval/` — per-node-type evaluation results and detailed matches
@@ -274,7 +273,6 @@ Saranga/
 │   │   ├── parse_batch.py        # Core extractor
 │   │   ├── math_paper_parser.py       # Heuristic + LLM parser
 │   │   ├── math_classes.py            # ★ Single source of truth for the data model
-│   │   ├── prompt_optimizer.py        # Iterative prompt tuning
 │   │   ├── distillation_analysis.py   # Dark knowledge distillation
 │   │   ├── prompts/                   # Per-node-type LLM prompts
 │   │   ├── Gold_Standard_*.csv        # Per-node-type gold annotations
