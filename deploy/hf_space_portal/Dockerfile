@@ -1,8 +1,9 @@
 # SARANGA portal as a Hugging Face Docker Space (same address as the old static Space):
 # all tiers, 100K pages built on the fly from the dataset, and "Your paper".
 FROM python:3.12-slim
-RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
-RUN pip install --no-cache-dir numpy pandas regex requests matplotlib networkx pyahocorasick pillow python-dateutil
+# bubblewrap + socat: the sandbox the LLM agent's commands run in ("Your paper" with an LLM)
+RUN apt-get update && apt-get install -y --no-install-recommends curl bubblewrap socat && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir numpy pandas regex requests matplotlib networkx pyahocorasick pillow python-dateutil claude-agent-sdk==0.2.166
 RUN useradd -m -u 1000 user
 WORKDIR /home/user/app
 COPY --chown=user . .

@@ -2,7 +2,7 @@
 """Rule-based graphs for the silver papers, next to the LLM ones.
 
 Parses every paper of the silver corpus with a rule set and writes
-<silver>/rules_v6/<id>.json (the paper's title and metadata copied from the
+<silver>/<out>/<id>.json (default rules_v6; the paper's title and metadata copied from the
 silver JSON); then build its viewer pages as <silver>/graphs/<id>_rules.html:
 
     python3 scripts/parse_silver_rules.py [--rules-dir ...] [--workers 6]
@@ -22,7 +22,7 @@ sys.path[:0] = [str(REPO / "src" / "LLMVersion"), str(REPO / "src"), str(REPO / 
 
 
 def one(job):
-    pid, silver, tex, rules, out = job
+    pid, silver, tex, rules, out, name = job
     from math_paper_parser import PaperParser
     import compare_distillers as C
     main = C.seq._find_main_tex(Path(tex) / pid / "source")
@@ -34,7 +34,7 @@ def one(job):
                 .parse_file(str(main)).to_unified_dict(include_research_fields=True)
         meta = json.load(open(Path(silver) / f"{pid}.json")).get("metadata", {})
         d["metadata"] = {**meta, **{k: v for k, v in d.get("metadata", {}).items() if v}}
-        d["metadata"]["extractor"] = Path(rules).name
+        d["metadata"]["extractor"] = name
         json.dump(d, open(Path(out) / f"{pid}.json", "w"), ensure_ascii=False)
         return pid, "ok"
     except Exception as e:                                   # noqa: BLE001
@@ -46,13 +46,16 @@ def main():
     ap.add_argument("--silver", default="corpus/silver/opus-5.5__v6")
     ap.add_argument("--tex", default="corpus/silver/tex_staged")
     ap.add_argument("--rules-dir", default="extractors/rules/silver_v6__sentence_rules_haiku__2026-10")
+    ap.add_argument("--out", default="rules_v6", help="output folder inside --silver")
+    ap.add_argument("--name", default=None, help="extractor name in the metadata (default: the rules dir name)")
     ap.add_argument("--workers", type=int, default=6)
     a = ap.parse_args()
     silver = REPO / a.silver
-    out = silver / "rules_v6"
+    out = silver / a.out
     out.mkdir(exist_ok=True)
     pids = sorted(p.stem for p in silver.glob("*.json"))
-    jobs = [(p, str(silver), str(REPO / a.tex), str(REPO / a.rules_dir), str(out)) for p in pids]
+    rules = (REPO / a.rules_dir).resolve()
+    jobs = [(p, str(silver), str(REPO / a.tex), str(rules), str(out), a.name or rules.name) for p in pids]
     with mp.Pool(a.workers) as pool:
         res = pool.map(one, jobs)
     bad = [r for r in res if r[1] != "ok"]
