@@ -470,14 +470,14 @@ window.dispId = window.dispId || function (id) {
       'edge-distances': 'endpoints' } },
     { selector: 'edge.ends', style: { 'edge-distances': 'endpoints' } },
     { selector: 'edge.resolves', style: { 'line-style': 'dashed' } },
-    { selector: 'edge.low', style: { 'line-color': '#C0C0C0', 'target-arrow-color': '#C0C0C0', 'width': 1,
-      'opacity': 0.55, 'line-style': 'dashed', 'line-dash-pattern': [1, 3] } },
+    { selector: 'edge.low', style: { 'line-color': '#546E7A', 'target-arrow-color': '#546E7A', 'width': 1.8,
+      'opacity': 1, 'line-style': 'dashed', 'line-dash-pattern': [4, 3] } },
     { selector: 'edge.back', style: { 'line-style': 'dashed', 'line-dash-pattern': [6, 2, 1, 2],
       'curve-style': 'unbundled-bezier', 'control-point-distances': 70, 'control-point-weights': 0.5 } },
-    { selector: 'edge.mention', style: { 'line-color': '#9FA8DA', 'target-arrow-color': '#9FA8DA', 'width': 1,
+    { selector: 'edge.mention', style: { 'line-color': '#5C6BC0', 'target-arrow-color': '#5C6BC0', 'width': 1.3,
       'line-style': 'dashed', 'line-dash-pattern': [2, 2], 'curve-style': 'unbundled-bezier',
       'control-point-distances': 50, 'control-point-weights': 0.5, 'opacity': 0.85 } },
-    { selector: 'edge.order', style: { 'line-color': '#C9B6DB', 'target-arrow-color': '#C9B6DB', 'width': 1.2,
+    { selector: 'edge.order', style: { 'line-color': '#9575CD', 'target-arrow-color': '#9575CD', 'width': 1.3,
       'line-style': 'dotted', 'arrow-scale': 0.6 } },
     { selector: 'edge.inside', style: { 'line-color': '#7F8C8D', 'width': 2, 'line-style': 'dashed',
       'line-dash-pattern': [1, 2], 'target-arrow-shape': 'none', 'opacity': 0.8, 'z-index': 0 } },
@@ -942,8 +942,8 @@ window.dispId = window.dispId || function (id) {
       if (seenTypes[t] && t !== 'uses') h += legendLine(G.edge_colors[t], 2, t === 'resolves' ? '5,3' : '', t);
     });
     h += legendLine('#455A64', 2, '6,2,1,2', 'backward reference');
-    h += legendLine('#9FA8DA', 1.5, '2,2', 'mention');
-    h += legendLine('#C0C0C0', 1.5, '1,3', 'low confidence');
+    h += legendLine('#5C6BC0', 1.5, '2,2', 'mention');
+    h += legendLine('#546E7A', 1.8, '4,3', 'low confidence');
     h += legendLine('#7F8C8D', 2, '1,1.5', 'stated inside');
     h += '<div class="legend-item"><div class="legend-color" style="background:#fff;border:3px solid #C0392B;box-shadow:0 0 0 3px #FFE082;"></div>&#9733; main result</div>';
     h += '<div class="legend-item"><div class="legend-color" style="background:#fff;border:1.5px dashed #777;"></div>cited (external)</div>';

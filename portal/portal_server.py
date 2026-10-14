@@ -690,6 +690,17 @@ class PortalHandler(SimpleHTTPRequestHandler):
             query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
             serve_yours(self, query, upload=False)
             return
+        if parsed.path == "/yours/llm/status":
+            import yours_llm
+            query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+            st = yours_llm.status((query.get("job") or [""])[0])
+            _json_reply(self, 200 if st else 404, st or {"error": "Unknown job."})
+            return
+        if parsed.path == "/yours/llm/models":
+            import yours_llm
+            _json_reply(self, 200, {"models": yours_llm.MODELS, "max_budget": yours_llm.MAX_BUDGET_USD,
+                                    "email": yours_llm.EMAIL_ENABLED})
+            return
         if parsed.path == "/render":
             query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
             serve_render(self, query)
@@ -705,6 +716,10 @@ class PortalHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/yours/upload":
             query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
             serve_yours(self, query, upload=True)
+            return
+        if parsed.path == "/yours/llm/start":
+            query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+            serve_yours_llm(self, query)
             return
         self.send_error(404)
 
@@ -750,6 +765,41 @@ def serve_yours(handler, query, upload: bool) -> None:
     except Exception as e:                          # noqa: BLE001
         sys.stderr.write(f"[yours] {e!r}\n")
         _json_reply(handler, 500, {"error": f"Extraction failed: {type(e).__name__}"})
+
+
+def serve_yours_llm(handler, query) -> None:
+    """Start an LLM extraction (POST /yours/llm/start?source=arxiv&id=|source=upload&name=,
+    &model=&budget=; the Anthropic key in the X-Anthropic-Key header, an upload in the body).
+    Replies {job}; the page polls /yours/llm/status?job=."""
+    import yours
+    import yours_llm
+    key = handler.headers.get("X-Anthropic-Key", "").strip()
+    try:
+        q = lambda k, d="": (query.get(k) or [d])[0]                       # noqa: E731
+        email = q("email").strip()
+        yours_llm.check(key, q("model", next(iter(yours_llm.MODELS))), email)
+        rid, work = yours.new_workdir(YOURS_DIR)
+        if q("source") == "upload":
+            n = int(handler.headers.get("Content-Length") or 0)
+            if n <= 0 or n > yours.MAX_UPLOAD:
+                raise yours.YoursError("Empty or too large upload (limit 50 MB).")
+            name = q("name", "paper.tex")
+            yours._unpack(handler.rfile.read(n), name, work / "source")
+            pid, title = re.sub(r"[^A-Za-z0-9._-]", "_", Path(name).name.split(".")[0]) or "paper", ""
+        else:
+            aid = yours.parse_arxiv_id(q("id"))
+            title = yours.fetch_arxiv(aid, work / "source")
+            pid = aid.replace("/", "_")
+        jid = yours_llm.start(key, q("model", next(iter(yours_llm.MODELS))), q("budget", "5"),
+                              work, rid, pid, title, email)
+        _json_reply(handler, 200, {"job": jid})
+    except yours.YoursError as e:
+        _json_reply(handler, 400, {"error": str(e)})
+    except Exception as e:                          # noqa: BLE001
+        sys.stderr.write(f"[yours_llm] start failed: {type(e).__name__}\n")
+        _json_reply(handler, 500, {"error": f"Could not start: {type(e).__name__}"})
+    finally:
+        key = None
 
 
 def main():

@@ -45,6 +45,7 @@ def main(out):
     # 100K index only (titles and counts); the graphs are read from the dataset on demand
     for f in [p / "data/tier3_v6/index.json"] + sorted((p / "data/tier3_v6").glob("*/index.json")):
         copy(f, out / "portal/data/tier3_v6" / f.relative_to(p / "data/tier3_v6"))
+    copy(REPO / "scripts/opus_extract_prompt_v6.md", out / "scripts/opus_extract_prompt_v6.md")   # LLM agent prompt
     for f in sorted((REPO / "src").glob("*.py")):
         copy(f, out / "src" / f.name)
     for f in sorted((REPO / "src/LLMVersion").glob("*.py")):
