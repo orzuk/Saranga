@@ -159,11 +159,7 @@ def extract(text: str, rules_path: str) -> list[dict]:
             _CACHE.clear()
         with open(rules_path, encoding="utf-8") as fh:
             rules = [r for r in json.load(fh).get("rules", []) if r.get("active", True)]
-        try:
-            from latex_clean import clean_latex_to_text as _clean
-        except Exception:
-            def _clean(s):
-                return s
+        from latex_clean import clean_latex_to_text as _clean
         nodes = apply_rules(text, _sentences_of(text), rules)
         _CACHE[key] = [{"raw_latex": text[n["start"]:n["end"]],
                         "clean_text": _clean(text[n["start"]:n["end"]]),

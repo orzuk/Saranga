@@ -1083,27 +1083,35 @@ STRUCT = re.compile(r'\\(label|index|textbf|emph|textit|section|subsection|'
 PRESENT = re.compile(r'\\(textcolor|color|colorbox|hl|st|sout|uline)\b')
 
 
+_COMMENT = re.compile(r"(?<!\\)((?:\\\\)*)%[^\n]*")
+
+
 def strip_comments(src):
-    """Drop % comments (respecting \\%) so definitions inside comments are ignored."""
-    return re.sub(r'(?<!\\)%.*', '', src)
+    """Drop % comments: % starts one unless escaped (\\%); \\\\% is a line break, then a comment."""
+    return _COMMENT.sub(r"\1", src)
 
 
-def balanced_body(src, open_idx):
-    """Read a brace-balanced body starting at the '{' at open_idx."""
-    depth, i, n = 0, open_idx, len(src)
-    while i < n:
-        c = src[i]
-        if c == '\\':                      # skip escaped char
-            i += 2
+def group(s, i, open_="{", close="}"):
+    """The balanced group starting at s[i] (after spaces) and the index after it; (None, i) if none."""
+    j = i
+    while j < len(s) and s[j] in " \t\n":
+        j += 1
+    if j >= len(s) or s[j] != open_:
+        return None, i
+    depth, k = 0, j
+    while k < len(s):
+        c = s[k]
+        if c == "\\":
+            k += 2
             continue
-        if c == '{':
+        if c == open_:
             depth += 1
-        elif c == '}':
+        elif c == close:
             depth -= 1
             if depth == 0:
-                return src[open_idx + 1:i], i + 1
-        i += 1
-    return None, n                          # unbalanced — give up on this one
+                return s[j + 1:k], k + 1
+        k += 1
+    return None, i
 
 
 def classify(expansion):
@@ -1134,7 +1142,7 @@ def read_definitions(src, clean=True, spans=False):
     for fi, form in enumerate(FORMS):
         for m in form.finditer(src):
             name = m.group('name')
-            body, end = balanced_body(src, m.end() - 1)
+            body, end = group(src, m.end() - 1)
             if body is None:
                 continue
             # Declared arguments count even when the body ignores them:

@@ -18,6 +18,7 @@ REPO = Path(__file__).resolve().parent.parent
 LLM_DIR = REPO / "src" / "LLMVersion"
 sys.path.insert(0, str(LLM_DIR))
 sys.path.insert(0, str(REPO / "src"))
+from latex_facts import find_main_tex as _find_main_tex          # noqa: E402,F401  (seq._find_main_tex)
 
 
 
@@ -121,24 +122,6 @@ def convert_t2_to_gold_csv(t2_json_path: Path, structure_type: str,
 # ---------------------------------------------------------------------------
 # Build detailed_matches.csv for a single paper
 # ---------------------------------------------------------------------------
-
-
-def _find_main_tex(src_dir: Path) -> Path | None:
-    """Find the main .tex file in a source directory."""
-    if not src_dir.exists():
-        return None
-    tex_files = sorted(src_dir.glob("*.tex"))
-    if not tex_files:
-        return None
-    for tf in tex_files:
-        try:
-            with open(tf, encoding="utf-8", errors="replace") as f:
-                head = f.read(8000)
-            if r"\documentclass" in head:
-                return tf
-        except OSError:
-            continue
-    return tex_files[0]
 
 
 # ---------------------------------------------------------------------------

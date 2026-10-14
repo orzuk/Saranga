@@ -27,6 +27,7 @@ from email.utils import parsedate_to_datetime
 from typing import Iterator, Dict, List, Optional, Any, Tuple
 from requests.exceptions import HTTPError, RequestException
 from pathlib import Path
+from latex_facts import find_main_tex, read_tex
 
 
 import shutil
@@ -43,7 +44,6 @@ except ImportError:
     tables = None  # type: ignore
 
 from config import *
-import pickle
 try:
     import h5py
 except ImportError:
@@ -1378,113 +1378,14 @@ def fetch_arxiv_source(arxiv_id: str, dest_dir: Path, verbose: bool = False,
                 f"Failed to extract tar archive for {arxiv_id}: {e2}"
             )
 
-    # -----------------------
-    # 5. Find .tex files (recursive)
-    # -----------------------
-    tex_files = list(dest_dir.rglob("*.tex"))
-    if not tex_files:
+    main = find_main_tex(dest_dir)
+    if main is None:
         raise RuntimeError(f"No .tex found in {dest_dir} after extracting {arxiv_id}")
-
-    # 5a. Prefer files containing \begin{document}
-    doc_candidates = []
-    for p in tex_files:
-        try:
-            txt = p.read_text(errors="ignore")
-            if "\\begin{document}" in txt:
-                doc_candidates.append(p)
-        except Exception:
-            continue
-
-    candidates = doc_candidates if doc_candidates else tex_files
-
-    # Normalize arxiv ID (drop version)
-    base_id = re.sub(r"v\d+$", "", arxiv_id)
-
-    # 5b. Prefer file that contains arxiv_id or base_id anywhere in filename
-    for p in candidates:
-        name = p.name.lower()
-        if arxiv_id.lower() in name or base_id.lower() in name:
-            return p
-
-    # 5c. Common main filename heuristics
-    common_main = {"main.tex", "paper.tex", "ms.tex", "article.tex"}
-    for p in candidates:
-        if p.name in common_main:
-            return p
-
-    # 5d. Fallback: largest .tex file
-    return max(candidates, key=lambda p: p.stat().st_size)
+    return main
 
 
 
 
-
-# at top of file you already import shutil, pathlib, etc. (shutil is present)
-
-
-_INPUT_RE = re.compile(r'\\(input|include)\s*\{([^}]+)\}')
-
-
-def flatten_tex(tex_path: Path, root_dir: Path, _seen: frozenset = None) -> str:
-    """
-    Recursively inline \\input{} and \\include{} commands in a .tex file.
-    Returns the fully flattened content as a string.
-
-    - tex_path: path to the .tex file to flatten
-    - root_dir: base directory for resolving relative include paths (the paper's storage dir)
-    - _seen: frozenset of resolved absolute paths already visited (cycle detection)
-    """
-    if _seen is None:
-        _seen = frozenset()
-
-    resolved = str(tex_path.resolve())
-    if resolved in _seen:
-        return f"% [flatten_tex] Circular reference skipped: {tex_path.name}\n"
-    _seen = _seen | {resolved}
-
-    try:
-        content = tex_path.read_text(errors='replace')
-    except Exception as e:
-        return f"% [flatten_tex] Cannot read {tex_path.name}: {e}\n"
-
-    out = []
-    for line in content.splitlines(keepends=True):
-        # Skip lines that are purely comments
-        if line.lstrip().startswith('%'):
-            out.append(line)
-            continue
-
-        match = _INPUT_RE.search(line)
-        if match:
-            # Ignore if the match is after a % comment marker on the same line
-            comment_pos = line.find('%')
-            if comment_pos != -1 and comment_pos < match.start():
-                out.append(line)
-                continue
-
-            arg = match.group(2).strip()
-            arg_tex = arg if arg.endswith('.tex') else arg + '.tex'
-
-            # Search root_dir first, then the including file's own directory
-            sub_path = None
-            for search_dir in (root_dir, tex_path.parent):
-                candidate = search_dir / arg_tex
-                if candidate.exists():
-                    sub_path = candidate
-                    break
-
-            if sub_path is None:
-                # File not found — keep original line with a warning comment
-                out.append(f"% [flatten_tex] Not found: {arg_tex}\n")
-                out.append(line)
-            else:
-                out.append(f"% --- begin {arg_tex} ---\n")
-                out.append(flatten_tex(sub_path, root_dir, _seen))
-                out.append(f"% --- end {arg_tex} ---\n")
-        else:
-            out.append(line)
-
-    return ''.join(out)
 
 def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir: Path,
                                        verbose: bool = False, use_paper_subdir: bool = False,
@@ -1563,7 +1464,7 @@ def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir:
             # Prefer to have a canonical <versioned_id>.tex
             if not use_paper_subdir:                     # legacy: the private folder goes away
                 try:
-                    tex_path.write_text(flatten_tex(main_tex, fetch_dir), encoding="utf-8", errors="replace")
+                    tex_path.write_text(read_tex(str(main_tex), fetch_dir), encoding="utf-8", errors="replace")
                 except Exception:                        # noqa: BLE001
                     shutil.copy(main_tex, tex_path)
             elif main_tex.resolve() != tex_path.resolve():
@@ -1607,7 +1508,7 @@ def resolve_source_to_tex_local_first(base_id: str, meta: dict, full_papers_dir:
         if verbose:
             print(f"[DEBUG] Flattening \\input/\\include references in {tex_path.name}")
         try:
-            flattened = flatten_tex(tex_path, storage_dir)
+            flattened = read_tex(str(tex_path), storage_dir)
             tex_path.write_text(flattened, encoding='utf-8', errors='replace')
             if verbose:
                 print(f"[DEBUG] Flattened tex written to {tex_path}")

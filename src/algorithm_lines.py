@@ -36,12 +36,11 @@ from dataclasses import dataclass, field
 
 # ── Source normalisation (same mechanical cleanup the extraction spec permits) ──
 
-_COMMENT = re.compile(r"(?<!\\)%[^\n]*")
 _LABEL = re.compile(r"\\(?:label|index|nllabel)\s*\{[^{}]*\}")
 
 
-def strip_comments(tex: str) -> str:
-    return _COMMENT.sub("", tex)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from latex_macros import strip_comments  # noqa: E402
 
 
 def norm(s: str) -> str:

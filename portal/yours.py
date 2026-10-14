@@ -29,6 +29,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 RULES_DIR = REPO / "extractors" / "rules" / "silver_v6__sentence_rules_haiku__2026-10"
 GRAPH_BUILD = REPO / "src" / "graph_view" / "build.py"
+sys.path[:0] = [str(REPO / "src" / "LLMVersion"), str(REPO / "src")]
+import latex_facts                                  # noqa: E402
 KEEP_HOURS = 24
 MAX_UPLOAD = 50 * 2**20          # bytes accepted from a request
 MAX_UNPACKED = 200 * 2**20       # bytes written when unpacking an archive
@@ -114,19 +116,10 @@ def _unpack(data: bytes, name: str, dest: Path) -> None:
 
 
 def find_main_tex(src: Path) -> Path:
-    """The file with \\documentclass (the largest if several); else the largest .tex."""
-    texs = [p for p in src.rglob("*.tex") if p.is_file()]
-    if not texs:
+    """The paper's main .tex (latex_facts.find_main_tex); a YoursError if there is none."""
+    if (main := latex_facts.find_main_tex(src)) is None:
         raise YoursError("No .tex file found. Upload the LaTeX source (PDF is not supported).")
-    with_class = []
-    for p in texs:
-        try:
-            head = p.read_text(encoding="utf-8", errors="replace")[:20000]
-        except OSError:
-            continue
-        if "\\documentclass" in head or "\\documentstyle" in head:
-            with_class.append(p)
-    return max(with_class or texs, key=lambda p: p.stat().st_size)
+    return main
 
 
 def fetch_arxiv(aid: str, dest: Path) -> str:
@@ -158,7 +151,6 @@ def _title_from_tex(main: Path) -> str:
 
 def build(work: Path, paper_id: str, title: str = "") -> dict:
     """Parse the source with the rules and build the viewer page. Returns a summary."""
-    sys.path[:0] = [str(REPO / "src" / "LLMVersion"), str(REPO / "src")]
     from math_paper_parser import PaperParser       # noqa: E402
 
     main = find_main_tex(work / "source")

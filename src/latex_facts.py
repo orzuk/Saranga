@@ -35,10 +35,10 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from proof_structure import detect as detect_proof_structure   # noqa: E402
+from latex_macros import strip_comments, group as _group        # noqa: E402
 
 # ── Mechanical cleanup (the extraction spec's permitted edits) ──────────────
 
-_COMMENT = re.compile(r"(?<!\\)%[^\n]*")
 _DISABLED_ENV = re.compile(r"\\begin\s*\{comment\}.*?\\end\s*\{comment\}", re.S)
 # TeX's own conditionals. Anything else starting with "if" is not one: \\iff is
 # logical "if and only if", and must not be counted as an opening \\if.
@@ -118,7 +118,7 @@ def clean_source(tex: str) -> str:
     """Comments, \\iffalse/\\if0 regions and comment environments removed;
     text after \\end{document} dropped. Everything else, including \\label and
     whitespace, is kept so offsets stay meaningful."""
-    s = _COMMENT.sub("", tex)
+    s = strip_comments(tex)
     s = _DISABLED_ENV.sub("", s)
     s = _drop_iffalse(s)
     # The paper ends at the first \end{document} after the LAST \begin{document}:
@@ -134,7 +134,7 @@ def clean_source(tex: str) -> str:
 _INPUT = re.compile(r"(?<!\\)\\(input|include|subfile)\s*\{([^{}#]+)\}")
 
 
-def read_tex(path: str, _depth: int = 0, _root=None) -> str:
+def read_tex(path: str, root=None, _depth: int = 0) -> str:
     """The paper's source with every \\input / \\include / \\subfile inlined.
 
     Comments are removed first, so a commented-out \\input is not inlined.
@@ -144,8 +144,8 @@ def read_tex(path: str, _depth: int = 0, _root=None) -> str:
     """
     from pathlib import Path
     p = Path(path)
-    root = _root or p.parent
-    text = _COMMENT.sub("", p.read_text(encoding="utf-8", errors="replace"))
+    root = root or p.parent
+    text = strip_comments(p.read_text(encoding="utf-8", errors="replace"))
     if _depth >= 8:
         return text
 
@@ -154,9 +154,25 @@ def read_tex(path: str, _depth: int = 0, _root=None) -> str:
         for base in dict.fromkeys((root, p.parent)):
             for cand in (base / name, base / f"{name}.tex", base / f"{name}.txt"):
                 if cand.is_file():
-                    return read_tex(str(cand), _depth + 1, root)
+                    return read_tex(str(cand), root, _depth + 1)
         return m.group(0)
     return _INPUT.sub(inline, text)
+
+
+_ARXIV_STEM = re.compile(r"\d{4}\.\d{4,5}(v\d+)?$|[a-z\-]+(\.[A-Z]{2})?_?\d{7}(v\d+)?$")
+
+
+def find_main_tex(d, files=None):
+    """The main .tex among files (default: every .tex under folder d): the one named like the
+    folder (a downloader's flattened <id>.tex), else arXiv-id-named, else the one with
+    \\documentclass, \\begin{document} and \\title, else the largest. None if there is none."""
+    from pathlib import Path
+    d = Path(d)
+    def key(p):
+        b = p.read_bytes()[:200000]
+        return (p.stem == d.name, bool(_ARXIV_STEM.match(p.stem)), b"\\documentclass" in b,
+                b"\\begin{document}" in b, b"\\title" in b, p.stat().st_size)
+    return max(files or (p for p in d.rglob("*.tex") if p.is_file()), key=key, default=None)
 
 
 _REF_CMDS = r"ref|eqref|cref|Cref|autoref|pageref|vref|thmref|nameref|Autoref|cpageref"
@@ -270,13 +286,6 @@ def span_text(source: str, start: int, end: int) -> str:
 
 # ── Brace helpers ───────────────────────────────────────────────────────────
 
-def _group(s: str, i: int, open_="{", close="}") -> tuple[str | None, int]:
-    """Read one balanced group starting at s[i] (after optional spaces)."""
-    j = i
-    while j < len(s) and s[j] in " \t\n":
-        j += 1
-    if j >= len(s) or s[j] != open_:
-        return None, i
     depth, k = 0, j
     while k < len(s):
         c = s[k]

@@ -5,14 +5,15 @@ Nodes are the drawing's boxes with their text and the \\ref labels inside them (
 to what each label is attached to); edges are its arrows. Used by build_gold_review.py.
 Taken from the survey's fetch_eprints.py (stage 7), with the e-print download left out.
 """
+import os
 import re
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src"))
+from latex_macros import strip_comments  # noqa: E402,F401  (dp.strip_comments)
 
 
 REF_CMDS = r"(?:ref|cref|Cref|eqref|autoref|Autoref|nameref|vref|Vref|thmref|labelcref)"
-
-
-def strip_comments(t):
-    return "\n".join(re.sub(r"(?<!\\)%.*", "", ln) for ln in t.split("\n"))
 
 
 def brace_arg(t, i):

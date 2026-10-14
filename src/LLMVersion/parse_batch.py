@@ -65,6 +65,7 @@ from config import FULL_PAPERS_DIR
 
 # Import from your parser module
 from math_paper_parser import PaperParser
+from latex_facts import find_main_tex
 from paper_plot_utils import paper_to_network
 
 # Your arXiv infra
@@ -191,37 +192,8 @@ def run_batch(
         for tp in all_tex:
             dir_to_texs.setdefault(tp.parent, []).append(tp)
 
-        def _pick_main_tex(texs: list) -> Path:
-            # Mirror find_main_tex() in extract_arxiv_funcs.py so the main-file
-            # choice is consistent with what the downloader canonicalises.
-            texs = sorted(texs)
-            parent_name = texs[0].parent.name
-            # 1. file whose stem == parent dir name (canonical <id>.tex)
-            for tp in texs:
-                if tp.stem == parent_name:
-                    return tp
-            # 2. any arXiv-id-named file
-            for tp in texs:
-                if _ARXIV_RE.match(tp.stem):
-                    return tp
-            # 3. common root filenames
-            _common = ("main.tex", "paper.tex", "ms.tex", "article.tex")
-            for tp in texs:
-                if tp.name.lower() in _common:
-                    return tp
-            # 4. a file that declares \documentclass (the real root)
-            for tp in texs:
-                try:
-                    head = tp.read_text(encoding="utf-8", errors="replace")[:20000]
-                except Exception:
-                    continue
-                if "\\documentclass" in head:
-                    return tp
-            # 5. fallback: largest file (matches find_main_tex)
-            return max(texs, key=lambda p: p.stat().st_size)
-
         for parent, texs in dir_to_texs.items():
-            tp = _pick_main_tex(texs)
+            tp = find_main_tex(parent, texs)
             # Derive the arXiv id from the PARENT DIR name first (canonical
             # in the download layout); fall back to the file stem for
             # non-arXiv layouts (e.g. a lone paper1.tex under --tex-dir).

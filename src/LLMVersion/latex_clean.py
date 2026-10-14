@@ -5,12 +5,14 @@ All cleaning in the project should go through ``clean_latex_to_text`` so that
 distilled-rule extractions.
 """
 
+import os
 import re
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # src/
+from latex_macros import strip_comments  # noqa: E402
 
 # ── Pre-compiled patterns ────────────────────────────────────────────────────
-
-# Comments
-_COMMENT_RE = re.compile(r"(?<!\\)%.*")
 
 # \label{...}, \ref{...}, \eqref{...}, \cite[...]{...}
 _LABEL_RE = re.compile(r"\\label\s*\{[^}]*\}")
@@ -58,7 +60,7 @@ def clean_latex_to_text(latex: str) -> str:
     s = latex
 
     # 1. Strip comments
-    s = _COMMENT_RE.sub("", s)
+    s = strip_comments(s)
 
     # 2. Remove labels, refs, cites
     s = _LABEL_RE.sub("", s)

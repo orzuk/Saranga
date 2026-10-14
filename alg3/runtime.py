@@ -109,11 +109,7 @@ def extract(text: str) -> list:
         import prose_units
         fx = latex_facts.extract_facts(text)
         sents = prose_units.sentences(fx)
-        try:
-            from latex_clean import clean_latex_to_text as _clean
-        except Exception:                                    # noqa: BLE001
-            def _clean(s):
-                return s
+        from latex_clean import clean_latex_to_text as _clean
         _CACHE[key] = [{"raw_latex": text[n["start"]:n["end"]],
                         "clean_text": _clean(text[n["start"]:n["end"]]),
                         "name": None, "env_name": "distilled",

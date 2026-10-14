@@ -5,7 +5,7 @@ Usage: prep_local_eprint.py <paper id> <e-print file> <scan.jsonl> <fetch_eprint
 Writes papers/<id>/{src/, paper.tex, figure.json, graph_tikz.json} with the cluster agent's
 figure locator and diagram parsers (fetch_eprints.py), so the result matches the cluster folders.
 """
-import importlib.util, json, re, shutil, subprocess, sys
+import importlib.util, json, shutil, sys
 from pathlib import Path
 
 pid, ep, scan, fe = sys.argv[1:5]
@@ -55,16 +55,6 @@ if graphs:
 sys.path[:0] = [str(REPO / "portal")]
 import yours
 main = yours.find_main_tex(sd)
-def inline(p, depth=0):
-    t = p.read_text(encoding="utf-8", errors="replace")
-    if depth > 4:
-        return t
-    def rep(m):
-        name = m.group(2).strip()
-        for c in (p.parent / name, p.parent / (name + ".tex"), sd / name, sd / (name + ".tex")):
-            if c.is_file():
-                return inline(c, depth + 1)
-        return m.group(0)
-    return re.sub(r"\\(input|include)\{([^}]*)\}", rep, t)
-(d / "paper.tex").write_text(inline(main), encoding="utf-8")
+import latex_facts
+(d / "paper.tex").write_text(latex_facts.read_tex(str(main), sd), encoding="utf-8")
 print(pid, "figures found:", sum(1 for f in figs if f.get("found")), "graphs:", [(g["format"], len(g["nodes"]), len(g["edges"])) for g in graphs])

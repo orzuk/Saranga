@@ -19,6 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 import latex_macros                                      # noqa: E402
+from latex_macros import strip_comments                  # noqa: E402
 
 ENVS = {"definition": "definition", "lemma": "lemma", "theorem": "theorem", "proposition": "proposition",
         "corollary": "corollary", "conjecture": "conjecture", "remark": "remark", "example": "example",
@@ -49,10 +50,6 @@ PREFIX = {"definition": "D", "lemma": "L", "theorem": "T", "proposition": "P", "
 def begin_re(envs: dict):
     return re.compile(r"\\begin\s*\{(" + "|".join(sorted(map(re.escape, envs), key=len, reverse=True)) + r"|proof)\*?\}")
 HEAD = re.compile(r"\\(chapter|section)\*?\{((?:[^{}]|\{[^{}]*\})*)\}")
-
-
-def strip_comments(t: str) -> str:
-    return re.sub(r"(?<!\\)%.*", "", t)
 
 
 def find_end(t: str, env: str, i: int) -> int:

@@ -30,14 +30,12 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
+from latex_macros import strip_comments  # noqa: E402
+
 
 def collapse(s):
     return re.sub(r"\s+", " ", s or "").strip()
-
-
-def strip_comments(s):
-    # drop % comments but keep escaped \%
-    return re.sub(r"(?<!\\)%.*?$", "", s or "", flags=re.M)
 
 
 def clean(s):
