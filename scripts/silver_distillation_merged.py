@@ -1627,7 +1627,7 @@ def run(args):
             'total_cost_usd': round(total_cost, 6),
             'cumulative_cost_usd': round(cumulative_cost, 6),
             'wall_time_seconds': round(wall, 1),
-            # cross-type means keep silver_distillation_report.py working:
+            # cross-type means (the old silver_distillation_report.py read them):
             'baseline_f1': _mean('f1', baselines[pid]),
             'baseline_precision': _mean('precision', baselines[pid]),
             'baseline_recall': _mean('recall', baselines[pid]),

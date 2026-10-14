@@ -773,7 +773,7 @@ def main():
         description=(
             "Unified Authomathics pipeline: filter arXiv papers by metadata, "
             "then run one or more operations (download, parse, validate, "
-            "visualize, link, evaluate, cross_paper). See __doc__ for examples."
+            "visualize, link, eval, cross_paper). See __doc__ for examples."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,

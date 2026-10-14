@@ -4,7 +4,7 @@
 Drafted 2026-08-23 after reading Theo (`2606.31134v3`) and Numina-Lean-Agent
 (`2601.14027`) — see `docs/related/theo_beyond_the_library.md`.
 
-Inputs: the 150-item register in `scripts/opus_extract_prompt_v6_TODO.md`
+Inputs: the 150-item register in `docs/opus_extract_prompt_v6_TODO.md`
 (issue detail and measurements live there; this file is only the decision), the
 canonical schema in `src/node_types.py` / `src/edge_types.py` /
 `src/annotation_schema.md`, and the frozen prompt

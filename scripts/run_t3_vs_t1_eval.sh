@@ -1,6 +1,6 @@
 #!/bin/bash
 # Evaluate T3 (rule-based regex) against T1 (manual gold) using the SAME
-# pipeline as run_t3_vs_t2_eval.sh: T3 extraction first, then
+# pipeline as the T2-vs-T1 script: T3 extraction first, then
 # src/evaluate_extraction.py (Jaccard threshold TAU, default 0.5) with --exclude-origin external.
 #
 # Sanity-check intent: should reproduce the headline T3-vs-T1 mean F1 ~0.83.

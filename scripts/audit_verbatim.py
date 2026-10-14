@@ -19,7 +19,7 @@ cleanup (so they are NOT hallucinations):
 
 Usage:
     python scripts/audit_verbatim.py [--dir corpus/silver/opus-5__v5]
-                                     [--tex-dir corpus/silver/tex]
+                                     [--tex-dir corpus/silver/tex_pool]
                                      [--papers paper431,paper217] [--show 5]
 Exit code is 1 if any NOT FOUND statements exist (usable as a CI gate).
 """
@@ -77,14 +77,14 @@ def main():
     REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     ap.add_argument("--dir", default=os.path.join(REPO, "corpus/silver/opus-5__v5"))
     ap.add_argument("--tex-dir", action="append", default=None,
-                    help="dir holding <paper>.tex; repeatable (default: corpus/silver/tex "
+                    help="dir holding <paper>.tex; repeatable (default: corpus/silver/tex_pool "
                          "and corpus/silver/tex_pool)")
     ap.add_argument("--papers", default=None)
     ap.add_argument("--head-chars", type=int, default=60)
     ap.add_argument("--show", type=int, default=5)
     args = ap.parse_args()
 
-    tex_dirs = args.tex_dir or [os.path.join(REPO, "corpus/silver/tex"),
+    tex_dirs = args.tex_dir or [os.path.join(REPO, "corpus/silver/tex_pool"),
                                 os.path.join(REPO, "corpus/silver/tex_pool")]
 
     def find_tex(pid):

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Evaluate T2 (Opus silver) against T1 (manual gold) using the SAME pipeline
-# as run_t3_vs_t2_eval.sh: src/evaluate_extraction.py with strict greedy
+# as the T3-vs-T1 script: src/evaluate_extraction.py with strict greedy
 # Jaccard at threshold TAU (default 0.5) and --exclude-origin external.
 #
 # Sanity-check intent: if this reproduces the headline T2-vs-T1 mean F1 ~0.92

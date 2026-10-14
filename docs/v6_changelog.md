@@ -2,7 +2,7 @@
 
 **Status: DRAFT. Not frozen, not rendered, not run.**
 Prompt: `scripts/opus_extract_prompt_v6.md` (a copy of v5.1 with the edits below).
-Issue register: `scripts/opus_extract_prompt_v6_TODO.md` (~150 items, the source of these).
+Issue register: `docs/opus_extract_prompt_v6_TODO.md` (~150 items, the source of these).
 Superseded: `docs/v6_decision.md` (2026-08-23) — read this file instead.
 
 Everything here is a **prompt** change. No node type, edge type, or type count moves,

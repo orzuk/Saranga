@@ -142,7 +142,7 @@ sbatch --export=TOP_K=1000,CATEGORY=math.PR scripts/parse_math_co_cluster.sh
 | Tool | Purpose |
 |---|---|
 | `src/validate_annotation.py` | DAG acyclicity + schema validation on unified JSON |
-| `src/visualize_annotation.py` | PNG and interactive HTML rendering (dagre-d3) |
+| `src/visualize_annotation.py` | PNG and interactive HTML rendering (classic page; the v2 viewer is src/graph_view/) |
 | `src/link_to_foundation.py` | Link paper nodes to the 298K foundation graph |
 | `src/foundation_linker.py` | OOP foundation linker (NaturalProofs + Mathlib) |
 | `src/evaluate_extraction.py` | Precision/recall/F1 vs gold standard (Jaccard-based) |
@@ -224,34 +224,6 @@ python src/evaluate_extraction.py --extracted output.json --gold gold.json --fli
 - `--node-sim-threshold` (default: 0.5) — minimum Jaccard similarity between node texts to count as a match
 - `--flipped-edge-credit` (default: 0.5) — partial credit for edges with correct endpoints but reversed direction
 
-### Class 52017 evaluation pipeline
-
-```bash
-cd class_52017/instructor_only
-
-python run_evaluation.py --extractor ../cluster_package/scripts/annotate_chapter.py --doc-type both --split both
-python run_evaluation.py --help
-
-python run_all_evaluations.py \
-  --extractors baseline:../cluster_package/scripts/annotate_chapter.py \
-               solution:annotate_chapter_solution.py
-
-python run_all_evaluations.py \
-  --students-dir ../StudentsSolutions \
-  --doc-type papers --split test
-```
-
-Student directory layout:
-```
-StudentsSolutions/
-  john_doe_02345134/annotate_chapter_student.py
-  jane_smith_98765432/annotate_chapter_student.py
-```
-
-Output: per-extractor CSVs + combined `all_results.csv` + printed leaderboard.
-
----
-
 ## Textbook (PDF → LaTeX)
 
 The BHK textbook (*Foundations of Data Science*, Blum-Hopcroft-Kannan 2020) was converted from PDF to structured LaTeX using [Mathpix](https://mathpix.com/) OCR, then post-processed and split into per-chapter files:
@@ -275,7 +247,6 @@ Output: per-chapter files `chapterN.tex` (with preamble), `chapterN_body.tex` (b
 ```
 Saranga/
 ├── README.md                          # This file
-├── PROJECT_ORGANIZATION.txt           # Detailed architecture notes
 ├── PROJECT_SETTINGS.md                # Configuration reference
 ├── .gitignore                         # Includes output/, logs/, __pycache__/
 │
@@ -326,13 +297,6 @@ Saranga/
 │   ├── run_proofwiki_scrape.sh
 │   └── ...                            # herald/debug helpers
 │
-├── class_52017/                       # Teaching infrastructure
-│   ├── instructor_only/
-│   │   ├── run_evaluation.py          # Single-extractor eval pipeline
-│   │   ├── run_all_evaluations.py     # Batch eval + leaderboard
-│   │   └── annotate_chapter_solution.py
-│   └── gold_standards/                # BHK chapters 2-12 as unified JSON
-│
 └── corpus/gold/                       # Gold-standard arXiv papers (see corpus/gold/README.md)
     ├── *.json                         # Annotations
     └── tex/ / pdf/ / figures/         # Source material
@@ -367,5 +331,4 @@ The **unified JSON on disk** is the interface between the extraction engine and 
 - [`src/annotation_schema.md`](src/annotation_schema.md) — unified JSON schema spec
 - [`src/LLMVersion/README.md`](src/LLMVersion/README.md) — extraction engine detailed docs (prompts, optimization, distillation)
 - [`src/Autoformalizer/README.md`](src/Autoformalizer/README.md) — LaTeX → Lean 4 pipeline
-- [`PROJECT_ORGANIZATION.txt`](PROJECT_ORGANIZATION.txt) — full architecture notes
 - [`PROJECT_SETTINGS.md`](PROJECT_SETTINGS.md) — configuration reference (paths, env vars, CLI flags)

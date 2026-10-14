@@ -112,7 +112,7 @@ re-done from scratch rather than mixing two prompt revisions.
 - Some real dependency edges were dropped to preserve acyclicity, notably
   induction hypotheses (issue E120). This is **not** post-hoc detectable.
 
-Known issues are catalogued in `scripts/opus_extract_prompt_v6_TODO.md` (137
+Known issues are catalogued in `docs/opus_extract_prompt_v6_TODO.md` (137
 items). The high-severity ones are **spec defects, not model failures** — the
 prompt contradicts itself and `src/*_types.py` in several places, and the corpus
 faithfully inherited both sides of each disagreement.

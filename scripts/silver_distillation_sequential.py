@@ -708,8 +708,7 @@ def run_sequential(args):
             print(f"  ✗ No diminishing returns observed (ratio: {second_half/first_half:.2f})")
 
     print(f"\n  Generated rules: {eval_dir}/distilled_rules.py")
-    print(f"  Run report:  python scripts/silver_distillation_report.py "
-          f"--log {log_path}")
+    print(f"  Run log:     {log_path}")
 
 
 def main():
