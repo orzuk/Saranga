@@ -46,6 +46,9 @@ def main(out):
     for f in [p / "data/tier3_v6/index.json"] + sorted((p / "data/tier3_v6").glob("*/index.json")):
         copy(f, out / "portal/data/tier3_v6" / f.relative_to(p / "data/tier3_v6"))
     copy(REPO / "scripts/opus_extract_prompt_v6.md", out / "scripts/opus_extract_prompt_v6.md")   # LLM agent prompt
+    commit = subprocess.run(["git", "-C", str(REPO), "rev-parse", "--short", "HEAD"],
+                            capture_output=True, text=True).stdout.strip()
+    (out / "COMMIT").write_text(commit or "unknown")     # no git in the container: the LLM runs' prompt version
     for f in sorted((REPO / "src").glob("*.py")):
         copy(f, out / "src" / f.name)
     for f in sorted((REPO / "src/LLMVersion").glob("*.py")):

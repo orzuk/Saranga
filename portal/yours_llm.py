@@ -74,14 +74,26 @@ def _inside(path: str, roots: list[Path]) -> bool:
     return any(p == r or str(p).startswith(str(r) + os.sep) for r in roots)
 
 
+def _commit() -> str:
+    """The code version: git where there is a checkout, else the COMMIT file staging writes."""
+    try:
+        c = subprocess.run(["git", "-C", str(REPO), "rev-parse", "--short", "HEAD"],
+                           capture_output=True, text=True, timeout=10).stdout.strip()
+        if c:
+            return c
+    except (OSError, subprocess.SubprocessError):
+        pass
+    f = REPO / "COMMIT"
+    return f.read_text().strip() if f.is_file() else "portal"
+
+
 def render_prompt(main_tex: Path, out_json: Path, paper_id: str, title: str, model: str) -> str:
     sys.path.insert(0, str(SRC))
     from schema_for_prompts import render_prompt as render   # noqa: E402
     import hashlib
     template = render(PROMPT.read_text())
     sha = hashlib.sha256(template.encode()).hexdigest()[:16]
-    commit = subprocess.run(["git", "-C", str(REPO), "rev-parse", "--short", "HEAD"],
-                            capture_output=True, text=True).stdout.strip() or "portal"
+    commit = _commit()
     values = {"BID": paper_id, "TITLE": title or "(see the source)", "AUTHORS": "(see the source)",
               "YEAR": "(see the source)", "TEX_SOURCE": str(main_tex), "OUTPUT_JSON": str(out_json),
               "REPO": str(REPO), "MODEL": model, "EFFORT": "default",
