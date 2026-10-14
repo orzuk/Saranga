@@ -304,10 +304,8 @@ def _parse_one(pid):
     main = seq._find_main_tex(_W["tex"] / pid / "source")
     if main:
         try:
-            with contextlib.redirect_stdout(io.StringIO()):      # the parser is chatty
-                parser = PaperParser(paper_id=pid, extraction_mode="rules",
-                                     structure_types=TYPES, rules_dir=_W["rules"])
-                graph = parser.parse_file(str(main)).to_dict()
+            graph = PaperParser(paper_id=pid, extraction_mode="rules", structure_types=TYPES,
+                                rules_dir=_W["rules"]).parse_file(str(main)).to_dict()
             for o in graph.get("objects", {}).values():
                 raw = o.get("raw_latex") or o.get("statement") or ""
                 if o.get("kind") in TYPES and raw.strip():

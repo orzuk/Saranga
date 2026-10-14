@@ -3587,6 +3587,27 @@ def resolve_paths(args_list):
     return files
 
 
+def render_paper(data, png_path=None, html_path=None, resolution="standard", show_foundation=False,
+                 foundation_path=None):
+    """Draw a normalised graph as a PNG and/or the interactive HTML page.
+    Returns (nodes, edges, clickable nodes) as far as drawn."""
+    import tempfile
+    nodes, edges, meta = data.get("nodes", []), data.get("edges", []), data.get("metadata", {})
+    n = [0, 0, 0]
+    if png_path:
+        n[:2] = draw_dag(nodes, edges, str(png_path), metadata=meta, resolution=resolution,
+                         show_foundation=show_foundation, foundation_path=foundation_path)[:2]
+    if html_path:
+        Path(html_path).parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory() as td:
+            # write_png=False: the page embeds the SVG (rasterising cost GBs on big papers);
+            # no in-figure title, the page shows it as <h1>
+            draw_dag(nodes, edges, f"{td}/g_nolegend.png", metadata=meta, resolution=resolution, show_legend=False,
+                     show_foundation=True, foundation_path=foundation_path, write_png=False, show_title=False)
+            n[2] = generate_interactive_html(data, f"{td}/g_nolegend.svg", str(html_path))
+    return n
+
+
 def main():
     global LOW_CONF_THRESHOLD
     import argparse
@@ -3650,36 +3671,11 @@ def main():
 
         metadata = data.get("metadata", {})
 
-        if do_png:
-            result = draw_dag(nodes, edges, output_path, metadata=metadata,
-                              resolution=args.resolution,
-                              show_foundation=args.show_foundation,
-                              foundation_path=args.foundation_path)
-            n_nodes, n_edges = result[0], result[1]
-            print(f"  -> {output_path} ({n_nodes} nodes, {n_edges} edges)")
-
-        if do_html:
-            import os
-            svg_only_path = str(output_path).replace('.png', '_nolegend.svg')
-            # write_png=False: the HTML embeds the SVG, and the PNG written
-            # here was deleted three lines below anyway. Rasterising it cost
-            # ~6 GB and half the runtime on a 461-node paper. The parameter
-            # existed and was documented but had never been passed.
-            draw_dag(nodes, edges, svg_only_path.replace('.svg', '.png'), metadata=metadata,
-                     resolution=args.resolution, show_legend=False,
-                     show_foundation=True,
-                     foundation_path=args.foundation_path,
-                     write_png=False,
-                     # The HTML page already shows the paper title as an <h1>
-                     # with the arXiv links, so an in-figure title just repeats
-                     # it and eats vertical space above the graph.
-                     show_title=False)
-            html_path = output_path.with_suffix(".html")   # next to -o, else next to the input
-            n_html = generate_interactive_html(data, svg_only_path, str(html_path))
-            for tmp in [svg_only_path, svg_only_path.replace('.svg', '.png')]:
-                if os.path.exists(tmp):
-                    os.remove(tmp)
-            print(f"  -> {html_path} ({n_html} clickable nodes)")
+        html_path = output_path.with_suffix(".html") if do_html else None   # next to -o, else next to the input
+        n = render_paper(data, output_path if do_png else None, html_path, resolution=args.resolution,
+                         show_foundation=args.show_foundation, foundation_path=args.foundation_path)
+        print(*([f"  -> {output_path} ({n[0]} nodes, {n[1]} edges)"] if do_png else [])
+              + ([f"  -> {html_path} ({n[2]} clickable nodes)"] if do_html else []), sep="\n")
 
     if len(files) > 1:
         print(f"\nDone: {len(files)} graphs generated.")

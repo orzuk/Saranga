@@ -220,62 +220,54 @@ def run_batch(
                 print("[INFO] empty shard: nothing to parse")
                 sys.exit(0)
 
+    suffix = "rules" if extraction_mode == "rules" else \
+        llm_model.replace("/", "-") + ("+rules" if extraction_mode == "both" else "")
+
+    def process(base_id, versioned_id, tex_path, day_dir) -> None:
+        """Parse one paper (under the safeguard timeout) into day_dir/json (and day_dir/png);
+        one status row per paper in out_dir/status_log.csv."""
+        try:
+            if safeguard_timeout:
+                signal.signal(signal.SIGALRM, _timeout_handler)
+                signal.alarm(safeguard_timeout)
+            graph = PaperParser(paper_id=versioned_id, extraction_mode=extraction_mode, llm_model=llm_model,
+                                llm_chunk_chars=llm_chunk_chars, llm_provider=llm_provider,
+                                custom_prompt_file=prompt_file, structure_types=structure_types,
+                                rules_dir=rules_dir).parse_file(tex_path)
+            status = "OK"
+        except _ParseTimeout:
+            graph, status = None, f"TIMEOUT: exceeded {safeguard_timeout}s"
+        except Exception as e:                                  # noqa: BLE001  (one bad paper, not the batch)
+            graph, status = None, f"PARSE_ERROR: {e}"
+        finally:
+            if safeguard_timeout:
+                signal.alarm(0)
+        with open(out_dir / "status_log.csv", "a", newline="") as f:
+            csv.writer(f).writerow([base_id, versioned_id, status])
+        if graph is None:
+            print(f"[WARN]   {base_id}: {status}")
+            return
+        (day_dir / "json").mkdir(parents=True, exist_ok=True)
+        json_path = day_dir / "json" / f"{versioned_id}_{suffix}.json"
+        json_path.write_text(json.dumps(graph.to_unified_dict(), indent=2), encoding="utf-8")
+        print(f"[OK]   Saved {json_path}")
+        if draw_graphs:
+            (day_dir / "png").mkdir(parents=True, exist_ok=True)
+            try:
+                paper_to_network(graph, out_png=str(day_dir / "png" / f"{versioned_id}.png"), figsize=(16, 10),
+                                 include_kinds=["theorem", "lemma", "proposition", "corollary", "definition",
+                                                "proof", "conjecture", "claim", "problem"])
+            except Exception as e:                              # noqa: BLE001
+                print(f"[WARN] Could not draw network for {base_id}: {e}")
+
     if local_items:
         # Skip arXiv API — process local files directly
         out_dir.mkdir(parents=True, exist_ok=True)
         print(f"[INFO] Will process {len(local_items)} papers from local .tex files.")
 
         for i, (base_id, tex_path, versioned_id) in enumerate(local_items, start=1):
-            print(f"\n[INFO] ({i}/{len(local_items)}) Processing {base_id}")
-            print(f"[INFO]   Resolved source -> {tex_path}")
-
-            try:
-                parser = PaperParser(
-                    paper_id=versioned_id,
-                    extraction_mode=extraction_mode,
-                    llm_model=llm_model,
-                    llm_chunk_chars=llm_chunk_chars,
-                    llm_provider=llm_provider,
-                    custom_prompt_file=prompt_file,
-                    structure_types=structure_types,
-                    rules_dir=rules_dir,
-                )
-                if safeguard_timeout:
-                    signal.signal(signal.SIGALRM, _timeout_handler)
-                    signal.alarm(safeguard_timeout)
-                graph = parser.parse_file(tex_path)
-                if safeguard_timeout:
-                    signal.alarm(0)
-            except _ParseTimeout:
-                print(f"[WARN]   Skipped {base_id} — parsing exceeded {safeguard_timeout}s timeout")
-                continue
-            except Exception as e:
-                if safeguard_timeout:
-                    signal.alarm(0)
-                print(f"[WARN]   parse_file failed for {base_id}: {e}")
-                continue
-
-            # Save JSON into the json/ subdir
-            if extraction_mode == "rules":
-                suffix = "rules"
-            elif extraction_mode == "llm":
-                suffix = llm_provider
-            else:
-                suffix = f"{llm_provider}+rules"
-            json_dir = out_dir / "json"
-            json_dir.mkdir(parents=True, exist_ok=True)
-            json_name = f"{versioned_id}_{suffix}.json"
-            json_path = json_dir / json_name
-            json_path.write_text(json.dumps(graph.to_unified_dict(), indent=2), encoding="utf-8")
-            print(f"[OK]   Saved {json_path}")
-
-            if draw_graphs:
-                try:
-                    png_path = out_dir / f"{versioned_id}_graph.png"
-                    paper_to_network(graph, out_png=str(png_path))
-                    print(f"[INFO]   Wrote {png_path}")
-                except Exception as e:
-                    print(f"[WARN]   Graph failed for {base_id}: {e}")
+            print(f"\n[INFO] ({i}/{len(local_items)}) Processing {base_id} -> {tex_path}")
+            process(base_id, versioned_id, tex_path, out_dir)
         return
 
     # ------------------------------------------------------------
@@ -363,103 +355,8 @@ def run_batch(
                 writer.writerow([base_id, "", status])
             continue
 
-        # ---------- STEP 2: PARSE WITH LLM OPTIONS ----------
-        try:
-            parser = PaperParser(
-                paper_id=versioned_id,
-                extraction_mode=extraction_mode,
-                llm_model=llm_model,
-                llm_chunk_chars=llm_chunk_chars,
-                llm_provider=llm_provider,
-                custom_prompt_file=prompt_file,
-                structure_types=structure_types,
-                rules_dir=rules_dir,
-            )
-            if safeguard_timeout:
-                signal.signal(signal.SIGALRM, _timeout_handler)
-                signal.alarm(safeguard_timeout)
-            graph = parser.parse_file(tex_path)
-            if safeguard_timeout:
-                signal.alarm(0)
-            status = "OK"
-        except _ParseTimeout:
-            status = f"TIMEOUT: exceeded {safeguard_timeout}s"
-            print(f"[WARN]   Skipped {base_id} — parsing exceeded {safeguard_timeout}s timeout")
-        except Exception as e:
-            if safeguard_timeout:
-                signal.alarm(0)
-            status = f"PARSE_ERROR: {e}"
-            print(f"[WARN]   Failed to parse {base_id}: {e}")
-            with open(out_dir / "status_log.csv", "a", newline="") as f:
-                writer = csv.writer(f)
-                writer.writerow([base_id, versioned_id, status])
-            continue
-
-        # If we got here, both fetch + parse succeeded, log success
-        with open(out_dir / "status_log.csv", "a", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow([base_id, versioned_id, status])
-
-        # ---------- STEP 3: DETERMINE OUTPUT DIR (same YYYY/MM/DD as metadata) ----------
-        pub_raw = md.get("published") or md.get("created")
-        if pub_raw:
-            date_str = str(pub_raw)[:10]
-            try:
-                year, month, day = date_str.split("-")
-            except Exception:
-                year, month, day = ("unknown", "unknown", "unknown")
-        else:
-            year, month, day = ("unknown", "unknown", "unknown")
-
-        base_day_dir = out_dir / year / month / day
-
-        # ---------- STEP 4: WRITE JSON ----------
-        json_dir = base_day_dir / "json"
-        json_dir.mkdir(parents=True, exist_ok=True)
-
-        # Determine JSON suffix
-        if extraction_mode == "rules":
-            suffix = "rules"
-        elif extraction_mode == "llm":
-            suffix = llm_model.replace('/', '-')  # sanitize slashes for filename
-        elif extraction_mode == "both":
-            suffix = f"{llm_model}+rules"
-
-        json_filename = f"{versioned_id}_{suffix}.json"
-        json_path = json_dir / json_filename
-
-        json_path.write_text(json.dumps(graph.to_unified_dict(), indent=2), encoding="utf-8")
-        print(f"[OK]   Saved graph for {base_id} -> {json_path}")
-
-        # ---------- STEP 5: DRAW PNG ----------
-        if draw_graphs:
-            png_dir = base_day_dir / "png"
-            png_dir.mkdir(parents=True, exist_ok=True)
-            out_png = png_dir / f"{versioned_id}.png"
-
-            try:
-                paper_to_network(
-                    paper=graph,
-                    out_png=str(out_png),
-                    node_label_attr="label",  # or "id" / "name"
-                    include_kinds=[
-                        "theorem",
-                        "lemma",
-                        "proposition",
-                        "corollary",
-                        "definition",
-                        "proof",
-                        "proposition",
-                        "conjecture",
-                        "claim",
-                        "problem",
-                    ],
-                    figsize=(16, 10),
-                    include_relation_types=None,
-                )
-                print(f"[OK]   Saved PNG for {base_id} -> {out_png}")
-            except Exception as e:
-                print(f"[WARN] Could not draw network for {base_id}: {e}")
+        day = (str(md.get("published") or md.get("created") or "")[:10].split("-") + ["unknown"] * 3)[:3]
+        process(base_id, versioned_id, tex_path, out_dir.joinpath(*(d or "unknown" for d in day)))
 
     print("[INFO] Done.")
 

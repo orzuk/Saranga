@@ -12,7 +12,7 @@
 #   OUT_DIR=./my_test ./scripts/parse_smoke_test.sh  # custom output dir
 #
 # On the cluster, you can also submit this via sbatch with env vars:
-#   sbatch --export=TOP_K=5 scripts/parse_math_co_cluster.sh
+#   sbatch scripts/parse_multi_category_20.sh   (the full 100K run)
 #
 
 # Strict mode: catch undefined variables and pipefailures, but NOT set -e

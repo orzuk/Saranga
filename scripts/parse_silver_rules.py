@@ -10,8 +10,6 @@ silver JSON); then build its viewer pages as <silver>/graphs/<id>_rules.html:
         -o corpus/silver/opus-5.5__v6/graphs --suffix _rules
 """
 import argparse
-import contextlib
-import io
 import json
 import multiprocessing as mp
 import sys
@@ -23,15 +21,13 @@ sys.path[:0] = [str(REPO / "src" / "LLMVersion"), str(REPO / "src"), str(REPO / 
 
 def one(job):
     pid, silver, tex, rules, out, name = job
-    from math_paper_parser import PaperParser
+    from math_paper_parser import parse_to_unified
     import compare_distillers as C
     main = C.seq._find_main_tex(Path(tex) / pid / "source")
     if not main:
         return pid, "no tex"
     try:
-        with contextlib.redirect_stdout(io.StringIO()):
-            d = PaperParser(paper_id=pid, extraction_mode="rules", rules_dir=rules) \
-                .parse_file(str(main)).to_unified_dict(include_research_fields=True)
+        d = parse_to_unified(main, pid, rules)
         meta = json.load(open(Path(silver) / f"{pid}.json")).get("metadata", {})
         d["metadata"] = {**meta, **{k: v for k, v in d.get("metadata", {}).items() if v}}
         d["metadata"]["extractor"] = name

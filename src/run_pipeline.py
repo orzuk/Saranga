@@ -387,7 +387,7 @@ def _render_guarded(render_fn, mem_cap_bytes):
 def op_visualize(args) -> None:
     """Generate PNG and/or HTML visualizations for all JSONs under out_dir."""
     try:
-        from visualize_annotation import draw_dag, generate_interactive_html, _normalize_schema  # noqa
+        from visualize_annotation import render_paper, _normalize_schema  # noqa
     except ImportError as e:
         print(f"[pipeline] visualize: cannot import visualize_annotation: {e}")
         return
@@ -475,38 +475,15 @@ def op_visualize(args) -> None:
                       f"SKIPPED oversized ({len(nodes)} nodes, {len(edges)} edges "
                       f"> cap {max_nodes}/{max_edges}) to avoid OOM")
                 continue
-            metadata = data.get("metadata", {})
+            what = ["PNG"] * (not args.html_only and not png_path.exists()) \
+                + ["HTML"] * bool((args.html or args.html_only) and not html_path.exists())
 
-            what = []  # track what we're generating (for the progress log)
-
-            # The actual rendering, run inside a memory-capped child so a runaway
-            # paper is skipped instead of OOM-killing the batch. Suppress noisy
-            # library output (e.g. "Index has N searchable terms").
+            # rendered in a memory-capped child so a runaway paper is skipped, not OOM-killing the batch
             def _render():
-                if not args.html_only and not png_path.exists():
-                    png_dir.mkdir(parents=True, exist_ok=True)
-                    with contextlib.redirect_stdout(io.StringIO()):
-                        draw_dag(nodes, edges, str(png_path), metadata=metadata,
+                png_dir.mkdir(parents=True, exist_ok=True)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    render_paper(data, png_path if "PNG" in what else None, html_path if "HTML" in what else None,
                                  resolution=args.resolution)
-                if (args.html or args.html_only) and not html_path.exists():
-                    import tempfile
-                    tmp_dir = tempfile.mkdtemp()
-                    tmp_png = os.path.join(tmp_dir, jp.stem + "_nolegend.png")
-                    svg_only = tmp_png.replace(".png", ".svg")
-                    html_dir.mkdir(parents=True, exist_ok=True)
-                    with contextlib.redirect_stdout(io.StringIO()):
-                        draw_dag(nodes, edges, tmp_png, metadata=metadata,
-                                 resolution=args.resolution, show_legend=False,
-                                 show_foundation=True, show_extras=True,
-                                 write_png=False)
-                        generate_interactive_html(data, svg_only, str(html_path))
-                    import shutil
-                    shutil.rmtree(tmp_dir, ignore_errors=True)
-
-            if not args.html_only and not png_path.exists():
-                what.append("PNG")
-            if (args.html or args.html_only) and not html_path.exists():
-                what.append("HTML")
 
             if not _render_guarded(_render, mem_cap_bytes):
                 n_skipped_oom += 1

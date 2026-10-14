@@ -20,6 +20,7 @@ Features:
 from __future__ import annotations
 
 import importlib.util
+import logging
 import os
 import re
 import sys as _sys
@@ -56,6 +57,8 @@ _SRC_DIR = str(Path(__file__).resolve().parent.parent)
 if _SRC_DIR not in _sys.path:
     _sys.path.insert(0, _SRC_DIR)
 import latex_facts  # noqa: E402
+
+log = logging.getLogger("saranga.parser")   # info: progress; warnings: what went wrong
 
 # Rule modules are loaded once per process. The parser asks for a rule module
 # per node type per paper, and the generated group importer re-executes a
@@ -323,6 +326,12 @@ def _ref_context(raw: str, pos: int, width: int = 90) -> str:
     """The text just before a \\ref, whitespace and ~ normalised."""
     return re.sub(r"[\s~]+", " ", raw[max(0, pos - width):pos])
 
+def parse_to_unified(tex, paper_id=None, rules_dir=None, **kw) -> dict:
+    """One paper's graph as unified JSON: rule-based unless extraction_mode says otherwise."""
+    return PaperParser(paper_id=paper_id or Path(tex).stem, rules_dir=rules_dir, **kw) \
+        .parse_file(str(tex)).to_unified_dict(include_research_fields=True)
+
+
 class PaperParser:
     """
     Heuristic LaTeX parser for a single paper.
@@ -399,7 +408,7 @@ class PaperParser:
         # rule sets, so a run whose logs do not record this cannot be
         # reproduced or compared against another.
         if self.extraction_mode in ("rules", "both"):
-            print(f"[INFO] distilled rules: {self._describe_rules()}")
+            log.info(f"distilled rules: {self._describe_rules()}")
             _cache_rule_modules()
 
 
@@ -477,9 +486,8 @@ class PaperParser:
             # only symptom was the absence of a log line, which looks exactly
             # like "no slow rules found". A guard that fails silently is worse
             # than no guard, because it is trusted.
-            print(f"[WARN] rule_guard NOT installed ({type(_e).__name__}: {_e}); "
-                  f"regexes run UNGUARDED and a runaway can hang this parse",
-                  file=_sys.stderr, flush=True)
+            log.warning(f"rule_guard NOT installed ({type(_e).__name__}: {_e}); "
+                  f"regexes run UNGUARDED and a runaway can hang this parse")
         # The paper as every extractor sees it (latex_facts): \input files
         # inlined, comments and disabled text removed, the paper's own macros
         # expanded; its environments and displays located once. Extraction
@@ -515,8 +523,8 @@ class PaperParser:
                     )
                     llm_extracted[stype] = llm_objs
                 except Exception as e:  # noqa: BLE001
-                    print(
-                        f"[WARN] parse_file: LLM {stype} extraction failed with error {e}; "
+                    log.warning(
+                        f"parse_file: LLM {stype} extraction failed with error {e}; "
                         "continuing without LLM results for this type."
                     )
                     llm_extracted[stype] = []
@@ -729,7 +737,7 @@ class PaperParser:
 
     def _extract_theorem_like(self, text: str) -> List[TheoremLike]:
         found = self._extract_envs(text, self.THEOREM_LIKE_KINDS)
-        print(f"[DEBUG] found {len(found)} theorem-like environments")
+        log.debug(f"found {len(found)} theorem-like environments")
 
         counters: Dict[str, int] = {k: 0 for k in self.THEOREM_LIKE_KINDS}
         objects: List[TheoremLike] = []
@@ -1209,7 +1217,7 @@ class PaperParser:
             obj.index = i
         objects = deduped
 
-        print(f"[INFO] _extract_definitions_manual: found {len(objects)} definitions (all kinds).")
+        log.info(f"_extract_definitions_manual: found {len(objects)} definitions (all kinds).")
         return objects
 
     # Backwards-compatible wrapper
@@ -1341,7 +1349,7 @@ class PaperParser:
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
         except Exception as e:
-            print(f"[WARN] Failed to load distilled rules from {rules_path}: {e}")
+            log.warning(f"Failed to load distilled rules from {rules_path}: {e}")
             return []
 
         # Guard every pattern this file defines. A rule that cannot finish is
@@ -1357,7 +1365,7 @@ class PaperParser:
                                  budget=self.DISTILLED_RULE_BUDGET_S)
             rule_guard.guard_module(mod, source_path=str(rules_path))
         except Exception as e:
-            print(f"[WARN] rule_guard unavailable ({e}); "
+            log.warning(f"rule_guard unavailable ({e}); "
                   f"distilled rules run unguarded")
 
         extract_fn = getattr(mod, func_name, None)
@@ -1365,13 +1373,13 @@ class PaperParser:
             key = (str(rules_path), func_name)       # once per rule set, not once per paper
             if key not in PaperParser._WARNED_MISSING:
                 PaperParser._WARNED_MISSING.add(key)
-                print(f"[WARN] {rules_path} does not define {func_name}()")
+                log.debug(f"{rules_path} does not define {func_name}()")
             return []
 
         try:
             raw_results = extract_fn(text)
         except Exception as e:
-            print(f"[WARN] distilled {func_name}() raised: {e}")
+            log.warning(f"distilled {func_name}() raised: {e}")
             return []
 
         if not raw_results:
@@ -1440,7 +1448,7 @@ class PaperParser:
             try:
                 obj = cls(**kwargs)
             except Exception as e:
-                print(f"[WARN] Could not create {class_name} from distilled rule {i}: {e}")
+                log.warning(f"Could not create {class_name} from distilled rule {i}: {e}")
                 continue
             # Its place in the paper, so document order (and the proof linker,
             # which reads it) does not depend on the order rules were applied:
@@ -1452,7 +1460,7 @@ class PaperParser:
             objects.append(obj)
 
         if objects:
-            print(f"[INFO] Distilled rules ({structure_type}): found {len(objects)} additional items.")
+            log.info(f"Distilled rules ({structure_type}): found {len(objects)} additional items.")
 
         return objects
 
@@ -1466,11 +1474,11 @@ class PaperParser:
             try:
                 import anthropic
             except ImportError:
-                print("[ERROR] anthropic package not installed. Run: pip install anthropic")
+                log.error("anthropic package not installed. Run: pip install anthropic")
                 return None, None
             api_key = os.environ.get("ANTHROPIC_API_KEY")
             if not api_key:
-                print("[ERROR] ANTHROPIC_API_KEY environment variable not set.")
+                log.error("ANTHROPIC_API_KEY environment variable not set.")
                 return None, None
             return anthropic.Anthropic(api_key=api_key), "anthropic"
 
@@ -1478,11 +1486,11 @@ class PaperParser:
             try:
                 from openai import OpenAI
             except ImportError:
-                print("[ERROR] openai package not installed. Run: pip install openai")
+                log.error("openai package not installed. Run: pip install openai")
                 return None, None
             api_key = os.environ.get("OPENAI_API_KEY")
             if not api_key:
-                print("[ERROR] OPENAI_API_KEY environment variable not set.")
+                log.error("OPENAI_API_KEY environment variable not set.")
                 return None, None
             return OpenAI(api_key=api_key), "openai_compat"
 
@@ -1490,11 +1498,11 @@ class PaperParser:
             try:
                 from openai import OpenAI
             except ImportError:
-                print("[ERROR] openai package not installed (required for HF router). Run: pip install openai")
+                log.error("openai package not installed (required for HF router). Run: pip install openai")
                 return None, None
             api_key = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_API_KEY")
             if not api_key:
-                print("[ERROR] HF_TOKEN or HUGGINGFACE_API_KEY environment variable not set.")
+                log.error("HF_TOKEN or HUGGINGFACE_API_KEY environment variable not set.")
                 return None, None
             return OpenAI(base_url="https://router.huggingface.co/v1", api_key=api_key), "openai_compat"
 
@@ -1507,11 +1515,11 @@ class PaperParser:
             try:
                 from openai import OpenAI
             except ImportError:
-                print("[ERROR] openai package not installed (required for OpenRouter). Run: pip install openai")
+                log.error("openai package not installed (required for OpenRouter). Run: pip install openai")
                 return None, None
             api_key = os.environ.get("OPENROUTER_API_KEY")
             if not api_key:
-                print("[ERROR] OPENROUTER_API_KEY environment variable not set.")
+                log.error("OPENROUTER_API_KEY environment variable not set.")
                 return None, None
             return OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key), "openai_compat"
 
@@ -1523,11 +1531,11 @@ class PaperParser:
             try:
                 from openai import OpenAI
             except ImportError:
-                print("[ERROR] openai package not installed (required for Alibaba Bailian). Run: pip install openai")
+                log.error("openai package not installed (required for Alibaba Bailian). Run: pip install openai")
                 return None, None
             api_key = os.environ.get("DASHSCOPE_API_KEY") or os.environ.get("ALIBABA_API_KEY")
             if not api_key:
-                print("[ERROR] DASHSCOPE_API_KEY (or ALIBABA_API_KEY) environment variable not set.")
+                log.error("DASHSCOPE_API_KEY (or ALIBABA_API_KEY) environment variable not set.")
                 return None, None
             base_url = os.environ.get("DASHSCOPE_BASE_URL", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1")
             return OpenAI(base_url=base_url, api_key=api_key), "openai_compat"
@@ -1541,18 +1549,18 @@ class PaperParser:
             try:
                 import google.generativeai as genai
             except ImportError:
-                print("[ERROR] google-generativeai package not installed. Run: pip install google-generativeai")
+                log.error("google-generativeai package not installed. Run: pip install google-generativeai")
                 return None, None
             api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
             if not api_key:
-                print("[ERROR] GOOGLE_API_KEY (or GEMINI_API_KEY) environment variable not set.")
+                log.error("GOOGLE_API_KEY (or GEMINI_API_KEY) environment variable not set.")
                 return None, None
             genai.configure(api_key=api_key)
             # Client is the module; _call_llm_api instantiates per-model.
             return genai, "google"
 
         else:
-            print(f"[WARN] llm_provider='{provider}' not supported.")
+            log.warning(f"llm_provider='{provider}' not supported.")
             return None, None
 
     @staticmethod
@@ -1592,7 +1600,7 @@ class PaperParser:
         )
 
         if not common["clean_text"]:
-            print(f"[DEBUG] clean_text not produced for {structure_type} due to token output savings")
+            log.debug(f"clean_text not produced for {structure_type} due to token output savings")
 
         if dataclass_name == "Definition":
             return Definition(**common, env_name=None)
@@ -1692,8 +1700,8 @@ class PaperParser:
             return []
 
         chunks = self._chunk_text(text, chunk_chars)
-        print(
-            f"[INFO] _extract_objects_llm({structure_type}): "
+        log.info(
+            f"_extract_objects_llm({structure_type}): "
             f"processing {len(chunks)} chunks with {model} via {self.llm_provider}"
         )
 
@@ -1701,7 +1709,7 @@ class PaperParser:
         idx = 0
 
         for chunk_idx, chunk in enumerate(chunks, 1):
-            print(f"[INFO] Processing chunk {chunk_idx}/{len(chunks)}...")
+            log.info(f"Processing chunk {chunk_idx}/{len(chunks)}...")
             prompt = self._create_extraction_prompt(chunk, structure_type)
 
             try:
@@ -1713,10 +1721,10 @@ class PaperParser:
                     obj = self._build_math_object(obj_data, structure_type, idx)
                     all_objects.append(obj)
             except Exception as e:
-                print(f"[ERROR] LLM API call failed for chunk {chunk_idx}: {e}")
+                log.error(f"LLM API call failed for chunk {chunk_idx}: {e}")
 
-        print(
-            f"[INFO] _extract_objects_llm({structure_type}): "
+        log.info(
+            f"_extract_objects_llm({structure_type}): "
             f"found {len(all_objects)} {structure_type}(s) total."
         )
         return all_objects
@@ -1754,7 +1762,7 @@ class PaperParser:
         # 1. Custom prompt file (user-provided, overrides everything)
         if self.custom_prompt_file and Path(self.custom_prompt_file).exists():
             template = Path(self.custom_prompt_file).read_text()
-            print("Using Prompt from file:", self.custom_prompt_file)
+            log.info("Using Prompt from file: %s", self.custom_prompt_file)
             return template.replace("{latex_chunk}", latex_chunk)
 
         # 2. Per-type prompt file in repo-level prompts/ directory.
@@ -1764,7 +1772,7 @@ class PaperParser:
         type_prompt = script_dir.parent.parent / "prompts" / f"{structure_type}_prompt.txt"
         if type_prompt.exists():
             template = type_prompt.read_text()
-            print(f"Using Prompt from file: {type_prompt}")
+            log.info(f"Using Prompt from file: {type_prompt}")
             return template.replace("{latex_chunk}", latex_chunk)
 
         # 3. Built-in default from STRUCTURE_TYPE_CONFIG
@@ -1773,7 +1781,7 @@ class PaperParser:
         fields_list = "\n".join(f"- {f}: ..." for f in config["json_fields"])
         json_example = ", ".join(f'"{f}": "..."' for f in config["json_fields"])
 
-        print(f"Using Default Prompt Template for {structure_type}")
+        log.info(f"Using Default Prompt Template for {structure_type}")
         prompt = f"""You are analyzing a mathematical paper written in LaTeX. Extract ALL {config['description']}.
 
 {structure_type.capitalize()} forms:
@@ -1822,12 +1830,12 @@ Respond ONLY with JSON array."""
         try:
             definitions = json.loads(response_text)
             if not isinstance(definitions, list):
-                print(f"[WARN] LLM response is not a list")
+                log.warning(f"LLM response is not a list")
                 return []
             return definitions
         except json.JSONDecodeError as e:
-            print(f"[ERROR] Failed to parse JSON: {e}")
-            print(f"[DEBUG] Response: {response_text[:500]}...")
+            log.error(f"Failed to parse JSON: {e}")
+            log.debug(f"Response: {response_text[:500]}...")
             return []
 
     # ------------------------------------------------------------------
@@ -2048,7 +2056,7 @@ Respond ONLY with JSON array."""
             objects.append(proof)
 
         if objects:
-            print(f"[INFO] _extract_proofs: found {len(objects)} proof environments.")
+            log.info(f"_extract_proofs: found {len(objects)} proof environments.")
 
         return objects
 
@@ -2125,7 +2133,7 @@ Respond ONLY with JSON array."""
             objects.append(alg)
 
         if objects:
-            print(f"[INFO] _extract_algorithms: found {len(objects)} algorithm environments.")
+            log.info(f"_extract_algorithms: found {len(objects)} algorithm environments.")
 
         return objects
 
@@ -2181,7 +2189,7 @@ Respond ONLY with JSON array."""
             objects.append(tbl)
 
         if objects:
-            print(f"[INFO] _extract_tables: found {len(objects)} table environments.")
+            log.info(f"_extract_tables: found {len(objects)} table environments.")
 
         return objects
 
@@ -2322,7 +2330,7 @@ Respond ONLY with JSON array."""
             linked_count += 1
 
         if linked_count:
-            print(f"[INFO] _link_proofs_to_theorems: linked {linked_count} proofs to theorems.")
+            log.info(f"_link_proofs_to_theorems: linked {linked_count} proofs to theorems.")
 
     # ------------------------------------------------------------------
     # Build relations (edges) between objects
@@ -2660,7 +2668,7 @@ Respond ONLY with JSON array."""
             ]
             existing -= uses_to_remove
             uses_ref_count -= len(uses_to_remove)
-            print(f"[INFO] _build_relations: broke {len(uses_to_remove)} length-2 'uses' cycles via document order.")
+            log.info(f"_build_relations: broke {len(uses_to_remove)} length-2 'uses' cycles via document order.")
 
         # Replace graph.relations with the accumulated ones
         graph.relations = relations + graph.relations[len(relations):]
@@ -2745,12 +2753,12 @@ Respond ONLY with JSON array."""
             cycle_removed += 1
 
         if cycle_removed:
-            print(f"[INFO] _build_relations: broke {cycle_removed} cross-type cycle edge(s) to enforce DAG.")
+            log.info(f"_build_relations: broke {cycle_removed} cross-type cycle edge(s) to enforce DAG.")
 
         structural_total = proves_count + resolves_count + illustrates_count + tests_count
         if structural_total or equation_edge_count or uses_ref_count or uses_term_count:
-            print(
-                "[INFO] _build_relations: "
+            log.info(
+                "_build_relations: "
                 f"added {proves_count} 'proves', "
                 f"{resolves_count} 'resolves', "
                 f"{illustrates_count} 'illustrates', "

@@ -1014,9 +1014,8 @@ def _prep_one(pid):
     main = seq._find_main_tex(_PREP["tex"] / pid / "source")
     if main:
         try:
-            with contextlib.redirect_stdout(io.StringIO()):            # the parser is chatty
-                g = PaperParser(paper_id=pid, extraction_mode="rules", structure_types=SCORED,
-                                rules_dir=_PREP["rules"]).parse_file(str(main)).to_dict()
+            g = PaperParser(paper_id=pid, extraction_mode="rules", structure_types=SCORED,
+                            rules_dir=_PREP["rules"]).parse_file(str(main)).to_dict()
             for o in g.get("objects", {}).values():
                 raw = o.get("raw_latex") or o.get("statement") or ""
                 if o.get("kind") in buckets and raw.strip():

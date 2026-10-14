@@ -18,8 +18,8 @@ cd Saranga
 # Smoke test: parse 5 math.CO papers through the unified pipeline (no LLM cost)
 ./scripts/parse_smoke_test.sh
 
-# Cluster run: 500 math.CO papers via SLURM
-sbatch scripts/parse_math_co_cluster.sh
+# Cluster run: the 100K corpus (20 categories) via SLURM
+sbatch scripts/parse_multi_category_20.sh
 ```
 
 ### Prerequisites
@@ -115,7 +115,7 @@ python src/run_pipeline.py \
 Two ready-to-run shell scripts:
 
 - [`scripts/parse_smoke_test.sh`](scripts/parse_smoke_test.sh) — quick 5-paper test, no SLURM, runs `run_pipeline.py` directly. Verifies the pipeline works end-to-end before committing to a cluster job.
-- [`scripts/parse_math_co_cluster.sh`](scripts/parse_math_co_cluster.sh) — SLURM wrapper for large cluster runs (default: 500 papers, math.CO, manual mode, 8h timeout, 32 GB RAM).
+- [`scripts/parse_multi_category_20.sh`](scripts/parse_multi_category_20.sh) — SLURM array over the 20 categories of the 100K corpus (rules mode).
 
 Both scripts are configurable via environment variables:
 
@@ -123,8 +123,7 @@ Both scripts are configurable via environment variables:
 # Override via env vars:
 TOP_K=1000 CATEGORY=math.PR ./scripts/parse_smoke_test.sh
 
-# Or for sbatch:
-sbatch --export=TOP_K=1000,CATEGORY=math.PR scripts/parse_math_co_cluster.sh
+# The cluster script reads its settings from the environment too (see its header).
 ```
 
 ---
@@ -287,7 +286,7 @@ Saranga/
 │
 ├── scripts/                           # SLURM + shell scripts
 │   ├── parse_smoke_test.sh            # ★ Quick 5-paper smoke test (no SLURM)
-│   ├── parse_math_co_cluster.sh       # ★ SLURM wrapper for cluster runs
+│   ├── parse_multi_category_20.sh     # ★ SLURM array: the 100K corpus
 │   ├── download_one_month_arxiv_papers.sh
 │   ├── download_all_arxiv_full_papers_to_slurm.sh
 │   ├── fetch_arxiv_papers_metadata.sh

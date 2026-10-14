@@ -17,8 +17,6 @@ and corpus/gold_candidates/index.json for the list page.
 Usage: python3 scripts/gold_candidates/build_gold_review.py [--ids a,b] [--no-pdf]
 """
 import argparse
-import contextlib
-import io
 import json
 import re
 import shutil
@@ -36,6 +34,7 @@ PAPERS = ROOT / "papers"
 RULES_DIR = REPO / "extractors" / "rules" / "silver_v6__sentence_rules_haiku__2026-10"
 BUILD = REPO / "src" / "graph_view" / "build.py"
 sys.path[:0] = [str(REPO / "src" / "LLMVersion"), str(REPO / "src"), str(Path(__file__).resolve().parent)]
+from math_paper_parser import parse_to_unified  # noqa: E402
 
 RESULT_KINDS = ("theorem", "lemma", "proposition", "corollary", "claim", "definition",
                 "conjecture", "remark", "example", "assumption", "algorithm", "equation")
@@ -44,13 +43,6 @@ RESULT_KINDS = ("theorem", "lemma", "proposition", "corollary", "claim", "defini
 def arxiv_id(folder: str) -> str:
     m = re.match(r"^([a-z\-]+)(\d{7})$", folder)          # math0607726 -> math/0607726
     return f"{m.group(1)}/{m.group(2)}" if m else folder
-
-
-def parse_paper(pid: str, tex: Path) -> dict:
-    from math_paper_parser import PaperParser
-    with contextlib.redirect_stdout(io.StringIO()):
-        return PaperParser(paper_id=pid, extraction_mode="rules", rules_dir=str(RULES_DIR)) \
-            .parse_file(str(tex)).to_unified_dict(include_research_fields=True)
 
 
 def merge_diagrams(graphs: list) -> dict:
@@ -83,7 +75,8 @@ def merge_diagrams(graphs: list) -> dict:
 
 
 def strip_tex(s: str) -> str:
-    s = (s or "").replace("\\\\", " ")                     # TikZ line breaks
+    s = (s or "").replace("\\\\", " ").replace("\\S", "§")   # TikZ line breaks; section sign
+    s = re.sub(r"\\(?:color|textcolor|nodepart)\s*\{[^}]*\}", " ", s)   # formatting, not text
     s = re.sub(r"\\(ref|cref|Cref|eqref|label)\{[^}]*\}", "", s)
     s = re.sub(r"\\[A-Za-z]+\*?", " ", s)
     return re.sub(r"[{}$~\\]+", " ", re.sub(r"\s+", " ", s)).strip()
@@ -173,10 +166,10 @@ def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict)
             stmt = "\n\n".join(expand(re.sub(r"\\label\{[^}]*\}", "", ours[h].get("raw_latex") or ours[h].get("statement") or ""))
                                  for h in hits)
             status = "mapped"
+        elif secs:                                       # a section box citing a source stays a section
+            typ, stmt, status = "remark", "Section: " + "; ".join(secs), "section"
         elif cited:
             typ, stmt, status = "theorem", "Cited: " + (text or ""), "cited"
-        elif secs:
-            typ, stmt, status = "remark", "Section: " + "; ".join(secs), "section"
         else:
             typ, stmt, status = "remark", text or "(empty box)", "unmatched"
         extra = _TYPED_NUM.sub(" ", re.sub(r"(?i)\b(theorems?|lemmas?|propositions?|corollar(?:y|ies)|definitions?|"
@@ -186,7 +179,7 @@ def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict)
             name = f"{name}: {extra}"
         name = (name or "")[:100] or None
         nodes.append({"id": gid, "type": typ, "name": name, "statement": stmt,
-                      "origin": "external" if status == "cited" else "paper", "tags": ["diagram", status], "maps_to": hits})
+                      "origin": "paper", "tags": ["diagram", status], "maps_to": hits})   # never hidden by the viewer
         hits = list(dict.fromkeys(hits))
         node_rows.append({"gid": gid, "box_text": text[:200], "refs": [r["label"] for r in refs], "printed": names,
                           "maps_to": hits, "our_types": [ours[h].get("type") for h in hits],
@@ -334,7 +327,7 @@ def build_one(folder: Path, do_pdf: bool) -> dict:
     if not (folder / "paper.tex").is_file():
         out["problems"].append("no LaTeX source")
         return out
-    full = parse_paper(pid, folder / "paper.tex")
+    full = parse_to_unified(folder / "paper.tex", pid, str(RULES_DIR))
     (folder / "full.json").write_text(json.dumps(full))
     out["title"] = full.get("metadata", {}).get("title", "")
     out["n_ours"] = len(full.get("nodes", []))
@@ -432,14 +425,17 @@ def main():
 
 
 def index_row(m: dict) -> dict:
-    """The list page's row. 'good': >= 3 boxes, >= 2 arrows, >= 70% of the boxes resolved (to our
-    node, a section, or a cited result) -- the page shows these by default."""
+    """The list page's row. 'good' (shown by default): a math/stat/CS paper whose diagram has >= 3
+    boxes and >= 2 arrows, >= 70% of them resolved (to our node, a section or a cited result) and
+    >= half to our nodes or sections."""
     res = sum(n["status"] in ("mapped", "section", "cited") for n in m.get("nodes", []))
     n = m.get("n_nodes") or 0
     return ({k: m.get(k) for k in ("id", "arxiv", "title", "n_nodes", "n_edges", "n_mapped", "problems")}
             | {"category": m["survey"]["primary_category"], "granularity": m["survey"]["granularity"],
                "year": m["survey"]["year"], "pilot": m.get("pilot", False), "n_resolved": res,
-               "good": bool(m.get("gold_page")) and n >= 3 and (m.get("n_edges") or 0) >= 2 and res >= 0.7 * n})
+               "good": bool(m.get("gold_page")) and n >= 3 and (m.get("n_edges") or 0) >= 2 and res >= 0.7 * n
+                       and sum(x["status"] in ("mapped", "section") for x in m.get("nodes", [])) >= 0.5 * n
+                       and m["survey"]["primary_category"].split(".")[0] in ("math", "stat", "cs")})
 
 
 def write_index(metas: list, replace: bool = False) -> None:

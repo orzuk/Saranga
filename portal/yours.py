@@ -10,7 +10,6 @@ work directory is deleted after KEEP_HOURS. LaTeX is only read, never compiled.
 """
 from __future__ import annotations
 
-import contextlib
 import gzip
 import io
 import json
@@ -31,6 +30,7 @@ RULES_DIR = REPO / "extractors" / "rules" / "silver_v6__sentence_rules_haiku__20
 GRAPH_BUILD = REPO / "src" / "graph_view" / "build.py"
 sys.path[:0] = [str(REPO / "src" / "LLMVersion"), str(REPO / "src")]
 import latex_facts                                  # noqa: E402
+from math_paper_parser import parse_to_unified      # noqa: E402
 KEEP_HOURS = 24
 MAX_UPLOAD = 50 * 2**20          # bytes accepted from a request
 MAX_UNPACKED = 200 * 2**20       # bytes written when unpacking an archive
@@ -151,13 +151,9 @@ def _title_from_tex(main: Path) -> str:
 
 def build(work: Path, paper_id: str, title: str = "") -> dict:
     """Parse the source with the rules and build the viewer page. Returns a summary."""
-    from math_paper_parser import PaperParser       # noqa: E402
-
     main = find_main_tex(work / "source")
     title = title or _title_from_tex(main) or paper_id
-    with contextlib.redirect_stdout(io.StringIO()):
-        d = PaperParser(paper_id=paper_id, extraction_mode="rules", rules_dir=str(RULES_DIR)) \
-            .parse_file(str(main)).to_unified_dict(include_research_fields=True)
+    d = parse_to_unified(main, paper_id, str(RULES_DIR))
     md = d.setdefault("metadata", {})
     md.update({"title": title, "paper_id": paper_id, "extractor": "rules (parser + distilled sentence rules)"})
     out_json = work / f"{paper_id}.json"

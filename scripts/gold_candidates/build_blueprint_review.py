@@ -12,8 +12,6 @@ and corpus/gold_blueprints/index.json (all non-duplicate blueprints, with their 
 Usage: build_blueprint_review.py <survey dir> [--ids owner/repo,...] [--no-paper]
 """
 import argparse
-import contextlib
-import io
 import json
 import random
 import subprocess
@@ -60,12 +58,7 @@ def our_paper(aid: str, d: Path) -> dict:
         if not any(src.rglob("*.tex")) if src.exists() else True:
             yours.fetch_arxiv(aid, src)
             time.sleep(3)
-        from math_paper_parser import PaperParser
-        main = yours.find_main_tex(src)
-        with contextlib.redirect_stdout(io.StringIO()):
-            g = PaperParser(paper_id=aid, extraction_mode="rules", rules_dir=str(yours.RULES_DIR)) \
-                .parse_file(str(main)).to_unified_dict(include_research_fields=True)
-        (d / "full.json").write_text(json.dumps(g))
+        (d / "full.json").write_text(json.dumps(yours.parse_to_unified(yours.find_main_tex(src), aid, str(yours.RULES_DIR))))
     subprocess.run([sys.executable, str(BUILD), str(d / "full.json"), "-o", str(d), "--libs", "cdn"], capture_output=True, timeout=300)
     g = json.loads((d / "full.json").read_text())
     return {"page": "paper/full_new.html" if (d / "full_new.html").is_file() else None,
