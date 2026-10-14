@@ -136,6 +136,57 @@ def plain_text(s):
     return re.sub(r"\s+", " ", s).strip()
 
 
+_BARE_SCRIPT = re.compile(r"(?<![A-Za-z\\$])([A-Za-z])([_^])(\{[^{}]*\}|\([^()]*\)|[A-Za-z0-9])")
+
+
+def box_tex(s, n=SHORT_CHARS):
+    """Box text that keeps its math, for MathJax in the box (None if there is no math).
+
+    Cut at about n visible characters, never inside $...$; references and labels are
+    dropped. A bare script outside math (a name such as `S_N`) is put inside $...$."""
+    s = va._as_text(s)
+    s = re.sub(r"\\label\{[^}]*\}|\\(?:notag|nonumber)\b", " ", s)
+
+    def inline(m):                                       # display math -> one inline formula
+        body = re.sub(r"\\\\(\[[^\]]*\])?|&", " ", m.group(1) or m.group(2) or m.group(3) or "")
+        return " $" + re.sub(r"\s+", " ", body).strip() + "$ "
+    s = re.sub(r"\\begin\{(?:equation|align|gather|multline|eqnarray|displaymath)\*?\}(.*?)"
+               r"\\end\{(?:equation|align|gather|multline|eqnarray|displaymath)\*?\}|\$\$(.*?)\$\$|\\\[(.*?)\\\]",
+               inline, s, flags=re.S)
+    s = re.sub(r"\\(?:begin|end)\{[^}]*\}", " ", s)
+    s = re.sub(r"\\(?:eq|c|C|auto)?ref\{[^}]*\}", "(ref)", s)
+    s = re.sub(r"\\cite[pt]?\*?(?:\[[^\]]*\])?\{[^}]*\}", "[cite]", s)
+    s = re.sub(r"\\\(|\\\)", "$", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    if s.count("$") % 2:
+        s = s.replace("$", "")
+    parts = re.split(r"(?<!\\)\$", s)
+    for i in range(0, len(parts), 2):                    # outside math: plain text, bare scripts as math
+        bare = []
+        t = _BARE_SCRIPT.sub(lambda m: bare.append(m.group(0)) or "\x03%d\x03" % (len(bare) - 1), parts[i])
+        if "\\" in t or "{" in t:                       # keep the spaces around the math
+            t = (" " if t[:1].isspace() else "") + plain_text(t) + (" " if t[-1:].isspace() else "")
+        parts[i] = re.sub("\x03(\\d+)\x03", lambda m: "$" + bare[int(m.group(1))] + "$", t)
+    s = "$".join(parts)
+    if "$" not in s:
+        return None
+    out, vis, inside = [], 0, False
+    for tok in re.split(r"((?<!\\)\$)", s):
+        if tok == "$":
+            inside = not inside
+            out.append(tok)
+            continue
+        if not inside and vis + len(tok) > n:
+            cut = tok[:max(0, n - vis)].rsplit(" ", 1)[0]
+            out.append(cut.rstrip(" ,;:") + "…")
+            return "".join(out)
+        vis += len(tok) if not inside else max(1, len(tok) // 3)
+        out.append(tok)
+        if vis > n and not inside:
+            return "".join(out) + "…"
+    return "".join(out)
+
+
 def shorten(s, n=SHORT_CHARS):
     """Cut at a word boundary, with an ellipsis."""
     if len(s) <= n:
@@ -443,6 +494,11 @@ def paper_model(data, stem):
             "res": 1 if (n.get("type") in RESULT_TYPES and not n.get("inside")) else 0,
             "nsteps": len(steps.get(i, [])),
         })
+        tex = box_tex(n.get("statement") or body)
+        tex_name = box_tex(n.get("name") or "", 80)
+        if tex or tex_name:
+            out_nodes[-1]["tex"] = tex or shorten(plain_text(body))
+            out_nodes[-1]["tex_name"] = tex_name or plain_text(n.get("name") or "")
 
     ghosts = jsvars.get("GHOSTS", {}) or {}
     book = set(jsvars.get("GHOST_BOOK_INDICES", []))
@@ -473,6 +529,9 @@ def paper_model(data, stem):
     details = jsvars.get("DETAILS") or {}
     for d in details.values():
         d.pop("step_info", None)
+        nm = box_tex(d.get("name") or "", 200)           # a bare `S_N` in a name: typeset it
+        if nm and "$" not in (d.get("name") or ""):
+            d["name"] = nm
         for k in ("statement_clean", "statement_render"):
             if d.get(k) == d.get("statement"):
                 d.pop(k, None)

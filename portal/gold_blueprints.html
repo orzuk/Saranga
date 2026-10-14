@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blueprint gold candidates</title>
+<style>
+  :root { --bg:#fafaf8; --fg:#1d1d1b; --mute:#6b6b66; --line:#dcdcd6; --card:#fff; --acc:#2d5d8a;
+          --ok:#2e7d4f; --bad:#b03a2e; --warn:#a86b00; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--fg); }
+  header { padding:10px 16px; border-bottom:1px solid var(--line); background:var(--card); display:flex; gap:12px;
+           align-items:baseline; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; }
+  header .sub { color:var(--mute); }
+  a { color:var(--acc); }
+  main { padding:12px 16px; }
+  table { border-collapse:collapse; width:100%; background:var(--card); }
+  th, td { border-bottom:1px solid var(--line); padding:5px 8px; text-align:left; vertical-align:top; }
+  th { font-weight:600; background:#f0f0ec; position:sticky; top:0; }
+  tr.row:hover { background:#f3f6fa; cursor:pointer; }
+  .pill { display:inline-block; padding:1px 7px; border-radius:9px; font-size:12px; background:#eee; }
+  .yes { background:#d8efe0; color:var(--ok); } .no { background:#f6dcd8; color:var(--bad); }
+  .partly { background:#fbecd0; color:var(--warn); }
+  .subtabs { display:flex; gap:6px; margin:4px 0 10px; flex-wrap:wrap; }
+  .subtabs a { padding:5px 12px; border:1px solid var(--line); border-radius:16px; text-decoration:none; background:var(--card); }
+  .subtabs a.on { background:var(--acc); color:#fff; border-color:var(--acc); }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap:10px; height:66vh; min-height:440px; }
+  .pane { background:var(--card); border:1px solid var(--line); border-radius:6px; display:flex; flex-direction:column; min-width:0; }
+  .tabs { display:flex; gap:2px; border-bottom:1px solid var(--line); padding:4px 4px 0; flex-wrap:wrap; }
+  .tabs button { border:1px solid var(--line); border-bottom:none; background:#f0f0ec; padding:4px 10px; cursor:pointer;
+                 border-radius:5px 5px 0 0; font:inherit; }
+  .tabs button.on { background:var(--card); font-weight:600; }
+  .body { flex:1; overflow:auto; }
+  .body iframe { border:0; width:100%; height:100%; }
+  pre { margin:0; padding:8px; white-space:pre-wrap; word-break:break-word; font-size:12px; }
+  .review { margin-top:12px; background:var(--card); border:1px solid var(--line); border-radius:6px; padding:10px 12px; }
+  .q { margin:6px 0; } .q label { margin-right:12px; }
+  textarea { width:100%; min-height:50px; font:inherit; }
+  .muted { color:var(--mute); } .small { font-size:12px; }
+  .nav { margin-left:auto; display:flex; gap:8px; }
+  button.save { background:var(--acc); color:#fff; border:0; padding:6px 16px; border-radius:5px; cursor:pointer; font:inherit; }
+  .edge td { font-size:13px; }
+  @media (max-width:900px) { .grid { grid-template-columns:1fr; height:auto; } .pane { height:60vh; } }
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="gold_blueprints.html" style="color:inherit;text-decoration:none">Lean blueprints</a></h1>
+  <span class="sub" id="sub">blueprints with \uses dependencies, converted to our format</span>
+  <span class="nav" id="nav"></span>
+</header>
+<main id="main">Loading…</main>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const params = new URLSearchParams(location.search);
+const bid = params.get("id");
+const prov = params.get("prov") || "human";
+const D = "/gold_bp/";
+const PROV = [["human", "Human"], ["mixed", "Mixed"], ["unknown", "Unknown"], ["likely_ai", "Likely AI"]];
+const provQ = () => "&prov=" + encodeURIComponent(prov);
+async function getJSON(u) { const r = await fetch(u, {cache:"no-store"}); if (!r.ok) throw new Error(u); return r.json(); }
+
+async function listView() {
+  const [all, reviews] = await Promise.all([getJSON(D + "index.json"), getJSON("/gold/reviews?set=bp")]);
+  const n = k => all.filter(b => b.provenance === k).length;
+  const list = all.filter(b => b.provenance === prov);
+  const rows = list.map((b, i) => {
+    const r = reviews[b.id], href = `?id=${encodeURIComponent(b.id)}${provQ()}`;
+    const st = r ? `<span class="pill ${esc(r.verdict)}">${esc(r.verdict || "saved")}</span>` : `<span class="muted">–</span>`;
+    return `<tr class="row" onclick="location='${href}'"><td>${i+1}</td>
+      <td><a href="${href}">${esc(b.repo)}</a>${b.built ? "" : ' <span class="small muted">(no page)</span>'}</td>
+      <td>${esc(b.title)}</td><td>${esc(b.area)}</td>
+      <td>${b.arxiv ? `<a href="https://arxiv.org/abs/${esc(b.arxiv)}" target="_blank" onclick="event.stopPropagation()">${esc(b.arxiv)}</a>` : ""}</td>
+      <td>${b.statements ?? ""}</td><td>${b.stmt_with_uses ?? ""}</td><td>${b.uses_edges ?? ""}</td><td>${esc(b.year)}</td><td>${st}</td></tr>`;
+  }).join("");
+  $("#main").innerHTML = `<div class="subtabs">${PROV.map(([k, t]) =>
+      `<a href="?prov=${k}" class="${k === prov ? "on" : ""}">${t} (${n(k)})</a>`).join("")}</div>
+    <p class="muted small">Provenance is a heuristic label from the commit history (contributors, AI co-author lines, agent files, pace).
+      Ordered by the number of statements carrying \\uses. "arXiv" = the paper the blueprint follows, where checked.</p>
+    <table><tr><th>#</th><th>Repository</th><th>Title</th><th>Area</th><th>arXiv</th><th>Statements</th>
+      <th>with \\uses</th><th>\\uses edges</th><th>Year</th><th>Review</th></tr>${rows}</table>`;
+}
+
+function tabs(el, items) {
+  const bar = el.querySelector(".tabs"), body = el.querySelector(".body");
+  items = items.filter(Boolean);
+  bar.innerHTML = items.map((t, i) => `<button data-i="${i}">${esc(t[0])}</button>`).join("");
+  const show = i => { [...bar.children].forEach((b, j) => b.classList.toggle("on", i === j)); body.innerHTML = items[i][1](); };
+  bar.onclick = e => { if (e.target.dataset.i) show(+e.target.dataset.i); };
+  show(0);
+}
+
+async function bpView() {
+  const [all, m, reviews] = await Promise.all([getJSON(D + "index.json"), getJSON(D + bid + "/meta.json"), getJSON("/gold/reviews?set=bp")]);
+  const list = all.filter(b => b.provenance === prov);
+  const r0 = reviews[bid] || {};
+  const k = list.findIndex(b => b.id === bid), prev = list[k-1], next = list[k+1];
+  $("#nav").innerHTML = `<a href="gold_blueprints.html?prov=${prov}">list</a> ` + (prev ? `<a href="?id=${prev.id}${provQ()}">← prev</a>` : "") +
+    ` <span class="muted">${k+1} / ${list.length} ${esc(prov)}</span> ` + (next ? `<a href="?id=${next.id}${provQ()}">next →</a>` : "");
+  $("#sub").innerHTML = `<a href="${esc(m.links.repo)}" target="_blank">${esc(m.repo)}</a> · ${esc(m.title)} · <span class="muted">${esc(m.area)}</span>`;
+  const L = m.links || {};
+  const radio = (name, opts, cur) => opts.map(o => `<label><input type="radio" name="${name}" value="${o}" ${o===cur?"checked":""}> ${o}</label>`).join("");
+  const edgeRows = (m.edge_sample || []).map((e, i) => {
+    const v = (r0.edges || {})[i] || "";
+    const opt = ["", "correct", "wrong", "unclear"].map(o => `<option ${o===v?"selected":""}>${o}</option>`).join("");
+    return `<tr class="edge"><td>${esc(e.source_text)}</td><td><b>is used for →</b></td><td>${esc(e.target_text)}</td>
+      <td><select data-edge="${i}">${opt}</select></td></tr>`;
+  }).join("");
+  const stats = `<pre>${esc(JSON.stringify({statements: m.n_statements, proofs: m.n_proofs, uses_edges: m.n_uses, all_edges: m.n_edges,
+      by_type: m.types, formalised_leanok: m.n_leanok, unresolved_uses_targets: m.unresolved_uses, provenance: m.provenance,
+      provenance_signals: m.prov_signals, coverage: m.coverage, arxiv_matched: m.arxiv, arxiv_in_readme: m.arxiv_readme,
+      survey_notes: m.judgment_notes, our_graph_of_paper: m.paper}, null, 1))}</pre>`;
+  $("#main").innerHTML = `
+    <div class="grid">
+      <div class="pane" id="left"><div class="tabs"></div><div class="body"></div></div>
+      <div class="pane" id="right"><div class="tabs"></div><div class="body"></div></div>
+    </div>
+    <div class="review">
+      <div class="q"><b>Usable as a human reference (gold)?</b> ${radio("verdict", ["yes", "partly", "no"], r0.verdict)}</div>
+      <div class="q"><b>Who wrote it, in your view:</b> ${radio("provenance", ["human", "mixed", "AI", "unsure"], r0.provenance)}</div>
+      <div class="q"><b>Follows the arXiv paper:</b> ${radio("matches", ["whole paper", "part", "no", "no paper"], r0.matches)}</div>
+      <div class="q"><b>Our conversion of the blueprint looks right:</b> ${radio("conversion", ["yes", "issues"], r0.conversion)}</div>
+      <details open><summary><b>Spot-check 10 random \\uses edges</b> <span class="muted small">(is the first really used for the second?)</span></summary>
+        <table>${edgeRows || '<tr><td class="muted">no \\uses edges</td></tr>'}</table></details>
+      <div class="q"><b>Notes</b><textarea id="notes">${esc(r0.notes || "")}</textarea></div>
+      <button class="save" id="save">Save review</button> <span id="saved" class="muted small">${r0.saved_at ? "saved " + esc(r0.saved_at) : ""}</span>
+      ${next ? ` <label class="small"><input type="checkbox" id="gonext" checked> go to next after saving</label>` : ""}
+    </div>`;
+  tabs($("#left"), [
+    L.web && ["Blueprint (web)", () => `<iframe src="${esc(L.web)}"></iframe>`],
+    L.dep_graph && ["Their dependency graph", () => `<iframe src="${esc(L.dep_graph)}"></iframe>`],
+    L.pdf && ["Blueprint PDF", () => `<iframe src="${esc(L.pdf)}"></iframe>`],
+    m.arxiv && ["arXiv paper PDF", () => `<iframe src="https://arxiv.org/pdf/${esc(m.arxiv)}"></iframe>`],
+    ["Blueprint LaTeX", () => `<iframe src="${D + bid}/all.tex"></iframe>`],
+  ]);
+  tabs($("#right"), [
+    ["Blueprint in our format", () => m.page ? `<iframe src="${D + bid}/${m.page}"></iframe>` : `<p class="muted" style="padding:8px">No page built.</p>`],
+    m.paper?.page && ["Our extraction of the arXiv paper", () => `<iframe src="${D + bid}/${m.paper.page}"></iframe>`],
+    ["Stats", () => stats],
+  ]);
+  $("#save").onclick = async () => {
+    const val = n => (document.querySelector(`input[name=${n}]:checked`) || {}).value || "";
+    const review = {verdict: val("verdict"), provenance: val("provenance"), matches: val("matches"), conversion: val("conversion"),
+      notes: $("#notes").value,
+      edges: Object.fromEntries([...document.querySelectorAll("select[data-edge]")].map(s => [s.dataset.edge, s.value])),
+      edge_sample: m.edge_sample.map(e => [e.source, e.target])};
+    const r = await fetch(`/gold/review?set=bp&id=${encodeURIComponent(bid)}`, {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify(review)});
+    const j = await r.json();
+    $("#saved").textContent = r.ok ? "saved " + j.saved_at : "save failed: " + (j.error || r.status);
+    if (r.ok && next && $("#gonext")?.checked) location = "?id=" + next.id + provQ();
+  };
+}
+
+(bid ? bpView() : listView()).catch(e => { $("#main").textContent = "Error: " + e.message; });
+</script>
+</body>
+</html>

@@ -2814,6 +2814,7 @@ def generate_interactive_html(data, svg_path, html_path):
         "bY": r"\mathbf{Y}", "bZ": r"\mathbf{Z}",
         "bepsilon": r"\boldsymbol{\epsilon}", "btheta":   r"\boldsymbol{\theta}",
         "bmu":      r"\boldsymbol{\mu}",      "bSigma":   r"\boldsymbol{\Sigma}",
+        "bm": [r"\boldsymbol{#1}", 1],          # the bm package
     }
     for _i in range(26):
         _L = chr(65 + _i)
@@ -2825,7 +2826,7 @@ def generate_interactive_html(data, svg_path, html_path):
 <head>
 <meta charset="utf-8">
 <title>{_esc(title)}</title>
-<script>MathJax = {{tex: {{inlineMath: [['$','$']], macros: {_mj_macros_json}}}, startup: {{typeset: false}}}};</script>
+<script>MathJax = {{loader: {{load: ['[tex]/boldsymbol']}}, tex: {{packages: {{'[+]': ['boldsymbol']}}, inlineMath: [['$','$']], macros: {_mj_macros_json}}}, startup: {{typeset: false}}}};</script>
 <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
 <style>
 body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #fafafa; }}

@@ -240,7 +240,7 @@ window.dispId = window.dispId || function (id) {
         if (!groupCount[g.id]) return;
         var par = (!PROMOTE && g.parent) ? g.parent : null;
         if (par && !S.open[par]) return;               // inside a collapsed section
-        var title = g.title || g.key;
+        var title = (g.title || g.key).replace(/^([A-Z])\.?\s+(?=\S)/, 'Appendix $1: ');
         if (S.open[g.id]) {
           els.push({ group: 'nodes', data: { id: g.id, kind: 'secopen', parent: par || undefined,
             label: '−  ' + title } });
@@ -302,10 +302,16 @@ window.dispId = window.dispId || function (id) {
             : (window.dispId ? dispId(n.id) : n.id) + ': ' + (nm || n.type));
       var extra = n.nsteps ? (open ? '\u25be proof open (' + n.nsteps + ' steps)' : '\u25b8 proof: ' + n.nsteps + ' step' + (n.nsteps > 1 ? 's' : '')) : '';
       var b = box(head, n.short, extra, n.imp, n.imp >= 4 ? 4 : 3);
-      els.push({ group: 'nodes', data: { id: n.id, kind: 'node', type: n.type, parent: par,
+      var d = { id: n.id, kind: 'node', type: n.type, parent: par,
         hc: c.header, bc: c.body, band_c: mix(c.header, 0.38), imp: n.imp,
         ext: n.origin === 'external' ? 1 : 0, main: MAIN[n.id] ? 1 : 0,
-        label: b.label, w: b.w, h: b.h, fs: b.fs, band: b.band } });
+        label: b.label, w: b.w, h: b.h, fs: b.fs, band: b.band };
+      if (n.tex) {                       // typeset by MathJax in the math layer, not on the canvas
+        d.tex = 1;
+        d.texHead = head.replace(nm, n.tex_name || nm);
+        d.texBody = n.tex; d.texExtra = extra;
+      }
+      els.push({ group: 'nodes', data: d });
       nodesOut[n.id] = true;
     });
     // Steps of open proofs (parents first, so frames exist before their kids).
@@ -436,6 +442,7 @@ window.dispId = window.dispId || function (id) {
       'corner-radius': 5 } },
     { selector: 'node[w]', style: { 'width': 'data(w)', 'height': 'data(h)' } },
     { selector: 'node[label]', style: { 'label': 'data(label)' } },
+    { selector: 'node[tex = 1]', style: { 'label': '' } },
     { selector: 'node[fs]', style: { 'font-size': 'data(fs)' } },
     { selector: 'node[bc]', style: { 'background-color': 'data(bc)' } },
     { selector: 'node[hc]', style: { 'border-color': 'data(hc)' } },
@@ -779,6 +786,13 @@ window.dispId = window.dispId || function (id) {
     cy.batch(function () {
       cy.elements().remove();
       cy.add(built.els);
+      if (level() === 'overview' && Object.keys(S.open).length)
+      {                                  // keep only the closed sections linked to an open one
+        var inOpen = cy.nodes('[kind = "secopen"]').descendants();
+        cy.nodes('[kind = "secbox"]').filter(function (g) {
+          return g.isOrphan() && g.edgesWith(inOpen).empty();
+        }).remove();
+      }
     });
     paintNodes();
     applySearch();
@@ -794,8 +808,59 @@ window.dispId = window.dispId || function (id) {
     cy.resize();                         // the toolbars above may have re-wrapped
     layout(function () {
       if (S.selected && cy.getElementById(S.selected).nonempty()) cy.getElementById(S.selected).select();
+      mathLayer();
       if (after) after();
     }, focusId);
+  }
+
+  // ── Math layer: boxes whose text has math are typeset by MathJax in HTML
+  // boxes over the canvas (the canvas cannot draw TeX), kept in step with the view.
+  var MLAYER = null;
+  function esc(t) {
+    return String(t || '').replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; });
+  }
+  function mathLayer() {
+    if (!MLAYER) {
+      MLAYER = document.createElement('div');
+      MLAYER.id = 'mathlayer';
+      document.getElementById('cy').appendChild(MLAYER);
+      cy.on('viewport', placeLayer);
+      cy.on('position', 'node[tex = 1]', function (ev) { placeBox(ev.target); });
+    }
+    MLAYER.innerHTML = '';
+    var made = [];
+    cy.nodes('[tex = 1]').forEach(function (n) {
+      var d = n.data(), div = document.createElement('div');
+      div.className = 'mbox';
+      div.id = 'mb-' + n.id();
+      var lh = d.fs * 1.25, headH = d.h * d.band / 100;
+      var bodyLines = Math.max(1, Math.floor((d.h - headH - 6) / lh) - (d.texExtra ? 1 : 0));
+      div.style.cssText = 'width:' + d.w + 'px;height:' + d.h + 'px;font-size:' + d.fs + 'px;';
+      var headLines = Math.max(1, Math.floor((headH - 4) / lh));
+      div.innerHTML = '<div class="mhead" style="height:' + headH + 'px;max-height:' + (headLines * lh + 2) + 'px;-webkit-line-clamp:' + headLines + '">' +
+        esc(d.texHead) + '</div><div class="mbody" style="-webkit-line-clamp:' + bodyLines + '">' + esc(d.texBody) + '</div>' +
+        (d.texExtra ? '<div class="mextra">' + esc(d.texExtra) + '</div>' : '');
+      MLAYER.appendChild(div);
+      placeBox(n);
+      made.push(div);
+    });
+    placeLayer();
+    if (made.length && window.MathJax && MathJax.startup)
+      MathJax.startup.promise.then(function () { return MathJax.typesetPromise(made); }).catch(function () {});
+  }
+  function placeBox(n) {
+    var div = document.getElementById('mb-' + n.id());
+    if (!div) return;
+    var p = n.position(), d = n.data();
+    div.style.left = (p.x - d.w / 2) + 'px';
+    div.style.top = (p.y - d.h / 2) + 'px';
+    div.style.opacity = n.hasClass('dimmed') || n.hasClass('dim') ? 0.25 : 1;
+  }
+  function placeLayer() {
+    if (!MLAYER) return;
+    var z = cy.zoom(), pan = cy.pan();
+    MLAYER.style.transform = 'translate(' + pan.x + 'px,' + pan.y + 'px) scale(' + z + ')';
+    MLAYER.style.display = z * 11 < 5 ? 'none' : '';     // as the canvas hides tiny text
   }
 
   // ── Controls ──────────────────────────────────────────────────────────
@@ -989,6 +1054,7 @@ window.dispId = window.dispId || function (id) {
       cnt.textContent = total + ' found' + (total > vis ? ' (' + (total - vis) + ' folded)' : '');
     });
     matchIdx = -1;
+    if (MLAYER) cy.nodes('[tex = 1]').forEach(placeBox);
   }
   function nextMatch() {
     var ms = cy.nodes('.match');
@@ -1164,7 +1230,7 @@ window.dispId = window.dispId || function (id) {
     var g = SEC[gid];
     if (!g || !g.subs || PROMOTE) return;
     var n = G.nodes.filter(function (x) { return x.top === gid && shownBase(x); }).length;
-    if (n <= 40) g.subs.forEach(function (s) { S.open[s] = true; });
+    if (n <= 15) g.subs.forEach(function (s) { S.open[s] = true; });
   }
   function closeGroup(gid) {
     delete S.open[gid];

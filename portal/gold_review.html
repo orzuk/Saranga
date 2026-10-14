@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gold candidates: review</title>
+<style>
+  :root { --bg:#fafaf8; --fg:#1d1d1b; --mute:#6b6b66; --line:#dcdcd6; --card:#fff; --acc:#2d5d8a;
+          --ok:#2e7d4f; --bad:#b03a2e; --warn:#a86b00; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--fg); }
+  header { padding:10px 16px; border-bottom:1px solid var(--line); background:var(--card); display:flex; gap:12px;
+           align-items:baseline; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; }
+  header .sub { color:var(--mute); }
+  a { color:var(--acc); }
+  main { padding:12px 16px; }
+  table { border-collapse:collapse; width:100%; background:var(--card); }
+  th, td { border-bottom:1px solid var(--line); padding:5px 8px; text-align:left; vertical-align:top; }
+  th { font-weight:600; background:#f0f0ec; position:sticky; top:0; }
+  tr.row:hover { background:#f3f6fa; cursor:pointer; }
+  .pill { display:inline-block; padding:1px 7px; border-radius:9px; font-size:12px; background:#eee; }
+  .yes { background:#d8efe0; color:var(--ok); } .no { background:#f6dcd8; color:var(--bad); }
+  .partly { background:#fbecd0; color:var(--warn); }
+  .stats { display:flex; gap:18px; flex-wrap:wrap; margin:6px 0 12px; }
+  .stats div { background:var(--card); border:1px solid var(--line); border-radius:6px; padding:6px 10px; }
+  .stats b { font-size:16px; }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap:10px; height:62vh; min-height:420px; }
+  .pane { background:var(--card); border:1px solid var(--line); border-radius:6px; display:flex; flex-direction:column; min-width:0; }
+  .tabs { display:flex; gap:2px; border-bottom:1px solid var(--line); padding:4px 4px 0; flex-wrap:wrap; }
+  .tabs button { border:1px solid var(--line); border-bottom:none; background:#f0f0ec; padding:4px 10px; cursor:pointer;
+                 border-radius:5px 5px 0 0; font:inherit; }
+  .tabs button.on { background:var(--card); font-weight:600; }
+  .body { flex:1; overflow:auto; position:relative; }
+  .body iframe { border:0; width:100%; height:100%; }
+  .body img { max-width:100%; }
+  pre { margin:0; padding:8px; white-space:pre-wrap; word-break:break-word; font-size:12px; }
+  .review { margin-top:12px; background:var(--card); border:1px solid var(--line); border-radius:6px; padding:10px 12px; }
+  .review h3 { margin:4px 0 8px; font-size:14px; }
+  .q { margin:6px 0; } .q label { margin-right:12px; }
+  select, input[type=number], textarea { font:inherit; }
+  textarea { width:100%; min-height:50px; }
+  .muted { color:var(--mute); }
+  .nav { margin-left:auto; display:flex; gap:8px; }
+  button.save { background:var(--acc); color:#fff; border:0; padding:6px 16px; border-radius:5px; cursor:pointer; font:inherit; }
+  .small { font-size:12px; }
+  @media (max-width:900px) { .grid { grid-template-columns:1fr; height:auto; } .pane { height:60vh; } }
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="gold_review.html" style="color:inherit;text-decoration:none">Gold candidates</a></h1>
+  <span class="sub" id="sub">author-drawn dependency diagrams, converted to our format</span>
+  <span class="nav" id="nav"></span>
+</header>
+<main id="main">Loading…</main>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const params = new URLSearchParams(location.search);
+const pid = params.get("id");
+const D = "/gold_data/papers/";
+
+async function getJSON(u) { const r = await fetch(u, {cache:"no-store"}); if (!r.ok) throw new Error(u); return r.json(); }
+
+function summary(index, reviews) {
+  const done = index.filter(p => reviews[p.id]);
+  const v = {yes:0, partly:0, no:0};
+  let nOk=0, nAll=0, eOk=0, eAll=0, eMiss=0, nMiss=0;
+  for (const p of done) {
+    const r = reviews[p.id];
+    if (r.verdict in v) v[r.verdict]++;
+    for (const x of Object.values(r.nodes || {})) { if (x === "skip") continue; nAll++; if (x === "correct") nOk++; }
+    for (const x of Object.values(r.edges || {})) { if (x === "skip") continue; eAll++; if (x === "correct") eOk++; }
+    eMiss += +r.missed_edges || 0; nMiss += +r.missed_nodes || 0;
+  }
+  const pct = (a,b) => b ? (100*a/b).toFixed(0)+"%" : "–";
+  return `<div class="stats">
+    <div>reviewed <b>${done.length}</b> / ${index.length}</div>
+    <div>genuine: <b>${v.yes}</b> yes · ${v.partly} partly · ${v.no} no</div>
+    <div>nodes mapped correctly <b>${pct(nOk,nAll)}</b> <span class="muted">(${nOk}/${nAll}; +${nMiss} missed)</span></div>
+    <div>edges correct <b>${pct(eOk,eAll)}</b> <span class="muted">(${eOk}/${eAll}; +${eMiss} missed)</span></div>
+  </div>`;
+}
+
+const cat = params.get("cat") || "";
+const inCat = p => !cat || (p.category || "?") === cat ||
+  (cat === "statistics" && /^(math\.ST|stat\.)/.test(p.category || "")) ||
+  (cat === "math.CO+cs.DM" && /^(math\.CO|cs\.DM)$/.test(p.category || ""));
+const catQ = () => cat ? "&cat=" + encodeURIComponent(cat) : "";
+
+async function listView() {
+  const [all, reviews] = await Promise.all([getJSON("/gold_data/index.json"), getJSON("/gold/reviews")]);
+  const counts = {};
+  all.forEach(p => counts[p.category || "?"] = (counts[p.category || "?"] || 0) + 1);
+  const nStat = all.filter(p => /^(math\.ST|stat\.)/.test(p.category || "")).length;
+  const opts = [["", `all areas (${all.length})`], ["statistics", `statistics: math.ST + stat.* (${nStat})`]]
+    .concat(Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([c, n]) => [c, `${c} (${n})`]));
+  const index = all.filter(inCat);
+  const rows = index.map((p, i) => {
+    const r = reviews[p.id];
+    const st = r ? `<span class="pill ${esc(r.verdict)}">${esc(r.verdict || "saved")}</span>` : `<span class="muted">–</span>`;
+    const prob = (p.problems || []).length ? `<div class="small" style="color:var(--bad)">${esc(p.problems.join("; "))}</div>` : "";
+    const href = `?id=${encodeURIComponent(p.id)}${catQ()}`;
+    return `<tr class="row" onclick="location='${href}'">
+      <td>${i+1}</td><td><a href="${href}">${esc(p.arxiv)}</a>${p.pilot ? ' <span class="pill" title="in the random pilot of 30">pilot</span>' : ""}</td>
+      <td>${esc(p.title)} ${prob}</td><td>${esc(p.category)}</td><td>${esc(p.year)}</td><td>${esc(p.granularity)}</td>
+      <td>${p.n_nodes ?? "–"}</td><td>${p.n_mapped ?? "–"}</td><td>${p.n_edges ?? "–"}</td><td>${st}</td></tr>`;
+  }).join("");
+  $("#main").innerHTML =
+    `<div class="q"><b>Area</b> <select id="catsel">${opts.map(([v, t]) => `<option value="${esc(v)}" ${v === cat ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>
+     <span class="muted small">Prev/next on a paper page stay within the chosen area.</span></div>` +
+    summary(index, reviews) +
+    `<p class="muted small">Author dependency diagrams drawn in LaTeX (all ${all.length}), ordered by area. "pilot" marks the 30 drawn at random first.</p>
+     <table><tr><th>#</th><th>arXiv</th><th>Title</th><th>Category</th><th>Year</th><th>Diagram of</th>
+     <th>Boxes</th><th>Mapped to our nodes</th><th>Arrows</th><th>Review</th></tr>${rows}</table>`;
+  $("#catsel").onchange = e => { location = "?" + (e.target.value ? "cat=" + encodeURIComponent(e.target.value) : ""); };
+}
+
+function tabs(el, items) {
+  const bar = el.querySelector(".tabs"), body = el.querySelector(".body");
+  bar.innerHTML = items.map((t, i) => `<button data-i="${i}">${esc(t[0])}</button>`).join("");
+  const show = i => { [...bar.children].forEach((b, j) => b.classList.toggle("on", i === j)); body.innerHTML = items[i][1](); };
+  bar.onclick = e => { if (e.target.dataset.i) show(+e.target.dataset.i); };
+  show(0);
+}
+
+async function paperView() {
+  const [all, m, reviews] = await Promise.all([getJSON("/gold_data/index.json"), getJSON(D + pid + "/meta.json"), getJSON("/gold/reviews")]);
+  const index = all.filter(inCat);
+  let gold = null; try { gold = await getJSON(D + pid + "/gold.json"); } catch (e) {}
+  const r0 = reviews[pid] || {};
+  const k = index.findIndex(p => p.id === pid);
+  const prev = index[k-1], next = index[k+1];
+  $("#nav").innerHTML = `<a href="gold_review.html?${catQ().slice(1)}">list</a> ` + (prev ? `<a href="?id=${prev.id}${catQ()}">← prev</a>` : "") +
+                        ` <span class="muted">${k+1} / ${index.length}${cat ? " in " + esc(cat) : ""}</span> ` +
+                        (next ? `<a href="?id=${next.id}${catQ()}">next →</a>` : "");
+  $("#sub").innerHTML = `${esc(m.arxiv)} · ${esc(m.title)} · <span class="muted">${esc(m.survey?.primary_category)} ${esc(m.survey?.year)}</span>`;
+  const page = m.fig_page || 1;
+  const names = {}; (gold?.nodes || []).forEach(n => names[n.id] = n.name || n.id);
+  const nodeRows = (m.nodes || []).map(n => {
+    const v = (r0.nodes || {})[n.gid] || "";
+    const opt = ["", "correct", "wrong", "not in ours", "cited (external)", "skip"].map(o => `<option ${o===v?"selected":""}>${o}</option>`).join("");
+    return `<tr><td>${esc(n.gid)}</td><td>${esc((n.printed || []).join(", "))}${n.printed && n.printed.length ? "<br>" : ""}<span class="small muted">${esc(n.box_text)}</span></td><td class="small">${esc(n.refs.join(", "))}</td>
+      <td>${esc(n.maps_to.map((x,i) => x + " (" + n.our_types[i] + ")").join(", ")) || `<span class="muted">${esc(n.status)}</span>`}</td>
+      <td><select data-node="${n.gid}">${opt}</select></td></tr>`;
+  }).join("");
+  const edgeRows = (m.edges || []).map((e, i) => {
+    const key = e.source + "->" + e.target, v = (r0.edges || {})[key] || "";
+    const opt = ["", "correct", "reversed", "wrong", "skip"].map(o => `<option ${o===v?"selected":""}>${o}</option>`).join("");
+    return `<tr><td>${esc(names[e.source] || e.source)} <b>→</b> ${esc(names[e.target] || e.target)}
+      ${e.directed ? "" : '<span class="muted small">(no arrowhead parsed)</span>'}</td>
+      <td><select data-edge="${esc(key)}">${opt}</select></td></tr>`;
+  }).join("");
+  const radio = (name, opts, cur) => opts.map(o => `<label><input type="radio" name="${name}" value="${o}" ${o===cur?"checked":""}> ${o}</label>`).join("");
+  $("#main").innerHTML = `
+    ${(m.problems || []).length ? `<p style="color:var(--bad)">${esc(m.problems.join("; "))}</p>` : ""}
+    <div class="grid">
+      <div class="pane" id="left"><div class="tabs"></div><div class="body"></div></div>
+      <div class="pane" id="right"><div class="tabs"></div><div class="body"></div></div>
+    </div>
+    <div class="review">
+      <h3>Review</h3>
+      <div class="q"><b>Is this the authors' dependency diagram of their own results/sections?</b>
+        ${radio("verdict", ["yes", "partly", "no"], r0.verdict)}</div>
+      <div class="q"><b>What it shows:</b> ${radio("granularity", ["results", "sections", "mixed", "other"], r0.granularity || m.survey?.granularity)}</div>
+      <div class="q"><b>The authors' arrows mean:</b> ${radio("arrow_meaning", ["A used for B", "B uses A (reversed)", "unclear"], r0.arrow_meaning)}</div>
+      <div class="q"><b>Our transcription:</b> boxes in the figure we missed
+        <input type="number" id="missed_nodes" min="0" style="width:60px" value="${r0.missed_nodes ?? ""}">,
+        arrows we missed <input type="number" id="missed_edges" min="0" style="width:60px" value="${r0.missed_edges ?? ""}"></div>
+      <details ${nodeRows ? "open" : ""}><summary><b>Boxes → our nodes</b> (${(m.nodes||[]).length})</summary>
+        <table><tr><th>id</th><th>Box (printed name, text)</th><th>\\ref labels</th><th>Our node (type)</th><th>Mapping</th></tr>${nodeRows}</table></details>
+      <details ${edgeRows ? "open" : ""}><summary><b>Arrows</b> (${(m.edges||[]).length})</summary>
+        <table><tr><th>Arrow as parsed</th><th>Check</th></tr>${edgeRows}</table></details>
+      <div class="q"><b>Notes</b><textarea id="notes">${esc(r0.notes || "")}</textarea></div>
+      <button class="save" id="save">Save review</button> <span id="saved" class="muted small">${r0.saved_at ? "saved " + esc(r0.saved_at) : ""}</span>
+      ${next ? ` <label class="small"><input type="checkbox" id="gonext" checked> go to next after saving</label>` : ""}
+    </div>`;
+  tabs($("#left"), [
+    ["Figure page", () => (m.figpages || (m.figpage ? [m.figpage] : [])).length
+        ? (m.figpages || [m.figpage]).map((f, i) => `<div class="muted small" style="padding:4px 8px">PDF page ${page + i}</div><img src="${D + pid}/${f}">`).join("")
+        : `<p class="muted" style="padding:8px">Figure page not found; see the PDF tab.</p>`],
+    ["PDF", () => m.pdf ? `<iframe src="${D + pid}/paper.pdf#page=${page}"></iframe>` : `<iframe src="https://arxiv.org/pdf/${m.arxiv}#page=${page}"></iframe>`],
+    ["Figure LaTeX", () => `<pre><b>Caption:</b> ${esc(m.caption)}\n\n${esc(m.figure_latex)}</pre>`],
+    ["Survey note", () => `<pre>${esc(JSON.stringify(m.survey, null, 1))}</pre>`],
+  ]);
+  tabs($("#right"), [
+    ["Diagram in our format", () => m.gold_page ? `<iframe src="${D + pid}/${m.gold_page}"></iframe>` : `<p class="muted" style="padding:8px">No converted graph.</p>`],
+    ["Gold JSON", () => `<pre>${esc(JSON.stringify(gold, null, 1))}</pre>`],
+    ["Whole paper (our extractor)", () => m.full_page ? `<iframe src="${D + pid}/${m.full_page}"></iframe>` : "<p>–</p>"],
+  ]);
+  $("#save").onclick = async () => {
+    const val = n => (document.querySelector(`input[name=${n}]:checked`) || {}).value || "";
+    const review = {verdict: val("verdict"), granularity: val("granularity"), arrow_meaning: val("arrow_meaning"),
+      missed_nodes: $("#missed_nodes").value, missed_edges: $("#missed_edges").value, notes: $("#notes").value,
+      nodes: Object.fromEntries([...document.querySelectorAll("select[data-node]")].map(s => [s.dataset.node, s.value])),
+      edges: Object.fromEntries([...document.querySelectorAll("select[data-edge]")].map(s => [s.dataset.edge, s.value]))};
+    const r = await fetch("/gold/review?id=" + encodeURIComponent(pid), {method:"POST", headers:{"Content-Type":"application/json"},
+                                                                         body: JSON.stringify(review)});
+    const j = await r.json();
+    $("#saved").textContent = r.ok ? "saved " + j.saved_at : "save failed: " + (j.error || r.status);
+    if (r.ok && next && $("#gonext")?.checked) location = "?id=" + next.id + catQ();
+  };
+}
+
+(pid ? paperView() : listView()).catch(e => { $("#main").textContent = "Error: " + e.message; });
+</script>
+</body>
+</html>

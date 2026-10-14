@@ -67,7 +67,15 @@ T3_REMOTE = os.environ.get("SARANGA_T3_REMOTE", "")
 T3_CACHE = CACHE_DIR / "tier3_v6"
 # "Your paper": graphs built on demand from an arXiv id or an upload (see yours.py).
 YOURS_DIR = CACHE_DIR / "yours"
-MOUNTS = {"/silver_v6/": SILVER_DIR, "/t3cache/": T3_CACHE, "/yours_pages/": YOURS_DIR}
+GOLD_DIR = REPO_DIR / "corpus" / "gold_candidates"     # author-diagram gold candidates (review)
+GOLD_BP_DIR = REPO_DIR / "corpus" / "gold_blueprints"  # Lean-blueprint gold candidates (review)
+
+
+def _gold_folders(query) -> Path:
+    """Where a review set's paper folders live: ?set=bp for blueprints, else author diagrams."""
+    return GOLD_BP_DIR if (query.get("set") or [""])[0] == "bp" else GOLD_DIR / "papers"
+MOUNTS = {"/silver_v6/": SILVER_DIR, "/t3cache/": T3_CACHE, "/yours_pages/": YOURS_DIR, "/gold_data/": GOLD_DIR,
+          "/gold_bp/": GOLD_BP_DIR}
 
 
 def find_json(paper_id: str, tier: str) -> Path | None:
@@ -690,6 +698,9 @@ class PortalHandler(SimpleHTTPRequestHandler):
             query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
             serve_yours(self, query, upload=False)
             return
+        if parsed.path == "/gold/reviews":
+            serve_gold_reviews(self, urllib.parse.parse_qs(parsed.query))
+            return
         if parsed.path == "/render":
             query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
             serve_render(self, query)
@@ -706,6 +717,10 @@ class PortalHandler(SimpleHTTPRequestHandler):
             query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
             serve_yours(self, query, upload=True)
             return
+        if parsed.path == "/gold/review":
+            query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+            save_gold_review(self, query)
+            return
         self.send_error(404)
 
     def log_message(self, fmt, *args):
@@ -720,6 +735,39 @@ def _json_reply(handler, code: int, obj: dict) -> None:
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
     handler.wfile.write(body)
+
+
+def serve_gold_reviews(handler, query) -> None:
+    """All saved reviews of a set of gold candidates, {paper id: review}."""
+    out = {}
+    for f in _gold_folders(query).glob("*/review.json"):
+        try:
+            out[f.parent.name] = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+    _json_reply(handler, 200, out)
+
+
+def save_gold_review(handler, query) -> None:
+    """Save one paper's review (POST /gold/review?id=<paper>), keeping the previous version."""
+    pid = (query.get("id") or [""])[0]
+    folder = _gold_folders(query) / pid
+    if not _SAFE.match(pid) or not folder.is_dir():
+        _json_reply(handler, 404, {"error": f"unknown paper {pid}"})
+        return
+    n = int(handler.headers.get("Content-Length") or 0)
+    try:
+        review = json.loads(handler.rfile.read(n).decode("utf-8"))
+    except ValueError:
+        _json_reply(handler, 400, {"error": "not JSON"})
+        return
+    review["saved_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    f = folder / "review.json"
+    if f.is_file():
+        with (folder / "review_history.jsonl").open("a", encoding="utf-8") as h:
+            h.write(f.read_text(encoding="utf-8").replace("\n", " ") + "\n")
+    f.write_text(json.dumps(review, indent=1), encoding="utf-8")
+    _json_reply(handler, 200, {"ok": True, "saved_at": review["saved_at"]})
 
 
 def serve_yours(handler, query, upload: bool) -> None:
