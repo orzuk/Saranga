@@ -235,7 +235,8 @@ def resolve_text_fonts(text, max_depth=_MAX_PASSES):
             break
         body, end = _read_group(t, m.end() - 1)
         if _in_math(t, m.start()):
-            repl = "\\%s{%s}" % (_FONT_MAP[m.group(1)], body)
+            # math fonts drop spaces: \textrm{ for all } would read "forall"
+            repl = "\\%s{%s}" % (_FONT_MAP[m.group(1)], re.sub(r"(?<!\\) ", "~", body))
         else:
             repl = body
         t = _splice(t[:m.start()], repl, t[end:])
@@ -597,6 +598,10 @@ _TEXT_SYMBOLS = [
 ]
 
 
+_DISPLAY_MATH = re.compile(r"(\\begin\{(equation|align|gather|multline|eqnarray|displaymath|flalign|alignat|math)\*?\}"
+                           r".*?\\end\{\2\*?\}|\\\[.*?\\\]|\\\(.*?\\\))", re.S)
+
+
 def text_mode_symbols(text):
     r"""`\\ldots`, `\\S`, `\\%`, `--`, quotes OUTSIDE `$...$` become plain characters.
 
@@ -606,17 +611,20 @@ def text_mode_symbols(text):
     """
     if not text or "\\" not in text and "--" not in text and "`" not in text:
         return text
-    parts = re.split(r"(?<!\\)(\$\$?)", text)
-    out, in_math = [], False
-    for part in parts:
-        if part in ("$", "$$"):
-            in_math = not in_math
-            out.append(part)
-        elif in_math:
-            out.append(part)
-        else:
-            for pat, rep in _TEXT_SYMBOLS:
-                part = pat.sub(rep, part)
+    out, in_math, pos, pieces = [], False, 0, []
+    for m in _DISPLAY_MATH.finditer(text):               # display math is left alone
+        pieces += [(text[pos:m.start()], False), (m.group(0), True)]
+        pos = m.end()
+    for chunk, disp in pieces + [(text[pos:], False)]:
+        if disp:
+            out.append(chunk)
+            continue
+        for part in re.split(r"(?<!\\)(\$\$?)", chunk):
+            if part in ("$", "$$"):
+                in_math = not in_math
+            elif not in_math:
+                for pat, rep in _TEXT_SYMBOLS:
+                    part = pat.sub(rep, part)
             out.append(part)
     return "".join(out)
 
@@ -830,8 +838,7 @@ _LATEX_REGEX_FIXES = [
     # replacement strings: a literal & in the replacement needs to NOT be
     # `\&` (which would mean the matched group), use a plain `&`.
     (_re.compile(r'\\&'), '&'),                   # \& → &
-    (_re.compile(r'\\%'), '%'),                   # \% → %
-    (_re.compile(r'\\#'), '#'),                   # \# → #
+    # (\% and \# stay: mathtext reads them, and a bare % or # breaks both mathtext and MathJax)
     # Accent / modifier commands without braces — mathtext requires \bar{A}
     # but author LaTeX often writes \bar A. Convert single-letter forms:
     #   \bar A   →  \bar{A}
@@ -1124,6 +1131,19 @@ def classify(expansion):
 
 def _is_operator(form):
     return 'DeclareMathOperator' in form.pattern
+
+
+_LOW_LEVEL = re.compile(r"\\(?:if[a-zA-Z]*|else|fi|usefont|fontencoding|selectfont|raise|lower|mathchoice|[hv]box|kern|"
+                        r"[hv]skip|setbox|csname|expandafter|relax|protect|scalebox|raisebox|rotatebox|reflectbox|"
+                        r"resizebox|CYR[A-Z]+)(?![a-zA-Z])|@")
+
+
+def renderable(macros):
+    """Definitions MathJax can typeset: one built from low-level TeX (\\mathchoice, \\raise, font
+    switches, a style file's internals) becomes its first argument (\\vlbin{\\otimes} -> \\otimes;
+    only spacing is lost) or, without arguments, its name set upright."""
+    return {k: v if not _LOW_LEVEL.search(v.get("expansion") or "") else
+            dict(v, expansion="#1" if v.get("arity") else r"\mathrm{%s}" % k) for k, v in macros.items()}
 
 
 def read_definitions(src, clean=True, spans=False):

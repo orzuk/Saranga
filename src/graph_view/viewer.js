@@ -59,7 +59,7 @@ window.dispId = window.dispId || function (id) {
     level: G.level, open: {}, proofs: {}, focus: null, k: 1, selected: null,
     show: { ext: false, aux: true, ghosts: false, low: true, implied: true,
             back: true, mention: true, nested: true },
-    tred: false, search: '', openOrder: []
+    tred: false, search: '', openOrder: [], ctx: null, ctxNow: true, ctxN: 0
   };
   var cy = null, firstDone = false, layoutSeq = 0, lastNote = '';
 
@@ -391,6 +391,7 @@ window.dispId = window.dispId || function (id) {
       if (e.back) cls.push('back');
       if (e.mention) cls.push('mention');
       if (e.low) cls.push('low');
+      if (e.both) cls.push('both');                   // drawn <=> by the authors: equivalent statements
       if (r.type === 'resolves') cls.push('resolves');
       els.push({ group: 'edges', classes: cls.join(' '), data: { id: r.key, source: r.s, target: r.t,
         etype: r.type, color: G.edge_colors[r.type] || G.default_edge_color, lay: lay ? 1 : 0,
@@ -477,6 +478,7 @@ window.dispId = window.dispId || function (id) {
     { selector: 'edge.resolves', style: { 'line-style': 'dashed' } },
     { selector: 'edge.low', style: { 'line-color': '#546E7A', 'target-arrow-color': '#546E7A', 'width': 1.8,
       'opacity': 1, 'line-style': 'dashed', 'line-dash-pattern': [4, 3] } },
+    { selector: 'edge.both', style: { 'source-arrow-shape': 'triangle', 'source-arrow-color': 'data(color)' } },
     { selector: 'edge.back', style: { 'line-style': 'dashed', 'line-dash-pattern': [6, 2, 1, 2],
       'curve-style': 'unbundled-bezier', 'control-point-distances': 70, 'control-point-weights': 0.5 } },
     { selector: 'edge.mention', style: { 'line-color': '#5C6BC0', 'target-arrow-color': '#5C6BC0', 'width': 1.3,
@@ -791,9 +793,11 @@ window.dispId = window.dispId || function (id) {
       if (level() === 'overview' && Object.keys(S.open).length)
       {                                  // keep only the closed sections linked to an open one
         var inOpen = cy.nodes('[kind = "secopen"]').descendants();
-        cy.nodes('[kind = "secbox"]').filter(function (g) {
-          return g.isOrphan() && g.edgesWith(inOpen).empty();
-        }).remove();
+        var linked = cy.nodes('[kind = "secbox"]').filter(function (g) { return g.isOrphan() && g.edgesWith(inOpen).nonempty(); });
+        // the linked sections are context: shown by default around a small section, hidden around a big one
+        S.ctxN = linked.length;
+        S.ctxNow = S.ctx !== null ? S.ctx : G.nodes.filter(function (x) { return S.open[x.top] && shownBase(x); }).length <= 15;
+        cy.nodes('[kind = "secbox"]').filter(function (g) { return g.isOrphan(); }).difference(S.ctxNow ? linked : cy.collection()).remove();
       }
     });
     paintNodes();
@@ -906,6 +910,7 @@ window.dispId = window.dispId || function (id) {
       };
     });
     document.getElementById('back-btn').onclick = goBack;
+    document.getElementById('ctx-btn').onclick = function () { S.ctx = !S.ctxNow; render(); };
     document.addEventListener('keydown', function (ev) {
       if (ev.key !== 'Escape' || /^(INPUT|TEXTAREA)$/.test((ev.target || {}).tagName || '')) return;
       closePanel() || goBack();
@@ -976,6 +981,9 @@ window.dispId = window.dispId || function (id) {
     var back = document.getElementById('back-btn');
     back.style.display = (S.focus || (level() === 'overview' && anyOpen())) ? 'block' : 'none';
     back.textContent = S.focus ? '\u2190 Leave focus' : '\u2190 Close section';
+    var ctx = document.getElementById('ctx-btn');
+    ctx.style.display = !S.focus && level() === 'overview' && anyOpen() && S.ctxN ? 'block' : 'none';
+    ctx.textContent = S.ctxNow ? 'Hide linked sections' : 'Show linked sections (' + S.ctxN + ')';
     document.querySelectorAll('#level-group .seg').forEach(function (b) {
       b.classList.toggle('on', !S.focus && S.level === b.dataset.level);
     });
@@ -1319,6 +1327,7 @@ window.dispId = window.dispId || function (id) {
       else if (k === 'show') v.split(',').forEach(function (t) { if (t in S.show) S.show[t] = true; });
       else if (k === 'hide') v.split(',').forEach(function (t) { if (t in S.show) S.show[t] = false; });
       else if (k === 'tred') S.tred = v === '1';
+      else if (k === 'ctx') S.ctx = v !== '0';   // linked sections around an open one: 1 shown, 0 hidden
       else if (k === 'mark') S.mark = v.split(',');
       else if (k === 'markc') S.markc = v;
       else if (k === 'dim') S.dim = v.split(',');

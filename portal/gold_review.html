@@ -84,17 +84,20 @@ function summary(index, reviews) {
 }
 
 const cat = params.get("cat") || "";
-const inCat = p => !cat || (p.category || "?") === cat ||
+let SAMPLE = null;                              // ?sample=1: the fixed random review sample only
+const loadSample = async () => { if (params.get("sample")) SAMPLE = new Set((await getJSON("/gold_data/review_sample.json")).author); };
+const inCat = p => (!SAMPLE || SAMPLE.has(p.id)) && (!cat || (p.category || "?") === cat ||
   (cat === "statistics" && /^(math\.ST|stat\.)/.test(p.category || "")) ||
-  (cat === "math.CO+cs.DM" && /^(math\.CO|cs\.DM)$/.test(p.category || ""));
-const catQ = () => cat ? "&cat=" + encodeURIComponent(cat) : "";
+  (cat === "math.CO+cs.DM" && /^(math\.CO|cs\.DM)$/.test(p.category || "")));
+const catQ = () => (cat ? "&cat=" + encodeURIComponent(cat) : "") + (params.get("sample") ? "&sample=1" : "");
 
 const showAll = params.get("all") === "1";
 const sortKey = params.get("sort") || "category";
 const listQ = extra => "?" + new URLSearchParams(Object.entries(Object.assign(
-  {cat, all: showAll ? "1" : "", sort: sortKey === "category" ? "" : sortKey}, extra)).filter(e => e[1])).toString();
+  {cat, all: showAll ? "1" : "", sort: sortKey === "category" ? "" : sortKey, sample: params.get("sample") || ""}, extra)).filter(e => e[1])).toString();
 
 async function listView() {
+  await loadSample();
   const [all, reviews] = await Promise.all([getJSON("/gold_data/index.json"), getJSON("/gold/reviews")]);
   const pool = showAll ? all : all.filter(p => p.good);
   const counts = {};
@@ -121,13 +124,15 @@ async function listView() {
   const toggle = showAll
     ? `<a href="${listQ({all: ""})}">show only the ${all.filter(p => p.good).length} good result-level diagrams</a>`
     : `<a href="${listQ({all: "1"})}">show all ${all.length} (also section-level and lower-quality diagrams)</a>`;
+  const sampleLink = params.get("sample") ? ` · <a href="${listQ({sample: ""})}">leave the review sample</a>`
+                                          : ` · <a href="${listQ({sample: "1"})}">review sample (30 random)</a>`;
   $("#main").innerHTML =
     `<div class="q"><b>Area</b> <select id="catsel">${opts.map(([v, t]) => `<option value="${esc(v)}" ${v === cat ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>
-     <span class="muted small">${showAll ? "All candidates." : "Good quality: boxes at the level of results (≥ half are theorems, lemmas, ... of the paper, not sections), ≥ 3 boxes, ≥ 2 arrows, ≥ 70% of the boxes resolved."} ${toggle}</span></div>` +
+     <span class="muted small">${showAll ? "All candidates." : "Good quality: boxes at the level of results (≥ half are theorems, lemmas, ... of the paper, not sections), ≥ 3 boxes, ≥ 2 arrows, ≥ 70% of the boxes resolved."} ${toggle}${sampleLink}</span></div>` +
     summary(index, reviews) +
     `<table><tr><th>#</th>${th("arxiv", "arXiv")}${th("title", "Title")}${th("category", "Category")}${th("year", "Year")}${th("level", "Diagram of")}
      ${th("n_nodes", "Boxes")}${th("n_resolved", "Resolved")}${th("n_edges", "Arrows")}<th>Review</th></tr>${rows}</table>
-     <p class="small">${toggle}</p>`;
+     <p class="small">${toggle}${sampleLink}</p>`;
   $("#catsel").onchange = e => { location = listQ({cat: e.target.value}); };
 }
 
@@ -140,6 +145,7 @@ function tabs(el, items) {
 }
 
 async function paperView() {
+  await loadSample();
   const [all, m, reviews] = await Promise.all([getJSON("/gold_data/index.json"), getJSON(D + pid + "/meta.json"), getJSON("/gold/reviews")]);
   const index = all.filter(p => (showAll || p.good) && inCat(p));
   let gold = null; try { gold = await getJSON(D + pid + "/gold.json"); } catch (e) {}
@@ -165,13 +171,13 @@ async function paperView() {
     const key = e.source + "->" + e.target, v = (r0.edges || {})[key] || "";
     const opt = ["", "correct", "reversed", "wrong", "skip"].map(o => `<option ${o===v?"selected":""}>${o}</option>`).join("");
     return `<tr><td>${esc(names[e.source] || e.source)} <b>→</b> ${esc(names[e.target] || e.target)}
-      ${e.directed ? "" : '<span class="muted small">(no arrowhead parsed)</span>'}</td>
+      ${e.directed ? "" : '<span class="muted small">(no arrowhead parsed)</span>'}${e.equivalence ? ' <span class="small" style="color:var(--warn)">⇔ drawn both ways (equivalence)</span>' : ""}</td>
       <td><select data-edge="${esc(key)}">${opt}</select></td></tr>`;
   }).join("");
   const radio = (name, opts, cur) => opts.map(o => `<label><input type="radio" name="${name}" value="${o}" ${o===cur?"checked":""}> ${o}</label>`).join("");
   $("#main").innerHTML = `
     ${(m.problems || []).length ? `<p style="color:var(--bad)">${esc(m.problems.join("; "))}</p>` : ""}
-    ${m.n_drawings > 1 ? `<p class="small"><b>${m.n_drawings} diagrams</b> in this paper, merged into one graph: a result referenced by label in several is one node (boxes matched only by a typed number are not merged across diagrams). Their pages are on the left.</p>` : ""}
+    ${m.n_drawings > 1 ? `<p class="small"><b>${m.n_drawings} diagrams</b> in this paper, each a section of the graph on the right (open one at a time), with its page on the left. A result drawn in several figures appears in each.</p>` : ""}
     <div class="grid">
       <div class="pane" id="left"><div class="tabs"></div><div class="body"></div></div>
       <div class="pane" id="right"><div class="tabs"></div><div class="body"></div></div>

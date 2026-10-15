@@ -19,7 +19,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 SILVER = REPO / "corpus/silver/opus-5.5__v6"   # LLM graphs; rules_v6/ holds the rule graphs
-SKIP_DATA = {"tier2_test", "tier2_tex", "tier2.symlink.bak", "manifest_before_v6.json", "tier3-sample", "tier2"}
+SKIP_DATA = {"my_papers", "tier2_test", "tier2_tex", "tier2.symlink.bak", "manifest_before_v6.json", "tier3-sample", "tier2"}
 
 
 def copy(src, dst):

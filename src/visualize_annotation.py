@@ -2788,6 +2788,9 @@ def generate_interactive_html(data, svg_path, html_path):
         # blackboard-bold packages (bbm, dsfont) MathJax lacks: plain \mathbb
         "mathbbm": [r"\mathbb{#1}", 1], "mathbbmss": [r"\mathbb{#1}", 1], "mathds": [r"\mathbb{#1}", 1],
         "ensuremath": [r"#1", 1],
+        # stmaryrd / cmll symbols MathJax lacks
+        "with": r"\mathbin{\&}", "parr": r"\mathbin{\unicode{x214B}}", "llbracket": r"[\![", "rrbracket": r"]\!]",
+        "llparenthesis": r"(\!|", "rrparenthesis": r"|\!)", "varoast": r"\circledast", "bigsqcap": r"\mathop{\Large\sqcap}",
     }
     for _i in range(26):
         _L = chr(65 + _i)

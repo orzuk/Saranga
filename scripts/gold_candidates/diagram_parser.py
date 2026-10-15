@@ -137,7 +137,7 @@ def _wire_edges(pending, nodes, resolve, lmap, macros):
             continue
         a, b = (b, a) if rev else (a, b)
         segs.append((a, b, bool(arrow)))
-        if lab and isinstance(a, str) and isinstance(b, str):
+        if lab and isinstance(a, str) and isinstance(b, str):     # a label, or extra edge fields
             labs.setdefault((a, b), lab)
     par = {}
     def find(j):
@@ -173,6 +173,10 @@ def _wire_edges(pending, nodes, resolve, lmap, macros):
         if isinstance(a, str) and isinstance(b, str) and (arrow or (a, b) not in wired):
             out.append((a, b, arrow))
     for c in comp.values():
+        if not c["in"] and not c["out"]:                 # plain lines only: a bent line joining two boxes
+            if len(c["und"]) == 2:
+                out.append((*sorted(c["und"]), False))
+            continue
         src, dst = (c["in"] | c["und"], c["out"]) if c["out"] else (c["in"], c["und"])
         out += [(a, b, True) for a in sorted(src) for b in sorted(dst) if a != b]
     edges, seen = [], set()
@@ -180,14 +184,27 @@ def _wire_edges(pending, nodes, resolve, lmap, macros):
         if (a, b) not in seen:
             seen.add((a, b))
             e = {"from": a, "to": b, "directed": arrow}
-            if (a, b) in labs:
+            if isinstance(labs.get((a, b)), dict):
+                e.update(labs[a, b])
+            elif (a, b) in labs:
                 e["label"] = labs[a, b][:200]; e["label_refs"] = resolve_refs(labs[a, b], lmap, macros)
             edges.append(e)
     return edges
 
 
-def parse_tikz(code, lmap, macros):
-    """Statement-level TikZ parser -> nodes (named / positioned) and directed edges."""
+_ARROW = r"->|<-|latex|stealth|Stealth|Latex|-to\b|Triangle|pil|arrow"
+
+
+def arrow_styles(tex):
+    """Names of the paper's TikZ styles that draw arrows: \\tikzstyle{line}=[draw,-latex], line/.style={->}."""
+    defs = re.findall(r"\\tikzstyle\s*\{([^}]+)\}\s*=\s*\[([^\]]*)\]", tex) + \
+        re.findall(r"([A-Za-z][\w ]*?)/\.style\s*=\s*\{((?:[^{}]|\{[^{}]*\})*)\}", tex)
+    return {n.strip() for n, d in defs if re.search(_ARROW, d)}
+
+
+def parse_tikz(code, lmap, macros, styles=()):
+    """Statement-level TikZ parser -> nodes (named / positioned) and directed edges.
+    styles: names of the paper's arrow styles (arrow_styles)."""
     m = re.search(r"\\begin\{tikzpicture\}\s*(" + OPT + r")?", code)
     # arrows by default: set in the picture's options or an every path/edge style, not by one \draw[->]
     styles = ((m.group(1) or "") if m else "") + " ".join(re.findall(r"every (?:path|edge)/\.style\s*=\s*\{[^}]*\}", code))
@@ -242,7 +259,8 @@ def parse_tikz(code, lmap, macros):
     pending = []  # (kind, statement)
     for st in stmts:
         s0 = re.sub(r"^(?:\s*\\(?:begin|end)\{scope\}\s*(?:" + OPT + r")?)+", "", st).strip()   # \end{scope} \draw ...
-        s0 = re.sub(r"^[^\\]{1,3}(?=\s*\\(?:draw|path|node)\b)", "", s0).strip()   # a stray character before it ("= \path")
+        # a stray character or an argument-less command before it: "= \path", "\footnotesize \node"
+        s0 = re.sub(r"^(?:[^\\\s]{1,3}|\\[A-Za-z]+(?![\[{\w]))(?=\s*\\(?:draw|path|node|matrix)\b)\s*", "", s0).strip()
         if re.match(r"\\(?:node|matrix)\b", s0):
             if s0.startswith("\\matrix"):
                 m = re.match(r"\\matrix\s*(\[[^\]]*\])?\s*\(([^)]*)\)\s*(\[[^\]]*\])?\s*(?:at\s*\([^)]*\))?\s*\{", s0)
@@ -279,9 +297,10 @@ def parse_tikz(code, lmap, macros):
                     txt, _ = brace_arg(s0, m.end() - 1)
                     add_node(comps, txt)
             opts = " ".join(re.findall(r"^\\\w+\s*(\[[^\]]*\])", s0))
-            arrow = bool(re.search(r"->|<-|latex|stealth|Stealth|Latex|-to\b|Triangle|pil|arrow", opts)) \
+            arrow = bool(re.search(_ARROW, opts)) or any(o.strip() in styles for o in re.split(r"[\[\],]", opts)) \
                 or global_arrow and not re.search(r"[\[,]\s*-\s*[\],]", opts)
             rev = ("<-" in opts and "->" not in opts) or bool(re.search(r"\[\s*<-", opts))
+            both = bool(re.search(r"<[-=]+>|\b(\w+)-\1\b", opts))     # <->, <=>, latex-latex: arrowheads at both ends
             body = re.sub(r"node\s*(\[[^\]]*\])?\s*(\([^)]*\))?\s*\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", " ", s0)
             body = re.sub(r"\[[^\]]*\]", " ", body)
             toks = re.finditer(r"\bedge\b|--|-\||\|-|\bto\b|\band\b|\.\.(?:\s*controls)?|\(\s*([^()]*?(?:\([^()]*\)[^()]*?)*)\s*\)", body)
@@ -336,7 +355,7 @@ def parse_tikz(code, lmap, macros):
                 op = None
             flush()
             for x, y in pairs:
-                pending.append((x, y, rev, arrow, None))
+                pending.append((x, y, rev, arrow, {"both": True} if both else None))
     for a_, b_, op in graph_edges:
         if op == "<-":
             a_, b_ = b_, a_
@@ -372,14 +391,15 @@ def _scan_arrows(cell, kind):
         if not m:
             out.append(cell[i:]); break
         out.append(cell[i:m.start()]); j = m.end()
-        dirn = ""; labs = []
+        dirn = ""; labs = []; style = ""
         # xy: @{..} @/^1pc/ @<2pt> @(ur,dl) etc.
         while j < n and cell[j] in " \t\n" and cell[j:].lstrip()[:1] == "@":    # \ar @/_2cm/ [ddd]
             j += 1
         while j < n and cell[j] == "@":
             j += 1
             if j < n and cell[j] == "{":
-                _, j = brace_arg(cell, j)
+                st, j = brace_arg(cell, j)
+                style += st or ""
             elif j < n and cell[j] in "/<(":
                 close = {"/": "/", "<": ">", "(": ")"}[cell[j]]
                 k = cell.find(close, j + 1); j = k + 1 if k > 0 else j + 1
@@ -393,6 +413,7 @@ def _scan_arrows(cell, kind):
             j = k + 1 if k > 0 else j + 1
             d = re.match(r"\s*([udlr]+)\b", opts)
             dirn = d.group(1) if d else ""
+            style += opts                                # tikzcd: \arrow[d, <->] or [leftrightarrow]
             labs += re.findall(r"\"((?:[^\"\\]|\\.)*)\"", opts)
         # labels: ^{..} _{..} |{..} ^(.4){..}  or tikzcd {..} args
         while True:
@@ -417,71 +438,96 @@ def _scan_arrows(cell, kind):
                 labs.append(c); j = j2
             else:
                 break
-        arrows.append((dirn, " ".join(labs)))
+        arrows.append((dirn, " ".join(labs), bool(re.search(r"<[-=]+>|leftrightarrow|Leftrightarrow|<->", style))))
         i = j
     return "".join(out), arrows
 
 
+def _split_top(s, sep):
+    """s split at the matches of sep that are outside braces."""
+    out, depth, last = [], 0, 0
+    for m in re.finditer(r"\\[{}]|[{}]|" + sep, s):
+        t = m.group(0)
+        if t in "{}":
+            depth += 1 if t == "{" else -1
+        elif not t.startswith(("\\{", "\\}")) and depth == 0:
+            out.append(s[last:m.start()]); last = m.end()
+    return out + [s[last:]]
+
+
 def parse_grid(code, kind, lmap, macros):
     """xymatrix / tikzcd: cells and arrows with relative [dir] targets"""
-    rows = re.split(r"\\\\", code)
     nodes = []; edges = []
-    for i, row in enumerate(rows):
-        for j, cell in enumerate(row.split("&")):
+    for i, row in enumerate(_split_top(code, r"\\\\(?:\[[^\]]*\])?")):     # a \\ inside a cell is a line break
+        for j, cell in enumerate(_split_top(row, r"(?<!\\)&")):
             txt, arrows = _scan_arrows(cell, kind)
             txt = txt.strip()
             nid = f"r{i+1}c{j+1}"
             if txt:
                 nodes.append({"id": nid, "text": txt[:300], "refs": resolve_refs(txt, lmap, macros)})
-            for dirn, lab in arrows:
+            for dirn, lab, both in arrows:
                 di = dirn.count("d") - dirn.count("u"); dj = dirn.count("r") - dirn.count("l")
-                e = {"from": nid, "to": f"r{i+1+di}c{j+1+dj}", "directed": True}
+                e = {"from": nid, "to": f"r{i+1+di}c{j+1+dj}", "directed": True} | ({"both": True} if both else {})
                 if lab.strip():
                     e["label"] = lab[:200]; e["label_refs"] = resolve_refs(lab, lmap, macros)
                 edges.append(e)
     return {"nodes": nodes, "edges": edges}
 
 
-def parse_picture(code, lmap, macros):
-    """LaTeX picture env: boxes from \\put(x,y){\\framebox(w,h){text}} and arrows from \\put(x,y){\\vector(dx,dy){len}}."""
-    boxes = []; vecs = []
+_SIZE = {"tiny": 0.5, "scriptsize": 0.7, "footnotesize": 0.8, "small": 0.9, "large": 1.2, "Large": 1.44}
+_EM = {"em": 1, "ex": 0.45, "pt": 0.1, "bp": 0.1, "mm": 0.285, "cm": 2.85, "in": 7.2}
+
+
+def unit_em(tex):
+    r"""The picture's \unitlength in em (the last setting in tex; LaTeX's default is 1pt)."""
+    m = re.findall(r"\\unitlength\s*(?:=|\}\s*\{)\s*([-\d.]+)\s*(em|ex|pt|bp|mm|cm|in)", tex)
+    return float(m[-1][0]) * _EM[m[-1][1]] if m else 0.1
+
+
+def parse_picture(code, lmap, macros, unit=0.1):
+    r"""LaTeX picture env: boxes from \put(x,y){\framebox...{text}} (or plain text), lines and arrows
+    from \put(x,y){\line|\vector(dx,dy){len}}. Lines and arrows meeting at a point are one wire (an
+    arrow that turns a corner); unit: \unitlength in em, to estimate the size of a box from its text."""
+    boxes, segs = [], []
     for m in re.finditer(r"\\put\s*\(\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)\s*\{", code):
         body, _ = brace_arg(code, m.end() - 1)
         if body is None:
             continue
         x, y = float(m.group(1)), float(m.group(2))
-        v = re.match(r"\s*\\vector\s*\(\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)\s*\{\s*([-\d.]+)\s*\}", body)
+        v = re.match(r"\s*\\(vector|line)\s*\(\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)\s*\{\s*([-\d.]+)\s*\}", body)
         if v:
-            dx, dy, L = float(v.group(1)), float(v.group(2)), float(v.group(3))
-            if dx != 0:
-                ex, ey = x + L * (1 if dx > 0 else -1), y + L * dy / abs(dx)
-            else:
-                ex, ey = x, y + L * (1 if dy > 0 else -1)
-            vecs.append(((x, y), (ex, ey)))
+            dx, dy, L = float(v.group(2)), float(v.group(3)), float(v.group(4))
+            end = (x + L * (1 if dx > 0 else -1), y + L * dy / abs(dx)) if dx else (x, y + L * (1 if dy > 0 else -1))
+            segs.append(((x, y), end, v.group(1) == "vector"))
             continue
-        fb = re.match(r"\s*\\(?:framebox|makebox|dashbox\{[^}]*\}|oval)\s*\(\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)\s*(?:\[[^\]]*\])?\s*\{", body)
-        if fb:
-            w, h = float(fb.group(1)), float(fb.group(2))
-            txt, _ = brace_arg(body, fb.end() - 1)
-            txt = (txt or "").strip()
-            if txt:
-                boxes.append({"id": f"b{len(boxes)+1}", "text": txt[:300], "refs": resolve_refs(txt, lmap, macros), "box": [x, y, w, h]})
-        else:
-            txt = body.strip()
-            if txt and not re.match(r"\\(?:line|circle|vector|oval|multiput|qbezier)", txt):
-                boxes.append({"id": f"b{len(boxes)+1}", "text": txt[:300], "refs": resolve_refs(txt, lmap, macros), "box": [x, y, 0, 0]})
-    def nearest(pt):
-        best = None; bd = 1e9
-        for b in boxes:
-            x, y, w, h = b["box"]
-            cx = min(max(pt[0], x), x + w); cy = min(max(pt[1], y), y + h)
-            d = ((pt[0] - cx) ** 2 + (pt[1] - cy) ** 2) ** 0.5
-            if d < bd:
-                bd = d; best = b["id"]
-        return best, bd
-    edges = []
-    for s0, e0 in vecs:
-        a, da = nearest(s0); b, db = nearest(e0)
-        if a and b and a != b:
-            edges.append({"from": a, "to": b, "directed": True, "snap_dist": [round(da, 2), round(db, 2)]})
+        fb = re.match(r"\s*\\(?:framebox|makebox|fbox|dashbox\{[^}]*\}|oval)\s*(?:\(\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\))?\s*(?:\[([-\d.]+)\s*(em|ex|pt|bp|mm|cm|in)\])?\s*(?:\[[^\]]*\])?\s*\{", body)
+        txt = ((brace_arg(body, fb.end() - 1)[0] if fb else body) or "").strip()
+        if not txt or not fb and re.match(r"\\(?:line|circle|vector|oval|multiput|qbezier)", txt):
+            continue
+        vis = len(re.sub(r"\\[A-Za-z]+\*?|[{}$~]", "", re.sub(r"\\[cC]?ref\{[^}]*\}", "00", re.sub(r"\\cite\{[^}]*\}", "[00]", txt))))
+        size = next((f for c, f in _SIZE.items() if "\\" + c in txt), 1)
+        w = float(fb.group(1)) if fb and fb.group(1) else \
+            float(fb.group(3)) * _EM[fb.group(4)] / unit if fb and fb.group(3) else (0.45 * size * vis + 0.6 * bool(fb)) / unit
+        h = float(fb.group(2)) if fb and fb.group(2) else 1.2 * size / unit
+        x, y = (x - w / 2, y - h / 2) if fb and "oval" in fb.group(0) else (x, y)   # \oval is centred on its point
+        boxes.append({"id": f"b{len(boxes)+1}", "text": txt[:300], "refs": resolve_refs(txt, lmap, macros), "box": [x, y, w, h],
+                      "_xy": (x + w / 2, y + h / 2)})
+
+    def nearest(pt):                                     # (distance, box) nearest to pt; inside several: the nearest centre
+        d = lambda b: (round(((pt[0] - min(max(pt[0], b["box"][0]), b["box"][0] + b["box"][2])) ** 2 +
+                              (pt[1] - min(max(pt[1], b["box"][1]), b["box"][1] + b["box"][3])) ** 2) ** 0.5, 6),
+                       (pt[0] - b["_xy"][0]) ** 2 + (pt[1] - b["_xy"][1]) ** 2)
+        b = min(boxes, key=d) if boxes else None
+        return (d(b)[0], b["id"]) if b else (1e9, None)
+    ends = [p for a, b, _ in segs for p in (a, b)]
+    shared = {p for p in ends if sum(abs(p[0] - q[0]) + abs(p[1] - q[1]) < 1e-3 for q in ends) > 1}
+    # an end at a box is that box (several arrows may fan out of one point under a label); a point where
+    # lines meet away from the boxes is a junction (an arrow turning a corner); any other end: the nearest box
+    pt = lambda p: ("n", nearest(p)[1]) if p not in shared or nearest(p)[0] <= 0.3 / unit else ("xy", p)
+    nodes = {b["id"]: b for b in boxes}
+    pending = [(pt(a), pt(b), False, arrow, None) for a, b, arrow in segs]
+    edges = [e for e in _wire_edges(pending, nodes, lambda p: p[1] if p[0] == "n" else None, lmap, macros)
+             if e["directed"]]                                              # a bare line between two boxes: decoration
+    for b in boxes:
+        b.pop("_xy")
     return {"nodes": boxes, "edges": edges}

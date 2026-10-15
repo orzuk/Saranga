@@ -421,7 +421,7 @@ def paper_model(data, stem):
             conf = 1.0
         x = {"s": e["source"], "t": e["target"], "type": str(e.get("type") or "uses"),
              "conf": conf}
-        for k, on in (("back", g in back), ("mention", e.get("mention") or g in mention),
+        for k, on in (("back", g in back), ("mention", e.get("mention") or g in mention), ("both", e.get("equivalence")),
                       ("implied", g in implied), ("low", conf < va.LOW_CONF_THRESHOLD)):
             if on:
                 x[k] = 1

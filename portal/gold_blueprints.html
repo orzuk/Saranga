@@ -58,14 +58,17 @@ const params = new URLSearchParams(location.search);
 const bid = params.get("id");
 const prov = params.get("prov") || "human";
 const D = "/gold_bp/";
-const PROV = [["human", "Human"], ["mixed", "Mixed"], ["unknown", "Unknown"], ["likely_ai", "Likely AI"]];
+const PROV = [["sample", "Review sample"], ["human", "Human"], ["mixed", "Mixed"], ["unknown", "Unknown"], ["likely_ai", "Likely AI"]];
+// prov=sample: the fixed random review sample (corpus/gold_candidates/review_sample.json), in its order
+const pick = async all => prov !== "sample" ? all.filter(b => b.provenance === prov)
+  : (await getJSON("/gold_data/review_sample.json")).blueprint.map(id => all.find(b => b.id === id)).filter(Boolean);
 const provQ = () => "&prov=" + encodeURIComponent(prov);
 async function getJSON(u) { const r = await fetch(u, {cache:"no-store"}); if (!r.ok) throw new Error(u); return r.json(); }
 
 async function listView() {
   const [all, reviews] = await Promise.all([getJSON(D + "index.json"), getJSON("/gold/reviews?set=bp")]);
-  const n = k => all.filter(b => b.provenance === k).length;
-  const list = all.filter(b => b.provenance === prov);
+  const list = await pick(all);
+  const n = k => k === prov ? list.length : k === "sample" ? 20 : all.filter(b => b.provenance === k).length;
   const rows = list.map((b, i) => {
     const r = reviews[b.id], href = `?id=${encodeURIComponent(b.id)}${provQ()}`;
     const st = r ? `<span class="pill ${esc(r.verdict)}">${esc(r.verdict || "saved")}</span>` : `<span class="muted">–</span>`;
@@ -77,6 +80,7 @@ async function listView() {
   }).join("");
   $("#main").innerHTML = `<div class="subtabs">${PROV.map(([k, t]) =>
       `<a href="?prov=${k}" class="${k === prov ? "on" : ""}">${t} (${n(k)})</a>`).join("")}</div>
+    ${prov === "sample" ? `<p><b>Reviewed ${list.filter(b => reviews[b.id]).length} / ${list.length}</b> <span class="muted small">(20 random human or mixed blueprints that contain proofs)</span></p>` : ""}
     <p class="muted small">Provenance is a heuristic label from the commit history (contributors, AI co-author lines, agent files, pace).
       Ordered by the number of statements carrying \\uses. "arXiv" = the paper the blueprint follows, where checked.</p>
     <table><tr><th>#</th><th>Repository</th><th>Title</th><th>Area</th><th>arXiv</th><th>Statements</th>
@@ -94,7 +98,7 @@ function tabs(el, items) {
 
 async function bpView() {
   const [all, m, reviews] = await Promise.all([getJSON(D + "index.json"), getJSON(D + bid + "/meta.json"), getJSON("/gold/reviews?set=bp")]);
-  const list = all.filter(b => b.provenance === prov);
+  const list = await pick(all);
   const r0 = reviews[bid] || {};
   const k = list.findIndex(b => b.id === bid), prev = list[k-1], next = list[k+1];
   $("#nav").innerHTML = `<a href="gold_blueprints.html?prov=${prov}">list</a> ` + (prev ? `<a href="?id=${prev.id}${provQ()}">← prev</a>` : "") +

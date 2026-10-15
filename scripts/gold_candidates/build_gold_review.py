@@ -58,10 +58,11 @@ def merge_diagrams(graphs: list) -> dict:
             if not (n.get("text") or "").strip() and n["id"] not in linked:
                 continue                                 # a decorative shape (a 'fit' frame)
             labs = tuple(sorted({r["label"] for r in n.get("refs", [])}))
-            key = labs or (k, n["id"])
+            fig = g.get("fig_no") or ("drawing", k)        # a figure may hold several drawings (one per block)
+            key = (fig, labs or (k, n["id"]))            # a figure is kept as drawn: no merging across figures
             if key not in key_of:
                 key_of[key] = f"d{len(nodes)}"
-                nodes.append(dict(n, id=key_of[key], diagram=k))
+                nodes.append(dict(n, id=key_of[key], diagram=k, figure=fig))
             local[n["id"]] = key_of[key]
         for e in g.get("edges", []):
             if e["from"] in local and e["to"] in local:
@@ -71,7 +72,8 @@ def merge_diagrams(graphs: list) -> dict:
         if (e["from"], e["to"]) not in seen:
             seen.add((e["from"], e["to"]))
             out.append(e)
-    return {"nodes": nodes, "edges": out, "n_drawings": len(graphs)}
+    return {"nodes": nodes, "edges": out, "n_drawings": len(graphs),
+            "diagrams": [{"fig_no": g.get("fig_no"), "caption": g.get("caption", "")} for g in graphs]}
 
 
 def strip_tex(s: str, math=False) -> str:
@@ -79,7 +81,7 @@ def strip_tex(s: str, math=False) -> str:
     s = (s or "").replace("\\\\", " ").replace("\\S", "§")   # TikZ line breaks; section sign
     s = re.sub(r"\\(?:color|textcolor|nodepart)\s*\{[^}]*\}", " ", s)   # formatting, not text
     s = re.sub(r"\\(ref|cref|Cref|eqref|label)\{[^}]*\}", "", s)
-    plain = lambda t: re.sub(r"[{}$~\\]+", " ", re.sub(r"\s+", " ", re.sub(r"\\[A-Za-z]+\*?", " ", t))).strip()
+    plain = lambda t: re.sub(r"[{}$~\\]+", " ", re.sub(r"\s+", " ", re.sub(r"\\[A-Za-z]+\*?(?:\[[^\]]*\])*", " ", t))).strip()
     return outside_math(s, plain) if math else plain(s)
 
 
@@ -135,10 +137,19 @@ def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict)
             continue
         for lab in re.findall(r"\\label\{([^}]*)\}", n.get("raw_latex") or ""):
             labels.setdefault(lab, {"node": n["id"], "kind": "env"})
-    nodes, node_rows, idmap, by_hits = [], [], {}, {}
+    def fig_title(d):                                    # each diagram is a section of the viewer page
+        cap = re.sub(r"\\[cC]?ref\{([^}]*)\}", lambda m: (printed(m.group(1)) or "?").split()[-1], d.get("caption", ""))
+        return f"Figure {d.get('fig_no') or '?'}: {strip_tex(cap)[:80]}"
+    nodes, node_rows, idmap, by_hits, uses = [], [], {}, {}, []
+    sectioned = len({d.get("figure") for d in diag.get("nodes", [])}) > 1
+    fig_of = {d["id"]: d.get("figure") for d in diag.get("nodes", [])}
     linked = {x for e in diag.get("edges", []) for x in (e["from"], e["to"])}
     for dn in diag.get("nodes", []):
-        refs = dn.get("refs", [])
+        # "(Uses Lemma 3)" in a box: a dependency the box states, not the box's own result
+        used = set(re.findall(r"\\[cC]?ref\{([^}]*)\}", " ".join(re.findall(
+            r"\(\s*(?:uses?|using|by|from|via)\b[^()]*\)", dn.get("text", ""), re.I))))
+        refs = [r for r in dn.get("refs", []) if r["label"] not in used]
+        uses += [(dn["id"], lab, dn.get("figure")) for lab in sorted(used)]
         hits, secs = [], []
         names = []
         for r in refs:
@@ -169,9 +180,9 @@ def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict)
                 if node and node in ours:
                     hits.append(node)
         hits = list(dict.fromkeys(hits))
-        # the same result drawn again is one node; a number typed by hand can be stale (an older draft's
-        # numbering), so a typed box is merged only within its own diagram
-        key = tuple(hits) if refs else (tuple(hits), dn.get("diagram"))
+        # the same result drawn twice in one figure is one node; each figure is kept as drawn (scoring
+        # joins the figures through maps_to). Numbers typed by hand can be stale: flagged for review
+        key = (tuple(hits), dn.get("figure"))
         if hits and key in by_hits:
             idmap[dn["id"]] = by_hits[key]
             continue
@@ -191,14 +202,16 @@ def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict)
             typ, stmt, status = "theorem", "Cited: " + (text or ""), "cited"
         else:
             typ, stmt, status = "remark", text or "(empty box)", "unmatched"
-        extra = outside_math(expand(strip_tex(dn.get("text", ""), math=True)), lambda t: re.sub(r"\s+", " ", _TYPED_NUM.sub(" ", re.sub(
+        extra = outside_math(expand(strip_tex(re.sub(r"\(\s*(?:uses?|using|by|from|via)\b[^()]*\)", " ", dn.get("text", ""), flags=re.I), math=True)), lambda t: re.sub(r"\s+", " ", _TYPED_NUM.sub(" ", re.sub(
             r"(?i)\b(theorems?|lemmas?|propositions?|corollar(?:y|ies)|definitions?|claims?|sections?|and)\b|[&,.:;()]", " ", t))).strip())
         name = ", ".join(dict.fromkeys(names)) or text[:80] or None
         if names and len(extra) > 3:                     # the box also says what the result is
             name = f"{name}: {extra}"
         name = (name or "")[:100] or None
         nodes.append({"id": gid, "type": typ, "name": name, "statement": stmt,
-                      "origin": "paper", "tags": ["diagram", status], "maps_to": hits})   # never hidden by the viewer
+                      "origin": "paper", "tags": ["diagram", status], "maps_to": hits,   # never hidden by the viewer
+                      "labels": [r["label"] for r in refs]}
+                     | ({"section": fig_title(diag["diagrams"][dn.get("diagram", 0)])} if sectioned else {}))
         node_rows.append({"gid": gid, "box_text": text[:200], "refs": [r["label"] for r in refs], "printed": names,
                           "maps_to": hits, "our_types": [ours[h].get("type") for h in hits],
                           "status": status, "typed": bool(hits) and not refs, "diagram": dn.get("diagram", 0) + 1})
@@ -207,8 +220,27 @@ def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict)
         s, t = idmap.get(e["from"]), idmap.get(e["to"])
         if not s or not t or s == t:
             continue
-        edges.append({"source": s, "target": t, "type": "uses", "confidence": 1.0})
-        edge_rows.append({"source": s, "target": t, "directed": bool(e.get("directed", True))})
+        # a double-headed arrow (<=>): equivalent statements; kept once, in the direction it is written
+        edges.append({"source": s, "target": t, "type": "uses", "confidence": 1.0} | ({"equivalence": True} if e.get("both") else {}))
+        edge_rows.append({"source": s, "target": t, "directed": bool(e.get("directed", True)), "equivalence": bool(e.get("both"))})
+        uses += [(e["to"], r["label"], fig_of.get(e["to"])) for r in e.get("label_refs", [])]   # "via Theorem 5.2" on the arrow
+    gid_of = {(fg, h): g for (hs, fg), g in by_hits.items() for h in hs}
+    for box, lab, fg in uses:                           # stated uses: an arrow from the result (its box, else a new node)
+        h = (labels.get(lab) or {}).get("node")
+        if h not in ours or box not in idmap:
+            continue
+        if (fg, h) not in gid_of:
+            gid_of[fg, h] = f"G{len(nodes) + 1}"
+            nodes.append({"id": gid_of[fg, h], "type": ours[h].get("type", "theorem"), "name": printed(lab) or lab,
+                          "statement": expand(ours[h].get("raw_latex") or ours[h].get("statement") or ""), "origin": "paper",
+                          "tags": ["diagram", "mentioned"], "maps_to": [h]}
+                         | ({"section": next(n["section"] for n in nodes if n["id"] == idmap[box])} if sectioned else {}))
+            node_rows.append({"gid": gid_of[fg, h], "box_text": "(named in another box: uses ...)", "refs": [lab],
+                              "printed": [printed(lab) or lab], "maps_to": [h], "our_types": [ours[h].get("type")],
+                              "status": "mentioned", "typed": False, "diagram": 0})
+        if gid_of[fg, h] != idmap[box]:
+            edges.append({"source": gid_of[fg, h], "target": idmap[box], "type": "uses", "confidence": 1.0})
+            edge_rows.append({"source": gid_of[fg, h], "target": idmap[box], "directed": True, "stated_in_box": True})
     gold = {"metadata": {"paper_id": pid, "title": full.get("metadata", {}).get("title", ""),
                          "extractor": "author diagram (parsed from the figure's LaTeX)",
                          "caption": strip_tex((fig or {}).get("caption", ""))[:500]},
@@ -243,8 +275,9 @@ _BOX_LINE = re.compile(r"(?i)(theorem|thm\.?|lemma|lem\.?|proposition|prop\.?|co
                        r"claim|section|sec\.?|§)\s*[\dA-Z][\d.]*[a-z]?")
 
 
-def find_fig_page(pdf: Path, caption: str) -> int:
-    """The PDF page whose text best matches the caption (1-based; 0 if not found)."""
+def find_fig_page(pdf: Path, caption: str, fig_no: int = 0) -> int:
+    """The PDF page whose text best matches the caption (1-based; 0 if not found); the page
+    printing "Figure <fig_no>:" wins (captions of a paper's diagrams can be near-identical)."""
     words = [w for w in re.findall(r"[A-Za-z]{5,}", caption)]
     words = list(dict.fromkeys(words))[-14:] or ["figure"]
     txt = subprocess.run(["pdftotext", "-layout", str(pdf), "-"], capture_output=True, text=True).stdout
@@ -254,39 +287,74 @@ def find_fig_page(pdf: Path, caption: str) -> int:
         hit = sum(w.lower() in flat for w in words) + (3 if "figure" in flat and words[0].lower() in flat else 0)
         hit += 3 * sum(1 for ln in page.splitlines()                 # "Lemma 4.3" alone: a box
                        for cell in re.split(r"\s{3,}", ln.strip()) if _BOX_LINE.fullmatch(cell))
+        hit += 100 * bool(fig_no and re.search(rf"(?m)^\s*(?:Figure|Fig\.)\s*{fig_no}\s*[:.]", page))
         if hit > best_n:
             best, best_n = p, hit
     return best
+
+
+def fig_number(tex: str, env: str) -> int:
+    """The printed number of the figure whose LaTeX starts with env: figures are numbered in order."""
+    i = tex.find(re.sub(r"\s+", " ", env)[:80].strip()) if env else -1
+    return len(re.findall(r"\\begin\{figure\*?\}", tex[:i])) + 1 if i > 0 else 0
+
+
+_DIAGRAM_ENVS = {"tikz": r"\\begin\{(tikzpicture|tikzcd)\}.*?\\end\{\1\}", "picture": r"\\begin\{picture\}.*?\\end\{picture\}"}
+
+
+def scan_figures(tex: str) -> list:
+    """Every figure of the paper that draws a diagram whose boxes cite >= 2 results (\\ref): the
+    survey can miss some, e.g. a paper with one 'structure of Section k' diagram per section."""
+    import diagram_parser as dp
+    out = []
+    for m in re.finditer(r"\\begin\{figure\*?\}.*?\\end\{figure\*?\}", tex, re.S):
+        env = m.group(0)
+        code = {k: [c.group(0) for c in re.finditer(r, env, re.S)] for k, r in _DIAGRAM_ENVS.items()}
+        code["xymatrix"] = [env[x.start():dp.brace_arg(env, x.end() - 1)[1]] for x in re.finditer(r"\\xymatrix[^{]*\{", env)]
+        if sum(len(re.findall(r"\\[cC]?ref\{", c)) for cs in code.values() for c in cs) >= 2:
+            cap = re.search(r"\\caption\s*(?:\[[^\]]*\])?\s*\{", env)
+            out.append({"found": True, "env": env, "caption": dp.brace_arg(env, cap.end() - 1)[0] if cap else "", **code})
+    return out
+
+
+def all_figures(folder: Path) -> list:
+    """The survey's located figures plus the diagram figures it missed (scan_figures)."""
+    import diagram_parser as dp
+    fj = folder / "figure.json"
+    figs = [f for f in (json.loads(fj.read_text()).get("figures", []) if fj.is_file() else []) if f.get("found")]
+    seen = {re.sub(r"\s+", " ", f.get("env", ""))[:200] for f in figs}
+    tex = dp.strip_comments((folder / "paper.tex").read_text(encoding="utf-8", errors="replace"))
+    return figs + [f for f in scan_figures(tex) if re.sub(r"\s+", " ", f["env"])[:200] not in seen]
 
 
 def reparse(folder: Path) -> list:
     """Parse every located diagram of the paper again from its LaTeX (diagram_parser.py),
     writing graph_tikz.json; the survey's own parse is kept only when nothing was located."""
     import diagram_parser as dp
-    fj = folder / "figure.json"
-    figs = json.loads(fj.read_text()).get("figures", []) if fj.is_file() else []
+    figs = all_figures(folder)
     tex = dp.strip_comments((folder / "paper.tex").read_text(encoding="utf-8", errors="replace"))
-    lmap, macros = dp.label_map(tex), dp.ref_macros(tex)
-    graphs = []
+    lmap, macros, styles = dp.label_map(tex), dp.ref_macros(tex), dp.arrow_styles(tex)
+    graphs, flat = [], re.sub(r"\s+", " ", tex)
     for f in figs:
         if not f.get("found"):
             continue
+        f["fig_no"] = fig_number(flat, f.get("env", ""))
         for code in f.get("tikz", []):
             code = dp.strip_comments(code)
             if code.startswith("\\begin{tikzcd}"):
                 g = dp.parse_grid(re.sub(r"^\\begin\{tikzcd\}(\[[^\]]*\])?|\\end\{tikzcd\}$", "", code), "tikzcd", lmap, macros)
                 g["format"] = "tikzcd"
             else:
-                g = dp.parse_tikz(code, lmap, macros)
+                g = dp.parse_tikz(code, lmap, macros, styles)
                 g["format"] = "tikz"
-            graphs.append(dict(g, fig_idx=f.get("fig_idx")))
+            graphs.append(dict(g, fig_idx=f.get("fig_idx"), fig_no=f["fig_no"], caption=f.get("caption", "")))
         for code in f.get("xymatrix", []):
             graphs.append(dict(dp.parse_grid(dp.strip_comments(code), "xymatrix", lmap, macros),
-                               format="xymatrix", fig_idx=f.get("fig_idx")))
+                               format="xymatrix", fig_idx=f.get("fig_idx"), fig_no=f["fig_no"], caption=f.get("caption", "")))
         for code in f.get("picture", []):
-            graphs.append(dict(dp.parse_picture(dp.strip_comments(code), lmap, macros),
-                               format="picture", fig_idx=f.get("fig_idx")))
-    graphs = [g for g in graphs if g.get("nodes")]
+            graphs.append(dict(dp.parse_picture(dp.strip_comments(code), lmap, macros, dp.unit_em(tex[:tex.find(code[:60])] + f.get("env", "").split(code[:60])[0])),
+                               format="picture", fig_idx=f.get("fig_idx"), fig_no=f["fig_no"], caption=f.get("caption", "")))
+    graphs = sorted((g for g in graphs if g.get("nodes")), key=lambda g: g.get("fig_no") or 0)
     if graphs:
         (folder / "graph_tikz.json").write_text(json.dumps(graphs, indent=1, ensure_ascii=False))
     elif (folder / "graph_tikz.json").is_file():
@@ -314,11 +382,12 @@ def add_pdf(folder: Path, out: dict) -> None:
         tmp = Path(tempfile.mkdtemp())                   # the PDF tools are slow on the Windows drive
         local = tmp / "paper.pdf"
         shutil.copy(folder / "paper.pdf", local)
-        fj = json.loads((folder / "figure.json").read_text()) if (folder / "figure.json").is_file() else {}
-        figs = [f for f in fj.get("figures", []) if f.get("found") and re.search(r"tikzpicture|tikzcd|xymatrix|\\xy\b|picture", f.get("env", ""))]
-        pages = list(dict.fromkeys(find_fig_page(local, page_hint(folder, {"caption": f.get("caption", ""), "figure_latex": f.get("env", "")}))
-                                   for f in figs[:6])) if len(figs) > 1 else [find_fig_page(local, page_hint(folder, out))]
-        pages = [p for p in pages if p]
+        figs = [f for f in all_figures(folder) if re.search(r"tikzpicture|tikzcd|xymatrix|\\xy\b|picture", f.get("env", ""))]
+        flat = re.sub(r"\s+", " ", (folder / "paper.tex").read_text(encoding="utf-8", errors="replace"))
+        pages = list(dict.fromkeys(find_fig_page(local, page_hint(folder, {"caption": f.get("caption", ""), "figure_latex": f.get("env", "")}),
+                                                 fig_number(flat, f.get("env", ""))) for f in figs)) \
+            if len(figs) > 1 else [find_fig_page(local, page_hint(folder, out))]
+        pages = sorted(p for p in pages if p)
         out["fig_page"] = pages[0] if pages else 0
         if pages:                                # each diagram's page; one diagram: also the next (figures float)
             out["figpages"], out["figpage_nums"] = [], []
@@ -360,7 +429,9 @@ def build_one(folder: Path, do_pdf: bool) -> dict:
         import latex_macros
         import latex_facts
         tex = (folder / "paper.tex").read_text(encoding="utf-8", errors="replace")
-        macros = latex_macros.read_definitions(tex)
+        # the authors' own style files (sty/, from the e-print) define macros the paper uses
+        macros = latex_macros.renderable(latex_macros.read_definitions("\n".join(f.read_text(encoding="utf-8", errors="replace")
+                                                         for f in sorted((folder / "sty").glob("*"))) + "\n" + tex))
         try:
             fx = latex_facts.extract_facts(tex)
         except Exception:                                # noqa: BLE001  (numbers are a nicety)

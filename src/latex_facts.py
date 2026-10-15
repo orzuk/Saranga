@@ -170,8 +170,9 @@ def find_main_tex(d, files=None):
     d = Path(d)
     def key(p):
         b = p.read_bytes()[:200000]
-        return (p.stem == d.name, bool(_ARXIV_STEM.match(p.stem)), b"\\documentclass" in b,
-                b"\\begin{document}" in b, b"\\title" in b, p.stat().st_size)
+        active = lambda cmd: bool(re.search(rb"(?m)^[^%\n]*\\" + cmd, b))   # not in a commented-out line
+        return (p.stem == d.name, bool(_ARXIV_STEM.match(p.stem)), active(rb"documentclass"),
+                active(rb"begin\{document\}"), active(rb"title"), p.stat().st_size)
     return max(files or (p for p in d.rglob("*.tex") if p.is_file()), key=key, default=None)
 
 
@@ -350,6 +351,14 @@ _CLASS_PREDEFINED = {
                "exercise", "problem", "remark", "claim", "conjecture", "note",
                "property", "question", "solution", "case"],
 }
+# classes that declare their theorem environments, sharing one counter numbered within sections:
+# class -> (shared counter, {env: printed name})
+_CLASS_NAMED = {"acmart": ("theorem", {e: e.capitalize() for e in ("theorem", "conjecture", "proposition", "lemma",
+                                                                      "corollary", "example", "definition")}),
+                "lmcs": ("thm", {"thm": "Theorem", "cor": "Corollary", "lem": "Lemma", "prop": "Proposition", "defi": "Definition",
+                         "conj": "Conjecture", "exa": "Example", "rem": "Remark", "asm": "Assumption", "prob": "Problem",
+                         "oprob": "Open Problem", "nota": "Notation", "fact": "Fact", "clm": "Claim", "obs": "Observation",
+                         "conv": "Convention", "qu": "Question", "defis": "Definitions", "rems": "Remarks", "exas": "Examples"})}
 
 _ALGORITHM_ENVS = {"algorithm", "algorithm*", "algorithmic", "procedure", "function"}
 _EQUATION_ENVS = {"equation", "multline", "align", "gather", "eqnarray", "flalign", "alignat",
@@ -439,6 +448,10 @@ def theorem_declarations(source: str) -> dict[str, dict]:
     for env in _CLASS_PREDEFINED.get(cls, []):
         decl[env] = {"display": env.capitalize(), "counter": None, "within": None,
                      "starred": False, "source": f"class:{cls}"}
+    ctr, named = _CLASS_NAMED.get(cls.lower(), ("", {}))
+    for env, display in named.items():
+        decl[env] = {"display": display, "counter": ctr, "within": "section", "starred": False,
+                     "source": f"{cls}.cls"}                  # numbering known: replayed
     for m in re.finditer(r"\\(?:sp)?newtheorem(\*?)", source):
         starred = bool(m.group(1))
         env, j = _group(source, m.end())
@@ -737,8 +750,8 @@ def extract_facts(tex: str) -> dict:
     in_appendix = False
     thm_ctr: dict[str, int] = {}
     thm_counters = {d["counter"] for d in decl.values() if d["counter"]}
-    formats, resets, unknown = counter_formats(
-        source, thm_counters | {"equation", "section", "subsection", "subsubsection"})
+    formats, resets, unknown = counter_formats(     # before expansion, which consumes \renewcommand{\theX}
+        clean_source(tex), thm_counters | {"equation", "section", "subsection", "subsubsection"})
     for env, d in decl.items():          # a theorem counter's reset/format, from its declaration
         c = d["counter"]
         if c and d["within"] and c not in resets:
