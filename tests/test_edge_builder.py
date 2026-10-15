@@ -93,3 +93,18 @@ check(any(e["source"] == late for e in ment), "references to t:late are mentions
 check(not reasoning_cycles(d["nodes"], d["edges"]),
       "no cycle: t:late uses t:main, t:main only mentions t:late")
 print("all edge-builder checks pass")
+
+# The learned definition -> user edges (alg3/edges.py) are opt-in: the parser's own edges
+# above are what every parse gets by default. Their deterministic part: a definition's
+# candidates, and which other text uses them (exact symbol, head symbol, whole words).
+sys.path.insert(0, os.path.join(HERE, "..", "alg3"))
+import edges as E                                    # noqa: E402
+cs = {c["key"]: c for c in E.candidates(
+    r"A partially ordered set or \emph{poset} is a set $P$ with an order. We call $T_p=(t_{vu})$ the transfer matrix.")}
+check({"poset", "T_p", "transfer matrix"} <= set(cs), "definition candidates: %s" % sorted(cs))
+user = r"Every finite poset $Q$ has a transfer matrix $T_q$."
+mn, w = E.math_regions(user), E.wnorm(user)
+check(E.uses(cs["poset"], user, mn, w) == "word", "a defined word is used as a word")
+check(E.uses(cs["T_p"], user, mn, w) == "head", "T_q uses the head symbol of T_p")
+check(E.uses(cs["P"], user, mn, w) is None, "a lone P is not in this text")
+print("all learned-edge checks pass")

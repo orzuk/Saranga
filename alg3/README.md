@@ -47,3 +47,13 @@ To compare an already trained model, add an arm
 validation papers (both printed by train.py), not on the test papers.
 
 `cache/` and `runs/` are local (git-ignored).
+
+## Edges (`edges.py`, opt-in)
+
+The same approach applied to edges: `edges.py` learns **definition → user** `uses` edges from the
+silver (which candidate term/symbol a definition defines, from the silver's `definiendum`; which
+later nodes use it), writes a JSON model to `extractors/edges/<id>/`, and adds its edges to any
+graph. Off by default; `parse_batch.py --edge-model extractors/edges/<id>` turns it on. Scored
+with `src/LLMVersion/edge_metrics.py` (the edge sibling of `node_metrics.py`). Released model:
+`extractors/edges/silver_v6__defterm_edges__2026-10` (test edge F1 0.262 → 0.333).
+
