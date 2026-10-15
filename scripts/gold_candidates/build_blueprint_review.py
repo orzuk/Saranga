@@ -142,6 +142,9 @@ def main():
                 print(f"{r['repo']:55s} ERROR {e!r}", flush=True)
         elif mf.is_file():
             row["built"] = bool(json.loads(mf.read_text()).get("page"))
+        if mf.is_file():                                 # the counts of our (cleaned) conversion, not the survey's
+            m = json.loads(mf.read_text())
+            row |= {"statements": m["n_statements"], "stmt_with_uses": None, "uses_edges": m["n_uses"]}
         index.append(row)
     (OUT / "index.json").write_text(json.dumps(index, indent=1))
     print("index:", len(index), "built:", sum(r["built"] for r in index))

@@ -63,6 +63,23 @@ const PROV = [["sample", "Review sample"], ["human", "Human"], ["mixed", "Mixed"
 const pick = async all => prov !== "sample" ? all.filter(b => b.provenance === prov)
   : (await getJSON("/gold_data/review_sample.json")).blueprint.map(id => all.find(b => b.id === id)).filter(Boolean);
 const provQ = () => "&prov=" + encodeURIComponent(prov);
+// Scores of the free extractors against this gold (scripts/gold_candidates/score_gold.py)
+const pct = x => x == null ? "–" : (100 * x).toFixed(0);
+function scoreTable(s, title) {
+  if (!s) return "";
+  const rows = [];
+  for (const [x, byP] of Object.entries(s)) for (const [p, v] of Object.entries(byP)) {
+    const ci = k => v.ci95 && v.ci95[k] ? ` <span class="muted small">[${pct(v.ci95[k][0])}–${pct(v.ci95[k][1])}]</span>` : "";
+    rows.push(`<tr><td>${esc(x)}${Object.keys(byP).length > 1 ? " · " + esc(p) : ""}</td>
+      <td>${pct(v.node_P)} / ${pct(v.node_R)} / <b>${pct(v.node_F1)}</b>${ci("node_F1")}</td>
+      <td>${pct(v.edge_P)} / ${pct(v.edge_R)} / <b>${pct(v.edge_F1)}</b>${ci("edge_F1")}</td>
+      <td class="small">${v.edge_R_def != null ? `definitions ${pct(v.edge_R_def)}, results ${pct(v.edge_R_res)}` : ""}</td>
+      <td class="small muted">${v.n_items ? v.n_items + " items, " : ""}${v.edge_n_gold ?? ""} gold dependencies</td></tr>`);
+  }
+  return `<details open class="review"><summary><b>${title}</b></summary><table><tr><th>extractor</th><th>nodes P / R / F1 (%)</th>
+    <th>dependencies P / R / F1 (%)</th><th>dependency recall on</th><th></th></tr>${rows.join("")}</table></details>`;
+}
+
 async function getJSON(u) { const r = await fetch(u, {cache:"no-store"}); if (!r.ok) throw new Error(u); return r.json(); }
 
 async function listView() {
@@ -77,15 +94,17 @@ async function listView() {
       <td>${esc(b.title)}</td><td>${esc(b.area)}</td>
       <td>${b.arxiv ? `<a href="https://arxiv.org/abs/${esc(b.arxiv)}" target="_blank" onclick="event.stopPropagation()">${esc(b.arxiv)}</a>` : ""}</td>
       <td>${esc((b.source_type || "").replace("_", " "))}${b.source_latex && b.source_latex !== "unknown" ? ` <span class="small muted">(LaTeX: ${esc(b.source_latex === "none" ? "PDF only" : b.source_latex)})</span>` : ""}</td>
-      <td>${b.statements ?? ""}</td><td>${b.stmt_with_uses ?? ""}</td><td>${b.uses_edges ?? ""}</td><td>${esc(b.year)}</td><td>${st}</td></tr>`;
+      <td>${b.statements ?? ""}</td><td>${b.uses_edges ?? ""}</td><td>${esc(b.year)}</td><td>${st}</td></tr>`;
   }).join("");
-  $("#main").innerHTML = `<div class="subtabs">${PROV.map(([k, t]) =>
+  const ss = await getJSON(D + "scores_summary.json").then(s => {
+    const o = {}; for (const [k, v] of Object.entries(s)) { const [x, p] = k.split("/"); (o[x] = o[x] || {})[p] = v; } return o; }).catch(() => null);
+  $("#main").innerHTML = scoreTable(ss, "Free extractors against the gold blueprints (pooled, 95% bootstrap intervals; blueprint = declared + cited dependencies, blueprint_uses = declared only)") + `<div class="subtabs">${PROV.map(([k, t]) =>
       `<a href="?prov=${k}" class="${k === prov ? "on" : ""}">${t} (${n(k)})</a>`).join("")}</div>
     ${prov === "sample" ? `<p><b>Reviewed ${list.filter(b => reviews[b.id]).length} / ${list.length}</b> <span class="muted small">(20 random human or mixed blueprints that contain proofs)</span></p>` : ""}
     <p class="muted small">Provenance is a heuristic label from the commit history (contributors, AI co-author lines, agent files, pace).
       Ordered by the number of statements carrying \\uses. "arXiv" = the paper the blueprint follows, where checked.</p>
     <table><tr><th>#</th><th>Repository</th><th>Title</th><th>Area</th><th>arXiv</th><th>Source</th><th>Statements</th>
-      <th>with \\uses</th><th>\\uses edges</th><th>Year</th><th>Review</th></tr>${rows}</table>`;
+      <th>\\uses edges</th><th>Year</th><th>Review</th></tr>${rows}</table>`;
 }
 
 function tabs(el, items) {
@@ -124,7 +143,8 @@ async function bpView() {
       by_type: m.types, formalised_leanok: m.n_leanok, unresolved_uses_targets: m.unresolved_uses, provenance: m.provenance,
       provenance_signals: m.prov_signals, coverage: m.coverage, arxiv_matched: m.arxiv, arxiv_in_readme: m.arxiv_readme,
       survey_notes: m.judgment_notes, our_graph_of_paper: m.paper}, null, 1))}</pre>`;
-  $("#main").innerHTML = srcLine + `
+  const sc = await getJSON(D + bid + "/scores.json").catch(() => null);
+  $("#main").innerHTML = srcLine + scoreTable(sc, "Free extractors against this blueprint") + `
     <div class="grid">
       <div class="pane" id="left"><div class="tabs"></div><div class="body"></div></div>
       <div class="pane" id="right"><div class="tabs"></div><div class="body"></div></div>
@@ -149,6 +169,7 @@ async function bpView() {
   ]);
   tabs($("#right"), [
     ["Blueprint in our format", () => m.page ? `<iframe src="${D + bid}/${m.page}"></iframe>` : `<p class="muted" style="padding:8px">No page built.</p>`],
+    sc && ["Rule-based extraction of the blueprint", () => `<iframe src="${D + bid}/rules_new.html"></iframe>`],
     m.paper?.page && ["Our extraction of the arXiv paper", () => `<iframe src="${D + bid}/${m.paper.page}"></iframe>`],
     ["Stats", () => stats],
   ]);

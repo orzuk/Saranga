@@ -21,6 +21,8 @@ Options
                    reference nodes (the rest cannot be judged), and a predicted dependency that
                    the reference implies through a path is not an error
   skip_tags        reference nodes not scored (section boxes of an author's diagram)
+  pred_types       predictions scored for node precision: all, or "gold" (only the node types the
+                   reference annotates: a blueprint has no equation nodes)
   gold_kinds       reference edges scored, by kind: a blueprint's "uses" (declared) and "ref" (named in
                    the text only); None: all
 
@@ -42,9 +44,9 @@ PRESETS = {
     "author": dict(node_metric="m1g", match="label", edges=True, edge_recall="path",
                    precision_scope="gold", skip_tags=("section",)),
     "blueprint": dict(node_metric="m1g", match="label", edges=True, edge_recall="direct",
-                      precision_scope="all"),                         # gold: \\uses and the results the text names
+                      precision_scope="all", pred_types="gold"),                         # gold: \\uses and the results the text names
     "blueprint_uses": dict(node_metric="m1g", match="label", edges=True, edge_recall="direct",
-                           precision_scope="all", gold_kinds=("uses",)),   # gold: \\uses only
+                           precision_scope="all", pred_types="gold", gold_kinds=("uses",)),   # gold: \\uses only
 }
 _WEIGHT = {"m1g": ns.type_compat, "m1": lambda a, b: 1.0 if a == b else 0.0}
 _RESULT_EDGES = ("uses", "proves", "generalizes", "specializes")
@@ -118,11 +120,14 @@ def _implied(deps):
 
 
 def score(pred: dict, gold: dict, node_metric="m1g", match="text", edges=True, edge_recall="direct",
-          precision_scope="all", skip_tags=(), threshold=NM.THRESHOLD, cover=NM.COVER, gold_kinds=None) -> dict:
+          precision_scope="all", skip_tags=(), threshold=NM.THRESHOLD, cover=NM.COVER, gold_kinds=None,
+          pred_types="all") -> dict:
     """Counts for one paper. Nodes: P = node_p_credit / node_p_n, R = node_g_credit / node_g_n;
     edges (dependencies between results) likewise. Pool over papers with pooled()."""
     gn = [n for n in _with_labels(gold) if not set(n.get("tags") or []) & set(skip_tags)]
     pn = _with_labels(pred)
+    if pred_types == "gold":
+        pn = [n for n in pn if n.get("type") in {g.get("type") for g in gn}]
     if node_metric == "m3":
         pc, gc = NM.score([(n.get("type"), _text(n)) for n in pn], [(n.get("type"), _text(n)) for n in gn], "m3", threshold, cover)
         return {"node_p_credit": sum(pc), "node_p_n": len(pn), "node_g_credit": sum(gc), "node_g_n": len(gn)}
@@ -133,15 +138,21 @@ def score(pred: dict, gold: dict, node_metric="m1g", match="text", edges=True, e
     if not edges:
         return out
     p2g = {pn[i]["id"]: gn[j]["id"] for i, (j, _) in m.items()}
-    gdep = dependencies(gn, [e for e in gold["edges"] if not gold_kinds or e.get("kind", "uses") in gold_kinds or e["type"] != "uses"], {n["id"] for n in gn if n.get("type") not in _NOT_RESULTS})
+    gres = {n["id"] for n in gn if n.get("type") not in _NOT_RESULTS}
+    gdep = dependencies(gn, [e for e in gold["edges"] if not gold_kinds or e.get("kind", "uses") in gold_kinds or e["type"] != "uses"], gres)
+    # results only on both sides: a matched proof is collapsed like any proof, never an endpoint
     presults = {n["id"] for n in pn if n.get("type") not in _NOT_RESULTS}
-    pdep = {(p2g[a], p2g[b]) for a, b in dependencies(pn, pred["edges"], presults | set(p2g)) if a in p2g and b in p2g}
+    pdep = {(p2g[a], p2g[b]) for a, b in dependencies(pn, pred["edges"], presults) if p2g.get(a) in gres and p2g.get(b) in gres}
     p_found = _implied(pdep) if edge_recall == "path" else pdep
     if precision_scope == "gold":       # only among the drawn results; implied by the drawing: not an error
         p_ok, p_n = len(pdep & _implied(gdep)), len(pdep)
     else:
         p_ok, p_n = len(pdep & gdep), len(dependencies(pn, pred["edges"], presults))
-    return out | {"edge_p_credit": p_ok, "edge_p_n": p_n, "edge_g_credit": len(gdep & p_found), "edge_g_n": len(gdep)}
+    gtype = {n["id"]: n.get("type") for n in gn}
+    gdef = {d for d in gdep if gtype.get(d[0]) == "definition"}     # recall split: dependencies on definitions
+    return out | {"edge_p_credit": p_ok, "edge_p_n": p_n, "edge_g_credit": len(gdep & p_found), "edge_g_n": len(gdep),
+                  "def_g_credit": len(gdef & p_found), "def_g_n": len(gdef),
+                  "res_g_credit": len((gdep - gdef) & p_found), "res_g_n": len(gdep - gdef)}
 
 
 def pooled(counts: list) -> dict:
@@ -151,6 +162,9 @@ def pooled(counts: list) -> dict:
         for k, v in c.items():
             tot[k] += v
     out = {}
+    for x in ("def", "res"):                            # recall only: on definitions, on results
+        if tot.get(f"{x}_g_n"):
+            out[f"edge_R_{x}"] = tot[f"{x}_g_credit"] / tot[f"{x}_g_n"]
     for x in ("node", "edge"):
         if f"{x}_g_n" in tot:
             out |= dict(zip((f"{x}_P", f"{x}_R", f"{x}_F1"), ns.prf(tot[f"{x}_p_credit"], tot[f"{x}_g_credit"],

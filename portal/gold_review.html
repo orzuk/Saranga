@@ -61,6 +61,23 @@ const params = new URLSearchParams(location.search);
 const pid = params.get("id");
 const D = "/gold_data/papers/";
 
+// Scores of the free extractors against this gold (scripts/gold_candidates/score_gold.py)
+const pct = x => x == null ? "–" : (100 * x).toFixed(0);
+function scoreTable(s, title) {
+  if (!s) return "";
+  const rows = [];
+  for (const [x, byP] of Object.entries(s)) for (const [p, v] of Object.entries(byP)) {
+    const ci = k => v.ci95 && v.ci95[k] ? ` <span class="muted small">[${pct(v.ci95[k][0])}–${pct(v.ci95[k][1])}]</span>` : "";
+    rows.push(`<tr><td>${esc(x)}${Object.keys(byP).length > 1 ? " · " + esc(p) : ""}</td>
+      <td>${pct(v.node_P)} / ${pct(v.node_R)} / <b>${pct(v.node_F1)}</b>${ci("node_F1")}</td>
+      <td>${pct(v.edge_P)} / ${pct(v.edge_R)} / <b>${pct(v.edge_F1)}</b>${ci("edge_F1")}</td>
+      <td class="small">${v.edge_R_def != null ? `definitions ${pct(v.edge_R_def)}, results ${pct(v.edge_R_res)}` : ""}</td>
+      <td class="small muted">${v.n_items ? v.n_items + " items, " : ""}${v.edge_n_gold ?? ""} gold dependencies</td></tr>`);
+  }
+  return `<details open class="review"><summary><b>${title}</b></summary><table><tr><th>extractor</th><th>nodes P / R / F1 (%)</th>
+    <th>dependencies P / R / F1 (%)</th><th>dependency recall on</th><th></th></tr>${rows.join("")}</table></details>`;
+}
+
 async function getJSON(u) { const r = await fetch(u, {cache:"no-store"}); if (!r.ok) throw new Error(u); return r.json(); }
 
 function summary(index, reviews) {
@@ -129,7 +146,9 @@ async function listView() {
   $("#main").innerHTML =
     `<div class="q"><b>Area</b> <select id="catsel">${opts.map(([v, t]) => `<option value="${esc(v)}" ${v === cat ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>
      <span class="muted small">${showAll ? "All candidates." : "Good quality: boxes at the level of results (≥ half are theorems, lemmas, ... of the paper, not sections), ≥ 3 boxes, ≥ 2 arrows, ≥ 70% of the boxes resolved."} ${toggle}${sampleLink}</span></div>` +
-    summary(index, reviews) +
+    summary(index, reviews) + scoreTable(await getJSON("/gold_data/scores_summary.json").then(s => {
+      const o = {}; for (const [k, v] of Object.entries(s)) { const [x, p] = k.split("/"); (o[x] = o[x] || {})[p] = v; } return o; })
+      .catch(() => null), "Free extractors against the good diagrams (pooled, 95% bootstrap intervals)") +
     `<table><tr><th>#</th>${th("arxiv", "arXiv")}${th("title", "Title")}${th("category", "Category")}${th("year", "Year")}${th("level", "Diagram of")}
      ${th("n_nodes", "Boxes")}${th("n_resolved", "Resolved")}${th("n_edges", "Arrows")}<th>Review</th></tr>${rows}</table>
      <p class="small">${toggle}${sampleLink}</p>`;
@@ -175,7 +194,8 @@ async function paperView() {
       <td><select data-edge="${esc(key)}">${opt}</select></td></tr>`;
   }).join("");
   const radio = (name, opts, cur) => opts.map(o => `<label><input type="radio" name="${name}" value="${o}" ${o===cur?"checked":""}> ${o}</label>`).join("");
-  $("#main").innerHTML = `
+  const sc = await getJSON(D + pid + "/scores.json").catch(() => null);
+  $("#main").innerHTML = scoreTable(sc, "Free extractors against this diagram") + `
     ${(m.problems || []).length ? `<p style="color:var(--bad)">${esc(m.problems.join("; "))}</p>` : ""}
     ${m.n_drawings > 1 ? `<p class="small"><b>${m.n_drawings} diagrams</b> in this paper, each a section of the graph on the right (open one at a time), with its page on the left. A result drawn in several figures appears in each.</p>` : ""}
     <div class="grid">
