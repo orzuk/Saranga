@@ -202,6 +202,30 @@ def arrow_styles(tex):
     return {n.strip() for n, d in defs if re.search(_ARROW, d)}
 
 
+def _brace_groups(pending, braces, posn, shared):
+    """Arrows that start or end at the tip of a curly brace (\\draw[decorate, decoration=brace]) connect every
+    box the brace groups: those beside the brace, on the side of the nearest one. An arrow end within 0.9 of
+    the brace's midpoint is at its tip."""
+    groups = []
+    for (ax, ay), (bx, by) in braces:
+        L = ((bx - ax) ** 2 + (by - ay) ** 2) ** 0.5 or 1
+        side = []
+        for name, (x, y) in posn:
+            t = ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / L ** 2
+            perp = ((bx - ax) * (y - ay) - (by - ay) * (x - ax)) / L       # signed distance from the brace
+            if -0.1 <= t <= 1.1 and abs(perp) <= 2.0:
+                side.append((abs(perp), perp > 0, name))
+        if side:
+            d0, s0, _ = min(side)
+            groups.append((((ax + bx) / 2, (ay + by) / 2), [n for d, s, n in side if s == s0 and d <= d0 + 0.6]))
+    def ends(p):
+        if isinstance(p, str) or p[0] != "xy" or p[1] in shared:
+            return [p]
+        g = next((m for (cx, cy), m in groups if ((p[1][0] - cx) ** 2 + (p[1][1] - cy) ** 2) ** 0.5 <= 0.9), None)
+        return [("n", n) for n in g] if g else [p]
+    return [(a, b, *rest) for x, y, *rest in pending for a in ends(x) for b in ends(y)]
+
+
 def parse_tikz(code, lmap, macros, styles=()):
     """Statement-level TikZ parser -> nodes (named / positioned) and directed edges.
     styles: names of the paper's arrow styles (arrow_styles)."""
@@ -256,11 +280,13 @@ def parse_tikz(code, lmap, macros, styles=()):
                        "at": at.group(1) if at else None, "_xy": pos}
         return name
     stmts = _split_statements(code)
+    braces = []
     pending = []  # (kind, statement)
     for st in stmts:
         s0 = re.sub(r"^(?:\s*\\(?:begin|end)\{scope\}\s*(?:" + OPT + r")?)+", "", st).strip()   # \end{scope} \draw ...
-        # a stray character or an argument-less command before it: "= \path", "\footnotesize \node"
-        s0 = re.sub(r"^(?:[^\\\s]{1,3}|\\[A-Za-z]+(?![\[{\w]))(?=\s*\\(?:draw|path|node|matrix)\b)\s*", "", s0).strip()
+        # a stray character, an argument-less command or an option block before it: "= \path",
+        # "\footnotesize \node", a repeated "[>=stealth]" line
+        s0 = re.sub(r"^(?:[^\\\s]{1,3}|\\[A-Za-z]+(?![\[{\w])|(?:\s*" + OPT + r")+)(?=\s*\\(?:draw|path|node|matrix)\b)\s*", "", s0).strip()
         if re.match(r"\\(?:node|matrix)\b", s0):
             if s0.startswith("\\matrix"):
                 m = re.match(r"\\matrix\s*(\[[^\]]*\])?\s*\(([^)]*)\)\s*(\[[^\]]*\])?\s*(?:at\s*\([^)]*\))?\s*\{", s0)
@@ -297,6 +323,10 @@ def parse_tikz(code, lmap, macros, styles=()):
                     txt, _ = brace_arg(s0, m.end() - 1)
                     add_node(comps, txt)
             opts = " ".join(re.findall(r"^\\\w+\s*(\[[^\]]*\])", s0))
+            if "decorat" in opts and "brace" in opts:   # a curly brace: groups the boxes beside it
+                pts = [_num_xy(c) for c in re.findall(r"\(([^()]*)\)", re.sub(r"\[[^\]]*\]", "", s0))]
+                braces += [tuple(pts[:2])] if len(pts) >= 2 and all(pts[:2]) else []
+                continue
             arrow = bool(re.search(_ARROW, opts)) or any(o.strip() in styles for o in re.split(r"[\[\],]", opts)) \
                 or global_arrow and not re.search(r"[\[,]\s*-\s*[\],]", opts)
             rev = ("<-" in opts and "->" not in opts) or bool(re.search(r"\[\s*<-", opts))
@@ -362,6 +392,9 @@ def parse_tikz(code, lmap, macros, styles=()):
         pending.append((a_, b_, False, op != "--", None))
     # snap numeric endpoints to positioned nodes
     posn = [(n["id"], n["_xy"]) for n in nodes.values() if n["_xy"]]
+    ends = [p[1] for x, y, *_ in pending for p in (x, y) if not isinstance(p, str) and p[0] == "xy"]
+    shared = {p for p in ends if ends.count(p) > 1}        # where lines meet: junctions, never snapped loosely
+    pending = _brace_groups(pending, braces, posn, shared)
     def resolve(pt):
         if isinstance(pt, str):
             return pt if pt in nodes else None
@@ -375,7 +408,11 @@ def parse_tikz(code, lmap, macros, styles=()):
         xs = sorted(set(round(q[1][0], 3) for q in posn)); ys = sorted(set(round(q[1][1], 3) for q in posn))
         gaps = [b - a for a, b in zip(xs, xs[1:]) if b - a > 1e-6] + [b - a for a, b in zip(ys, ys[1:]) if b - a > 1e-6]
         tol = (min(gaps) if gaps else 2.0) * 0.9
-        return best[0] if d <= max(tol, 0.5) else None
+        if d <= max(tol, 0.5):
+            return best[0]
+        # a free arrow end (touching no other line) stopping short of a box: the clearly nearest box
+        d2 = min((((q[1][0] - v[0]) ** 2 + (q[1][1] - v[1]) ** 2) ** 0.5 for q in posn if q is not best), default=1e9)
+        return best[0] if v not in shared and d <= 1.5 and d2 >= 1.25 * d else None
     edges = _wire_edges(pending, nodes, resolve, lmap, macros)
     for n in nodes.values():
         n.pop("_xy", None)
