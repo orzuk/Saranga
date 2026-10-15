@@ -76,6 +76,7 @@ async function listView() {
       <td><a href="${href}">${esc(b.repo)}</a>${b.built ? "" : ' <span class="small muted">(no page)</span>'}</td>
       <td>${esc(b.title)}</td><td>${esc(b.area)}</td>
       <td>${b.arxiv ? `<a href="https://arxiv.org/abs/${esc(b.arxiv)}" target="_blank" onclick="event.stopPropagation()">${esc(b.arxiv)}</a>` : ""}</td>
+      <td>${esc((b.source_type || "").replace("_", " "))}${b.source_latex && b.source_latex !== "unknown" ? ` <span class="small muted">(LaTeX: ${esc(b.source_latex === "none" ? "PDF only" : b.source_latex)})</span>` : ""}</td>
       <td>${b.statements ?? ""}</td><td>${b.stmt_with_uses ?? ""}</td><td>${b.uses_edges ?? ""}</td><td>${esc(b.year)}</td><td>${st}</td></tr>`;
   }).join("");
   $("#main").innerHTML = `<div class="subtabs">${PROV.map(([k, t]) =>
@@ -83,7 +84,7 @@ async function listView() {
     ${prov === "sample" ? `<p><b>Reviewed ${list.filter(b => reviews[b.id]).length} / ${list.length}</b> <span class="muted small">(20 random human or mixed blueprints that contain proofs)</span></p>` : ""}
     <p class="muted small">Provenance is a heuristic label from the commit history (contributors, AI co-author lines, agent files, pace).
       Ordered by the number of statements carrying \\uses. "arXiv" = the paper the blueprint follows, where checked.</p>
-    <table><tr><th>#</th><th>Repository</th><th>Title</th><th>Area</th><th>arXiv</th><th>Statements</th>
+    <table><tr><th>#</th><th>Repository</th><th>Title</th><th>Area</th><th>arXiv</th><th>Source</th><th>Statements</th>
       <th>with \\uses</th><th>\\uses edges</th><th>Year</th><th>Review</th></tr>${rows}</table>`;
 }
 
@@ -104,6 +105,13 @@ async function bpView() {
   $("#nav").innerHTML = `<a href="gold_blueprints.html?prov=${prov}">list</a> ` + (prev ? `<a href="?id=${prev.id}${provQ()}">← prev</a>` : "") +
     ` <span class="muted">${k+1} / ${list.length} ${esc(prov)}</span> ` + (next ? `<a href="?id=${next.id}${provQ()}">next →</a>` : "");
   $("#sub").innerHTML = `<a href="${esc(m.links.repo)}" target="_blank">${esc(m.repo)}</a> · ${esc(m.title)} · <span class="muted">${esc(m.area)}</span>`;
+  const S = m.source || {};
+  const srcLine = S.type ? `<p class="small"><b>Source (${esc(S.type.replace("_", " "))}):</b>
+      ${S.url ? `<a href="${esc(S.url)}" target="_blank">${esc(S.citation || S.url)}</a>` : esc(S.citation || "")}
+      ${S.scope ? ` · formalises <b>${esc(S.scope)}</b>` : ""}${S.match ? ` · ${esc(S.match)}` : ""}
+      ${S.latex ? ` · LaTeX: ${esc(S.latex === "none" ? "PDF only" : S.latex)}${S.arxiv ? " " + esc(S.arxiv) : ""}` : ""}
+      ${S.pdf_url ? ` · <a href="${esc(S.pdf_url)}" target="_blank">PDF</a>` : ""}
+      <span class="muted">(${esc(S.confidence || "")} confidence)</span></p>` : "";
   const L = m.links || {};
   const radio = (name, opts, cur) => opts.map(o => `<label><input type="radio" name="${name}" value="${o}" ${o===cur?"checked":""}> ${o}</label>`).join("");
   const edgeRows = (m.edge_sample || []).map((e, i) => {
@@ -116,7 +124,7 @@ async function bpView() {
       by_type: m.types, formalised_leanok: m.n_leanok, unresolved_uses_targets: m.unresolved_uses, provenance: m.provenance,
       provenance_signals: m.prov_signals, coverage: m.coverage, arxiv_matched: m.arxiv, arxiv_in_readme: m.arxiv_readme,
       survey_notes: m.judgment_notes, our_graph_of_paper: m.paper}, null, 1))}</pre>`;
-  $("#main").innerHTML = `
+  $("#main").innerHTML = srcLine + `
     <div class="grid">
       <div class="pane" id="left"><div class="tabs"></div><div class="body"></div></div>
       <div class="pane" id="right"><div class="tabs"></div><div class="body"></div></div>

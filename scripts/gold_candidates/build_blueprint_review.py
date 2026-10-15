@@ -94,6 +94,7 @@ def build_one(rec: dict, judg: dict, survey: Path, do_paper: bool) -> dict:
          "n_leanok": sum("leanok" in n["tags"] for n in st),
          "page": "graph_new.html" if (d / "graph_new.html").is_file() else None,
          "links": web_links(rec),
+         "source": {k[7:]: rec[k] for k in rec if k.startswith("source_") and rec[k]},   # the text it formalises
          "edge_sample": [{"source": e["source"], "target": e["target"],
                           "source_text": f"{ids[e['source']]['type']} {ids[e['source']].get('name') or ''}: {ids[e['source']]['statement'][:240]}",
                           "target_text": f"{ids[e['target']]['type']} {ids[e['target']].get('name') or ''}: {ids[e['target']]['statement'][:240]}"}
@@ -127,7 +128,8 @@ def main():
                "provenance": j.get("provenance") or r.get("provenance_guess"), "area": j.get("area") or r.get("area"),
                "arxiv": j.get("arxiv") if j.get("matches_arxiv") else None,
                "statements": r.get("statements"), "stmt_with_uses": r.get("stmt_with_uses"),
-               "uses_edges": r.get("uses_edges"), "year": (r.get("created_at") or "")[:4], "built": False}
+               "uses_edges": r.get("uses_edges"), "year": (r.get("created_at") or "")[:4], "built": False,
+               "source_type": r.get("source_type"), "source_latex": r.get("source_latex")}
         mf = OUT / row["id"] / "meta.json"
         if not want or r["repo"] in want:
             t0 = time.time()
