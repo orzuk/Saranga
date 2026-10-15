@@ -6,6 +6,8 @@ Output (our unified JSON): one node per labelled statement environment (definiti
 theorem, ...), one proof node per proof; edges from \\uses:
   \\uses{A} in the statement of B  ->  A --uses--> B
   \\uses{A} in the proof of B      ->  A --uses--> proof(B),  proof(B) --proves--> B
+Results named in the text (\\ref, \\cref, ...) but not in \\uses are added as edges of kind "ref"; \\uses
+edges are of kind "uses" (the gold for scoring is either kind, or both).
 Lean markers become tags: lean (has \\lean{...}), leanok, mathlibok, notready.
 Chapters/sections become the node's section (the viewer's section boxes).
 
@@ -75,8 +77,39 @@ def clean(body: str) -> str:
     return re.sub(r"\s+", " ", body).strip()
 
 
+def compiled(tex: str) -> str:
+    """The blueprint as LaTeX compiles it: from each blueprint root (content.tex, else web.tex / print.tex) through
+    \\input and \\include, paths taken from the root's folder as LaTeX does (and from the including file's
+    folder), with the project's path macros (\\newcommand{\\MyPath}{..}) expanded. Files the root never
+    includes (templates, old chapters) are left out. Without a root, or when an \\input (other than a macro
+    file) cannot be found while unreached files hold statements, all files are kept."""
+    files = dict(re.findall(r"(?m)^%%FILE (\S+)\n(.*?)(?=^%%FILE |\Z)", tex, re.S))
+    # one root per blueprint folder (a repository may hold several blueprints)
+    roots = {p.rsplit("/", 1)[0]: p for name in ("print.tex", "web.tex", "content.tex") for p in files if p.endswith("src/" + name)}
+    if not roots:
+        return tex
+    pmac = {m[0] or m[2]: m[1] or m[3] for m in re.findall(
+        r"\\(?:re)?newcommand\*?\s*\{?\\(\w+)\}?\s*\{([^{}\\]*)\}|\\def\\(\w+)\{([^{}\\]*)\}", tex)}   # path macros
+    norm = lambda path: re.sub(r"(^|/)\./", r"\1", re.sub(r"[^/]+/\.\./", "", path))
+    seen, missing = set(), []
+    def inline(path, base, depth=0):
+        seen.add(path)
+        here = path.rsplit("/", 1)[0]
+        def sub(m):
+            name = re.sub(r"\\(\w+)", lambda x: pmac.get(x.group(1), x.group(0)), m.group(1).strip())
+            p = next((norm(c) for d in (base, here) for c in (f"{d}/{name}", f"{d}/{name}.tex") if norm(c) in files), None)
+            if not p:
+                missing.append(name)
+            return inline(p, base, depth + 1) if p and depth < 10 else ""
+        return re.sub(r"\\(?:input|include|subfile)\s*\{([^}]*)\}", sub, strip_comments(files[path]))
+    out = "\n".join(inline(r, d) for d, r in sorted(roots.items()))
+    missing = [n for n in missing if not re.search(r"macro|preamble|common|header|homeurl|print|web", n, re.I)]
+    lost = [p for p in files if p not in seen and re.search(r"\\begin\s*\{(?:theorem|lemma|definition|proposition|corollary)", files[p])]
+    return tex if missing and lost else out
+
+
 def convert(tex: str, pid: str, title: str) -> dict:
-    t = strip_comments(tex)
+    t = strip_comments(compiled(tex))
     envs = dict(ENVS, **declared_envs(t))
     BEGIN = begin_re(envs)
     macros = latex_macros.read_definitions(t, clean=False)       # the blueprint's own macros
@@ -98,7 +131,7 @@ def convert(tex: str, pid: str, title: str) -> dict:
             continue
         body = t[m.end():end]
         if env == "proof":                               # statements nested in a proof (claims) are read too;
-            body = re.sub(r"\\begin\s*\{(" + "|".join(map(re.escape, envs)) + r")\*?\}.*?\\end\s*\{\1\*?\}", " ", body, flags=re.S)
+            body = re.sub(r"\\begin\s*\{(" + "|".join(map(re.escape, envs)) + r"|proof)\*?\}.*?\\end\s*\{\1\*?\}", " ", body, flags=re.S)
             pos = m.end()                                # their \uses are not the proof's own
         else:
             pos = end
@@ -118,12 +151,13 @@ def convert(tex: str, pid: str, title: str) -> dict:
         if opt:
             body = body[opt.end():]
         uses = cmd_args(body, "uses")
+        cited = [r for r in cmd_args(body, r"(?:[cC]|auto|eq)?ref") if r not in uses]   # named in the text only
         tags = [k for k in ("leanok", "mathlibok", "notready") if "\\" + k in body]
         if cmd_args(body, "lean"):
             tags.append("lean")
         if env == "proof":
             proves = cmd_args(body, "proves")
-            owner = by_label.get(proves[0]) if proves else pending_proof_of
+            owner = by_label.get(proves[0], pending_proof_of) if proves else pending_proof_of
             if not owner:
                 continue
             pid_ = "PR_" + owner
@@ -132,9 +166,9 @@ def convert(tex: str, pid: str, title: str) -> dict:
             nodes.append({"id": pid_, "type": "proof", "name": None, "statement": expand(clean(body))[:4000],
                           "origin": "paper", "tags": tags, "section": section, "label": None, "proves": [owner]})
             edges.append({"source": pid_, "target": owner, "type": "proves", "confidence": 1.0})
-            edges += [{"source": u, "target": pid_, "type": "uses", "confidence": 1.0, "_label": True} for u in uses]
-            pending_proof_of = None
-            continue
+            edges += [{"source": u, "target": pid_, "type": "uses", "confidence": 1.0, "_label": True, "kind": k}
+                      for k, us in (("uses", uses), ("ref", cited)) for u in us]
+            continue                                     # a further proof belongs to the same statement
         typ = envs[env]
         labels = cmd_args(body, "label")
         counts[typ] = counts.get(typ, 0) + 1
@@ -144,14 +178,16 @@ def convert(tex: str, pid: str, title: str) -> dict:
                       "lean_names": cmd_args(body, "lean")})
         for lab in labels:
             by_label.setdefault(lab, nid)
-        edges += [{"source": u, "target": nid, "type": "uses", "confidence": 1.0, "_label": True} for u in uses]
+        edges += [{"source": u, "target": nid, "type": "uses", "confidence": 1.0, "_label": True, "kind": k}
+                  for k, us in (("uses", uses), ("ref", cited)) for u in us]
         pending_proof_of = nid                           # a proof that follows belongs to this statement
     # resolve \uses labels to node ids; unresolved targets are counted, not drawn
     out_edges, unresolved = [], []
     for e in edges:
         if e.pop("_label", False):
             if e["source"] not in by_label:
-                unresolved.append(e["source"])
+                if e["kind"] == "uses":                  # a \\ref to a section or an outside result: not a dependency
+                    unresolved.append(e["source"])
                 continue
             e["source"] = by_label[e["source"]]
         if e["source"] != e["target"]:

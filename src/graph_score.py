@@ -21,6 +21,8 @@ Options
                    reference nodes (the rest cannot be judged), and a predicted dependency that
                    the reference implies through a path is not an error
   skip_tags        reference nodes not scored (section boxes of an author's diagram)
+  gold_kinds       reference edges scored, by kind: a blueprint's "uses" (declared) and "ref" (named in
+                   the text only); None: all
 
 Edges point from the result used to the result that uses it (source -> target).
 """
@@ -40,7 +42,9 @@ PRESETS = {
     "author": dict(node_metric="m1g", match="label", edges=True, edge_recall="path",
                    precision_scope="gold", skip_tags=("section",)),
     "blueprint": dict(node_metric="m1g", match="label", edges=True, edge_recall="direct",
-                      precision_scope="all"),
+                      precision_scope="all"),                         # gold: \\uses and the results the text names
+    "blueprint_uses": dict(node_metric="m1g", match="label", edges=True, edge_recall="direct",
+                           precision_scope="all", gold_kinds=("uses",)),   # gold: \\uses only
 }
 _WEIGHT = {"m1g": ns.type_compat, "m1": lambda a, b: 1.0 if a == b else 0.0}
 _RESULT_EDGES = ("uses", "proves", "generalizes", "specializes")
@@ -114,7 +118,7 @@ def _implied(deps):
 
 
 def score(pred: dict, gold: dict, node_metric="m1g", match="text", edges=True, edge_recall="direct",
-          precision_scope="all", skip_tags=(), threshold=NM.THRESHOLD, cover=NM.COVER) -> dict:
+          precision_scope="all", skip_tags=(), threshold=NM.THRESHOLD, cover=NM.COVER, gold_kinds=None) -> dict:
     """Counts for one paper. Nodes: P = node_p_credit / node_p_n, R = node_g_credit / node_g_n;
     edges (dependencies between results) likewise. Pool over papers with pooled()."""
     gn = [n for n in _with_labels(gold) if not set(n.get("tags") or []) & set(skip_tags)]
@@ -129,7 +133,7 @@ def score(pred: dict, gold: dict, node_metric="m1g", match="text", edges=True, e
     if not edges:
         return out
     p2g = {pn[i]["id"]: gn[j]["id"] for i, (j, _) in m.items()}
-    gdep = dependencies(gn, gold["edges"], {n["id"] for n in gn if n.get("type") not in _NOT_RESULTS})
+    gdep = dependencies(gn, [e for e in gold["edges"] if not gold_kinds or e.get("kind", "uses") in gold_kinds or e["type"] != "uses"], {n["id"] for n in gn if n.get("type") not in _NOT_RESULTS})
     presults = {n["id"] for n in pn if n.get("type") not in _NOT_RESULTS}
     pdep = {(p2g[a], p2g[b]) for a, b in dependencies(pn, pred["edges"], presults | set(p2g)) if a in p2g and b in p2g}
     p_found = _implied(pdep) if edge_recall == "path" else pdep

@@ -85,7 +85,10 @@ def build_one(rec: dict, judg: dict, survey: Path, do_paper: bool) -> dict:
          "arxiv_readme": rec.get("arxiv_candidates") or [], "coverage": (judg or {}).get("coverage") or rec.get("coverage"),
          "judgment_notes": (judg or {}).get("notes", ""), "stars": rec.get("stars"),
          "year": (rec.get("created_at") or "")[:4], "prov_signals": rec.get("prov_signals"),
-         "n_statements": len(st), "n_proofs": len(g["nodes"]) - len(st), "n_uses": len(uses),
+         "n_statements": len(st), "n_proofs": len(g["nodes"]) - len(st), "n_uses": sum(e.get("kind") == "uses" for e in uses),
+         "n_cited_only": sum(e.get("kind") == "ref" for e in uses),
+         # every statement \uses (nearly) all earlier ones: no dependency information
+         "degenerate": sum(e.get("kind") == "uses" for e in uses) > 20 * max(1, len(st)),
          "n_edges": len(g["edges"]), "types": {t: sum(n["type"] == t for n in st) for t in sorted({n["type"] for n in st})},
          "unresolved_uses": len(g["metadata"]["unresolved_uses"]),
          "n_leanok": sum("leanok" in n["tags"] for n in st),
