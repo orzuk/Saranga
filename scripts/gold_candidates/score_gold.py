@@ -59,14 +59,40 @@ def blueprint_tex(d: Path) -> Path:
     return f
 
 
+def direction(gold, rules):
+    """Which way a diagram's arrows point, judged by the paper's own references (the rule-based graph's
+    dependencies between the drawn results, through any path): (verdict, arrows agreeing, arrows reversed).
+    reversed: at least 2 judged arrows and twice as many backwards as forwards; mixed: both, not decisively;
+    forward; unknown: fewer than 2 arrows judged. One decision per diagram, never per arrow."""
+    gn, pn = GS._with_labels(gold), GS._with_labels(rules)
+    p2g = {pn[i]["id"]: gn[j]["id"] for i, (j, _) in GS.match_nodes(pn, gn, "m1g", "label").items()}
+    reach = GS._implied({(p2g[a], p2g[b]) for a, b in GS.dependencies(
+        pn, rules["edges"], {n["id"] for n in pn if n.get("type") not in GS._NOT_RESULTS}) if a in p2g and b in p2g})
+    fwd = sum((e["source"], e["target"]) in reach for e in gold["edges"])
+    back = sum((e["target"], e["source"]) in reach for e in gold["edges"])
+    return ("unknown" if fwd + back < 2 else "reversed" if back >= 2 * max(1, fwd) else
+            "mixed" if back and fwd < 2 * back else "forward"), fwd, back
+
+
 def one(job):
     name, d, extractors, redo = job
     from math_paper_parser import parse_to_unified
     _, _, gold_file, presets = SETS[name]
     gold = json.loads((d / gold_file).read_text())
-    review = json.loads((d / "review.json").read_text()) if (d / "review.json").is_file() else {}
-    if review.get("arrow_meaning") == "B uses A (reversed)":    # the reviewer says the authors' arrows point back
-        gold["edges"] = [dict(e, source=e["target"], target=e["source"]) for e in gold["edges"]]
+    if name == "author":
+        rules_f = d / "rules.json"
+        if redo or not rules_f.is_file():
+            rules_f.write_text((d / "full.json").read_text())
+        # the arrows' direction: the reviewer's answer, else detected from the paper's own references
+        verdict, fwd, back = direction(gold, json.loads(rules_f.read_text()))
+        review = json.loads((d / "review.json").read_text()) if (d / "review.json").is_file() else {}
+        said = {"B uses A (reversed)": "reversed", "A used for B": "forward"}.get(review.get("arrow_meaning"))
+        flip = (said or verdict) == "reversed"
+        if flip:
+            gold["edges"] = [dict(e, source=e["target"], target=e["source"]) for e in gold["edges"]]
+        meta = json.loads((d / "meta.json").read_text())
+        meta["direction"] = {"detected": verdict, "agree": fwd, "reversed": back, "reviewer": said, "scored_reversed": flip}
+        (d / "meta.json").write_text(json.dumps(meta, indent=1))
     out = {}
     for x in extractors:
         f = d / f"{x}.json"

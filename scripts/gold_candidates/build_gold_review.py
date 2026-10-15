@@ -506,7 +506,7 @@ def main():
             m = build_one(folder, not a.no_pdf)
             if a.no_pdf and (folder / "meta.json").is_file():      # keep the figure page found before
                 old_m = json.loads((folder / "meta.json").read_text())
-                for k in ("pdf", "fig_page", "figpage", "figpages", "figpage_nums"):
+                for k in ("pdf", "fig_page", "figpage", "figpages", "figpage_nums", "direction"):
                     if k in old_m and k not in m:
                         m[k] = old_m[k]
         except Exception as e:                           # noqa: BLE001
