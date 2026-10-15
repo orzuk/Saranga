@@ -64,6 +64,9 @@ def one(job):
     from math_paper_parser import parse_to_unified
     _, _, gold_file, presets = SETS[name]
     gold = json.loads((d / gold_file).read_text())
+    review = json.loads((d / "review.json").read_text()) if (d / "review.json").is_file() else {}
+    if review.get("arrow_meaning") == "B uses A (reversed)":    # the reviewer says the authors' arrows point back
+        gold["edges"] = [dict(e, source=e["target"], target=e["source"]) for e in gold["edges"]]
     out = {}
     for x in extractors:
         f = d / f"{x}.json"

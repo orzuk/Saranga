@@ -221,8 +221,9 @@ def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict)
         if not s or not t or s == t:
             continue
         # a double-headed arrow (<=>): equivalent statements; kept once, in the direction it is written
-        edges.append({"source": s, "target": t, "type": "uses", "confidence": 1.0} | ({"equivalence": True} if e.get("both") else {}))
-        edge_rows.append({"source": s, "target": t, "directed": bool(e.get("directed", True)), "equivalence": bool(e.get("both"))})
+        extra = ({"equivalence": True} if e.get("both") else {}) | ({"label": e["label"]} if e.get("label") else {})   # "Fail: B=0"
+        edges.append({"source": s, "target": t, "type": "uses", "confidence": 1.0} | extra)
+        edge_rows.append({"source": s, "target": t, "directed": bool(e.get("directed", True)), "equivalence": bool(e.get("both"))} | extra)
         uses += [(e["to"], r["label"], fig_of.get(e["to"])) for r in e.get("label_refs", [])]   # "via Theorem 5.2" on the arrow
     gid_of = {(fg, h): g for (hs, fg), g in by_hits.items() for h in hs}
     for box, lab, fg in uses:                           # stated uses: an arrow from the result (its box, else a new node)
@@ -432,8 +433,14 @@ def build_one(folder: Path, do_pdf: bool) -> dict:
         # the authors' own style files (sty/, from the e-print) define macros the paper uses
         macros = latex_macros.renderable(latex_macros.read_definitions("\n".join(f.read_text(encoding="utf-8", errors="replace")
                                                          for f in sorted((folder / "sty").glob("*"))) + "\n" + tex))
+        # theorem declarations in the local packages the paper loads (\usepackage{tyson}): needed for numbers
+        used = {x.strip() for m in re.finditer(r"\\usepackage\s*(?:\[[^\]]*\])?\s*\{([^}]*)\}", tex) for x in m.group(1).split(",")}
+        decl = "\n".join(l for f in sorted((folder / "sty").glob("*.sty")) if f.stem in used
+                         for l in f.read_text(encoding="utf-8", errors="replace").splitlines()
+                         if re.match(r"\s*\\(?:newtheorem|theoremstyle|numberwithin|counterwithin|declaretheorem|spnewtheorem|"
+                                     r"(?:re)?newcommand\*?\s*\{?\\the)", l))
         try:
-            fx = latex_facts.extract_facts(tex)
+            fx = latex_facts.extract_facts(re.sub(r"(\\documentclass[^\n]*\n)", lambda m: m.group(1) + decl + "\n", tex, count=1) if decl else tex)
         except Exception:                                # noqa: BLE001  (numbers are a nicety)
             fx = {}
         gold, nrows, erows = to_gold(pid, full, merge_diagrams(graphs), fig, macros, fx)

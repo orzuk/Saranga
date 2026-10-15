@@ -276,11 +276,14 @@ def parse_tikz(code, lmap, macros, styles=()):
         if not name:
             anon += 1; name = f"_anon{anon}"
         pos = _num_xy(at.group(1)) if at else None
+        fit = re.search(r"\bfit\s*=\s*((?:\s*\([^()]*\))+)", comps)      # a frame drawn around other boxes
+        if fit:
+            frames[name] = [_anchorless(x) for x in re.findall(r"\(([^()]*)\)", fit.group(1))]
         nodes[name] = {"id": name, "text": (txt or "").strip()[:300], "refs": resolve_refs(txt or "", lmap, macros),
                        "at": at.group(1) if at else None, "_xy": pos}
         return name
     stmts = _split_statements(code)
-    braces = []
+    braces, frames, arrow_labels = [], {}, {}
     pending = []  # (kind, statement)
     for st in stmts:
         s0 = re.sub(r"^(?:\s*\\(?:begin|end)\{scope\}\s*(?:" + OPT + r")?)+", "", st).strip()   # \end{scope} \draw ...
@@ -323,6 +326,11 @@ def parse_tikz(code, lmap, macros, styles=()):
                     txt, _ = brace_arg(s0, m.end() - 1)
                     add_node(comps, txt)
             opts = " ".join(re.findall(r"^\\\w+\s*(\[[^\]]*\])", s0))
+            # "(a) edge node[label=right:{Succeed}] {} (b)": the text on an arrow
+            for e in re.finditer(r"\(([^()]*)\)\s*edge\s*(?:\[[^\]]*\])?\s*node\s*(\[(?:[^\[\]]|\[[^\]]*\])*\])?\s*\{([^{}]*)\}\s*\(([^()]*)\)", s0):
+                txt = " ".join(re.findall(r"label\s*=\s*(?:\w+\s*:)?\s*\{([^{}]*)\}", e.group(2) or "")) + " " + e.group(3)
+                if txt.strip():
+                    arrow_labels[_anchorless(e.group(1)), _anchorless(e.group(4))] = re.sub(r"\s+", " ", txt).strip()
             if "decorat" in opts and "brace" in opts:   # a curly brace: groups the boxes beside it
                 pts = [_num_xy(c) for c in re.findall(r"\(([^()]*)\)", re.sub(r"\[[^\]]*\]", "", s0))]
                 braces += [tuple(pts[:2])] if len(pts) >= 2 and all(pts[:2]) else []
@@ -385,7 +393,8 @@ def parse_tikz(code, lmap, macros, styles=()):
                 op = None
             flush()
             for x, y in pairs:
-                pending.append((x, y, rev, arrow, {"both": True} if both else None))
+                lab = arrow_labels.get((x[1], y[1])) if x[0] == y[0] == "n" else None
+                pending.append((x, y, rev, arrow, {"both": True} if both else lab))
     for a_, b_, op in graph_edges:
         if op == "<-":
             a_, b_ = b_, a_
@@ -395,6 +404,16 @@ def parse_tikz(code, lmap, macros, styles=()):
     ends = [p[1] for x, y, *_ in pending for p in (x, y) if not isinstance(p, str) and p[0] == "xy"]
     shared = {p for p in ends if ends.count(p) > 1}        # where lines meet: junctions, never snapped loosely
     pending = _brace_groups(pending, braces, posn, shared)
+    # an arrow to or from a frame (a fit node around other boxes) is an arrow to or from each box in it
+    def members(p):
+        name = p if isinstance(p, str) else p[1] if p[0] == "n" else None
+        if name not in frames:
+            return [p]
+        return [q for m in frames[name] for q in members(("n", m) if not isinstance(p, str) else m)]
+    pending = [(a, b, *rest) for x, y, *rest in pending for a in members(x) for b in members(y)]
+    for f in frames:
+        if not nodes[f]["text"]:
+            del nodes[f]
     def resolve(pt):
         if isinstance(pt, str):
             return pt if pt in nodes else None
