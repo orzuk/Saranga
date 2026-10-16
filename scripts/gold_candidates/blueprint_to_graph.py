@@ -108,11 +108,12 @@ def compiled(tex: str) -> str:
     return tex if missing and lost else out
 
 
-def convert(tex: str, pid: str, title: str) -> dict:
+def convert(tex: str, pid: str, title: str, macro_tex: str = "") -> dict:
     t = strip_comments(compiled(tex))
     envs = dict(ENVS, **declared_envs(t))
     BEGIN = begin_re(envs)
-    macros = latex_macros.read_definitions(t, clean=False)       # the blueprint's own macros
+    # the blueprint's own macros: its macro files (blueprint/src/macros/*.tex) and any in the text
+    macros = latex_macros.renderable(latex_macros.read_definitions(strip_comments(macro_tex) + "\n" + t, clean=False))
     expand = lambda x: latex_macros.expand_macros(x, macros) if macros else x
     heads = [(m.start(), m.group(1), re.sub(r"\s+", " ", m.group(2)).strip()) for m in HEAD.finditer(t)]
     nodes, edges, by_label, counts = [], [], {}, {}

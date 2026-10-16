@@ -71,7 +71,8 @@ def build_one(rec: dict, judg: dict, survey: Path, do_paper: bool) -> dict:
     d.mkdir(parents=True, exist_ok=True)
     tex = (survey / "repos" / slug / "all.tex").read_text(encoding="utf-8", errors="replace")
     (d / "all.tex").write_text(tex, encoding="utf-8")
-    g = b2g.convert(tex, slug, rec.get("title") or rec["repo"])
+    mf = d / "macros.tex"                              # fetched from the repository (fetch_bp_macros)
+    g = b2g.convert(tex, slug, rec.get("title") or rec["repo"], mf.read_text(encoding="utf-8", errors="replace") if mf.is_file() else "")
     (d / "graph.json").write_text(json.dumps(g, indent=1))
     subprocess.run([sys.executable, str(BUILD), str(d / "graph.json"), "-o", str(d), "--libs", "cdn"], capture_output=True, timeout=600)
     ids = {n["id"]: n for n in g["nodes"]}
