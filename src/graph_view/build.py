@@ -20,6 +20,7 @@ import contextlib
 import io
 import json
 import math
+import os
 import re
 import shutil
 import sys
@@ -638,8 +639,10 @@ def main():
                     help="page name suffix: <id><suffix>.html (e.g. _rules for rule-based graphs)")
     ap.add_argument("--standalone", action="store_true",
                     help="inline the libraries: one self-contained file per paper")
-    ap.add_argument("--libs", choices=["local", "cdn"], default="local",
-                    help="load libraries from lib/ (default) or from the CDN")
+    ap.add_argument("--libs", choices=["local", "cdn"],
+                    default="cdn" if os.environ.get("SARANGA_LIBS_CDN") else "local",
+                    help="load libraries from lib/ (default) or from the CDN (default if "
+                         "SARANGA_LIBS_CDN is set, as on the public Space: no lib copy)")
     ap.add_argument("--lib-source", default=None,
                     help="folder holding already-downloaded library files")
     args = ap.parse_args()

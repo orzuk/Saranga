@@ -158,8 +158,7 @@ def build(work: Path, paper_id: str, title: str = "") -> dict:
     md.update({"title": title, "paper_id": paper_id, "extractor": "rules (parser + distilled sentence rules)"})
     out_json = work / f"{paper_id}.json"
     out_json.write_text(json.dumps(d), encoding="utf-8")
-    libs = ["--libs", "cdn"] if os.environ.get("SARANGA_LIBS_CDN") else []   # public Space: no lib copy
-    r = subprocess.run([sys.executable, str(GRAPH_BUILD), str(out_json), "-o", str(work)] + libs,
+    r = subprocess.run([sys.executable, str(GRAPH_BUILD), str(out_json), "-o", str(work)],
                        capture_output=True, text=True, timeout=BUILD_TIMEOUT)
     page = work / f"{paper_id}_new.html"
     if r.returncode != 0 or not page.is_file():
