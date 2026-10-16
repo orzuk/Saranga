@@ -2791,6 +2791,10 @@ def generate_interactive_html(data, svg_path, html_path):
         # stmaryrd / cmll symbols MathJax lacks
         "with": r"\mathbin{\&}", "parr": r"\mathbin{\unicode{x214B}}", "llbracket": r"[\![", "rrbracket": r"]\!]",
         "llparenthesis": r"(\!|", "rrparenthesis": r"|\!)", "varoast": r"\circledast", "bigsqcap": r"\mathop{\Large\sqcap}",
+        "sslash": r"\mathbin{\unicode{x2AFD}}", "fatsemi": r"\mathbin{\unicode{x2A1F}}", "lightning": r"\unicode{x21AF}",
+        "mapsfrom": r"\mathrel{\unicode{x21A4}}", "Mapsto": r"\mathrel{\unicode{x2907}}", "Mapsfrom": r"\mathrel{\unicode{x2906}}",
+        "oblong": r"\unicode{x25AF}", "obar": r"\mathbin{\unicode{x233D}}", "talloblong": r"\unicode{x2AFE}",
+        "Lbag": r"\unicode{x27C5}", "Rbag": r"\unicode{x27C6}", "boxbar": r"\mathbin{\unicode{x25EB}}",
     }
     for _i in range(26):
         _L = chr(65 + _i)
