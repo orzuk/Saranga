@@ -532,9 +532,15 @@ def index_row(m: dict) -> dict:
     st = [x["status"] for x in m.get("nodes", [])]
     n, res = len(st), sum(x in ("mapped", "section", "cited") for x in st)
     level = "results" if st.count("mapped") >= 0.5 * n else "sections" if st.count("section") >= 0.5 * n else "mixed"
+    # the diagram's class, in order of how far it can be trusted as a dependency gold (the plot's markers)
+    d = (m.get("direction") or {}).get("detected")
+    cls = (level if level != "results" else
+           "results, arrows reversed" if d == "reversed" else "results, arrow direction mixed" if d == "mixed" else
+           "results, some boxes not results" if st.count("mapped") < 0.8 * n or any(x.get("typed") for x in m.get("nodes", []))
+           else "results, reliable")
     return ({k: m.get(k) for k in ("id", "arxiv", "title", "n_nodes", "n_edges", "n_mapped", "problems")}
             | {"category": m["survey"]["primary_category"], "granularity": m["survey"]["granularity"],
-               "year": m["survey"]["year"], "pilot": m.get("pilot", False), "n_resolved": res, "level": level,
+               "year": m["survey"]["year"], "pilot": m.get("pilot", False), "n_resolved": res, "level": level, "class": cls,
                "good": bool(m.get("gold_page")) and n >= 3 and (m.get("n_edges") or 0) >= 2 and res >= 0.7 * n
                        and level == "results" and m["survey"]["primary_category"].split(".")[0] in ("math", "stat", "cs")})
 

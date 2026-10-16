@@ -113,6 +113,19 @@ const sortKey = params.get("sort") || "category";
 const listQ = extra => "?" + new URLSearchParams(Object.entries(Object.assign(
   {cat, all: showAll ? "1" : "", sort: sortKey === "category" ? "" : sortKey, sample: params.get("sample") || ""}, extra)).filter(e => e[1])).toString();
 
+// diagram classes, most trustworthy first (the markers of gold_length_vs_diagram.png)
+const CLASSES = ["results, reliable", "results, some boxes not results", "results, arrows reversed",
+                 "results, arrow direction mixed", "mixed", "sections"];
+const CLASS_RANK = p => { const i = CLASSES.indexOf(p.class); return i < 0 ? 99 : i; };
+const CLASS_MARK = {"results, reliable": "○", "results, some boxes not results": "□", "results, arrows reversed": "△",
+                    "results, arrow direction mixed": "△"};
+const CLASS_HELP = {
+  "results, reliable": "a dependency diagram of the paper's results: direction consistent (or undecided), >= 80% of boxes are results, no typed numbers",
+  "results, some boxes not results": "under 80% of the boxes are the paper's results (sections, cited or unmatched boxes), or a box was matched only by a typed number",
+  "results, arrows reversed": "the arrows point against the paper's own references (scored reversed)",
+  "results, arrow direction mixed": "some arrows agree with the paper's references, some not: check",
+  "mixed": "results and sections mixed", "sections": "a diagram of the paper's sections"};
+
 async function listView() {
   await loadSample();
   const [all, reviews] = await Promise.all([getJSON("/gold_data/index.json"), getJSON("/gold/reviews")]);
@@ -125,7 +138,7 @@ async function listView() {
   const num = k => (a, b) => (b[k] ?? -1) - (a[k] ?? -1);
   const txt = k => (a, b) => String(a[k] || "").localeCompare(String(b[k] || "")) || a.id.localeCompare(b.id);
   const SORT = {category: txt("category"), arxiv: txt("id"), title: txt("title"), year: txt("year"),
-    granularity: txt("granularity"), level: txt("level"), n_nodes: num("n_nodes"), n_resolved: num("n_resolved"), n_edges: num("n_edges")};
+    granularity: txt("granularity"), level: (a, b) => CLASS_RANK(a) - CLASS_RANK(b) || a.id.localeCompare(b.id), n_nodes: num("n_nodes"), n_resolved: num("n_resolved"), n_edges: num("n_edges")};
   const index = pool.filter(inCat).sort(SORT[sortKey] || SORT.category);
   const th = (k, t) => `<th><a href="${listQ({sort: k})}" style="color:inherit">${t}${k === sortKey ? " ▾" : ""}</a></th>`;
   const rows = index.map((p, i) => {
@@ -135,7 +148,7 @@ async function listView() {
     const href = `?id=${encodeURIComponent(p.id)}${catQ()}${showAll ? "&all=1" : ""}`;
     return `<tr class="row" onclick="location='${href}'">
       <td>${i+1}</td><td><a href="${href}">${esc(p.arxiv)}</a>${p.pilot ? ' <span class="pill" title="in the random pilot of 30">pilot</span>' : ""}</td>
-      <td>${esc(p.title)} ${prob}</td><td>${esc(p.category)}</td><td>${esc(p.year)}</td><td>${esc(p.level || p.granularity)}</td>
+      <td>${esc(p.title)} ${prob}</td><td>${esc(p.category)}</td><td>${esc(p.year)}</td><td title="${esc(CLASS_HELP[p.class] || "")}">${CLASS_MARK[p.class] || ""} ${esc(p.class || p.level || p.granularity)}</td>
       <td>${p.n_nodes ?? "–"}</td><td>${p.n_resolved ?? "–"}</td><td>${p.n_edges ?? "–"}</td><td>${st}</td></tr>`;
   }).join("");
   const toggle = showAll
