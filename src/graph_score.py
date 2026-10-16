@@ -21,6 +21,10 @@ Options
                    reference nodes (the rest cannot be judged), and a predicted dependency that
                    the reference implies through a path is not an error
   skip_tags        reference nodes not scored (section boxes of an author's diagram)
+  edge_mode        structure: dependencies between the results each side names (a result one side names
+                   and the other keeps inside a proof changes the edges); invariant: only the results both
+                   sides name, connected through anything in between, reduced to their transitive reduction,
+                   so two graphs that differ only in hierarchy score 1 (docs: proof_dag_hierarchy.pdf)
   pred_types       predictions scored for node precision: all, or "gold" (only the node types the
                    reference annotates: a blueprint has no equation nodes)
   gold_kinds       reference edges scored, by kind: a blueprint's "uses" (declared) and "ref" (named in
@@ -45,6 +49,9 @@ PRESETS = {
                    precision_scope="gold", skip_tags=("section",)),
     "blueprint": dict(node_metric="m1g", match="label", edges=True, edge_recall="direct",
                       precision_scope="all", pred_types="gold"),                         # gold: \\uses and the results the text names
+    "author_inv": dict(node_metric="m1g", match="label", edges=True, edge_mode="invariant", skip_tags=("section",),
+                       precision_scope="gold"),
+    "blueprint_inv": dict(node_metric="m1g", match="label", edges=True, edge_mode="invariant", pred_types="gold"),
     "blueprint_uses": dict(node_metric="m1g", match="label", edges=True, edge_recall="direct",
                            precision_scope="all", pred_types="gold", gold_kinds=("uses",)),   # gold: \\uses only
 }
@@ -69,6 +76,10 @@ def _with_labels(g):
     for lab, v in ((g.get("metadata") or {}).get("labels") or {}).items():
         extra[v.get("node") if isinstance(v, dict) else v].append(lab)
     return [dict(n, labels=list(n.get("labels") or []) + extra[n["id"]]) if extra[n["id"]] else n for n in g["nodes"]]
+
+
+def gtype_of(nodes, i):
+    return next((n.get("type") for n in nodes if n["id"] == i), None)
 
 
 def match_nodes(pred, gold, node_metric="m1g", match="text", threshold=NM.THRESHOLD):
@@ -105,6 +116,16 @@ def dependencies(nodes, edges, keep):
     return {(a, b) for a, b in out if a != b}
 
 
+def reduction(deps):
+    """The transitive reduction of a dependency set: (a, b) is dropped when b is also reached from a
+    through another dependency (unique for a DAG; Aho, Garey and Ullman 1972)."""
+    adj = defaultdict(set)
+    for a, b in deps:
+        adj[a].add(b)
+    reach = {a: {y for x, y in _implied(deps) if x == a} for a in adj}
+    return {(a, b) for a, b in deps if not any(b in reach.get(c, ()) for c in adj[a] if c != b)}
+
+
 def _implied(deps):
     """The transitive closure of a dependency set."""
     adj = defaultdict(set)
@@ -121,7 +142,7 @@ def _implied(deps):
 
 def score(pred: dict, gold: dict, node_metric="m1g", match="text", edges=True, edge_recall="direct",
           precision_scope="all", skip_tags=(), threshold=NM.THRESHOLD, cover=NM.COVER, gold_kinds=None,
-          pred_types="all") -> dict:
+          pred_types="all", edge_mode="structure") -> dict:
     """Counts for one paper. Nodes: P = node_p_credit / node_p_n, R = node_g_credit / node_g_n;
     edges (dependencies between results) likewise. Pool over papers with pooled()."""
     gn = [n for n in _with_labels(gold) if not set(n.get("tags") or []) & set(skip_tags)]
@@ -138,6 +159,12 @@ def score(pred: dict, gold: dict, node_metric="m1g", match="text", edges=True, e
     if not edges:
         return out
     p2g = {pn[i]["id"]: gn[j]["id"] for i, (j, _) in m.items()}
+    if edge_mode == "invariant":       # the results both name, through anything in between, reduced
+        gm = {g for g in p2g.values() if gtype_of(gn, g) not in _NOT_RESULTS}
+        gk = [e for e in gold["edges"] if not gold_kinds or e.get("kind", "uses") in gold_kinds or e["type"] != "uses"]
+        ge = reduction(dependencies(gn, gk, gm))
+        pe = reduction({(p2g[a], p2g[b]) for a, b in dependencies(pn, pred["edges"], {a for a, b in p2g.items() if b in gm})})
+        return out | {"edge_p_credit": len(pe & ge), "edge_p_n": len(pe), "edge_g_credit": len(pe & ge), "edge_g_n": len(ge)}
     gres = {n["id"] for n in gn if n.get("type") not in _NOT_RESULTS}
     gdep = dependencies(gn, [e for e in gold["edges"] if not gold_kinds or e.get("kind", "uses") in gold_kinds or e["type"] != "uses"], gres)
     # results only on both sides: a matched proof is collapsed like any proof, never an endpoint

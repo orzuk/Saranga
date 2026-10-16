@@ -26,8 +26,8 @@ import graph_score as GS                                # noqa: E402
 
 EXTRACTORS = {"rules": REPO / "extractors/rules/silver_v6__sentence_rules_haiku__2026-10",
               "tagger": REPO / "extractors/rules/silver_v6__sentence_tagger__2026-10"}
-SETS = {"author": (REPO / "corpus/gold_candidates", "papers", "gold.json", ("author",)),
-        "blueprint": (REPO / "corpus/gold_blueprints", "", "graph.json", ("blueprint", "blueprint_uses"))}
+SETS = {"author": (REPO / "corpus/gold_candidates", "papers", "gold.json", ("author", "author_inv")),
+        "blueprint": (REPO / "corpus/gold_blueprints", "", "graph.json", ("blueprint", "blueprint_uses", "blueprint_inv"))}
 _ENVS = ("theorem", "lemma", "proposition", "corollary", "definition", "remark", "example", "claim", "conjecture",
          "notation", "assumption", "question", "problem", "fact")
 
