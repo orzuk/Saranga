@@ -76,9 +76,21 @@ def merge_diagrams(graphs: list) -> dict:
             "diagrams": [{"fig_no": g.get("fig_no"), "caption": g.get("caption", "")} for g in graphs]}
 
 
+def short_name(s, n=100):
+    """A name cut to about n characters, never inside $...$ (an unbalanced $ shows the TeX as text)."""
+    if not s or len(s) <= n:
+        return s or None
+    cut = s[:n]
+    if len(re.findall(r"(?<!\\)\$", cut)) % 2:      # inside math: cut before it opens, or keep the whole formula
+        start = cut.rfind("$")
+        end = s.find("$", n)
+        cut = s[:start].rstrip(" :,") if start > 20 or end < 0 else s[:end + 1]
+    return cut + "…"
+
+
 def strip_tex(s: str, math=False) -> str:
     """Box text as plain words; with math=True its $...$ formulas are kept (the viewer typesets them)."""
-    s = (s or "").replace("\\\\", " ").replace("\\S", "§")   # TikZ line breaks; section sign
+    s = (s or "").replace("\\\\", " "); s = re.sub(r"\\S(?![A-Za-z])", "§", s)   # TikZ line breaks; section sign
     s = re.sub(r"\\(?:color|textcolor|nodepart)\s*\{[^}]*\}", " ", s)   # formatting, not text
     s = re.sub(r"\\(ref|cref|Cref|eqref|label)\{[^}]*\}", "", s)
     plain = lambda t: re.sub(r"[{}$~\\]+", " ", re.sub(r"\s+", " ", re.sub(r"\\[A-Za-z]+\*?(?:\[[^\]]*\])*", " ", t))).strip()
@@ -125,6 +137,15 @@ def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict)
         if info.get("kind") == "section" and info.get("number"):
             return f"Section {info['number']}"
         return None
+    numbers = {lab: v["number"] for lab, v in fx.get("labels", {}).items() if v.get("number")}
+
+    def shown(raw):                                       # a statement as the panel shows it: \ref -> the printed number
+        raw = re.sub(r"\\label\s*\[[^\]]*\]\s*\{[^{}]*\}", "", raw)            # cleveref's \label[type]{..}
+        raw += "}" * max(0, raw.count("{") - raw.count("}"))          # a title cut inside \ref{...
+        raw = re.sub(r"\\(?:[cC]ref|autoref|cpageref)\s*\{", r"\\ref{", raw)
+        t = latex_macros.resolve_references(expand(raw), numbers)
+        t = re.sub(r"\\label\s*\[[^\]]*\]\s*\{[^{}]*\}", "", t)               # also from the paper's macros
+        return re.sub(r"\\(?:qedhere|qed|nonumber|notag)(?![A-Za-z])", "", t).strip()
     labels = dict(full.get("metadata", {}).get("labels", {}) or {})
     ours = {n["id"]: n for n in full.get("nodes", [])}
     # the rule-based output keeps each node's own \label in `label`; other \label{}s inside a
@@ -193,11 +214,10 @@ def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict)
         if hits:
             first = ours[hits[0]]
             typ = first.get("type", "theorem")
-            stmt = "\n\n".join(expand(re.sub(r"\\label\{[^}]*\}", "", ours[h].get("raw_latex") or ours[h].get("statement") or ""))
-                                 for h in hits)
+            stmt = "\n\n".join(shown(ours[h].get("raw_latex") or ours[h].get("statement") or "") for h in hits)
             status = "mapped"
         elif secs:                                       # a section box citing a source stays a section
-            typ, stmt, status = "remark", "Section: " + "; ".join(secs), "section"
+            typ, stmt, status = "remark", "Section: " + "; ".join(shown(x) for x in secs), "section"
         elif cited:
             typ, stmt, status = "theorem", "Cited: " + (text or ""), "cited"
         else:
@@ -207,7 +227,7 @@ def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict)
         name = ", ".join(dict.fromkeys(names)) or text[:80] or None
         if names and len(extra) > 3:                     # the box also says what the result is
             name = f"{name}: {extra}"
-        name = (name or "")[:100] or None
+        name = short_name(name)
         nodes.append({"id": gid, "type": typ, "name": name, "statement": stmt,
                       "origin": "paper", "tags": ["diagram", status], "maps_to": hits,   # never hidden by the viewer
                       "labels": [r["label"] for r in refs]}
@@ -233,7 +253,7 @@ def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict)
         if (fg, h) not in gid_of:
             gid_of[fg, h] = f"G{len(nodes) + 1}"
             nodes.append({"id": gid_of[fg, h], "type": ours[h].get("type", "theorem"), "name": printed(lab) or lab,
-                          "statement": expand(ours[h].get("raw_latex") or ours[h].get("statement") or ""), "origin": "paper",
+                          "statement": shown(ours[h].get("raw_latex") or ours[h].get("statement") or ""), "origin": "paper",
                           "tags": ["diagram", "mentioned"], "maps_to": [h]}
                          | ({"section": next(n["section"] for n in nodes if n["id"] == idmap[box])} if sectioned else {}))
             node_rows.append({"gid": gid_of[fg, h], "box_text": "(named in another box: uses ...)", "refs": [lab],
@@ -303,6 +323,31 @@ def fig_number(tex: str, env: str) -> int:
 _DIAGRAM_ENVS = {"tikz": r"\\begin\{(tikzpicture|tikzcd)\}.*?\\end\{\1\}", "picture": r"\\begin\{picture\}.*?\\end\{picture\}"}
 
 
+_NOT_FI = {"iff", "ifthenelse", "ifboolexpr", "iftoggle", "ifstrequal", "ifcsname"}   # \if... without a matching \fi
+
+
+def live_tex(tex: str) -> str:
+    r"""The LaTeX that is typeset: no % comments, nothing after \end{document}, no comment environments,
+    no \iffalse ... \fi blocks (nested \if ... \fi counted). An unclosed \iffalse keeps the rest."""
+    import diagram_parser as dp
+    tex = dp.strip_comments(tex)
+    end = tex.find("\\end{document}")
+    tex = tex[:end] if end >= 0 else tex
+    tex = re.sub(r"\\begin\{comment\}.*?\\end\{comment\}", " ", tex, flags=re.S)
+    out, depth, last, start = [], 0, 0, 0
+    for m in re.finditer(r"\\(if[A-Za-z@]*|fi)(?![A-Za-z@])", tex):
+        w = m.group(1)
+        if w in _NOT_FI:
+            continue
+        if depth:
+            depth += 1 if w != "fi" else -1
+            if not depth:
+                last = m.end()
+        elif w == "iffalse":
+            out.append(tex[last:m.start()]); depth, start = 1, m.start()
+    return "".join(out) + (tex[start:] if depth else tex[last:])
+
+
 def scan_figures(tex: str) -> list:
     """Every figure of the paper that draws a diagram whose boxes cite >= 2 results (\\ref): the
     survey can miss some, e.g. a paper with one 'structure of Section k' diagram per section."""
@@ -323,9 +368,14 @@ def all_figures(folder: Path) -> list:
     import diagram_parser as dp
     fj = folder / "figure.json"
     figs = [f for f in (json.loads(fj.read_text()).get("figures", []) if fj.is_file() else []) if f.get("found")]
-    seen = {re.sub(r"\s+", " ", f.get("env", ""))[:200] for f in figs}
-    tex = dp.strip_comments((folder / "paper.tex").read_text(encoding="utf-8", errors="replace"))
-    return figs + [f for f in scan_figures(tex) if re.sub(r"\s+", " ", f["env"])[:200] not in seen]
+    raw = (folder / "paper.tex").read_text(encoding="utf-8", errors="replace")
+    tex, flat_all = live_tex(raw), re.sub(r"\s+", " ", dp.strip_comments(raw))
+    flat = re.sub(r"\s+", " ", tex)
+    key = lambda f: re.sub(r"\s+", " ", dp.strip_comments(f.get("env", ""))).strip()[:200]
+    # a figure of the source that is not typeset (\iffalse, comment, after \end{document}) is not the paper's
+    figs = [f for f in figs if not key(f) or key(f) in flat or key(f) not in flat_all]
+    seen = {key(f) for f in figs}
+    return figs + [f for f in scan_figures(tex) if key(f) not in seen]
 
 
 def reparse(folder: Path) -> list:
@@ -333,12 +383,16 @@ def reparse(folder: Path) -> list:
     writing graph_tikz.json; the survey's own parse is kept only when nothing was located."""
     import diagram_parser as dp
     figs = all_figures(folder)
-    tex = dp.strip_comments((folder / "paper.tex").read_text(encoding="utf-8", errors="replace"))
-    lmap, macros, styles = dp.label_map(tex), dp.ref_macros(tex), dp.arrow_styles(tex)
-    graphs, flat = [], re.sub(r"\s+", " ", tex)
+    tex = live_tex((folder / "paper.tex").read_text(encoding="utf-8", errors="replace"))
+    sty = "\n".join(f.read_text(encoding="utf-8", errors="replace") for f in sorted((folder / "sty").glob("*.sty"))) \
+        if (folder / "sty").is_dir() else ""                    # the paper's own packages: its TikZ styles too
+    lmap, macros, styles = dp.label_map(tex), dp.ref_macros(tex), dp.arrow_styles(dp.strip_comments(sty) + "\n" + tex)
+    graphs, flat, done = [], re.sub(r"\s+", " ", tex), set()
+    once = lambda c: (k := re.sub(r"\s+", "", c)) not in done and not done.add(k)   # the same code listed twice: once
     for f in figs:
         if not f.get("found"):
             continue
+        f = dict(f, **{k: [c for c in f.get(k, []) if once(c)] for k in ("tikz", "xymatrix", "picture")})
         f["fig_no"] = fig_number(flat, f.get("env", ""))
         for code in f.get("tikz", []):
             code = dp.strip_comments(code)
@@ -355,7 +409,8 @@ def reparse(folder: Path) -> list:
         for code in f.get("picture", []):
             graphs.append(dict(dp.parse_picture(dp.strip_comments(code), lmap, macros, dp.unit_em(tex[:tex.find(code[:60])] + f.get("env", "").split(code[:60])[0])),
                                format="picture", fig_idx=f.get("fig_idx"), fig_no=f["fig_no"], caption=f.get("caption", "")))
-    graphs = sorted((g for g in graphs if g.get("nodes")), key=lambda g: g.get("fig_no") or 0)
+    # a drawing with boxes but no arrows (a plot, a Venn picture) is not a dependency diagram
+    graphs = sorted((g for g in graphs if g.get("nodes") and g.get("edges")), key=lambda g: g.get("fig_no") or 0)
     if graphs:
         (folder / "graph_tikz.json").write_text(json.dumps(graphs, indent=1, ensure_ascii=False))
     elif (folder / "graph_tikz.json").is_file():
@@ -509,6 +564,8 @@ def main():
                 for k in ("pdf", "fig_page", "figpage", "figpages", "figpage_nums", "direction"):
                     if k in old_m and k not in m:
                         m[k] = old_m[k]
+            if a.no_pdf and not m.get("figpages") and (folder / "paper.pdf").is_file():
+                add_pdf(folder, m)                       # the page was lost (e.g. a failed build): find it again, PDF cached
         except Exception as e:                           # noqa: BLE001
             m = {"id": folder.name, "arxiv": arxiv_id(folder.name), "problems": [f"build error: {e!r}"]}
         c = cand.get(folder.name, {})
