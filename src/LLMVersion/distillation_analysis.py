@@ -60,13 +60,13 @@ def tokenize_latex(text):
 
 
 # Match metric for every comparison in this module — most importantly the
-# prune gate's TP/FP verdict. Callers select it (silver_distillation_merged /
-# _sequential set it from --match-metric); "jaccard" keeps the historical
+# prune gate's TP/FP verdict. Callers select it (silver_distillation_merged and
+# distill_units set it from --match-metric); "jaccard" keeps the historical
 # default for anything that does not.
 #
 # This used to be hard-wired: `jaccard_similarity` passed no `metric=`, so
 # --match-metric containment silently never reached the prune gate while the
-# baseline-metrics path (silver_distillation_sequential.jaccard_similarity) did
+# baseline-metrics path (then a second wrapper in the sequential driver) did
 # honour it. The two halves of a run were scored by different metrics.
 def jaccard_similarity(text1, text2):
     """Match score used by the distillation (SILVER profile; metric read from node_similarity).
@@ -74,7 +74,7 @@ def jaccard_similarity(text1, text2):
     The metric lives in ONE place (node_similarity.MATCH_METRIC) and is read at
     call time. The profile is SILVER, the one every distillation driver has used:
     until 2026-10-14 this function defined the DISTILLATION profile and
-    silver_distillation_sequential replaced it at import time, so the
+    the sequential driver replaced it at import time, so the
     DISTILLATION profile never ran in production. Now the two agree by
     construction rather than by monkey-patch.
     """

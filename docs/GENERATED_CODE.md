@@ -12,7 +12,7 @@ difference between a useful repo review and a misleading one.
 ## What is generated
 
 `distilled_rules.py`, written by the distillation pipeline
-(`scripts/silver_distillation_sequential.py`, `src/LLMVersion/distillation_analysis.py`):
+(`scripts/silver_distillation_merged.py`, `src/LLMVersion/distillation_analysis.py`):
 
 ```
 src/LLMVersion/<type>_eval/distilled_rules.py        one per structure type

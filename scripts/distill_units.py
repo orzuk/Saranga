@@ -66,12 +66,11 @@ import match_modes as mm                               # noqa: E402
 import node_metrics as NM                              # noqa: E402
 import node_similarity as NSIM                         # noqa: E402
 import prose_units as U                                # noqa: E402
-import silver_distillation_merged as merged            # noqa: E402
-import silver_distillation_sequential as seq           # noqa: E402
+import distill_common as C                             # noqa: E402
 import unit_rules as UR                                # noqa: E402
 from distill_registry import RuleRegistry, STATUS_ACTIVE   # noqa: E402
 
-SCORED = list(seq.FNAME_MAP)               # the 14 node types distillation scores
+SCORED = C.TYPES                           # the 14 node types distillation scores
 
 # cue phrases, in order: the first one found in a sentence names its cluster
 _CUES = [(c, re.compile(p)) for c, p in [
@@ -167,7 +166,7 @@ def type_weight(metric: str):
 
 def load_paper(pid: str, tex_dir: Path, t2_dir: Path, base_buckets: dict, th: float,
                metric: str = "m1g") -> Paper | None:
-    main = seq._find_main_tex(tex_dir / pid / "source")
+    main = L.find_main_tex(tex_dir / pid / "source")
     jf = t2_dir / f"{pid}.json"
     if not main or not jf.is_file():
         return None
@@ -997,21 +996,7 @@ def _prep_init(tex_dir, t2_dir, th, rules_dir, metric):
 
 def _prep_one(pid):
     """One paper: its base parse (no distilled rules) and its training data."""
-    import contextlib
-    import io
-    from math_paper_parser import PaperParser
-    buckets = {t: [] for t in SCORED}
-    main = seq._find_main_tex(_PREP["tex"] / pid / "source")
-    if main:
-        try:
-            g = PaperParser(paper_id=pid, extraction_mode="rules", structure_types=SCORED,
-                            rules_dir=_PREP["rules"]).parse_file(str(main)).to_dict()
-            for o in g.get("objects", {}).values():
-                raw = o.get("raw_latex") or o.get("statement") or ""
-                if o.get("kind") in buckets and raw.strip():
-                    buckets[o["kind"]].append(raw)
-        except Exception as e:                                         # noqa: BLE001
-            print(f"  [warn] base parse failed for {pid}: {e}", flush=True)
+    buckets = C.parse_buckets(pid, _PREP["tex"], SCORED, _PREP["rules"])
     return pid, load_paper(pid, _PREP["tex"], _PREP["t2"], buckets, _PREP["th"], _PREP["metric"])
 
 
@@ -1037,8 +1022,8 @@ def run(args) -> None:
     da.ensure_api_key()                 # fail now, not after preparing every paper
     eval_dir = Path(args.eval_dir)
     eval_dir.mkdir(parents=True, exist_ok=True)
-    seq.set_match_metric(args.match_metric)
-    splits = merged.load_splits(merged.split_file(args))
+    NSIM.set_match_metric(args.match_metric)
+    splits = C.load_splits(C.split_file(args))
     pids = [p.strip() for p in args.pilot_papers.split(",") if p.strip()]
     if pids in (["train"], ["val"]):
         pids = sorted(p for p, s in splits.items() if s == pids[0])
@@ -1052,9 +1037,9 @@ def run(args) -> None:
         val = sorted(p for p, s in splits.items() if s == args.val_papers)
         fit = sorted(set(pids) - set(val))
         if not val:
-            raise SystemExit(f"no papers of split {args.val_papers!r} in {merged.split_file(args)}")
+            raise SystemExit(f"no papers of split {args.val_papers!r} in {C.split_file(args)}")
     if not args.allow_test_papers:
-        merged.assert_no_test_leak(fit + val, splits)
+        C.assert_no_test_leak(fit + val, splits)
     print(f"[units] {len(fit)} fitting + {len(val)} validation papers; teacher {args.model}; "
           f"min precision {args.min_precision}; refine {args.max_refine} step(s) "
           f"({args.refine_moves}), judge {args.judge}; min cluster {args.min_cluster}; "

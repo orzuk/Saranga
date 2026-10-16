@@ -22,8 +22,8 @@ sys.path[:0] = [str(REPO / "src" / "LLMVersion"), str(REPO / "src"), str(REPO / 
 def one(job):
     pid, silver, tex, rules, out, name = job
     from math_paper_parser import parse_to_unified
-    import compare_distillers as C
-    main = C.seq._find_main_tex(Path(tex) / pid / "source")
+    from latex_facts import find_main_tex
+    main = find_main_tex(Path(tex) / pid / "source")
     if not main:
         return pid, "no tex"
     try:

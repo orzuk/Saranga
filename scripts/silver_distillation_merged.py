@@ -2,8 +2,8 @@
 """
 Silver Standard MERGED Distillation (single pass, all structure types)
 ======================================================================
-A cost-reduced sibling of ``silver_distillation_sequential.py``.  Instead of
-re-running the whole pipeline once per structure type, this distills *all*
+Instead of re-running the whole pipeline once per structure type (the retired
+sequential driver), this distills *all*
 requested types in ONE pass per paper.  Two levers cut LLM calls and tokens:
 
   1. Types are grouped by the base parser method they share, so the 7
@@ -35,11 +35,8 @@ Usage:
 import argparse
 import ast
 import builtins as _builtins
-import contextlib
 import csv
 import json
-import re
-import os
 import shutil
 import signal
 import sys
@@ -64,19 +61,20 @@ from distillation_analysis import (
     prune_rules,
 )
 
-# Reuse the proven helpers + the cleaned matcher from the per-type pipeline.
-import silver_distillation_sequential as seq
-from silver_distillation_sequential import (
-    FNAME_MAP,
-    convert_t2_to_gold_csv,
-    _find_main_tex,
-    count_compiled_patterns,
-    jaccard_similarity,
-)
-
-ALL_SILVER_TYPES = list(FNAME_MAP.keys())
+import node_similarity as NS
+from distill_common import (FNAME_MAP, TYPES as ALL_SILVER_TYPES, convert_t2_to_gold_csv,
+                            find_main_tex, load_gold_texts, load_splits, split_file,
+                            assert_no_test_leak, parse_buckets)
 
 from distillation_analysis import estimate_cost   # noqa: E402  (single pricing table)
+
+
+def count_compiled_patterns(rules_path: Path) -> int:
+    """re.compile( calls outside comments in a distilled_rules.py."""
+    if not rules_path.exists():
+        return 0
+    return sum('re.compile(' in ln and not ln.lstrip().startswith('#')
+               for ln in rules_path.read_text(encoding='utf-8').split('\n'))
 
 
 # ---------------------------------------------------------------------------
@@ -387,14 +385,6 @@ def validate_and_repair_group_file(path: Path, gkey: str, prev_src,
 # Combined importer (hand-authored — no codegen risk)
 # ---------------------------------------------------------------------------
 
-def snapshot_dirs(eval_dir: Path) -> list:
-    """<eval_dir>/snapshots/step_NN_* in step order (numeric: step_100 after step_99)."""
-    def step(p):
-        m = re.match(r"step_(\d+)", p.name)
-        return int(m.group(1)) if m else -1
-    return sorted((Path(eval_dir) / "snapshots").glob("step_*"), key=step)
-
-
 def write_combined_importer(eval_dir: Path, groups: dict) -> Path:
     """Write <eval_dir>/distilled_rules.py re-exporting per-type entry points.
 
@@ -509,180 +499,8 @@ def write_combined_importer(eval_dir: Path, groups: dict) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Install / uninstall the combined importer across all involved type dirs
+# Paper order; per-step rule snapshots (for the paper-by-paper graph filmstrip)
 # ---------------------------------------------------------------------------
-
-#: Depth of the current install. Not a lock — it cannot see other processes —
-#: but it catches the failure that actually happened: a nested/concurrent
-#: install inside one process tree.
-_INSTALL_DEPTH = 0
-
-
-class NestedInstallError(RuntimeError):
-    """Raised instead of silently destroying the backup of an outer install."""
-
-
-#: Cross-process guard. The depth counter above only sees one process, and the
-#: corruption that motivated all this was FOUR processes installing at once.
-INSTALL_LOCK = REPO / "src" / "LLMVersion" / ".silver_install.lock"
-
-
-def _acquire_install_lock() -> None:
-    """O_EXCL lock around the shared rule symlinks. One installer at a time.
-
-    A stale lock from a killed run is reclaimed: the holder's pid is written
-    into the file, and if that process is gone the lock is not real. Without
-    that, one SIGKILL would wedge every future run.
-    """
-    global _LOCK_HELD
-    for _ in range(2):
-        try:
-            fd = os.open(INSTALL_LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.write(fd, str(os.getpid()).encode())
-            os.close(fd)
-            _LOCK_HELD = True
-            return
-        except FileExistsError:
-            try:
-                holder = int(INSTALL_LOCK.read_text().strip() or 0)
-            except (ValueError, OSError):
-                holder = 0
-            alive = False
-            if holder:
-                try:
-                    os.kill(holder, 0)
-                    alive = True
-                except OSError:
-                    alive = False
-            if alive:
-                raise NestedInstallError(
-                    f"another process (pid {holder}) is installing rules into "
-                    f"src/LLMVersion/*_eval/. Concurrent installs overwrite "
-                    f"each other's .silver_bak and destroy the originals. "
-                    f"Wait for it, or kill it and remove {INSTALL_LOCK}.")
-            print(f"  [lock] reclaiming stale install lock from dead pid {holder}")
-            INSTALL_LOCK.unlink(missing_ok=True)
-    raise NestedInstallError(f"could not acquire {INSTALL_LOCK}")
-
-
-def _release_install_lock() -> None:
-    global _LOCK_HELD
-    if _LOCK_HELD:
-        INSTALL_LOCK.unlink(missing_ok=True)
-        _LOCK_HELD = False
-
-
-_LOCK_HELD = False
-
-
-def install_importer(eval_dir: Path, types) -> dict:
-    """Symlink <eval_dir>/distilled_rules.py into every {type}_eval/ dir.
-
-    Returns {type: backup_path_or_None} for restoration. Reuses the per-type
-    installer so sys.modules cache invalidation stays consistent.
-
-    Refuses to nest. `_install_silver_rules` renames the CURRENT
-    src/LLMVersion/<type>_eval/distilled_rules.py to .silver_bak; a second
-    install while one is active therefore renames the first install's symlink
-    over the original file's backup, and the original is gone for good. That is
-    not hypothetical — it destroyed all 14 production rule symlinks once, and
-    they were only recoverable because git tracked them. Failing loudly here is
-    much cheaper than discovering it afterwards.
-    """
-    global _INSTALL_DEPTH
-    if _INSTALL_DEPTH > 0:
-        raise NestedInstallError(
-            "install_importer called while an install is already active in "
-            "this process. The outer install's backup would be overwritten "
-            "and the original rule files lost. Parse many papers under ONE "
-            "installed_rules() block (see parse_all) instead of installing "
-            "per paper.")
-    _acquire_install_lock()
-    try:
-        backups = {}
-        for t in types:
-            _, backup = seq._install_silver_rules(eval_dir, t)
-            backups[t] = backup
-    except BaseException:
-        _release_install_lock()
-        raise
-    _INSTALL_DEPTH += 1
-    return backups
-
-
-def uninstall_importer(types, backups: dict) -> None:
-    global _INSTALL_DEPTH
-    try:
-        for t in types:
-            seq._uninstall_silver_rules(t, backups.get(t))
-    finally:
-        _INSTALL_DEPTH = max(0, _INSTALL_DEPTH - 1)
-        _release_install_lock()
-
-
-# ---------------------------------------------------------------------------
-# Per-step rule snapshots (for the paper-by-paper graph filmstrip)
-# ---------------------------------------------------------------------------
-
-SILVER_METADATA = REPO / "corpus" / "silver" / "metadata.csv"
-
-
-def load_splits(metadata_csv: Path = SILVER_METADATA) -> dict:
-    """{paper_id: split} from the silver corpus index — the one source of truth.
-
-    The split lives in metadata.csv, not in the directory tree, precisely so it
-    can be redrawn. Everything that selects papers should consult it rather than
-    hardcoding lists.
-    """
-    # A paper has ONE row per extraction, so every train/test paper ALSO has a
-    # `pool` row (its older v3 extraction). Taking the first row seen would
-    # label the whole train set "pool" and silently defeat the split guard, so
-    # the specific splits win over the catch-all.
-    precedence = {"train": 3, "test": 3, "val": 3, "pool": 1}
-    out, rank = {}, {}
-    if not Path(metadata_csv).exists():
-        return out
-    with open(metadata_csv, encoding="utf-8") as f:
-        for row in csv.DictReader(f):
-            # metadata.csv names papers by paper_id, a split file (split_v6.csv) by arxiv_id
-            pid, split = row.get("paper_id") or row.get("arxiv_id"), row.get("split")
-            if not (pid and split):
-                continue
-            r = precedence.get(split, 2)
-            if r > rank.get(pid, 0):
-                out[pid], rank[pid] = split, r
-    return out
-
-
-def split_file(args) -> Path:
-    """Where the train/val/test split is read from: --splits, else the corpus index."""
-    if getattr(args, "splits", None):
-        return Path(args.splits)
-    return Path(args.metadata) if args.metadata else SILVER_METADATA
-
-
-def assert_no_test_leak(papers, splits: dict) -> None:
-    """Refuse to distil on anything the corpus marks as test.
-
-    Distillation writes rules FROM these papers, so a test paper here is
-    training on the test set — it would silently invalidate every held-out
-    number we report. Fail loudly rather than warn: a warning in a long run
-    scrolls past.
-    """
-    leaked = [p for p in papers if splits.get(p) == "test"]
-    if leaked:
-        raise SystemExit(
-            f"ABORT: {len(leaked)} test-split paper(s) in the distillation set: "
-            f"{', '.join(sorted(leaked))}\n"
-            f"Distillation writes rules from these papers; including test "
-            f"papers trains on the test set. Fix --pilot-papers, or pass "
-            f"--allow-test-papers if you genuinely intend this.")
-    unknown = [p for p in papers if p not in splits]
-    if unknown:
-        print(f"  [split] {len(unknown)} paper(s) not in metadata.csv "
-              f"(no split recorded): {', '.join(sorted(unknown)[:5])}"
-              f"{' ...' if len(unknown) > 5 else ''}")
-
 
 def rank_worst_first(papers, tex_dir: Path, types, gold_dir: Path,
                      base_snap: Path, threshold: float,
@@ -715,7 +533,7 @@ def rank_worst_first(papers, tex_dir: Path, types, gold_dir: Path,
         if base_buckets is not None and pid in base_buckets:
             buckets = base_buckets[pid]
         else:
-            buckets = parse_buckets(pid, tex_dir, types, eval_dir=base_snap)
+            buckets = parse_buckets(pid, tex_dir, types, base_snap)
         # WITHIN-type on purpose, unlike the prune gate's cross-type support.
         # The two ask opposite questions: the gate asks "is the span I emitted
         # real content anywhere?" (cross-type is right), this asks "must I still
@@ -740,15 +558,10 @@ def rank_worst_first(papers, tex_dir: Path, types, gold_dir: Path,
 def baseline_snapshot(eval_dir: Path, groups: dict) -> Path:
     """An always-empty rule snapshot, for measuring the TRUE base parser.
 
-    Do not use ``eval_dir=None`` to mean "baseline". That means "whatever is
-    installed", and all 14 production ``*_eval`` dirs are normally symlinked to
-    a previous run's FINAL rules — so the "baseline" would silently include
-    them, and every new rule would be distilled on top of the last run's output.
-
-    Installing this snapshot instead displaces those symlinks for the duration
-    of the parse (``_install_silver_rules`` renames whatever is there to
-    ``.silver_bak`` and puts it back afterwards), so the measurement is honest
-    and the promoted rules survive the run untouched.
+    Do not use ``eval_dir=None`` to mean "baseline". That is the parser's
+    default rule set (the 14 ``src/LLMVersion/*_eval`` symlinks to a released
+    rule set), so the "baseline" would silently include it, and every new rule
+    would be distilled on top of it.
 
     Kept separate from ``step_00`` because ``step_00`` is written from
     ``groups_dir``, which on ``--resume`` already holds rules.
@@ -767,7 +580,7 @@ def snapshot_rules(eval_dir: Path, groups_dir: Path, groups: dict,
 
     Layout: <eval_dir>/snapshots/step_<NN>_<label>/{distilled_rules.py, groups/<g>/...}
     The snapshot's importer is written with the snapshot as its base, so it
-    points at the FROZEN copies — installing it reproduces this step's rules.
+    points at the FROZEN copies — parsing with it as rules_dir reproduces this step's rules.
     Copies only (no LLM); cheap and additive.
     """
     snap = eval_dir / "snapshots" / f"step_{step_idx:02d}_{label}"
@@ -787,87 +600,26 @@ def snapshot_rules(eval_dir: Path, groups_dir: Path, groups: dict,
 # Combined parse: one parser run, bucket extracted raw_latex by kind
 # ---------------------------------------------------------------------------
 
-@contextlib.contextmanager
-def installed_rules(eval_dir: Path | None, types):
-    """Install a rule state for the duration of the block, then restore it.
-
-    Split out of parse_buckets so a caller can install ONCE and parse many
-    papers under the same state — which is what makes parallel scoring
-    possible. The install/restore itself is NOT concurrency-safe (it renames a
-    single shared path, src/LLMVersion/<type>_eval/distilled_rules.py, to
-    .silver_bak and symlinks over it), so two workers each doing their own
-    install would destroy each other's backup even when installing identical
-    rules. Hold this once around a fan-out instead; the parse itself only reads.
-    """
-    backups = install_importer(eval_dir, types) if eval_dir is not None else {}
-    try:
-        yield
-    finally:
-        if eval_dir is not None:
-            uninstall_importer(types, backups)
-
-
-def parse_buckets_installed(pid: str, tex_dir: Path, types) -> dict:
-    """Parse one paper under the CURRENTLY installed rules. Read-only, so it is
-    safe to call concurrently. Use inside an `installed_rules(...)` block."""
-    from math_paper_parser import PaperParser
-
-    buckets = {t: [] for t in types}
-    src_dir = tex_dir / pid / "source"
-    main_tex = _find_main_tex(src_dir)
-    if main_tex:
-        try:
-            parser = PaperParser(paper_id=pid, extraction_mode='rules',
-                                 structure_types=list(types))
-            graph = parser.parse_file(str(main_tex))
-            for _oid, obj in graph.to_dict().get('objects', {}).items():
-                kind = obj.get('kind')
-                if kind in buckets:
-                    raw = obj.get('raw_latex', '') or obj.get('statement', '')
-                    if raw.strip():
-                        buckets[kind].append(raw)
-        except Exception as e:
-            print(f"  [warn] parse failed for {pid}: {e}")
-    return buckets
-
-
 _PW = {}
 
 
-def _pool_init(tex_dir, types):
-    _PW["tex"] = Path(tex_dir)
-    _PW["types"] = types
+def _pool_init(tex_dir, types, rules_dir):
+    _PW.update(tex=Path(tex_dir), types=types, rules=rules_dir)
 
 
-def _pool_parse(pid):
-    """Child entry point: parses under the rules the PARENT installed.
-
-    Returns its own wall-clock time too: with a pool the parent cannot time
-    individual papers, and per-paper parse time is the signal that separates
-    "these rules are slow" from "this paper is big" -- the distinction that
-    took three stalled runs to see.
+def _timed_parse(pid):
+    """(pid, buckets, seconds). Per-paper parse time is the signal that separates
+    "these rules are slow" from "this paper is big" -- the distinction that took
+    three stalled runs to see -- and with a pool only the child can time its paper.
     """
-    import time as _t
-    _t0 = _t.perf_counter()
-    b = parse_buckets_installed(pid, _PW["tex"], _PW["types"])
-    return pid, b, _t.perf_counter() - _t0
+    t0 = time.perf_counter()
+    return pid, parse_buckets(pid, _PW["tex"], _PW["types"], _PW["rules"]), time.perf_counter() - t0
 
 
 def parse_all(papers, tex_dir: Path, types, eval_dir: Path | None,
               workers: int = 1, label: str = "", timings: dict | None = None) -> dict:
-    """Parse MANY papers under ONE rule state. Returns {pid: buckets}.
-
-    The whole point is that the install happens once for the batch rather than
-    once per paper. The per-paper install/uninstall (symlink renames plus
-    flushing sys.modules) measured *more expensive than the parse itself* —
-    2.9x on a 6-paper set — so this is the bigger win, and it needs no
-    multiprocessing at all. `workers > 1` fans out on top of that; children
-    only read, which is safe precisely because the parent holds the install
-    for the duration (see `installed_rules`).
-
-    Results are byte-identical to calling parse_buckets in a loop; verified on
-    2,506 extractions across 60 papers with 8 workers.
-    """
+    """Parse MANY papers with the rule set in `eval_dir` (None: the parser's
+    default). Returns {pid: buckets}; `workers` > 1 fans out over processes."""
     papers = list(papers)
     timings.clear() if timings is not None else None
     if not papers:
@@ -876,23 +628,19 @@ def parse_all(papers, tex_dir: Path, types, eval_dir: Path | None,
         print(f"  [parse] {len(papers)} paper(s) under {label}"
               + (f", {workers} workers" if workers > 1 else ""))
     t_all = time.perf_counter()
-    with installed_rules(eval_dir, types):
-        if workers > 1 and len(papers) > 1:
-            import multiprocessing as _mp
-            with _mp.Pool(workers, initializer=_pool_init,
-                          initargs=(str(tex_dir), types)) as pool:
-                out = {}
-                for pid, buckets, secs in pool.map(_pool_parse, papers):
-                    out[pid] = buckets
-                    if timings is not None:
-                        timings[pid] = round(secs, 2)
-        else:
-            out = {}
-            for p in papers:
-                t0 = time.perf_counter()
-                out[p] = parse_buckets_installed(p, tex_dir, types)
-                if timings is not None:
-                    timings[p] = round(time.perf_counter() - t0, 2)
+    _pool_init(tex_dir, types, eval_dir)
+    if workers > 1 and len(papers) > 1:
+        import multiprocessing as _mp
+        with _mp.Pool(workers, initializer=_pool_init,
+                      initargs=(str(tex_dir), types, eval_dir)) as pool:
+            res = pool.map(_timed_parse, papers)
+    else:
+        res = map(_timed_parse, papers)
+    out = {}
+    for pid, buckets, secs in res:
+        out[pid] = buckets
+        if timings is not None:
+            timings[pid] = round(secs, 2)
     if label and timings:
         wall = time.perf_counter() - t_all
         worst = sorted(timings.items(), key=lambda kv: -kv[1])[:3]
@@ -909,8 +657,8 @@ def score_state(papers, tex_dir: Path, types, eval_dir: Path | None,
 
     Called from inside the distillation loop so the trajectory table can be a
     pure reader. Doing it here rather than after the fact is not just tidier:
-    reconstructing it later means re-installing every snapshot and re-parsing
-    every paper, which needs the .tex tree and the snapshots to still exist and
+    reconstructing it later means re-parsing every paper under every snapshot,
+    which needs the .tex tree and the snapshots to still exist and
     still agree with the parser — three things that drift. Scoring at the
     moment the state existed is the only way the number is definitely the one
     that state produced.
@@ -975,21 +723,6 @@ def score_state(papers, tex_dir: Path, types, eval_dir: Path | None,
     print(f"  [score] {len(papers)} paper(s) @ {state} -> {out_path.name}")
 
 
-def parse_buckets(pid: str, tex_dir: Path, types, eval_dir: Path | None) -> dict:
-    """Parse one paper ONCE with rules; return {type: [raw_latex, ...]}.
-
-    If eval_dir is given, the combined importer is installed across all type
-    dirs so distilled rules are applied; otherwise the parser runs as-is
-    (baseline = whatever is committed, matching the per-type script).
-    The install is restored even if the parse is interrupted (installed_rules).
-
-    NOTE `eval_dir=None` means "whatever happens to be installed", NOT a clean
-    baseline — see baseline_snapshot().
-    """
-    with installed_rules(eval_dir, types):
-        return parse_buckets_installed(pid, tex_dir, types)
-
-
 def build_guard_probe(tex_dir: Path, paper_ids, per_paper_cap: int = 20000) -> str:
     """Concatenate (capped) LaTeX of the given papers as a backtracking probe.
 
@@ -998,7 +731,7 @@ def build_guard_probe(tex_dir: Path, paper_ids, per_paper_cap: int = 20000) -> s
     """
     chunks = []
     for pid in paper_ids:
-        main_tex = _find_main_tex(tex_dir / pid / "source")
+        main_tex = find_main_tex(tex_dir / pid / "source")
         if main_tex is None:
             continue
         try:
@@ -1009,7 +742,7 @@ def build_guard_probe(tex_dir: Path, paper_ids, per_paper_cap: int = 20000) -> s
     return "\n".join(chunks)
 
 
-def opus_buckets(t2_path: Path, types, origin_filter) -> dict:
+def opus_buckets(t2_path: Path, types) -> dict:
     """Bucket opus (tier2) nodes by type from a tier2 JSON."""
     d = json.load(open(t2_path, encoding='utf-8'))
     buckets = {t: [] for t in types}
@@ -1017,10 +750,6 @@ def opus_buckets(t2_path: Path, types, origin_filter) -> dict:
         t = n.get("type")
         if t not in buckets:
             continue
-        if origin_filter is not None:
-            o = n.get("origin")
-            if o is not None and o != origin_filter:
-                continue
         raw = (n.get("statement_latex") or n.get("statement")
                or n.get("raw_latex") or "")
         if raw.strip():
@@ -1089,7 +818,7 @@ def metrics(extracted_texts, gold_texts, threshold, *, mode="m1",
         pairs = []
         for i, ext in enumerate(extracted_texts):
             for j, gold in enumerate(gold_texts):
-                sim = jaccard_similarity(ext, gold)
+                sim = _da.jaccard_similarity(ext, gold)
                 if sim >= threshold:
                     pairs.append((sim, i, j))
         pairs.sort(reverse=True)
@@ -1129,20 +858,6 @@ def metrics(extracted_texts, gold_texts, threshold, *, mode="m1",
             'n_extracted': len(extracted_texts), 'n_gold': len(gold_texts)}
 
 
-def load_gold_texts(gold_csv: Path) -> dict:
-    """Return {paper_id: [raw_latex, ...]} for one type's gold CSV."""
-    out = {}
-    if not gold_csv.exists():
-        return out
-    with open(gold_csv, encoding='utf-8-sig', errors='replace') as f:
-        for row in csv.DictReader(f):
-            pid = (row.get('paper_id') or '').strip()
-            raw = (row.get('Gold_Standard_raw_latex') or '').strip()
-            if pid and raw:
-                out.setdefault(pid, []).append(raw)
-    return out
-
-
 def build_group_gold(gold_dir: Path, group_key: str, types_in_group) -> Path:
     """Concatenate the subtype gold CSVs into one group gold CSV for pruning."""
     out = gold_dir / f"_group_{group_key}.csv"
@@ -1173,7 +888,6 @@ def run(args):
     model = args.model
     threshold = args.threshold
     batch_size = args.batch_size
-    origin_filter = args.origin_filter or None
 
     types = [t.strip() for t in args.structure_types.split(',') if t.strip()]
     bad = [t for t in types if t not in FNAME_MAP]
@@ -1183,10 +897,8 @@ def run(args):
     pilot_papers = [p.strip() for p in args.pilot_papers.split(',') if p.strip()]
 
     groups = base_method_groups(types)
-    # BOTH modules must be set. seq's copy scores the baseline/post metrics;
-    # _da's scores the prune gate's TP/FP verdict. Setting only seq (the old
-    # behaviour) left the prune on jaccard while the metrics used containment.
-    seq.set_match_metric(args.match_metric)
+    # one run-wide metric: the baseline/post metrics and the prune gate read it
+    NS.set_match_metric(args.match_metric)
 
     print("Silver MERGED Distillation")
     print(f"  types: {types}")
@@ -1204,7 +916,7 @@ def run(args):
         if not (t2_dir / f"{pid}.json").exists():
             print(f"ERROR: T2 JSON not found: {t2_dir / (pid + '.json')}")
             sys.exit(1)
-        if _find_main_tex(tex_dir / pid / "source") is None:
+        if find_main_tex(tex_dir / pid / "source") is None:
             print(f"WARNING: no .tex source for {pid}")
 
     eval_dir.mkdir(parents=True, exist_ok=True)
@@ -1282,8 +994,7 @@ def run(args):
             existing = load_gold_texts(gold_dir / FNAME_MAP[t])
             if pid in existing:
                 continue
-            _, n = convert_t2_to_gold_csv(t2_dir / f"{pid}.json", t, gold_dir,
-                                          origin_filter=origin_filter)
+            _, n = convert_t2_to_gold_csv(t2_dir / f"{pid}.json", t, gold_dir)
             if n:
                 print(f"  {pid} [{t}]: {n}")
     gold_texts_by_type = {t: load_gold_texts(gold_dir / FNAME_MAP[t]) for t in types}
@@ -1317,40 +1028,9 @@ def run(args):
     score_set = []
     _done_states = set()
     if args.score_every > 0:
-        sel = args.score_papers.strip()
-        if sel in ("train", "test"):
-            _sp = load_splits(split_file(args))
-            score_set = sorted(p for p, s in _sp.items() if s == sel)
-            missing = [p for p in score_set
-                       if _find_main_tex(tex_dir / p / "source") is None]
-            if missing:
-                print(f"  [score] skipping {len(missing)} '{sel}' paper(s) with "
-                      f"no .tex source")
-                score_set = [p for p in score_set if p not in missing]
-        elif sel:
-            score_set = [p.strip() for p in sel.split(",") if p.strip()]
-        else:
-            score_set = []
-        # The pilot papers are ALWAYS scored: they are the table's rows, and
-        # without them the recorded set is incomplete and the table silently
-        # falls back to re-parsing everything. --score-papers ADDS a held-out
-        # set to them, it does not replace them.
-        score_set = list(prior_papers) + list(pilot_papers) + [
-            p for p in score_set
-            if p not in set(prior_papers) | set(pilot_papers)]
-        # Gold is needed to score, and it is only loaded for pilot papers.
-        need_gold = [p for p in score_set if p not in gold_texts_by_type[types[0]]
-                     and not any(p in gold_texts_by_type[t] for t in types)]
-        for pid in need_gold:
-            t2p = t2_dir / f"{pid}.json"
-            if not t2p.exists():
-                continue
-            for t in types:
-                convert_t2_to_gold_csv(t2p, t, gold_dir, origin_filter=origin_filter)
-        if need_gold:
-            gold_texts_by_type = {t: load_gold_texts(gold_dir / FNAME_MAP[t])
-                                  for t in types}
-        score_set = [p for p in score_set
+        # the pilot papers (on --resume also those already distilled) are the
+        # trajectory table's rows; a paper with no silver nodes cannot be scored
+        score_set = [p for p in prior_papers + pilot_papers
                      if any(p in gold_texts_by_type[t] for t in types)]
         print(f"  [score] --score-every {args.score_every}: "
               f"{len(score_set)} paper(s) -> {scores_path}")
@@ -1417,8 +1097,8 @@ def run(args):
         # 3a: ONE combined parse with current distilled rules + opus buckets ->
         #     per-type detailed_matches for dark-knowledge.
         print("  [1] Combined parse (rules + current distilled) ...")
-        manual = parse_buckets(pid, tex_dir, types, eval_dir=eval_dir)
-        opus = opus_buckets(t2_path, types, origin_filter)
+        manual = parse_buckets(pid, tex_dir, types, eval_dir)
+        opus = opus_buckets(t2_path, types)
         for t in types:
             write_detailed_matches(eval_dir, pid, t, manual[t], opus[t])
 
@@ -1582,8 +1262,8 @@ def run(args):
         # 3e-snapshot: freeze this paper's cumulative rule state for the filmstrip.
         snapshot_rules(eval_dir, groups_dir, groups, paper_idx, pid)
 
-        # 3f: post-eval (one combined parse with installed importer).
-        post = parse_buckets(pid, tex_dir, types, eval_dir=eval_dir)
+        # 3f: post-eval (one combined parse with the run's rules).
+        post = parse_buckets(pid, tex_dir, types, eval_dir)
         _sup = _all_gold(gold_texts_by_type, pid, types)
         post_metrics = {t: metrics(post[t], gold_texts_by_type[t].get(pid, []),
                                    threshold, mode=args.match_mode,
@@ -1737,7 +1417,7 @@ def run_tagger(args) -> None:
 def main():
     p = argparse.ArgumentParser(description="Silver Standard MERGED Distillation")
     p.add_argument("--structure-types", default=",".join(ALL_SILVER_TYPES),
-                   help="Comma list of types (default: all 9 silver types)")
+                   help="Comma list of types (default: all 14 silver types)")
     p.add_argument("--alg", default="merged", choices=["merged", "units", "tagger"],
                    help="merged: the teacher writes per-group extractor files, one "
                         "training paper at a time (analyze -> aggregate -> prune). "
@@ -1761,8 +1441,6 @@ def main():
     p.add_argument("--threshold", type=float, default=0.7)
     p.add_argument("--batch-size", type=int, default=8,
                    help="Missed structures per analyze LLM call (default 8)")
-    p.add_argument("--origin-filter", default=None,
-                   help="Only include opus nodes whose `origin` matches (e.g. 'paper')")
     p.add_argument("--match-metric", default="containment",
                    choices=["jaccard", "containment"])
     p.add_argument("--max-rule-seconds", type=float, default=10.0,
@@ -1771,25 +1449,15 @@ def main():
                         "(catastrophic backtracking). 0 disables.")
     p.add_argument("--workers", type=int, default=1,
                    help="parallel workers for the batched multi-paper parses "
-                        "(baseline pass and per-step scoring). Rules are "
-                        "installed ONCE per state in the parent; workers only "
-                        "read. >1 pays a per-worker import cost, so it only "
-                        "wins on big sets (measured 0.7x at 12 papers, 1.5x at "
-                        "60 on 8 cores).")
+                        "(baseline pass and per-step scoring). >1 pays a "
+                        "per-worker import cost, so it only wins on big sets "
+                        "(measured 0.7x at 12 papers, 1.5x at 60 on 8 cores).")
     p.add_argument("--score-every", type=int, default=1, metavar="N",
-                   help="after every Nth paper, parse and score ALL papers in "
-                        "--score-papers under the rule state as it stands, and "
-                        "append to trajectory/scores.jsonl. This is what makes "
-                        "the trajectory table a pure reader instead of a job "
-                        "that re-runs the whole run. Default 1 = every paper; "
-                        "raise it if the scoring set is large (cost is "
-                        "|score-papers| x |papers| parses). 0 = off.")
-    p.add_argument("--score-papers", default="",
-                   help="EXTRA papers to score under --score-every, on top of "
-                        "the pilot papers (which are always scored, since "
-                        "they are the trajectory table's rows). Comma "
-                        "list, or a split name (train/test) to pull that "
-                        "split from the metadata as a held-out set.")
+                   help="after every Nth paper, parse and score all pilot papers "
+                        "under the rule state as it stands, and append to "
+                        "trajectory/scores.jsonl. This is what makes the "
+                        "trajectory table a pure reader instead of a job that "
+                        "re-runs the whole run. Default 1 = every paper; 0 = off.")
     p.add_argument("--order", default="given",
                    choices=["given", "worst-first"],
                    help="Distillation order. 'worst-first' = hard-example "

@@ -3,7 +3,7 @@
 Every place in the project that asks "how similar are these two nodes?" should
 come here — cross-paper alignment (`graph_alignment`), extraction evaluation
 (`evaluate_extraction`), rule distillation (`distillation_analysis`,
-`silver_distillation_sequential`), and the discovery tasks. Comparing two
+`silver_distillation_merged`), and the discovery tasks. Comparing two
 *papers* and comparing two *extractions of the same paper* are the same
 operation with different flags, so they must not drift apart.
 
@@ -322,15 +322,13 @@ _METRICS = {"jaccard": jaccard_sets, "containment": containment_sets}
 # ---------------------------------------------------------------------------
 # Run-wide match metric — ONE variable, on purpose
 # ---------------------------------------------------------------------------
-# The distillation stack has two similarity wrappers:
-#   silver_distillation_sequential.jaccard_similarity  (Profile.SILVER)
-#   distillation_analysis.jaccard_similarity           (Profile.DISTILLATION)
-# The first scores baseline/post metrics, the second scores the prune gate.
-# They used to hold SEPARATE module globals, so a caller that set one and not
-# the other silently scored the two halves of a run by different metrics —
-# choose containment, still prune on jaccard. 14 of 16 call sites set only one.
+# The distillation stack scores baseline/post metrics and the prune gate with
+# distillation_analysis.jaccard_similarity (Profile.SILVER). There used to be two
+# wrappers with SEPARATE module globals, so a caller that set one and not the
+# other silently scored the two halves of a run by different metrics — choose
+# containment, still prune on jaccard. 14 of 16 call sites set only one.
 #
-# Both wrappers now read THIS variable at call time, so the two cannot diverge.
+# The wrapper reads THIS variable at call time, so the halves cannot diverge.
 # Set it through set_match_metric() rather than assigning module globals.
 MATCH_METRIC = "jaccard"
 

@@ -78,11 +78,10 @@ for p in (REPO / "scripts", REPO / "src" / "LLMVersion", REPO / "src"):
     if str(p) not in sys.path:
         sys.path.insert(0, str(p))
 
+import distill_common as C                             # noqa: E402
 import node_similarity as NS                           # noqa: E402
-import silver_distillation_merged as sdm               # noqa: E402
-import silver_distillation_sequential as seq           # noqa: E402
 
-TYPES = list(seq.FNAME_MAP)
+TYPES = C.TYPES
 # metrics (src/LLMVersion/node_metrics.py); the first is the headline. Config
 # "metrics" or --metrics overrides.
 DEFAULT_METRICS = ["m1g", "m1", "m3"]
@@ -297,22 +296,8 @@ def _parse_init(tex_dir, rules_dir):
 
 def _parse_one(pid):
     """(pid, [[type, raw latex, provenance]], seconds) for one paper."""
-    import contextlib
-    import io
-    from math_paper_parser import PaperParser
     t0 = time.perf_counter()
-    objs = []
-    main = seq._find_main_tex(_W["tex"] / pid / "source")
-    if main:
-        try:
-            graph = PaperParser(paper_id=pid, extraction_mode="rules", structure_types=TYPES,
-                                rules_dir=_W["rules"]).parse_file(str(main)).to_dict()
-            for o in graph.get("objects", {}).values():
-                raw = o.get("raw_latex") or o.get("statement") or ""
-                if o.get("kind") in TYPES and raw.strip():
-                    objs.append([o["kind"], raw, o.get("env_name") or ""])
-        except Exception as e:                                    # noqa: BLE001
-            print(f"  [warn] parse failed for {pid}: {type(e).__name__}: {e}", flush=True)
+    objs = [list(o) for o in C.parse_objects(pid, _W["tex"], TYPES, _W["rules"])]
     return pid, objs, round(time.perf_counter() - t0, 2)
 
 
@@ -373,7 +358,7 @@ class Strata:
             if self.loc is None:
                 import latex_facts as L
                 import prose_units as U
-                main = seq._find_main_tex(self.cfg["tex_dir"] / self.pid / "source")
+                main = L.find_main_tex(self.cfg["tex_dir"] / self.pid / "source")
                 self.loc = U.Locator(L.read_tex(str(main))) if main else None
             if self.loc is None:
                 self.memo.update({k: "other" for k, _ in todo})
@@ -405,9 +390,9 @@ def load_gold(cfg) -> dict:
                 jf = cfg["silver_dir"] / f"{pid}.json"
                 if jf.is_file():
                     for t in TYPES:
-                        seq.convert_t2_to_gold_csv(jf, t, gdir)
+                        C.convert_t2_to_gold_csv(jf, t, gdir)
             stamp.write_text(json.dumps(want))
-    return {t: sdm.load_gold_texts(gdir / seq.FNAME_MAP[t]) for t in TYPES}
+    return {t: C.load_gold_texts(gdir / C.FNAME_MAP[t]) for t in TYPES}
 
 
 def score_paper(cfg, pid, objs, gold) -> list:
@@ -452,7 +437,7 @@ _S: dict = {}
 def _score_init(cfg_path, gold_cache, metrics):
     _S["cfg"] = load_config(cfg_path)
     _S["cfg"]["metrics"] = metrics
-    seq.set_match_metric(_S["cfg"]["match_metric"])
+    NS.set_match_metric(_S["cfg"]["match_metric"])
     _S["gold"] = json.load(open(gold_cache, encoding="utf-8"))
 
 
@@ -505,7 +490,7 @@ def rule_states(cfg, name, arm, trajectory: bool) -> list:
         raise SystemExit(f"[{name}] not trained yet: run with --stages train,eval")
     states = [("final", d)]
     if trajectory:
-        states += [(s.name, s) for s in sdm.snapshot_dirs(d)]
+        states += [(s.name, s) for s in C.snapshot_dirs(d)]
     return states
 
 
@@ -742,7 +727,7 @@ def status(cfg) -> None:
         t = d / "train"
         if (t / "train_done.json").is_file():
             s = json.load(open(t / "train_done.json", encoding="utf-8"))
-            nsnap = len(sdm.snapshot_dirs(t))
+            nsnap = len(C.snapshot_dirs(t))
             nscored = len(list((d / "eval" / "scores").glob("step_*.csv")))
             ev = ("final rules scored" if (d / "eval" / "scores" / "final.csv").is_file()
                   else "eval pending") + f", learning curve {nscored}/{nsnap} snapshots"
@@ -782,7 +767,7 @@ def status(cfg) -> None:
 def run_job(args) -> None:
     """One arm: its train and eval stages (what `run` launches per arm)."""
     cfg = load_config(args.config, args.metrics)
-    seq.set_match_metric(cfg["match_metric"])
+    NS.set_match_metric(cfg["match_metric"])
     arm = cfg["arms"][args.arm]
     stages = args.stages.split(",")
     if "train" in stages:
