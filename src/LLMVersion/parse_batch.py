@@ -138,7 +138,14 @@ def run_batch(
         prompt_file: Optional[str] = None,
         structure_types: Optional[list] = None,
         safeguard_timeout: Optional[int] = None,
+        edge_model: Optional[str] = None,
 ) -> None:
+    edges = None
+    if edge_model:                                  # opt-in learned definition -> user edges (alg3/edges.py)
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "alg3"))
+        import edges as _edges                      # noqa: E402
+        edges = (_edges, _edges.EdgeModel(edge_model))
+        print(f"[INFO] Learned definition edges: {edge_model}")
     print(
         f"[INFO] Fetching arXiv IDs via fetch_arxiv_batch "
         f"(start={start_date}, end={end_date}, category={category}, regex_id={regex_id})"
@@ -249,7 +256,10 @@ def run_batch(
             return
         (day_dir / "json").mkdir(parents=True, exist_ok=True)
         json_path = day_dir / "json" / f"{versioned_id}_{suffix}.json"
-        json_path.write_text(json.dumps(graph.to_unified_dict(), indent=2), encoding="utf-8")
+        d = graph.to_unified_dict()
+        if edges:
+            edges[0].add_edges(d, edges[1])
+        json_path.write_text(json.dumps(d, indent=2), encoding="utf-8")
         print(f"[OK]   Saved {json_path}")
         if draw_graphs:
             (day_dir / "png").mkdir(parents=True, exist_ok=True)
@@ -492,6 +502,16 @@ def main():
         ),
     )
     parser.add_argument(
+        "--edge-model",
+        type=str,
+        default=None,
+        help=(
+            "Optional: a learned definition -> user edge model (extractors/edges/<id>, "
+            "trained by alg3/edges.py) applied after parsing. Default: off, i.e. only the "
+            "parser's own edges."
+        ),
+    )
+    parser.add_argument(
         "--tex-dir",
         type=str,
         default=None,
@@ -541,6 +561,7 @@ def main():
         tex_dir=args.tex_dir,
         rules_dir=args.rules_dir,
         safeguard_timeout=args.safeguard,
+        edge_model=args.edge_model,
     )
 
     print("[INFO] Done.")

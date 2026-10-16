@@ -266,6 +266,8 @@ def op_parse(args) -> None:
         cmd += ["--tex-dir", args.tex_dir]
     if args.rules_dir:
         cmd += ["--rules-dir", str(Path(args.rules_dir).resolve())]
+    if getattr(args, "edge_model", None):
+        cmd += ["--edge-model", str(Path(args.edge_model).resolve())]
     if args.safeguard is not None:
         cmd += ["--safeguard", str(args.safeguard)]
 
@@ -818,6 +820,9 @@ def main():
                              "extractor dir (extractors/rules/<id>) or any dir "
                              "holding <type>_eval/distilled_rules.py. Default: "
                              "src/LLMVersion/ (the production symlinks).")
+    parser.add_argument("--edge-model", type=str, default=None,
+                        help="Optional learned definition -> user edge model "
+                             "(extractors/edges/<id>, alg3/edges.py). Default: off.")
     parser.add_argument("--tex-dir", type=str, default=None,
                         help="Directory to search for local .tex files instead of "
                              "the default FULL_PAPERS_DIR from config. Useful when "
