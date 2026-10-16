@@ -310,6 +310,7 @@ def _fit_fontsize(line, avail_units, base=12, floor=7.0):
 # predicts failures with it and cross-paper comparison needs the same rewrite
 # to compare like with like, and neither should have to import a figure module
 # to reach a dict. Re-exported so every existing reference keeps working.
+import latex_macros                                              # noqa: E402
 from latex_macros import (                                       # noqa: E402
     _LATEX_FIXES, _LATEX_REGEX_FIXES, _KNOWN_MATHTEXT_COMMANDS,
     _BARE_MATH_NAMES, _fallback_unknown_commands,
@@ -328,8 +329,8 @@ def _statement_render_source(n):
     raw = _as_text(n.get("raw_latex")).strip()
     stmt = _as_text(n.get("statement"))
     src = raw if _re.search(r'[$\\]', raw) else stmt
-    src = _re.sub(r'\\label\s*\{[^}]*\}', '', src)
-    src = _re.sub(r'\s+', ' ', src).strip()
+    src = latex_macros.display_tex(src)                 # text commands, anchors and drawings outside the math
+    src = _re.sub(r'[ \t\r\f\v]+', ' ', src).strip()
     return src
 
 
@@ -2789,6 +2790,34 @@ def generate_interactive_html(data, svg_path, html_path):
         "mathbbm": [r"\mathbb{#1}", 1], "mathbbmss": [r"\mathbb{#1}", 1], "mathds": [r"\mathbb{#1}", 1],
         "ensuremath": [r"#1", 1],
         "qedhere": "", "qed": "",
+        # commands of other packages (amstex, physics, nicefrac, graphicx, hyperref, xspace, mathtools, ...)
+        # that MathJax lacks: the nearest MathJax form, or the content alone
+        "bold": [r"\boldsymbol{#1}", 1], "pmb": [r"\boldsymbol{#1}", 1], "mathbbold": [r"\mathbb{#1}", 1],
+        "mathdutchcal": [r"\mathcal{#1}", 1], "mathssf": [r"\mathsf{#1}", 1], "euscr": [r"\mathscr{#1}", 1],
+        "EuScript": [r"\mathscr{#1}", 1], "mathlarger": ["#1", 1], "mathsmaller": ["#1", 1],
+        "Tilde": [r"\widetilde{#1}", 1], "Bar": [r"\overline{#1}", 1], "Hat": [r"\widehat{#1}", 1],
+        "widecheck": [r"\check{#1}", 1], "underbar": [r"\underline{#1}", 1],
+        "underaccent": [r"\underset{#1}{#2}", 2], "accentset": [r"\overset{#1}{#2}", 2],
+        "dag": r"\dagger", "ddag": r"\ddagger", "vcentcolon": r"\mathrel{:}", "enskip": r"\enspace",
+        "nicefrac": [r"{}^{#1}\!/\!{}_{#2}", 2], "sfrac": [r"{}^{#1}\!/\!{}_{#2}", 2],
+        "operatornamewithlimits": [r"\operatorname*{#1}", 1],
+        "dd": r"\mathrm{d}", "qty": [r"\left(#1\right)", 1], "abs": [r"\left\lvert #1\right\rvert", 1],
+        "norm": [r"\left\lVert #1\right\rVert", 1], "mqty": [r"\begin{matrix}#1\end{matrix}", 1],
+        "smqty": [r"\begin{smallmatrix}#1\end{smallmatrix}", 1], "pdv": [r"\frac{\partial #1}{\partial #2}", 2],
+        "xspace": "", "fam": "", "protect": "", "phantomsection": "", "selectfont": "", "allowbreak": "",
+        "break": "", "medskip": "", "smallskip": "", "bigskip": "", "noindent": "", "begingroup": "", "endgroup": "",
+        "delimsize": "", "nobreak": "", "relax": "",
+        "texorpdfstring": ["#1", 2], "scalebox": ["#2", 2], "resizebox": ["#3", 3], "rotatebox": ["#2", 2],
+        "raisebox": ["#2", 2], "adjustbox": ["#2", 2], "scaleto": ["#1", 2], "smashoperator": ["#1", 1],
+        "makebox": [r"\text{#2}", 2, ""], "parbox": [r"\text{#2}", 2], "lefteqn": ["#1", 1],
+        "intertext": [r"\text{#1}", 1], "textsuperscript": [r"^{\text{#1}}", 1], "textcircled": [r"(#1)", 1],
+        "setlength": ["", 2], "index": ["", 1], "refstepcounter": ["", 1], "pushQED": ["", 1],
+        "hyperref": ["#2", 2, ""], "hypertarget": ["#2", 2], "hyperlink": ["#2", 2],
+        "L": r"\text{Ł}", "l": r"\text{ł}", "i": r"\imath", "j": r"\jmath", "Sha": r"\text{Ш}",
+        "fint": r"{\int\!\!\!\!\!\!-}", "Mod": [r"\;(\mathrm{mod}\ #1)", 1], "addtocounter": ["", 2],
+        "normalfont": "", "footnotesize": "", "scriptsize": "", "small": "", "large": "", "Large": "",
+        "offinterlineskip": "", "mathpalette": ["#2", 2],
+        "on": [r"\operatorname{#1}", 1], "bgroup": "", "egroup": "", "aftergroup": "",
         # stmaryrd / cmll symbols MathJax lacks
         "with": r"\mathbin{\&}", "parr": r"\mathbin{\unicode{x214B}}", "llbracket": r"[\![", "rrbracket": r"]\!]",
         "llparenthesis": r"(\!|", "rrparenthesis": r"|\!)", "varoast": r"\circledast", "bigsqcap": r"\mathop{\Large\sqcap}",
@@ -2807,7 +2836,7 @@ def generate_interactive_html(data, svg_path, html_path):
 <head>
 <meta charset="utf-8">
 <title>{_esc(title)}</title>
-<script>MathJax = {{loader: {{load: ['[tex]/boldsymbol']}}, tex: {{packages: {{'[+]': ['boldsymbol']}}, inlineMath: [['$','$']], macros: {_mj_macros_json}}}, startup: {{typeset: false}}}};</script>
+<script>MathJax = {{loader: {{load: ['[tex]/boldsymbol']}}, tex: {{packages: {{'[+]': ['boldsymbol']}}, inlineMath: [['$','$'], ['\\\\(','\\\\)']], displayMath: [['$$','$$'], ['\\\\[','\\\\]']], macros: {_mj_macros_json}}}, startup: {{typeset: false}}}};</script>
 <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
 <style>
 body {{ font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #fafafa; }}

@@ -137,7 +137,7 @@ def box_tex(s, n=SHORT_CHARS):
 
     Cut at about n visible characters, never inside $...$; references and labels are
     dropped. A bare script outside math (a name such as `S_N`) is put inside $...$."""
-    s = va._as_text(s)
+    s = va.latex_macros.display_tex(va._as_text(s))        # anchors, side notes, drawings, text commands
     s = re.sub(r"\\label\{[^}]*\}|\\(?:notag|nonumber)\b", " ", s)
 
     def inline(m):                                       # display math -> one inline formula
@@ -146,7 +146,8 @@ def box_tex(s, n=SHORT_CHARS):
     s = re.sub(r"\\begin\{(?:equation|align|gather|multline|eqnarray|displaymath)\*?\}(.*?)"
                r"\\end\{(?:equation|align|gather|multline|eqnarray|displaymath)\*?\}|\$\$(.*?)\$\$|\\\[(.*?)\\\]",
                inline, s, flags=re.S)
-    s = re.sub(r"\\(?:begin|end)\{[^}]*\}", " ", s)
+    # text environments go; those that live inside a formula (cases, matrices, aligned) stay for MathJax
+    s = re.sub(r"\\(?:begin|end)\{(?!(?:cases|[pbBvV]?matrix|smallmatrix|array|aligned|gathered|split|subarray)\*?\})[^}]*\}", " ", s)
     s = re.sub(r"\\(?:eq|c|C|auto)?ref\{[^}]*\}", "(ref)", s)
     s = re.sub(r"\\cite[pt]?\*?(?:\[[^\]]*\])?\{[^}]*\}", "[cite]", s)
     s = re.sub(r"\\\(|\\\)", "$", s)

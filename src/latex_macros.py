@@ -152,6 +152,9 @@ def unwrap_transparent(text, max_depth=_MAX_PASSES):
         arg, end = _read_group(text, m.end() - 1)
         if m.group(1) in ("mbox", "hbox") and _in_math_region(text, m.start()):
             arg = "\\text{" + arg + "}"
+        elif m.group(1) in ("norm", "abs") and _in_math_region(text, m.start()):
+            # the bars ARE the meaning: \norm{x}_{L^2} without them reads x_{L^2}
+            arg = ("\\left\\| %s \\right\\|" if m.group(1) == "norm" else "\\left| %s \\right|") % arg
         text = _splice(text[:m.start()], arg, text[end:])
     return text
 
@@ -240,6 +243,21 @@ def resolve_text_fonts(text, max_depth=_MAX_PASSES):
         else:
             repl = body
         t = _splice(t[:m.start()], repl, t[end:])
+    # The rest is for text only: in math, `{}` is an empty atom (`{}_\star`, `\genfrac{}{}`),
+    # `{\rm epi}` and `\ ` are what MathJax typesets, and dropping them breaks the formula.
+    return _outside_math(t, lambda u: _text_fonts(u, max_depth))
+
+
+def _outside_math(t, f):
+    r"""f applied to the parts of t outside math ($..$, \(..\), \[..\], display environments)."""
+    out, pos = [], 0
+    for m in _MATH_SPAN_RE.finditer(t):
+        out += [f(t[pos:m.start()]), m.group(0)]
+        pos = m.end()
+    return "".join(out) + f(t[pos:])
+
+
+def _text_fonts(t, max_depth):
     # `{\em foo}` — the braces exist ONLY to scope the declaration, so they go
     # with it. Dropping just the command leaves `{ foo}`, and outside math a
     # brace is a literal character the reader would see.
@@ -290,8 +308,14 @@ def _substitute(expansion, args):
     """Fill `#1`, `#2`, ... in a macro body."""
     out = expansion
     for k, a in enumerate(args, 1):
-        out = out.replace("#%d" % k, a)
+        # \left\lVert#1 with the argument W must stay two tokens, not \lVertW
+        out = re.sub(r"(\\[A-Za-z]+)?#%d" % k, lambda m: (m.group(1) + " " if m.group(1) and a[:1].isalpha() else m.group(1) or "") + a, out)
     return out
+
+
+# a command that takes the next token as its argument: \tilde\SS, x^\SS must get the WHOLE expansion
+_TAKES_ARG = re.compile(r"(?:\\(?:tilde|hat|bar|vec|dot|ddot|dddot|check|breve|acute|grave|wide[a-z]+|over[a-z]+|under[a-z]+|"
+                        r"math[a-z]+|text[a-z]*|boldsymbol|bm|pmb|sqrt|[dt]?frac|binom|operatorname\*?|mathring|bold|Tilde|Bar|Hat)|[_^])\s*$")
 
 
 # a control word right after a defining command is the name being defined
@@ -313,6 +337,9 @@ def expand_macros(text, macros, max_depth=_MAX_DEPTH):
     if not text or not macros:
         return text
     text = str(text)
+    for k, v in macros.items():                       # \abs*{x}, \abs[\big]{x}: the size does not matter here
+        if v.get("paired"):
+            text = re.sub(r"(\\%s)\s*(?:\*|\[\\?[A-Za-z]*\])" % re.escape(k), r"\1", text)
     names = sorted(macros, key=len, reverse=True)
     if not names:
         return text
@@ -395,6 +422,8 @@ def expand_macros(text, macros, max_depth=_MAX_DEPTH):
             # "inX". Restore the boundary the tokeniser implied.
             if sub[:1].isalnum() and _CS_TAIL.search(tail):
                 out.append(" ")          # same rule as _splice; see there
+            if _TAKES_ARG.search(tail) and not re.fullmatch(r"\s*(?:\\[A-Za-z]+|[^\\\s]|\{.*\})\s*", sub, re.S):
+                sub = "{%s}" % sub.strip()      # \tilde\SS -> \tilde{\mathbb{S}\xspace}, not \tilde\mathbb{S}...
             out.append(sub)
             if sub:
                 tail = sub[-16:]
@@ -600,6 +629,34 @@ _TEXT_SYMBOLS = [
 
 _DISPLAY_MATH = re.compile(r"(\\begin\{(equation|align|gather|multline|eqnarray|displaymath|flalign|alignat|math)\*?\}"
                            r".*?\\end\{\2\*?\}|\\\[.*?\\\]|\\\(.*?\\\))", re.S)
+
+
+_INLINE_TIKZ = re.compile(r"\\tikz\b(?:\s*\[[^\]]*\])?\s*(?:\{(?:[^{}]|\{[^{}]*\})*\}|[^;$]*;)")
+_DIAGRAM_ENV = re.compile(r"\\begin\{(tikzpicture|tikzcd|picture|diagram|CD)\}.*?\\end\{\1\}", re.S)
+_DROP_ARG = re.compile(r"\\(?:label|index|footnote|footnotemark|marginpar|hypertarget|phantomsection)\s*(?:\[[^\]]*\])?\s*"
+                       r"(?:\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})?")
+
+
+def display_tex(text):
+    r"""A statement as the side panel shows it: math left for MathJax, the text around it cleaned.
+
+    Drops anchors and side notes (\label, \index, \footnote), shows a drawn diagram (xymatrix,
+    tikzpicture, tikzcd) as "[diagram]" (MathJax cannot draw it), unwraps text environments and
+    font commands, and turns text-mode symbols into characters. Inside math nothing changes but
+    \label."""
+    if not text:
+        return text
+    t = _DROP_ARG.sub(" ", str(text))
+    t = _DIAGRAM_ENV.sub(" [diagram] ", t)
+    t = _INLINE_TIKZ.sub(" [figure] ", t)
+    if "\\xymatrix" in t:                                 # a formula holding an xymatrix: the whole formula
+        t = _MATH_SPAN_RE.sub(lambda m: " [diagram] " if "\\xymatrix" in m.group(0) else m.group(0), t)
+    t = strip_text_environments(t)
+    t = resolve_text_fonts(t)
+    t = unwrap_transparent(t)
+    t = text_mode_symbols(t)
+    t = _outside_math(t, lambda u: re.sub(r"\\item\s*(?:\[([^\]]*)\])?", lambda m: "\n" + (m.group(1) or "•") + " ", u))
+    return t
 
 
 def text_mode_symbols(text):
@@ -1072,13 +1129,13 @@ FORMS = [
     # separated only by optional groups backtrack cubically on a long run of
     # blanks after a definition with no body (1909.03201: `\newcommand{\email}`
     # then 20K spaces hung the 100K parse).
-    re.compile(r'\\(?:new|renew|provide)command\*?\s*\{?\\(?P<name>[A-Za-z@]+)\}?\s*'
+    re.compile(r'\\(?:new|renew|provide)command\*?\s*\{?\s*\\(?P<name>[A-Za-z@]+|\d)\s*\}?\s*'
                r'(?:\[(?P<nargs>\d+)\]\s*)?(?:\[(?P<opt>[^\]]*)\]\s*)?\{'),
     # \def\foo{body}  /  \def\foo#1{body}
     re.compile(r'(?:\\(?:long|global|protected|outer)\s*)*'
                r'\\(?:e|g|x)?def\s*\\(?P<name>[A-Za-z@]+)\s*(?:#\d\s*)*\{'),
     # \DeclareMathOperator{\foo}{body} — see OPERATOR_FORM below
-    re.compile(r'\\DeclareMathOperator\*?\s*\{\\(?P<name>[A-Za-z@]+)\}\s*\{'),
+    re.compile(r'\\DeclareMathOperator\*?\s*\{?\s*\\(?P<name>[A-Za-z@]+)\s*\}?\s*\{'),
     # \newenvironment{foo}{begin}{end} — name has no backslash
     re.compile(r'\\(?:new|renew)environment\*?\s*\{(?P<name>[A-Za-z@*]+)\}\s*'
                r'(?:\[\d+\]\s*)?\{'),
@@ -1138,10 +1195,14 @@ _LOW_LEVEL = re.compile(r"\\(?:if[a-zA-Z]*|else|fi|usefont|fontencoding|selectfo
                         r"resizebox|CYR[A-Z]+)(?![a-zA-Z])|@")
 
 
+_NATIVE = {"left", "right", "middle"}                  # never replaced by a paper's spacing hack around them
+
+
 def renderable(macros):
     """Definitions MathJax can typeset: one built from low-level TeX (\\mathchoice, \\raise, font
     switches, a style file's internals) becomes its first argument (\\vlbin{\\otimes} -> \\otimes;
     only spacing is lost) or, without arguments, its name set upright."""
+    macros = {k: v for k, v in macros.items() if k not in _NATIVE}
     return {k: v if not _LOW_LEVEL.search(v.get("expansion") or "") else
             dict(v, expansion="#1" if v.get("arity") else r"\mathrm{%s}" % k) for k, v in macros.items()}
 
@@ -1201,4 +1262,48 @@ def read_definitions(src, clean=True, spans=False):
             rec["span"] = (m.start(), m.end())
             rec["spans"] = out.get(m.group("name"), {}).get("spans", []) + [(m.start(), m.end())]
         out[m.group("name")] = rec
+    # \DeclarePairedDelimiter\abs{\lvert}{\rvert}: \abs{x}, \abs*{x}, \abs[\big]{x} -> \left\lvert x \right\rvert
+    G = r"\{((?:\\[{}]|[^{}]|\{(?:\\[{}]|[^{}]|\{[^{}]*\})*\})*)\}\s*"   # one argument; \{ and \} are not braces
+    for m in re.finditer(r"\\DeclarePairedDelimiter(?P<x>XPP|X)?\s*\{?\s*\\(?P<name>[A-Za-z@]+)\s*\}?\s*(?:\[(?P<n>\d)\]\s*)?", src):
+        # plain: {L}{R}; X: [n]{L}{R}{body}; XPP: [n]{pre}{L}{R}{post}{body}
+        k = {"XPP": 5, "X": 3}.get(m.group("x"), 2)
+        parts, j = [], m.end()
+        for _ in range(k):                               # arguments at any depth of braces
+            while j < len(src) and src[j].isspace():
+                j += 1
+            if j >= len(src) or src[j] != "{":
+                break
+            arg, j = group(src, j)
+            if arg is None:
+                break
+            parts.append(arg.strip())
+        if len(parts) < k:
+            continue
+        pre, l, r, post, body = (parts if k == 5 else ["", parts[0], parts[1], "", parts[2]] if k == 3 else ["", *parts, "", "#1"])
+        body = re.sub(r"\\delimsize\s*", "", body)
+        # \left takes one delimiter: a size built into the definition (\big\lvert) goes
+        lr = lambda d: (lambda d: d if d.startswith("\\") else " " + (d or "."))(re.sub(r"\\[bB]igg?[lrm]?(?![A-Za-z])\s*", "", d).strip())
+        rec = {"expansion": r"%s\left%s %s \right%s%s" % (pre, lr(l), body, lr(r), post),
+               "kind": "math", "arity": int(m.group("n") or 1), "paired": True}
+        if spans:
+            rec.update(form="command", span=(m.start(), m.end()), spans=[(m.start(), m.end())])
+        out[m.group("name")] = rec
+    # \NewDocumentCommand\foo{mm}{body}: only mandatory arguments (xparse optional ones are not read)
+    for m in re.finditer(r"\\(?:New|Renew|Provide|Declare)DocumentCommand\s*\{?\s*\\(?P<name>[A-Za-z@]+)\s*\}?\s*\{(?P<spec>\s*(?:m\s*)*)\}\s*\{", src):
+        body, end = group(src, m.end() - 1)
+        if body is not None:
+            rec = {"expansion": re.sub(r"\s+", " ", body).strip(), "kind": classify(body), "arity": m.group("spec").count("m")}
+            if spans:
+                rec.update(form="command", span=(m.start(), end), spans=[(m.start(), end)])
+            out[m.group("name")] = rec
+    # \let\s=\mathcal, \let\eps\varepsilon: the name stands for the other command
+    for m in re.finditer(r"\\let\s*\\(?P<name>[A-Za-z@]+)\s*=?\s*(?P<body>\\[A-Za-z@]+)(?![A-Za-z@])", src):
+        if m.group("body")[1:] != m.group("name"):
+            rec = {"expansion": m.group("body"), "kind": classify(m.group("body")), "arity": 0}
+            if spans:
+                rec.update(form="def", span=(m.start(), m.end()), spans=[(m.start(), m.end())])
+            out[m.group("name")] = rec
+    # a placeholder that names only itself (\newcommand{\eps}{\eps}) cannot be expanded
+    for k in [k for k, v in out.items() if re.fullmatch(r"\\%s\s*" % re.escape(k), v.get("expansion") or "")]:
+        del out[k]
     return out
