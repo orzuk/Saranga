@@ -296,22 +296,34 @@ _BOX_LINE = re.compile(r"(?i)(theorem|thm\.?|lemma|lem\.?|proposition|prop\.?|co
                        r"claim|section|sec\.?|§)\s*[\dA-Z][\d.]*[a-z]?")
 
 
-def find_fig_page(pdf: Path, caption: str, fig_no: int = 0) -> int:
+def find_fig_page(pdf: Path, caption: str, fig_no: int = 0, names=()) -> int:
     """The PDF page whose text best matches the caption (1-based; 0 if not found); the page
-    printing "Figure <fig_no>:" wins (captions of a paper's diagrams can be near-identical)."""
+    printing "Figure <fig_no>:" wins (captions of a paper's diagrams can be near-identical).
+    names: the boxes' printed names as our source numbers them ("Lemma 5.12"); a PDF holding two
+    versions of the paper then shows the figure of the version our LaTeX is."""
     words = [w for w in re.findall(r"[A-Za-z]{5,}", caption)]
     words = list(dict.fromkeys(words))[-14:] or ["figure"]
     txt = subprocess.run(["pdftotext", "-layout", str(pdf), "-"], capture_output=True, text=True).stdout
-    best, best_n = 0, 0
+    scored = []
     for p, page in enumerate(txt.split("\f"), start=1):     # pdftotext separates pages by form feeds
         flat = re.sub(r"\s+", " ", page).lower()
         hit = sum(w.lower() in flat for w in words) + (3 if "figure" in flat and words[0].lower() in flat else 0)
-        hit += 3 * sum(1 for ln in page.splitlines()                 # "Lemma 4.3" alone: a box
-                       for cell in re.split(r"\s{3,}", ln.strip()) if _BOX_LINE.fullmatch(cell))
+        cells = sum(1 for ln in page.splitlines()                    # "Lemma 4.3" alone: a box
+                    for cell in re.split(r"\s{3,}", ln.strip()) if _BOX_LINE.fullmatch(cell))
+        hit += 3 * cells
         hit += 100 * bool(fig_no and re.search(rf"(?m)^\s*(?:Figure|Fig\.)\s*{fig_no}\s*[:.]", page))
-        if hit > best_n:
-            best, best_n = p, hit
-    return best
+        named = sum(1 for nm in names if re.search(r"(?<![\w.])" + re.escape(nm).replace(r"\ ", r"\s+") + r"(?![\w.]*\d)", page))
+        scored.append((hit, named, p, cells))
+    if not scored or max(scored)[0] <= 0:
+        return 0
+    top = max(h for h, *_ in scored)
+    # the names decide only between copies of the drawing (half the best score, boxes of their own): a PDF
+    # holding two versions of the paper prints the figure twice, numbered differently
+    best = max(scored, key=lambda x: (x[0], -x[2]))
+    full = [x for x in scored if len(names) >= 4 and x[1] == len(names) and x[0] >= 0.5 * top and x[3] >= 3]
+    if full and best[1] < len(names):                    # another copy prints every box as our source numbers it
+        return max(full, key=lambda x: (x[0], -x[2]))[2]
+    return best[2]
 
 
 def fig_number(tex: str, env: str) -> int:
@@ -433,6 +445,7 @@ def page_hint(folder: Path, out: dict) -> str:
 
 def add_pdf(folder: Path, out: dict) -> None:
     """Fetch the arXiv PDF and render the page(s) holding the figure."""
+    names = sorted({p for n in out.get("nodes", []) for p in n.get("printed", []) if re.search(r"\d", p)})
     if fetch_pdf(out["arxiv"], folder / "paper.pdf"):
         out["pdf"] = "paper.pdf"
         tmp = Path(tempfile.mkdtemp())                   # the PDF tools are slow on the Windows drive
@@ -441,8 +454,8 @@ def add_pdf(folder: Path, out: dict) -> None:
         figs = [f for f in all_figures(folder) if re.search(r"tikzpicture|tikzcd|xymatrix|\\xy\b|picture", f.get("env", ""))]
         flat = re.sub(r"\s+", " ", (folder / "paper.tex").read_text(encoding="utf-8", errors="replace"))
         pages = list(dict.fromkeys(find_fig_page(local, page_hint(folder, {"caption": f.get("caption", ""), "figure_latex": f.get("env", "")}),
-                                                 fig_number(flat, f.get("env", ""))) for f in figs)) \
-            if len(figs) > 1 else [find_fig_page(local, page_hint(folder, out))]
+                                                 fig_number(flat, f.get("env", "")), names) for f in figs)) \
+            if len(figs) > 1 else [find_fig_page(local, page_hint(folder, out), names=names)]
         pages = sorted(p for p in pages if p)
         out["fig_page"] = pages[0] if pages else 0
         if pages:                                # each diagram's page; one diagram: also the next (figures float)
