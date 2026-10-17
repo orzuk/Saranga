@@ -90,7 +90,8 @@ def short_name(s, n=100):
 
 def strip_tex(s: str, math=False) -> str:
     """Box text as plain words; with math=True its $...$ formulas are kept (the viewer typesets them)."""
-    s = (s or "").replace("\\\\", " "); s = re.sub(r"\\S(?![A-Za-z])", "§", s)   # TikZ line breaks; section sign
+    s = re.sub(r"\\\\\*?(?:\s*\[[^\]]*\])?", " ", s or ""); s = re.sub(r"\\S(?![A-Za-z])", "§", s)   # line breaks (\\[-2pt]); section sign
+    s = re.sub(r"\\[A-Za-z]+\*?\s*\{[^{}\s]*:[^{}\s]*\}", " ", s)   # \Lem{lem:x}, \Cref{thm:y}: a reference macro, named elsewhere
     s = re.sub(r"\\(?:color|textcolor|nodepart)\s*\{[^}]*\}", " ", s)   # formatting, not text
     s = re.sub(r"\\(ref|cref|Cref|eqref|label)\{[^}]*\}", "", s)
     plain = lambda t: re.sub(r"[{}$~\\]+", " ", re.sub(r"\s+", " ", re.sub(r"\\[A-Za-z]+\*?(?:\[[^\]]*\])*", " ", t))).strip()
@@ -116,6 +117,16 @@ def _type_word(w: str) -> str:
     w = w.lower().rstrip("s") if w.lower() not in ("ies",) else w.lower()
     w = re.sub(r"corollarie$|corollar$", "corollary", w)
     return _TYPE_WORD.get(w, w)
+
+
+_GENERIC_WORDS = {"lemma", "lemmas", "theorem", "theorems", "proposition", "corollary", "claim", "main", "result", "results",
+                  "proof", "step", "steps", "the", "of", "a", "an", "key", "technical", "auxiliary", "section", "part"}
+
+
+def _plain_words(s: str) -> str:
+    """Lower-case words of a box or a title: TeX commands, math and punctuation gone."""
+    s = re.sub(r"\$[^$]*\$|\\[A-Za-z]+\*?|\\.", " ", s or "")
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9&,;+/ -]", " ", s.lower())).strip()
 
 
 def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict) -> tuple[dict, list, list]:
@@ -200,6 +211,20 @@ def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict)
                                  re.sub(r"\s+", " ", n.get("raw_latex") or "").find(head[:40]) >= 0), None)
                 if node and node in ours:
                     hits.append(node)
+        by_typed, by_title = bool(hits) and not refs, False
+        if not hits and not refs and not cited and not secs:   # named by its title: "recursion & key lemma"
+            for ph in re.split(r"\s*(?:&|\band\b|,|;|\+|/)\s*", _plain_words(text)):
+                if len(ph) < 4 or len(ph.split()) == 1 and ph in _GENERIC_WORDS:
+                    continue
+                cand = [f for f in facts.values() if f.get("optarg") and f.get("number")
+                        and re.search(r"(?<![a-z])" + re.escape(ph) + r"(?![a-z])", _plain_words(f["optarg"]))]
+                if len(cand) != 1:                        # no result of that title, or several: leave it
+                    continue
+                f = cand[0]
+                node = next((labels[l]["node"] for l in f.get("labels") or [] if l in labels), None)
+                if node and node in ours:
+                    hits.append(node); names.append(f"{f.get('display') or f.get('type', '').capitalize()} {f['number']}")
+                    by_title = True
         hits = list(dict.fromkeys(hits))
         # the same result drawn twice in one figure is one node; each figure is kept as drawn (scoring
         # joins the figures through maps_to). Numbers typed by hand can be stale: flagged for review
@@ -231,10 +256,11 @@ def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict)
         nodes.append({"id": gid, "type": typ, "name": name, "statement": stmt,
                       "origin": "paper", "tags": ["diagram", status], "maps_to": hits,   # never hidden by the viewer
                       "labels": [r["label"] for r in refs]}
+                     | ({"pos": [*dn["pos"][:2], dn.get("diagram", 0)]} if dn.get("pos") else {})
                      | ({"section": fig_title(diag["diagrams"][dn.get("diagram", 0)])} if sectioned else {}))
         node_rows.append({"gid": gid, "box_text": text[:200], "refs": [r["label"] for r in refs], "printed": names,
                           "maps_to": hits, "our_types": [ours[h].get("type") for h in hits],
-                          "status": status, "typed": bool(hits) and not refs, "diagram": dn.get("diagram", 0) + 1})
+                          "status": status, "typed": by_typed, "by_title": by_title, "diagram": dn.get("diagram", 0) + 1})
     edges, edge_rows = [], []
     for e in diag.get("edges", []):
         s, t = idmap.get(e["from"]), idmap.get(e["to"])
@@ -262,6 +288,12 @@ def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict)
         if gid_of[fg, h] != idmap[box]:
             edges.append({"source": gid_of[fg, h], "target": idmap[box], "type": "uses", "confidence": 1.0})
             edge_rows.append({"source": gid_of[fg, h], "target": idmap[box], "directed": True, "stated_in_box": True})
+    # a section box that no arrow touches only groups the boxes drawn in it (a frame titled "Section 2"): not a node
+    touched = {e["source"] for e in edges} | {e["target"] for e in edges}
+    framed = {r["gid"] for r in node_rows if r["status"] == "section" and r["gid"] not in touched}
+    if framed:
+        nodes = [n for n in nodes if n["id"] not in framed]
+        node_rows = [r for r in node_rows if r["gid"] not in framed]
     if sectioned:                                       # a figure that is not about results (a motivating DAG,
         status = {r["gid"]: r["status"] for r in node_rows}   # a map of sections) goes when another figure is
         share = {}
@@ -434,6 +466,13 @@ def reparse(folder: Path) -> list:
         for code in f.get("picture", []):
             graphs.append(dict(dp.parse_picture(dp.strip_comments(code), lmap, macros, dp.unit_em(tex[:tex.find(code[:60])] + f.get("env", "").split(code[:60])[0])),
                                format="picture", fig_idx=f.get("fig_idx"), fig_no=f["fig_no"], caption=f.get("caption", "")))
+    for g in graphs:                                     # each box's place in the drawing, y upwards
+        for n in g.get("nodes", []):
+            rc = re.fullmatch(r"r(\d+)c(\d+)", str(n.get("id")))
+            if not n.get("pos") and n.get("box"):
+                n["pos"] = [round(n["box"][0] + n["box"][2] / 2, 3), round(n["box"][1] + n["box"][3] / 2, 3)]
+            elif not n.get("pos") and rc and g.get("format") in ("xymatrix", "tikzcd"):
+                n["pos"] = [int(rc.group(2)), -int(rc.group(1))]
     # a drawing with boxes but no arrows (a plot, a Venn picture) is not a dependency diagram
     graphs = sorted((g for g in graphs if g.get("nodes") and g.get("edges")), key=lambda g: g.get("fig_no") or 0)
     if graphs:
@@ -466,8 +505,10 @@ def add_pdf(folder: Path, out: dict) -> None:
         shutil.copy(folder / "paper.pdf", local)
         figs = [f for f in all_figures(folder) if re.search(r"tikzpicture|tikzcd|xymatrix|\\xy\b|picture", f.get("env", ""))]
         flat = re.sub(r"\s+", " ", live_tex((folder / "paper.tex").read_text(encoding="utf-8", errors="replace")))   # as reparse numbers them
-        gold_f = folder / "gold.json"                     # only the figures kept in the graph
+        gold_f, tikz_f = folder / "gold.json", folder / "graph_tikz.json"     # only the figures kept in the graph
         kept = {int(x) for x in re.findall(r'"section":\s*"Figure (\d+):', gold_f.read_text(encoding="utf-8"))} if gold_f.is_file() else set()
+        if not kept and tikz_f.is_file():                 # one figure kept: the one the diagrams were parsed from
+            kept = {d.get("fig_no") for d in json.loads(tikz_f.read_text(encoding="utf-8")) if d.get("fig_no")}
         if kept and len(figs) > 1:
             figs = [f for f in figs if fig_number(flat, f.get("env", "")) in kept] or figs
         pages = list(dict.fromkeys(find_fig_page(local, page_hint(folder, {"caption": f.get("caption", ""), "figure_latex": f.get("env", "")}),

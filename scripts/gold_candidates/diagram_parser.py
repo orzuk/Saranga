@@ -631,6 +631,8 @@ def parse_tikz(code, lmap, macros, styles=()):
     pending = fixed
     edges = _wire_edges(pending, nodes, resolve, lmap, macros)
     for n in nodes.values():
+        if n.get("_xy"):                                 # where the authors put it (the viewer can draw it there)
+            n["pos"] = [round(v, 3) for v in n["_xy"]]
         n.pop("_xy", None); n.pop("_ext", None); n.pop("_label", None)
     return {"nodes": list(nodes.values()), "edges": edges}
 

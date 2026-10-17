@@ -59,7 +59,8 @@ window.dispId = window.dispId || function (id) {
     level: G.level, open: {}, proofs: {}, focus: null, k: 1, selected: null,
     show: { ext: false, aux: true, ghosts: false, low: true, implied: true,
             back: true, mention: true, nested: true },
-    tred: false, search: '', openOrder: [], ctx: null, ctxNow: true, ctxN: 0
+    tred: false, search: '', openOrder: [], ctx: null, ctxNow: true, ctxN: 0,
+    authors: true                                    // gold pages: the authors' layout first, where the figure gives it
   };
   var cy = null, firstDone = false, layoutSeq = 0, lastNote = '';
 
@@ -304,6 +305,7 @@ window.dispId = window.dispId || function (id) {
         hc: c.header, bc: c.body, band_c: mix(c.header, 0.38), imp: n.imp,
         ext: n.origin === 'external' ? 1 : 0, main: MAIN[n.id] ? 1 : 0,
         label: b.label, w: b.w, h: b.h, fs: b.fs, band: b.band };
+      if (n.pos) d.pos = n.pos;          // [x, y, drawing]: where the authors drew it
       if (n.tex) {                       // typeset by MathJax in the math layer, not on the canvas
         d.tex = 1;
         d.texHead = head.replace(nm, n.tex_name || nm);
@@ -677,8 +679,64 @@ window.dispId = window.dispId || function (id) {
 
   function setBusy(on) { document.getElementById('busy').style.display = on ? 'block' : 'none'; }
 
+  // ── The authors' layout: the boxes where the figure draws them ─────────────
+  // Coordinates are ranked (clustered to the drawing's rows and columns), so boxes never overlap and the
+  // order of rows and columns is the figure's; several drawings stand side by side.
+  function authorsLayoutPossible() {
+    var leaves = cy.nodes('[kind = "node"]');
+    return leaves.length > 1 && leaves.filter(function (n) { return n.data('pos'); }).length >= 0.8 * leaves.length;
+  }
+  function authorsLayout() {
+    var leaves = cy.nodes('[kind = "node"]'), byDrawing = {};
+    leaves.forEach(function (n) { var p = n.data('pos'); if (p) (byDrawing[p[2] || 0] = byDrawing[p[2] || 0] || []).push(n); });
+    var W = 0, H = 0;
+    leaves.forEach(function (n) { W = Math.max(W, n.data('w') || 150); H = Math.max(H, n.data('h') || 60); });
+    var x0 = 0, bottom = 0;
+    cy.batch(function () {
+      Object.keys(byDrawing).sort(function (a, b) { return a - b; }).forEach(function (k) {
+        var ns = byDrawing[k], P = ns.map(function (n) { return n.data('pos'); });
+        var ys = P.map(function (p) { return p[1]; }), xs = P.map(function (p) { return p[0]; });
+        var spanY = (Math.max.apply(null, ys) - Math.min.apply(null, ys)) || 1;
+        // the drawing's scale: the closest two boxes of one row, and the closest two rows, get our box sizes apart
+        var dx = Infinity, dy = Infinity;
+        P.forEach(function (a, i) { P.forEach(function (b, j) {
+          if (j <= i) return;
+          var gx = Math.abs(a[0] - b[0]), gy = Math.abs(a[1] - b[1]);
+          if (gy < 0.05 * spanY) { if (gx > 1e-6) dx = Math.min(dx, gx); } else dy = Math.min(dy, gy);
+        }); });
+        var sx = isFinite(dx) ? (W + 30) / dx : 1, sy = isFinite(dy) ? (H + 50) / dy : sx;
+        var minX = Math.min.apply(null, xs), maxY = Math.max.apply(null, ys);
+        var pts = ns.map(function (n) { var p = n.data('pos'); return { n: n, x: x0 + (p[0] - minX) * sx, y: (maxY - p[1]) * sy }; });
+        // minimal adjustment: boxes that would still overlap (a row drawn unevenly) are pushed right, row by row
+        pts.sort(function (a, b) { return a.y - b.y || a.x - b.x; });
+        var rows = [];
+        pts.forEach(function (q) { var r = rows[rows.length - 1]; if (r && q.y - r[0].y < H + 10) r.push(q); else rows.push([q]); });
+        var right = 0;
+        rows.forEach(function (r) {
+          r.sort(function (a, b) { return a.x - b.x; });
+          for (var i = 1; i < r.length; i++) {
+            var need = (r[i - 1].n.data('w') || W) / 2 + (r[i].n.data('w') || W) / 2 + 20;
+            if (r[i].x - r[i - 1].x < need) r[i].x = r[i - 1].x + need;
+          }
+          r.forEach(function (q) { q.n.position({ x: q.x, y: q.y }); right = Math.max(right, q.x); bottom = Math.max(bottom, q.y); });
+        });
+        x0 = right + 2 * (W + 40);
+      });
+      var k = 0;                                         // boxes the figure does not place (a result named in a note): below
+      leaves.forEach(function (n) { if (!n.data('pos')) n.position({ x: (k++) * (W + 40), y: bottom + 1.5 * (H + 60) }); });
+      cy.edges().removeClass('routed ends').removeStyle('segment-distances segment-weights source-endpoint target-endpoint');
+    });
+    cy.nodes().updateCompoundBounds(true);
+  }
+
   function layout(after, focusId) {
     var seq = ++layoutSeq, t0 = performance.now();
+    if (S.authors && authorsLayoutPossible()) {
+      authorsLayout(); placeGhosts(); cy.fit(cy.elements(), 30); if (cy.zoom() > 1) { cy.zoom(1); cy.center(); }
+      lastNote = "authors' layout"; status(performance.now() - t0);
+      if (after) after();
+      return;
+    }
     setBusy(true);
     // Groups need ELK's hierarchical mode; a large view, or a page where it
     // already took too long, gets the flat layout instead (groups dissolved).
@@ -911,6 +969,7 @@ window.dispId = window.dispId || function (id) {
     });
     document.getElementById('back-btn').onclick = goBack;
     document.getElementById('ctx-btn').onclick = function () { S.ctx = !S.ctxNow; render(); };
+    document.getElementById('lay-btn').onclick = function () { S.authors = !S.authors; render(); };
     document.addEventListener('keydown', function (ev) {
       if (ev.key !== 'Escape' || /^(INPUT|TEXTAREA)$/.test((ev.target || {}).tagName || '')) return;
       closePanel() || goBack();
@@ -981,6 +1040,9 @@ window.dispId = window.dispId || function (id) {
     var back = document.getElementById('back-btn');
     back.style.display = (S.focus || (level() === 'overview' && anyOpen())) ? 'block' : 'none';
     back.textContent = S.focus ? '\u2190 Leave focus' : '\u2190 Close section';
+    var lay = document.getElementById('lay-btn');
+    lay.style.display = authorsLayoutPossible() ? 'block' : 'none';
+    lay.textContent = S.authors ? 'Layout by dependency depth' : "Authors' layout";
     var ctx = document.getElementById('ctx-btn');
     ctx.style.display = !S.focus && level() === 'overview' && anyOpen() && S.ctxN ? 'block' : 'none';
     ctx.textContent = S.ctxNow ? 'Hide linked sections' : 'Show linked sections (' + S.ctxN + ')';

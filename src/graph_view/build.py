@@ -488,6 +488,8 @@ def paper_model(data, stem):
             "res": 1 if (n.get("type") in RESULT_TYPES and not n.get("inside")) else 0,
             "nsteps": len(steps.get(i, [])),
         })
+        if isinstance(n.get("pos"), list) and len(n["pos"]) >= 2:   # the box's place in the authors' drawing
+            out_nodes[-1]["pos"] = n["pos"]
         tex = box_tex(n.get("statement") or body)
         tex_name = box_tex(n.get("name") or "", 80)
         if tex or tex_name:

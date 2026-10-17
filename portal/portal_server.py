@@ -521,6 +521,12 @@ def serve_render3(handler, query) -> None:
 
 
 class PortalHandler(SimpleHTTPRequestHandler):
+    def end_headers(self):
+        # gold pages and review pages change with every rebuild: never serve them from the browser cache
+        if self.path.split("?")[0].startswith(("/gold_data/", "/gold_bp/", "/gold_review", "/gold_blueprints")):
+            self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(PORTAL_DIR), **kwargs)
 
