@@ -66,7 +66,7 @@ def merge_diagrams(graphs: list) -> dict:
             local[n["id"]] = key_of[key]
         for e in g.get("edges", []):
             if e["from"] in local and e["to"] in local:
-                edges.append(dict(e, **{"from": local[e["from"]], "to": local[e["to"]]}))
+                edges.append(dict(e, **{"from": local[e["from"]], "to": local[e["to"]], "diagram": k}))
     seen, out = set(), []
     for e in edges:
         if (e["from"], e["to"]) not in seen:
@@ -131,6 +131,9 @@ def _plain_words(s: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9&,;+/ -]", " ", s.lower())).strip()
 
 
+_NOT_DEPENDENCY = r"(?i)motivat|inspir|heuristic|intuition|suggests?\b"   # arrow text of a link that is not a dependency
+
+
 def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict) -> tuple[dict, list, list]:
     """The diagram as a graph in our format, plus review rows for its nodes and edges.
 
@@ -188,7 +191,7 @@ def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict)
         names = []
         for r in refs:
             info = labels.get(r["label"]) or {}
-            names.append(printed(r["label"]) or r["label"])
+            names.append(printed(r["label"]) or "\0" + r["label"])   # a raw label only if nothing else names the box
             if info.get("node") and info["node"] in ours:
                 hits.append(info["node"])
             elif info.get("kind") == "section" or r.get("target", "").startswith(("section", "subsection")):
@@ -230,6 +233,7 @@ def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict)
                     hits.append(node); names.append(f"{f.get('display') or f.get('type', '').capitalize()} {f['number']}")
                     by_title = True
         hits = list(dict.fromkeys(hits))
+        names = [x for x in names if not x.startswith("\0")] or [x[1:] for x in names]
         # the same result drawn twice in one figure is one node; each figure is kept as drawn (scoring
         # joins the figures through maps_to). Numbers typed by hand can be stale: flagged for review
         key = (tuple(hits), dn.get("figure"))
@@ -266,12 +270,16 @@ def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict)
                           "maps_to": hits, "our_types": [ours[h].get("type") for h in hits],
                           "status": status, "typed": by_typed, "by_title": by_title, "diagram": dn.get("diagram", 0) + 1})
     edges, edge_rows = [], []
+    # a figure whose labelled dashed arrows say "motivates" draws every motivation that way, labelled or not
+    motivating_dashes = {e.get("diagram", 0) for e in diag.get("edges", []) if e.get("dashed") and re.search(_NOT_DEPENDENCY, e.get("label") or "")}
     for e in diag.get("edges", []):
         s, t = idmap.get(e["from"]), idmap.get(e["to"])
         if not s or not t or s == t:
             continue
         # a double-headed arrow (<=>): equivalent statements; kept once, in the direction it is written
         extra = ({"equivalence": True} if e.get("both") else {}) | ({"label": e["label"]} if e.get("label") else {})   # "Fail: B=0"
+        if re.search(_NOT_DEPENDENCY, e.get("label") or "") or e.get("dashed") and e.get("diagram", 0) in motivating_dashes:
+            extra["mention"] = True                       # "Motivates": drawn, but not a dependency (not scored)
         edges.append({"source": s, "target": t, "type": "uses", "confidence": 1.0} | extra)
         edge_rows.append({"source": s, "target": t, "directed": bool(e.get("directed", True)), "equivalence": bool(e.get("both"))} | extra)
         uses += [(e["to"], r["label"], fig_of.get(e["to"])) for r in e.get("label_refs", [])]   # "via Theorem 5.2" on the arrow
@@ -376,8 +384,17 @@ def find_fig_page(pdf: Path, caption: str, fig_no: int = 0, names=()) -> int:
 
 
 def fig_number(tex: str, env: str) -> int:
-    """The printed number of the figure whose LaTeX starts with env: figures are numbered in order."""
-    i = tex.find(re.sub(r"\s+", " ", env)[:80].strip()) if env else -1
+    """The printed number of the figure whose LaTeX is env: figures are numbered in order. Two figures
+    can begin alike (the same options and drawing preamble), so the longest prefix found once decides."""
+    flat = re.sub(r"\s+", " ", env or "").strip()
+    i = -1
+    for n in (len(flat), 2000, 600, 200, 80):
+        key = flat[:n]
+        if key and tex.count(key) == 1:
+            i = tex.find(key)
+            break
+    else:
+        i = tex.find(flat[:80]) if flat else -1
     return len(re.findall(r"\\begin\{figure\*?\}", tex[:i])) + 1 if i > 0 else 0
 
 

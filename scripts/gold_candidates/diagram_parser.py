@@ -195,6 +195,8 @@ def _wire_edges(pending, nodes, resolve, lmap, macros):
             e = {"from": a, "to": b, "directed": arrow}
             if isinstance(labs.get((a, b)), dict):
                 e.update(labs[a, b])
+                if e.get("label"):
+                    e["label"] = e["label"][:200]; e["label_refs"] = resolve_refs(e["label"], lmap, macros)
             elif (a, b) in labs:
                 e["label"] = labs[a, b][:200]; e["label_refs"] = resolve_refs(labs[a, b], lmap, macros)
             edges.append(e)
@@ -436,12 +438,15 @@ def parse_tikz(code, lmap, macros, styles=()):
         if re.match(r"\\(?:draw|path|graph|foreach)\b", s0):
             if s0.startswith("\\foreach"):
                 continue
-            # inline named nodes inside the path
+            # inline named nodes inside the path; "edge node={node {Motivates}}" in a to[...]: the arrow's label
+            on_path = [m.group(1) for m in re.finditer(r"edge node\s*=\s*\{\s*node\s*(?:\[[^\]]*\])?\s*\{([^{}]*)\}", s0)]
             for m in NODE_RE.finditer(s0):
                 comps = m.group(1)
                 txt, _ = brace_arg(s0, m.end() - 1)
                 if re.search(r"\(([^)]*)\)", re.sub(AT, "", re.sub(r"\[[^\]]*\]", "", comps))):
                     add_node(comps, txt)
+                elif not re.search(r"\\[cC]?ref\{|\\autoref\{", txt or ""):
+                    on_path.append(txt or "")              # text written along the path: the arrow's label
                 elif re.search(r"\\[cC]?ref\{|\\autoref\{", txt or ""):     # "(1,-9) node[left]{Theorem \ref{a}}": a box there
                     before = re.search(r"\(([^()]*)\)\s*$", s0[:m.start()])
                     if before and _num_xy(before.group(1)):
@@ -551,8 +556,12 @@ def parse_tikz(code, lmap, macros, styles=()):
             for x, y, *k in pairs:
                 k = k[0] if k else None
                 lab = arrow_labels.get((x[1], y[1])) if x[0] == y[0] == "n" else None
+                if not lab and len(pairs) == 1 and any(t.strip() for t in on_path):
+                    lab = re.sub(r"\s+", " ", " ".join(dict.fromkeys(t.strip() for t in on_path if t.strip())))
                 a_, r_, b_ = (k in "ARB", k == "R", k == "B") if k else (arrow or into_step, rev, both)
-                pending.append((x, y, r_, a_, {"both": True} if b_ else lab))
+                extra = ({"both": True} if b_ else {}) | ({"label": lab} if isinstance(lab, str) and lab else {}) \
+                    | ({"dashed": True} if re.search(r"\b(?:dashed|dotted|densely dashed|loosely dashed)\b", opts) else {})
+                pending.append((x, y, r_, a_, extra or None))
     for a_, b_, op in graph_edges:
         if op == "<-":
             a_, b_ = b_, a_
