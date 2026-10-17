@@ -120,12 +120,14 @@ def _type_word(w: str) -> str:
 
 
 _GENERIC_WORDS = {"lemma", "lemmas", "theorem", "theorems", "proposition", "corollary", "claim", "main", "result", "results",
-                  "proof", "step", "steps", "the", "of", "a", "an", "key", "technical", "auxiliary", "section", "part"}
+                  "proof", "step", "steps", "the", "of", "a", "an", "key", "technical", "auxiliary", "section", "part",
+                  "assumption", "assumptions", "definition", "definitions", "remark", "conjecture", "example"}
 
 
 def _plain_words(s: str) -> str:
-    """Lower-case words of a box or a title: TeX commands, math and punctuation gone."""
-    s = re.sub(r"\$[^$]*\$|\\[A-Za-z]+\*?|\\.", " ", s or "")
+    """Lower-case words of a box or a title: references, citations, TeX commands, math and punctuation gone."""
+    s = re.sub(r"\\(?:[cC]?ref|eqref|autoref|cites?[pt]?)\*?\s*(?:\[[^\]]*\])?\s*\{[^{}]*\}", " ", s or "")
+    s = re.sub(r"\$[^$]*\$|\\[A-Za-z]+\*?|\\.", " ", s)
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9&,;+/ -]", " ", s.lower())).strip()
 
 
@@ -214,10 +216,12 @@ def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict)
         by_typed, by_title = bool(hits) and not refs, False
         if not hits and not refs and not cited and not secs:   # named by its title: "recursion & key lemma"
             for ph in re.split(r"\s*(?:&|\band\b|,|;|\+|/)\s*", _plain_words(text)):
-                if len(ph) < 4 or len(ph.split()) == 1 and ph in _GENERIC_WORDS:
+                if len(re.findall(r"[a-z]", ph)) < 4 or len(ph.split()) == 1 and ph in _GENERIC_WORDS:
                     continue
+                one = len(ph.split()) == 1                # one word names a result only as the start of its title
                 cand = [f for f in facts.values() if f.get("optarg") and f.get("number")
-                        and re.search(r"(?<![a-z])" + re.escape(ph) + r"(?![a-z])", _plain_words(f["optarg"]))]
+                        and (re.search(r"(?<![a-z])" + re.escape(ph) + r"(?![a-z])", _plain_words(f["optarg"])) if not one
+                             else re.match(re.escape(ph) + r"(?![a-z])", _plain_words(f["optarg"])))]
                 if len(cand) != 1:                        # no result of that title, or several: leave it
                     continue
                 f = cand[0]
