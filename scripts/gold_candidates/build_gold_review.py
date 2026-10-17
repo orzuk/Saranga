@@ -262,6 +262,19 @@ def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict)
         if gid_of[fg, h] != idmap[box]:
             edges.append({"source": gid_of[fg, h], "target": idmap[box], "type": "uses", "confidence": 1.0})
             edge_rows.append({"source": gid_of[fg, h], "target": idmap[box], "directed": True, "stated_in_box": True})
+    if sectioned:                                       # a figure that is not about results (a motivating DAG,
+        status = {r["gid"]: r["status"] for r in node_rows}   # a map of sections) goes when another figure is
+        share = {}
+        for n in nodes:
+            share.setdefault(n.get("section"), []).append(status.get(n["id"]) in ("mapped", "mentioned"))
+        share = {k: sum(v) / len(v) for k, v in share.items()}
+        drop = {k for k, v in share.items() if v < 0.5} if any(v >= 0.5 for v in share.values()) else set()
+        if drop:
+            gone = {n["id"] for n in nodes if n.get("section") in drop}
+            nodes = [n for n in nodes if n["id"] not in gone]
+            node_rows = [r for r in node_rows if r["gid"] not in gone]
+            edges = [e for e in edges if e["source"] not in gone and e["target"] not in gone]
+            edge_rows = [e for e in edge_rows if e["source"] not in gone and e["target"] not in gone]
     gold = {"metadata": {"paper_id": pid, "title": full.get("metadata", {}).get("title", ""),
                          "extractor": "author diagram (parsed from the figure's LaTeX)",
                          "caption": strip_tex((fig or {}).get("caption", ""))[:500]},
@@ -452,7 +465,11 @@ def add_pdf(folder: Path, out: dict) -> None:
         local = tmp / "paper.pdf"
         shutil.copy(folder / "paper.pdf", local)
         figs = [f for f in all_figures(folder) if re.search(r"tikzpicture|tikzcd|xymatrix|\\xy\b|picture", f.get("env", ""))]
-        flat = re.sub(r"\s+", " ", (folder / "paper.tex").read_text(encoding="utf-8", errors="replace"))
+        flat = re.sub(r"\s+", " ", live_tex((folder / "paper.tex").read_text(encoding="utf-8", errors="replace")))   # as reparse numbers them
+        gold_f = folder / "gold.json"                     # only the figures kept in the graph
+        kept = {int(x) for x in re.findall(r'"section":\s*"Figure (\d+):', gold_f.read_text(encoding="utf-8"))} if gold_f.is_file() else set()
+        if kept and len(figs) > 1:
+            figs = [f for f in figs if fig_number(flat, f.get("env", "")) in kept] or figs
         pages = list(dict.fromkeys(find_fig_page(local, page_hint(folder, {"caption": f.get("caption", ""), "figure_latex": f.get("env", "")}),
                                                  fig_number(flat, f.get("env", "")), names) for f in figs)) \
             if len(figs) > 1 else [find_fig_page(local, page_hint(folder, out), names=names)]

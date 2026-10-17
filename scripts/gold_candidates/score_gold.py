@@ -86,7 +86,8 @@ def one(job):
         # the arrows' direction: the reviewer's answer, else detected from the paper's own references
         verdict, fwd, back = direction(gold, json.loads(rules_f.read_text()))
         review = json.loads((d / "review.json").read_text()) if (d / "review.json").is_file() else {}
-        said = {"B uses A (reversed)": "reversed", "A used for B": "forward"}.get(review.get("arrow_meaning"))
+        said = {"B uses A (reversed)": "reversed", "A used for B": "forward",          # older wording too
+            "B is used to prove A (reversed)": "reversed", "A is used to prove B": "forward"}.get(review.get("arrow_meaning"))
         flip = (said or verdict) == "reversed"
         if flip:
             gold["edges"] = [dict(e, source=e["target"], target=e["source"]) for e in gold["edges"]]
