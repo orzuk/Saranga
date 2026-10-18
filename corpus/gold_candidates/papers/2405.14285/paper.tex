@@ -1,0 +1,1210 @@
+
+\documentclass{article}
+%\usepackage{neurips_2024} % for submission
+\usepackage[final,nonatbib]{neurips_2024} % for arxiv
+
+
+\usepackage{xcolor}
+\usepackage{amsthm,amsmath,amsfonts,mathrsfs,mathabx}
+\usepackage{enumitem}
+\usepackage{url}
+\usepackage{tikz}
+\usepackage{ifthen}
+
+
+\usepackage{graphicx}
+\graphicspath{{}{figs/}}
+\usepackage[colorlinks]{hyperref}
+
+\newcommand{\red}[1]{{\color{red!80!black!100}#1}}
+\newcommand\green[1]{{\color{green!80!black!80}#1}}
+
+\newcommand\remove[1]{\green{\textbf{Remove?:}#1}}
+\newcommand{\Nico}[1]{\red{\textbf{Nicolas:} #1}}
+\newcommand{\todo}[1]{{\color{red}\textbf{TODO:} #1}}
+
+% The next line are to suppress the margin (for screen viewing)
+%\usepackage{geometry}
+%\geometry{paperheight=\dimexpr\textheight+1cm\relax, paperwidth=\dimexpr\textwidth+1cm\relax, marginparwidth=0.5cm, left=0.5cm, top=0.5cm } 
+%%% 
+
+
+%\usepackage{ntheorem}
+\usepackage[framemethod=TikZ]{mdframed}
+\mdfdefinestyle{shaded}{
+    frametitlerule=false,
+    linecolor=black,%FireBrick
+    linewidth=0.5pt,
+    innerlinewidth=0pt,
+    frametitlerulewidth=1pt, 
+    frametitlebackgroundcolor=gray!20,
+    backgroundcolor=gray!10,
+    roundcorner=5pt,
+    skipbelow=15pt,
+    nobreak=true, % prevent from breaking up the box
+ }
+%\newtheorem{theorem}{Theorem}
+%\newtheorem{proposition}[theorem]{Proposition}
+
+\newmdtheoremenv[style=shaded]{theorem}{Theorem}
+\newmdtheoremenv[style=shaded]{proposition}[theorem]{Proposition}
+\newmdtheoremenv[style=shaded]{corollary}[theorem]{Corollary}
+\newmdtheoremenv[style=shaded]{lemma}[theorem]{Lemma}
+
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand\N{\mathbb{N}}
+\newcommand{\calX}{\mathcal{X}}
+\newcommand{\calE}{\mathcal{E}}
+\newcommand{\calF}{\mathcal{F}}
+\newcommand{\calV}{\mathcal{V}}
+\newcommand{\calN}{\mathcal{N}}
+\newcommand\Proba[1]{\mathbf{P}\left(#1\right)}
+\newcommand\E{\mathbb{E}}
+\newcommand\esp[1]{\E\left[#1\right]}
+\newcommand\var[1]{\mathrm{var}\left[#1\right]}
+\newcommand\sesp[1]{\E[#1]}
+\newcommand\abs[1]{\left|#1\right|}
+\newcommand\norm[1]{\left\|#1\right\|}
+\newcommand\floor[1]{\left\lfloor#1\right\rfloor}
+\newcommand{\p}[1]{\left(#1\right)}
+\newcommand\toA{^{(\alpha)}}
+\newcommand\bO[1]{\mathcal{O}(#1)}
+\newcommand\barf{\bar{f}}
+\newcommand\barv{\overline{V}}
+\newcommand\normopexact[2][]{\norm{D^{\ifthenelse{\equal{#1}{}}{}{#1}}#2}}
+\newcommand\normop[2][]{\norm{D^{\ifthenelse{\equal{#1}{}}{}{\le #1}}#2}}
+
+\newcommand\cont[3][]{\mathcal{C}^{#2}_{\ifthenelse{\equal{#1}{all}}{}{\le1}}(#3,\R)}
+
+\title{Computing the Bias of Constant-step Stochastic Approximation with Markovian Noise}
+\author{Sebastian Allmeier\\
+Univ. Grenoble Alpes and Inria\\
+F-38000 Grenoble, France.
+ \And Nicolas Gast\\
+ Univ. Grenoble Alpes and Inria\\
+ F-38000 Grenoble, France.}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+    We study stochastic approximation algorithms with Markovian noise and constant step-size $\alpha$. We develop a method based on infinitesimal generator comparisons to study the bias of the algorithm, which is the expected difference between $\theta_n$ ---the value at iteration $n$--- and $\theta^*$ ---the unique equilibrium of the corresponding ODE. We show that, under some smoothness conditions, this bias is of order $O(\alpha)$. Furthermore, we show that the time-averaged bias is equal to $\alpha V + O(\alpha^2)$, where $V$ is a constant characterized by a Lyapunov equation, showing that $\esp{\bar{\theta}_n} \approx \theta^*+V\alpha + O(\alpha^2)$, where $\bar{\theta}_n=(1/n)\sum_{k=1}^n\theta_k$ is the Polyak-Ruppert average.  We also show that $\bar{\theta}_n$ converges with high probability around $\theta^*+\alpha V$. We illustrate how to combine this with Richardson-Romberg extrapolation to derive an iterative scheme with a bias of order $O(\alpha^2)$. 
+\end{abstract}
+
+\section{Introduction}
+\label{sec:intro}
+
+Stochastic approximation (SA) is a widely used algorithmic paradigm to solve fixed-point problems under noisy observations. While SA was introduced in the 1950s \cite{robbins1951stochastic,blum1954approximation}, it is still widely used today in many applications to solve optimization problems, or to implement machine learning or reinforcement learning algorithms \cite{kushner2003stochastic,bertsekas2019reinforcement}. A typical SA is a stochastic recurrence of the form
+\begin{align}
+    \label{eq:model}
+    \theta_{n+1} &= \theta_n + \alpha_n ( f(\theta_n, X_n) + M_{n+1}),
+\end{align}
+where $\theta_n\in\R^d$ is a vector of parameters, $X_n$ and $M_{n+1}$ are sources of randomness, and $\alpha_n$ is the step-size. The step-size might be decreasing to $0$ as $n$ grow or can be fixed to a small constant (in which case we simply call it $\alpha$).
+
+The goal of running a SA algorithm is to obtain a sequence $\theta_n$ that gets close to the root $\theta^*$ of the function $\bar{f}(\theta) = \esp{f(\theta, X)+M \mid \theta}$, the expectation of the iterate \eqref{eq:model}, as $n$ goes to infinity. The SA procedure described in \eqref{eq:model} models many algorithms that are used in machine learning, like first-order optimization and stochastic gradient descent \cite{lan2020first,dieuleveut2020bridging}, and $Q$-learning or policy gradient algorithms \cite{bertsekas2019reinforcement,sutton2018reinforcement}.
+
+The theory of stochastic approximation has been studied extensively and is covered by a lot of textbooks, \emph{e.g.}, \cite{benveniste2012adaptive,borkar2009stochastic,kushner2003stochastic}. This theory shows that the limit points of $\theta_n$ as $n$ grows are similar to the limit points of the ODE $\dot{x}=\barf(x)$ \cite{benaim2006dynamics,borkar2000ode}.  In particular, one can show that if all solutions of the ODE converge to $\theta^*$, then $\theta_n$ gets close to $\theta^*$ as $n$ grows large (under technical conditions on $f$, the step size $\alpha_n$, and the noise $X_n$ or $M_{n+1}$). The asymptotic behavior of $\theta_n$ depends on the nature of the step-size: When the step-size $\alpha_n$ depends on $n$ and converges to $0$ as $n$ goes to infinity, then $\theta_n$ generally converges almost surely to $\theta^*$. When $\alpha_n$ is kept constant and does not depend on $n$, then $\theta_n$ will in general \textit{not} converge to $\theta^*$ but keeps oscillating around $\theta^*$, with fluctuation amplitudes of order $O(\sqrt{\alpha})$. In this work, we focus on the latter case and propose a method to quantify these fluctuations.
+
+We consider a SA algorithm with Markovian noise. That is, $\theta_n$ evolves as in \eqref{eq:model} where the random variable $X_n$ evolves as a Markov chain that depends on $\theta_n$, and the random variable $M_{n+1}$ is a Martingale difference sequence. One thing that sets this paper apart from others is that we allow the Markovian noise to be dependent on $\theta_n$.  This is particularly valuable in reinforcement learning application such as $Q$-learning where the exploration policy might depend on $\theta_n$ (this would for instance be the case for $\varepsilon$-greedy). It is known that when the step size $\alpha$ is constant, then the expectation of the iterates, $\esp{\theta_n}$, does not converge to $\theta^*$ as $n$ goes to infinity but has a \emph{bias} \cite{yu2021analysis,huo2023bias}. The goal of our paper is to provide a framework to characterize and compute this bias.
+
+Our main contribution is to provide a framework based on semi-groups, to quantify the convergence rate of $\theta_n$ to $\theta^*$.  This framework is similar to Stein's method, that has been recently popularized to obtain accuracy results and refinement terms for fluid limits \cite{braverman2024high,gast2017expected,gast2017refined,ying2017stein}. It allows us to quantify the distance between the stochastic recurrence~\eqref{eq:model} and its deterministic counterpart \eqref{eq:discrete_rec} as a function of the distance between the infinitesimal generators of the stochastic and deterministic systems.  By using this framework, we obtain two main results.  Our first result (Theorem~\ref{thrm:finite_n_bound}) states that, under smoothness conditions on $f$, there exists a constant $C>0$ such that for all small enough $\alpha$:
+\begin{align*}
+    %\label{eq:1}
+    \limsup_{n\to\infty}|\esp{\theta_n} - \theta^* | \le C \alpha\qquad \mathrm{and}\qquad 
+    \limsup_{n\to\infty}|\esp{(\theta_n- \theta^*)^2} | \le C \alpha.
+\end{align*}
+This guarantees that that the bias and variance of $\theta_n$ are of order \emph{at most} $\alpha$. 
+
+A classical way to reduce the variance of SA is to use Polyak-Ruppert tail averaging \cite{polyak1992acceleration,ruppert1988efficient}, \emph{i.e.}, to look at the convergence of $\bar{\theta}_n=(1/n)\sum_{k=1}^n \theta_n$ instead of $\theta_n$. In this paper, we show that, for the constant step-size case, the use of Polyak-Ruppert averaging removes the variance (\emph{i.e.} $\lim_{n\to\infty}\var{\bar{\theta}_n}=0$), but not the bias: Theorem~\ref{thrm:limit_N_refinement} shows that there exists a vector $V$ and a constant $C'>0$ such that:
+\begin{align*}
+    \limsup_{n\to\infty}\abs{ \esp{\bar{\theta}_n} - \theta^* - V\alpha} \le C \alpha^2.
+\end{align*}
+This shows that the bias of the averaging is \emph{exactly} of order $\alpha$.  We also show in Theorem~\ref{thrm:limit_N_refinement_proba} that $\bar{\theta}_n$ converges \emph{in probability} to a point in $\theta^*+V\alpha+O(\alpha^2)$ as $n$ goes to infinity.
+
+We also provide numerical simulation on a synthetic example that illustrates how to combine the Polyak-Ruppert averaging with a Richardson-Romberg extrapolation \cite{hildebrand1987introduction} to construct a stochastic approximation algorithm whose bias is of order $O(\alpha^2)$. 
+This leads to an algorithm that enjoys both a small bias and a fast converge rate, compared to using a time-step of order $\alpha^2$. 
+
+
+\emph{Roadmap}. The rest of the paper is organized as follows. We describe related work in Section~\ref{sec:related-work}. We introduce the model and give assumptions and notations in Section~\ref{sec:model}. We state the main results and provide numerical illustrations in Section~\ref{sec:main-results}. We give the main ingredients of the proofs in Section~\ref{sec:proof}. The appendices contain technical lemmas and additional numerical examples.
+
+
+\section{Related work}
+\label{sec:related-work}
+
+
+Stochastic approximation algorithms were first introduced with decreasing step-size \cite{robbins1951stochastic,blum1954approximation}. Since these seminal papers, there has been a considerable amount of work aiming at characterizing the asymptotic properties of SA, by relating the asymptotic behavior of $\theta_n$ with the one of the ODE $\dot{\theta}=\barf(\theta)$ \cite{benaim2006dynamics,borkar2000ode}. These topics are today well covered by textbooks such as \cite{benveniste2012adaptive,borkar2009stochastic,kushner2003stochastic}. 
+
+In this original theory, the goal was to show that $\theta_n$ is close to the behavior of an ODE but not necessarily to obtain tight rates of convergence.  This lead to the development of a new line of research focussing on non-asymptotic properties of SA \cite{moulines2011non}.  This paper derives a unified framework to study the rate of convergence of stochastic gradient descent by relating it to SA with decreasing step-size, and martingale noise (\emph{i.e.}, where the function $f$ does not depend on $X_k$ in \eqref{eq:model}).  This framework has been extended by a series of papers for applications in reinforcement learning, see for instance \cite{chandak2022concentration,chen2022finite,qu2020finite,mou2021optimal}, still in the decreasing step-size case, with the goal of understanding the fluctuations of the algorithm around the equilibrium.
+
+For the decreasing step size, the fluctuations of $\theta_n$ around $\theta^*$ vanish as $n$ goes to infinity. This is not the case for constant step-size SA, for which understanding the magnitude of the fluctuations is therefore important. To bound the fluctuations, a part of the literature seeks to obtain bounds on the mean squared error (MSE), $\esp{(\theta_n-\theta^*)^2}$ as a function of the problem's parameter and the step-size $\alpha$. These papers show that the MSE is generally of order $O(\alpha)$, see for instance \cite{srikant2019finite} for the case of linear model plus Markovian noise, or \cite{chen2023lyapunov,chen2022finite,chen2023concentration} for contractive stochastic approximations (with Markovian or martingale noise). 
+
+The case of constant-step size is also interesting because the $\theta_n$ has a bias that does not vanish as $n$ goes to infinity. In particular, the Polyak-Ruppert averaging does not converge to $\theta^*$: generally $\lim_{n\to\infty}\bar{\theta}_n \ne \theta^*$. It is shown in particular in \cite{dieuleveut2020bridging,huo2023bias,lauand2023curse,sheshukova2024nonasymptotic,yu2021analysis,zhang2024constant} that a constant step-size SA has an asymptotic bias of order $\alpha$, which shows that $\lim_{n\to\infty}\bar{\theta}_n = \theta^* + V\alpha + O(\alpha^2)$. Some of these papers, and in particular \cite{dieuleveut2020bridging,huo2023bias}, show that this bias characterization can be coupled with a Richardson-Romberg extrapolation to obtain a more accurate algorithm.  In our paper, we also study the case of constant-step size SA with Markovian noise and use the same Polyak-Ruppert and Richardson-Romberg analysis. One of the distinguishable property of our model is that we allow the evolution of the Markovian noise $X_n$ to depend on $\theta_n$, whereas most of the cited paper consider $X_n$ has an external source of noise. This dependence is particularly interesting when studying asynchronous $Q$-learning algorithms \cite{watkins1992q,tsitsiklis1994asynchronous}, for which the navigation policy is often derived from the current values of the parameter (a popular example is to use an $\epsilon$-greedy policy). 
+
+A second distinguishable feature of our paper is the methodology that we use. Our main tool is to relate the distance between the expectation of $\theta_n$ and $\theta^*$ as a distance between the infinitesimal generators of the stochastic recurrence \eqref{eq:model} and of the deterministic recurrence \eqref{eq:discrete_rec}. The method that we develop is tightly connected to Stein's method \cite{stein1986approximate} and in particular with the line of work that use this method to obtain accuracy bounds for mean-field approximation \cite{gast2017expected,kolokoltsovMeanFieldGames2012,ying2016rate,ying2017stein}. In particular, the start of our proof, which is to study a hybrid system composed of a stochastic and a deterministic recurrence in equation~\eqref{eq:z_n_k}, can be seen as a discrete-time version of what is termed as a "classical trick" in \cite{gast2017expected,kolokoltsovMeanFieldGames2012}. Apart from this difference between discrete and continuous time, one of the major features of our model is to have a Markovian noise. Our model can be viewed as a discrete-time version of the recent paper \cite{allmeier2023bias}. Some of our results (like our Theorem~\ref{thrm:finite_n_bound}) are analogous to the results of \cite{allmeier2023bias} but others (like Theorem~\ref{thrm:limit_N_refinement}) are different and require time-averaging, mostly because of the possible periodicity of the discrete-time Markov chains. Also, the model of the current paper is slightly more general than the one of \cite{allmeier2023bias}. The fact that our methodology directly studies the expectation of $\theta_n$ makes it different from convergence results that use concentration equalities \cite{chen2023hoeffding}.
+
+
+
+\section{Model and preliminaries}
+\label{sec:model}
+
+\subsection{Model and first assumptions}
+
+Throughout the paper $(\theta_n,X_n)_{n\ge0}$ is a discrete-time stochastic process adapted to a filtration $(\calF_n)_{n\ge0}$. This stochastic process has two components of different nature. The first component $\theta$, that we call the parameter, is continuous and lives in a compact subset $\Theta\subset\R^d$: for each $n$: $\theta_n\in\Theta\subset\R^n$.  The second component $X$ lives in a finite set $\calX$, i.e., $X_n\in\calX$.
+
+The evolution of $\theta$ and $X$ are coupled in the following way. The parameter $\theta$ evolves according to the recurrence equation given by \eqref{eq:model}.  At every time-step $n$, the process $X$ makes a Markovian transition according to a Markovian kernel $K(\theta_n)$. More precisely, for all $x,x'\in\calX$ and $\theta\in\Theta$:
+\begin{align}
+    \label{eq:Markov}
+    \Proba{X_{n+1} = x' \mid X_n=x, \theta_n = \theta, \calF_n} = \Proba{X_{n+1} = x' \mid X_n=x, \theta_n = \theta} =: K_{x,x'}(\theta).
+\end{align}
+To obtain our results, we will make the following assumptions:
+\begin{enumerate}[label=(A\arabic*)]
+    \item \label{A:mart} The process $M$ is a martingale difference sequence (that is: for all $n$: $\esp{M_{n+1}\mid\calF_n}=0$) and its conditional covariance is $\esp{M_{n+1}M_{n+1}^T\mid\calF_n}:=Q(\theta_n,X_n)$. Moreover, we assume that $\esp{M_{n+1}M_{n+1}^T\mid\calF_n\land X_{n+1}}=R(\theta_n,X_n,X_{n+1})$.
+    \item \label{A:cont} The functions $f$, $K$, $Q$ and $R$ are four times differentiable in $\theta$.
+    \item \label{A:unichain} For any given $\theta\in\Theta$, the matrix $K(\theta)$ is unichain\footnote{We call a probability matrix unichain if the corresponding Markov chain has a single recurrent class and, possibly, some transient states.}.
+\end{enumerate}
+In addition to these three assumptions, we later add an assumption \ref{A:attractor} about the stability of the ODE around its fixed point. We do not state this assumption here as it needs extra definitions.
+
+
+\subsection{Averaged values, average ODE and stability assumption}
+
+Assumption~\ref{A:unichain} implies that a Markov chain with kernel $K(\theta)$ has a unique stationary measure $\pi(\theta)$, and we denote by $\pi_x(\theta)$ the stationary probability of $x\in\calX$ for such a Markov chain. For any function $g$ defined on $\Theta\times\calX$, we call $\bar{g}$ its \emph{averaged} version, i.e., the function that associates to $\theta\in\Theta$ the value $\bar{g}(\theta)$, defined as: 
+\begin{align}
+    \bar{g}(\theta) = \sum_{x\in\calX}g(\theta, x)\pi_x(\theta).
+    \label{eq:bar_g}
+\end{align}
+It is shown in \cite[Lemma~4]{allmeier2023bias}, that under Assumption~\ref{A:unichain}, for each $\theta\in\Theta$, the kernel $K(\theta)$ has a unique stationary distribution $\pi(\theta)$. The value $\bar{g}(\theta)$ is equal to $\esp{g(\theta,X)}$ where $X$ is distributed according to the stationary distribution associated to $K(\theta)$. 
+
+
+
+Following our notation introduced in \eqref{eq:bar_g}, we denote by $\bar{f}$ the averaged version of $f$. By \cite[Lemma~4]{allmeier2023bias}, the function $\theta\mapsto\pi(\theta)$ is twice differentiable under assumptions \ref{A:cont} and \ref{A:unichain}, which implies that the function $\bar{f}$ is also twice differentiable. This implies, for an initial $\vartheta(0)=\theta$, the ODE $\dot{\vartheta}=\bar{f}(\vartheta)$ has a unique local solution, and we denote the value of this solution at time $t$ by $\phi_t(\theta)$. In order to prove this result, we will need that this ODE has a unique fixed point  to which all trajectories converge and that this fixed point is an exponentially stable attractor. This is summarized in the following asusmption: 
+\begin{enumerate}[label=(A\arabic*),resume]
+    % instead of resume, we can also use start=4 to start at 4. 
+    \item \label{A:attractor} There exists a $\theta^*$ such that for any $\theta$, the solution of the ODE $\dot{\vartheta}=\bar{f}(\vartheta)$ is defined for all $t>0$ and converges to $\theta^*$: $\lim_{t\to\infty}\phi_t(\theta)=\theta^*$ for all $\theta\in\Theta$. Moreover, the derivative of $\bar{f}$ at $\theta^*$ is Hurwitz (i.e., the real parts of all of its eigenvalues are negative). 
+\end{enumerate}
+By classical results on the stability of ODES, this assumption implies that the convergence to $\theta^*$ occurs exponentially fast, that is, there exists $a,b>0$ such that for all $\theta\in\Theta$: $\norm{\phi_t(\theta)-\theta^*} \le a e^{-b t}\norm{\theta-\theta^*}$. To prove that, one can use \cite[Theorem~4.13]{khalil_nonlinear_2002}, that shows that $\theta^*$ is an exponentially stable point of the ODE, \emph{i.e.}, $\norm{\phi_t(\theta)-\theta^*} \le a' e^{-b t}\norm{\theta-\theta^*}$ in a neighborhood $\calN$ of $\theta^*$, because $D\bar{f}(\theta^*0)$ is Hurwitz. Then, as $\Theta$ is compact, there exists $T$ such that $\phi_T(\theta)\in\calN$ for all $\theta\in\Theta$. The result then follows by choosing $a=a'e^{Tb}\sup_{\theta\in\Theta}\norm{\theta-\theta^*}/\sup_{\theta\in\calN}\norm{\theta-\theta^*}$.
+
+\subsection{Discussion on the assumptions and limits}
+\label{ssec:limits}
+
+Most of the assumptions used in the paper are classical when studying stochastic approximation algorithms with Markovian noise. In this section, we discuss the limits of each assumption (from the most classical one to the most original one). Assumption~\ref{A:unichain} is necessary to define the notion of average dynamics $\bar{f}(\theta)$ and is therefore present in virtually all papers about Markovian noise stochastic approximation. The originality of our assumption is that we allow the transition kernel to depend on $\theta$. For assumption~\ref{A:mart}, we add to the classical result the existence of a co-variance matrix $Q$, which is needed as it appears in the expression of $V$.  Assumption~\ref{A:attractor} imposes that the stochastic approximation has a unique exponentially stable attractor. Our results could probably be adapted to a model with multiple attractors (by using large deviation techniques similar to the one of \cite{azizian2024long,yasodharan2022large} for a two time-scale setting as ours) but this would be another paper. 
+
+One important assumption we make is that $\theta$ lives in a compact set $\Theta$. The bounded condition on $\Theta$ simplifies greatly the proofs because it allows us to use uniform bounds that do not depend on $\theta$ (for instance, the identity function $h(\theta)=\theta$ is bounded thanks to this assumption. Similarly, the time taken by the solution of the ODE $\phi_t(\theta)$ to reach $\theta^*$ is also uniformly bounded independently on $\theta$). This assumption could be relaxed by imposing high probability bounds (for instance, a large deviation result like \cite{azizian2024long} that would guarantee that $\theta_n$ stays close to $\theta^*$), or a bound on the higher-order moment or exponential moments of $\theta_n$. We left this result for future work as it would greatly impact the readability of the proofs. 
+
+The most questionable of our assumption is Assumption~\ref{A:cont} that imposes that all parameters of the problem are four times differentiable in $\theta$.  While this assumption might seem as technical, the fact that the parameters are twice differentiable is crucial in our analysis. In particular, the constant $V$ does depend on the first two derivatives of the function $\bar{f}$. In general, if the parameters of the systems are not differentiable, then the bias will not be of order $O(\alpha)$ but of order $O(\sqrt{\alpha})$. Treating a non-differentiable $\bar{f}$ would need a completely different methodology.  Our assumption of having \emph{four} times differentiable functions and not just twice has two reasons: it guarantees that the error $\norm{\bar{\theta}_n-(\theta^*+\alpha V)}$ is $O(\alpha^2)$, and it simplifies the proof by allowing us to reuse Theorem~\ref{thrm:finite_n_bound} to obtain the bound $O(\alpha^2)$ in Theorem~\ref{thrm:limit_N_refinement}. We believe that if we only impose twice differentiability, this error would be $o(\alpha)$ (and in fact probably $\alpha^{3/2}$ as long as all derivatives are Lipschitz-continuous).
+
+
+\subsection{Notations}
+
+Recall that $\Theta$ is a compact subset of $\R^d$. We suppose that it is equipped with a norm $\norm{\cdot}$. For a function $h:\calE\to\R$, where $\calE\subset\R^{d'}$, we denote by $\norm{h}=\sup_{e\in\calE}\norm{h(e)}$ the supremum of this function. If $h$ is $i$ times differentiable, we denote by $D^ih$ its $i$th derivative. Its value evaluated in $e\in\calE$ is denoted by $D^ih(e)$. It is a multi-linear map and we denote by $D^ih(e) a^{\otimes i}$ its value applied to $(a,\dots, a)$ for a given $a\in \R^{d'}$. We denote by $\normopexact[i]{h}$ the operator norm of its $i$th derivative, defined as $\normopexact[i]{h} = \sup_{e\in\calE,a\in\R^{d'}}\norm{D^ih(e)a^{\otimes j}}/\norm{a}^j$.  By Taylor remainder theorem, for all $e\in\calE$ and $a\in\R^{d'}$, we have:
+$%\begin{align*}
+    \norm{h(e+a) - h(e) - \sum_{j=1}^{i-1} D^jh(e) a^{\otimes j}}\le \normopexact[i]{h}  \norm{a}^i$.
+%\end{align*}
+
+We define by $\normop[i]{h}=\max(\norm{h},\max_{j\le i}\normopexact[j]{h})$ the maximum of the norm of the first $i$th derivatives of $h$. We denote by $\cont[all]{i}{\calE}$ the set of functions whose first $i$ derivatives are bounded and by $\cont{i}{\calE}$ the set of functions whose first $i$ derivatives are bounded by $1$: $\normop[i]{h}\le1$. As $\calX$ is a discrete set, the above notions extend to functions $h:\calE\times\calX\to\R$. For such a function, by abuse of notation, we call $D^ih$ the $i$th derivative with respect to the continuous variable only.
+
+In the paper, the value at time $t$ of the solution of the ODE $\dot{\vartheta}=\bar{f}(\vartheta)$ starting in $\theta$ is denoted by $\phi_t(\theta)$. We will introduce later a quantity $\varphi_n(\theta)$ that corresponds to a Euler discretization of the ODE with constant step-size $\alpha$. To lighten notations, we will omit the dependence on $\alpha$ in the notation $\varphi$ but it should be clear that $\varphi$ depends on $\alpha$.  To help distinguishing between the solutions of the the ODE $\phi_t$ and the discrete-time recurrence $\varphi_n$, we will reserve the index $t$ for a continuous time variable and the indices $n$, $k$ or $N$ for discrete-time indices.
+
+To ease notations in some part of the proofs, we will sometimes use big-O notations, like $\bO{1}$ or $\bO{\alpha}$. When using this, we allow the hidden constants to depends on all parameters of the problems defined in Assumptions~\ref{A:mart} to \ref{A:attractor} but they cannot depend on varying quantities likes an index $k$, $n$ or $\alpha$ or norm of functions, like $\norm{g}$ or $\norm{h}$ that are introduced in the proofs. Note that in all of our lemmas, we always consider functions whose norm is bounded by $1$. This can, of course, be readily extended to functions not bounded by $1$ by adding an extra factor like $\normop[i]{h}$. We avoid doing this to lighten the notations.
+
+\section{Main results and illustrations}
+\label{sec:main-results}
+
+This section presents the main theorems and illustrate their consequence. The proof of the theorems are postponed to the next Section~\ref{sec:proof}.
+
+\subsection{Theoretical results}
+
+Our first result is Theorem~\ref{thrm:finite_n_bound} that shows that the expected value of $\theta_n$ is at distance at most $\bO{\alpha}$ of the solution of the ODE. This shows that the bias of stochastic approximation is of order $\alpha$ with respect to the ODE.
+
+\begin{theorem} \label{thrm:finite_n_bound}
+    Assume \ref{A:mart}--\ref{A:attractor}. Then, there exists a constant $C>0$ and $\alpha_0$ such that for all $n$, $\alpha\le\alpha_0$ and all $h\in\cont{3}{\Theta}$:
+    \begin{align*}
+        \abs{\esp{h(\theta_n) - h(\phi_{\alpha n}(\theta_0))} } \leq \alpha C.
+    \end{align*}
+\end{theorem}
+Note that the bound of Theorem~\ref{thrm:finite_n_bound} is valid independently of $n$. As we will see in the proof, this is a consequence of Assumption~\ref{A:attractor}. Without the latter assumption, one would naturally obtain a constant $C$ that grows exponentially with $n$. As $C$ does not depend on time, a direct consequence of Theorem~\ref{thrm:finite_n_bound} is to show that the asymptotic bias of $\theta_n$ is of order $\bO{\alpha}$ as $n$ goes to infinity, that is:
+\begin{align}
+    \label{eq:bias_bound}
+    \limsup_{n\to\infty}\abs{\esp{h(\theta_n)} - h(\theta^*)} \leq \alpha C.
+\end{align}
+
+Our second result is Theorem~\ref{thrm:limit_N_refinement}, that shows that the inequality of \eqref{eq:bias_bound} is essentially an equality. This theorem provides an asymptotic expansion of the bias term in $\alpha$. 
+\begin{theorem} \label{thrm:limit_N_refinement} 
+    Assume \ref{A:mart}--\ref{A:attractor}. Then, there exists a constant $C'>0$ and $\alpha_0$ such that for all $\alpha\le\alpha_0$ and $h\in\cont{5}{\Theta}$:
+    \begin{align}
+        \limsup_{n\to\infty}\abs{\frac{1}{n}\sum_{k=1}^{n}\esp{h(\theta_{k})} - h(\theta^*) - \alpha V} & \leq \alpha^2 C'. \label{eq:refinement_statement_accuracy_lim_N}
+    \end{align}
+\end{theorem}
+An important difference between Theorem~\ref{thrm:finite_n_bound} and \ref{thrm:limit_N_refinement} is that the former studies the convergence of the iterates $\theta_n$ whereas the latter provides a refinement term for the average of the iterates, i.e., $\bar{\theta}_n := \frac{1}{n}\sum_{k=1}^n \esp{\theta_k}$, by showing that $\bar{\theta}_n$ is essentially equal to $h(\phi_\infty)$ plus a bias term $V\alpha$.  One may wonder if Theorem~\ref{thrm:limit_N_refinement} would be true for the (non-averaged) iterates $\theta_n$. The answer is no and a counter-example is provided in Appendix~\ref{apx:additional_numerical}. This example illustrates that when the Markovian component $X_n$ can be periodic, the $O(\alpha)$ term of $\esp{\theta_n}$ does not necessarily stabilize to a constant $V$ but can be periodic as well.
+
+Theorem~\ref{thrm:limit_N_refinement} concerns the convergence of the \emph{expectation} of $\bar{\theta}_n$ but not the value of $\bar{\theta}_n$ itself. As we will see in Section~\ref{sec:proof}, this is mostly due to our proof techniques that works with generators and therefore is most suitable to obtain precise convergence results for the expectation. In fact, we will prove in Section~\ref{ssec:high-proba} that we can obtain a high-probability convergence result as an almost-direct consequence of Theorem~\ref{thrm:limit_N_refinement}, as expressed by the following Theorem.
+
+\begin{theorem} \label{thrm:limit_N_refinement_proba} 
+    Assume \ref{A:mart}--\ref{A:attractor}. Then, there exists a constant $C''>0$ and $\alpha_0$ such that for all $\alpha\le\alpha_0$:
+    \begin{align*}
+        \lim_{n\to\infty} \Proba{\abs{\bar{\theta}_n - (\theta^* + \alpha V)} \ge C''\alpha^2} = 0. 
+    \end{align*}
+\end{theorem}
+
+This result is illustrated on a synthetic example whose parameters are given in Appendix~\ref{apx:additional_numerical_fig1}, and for which $\theta^*=1$. We run the stochastic approximation algorithm for various values of $\alpha$ and report the results in Figure~\ref{fig:illustration_bias_X_bar_1}.  In all cases, we use the same source of randomness (the values of the Markov chain $X_n$ and of the the Martingale noise $M_{n+1}$ are the same for all trajectories). We plot a sample trajectory of $\theta_n$, $\bar{\theta}_n$, and $\bar{\theta}_{n/2:n}$ defined\footnote{Note that if our theoretical results are presented for $\bar{\theta}_n$, they can be readily extended to $\bar{\theta}_{n/2:n}$.} as: 
+\begin{align*}
+    \bar{\theta}_{n/2:n}=\left\lceil \frac n2 \right\rceil \sum_{k=\floor{n/2}+1}^n\theta_k,
+\end{align*}
+for $\alpha\in\{0.001/4, 0.001/8, 0.001/16\}$ (more values of $\alpha$ are displayed in Appendix~\ref{apx:additional_numerical}). We observe that if $\theta_n$ is quite noisy, the Polyak-Ruppert averaging $\bar{\theta}_n$ or $\bar{\theta}_{n/2:n}$ are much closer to $\theta^*=1$, which is a clear advantage for $\bar{\theta}_{n/2:n}$ in terms of rate of convergence, especially for small values of $\alpha$.
+
+\begin{figure}[ht]
+    \centering
+    \begin{tabular}{@{}c@{}c@{}c@{}}
+        \includegraphics[width=0.33\textwidth]{traj_SA_thetaBar_0.pdf}
+        &\includegraphics[width=0.33\textwidth]{traj_SA_thetaBar_1.pdf}
+        &\includegraphics[width=0.33\textwidth]{traj_SA_thetaBar_2.pdf}\\
+        (a) $\alpha=0.0025$ (=$0.01/4$)
+        &(b) $\alpha=0.00125$ (=$0.01/8$)
+        &(c) $\alpha=0.000625$ (=$0.01/16$)
+    \end{tabular}
+    \caption{Comparison of $\theta_n$, $\bar{\theta}_n$ and $\bar{\theta}_{n/2:n}$ for various $\alpha$.}
+    \label{fig:illustration_bias_X_bar_1}
+\end{figure}
+
+\subsection{The value of extrapolation: Illustration of Theorem~\ref{thrm:limit_N_refinement} and \ref{thrm:limit_N_refinement_proba}}
+
+As we will see in the proof, the constant $V$ of Theorem~\ref{thrm:limit_N_refinement} can be expressed as a function of the problem's parameters, which allows one to construct a quantity $\theta^*+V$ that is a tight approximation of $\bar{\theta}_n$.  Yet, stochastic approximation algorithms are most used when one does not have access to the problem's parameter. Here, we illustrate how we can run two algorithms with two different step-sizes in order to obtain an algorithm that has both a fast convergence rate and a high precision. 
+
+Let $\bar{\theta}_{n/2:n}^{(2\alpha)}$ and $\bar{\theta}_{n/2:n}^{(\alpha)}$ be two trajectories of the stochastic recurrence \eqref{eq:model} each with respective step-size $2\alpha$ and $\alpha$. By Theorem~\ref{thrm:limit_N_refinement}, for large $n$ we have: 
+\begin{align*}
+    \bar{\theta}_{n/2:n}^{(2\alpha)} &= \theta^* + 2V\alpha + \bO{\alpha^2}\\
+    \bar{\theta}_{n/2:n}^{(\alpha)} &= \theta^* + V\alpha + \bO{\alpha^2}
+\end{align*}
+We see that we can suppress the term in $2V\alpha$ and $V\alpha$ by using a linear combination of $\bar{\theta}_{n/2:n}^{(2\alpha)}$ and $\bar{\theta}_{n/2:n}^{(\alpha)}$, which leads to an equation that has a distance to $\theta^*$ that is of order $\bO{\alpha^2}$:
+\begin{align}
+    \label{eq:extrapolation}
+    2\bar{\theta}_{n/2:n}^{(\alpha)} - \bar{\theta}_{n/2:n}^{(2\alpha)} = \theta^* + \bO{\alpha^2}.
+\end{align}
+
+
+
+To explore the benefit of using the extrapolation \eqref{eq:extrapolation}, we plot in Figure~\ref{fig:illustration_bias_X_bar_2} the error of the averaged iterate\footnote{We only plot the error of $\bar{\theta}_{n/2:n}$ because it has the same limit as $\bar{\theta}_n$ but converges faster.} $\abs{\bar{\theta}_{n/2:n}-\theta^*}$, and the error of the extrapolation \eqref{eq:extrapolation} for various values of $\alpha=0.01*2^{-k}$, with $k=\{-1\dots 4\}$.  The parameters are the same as the one of Figure~\ref{fig:illustration_bias_X_bar_1} and the various $\alpha$s use the same source of randomness.  As we expect by the statement of the theorems, the error $\bar{\theta}_{n/2:n}-\theta^*$ is approximately equal to $V \alpha$ (the stars on the right are the theoretical values of $\lim_{n\to\infty}\abs{\bar{\theta}_{n/2:n}-\theta^*}$).  On the right panel, we observe that $2\bar{\theta}_n^{(\alpha)} - \bar{\theta}_n^{(2\alpha)}$ is closer to $\theta^*$ than the corresponding $\bar{\theta}_n^{(\alpha)}$ (the scale of the $y$-axis is the same for both panels). Note that even for $n=10^5$, the valus of $\alpha$ are still noisy.
+
+\begin{figure}
+    \begin{tabular}{@{}c@{}c@{}c@{}}
+        \includegraphics[width=0.48\textwidth]{stoch_approx_avg_error.pdf}
+        &\includegraphics[width=0.48\textwidth]{stoch_approx_avg_extrapolation.pdf} \\
+        (a) Error $\abs{\bar{\theta}_{n/2:n}-\theta^*}$.
+        &(b) Error of the extrapolation \eqref{eq:extrapolation}.
+    \end{tabular}
+    \caption{Illustration of the error of $\bar{\theta}_n := \frac1N \sum_{k=1}^{n} \theta_{k}$ for various values of $\alpha=0.02\times2^{-k}$ with $k\in\{0\dots5\}$ and of the error of the extrapolation \eqref{eq:extrapolation} for $\alpha=0.01$ and $\alpha=0.005$.}
+    \label{fig:illustration_bias_X_bar_2}
+\end{figure}
+
+
+
+
+
+
+
+
+
+\section{Proof overview and generator method}
+\label{sec:proof}
+
+%(here we describe the "generator approach + how we treat the different terms)
+
+\subsection{Proof overview}
+
+
+The first idea of our proof is to construct new random variables $\varphi_{k}(\theta_{n-k})$ that corresponds to a system where we apply the stochastic recurrence \eqref{eq:model} for $k$ steps and then apply the deterministic recurrence \eqref{eq:discrete_rec} up to time $n$. By introducing these new variables and comparing their expectation for $k$ and $k+1$, we reduce our problem to a comparison of the generators of the stochastic and of the deterministic system. This step is done in Section~\ref{ssec:generators}.  In an independent lemma, we use Assumption~\ref{A:attractor} to show that the derivatives of the function $\varphi_{n}$ converge exponentially fast to $0$ as $n$ goes to infinity. This leads to Lemma~\ref{lemma:exponentially_small_derivatives} whose proof is technical and postponed to Section~\ref{sec:proof_lemma}.
+
+Once these two basic points are obtained, we will use them to prove Proposition~\ref{prop:Vn} which shows that the expectation of $\theta_n$ is close to the solution of the deterministic ODE. More precisely, this proposition shows that there exists a bounded sequence of constants $V\toA_n$ and a constant $C>0$ such that for all $n\in \N$:
+%\begin{align*}
+    $\abs{\esp{h(\theta_n) - h(\phi_{n\alpha}(\theta_0))}- \alpha V\toA_n} \le C\alpha^2$. 
+%\end{align*}
+A main difficulty is to show that $V\toA_n$ is bounded. For that we will use Lemmas~\ref{lem:kind_of_telescopic_sum_bound} and \ref{lem:Poisson} that use properties of the Poisson Equation \eqref{eq:Poisson} to show that if the functions $g_k$ do not vary too much with $k$, then they can be replaced by their averaged versions: 
+\begin{align}
+    \label{eq:bound_on_averaging}
+    \abs{\sum_{k=0}^{n-1} g_k(\theta_k,X_k) - \sum_{k=0}^{n-1}\esp{\bar{g}_k(\theta_k)}} \le C(1+ \alpha\sum_{k=0}^{n-1}\norm{g_{k+1}-g_k}).
+\end{align}
+Theorem~\ref{thrm:finite_n_bound} is a direct consequence of Proposition~\ref{prop:Vn}.  by using that $V\toA_n$ are bounded. 
+
+The next step is to show that the time average versions of $V\toA_n$, $\overline{V}\toA_n=n^{-1}\sum_{k=1}^nV\toA_n$, converges (as $n$ goes to infinity) to a term $V\toA$. Here, the main technical difficulty is to obtain a refinement of the averaging property of \eqref{eq:bound_on_averaging}, which is done in Lemmas~\ref{lem:Poisson2} and \ref{lem:refined_barf}. We then use Theorem~\ref{thrm:finite_n_bound} and Lemma~\ref{lem:computable} to show that $V\toA\approx V+\bO{\alpha}$ where $V$ is given in Proposition~\ref{prop:V}. This gives Theorem~\ref{thrm:limit_N_refinement}. As a side-product, Lemma~\ref{lem:computable} also shows that the constant $V$ can be computed by solving a linear system.  The high-probability bound (Theorem~\ref{thrm:limit_N_refinement_proba}) is a consequence of Theorem~\ref{thrm:limit_N_refinement}.
+
+
+The proof structure is illustrated in Figure~\ref{fig:proof_overview} that shows the dependencies between the lemmas.
+
+\begin{figure}[htb]
+    \begin{tikzpicture}[shorten >=2pt]
+        \tikzstyle{lemma}=[text width=3cm, align=center, draw, rounded corners, fill=gray!3, opacity=.8]
+        \node[lemma] at (0,-.3) (G) {Generator method (Section~\ref{ssec:generators})};
+        \node[lemma,dashed, text width=5cm] at (-5,-0.2) (E) {Exponential decay of $\norm{\frac{\partial^i}{(\partial\theta)^i}\varphi_n}$ as $n$ grows (Lemma~\ref{lemma:exponentially_small_derivatives})};
+        \node[lemma,dashed,text width=2cm] at (-7.5,-2) (T) {Telescopic sums (Lemma~\ref{lem:kind_of_telescopic_sum_bound})};
+        \node[lemma,dashed] at (-4,-3.7) (A2) {Refined averaging (Lemmas~\ref{lem:Poisson2} and \ref{lem:refined_barf})};
+        \node[lemma] at (0,-2) (Vn) {Derivation of $V\toA_{n}$ (Proposition~\ref{prop:Vn})};
+        \node[lemma] at (0,-3.7) (V) {$\lim_{n\to\infty}\overline{V}\toA_{n}\approx V$ (Proposition~\ref{prop:V})};
+        \node[lemma,text width=2.1cm] at (3.5,-2) (Th1) {Bias is $O(\alpha)$ (Theorem~\ref{thrm:finite_n_bound})};
+        \node[lemma,text width=2.1cm] at (3.5,-3.7) (Th2) {Bias is $V\alpha + O(\alpha^2)$ (Theorem~\ref{thrm:limit_N_refinement})};
+        \node[lemma,text width=3.1cm] at (3.5,-5.2) (Th3) {High probability bound (Theorem~\ref{thrm:limit_N_refinement_proba})};
+        \node[lemma,dashed,text width=4cm] at (-4.5,-5.2) (comp) {$V$ is the solution of a linear system (Lemma~\ref{lem:computable})};
+        \draw ([xshift=-0.5cm]E.south) edge[->, bend right=65] ([xshift=-1.3cm]A2.north);
+        % \draw[->] (E) edge (A2);
+        \node[lemma,dashed] at (-4,-2) (A) {Poisson Equation and averaging (Lemma~\ref{lem:Poisson})};
+        %\node[lemma] at (0,-5.2) (last) {$V$ is computable.};
+        \draw (G) edge[->] (Vn) (E.south east) edge[->] (Vn) (Vn) edge[->] (V); % (E) edge (V);
+        \draw (A) edge[->] (Vn) (A.south east) edge[->] (V.north west) (T) edge[->] (A) ([xshift=-1.5cm]E.south) edge[->] (T) (E) edge[->] (A);
+        \draw (A2) edge[->] (V);
+        \draw (Vn) edge[->] (Th1) ;
+        \draw (V) edge[->] (Th2)  ;
+        \draw (Th2) edge[->] (Th3);
+        \draw (comp.north east) edge[->] (V.south west) ;
+        %\draw[->] (V) edge (last) ;
+    \end{tikzpicture}
+    \caption{Overview of the proof. The dashed rectangles indicate the lemmas that are proven in Appendix~\ref{sec:proof_lemma}.}
+    \label{fig:proof_overview}
+\end{figure}
+
+\subsection{Deterministic recurrence and comparison of generators}
+\label{ssec:generators}
+
+To compare the stochastic variable $\theta_n$ and the solution of the ODE $\dot{\vartheta}=\bar{f}(\vartheta)$, we introduce a deterministic recurrence equation, that is a first-order discretization of the ODE. This recurrence equation is obtained by replacing the sources of randomness of \eqref{eq:model} by their expectation.  The stochastic approximation \eqref{eq:model} contains two sources of randomness: $M_{n+1}$ and $X_n$.  In our analysis, we will use a deterministic counterpart of \eqref{eq:model} that corresponds to setting the noise $M_{n+1}$ to $0$ and to using $\bar{f}(\theta)$ instead of $f(\theta_n,X_n)$. More precisely, for an initial value $\theta\in\Theta$ and $k\in\Z^+$, we define $\varphi_n(\theta)$ as:
+\begin{align}
+    \label{eq:discrete_rec}
+    \varphi_{n+1}(\theta) &= \varphi_n(\theta) + \alpha \bar{f}(\varphi_n(\theta)),
+\end{align}
+with the convention that $\varphi_0(\theta)=\theta$.
+
+Let $h:\Theta\to\R$ be an arbitrary function. By using the definition of the deterministic recurrence, for any $k\in\{0\dots n\}$, we introduce the variable 
+\begin{align}
+    \label{eq:z_n_k}
+    z_{n,k} := \esp{h(\varphi_{n-k}(\theta_{k}))}.
+\end{align}
+The quantity $z_{n,k}$ is the expected value of a recurrence at time $n$ if one starts by applying the stochastic recurrence for the first $k$ steps and then the deterministic recurrence for the remaining $n-k$ steps. Our proof method consists in obtaining precise bounds on the difference $\esp{\theta_n}-\esp{\varphi_n(\theta_0)}$. By using the notation $z_{n,k}$, this quantity is equal to $z_{n,n} - z_{n,0}$. To obtain a bound on this quantity, we will use a trick, that essentially consists in comparing $z_{n,k+1} - z_{n,k}$. This quantity is simpler to analyze because the only modification between the two is to replace one stochastic transition by one deterministic transition. We can then recover the original bound by using that:
+\begin{align}
+    \esp{\theta_n} - \varphi_n(\theta_0) &= z_{n,n} - z_{n,0}
+    = \sum_{k=0}^{n-1} z_{n,k+1} - z_{n,k}.\label{eq:z_diff}
+\end{align}
+
+
+This method is illustrated in Figure~\ref{fig:generator} on a synthetic example whose parameters are given in Appendix~\ref{apx:additional_numerical_fig2}. 
+In the right panel, plot two functions (for two different values of $k$) that are equal to $\theta_n$ for $k\le n$ and to $\varphi_{n-k}(\theta_k)$ for $k>n$. 
+
+\begin{figure}[ht]
+    \centering
+    \begin{tabular}{@{}c@{}c@{}}
+        \includegraphics[width=.45\linewidth]{comparison_systems.pdf}
+        &\includegraphics[width=.45\linewidth]{comparison_generators.pdf}
+        \\
+        (a) Stochastic vs deterministic recurrences
+        & (b) Impact of changing $k$ in $\varphi_{n-k}(\theta_{k})$
+    \end{tabular}
+    \caption{Illustration of the behavior of $\theta_n$, $\varphi_{n}(\theta_0)$ and $\varphi_{n-k}(\theta_k)$.}
+    \label{fig:generator}
+\end{figure}
+
+\subsection{Derivation of \texorpdfstring{$V\toA_{n}$}{Vαn} and of $V$ by comparing the generators}
+
+Using the above notations, we are now ready to prove the first proposition. 
+
+\begin{proposition}
+    \label{prop:Vn}
+    Assume \ref{A:mart}--\ref{A:attractor}. Then, there exists a constant $C>0$ and $\alpha_0$ such that for all $n$, $\alpha\le\alpha_0$ and all $h\in\cont{3}{\Theta}$:
+    \begin{align*}
+        \abs{\esp{h(\theta_n) - h(\phi_{n\alpha}(\theta_0))} - \alpha V\toA_{n}} \le C\alpha^2,
+    \end{align*}
+    where the quantity $V\toA_{n}$ is given by:
+    \begin{align*}
+        V\toA_{n} := \sum_{k=0}^{n-1} &\E\Big[D(h\circ\varphi_{n-(k+1)})(\theta_{k})(f(\theta_{k},X_{k})-\barf(X_{k}))\\
+        &\quad - D^2(h\circ\varphi_{n-(k+1)})(\theta_{k}) \left((f (\theta_{k},X_{k})-\barf(X_{k}))^{\otimes 2} + Q(\theta_{k},X_{k})\right)\Big].
+    \end{align*}
+
+    Moreover, $V\toA_n$ is bounded independently of $\alpha$ and $n$.  
+\end{proposition}
+
+\begin{proof}
+    Following the definition of the stochastic and deterministic recurrences, the difference $z_{n, k} - z_{n, k+1}$ that appears in \eqref{eq:z_diff} is equal to 
+    \begin{align}
+        z_{n, k+1} - z_{n, k}  &= \esp{h(\varphi_{n-k}(\theta_{k})) - h(\varphi_{n-(k+1)}(\theta_{k+1}))}\nonumber\\
+        &= \E\big[h\circ\varphi_{n-(k+1)}(\theta_{k} + \alpha \bar{f}(\theta_{k}))\nonumber\\
+        &\qquad - h\circ\varphi_{n-(k+1)}(\theta_{k} + \alpha (f(\theta_{k},X_{k})+M_{k+1}))\big] \label{eq:before_taylor}
+    \end{align}
+    If $g:\R^d\to\R$ is a thrice differentiable function whose third derivative is bounded by $\norm{D^3g}$, by using a Taylor expansion, we have that $g(x+a) - g(x+ b) = Dg(x) (a-b) + D^2g(x) (a-b)^{\otimes2} + R$, where $R$ is a remainder term that is smaller than $\frac{c}{6}\norm{a-b}^3$. In our proof, we use this Taylor expansion with the function $g=h\circ\varphi_{n-(k+1)}$, $x=\theta_{k}$, $a=\alpha(f(\theta_{k},X_{k})+M_{k+1})$ and $b=\alpha\bar{f}(\theta_{k})$. Applying this to \eqref{eq:before_taylor} shows that 
+    \begin{align}
+        z_{n, k+1} - z_{n, k} = \alpha A_{n,k} + \frac{\alpha^2}{2} B_{n,k} + R_{n,k},
+    \end{align}
+    where $A_{n,k}$ and $B_{n,k}$ are equal to 
+    \begin{align*}
+        %\label{eq:def_r_two_time_refinement}
+        A_{n,k} &:= \esp{D(h\circ\varphi_{n-(k+1)})(\theta_{k})(f(\theta_{k},X_{k})+M_{k+1}-\barf(X_{k}))}\\
+        B_{n,k} &:= \esp{D^2(h\circ\varphi_{n-(k+1)})(\theta_{k}) (f (\theta_{k},X_{k})+M_{k+1}-\barf(X_{k}))^{\otimes 2}},
+    \end{align*}
+    and $R_{n,k}$ is a remainder term.
+
+    By assumption \ref{A:mart}, the conditional expectation and variance of the martingale term are equal to $\esp{M_{k+1}\mid \calF_{k}} = 0$ and $\esp{M_{k+1}^{\otimes2}\mid \calF_{k}}=Q(\theta_{k},X_{k})$. By using the total law of expectation, this shows that $A_{n,k}$ and $B_{n,k}$ can be simplified as:
+    \begin{align*}
+        A_{n,k} &:= \esp{D(h\circ\varphi_{n-(k+1)})(\theta_{k})(f(\theta_{k},X_{k})-\barf(X_{k}))}\\
+        B_{n,k} &:= \esp{D^2(h\circ\varphi_{n-(k+1)})(\theta_{k}) \left((f (\theta_{k},X_{k})-\barf(X_{k}))^{\otimes 2} + Q(\theta_{k},X_{k})\right)}.
+    \end{align*}
+    By definition, $V\toA_n = \sum_{k=0}^{n-1}(A_{n,k} + \alpha B_{n,k}/2)$. Hence, combining this with \eqref{eq:z_diff} shows that
+    \begin{align*}
+        \esp{h(\theta_n) - h(\phi_{n\alpha}(\theta_0))} &= V\toA_n + \sum_{k=0}^{n-1} R_{n,k}.
+    \end{align*}
+    To complete the proof, it remains to be shown that there exists a constant such that $\sum_{k=0}^{n-1} R_{n,k} \le C\alpha^2$ and that $V\toA_n$ is bounded independently of $\alpha$ and $n$. There are three terms, corresponding to $R$, $B$, and $\sum_{k=1}^n A_{n,k}$:\\
+    \textbf{Case of $R$}. In Lemma~\ref{lemma:exponentially_small_derivatives}, we show that the norm of the derivatives of $h\circ\varphi_{n-k}$ are smaller than $c_1 e^{- c_2\alpha (n-k)}$. As the derivatives of $h$ are bounded by $1$, this implies there exists $c$ independent of $\alpha$ and $n$ such that $\norm{D^3(h\circ\varphi_{n-k})}\le ce^{-c_2\alpha (n-k)}$. Hence, there exists $c'>0$ such that: 
+    \begin{align*}
+        \sum_{k=0}^{n-1} \norm{R_{n,k}}\le c' \alpha^3 \sum_{k=0}^{n-1} e^{-c_2\alpha (n-k)} \le c' \alpha^3 \sum_{k=0}^\infty e^{-c_2\alpha k} \le c'c_3 \alpha^2.
+    \end{align*}
+        
+    \textbf{Case of $B$}.     The proof that $\sum_{k=1}^n \alpha B_{n,k}$ is bounded independently of $n$ and $\alpha$ is similar since the factor $\alpha$ cancels out with the factor $1/\alpha$ that comes out of $\sum_{k=0}^\infty e^{-c_2\alpha k}$.
+
+    \textbf{Case of $A$} Showing that $\sum_{k=1}^n A_{n,k}$ is bounded independently of $n$ and $\alpha$ is more subtle and uses the fact that $\barf$ is the ``averaged'' version of $f$ with respect to the transition kernel $K$.  The proof of this is a consequence of the first point of Lemma~\ref{lem:Poisson} that is stated in Section~\ref{sec:proof_lemma}. 
+\end{proof}
+
+The proof of the main results is then a consequence of the next proposition, whose proof is given in Appendix~\ref{apx:proof_theorems}. This proposition shows that the Cesaro limit of $V\toA_n$ is approximately equal to a term $V$ that does not depend on $\alpha$ plus a term of order $O(\alpha)$. 
+
+\begin{proposition}
+    \label{prop:V}
+    Assume \ref{A:mart}--\ref{A:attractor}. Then, there exist a constant $C>0$ and $\alpha_0>0$ such that for all $h\in\cont{5}{\Theta}$, there exists a vector $V$ such that for all $n$, $\alpha\le\alpha_0$:
+    \begin{align*}
+        \abs{\overline{V}\toA_n - V} \le C(\alpha + \frac1{n\alpha}),
+    \end{align*}
+    where $\overline{V}\toA_n := n^{-1}\sum_{k=1}^{n}V\toA_k$ with $V\toA_k$ as in Proposition~\ref{prop:Vn}.
+\end{proposition}
+
+\section{Conclusion / discussion}
+
+In this paper, we presented an analysis of the bias of constant-step size algorithms with Markov noise. We developed a novel technic, based on generator comparison, that allows to obtain a very fine comparison between the expectation of the stochastic trajectory and the value of its  deterministic counterpart.  This methodology is quite generic and we believe that it could easily be adapted to obtain more general results. We are in particularly targeting: relaxing the bounded of $\Theta$, and obtaining non-asymptotic results.
+
+
+
+\section{Acknowledgements}
+
+The authors would like to thank the three anonymous reviewers for their insightful comments about the paper. This work was supported by the ANR (Agence National de la Recherche), via the project REFINO (ANR-19-CE23-0015).
+
+
+
+
+
+\bibliographystyle{plain}
+\bibliography{biblio}
+
+\newpage 
+
+\appendix
+
+\section*{Appendix}
+
+\section{Additional numerical results}
+\label{apx:additional_numerical}
+
+\subsection{Reproducibility}
+
+All parameters given in this section should suffice to reproduce all figures.  The total computation time to obtain all figures of the paper does not exceeds a few minutes (on a 2018 laptop, all implementation being done in Python/Numpy/Matplotlib). To ensure reproducibility, the code necessary to reproduce the paper (including latex, code to run the simulations and code to plot the figures) is available at \url{https://github.com/ngast/paper_bias_stochastic_approximation2024}.
+
+\subsection{Parameters for the example of Figure~\ref{fig:illustration_bias_X_bar_1} and Figure~\ref{fig:illustration_bias_X_bar_2}}
+\label{apx:additional_numerical_fig1}
+
+For Figure~\ref{fig:illustration_bias_X_bar_1} and \ref{fig:illustration_bias_X_bar_2}, the state space of the Markovian part is $\calX = \{0,1\}$, and the transition matrix is
+\begin{align*}
+    K(\theta) =
+    \begin{pmatrix}
+        \sin(\theta)^2 & \cos(\theta)^2 \\
+        \cos(\theta)^2 & \sin(\theta)^2
+    \end{pmatrix}.    
+\end{align*}
+The drift is $f(\theta, x)=\theta-2x$. The martingale noise $M_{n+1}$ is a sequence of \emph{i.i.d.} random variables with $\Proba{M_{n+1}=1\mid\calF_n}=\Proba{M_{n+1}=-1\mid\calF_n}=0.5$. One can show that $\theta^*=1$.  The initial value of the algorithm is set to $\theta_0=3, X_0=0$. 
+
+In Figure~\ref{fig:more_trajs}, we complete the results of Figure~\ref{fig:illustration_bias_X_bar_1} by showing more values of $\alpha$. We observe that in all cases, the averaged values $\bar{\theta}_n$ and $\bar{\theta}_{n/2:n}$ are much close to $\theta^*=1$ than the original $\theta_n$ that is very noisy. This explain why using a Polyak-Ruppert averaging is important. Also, if for large values of $\alpha\in\{0.02,0.01,0.005\}$, the two quantities $\bar{\theta}_n$ and $\bar{\theta}_{n/2:n}$ have similar behavior, the situation is quite different when $\alpha$ gets smaller. In the latter case, the convergence of $\bar{\theta}_{n/2:n}$ is much faster than the one of $\bar{\theta}_{n}$ because of the transient behavior of $\theta_n$ at the beginning. This is why we use $\bar{\theta}_{n/2:n}$ in our simulations.
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=\linewidth]{traj_SA_thetaBar_all.pdf}
+    \caption{Behavior of $\theta_n$, $\bar{\theta}_n$ and $\bar{\theta}_{n/2:n}$ for various values of $\alpha$. All $y$-axis have the same scale. }
+    \label{fig:more_trajs}
+\end{figure}
+
+\subsection{Parameters for Figure~\ref{fig:generator}}
+\label{apx:additional_numerical_fig2}
+
+For Figure~\ref{fig:generator},  the state space of the Markovian part is $\calX = \{0,1\}$ and the transition matrix is
+\begin{align*}
+    K(\theta) =
+    \begin{pmatrix}
+        0.5 & 0.5 \\
+        0.5 & 0.5
+    \end{pmatrix}.
+\end{align*}
+The drift is $f(\theta,x)=1 - (1+\theta)x$. The initial state is $\theta_0=X_0=0$ and there is no martingale noise\footnote{Note that because of the form of the matrix $K(\theta)$, the process $X_n$ is memoryless. Hence, one could build the same model with a martingale noise instead of the variable $X$.}. The step-size is set to $\alpha=0.05$.
+
+
+\subsection{Why is Theorem~\ref{thrm:finite_n_bound} for \texorpdfstring{$\theta_n$}{θn} and Theorem~\ref{thrm:limit_N_refinement} and \ref{thrm:limit_N_refinement_proba} for \texorpdfstring{$\bar{\theta}_n$}{bar(θ)n}?}
+
+Note that compared to \eqref{eq:bias_bound} of Theorem \ref{thrm:finite_n_bound}, the result of \eqref{eq:refinement_statement_accuracy_lim_N} in Theorem \ref{thrm:limit_N_refinement} is stated for the averaged iterates $\frac{1}{N}\sum_{n=1}^N \esp{\theta_n}$ and not directly for $\theta_n$. In fact, there are many cases for which \eqref{eq:refinement_statement_accuracy_lim_N} is also valid for $\theta_n$. In particular, if $\esp{h(\theta_n)}$ converges as $n$ goes to infinity, then one necessarily has:
+\begin{align*}
+    \limsup_{n\to\infty}\abs{\esp{h(\theta_{n})} - h(\theta^*) - \alpha V} & \leq \alpha^2 C'. 
+\end{align*}
+This is for instance the case if $(\theta_n,X_n)$ is an ergodic Markov chain. 
+Yet, there are cases for which the result of \eqref{eq:refinement_statement_accuracy_lim_N} only holds for the averaged iterates. This occurs typically when $X_n$ has a periodic behavior, in which case the averaged iterates eliminate eventual oscillations caused by periodic noise sequences.  To illustrate this, we consider a one-dimensional model with $f(\theta, x)=2 x - \theta$, $X_{n+1}=1-X_n$ and $M_{n+1}=0$.  This model satisfies all assumptions of the problems and $\theta^*=1$. The initial conditions are set to $\theta_0=0.85$, and $X_0=0$. The system is therefore deterministic. In Figure~\ref{fig:example_periodic_y} we plot the trajectories of $\theta_n$ and of $\bar{\theta}^{(\alpha)}_N :=\frac1N \sum_{n=1}^{N} \theta_{n}$ for two stepsize values: $\alpha=0.05$ and $\alpha=0.1$. We observe that, as stated by Theorem~\ref{thrm:finite_n_bound}, the smaller is $\alpha$, the closer is $\lim_{n\to\infty}\theta_{n}$ from $\theta^*$. One can also observe that $(\theta_n - 1)/\alpha$ oscillates and does not converge as $n$ goes to infinity, contrary to $(\bar{\theta}_n-1)/\alpha$ that does converge (to $0$ here).
+
+\begin{figure}[ht]
+    \centering
+    \begin{tabular}{@{}c@{}c@{}}
+        \includegraphics[width=0.45\linewidth]{stoch_approx_periodic_example_100.pdf}
+        &\includegraphics[width=0.45\linewidth]{stoch_approx_periodic_example_50.pdf}\\
+        (a) $\alpha=0.1$ & (b) $\alpha=0.05$
+    \end{tabular}
+    \caption{Example of a model with a periodic $X_n$ illustrating the necessity of averaging the iterates. }
+    \label{fig:example_periodic_y}
+\end{figure}
+
+
+
+\section{Proof of the main results}
+\label{apx:proof_theorems}
+
+\subsection{Proof of Proposition~\ref{prop:V}}
+\label{ssec:proof_prop:V}
+
+In this section, we prove Proposition~\ref{prop:V} that states, that under\ref{A:mart}--\ref{A:attractor}, there exist a constant $C>0$ and $\alpha_0>0$ such that for all $h\in\cont{5}{\Theta}$, there exists a vector $V$ such that for all $n$, $\alpha\le\alpha_0$:
+\begin{align*}
+    \abs{\overline{V}\toA_n - V} \le C(\alpha + \frac1{n\alpha}),
+\end{align*}
+where $\overline{V}\toA_n := n^{-1}\sum_{k=1}^{n}V\toA_k$ with $V\toA_k$ as in Proposition~\ref{prop:Vn}.
+
+This proposition shows that the Cesaro limit of the constants $V\toA_{n}$ defined in Proposition~\ref{prop:Vn} converges to a limit that is equal to $V+\bO{\alpha}$. In particular, this result implies that
+\begin{align*}
+    \esp{\frac1k\sum_{k=1}^n h(\theta_n)} = h(\theta^*) + \alpha V + \bO{\alpha^2 + \frac{1}{n\alpha}}.
+\end{align*}
+
+
+\begin{proof}[Proof of Proposition~\ref{prop:V}]
+    Recall from the proof of Proposition~\ref{prop:Vn} that $V\toA_n=\sum_{k=0}^{n-1}\esp{A_{n,k} + \alpha B_{n,k}/2}$. We first treat the term $\sum_{k=0}^{n-1}B_{n,k}$ that is the easiest (essentially because it is multiplied by a factor $\alpha$). Applying Lemma~\ref{lem:Poisson} to the function $g(\theta,X):=(f (\theta,X)-\barf(X))^{\otimes 2} + Q(\theta,X)$ shows that: 
+    \begin{align*}
+        \sum_{k=0}^{n-1}\esp{B_{n,k}} &= \sum_{k=0}^{n-1}\esp{D^2(h\circ\varphi_{n-(k+1)})(\theta_k)g(\theta_k,X_k)}\\
+        &= \sum_{k=0}^{n-1} \esp{D^2(h\circ\varphi_{n-(k+1))})(\theta_k)\bar{g}(\theta_k)} + \bO{1}.
+    \end{align*}
+    By applying Theorem~\ref{thrm:finite_n_bound}, this shows that
+    \begin{align}
+        \label{eq:limit_B_n_k}
+        \lim_{n\to\infty} \sum_{k=0}^{n-1}\esp{B_{n,k}} &= \sum_{k=0}^{\infty} D^2(h\circ\varphi_{k})(\theta^*)\bar{g}(\theta^*) + \bO{1},
+    \end{align}
+    where $\bar{g}(\theta)=\sum_{x\in\calX}\pi_x(\theta)\bigl((f (\theta,x)-\barf(x))^{\otimes 2} + Q(\theta,x)\bigr)$. 
+
+    The treatment of $A_{n,k}$ requires more work, and in particular one can show that $\sum_{k=0}^{n-1}A_{n,k}$ does not necessarily converge as $n$ goes to infinity\footnote{This is illustrated by Figure~\ref{fig:example_periodic_y}.}. This is why we study the convergence of $\bar{A}_{N} = \sum_{n=1}^N\sum_{k=0}^{n-1}A_{n,k}$ and not the one of $A_{n,k}$. By applying Lemma~\ref{lem:refined_barf} with $g=f$ and then applying Theorem~\ref{thrm:finite_n_bound}, it holds that $\lim_{N\to\infty}\abs{\bar{A}_N + \alpha m(\theta^*)}\le C\alpha$, with $m(\theta^*)$ equal to 
+    \begin{align*}
+        m(\theta^*) = \sum_{x,x'\in\calX} \sum_{n=0}^\infty D(D(h\circ\phi_n)(\theta^*) G_f(\theta^*, x'))(f(\theta^*,x)+R(\theta^*,x,x'))K_{x,x'}(\theta^*)\pi_x(\theta^*)
+    \end{align*}
+    Note that to apply Theorem~\ref{thrm:finite_n_bound}, we need $m$ to be three times differentiable which is why we need $h$ to be four times differentiable. 
+
+    Let $V\toA = \alpha(\sum_{k=0}^{\infty} D^2(h\circ\varphi_{k})(\theta^*)\bar{g}(\theta^*) + m(\theta^*))$. By using Lemma~\ref{lem:computable}, there exists a vector $V$ such that $\norm{V\toA-V}\le C\alpha$.
+\end{proof}
+
+
+\subsection{Proof of Theorem~\ref{thrm:limit_N_refinement_proba} (High-probability bound)}
+\label{ssec:high-proba}
+
+Fix some $i\in\{1\dots d\}$ and let $Y_n := (\theta_n-\theta^*-\alpha V)_i$, be the $i$th component of the vector where the constant $V$ is the one defined in Proposition~\ref{prop:V} when applied to the function $h(\theta)=\theta-\theta^*$.  By Proposition~\ref{prop:Vn} and Proposition~\ref{prop:V}, there exists $C>0$ such that for $n$ large enough:
+\begin{align*}
+    \frac1n \sum_{k=1}^n \esp{Y_{k}}  &\le C (\alpha^2 + \frac{1}{\alpha n} )
+\end{align*}
+It is easy to modify the proofs of those propositions (by adding a conditioning on $\calF_{mK}$ and starting the summation at $mK+1$) to show that for all $K$ and for $m$ large enough:
+\begin{align*}
+    \frac1{K} \sum_{k=mK+1}^{(m+1)K} \esp{Y_{k}\mid \calF_{mK}}  &\le C (\alpha^2 + \frac{1}{\alpha K} ).
+\end{align*}
+Let $Z_m= \frac1{K} \sum_{k=mK+1}^{(m+1)K} Y_m $. The above result shows that $\sum_{m=1}^M Z_m - C M(\alpha^2 + \frac{1}{\alpha K} )$ is a super-martingale. Moreover, as $\Theta$ is bounded, there exists $C'>0$ (independent of $C$ and $\alpha$) such that $|Z_n- C (\alpha^2 + \frac{1}{\alpha K} )|\le C'$ (almost surely). Hence, by using Azuma-Hoeffding inequality, for all $\varepsilon$:
+\begin{align*}
+    \Proba{ \frac1M \sum_{m=1}^M Z_m \ge C (\alpha^2 + \frac{1}{\alpha K} ) + \varepsilon} \le e^{- M \epsilon^2 / C }.
+\end{align*}
+By setting $K=1/\alpha^3$, $\varepsilon=C \alpha^2$, and taking the limit as $M$ goes to infinity, this implies that: 
+\begin{align*}
+    \lim_{M\to\infty }\Proba{ \frac1M \sum_{m=1}^M Z_m \ge 3 C \alpha^2 } = 0.
+\end{align*}
+By using that $\frac1n \sum_{k=1}^n Y_k= \frac1M \sum_{m=1}^M Z_m + O(1/M)$, with $M=\lfloor M/K\rfloor$, it follows that for all $\in\{1\dots d\}$:
+\begin{align*}
+    \lim_{n\to\infty}\Proba{ (\bar{\theta}_n-(\theta^*+\alpha V))_i \ge 3C\alpha^2} = 0.
+\end{align*}
+A symmetric proof shows that $\lim_{n\to\infty}\Proba{ (\bar{\theta}_n-(\theta^*+\alpha V))_i \le -3C\alpha^2} = 0$. The theorem then follows by using a union bound on all $i$. 
+
+This shows that the constant of Theorem~\ref{thrm:limit_N_refinement_proba} can be chosen as $C''=3C$ where $C$ is the constant of Theorem~\ref{thrm:finite_n_bound}. By choosing more carefully the values of $K$ and $\varepsilon$, this constant can be reduced to $C''=(1+\delta)C$ for all $\delta>0$.
+
+
+
+\section{Technical lemmas}
+\label{sec:proof_lemma}
+
+This section contains the technical lemmas that are used in the proof of the main theorems. This section is divided in two parts. We first show in Lemma~\ref{lemma:exponentially_small_derivatives} that the derivatives of $\varphi_{n}$ are exponentially small as $n$ goes to infinity. Using this exponential convergence, we then prove Lemma~\ref{lem:kind_of_telescopic_sum_bound} that provides bound for an \emph{almost telescopic} sum that appears in the proof of Lemma~\ref{lem:Poisson}. The latter shows how to bound the difference between $f(\theta_n,X_n)$ and $\bar{f}(\theta_n)$ by using a Poisson approach.
+
+
+\subsection{Exponential decay of the derivatives of \texorpdfstring{$\varphi_n$}{φn}}
+
+The first lemma is at the core of our analysis. It shows that if the ODE has a unique attractor (as imposed by \ref{A:attractor}), then for $\alpha$ small enough, the derivatives of the discrete-time recurrence $\varphi_n$ are exponentially small as $n$ goes to infinity. 
+
+\begin{lemma}
+    \label{lemma:exponentially_small_derivatives}
+    Assume \ref{A:cont}-\ref{A:attractor}. There exist $\alpha_0>0$ and constants $c_1,c_2,c_3,c_4>0$ such that for all $\alpha<\alpha_0$, $i\in\{1,2,3\}$ and $n$, 
+    \begin{enumerate}[label=(\roman*)]
+        \item $\sum_{n=0}^\infty e^{-c_2\alpha n} \le c_3/\alpha$.
+        \item For all $h\in\cont{i}{\Theta}$, the $i$th derivative of $h\circ\varphi_n$ satisfies:
+        \begin{align*}
+            \norm{D^i(h\circ\varphi_n)} \le c_1 e^{-c_2\alpha n},
+        \end{align*}
+        \end{enumerate} 
+\end{lemma}
+\begin{proof}
+    The proof of \emph{(ii)} is just a comparison between a sum and an integral. Indeed, as $x\mapsto e^{-x}$ is decreasing, one have:
+    \begin{align*}
+        \frac1{c_2} = \int_0^\infty e^{-c_2 x}dx =\sum_{k=1}^\infty \int_{(k-1)\alpha}^{k\alpha} e^{- c_2 x}dx \ge \sum_{k=1}^\infty \alpha e^{-c_2 \alpha k}.
+    \end{align*}
+    This shows that:
+    \begin{align*}
+        \sum_{k=0}^\infty e^{-c_2 \alpha k}  = 1 + \sum_{k=1}^\infty e^{-c_2 \alpha k}
+        &= 1 + \frac1{c_2\alpha} = (\alpha+\frac1{c_2})\alpha.
+    \end{align*}
+    This concludes the proof by setting $c_3=(\alpha_0 + 1/c_2)$. 
+    
+    To prove \emph{(ii)}, let us first prove the result for the first derivative ($i=1$). By Assumption~\ref{A:attractor}, all trajectories of the ODE $\dot{\vartheta}=\bar{\vartheta}$ converge to the fixed point $\theta^*$ and the Jacobian $H := D\bar{f}(\theta^*)$ is Hurwitz. By classical results \cite{bof2018lyapunov} on the discretization of ODE\footnote{To see why this is true, one should remark that, because $H$ is Hurwitz, there exists $c>0$ and $\alpha*0$ such that for all $\alpha\le\alpha_0$, the eigenvalues of $I+\alpha H$ have a modulus smaller than $1-\alpha c$. This implies that the recurrence equation $\theta_{n+1}=\theta_n+\alpha \bar{f}(\theta_n)$ is exponentially stable around $\theta^*$. The uniform bound for all $\theta\in\Theta$ comes from the fact that $\Theta$ is compact.}, this implies that, for $\alpha$ small enough, the discretization $\varphi_n(\theta)$ converges exponentially fast to $\theta^*$, that is: there exists $\alpha_0>0$ and $a,b$ such that for all $\alpha<\alpha_0$ and $\theta\in\Theta$: $\norm{\varphi_n(\theta)-\theta^*}\le a e^{-c_2\alpha n}$. Using this and the fact that $\bar{f}$ is twice continuously differentiable in $\theta^*$ implies the existence of $a'$ such that:
+    \begin{align}
+        \norm{D\bar{f}(\varphi_n(\theta))-H}\le a' e^{-c_2\alpha n}\text{ and }(I+\alpha H)^{k}\le a'e^{-c_2\alpha n}.
+    \end{align}
+    
+    Recall that the definition of $\varphi_{n}$ in Equation~\eqref{eq:discrete_rec} implies that $\varphi_{n+1}(\theta) - \varphi_n(\theta) = \alpha\bar{f}(\varphi_n(\theta))$ with $\varphi_0(\theta)=\theta$.  Hence, as $\bar{f}$ is differentiable with respect to its initial condition, by using the chain rule, the derivative of $\varphi_{n+1}$ exists and satisfies:
+    \begin{align}
+        \label{eq:rec_Dphi}
+        D \varphi_{n+1}(\theta) - D \varphi_n(\theta) = \alpha D \varphi_n (\theta) D \bar{f} (\varphi_n(\theta)).
+    \end{align}
+    To simplify notation, let use denote by $X_{n+1}:=D \varphi_{n+1}(\theta)$ (the above equation is $X_{n+1}-X_n = \alpha X_n D \bar{f} (\varphi_n(\theta))$), and let us compute\footnote{We compute this quantity to solve \eqref{eq:rec_Dphi} by using a technique similar to the change of variable method.} $X_{n+1}(I+\alpha H)^{-(n+1)}$. By adding a substracting the term $X_n(I+\alpha H)^{-n}$, it holds that:
+    \begin{align*}
+        X_{n+1}(I+\alpha H)^{-(n+1)} &= X_{n+1}(I+\alpha H)^{-(n+1)} - X_{n}(I+\alpha H)^{-n} + X_{n}(I+\alpha H)^{-n}\\
+        &= (X_{n+1} - X_{n} (I+\alpha H) )(I+\alpha H)^{-(n+1)} + X_{n}(I+\alpha H)^{-n}\\
+        &= \alpha X_{n} (D\bar{f}(\varphi_n(\theta)) - H)(I+\alpha H)^{-(n+1)} + X_{n}(I+\alpha H)^{-n},
+    \end{align*}
+    where we used \eqref{eq:rec_Dphi} for the last line. 
+
+    By using that the last term $X_{n}(I+\alpha H)^{-n}$ corresponds to the $X_{n+1}(I+\alpha H)^{-(n+1)}$ where we replace $n+1$ by $n$, a direct induction shows that
+    \begin{align*}
+        X_{n+1}(I+\alpha H)^{-(n+1)} = \alpha \sum_{k=1}^n X_k (D\bar{f}(\varphi_k(\theta)) - H)(I+\alpha H)^{-(k+1)}.
+    \end{align*}
+    Multiplying this equation by $(I+\alpha H)^{n+1}$ implies that:
+    \begin{align}
+        \label{eq:X_{n+1}}
+        X_{n+1} = \alpha \sum_{k=1}^n  X_k (D\bar{f}(\varphi_k(\theta)) - H)(I+\alpha H)^{n-k}.
+    \end{align}
+    By using \eqref{eq:rec_Dphi}, and denoting $x_{n+1}:=\norm{X_{n+1}}$, it holds that
+    \begin{align}
+        \label{eq:x_{n+1}}
+        x_{n+1} \le \alpha \sum_{k=1}^n x_k a' e^{-c_2\alpha k} a' e^{-c_2\alpha(n-k)}
+        &= \alpha (a')^2 e^{-c_2\alpha n} \sum_{k=1}^n x_k.
+    \end{align}
+    To conclude, let $y_{n+1}:=\alpha (a')^2 \sum_{k=1}^n y_ke^{-c_2\alpha k}$ with $y_0:=x_0$. It can be shown by induction on $k$ that$x_{n}\le e^{c_2\alpha k} y_k$. Moreover, we have:
+    \begin{align*}
+        y_{n+1} &= \alpha (a')^2 y_n e^{-c_2\alpha n} + y_n = y_n(1+\alpha (a')^2 e^{-c_2\alpha n}) = \prod_{k=1}^n (1+\alpha (a')^2 e^{-c_2\alpha k}).
+    \end{align*}
+    By using the concavity of the log, we have that:
+    \begin{align*}
+        \log \prod_{k=1}^n (1+\alpha (a')^2 e^{-c_2\alpha k}) &= \sum_{k=1}^n \log (1+\alpha (a')^2 e^{-c_2\alpha k})\\
+        &\le \sum_{k=1}^n \alpha (a')^2 e^{-c_2\alpha k}.
+    \end{align*}
+    By using the point (i), the last quantity is bounded by some quantity $d$. This shows that $x_n\le de^{-c_2 \alpha n}$.
+    
+    The proof of the higher derivatives (case $i\ge2$) are very similar to the proof for the first derivative $i=1$ and we only give an overview. For the second derivative, differentiating \eqref{eq:rec_Dphi} with respect to $\theta$ gives:
+    \begin{align*}
+        D^2 \varphi_{n+1}(\theta) - D^2 \varphi_{n}(\theta) = \alpha D^2\varphi_n(\theta) D \bar{f} (\varphi_n(\theta)) + \alpha (D \varphi_n(\theta),D\varphi_n(\theta))\cdot D^2 \bar{f} (\varphi_n(\theta)).
+    \end{align*}
+    This equation is very close to \eqref{eq:rec_Dphi} with an additional term $Z_n :=\alpha (D \varphi_n(\theta),D\varphi_n(\theta))\cdot D^2 \bar{f} (\varphi_n(\theta))$. Indeed, denoting by $X_{n}'=D^2 \varphi_{n}(\theta)$, one can reapply the steps used to obtain \eqref{eq:X_{n+1}} and get instead:
+    \begin{align*}
+        X'_{n+1} = \alpha \sum_{k=1}^n  (X'_k (D\bar{f}(\varphi_k(\theta)) - H)+Z_k)(I+\alpha H)^{n-k}.
+    \end{align*}
+    One can then use our result for the first derivative to show that $\norm{(X'_k (D\bar{f}(\varphi_k(\theta)) - H)+Z_k)}\le a'' e^{-c_2\alpha k}$ and obtain an equation similar to \eqref{eq:x_{n+1}} but for $x'_{n+1}:=\norm{D^2\varphi(\theta)}$. The proof can be modified mutatis-mutandis for higher derivatives. 
+\end{proof}
+
+
+\subsection{Bound on the almost-telescopic sum} In this section, we prove a lemma that we will later use in the proof of Lemma~\ref{lem:Poisson}. This lemma concerns a summation that is \emph{almost-telescopic}: the first \eqref{eq:kind_of_telescopic} is of the form $\sum_{k=0}^{n-1} u_k(v_{k+1}-v_{k})$. If it would hold that $u_k=u_{k-1}$, then the sum would be telescopic and there would be no need for a lemma. Here, we show that the difference $\norm{u_k-u_{k-1}}$ is small and use this to prove our result. In the second lemma, we make a second round of summation.
+
+\begin{lemma}\label{lem:kind_of_telescopic_sum_bound}
+    Assume \ref{A:mart}--\ref{A:attractor}. Then, there exists a constant $C>0$ and $\alpha_0$ such that for all $n$, $\alpha\le\alpha_0$ and all $i\in\{1,2,3\}$, $h\in\cont{i}{\Theta}$ and $g\in\cont{0}{\Theta}$:
+    \begin{align}
+        \label{eq:kind_of_telescopic}
+        \abs{\esp{\sum_{k=0}^{n-1}D^i(h \circ \varphi_{n-(k+1)})(\theta_{k})\left( g(\theta_{k+1}, X_{k+1}) - g(\theta_{k}, X_{k}) \right)}}\le C.
+    \end{align}
+\end{lemma}
+\begin{proof}
+    Let us denote $u_k:=D(h \circ \varphi_{n-(k+1)})(\theta_{k})$ and $v_k:=g(\theta_k,X_k)$. The quantity \eqref{eq:kind_of_telescopic} is equal to $\esp{\sum_{k=0}^{n-1} u_k(v_{k+1}-v_{k})}$. By shifting the indices of the sum (which corresponds to a discrete-time integration by part), we get: 
+    \begin{align}
+        \sum_{k=0}^{n-1} u_k(v_{k+1}-v_{k})&= \sum_{k=0}^{n-1} u_k v_{k+1}-\sum_{k=0}^{n-1}u_kv_{k}\nonumber\\
+        &= \sum_{k=1}^{n} u_{k-1} v_{k}-\sum_{k=0}^{n-1}u_k v_{k} \\
+        &= u_{n-1}v_n - u_0v_0 + \sum_{k=1}^{n-1} (u_{k-1}-u_k)v_k.\label{eq:telescopic3}
+    \end{align}
+    As the norm of $g$ and $h$ are bounded by $1$, $\norm{u_{n-1}v_n - u_0v_0}$ and $\norm{v_k}$ are bounded independently of $\alpha$.  Hence, the result follows if we can show that $\sum_{k=1}^{n-1} \norm{u_{k-1}-u_k}$ is bounded regardless of $\alpha$. To show this, by adding and subtracting the term $D(h \circ \varphi_{n-k})(\theta_{k})$, we have: 
+    \begin{align*}
+        u_{k-1}-u_k &= D(h \circ \varphi_{n-k})(\theta_{k-1}) - D(h \circ \varphi_{n-k})(\theta_{k}) \\
+        &\qquad + D(h \circ \varphi_{n-k})(\theta_{k}) - D(h \circ \varphi_{n-(k+1)})(\theta_{k})
+    \end{align*}
+    By Lemma~\ref{lemma:exponentially_small_derivatives}, the function $D(h \circ \varphi_{n-k})$ is Lipschitz continuous with a constant $c e^{-(n-k)\alpha c_2}$. As the difference between $\theta_k$ and $\theta_{k-1}$ is of order $\alpha$, this shows that the first line is bounded by $c' \alpha e^{-(n-k)\alpha c_2}$. For the second line, the definition of the function $\varphi_{n-k}$ in \eqref{eq:discrete_rec} implies that for any $\theta$:
+    \begin{align*}
+        \varphi_{n-k}(\theta) - \varphi_{n-(k+1)} (\theta) &= \alpha \barf(\varphi_{n-(k+1)}(\theta)).
+    \end{align*}
+    This shows that difference between $D(h \circ \varphi_{n-k})$ and $D(h \circ \varphi_{n-(k+1)})$ is of order $c''\alpha e^{-(n-k)\alpha c_2}$. The two facts combined imply that:
+    \begin{align*}
+        \sum_{k=0}^n \norm{u_{k-1}-u_k}\le (c'+c'')  \sum_{k=0}^n \alpha e^{-c_2(n-k)\alpha} \le  (c'+c'')\sum_{k=0}^\infty \alpha e^{-c_2k\alpha}\le (c'+c'')c_3 \alpha.
+    \end{align*}
+\end{proof}
+
+\subsection{Poisson equation and treatment of the averaging term}
+\label{ssec:proof_lemma_poisson}
+
+For a given $g:\Theta\times\calX\to\R$, we say that the function $G_g:\Theta\times\calX\to\R$ is a solution of the Poisson equation if it satisfies
+\begin{align}
+    \label{eq:Poisson}
+    \sum_{y\in\calX} K_{x,y}(\theta)(G_g(\theta, x)-G_g(\theta, y)) = g(\theta, x) - \bar{g}(\theta),
+\end{align}
+with $\bar{g}(\theta)=\sum_x \pi_x(\theta)g(\theta,x)$  as before. 
+
+It is shown in \cite[Lemma~4]{allmeier2023bias} that under assumption \ref{A:unichain}, for each $g$, there exists such a function $G_g$. Moreover, under the regularity assumption~\ref{A:cont}, this same lemma shows that the function $G_g$ can be chosen to be four times differentiable and that is derivatives satisfy $\normop[i]{G_g}=\bO{\normop[i]{g}}$.
+
+\begin{lemma}
+    \label{lem:Poisson}
+    Assume \ref{A:mart}--\ref{A:attractor}. Then, there exists a constant $C>0$ and $\alpha_0$ such that for all $n$, $\alpha\le\alpha_0$ and all $i\in\{1,2,3\}$, $h\in\cont{i}{\Theta}$ and $g\in\cont{0}{\Theta}$:
+    \begin{align}
+        & \abs{ \sum_{k=0}^{n-1}\esp{D^i(h \circ \varphi_{n-(k+1)})(\theta_{k}) \Bigl( g(\theta_{k},X_{k})- \bar{g}(\theta_{k}) \Bigr)} } \leq C. \label{eq:decoupled_accuracy_lemma}
+    \end{align}
+\end{lemma}
+
+\begin{proof}
+    To lighten the notations, we consider the case $i=1$, the proof holds for $i>1$ by replacing $D(h\circ\varphi)$ by $D^i(h\circ \varphi)$. By adding and subtracting some terms, the quantity \eqref{eq:decoupled_accuracy_lemma} is equal to the expectation of
+    \begin{align}
+        \sum_{k=0}^{n-1}D(h \circ \varphi_{n-k-1})(\theta_{k}) \Bigl( g(\theta_{k},X_{k})- \bar{g}(\theta_{k}) 
+        &+ G_{g}(\theta_{k}, X_{k}) - G_{g}(\theta_{k}, X_{k+1}) \label{eq:extended_difference_lemma_decoupling_1}\\
+        & + G_{g}(\theta_{k}, X_{k+1}) - G_{g}(\theta_{k+1}, X_{k+1}) \label{eq:extended_difference_lemma_decoupling_2}\\
+        & + G_{g}(\theta_{k+1}, X_{k+1}) - G_{g}(\theta_{k}, X_{k}) \Bigr). \label{eq:extended_difference_lemma_decoupling_3}
+    \end{align}
+    We examine the three lines separately: 
+    \begin{itemize}
+        \item By using the fact that $X_{k+1}$ makes a Markovian transition \eqref{eq:Markov}, and by using the definition of $G_h(x,y)$, we get: 
+        \begin{align*}
+            \esp{G_{g}(\theta_k, X_k) - G_{g}(\theta_k, X_{k+1})\mid \calF_k}
+            & = -\sum_{y'} K(\theta_{k})_{X_k,y'} G_{g}(\theta_k,y') \\
+            & = - (g(\theta_k,X_k)-\bar{g}(\theta_{k}))
+        \end{align*}
+        from which follows that the expectation of \eqref{eq:extended_difference_lemma_decoupling_1} is equal to zero.
+        \item     To bound Equation \eqref{eq:extended_difference_lemma_decoupling_2}, we use the definition~\eqref{eq:model} of $\theta_{k+1}$ to implies that there exists a constant $C>0$ such that $\abs{\theta_{k+1} - \theta_k} \le C\alpha $. By using that $G_g$ is Lipschitz-continuous (see \cite[Lemma~4]{allmeier2023bias}) and that the norm of the derivative of $h\circ\varphi_{n-k}$ is bounded by $c_1e^{-c_2(n-k)\alpha}$ (Lemma~\ref{lemma:exponentially_small_derivatives}), this shows that there exists $c'<\infty$ such that:
+        \begin{align*}
+            & \esp{\sum_{k=0}^{n-1}\norm{D(h \circ \varphi_{n-k-1})(\theta_{k}) \left( G_{g}(\theta_{k}, X_{k+1}) - G_{g}(\theta_{k+1}, X_{k+1}) \right) }} \le c' \alpha \sum_{k=0}^\infty e^{-c_2k\alpha} \le c_3c'. \\
+        \end{align*}
+        \item     The fact that the expectation of \eqref{eq:extended_difference_lemma_decoupling_3} is bounded is a direct consequence of Lemma~\ref{lem:kind_of_telescopic_sum_bound} applied with $g=G_g$ and the fact that $\normop{G_g}=\bO{\normop{g}}$.
+    \end{itemize}
+    This conclude the proof.
+\end{proof}
+
+\subsection{Refined treatment of the averaging term}
+
+The next two lemmas prove properties of the average sums that refine the analysis of Lemma~\ref{lem:Poisson}. They are used to study the term $\overline{A}_{n}$ in the proof of Proposition~\ref{prop:V}.
+
+\begin{lemma}
+    \label{lem:Poisson2}
+    Assume \ref{A:mart}--\ref{A:attractor}. Then, there exists a constant $C>0$ and $\alpha_0$ such that for all $n$, $\alpha\le\alpha_0$:
+    \begin{align}
+        \forall\ell\in\cont{1}{\Theta}: \qquad
+        &\frac1n \sum_{k=0}^{n-1}\esp{\ell(\theta_{k},X_{k})- \bar{\ell}(\theta_{k})} \leq C(\frac{1}{n}+\alpha).
+        \label{eq:decoupled_accuracy_lemma2}\\
+        \forall\ell\in\cont{2}{\Theta}: \qquad
+        &\frac1n \sum_{k=0}^{n-1}\esp{\ell(\theta_{k},X_{k})- \bar{\ell}(\theta_{k}) + \alpha \bar{m}(\theta_k)} \leq C(\frac{1}{n}+\alpha^2)\label{eq:decoupled_accuracy_lemma3},
+    \end{align}
+    where $\bar{m}=\sum_{x,x'\in\calX} DG_\ell(\theta, x') (f(\theta,x) + R(\theta,x,x'))K_{x,x'}(\theta)\pi_x(\theta)$.
+\end{lemma}
+
+\begin{proof}
+    By applying the same trick as for \eqref{eq:extended_difference_lemma_decoupling_1}--\eqref{eq:extended_difference_lemma_decoupling_3} in the one of Lemma~\ref{lem:Poisson} but replacing $D^i(h \circ \varphi_{n-(k+1)})(\theta_{k})$ by $1/n$, the left-hand-side of \eqref{eq:decoupled_accuracy_lemma2} is equal to the expectation of
+    \begin{align}
+        \label{eq:proof_lemma_Poisson2}
+        &\frac1n \sum_{k=0}^{n-1}\underbrace{G_\ell(\theta_{k}, X_{k+1}) - G_\ell(\theta_{k+1}, X_{k+1})}_{\text{$=\bO{\alpha\normop{G_\ell}}$ because $DG_\ell$ is bounded.}}
+         + \frac1n \underbrace{ \sum_{k=0}^{n-1} G_\ell(\theta_{k+1}, X_{k+1}) - G_\ell(\theta_{k}, X_{k})}_{\text{$=O(1)$ because sum is telescopic.}}
+    \end{align}
+    where there is no equivalent of \eqref{eq:extended_difference_lemma_decoupling_1} because we already use that the expectation of this term is $0$. 
+    
+    In \eqref{eq:proof_lemma_Poisson2}, each element of the first sum is $\bO{\alpha}$ by using a Taylor expansion of $G_\ell$ and using that $\normop{DG_\ell}=\bO{\normop{\ell}}$. Hence the first term is of order $\bO{\alpha}$. The second sum is telescopic. As it is multiplied by $1/n$, this leads to the term $\bO{1/n}$ of \eqref{eq:decoupled_accuracy_lemma2}. Combining both leads to \eqref{eq:decoupled_accuracy_lemma2}. 
+    
+    \medskip
+    
+    To obtain \eqref{eq:decoupled_accuracy_lemma3}, we refine the analysis of the first term of \eqref{eq:proof_lemma_Poisson2}. By using a Taylor expansion on the function $\theta\mapsto G_\ell(\theta,X)$, the quantity $ G_\ell(\theta_{k}, X_{k+1}) - G_\ell(\theta_{k+1}, X_{k+1}) $ is equal to
+    \begin{align}
+       DG_\ell(\theta_k,X_{k+1})(\theta_k-\theta_{k+1}) + \normop[2]{G_\ell}\norm{\theta_{k+1}-\theta_k}^2.
+       \label{eq:sum_of_two_terms_bound3}
+    \end{align}
+    By definition, $\norm{\theta_{k+1}-\theta_k}^2$ is of order $\alpha^2$. 
+    
+    Let $m(\theta,x)=\sum_{x'\in\calX} DG_\ell(\theta, x') (f(\theta,x) + R(\theta,x,x'))K_{x,x'}(\theta)$. By using the law of total expectation, 
+    \begin{align*}
+        &\esp{DG_\ell(\theta_k,X_{k+1})(\theta_k-\theta_{k+1})} = -\alpha \esp{DG_\ell(\theta_k,X_{k+1})(f(\theta_k,X_k)+M_{k+1})}\\
+        &= -\alpha \esp{\esp{\esp{DG_\ell(\theta_k,X_{k+1})(f(\theta_k,X_k)+M_{k+1})\mid \calF_k\land X_{k+1}}\mid \calF_k}}\\
+        &= -\alpha \esp{m(\theta_k,X_k)}.
+    \end{align*}
+    By using \eqref{eq:decoupled_accuracy_lemma2} with the function $m$ instead of $\ell$, we obtain that $\frac1n \sum_{k=0}^{n-1}\esp{m(\theta_k,X_k)-\bar{m}(\theta_k)} \le C(\alpha + 1/n)$. This shows that the first term of \eqref{eq:proof_lemma_Poisson2} is equal to $\alpha\sum_{k=0}^{n-1}\bar{m}(\theta_k)$ plus a term of order $C(\alpha^2+\alpha/n)$. As the term $\bO{1/n}$ from the telescopic sum of the second term of \eqref{eq:proof_lemma_Poisson2} dominates the term $\alpha/n$, this implies \eqref{eq:decoupled_accuracy_lemma3}.
+\end{proof}
+
+\begin{lemma}
+    \label{lem:refined_barf}
+    Assume \ref{A:mart}--\ref{A:attractor}. Then, there exists a constant $C>0$ and $\alpha_0$ such that for all $n$, $\alpha\le\alpha_0$, $h\in\cont{4}{\Theta}$ and $g\in\cont{3}{\Theta}$:
+    \begin{align*}
+        \abs{\frac1N\sum_{n=1}^N \sum_{k=0}^{n-1}D(h\circ\varphi_{n-(k+1)})(\theta_{k}) (g(\theta_k,X_k)-\bar{g}(\theta_k)) - \sum_{k=0}^{N-1} \bar{m}(\theta_k)} \le C\p{\alpha+\frac{1}{N\alpha^2}},
+    \end{align*}
+    where the function $\bar{m}$ is equal to 
+    \begin{align*}
+        \bar{m}(\theta) = \sum_{x,x'\in\calX} \sum_{n=0}^\infty D\bigl(D(h\circ\phi_n)(\theta) G_g(\theta, x')\bigr)\bigl(f(\theta,x)+R(\theta,x,x')\bigr)K_{x,x'}(\theta)\pi_x(\theta).
+    \end{align*}
+\end{lemma}
+
+\begin{proof}
+    Let us denote by $u_{n-(k+1)}(\theta_k):=D(h\circ\varphi_{n-(k+1)})(\theta_{k})$ and let us study the sum $S := \frac1N\sum_{n=1}^N \sum_{k=0}^{n-1}D(h\circ\varphi_{n-(k+1)})(\theta_{k})$.  By reordering the sum, this is equal to:
+    \begin{align}
+        S = \frac1N \sum_{k=0}^{N-1} \sum_{n=k+1}^{N} &u_{n-(k+1)}(\theta_k)g(\theta_k,X_k) = \frac1N \sum_{k=0}^{N-1} \sum_{n=0}^{N-(k+1)} u_{n}(\theta_k)g(\theta_k,X_k).
+        \nonumber\\
+        &= \frac1N \sum_{k=0}^{N-1} \sum_{n=0}^{\infty} u_{n}(\theta_{k})g(\theta_k,X_k)
+        - \frac1N \sum_{k=0}^{N-1} \sum_{n=N-k}^{\infty} u_{n}(\theta_{k})g(\theta_k,X_k)\label{eq:sum_of_two_terms}
+    \end{align}
+    By Lemma~\ref{lemma:exponentially_small_derivatives}, there exists $c_1,c_2>0$ such that $\norm{u_{n}}\le c_1e^{-c_2\alpha n}$. This shows that the second term of the previous sum \eqref{eq:sum_of_two_terms} is bounded (in absolute value) by 
+    \begin{align}
+        \frac1N\sum_{k=0}^{N-1} \frac{c}{\alpha} e^{-c_2\alpha(N-k)} \le \frac{c'}{N\alpha^2},\label{eq:sum_of_two_terms_bound1}
+    \end{align}
+    for a suitable constant $c'$.  This term goes to $0$ when $N$ goes to infinity.
+
+    To treat the first term of \eqref{eq:sum_of_two_terms}, we apply Lemma~\ref{lem:Poisson2} with the function $\ell(\theta,X):=\sum_{n=0}^\infty D^i(h \circ \varphi_{n})(\theta) g(\theta,X)=\sum_{n=0}^\infty u_{n}(\theta)g(\theta,X)$. 
+\end{proof}
+
+\subsection{Characterization of $V$}
+\label{ssec:computable}
+
+
+The next Lemma show how an approximate computable expression of the bias term $V$ can be obtained. Recall that by definition, $V$ is dependent on $\varphi$ with step-size $\alpha$. The subsequently defined and  computable expression $\tilde{V}$ is resolves this dependence on $\alpha$ and is further justified as it admits an accurate of order $\alpha$ with respect to $V$.
+\begin{lemma}[Approximate Computable Expression of $V$]
+    \label{lem:computable}
+    Assume \ref{A:mart}--\ref{A:attractor}. Define 
+    \begin{align}
+        V = D h(\theta^*) \bigl(H^{(1)}\bigr)^{-1} ( S + H^{(2)} \cdot W) + D^2 h(\theta^*) \cdot W \label{eq:definition_Ch}
+    \end{align}
+    with $H^{(1)}_{i,j} := \frac{\partial \barf_i}{\partial \theta_i}(\theta^*)$ is the Jacobien matrix of $\barf$ at $\theta^*$, $H^{(2)}_{i,jk} = \frac{\partial \barf_i}{\partial \theta_i\partial \theta_j}(\theta^*)$ is the second derivative of $\barf$ in $\theta^*$. In the above notation, $H^{(2)} \cdot W := (\sum_{j,k} H^{(2)}_{i,jk} W_{j,k})_{i=1...d}$, where $W$ is the unique solution to the Sylvester equation $H^{(1)}W + W\bigl(H^{(1)}\bigr)^T + O = 0$ and where $O$ and $S$ are defined by
+    \begin{align}
+        O & := \sum_{x,x'} G_f (\theta^*, x') \bigl(f(\theta^*, x) + R(\theta^*,x,x')\bigr)^T K(\theta^*)_{x,x'}\pi_x(\theta^*)   + \bar{g}(\theta^*), \label{eq:def_O}\\
+        S & := \sum_{x,x'} \bigl( f(\theta^*, x) + R(\theta^*,x,x') \bigr) DG_f (\theta^*, x')^T K(\theta^*)_{x,x'} \pi_x(\theta^*) \label{eq:def_S}
+    \end{align}
+    with  $\bar{g}(\theta^*) := \sum_x \pi_x(\theta^*)\Bigr((f(\theta^*,x) - \barf(\theta^*))^{\otimes2} + Q(\theta^*, x)\Bigl)$ is defined as in the proof of Proposition~\ref{prop:V}.
+
+    There exists a constant $C>0$ and $\alpha_0$ such that for all $\alpha\le\alpha_0$:
+    \begin{align*}
+        \abs{V-V\toA}\le C\alpha,
+    \end{align*}
+    where $V\toA = \alpha(\sum_{k=0}^{\infty} D^2(h\circ\varphi_{k})(\theta^*)\bar{g}(\theta^*) + m(\theta^*))$ is defined as in the proof of Proposition~\ref{prop:V}.
+\end{lemma}
+Note that the constant $V$ does not depend on $n$ or $\alpha$.
+
+\begin{proof}
+    Using the definitions \eqref{eq:def_O} and \eqref{eq:def_S} for $O$ and $S$ respectively, and the definition of $V$, $\bar{g}$ and $m$ in the proof of Proposition~\ref{prop:V}, we can rewrite $V\toA$ as:
+    \begin{align}
+        V\toA = \alpha\bigl( ~ \sum_{k=0}^\infty D (h \circ \varphi_k)(\theta^{*}) S + \sum_{k=0}^\infty D^2 (h \circ \varphi_k)(\theta^{*}) \cdot O ~ \bigr). \label{eq:numerical_computation_Ch_initial_equation}
+    \end{align} 
+    Using that $\varphi_k(\theta^{*}) = \theta^{*}$ yields the identity 
+    \begin{align}
+        V^{(\alpha)} = &\alpha D h(\theta^*) \sum_{k=0}^\infty D \varphi_k(\theta^*) S \\
+        &+ \alpha D h(\theta^*) \sum_{k=0}^\infty D^2 \varphi_k(\theta^*) \cdot O + \alpha D^2 h(\theta^*) \cdot \sum_{k=0}^\infty D \varphi_k(\theta^*) O D \bigl(\varphi_k(\theta^*)\bigr)^T,\label{eq:derivatives_proof_computational}
+    \end{align}
+    where the first line corresponds to the first term of \eqref{eq:numerical_computation_Ch_initial_equation} and the second line to the second term of \eqref{eq:numerical_computation_Ch_initial_equation}. The notations correspond to $D h(\theta^*)  D^2 \varphi_k (\theta^*) = (\sum_i \frac{\partial h}{\partial \theta_i} \frac{\partial \varphi_i}{\partial \theta_m \partial \theta_n})_{m,n}$ and $\cdot$ denotes the sum over the element wise product between the matrices.
+
+    From hereon out, we suppress the dependence of the therms on $\theta^*$ in order to ease the notation. As said before, it is shown in \cite[Lemma~4]{allmeier2023bias}, under assumptions \ref{A:cont} and \ref{A:unichain}, that $G_f$ is computable and four times differentiable, which implies that the terms $S$ and $O$ are computable. Therefore, in the rest of the proof we are concerned with obtaining computable expressions for the terms 
+    \begin{align}
+        \alpha\sum_{k=0}^\infty D \varphi_k \ ; && \alpha\sum_{k=0}^\infty D \varphi_k O D \varphi_k^T \ ; && \alpha\sum_{k=0}^\infty D^2 \varphi_k\cdot O. \label{eq:infinite_sum_computable_lemma}
+    \end{align}
+    We recall that by definition $D \varphi_1 = I + \alpha H^{(1)}$. Using the chain rule, we have $D \varphi_k = D (\varphi_1 \circ \varphi_{k-1}) = (I + \alpha H^{(1)}) D \varphi_{k-1} = (I +\alpha H^{(1)})^k$. By assumption of exponential stability, $H^{(1)}$ is Hurwitz and thus, for small enough $\alpha$, all its eigenvalues have negative real parts. This implies that for such $\alpha$, $\sum_{k=0}^\infty (I +\alpha H^{(1)})^k = (\alpha H^{(1)})^{-1}$. This gives the first term $D h(\theta^*) \bigl(H^{(1)}\bigr)^{-1} S$ of \eqref{eq:definition_Ch}.
+    
+    Define $W^{(\alpha)}$ as the second sum of \eqref{eq:infinite_sum_computable_lemma} which is equal to
+    \begin{align*}
+        W^{(\alpha)} &:= \alpha\sum_{k=0}^\infty D \varphi_k O D \varphi_k^T \\
+        &= \alpha\sum_{k=0}^\infty (I +\alpha H^{(1)})^k O (I +\alpha (H^{(1)})^T)^k.
+    \end{align*}
+    As $H^{(1)}$ is Hurwitz, $W^{(\alpha)}$ is well-defined for $\alpha$ small enough and is a solution to the discrete-time Sylvester equation $(I + \alpha H^{(1)})W^{(\alpha)}(I + \alpha H^{(1)})^T - W^{(\alpha)} + \alpha O= 0$. To obtain a computable expression independent of $\alpha$, we consider the corresponding continuous-time Sylvester equation given by $H^{(1)}W - W(H^{(1)})^T + O= 0$ for which the Hurwitz property of $H^{(1)}$ ensures the existence of a unique solution $W$. By definition of the two Sylvester equations, we then have that $W^{(\alpha)} =  W + \alpha H^{(1)}W (H^{(1)})^T$, i.e., the difference between the two solutions is of order $\alpha$. This gives the second term $D h(\theta^*) \bigl(H^{(1)}\bigr)^{-1} H^{(2)} \cdot W$ of \eqref{eq:definition_Ch}.
+    
+    For the last sum of \eqref{eq:infinite_sum_computable_lemma}, apply the chain rule and substitute $D \varphi_1 = I + \alpha H^{(1)}$ and $D^2\varphi_1=\alpha H^{(2)}$ to obtain the identity
+    \begin{align*}
+        D^2\varphi_k 
+        & = \left(\frac{\partial \varphi_k}{\partial \theta_m \partial \theta_n}\right)_{i,mn} \\
+        & = \left(\sum_{j=1}^k \sum_{a} \bigl((I+\alpha H^{(1)})^{k-j}\bigr)_{i,a} \sum_{b,c} \alpha H^{(2)}_{a,bc} \bigl((I+\alpha H^{(1)})^{j}\bigr)_{b,m} \bigl((I+\alpha H^{(1)})^{j}\bigr)_{c,n} \right)_{i,mn}. 
+    \end{align*}
+    Therefore, 
+    \begin{align*}
+    D^2\varphi_k \cdot O & = (\sum_{j,k} \frac{\partial \varphi_k}{\partial \theta_j \partial \theta_k} O_{j,k})_{i=1...d} \\
+    & = \sum_{j=1}^{k} (I+\alpha H^{(1)})^{k-j} \alpha  H^{(2)} \cdot (I+\alpha H^{(1)})^{j} O (I+\alpha (H^{(1)})^T)^{j}.
+    \end{align*} 
+    with $H^{(2)} \cdot (I+\alpha H^{(1)})^{j} O (I+\alpha (H^{(1)})^T)^{j} = \sum_{m,n} H^{(2)}_{i,mn} \left((I+\alpha H^{(1)})^{j} O (I+\alpha (H^{(1)})^T)^{j}\right)_{m,n}$.
+    Consequently, for $\sum_{k=0}^\infty D^2\varphi_k \cdot O$ the above yields
+    { \allowdisplaybreaks
+    \begin{align*}
+        & \alpha\sum_{k=0}^\infty \sum_{j=1}^k (I+\alpha H^{(1)})^{k-j} \alpha H^{(2)} \cdot (I+\alpha H^{(1)})^{j} O (I+\alpha (H^{(1)})^T)^{j} \\
+        & \quad = \alpha\sum_{j=1}^\infty \sum_{k=j}^\infty (I+\alpha H^{(1)})^{k-j} \alpha H^{(2)} \cdot (I+\alpha H^{(1)})^{j} O (I+\alpha (H^{(1)})^T)^{j} \\
+        & \quad = \alpha\sum_{j=1}^\infty \sum_{k=0}^\infty (I+\alpha H^{(1)})^{k} \alpha H^{(2)} \cdot (I+\alpha H^{(1)})^{j} O (I+\alpha (H^{(1)})^T)^{j} \\
+        & \quad = \alpha\sum_{j=1}^\infty (\alpha H^{(1)})^{-1} \alpha H^{(2)} \cdot (I+\alpha H^{(1)})^{j} O (I+\alpha (H^{(1)})^T)^{j} \\
+        & \quad =  ( \alpha H^{(1)})^{-1} \alpha H^{(2)} \cdot (I+\alpha H^{(1)}) \Bigl( \alpha\sum_{j=0}^\infty (I+\alpha H^{(1)})^{j} O (I+\alpha (H^{(1)})^T)^{j} \Bigr) (I+\alpha (H^{(1)})^T)\\
+        & \quad =  ( \alpha H^{(1)})^{-1} \alpha H^{(2)} \cdot (I+\alpha H^{(1)}) W^{(\alpha)} (I+\alpha (H^{(1)})^T)\\
+        & \quad = (H^{(1)})^{-1} H^{(2)} \cdot W^{(\alpha)} + \alpha C',
+        \end{align*}
+    with $C' = \left( (H^{(1)})^{-1} H^{(2)} \cdot \bigl(H^{(1)} W^{(\alpha)} + W^{(\alpha)} (H^{(1)})^T + \alpha H^{(1)} W^{(\alpha)}(H^{(1)})^T\bigr) \right)$ which is bounded by assumption.} Using the previously discussed difference between $W$ and $W^{(\alpha)}$, we conclude that $(H^{(1)})^{-1} H^{(2)} \cdot W$ is an approximate solution to $\sum_{k=0}^\infty D^2\varphi_k \cdot O$ with error of order $\alpha$. 
+\end{proof}
+
+\end{document}
+
+% \subsection{Exponential stability of the discrete-time recurrence}
+% \label{ssec:expo_stable_varphi}
+
+% Let $g(\theta)=\bar{f}(\theta)  - H (\theta-\theta^*)$.
+% \begin{align*}
+%     \varphi_{n+1}(\theta) - \theta^* &= \varphi_n(\theta) - \theta^* + \alpha \bar{f}(\varphi_n(\theta))\\
+%     &= (I+\alpha H)(\varphi_n(\theta)-\theta^*) + \alpha g(\varphi_n(\theta))
+% \end{align*}
+% To simplify notations, assume that $\theta^*=0$ and remove the dependence on $\theta$ of $\varphi_{n}$. A direct recurrence (which is similar to a variation of constant method) implies that
+% \begin{align*}
+%     \varphi_{n+1} &= \alpha \sum_{k=0}^n (I+\alpha H)^{k}g(\varphi_{n-k}) + (I+\alpha H)^{n}\varphi_0.
+% \end{align*}
+% As $\bar{f}$ is twice differentiable, there exists a neighborhood $\calN$ of $\theta^*$ such that $\norm{g(\theta)}\le c\norm{\theta}^2$. Moreover, as $H$ is Hurwitz, there exists $\alpha_0$ and $c>0$ such that for all $\alpha\le\alpha_0$, the eigenvalues of $I+\alpha H$ are smaller than $1-\alpha c$. Hence, if $\varphi_k\in\calN$ for all $k$, this implies that:
+% \begin{align*}
+%     \norm{\varphi_{n+1}} &\le  \alpha \sum_{k=0}^n b(1-\alpha c)^k\norm{\varphi_{n-k}}^2 + b(1-\alpha c)^n,
+% \end{align*}
+% which is $O(\alpha).
+% %\end{document}
+
+\newpage
+\section*{NeurIPS Paper Checklist}
+
+% %%% BEGIN INSTRUCTIONS %%%
+% The checklist is designed to encourage best practices for responsible machine learning research, addressing issues of reproducibility, transparency, research ethics, and societal impact. Do not remove the checklist: {\bf The papers not including the checklist will be desk rejected.} The checklist should follow the references and follow the (optional) supplemental material.  The checklist does NOT count towards the page
+% limit. 
+
+% Please read the checklist guidelines carefully for information on how to answer these questions. For each question in the checklist:
+% \begin{itemize}
+%     \item You should answer \answerYes{}, \answerNo{}, or \answerNA{}.
+%     \item \answerNA{} means either that the question is Not Applicable for that particular paper or the relevant information is Not Available.
+%     \item Please provide a short (1–2 sentence) justification right after your answer (even for NA). 
+%    % \item {\bf The papers not including the checklist will be desk rejected.}
+% \end{itemize}
+
+% {\bf The checklist answers are an integral part of your paper submission.} They are visible to the reviewers, area chairs, senior area chairs, and ethics reviewers. You will be asked to also include it (after eventual revisions) with the final version of your paper, and its final version will be published with the paper.
+
+% The reviewers of your paper will be asked to use the checklist as one of the factors in their evaluation. While "\answerYes{}" is generally preferable to "\answerNo{}", it is perfectly acceptable to answer "\answerNo{}" provided a proper justification is given (e.g., "error bars are not reported because it would be too computationally expensive" or "we were unable to find the license for the dataset we used"). In general, answering "\answerNo{}" or "\answerNA{}" is not grounds for rejection. While the questions are phrased in a binary way, we acknowledge that the true answer is often more nuanced, so please just use your best judgment and write a justification to elaborate. All supporting evidence can appear either in the main paper or the supplemental material, provided in appendix. If you answer \answerYes{} to a question, in the justification please point to the section(s) where related material for the question can be found.
+
+% IMPORTANT, please:
+% \begin{itemize}
+%     \item {\bf Delete this instruction block, but keep the section heading ``NeurIPS paper checklist"},
+%     \item  {\bf Keep the checklist subsection headings, questions/answers and guidelines below.}
+%     \item {\bf Do not modify the questions and only use the provided macros for your answers}.
+% \end{itemize} 
+ 
+
+%%% END INSTRUCTIONS %%%
+
+
+\begin{enumerate}
+
+\item {\bf Claims}
+    \item[] Question: Do the main claims made in the abstract and introduction accurately reflect the paper's contributions and scope?
+    \item[] Answer: \answerYes{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
+    \item[] Justification: {\color{blue}The purpose of the paper is to obtain bounds on the accuracy of constant step-size stochastic approximation. This is directly reflected by the title and abstract.}
+    \item[] Guidelines:
+    \begin{itemize}
+        \item The answer NA means that the abstract and introduction do not include the claims made in the paper.
+        \item The abstract and/or introduction should clearly state the claims made, including the contributions made in the paper and important assumptions and limitations. A No or NA answer to this question will not be perceived well by the reviewers. 
+        \item The claims made should match theoretical and experimental results, and reflect how much the results can be expected to generalize to other settings. 
+        \item It is fine to include aspirational goals as motivation as long as it is clear that these goals are not attained by the paper. 
+    \end{itemize}
+
+\item {\bf Limitations}
+    \item[] Question: Does the paper discuss the limitations of the work performed by the authors?
+    \item[] Answer: \answerYes{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
+    \item[] Justification: {\color{blue}The limits of the assumptions are discussed in a separate subsection~\ref{ssec:limits}. }
+    \item[] Guidelines:
+    \begin{itemize}
+        \item The answer NA means that the paper has no limitation while the answer No means that the paper has limitations, but those are not discussed in the paper. 
+        \item The authors are encouraged to create a separate "Limitations" section in their paper.
+        \item The paper should point out any strong assumptions and how robust the results are to violations of these assumptions (e.g., independence assumptions, noiseless settings, model well-specification, asymptotic approximations only holding locally). The authors should reflect on how these assumptions might be violated in practice and what the implications would be.
+        \item The authors should reflect on the scope of the claims made, e.g., if the approach was only tested on a few datasets or with a few runs. In general, empirical results often depend on implicit assumptions, which should be articulated.
+        \item The authors should reflect on the factors that influence the performance of the approach. For example, a facial recognition algorithm may perform poorly when image resolution is low or images are taken in low lighting. Or a speech-to-text system might not be used reliably to provide closed captions for online lectures because it fails to handle technical jargon.
+        \item The authors should discuss the computational efficiency of the proposed algorithms and how they scale with dataset size.
+        \item If applicable, the authors should discuss possible limitations of their approach to address problems of privacy and fairness.
+        \item While the authors might fear that complete honesty about limitations might be used by reviewers as grounds for rejection, a worse outcome might be that reviewers discover limitations that aren't acknowledged in the paper. The authors should use their best judgment and recognize that individual actions in favor of transparency play an important role in developing norms that preserve the integrity of the community. Reviewers will be specifically instructed to not penalize honesty concerning limitations.
+    \end{itemize}
+
+\item {\bf Theory Assumptions and Proofs}
+    \item[] Question: For each theoretical result, does the paper provide the full set of assumptions and a complete (and correct) proof?
+    \item[] Answer: \answerYes % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
+    \item[] Justification: {\color{blue} The proofs of the main results are given in the main body of the paper while some more technical lemmas are give in the appendix. }%\justificationTODO{}
+    \item[] Guidelines:
+    \begin{itemize}
+        \item The answer NA means that the paper does not include theoretical results. 
+        \item All the theorems, formulas, and proofs in the paper should be numbered and cross-referenced.
+        \item All assumptions should be clearly stated or referenced in the statement of any theorems.
+        \item The proofs can either appear in the main paper or the supplemental material, but if they appear in the supplemental material, the authors are encouraged to provide a short proof sketch to provide intuition. 
+        \item Inversely, any informal proof provided in the core of the paper should be complemented by formal proofs provided in appendix or supplemental material.
+        \item Theorems and Lemmas that the proof relies upon should be properly referenced. 
+    \end{itemize}
+
+    \item {\bf Experimental Result Reproducibility}
+    \item[] Question: Does the paper fully disclose all the information needed to reproduce the main experimental results of the paper to the extent that it affects the main claims and/or conclusions of the paper (regardless of whether the code and data are provided or not)?
+    \item[] Answer: \answerYes{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
+    \item[] Justification: {\color{blue} The paper does not contain important experimental results but only numerical illustrations of the theorems (with small synthetic examples). All parameters of the examples are provided in the appendix and the code of all simulation is available at \url{https://github.com/ngast/paper_bias_stochastic_approximation2024}. }
+    \item[] Guidelines:
+    \begin{itemize}
+        \item The answer NA means that the paper does not include experiments.
+        \item If the paper includes experiments, a No answer to this question will not be perceived well by the reviewers: Making the paper reproducible is important, regardless of whether the code and data are provided or not.
+        \item If the contribution is a dataset and/or model, the authors should describe the steps taken to make their results reproducible or verifiable. 
+        \item Depending on the contribution, reproducibility can be accomplished in various ways. For example, if the contribution is a novel architecture, describing the architecture fully might suffice, or if the contribution is a specific model and empirical evaluation, it may be necessary to either make it possible for others to replicate the model with the same dataset, or provide access to the model. In general. releasing code and data is often one good way to accomplish this, but reproducibility can also be provided via detailed instructions for how to replicate the results, access to a hosted model (e.g., in the case of a large language model), releasing of a model checkpoint, or other means that are appropriate to the research performed.
+        \item While NeurIPS does not require releasing code, the conference does require all submissions to provide some reasonable avenue for reproducibility, which may depend on the nature of the contribution. For example
+        \begin{enumerate}
+            \item If the contribution is primarily a new algorithm, the paper should make it clear how to reproduce that algorithm.
+            \item If the contribution is primarily a new model architecture, the paper should describe the architecture clearly and fully.
+            \item If the contribution is a new model (e.g., a large language model), then there should either be a way to access this model for reproducing the results or a way to reproduce the model (e.g., with an open-source dataset or instructions for how to construct the dataset).
+            \item We recognize that reproducibility may be tricky in some cases, in which case authors are welcome to describe the particular way they provide for reproducibility. In the case of closed-source models, it may be that access to the model is limited in some way (e.g., to registered users), but it should be possible for other researchers to have some path to reproducing or verifying the results.
+        \end{enumerate}
+    \end{itemize}
+
+
+\item {\bf Open access to data and code}
+    \item[] Question: Does the paper provide open access to the data and code, with sufficient instructions to faithfully reproduce the main experimental results, as described in supplemental material?
+    \item[] Answer: \answerYes{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
+    \item[] Justification: {\color{blue} The paper is fully reproducible (code to produce simulation, figures and latex) at \url{https://github.com/ngast/paper_bias_stochastic_approximation2024}.}%\justificationTODO{}
+    \item[] Guidelines:
+    \begin{itemize}
+        \item The answer NA means that paper does not include experiments requiring code.
+        \item Please see the NeurIPS code and data submission guidelines (\url{https://nips.cc/public/guides/CodeSubmissionPolicy}) for more details.
+        \item While we encourage the release of code and data, we understand that this might not be possible, so “No” is an acceptable answer. Papers cannot be rejected simply for not including code, unless this is central to the contribution (e.g., for a new open-source benchmark).
+        \item The instructions should contain the exact command and environment needed to run to reproduce the results. See the NeurIPS code and data submission guidelines (\url{https://nips.cc/public/guides/CodeSubmissionPolicy}) for more details.
+        \item The authors should provide instructions on data access and preparation, including how to access the raw data, preprocessed data, intermediate data, and generated data, etc.
+        \item The authors should provide scripts to reproduce all experimental results for the new proposed method and baselines. If only a subset of experiments are reproducible, they should state which ones are omitted from the script and why.
+        \item At submission time, to preserve anonymity, the authors should release anonymized versions (if applicable).
+        \item Providing as much information as possible in supplemental material (appended to the paper) is recommended, but including URLs to data and code is permitted.
+    \end{itemize}
+
+
+\item {\bf Experimental Setting/Details}
+    \item[] Question: Does the paper specify all the training and test details (e.g., data splits, hyperparameters, how they were chosen, type of optimizer, etc.) necessary to understand the results?
+    \item[] Answer: \answerNA{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
+    \item[] Justification: {\color{blue} There is no dataset used}.
+    \item[] Guidelines:
+    \begin{itemize}
+        \item The answer NA means that the paper does not include experiments.
+        \item The experimental setting should be presented in the core of the paper to a level of detail that is necessary to appreciate the results and make sense of them.
+        \item The full details can be provided either with the code, in appendix, or as supplemental material.
+    \end{itemize}
+
+\item {\bf Experiment Statistical Significance}
+    \item[] Question: Does the paper report error bars suitably and correctly defined or other appropriate information about the statistical significance of the experiments?
+    \item[] Answer: \answerNA{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
+    \item[] Justification: {\color{blue}The paper does not contain numerical experiments but only small numerical illustrations of theorems.}
+    \item[] Guidelines:
+    \begin{itemize}
+        \item The answer NA means that the paper does not include experiments.
+        \item The authors should answer "Yes" if the results are accompanied by error bars, confidence intervals, or statistical significance tests, at least for the experiments that support the main claims of the paper.
+        \item The factors of variability that the error bars are capturing should be clearly stated (for example, train/test split, initialization, random drawing of some parameter, or overall run with given experimental conditions).
+        \item The method for calculating the error bars should be explained (closed form formula, call to a library function, bootstrap, etc.)
+        \item The assumptions made should be given (e.g., Normally distributed errors).
+        \item It should be clear whether the error bar is the standard deviation or the standard error of the mean.
+        \item It is OK to report 1-sigma error bars, but one should state it. The authors should preferably report a 2-sigma error bar than state that they have a 96\% CI, if the hypothesis of Normality of errors is not verified.
+        \item For asymmetric distributions, the authors should be careful not to show in tables or figures symmetric error bars that would yield results that are out of range (e.g. negative error rates).
+        \item If error bars are reported in tables or plots, The authors should explain in the text how they were calculated and reference the corresponding figures or tables in the text.
+    \end{itemize}
+
+\item {\bf Experiments Compute Resources}
+    \item[] Question: For each experiment, does the paper provide sufficient information on the computer resources (type of compute workers, memory, time of execution) needed to reproduce the experiments?
+    \item[] Answer: \answerNA{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
+    \item[] Justification: {\color{blue}The numerical illustration are very limited (less than a few minutes of computation time in total). This is mentioned in the text. }
+    \item[] Guidelines:
+    \begin{itemize}
+        \item The answer NA means that the paper does not include experiments.
+        \item The paper should indicate the type of compute workers CPU or GPU, internal cluster, or cloud provider, including relevant memory and storage.
+        \item The paper should provide the amount of compute required for each of the individual experimental runs as well as estimate the total compute. 
+        \item The paper should disclose whether the full research project required more compute than the experiments reported in the paper (e.g., preliminary or failed experiments that didn't make it into the paper). 
+    \end{itemize}
+    
+\item {\bf Code Of Ethics}
+    \item[] Question: Does the research conducted in the paper conform, in every respect, with the NeurIPS Code of Ethics \url{https://neurips.cc/public/EthicsGuidelines}?
+    \item[] Answer: \answerYes{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
+    \item[] Justification: {\color{blue}The paper is a theoretical paper and its direct ethical implications seem limited.}
+    \item[] Guidelines:
+    \begin{itemize}
+        \item The answer NA means that the authors have not reviewed the NeurIPS Code of Ethics.
+        \item If the authors answer No, they should explain the special circumstances that require a deviation from the Code of Ethics.
+        \item The authors should make sure to preserve anonymity (e.g., if there is a special consideration due to laws or regulations in their jurisdiction).
+    \end{itemize}
+
+
+\item {\bf Broader Impacts}
+    \item[] Question: Does the paper discuss both potential positive societal impacts and negative societal impacts of the work performed?
+    \item[] Answer: \answerNA{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
+    \item[] Justification: {\color{blue}The paper is a theoretical paper and there is no direct broader impact.}
+    \item[] Guidelines:
+    \begin{itemize}
+        \item The answer NA means that there is no societal impact of the work performed.
+        \item If the authors answer NA or No, they should explain why their work has no societal impact or why the paper does not address societal impact.
+        \item Examples of negative societal impacts include potential malicious or unintended uses (e.g., disinformation, generating fake profiles, surveillance), fairness considerations (e.g., deployment of technologies that could make decisions that unfairly impact specific groups), privacy considerations, and security considerations.
+        \item The conference expects that many papers will be foundational research and not tied to particular applications, let alone deployments. However, if there is a direct path to any negative applications, the authors should point it out. For example, it is legitimate to point out that an improvement in the quality of generative models could be used to generate deepfakes for disinformation. On the other hand, it is not needed to point out that a generic algorithm for optimizing neural networks could enable people to train models that generate Deepfakes faster.
+        \item The authors should consider possible harms that could arise when the technology is being used as intended and functioning correctly, harms that could arise when the technology is being used as intended but gives incorrect results, and harms following from (intentional or unintentional) misuse of the technology.
+        \item If there are negative societal impacts, the authors could also discuss possible mitigation strategies (e.g., gated release of models, providing defenses in addition to attacks, mechanisms for monitoring misuse, mechanisms to monitor how a system learns from feedback over time, improving the efficiency and accessibility of ML).
+    \end{itemize}
+    
+\item {\bf Safeguards}
+    \item[] Question: Does the paper describe safeguards that have been put in place for responsible release of data or models that have a high risk for misuse (e.g., pretrained language models, image generators, or scraped datasets)?
+    \item[] Answer: \answerYes{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
+    \item[] Justification: {\color{blue} There are no models or data released.}
+    \item[] Guidelines:
+    \begin{itemize}
+        \item The answer NA means that the paper poses no such risks.
+        \item Released models that have a high risk for misuse or dual-use should be released with necessary safeguards to allow for controlled use of the model, for example by requiring that users adhere to usage guidelines or restrictions to access the model or implementing safety filters. 
+        \item Datasets that have been scraped from the Internet could pose safety risks. The authors should describe how they avoided releasing unsafe images.
+        \item We recognize that providing effective safeguards is challenging, and many papers do not require this, but we encourage authors to take this into account and make a best faith effort.
+    \end{itemize}
+
+\item {\bf Licenses for existing assets}
+    \item[] Question: Are the creators or original owners of assets (e.g., code, data, models), used in the paper, properly credited and are the license and terms of use explicitly mentioned and properly respected?
+    \item[] Answer: \answerNA{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
+    \item[] Justification: {\color{blue} There is no significant code, data or model used.}
+    \item[] Guidelines:
+    \begin{itemize}
+        \item The answer NA means that the paper does not use existing assets.
+        \item The authors should cite the original paper that produced the code package or dataset.
+        \item The authors should state which version of the asset is used and, if possible, include a URL.
+        \item The name of the license (e.g., CC-BY 4.0) should be included for each asset.
+        \item For scraped data from a particular source (e.g., website), the copyright and terms of service of that source should be provided.
+        \item If assets are released, the license, copyright information, and terms of use in the package should be provided. For popular datasets, \url{paperswithcode.com/datasets} has curated licenses for some datasets. Their licensing guide can help determine the license of a dataset.
+        \item For existing datasets that are re-packaged, both the original license and the license of the derived asset (if it has changed) should be provided.
+        \item If this information is not available online, the authors are encouraged to reach out to the asset's creators.
+    \end{itemize}
+
+\item {\bf New Assets}
+    \item[] Question: Are new assets introduced in the paper well documented and is the documentation provided alongside the assets?
+    \item[] Answer: \answerNA{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
+    \item[] Justification: {\color{blue}There are no new assets released.}
+    \item[] Guidelines:
+    \begin{itemize}
+        \item The answer NA means that the paper does not release new assets.
+        \item Researchers should communicate the details of the dataset/code/model as part of their submissions via structured templates. This includes details about training, license, limitations, etc. 
+        \item The paper should discuss whether and how consent was obtained from people whose asset is used.
+        \item At submission time, remember to anonymize your assets (if applicable). You can either create an anonymized URL or include an anonymized zip file.
+    \end{itemize}
+
+\item {\bf Crowdsourcing and Research with Human Subjects}
+    \item[] Question: For crowdsourcing experiments and research with human subjects, does the paper include the full text of instructions given to participants and screenshots, if applicable, as well as details about compensation (if any)? 
+    \item[] Answer: \answerNA{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
+    \item[] Justification: {\color{blue} Not applicable}% \justificationTODO{}
+    \item[] Guidelines:
+    \begin{itemize}
+        \item The answer NA means that the paper does not involve crowdsourcing nor research with human subjects.
+        \item Including this information in the supplemental material is fine, but if the main contribution of the paper involves human subjects, then as much detail as possible should be included in the main paper. 
+        \item According to the NeurIPS Code of Ethics, workers involved in data collection, curation, or other labor should be paid at least the minimum wage in the country of the data collector. 
+    \end{itemize}
+
+\item {\bf Institutional Review Board (IRB) Approvals or Equivalent for Research with Human Subjects}
+    \item[] Question: Does the paper describe potential risks incurred by study participants, whether such risks were disclosed to the subjects, and whether Institutional Review Board (IRB) approvals (or an equivalent approval/review based on the requirements of your country or institution) were obtained?
+    \item[] Answer: \answerNA{} % Replace by \answerYes{}, \answerNo{}, or \answerNA{}.
+    \item[] Justification: {\color{blue} Not applicable}
+    \item[] Guidelines:
+    \begin{itemize}
+        \item The answer NA means that the paper does not involve crowdsourcing nor research with human subjects.
+        \item Depending on the country in which research is conducted, IRB approval (or equivalent) may be required for any human subjects research. If you obtained IRB approval, you should clearly state this in the paper. 
+        \item We recognize that the procedures for this may vary significantly between institutions and locations, and we expect authors to adhere to the NeurIPS Code of Ethics and the guidelines for their institution. 
+        \item For initial submissions, do not include any information that would break anonymity (if applicable), such as the institution conducting the review.
+    \end{itemize}
+
+\end{enumerate}
+
+\end{document}

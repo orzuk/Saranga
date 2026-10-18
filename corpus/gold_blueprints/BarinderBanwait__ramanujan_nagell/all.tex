@@ -1,0 +1,809 @@
+
+%%FILE blueprint/src/content.tex
+% In this file you should put the actual content of the blueprint.
+% It will be used both by the web and the print version.
+% It should *not* include the \begin{document}
+%
+% If you want to split the blueprint content into several files then
+% the current file can be a simple sequence of \input. Otherwise It
+% can start with a \section or \chapter for instance.
+
+\chapter{The Ramanujan--Nagell Theorem}
+
+The Ramanujan--Nagell equation is the Diophantine equation
+\[
+  x^2 + 7 = 2^n
+\]
+where $x$ is an integer and $n$ is a natural number. The theorem, conjectured by
+Ramanujan and proved by Nagell, states that the only solutions are
+$(x, n) \in \{(\pm 1, 3),\; (\pm 3, 4),\; (\pm 5, 5),\; (\pm 11, 7),\; (\pm 181, 15)\}$.
+
+The proof splits into two cases depending on the parity of $n$: the even case uses a
+factorization argument over $\mathbb{Z}$, while the odd case requires algebraic number
+theory in the ring of integers of $\mathbb{Q}(\sqrt{-7})$.
+
+\section{Setup: the quadratic ring $R = \mathbb{Z}[(1+\sqrt{-7})/2]$}
+
+We work directly in the quadratic algebra
+\[
+  R = \texttt{QuadraticAlgebra}\;\mathbb{Z}\;(-2)\;1,
+\]
+the free $\mathbb{Z}$-module on $1$ and a generator $\theta$ with
+$\theta^2 = \theta - 2$. Concretely $R = \mathbb{Z}[(1+\sqrt{-7})/2]$, the ring of
+integers of $\mathbb{Q}(\sqrt{-7})$, with $\theta = (1+\sqrt{-7})/2$ and its
+conjugate $\theta' = (1-\sqrt{-7})/2$. In Lean these are the top-level
+definitions $\theta = \langle 0, 1\rangle$ and $\theta' = \langle 1, -1\rangle$;
+there is no separate field $K$, integral closure, or class-number computation.
+
+\begin{definition}[R]
+  \label{def:R}
+  \lean{R}
+  \leanok
+  The quadratic ring $R = \texttt{QuadraticAlgebra}\;\mathbb{Z}\;(-2)\;1 = \mathbb{Z}[(1+\sqrt{-7})/2]$.
+\end{definition}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{definition}[$\theta$]
+  \label{def:theta}
+  \lean{θ}
+  \leanok
+  The generator $\theta = \langle 0, 1\rangle = (1+\sqrt{-7})/2 \in R$.
+\end{definition}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{definition}[$\theta'$]
+  \label{def:theta'}
+  \lean{θ'}
+  \leanok
+  The conjugate $\theta' = \langle 1, -1\rangle = (1-\sqrt{-7})/2 \in R$.
+\end{definition}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+The following identities are all definitional (\texttt{rfl}) in $R$.
+
+\begin{lemma}[$\theta^2 = \theta - 2$]
+  \label{lem:theta_sq}
+  \lean{theta_sq}
+  \leanok
+  $\theta^2 = \theta - 2$.
+\end{lemma}
+\begin{proof}\leanok
+  Definitional.
+\end{proof}
+
+\begin{lemma}[$\theta \cdot \theta' = 2$]
+  \label{lem:theta_mul_theta'}
+  \lean{theta_mul_theta'}
+  \leanok
+  $\theta \cdot \theta' = 2$.
+\end{lemma}
+\begin{proof}\leanok
+  Definitional.
+\end{proof}
+
+\begin{lemma}[$\theta + \theta' = 1$]
+  \label{lem:theta_add_theta'}
+  \lean{theta_add_theta'}
+  \leanok
+  $\theta + \theta' = 1$.
+\end{lemma}
+\begin{proof}\leanok
+  Definitional.
+\end{proof}
+
+\begin{lemma}[$\theta' = 1 - \theta$]
+  \label{lem:theta'_eq_one_sub_theta}
+  \lean{theta'_eq_one_sub_theta}
+  \leanok
+  $\theta' = 1 - \theta$.
+\end{lemma}
+\begin{proof}\leanok
+  Definitional.
+\end{proof}
+
+\begin{lemma}[Norm formula]
+  \label{lem:norm_eq}
+  \lean{norm_eq}
+  \leanok
+  For $x, y \in \mathbb{Z}$, the norm of $\langle x, y\rangle \in R$ is
+  $N(\langle x, y\rangle) = x^2 + xy + 2y^2$.
+\end{lemma}
+\begin{proof}\leanok
+  Unfold the quadratic-algebra norm and simplify.
+\end{proof}
+
+\begin{lemma}[Norm is nonnegative]
+  \label{lem:norm_nonneg}
+  \lean{norm_nonneg}
+  \uses{lem:four_norm_eq}
+  \leanok
+  For all $z \in R$, $0 \leq N(z)$. (The norm form
+  $x^2 + xy + 2y^2 = \tfrac14\big((2x+y)^2 + 7y^2\big)$ is positive definite.)
+\end{lemma}
+\begin{proof}\leanok
+  Complete the square: $4N(\langle x,y\rangle) = (2x+y)^2 + 7y^2 \geq 0$.
+\end{proof}
+
+\begin{lemma}[Norm zero iff zero]
+  \label{lem:norm_eq_zero_iff}
+  \lean{norm_eq_zero_iff}
+  \uses{lem:four_norm_eq}
+  \leanok
+  For $z \in R$, $N(z) = 0$ if and only if $z = 0$.
+\end{lemma}
+\begin{proof}\leanok
+  $4N(\langle x,y\rangle) = (2x+y)^2 + 7y^2$ vanishes only when $x = y = 0$.
+\end{proof}
+
+\begin{lemma}[Units are $\pm 1$]
+  \label{lem:units_pm_one}
+  \lean{units_pm_one}
+  \uses{def:R, lem:norm_eq, lem:norm_nonneg}
+  \leanok
+  The only units in $R$ are $\pm 1$.
+\end{lemma}
+\begin{proof}\leanok
+  A unit has norm $1$. From $4N(\langle x,y\rangle) = (2x+y)^2 + 7y^2$, the
+  equation $N(\langle x,y\rangle) = 1$ forces $y = 0$ and $x = \pm 1$, so the
+  unit is $\pm 1$.
+\end{proof}
+
+\begin{lemma}[Factorization of $2$]
+  \label{lem:two_factorisation_R}
+  \lean{two_factorisation_R}
+  \leanok
+  In $R$, we have $\theta \cdot (1 - \theta) = 2$, i.e.\
+  $\frac{1+\sqrt{-7}}{2} \cdot \frac{1-\sqrt{-7}}{2} = 2$.
+\end{lemma}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\subsection{$R$ is a unique factorization domain}
+
+Rather than going through discriminants, class numbers, and Dirichlet's unit
+theorem, we establish unique factorization in $R$ directly, via the chain
+\[
+  \texttt{EuclideanDomain}\;R \;\Longrightarrow\; \texttt{IsPrincipalIdealRing}\;R
+  \;\Longrightarrow\; \texttt{UniqueFactorizationMonoid}\;R.
+\]
+
+\begin{theorem}[$R$ is a Euclidean domain]
+  \label{thm:instEuclideanDomain}
+  \lean{instEuclideanDomain}
+  \uses{def:quot, lem:quot_mul_add_rem_eq, def:rem}
+  \leanok
+  $R$ is a Euclidean domain, with the norm $N$ as Euclidean function. To divide
+  $a$ by $b \neq 0$ we round $a \cdot \bar{b} / N(b)$ by a smart scheme (round
+  the $\sqrt{-7}$ coordinate first, then shift-round the rational part), which
+  yields a remainder with $16\,N(\mathrm{rem}) \leq 11\,N(b)$, hence of strictly
+  smaller norm.
+\end{theorem}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{theorem}[$R$ is a principal ideal ring]
+  \label{thm:instPrincipalIdealRing}
+  \lean{instPrincipalIdealRing}
+  \uses{thm:instEuclideanDomain}
+  \leanok
+  Every ideal of $R$ is principal, since every Euclidean domain is a principal
+  ideal ring.
+\end{theorem}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{theorem}[$R$ is a UFD]
+  \label{thm:instUniqueFactorizationMonoid}
+  \lean{instUniqueFactorizationMonoid}
+  \uses{thm:instPrincipalIdealRing}
+  \leanok
+  $R$ is a unique factorization domain, since every principal ideal ring is one.
+\end{theorem}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+Combined with $N(\theta) = N(\theta') = 2$ (so $\theta, \theta'$ have prime
+norm), this gives that $\theta$ and $\theta'$ are irreducible, hence prime
+(Lemmas \ref{lem:theta_irreducible}, \ref{lem:theta'_irreducible},
+\ref{lem:theta_prime}, \ref{lem:theta'_prime}).
+
+\section{The even case}
+
+When $n$ is even, say $n = 2k$, the equation becomes $x^2 + 7 = 2^{2k}$, which factors
+over $\mathbb{Z}$ as $(2^k + x)(2^k - x) = 7$. Since $7$ is prime, this forces
+$n = 4$ and $x = \pm 3$.
+
+\begin{lemma}[Factorization over $\mathbb{Z}$]
+  \label{lem:ramanujan_nagell_even_pow_factors}
+  \lean{ramanujan_nagell_even_pow_factors}
+  \leanok
+  If $(2^k + x)(2^k - x) = 7$, then either $2^k - x = 1$ and $2^k + x = 7$,
+  or $2^k - x = 7$ and $2^k + x = 1$.
+\end{lemma}
+\begin{proof}\leanok
+  Both factors are positive integers whose product is the prime $7$,
+  so one factor is $1$ and the other is $7$.
+\end{proof}
+
+\section{The odd case}
+
+When $n$ is odd and $n \geq 5$, the proof works in the ring of integers of
+$\mathbb{Q}(\sqrt{-7})$. Setting $m = n - 2$, we divide the equation by $4$
+to obtain $(x^2 + 7)/4 = 2^m$, which factors in $R$ as
+$\theta^m \cdot \theta'^{\,m}$.
+The conjugate factors $(x \pm \sqrt{-7})/2$ lie in $R$ (since $x$ is odd) and
+their product equals $\theta^m \cdot \theta'^{\,m}$. Using unique factorization
+and coprimality, one deduces the key identity $-2\theta + 1 = \theta^m - \theta'^{\,m}$.
+
+\subsection{Exercises: from factorization to sign condition}
+
+The proof of the main $m$-condition is structured as a chain of four
+lemmas (exercises), followed by a sign-determination step.
+
+\begin{lemma}[Conjugate factors in $R$]
+  \label{lem:factors_in_R_with_product}
+  \lean{factors_in_R_with_product}
+  \uses{def:R, lem:theta'_eq_one_sub_theta, lem:two_factorisation_R, def:theta, def:theta'}
+  \leanok
+  The conjugate factors $(x \pm \sqrt{-7})/2$ lie in $R$ (since $x$ is odd),
+  and their product equals $\theta^m \cdot \theta'^{\,m}$.
+  Their difference is $2\theta - 1 = \sqrt{-7}$.
+\end{lemma}
+\begin{proof}\leanok
+  Express the factors using $\theta$ and $\theta'$, verify the product
+  using $\theta \cdot \theta' = 2$, and compute the difference.
+\end{proof}
+
+\begin{lemma}[Coprimality]
+  \label{lem:conjugate_factors_coprime}
+  \lean{conjugate_factors_coprime}
+  \uses{def:R, lem:norm_eq, lem:theta_mul_theta', lem:theta_sq, def:theta, def:theta'}
+  \leanok
+  The conjugate factors are coprime in $R$.
+  The only prime factors of $2$ in $R$ are $\theta$ and $\theta'$
+  (since $2 = \theta \cdot \theta'$). If either divided both factors,
+  it would divide their difference $\sqrt{-7}$, but $N(\sqrt{-7}) = 7$ is
+  not divisible by $N(\theta) = N(\theta') = 2$.
+\end{lemma}
+\begin{proof}\leanok
+  Norm argument: any common factor divides $\sqrt{-7}$, whose norm is $7$,
+  incompatible with the norm $2$ of $\theta$ and $\theta'$.
+\end{proof}
+
+\begin{lemma}[UFD power association]
+  \label{lem:ufd_power_association}
+  \lean{ufd_power_association}
+  \uses{lem:associated_eq_or_neg, lem:ufd_associated_dichotomy, def:theta, def:theta'}
+  \leanok
+  If $\alpha \cdot \beta = \theta^m \cdot \theta'^{\,m}$ and $\gcd(\alpha, \beta) = 1$ in the
+  UFD $R$, then $\alpha = \pm\theta^m$ or $\alpha = \pm\theta'^{\,m}$.
+  This combines unique factorization in $R$ (\texttt{UniqueFactorizationMonoid}) with the
+  fact that the only units are $\pm 1$ (\texttt{units\_pm\_one}).
+\end{lemma}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{lemma}[Eliminate $x$]
+  \label{lem:eliminate_x_conclude}
+  \lean{eliminate_x_conclude}
+  \uses{lem:theta'_irreducible, lem:theta_irreducible, def:theta, def:theta'}
+  \leanok
+  From $\alpha = \pm\theta^m$ or $\alpha = \pm\theta'^{\,m}$, use the product relation to
+  determine $\beta$, then take the difference $\alpha - \beta = 2\theta - 1$ to
+  eliminate $x$ and obtain: either $2\theta - 1 = \theta^m - \theta'^{\,m}$ or
+  $-2\theta + 1 = \theta^m - \theta'^{\,m}$.
+\end{lemma}
+\begin{proof}\leanok
+  Case split on the four possibilities for $\alpha$, determine $\beta$ from
+  the product, and compute $\alpha - \beta$.
+\end{proof}
+
+\begin{lemma}[Must have minus sign]
+  \label{lem:must_have_minus_sign}
+  \lean{must_have_minus_sign}
+  \uses{lem:theta'_eq_one_sub_theta, lem:theta'_irreducible, lem:theta_mul_theta', lem:units_pm_one, def:theta, def:theta'}
+  \leanok
+  If either $2\theta - 1 = \theta^m - \theta'^{\,m}$ or $-2\theta + 1 = \theta^m - \theta'^{\,m}$
+  holds for odd $m \geq 3$, then in fact the minus sign must hold:
+  $-2\theta + 1 = \theta^m - \theta'^{\,m}$.
+  This is proved by reducing modulo $\theta'^2$ and checking which sign is consistent.
+\end{lemma}
+\begin{proof}\leanok
+  Reduce modulo $\theta'^2$ and verify only the minus sign is consistent.
+\end{proof}
+
+\subsection{Key intermediate result}
+
+\begin{lemma}[Main $m$-condition]
+  \label{lem:main_m_condition}
+  \lean{main_m_condition}
+  \uses{lem:conjugate_factors_coprime, lem:eliminate_x_conclude, lem:factor_not_unit_left, lem:factor_not_unit_right, lem:factors_in_R_with_product, lem:must_have_minus_sign, lem:ufd_power_association, def:theta, def:theta'}
+  \leanok
+  For all integers $x$ and odd $m \geq 3$, if $(x^2 + 7)/4 = 2^m$, then
+  \[
+    -2\theta + 1 = \theta^m - \theta'^{\,m}.
+  \]
+\end{lemma}
+\begin{proof}\leanok
+  Chain the exercises: construct the conjugate factors, prove coprimality,
+  apply UFD association, eliminate $x$, then determine the sign.
+\end{proof}
+
+\subsection{From the $m$-condition to finitely many solutions}
+
+\begin{lemma}[Reduction by dividing by $4$]
+  \label{lem:reduction_divide_by_4}
+  \lean{reduction_divide_by_4}
+  \leanok
+  If $n$ is odd with $n \geq 5$ and $x^2 + 7 = 2^n$, then $(x^2 + 7)/4 = 2^{n-2}$.
+\end{lemma}
+\begin{proof}\leanok
+  Since $n \geq 5$, we have $4 \mid 2^n$, so divide both sides by $4$.
+\end{proof}
+
+\begin{lemma}[Binomial expansion mod $7$]
+  \label{lem:expand_by_binomial}
+  \lean{expand_by_binomial}
+  \uses{def:R, lem:theta'_eq_one_sub_theta, lem:theta_sq, def:theta, def:theta'}
+  \leanok
+  From $-2\theta + 1 = \theta^m - \theta'^{\,m}$, expand via the binomial theorem
+  and reduce modulo $7$ to obtain $-2^{m-1} \equiv m \pmod{7}$.
+
+  The proof multiplies both sides by $2^m$, expands $(1 + \sqrt{-7})^m - (1 - \sqrt{-7})^m$
+  via the binomial theorem, observes that even-index terms cancel and odd-index terms
+  involve powers of $(\sqrt{-7})^2 = -7$, then reads the result modulo $7$.
+\end{lemma}
+\begin{proof}\leanok
+  Binomial expansion and reduction modulo $7$.
+\end{proof}
+
+\begin{lemma}[Mod $7$ constraint]
+  \label{lem:odd_case_mod_seven_constraint}
+  \lean{odd_case_mod_seven_constraint}
+  \uses{lem:expand_by_binomial, lem:main_m_condition, lem:reduction_divide_by_4}
+  \leanok
+  If $n$ is odd with $n \geq 5$ and $x^2 + 7 = 2^n$, then
+  $(-2)^{n-3} \equiv n - 2 \pmod{7}$.
+
+  This follows from the $m$-condition (Lemma~\ref{lem:main_m_condition}) by expanding
+  $\theta^m - \theta'^{\,m}$ via the binomial theorem and reducing modulo $7$.
+\end{lemma}
+\begin{proof}\leanok
+  Combine the reduction and binomial expansion lemmas.
+\end{proof}
+
+\begin{theorem}[Mod $42$ constraint]
+  \label{thm:odd_case_only_three_values_mod_42}
+  \lean{odd_case_only_three_values_mod_42}
+  \uses{lem:odd_case_mod_seven_constraint}
+  \leanok
+  If $n$ is odd with $n \geq 5$ and $x^2 + 7 = 2^n$, then
+  $(n - 2) \bmod 42 \in \{3, 5, 13\}$.
+
+  This follows from $(-2)^{n-3} \equiv n - 2 \pmod{7}$ together with
+  Fermat's little theorem $2^6 \equiv 1 \pmod{7}$. Checking residues modulo $42$
+  (combining mod $6$ and mod $7$) yields the three residue classes.
+\end{theorem}
+\begin{proof}\leanok
+  Exhaustive check of residues modulo $42$ using the mod $7$ constraint
+  and Fermat's little theorem.
+\end{proof}
+
+\subsection{Uniqueness per residue class}
+
+The mod $42$ constraint narrows $m = n - 2$ to three residue classes.
+To show that each class contains at most one solution, we use a $7$-adic argument.
+
+\begin{definition}[Binomial sum $B_d$]
+  \label{def:binomial_B}
+  \lean{binomial_B}
+  \leanok
+  Define the odd-indexed binomial sum
+  \[
+    B_d = \sum_{j=0}^{(d-1)/2} \binom{d}{2j+1} \cdot (-7)^j.
+  \]
+  This arises from expanding $(1+\sqrt{-7})^d = A_d + \sqrt{-7} \cdot B_d$.
+\end{definition}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{lemma}[7-adic valuation of $B_d$]
+  \label{lem:lemma_A_binomial_valuation}
+  \lean{lemma_A_binomial_valuation}
+  \uses{def:binomial_B}
+  \leanok
+  The $7$-adic valuation of $B_d$ equals $v_7(d)$: if $7^l \| d$
+  (i.e.\ $7^l \mid d$ but $7^{l+1} \nmid d$), then $7^l \mid B_d$
+  and $7^{l+1} \nmid B_d$.
+
+  This is the core of the $7$-adic analysis: the $j=0$ term of $B_d$ equals $d$,
+  and all higher terms have strictly larger $7$-adic valuation.
+\end{lemma}
+\begin{proof}\leanok
+  The $j=0$ term is $d$ with valuation $l$. Each $j \geq 1$ term has
+  $7$-adic valuation $\geq l+1$, so by the ultrametric property the
+  sum has valuation exactly $l$.
+\end{proof}
+
+\begin{definition}[Even-indexed binomial sum $A'_d$]
+  \label{def:binomial_A'}
+  \lean{binomial_A'}
+  \leanok
+  Define the even-indexed binomial sum
+  \[
+    A'_d = \sum_{j=0}^{d/2-1} \binom{d}{2(j+1)} \cdot (-7)^j.
+  \]
+  This arises from the even-index part of the expansion of $(1+\sqrt{-7})^d$.
+\end{definition}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{lemma}[7-adic valuation of $A'_d$]
+  \label{lem:even_binomial_valuation}
+  \lean{even_binomial_valuation}
+  \uses{def:binomial_A'}
+  \leanok
+  If $7^l \| d$ and $7 \mid d$, then $7^l \mid A'_d$ and $7^{l+1} \nmid A'_d$.
+  The $j=0$ term $\binom{d}{2} = d(d-1)/2$ has valuation $l$, and all higher terms
+  have strictly larger $7$-adic valuation.
+\end{lemma}
+\begin{proof}\leanok
+  Same structure as for $B_d$: the leading term $\binom{d}{2}$ has valuation $l$,
+  and higher terms are absorbed.
+\end{proof}
+
+\begin{definition}[Trace sequence]
+  \label{def:trace_seq}
+  \lean{trace_seq}
+  \leanok
+  Define the integer recurrence $a(0) = 2$, $a(1) = 1$, $a(n+2) = a(n+1) - 2\,a(n)$.
+  This is the trace sequence: $a(n) = \theta^n + \theta'^{\,n}$ in $R$.
+\end{definition}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{lemma}[Trace sequence equals $\theta^n + \theta'^{\,n}$]
+  \label{lem:trace_seq_eq}
+  \lean{trace_seq_eq}
+  \uses{lem:theta'_eq_one_sub_theta, lem:theta_add_theta', lem:theta_mul_theta', def:trace_seq, def:theta, def:theta'}
+  \leanok
+  For all $n$, $\mathrm{trace\_seq}(n) = \theta^n + \theta'^{\,n}$ in $R$.
+\end{lemma}
+\begin{proof}\leanok
+  Induction on $n$ using the recurrence, with $\theta + \theta' = 1$ and $\theta \cdot \theta' = 2$.
+\end{proof}
+
+\begin{lemma}[Trace sequence not divisible by $7$]
+  \label{lem:trace_seq_not_dvd_seven}
+  \lean{trace_seq_not_dvd_seven}
+  \uses{def:trace_seq}
+  \leanok
+  For all $n$, $7 \nmid a(n)$. The recurrence has period $3$ modulo $7$,
+  and the three residues $a(0) \equiv 2$, $a(1) \equiv 1$, $a(2) \equiv -3$ are all nonzero mod $7$.
+\end{lemma}
+\begin{proof}\leanok
+  Show the recurrence is periodic mod $7$ with period $3$, then check all three residues.
+\end{proof}
+
+\begin{lemma}[Even iff not odd]
+  \label{lem:nat_even_iff_not_odd}
+  \lean{nat_even_iff_not_odd}
+  \leanok
+  For natural numbers, $n$ is even if and only if $n$ is not odd.
+\end{lemma}
+\begin{proof}\leanok
+  Immediate from \texttt{not\_odd\_iff\_even}.
+\end{proof}
+
+\begin{lemma}[At most one solution per residue class]
+  \label{lem:at_most_one_m_per_class}
+  \lean{at_most_one_m_per_class}
+  \uses{def:R, def:binomial_B, lem:even_binomial_valuation, lem:lemma_A_binomial_valuation, lem:nat_even_iff_not_odd, lem:theta'_eq_one_sub_theta, lem:theta_sq, def:trace_seq, lem:trace_seq_eq, lem:trace_seq_not_dvd_seven, def:theta, def:theta'}
+  \leanok
+  If $m_1, m_2$ are both odd, $\geq 3$, satisfy $m_1 \equiv m_2 \pmod{42}$,
+  and both give $-2\theta + 1 = \theta^{m_i} - \theta'^{\,m_i}$, then $m_1 = m_2$.
+
+  Proof sketch: if $m_1 \neq m_2$, let $d = |m_2 - m_1|$, which is divisible by $42$
+  (hence by $7$). The $7$-adic analysis of Lemma~\ref{lem:lemma_A_binomial_valuation} combined
+  with Corollary~C yields a contradiction on the valuation of $\sqrt{-7} \cdot B_d$.
+\end{lemma}
+\begin{proof}\leanok
+  Contradiction via $7$-adic valuation: $d$ is divisible by $42$ (hence $7$),
+  and the valuation identity forces an impossible parity.
+\end{proof}
+
+\subsection{Verification of known solutions}
+
+\begin{lemma}[Verification: $m = 3$ (i.e.\ $n = 5$)]
+  \label{lem:theta_eq_at_3}
+  \lean{theta_eq_at_3}
+  \uses{lem:main_m_condition}
+  \leanok
+  $-2\theta + 1 = \theta^3 - \theta'^{\,3}$.
+  Verified via $x = 5$: $(25 + 7)/4 = 8 = 2^3$.
+\end{lemma}
+\begin{proof}\leanok
+  Direct computation using $\theta^2 = \theta - 2$.
+\end{proof}
+
+\begin{lemma}[Verification: $m = 5$ (i.e.\ $n = 7$)]
+  \label{lem:theta_eq_at_5}
+  \lean{theta_eq_at_5}
+  \uses{lem:main_m_condition}
+  \leanok
+  $-2\theta + 1 = \theta^5 - \theta'^{\,5}$.
+  Verified via $x = 11$: $(121 + 7)/4 = 32 = 2^5$.
+\end{lemma}
+\begin{proof}\leanok
+  Direct computation using $\theta^2 = \theta - 2$.
+\end{proof}
+
+\begin{lemma}[Verification: $m = 13$ (i.e.\ $n = 15$)]
+  \label{lem:theta_eq_at_13}
+  \lean{theta_eq_at_13}
+  \uses{lem:main_m_condition}
+  \leanok
+  $-2\theta + 1 = \theta^{13} - \theta'^{\,13}$.
+  Verified via $x = 181$: $(32761 + 7)/4 = 8192 = 2^{13}$.
+\end{lemma}
+\begin{proof}\leanok
+  Direct computation using $\theta^2 = \theta - 2$.
+\end{proof}
+
+\subsection{Combining}
+
+\begin{theorem}[Odd case: only three values]
+  \label{thm:odd_case_only_three_values}
+  \lean{odd_case_only_three_values}
+  \uses{lem:at_most_one_m_per_class, lem:main_m_condition, thm:odd_case_only_three_values_mod_42, lem:reduction_divide_by_4, lem:theta_eq_at_13, lem:theta_eq_at_3, lem:theta_eq_at_5}
+  \leanok
+  If $n$ is odd with $n \geq 5$ and $x^2 + 7 = 2^n$, then $n \in \{5, 7, 15\}$.
+
+  From the mod $42$ constraint, $m = n - 2$ lies in one of three residue classes
+  ($3$, $5$, or $13$ mod $42$). The verification lemmas show these are actual solutions
+  (at $m = 3, 5, 13$). The uniqueness lemma shows each residue class has at most one
+  solution. Therefore $n \in \{5, 7, 15\}$.
+\end{theorem}
+\begin{proof}\leanok
+  Combine the mod $42$ constraint, uniqueness per class, and verification of
+  the three known solutions.
+\end{proof}
+
+\section{Main theorem}
+
+\subsection{Direct computation}
+
+Once the possible values of $n$ are determined (either by the even-case factorization or
+the odd-case modular argument), it remains to solve for $x$ by direct computation.
+A single generic lemma handles all five cases: it takes an equation $x^2 = a^2$
+(where $a^2 = 2^n - 7$) and the value of $n$, and identifies the solution pair $(x, n)$.
+
+\begin{lemma}[Solving $x^2 = a^2$]
+  \label{lem:solution_from_sq}
+  \lean{solution_from_sq}
+  \leanok
+  If $x^2 = a^2$ and $n = m$, then $(x, n) = (a, m)$ or $(x, n) = (-a, m)$.
+\end{lemma}
+\begin{proof}\leanok
+  From $x^2 = a^2$ we get $x = a$ or $x = -a$.
+\end{proof}
+
+\subsection{The theorem}
+
+\begin{theorem}[Ramanujan--Nagell]
+  \label{thm:RamanujanNagell}
+  \lean{RamanujanNagell}
+  \uses{thm:odd_case_only_three_values, lem:ramanujan_nagell_even_pow_factors, lem:solution_from_sq}
+  \leanok
+  The only integer solutions to $x^2 + 7 = 2^n$ are
+  \[
+    (x, n) \in \{(\pm 1, 3),\; (\pm 3, 4),\; (\pm 5, 5),\; (\pm 11, 7),\; (\pm 181, 15)\}.
+  \]
+\end{theorem}
+\begin{proof}
+  \leanok
+  First, one shows $n \geq 3$ by bounding $2^n \geq x^2 + 7 \geq 7$.
+
+  \textbf{Case 1: $n$ even.} Write $n = 2k$. Then $(2^k+x)(2^k-x) = 7$.
+  By Lemma~\ref{lem:ramanujan_nagell_even_pow_factors}, the only possibility is $2^k = 4$,
+  giving $n = 4$ and $x = \pm 3$ (Lemma~\ref{lem:solution_from_sq}).
+
+  \textbf{Case 2: $n$ odd, $n = 3$.} Direct computation gives $x^2 = 1$, so $x = \pm 1$
+  (Lemma~\ref{lem:solution_from_sq}).
+
+  \textbf{Case 3: $n$ odd, $n \geq 5$.} By Theorem~\ref{thm:odd_case_only_three_values},
+  $n \in \{5, 7, 15\}$, and direct computation gives the remaining solutions
+  (Lemma~\ref{lem:solution_from_sq}).
+\end{proof}
+
+\section{Additional declarations}
+
+\begin{lemma}[associated\_eq\_or\_neg]
+  \label{lem:associated_eq_or_neg}
+  \lean{associated_eq_or_neg}
+  \uses{lem:units_pm_one}
+  \leanok
+  TODO: add description
+\end{lemma}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{lemma}[associated\_of\_theta\_pow\_dvd]
+  \label{lem:associated_of_theta_pow_dvd}
+  \lean{associated_of_theta_pow_dvd}
+  \uses{lem:theta'_irreducible, lem:theta'_prime, lem:theta_irreducible, def:theta, def:theta'}
+  \leanok
+  TODO: add description
+\end{lemma}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{lemma}[associated\_of\_theta\_pow\_dvd\_right]
+  \label{lem:associated_of_theta_pow_dvd_right}
+  \lean{associated_of_theta_pow_dvd_right}
+  \uses{lem:theta'_irreducible, lem:theta'_prime, lem:theta_irreducible, def:theta, def:theta'}
+  \leanok
+  TODO: add description
+\end{lemma}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{lemma}[factor\_not\_unit\_left]
+  \label{lem:factor_not_unit_left}
+  \lean{factor_not_unit_left}
+  \uses{def:R, lem:theta'_eq_one_sub_theta, lem:two_factorisation_R, lem:units_pm_one, def:theta, def:theta'}
+  \leanok
+  The conjugate factors `(x ± √-7)/2` lie in `R` (since `x` is odd) and
+\end{lemma}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{lemma}[factor\_not\_unit\_right]
+  \label{lem:factor_not_unit_right}
+  \lean{factor_not_unit_right}
+  \uses{def:R, lem:theta'_eq_one_sub_theta, lem:two_factorisation_R, lem:units_pm_one, def:theta, def:theta'}
+  \leanok
+  TODO: add description
+\end{lemma}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{lemma}[four\_norm\_eq]
+  \label{lem:four_norm_eq}
+  \lean{four_norm_eq}
+  \leanok
+  The integer ring `ℤ[(1 + √-7)/2]`, packaged as `QuadraticAlgebra ℤ (-2) 1`. -/
+\end{lemma}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{lemma}[norm\_pos]
+  \label{lem:norm_pos}
+  \lean{norm_pos}
+  \uses{lem:norm_eq_zero_iff, lem:norm_nonneg}
+  \leanok
+  TODO: add description
+\end{lemma}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{definition}[quot]
+  \label{def:quot}
+  \lean{quot}
+  \uses{def:R}
+  \leanok
+  The integer ring `ℤ[(1 + √-7)/2]`, packaged as `QuadraticAlgebra ℤ (-2) 1`. -/
+\end{definition}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{lemma}[quot\_mul\_add\_rem\_eq]
+  \label{lem:quot_mul_add_rem_eq}
+  \lean{quot_mul_add_rem_eq}
+  \uses{def:rem}
+  \leanok
+  TODO: add description
+\end{lemma}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{definition}[rem]
+  \label{def:rem}
+  \lean{rem}
+  \uses{def:R, def:quot}
+  \leanok
+  TODO: add description
+\end{definition}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{lemma}[theta'\_irreducible]
+  \label{lem:theta'_irreducible}
+  \lean{theta'_irreducible}
+  \uses{lem:norm_nonneg}
+  \leanok
+  TODO: add description
+\end{lemma}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{lemma}[theta'\_prime]
+  \label{lem:theta'_prime}
+  \lean{theta'_prime}
+  \uses{thm:instUniqueFactorizationMonoid, lem:theta'_irreducible}
+  \leanok
+  TODO: add description
+\end{lemma}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{lemma}[theta\_irreducible]
+  \label{lem:theta_irreducible}
+  \lean{theta_irreducible}
+  \uses{lem:norm_nonneg}
+  \leanok
+  TODO: add description
+\end{lemma}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{lemma}[theta\_pow\_dvd\_of\_coprime\_prod]
+  \label{lem:theta_pow_dvd_of_coprime_prod}
+  \lean{theta_pow_dvd_of_coprime_prod}
+  \uses{lem:theta_prime, def:theta, def:theta'}
+  \leanok
+  The integer ring `ℤ[(1 + √-7)/2]`, packaged as `QuadraticAlgebra ℤ (-2) 1`. -/
+\end{lemma}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{lemma}[theta\_prime]
+  \label{lem:theta_prime}
+  \lean{theta_prime}
+  \uses{thm:instUniqueFactorizationMonoid, lem:theta_irreducible}
+  \leanok
+  The integer ring `ℤ[(1 + √-7)/2]`, packaged as `QuadraticAlgebra ℤ (-2) 1`. -/
+\end{lemma}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+
+\begin{lemma}[ufd\_associated\_dichotomy]
+  \label{lem:ufd_associated_dichotomy}
+  \lean{ufd_associated_dichotomy}
+  \uses{lem:associated_of_theta_pow_dvd, lem:associated_of_theta_pow_dvd_right, lem:theta_pow_dvd_of_coprime_prod, def:theta, def:theta'}
+  \leanok
+  TODO: add description
+\end{lemma}
+\begin{proof}\leanok
+  Proof in Lean source.
+\end{proof}
+

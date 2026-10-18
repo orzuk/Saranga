@@ -1,0 +1,539 @@
+
+%%FILE blueprint/src/content.tex
+% In this file you should put the actual content of the blueprint.
+% It will be used both by the web and the print version.
+% It should *not* include the \begin{document}
+%
+% If you want to split the blueprint content into several files then
+% the current file can be a simple sequence of \input. Otherwise It
+% can start with a \section or \chapter for instance.
+\chapter{Introduction}
+
+This blueprint accompanies a Lean~4 formalization of error correcting codes.
+Unless stated otherwise, definitions and statements follow the conventions of
+\emph{Essential Coding Theory}~\cite{GRS}, which is our main reference throughout.
+
+\chapter{Basics of Codes}
+\input{sections/Basics/definitions}
+\input{sections/Basics/simple_properties}
+\chapter{Linear Codes}
+\input{sections/LinearCodes/definitions}
+\input{sections/LinearCodes/lemmas}
+\chapter{Bounds}
+\input{sections/Bounds/Gilbert-Varshamov}
+
+
+%%FILE blueprint/src/sections/Basics/definitions.tex
+\section{Definitions}
+\begin{definition}[Code]
+\label{def:Code}
+\lean{Code}
+\leanok
+A code $C$ of block length $n$ over an alphabet $\alpha$ is a subset of $\alpha^{n}$.
+Typically, we will use $q$ to denote the alphabet size $|\Sigma|$.
+\end{definition}
+
+\begin{definition}[Alphabet Size]
+    \label{def:q}
+    \lean{Code.q}
+    \leanok
+    The alphabet size is $q := \lvert\alpha\rvert$, the cardinality of the finite alphabet $\alpha$.
+\end{definition}
+
+\begin{definition}[Dimension]
+    \label{def:dim}
+    \lean{Code.dim}
+    \leanok
+    \uses{def:Code, def:q}
+    The dimension $k$ of a code $C$ is
+    \[
+        k := \log_{q}(\lvert C\rvert),
+    \]
+    where $q$ is the alphabet size and $\lvert C\rvert$ is the number of codewords.
+\end{definition}
+
+\begin{definition}[Rate]
+    \label{def:rate}
+    \lean{Code.rate}
+    \leanok
+    \uses{def:Code, def:dim}
+    The rate $R$ of a code $C$ is
+    \[
+        R := \frac{k}{n}.
+    \]
+    where $k$ is the dimension and block length of $n$.
+\end{definition}
+
+\begin{definition}[Minimum Distance]
+  \label{def:MinDim}
+  \lean{Code.minDist}
+  \leanok
+  \uses{def:Code}
+  Let $C \subseteq \Sigma^{n}$.
+  The minimum distance of $C$, denoted $\Delta(C)$, is defined to be
+  \[\Delta(C) = \min_{\mathbf{c_{1}} \neq \mathbf{c_{2}} \in C} \Delta(\mathbf{c_{1}}, \mathbf{c_{2}}).\]
+\end{definition}
+
+\begin{definition}[Relative Minimum Distance]
+  \label{def:RelMinDim}
+  \lean{Code.relMinDist}
+  \leanok
+  \uses{def:MinDim}
+  Let $C \subseteq \Sigma^{n}$.
+  The minimum distance of $C$, denoted $\delta(C)$, is defined to be
+  \[\delta(C) = \min_{\mathbf{c_{1}} \neq \mathbf{c_{2}} \in C} \delta(\mathbf{c_{1}}, \mathbf{c_{2}}).\]
+\end{definition}
+
+\begin{definition}[Hamming Ball]
+  \label{def:HammingBall}
+  \lean{Code.hammingBall}
+  \leanok
+  For any vector $\mathbf{x} \in [q]^{n}$,
+  \[B(\mathbf{x},e) = \{\mathbf{y} \in [q]^{n}\mid \Delta(\mathbf{x},\mathbf{y}) \leq e\}.\]
+\end{definition}
+
+\begin{definition}[Volume]
+  \label{def:Vol}
+  \lean{Code.hammingVolume}
+  \leanok
+  \uses{def:HammingBall}
+  \[V_{q}(n,r) = \sum^{r}_{i = 0} \binom{n}{i}(q-1)^{i}\]
+  where $r$ is the radius.
+\end{definition}
+
+\begin{definition}[Maximal With Respect to Inclusion]
+  \label{def:maximalWrtInclusion}
+  \lean{Code.maximalWrtInclusion}
+  \leanok
+  \uses{def:Code, def:q, def:MinDim}
+  Let $C\subseteq \Sigma^{n}$ with minimum distance denoted $\Delta(C)$.
+  $C$ is defined to be maximal with respect to inclusion if:
+  \[\forall C' \subseteq \Sigma^{n}, C\subseteq C', \Delta(C) = \Delta(C') \implies C'\subseteq C\]
+\end{definition}
+
+
+%%FILE blueprint/src/sections/Basics/simple_properties.tex
+\section{Properties}
+\begin{lemma}[Dimension is at most the block length]
+    \label{lem:dim_le_n}
+    \lean{Code.dim_le_n}
+    \leanok
+    \uses{def:dim}
+    For every code $C$ of block length $n$, we have $k \leq n$.
+\end{lemma}
+
+\begin{proof}
+    \leanok
+    \uses{def:q}
+    Note that $C \subseteq \alpha^{n}$, we have $\lvert C\rvert \le \lvert\alpha\rvert^{n} = q^{n}$, thus $k = \log_{q}\lvert C\rvert \le \log_{q} q^{n} = n$.
+\end{proof}
+ 
+\begin{lemma}[Rate is at most one]
+    \label{lem:rate_le_one}
+    \lean{Code.rate_le_one}
+    \leanok
+    \uses{def:rate}
+    For every code $C$, we have $R \leq 1$.
+\end{lemma}
+\begin{proof}
+    \leanok
+    \uses{lem:dim_le_n}
+    By Lemma~\ref{lem:dim_le_n}, $k \leq n$, and $n \ge 0$.
+    Therefore $R = k/n \leq 1$.
+\end{proof}
+
+\begin{lemma}[Sphere cardinality]
+  \label{lemma:SphereCard}
+  \lean{Code.ncard_hammingSphere}
+  \leanok
+  \uses{def:q}
+  For any $\mathbf{x} \in [q]^n$ and integer $i \geq 0$,
+  \[\bigl|\{\mathbf{y} \in [q]^n \mid \Delta(\mathbf{x}, \mathbf{y}) = i\}\bigr| = \binom{n}{i}(q-1)^i.\]
+\end{lemma}
+
+\begin{proof}
+  \leanok
+  Write $S_i = \{\mathbf{y} \in [q]^n \mid \Delta(\mathbf{x}, \mathbf{y}) = i\}$ for the sphere,
+  and for a word $\mathbf{y} \in [q]^n$ let
+  \[
+    T(\mathbf{y}) = \{j \in [n] \mid y_j \neq x_j\}
+  \]
+  be its set of disagreement coordinates. By the definition of Hamming distance,
+  $\Delta(\mathbf{x}, \mathbf{y}) = |\{j \in [n] \mid x_j \neq y_j\}| = |T(\mathbf{y})|$, so
+  membership $\mathbf{y} \in S_i$ is the same as the condition $|T(\mathbf{y})| = i$.
+
+  We construct an explicit bijection. Let $\mathcal{P}_i$ be the set of pairs $(T, g)$ in which $T \subseteq [n]$
+  has $|T| = i$ and $g : T \to [q]$ satisfies $g(j) \neq x_j$ for every $j \in T$. Define the
+  forward map
+  \[
+    \Phi : S_i \to \mathcal{P}_i, \qquad
+    \Phi(\mathbf{y}) = \bigl(T(\mathbf{y}),\ (y_j)_{j \in T(\mathbf{y})}\bigr);
+  \]
+  this is well defined because $|T(\mathbf{y})| = i$ by the paragraph above, and $y_j \neq x_j$
+  for each $j \in T(\mathbf{y})$ by the definition of $T(\mathbf{y})$. Define the reverse map
+  \[
+    \Psi : \mathcal{P}_i \to S_i, \qquad
+    \Psi(T, g) = \mathbf{y}, \quad\text{where } y_j =
+      \begin{cases} g(j) & \text{if } j \in T, \\ x_j & \text{if } j \notin T. \end{cases}
+  \]
+  Its image lies in $S_i$: the word $\mathbf{y} = \Psi(T, g)$ has $y_j \neq x_j$ exactly on $T$
+  (on $T$ since $g(j) \neq x_j$, and off $T$ since $y_j = x_j$), so $T(\mathbf{y}) = T$ and
+  therefore $|T(\mathbf{y})| = |T| = i$. The two maps are mutually inverse:
+  \begin{itemize}
+    \item $\Psi(\Phi(\mathbf{y})) = \mathbf{y}$: on $T(\mathbf{y})$ the reconstructed word takes
+      the value $y_j$, and off $T(\mathbf{y})$ it takes the value $x_j$, which equals $y_j$
+      because $j \notin T(\mathbf{y})$ means exactly that $y_j = x_j$.
+    \item $\Phi(\Psi(T, g)) = (T, g)$: we showed $T(\Psi(T, g)) = T$, and on $T$ the values kept
+      by $\Phi$ are the $g(j)$.
+  \end{itemize}
+  Therefore, $|S_i| = |\mathcal{P}_i|$.
+
+  It remains to count $\mathcal{P}_i$. Grouping the pairs by their first coordinate $T$,
+  \[
+    |\mathcal{P}_i| = \sum_{\substack{T \subseteq [n] \\ |T| = i}}
+      \bigl|\{\, g : T \to [q] \mid g(j) \neq x_j \text{ for all } j \in T \,\}\bigr|.
+  \]
+  For a fixed $T$, specifying such a $g$ means choosing, independently for each $j \in T$, one of
+  the $q - 1$ values in $[q] \setminus \{x_j\}$; there are thus $(q-1)^{|T|} = (q-1)^i$ such
+  functions. As the number of $i$-element subsets of $[n]$ is $\binom{n}{i}$,
+  \[
+    |S_i| = |\mathcal{P}_i|
+      = \sum_{\substack{T \subseteq [n] \\ |T| = i}} (q-1)^i
+      = \binom{n}{i}(q-1)^i.
+  \]
+\end{proof}
+
+\begin{lemma}[Ball cardinality equals volume]
+  \label{lemma:BallCard}
+  \lean{Code.ncard_hammingBall}
+  \leanok
+  \uses{def:HammingBall, def:Vol, def:q}
+  For any $\mathbf{x} \in [q]^n$ and $r \geq 0$,
+  \[|B(\mathbf{x}, r)| = \Vol_q(n, r).\]
+\end{lemma}
+
+\begin{proof}
+  \leanok
+  \uses{lemma:SphereCard}
+  For each integer $0 \leq i \leq r$ let $S_i = \{\mathbf{y} \in [q]^n \mid \Delta(\mathbf{x}, \mathbf{y}) = i\}$
+  be the sphere of radius $i$ about $\mathbf{x}$.
+
+  The $S_i$ are pairwise disjoint: if $\mathbf{y} \in S_i \cap S_j$ then
+  $i = \Delta(\mathbf{x}, \mathbf{y}) = j$, so distinct indices give disjoint spheres, as a word
+  has a single Hamming distance to $\mathbf{x}$.
+
+  The $S_i$ also cover the ball. By the definition of the Hamming ball,
+  $\mathbf{y} \in B(\mathbf{x}, r)$ means $\Delta(\mathbf{x}, \mathbf{y}) \leq r$. Since
+  $\Delta(\mathbf{x}, \mathbf{y})$ is a nonnegative integer, this holds iff
+  $\Delta(\mathbf{x}, \mathbf{y}) = i$ for exactly one $i$ with $0 \leq i \leq r$, i.e. iff
+  $\mathbf{y} \in S_i$ for some such $i$. Therefore,
+  \[
+    B(\mathbf{x}, r) = \bigsqcup_{i=0}^{r} S_i,
+  \]
+  a disjoint union by the previous paragraph.
+
+  Finally, we compute the cardinalities. Because the union is disjoint, its cardinality is the sum of the
+  cardinalities of the parts, and each part is counted by Lemma~\ref{lemma:SphereCard}:
+  \[
+    |B(\mathbf{x}, r)|
+      = \sum_{i=0}^{r} |S_i|
+      = \sum_{i=0}^{r} \binom{n}{i}(q-1)^i.
+  \]
+  The right-hand side is exactly $\Vol_q(n, r)$ by the definition of the volume, so
+  $|B(\mathbf{x}, r)| = \Vol_q(n, r)$.
+\end{proof}
+
+\begin{lemma}[Volume entropy bound]
+\label{lemma:VolEntropy}
+\lean{Code.hammingVolume_le_pow_mul_entropy}
+\leanok
+\uses{def:q, def:Vol}
+Let $q \geq 2$ and $n \geq 1$ be integers, and let $r$ be an integer with $0 \leq r$ and $\frac{r}{n} \leq 1 - \frac{1}{q}$. Then
+\[
+  \Vol_q(r, n) \leq q^{\,n H_q(r/n)}.
+\]
+\end{lemma}
+\begin{proof}
+  Write $\lambda = \frac{r}{n}$. If $r = 0$ then $\Vol_q(0, n) = 1 = q^{n H_q(0)}$, so assume $r \geq 1$, giving $0 < \lambda \leq 1 - \frac{1}{q} < 1$. From the definition of $H_q$,
+  \[
+    q^{n H_q(\lambda)} = (q-1)^{r}\, \lambda^{-r}\,(1-\lambda)^{-(n-r)},
+  \]
+  so it suffices to show $\Vol_q(r,n)\,(q-1)^{-r}\lambda^{r}(1-\lambda)^{n-r} \leq 1$. Put $\theta = \frac{\lambda}{(q-1)(1-\lambda)}$. Note that $\lambda \leq 1 - \frac{1}{q}$ gives $\frac{\lambda}{1-\lambda} \leq q-1$, hence $0 \leq \theta \leq 1$. For each $0 \leq i \leq r$, since $r - i \geq 0$ and $\theta \leq 1$,
+  \[
+    \binom{n}{i} (q-1)^{i} (q-1)^{-r}\lambda^{r}(1-\lambda)^{n-r} = \binom{n}{i} \lambda^{i} (1-\lambda)^{n-i}\,\theta^{\,r-i} \leq \binom{n}{i} \lambda^{i} (1-\lambda)^{n-i}.
+  \]
+  Summing over $0 \leq i \leq r$ and extending the sum to $0 \leq i \leq n$,
+  \[
+    \Vol_q(r,n)\,(q-1)^{-r}\lambda^{r}(1-\lambda)^{n-r} \leq \sum_{i=0}^{n}\binom{n}{i} \lambda^{i}(1-\lambda)^{n-i} = (\lambda + (1-\lambda))^{n} = 1,
+  \]
+  the last step by the binomial theorem. Rearranging gives $\Vol_q(r,n) \leq q^{n H_q(\lambda)}$.
+\end{proof}
+
+
+%%FILE blueprint/src/sections/Bounds/Gilbert-Varshamov.tex
+\begin{lemma}[Covering]
+\label{lemma:covers}
+\lean{Code.covers}
+\leanok
+\uses{def:Code, def:q, def:MinDim, def:Vol, def:maximalWrtInclusion, def:HammingBall}
+Let $q \geq 2$ and $n \geq d \geq 1$ be integers, and let $C \subseteq [q]^{n}$ be a
+code of minimum distance at least $d$ that is maximal with respect to inclusion.
+For $\mathbf{c} \in C$, let
+\[
+  B(\mathbf{c}, d-1) = \{ \mathbf{z} \in [q]^{n} : \Delta(\mathbf{c}, \mathbf{z}) \le d-1 \}
+\]
+denote the Hamming ball of radius $d-1$ centered at $\mathbf{c}$.
+Then
+\[
+  \bigcup_{\mathbf{c} \in C} B(\mathbf{c}, d-1) = [q]^{n}.
+\]
+\end{lemma}
+
+\begin{proof}
+  Let $\mathbf{z} \in [q]^{n}$ and suppose towards a contradiction that $\mathbf{z} \notin B(c, d-1)$ for every $\mathbf{c} \in C$, that is $\Delta(\mathbf{c}, \mathbf{z}) \geq d$ for all $\mathbf{c} \in C$.
+  Note that $\mathbf{z} \neq \mathbf{c}$ for every $\mathbf{c}$ since $d \geq 1$ and thus $\mathbf{z} \notin C$.
+  Then $C \cup \{\mathbf{z}\}$ is a code where any two distinct codewords lie at distance greater than $d$ meaning that $C$ is not maximal which is a contradiction.
+  Hence every $\mathbf{z}$ lies in $B(c,d-1)$ and
+  \[[q]^{n} = \bigcup_{\mathbf{c} \in C} B(\mathbf{c},d-1).\]
+\end{proof}
+
+\begin{lemma}[Maximal Packing]
+\label{lemma:MaximalPacking}
+\lean{Code.maxPacking}
+\leanok
+\uses{def:Code, def:q, def:MinDim, def:Vol, def:maximalWrtInclusion}
+Let $q \geq 2$ and $n \geq d \geq 1$ be integers, and let $C \subseteq [q]^n$ be
+maximal, with respect to inclusion, among all codes of minimum distance at
+least $d$.
+Then
+\[
+  |C| \geq \frac{q^n}{\Vol_q(n,d-1)}.
+\]
+\end{lemma}
+
+\begin{proof}
+  \leanok
+  \uses{lemma:covers, lemma:BallCard}
+  For every codeword $c \in C$ we define a ball $B(\mathbf{c},d-1)$.
+  Note that by Lemma~\ref{lemma:covers}, the union of these balls cover $[q]^{n}$.
+  Then we must have the following inequality,
+  \[
+  q^{n} =
+  |[q]^{n}| = 
+  \left|\bigcup_{\mathbf{c} \in C}B(\mathbf{c}, d-1)\right| \leq
+  \sum_{\mathbf{c} \in C} |B(\mathbf{c},d-1)| =
+  |C| \cdot \Vol_{q}(n,d-1) \implies
+  |C| \geq \frac{q^{n}}{\Vol_{q}(n,d-1)}.
+  \]
+\end{proof}
+
+\begin{theorem}[Gilbert-Varshamov Bound; general codes]
+\label{thm:GVBgc}
+\lean{Code.gilbert_varshamov}
+\leanok
+\uses{def:Code, def:q, def:rate, def:RelMinDim, lemma:MaximalPacking, lemma:VolEntropy}
+See~\cite{GRS}.
+Let $q \geq 2$ be an integer.
+For every $0 \leq \delta < 1 - \frac{1}{q}$ and every positive integer $n$, there exists a $q$-ary code of block length $n$ with rate $R \geq 1 - H_q(\delta)$ and relative distance at least $\delta$.
+\end{theorem}
+
+\begin{proof}
+    \leanok
+    Fix $\delta$ with $0 \leq \delta < 1 - \frac{1}{q}$ and a positive integer $n$, and put
+    \[
+      d = \max(\lceil \delta n \rceil, 1).
+    \]
+    Then $d \geq 1$, and $d \leq n$ since $\delta < 1$ gives $\lceil \delta n \rceil \leq n$, so $n \geq d \geq 1$. Note also $d \geq \delta n$ and $d - 1 \leq \delta n$.
+    The codes $C \subseteq [q]^{n}$ of minimum distance at least $d$ form a finite nonempty family (any singleton works), so we may pick one, call it $C$, that is maximal with respect to inclusion.
+    By Lemma~\ref{lemma:MaximalPacking},
+    \[
+      |C| \geq \frac{q^{n}}{\Vol_{q}(n,d-1)}.
+    \]
+    Since $\Vol_{q}(n,d-1) \leq q^{n}$ we have $|C| \geq 1$, so taking $\log_{q}$ and dividing by $n$,
+    \[
+      R = \frac{\log_{q}|C|}{n} \geq 1 - \frac{\log_{q}\Vol_{q}(d-1,n)}{n}.
+    \]
+    Note that $0 \leq \frac{d-1}{n} \leq \delta < 1 - \frac{1}{q}$, so by Lemma~\ref{lemma:VolEntropy} at $\lambda = \frac{d-1}{n}$,
+    \[
+      \Vol_{q}(n,d-1) \leq q^{\,n H_q(\frac{d-1}{n})} \implies \frac{\log_{q}\Vol_{q}(d-1,n)}{n} \leq H_q\!\left(\tfrac{d-1}{n}\right),
+    \]
+    and hence $R \geq 1 - H_q(\frac{d-1}{n})$. Finally $H_q$ is nondecreasing on $[0, 1 - \frac{1}{q}]$ by the monotonicity of $H_q$ and $\frac{d-1}{n} \leq \delta$, so $H_q(\frac{d-1}{n}) \leq H_q(\delta)$ and
+    \[
+      R \geq 1 - H_q(\delta).
+    \]
+    The relative distance of $C$ is at least $\frac{d}{n} \geq \delta$.
+    Hence $C$ is a $q$-ary code of block length $n$ with rate $R \geq 1 - H_q(\delta)$ and relative distance at least $\delta$ as desired.
+\end{proof}
+
+\begin{theorem}[Gilbert-Varshamov Bound; linear codes]
+\uses{def:Code, def:q, def:rate, def:MinDim, def:LinearCode, def:GeneratorMatrix}
+See~\cite{GRS}.
+Let $q$ be a prime power.
+For every $0 \leq \delta < 1 - \frac{1}{q}$, every $0 \leq \varepsilon \leq 1 - H_q(\delta)$, and every positive integer $n$, set $k = n\bigl(1 - H_q(\delta) - \varepsilon\bigr)$.
+If $G \in \mathbb{F}^{k \times n}_{q}$ is picked uniformly at random, then $G$ generates a code of rate $1 - H_q(\delta) - \varepsilon$ and relative distance at least $\delta$ with probability strictly greater than $1 - q^{-\varepsilon n}$.
+\end{theorem}
+
+\begin{proof}
+    TODO
+\end{proof}
+
+
+%%FILE blueprint/src/sections/LinearCodes/definitions.tex
+\section{Definitions}
+\begin{definition}[Linear Code by Subspace]
+\label{def:LC_subspace}
+\lean{LinearCode}
+\leanok
+\uses{def:Code}
+Let $q$ be a prime power (i.e. $q = p^{s}$ for some prime $p$ and integer $s \geq 1$).
+$C \subseteq \mathbb{F}^{n}_{q}$ is a linear code if it is a linear subspace of $\mathbb{F}^{n}_{q}$.
+If $C$ has dimenension $k$ and distance $d$ then it will be referred to as an $[n,k,d]_{q}$ or just an $[n,k]_{q}$ code.\footnote{Our lean declaration does not directly depend on code.}
+\end{definition}
+
+\begin{definition}[Generator Matrix]
+\label{def:GeneratorMatrix}
+\lean{LinearCode.GeneratorMatrix}
+\leanok
+\uses{def:LC_subspace}
+If $C$ is an $[n, k]_{q}$ linear code then there exists a matrix $G \in \mathbb{F}^{k \times n}_{q}$ of rank $k$ satisfying
+\[C = \{x \cdot G \mid x \in \mathbb{F}^{k}_{q}.\}\]
+We define $G$ as a generator matrix of $C$.
+Note that $G$ is not unique.
+\end{definition}
+
+\begin{definition}[Parity Check Matrix]
+\label{def:ParityCheckMatrix}
+\lean{LinearCode.ParityCheckMatrix}
+\leanok
+\uses{def:LC_subspace}
+If $C$ is an $[n, k]_{q}$ linear code then there exists a matrix $H \in \mathbb{F}^{(n-k) \times n}_{q}$ of rank $n - k$ satisfying
+\[C = \{\mathbf{y} \in \mathbb{F}^{n}_{q} \mid H \cdot \mathbf{y}^{\intercal} = 0\}.\]
+We define $H$ as a partiy check matrix of $C$.
+Note that $H$ is not unique.
+\end{definition}
+
+
+%%FILE blueprint/src/sections/LinearCodes/lemmas.tex
+\section{Lemmas}
+
+\begin{lemma}[Subspace Implies Generator]
+    \uses{def:LC_subspace,def:GeneratorMatrix}
+    \label{lemma:subspace-imp-generator}
+    Let $C$ be a linear code that is a $k$-dimensional subspace of $\mathbb{F}^{n}_{q}$.
+    Then there exists a $k \times n$ matrix $G$ with rank $k$ over $\mathbb{F}_q$ such that
+    \[
+        C = \{\mathbf{f}G \mid \mathbf{f} \in \mathbb{F}^{k}_{q}\}.
+    \]
+\end{lemma}
+
+\begin{proof}
+Note that $C$ is a $k$-dimensional subspace of $\mathbb{F}_q^n$, and thus has a basis $\{\mathbf{g}_1, \ldots, \mathbf{g}_k\}$.
+Let $G$ be the $k \times n$ matrix whose $i$-th row is $\mathbf{g}_i$.
+For any $\mathbf{f} = (f_1, \ldots, f_k) \in \mathbb{F}_q^k$, the row-vector product is
+\[
+    \mathbf{f}G = \sum_{i=1}^k f_i \mathbf{g}_i.
+\]
+Thus $\{\mathbf{f}G \mid f \in \mathbb{F}^{k}_{q}\}$ is the set of $\mathbb{F}_q$-linear combinations of $\mathbf{g}_{1},\ldots, \mathbf{g}_{k}$. 
+Since $\mathbf{g}_{1}, \ldots, \mathbf{g}_{k}$ is a basis of $C$ and the span equals $C$, we must have $C = \{\mathbf{f}G \mid f \in \mathbb{F}^{k}_{q}\}$. It also follows that $rank(G)=k$ since $G$'s rows are basis vectors.
+\end{proof}
+
+\begin{lemma}[Generator Implies Subspace]
+    \uses{def:LC_subspace, def:GeneratorMatrix}
+    \label{lemma:generator-imp-subspace}
+    Let $G \in \mathbb{F}^{k \times n}_{q}$ with rank $k$ and let $C = \{\mathbf{f}G \mid \mathbf{f} \in \mathbb{F}^{k}_{q}\}$.
+    Then $C$ is a $k$-dimensional linear code over $\mathbb{F}^{n}_{q}$.
+\end{lemma}
+
+\begin{proof}
+    First of all, 
+    \begin{itemize}
+        \item $\forall \mathbf{c}\in C$, $G$ constrains $\mathbf{c}$ to be $n$ dimensional
+        \item A combination of: 
+        \begin{itemize}
+            \item The closure of $\mathbb{F}_q$ under addition and multiplication 
+            \item The fact of $\mathbf{c}=\mathbf{f}G$ for some $f\in \mathbb{F}^{k}_{q}$ 
+        \end{itemize}
+        means all elements of $\mathbf{c}$ are in $\mathbb{F}_q$
+    \end{itemize}
+    This means $\mathbf{c}\in \mathbb{F}^{n}_{q}$ and therefore $C\subseteq \mathbb{F}^{n}_{q}$. 
+    Given this, it is sufficient to prove $C$ contains the zero vector and is closed under linear addition and scalar multiplication.
+    \begin{itemize}
+        \item We can show that the zero vector $\mathbf{0}\in \mathbb{F}^{n}_{q}$ is in $C$ because $\mathbf{0}G=\mathbf{0}$.
+        \item We can show that $C$ is closed under addition by considering that $\forall \mathbf{a},\mathbf{b}\in C$,
+            $\exists \mathbf{x},\mathbf{y}\in \mathbb{F}^{k}_{q}$ such that $\mathbf{a}=\mathbf{x}G,\mathbf{b}=\mathbf{y}G$,
+            distributivity of matrix multiplication gives us $\mathbf{a}+\mathbf{b}=\mathbf{x}G+\mathbf{y}G=(\mathbf{x}+\mathbf{y})G$,
+            and since $\mathbf{x}+\mathbf{y}\in \mathbb{F}^{k}_{q}$ because of closure under addition,
+            $\mathbf{a}+\mathbf{b}=(\mathbf{x}+\mathbf{y})G\in C $
+        \item We can show that $C$ is closed under scalar multiplication by considering that $\forall \mathbf{a}\in C$ that
+            $\exists \mathbf{x}\in \mathbb{F}^{k}_{q}$ such that $\mathbf{a}=\mathbf{x}G$.
+            And therefore, $\forall d\in \mathbb{F}_{q}, d\mathbf{a}=d\mathbf{x}G=(d\mathbf{x})G$.
+            And since $d\mathbf{x}\in \mathbb{F}^{k}_{q}$ by its own closure under scalar multiplication, it must follow $d(\mathbf{x}G)\in C$
+        These three conditions should be sufficient to prove that $C$ is a valid vector space.
+    \end{itemize}
+    Therefore $C$ is a subspace of $\mathbb{F}^{n}_{q}$, and because $\{\mathbf{f}G \mid \mathbf{f} \in \mathbb{F}^{k}_{q}\}$ is the set of $\mathbb{F}_q$-linear combinations of linearly independent $\mathbf{g}_{1},\ldots, \mathbf{g}_{k}$, it follows that $dim(C)=k$.
+\end{proof}
+
+\begin{lemma}[Subspace implies Parity Check]
+    \uses{def:LC_subspace,def:ParityCheckMatrix,lemma:subspace-imp-generator}
+    \label{lemma:subspace-imp-parity-check}
+    Let $C$ be a linear code that is a $k$-dimensional subspace of $\mathbb{F}^{n}_{q}$.
+    Then there exists a matrix $H \in \mathbb{F}^{(n-k) \times n}_{q}$ with rank $n-k$ such that
+    \[
+        C = \{\mathbf{f} \in \mathbb{F}^{n}_{q} \mid H\mathbf{f}^{\intercal} = \mathbf{0}\}.
+    \]
+\end{lemma}
+
+\begin{proof}
+    Suppose we take the orthogonal complement of $C$, $C^{\perp}\subseteq \mathbb{F}^{n}_{q}$. This gives us that
+    \begin{itemize}
+        \item $dim(C^{\perp})=n-dim(C)=n-k$
+        \item From Lemma~\ref{lemma:subspace-imp-generator}, we know that we can get some $H\in \mathbb{F}^{n-k \times n}_{q}$ such that
+    \[C^{\perp} = \{\mathbf{f}H \mid \mathbf{f} \in \mathbb{F}^{n-k}_{q}\}\]
+        \item And that from Lemma~\ref{lemma:subspace-imp-generator} the rows of $H$ are in $C^{\perp}$
+        \item From Lemma~\ref{lemma:subspace-imp-generator}, we get generator $G$ for $C$, where $G$'s rows are all basis elements and therefore elements of $C$
+    \end{itemize}
+    This means that $HG^T$ is the zero matrix since every element is the dot product of some element of $C$ and $C^{\perp}$. This gives us that
+    \[ \forall \mathbf{f}\in \mathbb{F}^k_q, HG^T\mathbf{f}^T = H(\mathbf{f}G)^T = \mathbf{0}\]
+    And by our definition of the generator matrix,
+    \[\forall \mathbf{c} \in C, \exists \mathbf{f}\in \mathbb{F}^k_q, \mathbf{f}G = \mathbf{c}\]
+    \[\implies \forall \mathbf{c} \in C, H\mathbf{c}^T = H(\mathbf{f}G)^T = \mathbf{0}\]
+    \[\implies C \subseteq \{\mathbf{c} \in \mathbb{F}^{n}_{q} \mid H\mathbf{c}^{\intercal} = \mathbf{0}\}\]
+    To make notation easier, let's say this subspace (we know it's a subspace because of Lemma~\ref{lemma:parity-check-imp-subspace} below) is $C'=\{\mathbf{c} \in \mathbb{F}^{n}_{q} \mid H\mathbf{c}^{\intercal} = \mathbf{0}\}$. We know that
+    \begin{itemize}
+        \item $dim(\mathbb{F}^{n}_{q})=n$
+        \item $dim(C)=k$
+    \end{itemize}
+    We can assert that the rank of $H$ is $n-k$ because Lemma~\ref{lemma:subspace-imp-generator} stipulates that $H$ has full rank. From here we can use the rank-nullity theorem to say that, since $C'$ represents the null space of $H$
+    \[dim(C')+rank(H)=dim(\mathbb{F}^{n}_{q})\]
+    \[\implies dim(C') + n-k = n\]
+    \[\implies dim(C') = k\]
+    and since $dim(C')=dim(C)$ and $C\subseteq C'$, it should follow that $C=C'$.
+\end{proof}
+
+\begin{lemma}[Parity Check Implies subspace]
+    \uses{def:LC_subspace, def:ParityCheckMatrix}
+    \label{lemma:parity-check-imp-subspace}
+    Let $H \in \mathbb{F}^{(n-k) \times n}_{q}$ with rank $n-k$ and let $C = \{\mathbf{f} \in \mathbb{F}^{n}_{q} \mid H\mathbf{f}^{\intercal} = \mathbf{0}\}$.
+    Then $C$ is a subspace of $\mathbb{F}^{n}_{q}$ with dimension $k$.
+\end{lemma}
+
+\begin{proof}
+Because every $\mathbf{c}\in C$ is defined as being in $\mathbb{F}^{n}_{q}$, $C \subseteq \mathbb{F}^{n}_{q}$. It should then be sufficient to prove that $C$ contains the zero vector and is closed under linear addition and scalar multiplication
+\begin{itemize}
+    \item The zero vector $\mathbf{0}\in \mathbb{F}^{n-k}_{q}$ is in $C$ because $H\mathbf{0}^T=\mathbf{0}$
+    \item We can show that $C$ is closed under addition by considering that $\forall \mathbf{a},\mathbf{b}\in C, H\mathbf{a}^T=H\mathbf{b}^T=\mathbf{0}$, meaning $H\mathbf{a}^T+H\mathbf{b}^T= \mathbf{0}+\mathbf{0} = \mathbf{0}$
+        and therefore by distributivity of matrix multiplication and distributivity of transverses, We have that
+        \[H\mathbf{a}^T+H\mathbf{b}^T = H(\mathbf{a}^T+\mathbf{b}^T) = H(\mathbf{a}+\mathbf{b})^T = \mathbf{0}\]
+        and since $(\mathbf{a}+\mathbf{b})\in \mathbb{F}^{n}_{q}$ by closure of $\mathbb{F}^{n}_{q}$ under addition, $H(\mathbf{a}+\mathbf{b})^T = \mathbf{0}$, and $\mathbf{a}+\mathbf{b}\in C$
+    \item We can show that $C$ is closed under scalar multiplication by considering that $\forall \mathbf{a}\in C$ that
+        $H\mathbf{a}^T=0$, then $\forall d\in \mathbb{F}_{q}$, that $H\mathbf{a}^T=\mathbf{0} \implies dH\mathbf{a}^T = d*0=\mathbf{0}$
+        which $\implies H(d\mathbf{a})^T=\mathbf{0}$ because we can commute scalars with matrices and vectors,
+        giving us that $d\mathbf{a}\in C$
+\end{itemize}
+These three conditions prove that $C$ is a vector space, and is the kernel of $H$. Using rank-nullity theorem, we can see:
+\[rank(H)+dim(C)=dim(\mathbb{F}^{n}_{q})\]
+\[\implies n-k+dim(C)=n\]
+\[\implies dim(C)=k\]
+
+\end{proof}
+

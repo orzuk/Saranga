@@ -1,0 +1,2550 @@
+
+%%FILE blueprint/src/abstract.tex
+\noindent This work describes a formalisation of Gödel's first incompleteness theorem
+for the first-order theory of hereditarily finite sets using the Lean theorem prover.
+In particular, the work follows the developments by \cite{swierczkowski2003finite},
+who provided proofs for both incompleteness theorems.
+Hence, completing the formalisation of Gödel's first incompleteness theorem through 
+\cite{swierczkowski2003finite} naturally leads to the second incompleteness theorem.
+As of now, there does not exist a formalisation of both incompleteness theorems in Lean.
+Although this work does present a complete proof of the first incompleteness theorem,
+the formalisation has not been finished yet. 
+However, what remains should be relatively straightforward to complete; 
+the blueprint of this project contributes to such possible further developments.
+
+
+%%FILE blueprint/src/content.tex
+% In this file you should put the actual content of the blueprint.
+% It will be used both by the web and the print version.
+% It should *not* include the \begin{document}
+%
+% If you want to split the blueprint content into several files then
+% the current file can be a simple sequence of \input. Otherwise It
+% can start with a \section or \chapter for instance.
+
+\input{contents/intro}
+\input{contents/ch1_Formal}
+\input{contents/ch2_Results}
+\input{contents/ch3_Model}
+\input{contents/ch4_Coding}
+\input{contents/ch5_Pf}
+\input{contents/ch6_FirstIncompl}
+\bibliographystyle{apalike}
+\bibliography{Literature}
+
+%%FILE blueprint/src/contents/ch1_Formal.tex
+\chapter{The First-Order Theory of Hereditarily Finite Sets}
+
+In this chapter, we introduce the first-order theory of hereditarily finite sets (HF).
+Following \cite{shoenfield1967mathematical}, a first-order theory is a formal system
+consisting of a first-order language, a set of non-logical axioms, and a logical calculus 
+that includes logical axioms and deduction rules.
+In fact, to specify the first-order theory of HF, it suffices to specify 
+the non-logical symbols of the language and the non-logical axioms, as everything else is
+given by the definition of a first-order theory.
+However, as we aim to formalise the notion of a formal syntactical proof within the theory of HF,
+we do present the logical axioms and deduction rules.
+Furthermore, we need a description of the logical axioms and deduction rules for 
+constructing the provability formula in Chapter 5.
+
+For the formalisation of the first-order theory of HF,
+we draw on formalised concepts from first-order logic available in 
+the model theory section of the math library of Lean 4.
+These formalised concepts, such as the notions of a first-order language,
+a first-order structure and a first-order formula, are descendants from 
+the Flypitch project by \cite{han2020formal}.
+
+\section{Language and axioms}
+
+The \textit{first-order theory of HF} is determined by the first-order language of HF and 
+the (non-logical) axioms of HF.
+
+\begin{definition}[The language of HF]
+    \label{def:Lang}
+    \lean{HF.Lang}
+    \leanok
+    The \textit{first-order language of HF}, denoted by $\mathcal{L}$, 
+    has an alphabet of \textit{symbols} given by the 
+    logical constants $=$, $\lor$, $\neg$, $\exists$, the variables denoted by 
+    lower case Latin letters, one binary relation symbol $\in$, one binary function symbol $\lhd$, 
+    and one constant symbol $\varnothing$.
+    The connectives $\land$, $\rightarrow$, $\leftrightarrow$, and $\forall$ are considered 
+    abbreviations.
+\end{definition}
+
+It follows that any \textit{term} of $\mathcal{L}$ arises in the following way:
+any variable is a term, any constant symbol is a term, and if $\sigma, \tau$ are terms, then so is
+$\sigma \lhd \tau$.
+Furthermore, any \textit{$\mathcal{L}$-formula} arises in the following way:
+any atomic formula is an $\mathcal{L}$-formula, and if $\varphi, \psi$ are $\mathcal{L}$-formulas, 
+then so are $\neg \varphi$, $\varphi \lor \psi$, and $\exists x \varphi$.
+Again, $\varphi \land \psi$, $\varphi \rightarrow \psi$, $\varphi \leftrightarrow \psi$ and
+$\forall x \varphi$ are treated as definitions.
+
+The axioms of HF consist of two axioms and one scheme. 
+Informally, the first axiom defines $\varnothing$ as the
+empty set, the second axiom defines $\lhd$ as the operation of adjoining an element to a set,
+and the axiom scheme describes proofs by induction.
+
+\begin{definition}[The axioms of HF]
+    \label{def:Axioms}
+    \lean{HF.Axiom1, HF.Axiom2, HF.Axiom3}
+    \uses{def:Lang}
+    \leanok
+    The \textit{axioms of HF} are the following $\mathcal{L}$-formulas:
+    \begin{enumerate}
+        \item $z=\varnothing \leftrightarrow \forall x(x \notin z)$.
+        \item $z=x \lhd y \leftrightarrow \forall u(u \in z \leftrightarrow u \in x \lor u=y)$.
+        \item $(\alpha(\varnothing) \land \forall x \forall y[\alpha(x) \land \alpha(y) \rightarrow 
+        \alpha(x \lhd y)]) \rightarrow \forall x \alpha(x)$,
+    \end{enumerate}
+    where $\alpha$ is any $\mathcal{L}$-formula which contains a 
+    distinguished freely occurring variable $z$ such that $x$ and $y$ are substitutable for $z$.
+\end{definition}
+
+\section{Logical calculus}
+
+This section recalls the logical axioms and deduction rules for a first-order theory, 
+as applied to HF. 
+It can be readily shown that the \textit{logical calculus of HF}, as described below, 
+is equivalent to the logical calculus of a first-order theory in \cite{shoenfield1967mathematical} 
+(when applied to HF), in the sense that they produce the same theorems.
+
+The \textit{logical axioms} are the following $\mathcal{L}$-formulas:
+
+\begin{definition}[Sentential (Boolean) axioms]
+    \label{def:Bool.Axioms}
+    \lean{HF.Bool.Axiom1, HF.Bool.Axiom2, HF.Bool.Axiom3, HF.Bool.Axiom4, HF.Bool.Axiom5}
+    \uses{def:Lang}
+    \leanok
+    For any $\mathcal{L}$-formulas $\varphi, \psi, \mu$:
+    $$
+    \begin{aligned}
+    \varphi & \rightarrow \varphi, \\
+    \varphi & \rightarrow \varphi \lor \psi, \\
+    \varphi \lor \varphi & \rightarrow \varphi, \\
+    \varphi \lor(\psi \lor \mu) & \rightarrow(\varphi \lor \psi) \lor \mu, \\
+    (\varphi \lor \psi) \land(\neg \varphi \lor \mu) & \rightarrow \psi \lor \mu .
+    \end{aligned}
+    $$
+\end{definition}
+
+\begin{definition}[Specialisation axiom]
+    \label{def:Spec.Axiom}
+    \lean{HF.Prf.spec}
+    \uses{def:Lang}
+    \leanok
+    For any $\mathcal{L}$-formula $\varphi$ and every $x_i$:
+    $$\varphi \rightarrow \exists x_i \varphi.$$
+\end{definition}
+
+\begin{definition}[Equality axioms]
+    \label{def:Equality.Axioms}
+    \lean{HF.Equality.Axiom1, HF.Equality.Axiom2, HF.Equality.Axiom3, HF.Equality.Axiom4}
+    \uses{def:Lang}
+    \leanok
+    $$
+    \begin{aligned}
+        x_1 & = x_1, \\
+        \left(x_1=x_2\right) \land \left(x_3=x_4\right) & 
+        \rightarrow \left[\left(x_1=x_3\right) \rightarrow \left(x_2=x_4\right)\right], \\
+        \left(x_1=x_2\right) \land \left(x_3=x_4\right) & 
+        \rightarrow \left[\left(x_1 \in x_3\right) \rightarrow \left(x_2 \in x_4\right)\right], \\
+        \left(x_1=x_2\right) \land \left(x_3=x_4\right) & 
+        \rightarrow \left[x_1 \lhd x_3 = x_2 \lhd x_4 \right]. 
+    \end{aligned}
+    $$
+\end{definition}
+
+The \textit{deduction rules} are as follows:
+
+\begin{definition}[Deduction rules]
+    \label{def:Prf.mp+Prf.subst+Prf.exists_intro}
+    \lean{HF.Prf.mp, HF.Prf.subst, HF.Prf.exists_intro}
+    \uses{def:Lang}
+    \leanok
+    For any $\mathcal{L}$-formulas $\varphi, \psi$:
+    \begin{description}
+        \item \textit{Modus Ponens}: 
+        From $\varphi$ and $\varphi \rightarrow \psi$, deduce $\psi$.
+        \item \textit{Substitution}:
+        From $\varphi$, deduce $\varphi[x_i/\tau]$ for any term $\tau$ that is substitutable for
+        $x_i$ in $\varphi$.
+        \item \textit{$\exists$-introduction}:
+        From $\varphi \rightarrow \psi$, deduce $\exists x_i \varphi \rightarrow \psi$ provided
+        $x_i$ does not occur freely in $\psi$.
+    \end{description}
+\end{definition}
+
+These descriptions naturally lead to the notion of formal proof.
+
+\begin{definition}[Theorem of HF]
+    \label{def:Prf}
+    \lean{HF.Prf}
+    \uses{def:Lang, def:Axioms, def:Bool.Axioms, def:Spec.Axiom, 
+        def:Equality.Axioms, def:Prf.mp+Prf.subst+Prf.exists_intro}
+    \leanok
+    An $\mathcal{L}$-formula is a \textit{theorem of HF}, denoted by $\vdash \varphi$, 
+    if there is a finite sequence of $\mathcal{L}$-formulas — each of which is an axiom of HF, 
+    a logical axiom, or is deduced from previous formulas in the sequence by a deduction rule —
+    terminating with $\varphi$.
+\end{definition}
+
+Following the approach outlined by \cite{paulson2014machine}, 
+the syntactic proof system of HF is implemented in Lean as an inductively defined predicate. 
+In this setup, a proof within this system, resulting in a theorem of HF, 
+involves demonstrating in Lean’s native logic that 
+the proof predicate applied to the relevant $\mathcal{L}$-formula evaluates to true.
+However, in practice, working directly within this formal calculus is cumbersome. 
+\cite{paulson2014machine} experienced that even the simplest formal proofs can become extremely 
+tedious and require hundreds of lines of code.
+To streamline the process of obtaining theorems of HF in Lean, 
+we aim to convert semantic proofs into proofs within the HF syntactic system. 
+This is possible by employing Gödel's completeness theorem, which applies to any first-order theory.
+How this mechanism is put into practice is discussed in Chapter 2.
+
+\section{Semantics}
+
+Apart from drawing on the concept of a standard model, as introduced in Chapter 3, 
+Gödel's incompleteness theorems are fundamentally syntactical in nature. 
+They focus solely on what can be proven within the confines of the formal system itself, 
+without relying on any external concepts like semantic notions.
+
+However, while we do explain what it means to be a model for introducing the standard model of 
+HF in Chapter 3, we also present the semantic results of soundness and completeness. 
+This is done solely because these results are helpful in the process of converting semantic proofs 
+into syntactic proofs in Lean, as discussed earlier.
+Regarding all proofs presented in the coming chapters, we follow 
+\cite{swierczkowski2003finite} — who does not introduce Gödel's completeness theorem — 
+in terms of referring to semantic notions.
+
+\begin{definition}
+    \label{def:models+Model+valid}
+    \lean{HF.models, HF.Model, HF.valid}
+    \uses{def:Lang, def:Axioms}
+    \leanok
+    Suppose $\mathcal{S}$ is an $\mathcal{L}$-structure and $\varphi$ is an $\mathcal{L}$-formula.
+    If every valuation in $\mathcal{S}$ satisfies $\varphi$, 
+    say $\mathcal{S}$ is a \textit{model} of $\varphi$, denoted by $\mathcal{S} \vDash \varphi$.
+
+    If $\mathcal{S}$ is a model of every axiom of HF, say $\mathcal{S}$ is a \textit{model of HF}.
+    
+    An $\mathcal{L}$-formula $\varphi$ is called \textit{valid in HF} if 
+    every model of HF is a model of $\varphi$, denoted by $\vDash \varphi$.
+\end{definition}
+
+For a proof of the following result for an arbitrary first-order theory, 
+the reader is referred to  \cite{shoenfield1967mathematical}.
+
+\begin{theorem}[Soundness and completeness]
+    \label{thm:completeness}
+    \lean{HF.soundness, HF.completeness}
+    \uses{def:Lang, def:Prf, def:models+Model+valid}
+    \leanok
+    Suppose $\varphi$ is an $\mathcal{L}$-formula.
+    Then $\vdash \varphi$ if and only if $\vDash \varphi$.
+\end{theorem}
+
+In other words, the theorems of HF are precisely the $\mathcal{L}$-formulas valid in HF.
+Thus, to prove $\vdash \varphi$ for any $\mathcal{L}$-formula $\varphi$, it suffices to show that for an 
+arbitrary model of HF, $\mathcal{S}$, we have $\mathcal{S} \vDash \varphi$.
+This is the conversion process we previously discussed.
+
+The soundness direction of Theorem \ref{thm:completeness} is formalised readily
+by induction on the length of a proof.
+Regarding the converse; in Lean 3, the completeness theorem for first-order logic was proven 
+as part of the Flypitch project by \cite{han2020formal}.
+However, no proof is available in the math library of Lean 4.
+For now, we make use of the extraneous concept of completeness 
+by accepting the statement using the {\ttfamily \small sorry} identifier. 
+
+%%FILE blueprint/src/contents/ch2_Results.tex
+\chapter{Results of the Theory}
+
+This chapter presents several results from the theory of HF, 
+including both theorems of HF and definitions. The latter serve as abbreviations, 
+functioning as definitional extensions to the language of HF.
+In particular, this chapter presents precisely those results required for the proof
+of the first incompleteness theorem and preliminary to the introduction of the standard model of HF
+and the coding system in Chapters 3 and 4 respectively.
+
+Following \cite{swierczkowski2003finite}, the theorems of HF are presented with informal proofs 
+for the sake of efficiency and clarity. 
+In Lean, however, formalisation, as the term suggests, requires proofs to be fully formal. 
+Fortunately, as explained in the previous chapter, by the completeness theorem 
+(Theorem \ref{thm:completeness}), to demonstrate the existence of a formal syntactic proof of 
+an $\mathcal{L}$-formula $\varphi$, 
+it suffices to verify semantically 
+(i.e., using only Lean's native logic and not the proof predicate) that 
+every type satisfying the axioms of HF also satisfies $\varphi$. 
+In the latter case, the axioms of HF and $\varphi$ are expressed as a proposition type 
+({\ttfamily \small Prop}).
+
+More precisely, this mechanism works as follows.
+Within the $\mathcal{L}$-structure type class, the non-logical symbols of $\mathcal{L}$ are 
+declared for the elements of the class. 
+This allows $\mathcal{L}$-formulas to be expressed
+as proposition types where each term in the formula becomes an element of an 
+arbitrary $\mathcal{L}$-structure. Next, we introduce a new type class, {\ttfamily \small HFSet}, 
+which is inhabited by the axioms of HF expressed as proposition types. 
+It is then shown that every element of the model-of-HF type class 
+(referred to as model type) is an instance of the {\ttfamily \small HFSet} type class.
+Consequently, any proposition type that is semantically proven true for every element of 
+the {\ttfamily \small HFSet} type class is also true for every model type.
+But a proposition type is true for every model type if and only if 
+every model of HF is a model of the $\mathcal{L}$-formula corresponding to that proposition type.
+Thus, by the completeness theorem, an $\mathcal{L}$-formula is a theorem of HF if its corresponding 
+proposition type is true for every element of the {\ttfamily \small HFSet} type class.
+
+We start by showing that most of the ZF axioms are theorems of HF.
+
+\section{Basic results}
+
+Recall the axioms of HF:
+
+\begin{axiom}
+    \label{ax:empty_axiom}
+    \lean{HF.Axiom1, HFSet.empty}
+    \uses{def:Lang, def:Axioms}
+    \leanok
+    $z=\varnothing \leftrightarrow \forall x(x \notin z)$.
+\end {axiom}
+
+\begin{axiom}
+    \label{ax:enlarge_axiom}
+    \lean{HF.Axiom2, HFSet.enlarge}
+    \uses{def:Lang, def:Axioms}
+    \leanok
+    $z=x \lhd y \leftrightarrow \forall u(u \in z \leftrightarrow u \in x \lor u=y)$.
+\end {axiom}
+
+\begin{axiom}
+    \label{ax:induction_axiom}
+    \lean{HF.Axiom3, HFSet.induction}
+    \uses{def:Lang, def:Axioms}
+    \leanok
+    $(\alpha(\varnothing) \land \forall x \forall y[\alpha(x) \land \alpha(y) \rightarrow 
+    \alpha(x \lhd y)]) \rightarrow \forall x \alpha(x)$. 
+\end {axiom}
+
+The assumption in Axiom \ref{ax:induction_axiom} is that 
+$\alpha$ is any $\mathcal{L}$-formula which contains a 
+distinguished freely occurring variable $z$ such that $x$ and $y$ are substitutable for $z$.
+
+\begin{lemma}
+    \label{lem:notin_empty+mem_enlarge+mem_enlarge_empty}
+    \lean{HFSet.notin_empty, HFSet.mem_enlarge, HFSet.mem_enlarge_empty}
+    \leanok
+    \uses{thm:completeness, ax:empty_axiom, ax:enlarge_axiom}
+    \leavevmode
+    \begin{enumerate}
+        \item $x\notin \varnothing$.
+        \item $u \in x \lhd y \leftrightarrow u \in x \lor u=y$.
+        \item $z\in \varnothing \lhd y \leftrightarrow z = y$.
+    \end{enumerate}
+\end{lemma}
+
+\begin{proof}
+    \leanok
+    \leavevmode
+    \begin{enumerate}
+        \item Substitute $\varnothing$ in Axiom \ref{ax:empty_axiom}.
+        \item Substitute $x \lhd y$ in Axiom \ref{ax:enlarge_axiom}.
+        \item Substitute $\varnothing$ for $x$ in Lemma 
+        \ref{lem:notin_empty+mem_enlarge+mem_enlarge_empty}.2 and use Lemma 
+        \ref{lem:notin_empty+mem_enlarge+mem_enlarge_empty}.1.
+    \end{enumerate}
+\end{proof}
+
+\begin{theorem}[Extensionality Property]
+    \label{thm:exten_prop}
+    \lean{HFSet.exten_prop}
+    \leanok
+    \uses{ax:empty_axiom, ax:enlarge_axiom, ax:induction_axiom, 
+        lem:notin_empty+mem_enlarge+mem_enlarge_empty}
+    $x=z \leftrightarrow \forall u (u \in x \leftrightarrow u \in z)$.
+\end{theorem}
+
+\begin{proof}
+    \leanok
+    Let $\alpha (x)$ be the $\mathcal{L}$-formula
+    $x=z \leftrightarrow \forall u (u \in x \leftrightarrow u \in z)$.
+    We apply Axiom \ref{ax:induction_axiom}.
+    \begin{itemize}
+        \item The base case — $\alpha (\varnothing)$ — follows directly from Lemma 
+        \ref{lem:notin_empty+mem_enlarge+mem_enlarge_empty}.1 and Axiom \ref{ax:empty_axiom}.
+        \item The induction step — 
+        $\forall y[\alpha(x) \land \alpha(y) \rightarrow \alpha(x \lhd y)]$ — 
+        follows directly from Lemma \ref{lem:notin_empty+mem_enlarge+mem_enlarge_empty}.2 and 
+        Axiom \ref{ax:enlarge_axiom}.
+    \end{itemize}
+\end{proof}
+
+\begin{definition}
+    \label{def:singleton+pair}
+    \lean{HFSet.insert, HFSet.singleton, HFSet.pair}
+    \leanok
+    Abbreviate by $\{x\}$, $\{x,y\}$ and $\langle x,y\rangle$ the following terms:
+    \begin{enumerate}
+        \item $\{x\} = \varnothing \lhd x$.
+        \item $\{x,y\} = \{x\} \lhd y$.
+        \item $\langle x,y\rangle = \{\{x\}, \{x,y\}\}$.
+    \end{enumerate}
+\end{definition}
+
+\begin{lemma}
+    \label{lem:mem_singleton+...+pair_inj}
+    \lean{HFSet.mem_singleton, HFSet.mem_pair, HFSet.duplic_pair_eq_single, HFSet.pair_inj}
+    \leanok
+    \uses{lem:notin_empty+mem_enlarge+mem_enlarge_empty, thm:exten_prop, def:singleton+pair}
+    \leavevmode
+    \begin{enumerate}
+        \item $ u\in \{x\} \leftrightarrow u = x$.
+        \item $u \in \{x,y\}\leftrightarrow u=x \lor u=y$.
+        \item $\{x,x\} = \{x\}$.
+        \item $\langle x,y\rangle = \langle u,v\rangle \leftrightarrow x=u \land y=v$.
+    \end{enumerate}
+\end{lemma}
+
+\begin{proof}
+    \leanok
+    \leavevmode
+    \begin{enumerate}
+        \item This follows directly from Lemma 
+        \ref{lem:notin_empty+mem_enlarge+mem_enlarge_empty}.3.
+        \item This follows directly from 
+        Lemma \ref{lem:notin_empty+mem_enlarge+mem_enlarge_empty}.2 and 
+        Lemma \ref{lem:mem_singleton+...+pair_inj}.1.
+        \item This follows directly from Theorem \ref{thm:exten_prop},
+        Lemma \ref{lem:mem_singleton+...+pair_inj}.1 and 
+        Lemma \ref{lem:mem_singleton+...+pair_inj}.2.
+        \item  The proof closely follows an analogous proof from ZF by \cite{enderton1977elements}.
+        The $\leftarrow$ direction is trivial.
+        For the $\rightarrow$ direction, by the definition of ordered pairs, 
+        the hypothesis can be rewritten to
+        \begin{equation*}
+            \{\{x\}, \{x,y\}\} = \{\{u\}, \{u,v\}\}.
+        \end{equation*}
+        It follows that
+        \begin{equation}
+            \{x\} \in \{\{u\}, \{u,v\}\}\quad\text{and}\quad \{x,y\} \in \{\{u\}, \{u,v\}\}
+        \end{equation}
+        and similarly
+        \begin{equation}
+            \{u\} \in \{\{x\}, \{x,y\}\}\quad\text{ and }\quad \{u,v\} \in \{\{x\}, \{x,y\}\}.
+        \end{equation}
+        By Lemma \ref{lem:mem_singleton+...+pair_inj}.2, (2) can be rewritten to
+        \begin{equation*}
+            (\textbf{a})\quad\{u\}=\{x\}\quad\text{or}\quad (\textbf{b})\quad\{u\}=\{x,y\}
+        \end{equation*}
+        and
+        \begin{equation*}
+            (\textbf{c})\quad\{u,v\}=\{x\}\quad\text{or}\quad (\textbf{d})\quad\{u,v\}=\{x,y\}.
+        \end{equation*}
+        Note that, by Theorem \ref{thm:exten_prop}, Lemma \ref{lem:mem_singleton+...+pair_inj}.1 
+        and Lemma \ref{lem:mem_singleton+...+pair_inj}.2,
+        \begin{equation}
+        \forall x \forall y \forall z (\{x,y\} = \{z\} \leftrightarrow x = y =z).
+        \end{equation}
+        Now, consider three cases:
+        \begin{itemize}
+            \item Suppose (\textbf{b}) holds. Then, by (3), $u=x=y$. 
+            By Lemma \ref{lem:mem_singleton+...+pair_inj}.3, it then follows that 
+            (\textbf{d}) can be rewritten to $\{u,v\}=\{x\}$, 
+            implying (\textbf{c}) and (\textbf{d}) are equivalent.
+            Thus, by (3), under (\textbf{b}), it must hold that $u=v=x=y$.
+            \item Suppose (\textbf{c}) holds. 
+            Then, by (3), $u=v=x$. 
+            Note that, by (1) and Lemma \ref{lem:mem_singleton+...+pair_inj}.2, 
+            either $\{x,y\}=\{u\}$ or $\{x,y\}=\{u,v\}$.  
+            By Lemma \ref{lem:mem_singleton+...+pair_inj}.3, it follows that $\{u,v\}=\{u\}$ and 
+            thus these two statements are equivalent. 
+            Thus, by (3), under (\textbf{c}), it must hold that $x=y=u=v$.
+            \item Suppose (\textbf{a}) and (\textbf{d}) hold. From (\textbf{a}) we have $u=x$. 
+            From (\textbf{d}) it follows that, by 
+            Lemma \ref{lem:mem_singleton+...+pair_inj}.2, $v=x$ or $v=y$. 
+            In the latter case, $u=x\land v=y$. 
+            If $v=x$, then $u=v=x$, and case (\textbf{c}) holds by (3); 
+            this case has already been considered.
+        \end{itemize}
+    \end{enumerate}
+\end{proof}
+
+\begin{theorem}[Existence of the union of two sets]
+    \label{thm:exists_union}
+    \lean{HFSet.exists_union}
+    \leanok
+    \uses{ax:induction_axiom, lem:notin_empty+mem_enlarge+mem_enlarge_empty}
+    $\exists z \forall u (u \in z \leftrightarrow u \in x \lor u \in y)$.
+\end{theorem}
+
+\begin{proof}
+    \leanok
+    Let $\alpha (x)$ be the $\mathcal{L}$-formula 
+    $\exists z \forall u (u \in z \leftrightarrow u \in x \lor u \in y)$.
+    We apply Axiom \ref{ax:induction_axiom}.
+    \begin{itemize}
+        \item For the base case — $\alpha (\varnothing)$ — take $z=y$ and use 
+        Lemma \ref{lem:notin_empty+mem_enlarge+mem_enlarge_empty}.1.
+        \item For the induction step 
+        — $\forall w[\alpha(x) \land \alpha(w) \rightarrow \alpha(x \lhd w)]$ — 
+        pick $w$ arbitrarily and assume $\alpha(x)$, i.e. the existence of $x \cup y$. 
+        By Lemma \ref{lem:notin_empty+mem_enlarge+mem_enlarge_empty}.2, 
+        $\alpha(x \lhd w)$ is equivalent to 
+        $\exists z \forall u (u \in z \leftrightarrow u \in x \lor u = w \lor u \in y)$.
+        Then, take $z= (x \cup y) \lhd w$ and use 
+        Lemma \ref{lem:notin_empty+mem_enlarge+mem_enlarge_empty}.2.
+    \end{itemize}
+\end{proof}
+
+\begin{theorem}[Existence of the union of a set of sets]
+    \label{thm:exists_sUnion}
+    \lean{HFSet.exists_sUnion}
+    \leanok
+    \uses{ax:induction_axiom, lem:notin_empty+mem_enlarge+mem_enlarge_empty, thm:exists_union}
+    $\exists z \forall u (u \in z \leftrightarrow \exists (y\in x)[u \in y])$.
+\end{theorem}
+
+\begin{proof}
+    \leanok
+    Let $\alpha (x)$ be the $\mathcal{L}$-formula 
+    $\exists z \forall u (u \in z \leftrightarrow \exists (y\in x)[u \in y])$.
+    We apply Axiom \ref{ax:induction_axiom}.
+    \begin{itemize}
+        \item For the base case — $\alpha (\varnothing)$ — take $z=\varnothing$ and use 
+        Lemma \ref{lem:notin_empty+mem_enlarge+mem_enlarge_empty}.1.
+        \item For the induction step 
+        — $\forall w[\alpha(x) \land \alpha(w) \rightarrow \alpha(x \lhd w)]$ — 
+        pick $w$ arbitrarily and assume $\alpha(x)$, i.e. the existence of $\bigcup x$.
+        We need to find $z$ such that
+        \begin{equation*}
+        \begin{split}
+            u \in z & \leftrightarrow \exists (y \in x \lhd w)[u \in y]\\
+            & \leftrightarrow \exists y[(y \in x \lor y = w) \land u \in y]\\
+            & \leftrightarrow \exists(y \in x)[u \in y] \lor u \in w\\
+            & \leftrightarrow u \in \bigcup x \lor u \in w,
+        \end{split}
+        \end{equation*}
+        using Lemma \ref{lem:notin_empty+mem_enlarge+mem_enlarge_empty}.2. 
+        Thus, take $z = (\bigcup x) \cup w$.
+    \end{itemize}
+\end{proof}
+
+\begin{theorem}[Comprehension Scheme]
+    \label{thm:comp_scheme}
+    \lean{HFSet.comp_scheme}
+    \leanok
+    \uses{ax:induction_axiom, lem:notin_empty+mem_enlarge+mem_enlarge_empty}
+    $\exists z \forall u (u\in z \leftrightarrow (u \in x) \land \varphi (u))$, 
+    for any $\mathcal{L}$-formula $\varphi$ in which $z$ is not free.
+\end{theorem}
+
+\begin{proof}
+    \leanok
+    Let $\alpha (x)$ be the $\mathcal{L}$-formula 
+    $\exists z \forall u (u\in z \leftrightarrow (u \in x) \land \varphi (u))$.
+    We apply Axiom \ref{ax:induction_axiom}.
+    \begin{itemize}
+        \item For the base case — $\alpha (\varnothing)$ — take $z=\varnothing$ and use L
+        emma \ref{lem:notin_empty+mem_enlarge+mem_enlarge_empty}.1.
+        \item For the induction step 
+        — $\forall y[\alpha(x) \land \alpha(y) \rightarrow \alpha(x \lhd y)]$ — 
+        pick $y$ arbitrarily and assume $\alpha(x)$, i.e. 
+        the existence of $ \{u \in x : \varphi (u)\}$. We need to find $z$ such that
+    \begin{equation*}
+    \begin{split}
+        u \in z & \leftrightarrow (u \in x \lhd y) \land \varphi (u)\\
+        & \leftrightarrow (u \in x \lor u = y) \land \varphi (u),
+    \end{split}
+    \end{equation*}
+    using Lemma \ref{lem:notin_empty+mem_enlarge+mem_enlarge_empty}.2.
+    Since $z$ is not free in $\varphi$, take $z = \{u \in x : \varphi (u)\} \lhd y$ if $\varphi(y)$ 
+    and $z=\{u \in x : \varphi (u)\}$ if $\neg \varphi(y)$.
+    \end{itemize}
+\end{proof}
+
+\begin{definition}[Intersection]
+    \label{def:inter+sInter}
+    \lean{HFSet.inter, HFSet.sInter}
+    \leanok
+    \uses{thm:exists_sUnion, thm:comp_scheme}
+    Introduce the notation:
+    \begin{enumerate}
+        \item $x \cap y = \{u \in x : u \in y\}$.
+        \item $\bigcap x = \{u \in \bigcup x : \forall (v \in x)[u \in v] \}$.
+    \end{enumerate}  
+\end{definition}
+
+\begin{theorem}[Replacement Scheme]
+    \label{thm:repl_scheme}
+    \lean{HFSet.repl_scheme}
+    %\leanok
+    \uses{ax:induction_axiom, lem:notin_empty+mem_enlarge+mem_enlarge_empty}
+    $$[\forall (u \in x) [\exists! v] \psi (u,v)]\rightarrow 
+    \exists z \forall v [v\in z \leftrightarrow \exists(u \in x) \psi (u,v)],$$ 
+    for any $\mathcal{L}$-formula $\psi$ in which $z$ is not free.
+\end{theorem}
+
+\begin{proof}
+    \leanok
+    Let $\alpha (x)$ be the $\mathcal{L}$-formula 
+    $[\forall (u \in x) [\exists! v] \psi (u,v)]\rightarrow 
+    \exists z \forall v [v\in z \leftrightarrow \exists(u \in x) \psi (u,v)]$.
+    We apply Axiom \ref{ax:induction_axiom}.
+    \begin{itemize}
+        \item For the base case — $\alpha (\varnothing)$ — take $z=\varnothing$ and use 
+        Lemma \ref{lem:notin_empty+mem_enlarge+mem_enlarge_empty}.1.
+        \item For the induction step 
+        — $\forall y[\alpha(x) \land \alpha(y) \rightarrow \alpha(x \lhd y)]$ — 
+        pick $y$ arbitrarily and assume $\alpha(x)$, i.e. the existence of 
+        $\{v : \exists (u\in x)\psi(u,v)\}$ provided that 
+        $\forall (u \in x) [\exists! v] \psi (u,v)$.
+        Furthermore, assume $\forall (u \in x \lhd y) [\exists! v] \psi (u,v)$, 
+        i.e. that $\forall u [(u \in x \lor u = y) \rightarrow \exists! v \psi (u,v)]$.
+        Hence, $\exists! v \psi (y,v)$; let $v_y$ be this unique $v$. 
+        Moreover, it follows that $\forall (u \in x) [\exists! v] \psi (u,v)$ and 
+        thus $\{v : \exists (u\in x)\psi(u,v)\}$ exists.
+        By Lemma \ref{lem:notin_empty+mem_enlarge+mem_enlarge_empty}.2, 
+        the required $z$ is $\{v : \exists (u\in x)\psi(u,v)\} \lhd v_y$.
+    \end{itemize}
+\end{proof}
+
+\begin{definition}[Subset relation]
+    \label{def:Subset+SSubset}
+    \lean{HFSet.Subset, HFSet.SSubset}
+    \leanok
+    Introduce the abbreviations:
+    \begin{enumerate}
+        \item $y \subseteq x \leftrightarrow \forall v (v\in y \rightarrow v \in x)$.
+        \item $y \subset x \leftrightarrow y \subseteq x \land y \neq x$.
+    \end{enumerate}  
+\end{definition}
+
+\begin{theorem}[Existence of the power set]
+    \label{thm:exists_powerset}
+    \lean{HFSet.exists_powerset}
+    \leanok
+    \uses{ax:induction_axiom, lem:notin_empty+mem_enlarge+mem_enlarge_empty, thm:exten_prop, 
+    def:singleton+pair, lem:mem_singleton+...+pair_inj, thm:exists_union, 
+    thm:repl_scheme, def:Subset+SSubset}
+    $\exists z \forall u (u\in z \leftrightarrow u \subseteq x).$
+\end{theorem}
+
+\begin{proof}
+    \leanok
+    Let $\alpha (x)$ be the $\mathcal{L}$-formula 
+    $\exists z \forall u (u\in z \leftrightarrow u \subseteq x)$.
+    We apply Axiom \ref{ax:induction_axiom}.
+    \begin{itemize}
+        \item For the base case — $\alpha (\varnothing)$ — take $z=\{\varnothing\}$ and use 
+        Lemma \ref{lem:notin_empty+mem_enlarge+mem_enlarge_empty}, 
+        Theorem \ref{thm:exten_prop}, Lemma \ref{lem:mem_singleton+...+pair_inj}.1.
+        \item For the induction step 
+        — $\forall y[\alpha(x) \land \alpha(y) \rightarrow \alpha(x \lhd y)]$ — 
+        pick $y$ arbitrarily and assume $\alpha(x)$, i.e. the existence of the power set $P(x)$.
+        One checks directly from the definitions that 
+        $$u \subseteq x \lhd y \leftrightarrow u \in P(x) \lor \exists (v \in P(x))[u=v\lhd y].$$
+        Indeed, for the $\rightarrow$ direction, the cases $y \notin u$ and $y \in u$ correspond to 
+        the left and right cases of the disjunction, respectively, where for the right case, 
+        the required $v$ is $u \cap x$. The $\leftarrow$ direction is rather trivial.
+        Now, note that the $\mathcal{L}$-formula $\psi(v,u): u = v \lhd y$ satisfies the condition 
+        for Theorem \ref{thm:repl_scheme}, i.e. $v \mapsto v \lhd y$ is a well-defined mapping.
+        By Theorem \ref{thm:exists_union}, 
+        it follows that the required $z$ is $P(x) \cup \{u : \exists (v \in P(x)) [u=v\lhd y]\}$.
+    \end{itemize}
+\end{proof}
+
+\begin{theorem}[Foundation Property]
+    \label{thm:found_prop}
+    \lean{HFSet.found_prop}
+    \leanok
+    \uses{ax:induction_axiom, lem:notin_empty+mem_enlarge+mem_enlarge_empty, thm:exten_prop, 
+    def:inter+sInter}
+    $z\neq \varnothing \rightarrow \exists (w \in z)[w\cap z = \varnothing]$.
+\end{theorem}
+
+\begin{proof}
+    \leanok
+    We need to show that $\forall (w \in z)[w \cap z \neq \varnothing] \rightarrow z = \varnothing$, 
+    which follows if $\forall (w \in z)[w \cap z \neq \varnothing] \rightarrow \forall x \alpha(x)$, 
+    where $\alpha(x)$ is the $\mathcal{L}$-formula $(x \notin z) \land (x \cap z = \varnothing)$.
+    Thus, assume $\forall (w \in z)[w \cap z \neq \varnothing]$ and pick $x$ arbitrarily.
+    We apply Axiom \ref{ax:induction_axiom}.
+    \begin{itemize}
+        \item For the base case — $\alpha (\varnothing)$ — the assumption immediately implies that 
+        $\varnothing \notin z$, as otherwise $\varnothing \cap z \neq \varnothing$.
+        \item For the induction step 
+        — $\forall y[\alpha(x) \land \alpha(y) \rightarrow \alpha(x \lhd y)]$ — 
+        pick $y$ arbitrarily and assume $\alpha(x)$ and $\alpha(y)$.
+        Suppose, for a contradiction, that $\neg \alpha (x \lhd y)$, i.e. 
+        that $(x \lhd y) \cap z \neq \varnothing \lor (x \lhd y) \in z$. 
+        As $y \notin z$ by $\alpha(y)$, the first case implies $x \cap z \neq \varnothing$, 
+        which contradicts $\alpha(x)$. 
+        By the assumption, the second case implies $(x \lhd y) \cap z \neq \varnothing$, 
+        which is the first case.
+    \end{itemize}
+\end{proof}
+
+\begin{corollary}
+    \label{cor:mem_irrefl}
+    \lean{HFSet.mem_irrefl}
+    \leanok
+    \uses{lem:notin_empty+mem_enlarge+mem_enlarge_empty, thm:exten_prop, 
+    def:singleton+pair, lem:mem_singleton+...+pair_inj, def:inter+sInter, thm:found_prop}
+    $x \notin x$.
+\end{corollary}
+
+\begin{proof}
+    \leanok
+    Apply Theorem \ref{thm:found_prop} to $z = \{x\}\neq \varnothing$.
+    It follows that $\exists (w \in \{x\})[w\cap \{x\} = \varnothing]$, 
+    which implies $x \cap \{x\} = \varnothing$.
+\end{proof}
+
+\section{Ordinals}
+
+\begin{definition}
+    \label{def:IsTrans+IsOrd}
+    \lean{HFSet.IsTrans, HFSet.IsOrd, HFSet.Ord}
+    \leanok
+    \uses{def:Subset+SSubset}
+    We say that $x$ is \textit{transitive} if every element of $x$ is a subset of $x$. 
+    We call $x$ an \textit{ordinal} if $x$ is transitive and every element of $x$ is transitive, 
+    abbreviated by $\operatorname{Ord}(x)$.
+
+    Ordinals will be mostly denoted by $k$, $l$, $m$, $n$, $p$, $q$, $r$.
+\end{definition}
+
+\begin{definition}[Successor]
+    \label{def:succ}
+    \lean{HFSet.succ, HFSet.Ord.succ}
+    \leanok
+    The \textit{successor} of $x$ is defined as $x \lhd x$, abbreviated by $\operatorname{succ}(x)$.
+\end{definition}
+
+\begin{lemma}
+    \label{lem:IsOrd.succ_isOrd+...+IsOrd.empty_is_mem}
+    \lean{HFSet.IsOrd.succ_isOrd, HFSet.IsOrd.mem_isOrd, HFSet.empty_isOrd, 
+    HFSet.IsOrd.empty_of_mem_and_disjoint, HFSet.IsOrd.empty_is_mem, HFSet.Ord.empty_is_lt}
+    \leanok
+    \uses{ax:empty_axiom, lem:notin_empty+mem_enlarge+mem_enlarge_empty, 
+    thm:exten_prop, def:inter+sInter, thm:found_prop, def:IsTrans+IsOrd, def:succ}
+    \leavevmode
+    \begin{enumerate}
+        \item $\operatorname{Ord}(k) \rightarrow \operatorname{Ord}(\operatorname{succ}(k))$.
+        \item $\operatorname{Ord}(k) \land l \in k \rightarrow \operatorname{Ord}(l)$.
+        \item $\operatorname{Ord}(\varnothing)$.
+        \item $(\operatorname{Ord}(k) \land (k \neq \varnothing) \land 
+        (l \cap k = \varnothing))\rightarrow(l \in k \leftrightarrow l = \varnothing)$.
+    \end{enumerate}
+\end{lemma}
+
+\begin{proof}
+    \leanok
+    \leavevmode
+    The proofs of 1, 2 and 3 are immediate from Definitions \ref{def:IsTrans+IsOrd} and 
+    \ref{def:succ}.
+    For 4, assume $k$ is a non-empty ordinal, $l$ is such that $l \cap k = \varnothing$, 
+    and suppose $l \in k$. As $k$ is an ordinal, $l \subseteq k$, and as $l \cap k = \varnothing$, 
+    it follows that $l=\varnothing$.
+    Conversely, as $k \neq \varnothing$, by Theorem \ref{thm:found_prop} there must exist such 
+    an $l \in k$ satisfying $l \cap k = \varnothing$. Hence, $\varnothing \in k$.
+\end{proof}
+
+\begin{theorem}[Comparability of ordinals]
+    \label{thm:IsOrd.comparability}
+    \lean{HFSet.IsOrd.comparability, HFSet.Ord.comparability}
+    \leanok
+    \uses{ax:empty_axiom, lem:notin_empty+mem_enlarge+mem_enlarge_empty, thm:comp_scheme, 
+    def:inter+sInter, def:Subset+SSubset, thm:exists_powerset, thm:found_prop, 
+    cor:mem_irrefl, def:IsTrans+IsOrd, lem:IsOrd.succ_isOrd+...+IsOrd.empty_is_mem}
+    Let $k,l$ be ordinals. Then, $k \in l \lor k = l \lor l \in k$.
+\end{theorem}
+
+\setcounter{equation}{0}
+\begin{proof}
+    \leanok
+    Denote the $\mathcal{L}$-formula $k \in l \lor k = l \lor l \in k$ by $\beta (k,l)$. 
+    Suppose, for a contradiction, there exist ordinals $k$ and $l$ such that $\neg \beta (k,l)$, 
+    i.e. $k \notin l \land k \neq l \land l \notin k$. 
+    We claim there exists an ordinal $k_0$ that satisfies
+    \begin{equation}\label{eq:1}
+    \forall(m \in k_0)[\forall l \beta(m,l)] \land \exists l \neg \beta(k_0,l),
+    \end{equation}
+    where $\forall$ and $\exists$ range over ordinals. 
+    Indeed, if there exist ordinals $k$ and $l$ such that $\neg \beta (k,l)$, then 
+    $$K := \{m \subseteq k : \operatorname{Ord}(m) \land \exists l (\operatorname{Ord}(l) \land 
+    \neg \beta (m,l))\} \neq \varnothing.$$
+    By Theorem \ref{thm:found_prop}, there exists $k_0 \in K$ such that $k_0 \cap K = \varnothing$. 
+    We claim this $k_0$ satisfies (\ref{eq:1}). 
+    Clearly, $\exists l \neg \beta(k_0,l)$. 
+    Now suppose, for a contradiction, there exist ordinals $r_0 \in k_0$ and $l_0$ such that 
+    $\neg \beta (r_0,l_0)$. 
+    Then, as $k_0 \subseteq k$, $r_0 \in k$, and thus $r_0 \subseteq k$. 
+    Moreover, $r_0 \in K$, which contradicts $k_0 \cap K = \varnothing$. 
+    
+    We claim further that, having selected $k_0$ that satisfies (\ref{eq:1}), 
+    there exists an ordinal $l_0$ that satisfies 
+    \begin{equation}\label{eq:2}
+    \forall(p \in l_0)\beta(k_0,p) \land \neg \beta(k_0,l_0),
+    \end{equation}
+    where $\forall$ ranges over ordinals. 
+    Indeed, if there exists an ordinal $l$ such that $\neg \beta (k_0,l)$, then 
+    $$L := \{p \subseteq l : \operatorname{Ord}(p) \land \neg \beta (k_0, p)\} \neq \varnothing.$$
+    By Theorem \ref{thm:found_prop}, there exists $l_0 \in L$ such that $l_0 \cap L = \varnothing$. 
+    We claim this $l_0$ satisfies (\ref{eq:2}). Clearly, $\neg \beta(k_0,l_0)$. 
+    Now suppose, for a contradiction, there exists an ordinal $q_0 \in l_0$ such that 
+    $\neg \beta (k_0, q_0)$. 
+    Then, as $l_0 \subseteq l$, $q_0 \in l$, and thus $q_0 \subseteq l$. 
+    Moreover, $q_0 \in L$, which contradicts $l_0 \cap L = \varnothing$. 
+    
+    We now claim that $l_0 \subset k_0$. Indeed, suppose $p \in l_0$. 
+    Then $\beta (k_0, p)$, by (\ref{eq:2}), i.e. $k_0 \in p \lor k_0 = p \lor p \in k_0$. 
+    But both $k_0 \in p$ and $k_0 = p$ contradict $\neg \beta(k_0,l_0)$ in (\ref{eq:2}), 
+    as $p \in l_0$ is assumed. Thus $p \in k_0$, and $l_0 \subseteq k_0$ follows. 
+    Since $l_0 = k_0$ also contradicts $\neg \beta(k_0,l_0)$ in (\ref{eq:2}), 
+    we get $l_0 \subset k_0$. \\
+    
+    Let $m \in k_0 \setminus l_0$. Then $\beta(m, l_0)$, by (\ref{eq:1}), i.e.
+    $$m \in l_0 \lor m = l_0 \lor l_0 \in m.$$
+    It follows immediately that $m \in l_0$ is impossible. 
+    But both $m=l_0$ and $l_0 \in m$ contradict $\neg \beta(k_0,l_0)$ in (\ref{eq:2}), 
+    as $m \in k_0$.
+\end{proof}
+
+\begin{corollary}
+    \label{cor:IsOrd.exclusive_comparability+...+IsOrd.succ_inj}
+    \lean{HFSet.IsOrd.exclusive_comparability, HFSet.Ord.exclusive_comparability, 
+    HFSet.IsOrd.sSubset_iff_mem, HFSet.Ord.sSubset_iff_lt, HFSet.IsOrd.succ_eq_or_succ_mem, 
+    HFSet.Ord.succ_eq_or_succ_lt, HFSet.IsOrd.succ_inj, HFSet.Ord.succ_inj}
+    \leanok
+    \uses{lem:notin_empty+mem_enlarge+mem_enlarge_empty, thm:exten_prop, def:Subset+SSubset, 
+    cor:mem_irrefl, def:IsTrans+IsOrd, def:succ, lem:IsOrd.succ_isOrd+...+IsOrd.empty_is_mem, 
+    thm:IsOrd.comparability}
+    Let $k,l$ be ordinals. Then,
+    \begin{enumerate}
+        \item Exactly one of $k\in l$, $k=l$, $l \in k$ occurs.
+        \item $k\in l \leftrightarrow k \subset l$.
+        \item $l \in k \rightarrow (\operatorname{succ}(l)=k \lor \operatorname{succ}(l)\in k)$.
+        \item $(\operatorname{succ}(k) = \operatorname{succ}(l) )\rightarrow k = l$.
+    \end{enumerate}
+\end{corollary}
+
+\begin{proof}
+    \leanok
+    \leavevmode
+    \begin{enumerate}
+        \item Any two of the three mentioned possibilities contradict 
+        Corollary \ref{cor:mem_irrefl}. 
+        At least one possibility occurs by Theorem \ref{thm:IsOrd.comparability}.
+        \item The $\rightarrow$ direction follows by the transitivity of $l$ and 
+        Corollary \ref{cor:mem_irrefl}. 
+        Suppose $k \subset l$. Then $k \in l \lor l \in k$ by Theorem \ref{thm:IsOrd.comparability}. 
+        But $l \in k$ yields $l \in l$, contradicting Corollary \ref{cor:mem_irrefl}.
+        \item By Theorem \ref{thm:IsOrd.comparability}, we have to exclude $k \in 
+        \operatorname{succ}(l)$, i.e. we have to show that neither $k\in l$ nor $k=l$ can occur. 
+        This is indeed so because each of these possibilities, together with $l\in k$, 
+        leads to $l \in l$.
+        \item Suppose, for a contradiction, that $k \neq l$. 
+        Then $\operatorname{succ}(k) = k \lhd k = l \lhd l = \operatorname{succ}(l)$ 
+        implies $k \in l$ and $l \in k$, yielding again $l \in l$.
+    \end{enumerate}
+\end{proof}
+
+\begin{definition}
+    \label{def:Ord.lt+Ord.le}
+    \lean{HFSet.Ord.lt, HFSet.Ord.le}
+    \leanok
+    For ordinals $k,l$, we shall use:
+    \begin{enumerate}
+    \item $k\,<\,l$ to abbreviate $k \in l$,
+    \item $k \leq l$ to abbreviate $k\,<\,l \lor k = l$.
+    \end{enumerate}
+\end{definition}
+
+\begin{theorem}
+    \label{thm:Ord.le_totalOrder+Ord.lt_sTotalOrder}
+    \lean{HFSet.Ord.le_totalOrder, HFSet.Ord.lt_sTotalOrder}
+    \uses{cor:mem_irrefl, def:IsTrans+IsOrd, thm:IsOrd.comparability, def:Ord.lt+Ord.le}
+    \leanok
+    On every set of ordinals, the relation $\leq$ ($<$) is a (strict) total order.
+\end{theorem}
+
+\begin{proof}
+    \leanok
+    Reflexivity of $\leq$ follows directly from $=$ being reflexive; 
+    irreflexivity of $<$ follows directly from Corollary \ref{cor:mem_irrefl}.
+    Transitivity is immediate from Definition \ref{def:IsTrans+IsOrd}.
+    Antisymmetry and asymmetry are straightforward from Definition \ref{def:IsTrans+IsOrd} and
+    Corollary \ref{cor:mem_irrefl}.
+    (Strong) connectivity is derived trivially from Theorem \ref{thm:IsOrd.comparability}.
+\end{proof}
+
+\begin{theorem}
+    \label{thm:IsOrd.exists_max_of_set+IsOrd.exists_min_of_set}
+    \lean{HFSet.IsOrd.exists_max_of_set, HFSet.IsOrd.exists_min_of_set}
+    \leanok
+    \uses{ax:induction_axiom, lem:notin_empty+mem_enlarge+mem_enlarge_empty, def:IsTrans+IsOrd, 
+    thm:IsOrd.comparability}
+    If $x$ is a non-empty set of ordinals, then $x$ has a smallest and a largest element, 
+    i.e.
+    \begin{equation*}
+    \exists(l \in x) \forall (k \in x) [l \leq k]\quad\text{and}\quad\exists(l \in x) 
+    \forall (k \in x) [k \leq l].
+    \end{equation*}
+\end{theorem}
+
+\begin{proof}
+    \leanok
+    We first prove the existence of the largest element of $x$, denoted by $\max(x)$. 
+    Let $\alpha(x)$ be the $\mathcal{L}$-formula 
+    $$(\forall (k \in x)[\operatorname{Ord} k]) \rightarrow (x \neq \varnothing) \rightarrow 
+    (\exists(l \in x) \forall (k \in x) [k \leq l]).$$ 
+    We apply Axiom \ref{ax:induction_axiom}.
+    \begin{itemize}
+        \item For the base case — $\alpha (\varnothing)$ — obviously, $x = \varnothing$ immediately 
+        contradicts $x \neq \varnothing$.
+        \item For the induction step 
+        — $\forall y[\alpha(x) \land \alpha(y) \rightarrow \alpha(x \lhd y)]$ — 
+        pick $y$ arbitrarily and assume $\alpha(x)$, 
+        i.e. the existence of $\max(x)$ if $x$ is a set of ordinals and $x \neq \varnothing$. 
+        Assume $x \lhd y$ is a set of ordinals, evidently non-empty. 
+        Then $x$ is a set of ordinals or it is empty.
+        If $x=\varnothing$, then $x \lhd y = \{y\}$, and $\max(x\lhd y) = y$.
+        Now suppose $x \neq \varnothing$, and thus $\max(x)$ exists. 
+        Since $x \lhd y$ arises from $x$ by adjoining one element, it is clear that 
+        $\max (x \lhd y)$ also exists. 
+        More specifically, it equals $y$ if $\max (x) \in y$, and $\max (x)$ otherwise.
+    \end{itemize}
+    To deduce the existence of $\min (x)$, 
+    replace in the above proof $\leq$ by $\geq$ and "max" by "min" throughout.
+\end{proof}
+
+\begin{corollary}
+    \label{cor:IsOrd.exists_pred}
+    \lean{HFSet.IsOrd.exists_pred}
+    \leanok
+    \uses{def:IsTrans+IsOrd, def:succ, lem:IsOrd.succ_isOrd+...+IsOrd.empty_is_mem, 
+    cor:IsOrd.exclusive_comparability+...+IsOrd.succ_inj, 
+    thm:IsOrd.exists_max_of_set+IsOrd.exists_min_of_set}
+    $(\operatorname{Ord}(k) \land k \neq \varnothing) \rightarrow 
+    \exists!l(\operatorname{succ}(l)=k)$.
+\end{corollary}
+
+\begin{proof}
+    \leanok
+    By Lemma \ref{lem:IsOrd.succ_isOrd+...+IsOrd.empty_is_mem}.2, 
+    $k$ is a non-empty set of ordinals. 
+    Thus, by Theorem \ref{thm:IsOrd.exists_max_of_set+IsOrd.exists_min_of_set}, 
+    $\max (k)$ exists, where $\max (k) \in k$. 
+    It follows from Corollary \ref{cor:IsOrd.exclusive_comparability+...+IsOrd.succ_inj}.3 that 
+    either $\operatorname{succ}(\max (k)) = k$ or $\operatorname{succ}(\max (k)) \in k$. 
+    However, the latter contradicts the definition of $\max (k)$. 
+    Thus $\operatorname{succ}(\max (k)) = k$. Uniqueness follows from 
+    Corollary \ref{cor:IsOrd.exclusive_comparability+...+IsOrd.succ_inj}.4.
+\end{proof}
+
+\begin{definition}[Predecessor]
+    \label{def:IsOrd.pred}
+    \lean{HFSet.IsOrd.pred, HFSet.Ord.pred}
+    \leanok
+    \uses{def:succ, cor:IsOrd.exists_pred}
+    The unique (if existing) $l$ for which $\operatorname{succ}(l) = k$ is called the 
+    \textit{predecessor} of $k$, abbreviated by $\operatorname{pred}(k)$.
+\end{definition}
+
+\section{\textit{p}-functions}
+
+\begin{definition}
+    \label{def:IsFunc+IsFunc.dom}
+    \lean{HFSet.IsFunc, HFSet.IsFunc.dom}
+    \leanok
+    \uses{def:singleton+pair, thm:exists_sUnion, thm:comp_scheme}
+    We say that $x$ is a \textit{function} if every element of $x$ is a an ordered pair and
+    $$ 
+    \left(\left\langle u, v_1\right\rangle \in x \wedge\left\langle u, v_2\right\rangle 
+    \in x\right) \rightarrow v_1=v_2.
+    $$
+    Note that $\langle u, v\rangle = \{\{u\}, \{u,v\}\} \in x$ implies $\{u\} \in \bigcup x$, and 
+    hence $u \in \bigcup\left(\bigcup x\right)$.
+    Thus, the \textit{domain} of a function $x$ is defined as
+    $$
+    \operatorname{dom}(x)=\{u \in \bigcup\left(\bigcup x\right): 
+    \exists v(\langle u, v\rangle \in x)\}
+    $$
+    (see Theorems \ref{thm:exists_sUnion} and \ref{thm:comp_scheme}).
+\end{definition}
+
+\begin{definition}[Sequence]
+    \label{def:IsSeq}
+    \lean{HFSet.IsSeq}
+    \leanok
+    \uses{def:IsTrans+IsOrd, def:IsFunc+IsFunc.dom}
+    We call $s$ a \textit{sequence} if $s$ is a function and $\operatorname{dom}(s)=k$ 
+    where $k$ is a non-empty ordinal, abbreviated by $\operatorname{Seq}(s,k)$.
+
+    If $\operatorname{Seq}(s,k)$, then, for any $n\,<\,k$, we write $s_n$ to abbreviate the 
+    uniquely existing $z$ such that $\langle n, z\rangle \in s$.
+\end{definition}
+
+\begin{definition}[Functional]
+    \label{def:IsFunctional}
+    \lean{HFSet.IsFunctionalUnary, HFSet.IsFunctionalBinary, HFSet.IsFunctionalTernary}
+    \leanok
+    We say an $\mathcal{L}$-formula $\varphi$ with $n+1$ free variables is \textit{functional} 
+    with respect to a freely occurring variable $y$ if 
+    $$
+    \forall x_1 \ldots \forall x_n \exists! y  \varphi (x_1,\ldots, x_n, y).
+    $$
+\end{definition}
+
+\begin{definition}[\textit{p}-function]
+    \label{def:pFunc}
+    \lean{HFSet.pFuncUnary, HFSet.pFuncBinary, HFSet.pFuncTernary}
+    \leanok
+    \uses{def:IsFunctional}
+    If $\varphi$ has $n+1$ free variables and is functional with respect to $y$, 
+    we associate with $\varphi$ and $y$ a new $n$-ary function symbol $F_\varphi^y$, 
+    called a \textit{p-function}. 
+    However, formally, this function symbol is not part of the language $\mathcal{L}$. 
+    In particular, $F_\varphi^y(x_{i_1},\ldots,x_{i_n})=u$ abbreviates
+    $$
+    \exists w (w = u \land \varphi (x_{i_1},\ldots,x_{i_n},w)),
+    $$
+    where the latter, in view of $\exists! y \varphi (x_{i_1},\ldots,x_{i_n},y)$, 
+    is equivalent to $\varphi (x_{i_1},\ldots,x_{i_n},u)$.
+
+    Examples of \textit{p}-functions are:
+    \begin{itemize}
+        \item $F_\varphi^y(x) = \bigcup x$, with $\varphi(x,y)$ defined as $y = \bigcup x$.
+        \item $F_\psi^y(x) = \bigcap x$, with $\psi(x,y)$ defined as $y = \bigcap x$.
+        \item $F_\chi^y(x) = P (x)$, with $\chi(x,y)$ defined as $y = P (x)$
+        ($P(x)$ is the power set of $x$).
+    \end{itemize}
+
+    Often, instead of writing $F_\varphi^y$, we shall use only one capital letter to 
+    denote a \textit{p}-function. 
+    In the non-arbitrary case, $\varphi$ and $y$ will be specified beforehand.
+\end{definition}
+
+\begin{theorem}
+    \label{thm:Ord.exists_pFuncRecursive}
+    \uses{def:singleton_pair, thm:exists_union, thm:comp_scheme, def:IsTrans+IsOrd, 
+    lem:IsOrd.succ_isOrd+...+IsOrd.empty_is_mem, def:Ord.lt+Ord.le, 
+    thm:IsOrd.exists_max_of_set+IsOrd.exists_min_of_set, def:IsOrd.pred,
+    def:IsFunc+IsFunc.dom, def:IsSeq, def:IsFunctional, def:pFunc}
+    Let $k$ be an ordinal. Then, for every constant term $\tau$ and \textit{p}-function $G$,
+    there exists a \textit{p}-function $F$ such that:
+    \begin{enumerate}
+        \item $k=\varnothing \rightarrow F(k) = \tau$.
+        \item $k\neq \varnothing \rightarrow F(k) = G(F(\operatorname{pred}(k)))$.
+    \end{enumerate}
+\end{theorem}
+
+\begin{proof}
+    Let $\varphi(k,y)$ be the $\mathcal{L}$-formula
+    \begin{equation*}
+        \begin{split}
+    & (k \neq \varnothing \land \exists s [\operatorname{Seq}(s,k) \land 
+    y = G(s_{\operatorname{pred}(k)}) \land \forall (n\,<\,k)[(n=\varnothing \land s_n = \tau)
+    \lor\\ &(n \neq \varnothing \land s_n = G(s_{\operatorname{pred}(n)}))]])
+    \lor (k = \varnothing \land y = \tau).
+        \end{split}
+    \end{equation*}
+    We claim that $\varphi$ is functional with respect to $y$.
+    Indeed, if $k=\varnothing$, then trivially $y=\tau$ is unique.
+    Now suppose, for a contradiction, there exists an ordinal $k\neq \varnothing$ such that there
+    is no unique $y$ for which $\varphi(k,y)$. 
+    Then, by Theorems \ref{thm:comp_scheme} and 
+    \ref{thm:IsOrd.exists_max_of_set+IsOrd.exists_min_of_set}, there exists a
+    least ordinal $m\neq\varnothing$ such that there is no unique $y$ for which $\varphi(m,y)$.
+    Let $p=\operatorname{pred}(m)$; it follows there exists a unique $y$ such that $\varphi(p,y)$.
+    Suppose $p\neq \varnothing$. Then there exists $s$ such that
+    \begin{equation*}
+        \begin{split}
+    &\operatorname{Seq}(s,p) \land y = G(s_{\operatorname{pred}(p)}) \land 
+    \forall (n\,<\,p)[(n=\varnothing \land s_n = \tau) \lor \\& 
+    (n \neq \varnothing \land s_n = G(s_{\operatorname{pred}(n)}))].
+        \end{split}
+    \end{equation*}
+    But then $\tilde{s} = s \cup \langle p, G(s_{\operatorname{pred}(p)}) \rangle$ satisfies
+    \begin{equation*}
+    \operatorname{Seq}(\tilde{s},m) \land \forall (n\,<\,m)[(n=\varnothing \land \tilde{s}_n = \tau) 
+    \lor (n \neq \varnothing \land \tilde{s}_n = G(\tilde{s}_{\operatorname{pred}(n)}))], 
+    \end{equation*}
+    and thus $y = G(\tilde{s}_p)$ uniquely satisfies $\varphi(m,y)$, a contradiction.
+    Now, suppose $p=\varnothing$. Then $\bar{s}=\langle \varnothing, \tau \rangle$ satisfies
+    \begin{equation*}
+        \operatorname{Seq}(\bar{s},m) \land \forall (n\,<\,m)[(n=\varnothing \land \bar{s}_n = \tau) 
+        \lor (n \neq \varnothing \land \bar{s}_n = G(\bar{s}_{\operatorname{pred}(n)}))], 
+    \end{equation*}
+    and thus $y = G(\bar{s}_\varnothing)$ uniquely satisfies $\varphi(m,y)$, again a contradiction.
+    
+    It is easily verified that \ref{thm:Ord.exists_pFuncRecursive}.1 and 
+    \ref{thm:Ord.exists_pFuncRecursive}.2 hold when $F$ is $F_\varphi^y$.
+\end{proof}
+
+\begin{definition}
+    \label{def:Ord.pFuncRecursive}
+    \uses{thm:Ord.exists_pFuncRecursive}
+    Say the \textit{p}-function $F$ in Theorem \ref{thm:Ord.exists_pFuncRecursive} is
+    \textit{defined recursively on ordinals}.
+\end{definition}
+
+\section{The rank function}
+
+\begin{definition}
+    \label{def:Ord.R}
+    \uses{def:Ord.pFuncRecursive}
+    Let $R(x)$ denote the $p$-function defined recursively on ordinals by
+    $$
+    R(x) = \begin{cases}
+        \varnothing & \text{if } x = \varnothing, \\
+        P(R(\operatorname{pred}(x))) & \text{otherwise}.
+    \end{cases}
+    $$
+\end{definition}
+
+\begin{lemma}
+    \label{lem:Ord.R.sSubset_of_lt+Ord.R.isTrans}
+    \uses{def:Subset+SSubset, def:Ord.lt+Ord.le, 
+        thm:IsOrd.exists_max_of_set+IsOrd.exists_min_of_set, def:Ord.R}
+    For all ordinals $m,n$ :
+    \begin{enumerate}
+        \item $n < m \rightarrow R(n) \subset R(m)$.
+        \item $R(m)$ is transitive.
+    \end{enumerate}
+\end{lemma}
+
+\begin{proof}
+    \begin{enumerate}
+        \item Clearly $R(\varnothing) = \varnothing \subset R(m)$ for all $m>\varnothing$.
+        Now if, for some $m$, there exists some $n<m$ but $R(n) \subseteq R(m)$ fails,
+        then by Theorem \ref{thm:IsOrd.exists_max_of_set+IsOrd.exists_min_of_set} there is a
+        smallest $n$ with that property.
+        As $n>\varnothing$, it follows that $\operatorname{pred}(n)<\operatorname{pred}(m)$, and thus 
+        $R(\operatorname{pred}(n)) \subset R(\operatorname{pred}(m))$.
+        But, by Definition \ref{def:Ord.R}, this implies $R(n) \subset R(m)$, a contradiction.
+        
+        \item Clearly $R(\varnothing) = \varnothing$ is transitive.
+        Now, if $m\neq \varnothing$, then $\operatorname{pred}(m)<m$ and thus 
+        $$
+        x \in R(m) \rightarrow x \subseteq R(\operatorname{pred}(m)) \subset R(m),
+        $$
+        by Definition \ref{def:Ord.R} and Lemma \ref{lem:Ord.R.sSubset_of_lt+Ord.R.isTrans}.1.
+    \end{enumerate}
+\end{proof}
+
+\begin{theorem}
+    \label{thm:forall_exists_ord_mem_R}
+    \uses{ax:induction_axiom, def:Ord.R, lem:Ord.R.sSubset_of_lt+Ord.R.isTrans}
+    $\exists n [\operatorname{Ord}(n) \land x \in R(n)]$.
+\end{theorem}
+
+\begin{proof}
+    Let $\alpha (x)$ be the $\mathcal{L}$-formula 
+    $\exists n [\operatorname{Ord}(n) \land x \in R(n)]$.
+    We apply Axiom \ref{ax:induction_axiom}.
+    \begin{itemize}
+        \item For the base case — $\alpha (\varnothing)$ — the required ordinal is 
+        $\operatorname{succ}(\varnothing)$, as $\varnothing \in P(R(\varnothing)) = P(\varnothing)
+        = \{\varnothing\}$.
+        \item For the induction step 
+        — $\forall y[\alpha(x) \land \alpha(y) \rightarrow \alpha(x \lhd y)]$ — 
+        pick $y$ arbitrarily and assume $\alpha(x) \land \alpha(y)$, i.e. $x \in R(n)$, 
+        $y \in R(m)$ for some ordinals $m,n$. 
+        Then, by Lemma \ref{lem:Ord.R.sSubset_of_lt+Ord.R.isTrans}.2,
+        $$
+        x \lhd y = x \cup \{y\} \subseteq R(n) \cup R(\operatorname{succ}(m)).
+        $$
+        So, by Lemma \ref{lem:Ord.R.sSubset_of_lt+Ord.R.isTrans}.1, 
+        for $k=\max \{\operatorname{succ}(m), n\}$, $x\lhd y \subseteq R(k)$, and thus
+        $x \lhd y \in R(\operatorname{succ}(k))$.
+    \end{itemize}
+\end{proof}
+
+\begin{definition}[Rank function]
+    \label{def:rank}
+    \uses{def:Ord.R}
+    Let $\operatorname{rank}(x)$ denote the least ordinal $n$ such that 
+    $x \in R(\operatorname{succ}(n))$, i.e. $x \subseteq R(n)$.
+\end{definition}
+
+\begin{theorem}
+    \label{thm:rank.lt_of_mem}
+    \uses{def:Ord.R, def:rank}
+    $x \in y \rightarrow \operatorname{rank}(x) < \operatorname{rank}(y)$.
+\end{theorem}
+
+\begin{proof}
+    Let $x \in y$ and suppose $\operatorname{rank}(y)=n$.
+    Then $y \subseteq R(n)$, and thus $x \in R(n)$.
+    It follows that $n \neq \varnothing$ and $x \subseteq R(\operatorname{pred}(n))$.
+    Hence, $\operatorname{rank}(x) \leq \operatorname{pred}(n) < n$.
+\end{proof}
+
+\begin{definition}[Transitive closure]
+    \label{def:cl}
+    \uses{def:inter+sInter,lem:Ord.R.sSubset_of_lt+Ord.R.isTrans, thm:forall_exists_ord_mem_R}
+    The \textit{transitive closure} of $x$, denoted by $\operatorname{cl}(x)$, is the minimal 
+    transitive set $y$ such that $x \subseteq y$.
+\end{definition}
+
+\begin{theorem}
+    \label{thm:rank_eq_rank_cl}
+    \uses{ax:induction_axiom, lem:Ord.R.sSubset_of_lt+Ord.R.isTrans, def:rank, 
+        thm:rank.lt_of_mem, def:cl}
+    $\operatorname{rank}(x) = \operatorname{rank}(\operatorname{cl}(x))$.
+\end{theorem}
+
+\begin{proof}
+    First observe that:
+    \begin{enumerate}
+        \item $u \subseteq v \rightarrow \operatorname{rank}(u) \leq \operatorname{rank}(v)$ 
+        (see Definition \ref{def:rank}).
+        \item $\operatorname{rank}(u \cup v) = \max 
+        \{\operatorname{rank}(u), \operatorname{rank}(v)\}$
+        (see Lemma \ref{lem:Ord.R.sSubset_of_lt+Ord.R.isTrans}).
+        \item $\operatorname{rank}(\{w\}) = \operatorname{succ}(\operatorname{rank}(w))$
+        (see Definition \ref{def:rank}).
+    \end{enumerate}
+    Now, let $\alpha (x)$ be the $\mathcal{L}$-formula 
+    $\operatorname{rank}(x) = \operatorname{rank}(\operatorname{cl}(x))$.
+    We apply Axiom \ref{ax:induction_axiom}.
+    \begin{itemize}
+        \item The base case — $\alpha (\varnothing)$ — is direct as 
+        $\operatorname{cl}(\varnothing) = \varnothing$.
+        \item For the induction step 
+        — $\forall y[\alpha(x) \land \alpha(y) \rightarrow \alpha(x \lhd y)]$ — 
+        pick $y$ arbitrarily and assume $\alpha(x) \land \alpha(y)$, i.e. that for some
+        ordinals $m,n$ we have 
+        $\operatorname{rank}(x) = \operatorname{rank}(\operatorname{cl}(x)) = n$ and
+        $\operatorname{rank}(y) = \operatorname{rank}(\operatorname{cl}(y)) = m$.
+        Then both sides on the inclusion
+        $$
+        x \lhd y = x \cup \{y\} \subseteq \operatorname{cl}(x) \cup \operatorname{cl}(y) \cup \{y\}
+        $$
+        have rank $\max \{n,\operatorname{succ}(m)\}$ (see 2. and 3. above).
+        Since the right hand side is transitive, it follows that
+        $$
+        x \lhd y \subseteq \operatorname{cl}(x \lhd y) \subseteq 
+        \operatorname{cl}(x) \cup \operatorname{cl}(y) \cup \{y\},
+        $$
+        and thus, by 1. above, 
+        $\operatorname{rank}(x \lhd y) = \operatorname{rank}(\operatorname{cl}(x \lhd y))$.
+    \end{itemize}
+\end{proof}
+
+\begin{definition}[Restriction]
+    \label{def:IsFunc.restr+pFunc.restr}
+    \uses{thm:repl_scheme, def:IsFunc+IsFunc.dom}
+    Let $f$ be a function and $z \subseteq \operatorname{dom}(f)$.
+    Then the function $\{y \in f : \exists (u \in z) \exists v (y = \langle u,v \rangle)\}$
+    will be denoted by $f \upharpoonright z$ and called the \textit{restriction} of $f$ to $z$.
+
+    Similarly, if $F$ is a \textit{p}-function, then $F \upharpoonright z$ denotes the 
+    restriction of $F$ to $z$.
+\end{definition}
+
+\begin{theorem}[Recursion on rank]
+    \label{thm:rank.exists_pFuncRecursive}
+    \uses{thm:found_prop, def:pFunc, thm:rank.lt_of_mem, thm:rank_eq_rank_cl, def:cl, 
+        def:IsFunc.restr+pFunc.restr}
+    For every binary $p$-function $G(x,y)$, there exists a unary $p$-function $F$ such that
+    $$
+    F(x) = G(x, F \upharpoonright \operatorname{cl}(x)).
+    $$
+\end{theorem}
+
+\begin{proof}
+    For the proof — which is extensive — the reader is referred to 
+    Appendix 4 of \cite{swierczkowski2003finite}, where it is presented in detail.
+\end{proof}
+
+
+
+%%FILE blueprint/src/contents/ch3_Model.tex
+\chapter{The Standard Model of HF}
+
+Gödel's first incompleteness theorem states that if HF is \textit{consistent}, 
+then there is a sentence $\delta$ such that neither $\vdash \delta$ nor
+$\vdash \neg\delta$. According to soundness, 
+this implies there exists a model of HF, which is
+a model of $\delta$, and there exists another model of HF which doesn't model $\delta$.
+
+For comparison, in Peano Arithmetic (PA), the 'Gödel sentence' is true in the standard model of 
+the natural numbers but false in some "non-standard" model of PA. 
+Similarly, in HF, the sentence $\delta$ is true in the \textit{standard model of HF}, 
+which we will construct in this chapter.
+
+We will start by establishing some properties of constant terms.
+
+\section{Constant terms}
+
+\begin{definition}[Constant term]
+    \lean{HF.C, HF.C.length}
+    \label{def:C+C.length}
+    \leanok
+    \uses{def:Lang}
+    The class of \textit{constant terms}, denoted by $\mathbb{C}$, is the class of terms which
+    contain no variables, i.e. $\mathbb{C}$ is the smallest class of terms such that 
+    $\varnothing \in \mathbb{C}$ and 
+    $\sigma \lhd \tau \in \mathbb{C}$ for any $\sigma, \tau \in \mathbb{C}$.
+
+    For any $\tau \in \mathbb{C}$, the number of appearances of $\lhd$ in $\tau$ is called the
+    \textit{length} of $\tau$, denoted by $l(\tau)$.
+\end{definition}
+
+\begin{lemma}
+    \lean{HF.C.exists_finset_shorter_and_mem_iff_iSup}
+    \label{lem:C.exists_finset_shorter_and_mem_iff_iSup}
+    \leanok
+    \uses{def:Prf, thm:completeness, lem:notin_empty+mem_enlarge+mem_enlarge_empty, def:C+C.length}
+    For every non-empty $\tau \in \mathbb{C}$, there are finitely many 
+    $\tau_1, \ldots, \tau_m \in \mathbb{C}$, all shorter than $\tau$, such that
+    $$
+    \vdash (x \in \tau \leftrightarrow x = \tau_1 \lor \ldots \lor x = \tau_m).
+    $$
+\end{lemma}
+
+\begin{proof}
+    \leanok
+    We apply induction on the length $l(\tau)$.
+    The case $l(\tau) = 0$, i.e. $\tau = \varnothing$, is trivial.
+    Now assume that the lemma has been established for all non-zero constant terms shorter 
+    than $\tau$, and let $\tau$ be $\sigma \lhd \mu$.
+    If $\sigma = \varnothing$, then $\tau = \varnothing \lhd \mu$, 
+    where $\mu$ is shorter than $\tau$.
+    We have the theorem of HF
+    $$
+    \vdash (x \in \varnothing \lhd \mu \leftrightarrow x \in \varnothing \lor x=\mu
+    \leftrightarrow x=\mu),
+    $$
+    i.e. $m=1$ and $\tau_1 = \mu$. 
+   
+    Now suppose $\sigma \neq \varnothing$. As $\sigma$ is shorter than $\tau$,
+    there are $\sigma_1, \ldots, \sigma_n \in \mathbb{C}$ such that
+    $$
+    \vdash (x \in \sigma \leftrightarrow x=\sigma_1 \lor \ldots \lor x=\sigma_n)
+    $$
+    Since $\vdash (x \in \tau \leftrightarrow x \in \sigma \lor x=\mu)$, we get
+    $$
+    \vdash (x \in \tau \leftrightarrow x=\sigma_1 \lor \ldots \lor x=\sigma_n \lor x=\mu).
+    $$
+    By inductive assumption, 
+    each $\sigma_i$ is shorter than $\sigma$, thus also shorter than $\tau$. 
+    Also, $\mu$ is shorter than $\tau$.
+\end{proof}
+
+\begin{lemma}
+    \lean{HF.C.exists_mem_and_notin_of_not_eq}
+    \label{lem:C.exists_mem_and_notin_of_not_eq}
+    \leanok
+    \uses{def:Prf, thm:completeness, thm:exten_prop, def:C+C.length, 
+        lem:C.exists_finset_shorter_and_mem_iff_iSup}
+    Let $\sigma, \tau \in \mathbb{C}$ be such that $\not\vdash \sigma = \tau$. 
+    Then, for some $\nu \in \mathbb{C}$, one of the two possibilities occurs:
+    \begin{enumerate}
+        \item $\vdash \nu \in \sigma \quad \text{and} \quad \vdash \nu \notin \tau$.
+        \item $\vdash \nu \notin \sigma \quad \text{and} \quad \vdash \nu \in \tau$.
+    \end{enumerate}
+\end{lemma}
+
+\begin{proof}
+    First, consider the case where $\sigma = \varnothing$ or $\tau = \varnothing$.
+    Suppose $\sigma = \varnothing$.
+    Then $\not\vdash \sigma = \tau$ implies $\tau \neq \varnothing$, and thus
+    $\tau = \mu \lhd \nu$ for some constant terms $\mu, \nu$.
+    It follows that $\vdash \nu \in \tau$ and $\vdash \nu \notin \sigma$, 
+    and thus possibility 1. holds.
+    Analogously, if $\tau = \varnothing$, possibility 2. holds.
+
+    Now, we apply induction on the length $l(\sigma)$.
+    The case $l(\sigma) = 0$ has been considered already.
+    For $l(\sigma) > 0$, suppose the lemma has been established for all non-zero constant terms 
+    shorter than $\sigma$, and assume $\tau$ is such that $\not\vdash \sigma = \tau$.
+    The case $\tau = \varnothing$ has been dealt with.
+    It remains to consider the case where neither $\sigma$ nor $\tau$ is $\varnothing$.
+    By Lemma \ref{lem:C.exists_finset_shorter_and_mem_iff_iSup}, there are finitely many
+    $\sigma_1, \ldots, \sigma_m \in \mathbb{C}$, all shorter than $\sigma$, and finitely many
+    $\tau_1, \ldots, \tau_n \in \mathbb{C}$, all shorter than $\tau$, such that
+    $$
+    \vdash (x \in \sigma \leftrightarrow x = \sigma_1 \lor \ldots \lor x = \sigma_m)
+    \quad \text{and} \quad 
+    \vdash (x \in \tau \leftrightarrow x = \tau_1 \lor \ldots \lor x = \tau_n).
+    $$
+    If for every $\sigma_i$ there exists exactly one $\tau_j$ such that $\vdash \sigma_i = \tau_j$,
+    then $\vdash (x \in \sigma \leftrightarrow x \in \tau)$, and thus, 
+    by Theorem \ref{thm:exten_prop}, $\vdash \sigma = \tau$, a contradiction.
+    Hence, either there is some $\sigma_i$ such that for every $\tau_j$ we have
+    $\not\vdash \sigma_i = \tau_j$, or there is some $\tau_j$ such that for every $\sigma_i$ we have
+    $\not\vdash \sigma_i = \tau_j$.
+
+    Suppose the first case.
+    Since this $\sigma_i$ is shorter than $\sigma$, by inductive assumption, 
+    either possibility 1. or 2. holds for $\sigma_i$ and every $\tau_j$, for suitable $\nu_j$.
+    Thus, by Theorem \ref{thm:exten_prop}, $\vdash \sigma_i \neq \tau_j$ for all $j$.
+    We now substitute $\sigma_i$ for $x$ in 
+    $$
+    \vdash (x \notin \tau \leftrightarrow x \neq \tau_1 \land \ldots \land x \neq \tau_n),
+    $$
+    which implies $\vdash \sigma_i \notin \tau$.
+    But $\vdash \sigma_i \in \sigma$, so possibility 1. holds with $\nu = \sigma_i$.
+    The second case where there exists some $\tau_j$ such that for every $\sigma_i$ we have
+    $\not\vdash \sigma_i = \tau_j$ is analogous and implies possibility 2.
+\end{proof}
+
+\begin{corollary}
+    \lean{HF.C.ne_of_not_eq}
+    \label{cor:C.ne_of_not_eq}
+    \leanok
+    \uses{def:Prf, thm:completeness, thm:exten_prop, def:C+C.length, 
+        lem:C.exists_mem_and_notin_of_not_eq}
+    For every $\sigma, \tau \in \mathbb{C}$, $\not\vdash \sigma = \tau$ implies 
+    $\vdash \sigma \neq \tau$.
+\end{corollary}
+
+\begin{proof}
+    \leanok
+    Follows directly from Lemma \ref{lem:C.exists_mem_and_notin_of_not_eq} and 
+    Theorem \ref{thm:exten_prop}.
+\end{proof}
+
+\begin{corollary}
+    \lean{HF.C.eq_of_forall_mem_iff_mem}
+    \label{cor:C.eq_of_forall_mem_iff_mem}
+    \uses{def:Prf, def:C+C.length, lem:C.exists_mem_and_notin_of_not_eq}
+    \leanok
+    If $\sigma, \tau \in \mathbb{C}$ are such that $\vdash \nu \in \sigma$ if and only if
+    $\vdash \nu \in \tau$ for every $\nu \in \mathbb{C}$, and HF is consistent, 
+    then $\vdash \sigma = \tau$.
+\end{corollary}
+
+\begin{proof}
+    \leanok
+    Follows directly from Lemma \ref{lem:C.exists_mem_and_notin_of_not_eq} 
+    using proof by contradiction.
+\end{proof}
+
+\section{The model}
+
+\begin{definition}[The standard model of HF]
+    \label{def:stdModel}
+    \lean{HF.stdModel, HF.stdModel.struc}
+    \uses{def:Lang, def:C+C.length}
+    \leanok
+    Introduce the equivalence relation $\approx$ on $\mathbb{C}$ given by
+    $$
+    \sigma \approx \tau \,\text{ if and only if } \vdash \sigma = \tau.
+    $$
+    Then the $\mathcal{L}$-structure 
+    $\mathfrak{S} = \langle\mathbb{S}, \varnothing, \in, \lhd \rangle$ is defined by the following:
+    \begin{enumerate}
+        \item $\mathbb{S} = \mathbb{C}/{\approx}$.
+        \item The abbreviation $\varnothing$ for $[\varnothing]$.
+        \item The binary relation $\in$ on $\mathbb{S}$ defined by
+                $$[\sigma] \in [\tau] \leftrightarrow \,\vdash \sigma \in \tau.$$
+        \item The binary operation $\lhd$ on $\mathbb{S}$ defined by
+                $$[\sigma] \lhd [\tau] = [\sigma \lhd \tau].$$
+    \end{enumerate}
+\end{definition}
+
+\begin{theorem}
+    \label{thm:stdModel.model_of_consistent}
+    \lean{HF.stdModel.model_of_consistent}
+    \uses{def:Lang, def:Axioms, thm:completeness, lem:notin_empty+mem_enlarge+mem_enlarge_empty, 
+        thm:exten_prop, cor:C.ne_of_not_eq, cor:C.eq_of_forall_mem_iff_mem, def:stdModel}
+    \leanok
+    If HF is consistent, then $\mathfrak{S}$ is a model of HF.
+\end{theorem}
+
+\begin{proof}
+    We check that the axioms of HF are modelled by $\mathfrak{S}$.
+
+    \textit{Axiom 1.} Suppose $[\sigma] \in \mathbb{S}$ is such that 
+    $\mathfrak{S} \vDash [\tau] \notin [\sigma]$ for every constant term $\tau$.
+    Then $\sigma$ cannot be of the form $\mu \lhd \nu$ for some constant terms $\mu, \nu$,
+    as otherwise $\mathfrak{S} \vDash [\nu] \in [\sigma]$ by \ref{def:stdModel}.3.
+    Thus, $\sigma = \varnothing$.
+    Conversely, we have $\mathfrak{S} \vDash [\tau] \notin [\varnothing]$ for all $\tau$,
+    as, by \ref{def:stdModel}.3, $\mathfrak{S} \vDash [\tau] \in [\varnothing]$ if and only if
+    $\vdash \tau \in \varnothing$, and the latter contradicts 
+    Lemma \ref{lem:notin_empty+mem_enlarge+mem_enlarge_empty} and the assumption of consistency.
+
+    \textit{Axiom 2.} Theorem \ref{thm:exten_prop} holds for $\mathfrak{S}$, by 
+    Corollary \ref{cor:C.eq_of_forall_mem_iff_mem}.
+    Thus, Axiom 2 (Definition \ref{def:Axioms}.2) will be modelled by $\mathfrak{S}$ if 
+    for every $\tau,\mu,\nu \in \mathbb{C}$, 
+    $$
+    \vdash \tau \in \mu \lhd \nu \,\text{ if and only if } 
+    (\vdash \tau \in \mu \,\text{ or } \vdash \tau = \nu).
+    $$
+    First, assume $\vdash \tau \in \mu \lhd \nu$. 
+    If $\vdash \tau = \nu$, then the desired implication holds immediately.
+    If $\not\vdash \tau = \nu$, then, by Corollary \ref{cor:C.ne_of_not_eq},
+    $\vdash \tau \neq \nu$.
+    So, in this case, $\vdash \tau \in \mu \lhd \nu$ implies
+    $\vdash (\tau \in \mu \lor \tau = \nu) \land \tau \neq \nu$, and thus
+    $\vdash \tau \in \mu$. Conversely, 
+    $(\vdash \tau \in \mu \,\text{ or } \vdash \tau = \nu)$ implies
+    $\vdash (\tau \in \mu \lor \tau = \nu)$, and thus
+    $\vdash \tau \in \mu \lhd \nu$.
+    
+    \textit{Axiom 3.} For each equivalence class $a \in \mathbb{S}$, let $h(a)$ be the smallest
+    length $l(\tau)$ such that $\tau \in a$.
+    Then, for every $a \neq \varnothing$, there exist $b,c \in \mathbb{S}$ such that 
+    $a = b \lhd c$ holds true in $\mathbb{S}$, and both $h(b) < h(a)$ and $h(c) < h(a)$.
+    Given an $\mathcal{L}$-formula $\alpha(x)$ with one free variable $x$,
+    define 
+    $$
+    A_\alpha = \{a \in \mathbb{S} : \alpha (a) \text{ holds true in $\mathbb{S}$}\}.
+    $$
+    Now, assume $\varnothing \in A_\alpha$ and that $a,b \in A_\alpha$ implies 
+    $a \lhd b \in A_\alpha$ for all $a,b \in \mathbb{S}$.
+    Then, by induction on $h(c)$, it follows that $c \in A_\alpha$ for all $c \in \mathbb{S}$,
+    and thus $\alpha(c)$ holds true for all $c \in \mathbb{S}$.
+    This establishes Axiom 3.
+\end{proof}
+
+%%FILE blueprint/src/contents/ch4_Coding.tex
+\chapter{Coding}
+
+Gödel's original proof of the first incompleteness theorem, 
+as detailed in \cite{godel1931formal}, 
+involves a crucial step where statements about a formal system are mapped onto statements that 
+exist within that system itself. 
+This mapping gives rise to the development of a meta-theory, that is, 
+it enables the formal system to make assertions about its own content.
+
+Specifically, in the original paper, symbols, terms and formulas of the formal language are encoded 
+as natural numbers, referred to as \textit{Gödel numbers}. 
+This encoding is useful because properties of formulas in the language 
+— such as being a theorem or not — 
+can be analysed by examining the properties of their corresponding Gödel numbers. 
+This approach leads to the formulation of a formula that effectively says, 
+'formula $\varphi$ is provable within the system', 
+which applies to any formula $\varphi$ in the language.
+
+For HF, we adopt a similar strategy by encoding symbols, terms, and formulas 
+as constant terms within the language itself. Why choose constant terms?
+Firstly, we want to apply set-theoretical formulas to these codes, 
+so each code must correspond naturally to a set. 
+Additionally, as demonstrated in the proof of Gödel’s Diagonal Lemma (discussed in Chapter 6), 
+we must be able to encode a code itself. 
+This means assigning a code to the code $\ulcorner{\varphi}\urcorner$ of an 
+$\mathcal{L}$-formula $\varphi$. 
+To achieve this, the codes must be objects within the language $\mathcal{L}$. 
+Constant terms are the simplest objects in the language naturally associated with sets, 
+making them the ideal choice for codes.
+
+However, we want the mapping from objects in the language to their codes to be one-to-one.
+Therefore, we restrict the codes to a certain family of constant terms denoted by $\Gamma$.
+
+\begin{definition}
+    \lean{HF.C.IsInΓ0, HF.C.IsInΓ, HF.Code}
+    \label{def:C.IsInΓ0+C.IsInΓ+Code}
+    \leanok
+    \uses{def:Lang, def:C+C.length}
+    We denote by $\Gamma_0$ the least family of constant terms such that
+    \begin{enumerate}
+        \item $\varnothing \in \Gamma_0$.
+        \item If $\sigma \in \Gamma_0$, then $\sigma \lhd \sigma \in \Gamma_0$.
+    \end{enumerate}
+    Furthermore, we denote by $\Gamma$ the least family of constant terms such that
+    $\Gamma_0 \subseteq \Gamma$ and 
+    \begin{enumerate}\setcounter{enumi}{2} %does not work in web
+        \item If $\sigma, \tau \in \Gamma$, then $\langle\sigma, \tau\rangle \in \Gamma$.
+    \end{enumerate}
+\end{definition}
+
+\begin{theorem}
+    \lean{HF.C.ne_of_isInΓ_and_distinct}
+    \label{thm:C.ne_of_isInΓ_and_distinct}
+    \leanok
+    \uses{lem:mem_singleton+...+pair_inj, cor:mem_irrefl, def:succ, 
+        def:C+C.length, cor:C.ne_of_not_eq, def:IsInΓ0+IsInΓ+Code}
+    Let $\sigma, \tau \in \Gamma$ be distinct constant terms, i.e. they are different strings of
+    symbols. Then $\vdash \sigma \neq \tau$.
+\end{theorem}
+
+\begin{proof}
+    Say two constant terms $\sigma, \tau$ are \textit{identified} if $\vdash \sigma = \tau$.
+    By Corollary \ref{cor:C.ne_of_not_eq}, 
+    either $\vdash \sigma = \tau$ or $\vdash \sigma \neq \tau$.
+    It suffices to show that distinct constant terms in $\Gamma$ are never identified.
+    Let $\sigma,\tau$ be distinct constant terms in $\Gamma$.
+    We consider three cases:
+
+    \textit{Case 1.} $\sigma, \tau \in \Gamma_0$. 
+    Suppose, without loss of generality, that $\tau$ is longer than $\sigma$ 
+    (see Definition \ref{def:C+C.length}).
+    Then $\tau$ is obtained from $\sigma$ by several applications of the successor operation
+    (see Definition \ref{def:succ}).
+    But then $\vdash \sigma \in \tau$, and by Corollary \ref{cor:mem_irrefl},
+    $\sigma$ and $\tau$ are not identified.
+
+    \textit{Case 2.} $\sigma \in \Gamma_0$ and $\tau \in \Gamma \setminus \Gamma_0$.
+    We either have $\vdash \sigma = \varnothing$ or $\vdash \varnothing \in \sigma$.
+    On the other hand, $\tau$ is an ordered pair.
+    It is easily verified that every ordered pair is not equal to $\varnothing$ and does not contain
+    $\varnothing$. Hence, $\sigma$ and $\tau$ are not identified.
+
+    \textit{Case 3.} $\sigma, \tau \in \Gamma \setminus \Gamma_0$.
+    We proceed by induction on the length of $\sigma$ to show that 
+    $\sigma$ and $\tau$ are not identified.
+    The inductive assumption is that the desired implication holds if $\sigma, \tau$ are replaced by
+    $\sigma^\prime, \tau^\prime$ where $\sigma^\prime$ is shorter than $\sigma$.
+    Suppose $\sigma = \langle \sigma^\prime, \sigma^{\prime\prime} \rangle$ and 
+    $\tau = \langle \tau^\prime, \tau^{\prime\prime} \rangle$.
+    As $\sigma,\tau$ are distinct, either $\sigma^\prime$ and $\tau^\prime$ are distinct or
+    $\sigma^{\prime\prime}$ and $\tau^{\prime\prime}$ are distinct.
+    Assume, without loss of generality, that $\sigma^\prime$ and $\tau^\prime$ are distinct.
+    If $\sigma^\prime$ or $\tau^\prime$ is in $\Gamma_0$, then by Case 1 or Case 2,
+    $\sigma^\prime$ and $\tau^\prime$ are not identified.
+    Otherwise, if $\sigma^\prime, \tau^\prime \in \Gamma \setminus \Gamma_0$, then by the inductive
+    assumption, $\sigma^\prime$ and $\tau^\prime$ are not identified.
+    It follows that $\not\vdash \langle \sigma^\prime, \sigma^{\prime\prime} \rangle =
+    \langle \tau^\prime, \tau^{\prime\prime} \rangle$, and hence $\sigma$ and $\tau$ are not
+    identified.
+\end{proof}
+
+In the following definitions, $\langle \sigma, \tau, \mu \rangle$ is a shorthand for the ordered
+pair $\langle \langle \sigma, \tau \rangle, \mu \rangle$,
+$\langle \sigma, \tau, \mu, \nu \rangle$ is a shorthand for 
+$\langle \langle \sigma, \tau, \mu \rangle, \nu \rangle$, and so on.
+
+\begin{definition}[Coding of symbols]
+    \lean{HF.Code.Mem, HF.Code.Enlarge, HF.Code.Eq, HF.Code.Or, HF.Code.Neg, HF.Code.Ex}
+    \label{def:Code.Symbol}
+    \leanok
+    \uses{def:C.IsInΓ0+C.IsInΓ+Code}
+    We begin by assigning to each symbol of the language a unique code denoted by
+    $\ulcorner \cdot\urcorner$.
+    In particular, these are the following constant terms belonging to $\Gamma$:
+    $$
+    \begin{aligned}
+    \ulcorner{\varnothing}\urcorner & =\varnothing, \\
+    \ulcorner{\in}\urcorner & =\langle \varnothing,\varnothing\rangle, \\
+    \ulcorner{\lhd}\urcorner & =\langle \varnothing,\varnothing,\varnothing\rangle, \\
+    \ulcorner{=}\urcorner & =\langle \varnothing,\varnothing,\varnothing,\varnothing\rangle, \\
+    \ulcorner{\lor}\urcorner & =
+    \langle \varnothing,\varnothing,\varnothing,\varnothing,\varnothing\rangle, \\
+    \ulcorner{\neg}\urcorner & =
+    \langle \varnothing,\varnothing,\varnothing,\varnothing,\varnothing,\varnothing\rangle, \\
+    \ulcorner{\exists}\urcorner & =
+    \langle \varnothing,\varnothing,\varnothing,\varnothing,\varnothing,\varnothing,
+    \varnothing\rangle,\\
+    \ulcorner{x_1}\urcorner & = \varnothing \lhd \varnothing, \quad 
+    \ulcorner{x_2}\urcorner = \ulcorner{x_1}\urcorner \lhd \ulcorner{x_1}\urcorner,\quad\ldots\quad,
+    \ulcorner{x_{k+1}}\urcorner = \ulcorner{x_k}\urcorner \lhd \ulcorner{x_k}\urcorner.
+    \end{aligned}
+    $$
+\end{definition}
+
+\begin{definition}[Coding of terms]
+    \lean{HF.Code.Term}
+    \label{def:Code.Term}
+    \leanok
+    \uses{def:C.IsInΓ0+C.IsInΓ+Code, def:Code.Symbol}
+    The terms $\varnothing$ and $x_k$ have been coded already. 
+    The remaining case follows the inductive definition
+    $$
+    \ulcorner{\sigma \lhd \tau}\urcorner = 
+    \langle\ulcorner{\lhd}\urcorner, \ulcorner{\sigma}\urcorner, \ulcorner{\tau}\urcorner \rangle.
+    $$
+\end{definition}
+
+\begin{definition}[Coding of formulas]
+    \lean{HF.Code.Formula}
+    \label{def:Code.Formula}
+    \leanok
+    \uses{def:C.IsInΓ0+C.IsInΓ+Code, def:Code.Symbol, def:Code.Term}
+    Given terms $\sigma, \tau$, the codes of atomic formulas are
+    $$
+    \ulcorner{\sigma = \tau}\urcorner = 
+    \langle\ulcorner{=}\urcorner, \ulcorner{\sigma}\urcorner, \ulcorner{\tau}\urcorner \rangle
+    \quad \text{and} \quad
+    \ulcorner{\sigma \in \tau}\urcorner = 
+    \langle\ulcorner{\in}\urcorner, \ulcorner{\sigma}\urcorner, \ulcorner{\tau}\urcorner \rangle.
+    $$
+    Non-atomic formulas follow the inductive definition
+    $$
+    \begin{aligned}
+        \ulcorner{\neg\varphi}\urcorner & = 
+        \langle\ulcorner{\neg}\urcorner, \ulcorner{\varphi}\urcorner \rangle, \\
+        \ulcorner{\varphi \lor \psi}\urcorner & = 
+        \langle\ulcorner{\lor}\urcorner, \ulcorner{\varphi}\urcorner, 
+        \ulcorner{\psi}\urcorner \rangle, \\
+        \ulcorner{\exists x_k \varphi}\urcorner & = 
+        \langle\ulcorner{\exists}\urcorner, \ulcorner{x_k}\urcorner, 
+        \ulcorner{\varphi}\urcorner \rangle.
+    \end{aligned}
+    $$
+\end{definition}
+
+
+
+%%FILE blueprint/src/contents/ch5_Pf.tex
+\chapter{The Provability Formula}
+
+For any $\mathcal{L}$-formula $\varphi$, we now aim to define a condition applicable to
+its code $\ulcorner\varphi\urcorner$ that holds true if and only if $\varphi$ is a theorem of HF, 
+i.e. $\varphi$ is provable. 
+Specifically, we seek to identify an $\mathcal{L}$-formula $\operatorname{Pf}(x)$,
+referred to as the \textit{provability formula}, such that
+$$
+\vdash \varphi \,\text{ if and only if } \vdash \operatorname{Pf}(\ulcorner{\varphi}\urcorner).
+$$
+To establish this equivalence, we shall invoke $\mathfrak{S}$, the standard model of HF,
+by ensuring that $\vdash \operatorname{Pf}(\ulcorner{\varphi}\urcorner)$ if and only if
+$\mathfrak{S} \vDash \operatorname{Pf}(\ulcorner{\varphi}\urcorner)$. 
+Then it remains to define $\operatorname{Pf}(x)$ in such a way that
+$$
+\vdash \varphi \,\text{ if and only if } 
+\mathfrak{S} \vDash \operatorname{Pf}(\ulcorner{\varphi}\urcorner),
+$$
+a process that is tedious but straightforward once the appropriate definitions and results 
+are in place.
+
+By soundness, we have that $\vdash \varphi$ implies 
+$\mathfrak{S} \vDash \varphi$ for any $\mathcal{L}$-formula $\varphi$.
+However, the converse does not generally hold, with the sentence in Gödel's first incompleteness
+theorem as an example.
+Fortunately, there is a substantial class of sentences for which being modelled by $\mathfrak{S}$
+is equivalent to being a theorem of HF.
+We call these sentences $\Sigma$-sentences, and it follows that, given an $\mathcal{L}$-formula 
+$\varphi$, the provability formula $\operatorname{Pf}(\ulcorner{\varphi}\urcorner)$ should be
+a $\Sigma$-sentence.
+
+\section{Sigma-formulas}
+%\section{\(\Sigma\)-formulas}
+
+To begin, we introduce strict $\Sigma$-formulas, 
+which are $\mathcal{L}$-formulas that only include bounded universal quantifiers, variables, 
+and the symbols $\in, \lor, \land, \exists$.
+
+\begin{definition}[Strict $\Sigma$-formula]
+\label{def:IsInSSigma}
+\lean{HF.IsInSSigma}
+\leanok
+\uses{def:Lang}
+The class $\Sigma$ of \textit{strict $\Sigma$-formulas} is the smallest class of 
+$\mathcal{L}$-formulas such that
+\begin{enumerate}
+    \item The atomic formula $x_i \in x_j$ is in $\Sigma$ for all variables $x_i, x_j$.
+    \item If $\varphi, \psi$ are in $\Sigma$, then so are 
+        $\varphi \lor \psi$ and $\varphi \land \psi$.
+    \item If $\varphi$ is in $\Sigma$, then so are $\exists x_i \varphi$ and 
+        $\forall (x_i \in x_j) \varphi$ for all distinct variables $x_i, x_j$.
+\end{enumerate}
+\end{definition}
+
+\begin{definition}[$\Sigma$-formula]
+    \label{def:IsSigma}
+    \lean{HF.IsSigma}
+    \leanok
+    \uses{def:IsInSSigma}
+    Say an $\mathcal{L}$-formula $\varphi$ is a \textit{$\Sigma$-formula} 
+    if there exists a strict $\Sigma$-formula $\psi$ such that 
+    $\vdash \varphi \leftrightarrow \psi$.
+\end{definition}
+
+\begin{lemma}
+    \lean{HF.subset_isSigma, HF.eq_isSigma, HF.enlarge_isSigma, HF.eq_empty_isSigma, 
+        HF.mem_empty_isSigma, HF.empty_mem_isSigma}
+    \label{lem:subset_isSigma+...+empty_mem_isSigma}
+    \leanok
+    \uses{thm:completeness, lem:notin_empty+mem_enlarge+mem_enlarge_empty, thm:exten_prop, 
+        def:Subset+SSubset, cor:mem_irrefl, def:IsSigma}
+    The $\mathcal{L}$-formulas $x \subseteq y$, $x = y$, $z = x \lhd y$, $x=0$, $x\in 0$,
+    $0 \in x$ and all atomic formulas are $\Sigma$-formulas.
+\end{lemma}
+
+\begin{proof}
+    The following are theorems of HF:
+    \begin{enumerate}
+        \item $x \subseteq y \leftrightarrow \forall (u \in x)[u \in y]$.
+        \item $x = y \leftrightarrow x \subseteq y \land y \subseteq x$.
+        \item $z = x \lhd y \leftrightarrow \forall(u \in z)[u \in x \lor u = y] 
+        \land (x \subseteq z) \land (y \in z)$.
+        \item $x = 0 \leftrightarrow \forall (u \in x)[u \in u]$ (see Lemma 
+        \ref{lem:notin_empty+mem_enlarge+mem_enlarge_empty} and Corollary \ref{cor:mem_irrefl}).
+        \item $x \in 0 \leftrightarrow x \in x$ (see Corollary \ref{cor:mem_irrefl}).
+        \item $0 \in x \leftrightarrow \exists y (y = 0 \land y \in x)$.
+    \end{enumerate}
+    It follows from Definition \ref{def:IsInSSigma}.1, 
+    Lemma \ref{lem:subset_isSigma+...+empty_mem_isSigma}.2 and 
+    Lemma \ref{lem:subset_isSigma+...+empty_mem_isSigma}.3 that every atomic formula is a
+    $\Sigma$-formula.
+\end{proof}
+
+\begin{lemma}
+    \label{lem:Ord_isSigma+Seq_isSigma+LstSeq_isSigma}
+    \uses{def:IsTrans+IsOrd, def:IsSeq, def:IsSigma, lem:subset_isSigma+...+empty_mem_isSigma}
+    Introduce the $\mathcal{L}$-formula $\operatorname{LstSeq}(s,k,y)$, which means
+    $\operatorname{Seq}(s,k)$ and $s$ terminates with $y$.
+    
+    The $\mathcal{L}$-formulas $\operatorname{Ord}(x)$, $\operatorname{Seq}(s,k)$ and
+    $\operatorname{LstSeq}(s,k,y)$ are $\Sigma$-formulas.
+\end{lemma}
+
+\begin{proof}
+    The following are theorems of HF:
+    \begin{enumerate}
+        \item $\operatorname{Ord}(x) \leftrightarrow 
+        \forall(y \in x)\{[y \subseteq x] \land \forall(z \in y)[z \subseteq y]\}$ (see 
+        Definition \ref{def:IsTrans+IsOrd} and 
+        Lemma \ref{lem:subset_isSigma+...+empty_mem_isSigma}).
+        \item $\operatorname{Seq}(s, k) \leftrightarrow \operatorname{Ord}(k) 
+            \land \varnothing \in k \land \forall(n \in k) \exists u[\langle n, u\rangle \in s] 
+            \land$
+            $\forall(y, z \in s) \exists(m, n \in k) \exists u \exists v[y=\langle m, u\rangle 
+            \land z=\langle n, v\rangle \land(m \neq n \lor u=v)]$.
+        \item $\operatorname{LstSeq}(s, k, y) \leftrightarrow \operatorname{Seq}(s, k) 
+            \land \exists n(n \lhd n=k \land\langle n, y\rangle \in s)$ 
+            (see Lemma \ref{lem:subset_isSigma+...+empty_mem_isSigma}).
+    \end{enumerate}
+    Observe that, in 2., $m \neq n$ is a $\Sigma$-formula if $m,n$ are ordinals, as
+    it is equivalent to $m \in n \lor n \in m$ 
+    (see Corollary \ref{cor:IsOrd.exclusive_comparability+...+IsOrd.succ_inj}).
+\end{proof}
+
+A \textit{$\Sigma$-sentence} is a $\Sigma$-formula that is a sentence, 
+i.e. it has no free variables. 
+As discussed earlier, the key property of $\Sigma$-sentences is that 
+being modelled by $\mathfrak{S}$ is equivalent to being a theorem of HF.
+In order to establish this, we need the class of $\Sigma_{\lhd}$-formulas.
+
+\begin{definition}
+    \label{def:IsSigma_lhd}
+    \uses{def:Lang, def:IsSigma}
+    Say an $\mathcal{L}$-formula is a \textit{$\Sigma_{\lhd}$-formula} if it is made up
+    of terms, the symbols ${\varnothing}$, ${=}$, ${\in}$, ${\lor}$, ${\land}$, ${\exists x_i}$,
+    and ${\forall(x_i \in \tau)}$, where $\tau$ is any term that does not contain $x_i$.
+
+    For a $\Sigma_{\lhd}$-formula $\alpha$, its length $\lambda(\alpha)$ is defined to be 
+    the total number of occurrences of the symbols $\lor$, $\land$, $\exists$, and $\forall$.
+\end{definition}
+
+\begin{theorem}
+    \label{thm:stdModel.prf_iff_models}
+    \lean{HF.stdModel.prf_iff_models}
+    \uses{thm:completeness, def:C, lem:C.exists_finset_shorter_and_mem_iff_iSup, 
+        def:stdModel, thm:stdModel.model_of_consistent, def:IsSigma, def:IsSigma_lhd}
+    If HF is consistent, then, for every $\Sigma$-sentence $\alpha$, 
+    $$
+    \vdash \alpha \,\text{ if and only if } 
+    \mathfrak{S} \vDash \alpha.
+    $$
+\end{theorem}
+
+\begin{proof}
+    By consistency, $\mathfrak{S}$ is a model of HF.
+    Then, by soundness, it remains to show that for every $\Sigma$-sentence $\alpha$,
+    $\mathfrak{S} \vDash \alpha$ implies $\vdash \alpha$.
+    Furthermore, since every strict $\Sigma$-sentence is a $\Sigma_{\lhd}$-sentence, 
+    it suffices to prove the result for every $\Sigma_{\lhd}$-sentence $\alpha$.
+    We proceed by induction on the length $\lambda (\alpha)$.
+
+    Suppose $\lambda(\alpha) = 0$. Then $\alpha$ must be of the form $\sigma \in \tau$ or 
+    $\sigma = \tau$ for some constant terms $\sigma, \tau$.
+    The result follows directly from the definition of ${\in}$ and ${=}$ in $\mathfrak{S}$,
+    i.e. in Definition \ref{def:stdModel}.
+
+    Now assume $\lambda(\alpha) > 0$ and suppose the result holds for all $\Sigma_{\lhd}$-sentences 
+    of length less than $\lambda (\alpha)$.
+    We consider the following cases:
+    \begin{itemize}
+        \item $\alpha$ is $\beta \lor \gamma$. By the inductive assumption,
+        \begin{equation*}
+            \mathfrak{S} \vDash \alpha \rightarrow 
+            (\mathfrak{S} \vDash \beta \text{ or } \mathfrak{S} \vDash \gamma) \rightarrow
+            (\vdash \beta \text{ or } \vdash \gamma) \rightarrow 
+            \vdash \beta \lor \gamma.
+        \end{equation*}
+        \item $\alpha$ is $\beta \land \gamma$. Analogous to the previous case.
+        \item $\alpha$ is $\exists x \beta (x)$.
+        If $\mathfrak{S} \vDash \alpha$, then there exists a term $\tau$ such that
+        $\mathfrak{S} \vDash \beta(\tau)$. 
+        Since $\lambda(\beta(\tau)) = \lambda(\beta) < \lambda(\alpha)$, it follows from
+        the inductive assumption that $\vdash \beta(\tau)$, 
+        and hence $\vdash \exists x \beta (x)$.
+        \item $\alpha$ is $\forall (x \in \tau) \beta(x)$, where $\tau$ is a term that does not
+        contain $x$. Since there are no free variables in $\alpha$, $\tau$ must be a constant term.
+        By Lemma \ref{lem:C.exists_finset_shorter_and_mem_iff_iSup}, there are 
+        $\tau_1, \ldots, \tau_m \in \mathbb{C}$ such that
+        $$
+        \vdash \forall (x \in \tau) \beta(x) \leftrightarrow
+        \beta(\tau_1) \land \ldots \land \beta(\tau_m).
+        $$
+        Since $\lambda(\beta(\tau_j)) = \lambda(\beta(x)) < \lambda(\alpha)$, it follows 
+        from the inductive assumption that
+        \begin{equation*}
+            \begin{split}
+                & \mathfrak{S} \vDash \alpha \rightarrow 
+                \mathfrak{S} \vDash \beta(\tau_1) \text{ and } \ldots \text{ and } 
+                \mathfrak{S} \vDash \beta(\tau_m) \rightarrow \\
+                &\vdash \beta(\tau_1) \text{ and } \ldots \text{ and } \vdash \beta(\tau_m) 
+                \rightarrow
+                \vdash \beta(\tau_1) \land \ldots \land \beta(\tau_m) \rightarrow
+                \vdash \forall (x \in \tau) \beta(x).
+            \end{split}
+        \end{equation*}
+    \end{itemize}
+\end{proof}
+
+\section{The formula Pf}
+
+In this section, we summarise the more detailed work required to construct the 
+$\Sigma$-formula $\operatorname{Pf}(x)$.
+Ultimately, we want the latter to \textit{mean} that $x$ codes an $\mathcal{L}$-formula 
+that is a theorem of HF.
+Here, by 'to mean', we imply the equivalence between $\vdash \operatorname{Pf}(x)$ and
+$x$ coding a theorem of HF.
+
+The remaining work of establishing $\operatorname{Pf}(x)$ essentially boils down to verifying 
+that all fundamental relationships between variables, terms, and formulas that 
+underlie a proof in HF can be expressed by a $\Sigma$-formula that only involves codes as arguments.
+By the latter, we mean that the $\Sigma$-formula is expressed in such a way that the arguments 
+necessarily be codes if the $\Sigma$-formula is a theorem of HF.
+In the following definitions, 
+we will present the abbreviations and the \textit{meanings} of all these relevant 
+$\Sigma$-formulas, which are sub-formulas of $\operatorname{Pf}(x)$.
+For the corresponding written-out $\Sigma$-formulas themselves, the reader is
+referred to Sections 3 and 4 of \cite{swierczkowski2003finite}, where they are described in detail.
+
+For the sake of readability, the definitions of the relevant $\Sigma$-formulas are presented
+as lemmas.
+
+\begin{lemma}
+    \label{lem:IsSigma.Relations}
+    \uses{def:Lang, def:IsTrans+IsOrd, def:IsSeq, def:Code.Term, def:Code.Formula, def:IsSigma, 
+        lem:Ord_isSigma+Seq_isSigma+LstSeq_isSigma}
+    There exist 25 $\Sigma$-formulas, solely involving codes as arguments, that express certain
+    relationships between variables, terms, and formulas.
+\end{lemma}
+
+\begin{proof}
+    Introduce the following abbreviations of $\Sigma$-formulas:
+    \begin{enumerate}
+        \item $\operatorname{Var}(x)$\\
+        Means: $x$ is the code of a variable.
+        \item $\operatorname{SeqTerm}(s,k,t)$\\
+        Means: $s$ is a sequence of length $k$ and $s$ terminates with the code $t$ of a term.
+        \item $\operatorname{Term}(t)$\\
+        Means: $t$ is the code of a term.
+        \item $\operatorname{Const}(t)$\\
+        Means: $t$ is the code of a constant term.
+        \item $\operatorname{NecSeqTerm}(s,k,t)$\\
+        Means: $s$ is a sequence of length $k$, $s$ terminates with the code $t$ of a term and
+        all terms whose codes appear in $s$ are sub-terms of the term coded by $t$.
+        \item $\operatorname{VarOccTerm}(v,t)$\\
+        Means: $v$ codes a variable, $t$ codes a term and 
+        the variable coded by $v$ occurs in the term coded by $t$.
+        \item $\operatorname{VarOccTerm}(v,t)$\\
+        Means: $v$ codes a variable, $t$ codes a term and 
+        the variable coded by $v$ does not occur in the term coded by $t$.
+        \item $\operatorname{At}(y)$\\
+        Means: $y$ is the code of an atomic formula.
+        \item $\operatorname{VarOccAt}(v,y)$\\
+        Means: $v$ codes a variable, $y$ codes an atomic formula and 
+        the variable coded by $v$ occurs in the atomic formula coded by $y$.
+        \item $\operatorname{VarNonOccAt}(v,y)$\\
+        Means: $v$ codes a variable, $y$ codes an atomic formula and 
+        the variable coded by $v$ does not occur in the atomic formula coded by $y$.
+        \item $\operatorname{MakeForm}(u,w,v,y)$\\
+        Means: $v$ codes a variable and if $u,w$ are codes of $\mathcal{L}$-formulas, 
+        then $y$ is the code of an $\mathcal{L}$-formula created from one or 
+        both $\mathcal{L}$-formulas coded by $u$, $w$ and possibly the variable coded by $v$ 
+        by a single application of ${\lor}$, ${\neg}$ or ${\exists}$.
+        \item $\operatorname{SeqForm}(s,k,y)$\\
+        Means: $s$ is a sequence of length $k$ and $s$ terminates with the code $y$ of a 
+        $\mathcal{L}$-formula.
+        \item $\operatorname{Form}(y)$\\
+        Means: $y$ is the code of an $\mathcal{L}$-formula.
+        \item $\operatorname{NonAt}(y)$\\
+        Means: $y$ is the code of a non-atomic formula.
+        \item $\operatorname{VarTopForm}(v,y)$\\
+        Means: $y$ is the code of an $\mathcal{L}$-formula beginning with $\exists x_i$,
+        where $v$ codes the variable $x_i$.
+        \item $\operatorname{SeqVarTopForm}(v,z,n,y)$\\
+        Means: $y$ is the code of an $\mathcal{L}$-formula and $z$ is a sequence of length $n$ 
+        showing how the $\mathcal{L}$-formula coded by $y$ is made up of $\mathcal{L}$-formulas 
+        beginning with $\exists x_i$ — where $v$ codes the variable $x_i$ — and of atomic formulas,
+        by using ${\lor}$, ${\neg}$ and ${\exists x_j}$, where $j\neq i$.
+        \item $\operatorname{NecSeqVarTopForm}(v,z,n,y)$\\
+        Means: as above, but additionally all $\mathcal{L}$-formulas whose codes appear in $z$
+        are sub-formulas of the $\mathcal{L}$-formula coded by $y$.
+        \item $\operatorname{VarOccFreeForm}(v,y)$\\
+        Means: $v$ codes a variable, $y$ codes an $\mathcal{L}$-formula and the variable coded by
+        $v$ occurs freely in the $\mathcal{L}$-formula coded by $y$.
+        \item $\operatorname{VarNonOccFreeForm}(v,y)$\\
+        Means: $v$ codes a variable, $y$ codes an $\mathcal{L}$-formula and the variable coded by
+        $v$ does not occur freely in the $\mathcal{L}$-formula coded by $y$.
+        \item $\operatorname{TermsSubsVarForm}(t,v,y)$\\
+        Means: $t$ codes a term, $v$ codes a variable, $y$ codes an $\mathcal{L}$-formula, and
+        the term coded by $t$ is a substitutable for the variable coded by $v$ in the 
+        $\mathcal{L}$-formula coded by $y$.
+        \item $\operatorname{SeqRepVarTermTerm}(s, s^\prime, k, v, t, u, u^\prime)$\\
+        Means: $v$ codes a variable, $t$ codes a term, $u$ and $u^\prime$ are coding terms 
+        and $s$ and $s^\prime$ are sequences of length $k$ such that $s$ terminates with $u$ 
+        and $s^\prime$ terminates with $u^\prime$ and the term coded by $u^\prime$ is obtained from 
+        that coded by $u$ by replacing each occurrence of the variable coded by $v$ by the term 
+        coded by $t$.
+        \item $\operatorname{RepVarTermTerm}(v, t, u, u^\prime)$\\
+        Means: $v$ codes a variable, $t$ codes a term, $u$ and $u^\prime$ code terms and 
+        replacing in the term coded by $u$ the variable coded by $v$, at all of its occurrences, 
+        by the term coded by $t$ one obtains the term coded by $u^\prime$.
+        \item $\operatorname{RepVarTermAt}(v, t, y, y^\prime)$\\
+        Means: $v$ codes a variable, $t$ codes a term, $y$ and $y^\prime$ are coding atomic formulas 
+        and replacing the variable coded by $v$ by the term coded by $t$, 
+        at all occurrences of this variable in the atomic formula coded by $y$, 
+        one obtains the atomic formula coded by $y^\prime$.
+        \item $\operatorname{SeqRepVarTermForm}(s, s^\prime, k, v, t, y, y^\prime)$\\
+        Means: $v$ codes a variable, $t$ codes a term, $y$ and $y^\prime$ code 
+        $\mathcal{L}$-formulas and $s$ and $s^\prime$ are sequences of length $k$ such that $s$ 
+        terminates with $y$ and $s^\prime$ terminates with $y^\prime$ and the $\mathcal{L}$-formula
+        coded by $y^\prime$ is obtained from that coded by $y$ by replacing each free occurrence of 
+        the variable coded by $v$ by the term coded by $t$.
+        \item $\operatorname{RepVarTermForm}(v, t, y, y^\prime)$\\
+        Means: $v$ codes a variable, $t$ codes a term, $y$ and $y^\prime$ code atomic 
+        $\mathcal{L}$-formulas and replacing the variable coded by $v$ by the term coded by $t$, 
+        at all free occurrences of this variable in the $\mathcal{L}$-formula coded by $y$, 
+        one obtains the $\mathcal{L}$-formula coded by $y^\prime$.
+    \end{enumerate}
+\end{proof}
+
+With these $\Sigma$-formulas in place, 
+we can now construct the provability formula $\operatorname{Pf}(x)$.
+To that end, we need eight other $\Sigma$-formulas that express arguments being 
+a code of an axiom or a deduction rule, directly yielding $\operatorname{Pf}(x)$.
+
+\begin{lemma}[The formula Pf]
+    \label{lem:IsSigma.Ax+...+IsSigma.Pf}
+    \lean{HF.IsSigma.Pf}
+    \uses{def:Lang, def:Axioms, def:Bool.Axioms, def:Spec.Axiom, def:Equality.Axioms,
+        def:Prf.mp+Prf.subst+Prf.exists_intro, def:Code.Formula, 
+        def:IsSigma, lem:IsSigma.Relations}
+    There exist eight $\Sigma$-formulas, solely involving codes as arguments, that, together with
+    the $\Sigma$-formulas in Lemma \ref{lem:IsSigma.Relations}, are sub-formulas of
+    the $\Sigma$-formula $\operatorname{Pf}(x)$.
+\end{lemma}
+
+\begin{proof}
+    Introduce the following abbreviations of $\Sigma$-formulas:
+    \begin{enumerate}
+        \item $\operatorname{Ax}(y)$\\
+        Means: $y$ is the code of the first axiom of HF, the second axiom of HF, or 
+        an equality axiom 
+        (see Definition \ref{def:Axioms} and Definition \ref{def:Equality.Axioms}).
+        \item $\operatorname{Ind}(x)$\\
+        Means: $y$ is the code of an instance of the induction scheme.
+        \item $\operatorname{Sent}(x)$\\
+        Means: $x$ is the code of an $\mathcal{L}$-formula that is an instance 
+        of one of the five sentential axioms (see Definition \ref{def:Bool.Axioms}).
+        \item $\operatorname{Spec}(x)$\\
+        Means: $x$ is the code of a specialisation axiom (see Definition \ref{def:Spec.Axiom}).
+        \item $\operatorname{ModPon}(x,y,y^\prime)$\\
+        Means: If $x,y,y^\prime$ are codes of $\mathcal{L}$-formulas, 
+        then $y^\prime$ codes an $\mathcal{L}$-formula which follows from the $\mathcal{L}$-formulas
+        coded by $x$ and $y$ by an application of the Modus Ponens rule 
+        (see Definition \ref{def:Prf.mp+Prf.subst+Prf.exists_intro}).
+        \item $\operatorname{Subst}(y,y^\prime)$\\
+        Means: $y,y^\prime$ are codes of $\mathcal{L}$-formulas and
+        the $\mathcal{L}$-formula coded by $y^\prime$ is obtained from that coded by $y$ by
+        an application of the substitution rule.
+        \item $\operatorname{ExIntro}(y, y^\prime)$\\
+        Means: $y,y^\prime$ are codes of $\mathcal{L}$-formulas and
+        the $\mathcal{L}$-formula coded by $y^\prime$ is obtained from that coded by $y$ by
+        an application of the $\exists$-introduction rule.
+        \item $\operatorname{Prf}(s, k, y)$\\
+        Means: $s$ is a sequence of length $k$ of codes of $\mathcal{L}$-formulas 
+        such that the corresponding sequence of formulas is a proof of the 
+        $\mathcal{L}$-formula coded by $y$.
+        \item $\operatorname{Pf}(y)$\\
+        Means: $y$ is the code of an $\mathcal{L}$-formula that is a theorem of HF.
+    \end{enumerate}
+\end{proof}
+
+\begin{theorem}[Proof formalisation condition]
+    \label{thm:prf_iff_prf_Pf_code}
+    \lean{HF.prf_iff_prf_Pf_code}
+    \leanok
+    \uses{def:Code.Formula, thm:stdModel.prf_iff_models, lem:IsSigma.Relations, 
+        lem:IsSigma.Ax+...+IsSigma.Pf}
+    If HF is consistent, then, for any $\mathcal{L}$-formula $\varphi$,
+    $$
+    \vdash \varphi \,\text{ if and only if } \vdash \operatorname{Pf}(\ulcorner{\varphi}\urcorner).
+    $$
+\end{theorem}
+
+\begin{proof}
+    Assume HF is consistent. First, suppose $\vdash \varphi$.
+    Then there is a finite sequence of $\mathcal{L}$-formulas, $\varphi_{\varnothing}, \ldots, 
+    \varphi_p$, that forms a proof of $\varphi$.
+    If $s = \{\langle l, \ulcorner{\varphi_l}\urcorner \rangle : l \in \operatorname{succ}(p) \}$,
+    then $s \in \mathbb{S}$ (the domain of $\mathfrak{S}$, see Definition \ref{def:stdModel}) and
+    $\mathfrak{S} \vDash \operatorname{Prf}(s, \operatorname{succ}(p), 
+    \ulcorner{\varphi}\urcorner)$, 
+    so that $\mathfrak{S} \vDash \operatorname{Pf}(\ulcorner{\varphi}\urcorner)$.
+    Since $\operatorname{Pf}(\ulcorner{\varphi}\urcorner)$ is a $\Sigma$-sentence,
+    by Theorem \ref{thm:stdModel.prf_iff_models}, 
+    $\vdash \operatorname{Pf}(\ulcorner{\varphi}\urcorner)$.
+    
+    Now suppose $\vdash \operatorname{Pf}(\ulcorner{\varphi}\urcorner)$.
+    Then, by Theorem \ref{thm:stdModel.prf_iff_models}, 
+    $\mathfrak{S} \vDash \operatorname{Pf}(\ulcorner{\varphi}\urcorner)$.
+    This means there exists a sequence $s \in \mathbb{S}$ of length $k$,
+    where each $s_l$ codes some $\mathcal{L}$-formula $\varphi_l$, 
+    so that $\varphi_{\operatorname{pred}(k)}$ equals $\varphi$ and the sequence
+    $\varphi_{\varnothing}, \ldots, \varphi_{\operatorname{pred}(k)}$ is a proof of $\varphi$.
+    Thus, $\vdash \varphi$.
+\end{proof}
+
+%%FILE blueprint/src/contents/ch6_FirstIncompl.tex
+\chapter{Gödel’s First Incompleteness Theorem}
+
+With the coding system and the provability formula in place, 
+we can now prove Gödel’s first incompleteness theorem.
+The only ingredient missing is the existence of self-referential sentences, 
+which is exactly what Gödel’s diagonal lemma provides.
+The latter essentially states that for any $\mathcal{L}$-formula $\alpha$ with one free variable,
+there exists a sentence $\delta$ such that $\delta$ is equivalent to $\alpha$ with the code
+of $\delta$ substituted for the free variable.
+Then, to prove Gödel’s first incompleteness theorem, we apply the diagonal lemma to the negation
+of the provability formula, which implies there exists a sentence $\delta$ equivalent to the 
+sentence with meaning 'the sentence $\delta$ is not a theorem of HF'.
+This yields a contradiction if we assume $\delta$ to be provable or disprovable.
+
+To establish Gödel’s diagonal lemma, we first need to construct, for every variable $x_i$, 
+a $p$-function $K$ such that for every $\mathcal{L}$-formula $\varphi(x_i)$,
+$$
+\vdash K (\ulcorner{\varphi}\urcorner) = \ulcorner{\varphi(\ulcorner {\varphi} \urcorner)}\urcorner.
+$$
+This is done by letting $K$ be the replacement function, introduced in due course.
+However, to prove this property of $K$, we first need a unary $p$-function $H$
+that satisfies $H(\mu) = \ulcorner {\mu} \urcorner$ for any code $\mu$, which in turn requires
+another unary $p$-function $W$ that is the restriction of $H$ to the codes of variables.
+
+\begin{lemma}
+    \label{lem:Code.exists_pFunc_forall_var_eq_code}
+    \uses{def:pFunc, def:Ord.pFuncRecursive, def:C+C.length, def:Code.Symbol}
+    There exists a unary $p$-function $W$ such that, for any variable $x_i$,
+    $$
+    \vdash W(\ulcorner{x_i}\urcorner) = \ulcorner{(\ulcorner{x_i}\urcorner)}\urcorner.
+    $$
+\end{lemma}
+
+\begin{proof}
+    Recall that the codes of variables are defined as 
+    $\ulcorner{x_1}\urcorner = \varnothing \lhd \varnothing, \quad 
+    \ulcorner{x_2}\urcorner = \ulcorner{x_1}\urcorner \lhd \ulcorner{x_1}\urcorner,\quad\ldots\quad,
+    \ulcorner{x_{k+1}}\urcorner = \ulcorner{x_k}\urcorner \lhd \ulcorner{x_k}\urcorner$.\\
+    Define $W$ recursively on ordinals (see Definition \ref{def:Ord.pFuncRecursive}):
+    $$
+    W(x) = \begin{cases}
+        \varnothing & \text{if } x = \varnothing, \\
+        \langle \ulcorner{\lhd}\urcorner, W(\operatorname{pred}(x)), W(\operatorname{pred}(x)) 
+        \rangle & \text{otherwise}.
+    \end{cases}
+    $$ 
+    We apply induction on the index of the ordinal $x_i$, i.e. on its length 
+    (see Definition \ref{def:C+C.length}).
+    First,
+    \begin{equation*}
+        \begin{split}
+    W(\ulcorner(x_1)\urcorner) &= W(\operatorname{succ}(\varnothing)) =
+    \langle \ulcorner{\lhd}\urcorner, W(\varnothing), W(\varnothing) \rangle =
+    \langle \ulcorner{\lhd}\urcorner, \varnothing, \varnothing \rangle \\ & = 
+    \ulcorner{\varnothing \lhd \varnothing}\urcorner = 
+    \ulcorner{(\ulcorner{x_1}\urcorner)}\urcorner.
+    \end{split}
+    \end{equation*}
+    Now, suppose that $W(\ulcorner{x_i}\urcorner) = \ulcorner{(\ulcorner{x_i}\urcorner)}\urcorner$.
+    Then,
+    \begin{equation*}
+        \begin{split}
+    W(\ulcorner{x_{i+1}}\urcorner) & = W(\operatorname{succ}(\ulcorner{x_i}\urcorner)) =
+    \langle \ulcorner{\lhd}\urcorner, W(\ulcorner{x_i}\urcorner), W(\ulcorner{x_i}\urcorner) \rangle
+    \\ & = \langle \ulcorner{\lhd}\urcorner, \ulcorner{(\ulcorner{x_i}\urcorner)}\urcorner,
+    \ulcorner{(\ulcorner{x_i}\urcorner)}\urcorner \rangle 
+    = \ulcorner{(\ulcorner{x_i}\urcorner \lhd \ulcorner{x_i}\urcorner)}\urcorner =
+    \ulcorner{(\ulcorner{x_{i+1}}\urcorner)}\urcorner.
+        \end{split}
+    \end{equation*}
+\end{proof}
+
+\begin{lemma}
+    \label{lem:Code.exists_pFunc_eq_code}
+    \uses{def:singleton+pair, def:pFunc, thm:rank.exists_pFuncRecursive, def:C+C.length, 
+    def:Code.Symbol, def:Code.Term, lem:Code.exists_pFunc_forall_var_eq_code}
+    There exists a unary $p$-function $H$ such that, for any code $\mu$,
+    $$
+    \vdash H(\mu) = \ulcorner{\mu}\urcorner.
+    $$
+\end{lemma}
+
+\begin{proof}
+    Recall the definition of an ordered pair:
+    \begin{equation*}
+        \begin{split}
+    \langle x, y \rangle & = \{\{x\}, \{x, y\}\} = 
+        \{\varnothing \lhd x, (\varnothing \lhd x) \lhd y\} \\
+        & = (\varnothing \lhd (\varnothing \lhd x)) \lhd
+        ((\varnothing \lhd x) \lhd y).
+        \end{split}
+    \end{equation*}
+    It follows that, for any terms $\sigma,\tau$,
+    \begin{equation*}
+        \begin{split}
+            \ulcorner {\langle \sigma, \tau \rangle} \urcorner & =
+            \ulcorner {(\varnothing \lhd (\varnothing \lhd x)) \lhd
+            ((\varnothing \lhd x) \lhd y)} \urcorner \\
+            & = \langle \ulcorner{\lhd}\urcorner,
+            \langle\ulcorner{\lhd}\urcorner, \varnothing,
+            \langle \ulcorner{\lhd}\urcorner, \varnothing, 
+            \ulcorner{\sigma}\urcorner \rangle  \rangle,
+            \langle \ulcorner{\lhd}\urcorner, 
+            \langle \ulcorner{\lhd}\urcorner, \varnothing, 
+            \ulcorner{\sigma}\urcorner \rangle, 
+            \ulcorner{\tau}\urcorner \rangle \rangle.
+        \end{split}
+    \end{equation*}
+    Let $t(x,y)$ be the term 
+    $\langle \ulcorner{\lhd}\urcorner,
+    \langle\ulcorner{\lhd}\urcorner, \varnothing,
+    \langle \ulcorner{\lhd}\urcorner, \varnothing, x \rangle  \rangle,
+    \langle \ulcorner{\lhd}\urcorner, 
+    \langle \ulcorner{\lhd}\urcorner, \varnothing, x \rangle, y \rangle \rangle$.
+    Then $t(\ulcorner{\sigma}\urcorner, \ulcorner{\tau}\urcorner) = 
+    \ulcorner {\langle \sigma, \tau \rangle} \urcorner$ for any terms $\sigma,\tau$.
+
+    Now define $H$ recursively on rank (see Theorem \ref{thm:rank.exists_pFuncRecursive}):
+    $$
+    H(x) = \begin{cases}
+        W(x) & \text{if $x$ is an ordinal}, \\
+        t(H(u), H(v)) & \text{if } x = \langle u, v \rangle \text{ for some } u,v, \\
+        \varnothing & \text{otherwise}.
+    \end{cases}
+    $$
+    This definition makes sense as no ordered pair is an ordinal 
+    ($\varnothing \in x$ for every non-zero ordinal $x$, whereas 
+    $\varnothing \notin \langle u, v\rangle$ for all $u,v$), and
+    $x = \langle u, v \rangle$ implies $u,v \in \operatorname{cl}(x)$.
+
+    Suppose $\mu \in \Gamma$, i.e. $\mu$ is a code. 
+    If $\mu=\varnothing$ or $\mu$ is the code of a variable,
+    then $H(\mu) = W(\mu) = \ulcorner{\mu}\urcorner$ by 
+    Lemma \ref{lem:Code.exists_pFunc_forall_var_eq_code}.
+    All other terms $\mu \in \Gamma$ are built from $\varnothing$ and codes of variables by
+    forming ordered pairs.
+    Since for $\mu = \langle \sigma, \tau \rangle$ the terms $\sigma,\tau$ are shorter than $\mu$
+    (see Definition \ref{def:C+C.length}), we may proceed by induction on the length of $\mu$.
+    Assume that $H(\sigma) = \ulcorner{\sigma}\urcorner$ and $H(\tau) = \ulcorner{\tau}\urcorner$.
+    Then, by the definition of $t(x,y)$,
+    $$
+    \ulcorner{\mu}\urcorner = \ulcorner {\langle \sigma, \tau \rangle} \urcorner =
+    t(\ulcorner{\sigma}\urcorner, \ulcorner{\tau}\urcorner) = t(H(\sigma), H(\tau)) = H(\mu),
+    $$
+    Q.E.D.
+\end{proof}
+
+\begin{lemma}[The replacement function]
+    \label{lem:Code.exists_repl}
+    \uses{def:pFunc, def:C+C.length, def:Code.Symbol, def:Code.Term, def:Code.Formula, 
+        lem:IsSigma.Relations}
+    There exists a ternary $p$-function, denoted by $\operatorname{REPL}$, such that
+    $$
+    \vdash \operatorname{REPL}(\ulcorner{x_i}\urcorner, \ulcorner{\tau}\urcorner, 
+    \ulcorner{\varphi}\urcorner) = \ulcorner{\varphi(x_i/\tau)}\urcorner
+    $$
+    for every variable $x_i$, term $\tau$ and $\mathcal{L}$-formula $\varphi$, where
+    $\varphi(x_i/\tau)$ results from replacing each free occurrence of $x_i$ in $\varphi$ by $\tau$.
+\end{lemma}
+
+\begin{proof}
+    As the defining $\mathcal{L}$-formula $\varphi(v,t,y,y^\prime)$ for $\operatorname{REPL}$ 
+    choose:
+    \begin{equation*}
+        \begin{split}
+    & [(\exists!z)\operatorname{RepVarTermForm}(v,t,y,z) \land 
+    \operatorname{RepVarTermForm}(v,t,y,y^\prime)] \lor \\
+    & [\not (\exists!z)\operatorname{RepVarTermForm}(v,t,y,z) \land y^\prime = 0].
+        \end{split}
+    \end{equation*}
+    Then it is clear that $(\exists!y^\prime)\varphi(v,t,y,y^\prime)$.
+    By the meaning of the $\Sigma$-formula $\operatorname{REPL}$, as described in
+    \ref{lem:IsSigma.Relations}, the result follows.
+    For the precise details, including the written-out $\Sigma$-formula $\operatorname{REPL}$,
+    the reader is referred to Sections 3 and 5 of \cite{swierczkowski2003finite}.
+\end{proof}
+
+\begin{lemma}
+    \label{lem:Code.exists_pFunc_forall_form_eq_code_form}
+    \lean{HF.Code.exists_pFunc_forall_form_eq_code_form}
+    \uses{def:pFunc, def:C+C.length, def:Code.Formula, lem:Code.exists_pFunc_eq_code,
+        lem:Code.exists_repl}
+    \leanok
+    For every variable $x_i$, there exists a unary $p$-function $K$ such that, 
+    for any $\mathcal{L}$-formula $\varphi(x_i)$,
+    $$
+    \vdash K (\ulcorner{\varphi}\urcorner) = 
+    \ulcorner{\varphi(\ulcorner {\varphi} \urcorner)}\urcorner.
+    $$
+\end{lemma}
+
+\begin{proof}
+    First, note that the composite of $p$-functions is a $p$-function.
+    Now put
+    $$
+    K(x) = \operatorname{REPL}(\ulcorner{x_i}\urcorner, H(x), x).
+    $$
+    Let $\tau = \ulcorner{\varphi}\urcorner$.
+    Then, by \ref{lem:Code.exists_pFunc_eq_code}, $\ulcorner{\tau}\urcorner = H (\tau)$ and
+    furthermore, by \ref{lem:Code.exists_repl},
+    $$
+    \vdash \operatorname{REPL}(\ulcorner{x_i}\urcorner, H(\ulcorner{\varphi}\urcorner), 
+    \ulcorner{\varphi}\urcorner) = \ulcorner{\varphi(\ulcorner {\varphi} \urcorner)}\urcorner,
+    $$
+    i.e. $\vdash K (\ulcorner{\varphi}\urcorner)=
+    \ulcorner{\varphi(\ulcorner {\varphi} \urcorner)}\urcorner$.
+\end{proof}
+
+\begin{theorem}[Gödel's Diagonal Lemma]
+    \label{thm:diagonal}
+    \lean{HF.diagonal}
+    \uses{lem:Code.exists_pFunc_forall_form_eq_code_form}
+    \leanok
+    For any $\mathcal{L}$-formula $\alpha$ with one free variable, 
+    there exists a sentence $\delta$ such that 
+    $$
+    \vdash \delta \leftrightarrow \alpha(\ulcorner{\delta}\urcorner).
+    $$
+\end{theorem}
+
+\begin{proof}
+    Substitute $K(x_i)$ for $x_i$ in $\alpha(x_i)$, 
+    and denote by $\beta(x_i)$ the resulting $\mathcal{L}$-formula.
+    Thus,
+    $$
+    \vdash \beta(x_i) \leftrightarrow \alpha(K(x_i)),
+    $$
+    and if we substitute $\ulcorner{\beta}\urcorner$ for $x_i$, 
+    by Lemma \ref{lem:Code.exists_pFunc_forall_form_eq_code_form},
+    $$
+    \vdash \beta(\ulcorner{\beta}\urcorner) \leftrightarrow 
+    \alpha(\ulcorner{\beta(\ulcorner{\beta}\urcorner)}\urcorner).
+    $$
+    Thus, $\delta = \beta(\ulcorner{\beta}\urcorner)$ satisfies the required property.
+\end{proof}
+
+\begin{theorem}[Gödel's First Incompleteness Theorem]
+    \label{thm:first_incompleteness}
+    \lean{HF.first_incompleteness}
+    \uses{thm:stdModel.prf_iff_models, thm:prf_iff_prf_Pf_code, thm:diagonal}
+    \leanok
+    If HF is consistent, then there exists a sentence $\delta$ such that
+    neither $\vdash \delta$ nor $\vdash \neg \delta$. 
+    Furthermore, $\mathfrak{S} \vDash \delta$.
+\end{theorem}
+
+\setcounter{equation}{0}
+\begin{proof}
+    \leanok
+    We apply Theorem \ref{thm:diagonal} to the negation of the provability formula, 
+    $\neg\operatorname{Pf}(x)$.
+    Then, there exists a sentence $\delta$ such that
+    \begin{equation}
+        \label{eq:diag}
+        \vdash \delta \leftrightarrow \neg \operatorname{Pf}(\ulcorner{\delta}\urcorner).
+    \end{equation}
+    \begin{itemize}
+        \item Suppose $\vdash \delta$. Then, by Theorem \ref{thm:prf_iff_prf_Pf_code},
+        $\vdash \operatorname{Pf}(\ulcorner{\delta}\urcorner)$.
+        On the other hand, by \ref{eq:diag}, 
+        $\vdash \neg \operatorname{Pf}(\ulcorner{\delta}\urcorner)$.
+        This contradicts the assumption of consistency.
+        \item Suppose $\vdash \neg \delta$. Then, by \ref{eq:diag},
+        $\vdash \operatorname{Pf}(\ulcorner{\delta}\urcorner)$, and hence, by
+        Theorem \ref{thm:prf_iff_prf_Pf_code}, $\vdash \delta$.
+        This contradicts the assumption of consistency.
+        \item Suppose $\mathfrak{S} \not\vDash \delta$. 
+        Then, as $\delta$ is a sentence, $\mathfrak{S} \vDash \neg\delta$, and hence,
+        by \ref{eq:diag}, $\mathfrak{S} \vDash \operatorname{Pf}(\ulcorner{\delta}\urcorner)$.
+        As $\operatorname{Pf}(\ulcorner{\delta}\urcorner)$ is a $\Sigma$-sentence, it follows from 
+        Theorem \ref{thm:stdModel.prf_iff_models} that
+        $\vdash \operatorname{Pf}(\ulcorner{\delta}\urcorner)$. 
+        But then, by Theorem \ref{thm:prf_iff_prf_Pf_code}, $\vdash \delta$,
+        which, by soundness, yields $\mathfrak{S} \vDash \delta$.
+        This contradicts the assumption that $\mathfrak{S} \not\vDash \delta$.
+    \end{itemize}
+
+\end{proof}
+
+%%FILE blueprint/src/contents/intro.tex
+\chapter*{Introduction}
+\addcontentsline{toc}{chapter}{Introduction} 
+
+Gödel’s incompleteness theorems are two of the most significant findings in mathematical logic. 
+These theorems, proved by \cite{godel1931formal},
+address the boundaries of what can be proven within formal systems. 
+The first incompleteness theorem asserts that in any consistent formal system
+capable of performing basic arithmetic, 
+there will always exist certain statements in the system's language that can neither be proved
+nor disproved within that system. 
+The second incompleteness theorem extends this idea, 
+demonstrating that if such a formal system is consistent, it cannot prove its own consistency.
+
+When Gödel's incompleteness theorems were first published, 
+they generated a considerable amount of surprise within the mathematical community. 
+To understand why, it is important to consider their impact on Hilbert's program, 
+a foundational project proposed by David Hilbert in the early 1920s. 
+Hilbert aimed to provide a secure basis for all of mathematics by establishing a 
+finite, complete and consistent set of axioms from which all mathematical truths could be derived. 
+This initiative also led to the emergence of formal languages and first-order logic. 
+However, Gödel's theorems demonstrated that such a complete and consistent set of axioms 
+was unattainable.
+
+As previously mentioned, Gödel's incompleteness theorems apply to any formal system 
+that is consistent and complex enough to describe the basic arithmetic of natural numbers. 
+A formal system is a deductive framework comprising a specific set of axioms and deduction rules, 
+which govern how new theorems can be logically derived from those axioms.
+The incompleteness theorems focus on what can be formally proven within these systems, that is,
+solely using the axioms and the deduction rules of the system.
+This is a crucial distinction, as it does not concern what can be "informally" proven
+in an absolute sense.
+For instance, one should not confuse the first incompleteness theorem with the idea that
+there are mathematical truths that cannot be proven at all.
+However, these truths may not be provable using today's standard mathematical methods, 
+because Gödel's first incompleteness theorem also applies to the most powerful axiomatic systems 
+from which all of modern mathematics can be derived.
+
+First-order theories form a class of formal systems that are particularly relevant to 
+Gödel's theorems.
+Peano Arithmetic (PA) is an example of a first-order theory, 
+where all variables are meant to represent natural numbers. 
+In contrast, systems like the first-order theory of hereditarily finite sets — 
+the theory we will focus on — are richer than PA in the sense that 
+only certain formulas correspond to statements about natural numbers. 
+
+The first-order theory of hereditarily finite sets (HF) is a formal system where all variables are 
+meant to represent sets. It is specified by a first-order language where the non-logical symbols
+consist of one binary relation symbol, one binary function symbol, and one constant symbol.
+Furthermore, the non-logical axioms consist of two axioms, which essentially define what the 
+function symbols represent, and one induction scheme.
+We will show that all Zermelo-Fraenkel set theory (ZF) axioms, except for the axiom of infinity,
+can be derived from the axioms of HF.
+To pick up on a point previously mentioned, the axiomatic system of ZF, 
+together with the axiom of choice, is the common foundation of mathematics.
+Thus, proving Gödel's first incompleteness theorem for HF is significant in the sense that
+it shows that even a system that is rich enough to derive a substantial portion of mathematics 
+is still incomplete, if it were consistent.
+
+Furthermore, we choose HF to prove Gödel's incompleteness theorems as 
+the development of a meta-theory — a crucial step in the proof of the 
+first incompleteness theorem — is more straightforward in HF than in PA.
+As described by \cite{swierczkowski2003finite}, terms and formulas can be encoded directly 
+using standard set-theoretical objects without needing to rely on prime factorisation or 
+the Chinese remainder theorem.
+To illustrate the ease of the encoding, it is worth mentioning that 
+even encoding proofs does not require any additional machinery, whereas, for PA, there is no natural
+way to encode a sequence of codes as one code.
+For HF, a sequence of codes of formulas that corresponds to a proof, 
+i.e. a sequence of finite sets, is again a finite set and thus can directly serve as a code.
+Additionally, \cite{swierczkowski2003finite} proves that HF and PA are definitionally equivalent,
+i.e. each of HF and PA is an extension of the other. More specifically,
+if one adds the binary relation symbol and the binary function symbol of HF to PA, 
+then the axioms of HF can be proved in PA. The analogous converse is also true.
+Therefore, it seems that proving Gödel's incompleteness theorems for one of these two theories 
+holds the same significance as proving it for the other.
+
+In this thesis, we aim to formalise Gödel's first incompleteness theorem for the first-order theory of
+hereditarily finite sets in the Lean theorem prover. 
+That is, we present all the results required to prove the first
+incompleteness theorem and formalise as much of the proof as possible within time constraints. 
+We adopt a similar approach to \cite{paulson2014machine}, where the author formalises the 
+developments of \cite{swierczkowski2003finite} in Isabelle.
+Formalising the first incompleteness theorem directly leads to the second incompleteness theorem
+by readily following the remaining sections of \cite{swierczkowski2003finite}.
+At this moment, we are not aware of any existing formalisation of both Gödel's incompleteness 
+theorems in Lean.
+
+Before we distinguish between what has been formalised and what has not,
+we will first provide an overview of the proof of Gödel's first incompleteness theorem for HF.
+The proof by contradiction is divided into three parts.
+First, all symbols, terms, and formulas in the language are encoded as constant terms within the
+language itself through a one-to-one mapping.
+This mapping leads to the creation of a meta-theory, 
+which allows the formal system to make statements about its own content. 
+In particular, the encoding lets us analyse properties of formulas — such as whether a formula 
+is a theorem of HF — by studying the properties of their codes.
+This brings us to the second part of the proof, where the provability formula is constructed.
+The provability formula is a condition applicable to the code of a formula $\varphi$ 
+in the language of HF that is satisfied if and only if $\varphi$ is a theorem of HF.
+So, in essence, the provability formula states 'formula $\varphi$ is provable within the system'.
+Finally, using both the coding system and the provability formula, 
+the third part of the proof involves constructing a self-referential formula that
+essentially states 'I am not provable within the system'. This is established through 
+Gödel's diagonal lemma, which finds its roots in Cantor's diagonal argument.
+It is then straightforward to observe this formula can neither be proved nor disproved.
+
+Before coming to the formalisation of the coding system and the provability formula, naturally, 
+the first-order theory of hereditarily finite sets has to be formalised as a first step.
+It includes defining the language of HF, the axioms of HF, the notion of a formal proof in HF,
+and the notion of a model of HF — this has been completed by drawing on the work of
+\cite{han2020formal}.
+In the first place, the axioms of HF generate a vast amount of auxiliary results required for 
+formalising the coding system, the provability formula and Gödel's diagonal lemma. 
+This part of the work has been mostly completed, 
+except for the section dealing with the rank function.
+Furthermore, constructing the provability formula requires specifying the standard model of HF.
+In Lean, the standard model of HF has been defined, but two proofs in the associated chapter
+still need to be included.
+The coding system has been fully formalised, but the proof of the encoding being one-to-one
+is missing. However, the proof of the first incompleteness theorem seems independent of the
+latter.
+The main body of the construction of the provability formula has not been formalised yet,
+and the same holds for Gödel's diagonal lemma.
+However, using unproven statements regarding the provability formula and Gödel's diagonal lemma, 
+the proof of the first incompleteness theorem has been completed. 
+
+For a detailed overview of what has been formalised and what has not, 
+the reader is referred to the dependency graph.
+Furthermore, 
+Chapter 1 provides a detailed introduction to the first-order theory of hereditarily finite sets,
+including both syntactical and semantic notions.
+Chapter 2 presents the results preliminary to the main steps of the proof of Gödel's first
+incompleteness theorem.
+Chapters 3 and 4 define the standard model of HF and the coding system, respectively.
+Finally, Chapter 5 constructs the provability formula and Chapter 6
+proves Gödel's diagonal lemma and his first incompleteness theorem.
+
+Note that the presentation of mathematical results in this work closely follows the presentation of  
+\cite{swierczkowski2003finite}, because the purpose of this work is to formalise 
+the contents of the latter exactly.
+A detailed presentation of these results is necessary, 
+as the blueprint serves as a guide for the formalisation process, 
+contributing to possible future efforts in completing this process of proving
+Gödel's incompleteness theorems in Lean.\\\\
+
+\noindent{\Large \textbf {Acknowledgements}}\\
+
+\noindent Primarily, I would like to express my gratitude to my supervisor, Professor Kevin Buzzard, 
+for his continuous support, guidance, and enthusiasm for the Lean theorem prover, 
+which have been invaluable to this project.
+I also thank Jujian Zhang for his collaboration on parts of the formalisation process and 
+Professor David Evans for sharing his expertise in mathematical logic. 
+Finally, I extend my thanks to the Lean community — especially Floris van Doorn, Sky Wilshaw and 
+Bhavik Mehta — for their help and support.
+
+
+
+
+%%FILE blueprint/src/statement.tex
+\newpage
+\noindent The work contained in this thesis is my own work unless otherwise stated.\\
+
+\noindent This PDF file is generated by the Blueprint tool.
+For the actual 'blueprint', which presents exactly the same content but in a more readable format
+— as it is linked to the Lean formalisation and includes a dependency graph —
+the reader is referred to the website \url{https://aemiliusr.github.io/Goedel_HF_Lean/blueprint/}.

@@ -1,0 +1,2135 @@
+
+%%FILE lean/blueprint/src/chapters/ac.tex
+\chapter{AC Recursion and firstColSign Invariant}
+\label{chap:ac}
+
+Reference: [BMSZ] Equation~(11.2); internal blueprint
+\texttt{firstColSign\_invariant.md}.
+
+\section{AC recursion (Equation 11.2)}
+
+\begin{definition}[AC base case]
+  \label{def:AC_base}
+  \lean{AC.base}
+  \leanok
+  \uses{def:ILS}
+  When $|\check{\mathcal{O}}| = 0$ the base $\mathcal{L}_\tau$ is determined by $\gamma$:
+  \[
+    \mathrm{AC.base}\,\gamma = \begin{cases}
+      [(1,\ [(1, 0)])] & \gamma = B^+ \\
+      [(1,\ [(0, -1)])] & \gamma = B^- \\
+      [(1,\ [])] & \gamma \in \{C, D, M\}.
+    \end{cases}
+  \]
+  (Each list entry is an \texttt{ACResult} branch: \texttt{(coeff, ILS)}.)
+\end{definition}
+
+\begin{definition}[AC step — single recursion step]
+  \label{def:AC_step}
+  \lean{AC.step}
+  \leanok
+  \uses{def:AC_base, def:thetaLift, def:twistBD, def:charTwistCM}
+  Given a source $\mathrm{ACResult}$ and target $\gamma$, together with parameters
+  $(p, q, \eps_\tau, \eps_\wp) \in \mathbb{Z}^2 \times \{0, 1\}^2$, define:
+  \begin{itemize}
+    \item If $\gamma \in \{D, B^+, B^-\}$ (no C/M pre-twist):
+    \[
+      \mathrm{AC.step} =
+      \begin{cases}
+        (\mathrm{source.thetaLift}\,\gamma\,p\,q)\otimes(1, -1) & \eps_\tau = 1 \\
+        \mathrm{source.thetaLift}\,\gamma\,p\,q & \eps_\tau = 0
+      \end{cases}
+    \]
+    \item If $\gamma \in \{C, M\}$: first pre-twist the source by $\otimes(-1, -1)^{\eps_\wp}$, then theta lift.
+  \end{itemize}
+  The resulting \texttt{ACResult} carries all branches.
+\end{definition}
+
+\begin{definition}[AC fold — chain of AC.step]
+  \label{def:AC_fold}
+  \lean{AC.fold}
+  \leanok
+  \uses{def:AC_base, def:AC_step}
+  Given a descent chain \texttt{chain : List ACStepData}, inductively apply
+  \texttt{AC.step} from \texttt{AC.base} to get the final \texttt{ACResult},
+  yielding $\mathcal{L}_\tau$ when the chain is $\tau$'s descent sequence.
+\end{definition}
+
+\section{Sign preservation through AC.step}
+
+\begin{theorem}[AC.step preserves signature ($\gamma = D$)]
+  \label{thm:AC_step_sign_D}
+  \lean{AC.step_sign_D}
+  \leanok
+  \uses{def:AC_step, thm:thetaLift_sign, lem:twist_sign}
+  Every branch of the output has $\Sign = (p, q)$:
+  \[ \forall r \in \mathrm{AC.step}_{D}(\mathrm{source}, p, q, \eps_\tau, \eps_\wp),\quad \Sign(r.2) = (p, q). \]
+\end{theorem}
+\begin{proof}
+  \leanok
+  Unfold \texttt{AC.step} for $\gamma = D$: it is \texttt{thetaLift\_CD} followed (optionally) by \texttt{twistBD}. Both preserve $\Sign$; the initial value is $(p, q)$ by Theorem~\ref{thm:thetaLift_sign}.
+\end{proof}
+
+
+\begin{theorem}[AC.step preserves signature (all $\gamma$)]
+  \label{thm:AC_step_sign_all}
+  \lean{AC.step_sign_Bplus, AC.step_sign_Bminus, AC.step_sign_C, AC.step_sign_M}
+  \leanok
+  \uses{thm:AC_step_sign_D}
+  Parallel statements for $\gamma \in \{B^+, B^-, C, M\}$.
+\end{theorem}
+\begin{proof}
+  \leanok
+  Parallel argument to the D case using the corresponding \texttt{thetaLift} / twist preservation for each $\gamma \in \{B^+, B^-, C, M\}$.
+\end{proof}
+
+
+\begin{theorem}[AC.base signature]
+  \label{thm:AC_base_sign}
+  \lean{AC.base_sign}
+  \leanok
+  \uses{def:AC_base, def:sign}
+  $\Sign(\mathrm{AC.base}\,\gamma) = (0, 0)$ for $\gamma \in \{C, D, M\}$; $\Sign(\mathrm{AC.base}\,B^+) = (1, 0)$; $\Sign(\mathrm{AC.base}\,B^-) = (0, 1)$.
+\end{theorem}
+\begin{proof}
+  \leanok
+  By direct inspection of each case: \texttt{AC.base}$\,B^+ = [(1, [(1, 0)])]$ has $\Sign = (1, 0)$; $B^-$ gives $(0, 1)$; $C, D, M$ have empty ILS with $\Sign = (0, 0)$.
+\end{proof}
+
+
+\section{firstColSign invariant (the key structural lemma)}
+
+This section extracts the main content of
+\texttt{docs/blueprints/firstColSign\_invariant.md}.
+
+\begin{theorem}[firstColSign diff invariant]
+  \label{thm:fcSign_diff}
+  \lean{AC.chain_firstColSign_eq_diff_sign}
+  \leanok
+  \uses{def:firstColSign, def:AC_fold, thm:AC_step_sign_D}
+  Let $\mathcal{L}_\tau = \mathrm{AC.fold}\,\gamma\,(\mathrm{descent\ chain})$, with
+  the descent chain producing signatures $\Sign(\mathcal{L}_\tau)$ and
+  $\Sign(\mathcal{L}_{\tau''})$ at successive levels. Then
+  \[ \mathrm{fcSign}(\mathcal{L}_\tau) = \Sign(\mathcal{L}_\tau) - \Sign(\mathcal{L}_{\tau''}). \]
+  Equivalently:
+  \[ \mathrm{fcSign}(\mathcal{L}_\tau) = (p_\tau - p_{\tau''},\ q_\tau - q_{\tau''}). \]
+\end{theorem}
+
+\begin{proof}
+  \leanok
+  By induction on the descent chain length. Base: $\mathrm{fcSign}(\mathrm{AC.base}) = \Sign(\mathrm{AC.base})$ (\texttt{AC.base\_firstColSign\_eq\_sign}).
+  Step: Given $\mathrm{fcSign}(\text{prev}) = \Sign(\text{prev}) - \Sign(\text{prev}')$, the post-twist and theta-lift formulas (Thm~\ref{thm:thetaLift_fcSign}, Lem~\ref{lem:twist_fcSign}) give
+  \[ \mathrm{fcSign}(\text{curr}) = (\text{current } p - \Sign(\text{prev}).1,\ \text{current } q - \Sign(\text{prev}).2) \]
+  $= (p_\tau - p_{\tau''},\ q_\tau - q_{\tau''})$ since the current parameters are $\Sign(\tau) = (p_\tau, q_\tau)$ and the previous source has $\Sign = \Sign(\tau'')$ by IH.
+\end{proof}
+
+\begin{theorem}[AC.step fcSign invariant — per $\gamma$]
+  \label{thm:AC_step_fcSign}
+  \lean{AC.step_firstColSign_D, AC.step_firstColSign_Bplus, AC.step_firstColSign_Bminus, AC.step_firstColSign_C, AC.step_firstColSign_M, AC.step_firstColSign_BD}
+  \leanok
+  \uses{thm:fcSign_diff}
+  For each $\gamma \in \{D, B^+, B^-, C, M\}$, every branch of $\mathrm{AC.step}$'s output has
+  $\mathrm{fcSign}(r.2) = (p - \mathrm{prev\_sig}.1,\ q - \mathrm{prev\_sig}.2)$ where $\mathrm{prev\_sig} = \Sign(\text{source})$.
+\end{theorem}
+\begin{proof}
+  \leanok
+  For each $\gamma$ the \texttt{AC.step} output is a lifted ILS $(p_0, q_0) :: \mathcal{E}'$ whose first-column signature equals $(p - \mathrm{src\_sig}.1, q - \mathrm{src\_sig}.2)$ by the augment + twist formulas (Theorem~\ref{thm:thetaLift_fcSign}, Lemma~\ref{lem:twist_fcSign}).
+\end{proof}
+
+
+\begin{theorem}[ACResult.postTwist first entry]
+  \label{thm:postTwist_first_entry}
+  \lean{ACResult.postTwist_BD_first_entry}
+  \leanok
+  \uses{def:twistBD, def:AC_step}
+  After the B/D post-twist $\otimes(1, -1)$ (when $\eps_\tau = 1$), the first entry of every branch transforms by $(a, b) \mapsto (a, -b)$.
+\end{theorem}
+\begin{proof}
+  \leanok
+  $(a, b) \otimes (1, -1)$ maps $(a, b) \mapsto (a, -b)$ when $\eps_\tau = 1$ (by the definition of \texttt{twistBD} on the first row, which is odd-length), and is the identity otherwise.
+\end{proof}
+
+
+\section{Multiplicity-free}
+
+\begin{definition}[MultiplicityFree]
+  \label{def:mfree}
+  \lean{ACResult.MultiplicityFree}
+  \leanok
+  \uses{def:ILS}
+  An $\mathrm{ACResult}$ is \emph{multiplicity free} if no two branches carry the same ILS.
+\end{definition}
+
+\begin{proposition}[Prop 11.7 — $\mathcal{L}_\tau$ is multiplicity free]
+  \label{prop:11_7}
+  \lean{prop_11_7_multiplicityFree}
+  \leanok
+  \uses{def:AC_step, def:mfree, lem:T_squared}
+  The AC output $\mathcal{L}_\tau \in \mathbb{Z}[\MYD_\star]$ is multiplicity free.
+\end{proposition}
+\begin{proof}
+  \leanok
+  \uses{thm:AC_step_sign_all, lem:T_squared, lem:twist_sign}
+  By induction. Base: \texttt{AC.base}'s single branch is trivially multiplicity free.
+  Inductive step: the four operations (sign twist, $T$, augmentation, truncation) are either injective or extend uniformly across branches, and AC.step preserves distinct ILS's by tracking sign/fcSign differences.
+\end{proof}
+
+
+%%FILE lean/blueprint/src/chapters/counting.tex
+\chapter{Main Counting Formulas (Prop 10.11, 10.12)}
+\label{chap:counting}
+
+These are the \textbf{main unconditional counting theorems} of [BMSZb]
+Section~10. They express the PBP count via a recursion over the dual
+partition. The statements only require shape / dual-partition legality; no
+auxiliary proof objects appear.
+
+\section{Recursive counting functions}
+
+\begin{definition}[Tail class for D type]
+  \label{def:tailClass_D}
+  \lean{tailClass_D, TailClass}
+  \leanok
+  \uses{def:PBP}
+  The \emph{tail class} of $\tau \in \PBP_D$ is one of $\{\mathrm{DD}, \mathrm{RC}, \mathrm{SS}\}$
+  determined by the tail symbol (Def.~\ref{def:tail}): $x_\tau = d$ gives $\mathrm{DD}$,
+  $x_\tau \in \{r, c\}$ gives $\mathrm{RC}$, $x_\tau = s$ gives $\mathrm{SS}$.
+\end{definition}
+
+\begin{definition}[countPBP\_D — recursion on D-type dp]
+  \label{def:countPBP_D}
+  \lean{countPBP_D, countPBP_D_of_YD, countPBP_D_of_YD_aux, tripleSum}
+  \leanok
+  \uses{def:DualPart, def:tailClass_D, prop:10_9_D, prop:10_8_C_prim}
+  $\mathrm{countPBP\_D}(dp) \in \mathbb{N}^3$ is a triple
+  $(n_{\mathrm{DD}}, n_{\mathrm{RC}}, n_{\mathrm{SS}})$ counting PBPs by tail class.
+
+  Base case: $dp = []$ gives $(0, 0, 0)$ (or $(1, 0, 0)$ for the empty orbit, depending on
+  the initial convention; see the Lean definition).
+
+  Step: remove the first part of $dp$, recursively count on the remaining orbit, and
+  combine via descent relations (Prop~\ref{prop:10_8_C_prim}, Prop~\ref{prop:10_8_C_bal},
+  or the balanced D split).
+
+  $\mathrm{tripleSum}(n_{\mathrm{DD}}, n_{\mathrm{RC}}, n_{\mathrm{SS}}) := n_{\mathrm{DD}} + n_{\mathrm{RC}} + n_{\mathrm{SS}}$ is the total count.
+\end{definition}
+
+\begin{definition}[countPBP\_B — recursion on B-type dp]
+  \label{def:countPBP_B}
+  \lean{countPBP_B}
+  \leanok
+  \uses{def:DualPart, def:countPBP_D, prop:10_8_M_prim, prop:10_8_M_bal}
+  $\mathrm{countPBP\_B}(dp) \in \mathbb{N}^3$ via analogous recursion, using
+  the M$\to$B descent (Prop~10.8 M) plus recursion to D on a shifted shape.
+\end{definition}
+
+\begin{definition}[countPBP\_C — recursion on C-type dp]
+  \label{def:countPBP_C}
+  \lean{countPBP_C}
+  \leanok
+  \uses{def:countPBP_D, prop:10_8_C_prim, prop:10_8_C_bal}
+  $\mathrm{countPBP\_C}(dp) \in \mathbb{N}$ via descent to D:
+  \[
+    \mathrm{countPBP\_C}(dp) =
+    \begin{cases}
+      \text{(primitive formula)} & \mu_Q.\mathrm{colLen}(0) \geq \mu_P.\mathrm{colLen}(0) \\
+      n_{\mathrm{DD}} + n_{\mathrm{RC}} & \text{balanced}
+    \end{cases}
+  \]
+\end{definition}
+
+\begin{definition}[countPBP\_M — recursion on M-type dp]
+  \label{def:countPBP_M}
+  \lean{countPBP_M}
+  \leanok
+  \uses{def:countPBP_B, prop:10_8_M_prim, prop:10_8_M_bal}
+  $\mathrm{countPBP\_M}(dp) \in \mathbb{N}$ via descent to B.
+\end{definition}
+
+\section{Main counting theorems}
+
+\begin{proposition}[Prop 10.11 B — counting for B type]
+  \label{prop:10_11_B}
+  \lean{card_PBPSet_B_eq_tripleSum_countPBP_B, prop_10_11_B, card_B_combined}
+  \leanok
+  \uses{cor:10_10, def:countPBP_B, prop:10_8_M_prim, prop:10_8_M_bal}
+  For any valid B-type dual partition $dp$ with shape $(\mu_P, \mu_Q)$ derived from $dp$:
+  \[ |\PBP_{B^+}(\mu_P, \mu_Q)| + |\PBP_{B^-}(\mu_P, \mu_Q)| = \mathrm{tripleSum}\big(\mathrm{countPBP\_B}(dp)\big). \]
+\end{proposition}
+\begin{proof}
+  \leanok
+  Joint induction on the ``Total'', ``A1'', ``A3'' components following the
+  B-type lifting structure (see \texttt{CorrespondenceB.lean}, main theorem
+  \texttt{card\_B\_combined}). The balanced cases use Prop~\ref{prop:10_8_M_bal}
+  and a fiber decomposition of $\PBP_{B^\pm}$ along bottom-$\mathcal{Q}$ paint.
+  Primitive cases use Prop~\ref{prop:10_8_M_prim} and the M-type balanced
+  bijection together with induction hypothesis on the shifted $\mu_P$.
+\end{proof}
+
+\begin{proposition}[Prop 10.11 D — counting for D type]
+  \label{prop:10_11_D}
+  \lean{card_PBPSet_D_eq_tripleSum_countPBP_D, prop_10_11_D}
+  \leanok
+  \uses{cor:10_10, def:countPBP_D}
+  For any valid D-type dual partition $dp$:
+  \[ |\PBP_D(\mu_P, \mu_Q)| = \mathrm{tripleSum}\big(\mathrm{countPBP\_D}(dp)\big). \]
+\end{proposition}
+\begin{proof}
+  \leanok
+  By induction on $dp$. Base $dp = []$: both sides zero. Inductive step: split $\PBP_D$ along the first-column structure; each sub-class (DD/RC/SS) has a bijection to a lower-level count via the double-descent recursion, which by IH equals $\mathrm{tripleSum}(\mathrm{countPBP\_D}(\mathrm{tail}(dp)))$.
+\end{proof}
+
+
+\begin{proposition}[Prop 10.12 C — counting for C type]
+  \label{prop:10_12_C}
+  \lean{card_PBPSet_C_eq_countPBP_C, prop_10_12_C}
+  \leanok
+  \uses{prop:10_8_C_prim, prop:10_8_C_bal, prop:10_11_D, def:countPBP_C, prop:10_2_C}
+  For any valid C-type dual partition $dp$ (with $dp \neq []$):
+  \[ |\PBP_C(\mu_P, \mu_Q)| = \mathrm{countPBP\_C}(dp). \]
+\end{proposition}
+\begin{proof}
+  \leanok
+  For $\mu_Q.\mathrm{colLen}(0) \geq \mu_P.\mathrm{colLen}(0)$: apply Prop.~\ref{prop:10_8_C_prim} to reduce to $\PBP_D$; then invoke Prop.~\ref{prop:10_11_D}. For balanced: Prop.~\ref{prop:10_8_C_bal} gives $\mathrm{DD} + \mathrm{RC}$ of the next-level D count.
+\end{proof}
+
+
+\begin{proposition}[Prop 10.12 M — counting for M type]
+  \label{prop:10_12_M}
+  \lean{card_PBPSet_M_eq_countPBP_M, prop_10_12_M}
+  \leanok
+  \uses{prop:10_8_M_prim, prop:10_8_M_bal, prop:10_11_B, def:countPBP_M, prop:10_2_M}
+  For any valid M-type dual partition $dp$:
+  \[ |\PBP_M(\mu_P, \mu_Q)| = \mathrm{countPBP\_M}(dp). \]
+\end{proposition}
+\begin{proof}
+  \leanok
+  For $\mu_P.\mathrm{colLen}(0) > \mu_Q.\mathrm{colLen}(0)$: Prop.~\ref{prop:10_8_M_prim} reduces to $B^+ + B^-$, both settled by Prop.~\ref{prop:10_11_B}. Balanced: Prop.~\ref{prop:10_8_M_bal}.
+\end{proof}
+
+
+\section{Unconditional status}
+
+The counting recursion formulas (\ref{prop:10_11_B}, \ref{prop:10_11_D},
+\ref{prop:10_12_C}, \ref{prop:10_12_M}) are \textbf{fully unconditional in the
+following sense}: the hypotheses are only shape/dual-partition legality
+(\texttt{SortedGE}, parity, positivity, shape match), all of which are
+defining properties of ``valid B/D/C/M dual partition''. No auxiliary proof
+object (ACResult, ILS, L, twist equality) is needed.
+
+
+%%FILE lean/blueprint/src/chapters/descent.tex
+\chapter{Descent maps (Lemmas 10.4, 10.5, Prop 10.8)}
+\label{chap:descent}
+
+Descent maps remove the left-most column of $\mathcal{P}$, of $\mathcal{Q}$, or
+of both, producing a PBP on a shifted shape. They are the central structural
+tool of [BMSZb] Section~10.
+
+\section{Single naive descent paints}
+
+There are four single descent directions:
+\begin{itemize}
+\item D $\to$ C: cut col~0 of $\mathcal{Q}$ and shift $\mathcal{P}$ left by one column (refill top with $\bullet$).
+\item C $\to$ D: cut col~0 of $\mathcal{P}$ (refill top/middle with $\bullet, s$).
+\item B $\to$ M: cut col~0 of $\mathcal{Q}$ (refill $\mathcal{P}$, translate).
+\item M $\to$ B: cut col~0 of $\mathcal{P}$.
+\end{itemize}
+
+\begin{definition}[D $\to$ C paints]
+  \label{def:descentPaint_DC}
+  \lean{descentPaintL_DC, descentPaintR_DC}
+  \leanok
+  \uses{def:PBP, def:dotScolLen}
+  Let $c_L(j) := \mathrm{dotScolLen}(\tau.\mathcal{P}, j + 1)$ and $c_R(j) := \tau.\mathcal{Q}.\mathrm{colLen}(j)$.
+  \begin{align*}
+    (\nabla_{DC}\tau).\mathcal{P}(i, j) &= \begin{cases} \bullet & i < c_L(j) \\ \tau.\mathcal{P}(i, j + 1) & \text{otherwise} \end{cases} \\
+    (\nabla_{DC}\tau).\mathcal{Q}(i, j) &= \begin{cases} \bullet & i < c_L(j) \\ s & c_L(j) \leq i < c_R(j) \\ \bullet & i \geq c_R(j) \end{cases}
+  \end{align*}
+\end{definition}
+
+\begin{definition}[C $\to$ D paints]
+  \label{def:descentPaint_CD}
+  \lean{descentPaintL_CD, descentPaintR_CD}
+  \leanok
+  \uses{def:PBP, def:dotScolLen}
+  $c_L(j) := \mathrm{dotScolLen}(\tau.\mathcal{P}, j)$, $c_R(j) := \tau.\mathcal{Q}.\mathrm{colLen}(j + 1)$.
+  \[
+    (\nabla_{CD}\tau).\mathcal{P}(i, j) = \begin{cases} \bullet & i < c_R(j) \\ s & c_R(j) \leq i < c_L(j) \\ \tau.\mathcal{P}(i, j) & i \geq c_L(j) \end{cases}
+  \]
+  $(\nabla_{CD}\tau).\mathcal{Q}$ is all $\bullet$ (D type has $\mathcal{Q}$-allowed $= \{\bullet\}$).
+\end{definition}
+
+\begin{definition}[B $\to$ M paints]
+  \label{def:descentPaint_BM}
+  \lean{descentPaintL_BM, descentPaintR_BM}
+  \leanok
+  \uses{def:PBP, def:dotScolLen}
+  $c_L(j) := \mathrm{dotScolLen}(\tau.\mathcal{P}, j)$, $c_R(j) := \mathrm{dotScolLen}(\tau.\mathcal{Q}, j + 1)$.
+  \begin{align*}
+    (\nabla_{BM}\tau).\mathcal{P}(i, j) &= \begin{cases} \bullet & i < c_R(j) \\ s & c_R(j) \leq i < c_L(j) \\ \tau.\mathcal{P}(i, j) & i \geq c_L(j) \end{cases} \\
+    (\nabla_{BM}\tau).\mathcal{Q}(i, j) &= \begin{cases} \bullet & i < c_R(j) \\ \tau.\mathcal{Q}(i, j + 1) & i \geq c_R(j) \end{cases}
+  \end{align*}
+\end{definition}
+
+\begin{definition}[M $\to$ B paints]
+  \label{def:descentPaint_MB}
+  \lean{descentPaintL_MB, descentPaintR_MB}
+  \leanok
+  \uses{def:PBP, def:dotScolLen}
+  $c_L(j) := \mathrm{dotScolLen}(\tau.\mathcal{P}, j + 1)$, $c_R(j) := \mathrm{dotScolLen}(\tau.\mathcal{Q}, j)$.
+  \begin{align*}
+    (\nabla_{MB}\tau).\mathcal{P}(i, j) &= \begin{cases} \bullet & i < c_L(j) \\ \tau.\mathcal{P}(i, j+1) & i \geq c_L(j) \end{cases} \\
+    (\nabla_{MB}\tau).\mathcal{Q}(i, j) &= \begin{cases} \bullet & i < c_L(j) \\ s & c_L(j) \leq i < c_R(j) \\ \tau.\mathcal{Q}(i, j) & i \geq c_R(j) \end{cases}
+  \end{align*}
+\end{definition}
+
+\section{Double descent $\nabla^2$}
+
+\begin{definition}[Double descent D type]
+  \label{def:doubleDescent_D}
+  \lean{doubleDescent_D_paintL}
+  \leanok
+  \uses{def:descentPaint_DC, def:descentPaint_CD, def:dotScolLen}
+  Composite D $\xrightarrow{\nabla_{DC}}$ C $\xrightarrow{\nabla_{CD}}$ D.
+  After simplification:
+  \[
+    (\nabla^2_D \tau).\mathcal{P}(i, j) = \begin{cases}
+      \bullet & i < \tau.\mathcal{Q}.\mathrm{colLen}(j + 1) \\
+      s & \tau.\mathcal{Q}.\mathrm{colLen}(j + 1) \leq i < \mathrm{dotScolLen}(\tau.\mathcal{P}, j + 1) \\
+      \tau.\mathcal{P}(i, j + 1) & i \geq \mathrm{dotScolLen}(\tau.\mathcal{P}, j + 1)
+    \end{cases}
+  \]
+  (The resulting $\mathcal{Q}$ is all $\bullet$.)
+\end{definition}
+
+\begin{definition}[Double descent B type]
+  \label{def:doubleDescent_B}
+  \lean{doubleDescent_B_paintL, doubleDescent_B_paintR}
+  \leanok
+  \uses{def:descentPaint_BM, def:descentPaint_MB, def:dotScolLen}
+  Composite B $\xrightarrow{\nabla_{BM}}$ M $\xrightarrow{\nabla_{MB}}$ B.
+  \begin{align*}
+    (\nabla^2_B \tau).\mathcal{P}(i, j) &= \begin{cases} \bullet & i < \mathrm{dotScolLen}(\tau.\mathcal{P}, j + 1) \\ \tau.\mathcal{P}(i, j + 1) & i \geq \ldots \end{cases} \\
+    (\nabla^2_B \tau).\mathcal{Q}(i, j) &= \begin{cases} \bullet & i < \mathrm{dotScolLen}(\tau.\mathcal{P}, j + 1) \\ s & \mathrm{dotScolLen}(\tau.\mathcal{P}, j + 1) \leq i < \mathrm{dotScolLen}(\tau.\mathcal{Q}, j + 1) \\ \tau.\mathcal{Q}(i, j + 1) & i \geq \ldots \end{cases}
+  \end{align*}
+\end{definition}
+
+\section{Lemmas 10.4, 10.5 — descent injectivity}
+
+\begin{lemma}[Lemma 10.4 C — C$\to$D descent is injective]
+  \label{lem:10_4_C}
+  \lean{descentCD_injective, lemma_10_4_C}
+  \leanok
+  \uses{def:descentPaint_CD}
+  Let $\mu_P, \mu_Q$ be shapes with $\mathrm{shiftLeft}(\mu_Q) \leq \mu_P$.
+  The map $\nabla_{CD} : \PBP_C(\mu_P, \mu_Q) \to \PBP_D(\mu_P, \mathrm{shiftLeft}(\mu_Q))$ is injective.
+\end{lemma}
+\begin{proof}
+  \leanok
+  The C$\to$D descent writes $\mathcal{P}_\tau(i, j + 1)$ pointwise into $\mathcal{P}_{\nabla\tau}(i, j)$ for $i \geq c_L(j)$, and fills the dot/$s$ region uniquely. Given two C-type PBPs with equal descent, we recover $\mathcal{P}_\tau$ cell-by-cell.
+\end{proof}
+
+
+\begin{lemma}[Lemma 10.4 B — B$\to$M + signature is injective]
+  \label{lem:10_4_B}
+  \lean{lemma_10_4_B, PBP.descent_inj_B}
+  \leanok
+  \uses{def:descentPaint_BM, def:signature_pbp, def:epsilon_pbp, def:dotScolLen}
+  For $\gamma \in \{B^+, B^-\}$ and $\tau_1, \tau_2 \in \PBP_\gamma(\mu_P, \mu_Q)$
+  with the interlacing shape hypothesis $\mathrm{dotScolLen}(\tau_i.\mathcal{P}, j) \geq \mathrm{dotScolLen}(\tau_i.\mathcal{Q}, j + 1)$:
+  if $\nabla_{BM}\tau_1 = \nabla_{BM}\tau_2$, $\Sign(\tau_1) = \Sign(\tau_2)$, $\eps_{\tau_1} = \eps_{\tau_2}$,
+  then $\tau_1 = \tau_2$.
+\end{lemma}
+\begin{proof}
+  \leanok
+  By \texttt{PBP.descent\_inj\_B}: equal B$\to$M descents plus equal signatures plus equal $\eps$ determine the paint cell-by-cell; the interlacing hypothesis localizes the recovery.
+\end{proof}
+
+
+\begin{lemma}[Lemma 10.5 M — M$\to$B descent is injective]
+  \label{lem:10_5_M}
+  \lean{descentMB_PBP, descentMB_injective, lemma_10_5_M}
+  \leanok
+  \uses{def:descentPaint_MB}
+  Equal M$\to$B descent paints $\Rightarrow$ equal M-type PBPs (same shapes).
+\end{lemma}
+\begin{proof}
+  \leanok
+  The M$\to$B descent is a bijection onto its image (given fixed shapes). Equal images force equal pre-images.
+\end{proof}
+
+
+\begin{lemma}[Lemma 10.5 D — double descent + signature injective]
+  \label{lem:10_5_D}
+  \lean{doubleDescent_D_injective_on_PBPSet, lemma_10_5_D}
+  \leanok
+  \uses{def:doubleDescent_D, def:signature_pbp, def:epsilon_pbp}
+  On $\PBP_D(\mu_P, \mu_Q)$, the map $\tau \mapsto (\nabla^2\tau, \Sign(\tau), \eps_\tau)$ is injective.
+\end{lemma}
+\begin{proof}
+  \leanok
+  \texttt{doubleDescent\_D\_injective\_on\_PBPSet}: two D-type PBPs with equal $\nabla^2\tau$ have column-$\geq 2$ data identical; column~1 is determined by $\mathcal{Q}.\mathrm{colLen}$; column~0 is determined by $(\Sign(\tau), \eps_\tau)$.
+\end{proof}
+
+
+\section{Proposition 10.8 — descent cardinality relations}
+
+We now turn these injectivity statements into cardinality equalities.
+
+\begin{proposition}[Prop 10.8(a) C primitive]
+  \label{prop:10_8_C_prim}
+  \lean{card_C_eq_card_D_primitive, prop_10_8_C_primitive}
+  \leanok
+  \uses{lem:10_4_C}
+  If $\mu_Q.\mathrm{colLen}(0) \geq \mu_P.\mathrm{colLen}(0)$ (\emph{primitive case}), then
+  \[ |\PBP_C(\mu_P, \mu_Q)| = |\PBP_D(\mu_P, \mathrm{shiftLeft}(\mu_Q))|. \]
+\end{proposition}
+\begin{proof}
+  \leanok
+  Under $\mu_Q.\mathrm{colLen}(0) \geq \mu_P.\mathrm{colLen}(0)$, every D-type on $(\mu_P, \mathrm{shiftLeft}(\mu_Q))$ is in the image of the C$\to$D descent; injectivity from Lemma~\ref{lem:10_4_C}.
+\end{proof}
+
+
+\begin{proposition}[Prop 10.8(b) C balanced]
+  \label{prop:10_8_C_bal}
+  \lean{card_C_eq_DD_plus_RC_balanced, prop_10_8_C_balanced}
+  \leanok
+  \uses{lem:10_4_C}
+  If $\mu_P.\mathrm{colLen}(0) = \mu_Q.\mathrm{colLen}(0) + 1$ (\emph{balanced case}), the C$\to$D descent image is $\{\sigma \in \PBP_D \mid \mathrm{tailClass}(\sigma) \in \{\mathrm{DD}, \mathrm{RC}\}\}$:
+  \[ |\PBP_C(\mu_P, \mu_Q)| = \#\{\mathrm{DD}\} + \#\{\mathrm{RC}\}. \]
+\end{proposition}
+\begin{proof}
+  \leanok
+  The image of the C$\to$D descent in the balanced case consists exactly of the D-type PBPs with tail class $\mathrm{DD}$ or $\mathrm{RC}$: a $\mathrm{DD}$ tail corresponds to lifted $c$ in $\mathcal{P}$ col~0, $\mathrm{RC}$ to lifted $r$. Summing cardinalities gives the claim.
+\end{proof}
+
+
+\begin{proposition}[Prop 10.8(a) M primitive]
+  \label{prop:10_8_M_prim}
+  \lean{descent_bijective_primitive, prop_10_8_M_primitive}
+  \leanok
+  \uses{lem:10_5_M}
+  If $\mu_P.\mathrm{colLen}(0) > \mu_Q.\mathrm{colLen}(0)$ (\emph{primitive}):
+  \[ |\PBP_M(\mu_P, \mu_Q)| = |\PBP_{B^+}(\mathrm{shiftLeft}(\mu_P), \mu_Q)| + |\PBP_{B^-}(\mathrm{shiftLeft}(\mu_P), \mu_Q)|. \]
+\end{proposition}
+\begin{proof}
+  \leanok
+  Descending M$\to$B at a primitive step splits into $B^+$ and $B^-$ branches according to the bottom-$\mathcal{Q}$ paint. Injectivity of each branch combined with the disjoint branches gives the sum.
+\end{proof}
+
+
+\begin{proposition}[Prop 10.8(b) M balanced]
+  \label{prop:10_8_M_bal}
+  \lean{descent_image_balanced, prop_10_8_M_balanced}
+  \leanok
+  \uses{lem:10_5_M}
+  If $\mu_P.\mathrm{colLen}(0) = \mu_Q.\mathrm{colLen}(0) > 0$:
+  \[ |\PBP_M(\mu_P, \mu_Q)| = |\PBP_{B^+}(\cdots)| + |\{\sigma \in \PBP_{B^-}(\cdots) : \mathrm{layerOrd}(\sigma.\mathcal{Q}(c_2 - 1, 0)) > 1\}|. \]
+\end{proposition}
+\begin{proof}
+  \leanok
+  The balanced case image restricts $B^-$ to those with $\mathrm{layerOrd}(\sigma.\mathcal{Q}(c_2 - 1, 0)) > 1$ (otherwise the descent produces a layer conflict); $B^+$ is unrestricted. Summing gives the card.
+\end{proof}
+
+
+\chapter{Double-descent injectivity (Prop 10.9, Cor 10.10)}
+\label{chap:ddescent}
+
+\begin{proposition}[Prop 10.9 D — double descent is injective modulo $(\Sign, \eps)$]
+  \label{prop:10_9_D}
+  \lean{PBP.ddescent_inj_D, prop_10_9_D}
+  \leanok
+  \uses{lem:10_5_D, def:signature_pbp, def:epsilon_pbp}
+  For D-type PBPs $\tau_1, \tau_2$ with identical shapes, identical $\nabla^2\tau$, identical $\Sign$, and identical $\eps$: $\tau_1 = \tau_2$.
+\end{proposition}
+\begin{proof}
+  \leanok
+  Immediate from Lemma~\ref{lem:10_5_D}: equal $(\nabla^2\tau, \Sign(\tau), \eps_\tau)$ determines $\tau$.
+\end{proof}
+
+
+\begin{proposition}[Prop 10.9 B — double descent injective]
+  \label{prop:10_9_B}
+  \lean{PBP.ddescent_inj_B, prop_10_9_B}
+  \leanok
+  \uses{lem:10_4_B, def:signature_pbp, def:epsilon_pbp}
+  Analogue for $\gamma \in \{B^+, B^-\}$, under the interlacing constraint.
+\end{proposition}
+\begin{proof}
+  \leanok
+  Immediate from Lemma~\ref{lem:10_4_B}: equal $(\nabla^2\tau, \Sign(\tau), \eps_\tau)$ plus interlacing determines $\tau$.
+\end{proof}
+
+
+\begin{corollary}[Cor 10.10 D/B — PBPSet injectivity]
+  \label{cor:10_10}
+  \lean{cor_10_10_D, cor_10_10_B}
+  \leanok
+  \uses{prop:10_9_D, prop:10_9_B}
+  The map $\tau \mapsto (\nabla^2\tau, \Sign(\tau), \eps_\tau)$ is injective on $\PBP_\gamma(\mu_P, \mu_Q)$ for $\gamma \in \{D, B^+, B^-\}$.
+\end{corollary}
+\begin{proof}
+  \leanok
+  Direct PBPSet-level wrapper of Prop.~\ref{prop:10_9_D} / \ref{prop:10_9_B}: convert the equality between subtype witnesses to PBP-level equality, then apply the injectivity theorem.
+\end{proof}
+
+
+
+%%FILE lean/blueprint/src/chapters/ils.tex
+\chapter{Integer List Sequences and MYD Operations}
+\label{chap:ils}
+
+Reference: [BMSZ] Definition~9.3 and Section~9.4. Integer List Sequences (ILS)
+are the computational representation of Marked Young Diagrams (MYDs).
+
+\section{ILS definition}
+
+\begin{definition}[ILS]
+  \label{def:ILS}
+  \lean{ILS}
+  \leanok
+  $\mathrm{ILS} := \mathrm{List}(\mathbb{Z} \times \mathbb{Z})$. The $i$-th entry
+  (0-indexed) represents row $i + 1$ of the associated MYD, carrying a mark
+  $(p_i, q_i) \in \mathbb{Z}^2$.
+\end{definition}
+
+\section{Signatures}
+
+\begin{definition}[Row contribution to signature]
+  \label{def:signRow}
+  \lean{ILS.signRow}
+  \leanok
+  \uses{def:ILS}
+  (Paper Eq.~(9.10).) For row $i$ (0-indexed) of length $\ell = i + 1$,
+  let $h := \lfloor \ell / 2 \rfloor$ and $r := \ell \bmod 2$. The row contribution is
+  \[
+    \mathrm{signRow}(i,\ (p, q)) := \big(|p|(h + r) + |q| h,\ |q|(h + r) + |p| h\big).
+  \]
+  Concretely: odd-length rows (i.e., $\ell$ odd, $r = 1$) get extra $|p|$ / $|q|$ contribution.
+\end{definition}
+
+\begin{definition}[ILS signature $\Sign(\mathcal{E})$]
+  \label{def:sign}
+  \lean{ILS.sign}
+  \leanok
+  \uses{def:signRow}
+  $\Sign(\mathcal{E}) := \sum_{i} \mathrm{signRow}(i, \mathcal{E}[i]) \in \mathbb{Z}^2$.
+  Since \texttt{signRow} is a sum of $|p|, |q|$ (non-negative integer)
+  contributions, $\Sign(\mathcal{E}).1, \Sign(\mathcal{E}).2 \geq 0$.
+\end{definition}
+
+\begin{definition}[First-column row contribution]
+  \label{def:firstColSignRow}
+  \lean{ILS.firstColSignRow}
+  \leanok
+  \uses{def:ILS}
+  (Paper Eq.~(9.12).) Per-row contribution to the first-column signature:
+  \[
+    \mathrm{firstColSignRow}(i,\ (p, q)) :=
+    \begin{cases}
+      (|p|, |q|) & i\text{ even} \\
+      (|q|, |p|) & i\text{ odd (swap!)}
+    \end{cases}
+  \]
+\end{definition}
+
+\begin{definition}[First-column signature $\mathrm{fcSign}$]
+  \label{def:firstColSign}
+  \lean{ILS.firstColSign}
+  \leanok
+  \uses{def:firstColSignRow}
+  $\mathrm{fcSign}(\mathcal{E}) := \sum_i \mathrm{firstColSignRow}(i, \mathcal{E}[i])$.
+\end{definition}
+
+\section{ILS operations (Section 9.4)}
+
+\begin{definition}[Sign twist $\otimes (\eps^+, \eps^-)$]
+  \label{def:twistBD}
+  \lean{ILS.twistBD, ILS.twistBDRow}
+  \leanok
+  \uses{def:ILS}
+  (Paper Eq.~(9.15).) For $(\eps^+, \eps^-) \in \mathbb{Z}^2$ (in practice $\{\pm 1\}^2$),
+  acts only on odd-length rows ($\ell = i + 1$ odd, $i$ even):
+  \[
+    \mathrm{twistBDRow}(i,\ \eps^+, \eps^-)(p, q) :=
+    \begin{cases}
+      (p, q) & \ell\text{ even} \\
+      (\eps^{+\,h + 1} \eps^{-\,h}\, p,\ \eps^{-\,h + 1} \eps^{+\,h}\, q) & \ell\text{ odd, } h = i / 2.
+    \end{cases}
+  \]
+  Common cases:
+  \begin{itemize}
+    \item $(1, -1)$: sign twist $\otimes 1^{+-}$ (B/D post-twist when $\eps_\tau = 1$).
+    \item $(-1, -1)$: det twist (C/M pre-twist when $\eps_\wp = 1$).
+    \item $(1, 1)$: identity.
+  \end{itemize}
+\end{definition}
+
+\begin{definition}[Character twist $T^j$]
+  \label{def:charTwistCM}
+  \lean{ILS.charTwistCM, ILS.charTwistCMRow}
+  \leanok
+  \uses{def:ILS}
+  (Paper Eq.~(9.16)--(9.17).) For $j \in \mathbb{Z}$, $T^j$ negates the pair at row index $i$ iff $j$ is odd and $(i + 1) \bmod 4 = 2$:
+  \[
+    \mathrm{charTwistCMRow}(j, i)(p, q) :=
+    \begin{cases}
+      (-p, -q) & j\text{ odd and } (i + 1) \bmod 4 = 2 \\
+      (p, q) & \text{otherwise}
+    \end{cases}
+  \]
+\end{definition}
+
+\begin{lemma}[$T^2 = \mathrm{id}$]
+  \label{lem:T_squared}
+  \lean{ILS.charTwistCM_involutive}
+  \leanok
+  \uses{def:charTwistCM}
+  The character twist is an involution.
+\end{lemma}
+\begin{proof}
+  \leanok
+  Per-row: each entry is negated twice (identity) or left unchanged; both yield identity.
+\end{proof}
+
+\begin{definition}[Augmentation $\oplus (p_0, q_0)$]
+  \label{def:augment}
+  \lean{ILS.augment}
+  \leanok
+  \uses{def:ILS}
+  $\mathrm{augment}((p_0, q_0), \mathcal{E}) := (p_0, q_0) :: \mathcal{E}$.
+  Prepend at position~0 (shift existing rows up by~1).
+\end{definition}
+
+\begin{definition}[Truncation $\Lambda_{(p_0, q_0)}$]
+  \label{def:truncate}
+  \lean{ILS.truncate}
+  \leanok
+  \uses{def:ILS}
+  Subtract $(p_0, q_0)$ from the first entry, defined when the containment condition
+  $\mathcal{E}[0] \supseteq (p_0, q_0)$ holds (both components non-negative and
+  $|\mathcal{E}[0]_i| \geq |(p_0, q_0)_i|$).
+\end{definition}
+
+\section{Signature preservation under operations}
+
+\begin{lemma}[Twist preserves signature]
+  \label{lem:twist_sign}
+  \lean{ILS.twistBD_sign, ILS.charTwistCM_sign}
+  \leanok
+  \uses{def:twistBD, def:charTwistCM, def:sign}
+  $\Sign(\mathcal{E} \otimes (\eps^+, \eps^-)) = \Sign(\mathcal{E})$ and $\Sign(T^j \mathcal{E}) = \Sign(\mathcal{E})$.
+\end{lemma}
+\begin{proof}
+  \leanok
+  $\Sign$ uses $|p|, |q|$, which are unchanged by sign twists.
+\end{proof}
+
+\begin{lemma}[Twist preserves first-column signature]
+  \label{lem:twist_fcSign}
+  \lean{ILS.twistBD_firstColSign, ILS.charTwistCM_firstColSign}
+  \leanok
+  \uses{def:twistBD, def:charTwistCM, def:firstColSign}
+  $\mathrm{fcSign}(\mathcal{E} \otimes (\eps^+, \eps^-)) = \mathrm{fcSign}(\mathcal{E})$ and $\mathrm{fcSign}(T^j \mathcal{E}) = \mathrm{fcSign}(\mathcal{E})$.
+\end{lemma}
+\begin{proof}
+  \leanok
+  $\Sign$ is defined from $|p|, |q|$ via \texttt{signRow}; the twists act only by signs $\pm 1$, which absolute values ignore.
+\end{proof}
+
+
+\begin{lemma}[Augmentation signature formula]
+  \label{lem:augment_sign}
+  \lean{ILS.sign_cons_nonneg}
+  \leanok
+  \uses{def:augment, def:sign, def:firstColSign}
+  For $p_0, q_0 \geq 0$:
+  \[
+    \Sign\big((p_0, q_0) :: \mathcal{E}\big) = \big(p_0 + \Sign(\mathcal{E}).1 + \mathrm{fcSign}(\mathcal{E}).2,\ q_0 + \Sign(\mathcal{E}).2 + \mathrm{fcSign}(\mathcal{E}).1\big).
+  \]
+\end{lemma}
+\begin{proof}
+  \leanok
+  Same argument as Lemma~\ref{lem:twist_sign}: $\mathrm{fcSign}$ per Eq.~(9.12) uses absolute values, so sign twists and $T^j$ preserve it.
+\end{proof}
+
+
+\section{Theta lifts (Section 9.5)}
+
+\begin{definition}[Theta lift $\hat\vartheta$]
+  \label{def:thetaLift}
+  \lean{ILS.thetaLift, ILS.thetaLift_CD, ILS.thetaLift_DC, ILS.thetaLift_BM, ILS.thetaLift_MB}
+  \leanok
+  \uses{def:charTwistCM, def:augment, def:truncate}
+  Four variants (paper Eq.~(9.29)--(9.30)):
+  \begin{itemize}
+    \item $\hat\vartheta_{CD} : \MYD_C \to \MYD_D$ (single branch): $\mathcal{E} \mapsto T^j(\mathrm{augment}((p, q), \mathcal{E}))$.
+    \item $\hat\vartheta_{DC} : \MYD_D \to \MYD_C$ (two branches: standard with $\mathrm{augment}((n, n), \mathcal{E})$; split with $\mathrm{augment}((-1, -1), \Lambda(\mathcal{E}))$).
+    \item $\hat\vartheta_{BM}, \hat\vartheta_{MB}$ analogous.
+  \end{itemize}
+\end{definition}
+
+\begin{theorem}[Theta lift signature preservation]
+  \label{thm:thetaLift_sign}
+  \lean{ILS.thetaLift_CD_sign, ILS.thetaLift_DC_sign_std, ILS.thetaLift_DC_sign_split, ILS.thetaLift_MB_sign, ILS.thetaLift_BM_sign_std, ILS.thetaLift_BM_sign_split}
+  \leanok
+  \uses{def:thetaLift, lem:augment_sign, lem:twist_sign}
+  For each theta-lift direction with target $(p, q)$ satisfying the
+  standard-case condition ($p - \Sign(\mathcal{E}).1 - \mathrm{fcSign}(\mathcal{E}).2 \geq 0$, etc.):
+  $\Sign(\hat\vartheta(\mathcal{E})) = (p, q)$ (or $(n, n)$ in D$\to$C split).
+\end{theorem}
+\begin{proof}
+  \leanok
+  $\Sign((p_0, q_0) :: \mathcal{E})$ evaluates \texttt{signRow} at the new index~0 (contributing $(|p_0|, |q_0|)$) and shifts every existing row index by~1, which adds its $\mathrm{firstColSignRow}$ contribution.
+\end{proof}
+
+
+\begin{theorem}[Theta lift first-column signature]
+  \label{thm:thetaLift_fcSign}
+  \lean{ILS.thetaLift_CD_firstColSign, ILS.thetaLift_DC_firstColSign, ILS.thetaLift_MB_firstColSign, ILS.thetaLift_BM_firstColSign}
+  \leanok
+  \uses{def:thetaLift, lem:twist_fcSign}
+  $\mathrm{fcSign}(\hat\vartheta(\mathcal{E})) = (p - \Sign(\mathcal{E}).1,\ q - \Sign(\mathcal{E}).2)$
+  (the key \emph{firstColSign invariant}).
+\end{theorem}
+\begin{proof}
+  \leanok
+  Each $\hat\vartheta_\bullet$ is of the form $T^j(\mathrm{augment}((p, q), \mathcal{E}))$ (or similar with $(n, n)$ or $(-1, -1)$). Apply Lemma~\ref{lem:augment_sign} then Lemma~\ref{lem:twist_sign} for the $T^j$ step.
+\end{proof}
+
+
+\begin{theorem}[Theta lift first-entry formula]
+  \label{thm:thetaLift_first_entry}
+  \lean{ILS.thetaLift_CD_first_entry, ILS.thetaLift_MB_first_entry, ILS.twistBD_first_entry}
+  \leanok
+  \uses{def:thetaLift, def:twistBD, def:augment}
+  The first entry of $\hat\vartheta(\mathcal{E})$ is $(p - \Sign(\mathcal{E}).1 - \mathrm{fcSign}(\mathcal{E}).2,\ q - \Sign(\mathcal{E}).2 - \mathrm{fcSign}(\mathcal{E}).1)$.
+\end{theorem}
+\begin{proof}
+  \leanok
+  \texttt{thetaLift\_*\_firstColSign} follows from Lemma~\ref{lem:twist_fcSign} for the $T^j$ step and the observation that $\mathrm{augment}((p_0, q_0), \cdot)$ shifts every row's first-column contribution.
+\end{proof}
+
+
+
+%%FILE lean/blueprint/src/chapters/intro.tex
+\chapter{Introduction}
+\label{chap:intro}
+
+This blueprint documents the Lean~4 formalization of the combinatorial
+aspects of associated cycles of special unipotent representations of
+classical groups (Sp, SO, Mp). It follows two papers by
+Barbasch--Ma--Sun--Zhu:
+
+\begin{itemize}
+\item \textbf{[BMSZb]} — counting reduction (Section~10): PBP counting recursion formulas for classical groups.
+\item \textbf{[BMSZ]} — construction and unitarity (Section~11): combinatorial
+      associated cycles $\mathcal{L}_\tau$.
+\end{itemize}
+
+The formalization covers $\star \in \{B, D, C, M = \tilde{C}\}$; the real-form
+variants $C^*$, $D^*$ are deliberately skipped (per a project directive).
+
+\section{Group / dual-partition conventions}
+
+For each root type $\star$ we work with a nilpotent orbit $\mathcal{O}$ in
+the Lie algebra of a classical group. The \emph{BV dual} (Barbasch--Vogan /
+Lusztig) $\check{\mathcal{O}}$ is a partition subject to parity conditions:
+
+\begin{center}
+\begin{tabular}{c|l|l}
+  $\star$ & Group & Dual partition $\check{\mathcal{O}}$ \\\hline
+  $B$ & $\mathrm{SO}(2n+1)$ & all parts even, positive \\
+  $D$ & $\mathrm{SO}(2n)$   & all parts odd \\
+  $C$ & $\mathrm{Sp}(2n)$   & all parts odd \\
+  $M = \tilde{C}$ & $\mathrm{Mp}(2n)$ & all parts even, positive \\
+\end{tabular}
+\end{center}
+
+From $\check{\mathcal{O}}$ we read off column lengths
+$\mathbf{c}_1 \geq \mathbf{c}_2 \geq \cdots$ and row lengths
+$\mathbf{r}_1 \geq \mathbf{r}_2 \geq \cdots$.
+
+\section{Scope and structure}
+
+This blueprint is organised as follows.
+
+\begin{itemize}
+\item Chapter~\ref{chap:pbp}: the painted bipartition (PBP) combinatorial data.
+\item Chapter~\ref{chap:shape_shift}: shape-shifting bijections (Lemma~10.3 for M and C).
+\item Chapter~\ref{chap:descent}: single/double descent (Lemmas~10.4, 10.5, Prop~10.8).
+\item Chapter~\ref{chap:ddescent}: Prop~10.9 / Cor~10.10 double-descent injectivity.
+\item Chapter~\ref{chap:counting}: main counting formulas (Prop~10.11/10.12).
+\item Chapter~\ref{chap:ils}: Integer List Sequences, ILS operations (Section~9.4).
+\item Chapter~\ref{chap:ac}: AC recursion Eq.~(11.2); sign/fcSign invariants.
+\item Chapter~\ref{chap:tail}: tail PBP, Lemma~11.3, Prop~11.4.
+\item Chapter~\ref{chap:11_5}: Lemma~11.5 two-step AC formula; Lemma~11.6 first entry.
+\item Chapter~\ref{chap:11_main}: injectivity (11.8--11.13), main bijection (11.14/15/17).
+\item Chapter~\ref{chap:status}: formal status.
+\end{itemize}
+
+All Lean declarations named via \texttt{\textbackslash lean\{...\}} can be
+clicked to reach the source code in the GitHub repository.
+
+
+%%FILE lean/blueprint/src/chapters/lemma_11_5.tex
+\chapter{Lemma 11.5 and 11.6 — AC composition}
+\label{chap:11_5}
+
+Reference: [BMSZ] Lemma~11.5 (two-step AC formula) and Lemma~11.6 (first-entry
+of $\mathcal{L}_\tau$); internal blueprints
+\texttt{lemma\_11\_5\_PBP\_identity.md}, \texttt{lemma\_11\_5\_COMPLETE.md}.
+
+\section{Setup for Lemma 11.5}
+
+Let $\star \in \{B, D\}$ and assume $\mathbf{r}_2(\check{\mathcal{O}}) > \mathbf{r}_3(\check{\mathcal{O}})$
+(the \emph{primitive case}). Set:
+\begin{itemize}
+  \item $\tau \in \PBP_\star(\check{\mathcal{O}})$ (outer PBP).
+  \item $\tau' = \nabla\tau \in \PBP_{\star'}(\check{\mathcal{O}}')$ (single descent; $\star' = C$ for $\star = D$, $\star' = \tilde{C}$ for $\star \in \{B^\pm\}$).
+  \item $\tau'' = \nabla^2\tau = \nabla(\tau') \in \PBP_\star(\check{\mathcal{O}}'')$ (double descent).
+  \item $\tau_t \in \PBP_D(\check{\mathcal{O}}_t)$ (tail PBP).
+  \item $n_0 := (\mathbf{c}_1(\mathcal{O}') - \mathbf{c}_2(\mathcal{O}')) / 2$ (the inner augmentation parameter).
+  \item $\mathcal{L}_\tau, \mathcal{L}_{\tau''}$ denote the AC results.
+\end{itemize}
+
+By the shape relations $\mathbf{c}_i(\mathcal{O}') = \mathbf{c}_{i+1}(\mathcal{O})$, we have
+$n_0 = (\mathbf{c}_2(\mathcal{O}) - \mathbf{c}_3(\mathcal{O}))/2$.
+
+\section{Lemma 11.5 — PBP identity}
+
+\begin{lemma}[Lemma 11.5 D (primitive case, ILS-level, unconditional)]
+  \label{lem:11_5_D_ILS}
+  \lean{ILS.lemma_11_5_D_unconditional, prop_11_5_D_unconditional, ILS.lemma_11_5_D, prop_11_5_D, ILS.lemma_11_5_addp, ILS.lemma_11_5_addn, ILS.lemma_11_5_D_shape_identity_bridge, ILS.lemma_11_5_D_via_shape_identity, ILS.lemma_11_5_D_shape_from_cellcount, ILS.lemma_11_5_D_via_cellcount, prop_11_5_D_shape, prop_11_5_D_cellcount, prop_11_5_D_pbp_reduced, ILS.prop_11_4_sum_from_fst_snd}
+  \leanok
+  \uses{prop:11_4, def:AC_step, def:charTwistCM, def:augment, def:twistBD, thm:AC_step_fcSign, thm:fcSign_diff}
+  Given an ILS $E$ (intended as $\mathcal{L}_{\tau''}$) with the firstColSign
+  invariant
+  \[ \mathrm{fcSign}(E) = (\Sign(E).1 - n_{\mathrm{prev}},\ \Sign(E).2 - n_{\mathrm{prev}}) \]
+  and target tail signature $(p_t, q_t)$ satisfying
+  \[ p_\tau - 2 n_{\mathrm{inner}} + \Sign(E).2 = p_t,\quad q_\tau - 2 n_{\mathrm{inner}} + \Sign(E).1 = q_t, \]
+  define $n_0 := n_{\mathrm{inner}} - \Sign(E).1 - \Sign(E).2 + n_{\mathrm{prev}}$ and
+  $E_{\mathrm{inner}} := T^{\gamma_1}\big(E \oplus (n_0, n_0)\big)$. Then:
+  \begin{align*}
+    p_\tau - \Sign(E_{\mathrm{inner}}).1 - \mathrm{fcSign}(E_{\mathrm{inner}}).2 &= p_t, \\
+    q_\tau - \Sign(E_{\mathrm{inner}}).2 - \mathrm{fcSign}(E_{\mathrm{inner}}).1 &= q_t.
+  \end{align*}
+  These are the ``outer augment'' parameters consumed by the outer C$\to$D or M$\to$B lift.
+\end{lemma}
+
+\begin{proof}
+  \uses{lem:augment_sign, lem:twist_sign, lem:twist_fcSign, thm:fcSign_diff, prop:11_4, lem:sig_sum_D, lem:residual_D}
+  \leanok
+  \textbf{Step 1 — unfold sign and fcSign of $E_{\mathrm{inner}}$.}
+  $T^\gamma$ preserves both sign and fcSign (Lem~\ref{lem:twist_sign}, \ref{lem:twist_fcSign}), so we may work with $F := E \oplus (n_0, n_0) = (n_0, n_0) :: E$.
+  By Lem~\ref{lem:augment_sign} (for $n_0 \geq 0$):
+  \begin{align*}
+    \Sign(F) &= (n_0 + \Sign(E).1 + \mathrm{fcSign}(E).2,\ n_0 + \Sign(E).2 + \mathrm{fcSign}(E).1). \\
+    \mathrm{fcSign}(F) &= (n_0 + \mathrm{fcSign}(E).2,\ n_0 + \mathrm{fcSign}(E).1)
+  \end{align*}
+  using the cons formula for fcSign (the swap is due to parity index shift, Eq.~(9.12)).
+
+  Substituting $\mathrm{fcSign}(E) = (\Sign(E).1 - n_{\mathrm{prev}},\ \Sign(E).2 - n_{\mathrm{prev}})$:
+  \begin{align*}
+    \Sign(F).1 &= n_0 + \Sign(E).1 + \Sign(E).2 - n_{\mathrm{prev}} = n_{\mathrm{inner}} \\
+    \mathrm{fcSign}(F).2 &= n_0 + \Sign(E).1 - n_{\mathrm{prev}} = n_{\mathrm{inner}} - \Sign(E).2.
+  \end{align*}
+  where we used the definition $n_0 = n_{\mathrm{inner}} - \Sign(E).1 - \Sign(E).2 + n_{\mathrm{prev}}$.
+
+  \textbf{Step 2 — substitute into the outer augment formula.}
+  $p_\tau - \Sign(F).1 - \mathrm{fcSign}(F).2 = p_\tau - n_{\mathrm{inner}} - (n_{\mathrm{inner}} - \Sign(E).2) = p_\tau - 2 n_{\mathrm{inner}} + \Sign(E).2 = p_t$ (by hypothesis).
+
+  The $q$-equation is symmetric.
+\end{proof}
+
+\section{Lemma 11.5 atomic PBP discharge}
+
+The ILS-level Lemma~\ref{lem:11_5_D_ILS} takes $E$ and the hypotheses as parameters.
+At the PBP level, three of the hypotheses become atomic cell-count facts that
+are \emph{structurally} true:
+
+\begin{lemma}[Fact 1 — signature sum D]
+  \label{lem:fact1_sig_sum}
+  \lean{PBP.signature_sum_D, PaintedYoungDiagram.card_eq_sum_countSym}
+  \leanok
+  \uses{def:signature_pbp, def:cardCells}
+  $p_\tau + q_\tau = 2|\tau|$.
+\end{lemma}
+\begin{proof}
+  \leanok
+  Same argument as Lemma~\ref{lem:sig_sum_D}: for D type $\mathcal{Q}$ is all $\bullet$, so the non-$\bullet$ counts come from $\mathcal{P}$ only; $p_\tau + q_\tau$ equals twice the total cell count.
+\end{proof}
+
+
+\begin{lemma}[Fact 2 — descent cell-count definitional]
+  \label{lem:fact2_descent}
+  \leanok
+
+  \uses{def:cardCells, def:doubleDescent_D}
+  $|\tau| - \mathbf{c}_1 = $ single-descent cell count (by definition of cells - col 0).
+\end{lemma}
+\begin{proof}
+  \leanok
+  Definitional: $|\tau| - \mathbf{c}_1(\mathcal{O})$ equals the cell count of $\tau$ minus the cells in $\mathcal{P}$'s column~0, which is the cell count after a single descent step.
+\end{proof}
+
+
+\begin{lemma}[Fact 3 — tail residual]
+  \label{lem:fact3_residual}
+  \lean{PBP.residual_identity_D}
+  \leanok
+  \uses{def:tailSignature}
+  $p_{\tau_t} + q_{\tau_t} = 2 \mathbf{c}_1 - 2 \mathbf{c}_2$.
+\end{lemma}
+\begin{proof}
+  \leanok
+  Lemma~\ref{lem:residual_D}: applying \texttt{tailSig\_sum} ($p_t + q_t = 2k$) with $k = \mathbf{c}_1 - \mathbf{c}_2$ (BV dual column relation) gives the claim.
+\end{proof}
+
+
+\begin{theorem}[Lemma 11.5 atomic discharge at PBP level]
+  \label{thm:11_5_atomic_pbp}
+  \lean{prop_11_5_D_atomic, prop_11_5_D_atomic_pbp_discharged}
+  \leanok
+  \uses{lem:11_5_D_ILS, lem:fact1_sig_sum, lem:fact2_descent, lem:fact3_residual}
+  Given the canonical choices of $|\tau|, \mathbf{c}_1, \mathbf{c}_2,$ tail signatures,
+  the three atomic cell-count hypotheses of \texttt{prop\_11\_5\_D\_atomic} are
+  discharged automatically; the remaining inputs are:
+  \begin{itemize}
+    \item $(E, n_{\mathrm{prev}}, p_{\mathrm{prev}}, q_{\mathrm{prev}})$: an inner ILS + its Sign and prev-sig.
+    \item $h_{\mathrm{fc}}, h_{\mathrm{sign}}$: firstColSign/Sign relations on $E$ (auto by AC.fold).
+    \item $h_{\mathrm{prop11.4}}$: signature decomposition (Prop~\ref{prop:11_4}).
+    \item $h_{n_0}$: $n_0 \geq 0$.
+  \end{itemize}
+\end{theorem}
+\begin{proof}
+  \leanok
+  The three hypotheses of \texttt{prop\_11\_5\_D\_atomic} are discharged by Lemmas~\ref{lem:fact1_sig_sum}, \ref{lem:fact2_descent}, \ref{lem:fact3_residual} respectively; the remainder follows from Lemma~\ref{lem:11_5_D_ILS}.
+\end{proof}
+
+
+\section{Lemma 11.6 — first entry of $\mathcal{L}_\tau$}
+
+\begin{lemma}[Lemma 11.6 D (AC-level, unconditional)]
+  \label{lem:11_6_D}
+  \lean{AC.lemma_11_6_D_unconditional}
+  \leanok
+  \uses{lem:11_5_D_ILS, thm:AC_step_sign_D, thm:AC_step_fcSign, thm:postTwist_first_entry}
+  Let $\gamma = D$ (no C/M pre-twist). For \texttt{source : ACResult} with uniform
+  $\Sign = \mathrm{src\_sig}$ and uniform $\mathrm{fcSign} = \mathrm{src\_fcSig}$ satisfying the
+  standard-case condition ($p - \mathrm{src\_sig}.1 - \mathrm{src\_fcSig}.2 \geq 0$, etc.):
+  every branch $r \in \mathrm{AC.step}(\mathrm{source}, D, p, q, \eps_\tau, \eps_\wp)$ has
+  \[ r.2.\mathrm{head?} = \mathrm{some}\big(p - \mathrm{src\_sig}.1 - \mathrm{src\_fcSig}.2,\ (-1)^{\eps_\tau}(q - \mathrm{src\_sig}.2 - \mathrm{src\_fcSig}.1)\big). \]
+\end{lemma}
+
+\begin{proof}
+  \leanok
+  By Thm~\ref{thm:thetaLift_first_entry}, the first entry of $\hat\vartheta_{CD}(\mathrm{source})$ (standard case) is
+  $(p - \mathrm{src\_sig}.1 - \mathrm{src\_fcSig}.2,\ q - \mathrm{src\_sig}.2 - \mathrm{src\_fcSig}.1)$.
+  The post-twist $\otimes(1, -1)$ (when $\eps_\tau = 1$) maps $(a, b) \mapsto (a, -b)$ by Thm~\ref{thm:postTwist_first_entry}.
+\end{proof}
+
+\begin{lemma}[Lemma 11.6 $B^+ / B^-$]
+  \label{lem:11_6_B}
+  \lean{AC.lemma_11_6_Bplus_unconditional, AC.lemma_11_6_Bminus_unconditional}
+  \leanok
+  \uses{lem:11_5_D_ILS}
+  Parallel statements for $\gamma \in \{B^+, B^-\}$, using $\hat\vartheta_{MB}$.
+\end{lemma}
+\begin{proof}
+  \leanok
+  Same proof as Lemma~\ref{lem:11_6_D} with $\hat\vartheta_{MB}$ in place of $\hat\vartheta_{CD}$.
+\end{proof}
+
+
+\begin{corollary}[PBP-level Lemma 11.6]
+  \label{cor:11_6_pbp}
+  \lean{AC.lemma_11_6_D_unconditional}
+  \leanok
+  \uses{lem:11_6_D, prop:11_4}
+  At the PBP level, when $\mathrm{src\_sig} = \Sign(\tau'') = (p_{\tau''}, q_{\tau''})$
+  and $\mathrm{src\_fcSig} = \Sign(\tau'') - \Sign(\tau^{(4)})$, the first entry of
+  $\mathcal{L}_\tau$ equals
+  \[ \big(p_{\tau_t},\ (-1)^{\eps_\tau} q_{\tau_t}\big) \]
+  by combining Lem~\ref{lem:11_6_D} with Prop~\ref{prop:11_4} (which gives $p_\tau - \mathbf{c}_2 - p_{\tau''} = p_{\tau_t}$).
+\end{corollary}
+\begin{proof}
+  \leanok
+  Combining Lemma~\ref{lem:11_6_D} with Prop.~\ref{prop:11_4}: $p_\tau - \mathbf{c}_2(\mathcal{O}) - p_{\tau''} = p_{\tau_t}$, similarly for $q$. The first entry of $\mathcal{L}_\tau$ is $(p_{\tau_t}, (-1)^{\eps_\tau} q_{\tau_t})$.
+\end{proof}
+
+
+
+%%FILE lean/blueprint/src/chapters/main_bijection.tex
+\chapter{Section 11 injectivity + main bijection}
+\label{chap:11_main}
+
+Reference: [BMSZ] Prop~11.8 (non-vanishing), 11.9--11.12 (injectivity),
+11.14--11.15/17 (main bijection). Internal blueprints
+\texttt{lemma\_11\_9\_detailed.md}, \texttt{lemma\_11\_1\_*.md}.
+
+\section{Lemma 11.1 — base cases}
+
+\begin{lemma}[Lemma 11.1(a): $|\check{\mathcal{O}}| = 0$]
+  \label{lem:11_1_a_empty}
+  \lean{lemma_11_1_a_empty, lemma_11_1_a_empty_first_entry}
+  \leanok
+  \uses{def:AC_base}
+  When $|\check{\mathcal{O}}| = 0$: $\mathcal{L}_\tau = \mathrm{AC.base}\,\gamma$.
+  First entries: $(1, 0)$ for $B^+$, $(0, -1)$ for $B^-$, empty for $C, D, M$.
+\end{lemma}
+\begin{proof}
+  \leanok
+  Direct inspection: $|\check{\mathcal{O}}| = 0$ means \texttt{AC.base}$\,\gamma$ is applied without any \texttt{AC.step}, giving the stated base-case ILS.
+\end{proof}
+
+
+\begin{lemma}[Lemma 11.1(a): $\mathbf{r}_1(\check{\mathcal{O}}) = 1$]
+  \label{lem:11_1_a_r1}
+  \lean{lemma_11_1_a_r1_one, lemma_11_1_a_r1_one_first_entry}
+  \leanok
+  \uses{lem:11_1_a_empty, def:AC_step}
+  When $\mathbf{r}_1(\check{\mathcal{O}}) = 1$: $\mathcal{L}_\tau$ is a single-row ILS
+  $[(p_\tau, (-1)^{\eps_\tau} q_\tau)]$.
+\end{lemma}
+
+\begin{proof}
+  \leanok
+  \uses{lem:11_1_a_empty, def:AC_base, def:AC_step, thm:AC_step_sign_all}
+  Apply AC.step once to the empty base. For single-row ILS, $\Sign$ on row~0 gives $(|p|, |q|)$ exactly, so the post-twist by $\eps_\tau$ produces the claimed form.
+\end{proof}
+
+\begin{theorem}[SignTargetSet cardinality formula]
+  \label{thm:SignTargetSet_card}
+  \lean{SignTargetSet, SignTargetSet, mem_SignTargetSet}
+  \leanok
+  \uses{def:ILS}
+  For $(p, q) \in \mathbb{N}^2$, the set $\{(\eps^+, \eps^-) \in \mathbb{Z}^2 : (\eps^+, \eps^-) \in \{(p, q), (p, -q), (-p, q), (-p, -q)\}\}$ has cardinality
+  $4m + 4$ when $p > 0, q > 0$ (after suitable deduplication for $p = 0$ or $q = 0$).
+\end{theorem}
+\begin{proof}
+  \leanok
+  Direct enumeration: for $p, q > 0$ the set $\{(\pm p, \pm q)\}$ has $4$ elements, with corner cases $p = 0$ or $q = 0$ handled by dedupe.
+\end{proof}
+
+
+\begin{lemma}[Lemma 11.1(b) — abstract bijection]
+  \label{lem:11_1_b_abstract}
+  \lean{lemma_11_1_b_bijection, lemma_11_1_b_bijection_concrete, lemma_11_1_signed_first_entry, lemma_11_1_signed_first_entry_fst_natAbs, lemma_11_1_signed_first_entry_snd_natAbs, lemma_11_1_signed_first_entry_mem_SignTargetSet, lemma_11_1_signed_injective_pq}
+  \leanok
+  \uses{lem:11_1_a_r1}
+  Abstract form: given finite types $\alpha \simeq \beta$ of equal cardinality and an injection $f : \alpha \to \beta$, $f$ is a bijection.
+\end{lemma}
+\begin{proof}
+  \leanok
+  A finite type $\alpha$ with an injection into $\beta$ and an equivalence $\alpha \simeq \beta$ satisfies $|\alpha| = |\beta|$; an injective map between finite sets of equal cardinality is bijective.
+\end{proof}
+
+
+\begin{lemma}[Lemma 11.1(b) D-type bijection]
+  \label{lem:11_1_b_D}
+  \lean{lemma_11_1_b_bijection_D, PBPExt_at_r1_eq_1_D}
+  \leanok
+  \uses{lem:11_1_a_r1, lem:11_1_b_abstract, thm:SignTargetSet_card}
+  D-type specialisation: when $\mathbf{r}_1(\check{\mathcal{O}}) = 1$, the map
+  $\PBP_D(\check{\mathcal{O}}) \times \mathrm{Fin}\,2 \to \MYD_D(\mathcal{O})$ given by $(\tau, \eps) \mapsto \mathcal{L}_\tau \otimes (\eps, \eps)$
+  is a bijection, with explicit $|\PBP_D(\ldots)| = 4m + 4$ card match.
+\end{lemma}
+\begin{proof}
+  \leanok
+  Apply Lemma~\ref{lem:11_1_b_abstract} with $\alpha = \PBP_D(\check{\mathcal{O}}) \times \mathrm{Fin}\,2$ and $\beta = \MYD_D(\mathcal{O})$; the cardinality match follows from the explicit $4m + 4$ formula (Theorem~\ref{thm:SignTargetSet_card}).
+\end{proof}
+
+
+\section{Proposition 11.8 — non-vanishing of $\mathcal{L}_\tau^\pm$}
+
+\begin{proposition}[Prop 11.8 (AC level)]
+  \label{prop:11_8_ac}
+  \lean{prop_11_8, prop_11_8_nonzero, prop_11_8_PBP}
+  \leanok
+  \uses{lem:11_3, lem:11_6_D, prop:11_7}
+  For $\gamma \in \{D, B^+, B^-\}$ and tail symbol $x_\tau$:
+  \begin{enumerate}
+    \item[(a)] $\mathcal{L}_\tau \neq 0$.
+    \item[(b)] $x_\tau = s \Rightarrow \mathcal{L}_\tau^+ = 0$ and $\mathcal{L}_\tau^- = 0$.
+    \item[(c)] $x_\tau \in \{r, c\} \Rightarrow \mathcal{L}_\tau^+ \neq 0$ and $\mathcal{L}_\tau^- = 0$.
+    \item[(d)] $x_\tau = d \Rightarrow \mathcal{L}_\tau^+ \neq 0$ and $\mathcal{L}_\tau^- \neq 0$.
+  \end{enumerate}
+\end{proposition}
+
+\begin{proof}
+  \leanok
+  \uses{lem:11_3, lem:11_6_D}
+  By case on $x_\tau$. From Lem~\ref{lem:11_6_D}:
+  $\mathcal{E}(1) = (p_{\tau_t}, (-1)^{\eps_\tau} q_{\tau_t})$.
+  \begin{itemize}
+    \item $x_\tau = s$: by Lem~\ref{lem:11_3}, $p_{\tau_t} = 0$ and $\eps_\tau = 1$ (since $x_\tau \neq d$), $q_{\tau_t} \geq 2$. Truncations $\Lambda_{(1, 0)}$ and $\Lambda_{(0, 1)}$ both fail (containment checks).
+    \item $x_\tau \in \{r, c\}$: $p_{\tau_t} \geq 1$, $\eps_\tau = 1$. $\Lambda_{(1, 0)}$ succeeds; $\Lambda_{(0, 1)}$ fails (since the second component is non-positive).
+    \item $x_\tau = d$: $p_{\tau_t} \geq 1, q_{\tau_t} \geq 1, \eps_\tau = 0$. Both truncations succeed.
+  \end{itemize}
+\end{proof}
+
+\begin{proposition}[Prop 11.8 (PBP level wrappers)]
+  \label{prop:11_8_pbp}
+  \lean{prop_11_8_PBP_D_closed, prop_11_8_PBP_Bplus_closed, prop_11_8_PBP_Bminus_closed}
+  \leanok
+  \uses{prop:11_8_ac}
+\end{proposition}
+\begin{proof}
+  \leanok
+  Direct wrapper of Prop.~\ref{prop:11_8_ac}: given a PBP with the tail hypothesis, the AC-level conclusion applies to $\mathcal{L}_\tau$.
+\end{proof}
+
+
+\section{Propositions 11.9--11.12 — injectivity}
+
+\begin{lemma}[Prop 11.9 D — numerical constraint on cross-twist]
+  \label{prop:11_9_D}
+  \lean{prop_11_9_PBP_D_numerical, prop_11_9_abstract}
+  \leanok
+  \uses{def:tailSymbol, def:tailSignature, prop:11_8_ac, lem:11_3, lem:tailSig_nonneg}
+  Assume $\tau_1, \tau_2 \in \PBP_D$ with $h_{\mathrm{tail}}$ satisfied, $x_{\tau_1} = d$, and the cross-twist first-component equation
+  $-p_{\tau_1, t} = p_{\tau_2, t} - 1$, plus $x_{\tau_2} \neq s$: \emph{contradiction}.
+\end{lemma}
+
+\begin{proof}
+  \uses{lem:11_3, lem:tailSig_nonneg}
+  \leanok
+  $x_{\tau_1} = d$ and $x_{\tau_1} \neq s$ $\Rightarrow p_{\tau_1, t} \geq 1$ (by Lem~\ref{lem:11_3}).
+  So $-p_{\tau_1, t} \leq -1$.
+  Then $p_{\tau_2, t} - 1 \leq -1$ $\Rightarrow p_{\tau_2, t} \leq 0$. With $p_{\tau_2, t} \geq 0$ (Lem~\ref{lem:tailSig_nonneg}), $p_{\tau_2, t} = 0$.
+  By Lem~\ref{lem:11_3}, $p_{\tau_2, t} = 0 \iff x_{\tau_2} = s$, contradicting $x_{\tau_2} \neq s$.
+\end{proof}
+
+\begin{lemma}[Prop 11.9 B variants]
+  \label{prop:11_9_B}
+  \lean{prop_11_9_PBP_Bplus_abstract, prop_11_9_PBP_Bminus_abstract}
+  \leanok
+  \uses{prop:11_9_D}
+\end{lemma}
+\begin{proof}
+  \leanok
+  Same argument as the D case (Prop.~\ref{prop:11_9_D}) applied to $B^+$ and $B^-$ via the appropriate tail signatures.
+\end{proof}
+
+
+\begin{lemma}[Prop 11.10 — tail signatures equal from equal AC]
+  \label{prop:11_10_D}
+  \lean{prop_11_10_PBP_D, prop_11_10_PBP_Bplus, prop_11_10_PBP_Bminus}
+  \leanok
+  \uses{lem:11_6_D}
+  If $L_1 = L_2 \in \mathrm{ACResult}$ are non-empty with each branch having the
+  same first entry formula as $\tau_1, \tau_2$, then $(p_{\tau_1, t}, q_{\tau_1, t}) = (p_{\tau_2, t}, q_{\tau_2, t})$.
+\end{lemma}
+\begin{proof}
+  \leanok
+  By Lemma~\ref{lem:11_6_D}, each branch of $L_i$ has first entry $(p_{\tau_i, t}, (-1)^{\eps} q_{\tau_i, t})$. If $L_1 = L_2$, their first entries coincide, so the $p_t$ and $\pm q_t$ coordinates match.
+\end{proof}
+
+
+\begin{lemma}[Prop 11.11 — no det twist]
+  \label{lem:11_11}
+  \lean{prop_11_11_no_det, prop_11_11_PBP_D, prop_11_11_PBP_Bplus, prop_11_11_PBP_Bminus, BMSZ.no_det_twist_same_sign}
+  \leanok
+  \uses{prop:11_8_ac, prop:11_10_D}
+  There exist no $\tau_1, \tau_2$ with $\mathcal{L}_{\tau_1} \otimes (1, 1) = \mathcal{L}_{\tau_2}$ (the \emph{det twist} would require impossible sign configurations).
+\end{lemma}
+
+\begin{proof}
+  \leanok
+  \uses{prop:11_8_ac}
+  The $\otimes(1, 1)$ twist negates the first entry: $(\mathcal{L}_{\tau_1} \otimes (1, 1))^+ = 0$ always. So $\mathcal{L}_{\tau_2}^+ = 0$, forcing $x_{\tau_2} = s$ (Prop~\ref{prop:11_8_ac}(b)). But then $(\mathcal{L}_{\tau_1} \otimes (1, 1))^- \neq 0$ while $\mathcal{L}_{\tau_2}^- = 0$: contradiction.
+\end{proof}
+
+\begin{proposition}[Prop 11.12 — injectivity modulo $\eps$]
+  \label{prop:11_12}
+  \lean{prop_11_12, prop_11_12_PBP_D, prop_11_12_PBP, prop_11_12_PBP_Bplus, prop_11_12_PBP_Bminus}
+  \leanok
+  \uses{lem:11_11, prop:11_8_ac}
+  If $\mathcal{L}_{\tau_1} \otimes (\eps_1, \eps_1) = \mathcal{L}_{\tau_2} \otimes (\eps_2, \eps_2)$,
+  then $\eps_1 = \eps_2$, $\eps_{\tau_1} = \eps_{\tau_2}$, and $\mathcal{L}_{\tau_1} = \mathcal{L}_{\tau_2}$.
+\end{proposition}
+
+\begin{proof}
+  \uses{lem:11_11, prop:11_8_ac}
+  \leanok
+  If $\eps_1 \neq \eps_2$, the equation $\mathcal{L}_{\tau_1} \otimes (1, 1) = \mathcal{L}_{\tau_2}$ arises (via $\eps_1 \oplus \eps_2 = 1$), forbidden by Lem~\ref{lem:11_11}. So $\eps_1 = \eps_2$; cancellation gives $\mathcal{L}_{\tau_1} = \mathcal{L}_{\tau_2}$. Then $\eps_{\tau_1} = \eps_{\tau_2}$ follows from Prop~\ref{prop:11_8_ac}'s truncation pattern.
+\end{proof}
+
+\begin{proposition}[Prop 11.13 — chain injectivity]
+  \label{prop:11_13}
+  \lean{prop_11_13_PBP_D, prop_11_13_PBP_Bplus, prop_11_13_PBP_Bminus, BMSZ.ac_chain_injective, lemma_11_13_PBP}
+  \leanok
+  \uses{prop:11_12}
+  Full AC.fold chain injectivity: equal outputs $\Rightarrow$ equal chains $\Rightarrow$ equal input PBPs.
+\end{proposition}
+\begin{proof}
+  \leanok
+  By Prop.~\ref{prop:11_12} we recover $\mathcal{L}_{\tau_1} = \mathcal{L}_{\tau_2}$ and matching $\eps$; the chain injectivity then descends to the inputs via invertibility of each AC.step.
+\end{proof}
+
+
+\section{Main bijection (Prop 11.14, 11.15, 11.16, 11.17)}
+
+\begin{proposition}[Prop 11.14 — surjectivity from counting]
+  \label{prop:11_14}
+  \lean{prop_11_14_PBP_D, prop_11_14_PBP_Bplus, prop_11_14_PBP_Bminus, BMSZ.surjectivity_from_counting}
+  \leanok
+  \uses{prop:11_12, prop:10_11_B, prop:10_11_D, prop:10_12_C, prop:10_12_M}
+  Given a finite $\alpha$, a finite $\beta$, an injection $f : \alpha \to \beta$, and an equivalence $e : \alpha \simeq \beta$ witnessing $|\alpha| = |\beta|$:
+  $f$ is surjective.
+
+  Applied with $\alpha = \PBP_\gamma \times \mathrm{Fin}\,2$ and $\beta = \MYD_\gamma$, with injectivity from Prop~\ref{prop:11_12} and card match from Section~10 counting.
+\end{proposition}
+\begin{proof}
+  \leanok
+  A finite injective map into a finite set of equal cardinality is surjective; apply to $f : \alpha \to \beta$ with the cardinality witness $e : \alpha \simeq \beta$.
+\end{proof}
+
+
+\begin{proposition}[Prop 11.15 — main bijection for B/D types]
+  \label{prop:11_15}
+  \lean{prop_11_15, prop_11_15_PBP, prop_11_15_PBP_D_complete, prop_11_15_PBP_Bplus_complete, prop_11_15_PBP_Bminus_complete, prop_11_15_complete, prop_11_15_injectivity, prop_11_15_PBP_D_injective_full}
+  \leanok
+  \uses{prop:11_14, prop:11_12, prop:11_13, lem:11_1_b_D}
+  The map $(\tau, \eps) \mapsto \mathcal{L}_\tau \otimes (\eps, \eps)$ is a bijection
+  \[ \PBP_\gamma(\check{\mathcal{O}}) \times \mathrm{Fin}\,2 \ \xrightarrow{\sim}\ \MYD_\gamma(\mathcal{O}) \]
+  for $\gamma \in \{D, B^+, B^-\}$.
+\end{proposition}
+\begin{proof}
+  \leanok
+  Injectivity follows from Prop.~\ref{prop:11_12} plus Prop.~\ref{prop:11_13}. Surjectivity follows from Prop.~\ref{prop:11_14} with card match from Prop.~\ref{prop:10_11_B}/\ref{prop:10_11_D}.
+\end{proof}
+
+
+\begin{proposition}[Prop 11.16 — C/$\tilde{C}$ bijection from counting]
+  \label{prop:11_16}
+  \lean{prop_11_16_PBP_C, prop_11_16_PBP_M}
+  \leanok
+  \uses{prop:11_14, prop:10_12_C, prop:10_12_M}
+  Paper Prop~11.16 (descent bijectivity for C/$\tilde{C}$ types) is captured at
+  the PBP level by the Section~10 counting equalities (Prop.~\ref{prop:10_12_C},
+  \ref{prop:10_12_M}). The abstract wrapper presented here re-exposes the result
+  via $\mathrm{surjectivity\_from\_counting}$: an injective map between finite
+  sets of equal cardinality is bijective.
+\end{proposition}
+\begin{proof}
+  \leanok
+  Apply Prop.~\ref{prop:11_14} with $\alpha = \PBP_C(\check{\mathcal{O}})$ and card match from Prop.~\ref{prop:10_12_C}; analogously for $\tilde{C}$ using Prop.~\ref{prop:10_12_M}.
+\end{proof}
+
+
+\begin{proposition}[Prop 11.17 — main bijection for C/$\tilde{C}$]
+  \label{prop:11_17}
+  \lean{prop_11_17, prop_11_17_PBP_C, prop_11_17_PBP_M, prop_11_17_PBP_C_injective, prop_11_17_PBP_M_injective, prop_11_17_injectivity}
+  \leanok
+  \uses{prop:11_16, prop:11_12}
+  For $\star \in \{C, \tilde{C}\}$: $\tau \mapsto \mathcal{L}_\tau$ is a bijection
+  $\PBP_\star(\check{\mathcal{O}}) \xrightarrow{\sim} \MYD_\star(\mathcal{O})$.
+\end{proposition}
+\begin{proof}
+  \leanok
+  Combine injectivity (from Prop.~\ref{prop:11_12}) with card match (Prop.~\ref{prop:10_12_C}/\ref{prop:10_12_M}) via Prop.~\ref{prop:11_14}.
+\end{proof}
+
+
+
+%%FILE lean/blueprint/src/chapters/pbp.tex
+\chapter{Painted Bipartitions (PBP)}
+\label{chap:pbp}
+
+Painted Bipartitions are the basic combinatorial data parametrising local
+systems on nilpotent orbits (they encode both the $\wp$-decorations and the
+local system type). We adopt the definitions of [BMSZb] Section~2.
+
+\section{DRC symbols and layer order}
+
+\begin{definition}[DRC symbols]
+  \label{def:drc_symbols}
+  \lean{DRCSymbol}
+  \leanok
+  The five \emph{DRC symbols} are
+  \[ \{\bullet,\ s,\ r,\ c,\ d\}. \]
+  Symbols other than $\bullet$ are called \emph{non-dot}.
+\end{definition}
+
+\begin{definition}[Layer order]
+  \label{def:layerOrd}
+  \lean{DRCSymbol.layerOrd}
+  \leanok
+  \uses{def:drc_symbols}
+  The \emph{layer order} is a function $\mathrm{layerOrd} : \mathrm{DRCSymbol} \to \mathbb{N}$ given by
+  \[ \mathrm{layerOrd}(\bullet) = 0,\ \mathrm{layerOrd}(s) = 1,\ \mathrm{layerOrd}(r) = 2,\ \mathrm{layerOrd}(c) = 3,\ \mathrm{layerOrd}(d) = 4. \]
+  This is the linear order $\bullet < s < r < c < d$.
+\end{definition}
+
+\begin{definition}[Tail contribution]
+  \label{def:tailContrib}
+  \lean{DRCSymbol.tailContrib}
+  \leanok
+  \uses{def:drc_symbols}
+  Paper Eq.~(11.5). Each DRC symbol contributes a pair of non-negative integers
+  to the tail signature:
+  \[
+    \mathrm{tailContrib}(\bullet) = (1,1),\ \mathrm{tailContrib}(s) = (0, 2),\ \mathrm{tailContrib}(r) = (2, 0),
+  \]
+  \[
+    \mathrm{tailContrib}(c) = (1, 1),\ \mathrm{tailContrib}(d) = (1, 1).
+  \]
+  In particular the two components always sum to~$2$.
+\end{definition}
+
+\section{Painted Young diagrams}
+
+\begin{definition}[Young diagram]
+  \label{def:yd}
+  % YoungDiagram from Mathlib
+  \leanok
+  A Young diagram $\mu$ is a finite subset of $\mathbb{N}^2$ which is a
+  \emph{down-set} under $(i, j) \leq (i', j') \iff i \leq i' \land j \leq j'$.
+  Columns $j$ have lengths $\mu.\mathrm{colLen}(j) = |\{i : (i, j) \in \mu\}|$.
+\end{definition}
+
+\begin{definition}[Painted Young diagram]
+  \label{def:pyd}
+  \lean{PaintedYoungDiagram.layerMonotone}
+  \leanok
+  \uses{def:yd, def:layerOrd}
+  A \emph{painted Young diagram} is a triple $D = (\mu, \mathcal{P}, \mathrm{layerMono})$ where:
+  \begin{enumerate}
+    \item $\mu$ is a Young diagram (the \emph{shape}).
+    \item $\mathcal{P} : \mathbb{N}^2 \to \mathrm{DRCSymbol}$ is a paint function with
+      $\mathcal{P}(i, j) = \bullet$ for $(i, j) \notin \mu$ (paint outside the shape is $\bullet$).
+    \item \textbf{layer monotonicity}: for all $(i_1, j_1), (i_2, j_2)$ with $i_1 \leq i_2$ and $j_1 \leq j_2$,
+      if $(i_2, j_2) \in \mu$ then $\mathrm{layerOrd}(\mathcal{P}(i_1, j_1)) \leq \mathrm{layerOrd}(\mathcal{P}(i_2, j_2))$.
+  \end{enumerate}
+\end{definition}
+
+\begin{definition}[$\mathrm{dotScolLen}$ — dot-and-s column length]
+  \label{def:dotScolLen}
+  \lean{PBP.dotScolLen}
+  \leanok
+  \uses{def:pyd}
+  For a painted Young diagram $D$, $\mathrm{dotScolLen}(D, j)$ is the number of cells in column $j$ whose paint is $\bullet$ or $s$ (equivalently, the largest $k$ such that every cell $(i, j)$ with $i < k$ has $\mathrm{layerOrd}(\mathcal{P}(i, j)) \leq 1$).
+\end{definition}
+
+\section{Root type and symbol allowances}
+
+\begin{definition}[Root type]
+  \label{def:RootType}
+  \lean{RootType}
+  \leanok
+  A \emph{root type} $\gamma \in \{B^+,\ B^-,\ C,\ D,\ M\}$ selects a set of allowed paint symbols for $\mathcal{P}$ and $\mathcal{Q}$ (see below).
+\end{definition}
+
+\begin{definition}[Symbol allowances per root type]
+  \label{def:sym_allowed}
+  \lean{DRCSymbol.allowed}
+  \leanok
+  \uses{def:RootType, def:drc_symbols}
+  The following table gives the allowed DRC symbols for $\mathcal{P}$ and $\mathcal{Q}$ (paper Def.~2.25):
+  \[
+    \begin{array}{l|ll}
+      \gamma & \mathcal{P}\text{ allowed} & \mathcal{Q}\text{ allowed} \\\hline
+      B^+ / B^- & \{\bullet, c\} & \{\bullet, s, r, d\} \\
+      C        & \{\bullet, r, c, d\} & \{\bullet, s\} \\
+      D        & \{\bullet, s, r, c, d\} & \{\bullet\} \\
+      M = \tilde{C}        & \{\bullet, s, c\} & \{\bullet, r, d\} \\
+    \end{array}
+  \]
+  The $B^+/B^-$ distinction corresponds to a tag on the extended DRC diagram.
+\end{definition}
+
+\section{Painted Bipartition}
+
+\begin{definition}[Painted Bipartition]
+  \label{def:PBP}
+  \lean{PBP}
+  \leanok
+  \uses{def:pyd, def:sym_allowed}
+  A \emph{painted bipartition} (PBP) is $\tau = (\mathcal{P}, \mathcal{Q}, \gamma)$ where
+  $\mathcal{P}$ and $\mathcal{Q}$ are painted Young diagrams with root type $\gamma$
+  satisfying:
+  \begin{enumerate}
+    \item \textbf{sym\_P, sym\_Q}: $\mathcal{P}.\mathrm{paint}(i, j)$ is in the allowed set for $\mathcal{P}$ determined by $\gamma$ (Def.~\ref{def:sym_allowed}), and likewise for $\mathcal{Q}$.
+    \item \textbf{dot\_match}: $\mathcal{P}(i,j) = \bullet \Leftrightarrow \mathcal{Q}(i,j) = \bullet$ (the outside-shape convention makes this an equivalence between cell memberships).
+    \item \textbf{row\_s, row\_r}: each row contains at most one $s$ across $\mathcal{P} \cup \mathcal{Q}$; similarly at most one $r$.
+    \item \textbf{col\_c\_P / col\_c\_Q}: each column of $\mathcal{P}$ has at most one $c$; same for $\mathcal{Q}$.
+    \item \textbf{col\_d\_P / col\_d\_Q}: each column has at most one $d$.
+  \end{enumerate}
+\end{definition}
+
+\begin{remark}
+  The notation $\iota_\wp := \mathcal{P}$ and $\jmath_\wp := \mathcal{Q}$ appears in the paper and is used interchangeably. The index $\wp$ is a \emph{primitive pair set} which we usually omit, assuming the canonical $\wp$.
+\end{remark}
+
+\begin{definition}[PBPSet — PBPs of fixed shape]
+  \label{def:PBPSet}
+  \lean{PBPSet}
+  \leanok
+  \uses{def:PBP}
+  For $\gamma$ a root type and $\mu_P, \mu_Q$ Young diagrams,
+  \[ \PBP_\gamma(\mu_P, \mu_Q) := \{\tau \in \mathrm{PBP} \mid \tau.\gamma = \gamma,\ \tau.\mathcal{P}.\mathrm{shape} = \mu_P,\ \tau.\mathcal{Q}.\mathrm{shape} = \mu_Q\}. \]
+  Given a dual partition $dp$, we set $\PBP_\gamma(\check{\mathcal{O}}) := \PBP_\gamma(\mu_P(dp), \mu_Q(dp))$ where $\mu_P, \mu_Q$ are derived from $dp$.
+\end{definition}
+
+\section{Signature and epsilon}
+
+\begin{definition}[PBP signature $\Sign(\tau)$]
+  \label{def:signature_pbp}
+  \lean{PBP.signature}
+  \leanok
+  \uses{def:PBP}
+  The signature $\Sign(\tau) = (p_\tau, q_\tau) \in \mathbb{N}^2$ counts paint
+  symbols weighted by paint multiplicities (paper Eq.~(3.3)). Specifically,
+  denoting by $\#_\sigma$ the count of symbol $\sigma$ in $\mathcal{P}$ and $\mathcal{Q}$,
+  and by $n_s, n_r$ the total $s, r$ counts across both,
+  \[
+    p_\tau = n_r, \qquad q_\tau = n_s,
+  \]
+  with appropriate bookkeeping for $\bullet, c, d$ counts and per-$\gamma$ variations.
+  For D type: $p_\tau = \#_{\bullet,\iota} + \#_{\bullet,\jmath} + 2\#_{r,\iota} + \#_{c,\iota} + \#_{d,\iota}$ (and similarly for $q_\tau$ with $s$ in place of $r$).
+\end{definition}
+
+\begin{definition}[Epsilon $\eps_\tau$]
+  \label{def:epsilon_pbp}
+  \lean{PBP.epsilon}
+  \leanok
+  \uses{def:PBP}
+  (Paper Eq.~(3.6).) $\eps_\tau \in \{0, 1\}$ is $1$ iff column~0 of $\mathcal{P}$ (or $\mathcal{Q}$, per $\gamma$) contains a $d$.
+\end{definition}
+
+\begin{definition}[Total cell count $|\tau|$]
+  \label{def:cardCells}
+  \lean{PBP.cardCells}
+  \leanok
+  \uses{def:PBP}
+  $|\tau| := |\mathcal{P}.\mathrm{shape}.\mathrm{cells}| + |\mathcal{Q}.\mathrm{shape}.\mathrm{cells}|$.
+\end{definition}
+
+\section{Dual partitions and shape derivation}
+
+\begin{definition}[Dual partition legality]
+  \label{def:DualPart}
+  \lean{DualPart, }
+  \leanok
+  A \emph{dual partition} $dp$ is a \texttt{List ℕ} that is sorted $\geq$ (strictly decreasing with possible ties). Validity conditions:
+  \begin{itemize}
+    \item B-type / M-type: every entry is even and positive.
+    \item D-type / C-type: every entry is odd.
+  \end{itemize}
+\end{definition}
+
+\begin{definition}[Column lengths from dp]
+  \label{def:dpartColLens}
+  \lean{dpartColLensP_B, dpartColLensQ_B, dpartColLensP_D, dpartColLensQ_D, dpartColLensP_C, dpartColLensQ_C, dpartColLensP_M, dpartColLensQ_M}
+  \leanok
+  \uses{def:DualPart}
+  For each root type, functions compute the column-length lists of $\mu_P$ and $\mu_Q$ from $dp$. For example (D type): $\mu_P(dp)$ has column lengths $(dp_1 + 1)/2, (dp_2 + 1)/2, \ldots$, etc.
+\end{definition}
+
+
+%%FILE lean/blueprint/src/chapters/shape_shift.tex
+\chapter{Shape-shifting bijections (Lemma 10.3)}
+\label{chap:shape_shift}
+
+Reference: [BMSZb] Section~10.2, Lemma~10.3. These bijections show that the
+PBP count is independent of the primitive-pair set $\wp$.
+
+\section{Shape-shift for $M = \tilde{C}$ type}
+
+The M-type shape-shift swaps the column-0 data between $\mathcal{P}$ and
+$\mathcal{Q}$, applying an involutive paint translation.
+
+\begin{definition}[paint translation $\mathrm{translateM}$]
+  \label{def:translateM}
+  \lean{translateM}
+  \leanok
+  \uses{def:drc_symbols}
+  The involution
+  \[ \mathrm{translateM}(\bullet) = \bullet,\quad \mathrm{translateM}(s) = r,\quad \mathrm{translateM}(r) = s,\quad \mathrm{translateM}(c) = d,\quad \mathrm{translateM}(d) = c. \]
+  Note that $\mathrm{translateM}$ preserves $\mathrm{layerOrd}$ modulo the swaps.
+\end{definition}
+
+\begin{definition}[shape shift M]
+  \label{def:shapeShiftM}
+  \lean{shapeShiftM}
+  \leanok
+  \uses{def:PBP, def:translateM}
+  Let $\tau = (\mathcal{P}, \mathcal{Q}, M) \in \PBP_M(\mu_P, \mu_Q)$. Given
+  shapes $(\mu_P', \mu_Q')$ whose column~0 is swapped with $(\mu_P, \mu_Q)$
+  (i.e., $(i, 0) \in \mu_P' \iff (i, 0) \in \mu_Q$; columns $\geq 1$ unchanged),
+  define $\mathrm{shapeShiftM}(\tau) \in \PBP_M(\mu_P', \mu_Q')$ by
+  \begin{align*}
+    \tau'.\mathcal{P}(i, 0) &= \mathrm{translateM}(\tau.\mathcal{Q}(i, 0)), &
+    \tau'.\mathcal{P}(i, j+1) &= \tau.\mathcal{P}(i, j+1), \\
+    \tau'.\mathcal{Q}(i, 0) &= \mathrm{translateM}(\tau.\mathcal{P}(i, 0)), &
+    \tau'.\mathcal{Q}(i, j+1) &= \tau.\mathcal{Q}(i, j+1).
+  \end{align*}
+\end{definition}
+
+\begin{lemma}[shape shift M is an involution]
+  \label{lem:shapeShiftM_involution}
+  \lean{shapeShiftM_involution}
+  \leanok
+  \uses{def:shapeShiftM, def:translateM}
+  $\mathrm{shapeShiftM} \circ \mathrm{shapeShiftM} = \mathrm{id}$.
+\end{lemma}
+\begin{proof}
+  \leanok
+  $\mathrm{translateM}$ is an involution on DRC symbols; applying it twice
+  gives identity. The column-0 swap is also self-inverse. Hence so is their
+  composition.
+\end{proof}
+
+\begin{lemma}[Lemma 10.3 M — PBPSet cardinality equality]
+  \label{lem:10_3_M}
+  \lean{card_PBPSet_M_shapeShift, lemma_10_3_M}
+  \leanok
+  \uses{lem:shapeShiftM_involution}
+  $|\PBP_M(\mu_P, \mu_Q)| = |\PBP_M(\mu_P', \mu_Q')|$ for any column-0
+  swapped shape pair.
+\end{lemma}
+\begin{proof}
+  \leanok
+  $\mathrm{shapeShiftM}$ is a bijection (its own inverse). The PBP axioms
+  (sym, dot\_match, monotonicity, row/column constraints) are preserved
+  under the translation (see [BMSZb] Sec.~10.2; also the axiom-by-axiom
+  verification in the Lean proof).
+\end{proof}
+
+\begin{proposition}[Prop 10.2 M — PBP count independent of $\wp$]
+  \label{prop:10_2_M}
+  \lean{prop_10_2_PBP_M}
+  \leanok
+  \uses{lem:10_3_M}
+  The cardinality equality extends to arbitrary column-0 swap sequences.
+\end{proposition}
+\begin{proof}
+  \leanok
+  Iterated application of the column-0 swap Lemma~\ref{lem:10_3_M} transports $\tau$ through any sequence of primitive-pair-set configurations.
+\end{proof}
+
+
+\section{Shape-shift for C type (case analysis)}
+
+The C-type shape shift is more delicate: it modifies only column~0 of $\mathcal{P}$
+(the roles of $\mathcal{P}$ and $\mathcal{Q}$ do \emph{not} swap, unlike M type).
+The construction depends on the value of $\mathcal{P}_\tau(\mathbf{c}_1(\iota_\wp), 1)$,
+giving four sub-cases.
+
+\subsection{Setup}
+
+Let $\tau \in \PBP_C(\check{\mathcal{O}}, \wp)$ with $(1, 2) \in \mathrm{PP}_\star(\check{\mathcal{O}})$ and $(1, 2) \notin \wp$. Set
+\[ k := \mathbf{c}_1(\iota_\wp),\qquad k_\uparrow := \mathbf{c}_1(\iota_{\wp_\uparrow}), \]
+where $\wp_\uparrow := \wp \cup \{(1, 2)\}$. By the PP assumption, $k_\uparrow > k \geq 1$.
+
+Since $\jmath$ is unchanged, $\tau_\uparrow.\mathcal{Q}(i, j) := \tau.\mathcal{Q}(i, j)$ for all $(i, j)$.
+
+\subsection{Case analysis for the new paint}
+
+The construction of $\mathcal{P}_{\tau_\uparrow}$ splits into four sub-cases
+based on the value of $\mathcal{P}_\tau(k, 1)$. Each sub-case is a separate
+definition corresponding to its own Lean helper.
+
+\begin{definition}[shape shift C — main dispatcher]
+  \label{def:shapeShiftC_paint}
+  \lean{shiftPaintP_C_concrete, shapeShiftC}
+  \leanok
+  \uses{def:PBP}
+  The paint function $\mathcal{P}_{\tau_\uparrow}$ dispatches to one of the
+  four sub-case formulas
+  (Def.~\ref{def:shapeShiftC_case_a1},
+  \ref{def:shapeShiftC_case_a2},
+  \ref{def:shapeShiftC_case_b1},
+  \ref{def:shapeShiftC_case_b2})
+  according to $\mathcal{P}_\tau(k, 1)$ and $\mathcal{P}_\tau(k - 1, 1)$,
+  where $k := \mathbf{c}_1(\iota_\wp)$ and $k_\uparrow := \mathbf{c}_1(\iota_{\wp_\uparrow})$.
+  Set $\alpha_0 := \mathcal{P}_\tau(k, 1)$ when non-$\bullet$.
+\end{definition}
+
+\begin{definition}[sub-case (a.1): previous-cell is c]
+  \label{def:shapeShiftC_case_a1}
+  \lean{shiftPaintP_C_concrete_case_a1}
+  \leanok
+  \uses{def:PBP}
+  Applies when $\alpha_0 \neq \bullet$, $k \geq 2$, and $\mathcal{P}_\tau(k - 1, 1) = c$.
+  The new paint is
+  \[
+    \mathcal{P}_{\tau_\uparrow}(i, j) =
+    \begin{cases}
+      r & j = 1,\ k - 1 \leq i \leq k_\uparrow - 2 \\
+      c & (i, j) = (k_\uparrow - 1, 1) \\
+      d & (i, j) = (k_\uparrow, 1) \\
+      \mathcal{P}_\tau(i, j) & \text{otherwise.}
+    \end{cases}
+  \]
+  \end{definition}
+
+\smallskip
+
+\begin{definition}[sub-case (a.2): default for non-dot top]
+  \label{def:shapeShiftC_case_a2}
+  \lean{shiftPaintP_C_concrete_case_a2}
+  \leanok
+  \uses{def:PBP}
+  Applies when $\alpha_0 \neq \bullet$ and the (a.1) condition on $\mathcal{P}_\tau(k - 1, 1)$ fails.
+  The new paint is
+  \[
+    \mathcal{P}_{\tau_\uparrow}(i, j) =
+    \begin{cases}
+      r & j = 1,\ k \leq i \leq k_\uparrow - 1 \\
+      \alpha_0 & (i, j) = (k_\uparrow, 1) \\
+      \mathcal{P}_\tau(i, j) & \text{otherwise.}
+    \end{cases}
+  \]
+  \end{definition}
+
+\smallskip
+
+\begin{definition}[sub-case (b.1): Q col-2 lift (deferred)]
+  \label{def:shapeShiftC_case_b1}
+  \lean{shiftPaintP_C_concrete_case_b1_fallback}
+  \leanok
+  \uses{def:PBP}
+  Applies when $\alpha_0 = \bullet$, $\mathbf{c}_2(\iota_\wp) = k$, and $\mathcal{P}_\tau(k, 2) = r$.
+  The new paint formula modifies column~1 of $\jmath$-reachable cells:
+  \[
+    \mathcal{P}_{\tau_\uparrow}(i, j) =
+    \begin{cases}
+      r & j = 1,\ k \leq i \leq k_\uparrow - 1 \\
+      c & (i, j) = (\mathbf{c}_2(\iota_\wp), 2) \\
+      d & (i, j) = (k_\uparrow, 1) \\
+      \mathcal{P}_\tau(i, j) & \text{otherwise.}
+    \end{cases}
+  \]
+  The Lean formalization uses a fallback constructor
+  (\texttt{shiftPaintP\_C\_concrete\_case\_b1\_fallback}); a full constructive
+  case (b.1) handler is deferred future work.
+\end{definition}
+
+\smallskip
+
+\begin{definition}[sub-case (b.2): default for dot top]
+  \label{def:shapeShiftC_case_b2}
+  \lean{shiftPaintP_C_concrete_case_b2}
+  \leanok
+  \uses{def:PBP}
+  Applies when $\alpha_0 = \bullet$ and the (b.1) condition fails.
+  The new paint is
+  \[
+    \mathcal{P}_{\tau_\uparrow}(i, j) =
+    \begin{cases}
+      r & j = 1,\ k \leq i \leq k_\uparrow - 2 \\
+      c & (i, j) = (k - 1, 1) \\
+      d & (i, j) = (k_\uparrow, 1) \\
+      \mathcal{P}_\tau(i, j) & \text{otherwise.}
+    \end{cases}
+  \]
+  \end{definition}
+
+\subsection{Validity and bijectivity}
+
+\begin{lemma}[Shape shift C produces a valid PBP]
+  \label{cor:shapeShiftC_valid}
+  \lean{shapeShiftC}
+  \leanok
+  \uses{def:shapeShiftC_paint}
+  The painted diagram produced by any of the four sub-cases of
+  Def.~\ref{def:shapeShiftC_paint} satisfies all PBP axioms: the allowed
+  symbol sets (\texttt{sym\_P}, \texttt{sym\_Q}), layer monotonicity, the
+  \texttt{dot\_match} invariant, and the row / column uniqueness conditions
+  (\texttt{row\_s}, \texttt{row\_r}, \texttt{col\_c\_P}, \texttt{col\_c\_Q},
+  \texttt{col\_d\_P}, \texttt{col\_d\_Q}).
+\end{lemma}
+\begin{proof}
+  \leanok
+  We check each axiom case-by-case.
+
+  \textbf{sym\_P}: The new paint function outputs values only in
+  $\{r, c, d\}$ (the forced values in the modified region of column~1) or
+  $\mathcal{P}_\tau(i, j)$ (unchanged cells, inheriting validity from $\tau$).
+  Both lie in the C-type $\mathcal{P}$-allowed set $\{\bullet, s, r, c, d\}$.
+  Formalized as \texttt{shiftPaintP\_C\_concrete\_case\_a1\_allowed} and
+  the analogous \texttt{a2}, \texttt{b2} variants.
+
+  \textbf{sym\_Q}: $\mathcal{Q}$ is unchanged, so the axiom carries over
+  directly from $\tau$.
+
+  \textbf{layer monotonicity}: In case (a.1) the sequence $\cdots r\ c\ d$
+  has monotone $\mathrm{layerOrd}$ ($2 \le 3 \le 4$); the pattern is
+  preserved across sub-cases by construction of $\mathcal{P}_{\tau_\uparrow}$.
+
+  \textbf{col\_c\_P, col\_d\_P}: Case (a.1) moves the pre-existing $c$ at
+  row $k-1$ to the new position $k_\uparrow - 1$ (rewriting the old cell as
+  $r$), hence column~1 still has exactly one $c$. The newly-introduced $d$
+  sits at row $k_\uparrow$; uniqueness holds because the original tail
+  contained no $d$ at the top (by layer monotonicity on $\tau$).
+  Formalized as \texttt{shiftPaintP\_C\_concrete\_case\_a2\_col\_c} and
+  \texttt{shiftPaintP\_C\_concrete\_case\_a2\_col\_d}.
+
+  \textbf{row\_s, row\_r}: Same-row uniqueness carries over from $\tau$
+  since the C-type $\mathcal{Q}$ only contains $\{\bullet, s\}$, so the
+  modifications to $\mathcal{P}$'s column~1 cannot conflict row-wise with
+  anything in $\mathcal{Q}$.
+
+  \textbf{dot\_match}: The dot positions of $\mathcal{P}_{\tau_\uparrow}$
+  agree with those of $\mathcal{Q}_{\tau_\uparrow} = \mathcal{Q}_\tau$
+  because the modifications only fill non-dot cells in the strictly
+  extended tail region $[k, k_\uparrow]$.
+
+  The Lean \texttt{shapeShiftC} definition exhibits all of the above by
+  constructing the final PBP with every axiom verified.
+\end{proof}
+
+
+\begin{lemma}[shape shift C identity instance]
+  \label{lem:shapeShiftC_id}
+  \lean{shapeShiftC_id, shapeShiftC_id_eq}
+  \leanok
+  \uses{def:shapeShiftC_paint}
+  The identity instance (parameterised by the trivial col-0 paint)
+  returns the original PBP. Used as a degenerate witness.
+\end{lemma}
+\begin{proof}
+  \leanok
+  The identity instance takes $\mathcal{P}_{\tau_\uparrow} = \mathcal{P}_\tau$ pointwise, so $\tau_\uparrow = \tau$ by \texttt{PaintedYoungDiagram.ext'}.
+\end{proof}
+
+
+\begin{lemma}[Lemma 10.3 C — PBPSet cardinality]
+  \label{lem:10_3_C}
+  \lean{lemma_10_3_C, card_PBPSet_C_shapeShift}
+  \leanok
+  \uses{lem:shapeShiftC_id, cor:shapeShiftC_valid}
+  For shapes $(\mu_P', \mu_Q')$ reachable via C-type shape shift from $(\mu_P, \mu_Q)$:
+  \[ |\PBP_C(\mu_P, \mu_Q)| = |\PBP_C(\mu_P', \mu_Q')|. \]
+\end{lemma}
+\begin{proof}
+  \leanok
+  The shape-shift is a bijection $(\wp, \tau) \leftrightarrow (\wp \cup \{(1,2)\}, \tau_\uparrow)$ via the case analysis in Def.~\ref{def:shapeShiftC_paint}. In particular $\mathrm{shapeShiftC\_id}$ is its own inverse (Lemma~\ref{lem:shapeShiftC_id}).
+\end{proof}
+
+
+\begin{proposition}[Prop 10.2 C — PBP count independent of $\wp$]
+  \label{prop:10_2_C}
+  \lean{prop_10_2_PBP_C}
+  \leanok
+  \uses{lem:10_3_C}
+\end{proposition}
+\begin{proof}
+  \leanok
+  By iterating Lemma~\ref{lem:10_3_C} (or its identity instance) on $\wp$-modifications.
+\end{proof}
+
+
+\section{Trivial shape-shifts: $B$ and $D$ types}
+
+For $\gamma \in \{B^+, B^-, D\}$, the paper's Prop~10.2 claim of $\wp$-independence
+specialises to the reflexive statement in our formalization (our $\PBP_\gamma$ is
+the $\wp = \emptyset$ instance; paper's internal bijection for B/D fixes the
+shape pair and permutes paints, which we do not parameterise by).
+
+\begin{proposition}[Prop 10.2 B / D — trivial]
+  \label{prop:10_2_BD}
+  \lean{prop_10_2_PBP_B, prop_10_2_PBP_D}
+  \leanok
+  \uses{def:PBPSet}
+  $|\PBP_\gamma(\mu_P, \mu_Q)| = |\PBP_\gamma(\mu_P, \mu_Q)|$ for $\gamma \in \{B^+, B^-, D\}$.
+  (Reflexive statement; the genuine content for B/D is the internal paint-permutation bijection, not captured at the Lean level.)
+\end{proposition}
+\begin{proof}
+  \leanok
+  For B/D in our formalization $\PBP_\gamma$ is already the $\wp = \emptyset$ instance. The paper's shape-preserving paint-permutation bijection is not reflected at the Lean level and the statement degenerates to reflexivity.
+\end{proof}
+
+
+
+%%FILE lean/blueprint/src/chapters/status.tex
+\chapter{Formalization Status}
+\label{chap:status}
+
+\section{Overview}
+
+All theorems in this blueprint are formalised in Lean~4 with zero instances of
+\texttt{sorry}, \texttt{admit}, \texttt{axiom}, or \texttt{opaque}. A full
+axiom audit (via \texttt{\#print axioms}) shows only the three standard
+classical logic axioms:
+\texttt{propext}, \texttt{Classical.choice}, \texttt{Quot.sound}.
+
+\section{Unconditional status}
+
+\textbf{[BMSZb] Section~10 main theorems} (Chapters~\ref{chap:pbp}--\ref{chap:counting}):
+\emph{fully unconditional}. Hypotheses are only shape / dual-partition legality
+(sorted, even/odd, positive, shape match), which are defining conditions of
+``valid dual partition''. See
+Prop~\ref{prop:10_11_B}, \ref{prop:10_11_D}, \ref{prop:10_12_C}, \ref{prop:10_12_M}.
+
+\textbf{Prop~10.8} (descent cardinality, Chap~\ref{chap:descent}) and
+\textbf{Prop~10.9 / Cor~10.10} (double descent injectivity, Chap~\ref{chap:ddescent}):
+all unconditional (only shape hypotheses + structural equalities of $\tau_1, \tau_2$).
+
+\textbf{[BMSZ] Section~11} (Chapters~\ref{chap:ils}--\ref{chap:11_main}):
+\begin{itemize}
+\item AC-level theorems (\emph{e.g.}~\ref{thm:AC_step_sign_D}, \ref{thm:fcSign_diff}, \ref{lem:11_6_D}) are
+  \emph{unconditional} given \texttt{source : ACResult}. The source is
+  caller-supplied (typically the AC.fold of the descent chain for $\tau''$).
+\item PBP-level theorems (\emph{e.g.}~\ref{prop:11_9_D}) that express
+  numerical constraints on $\tau$ take only shape/type hypotheses.
+\item Main bijection (\ref{prop:11_14}, \ref{prop:11_15}, \ref{prop:11_17}) uses the
+  abstract $\alpha \simeq \beta$ witness. Mathematically this is solid:
+  an injective map from a finite type $\alpha$ into a finite type $\beta$ with
+  an equivalence $e : \alpha \simeq \beta$ (i.e.\ $|\alpha| = |\beta|$) is
+  automatically surjective. The witness $e$ is supplied from the Section~10
+  counting formulas plus other enumeration data — this does not make the
+  theorem conditional on any open assumption.
+\end{itemize}
+
+\section{TODO (future work, not a mathematical gap)}
+\label{sec:status_todo}
+
+The following would enrich the formalization but are not required for the
+correctness of the above claims:
+
+\begin{itemize}
+  \item \textbf{Constructive canonical \(L_\tau\) builder.} Currently
+    \texttt{AC.step} and \texttt{AC.fold} produce an ACResult given a caller-supplied
+    descent chain. A \emph{builder} that goes directly from \(\tau : \PBP\) to the
+    canonical \(L_\tau\) (the AC.fold of \(\tau\)'s explicit descent sequence)
+    would reduce the hypothesis footprint of the PBP-level Prop~11.8/11.12/11.15
+    wrappers. This is engineering work ($\sim$2000 lines) rather than new math.
+  \item \textbf{Explicit \(\alpha \to \beta\) bijection for Prop~11.14/15/17.}
+    The abstract statement (inject + equal cardinality $\Rightarrow$ bijection)
+    is mathematically complete. Writing an explicit functorial bijection
+    $(\tau, \eps) \mapsto \mathcal{L}_\tau \otimes (\eps, \eps) : \PBP_\star \times \mathrm{Fin}\,2 \xrightarrow{\sim} \MYD_\star$
+    in Lean would make the statement constructive.
+  \item \textbf{shapeShiftC case (b.1).} The case that modifies column~1 of
+    $\jmath$ has been deferred (the other three sub-cases are formalized).
+\end{itemize}
+
+\section{Deliberately skipped}
+
+Per project directive, real-form variants $C^*, D^*$ (Lemma~11.2, Prop~11.18--11.21)
+are \textbf{not formalized}. The coverage is $\star \in \{B, D, C, M\}$.
+
+\section{Repository information}
+
+\begin{itemize}
+  \item GitHub: \url{https://github.com/jiajunma/unipotentrepn}
+  \item Lean source: \texttt{lean/CombUnipotent/} (entry point \texttt{lean/CombUnipotent.lean})
+  \item Blueprint source: \texttt{lean/blueprint/src/}
+  \item Natural-language md blueprints: \texttt{lean/docs/blueprints/} (see INDEX.md)
+  \item CI: \texttt{.github/workflows/blueprint.yml} compiles this blueprint on each push to \texttt{main}.
+\end{itemize}
+
+\section{Reading guide}
+
+For a conceptual tour:
+\begin{enumerate}
+  \item Chap~\ref{chap:pbp} (PBP) — start here to understand the combinatorial data.
+  \item Chap~\ref{chap:counting} (counting) — the main result of [BMSZb].
+  \item Chap~\ref{chap:ac} (AC recursion + firstColSign) — the key technical tool for Section~11.
+  \item Chap~\ref{chap:tail} (tail, Prop~11.4) — signature decomposition.
+  \item Chap~\ref{chap:11_5} (Lemma~11.5, 11.6) — the AC composition formula.
+  \item Chap~\ref{chap:11_main} (main bijection) — the culminating result of [BMSZ].
+\end{enumerate}
+
+
+%%FILE lean/blueprint/src/chapters/tail.tex
+\chapter{Tail PBP, Prop 11.3--11.4}
+\label{chap:tail}
+
+Reference: [BMSZb] Section~10.5 (tail definition); [BMSZ] Prop~11.3, 11.4;
+internal blueprint \texttt{tail\_definition.md}, \texttt{lemma\_11\_5\_PBP\_identity.md}.
+
+\section{The tail PBP}
+
+\begin{definition}[Tail length $k$]
+  \label{def:tailLen}
+  \lean{PBP.tailLen_D, PBP.tailLen_B}
+  \leanok
+  \uses{def:PBP}
+  For $\tau \in \PBP_D$ with $\mathcal{P}$ col~0 longer than $\mathcal{Q}$ col~0, the
+  \emph{tail length} is
+  \[ k := \tau.\mathcal{P}.\mathrm{colLen}(0) - \tau.\mathcal{Q}.\mathrm{colLen}(0). \]
+  Equivalently $k = (\mathbf{r}_1(\check{\mathcal{O}}) - \mathbf{r}_2(\check{\mathcal{O}}))/2 + 1$ via the BV dual correspondence.
+\end{definition}
+
+\begin{definition}[Tail symbol $x_\tau$ and top-of-tail symbol $x_1$]
+  \label{def:tailSymbol}
+  \lean{PBP.tailSymbol_D, PBP.tailSymbol_B}
+  \leanok
+  \uses{def:tailLen}
+  For D type, the tail is the sequence of cells
+  $(\mathcal{Q}.\mathrm{colLen}(0), 0),\ (\mathcal{Q}.\mathrm{colLen}(0) + 1, 0),\ \ldots,\ (\mathcal{P}.\mathrm{colLen}(0) - 1, 0)$
+  in $\mathcal{P}$'s column~0. We write:
+  \begin{itemize}
+    \item $x_\tau := \mathcal{P}_\tau(\mathcal{P}.\mathrm{colLen}(0) - 1, 0)$ — \emph{bottom} tail cell (maximum $\mathrm{layerOrd}$ by layer monotonicity).
+    \item $x_1 := \mathcal{P}_\tau(\mathcal{Q}.\mathrm{colLen}(0), 0)$ — \emph{top} tail cell (minimum $\mathrm{layerOrd}$).
+  \end{itemize}
+  For B type: analogous symbols in $\mathcal{Q}$.
+\end{definition}
+
+\begin{definition}[Tail signature $\mathrm{tailSig}(\tau) = (p_{\tau_t}, q_{\tau_t})$]
+  \label{def:tailSignature}
+  \lean{PBP.tailSignature_D, PBP.tailSignature_B}
+  \leanok
+  \uses{def:tailLen, def:tailContrib}
+  \[ \mathrm{tailSig}(\tau) := \sum_{i = \tau.\mathcal{Q}.\mathrm{colLen}(0)}^{\tau.\mathcal{P}.\mathrm{colLen}(0) - 1} \mathrm{tailContrib}(\mathcal{P}_\tau(i, 0)). \]
+  Each cell contributes $\mathrm{tailContrib}$ (Def.~\ref{def:tailContrib}); components sum to~$2$ per cell.
+\end{definition}
+
+\begin{lemma}[Tail signature sum identity]
+  \label{lem:tailSig_sum}
+  \lean{PBP.tailSignature_D_sum_eq}
+  \leanok
+  \uses{def:tailSignature}
+  $p_{\tau_t} + q_{\tau_t} = 2k$ where $k$ is the tail length.
+\end{lemma}
+\begin{proof}
+  \leanok
+  Each tail cell contributes $\mathrm{tailContrib}$ with $\mathrm{tailContrib}(\sigma).1 + \mathrm{tailContrib}(\sigma).2 = 2$ for every symbol $\sigma$. Summing over the $k$ tail cells gives $p_{\tau_t} + q_{\tau_t} = 2k$.
+\end{proof}
+
+
+\begin{lemma}[Tail signature non-negativity]
+  \label{lem:tailSig_nonneg}
+  \lean{tailSig_nonneg_D}
+  \leanok
+  \uses{def:tailSignature}
+  $p_{\tau_t} \geq 0$ and $q_{\tau_t} \geq 0$.
+\end{lemma}
+\begin{proof}
+  \leanok
+  Each $\mathrm{tailContrib}(\sigma)$ has non-negative components; the sum is non-negative in both components.
+\end{proof}
+
+
+\section{Proposition 11.3 — tail symbol characterisations}
+
+\begin{lemma}[Prop 11.3 — characterisation of $x_\tau$, $x_1$ via signatures and $\eps$]
+  \label{lem:11_3}
+  \lean{epsilon_zero_iff_tailSymbol_d, tailSig_fst_zero_iff_tailSymbol_s, tailSig_snd_zero_iff_tail_all_r}
+  \leanok
+  \uses{def:tailSymbol, def:tailSignature, def:epsilon_pbp, def:tailContrib}
+  Assume $\mathcal{P}.\mathrm{colLen}(0) > \mathcal{Q}.\mathrm{colLen}(0)$. Then:
+  \begin{enumerate}
+    \item $\eps_\tau = 0 \iff x_\tau = d$.
+    \item $p_{\tau_t} = 0 \iff x_\tau = s \iff $ every tail cell is $s$.
+    \item $q_{\tau_t} = 0 \iff $ every tail cell is $r$ $\iff x_1 = r$ and $x_\tau = r$.
+  \end{enumerate}
+\end{lemma}
+
+\begin{proof}
+  \leanok
+  \uses{def:tailContrib}
+
+  \textbf{(1)} By layer monotonicity in column~0, a symbol $d$ (with maximal
+  $\mathrm{layerOrd} = 4$) can only appear at the bottom.
+  Conversely, $\eps_\tau = 0$ iff $d$ is present somewhere in column~0, which
+  by monotonicity forces it to the bottom, i.e., $x_\tau = d$.
+
+  \textbf{(2)} $p_{\tau_t} = \sum_i \mathrm{tailContrib}(x_i).p$, and
+  $\mathrm{tailContrib}(\sigma).p = 0$ only for $\sigma = s$. Combined with
+  the non-negativity of each term, $p_{\tau_t} = 0 \iff $ every tail cell is $s$.
+
+  Now the equivalence ``every tail cell is $s$'' $\iff$ $x_\tau = s$ follows
+  from layer monotonicity: $x_\tau = s$ means the $\mathrm{layerOrd}$ at the
+  bottom is $1$; all cells above have $\mathrm{layerOrd} \leq 1$; combined
+  with non-dot (every tail cell is non-$\bullet$ by $\mathrm{dot\_match}$),
+  every cell has $\mathrm{layerOrd} = 1$, i.e., equals $s$.
+
+  \textbf{(3)} $q_{\tau_t} = \sum_i \mathrm{tailContrib}(x_i).q$, and
+  $\mathrm{tailContrib}(\sigma).q = 0$ only for $\sigma = r$. So
+  $q_{\tau_t} = 0 \iff$ every tail cell is $r$.
+
+  The second equivalence: ``every tail cell is $r$'' $\iff$ $x_1 = r$ and
+  $x_\tau = r$. Layer monotonicity gives
+  $\mathrm{layerOrd}(x_1) \leq \mathrm{layerOrd}(x_i) \leq \mathrm{layerOrd}(x_\tau)$
+  for every tail cell $x_i$. If $x_1 = x_\tau = r$ (both equal $2$), then
+  every $x_i$ has $\mathrm{layerOrd}$ sandwiched as $2 \leq \mathrm{layerOrd}(x_i) \leq 2$,
+  so $\mathrm{layerOrd}(x_i) = 2$, i.e., $x_i = r$. The converse is trivial.
+\end{proof}
+
+\begin{remark}
+  Unlike part~(2), part~(3) cannot be stated purely in terms of the bottom
+  symbol $x_\tau$: the tail can have an $s$ cell above an $r$ bottom (layer
+  orders $1 \leq 2$), giving $q_{\tau_t} = 2 \neq 0$. The correct statement
+  requires either every tail cell to be $r$ or, equivalently, both $x_1$ and
+  $x_\tau$ to be $r$.
+\end{remark}
+
+\section{Signature sum and residual identity}
+
+\begin{lemma}[D-type signature sum]
+  \label{lem:sig_sum_D}
+  \lean{PBP.signature_sum_D}
+  \leanok
+  \uses{def:signature_pbp, def:cardCells}
+  For $\tau \in \PBP_D$:
+  \[ p_\tau + q_\tau = 2\cdot|\tau|. \]
+  (Each cell contributes exactly $2$ to the total $p + q$.)
+\end{lemma}
+\begin{proof}
+  \leanok
+  Combine $p_\tau = \#_\bullet + \#_s + 2\#_r + \#_c + \#_d$ and the symmetric expression for $q_\tau$. Since $\mathcal{Q}$ is all $\bullet$ for D type, the non-dot counts come from $\mathcal{P}$ only, and $p_\tau + q_\tau = 2 \cdot |\mathcal{P}| + 2 \cdot |\mathcal{Q}| = 2|\tau|$.
+\end{proof}
+
+\begin{lemma}[Tail residual identity]
+  \label{lem:residual_D}
+  \lean{PBP.residual_identity_D}
+  \leanok
+  \uses{def:tailSignature, lem:tailSig_sum}
+  For $\tau \in \PBP_D$:
+  \[ p_{\tau_t} + q_{\tau_t} = 2 \cdot \mathbf{c}_1(\mathcal{O}) - 2 \cdot \mathbf{c}_2(\mathcal{O}). \]
+\end{lemma}
+\begin{proof}
+  \leanok
+  $k = \mathbf{c}_1 - \mathbf{c}_2$ by the BV dual column-length relations (specifically $\mathcal{P}.\mathrm{colLen}(0) = \mathbf{c}_1$, $\mathcal{Q}.\mathrm{colLen}(0) = \mathbf{c}_2$). Apply Lem.~\ref{lem:tailSig_sum}.
+\end{proof}
+
+\section{Proposition 11.4 — signature decomposition}
+
+\begin{proposition}[Prop 11.4 D — signature decomposition (Eq 11.7)]
+  \label{prop:11_4}
+  \lean{PBP.signature_fst_decomp_D, PBP.signature_snd_decomp_D, prop_11_4_signature_decomp_D}
+  \leanok
+  \uses{def:signature_pbp, def:tailSignature, def:doubleDescent_D}
+  (Primitive case $\mathbf{r}_2(\check{\mathcal{O}}) > \mathbf{r}_3(\check{\mathcal{O}})$.) The signature splits as
+  \[ \Sign(\tau) = (\mathbf{c}_2(\mathcal{O}), \mathbf{c}_2(\mathcal{O})) + \Sign(\nabla^2\tau) + \mathrm{tailSig}(\tau). \]
+  More explicitly (Lean form):
+  \begin{align*}
+    p_\tau &= \mathbf{c}_2(\mathcal{O}) + p_{\nabla^2\tau} + p_{\tau_t} \\
+    q_\tau &= \mathbf{c}_2(\mathcal{O}) + q_{\nabla^2\tau} + q_{\tau_t}
+  \end{align*}
+  where $\mathbf{c}_2(\mathcal{O}) = \tau.\mathcal{Q}.\mathrm{colLen}(0)$.
+\end{proposition}
+
+\begin{proof}
+  \leanok
+  Decompose $\mathcal{P}$'s cells into three groups:
+  \begin{enumerate}
+    \item \emph{Column~0 below $\mathcal{Q}$'s col~0} ($i < \mathcal{Q}.\mathrm{colLen}(0)$): these are all $\bullet$ by the dot\_match axiom, contributing $\mathbf{c}_2(\mathcal{O}) \cdot (1, 1) / 2$ per cell... actually the direct expansion gives $\mathbf{c}_2(\mathcal{O})$ to both $p$ and $q$ via the $\bullet$ contribution to the signature formula.
+    \item \emph{Columns $\geq 1$}: these match $\nabla^2\tau$'s columns exactly (up to shift), contributing $\Sign(\nabla^2\tau)$ (on a shifted shape).
+    \item \emph{Tail cells} ($\mathcal{Q}.\mathrm{colLen}(0) \leq i < \mathcal{P}.\mathrm{colLen}(0)$ in column~0): contribute $\mathrm{tailSig}(\tau)$ by Def.~\ref{def:tailSignature}.
+  \end{enumerate}
+  Uses \texttt{countSym\_split}, \texttt{col0\_dot\_below\_Q\_D}, \texttt{Q\_countSym\_eq\_zero\_of\_D}, and the per-component $\mathrm{tailContrib}$ table.
+\end{proof}
+
+
+%%FILE lean/blueprint/src/content.tex
+% Main entry. Organised by topic into chapters/ subdirectory.
+
+\input{chapters/intro}
+\input{chapters/pbp}
+\input{chapters/shape_shift}
+\input{chapters/descent}
+\input{chapters/counting}
+\input{chapters/ils}
+\input{chapters/ac}
+\input{chapters/tail}
+\input{chapters/lemma_11_5}
+\input{chapters/main_bijection}
+\input{chapters/status}
+

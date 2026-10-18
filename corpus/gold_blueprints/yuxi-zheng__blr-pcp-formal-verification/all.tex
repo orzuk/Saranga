@@ -1,0 +1,3669 @@
+
+%%FILE blueprint/src/content.tex
+% In this file you should put the actual content of the blueprint.
+% It will be used both by the web and the print version.
+% It should *not* include the \begin{document}
+%
+% If you want to split the blueprint content into several files then
+% the current file can be a simple sequence of \input. Otherwise It
+% can start with a \section or \chapter for instance.
+
+\input{../../.lake/build/blueprint/library/BlrPcp}
+
+% \inputleanmodule{BlrPcp.Basic}
+
+% \input{../../.lake/build/blueprint/library/BlrPcp}
+\chapter{Linearity test over finite fields}
+\input{subsections/blr-revised.tex}
+%\input{subsections/blr-lower-bounds.tex}
+\chapter{Gowers Hatami theorem}
+\input{subsections/gowers-hatami}
+% \input{subsections/ghZ2.tex}  
+%the Z_q version is formalized proved in `GHFqPrime', but it does not give a tight bound beyond Z2
+\input{subsections/gh_blr.tex}
+\chapter{Exponential-length PCP}
+\input{subsections/pcp.tex}
+\input{subsections/blr-F2.tex}
+\section{Linear PCP for linear equations}
+\input{subsections/lpcp-lineq.tex}
+\section{Linear PCP for tensor checks}
+\input{subsections/lpcp-tensor.tex}
+\section{Linear PCP to PCP}
+\input{subsections/lpcp-to-pcp.tex}
+\section{PCP for QESAT}
+\input{subsections/qesat-exp-pcp.tex}
+
+%%FILE blueprint/src/subsections/blr-F2.tex
+\section{Simpler BLR verifier for \(\F_{2}\)}
+\begin{definition}\label{BLR.basicVerifier}
+\uses{OracleComp,randOracleSpec}
+\lean{BLR.basicVerifier}\leanok 
+Let \(V_{\mathrm{BLR}(\F_{2}, n)}^{f}\) be the verifier with oracle access to \(f: \F_{2}^n \to \F_{2}\) defined as follows:
+\begin{enumerate}
+  \item Sample \(x, y \leftarrow \F_2^n\).
+  \item Accept if and only if \(f(x) + f(y) = f(x+y)\).
+\end{enumerate}
+\end{definition}
+
+\begin{theorem}\label{BLR_basic_completeness_ZMod2}
+\lean{BLR_basic_completeness_ZMod2}
+\uses{BLR.basicVerifier, def:linear-functions} 
+% TODO: it is not really def-linear-functions used in the theorem statement but BlrPcp.linearSet
+\leanok
+Let \(n > 0\). For every linear function \(f: \F_{2}^n \to \F_{2}\), we have
+\[\Pr \left[V_{\mathrm{BLR}(\F_{2}, n)}^{f} = 1\right] = 1.\]
+\end{theorem}
+\begin{proof}\leanok
+% TODO: uses the ZMod 2 acceptance-probability transfer and `BLR_completeness`
+\end{proof}
+
+\begin{theorem}\label{BLR_basic_soundness_ZMod2}\lean{BLR_basic_soundness_ZMod2}
+  \uses{BLR.basicVerifier, def:distance-to-linearity}\leanok
+% TODO: The statement actually uses `distanceToLin`. Unify `distanceToLin` and `BlrPcp.distanceToLinear`
+Let \(n > 0\) and \(f: \F_{2}^n \to \F_{2}\).
+\[\Pr \left[V_{\mathrm{BLR}(\F_{2}, n)}^{f} = 1\right] \leq 1 - \distanceToLin{f}.\]
+\end{theorem}
+\begin{proof}\leanok
+% TODO: uses the ZMod 2 acceptance-probability transfer and `BLR_soundness`
+\uses{thm:finite-field-blr-soundness} % TODO: check that this is actually the correct version that is used
+\end{proof}
+
+
+%%FILE blueprint/src/subsections/blr-lower-bounds.tex
+\begin{theorem}[Counterexample to the proposed cubic lower bound]
+\label{thm:blr-cubic-lower-bound-counterexample}
+The inequality
+\[
+    \left(1-\delta(f,\lin)\right)^3
+    \le
+    \Pr[\BLRVerifier=1]
+\]
+does not hold for all functions $f:\bbF_q^n\to\bbF_q$ with the finite-field BLR verifier
+from \cref{def:finite-field-blr-test}.
+\end{theorem}
+
+\begin{proof}
+It suffices to give a concrete counterexample. Take $q=2$ and $n=1$, so the domain and
+codomain are both $\bbF_2$. Let
+\[
+    f:\bbF_2\to\bbF_2,
+    \qquad
+    f(0)=1,\quad f(1)=1.
+\]
+The homogeneous linear maps $\bbF_2\to\bbF_2$ are exactly the zero map and the identity map.
+The function $f$ agrees with the zero map at no point, and it agrees with the identity map
+only at the point $1$. Hence
+\[
+    \delta(f,\lin)=\frac{1}{2},
+    \qquad
+    1-\delta(f,\lin)=\frac{1}{2}.
+\]
+
+For the verifier, the only possible nonzero field elements are $a=b=1$. Thus the verifier
+accepts on a pair $(x,y)$ exactly when
+\[
+    f(x)+f(y)=f(x+y).
+\]
+Since $f$ is constantly $1$, the left-hand side is $1+1=0$ in $\bbF_2$, while the
+right-hand side is $1$. Therefore the verifier rejects for every choice of $x,y$, and
+\[
+    \Pr[\BLRVerifier=1]=0.
+\]
+But
+\[
+    \left(1-\delta(f,\lin)\right)^3
+    =
+    \left(\frac{1}{2}\right)^3
+    =
+    \frac{1}{8}
+    >
+    0
+    =
+    \Pr[\BLRVerifier=1].
+\]
+This contradicts the proposed lower bound.
+\end{proof}
+
+\begin{theorem}[Lower bound from agreement with a linear function]
+\label{thm:blr-lower-bound-from-agreement}
+Let $f:\bbF_q^n\to\bbF_q$. Suppose there exists $\ell\in\lin$ such that
+\[
+    \Pr_{x\in\bbF_q^n}[f(x)=\ell(x)]\ge 1-\varepsilon.
+\]
+Then
+\[
+    \Pr[\BLRVerifier=1]\ge 1-3\varepsilon+2\varepsilon^2.
+\]
+In particular,
+\[
+    \Pr[\BLRVerifier=1]\ge 1-3\delta(f,\lin)+2\delta(f,\lin)^2.
+\]
+\end{theorem}
+
+\begin{proof}
+Let
+\[
+    G:=\{z\in\bbF_q^n : f(z)=\ell(z)\}
+\]
+be the agreement set, and let $B:=\bbF_q^n\setminus G$ be the bad set. Write
+\[
+    \eta:=\Pr_z[z\in B].
+\]
+By assumption, $\eta\le\varepsilon$.
+
+The verifier samples $a,b\in\bbF_q^\times$ and $x,y\in\bbF_q^n$, and queries
+\[
+    x,\qquad y,\qquad ax+by.
+\]
+For fixed $a,b\in\bbF_q^\times$, the random variables $x$, $y$, and $ax+by$ are each
+uniform on $\bbF_q^n$. Indeed, $x$ and $y$ are uniform by definition, and $ax+by$ is
+uniform because, after fixing $a$, $b$, and $x$, the map
+\[
+    y\mapsto ax+by
+\]
+is a bijection of $\bbF_q^n$.
+
+Therefore
+\[
+    \Pr[x\in B]=\Pr[y\in B]=\Pr[ax+by\in B]=\eta.
+\]
+Moreover the three queried points are pairwise independent. For fixed
+$a,b\in\bbF_q^\times$, each of the maps
+\[
+    (x,y)\mapsto (x,y),\qquad
+    (x,y)\mapsto (x,ax+by),\qquad
+    (x,y)\mapsto (y,ax+by)
+\]
+is a bijection from $\bbF_q^n\times\bbF_q^n$ to itself. Hence
+\[
+    \Pr[x\in B,\ y\in B]
+    =
+    \Pr[x\in B,\ ax+by\in B]
+    =
+    \Pr[y\in B,\ ax+by\in B]
+    =
+    \eta^2.
+\]
+By inclusion--exclusion and the trivial bound
+\[
+    \Pr[x\in B,\ y\in B,\ ax+by\in B]\le \Pr[x\in B,\ y\in B]=\eta^2,
+\]
+we get
+\[
+    \Pr[x\in B\text{ or }y\in B\text{ or }ax+by\in B]
+    \le
+    3\eta-3\eta^2+\eta^2
+    =
+    3\eta-2\eta^2.
+\]
+On the complementary event, the verifier sees the same three values as it would see from
+$\ell$:
+\[
+    f(x)=\ell(x),\qquad
+    f(y)=\ell(y),\qquad
+    f(ax+by)=\ell(ax+by).
+\]
+Since $\ell$ is linear,
+\[
+    \ell(ax+by)=a\ell(x)+b\ell(y).
+\]
+Thus
+\[
+    f(ax+by)=a f(x)+b f(y),
+\]
+so the verifier accepts. Hence the acceptance probability is at least the probability of
+the complementary event:
+\[
+    \Pr[\BLRVerifier=1]\ge 1-3\eta+2\eta^2.
+\]
+If $\varepsilon\ge 1/2$, then $1-3\varepsilon+2\varepsilon^2\le 0$, so the desired bound is
+trivial. Otherwise $\varepsilon\le 1/2$, and since $\eta\le\varepsilon$, the function
+$1-3t+2t^2$ is decreasing on the interval containing both $\eta$ and $\varepsilon$. This gives
+\[
+    \Pr[\BLRVerifier=1]\ge 1-3\varepsilon+2\varepsilon^2.
+\]
+
+Taking $\ell$ to be a closest linear function gives the final statement with
+$\varepsilon=\delta(f,\lin)$.
+\end{proof}
+
+\begin{theorem}[Boolean tightness for subspace error sets]
+\label{thm:boolean-blr-lower-bound-tight-subspace}
+The bound in \cref{thm:blr-lower-bound-from-agreement} is tight for the Boolean BLR test
+for infinitely many values of $\varepsilon$. More precisely, let $q=2$ and let
+$B\le \bbF_2^n$ be a linear subspace of density $\varepsilon=2^{-k}$. Define
+\[
+    f:\bbF_2^n\to\bbF_2,
+    \qquad
+    f(x)=
+    \begin{cases}
+        1 & \text{if } x\in B,\\
+        0 & \text{if } x\notin B.
+    \end{cases}
+\]
+Then $\delta(f,\lin)=\varepsilon$ and
+\[
+    \Pr[\BLRVerifier=1]=1-3\varepsilon+2\varepsilon^2.
+\]
+\end{theorem}
+
+\begin{proof}
+The zero linear function disagrees with $f$ exactly on $B$, so
+$\delta(f,\lin)\le\varepsilon$. If $m:\bbF_2^n\to\bbF_2$ is any nonzero linear function,
+then $m$ is balanced. Thus $m$ agrees with the indicator of $B$ on at most half of the
+domain, whereas the zero linear function agrees on a $1-\varepsilon$ fraction of the domain.
+For $\varepsilon\le 1/2$, this shows that the closest linear function is the zero function,
+so $\delta(f,\lin)=\varepsilon$.
+
+Since $q=2$, the verifier has $a=b=1$ and accepts iff
+\[
+    f(x)+f(y)=f(x+y).
+\]
+Because $B$ is a subspace, among the three points $x$, $y$, and $x+y$, the number lying in
+$B$ is never exactly two. Therefore the verifier rejects exactly when at least one of the
+three queried points lies in $B$.
+
+The three events
+\[
+    x\in B,\qquad y\in B,\qquad x+y\in B
+\]
+each have probability $\varepsilon$, and each pair has probability $\varepsilon^2$.
+Since $B$ is a subspace, the triple event also has probability $\varepsilon^2$: if
+$x,y\in B$, then $x+y\in B$. Hence
+\[
+    \Pr[\BLRVerifier=0]
+    =
+    3\varepsilon-3\varepsilon^2+\varepsilon^2
+    =
+    3\varepsilon-2\varepsilon^2.
+\]
+Taking complements gives
+\[
+    \Pr[\BLRVerifier=1]=1-3\varepsilon+2\varepsilon^2.
+\]
+\end{proof}
+
+
+%%FILE blueprint/src/subsections/blr-revised.tex
+\section{Basic tools for the analysis of functions over finite fields}
+
+Throughout this section, let $q=p^s$ for a prime $p$ and $s\in\bbN$ with $s\ge 1$.
+All vectors are in $\bbF_q^n$, and all expectations are uniform over the indicated finite sets.
+Let $\omega_p = e^{2\pi i/p}$.
+
+\begin{definition}[Field trace]
+\label{def:field-trace}
+\lean{Algebra.trace}
+\leanok
+The field trace $\Tr: \bbF_q \to \bbF_p$ is
+\[
+    \Tr(z) \coloneqq \sum_{i=0}^{s-1} z^{p^i}.
+\]
+\end{definition}
+
+\begin{definition}[Base additive character]
+\label{def:base-character}
+\lean{BlrPcp.baseChar}
+\uses{def:field-trace}
+\leanok
+The base additive character $\psi:\bbF_q\to\bbC$ is
+\[
+    \psi(z) \coloneqq \omega_p^{\Tr(z)}.
+\]
+\end{definition}
+
+\begin{definition}[Additive characters]
+\label{def:additive-character}
+\lean{BlrPcp.charFn}
+\uses{def:base-character}
+\leanok
+For $\alpha\in\bbF_q^n$, define the additive character
+$\chi_\alpha: \bbF_q^n\to\bbC$ by
+\[
+    \chi_\alpha(x) \coloneqq \psi(\inner{\alpha}{x})
+    = \omega_p^{\Tr(\inner{\alpha}{x})},
+\]
+where $\inner{\alpha}{x}=\sum_{i=1}^n \alpha_i x_i\in\bbF_q$.
+\end{definition}
+
+\begin{definition}[Expectation]
+\label{def:expectation}
+\lean{BlrPcp.expectation}
+\leanok
+For a function $h:\bbF_q^n\to\bbC$, define its uniform expectation by
+\[
+    \bbE_{x\in\bbF_q^n}[h(x)]
+    \coloneqq \frac{1}{q^n}\sum_{x\in\bbF_q^n} h(x).
+\]
+\end{definition}
+
+\begin{definition}[Inner product]
+\label{def:function-inner-product}
+\lean{BlrPcp.fnInner}
+\uses{def:expectation}
+\leanok
+For functions $h_1,h_2:\bbF_q^n\to\bbC$, define
+\[
+    \inner{h_1}{h_2}
+    \coloneqq \bbE_{x\in\bbF_q^n}\left[h_1(x)\overline{h_2(x)}\right].
+\]
+\end{definition}
+
+\begin{definition}[$L_2$ norm]
+\label{def:function-l2-norm}
+\lean{BlrPcp.fnNorm}
+\uses{def:expectation,def:function-inner-product}
+\leanok
+For a function $h:\bbF_q^n\to\bbC$, define its $L_2$ norm by
+\[
+    \|h\|_2
+    \coloneqq
+    \left(\bbE_{x\in\bbF_q^n}\left[\abs{h(x)}^2\right]\right)^{1/2}
+    =
+    \sqrt{\inner{h}{h}}.
+\]
+\end{definition}
+
+\begin{definition}[Fourier coefficient]
+\label{def:fourier-coefficient}
+\lean{BlrPcp.fourierCoeff}
+\uses{def:function-inner-product,def:additive-character}
+\leanok
+For $h:\bbF_q^n\to\bbC$ and $\alpha\in\bbF_q^n$, define
+\[
+    \widehat h(\alpha)
+    \coloneqq \inner{h}{\chi_\alpha}
+    = \bbE_{x\in\bbF_q^n}\left[h(x)\overline{\chi_\alpha(x)}\right].
+\]
+\end{definition}
+
+\begin{lemma}[Characters are orthonormal]
+\label{lem:character-orthonormal}
+\lean{BlrPcp.characters_orthonormal}
+\uses{def:additive-character,def:function-inner-product}
+\leanok
+For every $\alpha,\beta\in\bbF_q^n$,
+\[
+    \inner{\chi_\alpha}{\chi_\beta}
+    =
+    \begin{cases}
+        1 & \text{if } \alpha=\beta,\\
+        0 & \text{if } \alpha\ne\beta.
+    \end{cases}
+\]
+\end{lemma}
+
+\begin{proof}\leanok
+First observe that for every $\alpha,\beta\in\bbF_q^n$ and every $x\in\bbF_q^n$,
+\[
+    \chi_\alpha(x)\overline{\chi_\beta(x)}
+    =
+    \omega_p^{\Tr(\inner{\alpha}{x})}
+    \omega_p^{-\Tr(\inner{\beta}{x})}
+    =
+    \omega_p^{\Tr(\inner{\alpha-\beta}{x})}
+    =
+    \chi_{\alpha-\beta}(x),
+\]
+where we used the $\bbF_p$-linearity of the trace map.
+
+If $\alpha=\beta$, then $\alpha-\beta=0$, so $\chi_{\alpha-\beta}(x)=1$ for every
+$x\in\bbF_q^n$. Hence
+\[
+    \bbE_{x\in\bbF_q^n}\left[\chi_\alpha(x)\overline{\chi_\beta(x)}\right]
+    =
+    \bbE_{x\in\bbF_q^n}[1]
+    =
+    1.
+\]
+
+Now suppose $\alpha\ne\beta$. Let $\gamma \coloneqq \alpha-\beta$. Then $\gamma\ne 0$, so there exists
+an index $j$ such that $\gamma_j\ne 0$. Fix all coordinates of $x$ except $x_j$. For the fixed
+remaining coordinates, the map
+\[
+    x_j\mapsto \inner{\gamma}{x}
+\]
+has the form
+\[
+    x_j\mapsto \gamma_j x_j + c
+\]
+for some constant $c\in\bbF_q$. Since $\gamma_j\ne 0$, multiplication by $\gamma_j$ is a
+bijection on $\bbF_q$, and therefore the affine map $x_j\mapsto \gamma_jx_j+c$ is also a
+bijection on $\bbF_q$. Thus, as $x_j$ ranges uniformly over $\bbF_q$, the value
+$\inner{\gamma}{x}$ also ranges uniformly over $\bbF_q$. Averaging first over $x_j$ and then
+over the remaining coordinates gives
+\[
+    \bbE_{x\in\bbF_q^n}\left[\chi_\gamma(x)\right]
+    =
+    \bbE_{t\in\bbF_q}\left[\omega_p^{\Tr(t)}\right].
+\]
+
+It remains to show that this last average is zero. The trace map
+$\Tr:\bbF_q\to\bbF_p$ is a nonzero $\bbF_p$-linear map, so every fiber of $\Tr$ has the same
+cardinality. Since $\abs{\bbF_q}=q$ and $\abs{\bbF_p}=p$, each fiber has cardinality $q/p$.
+Therefore
+\begin{align*}
+    \bbE_{t\in\bbF_q}\left[\omega_p^{\Tr(t)}\right]
+    &=
+    \frac{1}{q}\sum_{t\in\bbF_q}\omega_p^{\Tr(t)} \\
+    &=
+    \frac{1}{q}\sum_{r\in\bbF_p}
+        \sum_{\substack{t\in\bbF_q\\ \Tr(t)=r}}
+        \omega_p^r \\
+    &=
+    \frac{1}{q}\sum_{r\in\bbF_p}\frac{q}{p}\omega_p^r \\
+    &=
+    \frac{1}{p}\sum_{r\in\bbF_p}\omega_p^r \\
+    &=0,
+\end{align*}
+because the sum of all $p$-th roots of unity is zero. Hence, if $\alpha\ne\beta$, then
+\[
+    \bbE_{x\in\bbF_q^n}\left[\chi_\alpha(x)\overline{\chi_\beta(x)}\right]
+    =
+    0.
+\]
+
+Combining the two cases proves the stated orthogonality relation. The equivalent formulation
+follows by taking $\beta=0$.
+\end{proof}
+
+\begin{lemma}[Fourier inversion]
+\label{lem:fourier-inversion}
+\lean{BlrPcp.fourier_inversion}
+\uses{def:fourier-coefficient,def:additive-character}
+\leanok
+For every function $h:\bbF_q^n\to\bbC$ we have
+\[
+    h(x)=\sum_{\alpha\in\bbF_q^n}\widehat h(\alpha)\chi_\alpha(x)
+    \quad\text{for every }x\in\bbF_q^n.
+\]
+\end{lemma}
+
+\begin{proof}\uses{lem:character-orthonormal, def:function-inner-product}\leanok
+By \cref{lem:character-orthonormal}, the additive characters
+\[
+    \{\chi_\alpha : \alpha \in \mathbb F_q^n\}
+\]
+are orthonormal with respect to the inner product
+\[
+    \langle h_1,h_2\rangle
+    =
+    \mathbb E_{x\in \mathbb F_q^n}
+    \left[h_1(x)\overline{h_2(x)}\right].
+\]
+Moreover, these characters span the vector space of all complex-valued
+functions on \(\mathbb F_q^n\). Indeed, there are exactly \(q^n\) characters,
+and the space of functions \(\mathbb F_q^n\to\mathbb C\) has dimension \(q^n\).
+Since the characters are nonzero and pairwise orthogonal, they are linearly
+independent. Hence they form an orthonormal basis.
+
+Therefore every function \(h:\mathbb F_q^n\to\mathbb C\) has a unique expansion
+in this basis:
+\[
+    h
+    =
+    \sum_{\alpha\in\mathbb F_q^n}
+        c_\alpha \chi_\alpha
+\]
+for some coefficients \(c_\alpha\in\mathbb C\). Taking the inner product of
+both sides with \(\chi_\beta\), we obtain
+\[
+    \langle h,\chi_\beta\rangle
+    =
+    \sum_{\alpha\in\mathbb F_q^n}
+        c_\alpha \langle \chi_\alpha,\chi_\beta\rangle .
+\]
+By orthonormality, all terms in the sum vanish except the term
+\(\alpha=\beta\), and \(\langle \chi_\beta,\chi_\beta\rangle=1\). Hence
+\[
+    \langle h,\chi_\beta\rangle = c_\beta .
+\]
+By definition of the Fourier coefficient,
+\[
+    \widehat h(\beta)=\langle h,\chi_\beta\rangle .
+\]
+Thus \(c_\beta=\widehat h(\beta)\) for every
+\(\beta\in\mathbb F_q^n\). Therefore
+\[
+    h
+    =
+    \sum_{\alpha\in\mathbb F_q^n}
+        \widehat h(\alpha)\chi_\alpha .
+\]
+Evaluating this identity at \(x\in\mathbb F_q^n\) gives the Fourier inversion
+formula
+\[
+    h(x)
+    =
+    \sum_{\alpha\in\mathbb F_q^n}
+        \widehat h(\alpha)\chi_\alpha(x).
+\]
+\end{proof}
+
+\begin{lemma}[Plancherel identity]
+\label{lem:fourier-plancherel}
+\lean{BlrPcp.fourier_plancherel}
+\uses{def:function-inner-product,def:fourier-coefficient}
+\leanok
+For every pair of functions $f,g:\bbF_q^n\to\bbC$,
+\[
+    \sum_{\alpha\in\bbF_q^n}
+        \widehat f(\alpha)\overline{\widehat g(\alpha)}
+    =
+    \inner{f}{g}.
+\]
+\end{lemma}
+
+\begin{proof}\uses{lem:fourier-inversion}\leanok
+By \cref{lem:fourier-inversion},
+\[
+    f=\sum_{\alpha\in\bbF_q^n}\widehat f(\alpha)\chi_\alpha .
+\]
+Taking the inner product with \(g\) and using linearity in the first argument gives
+\[
+    \inner{f}{g}
+    =
+    \sum_{\alpha\in\bbF_q^n}
+        \widehat f(\alpha)\inner{\chi_\alpha}{g}.
+\]
+Since
+\[
+    \inner{\chi_\alpha}{g}
+    =
+    \overline{\inner{g}{\chi_\alpha}}
+    =
+    \overline{\widehat g(\alpha)},
+\]
+we obtain
+\[
+    \inner{f}{g}
+    =
+    \sum_{\alpha\in\bbF_q^n}
+        \widehat f(\alpha)\overline{\widehat g(\alpha)}.
+\]
+\end{proof}
+
+\begin{lemma}[Parseval identity]
+\label{lem:parseval-identity}
+\lean{BlrPcp.parseval_identity}
+\uses{def:fourier-coefficient,def:function-l2-norm}
+\leanok
+For every function $h:\bbF_q^n\to\bbC$,
+\[
+    \sum_{\alpha\in\bbF_q^n}\abs{\widehat h(\alpha)}^2
+    =
+    \|h\|_2^2.
+\]
+\end{lemma}
+
+\begin{proof}\uses{lem:fourier-plancherel,def:function-inner-product}\leanok
+Apply \cref{lem:fourier-plancherel} with \(f=g=h\):
+\[
+    \sum_{\alpha\in\bbF_q^n}
+        \widehat h(\alpha)\overline{\widehat h(\alpha)}
+    =
+    \inner{h}{h}.
+\]
+The left-hand side is
+\[
+    \sum_{\alpha\in\bbF_q^n}\abs{\widehat h(\alpha)}^2,
+\]
+and by the definitions of the inner product and the $L_2$ norm, the right-hand side is
+\[
+    \inner{h}{h}
+    =
+    \bbE_{x\in\bbF_q^n}\left[\abs{h(x)}^2\right]
+    =
+    \|h\|_2^2.
+\]
+\end{proof}
+
+\begin{definition}[Nonzero field elements]
+\label{def:nonzero-field-elements}
+\lean{BlrPcp.nonzeroF}
+\leanok
+Write
+\[
+    \bbF_q^\times \coloneqq \{c\in\bbF_q : c\ne 0\}.
+\]
+\end{definition}
+
+\begin{definition}[Fourier expansion of a finite-field-valued function]
+\label{def:fourier-expansion-field-valued}
+\lean{BlrPcp.phaseLift}
+\uses{def:base-character,def:nonzero-field-elements}
+\leanok
+Let $f:\bbF_q^n\to\bbF_q$. For each $c\in\bbF_q^\times$, define the $c$-phase lift
+\[
+    \fexp{\ff}{c}(x) \coloneqq \omega_p^{\Tr(c f(x))}.
+\]
+The Fourier expansion of $f$ is the set $\{\varphi_c\}_{c\in \bbF_q^\times}$.
+\end{definition}
+
+\begin{lemma}[Character-sum indicator]
+\label{lem:character-sum-indicator}
+\lean{BlrPcp.character_sum_indicator_eq}
+\uses{def:base-character}
+\leanok
+For every $u,v\in\bbF_q$,
+\[
+    \ind[u=v]
+    = \frac{1}{q}\sum_{c\in\bbF_q}\omega_p^{\Tr(c(u-v))}.
+\]
+\end{lemma}
+\begin{proof}\leanok
+For each $z \in \bbF_q$ we define
+\[
+    \psi(z) \coloneqq \omega_p^{\Tr(z)}
+\]
+be the standard additive character of \(\bbF_q\). We prove that, for every
+\(t\in \bbF_q\),
+\[
+    \ind[t=0]
+    =
+    \frac{1}{q}\sum_{c\in\bbF_q}\psi(ct).
+\]
+The desired statement follows by taking \(t=u-v\).
+
+If \(t=0\), then \(ct=0\) for every \(c\in\bbF_q\), so
+\[
+    \frac{1}{q}\sum_{c\in\bbF_q}\psi(ct)
+    =
+    \frac{1}{q}\sum_{c\in\bbF_q}1
+    =
+    1.
+\]
+
+Now suppose \(t\neq 0\). Then multiplication by \(t\) is a bijection
+\(\bbF_q\to\bbF_q\), so
+\[
+    \sum_{c\in\bbF_q}\psi(ct)
+    =
+    \sum_{z\in\bbF_q}\psi(z).
+\]
+We claim that the latter sum is \(0\). Let
+\[
+    S \coloneqq \sum_{z\in\bbF_q}\psi(z).
+\]
+Since \(\Tr:\bbF_q\to\bbF_p\) is a nonzero \(\bbF_p\)-linear map, it is
+surjective. Hence there exists \(a\in\bbF_q\) such that \(\Tr(a)=1\).
+Using the bijection \(z\mapsto z+a\), we get
+\[
+    S
+    =
+    \sum_{z\in\bbF_q}\psi(z+a)
+    =
+    \sum_{z\in\bbF_q}\omega_p^{\Tr(z+a)}
+    =
+    \sum_{z\in\bbF_q}\omega_p^{\Tr(z)}\omega_p^{\Tr(a)}
+    =
+    \omega_p S.
+\]
+Since \(\omega_p\neq 1\), this implies \(S=0\). Therefore, when
+\(t\neq 0\),
+\[
+    \frac{1}{q}\sum_{c\in\bbF_q}\psi(ct)=0.
+\]
+
+Combining the two cases gives
+\[
+    \ind[t=0]
+    =
+    \frac{1}{q}\sum_{c\in\bbF_q}\omega_p^{\Tr(ct)}.
+\]
+Substituting \(t=u-v\), we obtain
+\[
+    \ind[u=v]
+    =
+    \frac{1}{q}\sum_{c\in\bbF_q}\omega_p^{\Tr(c(u-v))}.
+\]
+\end{proof}
+
+\begin{definition}[Relative Hamming distance]
+\label{def:relative-hamming-distance}
+\lean{BlrPcp.distance}
+\leanok
+For $f,g:\bbF_q^n\to\bbF_q$, define
+\[
+    \delta(f,g)
+    \coloneqq \Pr_{x\in\bbF_q^n}\left[f(x)\ne g(x)\right].
+\]
+\end{definition}
+
+\section{Linear functions over finite fields}
+
+\begin{definition}[Linear functions]
+\label{def:linear-functions}
+\lean{BlrPcp.linearFn, BlrPcp.IsLinear, BlrPcp.LinearSet}
+\leanok
+For $\alpha\in\bbF_q^n$, define the linear scalar function
+$\ell_\alpha:\bbF_q^n\to\bbF_q$ by
+\[
+    \ell_\alpha(x) \coloneqq \inner{\alpha}{x}.
+\]
+A function $h:\bbF_q^n\to\bbF_q$ is linear if $h=\ell_\alpha$ for some
+$\alpha\in\bbF_q^n$. The finite set of all linear scalar functions is
+\[
+    \lin
+    \coloneqq
+    \left\{\ell_\alpha \mid \alpha\in\bbF_q^n\right\}.
+\]
+\end{definition}
+
+\begin{definition}[Distance to linearity]
+\label{def:distance-to-linearity}
+\lean{BlrPcp.distanceToLinear}
+\uses{def:relative-hamming-distance,def:linear-functions}
+\leanok
+The distance from $f:\bbF_q^n\to\bbF_q$ to linearity is
+\[
+    \delta(f,\lin) \coloneqq \min_{g\in\lin}\delta(f,g).
+\]
+\end{definition}
+
+
+
+\begin{lemma}[Well-separatedness of $\lin$]
+\label{lem:linear-set-well-separated}
+\lean{BlrPcp.linearSet_wellSeparated}
+\uses{def:linear-functions,def:relative-hamming-distance}
+\leanok
+For any distinct $f,g \in \lin$, one has $\delta(f,g)= 1-1/|\bbF|$.
+\end{lemma}
+\begin{proof}\uses{def:linear-functions,def:relative-hamming-distance}\leanok
+Let $a,b \in \bbF^n$ be the unique vectors such that $f(x) = \langle a, x\rangle$ and $g(x) = \langle b, x\rangle$ for each $x$.
+Let $c = a-b$, which must be a non-zero vector. In particular, there exists $i \in [n]$ such that $c_i \neq 0$. Take any permutation $\sigma: [n] \rightarrow [n]$ such that $\sigma(i)=n$. Then
+\begin{align*}
+    \delta(f,g) & = 1- \Pr_{x \sim \bbF^n}[\langle c, x\rangle =0] \\
+    & = 1 - \frac{1}{|\bbF|^{n-1}}\sum_{x_1,\dots,x_{n-1} \in \bbF}\frac{1}{|\bbF|}\sum_{x_n \in \bbF} \ind[c_i \cdot x_n = -\sum_{j \in [n]\setminus {i}} c_j \cdot x_{\sigma(j)}] \\
+    & = 1 - \frac{1}{|\bbF|^{n-1}}\sum_{x_1,\dots,x_{n-1} \in \bbF}\frac{1}{|\bbF|}\sum_{x_n \in \bbF} \ind[x_n = -c_i^{-1} \cdot \sum_{j \in [n]\setminus {i}} c_j \cdot x_{\sigma(j)}] 
+\end{align*}
+where the last equality follows because $c_i \neq 0$. Now note that  $\ind[x_n = -c_i^{-1} \cdot \sum_{j \in [n]\setminus {i}} c_j \cdot x_{\sigma(j)}]$ evaluates to $1$ for exactly one value of $x_n$. Thus we continue from above and get
+\begin{align*}
+    \delta(f,g) = 1-\frac{1}{|\bbF|^{n-1}}\sum_{x_1,\dots,x_{n-1} \in \bbF}\frac{1}{|\bbF|} = 1-\frac{1}{|\bbF|} \, .
+\end{align*}
+\end{proof}
+
+
+\begin{lemma}[Distance formula]
+\label{lem:distance-formula}
+\lean{BlrPcp.distance_formula_via_phase_fourier_coefficients}
+\uses{def:relative-hamming-distance,def:fourier-expansion-field-valued,def:function-inner-product}
+\leanok
+Let $f,g:\bbF_q^n\to\bbF_q$.
+Let $\{\fexp{\ff}{c}\}_{c\in\bbF_q^\times}$ and
+$\{\fexp{\fg}{c}\}_{c\in\bbF_q^\times}$ be their Fourier expansions.
+Then
+\[
+    \delta(f,g)
+    = 1-\frac{1}{q}\left(1+
+        \sum_{c\in\bbF_q^\times}
+        \inner{\fexp{\ff}{c}}{\fexp{\fg}{c}}
+    \right).
+\]
+\end{lemma}
+
+\begin{proof}\uses{lem:character-sum-indicator,lem:fourier-plancherel}\leanok
+By \cref{lem:character-sum-indicator},
+\[
+    \Pr_x[f(x)=g(x)]
+    = \bbE_x\left[\frac{1}{q}\sum_{c\in\bbF_q}
+        \omega_p^{\Tr(c(f(x)-g(x)))}\right].
+\]
+The term $c=0$ contributes $1/q$. For $c\ne 0$,
+\[
+    \omega_p^{\Tr(c(f(x)-g(x)))}
+    = \fexp{\ff}{c}(x)\overline{\fexp{\fg}{c}(x)}.
+\]
+Therefore
+\[
+    \Pr_x[f(x)=g(x)]
+    =\frac{1}{q}\left(1+\sum_{c\in\bbF_q^\times}
+        \inner{\fexp{\ff}{c}}{\fexp{\fg}{c}}
+    \right),
+\]
+which gives the first formula after using
+$\delta(f,g)=1-\Pr_x[f(x)=g(x)]$.
+\end{proof}
+
+\begin{lemma}[Fourier expansion of a linear function]
+\label{lem:linear-function-fourier-expansion}
+\lean{BlrPcp.phaseLift_linearFn}
+\uses{def:linear-functions,def:fourier-expansion-field-valued,def:additive-character}
+\leanok
+Fix $\alpha\in\bbF_q^n$ and let $\{\lambda_c\}_{c \in \bbF_q^\times}$ be the Fourier expansion of $\ell_\alpha$.
+Then
+\[
+    \fexp{\lambda}{c}=\chi_{c\alpha}.
+\]
+\end{lemma}
+
+\begin{proof}\leanok
+For every $x\in\bbF_q^n$,
+\[
+    \fexp{\lambda}{c}(x)
+    = \omega_p^{\Tr(c\inner{\alpha}{x})}
+    = \omega_p^{\Tr(\inner{c\alpha}{x})}
+    = \chi_{c\alpha}(x).
+\]
+\end{proof}
+
+\begin{definition}[Linear Fourier score]
+\label{def:linear-fourier-score}
+\lean{BlrPcp.linearFourierScore, BlrPcp.linearFourierScoreC}
+\uses{def:nonzero-field-elements,def:fourier-expansion-field-valued,def:fourier-coefficient}
+\leanok
+For $f:\bbF_q^n\to\bbF_q$ and $\alpha\in\bbF_q^n$, define the linear Fourier score
+of $f$ at $\alpha$ by
+\[
+    S_\alpha(f) \coloneqq \sum_{c\in\bbF_q^\times}
+        \widehat{\fexp{\ff}{c}}(c\alpha),
+\]
+where $\{\fexp{\ff}{c}\}_{c \in \bbF_q^\times}$ is the Fourier expansion of $f$.
+\end{definition}
+
+\begin{lemma}[Distance to linearity in Fourier form]
+\label{lem:distance-to-linearity-fourier}
+\lean{BlrPcp.distance_to_linearity_fourier}
+\uses{def:distance-to-linearity,def:linear-fourier-score}
+\leanok
+Let $f:\bbF_q^n\to\bbF_q$ have Fourier expansion
+$\{\fexp{\ff}{c}\}_{c\in\bbF_q^\times}$. Then
+\[
+    \delta(f,\lin)
+    = 1-\frac{1}{q}\left(1+
+        \max_{\alpha\in\bbF_q^n}
+        S_\alpha(f)
+    \right).
+\]
+Moreover, for every $\alpha\in\bbF_q^n$, the score $S_\alpha(f)$ is real and
+satisfies $-1\le S_\alpha(f)\le q-1$.
+\end{lemma}
+
+\begin{proof}\uses{lem:distance-formula,lem:linear-function-fourier-expansion}\leanok
+Apply \cref{lem:distance-formula} with $g=\ell_\alpha$ and use
+\cref{lem:linear-function-fourier-expansion}. This gives
+\[
+    \delta(f,\ell_\alpha)
+    =1-\frac{1}{q}\left(1+
+        S_\alpha(f)
+    \right).
+\]
+Taking the minimum over $\alpha$ gives the claimed formula for
+$\delta(f,\lin)$.
+For fixed $\alpha$, the same formula expresses $S_\alpha(f)$ as
+$q(1-\delta(f,\ell_\alpha))-1$. Hence $S_\alpha(f)$ is real, and since
+$0\le \delta(f,\ell_\alpha)\le 1$, we get $-1\le S_\alpha(f)\le q-1$.
+\end{proof}
+
+\section{BLR linearity test}
+
+\begin{definition}[Finite-field BLR test]
+\label{def:finite-field-blr-test}
+\lean{BlrPcp.BLRAcceptsAt, BlrPcp.acceptanceProbabilityBLR}
+\uses{def:nonzero-field-elements}
+\leanok
+Given oracle access to $f:\bbF_q^n\to\bbF_q$, the finite-field BLR verifier
+$\BLRVerifier$ samples $a,b\in\bbF_q^\times$ and $x,y\in\bbF_q^n$ independently and uniformly at random, and accepts iff
+\[
+    a f(x)+b f(y)=f(ax+by).
+\]
+That is,
+\[
+    \BLRVerifier=1
+    \quad\Longleftrightarrow\quad
+    a f(x)+b f(y)=f(ax+by).
+\]
+\end{definition}
+
+\begin{lemma}[Completeness]
+\label{lem:blr-completeness}
+\lean{BlrPcp.blr_completeness}
+\uses{def:finite-field-blr-test,def:linear-functions}
+\leanok
+If $f\in\lin$, then
+\[
+    \Pr[\BLRVerifier=1]=1.
+\]
+\end{lemma}
+
+\begin{proof}\leanok
+If $f=\ell_\alpha$ for some $\alpha\in\bbF_q^n$, then for every
+$a,b\in\bbF_q^\times$ and $x,y\in\bbF_q^n$,
+\[
+    f(ax+by)
+    =\inner{\alpha}{ax+by}
+    =a\inner{\alpha}{x}+b\inner{\alpha}{y}
+    =a f(x)+b f(y).
+\]
+Thus the verifier accepts for every choice of randomness.
+\end{proof}
+
+\begin{lemma}[Exact BLR acceptance formula]
+\label{lem:exact-blr-acceptance}
+\lean{BlrPcp.exact_blr_acceptance_formula}
+\uses{def:finite-field-blr-test,def:linear-fourier-score}
+\leanok
+Let $f:\bbF_q^n\to\bbF_q$.
+Then
+\[
+    \Pr[\BLRVerifier=1]
+    = \frac{1}{q}\left(1+\frac{1}{(q-1)^2}
+        \sum_{\alpha\in\bbF_q^n} S_\alpha(f)^3
+    \right).
+\]
+\end{lemma}
+
+\begin{proof}\uses{lem:character-sum-indicator,lem:fourier-inversion,lem:character-orthonormal}\leanok
+By \cref{lem:character-sum-indicator}, for fixed $a,b,x,y$,
+\[
+    \ind[a f(x)+b f(y)=f(ax+by)]
+    =\frac{1}{q}\sum_{c\in\bbF_q}
+        \omega_p^{\Tr(c(a f(x)+b f(y)-f(ax+by)))}.
+\]
+Taking expectation gives
+\[
+    \Pr[\BLRVerifier=1]
+    =\frac{1}{q}+\frac{1}{q}\bbE_{a,b,x,y}
+        \left[\sum_{c\in\bbF_q^\times}
+        \fexp{\ff}{ca}(x)\fexp{\ff}{cb}(y)
+        \fexp{\ff}{-c}(ax+by)
+        \right].
+\]
+Expand the three complex-valued functions into their Fourier expansions:
+\begin{align*}
+&\bbE_{a,b,x,y}
+        \left[\sum_{c\in\bbF_q^\times}
+        \fexp{\ff}{ca}(x)\fexp{\ff}{cb}(y)
+        \fexp{\ff}{-c}(ax+by)
+        \right] \\
+&=\bbE_{a,b}\left[\sum_{c\in\bbF_q^\times}
+    \sum_{\alpha,\beta,\gamma\in\bbF_q^n}
+    \widehat{\fexp{\ff}{ca}}(\alpha)
+    \widehat{\fexp{\ff}{cb}}(\beta)
+    \widehat{\fexp{\ff}{-c}}(\gamma)
+    \bbE_{x,y}\left[
+        \chi_\alpha(x)\chi_\beta(y)\chi_\gamma(ax+by)
+    \right]
+\right].
+\end{align*}
+Since
+\[
+    \chi_\gamma(ax+by)=\chi_{a\gamma}(x)\chi_{b\gamma}(y),
+\]
+\cref{lem:character-orthonormal} implies that the inner expectation is $1$ exactly when
+\[
+    \alpha+a\gamma=0
+    \quad\text{and}\quad
+    \beta+b\gamma=0,
+\]
+and is $0$ otherwise. Therefore the last display equals
+\[
+    \bbE_{a,b}\left[\sum_{c\in\bbF_q^\times}
+    \sum_{\alpha\in\bbF_q^n}
+    \widehat{\fexp{\ff}{ca}}(\alpha)
+    \widehat{\fexp{\ff}{cb}}(a^{-1}b\alpha)
+    \widehat{\fexp{\ff}{-c}}(-a^{-1}\alpha)
+    \right].
+\]
+Substitute $\alpha=ca\eta$. Then this becomes
+\[
+    \bbE_{a,b}\left[\sum_{c\in\bbF_q^\times}
+    \sum_{\eta\in\bbF_q^n}
+    \widehat{\fexp{\ff}{ca}}(ca\eta)
+    \widehat{\fexp{\ff}{cb}}(cb\eta)
+    \widehat{\fexp{\ff}{-c}}(-c\eta)
+    \right].
+\]
+As $a,b,c$ range over $\bbF_q^\times$, so do $ca$, $cb$, and $-c$. Hence this equals
+\[
+    \frac{1}{(q-1)^2}
+    \sum_{\eta\in\bbF_q^n}
+    \left(\sum_{d\in\bbF_q^\times}
+        \widehat{\fexp{\ff}{d}}(d\eta)
+    \right)^3
+    =\frac{1}{(q-1)^2}\sum_{\eta\in\bbF_q^n}S_\eta(f)^3.
+\]
+Substituting into the expression for $\Pr[\BLRVerifier=1]$ proves the claim.
+\end{proof}
+
+\begin{lemma}[Second moment bound]
+\label{lem:second-moment-bound}
+\lean{BlrPcp.sum_linearFourierScore_sq_upperbound}
+\uses{def:linear-fourier-score}
+\leanok
+For every $f:\bbF_q^n\to\bbF_q$, one has
+\[
+    \sum_{\alpha\in\bbF_q^n} S_\alpha(f)^2 \le (q-1)^2.
+\]
+\end{lemma}
+
+\begin{proof}\uses{lem:parseval-identity}\leanok
+Expanding the square gives
+\[
+    \sum_{\alpha\in\bbF_q^n} S_\alpha(f)^2
+    =\sum_{a,b\in\bbF_q^\times}
+        \sum_{\alpha\in\bbF_q^n}
+        \widehat{\fexp{\ff}{a}}(a\alpha)
+        \widehat{\fexp{\ff}{b}}(b\alpha).
+\]
+For fixed $a,b\in\bbF_q^\times$, Cauchy-Schwarz and
+\cref{lem:parseval-identity} give
+\begin{align*}
+\abs{\sum_{\alpha\in\bbF_q^n}
+        \widehat{\fexp{\ff}{a}}(a\alpha)
+        \widehat{\fexp{\ff}{b}}(b\alpha)}
+&\le
+\left(\sum_{\alpha\in\bbF_q^n}\abs{\widehat{\fexp{\ff}{a}}(a\alpha)}^2\right)^{1/2}
+\left(\sum_{\alpha\in\bbF_q^n}\abs{\widehat{\fexp{\ff}{b}}(b\alpha)}^2\right)^{1/2} \\
+&=1.
+\end{align*}
+The equality uses that multiplication by $a$ and by $b$ permutes $\bbF_q^n$, and that
+Parseval plus $\abs{\fexp{\ff}{a}(x)}=\abs{\fexp{\ff}{b}(x)}=1$ for every $x$
+make both squared $L_2$ norms equal to \(1\).
+Summing over the $(q-1)^2$ choices of $(a,b)$ gives the result.
+\end{proof}
+
+\begin{theorem}[Soundness of the finite-field BLR test]
+\label{thm:finite-field-blr-soundness}
+\lean{BlrPcp.blr_soundness}
+\uses{def:finite-field-blr-test,def:distance-to-linearity}
+\leanok
+For every function $f:\bbF_q^n\to\bbF_q$, one has
+\[
+    \Pr[\BLRVerifier=1] \le 1-\delta(f,\lin).
+\]
+\end{theorem}
+
+\begin{proof}\uses{lem:distance-to-linearity-fourier,lem:exact-blr-acceptance,lem:second-moment-bound}\leanok
+Let $S_\alpha(f)$ be as in \cref{def:linear-fourier-score}, and let
+\[
+    M \coloneqq \max_{\alpha\in\bbF_q^n}S_\alpha(f).
+\]
+By \cref{lem:distance-to-linearity-fourier},
+\[
+    1-\delta(f,\lin)=\frac{1}{q}(1+M).
+\]
+By \cref{lem:distance-to-linearity-fourier}, each $S_\alpha(f)$ is real and
+$S_\alpha(f)\le M$.
+Therefore $S_\alpha(f)^3\le M S_\alpha(f)^2$ for every $\alpha$, because
+$S_\alpha(f)^2\ge 0$.
+Using \cref{lem:exact-blr-acceptance} and \cref{lem:second-moment-bound},
+\begin{align*}
+    \Pr[\BLRVerifier=1]
+    &=\frac{1}{q}\left(1+\frac{1}{(q-1)^2}
+        \sum_{\alpha\in\bbF_q^n}S_\alpha(f)^3\right) \\
+    &\le \frac{1}{q}\left(1+\frac{M}{(q-1)^2}
+        \sum_{\alpha\in\bbF_q^n}S_\alpha(f)^2\right) \\
+    &\le \frac{1}{q}(1+M) \\
+    &=1-\delta(f,\lin).
+\end{align*}
+\end{proof}
+
+% Below is the GH-route to the same soundness results.
+
+%%FILE blueprint/src/subsections/blr.tex
+\section{Preliminaries}
+\label{sec:prelim}
+
+Let $q=p^s$ for some prime $p$ and $s\in \bbN$. Let $\f:\bbF^n\rightarrow\bbF_q$ be a function over the finite field $\bbF_q$. Let $\omega_p=e^{2\pi i/p}$ be the root of unity modolu $p$. 
+
+\begin{definition}[Trace function in finite fields]
+The trace function $\Tr:\bbF_q\rightarrow\bbF_p$ is defined as follows:
+$$\Tr(x) = \sum_{i=0}^{s-1}x^{p^i}$$
+\end{definition}
+
+% \begin{remark}
+% Observe that for $s=1$, meaning that $q=p$, the trace function is simply the identity function. 
+% \end{remark}
+
+\begin{definition}
+The character group of $\bbF_q$, denoted \characters, contains all homomorphisms $\chi:\bbF^n\rightarrow \bbC$.
+\end{definition}
+
+\begin{fact}
+\characters consists of all the functions:
+$ \chi_{\alpha}(x) = \omega_p^{\Tr(\langle \alpha, x\rangle)}
+ $, for all $\alpha\in\bbF^n$. 
+\end{fact}
+
+\begin{fact}
+$\{\chi_\alpha\}_{\alpha\in \bbF^n}$ form an orthonormal basis for all functions $\f : \bbF^n_q \rightarrow \bbC$ under the inner-product $\langle \f,\g\rangle = \bbE_{x\in \bbF^n}[f(x)\overline{g(x)}].$
+\end{fact}
+
+
+\begin{definition}
+Every function  $h:\bbF^n\rightarrow\bbC$ has a Fourier expansion $\hat{h}:\bbF^n\rightarrow\bbC$ given by
+$$
+h(x)=\sum_{\alpha\in\bbF_q}\hat{h}(\alpha)\chi_{\alpha}(x)
+$$
+$$
+\hat{h}(\alpha)=q^{-n}\sum_{x\in\bbF_q}{h}(x)\overline{\chi_{\alpha}(x)}
+$$
+\end{definition}
+
+\begin{definition}
+The norm of a function  $h:\bbF^n\rightarrow\bbC$ is equal to:
+\[
+\norm{h}^2=\inner{h}{h}=\bbE_{x\in \bbF^n}[h(x)\overline{h(x)}]=q^{-n}\sum_{x\in\bbF^n}h(x)^2
+\]
+\end{definition}
+
+\begin{corollary}
+Let $h:\bbF^n\rightarrow\bbC$. Then: $\norm{h}\le1$. 
+\end{corollary}
+\begin{proof}
+$$
+\norm{h}^2= q^{-n}\sum_{x\in\bbF^n}h(x)^2\le q^{-n}\sum_{x\in\bbF^n}|h(x)|^2\le 1
+$$
+\end{proof}
+
+\begin{theorem}Let $h_1,h_2:\bbF^n\rightarrow\bbC$.
+\begin{itemize}
+    \item Parseval's Identity: $\norm{h_1}^2 = \sum_{\alpha\in\bbF^n}\widehat{h_1}(\alpha)^2$.
+    \item Plancheral's Identity: $\inner{h_1}{h_2} = \sum_{\alpha\in\bbF^n}\widehat{h_1}(\alpha)\widehat{h_2}(\alpha)$.
+\end{itemize}
+\end{theorem}
+
+As there is no isomorphism between $\bbF_q$ and $\bbC$, we instead consider $q-1$ functions $\ff_c:\bbF^n\rightarrow \bbC$ for all $c\in \bbF_q^{*}$:
+\begin{align}
+\ff_c(x) := \omega_p^{\Tr(c\cdot f(x))} = \sum_{\alpha\in \bbF^n} \widehat{\left(\ff_c\right)}(\alpha)\chi_{\alpha}(x)
+\end{align}
+\begin{definition}
+For any $\f:\bbF^n\rightarrow \bbF_q$ we defined the $\bbF_p$-expansion of $f$ as the set:
+$
+\left\{\ff_c\right\}_{c\in\bbF_q^{*}}
+$.
+\end{definition}
+
+\begin{definition}
+Let $\f,\g:\bbF^n\rightarrow\bbF_q$. We defined the distance between $f,g$ as:
+\[
+\delta(\f,\g) =\Pr_{x\in\bbF^n}\left[f(x)\ne g(x)\right] 
+\]
+\end{definition}
+
+Now, we express the distance of $\f,\g$ in terms of the Fourier coefficients $\bbF_p$-expansion sets. 
+\begin{claim} \label{claim: delta(f,g)}Let $f,g:\bbF^n\rightarrow\bbF_q$ and their $\bbF_p$-expansion sets be $\{\fexp{\ff}{c}\}_{c\in\bbF_q^{*}},\{\fexp{\fg}{c}\}_{c\in\bbF_q^{*}}$ respectively.
+$$\delta(f,g) = 1-\frac{1}{q}\left(1+\sum_{c\in\bbF_q^{*}}\inner{\fexp{\ff}{c}}{\fexp{\fg}{c}}\right) = 1-\frac{1}{q}\left(1+\sum_{c\in\bbF_q^{*}}\sum_{\alpha\in\bbF^n}\widehat{\fexp{\ff}{c}}(\alpha)\overline{\widehat{\fexp{\fg}{c}}(\alpha)} \right)$$    
+\end{claim}
+\begin{definition}
+Let $\lin$ be the set of linear functions form $\bbF^n$ to $\bbF_q$. For $\alpha\in\bbF^n$, we denote $\ell_{\alpha}(x) = \inner{x}{\alpha}$. Then:
+\[
+\lin = \left\{\ell_{\alpha}\right\}_{\alpha\in\bbF^n}
+\]
+\end{definition}
+
+
+\begin{claim}
+Let $\f:\bbF^n\rightarrow\bbF_q$ with $\bbF_p$-expansion sets be $\{\fexp{\ff}{c}\}_{c\in\bbF_q^{*}}$ and let $\ell_{\alpha}\in\lin$ for some $\alpha\in\bbF^n$, and let it's $\bbF_p$-expansion set be $\{\fexp{\lambda}{c}\}_{c\in\bbF_q^{*}}$. Then:
+$$
+\delta(\f,\ell_{\alpha}) = 1-\left(\frac{1}{q}\left(1+\sum_{c\in\bbF_q^{*}}\widehat{\fexp{\ff}{c}}(c\alpha)\right)\right)  
+$$
+\end{claim}
+\begin{proof} For all $\beta\in\bbF^n$, the following is 0 if $\beta \ne c\alpha$ and 1 otherwise:
+$$\widehat{\fexp{\lambda}{c}}(\beta)=q^{-n}\sum_{x\in\bbF^n}\fexp{\lambda}{c}(x)\overline{\chi_{\beta}(x) }= q^{-n}\sum_{x\in\bbF^n}\omega_p^{\Tr(c\cdot \ell_\alpha(x)) - \Tr(\langle \beta, x\rangle) }=q^{-n}\sum_{x\in\bbF^n}\omega_p^{\Tr(\langle c\alpha, x\rangle) - \Tr(\langle \beta, x\rangle) }$$ 
+\end{proof}
+
+\begin{corollary}\label{bound for sum of expansion q}For all $\alpha\in \bbF^n$, 
+$-1\le \sum_{c\in\bbF_q^{*}}\widehat{\fexp{\ff}{c}}(c\alpha)\le q-1$ is a real number.
+\end{corollary}
+\begin{proof}
+This follows because $\delta(f,\ell_{\alpha})\in[0,1]$.
+\end{proof}
+
+\begin{proof}
+    Equivalent to $0\le\delta\le 1-1/q$
+\end{proof}
+
+\begin{definition}
+The distance of $\f:\bbF^n\rightarrow\bbF_q$ from \lin is defined as:  $\delta(f,\lin) :=\min_{\alpha\in\bbF^n}\delta(f,\ell_\alpha)$.
+\end{definition}
+
+\begin{corollary}\label{distance from linear}
+\[
+\delta(f,\lin) = \min_{\alpha\in\bbF^n}\left(1-\left(\frac{1}{q}\left(1+\sum_{c\in\bbF_q^{*}}\widehat{\fexp{\ff}{c}}(c\alpha)\right)\right) \right)
+\]
+Equivalently,
+$$\delta(f, \mathcal{LIN}) = 1- \frac{1}{q}\left(1+ \max_{\alpha\in\bbF^n}\left(\sum_{c\in\bbF_q^{*}}\widehat{\fexp{\ff}{c}}(c\alpha)\right)\right)$$
+\end{corollary}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{BLR Test over Finite Fields}
+\label{sec:blr over finite fields}
+
+\paragraph{The BLR Test}Given oracle access to a function $\f:\bbF^n\rightarrow\bbF_q$, the verifier performs the following:
+\begin{itemize}
+    \item Sample random $a,b\in\bbF^n\setminus\{0\}$ and sample $x,y\in\bbF^n$. 
+    \item $\BLRVerifier=1 \ \iff \ a\cdot f(x)+b\cdot f(y) = f(a\cdot x+b\cdot y)$. 
+\end{itemize}
+
+\begin{theorem}\label{FieldBLR}
+Let $\f:\bbF^n\rightarrow\bbF_q$ with $\bbF_p$-expansion sets be $\{\fexp{\ff}{c}\}_{c\in\bbF_q^{*}}$. 
+
+\[
+\Pr_{a,b,x,y}\left[\BLRVerifier=1 \right] = \frac{1}{q}\left(1+\frac{1}{(q-1)^2}\sum_{\alpha\in\bbF^n}\left(\sum_{a\in\bbF_q^{*}}\widehat{\fexp{\ff}{a}}(a\alpha)\right)^3\right)
+\]
+\end{theorem}
+
+
+\begin{proof}
+Let the $\bbF_p$-expansion set of $f$ be $\{\fexp{\ff}{c}\}_{c\in\bbF_q^{*}}$.
+Let also $a,b\in\bbF^n\setminus\{0\}$ and $x,y\in\bbF^n$. We observe that:
+\[
+\BLRVerifier=1  \ \iff \ \frac{1}{q}\left(\sum_{c\in\bbF_q}\omega_p^{\Tr(c(af(x)+bf(y)-f(ax+by)}\right) = 1
+\]
+As the above sum is zero unless $af(x)+bf(y)-f(ax+by) = 0$. Hence:
+\begin{align*}
+\Pr_{a,b,x,y}\left[\BLRVerifier=1\right]&=\bbE_{a,b,x,y}\left[\frac{1}{q}\left(\sum_{c\in\bbF_q}\omega_p^{\Tr(c(af(x)+bf(y)-f(ax+by))}\right)\right]\\
+&= \frac{1}{q}+\bbE_{a,b,x,y}\left[\sum_{c\in\bbF_q^{*}}\omega_p^{\Tr(c(af(x)+bf(y)-f(ax+by))}\right]
+\end{align*}
+
+Now, we consider the last term:
+\begin{align*}
+&\bbE_{a,b,x,y}\left[\sum_{c\in\bbF_q^{*}}\omega_p^{\Tr(c(af(x)+bf(y)-f(ax+by))}\right] \\&= \bbE_{a,b,x,y}\left[\sum_{c\in\bbF_q^{*}}\fexp{\ff}{ca}(x)\fexp{\ff}{cb}(y)\fexp{\ff}{-c}(a\cdot x+b\cdot y)\right]\\
+&=\bbE_{a,b,x,y}\left[\sum_{c\in\bbF_q^{*}}\sum_{\alpha,\beta,\gamma\in\bbF^n}\widehat{\fexp{\ff}{ca}}(\alpha)\chi_{\alpha}(x)\widehat{\fexp{\ff}{cb}}(\beta)\chi_{\beta}(y)\widehat{\fexp{\ff}{-c}}(\gamma)\chi_{\gamma}(ax+by)\right]\\
+&= \bbE_{a,b,x,y}\left[\sum_{c\in\bbF_q^{*}}\sum_{\alpha,\beta,\gamma\in\bbF^n}\widehat{\fexp{\ff}{ca}}(\alpha)\widehat{\fexp{\ff}{cb}}(\beta)\widehat{\fexp{\ff}{-c}}(\gamma)\chi_{\alpha}(x)\chi_{\beta}(y)\chi_{\gamma}(ax+by)\right]\\
+&= \bbE_{a,b,x,y}\left[\sum_{c\in\bbF_q^{*}}\sum_{\alpha,\beta,\gamma\in\bbF^n}\widehat{\fexp{\ff}{ca}}(\alpha)\widehat{\fexp{\ff}{cb}}(\beta)\widehat{\fexp{\ff}{-c}}(\gamma)\chi_{\alpha}(x)\chi_{\beta}(y)\chi_{a\gamma}(x)\chi_{b\gamma}(y)\right]\\
+&= \bbE_{a,b}\left[\sum_{c\in\bbF_q^{*}}\sum_{\alpha,\beta,\gamma\in\bbF^n}\widehat{\fexp{\ff}{ca}}(\alpha)\widehat{\fexp{\ff}{cb}}(\beta)\widehat{\fexp{\ff}{-c}}(\gamma)\bbE_{x,y}\left[\chi_{\alpha}(x)\chi_{\beta}(y)\chi_{a\gamma}(x)\chi_{b\gamma}(y)\right]\right]
+\end{align*}
+
+Now, we consider the following expression:
+\begin{align*}
+    \bbE_{x,y}\left[\chi_{\alpha}(x)\chi_{\beta}(y)\chi_{a\gamma}(x)\chi_{b\gamma}(y)\right] = \bbE_{x,y}\left[\omega_p^{\Tr(\inner{\alpha}{x}+\inner{\beta}{y}+ \inner{\gamma}{ax}+\inner{\gamma}{by})}\right]
+\end{align*}
+Observe that the above is zero, unless $\gamma = -a^{-1}\alpha$ and $\beta = a^{-1}b\alpha$. Thus:
+\begingroup
+\allowdisplaybreaks
+\begin{align*}
+&\bbE_{a,b,x,y}\left[\sum_{c\in\bbF_q^{*}}\omega_p^{\Tr(c(af(x)+bf(y)-f(ax+by))}\right]\\
+&=
+\bbE_{a,b}\left[\sum_{c\in\bbF_q^{*}}\sum_{\alpha,\beta,\gamma\in\bbF^n}\widehat{\fexp{\ff}{ca}}(\alpha)\widehat{\fexp{\ff}{cb}}(\beta)\widehat{\fexp{\ff}{-c}}(\gamma)\bbE_{x,y}\left[\chi_{\alpha}(x)\chi_{\beta}(y)\chi_{a\gamma}(x)\chi_{b\gamma}(y)\right]\right] \\
+&= 
+\bbE_{a,b}\left[\sum_{c\in\bbF_q^{*}}\sum_{\alpha\in\bbF^n}\widehat{\fexp{\ff}{ca}}(\alpha)\widehat{\fexp{\ff}{cb}}(a^{-1}b\alpha)\widehat{\fexp{\ff}{-c}}(-a^{-1}\alpha)\right]\\
+&=
+\bbE_{a,b}\left[\sum_{c\in\bbF_q^{*}}\sum_{\alpha\in\bbF^n}\widehat{\fexp{\ff}{ca}}(ca\alpha)\widehat{\fexp{\ff}{cb}}(cb\alpha)\widehat{\fexp{\ff}{-c}}(-c\alpha)\right]\\
+&= \bbE_{a,b}\left[\sum_{c\in\bbF_q^{*}}\sum_{\alpha\in\bbF^n}\widehat{\fexp{\ff}{a}}(a\alpha)\widehat{\fexp{\ff}{b}}(b\alpha)\widehat{\fexp{\ff}{c}}(c\alpha)\right]\\
+&= \frac{1}{(q-1)^2}\sum_{a,b,c\in\bbF_q^{*}}\sum_{\alpha\in\bbF^n}\widehat{\fexp{\ff}{a}}(a\alpha)\widehat{\fexp{\ff}{b}}(b\alpha)\widehat{\fexp{\ff}{c}}(c\alpha)\\
+&= \frac{1}{(q-1)^2}\sum_{\alpha\in\bbF^n}\left(\sum_{a\in\bbF_q^{*}}\widehat{\fexp{\ff}{a}}(a\alpha)\right)^3
+\end{align*}
+\endgroup
+
+\end{proof}
+
+
+\begin{theorem}
+Let $\f:\bbF^n\rightarrow\bbF_q$. 
+\[
+(1-\delta(f,\lin))^3 \le \Pr_{a,b,x,y}\left[\BLRVerifier=1\right] \le 1-\delta(f,\lin)
+\]
+\end{theorem}
+\begin{proof}
+For the left hand-side:
+\begin{align*}
+\Pr\left[\BLRVerifier=1 \right] &= \frac{1}{q}\left(1+\frac{1}{(q-1)^2}\sum_{\alpha\in\bbF^n}\left(\sum_{a\in\bbF_q^{*}}\widehat{\fexp{\ff}{a}}(a\alpha)\right)^3\right)\\
+&\le  \frac{1}{q}\left(1+\frac{1}{(q-1)^2}\max_{\alpha\in\bbF^n}\left(\sum_{a\in\bbF_q^{*}}\widehat{\fexp{\ff}{a}}(a\alpha)\right)\sum_{\alpha\in\bbF^n}\left(\sum_{a\in\bbF_q^{*}}\widehat{\fexp{\ff}{a}}(a\alpha)\right)^2\right)\\
+&=  \frac{1}{q}\left(1+\frac{1}{(q-1)^2}\max_{\alpha\in\bbF^n}\left(\sum_{a\in\bbF_q^{*}}\widehat{\fexp{\ff}{a}}(a\alpha)\right)\sum_{\alpha\in\bbF^n}\left(\sum_{a,b\in\bbF_q^{*}}\widehat{\fexp{\ff}{a}}(a\alpha)\widehat{\fexp{\ff}{b}}(b\alpha)\right)\right)\\
+&=  \frac{1}{q}\left(1+\frac{1}{(q-1)^2}\max_{\alpha\in\bbF^n}\left(\sum_{a\in\bbF_q^{*}}\widehat{\fexp{\ff}{a}}(a\alpha)\right)\sum_{a,b\in\bbF_q^{*}}\left(\sum_{\alpha\in\bbF^n}\widehat{\fexp{\ff}{a}}(a\alpha)\widehat{\fexp{\ff}{b}}(b\alpha)\right)\right)
+\end{align*}
+Consider the following, due to Plancherel's identity and the fact that $\fexp{\ff}{a}$ map to the roots of unity modulo $p$:
+\begin{align*}
+\sum_{\alpha\in\bbF^n}\widehat{\fexp{\ff}{a}}(a\alpha)\widehat{\fexp{\ff}{b}}(b\alpha) 
+= \bbE_{\alpha}\left[{\fexp{\ff}{a}(a\alpha)\fexp{\fg}{b}(b\alpha)}\right] 
+\le \bbE_{\alpha}\left[{\abs{\fexp{\ff}{a}(a\alpha)\fexp{\fg}{b}(b\alpha)}}\right]\le 1
+\end{align*}
+
+Hence, it follows that:
+\[
+ \Pr_{a,b,x,y}\left[\BLRVerifier=1\right] \le   \frac{1}{q}\left(1+\max_{\alpha\in\bbF^n}\left(\sum_{a\in\bbF_q^{*}}\widehat{\fexp{\ff}{a}}(a\alpha)\right)\right)
+= 1-\delta(f,\lin)
+\]
+
+For the left hand side of the claim:
+\begin{align*}
+\Pr\left[\BLRVerifier=1 \right] &= \frac{1}{q}\left(1+\frac{1}{(q-1)^2}\sum_{\alpha\in\bbF^n}\left(\sum_{a\in\bbF_q^{*}}\widehat{\fexp{\ff}{a}}(a\alpha)\right)^3\right)\\
+&\ge  \frac{1}{q}\left(1+\frac{1}{(q-1)^2}\max_{\alpha\in\bbF^n}\left(\sum_{a\in\bbF_q^{*}}\widehat{\fexp{\ff}{a}}(a\alpha)\right)^3\right)\\
+&\ge  \left(\frac{1}{q}\left(1+\max_{\alpha\in\bbF^n}\left(\sum_{a\in\bbF_q^{*}}\widehat{\fexp{\ff}{a}}(a\alpha)\right)\right)\right)^3\\
+&=  \left(1-\delta(f,\lin)\right)^3
+\end{align*}
+where the last inequality follows from the following: for every $q\geq 2, A\ge \frac{1-|\bbF|^2}{2q-1}$:
+\[
+\left(\frac{1}{q}\left(1+A\right)\right)^3\le
+\frac{1}{q}\left(1+\frac{1}{(q-1)^2}A^3\right)
+\]
+(we plug $A=\max_{\alpha\in\bbF^n}\left(\sum_{a\in\bbF_q^{*}}\widehat{\fexp{\ff}{a}}(a\alpha)\right)$ in the expression above. By \cref{bound for sum of expansion q}, we observe that the above holds for any $q$).
+
+\end{proof}
+
+
+
+
+% \inputleanmodule{BlrPcp.Basic}
+
+\section{previous chatgpt generated content}
+\begin{definition}
+    \label{def:ff-linear}
+    A function $f : F^n \to F$ is linear if there exists
+    $a \in F^n$ such that
+    \[
+        f(x) = \sum_i a_i x_i
+    \]
+    for every $x \in F^n$.
+\end{definition}
+
+\begin{definition}
+    \label{def:ff-blr-test}
+    The finite-field BLR test samples $x,y \in F^n$ and
+  $a,b \in F \setminus \{0\}$, and accepts iff
+  \[
+    a f(x) + b f(y) = f(ax + by).
+  \]
+\end{definition}
+
+\begin{definition}
+    \label{def:ff-blr-reject-prob}
+    The rejection probability of the finite-field BLR test is
+  \[
+    \Pr[V_{BLR}^f = 0] = 1 - \Pr[V_{BLR}^f = 1].
+  \]
+\end{definition}
+
+\begin{definition}
+    \label{def:ff-additive-characters}
+    Write $F=\mathbb{F}_q$ where $q = p^m$ for a prime number $p$ and a positive integer $m$. For each $\alpha \in \mathbb{F}_q^n$, define
+  the additive character $\chi_\alpha : \mathbb{F}_q \rightarrow \mathbb{C}$ as
+  \[
+    \chi_\alpha(x) := \omega_p^{\mathrm{Tr}(\langle \alpha, x\rangle)},
+  \]
+  where $ \omega_p = \exp(2π i/p)$ and  $\mathrm{Tr} : \mathbb{F}_q \to \mathbb{F}_p $ is the field trace $\mathrm{Tr}(a) = \sum_{j=0}^{m-1} a^{p^j}$.
+\end{definition}
+
+\begin{lemma}
+    \label{lem:ff-characters-orthonormal}
+The family $\{\chi_\alpha\}_{\alpha \in \mathbb{F}_q^n}$ is an
+  orthonormal basis for the complex-valued functions
+  $g : \mathbb{F}_q^n \to \mathbb{C}$ with respect to the inner product
+  \[
+    \langle g,h\rangle := \mathbb{E}_{x \in \mathbb{F}_q^n}[g(x)\overline{h(x)}].
+  \]
+\end{lemma}
+
+\begin{lemma}
+    \label{lem:ff-fourier-expansion}
+Every function $g : \mathbb{F}_q^n \to \mathbb{C}$ has a unique
+  Fourier expansion
+  \[
+    g(x) = \sum_{\alpha \in \mathbb{F}_q^n} \widehat g(\alpha)\chi_\alpha(x).
+  \]
+\end{lemma}
+
+\begin{lemma}
+    \label{lem:ff-parseval-plancherel}
+    Parseval and Plancherel hold:
+  \[
+    \langle g,g\rangle = \sum_\alpha |\widehat g(\alpha)|^2,
+    \qquad
+    \langle g,h\rangle = \sum_\alpha \widehat g(\alpha)\overline{\widehat h(\alpha)}.
+  \]
+\end{lemma}
+
+\begin{definition}
+    \label{def:ff-fourier-set}
+    For $f : \mathbb{F}_q^n \to \mathbb{F}_q$, define its Fourier set
+  \[
+    \Phi(f) := \{\varphi_c\}_{c \in \mathbb{F}_q^\times},
+    \qquad
+    \varphi_c(x) := \omega_p^{\mathrm{Tr}(c f(x))}.
+  \]
+\end{definition}
+
+\begin{lemma}
+    \label{lem:ff-distance-formula}
+If $f,g : \mathbb{F}_q^n \to \mathbb{F}_q$ have Fourier sets
+  $\{\varphi_c\}_{c \in \mathbb{F}_q^\times}$ and
+  $\{\psi_c\}_{c \in \mathbb{F}_q^\times}$, then
+  \[
+    \Delta(f,g)
+    = 1 - \frac{1}{q}\left(1 + \sum_{c \in \mathbb{F}_q^\times}
+      \langle \varphi_c,\psi_c\rangle\right).
+  \]
+\end{lemma}
+
+\begin{lemma}
+    \label{lem:ff-distance-to-linearity}
+    If $f$ has Fourier set $\{\varphi_c\}_{c \in \mathbb{F}_q^\times}$,
+  then its distance to the linear functions is
+  \[
+    \Delta(f,\mathrm{LIN})
+    = 1 - \frac{1}{q}\left(1 + \max_{\alpha \in \mathbb{F}_q^n}
+      \sum_{c \in \mathbb{F}_q^\times} \widehat{\varphi_c}(c\alpha)\right).
+  \]
+\end{lemma}
+
+\begin{lemma}
+    \label{lem:ff-spectral-bound}
+A Fourier-analytic calculation shows that the rejection probability
+  of the finite-field BLR test dominates the Fourier-set expression for
+  $\Delta(f,\mathrm{LIN})$
+\end{lemma}
+
+\begin{lemma}
+    \label{thm:ff-blr-improved-analysis}
+For every function $f : F^n \to F$, the finite-field BLR test
+  satisfies
+  \[
+    \Pr[V_{BLR}^f = 0] \ge \Delta(f,\mathrm{LIN}).
+  \]
+  This is the improved finite-field analysis proved via Fourier analysis.
+\end{lemma}
+
+\begin{lemma}
+    \label{cor:ff-high-acceptance-close-to-linear}
+If the finite-field BLR test accepts $f$ with probability at least
+  $1 - \varepsilon$, then
+  \[
+    \Delta(f,\mathrm{LIN}) \le \varepsilon.
+  \]
+\end{lemma}
+
+\begin{lemma}
+    \label{rem:q2-special-case}
+    When $q = 2$, this reduces to the Boolean Fourier-analytic proof
+  of the BLR theorem.
+\end{lemma}
+
+%%FILE blueprint/src/subsections/ghZ2.tex
+\section{Gowers-Hatami for BLR linearity test over $\FF_2$}
+
+In classical BLR, the mapping is from a field $\mathbb{F}_2^n$. 
+First let us relate the BLR test to the notion of approximate representation.
+
+\begin{proposition}[BLR test induces an approximate representation]\label{lem:blr-approx-rep}
+Let $f:\mathbb{Z}_2^n\to \mathbb{Z}_2$ satisfy
+\[
+\Pr_{x,y}[f(x)+f(y)=f(x+y)] \ge 1-\epsilon.
+\]
+Define $F:\mathbb{Z}_2^n\to \{\pm1\}$ by $F(x)=(-1)^{f(x)}$. Then
+\[
+\mathbb{E}_{x,y}\big|F(x)F(y)-F(x+y)\big|^2 \le 4\epsilon,
+\]
+so $F$ is an $(2\epsilon,1)$-approximate representation.
+\end{proposition}
+
+\begin{proof}
+    First observe that for all $x,y\in G$,
+    \[
+    F(x)F(y) = (-1)^{f(x)+f(y)}.
+    \]
+    Hence
+    \[
+    F(x)F(y)=F(x+y) \quad \Longleftrightarrow \quad f(x)+f(y)=f(x+y)\ (\mathrm{mod}\ 2).
+    \]
+
+    Define the indicator of BLR success:
+    \[
+    \mathbf{1}_{\mathrm{good}}(x,y) := \mathbf{1}[f(x)+f(y)=f(x+y)].
+    \]
+    Then
+    \[
+    \Pr_{x,y}[\mathbf{1}_{\mathrm{good}}=1] \ge 1-\epsilon.
+    \]
+
+    Now compute the squared error. Since $F(x)\in\{\pm1\}$,
+    \[
+    |F(x)F(y)-F(x+y)|^2 =
+    \begin{cases}
+    0 & \text{if } F(x)F(y)=F(x+y),\\
+    4 & \text{otherwise}.
+    \end{cases}
+    \]
+
+    Taking expectation over $(x,y)$,
+    \begin{align*}
+    \mathbb{E}_{x,y}|F(x)F(y)-F(x+y)|^2
+    &= 4 \Pr_{x,y}[F(x)F(y)\neq F(x+y)] \\
+    &= 4 \Pr_{x,y}[f(x)+f(y)\neq f(x+y)] \\
+    &\le 4\epsilon.
+    \end{align*}
+\end{proof}
+
+The Gowers-Hatami theorem can be applied to show that if a function $f: \mathbb{Z}_2^n \to \mathbb{F}_2$ passes the BLR linearity test with high probability, 
+then there exists a linear function $\ell: \mathbb{F}_2^n \to \mathbb{F}_2$ that is close to $f$ in terms of Hamming distance $\delta(f, \ell)$ defined in Def.~\ref{def:relative-hamming-distance}.
+To do this, we first need to apply the Gowers-Hatami theorem to the approximate representation $F(x)=(-1)^{f(x)}$ given by Proposition~\ref{lem:blr-approx-rep}.
+
+\begin{corollary}[Gowers-Hatami Correlation for BLR]\label{cor:gh-Z2}
+    Let $F: \mathbb{Z}_2^n \to U(1)$ be an $(\epsilon, \sigma)$ approximate representation. 
+    Then there exists a unit vector $v$ and an exact representation $G$ such that 
+    \be
+    \mathbb{E}_{x \in \mathbb{Z}_2^n} \Re \langle F(x), \langle v, G(x) v\rangle \rangle \geq 1 - \epsilon.
+    \ee
+    
+\end{corollary}
+
+Next, we would like to conclude from the above corollary that there exists a linear function $\ell: \mathbb{Z}_2^n \to  \mathbb{Z}_2$ such that 
+$\Pr_x[f(x) \neq \ell(x)] \leq \epsilon/2$. To do this, we need to use a fact that about the regular representation of $\mathbb{Z}_2^n$.
+
+
+% need to prove this fact
+\begin{fact}[Regular representation of $\mathbb{Z}_2^n$]
+    Let $\rho(a)$ act on $L=\{f:\mathbb{Z}_2^n\to\mathbb{C}\}$ by $(\rho(a)f)(x)=f(x+a)$. 
+    Then in the Fourier basis $\{\ket{S}\}$, we have
+    \[
+    \rho(a) = \sum_{S\subseteq[n]} \chi_S(a)\ket{S}\bra{S}.
+    \]
+\end{fact}
+
+\begin{lemma}[Gowers-Hatami implies near linearity]\label{lem:gh-linearity}
+    Let $F: \mathbb{Z}_2^n \to \mathbb{C}$ be an $(\epsilon, 1)$ approximate representation of $\mathbb{Z}_2^n$ from the BLR test 
+    such that $F(x) = (-1)^{f(x)}$ for some function $f: \mathbb{Z}_2^n \to \mathbb{Z}_2$.
+    Then there exists a linear function $\ell: \mathbb{F}_2^n \to \mathbb{F}_2$ such that the distance between $f$ and $\ell$ is bounded
+    \be
+    \delta(f, \ell) \leq \epsilon/2.
+    \ee
+\end{lemma}
+
+
+\begin{proof}
+    By Corollary~\ref{cor:gh-Z2}, there exists a representation $G$ and a unit vector $v$ such that
+    \[
+        \mathbb{E}_{x} \Re \langle F(x), \langle v, G(x)v\rangle \rangle \ge 1 - \epsilon.
+    \]
+    Using the diagonal form of $G(x)$ in the character basis,
+    \[
+        G(x) = \sum_S \chi_S(x) \ket{S}\bra{S}.
+    \]
+
+    The inner product condition can be rewritten as
+    \[
+       \sum_{S} p_S  \mathbb{E}_{x} \Re \langle F(x), \chi_S(x) \rangle \ge 1 - \epsilon,
+    \]
+        where $p_S := |\bra{v}S\rangle|^2$ and $\sum_S p_S = 1$.
+    Therefore,
+    \[
+        \sum_S p_S \widehat{F}(S) \ge 1 - \epsilon,
+    \]
+    where $\widehat{F}(S):=\mathbb{E}_x[F(x)\chi_S(x)]$ is the real-valued Fourier coefficient of $F$ at $S$.
+
+    Since $(p_S)_S$ is a probability distribution, there exists some $S^*$ such that
+    \[
+        \widehat{F}(S^*) \ge 1 - \epsilon.
+    \]
+    This means that there is a large Fourier coefficient at $S^*$.
+    Define $\ell(x)=x\cdot S^*$. Then $\chi_{S^*}(x)=(-1)^{\ell(x)}$, and
+    \[
+        \mathbb{E}_x[F(x)\chi_{S^*}(x)] = 1 - 2\Pr_x[f(x)\neq \ell(x)].
+    \]
+    Hence
+    \[
+        1 - 2\delta(f,\ell) \ge 1 - \epsilon,
+    \]
+    which implies
+    \[
+        \delta(f,\ell) \le \epsilon/2.
+    \]
+\end{proof}
+
+\begin{proposition}[Equivalence for BLR test]\label{prop:equiv_blr_z2}
+    Let $ \Pr[V_{\text{BLR}}^f=0]$ denote the probability that the BLR verifier rejects a function $f: \mathbb{F}_2^n \to \mathbb{F}_2$.
+    Let $\delta(f, \mathcal{LIN})$ denote the distance between $f$ and the closest linear function in $\mathcal{LIN}$.
+    Then the following statements are equivalent:
+    \begin{itemize}
+        \item If $\Pr[V_{\text{BLR}}^f=0] \leq \epsilon$, then $\delta(f, \mathcal{LIN}) \leq \epsilon$.
+        \item $\Pr[V_{\text{BLR}}^f=0] \geq \delta(f, \mathcal{LIN})$.
+    \end{itemize}
+\end{proposition}    
+
+
+Now we provide the proof of Soundness of BLR test using the Gowers-Hatami theorem.
+
+\begin{theorem}[Soundness of the $Z_2$ BLR]
+\label{thm:z2-blr-soundness}
+For every function $f:\mathbb{F}_2^n\to\mathbb{F}_2$,
+\[
+    \Pr[V_{\text{BLR}}^f=0] \ge \delta(f,\mathcal{LIN}).
+\]
+Equivalently,
+\[
+    \Pr[V_{\text{BLR}}^f=1] \le 1-\delta(f,\mathcal{LIN}).
+\]
+\end{theorem}
+
+\begin{proof}
+    Let $F: \mathbb{Z}_2^n \to \{-1,1\}$ be defined by $F(x)=(-1)^{f(x)}$, as given by Proposition~.\ref{lem:blr-approx-rep}.
+    $F$ is an $(2\epsilon,1)$ approximate representation of $\mathbb{Z}_2^n$.
+    Applying Gowers-Hatami theorem by Lemma.~\ref{lem:gh-linearity},
+    then there exists a linear function $\ell$ such that $\delta(f, \ell) \leq \epsilon$ so that $\delta(f,\mathcal{LIN})\le \epsilon$.
+
+    This proves the implication 
+    $\Pr[V_{\text{BLR}}^f=0]\le \epsilon \Rightarrow \delta(f,\mathcal{LIN})\le \epsilon$,
+    which is equivalent to
+    \[
+        \Pr[V_{\text{BLR}}^f=0]\ge \delta(f,\mathcal{LIN}),
+    \]
+     by Proposition~\ref{prop:equiv_blr_z2}.
+\end{proof}
+
+%%FILE blueprint/src/subsections/gh_blr.tex
+\section{BLR linearity test over $\FF_q$ via Gowers-Hatami}\label{sec:blr-finite-field}
+
+Assume $q = p^s$ be a prime with power $s\in \mathbb{Z}^+$, $n \ge 1$, and we set
+\[
+X := \F_q^n, \qquad A := \F_q^\times, \qquad \omega := e^{2\pi i/p}.
+\]
+
+% \begin{definition}[BLR verifier and distance]\label{def:blr}\lean{BlrPcp.BLRAcceptsAt, BlrPcp.distanceToLinear, BlrPcp.acceptanceProbabilityBLR}\leanok
+% Given $f : X \to \F_q$, the verifier $\BLR^f$ samples $a, b \in A$ and
+% $x, y \in X$ uniformly and accepts iff $af(x) + bf(y) = f(ax + by)$. Let the test rejection probability be bounded by
+% \[
+% \Pr_{a,b,x,y}\!\bigl[af(x) + bf(y) \ne f(ax + by)\bigr] \leq \varepsilon.
+% \]
+% For $\alpha \in X$, write $\ell_\alpha(x) := \inner{\alpha}{x}$, $\delta_\alpha := \Pr_x[f(x) \ne \ell_\alpha(x)]$,
+% and $\delta(f, \lin) := \min_{\alpha} \delta_\alpha$.
+% \end{definition}
+% At the end of the section, we prove the BLR soundness using Gowers-Hatami theorem.
+
+First notice that linearity implies two properties: 
+\begin{enumerate}
+    \item Additivity $f(x + y) = f(x) + f(y), \quad \forall x, y \in X$. 
+    
+    Note that for $q$ prime additivity is actually equivalent to linearity. However this is not the case for prime powers $q=p^s$ for $s > 1$.
+    
+    \item Homogeneity $f(a x) = a f(x), \quad \forall x \in X, \, a \in A$.
+
+    For $q=2$, the two properties are redundant. 
+    For $q > 2$, turns out testing homogeneity is crucial for a test to have a high soundness.
+\end{enumerate}
+
+% In the rest of the section, we discuss an encoding of both properties through a group construction by ChatGPT.
+
+
+\subsection{The twisted group \texorpdfstring{$G$}{G}}\label{sec:group}
+
+Define a group $G$ by the set $X \times A$ with the binary operation
+\begin{equation}\label{eq:star}
+(x, a) \star (y, b) := \bigl(b^{-1}x + a^{-1}y,\; ab\bigr).
+\end{equation}
+
+\begin{lemma}[$G$ is an abelian group]\label{lem:group}\lean{BlrPcp.Twist.instCommGroup}\leanok
+The operation $\star$ in~\equref{eq:star} makes $G$ into an abelian group with identity
+$e = (0, 1)$ and inverses $(x, a)^{-1} = (-a^2 x, a^{-1})$. 
+\end{lemma}
+
+\begin{proof}\leanok
+\emph{Associativity.} For $(x, a), (y, b), (z, c) \in G$,
+\begin{align*}
+\bigl((x, a) \star (y, b)\bigr) \star (z, c)
+&= (b^{-1}x + a^{-1}y,\; ab) \star (z, c) = \bigl(b^{-1}c^{-1}x + a^{-1}c^{-1}y + a^{-1}b^{-1}z,\; abc\bigr),
+% &= \bigl(c^{-1}(b^{-1}x + a^{-1}y) + (ab)^{-1}z,\; abc\bigr) \\
+% &= \bigl(b^{-1}c^{-1}x + a^{-1}c^{-1}y + a^{-1}b^{-1}z,\; abc\bigr),
+\end{align*}
+and an identical computation gives the same expression for $(x, a) \star \bigl((y, b) \star (z, c)\bigr)$.
+
+\emph{Commutativity.}
+$(y, b) \star (x, a) = (a^{-1}y + b^{-1}x,\; ba) = (b^{-1}x + a^{-1}y,\; ab) = (x, a) \star (y, b).$
+
+\emph{Identity.} For any $(y, b) \in G$,
+$(0, 1) \star (y, b) = (b^{-1}\cdot 0 + 1^{-1}\cdot y,\; 1\cdot b) = (y, b)$.
+
+\emph{Inverse.} For any $(x, a) \in G$,
+\[
+(x, a) \star (-a^2 x, a^{-1}) = \bigl((a^{-1})^{-1}\cdot x + a^{-1}\cdot(-a^2 x),\; a\cdot a^{-1}\bigr)
+= (ax - ax,\; 1) = (0, 1).
+\]
+
+\end{proof}
+
+It is at first surprising to come up with $\star$ operation, but $G$ is isomorphic to the direct product group. 
+\begin{remark}[Group isomorphism to product group]
+The map
+\be
+\Psi : G \to (X, +) \times (A, \cdot), \qquad
+\Psi(x, a) := (ax, a),
+\ee
+is a group isomorphism onto the direct product of $(X, +)$ and $(A, \cdot)$ with operation
+$\star_\Psi:(x,\; a) \star_\Psi (y,\; b) = (x+y,\; ab)$. Indeed,
+\[
+\Psi\bigl((x, a) \star (y, b)\bigr) = \bigl(ab\cdot(b^{-1}x + a^{-1}y),\; ab\bigr) = (ax + by,\; ab)
+= \Psi(x, a) \star_\Psi \Psi(y, b),
+\]
+and $\Psi$ is bijective with inverse $\Psi^{-1}(y, b) = (b^{-1}y, b)$.
+
+This isomorphism is used only to \emph{motivate} the characters below. The Lean development does not
+formalize $\Psi$: it equips $G$ with its group structure (\lemref{lem:group}) and defines the characters
+$\chi_{\alpha,k}$ (\propref{prop:group_characaters}) directly on the twisted group, proving the homomorphism
+property by direct computation rather than by pulling back through $\Psi$. Accordingly it is recorded as a
+remark, with no \texttt{\textbackslash lean} link and no node in the dependency graph.
+\end{remark}
+
+The isomorphism gives us a easy way to compute its irreducible representations which forms the Pontryagin dual group (the set of irrep characters for an abelian group).
+\begin{remark}[Pontryagin dual over direct product]
+For finite abelian groups $G_1, G_2$ with direct product $H = G_1 \times G_2$, the Pontryagin dual (the set of irreducible characters) factors as $\hat{H} = \hat{G_1} \times \hat{G_2}$. Like the isomorphism above, this is used only to motivate the character formula and is not part of the formalized graph.
+\end{remark}
+\begin{proposition}[Group characters]\label{prop:group_characaters}\lean{BlrPcp.gChar, BlrPcp.gChar_mul, BlrPcp.card_gChar_index, BlrPcp.gChar_injective}\leanok
+The group $(G, \star)$ has the Pontryagin dual character group 
+\be
+\hat{G} = \{\chi_{\alpha, k}\}_{\alpha \in X, k \in [0, \cdots, q-2]}, \quad \chi_{\alpha, k}(x,a) = \omega^{\Tr \inner{\alpha}{a x}} \psi_k(a),
+\ee
+where $\psi_k(a) = e^{\frac{i 2 \pi m k}{q-1}}$ and $a=g_0^m$ for a fixed multiplicative generator $g_0\in A$.
+\end{proposition}
+\begin{proof}\leanok
+By the isomorphism $\Psi(x, a) = (ax, a)$ in the remark above, $(G, \star) \cong (X, +) \times (A, \cdot)$. First we consider the characters of the product group. Using the Pontryagin-dual factorization in the remark above, we have
+\[
+\widehat{(X, +) \times (A, \cdot)} = \hat{X} \times \hat{A}.
+\]
+The character groups of $X$ and $A$ are
+\begin{align}
+    \hat{X} &= \{\phi_\alpha(y) = \omega^{\Tr \inner{\alpha}{y}}\}_{\alpha\in X}, \\
+     \hat{A} &= \{\psi_k(b) =e^{\frac{i 2 \pi m k}{q-1}}\}_{k \in [0, \cdots, q-2]},
+\end{align}
+where $b=g_0^m$ for a fixed multiplicative generator $g_0\in A$. 
+Here the field trace $\Tr: \F_q \to \F_p$ is defined by $\Tr(x) = x + x^p + x^{p^2} + \cdots + x^{p^{s-1}}$ for $x \in \F_q$ (see Definition~1.1 in Chapter 1).%(see Definition~\ref{def:field-trace} in \secref{sec:blr-general-finite-fields}).
+Therefore, $\widehat{(X, +) \times (A, \cdot)} = \{\Theta_{\alpha, k}(y, b) = \phi_\alpha(y) \psi_k(b)\}_{\alpha, k}$.
+The character $\chi \in \hat{G}$ is given by the pull-back through the isomorphism
+\be
+\chi_{\alpha, k}(x, a) = \Theta_{\alpha, k}(\Psi(x, a)) = \Theta_{\alpha, k}(ax, a).
+\ee
+Therefore, we have $\chi_{\alpha, k}(x, a) = \phi_\alpha(ax) \psi_k(a) =\omega^{\Tr \inner{\alpha}{a x}} \psi_k(a)$.
+\end{proof}
+\subsection{Approximate representation and matrix lift of $f$}\label{sec:rep}
+
+\begin{definition}[Matrix lift $F_f$]\label{def:Flift}\lean{BlrPcp.liftMatrix}\leanok
+Define a unitary matrix valued lift $F_f : G \to U(\cc^{q-1})$ by the diagonal matrix
+\begin{equation}\label{eq:Flift-def}
+F_f(x, a) = D(a f(x)) := \sum_{c \in A} \omega^{\Tr\, c a f(x)}\ket{c}\bra{c},
+\end{equation}
+where $\{\ket{c}\}$ denotes the orthonormal basis vectors of a Hilbert space $\mathcal{H} \cong \cc^{q-1}$ and the inner product between operators defined by $\inner{A}{B}_\sigma=\Tr(A^* B \sigma)$ and choose $\sigma = \I/(q-1)$.
+\end{definition}
+
+% \begin{lemma}[$F_f$ is unitary-valued]\label{lem:Ff-unitary}\uses{def:Flift}\lean{BlrPcp.liftMatrix_mem_unitaryGroup}\leanok
+% For every $(x, a) \in G$, the lift $F_f(x, a)$ is a unitary matrix, i.e.\ $F_f : G \to U(\cc^{q-1})$.
+% \end{lemma}
+We first show that the BLR condition indeed gives an approximate represenatation.
+
+\begin{lemma}[Lift operation from BLR condition]\label{lem:rep-iff-blr}\uses{lem:group, def:Flift}\lean{BlrPcp.liftFin_isApproxRepresentation}\leanok
+Let $f : X \to \F_q$ and $(x, a), (y, b) \in G$ be rejected by the BLR test with probability $\varepsilon$,
+then the unitary matrix lift $F_f$ in ~\equref{eq:Flift-def} is an $(\frac{q}{q-1}\varepsilon, \frac{\I}{q-1})$ approximate representation of $(G, \star)$.
+\end{lemma}
+
+\begin{proof}\leanok
+The BLR test condition gives
+\[
+\Pr_{c,d,x,y}\!\bigl[c f(x) + d f(y) \neq f(cx + dy)\bigr] \leq \varepsilon.
+\]
+First we observe that
+\begin{equation}\label{eq:rep-eq-blr}
+\Pr_{g, h \in G}\!\bigl[F_f(g \star h) = F_f(g)F_f(h)\bigr]
+= \Pr_{c,d,x,y}\!\bigl[c f(x) + d f(y) = f(cx + dy)\bigr].
+\end{equation}
+Using~\equref{eq:star} and~\equref{eq:Flift-def},
+\begin{align*}
+F_f\bigl((x,a)\star(y,b)\bigr) &= \sum_{c\in A}\omega^{\Tr\, cab\,f(b^{-1}x + a^{-1}y)} \ket{c}\bra{c}, \\
+F_f(x, a)\,F_f(y, b) &= \sum_{c\in A} \omega^{\Tr\, c(af(x) + bf(y))} \ket{c}\bra{c}.
+\end{align*}
+These coincide iff their exponents agree modulo $p$ for $c \in A$: 
+\[
+ab\, f(b^{-1}x + a^{-1}y) = af(x) + bf(y) \mod p, \quad \forall c \in A.
+\]
+Therefore, we have equality over $\F_p$ 
+\[
+ab\, f(b^{-1}x + a^{-1}y) = af(x) + bf(y).
+\]
+Since $a, b$ have a multiplicative inverse, substitute $c := b^{-1}$, $d := a^{-1}$, we have
+\[
+f(cx + d y) = c f(x) + d f(y),
+\]
+which proves ~\equref{eq:rep-eq-blr}.
+
+To relate the test condition to the approximate representation, first note the equivalent definition of approximate representation
+\be
+\mathbb{E}_{g, h \in G} \Re \left\langle F_f(g)^{*} F_f(h), F_f\left(g^{-1} h\right)\right\rangle_{\sigma} = \mathbb{E}_{g, h \in G} \Re\left\langle F_f(g) F_f(h), F_f\left(g h\right)\right\rangle_{\sigma},
+\ee
+because $F_f$ is unitary so $F_f(g)^* = F_f(g^{-1}), \forall g \in G$. Then evaluate the right hand side
+\begin{align}
+    \mathbb{E}_{g, h \in G} \Re \left\langle F_f(g) F_f(h), F_f\left(g h\right)\right\rangle_{\sigma} &= \mathbb{E}_{g, h \in G} \Re \Tr\left[F_f^*(h) F_f^*(g) F_f\left(g h\right)\sigma\right], \nonumber \\
+    & = \mathbb{E}_{(x,a), (y,b) \in G} \frac{1}{q-1}\Re \Tr\left[ \sum_{c\in A} \omega^{-\Tr\, c(af(x) + bf(y))} \omega^{\Tr\, cab\,f(b^{-1}x + a^{-1}y)} \ket{c}\bra{c}\right], \nonumber \\
+    & = \mathbb{E}_{(x,a), (y,b) \in G} \frac{1}{q-1}\Re \sum_{c\in A} \omega^{\Tr\, c z},
+\end{align}
+where we define $z=c (ab\,f(b^{-1}x + a^{-1}y) - (af(x) + bf(y)))$. To compute the expectation, we can split to two cases
+\begin{align}
+\sum_{c\in A} \omega^{\Tr\, c z} = 
+    \begin{cases}
+        q-1, \quad z=0 \quad \text{when $f$ passes BLR}, \\
+        -1, \quad z \neq 0 \quad \text{when $f$ fails BLR}.
+    \end{cases}
+\end{align}
+The second case is because $\sum_{c\in A} \omega^{\Tr\, c z} + 1= \sum_{c\in \FF_q} \omega^{\Tr\, c z} =0$. Therefore, we have the approximate representation
+\be
+\mathbb{E}_{g, h \in G} \Re \left\langle F_f(g) F_f(h), F_f\left(g h\right)\right\rangle_{\sigma} \geq (1- \varepsilon) - \frac{1}{q-1} \varepsilon = 1 - \frac{q}{q-1}\varepsilon. 
+\ee
+Hence $F_f$ is an approximate representation with  $\epsilon= \frac{q}{q-1}\varepsilon$ as claimed.
+
+\end{proof}
+The approximate representation ``appears'' slightly worse than what we would have hoped $\epsilon > \varepsilon$, but we will see this is not an issue for achieving a high soundness. Remarkably, the twisted group operation let us recover the linearity test condition exactly.
+
+% \begin{fact}
+%     $F_f$ is an exact representation of $(G, \star)$ if and only if
+% $f \in \lin$.
+% \end{fact}
+% \begin{proof}
+%     If $F_f$ is an exact representation of $G$, then~\equref{eq:rep-eq-blr} forces
+% $\varepsilon = 0$. Setting $c = d = 1$ in the BLR condition gives $f(x + y) = f(x) + f(y)$
+% for all $x, y$, so $f$ is additive. Set $y = 0$ and $c = 1 \in A$: $f(x) = f(x) + d\, f(0)$ for any
+% $d \in A$. Set $y = 0$ and $d=1$, then $f(0)=0$ and $f(c x) = c f(x)$. Combined with additivity, $f$ is $\F_q$-linear, so $f \in \lin$.
+
+% Conversely, if $f = \ell_\alpha$ for some $\alpha \in X$, then so $F_f$ is a group homomorphism and an exact representation of $G$.
+% \end{proof}
+
+\subsection{Gowers-Hatami implies BLR soundness}
+In this section, we first prove the key lemma relating the implication of GH theorem to the hamming distance. 
+The proof outlined here correspond to the formalized version in lean. The most convenient proof still uses properties of the Fourier transform of $F_f$. However, we remark that there are other alternative proofs, which we leave as comment in the current source file.
+
+% Finally, we provide a proof of \thmref{thm:main}.
+
+% We provide two alternative proofs of the key lemma:
+% \begin{enumerate}
+%     \item The first proof in \lemref{lem:gh_linearity_1} should only use the existence of an isometry $V$ and exact representation $R$. Unfortunately, we ended up with an extra constraint about the range of $\epsilon$. 
+%     \item In the second proof in \lemref{lem:gh_linearity_2}, we use an explicit isometry $V$ constructed via $F_f$ in the proof of Gowers-Hatami theorem. This proof might require a extra care in formalization of lean. However, this hybrid Fourier-GH approach gives us an unconditional high soundness of the linear BLR test.   
+% \end{enumerate}
+
+% \begin{lemma}[Gowers-Hatami to linearity (Convex character proof)] \label{lem:gh_linearity_1}
+% Suppose $F_f: G \to U(\cc^{q-1})$ defined in ~\equref{eq:Flift-def} via $f : \FF_q^n \to \FF_q$ is an $(\epsilon, \sigma)$ approximate unitary representation of $(G, \star)$ defined in ~\equref{eq:star}. 
+% % Furthermore, suppose $1 - \epsilon > \frac{\sqrt{q}}{q-1}$.
+% Then, there exists a linear function $\ell: \FF_q^n \to \FF_q$ such that the relative Hamming distance $\delta(f, \ell)$ is bounded by:
+% \be\label{eq:GH-linear-bound}
+%     \delta(f, \ell) \le \frac{q-1}{q} \epsilon.
+% \ee
+% \end{lemma}
+
+% \begin{proof}
+% % \yan{In this specific proof below without any Fourier analysis, we also need the condition $1 - \epsilon > \frac{\sqrt{q}}{q-1}$, hence the additional assumption.}
+
+%     By Gowers-Hatami theorem, we have an isometry $V: \mathcal{H} \to \mathcal{H}^\prime$ and an exact representation $R: G \to \End(\mathcal{H}^\prime)$, where the Hilbert space $\mathcal{H}\cong \cc^{q-1}$ and the space $R$ acts on $\mathcal{H}^\prime = L(G, \mathcal{H})$ 
+%     \begin{equation}
+%     \EE_{g \in G} \Re \langle F_f(g), V^* R(g) V \rangle_\sigma \ge 1 - \epsilon. \label{eq:inner1}
+% \end{equation}
+%     Let $\{ |c\rangle \}_{c \in \FF_q^\times}$ be the orthonormal basis for $\mathcal{H}$, and the set of characters $\{\chi\}_{\chi\in\hat{G}}$ be an orthonormal basis for $L(G, \cc)$. 
+    
+%     Because $F_f(g)$ is diagonal in $\{\ket{c}\}$ with entries $\omega^{\Tr\, caf(x)}$, we can rewrite the inner product trace:
+%     \[
+%         \langle F_f(g), V^* R(g) V \rangle_\sigma = \frac{1}{q-1} \sum_{c \in \FF_q^\times} \langle c | F_f^*(g) V^* R(g) V | c \rangle = \frac{1}{q-1} \sum_{c \in \FF_q^\times} \omega^{-\Tr\, caf(x)} \langle v_c, R(g) v_c \rangle_{L(G, \mathcal{H})},
+%     \]
+%     where $\ket{v_c} = V\ket{c} \in \mathcal{H}^\prime$.
+%     Taking the expectation over $g = (x, a)$ and taking the real part, condition ~\equref{eq:inner1} becomes:
+%     \begin{equation}
+%         \frac{1}{q-1} \sum_{c \in \FF_q^\times} \EE_{x, a} \Re \left[ \omega^{-\Tr\, caf(x)} \langle v_c, R(x, a) v_c \rangle \right] \ge 1 - \epsilon. \label{eq:expanded}
+%     \end{equation}
+
+%     A basis for $L(G, \mathcal{H})$ is given by $\{\chi \ket{c}\}_{\chi\in\hat{G}, c\in \FF_q^\times}$. By \propref{prop:group_characaters}, the characters are given by
+%     \[
+%     \hat{G} = \{\chi_{\alpha, k}\}_{\alpha \in X, k \in [0, \cdots, q-2]}, \chi_{\alpha, k}(x,a) = \omega^{\Tr \inner{\alpha}{a x}} \psi_k(a).
+%     \]
+%     The regular representation $R(g)$ acts on $L(G, \mathcal{H})$ so it can be decomposed as 
+%     \be\label{eq:reg_repr_decomp}
+%     R(g) = \sum_{\alpha, k} \chi_{\alpha, k}(g) P_{\alpha, k},
+%     \ee
+%     where $P_{\alpha, k} = \ket{\chi_{\alpha, k}}\bra{\chi_{\alpha, k}} \otimes \I_{\mathcal{H}}$ projects onto the character function subspace (this leaves $\mathcal{H}$ invariant). 
+    
+%     Substituting this into the matrix element for $v_c$, we obtain:
+%     \[
+%         \langle v_c, R(g) v_c \rangle = \sum_{\alpha, k} \chi_{\alpha, k}(g) \langle v_c, P_{\alpha, k} v_c \rangle.
+%     \]
+%     Let $p_{c, \alpha, k} := \langle v_c, P_{\alpha, k} v_c \rangle$. As $P_{\alpha, k}$ is a projector, then 
+%     \be
+%     p_{c, \alpha, k} = \langle v_c \ket{\chi_{\alpha, k}}\bra{\chi_{\alpha, k}} \otimes \I_{\mathcal{H}}\ket{v_c} \geq 0.
+%     \ee
+    
+%     Since $V$ is an isometry $V^* V = \I_{\mathcal{H}}$, we have $\bra{c} V^* V \ket{c} = \inner{c}{c}_{\mathcal{H}} = 1$. 
+%     Equivalently, we have $\inner{v_c}{v_c}_{L(G, \mathcal{H})} = 1$. 
+%     Since $\sum P_{\alpha, k} = I_{L(G,H)}$, it follows that $p_{c, \alpha, k}$ is a valid probability distribution over the characters,
+%     \be
+%     \sum_{\alpha, k} p_{c, \alpha, k} = 1, \quad \forall c \in \FF_q^\times.
+%     \ee
+
+%     Substituting the spectral decomposition ~\equref{eq:reg_repr_decomp} back into ~\equref{eq:expanded}, we get:
+%     \[
+%         \sum_{c \in \FF_q^\times} \left( \frac{1}{q-1} \right) \sum_{\alpha, k} p_{c, \alpha, k} \Re \left( \EE_{x, a} \left[ \omega^{-\Tr\, caf(x)} \chi_{\alpha, k}(x, a) \right] \right) \ge 1 - \epsilon.
+%     \]
+%     This is a convex combination (a weighted average) of real values less than $1$. Because the average is at least $1 - \epsilon$, there must exist at least one specific configuration $(c^*, \alpha^*, k^*)$ with $c^* \neq 0$ such that its individual value satisfies:
+%     \begin{equation}
+%         \Re \left( \EE_{x, a} \left[ \omega^{-\Tr\, c^*af(x)} \omega^{\Tr \langle \alpha^*, ax \rangle} \psi_{k^*}(a) \right] \right) \ge 1 - \epsilon. \label{eq:dominant}
+%     \end{equation}
+
+%     Because $c^* \in \FF_q^\times$ is invertible, we define a specific linear function $\ell(x) := \langle (c^*)^{-1} \alpha^*, x \rangle$. Notice that $\langle \alpha^*, ax \rangle = c^* a \ell(x)$. We can rewrite the argument of the expectation in ~\equref{eq:dominant} as:
+%     \[
+%         E^* := \EE_{x} \left[ \EE_{a} \left[ \omega^{\Tr\, c^* a (\ell(x) - f(x))} \psi_{k^*}(a) \right] \right].
+%     \]
+
+%     For the rest of this proof, without using specific form of $p_{c, \alpha, k}$, we consider two cases: $k^*=0$ and $k^* \neq 0$. Define $z(x) = c^*(\ell(x) - f(x))$.
+
+%     \begin{enumerate}
+%         \item Consider $k^*=0$ so that $\psi_0(a) = 1$, the inner expectation over $a \in \FF_q^\times$ for a fixed $x$:
+%     \be
+%     \EE_{a \in \in \FF_q^\times}\omega^{\Tr\, c^* a (\ell(x) - f(x))} = 
+%     \begin{cases}
+%         1, \quad z(x) = 0, \\
+%         - \frac{1}{q-1}, \quad z(x) \neq 0,
+%     \end{cases}
+%     \ee
+%     where in the second case we have again used average of roots of unity is $\sum_{b \in \in \FF_q^\times} \omega^{\Tr b} +1 = 0$.
+
+%     Evaluating the outer expectation over $x$ and recall the definition of hamming distance 
+%     \be
+%     \delta_\alpha := \Pr_x[f(x) \ne \ell_\alpha(x)],
+%     \ee
+%     we find:
+%     \[
+%         \Re E^* = E^* = 1 \cdot (1 - \delta(f, \ell)) + \left( \frac{-1}{q-1} \right) \cdot \delta(f, \ell) = 1 - \delta(f, \ell) \left( 1 + \frac{1}{q-1} \right) = 1 - \delta(f, \ell) \left( \frac{q}{q-1} \right).
+%     \]
+%     Applying our bound from ~\equref{eq:dominant}, we have:
+%     \[
+%         1 - \delta(f, \ell) \left( \frac{q}{q-1} \right) \ge 1 - \epsilon.
+%     \]
+%     Rearranging yields the final result:
+%     \[
+%         \delta(f, \ell) \le \frac{q-1}{q} \epsilon.
+%     \]
+
+%     \item Consider $k^* \neq 0$, then by \propref{prop:group_characaters} we have $\psi_k(a) = e^{\frac{i 2 \pi m k}{q-1}}$ and $a=g_0^m$ for a fixed multiplicative generator $g_0\in \FF_q^\times$. Note that averaging over $\psi_k(a)$ we have
+%     \be\label{eq: averaging_psi}
+%     \EE_{a \in \FF_q^\times} \psi_k(a) = \frac{1}{q-1} \sum_{m=0}^{q-2} e^{\frac{i 2 \pi m k}{q-1}} = 0.
+%     \ee
+%     The average expectation over $a \in \FF_q^\times$ for a fixed $x$ gives:
+%     \be
+%     \EE_{a \in \in \FF_q^\times}\omega^{\Tr \, c^* a (\ell(x) - f(x))}  \psi_{k^*}(a) = 
+%     \begin{cases}
+%         0, \quad z(x) = 0, \\
+%         \frac{1}{q-1} \sum_{a \in \in \FF_q^\times} \omega^{\Tr a z(x)}\psi_{k^*}(a), \quad z(x) \neq 0.
+%     \end{cases}
+%     \ee
+%     In the second case, let $b = a z(x)$ so that
+%     \begin{align}
+%         \frac{1}{q-1} \sum_{a \in \in \FF_q^\times} \omega^{\Tr\, a z(x)}\psi_{k^*}(a) &= \frac{1}{q-1} \sum_{b \in \in \FF_q^\times} \omega^{\Tr b}\psi_{k^*}(z^{-1}b), \nonumber \\
+%         & =  \frac{\psi_{k^*}(z^{-1})}{q-1} \sum_{b \in \in \FF_q^\times} \omega^{\Tr b}\psi_{k^*}(b).
+%     \end{align}
+%     It turns out the summation is a known quantitiy called \textit{the Gauss sum}
+%     \be
+%     \mathcal{G}(\psi_{k^*}) = \sum_{b \in \in \FF_q^\times} \omega^{\Tr b}\psi_{k^*}(b).
+%     \ee
+%     Is it believed that there is no analytic expression for $\mathcal{G}$ but it is known that
+%     \be\label{eq:gauss_sum_mag}
+%     \abs{\mathcal{G}(\psi_{k^*})} = \sqrt{q}
+%     \ee
+
+%     Evaluating the outer expectation over $x$ and recall the definition of hamming distance gives
+%     \[
+%     \Re E^* = 0 \cdot (1 - \delta(f, \ell)) + \Re \left( \frac{\psi_{k^*}(z^{-1})}{q-1} \mathcal{G}(\psi_{k^*})\right) \cdot \delta(f, \ell) .
+%     \]
+%     Therefore we have
+%     \[
+%     \Re E^* = \Re \left( \frac{\psi_{k^*}(z^{-1})}{q-1} \mathcal{G}(\psi_{k^*})\right) \delta(f, \ell) \leq \frac{\abs{\mathcal{G}(\psi_{k^*})}}{q-1} = \frac{\sqrt{q}}{q-1}.
+%     \]
+%     On the other hand, from ~\equref{eq:dominant} we have
+%     \[
+%     \Re E^* \geq 1- \epsilon.
+%     \]
+
+%     This is a contradiction to the existence of $k^*$ if 
+%     \be\label{eq:epsilon_bound}
+%     \frac{\sqrt{q}}{q-1} < 1- \epsilon.
+%     \ee
+%     Then if we have a good test outcome such that ~\equref{eq:epsilon_bound} is satisfied, then we only have a contribution from $k^*=0$, where we have already achieved the bound.
+%     \end{enumerate}
+    
+% \end{proof}
+
+% The above bound is tight assuming we pass the test with high probability such that $\epsilon < 1 - \frac{\sqrt{q}}{q-1} $. Next, we try to give a proof that is unconditional, using Fourier coefficients. 
+
+First let us write down statements about Fourier coefficients of $F_f$, which we will use in the proof.
+
+\begin{proposition}[Fourier coefficient of $F_f$]\label{prop:Ff_fourier}\uses{def:Flift, prop:group_characaters}\lean{BlrPcp.gFourierCoeff_factor}\leanok
+    Let the matrix lift $F_f : G \to U(\cc^{q-1})$ be defined by the diagonal matrix
+\begin{equation*}
+F_f(x, a) = D(a f(x)) := \sum_{c \in A} \omega^{\Tr\, c a f(x)}\ket{c}\bra{c},
+\end{equation*}
+then its Fourier coefficients can be written as
+\be\label{eq:factored-coeff}
+[\hat{F}_f(\chi_{c\beta, k})]_{cc} = \psi_k(c) \nu_k(\beta),
+\ee
+where 
+\be\label{def:nu-k}
+\nu_k(\beta) := \EE_{x,b} \left[ \omega^{\Tr b(f(x) - \langle \beta, x \rangle)} \overline{\psi_k(b)} \right],
+\ee
+
+\end{proposition}
+
+\begin{proof}\uses{prop:group_characaters}\leanok
+    By \propref{prop:group_characaters}, the characters are given by
+    \[
+    \hat{G} = \{\chi_{\alpha, k}\}_{\alpha \in X, k \in [0, \cdots, q-2]}, \chi_{\alpha, k}(x,a) = \omega^{\Tr \inner{\alpha}{a x}} \psi_k(a).
+    \]
+    Therefore the Fourier coefficients of $F_f$ are
+    \begin{align}
+        \hat{F}_f(\chi_{\alpha, k}) 
+        & = \sum_{c \in \FF_q^\times } \EE_{x, a} \omega^{\Tr\, c a f(x)} \bar{\chi}_{\alpha, k}(x, a) , \nonumber \\
+        & = \sum_{c \in \FF_q^\times }\EE_{x,a} \left[ \omega^{\Tr\, a(cf(x) - \langle \alpha, x \rangle)} \overline{\psi_k(a)} \right] \ket{c}\bra{c}.
+    \end{align}
+    
+
+Since $c \in \FF_q^\times$ is invertible, we perform a change of variables. Let $\alpha = c\beta$ for a fresh $\beta \in \FF_q^n$. Because $c$ is fixed, this is a bijection on $\FF_q^n$. 
+We also substitute $b = ca$, which is a bijection on $\FF_q^\times$. 
+This means $a = bc^{-1}$, and by the multiplicity of Dirichlet characters, $\overline{\psi_k(a)} = \overline{\psi_k(bc^{-1})} = \overline{\psi_k(b)}\psi_k(c)$.
+
+Substituting these into the expectation isolates the $c$-dependence: 
+\begin{align} 
+    [\hat{F}_f(\chi_{c\beta, k})]_{cc} &= \EE_{x,b} \left[ \omega^{\Tr b(f(x) - \langle \beta, x \rangle)} \overline{\psi_k(b)}\psi_k(c) \right] \nonumber \\
+    &= \psi_k(c) \nu_k(\beta), 
+\end{align}
+where $\nu_k(\beta) := \EE_{x,b} \left[ \omega^{\Tr b(f(x) - \langle \beta, x \rangle)} \overline{\psi_k(b)} \right]$ is a $c$-independent coefficient.    
+\end{proof}
+
+
+% \begin{lemma}[Gowers-Hatami to linearity (Convex character Fourier hybrid)] \label{lem:gh_linearity_2}
+% Suppose $F_f: G \to U(\cc^{q-1})$ defined in ~\equref{eq:Flift-def} via $f : \FF_q^n \to \FF_q$ is an $(\epsilon, \sigma)$ approximate unitary representation of $(G, \star)$ defined in ~\equref{eq:star}. 
+% Then, there exists a linear function $\ell: \FF_q^n \to \FF_q$ such that the relative Hamming distance $\delta(f, \ell)$ is bounded by:
+% \be\label{eq:GH-linear-bound}
+%     \delta(f, \ell) \le \frac{q-1}{q} \epsilon.
+% \ee
+% \end{lemma}
+
+% \begin{proof}
+
+%     By Gowers-Hatami theorem, we have an isometry $V: \mathcal{H} \to \mathcal{H}^\prime$ and an exact representation $R: G \to \End(\mathcal{H}^\prime)$, where the Hilbert space $\mathcal{H}\cong \cc^{q-1}$ and the space $R$ acts on $\mathcal{H}^\prime = L(G, \mathcal{H})$
+%     \begin{equation}
+%     \EE_{g \in G} \Re \langle F_f(g), V^* R(g) V \rangle_\sigma \ge 1 - \epsilon. \label{eq:inner1}
+% \end{equation}
+%     Let $\{ |c\rangle \}_{c \in \FF_q^\times}$ be the orthonormal basis for $\mathcal{H}$, and the set of characters $\{\chi\}_{\chi\in\hat{G}}$ be an orthonormal basis for $L(G, \cc)$. 
+    
+%     % Since $V$ is an isometry, the vectors $\{v_c := V|c\rangle\}$ form an orthonormal set of $q-1$ basis in $L(G, \mathcal{H})$. 
+    
+%     Because $F_f(g)$ is diagonal in $\{\ket{c}\}$ with entries $\omega^{\Tr\, caf(x)}$, we can rewrite the inner product trace:
+%     \[
+%         \langle F_f(g), V^* R(g) V \rangle_\sigma = \frac{1}{q-1} \sum_{c \in \FF_q^\times} \langle c | F_f^*(g) V^* R(g) V | c \rangle = \frac{1}{q-1} \sum_{c \in \FF_q^\times} \omega^{-\Tr\, caf(x)} \langle v_c, R(g) v_c \rangle_{L(G, \mathcal{H})},
+%     \]
+%     where $\ket{v_c} = V\ket{c} \in \mathcal{H}^\prime$.
+%     Taking the expectation over $g = (x, a)$ and taking the real part, condition ~\equref{eq:inner1} becomes:
+%     \begin{equation}
+%         \frac{1}{q-1} \sum_{c \in \FF_q^\times} \EE_{x, a} \Re \left[ \omega^{-\Tr\, caf(x)} \langle v_c, R(x, a) v_c \rangle \right] \ge 1 - \epsilon. \label{eq:expanded}
+%     \end{equation}
+
+%     A basis for $L(G, \mathcal{H})$ is given by $\{\chi \ket{c}\}_{\chi\in\hat{G}, c\in \FF_q^\times}$. By \propref{prop:group_characaters}, the characters are given by
+%     \[
+%     \hat{G} = \{\chi_{\alpha, k}\}_{\alpha \in X, k \in [0, \cdots, q-2]}, \chi_{\alpha, k}(x,a) = \omega^{\Tr \inner{\alpha}{a x}} \psi_k(a).
+%     \]
+
+%     Moreover, the Fourier coefficients of $F_f$ are
+%     \begin{align}
+%         \hat{F}_f(\chi_{\alpha, k}) 
+%         & = \sum_{c \in \FF_q^\times } \EE_{x, a} \omega^{\Tr\, caf(x)} \bar{\chi}_{\alpha, k}(x, a) , \nonumber \\
+%         & = \sum_{c \in \FF_q^\times }\EE_{x,a} \left[ \omega^{\Tr\, a(cf(x) - \langle \alpha, x \rangle)} \overline{\psi_k(a)} \right] \ket{c}\bra{c}.
+%     \end{align}
+    
+%     The regular representation $R(g)$ acts on $L(G, \mathcal{H})$ so it can be decomposed as 
+%     \be\label{eq:reg_repr_decomp}
+%     R(g) = \sum_{\alpha, k} \chi_{\alpha, k}(g) P_{\alpha, k},
+%     \ee
+%     where $P_{\alpha, k} = \ket{\chi_{\alpha, k}}\bra{\chi_{\alpha, k}} \otimes \I_{\mathcal{H}}$ projects onto the character function subspace (this leaves $\mathcal{H}$ invariant). 
+    
+%     Substituting this into the matrix element for $v_c$, we obtain:
+%     \[
+%         \langle v_c, R(g) v_c \rangle = \sum_{\alpha, k} \chi_{\alpha, k}(g) \langle v_c, P_{\alpha, k} v_c \rangle.
+%     \]
+%     Let $p_{c, \alpha, k} := \langle v_c, P_{\alpha, k} v_c \rangle$. As $P_{\alpha, k}$ is a projector, then 
+%     \be
+%     p_{c, \alpha, k} = \langle v_c \ket{\chi_{\alpha, k}}\bra{\chi_{\alpha, k}} \otimes \I_{\mathcal{H}}\ket{v_c} \geq 0.
+%     \ee
+%     Let the isometry be given by $V\ket{c} = [F_f(g)]_{c}$, then the matrix element is given by the Fourier coefficients
+%     \be
+%     p_{c, \alpha,k} = \abs{[\hat{F}_f(\chi_{\alpha, k})]_{cc}}^2.
+%     \ee
+%     By \propref{prop:Ff_fourier}, let $\alpha = c \beta$, we can show
+%     \be
+%     p_{c, c\beta,k} = \abs{\psi_k(c) \nu_k(\beta)}^2 = \abs{\nu_k(\beta)}^2,
+%     \ee
+%     where 
+%     \[
+%     \nu_k(\beta) := \EE_{x,b} \left[ \omega^{\Tr\, b(f(x) - \langle \beta, x \rangle)} \overline{\psi_k(b)} \right],
+%     \]
+%     is defined in ~\equref{def:nu-k}.   
+    
+%     Since $V$ is an isometry $V^* V = \I_{\mathcal{H}}$, we have $\bra{c} V^* V \ket{c} = \inner{c}{c}_{\mathcal{H}} = 1$. 
+%     Equivalently, we have $\inner{v_c}{v_c}_{L(G, \mathcal{H})} = 1$. 
+%     Since $\sum P_{\alpha, k} = I_{L(G,H)}$, it follows that $p_{c, \alpha, k}$ is a valid probability distribution over the characters,
+%     \be
+%     \sum_{\alpha, k} p_{c, \alpha, k} = 1, \quad \forall c \in \FF_q^\times.
+%     \ee
+
+%     Equivalently, we have the relabeled probability
+%     \be
+%     \sum_{\beta, k} p_{c, c \beta, k} = 1, \quad \forall c \in \FF_q^\times.
+%     \ee
+%     Therefore $|\nu_k(\beta)|^2$ is a probability distribution indexed by $(k, \beta)$. Because the $k=0$ probability is a subset, we have
+%     \be\label{eq:nu_less_1}
+%     \sum_{\beta \in \FF_q^n} |\nu_0(\beta)|^2 \leq \sum_{\beta \in \FF_q^n} \sum_k |\nu_k(\beta)|^2 = 1.
+%     \ee
+    
+%     Substituting the spectral decomposition ~\equref{eq:reg_repr_decomp} back into ~\equref{eq:expanded}, we define:
+%     \begin{align*}
+%             E &:= \frac{1}{q-1} \sum_{c \in \FF_q^\times} \EE_{x, a} \Re \left[ \omega^{-\Tr\, caf(x)} \langle v_c, R(x, a) v_c \rangle \right], \\
+%             % & = \sum_{c \in \FF_q^\times} \left( \frac{1}{q-1} \right) \sum_{\alpha, k} p_{c, \alpha, k} \Re \left( \EE_{x, a} \left[ \omega^{-\Tr\, caf(x)} \chi_{\alpha, k}(x, a) \right] \right), \\
+%             & = \frac{1}{q-1} \sum_{c \in \FF_q^\times}\sum_{\alpha, k} p_{c, \alpha, k} \Re \left( \EE_{x, a} \left[ \omega^{-\Tr\, caf(x)} \omega^{\Tr\, \inner{\alpha}{ax}} \psi_k(a) \right] \right).
+%     \end{align*}
+
+%     Relabel the sum by $\alpha = c \beta$ and $b=ca$, we have
+%     \[
+%     E =  \frac{1}{q-1} \sum_{c \in \FF_q^\times}\sum_{\beta, k} \abs{\nu_k(\beta)}^2 \Re \left( \EE_{x, b} \left[ \omega^{\Tr\, b(\inner{\beta}{x} - f(x))} \psi_k(c^{-1})\psi_k(b) \right] \right).
+%     \]
+%     Use the indicator function of $\FF_q^\times$:
+%     \[
+%         \sum_{c \in \FF_q^\times} {\psi_k(c^{-1})} = (q-1) \I(k=0)
+%     \] 
+%     we have     
+%     \[
+%     E = \sum_{\beta} \abs{\nu_0(\beta)}^2 \Re \left( \EE_{x, b} \left[ \omega^{\Tr\, b(\inner{\beta}{x} - f(x))} \right] \right).
+%     \]
+    
+%     This is a convex combination (a weighted average) of real values less than $1$ with the weight sum to less than 1 by ~\equref{eq:nu_less_1}. Because the average is at least $E \geq 1 - \epsilon$, there must exist at least one specific configuration $\beta^*$ such that its individual value satisfies:
+%     \begin{equation}
+%         E^* := \Re \left( \EE_{x, b} \left[ \omega^{\Tr\, b(\inner{\beta^*}{x} - f(x))} \right] \right) \ge 1 - \epsilon. \label{eq:dominant}
+%     \end{equation}
+    
+%     Let $\ell_\beta(x):=\inner{\beta^*}{x}$, the inner expectation over $b \in \FF_q^\times$ for a fixed $x$:
+%         \be
+%         \EE_{b \in \in \FF_q^\times}\omega^{\Tr\, b z(x)} = 
+%         \begin{cases}
+%             1, \quad z(x) = 0, \\
+%             - \frac{1}{q-1}, \quad z(x) \neq 0,
+%         \end{cases}
+%         \ee
+%         where in the second case we have again used average of roots of unity is $\sum_{b \in \in \FF_q^\times} \omega^{\Tr\, b} +1 = 0$.
+    
+%         Evaluating the outer expectation over $x$ and recall the definition of hamming distance 
+%         \be
+%         \delta(f, \ell_\alpha) := \Pr_x[f(x) \ne \ell_\alpha(x)],
+%         \ee
+%         we find:
+%         \[
+%             E^* = 1 \cdot (1 - \delta(f, \ell_\beta)) + \left( \frac{-1}{q-1} \right) \cdot \delta(f, \ell_\beta) = 1 - \delta(f, \ell_\beta) \left( 1 + \frac{1}{q-1} \right) = 1 - \delta(f, \ell_\beta) \left( \frac{q}{q-1} \right).
+%         \]
+%         Applying our bound from ~\equref{eq:dominant}, we have:
+%         \[
+%             1 - \delta(f, \ell_\beta) \left( \frac{q}{q-1} \right) \ge 1 - \epsilon.
+%         \]
+%         Rearranging yields the final result: $\exists \ell_\beta = \inner{\beta^*}{x}$ such that 
+%         \[
+%             \delta(f, \ell_\beta) \le \frac{q-1}{q} \epsilon.
+%         \]
+    
+% \end{proof}
+
+
+\begin{lemma}[Gowers-Hatami to linearity (formalized proof)] \label{lem:gh_linearity_formalized}\uses{lem:group, def:Flift, approx-representation, def:linear-functions, def:relative-hamming-distance}\lean{BlrPcp.gh_linearity}\leanok
+Suppose $F_f: G \to U(\cc^{q-1})$ defined in ~\equref{eq:Flift-def} via $f : \FF_q^n \to \FF_q$ is an $(\epsilon, \sigma)$ approximate unitary representation of $(G, \star)$ defined in ~\equref{eq:star}. 
+Implicitly, $\epsilon \leq 1$.
+
+Then, there exists a linear function $\ell: \FF_q^n \to \FF_q$ such that the relative Hamming distance $\delta(f, \ell)$ is bounded by:
+
+\be\label{eq:GH-linear-bound}
+\delta(f, \ell) \le \frac{q-1}{q} \epsilon.
+\ee
+\end{lemma}
+
+\begin{proof}\uses{gowers-hatami-correlation, prop:group_characaters, prop:Ff_fourier}\leanok
+Write the diagonal lift as $F_f(g) = \operatorname{diag}_{c \in \FF_q^\times}(\varphi_c(g))$, where the scalar functions are $\varphi_c(x,a) = \omega^{\Tr(caf(x))}$. 
+
+Because $F_f$ is diagonal and $\sigma = \I/(q-1)$, the trace equates to the average over the diagonal elements. 
+By an intermediate statement in the proof of Gowers-Hatami theorem using Lemma.~\ref{gowers-hatami-correlation}, the compression from an exact representation can be rewritten as a pair-correlation:
+\begin{equation}
+    \mathcal{C}(f) := \EE_{g,h} \Re \inner{F_f(g) F_f(h)}{F_f(gh)}_\sigma \ge 1 - \epsilon. \label{eq:gh-pair-correlation}
+\end{equation}
+
+
+To connect the operator pair-correlation directly to the cubic trace of the Fourier coefficients, we express the lift matrices using the inverse Fourier transform, $F_f(x) = \sum_{\chi \in \widehat{G}} \hat{F}_f(\chi) \chi(x)$. Substituting this into the inner product definition of the pair-correlation and using the character homomorphism $\chi(gh) = \chi(g)\chi(h)$, we expand the trace:
+\begin{align}
+    \mathcal{C}(f) &= \EE_{g,h \in G} \Re \Tr\left( F_f(g)^* F_f(h)^* F_f(gh) \sigma \right) \nonumber \\
+    &= \Re \Tr \left( \sum_{\chi_1, \chi_2, \chi_3} \hat{F}_f^*(\chi_1) \hat{F}_f^*(\chi_2) \hat{F}_f(\chi_3) \sigma \cdot \EE_g\left[\overline{\chi_1(g)}\chi_3(g)\right] \EE_h\left[\overline{\chi_2(h)}\chi_3(h)\right] \right).
+\end{align}
+By the orthogonality of characters, the expectations over $g$ and $h$ independently vanish unless $\chi_1 = \chi_3$ and $\chi_2 = \chi_3$. This completely collapses the triple sum to a single sum over $\chi$. Because the Fourier coefficients of the diagonal lift $F_f$ are themselves diagonal matrices (and thus commute), we can rearrange the surviving terms to recover the exact cubic trace expression:
+\begin{equation}
+    \mathcal{C}(f) = \Re \sum_{\chi \in \widehat{G}} \Tr\left( \hat{F}_f^*(\chi) \hat{F}_f(\chi) \hat{F}_f^*(\chi) \sigma \right).
+\end{equation}
+
+    Because the Fourier coefficients are all fully diagonal since $F_f$ is diagonal, we expand the product
+    \[
+    \sum_{\chi_{\alpha, k} \in \widehat{G}} \Tr(\hat{F}_f^*(\chi)\hat{F}_f(\chi)\hat{F}_f^*(\chi) \sigma) = \frac{1}{q-1}\sum_{\alpha \in \FF_q^n} \sum_{k=0}^{q-2} \sum_{c \in \FF_q^\times} \left| [\hat{F}_f(\chi_{\alpha, k})]_{cc} \right|^2 \overline{[\hat{F}_f(\chi_{\alpha, k})]_{cc}}.
+    \]
+
+    Using the substitution $\alpha = c\beta$, summing over all $\alpha$ is equivalent to summing over all $\beta$. 
+Substituting our factored coefficient from ~\eqref{eq:factored-coeff} in \propref{prop:Ff_fourier}: 
+    \begin{align*}
+        \sum_{\chi \in \widehat{G}} \Tr(\hat{F}_f^*(\chi)\hat{F}_f(\chi)\hat{F}_f^*(\chi) \sigma) &= \frac{1}{q-1}\sum_{c \in \FF_q^\times} \sum_{\beta \in \FF_q^n} \sum_{k=0}^{q-2} |\psi_k(c)\nu_k(\beta)|^2 \overline{\psi_k(c)\nu_k(\beta)} \\
+        &= \frac{1}{q-1}\sum_{\beta, k} |\nu_k(\beta)|^2 \overline{\nu_k(\beta)} \sum_{c \in \FF_q^\times} \overline{\psi_k(c)},
+    \end{align*}
+    where 
+    \[
+    \nu_k(\beta) := \EE_{x,b} \left[ \omega^{b(f(x) - \langle \beta, x \rangle)} \overline{\psi_k(b)} \right],
+    \]
+    is defined in \equref{def:nu-k}.
+
+    Use the indicator function of $\FF_q^\times$:
+    \[
+        \sum_{c \in \FF_q^\times} \overline{\psi_k(c)} = (q-1) \I(k=0)
+    \] 
+we have
+    \be\label{eq:triple-F-nu0}
+        \sum_{\chi \in \widehat{G}} \Tr(\hat{F}_f^*(\chi)\hat{F}_f(\chi)\hat{F}_f^*(\chi) \sigma) = \sum_{\beta \in \FF_q^n} |\nu_0(\beta)|^2 \overline{\nu_0(\beta)}.
+    \ee
+    Note that $\nu_0(\beta) \in \mathbb{R}$ is related to the hamming distance $\delta(f, \ell_\beta)$ for liner function $\ell_\beta = \inner{f}{\ell_\beta}$ via
+    \be\label{eq:nu0-hamming}
+    \nu_0(\beta) = (1 - \delta(f, \ell_\beta)) - \frac{1}{q-1}\delta(f, \ell_\beta) = 1 - \frac{q}{q-1}\delta(f, \ell_\beta).
+    \ee
+    Moreover, because the Fourier coefficients sum to identity by unitarity of $F_f$, we have
+    \begin{align}
+        1& = \frac{1}{q-1}\sum_{\chi\in\hat{G}}\Tr\left[\hat{F}^*_f(\chi)\hat{F}_f(\chi)\right] , \nonumber \\
+        &= \frac{1}{q-1}\sum_{c \in \FF_q^\times} \sum_{\beta \in \FF_q^n} \sum_k |\psi_k(c)\nu_k(\beta)|^2, \nonumber \\
+        &= \sum_{\beta \in \FF_q^n} \sum_k |\nu_k(\beta)|^2.
+    \end{align}
+
+    Therefore $|\nu_k(\beta)|^2$ is a probability distribution indexed by $(k, \beta)$. Because the $k=0$ probability is a subset, we have
+    \be
+    \sum_{\beta \in \FF_q^n} |\nu_0(\beta)|^2 \leq \sum_{\beta \in \FF_q^n} \sum_k |\nu_k(\beta)|^2 = 1.
+    \ee
+
+    Let $\beta^*$ be the closest linear function such that
+    \be
+    \nu_0(\beta^*) := \max_{\beta \in \FF_q^n} \nu_0(\beta).
+    \ee
+    Therefore from Gowers-Hatami implication in \equref{eq:gh-pair-correlation} and the simplification of Fourier coefficeints in \equref{eq:triple-F-nu0}, we have the bound
+    \begin{align}
+        1 - \epsilon \leq \Re \sum_{\chi\in\widehat G} \Tr(\hat{F}_f^*(\chi)\hat{F}_f(\chi)\hat{F}_f^*(\chi) \sigma) = \sum_{\beta \in \FF_q^n} |\nu_0(\beta)|^2 \overline{\nu_0(\beta)} \leq  \nu_0(\beta^*) \sum_{\beta \in \FF_q^n} |\nu_0(\beta)|^2 \leq  \nu_0(\beta^*).
+    \end{align}
+
+    Unpack the relation to the hamming distance, we have
+    \be
+    1 - \frac{q}{q-1} \delta(f, \ell_{\beta^*}) \ge 1 - \epsilon \implies \delta(f, \ell_{\beta^*}) \le \frac{q-1}{q}\epsilon.
+    \ee
+
+\end{proof}
+
+% Finally, we are ready to prove the main theorem of BLR linearity test soundness. 
+
+
+% \setcounter{theorem}{0}
+% \begin{theorem}[Soundness of the BLR test]\label{thm:main}\uses{lem:rep-iff-blr, lem:gh_linearity_formalized}\lean{BlrPcp.blr_soundness}\leanok
+% Let $q$ be prime. For every $f : \F_q^n \to \F_q$, $\delta(f, \lin) \le \Pr_{a,b,x,y}\!\bigl[af(x) + bf(y) \ne f(ax + by)\bigr]$.
+% \end{theorem} 
+
+\begin{lemma}
+[Soundness of the BLR test]\label{BLR_via_GH}
+\lean{BlrPcp.gh_blr_soundness}
+\uses{def:finite-field-blr-test,def:distance-to-linearity}
+\leanok
+Let $q=p^s$ be a prime power. For every $f : \F_q^n \to \F_q$, $\delta(f, \lin) \le \Pr_{a,b,x,y}\!\bigl[af(x) + bf(y) \ne f(ax + by)\bigr]$.
+\end{lemma}
+
+\begin{proof}[Alternative proof via Gowers–Hatami]\uses{lem:rep-iff-blr, lem:gh_linearity_formalized}\leanok
+First denote
+\[
+X := \F_q^n, \qquad A := \F_q^\times, \qquad \omega := e^{2\pi i/p}.
+\]
+Define a group $G$ on the set $X \times A$ with the binary operation
+\[
+(x, a) \star (y, b) := \bigl(b^{-1}x + a^{-1}y,\; ab\bigr).
+\]
+Let $F_f$ be the unitary matrix valued lift $F_f : G \to U(\cc^{q-1})$ given by the diagonal matrix
+\[
+F_f(x, a) = D(a f(x)) := \sum_{c \in A} \omega^{\Tr\, c a f(x)}\ket{c}\bra{c},
+\]
+where $\{\ket{c}\}$ denotes the orthonormal basis vectors of a Hilbert space $\mathcal{H} \cong \cc^{q-1}$, the
+inner product between operators is $\inner{A}{B}_\sigma=\Tr(A^* B \sigma)$, and $\sigma = \I/(q-1)$. By
+\lemref{lem:rep-iff-blr}, since $f$ is rejected with probability $\varepsilon$, the lift $F_f$ is a
+$(\frac{q}{q-1}\varepsilon,\frac{\I}{q-1})$ approximate representation of $(G, \star)$.
+
+Then by \lemref{lem:gh_linearity_formalized}, there exists a linear function $\ell: \FF_q^n \to \FF_q$ whose
+relative Hamming distance to $f$ is bounded by
+\[
+    \delta(f, \ell) \le \frac{q-1}{q}\cdot\frac{q}{q-1}\varepsilon = \varepsilon.
+\]
+This proves the claim
+\[
+\delta(f, \lin) := \min_{\alpha} \delta(f, \ell_\alpha) \leq \delta(f, \ell) \leq \varepsilon.
+\]
+Miraculously, the loose factor $\frac{q}{q-1}$ in the approximate-representation parameter cancels the tighter
+factor $\frac{q-1}{q}$ of \lemref{lem:gh_linearity_formalized}.
+
+In Lean this route is formalized as \texttt{gh\_blr\_soundness\_acceptance}, which proves
+\texttt{acceptanceProbabilityBLR f $\le$ 1 - distanceToLinear f} (the statement of \texttt{blr\_soundness}),
+valid for $\frac{q}{q-1}\varepsilon\le1$; the unconditional statement is the direct proof above, since for
+$\frac{q}{q-1}\varepsilon>1$ the third-moment extraction's $\max\ge0$ step fails.
+\end{proof}
+
+% \begin{proof}
+% First denote 
+% \[
+% X := \F_q^n, \qquad A := \F_q^\times, \qquad \omega := e^{2\pi i/p}.
+% \]
+% Define a group $G$ by the set $X \times A$ with the binary operation
+% \begin{equation}
+% (x, a) \star (y, b) := \bigl(b^{-1}x + a^{-1}y,\; ab\bigr).
+% \end{equation}
+
+%     Let $F_f$ be a unitary matrix valued lift $F_f : G \to U(\cc^{q-1})$ by the diagonal matrix
+% \begin{equation}
+% F_f(x, a) = D(a f(x)) := \sum_{c \in A} \omega^{\Tr\, c a f(x)}\ket{c}\bra{c},
+% \end{equation}
+% where $\{\ket{c}\}$ denotes the orthonormal basis vectors of a Hilbert space $\mathcal{H} \cong \cc^{q-1}$ and the inner product between operators defined by $\inner{A}{B}_\sigma=\Tr(A^* B \sigma)$ and choose $\sigma = \I/(q-1)$. By \lemref{lem:rep-iff-blr}, since $f$ is rejected with probability $\varepsilon$, then $F_f$ is an $(\frac{q}{q-1}\varepsilon,\frac{\I}{q-1})$ approximate representation of $(G, \star)$.
+
+% Then by \lemref{lem:gh_linearity_3}, there exists a linear function $\ell: \FF_q^n \to \FF_q$ such that the relative Hamming distance $\delta(f, \ell)$ is bounded by:
+% \be
+%     \delta(f, \ell) \le \frac{q-1}{q} \frac{q}{q-1}\varepsilon = \varepsilon.
+% \ee
+
+% This proves the claim
+% \[
+% \delta(f, \lin) := \min_{\alpha} \delta(f, \ell_\alpha) \leq \delta(f, \ell) \leq \varepsilon.
+% \]
+% \end{proof}
+
+% Miraculously, the loose factor in $(\epsilon^\prime =\frac{q}{q-1}\varepsilon,\frac{\I}{q-1})$ approximate representation $F_f$ cancels with the tighter factor in 
+% \[
+% \delta(f, \ell) \le \frac{q-1}{q} \epsilon^\prime.
+% \]
+
+
+%%FILE blueprint/src/subsections/gowers-hatami.tex
+%%%%%%%%%%%%%%%%%%%%%%
+% This file is a self-contained blueprint for the Gowers-Hatami theorem, following Thomas' lecture notes.
+% Many definitions have been formalized in representation theory in mathlib:
+% https://leanprover-community.github.io/mathlib_docs/representation_theory/basic.html
+% However for completeness we include the definitions as comments.
+%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Preliminaries}
+\begin{definition}[$\sigma$ inner product.]\label{sigmaInner}\lean{sigmaInner}\leanok
+    The $\sigma$ inner product between matrices $A$ and $B$ is defined as
+    \be
+    \inner{A}{B}_{\sigma} = \Tr(A^* B \sigma),
+    \ee
+    where $\sigma \geq 0$ and $A^*$ denotes conjugate-transpose.
+\end{definition}
+
+\begin{definition}[$(\epsilon, \sigma)$-representation.]\label{approx-representation}\uses{sigmaInner}\lean{IsApproxRepresentation}\leanok
+Given a finite group \(G\), an integer \(d \geq 1, \varepsilon \geq 0\), and a \(d\)-dimensional positive semidefinite matrix \(\sigma\) with trace 1 , an \((\varepsilon, \sigma)\)-representation of \(G\) is a map \(f: G \rightarrow U_{d}(\mathbb{C})\), to the  \(d \times d\) unitary matrices, such that
+\be
+\mathbb{E}_{x, y \in G} \Re\left(\left\langle f(x)^{*} f(y), f\left(x^{-1} y\right)\right\rangle_{\sigma}\right) \geq 1-\varepsilon,
+\ee
+where $\Re$ denotes taking real part of the inner product. 
+\end{definition}
+
+\begin{proposition}[$\sigma$-norm Square]\label{sigmaNormSqSub}\uses{sigmaInner}\lean{sigmaNormSq_sub_eq}\leanok
+Let $\sigma$ be positive semidefinite and let $A, B$ be matrices of the same dimension. Then
+\[
+\|A - B\|_\sigma^2 = \|A\|_\sigma^2 + \|B\|_\sigma^2 - 2\,\Re\inner{A}{B}_\sigma.
+\]
+\end{proposition}
+\begin{proof}\leanok
+    Expanding by linearity of the inner product,
+    \[
+    \|A-B\|_\sigma^2 = \Re\inner{A-B}{A-B}_\sigma
+    = \|A\|_\sigma^2 + \|B\|_\sigma^2 - \Re\inner{A}{B}_\sigma - \Re\inner{B}{A}_\sigma.
+    \]
+    Since $\sigma$ is Hermitian, $\inner{B}{A}_\sigma = \overline{\inner{A}{B}_\sigma}$, so the two cross terms have the same real part, yielding $-2\,\Re\inner{A}{B}_\sigma$.
+\end{proof}
+
+
+\section{Representation theory}
+
+% Representation theory exists on mathlib but for completeness we include the definitions as comments
+
+% \begin{definition}[Representation]
+%     Let $G$ be a group and $V$ a finite-dimensional complex vector space. A \emph{representation} of $G$ is a homomorphism
+%     \be
+%         \rho : G \to \mathrm{GL}(V),
+%     \ee
+%     such that for all $x,y \in G$,
+%     \be
+%         \rho(xy) = \rho(x)\rho(y).
+%     \ee
+% \end{definition}
+
+In general, a representation of a group \(G\) on a vector space \(V\) over a
+field \(k\) is a homomorphism from \(G\) to the linear endomorphisms of \(V\).
+In mathlib this is the abbreviation \(\texttt{Representation}\), defined as
+\(G \to^* (V \to_{\!k} V)\), i.e. a monoid homomorphism into the \(k\)-linear
+endomorphisms of \(V\).
+
+We call a representation \emph{unitary} when its image lies in the unitary
+group; in the finite-dimensional matrix setting used below this means a
+homomorphism \(\rho : G \to U(V)\). In the Lean development this is represented
+directly as a monoid homomorphism into a matrix unitary group, for example
+\(G \to^* \texttt{Matrix.unitaryGroup}\).
+
+% \begin{definition}[Irreducible representation]
+%     A representation $\rho : G \to \mathrm{GL}(V)$ is called \emph{irreducible} if the only subspaces $W \subseteq V$ satisfying
+%     \be
+%         \rho(x) W \subseteq W \quad \text{for all } x \in G
+%     \ee
+%     are $W = \{0\}$ and $W = V$.
+% \end{definition}
+
+% For the rest of the notes, we will write ``irrep'' as a shorthand to denote irreducible representation.
+
+% \begin{definition}[Completely reducible]
+%     A representation $\rho : G \to \mathrm{GL}(V)$ is \emph{completely reducible} if $V$ can be decomposed as a direct sum of invariant subspaces,
+%     \be
+%         V = \bigoplus_i V_i,
+%     \ee
+%     where each $V_i$ carries an irreducible representation of $G$.
+% \end{definition}
+
+% \begin{definition}[Inequivalent representations]
+%     Two representations $\rho_1 : G \to \mathrm{GL}(V)$ and $\rho_2 : G \to \mathrm{GL}(W)$ are \emph{equivalent} if there exists an invertible linear map $T : V \to W$ such that
+%     \be
+%         T \rho_1(x)T^{-1} = \rho_2(x) \quad \text{for all } x \in G.
+%     \ee
+%     They are \emph{inequivalent} if no such map exists.
+% \end{definition}
+
+% \begin{definition}[Character]
+%     Let $\rho : G \to \mathrm{GL}(V)$ be a representation. The \emph{character} of $\rho$ is the function $\chi_\rho : G \to \mathbb{C}$ defined by
+%     \be
+%         \chi_\rho(x) = \mathrm{Tr}[\rho(x)].
+%     \ee
+% \end{definition}
+
+\begin{definition}[Regular representation]\label{RegularRep}
+    Let $R: G \rightarrow \mathbb{C}[G]$ be a regular representation where $\{\ket{g}, g\in G\}$ forms a basis of \(\mathbb{C}[G]\). The representation is given by
+    \be
+    R(x) \ket{g} = \ket{xg}.
+    \ee
+    
+\end{definition}
+
+It is possible to decompose any representation of a finite group into direct sums over irreps. 
+
+\begin{theorem}[Maschke's theorem]\label{Maschke}
+    Let $G$ be a finite group and let $\rho : G \to \mathrm{GL}(V)$ be a finite-dimensional representation over $\mathbb{C}$. Then $\rho$ is completely reducible. In particular, there exists a decomposition
+    \be
+        \rho \cong \bigoplus_{m} r_m \, \rho_m,
+    \ee
+    where $\{\rho_m\}$ is a set of inequivalent irreducible representations of $G$, and $r_m \in \mathbb{Z}^+$ are the multiplicities.
+\end{theorem}
+
+\begin{sproof}
+    Maschke's theorem is partially formalized in $\texttt{Mathlib.RepresentationTheory.Maschke}$ but incomplete.
+    Filippo Berta, Jonathan Conrad, and Younous Malliefer are formalizing this.
+\end{sproof}
+
+% mathlib: `FDRep.char_orthonormal`
+% \begin{theorem}[Petit orthogonality theorem]\label{PetitOrthogonality}
+%      Let $R_a$ and $R_b$ be two non-equivalent irreps of $G$. The characters satisfy the orthogonality relation
+% \be
+% \sum_{g\in G} \chi^*_a(g) \chi_b(g) = \abs{G} \delta_{a,b}.
+% \ee    
+% \end{theorem}
+
+\begin{proposition}[Decomposition of the regular representation]\label{RegDecompIrrep}\uses{Maschke,RegularRep}
+    Let $R : G \to \mathrm{GL}(\mathbb{C}[G])$ be the regular representation of a finite group $G$. Then
+    \be
+        R \cong \bigoplus_{\rho \in \widehat{G}} d_\rho \, \rho,
+    \ee
+    where $\widehat{G}$ is a complete set of inequivalent irreducible representations of $G$, and $d_\rho = \dim(V_\rho)$ is the dimension of $\rho$.
+\end{proposition}
+
+\begin{sproof}
+    This can be proven using Maschke's theorem in \ref{Maschke} to decompose into irreps with multiplicity. 
+    Then use character orthogonality theorem in mathlib $\texttt{FDRep.char\_orthonormal}$ to show the multiplicity equals irrep dimension. 
+    A more formal statement is given by the Peter-Weyl theorem. 
+\end{sproof}
+
+
+\begin{proposition}[Character of regular representation.]\label{regular_repr_character}\uses{RegDecompIrrep}
+Let $G$ be a finite group and $\sum_\rho$ denotes summing over the complete set of inequivalent irreps $\hat{G}$
+    \be\label{eq:regular-repr-characterr}
+    \sum_{\rho \in \hat{G}} d_{\rho} \operatorname{Tr}(\rho(x))=|G| \delta_{x, e}.
+    \ee
+\end{proposition}
+\begin{sproof}
+    The proof uses decomposition of regular representation and definition of character. 
+\end{sproof}
+
+% \begin{fact}
+%     Let $\hat{G}$ be the complete set of inequivalent irreps of $G$ and $d_\rho = \dim(\rho)$ the dimension, then
+%      \be\label{eq:dim_rho_group}
+%      \sum_{\rho} d_{\rho}^{2}=|G|.
+%      \ee
+% \end{fact}
+% \begin{sproof}
+%     This is a corollary from Fact.~\ref{regular_repr_character} for $x=e$.
+% \end{sproof}
+
+\begin{definition}[Group fourier transform]\label{GroupFourier}
+    Let $f: G \rightarrow U_d(\cc)$ be a map and \(\rho: G \rightarrow U_{d_{\rho}}(\mathbb{C})\) be a unitary irrep. The fourier transform of $f$ at the representation $\rho$ is denoted by $\hat{f}$:
+    \be
+\hat{f}(\rho)=\mathbb{E}_{x \in G} f(x) \otimes \overline{\rho(x)},
+    \ee
+    where $\overline{\rho(x)}$ denotes complex conjugate of $\rho(x)$. 
+\end{definition}
+
+\section{Gowers Hatami Theorem}
+
+\begin{theorem}[Gowers-Hatami]\label{gowers-hatami}
+  \uses{sigmaNormSqSub, approx-representation,GroupFourier, regular_repr_character}
+Let \(G\) be a finite group, \(\varepsilon \geq 0\), and \(f: G \rightarrow U_{d}(\mathbb{C})\) an \((\varepsilon, \sigma)\)-representation of \(G\). Then there exists a \(d^{\prime} \geq d\), an isometry \(V: \mathbb{C}^{d} \rightarrow \mathbb{C}^{d^{\prime}}\), and a representation \(g: G \rightarrow U_{d^{\prime}}(\mathbb{C})\) such that
+\be
+\mathbb{E}_{x \in G}\left\|f(x)-V^{*} g(x) V\right\|_{\sigma}^{2} \leq 2 \varepsilon.
+\ee 
+\end{theorem}
+
+\begin{sproof}
+    The theorem is due to Gowers and Hatami~\cite{GowHat17}; the constructive proof below follows Vidick's lecture notes, Theorem 2.3~\cite{VidickQMATH22}.
+    In particular, the proof is constructive. The isometry is defined as 
+    \(V: \mathbb{C}^{d} \rightarrow \mathbb{C}^{d} \otimes\left(\oplus_{\rho} \mathbb{C}^{d_{\rho}} \otimes \mathbb{C}^{d_{\rho}}\right)\) by
+    \be\label{eq:isometry-V}
+    V u = \bigoplus_{\rho} d_{\rho}^{1 / 2} \sum_{i=1}^{d_{\rho}}\left(\hat{f}(\rho)\left(u \otimes e_{i}\right)\right) \otimes e_{i}.
+    \ee
+    And the exact representation is defined as 
+    \be
+    g(x)=\bigoplus_{\rho}\left(I_{d} \otimes I_{d_{\rho}} \otimes \rho(x)\right).
+    \ee
+
+    The proof requires the following two ingredients:
+    \begin{enumerate}
+        \item $V$ is an isometry:
+        \be
+        V^{*} V  = \I_d
+        \ee 
+        \item The isometry ``averages'' over group multiplication. For any \(x \in G\),
+        \be
+        V^{*} g(x) V = \mathbb{E}_{z} f(z)^{*} f(z x).
+        \ee
+    \end{enumerate}
+    Both ingredients follow from the key identity over the regular representation in \equref{eq:regular-repr-characterr}.
+\end{sproof}
+
+Next, we will give a different proof that does not directly decompose into irreps but instead uses the action of the regular representation.
+\begin{lemma}[Gowers-Hatami Pair-Correlation]\label{gowers-hatami-correlation}\lean{gh2_average_correlation, gh2_compression_avg_eq_pair, gh2_pair_correlation}\leanok\uses{approx-representation}
+Let \(G\) be a finite group, \(\varepsilon \geq 0\), and \(\rho: G \rightarrow U(\mathcal{H})\) an \((\varepsilon, \sigma)\)-representation of \(G\) on space $\mathcal{H}$. 
+Define the pair-correlation of $\rho$ as:
+\be
+    \mathcal{C}(\rho) := \EE_{x,y \in G} \Re \langle \rho(y)\rho(x), \rho(yx) \rangle_\sigma.
+\ee
+Then there exists an isometry \(V: \mathcal{H} \rightarrow \mathcal{H}^\prime\) to a different space $\mathcal{H}^\prime$, 
+and an exact representation \(\rho^\prime: G \rightarrow U(\mathcal{H}^\prime)\) such that the average correlation between $\rho$ and $\rho^\prime$ is exactly the pair-correlation, which is bounded by $1-\varepsilon$:
+\be
+    \EE_{x \in G} \Re \langle \rho(x), V^{*} \rho^\prime(x) V\rangle_{\sigma} = \mathcal{C}(\rho) \geq 1-\varepsilon.
+\ee    
+\end{lemma}
+
+\begin{proof}\leanok
+    Here $\mathcal{H}^\prime = L(G, \mathcal{H})$ is the space of functions $f: G \to \mathcal{H}$.
+    
+    Let the isometry be defined by the action of the approximate representation on a state $u\in \mathcal{H}$ as
+    \bea
+    &V:& \mathcal{H} \to L(G, \mathcal{H}), \\
+    & V(u):& G \to \mathcal{H}, \quad x \mapsto \rho(x)(u), \quad \forall x \in G.
+    \eea
+
+    The adjoint map $V^*$ is defined as the unique map such that for all $u \in \mathcal{H}$ and $f \in L(G, \mathcal{H})$,
+    \be
+    \langle V(u), f \rangle_{L(G, \mathcal{H})} = \langle u, V^*(f) \rangle_{\mathcal{H}}.
+    \ee
+
+    In particular, $V^*$ is explicitly given by the group average:
+    \bea
+    &V^*:& L(G, \mathcal{H}) \to \mathcal{H}, \\
+    &V^*(f)& = \EE_{x \in G} \left[ \rho^*(x) f(x) \right].
+    \eea
+
+    The exact representation is given by the right regular representation on $L(G, \mathcal{H})$:
+    \bea
+    &\rho^\prime:& G \to U(L(G, \mathcal{H})), \\
+    &(\rho^\prime(x)f)(y)& = f(yx), \quad \forall x,y \in G.
+    \eea
+
+    $V$ is an isometry because $\rho(x)$ is unitary, yielding:
+    \be
+    V^* V(u) = \EE_{x \in G} \left[ \rho^*(x) \rho(x)(u) \right] = \EE_{x \in G} [u] = u.
+    \ee
+
+    The compression of the exact representation ``averages'' over group multiplication. For any $u \in \mathcal{H}$:
+    \bea\label{eq:isometry-average} 
+    V^* \rho^\prime(x) V(u) & = & \EE_{y \in G} \left[ \rho^*(y) (\rho^\prime(x)\rho(y))(u) \right] \nonumber \\
+    & = & \EE_{y \in G} \left[ \rho^*(y) \rho(yx)(u) \right].
+    \eea
+
+    Substituting the average property from ~\equref{eq:isometry-average} into the inner product, and using the unitarity of $\rho(y)$ to rewrite the adjoints ($\langle A, B^* C \rangle_\sigma = \langle B A, C \rangle_\sigma$), we obtain:
+    \bea \label{eq:inner-product-bound}
+    \EE_{x \in G} \Re \langle \rho(x), V^* \rho^\prime(x) V\rangle_\sigma 
+    & = & \EE_{x,y \in G} \Re \langle \rho(x), \rho^*(y) \rho(yx) \rangle_\sigma \nonumber \\ 
+    & = & \EE_{x,y \in G} \Re \langle \rho(y)\rho(x), \rho(yx) \rangle_\sigma \nonumber \\ 
+    & = & \mathcal{C}(\rho).
+    \eea    
+    By the definition of an $(\varepsilon, \sigma)$-approximate representation, the pair-correlation inherently satisfies $\mathcal{C}(\rho) \geq 1 - \varepsilon$, which concludes the proof.
+\end{proof}
+% Below is older lemma that was refactored above
+% \begin{lemma}[Gowers-Hatami-Correlation]\label{gowers-hatami-correlation}\lean{gh2_average_correlation}\leanok\uses{approx-representation}
+% Let \(G\) be a finite group, \(\varepsilon \geq 0\), and \(\rho: G \rightarrow U(\mathcal{H})\) an \((\varepsilon, \sigma)\)-representation of \(G\) on space $\mathcal{H}$. 
+% Then there exists an isometry \(V: \mathcal{H} \rightarrow \mathcal{H}^\prime\) to a different space $\mathcal{H}^\prime$, 
+% and a representation \(\rho^\prime: G \rightarrow \mathcal{H}^\prime\) such that the average correlation between $\rho$ and $\rho^\prime$ is:
+% \be
+% \mathbb{E}_{x \in G} \Re \langle f(x), V^{*} \rho^\prime(x) V\rangle_{\sigma} \geq 1-\varepsilon,
+% \ee    
+% \end{lemma}
+
+% \begin{proof}
+%     Here $\mathcal{H}^\prime = L(G, \mathcal{H})$ is the space of functions $f: G \to \mathcal{H}$.
+    
+%     Let the isometry be defined by the action of the approximate representation on a state $u\in \mathcal{H}$ as
+%     \bea
+%     &V:& \mathcal{H} \to L(G, \mathcal{H}), \\
+%     & V(u):& G \to \mathcal{H}, \quad x \mapsto \rho(x)(u), \forall x \in G.
+%     \eea
+
+%     The adjoint map $V^*$ is defined as the unique map such that for all $u \in \mathcal{H}$ and $g \in L(G, \mathcal{H})$,
+%     \be
+%     \langle V(u), g \rangle_{L(G, \mathcal{H})} = \langle u, V^*(g) \rangle_{\mathcal{H}}.
+%     \ee
+
+%     In particular, $V^*$ is explicitly given by the group average
+%     \bea
+%     &V^*:& L(G, \mathcal{H}) \to \mathcal{H}, \\
+%     &V^*(f)& = \EE_{x \in G} \left[ \rho^*(x) f(x) \right].
+%     \eea
+
+%     The exact representation is given by the right regular representation on $L(G, \mathcal{H})$:
+%     \bea
+%     &\rho^\prime:& G \to \End(L(G, \mathcal{H})), \\
+%     &(\rho^\prime(x)f)(y)& = f(yx), \quad \forall x,y \in G.
+%     \eea
+
+%     $V$ is an isometry because
+%     \be
+%     V^* V(u) = \EE_{x \in G} \left[ \rho^*(x) \rho(x)(u) \right] = u.
+%     \ee
+
+%     The isometry ``averages'' over group multiplication because
+%     \bea\label{eq:isometry-average} 
+%     V^* \rho^\prime(x) V(u) & = & \EE_{y \in G} \left[ \rho^*(y) (\rho^\prime(x)\rho(y))(u) \right] \\
+%     & = & \EE_{y \in G} \left[ \rho^*(y) (\rho(yx)(u)) \right].\nonumber
+%     \eea
+
+%     Finally, using the isometry average property in ~\equref{eq:isometry-average} and the definition of $(\varepsilon, \sigma)$-representation, we have
+%     \bea \label{eq:inner-product-bound}
+%     && \EE_{x \in G} \Re \langle \rho(x), V^* \rho^\prime(x) V\rangle_\sigma, \\ \nonumber
+%     & = & \EE_{x,y \in G} \Re \langle \rho(x), \rho^*(y) \rho(yx) \rangle_\sigma, \\ \nonumber
+%     &\ge & 1 - \varepsilon. 
+%     \eea    
+% \end{proof}
+
+\begin{theorem}[Gowers-Hatami-2]\label{gowers-hatami-2}\lean{gowers_hatami_GH2_product}\leanok
+  \uses{sigmaNormSqSub, approx-representation}
+Let \(G\) be a finite group, \(\varepsilon \geq 0\), and \(\rho: G \rightarrow U(\mathcal{H})\) an \((\varepsilon, \sigma)\)-representation of \(G\) on space $\mathcal{H}=\mathbb{C}^{d}$. 
+Then there exists an isometry \(V: \mathcal{H} \rightarrow \mathcal{H}^\prime\) to a different space $\mathcal{H}^\prime$, 
+and a representation \(\rho^\prime: G \rightarrow \mathcal{H}^\prime\) such that
+\be
+\mathbb{E}_{x \in G}\left\|\rho(x)-V^{*} \rho^\prime(x) V\right\|_{\sigma}^{2} \leq 2 \varepsilon.
+\ee 
+\end{theorem}
+
+\begin{proof}\leanok
+    \uses{gowers-hatami-correlation}
+    \leanok
+    A regular-representation proof of the Gowers-Hatami theorem appears in Morel's slides~\cite{Morel20}, following the original Gowers-Hatami theorem~\cite{GowHat17}.
+
+    The rest of the proof follows by expanding the $\sigma$-norm, bounding the norm of $\EE_{x \in G} V^* \rho^\prime(x) V$ and applying the definition of $(\varepsilon, \sigma)$-representation.
+     In particular, we have 
+     \bea
+        & &\EE_{x \in G}\left\|\rho(x)-V^{*} \rho^\prime(x) V\right\|_{\sigma}^{2} \\ 
+        &= & \EE_{x \in G} \| \rho(x) \|_\sigma^2 + \EE_{x \in G} \|V^* \rho^\prime(x) V\|_\sigma^2 - 2 \EE_{x \in G} \Re \langle \rho(x), V^* \rho^\prime(x) V\rangle_\sigma \nonumber
+    \eea        
+
+    Because $\rho$ is unitary and $\Tr \sigma = 1$, $\EE_{x \in G} \| \rho(x) \|_\sigma^2 = 1$.
+    For the second term, recall from \equref{eq:isometry-average} that the compression is the group average $V^* \rho^\prime(x) V = \EE_{y \in G} \rho^*(y)\rho(yx)$. Each summand $\rho^*(y)\rho(yx)$ is a product of unitaries, hence unitary, so $\|\rho^*(y)\rho(yx)\|_\sigma = 1$. By convexity of the $\sigma$-norm---the triangle inequality applied to the average---we obtain
+    \be \label{eq:isometry-unitary-bound}
+    \|V^* \rho^\prime(x) V\|_\sigma = \left\| \EE_{y \in G} \rho^*(y)\rho(yx) \right\|_\sigma \le \EE_{y \in G} \|\rho^*(y)\rho(yx)\|_\sigma = 1,
+    \ee
+    hence $\EE_{x \in G}\|V^* \rho^\prime(x) V\|_\sigma^2 \le 1$.
+
+    Therefore using the bounds in ~\equref{eq:isometry-unitary-bound} and ~\equref{eq:inner-product-bound} by applying Lemma~\ref{gowers-hatami-correlation}, we have
+    \be
+        \EE_{x \in G}\left\|\rho(x)-V^{*} \rho^\prime(x) V\right\|_{\sigma}^{2} \le  2 - 2(1 - \varepsilon) = 2\varepsilon.
+    \ee
+\end{proof}
+
+
+%%FILE blueprint/src/subsections/lpcp-lineq.tex
+\begin{definition}\label{LINEQ}\lean{LINEQ}\leanok
+For a field \(\F\) and parameters \(m, n \in \N\), we define the language
+\[\LINEQ(\F,m,n) := \{ (M, c) \in \F^{m\times n} \times \F^{m} \mid \exists b\in \F^n, \, Mb = c \}.\]
+\end{definition}
+\begin{definition}\label{LINEQ.verifier}\lean{LINEQ.verifier}\uses{LPCPVerifier,LINEQ}\leanok
+Let \(V_{\LINEQ(\F,m,n)}^{\langle b, \cdot \rangle } (M,c)\) be the LPCP verifier defined as follows:
+\begin{enumerate}
+  \item Sample \(r \leftarrow \F^m\).
+  \item Query \(b\in \F^n \) at \(u:= \Transpose{M}r \in \F^n\).
+  \item Accept if and only if \(\langle b,u\rangle = \langle c, r\rangle\).
+\end{enumerate}
+\end{definition}
+
+\begin{lemma}
+\label{LINEQ.linear_form_uniform_prob_mul_card_le_one}
+\lean{LINEQ.linear_form_uniform_prob_mul_card_le_one}
+\leanok
+Let \(a\in\F^m\) be nonzero. Then
+\[
+  |\F|\cdot\Pr_{r\leftarrow\F^m}\!\left[\langle a,r\rangle=0\right]\leq 1.
+\]
+Equivalently, a nonzero linear form over \(\F^m\) vanishes on a uniformly
+random input with probability at most \(1/|\F|\).
+\end{lemma}
+\begin{proof}\leanok
+Choose a coordinate \(i\) with \(a_i\neq 0\). After fixing all other
+coordinates of \(r\), there is exactly one value of \(r_i\) making
+\(\langle a,r\rangle=0\).
+\end{proof}
+
+\begin{theorem}\label{LINEQ_LPCP}\lean{LINEQ_LPCP}\uses{LINEQ, LPCP}\leanok
+  \[\LINEQ(\F,m,n) \in \LPCP\left[\varepsilon_c=0, \varepsilon_s= 1 / |\F|, \Sigma = \F, \ell = |x|, q = 1, r = m\right].\]
+\end{theorem}
+\begin{proof}\uses{LINEQ.verifier,LINEQ.linear_form_uniform_prob_mul_card_le_one}\leanok
+Consider the LPCP verifier \(V_{\LINEQ(\F,m,n)}^{\langle b, \cdot \rangle } (M,c)\).\\
+\emph{Completeness:} If \(Mb =c\), then for every \(r \in \F^m\), we have \[\langle b, u \rangle = \Transpose{b} (\Transpose{M} r) = \Transpose{(Mb)} r = \langle c , r\rangle.\]
+\emph{Soundness:} If \(Mb \neq c\), then 
+\begin{gather*}
+  \Pr_{r\leftarrow \F^m} \left[\langle b, u \rangle =  \langle c , r\rangle \right] = \Pr_{r\leftarrow \F^m} \left[\langle Mb, r \rangle =  \langle c , r\rangle \right] 
+  \\= \Pr_{r\leftarrow \F^m} \left[ \sum_{i=1}^{m} (Mb - c)_{i} \cdot r_{i} =  0\right] \leq 1 / |\F|,
+\end{gather*}
+where the last inequality follows from \ref{LINEQ.linear_form_uniform_prob_mul_card_le_one}.
+\end{proof}
+
+
+%%FILE blueprint/src/subsections/lpcp-tensor.tex
+For a field \(\F\), vectors \(a \in \F^n\) and \(b \in \F^m\), the tensor product \(a \otimes b \in \F^{n \times m}\)
+is the matrix defined by
+\[
+  (a \otimes b)_{i,j} := a_i b_j \quad \forall i \in [n],\, j \in [m].
+\]
+We write \(\mathrm{flat}(a \otimes b) \in \F^{nm}\) for the row-concatenation of \(a \otimes b\).
+
+For our purposes, we want a test that checks whether $\mathrm{flat}(a \otimes a) = b$
+
+\begin{definition}\label{TENSORQ}\lean{TENSORQ}\leanok
+For a field \(\F\) and \(n \in \N\), define the tensor test language
+\[
+  \mathrm{TENSORQ}(\F, n) :=
+    \bigl\{ (a, b) \in \F^n \times \F^{n^2} \mid b = \mathrm{flat}(a \otimes a) \bigr\}.
+\]
+\end{definition}
+
+\begin{definition}\label{TENSORQ.verifier}\lean{TENSORQ.verifier}\uses{LPCPVerifier,TENSORQ}\leanok
+% Lecture 08 presents this as a subcheck inside the QESAT verifier, where the
+% queried proof oracles are already named \(a\) and \(b\). The standalone Lean
+% language has explicit input \((a,b)\), so its verifier also checks that the
+% proof's two linear parts agree with that input before running the tensor
+% multiplicativity check.
+Given \((a,b) \in \F^n \times \F^{n^2}\), the LPCP verifier
+\(V_{\mathrm{TENSORQ}(\F,n)}^{\langle \pi,\cdot\rangle}(a,b)\) uses a proof
+\(\pi=\alpha\parallel\beta \in \F^{n+n^2}\), intended to be the linear encoding of the public input
+\((a,b)\). Since the proof may be dishonest, the verifier checks consistency with \((a,b)\) on the sampled
+queries before checking the tensor relation:
+\begin{enumerate}
+  % \item Sample \(s,t \leftarrow \F^n\).
+  % \item Query the \(a\)-part of \(\pi\) at \(s\) and at \(t\), obtaining \(\langle a, s \rangle\) and \(\langle a, t \rangle\).
+  % \item Query the \(b\)-part of \(\pi\) at \(\mathrm{flat}(s\otimes t)\), obtaining \(\langle b, \mathrm{flat}(s \otimes t) \rangle\).
+  % \item Accept if and only if \(\langle b, \mathrm{flat}(s \otimes t) \rangle = \langle a, s \rangle \cdot \langle a, t \rangle\).
+  \item Sample \(s,t \leftarrow \F^n\).
+  \item Query the \(\alpha\)-part of \(\pi\) at \(s\) and at \(t\), obtaining \(y_s\) and \(y_t\).
+  \item Query the \(\beta\)-part of \(\pi\) at \(\mathrm{flat}(s\otimes t)\), obtaining \(y_{s,t}\).
+  \item Accept if and only if
+  \[
+      y_s=\langle a,s\rangle,\qquad
+      y_t=\langle a,t\rangle,\qquad
+      y_{s,t}=\langle b,\mathrm{flat}(s\otimes t)\rangle,\qquad
+      y_{s,t}=y_s y_t.
+    \]
+\end{enumerate}
+\end{definition}
+
+\begin{definition}\label{TENSORQ.selfVerifier}\lean{TENSORQ.selfVerifier}\uses{OracleComp,randOracleSpec}\leanok
+In settings where \(a\) and \(b\) are supplied only by the proof oracle, the tensor self-check uses the same three
+queries but has no public input to compare against. Given oracle access to
+\(\pi=\alpha\parallel\beta\in\F^{n+n^2}\), sample \(s,t\leftarrow\F^n\), query
+\[
+  y_s=\langle\alpha,s\rangle,\qquad
+  y_t=\langle\alpha,t\rangle,\qquad
+  y_{s,t}=\langle\beta,\mathrm{flat}(s\otimes t)\rangle,
+\]
+and accept if and only if \(y_{s,t}=y_s y_t\). This is the tensor component used inside the QESAT verifier.
+\end{definition}
+
+\begin{lemma}\label{TENSORQ.tensor_check_complete}\lean{TENSORQ.tensor_check_complete}\leanok
+For every \(a,s,t\in\F^n\),
+\[
+  \langle \mathrm{flat}(a\otimes a),\mathrm{flat}(s\otimes t)\rangle
+  = \langle a,s\rangle \langle a,t\rangle.
+\]
+\end{lemma}
+\begin{proof}\leanok
+\begin{align*}
+  \langle \mathrm{flat}(a\otimes a),\mathrm{flat}(s\otimes t)\rangle
+    &= \sum_{i,j} a_i a_j s_i t_j
+     = \left(\sum_i a_i s_i\right)\left(\sum_j a_j t_j\right)
+     = \langle a,s\rangle \langle a,t\rangle.
+\end{align*}
+\end{proof}
+
+\begin{lemma}\label{TENSORQ.verifier_soundness_after_sampling}\lean{TENSORQ.verifier_soundness_after_sampling}\uses{TENSORQ.verifier}\leanok
+Let \(\F\) be a finite field. If \(b \neq \mathrm{flat}(a\otimes a)\), then for every proof
+\(\pi\in \F^{n+n^2}\),
+\[
+  \Pr_{s,t}\!\left[
+    V_{\mathrm{TENSORQ}(\F,n)}^{\langle\pi,\cdot\rangle}(a,b)=1
+  \right]
+  \leq \frac{2|\F|-1}{|\F|^2}.
+\]
+\end{lemma}
+\begin{proof}\uses{TENSORQ.verifier,LINEQ.linear_form_uniform_prob_mul_card_le_one}\leanok
+Suppose \(b \neq \mathrm{flat}(a \otimes a)\), i.e., there exists \(i^*, j^* \in [n]\) such that
+\(b_{i^* j^*} \neq a_{i^*} \cdot a_{j^*}\).
+For each \(i \in [n]\) define the linear polynomial \(p_i(t) := \sum_{j \in [n]} (b_{ij} - a_i a_j)\, t_j\).
+For fixed \(s,t\), if the verifier accepts, then its consistency checks force
+\(y_s=\langle a,s\rangle\), \(y_t=\langle a,t\rangle\), and
+\(y_{s,t}=\langle b,\mathrm{flat}(s\otimes t)\rangle\). Thus acceptance can only occur when
+\[
+  \langle b, \mathrm{flat}(s \otimes t) \rangle - \langle a,s\rangle\langle a,t\rangle
+  = \sum_{i \in [n]}  \sum_{j \in [n]} (b_{ij} - a_i a_j)\, s_i t_j
+  = \sum_{i \in [n]} p_i(t)\, s_i.
+\]
+Immediate application of Polynomial Identity Testing yields a lower bound of $1 - \tfrac{2}{|\F|}$ but we can do better.
+Since \(b_{i^* j^*} \neq a_{i^*} a_{j^*}\), the polynomial \(p_{i^*}\) is nonzero, so by the
+Schwartz--Zippel lemma applied to \(t\),
+\[
+  \Pr_{t}\!\left[p_{i^*}(t) \neq 0\right] \geq 1 - \tfrac{1}{|\F|}.
+\]
+Conditioned on \(p_{i^*}(t) \neq 0\), the expression \(\sum_i p_i(t)\,s_i\) is a nonzero linear polynomial
+in \(s\), so by the Schwartz--Zippel lemma applied to \(s\),
+\[
+  \Pr_{s \leftarrow \F^n}\!\left[\sum_i p_i(t)\,s_i \neq 0 \mid p_{i^*}(t) \neq 0\right]
+  \geq 1 - \tfrac{1}{|\F|}.
+\]
+Hence
+\[
+  \Pr_{s,t}\!\left[ V_{\mathrm{TENSORQ}(\F,n)}^{\langle\pi,\cdot\rangle}(a,b)=0 \right]
+  \geq \left(1 - \tfrac{1}{|\F|}\right)^{\!2},
+\]
+and therefore
+\[
+  \Pr_{s,t}\!\left[ V_{\mathrm{TENSORQ}(\F,n)}^{\langle\pi,\cdot\rangle}(a,b)=1 \right]
+  \leq 1 - \left(1 - \tfrac{1}{|\F|}\right)^{\!2}
+  = \frac{2|\F|-1}{|\F|^2}.
+\]
+\end{proof}
+
+\begin{lemma}\label{TENSORQ.selfVerifier_soundness_after_sampling}\lean{TENSORQ.selfVerifier_soundness_after_sampling}\uses{TENSORQ.selfVerifier}\leanok
+Let \(\F\) be a finite field and let \(\pi=\alpha\parallel\beta\in\F^{n+n^2}\). If
+\((\alpha,\beta)\notin\mathrm{TENSORQ}(\F,n)\), then the tensor self-check accepts with probability at most
+\[
+  \frac{2|\F|-1}{|\F|^2}.
+\]
+\end{lemma}
+\begin{proof}\uses{TENSORQ.verifier_soundness_after_sampling}\leanok
+Apply \ref{TENSORQ.verifier_soundness_after_sampling} to the public pair \((\alpha,\beta)\). The self-check is
+exactly the multiplicativity part of that verifier, with \((\alpha,\beta)\) read from the proof oracle itself.
+\end{proof}
+
+
+\begin{theorem}\label{TENSORQ_LPCP}\uses{TENSORQ, LPCP}\lean{TENSORQ_LPCP}\leanok
+For every finite field \(\F\) and \(n \in \N\),
+\[
+  \mathrm{TENSORQ}(\F, n) \in
+  \LPCP\!\left[
+    \varepsilon_c = 0,
+    \varepsilon_s = \frac{2|\F|-1}{|\F|^2},
+    \Sigma = \F,
+    \ell = n + n^2,
+    q = 3,
+    r = 2n
+  \right].
+\]
+\end{theorem}
+\begin{proof}\uses{TENSORQ.verifier,TENSORQ.tensor_check_complete,TENSORQ.verifier_soundness_after_sampling}\leanok
+Use the verifier of \ref{TENSORQ.verifier}. If
+\((a,b)\in\mathrm{TENSORQ}(\F,n)\), the honest proof \(\pi=(a,b)\) passes the
+three input-consistency checks identically, and the multiplicativity check is
+\ref{TENSORQ.tensor_check_complete}. Soundness is
+\ref{TENSORQ.verifier_soundness_after_sampling}. The verifier makes three proof
+queries and uses two random vectors in \(\F^n\), which gives the displayed query
+and randomness bounds.
+\end{proof}
+
+\begin{corollary}\label{TENSORQ_LPCP_Zmod2}\uses{TENSORQ, LPCP}\leanok
+\[
+  \mathrm{TENSORQ}(\F_2, n) \in
+  \LPCP\!\left[
+    \varepsilon_c = 0,
+    \varepsilon_s = 3 / 4,
+    \Sigma = \F_2,
+    \ell = n + n^2,
+    q = 3,
+    r = 2 n
+  \right].
+\]
+\end{corollary}
+\begin{proof}\uses{TENSORQ_LPCP}\lean{TENSORQ_LPCP_Zmod2}\leanok
+Specialize \ref{TENSORQ_LPCP} to \(\F_2\), where \(|\F_2|=2\).
+\end{proof}
+
+
+%%FILE blueprint/src/subsections/lpcp-to-pcp.tex
+\begin{lemma}[Chernoff bound]
+\label{LPCPToPCP.chernoff_bound}
+\lean{LPCPToPCP.chernoff_bound}
+\leanok
+  Let $X_1,\dots, X_N$ be independent random variables over $\{0,1\}$, and let $\mu=\EE\left[\sum_{i = 1}^N X_i\right]$. For any $\Delta > 0$ one has
+  \begin{equation*}
+    \Pr\left[\sum_{i = 1}^N X_i \ge \mu+\Delta\right] \le \exp(-2\Delta^2/N)
+  \end{equation*}
+\end{lemma}
+\begin{proof}\leanok
+  Write $p_i=\EE[X_i]$, so that $\mu=\sum_{i=1}^N p_i$. We first prove the elementary exponential-moment estimate
+  \[
+    \EE[\exp(\lambda(X_i-p_i))]\le \exp(\lambda^2/8)
+  \]
+  for every $\lambda>0$ and every $i$. Since $X_i$ is $\{0,1\}$-valued,
+  \[
+    \EE[\exp(\lambda(X_i-p_i))]
+    = (1-p_i)\exp(-\lambda p_i)+p_i\exp(\lambda(1-p_i)).
+  \]
+  Equivalently, it is enough to show
+  \[
+    \log(1-p_i+p_i\exp(\lambda))-p_i\lambda \le \lambda^2/8.
+  \]
+  For $p\in[0,1]$, set $f(\lambda)=\log(1-p+p\exp(\lambda))-p\lambda$. Then $f(0)=f'(0)=0$, and
+  \[
+    f''(\lambda)
+    = \frac{p\exp(\lambda)}{1-p+p\exp(\lambda)}
+      \left(1-\frac{p\exp(\lambda)}{1-p+p\exp(\lambda)}\right)
+    \le \frac14.
+  \]
+  Hence, for $\lambda>0$,
+  \[
+    f(\lambda)
+    = \int_0^\lambda\int_0^u f''(v)\,dv\,du
+    \le \int_0^\lambda\int_0^u \frac14\,dv\,du
+    = \lambda^2/8.
+  \]
+
+  Let $S=\sum_{i=1}^N X_i$. By independence and the estimate above,
+  \[
+    \EE[\exp(\lambda(S-\mu))]
+    = \prod_{i=1}^N \EE[\exp(\lambda(X_i-p_i))]
+    \le \exp(N\lambda^2/8).
+  \]
+  Markov's inequality gives, for every $\lambda>0$,
+  \[
+    \Pr[S\ge \mu+\Delta]
+    = \Pr[\exp(\lambda(S-\mu))\ge \exp(\lambda\Delta)]
+    \le \exp(-\lambda\Delta)\EE[\exp(\lambda(S-\mu))]
+  \]
+  Using the moment bound above, this is at most
+  \[
+    \exp(-\lambda\Delta+N\lambda^2/8).
+  \]
+  Taking $\lambda=4\Delta/N$ gives
+  \[
+    \Pr[S\ge \mu+\Delta]\le \exp(-2\Delta^2/N).
+  \]
+\end{proof}
+
+\begin{definition}
+\label{LPCPToPCP.numShifts}
+\uses{LPCPVerifier}
+\lean{LPCPToPCP.numShifts}
+\leanok
+For an LPCP verifier making at most \(q\) linear queries, set
+\[
+  t := 8\bigl(\lfloor \log_2(100q)\rfloor+1\bigr).
+\]
+% Lecture 08 only needs \(t=O(\log q)\). The Lean proof fixes this base-two
+% value because the formalization uses `Nat.log2`; it is stronger than needed
+% for \(q\exp(-t/8)\le 1/100\).
+This is the concrete logarithmic shift count used in Lean. The converted PCP
+verifier uses \(t\) independent random shifts to decode each linear query by
+plurality.
+\end{definition}
+
+\begin{definition}[Encoded proof]
+\label{LPCPToPCP.encodedProof}
+% TODO: define LPCP proofs and add it to \uses
+\lean{LPCPToPCP.encodedProof}
+\leanok
+For a linear LPCP proof \(\pi\in\F_2^\ell\), its PCP encoding \(\widehat{\pi}_{\mathrm{lin}} \in \F_2^{\F_2^\ell}\) is the truth
+table
+\[
+  \widehat{\pi}_{\mathrm{lin}}(a) := \langle \pi,a\rangle,
+  \qquad a\in\F_2^\ell.
+\]
+\end{definition}
+
+\begin{definition}
+\label{LPCPToPCP.correctedAnswer}
+% TODO: define PCP proofs and add it to \uses
+\lean{LPCPToPCP.correctedAnswer,LPCPToPCP.decodedLinearQuery,LPCPToPCP.pluralityZMod2}
+\leanok
+Given a PCP proof \(\widehat{\pi}:\F_2^\ell\to\F_2\), shifts
+\(r_1,\dots,r_t\in\F_2^\ell\), and a linear query \(a\in\F_2^\ell\), define
+the locally corrected answer
+\[
+  \mathsf{Corr}_{\widehat{\pi}}(a;r_1,\dots,r_t)
+  :=
+  \operatorname{plurality}_{i\in[t]}
+  \bigl(\widehat{\pi}(a+r_i)-\widehat{\pi}(r_i)\bigr).
+\]
+\end{definition}
+
+\begin{definition}
+\label{LPCPToPCP.verifier}
+\lean{LPCPToPCP.verifier}
+\uses{PCPVerifier,LPCPVerifier,BLR.basicVerifier,LPCPToPCP.numShifts,LPCPToPCP.correctedAnswer}
+\leanok
+Let \(V\) be an LPCP verifier over \(\F_2\). The converted PCP verifier
+\(\overline V\), with oracle access to
+\(\widehat{\pi}:\F_2^\ell\to\F_2\), proceeds as follows on input \(x\):
+\begin{enumerate}
+  \item If \(V_{\mathrm{BLR}(\F_{2}, n)}^{\widehat{\pi}}=0\), reject. Otherwise, proceed to the next step.
+  \item Sample \(t\) shifts \(r_1,\dots,r_t\in\F_2^\ell\), with \(t\) as in
+    \ref{LPCPToPCP.numShifts}.
+  \item Simulate \(V(x)\). Whenever \(V\) asks a linear query
+    \(a\in\F_2^\ell\), answer it by
+    \(\mathsf{Corr}_{\widehat{\pi}}(a;r_1,\dots,r_t)\).
+\end{enumerate}
+% We define a PCP verifier as follows, for any $\bar{pi} \in \mathbb{F}_2^{\mathbb{F}_2^\ell}$ and $x \in \{0,1\}^*$.
+% \vspace{1em}
+% \noindent \textbf{Verifier} $\bar{V}^{\bar{\pi}} (x)$:
+% \begin{enumerate}
+%     \item If $V_{\text{BLR}}^{\bar{\pi}}=0$ output $0$ and halt, otherwise proceed with the next step.
+%     \item Independently for each $i \in [t]$, sample $r_i \gets \mathbb{F}_2^\ell$.
+%     \item Simulate $V$ by answering each linear query $a$ with $\text{plurality}(\bar{\pi}(a+r_i)-\bar{\pi}(r_i))_{i \in [t]}$.
+% \end{enumerate}
+\end{definition}
+
+
+\begin{lemma}[Completeness]
+\label{LPCPToPCP.verifier_completeness}
+\lean{LPCPToPCP.verifier_completeness}
+\uses{LPCPToPCP.verifier,LPCPToPCP.encodedProof}
+\leanok
+If \(\Pr\!\left[V^{\langle \pi, \cdot \rangle}(x)=1\right]\ge 1-\varepsilon_c\), then \(\Pr\!\left[\overline{V}^{\widehat{\pi}_{\mathrm{lin}}}(x)=1\right]\ge 1-\varepsilon_c\).
+\end{lemma}
+\begin{proof}\uses{LPCPToPCP.verifier,LPCPToPCP.encodedProof,BLR_basic_completeness_ZMod2}\leanok
+The encoded proof is linear, so the BLR test accepts with probability \(1\) by
+\ref{BLR_basic_completeness_ZMod2}. For every query \(a\) and every shift
+\(r_i\),
+\[
+  \widehat{\pi}_{\mathrm{lin}}(a+r_i)-\widehat{\pi}_{\mathrm{lin}}(r_i)
+  = \langle \pi,a\rangle.
+\]
+Thus every plurality answer equals the corresponding LPCP oracle answer, and
+the simulation has exactly the same acceptance probability as \(V\).
+\end{proof}
+
+
+\begin{lemma}[Soundness, far case]
+\label{LPCPToPCP.verifier_soundness_far_case_of_isFar}
+\lean{LPCPToPCP.verifier_soundness_far_case_of_isFar}
+\uses{LPCPToPCP.verifier,def:distance-to-linearity}
+\leanok
+If \(\distanceToLin{\widehat{\pi}} \geq  1 / 8\), then
+\[
+  \Pr[\overline V^{\widehat{\pi}}(x)=1]\leq 7/8 .
+\]
+\end{lemma}
+\begin{proof}\uses{LPCPToPCP.verifier,BLR_basic_soundness_ZMod2}\leanok
+By \ref{BLR_basic_soundness_ZMod2}, the BLR precheck accepts with probability at most
+\(1-\distanceToLin{\widehat{\pi}}\leq 7/8\). Since \(\overline V\) accepts only when this test accepts, its
+acceptance probability is at most \(7/8\).
+\end{proof}
+
+\begin{lemma}
+\label{LPCPToPCP.local_correction}
+\lean{LPCPToPCP.localCorrectionBad_single_le_quarter_of_not_far,LPCPToPCP.correctedAnswer_failure_le_exp_of_single,LPCPToPCP.chernoff_half_of_mean_le_quarter,LPCPToPCP.numShifts_eta_bound}
+\uses{LPCPToPCP.correctedAnswer,def:relative-hamming-distance}
+\leanok
+If \(\distance{\widehat{\pi}}{f} < 1 / 8\) for some linear
+function \(f\) of the form \(u\mapsto\langle\pi,u\rangle\), then
+\[
+  \Pr_{r_1,\dots,r_t}\!\left[
+    \mathsf{Corr}_{\widehat{\pi}}(a;r_1,\dots,r_t)\neq \langle\pi,a\rangle
+  \right]
+  \leq \exp(-t/8), \quad \forall a\in\F_2^\ell.
+\]
+\end{lemma}
+\begin{proof}\uses{LPCPToPCP.correctedAnswer,LPCPToPCP.chernoff_bound}\leanok
+For one shift \(r\), the corrected sample can be wrong only if
+\(\widehat{\pi}(a+r)\) or \(\widehat{\pi}(r)\) disagrees \(f\). A union bound gives error probability at most
+\(2\cdot(1/8)=1/4\). If \(X_i\) is the indicator of failure for shift \(r_i\),
+then \(\EE[\sum_i X_i]\le t/4\). The plurality answer is wrong only if
+\(\sum_i X_i\ge t/2\), so \ref{LPCPToPCP.chernoff_bound} with
+\(\Delta=t/4\) gives \(\exp(-t/8)\).
+% Lecture 07 states a looser concentration estimate with different constants.
+% The blueprint follows the Hoeffding normalization used by the Lean lemma
+% `chernoff_half_of_mean_le_quarter`, which is mathematically stronger here.
+\end{proof}
+
+\begin{lemma}
+\label{LPCPToPCP.corrected_simulation_hybrid}
+\lean{LPCPToPCP.corrected_run_accept_le_linear_add,LPCPToPCP.verifier_accept_le_linear_add_of_query_correction}
+\uses{LPCPToPCP.verifier}
+\leanok
+Assume every possible linear query \(a\) is locally corrected incorrectly with
+probability at most \(\eta\). If the simulated LPCP computation makes at most
+\(q\) proof queries, then its acceptance probability under the corrected PCP
+oracle is at most the acceptance probability under the nearby linear proof
+plus \(q\eta\).
+\end{lemma}
+\begin{proof}\leanok
+Expose the LPCP computation one oracle query at a time. At a proof query, the
+two simulations can diverge only when the local correction for the queried
+linear form is wrong; by assumption this has probability at most \(\eta\).
+Inducting over the query-bound derivation gives an additive loss of at most
+\(q\eta\).
+% Lecture 08 presents this step as a union bound over the verifier's \(q\)
+% queries. The Lean proof phrases the same estimate as a sequential hybrid,
+% which also covers adaptive LPCP verifiers whose later queries may depend on
+% earlier corrected answers.
+\end{proof}
+
+
+\begin{lemma}[Soundness, near case]
+\label{LPCPToPCP.verifier_soundness_near_case}
+\lean{LPCPToPCP.verifier_soundness_near_case_of_single_query_bound}
+\uses{LPCPToPCP.verifier,LPCP,def:relative-hamming-distance}
+\leanok
+If \(x\notin L\), \(V\) has LPCP soundness \(\varepsilon_s\), and
+\(\distance{\widehat{\pi}}{f} < 1/8\) for some linear function \(f\) of the form \(u\mapsto\langle\pi,u\rangle\), then
+\[
+  \Pr[\overline V^{\widehat{\pi}}(x)=1]\leq \varepsilon_s+\frac{1}{100}.
+\]
+\end{lemma}
+\begin{proof}\uses{LPCPToPCP.local_correction,LPCPToPCP.corrected_simulation_hybrid,LPCPToPCP.numShifts,LPCP}\leanok
+By \ref{LPCPToPCP.local_correction}, every possible linear query has local
+correction error at most \(\eta=\exp(-t/8)\). The hybrid estimate
+\ref{LPCPToPCP.corrected_simulation_hybrid} compares the corrected simulation
+with the simulation using the nearby linear proof and loses at most
+\(q\eta\). The choice of \(t\) in \ref{LPCPToPCP.numShifts} gives
+\(q\eta\le 1/100\). The nearby linear proof is a valid LPCP proof, so its
+acceptance probability is at most \(\varepsilon_s\) because \(x\notin L\).
+
+  % \paragraph{Case $\delta(\hat{\pi}, \text{LIN}) < 1/8$}
+  % Let $S = \{\tilde{\pi} \in \lin: \, \delta(\hat{\pi},\tilde{\pi} \le \delta(\hat{\pi}, \text{LIN}))\}$.
+  % Suppose for a contradiction that $|S| \ge 2$, and let $\bar{\pi},\tilde{\pi} \in S$ be distinct: since 
+  % $\delta(\hat{\pi},\bar{\pi} \le \delta(\hat{\pi}, \text{LIN})) < 1/8$ and $\delta(\hat{\pi},\tilde{\pi} \le \delta(\hat{\pi}, \text{LIN})) < 1/8$,
+  % by triangle inequality we have $\delta(\bar{\pi},\tilde{\pi}) < 1/4$;
+  % since $|\bbF_2|=2$, this contradicts the fact that any two distinct $\bar{\pi},\tilde{\pi} \in \lin$ satisfy $\delta(\bar{\pi},\tilde{\pi}) \ge 1/2$.
+
+  % Let then $\tilde{\pi}$ be the unique element of $\lin$ with minimal distance to $\hat{\pi}$, and let $z \in \bbF^\ell$ the unique vector such that $\tilde{\pi}(x)=\langle z, x \rangle$ for all $x$.
+  % If for every query $a$ that $V$ asks we have $\text{plurality}(\hat{\pi}(a+r_i)-\hat{\pi}(r_i))_{i \in [t]}=\tilde{\pi}(a)$, then $\bar{V}^{\hat{\pi}}(x)=V^{\langle z, \cdot \rangle}(x)$, so
+  % provided that the $r_i$ satisfy this condition we have that $\Pr[\bar{V}^{\hat{\pi}}(x)=1]=\Pr[V^{\langle z, \cdot \rangle}(x)=1] \le \varepsilon_s$.
+  % We are only left to bound the probability that for each of the $q$ queries that $V$ asks we have $\text{plurality}(\hat{\pi}(a+r_i)-\hat{\pi}(r_i))_{i \in [t]}=\tilde{\pi}(a)$.
+  % Note that for any $a$ and $r_i$, if $\hat{\pi}(a+r_i)=\tilde{\pi}(a+r_i)$ and $\hat{\pi}(r_i)=\tilde{\pi}(r_i)$ then $\hat{\pi}(a+r_i)-\hat{\pi}(r_i)=\tilde{\pi}(a)$.
+  % Hence, the proabability over one $r_i$ that $\hat{\pi}(a+r_i)-\hat{\pi}(r_i) \neq \tilde{\pi}(a)$ is at most $2\cdot \delta(\hat{\pi},\tilde{\pi})\le 1/4$ by a union bound.
+  % Also note that $\text{plurality}(\hat{\pi}(a+r_i)-\hat{\pi}(r_i))_{i \in [t]}\neq \tilde{\pi}(a)$ means that $\hat{\pi}(a+r_i)-\hat{\pi}(r_i) \neq \tilde{\pi}(a)$ for at least $\lceil t/2 \rceil \ge t/2$ of the $i$'s.
+  % Let $X_i = \ind[\hat{\pi}(a+r_i)-\hat{\pi}(r_i) \neq \tilde{\pi}(a)]$. Then $\mu = \EE[\sum_{i \in [t]}X_i] \le t/4$. Applying Chernoff bound with $\Delta = t/4$, the probability over the choice of $r_1,\dots, r_t$ that there are at least $t/2$ $i$'s with $X_i=1$ is at most $\exp(-t/8)$.
+  % Union bounding over the $q$ queries that $V$ asks, we have that the local correction fails with probability at most $q\cdot \exp(-t/8) \le 1/100$ by our choice of $t$.
+
+\end{proof}
+
+
+\begin{lemma}[Soundness]
+\label{LPCPToPCP.verifier_soundness_of_cases}
+\lean{LPCPToPCP.verifier_soundness_of_cases}
+\uses{LPCPToPCP.verifier}
+\leanok
+For every \(x\notin L\) and every PCP proof \(\widehat{\pi}\),
+\[
+  \Pr[\overline V^{\widehat{\pi}}(x)=1]
+  \leq \max\{7/8,\varepsilon_s+1/100\}.
+\]
+\end{lemma}
+\begin{proof}\uses{LPCPToPCP.verifier_soundness_far_case_of_isFar,LPCPToPCP.verifier_soundness_near_case}\leanok
+If \(\distanceToLin{\widehat{\pi}} \geq 1 / 8\), apply \ref{LPCPToPCP.verifier_soundness_far_case_of_isFar}. Otherwise, apply
+\ref{LPCPToPCP.verifier_soundness_near_case}.
+\end{proof}
+
+\begin{lemma}[LPCPs admit exponential-size PCPs]
+\uses{LPCP,PCP,LPCPToPCP.numShifts}
+\label{LPCP_to_PCP_ZMod2}
+\lean{LPCP_to_PCP_ZMod2}
+\leanok
+\begin{gather*}
+\LPCP[\varepsilon_c,\varepsilon_s,\Sigma=\F_{2},\ell,q,r] \subseteq\\
+\PCP\left[
+\varepsilon_c,\
+\varepsilon_s'=\max\{7/8,\varepsilon_s+1/100\},
+\Sigma'=\F_{2},\
+\ell'=2^{\ell},\
+q'=3+2tq,\
+r'=r+(2+t)\ell
+\right].
+\end{gather*}
+\end{lemma}
+\begin{proof}\uses{LPCPToPCP.verifier,LPCPToPCP.verifier_completeness,LPCPToPCP.verifier_soundness_of_cases}\leanok
+Let $L \in \LPCP[\varepsilon_c,\varepsilon_s,\Sigma=\F_{2},\ell,q,r]$ and let $V$ be the LPCP verifier for $L$. Use the converted PCP verifier $\overline V$ defined in \ref{LPCPToPCP.verifier}.
+Completeness is
+\ref{LPCPToPCP.verifier_completeness}, and soundness is
+\ref{LPCPToPCP.verifier_soundness_of_cases}. The BLR test makes three proof
+queries. Each simulated LPCP query uses two PCP queries for each of the \(t\)
+shifts, so the query bound is \(3+2tq\). The randomness consists of the
+original \(r\) random bits, \(2\ell\) bits for the BLR test, and \(t\ell\) bits
+for the shifts.
+\end{proof}
+
+
+%%FILE blueprint/src/subsections/pcp.tex
+\nocite{Chiesa2024-fopp-course}
+\begin{definition}
+\label{QESAT}
+\lean{QESAT}
+\leanok
+Let \(m,n >0\) be integers, \(\F\) be a field, \(R = \F[x_{1},\dots,x_{n}]\) be its polynomial ring and \(R_{d}\) denote the subspace of polynomials of degree \(\leq d\).
+
+\[
+  \QESAT(\F,n) :=
+  \{ (p_1, \ldots, p_m) \in R^m_{2} \mid
+    \exists a \in \F^n, \,
+    \forall i \in [m], \,
+    p_i(a_1, \ldots, a_n) = 0 \}.
+\]
+\end{definition}
+
+For example, $(x + 1, xy + z) \in \QESAT(\F_2,3)$.
+The goal of this chapter is to construct an exponential-length PCP for
+\(\QESAT(\F_2,n)\) (Theorem \ref{QESAT_exp_PCP}). Since \(\QESAT(\F_2,n)\) is NP-complete, this will imply the existence of exponential-length PCPs for all languages in NP.
+
+\section{Oracle computations and verifiers}
+Instead of oracle Turing machines, we will define verifiers using Lean monads, specifically the \texttt{OracleComp} free monad from VCV-io.
+
+\begin{definition}[Oracle specification]
+\label{OracleSpec}
+\lean{OracleSpec}
+\leanok
+An \emph{oracle specification} defines the type of the queries and outputs that an oracle can handle.
+\end{definition}
+
+\begin{definition}
+\label{randOracleSpec}
+\lean{randOracleSpec}
+\uses{OracleSpec}
+\leanok
+For this section, the \emph{randomness oracle specification} will be of a monadic function that takes
+nothing and returns an element from a field \(\F\).
+\end{definition}
+
+\begin{definition}[Query implementation]
+\label{QueryImpl}
+\lean{QueryImpl}
+\leanok
+A \emph{query implementation} is a monadic function whose behavior conforms to a given oracle specification.
+\end{definition}
+
+\begin{definition}
+\label{uniformSample}
+\uses{QueryImpl, randOracleSpec}
+\lean{uniformSample}
+\leanok
+The \emph{uniform sampling query implementation} for a field \(\F\) is a (mathematical) 
+query implementation for the randomness oracle specification that samples uniformly from \(\F\).
+\end{definition}
+This is the the oracle implementation that will be used to prove theorems about our verifiers,
+since it is compatible with the more classical notion of probability distributions used in the previous chapters.
+\begin{remark}[Implementing verifiers]
+If we want to actually run the verifiers, we can also use concrete implementations based on the IO monad
+and system randomness for pseudorandom sampling.
+\end{remark}
+\begin{definition}[Oracle context]
+\label{OracleContext}
+\lean{OracleContext}
+\uses{OracleSpec, QueryImpl}
+\leanok
+An \emph{oracle context} is a bundle consisting of an oracle specification and a query implementation for that specification.
+\end{definition}
+\begin{definition}[Randomness oracle]
+\label{randOracle}
+\uses{OracleContext, randOracleSpec, uniformSample}
+\lean{randOracle} \leanok
+As \emph{randomness oracle}, we will use the {uniform sampling query implementation} for the randomness oracle specification.
+\end{definition}
+\begin{definition}[Oracle computation]
+\label{OracleComp}
+\uses{OracleSpec}
+\lean{OracleComp}\leanok
+An \emph{oracle computation} is a monadic computation in the free monad generated by an oracle specification,
+i.e. a description (a ``script'') of a program consisting of a chain of oracle queries (compatible with any query implementation of the specification)
+and deterministic Lean computations.
+\end{definition}
+
+A \emph{verifier} is a function that takes an input \(x \in \{0,1\}^*\) and produces an oracle computation
+(with query access to a randomness oracle) that outputs a boolean. This definition can be extended to include
+other oracles (typically a proof oracle). In Lean this convention is represented directly by function types returning
+\texttt{OracleComp} computations, rather than by a standalone verifier declaration.
+
+We also need to define verifiers that do not take any inputs (for example the BLR verifier).
+Since they use the same randomness oracle specification as the normal verifiers, they can
+compose nicely with them.
+A \emph{unit verifier} (or just \emph{verifier} when it is clear from the context) is an oracle computation with query access to a randomness oracle that outputs a boolean.
+This definition can be extended to include
+other oracles (typically a proof oracle).
+
+\begin{remark}[Time complexity]
+The price to pay for using these definitions for verifiers instead of Turing machines is that we have no simple way to enforce
+the time complexity of the verifier. For that, a possible approach would be to restrict the allowed operations to a strict set
+of operations instead of general Lean computations, and track the time cost using query complexity.
+\end{remark}
+\section{PCP and LPCP definitions}
+
+\begin{definition}
+\label{PCPVerifier}
+\lean{PCPVerifier}
+\uses{OracleComp,randOracleSpec}
+\leanok
+A \emph{PCP verifier} is a verifier with query access to a function $\pi : [\ell (|x|)] \to \Sigma$.
+\end{definition}
+
+\begin{definition}
+\uses{PCPVerifier, randOracle}
+\label{PCP}
+\lean{PCP}
+\leanok
+A language $L \subseteq \{0,1\}^*$ is in
+$\PCP[\varepsilon_c, \varepsilon_s, \Sigma, \ell, q, r]$
+if there exists a polynomial-time PCP verifier $V$
+such that for every $x \in \{0,1\}^*$,
+$V$ makes at most $q(|x|)$ queries to the proof oracle and
+at most $r(|x|)$ randomness queries, and the following holds:
+\begin{itemize}
+  \item Completeness: If $x \in L$, then
+  $\exists \pi \in \Sigma^{\ell(|x|)}, \,
+  \Pr\left[V^\pi(x)=1 \right] \geq 1 - \varepsilon_c$.
+  \item Soundness: If $x \notin L$, then
+  $\forall \widetilde{\pi} \in \Sigma^{\ell(|x|)},\,
+  \Pr\left[V^{\widetilde{\pi}}(x)=1 \right] \leq \varepsilon_s$.
+\end{itemize}
+\end{definition}
+
+\begin{definition}
+\label{LPCPVerifier}
+\lean{LPCPVerifier}
+\uses{OracleComp,randOracleSpec}
+\leanok
+A \emph{LPCP verifier} is a verifier with query access to a linear function
+$\langle \pi,\cdot \rangle : \Sigma^{\ell(|x|)} \to \Sigma$.
+\end{definition}
+
+\begin{definition}
+\uses{LPCPVerifier, randOracle}
+\label{LPCP}
+\lean{LPCP}
+\leanok
+A language $L \subseteq \{0,1\}^*$ is in
+$\LPCP[\varepsilon_c, \varepsilon_s, \Sigma, \ell, q, r]$
+if there exists a polynomial-time LPCP verifier $V$
+such that for every $x \in \{0,1\}^*$,
+$V$ makes at most $q(|x|)$ queries to the linear proof oracle and
+at most $r(|x|)$ randomness queries, and the following holds:
+\begin{itemize}
+  \item Completeness: If $x \in L$, then
+  $\exists \pi \in \Sigma^{\ell(|x|)}, \,
+  \Pr\left[V^{\langle \pi, \cdot \rangle}(x)=1 \right]
+  \geq 1 - \varepsilon_c$.
+  \item Soundness: If $x \notin L$, then
+  $\forall \widetilde{\pi} \in \Sigma^{\ell(|x|)},\,
+  \Pr\left[V^{\langle \widetilde{\pi}, \cdot \rangle}(x)=1 \right]
+  \leq \varepsilon_s$.
+\end{itemize}
+\end{definition}
+
+
+%%FILE blueprint/src/subsections/qesat-exp-pcp.tex
+% \begin{theorem}\label{old-QESAT_poly_LPCP}\lean{QESAT_poly_LPCP}\uses{QESAT, LPCP}\leanok
+% \[
+%   \mathrm{QESAT}(\F_2,n) \in
+%   \mathrm{LPCP}[
+%     \varepsilon_c = 0,
+%     \varepsilon_s = 3/4,
+%     \Sigma = \F_2,
+%     \ell = n + n^2,
+%     q = 4,
+%     r = |x| + 2*n
+%   ].
+% \]
+% \end{theorem}
+% \begin{proof}%\uses{} tensor stuff
+
+% \noindent Let $(p_1, \dots, p_m)$ be an instance of $\text{QESAT}(\mathbb{F})$ with $n$ variables. \\
+% The LPCP verifier expects a proof $\pi = (a, b) \in \mathbb{F}^{n+n^2}$ and works as follows:
+
+% \vspace{1em}
+% \noindent \textbf{Verifier} $V^{(a,b)}(p_1, \dots, p_m)$:
+% \begin{enumerate}
+%     \item Sample $r \gets \mathbb{F}^m$ and $s, t \gets \mathbb{F}^n$.
+%     \item Define 
+%     \[
+%     M := \begin{bmatrix} \text{coeff}(p_1) \\ \vdots \\ \text{coeff}(p_m) \end{bmatrix} \in \mathbb{F}^{m \times (n+n^2)} 
+%     \quad \text{and} \quad 
+%     c := \begin{bmatrix} -\text{const}(p_1) \\ \vdots \\ -\text{const}(p_m) \end{bmatrix} \in \mathbb{F}^m.
+%     \]
+%     \textit{(Note: $\text{coeff}(p_i) :=$ non-constant coeffs of $p_i$, and $\text{const}(p_i) :=$ constant coeff of $p_i$)}
+    
+%     \item \textit{(linear equation test)} $\rightarrow$ Query $(a,b)$ at $M^T r$ and check that $\langle a \parallel b, M^T r \rangle = \langle c, r \rangle$.
+    
+%     \item \textit{(tensor test)} $\rightarrow$ Query $b$ at $\text{flat}(s \otimes t)$, $a$ at $s$ and $t$, and check that 
+%     \[
+%     \langle b, \text{flat}(s \otimes t) \rangle = \langle a, s \rangle \cdot \langle a, t \rangle.
+%     \]
+% \end{enumerate}
+
+% \vspace{1em}
+% \noindent \textbf{Completeness:} 
+% Suppose $p_1(a) = \dots = p_m(a) = 0$ and set $b := \text{flat}(a \otimes a)$. \\
+% Then 
+% \[
+% \Pr_{s,t} \left[ \langle b, \text{flat}(s \otimes t) \rangle = \langle a, s \rangle \cdot \langle a, t \rangle \right] = 1
+% \]
+% and 
+% \[
+% \Pr_r \left[ \langle a \parallel b, M^T r \rangle = \langle c, r \rangle \right] = 1 \quad \left(\text{since } M \begin{bmatrix} a \\ \text{flat}(a \otimes a) \end{bmatrix} = c \right).
+% \]
+
+% \vspace{1em}
+% \noindent \textbf{Soundness:}
+% Suppose $\forall a \in \mathbb{F}^n \ \exists i \in [m] \text{ s.t. } p_i(a) \neq 0$. Fix any $\pi = (a, b)$. \\
+% Either:
+% \begin{enumerate}
+%     \item[(i)] $b \neq \text{flat}(a \otimes a) \implies$ tensor test passes w.p. $\leq \frac{2|\mathbb{F}|-1}{|\mathbb{F}|^2}$
+%     \item[OR (ii)] $b = \text{flat}(a \otimes a)$ and $M \begin{bmatrix} a \\ b \end{bmatrix} \neq c \implies$ linear equation test passes w.p. $\leq \frac{1}{|\mathbb{F}|}$
+% \end{enumerate}
+
+% \end{proof}
+
+
+Let \(x=(p_1,\dots,p_m)\) be a \(\QESAT(\F_2,n)\) instance. We use the following
+linearization. For each quadratic
+polynomial \(p_i\), form a row \(M_i\in\F_2^{n+n^2}\) by replacing every
+linear monomial \(X_j\) by the variable \(a_j\) and every quadratic monomial
+\(X_jX_k\) by the tensor variable \(b_{jk}\). Let
+    \[
+    M_{x} := \begin{bmatrix} M_1 \\ \vdots \\ M_m \end{bmatrix} \in \F_2^{m \times (n+n^2)} 
+    \quad \text{and} \quad 
+    c_{x} := \begin{bmatrix} -\operatorname{const}(p_1) \\ \vdots \\ -\operatorname{const}(p_m) \end{bmatrix} \in \F_2^m,
+    \]
+where \(\operatorname{const}(p_i)\) is the constant term of \(p_i\).
+Then \(M_{x}(a\parallel b)=c_{x}\) expresses the original equations after
+replacing \(a_ja_k\) by \(b_{jk}\).
+
+\begin{definition}
+\label{QESAT.verifier}
+\lean{QESAT.verifier}
+\uses{LPCPVerifier,QESAT,LINEQ.verifier,TENSORQ.selfVerifier}
+\leanok
+Let \(x=(p_1,\dots,p_m) \in R_{2}^{m}\) be a QESAT instance as defined in \ref{QESAT}. Let \(V_{\QESAT(\F_2,n)}^{\pi}(x)\) be the LPCP verifier 
+with oracle access to \(\pi=a\parallel b\in\F_2^{n+n^2}\), defined as follows:
+\begin{enumerate}
+  \item Sample $r \gets \F_{2}^m$ and $s, t \gets \F_{2}^n$.
+  \item Construct \((M_{x},c_{x}) \in \F_2^{m \times (n+n^2)} \times \F_2^m\) by the linearization above.
+  \item Check that \(V_{\LINEQ(\F_2,m,n+n^2)}^{\langle \pi, \cdot \rangle } (M_{x},c_{x}) = 1\).
+  \item Query \(\pi\) at
+  \((s,0)\), \((t,0)\), and \((0,\mathrm{flat}(s\otimes t))\) and check that
+  \[
+    \langle b,\mathrm{flat}(s\otimes t)\rangle
+    =\langle a,s\rangle\langle a,t\rangle .
+  \]
+  Equivalently, this last step is the tensor self-check of \ref{TENSORQ.selfVerifier} specialized to \(\F_2\).
+\end{enumerate}
+\end{definition}
+
+\begin{lemma}[Completeness]
+\label{QESAT.verifier_completeness}
+\lean{QESAT.verifier_correct}
+\uses{QESAT,QESAT.verifier}
+\leanok
+If \(x\in \QESAT(\F_2,n)\), then exists a proof
+\(\pi\in\F_2^{n+n^2}\) such that \[\Pr\!\left[V_{\QESAT(\F_2,n)}^{\pi}(x)=1\right]=1.\]
+\end{lemma}
+\begin{proof}\uses{QESAT.verifier,LINEQ.verifier,TENSORQ.tensor_check_complete}\leanok
+Let \(a\in\F_2^n\) satisfy all equations and set
+\(b=\mathrm{flat}(a\otimes a)\). By construction of the linearized system,
+\(M_x(a\parallel b)=c_x\), so the LINEQ check
+accepts for every \(r\). The tensor self-check accepts for every \(s,t\) by
+\ref{TENSORQ.tensor_check_complete}.
+\end{proof}
+
+\begin{lemma}[Soundness]
+\label{QESAT.verifier_soundness}
+\lean{QESAT.verifier_correct}
+\uses{QESAT,QESAT.verifier}
+\leanok
+If \(x\notin \QESAT(\F_2,n)\), then for every proof
+\(\tilde\pi\in\F_2^{n+n^2}\),
+\[\Pr\!\left[V_{\QESAT(\F_2,n)}^{\tilde\pi}(x)=1\right]\leq 3 / 4.\]
+\end{lemma}
+\begin{proof}\uses{QESAT.verifier,LINEQ.linear_form_uniform_prob_mul_card_le_one,TENSORQ.selfVerifier_soundness_after_sampling}\leanok
+If some \(p_i\) has total degree \(>2\), the verifier rejects immediately, so
+the acceptance probability is \(0\). Assume now that every \(p_i\) is quadratic
+and write \(\pi=a\parallel b\). If \(b\neq\mathrm{flat}(a\otimes a)\), then
+the tensor self-check accepts with probability at most \(3/4\) by
+\ref{TENSORQ.selfVerifier_soundness_after_sampling} specialized to \(\F_2\), and
+the full verifier accepts only if that check accepts.
+
+Otherwise \(b=\mathrm{flat}(a\otimes a)\). Since \(x\notin\QESAT(\F_2,n)\),
+the assignment \(a\) does not satisfy all equations. By construction of the
+linearized system, \(M_x(a\parallel b)\neq c_x\). The LINEQ check
+therefore accepts with probability at most \(1/|\F_2|=1/2\) by
+\ref{LINEQ.linear_form_uniform_prob_mul_card_le_one}. Again the full verifier
+accepts only if this check accepts, so the acceptance probability is at most
+\(1/2\leq 3/4\).
+\end{proof}
+
+\begin{theorem}
+\label{QESAT_poly_LPCP}
+\lean{QESAT_poly_LPCP}
+\uses{QESAT,LPCP}
+\leanok
+\[
+  \mathrm{QESAT}(\F_2,n) \in
+  \mathrm{LPCP}[
+    \varepsilon_c = 0,
+    \varepsilon_s = 3/4,
+    \Sigma = \F_2,
+    \ell = n + n^2,
+    q = 4,
+    r = |x| + 2n
+  ].
+\]
+\end{theorem}
+\begin{proof}\uses{QESAT.verifier,QESAT.verifier_completeness,QESAT.verifier_soundness}\leanok
+% Lecture 08 gives the exact LINEQ randomness as \(m\log|\F|\). In Lean,
+% \(|x|\) is the encoded input size and bounds the number of equations \(m\);
+% after specializing to \(\F_2\), this yields the displayed \(|x|+2n\) bound.
+Use the verifier \ref{QESAT.verifier}. It makes one query for the LINEQ check
+and three queries for the tensor self-check, for a total of four. Its
+randomness is the LINEQ randomness plus two vectors in \(\F_2^n\). Completeness
+and soundness are \ref{QESAT.verifier_completeness} and
+\ref{QESAT.verifier_soundness}.
+\end{proof}
+
+\begin{theorem}
+\label{QESAT_exp_PCP_before_repetition}
+\lean{QESAT_exp_PCP_before_repetition}
+\uses{QESAT,PCP}
+\leanok
+\[
+  \mathrm{QESAT}(\F_2,n) \in
+  \mathrm{PCP}[
+    \varepsilon_c = 0,
+    \varepsilon_s = 7/8,
+    \Sigma = \F_2,
+    \ell = 2^{|x|},
+    q = O(1),
+    r = |x|^{O(1)}
+  ].
+\]
+\end{theorem}
+\begin{proof}\uses{QESAT_poly_LPCP,LPCP_to_PCP_ZMod2}\leanok
+% The lecture's final no-abstraction slide shares local-correction work in a
+% direct QESAT verifier and therefore displays different constants. This
+% formalization deliberately routes through the modular LPCP-to-PCP theorem,
+% so only the asymptotic constant-query statement is retained here.
+Apply \ref{LPCP_to_PCP_ZMod2} to \ref{QESAT_poly_LPCP}. Since the LPCP
+soundness is \(3/4\), the converted soundness is
+\[
+  \max\{7/8,\,3/4+1/100\}=7/8.
+\]
+The query bound remains constant because \(q=4\), and the randomness is
+polynomial in the input size. The Lean formalization pads the proof oracle from
+length \(2^{n+n^2}\) to length \(2^{|x|}\).
+\end{proof}
+
+\begin{lemma}
+\label{QESAT.constant_repetition}
+\lean{QESAT_exp_PCP}
+\uses{PCP}
+\leanok
+\[\PCP[0,7/8,\F_2,2^{|x|},O(1),|x|^{O(1)}] \subseteq \PCP[0,1/2,\F_2,2^{|x|},O(1),|x|^{O(1)}].\]
+\end{lemma}
+\begin{proof}\uses{QESAT_exp_PCP_before_repetition}\leanok
+% This repetition is folded into the Lean theorem `QESAT_exp_PCP` rather than
+% exposed as a standalone declaration.
+Invoke \ref{QESAT_exp_PCP_before_repetition} to obtain the \(7/8\)-sound
+verifier. Run it independently six times and accept only if all six runs
+accept. Completeness error remains \(0\). For \(x\notin L\), the acceptance
+probability is at most \((7/8)^6\leq 1/2\). Query and randomness bounds are
+multiplied by the constant \(6\).
+\end{proof}
+
+\begin{theorem}
+\uses{QESAT,PCP}
+\label{QESAT_exp_PCP}
+\lean{QESAT_exp_PCP}
+\leanok
+\[
+  \mathrm{QESAT}(\F_2,n) \in
+  \mathrm{PCP}[
+    \varepsilon_c = 0,
+    \varepsilon_s = 1/2,
+    \Sigma = \F_2,
+    \ell = 2^{|x|},
+    q = O(1),
+    r = |x|^{O(1)}
+  ].
+\]
+\end{theorem}
+\begin{proof}\uses{QESAT_exp_PCP_before_repetition,QESAT.constant_repetition}\leanok
+Combine \ref{QESAT_exp_PCP_before_repetition} with the constant repetition
+step \ref{QESAT.constant_repetition}.
+\end{proof}
+

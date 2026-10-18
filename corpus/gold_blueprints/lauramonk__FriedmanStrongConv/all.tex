@@ -1,0 +1,2973 @@
+
+%%FILE blueprint/src/1_graphs.tex
+\chapter{Graphs: introduction and basic spectral theory}
+
+In this chapter, we introduce basic definitions and properties
+related to (multi)graphs and their spectrum.
+We refer the reader to \cite{chung1992} for a more detailed introduction and motivations.
+
+As in Graph, a \emph{graph} $G$ is a set of vertices $V(G)$, and
+a set of edges $E(G)$, such that each edge links two unordered, possibly identical vertices.
+Note that this definition allows for loops (i.e. edges going from one vertex to itself) and
+multi-edges (i.e. multiple edges connecting two vertices). This convention is essential to the proof
+we are aiming for, which is why we use Graph instead of the more developed
+SimpleGraph.
+
+\section{Basic graph theory}
+
+We here introduce a few basic notions which will be useful to the project.
+These definitions should probably be added to Mathlib and hence written carefully,
+with good API and following the naming conventions, in particular of SimpleGraph.
+
+\subsection{Darts}
+
+We define a notion of darts, which are oriented edges on the graph.
+
+
+\begin{definition}
+  \label{def:dart}
+  \leanok
+  \lean{Graph.Dart}
+  A \emph{dart} $d$ in a graph $G$ is an oriented edge, meaning it has a start point
+  $\spt(d)$, and endpoint $\ept(d)$, is carried by an edge $\edge(d)$, and, in the
+  case where $e$ is a loop, it has an additional information encoded in a boolean
+  $\in \{0, 1\}$ encoding an orientation.
+
+  We denote as $D(G)$ the set of darts on $G$.
+\end{definition}
+
+\begin{definition}
+  \label{def:reverse_dart}
+  \uses{def:dart}
+  \leanok
+  \lean{Graph.Dart.reverse}
+  To each dart $d$ we associate a \emph{reverse dart} $\symm(d)$ such that:
+  \begin{itemize}
+    \item $\spt(\symm(d)) = \ept(d)$;
+    \item $\ept(\symm(d)) = \spt(d)$;
+    \item $\edge(\symm(d)) = \edge(d)$;
+    \item if $\edge(d)$ is a loop then the orientation of $\symm(d)$ is
+    the negation of the orientation of $d$.
+  \end{itemize}
+\end{definition}
+
+Here are key properties that must be satisfied by our implementation of darts.
+
+\begin{lemma}
+  \label{lem:dart_API}
+  \uses{def:reverse_dart}
+  \leanok
+  \lean{Graph.Dart.reverse}
+  \begin{itemize}
+    \item For any dart $d$, $\symm(d) \neq d$.
+    \item For any dart $d$, $\symm(\symm(d)) = d$.
+    \item We have a map $e \in E(G) \mapsto d_e \in D(G)$ such that, for all $e$,
+    if $e$ links $x$ and $y$, then $d_e$ is a dart from $x$ to $y$ carried by $e$.
+    \item For any $d, d'$, if $\edge(d)=\edge(d')$ then $d=d'$ or $d=\symm(d')$.
+    \item We have $d_1 = d_2$ iff $\spt(d_1) = \spt(d_2)$ and $\edge(d_1) = \edge(d_2)$
+    (and same characterisation using the endpoints and edges).
+  \end{itemize}
+\end{lemma}
+
+\begin{proof}
+  \leanok
+  These depend on the implementation of darts, but should be easily verified.
+\end{proof}
+
+\begin{definition}
+  \label{def:dartset}
+  \uses{def:dart}
+  \leanok
+  \lean{Graph.dartSet}
+  Let $x \in V(G)$. The \emph{dartset} of $x$ is the set
+  \begin{equation}
+    \dartset(x) := \{ d \in D(G) \, : \, \spt(d)=x\}.
+  \end{equation}
+\end{definition}
+
+\begin{definition}
+  \label{def:dartset_pair}
+  \uses{def:dart}
+  Let $x$, $y \in V(G)$.
+  We define the dartset of $(x,y)$ as
+  \begin{equation*}
+    \dartset(x,y)
+    = \{ d \in D(G) : \spt(d) = x, \ept(d) = y\}.
+  \end{equation*}
+\end{definition}
+
+\begin{lemma}
+  \label{lem:adjacent_vs_dart}
+  \uses{def:dartset,def:dartset_pair}
+  \leanok
+  Let $x, y \in V(G)$.
+  The following are equivalent:
+  \begin{enumerate}
+    \item $x$ and $y$ are adjacent;
+    \item there exists $d \in \dartset(x)$ such that $\ept(d)=y$;
+    \item $\dartset(x,y)$ is not empty.
+  \end{enumerate}
+\end{lemma}
+
+\begin{proof}
+  \leanok
+  Trivial.
+\end{proof}
+
+\begin{lemma}
+  \label{lem:edge_range_of_darset}
+  \uses{def:dartset_pair}
+  Let $x, y \in V(G)$.
+  The map
+  \begin{equation*}
+    \begin{split}
+      \dartset(x,y) & \rightarrow E(G) \\
+      d & \mapsto \edge(d)
+    \end{split}
+  \end{equation*}
+  has range $\{e \in E(G) : e \text{ links } x \text{ and } y\}$.
+  It is $2-1$ if $x=y$ and $1-1$ otherwise.
+\end{lemma}
+
+We can alternatively define a graph from its darts in the following fashion.
+
+\begin{definition}
+  \label{def:dartlike}
+  Let $V$ be a set. A \emph{dart-like structure} on $V$ is the data of a set of darts $D$,
+  together with maps $\spt, \ept : D \rightarrow V$ and
+  $\symm : D \rightarrow D$ satisfying the following:
+  \begin{itemize}
+    \item $\spt \circ \symm = \ept$ and $\ept \circ \symm = \spt$;
+    \item $\symm$ is an involution with no fixed point.
+  \end{itemize}
+\end{definition}
+
+\begin{definition}
+  \label{def:dart_eq_rel}
+  \uses{def:dartlike}
+  Let $V$ be a set and $D$, $\spt, \ept, \symm$ be a dart-like structure.
+  We define a relation on $D$ by:
+  \begin{equation*}
+    \forall d, d' \in D,
+    \quad d \sim d' \Leftrightarrow (d=d' \text{ or } d = \symm(d')).
+  \end{equation*}
+\end{definition}
+
+\begin{lemma}
+  \label{lem:dart_eq_rel}
+  \uses{def:dart_eq_rel}
+  The relation $\sim$ on $D$ is an equivalence relation, and all of its equivalence
+  classes are of the form $\{d, \symm(d)\}$ (the two of which are distinct).
+\end{lemma}
+
+\begin{definition}
+  \label{def:graph_of_dart}
+  Let $V$ be a set and $D$, $\spt, \ept, \symm$ be a dart-like structure.
+  We define a graph $G$ associated to this structure by taking:
+  \begin{itemize}
+    \item $V(G) := V$ as the vertex set;
+    \item $E(G) := D(G) \diagup \sim$ as the edge set;
+    \item for $e \in E(G)$, if $d \in D(G)$ is a representant of $e$,
+    then $e$ links $\spt(d)$ and $\ept(d)$.
+  \end{itemize}
+\end{definition}
+
+\begin{theorem}
+  \label{thm:dart_of_graph_of_dart}
+  \uses{def:graph_of_dart,def:dart}
+  The graph $G$ constructed in Definition \ref{def:graph_of_dart} is a graph,
+  and $D(G) = D$.
+\end{theorem}
+
+\subsection{Subgraphs}
+
+The definition of subgraph is easier for Graph than SimpleGraph as the vertexset is just a subset.
+
+\begin{definition}
+  \label{def:subgraph}
+  A \emph{subgraph} $H$ of $G$ is a graph (of the same type as $G$) defined by:
+  \begin{itemize}
+    \item a vertex set $V(H)$ included in the vextex set of $G$
+    \item an edge set $E(H)$ included in the edge set of $H$
+    \item the same $\islink$ relation, i.e. if $e$ links $x$ and $y$ in $H$ then it
+    also links $x$ and $y$ in $G$.
+  \end{itemize}
+\end{definition}
+
+\begin{lemma}
+  \label{lem:subgraph_adj_graph}
+  \uses{def:subgraph}
+  Let $H$ be a subgraph of $G$.
+  For any $x$, $y$ in $V(H)$, if $x$ and $y$ are adjacent for $H$, then they are
+  adjacent for $G$.
+\end{lemma}
+
+\begin{definition}
+  \label{def:max_subgraph,def:min_subgraph}
+  \uses{def:subgraph}
+  We define the \emph{union} $H_1 \cup H_2$ of two subgraphs by taking the union of
+  their respective vertex sets and edge sets,
+  and the intersection $H_1 \cap H_2$ by taking their intersection.
+\end{definition}
+
+\begin{definition}
+  \label{def:isinduced}
+  \uses{def:subgraph}
+  A subgraph $H$ of $G$ is \emph{induced} if, for any $x, y \in V(H)$, for any $e \in E(G)$,
+  if $e$ links $x$ and $y$ in $G$, then $e \in E(H)$.
+\end{definition}
+
+\begin{definition}
+  \label{def:induced_subgraph}
+  \uses{def:subgraph}
+  Let $U$ be a subset of $V(G)$. Then we define a subgraph $H$ induced by $U$ by letting:
+  \begin{itemize}
+    \item $V(H) := U$;
+    \item $E(H) := \{ e \in E(G) : \text{ both endpoints of }e \text{ lie in } U\}$.
+  \end{itemize}
+\end{definition}
+
+\begin{lemma}
+  \label{lem:induced_iff_isinduced}
+  \uses{def:isinduced,def:induced_subgraph}
+  A subgraph is induced iff it is induced from as subset of $V(G)$.
+\end{lemma}
+
+\subsection{Finiteness}
+
+TODO: determine which notion of finiteness we use.
+
+\begin{definition}
+  \label{def:finite}
+  A graph $G$ is \emph{finite} if $V(G)$ and $E(G)$ are both finite sets.
+\end{definition}
+
+
+\subsection{Locally finite graph, degree and regularity}
+
+\begin{definition}
+  \label{def:locally_finite}
+  \uses{def:dartset}  \leanok
+  \lean{Graph.LocallyFinite}
+  Let $x \in V(G)$.
+  We say $G$ is \emph{locally finite} at $x$ if $\dartset (x)$ is finite.
+  The graph $G$ is \emph{locally finite} if it is locally finite at every vertex.
+\end{definition}
+
+\begin{definition}
+  \label{def:degree}
+  \uses{def:dartset}
+  \leanok
+  Let $x$ be a vertex of $G$.
+  The \emph{edegree} of $x$ is defined as $\mathrm{edeg}(x) = \# \dartset(x)$, which is
+  an element of $\mathbb{N} \cup \{ \infty\}$.
+  The \emph{degree} of $x$ is the natural-number projection of the edegree.
+\end{definition}
+
+\begin{lemma}
+  \label{lem:darset_loop_even}
+  \uses{lem:edge_range_of_darset}
+  If $G$ is locally finite at $x \in V(G)$, then
+   $\# \dartset(x,x)$ is an even number.
+\end{lemma}
+
+\begin{lemma}
+  \label{lem:degree_inc_loop}
+  \uses{def:degree,lem:edge_range_of_darset}
+  Let $x \in V(G)$.
+  $G$ is locally finite at $x$ iff $\incset(x)$ is finite, and in this case,
+  \begin{equation*}
+    \deg(x) = \# \incset(x) + \loopset(x).
+  \end{equation*}
+\end{lemma}
+
+\begin{proof}
+  Using Lemma \ref{lem:edge_range_of_darset},
+  \begin{align*}
+    \deg(x)
+    & = \sum_{y \in V(G)} \# \dartset(x,y) \\
+    & = 2 \# \{e \in E(G) : e \text{ links }x,x\}
+    + \sum_{y \in V(G), y \neq x} \# \{e \in E(G) : e \text{ links }x,y\}\\
+    & = 2 \# \loopset(x) + (\# \incset(x) - \# \loopset(x))
+  \end{align*}
+  which leads to the desired equality. Hence $G$ is locally finite at $x$ iff
+  $\incset(x)$ and $\loopset(x)$ are both finite, which is equivalent to
+  $\incset(x)$ being finite as $\loopset(x) \subseteq \incset(x)$.
+\end{proof}
+
+\begin{definition}
+  \label{def:regular}
+  \uses{def:locally_finite, def:degree}
+  Let $\delta$ be a non-negative integer.
+  We say $G$ is \emph{regular of degree $\delta$} if it is not empty, locally finite and,
+  for every $x \in V(G)$, $\deg (x) = \delta$.
+\end{definition}
+
+\begin{lemma}
+  \label{lem:regular_zero}
+  \uses{def:regular}
+  The graph $G$ is regular of degree $0$ iff $E(G)=\emptyset$.
+\end{lemma}
+
+\begin{definition}
+  \label{def:locally_bounded}
+  \uses{def:degree,def:locally_finite}
+  We say $G$ is \emph{locally bounded} if
+  it is locally finite and there exists a constant $D$ such that,
+  for all $x \in V(G)$, $\deg(x) \leq D$.
+\end{definition}
+
+
+\subsection{Bipartiteness}
+
+\begin{definition}
+  \label{def:bipartite}
+  The graph $G$ is \emph{bipartite} if there exists a partition $U_1$,
+  $U_2$ of $V(G)$ such that, for all $e \in E(G)$, $e$ links an element of $U_1$
+  and an element of $U_2$.
+\end{definition}
+
+\subsection{Walks and reachability}
+
+Several conventions can be used to define walks on a non-simple graphs, essentially
+due to the presence of loops. Our convention (essential for our applications)
+is that each loop can be traversed with two different orientations, which hence
+correspond to different walks. For this reason, it will be convenient to define
+walks using darts, as they differentiate between these two options.
+
+\begin{definition}
+  \label{def:dartwalk}
+  \leanok
+  \lean{Graph.Dartwalk}
+  Let $x, y \in V(G)$. A \emph{dartwalk} from $x$ to $y$ on $G$ is given by a finite list
+  $(d_1, \ldots, d_m)$ of darts, satisfying the following:
+    \begin{itemize}
+      \item $\spt(d_1)=x$ and $\ept(d_m)=y$;
+      \item for any $i \in \{1, \ldots, m-1\}$, $\ept(d_{i+1}) = \spt(d_i)$.
+    \end{itemize}
+\end{definition}
+
+[todo: notation start and end of walk]
+
+\begin{definition}
+  \label{def:length}
+  \uses{def:dartwalk}
+  \leanok
+  \lean{Graph.Dartwalk.length}
+  The \emph{length} of a walk is its number of darts.
+\end{definition}
+
+\begin{definition}
+  \label{def:dartwalk_support}
+  \uses{def:dartwalk}
+  \leanok
+  \lean{Graph.Dartwalk.support}
+  The \emph{support} of the dartwalk $(d_i)_{1 \leq i \leq m}$
+  is the list $(x_i)_{0 \leq i \leq m}$ with $x_0=\spt(d_1)$ and
+  $x_i = \ept(d_i)$ for $1 \leq i \leq m$.
+\end{definition}
+
+\begin{definition}
+  \label{def:concatenation}
+  \uses{def:dartwalk}
+  Let $w = (d_i)_{1 \leq i \leq m}$ be a dartwalk from $x$ to $y$
+  and $w' = (d_i')_{1 \leq i \leq m'}$ be a dartwalk from $y$ to $z$.
+  We define the \emph{concatenation} $w \cdot w'$ to be the dartwalk $(d_i'')_{1 \leq i \leq m+m'}$
+  where $d_i''=d_i$ for $i \leq m$ and $d_{i-m}'$ for $i > m$.
+\end{definition}
+
+\begin{lemma}
+  \label{lem:length_concat}
+  \uses{def:concatenation,def:length}
+  The length of the concatenation of two dartwalks is the sum of their lengths.
+\end{lemma}
+
+\begin{definition}
+  \label{def:reachable}
+  \uses{def:dartwalk}
+  \lean{Graph.Reachable}
+  We define a binary relation on $V(G)$ by: $x \sim y$ if there exists a dartwalk
+  from $x$ to $y$ on $G$. We then say $x$ and $y$ are \emph{reachable}.
+\end{definition}
+
+\begin{proposition}
+  \label{prop:reachable_is_equivalence}
+  \uses{def:reachable}
+  \leanok
+  \lean{Graph.Reachable.rfl}
+  The reachability relation is an equivalence relation on $V(G)$.
+\end{proposition}
+
+\begin{proof}
+  This is the same proof as in SimpleGraph.
+\end{proof}
+
+\begin{lemma}
+  \label{lem:adj_towalk}
+  \uses{def:reachable,lem:adjacent_vs_dart}
+  \leanok
+  \lean{Graph.Adj.reachable}
+  Let $x$, $y$ in $V(G)$. If $x$ and $y$ are adjacent then $x$ and $y$ are reachable.
+\end{lemma}
+
+\begin{definition}
+  \label{def:dartpath}
+  \uses{def:dartwalk}
+  A dartwalk $(d_i)_{1 \leq i \leq m}$ is called a \emph{path} if
+  for all $1 \leq i,j \leq m$, $\spt(d_i) = \spt(d_j) \Rightarrow i=j$.
+\end{definition}
+
+\begin{definition}
+  \label{def:tree}
+  The graph $G$ is a \emph{tree} if, for all $x$, $y \in V(G)$,
+  there exists a unique path from $x$ to $y$.
+\end{definition}
+
+\subsection{Connectedness}
+
+We define the notion of connectedness and the connected components of a graph.
+
+\begin{definition}
+  \label{def:preconnected}
+  \uses{def:reachable}
+  \leanok
+  \lean{Graph.Preconnected}
+  A graph is \emph{preconnected} if any pair of vertices is reachable.
+\end{definition}
+
+\begin{definition}
+  \label{def:connected}
+  \uses{def:preconnected}
+  \leanok
+  \lean{Graph.Connected}
+  The graph $G$ is \emph{connected} if it is preconnected and $V(G)$ is not empty.
+\end{definition}
+
+\begin{lemma}
+  \label{lem:connected_iff_exists_forall_reachable}
+  \uses{def:connected}
+  The graph $G$ is connected if and only if there exists $x \in V(G)$ such that,
+  for all $y \in V(G)$, $x$ and $y$ are reachable.
+\end{lemma}
+
+\begin{definition}
+  \label{def:connected_component}
+  \uses{prop:reachable_is_equivalence}
+  A \emph{connected component} of $G$ is an equivalence class of $V(G)$ for
+  the relation reachable.
+\end{definition}
+
+\begin{definition}
+  \label{def:connected_component_Mk}
+  \uses{def:connected_component}
+  For any vertex $x$, we define $\ccm(x)$ to be the unique connected component
+  of $G$ containing $x$.
+\end{definition}
+
+\begin{lemma}
+  \label{lem:cc_eq}
+  \uses{def:connected_component_Mk}
+  Let $x, y \in V(G)$. Then $\ccm(x) = \ccm(y)$ iff $x$ and $y$ are reachable.
+\end{lemma}
+
+\begin{theorem}
+  \label{thm:cc_is_connected}
+  \uses{def:induced_subgraph,def:connected,def:connected_component}
+  Let $C$ be a connected component of $G$. Then the subgraph induced by $C$ is connected.
+\end{theorem}
+
+\begin{definition}
+  \label{def:set_cc}
+  \uses{def:connected_component}
+  We denote as $\cc(G)$ the set of connected components of $G$.
+\end{definition}
+
+\begin{proposition}
+  \label{prop:cc_is_partition}
+  \uses{def:set_cc}
+  $\cc(G)$ is a partition of $V(G)$.
+\end{proposition}
+
+\begin{lemma}
+  \label{lem:bound_cc}
+  \uses{prop:cc_is_partition,def:finite}
+  If $V(G)$ is finite, then $\cc(G)$ is finite and $\#V(G) \leq \# \cc(G)$.
+\end{lemma}
+
+\subsection{Morphisms between graphs}
+
+[Question: the following notion of morphism does not contain morphisms which
+reverse loops. Should they be included?]
+
+Let $G_1$ and $G_2$ be two graphs.
+
+
+\begin{definition}
+  \label{def:function_graphs}
+  A \emph{function} $f : G_1 \rightarrow G_2$ is a pair of functions $f_V : V(G_1) \rightarrow V(G_2)$
+  and $f_E : E(G_1) \rightarrow E(G_2)$.
+  We will denote $f_V(x)=f(x)$ for $x \in V(G_1)$ and $f_E(e)=f(e)$ for $e \in E(G_1)$,
+  i.e. view $f$ as a function from $V(G_1) \cup E(G_1)$ to $V(G_2) \cup E(G_2)$
+  sending vertices on vertices and edges on edges.
+\end{definition}
+
+In the following, the usual operations and definitions on functions are
+with respect to the function $f : V(G_1) \cup E(G_1) \rightarrow V(G_2) \cup E(G_2)$.
+
+\begin{definition}
+  \label{def:graph_morphism}
+  \uses{def:function_graphs}
+  A \emph{morphism} $f : G_1 \rightarrow G_2$ is
+  a function $f : G_1 \rightarrow G_2$ such that for all
+  $x, y \in V(G_1)$, $e \in E(G_1)$,
+  if $e$ links $x$ and $y$ in $G_1$, then $f(e)$ links $f(x)$ and $f(y)$ in $G_2$.
+\end{definition}
+
+\begin{definition}
+  \label{def:graph_isomorphism}
+  \uses{def:graph_morphism}
+  A morphism $f : G_1 \rightarrow G_2$ is an \emph{isomorphism} if
+  there exist a morphism $g : G_2 \rightarrow G_1$ which is the inverse of $f$.
+  In this case we denote $f^{-1}$ this inverse.
+\end{definition}
+
+\begin{definition}
+  \label{def:local_isomorphism}
+  \uses{def:graph_morphism}
+  A morphism $f : G_1 \rightarrow G_2$ is a \emph{local isomorphism}
+  if for all $x \in V(G_1)$, the restriction of $f$ to $\incset(x)$ is
+  a bijection onto $\incset(f(x))$.
+\end{definition}
+
+\begin{definition}
+  \label{def:covering_map}
+  \uses{def:local_isomorphism}
+  A morphism $f : G_1 \rightarrow G_2$ is a \emph{covering map} if it is
+  surjective and a local isomorphism.
+\end{definition}
+
+[todo: dart version]
+
+\begin{definition}
+  \label{def:covering_graph}
+  \uses{def:covering_map}
+  A graph $G_2$ is a \emph{covering graph} of a graph $G_1$ if there exists
+  a covering map $\pi : G_2 \rightarrow G_1$.
+\end{definition}
+
+\subsection{Rooted graphs}
+
+\begin{definition}
+  \label{def:rooted_graph}
+  A \emph{rooted graph} is a graph $G$ with a distinguished vertex $r$, its \emph{root}.
+\end{definition}
+
+\begin{definition}
+  \label{def:rooted_graph_parent}
+  \uses{def:rooted_graph}
+  Let $(G,r)$ be a rooted graph.
+  Let $x \in V(G)$.
+  A vertex $y \in V(G)$ is a \emph{parent} of $x$ if $y$ is adjacent to $x$ and $\dist(r,y) = \dist(r,x)-1$.
+\end{definition}
+
+
+\begin{definition}
+  \label{def:rooted_graph_child}
+  \uses{def:rooted_graph_parent}
+  Let $(G,r)$ be a rooted graph.
+  A \emph{child} of $x \in V(G)$ is an adjacent vertice which is not a parent.
+\end{definition}
+
+\begin{lemma}
+  \label{lem:root_no_parent}
+  \uses{def:rooted_graph_parent}
+  The root of a rooted graph has no parent.
+\end{lemma}
+
+\begin{lemma}
+  \label{lem:exists_parent}
+  \uses{def:rooted_graph_parent}
+  Let $(G,r)$ be a rooted graph. Assume $G$ is connected.
+  Any vertex $x \in V(G)$ distinct from the root admits a parent.
+\end{lemma}
+
+\begin{definition}
+  \label{def:rooted_tree}
+  \uses{def:rooted_graph}
+  A \emph{rooted tree} is a rooted graph $(G,r)$ which is a tree.
+\end{definition}
+
+\begin{proposition}
+  \label{prop:rooted_tree_unique_parent}
+  \uses{lem:exists_parent,def:rooted_tree}
+  Let $(G,r)$ be a rooted tree.
+  Any vertex $x \in V(G)$ distinct from the root admits a unique parent.
+\end{proposition}
+
+
+\subsection{Nonbacktracking walks and reduction}
+
+\begin{definition}
+  \label{def:nonbacktracking}
+  \uses{def:dartwalk}
+  A dartwalk $(d_i)_{1 \leq i \leq m}$ is called \emph{non-backtracking} if
+  for all $1 \leq i < m$, $d_{i+1} \neq \symm (d_{i})$.
+\end{definition}
+
+\begin{definition}
+  \label{def:walk_reduction}
+  \uses{def:dartwalk}
+  Let $w = (d_i)_{1 \leq i \leq m}$ be a dartwalk.
+  We say $w$ \emph{admits a reduction} if there exists $1 \leq j < m$ such that
+  $d_{j+1} = \symm(d_j)$.
+  In this case, we call the dartwalk $w'=(d_i')_{1 \leq i \leq m-2}$ obtained by
+  letting $d_i'=d_i$ for $i<j$ and $d_i'=d_{i+2}$ for $i \geq j$ a \emph{reduction} of $w$.
+\end{definition}
+
+\begin{definition}
+  \label{def:homotopy}
+  \uses{def:dartwalk}
+  Let $x, y \in V(G)$.
+  Two dartwalks $w = (d_i)_{1 \leq i \leq m}$ and $w' = (d_i')_{1 \leq i \leq m'}$ from $x$ to $y$
+  are said to be \emph{homotopic} if
+  there exists a finite sequence $(w_j)_{1 \leq j \leq n}$ such that:
+  \begin{itemize}
+    \item for all $1 \leq j \leq n$, $w_j$ is a
+    dartwalk from $x$ to $y$;
+    \item $w_1=w$ and $w_n=w'$;
+    \item for any $1 \leq j < n$, either $w_j$ is a reduction of $w_{j+1}$ or $w_{j+1}$ is a
+    reduction of $w_j$.
+  \end{itemize}
+\end{definition}
+
+\begin{proposition}
+  \label{prop:homotopy_equivalence}
+  \uses{def:homotopy}
+  The homotopy relation is an equivalence relation.
+\end{proposition}
+
+\begin{theorem}
+  \label{thm:unique_nonbacktracking}
+  \uses{def:nonbacktracking,prop:homotopy_equivalence}
+  Let $x, y \in V(G)$.
+  Any dartwalk from $x$ to $y$ is homotopic to a unique nonbacktracking dartwalk, which we denote by
+  $w_{\mathrm{nb}}$.
+\end{theorem}
+
+\begin{proof}
+  Might be able to use the reduction results from coproduct library.
+\end{proof}
+
+\subsection{Universal cover}
+
+Let $(G,r)$ be a rooted graph. We assume in this section that $G$ is connected.
+
+\begin{definition}
+  \label{def:universal_cover}
+  \uses{def:graph_of_dart,def:concatenation,thm:unique_nonbacktracking}
+  We define the \emph{universal cover} $\hat{G}$ of $(G,r)$, which is a rooted graph,
+  by letting:
+  \begin{itemize}
+    \item $V(\hat G)$ be the set of non-backtracking dartwalks on $G$
+    starting at $r$;
+    \item the dartset $D(\hat{G})$ is defined as the set of pairs $(w,d)$ where
+    $w$ is a non-backtracking dartwalk ($w \in V(\hat{G})$) and $d \in D(G)$
+    is a dart on $G$ starting at the endpoint of $w$;
+    \item for $(w,d) \in D(\hat{G})$, $\spt_{\hat{G}}(w,d) = w$,
+    $\ept_{\hat{G}}(d) = (w \cdot d)_{\mathrm{nb}}$ and $\symm_{\hat{G}}(w,d) =
+     ((w \cdot d)_{\mathrm{nb}},\symm_G(d))$;
+    \item the root $\hat{r}$ is the empty walk from $r$ to $r$.
+  \end{itemize}
+\end{definition}
+
+\begin{theorem}
+  \label{thm:univ_cover_is_tree}
+  \uses{def:universal_cover,def:tree}
+  The universal cover $(\hat{G}, \hat{r})$ of $(G,r)$ is a rooted tree.
+\end{theorem}
+
+\begin{theorem}
+  \label{thm:univ_cover_cover}
+  \uses{def:universal_cover,def:covering_map}
+  The projection map $\pi : \hat{G} \rightarrow G$ which is defined by $\pi(w)=\ept(w)$
+  for $w \in V(\hat G)$ and $\pi(w,d)=d$ for $(w,d) \in D(\hat G)$ is a covering map.
+\end{theorem}
+
+\subsection{Metric}
+
+\begin{definition}
+  \label{def:edistance}
+  \uses{def:length}
+  \leanok
+  \lean{Graph.edist}
+  Let $x, y \in V(G)$. The \emph{extended distance} $\edist(x,y)$
+  between $x$ and $y$
+  is the length of the shortest dartwalk from $x$ to $y$ (with value in
+  $\N \cup \{\infty\}$).
+\end{definition}
+
+\begin{definition}
+  \label{def:distance}
+  \uses{def:edistance}
+  The \emph{distance} between $x$ and $y$
+  is $\dist(x,y) = \edist(x,y).\mathrm{toNat}$.
+\end{definition}
+
+\begin{lemma}
+  \label{lem:distance_ne_zero}
+  \uses{def:distance}
+  Let $x, y \in V(G)$. $\dist(x,y) \neq 0$ iff $x \neq y$ and there exists
+  a dartwalk from $x$ to $y$.
+\end{lemma}
+
+\begin{lemma}
+  \label{lem:distance_take}
+  \uses{def:distance}
+  Let $x, y \in V(G)$, we assume $\dist(x,y) \neq 0$. Then there exists a dartwalk
+  of length $\dist(x,y)$ from $x$ to $y$.
+\end{lemma}
+
+\begin{definition}
+  \label{def:ball}
+  \uses{def:edistance}
+  Let $x \in V(G)$ and $r \in \N$.
+  We define the \emph{ball $B_r(x)$
+  of radius $r$ centered at $x$} as the set of vertices
+  $y \in V(G)$ such that $\edist(x,y)\leq r$.
+\end{definition}
+
+\begin{proposition}
+  \label{prop:growth_ball}
+  \uses{def:ball}
+  Assume $G$ is locally bounded and let $D = \sup_{x \in V(G)} \deg (x)$.
+  Then, for any $x \in V(G)$, any $r \in \N$,
+  $\# B_r(x) \leq D^r$.
+\end{proposition}
+
+\begin{proof}
+  todo
+\end{proof}
+
+\subsection{Diameter}
+
+\begin{definition}
+  \label{def:ediameter}
+  \uses{def:edistance}
+  The \emph{extended diameter} of a graph $G$ is
+  $\ediam(G) := \sup_{x,y \in V(G)} \edist(x,y)$.
+\end{definition}
+
+
+\begin{definition}
+  \label{def:diameter}
+  \uses{def:ediameter}
+  The \emph{diameter} of $G$ is $\diam(G) = \ediam(G).\mathrm{toNat}$.
+\end{definition}
+
+\begin{lemma}
+  \label{lem:connected_iff_diam_ne_zero}
+  \uses{def:connected,def:diameter,def:finite}
+  Assume $V(G)$ is finite and non-empty. Then $\diam(G) \neq 0$ if and only if
+  $G$ is connected.
+\end{lemma}
+\begin{proof}
+  To be adapted from SimpleGraph.
+\end{proof}
+
+\begin{lemma}
+  \label{lem:vertexset_incl_ball_diam}
+  \uses{def:diameter,def:ball}
+  Assume $G$ is a graph of finite diameter.
+  For any $x \in V(G)$, $V(G)$ is included in the ball of radius $\diam(G)$
+  centered at $x$.
+\end{lemma}
+
+\begin{proof}
+  Let $x, y \in V(G)$. By definition of the diameter, $\dist(x,y) \leq \diam(G)$
+  and hence $y$ lies in the ball of radius $\diam(G)$ centered at $x$.
+\end{proof}
+
+\begin{proposition}
+  \label{prop:bound_diameter_regular}
+  \uses{lem:vertexset_incl_ball_diam,prop:growth_ball}
+  Let $G$ be a regular graph of degree $\de$. Assume $V(G)$ is finite and not empty.
+  Then
+  \begin{equation}
+    \diam(G) \geq \log_{\de} \# V(G).
+  \end{equation}
+\end{proposition}
+
+\begin{proof}
+  Let $x \in V(G)$.
+  By Lemma \ref{lem:vertexset_incl_ball_diam}, if $r := \diam(G)$,
+  then $V(G) \subseteq B_r(x)$. In particular $\# V(G) \leq \# B_r(X) \leq \de^r$
+  by Proposition \ref{prop:growth_ball}.
+\end{proof}
+
+\section{Space of functions on a graph}
+
+Let $G$ be a graph.
+
+Throughout this blueprint, we will be interested in the space $\C^{V(G)}$
+of functions $V(G) \rightarrow \C$. This space is a $\C$ vectorial space. Note that, in this
+context, $0$ is the constant function equal to~$0$.
+
+For the purpose of analysis, we will be interested in the Hilbert space $\ell^2(G) := \ell^2(V(G))$,
+which is defined as the set of functions $f : V(G) \rightarrow \C$ which are square-summable,
+equipped with the inner product
+$$\langle f, g \rangle = \sum_{x \in V(G)} f(x) \overline{g(x)}.$$
+Note that, whenever $V(G)$ is finite, $\ell^2(G) = \C^{V(G)}$ as any finite sequence is
+square-summable.
+The space $\B(\ell^2(G))$ of bounded linear operators on $\ell^2(G)$ is a unital $\C^*$-algebra.
+
+Let us introduce several useful families of functions.
+
+\subsection{Constant fonctions}
+
+\begin{definition}
+  \label{def:constant_function}
+  A function $V(G) \rightarrow \C$ is \emph{constant} if, for all $x, y \in V(G)$,
+  $f(x)=f(y)$.
+\end{definition}
+
+\begin{definition}
+  \label{def:constant_one}
+  The constant function equal to $1$ is defined by
+  \begin{equation}
+    \const :
+    \begin{cases}
+      V(G) & \rightarrow \C \\
+      x & \mapsto 1.
+    \end{cases}
+  \end{equation}
+\end{definition}
+
+\begin{lemma}
+  \label{lem:one_neq_zero}
+  \uses{def:constant_one}
+  Assume $V(G)$ is not empty. Then $\const \neq 0$.
+\end{lemma}
+
+\begin{proof}
+  If $V(G)$ is not empty, then there exists $x \in V(G)$.
+  Then $\const (x) = 1 \neq 0$, and hence $\const \neq 0$.
+\end{proof}
+
+\begin{theorem}
+  \label{thm:space_constant}
+  \uses{def:constant_function,def:constant_one}
+  Assume $V(G)$ is not empty. Then the space of constant functions is
+  a vectorial subspace of $\C^{V(G)}$, of dimension $1$, generated by $\const$.
+\end{theorem}
+
+\begin{proof}
+  We directly check that:
+  \begin{itemize}
+    \item the constant function equal to $0$ is constant;
+    \item for any constant functions $f_1$, $f_2$ and any $c \in \C$,
+    the function $f_1+cf_2$ is also constant;
+  \end{itemize}
+  both by direct application of the definition.
+  We also check that the function $\const$ is constant.
+
+  Let $f : V(G) \rightarrow \C$ be a constant function. Since $V(G)$ is not
+  empty there exists $x \in V(G)$. Then for all $y \in V(G), f(y) = f(x) \const(y)$,
+  so $f = f(x) \const$, which allows to conclude.
+\end{proof}
+
+\begin{lemma}
+  \label{lem:constant_is_l2}
+  \uses{def:constant_function}
+  The space of constant functions is included in $\ell^2(G)$
+  if and only if $V(G)$ is finite.
+\end{lemma}
+
+\begin{lemma}
+  \label{lem:orth_constant}
+  \uses{thm:space_constant}
+  Assume $V(G)$ is non-empty and finite.
+  Then, the orthogonal of the space of constant functions is
+  \begin{equation*}
+    \const^\perp = \Big\{ f : V(G) \rightarrow \C :
+    \sum_{x \in V(G)}f(x)=0 \Big\}.
+  \end{equation*}
+\end{lemma}
+
+\begin{proof}
+  By definition of the orthogonal, $\const^\perp$ is the space of functions $f \in \ell^2(G)$
+  such that $\langle f, \const \rangle = 0$.
+  Since $V(G)$ is finite all functions $V(G) \rightarrow \C$ are in $\ell^2(G)$.
+  By definition of the scalar product and the constant function,
+  $\langle f, \const \rangle = \sum_{x \in V(G)}f(x)$.
+\end{proof}
+
+\subsection{Indicator functions}
+
+\begin{definition}
+  \label{def:indicator_function}
+  Let $U$ be a subset of $V(G)$. We define the \emph{indicator function}
+  $\const_U : V(G) \rightarrow \C$ by
+  \begin{equation}
+    \const_U (x) =
+    \begin{cases}
+      1 & \text{if } x \in U \\
+      0 & \text{otherwise}.
+    \end{cases}
+  \end{equation}
+\end{definition}
+
+\begin{lemma}
+  \label{lem:indicator_ell2}
+  \uses{def:indicator_function}
+  The indicator function of a set $U$ is in $\ell^2(G)$ iff $U$ is finite.
+\end{lemma}
+
+\begin{lemma}
+  \label{lem:partition_unity}
+  \uses{def:indicator_function}
+  Let $(\pi_U)_{U \in I}$ be a partition of $V(G)$. Then $\const = \sum_{U \in I} \const_U$.
+\end{lemma}
+
+\subsection{Locally constant functions}
+
+\begin{definition}
+  \label{def:locally_constant}
+  A function $f : V(G) \rightarrow \C$ is said to be \emph{locally constant}
+  if, for all $x,y \in V(G)$, if $x$ is adjacent to $y$, then $f(x)=f(y)$.
+\end{definition}
+
+We have the following dart versions of the definition.
+
+\begin{lemma}
+  \label{lem:dart_locally_constant}
+  \uses{def:locally_constant,lem:adjacent_vs_dart}
+  Let $f : V(G) \rightarrow \C$. The following are equivalent:
+  \begin{enumerate}
+    \item  $f$ is locally constant;
+    \item for every $x \in V(G)$, for every $d \in \dartset(x)$,
+    $f(x)=f(\ept(d))$.
+    \item for every $d \in D(G)$, $f(\spt(d))=f(\ept(d))$.
+  \end{enumerate}
+\end{lemma}
+
+\begin{lemma}
+  \label{lem:locally_constant_walk}
+  \uses{def:reachable,def:locally_constant}
+  Let $f : V(G) \rightarrow \C$ be a locally constant function.
+  For any $x, y \in V(G)$, if $x$ and $y$ are reachable, then $f(x)=f(y)$.
+\end{lemma}
+
+\begin{proof}
+  By induction.
+\end{proof}
+
+\begin{lemma}
+  \label{lem:locally_constant_preconnected}
+  \uses{lem:locally_constant_walk,def:preconnected,def:constant_function}
+  A locally constant function on a preconnected graph is constant.
+\end{lemma}
+
+\begin{proof}
+  Let $G$ be a preconnected graph and $f : V(G) \rightarrow \C$ be a locally
+  constant function.
+  For any $x$, $y$ in $V(G)$, by Definition \ref{def:preconnected}, there
+  exists a walk from $x$ to $y$. Lemma \ref{lem:locally_constant_walk}
+  this implies $f(x)=f(y)$. Hence by Definition \ref{def:constant_function},
+  $f$ is constant.
+\end{proof}
+
+\begin{lemma}
+  \label{lem:locally_constant_subgraph}
+  \uses{lem:subgraph_adj_graph,def:locally_constant}
+  The restriction of a locally constant function
+  to a subgraph is locally constant on that subgraph.
+\end{lemma}
+
+\begin{proof}
+  Let $f$ be a locally constant function on $G$, and $H$ be a subgraph of $G$.
+  Let $x, y$ be adjacent vertices in $H$. By Lemma \ref{lem:subgraph_adj_graph},
+  $x$ and $y$ are also adjacent in $G$. Then $f(x)=f(y)$.
+\end{proof}
+
+\begin{theorem}
+  \label{thm:locally_constant_cc}
+  \uses{lem:locally_constant_subgraph,thm:cc_is_connected,
+  lem:locally_constant_preconnected,lem:cc_eq}
+  A function $f$ is locally constant if and only if its restriction to each
+  connected component is a constant function.
+\end{theorem}
+
+\begin{proof}
+  Assume $f$ is locally constant. Let $C$ be a connected component of $G$.
+  By Lemma \ref{lem:locally_constant_subgraph}, the restriction of $f$ to $C$
+  is locally constant.
+  By Theorem \ref{thm:cc_is_connected}, $C$ is preconnected.
+  So by Lemma \ref{lem:locally_constant_preconnected}, the restriction of $f$ to $C$
+  is constant.
+
+  Assume the restriction of $f$ to each connected component is constant.
+  Let $x$, $y$ be adjacent vertices. Then by Lemma \ref{lem:cc_eq},
+  $\ccm(x) = \ccm(y)$ which implies that $y \in \ccm(x)$. This allows to conclude
+  since $f$ is constant on $\ccm(x)$
+  by hypothesis and Theorem \ref{thm:cc_is_connected}.
+\end{proof}
+
+\begin{lemma}
+  \label{lem:indicator_cc_loc_const}
+  \uses{thm:locally_constant_cc,def:indicator_function}
+  The indicator function of a connected component is locally constant.
+\end{lemma}
+
+\begin{lemma}
+  \label{thm:locally_constant_basis}
+  \uses{lem:indicator_cc_loc_const}
+  The space of locally constant functions is a vectorial subspace of
+  the space of functions $V(G) \rightarrow \C$, and the $\{\const_C, C \in \cc(G)\}$
+  are a basis of this space.
+\end{lemma}
+
+\begin{proof}
+  We directly check that:
+  \begin{itemize}
+    \item the constant function equal to $0$ is locally constant;
+    \item for any locally constant functions $f_1$, $f_2$ and any $c \in \C$,
+    the function $f_1+cf_2$ is also locally constant;
+  \end{itemize}
+  both by direct application of the definition.
+
+  Now, for any connected component $C$, $\const_C$ is locally
+  constant by Lemma \ref{lem:indicator_cc_loc_const}.
+
+  We prove these functions form a basis using the fact that, by
+  Proposition \ref{prop:cc_is_partition} and Lemma \ref{lem:partition_unity},
+  \begin{equation*}
+    \const = \sum_{C \in \cc(G)} \const_C
+  \end{equation*}
+  and hence if $f$ is locally constant,
+    \begin{equation*}
+      \forall x \in V(G),
+    f(x) = \sum_{C \in \cc(G)} f(x) \const_C(x).
+  \end{equation*}
+  The function $f$ is constant on each connected component so this is a decomposition
+  in the desired basis. The decomposition is unique as for all $x \in V(G)$, the coefficient
+  associated to $\ccm(x)$ must be $f(x)$ since $\const_C(x)=0$ for all other connected component.
+\end{proof}
+
+\begin{corollary}
+  \label{cor:dimension_locally_constant}
+  \uses{thm:locally_constant_basis}
+  The dimension of the space of locally constant functions is the number of
+  connected components of $G$.
+\end{corollary}
+
+\section{Adjacency operator}
+
+Let $G$ be a graph.
+
+\subsection{Definition of the adjacency operator and action on constants}
+
+Assume $G$ is locally finite.
+
+\begin{definition}
+  \label{def:adjacency_operator}
+  \uses{def:locally_finite,def:dartset}
+  We define the adjacency operator $a$ as the linear operator acting on the space of
+  functions $f : V(G) \rightarrow \C$ by
+  $$ a f (x) :=
+  \sum_{d \in \dartset(d)}
+  f(\ept(x)).$$
+\end{definition}
+
+\begin{lemma}
+  \label{lem:adjacency_locally_constant}
+  \uses{def:locally_constant,def:adjacency_operator,lem:adjacent_vs_dart,def:degree}
+  Let $f$ be a locally constant function. Then, for all $x \in V(G)$,
+  $af(x) = \deg(x) f(x)$.
+\end{lemma}
+
+\begin{proof}
+  Let $x \in V(G)$.
+  By definition,
+  \begin{equation*}
+    af(x) = \sum_{d \in \dartset(x)} f(\ept(d)).
+  \end{equation*}
+  By Lemma \ref{lem:adjacent_vs_dart},
+  for all $d \in \dartset(x)$, $\ept(d)$ is adjacent to $x$
+  and in particular $f(\ept(d))=f(x)$. This leads to the conclusion by
+  Definition \ref{def:degree}.
+\end{proof}
+
+\begin{lemma}
+  \label{lem:adjacency_of_constant}
+  \uses{def:constant_one,def:adjacency_operator}
+  For any $x \in V(G)$, $a \const(x) = \deg(x)$.
+\end{lemma}
+
+\subsection{Norm of the adjacency operator}
+
+Let $G$ be a locally finite graph.
+The aim of this subsection is to prove the following.
+
+\begin{theorem}
+  \label{thm:norm_adjacency_leq_sup_degree}
+  \uses{lem:bound_a_sup_degree}
+  Assume $G$ is locally bounded.
+  Then the adjacency operator is a bounded operator on $\ell^2(G)$ and
+  its norm satisfies $\|a\| \leq \sup_{x \in V(G)} \deg(x)$.
+\end{theorem}
+
+Here is a key lemma.
+
+\begin{lemma}
+  \label{lem:bound_a_degree_x}
+  \uses{def:adjacency_operator,def:degree}
+  For any function $f : V(G) \rightarrow \C$, any vertex $x \in V(G)$,
+  \begin{equation}
+    |af(x)|^2
+    \leq \deg(x)
+    \sum_{d \in \dartset(x)} |f(\ept(d))|^2.
+  \end{equation}
+  Furthermore, this is an equality if and only if
+  for any $y, z$ adjacent to $x$, $f(y) = f(z)$.
+\end{lemma}
+
+\begin{proof}
+  Let $f : V(G) \rightarrow \C$ and $x \in V(G)$.
+  By Definition \ref{def:adjacency_operator},
+  \begin{equation}
+    |af(x)|^2
+    = \Big| \sum_{d \in \dartset(x)} f(\ept(d))\Big|^2.
+  \end{equation}
+  By the Cauchy-Schwarz inequality applied to the complex vectors
+  $v_1 := (1)_{d \in \dartset(x)}$ and $v_2 := (f(\ept(d)))_{d \in \dartset(x)}$
+  we have
+  \begin{align*}
+    |af(x)|^2
+    & = \left| v_1 \cdot v_2 \right|^2
+    \leq \|v_1\|_2^2 \|v_2\|_2^2 \\
+    &\leq
+    \left( \sum_{d \in \dartset(x)} 1
+    \right)
+    \left( \sum_{d \in \dartset(x)} |f(\ept(d))|^2
+    \right).
+  \end{align*}
+  This leads to the inequality by Definition \ref{def:degree}.
+  The equality case comes from the equality case in Cauchy-Schwarz, which occurs if
+  and only if the vectors $v_1$ and $v_2$
+  are colinear, which
+  is equivalent to the announced condition as $v_1$ is a non-zero constant vector,
+  using Lemma \ref{lem:adjacent_vs_dart}.
+\end{proof}
+
+Then Proposition \ref{thm:norm_adjacency_leq_sup_degree} is a trivial consequence of the
+following lemma, together with the definition of bounded operator and operator norm.
+
+\begin{lemma}
+  \label{lem:bound_a_sup_degree}
+  \uses{lem:bound_a_degree_x,def:locally_bounded}
+  Assume $G$ is locally bounded. Then, for any $f \in \ell^2(G)$,
+  $a f \in \ell^2(G)$ and
+  \begin{equation}
+    \|a f\| \leq \sup_{x \in V(G)} \deg(x) \times \|f\|.
+  \end{equation}
+  Furthermore, the equality occurs if and only if $G$ is regular of degree $\delta$ for some
+  non-negative integer $\delta$
+  and, for any $x \in V(G)$, for any $y$ and $z$ adjacent to $x$, $f(y)=f(z)$.
+\end{lemma}
+
+\begin{proof}
+Let us write $D := \sup_{x \in V(G)} \deg(x)$.
+By definition,
+\begin{equation*}
+  \|af\|^2
+  = \sum_{x \in V(G)} |af(x)|^2
+\end{equation*}
+and $af \in \ell^2(G)$ iff this sum is finite.
+We sum Lemma \ref{lem:bound_a_degree_x} for all vertices of $G$ and obtain that
+\begin{equation*}
+  \_
+  \leq  \sum_{x \in V(G)} \deg(x) \sum_{d \in \dartset(x)} |f(\ept(d))|^2
+  \leq D \sum_{d \in D(G)} |f(\ept(d))|^2.
+\end{equation*}
+We apply the involution $\symm$ to the sum, changing indices, to obtain
+\begin{equation*}
+  \_
+  = D \sum_{d \in D(G)} |f(\ept(\symm(d)))|^2
+  = D \sum_{d \in D(G)} |f(\spt(d))|^2.
+\end{equation*}
+Now by Definitions \ref{def:dartset} and \ref{def:degree}
+\begin{equation*}
+  \_ = D \sum_{x \in V(G)} \sum_{x \in \dartset(x)} |f(\spt(d))|^2
+  = D \sum_{x \in V(G)} \deg(x) |f(x)|^2
+\leq D^2 \sum_{x \in V(G)} |f(x)|^2
+  = D^2 \|f\|^2.
+\end{equation*}
+This means that $af \in \ell^2(G)$ and $\|af\| \leq D \|f\|$, which was our claim.
+  If the equality occurs, since all terms are non-negative, it means that
+  $\deg (x)$ is constant (i.e. the graph is regular), and that there is equality in
+  each term of  Lemma \ref{lem:bound_a_degree_x}, which is the conclusion.
+\end{proof}
+
+\subsection{Adjacency operator is self-adjoint}
+
+Let $G$ be a locally bounded graph.
+
+\begin{proposition}
+  \label{prop:adjacency_is_selfadjoint}
+  \uses{lem:scalar_of_adjacency}
+  The adjacency operator is selfadjoint.
+\end{proposition}
+
+Here is the key lemma.
+
+\begin{lemma}
+  \label{lem:scalar_of_adjacency}
+  \uses{lem:bound_a_sup_degree}
+  For any $f$, $g$ in $\ell^2(G)$,
+  \begin{equation}
+    \langle af, g \rangle
+    = \sum_{d \in D(G)}
+    f(\ept(d)) \overline{g(\spt(d))}.
+  \end{equation}
+\end{lemma}
+
+\begin{proof}
+  Let $f$, $g$ be elements of $\ell^2(G)$.
+  By Proposition \ref{lem:bound_a_sup_degree}, $a f \in \ell^2(G)$.
+  By definition of the scalar product,
+  \begin{equation}
+    \langle af, g \rangle
+    = \sum_{x \in V(G)} af(x) \overline{g(x)}.
+  \end{equation}
+  By Definition \ref{def:adjacency_operator},
+  \begin{equation}
+    \langle af, g \rangle
+    = \sum_{x \in V(G)}
+    \sum_{d \in \dartset(x)}
+    f(\ept(d)) \overline{g(x)}
+  \end{equation}
+  which we can rewrite as the claim.
+\end{proof}
+
+We are now ready to prove Proposition \ref{prop:adjacency_is_selfadjoint}.
+
+\begin{proof}
+  Let $f$, $g$ be elements of $\ell^2(G)$.
+  We have by Lemma \ref{lem:scalar_of_adjacency}
+  \begin{equation*}
+    \langle af, g \rangle
+    = \sum_{d \in D(G)}
+    f(\ept(d)) \overline{g(\spt(d))}
+    = \overline{\sum_{d \in D(G)}
+    g(\ept(d)) \overline{f(\spt(d))}}
+  \end{equation*}
+  by complex conjugation and applying the involution $\symm$ to exchange the
+  start and end of each dart.
+  Hence by Lemma \ref{lem:scalar_of_adjacency}
+  \begin{equation*}
+    \langle af, g \rangle
+    = \overline{\langle ag, f \rangle} = \langle f, ag \rangle.
+  \end{equation*}
+  This means that $a^*=a$ by definition of
+  the adjoint, which means $a$ is self-adjoint by definition.
+\end{proof}
+
+\begin{corollary}
+  \label{cor:spectrum_is_real}
+  \uses{prop:adjacency_is_selfadjoint}
+  The spectrum of the adjacency operator is real.
+\end{corollary}
+
+\begin{proof}
+  This follows from Proposition \ref{prop:adjacency_is_selfadjoint} with
+  selfAdjoint.mem\_spectrum\_eq\_re.
+\end{proof}
+
+\begin{lemma}
+  \label{lem:spectrum_in_segment}
+  \uses{cor:spectrum_is_real,thm:norm_adjacency_leq_sup_degree}
+  The spectrum of $a$ is included in the
+  segment $[-D,D]$ where $D = \sup_{x \in V(G)} \deg(x)$.
+\end{lemma}
+
+\begin{proof}
+  By Corollary \ref{cor:spectrum_is_real}, the spectrum of $a$ is real.
+  By spectrum.subset\_closedBall\_norm,
+  it is included in the closed ball of center $0$ and
+  radius $\|a\|$.
+  We have $\|a\| \leq D$ by Theorem \ref{thm:norm_adjacency_leq_sup_degree}.
+\end{proof}
+
+\begin{lemma}
+  \label{lem:spectrum_finite}
+  \uses{prop:adjacency_is_selfadjoint,thm:norm_adjacency_leq_sup_degree}
+  If $V(G)$ is finite, then the spectrum of the adjacency operator
+  is a family of $\# V(G)$ eigenvalues.
+\end{lemma}
+
+\begin{proof}
+  If $V(G)$ is finite, then $\ell^2(G)$ has finite dimension.
+  So this is just the spectral theorem for self-adjoint operators in finite
+  dimension.
+\end{proof}
+
+\subsection{From adjacency operator to graph}
+
+We now introduce a construction allowing to go from adjacency operator to graph,
+which will be useful to define random graphs.
+
+We first make a few observations as to the properties of adjacency operators on locally
+finite graphs.
+
+\begin{lemma}
+  \label{lem:coefficients_adjacency_expression}
+  \uses{def:dartset_pair,lem:scalar_of_adjacency,def:indicator_function}
+  Let $x, y \in V(G)$. Then
+  \begin{equation*}
+    \langle a \const_{\{x\}}, \const_{\{y\}} \rangle
+    = \# \dartset(x,y).
+  \end{equation*}
+\end{lemma}
+
+\begin{proof}
+  The functions $\const_{\{x\}}$ and $\const_{\{y\}}$ are trivially in $\ell^2(G)$.
+  By Lemma \ref{lem:scalar_of_adjacency},
+  \begin{equation*}
+    \langle a \const_{\{x\}}, \const_{\{y\}} \rangle
+    = \sum_{d \in D(G)} \const_{\{x\}}(\spt(d)) \overline{\const_{\{y\}}(\ept(d))}
+  \end{equation*}
+  which is exactly the claim by Definition \ref{def:dartset_pair} and Definition
+  \ref{def:indicator_function}.
+\end{proof}
+
+\begin{lemma}
+  \label{lem:coefficients_adjacency_properties}
+  \uses{lem:coefficients_adjacency_expression,lem:darset_loop_even}
+  For any $x, y \in V(G)$,
+  $\langle a \const_{\{x\}}, \const_{\{y\}} \rangle$ is a non-negative integer,
+  which is even as soon as $x=y$.
+\end{lemma}
+
+\begin{proof}
+  By Lemma \ref{lem:coefficients_adjacency_expression}, this quantity is a cardinal
+  of a set, and hence a non-negative integer. The parity when $x=y$ comes from Lemma
+  \ref{lem:darset_loop_even}.
+\end{proof}
+
+\begin{definition}
+  \label{def:adjacency_like}
+  Let $V$ be a set.
+  An operator $a : V^{\C} \rightarrow V^{\C}$ is \emph{adjacency-like}
+  if it satisfies the following properties:
+  \begin{itemize}
+    \item for all $x \in V$, $a \const_{\{x\}} \in \ell^2(G)$;
+    \item for all $x, y \in V$,
+    $a_{x,y} := \langle a \const_{\{x\}}, \const_{\{y\}} \rangle$ is a non-negative
+    integer;
+    \item for all $x, y \in V$, $a_{x,y}=a_{y,x}$;
+    \item for all $x \in V$, $a_{x,x}$ is even.
+  \end{itemize}
+\end{definition}
+
+We then associate to any adjacent-like operator a dart-like structure.
+
+\begin{definition}
+  \label{def:dartlike_of_adjlike}
+  \uses{def:adjacency_like,def:dartlike}
+  Let $V$ be a set and $a$ be an adjacency-like operator on $V$.
+  We define a dart-like structure on $V$ by taking:
+  \begin{itemize}
+    \item $D$ is the set of $(x,y,i)$ where $x \in V$, $y \in V$, and $i$ is an integer such that
+    \begin{itemize}
+      \item if $x \neq y$ then $1 \leq i \leq a_{x,y}$;
+      \item if $x=y$ then $1 \leq |i| \leq a_{x,x}$.
+    \end{itemize}
+    \item for any $(x,y,i) \in D$, we let $\spt(x,y,i)=x$, $\ept(x,y,i)=y$ and
+    \begin{equation*}
+      \symm(x,y,i) := \begin{cases}
+        \symm(y,x,i) & \text{if } x \neq y \\
+        \symm(x,y,-i) & \text{if } x = y.
+      \end{cases}
+    \end{equation*}
+  \end{itemize}
+\end{definition}
+
+\begin{definition}
+  \label{def:graph_of_adjlike}
+  \uses{def:graph_of_dart,def:dartlike_of_adjlike}
+  Let $a$ be a adjacency-like operator on $V$.
+  We define the graph associated to $a$ by taking the graph associated to the dartlike structure
+  associated to $a$.
+\end{definition}
+
+\begin{lemma}
+  \label{lem:adjacency_of_graph_of_adjacency}
+  \uses{def:graph_of_adjlike}
+  Let $a$ be a adjacency-like operator on $V$.
+  Then the graph $G$ associated to $a$ is a graph, of vertex set $V$, and adjacency operator $a$.
+\end{lemma}
+
+\begin{lemma}
+  \label{lem:adjlike_addition}
+  \uses{def:adjacency_like}
+  Let $V$ be a set. The space of adjacency-like operators on $V$ is stable by addition, i.e.
+  if $a$, $a'$ are adjacency-like, so is $a+a'$.
+\end{lemma}
+
+
+%%FILE blueprint/src/2_regular.tex
+\chapter{Spectral theory of regular graphs}
+
+We shall here present the basic results in the spectral theory of regular graphs, and
+state the main results this project aims to formalise.
+
+\section{Trivial eigenvalues}
+\label{sec:trivial_eigenvalues}
+
+Let $\de$ be a non-negative integer.
+We know the spectrum of any regular graph is included in $[-\de,\de]$ by
+Lemma \ref{lem:spectrum_in_segment}.
+Let us first talk about the edges of this interval, $\pm \de$.
+
+\begin{lemma}
+  \label{lem:adjacency_of_constant_regular}
+  \uses{lem:adjacency_of_constant,def:regular}
+  Assume $G$ is not empty and locally finite. Then
+  $G$ is regular of degree $\de$ iff $a \const = \de \const$.
+\end{lemma}
+
+\begin{proof}
+  By Definition \ref{def:regular},
+  $G$ is regular of degree $\de$ if and only if for all $x \in V(G)$,
+  $\deg(x)=\de$.
+  By Lemma \ref{lem:adjacency_of_constant}, this is equivalent to
+  having, for all $x \in V(G)$, $a \const (x) = \de$, which is equivalent to
+  $a \const = \de \const$ by Definition \ref{def:constant_one}.
+\end{proof}
+
+\begin{lemma}
+  \label{lem:constant_eigenfunction_regular}
+  \uses{lem:constant_is_l2,lem:adjacency_of_constant_regular,lem:one_neq_zero}
+  Assume $G$ is regular of degree $\de$ and $V(G)$ is finite. Then
+  $\de$ is an eigenvalue of the adjacency
+  operator with associated eigenfunction the constant function $\const$.
+\end{lemma}
+
+\begin{proof}
+  Since $G$ is finite, $\const \in \ell^2(G)$ by Lemma \ref{lem:constant_is_l2}.
+  Furthermore, $\const \neq 0$ by Lemma \ref{lem:one_neq_zero}.
+  By Lemma \ref{lem:adjacency_of_constant_regular}, if $G$ is regular of degree $\de$,
+  then $a \const = \de \const$.  We conclude by the definition of eigenvalue and eigenvector.
+\end{proof}
+
+\begin{proposition}
+  \label{prop:norm_adjacency_regular}
+  \uses{thm:norm_adjacency_leq_sup_degree,lem:constant_eigenfunction_regular}
+  If $G$ is regular of degree $\de$ and $V(G)$ is finite, then $\|a\|=\de$.
+\end{proposition}
+
+\begin{proof}
+  Since $G$ is regular of degree $\de$, by
+  Theorem \ref{thm:norm_adjacency_leq_sup_degree}, $\|a \| \leq \de$.
+  By Lemma \ref{lem:constant_eigenfunction_regular}, $\de$ is an eigenvalue of $a$
+  and hence $\|a\| \geq \de$,
+  which is enough to conclude.
+\end{proof}
+
+\begin{proposition}
+  \label{prop:regular_multiplicity_trivial_eigenvalue}
+  \uses{thm:locally_constant_basis,lem:adjacency_locally_constant,lem:bound_a_sup_degree}
+  Assume $G$ is regular of degree $\de$ and $V(G)$ is finite.
+  Then the multiplicity of the
+  eigenvalue $\de$ is exactly the number of connected components of $G$.
+\end{proposition}
+
+\begin{proof}
+  We treat differently the case $\de=0$, where $a$ is identically equal to $0$
+  and every function $V(G) \rightarrow \C$ is in the kernel of $a$, and
+  hence the result holds since the connected components of $G$ are all the
+  $\{x\}$ for $x \in V(G)$. Now assume $\de \neq 0$.
+
+  Lemma \ref{lem:adjacency_locally_constant} implies that all locally constant
+  functions are included in the eigenspace associated to the eigenvalue $\de$.
+  Let us show the other inclusion.
+  Assume $f$ is such that $af=\de f$. In particular, $\|af\|=\de\|f\|$ and hence
+  by the equality case in Lemma \ref{lem:bound_a_sup_degree},
+  \begin{equation*}
+    \forall x \in V(G), \forall y, z \text{ adjacent to } x,
+    f(y)=f(z).
+  \end{equation*}
+  In particular
+  \begin{equation*}
+    \de f(x) = af(x) = \sum_{d \in \dartset(x)} f(\ept(d)).
+  \end{equation*}
+  Note that this sum contains $\de$ terms and,
+   for all $d,d' \in \dartset(x)$, $f(\ept(d))=f(\ept(d'))$
+  so all of its terms are equal.
+  Since $\de \neq 0$, we obtain
+  that, for all $d, d' \in \dartset(G)$, $f(\ept(d))=f(\ept(d'))$,
+  i.e. $f$ is locally constant.
+
+  By Theorem \ref{thm:locally_constant_basis},
+  the dimension of the space of locally constant functions
+   is exactly the number of connected components of $G$,
+  which allows to conclude.
+\end{proof}
+
+\begin{proposition}
+  \label{prop:eigenvalue_regular_bipartite}
+  \uses{lem:bipartite_odd_function,lem:bound_a_sup_degree}
+  Assume $G$ regular of degree $\de \geq 1$ and $V(G)$ is finite. Then
+  $-\de$ is an eigenvalue of $a$ if and only if $G$ has a bipartite connected
+  component.
+\end{proposition}
+
+The following lemma will be useful.
+
+\begin{lemma}
+  \label{lem:bipartite_odd_function}
+  \uses{def:bipartite,def:preconnected}
+  Assume $G$ is preconnected and $E(G)$ is non-empty. Then
+  $G$ is bipartite iff there exists a non-zero function
+  $f : V(G) \rightarrow \C$
+  such that, for all $x, y \in V(G)$,
+  if $x$ and $y$ are adjacent, then $f(x)=-f(y)$.
+\end{lemma}
+
+We first prove Lemma \ref{lem:bipartite_odd_function}.
+
+\begin{proof}
+  Assume $G$ is bipartite. Then there exists a partition $U_1, U_2$ of $V(G)$
+  such that any edge of $G$ has one end in $U_1$ and the other in $U_2$.
+  Take $f = \const_{U_1}-\const_{U_2}$.
+  The function $f$ is not equal to $0$, since $U_1$ is not empty,
+  and for $x \in U_1$, $f(x)=1 \neq 0$.
+  For any $x, y \in V(G)$ adjacent, one of the following occurs:
+  \begin{itemize}
+    \item either $x \in U_1$ and $y \in U_2$, and hence $f(x)=1=-f(y)$;
+    \item or $x \in U_2$ and $y \in U_1$, and hence $f(x)=-1=-f(y)$.
+  \end{itemize}
+
+  Now assume there exists a non-zero function $f : V(G) \rightarrow \C$
+  such that, for any $x, y \in V(G)$ adjacent, $f(x)=-f(y)$.
+  By assumption, $E(G)$ is not empty, so there exists $x \in V(G)$ with
+  at least an adjacent vertex.
+  For any $y \in V(G)$, since $G$ is preconnected, there exists
+  a walk $w$ from $x$ to $y$. We check by induction that the hypothesis on $f$
+  implies $f(y) = (-1)^{\length(w)}f(x)$. Since $f \neq 0$, there exists $y \in V(G)$
+  such that $f(y) \neq 0$, from which we deduce $f(x) \neq 0$.
+  We define $U_1=\{y \in V(G) : f(y)=f(x)\}$ and $U_2=\{y \in V(G) : f(y)=-f(x)\}$.
+\begin{itemize}
+  \item By the previous computation, $V(G) = U_1 \cup U_2$.
+  \item Since $f(x) \neq 0$, $U_1 \cap U_2 = \emptyset$.
+  \item $U_1$ contains $x$ and is hence not empty. We picked $x$ so that it has
+  at least one adjacent edge, which will be an element of $U_2$, and hence $U_2$ is
+  not empty.
+  \item For any edge $e \in E(G)$ linking two vertices $y, z$,
+  we check that $y \in U_1 \Rightarrow x \in U_2$
+  and $y \in U_2 \Rightarrow z \in U_1$ thanks to the fact that $f(y)=-f(z)$.
+\end{itemize}
+So, $G$ is bipartite.
+\end{proof}
+
+We can now proceed to the proof of Proposition \ref{prop:eigenvalue_regular_bipartite}.
+
+\begin{proof}
+  Let us assume that $- \de$ is an eigenvalue of $a$.
+  Then by definition there exists a non-zero function $f \in \ell^2(G)$ such that
+  $af=-\de f$.
+  In particular $\|af\|=\de \|f\|$. By the equality case in Lemma
+  \ref{lem:bound_a_sup_degree}, for any $x \in V(G)$, any $y, z$ adjacent to $x$,
+  $f(y)=f(z)$.
+  But then we have for $x \in V(G)$
+  \begin{equation*}
+    - \de f(x) = af(x) = \sum_{d \in \dartset(x)} f(\ept(d))
+  \end{equation*}
+  a sum with $\de \neq 0$ terms in which all terms are equal. Hence for any $y$
+  adjacent to $x$, $f(y)=-f(x)$.
+  Since $f \neq 0$, there exists $x \in V(G)$ such that $f(x) \neq 0$.
+  We apply Lemma \ref{lem:bipartite_odd_function} to the graph $\ccm(x)$ with the
+  restriction of the function $f$ (which we can do as $\ccm(x)$ is preconnected
+  and has at least one edge since $\deg(x) = \de \geq 1$),
+  and obtain that $\ccm(x)$ is bipartite.
+
+  Now, let us assume that one connected component $C$ of $G$ is bipartite.
+  $C$ is not empty so it contains at least one vertex, which has at least one
+  incident edge as the graph is regular of degree $\de \geq 1$.
+  Hence we can apply Lemma \ref{lem:bipartite_odd_function} to $C$
+  and obtain a function $f$ such that, for any $x$, $y$ adjacent, $f(x)=-f(y)$.
+  Then, let us define $F(x) = f(x)$ if $x \in C$ and $0$ otherwise.
+  $F \in \ell^2(G)$ since $G$ is finite.
+  We check that $aF=- \de F$ (here using the fact that, if $x$, $y$ are adjacent,
+  then $x \in C \Leftrightarrow y \in C$). $F \neq 0$ as there exists $x \in C \subset V(G)$
+  for which $F(x) = f(x) \neq 0$. So $-\de$ is an eigenvalue of $a$.
+\end{proof}
+
+\section{The spectral gap}
+
+Let us now introduce the main object of interest of this project, the spectral gap.
+
+\begin{lemma}
+  \label{lem:projection_orth_constant}
+  \uses{lem:constant_eigenfunction_regular,lem:orth_constant}
+  Assume $G$ is regular of degree $\de$ and $V(G)$ is finite.
+  Then the operator $a$ induces a bounded self-adjoint operator $a|_{\const^\perp}$
+  on the orthogonal of $\const$ in $\ell^2(G)$, and $\|a|_{\const^\perp}\| \leq d$.
+\end{lemma}
+
+\begin{proof}
+  This is classic theory of self-adjoint bounded operators, as $\const$ is an
+  eigenvector of $a$ by Lemma \ref{lem:constant_eigenfunction_regular}.
+\end{proof}
+
+We will aim to study $\|a|_{\const^\perp}\|$.
+For us, the ``spectral gap" is the difference
+$$d - \|a|_{\const^\perp}\| = \|a\| - \|a|_{\const^\perp}\| \geq 0.$$
+We will see in the results below why this is an interesting quantity.
+Since there are several co-existing conventions for what the spectral gap is
+we will refrain from making it into a formal definition.
+
+This special norm is actually the absolute value of an eigenvalue of the graph.
+
+\begin{lemma}
+  \label{lem:norm_perp_is_eig}
+  \uses{lem:projection_orth_constant}
+  Assume $G$ is regular of degree $\de$ and $V(G)$ is finite.
+  Then there exists $\lambda \in \R$ and a non-zero
+  function $f : V(G) \rightarrow \C$
+  such that $af=\lambda f$, $\sum_{x \in V(G)}f(x)=0$
+   and $|\lambda| = \|a|_{\const^\perp}\|$.
+\end{lemma}
+
+\begin{proof}
+  The operator $a|_{\const^\perp}$ is a self-adjoint operator in finite dimension
+  by Lemma \ref{lem:projection_orth_constant}, and hence its spectrum is entirely
+  made of real eigenvalues and its norm is the supremum of their absolute values.
+  Hence there exists a function $f \in \const^\perp$ and $\lambda \in \R$
+  such that $a|_{\const^\perp}f = \lambda f$, $f \neq 0$ and $|\lambda|=\|a|_{\const^\perp}\|$.
+  The function $f$ and the number $\lambda$ satisfy the claim.
+\end{proof}
+
+The results proven in Section \ref{sec:trivial_eigenvalues} imply the following.
+
+\begin{proposition}
+  \label{prop:gap_iff}
+  \uses{lem:norm_perp_is_eig,prop:eigenvalue_regular_bipartite,prop:regular_multiplicity_trivial_eigenvalue}
+  Assume $G$ is regular of degree $\de$ and $V(G)$ is finite.
+  Then, $\|a|_{\const^\perp}\| = \de$ iff $G$ is disconnected or bipartite.
+\end{proposition}
+
+\begin{proof}
+  By Lemma \ref{lem:norm_perp_is_eig},
+  there exists a function $f : V(G) \rightarrow \C$ and a real number $\lambda$
+  such that $af=\lambda f$, $|\lambda|=\de$ and $\sum_{x \in V(G)} f(x)=0$.
+  Since $\lambda \in \R$, either $\lambda = \de$ or $\lambda=-\de$.
+  \begin{itemize}
+    \item If $\lambda = \de$, then since $f$ is not constant (otherwise it would be
+    equal to $0$ as $\sum_{x \in V(G)}f(x)=0$), the multiplicity of
+    the eigenvalue $\de$ for $a$ is at least $2$. By Proposition
+    \ref{prop:regular_multiplicity_trivial_eigenvalue}, the number of connected
+    components of $G$ is $\geq 2$ and hence $G$ is disconnected.
+    \item If $\lambda = -\de$, then $-\de$ is an eigenvalue of $a$.
+    By Proposition \ref{prop:eigenvalue_regular_bipartite},
+    $G$ has a connected component $C$ that is bipartite.
+    \begin{itemize}
+      \item If $C=V(G)$ then $G$ is bipartite.
+      \item Otherwise $G$ is disconnected as it has a strict connected component.
+    \end{itemize}
+  \end{itemize}
+\end{proof}
+
+The Alon--Boppana bound is the following lower bound.
+
+\begin{theorem}
+  \label{thm:Alon_Boppana}
+  \uses{def:diameter}
+  \notready
+  Let $G$ be a regular graph of degree $\de$ with a finite diameter.
+  Then,
+  \begin{equation*}
+    \|a|_{\const^\perp}\|
+     \geq 2 \sqrt{2 \de -1}
+     - \frac{2 \sqrt{2 \de -1}-1}{\lfloor \diam (G) /2 \rfloor}.
+  \end{equation*}
+\end{theorem}
+
+This bound is not required for the project, but it is not
+very difficult to prove and I believe it would be a good side project if someone
+wants to give it a try.
+Here is a reference \cite{alon1986}, where the proof if for simple graphs but can
+be easily adapted.
+
+The special value $2\sqrt{2 \de - 1}$ appears here as the spectral radius of the
+$\de$-regular tree.
+
+\begin{definition}
+  \label{def:regular_tree}
+  \uses{def:regular,def:tree}
+  A graph $G$ is a $\de$-regular tree if it is a tree and regular of degree $\de$.
+\end{definition}
+
+\begin{theorem}
+  \label{thm:regular_tree_norm}
+  \uses{def:regular_tree,def:adjacency_operator}
+  \notready
+  Let $G$ be a $\de$-regular tree. Then $\|a\| = 2 \sqrt{\de-1}$.
+\end{theorem}
+
+The proof of Theorem \ref{thm:regular_tree_norm} will be detailed in Section \ref{sec:tree}.
+
+Proposition \ref{prop:bound_diameter_regular} allows to see the Alon--Boppana
+bound as a limitation for the spectral gap as the graph grows (i.e. $\# V(G)$ is large).
+From this observation Alon famously conjectured that most large regular trees
+have a near-optimal spectral gap. The aim of this blueprint is to prove this result
+for the permutation model introduced in Definition \ref{def:proba_on_graphs}.
+
+\begin{theorem}
+  \label{thm:Friedman}
+  \uses{def:proba_on_graphs}
+  \notready
+  Let $r \geq 2$ be a integer and $\de = 2r$.
+  For any $\epsilon > 0$,
+\begin{equation}
+    \lim_{N \rightarrow \infty}
+    \ProbG(\|a|_{\const^\perp}\| \leq 2 \sqrt{2\de -1} + \epsilon) = 1.
+\end{equation}
+\end{theorem}
+
+This result was first proven by Friedman in the early 2000s in a very long proof \cite{friedman2003}.
+We will use a new method introduced by Chen, Garza-Vargas, Tropp and van Handel in \cite{chen2025}
+called the polynomial method, which produced a radically simpler proof of this result.
+
+Let us prove a simple consequence of this result.
+
+\begin{proposition}
+  \label{prop:random_connected_non_bipartite}
+  \uses{thm:Friedman,prop:gap_iff}
+  Let $r \geq 2$ be an integer and $\de = 2r$.
+  Then,
+  \begin{equation}
+    \lim_{N \rightarrow \infty} \ProbG(G_{\vec{\pi}} \text{ is connected})=1
+  \end{equation}
+  and
+    \begin{equation}
+    \lim_{N \rightarrow \infty} \ProbG(G_{\vec{\pi}} \text{ is bipartite})=0.
+  \end{equation}
+\end{proposition}
+
+\begin{proof}
+  Denote $A = "G_{\vec{\pi}} \text{ is disconnected}"$ and
+  $B = "G_{\vec{\pi}} \text{ is bipartite}"$.
+  By Proposition \ref{prop:gap_iff},
+  \begin{equation*}
+    \ProbG(A \cup B) = \ProbG(\|a|_{\const^\perp}\| = 2r).
+  \end{equation*}
+
+  We check directly that $2 \sqrt{2 \de - 1} < \de$.
+  Hence taking $\epsilon = (\de - 2 \sqrt{2 \de - 1})/2 > 0$
+  we obtain
+  \begin{equation*}
+    \forall x, \quad x = \de \Rightarrow x > 2 \sqrt{2\de -1} + \epsilon.
+  \end{equation*}
+  Hence
+  \begin{equation*}
+    \ProbG(A \cup B) \leq \ProbG(\|a|_{\const^\perp}\| > 2 \sqrt{2\de -1} + \epsilon)
+  \end{equation*}
+  which goes to $0$ as $N \rightarrow \infty$ by Theorem \ref{thm:Friedman}.
+  So $\lim_N \ProbG(A) = 0$ and $\lim_N \ProbG(B)=0$ which allows to conclude.
+\end{proof}
+
+\section{The infinite regular tree}
+\label{sec:tree}
+
+[TODO: prove that the spectral density of the $d$-regular tree is given by the Kesten-McKay
+distribution]
+
+
+%%FILE blueprint/src/3_random_permutation_graph.tex
+\chapter{Random permutation graphs}
+
+
+\section{Permutation graphs}
+
+Let $V$ be a finite set and $\perm{V} = \{ \pi : V \rightarrow V \text{ bijective}\}$
+the set of permutations of $V$.
+
+We define a graph associated to a family of permutations.
+
+\begin{definition}
+  \label{def:dart_of_pi}
+  \uses{def:dartlike}
+  Let $r \geq 1$ be an integer. To a family $\vec{\pi} = (\pi_1, \ldots, \pi_r) \in \perm{V}^r$
+  we associate a dart-like structure on $V$ by taking:
+  \begin{itemize}
+    \item $D = V \times \{1, \ldots, r\} \times \{-1,+1\}$
+    \item for $(x,i,\epsilon) \in D$, we let $\spt(x,i,\epsilon) = x$,
+    $\ept(x,i,\epsilon) = \pi_i^\epsilon(x)$ and
+    $\symm(x,i,\epsilon) = (\pi_i^\epsilon(x),i,-\epsilon)$.
+  \end{itemize}
+\end{definition}
+
+\begin{proof}
+  We check that
+  \begin{equation*}
+    \spt(\symm(x,i,\epsilon))
+    = \spt(\pi_i^\epsilon(x),i,-\epsilon)
+    = \pi_i^\epsilon(x)
+    = \ept(x,i,\epsilon)
+  \end{equation*}
+  and
+  \begin{equation*}
+    \ept(\symm(x,i,\epsilon))
+    = \ept(\pi_i^\epsilon(x),i,-\epsilon)
+    = \pi_i^{-\epsilon}(\pi_i^\epsilon(x))
+    = x = \spt(x,i,\epsilon)
+  \end{equation*}
+  and
+  \begin{equation*}
+    \symm(\symm(x,i,\epsilon))
+    = \symm((\pi_i^\epsilon(x),i,-\epsilon))
+    = (\pi_i^{-\epsilon}(\pi_i^\epsilon(x)),i,--\epsilon)
+    = (x,i,\epsilon).
+  \end{equation*}
+\end{proof}
+
+\begin{definition}
+  \label{def:graph_of_pi}
+  \uses{def:dart_of_pi,def:graph_of_dart}
+   Let $r \geq 1$ be an integer. To a family $\vec{\pi} \in \perm{V}^r$
+  we associate a graph $G_{\vec{\pi}}$ on $V$ by taring the graph associated to the dart-like
+  structure associated to $\vec{\pi}$.
+\end{definition}
+
+\begin{lemma}
+  \label{lem:dartset_pair_pi}
+  \uses{def:dartset_pair,def:graph_of_pi}
+  Let $r \geq 1$ be an integer and take $\vec{\pi} = (\pi_1, \ldots, \pi_r) \in \perm{V}^r$.
+  Then, for any $x, y \in V$,
+  \begin{equation*}
+    \dartset(x,y) = \{(x,i,\epsilon): y = \pi_i^\epsilon(x)\}.
+  \end{equation*}
+\end{lemma}
+
+\begin{lemma}
+  \label{lem:dartset_pi}
+  \uses{lem:dartset_pair_pi}
+  Let $r \geq 1$ be an integer and take $\vec{\pi} = (\pi_1, \ldots, \pi_r) \in \perm{V}^r$.
+  Then, for any $x \in V$,
+  \begin{equation*}
+    \dartset(x) = \{(x,i,\epsilon): 1 \leq i \leq r, \epsilon = \pm 1\}.
+  \end{equation*}
+\end{lemma}
+
+\begin{lemma}
+  \label{lem:graph_pi_regular}
+  \uses{lem:dartset_pi,def:regular}
+  The graph $G_{\vec{\pi}}$ is regular of degree $2r$.
+\end{lemma}
+
+[I need to decide the conventions about the side of the actions below]
+
+\begin{definition}
+  \label{def:u_pi}
+  For $\pi \in \perm{V}$, we define an operator $u_\pi : V^{\C} \rightarrow V^{\C}$ by
+  letting, for $f : V \rightarrow \C$,
+  \begin{equation*}
+    \forall x \in V,
+    u_\pi f(x) = f(\pi^{-1}(x))
+  \end{equation*}
+\end{definition}
+
+\begin{lemma}
+  \label{lem:u_pi_unitary}
+  \uses{def:u_pi}
+  For $\pi \in \perm{V}$, the operator $u_\pi$ is a unitary operator on $\ell^2(V)$
+  and $u_\pi^*=u_\pi^{-1}=u_{\pi^{-1}}$.
+\end{lemma}
+
+\begin{lemma}
+  \label{lem:adjacency_of_pi}
+  \uses{def:u_pi,def:adjacency_operator,lem:u_pi_unitary}
+  Let $r \geq 1$ be an integer. For any family $\vec{\pi} = (\pi_1, \ldots, \pi_r) \in \perm{V}^r$,
+  the adjacency operator $a_{\vec{\pi}}$ of $G_{\vec{\pi}}$ can be written as
+  \begin{equation*}
+    a_{\vec{\pi}} = \sum_{i=1}^r (u_{\pi_i} + u_{\pi_i}^*).
+  \end{equation*}
+\end{lemma}
+
+\begin{proof}
+  We have by definition of the adjacency operator for a function $f : V \rightarrow \C$
+  and $x \in V$,
+  \begin{equation*}
+    af(x)
+    = \sum_{d \in \dartset(x)} f(\ept(d))
+    = \sum_{i=1}^r \sum_{\epsilon = \pm 1} f(\pi_i^\epsilon(x))
+    =  \sum_{i=1}^r (f(\pi_i^{-1}(x)) + f(\pi_i(x)))
+  \end{equation*}
+  which leads to the conclusion as we recognise $u_{\pi_i}$ and $u_{\pi_i^{-1}} = u_{\pi_i}^*$.
+\end{proof}
+
+\section{Random permutations}
+
+Let $r, N \geq 1$ be integers.
+In what follows, we write $\perm{N}$ for the set of permutations of $[N]$
+and $\perm{N}^r$ the product space of $r$-tuples of elements of $\perm{N}$.
+
+\begin{definition}
+  \label{def:probability_measure}
+  We equip $\perm{N}^r$ with the uniform probability measure which we denote as
+  $\Prob$. We denote the corresponding expectation by $\expec$.
+\end{definition}
+
+\begin{lemma}
+  \label{lem:formula_expec}
+  \uses{def:probability_measure}
+  For any function $F : \perm{N}^r \rightarrow \C$,
+  \begin{equation*}
+    \expec [F(\vec{\pi})] = \frac{1}{N!^r} \sum_{\vec{\pi} \in \perm{N}^r} F(\vec{\pi}).
+  \end{equation*}
+\end{lemma}
+
+\begin{proof}
+  This is the expectation for a uniform measure, noting that the cardinal of $\perm{N}$
+  is $N!^r$.
+\end{proof}
+
+\begin{definition}
+  \label{def:proba_on_graphs}
+  \uses{def:probability_measure,def:graph_of_pi}
+  Denote $\de = 2r$.
+  Let $\mathcal{G}_{\de,N}$ be the set of $\de$-regular graphs with $V(G) = [N]$,
+  equiped with the power-set $\sigma$-algebra.
+  We define a probability measure $\ProbG$ on $\mathcal{G}_{\de,N}$ by pushing forward $\Prob$
+  with the function
+  $\perm{N}^r \rightarrow \mathcal{G}_{\de,N}$ defined in Definition \ref{def:graph_of_pi}.
+\end{definition}
+
+\section{Words in random permutation matrices}
+
+The aim of this section is to prove \cite[Lemma 5.1]{chen2025}, a formula for the expectation
+of traces of words in random permutation matrices.
+
+\subsection{Statement of the result and notations}
+
+We fix an integer $r \geq 1$.
+
+\begin{definition}
+  \label{def:numbering_convention}
+  Let $G$ be a group with neutral element $\mathbf{1}$.
+  To a family $(x_1, \ldots, x_r) \in G^r$ we associate a family $(x_0, \ldots, x_{2r}) \in G^{2r+1}$
+  by letting $x_0= \mathbf{1}$ and for $1 \leq i \leq r$, $x_{r+i} := x_i^{-1}$.
+\end{definition}
+
+\begin{definition}
+  \label{def:word}
+  We denote as $\word$ the set of finite words $w = w_1 \ldots w_q$
+  in the letters $\{0, \ldots 2r\}$.
+  The \emph{length} $|w| = q$ of a word $w$ is its number of letters.
+\end{definition}
+
+\begin{definition}
+  \label{def:word_map}
+  \uses{def:word,def:numbering_convention}
+  Let $w = w_1 \ldots w_q \in \word$
+  and $G$ be a group with neutral element $\mathbf{1}$.
+  The \emph{word map} $w : G^r \rightarrow G$ is defined by
+  letting, for each $(x_1, \ldots, x_r) \in G^r$,
+  $w(x_1, \ldots, x_r) = x_{w_1} \ldots x_{w_q}$
+  with the numbering convention from Definition \ref{def:numbering_convention}.
+\end{definition}
+
+Let $N \geq 1$.
+In what follows, we denote as $\matrices$ the set of $N \times N$ matrices with complex coefficients.
+If $M \in \matrices$, we denote as $M_{i,j}$ its coefficient $(i,j)$.
+We denote as $\TrN M = \sum_{i=1}^N M_{i,i}$ the usual trace on $\matrices$.
+
+\begin{definition}
+  \label{def:normalised_trace}
+  The \emph{normalised trace} $\trN : \matrices \rightarrow \C$ is defined by $\trN := \frac{1}{N} \TrN$.
+\end{definition}
+
+\begin{definition}
+  \label{def:gq}
+  Let $q \geq 1$ be an integer.
+  For $1 \leq j \leq q-1$, we define $r_{r,q,j} := \min (r, \lfloor q/(j+1) \rfloor)$
+  and
+  we define the polynomial $g_{r,q}(x) = \prod_{j=1}^{q-1} (1-j x)^{r_{r,q,j}}$.
+\end{definition}
+
+\begin{lemma}
+  \label{lem:degree_gq}
+  \uses{def:gq}
+  For any $q \geq 1$, the degree of $g_{r,q}$ is at most $q(1+\log r)-1$.
+\end{lemma}
+
+\begin{proof}
+  By comparaison with an integral, we have
+  \begin{align*}
+    \deg g_{r,q}
+    = \sum_{j=1}^{q-1} r_{r,q,j}
+    \leq \int_1^q \min(r, q/x) \d x
+    \leq q(1+\log r) - \min(r,q).
+  \end{align*}
+\end{proof}
+
+We are now ready to state the main result of this section.
+
+\begin{theorem}
+  \label{thm:expectation_word_formula}
+  \uses{def:word_map,def:gq,def:normalised_trace}
+  \notready
+  Let $q \geq 1$.
+  Let $w \in \word$ be a word of length at most $q$.
+  There exists a polynomial $f_w$, of degree at most $q(1+\log r)$, such that for any $N \geq q$,
+  \begin{equation*}
+    \expec [\trN w(\vec \pi)] = \frac{f_w(1/N)}{g_q(1/N)}.
+  \end{equation*}
+\end{theorem}
+
+
+%%FILE blueprint/src/4_master_polynomial.tex
+\chapter{The master inequality: for polynomials}
+
+In this chapter, we prove the master inequality I, as done in \cite[Section 6]{chen2025}.
+This will require some careful analysis on polynomials.
+Throughout the rest of this preprint, the set of real polynomials will be denoted as $\mathcal{P}$,
+and the set of real polynomials of degree at most $q$ by $\mathcal{P}_q$.
+
+\section{Markov inequalities}
+
+\begin{proposition}
+  \label{prop:Markov_ineq}
+  [todo]
+\end{proposition}
+
+\section{Non-commutative polynomials with matrix coefficients}
+
+\begin{definition}
+  \label{def:non_comm_poly}
+  \uses{def:word}
+  Let $D \geq 1$ and $r \geq 1$.
+  A \emph{non-commutative polynomial with matrix coefficients} $P \in \nonco$
+  is an expression of the form $\sum_{w \in \word} A_w \otimes w(x_1, \ldots, x_{r})$.
+\end{definition}
+
+\begin{definition}
+  \label{def:non_co_map}
+  \uses{def:non_comm_poly,def:word_map}
+  Let $P = \sum_{w \in \word} A_w \otimes w(x_1, \ldots, x_{r})\in \nonco$.
+  For $(U_1, \ldots, U_r)$ be a $r$-tuple of unitary matrices of shared dimension,
+  we define
+  $P(U_1, \ldots, U_r) = \sum_{w \in \word} A_w \otimes w(U_1, \ldots, U_r)$
+  using the word map defined in Definition \ref{def:word_map}.
+\end{definition}
+
+\begin{definition}
+  \label{def:self_adjoint_P}
+  \uses{def:non_comm_poly}
+  [todo]
+\end{definition}
+
+\begin{definition}
+  \label{def:norm_non_comm_poly}
+  \uses{def:non_co_map}
+  We define a norm on $\nonco$ by taking for a non-commutative polynomial
+  with matrix coefficients $P \in \nonco$,
+  \begin{equation*}
+    \|P\|_{D,r} := \sup \{ \|P(U_1, \ldots, U_r)\|, (U_i)_{1 \leq i \leq r}
+    \text{ unitary matrices}\}.
+  \end{equation*}
+\end{definition}
+
+\section{The Master inequality for polynomials}
+
+We are now ready to prove the following statement.
+
+\begin{theorem}
+  \label{thm:masterI}
+  \uses{def:self_adjoint_P,def:probability_measure}
+  \notready
+  Let $r \geq 2$ and $D \geq 1$.
+  Fix a self-adjoint non-commutative polynomial $P \in \nonco$
+  of degree $q_0$, and let $K = \|P\|_{D,r}$.
+  There exists a family of linear functionals $\nu_i : \mathcal{P} \rightarrow \C$
+  for $i \geq 0$ such that for every $N,m,q \geq 1$, and any $h \in \mathcal{P}_q$,
+  \begin{equation*}
+    \left|\expec\left[\trN[ND] h(P(S_1, \ldots, S_r))\right]
+     - \sum_{i=0}^{m-1} \frac{\nu_i(h)}{N^i}\right|
+     \leq \frac{(4 q q_0(1+\log r))^{4m}}{N^m} \|h\|_{C^0([-K,K])}.
+  \end{equation*}
+\end{theorem}
+
+This will be done in several steps.
+
+\subsection{Proof for large values}
+
+We first prove the result for large $N$, which is the main challenge.
+
+\begin{lemma}
+  \label{lem:masterI_largeN}
+  [todo]
+\end{lemma}
+
+\subsection{Bound on the coefficients}
+
+We now prove a bound on the coefficients of the expansion.
+
+\begin{lemma}
+  \label{coro:masterI}
+  \uses{lem:masterI_largeN,lem:expr_nu_0,lem:bound_trace,lem:expansion_bound}
+  With the notations of Theorem \ref{thm:masterI},
+  for every $m, q \geq 1$ and $h \in \mathcal{P}_q$,
+  \begin{equation*}
+    |\nu_m(h)|
+    \leq (4 q q_0(1+\log r))^{4m} \|h\|_{C^0([-K,K])}.
+  \end{equation*}
+\end{lemma}
+
+This relies on the following simple lemma on asymptotic expansions.
+
+\begin{lemma}
+  \label{lem:expansion_bound}
+  Let $(F_N)_{N \geq 0}$ be a sequence.
+  We assume there exists coefficients $(\nu_i)_{i \geq 0}$, constants $(C_m)_{m \geq 1}$ and
+  $(M_m)_{m \geq 1}$ such that, for all $m \geq 1$, all $N \geq M_m$,
+  \begin{equation*}
+    \left| F_N - \sum_{i=0}^{m-1} \frac{\nu_i}{N^i} \right| \leq \frac{C_m}{N^m}.
+  \end{equation*}
+  Then, for all $m \geq 1$, $|\nu_m| \leq C_m$.
+\end{lemma}
+
+\begin{proof}
+  Let $m \geq 1$ and $N \geq \max(M_m, M_{m+1})$.
+  We have
+  \begin{equation*}
+    \nu_m = N^m \left(F_N - \sum_{i=0}^{m-1} \frac{\nu_i}{N^i} \right)
+    - N^m \left(F_N - \sum_{i=0}^{m} \frac{\nu_i}{N^i}\right)
+  \end{equation*}
+  so by the triangle inequality,
+    \begin{equation*}
+    |\nu_m| \leq N^m \left|F_N - \sum_{i=0}^{m-1} \frac{\nu_i}{N^i} \right|
+    + N^m \left|F_N - \sum_{i=0}^{m} \frac{\nu_i}{N^i}\right|.
+  \end{equation*}
+  We apply the hypothesis to $m$ and $m+1$ (which we can as $N \geq M_m$ and $N \geq M_{m+1}$),
+  which yields
+  \begin{equation*}
+    |\nu_m|
+    \leq N^m \frac{C_m}{N^m} + N^m \frac{C_{m+1}}{N^{m+1}}
+    = C_{m} + \frac{C_{m+1}}{N}.
+  \end{equation*}
+  This is true for all $N \geq \max(M_m,M_{m+1})$, and hence we can take the limit $N \rightarrow + \infty$,
+  and obtain $|\nu_m| \leq C_m$.
+\end{proof}
+
+We will also need to bound the $0$-th coefficient.
+
+\begin{lemma}
+  \label{lem:expr_nu_0}
+  \uses{lem:masterI_largeN}
+  For any $h \in \mathcal{P}$,
+  \begin{equation*}
+    \nu_0(h) = \lim_{N \rightarrow +\infty} \expec [\trN[ND] h(P(S_1, \ldots, S_r))].
+  \end{equation*}
+\end{lemma}
+
+\begin{proof}
+  Let $h \in \mathcal{P}$ and take $q \geq 1$ such that $h \in \mathcal{P}_q$.
+  We apply Lemma \ref{lem:masterI_largeN} for $m=1$.
+  Hence, for any $N \geq M$,
+  \begin{equation*}
+    \left|
+      \expec [\trN[ND] h(P(S_1, \ldots, S_r))]
+      - \nu_0(h)
+    \right| \leq \frac{(4 q q_0(1+\log r))^4}{N}
+  \end{equation*}
+  The right-hand side goes to $0$ as $N \rightarrow \infty$, which leads to the claim.
+\end{proof}
+
+\begin{lemma}
+  \label{lem:bound_trace}
+  \uses{def:norm_non_comm_poly}
+  For any $h \in \mathcal{P}$, any $N \geq 1$,
+  \begin{equation*}
+    |\expec [\trN[ND] h(P(S_1, \ldots, S_r))]| \leq \|h\|_{C^0([-K,K])}.
+  \end{equation*}
+\end{lemma}
+
+\begin{proof}
+  [todo]
+\end{proof}
+
+We can finally prove Lemma \ref{coro:masterI}.
+
+\begin{proof}
+  \proves{coro:masterI}
+  Let $m \geq 0$, $q \geq 1$ and $h \in \mathcal{P}_q$.
+
+  If $m=0$, by Lemma \ref{lem:expr_nu_0},
+  \begin{equation*}
+        \nu_0(h) = \lim_{N \rightarrow +\infty} \expec [\trN[ND] h(P(S_1, \ldots, S_r))].
+  \end{equation*}
+  By Lemma \ref{lem:bound_trace}, this sequence is bounded by $\|h\|_{C^0([-K,K])}$,
+  and in particular we get that at the limit
+  $|\nu_0(h)| \leq \|h\|_{C^0([-K,K])}$. This is the claim for $m=0$.
+
+  The result for $m \geq 1$ is a direct combination of Lemma \ref{lem:masterI_largeN} and
+  Lemma \ref{lem:expansion_bound}.
+\end{proof}
+
+
+\subsection{Proof for small values}
+
+Let us now conclude the proof of Theorem \ref{thm:masterI}.
+
+\begin{proof}
+  \proves{thm:masterI}
+  [todo]
+\end{proof}
+
+\section{Special cases}
+
+\begin{lemma}
+  \label{lem:value_nu_at_one}
+  \uses{thm:masterI}
+  With the notations of Theorem \ref{thm:masterI},
+  if $h$ is a constant polynomial, then
+  \begin{itemize}
+    \item $\nu_0(h)=h(0)$;
+    \item for $i >0$, $\nu_i(h)=0$.
+  \end{itemize}
+\end{lemma}
+
+\begin{proof}
+  If $h$ is constant, then for any $N \geq 1$,
+  $\expec\left[\trN[ND] h(P(S_1, \ldots, S_r))\right] = h(0)$
+  and the sequence from the claim satisfies the inequality from Theorem \ref{thm:masterI} and
+  is hence the value of $(\nu_i(h))_{i \geq 0}$ by uniqueness [todo].
+\end{proof}
+
+
+%%FILE blueprint/src/5_master_extension.tex
+\chapter{The master inequality: extension to smooth functions}
+
+The aim of this chapter is to prove the Master inequality II, as
+done in \cite[Section 7]{chen2025}.
+This will require to prove some results related to approximations
+of smooth functions by Chebyshev polynomials on a compact set.
+
+Throughout the rest of this blueprint,
+we will denote as $\tor = \R / 2 \pi\Z$ the additive circle of length $2 \pi$.
+
+\section{Chebyshev polynomials}
+
+For $j \geq 0$, we denote as $T_j$ the Chebyshev polynomial of the first kind of degree $j$,
+defined by the relation $T_j(\cos \theta) = \cos(j \theta)$ for $\theta \in \R$.
+
+Let us fix a real number $K > 0$ and an integer $q \geq 0$ for this section.
+We define coefficients associated to a polynomial $h$ on the set $[-K,K]$ in the following
+fashion.
+
+\begin{lemma}
+  \label{lem:chebyshev_decomp}
+  Let $h \in \mathcal{P}_q$.
+  There exists a unique family of real numbers $(a_j)_{0 \leq j \leq q}$ such that,
+  for all $x \in \R$,
+  \begin{equation*}
+    h(Kx) = \sum_{j=0}^q a_j T_j (x).
+  \end{equation*}
+\end{lemma}
+
+\begin{proof}
+  This follows from the fact that $h(Kx) \in \mathcal{P}_q$ and $(T_j)_{0 \leq j \leq q}$ is a basis of $\mathcal{P}_q$,
+  since for all $0 \leq j \leq q$, $\deg T_j = j$.
+\end{proof}
+
+It will be useful to view the coefficients $(a_j)_{0 \leq j \leq q}$ as trigonometric
+Fourier coefficients, which we do by introducing the following function $f$.
+
+\begin{lemma}
+  \label{lem:f_def}
+  \uses{lem:chebyshev_decomp}
+  Let $h \in \mathcal{P}_q$ and $(a_j)_{0 \leq j \leq q}$ be the coefficients from Lemma
+  \ref{lem:chebyshev_decomp}.
+  Let $f : \tor \rightarrow \R$ be the function defined by $f(\theta) = h(K \cos \theta)$.
+  Then, $f$ is an even trigonometric polynomial equal to
+  \begin{equation*}
+    f(\theta)
+    =
+      \sum_{j=0}^q a_j \cos(j \theta).
+ \end{equation*}
+\end{lemma}
+
+\begin{proof}
+  By definition of $f$ and $(a_j)_{0 \leq j \leq q}$,
+  for all $\theta \in \tor$,
+  \begin{equation*}
+    f(\theta) = h(K \cos \theta) = \sum_{j=0}^q a_j T_j(\cos \theta).
+  \end{equation*}
+  By definition of $(T_j)_{j \geq 0}$, $T_j(\cos \theta) = \cos (j \theta)$.
+  The evenness comes from the fact that $\cos$ is even.
+\end{proof}
+
+We will now provide some bounds on the coefficients $(a_j)_{0 \leq j \leq q}$
+in terms of $L^\beta$-bounds on derivatives of $f$.
+Recall that, for a function $f \in L^1(\tor)$ and an integer $j \in \Z$,
+the $j$-th Fourier coefficient is defined as
+\begin{equation*}
+  c_j = \frac{1}{2 \pi} \int_0^{2 \pi} f(\theta) e^{-i j \theta} \d \theta.
+\end{equation*}
+
+\begin{lemma}
+  \label{lem:coeff_of_f}
+  Let $f(\theta) = \sum_{j=0}^q a_j \cos(j \theta)$ be an even trigonometric series.
+  Then, the Fourier coefficients of $f$ are exactly, for $j \in \Z$,
+  $c_j = \frac{1}{2} a_{|j|}$ if $0 < |j| \leq q$, $a_0$ if $j=0$ and $0$ if $|j|>q$.
+\end{lemma}
+
+\begin{proof}
+  This is probably already in Mathlib.
+\end{proof}
+
+
+\begin{lemma}
+  \label{lem:bound_a0}
+  \uses{lem:f_def,lem:coeff_of_f}
+  Let $h \in \mathcal{P}_q$ and $(a_j)_{0 \leq j \leq q}$ be the coefficients from Lemma
+  \ref{lem:chebyshev_decomp}.
+  Then,
+  \begin{equation*}
+    |a_0| \leq \| h \|_{C^0[-K,K]}.
+  \end{equation*}
+\end{lemma}
+
+\begin{proof}
+  By Lemma \ref{lem:f_def} and \ref{lem:coeff_of_f}, we have
+  \begin{equation*}
+    a_0 = c_0 = \frac{1}{2 \pi} \int_0^{2 \pi} f(\theta) \d \theta.
+  \end{equation*}
+  Hence by the triangle inequality
+  \begin{equation*}
+    |a_0| \leq \frac{1}{2 \pi} \int_0^{2 \pi} |f(\theta)| \d \theta
+    = \frac{1}{2 \pi} \int_0^{2 \pi} |h(K \cos \theta)| \d \theta
+    \leq \| h \|_{C^0[-K,K]}.
+  \end{equation*}
+\end{proof}
+
+The following bound relies on the Hausdorff-Young inequality, which is a classic result.
+
+\begin{theorem}
+  \label{thm:hausdorff_young}
+  Let $1 < \beta \leq 2$ and $1/\beta_* = 1 - 1/\beta$.
+  Let $f \in L^\beta(\tor)$ of Fourier coefficients $(c_j)_{j \in \Z}$.
+  Then,
+  \begin{equation*}
+    \left(\sum_{j \in \Z} |c_j|^{\beta_*} \right)^{1/\beta_*}
+    \leq \left(\frac{1}{2 \pi} \int_0^{2 \pi} |f(\theta)|^\beta \d \theta\right)^{1/\beta}.
+  \end{equation*}
+\end{theorem}
+
+\begin{proof}
+  I think this might be in Mathlib? If not this is a classic result and should be added.
+  This is proven by interpolation between Parseval and the $L^\infty$-$L^1$ trivial estimate,
+  using Riesz-Thorin.
+\end{proof}
+
+We deduce the following lemma.
+
+\begin{lemma}
+  \label{lem:Zygmund}
+  \uses{thm:hausdorff_young}
+  Let $\beta > 1$ and $1/\beta_* = 1-1/\beta$.
+  Let $f \in L^1(\tor)$ of Fourier coefficients $(c_j)_{j \in \Z}$.
+  Assume $f' \in L^\beta(\tor)$.
+  Then,
+  \begin{equation*}
+    \sum_{j \neq 0} |c_j| \leq 4 \beta_* \|f' \|_{L^\beta(\tor)}.
+  \end{equation*}
+\end{lemma}
+
+\begin{proof}
+  Assume $1 < \beta \leq 2$.
+  By the H\"older inequality,
+  \begin{equation*}
+    \sum_{j \neq 0} |c_j|
+    = \sum_{j \neq 0} \frac{1}{|j|} \times |j c_j|
+    \leq
+    \left(\sum_{j \neq 0} \frac{1}{|j|^\beta} \right)^{1/\beta}
+    \left(\sum_{j \neq 0} |j c_j|^{\beta_*} \right)^{1/\beta_*}.
+  \end{equation*}
+  We shall bound these two sums successively.
+  \begin{itemize}
+    \item   Since $\beta>1$ the first sum converges. By parity it is equal to twice the sum for $j \geq 1$.
+  Since $t \mapsto 1/t^\beta$
+  is decreasing on $[1,\infty)$, we can compare the sum and integral which yields
+  \begin{equation*}
+    \sum_{j =1}^\infty \frac{1}{j^\beta}
+    \leq 1 + \int_1^\infty \frac{\d t}{t^\beta}
+    = 1 - \left[ \frac{1}{(\beta-1)t^{\beta-1}} \right]_1^\infty
+    = 1 + \frac{1}{\beta - 1}
+    = \frac{\beta}{\beta - 1} = \frac{1}{1 - 1/\beta} = \beta_*.
+  \end{equation*}
+  As a conclusion,
+  \begin{equation*}
+    \left(\sum_{j \neq 0} \frac{1}{|j|^\beta} \right)^{1/\beta}
+    \leq 2 \beta_*^{1/\beta} \leq 2 \beta_*
+  \end{equation*}
+  since $0 \leq 1/\beta \leq 1$ and $\beta_* \geq 1$.
+  \item For the second sum, we observe that the Fourier coefficients of $f'$
+  are $(i j c_j)_{j \in \Z}$. Since $1 < \beta \leq 2$, we can
+  apply Theorem \ref{thm:hausdorff_young} to $f'$, which yields
+  \begin{equation*}
+    \left(\sum_{j \neq 0} |j c_j|^{\beta_*} \right)^{1/\beta_*}
+    \leq
+    \left(\frac{1}{2 \pi} \int_0^{2 \pi} |f'(\theta)|^\beta \d \theta\right)^{1/\beta}
+    \leq \frac{1}{(2 \pi)^{1/\beta}} \|f'\|_{L^\beta(\tor)}
+    \leq \frac{1}{\sqrt{2 \pi}} \|f'\|_{L^\beta(\tor)}
+  \end{equation*}
+  since $\beta \leq 2$.
+  \end{itemize}
+  Putting everything together we obtain
+  \begin{equation*}
+    \sum_{j \neq 0} |c_j|
+    \leq \sqrt{\frac{2}{\pi}} \beta_*  \|f'\|_{L^\beta(\tor)}
+  \end{equation*}
+  which implies the claim in the case $1 < \beta \leq 2$ since $\sqrt{2/\pi} \leq 4$.
+
+  Now assume $\beta \geq 2$.
+  By the H\"older inequality, since $\tor$ has finite measure $2 \pi$,
+  $L^\beta(\tor) \subseteq L^2(\tor)$ and
+  \begin{equation*}
+    \|f'\|_{L^2(\tor)}^2
+   \leq  \left(\int_0^{2 \pi} 1 \d \theta\right)^{1-\frac{2}{\beta}}
+    \left(\int_0^{2 \pi} |f'(\theta)|^{\beta} \d \theta\right)^{\frac{2}{\beta}}
+    = (2 \pi)^{1-\frac{2}{\beta}}  \|f'\|_{L^\beta(\tor)}^2
+    \leq 2 \pi \|f'\|_{L^\beta(\tor)}^2.
+  \end{equation*}
+  In particular, we can apply the result for $\beta=2$ (in which case $\beta_*=2$),
+  which yields
+  \begin{equation*}
+    \sum_{j \neq 0} |c_j|
+    \leq 2 \sqrt{\frac{2}{\pi}}  \|f'\|_{L^2(\tor)}
+    \leq 4 \|f'\|_{L^\beta(\tor)}
+    \leq 4 \beta_*  \|f'\|_{L^\beta(\tor)}
+  \end{equation*}
+  since $\beta_* \geq 1$.
+\end{proof}
+
+We now conclude with the main result of this section.
+
+\begin{lemma}
+  \label{lem:bound_sum_aj}
+  \uses{lem:Zygmund,lem:coeff_of_f,lem:f_def}
+  Let $h \in \mathcal{P}_q$, and $f$ and $(a_j)_{0 \leq j \leq q}$ be as in Lemma \ref{lem:f_def}.
+  For any $m \geq 0$,
+  any $\beta > 1$, if we denote $1/\beta_* := 1 - 1/\beta$, we have
+  \begin{equation*}
+    \sum_{j=1}^q j^m |a_j| \leq 4 \beta_* \|f^{(m+1)}\|_{L^\beta(\tor)}.
+  \end{equation*}
+\end{lemma}
+
+\begin{proof}
+  First, we apply Lemma \ref{lem:coeff_of_f} to express the Fourier coefficients
+  $(c_j)_{j \in \Z}$ in terms of $(a_j)_{0 \leq j \leq q}$.
+  Let $m \geq 0$. By differentiation,
+  the Fourier coefficients of $f^{(m)}$ satisfy, for
+  all $j$, $c_j^{(m)} =
+    i^m j^m c_j$.
+  In particular,
+  \begin{equation*}
+    \sum_{j \neq 0} |c_j^{(m)}|
+    = \sum_{j \neq 0} |j|^m |c_j|
+    = \sum_{j =1}^q j^m |a_j|.
+  \end{equation*}
+  The conclusion follows by applying Lemma \ref{lem:Zygmund} to the function $f^{(m)}$,
+  of derivative $f^{(m+1)}$ in $L^\beta(\tor)$ as it is a trigonometric polynomial and in particular smooth.
+\end{proof}
+
+We shall use the following corollary.
+
+\begin{corollary}
+  \label{coro:bound_sum_aj}
+  \uses{lem:bound_sum_aj}
+  Let $m \geq 0$ be an integer and $K > 0$ be a real number.
+  There exists a real number $c_{m,K}$ satisfying the following.
+  For any $q \geq 1$, any
+  $h \in \mathcal{P}_q$, if $(a_j)_{0 \leq j \leq q}$ are
+  the coefficients from Lemma \ref{lem:chebyshev_decomp},
+  then
+  \begin{equation*}
+    \sum_{j=1}^q j^m |a_j| \leq c_{m,K} \|h\|_{C^{m+1}([-K,K])}.
+  \end{equation*}
+\end{corollary}
+
+\begin{proof}
+  We apply Lemma \ref{lem:bound_sum_aj} with $\beta = \infty$, in which case $\beta_*=1$
+  and hence $$\sum_{j=1}^q j^m |a_j| \leq 4 \|f^{(m+1)}\|_{L^\infty(\tor)}.$$
+  We then use the chain rule to find a constant $C_{m,K}$ such that
+  $\|f^{(m+1)}\|_{L^\infty(\tor)} \leq C_{m,K} \|h\|_{C^{m+1}([-K,K])}$
+  and conclude with $c_{m,K}=4C_{m,K}$.
+\end{proof}
+
+\section{Compactly supported distributions}
+
+In this section, we will prove a few useful elementary results on distributions.
+
+\subsection{Support of a distribution}
+
+Let $\Omega$ be an open subset of a real finite-dimensional normed space $E$
+and $F$ be a real locally convex topological vector space.
+
+We denote as $\smooth[\Omega, F]$ the space of smooth functions $\Omega \rightarrow F$, and
+$\testfunc[\Omega, F]$
+the set of smooth functions $\Omega \rightarrow F$ with compact support.
+For $h \in \testfunc[\Omega, F]$, we denote as $\supp h$ its support.
+For $K$ a compact subset of $\Omega$ and $h \in \testfunc[\Omega, F]$, we write
+\begin{equation*}
+  \|h\|_{C^m(K)} = \sup_{0 \leq k \leq m} \sup_{x \in K} |h^{(k)}(x)|
+\end{equation*}
+where $h^{(k)}$ is the $k$-th order derivative of $h$.
+We denote as $\distrib[\Omega, F]$ the space of classical distributions, i.e. continuous
+linear functionals $\nu : \testfunc[\Omega, F] \rightarrow F$.
+Here continuous means that, for any compact $K$ of $\Omega$,
+there exists a constant $C \geq 0$ and an integer $m \geq 0$ (both depending on $K$) such that
+\begin{equation*}
+  \forall h \in \testfunc[\Omega,F], \quad
+  \supp h \subseteq K \Rightarrow  |\nu(h)| \leq C \|h\|_{C^m(K)}.
+\end{equation*}
+
+We recall the definition of support, which should be added quite soon to Mathlib.
+
+\begin{definition}
+  \label{def:distribution_vanishes}
+  Let $A$ be a subset of $\Omega$. We say $\nu \in \distrib[\Omega, F]$ \emph{vanishes on} $A$
+  if, for all $h \in \testfunc[\Omega, F]$, if $\supp h \subseteq A$, then $\nu(h)=0$.
+\end{definition}
+
+\begin{definition}
+  \label{def:support_distribution}
+  \uses{def:distribution_vanishes}
+  Let $\nu \in \distrib[\Omega, F]$.
+  The \emph{support} of $\nu$ is the intersection of all closed sets $A \subseteq \R$
+  such that $\nu$ vanishes on the complement of $A$. We denote it as $\supp \nu$.
+\end{definition}
+
+\subsection{Characterisation of compactly supported distributions}
+
+\begin{definition}
+  \label{def:compactly_supported_distribution}
+  \uses{def:support_distribution}
+  Let $\csdistrib[\Omega,F]$ be the set of \emph{compactly supported distribution}
+  i.e. linear functionals $\nu : \smooth[\Omega,F] \rightarrow F$
+  such that there exists a compact set $K \subset \Omega$, a real number $C$
+  and an integer $m\geq 0$ such that,
+  for all $h \in \smooth[\Omega,F]$,
+  $|\nu(h)| \leq C \|h\|_{C^m(K)}$.
+\end{definition}
+
+\begin{lemma}
+  \label{lem:E_implies_CS}
+  \uses{def:compactly_supported_distribution}
+  Let $\nu \in \csdistrib[\Omega,F]$, and let $K$, $C$, $m$ be as in Definition
+  \ref{def:compactly_supported_distribution}.
+  Then the restriction of $\nu$ to $\testfunc[\Omega,F]$ is an element of
+  $\distrib[\Omega,F]$, and its support is included in $K$.
+\end{lemma}
+
+\begin{proof}
+  We first prove that the restriction is an element of $\distrib[\Omega,F]$.
+  By definition, for all $h \in \smooth[\Omega,F]$, we have
+  $|\nu(h)| \leq C \|h\|_{C^m(K)}$, with $K$, $C$, $m$ as in the statement.
+  Now take $K'$ a compact set of $\Omega$.
+  Let $h \in \testfunc[\Omega,F]$ such that $\supp h \subset K'$.
+  In particular, $h \in \smooth[\Omega,F]$, so we have $|\nu(h)| \leq C \|h\|_{C^m(K)}$.
+  But since $h$ is identically equal to $0$ outside of $K'$, $\|h\|_{C^m(K)} \leq \|h\|_{C^m(K')}$,
+  which is what we needed to prove.
+
+  Now to prove the support claim, let us prove that $\nu$ vanishes on $K^c$, ie
+  for all $h \in \testfunc[\Omega,F]$ such that $\supp h \subseteq K^c$,
+  we have $\nu(h)=0$. Indeed, for such a $h$,
+  we have $|\nu(h)| \leq C \|h\|_{C^m(K)}$. But $\|h\|_{C^m(K)} = 0$ since $h$
+  is identically equal to $0$ on $K$, and hence $\nu(h)=0$.
+  Hence, the support of $\nu$ is included in $K$. Since the support is closed
+  and $K$ is compact, $\supp \nu$ is compact.
+\end{proof}
+
+We here prove that $\csdistrib[\Omega, F]$ is the space of elements of $\distrib[\Omega,F]$
+with compact support, which justifies the name.
+
+\begin{lemma}
+  \label{lem:Leibniz}
+  Let $\phi \in \testfunc[\Omega,F]$. Then, for any $h \in \smooth[\Omega,F]$,
+  the product $\phi h$ belongs in $\testfunc[\Omega,F]$
+  and $\supp (\phi h) \subseteq \supp (\phi)$.
+  Furthermore, for any compact set $K$ of $\Omega$, any integer $m \geq 0$,
+  there exists a constant $C$ (depending on $\phi$)
+  such that,
+  for all $h \in \smooth[\Omega,F]$, $\|\phi h\|_{C^m(K)} \leq C \|h\|_{C^m(K)}$.
+\end{lemma}
+
+\begin{proof}
+  This follows from Leibniz's formula.
+\end{proof}
+
+\begin{lemma}
+  \label{lem:extension_csd}
+  \uses{def:compactly_supported_distribution,lem:Leibniz}
+  Let $\nu \in \distrib[\Omega, F]$. We assume that $\supp \nu$ is compact.
+  Then there is a unique $\mu \in \csdistrib[\Omega,F]$
+  such that, for all $h \in \testfunc[\Omega,F]$,
+  $\nu(h)=\mu(h)$.
+\end{lemma}
+
+\begin{proof}
+  The support of $\nu$ is compact, we denote it as $K_0$.
+  We take a function $\phi \in \testfunc[\Omega,F]$
+  such that $\phi$ is identically equal to
+  $1$ on $K_0$.
+  We then define $\mu : \smooth[\Omega,F] \rightarrow F$
+  by letting $\mu(h) := \nu(h \phi)$ for $h \in \smooth[\Omega,F]$.
+ \begin{itemize}
+  \item  This is well-defined by Lemma \ref{lem:Leibniz}. The linearity is immediate.
+  \item We prove that $\mu$ is an extension of $\nu$.
+  Let $h \in \testfunc[\Omega,F]$.
+  We observe that $(1-\phi) h$ belongs in $\testfunc[\Omega,F]$ and
+  is identically equal to $0$ on $K_0 = \supp \nu$.
+  This implies (by a simple lemma on supports) that $\nu((1-\phi)h) = 0$,
+  hence $\nu(h) = \nu(\phi h) = \mu(h)$.
+  \item Let us now prove the norm estimate for $\mu$.
+\begin{itemize}
+  \item
+  The function $\phi$ has compact support, which we denote by $K$.
+  By definition of $\distrib[\Omega,F]$ applied to $K$, we obtain a constant $C_1$
+  and an integer $m$ such that, for all $h \in \testfunc[\Omega,F]$,
+  if $\supp h$ is included in $K$, then
+  we have $|\nu(h)| \leq C_1 \|h\|_{C^m(K)}$.
+ \item Lemma \ref{lem:Leibniz} grants a constant $C_2$ (depending on $\phi$) such that,
+ for all $h \in \smooth[\Omega,F]$,
+  $\|\phi h\|_{C^m(K)} \leq C_2 \|h\|_{C^m(K)}$.
+\end{itemize}
+Now take $h \in \smooth[\Omega,F]$.
+By Lemma \ref{lem:Leibniz}, $\phi h \in \testfunc[\Omega,F]$ and its support is included in
+$K$. Hence,
+\begin{equation*}
+  |\mu(h)| = |\nu(\phi h)| \leq C_1 \|\phi h\|_{C^m(K)}.
+\end{equation*}
+We then note that $\|\phi h\|_{C^m(K)} \leq C_2 \|h\|_{C^m(K)}$.
+This proves the claim with $C := C_1 C_2$.
+\item  The uniqueness is then obtained by the density of $\testfunc[\Omega,F]$ in $\smooth[\Omega,F]$.
+\end{itemize}
+\end{proof}
+
+This allows us to make sense of $\nu(h)$ for $\nu$ a compactly supported distribution
+and $h$ a general smooth function, an essential component of the proof.
+
+\subsection{Extension from polynomials to smooth functions}
+
+It will be essential for us to extend linear operators acting on polynomials
+to compactly supported distributions. The following proposition provides a criterium for this.
+
+\begin{proposition}
+  \label{prop:extension_poly_smooth}
+  \uses{coro:bound_sum_aj,def:compactly_supported_distribution,prop:Markov_ineq}
+  Let $\nu : \mathcal{P} \rightarrow \C$ be a linear functional.
+  The following three properties are equivalent.
+  \begin{enumerate}
+    \item There exists $c, K, m \geq 0$ such that, for all $q \geq 1$, all
+    $h \in \mathcal{P}_q$,
+    \begin{equation*}
+      |\nu(h)| \leq c q^m \|h\|_{C^0([-K,K])}.
+    \end{equation*}
+    \item There exists $c, K, m \geq 0$ such that, for all $j \geq 1$,
+    \begin{equation*}
+      |\nu(T_j(\cdot / K))| \leq c j^m.
+    \end{equation*}
+    \item $\nu$ extends uniquely to a compactly supported distribution.
+  \end{enumerate}
+\end{proposition}
+
+\begin{proof}
+  We will prove $1 \Rightarrow 2 \Rightarrow 3 \Rightarrow 1$.
+
+  Let us assume $1$.
+  Let $j \geq 1$.
+  Let $h (x) := T_j(x/K)$.
+  We note that $h$ is an element of $\mathcal{P}_j$, so can apply the
+  hypothesis to it, which yields $|\nu(h)| \leq c j^m \|h\|_{C^0([-K,K])}$.
+  We conclude by observing that $\|h\|_{C^0([-K,K])} = \|T_j\|_{C^0([-1,1])}=1$
+  using the definition of the Chebyshev polynomials.
+
+  Let us now assume $2$, which gives us some parameters $c, K, m$.
+  Let $q \geq 1$ and $h \in \mathcal{P}_q$. We write $h = \sum_{j=0}^q a_j T_j(\cdot / K)$
+  as before. Then by linearity, the triangle inequality and  the assumption
+  \begin{equation*}
+    |\nu(h)|
+    \leq |a_0| |\nu(1)| + \sum_{j=1}^q |a_j| |\nu(T_j(\cdot / K))|
+    \leq |a_0| |\nu(1)| + c \sum_{j=1}^q j^m|a_j|.
+  \end{equation*}
+  By Lemma \ref{lem:bound_a0}, $|a_0| \leq \|h\|_{C^0([-K,K])}$.
+  By Corollary \ref{coro:bound_sum_aj}, there exists a constant $c_{m,K}$
+  depending only on $m$ and $K$ such that
+  $\sum_{j=1}^q j^m|a_j| \leq c_{m,K} \|h\|_{C^{m+1}([-K,K])}$.
+  Then, taking $C := |\nu(1)| + c c_{m,K}$, we have that
+  for all $h \in \mathcal{P}$,
+  $|\nu(h)| \leq C \|h\|_{C^{m+1}([-K,K])}$.
+  By density of $\mathcal{P}$ in $\smooth$
+  for $\|\cdot \|_{C^{m+1}([-K,K])}$, $\nu$ extends uniquely to a compactly
+  supported distribution.
+
+  To conclude, we prove $3 \Rightarrow 1$. [todo]
+\end{proof}
+
+\section{Proof of the Master inequality II}
+
+We can now proceed to the proof of second master inequality.
+
+\begin{theorem}
+  \label{thm:masterII}
+  \uses{thm:masterI,prop:extension_poly_smooth,lem:bound_sum_aj,coro:masterI}
+  Let $r \geq 2$ and $D \geq 1$.
+  Fix a self-adjoint non-commutative polynomial $P \in \nonco$
+  of degree $q_0$, and let $K = \|P\|_{D,r}$.
+  There exists a family of compactly supported distributions $(\nu_i)_{i\geq 0}$
+  satisfying the following.
+  For any $\beta > 1$, $\frac{1}{\beta_*} + \frac{1}{\beta} = 1$,
+  any $N,m \geq 1$, any $h \in \smooth$, if $f(\theta) := h(K\cos(\theta))$, then
+  \begin{equation*}
+    \left|\expec\left[\trN[ND] h(P(S_1, \ldots, S_r))\right]
+     - \sum_{i=0}^{m-1} \frac{\nu_i(h)}{N^i}\right|
+     \leq 4 \beta_* \frac{(4 q_0(1+\log r))^{4m}}{N^m} \|f^{(4m+1)}\|_{L^\beta(\tor)}.
+  \end{equation*}
+\end{theorem}
+
+\begin{proof}
+  Let $i \geq 0$.
+  By Lemma \ref{coro:masterI},
+  for every $q \geq 1$ and $h \in \mathcal{P}_q$,
+  \begin{equation*}
+    |\nu_i(h)|
+    \leq c q^{4i} \|h\|_{C^0([-K,K])}.
+  \end{equation*}
+  where $c = (4 q_0(1+\log r))^{4i}$.
+  By Proposition \ref{prop:extension_poly_smooth} ($3 \Rightarrow 1$)
+  with $K$, $c$ and $m=4i$, $\nu_i$ can be uniquely extended to a compactly supported
+  distribution.
+
+  Let us now take $q \geq 1$ and $h \in \mathcal{P}_q$. [todo]
+\end{proof}
+
+
+%%FILE blueprint/src/6_friedman.tex
+\chapter{Proof of Friedman's theorem}
+
+\section{The free group and its reduced algebra}
+
+\begin{definition}
+  \label{def:free_group}
+  We denote as $\free = \langle g_1, \ldots, g_r \rangle$ the \emph{free group} with $r$ generators.
+\end{definition}
+
+\section{Support of a real distribution}
+
+\subsection{Stieltjes transform}
+
+In this section we introduce a useful tool which will be essential to the next section.
+Let $\RS$ denote the Riemann sphere.
+
+\begin{lemma}
+  \label{lem:Stieltjes_function}
+  Let $z \in \RS$ such that $z \notin \R$.
+  The function $x \in \R \mapsto \frac{1}{2i\pi} \frac{1}{x-z} \in \C$ is
+  an element of $\smooth$.
+\end{lemma}
+
+\begin{proof}
+  Usual functions.
+\end{proof}
+
+\begin{definition}
+  \label{def:Stieltjes}
+  \uses{lem:extension_csd,lem:Stieltjes_function}
+  Let $\nu \in \csdistrib$.
+  The \emph{Stieltjes transform} of $\nu$ is defined as the function
+  $F_\nu : \RS - \R \rightarrow \C$ by $F(z) = \nu(x \mapsto \frac{1}{2 i \pi}\frac{1}{x-z})$.
+\end{definition}
+
+\begin{theorem}
+  \label{thm:Stieltjes_boundary_values}
+  \uses{lem:Stieltjes_function}
+  \notready
+  Let $\nu \in \csdistrib$.
+  For any $h \in \smooth$,
+  \begin{equation*}
+    \nu(h)
+    =
+    \lim_{\epsilon \rightarrow 0^+}
+    \int_{\R} (F_\nu(x+i \epsilon) - F_\nu(x - i \epsilon)) h(x) \d x.
+  \end{equation*}
+\end{theorem}
+
+\begin{proof}
+  This can be done by computing explicitely the values of $F_\nu(x \pm i \epsilon)$
+  and seeing the resulting integral as an approximation of $\delta_x$ as $\epsilon \rightarrow 0^+$,
+  [todo write the details].
+\end{proof}
+
+\begin{theorem}
+  \label{thm:Stieltjes_holomorphic}
+  \uses{thm:Stieltjes_boundary_values}
+  \notready
+  Let $\nu \in \csdistrib$.
+  The function $F_\nu : \RS - \R \rightarrow \C$ is analytic.
+  It can be analytically extended to a $x \in \R$ if and only if $x \notin \supp \nu$.
+\end{theorem}
+
+\begin{proof}
+  This proof is not complete yet as it requires a bit of work on distributions.
+
+  [todo: find a general result describing when $\nu(h(\cdot, z))$ is holomorphic, there is
+  information on this in Mathematical Methods in Physics: Distributions, Hilbert Space Operators,
+  Variational Methods, and Applications in Quantum Physics]
+
+  [todo: write the details]
+
+  For $z \in \R$, if $z \notin \supp(\nu)$, then we take a
+  $\phi \in \testfunc$ such that $\phi$ is identically equal to $1$ on $\supp (\nu)$
+  and identically equal to $0$ on a neighbourhood of $z$.
+  We then observe that $x \in \R \mapsto  \frac{1}{2 i \pi} \frac{\phi(x)}{x-z}$
+  is an element of $\smooth$ and hence we can
+  define $\tilde{F}_\nu(z) = \nu(\frac{1}{2 i \pi} \frac{\phi(x)}{x-z})$.
+  We check it is an extension of $F_\nu$ and analytic on a neighbourhood of $z$.
+
+  Let $z \in \R$. We assume that $F_\nu$ admits an analytic extension on the ball of radius $r$
+  centered at $z$.
+  Let $r' \in (0,r)$ and
+  $h \in \smooth$ such that $\supp(h) \subset [z-r',z+r']$.
+  By Theorem \ref{thm:Stieltjes_boundary_values},
+  \begin{equation*}
+    \nu(h) = \lim_{\epsilon \rightarrow 0^+}
+    \int_{z-r'}^{z+r'} (F_\nu(x+i \epsilon) - F_\nu(x - i \epsilon)) h(x) \d x.
+  \end{equation*}
+  For small enough $\epsilon>0$, and any $x \in [z-r',z+r']$,
+  $F_\nu(x \pm i \epsilon)$ lies in the ball of radius $r$ around $z$ where $F_\nu$
+  is analytically extended. We use this information to prove the that limit above (and hence
+  $\nu(h)$) is equal to $0$. Since this holds for any $h$ supported on $[z-r',z+r']$,
+  $z \notin \supp(h)$.
+\end{proof}
+
+\subsection{Spectral radius and support}
+
+We shall now show how one can access the support of a distribution
+from its moments.
+
+\begin{lemma}
+  \label{lem:monomial_smooth}
+  Let $p \geq 0$.
+  The monomial function $x \mapsto x^p$ belongs in $\smooth$. Furthermore,
+  for any integer $m \geq 0$, for any compact set $K$ of $\R$,
+  if $K+ := \sup_{x \in K} |x|$, then
+  \begin{equation*}
+    \|x \mapsto x^p\|_{C^m(K)}
+    \leq \max(p,1)^m \max (1, K_+)^p.
+  \end{equation*}
+\end{lemma}
+
+\begin{proof}
+  The regularity is well-known.
+  Let $x \in K$ and $0 \leq k \leq m$ an integer.
+  Then,
+  the $k$-th derivative of the monomial at $x$ is given by
+  $p(p-1) \ldots (p-k+1) x^{p-k}$ if $p\geq k$ and $0$ otherwise.
+  In both cases,
+  this is smaller in absolute value
+  than $\max (p,1)^k \max(K_+,1)^p$ which is smaller than $\max(p,1)^m \max(K_+,1)^p$.
+\end{proof}
+
+\begin{definition}
+  \label{def:moment}
+  \uses{def:compactly_supported_distribution,lem:monomial_smooth}
+  Let $\nu \in \csdistrib$.
+  For $p \in \N$, we define the $p$-th moment $\nu_p := \nu(x \mapsto x^p)$.
+\end{definition}
+
+\begin{definition}
+  \label{def:radius_csd}
+  \uses{def:moment}
+  Let $\nu \in \csdistrib$.
+  We define $$\rho(\nu) := \limsup_{p \to \infty} |\nu_p|^{1/p} .$$
+\end{definition}
+
+\begin{lemma}
+  \label{lem:radius_finite}
+  \uses{def:radius_csd}
+  Let $\nu \in \csdistrib$.
+  Then $\rho(\nu) < \infty$.
+\end{lemma}
+
+\begin{proof}
+  By Lemma \ref{lem:extension_csd}, there exists a compact set $K$,
+  a constant $C$ and an integer $m$
+  such that, for all $h \in \smooth$,
+  $|\nu(h)| \leq C \|h\|_{C^m(K)}$.
+Let $p \geq 0$ be an integer.
+Then by Lemma \ref{lem:monomial_smooth}, if $K_+ := \sup_{x \in K} |x|$,
+$$|\nu_p| \leq C \max(p,1)^m \max (K_+,1)^p$$
+and hence $(|\nu_p|^{1/p})_{p \geq 0}$ is bounded.
+\end{proof}
+
+\begin{proposition}
+  \label{prop:Stieltjes_expansion}
+  \notready
+  \uses{lem:radius_finite,def:Stieltjes}
+  Let $\nu \in \csdistrib$.
+  There exists $M > 0$ such that $z \mapsto -\frac{1}{2 i \pi} \sum_{p=0}^\infty \frac{\nu_p}{z^{p+1}}$
+  is an analytic extension of $F_\nu$ in $\{|z| > M\}$.
+\end{proposition}
+
+\begin{proof}
+  Let $K$, $c$, $m$ be such that $|\nu(h)| \leq c \|h\|_{C^m([-K,K])}$ for all $h \in \smooth$.
+  Let $N \geq 0$, $z \neq 0$. By linearity,
+  \begin{equation*}
+    -\frac{1}{2i \pi}
+    \sum_{p=0}^N \frac{\nu_p}{z^{p+1}}
+    = -\frac{1}{2 i \pi z} \nu \left( \sum_{p=0}^N \left(\frac{x}{z}\right)^p \right).
+  \end{equation*}
+  We need to prove that for $z \notin \R$
+  large enough, $\sum_{p=0}^N \left(\frac{x}{z}\right)^p$
+  converges to $\frac{1}{1-x/z}$ w.r.t. $\|\cdot\|_{C^m([-K,K])}$,
+  which then implies that the above quantity converges to $F_\nu(z)$.
+    [todo write the details]
+\end{proof}
+
+The main result of this section is as follows.
+
+\begin{theorem}
+  \label{thm:support_limsup}
+  \notready
+  \uses{thm:Stieltjes_holomorphic,prop:Stieltjes_expansion}
+  Let $\nu \in \csdistrib$.
+  Then $\supp \nu \subseteq [-\rho(\nu), \rho(\nu)]$.
+\end{theorem}
+
+\begin{proof}
+  As in \cite[Lemma 4.9]{chen2025}.
+\end{proof}
+
+
+%%FILE blueprint/src/content.tex
+% In this file you should put the actual content of the blueprint.
+% It will be used both by the web and the print version.
+% It should *not* include the \begin{document}
+%
+% If you want to split the blueprint content into several files then
+% the current file can be a simple sequence of \input. Otherwise It
+% can start with a \section or \chapter for instance.
+
+\tableofcontents
+
+\input{1_graphs}
+\input{2_regular}
+\input{3_random_permutation_graph}
+\input{4_master_polynomial}
+\input{5_master_extension}
+\input{6_friedman}
+

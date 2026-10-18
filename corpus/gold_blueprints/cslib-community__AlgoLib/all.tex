@@ -1,0 +1,366 @@
+
+%%FILE blueprint/src/chapters/Algorithms/Graph/Connectivity/Basic.tex
+% Mirrors `AlgoLib.Algorithms.Graph.Connectivity.Basic`
+%
+\begin{definition}[Computable reachability and distance]
+  \label{def:reachable-finset}
+  \lean{AlgoLib.SimpleGraph.reachableFinset, AlgoLib.SimpleGraph.computeDist}
+  \leanok
+  \uses{def:bfs-layers, def:symmetric-orientation}
+  For a simple graph $G$ with finite vertex set and decidable edge membership, the set of
+  vertices reachable from $u$ and the distance $\dist(u, v)$ are computed by running
+  breadth-first search from $u$ in the symmetric orientation of $G$.
+\end{definition}
+
+\begin{theorem}[Correctness]
+  \label{thm:reachable-finset-correct}
+  \lean{AlgoLib.SimpleGraph.mem_reachableFinset_iff, AlgoLib.SimpleGraph.computeDist_eq}
+  \leanok
+  \uses{def:reachable-finset, def:reachable-directed, def:dist}
+  The computed set is exactly the set of vertices reachable from $u$, and the computed
+  distance is exactly $\dist(u, v)$.
+\end{theorem}
+\begin{proof}
+  \leanok
+  \uses{thm:bfs-correct}
+  Walks in $G$ and in its symmetric orientation are the same walks, so this is the
+  correctness of breadth-first search transported along that identification.
+\end{proof}
+
+
+%%FILE blueprint/src/chapters/Algorithms/Graph/Flow/Basic.tex
+% Mirrors `AlgoLib.Algorithms.Graph.Flow.Basic`
+%
+
+
+%%FILE blueprint/src/chapters/Algorithms/Graph/MST/Basic.tex
+% Mirrors `AlgoLib.Algorithms.Graph.MST.Basic`
+%
+
+
+%%FILE blueprint/src/chapters/Algorithms/Graph/SCC/Basic.tex
+% Mirrors `AlgoLib.Algorithms.Graph.SCC.Basic`
+%
+
+
+%%FILE blueprint/src/chapters/Algorithms/Graph/Search/Basic.tex
+% Mirrors `AlgoLib.Algorithms.Graph.Search.Basic`
+%
+
+
+%%FILE blueprint/src/chapters/Algorithms/Graph/ShortestPath/Basic.tex
+% Mirrors `AlgoLib.Algorithms.Graph.ShortestPath.Basic`
+%
+
+
+%%FILE blueprint/src/chapters/Algorithms/Graph/Traversal/Basic.tex
+% Mirrors `AlgoLib.Algorithms.Graph.Traversal.*`
+%
+\subsection{Breadth-first search}
+% Mirrors `AlgoLib.Algorithms.Graph.Traversal.BFS`
+
+Throughout, $G$ is a simple directed graph whose vertex set $\V{G}$ is finite and given as
+data, and whose arc membership is decidable. Undirected graphs are searched through their
+symmetric orientation (Definition~\ref{def:symmetric-orientation}), so one search serves
+both kinds of graph.
+
+\begin{definition}[BFS layers]
+  \label{def:bfs-layers}
+  \lean{AlgoLib.SimpleDiGraph.bfsLayer, AlgoLib.SimpleDiGraph.bfsVisited}
+  \leanok
+  Let $s \in \V{G}$. The \emph{layers} of breadth-first search from $s$ are the sets
+  \[
+    L_0 = \{s\}, \qquad
+    L_{k+1} = N^+(L_k) \setminus (L_0 \cup \dots \cup L_k),
+  \]
+  where $N^+(L)$ denotes the set of out-neighbours of the vertices of $L$. The set of
+  vertices \emph{visited} within $k$ rounds is $V_k = L_0 \cup \dots \cup L_k$. When
+  $s \notin \V{G}$ every layer is empty.
+  In Lean the search is a state $(V_k, L_k)$ iterated $k$ times from $(\{s\}, \{s\})$,
+  so that the definition reduces and \texttt{decide} can evaluate it.
+\end{definition}
+
+\begin{lemma}[Soundness]
+  \label{lem:bfs-sound}
+  \lean{AlgoLib.SimpleDiGraph.exists_walk_of_mem_bfsLayer}
+  \leanok
+  \uses{def:bfs-layers}
+  Every vertex of $L_k$ is the endpoint of a walk of length $k$ from $s$.
+\end{lemma}
+\begin{proof}
+  \leanok
+  By induction on $k$: a vertex of $L_{k+1}$ is an out-neighbour of a vertex of $L_k$,
+  and appending that arc to the walk given by the induction hypothesis yields a walk of
+  length $k + 1$.
+\end{proof}
+
+\begin{lemma}[Completeness]
+  \label{lem:bfs-complete}
+  \lean{AlgoLib.SimpleDiGraph.mem_bfsVisited_of_isVertexSeqIn}
+  \leanok
+  \uses{def:bfs-layers}
+  The endpoint of a walk of length $\ell$ from $s$ lies in $V_\ell$.
+\end{lemma}
+\begin{proof}
+  \leanok
+  By induction on the walk. The key step is that the out-neighbours of a vertex of $V_k$
+  lie in $V_{k+1}$: such a vertex lies in some $L_j$ with $j \le k$, and its
+  out-neighbours are either already in $V_j$ or in $L_{j+1}$.
+\end{proof}
+
+\begin{lemma}[Termination]
+  \label{lem:bfs-termination}
+  \lean{AlgoLib.SimpleDiGraph.lt_card_of_nonempty_bfsLayer}
+  \leanok
+  \uses{def:bfs-layers}
+  If $L_k \neq \emptyset$ then $k < |\V{G}|$. Hence the search from $s$ has exhausted every
+  layer after $|\V{G}|$ rounds.
+\end{lemma}
+\begin{proof}
+  \leanok
+  An empty layer is followed by an empty layer, so $L_0, \dots, L_k$ are all non-empty.
+  They are pairwise disjoint subsets of $\V{G}$, so $k + 1 \le |V_k| \le |\V{G}|$.
+\end{proof}
+
+\begin{theorem}[The layers are the spheres]
+  \label{thm:bfs-layers-spheres}
+  \lean{AlgoLib.SimpleDiGraph.mem_bfsLayer_iff_dist_eq}
+  \leanok
+  \uses{def:bfs-layers, def:dist}
+  For every vertex $v$ and every $k \in \N$,
+  \[
+    v \in L_k \iff \dist(s, v) = k .
+  \]
+\end{theorem}
+\begin{proof}
+  \leanok
+  \uses{lem:bfs-sound, lem:bfs-complete}
+  Let $v \in L_k$. Soundness gives $\dist(s, v) \le k$. For the reverse inequality there
+  is nothing to show when $k = 0$; when $k = j + 1$, a walk from $s$ to $v$ of length at
+  most $j$ would place $v$ in $V_j$ by completeness, whereas $L_{j+1}$ avoids $V_j$ by
+  construction, so $\dist(s, v) > j$, i.e. $\dist(s, v) \ge k$. Conversely, if
+  $\dist(s, v) = k$ then a shortest walk places $v \in V_k$, so $v \in L_j$ for some
+  $j \le k$, and the first part gives $j = k$.
+\end{proof}
+
+\begin{theorem}[BFS computes reachability and distance]
+  \label{thm:bfs-correct}
+  \lean{AlgoLib.SimpleDiGraph.mem_bfsReachableFinset_iff, AlgoLib.SimpleDiGraph.bfsDist_eq_dist}
+  \leanok
+  \uses{def:bfs-layers, def:reachable-directed, def:dist}
+  The set $V_{|\V{G}|}$ is exactly the set of vertices reachable from $s$, and the least
+  $k < |\V{G}|$ with $v \in L_k$ (or $\infty$ if there is none) is exactly $\dist(s, v)$.
+\end{theorem}
+\begin{proof}
+  \leanok
+  \uses{lem:bfs-sound, lem:bfs-complete, lem:bfs-termination}
+  Soundness gives one inclusion and one inequality; completeness together with the
+  termination bound gives the other.
+\end{proof}
+
+
+%%FILE blueprint/src/chapters/DataStructures/BinaryTree/Basic.tex
+% Mirrors `AlgoLib.DataStructures.BinaryTree.*`
+%
+
+
+%%FILE blueprint/src/chapters/DataStructures/InverseAckermann/Basic.tex
+% Mirrors (no Lean counterpart yet -- see note in content.tex)
+%
+
+
+%%FILE blueprint/src/chapters/DataStructures/SplayTree/Basic.tex
+% Mirrors `AlgoLib.DataStructures.SplayTree.*`
+%
+
+
+%%FILE blueprint/src/chapters/DataStructures/UnionFind/Basic.tex
+% Mirrors `AlgoLib.DataStructures.UnionFind.Basic`
+%
+
+
+%%FILE blueprint/src/chapters/Theory/Graph/Basic.tex
+% Mirrors `AlgoLib.Theory.Graph.Basic`
+%
+\begin{definition}
+  An \textit{(undirected) graph} is a pair $G = (V,E)$ consisting of a set $V$ 
+  and a multi-set $E$ of unordered pairs of elements in $V$. 
+  Elements of $V$ are called \textit{vertices} and elements of $E$ are called \textit{edges}.
+  For two vertices $u,v \in V$, we say $u$ and $v$ are \textit{adjacent} if $\{u,v\} \in E$.
+  We call an undirected graph $G$ \textit{simple} if all edges are distinct (i.e., $E$ is a set), 
+  and each edge is a pair of distinct vertices.
+\end{definition}
+
+\begin{definition}
+  A \textit{directed graph} is a pair $G = (V,E)$ consisting of a set $V$ 
+  and a multi-set $E$ of ordered pairs of elements in $V$. 
+  Elements of $V$ are called \textit{vertices} and elements of $E$ are called \textit{edges}.
+  We call a directed graph $G$ \textit{simple} if all edges are distinct and
+  each edge is a pair of distinct vertices.
+\end{definition}
+
+
+%%FILE blueprint/src/chapters/Theory/Graph/Coloring/Basic.tex
+% Mirrors `AlgoLib.Theory.Graph.Coloring.Basic`
+%
+
+
+%%FILE blueprint/src/chapters/Theory/Graph/Connectivity/Basic.tex
+% Mirrors `AlgoLib.Theory.Graph.Connectivity.*`
+%
+\subsection{Reachability and distance}
+% Mirrors `AlgoLib.Theory.Graph.Connectivity.Reachable` and
+% `AlgoLib.Theory.Graph.Connectivity.Directed`
+
+\begin{definition}[Reachability]
+  \label{def:reachable-directed}
+  \lean{AlgoLib.SimpleGraph.Reachable, AlgoLib.SimpleDiGraph.Reachable}
+  \leanok
+  Let $G$ be a simple graph or a simple directed graph. A vertex $v$ is \emph{reachable}
+  from $u$ if some walk realized in $G$ runs from $u$ to $v$. In the undirected case
+  reachability is an equivalence relation on $\V{G}$; in the directed case it is only a
+  preorder, since walks cannot be reversed.
+\end{definition}
+
+\begin{definition}[Symmetric orientation]
+  \label{def:symmetric-orientation}
+  \lean{AlgoLib.SimpleGraph.toSimpleDiGraph}
+  \leanok
+  The \emph{symmetric orientation} of a simple graph $G$ is the simple directed graph on
+  $\V{G}$ whose arcs are the ordered pairs $(u, v)$ with $\{u, v\} \in \E{G}$. A walk is
+  realized in $G$ exactly when it is realized in the symmetric orientation, so
+  reachability and distances agree.
+\end{definition}
+
+\begin{definition}[Distance]
+  \label{def:dist}
+  \lean{AlgoLib.SimpleDiGraph.dist, AlgoLib.SimpleGraph.dist}
+  \leanok
+  \uses{def:reachable-directed, def:symmetric-orientation}
+  The \emph{distance} $\dist(u, v) \in \N \cup \{\infty\}$ from $u$ to $v$ in a simple
+  directed graph is the least length of a walk from $u$ to $v$, and $\infty$ if $v$ is not
+  reachable from $u$. For a simple graph it is the distance in the symmetric orientation,
+  and is then symmetric in $u$ and $v$.
+\end{definition}
+
+
+%%FILE blueprint/src/chapters/Theory/Graph/Embeddings/Basic.tex
+% Mirrors `AlgoLib.Theory.Graph.Embeddings.Basic`
+%
+
+
+%%FILE blueprint/src/chapters/Theory/Graph/Matching/Basic.tex
+% Mirrors `AlgoLib.Theory.Graph.Matching.Basic`
+%
+
+
+%%FILE blueprint/src/chapters/Theory/Graph/Minors/Basic.tex
+% Mirrors `AlgoLib.Theory.Graph.Minors.Basic`
+%
+
+
+%%FILE blueprint/src/chapters/Theory/Graph/Spectral/Basic.tex
+% Mirrors `AlgoLib.Theory.Graph.Spectral.*`
+%
+
+
+%%FILE blueprint/src/chapters/Theory/Graph/Structures/Basic.tex
+% Mirrors `AlgoLib.Theory.Graph.Structures.*` (walks, paths, cycles, Eulerian/Hamiltonian)
+%
+
+
+%%FILE blueprint/src/chapters/Theory/Graph/Structures/Trees/Basic.tex
+% Mirrors `AlgoLib.Theory.Graph.Structures.Trees.Basic`
+%
+
+
+%%FILE blueprint/src/chapters/biblio.tex
+\bibliographystyle{plain} % We choose the "plain" reference style
+\bibliography{AlgoLib}
+
+
+%%FILE blueprint/src/content.tex
+% In this file you should put the actual content of the blueprint.
+% It will be used both by the web and the print version.
+% It should *not* include the \begin{document}
+%
+% The chapter/section structure below mirrors the AlgoLib source tree:
+%
+%   \chapter{Graph Theory}      <-> AlgoLib/Theory/Graph/
+%   \chapter{Graph Algorithms}  <-> AlgoLib/Algorithms/Graph/
+%   \chapter{Data Structures}   <-> AlgoLib/DataStructures/
+%
+% and each chapters/<path>/Basic.tex mirrors the Lean module of the same path.
+% When you add a Lean module, add the matching .tex file here so the two trees
+% stay in step.
+
+\tableofcontents
+
+\chapter{Graph Theory}
+% AlgoLib/Theory/Graph/
+
+\section{Basic}
+\input{chapters/Theory/Graph/Basic.tex}
+
+\section{Structures}
+\input{chapters/Theory/Graph/Structures/Basic.tex}
+
+\subsection{Trees}
+\input{chapters/Theory/Graph/Structures/Trees/Basic.tex}
+
+\section{Connectivity}
+\input{chapters/Theory/Graph/Connectivity/Basic.tex}
+
+\section{Coloring}
+\input{chapters/Theory/Graph/Coloring/Basic.tex}
+
+\section{Matching}
+\input{chapters/Theory/Graph/Matching/Basic.tex}
+
+\section{Minors}
+\input{chapters/Theory/Graph/Minors/Basic.tex}
+
+\section{Spectral}
+\input{chapters/Theory/Graph/Spectral/Basic.tex}
+
+\section{Embeddings}
+\input{chapters/Theory/Graph/Embeddings/Basic.tex}
+
+\chapter{Graph Algorithms}
+% AlgoLib/Algorithms/Graph/
+
+\section{Traversal}
+\input{chapters/Algorithms/Graph/Traversal/Basic.tex}
+
+\section{Search}
+\input{chapters/Algorithms/Graph/Search/Basic.tex}
+
+\section{Shortest Path}
+\input{chapters/Algorithms/Graph/ShortestPath/Basic.tex}
+
+\section{MST}
+\input{chapters/Algorithms/Graph/MST/Basic.tex}
+
+\section{Flow}
+\input{chapters/Algorithms/Graph/Flow/Basic.tex}
+
+\section{SCC}
+\input{chapters/Algorithms/Graph/SCC/Basic.tex}
+
+\chapter{Data Structures}
+% AlgoLib/DataStructures/
+
+\section{Binary Tree}
+\input{chapters/DataStructures/BinaryTree/Basic.tex}
+
+\section{Splay Tree}
+\input{chapters/DataStructures/SplayTree/Basic.tex}
+
+\section{Union Find}
+\input{chapters/DataStructures/UnionFind/Basic.tex}
+
+\subsection{Inverse Ackermann}
+\input{chapters/DataStructures/InverseAckermann/Basic.tex}
+
+\input{chapters/biblio}
+

@@ -1,0 +1,893 @@
+
+%%FILE blueprint/src/content.tex
+% In this file you should put the actual content of the blueprint.
+% It will be used both by the web and the print version.
+% It should *not* include the \begin{document}
+%
+% If you want to split the blueprint content into several files then
+% the current file can be a simple sequence of \input. Otherwise It
+% can start with a \section or \chapter for instance.
+
+\chapter{Introduction}%
+\label{cha:introduction}
+
+The goal of this project is to formalize Moreira's version of Sard's Theorem,
+see \url{http://dmle.icmat.es/pdf/PUBLICACIONSMATEMATIQUES_2001_45_01_06.pdf}.
+
+In this chapter, we describe some differences
+between the original paper and the formalization,
+as well as some minor inaccuracies found during formalization.
+
+\chapter{Preliminaries}%
+\label{cha:preliminaries}
+
+\section{Measure Theory}%
+\label{sec:measure-theory}
+
+Most of the lemmas in this section
+are true for measures on general measurable spaces
+with appropriate typeclass assumptions.
+\texttt{Mathlib} versions of these lemmas should be stated
+in the right generality.
+However, for this project, it's acceptable to prove the lemmas
+for Haar measures on finite dimensional real normed spaces only.
+
+\begin{lemma}%
+  \label{lem:measurable-meas-ball}
+  \lean{Measurable.measure_apply}
+  \leanok%
+  Let \(E\) and \(F\) be finite dimensional real normed spaces.
+  Let \(s \subset E \times F\) be a measurable set in their product.
+  Let \(\mu\) be an additive Haar measure on \(E\).
+  Then \(\varphi(x, y, r) = \mu \{z \in E\mid \|z - x\| < r \wedge (z, y) \in s\}\)
+  is a measurable function in \((x, y, r)\).
+\end{lemma}
+\begin{proof}
+  \leanok%
+  Consider the set \(t \subset E \times E \times F \times \mathbb R\)
+  given by \(t = \{(z, x, y, r) \mid \|z - x\| < r \wedge (z, y) \in s\}\).
+  Clearly, this is a measurable set.
+  Thus the measure of its sections \(t_{x, y, r}=\{z \mid (z, x, y, r) \in t\}\)
+  is a measurable function of \((x, y, r)\),
+  which is exactly what we need to prove.
+\end{proof}
+
+\begin{corollary}%
+  \label{cor:measurable-density}
+  \lean{Besicovitch.ae_tendsto_measure_sectl_inter_closedBall_div}
+  \leanok%
+  Let \(E\), \(F\), \(s\), and \(\mu\) be as in \autoref{lem:measurable-meas-ball}.
+  Then the set of points \((x, y)\) such that \(x\) is a Lebesgue density point of \(s_{y} = \{z \mid (z, y) \in s\}\)
+  is a measurable set.
+\end{corollary}
+\begin{proof}
+  \uses{lem:measurable-meas-ball}
+  \leanok%
+  The theorem immediately follows from the non-parametrized version
+  and measurability of the set of fiberwise density points of a measurable set.
+\end{proof}
+
+\begin{lemma}%
+  \label{lem:meas-ball-lowersemicont}
+  \lean{lowerSemicontinuous_measure_ball_toUpper_symm}
+  \leanok%
+  Let \(X\) be a (pseudo) metric space with a measure \(\mu\).
+  Consider the measure of an open ball \(\mu(B_{r}(x))\) as a function on \(X\times\mathbb R\),
+  where \(\mathbb R\) is equipped with the upper topology.
+  Then this function is lower semicontinuous.
+\end{lemma}
+
+\begin{proof}
+  \leanok%
+  Consider a point \((x, r)\) and an extended nonnegative real number \(m < \mu(B_{r}(x))\)
+  Since the union of the balls \(B_{r'}(x)\) over \(r' < r\) is the ball \(B_{r}(x)\),
+  there exists \(r' < r\) such that \(\mu\left(B_{r'}(x)\right) > m\).
+  Take \(r'' \in (r', r)\), then \(\mu\left(B_{\rho}(y)\right) \ge \mu\left(B_{r''}(x)\right)> m\)
+  whenever \(y\in B_{r' - r''}(x)\) and \(\rho > r'\).
+\end{proof}
+
+\begin{corollary}%
+  \label{cor:meas-ball-lowersemicont}
+  \lean{lowerSemicontinuous_measure_ball}
+  \leanok%
+  Let \(X\) be a (pseudo) metric space with a measure \(\mu\).
+  Then \(\mu(B_{r}(x))\) is lower semicontinuous in \((x, r)\in X\times\mathbb R\).
+\end{corollary}
+
+\begin{proof}
+  \uses{lem:meas-ball-lowersemicont}
+  \leanok%
+  This lemma immediately follows from \autoref{lem:meas-ball-lowersemicont}
+  and the fact that the upper topology is coarser than the order topology.
+\end{proof}
+
+\begin{corollary}%
+  \label{cor:meas-ball-mesaurable}
+  \lean{Measurable.measure_ball}
+  \leanok%
+  The measure of an open ball in a (pseudo) metric space is measurable in \((x, r)\in X\times\mathbb R\).
+\end{corollary}
+
+\begin{proof}
+  \uses{cor:meas-ball-lowersemicont}
+  \leanok%
+  This statement immediately follows from \autoref{cor:meas-ball-lowersemicont}
+  and the fact that a lower semicontinuous function is measurable.
+\end{proof}
+
+\begin{corollary}%
+  \label{cor:meas-ball-min}
+  \lean{IsCompact.exists_isMinOn_measure_ball}
+  \leanok%
+  If \(X\) is a (pseudo) metric space with a measure \(\mu\)
+  and \(s\) is a nonempty compact set in \(X\),
+  then for each \(r\) there exists \(x \in s\) such that \(\mu(B_{r}(x)) \le \mu(B_{r}(y))\) for all \(y \in s\).
+\end{corollary}
+
+\begin{proof}
+  \uses{cor:meas-ball-lowersemicont}
+  \leanok%
+  This statement immediately follows from \autoref{cor:meas-ball-lowersemicont}
+  and the fact that a lower semicontinuous function on a nonempty compact
+  achieves its minimal value.
+\end{proof}
+
+\begin{corollary}%
+  \label{cor:meas-ball-gt-pos}
+  \lean{exists_pos_forall_lt_measure_ball}
+  \leanok%
+  If \(X\) is a compact (pseudo) metric space
+  and \(\mu\) is a measure on \(X\) that is positive on nonempty open sets,
+  then for each \(r > 0\) there exists \(\epsilon>0\)
+  such that \(\mu(B_{r}(x))>\epsilon\) for all \(x\).
+\end{corollary}
+
+\begin{proof}
+  \uses{cor:meas-ball-min}
+  \leanok%
+  If \(X\) is nonempty, then we choose \(x\) as in \autoref{cor:meas-ball-min},
+  then choose \(0 < \epsilon < \mu(B_{r}(x))\).
+  Otherwise, we choose any \(\epsilon > 0\) (e.g., \(\epsilon = 1\)).
+\end{proof}
+
+\todo{Add similar statements about closed balls and upper semicontinuity.}
+
+\section{Vitali Families}%
+\label{sec:vitali-families}
+
+TODO:\@ generalize some statement about Vitali families to outer measures.
+
+\section{\(C^k\) maps}%
+\label{sec:ck-maps}
+
+\begin{lemma}%
+  \label{lem:Ck-differentiable-iteratedFDeriv}
+  \lean{ContDiffAt.differentiableAt_iteratedFDeriv}
+  \leanok%
+  If \(f \colon E \to F\) is \(C^{k}\) at \(a\) and \(l < k\),
+  then \(D^{l}f\) is differentiable at \(a\).
+\end{lemma}
+\begin{proof}
+  \leanok%
+  Since \(f\) is \(C^{k}\) at \(a\) and \(l + 1 \le k\),
+  \(D^{l}f\) is \(C^{1}\) at \(a\),
+  thus it's differentiable at \(a\).
+\end{proof}
+
+\begin{lemma}%
+  \label{lem:iteratedFDeriv-prod}
+  \lean{iteratedFDeriv_prodMk}
+  \leanok%
+  If \(f\colon E \to F\) and \(g\colon E \to G\) are \(C^{k}\) at \(a\),
+  then \(D^{k}(x \mapsto (f(x), g(x)))(a) = (D^{k}f(a), D^{k}g(a))\).
+\end{lemma}
+\begin{proof}
+  \leanok%
+  This lemma immediately follows from uniqueness of the iterated derivative
+  and lemmas in the library.
+\end{proof}
+
+\section{\(C^{k}\) maps with locally Hölder derivatives at a point}%
+\label{sec:cdh-at}
+
+In this section,
+\begin{itemize}
+\item \(k\) is a natural number;
+\item \(\alpha\) is a real number between \(0\) and \(1\);
+\item \(E\), \(F\), and \(G\) a real normed spaces;
+\item \(f\colon E \to F\) is a function.
+\end{itemize}
+
+\begin{definition}%
+  \label{def:cdh-at}
+  \lean{ContDiffMoreiraHolderAt}
+  \leanok%
+  We say that a map \(f\colon E\to F\) is \emph{\(C^{k+(\alpha)}\)} at a point \(a\),
+  if it is \(C^{k}\) at \(a\) and \(D^{k}f(x) - D^{k}f(a) = O(\|x - a\|^{\alpha})\) as \(x\to a\).
+\end{definition}
+
+Note that this notion is weaker than a more commonly used \(C^{k+\alpha}\) smoothness assumption.
+\begin{lemma}%
+  \label{def:contdiffholder-imp-cdh-at}
+  \lean{ContDiffMoreiraHolderAt.of_contDiffOn_holderWith}
+  \leanok%
+  \uses{def:cdh-at}
+  If \(f\colon E \to F\) is \(C^{k+\alpha}\) on an open set \(U\),
+  i.e., \(f\) is \(C^{k}\) on \(U\) and \(D^{k}f\) is \(\alpha\)-Hölder on \(U\),
+  then \(f\) is \(C^{k+(\alpha)}\) at every point \(a \in U\).
+\end{lemma}
+\begin{proof}
+  \leanok%
+  The proof follows immediately from definitions.
+\end{proof}
+
+\begin{lemma}%
+  \label{lem:cdh-at-zero}
+  \lean{ContDiffMoreiraHolderAt.zero_exponent_iff}
+  \leanok%
+  \uses{def:cdh-at}
+  A map \(f\colon E\to F\) is \(C^{k+(0)}\) at \(a\) iff it is \(C^{k}\) at \(a\).
+\end{lemma}
+
+\begin{proof}
+  \leanok%
+  The forward implication follows from the definition.
+  For the backward implication,
+  we need to show that \(D^{k}f(x) - D^{k}f(a)=O(1)\) as \(x\to a\),
+  which immediately follows from the continuity of \(D^{k}f\) at \(a\).
+\end{proof}
+
+\begin{lemma}%
+  \label{lem:cdh-at-of-contDiffAt}
+  \uses{def:cdh-at}
+  \lean{ContDiffAt.contDiffMoreiraHolderAt}
+  \leanok%
+  If \(f\colon E\to F\) is \(C^{l}\) at \(a\) with \(l > k\),
+  then it is \(C^{k+(\alpha)}\) at \(a\).
+\end{lemma}
+\begin{proof}
+  \uses{lem:Ck-differentiable-iteratedFDeriv}
+  \leanok%
+  Since \(D^{k}f\) is differentiable at \(a\), we have \(D^{k}f(x)-D^{k}f(a)=O(x - a)=O(\|x - a\|^{\alpha})\),
+  where the latter estimate holds since \(\alpha \le 1\).
+\end{proof}
+
+\begin{lemma}%
+  \label{lem:cdh-at-mono}
+  \uses{def:cdh-at}
+  \lean{ContDiffMoreiraHolderAt.of_exponent_le, ContDiffMoreiraHolderAt.of_lt, ContDiffMoreiraHolderAt.of_toLex_le}
+  \leanok%
+  Let \(f\colon E\to F\) be a map which is \(C^{k+(\alpha)}\) at \(a\).
+  Let \(l\) be a natural number and \(\beta \in [0, 1]\) be a real number.
+  If \((l, \beta) \le (k, \alpha)\) in the lexicographic order,
+  then \(f\) is \(C^{l+(\beta)}\) at \(a\).
+\end{lemma}
+
+\begin{proof}
+  \uses{lem:cdh-at-of-contDiffAt}
+  \leanok%
+  Note that \(l\le k\), hence \(f\) is \(C^{l}\) at \(a\).
+  In order to show \(D^{l}f(x) - D^{l}f(a) = O(\|x - a\|^{\beta})\) as \(x\to a\),
+  consider the cases \(l = k\), \(\beta \le \alpha\) and \(l < k\).
+
+  In the former case, we have \(D^{k}f(x) - D^{k}f(a) = O\left(\|x - a\|^{\alpha}\right)=O\left(\|x - a\|^{\beta}\right)\) as \(x\to a\).
+
+  In the latter case, we apply \autoref{lem:cdh-at-of-contDiffAt}.
+\end{proof}
+
+\begin{lemma}%
+  \label{lem:cdh-at-prodMk}
+  \uses{def:cdh-at}
+  \lean{ContDiffMoreiraHolderAt.prodMk}
+  \leanok%
+  If \(f \colon E \to F\) and \(g \colon E \to G\) are \(C^{k+(\alpha)}\) at \(a \in E\),
+  then \(x \mapsto (f(x), g(x))\) is \(C^{k+(\alpha)}\) at \(a\).
+\end{lemma}
+\begin{proof}
+  \uses{lem:iteratedFDeriv-prod}
+  \leanok%
+  The lemma immediately follows from \autoref{lem:iteratedFDeriv-prod}.
+\end{proof}
+
+\begin{lemma}%
+  \label{lem:cdh-at-clm-comp}
+  \uses{def:cdh-at}
+  \lean{ContDiffMoreiraHolderAt.continuousLinearMap_comp}
+  \leanok%
+  If \(f \colon E \to F\) is \(C^{k+(\alpha)}\) at \(a \in E\)
+  and \(g \colon F \to G\) is a continuous linear map,
+  then \(g \circ f\) is \(C^{k+(\alpha)}\) at \(a\).
+\end{lemma}
+
+\begin{proof}
+  \leanok%
+  Immediately follows from \(D^{k}(g \circ f) = g\circ D^{k}f\).
+\end{proof}
+
+\begin{remark}
+  \autoref{lem:cdh-at-clm-comp} immediately follows from a more general \autoref{lem:cdh-at-comp} below.
+\end{remark}
+
+\begin{lemma}%
+  \label{lem:cdh-at-fderiv}
+  \uses{def:cdh-at}
+  \lean{ContDiffMoreiraHolderAt.fderiv}
+  \leanok%
+  If \(f \colon E \to F\) is \(C^{k+1+(\alpha)}\) at \(a \in E\),
+  then \(Df\) is \(C^{k+(\alpha)}\) at \(a\).
+\end{lemma}
+
+\begin{proof}
+  \leanok%
+  The lemma immediately follows from \(D^{k+1}f = D(D^{k}f)\).
+\end{proof}
+
+\begin{corollary}%
+  \label{lem:cdh-at-iteratedFDeriv}
+  \uses{def:cdh-at}
+  \lean{ContDiffMoreiraHolderAt.iteratedFDeriv}
+  \leanok%
+  If \(f \colon E \to F\) is \(C^{k+l+(\alpha)}\) at \(a \in E\),
+  then \(D^{k}f\) is \(C^{l+(\alpha)}\) at \(a\).
+\end{corollary}
+\begin{proof}
+  \uses{lem:cdh-at-fderiv, lem:cdh-at-clm-comp}
+  \leanok%
+  The proof by induction on \(k\) using \autoref{lem:cdh-at-fderiv} and \autoref{lem:cdh-at-clm-comp}.
+  The latter lemma is required, because \(D^{k+1}f\) and \(D(D^{k} f)\) have different types in Lean,
+  and are related by a continuous linear equivalence.
+\end{proof}
+
+\begin{lemma}%
+  \label{lem:cdh-at-comp}
+  \uses{def:cdh-at}
+  \lean{ContDiffMoreiraHolderAt.comp}
+  \leanok%
+  Consider \(g\colon F \to G\), \(f\colon E \to F\), and \(a \in E\)
+  such that \(g\) is \(C^{k+(\alpha)}\) at \(f(a)\) and \(f\) is \(C^{k+(\alpha)}\) at \(a\), where \(k > 0\) and \(\alpha \in [0, 1]\).
+  Then \(g\circ f\) is \(C^{k+(\alpha)}\) at \(a\).
+\end{lemma}
+
+\begin{proof}
+  \leanok%
+  Since \(g\) is \(C^{k}\) at \(f(a)\) and \(f\) is \(C^{k}\) at \(a\),
+  the composition \(g\circ f\) is \(C^{k}\) at \(a\).
+  Let us show that \(D^{k}(g\circ f)(x) - D^{k}(g\circ f)(a) = O(\|x - a\|^{\alpha})\) as \(x\to \alpha\).
+
+  Due to the Faa Di Bruno formula, we have
+  \[
+    D^k(g\circ f)(a) = \sum_{P}TC_{P}\left(D^{|P|}g(f(a)), D^{|P_{0}|}f(a), \dots, D^{\left|P_{|P|-1}\right|}f(a)\right),
+  \]
+  where the sum is taken over all partitions \(P\) of \(0, \dots, k - 1\) into disjoint sets,
+  and \(TC_{P}\) is a continuous multilinear map in all \(|P|+1\) variables
+  which depends only on the normed spaces and the partition \(P\).
+
+  Subtracting these expressions, we see that it suffices to show that for each partition \(P\),
+  we have
+  \begin{align*}
+    TC_{P}&\left(D^{|P|}g(f(x)), D^{|P_{0}|}f(x), \dots, D^{\left|P_{|P|-1}\right|}f(x)\right) -\\
+          &TC_{P}\left(D^{|P|}g(f(a)), D^{|P_{0}|}f(a), \dots, D^{\left|P_{|P|-1}\right|}f(a)\right) =\\
+          &O(\|x - a\|^{\alpha}).
+  \end{align*}
+  Since \(k > 0\), the function \(f\) is Lipschitz near \(a\),
+  thus \(f(x) - f(a) = O(x - a)\), \(D^{|P|}g(f(x)) - D^{|P|}g(f(a)) = O(\|x - a\|^{\alpha})\), and \(D^{|P_{j}|}f(x) - D^{|P_{j}|}f(a) = O(\|x - a\|^{\alpha})\).
+  Now, the goal follows from the fact that a continuous multilinear map is locally Lipschitz.
+\end{proof}
+
+\begin{corollary}%
+  \label{cor:cdh-at-arith}
+  \uses{def:cdh-at}
+  Arithmetic operations (addition, subtraction, scalar multiplication, multiplication)
+  of \(C^{k+(\alpha)}\) functions is a \(C^{k+(\alpha)}\) function.
+\end{corollary}
+
+\begin{proof}
+  \uses{lem:cdh-at-comp,lem:cdh-at-of-contDiffAt}
+  This fact immediately follows
+  from \autoref{lem:cdh-at-comp} and \autoref{lem:cdh-at-of-contDiffAt}.
+\end{proof}
+
+\begin{remark}
+  It would be nice to formalize the proofs of \autoref{lem:cdh-at-comp} above
+  and \autoref{thm:cdh-at-inverse} below
+  so that most parts of the proofs
+  can be reused in the proofs about a more common class \(C^{k+\alpha}\).
+  This can be achieved by writing most of the estimates
+  in terms of formal Taylor series satisfying the Faa Di Bruno formula.
+\end{remark}
+
+\section{\(C^{k}\) maps with Hölder continuous derivatives on sets}%
+\label{sec:chd-on}
+
+\begin{definition}%
+  \label{def:cdh-on}
+  \lean{ContDiffMoreiraHolderOn}
+  \leanok%
+  We say that a map \(f\colon E\to F\) is \emph{\(C^{k+(\alpha)}\) on a pair of sets \(K\), \(U\)}, if
+  \begin{itemize}
+  \item \(U\) is an open set;
+  \item \(K \subset U\);
+  \item \(f\) is \(C^{k}\) on \(U\);
+  \item for each \(a \in K\), \(D^{k}f(x) - D^{k}f(a) = O(\|x - a\|^{\alpha})\) as \(x\to a\).
+  \end{itemize}
+\end{definition}
+
+\begin{lemma}%
+  \label{lem:exists-cdh-on}
+  \uses{def:cdh-at,def:cdh-on}
+  \lean{ContDiffMoreiraHolderOn.exists_superset}
+  \leanok%
+  Given a map \(f\colon E \to F\), a set \(K\), a natural number \(k\), and a real number \(\alpha \in [0, 1]\),
+  there exists \(U\) such that \(f\) is \(C^{k+(\alpha)}\) on \((K, U)\)
+  iff \(f\) is \(C^{k+(\alpha)}\) at each \(a \in K\).
+\end{lemma}
+
+\begin{proof}
+  \leanok%
+  Consider two cases.
+
+  \paragraph{Case 1: \(f\) is \(C^{k+(\alpha)}\) at each \(a \in K\).}
+  In this case, for each \(a \in K\) choose an open neighborhood \(U_{a}\) such that \(f\) is \(C^{k}\) on \(U_{a}\).
+  Then \(f\) is \(C^{k}\) on the union \(U = \bigcup_{a\in K} U_{a} \superset K\), hence it's \(C^{k+(\alpha)}\) on \((K, U)\).
+  So, in this case both parts of the equivalence are true.
+
+  \paragraph{Case 2: \(f\) is not \(C^{k+(\alpha)}\) at some \(a \in K\).}
+  In this case, \(f\) is not \(C^{k+(\alpha)}\) on \((K, U)\) for any \(U\), so we can take \(U\) to be the whole space.
+\end{proof}
+
+\begin{lemma}%
+  \label{lem:cdh-on-comp}
+  \uses{def:cdh-on}
+  \lean{ContDiffMoreiraHolderOn.comp}
+  \leanok%
+  Suppose that
+  \begin{itemize}
+  \item \(k > 0\), \(\alpha \in [0, 1]\);
+  \item \(g\colon F\to G\) is \(C^{k+(\alpha)}\) on \((t, V)\);
+  \item \(f\colon E\to F\) is \(C^{k+(\alpha)}\) on \((s, U)\);
+  \item \(f\) maps \(s\) to \(t\);
+  \item \(f\) maps \(U\) to \(V\).
+  \end{itemize}
+  Then \(g\circ f\) is \(C^{k+(\alpha)}\) on \((s, U)\).
+\end{lemma}
+
+\begin{proof}
+  \uses{lem:cdh-at-comp}
+  \leanok%
+  This statement immediately follows from \autoref{lem:cdh-at-comp}.
+\end{proof}
+
+\section{Inverse function theorem}%
+\label{sec:inverse-funct-theor}
+
+In this section we prove a version of the inverse function theorem for \(C^{k+(\alpha)}\) functions,
+then deduce some corollaries.
+For simplicity, we formulate these theorems for finite dimensional real normed spaces,
+but most of them should be true in Banach spaces,
+possibly with extra assumptions that are automatically satisfied for finite dimensional spaces.
+
+\begin{theorem}%
+  \label{thm:cdh-at-inverse}
+  \uses{def:cdh-at}
+  Consider a map \(f\colon E\to F\) between two finite dimensional real normed spaces.
+  Suppose that \(f\) is \(C^{k+(\alpha)}\) at \(a \in E\), \(k > 0\), and \(df(a)\) is bijective.
+  Then the inverse function \(f^{-1}\) is \(C^{k+(\alpha)}\) at \(f(a)\).
+\end{theorem}
+\begin{proof}
+  From the usual inverse function theorem for \(C^{k}\) maps,
+  we know that \(g=f^{-1}\) is \(C^{k}\) in a neighborhood of \(f(a)\).
+  Thus we only need to show that \(D^{k}g(y)-D^{k}g(f(a)) = O\left(\|y - f(a)\|^{\alpha}\right)\) as \(y \to f(a)\).
+  Equivalently, we need to show that \(D^{k}g(f(x)) - D^{k}g(f(a)) = O\left(\|x - a\|^{\alpha}\right)\) as \(x\to a\).
+
+  Consider the cases \(k = 1\) and \(k > 1\).
+
+  \textbf{Case I:\@\(k = 1\)}. In this case we need to show that
+  \(g'(f(x)) - g'(f(a)) = O\left(\|x - a\|^{\alpha}\right)\) as \(x\to a\).
+  This immediately follows from \(g'(f(x)) = {f'(x)}^{-1}\),
+  a similar estimate on \(f'(x) - f'(a)\),
+  and differentiability of the inversion of a continuous linear equivalence.
+
+  \textbf{Case II:\@\(k > 1\)}.
+  Apply the Faa Di Bruno formula to find \(D^{k}(g \circ f) = D^{k} id =0\).
+  Note that the only term in the RHS of the Faa Di Bruno formula
+  that depends on \(D^{k}g\) is \(D^{k}g\circ_{k} f'\),
+  where \(\circ_{k}\) means composition of a continuous multilinear map \(D^{k}g\)
+  and a continuous linear map \(f'\).
+  Similarly, the only term that depends on \(D^{k}f(x)\) is \(g'(f(x))\circ D^{k}f(x)\).
+  All other derivatives of \(f\) and \(g\) are differentiable,
+  hence Lipschitz continuous near \(a\) and \(f(a)\), respectively.
+  Therefore, \(D^{k}g(f(x))\circ_{k}f'(x) - D^{k}g(f(a))\circ_{k}f'(a)=O\left(\|x - a\|^{\alpha}\right)\) as \(x\to a\).
+  This immediately implies the required estimate.
+\end{proof}
+
+\begin{lemma}%
+  \label{thm:cdh-at-implicit-ker}
+  \uses{def:cdh-at}
+  Let \(E\), \(F\), and \(G\) be finite dimensional real normed spaces.
+  Consider a set \(s \subseteq E \times F\), a point \((a, b) \in s\), and a function \(f\colon E \times F \to G\) such that
+  \begin{itemize}
+  \item \(f\) is \(C^{k+(\alpha)}\) at every point of \(s\);
+  \item \(\left.f\right|_{s}=0\);
+  \item the derivative \(D_{2}f\) of \(y \mapsto f(a, y)\) at \(b\) is surjective.
+  \end{itemize}
+  Let \(S \subseteq F\) be the kernel of \(D_{2}f\).
+  Then there exists a map \(\psi\colon E \times S \to F\) and a set \(t \subseteq E \times S\) such that
+  \begin{itemize}
+  \item \(\psi\) is \(C^{k+(\alpha)}\) at every point of \(t\);
+  \item the derivative of \(\psi\) at \((a, 0)\) is the projection to the second coordinate;
+  \item the image of a small neighborhood of \((a, 0)\) within \(t\) under the map \((x, y)\mapsto (x, \psi(x, y))\)
+    is a small neighborhood of \((a, b)\) within \(s\).
+  \end{itemize}
+\end{lemma}
+
+\begin{remark}
+  We only need this lemma for \(G=\mathbb R\).
+  If the proof in this case is a bit easier, then it's OK to formalize this case only.
+  Also, there are some versions of the implicit function theorem in Mathlib.
+  Possibly, using one of them will be easier than using the inversion function theorem.
+\end{remark}
+
+\begin{proof}
+  \proves{thm:cdh-at-implicit-ker}
+  \uses{thm:cdh-at-inverse}
+  Let \(\pi\colon F\to S\) be a continuous linear projection, \(\pi \circ \pi = \pi\).
+  Consider the map \(h\colon E \times F \to E \times S \times G\)
+  given by \(h(x, y) = (x, \pi(y), f(x, y))\).
+  Note that \(Dh(a, b) = \id \times \pi \times Df\) is an equivalence,
+  hence \(h\) is invertible near \((a, b)\).
+  Due to \autoref{thm:cdh-at-inverse}, the inverse function is \(C^{k+(\alpha)}\) at every point of \(h(s)\).
+  Also note that \(h\) maps \(s\) to a subset of the subspace \(E\times S\times \{0\}\).
+  Let \(\psi(x, z)\) be the second coordinate of \(h^{-1}(x, z, 0)\).
+  It is easy to see that this function satisfies all the conditions.
+\end{proof}
+
+\begin{theorem}%
+  \label{thm:cdh-at-implicit-dichotomy}
+  \uses{def:cdh-at}
+  Let \(E\) and \(F\) be finite dimensional real normed spaces.
+  Consider a set \(s \subset E \times F\) and \((a, b) \in s\).
+  Then
+  \begin{itemize}
+  \item either \(D(y \mapsto f(a, y))(b) = 0\) for any \(f\colon E \times F\to \mathbb R\)
+    such that \(f\) is \(C^{k+(\alpha)}\) at every point of \(s\) and \(\left.f\right|_{s}=0\),
+  \item or there exists a hyperplane \(S \subset F\), a set \(t \subset S\), and a function \(\psi\colon E \times S \to F\) such that
+    \begin{itemize}
+    \item \(\psi\) is \(C^{k+(\alpha)}\) at every point of \(t\);
+    \item the derivative of \(\psi\) at \((a, b)\) is the projection to the second coordinate;
+    \item the image of a neighborhood of \((a, 0)\) within \(t\) under \((x, y) \mapsto (x, \psi(x, y))\)
+      is a neighborhood of \((a, b)\) within \(s\).
+    \end{itemize}
+  \end{itemize}
+\end{theorem}
+
+\begin{proof}
+  \uses{thm:cdh-at-implicit-ker}
+  This theorem is a special case of \autoref{thm:cdh-at-implicit-ker} for \(G=\mathbb R\).
+\end{proof}
+
+\chapter{Local estimates}%
+\label{cha:local-estimates}
+
+\section{Moreira charts}%
+\label{sec:moreira-chart}
+
+The following definition does not appear in the original paper.
+However, it helps reformulate Theorem 2.1 from the paper
+in a manner that separates estimates from the construction.
+
+While it's possible to generalize most of the material in this section
+to a product of any two finite dimensional spaces,
+we assume the second space to be the Euclidean space \(\mathbb R^{n}\)
+to make definitions and arguments simpler.
+
+\begin{definition}%
+  \label{def:moreira-chart}
+  \uses{def:cdh-on}
+  Consider a natural number \(k\), a real number \(\alpha\in[0, 1]\),
+  a set \(s \subset E \times \mathbb R^{n}\), and its open neighborhood \(U\).
+  A \emph{Moreira chart} of depth \(l \le k\) consists of
+  \begin{itemize}
+  \item an antitone sequence of dimensions \(n = d_{0}\ge d_{1}\ge \dots \ge d_{l}\);
+  \item for each \(i \le l\), an open ball \(B_{i} \subset E\) and an open ball \(V_{i}\subset \mathbb R^{d_{i}}\);
+  \item for each \(i \le l\), a set \(t_{i}\subset B_{i}\times V_{i}\);
+  \item for each \(i < l\), a map \(\psi_{i}\colon E\times \mathbb R^{d_{i+1}} \to \mathbb R^{d_{i}}\)
+  \end{itemize}
+  such that
+  \begin{itemize}
+  \item \(B_{0}\times V_{0}\subset U\) and \(t_{0}\subset s\);
+  \item each map \((x, y) \mapsto (x, \psi_{i}(x, y))\)
+    maps \(B_{i+1}\times V_{i+1}\) to \(B_{i}\times V_{i}\) and \(t_{i+1}\) to \(t_{i}\);
+  \item each \(\psi_{i}\) is \(C^{k-i+(\alpha)}\) on \((t_{i+1}, B_{i+1}\times V_{i+1})\);
+  \item each \(\psi_{i}(x, y)\) is expanding in \(y\) on \(V_{i+1}\) for each \(x \in B_{i + 1}\);
+  \item for any map \(f\colon E\times \mathbb R^{d_{i}} \to \mathbb R\)
+    that is \(C^{k-i+(\alpha)}\) on \((t_{i}, B_{i}\times V_{i})\) and vanishes on \(t_{i}\),
+    the differential \(D_{2}(f \circ \psi_{i})\) vanishes on \(t_{i+1}\).
+  \end{itemize}
+\end{definition}
+
+\begin{definition}%
+  \label{def:moreira-chart-map}
+  \uses{def:moreira-chart}
+  Given a Moreira chart, for each \(i \le l\) we define the map \(\Psi_{i}\colon E\times \mathbb R^{d_{i}}\to \mathbb R^{n}\)
+  by \(\Psi_{0}(x, y)=y\) and \(\Psi_{i+1}(x, y)=\Psi_{i}(x, \psi_{i}(x, y))\).
+\end{definition}
+
+\begin{lemma}%
+  \label{lem:moreira-chart-map-props}
+  \uses{def:moreira-chart-map}
+  Given a \(C^{k+(\alpha)}\) Moreira chart,
+  \begin{itemize}
+  \item each map \(\Psi_{i}\) is \(C^{k-i+(\alpha)}\) on \((t_{i+1}, B_{i+1}\times V_{i+1})\);
+  \item \((x, \Psi_{i}(x, y)) \in s\) whenever \((x, y) \in t_{i+1}\);
+  \item each \(\Psi_{i}(x, y)\) is expanding in \(y\) on \(V_{i+1}\) for each \(x\in B_{i+1}\).
+  \end{itemize}
+\end{lemma}
+
+\section{Estimates on \texorpdfstring{\(C^{1+(\alpha)}\)}{C\^(1+α)} functions}
+
+\begin{lemma}%
+  \label{lem:cdh-at-sub-affine-le-of-meas}
+  Let \(E\) and \(F\) be a real normed spaces.
+  Consider a function \(f\colon E\to F\), points \(a, b \in E\),
+  and numbers \(C\ge 0\), \(\delta\ge 0\), \(r \ge 0\) such that
+  \begin{itemize}
+  \item \(f\) is differentiable on \([a, b]\);
+  \item \(\|D_{b - a}f(a + t(b - a))\| \le Ct^{r}{\|b - a\|}^{1+r}\);
+  \item the set of \(t\) such that \(D_{b - a}f(a + t(b - a)) = 0\)
+    has measure at least \(1 - \delta\).
+  \end{itemize}
+  Then \(\|f(b) - f(a)\| \le C\delta{\|b - a\|}^{1+r}\).
+\end{lemma}
+
+\begin{proof}
+  Let \(s\) be the set of \(t \in [0, 1]\) such that \(D_{b - a}f(a + t(b - a)) \ne 0\).
+  We have
+  \begin{align*}
+    \|f(b) - f(a)\| &= \left|\int_{0}^{1} D_{b - a}f(a + t(b - a))\,dt\right| \\
+                    &= \left|\int_{t\in s} D_{b - a}f(a + t(b - a))\,dt\right| \\
+                    &\le \int_{t \in s} Ct^{r}{\|b - a\|}^{1+r}\,dt \\
+                    &= C{\|b - a\|}^{1+r} \int_{t \in s}t^{r}\,dt \\
+                    &\le C{\|b - a\|}^{1+r} \lambda(s) \\
+                    &\le C\delta {\|b - a\|}^{1+r}
+  \end{align*}
+\end{proof}
+
+\begin{remark}
+  The constant can be improved, but probably we don't need this.
+  In order to do this, we need to show that
+  \[
+    \int_{t \in s}t^{r}\,dt \le \int_{1 - \delta}^{1} t^{r}\,dt = \frac{1 - {(1 - \delta)}^{r + 1}}{r + 1}.
+  \]
+\end{remark}
+
+\begin{corollary}%
+  \label{cor:cdh-at-sub-le-of-meas-fderiv}
+  Let \(E\) and \(F\) be a real normed spaces.
+  Consider a function \(f\colon E\to F\), points \(a, b \in E\),
+  and numbers \(C\ge 0\), \(\delta\ge 0\), \(r \ge 0\) such that
+  \begin{itemize}
+  \item \(f\) is differentiable on \([a, b]\);
+  \item \(\|Df(a + t(b - a))\| \le Ct^{r}{\|b - a\|}^r\);
+  \item the set of \(t\) such that \(D_{b - a}f(a + t(b - a)) = 0\)
+    has measure at least \(1 - \delta\).
+  \end{itemize}
+  Then \(\|f(b) - f(a)\| \le C\delta{\|b - a\|}^{1+r}\).
+\end{corollary}
+
+\begin{proof}
+  \uses{lem:cdh-at-sub-affine-le-of-meas}
+  This lemma immediately follows from \autoref{lem:cdh-at-sub-affine-le-of-meas}
+  and the fact that \(\|D_{b-a}f(x)\|\le \|Df(x)\|\times\|b - a\|\).
+\end{proof}
+
+\begin{corollary}%
+  \label{cor:cdh-at-isLittleO-of-density}
+  \uses{def:cdh-at}
+  Let \(f\colon E \to F\) be a function from a finite dimensional real normed space to a real normed space.
+  Consider a set \(s\) and a point \(a\) such that
+  \begin{itemize}
+  \item \(f\) is \(C^{1+(\alpha)}\) at \(a\);
+  \item \(Df(x)=0\) for each \(x\in s\);
+  \item \(a\in s\) is a Lebesgue density point of \(s\).
+  \end{itemize}
+  Then \(f(x)-f(a)=o\left(\left\|x - a\right\|^{1+\alpha}\right)\) as \(x\to a\).
+\end{corollary}
+
+\begin{proof}
+  \uses{cor:cdh-at-sub-le-of-meas-fderiv,cor:meas-ball-gt-pos}
+  Take \(C\) such that \(\|Df(x)\|\le C\|x - a\|^{\alpha}\) for \(x\) sufficiently close to \(a\).
+  It suffices to show that for every \(\epsilon > 0\),
+  we have \(\|f(x) - f(a)\| \le 2C\epsilon\|x - a\|^{1+\alpha}\)
+  for all \(x\) sufficiently close to \(a\).
+
+  Choose \(\delta > 0\) such that for any set \(T\) of measure at least \((1-\delta)\mu(B_{1})\) in a unit ball,
+  for each point \(x\) on the unit sphere there exists another point \(y\) on the sphere
+  such that \(\|x - y\| \le \epsilon\)
+  and the measure of \(t\in [0, 1]\) such that \(x+t(y - x)\in T\) is at least \(1 - \epsilon\).
+  Existence of \(\delta > 0\) with these properties follows from \autoref{cor:meas-ball-gt-pos}
+
+  Then choose \(R>0\) such that
+  \(s\) occupies at least \(1-\delta\) fraction of the volume of a ball \(B_{r}(a)\) for all \(0 < r < R\)
+  and the estimate \(\|Df(x)\|\le C\|x - a\|^{\alpha}\) holds on \(B_{R}(a)\).
+  Take \(x\in B_{R}(a)\).
+  Find \(y\) such that \(\|y - a\| = \|x - a\|\), \(\|y - x\| \le \epsilon\|x - a\|\),
+  and the measure of \(t\in [0, 1]\) such that \(a + t(y - a)\in s\) is at least \(1 - \epsilon\).
+
+  Then \(\|f(x) - f(y)\| \le C\|x - a\|^{\alpha}\|x - y\| \le C\epsilon\|x - a\|^{\alpha+1}\)
+  due to the Mean Value Theorem.
+  On the other hand, \autoref{cor:cdh-at-sub-le-of-meas-fderiv} implies that
+  \(\|f(y) - f(a)\| \le C\epsilon\|y - a\|^{\alpha+1}\).
+
+  Finally, the triangle inequality implies that \(\|f(x) - f(a)\| \le 2C\epsilon\|x - a\|^{\alpha+1}\).
+\end{proof}
+
+\begin{corollary}%
+  \label{cor:cdh-at-sub-le}
+  Let \(f\colon E\to F\) be a function between real normed spaces.
+  Suppose that \(f\) is differentiable in a neighborhood of \(a \in E\)
+  and \(\|Df(x)\|\le C\|x - a\|^{r}\) on a convex set \(s \ni a\).
+  Then \(\|f(x) - f(a)\|\le C\|x - a\|^{r + 1}\) for \(x\in s\).
+\end{corollary}
+
+\begin{proof}
+  \uses{cor:cdh-at-sub-le-of-meas-fderiv}
+  This statement immediately follows from \autoref{cor:cdh-at-sub-le-of-meas-fderiv} for \(\delta = 1\).
+\end{proof}
+
+\begin{corollary}%
+  \label{cor:sub-isBigO-rpow-of-fderiv}
+  If \(f\colon E \to F\) is \(C^{1}\) at \(a \in E\) and \(\|Df(x)\|=O\left(\left\|x - a\right\|^{r}\right)\) as \(x\to a\), where \(r\ge 0\),
+  then \(\|x - a\| = O\left(\left\|x - a\right\|^{r + 1}\right)\) as \(x\to a\).
+\end{corollary}
+
+\begin{proof}
+  \uses{cor:cdh-at-sub-le}
+  The statement immediately follows from \autoref{cor:cdh-at-sub-le}.
+\end{proof}
+
+\begin{corollary}%
+  \label{cor:sub-isLittleO-rpow-of-fderiv}
+  If \(f\colon E \to F\) is \(C^{1}\) at \(a \in E\) and \(\|Df(x)\|=o\left(\left\|x - a\right\|^{r}\right)\) as \(x\to a\), where \(r\ge 0\),
+  then \(\|x - a\| = o\left(\left\|x - a\right\|^{r + 1}\right)\) as \(x\to a\).
+\end{corollary}
+
+\begin{proof}
+  \uses{cor:cdh-at-sub-le}
+  The statement immediately follows from \autoref{cor:cdh-at-sub-le}.
+\end{proof}
+
+\begin{theorem}%
+  \label{thm:moreira-chart-isBigO}
+  \uses{def:moreira-chart-map}
+  Consider \(s\subset U\subset E\times\mathbb R^{n}\).
+  Consider a Moreira chart of \((s, U)\) of smoothness \(C^{k+(\alpha)}\) of depth \(k\).
+  Let \(f\colon E\times\mathbb R^{n}\to F\) be a function
+  such that \(f\) is \(C^{k+(\alpha)}\) on \((s, U)\).
+  Then for any \((a, b)\in t_{k}\), we have
+  \(f(a, \Psi_{k}(a, y)) - f(a, \Psi_{k}(a, b))=O\left(\|y - b\|^{k + \alpha}\right)\) as \(y\to b\).
+\end{theorem}
+
+\begin{proof}
+  \uses{cor:sub-isBigO-rpow-of-fderiv}
+  We prove it by induction on \(k\).
+  The induction base \(k = 1\) follows from the definition of a \(C^{1+(\alpha)}\) function,
+  and the induction step follows from \autoref{cor:sub-isLittleO-rpow-of-fderiv}
+\end{proof}
+
+\begin{theorem}%
+  \label{thm:moreira-chart-isLittleO}
+  \uses{def:moreira-chart-map}
+  Consider \(s\subset U\subset E\times\mathbb R^{n}\).
+  Consider a Moreira chart of \((s, U)\) of smoothness \(C^{k+(\alpha)}\) of depth \(k\), \(k > 0\).
+  Let \(f\colon E\times\mathbb R^{n}\to F\) be a function
+  such that \(f\) is \(C^{k+(\alpha)}\) on \((s, U)\).
+  Consider \((a, b)\in t_{k}\) such that \(b\) is a Lebesgue density point of the closure of the set \(\{y\mid (a, y)\in t_{k}\}\).
+  Then \(f(a, \Psi_{k}(a, y)) - f(a, \Psi_{k}(a, b))=o\left(\|y - b\|^{k + \alpha}\right)\) as \(y\to b\).
+\end{theorem}
+
+\begin{proof}
+  \uses{cor:cdh-at-isLittleO-of-density,cor:sub-isLittleO-rpow-of-fderiv}
+  We prove it by induction on \(k\).
+  The induction base \(k = 1\) follows from \autoref{cor:cdh-at-isLittleO-of-density}
+  while the induction step follows from \autoref{cor:sub-isLittleO-rpow-of-fderiv}
+\end{proof}
+
+\begin{corollary}%
+  \label{cor:moreira-chart-ae-isLittleO}
+  \uses{def:moreira-chart-map}
+  Consider \(s\subset U\subset E\times\mathbb R^{n}\).
+  Consider a Moreira chart of \((s, U)\) of smoothness \(C^{k+(\alpha)}\) of depth \(k\), \(k > 0\).
+  Let \(f\colon E\times\mathbb R^{n}\to F\) be a function
+  such that \(f\) is \(C^{k+(\alpha)}\) on \((s, U)\).
+  Then for a.e.\ \((a, b) \in t_{k}\), \(f(a, \Psi_{k}(a, y)) - f(a, \Psi_{k}(a, b))=o\left(\|y - b\|^{k + \alpha}\right)\) as \(y\to b\).
+\end{corollary}
+
+\begin{proof}
+  \uses{thm:moreira-chart-isLittleO, cor:measurable-density}
+  This fact immediately follows from \autoref{thm:moreira-chart-isLittleO}, \autoref{cor:measurable-density},
+  and the Lebesgue density theorem.
+\end{proof}
+
+\section{Moreira covering}%
+\label{sec:moreira-covering}
+
+The following definition does not appear in the original paper,
+but it helps to expose parts of the proof of Theorem 2.1 from the paper.
+\begin{definition}%
+  \label{def:moreira-covering}
+  \uses{def:moreira-chart, def:moreira-chart-map}
+  Let \(E\) be a real normed space, let \(n\) be a natural number.
+  Consider a set \(s\subset E \times \mathbb R^{n}\) and its open neighborhood \(U\supset s\).
+  A \emph{Moreira covering} of \((s, U)\) of depth \(l\)
+  is a countable collection of Moreira charts of depth \(l\)
+  such that the union of the sets \(((x, y) \mapsto (x, \Psi_{l}(x, y)))(t_{l})\) is the whole \(s\).
+\end{definition}
+
+\begin{lemma}%
+  \label{lem:moreira-covering-zero}
+  \uses{def:moreira-covering}
+  If \(E\) is a real normed space with second-countable topology and \(n\) is a natural number,
+  then every pair \((s, U)\) in \(E\times\mathbb R^{n}\)
+  admits a Moreira covering of depth \(0\).
+\end{lemma}
+
+\begin{proof}
+  This lemma follows immediately from the definitions
+  and the fact that a second countable topological space is hereditarily Lindelof.
+\end{proof}
+
+\begin{lemma}%
+  \label{lem:moreira-covering-one}
+  \uses{def:moreira-covering}
+  If \(E\) is a real normed space with second-countable topology and \(n\) is a natural number,
+  then every pair \((s, U)\) in \(E\times\mathbb R^{n}\)
+  admits a Moreira covering of depth \(1\).
+\end{lemma}
+
+\begin{proof}
+  \uses{thm:cdh-at-implicit-dichotomy}
+  The proof is by induction on \(n\).
+  Let \(t \subset s\) be the set of points \((x, y)\in s\)
+  such that there exists a function \(f\colon E\times\mathbb R^{n}\to \mathbb R\)
+  such that \(f\) is \(C^{k+(\alpha)}\) on \((s, U)\), \(\left.f\right|_{s}=0\), and \(D_{2}f\ne 0\).
+
+  For each \((a, b)\in s\), we use \autoref{thm:cdh-at-implicit-dichotomy}
+  to find a function \(\psi\colon E\times\mathbb R^{n - 1}\to \mathbb R^{n}\),
+  open balls \(B\subset E\) and \(V\subset\mathbb R^{n - 1}\) with centers \(x\) and \(0\),
+  and a set \(u\subset E\times\mathbb R^{n - 1}\) such that
+  \begin{itemize}
+  \item \(\psi\) is \(C^{k+(\alpha)}\) on \((u, B\times V)\);
+  \item \(((x, y) \mapsto (x, \psi(x, y)))(u)\) is a neighborhood of \((a, b)\) within \(s\);
+  \item \(\psi(x, y)\) is expanding in \(y\) on \(V\) for each \(x\in B\).
+  \end{itemize}
+  The latter condition can be satisfied by composing \(\psi\) with a homoethety.
+  Then we apply the inductive assumption to \((u, B\times V)\) and compose each chart with \(\psi\).
+
+  For each \((a, b)\in s \setminus t\), we choose open balls \(B\) and \(V\) with centers \(a\) and \(b\)
+  such that \(B\times V\subset U\), then take \(\psi(x, y) = y\) and \((s \setminus t)\cap (B\times V)\)
+  as a chart and its domain, respectively.
+
+  Charts of the first type cover \(t\) and charts of the second type cover \(s \setminus t\),
+  thus their union covers the whole \(s\).
+\end{proof}
+
+\begin{theorem}%
+  \label{thm:moreira-covering-exists}
+  \uses{def:moreira-covering}
+  In the assumptions of the previous lemma, \((s, U)\) admits a Moreira covering of any depth \(l \le k\).
+\end{theorem}
+
+\begin{proof}
+  \uses{lem:moreira-covering-zero,lem:moreira-covering-one}
+  The proof is by induction on \(l\).
+  The induction base is given by \autoref{lem:moreira-covering-zero}.
+  For the induction step, use \autoref{lem:moreira-covering-one} to get a Moreira covering of depth \(1\),
+  then take a Moreira covering of depth \(l\) for each \((t, B\times V)\) in this covering,
+  then compose them.
+\end{proof}
+
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: "print.tex"
+%%% End:
+

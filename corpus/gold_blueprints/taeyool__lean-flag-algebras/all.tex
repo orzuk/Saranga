@@ -1,0 +1,1434 @@
+
+%%FILE blueprint/src/chapters/algebra.tex
+\chapter{The flag algebra $\mathcal{A}^\sigma$}
+\label{chap:algebra}
+
+Formal real combinations of flags form a free module; a product defined through
+pair densities and a quotient by Razborov's averaging relations turn it into a
+commutative $\mathbb{R}$-algebra, the flag algebra $\mathcal{A}^\sigma$.
+(Source: \texttt{FlagAlgebra/FlagAlgebra.lean}.)
+
+\begin{definition}[Size-tagged flag]
+  \label{def:fin-flag}
+  \lean{FlagAlgebras.FinFlag}
+  \uses{def:flag-with-size}
+  \leanok
+  A \emph{size-tagged flag} is a dependent pair $\langle n, F\rangle$ of a vertex
+  count $n$ and a flag $F$ on $\mathrm{Fin}\,n$. These are the basis indices of
+  the algebra.
+\end{definition}
+
+\begin{definition}[Flag vector]
+  \label{def:flag-vector}
+  \lean{FlagAlgebras.FlagVector}
+  \uses{def:fin-flag}
+  \leanok
+  A \emph{flag vector} is a finitely supported real combination of size-tagged
+  flags, i.e.\ an element of $\mathrm{FinFlag}\,\sigma \to_{0} \mathbb{R}$: the
+  underlying module before quotienting.
+\end{definition}
+
+\begin{definition}[Basis vector]
+  \label{def:basis-vector}
+  \lean{FlagAlgebras.basisVector}
+  \uses{def:flag-vector}
+  \leanok
+  $\mathrm{basisVector}\,F$ is the unit vector supported on the single flag $F$;
+  every construction reduces to these.
+\end{definition}
+
+\begin{definition}[Flag multiplication]
+  \label{def:flag-mul}
+  \lean{FlagAlgebras.flagMul, FlagAlgebras.flagMulWithSize}
+  \uses{def:basis-vector, def:flag-density-n, def:flag-with-size}
+  \leanok
+  The product of two flags is expanded onto flags $G$ of a target size $\ell$,
+  weighted by the pair density:
+  \[ F \cdot F' \;=\; \sum_{G} d_2(F,F';G)\,\cdot G, \]
+  taken at the minimal size $\ell = |F| + |F'| - |\sigma|$
+  ($\mathrm{flagMul}$); the choice of $\ell$ is irrelevant modulo the averaging
+  relations.
+\end{definition}
+
+\begin{definition}[Zero space]
+  \label{def:zero-space}
+  \lean{FlagAlgebras.ZeroSpace}
+  \uses{def:zero-set, def:flag-vector}
+  \leanok
+  The \emph{zero space} $\mathrm{ZeroSpace}\,\sigma$ is the $\mathbb{R}$-submodule
+  spanned by all of Razborov's averaging relations (the set
+  $\mathrm{zeroSet}\,\sigma$). Quotienting by it identifies each flag with its
+  density expansion.
+\end{definition}
+
+\begin{definition}[The flag algebra]
+  \label{def:flag-algebra}
+  \lean{FlagAlgebras.FlagAlgebra}
+  \uses{def:flag-vector, def:zero-space, def:flag-vector-eqv}
+  \leanok
+  $\mathcal{A}^\sigma = \mathrm{FlagVector}\,\sigma / {\sim_v}$, flag vectors
+  modulo the zero space. It carries a commutative $\mathbb{R}$-algebra structure
+  (built below), with quotient map written $[\![\,\cdot\,]\!]$.
+\end{definition}
+
+\begin{theorem}[The zero space is an ideal]
+  \label{thm:zero-space-ideal}
+  \lean{FlagAlgebras.flagVector_mul_zeroSpace}
+  \uses{def:zero-space, def:flag-mul}
+  \leanok
+  Multiplying any flag vector by an averaging relation gives another element of
+  the zero space. Hence multiplication descends to a well-defined operation on
+  the quotient.
+\end{theorem}
+\begin{proof}\leanok
+  Reduce to a basis vector times a generator $\mathrm{zeroElement}\,F\,\ell$ and
+  apply the chain rule (Theorem~\ref{thm:density-chain-rules}), which is exactly
+  the statement that the product of the relation is again a telescoping sum of
+  relations.
+\end{proof}
+
+\begin{theorem}[Associativity modulo $\sim_v$]
+  \label{thm:mul-assoc}
+  \lean{FlagAlgebras.flagVector_mul_assoc}
+  \uses{def:flag-mul, def:flag-density-n}
+  \leanok
+  $(f\cdot g)\cdot h \sim_v f\cdot(g\cdot h)$. Associativity fails on the nose on
+  flag vectors but holds modulo the zero space, so it lifts to genuine
+  associativity on $\mathcal{A}^\sigma$.
+\end{theorem}
+\begin{proof}\leanok
+  \uses{thm:triple-mul-density}
+  Both sides expand, via the triple-density identity
+  (Theorem~\ref{thm:triple-mul-density}), to the same sum
+  $\sum_{G} d_3(F_1,F_2,F_3;G)\cdot G$.
+\end{proof}
+
+\begin{theorem}[Product equals density expansion]
+  \label{thm:quot-mul-density}
+  \lean{FlagAlgebras.basisVector_quot_mul_eq_flagMul_quot}
+  \uses{def:flag-algebra, def:flag-mul}
+  \leanok
+  In $\mathcal{A}^\sigma$, $[\![F]\!]\cdot[\![G]\!] = [\![\,\mathrm{flagMul}\,F\,G\,]\!]$:
+  the ring product of two flags is the class of their density expansion.
+\end{theorem}
+\begin{proof}\leanok
+  Unfold the multiplication on the quotient, which is defined by
+  $\mathrm{flagMul}$ and well-defined by Theorem~\ref{thm:zero-space-ideal}.
+\end{proof}
+
+\begin{theorem}[Same-size flags sum to one]
+  \label{thm:sum-flags-eq-one}
+  \lean{FlagAlgebras.sum_flagWithSize_eq_one}
+  \uses{def:flag-algebra, def:basis-vector}
+  \leanok
+  For every $\ell \ge |\sigma|$, $\sum_{F : |F|=\ell} [\![F]\!] = 1$ in
+  $\mathcal{A}^\sigma$: the sum over all flags of a fixed size is the unit. This
+  normalization is used pervasively in density proofs.
+\end{theorem}
+\begin{proof}\leanok
+  \uses{thm:basis-quot-eq-sum}
+  Specialize the density-expansion identity
+  (Theorem~\ref{thm:basis-quot-eq-sum}) to the empty flag, whose density in every
+  size-$\ell$ flag is $1$.
+\end{proof}
+
+\section{Supporting constructions}
+
+\begin{definition}[Flag of fixed size]
+  \label{def:flag-with-size}
+  \lean{FlagAlgebras.FlagWithSize}
+  \uses{def:flag}
+  \leanok
+  $\mathrm{FlagWithSize}\,\sigma\,n = \mathrm{Flag}\,\sigma\,(\mathrm{Fin}\,n)$:
+  a flag on the fixed $n$-element carrier.
+\end{definition}
+
+\begin{definition}[Density expansion]
+  \label{def:flag-expansion}
+  \lean{FlagAlgebras.flagExpansion}
+  \uses{def:basis-vector, def:flag-density-n, def:flag-with-size}
+  \leanok
+  $\mathrm{flagExpansion}\,F\,\ell = \sum_{F'} d_1(F;F')\,\cdot F'$, the averaged
+  expansion of $F$ onto size-$\ell$ flags.
+\end{definition}
+
+\begin{definition}[Averaging relation]
+  \label{def:zero-element}
+  \lean{FlagAlgebras.zeroElement}
+  \uses{def:basis-vector, def:flag-expansion}
+  \leanok
+  Razborov's generating relation
+  $\mathrm{zeroElement}\,F\,\ell = F - \mathrm{flagExpansion}\,F\,\ell$,
+  identified with $0$ in the algebra.
+\end{definition}
+
+\begin{definition}[Relation set]
+  \label{def:zero-set}
+  \lean{FlagAlgebras.zeroSet}
+  \uses{def:zero-element}
+  \leanok
+  The set of all averaging relations $\mathrm{zeroElement}\,F\,\ell$ (with
+  $|F| \le \ell$); its span is the zero space.
+\end{definition}
+
+\begin{definition}[Flag equivalence of vectors]
+  \label{def:flag-vector-eqv}
+  \lean{FlagAlgebras.flagVectorEqv}
+  \uses{def:zero-space}
+  \leanok
+  $f \sim_v g$ iff $f - g \in \mathrm{ZeroSpace}\,\sigma$: the two vectors
+  represent the same flag-algebra element.
+\end{definition}
+
+\begin{theorem}[Quotient map is a homomorphism]
+  \label{thm:quot-hom}
+  \lean{FlagAlgebras.add_quot, FlagAlgebras.mul_quot, FlagAlgebras.smul_quot, FlagAlgebras.sum_quot}
+  \uses{def:flag-vector, def:flag-algebra}
+  \leanok
+  The quotient map $[\![\,\cdot\,]\!]$ commutes with addition, multiplication,
+  scalar multiplication, and finite sums.
+\end{theorem}
+
+\begin{theorem}[Triple product expansion]
+  \label{thm:triple-mul-density}
+  \lean{FlagAlgebras.three_flag_mul_eqv_sum_tripleDensity}
+  \uses{def:basis-vector, def:flag-vector-eqv, def:flag-with-size, def:flag-density-n, def:flag-mul, thm:density-chain-rules}
+  \leanok
+  The product of three flags is, modulo $\sim_v$, the size-$\ell$ sum weighted by
+  the triple density $d_3$. This is the engine behind associativity
+  (Theorem~\ref{thm:mul-assoc}).
+\end{theorem}
+
+\begin{theorem}[Flag class as density expansion]
+  \label{thm:basis-quot-eq-sum}
+  \lean{FlagAlgebras.basisVector_quot_eq_sum}
+  \uses{def:basis-vector, def:flag-with-size, def:flag-density-n, def:flag-algebra, thm:quot-hom, def:flag-expansion}
+  \leanok
+  In the algebra, $[\![F]\!] = \sum_{F'} d_1(F;F')\,[\![F']\!]$ over size-$\ell$
+  flags: the averaging relation written as a $[\![\,\cdot\,]\!]$ identity.
+\end{theorem}
+
+\begin{theorem}[Nontriviality]
+  \label{thm:flag-algebra-nontrivial}
+  \lean{FlagAlgebras.flagAlgebra_zero_ne_one}
+  \uses{def:flag-algebra, def:zero-space, def:basis-vector, def:flag-density-n, thm:density-chain-rules}
+  \leanok
+  $0 \ne 1$ in $\mathcal{A}^\sigma$: the flag algebra is nontrivial (so its
+  $\mathrm{CommRing}$ structure is not the zero ring).
+\end{theorem}
+\begin{proof}\leanok
+  If $1$ lay in $\mathrm{ZeroSpace}\,\sigma$ it would be a finite combination of
+  averaging relations. But the linear functional $\varphi(G') = d_1(G';F)$
+  (density into a fixed large flag $F$) sends every generator
+  $\mathrm{zeroElement}\,G\,\ell$ to $0$ by the chain rule
+  (Theorem~\ref{thm:density-chain-rules}), while $\varphi(1) = 1$ --- a
+  contradiction.
+\end{proof}
+
+
+%%FILE blueprint/src/chapters/compute.tex
+\chapter{The computational layer}
+\label{chap:compute}
+
+To actually run flag-algebra computations (enumerate flags, compute densities) at
+elaboration time, the abstract objects are mirrored by executable ones: graphs
+encoded as explicit edge sets $\mathrm{Finset}(\mathrm{Sym}_2(\mathrm{Fin}\,n))$.
+Every computable definition is paired with a theorem proving it equals its
+abstract counterpart, so computed results are provably correct. (Source:
+\texttt{FlagAlgebra/Compute/}; all names in the \texttt{FlagAlgebras.Compute}
+namespace.)
+
+\begin{definition}[Edge-set graph]
+  \label{def:sym2-graph}
+  \lean{FlagAlgebras.Compute.Sym2Graph}
+  \leanok
+  A computable simple graph on $\mathrm{Fin}\,n$: a finite set of non-loop edges
+  in $\mathrm{Sym}_2(\mathrm{Fin}\,n)$. It decodes to an abstract
+  (empty-type) labeled graph.
+\end{definition}
+
+\begin{definition}[Edge-set labeled graph]
+  \label{def:sym2-labeled-graph}
+  \lean{FlagAlgebras.Compute.Sym2LabeledGraph}
+  \uses{def:sym2-graph}
+  \leanok
+  The typed version: an edge set together with a graph embedding of a decoded
+  type $\sigma$; decodes to an abstract $\mathrm{LabeledGraph}$.
+\end{definition}
+
+\begin{definition}[Computable flag]
+  \label{def:sym2-flag}
+  \lean{FlagAlgebras.Compute.Sym2Flag}
+  \uses{def:sym2-labeled-graph, def:flag}
+  \leanok
+  The computable counterpart of $\mathrm{Flag}\,\sigma$: edge-set labeled graphs
+  modulo a computable flag equivalence, carrying effective
+  $\mathrm{Fintype}$/$\mathrm{DecidableEq}$ instances.
+\end{definition}
+
+\begin{definition}[Cheap iso invariant]
+  \label{def:deg-key}
+  \lean{FlagAlgebras.Compute.degKey}
+  \uses{def:sym2-graph, def:deg-seq}
+  \leanok
+  A cheap $O(n)$ isomorphism invariant --- edge count paired with the sorted
+  degree sequence --- used to prefilter before the expensive isomorphism test.
+\end{definition}
+
+\begin{theorem}[The key is an invariant]
+  \label{thm:deg-key-iso-invariant}
+  \lean{FlagAlgebras.Compute.degKey_iso_invariant}
+  \uses{def:deg-key}
+  \leanok
+  Equivalent graphs share the cheap key, justifying its use as a deduplication
+  prefilter.
+\end{theorem}
+
+\begin{definition}[Fast isomorphism test]
+  \label{def:fast-iso}
+  \lean{FlagAlgebras.Compute.isEmptyIsoFast_bool, FlagAlgebras.Compute.isIsoFast_bool}
+  \uses{def:sym2-labeled-graph, def:build-full-map}
+  \leanok
+  Permutation-search isomorphism decision procedures for edge-set graphs (empty
+  and $\sigma$-typed), early-exiting on unequal keys; each is proved sound and
+  complete against flag equivalence.
+\end{definition}
+
+\begin{definition}[Fast decidability instance]
+  \label{def:fast-iso-decidable}
+  \lean{FlagAlgebras.Compute.fastDecidableSym2LabeledGraphEqv}
+  \uses{def:fast-iso}
+  \leanok
+  The high-priority $\mathrm{Decidable}$ instance for flag equivalence backed by
+  the fast test; it makes $\mathrm{Fintype}$-based flag enumeration tractable.
+\end{definition}
+
+\begin{theorem}[Computable normalizing factor, certified]
+  \label{thm:downward-compute}
+  \lean{FlagAlgebras.Compute.downwardNormalizingFactor_Sym2Flag, FlagAlgebras.Compute.downwardNormalizingFactor_eq}
+  \uses{def:sym2-flag, def:downward-factor}
+  \leanok
+  A computable downward normalizing factor on edge-set flags, proved equal to the
+  abstract $\mathrm{downwardNormalizingFactor}$ on the decoded flag.
+\end{theorem}
+
+\begin{theorem}[Computable densities, certified]
+  \label{thm:density-compute}
+  \lean{FlagAlgebras.Compute.flagDensity₁_eq_sym2EmptyTypeFlagDensity₁, FlagAlgebras.Compute.flagDensity₂_eq_sym2FlagDensity₂}
+  \uses{def:sym2-flag, def:flag-density-n, def:sym2-density1, def:sym2-density2}
+  \leanok
+  Computable single- and pair-densities on edge-set flags, each proved equal to
+  the abstract $d_1$, $d_2$ --- so a density computed in the edge-set
+  representation is provably the abstract value.
+\end{theorem}
+
+\begin{theorem}[Flag enumeration, complete]
+  \label{thm:flag-enumeration}
+  \lean{FlagAlgebras.Compute.genSym2Graphs, FlagAlgebras.Compute.genFlagSet_eq_univ}
+  \uses{def:sym2-graph, def:fast-iso, def:deg-key}
+  \leanok
+  Orderly (McKay-style) augmentation with cheap-key dedup generates one
+  representative per isomorphism class; the generated set is proved to exhaust
+  $\mathrm{Finset.univ}$, so enumeration is complete.
+\end{theorem}
+
+\section{Supporting constructions}
+
+\begin{definition}[Computable empty-typed flag]
+  \label{def:sym2-empty-flag}
+  \lean{FlagAlgebras.Compute.Sym2EmptyTypedFlag}
+  \uses{def:sym2-graph}
+  \leanok
+  The computable counterpart of $\mathrm{Flag}\,\emptyset\,(\mathrm{Fin}\,n)$:
+  edge-set graphs modulo computable flag equivalence.
+\end{definition}
+
+\begin{definition}[Placement counts]
+  \label{def:sym2-count}
+  \lean{FlagAlgebras.Compute.sym2InducedSubgraphListCount, FlagAlgebras.Compute.sym2InducedLabeledSubgraphListCount}
+  \uses{def:sym2-graph, def:sym2-labeled-graph}
+  \leanok
+  The computable numerators of the densities: the number of vertex-disjoint
+  placements of a flag list inside a host, empty-typed and $\sigma$-typed.
+\end{definition}
+
+\begin{definition}[Computable single density]
+  \label{def:sym2-density1}
+  \lean{FlagAlgebras.Compute.sym2EmptyTypeFlagDensity₁}
+  \uses{def:sym2-empty-flag, def:sym2-count}
+  \leanok
+  The computable single subflag density on empty-typed edge-set flags.
+\end{definition}
+
+\begin{definition}[Computable pair density]
+  \label{def:sym2-density2}
+  \lean{FlagAlgebras.Compute.sym2FlagDensity₂}
+  \uses{def:sym2-flag, def:sym2-count}
+  \leanok
+  The computable pair (multiplication) density on $\sigma$-typed edge-set flags.
+\end{definition}
+
+\begin{definition}[Degree sequence]
+  \label{def:deg-seq}
+  \lean{FlagAlgebras.Compute.degSeq}
+  \uses{def:sym2-graph}
+  \leanok
+  The sorted degree sequence of an edge-set graph, the main part of the cheap
+  isomorphism key.
+\end{definition}
+
+\begin{definition}[Permutation builder]
+  \label{def:build-full-map}
+  \lean{FlagAlgebras.Compute.buildFullMap}
+  \leanok
+  Assembles a full vertex permutation that fixes the type embedding and routes the
+  remaining vertices through a chosen permutation --- the inner loop of the fast
+  isomorphism search.
+\end{definition}
+
+
+%%FILE blueprint/src/chapters/density.tex
+\chapter{Subflag densities}
+\label{chap:density}
+
+The density of one flag inside another is the typed analogue of induced-subgraph
+density. This chapter defines it, lifts it through the flag quotient, generalizes
+it to lists of disjoint flags, and proves the \emph{chain rules} that make the
+whole flag algebra tick. (Source: \texttt{FlagAlgebra/SubflagDensity.lean},
+\texttt{SubflagListDensity.lean}, \texttt{SubflagListDensityProp.lean}.)
+
+\begin{definition}[Labeled-graph count]
+  \label{def:labeled-graph-count}
+  \lean{FlagAlgebras.labeledGraphCount}
+  \uses{def:labeled-graph}
+  \leanok
+  $\mathrm{labeledGraphCount}\,H\,G$ is the number of induced labeled subgraphs
+  of the host $G$ that are labeled-isomorphic to $H$.
+\end{definition}
+
+\begin{definition}[Labeled-graph density]
+  \label{def:labeled-graph-density}
+  \lean{FlagAlgebras.labeledGraphDensity}
+  \uses{def:labeled-graph-count}
+  \leanok
+  $\mathrm{labeledGraphDensity}\,H\,G$ normalizes the count by the number of ways
+  to choose the non-type vertices of an $H$-sized induced subgraph, i.e.\ by
+  $\binom{|G|-|\sigma|}{|H|-|\sigma|}$, giving a rational in $[0,1]$.
+\end{definition}
+
+\begin{lemma}[Isomorphism invariance]
+  \label{lem:density-iso-invariant}
+  \lean{FlagAlgebras.labeledGraphDensity_respect_eqv}
+  \uses{def:labeled-graph-density, def:labeled-graph-iso}
+  \leanok
+  Labeled-graph density is invariant under $\simeq_f$ in both arguments. This is
+  the well-definedness fact that lets density descend to flags.
+\end{lemma}
+\begin{proof}\leanok
+  Transport induced copies along the given isomorphisms; the counts, and hence
+  the normalized densities, agree.
+\end{proof}
+
+\begin{definition}[Subflag density]
+  \label{def:subflag-density}
+  \lean{FlagAlgebras.subflagDensity}
+  \uses{def:labeled-graph-density, lem:density-iso-invariant, def:flag}
+  \leanok
+  $\mathrm{subflagDensity} : \mathrm{Flag}\,\sigma\,V \to \mathrm{Flag}\,\sigma\,W
+  \to \mathbb{Q}$ is $\mathrm{labeledGraphDensity}$ lifted through the flag
+  quotient in both arguments: the density of one flag inside another.
+\end{definition}
+
+\begin{lemma}[Boundary values]
+  \label{lem:subflag-density-values}
+  \lean{FlagAlgebras.subflagDensity_empty, FlagAlgebras.subflagDensity_self, FlagAlgebras.subflagDensity_other}
+  \uses{def:subflag-density, def:empty-flag}
+  \leanok
+  The empty flag has density $1$ in every flag; a flag has density $1$ in
+  itself; two distinct flags of the same size have density $0$ in each other.
+\end{lemma}
+
+\begin{definition}[List density and fixed arities]
+  \label{def:flag-list-density}
+  \lean{FlagAlgebras.flagListDensity}
+  \uses{def:flag-list}
+  \leanok
+  $\mathrm{flagListDensity}$ counts the induced subgraph-lists of $G$ that
+  simultaneously realize a whole disjoint list of prescribed flags (normalized by
+  the multinomial coefficient distributing the non-type vertices), lifted through
+  the quotient. It generalizes $\mathrm{labeledGraphListDensity}$ on carriers.
+\end{definition}
+
+\begin{definition}[Single, pair, and triple densities]
+  \label{def:flag-density-n}
+  \lean{FlagAlgebras.flagDensity₁, FlagAlgebras.flagDensity₂, FlagAlgebras.flagDensity₃}
+  \uses{def:flag-list-density}
+  \leanok
+  The fixed-arity specializations
+  $d_1(F;G)$, $d_2(F_1,F_2;G)$, $d_3(F_1,F_2,F_3;G)$ are list densities of the
+  singleton, pair, and triple lists. $d_2$ is the factor multiplication is built
+  from; $d_1$ is the ordinary subflag density.
+\end{definition}
+
+\begin{theorem}[Single density is subflag density]
+  \label{thm:subflag-eq-list}
+  \lean{FlagAlgebras.subflagDensity_eq_flagListDensity}
+  \uses{def:subflag-density, def:flag-density-n}
+  \leanok
+  $\mathrm{subflagDensity}\,F\,G = d_1(F;G)$: the single-flag list density
+  coincides with the subflag density of Chapter start, linking the two
+  developments.
+\end{theorem}
+\begin{proof}\leanok
+  Both count the same induced copies; unfold the singleton list.
+\end{proof}
+
+\begin{lemma}[Permutation and empty-insertion invariance]
+  \label{lem:density-invariance}
+  \lean{FlagAlgebras.flagDensity_permute, FlagAlgebras.flagDensity_insert_empty}
+  \uses{def:flag-list-density}
+  \leanok
+  List density is unchanged by permuting the list, and by inserting an empty
+  flag. These symmetries reduce the fixed-arity densities to one another in the
+  chain-rule proofs.
+\end{lemma}
+
+\begin{theorem}[Density chain rules]
+  \label{thm:density-chain-rules}
+  \lean{FlagAlgebras.flagDensity_eq_sum_density_prods, FlagAlgebras.flagPairDensity_eq_sum_density_prods, FlagAlgebras.flagPairDensity_eq_sum_density_prods', FlagAlgebras.flagTripleDensity_eq_sum_density_prods}
+  \uses{def:flag-density-n, lem:density-invariance}
+  \leanok
+  A product-flag density expands as a sum over intermediate flags $G'$ of size
+  $\ell'$ of products of densities, e.g.
+  \[ d_1(F;G) = \sum_{G'} d_1(F;G')\, d_1(G';G), \qquad
+     d_2(F_1,F_2;G) = \sum_{G'} d_1(F_1;G')\, d_2(G',F_2;G). \]
+  The triple rule is foundational; the pair and single rules descend from it.
+  These are the identities the quotient algebra is defined to respect.
+\end{theorem}
+\begin{proof}\leanok
+  Partition the induced copies of the product by the intermediate flag they span
+  on a size-$\ell'$ vertex set, then count each part with the appropriate
+  density.
+\end{proof}
+
+\begin{theorem}[Asymptotic independence]
+  \label{thm:density-prod-approx}
+  \lean{FlagAlgebras.flagListDensity₂_prod_approx}
+  \uses{def:flag-density-n, thm:subflag-eq-list}
+  \leanok
+  There is a constant $c = 2(|F|+|F'|)^2$, independent of $G$, with
+  \[ \bigl| d_2(F,F';G) - d_1(F;G)\, d_1(F';G) \bigr| \le \frac{c}{|G|}. \]
+  Distinct subflag densities are thus asymptotically multiplicative --- the
+  probabilistic heart of the ``product of densities'' reasoning.
+\end{theorem}
+\begin{proof}\leanok
+  Model the choice of two vertex subsets as a finite probability space; the
+  discrepancy is the probability that the subsets overlap off the type, which is
+  $O(1/|G|)$ by a union bound.
+\end{proof}
+
+
+%%FILE blueprint/src/chapters/downward.tex
+\chapter{The unlabeling operator}
+\label{chap:downward}
+
+Density bounds are ultimately statements about \emph{unlabeled} graphs. The
+\emph{downward} operator $[\![\,\cdot\,]\!]_0 : \mathcal{A}^\sigma \to
+\mathcal{A}^\emptyset$ forgets a flag's labelling by averaging over all ways to
+place the labels. (Source: \texttt{FlagAlgebra/FlagOperators.lean}; $\emptyset$
+denotes the empty type $\varnothing_t$.)
+
+\begin{definition}[Unlabel]
+  \label{def:unlabel}
+  \lean{FlagAlgebras.unlabel}
+  \uses{def:flag, def:unlabeled-graph, def:empty-type}
+  \leanok
+  $\mathrm{unlabel}$ drops the type embedding of a single flag, returning its
+  underlying graph as an unlabeled ($\emptyset$-type) flag.
+\end{definition}
+
+\begin{definition}[Downward normalizing factor]
+  \label{def:downward-factor}
+  \lean{FlagAlgebras.downwardNormalizingFactor}
+  \uses{def:flag}
+  \leanok
+  The strictly positive rational weight of a flag: the fraction of label
+  placements (injections of the $|\sigma|$ labels into the vertices) that realize
+  it. It is the coefficient by which $\mathrm{unlabel}\,F$ is scaled.
+\end{definition}
+
+\begin{lemma}[The bridge set, counted three ways]
+  \label{lem:bridge-counts}
+  \lean{FlagAlgebras.isoInjectiveMapSet_card_eq_isomorphismCount_mul_labeledGraphCount, FlagAlgebras.isoInjectiveMapSet_card_eq_sum_labeledGraphCount_of_same_graph, FlagAlgebras.isoInjectiveMapSet_card_eq_sum_labelExtensions_isomorphismCount_mul_labeledGraphCount}
+  \uses{def:unlabel, def:isomorphism-count}
+  \leanok
+  The set of pairs (vertex subset, injective label assignment) embedding a
+  labeled flag into an unlabeled one is counted three ways: by
+  isomorphism-count times labeled count; by summing labeled counts over labellings
+  of the same graph; and, grouped by label-extension flag, over all relabellings.
+\end{lemma}
+
+\begin{theorem}[Counting identity]
+  \label{thm:counting-identity}
+  \lean{FlagAlgebras.flagDensity_mul_downwardNormalizingFactor_eq_sum_labelExtensions}
+  \uses{lem:bridge-counts, def:unlabel, def:downward-factor, def:flag-density-n, def:label-extensions}
+  \leanok
+  Equating the three counts yields
+  \[ d_1(\mathrm{unlabel}\,F;\,F')\cdot w(F)
+     \;=\; \sum_{G \in \mathrm{ext}(F')} d_1(F;G)\cdot w(G), \]
+  where $w$ is the normalizing factor and $\mathrm{ext}(F')$ ranges over the
+  relabellings of $F'$. This is the algebraic engine of well-definedness.
+\end{theorem}
+\begin{proof}\leanok
+  Combine the first and third counts of Lemma~\ref{lem:bridge-counts} and divide
+  by the number of label injections.
+\end{proof}
+
+\begin{lemma}[Downward respects the zero space]
+  \label{lem:downward-well-defined}
+  \lean{FlagAlgebras.downwardFlagVector_zeroSpace}
+  \uses{def:zero-space}
+  \leanok
+  The unlabeling map sends the zero space of $\sigma$ into the zero space of the
+  empty type, so it descends to the quotient algebra.
+\end{lemma}
+\begin{proof}\leanok
+  \uses{lem:downward-zero-element}
+  The zero space is spanned by the generating relations, each of which downward
+  sends into the zero space of the empty type
+  (Lemma~\ref{lem:downward-zero-element}).
+\end{proof}
+
+\begin{definition}[Downward operator]
+  \label{def:downward}
+  \lean{FlagAlgebras.downward}
+  \uses{def:unlabel, def:downward-factor, lem:downward-well-defined, def:flag-algebra, def:downward-flag}
+  \leanok
+  $[\![\,\cdot\,]\!]_0 : \mathcal{A}^\sigma \to \mathcal{A}^\emptyset$ is the
+  $\mathbb{R}$-linear map induced by $F \mapsto w(F)\cdot \mathrm{unlabel}\,F$;
+  it averages a labeled element over all unlabelings.
+\end{definition}
+
+\begin{theorem}[Linearity]
+  \label{thm:downward-linear}
+  \lean{FlagAlgebras.downward_add, FlagAlgebras.downward_smul}
+  \uses{def:downward}
+  \leanok
+  $[\![f+f']\!]_0 = [\![f]\!]_0 + [\![f']\!]_0$ and
+  $[\![r\cdot f]\!]_0 = r\cdot[\![f]\!]_0$: downward is $\mathbb{R}$-linear.
+\end{theorem}
+
+\begin{theorem}[Identity on the empty type]
+  \label{thm:downward-empty}
+  \lean{FlagAlgebras.downward_emptyType}
+  \uses{def:downward}
+  \leanok
+  On $\mathcal{A}^\emptyset$ there is nothing to unlabel, so
+  $[\![f]\!]_0 = f$.
+\end{theorem}
+
+\section{Supporting constructions}
+
+\begin{definition}[Empty type]
+  \label{def:empty-type}
+  \lean{FlagAlgebras.emptyType}
+  \uses{def:flag-type}
+  \leanok
+  The empty flag type $\varnothing_t$ (written $\emptyset$) with no labeled
+  vertices; its flags are unlabeled graphs, and density bounds live in
+  $\mathcal{A}^\emptyset$.
+\end{definition}
+
+\begin{definition}[Isomorphism count]
+  \label{def:isomorphism-count}
+  \lean{FlagAlgebras.isomorphismCount}
+  \uses{def:labeled-graph}
+  \leanok
+  The number of label placements on the same underlying graph as $G$ that are
+  flag-isomorphic to $G$.
+\end{definition}
+
+\begin{definition}[Unlabeled graph]
+  \label{def:unlabeled-graph}
+  \lean{FlagAlgebras.unlabeledGraph, FlagAlgebras.unlabeledGraphQuot}
+  \uses{def:labeled-graph, def:empty-type}
+  \leanok
+  Forgetting the type embedding of a labeled graph, as a graph
+  ($\mathrm{unlabeledGraph}$) and as its flag class
+  ($\mathrm{unlabeledGraphQuot}$).
+\end{definition}
+
+\begin{definition}[Label extensions]
+  \label{def:label-extensions}
+  \lean{FlagAlgebras.labelExtensions}
+  \uses{def:unlabel, def:flag-with-size, def:empty-type}
+  \leanok
+  For an unlabeled flag $F$, the finset of all $\sigma$-labeled flags of the same
+  size whose unlabeling is $F$ --- the ways to re-add a labelling.
+\end{definition}
+
+\begin{definition}[Downward image of a flag]
+  \label{def:downward-flag}
+  \lean{FlagAlgebras.downwardFlag, FlagAlgebras.downwardFlagVector, FlagAlgebras.downwardFlagVectorQuot}
+  \uses{def:downward-factor, def:unlabel, def:basis-vector}
+  \leanok
+  $\mathrm{downwardFlag}\,F = w(F)\cdot\mathrm{unlabel}\,F$ on a single flag, its
+  linear extension $\mathrm{downwardFlagVector}$ to flag vectors, and the
+  quotient-level $\mathrm{downwardFlagVectorQuot}$ --- the raw form of downward
+  before descending to the quotient.
+\end{definition}
+
+\begin{lemma}[Downward averaging expansion]
+  \label{lem:downward-flag-sum}
+  \lean{FlagAlgebras.downwardFlag_eqv_sum_flagDensity_smul_downwardFlag}
+  \uses{def:downward-flag, thm:counting-identity, def:flag-density-n, def:label-extensions}
+  \leanok
+  $\mathrm{downwardFlag}\,F \sim_v \sum_{G} d_1(F;G)\cdot\mathrm{downwardFlag}\,G$
+  over size-$\ell$ flags --- the averaging expansion driving well-definedness.
+\end{lemma}
+
+\begin{lemma}[Downward of a relation is a relation]
+  \label{lem:downward-zero-element}
+  \lean{FlagAlgebras.downwardFlagVector_zeroElement_zeroSpace}
+  \uses{def:downward-flag, lem:downward-flag-sum, def:zero-space, def:zero-element}
+  \leanok
+  $\mathrm{downwardFlagVector}$ sends each generating relation
+  $\mathrm{zeroElement}\,F\,\ell$ into the zero space of the empty type.
+\end{lemma}
+
+\begin{theorem}[The normalizing factor is positive]
+  \label{lem:downward-factor-pos}
+  \lean{FlagAlgebras.downwardNormalizingFactor_pos}
+  \uses{def:downward-factor, def:isomorphism-count}
+  \leanok
+  $w(F) > 0$ for every flag $F$: every flag is realized by at least one label
+  placement.
+\end{theorem}
+
+
+%%FILE blueprint/src/chapters/flags.tex
+\chapter{Flags and labeled graphs}
+\label{chap:flags}
+
+Fix a finite label set $T$ and a graph $\sigma$ on it, the \emph{type}. A flag of
+type $\sigma$ is a finite graph carrying a distinguished induced copy of $\sigma$,
+taken up to type-preserving isomorphism. This chapter sets up these carriers;
+everything downstream is built from them. (Source: \texttt{FlagAlgebra/FlagDef.lean}.)
+
+\begin{definition}[Flag type]
+  \label{def:flag-type}
+  \lean{FlagAlgebras.FlagType}
+  \leanok
+  A \emph{flag type} $\sigma$ is a simple graph on a finite label set $T$. It
+  describes the labeled ``root'' every flag of type $\sigma$ must carry.
+\end{definition}
+
+\begin{definition}[Labeled graph]
+  \label{def:labeled-graph}
+  \lean{FlagAlgebras.LabeledGraph}
+  \uses{def:flag-type}
+  \leanok
+  A \emph{labeled graph} of type $\sigma$ on a vertex type $V$ is a simple graph
+  $G$ on $V$ together with an induced-subgraph embedding
+  $\sigma \hookrightarrow G$. Its image is the set of labeled (``rooted'')
+  vertices.
+\end{definition}
+
+\begin{definition}[Labeled subgraph]
+  \label{def:labeled-subgraph}
+  \lean{FlagAlgebras.LabeledSubgraph}
+  \uses{def:labeled-graph}
+  \leanok
+  A \emph{labeled subgraph} of a labeled graph $G$ is a subgraph of $G$ that
+  still contains all labeled vertices and embeds $\sigma$ compatibly with $G$.
+  These are the pieces cut out when measuring subflag densities.
+\end{definition}
+
+\begin{definition}[Isomorphism of labeled graphs, $\simeq_f$]
+  \label{def:labeled-graph-iso}
+  \lean{FlagAlgebras.LabeledGraphIso}
+  \uses{def:labeled-graph}
+  \leanok
+  A \emph{labeled-graph isomorphism} $G \simeq_f G'$ is a graph isomorphism of the
+  underlying graphs that commutes with the two type embeddings. Flags are exactly
+  the isomorphism classes for this relation.
+\end{definition}
+
+\begin{definition}[Flag]
+  \label{def:flag}
+  \lean{FlagAlgebras.Flag}
+  \uses{def:labeled-graph, def:labeled-graph-iso, def:flag-eqv}
+  \leanok
+  A \emph{flag} of type $\sigma$ on $V$, $\mathrm{Flag}\,\sigma\,V$, is an
+  isomorphism class of labeled graphs under $\sim_f$ (the equivalence
+  ``$\exists$ a labeled-graph isomorphism''). This is the basic object the flag
+  algebra is built from.
+\end{definition}
+
+\begin{definition}[Empty flag]
+  \label{def:empty-flag}
+  \lean{FlagAlgebras.emptyFlag}
+  \uses{def:flag, def:empty-labeled-graph}
+  \leanok
+  The \emph{empty flag} $\mathrm{emptyFlag}\,\sigma$ is the class of the trivial
+  labeled graph $\sigma$ on $T$ with the identity embedding: the type with no
+  extra vertices. It is the multiplicative unit of the flag algebra.
+\end{definition}
+
+\begin{definition}[Flag list]
+  \label{def:flag-list}
+  \lean{FlagAlgebras.FlagList}
+  \uses{def:flag}
+  \leanok
+  A \emph{flag list} of length $t$ is a tuple $(F_0,\dots,F_{t-1})$ of flags of
+  type $\sigma$, the $i$-th on its own vertex type. Flag lists (with the
+  type-level \texttt{insert}/\texttt{permute} operations) are what let us speak
+  of the simultaneous density of several disjoint flags.
+\end{definition}
+
+\section{Supporting constructions}
+
+\begin{definition}[Empty labeled graph]
+  \label{def:empty-labeled-graph}
+  \lean{FlagAlgebras.emptyLabeledGraph}
+  \uses{def:labeled-graph}
+  \leanok
+  The trivial carrier: the type $\sigma$ itself on $T$ with the identity
+  embedding. Its isomorphism class is the empty flag.
+\end{definition}
+
+\begin{definition}[Flag equivalence]
+  \label{def:flag-eqv}
+  \lean{FlagAlgebras.flagEqv}
+  \uses{def:labeled-graph, def:labeled-graph-iso}
+  \leanok
+  The relation $G \sim_f G'$: ``there exists a labeled-graph isomorphism
+  $G \simeq_f G'$''. Flags are its equivalence classes.
+\end{definition}
+
+\begin{definition}[Induced labeled subgraph]
+  \label{def:induced-labeled-subgraph}
+  \lean{FlagAlgebras.LabeledSubgraph.inducedLabeledSubgraph}
+  \uses{def:labeled-graph, def:labeled-subgraph}
+  \leanok
+  The labeled subgraph of $G$ induced on a chosen vertex set $S$ containing all
+  labeled vertices --- the canonical way to cut out a sub-flag on $S$.
+\end{definition}
+
+\begin{definition}[Labeled-graph list]
+  \label{def:labeled-graph-list}
+  \lean{FlagAlgebras.LabeledGraphList}
+  \uses{def:labeled-graph}
+  \leanok
+  A $t$-tuple of labeled graphs, the $i$-th on vertex type $V_i$; the
+  pre-quotient form of a flag list.
+\end{definition}
+
+\begin{definition}[Type-level list operations]
+  \label{def:list-type-ops}
+  \lean{FlagAlgebras.listTypeInsert, FlagAlgebras.listTypePermute}
+  \leanok
+  The operations on a vertex-type family that append a new type at the end
+  ($\mathrm{listTypeInsert}$) or reorder it by a permutation
+  ($\mathrm{listTypePermute}$); they supply the return types of the flag-list
+  operations.
+\end{definition}
+
+\begin{definition}[Flag-list operations]
+  \label{def:flag-list-ops}
+  \lean{FlagAlgebras.FlagList.insert, FlagAlgebras.FlagList.permute}
+  \uses{def:flag-list, def:list-type-ops}
+  \leanok
+  Appending a flag to a flag list, and reordering a flag list by a permutation.
+\end{definition}
+
+\begin{theorem}[Quotient of lists is a list of flags]
+  \label{thm:eqv-quot-list-flaglist}
+  \lean{FlagAlgebras.eqv_QuotLabeledGraphList_FlagList}
+  \uses{def:labeled-graph-list, def:flag-list, def:flag-eqv}
+  \leanok
+  The quotient of labeled-graph lists is equivalent to the tuple of flags: taking
+  isomorphism classes commutes with the $\mathrm{Fin}\,t$-indexed product.
+\end{theorem}
+
+
+%%FILE blueprint/src/chapters/limits.tex
+\chapter{Limit semantics and random homomorphisms}
+\label{chap:limits}
+
+The analytic half of the theory identifies the algebraic positive homomorphisms
+with genuine limits of subgraph densities (Razborov's Theorem~3.3), then builds a
+probability measure on them (Theorem~3.5) that yields the Cauchy--Schwarz
+inequality powering SDP-style bounds. (Source:
+\texttt{FlagAlgebra/FlagSequence.lean}, \texttt{RandomHom.lean}.)
+
+\begin{definition}[Flag sequence]
+  \label{def:flag-seq}
+  \lean{FlagAlgebras.FlagSeq}
+  \uses{def:fin-flag}
+  \leanok
+  A \emph{flag sequence} is a sequence $\mathbb{N} \to \mathrm{FinFlag}\,\sigma$
+  of flags, typically of growing size.
+\end{definition}
+
+\begin{definition}[Density space]
+  \label{def:flag-density-space}
+  \lean{FlagAlgebras.FlagDensitySpace}
+  \uses{def:fin-flag}
+  \leanok
+  The compact, metrizable space of density profiles $\mathrm{FinFlag}\,\sigma \to
+  [0,1]$ (a Tychonoff cube); the ambient space of the limit semantics.
+\end{definition}
+
+\begin{definition}[Convergence]
+  \label{def:converges-to}
+  \lean{FlagAlgebras.ConvergesTo}
+  \uses{def:flag-seq, def:flag-density-space, def:increases, def:flag-density-seq}
+  \leanok
+  $\mathrm{ConvergesTo}\,s\,a$ says the flag sequence $s$ has strictly increasing
+  sizes and its subgraph-density profile converges pointwise to the limit $a$.
+\end{definition}
+
+\begin{definition}[Density profile of a homomorphism]
+  \label{def:positive-hom-coe}
+  \lean{FlagAlgebras.PositiveHom.coe}
+  \uses{def:positive-hom, def:flag-density-space}
+  \leanok
+  Each positive homomorphism $\varphi$ has a density profile
+  $F \mapsto \varphi[\![F]\!]$; this is the injective bridge from the algebraic
+  to the analytic side.
+\end{definition}
+
+\begin{definition}[Positive homomorphism space]
+  \label{def:positive-hom-space}
+  \lean{FlagAlgebras.PositiveHomSpace}
+  \uses{def:positive-hom-coe}
+  \leanok
+  The range of the profile map; shown to be closed, hence compact and
+  measurable.
+\end{definition}
+
+\begin{theorem}[Algebraic characterization]
+  \label{thm:positive-hom-space-char}
+  \lean{FlagAlgebras.positiveHomSpace_eq, FlagAlgebras.zeroSpaceProp, FlagAlgebras.oneProp, FlagAlgebras.mulProp}
+  \uses{def:positive-hom-space, def:flag-density-n}
+  \leanok
+  A density profile arises from a positive homomorphism iff it satisfies the
+  chain rule (\texttt{zeroSpaceProp}), normalization $a(1)=1$ (\texttt{oneProp}),
+  and multiplicativity through pair densities (\texttt{mulProp}).
+\end{theorem}
+
+\begin{theorem}[Every limit is a homomorphism (Razborov 3.3a)]
+  \label{thm:limit-is-hom}
+  \lean{FlagAlgebras.flagSeq_limit_mem_positiveHom}
+  \uses{def:converges-to, def:positive-hom-coe, thm:positive-hom-space-char}
+  \leanok
+  Any convergent flag-sequence density limit is the profile of some positive
+  homomorphism.
+\end{theorem}
+\begin{proof}\leanok
+  The limit inherits the three structural properties of
+  Theorem~\ref{thm:positive-hom-space-char} from the finite densities, so it lies
+  in the positive-homomorphism space.
+\end{proof}
+
+\begin{theorem}[Every homomorphism is a limit (Razborov 3.3b)]
+  \label{thm:hom-is-limit}
+  \lean{FlagAlgebras.positiveHom_as_flagSeq_limit}
+  \uses{def:converges-to, def:positive-hom-coe, def:flagseq-measure}
+  \leanok
+  Conversely every positive homomorphism arises as a convergent flag-sequence
+  limit.
+\end{theorem}
+\begin{proof}\leanok
+  Sample random flags from the profile and apply a Chebyshev / Borel--Cantelli
+  second-moment argument to get almost-sure convergence to $\varphi$.
+\end{proof}
+
+\begin{definition}[Random flag distribution]
+  \label{def:finflag-pmf}
+  \lean{FlagAlgebras.FinFlag.toPMF}
+  \uses{def:flag-density-space}
+  \leanok
+  Turns a large unlabeled flag of positive $\sigma$-density into a distribution
+  on density profiles: draw a random labelling extension weighted by its
+  normalizing factor and read off its density vector.
+\end{definition}
+
+\begin{theorem}[Random homomorphism measure (Razborov 3.5)]
+  \label{thm:random-hom-measure}
+  \lean{FlagAlgebras.exists_probMeasure_extend_emptyType_positiveHom}
+  \uses{def:finflag-pmf, def:positive-hom-space, thm:positive-hom-space-char, thm:hom-is-limit, def:downward, thm:lemma-3-11, lem:measure-support}
+  \leanok
+  For a base homomorphism $\varphi_0$ on the empty type with
+  $\varphi_0\langle\sigma\rangle_0 > 0$, there is a probability measure
+  $\mathbb{P}[\varphi_0]$ on the positive-homomorphism space whose expectation
+  recovers the normalized downward operator:
+  \[ \int \varphi(f)\, d\mathbb{P}[\varphi_0]
+     \;=\; \frac{\varphi_0[\![f]\!]_0}{\varphi_0[\![1]\!]_0}. \]
+\end{theorem}
+\begin{proof}\leanok
+  Build $\mathbb{P}[\varphi_0]$ as a Prokhorov weak limit of the finite
+  distributions of Definition~\ref{def:finflag-pmf} along a converging flag
+  sequence; its support lies in the positive-homomorphism space, and the integral
+  is computed on the dense finite level.
+\end{proof}
+
+\begin{theorem}[Downward preserves the semantic cone]
+  \label{thm:downward-preserve-cone}
+  \lean{FlagAlgebras.downward_preserve_semanticCone}
+  \uses{thm:random-hom-measure, def:semantic-cone, def:downward}
+  \leanok
+  If $f$ is semantically nonnegative in the typed algebra then so is its
+  unlabeling in the empty-type algebra:
+  \[ f \in \mathrm{semanticCone}\,\sigma \;\Longrightarrow\;
+     [\![f]\!]_0 \in \mathrm{semanticCone}\,\emptyset. \]
+  This is the bridge that turns typed nonnegativity into unlabeled
+  nonnegativity, and it is what the sum-of-squares certificates
+  (Theorem~\ref{thm:sos-downward-nonneg}) and the square/Cauchy--Schwarz results
+  below rest on.
+\end{theorem}
+\begin{proof}\leanok
+  \uses{lem:downward-zero-at-hom, lem:positivehom-one-downward-pos, thm:prob-measure-spec}
+  Fix a base homomorphism $\varphi_0$. If $\varphi_0\langle\sigma\rangle_0 = 0$
+  then $\varphi_0[\![f]\!]_0 = 0$ (Lemma~\ref{lem:downward-zero-at-hom}).
+  Otherwise it is positive, and Theorem~\ref{thm:prob-measure-spec} expresses
+  $\varphi_0[\![f]\!]_0$ as the positive multiple
+  $\varphi_0[\![1]\!]_0 \cdot \int \varphi(f)\, d\mathbb{P}[\varphi_0]$
+  (Lemma~\ref{lem:positivehom-one-downward-pos}) of the integral of a nonnegative
+  integrand, hence $\ge 0$.
+\end{proof}
+
+\begin{theorem}[Squares have nonnegative average]
+  \label{thm:square-downward-nonneg}
+  \lean{FlagAlgebras.square_downward_nonneg}
+  \uses{def:downward}
+  \leanok
+  $[\![f\cdot f]\!]_0 \ge 0$ for every $f$: the downward image of a square is
+  nonnegative.
+\end{theorem}
+\begin{proof}\leanok
+  \uses{thm:downward-preserve-cone}
+  Every homomorphism sends $f\cdot f$ to $\varphi(f)^2 \ge 0$, so $f\cdot f$ is in
+  the semantic cone; apply Theorem~\ref{thm:downward-preserve-cone}.
+\end{proof}
+
+\begin{theorem}[Cauchy--Schwarz for downward]
+  \label{thm:cauchy-schwarz}
+  \lean{FlagAlgebras.square_downward_mul_ge_mul_downward_square}
+  \uses{thm:random-hom-measure, def:positive-hom-space}
+  \leanok
+  $[\![f\cdot f]\!]_0 \cdot [\![g\cdot g]\!]_0 \ge [\![f\cdot g]\!]_0^2$, the key
+  inequality behind semidefinite flag-algebra density bounds.
+\end{theorem}
+\begin{proof}\leanok
+  \uses{thm:prob-measure-spec, lem:downward-zero-at-hom}
+  Apply the $L^2$ Cauchy--Schwarz (Hölder) inequality to the evaluation functions
+  $\varphi \mapsto \varphi(f), \varphi(g)$ under $\mathbb{P}[\varphi_0]$
+  (Theorem~\ref{thm:prob-measure-spec}), handling the degenerate base case with
+  Lemma~\ref{lem:downward-zero-at-hom}.
+\end{proof}
+
+\section{Supporting constructions}
+
+\begin{definition}[Increasing sizes]
+  \label{def:increases}
+  \lean{FlagAlgebras.Increases}
+  \uses{def:flag-seq}
+  \leanok
+  A flag sequence has strictly increasing flag sizes.
+\end{definition}
+
+\begin{definition}[Density profile of a sequence]
+  \label{def:flag-density-seq}
+  \lean{FlagAlgebras.flagDensitySeq}
+  \uses{def:flag-seq, def:flag-density-n}
+  \leanok
+  $n \mapsto (F \mapsto d_1(F; s_n))$, the profile whose limit defines the
+  semantics.
+\end{definition}
+
+\begin{definition}[Homomorphism as a PMF]
+  \label{def:positivehom-topmf}
+  \lean{FlagAlgebras.PositiveHom.toPMF}
+  \uses{def:positive-hom, def:flag-with-size, def:basis-vector, lem:positivehom-basisvector-nonneg}
+  \leanok
+  The distribution on size-$\ell$ flags whose mass at $F$ is $\varphi[\![F]\!]$;
+  $\varphi$'s random model at scale $\ell$.
+\end{definition}
+
+\begin{definition}[Flag-sequence measure]
+  \label{def:flagseq-measure}
+  \lean{FlagAlgebras.flagSeqMeasure}
+  \uses{def:positive-hom, def:positivehom-topmf, def:flag-with-size}
+  \leanok
+  The independent product measure $\mu\{\varphi\}$ on sequences of flags, each
+  component drawn from $\varphi$'s PMF; the source of the random flag sequence in
+  Theorem~\ref{thm:hom-is-limit}.
+\end{definition}
+
+\begin{lemma}[Expected density is the downward ratio]
+  \label{lem:integral-density-div}
+  \lean{FlagAlgebras.integral_flagDensitySpace_eq_flagVectorDensity_div}
+  \uses{def:finflag-pmf, def:flag-density-space, def:downward-factor, def:unlabel, def:label-extensions, thm:counting-identity, def:flag-density-n}
+  \leanok
+  The expected $F$-density under a large flag's measure equals the normalized
+  downward density ratio; the finite-level identity behind Lemma~3.11.
+\end{lemma}
+
+\begin{theorem}[Lemma 3.11: convergence of expected densities]
+  \label{thm:lemma-3-11}
+  \lean{FlagAlgebras.tendsto_integral_flagDensitySpace_of_converge_flagSeq}
+  \uses{def:converges-to, def:positive-hom-coe, lem:integral-density-div, def:downward}
+  \leanok
+  Along a flag sequence converging to $\varphi$, the expected $F$-densities tend
+  to the normalized downward value
+  $\varphi[\![\,[\![F]\!]\,]\!]_0 / \varphi[\![1]\!]_0$.
+\end{theorem}
+
+\begin{lemma}[Limit measure is supported on homomorphisms]
+  \label{lem:measure-support}
+  \lean{FlagAlgebras.flagSeq_limit_measure_support_positiveHomSpace}
+  \uses{def:increases, def:positive-hom-space, thm:positive-hom-space-char}
+  \leanok
+  The weak limit of a convergent flag sequence's probability measures is
+  concentrated on the positive-homomorphism space.
+\end{lemma}
+
+\begin{definition}[The measure $\mathbb{P}[\varphi_0]$]
+  \label{def:prob-measure-witness}
+  \lean{FlagAlgebras.probMeasure_extend_emptyType_positiveHom}
+  \uses{thm:random-hom-measure, def:positive-hom-space}
+  \leanok
+  The chosen random-extension measure $\mathbb{P}[\varphi_0]$, the witness of
+  Theorem~\ref{thm:random-hom-measure}.
+\end{definition}
+
+\begin{theorem}[Defining property of $\mathbb{P}[\varphi_0]$]
+  \label{thm:prob-measure-spec}
+  \lean{FlagAlgebras.probMeasure_extend_emptyType_positiveHom_spec}
+  \uses{def:prob-measure-witness, thm:random-hom-measure, def:downward}
+  \leanok
+  Integrating $\varphi \mapsto \varphi(f)$ against $\mathbb{P}[\varphi_0]$
+  recovers $\varphi_0[\![f]\!]_0 / \varphi_0[\![1]\!]_0$.
+\end{theorem}
+
+\begin{lemma}[Degenerate base homomorphism]
+  \label{lem:downward-zero-at-hom}
+  \lean{FlagAlgebras.downward_zero_at_hom}
+  \uses{def:positive-hom, def:downward, def:basis-vector, thm:downward-linear}
+  \leanok
+  If $\varphi_0\langle\sigma\rangle_0 = 0$ then $\varphi_0[\![f]\!]_0 = 0$ for all
+  $f$ --- the degenerate case handled separately in the cone and Cauchy--Schwarz
+  arguments.
+\end{lemma}
+
+\begin{lemma}[Positive denominator]
+  \label{lem:positivehom-one-downward-pos}
+  \lean{FlagAlgebras.positiveHom_one_downward_pos}
+  \uses{def:positive-hom, def:downward, lem:downward-factor-pos}
+  \leanok
+  If $\varphi_0\langle\sigma\rangle_0 > 0$ then $\varphi_0[\![1]\!]_0 > 0$, the
+  denominator in the normalized downward value.
+\end{lemma}
+
+
+%%FILE blueprint/src/chapters/mantel.tex
+\chapter{Application: Mantel's theorem}
+\label{chap:mantel}
+
+As a worked application of the whole framework, we prove \emph{Mantel's theorem}
+--- the Tur\'an density of the triangle $K_3$ is $\tfrac12$. The flag-algebra
+\emph{upper} bound (a sum-of-squares certificate, Chapter~\ref{chap:positivity})
+and the extremal \emph{lower} bound meet in Theorem~\ref{thm:turan-k3}. (Source:
+\texttt{LeanFlagAlgebras/MantelTheorem/}.)
+
+\begin{definition}[Edge and triangle densities]
+  \label{def:densities}
+  \lean{MantelTheorem.K2, MantelTheorem.K3}
+  \uses{def:fin-flag, def:basis-vector}
+  \leanok
+  $K_2, K_3 \in \mathcal{A}^\emptyset$ are the edge- and triangle-density basis
+  elements. For a positive homomorphism $\varphi$, $\varphi(K_2)$ is the edge
+  density and $\varphi(K_3)$ the triangle density.
+\end{definition}
+
+\begin{lemma}[Expansion of the edge density]
+  \label{lem:expand-k2}
+  \lean{MantelTheorem.expand_K2_on_three_vertex_graphs}
+  \uses{def:densities, thm:density-chain-rules}
+  \leanok
+  Expanding onto three vertices,
+  $K_2 = \tfrac13 E_3 + \tfrac23 P_3 + K_3$, where $E_3, P_3, K_3$ are the
+  one-edge, path, and triangle densities.
+\end{lemma}
+
+\begin{lemma}[Square-positivity certificate]
+  \label{lem:square-cert}
+  \lean{MantelTheorem.FlagAlgebra_2_1_0_0_minus_FlagAlgebra_2_1_0_1_square_downward}
+  \uses{def:downward, thm:square-downward-nonneg}
+  \leanok
+  Unlabelling the square of the difference of the two rooted two-vertex flags,
+  \[ [\![\,(O_2^{1} - K_2^{1})^2\,]\!]_0
+      = O_3 - \tfrac13 E_3 - \tfrac13 P_3 + K_3 \;\ge\; 0, \]
+  a sum-of-squares certificate: the left side is a downward-of-square, hence
+  nonnegative by Theorem~\ref{thm:square-downward-nonneg}.
+\end{lemma}
+
+\begin{theorem}[Mantel, flag-algebra form]
+  \label{thm:mantel-flag}
+  \lean{MantelTheorem.Mantel_theorem}
+  \uses{def:densities}
+  \leanok
+  In $\mathcal{A}^\emptyset$, $K_2 \le \tfrac12\cdot 1 + K_3$.
+\end{theorem}
+\begin{proof}
+  \uses{lem:expand-k2, lem:square-cert, lem:order-monotone}
+  \leanok
+  Substitute the expansion of Lemma~\ref{lem:expand-k2}, add the certificate of
+  Lemma~\ref{lem:square-cert} and the nonnegativity of the three-vertex
+  densities, and collect terms using the order arithmetic of
+  Lemma~\ref{lem:order-monotone}.
+\end{proof}
+
+\begin{theorem}[Mantel, homomorphism form]
+  \label{thm:mantel-hom}
+  \lean{MantelTheorem.Mantel_theorem'}
+  \uses{thm:mantel-flag, def:positive-hom}
+  \leanok
+  For every positive homomorphism $\varphi$ with $\varphi(K_3) = 0$ (a
+  triangle-free limit), $\varphi(K_2) \le \tfrac12$.
+\end{theorem}
+\begin{proof}
+  \uses{thm:mantel-flag}
+  \leanok
+  Apply $\varphi$ to Theorem~\ref{thm:mantel-flag}; positivity and
+  $\varphi(K_3)=0$ give $\varphi(K_2) \le \tfrac12$.
+\end{proof}
+
+\begin{lemma}[Complete-bipartite lower bound]
+  \label{lem:lower-bound}
+  \lean{MantelTheorem.extremal_density_K3_ge}
+  \leanok
+  For $n \ge 2$, the maximal edge density of a triangle-free graph on $n$
+  vertices is at least $\tfrac12$, witnessed by the balanced complete bipartite
+  graph:
+  $\operatorname{ex}(n,K_3)/\binom{n}{2} \ge \tfrac12$.
+\end{lemma}
+
+\begin{theorem}[Tur\'an density of the triangle]
+  \label{thm:turan-k3}
+  \lean{MantelTheorem.Turan_density_K3}
+  \uses{thm:mantel-hom, lem:lower-bound}
+  \leanok
+  $\pi(K_3) = \tfrac12$.
+\end{theorem}
+\begin{proof}
+  \uses{thm:mantel-hom, lem:lower-bound}
+  \leanok
+  The homomorphism form gives the upper bound $\pi(K_3) \le \tfrac12$; the
+  complete-bipartite construction gives the matching lower bound. They meet at
+  $\tfrac12$.
+\end{proof}
+
+
+%%FILE blueprint/src/chapters/overview.tex
+\chapter{Overview}
+\label{chap:overview}
+
+This blueprint maps the core of the \texttt{LeanFlagAlgebras} library --- the
+\texttt{FlagAlgebra/} directory --- which formalizes Razborov's flag algebras in
+Lean~4. The development is layered, and each chapter below corresponds to one
+layer:
+
+\begin{itemize}
+  \item \textbf{Flags} (Chapter~\ref{chap:flags}): labeled graphs, their
+    isomorphisms, and the flag $\mathrm{Flag}\,\sigma$ as an isomorphism class.
+  \item \textbf{Subflag densities} (Chapter~\ref{chap:density}): how often one
+    flag occurs inside another, and the \emph{chain rules} relating single,
+    pair, and triple densities.
+  \item \textbf{The flag algebra $\mathcal{A}^\sigma$} (Chapter~\ref{chap:algebra}):
+    the commutative $\mathbb{R}$-algebra obtained by quotienting formal flag
+    combinations by Razborov's averaging relations, with multiplication defined
+    through pair densities.
+  \item \textbf{The unlabeling operator} (Chapter~\ref{chap:downward}):
+    $[\![\,\cdot\,]\!]_0 : \mathcal{A}^\sigma \to \mathcal{A}^\emptyset$, which
+    averages away the labels.
+  \item \textbf{Positivity and SOS} (Chapter~\ref{chap:positivity}): positive
+    homomorphisms, the semantic order $\le$ in which density bounds are stated,
+    and the sum-of-squares certificates that prove them.
+  \item \textbf{Limit semantics} (Chapter~\ref{chap:limits}): the analytic side
+    (Razborov's Theorems 3.3 and 3.5) identifying positive homomorphisms with
+    limits of subgraph densities, and the resulting Cauchy--Schwarz inequality.
+  \item \textbf{Application} (Chapter~\ref{chap:mantel}): Mantel's theorem, the
+    Tur\'an density of the triangle, proved with the machinery above.
+\end{itemize}
+
+Every boxed node in the dependency graph is a definition or theorem tagged with
+the Lean declaration that realizes it; the graph edges are the mathematical
+dependencies declared here. All declarations named live in the \texttt{FlagAlgebras}
+namespace.
+
+
+%%FILE blueprint/src/chapters/positivity.tex
+\chapter{Positivity and sum-of-squares}
+\label{chap:positivity}
+
+Density bounds are inequalities in a semantic order on $\mathcal{A}^\sigma$
+induced by its positive homomorphisms. Sum-of-squares certificates are the
+mechanism that proves them. (Source: \texttt{FlagAlgebra/PositiveHom.lean},
+\texttt{QuadraticForm.lean}.)
+
+\begin{definition}[Positive homomorphism]
+  \label{def:positive-hom}
+  \lean{FlagAlgebras.PositiveHom}
+  \uses{def:flag-algebra, def:hom}
+  \leanok
+  A \emph{positive homomorphism} is an $\mathbb{R}$-algebra homomorphism
+  $\varphi : \mathcal{A}^\sigma \to \mathbb{R}$ that is nonnegative on every flag.
+  These are the semantic evaluations of the algebra --- the limits of subgraph
+  densities.
+\end{definition}
+
+\begin{definition}[Semantic cone]
+  \label{def:semantic-cone}
+  \lean{FlagAlgebras.semanticCone}
+  \uses{def:positive-hom}
+  \leanok
+  The \emph{semantic cone} is $\{\, f \mid \varphi(f) \ge 0 \text{ for all
+  positive } \varphi \,\}$. Membership is exactly an unconditional density
+  inequality.
+\end{definition}
+
+\begin{definition}[Semantic order]
+  \label{def:semantic-order}
+  \lean{FlagAlgebras.le_def}
+  \uses{def:semantic-cone}
+  \leanok
+  Define $f \le g$ to mean $g - f$ lies in the semantic cone, i.e.\ every
+  positive homomorphism satisfies $\varphi(f) \le \varphi(g)$. This is a preorder
+  on $\mathcal{A}^\sigma$, the order in which all bounds are stated.
+\end{definition}
+
+\begin{theorem}[Flags are nonnegative]
+  \label{thm:flag-nonneg}
+  \lean{FlagAlgebras.flag_geq_zero}
+  \uses{def:semantic-order, def:basis-vector, lem:positivehom-basisvector-nonneg}
+  \leanok
+  Every flag satisfies $[\![F]\!] \ge 0$ --- the base positivity fact from which
+  sum-of-squares bounds are assembled.
+\end{theorem}
+
+\begin{lemma}[Order arithmetic]
+  \label{lem:order-monotone}
+  \lean{FlagAlgebras.flag_add_le_add, FlagAlgebras.nonneg_smul_nonneg_geq_zero}
+  \uses{def:semantic-order}
+  \leanok
+  The semantic order is compatible with the algebra operations: inequalities may
+  be added termwise, and a nonnegative scalar times a nonnegative element is
+  nonnegative.
+\end{lemma}
+
+\begin{definition}[Flag quadratic form]
+  \label{def:flag-quadratic-form}
+  \lean{FlagAlgebras.flagQuadraticForm}
+  \uses{def:flag-algebra, def:flag-algebra-vec}
+  \leanok
+  Given a matrix $M$ and a vector $v = (v_1,\dots,v_n)$ of flag-algebra elements,
+  \[ \mathrm{flagQuadraticForm}\,M\,v \;=\; \sum_{i,j} M_{ij}\,(v_i\, v_j), \]
+  the raw sum-of-squares certificate object.
+\end{definition}
+
+\begin{theorem}[PSD forms are nonnegative]
+  \label{thm:sos-nonneg}
+  \lean{FlagAlgebras.flagQuadraticForm_nonneg}
+  \uses{def:flag-quadratic-form, def:semantic-cone, def:semantic-order}
+  \leanok
+  If $M \succeq 0$ (positive semidefinite) then
+  $\mathrm{flagQuadraticForm}\,M\,v \ge 0$ in the semantic cone.
+\end{theorem}
+\begin{proof}\leanok
+  Apply any positive homomorphism $\varphi$: it turns the form into
+  $\sum_{ij} M_{ij}\,\varphi(v_i)\varphi(v_j) = x^\top M x \ge 0$ with
+  $x_i = \varphi(v_i)$, since $M \succeq 0$.
+\end{proof}
+
+\begin{theorem}[Unlabeled PSD forms are nonnegative]
+  \label{thm:sos-downward-nonneg}
+  \lean{FlagAlgebras.flagQuadraticForm_downward_nonneg}
+  \uses{def:flag-quadratic-form, thm:sos-nonneg, def:downward}
+  \leanok
+  The unlabeled form $[\![\,\mathrm{flagQuadraticForm}\,M\,v\,]\!]_0 \ge 0$ for
+  $M \succeq 0$. This is the certificate actually used, since density bounds live
+  in the unlabeled algebra $\mathcal{A}^\emptyset$.
+\end{theorem}
+\begin{proof}\leanok
+  \uses{thm:downward-preserve-cone}
+  The form is in the semantic cone by Theorem~\ref{thm:sos-nonneg}, and downward
+  preserves the semantic cone (Theorem~\ref{thm:downward-preserve-cone}), so its
+  unlabeling is nonnegative.
+\end{proof}
+
+\section{Supporting constructions}
+
+\begin{definition}[Algebra homomorphism type]
+  \label{def:hom}
+  \lean{FlagAlgebras.Hom}
+  \uses{def:flag-algebra}
+  \leanok
+  $\mathrm{Hom}\,\sigma = \mathcal{A}^\sigma \to_{\mathbb{R}\text{-alg}}
+  \mathbb{R}$, the underlying $\mathbb{R}$-algebra homomorphisms; a positive
+  homomorphism is such a map that is additionally nonnegative on flags.
+\end{definition}
+
+\begin{definition}[Vector of algebra elements]
+  \label{def:flag-algebra-vec}
+  \lean{FlagAlgebras.FlagAlgebraVec}
+  \uses{def:flag-algebra}
+  \leanok
+  $\mathrm{FlagAlgebraVec}\,\sigma\,n = \mathrm{Fin}\,n \to \mathcal{A}^\sigma$,
+  the variables of a quadratic form.
+\end{definition}
+
+\begin{lemma}[Homomorphisms are nonnegative on flags]
+  \label{lem:positivehom-basisvector-nonneg}
+  \lean{FlagAlgebras.positiveHom_basisVector_ge_zero}
+  \uses{def:positive-hom, def:basis-vector}
+  \leanok
+  $0 \le \varphi[\![F]\!]$ for every positive homomorphism $\varphi$ and flag
+  $F$ --- the defining positivity, restated as $0 \le \cdot$.
+\end{lemma}
+
+\begin{lemma}[Order via nonnegative difference]
+  \label{lem:flag-sub-nonneg}
+  \lean{FlagAlgebras.flag_sub_nonneg}
+  \uses{def:semantic-order}
+  \leanok
+  $f \le g \iff 0 \le g - f$.
+\end{lemma}
+
+\begin{lemma}[Translation invariance of the order]
+  \label{lem:order-monotone-sides}
+  \lean{FlagAlgebras.flag_add_le_add_left, FlagAlgebras.flag_add_le_add_right}
+  \uses{lem:order-monotone}
+  \leanok
+  Adding a fixed element on either side preserves the semantic order; these
+  register as the \texttt{AddLeftMono}/\texttt{AddRightMono} instances.
+\end{lemma}
+
+
+%%FILE blueprint/src/content.tex
+% Master content file for the Lean Flag Algebras blueprint.
+% Each \input is one chapter = one layer of the FlagAlgebra/ core library,
+% in dependency order, followed by Mantel's theorem as a worked application.
+
+\input{chapters/overview}
+\input{chapters/flags}
+\input{chapters/density}
+\input{chapters/algebra}
+\input{chapters/downward}
+\input{chapters/positivity}
+\input{chapters/limits}
+\input{chapters/compute}
+\input{chapters/mantel}
+

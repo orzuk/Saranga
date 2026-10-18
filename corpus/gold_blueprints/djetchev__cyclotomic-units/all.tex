@@ -1,0 +1,321 @@
+
+%%FILE blueprint/src/content.tex
+% In this file you should put the actual content of the blueprint.
+% It will be used both by the web and the print version.
+% It should *not* include the \begin{document}
+%
+% If you want to split the blueprint content into several files then
+% the current file can be a simple sequence of \input. Otherwise It
+% can start with a \section or \chapter for instance.
+
+\chapter{Introduction}
+This is my first experimental mini-project 
+to formalize the theory of cyclotomic units in Lean. 
+
+
+\chapter{Dirichlet $L$-series and class number formulas}\label{chap:dirichlet}
+
+\section{Dirichlet characters}
+
+\begin{definition}[Dirichlet character]\label{defn:dirichlet_character}
+    \lean{DirichletCharacter}
+    \leanok
+    A Dirichlet character modulo $n$ is a group homomorphism $\chi \colon (\mathbb{Z} / n \mathbb{Z})^\times \to \mathbb{C}^\times$. One can easily extend a Dirichlet character 
+    to a function $\chi \colon \mathbb{Z} \ra \mathbb{C}^\times$ by the rules 
+    $$
+    \chi(a) = 0 \text{ if } (a, n) \ne 1, \quad \chi(a + n) = \chi(a).
+    $$
+    We use this last definition throughout.
+\end{definition}
+
+
+\begin{definition}[Conductor of a Dirichlet character]\label{defn:conductor_dirchar}
+    \uses{defn:dirichlet_character}
+    \lean{DirichletCharacter.conductor}
+    \leanok
+    The conductor of a Dirichlet character $\chi$ is the smallest positive integer $f$ such that $\chi(a + f) = \chi(a)$.
+\end{definition}
+
+\begin{definition}[Gauss sum]\label{defn:gauss_sum}
+    \uses{defn:dirichlet_character}
+    \lean{gaussSum}
+    \leanok
+    Let $\chi$ be a Dirichlet character modulo $f$. The Gauss sum of $\chi$ is defined as 
+    $$
+    \tau(\chi) = \sum_{a = 1}^f \chi(a) \zeta_f^a,
+    $$
+    where $\zeta_f$ is a primitive $f$th root of unity.
+\end{definition}
+
+\section{Dirichlet $L$-series}
+
+Let $\chi$ be a Dirichlet character of conductor $f$ and let $L(s, \chi)$ 
+be the Dirichlet $L$-series attached to $\chi$.
+
+\begin{theorem}\label{thm:L_series_sum_log_units}
+    \uses{defn:dirichlet_character, defn:conductor_dirchar, defn:gauss_sum}
+    We have 
+    $$
+    L(1, \chi) = 
+    \begin{cases}
+    -\frac{\tau(\chi)}{f} \sum_{a = 1}^{f} \overline{\chi}(a) \log | (1 - \zeta_f)^a | & \text{ if } \chi(-1) = 1, \ \chi \ne 1, \\
+    \pi i \frac{\tau(\chi)}{f} \cdot \frac{1}{f} \sum_{a = 1}^f \overline{\chi}(a)a & \text{ if } \chi(-1) = -1. 
+    \end{cases}
+    $$
+\end{theorem}
+
+Before we prove the theorem, we need some auxiliary lemmas: 
+
+\begin{lemma}\label{lem:chi_gauss_sum}
+    \uses{defn:dirichlet_character, defn:conductor_dirchar, defn:gauss_sum}
+    For every integer $b$, we have 
+    $$
+    \chi(b) \tau(\overline{\chi}) = \sum_{a = 1}^f \overline{\chi}(a) e^{\frac{2\pi i a b}{f}}.
+    $$
+\end{lemma}
+
+\begin{proof}
+    \proves{lema:chi_gauss_sum}
+\end{proof}
+
+\begin{proof}[Proof of Theorem~\ref{thm:L_series_sum_log_units}]
+    \proves{thm:L_series_sum_log_units}
+    \uses{lem:chi_gauss_sum}
+    Using Lemma~\ref{lem:chi_gauss_sum} and the definition of the Dirichlet $L$-series, we write 
+    \begin{eqnarray*}
+        L(1, \chi) &=& \sum_{n = 1}^{\infty} \frac{\chi(n)}{n} = \sum_{n = 1}^{\infty} \frac{1}{n} \frac{1}{\tau(\overline{\chi})} \sum_{a = 1}^f \overline{\chi}(a) e^{2\pi i a n / f} = \\
+        &=& \frac{1}{\tau(\overline{\chi})} \sum_{a = 1}^f \overline{\chi}(a) \sum_{n = 1}^{\infty} \frac{e^{2\pi i a n / f}}{n} = \\
+        &=& - \frac{1}{\tau(\overline{\chi})} \sum_{a = 1}^f \overline{\chi}(a) \log(1 - \zeta_f^a).
+    \end{eqnarray*}
+\end{proof}
+
+
+\chapter{Regulators of Number Fields}
+This chapter presents basic definitions and results on regulators of number fields.
+
+Let $L$ be a number field with $r_1$ real and $r_2$ complex embeddings and let $r = r_1 + r_2 - 1$. 
+
+\section{Definition of the regulator}\label{sec:regulator}
+
+Let $\epsilon_1, \dots, \epsilon_r$ be a set of independent units of $L$. 
+
+\begin{definition}\label{defn:mixed_embeddings}
+    \lean{NumberField.mixedEmbedding}
+    \leanok
+    Let $\sigma_1, \dots, \sigma_{r_1}$ 
+    be the set of real embeddings and let $(\sigma_{r_1 + 1}, \overline{\sigma}_{r_1 + 1}), \dots, (\sigma_{r}, \overline{\sigma}_{r})$ be the 
+    pairs of conjugate complex embeddings.
+\end{definition}
+
+\begin{definition}\label{defn:regulator}
+    \lean{NumberField.Units.regulator}
+    \leanok
+    \uses{defn:mixed_embeddings}
+    We define the regulator of the units $\epsilon_1, \dots, \epsilon_r$ of $L$ as 
+    $$
+    R_L(\epsilon_1, \dots, \epsilon_r) := \sqrt{\det(\delta_{i} \log | \sigma_i(\epsilon_j) | )_{i, j}}, 
+    $$
+    where 
+    $$
+    \delta_i = 
+    \begin{cases}
+    1 & \text{ if } \sigma_i \text{ is real}, \\
+    2 & \text{ if } \sigma_i \text{ is complex}.
+    \end{cases}
+    $$
+\end{definition}
+
+\section{The index of units subgroups and regulators}
+
+\begin{lemma}\label{lem:index_eq_reg_ratio}
+    \uses{defn:regulator}
+    Let $\epsilon_1, \dots, \epsilon_r$ be independent units of a number field $K$ that generate a subgroup 
+    $A$ of the units of $K$ modulo roots of unity and let $\eta_1, \dots, \eta_r$ generate a subgroup 
+    $B$. If $A \subseteq B$ is of finite index then 
+    $$
+        [B : A] = \frac{R_K(\epsilon_1, \dots, \epsilon_r)}{R_K(\eta_1, \dots, \eta_r)}.
+    $$
+\end{lemma}
+
+We derive the lemma from the definition of the regulator and the theory of elementary divisors for 
+$\mathbb{Z}$-modules.
+
+\begin{lemma}[Smith normal form]\label{lem:elem_divisors}
+    \lean{Basis.SmithNormalForm}
+    \leanok
+    Let $M \in \GL_{n \times m}(\mathbb{Z})$ be an integer matrix. 
+    There exists matrices $U \in \GL_n(\mathbb{Z})$ and 
+    $V \in \GL_m(\mathbb{Z})$ such that 
+    $$
+    U M V = 
+    \begin{pmatrix}
+        D & 0 \\
+        0 & 0 
+    \end{pmatrix}
+    $$ 
+    where $D = \textrm{diag}(d_1, \dots, d_r)$ is an $r \times r$ 
+    diagonal integer matrix with $d_1 \mid d_2 \mid \dots \mid d_r$.  
+\end{lemma}
+
+\begin{proof}
+    \proves{lem:elem_divisors}
+    \lean{Basis.SmithNormalForm}
+    \leanok
+\end{proof}
+
+\begin{proof}
+    \uses{lem:elem_divisors}
+    \proves{lem:index_eq_reg_ratio}
+    Since $A \subseteq B$, one can write 
+    $$
+    \eta_i = \epsilon_1^{a_{i1}} \cdot \dots \cdot \epsilon_r^{a_{i r}} \cdot \mu^{(i)}, \quad i = 1, \dots, r, 
+    $$
+    where $a_{ij} \in \mathbb{Z}$ and $\mu^{(i)}$ is a root of unity. By taking absolute values and logarithms, 
+    $$
+    \delta_j \log | \sigma_j(\eta_i) | = \sum_{k = 1}^r a_{ik} \delta_j \log | \sigma_j(\epsilon_k) |, \quad i = 1, \dots, r. 
+    $$
+    Therefore, using Defintiion~\ref{defn:regulator}, we have
+    \begin{equation}\label{eq:reg_ratio}
+    \frac{R_K(\epsilon_1, \dots, \epsilon_r)}{R_K(\eta_1, \dots, \eta_r)} = \det ((a_{ik})_{i, k = 1}^r)
+    \end{equation}
+    Applying Lemma~\ref{lem:elem_divisors}, we can find matrices $U, V \in \GL_2(\mathbb{Z})$ such that 
+    $$
+    U (a_{ik})_{i, k = 1}^r V = \text{diag}(d_1, \dots, d_r). 
+    $$
+    Therefore, changing the basis of $A$ and $B$ with $M$ and $N$, respectively, we obtain bases 
+    $x_1, \dots, x_r$ of $A$ and $y_1, \dots, y_r$ of $B$ such that $x_i = d_i y_i$, i.e., 
+    $$
+    B / A = \bigoplus_{i = 1}^r \mathbb{Z} / d_i \mathbb{Z}. 
+    $$
+    Hence, $[B : A] = |\prod_{i = 1}^r d_i | = \det ((a_{ik})_{i, k = 1}^r)$ which, combined with \eqref{eq:reg_ratio}, 
+    proves the lemma.  
+\end{proof}
+
+
+\chapter{The Index of Cyclotomic Units}
+
+\section{Maximal real subfield}
+\begin{definition}\label{defn:K_plus}
+    Let $K = \mathbb{Q}(\zeta_n)$ where $\zeta_n$ is a primitive $n$-th root of unit. 
+    Define the subfield $K^+ := \mathbb{Q}(\zeta_n + \zeta_n^{-1})$ of $K$.
+\end{definition}
+
+\begin{lemma}\label{lem:K_plus_max_real_sub}
+    \uses{defn:K_plus}
+    The subfield $K^+$ is the maximal real subfield of $K$.
+\end{lemma}
+
+\begin{proof}
+\end{proof}
+
+\begin{lemma}\label{lem:gal_K_plus}
+    \uses{defn:K_plus}
+    The Galois group of $\Gal(K^+ / \mathbb{Q})$ is generated by the 
+    automorphisms $\sigma_a \colon \zeta \mapsto \zeta^a$ for $1 \leq a \leq p^m / 2$, $(a, p) = 1$. 
+\end{lemma}
+
+\begin{proof}
+    \proves{lem:gal_K_plus}
+\end{proof}
+
+\section{Cyclotomic units}
+\begin{definition}\label{defn:cyclo_units}
+    Define the cyclotomic units of a cyclotomic field $K = \mathbb{Q}(\zeta_n)$ with ring of integers 
+    $O_K = \mathbb{Z}[\zeta_n]$ as the group 
+    $$
+    C_K := O_K^\times \cap \langle \zeta_n^a, 1 - \zeta_n^b \colon a, b \in \mathbb{Z} / n \mathbb{Z}\rangle. 
+    $$
+\end{definition}
+
+\section{Index theorem}
+\begin{theorem}\label{thm:index_of_units}
+    \notready
+    \uses{defn:K_plus, defn:cyclo_units}
+    Let $n := p^m \in \mathbb{N}$ for a prime $p$ and a positive integer $m$, and let $K = \mathbb{Q}(\zeta_n)$ where $\zeta_n$ is a primitive $n$-th root of unit. 
+    Let $O_K$ be the ring of integers of $K$. 
+    Let $C_K$ be the group of cyclotomic units in $K$ according to Definition~\ref{defn:cyclo_units}.
+    Then
+    \[
+        [O_{K^+}^\times : C_{K^+}] = h_{K^+},
+    \]
+    where $h_{K^+}$ is the class number of the maximal real subfield $K^+$ of $K$.
+\end{theorem}
+
+\begin{proof}
+    \proves{thm:K_plus}
+    \uses{lem:reg_Ra}
+    \begin{itemize}
+        \item Show that the regulator of the units $\xi_a$ is non-zero, where 
+        $$
+        \xi_a := \zeta_{p^m}^{(1-a)/2} \frac{1 - \zeta_{p^m}^a}{1 - \zeta_{p^m}}, \qquad 1 \leq a < p^m / 2, \ (a, p) = 1.
+        $$
+        \item Compute the regulator $R(\{\xi_a\})$. 
+    \end{itemize}
+\end{proof}
+
+\subsection{Computing the regulator for $K^+$}
+
+\begin{lemma}\label{lem:reg_Ra}
+    \uses{defn:regulator, defn:K_plus}
+    We have
+    $$
+    R(\{\xi_a\}) = h^+ R^+, 
+    $$
+    where $R^+$ is the regulator of $K^+$.
+\end{lemma}
+
+Let $G = \Gal(K^+ / \mathbb{Q})$. We will use the following auxiliary lemma:
+
+\begin{lemma}\label{lem:reg_Ra_charsum}
+    \uses{defn:regulator, defn:K_plus}
+    We have 
+    $$
+    | R(\{\xi_a\}) | = \frac{1}{2} \left | \prod_{\substack{\chi \in \widehat{G} \\ \chi \ne 1}} \sum_{a = 1}^{p^m} \chi(a) \log |1 - \zeta^a| \right |. 
+    $$
+\end{lemma}
+
+\begin{proof}
+    \proves{lem:reg_Ra_charsum}
+\end{proof}
+
+In addition, we need the following little lemma on roots of unity: 
+
+\begin{lemma}\label{lem:prod_cycl_units}
+    For any $1 \leq k < n$, we have 
+    $$
+    \prod_{\substack{1 \leq a < p^n \\ a \equiv b \bmod p^k}} (1 - \zeta_{p^n}^a) = 1 - \zeta_{p^k}^b.   
+    $$
+\end{lemma}
+
+\begin{proof}
+    \proves{lem:prod_cycl_units}
+    We rewrite 
+    $$
+    \prod_{\substack{1 \leq a < p^n \\ a \equiv b \bmod p^k}} (1 - \zeta_{p^n}^a) = \prod_{s = 0}^{p^{n-k}-1}(1 - \zeta_{p^n}^b \zeta_{p^{n-k}}^s) = 1 - \zeta_{p^k}^b,
+    $$
+    where the last equality follows from  
+    $$
+    \prod_{i = 0}^{m-1} (1 - \zeta_m^i x)= x^m \prod_{i = 0}^{m-1} (x^{-1} - \zeta_m^i) = x^m (x^{-m} - 1) = 1 - x^m
+    $$
+    applied to $m = p^{n-k}$ and $x = \zeta_{p^n}^b$. 
+\end{proof}
+
+\begin{proof}[Proof of Lemma~\ref{lem:reg_Ra}]
+    \proves{lem:reg_Ra}
+    \uses{lem:prod_cycl_units, lem:gal_K_plus, lem:reg_Ra_charsum, thm:L_series_sum_log_units}
+    First, for a Dirichlet character $\chi$ modulo $p^n$ of conductor 
+    $f_{\chi} = p^k$ for some $1 \leq k < n$, Lemma~\ref{lem:prod_cycl_units} yields
+    $$
+    \prod_{\substack{1 \leq a < p^n \\ a \equiv b \bmod p^k}} (1 - \zeta_{p^n}^a) = 1 - \zeta_{p^n}^b.   
+    $$
+    Applying Lemma~\ref{lem:reg_Ra_charsum} and Theorem~\ref{thm:L_series_sum_log_units}, we obtain 
+    \begin{eqnarray*}
+        % R(\{\xi_a\}) &=& \frac{1}{2} \left | \prod_{\substack{\chi \in \widehat{G} \\ \chi \ne 1}} \sum_{a = 1}^{p^n} \chi(a) \log |1 - \zeta^a| \right | = \\
+        % &=& \frac{1}{2} \prod_{\substack{\chi \in \widehat{G} \\ \chi \ne 1}} \sum_{a = 1}^{p^m} \chi(a) \log |1 - \zeta^a| = \\
+        % &=&
+        R(\{\xi_a\}) &=& \frac{1}{2} \left | \prod_{\chi \in \widehat{G}, \chi \ne 1} \sum_{a = 1}^{p^n} \chi(a) \log |1 - \zeta^a| \right | = \\
+        &=& \frac{1}{2} \prod_{\chi \in \widehat{G}, \chi \ne 1} \sum_{a = 1}^{p^m} \chi(a) \log |1 - \zeta^a| = \\
+    \end{eqnarray*}
+\end{proof}
+
+

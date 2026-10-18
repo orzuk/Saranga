@@ -1,0 +1,1355 @@
+
+%%FILE blueprint/src/chapter/axioms.tex
+\chapter{Axioms}\label{chap:axioms}
+
+We now give a full account of all the axioms / unproven results used
+throughout the project.
+We can differentiate these axioms in the following categories:
+
+\begin{itemize}
+\item \textbf{Generated code instances}: axioms that are needed for the generated code to be well
+  behaved.
+\item \textbf{Uninterpreted functions}: axioms that pose the existence of a function without
+  providing an implementation.
+\item \textbf{Pre-theorems}: axioms that should be turned into theorems.
+\item \textbf{Theorem sorries}: theorems with absent proofs that should hold.
+\item \textbf{Subgoal sorries}: subogals that have been sorried-out but are not the most
+  critical part of the theorems they belong to.
+\end{itemize}
+
+\section{Generated code instances}
+
+There are two instances that we have declared without providing any proof due to
+time constraints. For the \texttt{SortK} we have declared instances of the
+\texttt{DecidableEq} and \texttt{LawfulBEq} classes without providing any
+proofs. This has been done due to time constraints and code stability. However, these should be provable.
+
+\texttt{SortK} is basically a sequence of elemts of sort \texttt{SortKItem},
+which in turn has injections from every sort. This means that every time a new
+type was generated (by including more parts of the KEVM semantics in the
+generated code by adding more summaries) the proof should have to be adjusted.
+
+The main application of these instances is to prove the results presents in
+\href{https://runtimeverification.github.io/evm-equivalence/docs/EvmEquivalence/Interfaces/GasInterface.html}{\texttt{GasInterface.lean}}.
+
+\section{Uninterpreted functions}
+
+Some functions in K are left for the backends to implement. These are called
+``hooked functions''. What this means is that these functions don't have
+definition in the compiled K files. Instead, when such a function is
+encountered, K will use the implementation that the executing backend provides
+(the hook).
+
+In our context, hooked functions come in two flavours: implemented or
+unimplemented. Implemented hooked functions are present in the
+\href{https://runtimeverification.github.io/evm-equivalence/docs/EvmEquivalence/KEVM2Lean/Prelude.html}{\texttt{Prelude.lean}},
+and unimplemented or uninterpreted hooked functions are declared as axioms in
+the
+\href{https://runtimeverification.github.io/evm-equivalence/docs/EvmEquivalence/KEVM2Lean/Func.html}{\texttt{Func.lean}}
+file.
+
+All axioms in \texttt{Func.lean} should only be unimplemented hooked functions.
+
+\section{Pre-theorems and theorem sorries}
+
+All axioms that are not uninterpreted functions should become a theorem at some
+point. We also have theorems that no proof has been attempted. All such
+statements are thought to hold, and not holding would imply discrepancies of
+some sort between the models.
+
+\section{Subgoal sorries}
+
+Some theorems have some subgoals sorried out. This is because we have
+provided the general structure of the proof, but haven't got the time yet to
+close all subgoals.
+
+All such subgoals should be provable requiring at most some small tweaking of
+the surrounding functions.
+
+\section{Gas subgoal sorries}
+
+One special (almost systematic) kind of subgoal sorry is that of gas-related subgoals.
+For the current opcodes targeted for equivalence we have not prioritized (given the time constraints) proving the equivalence of gas consumption or other gas-related obligations.
+
+The reason for this is that we consider gas agreeance as less critical than the other proof obligations that are covered.
+In fact, if the EvmYul model allowed for a gasless mode of execution, as does KEVM, it is very probable that the first version of the equivalence proofs would have made use of it.
+
+Another reason for not prioritizing gas-related goals is that they are often quite time consuming. A good direction of research is to apply more automatic reasoning methods such as SMT-based tactics or LLMs.
+
+
+%%FILE blueprint/src/chapter/equivalences.tex
+\chapter{Equivalences}\label{chap:equivalences}
+
+With what we have defined so far we are in a position to start proving
+equivalence between KEVM and the EvmYul model. However, first, we need to
+pinpoint exactly what do we mean by equivalence.
+
+\section{Defining Equivalence}
+
+We define now the notion of equivalence we're dealing with, and to what extent
+is it formalized and proven.
+
+The overarching goal is to prove that there exists a bisimulation relation between
+KEVM and the EvmYul model.
+
+We start by refreshing the definition of a bisimulation.
+
+\begin{definition}[Bisimulation relation]\label{def:bisimulation}
+Given a transition system $(S, \rightarrow)$, a binary relation $R$ on $S$ is a
+bisimulation if and only if for every pair of states $(p, q)\in R$ we have:
+\begin{itemize}
+\item if $p \rightarrow p'$ then there is $q \rightarrow q'$ with $(p', q') \in
+  R$;
+\item if $q \rightarrow q'$ then there is $p \rightarrow p'$ with $(p', q') \in
+  R$.
+\end{itemize}
+\end{definition}
+
+In our context,
+\begin{itemize}
+\item $S$ is the union of both KEVM and EvmYul states ($S_{\text{KEVM}}$ and
+  $S_{\text{EvmYul}}$ respectively). So we have $S_{\text{KEVM}}\, \bigcup\, S_{\text{EvmYul}} = S$ and $S_{\text{KEVM}}\, \bigcap\, S_{\text{EvmYul}} = \emptyset$.
+\item The transition relation $\rightarrow$ is execution in any of the models. In particular, we have that $\rightarrow\,
+\subset S_{\text{KEVM}} \times S_{\text{KEVM}} \,\bigcup\, S_{\text{EvmYul}} \times S_{\text{EvmYul}}$.
+\item $R = \bigl\{\bigl( p, \text{stateMap}(p) \bigr)\, |\, p\in S_{\text{KEVM}}\bigr\} \,\bigcup\, \bigl\{\bigl(\text{stateMap}'(q),
+  q\bigr)\, |\, q\in S_{\text{EvmYul}}\bigr\}$ where $\text{stateMap}$ is
+  defined in \ref{def:stateMap} and $\text{stateMap}'\,:\,
+  S_{\text{EvmYul}}\rightarrow S_{\text{KEVM}}$ has not yet been defined.
+
+\end{itemize}
+Note that $R \subsetneq S_{\text{KEVM}}\times S_{\text{EvmYul}}$.
+With this in mind, we currently have machinnery to prove the first implication
+of the bisimulation definition.
+
+Given KEVM states $p, p'$ with $p \rightarrow p'$, we know that
+$\bigl( p, \text{stateMap}(p) \bigr)$ and $\bigl( p', \text{stateMap}(p')
+\bigr)$ belong to $R$. Hence, to prove the first item we only need to show that
+$\text{stateMap}(p) \rightarrow \text{stateMap}(p')$.
+
+\subsubsection{Clarifications on $\rightarrow$}
+
+Saying ``the transition relation $\rightarrow$ is execution in any of the
+models'' is admittedly quite loose. So we can make its definition more precise
+as follows.
+
+\begin{definition}[Transition function $\rightarrow$]
+Given $p, p' \in S$, we have that $p\rightarrow p'$ if
+\begin{itemize}
+\item $p, p'\in S_{\text{KEVM}}$ and \texttt{Rewrites} $p$ $p'$ holds.
+\item $p, p'\in S_{\text{EvmYul}}$ and executing the
+  \texttt{step}[\ref{def:EVM.step}] or \texttt{X}[\ref{def:EVM.X}] function on $p$ yields $p'$.
+\end{itemize}
+\end{definition}
+
+Now we can start describing the proof process more clearly.
+
+\section{Proof Outline}
+
+Given all the above and $f\in\{\texttt{step}, \texttt{X}\}$, the first
+implication translates to
+
+\begin{equation}\label{eq:bisimulation-explicit1}
+\forall p, p'\in S_{\text{KEVM}}\,\, \texttt{Rewrites}\,\, p \,\, p'
+\Rightarrow f\bigl(\text{stateMap}(p)\bigr) = \text{stateMap}(p').
+\end{equation}
+
+While the second translates to
+\begin{equation}\label{eq:bisimulation-explicit2}
+\forall q, q'\in S_{\text{EvmYul}}\,\, f(q) = q' \Rightarrow
+\texttt{Rewrites}\,\, \text{stateMap}'(q)\,\, \text{stateMap}'(q').
+\end{equation}
+
+The above statement is still not fully precise, since we're only feeding
+elements of $S_{\text{EvmYul}}$ to $f$, but both \texttt{step} and \texttt{X}
+take more arguments. However, the only argument that we'll fix is the opcode
+being executed.
+
+This means that we will be reproducing the above argument on a per-opcode basis.
+The reasoning being that showing equivalence at the opcode-execution level is
+fundamental enough to argue that both models share the same understanding of the
+semantics.
+
+The following example should shine enough light on the
+specificities that we have left out so far.
+
+\section{Case Study: Stack Operations}
+
+In this example we will be covering proofs for \ref{eq:bisimulation-explicit1}
+for ``stack operation opcodes'', meaning opcodes that perform operations on the
+stack such as \texttt{ADD} or \texttt{SHL}. Since we're reproducing the same
+argument for each opcode, the proof process is architecturally similar across
+the files.
+
+In fact, for some opcodes, we can bundle them together and reproduce the above
+argument at once per opcode class.
+
+\subsection{Opcode Bundling}
+
+The main criteria for creating these opcode classes is based on their KEVM
+summaries. To understand how KEVM summaries condition which opcodes go to each
+class (which is still a somewhat arbitrary taxonomy) we assume understanding of
+the
+\href{https://github.com/runtimeverification/evm-equivalence/tree/master/EvmEquivalence/Equivalence#anatomy-of-a-rewrite-rule}{anatomy
+  of rewrite rules}.
+
+There are two main frictions when bundling opcodes together: how fine-grained we
+need the state representation to be and how many ``steps'' does it take for KEVM
+to encode the state changes.
+
+The fine-grainedness of the state refers to how abstracted the satate is. For
+instance, instead of specifying symbolic values for all the components of the
+\texttt{network} cell, we just have a symbolic \texttt{network} cell variable.
+This is not troublesome in general.
+
+What is more defining for opcode bundling is the amount of steps or conditions
+needed to encode the state changes performed per opcode. For example, for the
+\texttt{ADD} opcode we need two conditions (one per operation) to define the
+value that will be put on the top of the stack. The first condition adds the
+first two items of the stack, and the second one takes the corresponding
+modulus:
+\begin{verbatim}
+(defn_Val3 : «_+Int_» W0 W1 = some _Val3)
+(defn_Val4 : chop _Val3 = some _Val4)
+\end{verbatim}
+In this case, \texttt{_Val4} is going to be the value introduced at the top of
+the stack.
+
+We can contrast this to the \texttt{DIV} opcode, which only takes one condition
+to encode the value of the newly added stack item:
+\begin{verbatim}
+(defn_Val3 : «_/Word__EVM-TYPES_Int_Int_Int» W0 W1 = some _Val3)
+\end{verbatim}
+
+With this in mind, we first define an inductive type representing all opcodes in
+this class. The class being ``opcodes that perform stack operations and take one
+condition to summarize the new value added to the stack.''
+
+\begin{definition}[stackOps_op]\label{def:OneOp.stackOps}
+\lean{OneOpEquivalence.stackOps_op}\leanok
+Class of opcodes consisting of
+\texttt{DIV}, \texttt{SDIV}, \texttt{MOD}, \texttt{SMOD}, \texttt{SIGNEXT},
+\texttt{SLT}, \texttt{SGT}, \texttt{AND}, \texttt{XOR}, \texttt{NOT},
+\texttt{BYTE}, \texttt{SHL}, \texttt{SHR}, \texttt{SAR}.
+\end{definition}
+
+This definition will allow us to generalize the rest of the description to the
+whole class of opcodes.
+
+In the remaining of this chapter we're going to be lying down the formalization
+process for \ref{eq:bisimulation-explicit1} for the opcode class
+\texttt{stackOps_op}.
+
+\subsection{$\forall p, p'\in S_{\text{KEVM}}\,\, \texttt{Rewrites}\,\, p \,\, p'$}
+
+The first stop is to, given the class of opcodes \texttt{stackOps_op},
+identify all $p, p'\in S_{\text{KEVM}}$ such that $\texttt{Rewrites}\,\, p \,\,
+p'$ holds by means of executing any of the opcodes in that equivalence class
+(written as $\texttt{Rewrites}_{\texttt{stackOps_op}}\,\, p \,\, p'$).
+To achieve this we rely on the following two definitions.
+
+\begin{definition}[oneOpLHS]\label{def:oneOpLHS}
+\lean{OneOpEquivalence.oneOpLHS}\leanok\uses{def:OneOp.stackOps}
+
+\texttt{oneOpLHS} is a symbolic state representing all KEVM states that
+rewrite to some other state by means of executing any opcode from the
+\texttt{stackOps_op} class. Viewed as a
+function, $$\mathcal{Im}(\texttt{oneOpLHS}) \supset \{p\,\, |\,\, \exists
+p'\,\,\texttt{Rewrites}_{\texttt{stackOps_op}}\,\, p \,\, p'\}.$$
+
+\end{definition}
+
+\begin{definition}[oneOpRHS]\label{def:oneOpRHS}
+\lean{OneOpEquivalence.oneOpRHS}\leanok\uses{def:OneOp.stackOps}
+
+\texttt{oneOpRHS} is a symbolic state representing all KEVM states that are a
+rewrite of some other state by means of executing any opcode from the
+\texttt{stackOps_op} class. Viewed as a
+function, $$\mathcal{Im}(\texttt{oneOpRHS}) \supset \{p'\,\, |\,\, \exists
+p\,\,\texttt{Rewrites}_{\texttt{stackOps_op}}\,\, p \,\, p'\}.$$
+
+\end{definition}
+
+The next step is, given $p\in\mathcal{Im}(\texttt{oneOpLHS})$ and
+$p'\in\mathcal{Im}(\texttt{oneOpRHS})$, to find which are the necessary
+conditions such that $\texttt{Rewrites}_{\texttt{stackOps_op}}\,\, p \,\, p'$
+holds. For this we turn to the constructors of the $\texttt{Rewrites}$ type.
+
+Each constructor represents an opcode, encoding the KEVM summary of executing such
+opcode on a symbolic state. The constructors of the rewrite type in turn contain
+all the conditions (such as \texttt{defn_Val3} above) to satisfy the rewrite
+summary. That is, the necessary conditions that ensure
+$\texttt{Rewrites}_{\texttt{stackOps_op}}\,\, p \,\, p'$. The following theorem
+proves that for any two such $p, p'$, under the restrictions posed by the
+constructors associated to the \texttt{stackOps_op} class, $p\rightarrow p'$.
+
+Note that, \texttt{oneOpLHS} and \texttt{oneOpRHS} being symbolic states, it is
+also correct to state \texttt{Rewrites} \texttt{oneOpLHS} \texttt{oneOpRHS}.
+However, this means that \texttt{oneOpLHS} rewrites to \texttt{oneOpRHS} for all
+possible value of its symbolic parameters. This is generally a false statement
+without restricting their symbolic values.
+
+\begin{theorem}[Rewrites oneOpLHS oneOpRHS]\label{thm:oneOpRw}
+\lean{OneOpEquivalence.rw_oneOpLHS_oneOpRHS}\leanok
+\uses{def:oneOpLHS,def:oneOpRHS,def:Rewrites}
+
+Given the restrictions posed by the \texttt{Rewrites} constructors corresponding
+to the \texttt{stackOps_op} opcode class,
+$\texttt{Rewrites}_{\texttt{stackOps_op}}$ \texttt{oneOpLHS} \texttt{oneOpRHS}.
+
+\end{theorem}
+
+\begin{proof}
+\leanok
+
+We have that \texttt{oneOpLHS} and \texttt{oneOpRHS} are generalizations of the
+states represented in the \texttt{Rewrites} constructors for the
+\texttt{stackOps_op} class. As such, if we specialize the definitions of
+\texttt{oneOpLHS} and \texttt{oneOpRHS} down to the opcode, since we're assuming
+the conditions of satisfaction for every \texttt{stackOps_op} opcode summary,
+the result follows.
+
+\end{proof}
+
+\subsection{$f\bigl(\text{stateMap}(p)\bigr) = \text{stateMap}(p')$}
+
+Now that we know the conditions under which
+$\texttt{Rewrites}_{\texttt{stackOps_op}}$ \texttt{oneOpLHS} \texttt{oneOpRHS} holds,
+we have to show $f\bigl(\text{stateMap}(\texttt{oneOpLHS})\bigr) =
+\text{stateMap}(\texttt{oneOpRHS})$ for $f\in\{\texttt{step}, \texttt{X}\}$.
+
+But in order to compute $f$, first we need to know the values of
+$\text{stateMap}(\texttt{oneOpLHS})$ and $\text{stateMap}(\texttt{oneOpRHS})$.
+Similarly as with the EvmYul summaries [\ref{chap:EvmYulSummaries}], we do this
+with theorems.
+
+\begin{theorem}[oneOpLHS_equiv]\label{thm:oneOpLHS_equiv}
+\lean{OneOpEquivalence.oneOp_prestate_equiv}\leanok\uses{def:stateMap}
+This theorem allows for a clean rewrite of $\text{stateMap}(\texttt{oneOpLHS})$.
+\end{theorem}
+\begin{proof}
+\leanok
+This result follows by specifying it down to the opcode and executing the
+stateMap function.
+\end{proof}
+
+\begin{theorem}[oneOpRHS_equiv]\label{thm:oneOpRHS_equiv}
+\lean{OneOpEquivalence.oneOp_poststate_equiv}\leanok\uses{def:stateMap}
+This theorem allows for a clean rewrite of $\text{stateMap}(\texttt{oneOpRHS})$.
+We typically go beyond just a pure rewrite of the stateMap function and also
+simplify some of the initial expressions present either in \texttt{oneOpRHS} or
+as a result of the stateMap computation.
+\end{theorem}
+\begin{proof}
+This result follows by specifying it down to the opcode and executing the
+stateMap function.
+\end{proof}
+
+Equipped with these theorems, we can now state and prove the main theorems for
+the functions \texttt{step} and \texttt{X}. Since \texttt{X} iteratively applies
+\texttt{step}, we start with the \texttt{step} function.
+
+\begin{theorem}[step_oneOp]\label{thm:step_oneOp}
+\lean{OneOpEquivalence.step_oneOp_equiv}\leanok
+\uses{def:stateMap,def:EVM.step,def:oneOpLHS,def:oneOpRHS}
+
+Assume
+
+\begin{itemize}
+\item All the conditions needed to satisfy the summaries of
+  $\texttt{Rewrites}_{\texttt{stackOps_op}}$,
+\item A schedule set to CANCUN,
+\item Enough gas per opcode,
+\item Well formed gas and program counter parameters in \texttt{oneOpLHS},
+\item Non-negative elements in the stack of \texttt{oneOpLHS}.
+\end{itemize}
+
+Then, evaluating the function \texttt{EVM.step} with any of the
+\texttt{stackOps_op} opcodes on $\text{stateMap}(\texttt{oneOpLHS})$ results in
+$\text{stateMap}(\texttt{oneOpRHS})$.
+
+\end{theorem}
+
+\begin{proof}
+\uses{thm:oneOpLHS_equiv,thm:oneOpRHS_equiv,thm:cancun_def}
+
+The proof consists of several parts, but many are shared among the
+\texttt{stackOps_op} class, such as the gas or program counter proof
+obligations.
+
+The main semantic challenge for this class of opcodes is to show that the
+operations performed on the stack correspond to each other. So, for example, for
+the \texttt{DIV} case, once all the execution-related bureaucracies have been
+dealt with, the main goal is the following:
+
+\begin{verbatim}
+intMap W0 / intMap W1 = intMap (divWord W0 W1)
+\end{verbatim}
+
+Where \texttt{W0} and \texttt{W1} are the first two elements of
+\texttt{oneOpLHS}'s stack.
+
+What this proof obligation is stating is that mapping the first two elements of
+a KEVM stack to EvmYul and then dividing them, is the same as dividing the two
+elements in KEVM and them mapping them to EvmYul.
+
+\end{proof}
+
+\begin{theorem}[X_oneOp]\label{thm:X_oneOp}
+\lean{OneOpEquivalence.X_oneOp_equiv}\leanok
+\uses{def:stateMap,def:EVM.X,def:oneOpLHS,def:oneOpRHS}
+
+Assume
+
+\begin{itemize}
+\item All the conditions needed to satisfy the summaries of
+  $\texttt{Rewrites}_{\texttt{stackOps_op}}$,
+\item A schedule set to CANCUN,
+\item Enough gas per opcode,
+\item Well formed gas parameter in \texttt{oneOpLHS},
+\item The program counter of \texttt{oneOpLHS} set to zero,
+\item Non-negative elements in the stack of \texttt{oneOpLHS},
+\item A well formed stack in \texttt{oneOpLHS}
+\item The program to be executed in \texttt{oneOpLHS} be a single-opcode program
+  consisting of any opcode of the \texttt{stackOps_op} class.
+\end{itemize}
+
+Then, evaluating the function \texttt{EVM.X} with any of the
+\texttt{stackOps_op} opcodes on $\text{stateMap}(\texttt{oneOpLHS})$ results in
+$\text{stateMap}(\texttt{oneOpRHS})$.
+
+\end{theorem}
+
+\begin{proof}
+\uses{thm:oneOpLHS_equiv,thm:oneOpRHS_equiv,thm:cancun_def,thm:X_bad_pc}
+
+Similarly as for the \texttt{EVM.step} function, we use tactics to execute
+\texttt{EVM.X} symbolically. The hypothesis space allows us to get rid of all
+reverting cases and confront the semantic equivalence similarly as in the proof
+for the \texttt{EVM.step} function.
+
+\end{proof}
+
+With these two theorems proven we can conclude that under the conditions of
+satisfaction of the summaries for the \texttt{stackOps_op} opcodes, together
+with some well-formedness constraints, there is a similarity relationship
+(equation \ref{eq:bisimulation-explicit1}) between executing the
+\texttt{stackOps_op} opcodes in KEVM and executing them in the EvmYul model.
+
+\section{Future Work}
+
+There are a number of items that remain as future work. For one, formalizing and
+proving equation \ref{eq:bisimulation-explicit2} in a similar fashion to what
+we've shown with equation \ref{eq:bisimulation-explicit1}.
+But within the formalization efforts of equation
+\ref{eq:bisimulation-explicit1}, it remains to close a number of proof
+obligations and formalizing other classes of opcodes.
+
+
+%%FILE blueprint/src/chapter/gen-code.tex
+\chapter{K generated code}\label{chap:gencode}
+
+Our first stop is at the Lean code generated by K. The K Framework comes with
+the
+\href{https://github.com/runtimeverification/k/tree/master/pyk/src/pyk/klean}{\texttt{klean}
+tool} which allows the extraction of
+\href{https://kframework.org/docs/user_manual/#k-process-overview}{Kore}
+definitions into a shallow embedding in Lean.
+
+The generated code is rather
+large, so we will narrow our focus down to the following:
+
+\begin{itemize}
+\item Overall structure of the generated code
+\item Necessary modifications done to the generated code
+\item Most used pieces
+\end{itemize}
+
+This doesn't aim to be a full description of the code generated code, but
+rather, to give the reader a good enough intuition from which to take on. For a
+preliminary discussion on how the code is generated, see this
+\href{https://github.com/runtimeverification/k/issues/4552}{github issue}.
+
+\section{Structure of the Code}
+
+The generated code is divided into five files. In dependent order:
+
+\begin{itemize}
+\item \texttt{Prelude.lean}: Prelude for K definitions containing bootstrapping
+  the shallow embedding.
+\item \texttt{Sorts.lean}: Definition of K sorts as inductive datatypes.
+\item \texttt{Inj.lean}: Instances of the \texttt{Inj} type class.
+\item \texttt{Func.lean}: Extraction of declared functions.
+\item \texttt{Rewrites.lean}: Rewrite rules coded as constructors or the
+  \texttt{Rewrite} inductive type.
+\end{itemize}
+
+\section{Prelude}
+
+The prelude contains the necessary definitions to bootstrap the Lean backend for
+K. Since the extraction performs a shallow embedding, we need to provide the
+necessary definitions that make use of already existing Lean definitions.
+
+To give more context on what the \texttt{Prelude.lean} does, we need to
+understand what are K hooked functions.
+
+K productions can have a \texttt{hook} attribute (e.g., \href{https://github.com/runtimeverification/k/blob/master/k-distribution/include/kframework/builtin/domains.md#integer-and-bytes-conversion}{converting integers
+  to bytes}), which tells K that the production will rely on an implementation
+from the target backend with a given name. Since for this project the target
+backend is the Lean 4 backend, \texttt{Prelude.lean} provides the definitions
+needed for it.
+
+In particular, we have the following definitions:
+
+\subsection{Type Abbreviations}
+
+As a part of the shallow embedding approach, we alias existing Lean types to
+signal that they'll be used as K sorts.
+
+\begin{definition}[SortBool]\label{def:SortBool}\lean{SortBool}\leanok
+Alias for \texttt{Bool}.
+\end{definition}
+\begin{definition}[SortBytes]\label{def:SortBytes}\lean{SortBytes}\leanok
+Alias for \texttt{ByteArray}.
+\end{definition}
+\begin{definition}[SortInt]\label{def:SortInt}\lean{SortInt}\leanok
+Alias for \texttt{Int}.
+\end{definition}
+
+\subsection{Builtin Inductives}
+
+Some embedded K sorts need to be implemented in the prelude before code
+generation happens. This is because hooked functions defined in the prelude need
+to have these sorts already defined.
+
+\begin{definition}[SortEndianness]\label{def:SortEndianness}\lean{SortEndianness}\leanok
+Bytes \href{https://en.wikipedia.org/wiki/Endianness}{endianness}.
+\end{definition}
+\begin{definition}[SortSignedness]\label{def:SortSignedness}\lean{SortSignedness}\leanok
+Bytes
+\href{https://en.wikipedia.org/wiki/Signed_number_representations}{signedness}
+for integer representations.
+\end{definition}
+
+\subsection{\texttt{Inj} type class}
+\begin{definition}[Inj]\label{Inj}\lean{Inj}\leanok
+Injection type class.
+
+Every sort in K is a subsort of the KItem sort. This type class will enable the
+injections of arbitrary sorts into the KItem sort with ease.
+\end{definition}
+\begin{definition}[inj]\label{inj}\lean{inj}\leanok\uses{Inj}
+Wrapper to \texttt{Inj.inj} to trigger type resolution.
+\end{definition}
+
+\subsection{Function Implementations}
+
+It is now when we implement \textit{some} of the hooked functions.
+Hooked productions not implemented in this prelude will be generated as axioms.
+
+Also note that the return type of all functions is of sort \texttt{Option ?T}.
+This is to deal with the generation of partial K functions.
+
+\\
+\subsubsection{\texttt{SortInt} functions}
+
+\textbf{Arithmetic Operations:}
+
+\begin{definition}[+Int]\label{def:+Int}\lean{«_+Int_»}\leanok\uses{def:SortInt}
+\texttt{some (n + m)}
+\end{definition}
+\begin{definition}[-Int]\label{def:-Int}\lean{«_-Int_»}\leanok\uses{def:SortInt}
+\texttt{some (n - m)}
+\end{definition}
+\begin{definition}[*Int]\label{def:*Int}\lean{«_*Int_»}\leanok\uses{def:SortInt}
+\texttt{some (n * m)}
+\end{definition}
+\begin{definition}[/Int]\label{def:/Int}\lean{«_/Int_»}\leanok\uses{def:SortInt}
+Truncated division.
+\end{definition}
+\begin{definition}[modInt]\label{def:modInt}\lean{«_modInt_»}\leanok\uses{def:SortInt}
+Euclidian modulus.
+\end{definition}
+\begin{definition}[powMod]\label{powModInt}\lean{powmod}\leanok\uses{def:SortInt}
+Integer powmod.
+
+\textbf{Warning:} Leanblueprint has a problem with \texttt{$\backslash$lean\{\}}
+references that contain special symbols. In this case, the \texttt{$\backslash$lean\{\}}
+reference is \texttt{«_^\%Int__»}. This will cause the reference to be broken.
+\end{definition}
+\begin{definition}[maxInt]\label{maxInt}\lean{«maxInt(_,_)_INT-COMMON_Int_Int_Int»}\leanok\uses{def:SortInt}
+Max operation.
+\end{definition}
+\begin{definition}[log2Int]\label{log2Int}\lean{«log2Int(_)_INT-COMMON_Int_Int»}\leanok\uses{def:SortInt}
+$log_2$ on positive integers.
+\end{definition}
+\begin{definition}[notInt]\label{notInt}\leanok\uses{def:SortInt}%\lean{«~Int_»}
+Integer complement.
+
+\textbf{Warning:} Leanblueprint has a problem with \texttt{$\backslash$lean\{\}}
+references that contain special symbols. In this case, the \texttt{$\backslash$lean\{\}}
+reference is \texttt{«~Int_»}. This will cause the reference to be broken.
+\end{definition}
+
+\\
+\subsubsection{\texttt{SortBytes} functions}
+
+\begin{definition}[.Bytes]\label{def:.Bytes}\lean{«.Bytes_BYTES-HOOKED_Bytes»}\leanok\uses{def:SortBytes}
+  Empty bytes wrapper.
+\end{definition}
+
+\\
+\subsubsection{\texttt{SortInt} $\leftrightarrow$ \texttt{SortBytes} conversion}
+
+\begin{definition}[Int2Bytes]
+\label{def:Int2Bytes}\lean{«Int2Bytes(_,_,_)_BYTES-HOOKED_Bytes_Int_Int_Endianness»}
+\leanok\uses{def:SortInt,def:SortBytes, def:SortEndianness}
+Integer to bytes conversion.
+
+\textbf{Warning:} The Lean reference link is broken because the name of the
+definition contains commas, and this apparently results in a new line.
+\end{definition}
+
+\begin{definition}[Byte2Int]\label{def:Bytes2Int}\lean{«Bytes2Int(_,_,_)_BYTES-HOOKED_Int_Bytes_Endianness_Signedness»}
+\leanok\uses{def:SortInt,def:SortBytes,def:SortEndianness,def:SortSignedness}
+Bytes to integer conversion.
+
+\textbf{Warning:} The Lean reference link is broken because the name of the
+definition contains commas, and this apparently results in a new line.
+\end{definition}
+
+\\
+\subsubsection{\texttt{Bytes} manipulation}
+
+\begin{definition}[padRightBytes]\label{def:padRightBytes}\lean{«padRightBytes(_,_,_)_BYTES-HOOKED_Bytes_Bytes_Int_Int»}
+\leanok\uses{def:SortBytes,def:SortInt}
+Pads to the right a bytes array with a specific value.
+
+\textbf{Warning:} The Lean reference link is broken because the name of the
+definition contains commas, and this apparently results in a new line.
+\end{definition}
+
+\begin{definition}[padLeftBytes]\label{def:padLeftBytes}\lean{«padLeftBytes(_,_,_)_BYTES-HOOKED_Bytes_Bytes_Int_Int»}
+\leanok\uses{def:SortBytes,def:SortInt}
+Pads to the right a bytes array with a specific value.
+
+\textbf{Warning:} The Lean reference link is broken because the name of the
+definition contains commas, and this apparently results in a new line.
+\end{definition}
+
+\begin{definition}[lengthBytes]\label{def:lengthBytes}\lean{«lengthBytes(_)_BYTES-HOOKED_Int_Bytes»}
+\leanok\uses{def:SortBytes}
+Get the length of a bytes array.
+\end{definition}
+
+\begin{definition}[replaceAtBytes]\label{def:replaceAtBytes}\lean{«replaceAtBytes(_,_,_)_BYTES-HOOKED_Bytes_Bytes_Int_Bytes»}
+\leanok\uses{def:SortBytes,def:SortInt}
+Replace contents inside a bytes array.
+
+\textbf{Warning:} The Lean reference link is broken because the name of the
+definition contains commas, and this apparently results in a new line.
+\end{definition}
+
+\begin{definition}[substrBytes]\label{def:substrBytes}\lean{«substrBytes(_,_,_)_BYTES-HOOKED_Bytes_Bytes_Int_Int»}
+\leanok\uses{def:SortBytes,def:SortInt}
+Slice a bytes array up.
+
+\textbf{Warning:} The Lean reference link is broken because the name of the
+definition contains commas, and this apparently results in a new line.
+\end{definition}
+
+\section{Generated Functions}
+
+Right now there are no generated functions documented. However, we will only document those functions that play a topmost role in the theorems.
+
+\section{Rewrite}
+The
+\href{https://github.com/runtimeverification/evm-equivalence/blob/master/EvmEquivalence/KEVM2Lean/Rewrite.lean}{\texttt{Rewrite.lean}}
+file only contains the definition of the \texttt{Rewrites} type.
+
+This type encodes the rewrite rules that are extracted to Lean.
+
+\begin{definition}[Rewrites]\label{def:Rewrites}\lean{Rewrites}\leanok
+
+Rules extracted to Lean from K will be enconded as constructors of this type.
+
+We have that \texttt{Rewrites : SortGeneratedTopCell → SortGeneratedTopCell →
+  Prop} where
+\href{https://runtimeverification.github.io/evm-equivalence/docs/EvmEquivalence/KEVM2Lean/Sorts.html#SortGeneratedTopCell}{\texttt{SortGeneratedTopCell}}
+is the type for KEVM states.
+
+Given \texttt{p}, \texttt{p'} : \texttt{SortGeneratedTopCell}, \texttt{Rewrites
+  p p'} means that the KEVM state \texttt{p} rewrites to \texttt{p'}.
+
+All of the \texttt{requires} clauses of a rule are encoded as the corresponding constructor's arguments.
+
+There's an special transitivy rule that ensures the chaining of multiple rewrite
+rules:
+
+\begin{verbatim}
+| tran
+  {s1 s2 s3 : SortGeneratedTopCell}
+  (t1 : Rewrites s1 s2)
+  (t2 : Rewrites s2 s3)
+  : Rewrites s1 s3
+\end{verbatim}
+
+\end{definition}
+
+Note that we will not be extracting all KEVM rules. Instead, we have produced
+\href{https://github.com/runtimeverification/evm-semantics/tree/master/kevm-pyk/src/kevm_pyk/kproj/evm-semantics/summaries}{summary
+  rules} and extracted those.
+
+Summary rules are rules that capture KEVM's computational behavior. Executing an
+opcode typically takes more than one rule application. Instead of extracting
+these rules, we've put together the result of applying them as these summaries,
+which KEVM can verify its correctness.
+
+By doing this, we need only extract the summary rules to capture the semantic
+meaning of executing an opcode in KEVM.
+
+\section{Code Modifications}
+The generated code produced by the \href{https://github.com/runtimeverification/k/tree/master/pyk/src/pyk/klean}{\texttt{klean}} tool has needed some small modifications.
+So far, modifications have only been applied to generated functions.
+
+In particular, modifications to the
+\href{https://runtimeverification.github.io/evm-equivalence/docs/EvmEquivalence/KEVM2Lean/Func.html}{\texttt{Func.lean}}
+file are for adding termination arguments to functions whenever Lean is not able
+to infer it automatically.
+
+At the moment, there are only two \texttt{mutual} blocks of functions that need
+an explicit termination argument. These most important functions of those blocks
+are defined here [\ref{def:gasConstSched}, \ref{def:flagConstSched}].
+
+To prove termination, we define an ordering of the schedule constants and flags
+\href{https://runtimeverification.github.io/evm-equivalence/docs/EvmEquivalence/KEVM2Lean/ScheduleOrdering.html}{here}.
+
+For example, take the \texttt{mutual} block of functions needed that defines the \texttt{«_<_>_SCHEDULE_Int_ScheduleConst_Schedule»}\ref{def:gasConstSched} function:
+
+\begin{verbatim}
+mutual
+  noncomputable def SCHEDULE_GsstoreresetBerlin : SortScheduleConst → SortSchedule → Option SortInt
+  | SortScheduleConst.Gsstorereset_SCHEDULE_ScheduleConst, SortSchedule.BERLIN_EVM => do
+  let _Val0 <- «_<_>_SCHEDULE_Int_ScheduleConst_Schedule» SortScheduleConst.Gcoldsload_SCHEDULE_ScheduleConst SortSchedule.BERLIN_EVM
+  let _Val1 <- «_-Int_» 5000 _Val0
+  return _Val1
+  | _, _ => none
+
+.
+.
+.
+
+  noncomputable def «_<_>_SCHEDULE_Int_ScheduleConst_Schedule» (x0 : SortScheduleConst) (x1 : SortSchedule) : Option SortInt :=
+  (SCHEDULE_GaccesslistaddressBerlin x0 x1) <|>
+  (SCHEDULE_GaccesslistaddressDefault x0 x1) <|>
+  .
+  .
+  .
+  (SCHEDULE_maxInitCodeSizeDefault x0 x1) <|>
+  (SCHEDULE_maxInitCodeSizeShanghai x0 x1)
+.
+.
+.
+end
+\end{verbatim}
+
+When compiling this definition Lean complains about not being able to find a termination argument for the \texttt{mutual} block.
+So, after defining the ordering of the schedule constants show above, the two modifications that need to be introduced in the code are the following:
+
+\begin{itemize}
+\item Append \texttt{termination_by (x1.toNat, x0.toNat + 1)} to the \texttt{«_<_>_SCHEDULE_Int_ScheduleConst_Schedule»} function and \texttt{termination_by sc s => (s.toNat, sc.toNat)} to the rest.
+\item Add \texttt{attribute [local simp] SortScheduleConst.toNat} before the start of the \texttt{mutual} block.
+\end{itemize}
+
+It could be possible to extend the \texttt{klean} tool to generate these modifications along with the rest of the code. However, at the moment, the tool cannot generally infer missing termination arguments. This means that in order to incorporate the changes we have highlighted we would need to provide them as an override of sorts to the code that was going to be generated.
+
+
+%%FILE blueprint/src/chapter/interfaces.tex
+\chapter{Interfaces}\label{chap:interfaces}
+
+We are describing the files in the
+\href{https://github.com/runtimeverification/evm-equivalence/tree/master/EvmEquivalence/Interfaces}{Interfaces}
+folder.
+
+We have to reason about the EvmYul model and the generated K code. But we soon
+face the challenge that the EvmYul model is more geared towards execution than
+reasoning and that the generated K code is particularly idiosyncratic.
+
+This is not to the detriment of any of the models, but we do need reasoning
+interfaces for these models to smooth the reasoning process.
+
+\section{EvmYul Interface}
+
+This
+\href{https://github.com/runtimeverification/evm-equivalence/blob/master/EvmEquivalence/Interfaces/EvmYulInterface.lean}{interface}
+contains results that aid with the reasoning of EvmYul functions.
+
+There are several type of results in this interface:
+
+\begin{itemize}
+\item \texttt{USize} results
+\item Compatibility axioms
+\item Bytes manipulation results
+\item \texttt{UInt256} results and conversions
+\item Opcode semantics
+\end{itemize}
+
+We won't describe the entirety of the results provided in this interface, but
+we'll discuss the two most pressing categories: compatibility axioms and opcode semantics.
+
+\subsection{Compatibility Axioms}
+
+Of particular importance are two axioms necessary to the whole operation. The
+first one is \texttt{ffi_zeroes}, which involves the EvmYul \texttt{zeroes} function.
+
+\subsubsection{\textbf{Aixiom \texttt{ffi_zeroes}}}
+
+\begin{definition}[zeroes]\label{def:zeroes}\lean{ffi.ByteArray.zeroes}
+\texttt{zeroes len} produces a byte array of size \texttt{len} where every byte
+is the zero byte.
+
+This part of the EvmYul FFI.
+\end{definition}
+
+Crucially, the \texttt{zeroes} function is a
+\href{https://en.wikipedia.org/wiki/Foreign_function_interface}{foreign function interface (FFI)}
+function. This means that there is no Lean implementation of it. Rather, when
+executed, Lean will call an external function to perform the computational
+action.
+However, the \texttt{zeroes} function plays a crucial role in important
+functions such as writing to memory.
+
+That is why, in order to reason about it, we pose an axiom stating the desired
+behavior of the \texttt{zeroes} function.
+
+\begin{theorem}[Axiom: ffi_zeroes]\label{ax:ffi_zeroes}\lean{Axioms.ffi_zeroes}\uses{def:zeroes}
+\texttt{zeroes len} returns a byte array of size \texttt{len} where every byte
+is the zero byte.
+\end{theorem}
+
+\subsubsection{\textbf{Aixiom \texttt{toBytesBigEndian_rw}}}
+
+The second needed axiom is to bypass a \texttt{private} attribute of the EvmYul
+\texttt{toBytes'} function defined below:
+
+\begin{definition}[toBytes']\label{def:toBytes'}\leanok
+\texttt{toBytes' n} converts a given natural number \texttt{n} to its little
+endian bytes representation.
+
+Crucially, this definition is \texttt{private}.
+\end{definition}
+
+The \texttt{toBytes'} function is used by \texttt{toBytesBigEndian}:
+
+\begin{definition}[toBytesBigEndian]
+\label{def:toBytesBigEndian}\uses{def:toBytes'}\lean{EvmYul.toBytesBigEndian}\leanok
+\texttt{toBytes' n} converts a given natural number \texttt{n} to its big
+endian bytes representation.
+
+\texttt{toBytesBigEndian = List.reverse ∘ toBytes'✝}
+\end{definition}
+
+When dealing with \texttt{toBytesBigEndian} we need to also deal with
+\texttt{toBytes'}. The following axiom states that \texttt{toBytesBigEndian} is
+equal to a \texttt{List.reverse ∘ toBytes'_ax} where \texttt{toBytes'_ax} is a
+dummy definition copied from the EvmYul model.
+
+As future work, we could submit a PR to the EvmYul model repository to change
+these \texttt{private} attributes.
+
+\begin{theorem}[Axiom: toBytesBigEndian_rw]
+\label{thm:toBytesBigEndian_rw}\lean{Axioms.toBytesBigEndian_rw}
+\texttt{EvmYul.toBytesBigEndian n = (List.reverse ∘ toBytes'_ax) n}
+\end{theorem}
+
+\subsection{Opcode Semantics}
+
+The most relevant theorem of this kind is the behavior of the \texttt{X}
+function (defined in \ref{def:EVM.X}) when executing a single-opcode program and
+having the program counter be 1.
+
+% \begin{definition}[EvmYul: Function X]\label{def:X}\lean{EvmYul.EVM.X}\leanok
+% Function $X$ defined in the yellow paper.
+% \end{definition}
+
+We then specify the result of running the $X$ function on a bad opcode.
+
+\begin{theorem}[X_bad_pc]\label{thm:X_bad_pc}\lean{X_bad_pc}\uses{def:EVM.X}\leanok
+Given
+\begin{itemize}
+\item a single-opcode program $P$,
+\item a gas amount greater than 1,
+\item the program counter set to 1,
+\item the symbolic and well constrained remaining inputs of $X$.
+\end{itemize}
+Executing $X$ on $P$ with a fully symbolic state with the above conditions
+is successful and returns an empty output with the following modifications to
+the symbolic state:
+\begin{itemize}
+\item The parameter \texttt{returnData} is empty.
+\item The \texttt{executionLength} is increased by one.
+\end{itemize}
+\end{theorem}
+\begin{proof}
+\leanok
+Massaging with tactics the execution path that evaluates if the program counter
+is out of bounds derives this result.
+\end{proof}
+
+\section{KEVM Interface}
+
+We use this
+\href{https://runtimeverification.github.io/evm-equivalence/docs/EvmEquivalence/Interfaces/FuncInterface.html}{interface}
+to provide intermediate lemmas or better representations for the K-generated
+Lean definitions.
+
+This interface contains results about the following categories:
+\begin{itemize}
+\item Simple function behavior: results about simple functions like arithmetic
+  or boolean operations.
+\item Behavior of \texttt{«#sizeWordStack»}: Equating \texttt{«#sizeWordStack»}
+  to \texttt{List.length}.
+\item Behavior of K's \texttt{in_keys} function.
+\item Behavior of \texttt{#inStorage} function.
+\item Results that have to do with memory-related operations.
+\item Bytes manipulation: ease the reasoning about `SortBytes` manipulation functions.
+\end{itemize}
+
+\section{Gas Interface}
+
+KEVM models \textbf{all} EVM hardforks (schedules). So, when executing a program in KEVM, we
+need to keep track of which hardfork (schedule) are we executing with.
+Knowing the schedule we're executing with allows us to know the correct gas cost
+of an opcode, and to know which rules apply to our schedule of choice.
+
+There are two functions involved in this:
+\begin{definition}[\texttt{_<_>}]\label{def:gasConstSched}\lean{«_<_>_SCHEDULE_Int_ScheduleConst_Schedule»}\leanok
+The \texttt{«_<_>_SCHEDULE_Int_ScheduleConst_Schedule»} function (or \texttt{_<_>} for
+short) takes as arguments a gas constant (such as $G_{\text{verylow}}$) and a
+schedule (such as CANCUN) and returns how much is that gas constant in that
+schedule.
+\end{definition}
+\begin{definition}[\texttt{_<<_>>}]\label{def:flagConstSched}\lean{«_<<_>>_SCHEDULE_Bool_ScheduleFlag_Schedule»}\leanok
+The function \texttt{«_<<_>>_SCHEDULE_Bool_ScheduleFlag_Schedule»} (or
+\texttt{_<<_>>} for short) takes as arguments a schedule flag (such as
+$G_{\text{hascreate2}}$) and  a schedule and returns the corresponding boolean
+if the schedule has the schedule flag. This is used to discriminate which rules
+can be applied depending on the schedule we're working with.
+
+In this example, working on an schedule \texttt{SCHED}, any rule involving the
+\texttt{CREATE2} opcode will have to satisfy $G_{\text{hascreate2}}$\texttt{<<
+  SCHED >>} in order to be applied.
+\end{definition}
+
+Given that EvmYul works with the Cancun schedule, the two main results of this
+\href{https://runtimeverification.github.io/evm-equivalence/docs/EvmEquivalence/Interfaces/GasInterface.html}{interface}
+are a plain rewrite of the \texttt{_<_>} and \texttt{_<<_>>} functions to the
+Cancun schedule.
+
+\begin{theorem}[cancun_def]
+\label{thm:cancun_def}\lean{GasInterface.cancun_def}\leanok\uses{def:gasConstSched}
+Given \texttt{const : SortScheduleConst}, we equate
+\texttt{«_<_>_SCHEDULE_Int_ScheduleConst_Schedule» const .CANCUN_EVM} to a
+simple match statement on \texttt{const}.
+\end{theorem}
+\begin{proof}
+\leanok
+This result follows from applying the custom tactics found in
+\href{https://runtimeverification.github.io/evm-equivalence/docs/EvmEquivalence/Interfaces/Tactics.html}{\texttt{Tactics.lean}},
+which boil down to a bunch of simplifications.
+\end{proof}
+
+\begin{theorem}[flag_cancun_def]
+\label{thm:flag_cancun_def}\lean{GasInterface.flag_cancun_def}\leanok\uses{def:flagConstSched}
+Given \texttt{flag : SortScheduleFlag}, we equate
+\texttt{«_<<_>>_SCHEDULE_Bool_ScheduleFlag_Schedule» flag .CANCUN_EVM} to a
+simple match statement on \texttt{flag}.
+\end{theorem}
+\begin{proof}
+\leanok
+This result follows from applying the custom tactics found in
+\href{https://runtimeverification.github.io/evm-equivalence/docs/EvmEquivalence/Interfaces/Tactics.html}{\texttt{Tactics.lean}},
+which boil down to a bunch of simplifications.
+\end{proof}
+
+
+%%FILE blueprint/src/chapter/intro.tex
+\chapter*{Evm Models Equivalence}\label{evm-equiv-intro}
+
+The project's goal is to prove the equivalence between two mathematical models of the EVM.
+The mathematical models are Nethermind's \href{https://github.com/nethermindEth/EVMYulLean/}{EvmYul}
+and Runtime Verification's \href{https://github.com/runtimeverification/evm-semantics}{KEVM}.
+
+Notably, these two models are written in very different languages: EvmYul in
+\href{https://lean-lang.org}{Lean 4} and KEVM in \href{https://kframework.org}{K}.
+The first step to prove equivalence is to have a framework in which to compare
+what the models do, and then show the equivalence of it.
+
+To this end, the K framework allows for the generation of Lean 4 code
+representing compiled K definitions.
+Hence, the methodology is to show in Lean 4 the equivalence between EvmYul and
+the generated Lean 4 code from the KEVM definitions.
+
+This blueprint will (for the time being) only concern about the Lean proofs on
+equivalence. For documentation on the more engineering-related topics please
+refer to the
+\href{https://github.com/runtimeverification/evm-equivalence}{repository}.
+
+\section*{Overall Approach}
+
+What follows is a summary of what is explained in the blueprint.
+
+This project consists of several parts that lead up to proving equiavlence
+between the EvmYul model and KEVM.
+
+\subsubsection*{Code generation}
+
+The most fundamental layer from the KEVM side is to extract the compiled KEVM
+definitions to Lean 4. We do this by means of the \texttt{klean} tool.
+
+There are three things of special importance to the generated code.
+
+\begin{itemize}
+\item \textbf{Function termination:} There are some generated functions that
+  Lean can't automatically deduce its termination argument. Modify the code to
+  provide it.
+\item \textbf{Uninterpreted functions:} Some functions require an ad-hoc
+  implementation by the Lean 4 backend. When this implementation is not provided
+  they are declared as axioms.
+\item \textbf{\texttt{Rewrites} type:} The \texttt{Rewrites} is formatted for
+  better reading.
+\end{itemize}
+
+Refer to to \ref{chap:gencode} for details.
+
+\subsubsection*{Reasoning Interfaces}
+
+The second layer is that of reasoning interfaces. Files containing results that
+make reasoning about both models more amenable.
+
+The results present in these files cover from basic facts about the types we're
+dealing with to conversions to more friendly representations of convoluted
+expressions.
+
+KEVM's \texttt{GasInterface.lean} is particularly time-intensive to execute. For
+debugging anything unrelated to it it's advised to \texttt{sorry} our its
+proofs.
+
+See \ref{chap:interfaces} for more details.
+
+\subsubsection*{EvmYul Summaries}
+
+There is a series of files containing results that encapsulate the computational
+behavior of EvmYul's functions for specific opcodes or classes of opcodes. This
+allows us to have a precise description of the state updates that each opcode
+entails.
+
+Note that we also have the equivalent of these summaries for KEVM. However,
+they're produced differently: KEVM computes the states updates and then they are
+exported as the constructors of the \texttt{Rewrites} type.
+
+For a more detailed discussion see \ref{chap:EvmYulSummaries}.
+
+\subsubsection*{State Mapping}
+
+Once we have reasonable reasoning interfaces and the summaries of the
+computational behavior at the opcode level for each model, we define a function
+that maps states from one model to the other.
+
+So far, we have a mapping from KEVM states to EvmYul ones. It remains as future
+work to do the inverse direction.
+
+For a more detailed discussion see \ref{chap:statemap}.
+
+\subsubsection*{Proving Equivalence}
+
+The last step is to prove equivalence for each opcode. For a formal deinition of
+the equivalence definition and proof strategy see \ref{chap:equivalences}.
+
+\subsubsection*{Axioms and sorries}
+
+We employ axioms for different uses, from generated uninterpreted functions to
+blueprints for future function implementations or theorems that should be proven
+at some point.
+
+See \ref{chap:axioms} for a more detailed description.
+
+
+
+%%FILE blueprint/src/chapter/stack-ops.tex
+\chapter{Stack Operations}
+
+Stack Operations are opcodes that perform operations on the stack such as addition.
+
+
+
+%%FILE blueprint/src/chapter/statemap.tex
+\chapter{State Map}\label{chap:statemap}
+
+One of the key components of this project is the notion of state mapping. Since
+we want to show that KEVM and the EvmYul models agree on opcode execution, we
+need a notion of state equivalence to evaluate the agreement.
+
+So far we are only doing one side of the equiavlence. Namely, from KEVM to
+EvmYul. This shows that what KEVM does is agreed on by the EvmYul model. Hence,
+the state mapping we present here will map a KEVM state into an EvmYul one.
+
+\section{Type Mapping}
+
+The first thing for mapping KEVM states to EvmYul states is to convert KEVM
+types to their corresponding EvmYul ones.
+Because KEVM operates on integers and then imposes restrictions on their value
+when applying rules, such restrictions don't exist at the type level. This is
+important to keep in mind since when mapping integers representing EVM values,
+we don't have to translate the full generality of the KEVM types. But we need to
+be mindful on how the integers are used in each instance in order to provide an
+accurate mapping.
+
+The first step is to choose a default on how to map integers themselves to
+EvmYul's \texttt{UInt256}.
+
+\begin{definition}[intMap]\lean{StateMap.intMap}\leanok\label{def:intMap}
+Given $n$ of type \texttt{SortInt},
+$\text{intMap}\, n =\,
+$\href{https://runtimeverification.github.io/evm-equivalence/docs/EvmYul/UInt256.html#EvmYul.UInt256.toSigned}{UInt256.toSigned}$\,n$.
+\end{definition}
+
+Once we have the mapping of one of the fundamental KEVM underlying types, we
+have to map KEVM's cells. K cells are extracted to Lean as \texttt{struct}s that
+act as a wrapper for an integer value or for another wrapper.
+
+As an example, take \texttt{SortGasCell},  Lean's extraction of KEVM's gas cell
+which is used to track the amount of gas left:
+
+\begin{verbatim}
+structure SortGasCell : Type where
+  val : SortGas
+\end{verbatim}
+
+We see that it's a wrapper for a \texttt{SortGas} value, and that
+\texttt{SortGas} follows the same structure:
+
+\begin{verbatim}
+inductive SortGas : Type where
+  | inj_SortInt (x : SortInt) : SortGas
+\end{verbatim}
+
+The fact that \texttt{SortGasCell} has a \texttt{SortGas} value and not a plain
+\texttt{SortInt} is to avoid the mixing of integer values at the cell level.
+
+Given this, the mapping of \texttt{SortGasCell} will come down to unwrapping it
+to its \texttt{SortGas} value and in turn map its \texttt{SortInt} contents
+through the \texttt{intMap} function to EvmYul's \texttt{UInt256}.
+
+\section{State Mapping}
+
+Once we have mapped a subset of KEVM generated types to their corresponding
+EvmYul's images, we can map KEVM states to EvmYul ones.
+
+\begin{definition}[stateMap]
+\lean{StateMap.stateMap}\leanok\label{def:stateMap}\uses{def:intMap}
+
+KEVM states are represented by the type
+\href{https://runtimeverification.github.io/evm-equivalence/docs/EvmEquivalence/KEVM2Lean/Sorts.html#SortGeneratedTopCell}{\texttt{SortGeneratedTopCell}}.
+Hence, we will be taking as input a \texttt{SortGeneratedTopCell} and converting
+it to an
+\href{https://runtimeverification.github.io/evm-equivalence/docs/EvmYul/EVM/State.html#EvmYul.EVM.State}{\texttt{EVM.State}}.
+
+The state mapping function will take an extra \texttt{EVM.State} argument to
+perform the identity mapping on the parts of the state that are not yet mapped.
+\end{definition}
+
+\section{Axiomatic Mapping}
+
+Some of the state mapping is done in an axiomatic manner. This is because of two
+different reasons. First, we have not yet committed to a definitive map structure
+for the Lean extracted code. Second, since the EvmYul model is more geared
+towards execution than reasoning, we've decided to not commit to their
+underlying map structure based on Red-Black trees.
+
+To this effect, we postulate as axioms the existence of the
+\href{https://runtimeverification.github.io/evm-equivalence/docs/EvmEquivalence/Interfaces/Axioms.html}{following
+  functions}:
+
+\begin{itemize}
+\item \texttt{SortAccountsCellMap}: maps \texttt{SortAccoutsCell} to
+  \texttt{AccountMap}.
+\item \texttt{SortAccessedStorageCellMap}: maps \texttt{SortAccessedStorageCell}
+  to the type of \texttt{accessedStorageKeys}.
+\item \texttt{SortStorageCellMap}: maps \texttt{SortStorageCell} to
+  \texttt{Storage}.
+\item \texttt{SortTransientStorageCellMap}: maps
+  \texttt{SortTransientStorageCell} to \texttt{Storage}.
+\end{itemize}
+
+\subsection{Axioms as pre-theorems}
+
+Since these are uninterpreted functions, we also assert
+\href{https://runtimeverification.github.io/evm-equivalence/docs/EvmEquivalence/StateMap.html#Axioms.findAccountInAccountCellMap}{behavioral
+  axioms} on how these functions have to behave. These axioms serve as a
+blueprint for any future implementation of these functions, since whatever
+implementation is chosen should render the behavioral axioms as theorems.
+
+
+%%FILE blueprint/src/chapter/summaries.tex
+\chapter{EvmYul Summaries}\label{chap:EvmYulSummaries}
+
+A prior step to proving any notion of equivalence is to encapsulate or summarize
+the computational content of both models. In the KEVM case, the computational
+content is summarized by a rewrite rule on the KEVM side, and then extracted to
+Lean as shown in the
+\href{https://runtimeverification.github.io/evm-equivalence/docs/EvmEquivalence/KEVM2Lean/Rewrite.html}{Rewrite.lean}
+file.
+
+The way summarizing the computational content for the EvmYul model will come in
+the form of theorems. To know which theorems we need to take a step back and
+look at which parts of the two models we want to equate. On the KEVM side, it's
+the summaries in form of constructors of the \texttt{Rewrites} type.
+On the EvmYul side, we don't have as fine-grained semantic steps as KEVM's
+rewrite rules for opcode execution, so we will produce theorems that state the
+specific semantic steps we're interested in. With this in
+mind, we will focus on two of the core EvmYul functions: \texttt{EVM.step} and
+\texttt{EVM.X}.
+
+\begin{definition}[EVM.step]
+\label{def:EVM.step}\lean{EvmYul.EVM.step}\leanok
+\texttt{EVM.step} orchestrates opcode execution, taking the following arguments.
+\begin{itemize}
+\item Amount of gas left: \texttt{fuel}
+\item Cost of executing the opcode: \texttt{gasCost}
+\item Opcode to be executed: \texttt{instr}
+\end{itemize}
+
+Given these arguments and an \texttt{EVM.state}, the \texttt{step} function will
+perform the correspondent updates on the provided state according to the
+semantics of \texttt{instr}.
+\end{definition}
+
+From this definition there are a couple of things to be noted.
+\begin{itemize}
+\item The \texttt{instr} parameter is of type \texttt{Option} and as such
+can be \texttt{none}, in which case the opcode is fetched from the execution
+environment's bytecode.
+\item \texttt{gasCost} is always given by functions calling \texttt{step}.
+\item If \texttt{fuel} is not strictly positive, \texttt{step} will immediately fail.
+\end{itemize}
+This means that while the \texttt{step} function captures a big portion of the
+executed opcode's semantics, it is not the full picture.
+
+To incorporate a most complete picture of opcode semantics execution we turn to
+the \texttt{EVM.X} function. This function iterates the above \texttt{EVM.step}
+and performs several important actions.
+
+\begin{definition}[EVM.X]
+\label{def:EVM.X}\lean{EvmYul.EVM.X}\leanok\uses{def:EVM.step}
+Formalization of the yellow paper's $X$ function as defined in section 9.4.
+
+Given the following arguments:
+\begin{itemize}
+\item Amount of gas left: \texttt{fuel}.
+\item Valid jumpdests: \texttt{validJumps}.
+\item An \texttt{EVM.State}: \texttt{evmState}.
+\end{itemize}
+
+The function \texttt{X} performs the following tasks:
+\begin{itemize}
+\item Decode the opcodes present in \texttt{evmState}'s execution
+environment.
+\item Perform sanity checks and halt execution if these are not met.
+\item Assign gas costs depending on the decoded opcode.
+\item Execute \texttt{EVM.step} with the current decoded opcode.
+\item Iterate if the conditions are right.
+\end{itemize}
+\end{definition}
+
+Since the \texttt{X} function operates on the \texttt{evmState}'s bytecode, in
+order to exercise its semantic content we will execute it but restricting
+\texttt{evmState}'s bytecode to be a one-opcode program.
+
+\section{\texttt{EVM.step} and \texttt{EVM.X} summary}
+
+We can now state summarization theorems for \texttt{step} and \texttt{X}. Given
+a fully symbolic \texttt{EVM.State} $S$, summarization theorems clearly state
+which are the precise state updates that occur to $S$ after executing the
+\texttt{step} or \texttt{X} functions with the following:
+
+\begin{itemize}
+\item A set of concrete opcodes.
+\item Enough gas to perform execution.
+\item Well-formedness of other inputs to the functions such as a symbolic stack.
+\end{itemize}
+
+The sets of concrete opcodes are created by grouping opcodes that have similar
+effects to $S$.
+For instance, we can
+\href{https://runtimeverification.github.io/evm-equivalence/docs/EvmEquivalence/Summaries/StackOperationsSummary.html}{group
+  all opcodes} that perform operations on the stack such as \texttt{ADD},
+\texttt{SHL} and so on, and have a general enough theorem that captures the
+effects of these opcodes on $S$ without having to do a separate summary for each
+of them.
+
+
+%%FILE blueprint/src/chapter/trust-base.tex
+\chapter{Trust Base, Proofs, Gaps and Limitations}
+
+Closing the overview of the project, it's good to have a word on the topics that give its name to this chapter.
+
+\section{Trust Base}
+
+Our assumptions can be stratified into fundamental and operational.
+Fundamental assumptions are those that constitute the basic assumptions needed for this whole enterprise to make any kind of sense. These are assumptions regarding the correctness of the K framework tooling.
+Operational assumptions are assumptions or axioms that we might employ in the proving of theorems. These include assumptions that are needed for certain theorems to be true or axioms that should be proven as theorems but have been left without proof due to time constraints.
+
+\subsection{Fundamental Assumptions}
+
+\begin{itemize}
+\item \textbf{K framework:} Correct implementation of Matching Logic, of which a deep embbedding already exists formalized in Lean 4.
+\item \textbf{KEVM summarization:} The summarization tooling built in KEVM that produces the ``compressed'' rewrite rules containing the computational content of the opcodes is correctly done.
+\item \textbf{K-to-Lean extraction:} The \texttt{klean} tool built into K does a faithful enough conversion of the compiled Kore theory from the evm-semantics.
+\end{itemize}
+
+\subsection{Operational Assumptions}
+
+\begin{itemize}
+\item \textbf{Well-formedness constraints:} Due to how the summaries are generated, some of the symbolic parameters are under-constrained. For instance, KEVM words are unbouned integers.
+  The semantics implements checks that ensure these symbolic parameters are indeed within the correct ranges. However, since the summaries extract the computational behavior after the appropriate checks are performed, we have to add these as extra hypotheses.
+
+  Other necessary hypotheses are also added such as there being enough gas to execute the opcode.
+\item \textbf{Unproven results:} There is a number of unproven results in which we rely. These range from axioms (which most should be turned into theorems and proven) and theorems with no proofs or missing subgoals.
+\end{itemize}
+
+\section{Proofs}
+
+The overall goal of this project is to prove the equivalence of executing arbitrary EVM programs by bisimulation between Nethermind's EvmYulLean and KEVM.
+However, at the moment, we don't have a formalized notion of bisimulation.
+Instead, we give intermediate results that should entail bisimulation (or, as of the time of writing, simulation).
+This is done on a per-opcode basis. We believe showing bisimilarity at the opcode level should guarantee bisimilarity when executing full EVM programs.
+
+\section{Gaps and Limitations}
+
+\begin{itemize}
+\item \textbf{EvmYulLean reasoning interfaces:} At the time of making this project, the EvmYulLean model is geared towards execution. This means that the types and overall structure of the model are more execution-oriented than reasoning-oriented, which poses some reasoning challenges that are resolved through our reasoning interfaces.
+\item \textbf{EvmYulLean ffi usage:} One particular instance of the execution orientedness of the Lean model is the use of Lean's \href{https://en.wikipedia.org/wiki/Foreign_function_interface}{ffi}. Since ffi functions are declared as \texttt{opaque} and have no explicit computational content at reasoning-time, we have circumvented this by asserting axioms (which at the moment cannot be proven) to provide the missing computational content for reasoning.
+\item \textbf{K-specific idioms when extracting Kore to K:} Kore and Lean syntaxes differ quite a bit and both have their own idiosyncrasy. Hence, to reason efficiently with the generated K code we also provide an interface to smooth out the Kore specific patterns and make it more Lean-friendly.
+\item \textbf{Slow compilation turnaround by Lean:} The Lean-extracted Kore code is not small. Compiling this code and some other proofs is quite time consuming. At the moment, the average time it takes to compile the project can be around 40 minutes. This means that the ``deeper'' a change is in the project, the slower the iteration time.
+\end{itemize}
+
+
+%%FILE blueprint/src/content.tex
+% In this file you should put the actual content of the blueprint.
+% It will be used both by the web and the print version.
+% It should *not* include the \begin{document}
+%
+% If you want to split the blueprint content into several files then
+% the current file can be a simple sequence of \input. Otherwise It
+% can start with a \section or \chapter for instance.
+
+\input{chapter/intro.tex}
+\input{chapter/gen-code.tex}
+\input{chapter/interfaces.tex}
+\input{chapter/statemap.tex}
+\input{chapter/summaries.tex}
+\input{chapter/equivalences.tex}
+%\input{chapter/stack-ops.tex}
+\input{chapter/axioms.tex}
+\input{chapter/trust-base.tex}
+

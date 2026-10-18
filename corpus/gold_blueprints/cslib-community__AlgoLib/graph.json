@@ -1,0 +1,430 @@
+{
+ "metadata": {
+  "paper_id": "cslib-community__AlgoLib",
+  "title": "This is the repository for algorithm design. ",
+  "extractor": "Lean blueprint (\\uses), converted",
+  "labels": {
+   "def:reachable-directed": {
+    "node": "D3",
+    "kind": "env"
+   },
+   "def:symmetric-orientation": {
+    "node": "D4",
+    "kind": "env"
+   },
+   "def:dist": {
+    "node": "D5",
+    "kind": "env"
+   },
+   "def:bfs-layers": {
+    "node": "D6",
+    "kind": "env"
+   },
+   "lem:bfs-sound": {
+    "node": "L1",
+    "kind": "env"
+   },
+   "lem:bfs-complete": {
+    "node": "L2",
+    "kind": "env"
+   },
+   "lem:bfs-termination": {
+    "node": "L3",
+    "kind": "env"
+   },
+   "thm:bfs-layers-spheres": {
+    "node": "T1",
+    "kind": "env"
+   },
+   "thm:bfs-correct": {
+    "node": "T2",
+    "kind": "env"
+   }
+  },
+  "unresolved_uses": []
+ },
+ "nodes": [
+  {
+   "id": "D1",
+   "type": "definition",
+   "name": null,
+   "statement": "An \\textit{(undirected) graph} is a pair $G = (V,E)$ consisting of a set $V$ and a multi-set $E$ of unordered pairs of elements in $V$. Elements of $V$ are called \\textit{vertices} and elements of $E$ are called \\textit{edges}. For two vertices $u,v \\in V$, we say $u$ and $v$ are \\textit{adjacent} if $\\{u,v\\} \\in E$. We call an undirected graph $G$ \\textit{simple} if all edges are distinct (i.e., $E$ is a set), and each edge is a pair of distinct vertices.",
+   "origin": "paper",
+   "tags": [],
+   "section": "1.1 Basic",
+   "label": null,
+   "lean_names": []
+  },
+  {
+   "id": "D2",
+   "type": "definition",
+   "name": null,
+   "statement": "A \\textit{directed graph} is a pair $G = (V,E)$ consisting of a set $V$ and a multi-set $E$ of ordered pairs of elements in $V$. Elements of $V$ are called \\textit{vertices} and elements of $E$ are called \\textit{edges}. We call a directed graph $G$ \\textit{simple} if all edges are distinct and each edge is a pair of distinct vertices.",
+   "origin": "paper",
+   "tags": [],
+   "section": "1.1 Basic",
+   "label": null,
+   "lean_names": []
+  },
+  {
+   "id": "D3",
+   "type": "definition",
+   "name": "Reachability",
+   "statement": "Let $G$ be a simple graph or a simple directed graph. A vertex $v$ is \\emph{reachable} from $u$ if some walk realized in $G$ runs from $u$ to $v$. In the undirected case reachability is an equivalence relation on $V(G)$; in the directed case it is only a preorder, since walks cannot be reversed.",
+   "origin": "paper",
+   "tags": [
+    "leanok",
+    "lean"
+   ],
+   "section": "1.3 Connectivity",
+   "label": "def:reachable-directed",
+   "lean_names": [
+    "AlgoLib.SimpleGraph.Reachable",
+    "AlgoLib.SimpleDiGraph.Reachable"
+   ]
+  },
+  {
+   "id": "D4",
+   "type": "definition",
+   "name": "Symmetric orientation",
+   "statement": "The \\emph{symmetric orientation} of a simple graph $G$ is the simple directed graph on $V(G)$ whose arcs are the ordered pairs $(u, v)$ with $\\{u, v\\} \\in E(G)$. A walk is realized in $G$ exactly when it is realized in the symmetric orientation, so reachability and distances agree.",
+   "origin": "paper",
+   "tags": [
+    "leanok",
+    "lean"
+   ],
+   "section": "1.3 Connectivity",
+   "label": "def:symmetric-orientation",
+   "lean_names": [
+    "AlgoLib.SimpleGraph.toSimpleDiGraph"
+   ]
+  },
+  {
+   "id": "D5",
+   "type": "definition",
+   "name": "Distance",
+   "statement": "The \\emph{distance} $\\mathrm{dist}(u, v) \\in {\\mathbb N} \\cup \\{\\infty\\}$ from $u$ to $v$ in a simple directed graph is the least length of a walk from $u$ to $v$, and $\\infty$ if $v$ is not reachable from $u$. For a simple graph it is the distance in the symmetric orientation, and is then symmetric in $u$ and $v$.",
+   "origin": "paper",
+   "tags": [
+    "leanok",
+    "lean"
+   ],
+   "section": "1.3 Connectivity",
+   "label": "def:dist",
+   "lean_names": [
+    "AlgoLib.SimpleDiGraph.dist",
+    "AlgoLib.SimpleGraph.dist"
+   ]
+  },
+  {
+   "id": "D6",
+   "type": "definition",
+   "name": "BFS layers",
+   "statement": "Let $s \\in V(G)$. The \\emph{layers} of breadth-first search from $s$ are the sets \\[ L_0 = \\{s\\}, \\qquad L_{k+1} = N^+(L_k) \\setminus (L_0 \\cup \\dots \\cup L_k), \\] where $N^+(L)$ denotes the set of out-neighbours of the vertices of $L$. The set of vertices \\emph{visited} within $k$ rounds is $V_k = L_0 \\cup \\dots \\cup L_k$. When $s \\notin V(G)$ every layer is empty. In Lean the search is a state $(V_k, L_k)$ iterated $k$ times from $(\\{s\\}, \\{s\\})$, so that the definition reduces and \\texttt{decide} can evaluate it.",
+   "origin": "paper",
+   "tags": [
+    "leanok",
+    "lean"
+   ],
+   "section": "2.1 Traversal",
+   "label": "def:bfs-layers",
+   "lean_names": [
+    "AlgoLib.SimpleDiGraph.bfsLayer",
+    "AlgoLib.SimpleDiGraph.bfsVisited"
+   ]
+  },
+  {
+   "id": "L1",
+   "type": "lemma",
+   "name": "Soundness",
+   "statement": "Every vertex of $L_k$ is the endpoint of a walk of length $k$ from $s$.",
+   "origin": "paper",
+   "tags": [
+    "leanok",
+    "lean"
+   ],
+   "section": "2.1 Traversal",
+   "label": "lem:bfs-sound",
+   "lean_names": [
+    "AlgoLib.SimpleDiGraph.exists_walk_of_mem_bfsLayer"
+   ]
+  },
+  {
+   "id": "PR_L1",
+   "type": "proof",
+   "name": null,
+   "statement": "By induction on $k$: a vertex of $L_{k+1}$ is an out-neighbour of a vertex of $L_k$, and appending that arc to the walk given by the induction hypothesis yields a walk of length $k + 1$.",
+   "origin": "paper",
+   "tags": [
+    "leanok"
+   ],
+   "section": "2.1 Traversal",
+   "label": null,
+   "proves": [
+    "L1"
+   ]
+  },
+  {
+   "id": "L2",
+   "type": "lemma",
+   "name": "Completeness",
+   "statement": "The endpoint of a walk of length $\\ell$ from $s$ lies in $V_\\ell$.",
+   "origin": "paper",
+   "tags": [
+    "leanok",
+    "lean"
+   ],
+   "section": "2.1 Traversal",
+   "label": "lem:bfs-complete",
+   "lean_names": [
+    "AlgoLib.SimpleDiGraph.mem_bfsVisited_of_isVertexSeqIn"
+   ]
+  },
+  {
+   "id": "PR_L2",
+   "type": "proof",
+   "name": null,
+   "statement": "By induction on the walk. The key step is that the out-neighbours of a vertex of $V_k$ lie in $V_{k+1}$: such a vertex lies in some $L_j$ with $j \\le k$, and its out-neighbours are either already in $V_j$ or in $L_{j+1}$.",
+   "origin": "paper",
+   "tags": [
+    "leanok"
+   ],
+   "section": "2.1 Traversal",
+   "label": null,
+   "proves": [
+    "L2"
+   ]
+  },
+  {
+   "id": "L3",
+   "type": "lemma",
+   "name": "Termination",
+   "statement": "If $L_k \\neq \\emptyset$ then $k < |V(G)|$. Hence the search from $s$ has exhausted every layer after $|V(G)|$ rounds.",
+   "origin": "paper",
+   "tags": [
+    "leanok",
+    "lean"
+   ],
+   "section": "2.1 Traversal",
+   "label": "lem:bfs-termination",
+   "lean_names": [
+    "AlgoLib.SimpleDiGraph.lt_card_of_nonempty_bfsLayer"
+   ]
+  },
+  {
+   "id": "PR_L3",
+   "type": "proof",
+   "name": null,
+   "statement": "An empty layer is followed by an empty layer, so $L_0, \\dots, L_k$ are all non-empty. They are pairwise disjoint subsets of $V(G)$, so $k + 1 \\le |V_k| \\le |V(G)|$.",
+   "origin": "paper",
+   "tags": [
+    "leanok"
+   ],
+   "section": "2.1 Traversal",
+   "label": null,
+   "proves": [
+    "L3"
+   ]
+  },
+  {
+   "id": "T1",
+   "type": "theorem",
+   "name": "The layers are the spheres",
+   "statement": "For every vertex $v$ and every $k \\in {\\mathbb N}$, \\[ v \\in L_k \\iff \\mathrm{dist}(s, v) = k . \\]",
+   "origin": "paper",
+   "tags": [
+    "leanok",
+    "lean"
+   ],
+   "section": "2.1 Traversal",
+   "label": "thm:bfs-layers-spheres",
+   "lean_names": [
+    "AlgoLib.SimpleDiGraph.mem_bfsLayer_iff_dist_eq"
+   ]
+  },
+  {
+   "id": "PR_T1",
+   "type": "proof",
+   "name": null,
+   "statement": "Let $v \\in L_k$. Soundness gives $\\mathrm{dist}(s, v) \\le k$. For the reverse inequality there is nothing to show when $k = 0$; when $k = j + 1$, a walk from $s$ to $v$ of length at most $j$ would place $v$ in $V_j$ by completeness, whereas $L_{j+1}$ avoids $V_j$ by construction, so $\\mathrm{dist}(s, v) > j$, i.e. $\\mathrm{dist}(s, v) \\ge k$. Conversely, if $\\mathrm{dist}(s, v) = k$ then a shortest walk places $v \\in V_k$, so $v \\in L_j$ for some $j \\le k$, and the first part gives $j = k$.",
+   "origin": "paper",
+   "tags": [
+    "leanok"
+   ],
+   "section": "2.1 Traversal",
+   "label": null,
+   "proves": [
+    "T1"
+   ]
+  },
+  {
+   "id": "T2",
+   "type": "theorem",
+   "name": "BFS computes reachability and distance",
+   "statement": "The set $V_{|V(G)|}$ is exactly the set of vertices reachable from $s$, and the least $k < |V(G)|$ with $v \\in L_k$ (or $\\infty$ if there is none) is exactly $\\mathrm{dist}(s, v)$.",
+   "origin": "paper",
+   "tags": [
+    "leanok",
+    "lean"
+   ],
+   "section": "2.1 Traversal",
+   "label": "thm:bfs-correct",
+   "lean_names": [
+    "AlgoLib.SimpleDiGraph.mem_bfsReachableFinset_iff",
+    "AlgoLib.SimpleDiGraph.bfsDist_eq_dist"
+   ]
+  },
+  {
+   "id": "PR_T2",
+   "type": "proof",
+   "name": null,
+   "statement": "Soundness gives one inclusion and one inequality; completeness together with the termination bound gives the other.",
+   "origin": "paper",
+   "tags": [
+    "leanok"
+   ],
+   "section": "2.1 Traversal",
+   "label": null,
+   "proves": [
+    "T2"
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "source": "D3",
+   "target": "D5",
+   "type": "uses",
+   "confidence": 1.0,
+   "kind": "uses"
+  },
+  {
+   "source": "D4",
+   "target": "D5",
+   "type": "uses",
+   "confidence": 1.0,
+   "kind": "uses"
+  },
+  {
+   "source": "D6",
+   "target": "L1",
+   "type": "uses",
+   "confidence": 1.0,
+   "kind": "uses"
+  },
+  {
+   "source": "PR_L1",
+   "target": "L1",
+   "type": "proves",
+   "confidence": 1.0
+  },
+  {
+   "source": "D6",
+   "target": "L2",
+   "type": "uses",
+   "confidence": 1.0,
+   "kind": "uses"
+  },
+  {
+   "source": "PR_L2",
+   "target": "L2",
+   "type": "proves",
+   "confidence": 1.0
+  },
+  {
+   "source": "D6",
+   "target": "L3",
+   "type": "uses",
+   "confidence": 1.0,
+   "kind": "uses"
+  },
+  {
+   "source": "PR_L3",
+   "target": "L3",
+   "type": "proves",
+   "confidence": 1.0
+  },
+  {
+   "source": "D6",
+   "target": "T1",
+   "type": "uses",
+   "confidence": 1.0,
+   "kind": "uses"
+  },
+  {
+   "source": "D5",
+   "target": "T1",
+   "type": "uses",
+   "confidence": 1.0,
+   "kind": "uses"
+  },
+  {
+   "source": "PR_T1",
+   "target": "T1",
+   "type": "proves",
+   "confidence": 1.0
+  },
+  {
+   "source": "L1",
+   "target": "PR_T1",
+   "type": "uses",
+   "confidence": 1.0,
+   "kind": "uses"
+  },
+  {
+   "source": "L2",
+   "target": "PR_T1",
+   "type": "uses",
+   "confidence": 1.0,
+   "kind": "uses"
+  },
+  {
+   "source": "D6",
+   "target": "T2",
+   "type": "uses",
+   "confidence": 1.0,
+   "kind": "uses"
+  },
+  {
+   "source": "D3",
+   "target": "T2",
+   "type": "uses",
+   "confidence": 1.0,
+   "kind": "uses"
+  },
+  {
+   "source": "D5",
+   "target": "T2",
+   "type": "uses",
+   "confidence": 1.0,
+   "kind": "uses"
+  },
+  {
+   "source": "PR_T2",
+   "target": "T2",
+   "type": "proves",
+   "confidence": 1.0
+  },
+  {
+   "source": "L1",
+   "target": "PR_T2",
+   "type": "uses",
+   "confidence": 1.0,
+   "kind": "uses"
+  },
+  {
+   "source": "L2",
+   "target": "PR_T2",
+   "type": "uses",
+   "confidence": 1.0,
+   "kind": "uses"
+  },
+  {
+   "source": "L3",
+   "target": "PR_T2",
+   "type": "uses",
+   "confidence": 1.0,
+   "kind": "uses"
+  }
+ ]
+}
