@@ -41,8 +41,12 @@ Implemented on main (not yet run on any paper):
 - On the 200 v6 graphs (old graphs, new code): errors unchanged (1652, the known LaTeX-layer
   mismatch), 3 papers with a merged step, 12 encapsulation warnings in 10 papers, 27% of edges get a
   basis from code.
-Not done: LaTeX-layer gaps from the v6 agents' notes ($(1)$ step labels, `\textbf` headings in
-proofs, algorithm2e lines, split align numbering), the step checker on short proofs, schema
+- LaTeX layer (from the v6 agents' notes): proof labels with inline math and $(1)$-style labels
+  (38 new labels in 8 of the 200 papers, all where agents started steps or real part labels);
+  algorithm2e under [algo2e] and `\begin {algorithm}` (algorithm facts 43 -> 49, with lines
+  38 -> 46); the else-branch of `\eIf`. Gold conversion unchanged (799 papers, 0 differ).
+  Test: `tests/test_latex_layer_v7.py`.
+Not done: an align with several numbered rows is still one equation fact; the step checker on short proofs, schema
 decisions 3/4 (`equivalent`, `motivates`), the 5-paper mini-pilot. The portal's "Your paper"
 (`portal/yours_llm.py`) still uses the v6 prompt.
 

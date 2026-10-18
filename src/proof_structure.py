@@ -5,7 +5,8 @@ Detection (used by `latex_facts`, reported under each proof fact's `structure`):
   labels            where the author labels the argument: anchored Step/Case/Part,
                     (i)/(a) item labels, "1." after \\smallskip/\\par/a blank line,
                     prose items of a list inside the proof, \\textbf{..}/\\emph{..}
-                    headings, Base case / Inductive step, nested \\begin{proof}
+                    headings (also with inline math), $(1)$-style item labels,
+                    Base case / Inductive step, nested \\begin{proof}
   claims            sentences that open an inline claim ("We claim", "Let us show")
   paragraph_breaks  blank-line breaks that follow a complete sentence (not the
                     layout breaks around displayed equations)
@@ -117,6 +118,9 @@ def _sentence_initial_at(text: str, pos: int) -> bool:
 
 # ── Labels ──────────────────────────────────────────────────────────────────
 
+# not an emphasised sentence ("{\em Let $D$ be ...}"): a heading names, it does not assert
+_HEAD_MATH = (r"(?!\s*(?:Let|Suppose|Assume|If|We|Then|There|For|Every|Any|Since|By|Note)\b)"
+              r"(?=[^{}]{0,40}\$)(?:[^{}$]|\$[^$]{1,60}\$){2,60}?")
 _WRAP = r"(?:\{\s*)?(?:\\(?:textbf|emph|textit|textsc|texttt|textsf|textsl|textup|underline|bf|it|em|tt|sc)\s*\{?\s*)?"
 _LABEL_PATTERNS = {
     "step":   _WRAP + r"Step\s*~?\(?\s*\d+[a-z]?\s*\)?\s*\}?\s*[.:)]",
@@ -126,11 +130,17 @@ _LABEL_PATTERNS = {
     "induct": _WRAP + r"(?:Base case|Basis(?: step)?|Induction step|Inductive step)\s*\}?\s*[.:]",
     "heading": r"\\(?:textbf|emph|textit|texttt|textsf|textsl|underline)\s*\{[^{}$]{2,60}?[.:]?\s*\}\s*[.:]?",
     "heading_switch": r"\{\s*\\(?:it|bf|em|sc|sl)\b\s*[A-Z][^{}$]{1,58}?[.:]?\s*\}\s*[.:]?",
+    # a heading with inline math ("\textbf{Estimate of $A$.}", "{\bf $C_4$-freeness.}"): it
+    # must end in a period or colon, inside or right after the group
+    "heading_math": (r"\\(?:textbf|emph|textit|textsf|textsl|underline)\s*\{" + _HEAD_MATH
+                     + r"(?:[.:]\s*\}|\}\s*[.:])"),
+    "heading_switch_math": r"\{\s*\\(?:it|bf|em|sc|sl)\b\s*" + _HEAD_MATH + r"(?:[.:]\s*\}|\}\s*[.:])",
     "degree":  r"\$\s*\d+\s*\^\s*\{?\s*\\circ\s*\}?\s*\$\s*[.:)]?",
     "implication": (r"\(\s*(?:\d+|[ivx]+|[a-d])\s*\)\s*\$?\s*\\(?:Long|long)?(?:[Rr]ightarrow|[Ll]eftrightarrow|implies)"
                     r"\s*\$?\s*\(\s*(?:\d+|[ivx]+|[a-d])\s*\)\s*[.:]?"),
 }
 _PAREN = re.compile(r"\{?\((?:i{1,3}|iv|vi{0,3}|ix|x|[a-h]|\d)\)\}?(?=\s)")
+_PAREN_MATH = re.compile(r"\$\s*\((?:i{1,3}|iv|vi{0,3}|ix|x|[a-h]|\d)\)\s*\$(?=\s)")   # "$(1)$ It is easy"
 _RUN_IN = re.compile(r"\((?=[A-Z])(?:[^().,$]|\$[^$]*\$){2,40}\)(?=\s+(?:[A-Z]|\$|\\))")
 _NUMBERED = re.compile(r"(?:\\(?:smallskip|medskip|bigskip|par)\b\s*|\n\s*\n\s*"
                        r"|\\\\\*?(?:\[[^\]]*\])?\s*)(\d{1,2})\.\s")
@@ -207,8 +217,8 @@ def detect(body: str, nested_proof_offsets: list[int] = ()) -> dict:
     blocks = _nested_blocks(body)
     labels = []
 
-    def add(kind, pos, end):
-        if _inside(pos, spans) or _REFERENCE_AFTER.match(body, end):
+    def add(kind, pos, end, math_label=False):
+        if (_inside(pos, spans) and not math_label) or _REFERENCE_AFTER.match(body, end):
             return
         if any(a < pos < b for a, b in blocks):
             return
@@ -227,6 +237,11 @@ def detect(body: str, nested_proof_offsets: list[int] = ()) -> dict:
     if len({m.group(0) for m in paren}) >= 2:
         for m in paren:
             add("item_label", m.start(), m.end())
+    paren = [m for m in _PAREN_MATH.finditer(body)
+             if _sentence_initial(body, m.start()) and not _strictly_inside(m.start(), spans)]
+    if len({re.sub(r"\s", "", m.group(0)) for m in paren}) >= 2:
+        for m in paren:
+            add("item_label", m.start(), m.end(), math_label=True)
     run_in = [m for m in _RUN_IN.finditer(body)
               if _sentence_initial(body, m.start()) and not _inside(m.start(), spans)]
     if len(run_in) >= 2:

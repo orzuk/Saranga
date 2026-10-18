@@ -303,9 +303,12 @@ def _parse_a2e(body: str, numbered: bool, comments_numbered: bool, base: int = 0
                 h = add("if", cond.strip(), None, off + i, off + j)
                 then, j, to = arg_at(j)
                 inner_walk(h, off + to, then)
-                e = add("else", "")          # printed, but no source text of its own
-                other, j, oo = arg_at(j)
+                other, j2, oo = arg_at(j)
+                # printed with no text of its own: its span starts at the else-branch's brace
+                # and grows to its last child (_number), so the enclosing block spans it too
+                e = add("else", "", None, off + oo - 1, off + oo)
                 inner_walk(e, off + oo, other)
+                j = j2
             elif name in _A2E_ONE_ARG_BLOCK:
                 flush(buf, span)
                 h = add(_A2E_ONE_ARG_BLOCK[name], "", None, off + i, off + j)
@@ -393,7 +396,7 @@ def find_blocks(tex: str) -> list[Block]:
     blocks: list[Block] = []
     algx = "algpseudocode" if ("algpseudocode" in pk or "algorithmicx" in pk) else "algorithmic"
     noend = "noend" in pk.get(algx, "")
-    for m in re.finditer(r"\\begin\{algorithmic\}(\[[^\]]*\])?(.*?)\\end\{algorithmic\}", src, re.S):
+    for m in re.finditer(r"\\begin\s*\{algorithmic\}(\[[^\]]*\])?(.*?)\\end\s*\{algorithmic\}", src, re.S):
         opt = (m.group(1) or "").strip("[]").strip()
         numbered = opt.isdigit() and int(opt) >= 1
         blocks.append(Block(algx, numbered, m.start(),
@@ -402,8 +405,9 @@ def find_blocks(tex: str) -> list[Block]:
         opts = pk["algorithm2e"]
         numbered = "linesnumbered" in opts or bool(re.search(r"\\LinesNumbered(?!Hidden)", src))
         comments_numbered = "commentsnumbered" in opts
-        env = r"(?:algorithm\*?|procedure\*?|function\*?)"
-        for m in re.finditer(r"\\begin\{(" + env + r")\}(\[[^\]]*\])?(.*?)\\end\{\1\}", src, re.S):
+        # [algo2e] renames the float to algorithm2e (to coexist with the algorithm package)
+        env = r"(?:algorithm(?:2e)?\*?|procedure\*?|function\*?)"
+        for m in re.finditer(r"\\begin\s*\{(" + env + r")\}(\[[^\]]*\])?(.*?)\\end\s*\{\1\}", src, re.S):
             body = m.group(3)
             if "\\begin{algorithmic}" in body:
                 continue
@@ -415,7 +419,7 @@ def find_blocks(tex: str) -> list[Block]:
     # child line of the item it sits under (unnumbered here), and that item's
     # span runs to the end of its last child.
     taken = {b.start for b in blocks}
-    for m in re.finditer(r"\\begin\{(algorithm\*?)\}(.*?)\\end\{\1\}", src, re.S):
+    for m in re.finditer(r"\\begin\s*\{(algorithm(?:2e)?\*?)\}(.*?)\\end\s*\{\1\}", src, re.S):
         body = m.group(2)
         if "\\begin{algorithmic}" in body or any(m.start() == t for t in taken):
             continue

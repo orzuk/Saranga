@@ -360,7 +360,7 @@ _CLASS_NAMED = {"acmart": ("theorem", {e: e.capitalize() for e in ("theorem", "c
                          "oprob": "Open Problem", "nota": "Notation", "fact": "Fact", "clm": "Claim", "obs": "Observation",
                          "conv": "Convention", "qu": "Question", "defis": "Definitions", "rems": "Remarks", "exas": "Examples"})}
 
-_ALGORITHM_ENVS = {"algorithm", "algorithm*", "algorithmic", "procedure", "function"}
+_ALGORITHM_ENVS = {"algorithm", "algorithm*", "algorithm2e", "algorithm2e*", "algorithmic", "procedure", "function"}
 _EQUATION_ENVS = {"equation", "multline", "align", "gather", "eqnarray", "flalign", "alignat",
                   "numcases", "subnumcases"}
 
