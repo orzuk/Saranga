@@ -28,6 +28,24 @@ To resume in a new Claude Code session: "read docs/v7_handoff/README.md and cont
 | ~20 blueprint source papers (long) | ~$150–250 | 10–15% |
 | mini-pilot, 5 papers | ~$30 | ~2% |
 
+## v7 status (2026-10-18 evening)
+
+Implemented on main (not yet run on any paper):
+- prompt `scripts/opus_extract_prompt_v7.md` (v6 + the rules below; render with
+  `scripts/render_v6_prompt.py ... --prompt v7`, which also finds gold papers);
+- `finalize()`: `display`, `number`, `cites` on nodes; edge `basis` (`ref`, `syntax` by code;
+  `named`/`term`/`inferred` by the agent, warned when missing); a step duplicating a result's span
+  is merged into it; `also_stated_at` copies' labels resolve to the one node; a result stated inside
+  a proof but used outside it (not by `\ref`) is warned; a prose proof may span the subsections of
+  its section; `definiendum` may be a list. Test: `tests/test_finalize_v7.py`.
+- On the 200 v6 graphs (old graphs, new code): errors unchanged (1652, the known LaTeX-layer
+  mismatch), 3 papers with a merged step, 12 encapsulation warnings in 10 papers, 27% of edges get a
+  basis from code.
+Not done: LaTeX-layer gaps from the v6 agents' notes ($(1)$ step labels, `\textbf` headings in
+proofs, algorithm2e lines, split align numbering), the step checker on short proofs, schema
+decisions 3/4 (`equivalent`, `motivates`), the 5-paper mini-pilot. The portal's "Your paper"
+(`portal/yours_llm.py`) still uses the v6 prompt.
+
 ## v7 scope (proposed, NOT yet confirmed by Or)
 
 - **LaTeX layer**: today's `latex_facts.py` / `latex_macros.py` (already written since the v6 run:

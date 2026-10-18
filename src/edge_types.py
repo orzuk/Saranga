@@ -179,5 +179,11 @@ REQUIRED_EDGE_FIELDS = (
 # `mention`: true on an edge whose source is only referred to, not relied on
 # ("let w be as in Theorem 1", "the lemma is used in the proof of Prop. 3");
 # set by the extractor. The circular-reasoning check ignores mention edges.
-OPTIONAL_EDGE_FIELDS = ("note", "backward", "mention")
+# `basis` (v7): how the dependency is known. `ref` (a \ref/\eqref states it) and
+# `syntax` (a proof environment's position or [Proof of ...] argument) are set by the
+# finishing step; the extractor sets `named` (the text names the source in words,
+# "by Lemma 3", "Cauchy-Schwarz gives"), `term` (the target uses a term or symbol the
+# source defines) or `inferred` (no marker in the text; read from the mathematics).
+EDGE_BASIS = ("ref", "syntax", "named", "term", "inferred")
+OPTIONAL_EDGE_FIELDS = ("note", "backward", "mention", "basis")
 ALL_EDGE_FIELDS = REQUIRED_EDGE_FIELDS + OPTIONAL_EDGE_FIELDS

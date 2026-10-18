@@ -6,10 +6,18 @@ script before it writes the JSON. Everything here is deterministic and comes
 from `latex_facts` (LaTeX syntax) and `algorithm_lines` (pseudocode numbering):
 
   label              the \\label key of the environment a node was extracted from
+  display, number    the author's environment word and the number LaTeX prints (v7)
+  cites              the bib keys \\cite'd inside a node's statement (v7)
   source_line_label  the printed line number of an algorithm step
   proves edges       \\begin{proof}[Proof of Theorem~\\ref{x}], or a proof that
-                     directly follows its theorem (amsthm convention)
-  uses edges         a \\ref{key} inside a node's statement, pointing at another node
+                     directly follows its theorem (amsthm convention); basis "syntax"
+  uses edges         a \\ref{key} inside a node's statement, pointing at another node;
+                     basis "ref" (also set on the extractor's own edges that a \\ref states)
+
+v7 also: a proof step with the same span as a Level-1 claim is merged into the
+claim (its children move to the claim); the labels of a result's restated copies
+(`also_stated_at`) resolve to the one node; and a result stated inside a proof but
+used outside it is reported (encapsulation).
 
 Then it validates the graph. `errors` must be fixed before writing; `warnings`
 are for the agent's report.
@@ -54,6 +62,8 @@ NOTE_CATEGORIES = {"type_uncertain", "boundary_uncertain", "unexpected_construct
 _REF = re.compile(r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}")
 _REF_RANGE = re.compile(r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}\)?\s*(?:--|–|-)\s*\(?"
                         r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}")
+_CITE = re.compile(r"\\[a-zA-Z]*cite[a-zA-Z]*\*?\s*(?:\[[^\]]*\]\s*){0,2}\{([^{}]*)\}")
+_RESULTS = {"theorem", "lemma", "proposition", "corollary", "claim"}
 
 
 def _key(s: str) -> str:
@@ -145,8 +155,10 @@ def check_prose_boundaries(graph: dict, source: str, env_nodes: set, report: dic
     """Spec "Where a prose node starts and ends": whole sentences, within one
     section, no partial overlap.
 
-    `headings` are the offsets of the paper's top-level section headings (not
-    those inside an environment); a prose node that contains one is an error.
+    `headings` are (offset, level) of the paper's section headings (not those
+    inside an environment); a prose node that contains one is an error, except a
+    proof that stays within the section it starts in (v7: a proof with no
+    environment that fills a section, its subsections as steps).
 
     A mid-sentence start or end that continues in lowercase is an error; one at
     unusual markup is a warning (it may be a false alarm). Partial overlap between
@@ -174,9 +186,11 @@ def check_prose_boundaries(graph: dict, source: str, env_nodes: set, report: dic
             nxt = source[end:end + 3].lstrip()[:1]
             (report["errors"] if nxt.islower() or nxt in ",;" else report["warnings"]).append(
                 f"{n['id']}: prose node ends mid-sentence")
-        if any(start < h < end for h in headings or ()):
+        crossed = [h for h in headings or () if start < h[0] < end]
+        if crossed and not (n.get("type") == "proof" and _covers_subsections(start, crossed, headings)):
             report["errors"].append(f"{n['id']}: prose node crosses a section heading "
-                                    "(a proof continued elsewhere is one node per part)")
+                                    "(a proof continued elsewhere is one node per part; a proof "
+                                    "may span the subsections of the section it starts in)")
     spans.sort()
     for a in range(len(spans)):
         s1, e1, id1 = spans[a]
@@ -187,6 +201,13 @@ def check_prose_boundaries(graph: dict, source: str, env_nodes: set, report: dic
             contains = (s1 <= s2 and e2 <= e1) or (s2 <= s1 and e1 <= e2)
             if not contains:
                 report["errors"].append(f"{id1} and {id2} partly overlap (share text, neither contains the other)")
+
+
+def _covers_subsections(start: int, crossed: list, headings: list) -> bool:
+    """Are all `crossed` headings deeper than the heading of the section `start` lies in?"""
+    own = [h for h in headings if h[0] <= start]
+    level = max(own)[1] if own else 0
+    return all(h[1] > level for h in crossed)
 
 
 def label_table(facts: dict, node_of_fact: dict[str, str]) -> dict[str, dict]:
@@ -334,6 +355,92 @@ def _ancestors(nid, parent):
     return out
 
 
+def merge_claim_steps(graph: dict, spans: dict, report: dict) -> None:
+    """A claim inside a proof is a Level-1 node, never also a step (prompt, step rule 7):
+    a proof step whose span is that of a Level-1 result is removed, its children take
+    the result as parent, and its edges and notes move to the result."""
+    level1 = {spans[n["id"]]: n["id"] for n in graph["nodes"]
+              if n.get("type") in _RESULTS and n["id"] in spans}
+    gone = {n["id"]: level1[spans[n["id"]]] for n in graph["nodes"]
+            if n.get("type") == "proof_step" and spans.get(n["id"]) in level1}
+    if not gone:
+        report["steps_merged"] = []
+        return
+    old_parent = {n["id"]: n.get("parent_id") for n in graph["nodes"] if n["id"] in gone}
+    graph["nodes"] = [n for n in graph["nodes"] if n["id"] not in gone]
+    for n in graph["nodes"]:
+        if n.get("parent_id") in gone:
+            n["parent_id"] = gone[n["parent_id"]]
+    for p in set(old_parent.values()):        # step_order stays 1, 2, ... within each parent
+        sibs = sorted((n for n in graph["nodes"] if n.get("type") in _LEVEL2 and n.get("parent_id") == p),
+                      key=lambda n: n.get("step_order") or 0)
+        for k, n in enumerate(sibs, 1):
+            n["step_order"] = k
+    edges, seen = [], set()
+    for e in graph["edges"]:
+        e["source"], e["target"] = gone.get(e["source"], e["source"]), gone.get(e["target"], e["target"])
+        if e["source"] == e["target"] or (e["source"], e["target"], e.get("type")) in seen:
+            continue
+        seen.add((e["source"], e["target"], e.get("type")))
+        edges.append(e)
+    graph["edges"] = edges
+    for note in (graph.get("metadata") or {}).get("extraction_notes") or []:
+        if isinstance(note, dict) and note.get("nodes"):
+            note["nodes"] = list(dict.fromkeys(gone.get(x, x) for x in note["nodes"]))
+    for sid in gone:
+        spans.pop(sid, None)
+    report["steps_merged"] = sorted(gone.items())
+
+
+def check_encapsulation(graph: dict, parent: dict, report: dict) -> None:
+    """A result stated inside a proof belongs to that proof: it should be used only
+    inside it (proof_dag_hierarchy note). Every use from outside is listed in the report;
+    one the extractor added (not a \\ref) is also a warning: the usual fix is the
+    edge's source (the later node relies on the result the proof proves)."""
+    kids: dict[str, set] = {}
+    for c, p in parent.items():
+        if p:
+            kids.setdefault(p, set()).add(c)
+
+    def inside(root):
+        out, stack = {root}, [root]
+        while stack:
+            for c in kids.get(stack.pop(), ()):
+                if c not in out:
+                    out.add(c)
+                    stack.append(c)
+        return out
+    types = {n["id"]: n.get("type") for n in graph["nodes"]}
+    found = []
+    for n in graph["nodes"]:
+        if types[n["id"]] not in _RESULTS:
+            continue
+        proof = next((a for a in _chain(n["id"], parent) if types.get(a) == "proof"), None)
+        if not proof:
+            continue
+        mine = inside(proof)
+        out = [e for e in graph["edges"] if e["source"] == n["id"] and e.get("type") == ET.USES
+               and not e.get("mention") and e["target"] not in mine]
+        if out:
+            found.append((n["id"], proof, sorted({e["target"] for e in out})))
+        users = sorted({e["target"] for e in out if e.get("basis") != "ref"})   # a \ref is the author's
+        if users:
+            report["warnings"].append(f"{n['id']} is stated inside proof {proof} but used outside it by "
+                                      f"{', '.join(users[:8])}: check each edge's source (usually the result "
+                                      f"{proof} proves); keep it if the paper really relies on {n['id']}")
+    report["used_outside_proof"] = found
+
+
+def _chain(nid, parent):
+    """Ancestors of a node, innermost first."""
+    out, seen = [], {nid}
+    while parent.get(nid) and parent[nid] not in seen:
+        nid = parent[nid]
+        seen.add(nid)
+        out.append(nid)
+    return out
+
+
 _POSITIONAL_TYPES = {ET.USES, ET.GENERALIZES, ET.SPECIALIZES}
 
 
@@ -450,23 +557,25 @@ def check_defined_terms(graph: dict, spans: dict, parent: dict, report: dict) ->
                     stack.append(c)
         return fam
 
-    def term_of(d):
+    def one_term(t):
         """("word", term) or ("symbol", normalized symbol) or None."""
-        t = d.get("definiendum") if d.get("type") == "definition" else None
-        t = (t[0] if t else None) if isinstance(t, list) else t
-        if not t or not t.strip():
+        if not isinstance(t, str) or not t.strip():
             return None
         t = t.strip()
         if re.fullmatch(r"\$[^$]+\$", t):
             sym = _sym(t)
             return None if _trivial_sym(sym) else ("symbol", sym)
         return ("word", t) if len(t) >= 4 and not re.search(r"[$\\{}]", t) else None
-    words = {t[1] for t in map(term_of, graph["nodes"]) if t and t[0] == "word"}
-    for d in graph["nodes"]:
-        term = term_of(d)
-        if not term or d["id"] not in spans:
+
+    def terms_of(d):
+        """Every term a definition defines: `definiendum` is one, or a list (one sentence
+        introducing several symbols)."""
+        t = d.get("definiendum") if d.get("type") == "definition" else None
+        return [x for x in map(one_term, t if isinstance(t, list) else [t]) if x]
+    words = {t[1] for n in graph["nodes"] for t in terms_of(n) if t[0] == "word"}
+    for d, (kind, term) in ((d, t) for d in graph["nodes"] for t in terms_of(d)):
+        if d["id"] not in spans:
             continue
-        kind, term = term
         if kind == "symbol":
             uses = lambda text, sym=term: _sym_in(sym, text)
         else:
@@ -483,7 +592,7 @@ def check_defined_terms(graph: dict, spans: dict, parent: dict, report: dict) ->
         # a later definition of the same term or symbol takes over from there
         until = min((spans[e["id"]][0] for e in graph["nodes"] if e["id"] != d["id"]
                      and e["id"] in spans and spans[e["id"]][0] > spans[d["id"]][0]
-                     and term_of(e) == (kind, term)), default=float("inf"))
+                     and (kind, term) in terms_of(e)), default=float("inf"))
         missing = [n["id"] for n in graph["nodes"]
                    if n["id"] not in mine and n["id"] in spans
                    and spans[d["id"]][0] < spans[n["id"]][0] < until
@@ -554,12 +663,39 @@ def finalize(graph: dict, tex: str) -> dict:
               "proves_added": [], "ref_uses_added": [], "ref_backward": [],
               "errors": [], "warnings": []}
 
-    # 1. label
+    # 0. a proof step that duplicates a Level-1 claim is merged into the claim
+    merge_claim_steps(graph, node_spans(graph, source), report)
+    nodes = {n["id"]: n for n in graph["nodes"]}
+
+    # 0b. a result's restated copies (`also_stated_at`): their environments, and so their
+    #     \labels, stand for the one node
+    for n in graph["nodes"]:
+        for copy in n.get("also_stated_at") or []:
+            k = _key(copy) if isinstance(copy, str) else ""
+            for f in facts["facts"]:
+                if len(k) > 10 and _key(f["statement"]) == k and f["id"] not in node_of_fact:
+                    node_of_fact[f["id"]] = n["id"]
+
+    # 1. label; the author's environment word and printed number
     for nid, fid in n2f.items():
         f = fact_by_id[fid]
         if f["labels"] and nodes[nid].get("label") not in f["labels"]:   # an environment's own label
             nodes[nid]["label"] = f["labels"][0]
             report["labels_filled"] += 1
+        for field in ("display", "number"):
+            if f.get(field):
+                nodes[nid][field] = f[field]
+            else:
+                nodes[nid].pop(field, None)
+
+    # 1b. bib keys cited inside each statement
+    for n in graph["nodes"]:
+        keys = [k.strip() for m in _CITE.findall(n.get("statement") or "") for k in m.split(",")]
+        keys = list(dict.fromkeys(k for k in keys if k))
+        if keys:
+            n["cites"] = keys
+        else:
+            n.pop("cites", None)
 
     # 2. source_line_label
     alg = fill_source_line_labels(graph, source)      # prepared: macros expanded
@@ -581,17 +717,23 @@ def finalize(graph: dict, tex: str) -> dict:
         if f["kind"] != "proof" or not f.get("proves"):
             continue
         tgt = node_of_fact.get(f["proves"])
-        if tgt is None or (nid, tgt) in pairs:
+        if tgt is None:
+            continue
+        if (nid, tgt) in pairs:
+            for e in graph["edges"]:
+                if (e["source"], e["target"]) == (nid, tgt) and e.get("type") == ET.PROVES:
+                    e.setdefault("basis", "syntax")
             continue
         if any(e["source"] == nid and e["type"] == ET.PROVES for e in graph["edges"]):
             continue                      # the agent already chose a target
         conf = 1.0 if f["proves_basis"] == "optarg" else 0.9
         graph["edges"].append({"source": nid, "target": tgt, "type": ET.PROVES,
-                               "confidence": conf})
+                               "confidence": conf, "basis": "syntax"})
         pairs.add((nid, tgt))
         report["proves_added"].append((nid, tgt, f["proves_basis"]))
 
     # 5. uses edges from \ref, into Level-1 nodes and proof steps alike
+    ref_pairs: set = set()
     for n in graph["nodes"]:
         if n.get("type") == "algorithm_step":
             continue
@@ -624,12 +766,19 @@ def finalize(graph: dict, tex: str) -> dict:
                 # containment is parent_id, never an edge
                 if src in _ancestors(tgt, parent) or tgt in _ancestors(src, parent):
                     continue
+                ref_pairs.add((src, tgt))
                 if (src, tgt) in pairs or (tgt, src) in pairs:
                     continue
                 graph["edges"].append({"source": src, "target": tgt, "type": ET.USES,
-                                       "confidence": 0.95, "note": f"\\ref{{{k.strip()}}}"})
+                                       "confidence": 0.95, "note": f"\\ref{{{k.strip()}}}",
+                                       "basis": "ref"})
                 pairs.add((src, tgt))
                 report["ref_uses_added"].append((src, tgt, k.strip()))
+
+    # 5a. an edge the extractor added itself (a mention) that a \ref states has basis "ref"
+    for e in graph["edges"]:
+        if (e["source"], e["target"]) in ref_pairs and e.get("type") != ET.PROVES:
+            e.setdefault("basis", "ref")
 
     # 5b. a proof's `proves` field names the result its `proves` edge points to
     #     (the prompt: "always the same as the target of its proves edge")
@@ -643,7 +792,8 @@ def finalize(graph: dict, tex: str) -> dict:
                 n["proves"] = targets[0]
         elif n.get("proves") in nodes:
             graph["edges"].append({"source": n["id"], "target": n["proves"], "type": ET.PROVES,
-                                   "confidence": n.get("confidence", 0.7)})
+                                   "confidence": n.get("confidence", 0.7),
+                                   "basis": "named" if n.get("confidence", 0.7) >= 0.85 else "inferred"})
             pairs.add((n["id"], n["proves"]))
             report["proves_added"].append((n["id"], n["proves"], "field"))
         else:
@@ -657,6 +807,7 @@ def finalize(graph: dict, tex: str) -> dict:
     # 6b. defined terms used later with no edge from their definition
     check_defined_terms(graph, spans, parent, report)
     check_introduced_symbols(graph, source, spans, facts, report, set(n2f))
+    check_encapsulation(graph, parent, report)
 
     # 7. the paper's full label table, so every \ref kept in a statement resolves
     graph.setdefault("metadata", {})["labels"] = label_table(facts, node_of_fact)
@@ -666,7 +817,7 @@ def finalize(graph: dict, tex: str) -> dict:
     report["unresolved_refs"] = unresolved
 
     # 8. prose nodes: whole sentences, and no partial overlap between nodes
-    headings = [x["start"] for x in facts["sections"] if x.get("inside") is None]
+    headings = [(x["start"], x.get("level") or 1) for x in facts["sections"] if x.get("inside") is None]
     check_prose_boundaries(graph, source, set(n2f), report, headings)
 
     # 9. proof steps against the proof's author structure, for EVERY proof node
@@ -699,7 +850,7 @@ def finalize(graph: dict, tex: str) -> dict:
     return report
 
 
-_SUBSPAN_FIELDS_STRICT = ("assumptions", "conclusions", "input", "output")
+_SUBSPAN_FIELDS_STRICT = ("assumptions", "conclusions", "input", "output", "also_stated_at")
 _SUBSPAN_FIELDS_SOFT = ("differentia", "genus")
 
 
@@ -759,9 +910,18 @@ def validate(graph: dict, source: str, report: dict, parent: dict | None = None)
             err.append(f"edge {s}->{t} ({ty}): target type {nodes[t].get('type')} not allowed")
         if "confidence" not in e:
             err.append(f"edge {s}->{t}: missing confidence")
+        if "basis" in e and e["basis"] not in ET.EDGE_BASIS:
+            err.append(f"edge {s}->{t}: basis {e['basis']!r} not in {list(ET.EDGE_BASIS)}")
         if ty == ET.USES and (s in _ancestors(t, parent) or t in _ancestors(s, parent)):
             err.append(f"edge {s}->{t}: a `uses` edge between a node and its own "
                        f"container; containment is parent_id, remove the edge")
+    no_basis = [f"{e.get('source')}->{e.get('target')}" for e in graph["edges"] if "basis" not in e]
+    if no_basis:
+        warn.append(f"{len(no_basis)} edges have no basis (named, term or inferred): "
+                    + ", ".join(no_basis[:10]) + (" ..." if len(no_basis) > 10 else ""))
+    for n in graph["nodes"]:
+        if "main" in n and (n["main"] is not True or n.get("type") not in _RESULTS | {"algorithm"}):
+            err.append(f"{n['id']}: `main` is only `true`, on a result or an algorithm")
     # no circular reasoning (validate_annotation.reasoning_cycles)
     for cyc in reasoning_cycles(graph["nodes"], graph["edges"]):
         (warn if cycle_noted(cyc, graph.get("metadata")) else err).append(

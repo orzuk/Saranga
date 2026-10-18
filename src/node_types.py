@@ -180,6 +180,13 @@ OPTIONAL_NODE_FIELDS = (
     "proves",            # relational pointer
     "rigor",             # see RIGOR_LEVELS; absent means "formal"
     "label",             # see LABEL_FIELD
+    # v7, filled by the finishing step (extraction_finalize) from LaTeX syntax:
+    "display",           # the author's environment word ("Theorem", "Hauptlemma"), next to `type`
+    "number",            # the number the paper prints for it ("3.2"), where LaTeX states one
+    "cites",             # bib keys \cite'd inside the statement, in order
+    # v7, set by the extractor:
+    "also_stated_at",    # verbatim spans of the other copies of a result stated twice
+    "main",              # true on the paper's main results
 )
 
 ALL_NODE_FIELDS = REQUIRED_NODE_FIELDS + OPTIONAL_NODE_FIELDS
