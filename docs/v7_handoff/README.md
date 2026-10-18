@@ -59,8 +59,14 @@ lines 93–104): only `candidates.json` and `review.json` files are tracked. The
 graphs, `index.json` and all 104 blueprints are on the other laptop (battery dead). There:
 1. `git status`, `git log origin/main..main` → commit and push any reviews or code not pushed
    (no `review.json` is in the repo yet — reviews are the one thing that cannot be regenerated);
-2. zip `corpus/gold_candidates/` and `corpus/gold_blueprints/` to Google Drive;
-3. unpack here into the same paths; check counts: 281 diagram papers, 146 evaluation, 104 blueprints.
+2. **Decided: track the gold sets in git, in the same form as the silver** (silver `tex_pool` is already
+   tracked). Narrow the .gitignore exceptions to add: `index.json`, each paper's `gold.json` and
+   flattened main `.tex`; each blueprint's `all.tex`, `graph.json`, `meta.json` and the blueprint index.
+   Keep out: original arXiv packages/tarballs, PDFs, rendered pages, cloned blueprint repos. Check
+   sizes before committing (no file > 100 MB; aim for tens of MB in total). If the repo is public, keep
+   the 43 blueprints with no licence out (or keep the repo private until release).
+3. Commit, push, and pull on the other machine; check counts: 281 diagram papers, 146 evaluation,
+   104 blueprints. (Fallback if git is not wanted: zip both dirs to Google Drive.)
 The silver 200 can start without it.
 
 ## Files here
