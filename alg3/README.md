@@ -16,11 +16,13 @@ The released extractor is `extractors/rules/silver_v6__sentence_tagger__2026-10`
 |---|---|
 | `data.py` | builds the training data with the units algorithm's own loader (`scripts/distill_units.py`): prose sentences, silver prose nodes, the base parser's counts; train and val papers only (test is refused) |
 | `features.py` | the clues of a sentence (shared by training and the parser) |
-| `train.py` | anchor model, optional second pass (`--stack`), span model, thresholds tuned on out-of-fold predictions; writes an extractor directory |
+| `train.py` | anchor model, optional second pass (`--stack`), span model, thresholds tuned on out-of-fold predictions; writes an extractor directory. `--classifier gb` swaps the anchor model for gradient-boosted trees (xgboost; evaluation only, no export): OOF 0.687 / val 0.731 against LR 0.698 / 0.727, so the release stays LR |
 | `runtime.py` | the parse-time code, copied into every extractor directory (pure Python) |
 | `invent.py` | optional: Claude Haiku proposes extra regex clues from the out-of-fold mistakes on the training papers (`--clues` in train.py); round 1 (`clues_r1.json`, $0.01) gave no gain and is not used by the release |
-| `analyze.py` | per-type errors of an extractor on the validation papers |
+| `analyze.py` | errors on the validation papers: `--model` per type for the tagger alone; `--rules-dir` (+ `--edge-model`) for the whole parsed graph against the Level-1 silver: per-type P/R/F1, node errors as missed / spurious / wrong type (with where they lie), edge errors by kind, ranked, with examples |
 | `explain.py` | `RULES.md`: the strongest clues for and against each type |
+| `edges.py` | learned edges (opt-in, see Edges below) |
+| `doc/program.md` | instructions for an automatic search loop (Karpathy's autoresearch) with Claude Code as the agent: a node track and an edge track |
 | `v6_alg3.json` | `scripts/compare_distillers.py` config: base vs units vs this extractor |
 
 ## Run
@@ -54,6 +56,16 @@ The same approach applied to edges: `edges.py` learns **definition → user** `u
 silver (which candidate term/symbol a definition defines, from the silver's `definiendum`; which
 later nodes use it), writes a JSON model to `extractors/edges/<id>/`, and adds its edges to any
 graph. Off by default; `parse_batch.py --edge-model extractors/edges/<id>` turns it on. Scored
-with `src/LLMVersion/edge_metrics.py` (the edge sibling of `node_metrics.py`). Released model:
-`extractors/edges/silver_v6__defterm_edges__2026-10` (test edge F1 0.262 → 0.333).
+with `src/LLMVersion/edge_metrics.py` (the edge sibling of `node_metrics.py`).
+
+Since October 16 a model also holds a **filter for the parser's own edges**: a logistic regression
+over clues of each parser edge (its kind, whether the equation is labelled, referenced elsewhere or
+defining, its place in its container) drops the edges the silver does not have, mostly
+"equation in its proof" edges. A dropped "equation in" edge is kept as the equation's `parent_id`,
+so the viewer still shows the equation in its container's panel. Thresholds are chosen on
+out-of-fold predictions for the train papers (5 folds by paper).
+
+Models: `extractors/edges/silver_v6__defterm_edges__2026-10` (definition edges only; test edge F1
+0.262 → 0.333) and `extractors/edges/silver_v6__edges_filter__2026-10` (filter + definition edges;
+see its README).
 

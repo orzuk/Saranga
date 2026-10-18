@@ -506,9 +506,9 @@ def main():
         type=str,
         default=None,
         help=(
-            "Optional: a learned definition -> user edge model (extractors/edges/<id>, "
-            "trained by alg3/edges.py) applied after parsing. Default: off, i.e. only the "
-            "parser's own edges."
+            "Optional: a learned edge model (extractors/edges/<id>, trained by alg3/edges.py) "
+            "applied after parsing: it may drop parser edges (its filter) and adds definition -> "
+            "user edges. Default: off, i.e. only the parser's own edges."
         ),
     )
     parser.add_argument(

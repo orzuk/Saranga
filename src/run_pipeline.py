@@ -821,8 +821,9 @@ def main():
                              "holding <type>_eval/distilled_rules.py. Default: "
                              "src/LLMVersion/ (the production symlinks).")
     parser.add_argument("--edge-model", type=str, default=None,
-                        help="Optional learned definition -> user edge model "
-                             "(extractors/edges/<id>, alg3/edges.py). Default: off.")
+                        help="Optional learned edge model (extractors/edges/<id>, "
+                             "alg3/edges.py): filters parser edges, adds definition -> user "
+                             "edges. Default: off.")
     parser.add_argument("--tex-dir", type=str, default=None,
                         help="Directory to search for local .tex files instead of "
                              "the default FULL_PAPERS_DIR from config. Useful when "

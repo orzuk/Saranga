@@ -16,8 +16,9 @@ Two logistic regressions over deterministic clues, as alg3:
                how it is used, how many nodes of the paper use it, X's type, order, distance;
                trained on rule graphs of the TRAIN papers, labelled by the Level-1 silver through
                the m1g node alignment (src/LLMVersion/edge_metrics.py).
-The threshold is chosen on the VAL papers by the edge F1 of the whole graph; test is scored once,
-with edge_metrics.py. The model is saved as JSON (vocabulary + weights), so applying it needs no
+The threshold is chosen by the edge F1 of the whole graph on out-of-fold predictions for the
+TRAIN papers (5 folds by paper); the VAL papers are scored at it (and the VAL curve printed),
+for choosing between models; test is scored once, with edge_metrics.py. The model is saved as JSON (vocabulary + weights), so applying it needs no
 scikit-learn.
 
     python3 alg3/edges.py train --graphs corpus/silver/opus-5.5__v6/tagger_v6 \\
@@ -39,6 +40,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 SKIP_X = {"proof_step", "algorithm_step"}
+SOURCES = {"definition", "equation"}      # an equation is a source through a defining display (X := ...)
 MIN_CAND_P = 0.05
 
 
@@ -52,15 +54,22 @@ MARKED = re.compile(r"\\(?:emph|textit|textbf|textsl|underline)\s*\{((?:[^{}]|\{
 CUE = re.compile(r"\b(?:called|is said to be|are said to be|termed|known as|refer(?:red)? to (?:it |them )?as"
                  r"|we say that [^.]{0,60}? (?:is|are)|denoted? by|we denote|we write|we call [^.]{0,40}?)"
                  r"\s+(?:an?\s+|the\s+)?([^,.;:()]{2,60}?)(?=\s*(?:[,.;:()]|\bif\b|\bwhen\b|\bprovided\b|\bwhere\b|$))", re.I)
+LHS = re.compile(r":=|\\coloneqq|\\equiv|\\triangleq|=:|(?<![<>!:])=(?!=)")
 NAME = re.compile(r"^\s*\[([^\]]{2,60})\]")
 SPACES = re.compile(r"\\[,;:! ]|\\(?:left|right|big|Big|bigg|Bigg|displaystyle|textstyle)\b|\s+")
-HEAD = re.compile(r"\\(?:mathcal|mathbb|mathfrak|mathscr|mathbf|mathrm|mathsf|operatorname|widehat|hat|"
-                  r"widetilde|tilde|bar|overline|vec|check|dot|ddot|boldsymbol|bm)\s*\{[^{}]+\}|\\[A-Za-z]+|[A-Za-z]")
+FONT = (r"(?:mathcal|mathbb|mathfrak|mathscr|mathbf|mathrm|mathsf|operatorname|widehat|hat|"
+        r"widetilde|tilde|bar|overline|vec|check|dot|ddot|boldsymbol|bm|[A-Za-z]{1,2})")
+HEAD = re.compile(r"\\" + FONT + r"\{[^{}]+\}|\\[A-Za-z]+|[A-Za-z]")
+FONT_ARG = re.compile(r"(\\" + FONT + r")\s+(\\[A-Za-z]+|[A-Za-z0-9])")    # \mathcal L -> \mathcal{L}
 STOP = {"the", "a", "an", "of", "and", "or", "in", "on", "for", "to", "is", "be", "set", "map", "function"}
 
 
 def mnorm(s: str) -> str:
-    return SPACES.sub("", s or "").strip("$")
+    """Math without spacing, one spelling per symbol: \\mathcal L, {\\mathcal L} and
+    \\mathcal{L} agree, and so do e_{u} and e_u."""
+    s = SPACES.sub("", FONT_ARG.sub(r"\1{\2}", s or ""))
+    s = re.sub(r"\{(\\[A-Za-z]+\{[^{}]*\})\}", r"\1", s)
+    return re.sub(r"([_^])\{([A-Za-z0-9])\}", r"\1\2", s).strip("$")
 
 
 def head(m: str) -> str | None:
@@ -93,10 +102,20 @@ def candidates(text: str, name: str = "") -> list[dict]:
         chunk = m.group(1) or m.group(2)
         if len(mnorm(chunk)) > 40:
             continue
-        lhs = re.split(r":=|\\coloneqq|\\equiv|\\triangleq|=:|(?<![<>!:])=(?!=)", chunk)[0]
+        lhs = LHS.split(chunk, maxsplit=1)[0]
         if lhs != chunk and mnorm(lhs):
             add(lhs, "math_lhs", True, m.start())
         add(chunk, "math", True, m.start())
+    for m in MATH.finditer(text or ""):                       # displays: the left side of each line
+        body = m.group(1) or m.group(4) or m.group(6)
+        if not body:
+            continue
+        body = re.sub(r"\\(?:label|tag)\{[^{}]*\}|\\(?:nonumber|notag)|\\(?:begin|end)\{[a-z]+\*?\}", "", body)
+        for line in re.split(r"\\\\", body):
+            line = line.replace("&", "")
+            lhs = LHS.split(line, maxsplit=1)[0]
+            if lhs != line and 0 < len(mnorm(lhs)) <= 40:
+                add(lhs, "display_lhs", True, m.start())
     for m in MARKED.finditer(text or ""):
         t = next(g for g in m.groups() if g)
         add(t, "marked", "$" in t and not wnorm(t), m.start())
@@ -200,9 +219,10 @@ def pairs_of(nodes: list, dmodel: LR) -> list:
             for n in nodes}
     out = []
     for d in nodes:
-        if d["type"] != "definition":
+        if d["type"] not in SOURCES:
             continue
-        cs = [c for c in def_candidates(d, dmodel) if c["p"] >= MIN_CAND_P]
+        cs = [c for c in def_candidates(d, dmodel) if c["p"] >= MIN_CAND_P
+              and (d["type"] == "definition" or c["kind"] == "display_lhs")]
         by_x = collections.defaultdict(list)
         for c in cs:
             hits = [(x["id"], how) for x in nodes if x is not d and x["type"] not in SKIP_X
@@ -215,7 +235,7 @@ def pairs_of(nodes: list, dmodel: LR) -> list:
             c, how, spread = max(ms, key=lambda m: m[0]["p"] * {"exact": 1, "word": 0.9, "head": 0.6}[m[1]])
             dist = order[xid] - order[d["id"]]
             out.append((d["id"], xid, {
-                f"how={how}": 1.0, f"p={_b(c['p'], (0.2, 0.4, 0.6, 0.8))}": 1.0, "p_raw": c["p"],
+                f"src={d['type']}": 1.0, f"src={d['type']}|how={how}": 1.0, f"how={how}": 1.0, f"p={_b(c['p'], (0.2, 0.4, 0.6, 0.8))}": 1.0, "p_raw": c["p"],
                 f"kind={c['kind']}": 1.0, f"how={how}|p={_b(c['p'], (0.3, 0.6))}": 1.0,
                 f"x={x['type']}": 1.0, f"x={x['type']}|how={how}": 1.0,
                 f"after={dist > 0}": 1.0, f"dist={_b(abs(dist), (1, 3, 8, 20, 50))}": 1.0,
@@ -225,7 +245,103 @@ def pairs_of(nodes: list, dmodel: LR) -> list:
                 f"single_letter={bool(c['math'] and re.fullmatch(r'[A-Za-z]', c['key']))}": 1.0,
                 "best_p_x_exact": max((m[0]["p"] for m in ms if m[1] == "exact"), default=0.0),
                 "best_p_x_word": max((m[0]["p"] for m in ms if m[1] == "word"), default=0.0)}))
+    # relational clues: how D ranks among the sources that X uses (by strength, by nearness)
+    per_x = collections.defaultdict(list)
+    for i, (_d, xid, _f) in enumerate(out):
+        per_x[xid].append(i)
+    for xid, idx in per_x.items():
+        strength = sorted(idx, key=lambda i: -out[i][2]["p_raw"])
+        near = sorted(idx, key=lambda i: (order[xid] < order[out[i][0]], abs(order[xid] - order[out[i][0]])))
+        for r, i in enumerate(strength):
+            out[i][2][f"rank_p={min(r, 3)}"] = 1.0
+        for r, i in enumerate(near):
+            out[i][2][f"rank_near={min(r, 3)}"] = 1.0
+        for i in idx:
+            out[i][2][f"n_src={_b(len(idx), (1, 2, 4, 8))}"] = 1.0
     return out
+
+
+# ── the parser's own edges: keep or drop ────────────────────────────────────
+LABEL = re.compile(r"\\label\{([^{}]+)\}")
+REF = re.compile(r"\\(?:eq|c|C|auto)?ref\*?\{([^{}]+)\}")
+STARRED = re.compile(r"begin\{[a-z]+\*\}|^\s*(?:\$\$|\\\[)")      # unnumbered display
+DEFINING = re.compile(r":=|=:|coloneqq|triangleq|\\equiv|\\stackrel")
+
+
+def parser_edge_rows(g: dict) -> list:
+    """[(edge, features)] for the parser's edges of one graph (learned edges skipped)."""
+    nodes = g.get("nodes", [])
+    by = {n["id"]: n for n in nodes}
+    order = {n["id"]: i for i, n in enumerate(nodes)}
+    labels = {n["id"]: set(LABEL.findall(node_text(n))) for n in nodes}
+    refs = {n["id"]: collections.Counter(REF.findall(node_text(n))) for n in nodes}
+    refcount = collections.Counter()
+    for c in refs.values():
+        refcount.update(c)
+    edges = [e for e in g.get("edges", []) if not e.get("provenance")]
+    outd = collections.Counter(e["source"] for e in edges)
+    ind = collections.Counter(e["target"] for e in edges)
+    cont = collections.defaultdict(list)                     # container -> its equations, in order
+    for e in edges:
+        if by.get(e["source"], {}).get("type") == "equation" and e["type"] == "uses":
+            cont[e["target"]].append(e["source"])
+    rows = []
+    for e in edges:
+        s, t = by.get(e["source"]), by.get(e["target"])
+        if s is None or t is None:
+            continue
+        ts, tt = s["type"], t["type"]
+        explicit = bool(labels[s["id"]] & set(refs[t["id"]]))
+        f = {f"k={ts}>{tt}|{e['type']}": 1.0, f"src={ts}": 1.0, f"tgt={tt}": 1.0, f"et={e['type']}": 1.0,
+             f"conf={_b(e.get('confidence', 1), (0.5, 0.8, 0.99))}": 1.0, f"mention={'mention' in e}": 1.0,
+             f"dist={_b(abs(order[t['id']] - order[s['id']]), (1, 3, 10, 30))}": 1.0,
+             f"after={order[t['id']] > order[s['id']]}": 1.0,
+             f"outd={_b(outd[s['id']], (1, 3, 8, 20))}": 1.0, f"ind={_b(ind[t['id']], (1, 3, 8, 20))}": 1.0,
+             f"explicit_ref={explicit}": 1.0, f"k={ts}>{tt}|explicit={explicit}": 1.0}
+        for side, n in (("s", s), ("t", t)):
+            if n["type"] != "equation":
+                continue
+            txt, labs = node_text(n), labels[n["id"]]
+            nref = sum(refcount[x] for x in labs) - sum(refs[n["id"]][x] for x in labs)   # refs from elsewhere
+            env = re.match(r"\s*\\begin\{([a-z]+)", txt)
+            f.update({f"{side}eq_label={bool(labs)}": 1.0, f"{side}eq_refs={_b(nref, (0, 1, 3))}": 1.0,
+                      f"{side}eq_def={bool(DEFINING.search(txt))}": 1.0,
+                      f"{side}eq_star={bool(STARRED.search(txt))}": 1.0,
+                      f"{side}eq_len={_b(len(txt), (60, 150, 400))}": 1.0,
+                      f"{side}eq_env={env.group(1) if env else 'display'}": 1.0})
+            if side == "s" and e["type"] == "uses" and cont.get(t["id"]):
+                eqs = cont[t["id"]]
+                k = eqs.index(s["id"]) if s["id"] in eqs else -1
+                f[f"pos={'first' if k == 0 else 'last' if k == len(eqs) - 1 else 'mid'}"] = 1.0
+                f[f"n_eq={_b(len(eqs), (1, 3, 8))}"] = 1.0
+                f[f"k={ts}>{tt}|refs={_b(nref, (0, 1))}"] = 1.0
+        rows.append((e, f))
+    return rows
+
+
+def _squash(t: str) -> str:
+    return re.sub(r"\s+", "", t or "")
+
+
+def filter_edges(graph: dict, probs: list, th: float) -> int:
+    """Drop the parser edges (in parser_edge_rows order) whose keep-probability is below th.
+    A dropped edge from an equation to the node whose text contains it (the parser's
+    'equation in' edge: containment, not a dependency) is kept as the equation's
+    `parent_id`, so the viewer still shows the equation in that node's panel."""
+    by = {n["id"]: n for n in graph.get("nodes", [])}
+    drop = set()
+    for (e, _f), p in zip(parser_edge_rows(graph), probs):
+        if p >= th:
+            continue
+        drop.add(id(e))
+        eq, box = by.get(e["source"]), by.get(e["target"])
+        if eq and box and eq["type"] == "equation" and e["type"] == "uses" and not eq.get("parent_id"):
+            body = _squash(node_text(eq))
+            if body and body in _squash(node_text(box)):
+                eq["parent_id"] = box["id"]
+    n = len(graph.get("edges", []))
+    graph["edges"] = [e for e in graph.get("edges", []) if id(e) not in drop]
+    return n - len(graph["edges"])
 
 
 # ── runtime: the parser hook ────────────────────────────────────────────────
@@ -235,20 +351,30 @@ class EdgeModel:
         d = json.load(open(Path(model_dir) / "model.json", encoding="utf-8"))
         self.dmodel, self.pmodel = LR(d["definiendum"]), LR(d["pairs"])
         self.threshold, self.id = d["threshold"], d.get("id", Path(model_dir).name)
+        self.filter = LR(d["filter"]) if d.get("filter") else None     # keep/drop the parser's edges
+        self.drop_below = d.get("drop_below", 0.0)
 
 
 def add_edges(graph: dict, model: EdgeModel, threshold: float | None = None) -> int:
-    """Add the model's definition -> user `uses` edges to a unified graph dict, in place;
-    pairs already linked (either direction) are left alone. Returns the number added."""
+    """Drop the parser edges the filter rejects (if the model has one), then add the model's
+    definition -> user `uses` edges to a unified graph dict, in place; pairs already linked
+    (either direction) are left alone. Returns the number added."""
     th = model.threshold if threshold is None else threshold
+    if model.filter is not None:
+        filter_edges(graph, [model.filter.p(f) for _e, f in parser_edge_rows(graph)], model.drop_below)
+    scored = [(did, xid, model.pmodel.p(f)) for did, xid, f in pairs_of(graph.get("nodes", []), model.dmodel)]
+    return _add(graph, scored, th, model.id)
+
+
+def _add(graph: dict, scored: list, th: float, prov: str) -> int:
+    """Add the (D id, X id, probability) pairs at or above th, in place."""
     linked = {(e["source"], e["target"]) for e in graph.get("edges", [])}
     linked |= {(t, s) for s, t in linked}
     added = 0
-    for did, xid, f in pairs_of(graph.get("nodes", []), model.dmodel):
-        p = model.pmodel.p(f)
+    for did, xid, p in scored:
         if p >= th and (did, xid) not in linked:
             graph.setdefault("edges", []).append({"source": did, "target": xid, "type": "uses",
-                                                  "confidence": round(p, 3), "provenance": model.id})
+                                                  "confidence": round(p, 3), "provenance": prov})
             linked |= {(did, xid), (xid, did)}
             added += 1
     return added
@@ -300,8 +426,10 @@ def _level1_ref(EM, pid):
     return nodes, {(e["source"], e["target"]) for e in edges}
 
 
-def train_pairs(EM, graph_dir: Path, papers: list, dmodel: LR) -> dict:
-    X, y, cover = [], [], collections.Counter()
+def paper_pairs(EM, graph_dir: Path, papers: list, dmodel: LR) -> dict:
+    """{pid: (graph, [(D id, X id, features, label or None)])}; label = the Level-1 silver has
+    the edge (None: an endpoint not aligned, not used for training)."""
+    out, cover = {}, collections.Counter()
     for pid in papers:
         f = graph_dir / f"{pid}.json"
         if not f.is_file():
@@ -310,33 +438,77 @@ def train_pairs(EM, graph_dir: Path, papers: list, dmodel: LR) -> dict:
         rnodes, redges = _level1_ref(EM, pid)
         m = EM.align(g["nodes"], rnodes)
         rtype = {n["id"]: n["type"] for n in rnodes}
-        seen = set()
+        rows, seen = [], set()
         for did, xid, feats in pairs_of(g["nodes"], dmodel):
             a, b = m.get(did), m.get(xid)
-            if a is None or b is None:
-                continue
-            X.append(feats)
-            y.append(int((a, b) in redges))
+            lab = None if a is None or b is None else int((a, b) in redges)
+            rows.append((did, xid, feats, lab))
             seen.add((a, b))
         inv = {v: k for k, v in m.items()}
         for a, b in redges:
             if rtype.get(a) == "definition" and a in inv and b in inv:
                 cover["reachable"] += 1
                 cover["covered"] += (a, b) in seen
-    print(f"[pairs] {len(y)} training pairs, {sum(y)} positive; candidate filter covers "
+        out[pid] = (g, rows)
+    n = sum(r[3] is not None for _g, rows in out.values() for r in rows)
+    pos = sum(r[3] == 1 for _g, rows in out.values() for r in rows)
+    print(f"[pairs] {n} labelled pairs, {pos} positive; candidate filter covers "
           f"{cover['covered']}/{cover['reachable']} reachable definition edges "
           f"({cover['covered'] / max(1, cover['reachable']):.1%})")
+    return out
+
+
+def fit_pairs(pp: dict, pids: list) -> dict:
+    """Pairs with an unaligned endpoint are trained as negatives: the edge metric counts them as
+    false positives."""
+    X = [f for pid in pids for _d, _x, f, _lab in pp[pid][1]]
+    y = [lab or 0 for pid in pids for _d, _x, _f, lab in pp[pid][1]]
     return LR.fit(X, y, 0.3)
 
 
-def val_f1(EM, graph_dir: Path, papers: list, model: EdgeModel, th: float) -> tuple:
+def curve_f1(EM, pp: dict, probs: dict, ths) -> dict:
+    """{threshold: (P, R, F1)} of the whole graphs with the pairs at or above it added."""
+    tot = {th: collections.Counter() for th in ths}
+    for pid, (g, rows) in pp.items():
+        for th in ths:
+            h = json.loads(json.dumps(g))
+            _add(h, [(d, x, p) for (d, x, _f, _l), p in zip(rows, probs[pid])], th, "eval")
+            tot[th] += EM.score_paper(h, EM.SILVER / f"{pid}.json")
+    return {th: EM.prf(c) for th, c in tot.items()}
+
+
+THS = (0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 2.0)
+DROP_THS = (0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3)
+
+
+def filter_data(EM, pp: dict) -> dict:
+    """{pid: [(features, label or None)]} for the parser edges of the graphs in pp; label =
+    the Level-1 silver has the edge (None: both ends align to one silver node, not scored)."""
+    out = {}
+    for pid, (g, _rows) in pp.items():
+        rnodes, redges = _level1_ref(EM, pid)
+        m = EM.align(g["nodes"], rnodes)
+        rows = []
+        for e, f in parser_edge_rows(g):
+            a, b = m.get(e["source"]), m.get(e["target"])
+            rows.append((f, None if a is not None and a == b else
+                         int(a is not None and b is not None and (a, b) in redges)))
+        out[pid] = rows
+    return out
+
+
+def fit_filter(fd: dict, pids: list) -> dict:
+    X = [f for p in pids for f, lab in fd[p] if lab is not None]
+    y = [lab for p in pids for _f, lab in fd[p] if lab is not None]
+    return LR.fit(X, y, 0.3)
+
+
+def parser_f1(EM, pp: dict, probs: dict, th: float) -> tuple:
     tot = collections.Counter()
-    for pid in papers:
-        f = graph_dir / f"{pid}.json"
-        if f.is_file():
-            g = json.load(open(f))
-            add_edges(g, model, th)
-            tot += EM.score_paper(g, EM.SILVER / f"{pid}.json")
+    for pid, (g, _rows) in pp.items():
+        h = json.loads(json.dumps(g))
+        filter_edges(h, probs[pid], th)
+        tot += EM.score_paper(h, EM.SILVER / f"{pid}.json")
     return EM.prf(tot)
 
 
@@ -356,27 +528,63 @@ def cmd_train(a):
                 if cs:
                     hit += is_definiendum(max(cs, key=lambda c: c["p"]), *definiendum_pieces(n["definiendum"]))
     print(f"[definiendum] val: top candidate is (part of) the silver definiendum for {hit}/{tot} = {hit / max(1, tot):.1%}")
-    pairs = train_pairs(EM, Path(a.graphs), train, D)
+    tp = paper_pairs(EM, Path(a.graphs), train, D)
+    vp = paper_pairs(EM, Path(a.graphs), val, D)
+    pids = sorted(tp)
+    # 1. the filter on the parser's edges: out-of-fold keep-probabilities pick drop_below
+    ftr, fva = filter_data(EM, tp), filter_data(EM, vp)
+    foof = {}
+    for k in range(5):
+        held = set(pids[k::5])
+        F = LR(fit_filter(ftr, [p for p in pids if p not in held]))
+        foof.update({pid: [F.p(f) for f, _l in ftr[pid]] for pid in held})
+    fmodel = fit_filter(ftr, pids)
+    F = LR(fmodel)
+    fval = {pid: [F.p(f) for f, _l in rows] for pid, rows in fva.items()}
+    fcurve = {}
+    for th in DROP_THS:
+        fcurve[th] = (parser_f1(EM, tp, foof, th), parser_f1(EM, vp, fval, th))
+        (op, orr, of), (p, r, f) = fcurve[th]
+        print(f"[filter] drop below {th:.2f}: parser edges OOF P {op:.3f} R {orr:.3f} F1 {of:.3f} | "
+              f"val P {p:.3f} R {r:.3f} F1 {f:.3f}")
+    drop = max(DROP_THS, key=lambda th: fcurve[th][0][2])
+    for pid in pids:
+        filter_edges(tp[pid][0], foof[pid], drop)
+    for pid in vp:
+        filter_edges(vp[pid][0], fval[pid], drop)
+    print(f"[filter] drop below {drop} (best OOF); definition edges are added to the filtered graphs")
+    # 2. definition edges: out-of-fold probabilities on the train papers pick the threshold
+    oof = {}
+    for k in range(5):
+        held = pids[k::5]
+        L = LR(fit_pairs(tp, [p for p in pids if p not in set(held)]))
+        oof.update({pid: [L.p(f) for _d, _x, f, _l in tp[pid][1]] for pid in held})
+    pairs = fit_pairs(tp, pids)
+    L = LR(pairs)
+    oc = curve_f1(EM, tp, oof, THS)
+    vc = curve_f1(EM, vp, {pid: [L.p(f) for _d, _x, f, _l in rows] for pid, (_g, rows) in vp.items()}, THS)
+    curve = []
+    for th in THS:
+        (op, orr, of), (p, r, f) = oc[th], vc[th]
+        curve.append({"threshold": th, "oof_P": round(op, 4), "oof_R": round(orr, 4), "oof_F1": round(of, 4),
+                      "P": round(p, 4), "R": round(r, 4), "F1": round(f, 4)})
+        print(f"[curve] threshold {th if th < 1 else 'none':>4}: OOF P {op:.3f} R {orr:.3f} F1 {of:.3f} | "
+              f"val P {p:.3f} R {r:.3f} F1 {f:.3f}")
+    best = (max(THS[:-1], key=lambda th: oc[th][2]),)
+    best = (vc[best[0]][2], best[0])
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    doc = {"id": out.name, "definiendum": dmodel, "pairs": pairs, "threshold": None}
-    json.dump(doc, open(out / "model.json", "w"))
-    model = EdgeModel(out)
-    curve, best = [], (val_f1(EM, Path(a.graphs), val, model, 2.0)[2], None)
-    print(f"[val] without the model: F1 {best[0]:.3f}")
-    for th in (0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5):
-        p, r, f = val_f1(EM, Path(a.graphs), val, model, th)
-        curve.append({"threshold": th, "P": round(p, 4), "R": round(r, 4), "F1": round(f, 4)})
-        print(f"[val] threshold {th}: P {p:.3f} R {r:.3f} F1 {f:.3f}")
-        best = max(best, (f, th), key=lambda x: x[0])
-    doc["threshold"] = best[1]
+    doc = {"id": out.name, "definiendum": dmodel, "pairs": pairs, "threshold": best[1],
+           "filter": fmodel, "drop_below": drop}
     json.dump(doc, open(out / "model.json", "w"))
     json.dump({"extractor_id": out.name, "kind": "definition_edges", "code": "alg3/edges.py",
                "trained_on": {"graphs": str(Path(a.graphs)), "train_papers": len(train), "val_papers": len(val)},
                "silver": str(EM.SILVER.relative_to(REPO)), "split": str(EM.SPLIT.relative_to(REPO)),
-               "threshold": best[1], "val_curve": curve,
+               "threshold": best[1], "val_curve": curve, "drop_below": drop,
+               "filter_curve": [{"drop_below": th, "oof_F1": round(o[2], 4), "val_P": round(v[0], 4),
+                                 "val_R": round(v[1], 4), "val_F1": round(v[2], 4)} for th, (o, v) in fcurve.items()],
                "date": datetime.date.today().isoformat()}, open(out / "recipe.json", "w"), indent=1)
-    print(f"[val] chosen threshold {best[1]} (F1 {best[0]:.3f}) -> {out}")
+    print(f"[val] threshold {best[1]} (best OOF F1 {oc[best[1]][2]:.3f}): val F1 {best[0]:.3f} -> {out}")
 
 
 def cmd_apply(a):

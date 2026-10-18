@@ -251,11 +251,49 @@ def class_weights(y, mode: str):
     return {k: (top / v) ** power for k, v in c.items()}
 
 
-def fit_lr(X, y, C: float, cw: str = "none"):
+class GB:
+    """Gradient-boosted trees (xgboost, multi:softprob) with the LogisticRegression
+    interface used here (fit / predict_proba / classes_). Absent clues are 'missing'
+    in xgboost's sparse input, so a tree tests only clues that fire."""
+    PARAMS = {"n_estimators": 300, "max_depth": 6, "learning_rate": 0.1, "subsample": 0.8,
+              "colsample_bytree": 0.5, "min_child_weight": 2, "tree_method": "hist"}
+
+    def __init__(self, cw: str = "none", n_jobs: int = 8, **kw):
+        self.cw, self.n_jobs, self.params = cw, n_jobs, dict(self.PARAMS, **kw)
+
+    def fit(self, M, y):
+        import xgboost as xgb
+        self.classes_ = np.array(sorted(set(y)))
+        code = {c: k for k, c in enumerate(self.classes_)}
+        w = class_weights(y, self.cw)
+        self.model = xgb.XGBClassifier(objective="multi:softprob", n_jobs=self.n_jobs, random_state=0,
+                                       **self.params)
+        self.model.fit(M, np.array([code[c] for c in y]),
+                       sample_weight=None if w is None else np.array([w[c] for c in y]))
+        return self
+
+    def predict_proba(self, M):
+        return self.model.predict_proba(M)
+
+    def predict(self, M):
+        return self.classes_[self.predict_proba(M).argmax(1)]
+
+
+CLASSIFIER = {"kind": "lr", "n_jobs": 8}
+
+
+def make_clf(C: float, y, cw: str, n_jobs: int | None = None):
+    if CLASSIFIER["kind"] == "gb":
+        return GB(cw, n_jobs or CLASSIFIER["n_jobs"])
+    return LogisticRegression(C=C, max_iter=3000, solver="lbfgs", class_weight=class_weights(y, cw))
+
+
+def fit_lr(X, y, C: float, cw: str = "none", kind: str = "lr"):
+    """The anchor models use the --classifier (kind "anchor"); the span model is always LR."""
     vec = DictVectorizer(sparse=True)
     M = vec.fit_transform(X)
-    clf = LogisticRegression(C=C, max_iter=3000, solver="lbfgs",
-                             class_weight=class_weights(y, cw))
+    clf = make_clf(C, y, cw) if kind == "anchor" else \
+        LogisticRegression(C=C, max_iter=3000, solver="lbfgs", class_weight=class_weights(y, cw))
     clf.fit(M, y)
     return vec, clf
 
@@ -335,9 +373,9 @@ def extract_distilled_all(text):
 
 # ---------------------------------------------------------------------------
 
-def _fit_fold(Mtr, ytr, Mte, C, cw, classes):
-    clf = LogisticRegression(C=C, max_iter=3000, solver="lbfgs",
-                             class_weight=class_weights(ytr, cw))
+def _fit_fold(Mtr, ytr, Mte, C, cw, classes, kind="lr", n_jobs=1):
+    CLASSIFIER["kind"] = kind
+    clf = make_clf(C, ytr, cw, n_jobs)
     clf.fit(Mtr, ytr)
     cols = [classes.index(str(c)) for c in clf.classes_]
     return cols, clf.predict_proba(Mte)
@@ -360,8 +398,9 @@ def stage_probs(X, y, g, C, cw, folds, jobs: int = 5, vocab: str = "fold"):
             vec = DictVectorizer(sparse=True)
             parts.append((vec.fit_transform([X[j] for j in tr]), y[tr],
                           vec.transform([X[j] for j in te])))
+    nj = max(1, CLASSIFIER["n_jobs"] // min(jobs, folds))
     res = Parallel(n_jobs=min(jobs, folds))(
-        delayed(_fit_fold)(Mtr, ytr, Mte, C, cw, classes) for Mtr, ytr, Mte in parts)
+        delayed(_fit_fold)(Mtr, ytr, Mte, C, cw, classes, CLASSIFIER["kind"], nj) for Mtr, ytr, Mte in parts)
     P = np.zeros((len(X), len(classes)))
     for (tr, te), (cols, Pf) in zip(splits, res):
         P[np.ix_(te, cols)] = Pf
@@ -404,7 +443,11 @@ def main():
     ap.add_argument("--tau-rounds", type=int, default=3, help="coordinate-ascent rounds for the thresholds")
     ap.add_argument("--clues", default=None, help="teacher-invented clues (alg3/invent.py), JSON")
     ap.add_argument("--dump-oof", default=None, help="save out-of-fold train predictions (pickle)")
+    ap.add_argument("--classifier", choices=["lr", "gb"], default="lr",
+                    help="anchor model: logistic regression (released) or gradient-boosted trees (xgboost)")
+    ap.add_argument("--threads", type=int, default=8, help="gb: CPU threads in all")
     a = ap.parse_args()
+    CLASSIFIER.update(kind=a.classifier, n_jobs=a.threads)
     t0 = time.time()
     clues = json.load(open(a.clues, encoding="utf-8")) if a.clues else []
     FT.set_clues(clues)
@@ -413,7 +456,7 @@ def main():
     val = sorted(p for p, (s, _) in papers.items() if s == "val")
     assert not any(s == "test" for s, _ in papers.values()), "test papers in the training data"
     print(f"[alg3] {len(train)} train + {len(val)} val papers; C={a.C} class_weight={a.class_weight} "
-          f"stack={a.stack}", flush=True)
+          f"stack={a.stack} classifier={a.classifier}", flush=True)
     pvs = views(papers)
     scorer = DU.Scorer({pid: p for pid, (_, p) in papers.items()}, 0.7, metric="m1g")
     Xtr, ytr, gtr, itr = rows(train, papers, pvs)
@@ -425,14 +468,14 @@ def main():
 
     # stage 1: out-of-fold on train, full model for val
     P1, classes = stage_probs(Xtr, ytr, gtr, a.C, a.class_weight, a.folds, a.jobs, a.vocab)
-    vec1, clf1 = fit_lr(Xtr, ytr, a.C, a.class_weight)
+    vec1, clf1 = fit_lr(Xtr, ytr, a.C, a.class_weight, kind="anchor")
     P1va = full_probs(vec1, clf1, Xva, classes)
     stage2 = None
     if a.stack:
         X2tr = with_context(Xtr, itr, P1, classes, papers)
         X2va = with_context(Xva, iva, P1va, classes, papers)
         Ptr, _ = stage_probs(X2tr, ytr, gtr, a.C, a.class_weight, a.folds, a.jobs, a.vocab)
-        vec2, clf2 = fit_lr(X2tr, ytr, a.C, a.class_weight)
+        vec2, clf2 = fit_lr(X2tr, ytr, a.C, a.class_weight, kind="anchor")
         Pva = full_probs(vec2, clf2, X2va, classes)
         stage2 = (vec2, clf2)
     else:
@@ -456,6 +499,12 @@ def main():
     base = evaluate(scorer, papers, val, {})
     print(f"[alg3] train OOF F={f_oof:.4f}  val {rv}  (base val F {base['F']})  "
           f"({time.time() - t0:.0f}s)", flush=True)
+    if a.classifier == "gb":
+        meta = {"classifier": "gb", "params": GB.PARAMS, "train_oof_F": f_oof, "val": rv, "val_base": base}
+        Path(a.out).mkdir(parents=True, exist_ok=True)
+        (Path(a.out) / "gb_eval.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
+        print(f"[alg3] gb: evaluation only, no extractor exported (tree export not written yet) -> {a.out}")
+        return
     meta = {"C": a.C, "class_weight": a.class_weight, "stack": a.stack, "span_C": a.span_C,
             "vocab": a.vocab, "tau_rounds": a.tau_rounds,
             "clues": a.clues, "n_clues": len(clues),
