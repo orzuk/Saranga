@@ -46,7 +46,10 @@ Implemented on main (not yet run on any paper):
   algorithm2e under [algo2e] and `\begin {algorithm}` (algorithm facts 43 -> 49, with lines
   38 -> 46); the else-branch of `\eIf`. Gold conversion unchanged (799 papers, 0 differ).
   Test: `tests/test_latex_layer_v7.py`.
-Not done: an align with several numbered rows is still one equation fact; the step checker on short proofs, schema
+- Step checker (rule 9): a capitalised sentence after a display with no period now counts as a new
+  sentence, so short proofs with displays may get steps (24 of 2856 silver proofs cross the 2-sentence
+  line, in 18 papers).
+Not done: an align with several numbered rows is still one equation fact; schema
 decisions 3/4 (`equivalent`, `motivates`), the 5-paper mini-pilot. The portal's "Your paper"
 (`portal/yours_llm.py`) still uses the v6 prompt.
 

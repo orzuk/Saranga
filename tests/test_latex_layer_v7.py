@@ -5,7 +5,8 @@ Runs without pytest:  python3 tests/test_latex_layer_v7.py
 - proof labels with inline math ("\\textbf{Estimate of $A$.}", "{\\bf $C_4$-freeness.}") and
   $(1)$-style part labels; an emphasised sentence is not a label;
 - algorithm2e under [algo2e] (environment algorithm2e) and "\\begin {algorithm}" with a space;
-- the else-branch of \\eIf has a span, so the enclosing loop spans both branches.
+- the else-branch of \\eIf has a span, so the enclosing loop spans both branches;
+- a capitalised sentence after a display with no period counts as a new sentence (step rule 9).
 """
 import sys
 from pathlib import Path
@@ -46,6 +47,10 @@ check(kinds == ["for", "if", "state", "else", "state", "state"], f"eIf lines: {k
 els = lines[kinds.index("else")]
 check(els.start is not None and lines[0].end >= lines[-1].end, "else has a span and the loop spans the else-branch")
 check(lines[4].parent == kinds.index("else"), "else-branch lines are children of the else")
+
+check(P._sentences("We have \\[ a=b \\] Hence $x$ holds. Therefore $y$.") == 3, "sentence after a display")
+check(P._sentences("We have \\[ a=b \\] where $a$ is real. Hence $y$.") == 2, "where-clause after a display")
+check(P._sentences("Since $x$ We get it.") == 1, "inline math does not end a sentence")
 
 if FAILS:
     print("\n".join(FAILS))

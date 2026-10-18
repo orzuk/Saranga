@@ -309,7 +309,12 @@ def _norm_map(text: str) -> tuple[str, list[int]]:
 def _sentences(text: str) -> int:
     def sub(m):        # a display that ends a sentence keeps its period
         inner = re.sub(r"(\\end\{[a-zA-Z*]+\}|\\\]|\$\$?|\\(?:label|tag)\{[^{}]*\}|\s)+$", "", m.group(0))
-        return " X. " if inner.endswith(".") else " X "
+        if inner.endswith("."):
+            return " X. "
+        # authors often omit the period after a display: a capital letter after it
+        # starts a new sentence, as in _sentence_initial_at
+        display = not re.match(r"\$(?!\$)|\\\(|\\overset", m.group(0))
+        return " X. " if display and re.match(r"\s*[A-Z]", text[m.end():]) else " X "
     plain = _MATH.sub(sub, text)
     return max(1, len([s for s in re.split(r"(?<=[.!?:])\s+(?=[A-Z\\])", plain.strip()) if s.strip()]))
 
