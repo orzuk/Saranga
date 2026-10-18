@@ -259,7 +259,10 @@ def reasoning_cycles(nodes: list[dict], edges: list[dict]) -> list[list[str]]:
     these representatives, backward ones included (a circular argument can run
     through a forward reference); self-loops (an induction step applying the
     theorem itself) are dropped, and so are edges marked `"mention": true`. A
-    cycle through a remark, an example or a top-level equation is not reported.
+    cycle through a remark, an example or a top-level equation is not reported,
+    nor one through an equation displayed in the statement of a result: citing
+    a formula ("by (3.2)", where (3.2) sits in Theorem 3) does not use the
+    theorem it is written in.
     Returns one node-id path per cycle found."""
     by_id = {n.get("id"): n for n in nodes}
     proved = {}
@@ -290,6 +293,7 @@ def reasoning_cycles(nodes: list[dict], edges: list[dict]) -> list[list[str]]:
     def rep(x):
         """The node, or the result of the proof it serves."""
         own, seen, start = None, set(), x
+        in_statement = by_id.get(x, {}).get("type") == "equation"
         while x in by_id and x not in seen:
             seen.add(x)
             t = by_id[x].get("type")
@@ -297,8 +301,11 @@ def reasoning_cycles(nodes: list[dict], edges: list[dict]) -> list[list[str]]:
                 if not local_to(own if own is not None else start, x):
                     return own            # used elsewhere: not part of what the proof proves
                 own, x = None, proved[x]  # part of what the proof proves,
+                in_statement = False      # (an equation of the proof stands for the result)
                 continue                  # which may itself sit inside a proof
             if own is None and (t in THEOREM_LIKE or t == "definition"):
+                if in_statement and t in THEOREM_LIKE:
+                    return None           # an equation in a result's statement drops out
                 own = x
             x = by_id[x].get("parent_id")
         return own

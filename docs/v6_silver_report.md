@@ -233,6 +233,7 @@ The math-ph warning mean comes almost entirely from one paper, 1309.7607v2, whic
 - **1611.01043v4:** a stale edge (the agent's `build.py` has AssumP1→cond:sum; the JSON does not).
 - **1309.2370v6:** check consistency across the 9 fragments.
 - **Mention edges:** review the 538, starting with the papers that have the most.
+  - **Done 2026-10-18 for the equation workarounds.** The cycle check no longer counts an edge from an equation displayed in a result's statement (5d). 67 mention flags in 8 papers were removed: those on such an edge that, unflagged, formed a cycle under the old check and form none under the new one. 471 mention edges remain, in 103 papers. Edges agents deleted to break such cycles are not recovered.
 - **Unproved results:** review the 88 that carry no rigor flag.
 
 ## 6. Comparison with v5.1 (same 200 papers, Claude Opus 5, prompt v5.1)

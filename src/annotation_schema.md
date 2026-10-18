@@ -301,7 +301,8 @@ Each edge represents a dependency or relationship between nodes.
 
 **No circular reasoning.** No cycle may consist only of results, a proof counting
 as the result it proves (with everything nested in it), or only of definitions.
-Edges marked `mention` are not counted. A circular argument that is the paper's
+Edges marked `mention` are not counted, nor edges from an equation displayed in
+the statement of a result (citing the formula does not use the result). A circular argument that is the paper's
 own is kept and recorded in a `source_problem` extraction note naming its nodes.
 
 **Edge direction convention:** an edge from A to B means "B depends on A" or "A supports B".
