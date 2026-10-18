@@ -24,28 +24,73 @@ it otherwise, and repeat. Nobody answers questions during the loop: decide, log,
 
 ## The experiment
 
-    timeout 900 python3 alg3/train.py --class-weight sqrt --stack \
+    timeout 1800 python3 alg3/train.py --class-weight sqrt --stack \
         --out alg3/runs/autoresearch/<tag>/run > alg3/runs/autoresearch/<tag>/run.log 2>&1
-    grep "train OOF F" alg3/runs/autoresearch/<tag>/run.log
+    grep "train OOF F" alg3/runs/autoresearch/<tag>/run.log            # -> oof
+    rm -rf alg3/runs/val_graphs/<tag>_run
+    python3 alg3/analyze.py --rules-dir alg3/runs/autoresearch/<tag>/run --name <tag>_run \
+        --top 0 --show 0 | head -2                                     # -> val
 
-That line holds `train OOF F=<oof>` (thresholds tuned on out-of-fold predictions for the 120
-train papers) and `val {... 'F': <val>}` (the 40 validation papers). Both are the pooled
-(micro) overall F of the whole extractor (base parser + tagger) under m1g, the headline
-metric of the paper. The baseline takes about 6 minutes on an 8-core Mac.
+`oof` is `train OOF F=<oof>` from the training log: thresholds tuned on out-of-fold
+predictions for the 120 train papers, the tagger's prose predictions plus the base parser's
+counts, m1g, pooled.
+
+**`val` is the END-TO-END node F1**: the exported extractor run inside the real parser on the
+40 validation papers, every node of the graph against the Level-1 silver, m1g, pooled (the
+`nodes m1g pooled ... F1` number of `analyze.py` graph mode; about 1 minute). Do NOT use the
+`val {... 'F': ...}` number of the training log: it scores the tagger's prose predictions
+alone and ignores how the parser merges them with its own nodes. In October 2026 a span model
+raised it by +0.009 while the end-to-end F1 fell by 0.002.
 
 **score = (oof + val) / 2.** Use the OOF number, which covers 120 papers, so that you don't
-chase noise in 40 validation papers. Keep a change when the score rises by at least 0.001.
-A tie with less code is a keep: simpler is better.
+chase noise in 40 validation papers.
+
+**Noise floor first.** Before any idea, run the baseline three times with different fold
+seeds (`--seed 0/1/2`; add the option to train.py if it is missing). Set
+**bar = max(0.001, 2 x the spread of the three scores)** and log it. Keep a change only when
+the score rises by at least the bar. A tie with less code is a keep: simpler is better.
+Runs of structural changes may take up to 30 minutes (`timeout 1800`).
 
 You may change train.py's options and defaults (C, class weights, `--stack`, `--min-count`,
 `--classifier lr|gb`, span model settings) as well as the code.
+
+## Explore, then exploit
+
+Small tweaks of existing clues and settings (thresholds, C, min-count, one more cue phrase)
+were tried in the first round (October 2026) and moved the score by about 0.001. This round
+is for **structural** changes, which change what the tagger can see or produce:
+
+- **First half of the budget: explore.** Each experiment is one bold, different idea, not a
+  variant of the previous one. No hyperparameter tuning in this half.
+- **Second half: exploit.** Refine and combine the ideas that won, and tune them.
+
+Where the errors are (`python3 alg3/analyze.py --rules-dir ... --name ...`, graph mode, VAL),
+largest first, with structural ideas to try:
+
+1. **Prose sentences the tagger never fires on** (~530 on VAL: definitions, claims, remarks).
+   Most get P(none) ~0.9. Ideas: paragraph- or section-level context; a sequence decoder over
+   a paper's sentences (e.g. Viterbi over types with learned transitions) instead of
+   independent decisions; a separate "is this a node" detector before the type model.
+2. **Nodes inside proofs and other environments** (~120 missed definitions and claims inside
+   proofs; ~50 spurious). The tagger only sees prose sentences outside environments. Idea:
+   an extra candidate stream of sentences inside proofs, built in alg3 (data.py / features.py
+   / runtime.py), with its own clues.
+3. **Granularity:** about 100 silver definitions sit inside one predicted multi-sentence
+   definition. Ideas: a split decision between sentences of a span; span model per type.
+4. **Wrong type** (~190): proof/claim, claim/definition, remark/definition confusions.
 
 ## What you may change
 
 - `alg3/features.py`: the clues of a sentence. Add, remove or reshape them, e.g. cue phrases,
   context windows, section and environment cues, bucketings, or conjunctions of clues.
 - `alg3/train.py`: the model and training: classifier, regularisation, class weights,
-  stacking, span model, and the threshold search space.
+  stacking, span model, decoding, and the threshold search space.
+- `alg3/data.py`: **which sentences are candidates** (e.g. sentences inside proofs), and
+  `alg3/runtime.py` to match at parse time. The silver labels and the scorer must stay as
+  they are: a new candidate is matched to the silver nodes by the same `Scorer` as all others.
+  After changing data.py, rebuild the cache (`python3 alg3/data.py --splits train,val
+  --tex-dir corpus/silver/tex_staged`, about a minute; tex dir: copy or symlink it from the
+  main checkout) and re-run the baseline before comparing.
 - When `FEATURES_VERSION` in features.py no longer describes the clues, bump it.
 
 ## What you must NOT change
@@ -54,8 +99,9 @@ You may change train.py's options and defaults (C, class weights, `--stack`, `--
   `tune_tau` in train.py, plus anything under `scripts/` and `src/`. The assert in
   `tune_tau`, which checks that the fast path agrees with the full decode, must keep
   passing.
-- The data: `alg3/data.py`, `alg3/cache/`, the silver (`corpus/silver/`), and the split
-  (`corpus/silver/split_v6_6-2-2.csv`).
+- The labels: the silver (`corpus/silver/`), the split (`corpus/silver/split_v6_6-2-2.csv`),
+  and how `data.py` matches silver nodes to sentences (it uses `scripts/distill_units.py`,
+  which you must not change). `data.py` must keep refusing test papers.
 - **Never read, load or score a TEST paper.** The cache holds train and val only, and
   `data.py` refuses test. The test set is scored once, by a human, with
   `scripts/compare_distillers.py`, after the loop.
@@ -81,7 +127,8 @@ is one line on what changed and why.
    (`--dump-oof`), or `python3 alg3/analyze.py --model <run dir>` (validation, per type).
    Pick one idea.
 2. Edit, then `git commit -am "<description>"`.
-3. Run the experiment. If it runs over 15 minutes, kill it and log a crash. If it crashes,
+3. Run the experiment, in the FOREGROUND (one blocking command; a non-interactive session
+   ends when your turn ends). If it runs over its time limit, kill it and log a crash. If it crashes,
    fix trivial mistakes and rerun once; otherwise log the crash, revert, and move on.
 4. Log the row in results.tsv.
 5. Keep the commit if the score improved, otherwise `git reset --hard HEAD~1`.
@@ -89,13 +136,13 @@ is one line on what changed and why.
 
 ## Budget
 
-Stop after **40 experiments or 6 hours**, whichever comes first, or when the human
-interrupts. Do not stop earlier to ask whether to go on. At the end, write
+Stop after **10 experiments** (the noise-floor baselines not counted), or the budget the
+launch prompt gives, or when the human interrupts. Do not stop earlier to ask whether to go on. At the end, write
 `alg3/runs/autoresearch/<tag>/SUMMARY.md` with:
 
 - the baseline and the best score
 - the kept commits, in order, each with its score change
-- what did not work
+- what did not work, and which explore ideas looked promising but need more work
 
 Leave the branch as it is: the human decides what goes into main.
 

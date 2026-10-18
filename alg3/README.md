@@ -65,7 +65,12 @@ defining, its place in its container) drops the edges the silver does not have, 
 so the viewer still shows the equation in its container's panel. Thresholds are chosen on
 out-of-fold predictions for the train papers (5 folds by paper).
 
+Since October 18 a model may also hold a **second stage** (`stack`): each definition pair is
+rescored from the first-stage probabilities of related pairs (the definition's other users, the
+node's other sources, two-hop paths), found by an autoresearch run.
+
 Models: `extractors/edges/silver_v6__defterm_edges__2026-10` (definition edges only; test edge F1
-0.262 → 0.333) and `extractors/edges/silver_v6__edges_filter__2026-10` (filter + definition edges;
-see its README).
+0.262 → 0.333), `extractors/edges/silver_v6__edges_filter__2026-10` (filter + definition edges;
+val 0.431) and `extractors/edges/silver_v6__edges_stack__2026-10` (+ second stage; val 0.433,
+OOF 0.435, mean of three fold seeds; the current best). See their READMEs.
 

@@ -16,6 +16,10 @@ Two logistic regressions over deterministic clues, as alg3:
                how it is used, how many nodes of the paper use it, X's type, order, distance;
                trained on rule graphs of the TRAIN papers, labelled by the Level-1 silver through
                the m1g node alignment (src/LLMVersion/edge_metrics.py).
+  stack        a second logistic regression that rescores each pair from the first-stage
+               probabilities of related pairs (D's other users, X's other sources, D with X's
+               neighbours, with X's proof or proved result, two hops D -> Y -> X); trained on
+               the first stage's out-of-fold probabilities (`stack_features`).
 The threshold is chosen by the edge F1 of the whole graph on out-of-fold predictions for the
 TRAIN papers (5 folds by paper); the VAL papers are scored at it (and the VAL curve printed),
 for choosing between models; test is scored once, with edge_metrics.py. The model is saved as JSON (vocabulary + weights), so applying it needs no
@@ -261,6 +265,59 @@ def pairs_of(nodes: list, dmodel: LR) -> list:
     return out
 
 
+def stack_features(graph: dict, rows: list, q: list) -> list:
+    """Second-stage clues of each pair (D, X): its first-stage probability and those of the
+    related pairs: D's other users, X's other sources, D with X's neighbours, D with the proof of
+    X (or the result X proves)."""
+    nodes = graph.get("nodes", [])
+    order = {n["id"]: i for i, n in enumerate(nodes)}
+    ids = [n["id"] for n in nodes]
+    partner = collections.defaultdict(set)
+    for e in graph.get("edges", []):
+        if e["type"] == "proves":
+            partner[e["source"]].add(e["target"])
+            partner[e["target"]].add(e["source"])
+    P = {(r[0], r[1]): p for r, p in zip(rows, q)}
+    by_d, by_x = collections.defaultdict(list), collections.defaultdict(list)
+    for r, p in zip(rows, q):
+        by_d[r[0]].append(p)
+        by_x[r[1]].append(p)
+    sd = {d: sorted(v, reverse=True) for d, v in by_d.items()}
+    users = collections.defaultdict(list)
+    for r, p in zip(rows, q):
+        if p >= 0.2:
+            users[r[0]].append(r[1])
+    xtype = {n["id"]: n["type"] for n in nodes}
+    sx = {x: sorted(v, reverse=True) for x, v in by_x.items()}
+    out = []
+    for r, p in zip(rows, q):
+        d, x, f = r[0], r[1], r[2]
+        i = order[x]
+        nb = max((P.get((d, ids[j]), 0.0) for j in (i - 1, i + 1) if 0 <= j < len(ids)), default=0.0)
+        pt = max((P.get((d, y), 0.0) for y in partner.get(x, ())), default=0.0)
+        others_x = [v for v in sx[x] if v != p] or [0.0]
+        g = dict(f)
+        z = math.log(max(p, 1e-6) / max(1 - p, 1e-6))
+        g.update({"s1_logit": z, f"s1_p={_b(p, (0.1, 0.2, 0.3, 0.45, 0.6))}": 1.0,
+                  f"s1_rank_d={min(sd[d].index(p), 10) // 2}": 1.0,
+                  f"s1_rank_x={min(sx[x].index(p), 4)}": 1.0,
+                  f"s1_nd_hi={_b(sum(v >= 0.25 for v in sd[d]), (0, 2, 5, 12, 30))}": 1.0,
+                  f"s1_nx_hi={_b(sum(v >= 0.25 for v in sx[x]), (0, 1, 3, 6))}": 1.0,
+                  "s1_max_other_x": others_x[0], "s1_nb": nb, "s1_partner": pt,
+                  f"s1_partner={_b(pt, (0.05, 0.25, 0.5))}|p={_b(p, (0.15, 0.35))}": 1.0,
+                  f"s1_nb={_b(nb, (0.05, 0.25, 0.5))}|p={_b(p, (0.15, 0.35))}": 1.0})
+        pb = _b(p, (0.15, 0.3, 0.5))
+        two = max((min(P.get((d, y), 0.0), P.get((y, x), 0.0)) for y in users.get(d, ()) if y != x), default=0.0)
+        hows = [k for k in f if k.startswith("how=") and "|" not in k]
+        g.update({"s1_two_hop": two, f"s1_two={_b(two, (0.1, 0.25, 0.5))}|p={pb}": 1.0,
+                  f"s1_x={xtype[x]}|p={pb}": 1.0, f"s1_d={xtype[d]}|p={pb}": 1.0,
+                  f"s1_{hows[0] if hows else 'how=?'}|p={pb}": 1.0,
+                  f"s1_rank_x={min(sx[x].index(p), 3)}|p={pb}": 1.0,
+                  "s1_gap_x": p - others_x[0]})
+        out.append(g)
+    return out
+
+
 # ── the parser's own edges: keep or drop ────────────────────────────────────
 LABEL = re.compile(r"\\label\{([^{}]+)\}")
 REF = re.compile(r"\\(?:eq|c|C|auto)?ref\*?\{([^{}]+)\}")
@@ -353,6 +410,7 @@ class EdgeModel:
         self.threshold, self.id = d["threshold"], d.get("id", Path(model_dir).name)
         self.filter = LR(d["filter"]) if d.get("filter") else None     # keep/drop the parser's edges
         self.drop_below = d.get("drop_below", 0.0)
+        self.stack = LR(d["stack"]) if d.get("stack") else None
 
 
 def add_edges(graph: dict, model: EdgeModel, threshold: float | None = None) -> int:
@@ -362,7 +420,11 @@ def add_edges(graph: dict, model: EdgeModel, threshold: float | None = None) -> 
     th = model.threshold if threshold is None else threshold
     if model.filter is not None:
         filter_edges(graph, [model.filter.p(f) for _e, f in parser_edge_rows(graph)], model.drop_below)
-    scored = [(did, xid, model.pmodel.p(f)) for did, xid, f in pairs_of(graph.get("nodes", []), model.dmodel)]
+    rows = pairs_of(graph.get("nodes", []), model.dmodel)
+    q = [model.pmodel.p(f) for _d, _x, f in rows]
+    if model.stack is not None:
+        q = [model.stack.p(g) for g in stack_features(graph, rows, q)]
+    scored = [(did, xid, p) for (did, xid, _f), p in zip(rows, q)]
     return _add(graph, scored, th, model.id)
 
 
@@ -531,6 +593,9 @@ def cmd_train(a):
     tp = paper_pairs(EM, Path(a.graphs), train, D)
     vp = paper_pairs(EM, Path(a.graphs), val, D)
     pids = sorted(tp)
+    if a.seed:                                               # reshuffle the fold assignment
+        import random
+        random.Random(a.seed).shuffle(pids)
     # 1. the filter on the parser's edges: out-of-fold keep-probabilities pick drop_below
     ftr, fva = filter_data(EM, tp), filter_data(EM, vp)
     foof = {}
@@ -561,8 +626,23 @@ def cmd_train(a):
         oof.update({pid: [L.p(f) for _d, _x, f, _l in tp[pid][1]] for pid in held})
     pairs = fit_pairs(tp, pids)
     L = LR(pairs)
+    vq = {pid: [L.p(f) for _d, _x, f, _l in rows] for pid, (_g, rows) in vp.items()}
+    # 3. the second stage, on the first stage's out-of-fold probabilities (same folds)
+    s2 = {pid: (tp[pid][0], [(d, x, g, lab) for (d, x, _f, lab), g in
+                             zip(tp[pid][1], stack_features(tp[pid][0], tp[pid][1], oof[pid]))]) for pid in pids}
+    oof2 = {}
+    for k in range(5):
+        held = pids[k::5]
+        L2 = LR(fit_pairs(s2, [p for p in pids if p not in set(held)]))
+        oof2.update({pid: [L2.p(f) for _d, _x, f, _l in s2[pid][1]] for pid in held})
+    stack = fit_pairs(s2, pids)
+    L2 = LR(stack)
+    v2 = {pid: [L2.p(g) for g in stack_features(g0, rows, vq[pid])] for pid, (g0, rows) in vp.items()}
+    o1, v1 = curve_f1(EM, tp, oof, (0.25,))[0.25], curve_f1(EM, vp, vq, (0.25,))[0.25]
+    print(f"[stage1] threshold 0.25: OOF F1 {o1[2]:.3f} | val F1 {v1[2]:.3f}")
+    oof, vq = oof2, v2
     oc = curve_f1(EM, tp, oof, THS)
-    vc = curve_f1(EM, vp, {pid: [L.p(f) for _d, _x, f, _l in rows] for pid, (_g, rows) in vp.items()}, THS)
+    vc = curve_f1(EM, vp, vq, THS)
     curve = []
     for th in THS:
         (op, orr, of), (p, r, f) = oc[th], vc[th]
@@ -575,7 +655,7 @@ def cmd_train(a):
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     doc = {"id": out.name, "definiendum": dmodel, "pairs": pairs, "threshold": best[1],
-           "filter": fmodel, "drop_below": drop}
+           "filter": fmodel, "drop_below": drop, "stack": stack}
     json.dump(doc, open(out / "model.json", "w"))
     json.dump({"extractor_id": out.name, "kind": "definition_edges", "code": "alg3/edges.py",
                "trained_on": {"graphs": str(Path(a.graphs)), "train_papers": len(train), "val_papers": len(val)},
@@ -605,6 +685,7 @@ def main():
     t = sub.add_parser("train", help="train on the train papers, pick the threshold on val")
     t.add_argument("--graphs", required=True, help="rule graphs of the silver papers (e.g. .../tagger_v6)")
     t.add_argument("--out", required=True, help="model directory, e.g. extractors/edges/<id>")
+    t.add_argument("--seed", type=int, default=0, help="shuffle the papers before the 5 folds (0: by id)")
     p = sub.add_parser("apply", help="add the model's edges to a folder of graphs")
     p.add_argument("--graphs", required=True)
     p.add_argument("--model", required=True)
