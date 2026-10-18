@@ -88,7 +88,10 @@ it exactly. Run it before anything else (`<scratch>` is any scratch directory):
 For an environment fact, emit its node with exactly the fact's span. That
 includes every numbered equation (labelled or not), wherever it sits: inside a
 theorem, a proof or a definition it is still its own `equation` node, because
-the paper can cite it as "(3.2)". An unnumbered displayed equation (`\[...\]`, `$$...$$`,
+the paper can cite it as "(3.2)". A multi-line display (`align`, `gather`,
+`eqnarray`) whose numbered rows each have their own left-hand side is given as one
+fact per equation; a chain (`x &= y \\ &\le z`) stays one fact, whatever its
+numbering. An unnumbered displayed equation (`\[...\]`, `$$...$$`,
 `equation*`, `align*`) is not a node of its own: like inline math, it is part
 of the text of the node that contains it. Confirm or correct `type`
 (a `display` of "Fact" or "Property" is classified by Hard rule 4; when `type` is null,

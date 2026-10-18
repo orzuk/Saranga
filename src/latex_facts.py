@@ -813,8 +813,10 @@ def extract_facts(tex: str) -> dict:
                 if s["id"] == id_:
                     s["labels"].append(key)
 
-    def close_eq_line(fact: dict, final: bool = False):
+    def close_eq_line(fact: dict, pos: int, final: bool = False):
         nonlocal line_labels, line_nonumber, sub_ctr
+        row = {"start": fact.get("_line_start", fact["start"]), "end": pos, "number": None, "labels": []}
+        fact.setdefault("_rows", []).append(row)   # for _split_rows
         numbered = not fact["env"].endswith("*") and not line_nonumber
         if numbered:
             fact["printed"] = True            # LaTeX prints a number, computable or not
@@ -828,6 +830,7 @@ def extract_facts(tex: str) -> dict:
             return                            # takes the next numbered line's number
         for key in line_labels:
             add_label(key, "equation", fact["id"], num)
+        row["number"], row["labels"] = num, list(line_labels)
         if num and fact["number"] is None:
             fact["number"] = num
         line_labels, line_nonumber = [], False
@@ -982,9 +985,9 @@ def extract_facts(tex: str) -> dict:
                 if f["kind"] == "equation" and env.rstrip("*") in _MULTILINE_EQ:
                     last_line = source[f.get("_line_start", f["start"]):pos]
                     if last_line.strip() or line_labels:
-                        close_eq_line(f, final=True)
+                        close_eq_line(f, pos, final=True)
                 elif f["kind"] == "equation":
-                    close_eq_line(f, final=True)
+                    close_eq_line(f, pos, final=True)
                 stack.pop()
                 f["end"], f["outer_end"] = pos, after
                 if f["kind"] != "equation":
@@ -1014,7 +1017,7 @@ def extract_facts(tex: str) -> dict:
                 if top and top["kind"] == "equation" and top["env"].rstrip("*") in _MULTILINE_EQ \
                         and open_envs and open_envs[-1] == top["env"] \
                         and _brace_depth(source, top["start"], pos) == 0:
-                    close_eq_line(top)
+                    close_eq_line(top, pos)
                     top["_line_start"] = g.end()
             elif g.groupdict().get("nonumber"):
                 line_nonumber = True
@@ -1079,6 +1082,7 @@ def extract_facts(tex: str) -> dict:
                 for f in facts if f["kind"] == "equation"]
     displays += _bare_displays(source, body_start, facts)
     displays.sort(key=lambda d: d["outer_start"])
+    facts = _split_rows(facts, labels, refs, cites, source)
     environments.sort(key=lambda e: e["outer_start"])
     # Equations are facts only when the paper can point at them: a \label, or a
     # printed number that prose can cite as "(3)". An unnumbered display is
@@ -1131,6 +1135,111 @@ def extract_facts(tex: str) -> dict:
             "facts": facts, "sections": sections, "labels": labels, "refs": refs,
             "cites": cites, "number_index": number_index,
             "environments": environments, "displays": displays}
+
+
+# A row of a multi-line display that continues the previous row's formula has an
+# empty first cell ("&= z", "&\\le \\dots", "&\\quad + c", eqnarray's "&=& z"), or, in a
+# display without alignment (gather), opens with a relation ("= z", "\\le \\dots").
+_ROW_PREFIX = re.compile(r"(?:\s+|\\(?:label|tag\*?)\s*\{[^{}]*\}"
+                         r"|\\(?:nonumber|notag|displaystyle|nn|q?quad|enspace|thinspace|medspace|thickspace)(?![a-zA-Z])"
+                         r"|\\[,;:! ]|\\(?:hspace|hskip|phantom|hphantom|vphantom)\*?\s*(?:\{[^{}]*\}|-?[\d.]+\s*[a-z]+)"
+                         r"|^\[\s*-?[\d.]+\s*(?:pt|mm|cm|em|ex|in|bp)\s*\])")
+_ROW_REL = re.compile(
+    r"(?:=|<|>|\+|:=|\\(?:le|leq|ge|geq|leqq|geqq|leqslant|geqslant|ne|neq|approx|sim|simeq|cong|equiv"
+    r"|lesssim|gtrsim|lessapprox|gtrapprox|ll|gg|subset|subseteq|subsetneq|supset|supseteq|to|mapsto"
+    r"|rightarrow|longrightarrow|Rightarrow|Longrightarrow|leftarrow|Leftarrow|Longleftarrow|iff|implies"
+    r"|impliedby|Leftrightarrow|Longleftrightarrow|propto|preceq|succeq|prec|succ|asymp|cdot|times|pm|mp"
+    r"|coloneqq|eqqcolon|triangleq|doteq|stackrel|overset|underset)(?![a-zA-Z]))")
+_ROW_TEXT = re.compile(r"\\(?:text|mbox|textrm|textup|textnormal|mathrm\{\s*(?:and|or|where)\b)|\\(?:short)?intertext\b")
+# multi-line displays whose rows may be separate equations (numcases rows are cases of one)
+_SPLIT_ENVS = {"align", "gather", "eqnarray", "flalign", "alignat"}
+
+
+def _row_continues(text: str) -> bool:
+    """Does a row of an align continue the previous row's formula (no left-hand side of its own)?"""
+    def strip(t):
+        prev = None
+        while t != prev:
+            prev, t = t, _ROW_PREFIX.sub("", t, count=1) if _ROW_PREFIX.match(t) else t
+        return t
+    text = strip(text)
+    if not text:
+        return True                       # an empty row joins
+    if text.startswith("&"):              # empty first cell: no left-hand side, unless a text
+        return not _ROW_TEXT.match(strip(text.lstrip("&")))   # connective opens a new one
+    return bool(_ROW_REL.match(text))
+
+
+def _split_rows(facts: list[dict], labels: dict, refs: list[dict], cites: list[dict],
+                source: str) -> list[dict]:
+    r"""One equation fact per equation of a multi-line display.
+
+    An align whose numbered rows each have their own left-hand side ("a &= b (1) \\ c &= d
+    (2)") holds two equations the paper cites separately, so it becomes one fact per
+    row group: a row that continues the previous formula ("&= z", "&\le ...") joins its
+    group, and so does a row with no number and no label. A chain ("x &= y (1) \\ &= z
+    (2)") stays one fact carrying all its labels. The display (`displays`) stays whole."""
+    n = max((int(f["id"][1:]) for f in facts if f["id"][1:].isdigit()), default=0)
+    out = []
+    for f in facts:
+        rows = f.pop("_rows", None)
+        f.pop("_line_start", None)
+        if f["kind"] != "equation" or f["env"].rstrip("*") not in _SPLIT_ENVS or not rows or len(rows) < 2:
+            out.append(f)
+            continue
+        groups = [[rows[0]]]
+        for r in rows[1:]:
+            (groups[-1].append(r) if _row_continues(source[r["start"]:r["end"]].strip())
+             else groups.append([r]))
+        pointable = [g for g in groups if any(r["number"] or r["labels"] for r in g)]
+        if len(pointable) < 2:
+            out.append(f)
+            continue
+        merged = []                       # a group with no number and no label joins the one before
+        for g in groups:
+            if merged and not any(r["number"] or r["labels"] for r in g):
+                merged[-1] += g
+            elif merged and not any(r["number"] or r["labels"] for r in merged[-1]):
+                merged[-1] += g           # ... or, at the start, the one after
+            else:
+                merged.append(list(g))
+        parts = []
+        for k, g in enumerate(merged):
+            start = f["start"] if k == 0 else g[0]["start"]
+            it = re.match(r"\s*\\(?:short)?intertext\s*(?=\{)", source[start:f["end"]])
+            if it:                            # \intertext{and} is prose between two equations
+                _, close = _group(source, start + it.end())
+                start = close if close else start
+            end = f["end"] if k == len(merged) - 1 else g[-1]["end"]
+            if k:
+                n += 1
+            keys = [key for r in g for key in r["labels"]]
+            num = next((r["number"] for r in g if r["number"]), None)
+            parts.append(dict(f, id=f["id"] if k == 0 else f"F{n}", start=start, end=end,
+                              outer_start=f["outer_start"] if k == 0 else start,
+                              outer_end=f["outer_end"] if k == len(merged) - 1 else end,
+                              number=num, labels=keys, statement=span_text(source, start, end),
+                              refs=[r["key"] for r in refs if r.get("in") == f["id"] and start <= r["offset"] < end],
+                              cites=[c for x in cites if x.get("in") == f["id"] and start <= x["offset"] < end
+                                     for c in x["keys"]]))
+        stray = [key for key in f["labels"] if not any(key in p["labels"] for p in parts)]
+        parts[0]["labels"] = stray + parts[0]["labels"]   # a label the rows did not record stays first
+        for p in parts:
+            for key in p["labels"]:
+                if key in labels and labels[key].get("id") == f["id"]:
+                    labels[key]["id"] = p["id"]
+            for r in refs:
+                if r.get("in") == f["id"] and p["start"] <= r["offset"] < p["end"]:
+                    r["in"] = p["id"]
+            for x in cites:
+                if x.get("in") == f["id"] and p["start"] <= x["offset"] < p["end"]:
+                    x["in"] = p["id"]
+        for r in refs:
+            t = labels.get(r["key"])
+            if t and r.get("target") == f["id"]:
+                r["target"] = t["id"] or t["enclosing"]
+        out.extend(parts)
+    return out
 
 
 # A proof written by hand: a "Proof" heading at the start of a line, in a font

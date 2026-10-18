@@ -60,7 +60,15 @@ Implemented on main (not yet run on any paper):
     biconditional, optional `equivalent_conditions` = verbatim span of each side (>= 2);
   - scorer (`graph_score.score`): a gold arrow drawn as an equivalence (144 in the 281 papers,
     8 in the 146) is matched in either direction.
-Not done: an align with several numbered rows is still one equation fact; the 5-paper mini-pilot. The portal's "Your paper"
+- Multi-line displays (`latex_facts._split_rows`): an align/gather/eqnarray whose numbered rows have
+  their own left-hand sides is one equation fact per equation; a row with an empty first cell
+  ("&= z", "&\\le") or opening with a relation continues the previous one, a row with no number or
+  label joins its neighbour, `\\intertext` prose belongs to neither. Splits: 203 facts in 53 of the 200
+  silver papers, 1796 in 293 gold-candidate papers, 279 in 31 blueprint files; every other fact,
+  label number and ref unchanged; gold conversion unchanged (799 papers, 0 differ). finalize() on the
+  old v6 graphs: +11 errors in 2 papers, where one v6 equation node holds a now-split align (expected;
+  v7 emits one node per fact). Test: `tests/test_align_rows.py`.
+Not done: the 5-paper mini-pilot. The portal's "Your paper"
 (`portal/yours_llm.py`) still uses the v6 prompt.
 
 ## v7 scope (proposed, NOT yet confirmed by Or)
