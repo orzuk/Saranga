@@ -47,7 +47,8 @@ Each node is a mathematical object. Required fields are marked with **R**, optio
 | `type` | **R** | string | One of the types below |
 | `name` | **R** | string or null | Descriptive name (e.g., "Markov's Inequality") |
 | `section` | O | string | Section number (e.g., `"3.1"`) |
-| `statement` | **R** | string | Clean 1-3 sentence summary |
+| `statement` | **R** | string | Verbatim span of the prepared source (LaTeX kept; `\label`/`\index` dropped, whitespace collapsed); the finishing step checks it |
+| `statement_short` | O | string | The extractor's compression: one sentence (two for a long proof or algorithm); for a proof, its strategy |
 | `raw_latex` | O | string | Original LaTeX source |
 | `clean_text` | O | string | LaTeX with math replaced by `[MATH]` |
 | `label` | O | string | LaTeX `\label{...}` key of the source environment, verbatim, **without** the backslash or braces (`thm:main`, not `\label{thm:main}`). Populate whenever the environment carries one — it is what makes the paper's own `\ref`/`\eqref` resolvable to a node id. See E146. |
@@ -56,6 +57,11 @@ Each node is a mathematical object. Required fields are marked with **R**, optio
 | `spans` | O | list | Fine-grained semantic spans (see below) |
 | `origin` | O | string | Provenance: `"paper"` (default) or `"external"` (cited prior result the paper invokes but does not establish — see below) |
 | `origin_citation` | O | string | For `origin: "external"` nodes only: free-text source identifier (e.g., `"Sinkhorn 1967"`, `"Cover & Thomas, Elements of Information Theory"`) |
+| `display` | O | string | v7, set by the finishing step: the author's environment word ("Theorem", "Hauptsatz", "Fact"), kept next to `type`, which follows the content |
+| `number` | O | string | v7, set by the finishing step: the number LaTeX prints for the node ("3.2"), where it can be computed |
+| `cites` | O | list of strings | v7, set by the finishing step: the bib keys `\cite`d in the statement, in order |
+| `also_stated_at` | O | list of strings | v7, set by the extractor: verbatim spans of the other copies of a statement the paper gives twice or more (introduction and body); those copies get no node, and `\ref`s to their labels resolve to this one |
+| `main` | O | bool | v7, set by the extractor: `true` on the paper's main results (results or algorithms), the ones the abstract or introduction announces |
 
 ### Origin attribution
 
@@ -260,7 +266,7 @@ An optimization formulation is `type: "problem"` with `subclass: "optimization"`
 
 | Field | Req | Type | Description |
 |-------|-----|------|-------------|
-| `definiendum` | O | Span | The term being defined, or an introduced symbol written as `$...$` |
+| `definiendum` | O | Span or list | The term being defined, or an introduced symbol written as `$...$`; v7: a list when one sentence introduces several ("we write $X$, $Y$ and $Z$ for ...") |
 | `genus` | O | Span | What category it belongs to (e.g., "is a matrix") |
 | `differentia` | O | list of Span | Distinguishing conditions |
 
@@ -300,13 +306,18 @@ Each edge represents a dependency or relationship between nodes.
 | `note` | O | string | Free-text annotation; the finishing step writes the `\ref{key}` an edge came from |
 | `backward` | O | bool | `true` when the source comes after the target in the paper (a forward reference, an induction step using the result itself); set by the finishing step |
 | `mention` | O | bool | `true` when the source is only referred to, not relied on ("let $w$ be as in Theorem 1", "the lemma is used in the proof of Proposition 3"); or that the target is about without using it (equivalent to, motivated by, analogous to a conjecture or another result; v7); set by the extractor. The circular-reasoning check ignores these edges |
+| `basis` | O | string | v7: how the dependency is known: `ref` (a `\ref`/`\eqref` states it) and `syntax` (a proof environment's position or `[Proof of ...]`), set by the finishing step; `named` (the text names the source in words), `term` (the target uses a term or symbol the source defines) or `inferred` (read from the mathematics), set by the extractor |
 | `alternative` | O | bool | v7: `true` on the `proves` edge of a second proof of a result that has its own proof ("another proof"; Theorem 1 derived from an equivalent Theorem 2). The circular-reasoning check does not count that proof as the result |
 
 **No circular reasoning.** No cycle may consist only of results, a proof counting
 as the result it proves (with everything nested in it), or only of definitions.
 Edges marked `mention` are not counted, nor edges from an equation displayed in
-the statement of a result (citing the formula does not use the result). A circular argument that is the paper's
-own is kept and recorded in a `source_problem` extraction note naming its nodes.
+the statement of a result (citing the formula does not use the result), nor a
+proof whose `proves` edge is `alternative`. A cycle the paper's text states is kept
+and recorded in a `cycle` extraction note (v7): its nodes in order, `kind`
+(`wrong_ref`: a `\ref` to the wrong result; `granularity`: results using different
+parts of each other; `circular`: a circular argument) and one verbatim quote per
+edge. v6 files record such cycles in a `source_problem` note.
 
 **Edge direction convention:** an edge from A to B means "B depends on A" or "A supports B".
 

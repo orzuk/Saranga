@@ -38,11 +38,7 @@ instructions are named by their headings in quotes.)
 **Core rule #1 — `statement` is a verbatim copy** from the prepared source,
 LaTeX preserved exactly.
 
-**Core rule #2 — `statement_short` is your compression**, populated
-whenever a meaningful short version exists: one sentence, or two for a long
-proof or algorithm (see "CORE RULE #2"). For proofs especially,
-`statement_short` should capture the strategy ("By induction on $n$",
-"Density-increment iteration").
+**Core rule #2 — `statement_short` is your compression** (see "CORE RULE #2").
 
 ## This paper
 
@@ -184,8 +180,6 @@ Level-1 nodes from their spans. Never draw a `uses` edge to express containment.
      (e.g. `x^* = \arg\min_x f(x)`) → `type="problem"`, not `definition`.
    - A `\begin{definition}` whose body is a step-by-step procedure →
      `type="algorithm"`.
-   - A `\begin{lemma}` whose body is a numerical bound used as
-     scaffolding stays `lemma`.
    - A custom `\newtheorem{property}` or `\newtheorem{fact}` → `theorem` with
      `origin: external` if it states a cited result, otherwise `claim`.
 
@@ -211,37 +205,39 @@ Level-1 nodes from their spans. Never draw a `uses` edge to express containment.
    full (see "Type of a result stated in prose").
 
    Count of result nodes you emit ≥ count of numbered or labelled result
-   environments in the source (a restated copy, see "One node per repeated
-   statement", is not counted).
+   environments in the source (not counting a restated copy, see "One node per
+   repeated statement", or an environment whose content you retyped, Hard rule 4).
 
 7. **No circular reasoning; mentions are marked.** A `uses` edge `A → B` reads
     "B uses A". No cycle may consist only of results, where a proof counts as the
-    result it proves, or only of definitions. Some real dependencies point
-    against the paper's order: a proof that cites "Remark 5 below", or an
-    induction step that applies the theorem itself at a smaller case; the
-    finishing step marks these `"backward": true` by position, and they stay.
-    An edge whose source is only referred to, not relied on ("let $w$ be as in
-    Theorem 1", "the lemma is used in the proof of Proposition 3"), gets
-    `"mention": true`. So does an edge to a result that is *about* a conjecture,
-    an open problem or another result without using it: "Theorem 2 is equivalent
-    to Conjecture 1", "motivated by", "by analogy with", "the heuristic behind".
-    "Equivalent" is never a dependency by itself: draw only the uses the proofs
-    make. A second proof of a result that has its own proof ("we give another
-    proof", or Theorem 1 derived from Theorem 2 after its direct proof, closing
-    the loop of two equivalent theorems) gets `"alternative": true` on its
-    `proves` edge; the first proof the paper gives keeps no flag. For such a `\ref`, add the edge yourself before the
-    finishing step runs, confidence `0.95`, with `"mention": true` (the finishing
-    step gives it `basis: "ref"`); it will not add it again. When the finishing step reports circular reasoning, mark the edge on
-    the path that is only a mention. If none is, check every edge on the cycle
-    again against the text: an edge you inferred (`basis: "inferred"`) that the
-    text does not state is the likely error; correct it. If the paper's text
-    states every edge, the cycle is a finding: keep the edges and add a `cycle`
-    note (see "Extraction notes") with its `kind`: `wrong_ref` (a `\ref` that
-    points at the wrong result, a typo), `granularity` (the results use
-    different parts of each other, parts too intertwined to be separate claims)
-    or `circular` (the argument really is circular). Never delete
-    an edge, retype it, or change a node's span to remove a cycle. No reciprocal
-    `uses` edges between the same pair.
+    result it proves, or only of definitions.
+    - *Backward edges stay.* A proof that cites "Remark 5 below", or an induction
+      step that applies the theorem itself at a smaller case, points against the
+      paper's order; the finishing step marks it `"backward": true`.
+    - *Mentions.* An edge whose target does not rely on the source gets
+      `"mention": true`: the source is only referred to ("let $w$ be as in
+      Theorem 1", "the lemma is used in the proof of Proposition 3"), or the
+      target is about it without using it ("Theorem 2 is equivalent to
+      Conjecture 1", "motivated by", "by analogy with", "the heuristic behind").
+      When a `\ref` states a mention, add that edge yourself before the finishing
+      step runs, confidence `0.95`, with `"mention": true` (the finishing step
+      gives it `basis: "ref"` and does not add it again).
+    - *Equivalence is not a dependency.* For "equivalent" results draw only the
+      uses their proofs make; no reciprocal `uses` edges between the same pair.
+    - *Second proofs.* A second proof of a result that has its own proof ("we
+      give another proof", or Theorem 1 derived from Theorem 2 after its direct
+      proof, closing the loop of two equivalent theorems) gets
+      `"alternative": true` on its `proves` edge; the first proof keeps no flag.
+    - *When the finishing step reports a cycle*, mark the edge on it that is only
+      a mention. If none is, check every edge on the cycle against the text: an
+      edge you inferred (`basis: "inferred"`) that the text does not state is the
+      likely error; correct it. If the text states every edge, the cycle is a
+      finding: keep the edges and add a `cycle` note (see "Extraction notes")
+      with its `kind`: `wrong_ref` (a `\ref` pointing at the wrong result, a
+      typo), `granularity` (the results use different parts of each other, too
+      intertwined to be separate claims) or `circular` (the argument is
+      circular). Never delete an edge, retype it, or change a node's span to
+      remove a cycle.
 
 8. **`tags[]` is topical only; `proof_strategy[]` is for proof strategy.**
 
@@ -342,9 +338,6 @@ Level-1 nodes from their spans. Never draw a `uses` edge to express containment.
   step 8) = the number of nodes you gave a
   `rigor` field. Always emit it, `0` included: the finishing step rejects a
   graph without it.
-- `label` — the `\label{...}` key of the environment this node came
-  from, filled by the finishing step when the node's statement is that
-  environment's body.
 - `parent_id` — "is part of": the innermost node containing this one (see "The
   graph is a hierarchy").
 - `proves` — on a `proof` node, the id of the result it proves, the target of
@@ -362,7 +355,8 @@ Level-1 nodes from their spans. Never draw a `uses` edge to express containment.
   assumptions give which conclusions (see Regime E).
 - `main` — `true` on the paper's main results (results or algorithms): the ones its
   abstract or introduction announces as its contributions. Omit it elsewhere.
-- `display`, `number`, `cites` — filled by the finishing step; never set them.
+- `label`, `display`, `number`, `cites` — filled by the finishing step (see "Two
+  layers"); never set them.
 
 ### Assumption / conclusion decomposition (results and conjectures)
 
@@ -388,6 +382,8 @@ source.
 
 - **Regime C — pure identity.** Closed-form equality with no free
   variables. `assumptions: []`, `conclusions: ["..."]` (verbatim span).
+  Before choosing Regime C, check the surrounding text for declarations of the
+  statement's variables; if there are any, use Regime B and quote them verbatim.
 
 - **Regime D — "iff" / "the following are equivalent".** The statement
   asserts that conditions coincide. `assumptions` = only the hypotheses
@@ -419,10 +415,6 @@ source.
   conclusions. Two independent implications ("If A then B, and if C then D") are
   two parts with no `adds_to`. Parts proved separately and used separately are
   claims instead (see "Parts proved separately are claims").
-
-Before choosing Regime C, check the surrounding text for declarations of the
-statement's variables; if there are any, use Regime B and quote them
-verbatim.
 
 ### Definition decomposition — definiendum / genus / differentia (definitions)
 
@@ -512,13 +504,8 @@ that a `statement` was copied from, the node is invalid.
 `statement_short`, by contrast, is your own compression — you may
 write it freshly. Do not confuse the two.
 
-### LaTeX math
-
-Copy math exactly as the source writes it: every `$`, every backslash command
-(`\Sigma`, `\mathbb`, `\frac`, ...), every brace and subscript, and display math
-(`\[ ... \]`, `\begin{equation} ... \end{equation}`) as display math. Do not
-rewrite, normalize or "fix" notation, not even to add missing braces: the
-statement must match the source character for character.
+Math is copied character for character too: every `$`, backslash command,
+brace and subscript, displays as displays; never normalize or "fix" notation.
 
 ### Anti-paraphrase catalogue
 
@@ -702,6 +689,8 @@ is yours. Build the dependency edges in four passes:
    step.
 3. **Results built on results.** For each result and proof, add a `uses` edge
    from every result it applies, earlier or later.
+4. **Inside a proof.** A step that relies on an earlier step's conclusion, in the
+   same proof, gets a `uses` edge from that step.
 
 **Where a dependency points: the statement or the proof.** A node the result's
 *statement* needs (a definition it uses, a result its hypotheses refer to) gets
@@ -714,8 +703,6 @@ Theorem 2 is stated with Definition 1 and proved with Lemma 3: `DP1 → TP2` and
 proof serves that proof. When a later node relies on it, check the edge's source:
 it usually relies on the result the proof proves. Keep the edge only when the
 paper really uses the inner result there (the finishing step lists such edges).
-4. **Inside a proof.** A step that relies on an earlier step's conclusion, in the
-   same proof, gets a `uses` edge from that step.
 
 A node left without an edge must be one the paper relates to nothing. Never add
 an edge to make a node non-isolated, and never drop a node to avoid an orphan. Each `proof` has its `proves` edge, and each
@@ -742,8 +729,8 @@ an edge to make a node non-isolated, and never drop a node to avoid an orphan. E
 | `inferred` | no marker in the text; you read the dependency from the mathematics | you |
 
 Set `basis` on every edge you add; the finishing step warns about edges without
-one. `basis` says how you know, `confidence` how sure you are: a `named` edge is
-usually `0.9`, a `term` edge `0.7`–`0.85`, an `inferred` edge at most `0.8`.
+one. `basis` says how you know, `confidence` how sure you are (an `inferred`
+edge is at most `0.8`).
 
 **Direction.** The arrow points **from the thing relied upon** (`source`) **to
 the thing that relies on it** (`target`).
@@ -765,8 +752,7 @@ definition→user link is `uses`, and "special case" is `specializes`.
 
 **Every edge has four required fields: `source`, `target`, `type`, `confidence`**,
 plus `basis` (see "Edge basis"), `"backward": true`, which the finishing step sets
-by position, `"mention": true` on an edge whose source is only referred to, and
-`"alternative": true` on the `proves` edge of a second proof (Hard rule 7).
+by position, and `"mention": true` and `"alternative": true` where Hard rule 7 says.
 `confidence` is required (float 0-1, scored per the table above).
 
 **Worked examples** (edges a `\ref` or a proof environment states are added by
@@ -908,7 +894,8 @@ a case. Induction ("Base case: … Inductive step: …") gives at least two
 `induction_step` steps.
 
 **9. Short proofs.** Emit zero steps when the body has at most 2 sentences outside
-displays and no label. Never emit exactly one step: a body that is one move gets
+displays and no label (text after a display that starts with a capital letter is
+a new sentence, even when the display has no period). Never emit exactly one step: a body that is one move gets
 zero. Likewise a step never has exactly one child.
 
 **10. A proof interrupted by an inner result.** When a proof is interrupted by a
@@ -919,8 +906,6 @@ that spans them). Among the outer
 proof's steps the inner block is one `setup` step with no children; the inner
 steps belong to the inner proof only.
 
-**Step fields.** A step's `confidence` is `0.95` when it starts at an author
-label, `0.75` otherwise. A step takes its parent's `section` and `origin`.
 
 ### When to emit an `algorithm_step`
 
@@ -993,8 +978,10 @@ the claim.
 No `Part`, no `Case`, no `Step` — and it is still three moves: introduce $v$ and
 $P_n$; apply Konig's lemma; conclude. Emit three `proof_step` nodes.
 
-**Step-node fields** (besides `confidence`, `section` and `origin`, required on
-every node):
+**Step-node fields.** A step takes its parent's `section` and `origin`; its
+`confidence` is `0.95` when it starts at an author label, `0.75` otherwise
+(`1.0` for a pseudocode line, as returned; `0.6`–`0.8` for an unmarked algorithm
+step). Besides these:
 - `id` (e.g. `PSP1`, `ASP1`)
 - `type` (`proof_step` or `algorithm_step`)
 - `parent_id` (id of the parent node — see "Nesting" below)
@@ -1010,9 +997,9 @@ every node):
 **Nesting: steps may parent other steps.** A step node may take
 another step node as its `parent_id`, to any depth:
 - `proof_step` — a label body longer than 2 sentences (step rule 1), an
-  inline claim with at least 2 following sentences (step rule 7, required),
-  a "Proof of Claim N" block whose claim is not its own Level-1 node. (A
-  `\begin{proof}` inside a proof belongs to its own result: step rule 10.)
+  inline claim with at least 2 following sentences (step rule 7, required). (A
+  numbered or named claim is a Level-1 node with its argument as its steps, step
+  rule 7; a `\begin{proof}` inside a proof belongs to its own result, step rule 10.)
 - `algorithm_step` — loop and branch bodies are children, not
   siblings: a line inside a `\FOR` / `\WHILE` / `\IF` block takes that
   block's step as its `parent_id` (`pseudocode_steps` sets this for you).
@@ -1147,27 +1134,22 @@ otherwise leave it as an empty string.
 
 ## Pre-output self-check
 
-Before emitting the JSON, walk every node and verify:
+Before emitting the JSON, walk every node. The finishing step checks that
+statements are verbatim, `origin` is set and types are in the vocabulary; it
+cannot check these:
 
-1. **`statement` is verbatim.** In the prepared source (`facts.json`), find
-   the originating environment body or the whole sentences of prose it came
-   from, and confirm `statement` is that span verbatim, with:
-   - All math preserved (`$..$`, all backslashes, all subscripts).
-   - All hypotheses preserved (no dropped "Let X be..." clauses).
-   - All named objects preserved (no generic substitutions).
-   - Only the permitted mechanical cleanup applied (whitespace, `\label`,
-     `\index`; the prepared source has already removed comments and disabled
-     text and expanded macros).
+1. **Each prose node's span is the right one** (whole sentences, minimal but
+   self-contained, no dropped hypothesis).
 2. **`statement_short`, when present, is meaningful compression** —
    not a copy-paste of `statement`, not longer than `statement`,
    captures the idea. For proof nodes, verify `statement_short`
    exists.
-3. **`origin` is set on every node.**
-4. **`section` is the plain title** (Hard rule 9).
-5. **`type` is in the closed vocabulary** (Hard rule 4).
-6. **`tags[]` is topical only** (Hard rule 8).
-7. **Results and conjectures have `assumptions[]`/`conclusions[]`** where they
-   decompose (see "Optional node fields").
+3. **`origin: external` marks what the paper cites** (Hard rule 3).
+4. **`type` follows the content** (Hard rule 4).
+5. **`tags[]` is topical only** (Hard rule 8).
+6. **Results and conjectures have `assumptions[]`/`conclusions[]`** where they
+   decompose, plus `equivalent_conditions` for an "iff" and `parts` for several
+   implications (see "Assumption / conclusion decomposition").
 
 ## Report
 
