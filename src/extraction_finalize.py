@@ -850,7 +850,8 @@ def finalize(graph: dict, tex: str) -> dict:
     return report
 
 
-_SUBSPAN_FIELDS_STRICT = ("assumptions", "conclusions", "input", "output", "also_stated_at")
+_SUBSPAN_FIELDS_STRICT = ("assumptions", "conclusions", "input", "output", "also_stated_at",
+                          "equivalent_conditions")
 _SUBSPAN_FIELDS_SOFT = ("differentia", "genus")
 
 
@@ -922,6 +923,21 @@ def validate(graph: dict, source: str, report: dict, parent: dict | None = None)
     for n in graph["nodes"]:
         if "main" in n and (n["main"] is not True or n.get("type") not in _RESULTS | {"algorithm"}):
             err.append(f"{n['id']}: `main` is only `true`, on a result or an algorithm")
+        eq = n.get("equivalent_conditions")
+        if eq is not None and (n.get("type") not in _RESULTS | {"conjecture"} or not isinstance(eq, list)
+                               or len(eq) < 2):
+            err.append(f"{n['id']}: `equivalent_conditions` is a list of at least two spans, on a result "
+                       f"or a conjecture")
+    # alternative proofs: only on proves edges, and the result keeps a proof of its own
+    main_proof = {e["target"] for e in graph["edges"] if e.get("type") == ET.PROVES and not e.get("alternative")}
+    for e in graph["edges"]:
+        if "alternative" not in e:
+            continue
+        if e["alternative"] is not True or e.get("type") != ET.PROVES:
+            err.append(f"edge {e.get('source')}->{e.get('target')}: `alternative` is only `true`, on a proves edge")
+        elif e.get("target") not in main_proof:
+            err.append(f"edge {e['source']}->{e['target']}: an alternative proof of {e['target']}, which has no "
+                       f"other proof; the first proof the paper gives is the main one (no `alternative`)")
     # no circular reasoning (validate_annotation.reasoning_cycles)
     for cyc in reasoning_cycles(graph["nodes"], graph["edges"]):
         (warn if cycle_noted(cyc, graph.get("metadata")) else err).append(

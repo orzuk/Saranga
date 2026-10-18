@@ -259,18 +259,24 @@ def reasoning_cycles(nodes: list[dict], edges: list[dict]) -> list[list[str]]:
     these representatives, backward ones included (a circular argument can run
     through a forward reference); self-loops (an induction step applying the
     theorem itself) are dropped, and so are edges marked `"mention": true`. A
+    second proof of a result (its `proves` edge marked `"alternative": true`, such
+    as a derivation of König's theorem from Hall's after a direct proof) does not
+    stand for that result, so a loop it closes is not circular. A
     cycle through a remark, an example or a top-level equation is not reported,
     nor one through an equation displayed in the statement of a result: citing
     a formula ("by (3.2)", where (3.2) sits in Theorem 3) does not use the
     theorem it is written in.
     Returns one node-id path per cycle found."""
     by_id = {n.get("id"): n for n in nodes}
-    proved = {}
+    proved, alternative = {}, set()
     for e in edges:
-        if e.get("type") == "proves":
+        if e.get("type") == "proves" and e.get("alternative"):
+            alternative.add(e.get("source"))
+    for e in edges:
+        if e.get("type") == "proves" and e.get("source") not in alternative:
             proved.setdefault(e.get("source"), e.get("target"))
     for n in nodes:
-        if n.get("type") == "proof" and n.get("proves") in by_id:
+        if n.get("type") == "proof" and n["id"] not in alternative and n.get("proves") in by_id:
             proved.setdefault(n["id"], n["proves"])
 
     def ancestors(x):
@@ -347,6 +353,8 @@ def cycle_noted(cycle: list[str], metadata: dict) -> bool:
 
 CYCLE_HELP = ("if an edge on this path only refers to a result without relying on its truth "
               "(\"as in Theorem 1\", \"used in the proof of Proposition 3\"), set \"mention\": true on it; "
+              "if a proof on it is a second proof of a result that has its own proof, set "
+              "\"alternative\": true on that proof's proves edge; "
               "if the paper's own argument is circular, keep the edges and add a source_problem note "
               "naming these nodes")
 

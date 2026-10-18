@@ -177,13 +177,20 @@ REQUIRED_EDGE_FIELDS = (
 # forward reference ("by Lemma 5 below") or an induction step using the result
 # itself; set by the finishing step.
 # `mention`: true on an edge whose source is only referred to, not relied on
-# ("let w be as in Theorem 1", "the lemma is used in the proof of Prop. 3");
-# set by the extractor. The circular-reasoning check ignores mention edges.
+# ("let w be as in Theorem 1", "the lemma is used in the proof of Prop. 3"), or
+# that the target is about without using it (v7: a theorem equivalent to, motivated
+# by or analogous to a conjecture or another result); set by the extractor. The
+# circular-reasoning check and the gold scorer ignore mention edges.
+# `alternative` (v7): true on the `proves` edge of a second proof of a result that
+# has its own proof ("another proof", a derivation of Theorem 1 from Theorem 2 after
+# a direct proof of Theorem 1); set by the extractor. The circular-reasoning check
+# does not count that proof as the result, so the loop "Theorem 1 gives Theorem 2,
+# Theorem 2 gives Theorem 1" of two equivalent theorems is not circular.
 # `basis` (v7): how the dependency is known. `ref` (a \ref/\eqref states it) and
 # `syntax` (a proof environment's position or [Proof of ...] argument) are set by the
 # finishing step; the extractor sets `named` (the text names the source in words,
 # "by Lemma 3", "Cauchy-Schwarz gives"), `term` (the target uses a term or symbol the
 # source defines) or `inferred` (no marker in the text; read from the mathematics).
 EDGE_BASIS = ("ref", "syntax", "named", "term", "inferred")
-OPTIONAL_EDGE_FIELDS = ("note", "backward", "mention", "basis")
+OPTIONAL_EDGE_FIELDS = ("note", "backward", "mention", "basis", "alternative")
 ALL_EDGE_FIELDS = REQUIRED_EDGE_FIELDS + OPTIONAL_EDGE_FIELDS

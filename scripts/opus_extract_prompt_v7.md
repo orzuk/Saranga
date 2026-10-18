@@ -219,7 +219,14 @@ Level-1 nodes from their spans. Never draw a `uses` edge to express containment.
     finishing step marks these `"backward": true` by position, and they stay.
     An edge whose source is only referred to, not relied on ("let $w$ be as in
     Theorem 1", "the lemma is used in the proof of Proposition 3"), gets
-    `"mention": true`. For such a `\ref`, add the edge yourself before the
+    `"mention": true`. So does an edge to a result that is *about* a conjecture,
+    an open problem or another result without using it: "Theorem 2 is equivalent
+    to Conjecture 1", "motivated by", "by analogy with", "the heuristic behind".
+    "Equivalent" is never a dependency by itself: draw only the uses the proofs
+    make. A second proof of a result that has its own proof ("we give another
+    proof", or Theorem 1 derived from Theorem 2 after its direct proof, closing
+    the loop of two equivalent theorems) gets `"alternative": true` on its
+    `proves` edge; the first proof the paper gives keeps no flag. For such a `\ref`, add the edge yourself before the
     finishing step runs, confidence `0.95`, with `"mention": true` (the finishing
     step gives it `basis: "ref"`); it will not add it again. When the finishing step reports circular reasoning, mark the edge on
     the path that is only a mention; if the paper's own argument is circular,
@@ -340,6 +347,8 @@ Level-1 nodes from their spans. Never draw a `uses` edge to express containment.
 - `subclass` — on step nodes only, from the `subclass` vocabulary (see "Level-2 steps")
 - `also_stated_at[]` — on a node whose statement the paper gives twice or more:
   the verbatim spans of the other copies (see "One node per repeated statement").
+- `equivalent_conditions[]` — on an "iff" / TFAE result or conjecture: the verbatim
+  span of each side, at least two (see Regime D).
 - `main` — `true` on the paper's main results (results or algorithms): the ones its
   abstract or introduction announces as its contributions. Omit it elsewhere.
 - `display`, `number`, `cites` — filled by the finishing step; never set them.
@@ -368,6 +377,20 @@ source.
 
 - **Regime C — pure identity.** Closed-form equality with no free
   variables. `assumptions: []`, `conclusions: ["..."]` (verbatim span).
+
+- **Regime D — "iff" / "the following are equivalent".** The statement
+  asserts that conditions coincide. `assumptions` = only the hypotheses
+  shared by both directions ("Let $G$ be a bipartite graph"); the sides are
+  not assumptions. `conclusions` = the whole biconditional span (for TFAE,
+  the list). Add `equivalent_conditions` = the verbatim span of each side,
+  one per element (for TFAE, each item (i), (ii), ...).
+  Example: *"Let $G$ be bipartite. Then $G$ has a perfect matching if and
+  only if $|N(S)| \ge |S|$ for all $S$."* →
+  `assumptions: ["$G$ be bipartite"]`,
+  `conclusions: ["$G$ has a perfect matching if and only if $|N(S)| \ge |S|$ for all $S$"]`,
+  `equivalent_conditions: ["$G$ has a perfect matching", "$|N(S)| \ge |S|$ for all $S$"]`.
+  A paper that states the two directions as two results gets two nodes, each
+  in Regime A, and no edge between them (neither proof uses the other).
 
 Before choosing Regime C, check the surrounding text for declarations of the
 statement's variables; if there are any, use Regime B and quote them
@@ -714,8 +737,8 @@ definition→user link is `uses`, and "special case" is `specializes`.
 
 **Every edge has four required fields: `source`, `target`, `type`, `confidence`**,
 plus `basis` (see "Edge basis"), `"backward": true`, which the finishing step sets
-by position, and `"mention": true` on an edge whose source is only referred to
-(Hard rule 7).
+by position, `"mention": true` on an edge whose source is only referred to, and
+`"alternative": true` on the `proves` edge of a second proof (Hard rule 7).
 `confidence` is required (float 0-1, scored per the table above).
 
 **Worked examples** (edges a `\ref` or a proof environment states are added by

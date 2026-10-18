@@ -49,8 +49,18 @@ Implemented on main (not yet run on any paper):
 - Step checker (rule 9): a capitalised sentence after a display with no period now counts as a new
   sentence, so short proofs with displays may get steps (24 of 2856 silver proofs cross the 2-sentence
   line, in 18 papers).
-Not done: an align with several numbered rows is still one equation fact; schema
-decisions 3/4 (`equivalent`, `motivates`), the 5-paper mini-pilot. The portal's "Your paper"
+- Equivalence and non-dependency links (decided 2026-10-19, no new edge type):
+  - `"alternative": true` on the `proves` edge of a second proof of a result that has its own
+    proof; the cycle check does not count that proof as the result (Hall gives König after a
+    direct proof of König is not circular); errors if set on a non-proves edge or on a result's
+    only proof;
+  - `mention` widened: a result about a conjecture or another result without using it
+    (equivalent to, motivated by, analogous to); "equivalent" alone is never a dependency;
+  - Regime D for "iff"/TFAE: `assumptions` = shared hypotheses only, `conclusions` = the whole
+    biconditional, optional `equivalent_conditions` = verbatim span of each side (>= 2);
+  - scorer (`graph_score.score`): a gold arrow drawn as an equivalence (144 in the 281 papers,
+    8 in the 146) is matched in either direction.
+Not done: an align with several numbered rows is still one equation fact; the 5-paper mini-pilot. The portal's "Your paper"
 (`portal/yours_llm.py`) still uses the v6 prompt.
 
 ## v7 scope (proposed, NOT yet confirmed by Or)

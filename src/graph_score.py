@@ -170,6 +170,9 @@ def score(pred: dict, gold: dict, node_metric="m1g", match="text", edges=True, e
     # results only on both sides: a matched proof is collapsed like any proof, never an endpoint
     presults = {n["id"] for n in pn if n.get("type") not in _NOT_RESULTS}
     pdep = {(p2g[a], p2g[b]) for a, b in dependencies(pn, pred["edges"], presults) if p2g.get(a) in gres and p2g.get(b) in gres}
+    # an arrow the authors drew as an equivalence (A <=> B) is matched in either direction
+    geq = {(e["source"], e["target"]) for e in gold["edges"] if e.get("equivalence")}
+    pdep = {(b, a) if (b, a) in geq and (a, b) not in gdep else (a, b) for a, b in pdep}
     p_found = _implied(pdep) if edge_recall == "path" else pdep
     if precision_scope == "gold":       # only among the drawn results; implied by the drawing: not an error
         p_ok, p_n = len(pdep & _implied(gdep)), len(pdep)

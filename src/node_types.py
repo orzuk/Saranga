@@ -187,6 +187,7 @@ OPTIONAL_NODE_FIELDS = (
     # v7, set by the extractor:
     "also_stated_at",    # verbatim spans of the other copies of a result stated twice
     "main",              # true on the paper's main results
+    "equivalent_conditions",  # an "iff"/TFAE result: verbatim spans of each side, >= 2
 )
 
 ALL_NODE_FIELDS = REQUIRED_NODE_FIELDS + OPTIONAL_NODE_FIELDS

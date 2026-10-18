@@ -5,7 +5,10 @@ Runs without pytest:  python3 tests/test_finalize_v7.py
 On a small paper: display/number from the environment, cites, edge basis (ref, syntax),
 a proof step with a claim's span merged into the claim, a restated copy's \\label
 resolving to the one node, a result stated inside a proof and used outside it, and a
-prose proof that fills a section with subsections.
+prose proof that fills a section with subsections. Then equivalent theorems: the
+loop "König gives Hall, Hall gives König" is circular unless the second proof of
+König is marked `alternative`; `alternative` and `equivalent_conditions` errors; a
+gold equivalence arrow is scored in either direction.
 """
 import sys
 from pathlib import Path
@@ -13,7 +16,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from extraction_finalize import finalize  # noqa: E402
+from extraction_finalize import finalize, validate  # noqa: E402
+from validate_annotation import reasoning_cycles  # noqa: E402
+import graph_score as GS  # noqa: E402
 
 TEX = r"""\documentclass{article}
 \newtheorem{theorem}{Theorem}
@@ -112,5 +117,61 @@ def main():
     print("finalize v7: ok")
 
 
+def equivalence():
+    fails = []
+    src = ("Theorem K. Max matching equals min cover. Proof. A real proof. Theorem H. Hall's condition "
+           "holds iff there is a matching. Proof. Apply Theorem K. Remark. Conversely Theorem H gives Theorem K.")
+    nodes = [{"id": "K", "type": "theorem", "statement": "Max matching equals min cover."},
+             {"id": "P1", "type": "proof", "statement": "A real proof."},
+             {"id": "H", "type": "theorem", "statement": "Hall's condition holds iff there is a matching.",
+              "equivalent_conditions": ["Hall's condition holds", "there is a matching"]},
+             {"id": "P2", "type": "proof", "statement": "Apply Theorem K."},
+             {"id": "P3", "type": "proof", "statement": "Conversely Theorem H gives Theorem K."}]
+    edges = [{"source": "P1", "target": "K", "type": "proves", "confidence": 1.0, "basis": "syntax"},
+             {"source": "K", "target": "P2", "type": "uses", "confidence": 0.9, "basis": "named"},
+             {"source": "P2", "target": "H", "type": "proves", "confidence": 1.0, "basis": "syntax"},
+             {"source": "H", "target": "P3", "type": "uses", "confidence": 0.9, "basis": "named"},
+             {"source": "P3", "target": "K", "type": "proves", "confidence": 0.9, "basis": "named"}]
+    if not reasoning_cycles(nodes, edges):
+        fails.append("the unmarked loop through a second proof is a cycle")
+    edges[-1]["alternative"] = True
+    if reasoning_cycles(nodes, edges):
+        fails.append(f"alternative proof still a cycle: {reasoning_cycles(nodes, edges)}")
+
+    def errors(nodes, edges):
+        r = {"errors": [], "warnings": []}
+        validate({"metadata": {"paper_style": ["theorem_proof"], "rigor_nonformal_count": 0},
+                  "nodes": nodes, "edges": edges}, src, r)
+        return r["errors"]
+    if any("alternative" in x or "equivalent_conditions" in x for x in errors(nodes, edges)):
+        fails.append(f"valid graph rejected: {errors(nodes, edges)}")
+    bad = [dict(e) for e in edges]
+    bad[0]["alternative"] = True                              # K's only other proof is alternative too
+    bad[1]["alternative"] = True                              # on a uses edge
+    errs = errors(nodes, bad)
+    if not any("on a proves edge" in x for x in errs) or not any("has no other proof" in x for x in errs):
+        fails.append(f"alternative errors: {errs}")
+    one = [dict(n) for n in nodes]
+    one[2]["equivalent_conditions"] = ["Hall's condition holds"]
+    if not any("equivalent_conditions" in x for x in errors(one, edges)):
+        fails.append("a one-element equivalent_conditions is accepted")
+
+    gold = {"nodes": [{"id": "G1", "type": "theorem", "statement": "Max matching equals min cover."},
+                      {"id": "G2", "type": "theorem", "statement": "Hall's condition holds iff there is a matching."}],
+            "edges": [{"source": "G1", "target": "G2", "type": "uses", "confidence": 1.0, "equivalence": True}]}
+    pred = {"nodes": gold["nodes"], "edges": [{"source": "G2", "target": "G1", "type": "uses", "confidence": 1.0}]}
+    sc = GS.score(pred, gold)
+    if sc["edge_g_credit"] != 1 or sc["edge_p_credit"] != 1:
+        fails.append(f"reversed arrow on a gold equivalence: {sc}")
+    gold["edges"][0].pop("equivalence")
+    if GS.score(pred, gold)["edge_g_credit"] != 0:
+        fails.append("reversed arrow scored on an ordinary gold edge")
+    if fails:
+        print("\n".join(fails))
+        sys.exit(1)
+    print("equivalence: ok")
+
+
 if __name__ == "__main__":
     main()
+    equivalence()

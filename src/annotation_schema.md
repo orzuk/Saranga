@@ -297,7 +297,8 @@ Each edge represents a dependency or relationship between nodes.
 | `confidence` | **R** | float | Confidence score (0-1) |
 | `note` | O | string | Free-text annotation; the finishing step writes the `\ref{key}` an edge came from |
 | `backward` | O | bool | `true` when the source comes after the target in the paper (a forward reference, an induction step using the result itself); set by the finishing step |
-| `mention` | O | bool | `true` when the source is only referred to, not relied on ("let $w$ be as in Theorem 1", "the lemma is used in the proof of Proposition 3"); set by the extractor. The circular-reasoning check ignores these edges |
+| `mention` | O | bool | `true` when the source is only referred to, not relied on ("let $w$ be as in Theorem 1", "the lemma is used in the proof of Proposition 3"); or that the target is about without using it (equivalent to, motivated by, analogous to a conjecture or another result; v7); set by the extractor. The circular-reasoning check ignores these edges |
+| `alternative` | O | bool | v7: `true` on the `proves` edge of a second proof of a result that has its own proof ("another proof"; Theorem 1 derived from an equivalent Theorem 2). The circular-reasoning check does not count that proof as the result |
 
 **No circular reasoning.** No cycle may consist only of results, a proof counting
 as the result it proves (with everything nested in it), or only of definitions.
