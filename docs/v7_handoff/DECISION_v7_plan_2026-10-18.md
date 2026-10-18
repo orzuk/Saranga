@@ -44,8 +44,6 @@ The 146 = good, class "results, reliable", ≥ 0.05 arrows per KB; list in
     v6 needed 13 reruns from mid-run fixes.
   - Schema decisions 3 (`equivalent` edge) and 4 (`motivates` / non-dependency links) were meant to be decided
     *with a gold pilot*; B freezes before any gold evidence → a v8 is likely.
-  - Re-extracting the 200 changes Yaron's training data; he released alg3 edge models on v6 on 2026-10-18
-    (`silver_v6__edges_filter`, then `silver_v6__edges_stack`) → retraining.
   - Tonight's silver-vs-gold numbers would be partial (only part of the 146).
 
 ### Plan C (Claude's recommendation): Plan A on gold now, Plan B next week
@@ -59,7 +57,6 @@ The 146 = good, class "results, reliable", ≥ 0.05 arrows per KB; list in
   - first silver-vs-gold numbers, for the silver that actually exists (paper + alg3);
   - v6 errors on real gold become the error analysis that scopes v7 and settles decisions 3 and 4 with evidence;
   - the paper gets a v6 → v7 improvement measured on independent gold (an ablation);
-  - Yaron's v6-based models stay valid this week.
 - Cons: the 146 are extracted twice (~50% extra over two weeks); next week fully booked; the paper reports two
   versions (v7 main, v6 as comparison).
 
@@ -67,6 +64,23 @@ The 146 = good, class "results, reliable", ≥ 0.05 arrows per KB; list in
 Plan B but narrow and gold-first: v7 = only the `finalize()` code additions + prompt rules from README (no
 schema changes); mini-pilot; run the **146 first** (the paper's missing number arrives first, and a v7 problem
 shows up before the 200), then the 200 with what is left; blueprints next week. Costs as B.
+
+## What actually matters (Or, 2026-10-18)
+1. **Cost against the weekly plan**, and the run must start tonight so this week's allowance is not wasted.
+2. **Re-analysis**: every re-extraction means redoing the analysis (silver stats, distillation, paper
+   numbers), and the new results may be worse or unexpected.
+Not a factor: Yaron's retraining (alg3 retrains in 5–10 min, no API cost).
+
+How the plans fare on these two:
+| | tonight's spend | re-analysis |
+|---|---|---|
+| A | ~50% (no build, starts within ~1 h) | none of the existing work; only new gold scores |
+| B | ~75% (starts after the v7 build, late tonight) | everything (200 + 146 + later blueprints), on a v7 never seen on gold |
+| C | ~70% (A now + v7 build) | none now; next week only if v7 proves better on gold |
+
+Under factor 2, C has one more advantage: **v7 becomes optional.** With v6 scored on gold, a small v7
+pilot on gold papers next week shows whether v7 is better; if it is not clearly better, the 200 are not
+re-extracted and nothing is re-analysed.
 
 ## Why C (Claude's view)
 The only reason to spend today is that the budget expires. That is a bad reason to freeze extractor code in a
