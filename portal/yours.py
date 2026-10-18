@@ -26,11 +26,13 @@ import zipfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-RULES_DIR = REPO / "extractors" / "rules" / "silver_v6__sentence_rules_haiku__2026-10"
+RULES_DIR = REPO / "extractors" / "rules" / "silver_v6__sentence_tagger__2026-10"     # alg3, the main method
+EDGE_MODEL = REPO / "extractors" / "edges" / "silver_v6__edges_stack__2026-10"      # learned edges (alg3/edges.py)
 GRAPH_BUILD = REPO / "src" / "graph_view" / "build.py"
-sys.path[:0] = [str(REPO / "src" / "LLMVersion"), str(REPO / "src")]
+sys.path[:0] = [str(REPO / "src" / "LLMVersion"), str(REPO / "src"), str(REPO / "alg3")]
 import latex_facts                                  # noqa: E402
 from math_paper_parser import parse_to_unified      # noqa: E402
+import edges as learned_edges                       # noqa: E402
 KEEP_HOURS = 24
 MAX_UPLOAD = 50 * 2**20          # bytes accepted from a request
 MAX_UNPACKED = 200 * 2**20       # bytes written when unpacking an archive
@@ -149,13 +151,26 @@ def _title_from_tex(main: Path) -> str:
     return re.sub(r"\s+", " ", m.group(1)).strip() if m else ""
 
 
+_EDGES = None
+
+
+def _edge_model():
+    """The learned edge model, loaded once."""
+    global _EDGES
+    if _EDGES is None:
+        _EDGES = learned_edges.EdgeModel(EDGE_MODEL)
+    return _EDGES
+
+
 def build(work: Path, paper_id: str, title: str = "") -> dict:
     """Parse the source with the rules and build the viewer page. Returns a summary."""
     main = find_main_tex(work / "source")
     title = title or _title_from_tex(main) or paper_id
     d = parse_to_unified(main, paper_id, str(RULES_DIR))
+    learned_edges.add_edges(d, _edge_model())
     md = d.setdefault("metadata", {})
-    md.update({"title": title, "paper_id": paper_id, "extractor": "rules (parser + distilled sentence rules)"})
+    md.update({"title": title, "paper_id": paper_id,
+               "extractor": f"rules (parser + alg3 sentence tagger {RULES_DIR.name} + learned edges {EDGE_MODEL.name})"})
     out_json = work / f"{paper_id}.json"
     out_json.write_text(json.dumps(d), encoding="utf-8")
     r = subprocess.run([sys.executable, str(GRAPH_BUILD), str(out_json), "-o", str(work)],
