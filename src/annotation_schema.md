@@ -160,6 +160,8 @@ node with a parent does not count as an orphan. Legacy fields `parent_proof`,
 |-------|-----|------|-------------|
 | `assumptions` | O | list of strings | Conditions / hypotheses |
 | `conclusions` | O | list of strings | What the theorem concludes |
+| `equivalent_conditions` | O | list of strings | v7: an "iff"/TFAE statement: the verbatim span of each side (at least two); `conclusions` holds the whole biconditional |
+| `parts` | O | list of objects | v7: several implications in one statement ("If A then B. Moreover, if also C then D"): `[{"assumptions": [...], "conclusions": [...], "adds_to": k}]`, verbatim spans; `adds_to` = the part whose assumptions this one keeps. The flat `assumptions`/`conclusions` still hold every span; without `parts` they mean "all assumptions give all conclusions" |
 | `assumption_spans` | O | list of Span | Fine-grained assumption structure |
 | `statement_spans` | O | list of Span | Fine-grained statement structure |
 

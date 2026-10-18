@@ -58,7 +58,8 @@ _LEVEL2 = {"proof_step", "algorithm_step"}
 PAPER_STYLES = {"theorem_proof", "formal", "derivation", "modeling", "computational", "problem_list",
                 "expository", "discursive", "other"}
 NOTE_CATEGORIES = {"type_uncertain", "boundary_uncertain", "unexpected_construct", "rule_conflict",
-                   "source_problem", "not_extracted"}
+                   "source_problem", "not_extracted", "cycle"}
+CYCLE_KINDS = {"wrong_ref", "granularity", "circular"}
 _REF = re.compile(r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}")
 _REF_RANGE = re.compile(r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}\)?\s*(?:--|–|-)\s*\(?"
                         r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}")
@@ -878,6 +879,18 @@ def validate(graph: dict, source: str, report: dict, parent: dict | None = None)
         for nid in note.get("nodes") or []:
             if nid not in nodes:
                 warn.append(f"metadata.extraction_notes[{i}]: unknown node {nid!r}")
+        if note["category"] == "cycle":      # a cycle the paper's text states, edge by edge
+            ev = note.get("evidence")
+            if note.get("kind") not in CYCLE_KINDS:
+                err.append(f"metadata.extraction_notes[{i}]: a cycle note has `kind` in {sorted(CYCLE_KINDS)}")
+            if len(note.get("nodes") or []) < 2:
+                err.append(f"metadata.extraction_notes[{i}]: a cycle note names the nodes of the cycle, in order")
+            if not isinstance(ev, list) or len(ev) < len(note.get("nodes") or []):
+                err.append(f"metadata.extraction_notes[{i}]: a cycle note quotes the text stating each edge "
+                           f"of the cycle (`evidence`, one verbatim span per edge)")
+            for q in ev if isinstance(ev, list) else []:
+                if not isinstance(q, str) or _key(q) not in _key(source):
+                    err.append(f"metadata.extraction_notes[{i}]: evidence is not a verbatim span: {str(q)[:50]!r}")
     comment = meta.get("extraction_comment") or ""
     if len(comment) > 600:
         warn.append(f"metadata.extraction_comment is {len(comment)} chars; keep it to 3 sentences")
@@ -928,6 +941,29 @@ def validate(graph: dict, source: str, report: dict, parent: dict | None = None)
                                or len(eq) < 2):
             err.append(f"{n['id']}: `equivalent_conditions` is a list of at least two spans, on a result "
                        f"or a conjecture")
+    for n in graph["nodes"]:                  # parts: which assumptions give which conclusions
+        parts = n.get("parts")
+        if parts is None:
+            continue
+        if n.get("type") not in _RESULTS | {"conjecture"} or not isinstance(parts, list) or len(parts) < 2:
+            err.append(f"{n['id']}: `parts` is a list of at least two parts, on a result or a conjecture")
+            continue
+        flat = {_key(x) for f in ("assumptions", "conclusions") for x in n.get(f) or [] if isinstance(x, str)}
+        for k, part in enumerate(parts):
+            if not isinstance(part, dict) or not part.get("conclusions") or set(part) - {"assumptions", "conclusions",
+                                                                                       "adds_to"}:
+                err.append(f"{n['id']}: parts[{k}] is {{assumptions, conclusions, adds_to}} with conclusions")
+                continue
+            a = part.get("adds_to")
+            if a is not None and not (isinstance(a, int) and 0 <= a < k):
+                err.append(f"{n['id']}: parts[{k}].adds_to is the index of an earlier part")
+            for f in ("assumptions", "conclusions"):
+                for x in part.get(f) or []:
+                    if not isinstance(x, str) or _key(x) not in src_key:
+                        err.append(f"{n['id']}: parts[{k}].{f} element is not a verbatim span: {str(x)[:50]!r}")
+                    elif _key(x) not in flat:
+                        warn.append(f"{n['id']}: parts[{k}].{f} element is not in the node's own {f}: "
+                                    f"{x[:50]!r} (the flat lists hold every span)")
     # alternative proofs: only on proves edges, and the result keeps a proof of its own
     main_proof = {e["target"] for e in graph["edges"] if e.get("type") == ET.PROVES and not e.get("alternative")}
     for e in graph["edges"]:

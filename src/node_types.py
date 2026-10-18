@@ -188,7 +188,16 @@ OPTIONAL_NODE_FIELDS = (
     "also_stated_at",    # verbatim spans of the other copies of a result stated twice
     "main",              # true on the paper's main results
     "equivalent_conditions",  # an "iff"/TFAE result: verbatim spans of each side, >= 2
+    "parts",             # a result of several implications: [{assumptions, conclusions, adds_to?}];
+                         # flat assumptions/conclusions still hold every span (see PARTS)
 )
+
+# PARTS (v7): which assumptions give which conclusions, on a result or conjecture that
+# states several implications ("If A then B. Moreover, if also C, then D"). Each part is
+# {"assumptions": [spans], "conclusions": [spans], "adds_to": k}: part k' says that the
+# shared hypotheses, the assumptions of part k (and of the parts it adds to) and its own
+# assumptions give its conclusions. Without `adds_to` a part is independent. A node
+# without `parts` means: all its assumptions together give all its conclusions.
 
 ALL_NODE_FIELDS = REQUIRED_NODE_FIELDS + OPTIONAL_NODE_FIELDS
 

@@ -232,8 +232,14 @@ Level-1 nodes from their spans. Never draw a `uses` edge to express containment.
     `proves` edge; the first proof the paper gives keeps no flag. For such a `\ref`, add the edge yourself before the
     finishing step runs, confidence `0.95`, with `"mention": true` (the finishing
     step gives it `basis: "ref"`); it will not add it again. When the finishing step reports circular reasoning, mark the edge on
-    the path that is only a mention; if the paper's own argument is circular,
-    keep the edges and add a `source_problem` note naming the nodes. Never delete
+    the path that is only a mention. If none is, check every edge on the cycle
+    again against the text: an edge you inferred (`basis: "inferred"`) that the
+    text does not state is the likely error; correct it. If the paper's text
+    states every edge, the cycle is a finding: keep the edges and add a `cycle`
+    note (see "Extraction notes") with its `kind`: `wrong_ref` (a `\ref` that
+    points at the wrong result, a typo), `granularity` (the results use
+    different parts of each other, parts too intertwined to be separate claims)
+    or `circular` (the argument really is circular). Never delete
     an edge, retype it, or change a node's span to remove a cycle. No reciprocal
     `uses` edges between the same pair.
 
@@ -352,6 +358,8 @@ Level-1 nodes from their spans. Never draw a `uses` edge to express containment.
   the verbatim spans of the other copies (see "One node per repeated statement").
 - `equivalent_conditions[]` — on an "iff" / TFAE result or conjecture: the verbatim
   span of each side, at least two (see Regime D).
+- `parts[]` — on a result or conjecture that states several implications: which
+  assumptions give which conclusions (see Regime E).
 - `main` — `true` on the paper's main results (results or algorithms): the ones its
   abstract or introduction announces as its contributions. Omit it elsewhere.
 - `display`, `number`, `cites` — filled by the finishing step; never set them.
@@ -394,6 +402,23 @@ source.
   `equivalent_conditions: ["$G$ has a perfect matching", "$|N(S)| \ge |S|$ for all $S$"]`.
   A paper that states the two directions as two results gets two nodes, each
   in Regime A, and no edge between them (neither proof uses the other).
+
+- **Regime E — several implications in one statement.** "If A, then B.
+  Moreover, if also C, then D" is two implications, not "(A and C) give (B and
+  D)". Fill `assumptions` and `conclusions` with every span as usual (A, C and B,
+  D), and add `parts`, one entry per implication, each `{"assumptions": [...],
+  "conclusions": [...]}` with verbatim spans; `"adds_to": k` when the part keeps
+  the assumptions of part k (0-based) and adds its own ("if moreover", "if in
+  addition", "if also"). Hypotheses shared by every part ("Let $G$ be a graph")
+  stay only in the node's `assumptions`. Example: *"Let $A$ be symmetric. If
+  $A$ is diagonally dominant, then $A$ is positive semidefinite. If moreover
+  its diagonal is positive, then $A$ is positive definite."* →
+  `parts: [{"assumptions": ["$A$ is diagonally dominant"], "conclusions": ["$A$ is positive semidefinite"]},
+  {"adds_to": 0, "assumptions": ["its diagonal is positive"], "conclusions": ["$A$ is positive definite"]}]`.
+  Without `parts`, a node means that all its assumptions together give all its
+  conclusions. Two independent implications ("If A then B, and if C then D") are
+  two parts with no `adds_to`. Parts proved separately and used separately are
+  claims instead (see "Parts proved separately are claims").
 
 Before choosing Regime C, check the surrounding text for declarations of the
 statement's variables; if there are any, use Regime B and quote them
@@ -1049,6 +1074,7 @@ may be empty for a note about the whole paper.
 | `rule_conflict` | two rules here disagreed, or a rule was unclear for this paper; say which, and what you did. Do not silently invent a rule |
 | `source_problem` | the source made extraction hard: heavy macros, a missing `\input` file, content only in figures |
 | `not_extracted` | content you deliberately left out, and why |
+| `cycle` | a cycle the paper's own text states (Hard rule 7): `nodes` = the cycle in order, plus `"kind"` (`wrong_ref`, `granularity` or `circular`) and `"evidence"`: one verbatim quote per edge of the cycle, the words that state it |
 
 Do not summarize the paper, and do not restate what the graph already records
 (types, counts, confidence scores). If nothing was unusual, leave the list

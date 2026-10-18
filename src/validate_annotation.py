@@ -344,10 +344,10 @@ def reasoning_cycles(nodes: list[dict], edges: list[dict]) -> list[list[str]]:
 
 
 def cycle_noted(cycle: list[str], metadata: dict) -> bool:
-    """Did the extractor record this cycle as the paper's own (a source_problem
-    note naming at least two of its nodes)?"""
+    """Did the extractor record this cycle as the paper's own (a cycle note, or in v6 a
+    source_problem note, naming at least two of its nodes)?"""
     on = set(cycle)
-    return any(n.get("category") == "source_problem" and len(on & set(n.get("nodes") or [])) >= 2
+    return any(n.get("category") in ("cycle", "source_problem") and len(on & set(n.get("nodes") or [])) >= 2
                for n in (metadata or {}).get("extraction_notes") or [])
 
 
@@ -355,8 +355,8 @@ CYCLE_HELP = ("if an edge on this path only refers to a result without relying o
               "(\"as in Theorem 1\", \"used in the proof of Proposition 3\"), set \"mention\": true on it; "
               "if a proof on it is a second proof of a result that has its own proof, set "
               "\"alternative\": true on that proof's proves edge; "
-              "if the paper's own argument is circular, keep the edges and add a source_problem note "
-              "naming these nodes")
+              "if the paper's own text states every edge of the cycle, keep the edges and add a cycle note "
+              "(kind, the nodes in order, a verbatim quote for each edge)")
 
 
 def validate_file(path: Path, verbose: bool = True) -> tuple[int, int, int, int]:

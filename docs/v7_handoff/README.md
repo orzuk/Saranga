@@ -68,6 +68,11 @@ Implemented on main (not yet run on any paper):
   label number and ref unchanged; gold conversion unchanged (799 papers, 0 differ). finalize() on the
   old v6 graphs: +11 errors in 2 papers, where one v6 equation node holds a now-split align (expected;
   v7 emits one node per fact). Test: `tests/test_align_rows.py`.
+- `parts[]` (Regime E): several implications in one statement, each part's verbatim assumptions and
+  conclusions, `adds_to` for "if moreover"; the flat lists keep every span (additive field).
+- `cycle` note: a cycle the paper's text states is kept and reported with `kind` (`wrong_ref`,
+  `granularity`, `circular`) and one verbatim quote per edge; it turns the cycle error into a warning.
+  The prompt asks to recheck inferred edges first. The v6 `source_problem` notes still count.
 Not done: the 5-paper mini-pilot. The portal's "Your paper"
 (`portal/yours_llm.py`) still uses the v6 prompt.
 

@@ -8,7 +8,8 @@ resolving to the one node, a result stated inside a proof and used outside it, a
 prose proof that fills a section with subsections. Then equivalent theorems: the
 loop "König gives Hall, Hall gives König" is circular unless the second proof of
 König is marked `alternative`; `alternative` and `equivalent_conditions` errors; a
-gold equivalence arrow is scored in either direction.
+gold equivalence arrow is scored in either direction. Then `parts` (several
+implications in one statement) and the `cycle` note.
 """
 import sys
 from pathlib import Path
@@ -172,6 +173,64 @@ def equivalence():
     print("equivalence: ok")
 
 
+def parts_and_cycles():
+    fails = []
+    src = ("Let $A$ be symmetric. If $A$ is diagonally dominant, then $A$ is positive semidefinite. "
+           "If moreover its diagonal is positive, then $A$ is positive definite. "
+           "Lemma 2 follows from Lemma 3. By Lemma 2, Lemma 3 holds.")
+    meta = {"paper_style": ["theorem_proof"], "rigor_nonformal_count": 0}
+    thm = {"id": "TP1", "type": "theorem", "statement": src.split(" Lemma 2")[0],
+           "assumptions": ["$A$ be symmetric", "$A$ is diagonally dominant", "its diagonal is positive"],
+           "conclusions": ["$A$ is positive semidefinite", "$A$ is positive definite"],
+           "parts": [{"assumptions": ["$A$ is diagonally dominant"], "conclusions": ["$A$ is positive semidefinite"]},
+                     {"adds_to": 0, "assumptions": ["its diagonal is positive"],
+                      "conclusions": ["$A$ is positive definite"]}]}
+
+    def run(nodes, edges=(), notes=()):
+        r = {"errors": [], "warnings": []}
+        validate({"metadata": dict(meta, extraction_notes=list(notes)), "nodes": nodes, "edges": list(edges)}, src, r)
+        return r
+    r = run([thm])
+    if any("parts" in x for x in r["errors"] + r["warnings"]):
+        fails.append(f"valid parts rejected: {r}")
+    import copy
+    for change, what in [(lambda t: t["parts"][1].update(adds_to=1), "adds_to to itself"),
+                         (lambda t: t["parts"][0].update(conclusions=[]), "part without conclusions"),
+                         (lambda t: t["parts"][0].update(assumptions=["A is nice"]), "non-verbatim part span"),
+                         (lambda t: t.update(parts=t["parts"][:1]), "a single part"),
+                         (lambda t: t.update(type="definition"), "parts on a definition")]:
+        t = copy.deepcopy(thm)
+        change(t)
+        if not any("parts" in x for x in run([t])["errors"]):
+            fails.append(f"not caught: {what}")
+    t = copy.deepcopy(thm)
+    t["conclusions"] = t["conclusions"][:1]
+    if not any("not in the node's own conclusions" in x for x in run([t])["warnings"]):
+        fails.append("a part span missing from the flat lists is not warned")
+
+    lem = [{"id": "LP2", "type": "lemma", "statement": "Lemma 2 follows from Lemma 3."},
+           {"id": "LP3", "type": "lemma", "statement": "By Lemma 2, Lemma 3 holds."}]
+    edges = [{"source": "LP3", "target": "LP2", "type": "uses", "confidence": 0.9, "basis": "named"},
+             {"source": "LP2", "target": "LP3", "type": "uses", "confidence": 0.9, "basis": "named"}]
+    if not any("circular reasoning" in x for x in run(lem, edges)["errors"]):
+        fails.append("an unreported cycle is not an error")
+    good = {"category": "cycle", "kind": "circular", "nodes": ["LP2", "LP3"], "note": "each lemma uses the other",
+            "evidence": ["Lemma 2 follows from Lemma 3.", "By Lemma 2, Lemma 3 holds."]}
+    r = run(lem, edges, [good])
+    if any("circular reasoning" in x or "cycle note" in x for x in r["errors"]) or \
+            not any("circular reasoning" in x for x in r["warnings"]):
+        fails.append(f"a reported cycle is not a warning: {r}")
+    for bad, what in [(dict(good, kind="oops"), "bad kind"), (dict(good, evidence=good["evidence"][:1]), "one quote"),
+                      (dict(good, evidence=["Lemma 2 is trivial.", "By Lemma 2, Lemma 3 holds."]), "invented quote")]:
+        if not any("extraction_notes" in x for x in run(lem, edges, [bad])["errors"]):
+            fails.append(f"cycle note not caught: {what}")
+    if fails:
+        print("\n".join(fails))
+        sys.exit(1)
+    print("parts and cycles: ok")
+
+
 if __name__ == "__main__":
     main()
     equivalence()
+    parts_and_cycles()
