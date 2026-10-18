@@ -11,6 +11,7 @@ against the silver graph collapsed to Level 1, with the scorer's m1g node pairin
 (node_metrics) and the edge alignment of edge_metrics. Node errors are split into
 
     wrong type   paired with a silver node of another type (m1g gives partial credit)
+    ("inside" is tested by text position, not by shared words)
     spurious     unpaired prediction, by where it lies: inside a silver node that is paired
                  (an extra piece) or missed (a fragment of it; m3 forgives both), partial
                  overlap (Jaccard >= 0.3), or no overlap with any silver node
@@ -169,6 +170,20 @@ def _txt(n) -> str:
     return n.get("raw_latex") or n.get("statement") or ""
 
 
+def _squash(t: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (t or "").lower())
+
+
+def _inside(small: str, big: str) -> bool:
+    """Does the text `small` lie inside the text `big` (both squashed)? Tested by position,
+    with a 60-character probe from its middle, not by shared words: a short sentence shares
+    its words with almost any long proof."""
+    if not small or len(small) >= len(big):
+        return False
+    probe = small[len(small) // 4: len(small) // 4 + 60] if len(small) > 80 else small
+    return probe in big
+
+
 def graph_mode(a):
     import edge_metrics as EM
     import match_modes as mm
@@ -195,6 +210,8 @@ def graph_mode(a):
         G = [(n["type"], mm.tokens(n.get("statement") or "")) for n in rn]
         m = NM._one_to_one(P, G, NS.type_compat, NM.THRESHOLD)
         taken = {j for j, _ in m.values()}
+        PS = [_squash(_txt(n)) for n in pn]
+        GS = [_squash(n.get("statement") or "") for n in rn]
         node_c["pred"] += len(P)
         node_c["gold"] += len(G)
         for tp_, _a in P:
@@ -214,7 +231,7 @@ def graph_mode(a):
                     cat[key] += 1
                     ex[key].append((pid, src, _txt(pn[i])))
                 continue
-            ins = [j for j, (_t, b) in enumerate(G) if b and mm.coverage(a_, b) >= NM.COVER]
+            ins = [j for j in range(len(G)) if _inside(PS[i], GS[j])]
             if ins:
                 j = min(ins, key=lambda j: len(G[j][1]))
                 how = f"inside a {'paired' if j in taken else 'missed'} silver {G[j][0]}"
@@ -228,11 +245,11 @@ def graph_mode(a):
         for j, (tg, b) in enumerate(G):
             if j in taken:
                 continue
-            big = [i for i, (_t, a_) in enumerate(P) if a_ and mm.coverage(b, a_) >= NM.COVER]
+            big = [i for i in range(len(P)) if _inside(GS[j], PS[i])]
             if big:
                 i = min(big, key=lambda i: len(P[i][1]))
                 how = f"inside a predicted {P[i][0]}{' (paired)' if i in m else ''}"
-            elif any(a_ and mm.coverage(a_, b) >= NM.COVER for _t, a_ in P):
+            elif any(_inside(PS[i], GS[j]) for i in range(len(P))):
                 how = "split into smaller predictions"
             elif any(a_ and NM._jaccard(a_, b) >= 0.3 for _t, a_ in P):
                 how = "partial overlap"

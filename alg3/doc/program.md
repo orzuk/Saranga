@@ -64,8 +64,29 @@ is for **structural** changes, which change what the tagger can see or produce:
   variant of the previous one. No hyperparameter tuning in this half.
 - **Second half: exploit.** Refine and combine the ideas that won, and tune them.
 
+**Round 3 findings (October 18), read these first.**
+
+- **The thresholds are tuned on the wrong objective.** `tune_tau` picks each type's threshold by
+  a matcher that sees only the tagger's prose predictions plus constant base-parser counts. End
+  to end (the real parse, every node matched at once against the Level-1 silver) these choices
+  cost ~0.006: the v2b model retrained today scores 0.715 end to end with its own thresholds and
+  0.721 with the thresholds of the October-12 release. A span model (round 2) raised the training
+  number by +0.009 while the end-to-end F1 fell. Top idea: tune the thresholds (and anything else
+  tuned on OOF) against an end-to-end OOF objective: for each train paper, the tagger's OOF
+  predictions together with the base parser's own nodes (the non-`distilled` nodes of
+  `alg3/runs/val_graphs/<name>/<pid>.json`, made with `analyze.py --parse-train`), matched with
+  `node_metrics` m1g one-to-one against the Level-1 silver nodes of the scored types
+  (`edge_metrics.level1`, `distill_common.TYPES`). Precompute candidate pairs once; check that
+  it reproduces the end-to-end val number of the release within ~0.002 before trusting it.
+- 95% of the missed silver nodes are prose sentences with no prediction at all (definition,
+  claim, remark). Cited results: of the train sentences that cite a result ("proved in [12]"),
+  the silver makes only 17% theorem nodes (53% nothing) — learn which ones it keeps.
+- Tried, about +0.001 end to end (noise): a "twin" clue (another sentence opening with the same
+  three tokens got a high first-pass probability). Nodes inside proofs: only ~5 on val.
+
 Where the errors are (`python3 alg3/analyze.py --rules-dir ... --name ...`, graph mode, VAL),
-largest first, with structural ideas to try:
+largest first, with structural ideas to try (counts from round 2; "inside" was then measured by
+shared words and overstated: re-run analyze.py):
 
 1. **Prose sentences the tagger never fires on** (~530 on VAL: definitions, claims, remarks).
    Most get P(none) ~0.9. Ideas: paragraph- or section-level context; a sequence decoder over
@@ -95,8 +116,10 @@ largest first, with structural ideas to try:
 
 ## What you must NOT change
 
-- The scoring: `evaluate`, `fast_eval`, `candidates`, `tokens` and the objective of
-  `tune_tau` in train.py, plus anything under `scripts/` and `src/`. The assert in
+- The scoring: `evaluate`, `tokens`, `analyze.py` (the end-to-end val metric), plus anything
+  under `scripts/` and `src/`. Exception (round 3): you MAY give `tune_tau` / `fast_eval` /
+  `candidates` an end-to-end objective (see the first idea below); the val metric and the
+  silver stay as they are. The assert in
   `tune_tau`, which checks that the fast path agrees with the full decode, must keep
   passing.
 - The labels: the silver (`corpus/silver/`), the split (`corpus/silver/split_v6_6-2-2.csv`),
@@ -136,7 +159,7 @@ is one line on what changed and why.
 
 ## Budget
 
-Stop after **10 experiments** (the noise-floor baselines not counted), or the budget the
+Stop after **25 experiments** (the noise-floor baselines not counted), or the budget the
 launch prompt gives, or when the human interrupts. Do not stop earlier to ask whether to go on. At the end, write
 `alg3/runs/autoresearch/<tag>/SUMMARY.md` with:
 
@@ -163,6 +186,11 @@ pooled edge F1 of the whole graph against the Level-1 silver (`src/LLMVersion/ed
 `oof` covers the 120 train papers, out-of-fold, and `val` the 40 validation papers.
 **score = (oof + val) / 2**, with the same keep rule. A run takes about 9 minutes.
 
+- Round-3 edge findings: of the missed result -> proof / result -> X / equation -> X edges whose
+  two endpoints were found, > 90% have no textual reference in the target (no \\ref, no
+  "Lemma 3", no "the above"): mostly not learnable from text. Small fetchable sets: ~37 where the
+  target \\refs the source's label but no edge exists; ~10 prose proofs (tagger-found) never
+  attached to the preceding result; edges to cited results (missing endpoints).
 - You may change in `alg3/edges.py`: candidates, the clues of both models (`cand_features`,
   `pairs_of`, `parser_edge_rows`), the definiendum model, regularisation, threshold grids,
   and new learned edge kinds (e.g. result -> X).
