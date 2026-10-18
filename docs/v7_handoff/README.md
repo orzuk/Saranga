@@ -5,6 +5,9 @@ To resume in a new Claude Code session: "read docs/v7_handoff/README.md and cont
 
 ## Decided
 
+> **Reopened 2026-10-18 (afternoon):** the choice of plan is open again. Options A / B / C, costs and
+> arguments: `DECISION_v7_plan_2026-10-18.md`.
+
 - **Plan B: build v7 (code + prompt), then re-extract everything with it**: the 200 silver papers,
   the 146 author-diagram papers (gold evaluation subset), the 104 Lean blueprints and the ~20 papers
   that blueprints follow. All on one frozen commit, so "all extracted the same way" holds.
@@ -53,6 +56,9 @@ To resume in a new Claude Code session: "read docs/v7_handoff/README.md and cont
 4. Run the 200 silver first (every claim rests on them), then the 146, then blueprints + source papers.
 
 ## Blocker: the gold data is not on this machine
+
+> **Resolved 2026-10-18:** unpacked from the Drive tarball and tracked in git (commit d1a0cda,
+> `scripts/gold_candidates/track_gold.py`). Still open: no `review.json` is on this machine.
 
 `corpus/gold_candidates/**` and `corpus/gold_blueprints/**` are git-ignored by design (.gitignore
 lines 93–104): only `candidates.json` and `review.json` files are tracked. The 146 sources, the gold
