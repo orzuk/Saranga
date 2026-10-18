@@ -5,7 +5,7 @@
 # No other module in the repo should hardcode a path under /mnt, /sci, or
 # /home; nor a `_manual.json` / `_anthropic.json` etc. literal; nor a
 # `claude-opus-4-7` / `gpt-4o` model id; nor the 20-category corpus list;
-# nor the HuggingFace dataset/space id.
+# nor the portal URL or the (legacy) HuggingFace dataset/space id.
 import sys
 import os
 from pathlib import Path
@@ -138,9 +138,13 @@ TIER3_MANIFEST       = MANIFESTS_DIR / 'tier3.csv'
 ALIGNMENT_MANIFEST   = MANIFESTS_DIR / 'alignment.csv'
 
 # =============================================================================
-# REMOTE STORES (HuggingFace canonical bulk store)
+# REMOTE STORES
 # =============================================================================
 
+# The online portal (Google Cloud Run, europe-west1; Docker setup in deploy/hf_space_portal/).
+PORTAL_URL = 'https://saranga-portal-1043069375918.europe-west1.run.app'
+
+# Hugging Face is no longer used (dropped for the Cloud Run portal); kept for old scripts only.
 HF_DATASET_REPO = 'RHCPP/saranga'   # huggingface.co/datasets/<HF_DATASET_REPO>
 HF_PORTAL_SPACE = 'RHCPP/saranga'   # huggingface.co/spaces/<HF_PORTAL_SPACE>
 
