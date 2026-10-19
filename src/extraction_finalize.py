@@ -138,11 +138,11 @@ def _sentence_end(text: str, end: int) -> bool:
     while s and s != prev:
         prev = s
         s = tail.sub("", s).rstrip()
-        peeled_macro = peeled_macro or bool(re.search(r"\\[a-zA-Z]+\*?$", prev))
+        peeled_macro = peeled_macro or bool(re.search(r"\\[a-zA-Z]+\*?$|\\end\{[a-zA-Z*]+\}$|\\\]$|\$\$$", prev))
     if s and s[-1] in ".!?:":
         return True
     nxt = text[end:end + 40]
-    # a display closed by a paper's own shorthand (\ee, \eea) before a new sentence
+    # a display (\end{equation}, \], $$, or a paper's own \ee) with no period before a new sentence
     if peeled_macro and re.match(r"\s*[A-Z]", nxt):
         return True
     # the source simply moves on: blank line, a new environment, an \item, end of text
