@@ -297,6 +297,17 @@ _INTRO = re.compile(r"^(?:Let(?! us\b)|Take|Consider|Define|Fix|Denote|Set|Intro
 _INFERENCE = re.compile(r"\b(?:hence|so|then|thus)\b", re.I)
 _HAS_REF = re.compile(r"\\(?:" + REF_CMDS + r"|[a-zA-Z]*cite[a-zA-Z]*)\b")
 _NEAR = 12                                   # a step starts "at" a label within this many chars
+# ... or after only markup between the label and the step: \item[..], \label{..}, a heading
+_LABEL_GAP = re.compile(r"(?:\s|\\item\b(?:\s*\[[^\]]*\])?|\\label\s*\{[^{}]*\}"
+                        r"|\\(?:sub)*section\*?\s*\{(?:[^{}]|\{[^{}]*\})*\}|\\paragraph\*?\s*\{(?:[^{}]|\{[^{}]*\})*\})*")
+
+
+def _at(body: str, label: int, pos: int) -> bool:
+    """Does a step starting at `pos` start at the label at offset `label`?"""
+    if abs(pos - label) <= _NEAR:
+        return True
+    lo, hi = min(label, pos), max(label, pos)
+    return hi - lo < 400 and bool(_LABEL_GAP.fullmatch(body, lo, hi))
 _DISPLAY_IN = re.compile(r"\$\$|(?<!\\)\\\[|\\begin\{(?:equation|align|gather|multline|eqnarray|displaymath)")
 _CLOSING = re.compile(r"^(?:This|which|That)\s+(?:completes|finishes|proves|concludes)\b|^\\qed\b", re.I)
 _CASE_OPENER = re.compile(r"^\s*(?:So\s+)?(?:first\s+)?(?:Suppose|Assume|If|Let us assume|Base case|Basis|"
@@ -375,7 +386,7 @@ def check_steps(body: str, structure: dict, steps: list[dict]) -> tuple[list[str
         starts[s["id"]] = pos
         if s.get("subclass") == "setup" and norm.startswith(key, i):
             setups.append((pos, idx[i + len(key) - 1] + 1))
-        at_label = any(abs(pos - l["offset"]) <= _NEAR for l in structure["labels"])
+        at_label = any(_at(body, l["offset"], pos) for l in structure["labels"])
         if _strictly_inside(pos, spans):
             errors.append(f"{s['id']}: step starts inside math")
         elif not _sentence_initial(body, pos) and not at_label:
@@ -400,7 +411,7 @@ def check_steps(body: str, structure: dict, steps: list[dict]) -> tuple[list[str
     for lab in required:                      # a nested proof sits inside a setup step (rule 10)
         if any(a < lab["offset"] < b for a, b in setups):
             continue                          # inside a quoted restatement (rule 5)
-        if not any(abs(p - lab["offset"]) <= _NEAR for p in starts.values()):
+        if not any(_at(body, lab["offset"], p) for p in starts.values()):
             errors.append(f"author label {lab['text']!r} ({lab['kind']}) does not start a step")
     if _sentences(body) <= 2 and not structure["labels"]:
         errors.append("steps on a proof of at most two sentences (expected zero)")
