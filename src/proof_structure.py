@@ -354,10 +354,12 @@ def _locate(norm: str, key: str) -> int:
     return i if i >= 0 else norm.find(key[:40])
 
 
-def check_steps(body: str, structure: dict, steps: list[dict]) -> tuple[list[str], list[str]]:
+def check_steps(body: str, structure: dict, steps: list[dict], anchors=()) -> tuple[list[str], list[str]]:
     """Errors and warnings for the proof_steps (all depths) of one proof.
 
-    `steps` are the step nodes; their statements are verbatim spans of `body`.
+    `steps` are the step nodes; their statements are verbatim spans of `body`. `anchors` are
+    the offsets in `body` of Level-1 nodes nested in the proof (a numbered claim, step rule 7):
+    an author label there is placed by that node, not by a step.
     """
     errors, warnings = [], []
     required = [lab for lab in structure["labels"] if lab["kind"] != "nested_proof"]
@@ -411,7 +413,7 @@ def check_steps(body: str, structure: dict, steps: list[dict]) -> tuple[list[str
     for lab in required:                      # a nested proof sits inside a setup step (rule 10)
         if any(a < lab["offset"] < b for a, b in setups):
             continue                          # inside a quoted restatement (rule 5)
-        if not any(_at(body, lab["offset"], p) for p in starts.values()):
+        if not any(_at(body, lab["offset"], p) for p in [*starts.values(), *anchors]):
             errors.append(f"author label {lab['text']!r} ({lab['kind']}) does not start a step")
     if _sentences(body) <= 2 and not structure["labels"]:
         errors.append("steps on a proof of at most two sentences (expected zero)")

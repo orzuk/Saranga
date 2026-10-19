@@ -844,7 +844,10 @@ def finalize(graph: dict, tex: str) -> dict:
             labels = [dict(l, offset=l["offset"] - f["start"]) for l in f["structure"]["labels"]]
         else:
             labels = detect_proof_structure(body)["labels"]
-        errs, warns = check_proof_steps(body, {"labels": labels}, descendants(n["id"]))
+        anchors = [spans[m["id"]][0] - s for m in graph["nodes"]
+                   if m.get("type") not in _LEVEL2 and m["id"] != n["id"] and m["id"] in spans
+                   and s <= spans[m["id"]][0] < spans[m["id"]][1] <= e]
+        errs, warns = check_proof_steps(body, {"labels": labels}, descendants(n["id"]), anchors)
         report["errors"].extend(f"{n['id']}: {x}" for x in errs)
         report["warnings"].extend(f"{n['id']}: {x}" for x in warns)
 
