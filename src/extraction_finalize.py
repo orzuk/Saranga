@@ -729,6 +729,9 @@ def finalize(graph: dict, tex: str) -> dict:
     # 5. uses edges from \ref, into Level-1 nodes and proof steps alike
     ref_pairs: set = set()
     proves = {(e.get("source"), e.get("target")) for e in graph["edges"] if e.get("type") == ET.PROVES}
+    ids = {n["id"] for n in graph["nodes"]}
+    proves |= {(n["id"], n["proves"]) for n in graph["nodes"]       # a prose proof's `proves` field,
+               if n.get("type") == "proof" and n.get("proves") in ids}  # made an edge in 5b
     order = list(facts["labels"])               # document order
     for n in graph["nodes"]:
         if n.get("type") == "algorithm_step":
@@ -762,7 +765,7 @@ def finalize(graph: dict, tex: str) -> dict:
                 if src in _ancestors(tgt, parent) or tgt in _ancestors(src, parent):
                     continue
                 # "this completes the proof of Theorem \ref{X}" in a step of X's own proof
-                if any((a, src) in proves for a in _ancestors(tgt, parent)):
+                if any((a, src) in proves for a in {tgt} | _ancestors(tgt, parent)):
                     continue
                 ref_pairs.add((src, tgt))
                 if (src, tgt) in pairs or (tgt, src) in pairs:
