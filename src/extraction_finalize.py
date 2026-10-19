@@ -132,7 +132,7 @@ def _sentence_end(text: str, end: int) -> bool:
     "... x.$", "... x.\\)" and "... bounded.} \\end{equation}" end sentences."""
     s = text[:end].rstrip()
     tail = re.compile(r"(?:\\end\{[a-zA-Z*]+\}|\\[\])]|\$\$?|\\(?:label|tag)\{[^{}]*\}"
-                      r"|\\[a-zA-Z]+\*?|\\\\|[}\s~&)\]])$")
+                      r"|\\[a-zA-Z]+\*?|\\\\|''|[}\s~&)\]'\"])$")
     prev = None
     peeled_macro = False
     while s and s != prev:
