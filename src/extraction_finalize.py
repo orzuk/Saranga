@@ -629,7 +629,7 @@ def check_introduced_symbols(graph: dict, source: str, spans: dict, facts: dict,
         hits = sorted({(m.start(), _sym(m.group(1))) for p in _INTRO_SYM for m in p.finditer(st)
                        if not _trivial_sym(_sym(m.group(1)))})
         apart = [b for a, b in zip(hits, hits[1:])
-                 if re.search(r"[.;]\s", st[a[0]:b[0]]) and a[1] != b[1]]
+                 if re.search(r"\.\s", st[a[0]:b[0]]) and a[1] != b[1]]   # ';' joins one sentence
         if apart:
             report["warnings"].append(f"{d['id']}: introduces {len(apart) + 1} symbols in separate "
                                       f"sentences; each is its own definition node")
