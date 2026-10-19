@@ -1,0 +1,2437 @@
+\documentclass[11pt, letterpaper]{article}
+\usepackage{arxiv}
+\usepackage{tikz}
+\usepackage{adjustbox}
+\usetikzlibrary{positioning, arrows.meta}
+
+\title{\LARGE A Convergence Analysis of Adaptive Optimizers under Floating-point Quantization}
+
+\author{
+Xuan Tang\thanks{Equal contribution.} \thanks{School of Computing and Data Science, The University of Hong Kong. Email: \email{xuantang8}{connect.hku.hk}}
+\qquad
+Jichu Li\footnotemark[1] \thanks{School of Statistics, Renmin University of China. Email: \email{lijichu52}{gmail.com}}\qquad 
+Difan Zou\thanks{School of Computing and Data Science \& Institute of Data Science, The University of Hong Kong. Email: \email{dzou}{hku.hk}}
+}
+\date{\small{\today}}
+
+
+\begin{document}
+
+%%%%%%%%%%%%%%%%%%%% title/author/date/abstract/content %%%%%%%%%%%%%%%%%%%%
+
+\maketitle
+
+\begin{abstract}
+    The rapid scaling of large language models (LLMs) has made low-precision training essential for reducing memory, improving efficiency, and enabling larger models and datasets. Existing convergence theories for adaptive optimizers, however, assume all components are exact and neglect hardware-aware quantization, leaving open the question of why low-precision training remains effective. We introduce the first theoretical framework for analyzing the convergence of adaptive optimizers, including Adam and Muon, under floating-point quantization of gradients, weights, and optimizer states (e.g., moment estimates). Within this framework, we derive convergence rates on smooth non-convex objectives under standard stochastic gradient assumptions, explicitly characterizing how quantization errors from different components affect convergence. We show that both algorithms retain rates close to their full-precision counterparts provided mantissa length scales only logarithmically with the number of iterations. Our analysis further reveals that Adam is highly sensitive to weights and second-moment quantization due to its reliance on $\beta_2 \to 1$, while Muon requires weaker error control and is thus potentially more robust. These results narrow the gap between empirical success and theoretical understanding of low-precision training methods. Numerical experiments on synthetic and real-world data corroborate our theory.
+\end{abstract}
+
+
+
+%%%%%%%%%%%%%%%%%%%% input main text here %%%%%%%%%%%%%%%%%%%%
+\settocdepth{part}
+% --- begin tex/introduction.tex ---
+\section{Introduction}
+
+The rapid scaling of large language models (LLMs) has made low-precision training indispensable for modern deep learning. By reducing memory usage and improving computational efficiency, low-precision formats such as bfloat16 (BF16) and FP8 enable training with larger models and datasets on contemporary hardware accelerators \citep{peng2023fp8,fishman2025scaling}. The introduction of FP8 in Nvidia’s Hopper GPU architecture \citep{nvidia2022h100,micikevicius2022fp8} further cements its role as a practical datatype for the next generation of LLM training. In practice, numerous frameworks now leverage mixed- or low-precision formats to quantize gradients, weights, and optimizer states \citep{liu2024deepseek,liu2025muon}, showing that aggressively quantized training can scale to trillion-token workloads without loss of accuracy.
+
+Despite its empirical success, a rigorous theoretical understanding of quantization, particularly for adaptive optimizers like Adam \citep{kingma2014adam} with decoupled weight decay \citep{loshchilov2018decoupled} and Muon \citep{jordan2024muon}, which are widely used in practice, remain largely underdeveloped. Existing theoretical work on the non-convex optimization analysis under quantization has primarily focused on Stochastic Gradient Descent with quantized gradients (QSGD) \citep{alistarh2017qsgd}. For example, \citet{jiang2018qsgd} established $\cO(1/T^{1/4})$ convergence under unbiased quantization, while error-feedback mechanisms \citep{karimireddy2019error} were later introduced to handle biased quantization with the same guarantees. Extensions to QSGD and Quantized SGDM with error feedback have been analyzed in various settings \citep{tang2019deepsqueeze,zheng2019communication,Koloskova2020Decentralized}, again achieving $\cO(1/T^{1/4})$ rates. More recent efforts target Quantized Adam \citep{chen2021quantized,modoranu2024microadam,ozkara2025stochastic}. \citet{chen2021quantized} proved convergence of Adam with quantized gradients and weights under error feedback achieves $\cO(1/T^{1/4})$, but the method requires storing error terms for every parameter, which is memory-intensive and impractical for modern low-precision LLM training. \citet{modoranu2024microadam} reduced this cost by compressing error feedback with unbiased compression, proving $\cO(1/T^{1/4})$ convergence for Adam with quantized gradients. \citet{ozkara2025stochastic} further explored stochastic rounding (SR) as a mechanism for mitigating numerical errors in low-precision training, providing analyses of implicit regularization and convergence of Adam under SR; however, their analysis omits optimizer state quantization or practical floating-point formats, which are increasingly central to low-bit LLM optimization \citep{dettmers2021adam8bit,xi2025coat,fishman2025scaling}. This leaves a critical gap: practical low-bit training crucially involves the quantization of optimizer states (e.g., momentum and second-moment estimates), a component these analyses omit. Furthermore, these studies often rely on assumptions like unbiased quantization or error-feedback mechanisms that are not consistent with modern large-scale LLM training. Consequently, the community lacks a theoretical framework to explain the robust convergence observed when adaptive optimizers are quantized in all components during LLM training.
+
+
+
+\paragraph{This paper.} 
+The objective of this work is to develop the convergence analysis of adaptive optimization algorithms with a more practical quantization configuration. In particular, we develop the first analytical framework for quantized adaptive optimizers under floating-point quantization. More importantly, following the practical configuration \citep{liu2024deepseek}, our framework explicitly models the quantization of all key components: gradients, weights, momentum, and second moments. We then establish convergence guarantees for both Adam and Muon optimizers, expressing the results as a function of the quantization errors in these components. This clearly reveals how each type of error individually affects convergence. Crucially, rather than relying on unbiased quantization assumptions or storing per-parameter error feedback, we require only relative error control, which aligns with the behavior of standard floating-point formats (FP32 $\to$ BF16 or FP8; Section~\ref{sec:prelim_setup}, Figure~\ref{fig:Adam_rosenbrock_qe},~\ref{fig:Muon_rosenbrock_qe},~\ref{fig:Adam_cifar10_qe},~\ref{fig:Muon_cifar10_qe}; see also~\citep{kuzmin2022fp8}). 
+
+
+We then summarize the main contributions of this work  as follows:
+\begin{itemize}[leftmargin=*]
+    \item We introduce a rigorous analytical framework for adaptive optimizers under hardware-aware low-precision training, explicitly modeling the quantization of weights, gradients, and optimizer states (Section~\ref{sec:prelim_setup}). Unlike prior works that rely on unbiased quantization assumptions or error-feedback mechanisms, which are impractical in large-scale LLM training, we adopt a relative error model (Assumption~\ref{assump:qe}) that faithfully captures the behavior of floating-point quantization. This facilitates a formal and rigorous convergence analysis for quantized adaptive optimization algorithms that closely align with real-world implementations.
+    \item We provide the first convergence guarantees for quantized Adam (Theorem~\ref{thm:QAdam}) and Muon (Theorem~\ref{thm:QMuon}) on smooth non-convex objectives under the relative error quantization model (Assumption~\ref{assump:qe}), which closely reflects the behavior of floating-point quantization. Our analysis shows that both methods attain the same convergence rates as their full-precision counterparts~\citep{defossez2022a,shen2025convergence}, provided the mantissa length increases only logarithmically with the number of iterations, which is consistent with practical hardware precision.
+    \item Our analysis in Theorems~\ref{thm:QAdam} and~\ref{thm:QMuon} precisely characterizes how quantization errors in different components impact convergence.  
+    Notably, we show that Adam is particularly sensitive to quantization of weights and second moments due to their dependence on $\beta_2$, which is typically set close to 1 for convergence in practice and theory (Figure~\ref{fig:Adam_rosenbrock_beta2})~\citep{zhang2022adam}. This aligns with empirical observations from \citet{peng2023fp8,tao2024collage}, where weights and second moments require slightly higher precision than gradients or the momentum. Our experiments (Figures~\ref{fig:Adam_rosenbrock},~\ref{fig:Muon_rosenbrock},~\ref{fig:Adam_cifar10_grad},~\ref{fig:Muon_cifar10_grad},~\ref{fig:nanogpt_training_loss}) corroborate this, demonstrating graceful degradation with reduced precision and near full-precision performance at moderate mantissa lengths. In contrast, Theorem~\ref{thm:QMuon} reveals that Muon is more tolerant to quantization, requiring weaker relative error conditions (e.g., $1/T^{1/2}$ versus $1/T^2$ for Adam). This robustness stems from the SVD-based sign operator in Muon, which avoids the amplification of quantization errors by the inverse square root of historical gradient variances. This theoretical insight also explains empirical findings in \citet{liu2025muon} that Muon exhibits superior robustness to low-precision training compared to Adam (Figure~\ref{fig:nanogpt_val_loss}).
+\end{itemize}
+
+Overall, our results narrow the gap between the empirical success of quantized adaptive training and its theoretical understanding, providing a foundation for analyzing and designing future low-precision optimization algorithms.
+
+
+\paragraph{Notations.} 
+Scalars are denoted by lowercase letters ($x, \ldots$), vectors by bold lowercase ($\xb, \ldots$), and matrices by bold uppercase ($\Xb, \ldots$). 
+The $i$-th entry of $\xb$ is $x_i$, and the $(i,j)$-th entry of $\Xb$ is $X_{ij}$. 
+The $\ell_2$ norm of $\xb$ is $\|\xb\|_2 = \sqrt{\sum_i x_i^2}$, the Frobenius norm of $\Xb$ is $\|\Xb\|_F = \sqrt{\sum_{i,j} X_{ij}^2}$,
+and the nuclear norm of $\Xb$ is $\|\Xb\|_* = \sum_i \sigma_i(\Xb)$, where $\sigma_i(\Xb)$ denotes the $i$-th singular value.
+For $d \in \NN^+$, let $[d] = \{1,2,\ldots,d\}$. 
+For real sequences $\{a_t\}$ and $\{b_t\}$, we write $a_t = O(b_t)$ if there exist constants $C,N>0$ such that $a_t \le Cb_t$ for all $t \ge N$; 
+$a_t = \Omega(b_t)$ if $b_t = O(a_t)$; 
+$a_t = \Theta(b_t)$ if both $a_t = O(b_t)$ and $a_t = \Omega(b_t)$; 
+and we use $\tilde{O}(\cdot)$ and $\tilde{\Omega}(\cdot)$ to suppress logarithmic factors.
+The quantization operator is $\cQ(\cdot)$, with $x^Q$ denoting the quantized version of $x$. 
+
+
+
+
+% --- end tex/introduction.tex ---
+
+% --- begin tex/related_work.tex ---
+\section{Related Work}\label{sec:related_work}
+
+\paragraph{Adaptive Optimization.} Adaptive optimizers are a key part of deep learning because they can automatically respond to changes in the data. The progression of modern adaptive optimizers began with Adagrad \citep{duchi2011adaptive}, which scales learning rates based on the accumulated sum of past squared gradients. Despite extensive convergence analysis \citep{zou2019sufficient,chen2018convergence,shi2020rmsprop,adagrad_non_convex_orabona,faw_adapt}, its aggressive learning rate decay often leads to premature stalling. RMSProp \citep{hinton2012lecture} addressed this issue by using an exponentially decaying average of squared gradients instead, a method whose convergence has also been well-studied \citep{zaheer2018adaptive,de2018convergence,shi2020rmsprop,zhouchenlinprop}. Adam \citep{kingma2014adam} then synthesized these ideas by incorporating momentum, effectively combining the adaptive learning rates of RMSProp with first-moment estimates. Its widespread success has motivated a vast body of theoretical work analyzing its convergence and implicit bias generalization under various settings \citep{reddi2018,defossez2022a,zou2019sufficient,chen2018convergence,zhang2022adam,wang2022provable,guo2021novel,hong2023high,li2023convergence,wang2023closing,zhang2025convergenceguaranteesrmspropadam,zhang2024implicit,zou2023understanding,cattaneo2024implicit}. More recently, the Muon optimizer \citep{jordan2024muon} was proposed, which leverages a matrix-based perspective for optimization, with its convergence guarantees established by concurrent works \citep{shen2025convergence,sato2025convergenceboundcriticalbatch}. 
+While convergence guarantees for these methods have been established in high-precision settings, their behavior under the low-precision quantization common in modern large model training is not well understood, a gap that this paper aims to address.
+
+\paragraph{Low-bit Training.}
+As the field of deep learning continues to advance rapidly, the scale of models, particularly Large Language Models (LLMs), has grown exponentially.  Low precision training \citep{wang2018trainingfp8,wortsman2023stable,liu2023llm,xi2024jetfire,liu2024deepseek} has become a prominent technique in modern deep learning, offering reductions in both computational costs and memory requirements. Mixed-precision training typically performs forward and backward passes in low-precision formats like FP16 \citep{micikevicius2017mixedprecision}  or the more stable, wider-range BF16 \citep{kalamkar2019bf16study}, while maintaining master weights and optimizer states in FP32. The advent of hardware like NVIDIA's Hopper GPU architecture \citep{nvidia2022h100} has made 8-bit floating-point (FP8) training a practical reality for further efficiency gains \citep{micikevicius2022fp8,peng2023fp8,xi2025coat,fishman2025scaling}. Even more aggressive approaches now extend to 4-bit (FP4) training \citep{wang2025optimizing,zhou2025efficientpretrainingexploringfp4}. Especially in adaptive optimization, the optimizer states can consume as much memory as the model parameters themselves. This has motivated a class of methods that specifically compresses these states, decompressing them to a higher precision just-in-time for the weight update to save memory \citep{dettmers2021adam8bit,peng2023fp8,li2024optimizer4bit,fishman2025scaling,xi2025coat}. Despite the empirical success of these techniques, a comprehensive theory explaining their convergence behavior remains absent. Our work addresses this gap by establishing an analytical framework that formally incorporates quantization errors from all parts of a realistic low-bit training pipeline, from gradients and weights to the crucial optimizer states themselves.
+
+
+\paragraph{Quantization Convergence.}
+Most convergence guarantees for optimizers assume ideal, high-precision arithmetic, failing to account for the quantization effects inherent in modern large-scale training. Much of the existing theoretical work in this area has therefore focused on the convergence of Quantized Stochastic Gradient Descent (SGD). Early analyses established convergence rates for SGD with quantized gradients, often relying on the strong assumption of an unbiased quantizer \citep{alistarh2017qsgd,jiang2018qsgd,wen2017terngrad}. To handle more practical, biased quantization schemes, subsequent work introduced error-feedback mechanisms to compensate for the quantization bias and still guarantee convergence \citep{karimireddy2019error,zheng2019communication,tang2019deepsqueeze,Koloskova2020Decentralized}. Complementing these efforts on gradient compression, another line of research has analyzed the convergence of SGD when the model weights themselves are also quantized \citep{markov2023quantized}. Beyond SGD, analyzing quantized adaptive optimizers is a more recent challenge. 
+Early work in this direction includes \citet{hou2019analysis}, which studies Adam with $\beta_1 = 0$, analyzing joint quantization of both gradients and weights in convex settings. Other studies have applied error-feedback to ensure the convergence of Adam under quantized weights and gradients in non-convex settings \citep{chen2021quantized,modoranu2024microadam,robert2025ldadam}. However, these existing analyses for adaptive methods rely heavily on error-feedback mechanisms, which are often impractical in state-of-the-art LLM training pipelines \citep{xi2025coat,fishman2025scaling}. Complementary work on stochastic rounding (SR) \citep{ozkara2025stochastic} studies a different quantization regime: SR is approximately unbiased but introduces variance, and their Adam analysis quantizes only the final weight update while assuming full-precision gradients and optimizer states (with $\beta_1 = 0$). Such an additive-noise formulation and simplification avoid the recursive and interaction-heavy quantization error propagation that arises in adaptive optimization under realistic floating-point rounding. In contrast, our work addresses this critical gap by providing the first convergence framework for adaptive optimizers under a realistic floating-point error model that covers all components of the training process, without resorting to error-feedback or unbiasedness assumptions.
+
+
+% --- end tex/related_work.tex ---
+
+% --- begin tex/prelim.tex ---
+\section{Preliminaries and Problem Setup}\label{sec:prelim_setup}
+
+
+\subsection{Preliminaries}
+\label{sec:prelim}
+
+We begin by formalizing the quantization operator and its error properties. 
+Our focus is on floating-point quantization, which is widely adopted in practice. 
+Compared to integer quantization, floating-point formats achieve strictly smaller reconstruction errors due to their exponent scaling~\citep{kuzmin2022fp8}. 
+This explains why most large-scale low-precision training frameworks rely on floating-point representations, including recent FP8 and mixed-precision systems~\citep{peng2023fp8, liu2024deepseek, fishman2025scaling}. 
+
+\paragraph{Floating-point quantization.} 
+Let $\cQ:\RR \to \RR$ be a scalar quantization operator applied elementwise to vectors and matrices. 
+We illustrate $\cQ$ through the common case of quantizing from single precision (fp32) to brain floating-point (bf16). 
+The fp32 format uses $1$ sign bit, $8$ exponent bits, and $23$ mantissa bits (total $32$ bits) \citep{IEEE754}, while bf16 keeps the same sign and exponent layout but truncates the mantissa to $7$ bits \citep{wang2019bfloat16}. 
+Thus, FP32 can be written as
+\[
+x_{\text{fp32}} = (-1)^{S}\times 2^{E-127}\times (1.M_{0:22}),
+\]
+where $S$ is the sign bit, $E$ the exponent, and $M_{0:22}$ the mantissa bits. 
+Quantization discards the low-order $16$ mantissa bits $M_{7:22}$, possibly with rounding or truncation. 
+The BF16 number becomes
+\[
+x_{\text{bf16}} = (-1)^{S}\times 2^{E-127}\times \big(1.M_{0:6} + C \cdot 2^{-7}\big),
+\]
+where $C\in\{0,1\}$ is a carry bit from rounding. Dequantization pads the truncated mantissa with zeros to recover an fp32 value. 
+Figure~\ref{fig:fpbf} visualizes this process.
+
+\paragraph{Relative error.}
+The above construction implies that the quantization error satisfies
+\[
+|x_{\text{bf16}} - x_{\text{fp32}}| 
+= \big|C \cdot 2^{-7} - 0.M_{7:22}\cdot 2^{-7}\big| \cdot 2^{E-127}
+\;\le\; 2^{-7} \cdot 2^{E-127}
+\;\le\; q |x_{\text{fp32}}|,
+\]
+where $q=\Theta(2^{-M})$ and $M$ is the mantissa length of the target format (here $M=7$ for bf16). More generally, we assume the absence of underflow and overflow, so that the sign and exponent remain unchanged after quantization. This prevents large quantization errors and guarantees convergence of the quantization process. In practice, this assumption is well justified: low-precision LLM training commonly employs engineering techniques such as per-tensor or per-channel scaling, which ensure that post-quantization values remain within the representable range~\citep{peng2023fp8,fishman2025scaling}.
+Under this condition, the relative quantization error decays exponentially with the number of mantissa bits—a property that is intrinsic to floating-point representations.
+This observation motivates the following assumption.
+\begin{assumption}[Quantization Error]\label{assump:qe}
+Let $\cQ:\RR \to \RR$ be a scalar quantization operator applied elementwise. 
+Then, for any $x\in\RR$, the quantization error is relatively bounded:
+\[
+|x^Q - x| \le q |x|,
+\]
+where $q=\Theta(2^{-M})$, and $M$ is the mantissa length of the target floating-point format.
+\end{assumption}
+
+\begin{figure}[!t]
+\vskip -0.1in
+\centering
+\includegraphics[width=0.98\linewidth]{figure/fpbf.pdf}
+\caption{Floating-point quantization from fp32 to bf16. 
+Only the mantissa is truncated, while sign and exponent remain unchanged.}
+\label{fig:fpbf}
+\vskip -0.1in
+\end{figure}
+
+
+
+
+\subsection{Problem Setup}
+\label{sec:setup}
+
+We study stochastic optimization~\eqref{eq:opt} with low-precision training under an analytical quantization framework shown in Figure~\ref{fig:flowchart}. Formally, the goal is to minimize the loss:
+\begin{align}\label{eq:opt}
+    \min_{\Wb \in \RR^{m\times n}} 
+    F(\Wb) = \EE_{\bxi}[f(\Wb; \bxi)],
+\end{align}
+where $\Wb$ denotes the model parameters, $\bxi$ is a random variable representing the data, and $f(\Wb;\bxi)$ is the sample loss. 
+We denote $F^* = \inf_{\Wb} F(\Wb) > -\infty$ as the optimal objective value.
+
+\paragraph{Low-precision training framework.}
+During training, both computation and communication are constrained by memory and bandwidth. 
+Modern practice therefore quantizes weights, gradients, and optimizer states into lower-precision formats (e.g., BF16, FP8) to accelerate training \citep{peng2023fp8, liu2024deepseek, fishman2025scaling}. 
+We model this process with the analytical framework shown in Figure~\ref{fig:flowchart}. 
+The key steps are:
+\begin{enumerate}[leftmargin=*]
+    \item The master maintains full-precision weights $\Wb_t$ but transmits their quantized version $\Wb_t^Q$ to workers.
+    \item Workers perform forward and backward passes with $\Wb_t^Q$, compute gradients $\nabla f(\Wb_t^Q; \bxi)$, quantize them, and send quantized gradients back.
+    \item The master dequantizes gradients, updates quantized optimizer states (e.g., momentum, second moment), and applies the optimizer update. Updated states are re-quantized for storage.
+\end{enumerate}
+The first two steps can be illustrated by Algorithm~\ref{alg:framework}, while the third step depends on the choice of optimizer (e.g., Adam in Algorithm~\ref{alg:adam} or Muon in Algorithm~\ref{alg:muon}). The dashed arrows in Figure~\ref{fig:flowchart} highlight the quantization operations applied to weights, gradients, and optimizer states within the proposed framework.
+
+\paragraph{Relative errors.}
+We denote the relative errors $q$ of different components after applying $\cQ$ as
+\[
+q_W \quad \text{(weights)}, \qquad 
+q_G \quad \text{(gradients)}, \qquad 
+q_M \quad \text{(first moment)}, \qquad 
+q_V \quad \text{(second moment)}.
+\]
+Each error term arises from applying a floating-point quantization operator $\cQ$ that satisfies Assumption~\ref{assump:qe}. Formally, for any quantized quantity $\Xb_t$ (e.g., $\Wb_t$, $\Gb_t$, $\Mb_t$, $\Vb_t$) at iteration $t$, its relative quantization error is defined as the smallest constant $q \ge 0$ such that
+\[
+\vert [\Xb_t^Q]_{ij} - [\Xb_t]_{ij} \vert \le q_X \vert [\Xb_t]_{ij}\vert, \qquad \forall t \in {0, \dots, T-1}.
+\]
+In particular, we have
+\begin{align*}
+q_W &:= \inf\big\{q \ge 0 : |[\Wb_t^Q]_{ij} - [\Wb_t]_{ij}| \le q |[\Wb_t]_{ij}|, \forall t\big\},\\
+q_G &:= \inf\big\{q \ge 0 : |[\Gb_t^Q]_{ij} - [\Gb_t]_{ij}| \le q |[\Gb_t]_{ij}|, \forall t\big\},\\
+q_M &:= \inf\big\{q \ge 0 : |[\Mb_t^Q]_{ij} - [\Mb_t]_{ij}| \le q |[\Mb_t]_{ij}|, \forall t\big\},\\
+q_V &:= \inf\big\{q \ge 0 : |[\Vb_t^Q]_{ij} - [\Vb_t]_{ij}| \le q |[\Vb_t]]_{ij}|, \forall t\big\}.
+\end{align*}
+This framework is more general than most prior theoretical analyses, which typically consider quantization of only a subset of components (e.g., gradients).
+
+\paragraph{Optimizers.}
+We focus on two adaptive optimizers: Adam \citep{kingma2014adam} and Muon \citep{jordan2024muon}. 
+Algorithm~\ref{alg:framework} outlines the general quantized training loop, while Algorithms~\ref{alg:adam} and~\ref{alg:muon} detail the specific update rules for Adam\footnote{Our Algorithm slightly differs from the standard Adam, but will not affect the proof. We provide a detailed discussion in Appendix~\ref{equal}.} and Muon, respectively. 
+Note that the quantization operator $\cQ$ can represent any floating-point quantization (e.g., fp32 $\to$ bf16 or fp8) satisfying Assumption~\ref{assump:qe}.
+
+In the following sections, we will analyze the convergence of quantized Adam and Muon under this framework with relative quantization errors $(q_W, q_G, q_M, q_V)$.
+
+
+\begin{figure}[!t]
+\vskip -0.1in
+     \centering
+     \includegraphics[width=0.75\linewidth]{figure/analytical_framework.pdf}
+    \caption{An analytical low-precision training framework}
+    \label{fig:flowchart}
+\vskip -0.1in
+\end{figure}
+
+
+\begin{figure}[!t]
+\vskip -0.1in
+\centering
+\begin{minipage}[t]{1.0\textwidth}
+    \begin{algorithm}[H]
+        \caption{Analytical Adaptive Method Quantization Training Framework}
+        \label{alg:framework}
+        \begin{algorithmic}[1]
+            \State \textbf{Input 1}: Algorithm $\cA\in \{\mathrm{Adam},\mathrm{Muon} \}$ and its parameters set $\bTheta \in \{\{ \beta_1,\beta_2,\epsilon \},\{\beta \} \}$, initial weights $\Wb_0$, learning rate schedule $\{\eta_t\}$, batch size $B$, quantization operator $\cQ$
+            \For{$t = 0, \ldots, T-1$}
+                \State Sample batch $\{\bxi_{t,i}\}_{i=1}^B$ uniformly \Comment{$B$ workers}
+                \State $\Gb_t = \frac{1}{B} \sum_{i=1}^B \nabla^Q f(\Wb_t^Q; \bxi_{t,i})$ \Comment{Master receives $B$ quantized gradients}
+                \State $\Wb_{t+1} = \cA(\Wb_t, \Gb_t, \bTheta, t)$ \Comment{Update by Adam or Muon}
+            \EndFor
+        \end{algorithmic}
+    \end{algorithm}
+\end{minipage}
+
+\vspace{-0.1in}
+
+\begin{minipage}[t]{0.49\textwidth}
+    \begin{algorithm}[H]
+        \caption{Adam$(\Wb_t, \Gb_t, \bTheta, t)$}
+        \label{alg:adam}
+        \begin{algorithmic}[1]
+            \State $\{\beta_1, \beta_2, \epsilon\} \leftarrow \bTheta$
+            \State $\Mb_t \leftarrow \beta_1  \Mb_{t-1}^Q + \Gb_t$ if $t>0$ else $\Mb_0 = \Gb_0$
+            \State $\Vb_t \leftarrow \beta_2 \Vb_{t-1}^Q +  \Gb_t^2$ if $t>0$ else $\Vb_0 = \Gb_0^2$
+            \State \Return $\Wb_t - \eta_t  \Mb_t/\sqrt{{\Vb_t}+ \epsilon\mathbf{1}}$
+        \end{algorithmic}
+    \end{algorithm}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.49\textwidth}
+    \begin{algorithm}[H]
+        \caption{Muon$(\Wb_t, \Gb_t, \bTheta, t)$}
+        \label{alg:muon}
+        \begin{algorithmic}[1]
+            \State $\{\beta \} \leftarrow \bTheta$
+            \State $\Mb_t = \beta \Mb_{t-1}^Q + (1-\beta)\Gb_t$ if $t>0$ else $\Mb_0 = \Gb_0$
+            \State $(\Ub_t, \Sbb_t, \Vb_t) = \mathrm{SVD}(\Mb_t)$
+            \State \Return $\Wb_t - \eta_t \Ub_t\Vb_t^{\top}$
+        \end{algorithmic}
+    \end{algorithm}
+\end{minipage}
+
+\vskip -0.1in
+\end{figure}
+
+
+
+
+
+% --- end tex/prelim.tex ---
+
+% --- begin tex/main_results.tex ---
+\section{Main Results}\label{sec:main_results}
+We now present our main theoretical results on the convergence of quantized Adam and Muon under the analytical framework in Section~\ref{sec:prelim_setup}. We begin by stating the assumptions required for our analysis, followed by the convergence theorems for each optimizer.
+
+\begin{assumption}[Unbiased Stochastic Gradient]\label{assump:grad_unbiased}
+    The stochastic gradient $\nabla f(\Wb;\bxi)$ is an unbiased estimator of the true gradient $\nabla F(\Wb)$, i.e., $\EE[\nabla f(\Wb;\bxi)] = \nabla F(\Wb)$.
+\end{assumption}
+
+\begin{assumption}[Stochastic Gradient Bounds]\label{assump:grad_bounds}
+    The stochastic gradient $\nabla f(\Wb;\bxi)$ satisfies the following bounds depending on the algorithm:
+    \begin{itemize}[leftmargin=*]
+        \item {\bf Adam}: The stochastic gradient is $\ell_\infty$ uniformly almost surely bounded, i.e., there exists a constant $R > \sqrt{\epsilon}$ (where $\epsilon > 0$ is the stability constant used to simplify the final bounds) such that
+        \begin{align*}
+            \|\nabla f(\Wb;\bxi)\|_\infty = \max_{i,j} |[\nabla f(\Wb;\bxi)]_{ij}| \le R - \sqrt{\epsilon}, \quad \text{a.s.}.
+        \end{align*}
+        \item {\bf Muon}: The stochastic gradient has bounded variance, i.e., there exists a constant $\sigma > 0$ such that
+        \begin{align*}
+            \EE[\|\nabla f(\Wb;\bxi) - \nabla F(\Wb)\|_F^2] \le \sigma^2.
+        \end{align*}
+    \end{itemize}
+\end{assumption}
+
+\begin{assumption}[Smoothness]\label{assump:smooth}
+    The objective function $F:\RR^{m\times n}\to\RR$ is $L$-smooth, i.e., for any $\Xb, \Yb \in \RR^{m\times n}$, we have
+    \begin{align*}
+    \|\nabla F(\Xb) - \nabla F(\Yb)\|_F \;\le\; L \|\Xb - \Yb\|_F.
+    \end{align*}
+\end{assumption}
+Assumptions~\ref{assump:grad_unbiased},~\ref{assump:grad_bounds} and \ref{assump:smooth} are standard in the analysis of smooth non-convex stochastic optimization~\citep{zaheer2018adaptive,chen2018on,zou2019sufficient,defossez2022a,chen2022towards,zhang2022adam,wang2023closing}. They are usually employed to control the stochastic gradient noise and the local geometry of the objective function.
+
+We remark that a more general $(L_0,L_1)$-smoothness condition~\citep{zhang2020why}, which has been adopted in recent analyses of Adam~\citep{li2023convergence,wang2024provable,hong2024convergence}, allows the smoothness constant to depend on the gradient norm: $\|\nabla F(\Xb) - \nabla F(\Yb)\|_F \le (L_0 + L_1 \|\nabla F(\Yb)\|_F) \|\Xb - \Yb\|_F$. While this condition can better capture practical deep learning scenarios, since our focus is on characterizing how quantization errors influence the convergence behavior of Adam and Muon, we adopt the standard $L$-smoothness assumption for simplicity. Extending our results to $(L_0,L_1)$-smoothness remains an interesting direction for future work.
+
+Finally, we assume the optimization begins from a controlled initialization:
+\begin{assumption}[Bounded Initialization]\label{assump:bound_init}
+    The initial parameter matrix $\Wb_0$ and its gradient are bounded in Frobenius norm, i.e., $\|\Wb_0\|_F \le D,\ \|\nabla F(\Wb_0)\|_F \le G$, for some constants $D,G > 0$.
+\end{assumption}
+Bounding the initialization ensures that quantization errors remain controlled and their propagation through the optimization iterations can be rigorously analyzed, which is crucial for establishing convergence guarantees under low-precision training.
+
+
+
+
+
+\subsection{Theoretical results of Adam}
+\begin{figure}[!t]
+\vskip -0.1in
+     \centering
+     \includegraphics[width=0.98\linewidth]{figure/adam_grad_norm_alast.pdf}
+    \caption{Rosenbrock: Adam gradient norms under different mantissa precisions $M$ (left: full $10{,}000$ iterations; right: last $100$ iterations). Larger mantissa bit-lengths yield smaller converged gradient norms. Together with Figure~\ref{fig:Adam_rosenbrock_qe}, this shows that higher precision reduces quantization error and improves convergence, consistent with Theorem~\ref{thm:QAdam}.}
+    \label{fig:Adam_rosenbrock}
+\vskip -0.1in
+\end{figure}
+We first present the convergence result of Adam under FP quantization in the following theorem.
+\begin{theorem}[Convergence of Quantized Adam]
+\label{thm:QAdam}
+Suppose Assumptions~\ref{assump:qe},~\ref{assump:grad_unbiased}–\ref{assump:bound_init} hold. Let $d=mn$ be the number of trainable parameters, consider the Quantized Adam algorithm defined in \ref{alg:framework} run for $T$ iterations with $\eta_t = (1 - \beta_1) \Omega_t \eta$, where $\Omega_t = \sqrt{\sum_{j=0}^{t-1} \beta_2^j}$. Suppose $\beta_1^2(1+q_M)^2 < \beta_2(1-q_V)$, $\beta_1(1+q_M) < \beta_2(1-q_V)$, and $2\beta_1/(1-\beta_1)\le T$, then for an iteration index $\tau$ chosen randomly from $\{0, \dots, T-1\}$ with $P(\tau=j) \propto (1 - \beta_1^{T-j})$, we have:
+
+\begin{align*}
+\nonumber
+    &\esp{\norm{\nabla F(\Wb_{\tau})}_F^2} \leq
+    4 (1+q_G)R \frac{F_0 - F_*}{\eta T}+\frac{\tilde{Q}(T)}{T} + \frac{2q_W T\eta\cdot (1-\beta_1)d^\frac{3}{2} \eta  L (1+q_G)R^2 }{\sqrt{\epsilon}(1-\beta_2)\sqrt{1-\frac{\beta_1^2(1+q_M)^2}{\beta_2(1-q_V)}}} \\
+    \nonumber
+    &+\frac{4(1+q_G) d }{\sqrt{\epsilon(1-\beta_2)}} \left( q_G R^3 + L q_W R^2 D \right) + \frac{C}{T}\left(\ln\left(1 + \frac{((1+q_G)R)^2}{\epsilon(1-\beta_2(1-q_V))}\right) - T\ln(\beta_2(1-q_V))\right) ,
+\end{align*}
+where $C$ is a constant depending on the problem hyperparameters, and $\tilde Q(T)$ is a function with respect to $T$, $q_V$, $q_G$, and $q_M$, which approaches zero when $q_V, q_M\rightarrow 0$ (please refer to Eq~\ref{eq:all_definitions} for their detailed formula).
+
+
+Moreover, by setting $\eta=\Theta(1/\sqrt{T})$, $1-\beta_2=\Theta(1/T)$, $q_G = \cO(1/T)$, $q_M = \cO(1/T)$, $q_V = \cO(1/T^2)$, $q_W = \cO(1/T^2)$, then $\tilde Q(T)/T = \cO(T^{-1/2})$ (refer to Eq.~\ref{eq:QT_cal} for calculation details) and
+    \begin{align*}
+        \EE[\|\nabla F(\Wb_{\tau})\|_F] = \tilde{\cO}\left(T^{-1/4}\right).
+    \end{align*}
+\end{theorem}
+
+
+
+Theorem~\ref{thm:QAdam} provides the first convergence guarantee for Adam under a practical floating-point quantization model~\citep{peng2023fp8,liu2024deepseek,fishman2025scaling}, in contrast to prior works that assume unbiased quantization or error-feedback mechanisms~\citep{jiang2018qsgd,chen2021quantized,modoranu2024microadam}. The most similar prior theoretical work is \citet{ozkara2025stochastic}, whose analysis also builds on~\citet{defossez2022a}; however, they consider only quantization of the final weight update, assuming full-precision gradients and optimizer states with $\beta_1 = 0$, and thus do not capture the recursive error propagation arising from fully quantized Adam under realistic floating-point rounding. Our analysis demonstrates that by setting the hyperparameters as $\eta=\Theta(1/\sqrt{T})$ and $1-\beta_2=\Theta(1/T)$, and ensuring the relative quantization errors satisfy $q_G, q_M = \cO(1/T)$ and $q_W, q_V = \cO(1/T^2)$, Quantized Adam achieves a convergence rate of $\tilde{\cO}(T^{-1/4})$, which successfully matches the established one for its full-precision counterpart in smooth non-convex optimization~\citep{guo2021novel,defossez2022a,wang2023closing,hong2024convergence}.
+
+
+
+Our theorem further reveals a nuanced sensitivity to different types of quantization error. The required precision for the second moment ($q_V$) is stricter than for the first moment ($q_M$). This sensitivity arises because accumulated errors in the second-moment estimate $\Vb_t$ are non-linearly amplified by the update step's inverse square root. This theoretical finding provides a rigorous explanation for the empirical observation that the second moment often require higher precision than the first moment in low-bit training setups \citep{peng2023fp8,tao2024collage,fishman2025scaling}. Similarly, the stricter precision requirement for weights ($q_W = \cO(1/T^2)$) is necessary to control error accumulation over the entire training trajectory. Our analysis must account for the potential growth of weight magnitudes throughout training, which acts as an amplification factor for the relative quantization error. To guarantee convergence under this worst-case scenario of unbounded weight growth, the proof requires $q_W$ to decay rapidly to counteract this amplification. However, this strict condition is a consequence of the proof's generality. In practice, where weight norms often remain bounded, this error amplification is less severe, and the precision requirement for $q_W$ could be relaxed to $\cO(1/T)$.
+
+
+
+\subsection{Theoretical results of Muon}
+\begin{figure}[!t]
+\vskip -0.1in
+     \centering
+     \includegraphics[width=0.98\linewidth]{figure/muon_grad_norm_alast.pdf}
+    \caption{Rosenbrock: Muon gradient norms under different mantissa precisions $M$ (left: full $10{,}000$ iterations; right: last $100$ iterations). Larger mantissa bit-lengths yield smaller converged gradient norms. Together with Figure~\ref{fig:Muon_rosenbrock_qe}, this shows that higher precision reduces quantization error and improves convergence, consistent with Theorem~\ref{thm:QMuon}.}
+    \label{fig:Muon_rosenbrock}
+\vskip -0.1in
+\end{figure}
+Then, we present the convergence result of quantized Muon in the following theorem.
+\begin{theorem}[Convergence of Quantized Muon]\label{thm:QMuon}
+Suppose Assumptions~\ref{assump:qe},~\ref{assump:grad_unbiased}–\ref{assump:bound_init} hold. Consider the Quantized Muon algorithm in \ref{alg:framework} and~\ref{alg:muon} run for $T$ iterations with $\eta_t=\eta,\beta(1+q_M) < 1$, then
+    \begin{align*}
+        \frac{1}{T}\sum_{t=0}^{T-1}\EE[\| \nabla F(\Wb_t) \|_F] 
+        &\le \frac{\EE[F(\Wb_0)-F(\Wb_T)]}{\eta T} + \frac{2\beta L\eta r}{1-\beta} + \frac{6\sigma\sqrt{r}}{T(1-\beta)\sqrt{B}}+ \sqrt{\frac{1-\beta}{1+\beta}}\frac{6\sigma\sqrt{r}}{\sqrt{B}} + \\ 
+        &\frac{L\eta r}{2} + C_{2}\cdot\bigg(q_G+ q_W + q_G T\eta + q_W T\eta + \frac{q_M\beta}{1-\beta(1+q_M)}(1+T\eta) \bigg) ,
+    \end{align*}
+    where $C_2$ is absolute constant, $r=\min\{m,n\}$.
+    Moreover, suppose $F(\Wb_0) - F^* \le \Delta$ for constant $\Delta > 0$, set $1-\beta = \Theta(T^{-1/2})$, $\eta = \Theta(T^{-3/4})$, and $B = 1$, if $q_G = q_W = q_M = \cO(T^{-1/2})$, then
+    \begin{align*}
+        \frac{1}{T}\sum_{t=0}^{T-1}\EE[\| \nabla F(\Wb_t) \|_F] = \cO(T^{-1/4}).
+    \end{align*}
+\end{theorem}
+Theorem~\ref{thm:QMuon} establishes the convergence of Quantized Muon under relative quantization errors $(q_W, q_G, q_M)$ for weights, gradients, and momentum, respectively—a practical setting for low-precision training~\citep{peng2023fp8,liu2024deepseek,fishman2025scaling}, in contrast to prior works that assume unbiased quantization or error-feedback mechanisms~\citep{jiang2018qsgd,chen2021quantized,modoranu2024microadam}. As a sanity check, when $q_W = q_G = q_M = 0$, our result recovers the exact convergence rate $\cO(1/T^{1/4})$ of \citet{shen2025convergence} up to constant factors. More importantly, as long as the mantissa length of the floating-point format scales logarithmically with $T$, i.e., $M = \Omega(\log T)$, the quantization errors decay as $q_W=q_G=q_M=\cO(T^{-1/2})$. With appropriate choices of $\eta$ and $\beta$ (as in Theorem~\ref{thm:QMuon}), the full-precision convergence rate $\cO(T^{-1/4})$ is preserved.
+
+
+
+Finally, we highlight a sharp contrast with quantized Adam. Theorem~\ref{thm:QMuon} requires only relative errors on the order of $q=\cO(T^{-1/2})$, whereas Theorem~\ref{thm:QAdam} demands stricter conditions, at least $q=\cO(T^{-1})$ and in some cases $q=\cO(T^{-2})$. This theoretical distinction explains why Muon adapts more efficiently to low-precision settings than Adam, corroborating the empirical observations of \citet{liu2025muon}.
+
+
+
+
+
+
+
+\paragraph{Experiments.}
+We evaluate our theory on synthetic, image, and LLM benchmarks.
+
+\textbf{Synthetic setup.}
+For the synthetic benchmark, we adopt the classical Rosenbrock function~\citep{rosenbrock1960automatic}. Let $\Wb \in \RR^{m\times n}$, and define $F(\Wb) = \sum_{j=1}^{n-1} \Big(100\|\Wb_{j+1}-\Wb_j^2\|_F^2 + \|\mathbf{1}_{m} - \Wb_j\|_F^2\Big)$, where $\Wb_j$ denotes the $j$-th column of $\Wb$ and $\mathbf{1}_m$ is the $m$-dimensional all-ones vector.
+We set $m=50$, $n=100$, and run $T=10{,}000$ iterations with learning rate $\eta = 5\times 10^{-4}$. Mantissa bit-lengths are selected from $M={4,8,16,24,32,52}$ to quantize gradients, weights, and optimizer states. For Adam, we use $\beta_1=0.9$, $\beta_2=0.999$, and $\epsilon=10^{-8}$; for Muon, we set $\beta=0.9$ and employ $n_s=10$ power iterations, following~\citet{jordan2024muon}.
+
+
+
+\textbf{CIFAR-10 setup.} We train a 4-layer fully connected network $[\mathrm{FC}(512)-\mathrm{ReLU}-\mathrm{FC}(256)-\mathrm{ReLU}-\mathrm{FC}(64)-\mathrm{ReLU}-\mathrm{FC}(10)]$ on CIFAR-10 using Adam and Muon. Additional implementation details are provided in Appendix~\ref{app:exp}.
+
+
+\textbf{nanoGPT setup.} We train \texttt{nanoGPT} on OpenWebText ($\sim 26$M parameters, 4 layers, 4 heads, embedding 384, batch size 128, block size 512). Both AdamW and Muon are tested under varying mantissa lengths $M$, with Muon applied to 2D parameters in transformer blocks and AdamW applied to all 1D parameters (embedding, lm\_head, layernorm).
+
+\textbf{Empirical Validation of Theory.}
+Across all benchmarks, our results empirically validate Theorems~\ref{thm:QAdam} and \ref{thm:QMuon}. We observe a direct link between quantization error and convergence. As shown across the Rosenbrock, CIFAR-10, and nanoGPT experiments (Figures~\ref{fig:Adam_rosenbrock}, \ref{fig:Muon_rosenbrock}, \ref{fig:Adam_cifar10_grad}, \ref{fig:Muon_cifar10_grad}, \ref{fig:nanogpt_training_loss}, \ref{fig:nanogpt_val_loss}), very low mantissa lengths ($M$) lead to significant convergence degradation. This degradation correlates directly with high relative quantization errors (detailed in Appendix Figures~\ref{fig:Adam_rosenbrock_qe}, \ref{fig:Muon_rosenbrock_qe}, \ref{fig:Adam_cifar10_qe}, \ref{fig:Muon_cifar10_qe}), which stall the optimization. Conversely, moderate $M$ values yield sufficiently small errors, enabling convergence nearly identical to the full-precision baseline. Furthermore, our experiment in Figure~\ref{fig:Adam_rosenbrock_beta2} explicitly confirms our analysis of Adam, showing that optimizer sensitivity to quantization error increases significantly as $\beta_2 \to 1$. The language modeling results in Figure~\ref{fig:nanogpt_val_loss} suggest that Muon is more robust than AdamW under low-precision training, consistent with Theorems~\ref{thm:QAdam} and \ref{thm:QMuon}. We provide full experimental details and results in Appendix~\ref{app:exp}.
+
+
+
+% --- end tex/main_results.tex ---
+
+% --- begin tex/conclusion.tex ---
+\section{Conclusion and Limitations}\label{sec:conclusion}
+We introduced the first theoretical framework for analyzing adaptive optimizers under realistic floating-point quantization, jointly modeling the quantization of gradients, parameters, and optimizer states. Unlike prior work, our analysis does not rely on unbiased quantization or error feedback—assumptions that are impractical in modern large-scale low-precision training. Within this framework, we derived the first convergence guarantees for Adam and Muon, with rates expressed explicitly in terms of component-wise quantization errors. Our results highlight that Adam is highly sensitive to parameter and second-moment quantization due to its reliance on $\beta_2 \to 1$, whereas Muon requires weaker error control and is therefore more robust. These findings explain empirical observations in large-scale LLM training and narrow the gap between practice and theory.
+
+\paragraph{Limitations and Future Directions.}
+Several challenges remain. First, our analysis focuses on smooth unconstrained non-convex objectives, leaving open extensions to broader settings, including $(L_0, L_1)$-smooth functions~\citep{zhang2020why}, non-smooth convex objectives~\citep{mishchenko2023prodigy,defazio2024the}, constrained or composite problems~\citep{kovalev2025understanding,pethick2025training}, and structured scenarios studied in recent works \citep{shen2025convergence}. Second, our theoretical guarantees assume an increasing-bit regime, $M = \Omega(\log T)$, to control cumulative quantization error. In practice, bit-width is typically fixed (e.g., FP8 or BF16), which means convergence is guaranteed only to a neighborhood of a stationary point; understanding why moderate fixed precision suffices empirically remains an open question. Third, we focus primarily on fully quantized Adam/Muon and have not yet extended the framework to other popular optimizers benchmarked in LLM training \citep{vlassis2025beyond,semenov2025benchmarking,wen2025fantastic}. Finally, our analysis models quantized states under exact arithmetic and does not account for practical considerations such as low-precision operations (e.g., FP8 matrix multiplications) or communication-efficient distributed training, which are critical for large-scale training. Incorporating these aspects would provide a more complete theoretical account of large-scale low-precision optimization.
+
+
+% --- end tex/conclusion.tex ---
+
+
+
+\bibliography{reference}
+
+\bibliographystyle{plainnat}
+
+\newpage
+
+\appendix
+
+% --- begin tex/appendix/dep_graph.tex ---
+\section*{Appendix: Proof Dependency Graph}
+
+The following proof dependency graph visually encapsulates the logical structure and organization of the theoretical results in the paper, detailed in Appendix~\ref{app:Proof_QAdam} (Proof of Theorem~\ref{thm:QAdam}) and Appendix~\ref{app:Proof_QMuon} (Proof of Theorem~\ref{thm:QMuon}).
+
+The graph is organized into two main, independent clusters:
+
+Theorem~\ref{thm:QAdam} (Quantized Adam): This cluster, shown on the left, illustrates the proof for Quantized Adam. The main theorem (Theorem~\ref{thm:QAdam}) is supported by a series of lemmas from Appendix~\ref{app:Proof_QAdam}. These lemmas provide the bounds for the core proof structure, including the main descent and gradient drift terms (Lemmas~\ref{lemma:bound_on_C},~\ref{lemma:bound_on_D}), the analysis of quantization error arising from a one-step decomposition of the algorithm(Lemmas~\ref{app:lemma:moment_relation},~\ref{app:lemma:discrete_error_bound},~\ref{app:lemma:refined_cauchy}), the cumulative bounds on update norms and bias (Lemmas~\ref{app:lemma:u},~\ref{lemma:bound_on_M}), and the key mathematical tools used to bound the specific types of sums and geometric series arising from the analysis (Lemmas~\ref{app:lemma:cauchy},~\ref{lemma:sum_ratio},~\ref{app:lemma:sum_geom_sqrt},~\ref{app:lemma:sum_geom_32}).
+
+
+Theorem~\ref{thm:QMuon} (Quantized Muon): This cluster, shown on the right, illustrates the proof for Quantized Muon. This theorem relies on a separate set of lemmas from Appendix~\ref{app:Proof_QMuon}. These lemmas bound the various error components specific to Muon's update rule, including the bound of the weight norm and the gradient norm (Lemma~\ref{lemma:muon_bounded_w_grad}), relative quantization error (Lemma~\ref{lemma:muon_mat_qe}), the momentum bias (Lemma~\ref{lemma:muon_GC}), stochastic variance (Lemma~\ref{lemma:muon_CX}), and errors introduced by quantizing stochastic gradients, weights and the momentum state (Lemmas~\ref{lemma:muon_XY},~\ref{lemma:muon_YZ},~\ref{lemma:muon_ZM}).
+
+The arrows in the graph indicate dependency. An arrow from a lemma to a theorem (or another lemma) signifies that the proof of the latter relies on the result of the former.
+
+\vspace{0.5cm}
+\begin{adjustbox}{max width=\textwidth, center}
+\mbox{[omitted: a diagram of this paper's results, not reproduced here]}
+\end{adjustbox}% --- end tex/appendix/dep_graph.tex ---
+
+\newpage
+\tableofcontents
+\resettocdepth{}
+\newpage
+
+% --- begin tex/appendix/adam.tex ---
+\section{Proof of Theorem~\ref{thm:QAdam}}\label{app:Proof_QAdam}
+\subsection{Preliminaries}\label{equal}
+We consider an optimization problem in a $d$-dimensional space (let $d=mn$ be the number of trainable parameters), where coordinates are indexed by $i \in [d] = \{1, 2, \ldots, d\}$. Our algorithm generates a sequence of vectors $(\ub_t)_{t\in\mathbb{N}}$, with the $i$-th component of $\ub_t$ denoted by $u_{t,i}$. The objective is to find a critical point of a global function $F: \mathbb{R}^d \rightarrow \mathbb{R}$ within a stochastic framework, where we have access to a sequence of i.i.d. sample functions $(f_t)_{t \in \mathbb{N}^*}$ (e.g., the loss on a data minibatch). For any differentiable function $h: \mathbb{R}^d \rightarrow \mathbb{R}$, we denote its gradient by $\nabla h$ and its $i$-th component by $\nabla_i h$. Finally, we use a small constant $\epsilon > 0$ for numerical stability and let $\mathbb{E}_t[\cdot]$ denote the conditional expectation given the history of samples $f_1, \ldots, f_{t-1}$. We use $\vec(\cdot)$ to vectorize a matrix and $\mat(\cdot)$ for the inverse operation.
+
+Recall the dynamic system of our theoretical Quantized Adam. In the proof, we denote $\wb_t=\vec(\Wb_t)$, $\hat{\gb_t}=\vec(\Gb_t)$ and the dimension $d=m \cdot n$. For an iteration $t \in \mathbb{N}^*$, we define:
+\begin{align}
+    \label{app:eq:system}
+    \begin{cases}
+    m_{t, i} &= \beta_1  m_{t-1, i}^Q+ \hat{g}_{t,i}=\beta_1 ( m_{t-1, i}+\xi_{t-1,i}) + (\nabla_i f_t(\wb_{t-1})+\delta_{t,i}),\\
+    v_{t, i} &= \beta_2  v_{t-1, i}^Q + \hat{g}_{t,i}^2=\beta_2 (v_{t-1, i}+\theta_{t-1,i}) + \left(\nabla_i f_t(\wb_{t-1})+\delta_{t,i}\right)^2,\\
+    w_{t, i} &= w_{t-1, i} - \eta_t \frac{m_{t, i}}{\sqrt{\epsilon + v_{t, i}}}.
+    \end{cases}
+\end{align}
+with the step size given by
+\begin{align}
+\label{app:eq:alpha_adam}
+    \eta_t = \eta (1 - \beta_1) \sqrt{\frac{1-\beta_2^t}{1 - \beta_2}}.
+\end{align}
+
+Here, $\delta_{t,i}$, $\xi_{t-1,i}$, and $\theta_{t-1,i}$ represent the quantization errors for the gradient, first moment, and second moment, respectively. Especially, $\nabla_i f_t(\wb_{t-1})=\frac{1}{B}\sum_{j=1}^B\nabla_if(\wb_{t-1};\gamma_{t,j})$, $\delta_{t,i}=\frac{1}{B}\sum_{j=1}^{B}\nabla_i^Q f(\wb_{t-1}^Q; \gamma_{t,j})-\frac{1}{B}\sum_{j=1}^B\nabla_if_t(\wb_{t-1};\gamma_{t,j})$. And we have $\esp{\nabla_if_t(\wb_{t-1})}=\nabla_iF(\wb_{t-1})$
+
+Our convergence analysis for Quantized Adam is predicated on a specific, analytically convenient formulation of the algorithm. This section serves to rigorously justify our theoretical framework by establishing two foundational equivalences. First, we demonstrate that our representation of the Adam update is equivalent to the standard formulation. Following the methodology of \citet{defossez2022a}, we absorb the scaling factor into the learning rate, which simplifies the recursive structure of the momentum term. Second, and more critically for our work, we prove that the theoretical analysis of quantizing these weighted-sum states is directly applicable to the practical scenario of quantizing the standard weighted-average states. 
+
+\paragraph{Equivalence with Standard Adam}
+Our formulation in \eqref{app:eq:system} utilizes a weighted sum for the moments, which differs slightly from the standard weighted-average approach in the original Adam algorithm \citep{kingma2014adam}. The standard first moment, often expressed as $\tilde{m}_{t, i} = (1-\beta_1) \sum_{k=1}^{t}\beta_1^{t - k} \hat{g}_{k,i}$, is simply a scaled version of our definition, i.e., $\tilde{m}_{t,i} = (1 - \beta_1) m_{t,i}$. This constant scaling factor can be directly absorbed into the learning rate.
+
+Furthermore, the standard Adam algorithm includes bias correction terms to counteract the zero-initialization of moments. These corrections are equivalent to using a time-dependent step size of the form:
+\begin{equation}
+    \label{eq:full_adam_step_size}
+    \eta_{t, \text{Adam}} = \eta \cdot \frac{1 - \beta_1}{\sqrt{1 - \beta_2}} \cdot \frac{\sqrt{1 - \beta_2^t}}{1 - \beta_1^t}.
+\end{equation}
+For analytical tractability, our analysis adopts the simplified step size $\eta_t$ from \eqref{app:eq:alpha_adam}, which omits the bias correction for the first moment ($m_{t,i}$). This simplification is motivated by several practical and theoretical considerations. First, it ensures that our step size $\eta_t$ is monotonic with respect to $t$, which is advantageous for the convergence proof. Second, for typical hyperparameter values (e.g., $\beta_1=0.9$, $\beta_2=0.999$), the omitted term $1/(1-\beta_1^t)$ converges to its limit of 1 much more rapidly than the retained term $\sqrt{1 - \beta_2^t}$. Finally, removing this term effectively implements a learning rate warm-up, a common and beneficial practice, while retaining the correction for $v_{t,i}$ prevents an undesirably large initial step size that could lead to training instability.
+
+\paragraph{Equivalence of Quantization Schemes.}
+A subtle but crucial aspect of our setup is the object of quantization. Our theoretical framework analyzes the quantization of weighted-sum moments ($\mb_t, \vb_t$), while a practical implementation would quantize the standard weighted-average moments ($\tilde{\mb}_t, \tilde{\vb}_t$). We now prove that these two approaches are, in fact, analytically equivalent.
+
+To establish this rigorously, we first abstract the core dynamic behavior into a general mathematical lemma. We will show that two discrete-time systems, representing the weighted-sum and weighted-average accumulation methods under relative error perturbations, are analytically indistinguishable. We will then apply this result to the specific case of Quantized Adam.
+
+\begin{lemma}[Equivalence of Perturbed Dynamical Systems]
+\label{lemma:dynamical_equivalence}
+Consider two scalar sequences $\{a_k\}_{k\ge0}$ and $\{c_k\}_{k\ge0}$ evolving according to the following dynamics for $k \ge 1$, with initial conditions $a_0 = c_0 = 0$:
+\begin{align}
+    \label{eq:system_a}
+    a_k &= \beta(a_{k-1} + d_{k-1}) + b_k \\
+    \label{eq:system_c}
+    c_k &= \beta(c_{k-1} + e_{k-1}) + (1-\beta)b_k
+\end{align}
+where $\beta \in (0,1)$ is a decay factor, $\{b_k\}$ is an external input sequence, and $\{d_k\}, \{e_k\}$ are perturbation sequences. These perturbations are bounded by a relative error model with factor $q \in [0,1)$:
+\begin{align}
+    \label{eq:error_bounds}
+    |d_{k-1}| \le q|a_{k-1}| \quad \text{and} \quad |e_{k-1}| \le q|c_{k-1}|.
+\end{align}
+Then, the sequence $\{c_k\}$ and the scaled sequence $\{a'_k\} \triangleq (1-\beta)a_k$ are analytically equivalent. Specifically, they follow identical recurrence relations where their respective perturbation terms satisfy identical relative error bounds with respect to their own states.
+\end{lemma}
+
+\begin{proof}
+To prove the equivalence, we derive the recurrence relation for the scaled sequence $\{a'_k\}$ and compare its structure and error properties to that of $\{c_k\}$.
+
+\textbf{Step 1: Derive the recurrence for $\{a'_k\}$.}
+Starting from the definition $a'_k = (1-\beta)a_k$ and substituting the dynamics from \eqref{eq:system_a}:
+\begin{align*}
+    a'_k &= (1-\beta) \left[ \beta(a_{k-1} + d_{k-1}) + b_k \right] \\
+         &= \beta(1-\beta)a_{k-1} + \beta(1-\beta)d_{k-1} + (1-\beta)b_k.
+\end{align*}
+Now, we replace $a_{k-1}$ with $a'_{k-1}/(1-\beta)$:
+\begin{align*}
+    a'_k &= \beta(1-\beta)\left(\frac{a'_{k-1}}{1-\beta}\right) + \beta(1-\beta)d_{k-1} + (1-\beta)b_k \\
+         &= \beta a'_{k-1} + \beta(1-\beta)d_{k-1} + (1-\beta)b_k.
+\end{align*}
+
+\textbf{Step 2: Compare recurrence structures.}
+Let us place the recurrence relations for $\{c_k\}$ and $\{a'_k\}$ side-by-side:
+\begin{align*}
+    c_k   &= \beta c_{k-1} + \beta e_{k-1} + (1-\beta)b_k \\
+    a'_k  &= \beta a'_{k-1} + \beta(1-\beta)d_{k-1} + (1-\beta)b_k.
+\end{align*}
+Both sequences share the identical structure: $X_k = \beta X_{k-1} + \text{Perturbation}_k + (1-\beta)b_k$. The only difference lies in the form of their respective perturbation terms.
+
+\textbf{Step 3: Compare relative bounds of the perturbation terms.}
+The equivalence hinges on whether these different perturbation terms satisfy the same relative error property with respect to their own system's state.
+
+For system $\{c_k\}$, the perturbation term is $\beta e_{k-1}$. Using the bound from \eqref{eq:error_bounds}:
+\begin{equation*}
+    |\text{Perturbation}_c| = |\beta e_{k-1}| = \beta|e_{k-1}| \le \beta q |c_{k-1}|.
+\end{equation*}
+
+For system $\{a'_k\}$, the effective perturbation term is $\beta(1-\beta)d_{k-1}$. Using the bound from \eqref{eq:error_bounds} and the scaling relationship $a_{k-1} = a'_{k-1}/(1-\beta)$:
+\begin{equation*}
+    |\text{Perturbation}_a| = |\beta(1-\beta)d_{k-1}| = \beta(1-\beta)|d_{k-1}| \le \beta(1-\beta)q|a_{k-1}| = \beta(1-\beta)q\frac{|a'_{k-1}|}{1-\beta} = \beta q |a'_{k-1}|.
+\end{equation*}
+
+\textbf{Conclusion of Proof.}
+Both systems, $\{c_k\}$ and the scaled $\{a'_k\}$, adhere to the same mathematical dynamics. Their evolution is governed by an identical recurrence structure, and their respective perturbation terms are bounded by the exact same relative factor $\beta q$ with respect to their own previous state. Therefore, from an analytical standpoint, the two systems are indistinguishable. Any conclusion regarding the long-term behavior (e.g., convergence, stability) of $\{c_k\}$ under its perturbation model will apply directly to $\{a'_k\}$ (and thus proportionally to $\{a_k\}$) under its own perturbation model.
+\end{proof}
+
+With Lemma \ref{lemma:dynamical_equivalence} established, we can now apply this general result to our specific case of Quantized Adam. The weighted-sum moment $\mb_t$ from our analysis corresponds to the abstract sequence $\{a_k\}$, while the standard weighted-average moment $\tilde{\mb}_t$ corresponds to $\{c_k\}$. The gradient term $\gb_t$ corresponds to $\{b_k\}$, and the relative quantization errors in both schemes are modeled by the perturbations $\{d_k\}$ and $\{e_k\}$ with the bound factor $q$.
+
+Lemma \ref{lemma:dynamical_equivalence} thus formally proves that analyzing the quantization of our weighted-sum moment $\mb_t$ is analytically equivalent to analyzing the quantization of the standard weighted-average moment $\tilde{\mb}_t$. This rigorously justifies our proof strategy and ensures that our theoretical findings are directly relevant to practical implementations of Quantized Adam. A parallel argument holds for the second moments $\vb_t$ and $\tilde{\vb}_t$ with decay factor $\beta_2$.
+
+\subsection{Detailed Proof}
+
+To systematically analyze the effects of quantization, we begin by isolating the different sources of error. We introduce auxiliary moment estimates, $m'_{t,i}$ and $v'_{t,i}$, which are defined to incorporate the quantization error from the stochastic gradient, $\delta_{t,i}$, but are themselves assumed to be stored with perfect precision. Their dynamics are given by:
+\begin{equation}
+\begin{aligned}
+    m'_{t, i} &=\beta_1 m'_{t-1, i} + (\nabla_i f_t(\wb_{t-1})+\delta_{t,i})\\
+    v'_{t, i} &=\beta_2 v'_{t-1, i} + (\nabla_i f_t(\wb_{t-1})+\delta_{t,i})^2\\
+\end{aligned}
+\end{equation}
+Throughout the following proof we note $\espt{\cdot}$ the conditional expectation with respect to $f_1, \ldots, f_{t-1}$. In particular, $\wb_{t-1}$, $\vb_{t-1}$ is deterministic knowing $f_1, \ldots, f_{t-1}$.
+With slightly abuse of notation in the detailed proof, We introduce 
+\begin{equation}\mathcal{G}_t = \nabla F(\wb_{t-1}) \quad \text{and} \quad \gb_t = \nabla f_t(\wb_{t-1}).\end{equation}
+We introduce the update $\ub_t \in \RR^d$, as well as the update without momentum $\Ub_t \in \RR^d$:
+\begin{equation}
+\label{app:eq:def_u}
+    u_{t, i} = \frac{m_{t, i}}{\sqrt{\epsilon+v_{t, i}}} \quad \text{and}\quad
+    U_{t, i} = \frac{g_{t, i}+\delta_{t,i}}{\sqrt{\epsilon+v'_{t, i}}}.
+\end{equation}
+For any $k \in \NN$ with $k < t$, we define $\tilde{v}_{t, k} \in\RR^d$ by
+\begin{equation}
+\tilde{v}_{t, k,  i} = \beta_2^{k} v'_{t - k, i} + \esps{t - k}{\sum_{j=t- k + 1}^{t}\beta_2^{t-j}(g_{j,i}+\delta_{j,i})^2},
+\end{equation}
+i.e. the contribution from the $k$ last gradients are replaced by their expected value for know values of $f_1, \ldots, f_{t - k - 1}$.
+
+Using the smoothness of $F$, we have
+\begin{align*}
+    &F(\wb_t)  \leq F(\wb_{t-1}) - \eta_t \mathcal{G}_t^T \ub_t
+%   \\&\quad\quad+  
+    + \frac{\eta_t^2 L}{2}\norm{\ub_t}^2_2.
+\end{align*}
+
+The overall motivation of our proof is to find a lower bound for $\eta_t \mathcal{G}_t^T \ub_t$.
+\begin{align}
+    \mathcal{G}_t^T \ub_t=\sum_{i\in[d]}\mathcal{G}_{t, i}\frac{m_{t, i}}{\sqrt{\epsilon+v_{t, i}}}
+\end{align}
+
+We can rewrite $\mathcal{G}_t^T \ub_t$ as:
+\begin{equation}
+\label{eq:fenli}
+    \sum_{i\in[d]}\mathcal{G}_{t, i}\frac{m_{t, i}}{\sqrt{\epsilon+v_{t, i}}}=\underbrace{(\sum_{i\in[d]}\mathcal{G}_{t, i}\frac{m_{t, i}}{\sqrt{\epsilon+v_{t, i}}}-\sum_{i\in[d]}\mathcal{G}_{t, i}\frac{m'_{t, i}}{\sqrt{\epsilon+v'_{t, i}}})}_A+\underbrace{\sum_{i\in[d]}\mathcal{G}_{t, i}\frac{m'_{t, i}}{\sqrt{\epsilon+v'_{t, i}}}}_B
+\end{equation}
+Here, Term A represents the error component arising from the quantization of the momentum accumulators ($\mathbf{m}_t, \mathbf{v}_t$), while Term B represents the behavior of the update driven by an ideal accumulator.
+
+Now we can bound term A. We split A into two parts as before:
+\begin{equation}
+    |A| \le \underbrace{\left|\sum_{i\in[d]}\mathcal{G}_{t, i}\frac{m_{t, i} - m'_{t,i}}{\sqrt{\epsilon+v_{t, i}}}\right|}_{A_1} + \underbrace{\left|\sum_{i\in[d]}\mathcal{G}_{t, i}\left(\frac{m'_{t, i}}{\sqrt{\epsilon+v_{t, i}}} - \frac{m'_{t, i}}{\sqrt{\epsilon+v'_{t, i}}}\right)\right|}_{A_2}
+\end{equation}
+The first term, $A_1$, which arises from the quantization noise on the first moment $\mb$, is bounded using Lemma~\ref{app:lemma:discrete_error_bound} (with $q=q_M$) and Lemma~\ref{app:lemma:refined_cauchy}:
+\begin{align}
+    |A_1| &\le \sum_{i\in[d]}R\frac{|m_{t, i}-m'_{t,i}|}{\sqrt{v_{t, i}}} \nonumber \\
+    &\le R\sum_{i\in[d]}\frac{\sum_{k=0}^t(\beta_1^{t-k}((1+q_M)^{t-k}-1))|\nabla_i f_k(\wb_{k-1}) + \delta_{k,i}|}{\sqrt{\sum_{k=0}^t\beta_2^{t-k}(1-q_V)^{t-k}(\nabla_i f_k(\wb_{k-1}) + \delta_{k,i})^2}} \le q_M \cdot dR \cdot C_q
+\end{align}
+where $C_q = \frac{\sqrt{r'(1+r')}}{(1+q_M)(1-r')^{3/2}}$ and $r' = \frac{\beta_1^2(1+q_M)^2}{\beta_2(1-q_V)}$.
+
+For the second term, $A_2$, we use the bound on the gradient $\norm{\mathcal{G}_t}_\infty \le R$ and apply Lemma~\ref{app:lemma:moment_relation}, which requires a case analysis.
+\begin{align}
+    \nonumber
+    |A_2| &\le \sum_{i\in[d]}R|m'_{t,i}|\left|\frac{1}{\sqrt{\epsilon+v_{t,i}}}-\frac{1}{\sqrt{\epsilon+v'_{t,i}}}\right| \\
+    &\le \sum_{i\in[d]}R|m'_{t,i}| \max\left\{ \frac{1}{\sqrt{\epsilon+LB_{t,i}}} - \frac{1}{\sqrt{\epsilon+v'_{t,i}}}, \frac{1}{\sqrt{\epsilon+v'_{t,i}}} - \frac{1}{\sqrt{\epsilon+UB_{t,i}}} \right\}
+\end{align}
+Let $g_{k,i} = \nabla_i f_k(\wb_{k-1}) + \delta_{k,i}$. We analyze the two terms inside the $\max$ for a single coordinate $i$.
+
+\textbf{Case I (Deviation from Lower Bound):} Following the approximation in the provided sketch, we have
+\begin{align}
+    \nonumber
+    |m'_{t,i}| \left( \frac{1}{\sqrt{\epsilon+LB_{t,i}}} - \frac{1}{\sqrt{\epsilon+v'_{t,i}}} \right) 
+    \nonumber
+    &=|m'_{t,i}|\left( \frac{v'_{t,i}-LB_{t,i}}{\sqrt{\epsilon+LB_{t,i}}\sqrt{\epsilon+v'_{t,i}}(\sqrt{\epsilon+LB_{t,i}}+\sqrt{\epsilon+v'_{t,i}})}        \right)\\
+    \nonumber
+    &= \frac{|m'_{t,i}|}{\sqrt{\epsilon+LB_{t,i}}} \frac{v'_{t,i} - LB_{t,i}}{\sqrt{\epsilon+v'_{t,i}}(\sqrt{\epsilon+LB_{t,i}}+\sqrt{\epsilon+v'_{t,i}})} \\
+    \nonumber
+    &\le \frac{|m'_{t,i}|}{\sqrt{\epsilon+LB_{t,i}}} \frac{v'_{t,i} - LB_{t,i}}{\epsilon+v'_{t,i}}\\
+    &\hspace*{-2cm} =  \frac{\sum_{k=0}^{t} \beta_1^{t-k}|g_{k,i}+\delta_{k,i}|}{\sqrt{\epsilon+\sum_{k=0}^{t} (\beta_2(1-q_V))^{t-k} (g_{k,i}+\delta_{k,i})^2}} \cdot \frac{\sum_{k=0}^{t} (\beta_2^{t-k} - (\beta_2(1-q_V))^{t-k}) (g_{k,i}+\delta_{k,i})^2}{\epsilon+\sum_{k=0}^{t} \beta_2^{t-k} (g_{k,i}+\delta_{k,i})^2}
+\end{align}
+The first fraction is bounded by Lemma~\ref{app:lemma:cauchy}: $\frac{\sum_{k=0}^{t}\beta_1^k |a_{t-k,i}|}{\sqrt{\epsilon+\sum_{k=0}^{t}(\beta_2(1-q_V))^k a_{t-k,i}}} \le \frac{1}{\sqrt{1-\beta_1^2/(\beta_2(1-q_V))}}$.
+The second fraction is a ratio of weighted sums $\frac{\sum_{k=0}^{t} (\beta_2^k - (\beta_2(1-q_V))^k) a_{t-k,i}}{\epsilon+\sum_{k=0}^{t} \beta_2^k a_{t-k,i}}$. This ratio is bounded by the maximum ratio of its coefficients:
+\begin{equation*}
+    \max_{k \in \{0,\dots,t\}} \frac{\beta_2^k - (\beta_2(1-q_V))^k}{\beta_2^k} = \max_{k \in \{0,\dots,t\}} (1 - (1-q_V)^k) = 1-(1-q_V)^{t}.
+\end{equation*}
+Combining these bounds, the term for Case I is bounded by $\frac{1}{\sqrt{1-\beta_1^2/(\beta_2(1-q_V))}}(1-(1-q_V)^t)$.
+
+\textbf{Case II (Deviation from Upper Bound):} Similarly, we bound the second term:
+\begin{align*}
+    |m'_{t,i}| \left( \frac{1}{\sqrt{\epsilon+v'_{t,i}}} - \frac{1}{\sqrt{\epsilon+UB_{t,i}}} \right) 
+    &\le \frac{|m'_{t,i}|}{\sqrt{\epsilon+v'_{t,i}}} \frac{UB_{t,i} - v'_{t,i}}{\epsilon+UB_{t,i}}
+\end{align*}
+Applying Lemma~\ref{app:lemma:cauchy} and the maximum ratio:
+\begin{equation*}
+    \le \frac{1}{\sqrt{1 - \beta_1^2/\beta_2}} \cdot \left( 1 - (1+q_V)^{-t} \right)
+\end{equation*}
+Comparing the bounds from the two cases, the bound from Case I is larger since $1-(1-q_V)^t > 1-(1+q_V)^{-t}$ and the denominator term $\sqrt{1 - \beta_1^2/(\beta_2(1-q_V))}$ is smaller than $\sqrt{1 - \beta_1^2/\beta_2}$. Therefore, taking the maximum and summing over $d$ dimensions:
+\begin{align}
+    |A_2| \le \sum_{i\in[d]} R \frac{1-(1-q_V)^t}{\sqrt{1-\frac{\beta_1^2}{\beta_2(1-q_V)}}} = \frac{dR(1-(1-q_V)^t)}{\sqrt{1-\frac{\beta_1^2}{\beta_2(1-q_V)}}}
+\end{align}
+Combining the bounds for $|A_1|$ and $|A_2|$, we can get the bound for term A:
+\begin{equation}
+|A| \le |A_1| + |A_2| \le q_M \cdot dR \cdot C_q + \frac{dR(1-(1-q_V)^t)}{\sqrt{1-\frac{\beta_1^2}{\beta_2(1-q_V)}}}  \triangleq Q(t)
+\end{equation}
+
+Now we move on to bound Term B. Let us now focus on bounding Term B from \eqref{eq:fenli}. By expanding the definition of the first moment estimate $m'_{t, i}$, we can decompose Term B into two parts, which we will call Term C and Term D:
+\begin{align}
+\sum_{i \in [d]}\mathcal{G}_{t, i}\frac{m'_{t, i}}{\sqrt{\epsilon+v'_{t, i}}} &=
+\sum_{i \in [d]} \mathcal{G}_{t, i} \sum_{k=0}^{t-1} \beta_1^k \frac{g_{t-k, i}+\delta_{t-k,i}}{\sqrt{\epsilon+v'_{t, i}}}
+\\
+&=
+\underbrace{\sum_{i \in [d]} \sum_{k=0}^{t-1}\beta_1^k \mathcal{G}_{t-k, i} \frac{g_{t - k, i}+\delta_{t-k,i}}{\sqrt{\epsilon+{v'_{t, i}}}}}_C
++ \underbrace{\sum_{i \in [d]} \sum_{k=0}^{t-1} \beta_1^k \left(\mathcal{G}_{t, i} - \mathcal{G}_{t -k, i}\right) \frac{g_{t - k, i}+\delta_{t-k,i}}{\sqrt{\epsilon+v'_{t, i}}}}_D.
+\label{eq:B_term_decomposition_main}
+\end{align}
+The magnitude of Term D, which captures the error from gradient drift, is bounded by Lemma \ref{lemma:bound_on_D}:
+\begin{align}
+|D| \leq \frac{\eta_t^2 L^2 \sqrt{1 - \beta_1}}{4 (1+q_G)R}\left( \sum_{l=1}^{t-1}\norm{\ub_{t-l}}_2^2\sum_{k=l}^{t - 1}\beta_1^k \sqrt{k} \right)
++\frac{(1+q_G)R}{\sqrt{1 - \beta_1}} \sum_{k=0}^{t-1} \left(\frac{\beta_1}{\beta_2}\right)^k \sqrt{k+1}\norm{\Ub_{t-k}}_2^2.
+\label{eq:d_bound_final_rearranged_main}
+\end{align}
+For Term C, we establish a lower bound on its expectation in Lemma \ref{lemma:bound_on_C}:
+\begin{align}
+\nonumber
+    \esp{C} &\geq \frac{1}{2}\left(\sum_{i\in [d]} \sum_{k=0}^{t-1}\beta_1^k\esp{\frac{\mathcal{G}_{t - k, i}^2}{\sqrt{\epsilon+\tilde{v}_{t, k+1, i}}}}\right) -
+    \frac{2 (1+q_G)R}{\sqrt{1 - \beta_1}}\left(\sum_{i\in [d]} \sum_{k=0}^{t-1}
+     \left(\frac{\beta_1}{\beta_2}\right)^k \sqrt{k+1} \esp{\norm{\Ub_{t -k}}_2^2}\right)\\
+     &\quad-d\sum_{k=0}^{t-1}\beta_1^kM_{t-k}
+    \label{app:eq:descent_proof:almost_there_main}.
+\end{align}
+where $M_{t-k} = \frac{q_GR^2+Lq_WR\norm{\wb_{t-k-1}}_2}{\sqrt{\epsilon}}$. Injecting \eqref{app:eq:descent_proof:almost_there_main} ,\eqref{eq:d_bound_final_rearranged_main}and \eqref{eq:B_term_decomposition_main} into \eqref{eq:fenli} . We get the final lower bound for $\mathcal{G}_t^T \ub_t$:
+
+\begin{equation}
+\begin{aligned}
+    &\esp{\sum_{i\in[d]}\mathcal{G}_{t, i}\frac{m_{t, i}}{\sqrt{\epsilon+v_{t, i}}}} \geq
+   \frac{1}{2}\left(\sum_{i\in[d]} \sum_{k=0}^{t - 1} \beta_1^k
+   \esp{
+        \frac{\mathcal{G}_{t - k, i}^2}{\sqrt{\epsilon + \tilde{v}_{t, k + 1, i}}}}\right)-Q(t)-d\sum_{k=0}^{t-1}\beta_1^kM_{t-k}
+\\
+    &\qquad -
+         \frac{\eta_t^2 L^2}{4 (1+q_G)R}\sqrt{1 - \beta_1}\left( \sum_{l=1}^{t-1}\norm{\ub_{t-l}}_2^2\sum_{k=l}^{t - 1}\beta_1^k \sqrt{k} \right)
+        -
+         \frac{3 (1+q_G)R}{\sqrt{1 - \beta_1}} \left(\sum_{k=0}^{t-1} \left(\frac{\beta_1}{\beta_2}\right)^k \sqrt{k+1}\norm{\Ub_{t-k}}_2^2\right).
+  \label{app:eq:descent_lemma_main}
+\end{aligned}
+\end{equation}
+
+Now lets look back at:
+\begin{align*}
+\nonumber
+    &F(\wb_t)  \leq F(\wb_{t-1}) - \eta_t \mathcal{G}_t^T \ub_t
+%   \\&\quad\quad+  
+    + \frac{\eta_t^2 L}{2}\norm{\ub_t}^2_2.
+\end{align*}
+
+inject \eqref{app:eq:descent_lemma_main} into it:
+\begin{align}
+\nonumber
+    &\esp{F(\wb_t)}  \leq \esp{F(\wb_{t-1})} -
+    \frac{\eta_t}{2} \left(\sum_{i\in[d]} \sum_{k = 0}^{t-1}
+  \beta_1^k \esp{
+        \frac{\mathcal{G}_{t - k, i}^2}{ \sqrt{\epsilon + \tilde{v}_{t, k + 1, i}}}}\right)
+  + \frac{\eta_t^2 L}{2}\esp{\norm{\ub_t}^2_2}+\eta_tQ(t)+\eta_td\sum_{k=0}^{t-1}\beta_1^kM_{t-k}
+\\
+    &\quad 
+    +
+           \frac{\eta_t^3 L^2}{4 (1+q_G)R}\sqrt{1 - \beta_1}\left( \sum_{l=1}^{t-1}\norm{\ub_{t-l}}_2^2\sum_{k=l}^{t - 1}\beta_1^k \sqrt{k} \right)
+        +
+         \frac{3\eta_t (1+q_G)R}{\sqrt{1 - \beta_1}} \left(\sum_{k=0}^{t-1} \left(\frac{\beta_1}{\beta_2}\right)^k \sqrt{k+1}\norm{\Ub_{t-k}}_2^2\right).
+ \label{app:eq:common_first_main}
+\end{align}
+
+We have for any $k \in \NN$, $k < t$, and any coordinate $i\in [d]$,
+$\sqrt{\epsilon+\tilde{v}_{t, k+1, i}} \leq (1+q_G)R \sqrt{\sum_{j=0}^{t-1} \beta_2^j}$.
+Introducing $\Omega_t = \sqrt{\sum_{j=0}^{t-1} \beta_2^j}$,
+we have
+\begin{align}
+\nonumber
+    &\esp{F(\wb_t)}  \leq \esp{F(\wb_{t-1})} -
+        \frac{\eta_t}{2 (1+q_G)R \Omega_t}\sum_{k = 0}^{t-1} \beta_1^k \esp{\norm{\mathcal{G}_{t -k}}_2^2}
+       + \frac{\eta_t^2 L}{2}\esp{\norm{\ub_t}^2_2}+\eta_tQ(t)+\eta_td\esp{\sum_{k=0}^{t - 1}\beta_1^kM_{t-k}}
+\\
+    &\quad
+    +
+           \frac{\eta_t^3 L^2}{4 (1+q_G)R}\sqrt{1 - \beta_1}\left( \sum_{l=1}^{t-1}\norm{\ub_{t-l}}_2^2\sum_{k=l}^{t - 1}\beta_1^k \sqrt{k} \right)
+        +
+         \frac{3\eta_t (1+q_G)R}{\sqrt{1 - \beta_1}} \left(\sum_{k=0}^{t-1} \left(\frac{\beta_1}{\beta_2}\right)^k \sqrt{k+1}\norm{\Ub_{t-k}}_2^2\right).
+ \label{app:eq:common_second_main}
+\end{align}
+
+Now summing over all iterations $t \in [T]$ for $T \in \NN^*$, and $\eta_t$ is non-decreasing, as well the fact that $F$ is bounded below by $F_*$, we get
+\begin{align}
+\nonumber
+    &\underbrace{\frac{1}{2 (1+q_G)R} \sum_{t=1}^T \frac{\eta_t}{\Omega_t}\sum_{k=0}^{t-1} \beta_1^k \esp{\norm{\mathcal{G}_{t -k}}_2^2}}_{\tilde{A}} \leq
+    F(\wb_0) - F_* + \underbrace{\frac{\eta_T^2 L}{2}\sum_{t=1}^T\esp{\norm{\ub_t}^2_2}}_{\tilde{B}}+\underbrace{\eta_T\sum_{t=1}^TQ(t)}_{E_Q}+ \underbrace{\eta_Td\sum_{t=1}^T\esp{\sum_{k=0}^{t-1}\beta_1^kM_{t-k}}}_{M}\\
+    &\quad 
+    +\underbrace{
+    \frac{\eta_T^3 L^2}{4 (1+q_G)R}\sqrt{1-\beta_1}  \sum_{t=1}^T \sum_{l=1}^{t-1}
+    \esp{\norm{\ub_{t-l}}^2_2}\sum_{k=l}^{t-1} \beta_1^k \sqrt{k}}_{\tilde{C}}
+    + \underbrace{\frac{3 \eta_T (1+q_G)R}{\sqrt{1- \beta_1}} \sum_{t=1}^T \sum_{k=0}^{t-1}
+    \left(\frac{\beta_1}{\beta_2}\right)^k \sqrt{k+1} \esp{\norm{\Ub_{t-k}}^2_2}}_{\tilde{D}}
+    \label{app:eq:common_big_main}.
+\end{align}
+
+First lets bound Term $\tilde{A}$. We have $\eta_t = (1 - \beta_1) \Omega_t \eta$. Thus, we can simplify the $\tilde{A}$ term from \eqref{app:eq:common_big_main}, also using the usual change of index $j = t - k$, to get
+\begin{align}
+\nonumber
+    \tilde{A} &= \frac{1}{2 (1+q_G)R} \sum_{t=1}^T \frac{\eta_t}{\Omega_t}\sum_{j=1}^{t} \beta_1^{t -j} \esp{\norm{\mathcal{G}_{j}}_2^2}\\
+\nonumber
+    &= \frac{\eta(1 - \beta_1)}{2 (1+q_G)R} \sum_{j=1}^T \esp{\norm{\mathcal{G}_{j}}_2^2} \sum_{t=j}^{T} \beta_1^{t - j} \\
+\nonumber
+    &= \frac{\eta}{2 (1+q_G)R} \sum_{j=1}^T (1 - \beta_1^{T - j + 1}) \esp{\norm{\mathcal{G}_{j}}_2^2}\\
+\nonumber
+    &= \frac{\eta}{2 (1+q_G)R} \sum_{j=1}^{T} (1 - \beta_1^{T - j +1}) \esp{\norm{\nabla F(\wb_{j-1})}_2^2}\\
+    &= \frac{\eta}{2 (1+q_G)R} \sum_{j=0}^{T-1} (1 - \beta_1^{T - j}) \esp{\norm{\nabla F(\wb_{j})}_2^2}.
+\end{align}
+
+To establish our convergence guarantee, we analyze the expected gradient norm at a randomly selected iteration $\tau$, drawn from the set $\{0, \ldots, T-1\}$. The selection is not uniform but is instead weighted to properly account for the influence of the momentum term over the iterations. The probability of selecting a specific iteration $t$ is defined as:
+\begin{align}
+\label{app:eq:def_tau_main}
+    \forall t \in \{0, \ldots, T-1\}, \quad \mathbb{P}(\tau = t) \propto 1 - \beta_1^{T-t}.
+\end{align}
+We can notice that
+\begin{align}
+\label{app:eq:bound_sum_prob_main}
+ \sum_{j=0}^{T-1} (1 - \beta_1^{T - j}) = T - \beta_1 \frac{1 - \beta_1^{T}}{1 - \beta_1} \geq T - \frac{\beta_1}{1 - \beta_1}.
+\end{align}
+Introducing
+\begin{equation}
+\label{app:eq:deftn_main}
+    \tilde{T} = T - \frac{\beta_1}{1 - \beta_1},
+\end{equation}
+we then have
+\begin{align}
+\label{app:eq:bound_a_adam_main}
+    \tilde{A} \geq \frac{\eta \tilde{T}}{2 (1+q_G)R}\esp{\norm{\nabla F(\wb_{\tau})}_2^2}.
+\end{align}
+
+Next looking at $\tilde{B}$, we apply Lemma~\ref{app:lemma:u},
+\begin{align}
+    \tilde{B} \leq B' \left(\ln\left(1 + \frac{((1+q_G)R)^2}{\epsilon(1-\beta_2(1-q_V))}\right) - T\ln(\beta_2(1-q_V))\right)
+    \label{app:eq:common_b_bound_main}
+\end{align}
+with
+\begin{gather}
+    B'= \frac{d\eta_T^2 L}{2(1 - \beta_1(1+q_M))(1 - \frac{\beta_1(1+q_M)}{\beta_2(1-q_V)})}.
+\end{gather}
+
+Then looking at $\tilde{C}$ and introducing the change of index $j=t -l$,
+\begin{align}
+\nonumber
+    \tilde{C} &= \frac{\eta_T^3 L^2}{4 (1+q_G)R}\sqrt{1-\beta_1}  \sum_{t=1}^T \sum_{j=1}^{t}
+    \esp{\norm{\ub_{j}}^2_2}\sum_{k=t - j}^{t-1} \beta_1^k \sqrt{k} \\
+\nonumber
+    &= \frac{\eta_T^3 L^2}{4 (1+q_G)R}\sqrt{1-\beta_1}  \sum_{j=1}^T \esp{\norm{\ub_{j}}^2_2}\sum_{t=j}^{T}
+    \sum_{k=t - j}^{t-1} \beta_1^k \sqrt{k}\\
+\nonumber
+    &= \frac{\eta_T^3 L^2}{4 (1+q_G)R}\sqrt{1-\beta_1}  \sum_{j=1}^T \esp{\norm{\ub_{j}}^2_2}
+    \sum_{k=0}^{T-1} \beta_1^k \sqrt{k}\sum_{t=j}^{j + k} 1\\
+\nonumber
+    &= \frac{\eta_T^3 L^2}{4 (1+q_G)R}\sqrt{1-\beta_1} \sum_{j=1}^T \esp{\norm{\ub_{j}}^2_2}
+    \sum_{k=0}^{T-1} \beta_1^k \sqrt{k} (k + 1)\\
+    &\leq \frac{\eta_T^3 L^2}{(1+q_G)R}  \sum_{j=1}^T \esp{\norm{\ub_{j}}^2_2} \frac{\beta_1}{(1 - \beta_1)^{2}}.
+\end{align}
+using Lemma~\ref{app:lemma:sum_geom_32}. Finally, using Lemma~\ref{app:lemma:u}, we get
+\begin{equation}
+    \tilde{C} \leq  C' \left(\ln\left(1 + \frac{((1+q_G)R)^2}{\epsilon(1-\beta_2(1-q_V))}\right) - T\ln(\beta_2(1-q_V))\right).  
+    \label{app:eq:common_c_bound_main}
+\end{equation}
+with
+\begin{gather}
+    C'=\frac{d\eta_T^3 L^2 \beta_1}{(1+q_G)R (1 - \beta_1)^{2}(1 - \beta_1(1+q_M))(1 - \frac{\beta_1(1+q_M)}{\beta_2(1-q_V)})}.
+\end{gather}
+
+introducing the same change of index $j = t-k$ for $\tilde{D}$, we get
+\begin{align}
+\nonumber
+    \tilde{D} &= \frac{3 \eta_T (1+q_G)R}{\sqrt{1-\beta_1}} \sum_{t=1}^T \sum_{j=1}^t \left(\frac{\beta_1}{\beta_2}\right)^{t -j } \sqrt{1 + t - j} \esp{\norm{\Ub_j}_2^2}\\
+\nonumber
+        &= \frac{3 \eta_T (1+q_G)R}{\sqrt{1-\beta_1}} \sum_{j=1}^T \esp{\norm{\Ub_j}_2^2} \sum_{t=j}^T \left(\frac{\beta_1}{\beta_2}\right)^{t -j } \sqrt{1 + t - j}\\
+        &\leq\frac{6 \eta_T (1+q_G)R}{\sqrt{1-\beta_1}}\sum_{j=1}^T \esp{\norm{\Ub_j}_2^2} \frac{1}{(1 - \beta_1 / \beta_2)^{3/2}}, 
+\end{align}
+using Lemma~\ref{app:lemma:sum_geom_sqrt}. Finally, using Lemma~\ref{lemma:sum_ratio}, we get 
+\begin{align}
+    \nonumber
+    \tilde{D} &\leq  \frac{6 \eta_T (1+q_G)R }{\sqrt{1 - \beta_1}(1 - \beta_1 / \beta_2)^{3/2}} \sum_{i\in[d]}\left( \ln\left(1 + \frac{v'_{T, i}}{\epsilon}\right) - T \ln(\beta_2)\right)\\
+    &\le \frac{6d \eta_T (1+q_G)R }{\sqrt{1 - \beta_1}(1 - \beta_1 / \beta_2)^{3/2}} \left( \ln\left(1 + \frac{((1+q_G)R)^2}{\epsilon(1-\beta_2)}\right) - T \ln(\beta_2)\right)
+    \label{app:eq:common_d_bound_main}
+\end{align}
+
+Then we rewrite the quantization error term $E_Q$:
+\begin{align}
+\nonumber
+E_Q & = \eta_T \sum_{t=1}^T \left( q_M \cdot dR \cdot C_q + \frac{dR(1-(1-q_V)^t)}{\sqrt{1-\frac{\beta_1^2}{\beta_2(1-q_V)}}} \right)\\ 
+\nonumber
+&= \eta_T \left( \sum_{t=1}^T \left( q_M \cdot dR \cdot C_q + \frac{dR}{\sqrt{1-\frac{\beta_1^2}{\beta_2(1-q_V)}}} \right) - \sum_{t=1}^T \frac{dR(1-q_V)^t}{\sqrt{1-\frac{\beta_1^2}{\beta_2(1-q_V)}}} \right) \\
+\nonumber
+&= \eta_T \left( T \left( q_M \cdot dR \cdot C_q + \frac{dR}{\sqrt{1-\frac{\beta_1^2}{\beta_2(1-q_V)}}} \right) - \frac{dR}{\sqrt{1-\frac{\beta_1^2}{\beta_2(1-q_V)}}} \sum_{t=1}^T (1-q_V)^t \right) \\
+\nonumber
+&= \eta_T \left( T \cdot q_M \cdot dR \cdot C_q + \frac{TdR}{\sqrt{1-\frac{\beta_1^2}{\beta_2(1-q_V)}}}    - \frac{dR}{\sqrt{1-\frac{\beta_1^2}{\beta_2(1-q_V)}}} \left( \frac{1-q_V}{q_V}(1-(1-q_V)^T) \right) \right) \\
+\label{app:eq:common_eq_bound_exact_main}
+\end{align}
+
+Finally, we bound Term M using Lemma~\ref{lemma:bound_on_M}:
+\begin{align}\label{eq:M_bound_final_linear_full_main}
+    M \le \frac{\eta_T d T}{\sqrt{\epsilon}(1-\beta_1)} \left( q_G R^2 + L q_W R \norm{\wb_0}_2 \right) + \frac{\eta_T^2 d^\frac{3}{2} L q_W R T^2}{2\sqrt{\epsilon}(1-\beta_1)\sqrt{1-\frac{\beta_1^2(1+q_M)^2}{\beta_2(1-q_V)}}},
+\end{align}
+
+
+Now putting \eqref{app:eq:bound_a_adam_main}, \eqref{app:eq:common_b_bound_main}, \eqref{app:eq:common_c_bound_main}, \eqref{app:eq:common_d_bound_main}, \eqref{app:eq:common_eq_bound_exact_main} and \eqref{eq:M_bound_final_linear_full_main} together into \eqref{app:eq:common_big_main} and noting that $\eta_T \leq \eta \frac{1- \beta_1}{\sqrt{1 - \beta_2}}$, we get:
+
+\begin{align}\label{bound_without_simplify}
+\nonumber
+    \esp{\norm{\nabla F(\wb_{\tau})}_2^2} &\leq
+    2 (1+q_G)R \frac{F_0 - F_*}{\eta \tilde{T}}  + \frac{E}{\tilde{T}}\left(\ln\left(1 + \frac{((1+q_G)R)^2}{\epsilon( 1- \beta_2)}\right) - T \ln(\beta_2)\right)\\
+    \nonumber
+    &+ \frac{H}{\tilde{T}}\left(\ln\left(1 + \frac{((1+q_G)R)^2}{\epsilon(1-\beta_2(1-q_V))}\right) - T\ln(\beta_2(1-q_V))\right)         +\frac{Q(T)}{\tilde{T}}\\
+    &+\frac{2(1+q_G) d T}{\tilde{T}\sqrt{\epsilon(1-\beta_2)}} \left( q_G R^3 + L q_W R^2 \norm{\wb_0}_2 \right) + \frac{(1-\beta_1)d^\frac{3}{2} \eta L q_W(1+q_G)R^2 T^2}{\tilde{T}\sqrt{\epsilon}(1-\beta_2)\sqrt{1-\frac{\beta_1^2(1+q_M)^2}{\beta_2(1-q_V)}}}.
+\end{align}
+with
+\begin{equation}
+\begin{gathered}
+    E = \frac{12 d ((1+q_G)R)^2 \sqrt{1-\beta_1}}{(1 - \beta_1 / \beta_2)^{3/2}\sqrt{1 - \beta_2}} \\
+    H = \frac{d\eta L(1+q_G)R(1-\beta_1)^2}{(1 - \beta_1(1+q_M))(1 - \frac{\beta_1(1+q_M)}{\beta_2(1-q_V)})(1-\beta_2)}+\frac{2d\eta^2 L^2 \beta_1(1-\beta_1)}{(1 - \beta_1(1+q_M))(1 - \frac{\beta_1(1+q_M)}{\beta_2(1-q_V)})(1-\beta_2)^{\frac{3}{2}}} \\
+    Q(T) = \frac{2(1+q_G)q_M  dR^2(1-\beta_1)T }{\sqrt{1-\beta_2}}\cdot\frac{\sqrt{r'(1+r')}}{(1+q_M)(1-r')^{3/2}} + \frac{2(1+q_G)dR^2(1-\beta_1)T}{\sqrt{(1-\frac{\beta_1^2}{\beta_2(1-q_V)})(1-\beta_2)}}\\
+    -\frac{2(1+q_G)dR^2(1-\beta_1)}{\sqrt{(1-\frac{\beta_1^2}{\beta_2(1-q_V)})(1-\beta_2)}} \left( \frac{1-q_V}{q_V}(1-(1-q_V)^T) \right) \\
+    \text{where} \quad r' = \frac{\beta_1^2(1+q_M)^2}{\beta_2(1-q_V)}
+\end{gathered}
+\end{equation}
+
+For clarity in the main theorem statement, we can present a slightly looser but more accessible version of this bound. By noting that for a sufficiently large $T$, we have $\tilde{T} \ge T/2$, and
+\begin{align*}
+    \left(\ln\left(1 + \frac{((1+q_G)R)^2}{\epsilon( 1- \beta_2)}\right) - T \ln(\beta_2)\right)<\left(\ln\left(1 + \frac{((1+q_G)R)^2}{\epsilon(1-\beta_2(1-q_V))}\right) - T\ln(\beta_2(1-q_V))\right),
+\end{align*}
+we can state the simplified bound presented in Theorem~\ref{thm:QAdam}:
+\begin{align}
+    \nonumber
+    &\esp{\norm{\nabla F(\wb_{\tau})}_2^2} \leq
+    4 (1+q_G)R \frac{F_0 - F_*}{\eta T} 
+    % \frac{C_1}{T} \left(\ln\left(1 + \frac{((1+q_G)R)^2}{\epsilon ( 1- \beta_2)}\right) - T \ln(\beta_2)\right)\\
++ \frac{C}{T}\left(\ln\left(1 + \frac{((1+q_G)R)^2}{\epsilon(1-\beta_2(1-q_V))}\right) - T\ln(\beta_2(1-q_V))\right)\\
+    \nonumber
+    &+\frac{\tilde{Q}(T)}{T} +\frac{4(1+q_G) d }{\sqrt{\epsilon(1-\beta_2)}} \left( q_G R^3 + L q_W R^2 D \right) + \frac{2(1-\beta_1)d^\frac{3}{2} \eta L q_W(1+q_G)R^2 T}{\sqrt{\epsilon}(1-\beta_2)\sqrt{1-\frac{\beta_1^2(1+q_M)^2}{\beta_2(1-q_V)}}} ,
+\end{align}
+with
+\begin{equation}\label{eq:all_definitions}
+\begin{gathered}
+    C = \frac{24 d ((1+q_G)R)^2 \sqrt{1-\beta_1}}{(1 - \beta_1 / \beta_2)^{3/2}\sqrt{1 - \beta_2}} + \frac{2d\eta L(1+q_G)R(1-\beta_1)^2}{(1 - \beta_1(1+q_M))(1 - \frac{\beta_1(1+q_M)}{\beta_2(1-q_V)})(1-\beta_2)} \\
+    +\frac{4d\eta^2 L^2 \beta_1(1-\beta_1)}{(1 - \beta_1(1+q_M))(1 - \frac{\beta_1(1+q_M)}{\beta_2(1-q_V)})(1-\beta_2)^{\frac{3}{2}}}, \\
+    \tilde{Q}(T) = \frac{4(1+q_G)q_M  dR^2(1-\beta_1)T }{\sqrt{1-\beta_2}}\cdot\frac{\sqrt{r'(1+r')}}{(1+q_M)(1-r')^{3/2}} + \frac{4(1+q_G)dR^2(1-\beta_1)T}{\sqrt{(1-\frac{\beta_1^2}{\beta_2(1-q_V)})(1-\beta_2)}}\\
+    -\frac{4(1+q_G)dR^2(1-\beta_1)}{\sqrt{(1-\frac{\beta_1^2}{\beta_2(1-q_V)})(1-\beta_2)}} \left( \frac{1-q_V}{q_V}(1-(1-q_V)^T) \right) \\
+    \text{where} \quad r' = \frac{\beta_1^2(1+q_M)^2}{\beta_2(1-q_V)}
+\end{gathered}
+\end{equation}
+
+Theory~\ref{thm:QAdam}  states that under a specific schedule for the hyperparameters and a gradual reduction in quantization error, Quantized Adam achieves the same convergence rate as its full-precision counterpart. We prove this by performing a detailed asymptotic analysis of each term in the main bound from Theorem~\ref{thm:QAdam} as the total number of iterations $T \to \infty$.
+
+However, to perform a precise asymptotic analysis and derive the tightest possible convergence rate from our framework, we will now analyze the order of each component from the more detailed bound in ~\ref{bound_without_simplify}:
+
+\begin{align*}
+\esp{\norm{\nabla F(\vec(\Wb)_{\tau})}_2^2} &\leq
+    \underbrace{2 (1+q_G)R \frac{F_0 - F_*}{\eta \tilde{T}}}_{\text{Term 1}} \\
+    &+ \underbrace{\frac{12 d ((1+q_G)R)^2 \sqrt{1-\beta_1}}{\tilde{T}(1 - \beta_1 / \beta_2)^{3/2}\sqrt{1 - \beta_2}} \left(\ln\left(1 + \frac{((1+q_G)R)^2}{\epsilon ( 1- \beta_2)}\right) - T \ln(\beta_2)\right)}_{\text{Term 2}}\\
+    &+ \underbrace{\frac{E}{\tilde{T}}\left(\ln\left(1 + \frac{((1+q_G)R)^2}{\epsilon(1-\beta_2(1-q_V))}\right) - T\ln(\beta_2(1-q_V))\right)}_{\text{Term 3}} \\
+    &+ \underbrace{\frac{Q(T)}{\tilde{T}}}_{\text{Term 4}} + \underbrace{\frac{2(1+q_G) d T}{\tilde{T}\sqrt{\epsilon(1-\beta_2)}} \left( q_G R^3 + L q_W R^2 \norm{\vec(\Wb_0)}_2 \right)}_{\text{Term 5}} \\
+    &+ \underbrace{\frac{(1-\beta_1)d^\frac{3}{2} \eta L q_W(1+q_G)R^2 T^2}{\tilde{T}\sqrt{\epsilon}(1-\beta_2)\sqrt{1-\frac{\beta_1^2(1+q_M)^2}{\beta_2(1-q_V)}}}}_{\text{Term 6}}.
+\end{align*}
+Our proof strategy is to analyze the asymptotic order of each term under the following scaling assumptions.
+
+
+
+\paragraph{Scaling Assumptions.}
+We adopt the scaling assumptions provided in the Theorem:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Quantization Error Schedules:} The quantization errors are annealed over time such that $q_G = \mathcal{O}(T^{-1})$, $q_M = \mathcal{O}(T^{-1})$, $q_W = \mathcal{O}(T^{-2})$, and $q_V = \mathcal{O}(T^{-2})$.
+    \item \textbf{Adam Hyperparameters:} The learning rate and second-moment decay are set as $\eta = \Theta(T^{-1/2})$ and $1-\beta_2 = \Theta(1/T)$, while $\beta_1$ is treated as a constant.
+\end{itemize}
+
+\paragraph{Asymptotic Analysis of Bound Terms.}
+We now analyze the order of magnitude for each of the six terms.
+
+\textbf{Term 1 (Initial Condition Term):} This term is given by $T_1 = 2 (1+q_G)R \frac{F_0 - F_*}{\eta \tilde{T}}$.
+We analyze the components of its denominator. The effective number of iterations is $\tilde{T} = T - \frac{\beta_1}{1 - \beta_1} = \Theta(T)$. The learning rate scales as $\eta = \Theta(T^{-1/2})$. The denominator thus scales as $\eta\tilde{T} = \Theta(T^{-1/2})\Theta(T) = \Theta(T^{1/2})$. Since all other quantities are constants and $q_G \to 0$, the entire term scales as:
+\begin{align*}
+    T_1 = \Theta\left( \frac{1}{\eta \tilde{T}} \right) = \Theta\left(\frac{1}{T^{1/2}}\right) = \Theta(T^{-1/2}).
+\end{align*}
+
+\textbf{Term 2 (First Logarithmic Term):} This term is:
+\begin{align*}
+    T_2 = \frac{12 d ((1+q_G)R)^2 \sqrt{1-\beta_1}}{\tilde{T}(1 - \beta_1 / \beta_2)^{3/2}\sqrt{1 - \beta_2}} \left(\ln\left(1 + \frac{((1+q_G)R)^2}{\epsilon ( 1- \beta_2)}\right) - T \ln(\beta_2)\right)
+\end{align*}
+The leading fraction's order is determined by its denominator, $\tilde{T}\sqrt{1 - \beta_2}$. With $\tilde{T} = \Theta(T)$ and $1 - \beta_2 = \Theta(1/T)$, we have $\sqrt{1 - \beta_2} = \Theta(T^{-1/2})$. Thus, the fraction scales as $\Theta(\frac{1}{T \cdot T^{-1/2}}) = \Theta(T^{-1/2})$. The term in the parenthesis scales as $\ln(1+\Theta(T)) - \Theta(1) = \Theta(\ln T)$. The overall order is:
+\begin{align*}
+    T_2 = \Theta\left(\frac{1}{\tilde{T}\sqrt{1 - \beta_2}}\right) \cdot \Theta(\ln T) = \Theta\left(T^{-1/2}\right) \cdot \Theta(\ln T) = \Theta\left(\frac{\ln T}{\sqrt{T}}\right).
+\end{align*}
+
+\textbf{Term 3 (Second Logarithmic Term):} This term is $T_3 = \frac{E}{\tilde{T}}\left(\ln(...) - T\ln(...)\right)$.
+First, we determine the asymptotic order of $E$, which is defined as:
+$$E=\frac{d\eta L(1+q_G)R(1-\beta_1)^2}{(1 - \beta_1(1+q_M))(1 - \frac{\beta_1(1+q_M)}{\beta_2(1-q_V)})(1-\beta_2)}+\frac{2d\eta^2 L^2 \beta_1(1-\beta_1)}{(1 - \beta_1(1+q_M))(1 - \frac{\beta_1(1+q_M)}{\beta_2(1-q_V)})(1-\beta_2)^{\frac{3}{2}}}.$$
+For the first part of $E$, the numerator scales as $\eta=\Theta(T^{-1/2})$ and the denominator is dominated by $(1-\beta_2)=\Theta(T^{-1})$. This part is $\Theta(T^{-1/2}) / \Theta(T^{-1}) = \Theta(T^{1/2})$. For the second part, the numerator scales as $\eta^2=\Theta(T^{-1})$ and the denominator is dominated by $(1-\beta_2)^{3/2}=\Theta(T^{-3/2})$. This part is $\Theta(T^{-1}) / \Theta(T^{-3/2}) = \Theta(T^{1/2})$. Thus, $E = \Theta(T^{1/2})$. The logarithmic part scales as $\Theta(\ln T)$, so the entire term scales as:
+\begin{align*}
+    T_3 = \Theta\left(\frac{E}{\tilde{T}}\right) \cdot \Theta(\ln T) = \Theta\left(\frac{T^{1/2}}{T}\right) \cdot \Theta(\ln T) = \Theta\left(\frac{\ln T}{\sqrt{T}}\right).
+\end{align*}
+
+\textbf{Term 4 (Moment Quantization Error):} We rewrite this term as:
+\begin{align}\label{eq:QT_cal}
+    T_4 = \frac{2(1+q_G)dR^2T(1-\beta_1)}{\tilde{T}\sqrt{1-\beta_2}}Q,
+\end{align}
+where $Q= q_M \cdot \frac{\sqrt{r'(1+r')}}{(1+q_M)(1-r')^{3/2}} + \frac{1}{\sqrt{1-\frac{\beta_1^2}{\beta_2(1-q_V)}}}-\frac{1}{T}\frac{1}{\sqrt{1-\frac{\beta_1^2}{\beta_2(1-q_V)}}} \left( \frac{1-q_V}{q_V}(1-(1-q_V)^T) \right)$.
+
+Our goal is to show that $T_4 = \mathcal{O}(T^{-1/2})$.
+
+First, the pre-factor has an asymptotic order of:
+\begin{align*}
+    \frac{2(1+q_G)dR^2T(1-\beta_1)}{\tilde{T}\sqrt{1-\beta_2}} = \Theta\left(\frac{T}{T \cdot T^{-1/2}}\right) = \Theta(T^{1/2}).
+\end{align*}
+The core of the analysis thus lies in determining the order of $Q$. We can rewrite $Q$ by combining its second and third components:
+\begin{align*}
+    Q = q_M  \cdot \frac{\sqrt{r'(1+r')}}{(1+q_M)(1-r')^{3/2}} + \frac{1}{\sqrt{1-\frac{\beta_1^2}{\beta_2(1-q_V)}}} \left[ 1 - \frac{1}{T} \left( \frac{1-q_V}{q_V}(1-(1-q_V)^T) \right) \right].
+\end{align*}
+The first part of $Q$ is clearly $\mathcal{O}(q_M) = \mathcal{O}(T^{-1})$. The common factor in the second part, $\frac{1}{\sqrt{1-\dots}}$, converges to a constant as $T \to \infty$, so it is $\mathcal{O}(1)$. The analysis therefore simplifies to finding the order of the bracketed term.
+
+Let $x = q_V = \mathcal{O}(T^{-2})$. We perform a Taylor expansion on $(1-x)^T$:
+\begin{align*}
+    (1-x)^T = 1 - Tx + \frac{T(T-1)}{2}x^2 + \mathcal{O}(T^3x^3).
+\end{align*}
+This allows us to analyze the term inside the bracket:
+\begin{align*}
+    1 - \frac{1}{T} \left( \frac{1-x}{x}(1-(1-x)^T) \right) &= 1 - \frac{1}{T} \frac{1-x}{x}\left(Tx - \frac{T(T-1)}{2}x^2 + \mathcal{O}(T^3x^3)\right) \\
+    &= 1 - \frac{1}{T} (1-x)\left(T - \frac{T(T-1)}{2}x + \mathcal{O}(T^3x^2)\right) \\
+    &= 1 - \frac{1}{T} \left(T - \frac{T(T-1)}{2}x - Tx + \mathcal{O}(T^3x^2)\right) \\
+    &= 1 - \left(1 - \frac{T(T+1)}{2T}x + \mathcal{O}(T^2x^2)\right) \\
+    &= \frac{T+1}{2}x - \mathcal{O}(T^2x^2).
+\end{align*}
+Substituting back $x = q_V = \mathcal{O}(T^{-2})$, the bracketed term has an order of:
+\begin{align*}
+    \mathcal{O}(T \cdot q_V) = \mathcal{O}(T \cdot T^{-2}) = \mathcal{O}(T^{-1}).
+\end{align*}
+Therefore, the entire second component of $Q$ is $\mathcal{O}(1) \cdot \mathcal{O}(T^{-1}) = \mathcal{O}(T^{-1})$.
+Combining both components of $Q$, we find its overall order:
+\begin{align*}
+    Q = \mathcal{O}(T^{-1}) + \mathcal{O}(T^{-1}) = \mathcal{O}(T^{-1}).
+\end{align*}
+Finally, we compute the order of Term 4 by combining the pre-factor and $Q$:
+\begin{align*}
+    T_4 = \Theta(T^{1/2}) \cdot \mathcal{O}(T^{-1}) = \mathcal{O}(T^{-1/2}).
+\end{align*}
+
+\textbf{Term 5 (Initial W/G Quantization Error):} This term is:
+\begin{align*}
+    T_5 = \frac{2(1+q_G) d T}{\tilde{T}\sqrt{\epsilon(1-\beta_2)}} \left( q_G R^3 + L q_W R^2 \norm{\vec(\Wb_0)}_2 \right)
+\end{align*}
+The leading fraction scales as $\frac{T}{\tilde{T}\sqrt{1-\beta_2}} = \frac{\Theta(T)}{\Theta(T)\Theta(T^{-1/2})} = \Theta(T^{1/2})$. The parenthesis scales with its dominant term $q_G=\mathcal{O}(T^{-1})$. The total order is:
+\begin{align*}
+    T_5 = \Theta(T^{1/2}) \cdot \mathcal{O}(q_G + q_W) = \Theta(T^{1/2}) \cdot (\mathcal{O}(T^{-1}) + \mathcal{O}(T^{-2})) = \mathcal{O}(T^{-1/2}).
+\end{align*}
+
+\textbf{Term 6 (Weight Growth Quantization Error):} This term is $T_6 = \frac{(1-\beta_1)d^\frac{3}{2} \eta L q_W(1+q_G)R^2 T^2}{\tilde{T}\sqrt{\epsilon}(1-\beta_2)\sqrt{1-\frac{\beta_1^2(1+q_M)^2}{\beta_2(1-q_V)}}}$.
+First, we analyze $\sqrt{\frac{1}{1-\frac{\beta_1^2(1+q_M)^2}{\beta_2(1-q_V)}}}$. As $T \to \infty$, the denominator converges to the constant $1-\beta_1^2$, so its contribution is $\mathcal{O}(1)$. The term's order is determined by the scaling of its other components: $\eta=\Theta(T^{-1/2})$, $q_W=\mathcal{O}(T^{-2})$, $\tilde{T}=\Theta(T)$, and $(1-\beta_2)=\Theta(T^{-1})$. The total order is:
+\begin{align*}
+    T_6 = \Theta\left(\frac{\eta \cdot q_W \cdot T^2}{\tilde{T} \cdot (1-\beta_2)}\right) = \Theta\left(\frac{T^{-1/2} \cdot T^{-2} \cdot T^2}{T \cdot T^{-1}}\right) = \Theta(T^{-1/2}).
+\end{align*}
+
+\paragraph{Conclusion.}
+By comparing the asymptotic orders of all terms, we identify those that converge to zero at the slowest rate, as they will dominate the overall convergence bound. The orders are:
+\begin{itemize}[leftmargin=*]
+    \item Term 1, 4, 5, 6: $\mathcal{O}(T^{-1/2})$ or $\Theta(T^{-1/2})$.
+    \item Term 2, 3: $\Theta(T^{-1/2} \ln T)$.
+\end{itemize}
+The dominant terms are the second and third, which are of order $\Theta(T^{-1/2}\ln T)$. These terms form the bottleneck that determines the overall convergence rate. Thus, under the specified parameter schedule, the expected squared gradient norm converges to zero at the following rate:
+\begin{align*}
+    \esp{\norm{\nabla F(\wb_{\tau})}_2^2} = \Theta\left(\frac{\ln T}{\sqrt{T}}\right) = \tilde{\mathcal{O}}\left(\frac{1}{\sqrt{T}}\right).
+\end{align*}
+This matches the known convergence rate for full-precision Adam.
+
+Furthermore, we derive the convergence rate for the expected gradient norm, $\esp{\norm{\nabla F(\wb_{\tau})}_2}$, from the rate of its squared value. We use Jensen's inequality, which states that for a convex function $\phi$ and a random variable $X$, $\phi(\mathbb{E}[X]) \le \mathbb{E}[\phi(X)]$.
+
+Let the random variable be $X = \norm{\nabla F(\wb_{\tau})}_2$ and the convex function be $\phi(x) = x^2$. Applying Jensen's inequality yields:
+\begin{align*}
+    \left(\esp{\norm{\nabla F(\wb_{\tau})}_2}\right)^2 \le \esp{\norm{\nabla F(\wb_{\tau})}_2^2}.
+\end{align*}
+By taking the square root of both sides, we obtain a bound on the expected norm:
+\begin{align*}
+    \esp{\norm{\nabla F(\wb_{\tau})}_2} \le \sqrt{\esp{\norm{\nabla F(\wb_{\tau})}_2^2}}.
+\end{align*}
+Substituting our previously derived convergence rate:
+\begin{align*}
+    \esp{\norm{\nabla F(\wb_{\tau})}_2} &\le \sqrt{\tilde{\mathcal{O}}\left(\frac{1}{\sqrt{T}}\right)} \\
+    &= \tilde{\mathcal{O}}\left(\sqrt{T^{-1/2}}\right) \\
+    &= \tilde{\mathcal{O}}\left(T^{-1/4}\right).
+\end{align*}
+Thus, the expected gradient norm converges to zero at a rate of $\tilde{\mathcal{O}}(T^{-1/4})$. This finalizes the proof of the theorem.
+
+
+
+\subsection{Proof of Lemma \ref{app:lemma:moment_relation}}
+\begin{lemma}[The value range of $v_{t,i}$ and the upper bound of $|\frac{1}{\sqrt{\epsilon+v_{t,i}}}-\frac{1}{\sqrt{\epsilon+v'_{t,i}}}|$]
+\label{app:lemma:moment_relation}
+Let $LB_{t,i} = \sum_{k=0}^t\beta_2^{t-k}(1-q_V)^{t-k}(\nabla_i f_k(\wb_{k-1}) + \delta_{k,i})^2$ and $UB_{t,i} = \sum_{k=0}^t\beta_2^{t-k}(1+q_V)^{t-k}(\nabla_i f_k(\wb_{k-1}) + \delta_{k,i})^2$. We have:
+\begin{align}
+    \sum_{k=0}^t\beta_2^{t-k}(1-q_V)^{t-k}(\nabla_i f_k(\wb_{k-1}) + \delta_{k,i})^2 \le v_{t, i} \le \sum_{k=0}^t\beta_2^{t-k}(1+q_V)^{t-k}(\nabla_i f_k(\wb_{k-1}) + \delta_{k,i})^2
+\end{align}
+\begin{align}
+    \left|\frac{1}{\sqrt{\epsilon+v_{t,i}}}-\frac{1}{\sqrt{\epsilon+v'_{t,i}}}\right| \le \max\left\{ \frac{1}{\sqrt{\epsilon+LB_{t,i}}} - \frac{1}{\sqrt{\epsilon+v'_{t,i}}}, \frac{1}{\sqrt{\epsilon+v'_{t,i}}} - \frac{1}{\sqrt{\epsilon+UB_{t,i}}} \right\}
+\end{align}
+\end{lemma}
+\begin{proof}
+The proof consists of two parts.
+
+\textbf{Part 1: Bounding $v_{t,i}$}
+
+The update rule for the second moment estimate is $v_{t, i} = \beta_2 (v_{t-1, i} + \theta_{t-1,i}) + (\nabla_i f_t(\wb_{t-1}) + \delta_{t,i})^2$. The quantization noise is assumed to be a relative error, bounded by $|\theta_{t-1,i}| \le q_V|v_{t-1,i}|$. This implies that $(1-q_V)v_{t-1,i} \le v_{t-1,i} + \theta_{t-1,i} \le (1+q_V)v_{t-1,i}$.
+
+Applying this to the update rule, we can establish the lower bound by recursively unrolling the inequality:
+\begin{align}
+    v_{t, i} &\geq\beta_2(1-q_V) v_{t-1, i} + (\nabla_i f_t(\wb_{t-1}) + \delta_{t,i})^2 \nonumber\\
+    &\geq\beta_2(1-q_V) \left[ \beta_2(1-q_V)v_{t-2,i} + (\nabla_i f_{t-1}(\wb_{t-2}) + \delta_{t-1,i})^2 \right] + (\nabla_i f_t(\wb_{t-1}) + \delta_{t,i})^2 \nonumber\\
+    &= \dots \nonumber\\
+    &=\sum_{k=0}^t\beta_2^{t-k}(1-q_V)^{t-k}(\nabla_i f_k(\wb_{k-1}) + \delta_{k,i})^2
+\end{align}
+Similarly, we can establish the upper bound:
+\begin{align}
+    v_{t, i} &\le\beta_2(1+q_V) v_{t-1, i} + (\nabla_i f_t(\wb_{t-1}) + \delta_{t,i})^2 \nonumber\\
+    &=\sum_{k=0}^t\beta_2^{t-k}(1+q_V)^{t-k}(\nabla_i f_k(\wb_{k-1}) + \delta_{k,i})^2
+\end{align}
+This completes the proof of the first statement in the lemma.
+
+\textbf{Part 2: Bounding the difference of the inverse square roots}
+
+Let $v'_{t,i}$ be the idealized second moment estimate, updated without the quantization noise $\theta$. Its explicit form is:
+\begin{align}
+     v'_{t,i} = \sum_{k=0}^t\beta_2^{t-k}(\nabla_i f_k(\wb_{k-1}) + \delta_{k,i})^2
+\end{align}
+From Part 1, we know that $v_{t,i}$ is in the interval $[LB_{t,i}, UB_{t,i}]$, where $LB_{t,i}$ and $UB_{t,i}$ are the bounds established.
+
+Now, we compare $v'_{t,i}$ with these bounds. Since $0 < \beta_2 < 1$ and we assume $0 < q_V < 1$, we have $\beta_2(1-q_V) < \beta_2 < \beta_2(1+q_V)$. This implies a term-by-term inequality, leading to:
+\begin{align}
+    LB_{t,i} < v'_{t,i} < UB_{t,i}
+\end{align}
+Consider the function $f(y) = 1/\sqrt{\epsilon+y}$ for $y \ge 0$. This function is monotonically decreasing and convex. The value $v_{t,i}$ lies in the interval $[LB_{t,i}, UB_{t,i}]$, and $v'_{t,i}$ is a point within this interval. The maximum absolute difference $|f(v_{t,i}) - f(v'_{t,i})|$ must occur when $v_{t,i}$ is at one of the endpoints of the interval. Therefore, we can bound the difference as:
+\begin{align}
+    \left|\frac{1}{\sqrt{\epsilon+v_{t,i}}}-\frac{1}{\sqrt{\epsilon+v'_{t,i}}}\right| &\le \max\left\{ \left|\frac{1}{\sqrt{\epsilon+LB_{t,i}}} - \frac{1}{\sqrt{\epsilon+v'_{t,i}}}\right|, \left|\frac{1}{\sqrt{\epsilon+UB_{t,i}}} - \frac{1}{\sqrt{\epsilon+v'_{t,i}}}\right| \right\}
+\end{align}
+Since $LB_{t,i} < v'_{t,i} < UB_{t,i}$ and the function is decreasing, we have $1/\sqrt{\epsilon+UB_{t,i}} < 1/\sqrt{\epsilon+v'_{t,i}} < 1/\sqrt{\epsilon+LB_{t,i}}$. We can therefore remove the absolute value signs:
+\begin{align}
+    \left|\frac{1}{\sqrt{\epsilon+v_{t,i}}}-\frac{1}{\sqrt{\epsilon+v'_{t,i}}}\right| &\le \max\left\{ \frac{1}{\sqrt{\epsilon+LB_{t,i}}} - \frac{1}{\sqrt{\epsilon+v'_{t,i}}}, \frac{1}{\sqrt{\epsilon+v'_{t,i}}} - \frac{1}{\sqrt{\epsilon+UB_{t,i}}} \right\}
+\end{align}
+This completes the proof of the second statement.
+\end{proof}
+
+
+\subsection{Proof of Lemma \ref{app:lemma:discrete_error_bound}}
+\begin{lemma}[Bound on Discrete Error]
+\label{app:lemma:discrete_error_bound}
+Given two discrete-time systems defined for \( t \ge 1 \):
+\begin{itemize}
+    \item System A: \( a_{t}=k(a_{t-1}+c_{t-1})+d_{t} \)
+    \item System B: \( b_{t}=kb_{t-1}+d_{t} \)
+\end{itemize}
+where the perturbation term \( c_t \) is bounded by \( |c_{t}|\le q|a_{t}| \) for all \( t \), and the constants \( k, q \) satisfy \( 0<k<1 \) and \( q<k \).
+
+Under zero initial conditions, where \( a_0 = b_0 = 0 \), the absolute error between the states of the two systems is bounded by:
+\begin{align}
+    |a_{t}-b_{t}|\le\sum_{j=1}^{t-1}\left[(k(1+q))^{t-j}-k^{t-j}\right]|d_{j}|
+\end{align}
+\end{lemma}
+\begin{proof}
+First, define the error as \( e_t = a_t - b_t \). Subtracting the two system equations yields the error recurrence relation:
+\begin{align}
+    e_{t} = ke_{t-1} + kc_{t-1}
+\end{align}
+The explicit solution to this recurrence is \( e_{t} = k^{t}e_{0} + \sum_{j=0}^{t-1}k^{t-j}c_{j} \). Under the zero initial condition \( a_0 = b_0 = 0 \), this simplifies to:
+\begin{align}
+    e_{t} = \sum_{j=0}^{t-1}k^{t-j}c_{j}
+\end{align}
+Taking the absolute value and applying the given condition \( |c_j| \le q|a_j| \), we have:
+\begin{align}
+    |e_{t}| \le \sum_{j=0}^{t-1}k^{t-j}|c_{j}| \le q\sum_{j=0}^{t-1}k^{t-j}|a_{j}|
+\end{align}
+Since \( a_0=0 \), the sum starts from \( j=1 \). The state \( |a_j| \) can be bounded from its own recurrence \( |a_{t}| \le k(1+q)|a_{t-1}| + |d_t| \), which for \( a_0=0 \) unrolls to:
+\begin{align}
+    |a_{j}|\le\sum_{i=1}^{j}(k(1+q))^{j-i}|d_{i}|
+\end{align}
+Substituting the bound for \( |a_j| \) into the inequality for \( |e_t| \) gives a double summation:
+\begin{align}
+    |e_{t}|\le q\sum_{j=1}^{t-1}k^{t-j}\left(\sum_{i=1}^{j}(k(1+q))^{j-i}|d_{i}|\right)
+\end{align}
+By swapping the order of summation and evaluating the inner geometric series, we obtain the final result:
+\begin{align}
+    |a_{t}-b_{t}| \le \sum_{j=1}^{t-1}\left[(k(1+q))^{t-j}-k^{t-j}\right]|d_{j}|
+\end{align}
+\end{proof}
+
+
+\subsection{Proof of Lemma \ref{app:lemma:cauchy}}
+\begin{lemma}[Finite Geometric Series Ratio Bounded by Infinite Sum]
+\label{app:lemma:cauchy}
+Let \((g_k)_{k=0}^t\) be a sequence of scalars for any finite \(t \in \mathbb{N}\). Let the weights be terms of two geometric series, \(A_k = a^k\) and \(B_k = b^k\), where \(a, b \in (0, 1)\) are the base ratios.
+
+If the condition \(a^2 < b\) holds, then the ratio of the weighted sum is bounded by a constant derived from the corresponding infinite series:
+\begin{align}
+    \frac{\sum_{k=0}^{t} a^k |g_k|}{\sqrt{\sum_{k=0}^{t} b^k g_k^2}} \le \sqrt{\frac{1}{1 - a^2/b}} 
+\end{align}
+\end{lemma}
+\begin{proof}
+Let the numerator be \(N_t = \sum_{k=0}^{t} a^k |g_k|\) and the denominator be \(D_t = \sqrt{\sum_{k=0}^{t} b^k g_k^2}\).
+
+We rewrite the numerator as:
+\begin{align}
+    N_t = \sum_{k=0}^{t} \left( \frac{a^k}{\sqrt{b^k}} \right) \cdot \left( \sqrt{b^k} |g_k| \right)
+\end{align}
+Applying the Cauchy-Schwarz inequality to these finite sums, we get:
+\begin{align}
+    N_t^2 &\le \left( \sum_{k=0}^{t} \left( \frac{a^k}{\sqrt{b^k}} \right)^2 \right) \cdot \left( \sum_{k=0}^{t} \left( \sqrt{b^k} |g_k| \right)^2 \right) \nonumber\\
+    &= \left( \sum_{k=0}^{t} \frac{a^{2k}}{b^k} \right) \cdot \left( \sum_{k=0}^{t} b^k g_k^2 \right) \nonumber\\
+    &= \left( \sum_{k=0}^{t} \left(\frac{a^2}{b}\right)^k \right) \cdot D_t^2
+\end{align}
+The first term is a finite geometric series. Since the condition \(a^2 < b\) implies that the ratio \(r = a^2/b\) is positive and less than 1, all terms in the series are positive. Therefore, the finite sum is always less than or equal to the sum of the infinite series:
+\begin{align}
+    \sum_{k=0}^{t} \left(\frac{a^2}{b}\right)^k \le \sum_{k=0}^{\infty} \left(\frac{a^2}{b}\right)^k = \frac{1}{1 - a^2/b}
+\end{align}
+Substituting this upper bound back into the inequality for \(N_t^2\), we have:
+\begin{align}
+    N_t^2 \le \left( \frac{1}{1 - a^2/b} \right) \cdot D_t^2
+\end{align}
+Taking the square root of both sides gives:
+\begin{align}
+    N_t \le \sqrt{\frac{1}{1 - a^2/b}} \cdot D_t
+\end{align}
+Finally, dividing by \(D_t\) yields the desired result for any finite \(t\):
+\begin{align}
+    \frac{N_t}{D_t} = \frac{\sum_{k=0}^{t} a^k |g_k|}{\sqrt{\sum_{k=0}^{t} b^k g_k^2}} \le \sqrt{\frac{1}{1 - a^2/b}}
+\end{align}
+\end{proof}
+
+
+\subsection{Proof of Lemma \ref{app:lemma:refined_cauchy}}
+\begin{lemma}[Bound on the Quantized Momentum Error Ratio]
+\label{app:lemma:refined_cauchy}
+Let \((g_k)_{k=0}^t\) be a sequence of scalars. Let the weights be $A_k = \beta_1^k((1+q_M)^k - 1)$ and $B_k = (\beta_2(1-q_V))^k$.
+If the condition $\beta_1^2(1+q_M)^2 < \beta_2(1-q_V)$ holds, then the ratio of the weighted sum is bounded by:
+$$ \frac{\sum_{k=0}^{t} A_k |g_k|}{\sqrt{\sum_{k=0}^{t} B_k g_k^2}} \le q_M \cdot \frac{\sqrt{r'(1+r')}}{(1+q_M)(1-r')^{3/2}} $$
+where $r' = \frac{\beta_1^2(1+q_M)^2}{\beta_2(1-q_V)}$.
+\end{lemma}
+\begin{proof}
+Following the proof of Lemma~\ref{app:lemma:cauchy}, we apply the Cauchy-Schwarz inequality to get:
+\begin{align}
+\left(\sum_{k=0}^{t} A_k |g_k|\right)^2 \le \left( \sum_{k=0}^{t} \frac{A_k^2}{B_k} \right) \cdot \left( \sum_{k=0}^{t} B_k g_k^2 \right). \label{eq:cauchy_applied_lemma4}
+\end{align}
+This implies that the ratio is bounded by the square root of the first term on the right-hand side. We now focus on bounding the term $\sum_{k=0}^{t} \frac{A_k^2}{B_k}$. First, we express the ratio $\frac{A_k^2}{B_k}$ as:
+\begin{align}
+\frac{A_k^2}{B_k} &= \frac{(\beta_1^k((1+q_M)^k - 1))^2}{(\beta_2(1-q_V))^k} \nonumber \\
+&= \left(\frac{\beta_1^2}{\beta_2(1-q_V)}\right)^k ((1+q_M)^k-1)^2. \label{eq:ak_bk_ratio_lemma4}
+\end{align}
+To bound the term $((1+q_M)^k-1)^2$, we first establish an inequality for $(1+q_M)^k-1$ using the Mean Value Theorem. Let $f(x) = x^k$. For $q_M > 0$, by the Mean Value Theorem, there exists a $c \in (1, 1+q_M)$ such that:
+\begin{align}
+\frac{f(1+q_M) - f(1)}{(1+q_M)-1} = f'(c) \implies (1+q_M)^k - 1 = q_M \cdot (k c^{k-1}). \label{eq:mvt_raw_lemma4}
+\end{align}
+Since $c < 1+q_M$, and for $k \ge 1$, we have $c^{k-1} \le (1+q_M)^{k-1}$. This leads to the inequality:
+\begin{align}
+(1+q_M)^k - 1 \le k \cdot q_M \cdot (1+q_M)^{k-1}. \label{eq:mvt_inequality_lemma4}
+\end{align}
+Squaring both sides of \eqref{eq:mvt_inequality_lemma4} gives:
+\begin{align}
+((1+q_M)^k-1)^2 &\le k^2 q_M^2 (1+q_M)^{2(k-1)} \nonumber \\
+&= \frac{k^2 q_M^2}{(1+q_M)^2} (1+q_M)^{2k}. \label{eq:squared_inequality_lemma4}
+\end{align}
+Substituting this back into \eqref{eq:ak_bk_ratio_lemma4}, and using the definition $r' = \frac{\beta_1^2(1+q_M)^2}{\beta_2(1-q_V)}$, we get:
+\begin{align}
+\frac{A_k^2}{B_k} &\le \left(\frac{\beta_1^2}{\beta_2(1-q_V)}\right)^k \frac{k^2 q_M^2}{(1+q_M)^2} (1+q_M)^{2k} \nonumber \\
+&= \frac{q_M^2}{(1+q_M)^2} k^2 \left(\frac{\beta_1^2(1+q_M)^2}{\beta_2(1-q_V)}\right)^k \nonumber \\
+&= \frac{q_M^2}{(1+q_M)^2} k^2 (r')^k. \label{eq:ak_bk_bound_final_lemma4}
+\end{align}
+Now we sum this term. The condition $r' < 1$ ensures the convergence of the infinite series. We first derive the closed-form expression for $\sum_{k=0}^{\infty} k^2 x^k$ for $|x|<1$. We start with the geometric series:
+\begin{align}
+\sum_{k=0}^{\infty} x^k = \frac{1}{1-x}. \label{eq:geom_series_lemma4}
+\end{align}
+Differentiating with respect to $x$ and multiplying by $x$ gives:
+\begin{align}
+\sum_{k=0}^{\infty} k x^k = x \frac{d}{dx}\left(\frac{1}{1-x}\right) = \frac{x}{(1-x)^2}. \label{eq:k_geom_series_lemma4}
+\end{align}
+Differentiating one more time and multiplying by $x$ yields:
+\begin{align}
+\sum_{k=0}^{\infty} k^2 x^k = x \frac{d}{dx}\left(\frac{x}{(1-x)^2}\right) = x \frac{1(1-x)^2 - x(2(1-x)(-1))}{(1-x)^4} = \frac{x(1+x)}{(1-x)^3}. \label{eq:k2_geom_series_lemma4}
+\end{align}
+Using this result with $x=r'$, we can bound the sum $\sum_{k=0}^{t} \frac{A_k^2}{B_k}$ by extending it to an infinite series:
+\begin{align}
+\sum_{k=0}^{t} \frac{A_k^2}{B_k} &\le \sum_{k=0}^{\infty} \frac{A_k^2}{B_k} \nonumber \\
+&\le \sum_{k=0}^{\infty} \frac{q_M^2}{(1+q_M)^2} k^2 (r')^k \nonumber \\
+&= \frac{q_M^2}{(1+q_M)^2} \sum_{k=0}^{\infty} k^2 (r')^k \nonumber \\
+&= \frac{q_M^2}{(1+q_M)^2} \frac{r'(1+r')}{(1-r')^3}. \label{eq:sum_bound_final_lemma4}
+\end{align}
+Finally, taking the square root of \eqref{eq:sum_bound_final_lemma4} and substituting it back into the result from the Cauchy-Schwarz inequality \eqref{eq:cauchy_applied_lemma4} gives the desired bound:
+\begin{align}
+\frac{\sum_{k=0}^{t} A_k |g_k|}{\sqrt{\sum_{k=0}^{t} B_k g_k^2}} \le \sqrt{\sum_{k=0}^{t} \frac{A_k^2}{B_k}} \le \sqrt{\frac{q_M^2}{(1+q_M)^2} \frac{r'(1+r')}{(1-r')^3}} = q_M \cdot \frac{\sqrt{r'(1+r')}}{(1+q_M)(1-r')^{3/2}}. \label{eq:final_result_lemma4}
+\end{align}
+\end{proof}
+
+
+\subsection{Proof of Lemma \ref{lemma:grad_bound}}
+\begin{lemma}[Bound on the Quantized Gradient Estimator]
+\label{lemma:grad_bound}
+Let the stochastic gradient be bounded in infinity norm almost surely by $\norm{\nabla f_t(\wb; \gamma)}_\infty \le R - \sqrt{\epsilon}$ for any parameters $\wb$. Let the gradient quantization operator satisfy the relative error model $|Q(z) - z| \le q_G|z|$ for any scalar $z$. The quantized gradient estimator $\hat{\gb_t}$ is defined component-wise for $i \in [d]$ as:
+\begin{align}
+    \hat{g}_{t,i} = \frac{1}{B}\sum_{j=1}^{B} [\nabla^Q f(\wb_{t-1}^Q; \gamma_{t,j})]_i,
+\end{align}
+where we use $\nabla^Q f(\cdot)$ as shorthand for $Q(\nabla f(\cdot))$ and $[\cdot]_i$ to denote the i-th component. Then, the infinity norm of the estimator is bounded almost surely:
+\begin{align}
+    \norm{\hat{\gb_t}}_\infty \le (1+q_G)(R - \sqrt{\epsilon}).
+\end{align}
+For notational simplicity in subsequent proofs, we will use the slightly looser bound $\norm{\hat{\gb_t}}_\infty \le (1+q_G)R$.
+\end{lemma}
+\begin{proof}
+We first bound the infinity norm of a single quantized gradient vector $\nabla^Q f(\cdot)$. For any component $i \in [d]$, we have:
+\begin{align}
+    \left| \nabla_i^Q f(\wb_{t-1}^Q; \gamma_{t,j}) \right| &= \left| \nabla_i f(\wb_{t-1}^Q; \gamma_{t,j}) + \left(\nabla_i^Q f(\wb_{t-1}^Q; \gamma_{t,j}) - \nabla_i f(\wb_{t-1}^Q; \gamma_{t,j})\right) \right| \nonumber \\
+    &\le \left| \nabla_i f(\wb_{t-1}^Q; \gamma_{t,j}) \right| + \left| \nabla_i^Q f(\wb_{t-1}^Q; \gamma_{t,j}) - \nabla_i f(\wb_{t-1}^Q; \gamma_{t,j}) \right| \nonumber \\
+    &\le \left| \nabla_i f(\wb_{t-1}^Q; \gamma_{t,j}) \right| + q_G \left| \nabla_i f(\wb_{t-1}^Q; \gamma_{t,j}) \right|  \nonumber \\
+    &= (1+q_G) \left| \nabla_i f(\wb_{t-1}^Q; \gamma_{t,j}) \right|.
+\end{align}
+Since this holds for any component, it also holds for the component with the maximum absolute value. Therefore, by taking the maximum over $i \in [d]$, we can bound the infinity norm:
+\begin{align}
+    \norm{\nabla^Q f(\wb_{t-1}^Q; \gamma_{t,j})}_\infty &\le (1+q_G) \norm{\nabla f(\wb_{t-1}^Q; \gamma_{t,j})}_\infty \nonumber \\
+    &\le (1+q_G) (R - \sqrt{\epsilon}).
+\end{align}
+Finally, we apply the triangle inequality to the full estimator $\hat{\gb_t}$, which is the average over $B$ such vectors:
+\begin{align}
+    \norm{\hat{\gb_t}}_\infty &= \norm{\frac{1}{B} \sum_{j=1}^{B} \nabla^Q f(\wb_{t-1}^Q; \gamma_{t,j})}_\infty \nonumber \\
+    &\le \frac{1}{B} \sum_{j=1}^{B} \norm{\nabla^Q f(\wb_{t-1}^Q; \gamma_{t,j})}_\infty \nonumber \\
+    &\le \frac{1}{B} \sum_{j=1}^{B} (1+q_G) (R - \sqrt{\epsilon}) \nonumber \\
+    &= (1+q_G) (R - \sqrt{\epsilon}).
+\end{align}
+This concludes the proof.
+\end{proof}
+
+
+\subsection{Proof of Lemma \ref{lemma:delta_bound_biased_expected}}
+\begin{lemma}[Bound on the Expected Gradient Error with Biased Quantization]
+\label{lemma:delta_bound_biased_expected}
+Under the assumptions that the infinity norm of stochastic gradient is up bounded (Assumption \ref{assump:grad_bounds}), the objective $F$ is L-smooth (Assumption \ref{assump:smooth}), and the quantization relative error model holds (Assumption \ref{assump:qe}), the magnitude of the conditional expectation of the total error term $\delta_{t,i}$ is bounded by:
+$$
+    |\espt{\delta_{t,i}}| \le q_GR + L q_W \norm{\wb_{t-1}}_2.
+$$
+\end{lemma}
+\begin{proof}
+We start from the decomposition of the conditional expectation of $\delta_{t,i}$, which we derived previously:
+\begin{align}
+\nonumber
+    \espt{\delta_{t,i}}&= \mathbb{E}_{\gamma} \left[ \nabla_i^Q f(\wb_{t-1}^Q; \gamma) - \nabla_i f(\wb_{t-1}^Q; \gamma) \right]+\mathbb{E}_{\gamma} \left[ \nabla_i f(\wb_{t-1}^Q; \gamma) - \nabla_i f(\wb_{t-1}; \gamma) \right]\\
+    &= \underbrace{\mathbb{E}_{\gamma} \left[ \nabla_i^Q f(\wb_{t-1}^Q; \gamma) - \nabla_i f(\wb_{t-1}^Q; \gamma) \right]}_{\text{Term I: Gradient Quantization Bias}} + \underbrace{\left(\nabla_i F(\wb_{t-1}^Q) - \nabla_i F(\wb_{t-1})\right)}_{\text{Term II: Weight Quantization Bias}}
+\end{align}
+Using the triangle inequality, we can bound the magnitude as:
+\begin{align}
+    |\espt{\delta_{t,i}}| \le |\text{Term I}| + |\text{Term II}|.
+\end{align}
+We bound each term separately.
+
+\textbf{Bounding Term I:}
+This term is the expected bias from the (potentially biased) gradient quantization. We first apply Jensen's inequality for absolute values, i.e., $|\mathbb{E}[X]| \le \mathbb{E}[|X|]$:
+\begin{align}
+    |\text{Term I}| &= \left|\mathbb{E}_{\gamma} \left[ \nabla_i^Q f(\wb_{t-1}^Q; \gamma) - \nabla_i f(\wb_{t-1}^Q; \gamma) \right]\right| \nonumber \\
+    &\le \mathbb{E}_{\gamma} \left[ \left|\nabla_i^Q f(\wb_{t-1}^Q; \gamma) - \nabla_i f(\wb_{t-1}^Q; \gamma)\right| \right].
+\end{align}
+By the relative error model for gradient quantization (Assumption \ref{assump:qe} with factor $q_G$):
+\begin{align}
+    |\text{Term I}| \le \mathbb{E}_{\gamma} \left[ q_G \left|\nabla_i f(\wb_{t-1}^Q; \gamma)\right| \right] \le q_G R.
+\end{align}
+
+\textbf{Bounding Term II:}
+This term represents the bias from weight quantization. Using the L-smoothness of $F$ (Assumption \ref{assump:smooth}) and the relative error for weights (Assumption \ref{assump:qe}):
+\begin{align}
+    |\text{Term II}| = |\nabla_i F(\wb_{t-1}^Q) - \nabla_i F(\wb_{t-1})| \le \norm{\nabla F(\wb_{t-1}^Q) - \nabla F(\wb_{t-1})}_2 \le L q_W \norm{\wb_{t-1}}_2.
+\end{align}
+
+\textbf{Combining the Bounds:}
+Summing the bounds for Term I and Term II, we arrive at the final result:
+\begin{align}
+    |\espt{\delta_{t,i}}| \le |\text{Term I}| + |\text{Term II}| \le q_G R  + L q_W \norm{\wb_{t-1}}_2.
+\end{align}
+\end{proof}
+
+\subsection{Proof of Lemma \ref{lemma:bound_on_D} (Bound on Term D)}
+\begin{lemma}[Bound on Term D]
+\label{lemma:bound_on_D}
+The term D, which captures the error from gradient drift as defined in \eqref{eq:B_term_decomposition_main}, is bounded by:
+\begin{align}
+|D| \leq \frac{\eta_t^2 L^2 \sqrt{1 - \beta_1}}{4 (1+q_G)R}\left( \sum_{l=1}^{t-1}\norm{\ub_{t-l}}_2^2\sum_{k=l}^{t - 1}\beta_1^k \sqrt{k} \right)
++\frac{(1+q_G)R}{\sqrt{1 - \beta_1}} \sum_{k=0}^{t-1} \left(\frac{\beta_1}{\beta_2}\right)^k \sqrt{k+1}\norm{\Ub_{t-k}}_2^2.
+\end{align}
+\end{lemma}
+\begin{proof}
+We start with the definition of Term D:
+$$D = \sum_{i \in [d]} \sum_{k=0}^{t-1} \beta_1^k \left(\mathcal{G}_{t, i} - \mathcal{G}_{t -k, i}\right) \frac{g_{t - k, i}+\delta_{t-k,i}}{\sqrt{\epsilon+v'_{t, i}}}$$
+To tackle this, we employ the weighted Young's inequality, which states that for any $\lambda > 0$,
+\begin{equation}
+    xy \leq \frac{\lambda}{2}x^2 + \frac{1}{2\lambda}y^2
+    \label{eq:square_bound_lemmaD}
+\end{equation}
+
+We apply this inequality to each product within the summation for Term D, setting
+\begin{equation*}
+x = |{\mathcal{G}_{t, i} - \mathcal{G}_{t -k, i}}|, \quad
+y = \frac{|{g_{t -k, i}+\delta_{t-k,i}}|}{\sqrt{\epsilon+v'_{t,i}}}, \quad \text{and} \quad
+\lambda = \frac{\sqrt{1 - \beta_1}}{2 (1+q_G)R \sqrt{k + 1}}.
+\end{equation*}
+This application gives us an initial bound on the magnitude of D:
+\begin{align}
+|D| &\leq \sum_{i \in [d]} \sum_{k=0}^{t-1} \beta_1^k \left(
+\frac{\sqrt{1 - \beta_1}}{4 (1+q_G)R \sqrt{k + 1}}\left(\mathcal{G}_{t, i} - \mathcal{G}_{t -k, i}\right)^2 + \frac{(1+q_G)R\sqrt{k+1}}{\sqrt{1-\beta_1}}\frac{(g_{t -k, i}+\delta_{t-k,i})^2}{\epsilon + v'_{t, i}}
+\right).
+\label{eq:d_bound_young_lemmaD}
+\end{align}
+To simplify this expression further, we must establish bounds for two of its key components.
+
+First, we can find a lower bound for the denominator term. For any coordinate $i \in [d]$, the recursive definition of $v'_{t,i}$ implies that $\epsilon + v'_{t, i} \geq \epsilon + \beta_2^{k} v'_{t -k, i} \geq \beta_2^{k} (\epsilon + v'_{t-k, i})$. This allows us to bound the fraction as:
+\begin{equation}
+\label{eq:v_prime_bound_lemmaD}
+\frac{(g_{t - k, i}+\delta_{t-k,i})^2}{\epsilon + v'_{t,i}} \leq \frac{1}{\beta_2^k}U_{t -k, i}^2.
+\end{equation}
+Second, we bound the squared gradient difference using the L-smoothness of the objective function $F$.
+\begin{align}
+\norm{\mathcal{G}_{t} - \mathcal{G}_{t -k}}_2^2 &\leq L^2 \norm{\wb_{t - 1} - \wb_{t - k - 1}}_2^2 = L^2 \left\| \sum_{l=1}^{k} \eta_{t -l} \ub_{t - l} \right\|_2^2 \nonumber \\
+&\leq \eta_t^2 L^2 k \sum_{l=1}^{k} \norm{\ub_{t-l}}^2_2.
+\label{eq:grad_diff_bound_lemmaD}
+\end{align}
+The final step above follows from Jensen's inequality and the fact that the step size schedule $\eta_t$ is non-decreasing.
+
+With these two intermediate results, \eqref{eq:v_prime_bound_lemmaD} and \eqref{eq:grad_diff_bound_lemmaD}, we can return to our main inequality \eqref{eq:d_bound_young_lemmaD}. Substituting these bounds yields:
+\begin{align}
+|D| &\leq
+\left( \sum_{k=0}^{t-1} \frac{\eta_t^2 L^2 \sqrt{1 - \beta_1} \beta_1^k }{4 (1+q_G)R \sqrt{k + 1}} \left( k \sum_{l=1}^{k} \norm{\ub_{t-l}}^2_2 \right) \right)
++
+\left(\sum_{k=0}^{t-1} \frac{(1+q_G)R \beta_1^k \sqrt{k+1}}{\sqrt{1-\beta_1} \beta_2^k}\norm{\Ub_{t-k}}_2^2\right) \nonumber \\
+&\leq
+\frac{\eta_t^2 L^2\sqrt{1 - \beta_1}}{4 (1+q_G)R}\left( \sum_{k=0}^{t-1}\beta_1^k \sqrt{k} \sum_{l=1}^{k} \norm{\ub_{t-l}}^2_2 \right)
++
+\frac{(1+q_G)R}{\sqrt{1 - \beta_1}} \sum_{k=0}^{t-1} \left(\frac{\beta_1}{\beta_2}\right)^k \sqrt{k+1}\norm{\Ub_{t-k}}_2^2. \nonumber
+\end{align}
+Finally, by rearranging the order of summation in the first term, we arrive at our desired bound:
+\begin{align}
+|D| \leq \frac{\eta_t^2 L^2 \sqrt{1 - \beta_1}}{4 (1+q_G)R}\left( \sum_{l=1}^{t-1}\norm{\ub_{t-l}}_2^2\sum_{k=l}^{t - 1}\beta_1^k \sqrt{k} \right)
++\frac{(1+q_G)R}{\sqrt{1 - \beta_1}} \sum_{k=0}^{t-1} \left(\frac{\beta_1}{\beta_2}\right)^k \sqrt{k+1}\norm{\Ub_{t-k}}_2^2.
+\end{align}
+\end{proof}
+
+
+\subsection{Proof of Lemma \ref{lemma:bound_on_C} (Lower Bound on Term C)}
+\begin{lemma}[Lower Bound on the Expectation of Term C]
+\label{lemma:bound_on_C}
+The expectation of term C, defined in \eqref{eq:B_term_decomposition_main}, is lower-bounded by:
+\begin{align}
+\nonumber
+    \esp{C} &\geq \frac{1}{2}\left(\sum_{i\in [d]} \sum_{k=0}^{t-1}\beta_1^k\esp{\frac{\mathcal{G}_{t - k, i}^2}{\sqrt{\epsilon+\tilde{v}_{t, k+1, i}}}}\right) -
+    \frac{2 (1+q_G)R}{\sqrt{1 - \beta_1}}\left(\sum_{i\in [d]} \sum_{k=0}^{t-1}
+     \left(\frac{\beta_1}{\beta_2}\right)^k \sqrt{k+1} \esp{\norm{\Ub_{t -k}}_2^2}\right)\\
+     &\quad-d\sum_{k=0}^{t-1}\beta_1^kM_{t-k}.
+\end{align}
+where $M_{t-k} = \frac{q_GR^2+Lq_WR\norm{\wb_{t-k-1}}_2}{\sqrt{\epsilon}}$.
+\end{lemma}
+\begin{proof}
+We study the main term of the summation in C, i.e. for $i \in [d]$ and $k < t$:
+\begin{align}
+\esp{\mathcal{G}_{t -k, i} \frac{g_{t-k,i}+\delta_{t-k,i}}{\sqrt{\epsilon+v_{t, i}}}} = \esp{\nabla_i F(\wb_{t - k -1})\frac{\nabla_i f_{t -k}(\wb_{t - k - 1})+\delta_{t-k,i}}{\sqrt{\epsilon+v_{t, i}}}}.
+\label{app:eq:left_main_term_lemmaC}
+\end{align}
+We will further drop indices in the rest of the proof, noting $\mathcal{G} = \mathcal{G}_{t - k, i}$,
+$g = g_{t -k ,i }$, $\delta=\delta_{t-k,i}$,$\tilde{v} = \tilde{v}_{t, k + 1, i}$ and $v = v'_{t, i}$. Finally, let us note
+\begin{equation}
+    s^2 = \sum_{j=t- k}^{t}\beta_2^{t-j}(g_{j,i}+\delta_{j,i})^2 \qquad \text{and}\qquad
+    r^2 = \esps{t - k - 1}{s^2}.
+    \label{app:eq:holder_ref2_lemmaC}
+\end{equation}
+In particular we have $\tilde{v} - v = r^2 - s^2$. With our new notations, we can rewrite~\eqref{app:eq:left_main_term_lemmaC} as
+\begin{align}
+\nonumber
+    \esp{\mathcal{G} \frac{g+\delta}{\sqrt{\epsilon+v}}} &= \esp{\mathcal{G} \frac{g+\delta}{\sqrt{\epsilon+\tilde{v}}} + \mathcal{G}(g+\delta) \left(\frac{1}{\sqrt{\epsilon+v}} - \frac1{\sqrt{\epsilon+\tilde{v}}}\right)} \\
+    \nonumber
+    &= \esp{\esps{t -k - 1}{\mathcal{G} \frac{g+\delta}{\sqrt{\epsilon+\tilde{v}}}} + \mathcal{G} (g+\delta) \frac{r^2 - s^2}{\sqrt{\epsilon+v}\sqrt{\epsilon+\tilde{v}}(\sqrt{\epsilon+v} + \sqrt{\epsilon+\tilde{v}})}}\\
+    \nonumber
+    &= \esp{\frac{\mathcal{G}^2}{\sqrt{\epsilon+\tilde{v}}}} +\esp{\frac{\mathcal{G}\esps{t-k-1}{\delta}}{\sqrt{\epsilon+\tilde{v}}}}+\esp{\underbrace{\mathcal{G} (g+\delta) \frac{r^2 - s^2}{\sqrt{\epsilon+v}\sqrt{\epsilon+\tilde{v}}(\sqrt{\epsilon+v} + \sqrt{\epsilon+\tilde{v}})}}_{E}}\\
+    &\geq \esp{\frac{\mathcal{G}^2}{\sqrt{\epsilon+\tilde{v}}}}-\frac{q_GR^2+Lq_WR\norm{\wb_{t-k-1}}_2}{\sqrt{\epsilon}} +\esp{E}.
+    \label{app:eq:cool_plus_bad_lemmaC}
+\end{align}
+The inequality uses Lemma \ref{lemma:delta_bound_biased_expected} and the bound for $\norm{\nabla F(\cdot)}_\infty$. We denote $\frac{q_GR^2+Lq_WR\norm{\wb_{t-k-1}}_2}{\sqrt{\epsilon}} \triangleq M_{t-k}$.
+
+Then we focus on $E$:
+\begin{align*}
+    |E| &\leq \underbrace{|\mathcal{G} (g+\delta)|\frac{r^2}{\sqrt{\epsilon+v} (\epsilon + \tilde{v})}}_\kappa +
+    \underbrace{|\mathcal{G} (g+\delta)|\frac{s^2}{(\epsilon + v)\sqrt{\epsilon+\tilde{v}}}}_\rho,
+\end{align*}
+due to the fact that $\sqrt{\epsilon+v} + \sqrt{\epsilon+\tilde{v}} \geq \max(\sqrt{\epsilon+v},
+\sqrt{\epsilon+\tilde{v}})$ and
+$|r^2 - s^2| \leq r^2 + s^2$.
+
+
+Applying Young's inequality to $\kappa$ with $$\lambda = \frac{\sqrt{1 - \beta_1}\sqrt{\epsilon+\tilde{v}}}{2}, \; x =
+\frac{|\mathcal{G}|}{\sqrt{\epsilon+\tilde{v}}}, \; y = \frac{|g+\delta|r^2}{\sqrt{\epsilon+\tilde{v}}\sqrt{\epsilon+v}},$$
+we obtain
+\begin{align*}
+    \kappa \leq \frac{\mathcal{G}^2}{4 \sqrt{\epsilon+\tilde{v}}} + \frac1{\sqrt{1-\beta_1}}\frac{(g+\delta)^2 r^4}{(\epsilon + \tilde{v})^{3/2}(\epsilon + v)}.
+\end{align*}
+Given that $\epsilon + \tilde{v} \geq r^2$ and taking the conditional expectation, we can simplify as
+\begin{align}
+\label{app:eq:bound_kappa_lemmaC}
+    \esps{t- k - 1}{\kappa} \leq \frac{\mathcal{G}^2}{4 \sqrt{\epsilon+\tilde{v}}} + \frac1{\sqrt{1-\beta_1}}\frac{r^2}{\sqrt{\epsilon+\tilde{v}}}\esps{t -k - 1}{\frac{(g+\delta)^2}{\epsilon
+    + v}}.
+\end{align}
+
+Now turning to $\rho$, we use Young's inequality with $$\lambda = \frac{\sqrt{1- \beta_1}\sqrt{\epsilon+\tilde{v}}}{2
+r^2},
+\; x = \frac{|\mathcal{G}s|}{\sqrt{\epsilon+\tilde{v}}}, \; y = \frac{|s (g+\delta)|}{\epsilon + v},$$
+we obtain
+\begin{align}
+\label{app:eq:possible_divide_zero_lemmaC}
+    \rho \leq \frac{\mathcal{G}^2}{4 \sqrt{\epsilon+\tilde{v}}}\frac{s^2}{r^2} +
+    \frac1{\sqrt{1-\beta_1}}\frac{r^2}{\sqrt{\epsilon+\tilde{v}}}\frac{(g+\delta)^2 s^2}{(\epsilon + v)^2}.
+\end{align}
+Given that $\epsilon + v \geq s^2$, and $\esps{t-k-1}{\frac{s^2}{r^2}} = 1$, we obtain after taking the conditional expectation,
+\begin{align}
+\label{app:eq:bound_rho_lemmaC}
+    \esps{t - k -1}{\rho} \leq \frac{\mathcal{G}^2}{4 \sqrt{\epsilon+\tilde{v}}} + \frac1{\sqrt{1-\beta_1}}\frac{r^2}{\sqrt{\epsilon+\tilde{v}}}\esps{t-k-1}{\frac{(g+\delta)^2}{\epsilon +
+    v}}.
+\end{align}
+Notice that in~\eqref{app:eq:possible_divide_zero_lemmaC}, we possibly divide by zero. It suffice to notice that if $r^2 = 0$ then $s^2 = 0$ a.s. so that $\rho = 0$ and \eqref{app:eq:bound_rho_lemmaC} is still verified.
+Summing \eqref{app:eq:bound_kappa_lemmaC} and \eqref{app:eq:bound_rho_lemmaC}, we get
+\begin{align}
+\label{app:eq:descent_proof:pre_last_lemmaC}
+    \esps{t -k - 1}{|E|} \leq \frac{\mathcal{G}^2}{2 \sqrt{\epsilon+\tilde{v}}} + \frac2{\sqrt{1-\beta_1}}\frac{r^2}{\sqrt{\epsilon+\tilde{v}}} \esps{t -k -1}{\frac{(g+\delta)^2}{\epsilon + v}}.
+\end{align}
+Given that $r \leq \sqrt{\epsilon+\tilde{v}}$ by definition of $\tilde{v}$, and that $r \leq \sqrt{k + 1} (1+q_G)R$, reintroducing the indices we had dropped
+\begin{align}
+    \esps{t -k - 1}{|E|} \leq \frac{\mathcal{G}_{t - k, i}^2}{2 \sqrt{\epsilon+\tilde{v}_{t, k + 1, i}}} + \frac{2 (1+q_G)R}{\sqrt{1 - \beta_1}} \sqrt{k+1} \esps{t-k-1}{\frac{(g_{t -k, i}+\delta_{t-k,i})^2}{\epsilon + v'_{t, i}}}.
+\end{align}
+Taking the complete expectation and using that by definition $\epsilon + v'_{t, i} \geq \epsilon + \beta_2^k v'_{t-k, i} \geq \beta_2^k (\epsilon + v'_{t - k, i})$ we get
+\begin{align}
+\label{app:eq:descent_proof:last_lemmaC}
+    \esp{|E|} \leq \frac{1}{2}\esp{\frac{\mathcal{G}_{t - k, i}^2}{\sqrt{\epsilon+\tilde{v}_{t, k+1, i}}}} + \frac{2 (1+q_G)R}{\sqrt{1 - \beta_1}\beta_2^k} \sqrt{k+1} \esp{\frac{(g_{t -k, i}+\delta_{t-k,i})^2}{\epsilon + v'_{t - k, i}}}.
+\end{align}
+Injecting \eqref{app:eq:descent_proof:last_lemmaC} into \eqref{app:eq:cool_plus_bad_lemmaC} gives us 
+\begin{align}
+\nonumber
+    &\sum_{i\in [d]}\sum_{k=0}^{t-1}\beta_1^k \esp{\mathcal{G}_{t -k, i} \frac{g_{t-k,i}+\delta_{t-k,i}}{\sqrt{\epsilon+v_{t, i}}}} \\
+    &\geq \sum_{i\in [d]}\sum_{k=0}^{t-1}\beta_1^k \left(\esp{\frac{\mathcal{G}_{t - k, i}^2}{\sqrt{\epsilon+\tilde{v}_{t, k+1, i}}}} - \esp{|E|} - M_{t-k} \right)\\
+    \nonumber
+    &\geq \sum_{i\in [d]}\sum_{k=0}^{t-1}\beta_1^k \left(\esp{\frac{\mathcal{G}_{t - k, i}^2}{\sqrt{\epsilon+\tilde{v}_{t, k+1, i}}}} - \left( \frac{1}{2}\esp{\frac{\mathcal{G}_{t - k, i}^2}{\sqrt{\epsilon+\tilde{v}_{t, k, i}}}} + \frac{2 (1+q_G)R\sqrt{k+1}}{\sqrt{1 - \beta_1}\beta_2^k} \esp{\frac{(g_{t -k, i}+\delta_{t-k,i})^2}{\epsilon + v'_{t - k, i}}} + M_{t-k} \right)\right) \\
+    & \geq \frac{1}{2}\left(\sum_{i\in [d]} \sum_{k=0}^{t-1}\beta_1^k\esp{\frac{\mathcal{G}_{t - k, i}^2}{\sqrt{\epsilon+\tilde{v}_{t, k+1, i}}}}\right) -
+    \frac{2 (1+q_G)R}{\sqrt{1 - \beta_1}}\left(\sum_{i\in [d]} \sum_{k=0}^{t-1}
+     \left(\frac{\beta_1}{\beta_2}\right)^k \sqrt{k+1} \esp{\norm{\Ub_{t -k}}_2^2}\right)-d\sum_{k=0}^{t-1}\beta_1^kM_{t-k}.
+\end{align}
+This is the desired lower bound for $\esp{C}$.
+\end{proof}
+
+\subsection{Proof of Lemma \ref{lemma:sum_ratio}}
+\begin{lemma}[Lemma A.2 in \citet{defossez2022a}]
+\label{lemma:sum_ratio}
+Assume we have $0 < \beta_1 < \beta_2 \leq 1$ and a sequence of real numbers $(a_n)_{n\in \NN^*}$. We define for all $n \in \NN^*$:
+$$b_n = \sum_{j=1}^n \beta_2^{n - j} a_j^2 \quad \text{and} \quad c_n = \sum_{j=1}^n \beta_1^{n-j} a_j.$$
+Then for any $\epsilon > 0$, we have the following inequality:
+\begin{equation}
+    \label{eq:sum_ratio_combined_lemma7}
+    \sum_{j=1}^n \frac{c_j^2}{\epsilon + b_j} \leq
+    \frac{1}{(1 - \beta_1)(1 - \beta_1 / \beta_2)} \left(\ln\left(1 + \frac{b_n}{\epsilon}\right) - n\ln(\beta_2)\right).
+\end{equation}
+\end{lemma}
+\begin{proof}
+First, we use Jensen's inequality on $c_j^2$, noting that $\sum_{l=1}^j \beta_1^{j-l} = \frac{1-\beta_1^j}{1-\beta_1} \leq \frac{1}{1-\beta_1}$, to get:
+\begin{align*}
+    c_{j}^2 = \left(\sum_{l=1}^j \beta_1^{j - l}a_l\right)^2 \leq \left(\sum_{l=1}^j \beta_1^{j-l}\right) \left(\sum_{l=1}^j \beta_1^{j - l}a_l^2\right) \leq \frac{1}{1 - \beta_1}\sum_{l=1}^j \beta_1^{j - l}a_l^2.
+\end{align*}
+Dividing by $\epsilon + b_j$ and using the fact that for $l \leq j$, $b_j \geq \beta_2^{j-l}b_l$, which implies $\epsilon + b_j \geq \beta_2^{j-l}(\epsilon + b_l)$, we obtain:
+\begin{align}
+    \frac{c_{j}^2}{\epsilon + b_{j}} \leq \frac{1}{1 - \beta_1}\sum_{l=1}^j \beta_1^{j - l} \frac{a_l^2}{\epsilon + b_j} \leq \frac{1}{1 - \beta_1}\sum_{l=1}^j \left(\frac{\beta_1}{\beta_2}\right)^{j-l}\frac{a_l^2}{\epsilon + b_l}.
+\end{align}
+Now, we sum over $j \in [n]$ and swap the order of summation:
+\begin{align}
+\nonumber
+    \sum_{j=1}^n \frac{c_{j}^2}{\epsilon + b_{j}} &\leq  \frac{1}{1 - \beta_1}\sum_{j=1}^n\sum_{l=1}^{j}\left(\frac{\beta_1}{\beta_2}\right)^{j -l} \frac{a_{l}^2}{\epsilon + b_{l}}
+    = \frac{1}{1 - \beta_1}\sum_{l=1}^n\frac{a_l^2}{\epsilon + b_l}\sum_{j=l}^{n}\left(\frac{\beta_1}{\beta_2}\right)^{j -l} \\
+    &\leq \frac{1}{(1 - \beta_1)(1 - \beta_1 /\beta_2)}\sum_{l=1}^n\frac{a_l^2}{\epsilon + b_l}, \label{eq:intermediate_bound_lemma7}
+\end{align}
+where the last step uses the sum of a geometric series, since $\beta_1/\beta_2 < 1$.
+
+The next step is to bound the final sum. Let's denote $x_l = a_l^2$. The sum is $\sum_{l=1}^n \frac{x_l}{\epsilon + b_l}$, where $b_l = \sum_{k=1}^l \beta_2^{l-k}x_k$. Note that $b_l - x_l = \beta_2 b_{l-1}$ (with $b_0=0$). Using the inequality $\frac{x}{y} \leq \ln(y) - \ln(y-x)$ for $0 < x < y$, we have:
+\begin{align*}
+\frac{x_l}{\epsilon + b_l} &\leq \ln(\epsilon + b_l) - \ln(\epsilon + b_l - x_l) \\
+&= \ln(\epsilon + b_l) - \ln(\epsilon + \beta_2 b_{l-1}) \\
+&= \ln\left(\frac{\epsilon + b_l}{\epsilon + b_{l-1}}\right) + \ln\left(\frac{\epsilon + b_{l-1}}{\epsilon + \beta_2 b_{l-1}}\right).
+\end{align*}
+Summing from $l=1$ to $n$, the first term forms a telescoping series equal to $\ln(\epsilon + b_n) - \ln(\epsilon) = \ln(1 + b_n/\epsilon)$. For the second term, since $\beta_2 \leq 1$ and $b_{l-1} \geq 0$, we have $\frac{\epsilon + \beta_2 b_{l-1}}{\epsilon + b_{l-1}} \geq \beta_2$, which implies $\ln\left(\frac{\epsilon + b_{l-1}}{\epsilon + \beta_2 b_{l-1}}\right) \leq -\ln(\beta_2)$. Thus, summing over $l$ gives:
+\begin{equation}
+    \label{eq:special_case_bound_lemma7}
+    \sum_{l=1}^n\frac{a_l^2}{\epsilon + b_l} \leq \ln\left(1 + \frac{b_n}{\epsilon}\right) - n\ln(\beta_2).
+\end{equation}
+This inequality is a useful result in itself, corresponding to the special case where $c_j^2$ is replaced by $a_j^2$ (or equivalently $\beta_1 \to 0$ and $a_j$ is replaced by $a_j^2$).
+
+Finally, substituting the bound from \eqref{eq:special_case_bound_lemma7} into \eqref{eq:intermediate_bound_lemma7} yields the desired result.
+\end{proof}
+
+
+\subsection{Proof of Lemma \ref{app:lemma:sum_geom_sqrt}}
+\begin{lemma}[Lemma A.3 in \citet{defossez2022a}]
+\label{app:lemma:sum_geom_sqrt}
+For any scalar $\rho \in (0, 1)$ and any integer $K \in \NN$, the following bound holds for the finite geometric sum:
+\begin{equation}
+    \label{app:eq:sum_geom_sqrt_lemma8}
+    \sum_{k = 0}^{K - 1} \rho^k \sqrt{k + 1}  
+    \leq \frac{2}{(1 - \rho)^{3/2}}.
+\end{equation}
+\end{lemma}
+\begin{proof}
+Let the sum be denoted by $S_K = \sum_{k = 0}^{K - 1} \rho^k \sqrt{k + 1}$. We analyze the term $(1-\rho)S_K$:
+\begin{align*}
+    (1 - \rho) S_K &= \sum_{k = 0}^{K - 1} \rho^k \sqrt{k+1} - \sum_{j = 1}^K \rho^{j} \sqrt{j} \\
+    &= 1 + \sum_{k=1}^{K-1} \rho^k(\sqrt{k+1} - \sqrt{k}) - \rho^K\sqrt{K}.
+\end{align*}
+By the concavity of the square root function, $\sqrt{k+1} - \sqrt{k} \leq \frac{1}{2\sqrt{k}}$. This implies:
+\begin{align*}
+    (1 - \rho) S_K &\leq 1 + \sum_{k = 1}^{K- 1} \frac{\rho^{k}}{2 \sqrt{k}} 
+    \leq 1 + \int_0^{\infty} \frac{\rho^{t}}{2 \sqrt{t}}\mathrm{d}t.
+\end{align*}
+The integral is a standard Gaussian integral form which evaluates to $\frac{\sqrt{\pi}}{2 \sqrt{-\ln(\rho)}}$. Using the inequality $-\ln(\rho) \geq 1 - \rho$, we have:
+\begin{align*}
+    (1 - \rho) S_K \leq 1 + \frac{\sqrt{\pi}}{2 \sqrt{1-\rho}} \leq \frac{2}{\sqrt{1-\rho}}.
+\end{align*}
+Dividing by $(1-\rho)$ yields the desired result.
+\end{proof}
+
+
+\subsection{Proof of Lemma \ref{app:lemma:sum_geom_32}}
+\begin{lemma}[Lemma A.4 in \citet{defossez2022a}]
+\label{app:lemma:sum_geom_32}
+For any scalar $\rho \in (0, 1)$ and any integer $K \in \NN$, the following bound holds:
+\begin{equation}
+    \label{app:eq:sum_geom_32_lemma9}
+    \sum_{k = 0}^{K - 1} \rho^k \sqrt{k} (k + 1)
+    \leq \frac{4 \rho}{(1 - \rho)^{5/2}}.
+\end{equation}
+\end{lemma}
+\begin{proof}
+Let the sum be denoted by $S_K = \sum_{k = 0}^{K - 1} \rho^k \sqrt{k} (k + 1)$. We proceed by analyzing $(1-\rho)S_K$:
+\begin{align*}
+    (1-\rho)S_K &= \sum_{k = 1}^{K - 1} \rho^k \left[ \sqrt{k} (k + 1) - k\sqrt{k - 1}\right] - \rho^K k \sqrt{K-1} \\
+    &\leq \sum_{k = 1}^{K - 1} \rho^k (2\sqrt{k}),
+\end{align*}
+where the inequality holds because $\sqrt{k} (k + 1) - k\sqrt{k - 1} \le 2\sqrt{k}$. Re-indexing the sum gives:
+\begin{align*}
+    (1 - \rho) S_K &\leq 2 \rho \sum_{k = 1}^{K - 1} \rho^{k-1} \sqrt{k} = 2 \rho \sum_{j = 0}^{K - 2} \rho^j \sqrt{j + 1}.
+\end{align*}
+Applying the result from Lemma~\ref{app:lemma:sum_geom_sqrt} to the final sum, we get:
+\begin{align*}
+     (1 - \rho) S_K  \leq 2 \rho \left( \frac{2}{(1 - \rho)^{3/2}} \right) = \frac{4 \rho}{(1 - \rho)^{3/2}}.
+\end{align*}
+Dividing both sides by $(1-\rho)$ completes the proof.
+\end{proof}
+
+
+\subsection{Proof of Lemma \ref{app:lemma:u}}
+\begin{lemma}[Upper bound of $\sum_{t=1}^T\esp{\norm{\ub_t}^2_2}$]
+\label{app:lemma:u}
+Under the condition that $\beta_1(1+q_M) < \beta_2(1-q_V)$, the expected sum of squared updates over $T$ iterations is bounded by:
+\begin{align}
+    \sum_{t=1}^T\esp{\norm{\ub_t}^2_2} &\le \frac{d}{(1 - \beta_1(1+q_M))(1 - \frac{\beta_1(1+q_M)}{\beta_2(1-q_V)})} \nonumber \\ 
+    &\quad \times \left(\ln\left(1 + \frac{((1+q_G)R)^2}{\epsilon(1-\beta_2(1-q_V))}\right) - T\ln(\beta_2(1-q_V))\right). \label{app:eq:sum_ratio_u_lemma10}
+\end{align}
+\end{lemma}
+\begin{proof}
+The proof proceeds by first expanding the term of interest, applying bounds on the moment estimates derived from their recurrence relations, and then leveraging Lemma~\ref{lemma:sum_ratio} to bound the resulting sum.
+
+We begin by expanding the definition of $\norm{\ub_t}_2^2$, separating the sum over the dimension $d$, and taking the expectation:
+\begin{align}
+    \sum_{t=1}^T\esp{\norm{\ub_t}^2_2} = \sum_{t=1}^T\esp{\sum_{i\in [d]}\frac{m^2_{t,i}}{\epsilon+v_{t,i}}} = \sum_{i\in [d]}\sum_{t=1}^T\esp{\frac{m^2_{t,i}}{\epsilon+v_{t,i}}}.
+\end{align}
+For each coordinate $i$, we bound the numerator $m_{t,i}^2$ from above and the denominator $\epsilon+v_{t,i}$ from below. By unrolling the recurrence for $m_{t,i}$ and applying the triangle inequality along with the relative error model, we get an upper bound on its magnitude:
+\begin{align}
+    |m_{t, i}| \le \sum_{k=1}^t\beta_1^{t-k}(1+q_M)^{t-k}|\nabla_i f_k(\wb_{k-1}) + \delta_{k,i}|.
+\end{align}
+For the denominator, Lemma~\ref{app:lemma:moment_relation} provides a lower bound for $v_{t,i}$:
+\begin{align}
+    v_{t,i} \ge \sum_{k=1}^t\beta_2^{t-k}(1-q_V)^{t-k}(\nabla_i f_k(\wb_{k-1}) + \delta_{k,i})^2.
+\end{align}
+Substituting these into the sum gives the inequality:
+\begin{align}
+ \label{eq:u_bound_intermediate_lemma10}
+ \sum_{t=1}^T\esp{\norm{\ub_t}^2_2} \le \sum_{i\in [d]}\sum_{t=1}^T\esp{\frac{\left(\sum_{k=1}^t\beta_1^{t-k}(1+q_M)^{t-k}|\hat{g}_{k,i}|\right)^2}{\epsilon+\sum_{k=1}^t\beta_2^{t-k}(1-q_V)^{t-k}\hat{g}_{k,i}^2}},
+\end{align}
+where for brevity we denote $\hat{g}_{k,i} = \nabla_i f_k(\wb_{k-1}) + \delta_{k,i}$.
+
+The inner sum over $t$ for each coordinate $i$ in \eqref{eq:u_bound_intermediate_lemma10} perfectly matches the form required by Lemma~\ref{lemma:sum_ratio}. To apply it, we make the following substitutions into the lemma's notation:
+\begin{itemize}[leftmargin=*]
+    \item Let the sequence $(a_j)_{j\in\NN^*}$ be $a_k = |\hat{g}_{k,i}|$.
+    \item Let the effective decay factors be $\beta'_1 = \beta_1(1+q_M)$ and $\beta'_2 = \beta_2(1-q_V)$. The lemma's condition $\beta'_1 < \beta'_2$ is satisfied by our assumption.
+\end{itemize}
+With these substitutions, the numerator term becomes $\left(\sum_{k=1}^t (\beta'_1)^{t-k} a_k\right)^2 = c_t^2$ and the sum in the denominator becomes $\sum_{k=1}^t (\beta'_2)^{t-k} a_k^2 = b_t$. Applying Lemma~\ref{lemma:sum_ratio} to the sum over $t$ for a fixed $i$ yields:
+\begin{align}
+\label{eq:u_bound_after_lemma_lemma10}
+    \sum_{t=1}^T \esp{\frac{c_t^2}{\epsilon+b_t}} \le \frac{1}{(1 - \beta'_1)(1 - \beta'_1/\beta'_2)} \left( \ln\left(1 + \frac{b_T}{\epsilon}\right) - T\ln(\beta'_2) \right).
+\end{align}
+
+The final step is to find an upper bound for $b_T$. By definition:
+\begin{align}
+    b_T = \sum_{k=1}^T (\beta'_2)^{T-k} a_k^2 = \sum_{k=1}^T (\beta_2(1-q_V))^{T-k} \hat{g}_{k,i}^2.
+\end{align}
+From Lemma~\ref{lemma:grad_bound}, we have a uniform bound on the quantized gradient estimator, $|\hat{g}_{k,i}| \le (1+q_G)R$. Therefore:
+\begin{align}
+    b_T &\le \sum_{k=1}^T (\beta_2(1-q_V))^{T-k} ((1+q_G)R)^2 \nonumber \\
+    &= ((1+q_G)R)^2 \sum_{j=0}^{T-1} (\beta_2(1-q_V))^{j} \nonumber \\
+    &\le ((1+q_G)R)^2 \frac{1}{1 - \beta_2(1-q_V)}.
+\end{align}
+
+Substituting the bound for $b_T$ back into \eqref{eq:u_bound_after_lemma_lemma10}, and re-inserting the definitions of $\beta'_1$ and $\beta'_2$, we obtain the bound for a single coordinate $i$. As this bound is identical for all $d$ coordinates, we multiply by $d$ to get the final result stated in \eqref{app:eq:sum_ratio_u_lemma10}. This completes the proof.
+\end{proof}
+
+
+\subsection{Proof of Lemma \ref{lemma:bound_on_M} (Bound on Term M)}
+\begin{lemma}[Bound on Term M]
+\label{lemma:bound_on_M}
+The term M, representing the accumulated quantization bias from \eqref{app:eq:common_big_main}, is bounded by:
+\begin{align}
+    M \le \frac{\eta_T d T}{\sqrt{\epsilon}(1-\beta_1)} \left( q_G R^2 + L q_W R \norm{\wb_0}_2 \right) + \frac{\eta_T^2 d L q_W UR T^2}{2\sqrt{\epsilon}(1-\beta_1)},
+\end{align}
+where $U = \sqrt{\frac{d}{1-\frac{\beta_1^2(1+q_M)^2}{\beta_2(1-q_V)}}}$.
+\end{lemma}
+\begin{proof}
+First, we establish a uniform bound on the update norm $\norm{\ub_t}_2$ using Lemma~\ref{app:lemma:cauchy}:
+\begin{align}
+    \norm{\ub_t}_2 &= \sqrt{\sum_{i\in [d]}\frac{m_{t,i}^2}{\epsilon+v_{t,i}}} \nonumber \\
+    & \le \sqrt{\sum_{i\in [d]}\frac{(\sum_{k=0}^t\beta_1^{t-k}(1+q_M)^{t-k}|\nabla_i f_k(\wb_{k-1}) + \delta_{k,i}|)^2}{(\sum_{k=0}^t\beta_2^{t-k}(1-q_V)^{t-k}(\nabla_i f_k(\wb_{k-1}) + \delta_{k,i})^2)}} \nonumber \\
+    & \le \sqrt{\frac{d}{1-\frac{\beta_1^2(1+q_M)^2}{\beta_2(1-q_V)}}} \triangleq U
+\end{align}
+Now, let's recall the definition of $M$:
+\begin{equation*}
+    M = \eta_T d \sum_{t=1}^T \esp{\sum_{k=0}^{t-1} \beta_1^k M_{t-k}}, \quad \text{where} \quad M_{t-k} = \frac{q_G R^2 + L q_W R \norm{\wb_{t-k-1}}_2}{\sqrt{\epsilon}}.
+\end{equation*}
+We can split $M$ into two components: a constant part $M_{\text{const}}$ and a weight-dependent part $M_{\text{weights}}$.
+\begin{align*}
+    M_{\text{const}} &= \frac{\eta_T d q_G R^2}{\sqrt{\epsilon}} \sum_{t=1}^T \sum_{k=0}^{t-1} \beta_1^k \\
+    M_{\text{weights}} &= \frac{\eta_T d L q_W R}{\sqrt{\epsilon}} \sum_{t=1}^T \sum_{k=0}^{t-1} \beta_1^k \esp{\norm{\wb_{t-k-1}}_2}
+\end{align*}
+Bounding $M_{\text{const}}$ is straightforward. The inner sum is a geometric series bounded by $\frac{1}{1-\beta_1}$, so the double summation is bounded by $\frac{T}{1-\beta_1}$.
+\begin{equation}
+    M_{\text{const}} \le \frac{\eta_T d q_G R^2 T}{\sqrt{\epsilon}(1-\beta_1)}.
+\end{equation}
+The main challenge is to bound $M_{\text{weights}}$. To do this, we first need a bound on the expected weight norm $\esp{\norm{\wb_j}_2}$. From the update rule $\wb_j = \wb_{j-1} - \eta_j \ub_j$, we can unroll the recursion:
+\begin{equation*}
+    \wb_j = \wb_0 - \sum_{l=1}^j \eta_l \ub_l.
+\end{equation*}
+Applying the triangle inequality and taking the expectation, we get:
+\begin{equation*}
+    \esp{\norm{\wb_j}_2} \le \norm{\wb_0}_2 + \esp{\sum_{l=1}^j \eta_l \norm{\ub_l}_2}.
+\end{equation*}
+Using the uniform bound $\norm{\ub_l}_2 \le U$, we have:
+\begin{equation*}
+    \esp{\norm{\wb_j}_2} \le \norm{\wb_0}_2 + U \sum_{l=1}^j \eta_l \le \norm{\wb_0}_2+Uj\eta_T .
+\end{equation*}
+
+Now we substitute this bound back into the expression for $M_{\text{weights}}$. We first swap the order of summation. Let $j = t-k-1$. For a fixed $j \in \{0, \dots, T-1\}$, the term $\esp{\norm{\wb_j}_2}$ appears when $k=t-j-1$. This is valid for $t$ from $j+1$ to $T$.
+\begin{align*}
+    \sum_{t=1}^T \sum_{k=0}^{t-1} \beta_1^k \esp{\norm{\wb_{t-k-1}}_2} &= \sum_{j=0}^{T-1} \esp{\norm{\wb_j}_2} \sum_{t=j+1}^{T} \beta_1^{t-j-1} \\
+    &= \sum_{j=0}^{T-1} \esp{\norm{\wb_j}_2} \sum_{m=0}^{T-j-1} \beta_1^{m} \\
+    &\le  \frac{1}{1-\beta_1} \sum_{j=0}^{T-1} \esp{\norm{\wb_j}_2}.
+\end{align*}
+Next, we substitute the linear bound:
+\begin{align*}
+    \frac{1}{1-\beta_1} \sum_{j=0}^{T-1} \esp{\norm{\wb_j}_2} &\le \frac{1}{1-\beta_1} \sum_{j=0}^{T-1} \left( \norm{\wb_0}_2 + j \cdot U \cdot \eta_T \right) \\
+    &= \frac{1}{1-\beta_1} \left( T\norm{\wb_0}_2 + U \eta_T \sum_{j=0}^{T-1} j \right).
+\end{align*}
+The sum of the first $T-1$ integers is $\frac{(T-1)T}{2} < \frac{T^2}{2}$. This gives:
+\begin{equation*}
+    \le \frac{1}{1-\beta_1} \left( T\norm{\wb_0}_2 + \frac{T^2}{2} U \eta_T \right).
+\end{equation*}
+Finally, we assemble the complete bound for $M_{\text{weights}}$:
+\begin{equation*}
+    M_{\text{weights}} \le \frac{\eta_T d L q_W R}{\sqrt{\epsilon}(1-\beta_1)} \left( T\norm{\wb_0}_2 + \frac{T^2}{2} U \eta_T \right).
+\end{equation*}
+Combining $M_{\text{const}}$ with $M_{\text{weights}}$, we get the final bound for $M$.
+\begin{align}
+    \label{eq:M_bound_final_linear_full}
+    M &\le \frac{\eta_T d T}{\sqrt{\epsilon}(1-\beta_1)} \left( q_G R^2 + L q_W R \norm{\wb_0}_2 \right) + \frac{\eta_T^2 d L q_W UR T^2}{2\sqrt{\epsilon}(1-\beta_1)} \nonumber \\
+\end{align}
+\end{proof}
+
+
+
+
+% --- end tex/appendix/adam.tex ---
+
+% --- begin tex/appendix/muon.tex ---
+\section{Proof of Theorem~\ref{thm:QMuon}}\label{app:Proof_QMuon}
+\subsection{Preliminaries}
+The momentum of the quantized Muon (Algorithm~\ref{alg:framework},~\ref{alg:muon}) is defined as
+\begin{align}
+    \Mb_t =& \beta\Mb_{t-1}^Q + (1-\beta)\frac{1}{B}\sum_{i=1}^B\nabla^Q f(\Wb_t^Q; \bxi_{t,i}), &\Mb_0 = \frac{1}{B}\sum_{i=1}^B\nabla^Q f(\Wb_0^Q;\bxi_{0,i}) \label{eq:muon_M}.
+\end{align}
+We define the following auxiliary variables for analysis:
+\begin{align}
+    \Cb_t =& \beta\Cb_{t-1} + (1-\beta)\nabla F(\Wb_t), &\Cb_0 = \nabla F(\Wb_0) \label{eq:muon_C}\\
+    \Xb_t =& \beta\Xb_{t-1} + (1-\beta)\frac{1}{B}\sum_{i=1}^B\nabla f(\Wb_t;\bxi_{t,i}), &\Xb_0 = \frac{1}{B}\sum_{i=1}^B\nabla f(\Wb_0;\bxi_{0,i}) \label{eq:muon_X} \\
+    \Yb_t =& \beta\Yb_{t-1} + (1-\beta)\frac{1}{B}\sum_{i=1}^B\nabla^Q f(\Wb_t;\bxi_{t,i}), &\Yb_0 = \frac{1}{B}\sum_{i=1}^B\nabla^Q f(\Wb_0;\bxi_{0,i}) \label{eq:muon_Y} \\
+    \Zb_t =& \beta\Zb_{t-1} + (1-\beta)\frac{1}{B}\sum_{i=1}^B\nabla^Q f(\Wb_t^Q;\bxi_{t,i}), &\Zb_0 = \frac{1}{B}\sum_{i=1}^B\nabla^Q f(\Wb_0^Q;\bxi_{0,i}) \label{eq:muon_Z} .
+\end{align}
+
+We also define the following relative quantization errors $q_G, q_W, q_M$ according to Assumption~\ref{assump:qe} and Lemma~\ref{lemma:muon_mat_qe}, i.e., for any $t\in\{0,1,\ldots,T-1\}$ and $i\in\{1,2,\ldots,B\}$,
+\begin{align}\label{eq:muon_var_qe}
+    \|\nabla^Q f(\Wb_t;\bxi_{t,i}) - \nabla f(\Wb_t;\bxi_{t,i})\|_F &\le q_G \|\nabla f(\Wb_t;\bxi_{t,i})\|_F, \notag \\
+    \|\nabla^Q F(\Wb_t) - \nabla F(\Wb_t)\|_F &\le q_G \|\nabla F(\Wb_t)\|_F, \notag \\
+    \|\nabla^Q f(\Wb_t^Q;\bxi_{t,i}) - \nabla f(\Wb_t^Q;\bxi_{t,i})\|_F &\le q_G \|\nabla f(\Wb_t^Q;\bxi_{t,i})\|_F, \notag \\
+    \|\nabla^Q F(\Wb_t^Q) - \nabla F(\Wb_t^Q)\|_F &\le q_G \|\nabla F(\Wb_t^Q)\|_F, \notag \\
+    \|\Wb_t^Q - \Wb_t\|_F &\le q_W \|\Wb_t\|_F, \notag \\
+    \|\Mb_t^Q - \Mb_t\|_F &\le q_M \|\Mb_t\|_F. 
+\end{align}
+
+\subsection{Proof of Theorem~\ref{thm:QMuon}}
+\begin{proof}
+Set $\eta_t = \eta$, denote $r=\min\{m, n\}$, and according to the $L$-smoothness of $F(\cdot)$, we have
+\begin{align}\label{eq:smooth1}
+    &\EE[F(\Wb_t)-F(\Wb_{t+1})] \notag \\
+    \ge& \EE[\la\nabla F(\Wb_t), \Wb_t - \Wb_{t+1} \ra-\frac{L}{2}\| \Wb_t - \Wb_{t+1} \|_F^2] \notag \\
+    =& \EE[\eta \la\nabla F(\Wb_t), \Ub_t\Vb_t^{\top} \ra-\frac{L}{2}\eta^2\| \Ub_t\Vb_t^{\top} \|_F^2] \notag \\
+    \ge& \EE[\eta \la\nabla F(\Wb_t), \Ub_t\Vb_t^{\top} \ra]-\frac{L}{2}\eta^2 r \notag \\
+    =& \EE[\eta \la \Mb_t, \Ub_t\Vb_t^{\top} \ra + \eta\la\nabla F(\Wb_t) - \Mb_t, \Ub_t\Vb_t^{\top} \ra] -\frac{L}{2}\eta^2 r \notag \\
+    \ge& \EE[\eta\|\Mb_t\|_* - \eta\|\nabla F(\Wb_t) - \Mb_t\|_F \cdot \|\Ub_t\Vb_t^{\top} \|_F] -\frac{L}{2}\eta^2 r \notag \\
+    \ge& \EE[\eta\|\nabla F(\Wb_t)\|_* - \eta\|\nabla F(\Wb_t) - \Mb_t\|_* - \eta\sqrt{r}\|\nabla F(\Wb_t) - \Mb_t\|_F] -\frac{L}{2}\eta^2 r \notag \\
+    \ge& \EE[\eta\|\nabla F(\Wb_t)\|_* - 2\eta\sqrt{r}\|\nabla F(\Wb_t) - \Mb_t\|_F] -\frac{L}{2}\eta^2 r.
+\end{align}
+The second inequality is due to $\|\Ub_t\Vb_t^{\top}\|_F^2 = \tr(\Vb_t\Ub_t^{\top}\Ub_t\Vb_t^{\top}) \le r=\min\{m,n\}$. The third inequality is due to $\Mb_t = \Ub_t\Sbb_t\Vb_t^{\top}$ and Cauchy-Schwarz inequality. The last inequality we used the fact that $\|\Ab\|_* \le \sqrt{r}\|\Ab\|_F$ for any $\Ab\in\RR^{m\times n}$.
+
+Summing Eq.~\eqref{eq:smooth1} over $t=0,1,\ldots,T-1$, we get
+\begin{align}\label{eq:muon_sum_smooth}
+    &\frac{1}{T}\sum_{t=0}^{T-1}\EE[\|\nabla F(\Wb_t)\|_*] \notag \\
+    \le& \frac{\EE[F(\Wb_0) - F^(\Wb_T)]}{T\eta} + \frac{2\sqrt{r}}{T}\sum_{t=0}^{T-1}\EE[\|\nabla F(\Wb_t) - \Mb_t\|_F] + \frac{\eta Lr}{2}.
+\end{align}
+
+
+
+Next, we focus on term $\EE[\|\nabla F(\Wb_t) - \Mb_t\|_F]$. With auxiliary variables defined in Eq.~\eqref{eq:muon_C}-\eqref{eq:muon_Z}, we have
+\begin{align*}
+    &\EE[\|\nabla F(\Wb_t) - \Mb_t\|_F] \\
+    \le& \EE[\|\nabla F(\Wb_t) - \Cb_t\|_F + \|\Cb_t - \Xb_t\|_F + \|\Xb_t - \Yb_t\|_F + \|\Yb_t - \Zb_t\|_F + \|\Zb_t - \Mb_t\|_F].
+\end{align*}
+
+By Lemmas~\ref{lemma:muon_GC},~\ref{lemma:muon_CX},~\ref{lemma:muon_XY},~\ref{lemma:muon_YZ}, and~\ref{lemma:muon_ZM}, we have
+\begin{align*}
+    &\EE[\|\nabla F(\Wb_t) - \Mb_t\|_F] \\
+    \le& \EE[ \|\nabla F(\Wb_t) - \Cb_t\|_F  + \|\Cb_t - \Xb_t\|_F + \|\Xb_t - \Yb_t\|_F + \|\Yb_t - \Zb_t\|_F + \|\Zb_t - \Mb_t\|_F ] \\
+    \le& \frac{\beta L\eta\sqrt{r}}{1-\beta} + \beta^t\frac{3\sigma}{\sqrt{B}}+\sqrt{\frac{1-\beta}{1+\beta}}\frac{3\sigma}{\sqrt{B}} + 3q_G(\sigma + G) + 3q_G T\eta\sqrt{r}L + q_W(1+q_G)DL + \\ 
+    & q_W(1+q_G)T\eta\sqrt{r}L + \frac{q_M\beta}{1-\beta(1+q_M)}\bigg( \frac{\sigma}{\sqrt{B}} + \sqrt{\frac{1-\beta}{1+\beta}}\cdot\frac{\sigma}{\sqrt{B}} + G + q_G(\sigma + G) + \notag \bigg.\\
+    &\bigg. q_W (1+q_G)DL + (1+q_W)(1+q_G)T\eta\sqrt{r}L \bigg).
+\end{align*}
+
+% Set $q_G,\ q_W,\ q_M=0$, we get
+% \begin{align*}
+%     &\EE[\|\nabla f(\Wb_t) - \Mb_t\|_F] \\
+%     \le& \frac{\beta L\eta\sqrt{r}}{1-\beta} + \beta^t\frac{3\sigma}{\sqrt{B}}+\sqrt{\frac{1-\beta}{1+\beta}}\frac{3\sigma}{\sqrt{B}},
+% \end{align*}
+% while the original bound is
+% \begin{align*}
+%     &\EE[\|\nabla f(\Wb_t) - \Mb_t\|_F] \\
+%     \le& \frac{\beta L\eta\sqrt{r}}{1-\beta} + \beta^t\frac{\sigma}{\sqrt{B}}+\sqrt{\frac{1-\beta}{1+\beta}}\frac{\sigma}{\sqrt{B}}.
+% \end{align*}
+% So our bound is tight up to a constant factor.
+
+
+Summing over $t=0,1,\ldots,T-1$, we get
+\begin{align}\label{eq:muon_sum_GM}
+    &\frac{1}{T}\sum_{t=0}^{T-1}\EE[\|\nabla F(\Wb_t) - \Mb_t\|_F] \notag \\
+    \le& \frac{\beta L\eta\sqrt{r}}{1-\beta} + \frac{3\sigma}{T(1-\beta)\sqrt{B}} + \sqrt{\frac{1-\beta}{1+\beta}}\frac{3\sigma}{\sqrt{B}} + 3q_G(\sigma + G) + 3q_G T\eta\sqrt{r}L + q_W(1+q_G)DL + \notag \\
+    & q_W(1+q_G)T\eta\sqrt{r}L +  \frac{q_M\beta}{1-\beta(1+q_M)}\bigg( \frac{\sigma}{\sqrt{B}} + \sqrt{\frac{1-\beta}{1+\beta}}\cdot\frac{\sigma}{\sqrt{B}} + G + q_G(\sigma + G) + \notag \bigg. \notag \\
+    &\bigg. q_W (1+q_G)DL + (1+q_W)(1+q_G)T\eta\sqrt{r}L \bigg).
+\end{align}
+
+Substitute~\eqref{eq:muon_sum_GM} into~\eqref{eq:muon_sum_smooth}, with Assumption~\ref{assump:qe}, we have
+\begin{align*}
+    &\frac{1}{T}\sum_{t=0}^{T-1}\EE[\| \nabla F(\Wb_t) \|_*] \\
+    \le& \frac{\EE[F(\Wb_0)-F(\Wb_T)]}{\eta T} + \frac{L\eta r}{2}+\frac{2\sqrt{r}}{T}\sum_{t=0}^{T-1}\EE[\|\nabla F(\Wb_t) - \Mb_t\|_F] \\
+    \le& \frac{\EE[F(\Wb_0)-F(\Wb_T)]}{\eta T} + \frac{L\eta r}{2}+ \frac{2\beta L\eta r}{1-\beta} + \frac{6\sigma\sqrt{r}}{T(1-\beta)\sqrt{B}}+\sqrt{\frac{1-\beta}{1+\beta}}\frac{6\sigma\sqrt{r}}{\sqrt{B}} +\notag \\
+    & 6q_G\sqrt{r}(\sigma + G) + 6q_G T\eta r L + 2q_W(1+q_G)DL\sqrt{r} + 2q_W(1+q_G)T\eta r L + \notag \\
+    & \frac{2q_M\beta\sqrt{r}}{1-\beta(1+q_M)}\bigg( \frac{\sigma}{\sqrt{B}} + \sqrt{\frac{1-\beta}{1+\beta}}\cdot\frac{\sigma}{\sqrt{B}} + G + q_G(\sigma + G) + \notag \bigg.\\
+    &\bigg. q_W (1+q_G)DL + (1+q_W)(1+q_G)T\eta \sqrt{r} L \bigg) \\
+    \le& \frac{\EE[F(\Wb_0)-F(\Wb_T)]}{\eta T} + \frac{L\eta r}{2}+ \frac{2\beta L\eta r}{1-\beta} + \frac{6\sigma\sqrt{r}}{T(1-\beta)\sqrt{B}}+ \sqrt{\frac{1-\beta}{1+\beta}}\frac{6\sigma\sqrt{r}}{\sqrt{B}} + \\ 
+    &\Theta\Bigg(q_G+ q_W + q_G T\eta + q_W T\eta + \frac{q_M\beta}{1-\beta(1+q_M)}\bigg(1+\sqrt{1-\beta} + q_G + q_W + T\eta\bigg) \Bigg).
+\end{align*}
+
+
+% Set $q_M, q_G, q_W = 0$, we have
+% \begin{align*}
+%     &\frac{1}{T}\sum_{t=0}^{T-1}\EE[\| \nabla f(\Wb_t) \|_*] \\
+%     \le& \frac{\EE[f(\Wb_0)-f(\Wb_T)]}{\eta T} + \frac{L\eta r}{2}+ \frac{2\beta L\eta r}{1-\beta} + \underbrace{\frac{6\sigma\sqrt{r}}{T(1-\beta)\sqrt{B}}}_{\text{a factor } 3}+\underbrace{\sqrt{\frac{1-\beta}{1+\beta}}\frac{6\sigma\sqrt{r}}{\sqrt{B}}}_{\text{a factor } 3}.
+% \end{align*}
+
+Let $F(\Wb_0) - F^* \le \Delta$, where $\Delta > 0$ is a constant. By setting $B=1$, $1-\beta = \Theta(T^{-1/2})$, $\eta = \Theta((1-\beta)^{1/2}T^{-1/2})$, we have $T\eta = \Theta(T^{1/4})$. Then we have
+\begin{align*}
+    \frac{\EE[F(\Wb_0)-F(\Wb_T)]}{\eta T} + \frac{L\eta r}{2}+ \frac{2\beta L\eta r}{1-\beta} + \frac{6\sigma\sqrt{r}}{T(1-\beta)\sqrt{B}}+\sqrt{\frac{1-\beta}{1+\beta}}\frac{6\sigma\sqrt{r}}{\sqrt{B}} = \cO(\frac{1}{T^{1/4}}).
+\end{align*}
+
+Moreover, with condition $\beta(1+q_M) < 1$, suppose $1-\beta = C_\beta T^{-1/2}$, $C_\beta > 0$ is a constant. Choose $q_M = C_M T^{-1/2}$, where $C_M < C_\beta, C_M > 0$ is a constant, then we have
+\begin{align*}
+    \beta(1+q_M) = (1 - C_\beta T^{-1/2})(1 + C_M T^{-1/2}) = 1 - (C_\beta - C_M)T^{-1/2} - C_\beta C_M T^{-1} < 1.
+\end{align*}
+
+Thus, by setting $q_G = \cO(T^{-1/2})$, $q_W = \cO(T^{-1/2})$, $q_M = \cO(T^{-1/2})$, we have
+\begin{align*}
+    &q_G+ q_W + q_G T\eta + q_W T\eta + \frac{q_M\beta}{1-\beta(1+q_M)}\bigg(1+\sqrt{1-\beta} + q_G + q_W + T\eta\bigg) \\
+    =& \cO(T^{-1/2} + T^{-1/2}T^{1/4} + T^{-1/2}(1+T^{-1/4}+T^{-1/2}+T^{1/4})) \\
+    =& \cO(T^{-1/4}),
+\end{align*}
+where we used the fact $\frac{q_M\beta}{1-\beta(1+q_M)} = \cO(q_M\beta(1+\beta(1+q_M))) = \cO(T^{-1/2})$, and $\beta(1+q_M) < 1$.
+
+Combining the above results, with the fact that $\|\Ab\|_* \ge \|\Ab\|_F$ for any matrix $\Ab$, we complete the proof.
+
+
+\end{proof}
+
+
+
+
+\subsection{Proof of Lemma~\ref{lemma:muon_bounded_w_grad}}
+\begin{lemma}[Bound of $\|\Wb\|_F$ and $\|\nabla F(\Wb)\|_F$ for Muon]\label{lemma:muon_bounded_w_grad}
+    Suppose Assumptions~\ref{assump:smooth} and \ref{assump:bound_init} hold. The iterates of Muon satisfy that for any $t\ge 0$,
+    \begin{align*}
+        \|\Wb_t\|_F \le D+t\eta\sqrt{r},\quad \|\nabla F(\Wb_t)\|_F \le G + t\eta\sqrt{r}L.
+    \end{align*}
+\end{lemma}
+\begin{proof}[Proof of Lemma~\ref{lemma:muon_bounded_w_grad}]
+    According to the update of Muon, we have
+    \begin{align*}
+        & \|\Wb_t\|_F \\
+        =& \|\Wb_{t-1} - \eta\Ub_t\Vb_t^{\top}\|_F \\
+        \le& \|\Wb_{t-1}\|_F + \eta \|\Ub_t\Vb_t^{\top}\|_F \\
+        =& \|\Wb_{t-1}\|_F + \eta\sqrt{\tr(\Vb_t\Ub_t^{\top}\Ub_t\Vb_t^{\top})} \\
+        \le& \|\Wb_{t-1}\|_F + \eta\sqrt{r} \\
+        \le& \|\Wb_0\|_F + t\eta\sqrt{r} \\
+        \le& D + t\eta\sqrt{r}.    
+    \end{align*}
+    The third inequality is because $\Ub_t$ and $\Vb_t$ are orthogonal matrices, and the last inequality is due to Assumption~\ref{assump:bound_init}.
+    \begin{align*}
+        & \|\nabla F(\Wb_t)\|_F \\
+        \le& \|\nabla F(\Wb_0)\|_F + \sum_{k=0}^{t-1} \|\nabla F(\Wb_{k+1}) - \nabla F(\Wb_k)\|_F \\
+        \le& G + \sum_{k=0}^{t-1} L\|\Wb_{k+1} - \Wb_k\|_F \\
+        \le& G + \sum_{k=0}^{t-1} L\eta\sqrt{r} \\
+        =& G + t\eta\sqrt{r}L.
+    \end{align*}
+    The first inequality is due to the triangle inequality, the second inequality is due to Assumption~\ref{assump:smooth}, and the last inequality is due to the update of Muon.
+\end{proof}
+
+
+
+
+
+
+\subsection{Proof of Lemma~\ref{lemma:muon_mat_qe}}
+\begin{lemma}\label{lemma:muon_mat_qe}
+    Suppose Assumption~\ref{assump:qe} holds. For any matrix $\Xb\in\RR^{m\times n}$ and its quantized version $\Xb^Q$, we have
+    \begin{align*}
+        \|\Xb^{Q} - \Xb\|_F \le q\|\Xb\|_F.
+    \end{align*}
+\end{lemma}
+\begin{proof}[Proof of Lemma~\ref{lemma:muon_mat_qe}]
+    According to Assumption~\ref{assump:qe}, we have
+    \begin{align*}
+        \|\Xb^Q - \Xb\|_F^2 =& \sum_{i=1}^m\sum_{j=1}^n |X_{ij}^Q - X_{ij}|^2 \\
+        \le& \sum_{i=1}^m\sum_{j=1}^n q^2|X_{ij}|^2 \\
+        =& q^2\|\Xb\|_F^2.
+    \end{align*}
+    Taking the square root on both sides, we complete the proof.
+\end{proof}
+
+
+\subsection{Proof of Lemma~\ref{lemma:muon_GC}}
+\begin{lemma}\label{lemma:muon_GC}
+    Suppose Assumptions~\ref{assump:smooth} and \ref{assump:bound_init} hold. For any $t\ge 0$, we have
+    \begin{align*}
+        \EE[\|\nabla F(\Wb_t)-\Cb_t\|_F] \le \frac{\beta L \eta \sqrt{r}}{1-\beta}.
+    \end{align*}
+\end{lemma}
+\begin{proof}[Proof of Lemma~\ref{lemma:muon_GC}]
+    This proof is a standard technique for bounding the bias term of momentum. We have
+    \begin{align*}
+    &\EE[\|\nabla F(\Wb_t)-\Cb_t\|_F]\notag\\
+    =&\EE[\|\nabla F(\Wb_t)-(\beta \Cb_{t-1}+(1-\beta)\nabla F(\Wb_t))\|_F]\notag\\
+    =&\EE[\beta\|\nabla F(\Wb_t)-\Cb_{t-1}\|_F]\notag\\
+    \le&\EE[\beta\|\nabla F(\Wb_{t-1})-\Cb_{t-1}\|_F+\beta\|\nabla F(\Wb_{t-1})-\nabla F(\Wb_t)\|_F]\notag\\
+    \le&\EE[\beta\|\nabla F(\Wb_{t-1})-\Cb_{t-1}\|_F +\beta L\|\Wb_{t-1}-\Wb_t\|_F]\notag\\
+    =&\EE[\beta\|\nabla F(\Wb_{t-1})-\Cb_{t-1}\|_F+\beta L \eta\|\Ub_{t-1}\Vb_{t-1}^\top\|_F]\notag\\
+    \le&\EE[\beta\|\nabla F(\Wb_{t-1})-\Cb_{t-1}\|_F+\beta L \eta \sqrt{r}]\notag\\
+    \le&\beta^t\|\nabla F(\Wb_0)-\Cb_0\|_F+\sum_{i=1}^t \beta^i L \eta \sqrt{r} \notag\\
+    \le& \frac{\beta L \eta \sqrt{r}}{1-\beta}.
+\end{align*}
+\end{proof}
+
+
+
+
+% \begin{align*}
+%     &\EE[\|\Cb_t\|_F] \\
+%     \le& \EE[\| \nabla f(\Wb_t) \|_F + \| \nabla f(\Wb_t) - \Cb_t \|_F] \\
+%     \le& \EE[\| \nabla f(\Wb_t) \|_F] + \frac{\beta L \eta \sqrt{r}}{1-\beta} \\
+%     \le& tL\eta\sqrt{r} + 2DL + G + \frac{\beta L \eta \sqrt{r}}{1-\beta} \\
+%     \le& TL\eta\sqrt{r} + 2DL + G + \frac{\beta L \eta \sqrt{r}}{1-\beta}
+% \end{align*}
+% \begin{align*}below is more tight
+%     &\EE[\|\Cb_t\|_F] \\
+%     \le& \EE[ \beta \| \Cb_{t-1} \|_F + (1-\beta)\| \nabla f(\Wb_t) \|_F] \\
+%     \le& \beta^t\|\nabla f(\Wb_0)\|_F + (1-\beta)\sum_{k=1}^{t}\beta^{t-k}\EE[\|\nabla f(\Wb_{k})\|_F] \\
+%     \le& \beta^t G +  (1-\beta)\sum_{k=1}^{t}\beta^{t-k} (G+k\eta\sqrt{r}L) \\
+%     \le& G + t\eta\sqrt{r}L - \frac{\beta(1-\beta^t)}{1-\beta}\eta\sqrt{r}L.
+% \end{align*}
+
+
+
+\subsection{Proof of Lemma~\ref{lemma:muon_CX}}
+\begin{lemma}\label{lemma:muon_CX}
+    Suppose Assumptions~\ref{assump:grad_unbiased} and~\ref{assump:grad_bounds} hold. For any $t\ge 0$, we have
+    \begin{align*}
+        \EE[\|\Cb_t - \Xb_t\|_F] \le \beta^t\frac{\sigma}{\sqrt{B}} + \sqrt{\frac{1-\beta}{1+\beta}}\frac{\sigma}{\sqrt{B}}.
+    \end{align*}
+\end{lemma}
+\begin{proof}[Proof of Lemma~\ref{lemma:muon_CX}]
+    Expanding $\Cb_t$ and $\Xb_t$ by their definitions in \eqref{eq:muon_C} and \eqref{eq:muon_X}, we have
+    \begin{align*}
+        \Cb_t =& \beta^t\Cb_0 + (1-\beta)\sum_{k=1}^t\beta^{t-k}\nabla F(\Wb_k) , \\
+        \Xb_t =& \beta^t\Xb_0 + (1-\beta)\sum_{k=1}^t\beta^{t-k}\frac{1}{B}\sum_{i=1}^B\nabla f(\Wb_k;\bxi_{k,i}).
+    \end{align*}
+    Thus, we have
+    \begin{align*}
+        &\EE[\|\Cb_t - \Xb_t\|_F] \\
+        \le& \EE[\|\beta^t(\Cb_0 - \Xb_0)\|_F] + \EE[(1-\beta)\|\sum_{k=1}^t\beta^{t-k}(\nabla F(\Wb_k)-\frac{1}{B}\sum_{i=1}^B\nabla f(\Wb_k;\bxi_{k,i}))\|_F] \\ 
+        \le& \beta^t\EE[\|\Cb_0 - \Xb_0\|_F] + \sqrt{\EE[(1-\beta)^2\|\sum_{k=1}^t\beta^{t-k}(\nabla F(\Wb_k)-\frac{1}{B}\sum_{i=1}^B\nabla f(\Wb_k;\bxi_{k,i}))\|_F^2]} \\
+        =& \beta^t\EE[\|\Cb_0 - \Xb_0\|_F] + \sqrt{\EE[(1-\beta)^2\sum_{k=1}^t\beta^{2(t-k)}\frac{1}{B^2}\sum_{i=1}^B\|\nabla F(\Wb_k;\bxi_{k,i})-\nabla F(\Wb_k)\|_F^2]} \\
+        \le& \beta^t\EE[\|\Cb_0 - \Xb_0\|_F] + \sqrt{(1-\beta)^2\sum_{k=1}^t\beta^{2(t-k)}\frac{\sigma^2}{B}} \\
+        \le& \beta^t\frac{\sigma}{\sqrt{B}} + \sqrt{\frac{1-\beta}{1+\beta}}\frac{\sigma}{\sqrt{B}}.
+    \end{align*}
+    The second inequality is due to Jensen's inequality, the first equality is due to the independence of $\bxi_{k,i}$ for different $k$ or $i$, and the third inequality is due to Assumptions~\ref{assump:grad_unbiased} and~\ref{assump:grad_bounds}.
+\end{proof}
+
+
+
+
+% \begin{align*}
+%     &\EE[\|\Xb_t\|_F] \\
+%     \le& \EE[\|\Cb_t - \Xb_t\|_F + \|\Cb_t\|_F] \\
+%     \le& \beta^t\frac{\sigma}{\sqrt{B}} + \sqrt{\frac{1-\beta}{1+\beta}}\frac{\sigma}{\sqrt{B}} + (t\eta\sqrt{r}L  + G) .
+% \end{align*}
+% \begin{align*}
+%     &\EE[\|\Xb_t\|_F] \\
+%     \le& \EE[ \beta \| \Xb_{t-1} \|_F + (1-\beta)\|\frac{1}{B}\sum_{i=1}^B \nabla f(\Wb_t;\bxi_{t,i}) \|_F] \\
+%     \le& \EE[ \beta \| \Xb_{t-1} \|_F + (1-\beta)(\frac{\sigma}{\sqrt{B}}+\|\nabla f(\Wb_t) \|_F)] \\
+%     \le& \EE[ \beta \| \Xb_{t-1} \|_F] + (1-\beta)(\frac{\sigma}{\sqrt{B}}+ G + t\eta\sqrt{r}L ) \\
+%     \le& \beta^t\|\Xb_0\|_F + (1-\beta)(\frac{\sigma}{\sqrt{B}}+ G + t\eta\sqrt{r}L )\sum_{k=0}^{t-1}\beta^k \\
+%     \le& \beta^t(\frac{\sigma}{\sqrt{B}}+ G) + (1-\beta^t)(\frac{\sigma}{\sqrt{B}}+ G + t\eta\sqrt{r}L ) \\
+%     \le& \frac{\sigma}{\sqrt{B}}+ G + (1-\beta^t)t\eta\sqrt{r}L .
+% \end{align*}
+
+
+\subsection{Proof of Lemma~\ref{lemma:muon_XY}}
+\begin{lemma}\label{lemma:muon_XY}
+    Suppose Assumptions~\ref{assump:grad_unbiased},~\ref{assump:grad_bounds} and \ref{assump:qe} hold. For any $t\ge 0$, we have
+    \begin{align*}
+        \EE[\|\Xb_t - \Yb_t\|_F] \le q_G(\sigma + G + t\eta\sqrt{r}L).
+    \end{align*}
+\end{lemma}
+\begin{proof}[Proof of Lemma~\ref{lemma:muon_XY}]
+    By the definition of $\Xb_t$ and $\Yb_t$ in \eqref{eq:muon_X} and \eqref{eq:muon_Y}, we have
+    \begin{align*}
+        &\EE[\| \Xb_t - \Yb_t \|_F]\notag\\
+        \le& \EE[\beta \| \Xb_{t-1} - \Yb_{t-1} \|_F] + (1-\beta)\frac{1}{B}\sum_{i=1}^B\EE[\| \nabla f(\Wb_t;\bxi_{t,i}) - \nabla^Q f(\Wb_t;\bxi_{t,i}) \|_F] \notag \\
+        \le& \EE[\beta \| \Xb_{t-1} - \Yb_{t-1} \|_F] + (1-\beta)\frac{1}{B}\sum_{i=1}^B\EE[ q_G\| \nabla f(\Wb_t;\bxi_{t,i})  \|_F] \notag \\
+        \le& \EE[\beta \| \Xb_{t-1} - \Yb_{t-1} \|_F] + (1-\beta)\EE[ q_G(\sigma + \| \nabla F(\Wb_t)  \|_F )] \notag \\
+        \le& \EE[\beta \| \Xb_{t-1} - \Yb_{t-1} \|_F] + (1-\beta) q_G(\sigma + G + t\eta\sqrt{r}L ) \notag \\
+        \le& \beta^t\|\Xb_0 - \Yb_0\|_F + (1-\beta) q_G(\sigma + G + t\eta\sqrt{r}L )\sum_{k=0}^{t-1}\beta^k \notag \\
+        \le& \beta^t q_G(\sigma + G) + (1-\beta^t) q_G(\sigma + G + t\eta\sqrt{r}L ) \notag \\
+        \le& q_G(\sigma + G) + (1-\beta^t)q_G t\eta\sqrt{r}L \notag \\
+        \le& q_G(\sigma + G + t\eta\sqrt{r}L ).
+    \end{align*}
+    The second inequality is due to Assumption~\ref{assump:qe}, Lemma~\ref{lemma:muon_mat_qe} and Definition~\ref{eq:muon_var_qe}. The third inequality is due to Assumption~\ref{assump:grad_bounds}. The fourth inequality is due to Lemma~\ref{lemma:muon_bounded_w_grad}.
+\end{proof}
+
+
+
+
+
+
+% \begin{align*}
+%     &\EE[\|\Yb_t\|_F] \\
+%     \le& \EE[\|\Xb_t - \Yb_t\|_F + \|\Xb_t\|_F] \\
+%     \le& G(1+q_G) + \sigma(\frac{1}{\sqrt{B}}+q_G) + (1-\beta^t)(1+q_G)t\eta\sqrt{r}L .
+% \end{align*}
+% \begin{align*} below is more tight
+%     &\EE[\|\Yb_t\|_F] \\
+%     \le& \EE[ \beta \| \Yb_{t-1} \|_F + (1-\beta)\|\frac{1}{B}\sum_{i=1}^B \nabla^Q f(\Wb_t;\bxi_{t,i}) \|_F] \\
+%     \le& \EE[ \beta \| \Yb_{t-1} \|_F + (1-\beta)q_G(\sigma + \|\nabla f(\Wb_t)\|_F) + (1-\beta)\frac{\sigma}{\sqrt{B}} + (1-\beta)\|\nabla f(\Wb_t)\|_F] \\
+%     \le& \EE[ \beta \| \Yb_{t-1} \|_F + (1-\beta)(1+q_G)\|\nabla f(\Wb_t)\|_F] + (1-\beta)\sigma(\frac{1}{\sqrt{B}}+q_G) \\
+%     \le& \EE[\beta^t\|\Yb_0\|_F] + (1-\beta)(1+q_G)\sum_{k=0}^{t-1}\beta^k(G + t\eta\sqrt{r}L) + (1-\beta)\sigma(\frac{1}{\sqrt{B}}+q_G)\sum_{k=0}^{t-1}\beta^k \\
+%     \le& \beta^t(q_G(\sigma + G) + \frac{\sigma}{\sqrt{B}} + G) + (1-\beta^t)(1+q_G)(G + t\eta\sqrt{r}L) + (1-\beta^t)\sigma(\frac{1}{\sqrt{B}}+q_G) \\
+%     \le& (1+q_G)G + \sigma(\frac{1}{\sqrt{B}}+q_G) + (1-\beta^t)(1+q_G)t\eta\sqrt{r}L .
+% \end{align*}
+
+
+
+
+
+\subsection{Proof of Lemma~\ref{lemma:muon_YZ}}
+\begin{lemma}\label{lemma:muon_YZ}
+    Suppose Assumptions~\ref{assump:grad_unbiased},~\ref{assump:grad_bounds},~\ref{assump:smooth} and \ref{assump:qe} hold. For any $t\ge 0$, we have
+    \begin{align*}
+        \EE[\|\Yb_t - \Zb_t\|_F] \le& \beta^t\cdot\frac{2\sigma}{\sqrt{B}} + \sqrt{\frac{1-\beta}{1+\beta}}\cdot\frac{2\sigma}{\sqrt{B}} + 2q_G(\sigma + G) + 2q_G t\eta\sqrt{r}L + \\
+        & q_W(1+q_G)DL + q_W(1+q_G)t\eta\sqrt{r}L, \\
+        \EE[\|\Zb_t\|_F] \le& \frac{\sigma}{\sqrt{B}} + \sqrt{\frac{1-\beta}{1+\beta}}\cdot\frac{\sigma}{\sqrt{B}} + G + q_G(\sigma + G) + q_W (1+q_G)DL + \\
+        & (1+q_W)(1+q_G)t\eta\sqrt{r}L.
+    \end{align*}
+\end{lemma}
+\begin{proof}[Proof of Lemma~\ref{lemma:muon_YZ}]
+    By the definition of $\Yb_t$ and $\Zb_t$ in \eqref{eq:muon_Y} and \eqref{eq:muon_Z}, we have
+    \begin{align*}
+        \Yb_t =& \beta^t\Yb_0 + (1-\beta)\sum_{k=1}^t\beta^{t-k}\frac{1}{B}\sum_{i=1}^B\nabla^Q f(\Wb_k;\bxi_{k,i}) , \\
+        \Zb_t =& \beta^t\Zb_0 + (1-\beta)\sum_{k=1}^t\beta^{t-k}\frac{1}{B}\sum_{i=1}^B\nabla^Q f(\Wb_k^Q;\bxi_{k,i}) .
+    \end{align*}
+    Thus, by the triangle inequality, we have
+    \begin{align}\label{eq:muon_YZ_decomp}
+        &\EE[\| \Yb_t - \Zb_t \|_F]\notag\\
+        \le& \EE[\beta^t \| \Yb_{0} - \Zb_{0} \|_F] + (1-\beta)\EE[\|\sum_{k=1}^t\beta^{t-k}\cdot(\frac{1}{B}\sum_{i=1}^B   \nabla^Q f(\Wb_k;\bxi_{k,i}) - \nabla^Q f(\Wb_k^Q;\bxi_{k,i}) ) \|_F] \notag \\
+        \le& \EE[\beta^t \| \Yb_{0} - \Zb_{0} \|_F] + \underbrace{(1-\beta)\EE[\|\sum_{k=1}^t\beta^{t-k}\cdot(\frac{1}{B}\sum_{i=1}^B   \nabla^Q f(\Wb_k;\bxi_{k,i}) -\nabla f(\Wb_k;\bxi_{k,i}) \|_F]}_{\text{\large A}} + \notag \\
+        & \underbrace{(1-\beta)\EE[\|\sum_{k=1}^t\beta^{t-k}\cdot(\frac{1}{B}\sum_{i=1}^B\nabla f(\Wb_k;\bxi_{k,i}) - \nabla F(\Wb_k))\|_F]}_{\text{\large C}} + \notag \\
+        & \underbrace{(1-\beta)\EE[\|\sum_{k=1}^t\beta^{t-k}\cdot(\nabla F(\Wb_k) - \nabla F(\Wb_k^Q))\|_F]}_{\text{\large H}} + \notag \\
+        & \underbrace{(1-\beta) \EE[\|\sum_{k=1}^t\beta^{t-k}\cdot(\nabla F(\Wb_k^Q) - \frac{1}{B}\sum_{i=1}^B\nabla f(\Wb_k^Q;\bxi_{k,i}) ) \|_F]}_{\text{\large I}} + \notag \\
+        & \underbrace{(1-\beta) \EE[\|\sum_{k=1}^t\beta^{t-k}\cdot(\frac{1}{B}\sum_{i=1}^B\nabla f(\Wb_k^Q;\bxi_{k,i}) - \nabla^Q f(\Wb_k^Q;\bxi_{k,i}) ) \|_F]}_{\text{\large J}}.
+    \end{align}
+    Next, we bound each term in \eqref{eq:muon_YZ_decomp} one by one.
+
+\paragraph{Bound on $\beta^t \EE[\| \Yb_{0} - \Zb_{0} \|_F]$.}
+    By the definitions of $\Yb_0$ and $\Zb_0$ in \eqref{eq:muon_Y} and \eqref{eq:muon_Z}, we have
+    \begin{align*}
+        \Yb_0 =& \frac{1}{B}\sum_{i=1}^B\nabla^Q f(\Wb_0;\bxi_{0,i}), \\
+        \Zb_0 =& \frac{1}{B}\sum_{i=1}^B\nabla^Q f(\Wb_0^Q;\bxi_{0,i}).
+    \end{align*}
+    Thus, we have
+    \begin{align}\label{eq:muon_YZ_0}
+        &\beta^t \EE[\| \Yb_{0} - \Zb_{0} \|_F] \notag \\
+        =& \beta^t \EE[\|\frac{1}{B}\sum_{i=1}^B\nabla^Q f(\Wb_0;\bxi_{0,i}) - \frac{1}{B}\sum_{i=1}^B\nabla^Q f(\Wb_0^Q;\bxi_{0,i})\|_F] \notag \\
+        \le& \beta^t \frac{1}{B}\sum_{i=1}^B \EE[\|\nabla^Q f(\Wb_0;\bxi_{0,i}) - \nabla f(\Wb_0;\bxi_{0,i})\|_F] + \notag \\
+        & \beta^t  \EE[\|\frac{1}{B}\sum_{i=1}^B\nabla f(\Wb_0;\bxi_{0,i}) - \nabla F(\Wb_0)\|_F] + \notag \\
+        & \beta^t \EE[\|\nabla F(\Wb_0) - \nabla F(\Wb_0^Q)\|_F] + \notag \\
+        & \beta^t  \EE[\|\frac{1}{B}\sum_{i=1}^B\nabla F(\Wb_0^Q) - \nabla f(\Wb_0^Q;\bxi_{0,i}) \|_F] + \notag \\
+        & \beta^t \frac{1}{B}\sum_{i=1}^B \EE[\|\nabla f(\Wb_0^Q;\bxi_{0,i}) - \nabla^Q f(\Wb_0^Q;\bxi_{0,i}) \|_F] \notag \\
+        \le& \beta^t\frac{1}{B}\sum_{i=1}^B q_G\EE[\|\nabla f(\Wb_0;\bxi_{0,i})\|_F] + \beta^t\frac{\sigma}{\sqrt{B}} + \beta^t L q_W\EE[\|\Wb_0\|_F] + \beta^t\frac{\sigma}{\sqrt{B}} + \notag \\
+        & \beta^t\frac{1}{B}\sum_{i=1}^B q_G\EE[\|\nabla f(\Wb_0^Q;\bxi_{0,i})\|_F] \notag \\
+        \le& \beta^t\frac{1}{B}\sum_{i=1}^B q_G(\sigma + G) + \beta^t\frac{2\sigma}{\sqrt{B}} + \beta^t q_W DL + \beta^t\frac{1}{B}\sum_{i=1}^B q_G(\sigma+q_W D L+G) \notag \\
+        =& \beta^t(2q_G(\sigma+G) + q_W DL(1+q_G)+ \frac{2\sigma}{\sqrt{B}} ).
+    \end{align}
+    The first inequality is due to the triangle inequality. The second inequality we used Definition~\ref{eq:muon_var_qe} for the first and last terms, Assumption~\ref{assump:grad_unbiased},~\ref{assump:grad_bounds} and Jensen's inequality for the second and fourth terms, and Assumption~\ref{assump:smooth} and Definition~\ref{eq:muon_var_qe} for the third term. The third inequality is due to Assumption~\ref{assump:grad_bounds},~\ref{assump:bound_init} and Definition~\ref{eq:muon_var_qe}.
+
+\paragraph{Bound on \text{\large A}.}
+\begin{align}\label{eq:muon_YZ_A}
+    A
+    =& (1-\beta)\EE[\|\sum_{k=1}^t\beta^{t-k}\cdot(\frac{1}{B}\sum_{i=1}^B   \nabla^Q f(\Wb_k;\bxi_{k,i}) -\nabla f(\Wb_k;\bxi_{k,i}) \|_F] \notag \\
+    \le& (1-\beta)\sum_{k=1}^t\beta^{t-k}\frac{1}{B}\sum_{i=1}^B q_G\EE[\| \nabla f(\Wb_k;\bxi_{k,i}) \|_F] \notag \\
+    \le& (1-\beta)\sum_{k=1}^t\beta^{t-k}\frac{1}{B}\sum_{i=1}^B q_G(\sigma + \EE[\| \nabla F(\Wb_k) \|_F]) \notag \\
+    \le& (1-\beta)\sum_{k=1}^t\beta^{t-k}\frac{1}{B}\sum_{i=1}^B q_G(\sigma + G + t\eta\sqrt{r}L) \notag \\
+    =& (1-\beta^t)q_G(\sigma + G + t\eta\sqrt{r}L).
+\end{align}
+The first inequality is due to Definition~\ref{eq:muon_var_qe} and the triangle inequality. The second inequality is due to Assumption~\ref{assump:grad_bounds}. The third inequality is due to Lemma~\ref{lemma:muon_bounded_w_grad}.
+
+
+\paragraph{Bound on \text{\large C}.}
+Similar to Lemma~\ref{lemma:muon_CX}, we have
+\begin{align}\label{eq:muon_YZ_C}
+    C
+    =& (1-\beta)\EE[\|\sum_{k=1}^t\beta^{t-k}\cdot(\frac{1}{B}\sum_{i=1}^B   \nabla f(\Wb_k;\bxi_{k,i}) -\nabla F(\Wb_k) ) \|_F] \notag \\
+    \le& (1-\beta)\sqrt{\EE[\|\sum_{k=1}^t\beta^{t-k}\cdot(\frac{1}{B}\sum_{i=1}^B   \nabla f(\Wb_k;\bxi_{k,i}) -\nabla F(\Wb_k) ) \|_F^2]} \notag \\
+    =& (1-\beta)\sqrt{\sum_{k=1}^t\beta^{2(t-k)}\frac{1}{B^2}\sum_{i=1}^B\EE[\|   \nabla f(\Wb_k;\bxi_{k,i}) -\nabla F(\Wb_k)  \|_F^2]} \notag \\
+    \le& (1-\beta)\sqrt{\sum_{k=1}^t\beta^{2(t-k)}\frac{1}{B^2}\sum_{i=1}^B \sigma^2} \notag \\
+    =& (1-\beta)\sqrt{\frac{1-\beta^{2t}}{1-\beta^2}\cdot\frac{\sigma^2}{B}} \notag \\
+    \le& \sqrt{\frac{1-\beta}{1+\beta}}\cdot\frac{\sigma}{\sqrt{B}}. 
+\end{align}
+
+\paragraph{Bound on \text{\large H}.}
+\begin{align}\label{eq:muon_YZ_H}
+    H
+    =& (1-\beta)\EE[\|\sum_{k=1}^t\beta^{t-k}\cdot(\nabla F(\Wb_k) - \nabla F(\Wb_k^Q))\|_F] \notag \\
+    \le& (1-\beta)\sum_{k=1}^t\beta^{t-k}\EE[\| \nabla F(\Wb_k) - \nabla F(\Wb_k^Q) \|_F] \notag \\
+    \le& (1-\beta)\sum_{k=1}^t\beta^{t-k}L\EE[\| \Wb_k - \Wb_k^Q \|_F] \notag \\
+    \le& (1-\beta)\sum_{k=1}^t\beta^{t-k}Lq_W\EE[\| \Wb_k \|_F] \notag \\
+    \le& (1-\beta)\sum_{k=1}^t\beta^{t-k}Lq_W(D + t\eta\sqrt{r} ) \notag \\
+    \le& (1-\beta^t)q_W L(D + t\eta\sqrt{r} ).
+\end{align}
+The first inequality is due to the triangle inequality. The second inequality is due to Assumption~\ref{assump:smooth}. The third inequality is due to Definition~\ref{eq:muon_var_qe}. The fourth inequality is due to Lemma~\ref{lemma:muon_bounded_w_grad}.
+
+
+\paragraph{Bound on \text{\large I}.}
+Similar to Lemma~\ref{lemma:muon_CX}, we have
+\begin{align}\label{eq:muon_YZ_I}
+    I
+    =& (1-\beta) \EE[\|\sum_{k=1}^t\beta^{t-k}\cdot(\nabla F(\Wb_k^Q) - \frac{1}{B}\sum_{i=1}^B\nabla f(\Wb_k^Q;\bxi_{k,i}) ) \|_F] \notag \\
+    \le& (1-\beta) \sqrt{ \EE[\|\sum_{k=1}^t\beta^{t-k}\cdot(\nabla F(\Wb_k^Q) - \frac{1}{B}\sum_{i=1}^B\nabla f(\Wb_k^Q;\bxi_{k,i}) ) \|_F^2] } \notag \\
+    =& (1-\beta) \sqrt{ \sum_{k=1}^t\beta^{2(t-k)}\frac{1}{B^2}\sum_{i=1}^B\EE[\|   \nabla f(\Wb_k^Q;\bxi_{k,i}) -\nabla F(\Wb_k^Q)  \|_F^2] } \notag \\
+    \le& (1-\beta) \sqrt{ \sum_{k=1}^t\beta^{2(t-k)}\frac{1}{B^2}\sum_{i=1}^B \sigma^2 } \notag \\
+    =& (1-\beta)\sqrt{\frac{1-\beta^{2t}}{1-\beta^2}\cdot\frac{\sigma^2}{B}} \notag \\
+    \le& \sqrt{\frac{1-\beta}{1+\beta}}\cdot\frac{\sigma}{\sqrt{B}}.
+\end{align}
+
+
+
+\paragraph{Bound on \text{\large J}.}
+\begin{align}\label{eq:muon_YZ_J}
+    J
+    =& (1-\beta) \EE[\|\sum_{k=1}^t\beta^{t-k}\cdot(\frac{1}{B}\sum_{i=1}^B\nabla f(\Wb_k^Q;\bxi_{k,i}) - \nabla^Q f(\Wb_k^Q;\bxi_{k,i}) ) \|_F] \notag \\
+    \le& (1-\beta) \sum_{k=1}^t\beta^{t-k}\frac{1}{B}\sum_{i=1}^B q_G\EE[\| \nabla f(\Wb_k^Q;\bxi_{k,i}) \|_F] \notag \\
+    \le& (1-\beta) \sum_{k=1}^t\beta^{t-k}\frac{1}{B}\sum_{i=1}^B q_G(\sigma + \EE[\| \nabla F(\Wb_k^Q) \|_F]) \notag \\
+    \le& (1-\beta) \sum_{k=1}^t\beta^{t-k}\frac{1}{B}\sum_{i=1}^B q_G(\sigma + L\EE[\| \Wb_k^Q -\Wb_k \|_F] + \EE[\| \nabla F(\Wb_k) \|_F]) \notag \\
+    \le& (1-\beta) \sum_{k=1}^t\beta^{t-k}\frac{1}{B}\sum_{i=1}^B q_G(\sigma + Lq_W\EE[\| \Wb_k \|_F] + \EE[\| \nabla F(\Wb_k) \|_F]) \notag \\
+    \le& (1-\beta) \sum_{k=1}^t\beta^{t-k}\frac{1}{B}\sum_{i=1}^B q_G(\sigma + Lq_W( D + t\eta\sqrt{r}) + G + t \eta\sqrt{r}L) \notag \\
+    \le& (1-\beta^t)q_G(\sigma + G + q_W D L + (1+q_W)t\eta\sqrt{r}L).
+\end{align}
+The first inequality is due to Definition~\ref{eq:muon_var_qe} and the triangle inequality. The second inequality is due to Assumption~\ref{assump:grad_bounds}. The third inequality is due to Assumption~\ref{assump:smooth} and the triangle inequality. The fourth inequality is due to Definition~\ref{eq:muon_var_qe}. The fifth inequality is due to Lemma~\ref{lemma:muon_bounded_w_grad}.
+
+
+\paragraph{Bound on $\EE[\| \Yb_t - \Zb_t \|_F]$.}
+Substituting \eqref{eq:muon_YZ_0}, \eqref{eq:muon_YZ_A}, \eqref{eq:muon_YZ_C}, \eqref{eq:muon_YZ_H}, \eqref{eq:muon_YZ_I} and \eqref{eq:muon_YZ_J} into \eqref{eq:muon_YZ_decomp}, we have
+\begin{align*}
+    \EE[\| \Yb_t - \Zb_t \|_F] \le& \beta^t\cdot\frac{2\sigma}{\sqrt{B}} + \sqrt{\frac{1-\beta}{1+\beta}}\cdot\frac{2\sigma}{\sqrt{B}} + 2q_G(\sigma + G) + (1-\beta^t)2q_G t\eta\sqrt{r}L + \\
+    & q_W(1+q_G)DL + (1-\beta^t)q_W(1+q_G)t\eta\sqrt{r}L. \\
+    \le& \beta^t\cdot\frac{2\sigma}{\sqrt{B}} + \sqrt{\frac{1-\beta}{1+\beta}}\cdot\frac{2\sigma}{\sqrt{B}} + 2q_G(\sigma + G) + 2q_G t\eta\sqrt{r}L + \\
+        & q_W(1+q_G)DL + q_W(1+q_G)t\eta\sqrt{r}L.
+\end{align*}
+
+
+\paragraph{Bound on $\EE[\|\Zb_t\|_F]$.}
+By the definition of $\Zb_t$ in \eqref{eq:muon_Z}, we have
+\begin{align*}
+    & \EE[\|\Zb_t\|_F] \\
+    \le& \EE[\beta^t\|\Zb_0\|_F] + \EE[(1-\beta)\|\sum_{k=1}^t\beta^{t-k}\cdot\frac{1}{B}\sum_{i=1}^B   \nabla^Q f(\Wb_k^Q;\bxi_{k,i}) \|_F] \\
+    \le& \beta^t\EE[\|\Zb_0\|_F] + \EE[(1-\beta)\sum_{k=1}^t\beta^{t-k}\cdot\frac{1}{B}\sum_{i=1}^B \|\nabla^Q f(\Wb_k^Q;\bxi_{k,i}) - \nabla f(\Wb_k^Q;\bxi_{k,i})\|_F] + \\
+    & \EE[(1-\beta)\|\sum_{k=1}^t\beta^{t-k}\cdot(\frac{1}{B}\sum_{i=1}^B \nabla f(\Wb_k^Q;\bxi_{k,i}) - \nabla F(\Wb_k^Q)) \|_F] + \\
+    & \EE[(1-\beta)\sum_{k=1}^t\beta^{t-k}\cdot(\|\nabla F(\Wb_k^Q) - \nabla F(\Wb_k)\|_F + \|\nabla F(\Wb_k)\|_F)] \\
+    \le& \beta^t\EE[\|\Zb_0\|_F] + (1-\beta)\sum_{k=1}^t\beta^{t-k}\frac{1}{B}\sum_{i=1}^B q_G\EE[\|\nabla f(\Wb_k^Q;\bxi_{k,i})\|_F] + \\
+    & \sqrt{\frac{1-\beta}{1+\beta}}\cdot\frac{\sigma}{\sqrt{B}} + (1-\beta)q_W L\sum_{k=1}^t\beta^{t-k}\EE[\|\Wb_k\|_F] + (1-\beta)\sum_{k=1}^t\beta^{t-k}\EE[\|\nabla F(\Wb_k)\|_F] \\
+    \le& \beta^t\EE[\|\Zb_0\|_F] + (1-\beta)\sum_{k=1}^t\beta^{t-k}\frac{1}{B}\sum_{i=1}^B q_G(\sigma + q_W L\EE[\|\Wb_k\|_F] + \EE[\|\nabla F(\Wb_k)\|_F]) + \\
+    & \sqrt{\frac{1-\beta}{1+\beta}}\cdot\frac{\sigma}{\sqrt{B}} + (1-\beta)q_W L\sum_{k=1}^t\beta^{t-k}\EE[\|\Wb_k\|_F] + (1-\beta)\sum_{k=1}^t\beta^{t-k}\EE[\|\nabla F(\Wb_k)\|_F] \\
+    \le& \beta^t\EE[\|\Zb_0\|_F] + (1-\beta^t)q_G(\sigma + q_W L(D + t\eta\sqrt{r}) + G + t\eta\sqrt{r}L) + \\
+    & \sqrt{\frac{1-\beta}{1+\beta}}\cdot\frac{\sigma}{\sqrt{B}} + (1-\beta^t)q_W L(D+ t\eta\sqrt{r}) + (1-\beta^t)(G + t\eta\sqrt{r}L) \\
+    \le& \beta^t(q_G(\sigma + q_W D L + G) + \frac{\sigma}{\sqrt{B}} + q_W D L + G) + \\
+    & (1-\beta^t)q_G(\sigma + q_W L(D + t\eta\sqrt{r}) + G + t\eta\sqrt{r}L) + \\
+    & \sqrt{\frac{1-\beta}{1+\beta}}\cdot\frac{\sigma}{\sqrt{B}} + (1-\beta^t)q_W L(D+ t\eta\sqrt{r}) + (1-\beta^t)(G + t\eta\sqrt{r}L) \\
+    \le& \beta^t\frac{\sigma}{\sqrt{B}} + \sqrt{\frac{1-\beta}{1+\beta}}\cdot\frac{\sigma}{\sqrt{B}} + G + q_G(\sigma + G) + q_W (1+q_G)DL + \\
+    & (1-\beta^t)(1+q_W)(1+q_G)t\eta\sqrt{r}L \\
+    \le& \frac{\sigma}{\sqrt{B}} + \sqrt{\frac{1-\beta}{1+\beta}}\cdot\frac{\sigma}{\sqrt{B}} + G + q_G(\sigma + G) + q_W (1+q_G)DL + (1+q_W)(1+q_G)t\eta\sqrt{r}L.
+\end{align*}
+The first and second inequalities are due to the triangle inequality. The third inequality we used Definition~\ref{eq:muon_var_qe} for the second term, Jensen's inequality, Assumptions~\ref{assump:grad_unbiased},~\ref{assump:grad_bounds} for the third term, Assumption~\ref{assump:smooth} and Definition~\ref{eq:muon_var_qe} for the fourth term. The fourth inequality we used triangle inequality, Assumptions~\ref{assump:grad_bounds},~\ref{assump:smooth}, Definition~\ref{eq:muon_var_qe}. The fifth inequality is due to Lemma~\ref{lemma:muon_bounded_w_grad}.
+
+
+\end{proof}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+% \begin{align*}
+%     & \EE[\|\Zb_t\|_F] \\
+%     \le& \EE[\|\Yb_t - \Zb_t \|_F + \|\Yb_t\|_F] \\
+%     \le& \beta^t\cdot\frac{2\sigma}{\sqrt{B}} + \sqrt{\frac{1-\beta}{1+\beta}}\cdot\frac{2\sigma}{\sqrt{B}} + \frac{\sigma}{\sqrt{B}} + G \\
+%     & 3q_G(\sigma + G) + (1-\beta^t)2q_G t\eta\sqrt{r}L + \\
+%     & q_W(1+q_G)DL + (1-\beta^t)(1+q_W)(1+q_G)t\eta\sqrt{r}L.
+% \end{align*}
+
+
+
+
+\subsection{Proof of Lemma~\ref{lemma:muon_ZM}}
+\begin{lemma}\label{lemma:muon_ZM}
+    Suppose Assumptions~\ref{assump:grad_unbiased},~\ref{assump:grad_bounds},~\ref{assump:smooth} and \ref{assump:qe} hold. For any $t\ge 0$, if $\beta(1+q_M)<1$, we have
+    \begin{align*}
+        \EE[\| \Zb_t - \Mb_t \|_F] \le& \frac{q_M\beta}{1-\beta(1+q_M)}\bigg( \frac{\sigma}{\sqrt{B}} + \sqrt{\frac{1-\beta}{1+\beta}}\cdot\frac{\sigma}{\sqrt{B}} + G + q_G(\sigma + G) + \notag \bigg.\\
+        &\bigg. q_W (1+q_G)DL + (1+q_W)(1+q_G)t\eta\sqrt{r}L \bigg).
+    \end{align*}
+\end{lemma}
+\begin{proof}[Proof of Lemma~\ref{lemma:muon_ZM}]
+    By the definitions of $\Zb_t$ and $\Mb_t$ in \eqref{eq:muon_Z} and \eqref{eq:muon_M}, we have
+    \begin{align}
+        &\EE[\| \Zb_t - \Mb_t \|_F]\notag\\
+        \le& \EE[\beta \| \Zb_{t-1} - \Mb_{t-1}^Q \|_F] \notag \\
+        \le& \EE[\beta \| \Zb_{t-1} - \Mb_{t-1} \|_F +\beta\|\Mb_{t-1}-\Mb_{t-1}^Q\|_F ] \notag \\
+        \le& \EE[\beta \| \Zb_{t-1} - \Mb_{t-1} \|_F +q_M\beta\|\Mb_{t-1}\|_F ] \notag \\
+        \le& \EE[\beta(1+q_M) \| \Zb_{t-1} - \Mb_{t-1} \|_F +q_M\beta\|\Zb_{t-1}\|_F ] \notag \\
+        \le& q_M\beta\sum_{k=0}^{t-1}\beta^k(1+q_M)^k\|\Zb_{t-k-1}\|_F \notag \\
+        \le& \frac{q_M\beta}{1-\beta(1+q_M)}\bigg( \frac{\sigma}{\sqrt{B}} + \sqrt{\frac{1-\beta}{(1+\beta)}}\cdot\frac{\sigma}{\sqrt{B}} + G + q_G(\sigma + G) + \notag \bigg.\\
+        &\bigg. q_W (1+q_G)DL + (1+q_W)(1+q_G)t\eta\sqrt{r}L \bigg).
+    \end{align}
+    The second inequality is due to the triangle inequality. The third inequality is due to Definition~\ref{eq:muon_var_qe}. The fourth inequality is due to the triangle inequality. The fifth inequality is due to $\Zb_0=\Mb_0$. The last inequality we used Lemma~\ref{lemma:muon_YZ}
+\end{proof}
+% --- end tex/appendix/muon.tex ---
+
+% --- begin tex/appendix/experiments.tex ---
+\section{Additional Experiments and Details}\label{app:exp}
+\subsection{Imitating Quantization and Dequantization}
+We emulate floating-point quantization and dequantization by reducing the mantissa length from its original precision (52 bits for \texttt{float64} and 23 bits for \texttt{float32}) to $M$ bits, while keeping the exponent and sign bits unchanged. 
+This design choice is motivated by the fact that practical scaling techniques can effectively prevent overflow and underflow \citep{peng2023fp8}. 
+After truncating the mantissa, we apply stochastic rounding to the nearest two representable values, and then dequantize the result back to standard \texttt{float32} or \texttt{float64}.
+
+
+
+\subsection{Synthetic Experiments}
+We conduct synthetic experiments on the Rosenbrock function, defined as
+\begin{align*}
+    F(\Wb) = \sum_{j=1}^{n-1} \Big( 100\|\Wb_{j+1} - \Wb_j^2\|_F^2 + \|\mathbf{1}_m-\Wb_j\|_F^2 \Big),
+\end{align*}
+where $\Wb = [\Wb_1,\Wb_2,\dots,\Wb_d] \in \RR^{m\times n}$ is the weight matrix. 
+The global minimum is at $\Wb^* = [\mathbf{1}_m, \mathbf{1}_m, \dots, \mathbf{1}_m]$ with $F(\Wb^*)=0$. 
+We set $m=50$, $d=100$, and initialize $\Wb_0 \sim \cN(\mathbf{1}_{m\times n}, 0.1^2 \Ib)$. 
+For Muon, we apply the default hyperparameters in the Newton-Schulz iteration to compute the zeroth power / orthogonalization of $G$ \citep{jordan2024muon}, using double precision.
+
+
+Figure~\ref{fig:Adam_rosenbrock} shows the gradient norms of Adam with different quantization errors on the Rosenbrock function. Figure~\ref{fig:Muon_rosenbrock} shows the gradient norms of Muon with different quantization errors on the Rosenbrock function. 
+
+Figure~\ref{fig:Adam_rosenbrock_qe} shows the function values of Adam with different quantization errors on the Rosenbrock function. Figure~\ref{fig:Muon_rosenbrock_qe} shows the function values of Muon with different quantization errors on the Rosenbrock function. The relative quantization error is defined as $\frac{\|\Xb - Q(\Xb)\|_F}{\|\Xb\|_F}$, measuring the average quantization error of $\Xb$, where $Q(\cdot)$ is the quantization operator.
+
+Figure~\ref{fig:Adam_rosenbrock_beta2} shows the effect of quantizing the second moment in Adam to different mantissa lengths $M$, with all other components kept in FP32. As $\beta_2\to 1$, the optimizer exhibits larger converged gradient norms and becomes more sensitive to quantization errors induced by reduced $M$. This phenomenon aligns with our theoretical analysis in Theorem~\ref{thm:QAdam}, which highlights the amplification of quantization errors by the inverse square root of historical gradient variances in Adam when $\beta_2$ is close to 1.
+
+
+\begin{figure}[ht]
+\vskip -0.1in
+     \centering
+     \includegraphics[width=0.98\linewidth]{figure/adam_qe_rosenbrock.pdf}
+    \caption{Rosenbrock: Adam relative quantization error of different mantissa bits ($M$). Weights error (top left), Gradient error (top right), First moment error (bottom left), Second moment error (bottom right). These results show that the more mantissa bits, the smaller the relative quantization error. Combining with Figure~\ref{fig:Adam_rosenbrock}, we can see that the more mantissa bits, the smaller quantization error, the better convergence performance (Theorem~\ref{thm:QAdam}).}
+    \label{fig:Adam_rosenbrock_qe}
+\end{figure}
+
+\begin{figure}[ht]
+\vskip -0.1in
+     \centering
+     \includegraphics[width=0.98\linewidth]{figure/muon_qe_rosenbrock.pdf}
+    \caption{Rosenbrock: Muon relative quantization error of different mantissa bits ($M$). Weights error (left), Gradient error (middle), Momentum error (right). These results show that the more mantissa bits, the smaller the relative quantization error. Combining with Figure~\ref{fig:Muon_rosenbrock}, we can see that the more mantissa bits, the smaller quantization error, the better convergence performance (Theorem~\ref{thm:QMuon}).}
+    \label{fig:Muon_rosenbrock_qe}
+\end{figure}
+
+
+
+
+\begin{figure}[htbp]
+\centering
+
+\begin{minipage}{0.66\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{figure/adam_beta2_grad_norm_M1.pdf}
+    \captionof{subfigure}{Mantissa length $M=1$.}
+\end{minipage}
+
+\vspace{0.3em}
+
+\begin{minipage}{0.66\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{figure/adam_beta2_grad_norm_M2.pdf}
+    \captionof{subfigure}{Mantissa length $M=2$.}
+\end{minipage}
+
+\vspace{0.3em}
+
+\begin{minipage}{0.66\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{figure/adam_beta2_grad_norm_M4.pdf}
+    \captionof{subfigure}{Mantissa length $M=4$.}
+\end{minipage}
+
+\vspace{0.3em}
+
+\begin{minipage}{0.66\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{figure/adam_beta2_grad_norm_M7.pdf}
+    \captionof{subfigure}{Mantissa length $M=7$.}
+\end{minipage}
+
+\vspace{0.3em}
+
+\begin{minipage}{0.66\linewidth}
+    \centering
+    \includegraphics[width=\linewidth]{figure/adam_beta2_grad_norm_M10.pdf}
+    \captionof{subfigure}{Mantissa length $M=10$.}
+\end{minipage}
+
+\caption{Rosenbrock: Effect of quantizing second moment in Adam to different mantissa lengths $M$, with all other components kept in FP32. As $\beta_2\to 1$, the optimizer exhibits larger converged gradient norms and becomes more sensitive to quantization errors induced by reduced $M$.}
+\label{fig:Adam_rosenbrock_beta2}
+\end{figure}
+
+
+
+
+\subsection{CIFAR-10 Experiments}
+We conduct real-data experiments on the CIFAR-10 dataset \citep{krizhevsky2009learning} using a 4-layer fully connected network (FCN). 
+The architecture is as follows: an input layer with 3072 neurons (corresponding to $32 \times 32 \times 3$ images), followed by three hidden layers with 512, 256, and 64 neurons, respectively, and an output layer with 10 neurons for classification. 
+ReLU activations are used for all hidden layers, and the network is trained with the cross-entropy loss for 100 epochs. 
+We evaluate both Adam and Muon under varying quantization precisions. 
+
+For Adam, we use mantissa bit-lengths $M \in \{1,2,3,7,10,23\}$, batch size $B=256$, learning rate $\eta=1.5\times 10^{-4}$, $\beta_1=0.95$, $\beta_2=0.999$, $\epsilon=10^{-8}$, and weight decay $0.1$. 
+For Muon, vector parameters are updated using Adam, while matrix parameters are updated with Muon’s orthogonalization step. 
+We choose mantissa bit-lengths $M \in \{2,3,7,10,23\}$, batch size $B=512$, learning rate $\eta=0.001$, $\beta=0.99$, weight decay $0.1$, and 5 Newton--Schulz iterations, following the iteration hyperparameters in \citet{jordan2024muon}. The auxiliary Adam optimizer in Muon uses learning rate $\eta=2\times 10^{-4}$, $\beta_1=0.9$, $\beta_2=0.999$, $\epsilon=10^{-8}$, and weight decay $0.05$. 
+
+
+Figure~\ref{fig:Adam_cifar10_grad} shows the gradient norms of Adam with different quantization errors on CIFAR-10. Figure~\ref{fig:Muon_cifar10_grad} shows the gradient norms of Muon with different quantization errors on CIFAR-10.
+Figure~\ref{fig:Adam_cifar10_qe} shows the quantization errors of Adam with different precision on CIFAR-10. Figure~\ref{fig:Muon_cifar10_qe} shows the quantization errors of Muon with different precision on CIFAR-10. The relative quantization error is defined as $\frac{\|\Xb - Q(\Xb)\|_F}{\|\Xb\|_F}$, measuring the average quantization error of $\Xb$, where $Q(\cdot)$ is the quantization operator.
+
+
+
+
+
+\begin{figure}[htbp]
+\vskip -0.1in
+     \centering
+     \includegraphics[width=0.5\linewidth]{figure/adam_cifar10_grad.pdf}
+    \caption{CIFAR-10: Adam gradient norms under different mantissa precisions $M$. Larger mantissa bit-lengths lead to smaller converged gradient norms. Together with Figure~\ref{fig:Adam_cifar10_qe}, this demonstrates that higher precision reduces quantization error and improves convergence, consistent with Theorem~\ref{thm:QAdam}.}
+    \label{fig:Adam_cifar10_grad}
+\end{figure}
+
+\begin{figure}[ht]
+\vskip -0.1in
+     \centering
+     \includegraphics[width=0.5\linewidth]{figure/muon_cifar10_grad.pdf}
+    \caption{CIFAR-10: Muon gradient norms under different mantissa precisions $M$. Larger mantissa bit-lengths lead to smaller converged gradient norms. Together with Figure~\ref{fig:Muon_cifar10_qe}, this demonstrates that higher precision reduces quantization error and improves convergence, consistent with Theorem~\ref{thm:QMuon}.}
+    \label{fig:Muon_cifar10_grad}
+\end{figure}
+
+\begin{figure}[htbp]
+\vskip -0.1in
+     \centering
+     \includegraphics[width=0.98\linewidth]{figure/adam_cifar10_qe.pdf}
+    \caption{CIFAR-10: Adam relative quantization error of different mantissa bits ($M$). Weights error (top left), Gradient error (top right), First moment error (bottom left), Second moment error (bottom right). These results show that the more mantissa bits, the smaller the relative quantization error. Combining with Figure~\ref{fig:Adam_cifar10_grad}, we can see that the more mantissa bits, the smaller quantization error, the better convergence performance (Theorem~\ref{thm:QAdam}).}
+    \label{fig:Adam_cifar10_qe}
+\end{figure}
+
+\begin{figure}[htbp]
+\vskip -0.1in
+     \centering
+     \includegraphics[width=0.98\linewidth]{figure/muon_cifar10_qe.pdf}
+    \caption{CIFAR-10: Muon with auxiliary Adam relative quantization error of different mantissa bits ($M$). Weights error (top left), Gradient error (top middle), Momentum error (top right), Auxiliary Adam first moment error (bottom left), Auxiliary Adam second moment error (bottom middle). These results show that the more mantissa bits, the smaller the relative quantization error. Combining with Figure~\ref{fig:Muon_cifar10_grad}, we can see that the more mantissa bits, the smaller quantization error, the better convergence performance (Theorem~\ref{thm:QMuon}).}
+    \label{fig:Muon_cifar10_qe}
+\end{figure}
+
+
+\FloatBarrier
+
+
+
+\subsection{nanoGPT Experiments}
+
+We evaluate the impact of quantization on training the \texttt{nanoGPT} model on the OpenWebText dataset~\citep{Gokaslan2019OpenWeb}. The model has $\sim 26.4$M parameters, with weight tying between the embedding and the output layer (\texttt{lm\_head}). Its architecture includes 4 transformer layers, each with 4 attention heads, embedding dimension 384, without dropout, and no bias terms. The dataset contains $\sim655.4$M tokens, and we use a block size (context length) of 512. Training is performed with a batch size of 32 and gradient accumulation of 4, resulting in an effective batch size of 128. Models are trained for up to 10,000 iterations.
+
+\paragraph{Optimizer and Training Settings.} We experiment with both AdamW and Muon optimizers, as summarized below:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{AdamW:} learning rate $3\times10^{-4}$, weight decay $0.1$, $\beta_1=0.9$, $\beta_2=0.95$, $\epsilon=10^{-8}$, gradient clipping norm $1.0$. Learning rate decay is disabled.
+    \item \textbf{Muon:} 2D parameters in transformer blocks ($\sim7$M) are updated with Muon’s orthogonalization-based step (Newton-Schulz iteration), while all remaining parameters ($\sim19$M, including embeddings, layer norms, and output layer) are updated with AdamW. Muon hyperparameters are: learning rate $3\times10^{-2}$, $\beta=0.95$ (with Nesterov momentum), Newton-Schulz steps 5, $\epsilon=1\times10^{-7}$ for NS iteration. Auxiliary AdamW: learning rate $6\times10^{-3}$, $\beta_1=0.9$, $\beta_2=0.95$, $\epsilon=10^{-8}$, weight decay $0.01$, gradient clipping norm $1.0$.
+\end{itemize}
+
+\paragraph{Quantization.} Following the procedure in Section~\ref{app:exp}, we apply mantissa truncation to weights, gradients, and optimizer states. We vary the mantissa length $M \in \{1,2,10,23\}$, keeping exponent and sign bits in full precision.
+
+\paragraph{Results.} Figures~\ref{fig:nanogpt_training_loss} and~\ref{fig:nanogpt_val_loss} show training and validation loss dynamics for nanoGPT under different quantization precisions. We observe that:
+
+\begin{itemize}
+    \item Lower mantissa lengths (e.g., $M=2$) induce slightly slower convergence and higher final training loss, consistent with the observed gradient norm amplification in Theorem~\ref{thm:QAdam} and Theorem~\ref{thm:QMuon}.
+    \item Muon exhibits greater robustness to low-precision quantization compared to AdamW, achieving lower training and validation loss at $M=2$. This aligns with our theoretical findings that Muon’s quantization error amplification is less sensitive than Adam’s.
+    \item As the mantissa length increases, both AdamW and Muon converge to almost identical training and validation loss, indicating that higher precision mitigates quantization-induced degradation.
+\end{itemize}
+
+Overall, these results on nanoGPT extend the findings from synthetic (Rosenbrock) and CIFAR-10 experiments to a real large-scale language modeling setting, highlighting the interplay between quantization precision, optimizer dynamics, and convergence stability.
+
+\begin{figure}[htbp]
+\vskip -0.1in
+     \centering
+     \includegraphics[width=0.98\linewidth]{figure/nanoGPT_loss_dynamics.pdf}
+    \caption{Training loss of nanoGPT on OpenWebText with varying mantissa lengths $M$. Lower $M$ slightly increases the training loss due to amplified quantization error.}
+    \label{fig:nanogpt_training_loss}
+\end{figure}
+
+\begin{figure}[htbp]
+\vskip -0.1in
+     \centering
+     \includegraphics[width=0.98\linewidth]{figure/nanoGPT_validation_comparison.pdf}
+    \caption{Validation loss of nanoGPT on OpenWebText under varying mantissa precisions $M$. Higher precision reduces quantization error and improves validation performance, particularly at low $M$. Notably, Muon exhibits greater robustness to low-precision quantization compared to AdamW, suggesting its potential advantage for low-precision training of large language models.}
+    \label{fig:nanogpt_val_loss}
+\end{figure}
+
+% --- end tex/appendix/experiments.tex ---
+
+
+
+\end{document}
