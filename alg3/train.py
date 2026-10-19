@@ -211,12 +211,19 @@ def fast_eval(cands, papers, pids, tau) -> float:
     return 2 * a_tp / den if den else 0.0
 
 
-def tune_tau(scorer, papers, pids, prob_by, classes, span_by, rounds: int = 3) -> tuple:
-    """Coordinate ascent over per-type thresholds, maximising overall F."""
+def tune_tau(scorer, papers, pids, prob_by, classes, span_by, rounds: int = 3, e2e=None) -> tuple:
+    """Coordinate ascent over per-type thresholds, maximising overall F: the unit
+    matcher's (base counts + tagger), or with `e2e` the end-to-end F of the whole
+    graph (the parser's own nodes + the tagger's, after the parser's merge)."""
     types = [c for c in classes if c != "none"]
     tau = {t: 0.5 for t in types}
-    cands = candidates(scorer, papers, pids, prob_by, classes, span_by)
-    best = fast_eval(cands, papers, pids, tau)
+    if e2e is not None:
+        cands = e2e.candidates(papers, pids, prob_by, classes, span_by)
+        score = lambda tr: e2e.fast(cands, pids, tr)            # noqa: E731
+    else:
+        cands = candidates(scorer, papers, pids, prob_by, classes, span_by)
+        score = lambda tr: fast_eval(cands, papers, pids, tr)   # noqa: E731
+    best = score(tau)
     for rnd in range(rounds):
         print(f"    [tau] round {rnd + 1}: F={best:.4f}", flush=True)
         changed = False
@@ -225,16 +232,132 @@ def tune_tau(scorer, papers, pids, prob_by, classes, span_by, rounds: int = 3) -
                 if v == tau[t]:
                     continue
                 trial = dict(tau, **{t: v})
-                f = fast_eval(cands, papers, pids, trial)
+                f = score(trial)
                 if f > best + 1e-5:
                     best, tau, changed = f, trial, True
         if not changed:
             break
     # the fast path must agree with the full decode + evaluate
     preds = {pid: decode(papers[pid][1], prob_by[pid], classes, span_by[pid], tau) for pid in pids}
-    full = evaluate(scorer, papers, pids, preds)["F"]
-    assert abs(full - round(best, 4)) < 2e-4, (full, best)
+    full = e2e.full(papers, pids, preds) if e2e is not None else evaluate(scorer, papers, pids, preds)["F"]
+    assert abs(round(full, 4) - round(best, 4)) < 2e-4, (full, best)
     return tau, best
+
+
+# ---------------------------------------------------------------------------
+# end-to-end objective: the whole graph against the Level-1 silver
+# ---------------------------------------------------------------------------
+
+GRAPHS = HERE / "runs/val_graphs/alg3_v2b"
+SILVER = REPO / "corpus/silver/opus-5.5__v6"
+
+
+def _txt(n) -> str:
+    return n.get("raw_latex") or n.get("statement") or ""
+
+
+class E2E:
+    """analyze.py's graph metric (nodes, m1g, pooled) with the tagger's nodes
+    swapped: the parser's own (non-distilled) nodes of a parsed graph stay fixed,
+    the tagger's predictions are merged in as the parser merges them (dropped when
+    a same-type kept node contains, or is contained in, 70% of its tokens) and the
+    whole set is paired one-to-one with the Level-1 silver nodes."""
+
+    def __init__(self, pids, graphs: Path = GRAPHS):
+        import edge_metrics as EM
+        import node_similarity as NS
+        from distill_common import TYPES
+        from graph_io import load_graph
+        self.NS = NS
+        types = set(TYPES)
+        self.base, self.G, self.bpairs = {}, {}, {}
+        for pid in pids:
+            f = graphs / f"{pid}.json"
+            if not f.is_file():
+                continue
+            pn, _ = load_graph(f)
+            rn, _ = EM.level1(*load_graph(SILVER / f"{pid}.json"))
+            B = [(n["type"], frozenset(DU.mm.tokens(_txt(n)))) for n in pn
+                 if n["type"] in types and _txt(n).strip() and n.get("env_name") != "distilled"
+                 and not str(n.get("id", "")).startswith("DIST_")]     # distilled proofs etc.
+            G = [(n["type"], frozenset(DU.mm.tokens(n.get("statement") or ""))) for n in rn
+                 if n["type"] in types and (n.get("statement") or "").strip()]
+            self.base[pid], self.G[pid] = B, G
+            self.bpairs[pid] = DU.NM._pairs(B, G, NS.type_compat, DU.NM.THRESHOLD)
+        print(f"    [e2e] {len(self.base)} parsed graphs from {graphs.name}", flush=True)
+
+    def covers(self, pid):
+        return pid in self.base
+
+    @staticmethod
+    def _dup(t, tok, kept) -> bool:
+        if not tok:
+            return False
+        for kt, kk in kept:
+            if kt == t and kk and len(tok & kk) / min(len(tok), len(kk)) >= 0.7:
+                return True
+        return False
+
+    def candidates(self, papers, pids, prob_by, classes, span_by) -> dict:
+        none = classes.index("none")
+        out = {}
+        for pid in pids:
+            p, B, G = papers[pid][1], self.base[pid], self.G[pid]
+            rows_ = []
+            for i in range(len(p.sents)):
+                row = prob_by[pid][i].copy()
+                row[none] = -1
+                c = int(np.argmax(row))
+                t = classes[c]
+                j = UR.span_end(p.sents, i, span_by[pid].get(i, "1"))
+                tok = tokens(p, {"start": p.sents[i].start, "end": p.sents[j].end})
+                dup = self._dup(t, tok, B)
+                pairs = [] if dup else [(s, jac, len(B) + i, k, w) for s, jac, _, k, w in
+                                        DU.NM._pairs([(t, tok)], G, self.NS.type_compat, DU.NM.THRESHOLD)]
+                rows_.append([t, float(row[c]), j, dup, pairs, tok, ()])
+            # earlier candidates of the same type a candidate would duplicate (the
+            # merge also drops a node contained in an already-kept distilled one)
+            live = [i for i, r in enumerate(rows_) if r[1] >= GRID[0] and not r[3]]
+            for x, i in enumerate(live):
+                ti, ki = rows_[i][0], rows_[i][5]
+                rows_[i][6] = tuple(k for k in live[:x] if self._dup(ti, ki, [(rows_[k][0], rows_[k][5])]))
+            out[pid] = [tuple(r[:5]) + (r[6],) for r in rows_]
+        return out
+
+    def fast(self, cands, pids, tau) -> float:
+        tp = 0.0
+        pred = gold = 0
+        for pid in pids:
+            covered, pairs, n, kept = -1, list(self.bpairs[pid]), len(self.base[pid]), set()
+            for i, (t, pr, j, dup, m, prior) in enumerate(cands[pid]):
+                if i <= covered or pr < tau.get(t, 1.01):
+                    continue
+                covered = j
+                if not dup and not any(k in kept for k in prior):
+                    kept.add(i)
+                    n += 1
+                    pairs += m
+            tp += sum(w for _, w in DU.NM._greedy(pairs).values())
+            pred += n
+            gold += len(self.G[pid])
+        return 2 * tp / (pred + gold) if pred + gold else 0.0
+
+    def full(self, papers, pids, preds, grow: bool = True) -> float:
+        """Same number from decoded predictions (grow: a prediction is also dropped
+        as a duplicate of an earlier kept prediction, as the merge does)."""
+        tp = 0.0
+        pred = gold = 0
+        for pid in pids:
+            p, B, G = papers[pid][1], self.base[pid], self.G[pid]
+            P = list(B)
+            for q in preds.get(pid, []):
+                tok = tokens(p, q)
+                if not self._dup(q["type"], tok, P if grow else B):
+                    P.append((q["type"], tok))
+            tp += sum(w for _, w in DU.NM._one_to_one(P, G, self.NS.type_compat, DU.NM.THRESHOLD).values())
+            pred += len(P)
+            gold += len(G)
+        return 2 * tp / (pred + gold) if pred + gold else 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -381,6 +504,9 @@ def _fit_fold(Mtr, ytr, Mte, C, cw, classes, kind="lr", n_jobs=1):
     return cols, clf.predict_proba(Mte)
 
 
+FOLD_SEED: dict = {"seed": None}
+
+
 def stage_probs(X, y, g, C, cw, folds, jobs: int = 5, vocab: str = "fold"):
     """Out-of-fold class probabilities (folds by paper, fitted in parallel).
     vocab "fold": each fold's clue vocabulary is built from its own training
@@ -388,7 +514,9 @@ def stage_probs(X, y, g, C, cw, folds, jobs: int = 5, vocab: str = "fold"):
     The two differ only in clues that occur in one fold alone."""
     from joblib import Parallel, delayed
     classes = sorted(set(y))
-    splits = list(GroupKFold(folds).split(X, y, g))
+    seed = FOLD_SEED["seed"]
+    gkf = GroupKFold(folds) if seed is None else GroupKFold(folds, shuffle=True, random_state=seed)
+    splits = list(gkf.split(X, y, g))
     if vocab == "global":
         M = DictVectorizer(sparse=True).fit_transform(X)
         parts = [(M[tr], y[tr], M[te]) for tr, te in splits]
@@ -446,8 +574,13 @@ def main():
     ap.add_argument("--classifier", choices=["lr", "gb"], default="lr",
                     help="anchor model: logistic regression (released) or gradient-boosted trees (xgboost)")
     ap.add_argument("--threads", type=int, default=8, help="gb: CPU threads in all")
+    ap.add_argument("--seed", type=int, default=None, help="shuffle the paper folds with this seed")
+    ap.add_argument("--objective", choices=["unit", "e2e"], default="unit",
+                    help="threshold objective: the unit matcher (default, released v2b) or the end-to-end graph F (opt-in)")
+    ap.add_argument("--graphs", default=str(GRAPHS), help="parsed train+val graphs for --objective e2e (alg3/analyze.py --parse-train; v6 silver)")
     a = ap.parse_args()
     CLASSIFIER.update(kind=a.classifier, n_jobs=a.threads)
+    FOLD_SEED["seed"] = a.seed
     t0 = time.time()
     clues = json.load(open(a.clues, encoding="utf-8")) if a.clues else []
     FT.set_clues(clues)
@@ -486,7 +619,10 @@ def main():
     svec, sclf = fit_lr(Str, sytr, a.span_C)
     prob_tr, prob_va = by_paper(itr, Ptr), by_paper(iva, Pva)
     span_tr = span_choices(train, papers, pvs, svec, sclf, prob_tr, classes)
-    tau, f_oof = tune_tau(scorer, papers, train, prob_tr, classes, span_tr, a.tau_rounds)
+    e2e = E2E(train + val, Path(a.graphs))
+    assert all(e2e.covers(pid) for pid in train + val), "a train/val paper has no parsed graph"
+    tau, f_oof = tune_tau(scorer, papers, train, prob_tr, classes, span_tr, a.tau_rounds,
+                          e2e if a.objective == "e2e" else None)
     if a.dump_oof:
         dump = {pid: {"probs": prob_tr[pid], "classes": classes,
                       "preds": decode(papers[pid][1], prob_tr[pid], classes, span_tr[pid], tau)}
@@ -497,8 +633,13 @@ def main():
     preds = {pid: decode(papers[pid][1], prob_va[pid], classes, span_va[pid], tau) for pid in val}
     rv = evaluate(scorer, papers, val, preds)
     base = evaluate(scorer, papers, val, {})
+    preds_tr = {pid: decode(papers[pid][1], prob_tr[pid], classes, span_tr[pid], tau) for pid in train}
+    e_oof = e2e.full(papers, train, preds_tr, grow=True)
+    e_val = e2e.full(papers, val, preds, grow=True)
     print(f"[alg3] train OOF F={f_oof:.4f}  val {rv}  (base val F {base['F']})  "
           f"({time.time() - t0:.0f}s)", flush=True)
+    print(f"[alg3] e2e OOF F={e_oof:.4f}  e2e val (simulated) F={e_val:.4f}  "
+          f"unit OOF F={evaluate(scorer, papers, train, preds_tr)['F']:.4f}", flush=True)
     if a.classifier == "gb":
         meta = {"classifier": "gb", "params": GB.PARAMS, "train_oof_F": f_oof, "val": rv, "val_base": base}
         Path(a.out).mkdir(parents=True, exist_ok=True)
@@ -506,7 +647,8 @@ def main():
         print(f"[alg3] gb: evaluation only, no extractor exported (tree export not written yet) -> {a.out}")
         return
     meta = {"C": a.C, "class_weight": a.class_weight, "stack": a.stack, "span_C": a.span_C,
-            "vocab": a.vocab, "tau_rounds": a.tau_rounds,
+            "vocab": a.vocab, "tau_rounds": a.tau_rounds, "seed": a.seed, "objective": a.objective,
+            "e2e_oof_F": e_oof, "e2e_val_sim_F": e_val,
             "clues": a.clues, "n_clues": len(clues),
             "min_count": a.min_count, "folds": a.folds, "train_papers": train, "val_papers": val,
             "train_oof_F": f_oof, "val": rv, "val_base": base, "n_features": len(keep),
