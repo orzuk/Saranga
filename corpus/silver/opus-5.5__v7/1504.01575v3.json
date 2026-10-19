@@ -1,0 +1,1322 @@
+{
+ "metadata": {
+  "title": "Bidirectional Recurrent Neural Networks as Generative Models",
+  "annotator": "agent-extraction",
+  "model": "claude-opus-5-5",
+  "effort": "default",
+  "prompt_version": "v7-86dcfbecdc4d78a5-4f9e8ef",
+  "extraction_date": "2026-10-19",
+  "rigor_nonformal_count": 6,
+  "paper_style": [
+   "modeling",
+   "computational"
+  ],
+  "extraction_notes": [
+   {
+    "category": "not_extracted",
+    "nodes": [],
+    "note": "Experimental protocol (weight initialization, optimizer settings, evaluation procedure of Sec. 5.2-5.4), results tables and figures are left out: they carry no definitions or results beyond hyperparameters and numbers."
+   },
+   {
+    "category": "type_uncertain",
+    "nodes": [
+     "ClP2",
+     "ClP3",
+     "ClP4",
+     "ClP5",
+     "ClP6"
+    ],
+    "note": "Complexity statements asserted without derivation; emitted as semi_formal claims rather than remarks since they are precise asymptotic assertions."
+   },
+   {
+    "category": "boundary_uncertain",
+    "nodes": [
+     "DP7"
+    ],
+    "note": "One sentence states both the traditional (cited) BRNN output and the proposed variant with equations (3)-(5); kept as one paper definition because nodes never split a sentence."
+   }
+  ],
+  "extraction_comment": "",
+  "labels": {
+   "sec:rnns": {
+    "kind": "section",
+    "number": "2",
+    "node": null,
+    "within": null,
+    "section": "Recurrent Neural Networks"
+   },
+   "eq:uni_y": {
+    "kind": "equation",
+    "number": "1",
+    "node": "EP1",
+    "within": null,
+    "section": "Unidirectional Recurrent Neural Networks"
+   },
+   "eq:uni_h": {
+    "kind": "equation",
+    "number": "2",
+    "node": "EP2",
+    "within": null,
+    "section": "Unidirectional Recurrent Neural Networks"
+   },
+   "fig:rnn_architecture": {
+    "kind": "float",
+    "number": null,
+    "node": null,
+    "within": null,
+    "section": null
+   },
+   "sec:bidirectional": {
+    "kind": "section",
+    "number": "2.2",
+    "node": null,
+    "within": null,
+    "section": "Bidirectional Recurrent Neural Networks"
+   },
+   "eq:bi_y": {
+    "kind": "equation",
+    "number": "3",
+    "node": "EP3",
+    "within": null,
+    "section": "Bidirectional Recurrent Neural Networks"
+   },
+   "eq:bi_hf": {
+    "kind": "equation",
+    "number": "4",
+    "node": "EP4",
+    "within": null,
+    "section": "Bidirectional Recurrent Neural Networks"
+   },
+   "eq:bi_hb": {
+    "kind": "equation",
+    "number": "5",
+    "node": "EP5",
+    "within": null,
+    "section": "Bidirectional Recurrent Neural Networks"
+   },
+   "eq:onewayrnn": {
+    "kind": "equation",
+    "number": "10",
+    "node": "EP8",
+    "within": null,
+    "section": "Filling in gaps with Recurrent Neural Networks"
+   },
+   "sec:exp": {
+    "kind": "section",
+    "number": "5",
+    "node": null,
+    "within": null,
+    "section": "Experiments"
+   },
+   "sec:categ_details": {
+    "kind": "section",
+    "number": "5.1",
+    "node": null,
+    "within": null,
+    "section": "Training details for categorical prediction task"
+   },
+   "tab:bps": {
+    "kind": "float",
+    "number": null,
+    "node": null,
+    "within": null,
+    "section": null
+   },
+   "fig:chars": {
+    "kind": "float",
+    "number": null,
+    "node": null,
+    "within": null,
+    "section": null
+   },
+   "fig:mcmc_iters": {
+    "kind": "float",
+    "number": null,
+    "node": null,
+    "within": null,
+    "section": null
+   },
+   "tab:nll_train": {
+    "kind": "float",
+    "number": null,
+    "node": null,
+    "within": null,
+    "section": null
+   },
+   "tab:samples": {
+    "kind": "float",
+    "number": null,
+    "node": null,
+    "within": null,
+    "section": null
+   }
+  },
+  "unresolved_refs": []
+ },
+ "nodes": [
+  {
+   "id": "DP1",
+   "type": "definition",
+   "name": "Input sequence notation",
+   "statement": "Let us denote the input to a recurrent neural network by $\\mathbf{X} = \\left\\lbrace \\mathbf{x}_t \\right\\rbrace$ where $\\mathbf{x}_t \\in \\mathbb{R}^N$ is an input vector for each time step $t$.",
+   "section": "2 Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.85,
+   "definiendum": [
+    "$\\mathbf{X}$",
+    "$\\mathbf{x}_t$"
+   ]
+  },
+  {
+   "id": "DP2",
+   "type": "definition",
+   "name": "Output sequence notation",
+   "statement": "Let us further denote the output as $\\mathbf{Y} = \\left\\lbrace \\mathbf{y}_t \\right\\rbrace$ where $\\mathbf{y}_t \\in \\mathbb{R}^M$ is an output vector for each time step $t$.",
+   "section": "2 Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.85,
+   "definiendum": [
+    "$\\mathbf{Y}$",
+    "$\\mathbf{y}_t$"
+   ]
+  },
+  {
+   "id": "DP3",
+   "type": "definition",
+   "name": "Unidirectional recurrent neural network",
+   "statement": "The structure of a basic RNN with one hidden layer is illustrated in Figure~\\ref{fig:rnn_architecture}, where the output $\\mathbf{y}_t$ is determined by \\begin{equation} P\\left(\\mathbf{y}_t \\mid \\{\\mathbf{x}_d\\}_{d=1}^t\\right) = \\mathrm{\\phi} \\left( \\mathbf{W}_\\mathrm{y} \\mathbf{h}_t + \\mathbf{b}_\\mathrm{y} \\right) \\end{equation} where \\begin{equation} \\mathbf{h}_t = \\tanh \\left( \\mathbf{W}_\\mathrm{h} \\mathbf{h}_{t-1} + \\mathbf{W}_\\mathrm{x} \\mathbf{x}_{t} + \\mathbf{b}_\\mathrm{h} \\right) \\end{equation} and $\\mathbf{W}_\\mathrm{y}$, $\\mathbf{W}_\\mathrm{h}$, and $\\mathbf{W}_\\mathrm{x}$ are the weight matrices connecting the hidden to output layer, hidden to hidden layer, and input to hidden layer, respectively.",
+   "section": "2.1 Unidirectional Recurrent Neural Networks",
+   "origin": "external",
+   "confidence": 0.8,
+   "origin_citation": "standard (uncited)",
+   "definiendum": "basic RNN with one hidden layer",
+   "statement_short": "One-hidden-layer RNN: output distribution $\\phi(W_y h_t+b_y)$ with tanh recurrent hidden state $h_t$."
+  },
+  {
+   "id": "DP4",
+   "type": "definition",
+   "name": "Bias vectors of the RNN",
+   "statement": "$\\mathbf{b}_\\mathrm{y}$ and $\\mathbf{b}_\\mathrm{h}$ are the output and hidden layer bias vectors, respectively.",
+   "section": "2.1 Unidirectional Recurrent Neural Networks",
+   "origin": "external",
+   "confidence": 0.8,
+   "origin_citation": "standard (uncited)",
+   "definiendum": [
+    "$\\mathbf{b}_\\mathrm{y}$",
+    "$\\mathbf{b}_\\mathrm{h}$"
+   ]
+  },
+  {
+   "id": "DP5",
+   "type": "definition",
+   "name": "Past-observation set notation",
+   "statement": "In this form, the RNN therefore evaluates the output $\\mathbf{y}_t$ based on information propagated through the hidden layer that directly or indirectly depends on the observations $\\{\\mathbf{x}_d\\}_{d=1}^t= \\{\\mathbf{x}_1, \\dots, \\mathbf{x}_t\\}$.",
+   "section": "2.1 Unidirectional Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.65,
+   "definiendum": "$\\{\\mathbf{x}_d\\}_{d=1}^t$",
+   "statement_short": "The RNN output at $t$ depends only on past observations $\\{x_d\\}_{d=1}^t$."
+  },
+  {
+   "id": "EP1",
+   "type": "equation",
+   "name": "RNN output distribution",
+   "statement": "P\\left(\\mathbf{y}_t \\mid \\{\\mathbf{x}_d\\}_{d=1}^t\\right) = \\mathrm{\\phi} \\left( \\mathbf{W}_\\mathrm{y} \\mathbf{h}_t + \\mathbf{b}_\\mathrm{y} \\right)",
+   "section": "2.1 Unidirectional Recurrent Neural Networks",
+   "origin": "external",
+   "confidence": 1.0,
+   "origin_citation": "standard (uncited)",
+   "label": "eq:uni_y",
+   "number": "1",
+   "parent_id": "DP3"
+  },
+  {
+   "id": "EP2",
+   "type": "equation",
+   "name": "RNN hidden state recursion",
+   "statement": "\\mathbf{h}_t = \\tanh \\left( \\mathbf{W}_\\mathrm{h} \\mathbf{h}_{t-1} + \\mathbf{W}_\\mathrm{x} \\mathbf{x}_{t} + \\mathbf{b}_\\mathrm{h} \\right)",
+   "section": "2.1 Unidirectional Recurrent Neural Networks",
+   "origin": "external",
+   "confidence": 1.0,
+   "origin_citation": "standard (uncited)",
+   "label": "eq:uni_h",
+   "number": "2",
+   "parent_id": "DP3"
+  },
+  {
+   "id": "DP6",
+   "type": "definition",
+   "name": "Bidirectional recurrent neural network (BRNN)",
+   "statement": "Bidirectional RNNs (BRNN) \\citep{schuster1997bidirectional,baldi1999exploiting} extend the unidirectional RNN by introducing a second hidden layer, where the hidden to hidden connections flow in opposite temporal order.",
+   "section": "2.2 Bidirectional Recurrent Neural Networks",
+   "origin": "external",
+   "confidence": 0.85,
+   "origin_citation": "Schuster & Paliwal 1997; Baldi et al. 1999",
+   "definiendum": "Bidirectional RNNs (BRNN)",
+   "genus": "the unidirectional RNN",
+   "differentia": [
+    "introducing a second hidden layer, where the hidden to hidden connections flow in opposite temporal order"
+   ],
+   "cites": [
+    "schuster1997bidirectional",
+    "baldi1999exploiting"
+   ]
+  },
+  {
+   "id": "DP7",
+   "type": "definition",
+   "name": "Proposed BRNN output formulation",
+   "statement": "The output $\\mathbf{y}_t$ is traditionally determined by \\begin{equation*} P\\left(\\mathbf{y}_t \\mid \\{\\mathbf{x}_d\\}_{d\\neq t}\\right) = \\mathrm{\\phi} \\left( \\mathbf{W}_\\mathrm{y}^\\mathrm{f} \\mathbf{h}_{t}^\\mathrm{f} + \\mathbf{W}_\\mathrm{y}^\\mathrm{b} \\mathbf{h}_{t}^\\mathrm{b} + \\mathbf{b}_y \\right), \\end{equation*} but we propose the use of \\begin{equation} P\\left(\\mathbf{y}_t \\mid \\{\\mathbf{x}_d\\}_{d\\neq t}\\right) = \\mathrm{\\phi} \\left( \\mathbf{W}_\\mathrm{y}^\\mathrm{f} \\mathbf{h}_{t-1}^\\mathrm{f} + \\mathbf{W}_\\mathrm{y}^\\mathrm{b} \\mathbf{h}_{t+1}^\\mathrm{b} + \\mathbf{b}_y \\right) \\end{equation} where \\begin{align} \\mathbf{h}_t^\\mathrm{f} &= \\tanh \\left( \\mathbf{W}_\\mathrm{h}^\\mathrm{f} \\mathbf{h}^\\mathrm{f} _{t-1} + \\mathbf{W}_\\mathrm{x}^\\mathrm{f} \\mathbf{x}_{t} + \\mathbf{b}_\\mathrm{h}^\\mathrm{f} \\right) \\\\ \\mathbf{h}_t^\\mathrm{b} &= \\tanh \\left( \\mathbf{W}_\\mathrm{h}^\\mathrm{b} \\mathbf{h}^\\mathrm{b}_{t+1} + \\mathbf{W}_\\mathrm{x}^\\mathrm{b} \\mathbf{x}_{t} + \\mathbf{b}_\\mathrm{h}^\\mathrm{b} \\right). \\end{align}",
+   "section": "2.2 Bidirectional Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.8,
+   "definiendum": "$P\\left(\\mathbf{y}_t \\mid \\{\\mathbf{x}_d\\}_{d\\neq t}\\right)$",
+   "statement_short": "Replace the traditional BRNN output (using $h^f_t,h^b_t$) by one using $h^f_{t-1}$ and $h^b_{t+1}$, so $y_t$ excludes $x_t$."
+  },
+  {
+   "id": "EP3",
+   "type": "equation",
+   "name": "Proposed BRNN output",
+   "statement": "P\\left(\\mathbf{y}_t \\mid \\{\\mathbf{x}_d\\}_{d\\neq t}\\right) = \\mathrm{\\phi} \\left( \\mathbf{W}_\\mathrm{y}^\\mathrm{f} \\mathbf{h}_{t-1}^\\mathrm{f} + \\mathbf{W}_\\mathrm{y}^\\mathrm{b} \\mathbf{h}_{t+1}^\\mathrm{b} + \\mathbf{b}_y \\right)",
+   "section": "2.2 Bidirectional Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 1.0,
+   "label": "eq:bi_y",
+   "number": "3",
+   "parent_id": "DP7"
+  },
+  {
+   "id": "EP4",
+   "type": "equation",
+   "name": "BRNN forward hidden state",
+   "statement": "\\mathbf{h}_t^\\mathrm{f} &= \\tanh \\left( \\mathbf{W}_\\mathrm{h}^\\mathrm{f} \\mathbf{h}^\\mathrm{f} _{t-1} + \\mathbf{W}_\\mathrm{x}^\\mathrm{f} \\mathbf{x}_{t} + \\mathbf{b}_\\mathrm{h}^\\mathrm{f} \\right)",
+   "section": "2.2 Bidirectional Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 1.0,
+   "label": "eq:bi_hf",
+   "number": "4",
+   "parent_id": "DP7"
+  },
+  {
+   "id": "EP5",
+   "type": "equation",
+   "name": "BRNN backward hidden state",
+   "statement": "\\mathbf{h}_t^\\mathrm{b} &= \\tanh \\left( \\mathbf{W}_\\mathrm{h}^\\mathrm{b} \\mathbf{h}^\\mathrm{b}_{t+1} + \\mathbf{W}_\\mathrm{x}^\\mathrm{b} \\mathbf{x}_{t} + \\mathbf{b}_\\mathrm{h}^\\mathrm{b} \\right).",
+   "section": "2.2 Bidirectional Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 1.0,
+   "label": "eq:bi_hb",
+   "number": "5",
+   "parent_id": "DP7"
+  },
+  {
+   "id": "DP8",
+   "type": "definition",
+   "name": "Forward/backward superscripts f and b",
+   "statement": "Compared with the regular RNN, the forward and backward directions have separate non-tied weights and hidden activations, and are denoted by the superscript f and b for forward and backward, respectively.",
+   "section": "2.2 Bidirectional Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.8,
+   "definiendum": [
+    "superscript f",
+    "superscript b"
+   ]
+  },
+  {
+   "id": "RP1",
+   "type": "remark",
+   "name": "BRNN output excludes the current input",
+   "statement": "Note also that in the proposed formulation, $\\mathbf{y}_{t}$ does not get information from $\\mathbf{x}_{t}$. We can therefore use the model in an unsupervised manner to predict one time step given all other time steps in the input sequence simply by setting $\\mathbf{Y}=\\mathbf{X}$.",
+   "section": "2.2 Bidirectional Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Since $y_t$ ignores $x_t$, setting $Y=X$ lets the BRNN predict each step from all others unsupervised."
+  },
+  {
+   "id": "EP6",
+   "type": "equation",
+   "name": "Unidirectional joint distribution",
+   "statement": "P_{\\mathrm{unidirectional}}(\\mathbf{X}) = \\prod_{t=1}^T P(\\mathbf{x}_t \\mid \\{\\mathbf{x}_d\\}_{d=1}^{t-1}).",
+   "section": "3 Probabilistic Interpretation for Unsupervised Modelling",
+   "origin": "external",
+   "confidence": 1.0,
+   "origin_citation": "standard (uncited)",
+   "number": "6"
+  },
+  {
+   "id": "RP2",
+   "type": "remark",
+   "name": "BRNN joint distribution is not a product",
+   "statement": "For the BRNN, the situation is more complicated. The network gives predictions for individual outputs given all the others, and the joint distribution cannot be written as their product.",
+   "section": "3 Probabilistic Interpretation for Unsupervised Modelling",
+   "origin": "paper",
+   "confidence": 0.65
+  },
+  {
+   "id": "DP9",
+   "type": "definition",
+   "name": "Generative Stochastic Network (GSN)",
+   "statement": "{\\bf GSN} Generative Stochastic Networks (GSN) \\citep{bengio2013generalized} use a denoising auto-encoder to estimate the data distribution as the asymptotic distribution of the Markov chain that alternates between corruption and denoising.",
+   "section": "3 Probabilistic Interpretation for Unsupervised Modelling",
+   "origin": "external",
+   "confidence": 0.85,
+   "origin_citation": "Bengio et al. 2013",
+   "definiendum": "Generative Stochastic Networks (GSN)",
+   "genus": "denoising auto-encoder",
+   "differentia": [
+    "estimate the data distribution as the asymptotic distribution of the Markov chain that alternates between corruption and denoising"
+   ],
+   "cites": [
+    "bengio2013generalized"
+   ]
+  },
+  {
+   "id": "ClP1",
+   "type": "claim",
+   "name": "BRNN feedforward pass is a GSN denoiser",
+   "statement": "We can define a corruption function that masks $\\mathbf{x}_{t}$ as missing, and a denoising function that reconstructs it from the others. It turns out that one feedforward pass of the BRNN does exactly that.",
+   "section": "3 Probabilistic Interpretation for Unsupervised Modelling",
+   "origin": "paper",
+   "confidence": 0.7,
+   "rigor": "semi_formal",
+   "assumptions": [
+    "We can define a corruption function that masks $\\mathbf{x}_{t}$ as missing, and a denoising function that reconstructs it from the others."
+   ],
+   "conclusions": [
+    "one feedforward pass of the BRNN does exactly that"
+   ]
+  },
+  {
+   "id": "DP10",
+   "type": "definition",
+   "name": "GSN interpretation of the BRNN",
+   "statement": "Our first probabilistic interpretation is thus that the joint distribution defined by a BRNN is the asymptotic distribution of a process that replaces one observation vector $\\mathbf{x}_{t}$ at a time in $\\mathbf{X}$ by sampling it from $P_{\\mathrm{BRNN}}(\\mathbf{x}_{t} \\mid \\{\\mathbf{x}_d\\}_{d\\neq t})$.",
+   "section": "3 Probabilistic Interpretation for Unsupervised Modelling",
+   "origin": "paper",
+   "confidence": 0.85,
+   "definiendum": "$P_{\\mathrm{BRNN}}$",
+   "statement_short": "BRNN joint = stationary distribution of Gibbs-like resampling of one $x_t$ at a time from $P_{BRNN}(x_t\\mid x_{\\neq t})$."
+  },
+  {
+   "id": "DP11",
+   "type": "definition",
+   "name": "Neural Autoregressive Distribution Estimator (NADE)",
+   "statement": "{\\bf NADE} The Neural Autoregressive Distribution Estimator (NADE) \\citep{uria2014deep} defines a probabilistic model by reconstructing missing components of a vector one at a time in a random order, starting from a fully unobserved vector. Each reconstruction is given by an auto-encoder network that takes as input the observations so far and an auxiliary mask vector that indicates which values are missing.",
+   "section": "3 Probabilistic Interpretation for Unsupervised Modelling",
+   "origin": "external",
+   "confidence": 0.85,
+   "origin_citation": "Uria et al. 2014",
+   "definiendum": "Neural Autoregressive Distribution Estimator (NADE)",
+   "statement_short": "NADE: reconstruct vector components one at a time in random order via an auto-encoder fed observations plus a missingness mask.",
+   "cites": [
+    "uria2014deep"
+   ]
+  },
+  {
+   "id": "DP12",
+   "type": "definition",
+   "name": "Missing-input indicator",
+   "statement": "Firstly, we concatenate an auxiliary binary element to input vectors to indicate a missing input.",
+   "section": "3 Probabilistic Interpretation for Unsupervised Modelling",
+   "origin": "paper",
+   "confidence": 0.75,
+   "definiendum": "auxiliary binary element"
+  },
+  {
+   "id": "DP13",
+   "type": "definition",
+   "name": "NADE interpretation for time series",
+   "statement": "The joint distribution of the time series is defined by first drawing a random permutation $o_d$ of time indices $1\\dots T$ and then setting data points observed one by one in that order, starting from a fully missing sequence: \\begin{align} P_{\\mathrm{NADE}}(\\mathbf{X}\\mid o_d) = \\prod_{d=1}^T P(\\mathbf{x}_{o_d} \\mid \\{\\mathbf{x}_{o_{e}}\\}_{e=1}^{d-1}). \\end{align}",
+   "section": "3 Probabilistic Interpretation for Unsupervised Modelling",
+   "origin": "paper",
+   "confidence": 0.8,
+   "definiendum": [
+    "$o_d$",
+    "$P_{\\mathrm{NADE}}(\\mathbf{X}\\mid o_d)$"
+   ],
+   "statement_short": "Time-series NADE: draw a random order $o_d$ of time steps and observe them one by one from a fully missing sequence."
+  },
+  {
+   "id": "EP7",
+   "type": "equation",
+   "name": "NADE joint distribution given ordering",
+   "statement": "P_{\\mathrm{NADE}}(\\mathbf{X}\\mid o_d) = \\prod_{d=1}^T P(\\mathbf{x}_{o_d} \\mid \\{\\mathbf{x}_{o_{e}}\\}_{e=1}^{d-1}).",
+   "section": "3 Probabilistic Interpretation for Unsupervised Modelling",
+   "origin": "paper",
+   "confidence": 1.0,
+   "number": "7",
+   "parent_id": "DP13"
+  },
+  {
+   "id": "ProbP1",
+   "type": "problem",
+   "name": "Filling in gaps in high-dimensional binary time series",
+   "statement": "The task we aim to solve is to fill in gaps of multiple consecutive data points in high-dimensional binary time series data.",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.8
+  },
+  {
+   "id": "AP1",
+   "type": "algorithm",
+   "name": "GSN gap filling",
+   "statement": "For filling in gaps with the GSN approach, we first train a bidirectional RNN to estimate $P_{\\mathrm{BRNN}}(\\mathbf{x}_{t} \\mid \\{\\mathbf{x}_d\\}_{d\\neq t})$. In order to achieve that, we use the structure presented in Section~\\ref{sec:bidirectional}. At test time, the gap is first initialized to random values, after which the missing values are sampled from the distribution $P_{\\mathrm{BRNN}}(\\mathbf{x}_{t} \\mid \\{\\mathbf{x}_d\\}_{d\\neq t})$ one by one in a random order repeatedly to approximate the stationary distribution.",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.75,
+   "main": true,
+   "statement_short": "Train a BRNN for $P(x_t\\mid x_{\\neq t})$, initialize the gap randomly, then Gibbs-resample gap points in random order repeatedly."
+  },
+  {
+   "id": "ClP2",
+   "type": "claim",
+   "name": "Complexity of GSN gap filling",
+   "statement": "For the RNN structures used in this paper, the computational complexity of this approach at test time is $\\mathcal{O}((dc+c^2)(T+gM))$ where $d$ is the dimensionality of a data point, $c$ is the number of hidden units in the RNN, $T$ is the number of time steps in the data, $g$ is the length of the gap and $M$ is the number of Markov chain Monte Carlo (MCMC) steps used for inference.",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.75,
+   "rigor": "semi_formal",
+   "assumptions": [
+    "For the RNN structures used in this paper"
+   ],
+   "conclusions": [
+    "the computational complexity of this approach at test time is $\\mathcal{O}((dc+c^2)(T+gM))$"
+   ]
+  },
+  {
+   "id": "AP2",
+   "type": "algorithm",
+   "name": "NADE gap filling",
+   "statement": "For filling in gaps with the NADE approach, we first train a bidirectional RNN where some of the inputs are set to a separate missing value token. At test time, all data points in the gap are first initialized with this token, after which each missing data point is reconstructed once until the whole gap is filled.",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.75,
+   "main": true,
+   "statement_short": "Train a BRNN with missing-value tokens; initialize the gap with the token and reconstruct each missing point once."
+  },
+  {
+   "id": "RP3",
+   "type": "remark",
+   "name": "NADE vs GSN computational difference",
+   "statement": "Computationally, the main difference to GSN is that we do not have to sample each reconstructed data point multiple times, but the reconstruction is done in as many steps as there are missing data points in the gap.",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "NADE reconstructs each gap point once instead of sampling it many times as GSN does."
+  },
+  {
+   "id": "ClP3",
+   "type": "claim",
+   "name": "Complexity of NADE gap filling",
+   "statement": "For the RNN structures used in this paper, the computational complexity of this approach at test time is $\\mathcal{O}((dc+c^2)(T+g))$ where $d$ is the dimensionality of a data point, $c$ is the number of hidden units in the RNN, $g$ is the length of the gap and $T$ is the number of time steps in the data.",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.75,
+   "rigor": "semi_formal",
+   "assumptions": [
+    "For the RNN structures used in this paper"
+   ],
+   "conclusions": [
+    "the computational complexity of this approach at test time is $\\mathcal{O}((dc+c^2)(T+g))$"
+   ]
+  },
+  {
+   "id": "AP3",
+   "type": "algorithm",
+   "name": "Bayesian MCMC",
+   "statement": "In addition to the two proposed methods, one can use a unidirectional RNN to solve the same task. We call this method \\emph{Bayesian MCMC}. Using a unidirectional RNN for the task of filling in gaps is not trivial, as we need to take into account the probabilities of the values after the gap, which the model does not explicitly do. We therefore resort to a similar approach as the GSN approach, where we replace the $P_{\\mathrm{BRNN}}(\\mathbf{x}_{t} \\mid \\{\\mathbf{x}_d\\}_{d\\neq t})$ with a unidirectional equivalent for the Gibbs sampling. As the unidirectional RNN models conditional probabilities of the form $P_{\\mathrm{RNN}}(\\mathbf{x}_t \\mid \\{\\mathbf{x}_d\\}_{d=1}^{t-1})$, we can use Bayes' theorem to derive: \\begin{align} \\hspace{2em}&\\hspace{-2em} P_{\\mathrm{RNN}}\\left( \\mathbf{x}_{t} = \\mathbf{a} \\mid \\{\\mathbf{x}_{d}\\}_{d\\neq t} \\right) \\\\ & \\propto P_{\\mathrm{RNN}} \\left( \\mathbf{x}_t = \\mathbf{a} \\mid \\{\\mathbf{x}_d\\}_{d=1}^{t-1} \\right) P_{\\mathrm{RNN}} \\left(\\{\\mathbf{x}_e\\}_{e=t+1}^{T} \\mid \\mathbf{x}_t = \\mathbf{a}, \\{\\mathbf{x}_d\\}_{d=1}^{t-1} \\right) \\\\ &= \\prod_{\\tau=t}^T P_{\\mathrm{RNN}}(\\mathbf{x}_{\\tau} \\mid \\{\\mathbf{x}_d\\}_{d=1}^{\\tau-1}) \\Bigr|_{\\mathbf{x}_t=\\mathbf{a}} \\end{align} where $P_{\\mathrm{RNN}}(\\mathbf{x}_{\\tau} \\mid \\{\\mathbf{x}_d\\}_{d=1}^{\\tau-1})$ is directly the output of the unidirectional RNN given an input sequence $\\mathbf{X}$, where one time step $t$, i.e. the one we Gibbs sample, is replaced by a proposal $\\mathbf{a}$. The problem is that we have to go through all possible proposals $\\mathbf{a}$ separately to evaluate the probability $P\\left( \\mathbf{x}_{t} = \\mathbf{a} | \\{\\mathbf{x}_d\\}_{d\\neq t} \\right)$. We therefore have to evaluate the product of the outputs of the unidirectional RNN for time steps $t \\ldots T$ for each possible $\\mathbf{a}$.",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Gibbs sampling with a unidirectional RNN, using Bayes' theorem to get $P(x_t=a\\mid x_{\\neq t})\\propto\\prod_{\\tau\\ge t}P(x_\\tau\\mid x_{<\\tau})$ for each proposal $a$."
+  },
+  {
+   "id": "EP8",
+   "type": "equation",
+   "name": "Bayes conditional from a unidirectional RNN",
+   "statement": "\\hspace{2em}&\\hspace{-2em} P_{\\mathrm{RNN}}\\left( \\mathbf{x}_{t} = \\mathbf{a} \\mid \\{\\mathbf{x}_{d}\\}_{d\\neq t} \\right) \\\\ & \\propto P_{\\mathrm{RNN}} \\left( \\mathbf{x}_t = \\mathbf{a} \\mid \\{\\mathbf{x}_d\\}_{d=1}^{t-1} \\right) P_{\\mathrm{RNN}} \\left(\\{\\mathbf{x}_e\\}_{e=t+1}^{T} \\mid \\mathbf{x}_t = \\mathbf{a}, \\{\\mathbf{x}_d\\}_{d=1}^{t-1} \\right) \\\\ &= \\prod_{\\tau=t}^T P_{\\mathrm{RNN}}(\\mathbf{x}_{\\tau} \\mid \\{\\mathbf{x}_d\\}_{d=1}^{\\tau-1}) \\Bigr|_{\\mathbf{x}_t=\\mathbf{a}}",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 1.0,
+   "label": "eq:onewayrnn",
+   "number": "8",
+   "parent_id": "AP3"
+  },
+  {
+   "id": "RP4",
+   "type": "remark",
+   "name": "Feasibility of Bayesian MCMC",
+   "statement": "In some cases this is feasible to evaluate. For categorical data, e.g. text, there are as many possible values for $\\mathbf{a}$ as there are dimensions\\footnote{For character-based text, the number of dimensions is the number of characters in the model alphabet.}. However, for other binary data the number of possibilities grows exponentially, and is clearly not feasible to evaluate.",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Enumerating proposals is feasible for categorical data but exponential for binary vectors."
+  },
+  {
+   "id": "ClP4",
+   "type": "claim",
+   "name": "Complexity of Bayesian MCMC",
+   "statement": "For the RNN structures used in this paper, the computational complexity of this approach at test time is $\\mathcal{O}((dc+c^2)(T+gM))$ where $d$ is the dimensionality of a data point, $c$ is the number of hidden units in the RNN, $T$ is the number of time steps in the data, $g$ is the length of the gap and $M$ is the number of Markov chain Monte Carlo (MCMC) steps used for inference.",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.75,
+   "rigor": "semi_formal",
+   "assumptions": [
+    "For the RNN structures used in this paper"
+   ],
+   "conclusions": [
+    "the computational complexity of this approach at test time is $\\mathcal{O}((dc+c^2)(T+aTM))$"
+   ]
+  },
+  {
+   "id": "RP5",
+   "type": "remark",
+   "name": "Complexity gap between Bayesian MCMC and GSN",
+   "statement": "The critical difference in complexity to the GSN approach is the coefficient $a$, that for categorical data takes the value $d$, for binary vectors $2^d$ and for continuous data is infinite.",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Bayesian MCMC costs an extra factor $a$: $d$ for categorical, $2^d$ for binary vectors, infinite for continuous data."
+  },
+  {
+   "id": "DP14",
+   "type": "definition",
+   "name": "One-gram baseline model",
+   "statement": "As a simple baseline model, we also evaluate the \\emph{one-gram} log-likelihood of the gaps. The one-gram model assumes a constant context-independent categorical distribution for the categorical task, or a vector of factorial binomial probabilities for the structured prediction task: \\begin{equation*} P_{\\mathrm{one-gram}}\\left(\\mathbf{y}_t \\right) = \\mathrm{f} \\left( \\mathbf{b}_y \\right). \\end{equation*}",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "external",
+   "confidence": 0.75,
+   "origin_citation": "standard (uncited)",
+   "definiendum": "one-gram model",
+   "statement_short": "Context-independent categorical (or factorial binomial) distribution $f(b_y)$ used as a baseline."
+  },
+  {
+   "id": "ClP5",
+   "type": "claim",
+   "name": "Complexity of the one-gram baseline",
+   "statement": "This can be done in $\\mathcal{O}(dg)$.",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.65,
+   "rigor": "semi_formal",
+   "assumptions": [],
+   "conclusions": [
+    "This can be done in $\\mathcal{O}(dg)$."
+   ]
+  },
+  {
+   "id": "AP4",
+   "type": "algorithm",
+   "name": "One-way inference",
+   "statement": "We also compare to \\emph{one-way inference}, where the data points in the gap are reconstructed in order without taking the future context into account, using Equations (\\ref{eq:uni_y}) and (\\ref{eq:uni_h}) directly.",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Reconstruct gap points sequentially with the unidirectional RNN, ignoring future context."
+  },
+  {
+   "id": "ClP6",
+   "type": "claim",
+   "name": "Complexity of one-way inference",
+   "statement": "The computational complexity is $\\mathcal{O}((dc+c^2)T)$.",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.65,
+   "rigor": "semi_formal",
+   "assumptions": [],
+   "conclusions": [
+    "The computational complexity is $\\mathcal{O}((dc+c^2)T)$."
+   ]
+  },
+  {
+   "id": "AP5",
+   "type": "algorithm",
+   "name": "Masked training of the NADE BRNN",
+   "statement": "For the BRNN used in the NADE method, we add one dimension to the one-hot input which corresponds to a missing value token. During training, in each minibatch we mark $g=5$ consecutive characters every 25 time steps as a gap. During training, the error is propagated only from these gaps. For each gap, we uniformly draw a value from 1 to 5, and set that many characters in the gap to the missing value token. The model is therefore trained to predict the output in different stages of inference, where a number of the inputs are still marked as missing. For comparison, we also train a similar network, but without masking. In that variant, the error is therefore propagated from all time steps.",
+   "section": "5.1 Training details for categorical prediction task",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Train the NADE BRNN on minibatches with gaps of $g=5$ every 25 steps, randomly masking 1-5 gap characters; error only from gaps."
+  },
+  {
+   "id": "DP15",
+   "type": "definition",
+   "name": "NADE masked / NADE no mask",
+   "statement": "We refer to ``NADE'' masked and ``NADE no mask'', respectively, for these two training methods.",
+   "section": "5.1 Training details for categorical prediction task",
+   "origin": "paper",
+   "confidence": 0.75,
+   "definiendum": [
+    "``NADE'' masked",
+    "``NADE no mask''"
+   ]
+  },
+  {
+   "id": "OpenP1",
+   "type": "open_problem",
+   "name": "Optimal RNN vs BRNN at optimal hidden size",
+   "statement": "We used the same number of parameters when training an RNN and a BRNN. The RNN can concentrate all the learning effort on forward prediction, and re-use the learned dependencies in backward inference by the computationally heavy Bayesian inference. It remains an open question which approach would work best given an optimal size of the hidden layers.",
+   "section": "6 Conclusion and Discussion",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Open: whether RNN with Bayesian inference or BRNN works best when hidden layer sizes are optimized."
+  },
+  {
+   "id": "ASP1",
+   "type": "algorithm_step",
+   "name": "Train BRNN",
+   "statement": "we first train a bidirectional RNN to estimate $P_{\\mathrm{BRNN}}(\\mathbf{x}_{t} \\mid \\{\\mathbf{x}_d\\}_{d\\neq t})$",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.7,
+   "parent_id": "AP1",
+   "step_order": 1,
+   "subclass": "solve",
+   "statement_short": "Train a BRNN to estimate the one-step conditional.",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP2",
+   "type": "algorithm_step",
+   "name": "Random gap init",
+   "statement": "the gap is first initialized to random values",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.7,
+   "parent_id": "AP1",
+   "step_order": 2,
+   "subclass": "initialize",
+   "statement_short": "Initialize the gap randomly.",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP3",
+   "type": "algorithm_step",
+   "name": "Gibbs resampling",
+   "statement": "the missing values are sampled from the distribution $P_{\\mathrm{BRNN}}(\\mathbf{x}_{t} \\mid \\{\\mathbf{x}_d\\}_{d\\neq t})$ one by one in a random order repeatedly to approximate the stationary distribution",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.7,
+   "parent_id": "AP1",
+   "step_order": 3,
+   "subclass": "loop",
+   "statement_short": "Resample gap points one by one in random order, repeatedly.",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP4",
+   "type": "algorithm_step",
+   "name": "Train masked BRNN",
+   "statement": "we first train a bidirectional RNN where some of the inputs are set to a separate missing value token",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.7,
+   "parent_id": "AP2",
+   "step_order": 1,
+   "subclass": "solve",
+   "statement_short": "Train a BRNN with some inputs set to a missing-value token.",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP5",
+   "type": "algorithm_step",
+   "name": "Token gap init",
+   "statement": "all data points in the gap are first initialized with this token",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.7,
+   "parent_id": "AP2",
+   "step_order": 2,
+   "subclass": "initialize",
+   "statement_short": "Fill the gap with the missing-value token.",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP6",
+   "type": "algorithm_step",
+   "name": "Reconstruct once",
+   "statement": "each missing data point is reconstructed once until the whole gap is filled",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.7,
+   "parent_id": "AP2",
+   "step_order": 3,
+   "subclass": "compute",
+   "statement_short": "Reconstruct each missing point once until the gap is filled.",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP7",
+   "type": "algorithm_step",
+   "name": "Unidirectional Gibbs sampling",
+   "statement": "we replace the $P_{\\mathrm{BRNN}}(\\mathbf{x}_{t} \\mid \\{\\mathbf{x}_d\\}_{d\\neq t})$ with a unidirectional equivalent for the Gibbs sampling",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.7,
+   "parent_id": "AP3",
+   "step_order": 1,
+   "subclass": "call",
+   "statement_short": "Run the GSN-style Gibbs sampler with a unidirectional conditional.",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP8",
+   "type": "algorithm_step",
+   "name": "Score every proposal",
+   "statement": "evaluate the product of the outputs of the unidirectional RNN for time steps $t \\ldots T$ for each possible $\\mathbf{a}$",
+   "section": "4 Filling in gaps with Recurrent Neural Networks",
+   "origin": "paper",
+   "confidence": 0.7,
+   "parent_id": "AP3",
+   "step_order": 2,
+   "subclass": "compute",
+   "statement_short": "Evaluate the RNN output product over $t..T$ for each proposal $a$.",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP9",
+   "type": "algorithm_step",
+   "name": "Add missing token dimension",
+   "statement": "we add one dimension to the one-hot input which corresponds to a missing value token",
+   "section": "5.1 Training details for categorical prediction task",
+   "origin": "paper",
+   "confidence": 0.7,
+   "parent_id": "AP5",
+   "step_order": 1,
+   "subclass": "initialize",
+   "statement_short": "Extend the one-hot input with a missing-value dimension.",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP10",
+   "type": "algorithm_step",
+   "name": "Mark gaps",
+   "statement": "in each minibatch we mark $g=5$ consecutive characters every 25 time steps as a gap",
+   "section": "5.1 Training details for categorical prediction task",
+   "origin": "paper",
+   "confidence": 0.7,
+   "parent_id": "AP5",
+   "step_order": 2,
+   "subclass": "select",
+   "statement_short": "Mark 5-character gaps every 25 steps.",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP11",
+   "type": "algorithm_step",
+   "name": "Gap-only error",
+   "statement": "the error is propagated only from these gaps",
+   "section": "5.1 Training details for categorical prediction task",
+   "origin": "paper",
+   "confidence": 0.7,
+   "parent_id": "AP5",
+   "step_order": 3,
+   "subclass": "compute",
+   "statement_short": "Backpropagate error only from the gaps.",
+   "source_line_label": null
+  },
+  {
+   "id": "ASP12",
+   "type": "algorithm_step",
+   "name": "Random masking",
+   "statement": "For each gap, we uniformly draw a value from 1 to 5, and set that many characters in the gap to the missing value token",
+   "section": "5.1 Training details for categorical prediction task",
+   "origin": "paper",
+   "confidence": 0.7,
+   "parent_id": "AP5",
+   "step_order": 4,
+   "subclass": "update",
+   "statement_short": "Mask a uniformly random number (1-5) of gap characters.",
+   "source_line_label": null
+  }
+ ],
+ "edges": [
+  {
+   "source": "DP1",
+   "target": "DP2",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "DP3",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP2",
+   "target": "DP3",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP3",
+   "target": "DP4",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "DP5",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP3",
+   "target": "DP5",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP3",
+   "target": "DP6",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "term"
+  },
+  {
+   "source": "DP6",
+   "target": "DP7",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "term"
+  },
+  {
+   "source": "DP3",
+   "target": "DP7",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP5",
+   "target": "DP7",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP2",
+   "target": "DP7",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP8",
+   "target": "DP7",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term",
+   "backward": true
+  },
+  {
+   "source": "DP6",
+   "target": "DP8",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP7",
+   "target": "RP1",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "term"
+  },
+  {
+   "source": "DP2",
+   "target": "RP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "RP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "EP6",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP5",
+   "target": "EP6",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP6",
+   "target": "RP2",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "EP6",
+   "target": "RP2",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "inferred"
+  },
+  {
+   "source": "DP9",
+   "target": "ClP1",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP7",
+   "target": "ClP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "DP6",
+   "target": "ClP1",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "ClP1",
+   "target": "DP10",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "inferred"
+  },
+  {
+   "source": "DP9",
+   "target": "DP10",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "DP6",
+   "target": "DP10",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "DP10",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP11",
+   "target": "DP12",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "inferred"
+  },
+  {
+   "source": "DP11",
+   "target": "DP13",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "inferred"
+  },
+  {
+   "source": "DP1",
+   "target": "DP13",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP12",
+   "target": "DP13",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "inferred"
+  },
+  {
+   "source": "ProbP1",
+   "target": "AP1",
+   "type": "resolves",
+   "confidence": 0.85,
+   "basis": "inferred"
+  },
+  {
+   "source": "ProbP1",
+   "target": "AP2",
+   "type": "resolves",
+   "confidence": 0.85,
+   "basis": "inferred"
+  },
+  {
+   "source": "ProbP1",
+   "target": "AP3",
+   "type": "resolves",
+   "confidence": 0.8,
+   "basis": "inferred"
+  },
+  {
+   "source": "ProbP1",
+   "target": "AP4",
+   "type": "resolves",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "DP10",
+   "target": "AP1",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "term"
+  },
+  {
+   "source": "DP7",
+   "target": "AP1",
+   "type": "uses",
+   "confidence": 0.9,
+   "basis": "named"
+  },
+  {
+   "source": "DP6",
+   "target": "AP1",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "AP1",
+   "target": "ClP2",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "inferred"
+  },
+  {
+   "source": "DP13",
+   "target": "AP2",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "inferred"
+  },
+  {
+   "source": "DP12",
+   "target": "AP2",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP6",
+   "target": "AP2",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "AP1",
+   "target": "RP3",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "named"
+  },
+  {
+   "source": "AP2",
+   "target": "RP3",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "inferred"
+  },
+  {
+   "source": "AP2",
+   "target": "ClP3",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "inferred"
+  },
+  {
+   "source": "AP1",
+   "target": "AP3",
+   "type": "uses",
+   "confidence": 0.9,
+   "basis": "named"
+  },
+  {
+   "source": "DP10",
+   "target": "AP3",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP3",
+   "target": "AP3",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "AP3",
+   "target": "RP4",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "inferred"
+  },
+  {
+   "source": "AP3",
+   "target": "ClP4",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "inferred",
+   "backward": true
+  },
+  {
+   "source": "ClP4",
+   "target": "RP5",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "inferred"
+  },
+  {
+   "source": "ClP2",
+   "target": "RP5",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "named"
+  },
+  {
+   "source": "DP4",
+   "target": "DP14",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP14",
+   "target": "ClP5",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "inferred"
+  },
+  {
+   "source": "AP4",
+   "target": "ClP6",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "inferred"
+  },
+  {
+   "source": "DP3",
+   "target": "AP4",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP12",
+   "target": "AP5",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "DP13",
+   "target": "AP5",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "DP6",
+   "target": "AP5",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "AP5",
+   "target": "DP15",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "inferred"
+  },
+  {
+   "source": "DP1",
+   "target": "AP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "AP3",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP2",
+   "target": "DP14",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP5",
+   "target": "AP3",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP6",
+   "target": "OpenP1",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP3",
+   "target": "OpenP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "AP3",
+   "target": "OpenP1",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "inferred"
+  },
+  {
+   "source": "EP1",
+   "target": "AP4",
+   "type": "uses",
+   "confidence": 0.95,
+   "note": "\\ref{eq:uni_y}",
+   "basis": "ref"
+  },
+  {
+   "source": "EP2",
+   "target": "AP4",
+   "type": "uses",
+   "confidence": 0.95,
+   "note": "\\ref{eq:uni_h}",
+   "basis": "ref"
+  }
+ ]
+}
