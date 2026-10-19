@@ -91,9 +91,14 @@ _TAIL = re.compile(r"(?:\\end\{[a-zA-Z*]+\}|\\\]|\$\$?|\\(?:label|tag)\{[^{}]*\}
 _DISPLAY_CLOSER = re.compile(r"(?:\\end\{[a-zA-Z*]+\}|\\\]|\$\$)$")
 
 
+_SPACING_CMD = re.compile(r"\\(?:[vh]space\*?\s*\{[^{}]*\}|(?:small|med|big)skip|noindent|par)(?![a-zA-Z])\s*$")
+
+
 def _sentence_initial_at(text: str, pos: int) -> bool:
     before = text[:pos]
     stripped = before.rstrip()
+    while _SPACING_CMD.search(stripped):      # \vspace*{-3pt}, \medskip, \noindent are layout
+        stripped = _SPACING_CMD.sub("", stripped).rstrip()
     if not stripped:
         return True
     if re.search(r"\n\s*\n\s*$", before):
@@ -103,7 +108,8 @@ def _sentence_initial_at(text: str, pos: int) -> bool:
     # right after a heading: \section{...}, \subsection*{...}, \paragraph{...},
     # possibly followed by its \label{...}
     if re.search(r"\\(?:(?:sub)*section|paragraph|subparagraph|caption)\*?\s*"
-                 r"\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}\s*(?:\\label\{[^{}]*\}\s*)*$", stripped):
+                 r"\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}\s*(?:(?:\\label\{[^{}]*\}|\\[vh]space\*?\s*\{[^{}]*\})\s*)*$",
+                 stripped):
         return True
     # A sentence may end inside a display or inline math: "... bounded.} \\end{equation}",
     # "... x.$". Peel closers, labels, \\nonumber, spacing macros and closing braces,
