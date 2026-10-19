@@ -36,6 +36,9 @@ BUILD = REPO / "src" / "graph_view" / "build.py"
 sys.path[:0] = [str(REPO / "src" / "LLMVersion"), str(REPO / "src"), str(Path(__file__).resolve().parent)]
 from math_paper_parser import parse_to_unified  # noqa: E402
 
+CORRECTIONS_FILE = Path(__file__).resolve().parent / "gold_corrections.json"
+CORRECTIONS = {k: v for k, v in json.loads(CORRECTIONS_FILE.read_text()).items() if not k.startswith("_")} \
+    if CORRECTIONS_FILE.is_file() else {}               # per paper: manual fixes of the parsed diagram (apply_corrections)
 RESULT_KINDS = ("theorem", "lemma", "proposition", "corollary", "claim", "definition",
                 "conjecture", "remark", "example", "assumption", "algorithm", "equation")
 
@@ -49,7 +52,8 @@ def merge_diagrams(graphs: list) -> dict:
     """All parsed diagrams of the paper as one graph: boxes citing the same results are one node.
 
     A paper may draw several diagrams (one per main theorem); the same result can appear
-    in more than one, or twice in one drawing."""
+    in more than one, or twice in one drawing. Boxes with the same set of \\ref labels are one node
+    (in whichever figure they are drawn), their arrows redirected to it; a box without labels is kept as drawn."""
     nodes, edges, key_of = [], [], {}
     for k, g in enumerate(graphs):
         local = {}
@@ -59,13 +63,15 @@ def merge_diagrams(graphs: list) -> dict:
                 continue                                 # a decorative shape (a 'fit' frame)
             labs = tuple(sorted({r["label"] for r in n.get("refs", [])}))
             fig = g.get("fig_no") or ("drawing", k)        # a figure may hold several drawings (one per block)
-            key = (fig, labs or (k, n["id"]))            # a figure is kept as drawn: no merging across figures
+            key = labs or (fig, k, n["id"])              # the same result drawn twice (or in two figures): one node
             if key not in key_of:
                 key_of[key] = f"d{len(nodes)}"
-                nodes.append(dict(n, id=key_of[key], diagram=k, figure=fig))
+                nodes.append(dict(n, id=key_of[key], diagram=k, figure=fig, drawn_in=[k]))
+            elif k not in nodes[int(key_of[key][1:])]["drawn_in"]:
+                nodes[int(key_of[key][1:])]["drawn_in"].append(k)   # also drawn in this diagram
             local[n["id"]] = key_of[key]
         for e in g.get("edges", []):
-            if e["from"] in local and e["to"] in local:
+            if e["from"] in local and e["to"] in local and local[e["from"]] != local[e["to"]]:
                 edges.append(dict(e, **{"from": local[e["from"]], "to": local[e["to"]], "diagram": k}))
     seen, out = set(), []
     for e in edges:
@@ -167,6 +173,7 @@ class _Gold:
         self.nodes, self.node_rows, self.edges, self.edge_rows = [], [], [], []
         self.idmap, self.by_hits, self.uses = {}, {}, []
         self.sectioned = len({d.get("figure") for d in diag.get("nodes", [])}) > 1
+        self.drawn_in = {}                               # gid -> the figures (viewer sections) its box is drawn in
         self.fig_of = {d["id"]: d.get("figure") for d in diag.get("nodes", [])}
         self.linked = {x for e in diag.get("edges", []) for x in (e["from"], e["to"])}
 
@@ -296,24 +303,55 @@ class _Gold:
             typ, stmt, status = "theorem", "Cited: " + (text or ""), "cited"
         else:
             typ, stmt, status = "remark", text or "(empty box)", "unmatched"
+        nonres = not hits and self.not_a_result(dn, r, status)
+        if self.sectioned:
+            self.drawn_in[gid] = {self.fig_title(self.diag["diagrams"][k]) for k in dn.get("drawn_in") or [dn.get("diagram", 0)]}
         self.nodes.append({"id": gid, "type": typ, "name": self.box_name(dn, r["names"], text), "statement": stmt,
-                           "origin": "paper", "tags": ["diagram", status], "maps_to": hits,   # never hidden by the viewer
+                           "origin": "paper", "tags": ["diagram", status] + (["non_result"] if nonres else []),   # never hidden by the viewer
+                           "maps_to": hits,
                            "labels": [x["label"] for x in r["refs"]]}
                           | ({"pos": [*dn["pos"][:2], dn.get("diagram", 0)]} if dn.get("pos") else {})
                           | ({"section": self.fig_title(self.diag["diagrams"][dn.get("diagram", 0)])} if self.sectioned else {}))
         self.node_rows.append({"gid": gid, "box_text": text[:200], "refs": [x["label"] for x in r["refs"]], "printed": r["names"],
                                "maps_to": hits, "our_types": [self.ours[h].get("type") for h in hits],
-                               "status": status, "typed": r["by_typed"], "by_title": r["by_title"], "diagram": dn.get("diagram", 0) + 1})
+                               "status": status, "typed": r["by_typed"], "by_title": r["by_title"], "diagram": dn.get("diagram", 0) + 1}
+                              | ({"non_result": True} if nonres else {}))
+
+    def not_a_result(self, dn, r, status):
+        """A box that is not a result (scored by no preset: tag non_result): a table ("Tables 1 & 2"); a section
+        narrative (a box citing only sections, opening with §, or titled as a section of the paper) that names no
+        result; a box citing a whole paper by key alone ("[ger2] (3.5 & 3.10)"). Only boxes that are none of our
+        results; a box naming a result type (Theorem, Def., Ass.) never."""
+        raw = re.sub(_USES_NOTE, " ", dn.get("text", ""), flags=re.I)
+        words = _plain_words(re.sub(r"\\(?:[cC]ref|ref|eqref|autoref|cite[pt]?)\*?\s*(?:\[[^\]]*\])?\s*\{[^}]*\}|\$[^$]*\$", " ", raw))
+        if re.search(r"(?i)\b(?:thm|theorems?|lem(?:ma)?s?|props?|propositions?|cor(?:ollar(?:y|ies))?|claims?|conj(?:ecture)?s?|"
+                     r"defs?|definitions?|ass|assumptions?|hypothes[ie]s|conditions?|remarks?|examples?|facts?|inequalit(?:y|ies)|"
+                     r"identit(?:y|ies)|formulas?|estimates?|principle|criterion|algorithm)\b", words + " " + strip_tex(raw)):
+            return False
+        if status == "cited":                            # the cited paper's key and numbers only
+            return not re.search(r"[a-z]{3,}", words)
+        if re.match(r"\s*tables?\s*\d", words):
+            return True
+        labs = [x["label"] for x in r["refs"]]
+        if labs and all((self.fx.get("labels", {}).get(l) or {}).get("kind") == "section" or (self.printed(l) or "").startswith("Section")
+                        for l in labs):
+            return True
+        if re.match(r"\s*(?:\\S|§)", strip_tex(raw)) or re.match(r"\s*\\S\b", raw):
+            return True
+        titles = {_plain_words(x.get("title") or "") for x in self.fx.get("sections", [])}
+        return len(words.split()) >= 2 and words.strip() in titles
 
     # ── arrows
     def add_arrows(self):
         diag = self.diag
         # a figure whose labelled dashed arrows say "motivates" draws every motivation that way, labelled or not
         motivating_dashes = {e.get("diagram", 0) for e in diag.get("edges", []) if e.get("dashed") and re.search(_NOT_DEPENDENCY, e.get("label") or "")}
+        seen = set()                                     # boxes merged into one node: each arrow once
         for e in diag.get("edges", []):
             s, t = self.idmap.get(e["from"]), self.idmap.get(e["to"])
-            if not s or not t or s == t:
+            if not s or not t or s == t or (s, t) in seen:
                 continue
+            seen.add((s, t))
             # a double-headed arrow (<=>): equivalent statements; kept once, in the direction it is written
             extra = ({"equivalence": True} if e.get("both") else {}) | ({"label": e["label"]} if e.get("label") else {})   # "Fail: B=0"
             if re.search(_NOT_DEPENDENCY, e.get("label") or "") or e.get("dashed") and e.get("diagram", 0) in motivating_dashes:
@@ -338,7 +376,7 @@ class _Gold:
                 self.node_rows.append({"gid": gid_of[fg, h], "box_text": "(named in another box: uses ...)", "refs": [lab],
                                        "printed": [self.printed(lab) or lab], "maps_to": [h], "our_types": [self.ours[h].get("type")],
                                        "status": "mentioned", "typed": False, "diagram": 0})
-            if gid_of[fg, h] != self.idmap[box]:
+            if gid_of[fg, h] != self.idmap[box] and (gid_of[fg, h], self.idmap[box]) not in {(e["source"], e["target"]) for e in self.edges}:
                 self.edges.append({"source": gid_of[fg, h], "target": self.idmap[box], "type": "uses", "confidence": 1.0})
                 self.edge_rows.append({"source": gid_of[fg, h], "target": self.idmap[box], "directed": True, "stated_in_box": True})
 
@@ -361,12 +399,14 @@ class _Gold:
             return
         status = {r["gid"]: r["status"] for r in self.node_rows}
         share = {}
+        secs = lambda n: self.drawn_in.get(n["id"]) or {n.get("section")}   # a box merged from several figures: in each
         for n in self.nodes:
-            share.setdefault(n.get("section"), []).append(status.get(n["id"]) in ("mapped", "mentioned"))
+            for sec in secs(n):
+                share.setdefault(sec, []).append(status.get(n["id"]) in ("mapped", "mentioned"))
         share = {k: sum(v) / len(v) for k, v in share.items()}
         drop = {k for k, v in share.items() if v < 0.5} if any(v >= 0.5 for v in share.values()) else set()
         if drop:
-            self.drop({n["id"] for n in self.nodes if n.get("section") in drop}, edges_too=True)
+            self.drop({n["id"] for n in self.nodes if secs(n) <= drop}, edges_too=True)
 
     def build(self):
         for dn in self.diag.get("nodes", []):
@@ -375,11 +415,49 @@ class _Gold:
         self.add_stated_uses()
         self.drop_section_frames()
         self.drop_non_result_figures()
+        done = self.apply_corrections()
         gold = {"metadata": {"paper_id": self.pid, "title": self.full.get("metadata", {}).get("title", ""),
                              "extractor": "author diagram (parsed from the figure's LaTeX)",
                              "caption": strip_tex((self.fig or {}).get("caption", ""))[:500]},
                 "nodes": self.nodes, "edges": self.edges}
+        if done:
+            gold["metadata"]["corrections"] = done
         return gold, self.node_rows, self.edge_rows
+
+    def apply_corrections(self):
+        """The paper's manual corrections (CORRECTIONS, checked against the paper): an arrow reversed or dropped,
+        a box tagged non_result. A box is named by its \\ref label set (a list) or by words of its text (a string)."""
+        done = []
+        for c in CORRECTIONS.get(self.pid, []):
+            box = lambda sel: [n["id"] for n in self.nodes if (sorted(n.get("labels") or []) == sorted(sel) if isinstance(sel, list)
+                                                               else sel.lower() in (strip_tex(n.get("statement") or "") + " " + (n.get("name") or "")).lower())]
+            if c["op"] == "non_result":
+                hit = box(c["box"])
+                for n in self.nodes:
+                    if n["id"] in hit and "non_result" not in n["tags"]:
+                        n["tags"].append("non_result")
+                for r in self.node_rows:
+                    if r["gid"] in hit:
+                        r["non_result"] = True
+            else:
+                a, b = box(c["from"]), box(c["to"])
+                hit = [e for e in self.edges if e["source"] in a and e["target"] in b]
+                if c["op"] == "reverse":
+                    have = {(e["source"], e["target"]) for e in self.edges}
+                    for e in hit:
+                        e["source"], e["target"] = e["target"], e["source"]
+                    self.edges = [e for k, e in enumerate(self.edges)            # a reversed arrow drawn both ways: once
+                                  if (e["source"], e["target"]) not in {(x["source"], x["target"]) for x in self.edges[:k]}]
+                    for r in self.edge_rows:
+                        if r["source"] in a and r["target"] in b:
+                            r["source"], r["target"], r["corrected"] = r["target"], r["source"], "reversed"
+                elif c["op"] == "drop":
+                    self.edges = [e for e in self.edges if e not in hit]
+                    self.edge_rows = [r for r in self.edge_rows if not (r["source"] in a and r["target"] in b)]
+            if not hit:
+                print(f"  correction not applied (nothing matched): {self.pid} {c}", file=sys.stderr)
+            done.append({k: v for k, v in c.items() if k != "why"} | {"applied": len(hit)})
+        return done
 
 
 def to_gold(pid: str, full: dict, diag: dict, fig: dict, macros: dict, fx: dict) -> tuple[dict, list, list]:

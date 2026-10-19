@@ -13,6 +13,7 @@ build_gold_review.py; taken from the survey's fetch_eprints.py (stage 7).
     grids               parse_grid (xymatrix, tikz-cd)
     picture             parse_picture (the LaTeX picture environment)
 """
+import math
 import os
 import re
 import sys
@@ -149,6 +150,10 @@ def _wire_edges(pending, nodes, resolve, lmap, macros):
     def key(pt):                                         # node name, or a junction ("j", xy) / ("m", a, b)
         if not isinstance(pt, str) and pt[0] == "c":    # a named \coordinate where lines meet
             return pt
+        if not isinstance(pt, str) and pt[0] == "a":      # a bend at an unknown place: a junction of its path
+            return pt
+        if not isinstance(pt, str) and pt[0] == "rxy":    # a bend reached by a relative step: a junction of its own path
+            return ("a", pt[2], round(pt[1][0], 3), round(pt[1][1], 3))
         if not isinstance(pt, str) and pt[0] == "mid":
             pa, pb = nodes[pt[1]]["_xy"], nodes[pt[2]]["_xy"]
             j = ("j", (round((pa[0] + pb[0]) / 2, 3), round((pa[1] + pb[1]) / 2, 3))) if pa and pb else ("m",) + pt[1:]
@@ -407,7 +412,7 @@ class _Tikz:
             or GLOBAL_ARROW in self.styles
         nd = re.search(r"node distance\s*=\s*([\d.]+)\s*(cm|mm|pt|em|ex|in)?", pic + " " + self.code)
         self.node_dist = _cm(nd.group(1), nd.group(2) or "cm") if nd else 1.0
-        self.nodes, self.anon, self.pending = {}, 0, []
+        self.nodes, self.anon, self.pending, self.bends, self.n_paths = {}, 0, [], 0, 0
         self.braces, self.frames, self.arrow_labels, self.coords = [], {}, {}, {}
         self.shifts = [(0.0, 0.0)]                       # \begin{scope}[xshift=.., yshift=.., shift={(x,y)}]
         self.scope_opts = [""]                           # \begin{scope}[every path/.style=line]: paths styled within
@@ -615,6 +620,36 @@ class _Tikz:
             return ("xy", (_num_xy(c)[0] + off[0], _num_xy(c)[1] + off[1])), False
         return None, False
 
+    @staticmethod
+    def _step(c, scale=1.0):
+        """The (dx, dy) of a relative step ++(dx,dy) / +(dx,dy), also polar (angle:radius); None if not numeric."""
+        m = re.match(r"\s*([-+]?\d*\.?\d+)\s*(cm|pt|mm|bp|em|ex|in)?\s*,\s*([-+]?\d*\.?\d+)\s*(cm|pt|mm|bp|em|ex|in)?\s*$", c)
+        if m:                                            # a length with a unit is in cm, a plain number in picture units
+            return tuple(_cm(m.group(k), m.group(k + 1)) / scale if m.group(k + 1) else float(m.group(k)) for k in (1, 3))
+        m = re.match(r"\s*([-+]?\d*\.?\d+)\s*:\s*([-+]?\d*\.?\d+)\s*(?:cm|pt|mm|bp|em|ex|in)?\s*$", c)
+        if m:
+            a, r = math.radians(float(m.group(1))), float(m.group(2))
+            return (r * math.cos(a), r * math.sin(a))
+        return None
+
+    _ANCHOR = {"north": (0, 1), "south": (0, -1), "east": (1, 0), "west": (-1, 0), "north east": (1, 1),
+               "north west": (-1, 1), "south east": (1, -1), "south west": (-1, -1)}
+
+    def _place(self, pt, c):
+        """Where a point of a path is (picture units), for the relative steps after it; None if unknown.
+        A box's anchor (A.south) is on its outline."""
+        if pt[0] == "xy":
+            return pt[1]
+        if pt[0] == "mid":
+            pa, pb = (self.nodes[x].get("_xy") for x in pt[1:])
+            return ((pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2) if pa and pb else None
+        if pt[0] != "n" or not self.nodes.get(pt[1], {}).get("_xy"):
+            return None
+        (x, y), ext = self.nodes[pt[1]]["_xy"], self.nodes[pt[1]].get("_ext") or (0, 0)
+        a = re.search(r"\.\s*(north east|north west|south east|south west|north|south|east|west)\s*$", c)
+        dx, dy = self._ANCHOR[a.group(1)] if a else (0, 0)
+        return (x + dx * ext[0], y + dy * ext[1])
+
     def _path_pairs(self, s0, arrow):
         """The (from, to[, edge kind]) pairs a path draws. A chain a -- b -- c of plain lines is wired piece by
         piece; an arrow's chain goes from its first to its last point (bends and text nodes inside are not stops)."""
@@ -623,8 +658,14 @@ class _Tikz:
         body = re.sub(r"\bcoordinate\s*(\[[^\]]*\])?\s*\([^()]*\)", " ", body)    # a named point on the path
         body = re.sub(r"\bedge\s*\[((?:[^\[\]]|\[[^\]]*\])*)\]", self._edge_kind, body)
         body = re.sub(r"\[[^\]]*\]", " ", body)
-        toks = re.finditer(r"\bedge[ARBP]?\b|--|-\||\|-|\bto\b|\band\b|\.\.(?:\s*controls)?|\(\s*([^()]*?(?:\([^()]*\)[^()]*?)*)\s*\)", body)
+        toks = list(re.finditer(r"\bedge[ARBP]?\b|--|-\||\|-|\bto\b|\band\b|\.\.(?:\s*controls)?|(\+\+?)?\s*\(\s*([^()]*?(?:\([^()]*\)[^()]*?)*)\s*\)", body))
         cur = None; op = None; pairs = []; chain = []; into_step = False; ctrl = False; ekind = None
+        self.n_paths += 1
+        pos = None                                       # the current point (picture units), for ++(dx,dy) / +(dx,dy)
+        base = None                                      # the point +(..) is relative to (++ moves it, + does not)
+        rel_end = False                                  # the chain ends at a relative point (no box of its own)
+
+        ends = lambda p: ("xy", p[1]) if p[0] == "rxy" else p    # a path's end may be at a box
 
         def flush():
             nonlocal chain
@@ -632,9 +673,10 @@ class _Tikz:
             chain = chain[:1] + [p for p in chain[1:-1] if not (arrow and p[0] == "n" and self.nodes[p[1]].get("_label"))] + chain[-1:] \
                 if len(chain) > 2 else chain
             if len(chain) >= 2:
+                chain = [ends(chain[0])] + chain[1:-1] + [ends(chain[-1])]
                 if not arrow or all(p[0] == "n" for p in chain):     # plain lines: every piece is a wire
                     pairs.extend(zip(chain, chain[1:]))
-                else:
+                elif "a" not in (chain[0][0], chain[-1][0]):    # an arrow whose end could not be placed: none
                     pairs.append((chain[0], chain[-1]))
         for t in toks:
             tok = t.group(0)
@@ -649,24 +691,54 @@ class _Tikz:
                 op = op or "line"; continue
             if tok in ("--", "to", "-|", "|-"):
                 op = op or "line"; continue
-            if ctrl and t.group(1) is not None:
+            if ctrl and t.group(2) is not None:
                 continue
-            pt, into = self._point((t.group(1) or "").strip(), off)
+            c = (t.group(2) or "").strip()
+            if t.group(1) and _anchorless(c) not in self.nodes:
+                # ++(dx,dy) / +(dx,dy): a step from the current point. Its own place is computed when the current
+                # point's is known; a move by a step from a box ("(A) ++(0.5,-0.5) |- ...") starts the path at that box
+                d = self._step(c, self.scale)
+                if d is None:
+                    op = None; continue
+                start = base if t.group(1) == "+" else pos
+                npos = (start[0] + d[0], start[1] + d[1]) if start else None
+                pt = ("rxy", npos, self.n_paths) if npos else None    # a bend of this path: a box only at its ends
+                if t.group(1) == "++":
+                    pos = base = npos
+                if op in ("line", "edge") and cur is not None:
+                    if pt is None:                       # an unknown place: a bend of this path only
+                        self.bends += 1; pt = ("a", self.bends)
+                    if op == "edge":
+                        pairs += [(ends(cur), ends(pt), ekind)] if "a" not in (cur[0], pt[0]) else []
+                    else:
+                        chain.append(pt); cur = pt; rel_end = True
+                elif cur is not None and cur[0] == "n" and (not chain or chain[-1] == cur):
+                    flush(); chain = [cur]; rel_end = False  # a move off a box: the path starts at the box
+                else:
+                    flush(); chain = [pt] if pt else []; cur = pt; rel_end = False
+                op = None; continue
+            pt, into = self._point(c, off)
             if pt == "skip":
                 continue
             if pt is None:
                 op = None; continue
             into_step = into_step or into
+            pos = base = self._place(pt, c)
             if op == "edge" and cur is not None:
-                pairs.append((cur, pt, ekind))
+                pairs += [(ends(cur), pt, ekind)] if cur[0] != "a" else []
             elif op == "line" and cur is not None:
-                chain.append(pt); cur = pt
+                chain.append(pt); cur = pt; rel_end = False
+            elif arrow and rel_end and pt[0] == "n" and t is toks[-1]:
+                # "... -- ++(0,0.8) (B)": the path drawn by steps ends with its target box named alone
+                if chain and chain[-1][0] != "n":
+                    chain[-1:] = []
+                chain.append(pt); cur = pt; rel_end = False
             else:
-                flush(); chain = [pt]; cur = pt
+                flush(); chain = [pt]; cur = pt; rel_end = False
             op = None
         flush()
-        if into_step and not arrow and chain:            # a plain line into an arrow's step: towards it
-            pairs = [(chain[0], chain[-1])] if not pairs else [(pairs[0][0], pairs[-1][1])]
+        if into_step and not arrow and chain and "a" not in (chain[0][0], chain[-1][0]):     # a plain line into an arrow's step: towards it
+            pairs = [(ends(chain[0]), ends(chain[-1]))] if not pairs else [(pairs[0][0], pairs[-1][1])]
         return pairs, into_step
 
     # ── arrow ends: coordinates, braces, frames, then loose points to the boxes they reach

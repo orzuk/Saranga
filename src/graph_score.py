@@ -20,7 +20,7 @@ Options
   precision_scope  all: every prediction counts; gold: only predictions between matched
                    reference nodes (the rest cannot be judged), and a predicted dependency that
                    the reference implies through a path is not an error
-  skip_tags        reference nodes not scored (section boxes of an author's diagram)
+  skip_tags        reference nodes not scored (section boxes and non-result boxes of an author's diagram)
   edge_mode        structure: dependencies between the results each side names (a result one side names
                    and the other keeps inside a proof changes the edges); invariant: only the results both
                    sides name, connected through anything in between, reduced to their transitive reduction,
@@ -46,10 +46,10 @@ import node_similarity as ns                                # noqa: E402
 PRESETS = {
     "distill": dict(node_metric="m1g", match="text", edges=False),
     "author": dict(node_metric="m1g", match="label", edges=True, edge_recall="path",
-                   precision_scope="gold", skip_tags=("section",)),
+                   precision_scope="gold", skip_tags=("section", "non_result")),
     "blueprint": dict(node_metric="m1g", match="label", edges=True, edge_recall="direct",
                       precision_scope="all", pred_types="gold"),                         # gold: \\uses and the results the text names
-    "author_inv": dict(node_metric="m1g", match="label", edges=True, edge_mode="invariant", skip_tags=("section",),
+    "author_inv": dict(node_metric="m1g", match="label", edges=True, edge_mode="invariant", skip_tags=("section", "non_result"),
                        precision_scope="gold"),
     "blueprint_inv": dict(node_metric="m1g", match="label", edges=True, edge_mode="invariant", pred_types="gold"),
     "blueprint_uses": dict(node_metric="m1g", match="label", edges=True, edge_recall="direct",
