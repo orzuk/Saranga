@@ -1464,7 +1464,6 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
         nodes = [n for n in nodes if n.get("type") not in hidden_types]
         edges = [e for e in edges
                  if e["source"] not in hidden_ids and e["target"] not in hidden_ids]
-<<<<<<< Updated upstream
     if HIDE_LOW_CONF:
         edges = [e for e in edges if float(e.get("confidence", 1.0) or 1.0) >= LOW_CONF_THRESHOLD]
     # Keep cycle-causing edges OUT of the layout but IN the data. draw_dag
@@ -1487,14 +1486,6 @@ def draw_dag(nodes_raw, edges_raw, out_path, figsize=None, metadata=None,
               "(%d marked backward, %d to break cycles); drawn dash-dotted"
               % (len(_cycle_edges), len(_backward),
                  len(_cycle_edges) - len(_backward)))
-=======
-        # Drop edges that reference IDs not declared as nodes (e.g. foundation
-        # entries used as edge endpoints but never emitted as ghost nodes —
-        # this causes "arrows to invisible nodes" in the SVG).
-        valid_ids = {n["id"] for n in nodes}
-        edges = [e for e in edges
-                 if e["source"] in valid_ids and e["target"] in valid_ids]
->>>>>>> Stashed changes
     depth = compute_dag_depth(nodes, edges)
 
     # Group by depth level
