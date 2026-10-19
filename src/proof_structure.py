@@ -134,10 +134,10 @@ _HEAD_MATH = (r"(?!\s*(?:Let|Suppose|Assume|If|We|Then|There|For|Every|Any|Since
               r"(?=[^{}]{0,40}\$)(?:[^{}$]|\$[^$]{1,60}\$){2,60}?")
 _WRAP = r"(?:\{\s*)?(?:\\(?:textbf|emph|textit|textsc|texttt|textsf|textsl|textup|underline|bf|it|em|tt|sc)\s*\{?\s*)?"
 _LABEL_PATTERNS = {
-    "step":   _WRAP + r"(?<![\w:])Step\s*~?\(?\s*\d+[a-z]?\s*\)?\s*\}?\s*[.:)]",
-    "case":   _WRAP + r"(?<![\w:])Case\s*~?\(?\s*(?:\d+|[ivx]+|[a-dA-D])\s*\)?\s*\}?\s*[.:)]",
+    "step":   _WRAP + r"(?<![\w:])(?<!cf\. )(?<!cf\.~)(?<!see )(?<!in )(?<!of )Step\s*~?\(?\s*\d+[a-z]?\s*\)?\s*\}?\s*[.:)]",
+    "case":   _WRAP + r"(?<![\w:])(?<!cf\. )(?<!cf\.~)(?<!see )(?<!in )(?<!of )Case\s*~?\(?\s*(?:\d+|[ivx]+|[a-dA-D])\s*\)?\s*\}?\s*[.:)]",
     "case_math": _WRAP + r"Case\s*~?\$[^$]{1,40}\$\s*(?:[.:]\s*\}|\}\s*[.:]?|[.:])",
-    "part":   _WRAP + r"(?<![\w:])Part\s*~?\(?\s*(?:\d+|[ivx]+|[a-d])\s*\)?\s*\}?\s*[.:)]",
+    "part":   _WRAP + r"(?<![\w:])(?<!cf\. )(?<!cf\.~)(?<!see )(?<!in )(?<!of )Part\s*~?\(?\s*(?:\d+|[ivx]+|[a-d])\s*\)?\s*\}?\s*[.:)]",
     "induct": _WRAP + r"(?:Base case|Basis(?: step)?|Induction step|Inductive step)\s*\}?\s*[.:]",
     "heading": r"\\(?:textbf|emph|textit|texttt|textsf|textsl|underline)\s*\{[^{}$]{2,60}?[.:]?\s*\}\s*[.:]?",
     "heading_switch": r"\{\s*\\(?:it|bf|em|sc|sl)\b\s*[A-Z][^{}$]{1,58}?[.:]?\s*\}\s*[.:]?",
