@@ -613,6 +613,14 @@ def check_introduced_symbols(graph: dict, source: str, spans: dict, facts: dict,
     proofs = [(f["start"], f["end"]) for f in facts["facts"] if f["kind"] == "proof"]
     proofs += [spans[n["id"]] for n in graph["nodes"] if n.get("type") == "proof" and n["id"] in spans]
     covered = list(spans.values())
+    norm, idx = _norm_map(source)         # a restated copy (`also_stated_at`) is covered by its node
+    for n in graph["nodes"]:
+        for copy in n.get("also_stated_at") or []:
+            k = _key(copy) if isinstance(copy, str) else ""
+            i = norm.find(k) if len(k) > 10 else -1
+            while i >= 0:
+                covered.append((idx[i], idx[i + len(k) - 1] + 1))
+                i = norm.find(k, i + 1)
     seen = set()
     for d in graph["nodes"]:                  # one introduced symbol per definition node
         if d.get("type") != "definition" or d["id"] in env_nodes:
