@@ -177,8 +177,8 @@ def check_prose_boundaries(graph: dict, source: str, env_nodes: set, report: dic
             (report["errors"] if lower else report["warnings"]).append(
                 f"{n['id']}: prose node starts mid-sentence")
         if not _sentence_end(source, end):
-            nxt = source[end:end + 3].lstrip()[:1]
-            (report["errors"] if nxt.islower() or nxt in ",;" else report["warnings"]).append(
+            nxt = source[end:end + 40].lstrip()[:1]
+            (report["errors"] if nxt and (nxt.islower() or nxt in ",;") else report["warnings"]).append(
                 f"{n['id']}: prose node ends mid-sentence")
         crossed = [h for h in headings or () if start < h[0] < end]
         if crossed and not (n.get("type") == "proof" and _covers_subsections(start, crossed, headings)):
