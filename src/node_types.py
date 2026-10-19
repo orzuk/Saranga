@@ -1,5 +1,5 @@
 """
-Canonical node type definitions for the Authomathics knowledge graph.
+Canonical node type definitions for the Saranga knowledge graph.
 
 Single source of truth. All pipeline modules import from here.
 See src/annotation_schema.md for the full specification.
@@ -41,7 +41,7 @@ PROOF_STEP = "proof_step"
 # Algorithm decomposition (Level 2 — optional fine-grained resolution):
 #   algorithm_step — one numbered line of pseudocode within an algorithm
 #   node. Linked back to its parent ALGORITHM via `parent_algorithm`
-#   (or generic `parent_id`). Emitted only at fine-grained granularity.
+#   (or generic `parent_id`).
 ALGORITHM_STEP = "algorithm_step"
 
 # Pedagogical
@@ -116,7 +116,7 @@ def normalize_origin(raw_origin: str | None) -> str:
 
 # ── Rigor field ──────────────────────────────────────────────────────────
 # Every node has an optional "rigor" field indicating how rigorous the
-# justification is. Orthogonal to "type" (which reflects the author's label).
+# justification is. Orthogonal to "type" (which follows the content; the author's word is `display`).
 # A math "Claim 1" with proof = rigor:formal. A physics heuristic = rigor:heuristic.
 
 RIGOR_LEVELS = {
@@ -124,7 +124,7 @@ RIGOR_LEVELS = {
     "semi_formal",  # precise statement, proof sketch or "standard arguments" (math stats)
     "heuristic",    # result believed true, justified by physical/intuitive argument (physics)
     "numerical",    # supported by simulation/computation, no analytical proof (applied ML, bio)
-    "conjectural",  # stated without justification
+    "conjectural",  # presented as expected but unproven ("we believe")
 }
 
 # Rigor classification of arXiv categories and book topics
@@ -176,6 +176,7 @@ OPTIONAL_NODE_FIELDS = (
     "origin_citation",   # required when origin == "external"
     "parent_id",         # any node: the innermost node whose text contains it (see HIERARCHY)
     "step_order",        # Level-2 steps: 1-based within the immediate parent
+    "source_line_label", # algorithm steps: the line number LaTeX prints (finishing step)
     "subclass",          # finer categorisation; see SUBCLASS_VALUES
     "proves",            # relational pointer
     "rigor",             # see RIGOR_LEVELS; absent means "formal"
@@ -293,7 +294,7 @@ SUBCLASS_VALUES = {
 # Universal optional field on EVERY node:
 #   confidence: float | null  — extraction confidence 0-1. Captures how much
 #     judgment the node required, NOT how rigorous the mathematics is (that is
-#     `rigor`). 1.0 = lifted from an explicit LaTeX environment; ~0.6-0.75 =
+#     `rigor`). 1.0 = lifted from an explicit LaTeX environment; ~0.6-0.8 =
 #     promoted from prose, where type and span boundaries are a judgment call.
 #     Lets consumers filter speculative promotions (e.g. for a fair
 #     rules-vs-silver comparison) instead of guessing.
@@ -328,11 +329,11 @@ OPEN_PROBLEM_EXTRA_FIELDS = {"first_posed", "prize"}
 
 # Proof:
 #   proves:              str          — ID of the theorem this proves
-#   proof_strategy:      str | null   — alias for subclass (backward compat)
+#   proof_strategy:      list         — see PROOF_STRATEGY_VALUES
 PROOF_EXTRA_FIELDS = {"proves", "proof_strategy"}
 
-# `proof_strategy`: a LIST, controlled vocabulary (the v6 extraction prompt, Hard
-# rule 11). Distinct from the proof `subclass` values above; v6 fills
+# `proof_strategy`: a LIST, controlled vocabulary (the extraction prompt, Hard
+# rule 8). Distinct from the proof `subclass` values above; v6 fills
 # `proof_strategy`, and `subclass` only on proof and algorithm steps.
 PROOF_STRATEGY_VALUES = {
     "induction", "strong_induction", "contradiction", "minimal_counterexample",
@@ -412,9 +413,7 @@ TAGS_VOCABULARY = {
     PROPOSITION:  list(_THEOREM_LIKE_TAGS),
     COROLLARY:    list(_THEOREM_LIKE_TAGS),
     CLAIM:        list(_THEOREM_LIKE_TAGS),
-    PROOF:        ["induction", "contradiction", "direct", "contrapositive",
-                   "probabilistic", "combinatorial", "analytic", "geometric",
-                   "case_analysis", "construction",
+    PROOF:        ["combinatorial", "analytic",       # strategies are proof_strategy (Hard rule 8)
                    "gronwall", "proof_sketch", "embedding",
                    "chain_of_inequalities", "polynomial_bound", "hermite",
                    "data_processing", "markov_chain", "kernel"],
@@ -502,7 +501,7 @@ def is_known_tag(node_type: str, tag: str) -> bool:
 # A theorem-like statement that contains one of these conditional markers
 # is expected to populate the `assumptions` field. Statements without any
 # marker are treated as bare facts (single inequality, identity, etc.) and
-# are allowed to leave `assumptions` empty (Regimes B2 / C in the schema doc).
+# are allowed to leave `assumptions` empty (Regime C in the prompt).
 
 ANTECEDENT_MARKERS = (
     "if ", "let ", "suppose ", "assume ", "given ", "provided ",
@@ -531,14 +530,13 @@ PROVABLE = {THEOREM, LEMMA, PROPOSITION, COROLLARY, CLAIM}
 # Pedagogical: nodes primarily for teaching
 PEDAGOGICAL = {EXAMPLE, EXERCISE}
 
-# Proof / algorithm decomposition nodes (Level 2 — emitted only at fine-grained granularity)
+# Proof / algorithm decomposition nodes (Level 2)
 PROOF_DECOMPOSITION = {PROOF_STEP}
 ALGORITHM_DECOMPOSITION = {ALGORITHM_STEP}
 
 # ── Level 1 / Level 2 split ─────────────────────────────────────────────
 # Level 1: top-level paper-content nodes. Default extraction granularity.
-# Level 2: sub-block nodes (proof_step, algorithm_step). Emitted only at
-#          fine-grained granularity (`with_proof_steps` / `with_algo_steps`).
+# Level 2: sub-block nodes (proof_step, algorithm_step).
 # Each Level 2 node MUST reference its Level 1 parent via `parent_id`
 # (or the legacy type-specific field `parent_proof` / `parent_algorithm`).
 #

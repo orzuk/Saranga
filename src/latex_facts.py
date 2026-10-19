@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """LaTeX facts: what a paper's source states by syntax alone, before any judgment.
 
-The v6 extractor has two layers. This is the first: a parser that knows LaTeX
+The extractor (v6, v7) has two layers. This is the first: a parser that knows LaTeX
 syntax and nothing else. It reads the commands any LaTeX user would recognise
 (\\newtheorem, \\begin{...}/\\end{...}, \\label, \\ref, \\cite, \\section, \\appendix)
 and reports what they say: which environments exist, where their bodies start
@@ -15,9 +15,9 @@ Deliberately independent of the rule-based extractor and of distillation: it
 imports nothing from LLMVersion/ or extractors/, and makes no judgment beyond
 mapping an author-declared environment name ("Lemma") to its node type.
 
-Offsets refer to the CLEANED source (`facts["source"]`), produced by
-`clean_source`: comments and TeX-disabled regions removed, nothing else
-changed. A node's `statement` is `span_text(source, start, end)`, which applies
+Offsets refer to the PREPARED source (`facts["source"]`), produced by
+`prepare_source`: comments and TeX-disabled regions removed, \\input files inlined,
+the paper's argument-free macros expanded. A node's `statement` is `span_text(source, start, end)`, which applies
 the extraction spec's remaining mechanical cleanup (drop \\label/\\index,
 collapse whitespace).
 
@@ -36,6 +36,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from proof_structure import detect as detect_proof_structure   # noqa: E402
 from latex_macros import strip_comments, group as _group        # noqa: E402
+from latex_macros import LABEL_OR_INDEX as _LABEL_OR_INDEX, REF_CMDS as _REF_CMDS   # noqa: E402
 
 # ── Mechanical cleanup (the extraction spec's permitted edits) ──────────────
 
@@ -176,7 +177,7 @@ def find_main_tex(d, files=None):
     return max(files or (p for p in d.rglob("*.tex") if p.is_file()), key=key, default=None)
 
 
-_REF_CMDS = r"ref|eqref|cref|Cref|autoref|pageref|vref|thmref|nameref|Autoref|cpageref"
+_REF = re.compile(r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}")
 _LIST_ENVS = {"enumerate", "compactenum", "inparaenum", "itemize", "compactitem", "description",
               "asparaenum", "enumerate*"}
 _REF_WITH_ARG = re.compile(r"\\(?:" + _REF_CMDS + r")\*?\s*\{[^{}]*#\d[^{}]*\}")
@@ -276,7 +277,9 @@ def prepare_source(tex: str) -> str:
 _KEY_BREAK = re.compile(r"(\\[A-Za-z]*(?:ref|label)\*?\s*\{)([^{}]*\n[^{}]*)\}")
 
 
-_LABEL_OR_INDEX = re.compile(r"\\(?:label|index)\s*\{[^{}]*\}")
+
+
+_AFTER_NEWLINE = re.compile(r"\*?\s*(?:\[[^\]]*\])?")   # the * and [length] of a \\ line break
 
 
 def span_text(source: str, start: int, end: int) -> str:
@@ -285,22 +288,6 @@ def span_text(source: str, start: int, end: int) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
-# ── Brace helpers ───────────────────────────────────────────────────────────
-
-    depth, k = 0, j
-    while k < len(s):
-        c = s[k]
-        if c == "\\":
-            k += 2
-            continue
-        if c == open_:
-            depth += 1
-        elif c == close:
-            depth -= 1
-            if depth == 0:
-                return s[j + 1:k], k + 1
-        k += 1
-    return None, i
 
 
 # ── Environment names → node types (the author's own word, not a judgment) ──
@@ -584,7 +571,7 @@ def label_ref_aliases(source: str) -> tuple[dict, dict]:
 # ── Main pass ───────────────────────────────────────────────────────────────
 
 _SEC_LEVEL = {"part": -1, "chapter": 0, "section": 1, "subsection": 2, "subsubsection": 3}
-_MULTILINE_EQ = {"align", "gather", "eqnarray", "flalign", "alignat", "numcases", "subnumcases"}
+_MULTILINE_EQ = _EQUATION_ENVS - {"equation", "multline"}
 _ALG_LINE_CMD = (r"STATE|State|IF|If|ELSIF|ElsIf|ELSE|Else|ENDIF|EndIf|FOR|For|FORALL|ForAll|"
                  r"ENDFOR|EndFor|WHILE|While|ENDWHILE|EndWhile|REPEAT|Repeat|UNTIL|Until|"
                  r"LOOP|Loop|ENDLOOP|EndLoop|RETURN|Function|Procedure")
@@ -601,7 +588,6 @@ def _token_regex(aliases: set[str]) -> re.Pattern:
         r"|\\label\s*\{(?P<label>[^}]*)\}"
         r"|\\(?P<refcmd>" + _REF_CMDS + r")\*?\s*\{(?P<ref>[^}]*)\}"
         r"|\\(?P<citecmd>cite[a-zA-Z]*)\*?\s*(?:\[[^\]]*\]\s*){0,2}\{(?P<cite>[^}]*)\}"
-        r"|\\numberwithin\s*\{(?P<nw_ctr>[^}]*)\}\s*\{(?P<nw_in>[^}]*)\}"
         r"|\\(?P<item>item)(?![a-zA-Z])"
         r"|\\(?P<caption>caption)(?![a-zA-Z])"
         r"|\\(?P<nonumber>nonumber|notag)(?![a-zA-Z])"
@@ -659,6 +645,8 @@ def counter_formats(source: str, counters: set[str]) -> tuple[dict, dict, set]:
             m = (re.match(r"\\thesection", rest) or re.match(r"\\arabic\s*\{section\}", rest))
             if m:
                 parts.append(("sec",))
+            elif (m := re.match(r"\\thechapter|\\arabic\s*\{chapter\}", rest)):
+                parts.append(("chap",))
             elif (m := re.match(r"\\(arabic|Alph|alph|Roman|roman)\s*\{" + re.escape(ctr) + r"\}", rest)):
                 parts.append(("ctr", m.group(1)))
             elif (m := re.match(r"[0-9A-Za-z.\-]+", rest)):
@@ -677,8 +665,8 @@ def counter_formats(source: str, counters: set[str]) -> tuple[dict, dict, set]:
         resets[ctr] = within
         star = m.group(0).startswith("\\counterwithin*") or m.group(0).startswith("\\@addtoreset")
         if m.group(5) or (m.group(3) and not star):
-            formats.setdefault(ctr, [("sec",), ("lit", "."), ("ctr", "arabic")]) \
-                if within == "section" else unknown.add(ctr)
+            formats.setdefault(ctr, [({"section": "sec", "chapter": "chap"}[within],), ("lit", "."),
+                                     ("ctr", "arabic")]) if within in ("section", "chapter") else unknown.add(ctr)
     for m in re.finditer(r"\\(?:setcounter|addtocounter|stepcounter|refstepcounter)\s*\{([^}]*)\}",
                          source):
         if m.group(1).strip() in counters:
@@ -746,12 +734,18 @@ def extract_facts(tex: str) -> dict:
     refs: list[dict] = []
     cites: list[dict] = []
 
-    sec_ctr = {1: 0, 2: 0, 3: 0}
+    sec_ctr = {0: 0, 1: 0, 2: 0, 3: 0}
     in_appendix = False
+    # a book or report: chapters are numbered, sections are chapter.section, and the
+    # class numbers equations within chapters
+    chaptered = re.search(r"\\chapter\*?\s*[\[{]", source[body_start:]) is not None
     thm_ctr: dict[str, int] = {}
     thm_counters = {d["counter"] for d in decl.values() if d["counter"]}
     formats, resets, unknown = counter_formats(     # before expansion, which consumes \renewcommand{\theX}
         clean_source(tex), thm_counters | {"equation", "section", "subsection", "subsubsection"})
+    if chaptered and "equation" not in formats and "equation" not in unknown:
+        formats["equation"] = [("chap",), ("lit", "."), ("ctr", "arabic")]
+        resets.setdefault("equation", "chapter")
     for env, d in decl.items():          # a theorem counter's reset/format, from its declaration
         c = d["counter"]
         if c and d["within"] and c not in resets:
@@ -773,22 +767,23 @@ def extract_facts(tex: str) -> dict:
     line_nonumber = False
 
     def sec_number(level: int) -> str:
-        top = _alph(sec_ctr[1]) if in_appendix else str(sec_ctr[1])
-        return ".".join([top] + [str(sec_ctr[k]) for k in range(2, level + 1)])
+        # the appendix letters the top level (its sections, when no \chapter follows it)
+        first = 0 if chaptered and not (in_appendix and sec_ctr[0] == 0) else 1
+        top = _alph(sec_ctr[first]) if in_appendix else str(sec_ctr[first])
+        return ".".join([top] + [str(sec_ctr[k]) for k in range(first + 1, level + 1)])
 
     def render(ctr: str, n: int, default_within: str | None) -> str | None:
         if ctr in unknown:
             return None
         parts = formats.get(ctr)
         if parts is None:
-            if default_within in ("section", "subsection", "subsubsection"):
-                lv = {"section": 1, "subsection": 2, "subsubsection": 3}[default_within]
-                return f"{sec_number(lv)}.{n}"
+            if default_within in _SEC_LEVEL and _SEC_LEVEL[default_within] >= 0:
+                return f"{sec_number(_SEC_LEVEL[default_within])}.{n}"
             return str(n) if default_within is None else None
         out = ""
         for p in parts:
-            out += (sec_number(1) if p[0] == "sec" else p[1] if p[0] == "lit"
-                    else _STYLE[p[1]](n))
+            out += (sec_number(1) if p[0] == "sec" else sec_number(0) if p[0] == "chap"
+                    else p[1] if p[0] == "lit" else _STYLE[p[1]](n))
         return out
 
     def eq_number() -> str | None:
@@ -844,9 +839,7 @@ def extract_facts(tex: str) -> dict:
             f["labels"].append(key)
             return
         top = stack[-1] if stack else None
-        if top and top["kind"] == "equation" and (
-                top["env"].rstrip("*") not in _MULTILINE_EQ
-                or (open_envs and open_envs[-1] == top["env"])):
+        if top and top["kind"] == "equation":
             line_labels.append(key)
         elif target is not None:
             add_label(key, target["kind"], target["id"], target["number"])
@@ -855,13 +848,11 @@ def extract_facts(tex: str) -> dict:
         if pos is not None and key in labels:
             labels[key].setdefault("offset", pos)
 
-    def handle_ref(keys: str, cmd: str, pos: int):
-        for key in [keys]:                    # split after the walk, once every label is known
-            r = {"cmd": cmd, "key": key.strip(), "offset": pos,
-                 "in": stack[-1]["id"] if stack else None}
-            refs.append(r)
-            for f in stack:
-                f["refs"].append(r["key"])
+    def handle_ref(key: str, cmd: str, pos: int):   # "a,b" is split after the walk
+        r = {"cmd": cmd, "key": key.strip(), "offset": pos, "in": stack[-1]["id"] if stack else None}
+        refs.append(r)
+        for f in stack:
+            f["refs"].append(r["key"])
 
     def heading(level: int, starred: bool, k: int, pos: int):
         """A sectioning command at `pos`; its [short] and {title} arguments start at `k`."""
@@ -873,11 +864,11 @@ def extract_facts(tex: str) -> dict:
         if title is None or "#" in title:              # no title, or a macro's body
             return
         number = None
-        if not starred and level >= 1:
+        if not starred and level >= (0 if chaptered else 1):
             sec_ctr[level] += 1
             for lv in range(level + 1, 4):
                 sec_ctr[lv] = 0
-            names = {1: "section", 2: "subsection", 3: "subsubsection"}
+            names = {0: "chapter", 1: "section", 2: "subsection", 3: "subsubsection"}
             reset_by = {names[lv] for lv in range(level, 4)}
             for c, within in resets.items():
                 if within in reset_by:
@@ -885,8 +876,8 @@ def extract_facts(tex: str) -> dict:
                         eq_ctr = 0
                     else:
                         thm_ctr[c] = 0
-            number = None if names[level] in unknown or "section" in unknown \
-                else sec_number(level)
+            top = "chapter" if chaptered else "section"
+            number = None if names[level] in unknown or top in unknown else sec_number(level)
         sec = {"id": f"S{len(sections) + 1}", "level": level,
                "title": re.sub(r"\s+", " ", _LABEL_OR_INDEX.sub("", title)).strip(),
                "number": number, "start": pos, "labels": []}
@@ -899,7 +890,7 @@ def extract_facts(tex: str) -> dict:
             open_spans.append((pos, after))
             group_targets.append(target)
             in_appendix = True
-            sec_ctr.update({1: 0, 2: 0, 3: 0})
+            sec_ctr.update({0: 0, 1: 0, 2: 0, 3: 0} if chaptered else {1: 0, 2: 0, 3: 0})
             continue
         if ev == "begin":
             open_envs.append(env)
@@ -967,7 +958,7 @@ def extract_facts(tex: str) -> dict:
             if kind == "theorem_env":
                 target = {"kind": "env", "id": fact["id"], "number": number}
             elif kind == "algorithm" and env != "algorithmic":
-                target = {"kind": "env", "id": fact["id"], "number": None}
+                target = {"kind": "env", "id": fact["id"], "number": number}
             elif kind == "equation":
                 # Numbered when the line ends, not when it opens: a \\nonumber
                 # anywhere in it suppresses the number.
@@ -1009,7 +1000,7 @@ def extract_facts(tex: str) -> dict:
                 heading(_SEC_LEVEL[g.group("sec")], bool(g.group("sstar")), g.end(), pos)
             elif g.group("appendix"):
                 in_appendix = True
-                sec_ctr.update({1: 0, 2: 0, 3: 0})
+                sec_ctr.update({0: 0, 1: 0, 2: 0, 3: 0} if chaptered else {1: 0, 2: 0, 3: 0})
             elif g.group("label") is not None:
                 handle_label(g.group("label").strip(), g.start())
             elif g.group("newline"):
@@ -1018,7 +1009,7 @@ def extract_facts(tex: str) -> dict:
                         and open_envs and open_envs[-1] == top["env"] \
                         and _brace_depth(source, top["start"], pos) == 0:
                     close_eq_line(top, pos)
-                    top["_line_start"] = g.end()
+                    top["_line_start"] = _AFTER_NEWLINE.match(source, g.end()).end()
             elif g.groupdict().get("nonumber"):
                 line_nonumber = True
             elif g.group("item"):
@@ -1039,11 +1030,8 @@ def extract_facts(tex: str) -> dict:
                               "in": stack[-1]["id"] if stack else None})
                 for f in stack:
                     f["cites"].extend(keys)
-            elif g.group("nw_ctr") is not None:
-                pass                      # \numberwithin is read up front by counter_formats
 
     for f in facts:                       # unclosed environments end at document end
-        f.pop("_line_start", None)
         if f["end"] is None:
             f["end"] = f["outer_end"] = len(source)
         f["statement"] = span_text(source, f["start"], f["end"])
@@ -1054,11 +1042,10 @@ def extract_facts(tex: str) -> dict:
     refs[:] = [dict(r, key=k) for r in refs for k in split[r["key"]]]
     for f in facts:
         f["refs"] = [k for key in f["refs"] for k in split.get(key, [key])]
+    _manual_facts(source, body_start, facts, sections, refs, cites, labels)
     for r in refs:
         t = labels.get(r["key"])
         r["target"] = (t["id"] or t["enclosing"]) if t else None
-
-    _manual_facts(source, body_start, facts, sections, refs, cites)
     _associate_proofs(facts, labels, source)
     _type_by_evidence(facts, source)
     _mark_duplicates(facts, labels)
@@ -1127,9 +1114,8 @@ def extract_facts(tex: str) -> dict:
         f["section"] = sections[k]["id"] if k is not None and k >= 0 else None
     # section titles: \ref{key} rendered as the number it prints (rule 12: no raw refs)
     for sec in sections:
-        sec["title"] = re.sub(r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}",
-                              lambda m: (labels.get(m.group(1).strip()) or {}).get("number")
-                              or m.group(1).strip(), sec["title"])
+        sec["title"] = _REF.sub(lambda m: (labels.get(m.group(1).strip()) or {}).get("number")
+                                or m.group(1).strip(), sec["title"])
     return {"source": source, "declarations": decl,
             "aliases": {"begin": a_begin, "end": a_end, "wrap": a_wrap, "nonumber": a_nonum},
             "facts": facts, "sections": sections, "labels": labels, "refs": refs,
@@ -1152,7 +1138,7 @@ _ROW_REL = re.compile(
     r"|coloneqq|eqqcolon|triangleq|doteq|stackrel|overset|underset)(?![a-zA-Z]))")
 _ROW_TEXT = re.compile(r"\\(?:text|mbox|textrm|textup|textnormal|mathrm\{\s*(?:and|or|where)\b)|\\(?:short)?intertext\b")
 # multi-line displays whose rows may be separate equations (numcases rows are cases of one)
-_SPLIT_ENVS = {"align", "gather", "eqnarray", "flalign", "alignat"}
+_SPLIT_ENVS = _MULTILINE_EQ - {"numcases", "subnumcases"}
 
 
 def _row_continues(text: str) -> bool:
@@ -1242,6 +1228,8 @@ def _split_rows(facts: list[dict], labels: dict, refs: list[dict], cites: list[d
     return out
 
 
+_SPACING_TAIL = re.compile(r"(?:\s|\\(?:par|medskip|smallskip|bigskip|newline|noindent)(?![a-zA-Z])"
+                           r"|\\\\|\\vspace\*?\s*\{[^{}]*\}|\\vskip\s*-?[\d.]+\s*[a-z]+)+\Z")
 # A proof written by hand: a "Proof" heading at the start of a line, in a font
 # switch or a font command ({\bf Proof.}, \noindent{\it Proof of Theorem~\ref{x}.},
 # \emph{Proof:}, \mbox{\em Proof.}), after optional spacing commands.
@@ -1259,7 +1247,7 @@ _EQNO = re.compile(r"\\l?eqno\s*(\([^()$]*\)|\{[^{}]*\}|[^\s$]+)")
 
 
 def _manual_facts(source: str, body_start: int, facts: list[dict], sections: list[dict],
-                  refs: list[dict], cites: list[dict]) -> None:
+                  refs: list[dict], cites: list[dict], labels: dict) -> None:
     """Facts LaTeX states without an environment: hand-written proofs and
     hand-numbered displays ($$ ... \\eqno(3) $$). Added to `facts` in document order.
 
@@ -1304,9 +1292,7 @@ def _manual_facts(source: str, body_start: int, facts: list[dict], sections: lis
         end, basis = (marks[-1].end(), "qed") if marks else (bound, "next_structure")
         if marks and re.match(r"[ \t]*\$", source[end:end + 4]):
             end = source.index("$", end) + 1          # the mark's math: \hfill $Q.E.D.$
-        tail = re.compile(r"(?:\s|\\(?:par|medskip|smallskip|bigskip|newline|noindent)(?![a-zA-Z])"
-                          r"|\\\\|\\vspace\*?\s*\{[^{}]*\}|\\vskip\s*-?[\d.]+\s*[a-z]+)+\Z")
-        t = tail.search(source, close, end)
+        t = _SPACING_TAIL.search(source, close, end)
         if t and t.start() > close:
             end = t.start()                           # trailing spacing is not the proof
         n += 1
@@ -1326,9 +1312,13 @@ def _manual_facts(source: str, body_start: int, facts: list[dict], sections: lis
             continue
         parent = container(d["outer_start"], d["outer_end"])
         n += 1
+        num = e.group(1).strip("(){} ")
+        for key in d["labels"]:                       # the walk bound them to the section
+            labels[key] = dict(labels.get(key, {}), kind="equation", id=f"F{n}", number=num,
+                               enclosing=parent["id"] if parent else None)
         added.append({"id": f"F{n}", "kind": "equation", "env": d["env"], "display": None,
                       "type": "equation", "optarg": None,
-                      "number": e.group(1).strip("(){} "), "labels": d["labels"],
+                      "number": num, "labels": d["labels"],
                       "refs": [r["key"] for r in refs if d["start"] <= r["offset"] < d["end"]],
                       "cites": [], "section": section_at(d["outer_start"]),
                       "outer_start": d["outer_start"], "start": d["start"], "end": d["end"],
@@ -1422,7 +1412,7 @@ def _associate_proofs(facts: list[dict], labels: dict, source: str) -> None:
             continue
         f["proves"], f["proves_basis"] = None, None
         if f["optarg"]:
-            for key in re.findall(r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}", f["optarg"]):
+            for key in _REF.findall(f["optarg"]):
                 t = labels.get(key.strip())
                 if t and t["kind"] == "env":
                     f["proves"], f["proves_basis"] = t["id"], "optarg"
@@ -1477,7 +1467,7 @@ def _mark_duplicates(facts: list[dict], labels: dict) -> None:
         head = f.get("optarg") or ""             # [= Theorem~\ref{x}], [see Theorem~\ref{x}]
         if not re.match(r"\s*(?:=|see\b|cf\b|restat|repeat)", head, re.I):
             continue
-        for key in re.findall(r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}", head):
+        for key in _REF.findall(head):
             t = labels.get(key.strip())
             g = by_id.get(t["id"]) if t else None
             if g is not None and g is not f and g["outer_start"] > f["outer_start"]:

@@ -73,6 +73,27 @@ Implemented on main (not yet run on any paper):
 - `cycle` note: a cycle the paper's text states is kept and reported with `kind` (`wrong_ref`,
   `granularity`, `circular`) and one verbatim quote per edge; it turns the cycle error into a warning.
   The prompt asks to recheck inferred edges first. The v6 `source_problem` notes still count.
+- Code review (2026-10-19, 4 reviewers; regression on 1449 files, gold snapshot, the 200 v6 graphs):
+  - fixed: a crash matching equal-text nodes; the CLI not inlining \\input; \\chapter numbering (books,
+    reports, blueprints: chapter.section, [chapter] counters, equations within chapters); a \\label in a
+    nested aligned/split lost; \\eqno labels bound to the section; row spans starting at [2pt];
+    prose-boundary checks at the first copy of a repeated text; a non-proves edge blocking the
+    syntactic proves edge; step checker: an immediate sentence judged over the whole step, a step
+    after ';' only warned, "non-trivial" read as immediate, missing claim and case openers, "Let us"
+    read as an introduction, {\\bf Proof.}/{\\bf Remark} taken as step labels; pseudocode:
+    enumerate in an algorithm2e float, \\SetNlSty/\\SetKwBlock arguments, repeated lines matched
+    out of order, descendant test; latex_macros brace reader at `\\\\}`; a source_problem note
+    silencing a v7 cycle (now v6 files only; a cycle note must name the whole cycle).
+  - new checks in finalize (the prompt said it ran them): type and origin vocabularies, required
+    fields, origin_citation on external nodes, rigor values and placement, rigor_nonformal_count,
+    proof_strategy and step subclass vocabularies, strategies in a proof's tags, edges between steps
+    of different proofs. On the 200 v6 graphs: 4 new errors, all real.
+  - one \\ref command list (latex_macros.REF_CMDS: \\nameref, \\thmref now also rendered) and one
+    span key; type sets from node_types/edge_types; shared ancestor/subtree walks; regexes compiled
+    once; dead code removed; tests/test_prompt_schema.py checks every vocabulary the prompt lists.
+  - prompt: facts also hold hand-written proofs and \\eqno displays; a \\ref gives an edge into every
+    node containing it; step rule 1 lists every label kind the parser reports.
+  - The schema block changed, so the v6 prompt hash on main changed too: run v6 only from v6-frozen.
 Not done: the 5-paper mini-pilot. The portal's "Your paper"
 (`portal/yours_llm.py`) still uses the v6 prompt.
 

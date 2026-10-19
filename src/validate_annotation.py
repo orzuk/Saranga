@@ -268,15 +268,17 @@ def reasoning_cycles(nodes: list[dict], edges: list[dict]) -> list[list[str]]:
     theorem it is written in.
     Returns one node-id path per cycle found."""
     by_id = {n.get("id"): n for n in nodes}
-    proved, alternative = {}, set()
-    for e in edges:
-        if e.get("type") == "proves" and e.get("alternative"):
-            alternative.add(e.get("source"))
+    # A proof stands for the (first) result it proves. A proof of several results does not
+    # say which part supports which, so it stands for one of them: counting its uses for
+    # each would make a claim it proves on the way depend on itself.
+    alternative = {e.get("source") for e in edges if e.get("type") == "proves" and e.get("alternative")}
+    proved = {}
     for e in edges:
         if e.get("type") == "proves" and e.get("source") not in alternative:
             proved.setdefault(e.get("source"), e.get("target"))
     for n in nodes:
-        if n.get("type") == "proof" and n["id"] not in alternative and n.get("proves") in by_id:
+        if n.get("type") == "proof" and n.get("id") is not None and n["id"] not in alternative \
+                and n.get("proves") in by_id:
             proved.setdefault(n["id"], n["proves"])
 
     def ancestors(x):
@@ -344,10 +346,12 @@ def reasoning_cycles(nodes: list[dict], edges: list[dict]) -> list[list[str]]:
 
 
 def cycle_noted(cycle: list[str], metadata: dict) -> bool:
-    """Did the extractor record this cycle as the paper's own (a cycle note, or in v6 a
-    source_problem note, naming at least two of its nodes)?"""
-    on = set(cycle)
-    return any(n.get("category") in ("cycle", "source_problem") and len(on & set(n.get("nodes") or [])) >= 2
+    """Did the extractor record this cycle as the paper's own: a `cycle` note naming all
+    its nodes (v6 files: a source_problem note naming two of them)?"""
+    on, md = set(cycle), metadata or {}
+    v6 = str(md.get("prompt_version") or "").startswith("v6")
+    return any((n.get("category") == "cycle" and on <= set(n.get("nodes") or []))
+               or (v6 and n.get("category") == "source_problem" and len(on & set(n.get("nodes") or [])) >= 2)
                for n in (metadata or {}).get("extraction_notes") or [])
 
 
@@ -355,8 +359,9 @@ CYCLE_HELP = ("if an edge on this path only refers to a result without relying o
               "(\"as in Theorem 1\", \"used in the proof of Proposition 3\"), set \"mention\": true on it; "
               "if a proof on it is a second proof of a result that has its own proof, set "
               "\"alternative\": true on that proof's proves edge; "
-              "if the paper's own text states every edge of the cycle, keep the edges and add a cycle note "
-              "(kind, the nodes in order, a verbatim quote for each edge)")
+              "otherwise check each edge against the text (an inferred edge the text does not state is "
+              "the likely error: correct it); if the text states every edge, keep the edges and add a "
+              "cycle note (kind, the nodes in order, a verbatim quote for each edge)")
 
 
 def validate_file(path: Path, verbose: bool = True) -> tuple[int, int, int, int]:

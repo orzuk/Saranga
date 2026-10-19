@@ -224,11 +224,14 @@ _A2E_BLOCK = {  # macro -> kind; each takes {cond}{body}
 }
 _A2E_ONE_ARG_BLOCK = {"Else": "else", "uElse": "else", "Other": "case", "Begin": "begin"}
 _A2E_ONE_LINE = {"lIf", "lFor", "lForAll", "lForEach", "lWhile", "lElseIf", "lCase"}
-_A2E_IGNORE = {"KwIn", "KwOut", "KwData", "KwResult", "Input", "Output", "caption",
-               "SetKwFunction", "SetKwProg", "SetKwInOut", "SetKwInput", "SetKw",
-               "SetKwData", "SetAlgoLined", "SetAlgoNoLine", "SetAlgoVlined",
-               "DontPrintSemicolon", "LinesNumbered", "LinesNumberedHidden",
-               "SetAlgoNoEnd", "SetNlSty", "BlankLine", "tcp*", "tcc*", "Indp", "Indm"}
+# algorithm2e commands that print no line: name -> number of {arguments} to skip
+_A2E_IGNORE = {**dict.fromkeys(("KwIn", "KwOut", "KwData", "KwResult", "Input", "Output", "caption",
+                                "tcp*", "tcc*"), 1),
+               "SetKwFunction": 2, "SetKwProg": 4, "SetKwInOut": 2, "SetKwInput": 2, "SetKw": 2,
+               "SetKwData": 2, "SetNlSty": 3, "SetKwBlock": 3, "SetKwFor": 4, "SetKwIF": 6,
+               **dict.fromkeys(("SetAlgoLined", "SetAlgoNoLine", "SetAlgoVlined", "DontPrintSemicolon",
+                                "LinesNumbered", "LinesNumberedHidden", "SetAlgoNoEnd", "BlankLine",
+                                "Indp", "Indm"), 0)}
 _A2E_CMD = re.compile(r"\\([A-Za-z]+\*?)")
 
 
@@ -270,6 +273,14 @@ def _parse_a2e(body: str, numbered: bool, comments_numbered: bool, base: int = 0
                 span[0] = off + at
             span[1] = off + upto
             buf.append(c)
+        def arg_at(pos):
+            """(content, end, offset of content in s)"""
+            p = pos
+            while p < len(s) and s[p].isspace():
+                p += 1
+            content, e = _brace_arg(s, pos)
+            return content, e, p + 1
+
         while i < len(s):
             if s.startswith("\\;", i):
                 flush(buf, span)
@@ -282,14 +293,6 @@ def _parse_a2e(body: str, numbered: bool, comments_numbered: bool, base: int = 0
                 continue
             name = m.group(1)
             j = m.end()
-
-            def arg_at(pos):
-                """(content, end, offset of content in s)"""
-                p = pos
-                while p < len(s) and s[p].isspace():
-                    p += 1
-                content, e = _brace_arg(s, pos)
-                return content, e, p + 1
             if name in _A2E_BLOCK:
                 flush(buf, span)
                 cond, j, _ = arg_at(j)
@@ -347,16 +350,10 @@ def _parse_a2e(body: str, numbered: bool, comments_numbered: bool, base: int = 0
                 if comments_numbered:
                     add("comment", arg.strip(), None, off + i, off + j)
             elif name in _A2E_IGNORE:
-                if name in ("KwIn", "KwOut", "KwData", "KwResult", "Input", "Output",
-                            "caption", "SetKwFunction", "SetKwProg", "SetKwInOut",
-                            "SetKwInput", "SetKw", "SetKwData", "tcp*", "tcc*"):
+                if _A2E_IGNORE[name]:
                     while j < len(s) and s[j] in " \t\n[":
-                        if s[j] == "[":
-                            j = s.find("]", j) + 1 or len(s)
-                        else:
-                            j += 1
-                    for _ in range({"SetKwFunction": 2, "SetKwProg": 4, "SetKwInOut": 2,
-                                    "SetKwInput": 2, "SetKw": 2, "SetKwData": 2}.get(name, 1)):
+                        j = (s.find("]", j) + 1 or len(s)) if s[j] == "[" else j + 1
+                    for _ in range(_A2E_IGNORE[name]):
                         _, j = _brace_arg(s, j)
             else:
                 keep(m.group(0), i, j)
@@ -409,8 +406,8 @@ def find_blocks(tex: str) -> list[Block]:
         env = r"(?:algorithm(?:2e)?\*?|procedure\*?|function\*?)"
         for m in re.finditer(r"\\begin\s*\{(" + env + r")\}(\[[^\]]*\])?(.*?)\\end\s*\{\1\}", src, re.S):
             body = m.group(3)
-            if "\\begin{algorithmic}" in body:
-                continue
+            if "\\begin{algorithmic}" in body or ("\\begin{enumerate}" in body and "\\;" not in body):
+                continue                      # algorithmic, or a numbered list (below)
             body = _drop_float_label(body)
             blocks.append(Block("algorithm2e", numbered, m.start(),
                                 _parse_a2e(body, numbered, comments_numbered, m.start(3))))
@@ -421,7 +418,7 @@ def find_blocks(tex: str) -> list[Block]:
     taken = {b.start for b in blocks}
     for m in re.finditer(r"\\begin\s*\{(algorithm(?:2e)?\*?)\}(.*?)\\end\s*\{\1\}", src, re.S):
         body = m.group(2)
-        if "\\begin{algorithmic}" in body or any(m.start() == t for t in taken):
+        if "\\begin{algorithmic}" in body or m.start() in taken:
             continue
         em = re.search(r"\\begin\{enumerate\}(?:\[[^\]]*\])?(.*)\\end\{enumerate\}", body, re.S)
         if not em:
@@ -462,13 +459,12 @@ _CONTROL_WORDS = re.compile(
     re.I)
 
 
-def _step_text(statement: str) -> str:
-    return norm(_CONTROL_WORDS.sub("", statement.strip(), count=1))
+def _line_text(text: str) -> str:
+    """A step's statement or a printed line, normalised alike (control word stripped)."""
+    return norm(_CONTROL_WORDS.sub("", text.strip(), count=1))
 
 
-def _line_text(content: str) -> str:
-    """A printed line, normalised exactly like a step (same control-word stripping)."""
-    return norm(_CONTROL_WORDS.sub("", content.strip(), count=1))
+_step_text = _line_text
 
 
 def _covers(step_n: str, line_n: str) -> bool:
@@ -505,6 +501,7 @@ def fill_source_line_labels(graph: dict, tex: str) -> dict:
       uncovered  numbered lines no step covers (informational)
     """
     blocks = [b for b in find_blocks(tex) if b.lines]
+    src = strip_comments(tex)
     report = {"blocks": len(blocks), "numbered_blocks": sum(b.numbered for b in blocks),
               "matched": [], "merged": [], "unmatched": [], "uncovered": []}
     for step in (n for n in graph["nodes"] if n.get("type") == "algorithm_step"):
@@ -530,20 +527,30 @@ def fill_source_line_labels(graph: dict, tex: str) -> dict:
         if not b.numbered:
             continue
         covered: set[int] = set()
-        children = {s["id"] for s in steps}
+        parent_of = {t["id"]: t.get("parent_id") for t in steps}
+
+        def under(t, sid):                   # is step t nested (at any depth) under step sid?
+            p, seen = parent_of.get(t["id"]), set()
+            while p is not None and p not in seen:
+                if p == sid:
+                    return True
+                seen.add(p)
+                p = parent_of.get(p)
+            return False
         last = 0
         # A step whose statement IS a line's span (as pseudocode_steps builds
         # them) is that line: match it exactly, before any approximate matching.
-        src = strip_comments(tex)
-        exact, taken = {}, set()
+        exact, taken, after = {}, set(), -1     # in document order: a repeated line is the next one
         spans = [(k, norm(src[l.start:l.end])) for k, l in enumerate(b.lines) if l.start is not None]
         for st in steps:
             stn = norm(st.get("statement") or "")
-            for k, t in spans:
-                if k not in taken and t == stn:
-                    taken.add(k)
-                    exact[st["id"]] = b.lines[k]
-                    break
+            k = next((k for k, t in spans if k not in taken and t == stn and k > after), None)
+            if k is None:
+                k = next((k for k, t in spans if k not in taken and t == stn), None)
+            if k is not None:
+                taken.add(k)
+                exact[st["id"]] = b.lines[k]
+                after = k
         for s, sn in zip(steps, snorm):
             if s["id"] in exact:
                 ln = exact[s["id"]]
@@ -562,7 +569,7 @@ def fill_source_line_labels(graph: dict, tex: str) -> dict:
             # A block-header step may contain its children's lines; only the lines
             # not claimed by a descendant step count against it.
             own = [l for l in hit
-                   if not any(t is not s and t.get("parent_id") in children | {s["id"]}
+                   if not any(t is not s and under(t, s["id"])
                               and _covers(_step_text(t.get("statement") or ""), _line_text(l.content))
                               for t in steps)]
             lines = own or hit[:1]

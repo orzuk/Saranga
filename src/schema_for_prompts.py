@@ -78,7 +78,7 @@ _EDGE_ONE_LINER = {
     ET.USES:        "B uses A — generic dependency (default)",
     ET.GENERALIZES: "B generalizes A — B is more general than A (subtype of `uses`)",
     ET.SPECIALIZES: "B specializes A — B is a special case of A (subtype of `uses`)",
-    ET.PROVES:      "B proves A — B is a proof establishing theorem A",
+    ET.PROVES:      "A proves B — the proof A establishes result B (the proof is the source)",
     ET.ILLUSTRATES: "B illustrates A — B is an example demonstrating concept A",
     ET.TESTS:       "B tests A — B is an exercise testing concept A",
     ET.RESOLVES:    ("B resolves A — B is a theorem-like result settling "
@@ -205,9 +205,7 @@ def get_schema_block(verbosity: str = "standard") -> str:
         + ", ".join(_LEVEL2_ORDER) + "."
     )
     if verbosity == "verbose":
-        lines.append("Emitted only at fine-grained granularity "
-                     "(`with_proof_steps` / `with_algo_steps`). Each Level-2 "
-                     "node references its Level-1 parent via `parent_id`.")
+        lines.append("Each Level-2 node references its Level-1 parent via `parent_id`.")
         lines.append("")
         for t in _LEVEL2_ORDER:
             lines.append(f"  - {t}: {_extract_type_docstring(t)}")
@@ -219,7 +217,7 @@ def get_schema_block(verbosity: str = "standard") -> str:
         f"EDGE TYPES ({len(edge_order)}): " + ", ".join(edge_order) + "."
     )
     if verbosity == "standard":
-        lines.append("Direction: A → B reads \"B [edge] A\" (B depends on A).")
+        lines.append("Direction: an edge A → B means that B depends on A (see \"Direction\" below).")
     if verbosity == "verbose":
         lines.append("")
         lines.append("Direction: arrow A → B means \"A supports B\" / "
@@ -233,9 +231,7 @@ def get_schema_block(verbosity: str = "standard") -> str:
         lines.append("LEVEL 1 vs LEVEL 2:")
         lines.append("  Level 1 — paper-level nodes (16 types). Always extracted.")
         lines.append("  Level 2 — sub-block nodes (proof_step, algorithm_step). "
-                     "Emitted only when caller requests fine-grained granularity. "
-                     "Each Level-2 node MUST reference its Level-1 parent via "
-                     "`parent_id`.")
+                     "Each Level-2 node MUST reference its Level-1 parent via `parent_id`.")
         lines.append("")
         lines.append("TAGS VOCABULARY (optional `tags: list[str]` per node;")
         lines.append("validators warn but do NOT reject unknown tags):")
@@ -243,9 +239,8 @@ def get_schema_block(verbosity: str = "standard") -> str:
             lines.append(f"  {t}: [{', '.join(tags)}]")
         lines.append("")
 
-    lines.append(
-        "(See src/node_types.py for full per-type docstrings and tags vocabulary.)"
-    )
+    if verbosity == "verbose":
+        lines.append("(See src/node_types.py for full per-type docstrings and tags vocabulary.)")
     return "\n".join(lines)
 
 

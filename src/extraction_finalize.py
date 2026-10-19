@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Finish an extracted graph with what the LaTeX source states by syntax, then check it.
 
-The last stage of the v6 extraction, run by the extraction agent's builder
+The last stage of the extraction (v6, v7), run by the extraction agent's builder
 script before it writes the JSON. Everything here is deterministic and comes
 from `latex_facts` (LaTeX syntax) and `algorithm_lines` (pseudocode numbering):
 
@@ -46,13 +46,16 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import edge_types as ET                                   # noqa: E402
+import node_types as NT                                   # noqa: E402
 from algorithm_lines import fill_source_line_labels      # noqa: E402
-from latex_facts import extract_facts, _REF_CMDS         # noqa: E402
+from latex_facts import extract_facts, read_tex, _REF, _REF_CMDS   # noqa: E402
+from latex_macros import LABEL_OR_INDEX, span_key as _key      # noqa: E402
 from proof_structure import check_steps as check_proof_steps   # noqa: E402
 from proof_structure import detect as detect_proof_structure   # noqa: E402
+from proof_structure import _norm_map, _sentence_initial        # noqa: E402
 from validate_annotation import CYCLE_HELP, cycle_noted, reasoning_cycles   # noqa: E402
 
-_LEVEL2 = {"proof_step", "algorithm_step"}
+_LEVEL2 = NT.LEVEL_2_TYPES
 # metadata.paper_style and metadata.extraction_notes[].category; anything else goes in the
 # free-text metadata.extraction_comment (see the prompt's "Extraction notes")
 PAPER_STYLES = {"theorem_proof", "formal", "derivation", "modeling", "computational", "problem_list",
@@ -60,16 +63,10 @@ PAPER_STYLES = {"theorem_proof", "formal", "derivation", "modeling", "computatio
 NOTE_CATEGORIES = {"type_uncertain", "boundary_uncertain", "unexpected_construct", "rule_conflict",
                    "source_problem", "not_extracted", "cycle"}
 CYCLE_KINDS = {"wrong_ref", "granularity", "circular"}
-_REF = re.compile(r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}")
 _REF_RANGE = re.compile(r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}\)?\s*(?:--|–|-)\s*\(?"
                         r"\\(?:" + _REF_CMDS + r")\*?\s*\{([^}]*)\}")
 _CITE = re.compile(r"\\[a-zA-Z]*cite[a-zA-Z]*\*?\s*(?:\[[^\]]*\]\s*){0,2}\{([^{}]*)\}")
-_RESULTS = {"theorem", "lemma", "proposition", "corollary", "claim"}
-
-
-def _key(s: str) -> str:
-    """Whitespace- and label-insensitive form of a span, for matching."""
-    return re.sub(r"\s+", "", re.sub(r"\\(?:label|index)\s*\{[^{}]*\}", "", s or ""))
+_RESULTS = NT.PROVABLE
 
 
 def match_nodes_to_facts(graph: dict, facts: dict) -> dict[str, str]:
@@ -114,8 +111,9 @@ def match_nodes_to_facts(graph: dict, facts: dict) -> dict[str, str]:
             lo, hi = _neighbour_bounds(level1, n["id"], out, fact)
             cands = free()
             inside = [f for f in cands if lo <= f["start"] <= hi]
-            f = (inside or cands[-1:])[0] if len(inside) <= 1 else inside[-1]
-            if f:
+            pick = inside or cands[-1:]
+            if pick:
+                f = pick[-1]
                 out[n["id"]] = f["id"]
                 taken.add(f["id"])
     return out
@@ -152,7 +150,7 @@ def _sentence_end(text: str, end: int) -> bool:
 
 
 def check_prose_boundaries(graph: dict, source: str, env_nodes: set, report: dict,
-                           headings: list[int] | None = None) -> None:
+                           headings: list | None = None, node_span: dict | None = None) -> None:
     """Spec "Where a prose node starts and ends": whole sentences, within one
     section, no partial overlap.
 
@@ -165,17 +163,12 @@ def check_prose_boundaries(graph: dict, source: str, env_nodes: set, report: dic
     unusual markup is a warning (it may be a false alarm). Partial overlap between
     two Level-1 nodes (they share text, neither contains the other) is an error.
     """
-    from proof_structure import _norm_map, _sentence_initial
-    norm, idx = _norm_map(source)
+    node_span = node_span if node_span is not None else node_spans(graph, source)
     spans = []
     for n in graph["nodes"]:
-        if n.get("type") in _LEVEL2:
-            continue
-        key = re.sub(r"\s+", "", re.sub(r"\\(?:label|index)\s*\{[^{}]*\}", "", n.get("statement") or ""))
-        i = norm.find(key) if key else -1
-        if i < 0:
+        if n.get("type") in _LEVEL2 or n["id"] not in node_span:
             continue                      # non-verbatim: reported by validate()
-        start, end = idx[i], idx[i + len(key) - 1] + 1
+        start, end = node_span[n["id"]]
         spans.append((start, end, n["id"]))
         if n["id"] in env_nodes or n.get("type") == "equation":
             continue
@@ -242,7 +235,6 @@ def node_spans(graph: dict, source: str) -> dict[str, tuple[int, int]]:
     Nodes whose statements are identical (the same equation stated twice) take
     successive occurrences, in node order, instead of all landing on the first.
     """
-    from proof_structure import _norm_map
     norm, idx = _norm_map(source)
     nxt: dict[str, int] = {}
     out = {}
@@ -296,13 +288,12 @@ def node_spans(graph: dict, source: str) -> dict[str, tuple[int, int]]:
 
 
 def compute_hierarchy(graph: dict, spans: dict, report: dict) -> dict[str, str | None]:
-    """Spec HIERARCHY: `parent_id` = the innermost node whose span contains this one.
+    """`parent_id` = the innermost node whose span contains this one (node_types HIERARCHY).
 
     Level-1 nodes: computed here and written (the extractor does not set them).
     Steps: the extractor sets them by the nesting rules; a step whose parent's
     span does not contain it is reported. Returns node id -> parent id.
     """
-    nodes = {n["id"]: n for n in graph["nodes"]}
     order = sorted(spans, key=lambda i: (spans[i][0], -(spans[i][1] - spans[i][0])))
     parent: dict[str, str | None] = {}
     for nid in order:
@@ -347,12 +338,36 @@ def _innermost(spans: dict, pos: int) -> str | None:
     return min(inside)[1] if inside else None
 
 
-def _ancestors(nid, parent):
-    out, seen = set(), set()
-    while parent.get(nid) and nid not in seen:
-        seen.add(nid)
+def _chain(nid, parent):
+    """Ancestors of a node, innermost first."""
+    out, seen = [], {nid}
+    while parent.get(nid) and parent[nid] not in seen:
         nid = parent[nid]
-        out.add(nid)
+        seen.add(nid)
+        out.append(nid)
+    return out
+
+
+def _ancestors(nid, parent):
+    return set(_chain(nid, parent))
+
+
+def _kids(parent):
+    kids: dict[str, set] = {}
+    for c, p in parent.items():
+        if p:
+            kids.setdefault(p, set()).add(c)
+    return kids
+
+
+def _subtree(root, kids):
+    """The node and everything nested in it."""
+    out, stack = {root}, [root]
+    while stack:
+        for c in kids.get(stack.pop(), ()):
+            if c not in out:
+                out.add(c)
+                stack.append(c)
     return out
 
 
@@ -379,7 +394,7 @@ def merge_claim_steps(graph: dict, spans: dict, report: dict) -> None:
             n["step_order"] = k
     edges, seen = [], set()
     for e in graph["edges"]:
-        e["source"], e["target"] = gone.get(e["source"], e["source"]), gone.get(e["target"], e["target"])
+        e["source"], e["target"] = gone.get(e.get("source"), e.get("source")), gone.get(e.get("target"), e.get("target"))
         if e["source"] == e["target"] or (e["source"], e["target"], e.get("type")) in seen:
             continue
         seen.add((e["source"], e["target"], e.get("type")))
@@ -395,22 +410,10 @@ def merge_claim_steps(graph: dict, spans: dict, report: dict) -> None:
 
 def check_encapsulation(graph: dict, parent: dict, report: dict) -> None:
     """A result stated inside a proof belongs to that proof: it should be used only
-    inside it (proof_dag_hierarchy note). Every use from outside is listed in the report;
+    inside it. Every use from outside is listed in the report;
     one the extractor added (not a \\ref) is also a warning: the usual fix is the
     edge's source (the later node relies on the result the proof proves)."""
-    kids: dict[str, set] = {}
-    for c, p in parent.items():
-        if p:
-            kids.setdefault(p, set()).add(c)
-
-    def inside(root):
-        out, stack = {root}, [root]
-        while stack:
-            for c in kids.get(stack.pop(), ()):
-                if c not in out:
-                    out.add(c)
-                    stack.append(c)
-        return out
+    kids = _kids(parent)
     types = {n["id"]: n.get("type") for n in graph["nodes"]}
     found = []
     for n in graph["nodes"]:
@@ -419,7 +422,7 @@ def check_encapsulation(graph: dict, parent: dict, report: dict) -> None:
         proof = next((a for a in _chain(n["id"], parent) if types.get(a) == "proof"), None)
         if not proof:
             continue
-        mine = inside(proof)
+        mine = _subtree(proof, kids)
         out = [e for e in graph["edges"] if e["source"] == n["id"] and e.get("type") == ET.USES
                and not e.get("mention") and e["target"] not in mine]
         if out:
@@ -432,21 +435,11 @@ def check_encapsulation(graph: dict, parent: dict, report: dict) -> None:
     report["used_outside_proof"] = found
 
 
-def _chain(nid, parent):
-    """Ancestors of a node, innermost first."""
-    out, seen = [], {nid}
-    while parent.get(nid) and parent[nid] not in seen:
-        nid = parent[nid]
-        seen.add(nid)
-        out.append(nid)
-    return out
-
-
-_POSITIONAL_TYPES = {ET.USES, ET.GENERALIZES, ET.SPECIALIZES}
+_POSITIONAL_TYPES = ET.DEPENDENCY_TYPES
 
 
 def set_backward_flags(graph: dict, spans: dict, report: dict) -> None:
-    """Spec Hard rule 10: `backward: true` on a uses/generalizes/specializes edge
+    """Hard rule 7: `backward: true` on a uses/generalizes/specializes edge
     whose source starts after its target in the paper. Set by position, so it does
     not depend on the order edges were added. Other edge types never carry it."""
     n = 0
@@ -544,19 +537,10 @@ def check_defined_terms(graph: dict, spans: dict, parent: dict, report: dict) ->
     out: dict[str, set] = {}
     for e in graph["edges"]:
         out.setdefault(e["source"], set()).add(e["target"])
-    kids: dict[str, set] = {}
-    for c, p in parent.items():
-        if p:
-            kids.setdefault(p, set()).add(c)
+    kids = _kids(parent)
 
     def family(nid):
-        fam, stack = {nid} | _ancestors(nid, parent), [nid]
-        while stack:
-            for c in kids.get(stack.pop(), ()):
-                if c not in fam:
-                    fam.add(c)
-                    stack.append(c)
-        return fam
+        return _subtree(nid, kids) | _ancestors(nid, parent)
 
     def one_term(t):
         """("word", term) or ("symbol", normalized symbol) or None."""
@@ -656,10 +640,9 @@ def finalize(graph: dict, tex: str) -> dict:
     n2f = match_nodes_to_facts(graph, facts)
     for nid, fid in n2f.items():
         node_of_fact.setdefault(fid, nid)
-    nodes = {n["id"]: n for n in graph["nodes"]}
     for n in graph["nodes"]:                  # \label and \index are dropped (mechanical cleanup)
         if n.get("statement"):
-            n["statement"] = re.sub(r"\s*\\(?:label|index)\s*\{[^{}]*\}\s*", " ", n["statement"]).strip()
+            n["statement"] = re.sub(r"\s*" + LABEL_OR_INDEX.pattern + r"\s*", " ", n["statement"]).strip()
     report = {"matched_to_environment": len(n2f), "labels_filled": 0,
               "proves_added": [], "ref_uses_added": [], "ref_backward": [],
               "errors": [], "warnings": []}
@@ -720,12 +703,11 @@ def finalize(graph: dict, tex: str) -> dict:
         tgt = node_of_fact.get(f["proves"])
         if tgt is None:
             continue
-        if (nid, tgt) in pairs:
-            for e in graph["edges"]:
-                if (e["source"], e["target"]) == (nid, tgt) and e.get("type") == ET.PROVES:
-                    e.setdefault("basis", "syntax")
-            continue
-        if any(e["source"] == nid and e["type"] == ET.PROVES for e in graph["edges"]):
+        own = [e for e in graph["edges"] if e.get("source") == nid and e.get("type") == ET.PROVES]
+        for e in own:
+            if e.get("target") == tgt:
+                e.setdefault("basis", "syntax")
+        if own:
             continue                      # the agent already chose a target
         conf = 1.0 if f["proves_basis"] == "optarg" else 0.9
         graph["edges"].append({"source": nid, "target": tgt, "type": ET.PROVES,
@@ -735,12 +717,12 @@ def finalize(graph: dict, tex: str) -> dict:
 
     # 5. uses edges from \ref, into Level-1 nodes and proof steps alike
     ref_pairs: set = set()
+    order = list(facts["labels"])               # document order
     for n in graph["nodes"]:
         if n.get("type") == "algorithm_step":
             continue
         stmt = n.get("statement") or ""
         found = _REF.findall(stmt)
-        order = list(facts["labels"])           # document order
         for a, b in _REF_RANGE.findall(stmt):   # \eqref{a}--\eqref{b}: everything between
             if a in facts["labels"] and b in facts["labels"]:
                 i, j = order.index(a), order.index(b)
@@ -782,7 +764,7 @@ def finalize(graph: dict, tex: str) -> dict:
             e.setdefault("basis", "ref")
 
     # 5b. a proof's `proves` field names the result its `proves` edge points to
-    #     (the prompt: "always the same as the target of its proves edge")
+    #     (the first one, for a proof of several results)
     for n in graph["nodes"]:
         if n.get("type") != "proof":
             continue
@@ -818,8 +800,9 @@ def finalize(graph: dict, tex: str) -> dict:
     report["unresolved_refs"] = unresolved
 
     # 8. prose nodes: whole sentences, and no partial overlap between nodes
-    headings = [(x["start"], x.get("level") or 1) for x in facts["sections"] if x.get("inside") is None]
-    check_prose_boundaries(graph, source, set(n2f), report, headings)
+    headings = [(x["start"], 1 if x.get("level") is None else x["level"]) for x in facts["sections"]
+                if x.get("inside") is None]
+    check_prose_boundaries(graph, source, set(n2f), report, headings, spans)
 
     # 9. proof steps against the proof's author structure, for EVERY proof node
     kids: dict[str, list[dict]] = {}
@@ -941,6 +924,48 @@ def validate(graph: dict, source: str, report: dict, parent: dict | None = None)
                                or len(eq) < 2):
             err.append(f"{n['id']}: `equivalent_conditions` is a list of at least two spans, on a result "
                        f"or a conjecture")
+    # the vocabularies and required fields of the schema (node_types)
+    rigor_on = NT.PROVABLE | {"equation", "remark"}
+    for n in graph["nodes"]:
+        i, t = n.get("id"), n.get("type")
+        missing = [f for f in NT.REQUIRED_NODE_FIELDS     # name may be null, section empty (before
+                   if (f not in n if f in ("name", "section") else n.get(f) in (None, ""))]   # any heading)
+        if missing:
+            err.append(f"{i}: missing required field(s) {missing}")
+        if t not in NT.ALL_TYPES:
+            err.append(f"{i}: type {t!r} is not in the schema (Hard rule 4)")
+        if n.get("origin") not in NT.ORIGIN_VALUES:
+            err.append(f"{i}: origin {n.get('origin')!r} is not paper or external (Hard rule 3)")
+        elif n["origin"] == "external" and not n.get("origin_citation") and t not in NT.LEVEL_2_TYPES:
+            err.append(f"{i}: an external node needs origin_citation (Hard rule 3)")
+        if "rigor" in n:
+            if n["rigor"] not in NT.RIGOR_LEVELS:
+                err.append(f"{i}: rigor {n['rigor']!r} not in {sorted(NT.RIGOR_LEVELS)}")
+            elif t not in rigor_on or n.get("origin") == "external":
+                warn.append(f"{i}: rigor belongs only on paper results, equations and remarks")
+        bad = sorted(set(n.get("proof_strategy") or []) - NT.PROOF_STRATEGY_VALUES)
+        if bad:
+            err.append(f"{i}: proof_strategy {bad} not in the vocabulary (Hard rule 8)")
+        if t == "proof" and set(n.get("tags") or []) & NT.PROOF_STRATEGY_VALUES:
+            warn.append(f"{i}: a proof strategy in tags[] (it belongs in proof_strategy, Hard rule 8)")
+        if t in NT.LEVEL_2_TYPES and n.get("subclass") is not None \
+                and n["subclass"] not in NT.SUBCLASS_VALUES.get(t, ()):
+            err.append(f"{i}: subclass {n['subclass']!r} is not a {t} subclass")
+    if meta.get("rigor_nonformal_count") is not None and \
+            meta["rigor_nonformal_count"] != sum("rigor" in n for n in graph["nodes"]):
+        err.append(f"metadata.rigor_nonformal_count is {meta['rigor_nonformal_count']}, but "
+                   f"{sum('rigor' in n for n in graph['nodes'])} nodes have a rigor field")
+
+    def owner(x):                             # the proof or algorithm a step belongs to
+        seen = set()
+        while x in nodes and nodes[x].get("type") in NT.LEVEL_2_TYPES and x not in seen:
+            seen.add(x)
+            x = nodes[x].get("parent_id")
+        return x
+    for e in graph["edges"]:
+        s_, t_ = e.get("source"), e.get("target")
+        if all(nodes.get(x, {}).get("type") in NT.LEVEL_2_TYPES for x in (s_, t_)) and owner(s_) != owner(t_):
+            err.append(f"edge {s_}->{t_}: an edge between steps of different proofs or algorithms")
     for n in graph["nodes"]:                  # parts: which assumptions give which conclusions
         parts = n.get("parts")
         if parts is None:
@@ -978,13 +1003,13 @@ def validate(graph: dict, source: str, report: dict, parent: dict | None = None)
     for cyc in reasoning_cycles(graph["nodes"], graph["edges"]):
         (warn if cycle_noted(cyc, graph.get("metadata")) else err).append(
             "circular reasoning: " + " -> ".join(cyc) + ": " + CYCLE_HELP)
-    has_edge = {e["source"] for e in graph["edges"]} | {e["target"] for e in graph["edges"]}
+    has_edge = {e.get("source") for e in graph["edges"]} | {e.get("target") for e in graph["edges"]}
     has_child = {p for p in parent.values() if p}
     orphans = [i for i in ids if i not in has_edge and not parent.get(i) and i not in has_child]
     report["orphans"] = orphans
     for n in graph["nodes"]:
         if n.get("type") == "proof" and not any(
-                e["source"] == n["id"] and e["type"] == ET.PROVES for e in graph["edges"]):
+                e.get("source") == n["id"] and e.get("type") == ET.PROVES for e in graph["edges"]):
             warn.append(f"{n['id']}: proof with no proves edge")
         if n.get("type") in _LEVEL2 and n.get("parent_id") not in nodes:
             err.append(f"{n['id']}: parent_id {n.get('parent_id')!r} does not exist")
@@ -997,7 +1022,7 @@ def main():
     ap.add_argument("--json", required=True)
     ap.add_argument("--write", action="store_true")
     args = ap.parse_args()
-    tex = open(args.tex, encoding="utf-8", errors="replace").read()
+    tex = read_tex(args.tex)
     graph = json.load(open(args.json, encoding="utf-8"))
     rep = finalize(graph, tex)
     print(f"nodes matched to environments: {rep['matched_to_environment']}; "

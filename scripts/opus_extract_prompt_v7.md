@@ -66,10 +66,13 @@ it exactly. Run it before anything else (`<scratch>` is any scratch directory):
   after `\end{document}` removed. Slice every verbatim field from this text,
   never from the raw `.tex`: the finishing step checks statements against it.
 - `facts`: every theorem-style environment (`\newtheorem` ones: theorem,
-  lemma, definition, remark, ...), proof, algorithm and numbered equation, 
-  with its body span (`start`, `end`), the author's name for it
-  (`display`) and the node type that name maps to (`type`, null when the name
-  is not a standard one), its `\label`, its printed number, its section (an
+  lemma, definition, remark, ...), proof, algorithm and numbered equation, plus
+  two things LaTeX states without an environment: a hand-written proof
+  (`{\it Proof.}` ... `\qed`; `"manual": true`) and a hand-numbered display
+  (`$$ ... \eqno(3) $$`). Each comes with its body span (`start`, `end`), the
+  author's name for it (`display`) and the node type that name maps to (`type`:
+  also for common synonyms such as "Fact" or "Main Result"; null when the name
+  says nothing), its `\label`, its printed number, its section (an
   `id` in `sections`: the innermost heading of the paper, not one inside an
   environment; a node's `section` field is that entry's number and title, e.g.
   "3.2 Monotonic Improvement"), and
@@ -88,7 +91,7 @@ the paper can cite it as "(3.2)". A multi-line display (`align`, `gather`,
 `eqnarray`) whose numbered rows each have their own left-hand side is given as one
 fact per equation; a chain (`x &= y \\ &\le z`) stays one fact, whatever its
 numbering. An unnumbered displayed equation (`\[...\]`, `$$...$$`,
-`equation*`, `align*`) is not a node of its own: like inline math, it is part
+`equation*`, `align*`) without a `\label` is not a fact and not a node of its own: like inline math, it is part
 of the text of the node that contains it. Confirm or correct `type`
 (a `display` of "Fact" or "Property" is classified by Hard rule 4; when `type` is null,
 choose the type by content, Hard rule 4, and an environment with no
@@ -104,13 +107,17 @@ and find what it states in prose, however much or little that is.
 Add the prose nodes that the rules under "Where a prose node starts and ends"
 give, and only those.
 
+For a hand-written proof fact, confidence is `0.9` (its end is found by syntax).
+
 The finishing step fills `label`, `display` (the author's environment word,
 "Theorem", "Hauptsatz"), `number` (the number LaTeX prints, "3.2"), `cites` (the
 bib keys `\cite`d in a statement), `source_line_label`, `backward`,
 `metadata.labels` (the paper's whole `\label` table, so every `\ref` kept in a
 statement resolves) and the `parent_id` of Level-1 nodes, and adds the `uses`
 edges that a `\ref` states and the `proves` edges that syntax states, with their
-`basis` (see "Edge basis"); leave these out. It also makes a proof's `proves` field and its `proves` edges agree,
+`basis` (see "Edge basis"); leave these out. A `\ref` gives an edge into every
+node whose statement contains it (a proof step, its parent steps and the proof;
+not an `algorithm_step`), never one opposite to an edge already present. It also makes a proof's `proves` field and its `proves` edges agree,
 adding the edge from the field or the field from the edge. You add every dependency that has no `\ref`.
 
 **The graph is a hierarchy.** `parent_id` means "is part of": every node is
@@ -209,8 +216,8 @@ Level-1 nodes from their spans. Never draw a `uses` edge to express containment.
    repeated statement", or an environment whose content you retyped, Hard rule 4).
 
 7. **No circular reasoning; mentions are marked.** A `uses` edge `A → B` reads
-    "B uses A". No cycle may consist only of results, where a proof counts as the
-    result it proves, or only of definitions.
+    "B uses A". No cycle may consist only of results and conjectures, where a
+    proof counts as the result it proves, or only of definitions.
     - *Backward edges stay.* A proof that cites "Remark 5 below", or an induction
       step that applies the theorem itself at a smaller case, points against the
       paper's order; the finishing step marks it `"backward": true`.
@@ -220,8 +227,8 @@ Level-1 nodes from their spans. Never draw a `uses` edge to express containment.
       target is about it without using it ("Theorem 2 is equivalent to
       Conjecture 1", "motivated by", "by analogy with", "the heuristic behind").
       When a `\ref` states a mention, add that edge yourself before the finishing
-      step runs, confidence `0.95`, with `"mention": true` (the finishing step
-      gives it `basis: "ref"` and does not add it again).
+      step runs, confidence `0.95`, with `"mention": true` and no `basis` (the
+      finishing step gives it `basis: "ref"` and does not add it again).
     - *Equivalence is not a dependency.* For "equivalent" results draw only the
       uses their proofs make; no reciprocal `uses` edges between the same pair.
     - *Second proofs.* A second proof of a result that has its own proof ("we
@@ -555,7 +562,7 @@ remark or problem stated in running text), the `statement` is:
   `definition` node when it introduces symbols used later and is not part of a
   result; the equation is nested in it. Never leave out a definition because
   nothing seems to use it: emit it, and let it be an orphan. The finishing step
-  warns about some missed symbols (not terms, and not one-letter symbols);
+  warns about some missed symbols (not terms, single letters or single commands);
   finding them is your job.
 - **Minimal but self-contained.** The fewest whole sentences that state it on
   their own: include its hypotheses and a following "where ..." sentence that
@@ -821,9 +828,12 @@ proved, or the conclusion is drawn. A step need not carry a marker ("Let", "By",
 **1. Author labels (from `facts.json`).** For a proof in prose (no
 environment), look for the same kinds of label yourself. Each proof fact carries
 `structure.labels`: the places where the paper itself labels its structure,
-already detected by the parser (`Step N`, `Case N`, `Part N` at the start of a line, `(i)`/`(a)`
-item labels, `1.` after `\smallskip`/`\par`/a blank line, prose items of a list
-inside the proof, `\textbf{...}`/`\emph{...}` headings, Base case / Inductive step).
+already detected by the parser: `Step N`, `Case N`, `Part N` and "Case $x=0$:" at the
+start of a line; item labels `(i)`/`(a)`/`$(1)$` and numbered items `1.` after
+`\smallskip`/`\par`/a blank line/`\\`, when the proof has at least two; prose items of
+a list inside the proof; headings `\textbf{...}`, `\emph{...}`, `{\bf ...}`, `{\it ...}`
+(also with math, but not "Proof", "Remark" or "Note"); run-in labels "(Injectivity)";
+implications "(i)$\Rightarrow$(ii)"; Base case / Inductive step.
 Every one of them starts a step. (A nested `\begin{proof}` lies inside a `setup`
 step: step rule 10.)
 Keep the label token in the step's `statement` (strip only `\item`); the
@@ -859,8 +869,9 @@ the proof) is one `setup` step.
 no displayed math and no `\ref`/`\eqref`/`\cite`, and contains one of: clear(ly),
 obvious(ly), trivial(ly), immediate(ly), at once, easy/easily, straightforward,
 tautological, by inspection, similarly, a similar argument, the same argument, as
-above, we can verify, left to the reader; or is a closing formula ("This
-completes / finishes / proves the …", `\qed`). An unlabelled immediate sentence
+above, we can verify, left to the reader ("non-trivial" is not "trivial"); or is a
+closing formula ("This / That completes / finishes / proves / concludes the …",
+`\qed`). An unlabelled immediate sentence
 is appended to the preceding step, or, if it comes first in the body or label,
 prepended to the following step. A case opener or an induction base case (step rule 8)
 is never immediate; a closing formula is immediate even when it contains a

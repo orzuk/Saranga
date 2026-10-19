@@ -292,16 +292,8 @@ def _read_group(s, i):
             if m:
                 return m.group(0), i + m.end()
         return s[i], i + 1
-    depth, j = 0, i
-    while j < len(s):
-        if s[j] == "{" and (j == i or s[j - 1] != "\\"):
-            depth += 1
-        elif s[j] == "}" and s[j - 1] != "\\":
-            depth -= 1
-            if depth == 0:
-                return s[i + 1:j], j + 1
-        j += 1
-    return s[i + 1:], len(s)          # unbalanced; take the rest
+    arg, j = group(s, i)
+    return (arg, j) if arg is not None else (s[i + 1:], len(s))   # unbalanced: take the rest
 
 
 def _substitute(expansion, args):
@@ -462,7 +454,9 @@ def strip_dimension_commands(text):
 # fact that the sentence pointed somewhere.
 _CITE_CMDS = ("cite", "citep", "citet", "citeauthor", "citeyear", "citealp",
               "citealt", "cites", "nocite", "fullcite", "textcite", "parencite")
-_REF_CMDS = ("eqref", "cref", "Cref", "autoref", "pageref", "vref", "ref")
+_REF_CMDS = ("eqref", "cref", "Cref", "autoref", "Autoref", "cpageref", "pageref", "vref", "thmref",
+             "nameref", "ref")
+REF_CMDS = "|".join(_REF_CMDS)          # the one list of \ref commands (latex_facts, finalize)
 # `\cite[p.~5]{a,b}` — one or two optional args, then the mandatory key list.
 _CITE_RE = re.compile(r"\\(?:%s)\*?\s*(?:\[[^\]]*\]){0,2}\s*\{([^}]*)\}"
                       % "|".join(_CITE_CMDS))
@@ -471,6 +465,12 @@ _CITE_RE = re.compile(r"\\(?:%s)\*?\s*(?:\[[^\]]*\]){0,2}\s*\{([^}]*)\}"
 _REF_RE = re.compile(r"\\(?:%s)(?![A-Za-z])\*?\s*\{([^}]*)\}"
                      % "|".join(_REF_CMDS))
 _EQREF_RE = re.compile(r"\\eqref(?![A-Za-z])\*?\s*\{([^}]*)\}")
+LABEL_OR_INDEX = re.compile(r"\\(?:label|index)\s*\{[^{}]*\}")
+
+
+def span_key(s):
+    """Whitespace- and label-insensitive form of a span, for matching a statement to the source."""
+    return re.sub(r"\s+", "", LABEL_OR_INDEX.sub("", s or ""))
 _LABEL_RE = re.compile(r"\\label\s*\{[^}]*\}")
 # LaTeX's non-breaking space. Both mathtext and MathJax draw it as a literal
 # `~`, and `Knuth~[Knuth77]` is the common shape once citations resolve, so

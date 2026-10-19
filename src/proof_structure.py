@@ -18,12 +18,14 @@ the time, a break next to a display 49%, a mid-sentence break 33%.
 
 Checks (used by `extraction_finalize`): every label starts a step; steps start
 only at sentence boundaries, never inside math; a proof never has exactly one
-step. Warnings: a step that is only an immediate sentence, steps on a proof of
-at most two sentences, a step that is a lone "Let ..." sentence.
+step; a step that is one immediate sentence, steps on a proof of at most two
+sentences, a step that is a lone "Let ..." sentence.
 """
 from __future__ import annotations
 
 import re
+
+from latex_macros import LABEL_OR_INDEX, REF_CMDS, span_key
 
 # ── Math regions ────────────────────────────────────────────────────────────
 
@@ -83,6 +85,12 @@ def _sentence_initial(text: str, pos: int) -> bool:
         cut = m.start()
 
 
+# closing markup peeled before looking for a sentence end; a display's closer
+_TAIL = re.compile(r"(?:\\end\{[a-zA-Z*]+\}|\\\]|\$\$?|\\(?:label|tag)\{[^{}]*\}"
+                   r"|\\[a-zA-Z]+\*?|\\[,;! ]|\\\\|\\|[})\s~&])$")
+_DISPLAY_CLOSER = re.compile(r"(?:\\end\{[a-zA-Z*]+\}|\\\]|\$\$)$")
+
+
 def _sentence_initial_at(text: str, pos: int) -> bool:
     before = text[:pos]
     stripped = before.rstrip()
@@ -90,7 +98,7 @@ def _sentence_initial_at(text: str, pos: int) -> bool:
         return True
     if re.search(r"\n\s*\n\s*$", before):
         return True
-    if _LEAD_CMDS.search(stripped + " ") or _LEAD_CMDS.search(stripped):
+    if _LEAD_CMDS.search(stripped):
         return True
     # right after a heading: \section{...}, \subsection*{...}, \paragraph{...},
     # possibly followed by its \label{...}
@@ -101,15 +109,12 @@ def _sentence_initial_at(text: str, pos: int) -> bool:
     # "... x.$". Peel closers, labels, \\nonumber, spacing macros and closing braces,
     # then look. Authors often omit the period after a display, so text after a
     # display that starts with a capital letter also starts a sentence.
-    tail = re.compile(r"(?:\\end\{[a-zA-Z*]+\}|\\\]|\$\$?|\\(?:label|tag)\{[^{}]*\}"
-                      r"|\\[a-zA-Z]+\*?|\\[,;! ]|\\\\|\\|[})\s~&])$")
-    display_closer = re.compile(r"(?:\\end\{[a-zA-Z*]+\}|\\\]|\$\$)$")
     after_display = False
     prev = None
     while stripped and stripped != prev:
         prev = stripped
-        after_display = after_display or bool(display_closer.search(stripped))
-        stripped = tail.sub("", stripped).rstrip()
+        after_display = after_display or bool(_DISPLAY_CLOSER.search(stripped))
+        stripped = _TAIL.sub("", stripped).rstrip()
     if stripped and stripped[-1] in ".!?:":
         return True
     nxt = text[pos:pos + 12].lstrip()
@@ -146,10 +151,11 @@ _NUMBERED = re.compile(r"(?:\\(?:smallskip|medskip|bigskip|par)\b\s*|\n\s*\n\s*"
                        r"|\\\\\*?(?:\[[^\]]*\])?\s*)(\d{1,2})\.\s")
 _REFERENCE_AFTER = re.compile(r"\s*(?:of|in)\s", re.I)
 _CLAIM = re.compile(r"(?:We|I) claim|Claim\b|Let us (?:show|prove|check)|"
-                    r"(?:First|Next|Now),? we (?:show|prove|check)|We show this by")
+                    r"(?:First|Next|Now),? we (?:show|prove|check)|We show this by"
+                    r"|(?:We|we) (?:now )?(?:show|prove|check) that")
 
 
-def _list_items(body: str, spans) -> list[int]:
+def _list_items(body: str) -> list[int]:
     """\\item positions of the proof's TOP-LEVEL lists whose items are prose.
 
     A list nested inside a list item (e.g. a list of conditions inside one part
@@ -229,8 +235,9 @@ def detect(body: str, nested_proof_offsets: list[int] = ()) -> dict:
     for kind, pat in _LABEL_PATTERNS.items():
         for m in re.finditer(pat, body):
             if _sentence_initial(body, m.start()):
-                if kind == "heading" and re.match(r"\\(?:textbf|emph)\s*\{\s*(?:Proof|Remark|Note)\b", body[m.start():]):
-                    continue
+                if kind.startswith("heading") and re.match(
+                        r"(?:\{\s*)?\\[a-z]+\s*\{?\s*(?:Proof|Remark|Note)\b", body[m.start():]):
+                    continue                  # "{\bf Proof.}", "\textit{Proof of Claim.}": not a step label
                 add(kind, m.start(), m.end())
     paren = [m for m in _PAREN.finditer(body)
              if _sentence_initial(body, m.start()) and not _inside(m.start(), spans)]
@@ -251,7 +258,7 @@ def detect(body: str, nested_proof_offsets: list[int] = ()) -> dict:
     if len(numbered) >= 2:
         for m in numbered:
             add("numbered", m.start(1), m.end())
-    for pos in _list_items(body, spans):
+    for pos in _list_items(body):
         add("list_item", pos, pos + 5)
     for pos in nested_proof_offsets:
         labels.append({"kind": "nested_proof", "offset": pos, "text": "\\begin{proof}"})
@@ -275,16 +282,19 @@ def detect(body: str, nested_proof_offsets: list[int] = ()) -> dict:
 
 # ── Checks on extracted steps ───────────────────────────────────────────────
 
-_IMMEDIATE = re.compile(
-    r"\b(?:clear(?:ly)?|obvious(?:ly)?|trivial(?:ly)?|immediate(?:ly)?|at once|easy|easily|"
+_IMMEDIATE = re.compile(               # step rule 6 ("non-trivial" is not "trivial")
+    r"(?<!-)\b(?:clear(?:ly)?|obvious(?:ly)?|trivial(?:ly)?|immediate(?:ly)?|at once|easy|easily|"
     r"straightforward|tautological|by inspection|similarly|a similar argument|"
-    r"the same argument|as above|we can verify|left to the reader)\b"
-    r"|^(?:This|which) (?:completes|finishes|proves|concludes)", re.I)
-_INTRO = re.compile(r"^(?:Let|Take|Consider|Define|Fix|Denote|Set)\b")
+    r"the same argument|as above|we can verify|left to the reader)\b", re.I)
+_INTRO = re.compile(r"^(?:Let(?! us\b)|Take|Consider|Define|Fix|Denote|Set)\b")   # step rule 4
+_INFERENCE = re.compile(r"\b(?:hence|so|then|thus)\b", re.I)
+_HAS_REF = re.compile(r"\\(?:" + REF_CMDS + r"|[a-zA-Z]*cite[a-zA-Z]*)\b")
+_NEAR = 12                                   # a step starts "at" a label within this many chars
 _DISPLAY_IN = re.compile(r"\$\$|(?<!\\)\\\[|\\begin\{(?:equation|align|gather|multline|eqnarray|displaymath)")
 _CLOSING = re.compile(r"^(?:This|which|That)\s+(?:completes|finishes|proves|concludes)\b|^\\qed\b", re.I)
 _CASE_OPENER = re.compile(r"^\s*(?:So\s+)?(?:first\s+)?(?:Suppose|Assume|If|Let us assume|Base case|Basis|"
-                          r"Conversely|Otherwise|Else|Now suppose|Suppose now)\b")
+                          r"Conversely|Otherwise|Else|(?:Suppose|Assume) now|Now (?:suppose|assume)|"
+                          r"For the case|In the (?:other|remaining) case|Secondly, if|Note that if)\b")   # step rule 8
 # an induction base case ("The case $k=1$ is obvious", "For $n=0$ ...") is never immediate
 _BASE_CASE = re.compile(r"^\s*(?:(?:In|For|When)\s+)?(?:the\s+)?(?:base\s+case|initial\s+case"
                         r"|case\s+(?:of\s+|where\s+)?\$[^$]{1,30}=\s*[012]\s*\$"
@@ -293,7 +303,7 @@ _BASE_CASE = re.compile(r"^\s*(?:(?:In|For|When)\s+)?(?:the\s+)?(?:base\s+case|i
 
 def _norm_map(text: str) -> tuple[str, list[int]]:
     """Text without \\label/\\index and whitespace, plus each kept char's raw offset."""
-    drop = [(m.start(), m.end()) for m in re.finditer(r"\\(?:label|index)\s*\{[^{}]*\}", text)]
+    drop = [(m.start(), m.end()) for m in LABEL_OR_INDEX.finditer(text)]
     out, idx, d = [], [], 0
     for i, ch in enumerate(text):
         while d < len(drop) and i >= drop[d][1]:
@@ -350,42 +360,40 @@ def check_steps(body: str, structure: dict, steps: list[dict]) -> tuple[list[str
     spans = math_spans(body)
     starts, setups = {}, []
     for s in steps:
-        key = re.sub(r"\s+", "", re.sub(r"\\(?:label|index)\s*\{[^{}]*\}", "", s.get("statement") or ""))
+        key = span_key(s.get("statement"))
         i = _locate(norm, key) if key else -1
         if i < 0:
             continue                      # verbatim errors are reported elsewhere
         pos = idx[i]
         starts[s["id"]] = pos
-        if s.get("subclass") == "setup":
-            j = norm.find(key, i)
-            if j >= 0:
-                setups.append((pos, idx[j + len(key) - 1] + 1))
+        if s.get("subclass") == "setup" and norm.startswith(key, i):
+            setups.append((pos, idx[i + len(key) - 1] + 1))
+        at_label = any(abs(pos - l["offset"]) <= _NEAR for l in structure["labels"])
         if _strictly_inside(pos, spans):
             errors.append(f"{s['id']}: step starts inside math")
-        elif not _sentence_initial(body, pos) and not any(
-                abs(pos - l["offset"]) <= 12 for l in structure["labels"]):
+        elif not _sentence_initial(body, pos) and not at_label:
             prev = body[:pos].rstrip()[-1:] or " "
             # A lowercase start ("and by Theorem", "where", "is a ...") is a certain
             # continuation; a capitalised one after unusual markup may be a false alarm.
-            certain = prev != ";" and not re.match(r"\s*[A-Z]", body[pos:pos + 3])
+            certain = prev == ";" or not re.match(r"\s*[A-Z]", body[pos:pos + 3])
             (errors if certain else warnings).append(
                 f"{s['id']}: step starts mid-sentence (after {prev!r})")
         st = s.get("statement") or ""
-        at_label = any(abs(pos - l["offset"]) <= 12 for l in structure["labels"])
         has_display = bool(_DISPLAY_IN.search(st))
-        has_ref = bool(re.search(r"\\(?:ref|eqref|cite|autoref|cref)", st))
+        has_ref = bool(_HAS_REF.search(st))
         closing = bool(_CLOSING.search(st))
-        immediate = (closing or (_IMMEDIATE.search(st) and not has_ref)) and not has_display
+        immediate = (closing or (_IMMEDIATE.search(st) and not has_ref)) and not has_display \
+            and _sentences(st) == 1               # one sentence: rule 6 appends it to a neighbour
         if (immediate and not at_label and len(st) < 200 and not _CASE_OPENER.match(st)
                 and not _BASE_CASE.match(st)):
             errors.append(f"{s['id']}: step is an immediate sentence (attach it to a neighbour)")
         if (_INTRO.match(st) and _sentences(st) == 1 and len(steps) > 1
-                and not has_display and not has_ref):
+                and not has_display and not has_ref and not _INFERENCE.search(st)):
             errors.append(f"{s['id']}: lone introduction sentence (join it to the next step)")
     for lab in required:                      # a nested proof sits inside a setup step (rule 10)
         if any(a < lab["offset"] < b for a, b in setups):
             continue                          # inside a quoted restatement (rule 5)
-        if not any(abs(p - lab["offset"]) <= 12 for p in starts.values()):
+        if not any(abs(p - lab["offset"]) <= _NEAR for p in starts.values()):
             errors.append(f"author label {lab['text']!r} ({lab['kind']}) does not start a step")
     if _sentences(body) <= 2 and not structure["labels"]:
         errors.append("steps on a proof of at most two sentences (expected zero)")
