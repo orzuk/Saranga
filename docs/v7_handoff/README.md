@@ -94,7 +94,16 @@ Implemented on main (not yet run on any paper):
   - prompt: facts also hold hand-written proofs and \\eqno displays; a \\ref gives an edge into every
     node containing it; step rule 1 lists every label kind the parser reports.
   - The schema block changed, so the v6 prompt hash on main changed too: run v6 only from v6-frozen.
-Not done: the 5-paper mini-pilot. The portal's "Your paper"
+- Mini-pilot (2026-10-19; 3 silver + 2 gold, corpus/silver/pilot_v7/): 0 errors in all 5, 0–5 warnings.
+  Fixes from it: sectioning macros (\\resection{#1} wrapping \\section) expanded; \\setcounter{equation}{0}
+  at every \\section read as equations numbered within sections; a numbered row whose number is
+  unknown keeps its own label (was passed to the next row, so such aligns never split); `\\end {x}`
+  normalised to `\\end{x}`; implication labels "For $(a)\\Rightarrow(b)$:"; a sentence ending ".\\)";
+  no \\ref edge from a result into a step of its own proof; a step partly overlapping a nested node
+  is warned; "Introduce" opens an introduction; prompt: proof sketches (`alternative`), repeated
+  copies (keep the first), term edges to the node holding a nested equation. Regression: gold
+  snapshot unchanged, 59 of 1449 fact files differ (all from the fixes above).
+Not done: The portal's "Your paper"
 (`portal/yours_llm.py`) still uses the v6 prompt.
 
 ## v7 scope (proposed, NOT yet confirmed by Or)

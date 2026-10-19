@@ -85,6 +85,15 @@ blocks = find_blocks("\\usepackage[linesnumbered]{algorithm2e}\n\\begin{algorith
 check([l.content for b in blocks for l in b.lines] == ["$x \\gets 0$"], "SetNlSty arguments skipped")
 check(_read_group(r"{a\\}b}", 0) == ("a\\\\", 5), "brace reader at \\\\}")
 
+fx = extract_facts(r"""\documentclass{article}\renewcommand{\theequation}{\thesection.\arabic{equation}}
+\newcommand{\rs}[1]{\setcounter{equation}{0}\section{#1}}\begin{document}\rs{A}\begin{equation}a\label{a}\end{equation}
+\rs{B}\begin{equation}b\label{b}\end{equation}\end{document}""")
+check([s["number"] for s in fx["sections"]] == ["1", "2"] and fx["labels"]["b"]["number"] == "2.1",
+      "a sectioning macro, \\setcounter{equation}{0} at each section")
+fx = extract_facts("\\documentclass{article}\\setcounter{equation}{5}\\begin{document}\\begin{align}a&=b\\label{x}\\\\"
+                   " c&=d\\label{y}\\end{align}\\end{document}")
+check([f["labels"] for f in fx["facts"]] == [["x"], ["y"]], f"rows with unknown numbers keep their labels: {fx['facts']}")
+
 if FAILS:
     print("\n".join(FAILS))
     sys.exit(1)

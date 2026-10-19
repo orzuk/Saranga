@@ -129,9 +129,9 @@ def _neighbour_bounds(nodes: list, nid: str, out: dict, fact: dict) -> tuple:
 
 def _sentence_end(text: str, end: int) -> bool:
     """Does a span ending at `end` end a sentence? Peels closing markup first, so
-    "... x.$" and "... bounded.} \\end{equation}" end sentences."""
+    "... x.$", "... x.\\)" and "... bounded.} \\end{equation}" end sentences."""
     s = text[:end].rstrip()
-    tail = re.compile(r"(?:\\end\{[a-zA-Z*]+\}|\\\]|\$\$?|\\(?:label|tag)\{[^{}]*\}"
+    tail = re.compile(r"(?:\\end\{[a-zA-Z*]+\}|\\[\])]|\$\$?|\\(?:label|tag)\{[^{}]*\}"
                       r"|\\[a-zA-Z]+\*?|\\\\|[}\s~&)\]])$")
     prev = None
     peeled_macro = False
@@ -296,6 +296,7 @@ def compute_hierarchy(graph: dict, spans: dict, report: dict) -> dict[str, str |
     """
     order = sorted(spans, key=lambda i: (spans[i][0], -(spans[i][1] - spans[i][0])))
     parent: dict[str, str | None] = {}
+    types = {n["id"]: n.get("type") for n in graph["nodes"]}
     for nid in order:
         s, e = spans[nid]
         best = None
@@ -328,6 +329,16 @@ def compute_hierarchy(graph: dict, spans: dict, report: dict) -> dict[str, str |
         else:
             n.pop("parent_id", None)
         n.pop("parent_step", None)
+    # a step meant to hold a nested result must contain all of its statement
+    for n in graph["nodes"]:
+        if n.get("type") not in _LEVEL2 or n["id"] not in spans:
+            continue
+        ss, se = spans[n["id"]]
+        for oid, (os_, oe) in spans.items():
+            if types.get(oid) not in _LEVEL2 and ss < oe and os_ < se and not (os_ <= ss and se <= oe) \
+                    and not (ss <= os_ and oe <= se):
+                report["warnings"].append(f"{n['id']} partly overlaps {oid}: a step holding {oid} must "
+                                          f"contain its whole statement (from \\begin to \\end)")
     report["parents_set"] = filled
     return parent
 
@@ -717,6 +728,7 @@ def finalize(graph: dict, tex: str) -> dict:
 
     # 5. uses edges from \ref, into Level-1 nodes and proof steps alike
     ref_pairs: set = set()
+    proves = {(e.get("source"), e.get("target")) for e in graph["edges"] if e.get("type") == ET.PROVES}
     order = list(facts["labels"])               # document order
     for n in graph["nodes"]:
         if n.get("type") == "algorithm_step":
@@ -748,6 +760,9 @@ def finalize(graph: dict, tex: str) -> dict:
                     continue
                 # containment is parent_id, never an edge
                 if src in _ancestors(tgt, parent) or tgt in _ancestors(src, parent):
+                    continue
+                # "this completes the proof of Theorem \ref{X}" in a step of X's own proof
+                if any((a, src) in proves for a in _ancestors(tgt, parent)):
                     continue
                 ref_pairs.add((src, tgt))
                 if (src, tgt) in pairs or (tgt, src) in pairs:

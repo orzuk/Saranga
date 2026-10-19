@@ -183,6 +183,9 @@ _LIST_ENVS = {"enumerate", "compactenum", "inparaenum", "itemize", "compactitem"
 _REF_WITH_ARG = re.compile(r"\\(?:" + _REF_CMDS + r")\*?\s*\{[^{}]*#\d[^{}]*\}")
 
 
+_HEADING = re.compile(r"\\(?:part|chapter|section|subsection|subsubsection)\*?\s*(?:\[[^\]]*\])?\s*\{[^{}]*#\d")
+
+
 def _is_ref_wrapper(body: str) -> bool:
     """Every argument of the macro is used only inside a \\ref-like command."""
     return bool(_REF_WITH_ARG.search(body)) and "#" not in _REF_WITH_ARG.sub("", body)
@@ -226,6 +229,8 @@ def expand_macros(source: str) -> str:
       so every reference is a standard \\ref the finishing step turns into an edge.
     - Macros that discard their arguments (\\newcommand{\\ignore}[1]{}): each use
       is removed with its arguments, as in the PDF.
+    - Sectioning wrappers (\\newcommand{\\resection}[1]{\\setcounter{equation}{0}\\section{#1}}):
+      each use is expanded, so the paper's sections are found.
     Other macros with arguments are kept as written. Reading the definitions
     and substituting them are latex_macros' (one implementation of each,
     shared with the macro glossary and the renderer). Run on the cleaned
@@ -244,7 +249,8 @@ def expand_macros(source: str) -> str:
         discard = not body.strip() and d["arity"] > 0
         if discard and not _uses_braced(source, name, d["arity"]):
             continue                                    # internal or bare-argument use: keep
-        if d["arity"] == 0 or _is_ref_wrapper(body) or discard:
+        heading = d["arity"] > 0 and _HEADING.search(body) and _uses_braced(source, name, d["arity"])
+        if d["arity"] == 0 or _is_ref_wrapper(body) or discard or heading:
             defs[name] = d
             cut.extend(d["spans"])           # every copy: an uncut one would be expanded
     if not defs:
@@ -264,7 +270,7 @@ def prepare_source(tex: str) -> str:
     Idempotent, so applying it to an already prepared source changes nothing.
     Expansion repeats until stable, because expanding one macro can reveal new
     definitions (\\newcommand{\\nc}{\\newcommand} then \\nc{\\I}{\\mathbf{I}})."""
-    s = clean_source(tex)
+    s = _BEGIN_SPACE.sub(r"\\\1{", clean_source(tex))       # \end {equation} -> \end{equation}
     for _ in range(4):
         new = expand_macros(s)
         if new == s:
@@ -274,6 +280,7 @@ def prepare_source(tex: str) -> str:
     return _KEY_BREAK.sub(lambda m: m.group(1) + re.sub(r"\s*\n\s*", " ", m.group(2)) + "}", s)
 
 
+_BEGIN_SPACE = re.compile(r"\\(begin|end)\s+\{")
 _KEY_BREAK = re.compile(r"(\\[A-Za-z]*(?:ref|label)\*?\s*\{)([^{}]*\n[^{}]*)\}")
 
 
@@ -667,10 +674,21 @@ def counter_formats(source: str, counters: set[str]) -> tuple[dict, dict, set]:
         if m.group(5) or (m.group(3) and not star):
             formats.setdefault(ctr, [({"section": "sec", "chapter": "chap"}[within],), ("lit", "."),
                                      ("ctr", "arabic")]) if within in ("section", "chapter") else unknown.add(ctr)
+    # \setcounter{equation}{0} next to every \section is the old way to number within sections
+    by_hand: dict[str, list[bool]] = {}
     for m in re.finditer(r"\\(?:setcounter|addtocounter|stepcounter|refstepcounter)\s*\{([^}]*)\}",
                          source):
-        if m.group(1).strip() in counters:
-            unknown.add(m.group(1).strip())
+        ctr = m.group(1).strip()
+        if ctr in counters:
+            zero = re.match(r"\s*\{\s*0\s*\}", source[m.end():])
+            near = zero and (re.match(r"\s*\\section(?![a-zA-Z*])", source[m.end() + zero.end():])
+                             or re.search(r"\\section\s*\{[^{}]*\}\s*$", source[max(0, m.start() - 300):m.start()]))
+            by_hand.setdefault(ctr, []).append(bool(near) and m.group(0).startswith("\\setcounter"))
+    for ctr, at_sections in by_hand.items():
+        if all(at_sections) and ctr not in resets:
+            resets[ctr] = "section"
+        else:
+            unknown.add(ctr)
     return formats, resets, unknown
 
 
@@ -820,7 +838,7 @@ def extract_facts(tex: str) -> dict:
             num = f"{sub_eq}{_alph(sub_ctr).lower()}"
         else:
             num = eq_number() if numbered else None
-        if num is None and not fact["env"].endswith("*") and not final:
+        if not numbered and not fact["env"].endswith("*") and not final:
             line_nonumber = False             # amsmath: a \label on a \notag line
             return                            # takes the next numbered line's number
         for key in line_labels:

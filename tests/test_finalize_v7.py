@@ -38,7 +38,7 @@ Every group of prime order is cyclic, see \cite{Lag, Cau}.
 Every finite group of odd order is solvable.
 \end{theorem}
 \begin{proof}
-By Lemma \ref{l:a} we may assume the order is composite. We claim that the group has a normal subgroup. Indeed, take a Sylow subgroup and count. This proves the claim. The rest follows by induction.
+By Lemma \ref{l:a} we may assume the order is composite. We claim that the group has a normal subgroup. Indeed, take a Sylow subgroup and count. This proves the claim. The rest follows by induction, proving Theorem \ref{t:main}.
 \end{proof}
 Theorem \ref{t:intro} has many consequences. Every abelian group is solvable.
 \section{Proof of the second result}
@@ -57,7 +57,7 @@ def build():
     claim = "We claim that the group has a normal subgroup."
     claim_span = claim + " Indeed, take a Sylow subgroup and count. This proves the claim."
     proof = ("By Lemma \\ref{l:a} we may assume the order is composite. " + claim_span
-             + " The rest follows by induction.")
+             + " The rest follows by induction, proving Theorem \\ref{t:main}.")
     nodes = [
         {"id": "LP1", "type": "lemma", "name": "L", "statement": "Every group of prime order is cyclic, see \\cite{Lag, Cau}."},
         {"id": "TP1", "type": "theorem", "name": "T", "statement": "Every finite group of odd order is solvable.",
@@ -72,7 +72,7 @@ def build():
         {"id": "PSP4", "type": "proof_step", "name": "s2b", "parent_id": "PSP2", "step_order": 2,
          "statement": "Indeed, take a Sylow subgroup and count. This proves the claim."},
         {"id": "PSP5", "type": "proof_step", "name": "s3", "parent_id": "PP1", "step_order": 3,
-         "statement": "The rest follows by induction."},
+         "statement": "The rest follows by induction, proving Theorem \\ref{t:main}."},
         {"id": "RP1", "type": "remark", "name": "R", "statement": "Theorem \\ref{t:intro} has many consequences."},
         {"id": "ClP2", "type": "claim", "name": "C2", "statement": "Every abelian group is solvable."},
         {"id": "PP2", "type": "proof", "name": "P2", "confidence": 0.7,
@@ -107,6 +107,7 @@ def main():
     check(e.get(("PP1", "TP1", "proves"), {}).get("basis") == "syntax", "proof environment basis")
     check("PSP2" not in n and r["steps_merged"] == [("PSP2", "ClP1")], f"merge: {r['steps_merged']}")
     check(n["PSP3"]["parent_id"] == "ClP1" and n["PSP5"]["step_order"] == 2, "children and step_order after merge")
+    check(("TP1", "PSP5", "uses") not in e, "no edge from a result into a step of its own proof")
     check(("TP1", "RP1", "uses") in e, "the restated copy's \\label resolves to TP1")
     check(any("ClP1 is stated inside proof PP1" in w for w in r["warnings"]), "encapsulation warning")
     check(not any("PP2" in x and "section heading" in x for x in r["errors"]), "a proof may span its subsections")

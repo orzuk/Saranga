@@ -141,8 +141,9 @@ _LABEL_PATTERNS = {
                      + r"(?:[.:]\s*\}|\}\s*[.:])"),
     "heading_switch_math": r"\{\s*\\(?:it|bf|em|sc|sl)\b\s*" + _HEAD_MATH + r"(?:[.:]\s*\}|\}\s*[.:])",
     "degree":  r"\$\s*\d+\s*\^\s*\{?\s*\\circ\s*\}?\s*\$\s*[.:)]?",
-    "implication": (r"\(\s*(?:\d+|[ivx]+|[a-d])\s*\)\s*\$?\s*\\(?:Long|long)?(?:[Rr]ightarrow|[Ll]eftrightarrow|implies)"
-                    r"\s*\$?\s*\(\s*(?:\d+|[ivx]+|[a-d])\s*\)\s*[.:]?"),
+    "implication": (r"(?:(?:For|Proof of)\s+)?\$?\s*\(\s*(?:\d+|[ivx]+|[a-d])\s*\)\s*\$?\s*"
+                    r"\\(?:Long|long)?(?:[Rr]ightarrow|[Ll]eftrightarrow|implies)"
+                    r"\s*\$?\s*\(\s*(?:\d+|[ivx]+|[a-d])\s*\)\s*\$?\s*[.:]?"),
 }
 _PAREN = re.compile(r"\{?\((?:i{1,3}|iv|vi{0,3}|ix|x|[a-h]|\d)\)\}?(?=\s)")
 _PAREN_MATH = re.compile(r"\$\s*\((?:i{1,3}|iv|vi{0,3}|ix|x|[a-h]|\d)\)\s*\$(?=\s)")   # "$(1)$ It is easy"
@@ -286,7 +287,7 @@ _IMMEDIATE = re.compile(               # step rule 6 ("non-trivial" is not "triv
     r"(?<!-)\b(?:clear(?:ly)?|obvious(?:ly)?|trivial(?:ly)?|immediate(?:ly)?|at once|easy|easily|"
     r"straightforward|tautological|by inspection|similarly|a similar argument|"
     r"the same argument|as above|we can verify|left to the reader)\b", re.I)
-_INTRO = re.compile(r"^(?:Let(?! us\b)|Take|Consider|Define|Fix|Denote|Set)\b")   # step rule 4
+_INTRO = re.compile(r"^(?:Let(?! us\b)|Take|Consider|Define|Fix|Denote|Set|Introduce)\b")   # step rule 4
 _INFERENCE = re.compile(r"\b(?:hence|so|then|thus)\b", re.I)
 _HAS_REF = re.compile(r"\\(?:" + REF_CMDS + r"|[a-zA-Z]*cite[a-zA-Z]*)\b")
 _NEAR = 12                                   # a step starts "at" a label within this many chars

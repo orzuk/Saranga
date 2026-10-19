@@ -610,11 +610,15 @@ remark or problem stated in running text), the `statement` is:
   definition or equation twice or more (in the abstract or introduction, then
   formally; restated in an appendix or before its proof; an equation displayed
   again), emit one node: the copy that is an environment if only one is, else the
-  numbered one, else the fuller statement (never the abstract's copy when the
-  body states it). The other copies get no node: put their verbatim text in the
+  numbered one, else the fuller statement, else the first (never the abstract's
+  copy when the body states it). The other copies get no node: put their verbatim text in the
   kept node's `also_stated_at`. The finishing step then resolves every `\ref` to
   a copy's `\label` to the kept node; add nothing by hand. A copy that differs
   in content (a special case, a weaker form) is not a repeat: it is its own node.
+- **A proof sketch.** An informal sketch or "proof idea" of a result the paper
+  proves in full elsewhere is a `proof` node with `rigor: semi_formal`, and its
+  `proves` edge carries `alternative: true` (one node per part when the sketch is
+  split across sections).
 - **Parts proved separately are claims.** When the paper proves the parts of a
   result at different places (part (a) in Section 3, part (b) in Section 5) and
   other nodes rely on single parts, emit each part as a `claim` nested in the
@@ -693,7 +697,7 @@ is yours. Build the dependency edges in four passes:
    `definiendum` and for the symbol it introduces, and add a `uses` edge from
    the definition to every later Level-1 node that uses it, confidence
    `0.7`–`0.85`. A use inside a proof gets one edge, to the proof, not one per
-   step.
+   step; a use inside an equation nested in a node gets one edge, to that node.
 3. **Results built on results.** For each result and proof, add a `uses` edge
    from every result it applies, earlier or later.
 4. **Inside a proof.** A step that relies on an earlier step's conclusion, in the
@@ -854,7 +858,7 @@ Such a break starts a new step unless the next paragraph plainly continues the
 same move.
 
 **4. Introductions group.** A run of consecutive sentences that only introduce
-objects (start with Let, Take, Consider, Define, Fix, Denote, Set, and contain no
+objects (start with Let, Take, Consider, Define, Fix, Denote, Set, Introduce, and contain no
 `\ref`, `\cite`, displayed math, or hence/so/then/thus) is one `introduce_variable`
 step. A run of a single such sentence is joined to the step that follows it.
 
