@@ -33,7 +33,7 @@ _DISPLAY_ENVS = (r"equation|align|gather|multline|eqnarray|displaymath|flalign|a
                  r"array|cases|split|aligned|gathered|matrix|pmatrix|bmatrix|vmatrix")
 _MATH = re.compile(
     r"\$\$.*?\$\$"
-    r"|(?<!\\)\$(?:\\.|[^$\\])+\$"
+    r"|(?:(?<=\\\\)|(?<!\\))\$(?:\\.|[^$\\])+\$"   # $..$, also right after a \\ line break
     r"|(?<!\\)\\\[.*?\\\]"          # \[ ... \]  (but not the line break \\[5pt])
     r"|(?<!\\)\\\(.*?\\\)"
     r"|\\begin\{(" + _DISPLAY_ENVS + r")\*?\}.*?\\end\{\1\*?\}"
