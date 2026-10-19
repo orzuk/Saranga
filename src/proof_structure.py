@@ -407,7 +407,9 @@ def check_steps(body: str, structure: dict, steps: list[dict], anchors=()) -> tu
         if (immediate and not at_label and len(st) < 200 and not _CASE_OPENER.match(st)
                 and not _BASE_CASE.match(st)):
             errors.append(f"{s['id']}: step is an immediate sentence (attach it to a neighbour)")
-        if (_INTRO.match(st) and _sentences(st) == 1 and len(steps) > 1
+        first_label = min((l["offset"] for l in structure["labels"]), default=None)
+        before_labels = first_label is not None and pos < first_label   # rule 1: its own setup step
+        if (_INTRO.match(st) and _sentences(st) == 1 and len(steps) > 1 and not before_labels
                 and not has_display and not has_ref and not _INFERENCE.search(st)):
             errors.append(f"{s['id']}: lone introduction sentence (join it to the next step)")
     for lab in required:                      # a nested proof sits inside a setup step (rule 10)
