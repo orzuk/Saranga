@@ -597,7 +597,7 @@ def check_defined_terms(graph: dict, spans: dict, parent: dict, report: dict) ->
         if missing:
             shown = term if kind == "word" else f"${term}$"
             report["warnings"].append(f"{d['id']} defines {shown!r}, used with no edge from it in: "
-                                      + ", ".join(missing[:12]) + (" ..." if len(missing) > 12 else ""))
+                                      + ", ".join(missing))
 
 
 _INTRO_SYM = [re.compile(r"\b[Ll]et\s+\$([^$]{1,40})\$\s+(?:be|denote)\b(?!\s+(?:as\s+(?:in|above|before|defined)|defined\s+(?:in|as\s+in)))"),
