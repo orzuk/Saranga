@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
+IDLE = 600   # seconds: a gap between two consecutive transcript entries longer than this is not work
 OUT = {"silver": REPO / "corpus/silver/opus-5.5__v7", "gold-author": REPO / "corpus/silver/opus-5.5__v7_gold"}
 
 
@@ -42,9 +43,12 @@ def one(path):
             tools += sum(1 for c in content if isinstance(c, dict) and c.get("type") == "tool_use")
     if len(stamps) < 2:
         return None
-    t0, t1 = (datetime.fromisoformat(s.replace("Z", "+00:00")) for s in (stamps[0], stamps[-1]))
-    return dict(paper=m.group(1), start=stamps[0], end=stamps[-1], minutes=round((t1 - t0).total_seconds() / 60, 1),
-                tool_calls=tools, **tok)
+    ts = [datetime.fromisoformat(x.replace("Z", "+00:00")) for x in stamps]
+    gaps = [(b - a).total_seconds() for a, b in zip(ts, ts[1:])]
+    active = sum(g for g in gaps if g <= IDLE)          # a longer gap is a stall (usage limit, disconnect)
+    return dict(paper=m.group(1), start=stamps[0], end=stamps[-1], minutes=round(active / 60, 1),
+                wall_minutes=round((ts[-1] - ts[0]).total_seconds() / 60, 1),
+                stalled_minutes=round(sum(g for g in gaps if g > IDLE) / 60, 1), tool_calls=tools, **tok)
 
 
 def main():
@@ -60,7 +64,7 @@ def main():
         r["set"] = next((s for s, d in OUT.items() if (d / f"{r['paper']}.json").is_file()), None)
         if r["set"] and (r["paper"] not in rows or r["end"] > rows[r["paper"]]["end"]):
             rows[r["paper"]] = r                       # a rerun replaces the earlier agent
-    cols = ["paper", "set", "start", "end", "minutes", "tool_calls", "out", "inp", "cache_read", "cache_write"]
+    cols = ["paper", "set", "start", "end", "minutes", "wall_minutes", "stalled_minutes", "tool_calls", "out", "inp", "cache_read", "cache_write"]
     with open(a.out, "w") as fh:
         fh.write("\t".join(cols) + "\n")
         for r in sorted(rows.values(), key=lambda r: r["start"]):
