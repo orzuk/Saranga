@@ -99,8 +99,8 @@ def _sentence_initial_at(text: str, pos: int) -> bool:
     stripped = before.rstrip()
     while _SPACING_CMD.search(stripped):      # \vspace*{-3pt}, \medskip, \noindent are layout
         stripped = _SPACING_CMD.sub("", stripped).rstrip()
-    if not stripped:
-        return True
+    if not stripped or re.search(r"\\footnote(?:text)?\s*(?:\[[^\]]*\])?\s*\{$", stripped):
+        return True                           # a footnote starts its own text
     if re.search(r"\n\s*\n\s*$", before):
         return True
     if _LEAD_CMDS.search(stripped):
