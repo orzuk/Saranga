@@ -48,14 +48,24 @@ def items(name):
 
 def blueprint_tex(d: Path) -> Path:
     """The blueprint as a paper: its compiled LaTeX without the Lean markers, in a document with the usual
-    theorem environments (blueprints declare them in a macro file of their own)."""
+    theorem environments (blueprints declare them in a macro file of their own) and the macro definitions of
+    its macro files (macros.tex), as a paper's preamble would hold them."""
     import blueprint_to_graph as B
+    from latex_macros import read_definitions, strip_comments
     t = re.sub(r"\\(?:uses|lean|proves|discussion)\s*\{(?:[^{}]|\{[^{}]*\})*\}|\\(?:leanok|mathlibok|notready)\b", "",
                B.compiled((d / "all.tex").read_text(encoding="utf-8", errors="replace")))
+    mf = d / "macros.tex"
+    src = strip_comments(mf.read_text(encoding="utf-8", errors="replace")) if mf.is_file() else ""
+    # only the command definitions (as written; the last one of a name wins): a macro file's environments,
+    # theorem declarations and package code would change what the parser takes for a statement
+    lean = {"uses", "proves", "lean", "leanok", "mathlibok", "notready", "discussion", "graphcolor"}
+    defs = [re.sub(r"\\texorpdfstring\s*\{((?:[^{}]|\{[^{}]*\})*)\}\s*\{(?:[^{}]|\{[^{}]*\})*\}", r"\1", src[slice(*v["spans"][-1])])
+            for k, v in read_definitions(src, clean=False, spans=True).items()
+            if v.get("form") != "environment" and v.get("spans") and k not in lean]   # hyperref's PDF text dropped
     f = d / "blueprint.tex"
     f.write_text("\\documentclass{article}\n\\usepackage{amsthm}\n"
                  + "".join(f"\\newtheorem{{{e}}}{{{e.capitalize()}}}\n" for e in _ENVS)
-                 + "\\begin{document}\n" + t + "\n\\end{document}\n", encoding="utf-8")
+                 + "\n".join(defs) + "\n\\begin{document}\n" + t + "\n\\end{document}\n", encoding="utf-8")
     return f
 
 
@@ -113,6 +123,8 @@ def one(job):
                 f.write_text(json.dumps(parse_to_unified(str(tex), d.name, str(EXTRACTORS[x]))))
         pred = json.loads(f.read_text())
         out[x] = {p: (c := GS.score(pred, gold, **GS.PRESETS[p])) | GS.pooled([c]) for p in presets}
+    import gold_macros                                 # the pages expand raw_latex from metadata.macros
+    gold_macros.author(d) if name == "author" else gold_macros.blueprint(d)
     (d / "scores.json").write_text(json.dumps(out, indent=1))
     return d.name, out
 

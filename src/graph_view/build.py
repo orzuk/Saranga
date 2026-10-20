@@ -490,7 +490,7 @@ def paper_model(data, stem):
         })
         if isinstance(n.get("pos"), list) and len(n["pos"]) >= 2:   # the box's place in the authors' drawing
             out_nodes[-1]["pos"] = n["pos"]
-        tex = box_tex(n.get("statement") or body)
+        tex = box_tex(va._statement_render_source(n) or body)     # raw_latex when it has TeX: statement may be de-TeX'd
         tex_name = box_tex(n.get("name") or "", 80)
         if tex or tex_name:
             out_nodes[-1]["tex"] = tex or shorten(plain_text(body))
