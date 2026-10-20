@@ -578,7 +578,9 @@ def main():
     ap.add_argument("--objective", choices=["unit", "e2e"], default="unit",
                     help="threshold objective: the unit matcher (default, released v2b) or the end-to-end graph F (opt-in)")
     ap.add_argument("--graphs", default=str(GRAPHS), help="parsed train+val graphs for --objective e2e (alg3/analyze.py --parse-train; v6 silver)")
+    ap.add_argument("--silver", default=str(SILVER), help="silver graphs for the end-to-end score, <paper>.json (default v6)")
     a = ap.parse_args()
+    globals()["SILVER"] = Path(a.silver)
     CLASSIFIER.update(kind=a.classifier, n_jobs=a.threads)
     FOLD_SEED["seed"] = a.seed
     t0 = time.time()

@@ -68,9 +68,15 @@ FONT_ARG = re.compile(r"(\\" + FONT + r")\s+(\\[A-Za-z]+|[A-Za-z0-9])")    # \ma
 STOP = {"the", "a", "an", "of", "and", "or", "in", "on", "for", "to", "is", "be", "set", "map", "function"}
 
 
+def _flat(s) -> str:
+    """v7 graphs may hold a list of strings where v6 had one string (name, definiendum)."""
+    return "; ".join(str(x) for x in s if x) if isinstance(s, (list, tuple)) else (s or "")
+
+
 def mnorm(s: str) -> str:
     """Math without spacing, one spelling per symbol: \\mathcal L, {\\mathcal L} and
     \\mathcal{L} agree, and so do e_{u} and e_u."""
+    s = _flat(s)
     s = SPACES.sub("", FONT_ARG.sub(r"\1{\2}", s or ""))
     s = re.sub(r"\{(\\[A-Za-z]+\{[^{}]*\})\}", r"\1", s)
     return re.sub(r"([_^])\{([A-Za-z0-9])\}", r"\1\2", s).strip("$")
@@ -82,13 +88,14 @@ def head(m: str) -> str | None:
 
 
 def wnorm(s: str) -> str:
-    s = re.sub(r"\$[^$]*\$|\\[A-Za-z]+\*?|[{}~]", " ", s or "")
+    s = re.sub(r"\$[^$]*\$|\\[A-Za-z]+\*?|[{}~]", " ", _flat(s))
     return re.sub(r"\s+", " ", s).strip().lower()
 
 
 def candidates(text: str, name: str = "") -> list[dict]:
     """[{text, kind, math, pos, ...}] in order of first appearance."""
     out, seen = [], set()
+    name = _flat(name)
     first = re.split(r"(?<=[.!?])\s", text or "", maxsplit=1)[0]
 
     def add(t, kind, math, pos):
@@ -454,7 +461,8 @@ def split_of(EM) -> dict:
     return {r.get("arxiv_id") or r["paper_id"]: r["split"] for r in csv.DictReader(open(EM.SPLIT))}
 
 
-def definiendum_pieces(d: str):
+def definiendum_pieces(d):
+    d = _flat(d)
     maths = {mnorm(m.group(1) or m.group(2)) for m in INLINE.finditer(d or "")}
     words = {wnorm(p) for p in re.split(r"[;,]", re.sub(r"\$[^$]*\$", " ", d or "")) if wnorm(p)}
     return {m for m in maths if m}, {w for w in words if len(w) >= 3}
@@ -576,6 +584,10 @@ def parser_f1(EM, pp: dict, probs: dict, th: float) -> tuple:
 
 def cmd_train(a):
     EM = _metrics()
+    if a.silver:
+        EM.SILVER = Path(a.silver).resolve()
+    if a.split:
+        EM.SPLIT = Path(a.split).resolve()
     sp = split_of(EM)
     train = sorted(p for p, s in sp.items() if s == "train")
     val = sorted(p for p, s in sp.items() if s == "val")
@@ -686,6 +698,8 @@ def main():
     t.add_argument("--graphs", required=True, help="rule graphs of the silver papers (e.g. .../tagger_v6)")
     t.add_argument("--out", required=True, help="model directory, e.g. extractors/edges/<id>")
     t.add_argument("--seed", type=int, default=0, help="shuffle the papers before the 5 folds (0: by id)")
+    t.add_argument("--silver", default=None, help="silver graphs, <paper>.json (default: edge_metrics.SILVER, v6)")
+    t.add_argument("--split", default=None, help="split CSV (default: edge_metrics.SPLIT, v6 6-2-2)")
     p = sub.add_parser("apply", help="add the model's edges to a folder of graphs")
     p.add_argument("--graphs", required=True)
     p.add_argument("--model", required=True)
