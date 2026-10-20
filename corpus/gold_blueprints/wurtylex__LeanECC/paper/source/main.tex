@@ -1,0 +1,2205 @@
+% This LaTeX document needs to be compiled with XeLaTeX.
+\documentclass[10pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage[export]{adjustbox}
+\graphicspath{ {./images/} }
+\usepackage{caption}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage[version=4]{mhchem}
+\usepackage{stmaryrd}
+\usepackage{fvextra, csquotes}
+\usepackage{listings}
+\usepackage{mathrsfs}
+\usepackage{bbold}
+\usepackage[fallback]{xeCJK}
+\usepackage{polyglossia}
+\usepackage{fontspec}
+\usepackage{MnSymbol}
+\usepackage{newunicodechar}
+\IfFontExistsTF{Noto Serif CJK KR}
+{\setCJKmainfont{Noto Serif CJK KR}}
+{\IfFontExistsTF{Apple SD Gothic Neo}
+  {\setCJKmainfont{Apple SD Gothic Neo}}
+  {\IfFontExistsTF{UnDotum}
+    {\setCJKmainfont{UnDotum}}
+    {\setCJKmainfont{Malgun Gothic}}
+}}
+
+\setmainlanguage{english}
+\IfFontExistsTF{CMU Serif}
+{\setmainfont{CMU Serif}}
+{\IfFontExistsTF{DejaVu Sans}
+  {\setmainfont{DejaVu Sans}}
+  {\setmainfont{Georgia}}
+}
+
+%New command to display footnote whose markers will always be hidden
+\let\svthefootnote\thefootnote
+\newcommand\blfootnotetext[1]{%
+  \let\thefootnote\relax\footnote{#1}%
+  \addtocounter{footnote}{-1}%
+  \let\thefootnote\svthefootnote%
+}
+
+%Overriding the \footnotetext command to hide the marker if its value is `0`
+\let\svfootnotetext\footnotetext
+\renewcommand\footnotetext[2][?]{%
+  \if\relax#1\relax%
+    \ifnum\value{footnote}=0\blfootnotetext{#2}\else\svfootnotetext{#2}\fi%
+  \else%
+    \if?#1\ifnum\value{footnote}=0\blfootnotetext{#2}\else\svfootnotetext{#2}\fi%
+    \else\svfootnotetext[#1]{#2}\fi%
+  \fi
+}
+
+\newunicodechar{⊕}{\ifmmode\oplus\else{$\oplus$}\fi}
+\newunicodechar{¬}{\ifmmode\neg\else{$\neg$}\fi}
+\newunicodechar{∘}{\ifmmode\circ\else{$\circ$}\fi}
+\newunicodechar{○}{\ifmmode\medcircle\else{$\medcircle$}\fi}
+\newunicodechar{⋅}{\ifmmode\cdot\else{$\cdot$}\fi}
+\newunicodechar{×}{\ifmmode\times\else{$\times$}\fi}
+
+\begin{document}
+\captionsetup{singlelinecheck=false}
+\section*{Chapter 1}
+\section*{The Fundamental Question}
+\subsection*{1.1 Overview}
+Communication is a fundamental need of our modern lives. In fact, communication is something that humans have been doing for a long time. For simplicity, let us restrict ourselves to English. It is quite remarkable that different people speaking English can be understood pretty well: even if e.g. the speaker has an accent. This is because English has some built-in redundancy, which allows for "errors" to be tolerated. We will pick an example from one of the author's experiences conversing with his two-year-old son, Akash. When Akash started to speak his own version of English, which we will dub "Akash English," we got examples such as the one illustrated below:
+
+\begin{figure}[h]
+\begin{center}
+  \includegraphics[alt={},max width=\textwidth]{9669e529-878a-4b74-8d73-c6ea539a69cd-01_758_478_1504_822}
+\captionsetup{labelformat=empty}
+\caption{Figure 1.1: Decoding for Akash English, one gets "I need little little (trail)mix."}
+\end{center}
+\end{figure}
+
+With some practice Akash's parents were able to "decode" what Akash really meant. In fact, Akash could communicate even if he did not say an entire word properly and gobbled up part(s) of word(s).
+
+The above example shows that having redundancy in a language allows for communication even in the presence of (small amounts of) differences and errors. Of course, in our modern digital world, all kinds of entities communicate (and most of the entities do not communicate in English, or any natural language for that matter). Errors are also present in the digital world, so these digital communications also use redundancy.
+
+Error-correcting codes (henceforth, just codes) are clever ways of representing data so that one can recover the original information even if parts of it are corrupted. The basic idea is to judiciously introduce redundancy so that the original information can be recovered even when parts of the (redundant) data have been corrupted.
+
+For example, when packets are transmitted over the Internet, some of the packets get corrupted or dropped. Packet drops are resolved by the TCP layer by a combination of sequence numbers and ACKs. To deal with data corruption, the TCP/IP protocol uses a form of error correction called CRC Checksum [137]. From a theoretical point of view, the checksum is a terrible code since it does not have good error correction properties (for that matter so is English). However, on the Internet, the current dominant mode of operation is to detect errors and if errors have occurred, then ask for retransmission. This is the reason why the use of checksum has been hugely successful in the Internet. However, there are other communication applications where re-transmission is not an option. Codes are used when transmitting data over the telephone line or via cell phones. They are also used in deep space communication and in satellite broadcast (for example, TV signals are transmitted via satellite). Indeed, asking the Mars Rover to re-send an image just because it got corrupted during transmission is not an option-this is the reason that for such applications, the codes used have always been very sophisticated.
+
+Codes also have applications in areas not directly related to communication. In particular, in the applications above, we want to communicate over space. Codes can also be used to communicate over time. For example, codes are used heavily in data storage. CDs and DVDs work fine even in presence of scratches precisely because they use codes. Codes are used in Redundant Array of Inexpensive Disks (RAID) [30] and error correcting memory [29]. Sometimes, in the Blue Screen of Death displayed by Microsoft Windows family of operating systems, you might see a line saying something along the lines of "parity check failed"-this happens when the code used in the error-correcting memory cannot recover from error(s). Also, certain consumers of memory, e.g. banks, do not want to suffer from even one bit flipping (this e.g. could mean someone's bank balance either got halved or doubled-neither of which are welcome ${ }^{1}$ ). Codes are also deployed in other applications such as paper bar codes; for example, the bar code used by UPS called MaxiCode [28]. Unlike the Internet example, in all of these applications, there is no scope for "re-transmission."
+
+In this book, we will mainly think of codes in the communication scenario. In this framework, there is a sender who wants to send (say) $k$ message symbols over a noisy channel. The
+
+\footnotetext{${ }^{1}$ This is a bit tongue-in-cheek: in real life banks have more mechanisms to prevent one-bit flip from wreaking havoc.
+}
+sender first encodes the $k$ message symbols into $n$ symbols (called a codeword) and then sends it over the channel. The receiver gets a received word consisting of $n$ symbols. The receiver then tries to decode and recover the original $k$ message symbols. Thus, encoding is the process of adding redundancy and decoding is the process of removing errors.
+
+Unless mentioned otherwise, in this book we will make the following assumption:\\
+The sender and the receiver only communicate via the channel. ${ }^{a}$ In other words, other than some setup information about the code, the sender and the receiver do not have any other information exchange (other than of course what was transmitted over the channel). In particular, no message is more likely to be transmitted over another.\\
+${ }^{a}$ The scenario where the sender and receiver have a "side-channel" is an interesting topic that has been studied but is outside the scope of this book.
+
+The fundamental question that will occupy our attention for almost the entire book is the tradeoff between the amount of redundancy used and the number of errors that can be corrected by a code. In particular, we would like to understand:
+
+Question 1.1.1. How much redundancy do we need to correct a given amount of errors? (We would like to correct as many errors as possible with as little redundancy as possible.)
+
+Note that maximizing error correction and minimizing redundancy are contradictory goals: a code with higher redundancy should be able to tolerate a greater number of errors. By the end of this chapter, we will see a formalization of this question.
+
+Once we determine the optimal tradeoff, we will be interested in achieving this optimal tradeoff with codes that come equipped with efficient encoding and decoding. (A DVD player that tells its consumer that it will recover from a scratch on a DVD by tomorrow is not exactly going to be a best-seller.) In this book, we will primarily define efficient algorithms to be ones that run in polynomial time. ${ }^{2}$
+
+\subsection*{1.2 Some Definitions and Codes}
+To formalize Question 1.1.1, we begin with the definition of a code.\\
+Definition 1.2.1 (Code). A code of block length $n$ over an alphabet $\Sigma$ is a subset of $\Sigma^{n}$. Typically, we will use $q$ to denote the alphabet size $|\Sigma| .^{3}$
+
+\footnotetext{${ }^{2}$ Readers unfamiliar with runtime analysis are referred to Appendix C. Coming back to the claim on efficiency-we are not claiming that this is the correct notion of efficiency in practice. However, we believe that it is a good definition as the "first cut"- quadratic or cubic time algorithms are definitely more desirable than exponential time algorithms: see Section C. 4 for more on this.\\
+${ }^{3}$ Note that $q$ need not be a constant and can depend on $n$ : we'll see codes in this book where this is true.
+}Remark 1.2.2. We note that the ambient space $\Sigma^{n}$ can be viewed as a set of sequences, vectors or functions. In other words, we can think of a vector $\left(v_{1}, \ldots, v_{n}\right) \in \Sigma^{n}$ as just the sequence $v_{1}, \ldots, v_{n}$ (in order) or a vector tuple $\left(v_{1}, \ldots, v_{n}\right)$ or as the function $f:[n] \rightarrow \Sigma$ such that $f(i)=v_{i}$. Sequences assume least structure on $\Sigma$ and hence are most generic. Vectors work well when $\Sigma$ has some structure (and in particular is what is known as a field, which we will see next chapter). Functional representation will be convenient when the set of coordinates has structure (e.g., [n] may come from a finite field of size $n$ ). For now, however, the exact representation does not matter and the reader can work with representation as sequences.
+
+We will also frequently use the following alternate way of looking at a code. Given a code $C \subseteq \Sigma^{n}$, with $|C|=M$, we will think of $C$ as a mapping of the following form:
+
+
+\begin{equation*}
+C:[M] \rightarrow \Sigma^{n} . \tag{1.1}
+\end{equation*}
+
+
+In the above equation (1.1), we have used the notation $[M]$ for any integer $M \geq 1$ to denote the set $\{1,2, \ldots, M\}$.
+
+We will also need the notion of dimension of a code.\\
+Definition 1.2.3 (Dimension of a code). Given a code $C \subseteq \Sigma^{n}$, its dimension is given by
+
+$$
+k \stackrel{\text { def }}{=} \log _{q}|C| .
+$$
+
+Let us begin by looking at two specific codes. Both codes are defined over $\Sigma=\{0,1\}$ (also known as binary codes). In both cases $|C|=2^{4}$ and we will think of each of the 16 messages as a 4 bit vector.
+
+We first look at the so-called parity code, which we will denote by $C_{\oplus}$. Given a message $\left(x_{1}, x_{2}, x_{3}, x_{4}\right) \in\{0,1\}^{4}$, its corresponding codeword is given by
+
+
+\begin{equation*}
+C_{\oplus}\left(x_{1}, x_{2}, x_{3}, x_{4}\right)=\left(x_{1}, x_{2}, x_{3}, x_{4}, x_{1} \oplus x_{2} \oplus x_{3} \oplus x_{4}\right), \tag{1.2}
+\end{equation*}
+
+
+where the ⊕ denotes the XOR (also known as the EXOR or Exclusive-OR) operator. In other words, the parity code appends the parity of the message bits (or takes the remainder of the sum of the message bits when divided by 2 ) at the end of the message. For example, the message (1, 0, 0, 1) will have a 0 appended at the end while (1, 0, 0, 0) will have a 1 appended at the end. Note that such a code uses the minimum amount of non-zero redundancy.
+
+The second code we will look at is the so-called repetition code. This is a very natural code (and perhaps the first code one might think of). The idea is to repeat every message bit a fixed number of times. For example, we repeat each of the 4 message bits 3 times and we use $C_{3, \text { rep }}$ to denote this code. Given a message $\left(x_{1}, x_{2}, x_{3}, x_{4}\right) \in\{0,1\}^{4}$, its corresponding codeword is given by
+
+
+\begin{equation*}
+C_{3, r e p}\left(x_{1}, x_{2}, x_{3}, x_{4}\right)=\left(x_{1}, x_{1}, x_{1}, x_{2}, x_{2}, x_{2}, x_{3}, x_{3}, x_{3}, x_{4}, x_{4}, x_{4}\right) . \tag{1.3}
+\end{equation*}
+
+
+Let us now try to look at the tradeoff between the amount of redundancy and the number of errors each of these codes can correct. Even before we begin to answer the question, we need to define how we are going to measure the amount of redundancy. One natural way to define\\
+redundancy for a code with dimension $k$ and block length $n$ is by their difference $n-k$. By this definition, the parity code uses the least amount of redundancy. However, one "pitfall" of such a definition is that it does not distinguish between a code with $k=100$ and $n=102$ and another code with dimension and block length 2 and 4, respectively. The first code uses 0.02 bits of redundancy per message bit while the second code uses 1 bit of redundancy per message bit. Thus, in the relative sense, the latter code is using more redundancy. This motivates the following notion of measuring redundancy.
+
+Definition 1.2.4 (Rate of a code). The rate of a code with dimension $k$ and block length $n$ is given by
+
+$$
+R \stackrel{\text { def }}{=} \frac{k}{n} .
+$$
+
+Note that the higher the rate, the lesser the amount of redundancy in the code. Thus, when constructing or analyzing codes, we will be interested in lower bounding the rate of a code. (Occasionally we will also be sloppy and say that a code "has rate $R$ " when we really mean it "has rate at least $R$.") Also note that as $k \leq n,{ }^{4}$
+
+$$
+R \leq 1 .
+$$
+
+In other words, the rate of a code is the average amount of real information in each of the $n$ symbols transmitted over the channel. So, in some sense, rate captures the complement of redundancy. However, for historical reasons, we will deal with the rate $R$ (instead of the more natural $1-R$ ) as our notion of redundancy. Given the above definition, $C_{\oplus}$ and $C_{3, \text { rep }}$ have rates of $\frac{4}{5}$ and $\frac{1}{3}$. As expected, the parity code has a higher rate than the repetition code.
+
+We have formalized the notion of redundancy as the rate of a code as well as other parameters of a code. However, to formalize Question 1.1.1, we still need to formally define what it means to correct errors. We do so next.
+
+\subsection*{1.3 Error Correction}
+Before we formally define error correction, we will first formally define the notion of encoding.\\
+Definition 1.3.1 (Encoding function). Let $C \subseteq \Sigma^{n}$. An equivalent description of the code $C$ is an injective mapping $E:[|C|] \rightarrow \Sigma^{n}$ called the encoding function.
+
+Next we move to error correction. Informally, we can correct a received word if we can recover the transmitted codeword (or equivalently the corresponding message). This "reverse" process is called decoding.
+
+Definition 1.3.2 (Decoding function). Let $C \subseteq \Sigma^{n}$ be a code. A mapping $D: \Sigma^{n} \rightarrow[|C|]$ is called a decoding function for $C$.
+
+\footnotetext{${ }^{4}$ Further, in this book, we will always consider the case $k>0$ and $n<\infty$ and hence, we can also assume that $R>0$.
+}The definition of a decoding function by itself does not give anything interesting. What we really need from a decoding function is for the function to recover the transmitted message. To understand this notion, we first need to understand the nature of errors that we aim to tackle. In particular, if a transmitter transmits $\mathbf{u} \in \Sigma^{n}$ and the receiver receives $\mathbf{v} \in \Sigma^{n}$, how do we quantify the amount of "error" that has happened during this transmission? While multiple notions are possible, the most central one, and the one we will focus on for most of this book, is based on "Hamming distance," a notion of distance that captures how close are two given sequences u and v.
+
+Definition 1.3.3 (Hamming distance). Given two vectors $\mathbf{u}, \mathbf{v} \in \Sigma^{n}$ the Hamming distance between u and v, denoted by $\Delta(\mathbf{u}, \mathbf{v})$, is the number of positions in which u and v differ. We also define the relative Hamming distance, denoted $\delta(\mathbf{u}, \mathbf{v})$, to be the quantity $\delta(\mathbf{u}, \mathbf{v})=\frac{1}{n} \Delta(\mathbf{u}, \mathbf{v})$.
+
+Note that the relative Hamming distance normalizes the distance so that $\delta(\mathbf{u}, \mathbf{v})$ always lies in the interval $[0,1]$ (for every $n, \Sigma$ and strings $\mathbf{u}, \mathbf{v} \in \Sigma^{n}$ ). This normalization will be useful when we study the asymptotic behavior of encoding and decoding functions, i.e., as $n \rightarrow \infty$. For now, though we will focus mostly on the (non-relative) Hamming distance.
+
+The Hamming distance is a distance in a very formal mathematical sense: see Exercise 1.5. Note that the definition of Hamming distance depends only on the number of differences and not the nature of the difference. For example, consider the vectors $\mathbf{u}=00000$ and $\mathbf{v}=10001$. One can see that their Hamming distance is $\Delta(\mathbf{u}, \mathbf{v})=2$. Now consider the vector $\mathbf{w}=01010$. Note that even though $\mathbf{v} \neq \mathbf{w}$, we again have a Hamming distance $\Delta(\mathbf{u}, \mathbf{w})=2$.
+
+To return to the quantification of errors, from now on we will say that if u is transmitted and $\mathbf{v}$ is received then $\Delta(\mathbf{u}, \mathbf{v})$ errors occurred during transmission. This allows us to quantify the performance of an encoding/decoding function, or equivalently the underlying code as we do next.
+
+Definition 1.3.4 ( $t$-Error Channel). An $n$-symbol $t$-Error Channel over the alphabet $\Sigma$ is a function $\mathrm{Ch}: \Sigma^{n} \rightarrow \Sigma^{n}$ that satisfies $\Delta(\mathbf{v}, \operatorname{Ch}(\mathbf{v})) \leq t$ for every $\mathbf{v} \in \Sigma^{n}$.
+
+Definition 1.3.5 (Error Correcting Code). Let $C \subseteq \Sigma^{n}$ be a code and let $t \geq 1$ be an integer. C is said to be a $t$-error-correcting code if there exists a decoding function $D$ such that for every message $\mathbf{m} \in[|C|]$ and every $t$-error channel $\operatorname{Ch}$ we have $D(\operatorname{Ch}(C(\mathbf{m})))=\mathbf{m}$.
+
+Thus, a $t$-error-correcting code is one where there is a decoding function that corrects any pattern of $t$ errors. For example, consider the case when the codeword ( $0,0,0,0$ ) is transmitted. Then a 1-error-correcting code (over the alphabet $\{0,1\}$ ) should be able to decode from any of the following received words:
+
+$$
+(0,0,0,0),(1,0,0,0),(0,1,0,0),(0,0,1,0),(0,0,0,1) .
+$$
+
+Figure 1.2 illustrates how the definitions we have examined so far interact.\\
+We will also very briefly look at a weaker form of error recovery called error detection.
+
+\begin{figure}[h]
+\begin{center}
+  \includegraphics[alt={},max width=\textwidth]{9669e529-878a-4b74-8d73-c6ea539a69cd-07_200_1195_255_463}
+\captionsetup{labelformat=empty}
+\caption{Figure 1.2: Coding process}
+\end{center}
+\end{figure}
+
+Definition 1.3.6 (Error detection code). Let $C \subseteq \Sigma^{n}$ be a code and let $t \geq 1$ be an integer. $C$ is said to be a $t$-error-detecting code if there exists a detecting procedure $D$ such that for every message $\mathbf{m}$ and every received vector $\mathbf{v} \in \Sigma^{n}$ satisfying $\Delta(C(\mathbf{m}), \mathbf{v}) \leq t$, it holds that $D$ outputs a 1 if $\mathbf{v}=C(\mathbf{m})$ and 0 otherwise. In other words
+
+$$
+D(\mathbf{v})=\left\{\begin{array}{ll}
+1 & \text { if } \mathbf{v}=C(\mathbf{m}) \\
+0 & \text { otherwise }
+\end{array} .\right.
+$$
+
+Thus, a $t$-error-detecting code is one where if the transmission has at least one error and at most $t$ errors, then the decoding function detects the error (by outputting 0). Note that a $t$-error correcting code is also a $t$-error detecting code (but not necessarily the other way round): see Exercise 1.1. Although error detection might seem like a weak error recovery model, it is useful in settings where the receiver can ask the sender to re-send the message. For example, error detection is used quite heavily in the Internet.
+
+Finally, we also consider a more benign model of errors referred to as "erasures," where a symbol is merely (and explicitly) omitted from the transmission (as opposed to being replaced by some other symbol). More specifically, if a symbols is erased, then it is replaced by a special symbol "?" that is not a member of the alphabet $\Sigma$. For example, if $(0,0,0,0)$ was transmitted and the second symbols was erased by the channel, then the vector ( $0, ?, 0,0$ ) will be received.
+
+Definition 1.3.7 ( $t$-Erasure Channel). An $n$-symbol $t$-Erasure Channel over the alphabet $\Sigma$ is a function $\mathrm{Ch}: \Sigma^{n} \rightarrow(\Sigma \cup\{?\})^{n}$ that satisfies $\Delta(\mathbf{v}, \operatorname{Ch}(\mathbf{v})) \leq t$ for every $\mathbf{v} \in \Sigma^{n}$ (where both arguments to $\Delta(\cdot, \cdot)$ are viewed as elements of $(\Sigma \cup\{?\})^{n}$ ) and for every $i \in[n]$ such that $\mathbf{v}_{i} \neq \operatorname{Ch}(\mathbf{v})_{i}$ we have $\operatorname{Ch}(\mathbf{v})_{i}=?$.
+
+A coordinate $i$ such that $\operatorname{Ch}(\mathbf{v})_{i}=?$ is called an erasure. We may now define erasure correcting codes analogously to error-correcting codes.
+
+Definition 1.3.8 (Erasure Correcting Code). Let $C \subseteq \Sigma^{n}$ be a code and let $t \geq 1$ be an integer. $C$ is said to be a $t$-erasure-correcting code if there exists a decoding function $D$ such that for every message $\mathbf{m} \in[|C|]$ and for every $t$-erasure channel $\operatorname{Ch}$ we have $D(\operatorname{Ch}(C(\mathbf{m})))=\mathbf{m}$.
+
+With the above definitions in place, we are now ready to look at the error correcting capabilities of the codes we looked at in the previous section.
+
+\subsection*{1.3.1 Error-Correcting Capabilities of Parity and Repetition Codes}
+In Section 1.2, we looked at examples of parity code and repetition code with the following properties:
+
+$$
+\begin{gathered}
+C_{\oplus}: q=2, k=4, n=5, R=4 / 5 . \\
+C_{3, \text { rep }}: q=2, k=4, n=12, R=1 / 3 .
+\end{gathered}
+$$
+
+We will start with the repetition code. To study its error-correcting capabilities, we will consider the following natural decoding function. Given a received word $\mathbf{y} \in\{0,1\}^{12}$ (where recall the transmitted codeword is of the form $\left(x_{1}, x_{1}, x_{1}, x_{2}, x_{2}, x_{2}, x_{3}, x_{3}, x_{3}, x_{4}, x_{4}, x_{4}\right)$ for some $\left.\left(x_{1}, x_{2}, x_{3}, x_{4}\right) \in\{0,1\}^{4}\right)$, divide it up into four consecutive blocks $\left(y_{1}, y_{2}, y_{3}, y_{4}\right)$ where every block consists of three bits. Then, for every block $y_{i}(1 \leq i \leq 4)$, output the majority bit as the message bit. We claim this decoding function can correct any error pattern with at most 1 error (see Exercise 1.2.) For example, if a block of 010 is received, since there are two 0's we know the original message bit was 0 . In other words, we have argued the following error correcting capability of $C_{3, \text { rep }}$ :
+
+Proposition 1.3.9. $C_{3, \text { rep }}$ is a 1 -error correcting code.\\
+However, it is not too hard to see that $C_{3, \text { rep }}$ cannot correct two errors. For example, if both of the errors happen in the same block and a block in the received word is 010, then the original block in the codeword could have been either 111 or 000. Therefore in this case, no decoder can successfully recover the transmitted message. ${ }^{5}$
+
+Thus, we have pin-pointed the error-correcting capabilities of the $C_{3, \text { rep }}$ code: it can correct one error, but not two or more. However, note that the argument assumed that the error positions can be located arbitrarily. In other words, we are assuming that the channel noise behaves arbitrarily (subject to a bound on the total number of errors). However, we can model the noise differently. We now briefly digress to look at this issue in slightly more detail.
+
+Digression: Channel Noise. As was mentioned above, until now we have been assuming the following noise model, which was first studied by Hamming:
+
+\begin{displayquote}
+Any error pattern can occur during transmission as long as the total number of errors is bounded. Note that this means that the location as well as the nature ${ }^{6}$ of the errors is arbitrary.
+\end{displayquote}
+
+We will frequently refer to Hamming's model as the Adversarial Noise Model. It is important to note that the atomic unit of error is a symbol from the alphabet. For example, if the error pattern ${ }^{7}$ is (1, 0, 1, 0, 0, 0) and we consider the alphabet to be \{0,1\}, then the pattern has two
+
+\footnotetext{${ }^{5}$ Recall we are assuming that the decoder has no side information about the transmitted message.\\
+${ }^{6}$ For binary codes, there is only one kind of error: a bit flip. However, for codes over a larger alphabet, say $\{0,1,2\}$, 0 being converted to a 1 and 0 being converted into a 2 are both errors, but are different kinds of errors.\\
+${ }^{7}$ If $\mathbf{v}$ is transmitted and $\mathrm{Ch}(\mathbf{v})$ is received then the 'difference' between $\mathrm{Ch}(\mathbf{v})$ and $\mathbf{v}$ is the error pattern. For binary alphabet the difference is the XOR operator.
+}
+errors (since the first and the third locations in the vector have a non-zero value, i.e. value of 1). However, if our alphabet is $\{0,1\}^{3}$ (i.e. we think of the vector above as ( $(1,0,1),(0,0,0)$ ), with (0, 0,0) corresponding to the zero element in $\{0,1\}^{3}$ ), then the pattern has only one error. Thus, by increasing the alphabet size we can also change the adversarial noise model. As the book progresses, we will see how error correction over a larger alphabet is easier than error correction over a smaller alphabet.
+
+However, the above is not the only way to model noise. For example, we could also have following error model:
+
+No more than 1 error can happen in any contiguous three-bit block.\\
+First note that, for the error model above, no more than four errors can occur when a codeword in $C_{3, \text { rep }}$ is transmitted. (Recall that in $C_{3, \text { rep }}$, each of the four bits is repeated three times.) Second, note that the decoding function that takes the majority vote of each block can successfully recover the transmitted codeword for any error pattern, while in the worst-case noise model it could only correct at most one error. This channel model is admittedly contrived, but it illustrates the point that the error-correcting capabilities of a code (and a decoding function) are crucially dependent on the noise model.
+
+A popular alternate noise model is to model the channel as a stochastic process. As a concrete example, let us briefly mention the binary symmetric channel with crossover probability $0 \leq p \leq 1$, denoted by $\mathrm{BSC}_{p}$, which was first studied by Shannon. In this model, when a (binary) codeword is transferred through the channel, every bit flips independently with probability $p$.
+
+Note that the two noise models proposed by Hamming and Shannon are in some sense two extremes: Hamming's model assumes no knowledge about the channel (except that a bound on the total number of errors is known ${ }^{8}$ while Shannon's noise model assumes complete knowledge about how noise is produced. In this book, we will consider only these two extreme noise models. In real life, the situation often is somewhere in between.
+
+For real life applications, modeling the noise model correctly is an extremely important task, as we can tailor our codes to the noise model at hand. However, in this book we will not study this aspect of designing codes at all, and will instead mostly consider the worst-case noise model. Informally, if one can communicate over the worst-case noise model, then one could use the same code to communicate over nearly every other noise model with the same amount of noise.
+
+We now return to $C_{\oplus}$ and examine its error-correcting capabilities in the worst-case noise model. We claim that $C_{\oplus}$ cannot correct even one error. Suppose $\mathbf{y}=10000$ is the received word. Then we know that an error has occurred, but we do not know which bit was flipped. This is because the two codewords $\mathbf{u}=00000$ and $\mathbf{v}=10001$ differ from the received word y in exactly one bit. As we are assuming that the receiver has no side information about the transmitted codeword, no decoder can know what the transmitted codeword was.
+
+Thus, from an error-correction point of view, $C_{\oplus}$ is a terrible code (as it cannot correct even 1 error). However, we will now see that $C_{\oplus}$ can detect one error. Consider Algorithm 1.3.1. Note
+
+\footnotetext{${ }^{8}$ A bound on the total number of errors is necessary; otherwise, error correction would be impossible: see Exercise 1.3.
+}
+\begin{lstlisting}[mathescape=true]
+Algorithm 1.3.1 Error Detector for Parity Code
+Input: Received word $\mathbf{y}=\left(y_{1}, y_{2}, y_{3}, y_{4}, y_{5}\right)$
+Output: 1 if $\mathbf{y} \in C_{\oplus}$ and 0 otherwise
+    $b \leftarrow y_{1} \oplus y_{2} \oplus y_{3} \oplus y_{4} \oplus y_{5}$
+    return $1 \oplus b \quad \triangleright$ If there is no error, then $b=0$ and hence we need to "flip" the bit for the
+    answer
+\end{lstlisting}
+
+
+that when no error has occurred during transmission, $y_{i}=x_{i}$ for $1 \leq i \leq 4$ and $y_{5}=x_{1} \oplus x_{2} \oplus x_{3} \oplus$ $x_{4}$, in which case $b=0$ and we output $1 \oplus 0=1$ as required. If there is a single error then either $y_{i}=x_{i} \oplus 1$ (for exactly one $1 \leq i \leq 4$ ) or $y_{5}=x_{1} \oplus x_{2} \oplus x_{3} \oplus x_{4} \oplus 1$. It can be check that in this case, $b=1$. In fact, one can extend this argument to obtain the following result (see Exercise 1.4).
+
+Proposition 1.3.10. The parity code $C_{\oplus}$ can detect an odd number of errors.\\
+Let us now revisit the example that showed that one cannot correct one error using $C_{\oplus}$. Recall, we considered two codewords in $C_{\oplus}, \mathbf{u}=00000$ and $\mathbf{v}=10001$ (which are codewords corresponding to messages 0000 and 1000, respectively). Now consider the scenarios in which u and v are each transmitted and a single error occurs resulting in the received word r = 10000. Thus, given the received word r and the fact that at most one error can occur, the decoder has no way of knowing whether the original transmitted codeword was u or v. Looking back at the example, it is clear that the decoder is "confused" because the two codewords u and v do not differ in many positions. This notion is formalized in the next section.
+
+\subsection*{1.4 Distance of a Code}
+We now turn to a new parameter associated with a code that we call the minimum distance of a code. As we will see later, minimum distance is connected to the other parameters, including the error-correction and error-detection capacity of the code. However, due to the cleanliness of the definition, it will often be the first of the parameters we will explore when studying a new error-correcting code.
+
+Definition 1.4.1 (Minimum distance). Let $C \subseteq \Sigma^{n}$. The minimum distance (or just distance) of $C$, denoted $\Delta(C)$, is defined to be
+
+$$
+\Delta(C)=\min _{\mathbf{c}_{1} \neq \mathbf{c}_{2} \in C} \Delta\left(\mathbf{c}_{1}, \mathbf{c}_{2}\right) .
+$$
+
+We also define the relative minimum distance of $C$ to be $\delta(C)$, is defined to be
+
+$$
+\delta(C)=\min _{\mathbf{c}_{1} \neq \mathbf{c}_{2} \in C} \delta\left(\mathbf{c}_{1}, \mathbf{c}_{2}\right) .
+$$
+
+In other words, $\Delta(C)$ is the minimum distance between two distinct codewords in $C$. We note that the repetition code $C_{3, \text { rep }}$ has distance 3 (recall (1.3)). Indeed, any two distinct messages will differ in at least one of the message bits. After encoding, the difference in one message\\
+bit will translate into a difference of three bits in the corresponding codewords. For example
+
+$$
+C_{3, \text { rep }}(0,0,0,0)=(0,0,0,0,0,0,0,0,0,0,0,0) \text { and } C_{3, \text { rep }}(1,0,0,0)=(1,1,1,0,0,0,0,0,0,0,0,0) .
+$$
+
+We now claim that the distance of $C_{\oplus}$ is 2. This is a consequence of the following observations. If two messages $\mathbf{m}_{1}$ and $\mathbf{m}_{2}$ differ in at least two places then $\Delta\left(C_{\oplus}\left(\mathbf{m}_{1}\right), C_{\oplus}\left(\mathbf{m}_{2}\right)\right) \geq 2$ (even if we just ignored the parity bits). If two messages differ in exactly one place then the parity bits in the corresponding codewords are different, which implies a Hamming distance of 2 between the codewords. For example,
+
+$$
+C_{\oplus}(1,0,0,0)=(1,0,0,0,1) \text { and } C_{\oplus}(1,0,0,1)=(1,0,0,1,0) .
+$$
+
+Thus, $C_{\oplus}$ has a smaller distance than $C_{3, \text { rep }}$ and can correct less number of errors than $C_{3, \text { rep }}$. This suggests that a larger distance implies greater error-correcting capabilities. The next result formalizes this intuition. As we will see, minimum distance exactly captures both the ability to recover from errors as also the notion of erasures (Definition 1.3.8).
+
+Proposition 1.4.2. Given a code $C$, the following are equivalent:
+
+\begin{itemize}
+  \item[1.] $C$ has minimum distance $d \geq 2$,
+  \item[2.] If $d$ is odd, $C$ can correct $(d-1) / 2$ errors.
+  \item[3.] $C$ can detect $d-1$ errors.
+  \item[4.] $C$ can correct $d-1$ erasures.
+\end{itemize}
+
+Remark 1.4.3. Property (2) above for even $d$ is slightly different. In this case, one can correct up to $\frac{d}{2}-1$ errors but cannot correct $\frac{d}{2}$ errors. (See Exercise 1.6.)
+
+Before we prove Proposition 1.4.2, let us apply it to the codes $C_{\oplus}$ and $C_{3, \text { rep }}$ which have distances of 2 and 3, respectively. Proposition 1.4.2 implies the following facts that we have already proved:
+
+\begin{itemize}
+  \item[-] $C_{3, \text { rep }}$ can correct 1 error (Proposition 1.3.9).
+  \item[-] $C_{\oplus}$ can detect 1 error but cannot correct 1 error (Proposition 1.3.10).
+\end{itemize}
+
+The proof of Proposition 1.4.2 will need the following decoding function. Maximum likelihood decoding (MLD) is a well-studied decoding method for error correcting codes. The MLD function outputs the codeword $\mathbf{c} \in C$, which is as close as possible to the received word in Hamming distance (with ties broken arbitrarily). ${ }^{9}$ More formally, the MLD function denoted by $D_{M L D}: \Sigma^{n} \rightarrow C$ is defined as follows. For every $\mathbf{y} \in \Sigma^{n}$,
+
+$$
+D_{M L D}(\mathbf{y})=\arg \min _{\mathbf{c} \in C} \Delta(\mathbf{c}, \mathbf{y}) .
+$$
+
+Algorithm 1.4.1 is a naive implementation of the MLD.
+
+\footnotetext{${ }^{9}$ Technically, as per Definition 1.3.2, a decoder should output a message while MLD outputs a codeword. However, since we only consider code of distance at least one in this book, there is a bijection between codewords and message so this syntatic difference does not matter.
+}
+\begin{lstlisting}[mathescape=true]
+Algorithm 1.4.1 Naive Maximum Likelihood Decoder
+Input: Received word $\mathbf{y} \in \Sigma^{n}$
+Output: $D_{M L D}(\mathbf{y})$
+    Pick an arbitrary $\mathbf{c} \in C$ and assign $\mathbf{z} \leftarrow \mathbf{c}$
+    FOR every $\mathbf{c}^{\prime} \in C$ such that $\mathbf{c} \neq \mathbf{c}^{\prime}$ DO
+        IF $\Delta\left(\mathbf{c}^{\prime}, \mathbf{y}\right)<\Delta(\mathbf{z}, \mathbf{y})$ THEN
+            $\mathbf{z} \leftarrow \mathbf{c}^{\prime}$
+    RETURN z
+\end{lstlisting}
+
+
+Proof of Proposition 1.4.2 We will complete the proof in two steps. First, we will show that if property 1 is satisfied then so are properties 2, 3 and 4 (we prove this via three implications (1) implies (2), (1) implies (3) and (1) implied (4)). Then we show that if property 1 is not satisfied then none of the properties 2, 3 or 4 hold (again via the corresponding three implications).
+
+Item 1. implies 2. Assume $C$ has distance $d$. We first prove 2 (for this case assume that $d=$ $2 t+1)$. We now need to show that there exists a decoding function such that for all error patterns with at most $t$ errors it always outputs the transmitted message. We claim that the MLD function has this property. Assume this is not so and let $\mathbf{c}_{1}$ be the transmitted codeword and let y be the received word. Note that
+
+
+\begin{equation*}
+\Delta\left(\mathbf{y}, \mathbf{c}_{1}\right) \leq t . \tag{1.4}
+\end{equation*}
+
+
+As we have assumed that MLD does not work, $D_{M L D}(\mathbf{y})=\mathbf{c}_{2} \neq \mathbf{c}_{1}$. Note that by the definition of MLD,
+
+
+\begin{equation*}
+\Delta\left(\mathbf{y}, \mathbf{c}_{2}\right) \leq \Delta\left(\mathbf{y}, \mathbf{c}_{1}\right) . \tag{1.5}
+\end{equation*}
+
+
+Consider the following set of inequalities:
+
+
+\begin{align*}
+\Delta\left(\mathbf{c}_{1}, \mathbf{c}_{2}\right) & \leq \Delta\left(\mathbf{c}_{2}, \mathbf{y}\right)+\Delta\left(\mathbf{c}_{1}, \mathbf{y}\right)  \tag{1.6}\\
+& \leq 2 \Delta\left(\mathbf{c}_{1}, \mathbf{y}\right)  \tag{1.7}\\
+& \leq 2 t  \tag{1.8}\\
+& =d-1, \tag{1.9}
+\end{align*}
+
+
+where (1.6) follows from the triangle inequality (see Exercise 1.5), (1.7) follows from (1.5) and (1.8) follows from (1.4). (1.9) implies that the distance of $C$ is at most $d-1$, which is a contradiction.
+
+Item 1. implies 3. We now show that property 3 holds. That is, we need to describe an algorithm that can successfully detect whether errors have occurred during transmission (as long as the total number of errors is bounded by $d-1$ ). Consider the following error detection algorithm: check if the received word $\mathbf{y}=\mathbf{c}$ for some $\mathbf{c} \in C$ (this can be done via an exhaustive check). If no errors occurred during transmission, $\mathbf{y}=\mathbf{c}_{1}$, where $\mathbf{c}_{1}$ was the transmitted codeword and the algorithm above will accept (as it should). On the other hand if $1 \leq \Delta\left(\mathbf{y}, \mathbf{c}_{1}\right) \leq d-1$, then by the fact that the distance of $C$ is $d, \mathbf{y} \notin C$ and hence the algorithm rejects, as required.
+
+Item 1. implies 4. Finally, we prove that property 4 holds. Let $\mathbf{y} \in(\Sigma \cup\{?\})^{n}$ be the received word. First we claim that there is a unique $\mathbf{c}=\left(c_{1}, \ldots, c_{n}\right) \in C$ that agrees with $\mathbf{y}$ (i.e. $y_{i}=c_{i}$ for every $i$ such that $y_{i} \neq$ ?). Indeed, for the sake of contradiction, assume that this is not true, i.e. there exists two distinct codewords $\mathbf{c}_{1}, \mathbf{c}_{2} \in C$ such that both $\mathbf{c}_{1}$ and $\mathbf{c}_{2}$ agree with $\mathbf{y}$ in the unerased positions. Note that this implies that $\mathbf{c}_{1}$ and $\mathbf{c}_{2}$ agree in the positions $i$ such that $y_{i} \neq ?$. Thus, $\Delta\left(\mathbf{c}_{1}, \mathbf{c}_{2}\right) \leq\left|\left\{i \mid y_{i}=?\right\}\right| \leq d-1$, which contradicts the assumption that $C$ has distance $d$.
+
+Given the uniqueness of the codeword $\mathbf{c} \in C$ that agrees with $\mathbf{y}$ in the unerased position, an algorithm to find c is as follows: go through all the codewords in $C$ and output the desired codeword.
+
+Item ᄀ1. implies ᄀ2. For the other direction of the proof, assume that property 1 does not hold, that is, $C$ has distance $d-1$. We now show that property 2 cannot hold: i.e., for every decoding function there exists a transmitted codeword $\mathbf{c}_{1}$ and a received word y (where $\left.\Delta\left(\mathbf{y}, \mathbf{c}_{1}\right) \leq(d-1) / 2\right)$ such that the decoding function cannot output $\mathbf{c}_{1}$. Let $\mathbf{c}_{1} \neq \mathbf{c}_{2} \in C$ be codewords such that $\Delta\left(\mathbf{c}_{1}, \mathbf{c}_{2}\right)=d-1$ (such a pair exists as $C$ has distance $d-1$ ). Now consider a vector y such that $\Delta\left(\mathbf{y}, \mathbf{c}_{1}\right)=\Delta\left(\mathbf{y}, \mathbf{c}_{2}\right)=(d-1) / 2$. Such a y exists as $d$ is odd and by the choice of $\mathbf{c}_{1}$ and $\mathbf{c}_{2}$. Figure 1.3 gives an illustration of such a $\mathbf{y}$ (matching color implies that the vectors agree on those positions).
+
+\begin{figure}[h]
+\begin{center}
+  \includegraphics[alt={},max width=\textwidth]{9669e529-878a-4b74-8d73-c6ea539a69cd-13_572_916_1205_619}
+\captionsetup{labelformat=empty}
+\caption{Figure 1.3: Bad example for unique decoding.}
+\end{center}
+\end{figure}
+
+Now, since $\mathbf{y}$ could have been generated if either of $\mathbf{c}_{1}$ or $\mathbf{c}_{2}$ were the transmitted codeword, no decoding function can work in this case. ${ }^{10}$
+
+Item ¬1. implies ¬3. For the remainder of the proof, assume that the transmitted word is $\mathbf{c}_{1}$ and there exists another codeword $\mathbf{c}_{2}$ such that $\Delta\left(\mathbf{c}_{2}, \mathbf{c}_{1}\right)=d-1$. To see why property 3 is not true, let $\mathbf{y}=\mathbf{c}_{2}$. In this case, either the error detecting algorithm detects no error, or it declares an error when $\mathbf{c}_{2}$ is the transmitted codeword and no error takes place during transmission.
+
+\footnotetext{${ }^{10}$ Note that this argument is just a generalization of the argument that $C_{\oplus}$ cannot correct 1 error.
+}Item ¬1. implies ¬4. We finally argue that property 4 does not hold. Let y be the received word in which the positions that are erased are exactly those where $\mathbf{c}_{1}$ and $\mathbf{c}_{2}$ differ. Thus, given y both $\mathbf{c}_{1}$ and $\mathbf{c}_{2}$ could have been the transmitted codeword, and no algorithm for correcting (at most $d-1$ ) erasures can work in this case. \(\square\)
+
+Proposition 1.4.2 implies that Question 1.1.1 can be reframed as
+
+Question 1.4.1. What is the largest rate $R$ that a code with distance $d$ can have?
+
+We have seen that the repetition code $C_{3, \text { rep }}$ has distance 3 and rate 1/3. A natural follow-up question (which is a special case of Question 1.4.1) is to ask
+
+Question 1.4.2. Can we have a code with distance 3 and rate $R>\frac{1}{3}$ ?
+
+\subsection*{1.5 Hamming Code}
+With the above question in mind, let us consider the so-called Hamming code, which we will denote by $C_{H}$. Given a message $\left(x_{1}, x_{2}, x_{3}, x_{4}\right) \in\{0,1\}^{4}$, its corresponding codeword is given by
+
+$$
+C_{H}\left(x_{1}, x_{2}, x_{3}, x_{4}\right)=\left(x_{1}, x_{2}, x_{3}, x_{4}, x_{2} \oplus x_{3} \oplus x_{4}, x_{1} \oplus x_{3} \oplus x_{4}, x_{1} \oplus x_{2} \oplus x_{4}\right) .
+$$
+
+It can be verified that this code has the following parameters:
+
+$$
+C_{H}: q=2, k=4, n=7, R=4 / 7 .
+$$
+
+We will show shortly that $C_{H}$ has a distance of 3. We would like to point out that we could have picked the three parities differently. The reason we mention the three particular parities above is due to historical reasons. We leave it as an exercise to define an alternate set of parities such that the resulting code still has a distance of 3: see Exercise 1.9.
+
+Before we move on to determining the distance of $C_{H}$, we will need another definition.\\
+Definition 1.5.1 (Hamming Weight). Let $q \geq 2$. Given any vector $\mathbf{v} \in\{0,1,2, \ldots, q-1\}^{n}$, its Hamming weight, denoted by $w t(\mathbf{v})$ is the number of non-zero symbols in $\mathbf{v}$.
+
+For example, if $\mathbf{v}=01203400$, then $w t(\mathbf{v})=4$.\\
+We now look at the distance of $C_{H}$.\\
+Proposition 1.5.2. $C_{H}$ has a distance of 3.
+
+Proof. We will prove the claimed distance by using two properties of $C_{H}$ :
+
+
+\begin{equation*}
+\min _{\mathbf{c} \in C_{H}, \mathbf{c} \neq \mathbf{0}} w t(\mathbf{c})=3, \tag{1.10}
+\end{equation*}
+
+
+and
+
+
+\begin{equation*}
+\min _{\mathbf{c} \in C_{H}, \mathbf{c} \neq \mathbf{0}} w t(\mathbf{c})=\min _{\mathbf{c}_{1} \neq \mathbf{c}_{2} \in C_{H}} \Delta\left(\mathbf{c}_{1}, \mathbf{c}_{2}\right) \tag{1.11}
+\end{equation*}
+
+
+The proof of (1.10) follows from a case analysis on the Hamming weight of the message bits. Let us use $\mathbf{x}=\left(x_{1}, x_{2}, x_{3}, x_{4}\right)$ to denote the message vector.
+
+\begin{itemize}
+  \item[-] Case 0: If $w t(\mathbf{x})=0$, then $C_{H}(\mathbf{x})=\mathbf{0}$, which means we do not have to consider this codeword.
+  \item[-] Case 1: If $w t(\mathbf{x})=1$ then at least two parity check bits in $\left(x_{2} \oplus x_{3} \oplus x_{4}, x_{1} \oplus x_{3} \oplus x_{4}, x_{1} \oplus x_{2} \oplus x_{4}\right)$ are 1 (see Exercise 1.10). So in this case, $w t\left(C_{H}(\mathbf{x})\right) \geq 3$.
+  \item[-] Case 2: If $w t(\mathbf{x})=2$ then at least one parity check bit in $\left(x_{2} \oplus x_{3} \oplus x_{4}, x_{1} \oplus x_{3} \oplus x_{4}, x_{1} \oplus x_{2} \oplus x_{4}\right)$ is 1 (see Exercise 1.11). So in this case, $w t\left(C_{H}(\mathbf{x})\right) \geq 3$.
+  \item[-] Case 3: If $w t(\mathbf{x}) \geq 3$ then those message bits themselves imply that $w t\left(C_{H}(\mathbf{x})\right) \geq 3$.
+\end{itemize}
+
+Thus, we can conclude that $\min _{\mathbf{c} \in C_{H}, \mathbf{c} \neq \mathbf{0}} w t(\mathbf{c}) \geq 3$. Further, note that $w t\left(C_{H}(1,0,0,0)\right)=3$, which implies that $\min _{\mathbf{c} \in C_{H}, \mathbf{c} \neq \mathbf{0}} w t(\mathbf{c}) \leq 3$. This along with the lower bound that we just obtained proves (1.10).
+
+We now turn to the proof of (1.11). For the rest of the proof, let $\mathbf{x}=\left(x_{1}, x_{2}, x_{3}, x_{4}\right)$ and $\mathbf{y}=$ $\left(y_{1}, y_{2}, y_{3}, y_{4}\right)$ denote the two distinct messages. Using associativity and commutativity of the ⊕ operator, we obtain that
+
+$$
+C_{H}(\mathbf{x})+C_{H}(\mathbf{y})=C_{H}(\mathbf{x}+\mathbf{y}),
+$$
+
+where the "+" operator is just the bit-wise ⊕ of the operand vectors ${ }^{11}$. Further, it can be verified that for two vectors $\mathbf{u}, \mathbf{v} \in\{0,1\}^{n}$, we have:
+
+$$
+\Delta(\mathbf{u}, \mathbf{v})=w t(\mathbf{u}+\mathbf{v})
+$$
+
+(see Exercise 1.12). Thus, we have
+
+$$
+\begin{aligned}
+\min _{\mathbf{x} \neq \mathbf{y} \in\{0,1\}^{4}} \Delta\left(C_{H}(\mathbf{x}), C_{H}(\mathbf{y})\right) & =\min _{\mathbf{x} \neq \mathbf{y} \in\{0,1\}^{4}} w t\left(C_{H}(\mathbf{x}+\mathbf{y})\right) \\
+& =\min _{\mathbf{x} \neq \mathbf{0} \in\{0,1\}^{4}} w t\left(C_{H}(\mathbf{x})\right),
+\end{aligned}
+$$
+
+where the second equality follows from the observation that $\left\{\mathbf{x}+\mathbf{y} \mid \mathbf{x} \neq \mathbf{y} \in\{0,1\}^{n}\right\}=\left\{\mathbf{x} \in\{0,1\}^{n} \mid \mathbf{x} \neq\right.$ $\mathbf{0}\}$. Recall that $w t\left(C_{H}(\mathbf{x})\right)=0$ if and only if $\mathbf{x}=\mathbf{0}$ and this completes the proof of (1.11). Combining (1.10) and (1.11), we conclude that $C_{H}$ has a distance of 3. \(\square\)
+
+\footnotetext{${ }^{11}$ E.g. $(0,1,1,0)+(1,1,1,0)=(1,0,0,0)$.
+}The second part of the proof could also be shown in the following manner. It can be verified that the Hamming code is the set $\left\{\mathbf{x} \cdot G_{H} \mid \mathbf{x} \in\{0,1\}^{4}\right\}$, where $G_{H}$ is the following matrix (where we think x as a row vector). ${ }^{12}$
+
+$$
+G_{H}=\left(\begin{array}{lllllll}
+1 & 0 & 0 & 0 & 0 & 1 & 1 \\
+0 & 1 & 0 & 0 & 1 & 0 & 1 \\
+0 & 0 & 1 & 0 & 1 & 1 & 0 \\
+0 & 0 & 0 & 1 & 1 & 1 & 1
+\end{array}\right) .
+$$
+
+For example, the first column in $G_{H}$ gives the first codeword bit of $x_{1}$ and the fifth column of $G_{H}$ gives the codeword bit $x_{2} \oplus x_{3} \oplus x_{4}$.
+
+In fact, any binary code (of dimension $k$ and block length $n$ ) that is generated ${ }^{13}$ by a $k \times n$ matrix is called a binary linear code. (Both $C_{\oplus}$ and $C_{3, \text { rep }}$ are binary linear codes: see Exercise 1.13.) This implies the following simple fact.
+
+Lemma 1.5.3. For any binary linear code $C$ and any two messages $\mathbf{x}$ and $\mathbf{y}, C(\mathbf{x})+C(\mathbf{y})=C(\mathbf{x}+\mathbf{y})$.\\
+Proof. For any binary linear code, we have a generator matrix $G$. The following sequence of equalities (which follow from the distributivity and associativity properties of the Boolean EXOR and AND operators) proves the lemma:
+
+$$
+\begin{aligned}
+C(\mathbf{x})+C(\mathbf{y}) & =\mathbf{x} \cdot G+\mathbf{y} \cdot G \\
+& =(\mathbf{x}+\mathbf{y}) \cdot G \\
+& =C(\mathbf{x}+\mathbf{y}) .
+\end{aligned}
+$$ \(\square\)
+
+We stress that in the lemma above, $\mathbf{x}$ and $\mathbf{y}$ need not be distinct. Note that due to the fact that $b \oplus b=0$ for every $b \in\{0,1\}, \mathbf{x}+\mathbf{x}=\mathbf{0}$, which along with the lemma above implies that $C(\mathbf{0})=\mathbf{0}$. ${ }^{14}$ We can infer the following result from the above lemma and the arguments used to prove (1.11) in the proof of Proposition 1.5.2.
+
+Proposition 1.5.4. For any binary linear code, its minimum distance is equal to the minimum Hamming weight of any non-zero codeword.
+
+Thus, we have seen that $C_{H}$ has distance $d=3$ and rate $R=\frac{4}{7}$ while $C_{3, \text { rep }}$ has distance $d=3$ and rate $R=\frac{1}{3}$. Thus, the Hamming code is provably better than the repetition code (in terms of the tradeoff between rate and distance) and thus, answers Question 1.4.2 in the affirmative. The next natural question is
+
+\footnotetext{${ }^{12}$ Indeed $\left(x_{1}, x_{2}, x_{3}, x_{4}\right) \cdot G_{H}=\left(x_{1}, x_{2}, x_{3}, x_{4}, x_{2} \oplus x_{3} \oplus x_{4}, x_{1} \oplus x_{3} \oplus x_{4}, x_{1} \oplus x_{2} \oplus x_{4}\right)$, as desired.\\
+${ }^{13}$ That is, $C=\left\{\mathbf{x} \cdot G \mid \mathbf{x} \in\{0,1\}^{k}\right\}$, where addition is the ⊕ operation and multiplication is the AND operation.\\
+${ }^{14}$ This of course should not be surprising as for any matrix $G$, we have $\mathbf{0} \cdot G=\mathbf{0}$.
+}Question 1.5.1. Can we have a distance 3 code with a rate higher than that of $C_{H}$ ?
+
+We will address this question in the next section.
+
+\subsection*{1.6 Hamming Bound}
+Now we switch gears to present our first tradeoff between redundancy (in the form of the dimension of a code) and its error-correction capability (in the form of its distance). In particular, we will first prove a special case of the so-called Hamming bound for a distance of 3.
+
+We begin with another definition.\\
+Definition 1.6.1 (Hamming Ball). For any vector $\mathbf{x} \in[q]^{n}$,
+
+$$
+B(\mathbf{x}, e)=\left\{\mathbf{y} \in[q]^{n} \mid \Delta(\mathbf{x}, \mathbf{y}) \leq e\right\} .
+$$
+
+In other words, a Hamming ball of radius $e$, centered at $\mathbf{x}$, contains all vectors within Hamming distance at most $e$ of x.
+
+Next, we prove an upper bound on the dimension of every code with distance 3.\\
+Theorem 1.6.2 (Hamming bound for $d=3$ ). Every binary code with block length $n$, dimension $k$, distance $d=3$ satisfies
+
+$$
+k \leq n-\log _{2}(n+1) .
+$$
+
+Proof. Given any two codewords, $\mathbf{c}_{1} \neq \mathbf{c}_{2} \in C$, the following is true (as $C$ has distance ${ }^{15} 3$ ):
+
+
+\begin{equation*}
+B\left(\mathbf{c}_{1}, 1\right) \cap B\left(\mathbf{c}_{2}, 1\right)=\varnothing . \tag{1.12}
+\end{equation*}
+
+
+See Figure 1.4 for an illustration.\\
+Note that for all $\mathbf{x} \in\{0,1\}^{n}$ (see Exercise 1.16),
+
+
+\begin{equation*}
+|B(\mathbf{x}, 1)|=n+1 . \tag{1.13}
+\end{equation*}
+
+
+Now consider the union of all Hamming balls centered around some codeword; their union is a subset of $\{0,1\}^{n}$. In other words,
+
+
+\begin{equation*}
+\left|\bigcup_{\mathbf{c} \in C} B(\mathbf{c}, 1)\right| \leq 2^{n} . \tag{1.14}
+\end{equation*}
+
+
+As (1.12) holds for every pair of distinct codewords,
+
+
+\begin{align*}
+\left|\bigcup_{\mathbf{c} \in C} B(\mathbf{c}, 1)\right| & =\sum_{\mathbf{c} \in C}|B(\mathbf{c}, 1)| \\
+& =\sum_{\mathbf{c} \in C}(n+1)  \tag{1.15}\\
+& =2^{k} \cdot(n+1), \tag{1.16}
+\end{align*}
+
+
+\footnotetext{${ }^{15}$ Assume that $\mathbf{y} \in B\left(\mathbf{c}_{1}, 1\right) \cap B\left(\mathbf{c}_{2}, 1\right)$, that is $\Delta\left(\mathbf{y}, \mathbf{c}_{1}\right) \leq 1$ and $\Delta\left(\mathbf{y}, \mathbf{c}_{2}\right) \leq 1$. Thus, by the triangle inequality $\Delta\left(\mathbf{c}_{1}, \mathbf{c}_{2}\right) \leq$ $2<3$, which is a contradiction.
+}\begin{figure}[h]
+\begin{center}
+  \includegraphics[alt={},max width=\textwidth]{9669e529-878a-4b74-8d73-c6ea539a69cd-18_619_1014_242_554}
+\captionsetup{labelformat=empty}
+\caption{Figure 1.4: Hamming balls of radius 1 are disjoint. The figure is technically not correct: the balls above are actually balls in the Euclidean space, which is easier to visualize than the Hamming space.}
+\end{center}
+\end{figure}
+
+where (1.15) follows from (1.13) and (1.16) follows from the fact that $C$ has dimension $k$. Combining (1.16) and (1.14), we get
+
+$$
+2^{k}(n+1) \leq 2^{n},
+$$
+
+or equivalently
+
+$$
+2^{k} \leq \frac{2^{n}}{n+1} .
+$$
+
+Taking $\log _{2}$ of both sides we get the desired bound:
+
+$$
+k \leq n-\log _{2}(n+1) .
+$$ \(\square\)
+
+Thus, Theorem 1.6.2 shows that for $n=7, C_{H}$ has the largest possible dimension for any binary code of block length 7 and distance 3 (as for $n=7, n-\log _{2}(n+1)=4$ ). In particular, it also answers Question 1.5.1 for $n=7$ in the negative. Next, will present the general form of Hamming bound.
+
+\subsection*{1.7 Generalized Hamming Bound}
+We start with a new notation.\\
+Definition 1.7.1. A code $C \subseteq \Sigma^{n}$ with dimension $k$ and distance $d$ will be called an $(n, k, d)_{\Sigma}$ code. We will also refer to it as an $(n, k, d)_{|\Sigma|}$ code.
+
+We now proceed to generalize Theorem 1.6.2 to any distance $d$ (from $d=3$ ).
+
+Theorem 1.7.2 (Hamming Bound for any $d$ ). For every ( $n, k, d)_{q}$ code
+
+$$
+k \leq n-\log _{q}\left(\sum_{i=0}^{\left\lfloor\frac{d-1}{2}\right\rfloor}\binom{n}{i}(q-1)^{i}\right) .
+$$
+
+Proof. The proof is a straightforward generalization of the proof of Theorem 1.6.2. For notational convenience, let $e=\left\lfloor\frac{d-1}{2}\right\rfloor$. Given any two codewords, $\mathbf{c}_{1} \neq \mathbf{c}_{2} \in C$, the following is true (as $C$ has distance ${ }^{16} d$ ):
+
+
+\begin{equation*}
+B\left(\mathbf{c}_{1}, e\right) \cap B\left(\mathbf{c}_{2}, e\right)=\varnothing . \tag{1.17}
+\end{equation*}
+
+
+We claim that for all $\mathbf{x} \in[q]^{n}$,
+
+
+\begin{equation*}
+|B(\mathbf{x}, e)|=\sum_{i=0}^{e}\binom{n}{i}(q-1)^{i} . \tag{1.18}
+\end{equation*}
+
+
+Indeed any vector in $B(\mathbf{x}, e)$ must differ from $\mathbf{x}$ in exactly $0 \leq i \leq e$ positions. In the summation, $\binom{n}{i}$ is the number of ways of choosing the differing $i$ positions and in each such position, a vector can differ from $\mathbf{x}$ in $q-1$ ways.
+
+Now consider the union of all Hamming balls centered around a codeword. Obviously, their union is a subset of $[q]^{n}$. In other words,
+
+
+\begin{equation*}
+\left|\bigcup_{\mathbf{c} \in C} B(\mathbf{c}, e)\right| \leq q^{n} . \tag{1.19}
+\end{equation*}
+
+
+As (1.17) holds for every pair of distinct codewords,
+
+
+\begin{align*}
+\left|\bigcup_{\mathbf{c} \in C} B(\mathbf{c}, e)\right| & =\sum_{\mathbf{c} \in C}|B(\mathbf{c}, e)| \\
+& =q^{k} \sum_{i=0}^{e}\binom{n}{i}(q-1)^{i}, \tag{1.20}
+\end{align*}
+
+
+where (1.20) follows from (1.18) and the fact that $C$ has dimension $k$. Combining (1.20) and (1.19) and taking $\log _{q}$ of both sides we will get the desired bound:
+
+$$
+k \leq n-\log _{q}\left(\sum_{i=0}^{e}\binom{n}{i}(q-1)^{i}\right) .
+$$ \(\square\)
+
+Note that the Hamming bound gives a partial answer to Question 1.4.1. In particular, any code of distance $d$ can have rate $R$ at most
+
+$$
+1-\frac{\log _{q}\left(\sum_{i=0}^{e}\binom{n}{i}(q-1)^{i}\right)}{n} .
+$$
+
+Further, the Hamming bound also leads to the following definition:
+
+\footnotetext{${ }^{16}$ Assume that $\mathbf{y} \in B\left(\mathbf{c}_{1}, e\right) \cap B\left(\mathbf{c}_{2}, e\right)$, that is $\Delta\left(\mathbf{y}, \mathbf{c}_{1}\right) \leq e$ and $\Delta\left(\mathbf{y}, \mathbf{c}_{2}\right) \leq e$. Thus, by the triangle inequality, $\Delta\left(\mathbf{c}_{1}, \mathbf{c}_{2}\right) \leq$ $2 e \leq d-1$, which is a contradiction.
+}Definition 1.7.3. Codes that meet Hamming bound are called perfect codes.\\
+In other words, a perfect code leads to the following perfect "packing": if one constructs Hamming balls of radius $\left\lfloor\frac{d-1}{2}\right\rfloor$ around all the codewords, then we would cover the entire ambient space, i.e. every possible vector will lie in one of these Hamming balls.
+
+One example of perfect code is the $(7,4,3)_{2}$ Hamming code that we have seen in this chapter (so is the family of general Hamming codes that we will see in the next chapter). A natural question to ask is if
+
+Question 1.7.1. Other than the Hamming codes, are there any other perfect (binary) codes?
+
+We will see the answer in Section 2.4.
+
+\subsection*{1.8 Family of codes}
+Until now, we have mostly studied specific codes with fixed block lengths and dimensions. However, when we perform an asymptotic study of codes, it makes more sense to talk about a family of codes and study their asymptotic rate and distance. We define these notions next.
+
+Definition 1.8.1 (Code families, Rate and Distance). Let $\left\{n_{i}\right\}_{i \geq 1}$ be an increasing sequence of block lengths and suppose there exists sequences $\left\{k_{i}\right\}_{i \geq 1},\left\{d_{i}\right\}_{i \geq 1}$ and $\left\{q_{i}\right\}_{i \geq 1}$ such that for all $i \geq 1$ there exists an $\left(n_{i}, k_{i}, d_{i}\right)_{q_{i}}$ code $C_{i}$. Then the sequence $\mathscr{C}=\left\{C_{i}\right\}_{i \geq 1}$ is a family of codes. The rate of $\mathscr{C}$ is defined as
+
+$$
+R(\mathscr{C})=\lim _{i \rightarrow \infty}\left\{\frac{k_{i}}{n_{i}}\right\},
+$$
+
+when the limit exists. The relative distance of $\mathscr{C}$ is defined as
+
+$$
+\delta(\mathscr{C})=\lim _{i \rightarrow \infty}\left\{\frac{d_{i}}{n_{i}}\right\},
+$$
+
+when the limit exists. If for all $i \geq 1, q_{i}=q$ then $\mathscr{C}$ is referred to as a family of $q$-ary codes. ${ }^{17}{ }^{18}$\\
+For instance, we will in Section 2.4 see that Hamming code of Section 1.5 can be extended to an entire family of codes. Specifically, $\mathscr{C}_{H}=\left\{C_{i}\right\}_{i \in \mathbb{Z}^{+}}$, with $C_{i}$ being an $\left(n_{i} . k_{i}, d_{i}\right)$-code with $n_{i}=2^{i}-1, k_{i}=2^{i}-i-1, d_{i}=3$ and thus,
+
+$$
+R\left(\mathscr{C}_{H}\right)=\lim _{i \rightarrow \infty} 1-\frac{i}{2^{i}-1}=1,
+$$
+
+\footnotetext{${ }^{17}$ In all codes we will study these limits will exist, but of course it is possible to construct families of codes where the limits do not exist.\\
+${ }^{18}$ While a central goal is to understand $q$-ary families of codes, families over growing alphabets turn out to be useful both to illustrate ideas and to get interesting $q$-ary families.
+}
+and
+$$
+\delta\left(\mathscr{C}_{H}\right)=\lim _{i \rightarrow \infty} \frac{3}{2^{i}-1}=0 .
+$$
+
+A significant focus of this text from now on will be on families of codes. This is necessary as we will be studying the asymptotic behavior of algorithms on codes, which does not make sense for a fixed code. For example, when we say that a decoding algorithm for a code $\mathscr{C}$ takes $O\left(n^{2}\right)$ time, we would be implicitly assuming that $\mathscr{C}$ is a family of codes and that the algorithm has an $O\left(n^{2}\right)$ running time when the block length is large enough. From now on, unless mentioned otherwise, whenever we talk about a code, we will be implicitly assuming that we are talking about a family of codes.
+
+Given that we can only formally talk about asymptotic run time of algorithms, we now also state our formal notion of efficient algorithms:
+
+We'll call an algorithm related to a code of block length $n$ to be efficient if it runs in time polynomial in $n$.
+
+For all the specific codes that we will study in this book, the corresponding family of codes will be a "family" in a more natural sense. By this we mean that all the specific codes in a family of codes will be the "same" code except with different parameters. A bit more formally, we will consider families $\left\{C_{i}\right\}_{i \geq 1}$, where given only the 'index' $i$, one can compute a sufficient description of $C_{i}$ efficiently. ${ }^{19}$
+
+Finally, the definition of a family of codes allows us to present the final version of the big motivating question for the book. The last formal version of the main question we considered was Question 1.4.1, where we were interested in the tradeoff of rate $R$ and distance $d$. The comparison was somewhat unfair because $R$ was a ratio while $d$ was an integer. A more appropriate comparison should be between rate $R$ and the relative distance $\delta$. Further, we would be interested in tackling the main motivating question for families of codes, which results in the following final version:
+
+Question 1.8.1. Given $q$, what is the optimal tradeoff between $R(\mathscr{C})$ and $\delta(\mathscr{C})$ that can be achieved by some family $\mathscr{C}$ of $q$-ary codes?
+
+A natural special case of Question 1.8.1 is whether the rate and relative distance of a family of codes can be simultaneously positive. We formulate this special case as a separate question below.\\
+\includegraphics[max width=\textwidth, alt={}, center]{9669e529-878a-4b74-8d73-c6ea539a69cd-21_60_81_2139_246}
+
+\footnotetext{${ }^{19}$ We stress that this is not always going to be the case. In particular, we will consider "random" codes where this efficient constructibility will not be true.
+}Question 1.8.2. Does there exist a constant $q$ and a $q$-ary family of codes $\mathscr{C}$ such that $R(\mathscr{C})>$ 0 and $\delta(\mathscr{C})>0$ hold simultaneously?
+
+Codes that have the above property are called asymptotically good. For the curious reader, we will present many asymptotically good codes in the rest of this book, though a priori the existence of these is not immediate.
+
+\subsection*{1.9 Exercises}
+Exercise 1.1. Show that every $t$-error correcting code is also $t$-error detecting but not necessarily the other way around.
+
+Exercise 1.2. Prove Proposition 1.3.9.\\
+Exercise 1.3. Show that for every integer $n$, there is no code with block length $n$ that can handle arbitrary number of errors.
+
+Exercise 1.4. Prove Proposition 1.3.10.\\
+Exercise 1.5. A distance function on $\Sigma^{n}$ (i.e. $d: \Sigma^{n} \times \Sigma^{n} \rightarrow \mathbb{R}$ ) is called a metric if the following conditions are satisfied for every $\mathbf{x}, \mathbf{y}, \mathbf{z} \in \Sigma^{n}$ :
+
+\begin{itemize}
+  \item[1.] $d(\mathbf{x}, \mathbf{y}) \geq 0$.
+  \item[2.] $d(\mathbf{x}, \mathbf{y})=0$ if and only if $\mathbf{x}=\mathbf{y}$.
+  \item[3.] $d(\mathbf{x}, \mathbf{y})=d(\mathbf{y}, \mathbf{x})$.
+  \item[4.] $d(\mathbf{x}, \mathbf{z}) \leq d(\mathbf{x}, \mathbf{y})+d(\mathbf{y}, \mathbf{z})$. (This property is called the triangle inequality.)
+\end{itemize}
+
+Prove that the Hamming distance is a metric.\\
+Exercise 1.6. Let $C$ be a code with distance $d$ for even $d$. Then argue that $C$ can correct up to $d / 2-1$ many errors but cannot correct $d / 2$ errors. Using this or otherwise, argue that if a code $C$ is $t$-error correctable then it either has a distance of $2 t+1$ or $2 t+2$.
+
+Exercise 1.7. In this exercise, we will see that one can convert arbitrary codes into code with slightly different parameters:
+
+\begin{itemize}
+  \item[1.] Prove that if there exists an $(n, k, d)_{\Sigma}$ code then there also exists an $(n-1, k, d-1)_{\Sigma}$ code. Specifically, show how to convert an $(n, k, d)_{\Sigma}$ code $C$ into an $(n-1, k, d-1)_{\Sigma}$ code.
+  \item[2.] For odd $d$, prove that if an $(n, k, d)_{2}$ code exists, then there also exists an $(n+1, k, d+1)_{2}$ code. Specifically, show how to convert an $(n, k, d)_{2}$ code $C$ into an $(n+1, k, d+1)_{2}$ code.
+\end{itemize}
+
+Note: Your conversion should not assume anything else about the code other than the parameters of the code C. Also your conversion should work for every $n, k, d \geq 1$ and every $\Sigma$.
+
+Exercise 1.8. In this problem we will consider a noise model that has both errors and erasures. In particular, let $C$ be an $(n, k, d)_{\Sigma}$ code. As usual a codeword $\mathbf{c} \in C$ is transmitted over the channel and the received word is a vector $\mathbf{y} \in(\Sigma \cup\{?\})^{n}$, where as before $a$ ? denotes an erasure. We will use $s$ to denote the number of erasures in $\mathbf{y}$ and $\boldsymbol{e}$ to denote the number of (non-erasure) errors that occurred during transmission. To decode such a vector means to output a codeword $\mathbf{c} \in C$ such that the number of positions where $\mathbf{c}$ disagree with $\mathbf{y}$ in the $n-s$ non-erased positions is at most $e$. For the rest of the problem assume that
+
+
+\begin{equation*}
+2 e+s<d . \tag{1.21}
+\end{equation*}
+
+
+\begin{itemize}
+  \item[1.] Argue that the output of the decoder for any $C$ under (1.21) is unique.
+  \item[2.] Let $C$ be a binary code (but not necessarily linear). Assume that there exists a decoder $D$ that can correct from < d/2 many errors in $T(n)$ time. Then under (1.21) one can perform decoding in time $O(T(n))$.
+\end{itemize}
+
+Exercise 1.9. Define codes other than $C_{H}$ with $k=4, n=7$ and $d=3$.\\
+Hint: Refer to the proof of Proposition 1.5.2 to figure out the properties needed from the three parities.\\
+Exercise 1.10. Argue that if $w t(\mathbf{x})=1$ then at least two parity check bits in $\left(x_{2} \oplus x_{3} \oplus x_{4}, x_{1} \oplus x_{2} \oplus\right.$ $\left.x_{4}, x_{1} \oplus x_{3} \oplus x_{4}\right)$ are 1.
+
+Exercise 1.11. Argue that if $w t(\mathbf{x})=2$ then at least one parity check bit in $\left(x_{2} \oplus x_{3} \oplus x_{4}, x_{1} \oplus x_{2} \oplus\right.$ $\left.x_{4}, x_{1} \oplus x_{3} \oplus x_{4}\right)$ is 1.
+
+Exercise 1.12. Prove that for any $\mathbf{u}, \mathbf{v} \in\{0,1\}^{n}, \Delta(\mathbf{u}, \mathbf{v})=w t(\mathbf{u}+\mathbf{v})$.\\
+Exercise 1.13. Argue that $C_{\oplus}$ and $C_{3, \text { rep }}$ are binary linear codes.\\
+Exercise 1.14. Let $G$ be a generator matrix of an $(n, k, d)_{2}$ binary linear code. Then $G$ has at least kd ones in it.
+
+Exercise 1.15. Argue that in any binary linear code, either all codewords begin with a 0 of exactly half of the codewords begin with $a 0$.
+
+Exercise 1.16. Prove (1.13).\\
+Exercise 1.17. Show that there is no binary code with block length 4 that achieves the Hamming bound.
+
+Exercise 1.18. ${ }^{(*)}$ There are $n$ people in a room, each of whom is given a black/white hat chosen uniformly at random (and independent of the choices of all other people). Each person can see the hat color of all other people, but not their own. Each person is asked if they wish to guess their own hat color. They can either guess, or abstain. Each person makes their choice without\\
+knowledge of what the other people are doing. They either win collectively, or lose collectively. They win if at least one person does not abstain and all the people who don't abstain guess their hat color correctly. They lose if all people abstain, or if some person guesses their color incorrectly. Your goal below is to come up with a strategy that will allow the $n$ people to win with pretty high probability. We begin with a simple warm-up:
+
+\begin{itemize}
+  \item[1.] Argue that the $n$ people can win with probability at least $\frac{1}{2}$.
+\end{itemize}
+
+Next we will see how one can really bump up the probability of success with some careful modeling, and some knowledge of Hamming codes. (Below are assuming knowledge of the general Hamming code (see Section 2.4). If you do not want to skip ahead, you can assume that $n=7$ in the last part of this problem.)
+
+\begin{itemize}
+  \item[2.] Lets say that a directed graph $G$ is a subgraph of the $n$-dimensional hypercube if its vertex set is $\{0,1\}^{n}$ and if $u \rightarrow v$ is an edge in $G$, then $u$ and $v$ differ in at most one coordinate. Let $K(G)$ be the number of vertices of $G$ with in-degree at least one, and out-degree zero. Show that the probability of winning the hat problem equals the maximum, over directed subgraphs $G$ of the $n$-dimensional hypercube, of $K(G) / 2^{n}$.
+  \item[3.] Using the fact that the out-degree of any vertex is at most $n$, show that $K(G) / 2^{n}$ is at most $\frac{n}{n+1}$ for any directed subgraph $G$ of the $n$-dimensional hypercube.
+  \item[4.] Show that if $n=2^{r}-1$, then there exists a directed subgraph $G$ of the $n$-dimensional hypercube with $K(G) / 2^{n}=\frac{n}{n+1}$.\\
+Hint: This is where the Hamming code comes in.
+\end{itemize}
+
+\subsection*{1.10 Bibliographic Notes}
+Coding theory owes its origin to two remarkable papers: one by Shannon [149] and the other by Hamming [90] both of which were published within a couple of years of each other. Shannon's paper defined the $\mathrm{BSC}_{p}$ channel (among others) and defined codes in terms of its encoding function. Shannon's paper also explicitly defined the decoding function. Hamming's work defined the notion of codes as in Definition 1.2.1 as well as the notion of Hamming distance. Both the Hamming bound and the Hamming code are (not surprisingly) due to Hamming. The specific definition of Hamming code that we used in this book was the one proposed by Hamming and is also mentioned in Shannon's paper (which pre-dates Hamming's) with attribution to Hamming. The notion of erasures was defined by Elias [50]. Most exercises of this chapter are based on [90]. The hat problem in Exercise 1.18 is from Ebert, Merkle and Vollmer [47].
+
+\section*{Chapter 2}
+\section*{A Look at Some Nicely Behaved Codes: Linear Codes}
+One motivation for the topic of this chapter is the following question: How we can represent a code? Or more specifically, how many bits does it take to describe a code $C:[q]^{k} \longrightarrow[q]^{n}$ ? In general, a code $C:[q]^{k} \longrightarrow[q]^{n}$ can be stored using $n q^{k}$ symbols from $[q]$ ( $n$ symbols for each of the $q^{k}$ codewords) or $n q^{k} \log q$ bits. For constant rate codes, this is exponential space, which is prohibitive even for modest values of $k$ like $k=100$. A natural question is whether we can do better. To have any hope of doing so, a succinct representation the code must have some extra structure. It turns out that one broad class of codes that do possess extra structure than general codes, is what are called linear codes. We have already seen binary linear codes in Section 1.5, that is: $C \subseteq\{0,1\}^{n}$ is a linear code if for all $\mathbf{c}_{1}, \mathbf{c}_{2} \in C, \mathbf{c}_{1}+\mathbf{c}_{2} \in C$, where the "+" denotes bitwise XOR. In this chapter, we will see more general linear codes. We will see that they not only offer enough structure to get succinct representations, but they also possess several other nice properties.
+
+To define general linear codes, we first need to introduce general finite fields and vector spaces over such fields and we do so first before returning to codes.
+
+\subsection*{2.1 Groups and Finite Fields}
+To define linear subspaces, we will need to work with (finite) fields. At a high level, we need finite fields since when we talk about codes, we deal with finite symbols/numbers and we want to endow these symbols with the same math that makes arithmetic over real numbers work. Finite fields accomplish this precise task. We begin with a quick overview of fields. We start with the more elementary notion of a group.
+
+Definition 2.1.1. A group $\mathbb{G}$ is given by a pair ( $S, \circ$ ), where $S$ is the set of elements and ∘ is a function $S \times S \rightarrow S$ with the following properties:
+
+\begin{itemize}
+  \item[-] Closure: For every $a, b \in S$, we have $a \circ b \in S$.
+  \item[-] Associativity: ○ is associative: that is, for every a, b, c $\in S, a \circ(b \circ c)=(a \circ b) \circ c$.
+\end{itemize}
+
+\begin{itemize}
+  \item[-] Identity: There exists distinct a special elements $e \in S$ such that for every $a \in S$ we have $a \circ e=e \circ a=a$.
+  \item[-] Inverse: For every $a \in S$, there exists its unique inverse $a^{-1}$ such that $a \circ a^{-1}=a^{-1} \circ a=e$.
+\end{itemize}
+
+If $\mathbb{G}=(S, \circ)$ satisfies all the properties except the existence of inverses then $\mathbb{G}$ is called a monoid. We say $\mathbb{G}$ is commutative if for every $a, b \in S, a \circ b=b \circ a$.
+
+We often use the same letter to denote the group (or other algebraic structures) and the set of elements.
+
+We now turn to the definition of a field. Informally speaking, a field is a set of elements on which one can do addition, subtraction, multiplication and division and still stay in the set.
+
+Definition 2.1.2. A field $\mathbb{F}$ is given by a triple $(S,+, \cdot)$, where $S$ is the set of elements and,$+ \cdot$ are functions $S \times S \rightarrow S$ with the following properties:
+
+\begin{itemize}
+  \item[-] Addition: $(S,+)$ form a commutative group with identity element denoted $0 \in S$.
+  \item[-] Multiplication: $(S \backslash\{0\}, \cdot)$ form a commutative group with identity element $1 \in S \backslash\{0\} .^{1}$
+  \item[-] Distributivity: distributes over +: that is, for every $a, b, c \in S, a \cdot(b+c)=a \cdot b+a \cdot c$.
+\end{itemize}
+
+Again we typically use the same letter to denote the field and its set of elements. We also use $-a$ to denote the additive inverse of $a \in \mathbb{F}$ and $a^{-1}$ to denote the multiplicative inverse of $a \in \mathbb{F} \backslash\{0\}$.
+
+We note that in the above definition we have not explicitly argued that $a \cdot 0=0=0 \cdot a$ for any $a \in S$. (Technically this means $(S, \cdot)$ is a commutative monoid.) This is because this property is implied by Definition 2.1.2- see Exercise 2.1.
+
+With the usual semantics for + and ⋅ , $\mathbb{R}$ (set of real number) is a field, but $\mathbb{Z}$ (set of integers) is not a field as division of two integers results in a rational number that need not be an integer (the set of rational numbers itself is a field though: see Exercise 2.2). In this course, we will exclusively deal with finite fields. As the name suggests these are fields with a finite set of elements. (We will overload notation and denote the size of a field $|\mathbb{F}|=|S|$.) The following is a well known result.
+
+Theorem 2.1.3 (Size of Finite Fields). Every finite field has size $p^{s}$ for some prime $p$ and integer $s \geq 1$. Conversely for every prime $p$ and integer $s \geq 1$ there exists a field $\mathbb{F}$ of size $p^{s}$.
+
+One example of a finite field that we have seen is the field with $S=\{0,1\}$, which we will denote by $\mathbb{F}_{2}$ (we have seen this field in the context of binary linear codes). For $\mathbb{F}_{2}$, addition is the XOR operation, while multiplication is the AND operation. The additive inverse of an element in $\mathbb{F}_{2}$ is the number itself while the multiplicative inverse of 1 is 1 itself.
+
+Let $p$ be a prime number. Then the integers modulo $p$ form a field, denoted by $\mathbb{F}_{p}$ (and also by $\mathbb{Z}_{p}$ ), where the addition and multiplication are carried out modulo $p$. For example, consider $\mathbb{F}_{7}$, where the elements are $\{0,1,2,3,4,5,6\}$. We have $(4+3) \bmod 7=0$ and $4 \cdot 4 \bmod 7=2$.
+
+\footnotetext{${ }^{1}$ Note that we do not include 0 since it does not have a multiplicative inverse.
+}Further, the additive inverse of 4 is 3 as $(3+4) \bmod 7=0$ and the multiplicative inverse of 4 is 2 as $4 \cdot 2 \bmod 7=1$.
+
+More formally, we prove the following result.\\
+Lemma 2.1.4. Let $p$ be a prime. Then $\mathbb{F}_{p}=\left(\{0,1, \ldots, p-1\},+_{p}, \cdot{ }_{p}\right)$ is a field, where $+_{p}$ and $\cdot{ }_{p}$ are addition and multiplication modulo $p$.
+
+Proof. The properties of associativity, commutativity, distributivity and identities hold for integers and hence, they hold for $\mathbb{F}_{p}$. The closure property follows since both the "addition" and "multiplication" are done modulo $p$, which implies that for any $a, b \in\{0, \ldots, p-1\}, a+{ }_{p} b, a \cdot{ }_{p} b \in$ $\{0, \ldots, p-1\}$. Thus, to complete the proof, we need to prove the existence of unique additive and multiplicative inverses.
+
+Fix an arbitrary $a \in\{0, \ldots, p-1\}$. Then we claim that its additive inverse is $p-a \bmod p$. It can be verified that $a+p-a=0 \bmod p$. Next we argue that this is the unique additive inverse. To see this note that the sequence $a, a+1, a+2, \ldots, a+p-1$ are $p$ consecutive numbers and thus, exactly one of them is a multiple of $p$, which happens for $b=p-a \bmod p$, as desired.
+
+Now fix an $a \in\{1, \ldots, p-1\}$. Next we argue for the existence of a unique multiplicative universe $a^{-1}$. Consider the set of numbers $T=\left\{a \cdot{ }_{p} b \mid b \in\{1, \ldots, p-1\}\right\}$. We claim that all these numbers are unique. To see this, note that if this is not the case, then there exist $b_{1} \neq b_{2} \in$ $\{0,1, \ldots, p-1\}$ such that $a \cdot b_{1}=a \cdot b_{2} \bmod p$, which in turn implies that $a \cdot\left(b_{1}-b_{2}\right)=0 \bmod p$. Since $a$ and $b_{1}-b_{2}$ are non-zero numbers, this implies that $p$ divides $a \cdot\left(b_{1}-b_{2}\right)$. Further, since $a$ and $\left|b_{1}-b_{2}\right|$ are both at most $p-1$, this implies that multiplying $a$ and $\left(b_{1}-b_{2}\right) \bmod p$ results in $p$, which is a contradiction since $p$ is prime. Thus, we have argued that $|T|=p-1$ and since each number in $T$ is in $[p-1]$, we have that $T=[p-1]$. Thus, we can conclude that there exists a unique element $b$ such that $a \cdot b=1 \bmod p$ and thus, $b$ is the required $a^{-1}$. \(\square\)
+
+One might think that there could be different finite fields with the same number of elements. However, this is not the case:
+
+Theorem 2.1.5. For every prime power $q$ there is a unique finite field with $q$ elements (up to isomorphism ${ }^{2}$ ).
+
+Thus, we are justified in just using $\mathbb{F}_{q}$ to denote a finite field on $q$ elements.
+
+\subsection*{2.2 Vector Spaces and Linear Subspaces}
+Definition 2.2.1 (Vector Space). A vector space $V$ over a field $\mathbb{F}$ is given by a triple ( $T,+, \cdot$ ) such that $(T,+)$ form a commutative group and •, referred to as the scalar product, is a function $\mathbb{F} \times T \rightarrow$ $T$ such that for every $a, b \in \mathbb{F}$ and $\mathbf{u}, \mathbf{v} \in T$ we have ( $a+b) \cdot \mathbf{u}=a \cdot \mathbf{u}+b \cdot \mathbf{u}$ and $a \cdot(\mathbf{u}+\mathbf{v})=a \cdot \mathbf{u}+a \cdot \mathbf{v}$.
+
+\footnotetext{${ }^{2}$ An isomorphism $\phi: S \rightarrow S^{\prime}$ is a bijective map (such that $\mathbb{F}=(S,+, \cdot)$ and $\mathbb{F}^{\prime}=\left(S^{\prime}, \oplus, \circ\right)$ are fields) where for every $a_{1}, a_{2} \in S$, we have $\phi\left(a_{1}+a_{2}\right)=\phi\left(a_{1}\right) \oplus \phi\left(a_{2}\right)$ and $\phi\left(a_{1} \cdot a_{2}\right)=\phi\left(a_{1}\right) \circ \phi\left(a_{2}\right)$. In other words, an ismorphisms is a map between representations that 'preserves' the effect of operators on elements.
+}The most common vector space we will focus on is $\mathbb{F}^{n}$ with + representing coordinatewise addition in $\mathbb{F}$ and $a \cdot \mathbf{u}$ representing the coordinatewise scaling of $\mathbf{u}$ by $a$.
+
+We are finally ready to define the notion of linear subspaces of $\mathbb{F}^{n}$.\\
+Definition 2.2.2 (Linear Subspace). A non-empty subset $S \subseteq \mathbb{F}^{n}$ is a linear subspace if the following properties hold:
+
+\begin{itemize}
+  \item[1.] For every $\mathbf{x}, \mathbf{y} \in S, \mathbf{x}+\mathbf{y} \in S$, where the addition is vector addition over $\mathbb{F}$ (that is, do addition componentwise over $\mathbb{F}$ ).
+  \item[2.] For every $a \in \mathbb{F}$ and $\mathbf{x} \in S, a \cdot \mathbf{x} \in S$, where the multiplication is done componentwise over $\mathbb{F}$.
+\end{itemize}
+
+Here is a (trivial) example of a linear subspace of $\mathbb{F}_{5}^{3}$ :
+
+
+\begin{equation*}
+S_{1}=\{(0,0,0),(1,1,1),(2,2,2),(3,3,3),(4,4,4)\} . \tag{2.1}
+\end{equation*}
+
+
+Note that for example $(1,1,1)+(3,3,3)=(4,4,4) \in S_{1}$ and $2 \cdot(4,4,4)=(3,3,3) \in S_{1}$ as required by the definition. Here is another somewhat less trivial example of a linear subspace over $\mathbb{F}_{3}^{3}$ :
+
+
+\begin{equation*}
+S_{2}=\{(0,0,0),(1,0,1),(2,0,2),(0,1,1),(0,2,2),(1,1,2),(1,2,0),(2,1,0),(2,2,1)\} . \tag{2.2}
+\end{equation*}
+
+
+Note that $(1,0,1)+(0,2,2)=(1,2,0) \in S_{2}$ and $2 \cdot(2,0,2)=(1,0,1) \in S_{2}$ as required.\\
+Remark 2.2.3. Note that the second property implies that $\mathbf{0}$ is contained in every linear subspace. Further for any subspace over $\mathbb{F}_{2}$, the second property is redundant: see Exercise 2.5.
+
+Before we state some properties of linear subspaces, we state some relevant definitions.\\
+Definition 2.2.4 (Span). Given a set $B=\left\{\mathbf{v}_{1}, \ldots, \mathbf{v}_{\ell}\right\}$. The span of $B$ is the set of vectors
+
+$$
+\left\{\sum_{i=1}^{\ell} a_{i} \cdot \mathbf{v}_{i} \mid a_{i} \in \mathbb{F}_{q} \text { for every } i \in[\ell]\right\} .
+$$
+
+Definition 2.2.5 (Linear (in)dependence of vectors). We say that $\mathbf{v}_{1}, \mathbf{v}_{2}, \ldots \mathbf{v}_{k}$ are linearly independent if for every $1 \leq i \leq k$ and for every $(k-1)$-tuple $\left(a_{1}, a_{2}, \ldots, a_{i-1}, a_{i+1}, \ldots, a_{k}\right) \in \mathbb{F}_{q}^{k-1}$,
+
+$$
+\mathbf{v}_{i} \neq a_{1} \mathbf{v}_{1}+\ldots+a_{i-1} \mathbf{v}_{i-1}+a_{i+1} \mathbf{v}_{i+1}+\ldots+a_{k} \mathbf{v}_{k} .
+$$
+
+In other words, $\mathbf{v}_{i}$ is not in the span of the set $\left\{\mathbf{v}_{1}, \ldots, \mathbf{v}_{i-1}, \mathbf{v}_{i+1}, \ldots, \mathbf{v}_{n}\right\}$ for every $1 \leq i \leq k$. We say that $\mathbf{v}_{1}, \mathbf{v}_{2}, \ldots \mathbf{v}_{k}$ are linearly dependent if they are not linearly independent.
+
+For example the vectors $(1,0,1),(1,1,1) \in S_{2}$ are linearly independent since
+
+\begin{itemize}
+  \item[-] $a_{1} \cdot(1,0,1)=\left(a_{1}, 0, a_{1}\right) \neq(1,1,1)$ for any $a_{1} \in\{0,1\}$.
+  \item[-] $a_{2} \cdot(1,1,1)=\left(a_{2}, a_{2}, a_{2}\right) \neq(1,0,1)$ for any $a_{2} \in\{0,1\}$.
+\end{itemize}
+
+Definition 2.2.6 (Rank of a matrix). The rank of matrix in $\mathbb{F}_{q}^{k \times k}$ is the maximum number of linearly independent rows (or columns). A matrix in $\mathbb{F}_{q}^{k \times n}$ with rank $\min (k, n)$ is said to have full rank.
+
+One can define the row (column) rank of a matrix as the maximum number of linearly independent rows (columns). However, it is a well-known theorem that the row rank of a matrix is the same as its column rank. For example, the matrix below over $\mathbb{F}_{3}$ has full rank (see Exercise 2.6):
+
+
+\begin{equation*}
+G_{2}=\left(\begin{array}{lll}
+1 & 0 & 1 \\
+0 & 1 & 1
+\end{array}\right) . \tag{2.3}
+\end{equation*}
+
+
+Any linear subspace satisfies the following properties (the full proof can be found in any standard linear algebra textbook).
+
+Theorem 2.2.7. If $S \subseteq \mathbb{F}_{q}{ }^{n}$ is a linear subspace then
+
+\begin{itemize}
+  \item[1.] $|S|=q^{k}$ for some $k \geq 0$. The parameter $k$ is called the dimension of $S$.
+  \item[2.] There exists at least one set of linearly independent vectors $\mathbf{v}_{1}, \ldots, \mathbf{v}_{k} \in S$ called basis elements such that every $\mathbf{x} \in S$ can be expressed as $\mathbf{x}=a_{1} \mathbf{v}_{1}+a_{2} \mathbf{v}_{2}+\ldots+a_{k} \mathbf{v}_{k}$ where $a_{i} \in \mathbb{F}_{q}$ for $1 \leq i \leq k$. In other words, there exists a full rank $k \times n$ matrix $G$ (also known as a generator matrix) with entries from $\mathbb{F}_{q}$ such that every $\mathbf{x} \in S, \mathbf{x}=\left(a_{1}, a_{2}, \ldots, a_{k}\right) \cdot G$ where
+$$
+G=\left(\begin{array}{c}
+\longleftarrow \mathbf{v}_{1} \longrightarrow \\
+\longleftarrow \mathbf{v}_{2} \longrightarrow \\
+\vdots \\
+\longleftarrow \mathbf{v}_{k} \longrightarrow
+\end{array}\right) .
+$$
+  \item[3.] There exists a full rank $(n-k) \times n$ matrix $H$ (called a parity check matrix) such that for every $\mathbf{x} \in S, H \mathbf{x}^{T}=\mathbf{0}$.
+  \item[4.] $G$ and $H$ are orthogonal, that is, $G \cdot H^{T}=\mathbf{0}$.
+\end{itemize}
+
+Proof Sketch.\\
+Property 1. We begin with the proof of the first property. For the sake of contradiction, let us assume that $q^{k}<|S|<q^{k+1}$, for some $k \geq 0$. Iteratively, we will construct a set of linearly independent vectors $B \subseteq S$ such that $|B| \geq k+1$. Note that by the definition of a linear subspace the span of $B$ should be contained in $S$. However, this is a contradiction as the size of the span of $B$ is at least ${ }^{3} q^{k+1}>|S|$.
+
+To complete the proof, we show how to construct the set $B$ in a greedy fashion. In the first step pick $\mathbf{v}_{1}$ to be any non-zero vector in $S$ and set $B \leftarrow\left\{\mathbf{v}_{1}\right\}$ (we can find such a vector as $|S|>$ $q^{k} \geq 1$ ). Now say after the step $t$ (for some $t \leq k$ ), $|B|=t$. Now the size of the span of the current $B$ is $q^{t} \leq q^{k}<|S|$. Thus there exists a vector $\mathbf{v}_{t+1} \in S \backslash B$ that is linearly independent of vectors in $B$. Set $B \leftarrow B \cup\left\{\mathbf{v}_{t+1}\right\}$. Thus, we can continue building $B$ until $|B|=k+1$, as desired.
+
+\footnotetext{${ }^{3}$ See Exercise 2.8.
+}Property 2. We first note that we can pick $B=\left\{\mathbf{v}_{1}, \ldots, \mathbf{v}_{k}\right\}$ to be any set of $k$ linearly independent vectors- this just follows from the argument above for Property 1.1. This is because the span of $B$ is contained in $S$. However, since $|S|=q^{k}$ and the span of $B$ has $q^{k}$ vectors, the two have to be the same.
+
+Property 3. Property 3 above follows from another fact that every linear subspace $S$ has a null space $N \subseteq \mathbb{F}_{q}^{n}$ such that for every $\mathbf{x} \in S$ and $\mathbf{y} \in N,\langle\mathbf{x}, \mathbf{y}\rangle=0$. Further, it is known that $N$ itself is a linear subspace of dimension $n-k$. (The claim that $N$ is also a linear subspace follows from the following two facts: for every $\mathbf{x}, \mathbf{y}, \mathbf{z} \in \mathbb{F}_{q}^{n}$, (i) $\langle\mathbf{x}, \mathbf{y}+\mathbf{z}\rangle=\langle\mathbf{x}, \mathbf{y}\rangle+\langle\mathbf{x}, \mathbf{z}\rangle$ and (ii) for any $a \in \mathbb{F}_{q}$, $\langle\mathbf{x}, a \mathbf{y}\rangle=a \cdot\langle\mathbf{x}, \mathbf{y}\rangle$.) In other words, there exists a generator matrix $H$ for it. This matrix $H$ is called the parity check matrix of $S$.
+
+Property 4. See Exercise 2.9. \(\square\)
+
+As examples, the linear subspace $S_{1}$ in (2.1) has as one of its generator matrices
+
+$$
+G_{1}=\left(\begin{array}{lll}
+1 & 1 & 1
+\end{array}\right)
+$$
+
+and as one of its parity check matrices
+
+$$
+H_{1}=\left(\begin{array}{lll}
+1 & 2 & 2 \\
+2 & 2 & 1
+\end{array}\right) .
+$$
+
+Further, the linear subspace $S_{2}$ in (2.2) has $G_{2}$ as one of its generator matrices and has the following as one of its parity check matrices
+
+$$
+H_{2}=\left(\begin{array}{lll}
+1 & 1 & 2
+\end{array}\right) .
+$$
+
+Finally, we state another property of linear subspaces that is useful.\\
+Lemma 2.2.8. Given matrix $G$ of dimension $k \times n$ that is a generator matrix of subspace $S_{1}$ and matrix $H$ of dimension $(n-k) \times n$ that is a parity check matrix of subspace $S_{2}$ such that $G H^{T}=\mathbf{0}$, then $S_{1}=S_{2}$.
+
+Proof. We first prove that $S_{1} \subseteq S_{2}$. Given any $\mathbf{c} \in S_{1}$, there exists $\mathbf{x} \in \mathbb{F}_{q}^{k}$ such that $\mathbf{c}=\mathbf{x} G$. Then,
+
+$$
+H \cdot \mathbf{c}^{T}=H \cdot(\mathbf{x} G)^{T}=H G^{T} \mathbf{x}^{T}=\left(G H^{T}\right)^{T} \mathbf{x}^{T}=\mathbf{0},
+$$
+
+which implies that $\mathbf{c} \in S_{2}$, as desired.\\
+To complete the proof note that as $H$ has full rank, its null space (or $S_{2}$ ) has dimension $n-(n-k)=k$ (this follows from a well known fact from linear algebra called the rank-nullity theorem). Now as $G$ has full rank, the dimension of $S_{1}$ is also $k$. Thus, as $S_{1} \subseteq S_{2}$, it has to be the case that $S_{1}=S_{2} .{ }^{4}$ \(\square\)
+
+\footnotetext{${ }^{4}$ If not, $S_{1} \subset S_{2}$ which implies that that $\left|S_{2}\right| \geq\left|S_{1}\right|+1$. The latter is not possible if both $S_{1}$ and $S_{2}$ have the same dimension.
+}\subsection*{2.3 Linear Codes and Basic Properties}
+We now return to the topic of codes and introduce the central concept for this chapter as well as much of this text.
+
+Definition 2.3.1 (Linear Codes). Let $q$ be a prime power (i.e. $q=p^{s}$ for some prime $p$ and integer $s \geq 1)$. $C \subseteq \mathbb{F}_{q}^{n}$ is a linear code if it is a linear subspace of $\mathbb{F}_{q}^{n}$. If $C$ has dimension $k$ and distance $d$ then it will be referred to as an $[n, k, d]_{q}$ or just an $[n, k]_{q}$ code.
+
+Theorem 2.2.7 now gives two alternate characterizations of an $[n, k]_{q}$ linear code $C$ : first, $C$ is generated by a $k \times n$ generator matrix $G$. Second, $C$ is defined by a $(n-k) \times n$ parity check matrix $H$. Since these are important concepts for us, we define these formally below before giving examples and consequences.
+
+Definition 2.3.2 (Generator and Parity Check Matrices). If $C$ is an $[n, k]_{q}$ linear code then there exists a matrix $G \in \mathbb{F}_{q}^{k \times n}$ of rank $k$ satisfying
+
+$$
+C=\left\{\mathbf{x} \cdot G \mid \mathbf{x} \in \mathbb{F}_{q}^{k}\right\} .
+$$
+
+$G$ is referred to as a generator matrix of $C$. In other words, the code $C$ is the set of all possible linear combinations of rows of $G$.
+
+If $C$ is an $[n, k]_{q}$ linear code then there exists a matrix $H \in \mathbb{F}_{q}^{(n-k) \times n}$ of rank $n-k$ satisfying
+
+$$
+C=\left\{\mathbf{y} \in \mathbb{F}_{q}^{n} \mid H \cdot \mathbf{y}^{T}=\mathbf{0}\right\} .
+$$
+
+$H$ is referred to as a parity check matrix of $C$.\\
+Note that we require $G$ and $H$ to have full row rank (i.e., the rows of $G$ are linearly independent and the same holds for H). Sometimes we will consider matrices $M \in \mathbb{F}_{q}^{m \times n}$ that are not of full row rank. These can still be used to generate a code $C=\left\{\left\{\mathbf{x} \cdot G \mid \mathbf{x} \in \mathbb{F}_{q}^{m}\right\}\right.$ though the code $C$ will not be an $[n, m]_{q}$ code. We will still refer to $C$ as the code generated by $M$ in such a case, though the phrase "generator matrix" will be reserved for full rank matrices.
+
+Note that neither the generator matrix nor the parity check matrix are unique for a given code. However, all generator matrices (and parity check matrices) have the same dimensions, i.e. all are $k \times n$ (and $(n-k) \times n$ respectively) matrices. We give examples of these matrices for the case of the $[7,4,3]_{2}$ Hamming code below.
+
+\begin{itemize}
+  \item[-] The $[7,4,3]_{2}$ Hamming code has the following generator matrix:
+$$
+G=\left(\begin{array}{lllllll}
+1 & 0 & 0 & 0 & 0 & 1 & 1 \\
+0 & 1 & 0 & 0 & 1 & 0 & 1 \\
+0 & 0 & 1 & 0 & 1 & 1 & 0 \\
+0 & 0 & 0 & 1 & 1 & 1 & 1
+\end{array}\right)
+$$
+\end{itemize}
+
+\begin{itemize}
+  \item[-] The following matrix is a parity check matrix of the $[7,4,3]_{2}$ Hamming code:
+$$
+H=\left(\begin{array}{lllllll}
+0 & 0 & 0 & 1 & 1 & 1 & 1 \\
+0 & 1 & 1 & 0 & 0 & 1 & 1 \\
+1 & 0 & 1 & 0 & 1 & 0 & 1
+\end{array}\right)
+$$
+Indeed, it can be easily verified that $G \cdot H^{T}=\mathbf{0}$. Then Lemma 2.2.8 proves that $H$ is a parity check matrix of the $[7,4,3]_{2}$ Hamming code.
+\end{itemize}
+
+We now look at some consequences of the above characterizations of an $[n, k]_{q}$ linear code $C$. We started this chapter with a quest for succinct representation of a code. Note that both the generator matrix and the parity check matrix can be represented using $O\left(n^{2}\right)$ symbols from $\mathbb{F}_{q}$. Note that this is much smaller than the exponential representation of a general code. More precisely we have the following result on succinct representations of a linear code (see also Exercise 2.11):
+
+Proposition 2.3.3. Any $[n, k]_{q}$ linear code can be represented with $\min (n k, n(n-k))$ symbols from $\mathbb{F}_{q}$.
+
+There is an encoding algorithm for $C$ that runs in $O\left(n^{2}\right)$ (in particular $O(k n)$ ) time- given a message $\mathbf{m} \in \mathbb{F}_{q}^{k}$, the corresponding codeword $C(\mathbf{m})=\mathbf{m} \cdot G$, where $G$ is the generator matrix of C. (See Exercise 2.12.)
+
+Proposition 2.3.4. For any $[n, k]_{q}$ linear code, given its generator matrix, encoding can be done with $O(n k)$ operations over $\mathbb{F}_{q}$.
+
+There is an error-detecting algorithm for $C$ that runs in $O\left(n^{2}\right)$. This is a big improvement over the naive brute force exponential time algorithm (that goes through all possible codewords $\mathbf{c} \in C$ and checks if $\mathbf{y}=\mathbf{c}$ ). (See Exercise 2.13.)
+
+Proposition 2.3.5. For any $[n, k]_{q}$ linear code, given its parity check matrix, error detection can be performed in $O(n(n-k))$ operations over $\mathbb{F}_{q}$.
+
+Next, we look at some alternate characterizations of the distance of a linear code.
+
+\subsection*{2.3.1 On the Distance of a Linear Code}
+Linear codes admit a nice characterization of minimum distance in terms of the Hamming weight of non-zero codewords, which we have seen for the special case of binary linear codes (Proposition 1.5.4). Recall that we use $\mathrm{wt}(x)$ to denote the Hamming weight of a vector $x \in \Sigma^{n}$, i.e., the number of non-zero coordinates in $x$.
+
+Proposition 2.3.6. For every $[n, k, d]_{q}$ code $C$, we have
+
+$$
+d=\min _{\substack{\mathbf{c} \in C, \mathbf{c} \neq \mathbf{0}}} w t(\mathbf{c}) .
+$$
+
+Proof. To show that $d$ is the same as the minimum weight we show that $d$ is no more than the minimum weight and $d$ is no less than the minimum weight.
+
+First, we show that $d$ is no more than the minimum weight. We can see this by considering $\Delta\left(\mathbf{0}, \mathbf{c}^{\prime}\right)$ where $\mathbf{c}^{\prime}$ is the non-zero codeword in $C$ with minimum weight; its distance from $\mathbf{0}$ is equal to its weight. Thus, we have $d \leq w t\left(\mathbf{c}^{\prime}\right)$, as desired.
+
+Now, to show that $d$ is no less than the minimum weight, consider $\mathbf{c}_{\mathbf{1}} \neq \mathbf{c}_{\mathbf{2}} \in C$ such that $\Delta\left(\mathbf{c}_{1}, \mathbf{c}_{2}\right)=d$. Note that $\mathbf{c}_{1}-\mathbf{c}_{2} \in C$ (this is because $-\mathbf{c}_{2}=-1 \cdot \mathbf{c}_{2} \in C$, where -1 is the additive inverse of 1 in $\mathbb{F}_{q}$ and $\mathbf{c}_{1}-\mathbf{c}_{2}=\mathbf{c}_{1}+\left(-\mathbf{c}_{2}\right)$, which is in $C$ by the definition of linear codes). Now note that $w t\left(\mathbf{c}_{\mathbf{1}}-\mathbf{c}_{\mathbf{2}}\right)=\Delta\left(\mathbf{c}_{\mathbf{1}}, \mathbf{c}_{\mathbf{2}}\right)=d$, since the non-zero symbols in $\mathbf{c}_{1}-\mathbf{c}_{2}$ occur exactly in the positions where the two codewords differ. Further, since $\mathbf{c}_{1} \neq \mathbf{c}_{2}, \mathbf{c}_{1}-\mathbf{c}_{2} \neq \mathbf{0}$, which implies that the minimum Hamming weight of any non-zero codeword in $C$ is at most $d$. \(\square\)
+
+Next, we look at another property implied by the parity check matrix of a linear code.\\
+Proposition 2.3.7. For every $[n, k, d]_{q}$ code $C$ with parity check matrix $H, d$ equals the size of the smallest subset of columns of $H$ that are linearly dependent.
+
+Proof. By Proposition 2.3.6, we need to show that the minimum weight of a non-zero codeword in $C$ is the minimum number of linearly dependent columns. Let $t$ be the minimum number of linearly dependent columns in $H$. To prove the claim we will show that $t \leq d$ and $t \geq d$.
+
+For the first direction, Let $\mathbf{c} \neq \mathbf{0} \in C$ be a codeword with $w t(\mathbf{c})=d$. Now note that, by the definition of the parity check matrix, $H \cdot \mathbf{c}^{T}=\mathbf{0}$. Working through the matrix multiplication, this gives us that $\sum_{i=1}^{n} c_{i} H^{i}=\mathbf{0}$, where
+
+$$
+H=\left(\begin{array}{cccccc}
+\uparrow & \uparrow & & \uparrow & & \uparrow \\
+H^{1} & H^{2} & \cdots & H^{i} & \cdots & H^{n} \\
+\downarrow & \downarrow & & \downarrow & & \downarrow
+\end{array}\right)
+$$
+
+and $\mathbf{c}=\left(c_{1}, \ldots, c_{n}\right)$. Note that we can skip multiplication for those columns for which the corresponding bit $c_{i}$ is zero, so for $H \cdot \mathbf{c}^{T}$ to be zero, those $H^{i}$ with $c_{i} \neq 0$ are linearly dependent. This means that $d \geq t$, as the columns corresponding to non-zero entries in c are one instance of linearly dependent columns.
+
+For the other direction, consider the minimum set of columns from $H, H^{i_{1}}, H^{i_{2}}, \ldots, H^{i_{t}}$ that are linearly dependent. This implies that there exists non-zero elements $c_{i_{1}}^{\prime}, \ldots, c_{i_{t}}^{\prime} \in \mathbb{F}_{q}$ such that $c_{i_{i}}^{\prime} H^{i_{1}}+\ldots+c_{i_{t}}^{\prime} H^{i_{t}}=\mathbf{0}$. (Note that all the $c_{i_{j}}^{\prime}$ are non-zero as no set of less than $t$ columns are linearly dependent.) Now extend $c_{i_{1}}^{\prime}, \ldots, c_{i_{t}}^{\prime}$ to the vector $\mathbf{c}^{\prime}$ such that $c_{j}^{\prime}=0$ for $j \notin\left\{i_{1}, \ldots, i_{t}\right\}$. Note that we have $H \cdot\left(\mathbf{c}^{\prime}\right)^{T}=\mathbf{0}$ and thus, we have $\mathbf{c}^{\prime} \in C$. This in turn implies that $d \leq w t\left(\mathbf{c}^{\prime}\right)=t$ (where recall $t$ is the minimum number of linearly independent columns in $H$ ). \(\square\)
+
+\subsection*{2.4 Hamming Codes}
+We now change gears and look at the general family of linear codes, which were discovered by Hamming. So far, we have seen the $[7,4,3]_{2}$ Hamming code (in Section 1.5). In fact, for any $r \geq 2$\\
+there is a $\left[2^{r}-1,2^{r}-r-1,3\right]_{2}$ Hamming code. Thus in Section 1.5, we have seen this code for $r=3$.
+
+Definition 2.4.1 (Binary Hamming Codes). For any positive integer $r$, define the matrix $\mathbf{H}_{r} \in$ $\mathbb{F}_{2}^{r \times\left(2^{r}-1\right)}$ to be the $r \times\left(2^{r}-1\right)$ matrix whose ith column $\mathbf{H}_{r}^{i}$ is the binary representation of $i$, for $1 \leq i \leq 2^{r}-1$. (Note that such a representation is a vector in $\{0,1\}^{r}$.)
+
+The $\left[2^{r}-1,2^{r}-r-1\right]_{2}$ Hamming code, denoted by $C_{H, r}$, is the code with parity check matrix $\mathbf{H}_{r}$.
+
+In other words, the general $\left[2^{r}-1,2^{r}-r-1\right]_{2}$ Hamming code is the code
+
+$$
+\left\{\mathbf{c} \in\{0,1\}^{2^{r}-1} \mid \mathbf{H}_{r} \cdot \mathbf{c}^{T}=\mathbf{0}\right\} .
+$$
+
+For example, for the case we have seen $(r=3)$,
+
+$$
+\mathbf{H}_{3}=\left(\begin{array}{lllllll}
+0 & 0 & 0 & 1 & 1 & 1 & 1 \\
+0 & 1 & 1 & 0 & 0 & 1 & 1 \\
+1 & 0 & 1 & 0 & 1 & 0 & 1
+\end{array}\right),
+$$
+
+and the resulting code was a $[7,4,3]_{2}$ code.\\
+Next we argue that the above Hamming code has distance 3 (in Proposition 1.5.2, we argued this for $r=3$ ).
+
+Proposition 2.4.2. The Hamming code $\left[2^{r}-1,2^{r}-r-1,3\right]_{2}$ has distance 3.\\
+Proof. No two columns in $\mathbf{H}_{r}$ are linearly dependent. If they were, we would have $\mathbf{H}_{r}^{i}+\mathbf{H}_{r}^{j}=$ 0, but this is impossible since they differ in at least one bit (being binary representations of integers, $i \neq j$ ). Thus, by Proposition 2.3.7, the distance is at least 3. It is at most 3, since (e.g.) $\mathbf{H}_{r}^{1}+\mathbf{H}_{r}^{2}+\mathbf{H}_{r}^{3}=\mathbf{0}$. \(\square\)
+
+Now note that under the Hamming bound for $d=3$ (Theorem 1.6.2), $k \leq n-\log _{2}(n+1)$, so for $n=2^{r}-1, k \leq 2^{r}-r-1$. Hence, the Hamming code is a perfect code. (See Definition 1.7.3.)
+
+In Question 1.7.1, we asked which codes are perfect codes. Interestingly, the only perfect binary codes are the following:
+
+\begin{itemize}
+  \item[-] The Hamming codes which we just studied.
+  \item[-] The trivial $[n, 1, n]_{2}$ codes for odd $n$ (which have $0^{n}$ and $1^{n}$ as the only codewords): see Exercise 2.24.
+  \item[-] Two codes due to Golay [64].
+\end{itemize}
+
+\subsection*{2.5 Efficient Decoding of Hamming codes}
+We have shown that the Hamming code has a distance of 3 and thus, by Proposition 1.4.2, can correct one error. However, this is a combinatorial result and does not give us an efficient algorithm. One obvious candidate for decoding is the MLD function (Algorithm 1.4.1). Unfortunately, the only implementation of MLD that we know is the one in Algorithm 1.4.1, which will take time $2^{\Theta(n)}$, where $n$ is the block length of the Hamming code.
+
+However, we can do much better. Consider the following simple algorithm: given the received word y, first check if it is indeed a valid codeword. If it is, we are done. Otherwise, flip each of the $n$ bits and check if the resulting vector is a valid codeword. If so, we have successfully decoded from one error. If none of the checks are successful, then we declare a decoding failure. Algorithm 2.5.1 formally presents this algorithm (where $C_{H, r}$ is the $\left[2^{r}-1,2^{r}-r-1,3\right]_{2}$ Hamming code). ${ }^{5}$
+
+\begin{lstlisting}[mathescape=true]
+Algorithm 2.5.1 Naive Decoder for Hamming Code
+Input: Received word y
+Output: c if $\Delta(\mathbf{y}, \mathbf{c}) \leq 1$ else Fail
+    IF $\mathbf{y} \in C_{H, r}$ THEN
+        RETURN y
+    FOR $i=1 \ldots n$ DO
+        $\mathbf{y}^{\prime} \leftarrow \mathbf{y}+\mathbf{e}_{i} \quad \triangleright \mathbf{e}_{i}$ is the $i$ th standard basis vector
+        IF $\mathbf{y}^{\prime} \in C_{H, r}$ THEN
+            return y'
+    RETURN Fail
+\end{lstlisting}
+It can be verified that Algorithm 2.5.1 can correct up to 1 error. If each of the checks $\mathbf{y}^{\prime} \in C_{H, r}$ can be done in $T(n)$ time, then the time complexity of the proposed algorithm will be $O(n T(n))$. Note that since $C_{H, r}$ is a linear code (and dimension $k=n-O(\log n)$ ) by Proposition 2.3.5, we have $T(n)=O(n \log n)$. Thus, the proposed algorithm has running time $O\left(n^{2} \log n\right)$.
+
+Note that Algorithm 2.5.1 can be generalized to work for any linear code $C$ with distance $2 t+1$ (and hence, can correct up to $t$ errors): go through all possible error vectors $\mathbf{z} \in[q]^{n}$ (with $w t(\mathbf{z}) \leq t)$ and check if $\mathbf{y}-\mathbf{z}$ is in the code or not. Algorithm 2.5.2 presents the formal algorithm (where $C$ is an $[n, k, 2 t+1]_{q}$ code).
+
+The number of error patterns $\mathbf{z}$ considered by Algorithm 2.5.2 is ${ }^{6} \sum_{i=0}^{t}\binom{n}{i}(q-1)^{i} \leq O\left((n q)^{t}\right)$. Furthermore by Proposition 2.3.5, Step 4 can be performed with $O\left(n^{2}\right)$ operations over $\mathbb{F}_{q}$. Thus, Algorithm 2.5.2 runs with $O\left(n^{t+2} q^{t}\right)$ operations over $\mathbb{F}_{q}$, which for $q$ being a small polynomial in $n$, is $n^{O(t)}$ operations. In other words, the algorithm will have polynomial running time for codes
+
+\footnotetext{${ }^{5}$ Formally speaking, a decoding algorithm should return the transmitted message $\mathbf{x}$ but Algorithm 2.5.1 actually returns $C_{H, r}(\mathbf{x})$. However, since $C_{H, r}$ is a linear code, it is not too hard to see that one can obtain x from $C_{H, r}(\mathbf{x})$ in $O\left(n^{3}\right)$ time: see Exercise 2.25. Further, for $C_{H, r}$ one can do this in $O(n)$ time: see Exercise 2.26.\\
+${ }^{6}$ Recall (1.18).
+}
+\begin{lstlisting}[mathescape=true]
+Algorithm 2.5.2 Decoder for Any Linear Code
+Input: Received word y
+Output: $\mathbf{c} \in C$ if $\Delta(\mathbf{y}, \mathbf{c}) \leq t$ else Fail
+    FOR $i=0 \ldots t$ DO
+        FOR $S \subseteq[n]$ such that $|S|=i$ DO
+            FOR $\mathbf{z} \in \mathbb{F}_{q}^{n}$ such that $w t\left(\mathbf{z}_{S}\right)=w t(\mathbf{z})=i$ DO
+                IF $\mathbf{y}-\mathbf{z} \in C$ THEN
+                    RETURN $\mathbf{y}-\mathbf{z}$
+    RETURN Fail
+\end{lstlisting}
+
+
+with a constant distance (though the running time would not be practical even for moderate values of $t$ ).
+
+However, it turns out that for Hamming codes there exists a decoding algorithm with an $O\left(n^{2}\right)$ running time. To see this, first note that if the received word y has no errors, then $\mathbf{H}_{r} \cdot \mathbf{y}^{T}=$ 0. If not, then $\mathbf{y}=\mathbf{c}+\mathbf{e}_{i}$, where $\mathbf{c} \in C$ and $\mathbf{e}_{i}$ is the unit vector with the only nonzero element at the $i$-th position. Thus, if $\mathbf{H}_{r}^{i}$ stands for the $i$-th column of $\mathbf{H}_{r}$,
+
+$$
+\mathbf{H}_{r} \cdot \mathbf{y}^{T}=\mathbf{H}_{r} \cdot \mathbf{c}^{T}+\mathbf{H}_{r} \cdot\left(\mathbf{e}_{i}\right)^{T}=\mathbf{H}_{r} \cdot\left(\mathbf{e}_{i}\right)^{T}=\mathbf{H}_{r}^{i},
+$$
+
+where the second equality follows as $\mathbf{H}_{r} \cdot \mathbf{c}^{T}=0$, which in turn follows from the fact that $\mathbf{c} \in C$. In other words, $\mathbf{H}_{r} \cdot \mathbf{y}^{T}$ gives the location of the error. This leads to Algorithm 2.5.3.
+
+\begin{lstlisting}[mathescape=true]
+Algorithm 2.5.3 Efficient Decoder for Hamming Code
+Input: Received word y
+Output: c if $\Delta(\mathbf{y}, \mathbf{c}) \leq 1$ else Fail
+    $\mathbf{b} \leftarrow H_{r} \cdot \mathbf{y}^{T}$.
+    Let $i \in[n]$ be the number whose binary representation is b
+    IF $\mathbf{y}-\mathbf{e}_{i} \in C_{H}$ THEN
+        RETURN $\mathbf{y}-\mathbf{e}_{i}$
+    RETURN Fail
+\end{lstlisting}
+Note that $\mathbf{H}_{r}$ is an $r \times n$ matrix where $n=2^{r}-1$ and thus, $r=\Theta(\log n)$. This implies Step 1 in Algorithm 2.5.3, which is a matrix vector multiplication can be done in time $O(n \log n)$. By a similar argument and by Proposition 2.3.5 Step 3 can be performed in $O(n \log n)$ time, and therefore Algorithm 2.5.3 overall runs in $O(n \log n)$ time. Thus,
+
+Theorem 2.5.1. The $\left[n=2^{r}-1,2^{r}-r-1,3\right]_{2}$ Hamming code is 1 -error correctable. Furthermore, decoding can be performed in time $O(n \log n)$.
+
+\subsection*{2.6 Dual of a Linear Code}
+Until now, we have thought of parity check matrix as defining a code via its null space. However, we are not beholden to think of the parity check matrix in this way. A natural alternative is to use the parity check matrix as a generator matrix. The following definition addresses this question.
+
+Definition 2.6.1 (Dual of a code). Let $H$ be a parity check matrix of a code $C$, then the code generated by $H$ is called the dual of $C$. The dual of a code $C$ is denoted by $C^{\perp}$.
+
+It is obvious from the definition that if $C$ is an $[n, k]_{q}$ code, then $C^{\perp}$ is an $[n, n-k]_{q}$ code. Applying duality to the Hamming codes and a close relative, we get two families of codes described below.
+
+Definition 2.6.2 (Simplex and Hadamard Codes). For positive integer $r$ the Simplex Code $C_{\text {Sim }, r}$ is the code generated by $H_{r}$. (Equivalently $C_{\text {Sim }, r}=C_{H, r}^{\perp}$.) For positive integer $r$ the Hadamard Code $C_{\text {Had }, r}$ is the $\left[2^{r}, r\right]_{2}$ code generated by the $r \times 2^{r}$ matrix $H_{r}^{\prime}$ obtained by adding the all zero column to (say in front of columns in) $H_{r}$.
+
+We claim that $C_{\text {Sim }, r}$ and $C_{\text {Had }, r}$ are $\left[2^{r}-1, r, 2^{r-1}\right]_{2}$ and $\left[2^{r}, r, 2^{r-1}\right]_{2}$ codes respectively. The claimed block length and dimension follow from the definition of the codes, while the distance follows from the following result.\\
+Proposition 2.6.3. $C_{\text {Sim }, r}$ and $C_{\text {Had }, r}$ both have distances of $2^{r-1}$.\\
+Proof. We first show the result for $C_{\text {Had }, r}$. In fact, we will show something stronger: every nonzero codeword in $C_{\text {Had }, r}$ has weight exactly equal to $2^{r-1}$ (the claimed distance follows from Proposition 2.3.6). Consider a message $\mathbf{x} \neq 0$. Let its $i$ th entry be $x_{i}=1 . \mathbf{x}$ is encoded as
+
+$$
+\mathbf{c}=\left(x_{1}, x_{2}, \ldots, x_{r}\right)\left(H_{r}^{0}, H_{r}^{1}, \ldots, H_{r}^{2^{r}-1}\right),
+$$
+
+where $H_{r}^{j}$ is the binary representation of $0 \leq j \leq 2^{r}-1$ (that is, the set set of vector $H_{r}^{j}$ is exactly the set of all the vectors in $\{0,1\}^{r}$ ). Further note that the $j$ th bit of the codeword $\mathbf{c}$ is $\left\langle\mathbf{x}, H_{r}^{j}\right\rangle$. Group all the columns of the generator matrix into pairs ( $\mathbf{u}, \mathbf{v}$ ) such that $\mathbf{v}=\mathbf{u}+\mathbf{e}_{i}$ (i.e. v and u are the same except in the $i$ th position). For example for $r=3$ and $i=2$, the paired up columns are marked with the same color below:
+
+$$
+\left(\begin{array}{llllllll}
+0 & 0 & 0 & 0 & 1 & 1 & 1 & 1 \\
+0 & 0 & 1 & 1 & 0 & 0 & 1 & 1 \\
+0 & 1 & 0 & 1 & 0 & 1 & 0 & 1
+\end{array}\right)
+$$
+
+Notice that this partitions all the columns into $2^{r-1}$ disjoint pairs. Then,
+
+$$
+\langle\mathbf{x}, \mathbf{v}\rangle=\left\langle\mathbf{x}, \mathbf{u}+\mathbf{e}_{i}\right\rangle=\langle\mathbf{x}, \mathbf{u}\rangle+\left\langle\mathbf{x}, \mathbf{e}_{i}\right\rangle=\langle\mathbf{x}, \mathbf{u}\rangle+x_{i}=\langle\mathbf{x}, \mathbf{u}\rangle+1 .
+$$
+
+Thus we have that $\langle\mathbf{x}, \mathbf{v}\rangle$ is the negation of $\langle\mathbf{x}, \mathbf{u}\rangle$, i.e. exactly one of $\langle\mathbf{x}, \mathbf{v}\rangle$ and $\langle\mathbf{x}, \mathbf{u}\rangle$ is 1. As the choice of the pair ( $\mathbf{u}, \mathbf{v}$ ) was arbitrary, we have proved that for any non-zero codeword $\mathbf{c}$ such that $\mathbf{c} \in C_{\text {Had }, r}, w t(\mathbf{c})=2^{r-1}$.
+
+For the simplex code, we observe that all codewords of $C_{\text {Had }, r}$ are obtained by padding a 0 to the beginning of the codewords in $C_{\text {Sim }, r}$, which implies that all non-zero codewords in $C_{\text {Sim }, r}$ also have a weight of $2^{r-1}$, which completes the proof. \(\square\)
+
+We remark that the family of Hamming code has a rate of 1 and a (relative) distance of 0 while the families of Simplex/Hadamard codes have a rate of 0 and a relative distance of 1/2. Thus neither gives a positive answer to Question 1.8.2 and so the quest for an asymptotically good code remains ongoing for now (and we will get to these in future chapters).
+
+\subsection*{2.7 Exercises}
+Exercise 2.1. Let $(S,+, \cdot)$ be a field (as per Definition 2.1.2). Then argue that $a \cdot 0=0 \cdot a=0$ for every $a \in S$.
+
+Exercise 2.2. Prove that the set of rationals (i.e. the set of reals of the form $\frac{a}{b}$, where both $a$ and $b \neq 0$ are integers), denoted by $\mathbb{Q}$, is a field.
+
+Exercise 2.3. Let $q$ be a prime power. Let $x \in \mathbb{F}_{q}$ such that $x \notin\{0,1\}$. Then prove that for any $n \leq q-1$ :
+
+$$
+\sum_{i=0}^{n} x^{i}=\frac{x^{n+1}-1}{x-1} .
+$$
+
+Exercise 2.4. The main aim of this exercise is to prove the following identity that is true for any $\alpha \in \mathbb{F}_{q}$ :
+
+
+\begin{equation*}
+\alpha^{q}=\alpha \tag{2.4}
+\end{equation*}
+
+
+To make progress towards the above we will prove a sequence of properties of groups. A group $G$ is a pair $(S, \circ)$ where the operator $\circ: G \times G \rightarrow G$ such that $\circ$ is commutative ${ }^{7}$ and the elements of $S$ are closed under $\circ$. Further, there is a special element $\iota \in S$ that is the identity element and every element $a \in S$ has an inverse element $b \in S$ such that $a \circ b=\iota$. Note that a finite field $\mathbb{F}_{q}$ consists of an additive group with the + operator (and 0 as additive identity) and a multiplicative group on the non-zero elements of $\mathbb{F}_{q}$ (which is also denoted by $\mathbb{F}_{q}^{*}$ ) with the . operator (and 1 as the multiplicative identity). ${ }^{8}$
+
+For the rest of the problem let $G=(S, \cdot)$ be a multiplicative group with $|G|=m$. Prove the following statements.
+
+\begin{itemize}
+  \item[1.] For any $\beta \in G$, let $o(\beta)$ be the smallest integer $o$ such that $\beta^{o}=1$. Prove that such an $o \leq m$ always exists. Further, argue that $T=\left\{1, \beta, \ldots, \beta^{o-1}\right\}$ also forms a group. ( $T, \cdot$ ) is called a sub-group of $G$ and $o(\beta)$ is called the order of $\beta$.
+  \item[2.] For any $g \in G$, define the coset (w.r.t. $T$ ) as
+$$
+g T=\{g \cdot \beta \mid \beta \in T\} .
+$$
+Prove that if $h^{-1} \cdot g \in T$ then $g T=h T$ and $g T \cap h T=\varnothing$ otherwise. Further argue that these cosets partition the group $G$ into disjoint sets.
+\end{itemize}
+
+\footnotetext{${ }^{7}$ Technically, $G$ is an abelian group.\\
+${ }^{8}$ Recall Definition 2.1.2.
+}
+\begin{itemize}
+  \item[3.] Argue that for any $g \in G$, we have $|g T|=|T|$.
+  \item[4.] Using the above results or otherwise, argue that for any $\beta \in G$, we have
+$$
+\beta^{m}=1 .
+$$
+  \item[5.] Prove (2.4).
+\end{itemize}
+
+
+Exercise 2.5. Prove that for $q=2$, the second condition in Definition 2.2.2 is implied by the first condition.
+
+Exercise 2.6. Prove that $G_{2}$ from (2.3) has full rank.\\
+Exercise 2.7. In this problem we will look at the problem of solving a system of linear equations over $\mathbb{F}_{q}$. That is, one needs to solve for unknowns $x_{1}, \ldots, x_{n}$ given the following $m$ linear equations (where $a_{i, j}, b_{i} \in \mathbb{F}_{q}$ for $1 \leq i \leq m$ and $1 \leq j \leq n$ ):
+
+$$
+\begin{gathered}
+a_{1,1} x_{1}+a_{1,2} x_{2}+\cdots+a_{1, n} x_{n}=b_{1} \\
+a_{2,1} x_{1}+a_{2,2} x_{2}+\cdots+a_{2, n} x_{n}=b_{2} \\
+\vdots \\
+a_{m, 1} x_{1}+a_{m, 2} x_{2}+\cdots+a_{m, n} x_{n}=b_{m}
+\end{gathered}
+$$
+
+\begin{itemize}
+  \item[1.] (Warm-up) Convince yourself that the above problem can be stated as $A \cdot \mathbf{x}^{T}=\mathbf{b}^{T}$, where $A$ is an $m \times n$ matrix over $\mathbb{F}_{q}, \mathbf{x} \in \mathbb{F}_{q}^{n}$ and $\mathbf{b} \in \mathbb{F}_{q}^{m}$.
+  \item[2.] (Upper Triangular Matrix) Assume $n=m$ and that $A$ is upper triangular, i.e. all diagonal elements $\left(a_{i, i}\right)$ are non-zero and all lower triangular elements ( $a_{i, j}, i>j$ ) are 0 . Then present an $O\left(n^{2}\right)$ time ${ }^{9}$ algorithm to compute the unknown vector $\mathbf{x}$.
+  \item[3.] (Gaussian Elimination) Assume that A has full rank (or equivalently a rank of n.)
+  \begin{itemize}
+    \item[(a)] Prove that the following algorithm due to Gauss converts A into an upper triangular matrix. By permuting the columns if necessary make sure that $a_{1,1} \neq 0$. (Why can one assume w.l.o.g. that this can be done?) Multiply all rows $1<i \leq n$ with $\frac{a_{1,1}}{a_{i, 1}}$ and then subtract $a_{1, j}$ from the $(i, j)$ th entry $1 \leq j \leq n$. Recurse with the same algorithm on the $(n-1) \times(n-1)$ matrix $A^{\prime}$ obtained by removing the first row and column from $A$. (Stop when $n=1$.)
+    \item[(b)] What happens if $A$ does not have full rank? Show how one can modify the algorithm above to either upper triangulate a matrix or report that it does not have full rank. (Convince yourself that your modification works.)
+  \end{itemize}
+\end{itemize}
+
+\footnotetext{${ }^{9}$ For this problem, any basic operation over $\mathbb{F}_{q}$ takes unit time.
+}
+\begin{itemize}
+  \item[]
+  \begin{itemize}
+    \item[(c)] Call a system of equations $A \cdot \mathbf{x}^{T}=\mathbf{b}^{T}$ consistent if there exists a solution to $\mathbf{x} \in \mathbb{F}_{q}^{n}$. Show that there exists an $O\left(n^{3}\right)$ algorithm that finds the solution if the system of equations is consistent and A has full rank (and report "fail" otherwise).
+  \end{itemize}
+  \item[4.] $(m<n$ case) Assume that $A$ has full rank, i.e. has a rank of $m$. In this scenario either the system of equations is inconsistent or there are $q^{n-m}$ solutions to $\mathbf{x}$. Modify the algorithm from above to design an $O\left(m^{2} n\right)$ time algorithm to output the solutions (or report that the system is inconsistent).
+  \begin{itemize}
+    \item[-] Note that in case the system is consistent there will be $q^{n-m}$ solutions, which might be much bigger than $O\left(m^{2} n\right)$. Show that this is not a problem as one can represent the solutions as system of linear equations. (I.e. one can have $n-m$ "free" variables and $m$ "bound" variables.)
+  \end{itemize}
+  \item[5.] $(m>n$ case) Assume that $A$ has full rank, i.e. a rank of $n$. In this scenario either the system of equations is inconsistent or there is a unique solution to $\mathbf{x}$. Modify the algorithm from above to design an $O\left(m^{2} n\right)$ time algorithm to output the solution (or report that the system is inconsistent).
+  \item[6.] (Non-full rank case) Give an $O\left(m^{2} n\right)$ algorithm for the general case, i.e. the $m \times n$ matrix A need not have full rank. (The algorithm should either report that the system of equations is inconsistent or output the solution(s) to $\mathbf{x}$.)
+\end{itemize}
+
+
+Exercise 2.8. Prove that the span of $k$ linearly independent vectors over $\mathbb{F}_{q}$ has size exactly $q^{k}$.\\
+Exercise 2.9. Let $G$ and $H$ be a generator and parity check matrix of the same linear code of dimension $k$ and block length $n$. Then $G \cdot H^{T}=\mathbf{0}$.
+
+Exercise 2.10. Let $C$ be an $[n, k]_{q}$ linear code with a generator matrix with no all zeros columns. Then for every position $i \in[n]$ and $\alpha \in \mathbb{F}_{q}$, the number of codewords $\mathbf{c} \in C$ such that $c_{i}=\alpha$ is exactly $q^{k-1}$.
+
+Exercise 2.11. Prove Proposition 2.3.3.\\
+Exercise 2.12. Prove Proposition 2.3.4.\\
+Exercise 2.13. Prove Proposition 2.3.5.\\
+Exercise 2.14. A set of vector $S \subseteq \mathbb{F}_{q}^{n}$ is called $t$-wise independent if for every set of positions I with $|I|=t$, the set $S$ projected to $I$ has each of the vectors in $\mathbb{F}_{q}^{t}$ appear the same number of times. (In other words, for every choice of $I \subseteq[n]$ with $|I|=t$, if one picks a vector $\left(X_{1}, \ldots, X_{n}\right)$ uniformly at random from $S$ then the variables $\left\{X_{i} \mid i \in I\right\}$ are distributed uniformly and independently random over $\mathbb{F}_{q}$ ).
+
+Prove that any linear code $C$ whose dual $C^{\perp}$ has distance $d^{\perp}$ is $\left(d^{\perp}-1\right)$-wise independent.
+
+Exercise 2.15. A set of vectors $S \subseteq \mathbb{F}_{2}^{k}$ is called $\varepsilon$-biased sample space if the following property holds. Pick a vector $X=\left(x_{1}, \ldots, x_{k}\right)$ uniformly at random from $S$. Then $X$ has bias at most $\varepsilon$, that is, for every $I \subseteq[k]$,
+
+$$
+\left|\operatorname{Pr}\left(\sum_{i \in I} x_{i}=0\right)-\operatorname{Pr}\left(\sum_{i \in I} x_{i}=1\right)\right| \leq \varepsilon .
+$$
+
+We will look at some connections of such sets to codes.
+
+\begin{itemize}
+  \item[1.] Let $C$ be an $[n, k]_{2}$ code such that all non-zero codewords have Hamming weight in the range $\left[\left(\frac{1-\varepsilon}{2}\right) n,\left(\frac{1+\varepsilon}{2}\right) n\right]$. Then there exists an $\varepsilon$-biased space of size $n$ in $\mathbb{F}_{2}^{k}$.
+  \item[2.] Let $C$ be an $[n, k]_{2}$ code such that all non-zero codewords have Hamming weight in the range $\left[\left(\frac{1}{2}-\gamma\right) n,\left(\frac{1}{2}+\gamma\right) n\right]$ for some constant $0<\gamma<1 / 2$. Then there exists an $\varepsilon$-biased space in $\mathbb{F}_{2}^{k}$ of size $n^{O\left(\gamma^{-1} \cdot \log (1 / \varepsilon)\right)}$.
+\end{itemize}
+
+Exercise 2.16. Let $C$ be an $[n, k, d]_{q}$ code. Let $\mathbf{y}=\left(y_{1}, \ldots, y_{n}\right) \in\left(\mathbb{F}_{q} \cup\{?\}\right)^{n}$ be a received word ${ }^{10}$ such that $y_{i}=?$ for at most $d-1$ values of $i$. Present an $O\left(n^{3}\right)$ time algorithm that outputs a codeword $\mathbf{c}=\left(c_{1}, \ldots, c_{n}\right) \in C$ that agrees with $y$ in all un-erased positions (i.e., $c_{i}=y_{i}$ if $y_{i} \neq$ ?) or states that no such $\mathbf{c}$ exists. (Recall that if such a $\mathbf{c}$ exists then it is unique.)
+
+Exercise 2.17. In the chapter, we did not talk about how to obtain the parity check matrix of a linear code from its generator matrix. In this problem, we will look at this "conversion" procedure.
+
+\begin{itemize}
+  \item[(a)] Prove that any generator matrix $\mathbf{G}$ of an $[n, k]_{q}$ code $C$ (recall that $\mathbf{G}$ is a $k \times n$ matrix) can be converted into another equivalent generator matrix of the form $\mathbf{G}^{\prime}=\left[\mathbf{I}_{k} \mid \mathbf{A}\right]$, where $\mathbf{I}_{k}$ is the $k \times k$ identity matrix and $\mathbf{A}$ is some $k \times(n-k)$ matrix. By "equivalent," we mean that the code generated by $\mathbf{G}^{\prime}$ has a linear bijective map to $C$.\\
+Note that the code generated by $\mathbf{G}^{\prime}$ has the message symbols as its first $k$ symbols in the corresponding codeword. Such codes are called systematic codes. In other words, every linear code can be converted into a systematic code. Systematic codes are popular in practice as they allow for immediate access to the message symbols.
+  \item[(b)] Given an $k \times n$ generator matrix of the form $\left[\mathbf{I}_{k} \mid \mathbf{A}\right]$, give a corresponding $(n-k) \times n$ parity check matrix. Briefly justify why your construction of the parity check matrix is correct.\\
+Hint: Try to think of a parity check matrix that can be decomposed into two submatrices: one will be closely related to A and the other will be an identity matrix, though the latter might not be a $k \times k$ matrix).
+  \item[(c)] Use part (b) to present a generator matrix for the $\left[2^{r}-1,2^{r}-r-1,3\right]_{2}$ Hamming code.
+\end{itemize}
+
+Exercise 2.18. So far in this book we have seen that one can modify one code to get another code with interesting properties (for example, the construction of the Hadamard code from the Simplex code from Section 2.6 and Exercise 1.7). In this problem you will need to come up with more ways of constructing new codes from existing ones.
+
+\footnotetext{${ }^{10} \mathrm{~A}$ ? denotes an erasure.
+}Prove the following statements (recall that the notation $(n, k, d)_{q}$ code is used for general codes with $q^{k}$ codewords where $k$ need not be an integer, whereas the notation $[n, k, d]_{q}$ code stands for a linear code of dimension $k$ ):
+
+\begin{itemize}
+  \item[1.] If there exists an $(n, k, d)_{2^{m}}$ code, then there also exists an $\left(n m, k m, d^{\prime} \geq d\right)_{2}$ code.
+  \item[2.] If there exists an $[n, k, d]_{2^{m}}$ code, then there also exists an $\left[n m, k m, d^{\prime} \geq d\right]_{2}$ code.
+  \item[3.] If there exists an $[n, k, d]_{q}$ code, then there also exists an $\left[n-d, k-1, d^{\prime} \geq\lceil d / q\rceil\right\rceil_{q}$ code.
+  \item[4.] If there exists an $[n, k, \delta n]_{q}$ code, then for every $m \geq 1$, there also exists an $\left(n^{m}, k / m,\left(1-(1-\delta)^{m}\right) \cdot n^{m}\right)_{q^{m}}$ code.
+  \item[5.] If there exists an $[n, k, \delta n]_{2}$ code, then for every odd $m \geq 1$, there also exists an $\left[n^{m}, k, \frac{1}{2} \cdot\left(1-(1-2 \delta)^{m}\right) \cdot n^{m}\right]_{2}$ code.
+\end{itemize}
+
+Note: In all the parts, the only things that you can assume about the original code are only the parameters given by its definition- nothing else!
+
+Exercise 2.19. Let $C_{1}$ be an $\left[n, k_{1}, d_{1}\right]_{q}$ code and $C_{2}$ be an $\left[n, k_{2}, d_{2}\right]_{q}$ code. Then define a new code as follows:
+
+$$
+C_{1} \ominus C_{2}=\left\{\left(\mathbf{c}_{1}, \mathbf{c}_{1}+\mathbf{c}_{2}\right) \mid \mathbf{c}_{1} \in C_{1}, \mathbf{c}_{2} \in C_{2}\right\} .
+$$
+
+Next we will prove interesting properties of this operations on codes:
+
+\begin{itemize}
+  \item[1.] If $G_{i}$ is the generator matrix for $C_{i}$ for $i \in[2]$, what is a generator matrix for $C_{1} \ominus C_{2}$ ?
+  \item[2.] Argue that $C_{1} \ominus C_{2}$ is an $\left[2 n, k_{1}+k_{2}, d \stackrel{\text { def }}{=} \min \left(2 d_{1}, d_{2}\right)\right]_{q}$ code.
+  \item[3.] Assume there exists algorithms $\mathscr{A}_{i}$ for code $C_{i}$ for $i \in[2]$ such that: (i) $\mathscr{A}_{1}$ can decode from $e$ errors and $s$ erasures such that $2 e+s<d_{1}$ and (ii) $\mathscr{A}_{2}$ can decode from $\left\lfloor\left(d_{2}-1\right) / 2\right\rfloor$ errors. Then argue that one can correct $\lfloor(d-1) / 2\rfloor$ errors for $C_{1} \ominus C_{2}$.\\
+Hint: Given a received word $\left(\mathbf{y}_{1}, \mathbf{y}_{2}\right) \in \mathbb{F}_{q}^{n} \times \mathbb{F}_{q}^{n}$, first apply $\mathscr{A}_{2}$ on $\mathbf{y}_{2}-\mathbf{y}_{1}$. Then create an intermediate received word for $\mathscr{A}_{1}$.
+  \item[4.] We will now consider a recursive construction of a binary linear code that uses the $\ominus$ operator. For integers $0 \leq r \leq m$, we define the code $C(r, m)$ as follows:
+  \begin{itemize}
+    \item[-] $C(r, r)=\mathbb{F}_{2}^{r}$ and $C(0, r)$ is the code with only two codewords: the all ones and all zeroes vector in $\mathbb{F}_{2}^{r}$.
+    \item[-] For $1<r<m, C(r, m)=C(r, m-1) \ominus C(r-1, m-1)$.
+  \end{itemize}
+\end{itemize}
+
+Determine the parameters of the code $C(r, m)$.
+
+Exercise 2.20. Let $C_{1}$ be an $\left[n_{1}, k_{1}, d_{1}\right]_{2}$ binary linear code, and $C_{2}$ an $\left[n_{2}, k_{2}, d_{2}\right]$ binary linear code. Let $C \subseteq \mathbb{F}_{2}^{n_{1} \times n_{2}}$ be the subset of $n_{2} \times n_{1}$ matrices whose rows belong to $C_{1}$ and whose columns belong to $C_{2}$. $C$ is called the tensor of $C_{1}$ and $C_{2}$ and is denoted by $C_{1} \otimes C_{2}$.
+
+Prove that $C$ is an $\left[n_{1} n_{2}, k_{1} k_{2}, d_{1} d_{2}\right]_{2}$ binary linear code.\\
+Further, if $\mathbf{G}_{1}$ and $\mathbf{G}_{2}$ are generator matrices of $C_{1}$ and $C_{2}$, construct a genertor matrix of $C_{1} \otimes C_{2}$ from $\mathbf{G}_{1}$ and $\mathbf{G}_{2}$. In particular, argue that given $\mathbf{G}_{1}$ and $\mathbf{G}_{2}$, a generator matrix of $C_{1} \otimes C_{2}$ can be computed in polynomimal time.\\
+Hint: For the latter problem, it might be useful to think of the codewords and messages as vectors instead of matrices.\\
+Exercise 2.21. In Section 2.4 we considered the binary Hamming code. In this problem we will consider the more general $q$-ary Hamming code. In particular, let $q$ be a prime power and $r \geq 1$ be an integer. Define the following $r \times n$ matrix $H_{q, r}$, where each column is an non-zero vector from $\mathbb{F}_{q}^{r}$ such that the first non-zero entry is 1. For example,
+
+$$
+H_{3,2}=\left(\begin{array}{llll}
+0 & 1 & 1 & 1 \\
+1 & 0 & 1 & 2
+\end{array}\right)
+$$
+
+In this problem we will derive the parameters of the code. Define the generalized Hamming code $C_{H, r, q}$ to be the linear code whose parity check matrix is $H_{q, r}$. Argue that
+
+\begin{itemize}
+  \item[1.] The block length of $C_{H, r, q}$ is $n=\frac{q^{r}-1}{q-1}$.
+  \item[2.] $C_{H, q, r}$ has dimension $n-r$.
+  \item[3.] $C_{H, q, r}$ has distance 3.
+\end{itemize}
+
+Exercise 2.22. In Section 2.6, we considered the binary Hadamard code. In this problem we will consider the more general $q$-ary Hadamard code. In particular, let $q$ be a prime power and $r \geq 1$ be an integer. Define the following $r \times q^{r}$ matrix $\bar{H}_{q, r}$, where each columns in a vector in $\mathbb{F}_{q}^{r}$. In this problem we will derive the parameters of the code. Define the generalized Hadamard code $C_{H a d, r, q}$ to be the linear code whose parity check matrix is $\bar{H}_{q, r}$. Argue that
+
+\begin{itemize}
+  \item[1.] The block length of $C_{\text {Had }, r, q}$ is $n=q^{r}$.
+  \item[2.] $C_{\text {Had }, q, r}$ has dimension $r$.
+  \item[3.] $C_{\text {Had }, q, r}$ has distance $\left(1-\frac{1}{q}\right) \cdot n$.
+\end{itemize}
+
+Exercise 2.23. Design the best 6 -ary code (family) with distance 3 that you can.
+
+Hint: Start with a 7-ary Hamming code.\\
+Exercise 2.24. Prove that the $[n, 1, n]_{2}$ code for odd $n$ (i.e. the code with the all zeros and all ones vector as it only two codewords) attains the Hamming bound (Theorem 1.7.2).
+
+Exercise 2.25. Let $C$ be an $[n, k]_{q}$ code with generator matrix $G$. Then given a codeword $\mathbf{c} \in C$ one can compute the corresponding message in time $O\left(k n^{2}\right)$.
+
+Exercise 2.26. Given $a \mathbf{c} \in C_{H, r}$, one can compute the corresponding message in time $O(n)$.\\
+Exercise 2.27. Let $C$ be an $(n, k)_{q}$ code. Prove that if $C$ can be decoded from e errors in time $T(n)$, then it can be decoded from $n+c$ errors in time $O\left((n q)^{c} \cdot T(n)\right)$.
+
+Exercise 2.28. Show that the bound of $k d$ of the number of ones in the generator matrix of any binary linear code (see Exercise 1.14) cannot be improved for every code.
+
+Exercise 2.29. Let $C$ be a linear code. Then prove that $\left(C^{\perp}\right)^{\perp}=C$.\\
+Exercise 2.30. Note that for any linear code $C$, the codewords $\mathbf{0}$ is in both $C$ and $C^{\perp}$. Show that there exists a linear code $C$ such that it shares a non-zero codeword with $C^{\perp}$.
+
+Exercise 2.31. We go into a bit of diversion and look at how finite fields are different from infinite fields (e.g. $\mathbb{R}$ ). Most of the properties of linear subspaces that we have used for linear codes (e.g. notion of dimension, the existence of generator and parity check matrices, notion of duals) also hold for linear subspaces over $\mathbb{R} .^{11}$ One trivial property that holds for linear subspaces over finite fields that does not hold over $\mathbb{R}$ is that linear subspaces over $\mathbb{F}_{q}$ with dimension $k$ has size $q^{k}$ (though this is a trivial consequence that $\mathbb{F}_{q}$ is a finite field while $\mathbb{R}$ is an infinite field). Next, we consider a more subtle distinction.
+
+Let $S \subseteq \mathbb{R}^{n}$ be a linear subspace over $\mathbb{R}$ and let $S^{\perp}$ is the dual of $S$. Then show that
+
+$$
+S \cap S^{\perp}=\{\mathbf{0}\} .
+$$
+
+By contrast, linear subspaces over finite fields can have non-trivial intersection with their duals (see e.g. Exercise 2.30).
+
+Exercise 2.32. A linear code $C$ is called self-orthogonal if $C \subseteq C^{\perp}$. Show that
+
+\begin{itemize}
+  \item[1.] The binary repetition code with even number of repetitions is self-orthogonal.
+  \item[2.] The Hadamard code $C_{\text {Had }, r}$ is self-orthogonal.
+\end{itemize}
+
+Exercise 2.33. A linear code $C$ is called self dual if $C=C^{\perp}$. Show that for
+
+\begin{itemize}
+  \item[1.] Any self dual code has dimension $n / 2$.
+  \item[2.] Prove that the following code is self-dual
+$$
+\left\{(\mathbf{x}, \mathbf{x}) \mid \mathbf{x} \in \mathbb{F}_{2}^{k}\right\} .
+$$
+\end{itemize}
+
+Exercise 2.34. Given a code $C$ a puncturing of $C$ is another code $C^{\prime}$ where the same set of positions are dropped in all codewords of $C$. More precisely, if $C \subseteq \Sigma^{n}$ and the set of punctured positions is $P \subseteq[n]$, then the punctured code is $\left\{\left(c_{i}\right)_{i \notin P} \mid\left(c_{1}, \ldots, c_{n}\right) \in C\right\}$.
+
+Prove that a linear code with no repetitions (i.e. there are no two positions $i \neq j$ such that for every codeword $\mathbf{c} \in C, c_{i}=c_{i}$ ) is a puncturing of the Hadamard code. Hence, Hadamard code is the "longest" linear code that does not repeat.
+
+\footnotetext{${ }^{11}$ A linear subspace $S \subseteq \mathbb{R}^{n}$ is the same as in Definition 2.2.2 where all occurrences of the finite field $\mathbb{F}_{q}$ is replaced by $\mathbb{R}$.
+}Exercise 2.35. In this problem we will consider the long code. For the definition, we will use the functional way of looking at the ambient space as mentioned in Remark 1.2.2. A long code of dimension $k$ is a binary code such that the codeword corresponding to $\mathbf{x}=\mathbb{F}_{2}^{k}$, is the function $f:\{0,1\}^{2^{k}} \rightarrow\{0,1\}$ defined as follows. For any $\mathbf{m} \in\{0,1\}^{\mathbb{F}_{2}^{k}}$, we have $f\left(\left(m_{\alpha}\right)_{\alpha \in \mathbb{F}_{2}^{k}}\right)=m_{\mathbf{x}}$. Derive the parameters of the long code.
+
+Finally, argue that the long code is the code with the longest block length such that the codewords do not have a repeated coordinate (i.e. there does not exists $i \neq j$ such that for every codeword $\mathbf{c}, c_{i}=c_{j}$ ). (Contrast this with the property of Hadamard code above.)
+
+Exercise 2.36. Given a linear code $C \subseteq \mathbb{F}_{2}^{n}$, define its generating function to be a $2 n$-variate polynomial over variables $\mathbf{x}=\left(x_{1}, \ldots, x_{n}\right)$ and $\mathbf{y}=\left(y_{1}, \ldots, y_{n}\right)$ given by $G_{C}(\mathbf{x}, \mathbf{y})=\sum_{\mathbf{w} \in C} P_{\mathbf{w}}(\mathbf{x}, \mathbf{y})$ where $P_{\mathbf{w}}(\mathbf{x}, \mathbf{y})=\left(\prod_{\left\{i \in[n] \mid w_{i}=0\right\}} x_{i}\right) \cdot\left(\prod_{\left\{i \in[n] \mid w_{i}=1\right\}} y_{i}\right)$. For $w \in\{0, \ldots, n\}$, let $A_{C}^{w}$ denote the number of codewords of weight $w$ and let $A_{C}(z)=\sum_{w=0}^{n} A_{C}^{w} z^{w}$ be the "weight enumerator" polynomial of $C$.
+
+\begin{itemize}
+  \item[1.] For every $\mathbf{w} \in \mathbb{F}_{2}^{n}$, prove that $P_{\mathbf{w}}(\mathbf{x}+\mathbf{y}, \mathbf{x}-\mathbf{y})=\sum_{\mathbf{v} \in \mathbb{F}_{2}^{n}}(-1)^{\langle\mathbf{v}, \mathbf{w}\rangle} P_{\mathbf{v}}(\mathbf{x}, \mathbf{y})$.
+  \item[2.] Prove that $G_{C^{\perp}}(\mathbf{x}, \mathbf{y})=\frac{1}{|C|} G_{C}(\mathbf{x}+\mathbf{y}, \mathbf{x}-\mathbf{y})$.
+  \item[3.] Prove that $A_{C}(z)=G_{C}(1, \ldots, 1, z, \ldots, z)$.
+  \item[4.] Prove that $A_{C^{\perp}}(z)=\frac{(1+z)^{n}}{|C|} A_{C}\left(\frac{1-z}{1+z}\right)$.
+  \item[5.] Conclude that $A_{C^{\perp}}^{w}=\frac{1}{|C|} \sum_{u=0}^{n} A_{C}^{u}\left(\sum_{i=0}^{u}(-1)^{i}\binom{u}{i}\binom{n-u}{w-i}\right)$. In other words, the distributions of the weights $\left(A_{C}^{0}, \ldots, A_{C}^{n}\right)$ of the primal code completely determine the distributions of weights $\left(A_{C^{\perp}}^{0}, \ldots, A_{C^{\perp}}^{n}\right)$ of the dual code!
+\end{itemize}
+
+\subsection*{2.8 Bibliographic Notes}
+The background material on algebra is essentially folklore. Readers interested in a more extensive treatment are referred to classical texts such as by Artin [10]. For a perspective focussing more on finite fields, see the text by Lidl and Niederreiter [115]. Linear codes arose already in the paper of Hamming [90] and were systematically studied by Slepian [157]. The answer to Question 1.7.1 was given by van Lint [170] and Tietavainen [168]. Hadamard codes (Definition 2.6.2) are named after the work of mathematician Jacques Hadamard and in particular the notion of Hadamard matrices which are self-orthogonal matrices with +1/-1 entries.
+
+Exercises 2.14 and 2.15 come from the theory of pseudorandomness, which we will cover more extensively in Chapter 24. The long codes in Exercise 2.35 were introduced by Bellare, Goldreich and Sudan [16]. Exercise 2.36 is based on the MacWilliams Identity proved by MacWilliams [119].
+
+\section*{Chapter 4}
+\section*{What Can and Cannot Be Done-I}
+In this chapter, we will try to tackle Question 1.8.1. We will approach this trade-off in the following way:
+
+\begin{displayquote}
+If we fix the relative distance of the code to be $\delta$, what is the best rate $R$ that we can achieve?
+\end{displayquote}
+
+While we will not be able to pin down the exact optimal relationship between $R$ and $\delta$, we will start establishing some limits. Note that an upper bound on $R$ is a negative result in that it establishes that codes with certain parameters do not exist. Similarly, a lower bound on $R$ is a positive result.
+
+In this chapter, we will consider only one positive result, i.e. a lower bound on $R$ called the Gilbert-Varshamov bound in Section 4.2. In Section 4.1, we recall a negative result that we have already seen- Hamming bound and state its asymptotic version to obtain an upper bound on $R$. We will consider two other upper bounds: the Singleton bound (Section 4.3), which gives a tight upper bound for large enough alphabets (but not binary codes) and the Plotkin bound (Section 4.4), which gives a stronger upper bound than Singleton bound for binary codes.
+
+\subsection*{4.1 Asymptotic Version of the Hamming Bound}
+We have already seen an upper bound in Section 1.7 due to Hamming. However, we had stated this as an upper bound on the dimension $k$ in terms of $n, q$ and $d$. In this section we convert this into a relation on $R$ versus $\delta$.
+
+Consider any $(n, k, d)_{q}$ code with rate $R=k / n$ and relative distance $\delta=d / n$. Recall that Theorem 1.7.2 implies the following:
+
+$$
+R=\frac{k}{n} \leq 1-\frac{\log _{q} \operatorname{Vol}_{q}\left(\left\lfloor\frac{d-1}{2}\right\rfloor, n\right)}{n}
+$$
+
+Recall further that Proposition 3.3.3 states the following lower bound on the volume of a Hamming ball:
+
+$$
+\operatorname{Vol}_{q}\left(\left\lfloor\frac{d-1}{2}\right\rfloor, n\right) \geq q^{H_{q}\left(\frac{\delta}{2}\right) n-o(n)} .
+$$
+
+Taking logarithms to base $q$ of both sides above, and dividing by $n$ yields that the second term in the right hand side of the inequality above is lower bounded by $H_{q}(\delta / 2)-o(1)$, where the $o(1)$ term tends to 0 as $n \rightarrow \infty$. Thus Theorem 1.7.2 implies that for a $q$-ary of code $C$ of rate $R$, relative distance $\delta$ and block length $n$, we have:
+
+
+\begin{equation*}
+R \leq 1-H_{q}\left(\frac{\delta}{2}\right)+o(1), \tag{4.1}
+\end{equation*}
+
+
+where the $o(1)$ term tends to 0 as $n \rightarrow \infty$. Thus for an infinite family of $q$-ary codes $\mathscr{C}$, by taking limits as $n \rightarrow \infty$, we get the following asymptotic Hamming bound (see Exercise 4.1).\\
+Proposition 4.1.1 (Asymptotic Hamming Bound). Let $\mathscr{C}$ be an infinite family of $q$-ary codes with rate $R=R(\mathscr{C})$ and relative distance $\delta=\delta(\mathscr{C})$. Then we have:
+
+$$
+R \leq 1-H_{q}\left(\frac{\delta}{2}\right) .
+$$
+
+\begin{figure}[h]
+\begin{center}
+\captionsetup{labelformat=empty}
+\caption{Figure 4.1 gives a pictorial description of the asymptotic Hamming bound for binary codes.}
+  \includegraphics[alt={},max width=\textwidth]{9669e529-878a-4b74-8d73-c6ea539a69cd-48_743_1045_1011_532}
+\end{center}
+\end{figure}
+
+Figure 4.1: The Hamming and GV bounds for binary codes. Note that any point below the GV bound is achievable by some code while no point above the Hamming bound is achievable by any code. In this part of the book we would like to push the GV bound as much up as possible while at the same time try and push down the Hamming bound as much as possible.
+
+\subsection*{4.2 Gilbert-Varshamov Bound}
+Next, we will switch gears by proving our first non-trivial lower bound on $R$ in terms of $\delta$. (In fact, this is the only positive result on the $R$ vs $\delta$ tradeoff question that we will see in this book.) In particular, we will prove the following result:
+
+Theorem 4.2.1 (Gilbert-Varshamov Bound). Let $q \geq 2$. For every $0 \leq \delta<1-\frac{1}{q}$ there exists a family of $q$-ary codes $\mathscr{C}$ with rate $R(\mathscr{C}) \geq 1-H_{q}(\delta)$ and relative distance $\delta(\mathscr{C}) \geq \delta$. If $q$ is a prime power then there exists such a $q$-ary family of linear codes. Furthermore, for every $0 \leq \varepsilon \leq 1-H_{q}(\delta)$ and integer $n$, if a matrix $G$ is picked uniformly from $\mathbb{F}_{q}^{k \times n}$ for $k=n\left(1-H_{q}(\delta)-\varepsilon\right)$, then $G$ generates a code of rate $1-H_{q}(\delta)-\varepsilon$ and relative distance at least $\delta$ with probability strictly greater than $1-q^{-\varepsilon n}$.
+
+The bound of the theorem is referred to as the GV bound. For a pictorial description of the GV bound for binary codes, see Figure 4.1. We will present the proofs for general codes and linear codes in Sections 4.2.1 and 4.2.2 respectively.
+
+In what follows we first prove the existence of a non-linear code of rate $1-H_{q}(\delta)$ and relative distance at least $\delta$. Later we show how to get a linear code, and with high probability (when $\varepsilon>0$ ). (Note that the existence of a linear code is implied by the final part using $\varepsilon=0$.)
+
+\subsection*{4.2.1 Greedy Construction}
+We will prove Theorem 4.2.1 for general codes by a greedy construction described next: Fix an integer $n$ and let $d=\delta n$. Start with the empty code $C \subseteq[q]^{n}$ and then keep on adding strings to $C$ that are at Hamming distance at least $d$ from all the existing words in $C$. Algorithm 4.2.1 presents a formal description of the algorithm and Figure 4.2 illustrates the first few executions of this algorithm.
+
+\begin{lstlisting}[mathescape=true]
+Algorithm 4.2.1 Gilbert's Greedy Code Construction
+Input: $n, q, d$
+Output: A code $C \subseteq[q]^{n}$ of distance $d \geq 1$
+    $C \leftarrow \phi$
+    WHILE there exists a $\mathbf{v} \in[q]^{n}$ such that $\Delta(\mathbf{v}, \mathbf{c}) \geq d$ for every $\mathbf{c} \in C$ do
+        Add v to $C$
+    RETURN $C$
+\end{lstlisting}
+We claim that Algorithm 4.2.1 terminates and the $C$ that it outputs has distance $d$. The latter is true by step 2, which makes sure that in Step 3 we never add a vector c that will make the distance of $C$ fall below $d$. For the former claim, note that, if we cannot add v at some point, we cannot add it later. Indeed, since we only add vectors to $C$, if a vector $\mathbf{v} \in[q]^{n}$ is ruled out in a certain iteration of Step 2 because $\Delta(\mathbf{c}, \mathbf{v})<d$, then in all future iterations, we have $\Delta(\mathbf{v}, \mathbf{c})<d$ and thus, this $\mathbf{v}$ will never be added in Step 3 in any future iteration.
+
+The running time of Algorithm 4.2.1 is $q^{O(n)}$. To see this, note that Step 2 in the worst-case could be repeated for every vector in $[q]^{n}$, that is at most $q^{n}$ times. In a naive implementation, for each iteration, we cycle through all vectors in $[q]^{n}$ and for each vector $\mathbf{v} \in[q]^{n}$, iterate through all (at most $q^{n}$ ) vectors $\mathbf{c} \in C$ to check whether $\Delta(\mathbf{c}, \mathbf{v})<d$. If no such $\mathbf{c}$ exists, then we add $\mathbf{v}$ to $C$. Otherwise, we move to the next $\mathbf{v}$. However, note that we can do slightly better-since we know that once a v is "rejected" in an iteration, it'll keep on being rejected in the future
+
+\begin{figure}[h]
+\begin{center}
+  \includegraphics[alt={},max width=\textwidth]{9669e529-878a-4b74-8d73-c6ea539a69cd-50_611_870_245_627}
+\captionsetup{labelformat=empty}
+\caption{Figure 4.2: An illustration of Gilbert's greedy algorithm (Algorithm 4.2.1) for the first five iterations.}
+\end{center}
+\end{figure}
+
+iterations, we can fix up an ordering of vectors in $[q]^{n}$ and for each vector $\mathbf{v}$ in this order, check whether it can be added to $C$ or not. If so, we add $\mathbf{v}$ to $C$, else we move to the next vector in the order. This algorithm has time complexity $O\left(n q^{2 n}\right)$, which is still $q^{O(n)}$.
+
+Further, we claim that after termination of Algorithm 4.2.1
+
+$$
+\bigcup_{\mathbf{c} \in C} B(\mathbf{c}, d-1)=[q]^{n} .
+$$
+
+This is because if the above is not true, then there exists a vector $\mathbf{v} \in[q]^{n} \backslash C$, such that $\Delta(\mathbf{v}, \mathbf{c}) \geq d$ and hence $\mathbf{v}$ can be added to $C$. However, this contradicts the fact that Algorithm 4.2.1 has terminated. Therefore,
+
+
+\begin{equation*}
+\left|\bigcup_{\mathbf{c} \in C} B(\mathbf{c}, d-1)\right|=q^{n} . \tag{4.2}
+\end{equation*}
+
+
+It is not too hard to see that
+
+$$
+\sum_{\mathbf{c} \in C}|B(\mathbf{c}, d-1)| \geq\left|\bigcup_{\mathbf{c} \in C} B(\mathbf{c}, d-1)\right|,
+$$
+
+which by (4.2) implies that
+
+$$
+\sum_{\mathbf{c} \in C}|B(\mathbf{c}, d-1)| \geq q^{n}
+$$
+
+or since the volume of a Hamming ball is translation invariant,
+
+$$
+\sum_{\mathbf{c} \in C} \operatorname{Vol}_{q}(d-1, n) \geq q^{n} .
+$$
+
+Since $\sum_{\mathbf{c} \in C} \operatorname{Vol}_{q}(d-1, n)=\operatorname{Vol}_{q}(d-1, n) \cdot|C|$, we have
+
+
+\begin{align*}
+|C| & \geq \frac{q^{n}}{V o l_{q}(d-1, n)} \\
+& \geq \frac{q^{n}}{q^{n H_{q}(\delta)}}  \tag{4.3}\\
+& =q^{n\left(1-H_{q}(\delta)\right)},
+\end{align*}
+
+
+as desired. In the above, (4.3) follows from the fact that
+
+
+\begin{align*}
+\operatorname{Vol}_{q}(d-1, n) & \leq \operatorname{Vol}_{q}(\delta n, n) \\
+& \leq q^{n H_{q}(\delta)}, \tag{4.4}
+\end{align*}
+
+
+where the second inequality follows from the upper bound on the volume of a Hamming ball in Proposition 3.3.3.
+
+We thus conclude that for every $q, n$ and $\delta$ there exists a code of rate at least $n\left(1-H_{q}(\delta)\right)$. We state this formally as a lemma below.
+
+Lemma 4.2.2. For every pair of positive integers $n, q$ and real $\delta \in[0,1]$ there exists an $(n, k, \delta n)_{q}$ code satisfying $q^{k} \geq \frac{q^{n}}{\operatorname{Vol}_{q}(d-1, n)}$.
+
+In particular, for every positive integer $q$ and real $\delta \in[0,1-1 / q]$ there exists an infinite family of $q$-ary codes $C$ of rate $R$ and distance $\delta$ satisfying $R \geq 1-H_{q}(\delta)$.
+
+It is worth noting that the code from Algorithm 4.2.1 is not guaranteed to have any special structure. In particular, even storing the code can take exponential space. We have seen in Proposition 2.3.3 that linear codes have a much more succinct representation. Thus, a natural question is:
+
+Question 4.2.1. Do linear codes achieve the $R \geq 1-H_{q}(\delta)$ tradeoff that the greedy construction achieves?
+
+Next, we will answer the question in the affirmative.
+
+\subsection*{4.2.2 Linear Code Construction}
+Now we will show that a random linear code, with high probability, lies on the GV bound. The construction is a use of the probabilistic method (Section 3.2).
+
+Proof of Theorem 4.2.1. By Proposition 2.3.6, we are done if we can show that there exists a $k \times n$ matrix $\mathbf{G}$ of full rank (for $k=\left(1-H_{q}(\delta)-\varepsilon\right) n$ ) such that
+
+$$
+\text { For every } \mathbf{m} \in \mathbb{F}_{q}^{k} \backslash\{\mathbf{0}\}, w t(\mathbf{m G}) \geq d \text {. }
+$$
+
+We will prove the existence of such a G by the probabilistic method. Pick a random linear code by picking a random $k \times n$ matrix $\mathbf{G}$ where each of $k n$ entries is chosen uniformly and independently at random from $\mathbb{F}_{q}$. Fix $\mathbf{m} \in \mathbb{F}_{q}^{k} \backslash\{\mathbf{0}\}$. Recall that by Lemma 3.1.14, for a random G, mG is a uniformly random vector from $\mathbb{F}_{q}^{n}$. Thus, for every non-zero vector m, we have
+
+
+\begin{align*}
+\underset{\mathbf{G}}{\operatorname{Pr}}[w t(\mathbf{m G})<d] & =\frac{V o l_{q}(d-1, n)}{q^{n}} \\
+& \leq \frac{q^{n H_{q}(\delta)}}{q^{n}}  \tag{4.5}\\
+& \leq q^{-k} \cdot q^{-\varepsilon n}, \tag{4.6}
+\end{align*}
+
+
+where (4.5) follows from the fact that the condition $w t(\mathbf{m G})<d$ is equivalent to the condition that $\mathbf{m G} \in B(\mathbf{0}, d-1)$ and the fact that mG is uniformly random in $\mathbb{F}_{q}^{n}$, (4.5) follows from (4.4) and (4.6) uses $k \leq n\left(1-H_{q}(\delta)-\varepsilon\right)$. There are $q^{k}-1$ non-zero vectors m and taking the union over all such vectors and applying the union bound (Lemma 3.1.5) we have
+
+$$
+\begin{aligned}
+\underset{\mathbf{G}}{\operatorname{Pr}}[\text { There exists a non-zero } \mathbf{m} \text { s.t. } \operatorname{wt}(\mathbf{m G})<d] & \leq\left(q^{k}-1\right) \cdot q^{-k} \cdot q^{-\varepsilon n} \\
+& <q^{-\varepsilon \cdot n} .
+\end{aligned}
+$$
+
+Fix a matrix $\mathbf{G} \in \mathbb{F}_{q}^{k \times n}$ such that for every non-zero $\mathbf{M}$ we have $\operatorname{wt}(\mathbf{m G}) \geq d$. The argument above has shown that a random matrix has this property with probability strictly greater than $1-q^{-\varepsilon n}$. By Proposition 2.3.6 this implies that the code generated by G has distance at least $d$. To conclude the theorem we only need to argue that the code has dimension $k$, i.e., that G has full rank. But this also follows immediately from the property that for every $\varepsilon \geq 0$, we have that the probability that the code generated by a uniformly random matrix has distance less than or equal to $d$ is strictly less than 1. Thus using the probabilistic method we conclude there exists a matrix G such that the code it generates in an $[n, k, d]_{q}$ code. Furthermore if $\varepsilon>0$ then the probability that the code does not have distance $d$ is exponentially small, specifically at most $q^{\varepsilon n}$.
+
+To conclude we need to verify that the code generated by G has dimension $k$, i.e., that G has full rank. But note that an equivalent definition of G not having full rank is that there exists a non-zero vector $\mathbf{M}$ such that $\mathbf{m G}=\mathbf{0}$. But the existence of such a vector $\mathbf{m}$ would imply $\mathrm{wt}(\mathbf{m G})=0<d$ contradicting the property that for every non-zero $\mathbf{M}$ we have $\mathrm{wt}(\mathbf{m G}) \geq d$. We thus conclude that $\mathbf{G}$ generates a code of rate $k / n=1-H_{q}(\delta)-\varepsilon$ and relative distance $\delta$. The theorem follows. \(\square\)
+
+Discussion. We now digress a bit to stress some aspects of the GV bound and its proof. First, note that that proof by the probabilistic method shows something stronger than just the existence of a code, but rather gives a high probability result. Furthermore, as pointed out explicitly for the non-linear setting in Lemma 4.2.2, the result gives a lower bound not only in the asymptotic case but also one for every choice of $n$ and $k$. The proof of the GV bound in the non-linear case gives a similar non-asymptotic bound in the linear setting also.
+
+Note that we can also pick a random linear code by picking a random $(n-k) \times n$ parity check matrix. This also leads to a alternate proof of the GV bound: see Exercise 4.2.
+
+Finally, we note that Theorem 4.2.1 requires $\delta<1-\frac{1}{q}$. An inspection of Gilbert and Varshamov's proofs shows that the only reason the proof required that $\delta \leq 1-\frac{1}{q}$ is because it is needed for the volume bound (recall the bound in $\operatorname{Proposition} 3.3 .3)-\operatorname{Vol}_{q}(\delta n, n) \leq q^{H_{q}(\delta) n}-$ to hold. It is natural to wonder if the above is just an artifact of the proof or if better codes exist. This leads to the following question:
+
+Question 4.2.2. Does there exists a code with $R>0$ and $\delta>1-\frac{1}{q}$ ?
+
+We will return to this question in Section 4.4.
+
+\subsection*{4.3 Singleton Bound}
+We will now change gears again and prove an upper bound on $R$ (for fixed $\delta$ ). We start by proving the Singleton bound.
+
+Theorem 4.3.1 (Singleton Bound). For every $(n, k, d)_{q}$ code,
+
+$$
+k \leq n-d+1 .
+$$
+
+Consequently, if $C$ is an infinite family of codes of rate $R$ and relative distance $\delta$ then $R \leq 1-\delta$.\\
+Note that the asymptotic bound hold for any family of codes, even those where the alphabet may grow (arbitrarily) with the length of the code.
+
+Proof. We start by proving the non-asymptotic bound first. The asymptotic version follows easily and is shown at the end.
+
+Let $\mathbf{c}_{1}, \mathbf{c}_{2}, \ldots, \mathbf{c}_{M}$ be the codewords of an $(n, k, d)_{q}$ code $C$. Note that we need to show $M \leq$ $q^{n-d+1}$. To this end, we define $\mathbf{c}_{i}^{\prime}$ to be the prefix of the codeword $\mathbf{c}_{i}$ of length $n-d+1$ for every $i \in[M]$. See Figure 4.3 for a pictorial description.
+
+We now claim that for every $i \neq j, \mathbf{c}_{i}^{\prime} \neq \mathbf{c}_{j}^{\prime}$. For the sake of contradiction, assume that there exits an $i \neq j$ such that $\mathbf{c}_{i}^{\prime}=\mathbf{c}_{j}^{\prime}$. Notice this implies that $\mathbf{c}_{i}$ and $\mathbf{c}_{j}$ agree in all the first $n-d+$ 1 positions, which in turn implies that $\Delta\left(\mathbf{c}_{i}, \mathbf{c}_{j}\right) \leq d-1$. This contradicts the fact that $C$ has distance $d$. Thus, $M$ is the number of prefixes of codewords in $C$ of length $n-d+1$, which implies that $M \leq q^{n-d+1}$ as desired.
+
+To get the asymptotic bound, assume some infinite family of codes $\mathscr{C}$ has rate $R=R(\mathscr{C})=$ $1-\delta+\varepsilon$ for some $\varepsilon>0$. Then there must exist an $n>2 / \varepsilon$ and a code $C_{n} \in \mathscr{C}$ that is an $(n, k, d)_{q}$ code with $k \geq n(1-\delta+\varepsilon)$ and $d \geq \delta n$. By our choice of $n$ we thus have $k \geq n-d+2$ contradicting the non-asymptotic bound proved above. \(\square\)
+
+\begin{figure}[h]
+\begin{center}
+  \includegraphics[alt={},max width=\textwidth]{9669e529-878a-4b74-8d73-c6ea539a69cd-54_793_996_324_563}
+\captionsetup{labelformat=empty}
+\caption{Figure 4.3: Construction of a new code in the proof of the Singleton bound.}
+\end{center}
+\end{figure}
+
+\begin{figure}[h]
+\begin{center}
+  \includegraphics[alt={},max width=\textwidth]{9669e529-878a-4b74-8d73-c6ea539a69cd-54_744_1048_1439_530}
+\captionsetup{labelformat=empty}
+\caption{Figure 4.4: The Hamming, GV and Singleton bound for binary codes.}
+\end{center}
+\end{figure}
+
+Figure 4.4 presents a pictorial description of the asymptotic version of the Singleton bound. It is worth noting that the bound is independent of the alphabet size. As is evident from Figure 4.4, the Singleton bound is worse than the Hamming bound for binary codes. However, this bound is better for larger alphabet sizes. In fact, we will look at a family of codes called Reed-Solomon codes in Chapter 5 that meets the Singleton bound. However, the alphabet size of the Reed-Solomon codes increases with the block length $n$. Thus, a natural follow-up question is the following:
+
+Question 4.3.1. Given a fixed $q \geq 2$, does there exist a $q$-ary code that meets the Singleton bound?
+
+We'll see an answer to this question in the next section.
+
+\subsection*{4.4 Plotkin Bound}
+In this section, we will study the Plotkin bound, which will answer Questions 4.2.2 and 4.3.1. We start by stating the bound.
+
+Theorem 4.4.1 (Plotkin bound). The following hold for any code $C \subseteq[q]^{n}$ with distance at least $d$ :
+
+\begin{itemize}
+  \item[1.] If $d=\left(1-\frac{1}{q}\right) n,|C| \leq 2 q n$.
+  \item[2.] If $d>\left(1-\frac{1}{q}\right) n,|C| \leq \frac{q d}{q d-(q-1) n}$.
+\end{itemize}
+
+Note that the Plotkin bound (Theorem 4.4.1) implies that a code with relative distance $\delta \geq$ $1-\frac{1}{q}$, must necessarily have $R=0$, which answers Question 4.2.2 in the negative.
+
+Before proving Theorem 4.4.1, we make a few remarks. We first note that the upper bound in the first part of Theorem 4.4.1 can be improved to $2(q-1) n$ for $q \geq 2$. (See Exercise 4.13.) Second, it can be shown that this bound is tight for $q=2$. (See Exercise 4.14.) Third, the statement of Theorem 4.4.1 gives a trade-off only for relative distance greater than $1-1 / q$. However, as the following corollary shows, the result can be extended to work for $0 \leq \delta \leq 1-1 / q$. (See Figure 4.5 for an illustration for binary codes.)
+
+Corollary 4.4.2. Let $C$ be an infinite family of $q$-ary codes with relative distance $0 \leq \delta \leq 1-\frac{1}{q}$ and rate $R$. Then
+
+$$
+R \leq 1-\left(\frac{q}{q-1}\right) \delta .
+$$
+
+Proof. Assume for contradiction that $\mathscr{C}$ is an infinite family of $q$-ary codes with rate $R=1-$ $\left(\frac{q}{q-1}\right) \delta+\varepsilon$ for some $\varepsilon>0$. Let $C \in \mathscr{C}$ be a code of block length $n \geq \frac{3}{\varepsilon} \cdot \log \left(\frac{1}{\varepsilon}\right)$ with distance $d \leq \delta n$\\
+and message length $k \geq R n$. We argue now that an appropriate "shortening" of $C$ yields a code contradicting Theorem 4.4.1.
+
+Partition the codewords of $C$ so that codewords within a partition agree on the first $n-$ $n^{\prime}$ symbols, where $n^{\prime}=\left\lfloor\frac{q d}{q-1}\right\rfloor-1$. (We will see later why this choice of $n^{\prime}$ makes sense.) In particular, for every $\mathbf{x} \in[q]^{n-n^{\prime}}$, define the 'prefix code'
+
+$$
+C_{\mathbf{x}}=\left\{\left(c_{n-n^{\prime}+1}, \ldots c_{n}\right) \mid\left(c_{1} \ldots c_{N}\right) \in C,\left(c_{1} \ldots c_{n-n^{\prime}}\right)=\mathbf{x}\right\} .
+$$
+
+In other words $C_{\mathbf{x}}$ consists of the $n^{\prime}$-length suffixes of all codewords of $C$ that start with the string x.)
+
+By definition $C_{\mathbf{x}}$ is a $q$-ary code of block length $n^{\prime}=\left\lfloor\frac{q d}{q-1}\right\rfloor-1$. We claim that it also has distance at least $d$ for every x: To see this, suppose for some $\mathbf{x}, \mathbf{c}_{1} \neq \mathbf{c}_{2} \in C_{\mathbf{x}}, \Delta\left(\mathbf{c}_{1}, \mathbf{c}_{2}\right)<d$. But this yields two codewords of $C$, namely $\left(\mathbf{x}, \mathbf{c}_{1}\right)$ and $\left(\mathbf{x}, \mathbf{c}_{2}\right)$, a Hamming distance is less than $d$ from each other, contradicting the assumption that $\Delta(C) \geq d$.
+
+Since $n^{\prime}<\left(\frac{q}{q-1}\right) d$ (by definition of $n^{\prime}$ ) and thus, $d>\left(1-\frac{1}{q}\right) n^{\prime}$. Applying Theorem 4.4.1 to $C_{\mathbf{x}}$ we get that
+
+
+\begin{equation*}
+\left|C_{\mathbf{x}}\right| \leq \frac{q d}{q d-(q-1) n^{\prime}} \leq q d \leq q n, \tag{4.7}
+\end{equation*}
+
+
+where the second inequality follows from the fact that $q d-(q-1) n^{\prime}$ is a positive integer and the third is immediate from $d \leq n$.
+
+We now use the bound on $\left|C_{\mathbf{x}}\right|$ for all $\mathbf{x}$ to get a bound on $|C|$. Note that by the definition of $C_{\mathbf{x}}$ :
+
+$$
+|C|=\sum_{\mathbf{x} \in[q]^{n-n^{\prime}}}\left|C_{\mathbf{x}}\right|,
+$$
+
+which by (4.7) implies that
+
+$$
+|C| \leq \sum_{\mathbf{x} \in[q]^{n-n^{\prime}}} q n=q^{n-n^{\prime}+1+\frac{\log n}{\log q}} \leq q^{n-\frac{q}{q-1} d+1+\log n} \leq q^{n\left(1-\delta \cdot \frac{q}{q-1}+\varepsilon\right)},
+$$
+
+where the first inequality uses the definition of $n^{\prime}$ and the final inequality uses the fact that $n \geq \frac{3}{\varepsilon} \cdot \log \left(\frac{1}{\varepsilon}\right)$. We conclude that $R \leq 1-\left(\frac{q}{q-1}\right) \delta+\varepsilon$. Since this holds for every $\varepsilon>0$ the corollary follows. \(\square\)
+
+Note that Corollary 4.4.2 implies that for any $q$-ary code of rate $R$ and relative distance $\delta$ (where $q$ is a constant independent of the block length of the code), $R<1-\delta$. In other words, this answers Question 4.3.1 in the negative.
+
+Let us pause for a bit at this point and recollect the bounds on $R$ versus $\delta$ that we have proved till now, which are all depicted in Figure 4.5 (for $q=2$ ). The GV bound is the best known lower bound at the time of writing of this book. Better upper bounds are known and we will see one such trade-off (called the Elias-Bassalygo bound) in Section 8.1.
+
+Now, we turn to the proof of Theorem 4.4.1, for which we will need two more lemmas. The first lemma deals with vectors over real spaces. We quickly recap the necessary definitions.
+
+\begin{figure}[h]
+\begin{center}
+  \includegraphics[alt={},max width=\textwidth]{9669e529-878a-4b74-8d73-c6ea539a69cd-57_745_1046_258_531}
+\captionsetup{labelformat=empty}
+\caption{Figure 4.5: The current bounds on the rate $R$ vs. relative distance $\delta$ for binary codes. The GV bound is a lower bound on $R$ while the other three bounds are upper bounds on $R$.}
+\end{center}
+\end{figure}
+
+Consider a vector $\mathbf{v}$ in $\mathbb{R}^{n}$, that is, a tuple of $n$ real numbers. This vector has (Euclidean) norm $\|\mathbf{v}\|=\sqrt{v_{1}^{2}+v_{2}^{2}+\ldots+v_{n}^{2}}$, and is a unit vector if and only if its norm is 1. The inner product of two vectors, u and v, is $\langle\mathbf{u}, \mathbf{v}\rangle=\sum_{i} u_{i} \cdot v_{i}$. The following lemma gives a bound on the number of vectors that can exist such that every pair is at an obtuse angle with each other.
+
+Lemma 4.4.3 (Geometric Lemma). Let $\mathbf{v}_{1}, \mathbf{v}_{2}, \ldots, \mathbf{v}_{m} \in \mathbb{R}^{N}$ be non-zero vectors.
+
+\begin{itemize}
+  \item[1.] If $\left\langle\mathbf{v}_{i}, \mathbf{v}_{j}\right\rangle \leq 0$ for all $i \neq j$, then $m \leq 2 N$.
+  \item[2.] Let $\mathbf{v}_{i}$ be unit vectors for $1 \leq i \leq m$. Further, if $\left\langle\mathbf{v}_{i}, \mathbf{v}_{j}\right\rangle \leq-\varepsilon<0$ for all $i \neq j$, then $m \leq 1+\frac{1}{\varepsilon}$.
+\end{itemize}
+
+(Both items 1 and 2 are tight: see Exercises 4.15 and 4.16.) The proof of the Plotkin bound will need the existence of a map from codewords to real vectors with certain properties, which the next lemma guarantees.
+
+Lemma 4.4.4 (Mapping Lemma). For every $q$ and $n$, there exists a function $f:[q]^{n} \longrightarrow \mathbb{R}^{n q}$ such that for every $\mathbf{c}_{1}, \mathbf{c}_{2} \in[q]^{n}$ we have
+
+$$
+\left\langle f\left(\mathbf{c}_{1}\right), f\left(\mathbf{c}_{2}\right)\right\rangle=1-\left(\frac{q}{q-1}\right)\left(\frac{\Delta\left(\mathbf{c}_{1}, \mathbf{c}_{2}\right)}{n}\right) .
+$$
+
+Consequently we get:
+
+\begin{itemize}
+  \item[1.] For every $\mathbf{c} \in[q]^{n},\|f(\mathbf{c})\|=1$.
+\end{itemize}
+
+\footnotetext{${ }^{1}$ Note that since $\mathbf{v}_{i}$ and $\mathbf{v}_{j}$ are both unit vectors, $\left\langle\mathbf{v}_{i}, \mathbf{v}_{j}\right\rangle$ is the cosine of the angle between them.
+}
+2. If $\Delta\left(\mathbf{c}_{1}, \mathbf{c}_{2}\right) \geq d$ then we have $\left\langle f\left(\mathbf{c}_{1}\right), f\left(\mathbf{c}_{2}\right)\right\rangle \leq 1-\left(\frac{q}{q-1}\right)\left(\frac{d}{n}\right)$.
+
+We defer the proofs of the Geometric Lemma and the Mapping Lemma to the end of the section and turn instead to proving Theorem 4.4.1 using the lemmas.
+
+Proof of Theorem 4.4.1. Let $C=\left\{\mathbf{c}_{1}, \mathbf{c}_{2}, \ldots, \mathbf{c}_{m}\right\}$ be a $q$-ary code of block length $n$ and distance $d$. Let $f:[q]^{n} \rightarrow \mathbb{R}^{n q}$ be the function from Lemma 4.4.4. Then for all $i$ we have that $f\left(\mathbf{c}_{i}\right)$ is a unit length vector in $R^{n q}$. Furthermore for all $i \neq j$, we have
+
+$$
+\left\langle f\left(\mathbf{c}_{i}\right), f\left(\mathbf{c}_{j}\right)\right\rangle \leq 1-\left(\frac{q}{q-1}\right) \frac{d}{n} .
+$$
+
+Thus $f\left(\mathbf{c}_{1}\right), \ldots, f\left(\mathbf{c}_{m}\right)$ give us unit vectors in $R^{n q}$ to which we can apply Lemma 4.4.3 and this will yield the upper bounds claimed on $m=|C|$ in the theorem statement.
+
+For part 1 of the theorem, if $d=\left(1-\frac{1}{q}\right) n=\frac{(q-1) n}{q}$, then for all $i \neq j$, we have
+
+$$
+\left\langle f\left(\mathbf{c}_{i}\right), f\left(\mathbf{c}_{j}\right)\right\rangle \leq 0 .
+$$
+
+So by the first part of Lemma 4.4.3, $m \leq 2 n q$, as desired.\\
+For part 2, if $d>\left(\frac{q-1}{q}\right) n$ then for all $i \neq j$ we have
+
+$$
+\left\langle f\left(\mathbf{c}_{i}\right), f\left(\mathbf{c}_{j}\right)\right\rangle \leq 1-\left(\frac{q}{q-1}\right) \frac{d}{n}=-\left(\frac{q d-(q-1) n}{(q-1) n}\right) .
+$$
+
+Let $\varepsilon \stackrel{\text { def }}{=}\left(\frac{q d-(q-1) n}{(q-1) n}\right)>0$. We can apply the second part of Lemma 4.4.3 to $f\left(\mathbf{c}_{1}\right), \ldots, f\left(\mathbf{c}_{m}\right)$ and $\varepsilon$ to get $m \leq 1+\frac{(q-1) n}{q d-(q-1) n}=\frac{q d}{q d-(q-1) n}$, as desired. \(\square\)
+
+\subsection*{4.4.1 Proof of Geometric and Mapping Lemmas}
+We now prove Lemmas 4.4.3 and 4.4.4. We start with Lemma 4.4.3, namely the Geometric Lemma.
+
+Proof of Lemma 4.4.3. We prove both parts using linear algebra over the reals.\\
+We start by proving the first part of the lemma. This part is also linear algebraic but involves a few more steps.
+
+We first focus on a subset of the $m$ vectors that has a positive inner product with some fixed vector $\mathbf{u}$. Specifically we pick $\mathbf{u}$ to be a generic vector in $\mathbb{R}^{N}$ so that $\left\langle\mathbf{u}, \mathbf{v}_{i}\right\rangle \neq 0$ for every $i$. Such vector exists since the set of vectors satisfying $\left\langle\mathbf{u}, \mathbf{v}_{i}\right\rangle=0$ is a dimension $N-1$ linear subpace of $\mathbb{R}^{N}$ (since $\mathbf{v}_{i} \neq \mathbf{0}$ ). And the union of $N$ such linear subspaces (one for each $i \in[N]$ ) cannot cover all of $\mathbb{R}^{N}$.
+
+Assume w.l.o.g. that at least half of the $\mathbf{v}_{i}$ 's have a positive inner product with $\mathbf{u}$ (if not we can work with -u instead) and assume further that these are the first $\ell \geq m / 2$ vectors by renumbering the vectors. We now show that $\mathbf{v}_{1}, \ldots, \mathbf{v}_{\ell}$ are linearly independent. This suffices to prove the first part, since linear independence implies $\ell \leq N$ and thus $m \leq 2 \ell \leq 2 N$.
+
+Assume for contradiction that there is a linear dependency among the vectors $\mathbf{v}_{1}, \ldots, \mathbf{v}_{\ell}$, i.e., there exist $\alpha_{1}, \ldots, \alpha_{\ell}$ with at least one $\alpha_{i} \neq 0$ such that $\sum_{i \in[\ell]} \alpha_{i} \mathbf{z}_{i}=0$. Note we can assume that at least one $\alpha_{i}$ is positive since if all are non-negative we can negate all $\alpha_{i}$ 's to get a positive $\alpha_{i}$. Further, by renumbering the indices we can assume that there exists $k \geq 1$ such that $\alpha_{1}, \ldots, \alpha_{k}>$ 0 and $\alpha_{k+1}, \ldots, \alpha_{\ell} \leq 0$.
+
+Let $\mathbf{w}=\sum_{i=1}^{k} \alpha_{i} \mathbf{v}_{i}$ By the definition of $\alpha_{i}$ 's we have that $\mathbf{w}=-\sum_{j=k+1}^{\ell} \alpha_{j} \mathbf{v}_{j}$. We first argue that $\mathbf{w} \neq 0$ by using the vector $\mathbf{u}$. Note that we have
+
+$$
+\langle\mathbf{u}, \mathbf{w}\rangle=\left\langle\mathbf{u}, \sum_{i=1}^{k} \alpha_{i} \mathbf{v}_{i}\right\rangle=\sum_{i=1}^{k} \alpha_{i}\left\langle\mathbf{u}, \mathbf{v}_{i}\right\rangle \geq \alpha_{1}\left\langle\mathbf{u}, \mathbf{v}_{1}\right\rangle>0 .
+$$
+
+We thus conclude $\mathbf{w}$ has a non-zero inner product with some vector and hence can not be the zero vector.
+
+But now we have the following contradiction:
+
+$$
+0<\langle\mathbf{w}, \mathbf{w}\rangle=\left\langle\sum_{i=1}^{k} \alpha_{i} \mathbf{v}_{i},-\sum_{j=k+1}^{\ell} \alpha_{j} \mathbf{v}_{j}\right\rangle=-\sum_{i=1, j=k+1}^{k, \ell} \alpha_{i} \alpha_{j}\left\langle\mathbf{v}_{i}, \mathbf{v}_{j}\right\rangle \leq 0,
+$$
+
+where the first inequality uses $\mathbf{w} \neq 0$, the first equality uses the two definitions of $\mathbf{w}$ namely $\mathbf{w}=\sum_{i=1}^{k} \alpha_{i} \mathbf{v}_{i}=-\sum_{j=k+1}^{\ell} \alpha_{j} \mathbf{v}_{j}$, and the final inequality holds for every term in the summation. Specifically for every $0 \leq i \leq k$ and $k+1 \leq j \leq \ell$ we have $\alpha_{i} \geq 0, \alpha_{j} \leq 0$ and $\left\langle\mathbf{v}_{i}, \mathbf{v}_{j}\right\rangle \leq 0$ and so $-\alpha_{i} \alpha_{j}\left\langle\mathbf{v}_{i}, \mathbf{v}_{j}\right\rangle \leq 0$. We conclude that $\mathbf{v}_{1}, \ldots, \mathbf{v}_{\ell}$ must be linearly independent and this proves the first part of the lemma.
+
+We now move on to the proof of the second part. Define $\mathbf{z}=\mathbf{v}_{1}+\ldots+\mathbf{v}_{m}$. Now consider the following sequence of relationships:
+
+$$
+\|\mathbf{z}\|^{2}=\sum_{i=1}^{m}\left\|\mathbf{v}_{i}\right\|^{2}+2 \sum_{i<j}\left\langle\mathbf{v}_{i}, \mathbf{v}_{j}\right\rangle \leq m+2 \cdot\binom{m}{2} \cdot(-\varepsilon)=m(1-\varepsilon m+\varepsilon) .
+$$
+
+The inequality follows from the facts that each $\mathbf{v}_{i}$ is a unit vector and the assumption that for every $i \neq j,\left\langle\mathbf{v}_{i} . \mathbf{v}_{j}\right\rangle \leq-\varepsilon$. As $\|\mathbf{z}\|^{2} \geq 0$,
+
+$$
+m(1-\varepsilon m+\varepsilon) \geq 0 .
+$$
+
+Since $m \geq 1$, we have that
+
+$$
+1-\varepsilon m+\varepsilon \geq 0
+$$
+
+or
+
+$$
+\varepsilon m \leq 1+\varepsilon .
+$$
+
+Thus, we have $m \leq 1+\frac{1}{\varepsilon}$, as desired.
+
+Alternate proof of first part. We now present an alternate proof of the first result, which we do by induction on $n$. Note that in the base case of $N=0$, we have $m=0$, which satisfies the claimed inequality $m \leq 2 N$.
+
+In the general case, we have $m \geq 1$ non-zero vectors $\mathbf{v}_{1}, \ldots, \mathbf{v}_{m} \in \mathbb{R}^{N}$ such that for every $i \neq j$,
+
+
+\begin{equation*}
+\left\langle\mathbf{v}_{i}, \mathbf{v}_{j}\right\rangle \leq 0 . \tag{4.8}
+\end{equation*}
+
+
+Since rotating all the vectors by the same amount does not change the sign of the inner product (nor does scaling any of the vectors), w.l.o.g. we can assume that $\mathbf{v}_{m}=\langle 1,0, \ldots, 0\rangle$. For $1 \leq i \leq m-1$, denote the vectors as $\mathbf{v}_{i}=\left\langle\alpha_{i}, \mathbf{y}_{i}\right\rangle$, for some $\alpha_{i} \in \mathbb{R}$ and $\mathbf{y}_{i} \in \mathbb{R}^{N-1}$. Now, for any $i \neq 1,\left\langle\mathbf{v}_{1}, \mathbf{v}_{i}\right\rangle=1 \cdot \alpha_{i}+\sum_{i=2}^{m} 0=\alpha_{i}$. However, we know from (4.8) that $\left\langle\mathbf{v}_{1}, \mathbf{v}_{i}\right\rangle \leq 0$, which in turn implies that
+
+
+\begin{equation*}
+\alpha_{i} \leq 0 . \tag{4.9}
+\end{equation*}
+
+
+Next, we claim that at most one of $\mathbf{y}_{1}, \ldots, \mathbf{y}_{m-1}$ can be the all zeroes vector, $\mathbf{0}$. If not, assume w.l.o.g., that $\mathbf{y}_{1}=\mathbf{y}_{2}=\mathbf{0}$. This in turn implies that
+
+$$
+\begin{aligned}
+\left\langle\mathbf{v}_{1}, \mathbf{v}_{2}\right\rangle & =\alpha_{1} \cdot \alpha_{2}+\left\langle\mathbf{y}_{1}, \mathbf{y}_{2}\right\rangle \\
+& =\alpha_{1} \cdot \alpha_{2}+0 \\
+& =\alpha_{1} \cdot \alpha_{2} \\
+& >0
+\end{aligned}
+$$
+
+where the last inequality follows from the subsequent argument. As $\mathbf{v}_{1}=\left\langle\alpha_{1}, \mathbf{0}\right\rangle$ and $\mathbf{v}_{2}=\left\langle\alpha_{2}, \mathbf{0}\right\rangle$ are non-zero, we have that $\alpha_{1}, \alpha_{2} \neq 0$. (4.9) then implies that $\alpha_{1}, \alpha_{2}<0$. However, $\left\langle\mathbf{v}_{1}, \mathbf{v}_{2}\right\rangle>0$ contradicts (4.8).
+
+Thus, w.l.o.g., assume that $\mathbf{y}_{1}, \ldots, \mathbf{y}_{m-2}$ are all non-zero vectors. Further, note that for every $i \neq j \in[m-2],\left\langle\mathbf{y}_{i}, \mathbf{y}_{j}\right\rangle=\left\langle\mathbf{v}_{i}, \mathbf{v}_{j}\right\rangle-\alpha_{i} \cdot \alpha_{j} \leq\left\langle\mathbf{v}_{i}, \mathbf{v}_{j}\right\rangle \leq 0$. Thus, we have reduced problem on $m$ vectors with dimension $N$ to an equivalent problem on $m-2$ vectors with dimension $N-1$. By induction we have $m-2 \leq 2(N-1)$ and thus implying $m \leq 2 N$. \(\square\)
+
+Finally, we prove the Mapping Lemma, i.e., Lemma 4.4.4.\\
+Proof of Lemma 4.4.4. We begin by defining a map $\phi:[q] \rightarrow \mathbb{R}^{q}$ which essentially satisfies the requirements of the lemma statement for the case $n=1$ (up to some normalization constant). Then, we essentially apply $\phi$ separately to each coordinates of a word to get the map $f:[q]^{n} \rightarrow$ $\mathbb{R}^{n q}$ that satisfies the claimed properties. We now fill in the details.
+
+Let $\mathbf{e}_{i}$ denote the unit vector along the $i$ th direction in $\mathbb{R}^{q}$, i.e.,
+
+$$
+\mathbf{e}_{i}=\langle 0,0, \ldots, \underbrace{1}_{i^{\text {th }} \text { position }}, \ldots, 0\rangle .
+$$
+
+Let $\overline{\mathbf{e}}=\frac{1}{q} \sum_{i \in[q]} \mathbf{e}_{i}=\langle 1 / q, 1 / q, \ldots, 1 / q\rangle$. Note that we have $\left\langle\mathbf{e}_{i}, \mathbf{e}_{j}\right\rangle=1$ if $i=j$ and 0 otherwise. Note also $\left\langle\overline{\mathbf{e}}, \mathbf{e}_{i}\right\rangle=\langle\overline{\mathbf{e}}, \overline{\mathbf{e}}\rangle=1 / q$ for every $i$.
+
+Now we define $\phi:[q] \rightarrow \mathbb{R}^{q}$ to be $\phi(i)=\mathbf{e}_{i}-\overline{\mathbf{e}}$. For every pair $i, j \in[q]$ we have
+
+$$
+\langle\phi(i), \phi(j)\rangle=\left\langle\mathbf{e}_{i}-\overline{\mathbf{e}}, \mathbf{e}_{j}-\overline{\mathbf{e}}\right\rangle=\left\langle\mathbf{e}_{i}, \mathbf{e}_{j}\right\rangle-\left\langle\mathbf{e}_{i}, \overline{\mathbf{e}}\right\rangle-\left\langle\overline{\mathbf{e}}, \mathbf{e}_{j}\right\rangle+\langle\overline{\mathbf{e}}, \overline{\mathbf{e}}\rangle=\left\langle\mathbf{e}_{i}, \mathbf{e}_{j}\right\rangle-1 / q .
+$$
+
+Thus, for every $i \in[q]$, we get:
+
+
+\begin{equation*}
+\|\phi(i)\|^{2}=\left\langle\mathbf{e}_{i}, \mathbf{e}_{i}\right\rangle-1 / q=\frac{(q-1)}{q} . \tag{4.10}
+\end{equation*}
+
+
+Also for every $i \neq j \in[q]$, we have:
+
+
+\begin{equation*}
+\langle\phi(i), \phi(j)\rangle=-\frac{1}{q} . \tag{4.11}
+\end{equation*}
+
+
+We are now ready to define our final map $f:[q]^{n} \rightarrow \mathbb{R}^{n q}$. For every $\mathbf{c}=\left(c_{1}, \ldots, c_{n}\right) \in[q]^{n}$, define
+
+$$
+f(\mathbf{c})=\sqrt{\frac{q}{n(q-1)}} \cdot\left(\phi\left(c_{1}\right), \phi\left(c_{2}\right), \ldots, \phi\left(c_{n}\right)\right) .
+$$
+
+(The multiplicative factor $\sqrt{\frac{q}{n(q-1)}}$ will be used to ensure below that $f(\mathbf{c})$ for every $\mathbf{c} \in[q]^{n}$ is a unit vector.)
+
+To complete the proof, we will show that $f$ satisfies the claimed properties. We begin with condition 1. Note that
+
+$$
+\|f(\mathbf{c})\|^{2}=\frac{q}{(q-1) n} \cdot \sum_{i=1}^{n}\|\phi(i)\|^{2}=1,
+$$
+
+where the first equality follows from the definition of $f$ and the second equality follows from (4.10).
+
+We now turn to the second condition. For notational convenience, define $\mathbf{c}_{1}=\left(x_{1}, \ldots, x_{n}\right)$ and $\mathbf{c}_{2}=\left(y_{1}, \ldots, y_{n}\right)$. Consider the following sequence of relations:
+
+
+\begin{align*}
+\left\langle f\left(\mathbf{c}_{1}\right), f\left(\mathbf{c}_{2}\right)\right\rangle & =\sum_{\ell=1}^{n}\left\langle f\left(x_{\ell}\right), f\left(y_{\ell}\right)\right\rangle \\
+& =\left[\sum_{\ell: x_{\ell} \neq y_{\ell}}\left\langle\phi\left(x_{\ell}\right), \phi\left(y_{\ell}\right)\right\rangle+\sum_{\ell: x_{\ell}=y_{\ell}}\left\langle\phi\left(x_{\ell}\right), \phi\left(y_{\ell}\right)\right\rangle\right] \cdot\left(\frac{q}{n(q-1)}\right) \\
+& =\left[\sum_{\ell: x_{\ell} \neq y_{\ell}}\left(\frac{-1}{q}\right)+\sum_{\ell: x_{\ell}=y_{\ell}}\left(\frac{q-1}{q}\right)\right] \cdot\left(\frac{q}{n(q-1)}\right)  \tag{4.12}\\
+& =\left[\Delta\left(\mathbf{c}_{1}, \mathbf{c}_{2}\right)\left(\frac{-1}{q}\right)+\left(n-\Delta\left(\mathbf{c}_{1}, \mathbf{c}_{2}\right)\right)\left(\frac{q-1}{q}\right)\right] \cdot\left(\frac{q}{n(q-1)}\right)  \tag{4.13}\\
+& =1-\Delta\left(\mathbf{c}_{1}, \mathbf{c}_{2}\right)\left(\frac{q}{n(q-1)}\right)\left[\frac{1}{q}+\frac{q-1}{q}\right] \\
+& =1-\left(\frac{q}{q-1}\right)\left(\frac{\Delta\left(\mathbf{c}_{1}, \mathbf{c}_{2}\right)}{n}\right),
+\end{align*}
+
+
+as desired. In the above, (4.12) is obtained using (4.11) and (4.10) while (4.13) follows from the definition of the Hamming distance. \(\square\)
+
+\subsection*{4.5 Exercises}
+Exercise 4.1. Given an infinite family of $q$-ary codes $C$ of relative distance, and $\varepsilon>0$ prove that there exists an $n_{0}$ such that for all $n \geq n_{0}$, if $C_{n} \in C$ is an $[n, k]_{q}$ code, then $k / n<1-H_{q}(\delta / 2)+\varepsilon$. Use this to conclude Proposition 4.1.1.
+
+Exercise 4.2. Pick $a(n-k) \times n$ matrix $H$ over $\mathbb{F}_{q}$ at random. Show that with high probability the code whose parity check matrix is $H$ achieves the GV bound.
+
+Exercise 4.3. Recall the definition of an $\varepsilon$-biased space from Exercise 2.15. Show that there exists an $\varepsilon$-biased space of size $O\left(k / \varepsilon^{2}\right)$.
+
+Hint: Recall part 1 of Exercise 2.15.\\
+Exercise 4.4. Argue that a random linear code as well as its dual both lie on the corresponding GV bound.
+
+Exercise 4.5. In Section 4.2.2, we saw that random linear code meets the GV bound. It is natural to ask the question for general random codes. (By a random $(n, k)_{q}$ code, we mean the following: for each of the $q^{k}$ messages, pick a random vector from $[q]^{n}$. Further, the choices for each codeword is independent.) We will do so in this problem.
+
+\begin{itemize}
+  \item[1.] Prove that a random $q$-ary code with rate $R>0$ with high probability has relative distance $\delta \geq H_{q}^{-1}(1-2 R-\varepsilon)$. Note that this is worse than the bound for random linear codes in Theorem 4.2.1.
+  \item[2.] Prove that with high probability the relative distance of a random $q$-ary code of rate $R$ is at most $H_{q}^{-1}(1-2 R)+\varepsilon$. In other words, general random codes are worse than random linear codes in terms of their distance.\\
+Hint: Use Chebyshev's inequality (Lemma 3.1.8).
+\end{itemize}
+
+Exercise 4.6. We saw that Algorithm 4.2.1 can compute an $(n, k)_{q}$ code on the GV bound in time $q^{O(n)}$. Now the construction for linear codes is a randomized construction and it is natural to ask how quickly can we compute an $[n, k]_{q}$ code that meets the GV bound. In this problem, we will see that this can also be done in $q^{O(n)}$ deterministic time, though the deterministic algorithm is not that straight-forward anymore.
+
+\begin{itemize}
+  \item[1.] Argue that Theorem 4.2.1 gives a $q^{O(k n)}$ time algorithm that constructs an $[n, k]_{q}$ code on the GV bound. (Thus, the goal of this problem is to "shave" off a factor of $k$ from the exponent.)
+  \item[2.] A $k \times n$ Toeplitz Matrix $A=\left\{A_{i, j}\right\}_{i=1, j=1}^{k, n}$ satisfies the property that $A_{i, j}=A_{i-1, j-1}$. In other words, any diagonal has the same value. For example, the following is a 4 × 6 Toeplitz matrix:
+$$
+\left(\begin{array}{llllll}
+1 & 2 & 3 & 4 & 5 & 6 \\
+7 & 1 & 2 & 3 & 4 & 5 \\
+8 & 7 & 1 & 2 & 3 & 4 \\
+9 & 8 & 7 & 1 & 2 & 3
+\end{array}\right)
+$$
+\end{itemize}
+
+A random $k \times n$ Toeplitz matrix $T \in \mathbb{F}_{q}^{k \times n}$ is chosen by picking the entries in the first row and column uniformly (and independently) at random.\\
+Prove the following claim: For any non-zero $\mathbf{m} \in \mathbb{F}_{q}^{k}$, the vector $\mathbf{m} \cdot T$ is uniformly distributed over $\mathbb{F}_{q}^{n}$, that is for every $\mathbf{y} \in \mathbb{F}_{q}^{n}, \operatorname{Pr}[\mathbf{m} \cdot T=\mathbf{y}]=q^{-n}$.
+
+Hint: Write down the expression for the value at each of the $n$ positions in the vector $\mathbf{m} \cdot T$ in terms of the values in the first row and column of $T$. Think of the values in the first row and column as variables. Then divide these variables into two sets (this "division" will depend on m) say $S$ and $\bar{S}$. Then argue the following: for every fixed $\mathbf{y} \in \mathbb{F}_{q}^{n}$ and for every fixed assignment to variables in $S$, there is a unique assignment to variables in $\bar{S}$ such that $\mathbf{m} T=\mathbf{y}$.
+
+\begin{itemize}
+  \item[3.] Briefly argue why the claim in part 2 implies that a random code defined by picking its generator matrix as a random Toeplitz matrix with high probability lies on the GV bound.
+  \item[4.] Conclude that an $[n, k]_{q}$ code on the GV bound can be constructed in time $q^{O(k+n)}$.
+\end{itemize}
+
+Exercise 4.7. Show that one can construct the parity check matrix of an $[n, k]_{q}$ code that lies on the GV bound in time $q^{O(n)}$.
+
+Exercise 4.8. So far in Exercises 4.6 and 4.7, we have seen two constructions of $[n, k]_{q}$ code on the GV bound that can be constructed in $q^{O(n)}$ time. For constant rate codes, at the time of writing of this book, this is fastest known construction of any code that meets the GV bound. For $k=o(n)$, there is a better construction known, which we explore in this exercise.
+
+We begin with some notation. For the rest of the exercise we will target a distance of $d=\delta n$. Given a message $\mathbf{m} \in \mathbb{F}_{q}^{k}$ and an $[n, k]_{q}$ code $C$, define the indicator variable:
+
+$$
+W_{\mathbf{m}}(C)=\left\{\begin{array}{cc}
+1 & \text { if } w t(C(\mathbf{m}))<d \\
+0 & \text { otherwise } .
+\end{array}\right.
+$$
+
+Further, define
+
+$$
+D(C)=\sum_{\mathbf{m} \in \mathbb{F}_{q}^{k} \backslash\{\mathbf{0}\}} W_{\mathbf{m}}(C) .
+$$
+
+We will also use $D(G)$ and $W_{\mathbf{m}}(G)$ to denote the variables above for the code $C$ generated by $G$.\\
+Given an $k \times n$ matrix $M$, we will use $M^{i}$ to denote the $i$ th column of $M$ and $M^{\leq i}$ to denote the column submatrix of $M$ that contains the first $i$ columns. Finally below we will use $\mathscr{G}$ to denote a uniformly random $k \times n$ generator matrix and $G$ to denote a specific instantiation of the generator matrix. We will arrive at the final construction in a sequence of steps. In what follows define $k<\left(1-H_{q}(\delta)\right) n$ for large enough $n$.
+
+\begin{itemize}
+  \item[1.] Argue that $C$ has a distance $d$ if and only if $D(C)<1$.
+  \item[2.] Argue that $\mathbb{E}[D(\mathscr{G})]<1$.
+\end{itemize}
+
+\begin{itemize}
+  \item[]
+  \begin{itemize}
+    \item[3.] Argue that for any $1 \leq i<n$ and fixed $k \times n$ matrix $G$,
+$$
+\min _{\mathbf{v} \in \mathbb{F}_{q}^{k}} \mathbb{E}\left[D(\mathscr{G}) \mid \mathscr{G}^{\leq i}=G^{\leq i}, \mathscr{G}^{i+1}=\mathbf{v}\right] \leq \mathbb{E}\left[D(\mathscr{G}) \mid \mathscr{G} \leq i=G^{\leq i}\right] .
+$$
+    \item[4.] We are now ready to define the algorithm to compute the final generator matrix $G$ : see Algorithm 4.5.1. Prove that Algorithm 4.5.1 outputs a matrix $G$ such that the linear code
+  \end{itemize}
+\end{itemize}
+
+\begin{lstlisting}[mathescape=true]
+Algorithm 4.5.1 $q^{O(k)}$ time algorithm to compute a code on the GV bound
+Input: Integer parameters $1 \leq k \neq n$ such that $k<\left(1-H_{q}(\delta) n\right)$
+Output: An $k \times n$ generator matrix $G$ for a code with distance $\delta n$
+    Initialize $G$ to be the all 0s matrix
+        ▷ This initialization is arbitrary
+    FOR every $1 \leq i \leq n$ DO
+        $G^{i} \leftarrow \arg \min _{\mathbf{v} \in \mathbb{F}_{q}^{k}} \mathbb{E}\left[D(\mathscr{G}) \mid \mathscr{G} \leq i=G^{\leq i}, \mathscr{G}^{i+1}=\mathbf{v}\right]$
+    RETURN $G$
+\end{lstlisting}
+generated by $G$ is an $[n, k, \delta n]_{q}$ code. Conclude that this code lies on the GV bound.
+
+\begin{itemize}
+  \item[]
+  \begin{itemize}
+    \item[5.] Finally, we will analyze the run time of Algorithm 4.5.1. Argue that Step 2 can be implemented in poly $\left(n, q^{k}\right)$ time. Conclude Algorithm 4.5.1 can be implemented in time poly $\left(n, q^{k}\right)$.\\
+Hint: It might be useful to maintain a data structure that keeps track of one number for every non-zero $\mathbf{m} \in \mathbb{F}_{q}^{k}$ throughout the run of Algorithm 4.5.1.
+  \end{itemize}
+\end{itemize}
+
+Exercise 4.9. In this problem we will derive the GV bound using a graph-theoretic proof, which is actually equivalent to the greedy proof we saw in Section 4.2.1. Let $1 \leq d \leq n$ and $q \geq 1$ be integers. Now consider the graph $G_{n, d, q}=(V, E)$, where the vertex set is the set of all vectors in $[q]^{n}$. Given two vertices $\mathbf{u} \neq \mathbf{v} \in[q]^{n}$, we have the edge ( $u, v$ ) $\in E$ if and only if $\Delta(\mathbf{u}, \mathbf{v})<d$. An independent set of a graph $G=(V, E)$ is a subset $I \subseteq V$ such that for every $u \neq v \in I$, we have that $(u, v)$ is not an edge. We now consider the following sub-problems:
+
+\begin{itemize}
+  \item[]
+  \begin{itemize}
+    \item[1.] Argue that any independent set $C$ of $G_{n, d, q}$ is a $q$-ary code of distance $d$.
+    \item[2.] The degree of a vertex in a graph $G$ is the number of edges incident on that vertex. Let $\Delta$ be the maximum degree of any vertex in $G=(V, E)$. Then argue that $G$ has an independent set of size at least $\frac{|V|}{\Delta+1}$.
+    \item[3.] Using parts 1 and 2 argue the GV bound.
+  \end{itemize}
+\end{itemize}
+
+Exercise 4.10. In this problem we will improve slightly on the GV bound using a more sophisticated graph-theoretic proof. Let $G_{n, d, q}$ and $N$ and $\Delta$ be as in the previous exercise (Exercise 4.9).
+
+So far we used the fact that $G_{n, d, q}$ has many vertices and small degree to prove it has a large independent set, and thus to prove there is a large code of minimum distance $d$. In this exercise we will see how a better result can be obtained by counting the number of "triangles" in the graph. A triangle in a graph $G=(V, E)$ is a set $\{u, v, w\} \subset V$ of three vertices such that all three vertices are adjancent, i.e., $(u, v),(v, w),(w, u) \in E$. For simplicity we will focus on the case where $q=2$ and $d=n / 5$, and consider the limit as $n \rightarrow \infty$.
+
+\begin{itemize}
+  \item[1.] Prove that a graph on $N$ vertices of maximum degree $\Delta$ has at most $O\left(N \Delta^{2}\right)$ triangles.
+  \item[2.] Prove that the number of triangle in graph $G_{n, d, 2}$ is at most
+$$
+2^{n} \cdot \sum_{0 \leq e \leq 3 d / 2}\binom{n}{e} \cdot 3^{e} .
+$$
+Hint: Fix $u$ and let $e$ count the number of coordinates where at least one of $v$ or $w$ disagree with $u$. Prove that $e$ is at most $3 d / 2$.
+  \item[3.] Simplify the expression in the case where $d=n / 5$ to show that the number of triangles in $G_{n, n / 5,2}$ is $O\left(N \cdot \Delta^{2-\eta}\right)$ for some $\eta>0$.
+  \item[4.] A famous result in the "probabilistic method" shows (and you don't have to prove this), that if a graph on $N$ vertices of maximum degree $\Delta$ has at most $O\left(N \cdot \Delta^{2-\eta}\right)$ triangles, then it has an independent set of $\operatorname{size} \Omega\left(\frac{N}{\Delta} \log \Delta\right)$. Use this result to conclude that there is a binary code of block length $n$ and distance $n / 5$ of size $\Omega\left(n 2^{n} /\binom{n}{n / 5}\right.$ ). (Note that this improves over the GV-bound by an $\Omega(n)$ factor.)
+\end{itemize}
+
+Exercise 4.11. Use part 1 from Exercise 1.7 to prove the Singleton bound.\\
+Exercise 4.12. Let $C$ be an $(n, k, d)_{q}$ code. Then prove that fixing any $n-d+1$ positions uniquely determines the corresponding codeword.
+
+Exercise 4.13. Our goal in this problem is to improve the bound in part 1 in Theorem 4.4.1. Towards that end,
+
+\begin{itemize}
+  \item[1.] Prove that the following holds for every $k \geq 1$. There exists $k+1$ vectors $\mathbf{v}_{i}^{k} \in \mathbb{R}^{k}$ for $i \in[k+1]$ such that (1) $\left\|\mathbf{v}_{i}^{k}\right\|_{2}^{2}=1$ for every $i \in[k+1]$ and (2) $\left\langle\mathbf{v}_{i}^{k}, \mathbf{v}_{j}^{k}\right\rangle=-\frac{1}{k}$ for every $i \neq j \in[k+1]$.
+  \item[2.] Using the above part, or otherwise, prove the following result. Let $C$ be a $q$ code of block length $n$ and distance $\left(1-\frac{1}{q}\right) n$. Then $|C| \leq 2(q-1) n$. (Note that this is a factor $q /(q-1)$ better than part 1 in Theorem 4.4.1.)
+\end{itemize}
+
+Exercise 4.14. Prove that the bound in Exercise 4.13 is tight for $q=2-$ i.e. there exists binary codes $C$ with block length $n$ and distance $n / 2$ such that $|C|=2 n$.
+
+Exercise 4.15. Prove that part 1 of Lemma 4.4.3 is tight.\\
+Exercise 4.16. Prove that part 2 of Lemma 4.4.3 is tight.
+
+Exercise 4.17. In this exercise we will prove the Plotkin hound (at least part 2 of Theorem 4.4.1) via a purely combinatorial proof.
+
+Given an $(n, k, d)_{q}$ code $C$ with $d>\left(1-\frac{1}{q}\right) n$ define
+
+$$
+S=\sum_{\mathbf{c}_{1} \neq \mathbf{c}_{2} \in C} \Delta\left(\mathbf{c}_{1}, \mathbf{c}_{2}\right) .
+$$
+
+For the rest of the problem think of $C$ has an $|C| \times n$ matrix where each row corresponds to a codeword in C. Now consider the following:
+
+\begin{itemize}
+  \item[1.] Looking at the contribution of each column in the matrix above, argue that
+$$
+S \leq\left(1-\frac{1}{q}\right) \cdot n|C|^{2} .
+$$
+  \item[2.] Look at the contribution of the rows in the matrix above, argue that
+$$
+S \geq|C|(|C|-1) \cdot d .
+$$
+  \item[3.] Conclude part 2 of Theorem 4.4.1.
+\end{itemize}
+
+Exercise 4.18. In this exercise, we will prove the so called Griesmer Bound. For any $[n, k, d]_{q}$, prove that
+
+$$
+n \geq \sum_{i=0}^{k-1}\left\lceil\frac{d}{q^{i}}\right\rceil .
+$$
+
+Hint: Recall Exercise 2.18.\\
+Exercise 4.19. Use Exercise 4.18 to prove part 2 of Theorem 4.4.1 for linear codes.\\
+Exercise 4.20. Use Exercise 4.18 to prove Theorem 4.3.1 for linear codes.
+
+\subsection*{4.6 Bibliographic Notes}
+Theorem 4.2.1 was proved for general codes by Gilbert ([63]) and for linear codes by Varshamov ([172]). Hence, the bound is called the Gilbert-Varshamov bound. The Singleton bound (Theorem 4.3.1) is due to Singleton [154], though versions of this result with the same simple proof seem to have appeared earlier in the work of Joshi [99] who only states the bound for the case $q=2$. For larger (but still constant) values of $q$, better lower bounds than the GV bound (i.e., results on the existence of codes) are known. In particular, for every prime power $q \geq 49$, there exist linear codes, called algebraic geometric (or AG) codes that outperform the corresponding GV bound ${ }^{2}$. AG codes are out of the scope of this book. An introduction to this class of codes can be found, for instance, in a survey by Høholdt, van Lint, and Pellikaan [94]. Exercise 4.10 is from the work of Jiang and Vardy [98].
+
+\footnotetext{${ }^{2}$ AG codes are only defined for $q$ being a square or a prime and achieve a rate $R \geq 1-\delta-\frac{1}{\sqrt{q}-1}$. The lower bound of 49 comes from the fact that it is the smallest square of a prime for which this bound improves on the $q$-ary GV bound.
+}
+\end{document}

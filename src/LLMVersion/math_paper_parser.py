@@ -2536,10 +2536,16 @@ Respond ONLY with JSON array."""
             if not raw:
                 continue
 
+            own_result = getattr(obj, "parent_id", None) if obj.kind == "proof" else None
             for m in ref_pattern.finditer(raw):
                 lbl = m.group(1)
                 target_id = label_to_id.get(lbl)
                 if not target_id or target_id == obj.id:
+                    continue
+                if target_id == own_result:
+                    # "Theorem \ref{x} follows from ..." in the proof of x names the
+                    # result it proves (already 'proves'). As a 'uses' edge it closed
+                    # a 2-cycle with 'proves', and the cycle breaker dropped 'proves'.
                     continue
 
                 key = (target_id, obj.id, "uses")

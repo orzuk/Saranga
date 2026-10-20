@@ -7,10 +7,11 @@ blueprint). The only differences are the input and the title: each blueprint's `
 "<repo> (Lean blueprint)". The agents did not read `all.tex`, `graph.json` or `meta.json`.
 
 **Scores against the blueprints' own dependency graphs** (`docs/v7_handoff/gold_eval_bp_v7.py`, json next to it; 97
-blueprints, those in `corpus/gold_blueprints/excluded.json` skipped): dependency edge P 0.455, R 0.733, F1 0.561
-[0.522, 0.596]; hierarchy-invariant F1 0.699; recall on dependencies on definitions 0.77 (rules 0.18). Rules baseline
-F1 0.399. Against the gold without empty or placeholder proofs (`--text-only`, `gold_eval_bp_v7_textonly.json`):
-F1 0.557, R 0.762. Human blueprints (73) 0.546, mixed (24) 0.603. Precision is low because blueprints declare few
+blueprints, those in `corpus/gold_blueprints/excluded.json` skipped; a v7 node that keeps a restated result once also
+matches the blueprint's copies, `graph_score.copy_matches`): dependency edge P 0.457, R 0.739, F1 0.565 [0.525, 0.602];
+hierarchy-invariant F1 0.696; recall on dependencies on definitions 0.78 (rules 0.19). Rules baseline F1 0.399.
+Against the gold without empty or placeholder proofs (`--text-only`, `gold_eval_bp_v7_textonly.json`): F1 0.560,
+R 0.767. Human blueprints (73) 0.547, mixed (24) 0.612. Precision is low because blueprints declare few
 dependencies; many of v7's extra term edges are undeclared but real.
 
 **Statistics:** 29,810 nodes and 45,988 edges.

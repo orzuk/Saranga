@@ -1,0 +1,1614 @@
+\documentclass[10pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage[export]{adjustbox}
+\graphicspath{ {./images/} }
+\usepackage{fvextra, csquotes}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage[version=4]{mhchem}
+\usepackage{stmaryrd}
+\usepackage{caption}
+\usepackage{bbold}
+
+%New command to display footnote whose markers will always be hidden
+\let\svthefootnote\thefootnote
+\newcommand\blfootnotetext[1]{%
+  \let\thefootnote\relax\footnote{#1}%
+  \addtocounter{footnote}{-1}%
+  \let\thefootnote\svthefootnote%
+}
+
+%Overriding the \footnotetext command to hide the marker if its value is `0`
+\let\svfootnotetext\footnotetext
+\renewcommand\footnotetext[2][?]{%
+  \if\relax#1\relax%
+    \ifnum\value{footnote}=0\blfootnotetext{#2}\else\svfootnotetext{#2}\fi%
+  \else%
+    \if?#1\ifnum\value{footnote}=0\blfootnotetext{#2}\else\svfootnotetext{#2}\fi%
+    \else\svfootnotetext[#1]{#2}\fi%
+  \fi
+}
+
+\DeclareUnicodeCharacter{2605}{\ifmmode\star\else{$\star$}\fi}
+\DeclareUnicodeCharacter{00D7}{\ifmmode\times\else{$\times$}\fi}
+\DeclareUnicodeCharacter{2207}{\ifmmode\nabla\else{$\nabla$}\fi}
+\DeclareUnicodeCharacter{266F}{\ifmmode\sharp\else{$\sharp$}\fi}
+
+\begin{document}
+\captionsetup{singlelinecheck=false}
+\section*{CHAPTER 2}
+\section*{Combinatorial Surfaces}
+\begin{center}
+\includegraphics[max width=\textwidth, alt={}]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-01_433_940_677_590}
+\end{center}
+
+\begin{displayquote}
+"Everything should be made as simple as possible, but no simpler."
+\end{displayquote}
+
+-Al
+
+A surface is, roughly speaking, the "outer shell" of a shape-for instance, you can think of a whole orange as a solid ball; its peel describes a spherical surface (especially if we consider an idealized peel with zero thickness). Different objects we encounter in our daily lives have boundaries described by different surfaces. For instance, the glaze covering a donut makes a torus rather than a sphere. (Hopefully all this talk of oranges and donuts is making you hungry for some geometry...) As a prelude to really getting into the differential geometry of surfaces, we're going to start by looking at objects that are easy to understand from a purely discrete point of view, namely, combinatorial surfaces, or descriptions of shapes that only tell you how surfaces are connected up and not where they are in space. In discrete differential geometry, combinatorial surfaces effectively play the same role that topological surfaces do in the smooth setting. We won't get deep into topology in these notes, but working with discrete surfaces "sans geometry" should give you a pretty good feel for what topology is all about. In particular, we'll talk about several different ways to encode the connectivity of combinatorial surfaces: using an abstract simplicial complex, adjacency matrices, and a halfedge mesh, all of which tie in to the richer geometric objects and algorithms we want to work with later on. (Those craving a more technical treatment may want to check out Hatcher's book on algebraic topology [Hat02].)
+
+Taking a cue from " $\mathrm{Al}^{\prime \prime}$, ${ }^{1}$ we're going to make some simplifying assumptions about what shapes look like, while still retaining enough flexibility to describe the kinds of objects found in the natural world. These simplifications will both make it easier to establish clean descriptions and definitions of geometric phenomena (such as curvature), and will ultimately help us build lean, clean algorithms that don't need to consider lots of special situations and corner cases. The basic simplifying assumption of differential geometry is that the shapes we want to study are manifold.
+
+\footnotetext{${ }^{1}$ The quote above paraphrases Albert Einstein, who actually said, "It can scarcely be denied that the supreme goal of all theory is to make the irreducible basic elements as simple and as few as possible without having to surrender the adequate representation of a single datum of experience."
+}Loosely speaking this means that, at least under a microscope, they look the same as ordinary Euclidean space. For instance, standing on the surface of the (spherical) Earth, it's pretty hard to tell that you're not standing on a flat plane. The manifold assumption is powerful because it lets us translate many of the things we know how to do in flat Euclidean spaces (e.g., work with vectors, differentiate, integrate, etc.) to more interesting curved spaces. There are in fact many distinct ways in which a shape can "look like Euclidean space," leading to many distinct sub-areas of differential geometry (differential topology, conformal geometry, Riemannian geometry, ...). For now, we want to focus on an utterly basic property of surfaces, namely that around any point you can find a small neighborhood that is a topological disk.\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-02_346_352_748_503}
+
+polygonal disk\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-02_349_358_743_908}
+
+(neither)\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-02_392_274_724_1359}
+
+polyhedron
+
+A topological disk is, roughly speaking, any shape you can get by deforming the unit disk in the plane without tearing it, puncturing it, or gluing its edges together. Some examples of shapes that are disks include a flag, a leaf, and a glove. Some examples of shapes that are not disks include a circle (i.e., a disk without its interior), a solid ball, a hollow sphere, a donut, a fidget spinner, and a teapot. Pictured above, for instance, we have a topological disk (left) a topological annulus (center) and a topological (sphere) made by gluing together a finite number of polygons along their edges.
+
+In this chapter we'll start out by defining an abstract simplicial complex, which breaks a shape up into simple pieces like edges, triangles, and tetrahedra. Any abstract simplicial complex can be encoded by incidence matrices, which are basically just big tables recording which elements are next to which other elements. Although this description can capture some pretty complicated shapes, it's often more general than what we really need for discrete differential geometry. We therefore take a look at the halfedge mesh, which is specifically tailored to two-dimensional surfaces, and can easily describe surfaces with general polygonal faces (rather than just triangles). The halfedge mesh will serve as our basic data structure for most of the algorithms we consider in these notes. At the end of the chapter, we'll do some exercises that reveal some fun, interesting, and useful properties of combinatorial surfaces, and will get some hands-on intuition for how all these representations fit together by writing some code that lets us interactively navigate a combinatorial surface.
+
+\subsection*{2.1. Abstract Simplicial Complex}
+How can we encode surfaces by a finite amount of information that makes it possible to distinguish a sphere from a torus? For now, let's forget about shape or geometry (how big, small, thick, thin, etc., the shape is) and focus purely on connectivity: which pieces of the surface are connected to each other, and how?
+
+\begin{figure}[h]
+\begin{center}
+  \includegraphics[alt={},max width=\textwidth]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-03_406_910_243_599}
+\captionsetup{labelformat=empty}
+\caption{Figure 1. An abstract simplicial complex specifies how vertices are connected, but not where they are in space. For instance, both of the figures above represent the same simplicial complex, comprised of six vertices, ten edges, five triangles, and one tetrahedron.}
+\end{center}
+\end{figure}
+
+There are many different ways to describe the connectivity of a discrete surface; one way is to use a simplicial complex-which in in fact can encode much more complicated objects than just surfaces. The basic idea is to start out with a set $V$ of vertices, which we can identify with a collection of integers:
+
+$$
+V=\{0,1,2, \ldots, n\}
+$$
+
+We also need some information about how these vertices are connected. The idea of a simplicial complex is to specify subsets of these vertices that are "right next to each-other," called $k$-simplices. The number $k \in \mathbb{Z}_{>=0}$ is a nonnegative integer telling us how many elements are in this set: an abstract $k$-simplex is a set of $(k+1)$ distinct vertices, and we call $k$ the degree of the simplex. For instance, here's a triangle or 2-simplex:
+
+$$
+\{3,4,2\}
+$$
+
+and here's a 1-simplex:
+
+$$
+\{3,5\}
+$$
+
+Geometrically, we can think of a 2-simplex as specifying a triangle, and a 1-simplex as specifying an edge, as depicted in Figure 1, left; a 0 -simplex contains just a single vertex. For now we won't associate specific locations with the vertices-for instance, Figure 1, right is another perfectly good depiction of these simplices. ${ }^{2}$ For this reason we call these simplices abstract-they don't pin down some concrete shape in space, but just tell us (abstractly) how vertices are connected up. For this reason we can go as high as we like without having to think about how this thing looks in space (3-simplex, 4-simplex, 5-simplex, ...). We also don't care (for now) about the order in which the vertices ${ }^{3}$ are specified: for instance $\{2,3,4\}$ and $\{3,2,4\}$ specify the same 2 -simplex as $\{3,4,2\}$. Note that for convenience, we will often identify any vertex $i \in V$ with the corresponding 0 -simplex $\{i\} \in \mathcal{K}$.
+
+Any (nonempty) subset of a simplex is another simplex, which we call a face; a strict subset is called a proper face. For instance, \{2,3\} is a proper face of \{3,4,2\}, and \{2,3,4\} is a face of \{3,4,2\}, but not a proper one.
+
+An abstract simplicial complex is, roughly speaking, just a collection of abstract simplices. However, we will put a very basic condition on this collection that ensures we can work with it in a natural way-and which ultimately helps us to make connections with smooth surfaces. In particular, we will say that a collection of simplices $\mathcal{K}$ is a simplicial complex if for every simplex
+
+\footnotetext{${ }^{2}$ Note: the plural of simplex is simplices-not "simplexes"!\\
+${ }^{3}$ The plural of vertex is vertices-not "vertexes"!
+}
+$\sigma \in \mathcal{K}$, every face $\sigma^{\prime} \subseteq \sigma$ is also contained in $\mathcal{K}$. For instance, a bunch of triangles do not constitute a simplicial complex; you have to include their edges and vertices as well. We will often assume that a simplicial complex is finite (i.e., contains finitely many simplices), though in principle there's no reason you can't consider an infinite complex-say, a triangulation of the whole Euclidean plane.
+
+A subcomplex $\mathcal{K}^{\prime}$ of a simplicial complex $\mathcal{K}$ is a subset that is also a simplicial complex. For instance, a single edge is not a subcomplex of any complex, but an edge with its two vertices is a subcomplex. A complex $\mathcal{K}$ is a pure $k$-simplicial complex if every simplex $\sigma^{\prime} \in \mathcal{K}$ is contained in some simplex of degree $k$ (possibly itself). For instance, a bunch of triangles with edges and vertices hanging off the side or floating around by themselves is not pure:
+
+\begin{figure}[h]
+\begin{center}
+  \includegraphics[alt={},max width=\textwidth]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-04_396_436_804_565}
+\captionsetup{labelformat=empty}
+\caption{pure}
+\end{center}
+\end{figure}
+
+\begin{figure}[h]
+\begin{center}
+  \includegraphics[alt={},max width=\textwidth]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-04_417_507_801_1054}
+\captionsetup{labelformat=empty}
+\caption{not pure}
+\end{center}
+\end{figure}
+
+In the end, we end up with a pretty simple (and abstract) object: an abstract simplicial complex is just a subset of the integers, closed under the operation of taking subsets. This deceivingly simple object makes it possible to exactly encode the topology of any surface, no matter how complicated. To do discrete differential geometry we'll eventually need to associate some kind of shape with a simplicial complex. But for now there are already some interesting things we can say about surfaces in the purely combinatorial setting.
+
+\subsection*{2.2. Anatomy of a Simplicial Complex: Star, Closure, and Link}
+When working with simplicial complexes, ${ }^{4}$ it's helpful to be able to quickly and succinctly refer to various elements and regions. Let's start out by considering just a single vertex $i \in V$. The (simplicial) star of this vertex, denoted St $(i)$ is the collection of all simplices $\sigma \in \mathcal{K}$ such that $i \in \sigma^{5}$. Consider for instance the following example:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-04_337_720_2043_703}
+
+\footnotetext{${ }^{4}$ Note: the plural of complex is complexes-not "complices"! Welcome to the English language.\\
+${ }^{5}$ Be careful to distinguish this star from the Hodge star, which is a completely different object that we'll study later.
+}From this picture, one gets the sense that the $\operatorname{St}(i)$ is sort of the "local neighborhood" of $i$. However, this neighborhood is not itself a simplicial complex, since it doesn't contain the "outer" edges. To get such a complex, we can consider the closure Cl of $\mathrm{St}(i)$, which is the smallest subcomplex of $\mathcal{K}$ containing $\operatorname{St}(i)$ :\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-05_340_722_495_701}\\
+What if we go the other direction, and take the closure before the star? In other words, we first consider the closure Cl(i) which is the smallest subcomplex of $\mathcal{K}$ containing $i$. Since $\{i\}$ has no proper faces, the closure is just the vertex itself. If we then take the star, we therefore get the same picture as the first one above, i.e., $\operatorname{St}(\mathrm{Cl}(i))=\operatorname{St}(i)$ :\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-05_342_1103_1148_511}\\
+The only difference between these two sets is the ring of outer edges that was initially missing from our subcomplex. We give this set a special name: the $\operatorname{link} \mathrm{Lk}(i)=\mathrm{Cl}(\mathrm{St}(i)) \backslash \operatorname{St}(\mathrm{Cl}(i))$ (where $A \backslash B$ denotes the set difference, i.e., all the elements of $A$ that are not also in $B$ ):\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-05_385_357_1759_883}\\
+More generally for any subset $S$ of a simplicial complex $\mathcal{K}$ (not necessarily a subcomplex) we have the following definitions:
+
+\begin{itemize}
+  \item[-] The star $\operatorname{St}(S)$ is the collection of all simplices in $\mathcal{K}$ that contain any simplex in $S$.
+  \item[-] The closure $\mathrm{Cl}(S)$ is the smallest (i.e., fewest elements) subcomplex of $\mathcal{K}$ that contains $S$.
+  \item[-] The link $\operatorname{Lk}(S)$ is equal to $\operatorname{Cl}(\operatorname{St}(S)) \backslash \operatorname{St}(\mathrm{Cl}(S))$.
+\end{itemize}
+
+Another closely related object is the boundary $\operatorname{bd}\left(\mathcal{K}^{\prime}\right)$ of a pure $k$-subcomplex $\mathcal{K}^{\prime} \subseteq \mathcal{K}$. The boundary is the closure of the set of all simplices $\sigma$ that are proper faces of exactly one simplex of $\mathcal{K}^{\prime}$. This definition naturally captures what you might think of as the "boundary" of a set. For instance:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-06_687_694_480_715}\\
+The interior $\operatorname{int}\left(\mathcal{K}^{\prime}\right)=\mathcal{K}^{\prime} \backslash \operatorname{bd}\left(\mathcal{K}^{\prime}\right)$ is then everything but the boundary (as pictured above).\\
+In general, these operations (star, closure, link, boundary, and interior) provide a natural way to talk about and navigate any kind of simplicial complex in any dimension. In fact, they are a fair bit more general than what we need to just talk about simple combinatorial surfaces. In a little bit, we'll introduce a different way to navigate around combinatorial surfaces called a half edge mesh, which is in some ways "slicker" and easier to work with if we don't care about the general case. But to do so, we first need to define what we really mean by a combinatorial surface-and to do so, we'll need the star, closure, and link!
+
+\subsection*{2.2.1. Oriented Simplicial Complex.}
+\begin{center}
+\includegraphics[max width=\textwidth, alt={}]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-06_432_1368_1834_378}
+\end{center}
+
+So far we've assumed that the order of vertices in a simplex doesn't matter, and specified simplices using sets. For instance, $\{i, j, k\}$ is a triangle with vertices $i, j$, and $k$, and $\{j, i, k\}$ or $\{k, j, i\}$ describe the same triangle. But in many cases, we'll want to make a distinction between simplices with different orientation, because the orientation encodes some information about a quantity we're\\
+measuring or computing. For instance: the change in altitude from the bottom of a hill to the top of the hill is opposite the change in altitude from the top of the hill to the bottom of the hill.
+
+To capture the notion of orientation, we'll start by replacing our unordered sets with ordered tuples. For instance, if $i, j \in V$ are two vertices sharing an edge, then we have two distinct ordered tuples $(i, j)$ and $(j, i)$. The first tuple describes an oriented edge pointing from $i$ to $j$, whereas the second tuple points from $j$ to $i$. For higher-degree simplices (triangles, tetrahedra, etc.), the story gets just a bit more complicated. For instance, consider three vertices $i, j, k \in V$ sharing a common triangle. Instead of the single ordered set $\{i, j, k\}$, we now have six possible ordered tuples:
+
+$$
+\begin{array}{ll}
+(i, j, k) & (i, k, j) \\
+(j, k, i) & (j, i, k) \\
+(k, i, j) & (k, j, i)
+\end{array}
+$$
+
+Each of these tuples specifies some way of walking around the triangle. For instance, we could first visit $i$, then $j$, then $k$. Or we could first visit $j$, then $i$, then $k$. If we consider these six different possibilities, what we notice is that they fall into two obvious categories: we either walk "clockwise" or "counter-clockwise" around the triangle. These two possibilities describe the two possible orientations for our triangle:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-07_305_335_1116_681}\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-07_306_335_1115_1097}\\
+Since we don't care about the starting point, an orientation of a simplex is really an equivalence class of ordered tuples-in this case, the first column of tuples above are all equivalent (clockwise), and the second column are all equivalent (counter-clockwise). Therefore, to specify an oriented triangle we'll just give a representative triple of indices, rather than singling out one particular tuple. For instance, we'll say that
+
+$$
+i j k:=\{(i, j, k),(j, k, i),(k, i, j)\}
+$$
+
+and
+
+$$
+i k j:=\{(i, k, j),(j, i, k),(k, j, i)\} .
+$$
+
+Hopefully this makes sense: a tuple written with parentheses describes one particular way of walking around a triangle; a raw triple of indices refers to all tuples with equivalent orientation. We'll basically always use the latter, since it gives us just enough information to know which oriented simplex we're talking about: its vertices, and its orientation.
+
+More generally, for any $k$-simplex we have two possible orientations: the set of all even permutations of its vertices, and the set of all odd permutations of its vertices. For instance, with an edge we have just $i j=\{(i, j)\}$ and $j i=\{(j, i)\}$. For a triangle we have the two orientations $i j k$ and $j i k$ given above. For a tetrahedron we have $i j k l$ and $j i k l$. And so on. The only exception is 0 -simplex, where there is only one way to write the list of vertices $($ i.e., $i=\{i\})$. However, we still allow any 0 -simplex $i$ to be assigned two different orientations, which we can notate as $+i$ and $-i$. Doing so will lead to more natural definitions of things like relative orientation (below) and the boundary operator (later).
+
+If two oriented simplices share vertices, then we can talk about their relative orientation. For instance, the oriented edges $i j$ and $j k$ have the same orientation, because $i j$ ends at $j$, whereas $j k$ starts at $j$. In contrast, $i j$ and $k j$ are oppositely oriented:
+
+\begin{figure}[h]
+\begin{center}
+  \includegraphics[alt={},max width=\textwidth]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-08_66_357_441_650}
+\captionsetup{labelformat=empty}
+\caption{consistent orientation}
+\end{center}
+\end{figure}
+
+\begin{figure}[h]
+\begin{center}
+  \includegraphics[alt={},max width=\textwidth]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-08_66_357_441_1117}
+\captionsetup{labelformat=empty}
+\caption{inconsistent orientation}
+\end{center}
+\end{figure}
+
+Likewise, the oriented triangles $i j k$ and jil have the same orientation (they are both "clockwise") whereas $i j k$ and $i j l$ are oppositely oriented:
+
+\begin{figure}[h]
+\begin{center}
+  \includegraphics[alt={},max width=\textwidth]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-08_293_393_780_630}
+\captionsetup{labelformat=empty}
+\caption{consistent orientation}
+\end{center}
+\end{figure}
+
+\begin{figure}[h]
+\begin{center}
+  \includegraphics[alt={},max width=\textwidth]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-08_292_392_781_1101}
+\captionsetup{labelformat=empty}
+\caption{inconsistent orientation}
+\end{center}
+\end{figure}
+
+Here, the edge $i j$ has the same clockwise orientation as $i j k$, whereas $j i$ has the opposite orientation. In general, if two $k$-simplices $\sigma_{1}, \sigma_{2}$ share exactly $k$ vertices, then they have the same orientation if their restrictions to these shared vertices are oppositely oriented ( $k-1$ )-simplices. More precisely, for any oriented simplex $\sigma$ a proper face $\sigma^{\prime}$ has the same orientation as $\sigma$ if $\sigma^{\prime}$ appears in some even permutation of $\sigma$. An important exception is 0 - and 1 -simplices: by definition, an oriented edge $i j$ has the same orientation as $j$ but the opposite orientation of $i$, capturing the idea that $i j$ goes from $i$ to $j$.
+
+An (abstract) oriented simplicial complex is an abstract simplicial complex where each simplex is assigned an orientation. I.e., we start with an ordinary simplicial complex, and simply pick one of two orientations for each simplex. There are no conditions on these orientations: they can be assigned arbitrarily. Though (when possible) it's often convenient to assume that $k$-simplices sharing common $(k-1)$-faces have the same orientation (for instance, that all triangles in a planar triangulation have clockwise orientation).
+
+\subsection*{2.3. Simplicial Surfaces}
+As mentioned at the beginning of this section, a general simplicial complex is a bit more general than what we need to study ordinary shapes (a hat, a face, a heart, a banana), which are all pretty well-captured by surfaces. Instead, it is often enough to work with an abstract simplicial surface. An abstract simplicial surface is a pure simplicial 2-complex where the link of every vertex is a single loop of edges, or equivalently, where the star of every vertex is a combinatorial disk made of triangles. The fact that every vertex has a "disk-like" neighborhood captures the basic idea of a topological surface; we therefore say that such a complex is manifold. ${ }^{6}$
+
+\footnotetext{${ }^{6}$ Note that at this point we could very easily put a topology on our complex that makes it into a topological surface in the usual sense. But the interesting point is that we don't have to define a topology in order to understand a lot of the behavior of topological surfaces: the purely combinatorial description will take us surprisingly far.
+}Unlike a general simplicial complex, a simplicial surface can't have stuff like three triangles meeting at an edge, or multiple "cones" of vertices meeting at a vertex. We will henceforth call such configurations nonmanifold:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-09_476_1183_548_483}
+
+We can extend our definition a bit to a simplicial surface with boundary by also allowing the link to be a simple path of edges, rather than a loop:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-09_382_478_1428_823}
+
+For any simplicial surface $\mathcal{K}$, its boundary $\operatorname{bd}(\mathcal{K})$ will always be a collection of (zero or more) closed loops.
+
+An oriented simpicial surface is an abstract simplicial surface where we can assign a consistent orientation to every triangle, i.e., where any two triangles that share a common edge are given the same orientation. We will henceforth assume that any simplicial surface whose faces can be consistently oriented will be consistently oriented. Is a consistent orientation always available? At first glance, it seems easy: start with an arbitrary triangle, assign it an arbitrary orientation, and now "grow outwards," assigning a consistent orientation to every triangle you encounter. The problem is that, at some point, you may loop back around and discover that there is no way to assign an orientation to a new triangle that is compatible with all previous orientations. Consider for instance this combinatorial Möbius band:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-10_525_816_244_655}\\
+Such unorientable surfaces don't come up all that often in practice-though it's certainly worth being aware that they can!
+
+Our definition of a simplicial surface easily extends to higher dimensions: a (combinatorial or abstract) simplicial $n$-manifold is a pure simplicial $n$-complex where the link of every vertex is a simplicial $(n-1)$-sphere. A simplicial $n$-sphere is just a (simplicial) triangulation of the $n$-dimensional sphere
+
+$$
+\mathbb{S}^{n}:=\left\{x \in \mathbb{R}^{n+1}:|x|=1\right\},
+$$
+
+i.e., the set of all points unit distance from the origin in $n$-dimensional space. For instance, $\mathrm{S}^{2}$ is just the ordinary unit sphere; $\mathrm{S}^{1}$ is the unit circle; and $\mathrm{S}^{0}$ is nothing more than a pair of points. A simplicial surface is then a simplicial 2-manifold: every link is a simplicial 1-sphere, i.e., a closed loop of edges. A simplicial 3-manifold is a tetrahedral mesh where every vertex is enclosed by a triangulation of the sphere. And so on. How about a simplicial 1-manifold? This would just mean the link of every vertex is a pair of points; hence, a simplicial 1-manifold must be a collection of closed loops (do you see why?).
+
+From here there's a lot more we could say about simplicial surfaces, but this will get the ball rolling for now. In particular, it's enough to let us define a halfedge mesh, which will be our basic way of navigating around simplicial (and more generally, polyhedral) surfaces.
+
+\subsection*{2.4. Adjacency Matrices}
+One nice way to encode an abstract simplicial complex is using adjacency matrices, which will make it easy to do computation on simplicial complexes (by way of numerical linear algebra). These matrices are also closely linked to the discrete differential forms which provides the foundations for many of our geometric algorithms.
+
+The first thing we have to do is assign distinct indices to simplices of each degree. For instance, if we have a complex $\mathcal{K}$ comprised of vertices $V$, edges $E$, and triangles $F$, then we might assign indices $0, \ldots,|V|-1$ to the vertices, $0, \ldots,|E|-1$ to the edges, and $0, \ldots,|F|-1$ to the triangles. It doesn't matter which indices get assigned to which triangles, as long as each index is used only once for each degree of simplex. For instance, here's a simplicial 2-complex where we've indexed all the vertices, edges, and faces:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-11_495_369_249_846}
+
+To record how simplices are connected up, we're going to store one matrix $A_{0}$ that says which edges contain which vertices, another matrix $A_{1}$ that says which triangles contain which edges, and so on. We'll put a "1" in row $r$, column $c$ of $A_{0}$ if the $r$ th edge contains the $c$ th vertex; all other entries get a "0". Likewise, we'll put a "1" in row $r$, column $c$ of $A_{1}$ if the $r$ th triangle contains the $c$ th edge. And so on. Hence, the number of columns in adjacency matrix $A_{k}$ is the same as the number of $k$-simplices; the number of rows is the number of $(k+1)$-simplices. In this example, our matrices look like this:
+
+$$
+A_{0}=\begin{gathered}
+0 \\
+1 \\
+2 \\
+3 \\
+5
+\end{gathered}\left[\begin{array}{llll}
+0 & 1 & 2 & 3 \\
+1 & 1 & 0 & 0 \\
+1 & 0 & 1 & 0 \\
+1 & 0 & 0 & 1 \\
+0 & 1 & 1 & 0 \\
+0 & 1 & 0 & 1 \\
+0 & 0 & 1 & 1
+\end{array}\right] \quad A_{1}=\begin{gathered}
+0 \\
+1 \\
+2 \\
+3
+\end{gathered}\left[\begin{array}{llllll}
+0 & 1 & 2 & 3 & 4 & 5 \\
+1 & 1 & 0 & 1 & 0 & 0 \\
+1 & 0 & 1 & 0 & 1 & 0 \\
+0 & 1 & 1 & 0 & 0 & 1 \\
+0 & 0 & 0 & 1 & 1 & 1
+\end{array}\right]
+$$
+
+One important thing to notice here is that-especially for a very large complex with a relatively small number of connections-most of the entries are going to be zero. In practice, it's therefore essential to use a sparse matrix, i.e., a data structure that efficiently stores only the location and value of nonzero entries. The design of sparse matrix data structures is an interesting question all on its own, but conceptually you can imagine that a sparse matrix is simply a list of triples $(r, c, x)$ where $r, c \in \mathbb{N}$ specify the row and column index of a nonzero entry and $x \in \mathbb{R}$ gives its value.
+
+If we have an oriented simplicial complex, we can also build signed adjacency matrices, which keep track of relative orientation in addition to connectivity. The only change is that the sign of each nonzero entry will depend on the relative orientation of the two corresponding simplices: +1 if they have the same orientation; -1 if they have opposite orientation. For instance, here are the signed adjacency matrices for a pair of consistently-oriented triangles sharing a common edge:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-11_308_445_2207_307}\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-11_275_517_2207_815}\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-11_139_466_2275_1404}
+
+\subsection*{2.5. Halfedge Mesh}
+As discussed above, many of the shapes we encounter in the natural world are well-captured by manifold, orientable surfaces. Our third and final encoding of surface combinatorics, the halfedge mesh, takes advantage of the special structure of such surfaces. In some ways, this encoding is less general than, say, the adjacency matrix representation: we cannot capture edges that dangle off the side of a triangulation, or surfaces like the Möbius band, or higher-dimensional shapes (e.g., volumes rather than surfaces). On the other hand, it will allow us to describe combinatorial surfaces made of general polygons rather than just triangles, and in certain important cases even allows us to use fewer triangles (or polygons) than is possible with any simplicial complex. (Formally, a halfedge mesh allows us to encode a surface as a 2-dimensional CW complex; see [Hat02, Chapter 0] for a definition.)
+
+From our discussion in Section 2.3 we can notice a few things about any oriented simplicial surface $\mathcal{K}$ (which for now we'll assume has no boundary):
+
+\begin{itemize}
+  \item[-] every edge is contained in two polygons, and
+  \item[-] the edges around a vertex can be given a cyclic order.
+\end{itemize}
+
+In fact, these same statements hold if our surface is made out of $n$-sided polygons rather than just 3-sided triangles:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-12_386_878_1267_618}\\
+The halfedge mesh takes advantage of this special structure to provide a particularly nice description of surfaces. The basic idea is to consider that for every unoriented edge $\{i, j\}$ between vertices $i$ and $j$, we have two oriented edges $i j \neq j i$ which in this context we refer to as halfedges. We'll use $H$ to denote the set of all halfedges; note that for a surface without boundary $|H|=2|E|$, i.e., we have twice as many halfedges as edges.
+
+We can use information about how halfedges are connected up to describe an oriented simplicial surface. In particular, we have two key functions: twin and next. The twin function is the map $\eta: H \rightarrow H$ such that
+
+$$
+\eta(i j)=j i,
+$$
+
+i.e., that just takes any halfedge to the halfedge with the same vertices but in the opposite direction. The next function is the map $\rho: H \rightarrow H$ such that
+
+$$
+\rho(i j)=j k \quad \forall i j k \in \mathcal{K},
+$$
+
+i.e., that takes each halfedge of an oriented triangle $i j k$ to the next halfedge around this triangle. These maps are reasonably straightforward to figure out if we're handed some other description of the surface (such as an oriented simplicial complex or a pair of adjacency matrices).\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-13_530_524_244_795}
+
+Going the other direction, we can easily figure out the vertices, edges, and faces of a polygonal mesh from nothing more than the two maps $\rho$ and $\eta$. For instance, to get a face we can start with some halfedge $i_{1} i_{2}$ and use the map $\rho$ to get the next halfedge $i_{2} i_{3}=\rho\left(i_{1} i_{2}\right)$, then the next halfedge $i_{3} i_{4}=\rho\left(i_{2} i_{3}\right)$, and then the next, until we eventually get back to $i_{1} i_{2}$. In other words, the faces of the mesh are described by the orbits of the "next" map $\rho$. What do the orbits of the "twin" map $\eta$ give us? Well, starting with $i j$ we get $j i=\eta(i j)$ and then $i j=\eta(j i)$. Hence, the orbits of $\eta$ describe the edges. To get the vertices, we can instead consider the orbits of the map $\rho \circ \eta$, i.e., first we get the twin halfedge, then the next halfedge, then the twin, then the next, …, until we get back to the beginning. To summarize:
+
+\begin{itemize}
+  \item[-] the faces are orbits of $\rho$,
+  \item[-] the edges are orbits of $\eta$, and
+  \item[-] the vertices are orbits of $\rho \circ \eta$.
+\end{itemize}
+
+In fact, any pair of maps $\rho, \eta$ which satisfy some very basic properties will describe a valid combinatorial surface. All we need is that (i) the set $H$ has an even number of elements, (ii) $\rho$ and $\eta$ are both permutations of this set, and (iii) $\eta$ is an involution with no fixed points, i.e., $\eta(\eta(i j))=i j$ for all $i j \in H$, and $\eta(i j) \neq i j$ for any $i j \in H$. This last condition is just common sense: it says that the twin of your twin is yourself, and you are not your own twin. (If one of these statements were not true about your real, biological twin, you'd be in serious trouble!) As long as $\rho$ and $\eta$ satisfy these basic properties, we can trace out their orbits and recover a combinatorial surface.
+
+In fact, if we index our halfedges in a special way we don't even really have to worry about $\eta$. In particular, suppose we assign the indices 0 and 1 to the first pair of halfedges, 2 and 3 to the next pair of halfedges, and so on. Then $\eta$ has a very simple description: the twin of any even number $h$ is $h+1$; the twin of any odd number $h$ is $h-1$. The combinatorics of the surface are then described entirely by the permutation $\rho$. In summary, then, every permutation of an even number of things describes a combinatorial surface! Pretty weird. But true! Think about that next time you encounter a permutation.
+
+Note that even for surfaces made out of triangles, a halfedge mesh can describe triangulations that a simplicial complex cannot. Consider for instance the following example:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-14_377_765_243_674}\\
+Here we obtain a cone by gluing two edges of the triangle $i j k$ together. If we fill in the bottom of the cone with a circular disk, then overall we have four halfedges: three halfedges $h_{0}, h_{1}, h_{2}$ going around the triangle, and one halfedge $h_{3}$ going around the disk. The next map is given by $\rho\left(h_{0}\right)=h_{1}, \rho\left(h_{1}\right)=h_{2}, \rho\left(h_{2}\right)=h_{0}$ and $\rho\left(h_{3}\right)=h_{3}$, i.e., we have a loop around the triangle, and a loop around the disk. The twin map is determined by the relationships $\eta\left(h_{0}\right)=h_{1}$ and $\eta\left(h_{2}\right)=h_{3}$, i.e., two of the triangle halfedges are glued together, and the remaining triangle halfedge is glued to the halfedge around the disk. There's no way to describe this triangulation using a simplicial complex (oriented or otherwise): a simplicial complex only allows us to specify the triangle $i j k$; we have no further opportunity to specify how the edges get glued together. Likewise, including the disk is totally out of the question: it's not even an ordinary polygon; more like a "unigon!" Here's another interesting example:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-14_308_743_1179_685}\\
+This time we have a torus made of two distinct triangles, but only one vertex. (Can you write down corresponding maps $\eta$ and $\rho$ ?) There's clearly no way to describe this triangulation using a simplicial complex: for one thing, the "set" $\{i, i, i\}$ is not a set: it doesn't have three distinct vertices. Even if we allow repeats (i.e., multi-sets), we have no way in a simplicial complex to distinguish between the two distinct triangles "iii" and "iii", and no way to explain how these triangles get glued together. A halfedge mesh handles these cases with ease, allowing us to describe interesting spaces with fewer elements. In contrast, to describe a torus using a simplicial complex we need at least 7 vertices, 21 edges, and 14 triangles:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-14_567_980_1915_567}
+
+Here we've drawn this triangulation in two ways: on the left, we draw it on a square and imagine that left/right and bottom/top sides get glued together. Amazingly enough, this same triangulation can be drawn using straight lines and flat, non-intersecting triangles in $\mathbb{R}^{3}$, as depicted on the right-something known as the Császár polyhedron. In either case, it's a lot more complicated than the two-triangle decomposition of the torus we obtained via a halfedge mesh.
+
+At a practical level, the halfedge description will provide the basic data structure for the algorithms we'll implement in these notes. By chasing "next" and "twin" halfedges around, you can easily access any mesh element your heart desires. One final question though: how do we deal with surfaces that have boundary (such as a disk or annulus)? These would seem to violate one of our basic axioms, that every edge is contained in exactly two polygons. The easy answer is: just treat each boundary component as a single polygon with many sides. In other words, turn your surface with boundary into a surface without boundary by simply "filling in the holes" (and marking these extra polygons in some way). From there you have a surface without boundary, and it's just business as usual.
+
+\subsection*{2.6. Written Exercises}
+Exercise 2.1 Euler's Polyhedral Formula-Simplicial
+
+The Euler characteristic $\chi=V-E+F$ is a topological invariant: it remains the same even if we make small local changes to the connectivity (like inserting a new vertex in the middle of a polygon). It changes only if there is a global change to the topology, like adding an extra component, or an additional handle. Show in particular that for any simplicial disk with $V$ vertices, $E$ edges, and $F$ faces, the following relationship holds:
+
+$$
+V-E+F=1 .
+$$
+
+Then explain why $V-E+F=2$ for any abstract simplicial sphere. For the purposes of this exercise, you can think of a simplicial disk as a triangulation of a disk-like region in the plane. Note that any such disk is a connected, manifold simplicial complex with a single boundary component. An abstract simplicial sphere can then be viewed as an abstract simplicial complex with the same connectivity as a simplicial disk with a single 3-sided boundary, but where this boundary has been filled in with a face. For instance, a tetrahedron is a simplicial sphere; a tetrahedron minus any face is a simplicial disk.
+
+Hint: use induction. Note that induction is generally easier if you start with a given object and decompose it into smaller pieces rather than trying to make it larger, because there are fewer cases to think about.\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-16_282_1301_1211_414}
+
+Clearly not all surfaces look like disks or spheres. Some surfaces have additional handles that distinguish them topologically; the number of handles $g$ is known as the genus of the surface (see illustration above for examples). In fact, among all surfaces that have no boundary and are connected (meaning a single piece), compact (meaning closed and contained in a ball of finite size), and orientable (having two distinct sides), the genus is the only thing that distinguishes two surfaces. A more general formula applies to such surfaces, namely
+
+$$
+V-E+F=2-2 g,
+$$
+
+which is known as the Euler-L'Huilier formula. This formula applies not only to simplicial surfaces, but surfaces made of general $n$-gons (squares, pentagons, etc.). You do not have to prove this more general formula, but it will be useful in the exercises that follow.
+
+\begin{figure}[h]
+\begin{center}
+  \includegraphics[alt={},max width=\textwidth]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-17_425_382_252_602}
+\captionsetup{labelformat=empty}
+\caption{regular}
+\end{center}
+\end{figure}
+
+\begin{figure}[h]
+\begin{center}
+  \includegraphics[alt={},max width=\textwidth]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-17_371_381_305_1143}
+\captionsetup{labelformat=empty}
+\caption{irregular}
+\end{center}
+\end{figure}
+
+The valence of a vertex in a combinatorial surface is the number of edges that contain that vertex. A vertex of a simplicial surface is said to be regular when its valence equals six. Many numerical algorithms (such as subdivision) exhibit ideal behavior only in the regular case, and generally behave better when the number of irregular valence vertices is small. The next few exercises explore some useful facts about valence in combinatorial surfaces.\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-17_509_765_1015_680}
+
+\section*{Exercise 2.2 Platonic Solids}
+Even the ancient Greeks were interested in regular meshes. In particular, they knew that there are only five genus-zero polyhedra where all faces have the same number of sides, and the same number of faces meet at every vertex. These polyhedra are the Platonic solids: the tetrahedron, icosahedron, octahedron, dodecahedron, and cube. Show that this list is indeed exhaustive. Hint: you do not need to use any facts about lengths or angles; just connectivity.
+
+\section*{Exercise 2.3 Regular Valence}
+Show that the only (connected, orientable) simplicial surface for which every vertex has regular valence is a torus $(g=1)$. You may assume that the surface has finitely many faces. Hint: apply the Euler-Poincaré formula.
+
+\section*{Exercise 2.4 Minimum Irregular Valence}
+Show that the minimum possible number of irregular valence vertices in a (connected, orientable) simplicial surface $K$ of genus $g$ is given by
+
+$$
+m(K)= \begin{cases}4, & g=0 \\ 0, & g=1 \\ 1, & g \geq 2,\end{cases}
+$$
+
+assuming that all vertices have valence at least three and that there are finitely many faces. Note: you do not actually have to construct the minimal triangulation; just make an argument based on the Euler-Poincaré formula.
+
+\section*{Exercise 2.5 Mean Valence (Triangle Mesh)}
+Show that the mean valence approaches six as the number of vertices in a (connected, orientable) simplicial surface goes to infinity, and that the ratio of vertices to edges to triangles hence approaches
+
+$$
+V: E: F=1: 3: 2 .
+$$
+
+You may assume that the genus $g$ remains fixed as the number of vertices increases. Hint: Euler-Poincaré formula!
+
+\section*{Exercise 2.6 Mean Valence (Quad Mesh)}
+Similar to the previous exercise, consider a quad mesh, i.e., a combinatorial surface made entirely out of four-sided quadrilaterials rather than three-sided triangles. Letting $Q$ denote the number of quadrilaterals, give an expression for the ratio
+
+$$
+V: E: Q
+$$
+
+in the limit as the number of vertices approaches infinity. You may again assume that the genus remains fixed.
+
+Knowing the approximate ratios of mesh elements can be useful when making decisions about algorithm design (e.g., it costs about three times as much to store a quantity on edges as on vertices), and simplifies discussions about asymptotic growth (since the number of different element types are essentially related by a constant). Similar ratios can be computed for a tetrahedral mesh, though here one has to be a bit more approximate:
+
+\section*{Exercise 2.7 Mean Valence (Tetrahedral).}
+Letting $V, E, F$, and $T$ be the number of vertices, edges, triangles, and tetrahedra in a manifold simplicial 3 -complex, come up with a rough estimate for the ratios
+
+$$
+V: E: F: T
+$$
+
+as the number of elements goes to infinity. For tet meshes, there is a formula analogous to Euler's polyhedral formula: $V-E+F-T=c$, for some constant $c$ that depends only on the global topology (number of handles, etc.). To get a rough estimate, you should pretend that the link $\operatorname{Lk}(i)$\\
+of every vertex $i \in V$ is a combinatorial icosahedron. Since you care about the asymptotic behavior, you can safely ignore boundary vertices. Hint: which ratios can you figure out easily?
+
+Here are some statistics on large-ish tetrahedral meshes coming from real data. Do they roughly match your estimated ratios? (You should NOT worry if they don't match exactly!)
+
+\begin{center}
+\begin{tabular}[t]{|l|l|l|l|l|}
+\hline
+ & $V$ & $E$ & $F$ & $T$ \\
+\hline
+mesh \#1 & 9344 & 64814 & 109660 & 54189 \\
+\hline
+mesh \#2 & 10784 & 69807 & 114345 & 55323 \\
+\hline
+mesh \#3 & 13630 & 97271 & 166689 & 83047 \\
+\hline
+mesh \#4 & 20514 & 144661 & 245764 & 121616 \\
+\hline
+mesh \#5 & 21222 & 146117 & 245959 & 121063 \\
+\hline
+mesh \#6 & 21464 & 144263 & 240663 & 117865 \\
+\hline
+mesh \#7 & 22933 & 163360 & 279634 & 139206 \\
+\hline
+mesh \#8 & 24522 & 175177 & 300272 & 149616 \\
+\hline
+mesh \#9 & 37483 & 262803 & 447463 & 222143 \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{center}
+\includegraphics[max width=\textwidth, alt={}]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-19_563_385_579_1241}
+\end{center}
+
+\section*{Exercise 2.8 Star, Closure, and Link}
+For the subset $\mathcal{S}$ indicated below in dark blue (consisting of three vertices, three edges, and two triangles), give the star $\operatorname{St}(\mathcal{S})$, the closure $\operatorname{Cl}(\mathcal{S})$, and the link $\operatorname{Lk}(\mathcal{S})$, either by drawing pictures or providing a list of simplices in each set.\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-19_527_1197_1496_459}
+
+\section*{Exercise 2.9 Boundary and Interior}
+For the subset $\mathcal{K}^{\prime}$ indicated above in dark blue (consisting of 12 vertices, 23 edges, and 12 triangles), give the boundary $\operatorname{bd}\left(\mathcal{K}^{\prime}\right)$ and the interior $\operatorname{int}\left(\mathcal{K}^{\prime}\right)$, either by drawing pictures or providing a list of simplices in each set.
+
+\section*{Exercise 2.10 Surface as Permutation}
+For the combinatorial surface pictured below, give the twin and next permutations $\eta$ and $\rho$ (resp.) by filling out the following tables:
+
+\begin{center}
+\begin{tabular}[t]{|l|l|l|l|l|l|l|l|l|l|l|}
+\hline
+$h$ & 0 & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 \\
+\hline
+$\eta(h)$ &  &  &  &  &  &  &  &  &  &  \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{center}
+\begin{tabular}[t]{|l|l|l|l|l|l|l|l|l|l|l|}
+\hline
+$h$ & 0 & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 \\
+\hline
+$\rho(h)$ &  &  &  &  &  &  &  &  &  &  \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{center}
+\includegraphics[max width=\textwidth, alt={}]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-20_473_224_660_948}
+\end{center}
+
+\section*{Exercise 2.11 Permutation as Surface}
+For the permutation $\rho$ given below, describe the combinatorial surface it describes-either in words, or by drawing a picture. You should assume that $\eta$ is determined as described in Section 2.5, i.e., the twin of an even halfedge $h$ is $h+1$; the twin of an odd halfedge $h$ is $h-1$.
+
+\begin{center}
+\begin{tabular}[t]{|l|l|l|l|l|l|l|l|l|l|l|l|l|l|l|l|l|}
+\hline
+$h$ & 0 & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 & 11 & 12 & 13 & 14 & 15 \\
+\hline
+$\rho(h)$ & 8 & 2 & 14 & 4 & 12 & 6 & 10 & 0 & 7 & 15 & 5 & 9 & 3 & 11 & 1 & 13 \\
+\hline
+\end{tabular}
+\end{center}
+
+\section*{Exercise 2.12 Surface as Matrices}
+Give the adjacency matrices $A_{0}$ and $A_{1}$ for the simplicial disk depicted in the figure below.\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-20_335_354_2014_884}
+
+For the next three exercises you may be as rigorous or as informal as you like, so long as you correctly convey the core reason why each of the statements is true.
+
+\section*{Exercise 2.13 Classification of Simplicial 1-Manifolds}
+Explain why every simplicial 1-manifold (possibly with boundary) cannot contain anything other than paths of edges and closed loops of edges.
+
+\section*{Exercise 2.14 Boundary Loops}
+Explain why the boundary of any simplicial surface (i.e., any simplicial 2-manifold) always has to be a collection of closed loops.
+
+\section*{Exercise 2.15 Boundary Has No Boundary}
+Explain why the boundary $\operatorname{bd}(\mathcal{K})$ of a simplicial manifold has no boundary. In other words, why does $\operatorname{bd}(\operatorname{bd}(\mathcal{K}))=\varnothing$ ? Here you may assume that a simplicial manifold with boundary means a pure simplicial $k$-complex where the link of every vertex is either a simplicial $(k-1)$-sphere (in which case it's an interior vertex), or a simpicial ( $k-1$ )-ball (in which case it's a boundary vertex). For instance, when $k=2$ the link of a boundary vertex will just be a path of edges.
+
+\subsection*{2.7. Coding Exercises}
+To get a feel for how we're going to work with the combinatorics of a surface in practice, we'll now write some code that nicely ties together a bunch of the ideas discussed above. In particular, given a half edge mesh describing the combinatorics of a manifold triangle mesh, you will build the vertex-edge and edge-face adjacency matrices. These matrices can be used to implement two concepts we've studied:
+
+\begin{itemize}
+  \item[-] the boundary and coboundary operators, and
+  \item[-] the star, closure, and link operators.
+\end{itemize}
+
+Later on, we'll also see that these matrices have an important connection to discrete differential forms. Note that the methods below must be implemented using these matrices; from here on out you should not be doing everything purely in terms of halfedge operations. The input subset of simplices $\mathcal{S}$ will be provided as a data structure containing sets of vertex, edge, and face indices.
+
+Coding 1. Implement the method assignElementIndices, which assigns a unique index to each vertex, edge, and face of the triangle mesh. For each type of element, indices should start at zero-for instance, the vertices should be assigned indices $0, \ldots,|V|-1$, and the edges should be assigned indices $0, \ldots,|E|-1$, etc. The order doesn't matter at all, so long as the mapping between elements and indices is one-to-one. These indices provide a correspondence between elements of the mesh, and rows/columns of matrices you will build in the next few coding exercises.
+
+Coding 2. Implement the method buildVertexEdgeAdjacencyMatrix, which constructs the unsigned vertex-edge adjacency matrix $A_{0} \in \mathbb{R}^{|E| \times|V|}$ (not the signed one), described in Section 2.4. Since this matrix contains mostly zeros, it must be implemented using a sparse matrix data structure (otherwise, computation will become extraordinarily slow on large meshes!).
+
+Coding 3. Implement the method buildEdgeFaceAdjacencyMatrix, which constructs the unsigned edge-face adjacency matrix $A_{1} \in \mathbb{R}^{|F| \times|E|}$ (just as in the previous exercise).
+
+Coding 4. Implement the methods buildVertexVector, buildEdgeVector,buildFaceVector, which each take a subset $\mathcal{S}$ of simplices as input, and construct a column vector encoding the vertices, edges, or faces (respectively) in that subset. For instance, in buildVertexVector you should build a column vector with $|V|$ entries that has a " 1 " for each vertex in the subset, and " 0 " for all other vertices.
+
+For the remaining methods, recall that you must use the adjacency matrices (as discussed above); you should not be implementing these methods directly using the halfedge data structure.
+
+Coding 5. Implement the method star, which takes as input a subset $\mathcal{S}$ of simplices, and computes the simplicial star $\operatorname{St}(\mathcal{S})$ of this subset. Hint: What happens if you apply the two unsigned adjacency matrices in sequence? How do you get all the simplices in the star?
+
+Coding 6. Implement the method closure, which finds the closure $C l(\mathcal{S})$ of a given subset $\mathcal{S}$.
+
+Coding 7. Implement the method link, which finds the link $\operatorname{Lk}(\mathcal{S})$ of a given subset $\mathcal{S}$. Hint: use the star and the closure!
+
+Coding 8. Implement the methods isComplex and isPureComplex, which check whether a given subset $\mathcal{S}$ is a simplicial complex, and a pure simpicial complex, resp. The latter method should return the degree of the complex if it's pure, and -1 otherwise. Hint: use the closure method for the first part, plus the adjacency matrices for the second part.
+
+Coding 9. Implement the method boundary, which takes as input a subset $\mathcal{S}$ of simplices, and finds the set of simplices contained in the boundary $\operatorname{bd}(\mathcal{S})$ of this subset. You should first use the method isPure to make sure that the given subset is a pure simplicial complex (otherwise, we do not have a straightforward definition for the boundary). Hint: think carefully about what the result of applying an unsigned adjacency matrix can look like. What do you notice about the simplices that should be included in the output set? See in particular Exercise 9.
+
+Once everything is implemented you should be able to select a subset of simplices, and click on buttons to apply various operators. You should verify that your code agrees with the examples you computed by hand, and also passes all of the basic tests provided in the test suite.
+
+\section*{CHAPTER 4}
+\section*{A Quick and Dirty Introduction to Exterior Calculus}
+Many important concepts in differential geometry can be nicely expressed in the language of exterior calculus. Initially these concepts will look exactly like objects you know and love from vector calculus, and you may question the value of giving them funky new names. For instance, scalar fields are no longer called scalar fields, but are now called 0-forms! In the long run we'll see that this new language makes it easy to generalize certain ideas from vector calculus-a central example being Stokes' theorem, which in turn is intimately related to discretization, and ultimately, computation.
+
+The basic story of exterior calculus can be broken up into a few pieces:
+
+\begin{itemize}
+  \item[-] Linear Algebra: Little Arrows. If you've ever studied linear algebra, you probably remember that it has something to do with "little arrows"-also known as vectors. In fact, if that's all you can remember about linear algebra, now would be an extremely good time to go back and do a review! We're not going to do one here.
+  \item[-] Vector Calculus: How do Little Arrows Change? Likewise, if you've ever studied vector calculus, then you remember it has to do with how "little arrows" change over space and time (e.g., how fast the direction of the wind is changing). In other words, vector calculus tells us how to differentiate vectors. We're not going to review that either!
+  \item[-] Exterior Algebra: Little Volumes. Linear algebra explored a bunch of things you can do with vectors: you can add them, you can scale them, you can take inner products, and outer products, and so forth. Exterior algebra just adds a couple more operations to this list which make it easy to talk about things like area and volume. In particular, the operations let us build up things called $k$-vectors, which can be thought of as "little $k$-dimensional volumes."
+  \item[-] Exterior Calculus: How do Little Volumes Change? Finally, if vector calculus is the study of how "little arrows" change over space and time, then exterior calculus is the study of how "little volumes" change over space and time. In other words, exterior calculus tells us how to differentiate $k$-vectors.
+\end{itemize}
+
+That's the big picture: exterior calculus is to exterior algebra what vector calculus is to linear algebra. And little volumes are useful because they help us talk about integration in a very general context. If that story still sounds a bit fuzzy, then read on!
+
+\subsection*{4.1. Exterior Algebra}
+As alluded to above, just as linear algebra is the natural language of "little arrows," exterior algebra is the natural language of "little volumes" which we will call $k$-vectors. The letter " $k$ " denotes the dimension, for instance, a 1-vector represents a "little length," a 2-vector represents a "little area," and so on. A fundamental thing to remember about ordinary vectors is that they encode two basic pieces of information: direction, and magnitude. Likewise, $k$-vectors will also have a direction and a magnitude, though the notion of "direction" for $k$-dimensional volumes is a little bit trickier than for one-dimensional vectors. In its full generality, exterior algebra makes sense in any vector space $V$, but to keep things simple for now we'll just stick to familiar examples like the plane $\mathbb{R}^{2}$, three-dimensional space $\mathbb{R}^{3}$, or more generally, $n$-dimensional space $\mathbb{R}^{n}$.\\
+4.1.1. Warm Up: 1-Vectors and 2-Vectors. How do you describe a volume in $\mathbb{R}^{n}$ ? The basic idea of exterior algebra is that, roughly speaking, $k$-dimensional volumes can be described by a list of $k$ vectors. In linear algebra we had a somewhat similar idea: $k$ vectors can be used to describe a $k$-dimensional linear subspace via the span (one vector spans a line; two vectors span a plane, and so forth). In either case the particular choice of vectors is not so important: for instance, just as many different pairs of vectors can span the same plane, many different pairs of vectors can be used to describe the same 2-vector. Overall, the $k$-vectors that appear in exterior algebra are not so different from linear subspaces, except that
+
+\begin{itemize}
+  \item[(1)] they have "finite extent", i.e., they have a magnitude and
+  \item[(2)] they have an orientation.
+\end{itemize}
+
+What do we mean by "orientation?" A good analogy is to think about the difference between a line $\ell$ and a vector $v$ :\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-24_130_785_1842_671}
+
+A line encodes a direction but with no sense of orientation, i.e., no notion of which way along the line is "forward" or "backward." In contrast, a vector encodes a direction and a definite orientation (e.g., $+v$ and $-v$ point in opposite directions); moreover, a vector has a definite magnitude, given by its length. The analogy between lines and vectors capture the basic idea behind $k$-vectors: a $k$-vector is to a $k$-dimensional linear subspace what a vector is to a line. In fact, ordinary vectors provide our first example of an object in exterior algebra: a 1-vector is just an ordinary vector.
+
+What about 2-vectors? A pretty good visualization of a 2-vector is to associate any two vectors $u, v$ in three-dimensional space $\mathbb{R}^{3}$ with the volume spanned by a little parallelogram:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-25_235_227_244_743}\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-25_233_302_244_1040}
+
+As a shorthand, we will denote this little parallelogram or 2-vector as $u \wedge v$ (here the $\wedge$ symbol is pronounced "wedge"). As with ordinary vectors, two 2-vectors are considered "the same" if they have the same magnitude and direction. For instance, all the parallelograms in the picture below have been carefully constructed to have identical area. All three therefore depict the same 2-vector, even though they are skewed and stretched by different amounts:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-25_382_1291_909_424}
+
+In this sense, our parallelogram drawings are merely "cartoons" of a 2-vector, since they each depict only one of many possibilities. However, since parallelograms faithfully represent many of the features of 2-forms, we can use them to investigate the way general 2-forms behave.
+
+First and foremost, how do we define orientation for a 2-vector? For 1-vectors, this was an easy idea: the two (1-)vectors $+u$ and $-u$ have opposite orientation because they point in opposite directions along the same line. Likewise, we can think of a 2-vector in $\mathbb{R}^{3}$ as having two possible orientations: "up" or "down", corresponding to the two possible unit normals for the plane it sits in: $+N$ or $-N$. We will therefore distinguish between the two expressions $u \wedge v$ or $v \wedge u$, writing $u \wedge v=-v \wedge u$ to indicate that they have opposite orientation:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-25_303_652_1873_717}
+
+What behavior can we observe by playing around with little parallelograms? For one thing, it seems it must be the case that
+
+$$
+u \wedge u=0,
+$$
+
+since the "parallelogram" described by two copies of the same vector has no area at all! This idea corresponds nicely with the idea that $u \wedge v=-v \wedge u$, since when $u=v$ we get $u \wedge u=-u \wedge u$.
+
+Another thing we can notice is that scaling just one of the vectors by a factor $a \in \mathbb{R}$ will scale the area of our parallelogram by the same amount:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-26_348_740_426_673}
+
+We might therefore encode this behavior via the rule
+
+$$
+(a u) \wedge v=a(u \wedge v) .
+$$
+
+Of course, the same kind of thing will happen if we scale the second vector rather than the first, i.e., $u \wedge(a v)=a(u \wedge v)$.
+
+What can we say about the behavior of parallelograms when we add vectors? The following picture helps answer this question:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-26_387_1539_1474_293}
+
+The sum of the two areas on the left can be expressed as $u \wedge v_{1}+u \wedge v_{2}$; the area on the right is $u \wedge\left(v_{1}+v_{2}\right)$. The middle image suggests that these two quantities are equal, since the area we lose is identical to the area we gain. In other words, it seems that
+
+$$
+u \wedge v_{1}+u \wedge v_{2}=u \wedge\left(v_{1}+v_{2}\right) .
+$$
+
+(Can you come up with a similar picture in 3D?)\\
+To observe one final property, we must consider volumes rather than areas, which we will depict as little parallelepipeds:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-27_407_293_241_915}
+
+Just as with 2-vectors, we can denote this little volume or 3-vector as $u \wedge v \wedge w$. Moreover, we can think of this 3-vector as being constructed by first using two vectors to construct a little parallelogram, and then extruding this parallelogram along a third vector:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-27_413_712_925_709}
+
+Notice that the order doesn't really seem to matter here: we can build the 2-vector $u \wedge v$ and then extend it along $w$, or we can first build $v \wedge w$ and then extend it along $u$. We can summarize this observation by saying that
+
+$$
+(u \wedge v) \wedge w=u \wedge(v \wedge w),
+$$
+
+which means that we can simply write $u \wedge v \wedge w$ without any ambiguity about which volume we mean. What would happen, however, if we flipped the order of the two vectors used to build the initial parallelogram? Earlier we said that $u \wedge v=-v \wedge u$, i.e., swapping the order of vectors swaps the orientation of a 2-vector. Hence, we get $(u \wedge v) \wedge w=-(v \wedge u) \wedge w$, or just
+
+$$
+u \wedge v \wedge w=-v \wedge u \wedge w .
+$$
+
+Ok, but what does this statement mean geometrically? The minus sign seems to indicate that the two little volumes are identical up to orientation. But what does orientation mean for a volume? For vectors we had two orientations ( $+u$ and $-u$ ) corresponding to "forward" and "backward"; for 2-vectors we had two orientations ( $u \wedge v$ and $v \wedge u$ ) corresponding to "up" and "down" orientations of the plane. Likewise, we can imagine that a little volume has either an "inward" or "outward" orientation-for instance, you might imagine that the normal to the boundary points in and out, or that one side of the boundary is painted red and the other is painted blue. In either case there are just two orientations. By playing around a bit more we can notice that every time we swap a pair of consecutive vectors in a 3-vector the orientation switches; if we swap another pair the orientation switches back. Hence, any even permutation of vectors preserves orientation; any odd permutation reverses orientation. In other words, the three 3-vectors
+
+$$
+u \wedge v \wedge w=v \wedge w \wedge u=w \wedge u \wedge v
+$$
+
+all have the same orientation, and the three-vectors
+
+$$
+w \wedge v \wedge u=v \wedge u \wedge w=u \wedge w \wedge v
+$$
+
+all have the same orientation, but these two groups of three have opposite orientation.\\
+4.1.2. The Wedge Product. Already we've established a bunch of rules about how little volumes appear to behave, which start to provide a definition for the wedge product $\wedge$. In particular, for any collection of vectors $u, v, w \in \mathbb{R}^{n}$ and scalars $a, b \in \mathbb{R}$ we have
+
+\begin{itemize}
+  \item[-] (Antisymmetry) $u \wedge v=-v \wedge u$
+  \item[-] (Associativity) $(u \wedge v) \wedge w=u \wedge(v \wedge w)$
+  \item[-] (Distributivity over addition) $u \wedge(v+w)=u \wedge v+u \wedge w$
+  \item[-] (Distributivity of scalar multiplication) $(a u) \wedge(b v)=a b(u \wedge v)$
+\end{itemize}
+
+In fact, these rules provide the right impression of how the wedge product behaves in any vector space, for any number of vectors. For now we'll hold off on a full-blown formal definition-the more important thing to remember is where these rules came from. In other words, how did the behavior of "little volumes" motivate us to write down this list in the first place? If you can get your head around the geometric picture, the rules should follow naturally. (And conversely, if you don't take a minute to think about the geometry behind the wedge product, you may be forever perplexed!)
+
+Working out some concrete examples (e.g., in your homework) should also help to build up some intuition for $k$-vectors and the wedge product. A bit later on we'll revisit the wedge product in the context of a somewhat different vector space: rather than individual vectors in $\mathbb{R}^{n}$, we'll be thinking about whole vector fields, leading to the idea of differential forms.\\
+4.1.3. The Hodge Star. Often, it's easiest to specify a set by instead specifying its complement. For instance, if you asked me, "what foods do you like?" it would be much easier to say, "I like everything except for nattō ${ }^{1}$ and doogh ${ }^{2}$ " rather than saying, "I like pizza, and apples, and hamburgers, and sushi, and fesenjān, and chicken \& waffles, and ... ". In linear algebra, a good example of this idea is the orthogonal complement: if I want to specify a $k$-dimensional linear subspace $W \subset V$ of an $n$-dimensional linear space $V$, I can provide either a collection of vectors $w_{1}, \ldots, w_{n}$ that span $W$, or alternatively, I can provide a collection of vectors $\tilde{w}_{1}, \ldots, \tilde{w}_{k}$ spanning the vectors that are not in $W$, i.e., its orthogonal complement. For instance, a plane in $\mathbb{R}^{3}$ can be specified either by two vectors that span it, or a single vector giving its normal:
+
+\footnotetext{${ }^{1}$ Natto is a Japanese dish consisting of sticky, fermented soy beans.\\
+${ }^{2}$ Doogh is a salty Persian yogurt drink.
+}
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-29_415_818_248_572}
+
+In exterior algebra, the Hodge star ★ (pronounced "star") provides a sort of orthogonal complement for $k$-vectors. In particular, if we have a $k$-vector $v$ in $\mathbb{R}^{n}$, then $\star v$ will be an $(n-k)$-vector that is in some sense "complementary." What exactly do we mean by complementary? A good first example is a 2 -vector in $\mathbb{R}^{3}$ :\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-29_304_653_968_716}
+
+Just as a plane in $\mathbb{R}^{3}$ can be identified with its unit normal (which spans its orthogonal complement), a 2-vector $u \wedge v$ can also be identified with some vector in the normal direction. But which vector? Unlike a linear subspace, we need to pick a definite magnitude and direction for the 1-vector $\star(u \wedge v)$. Here there is no "best" choice; we simply need to adopt a convention and stick with it-a good analogy is the right hand rule used to determine the direction of a cross product $u \times v$. For a 2-vector $u \wedge v$, we'll ask that
+
+$$
+\operatorname{det}(u, v, \star(u \wedge v))>0,
+$$
+
+i.e., the determinant of the two vectors comprising $u \wedge v$ and the third vector given by its Hodge star should be positive. In fact, this rule corresponds to the usual right-hand rule in the sense that ★ $(u \wedge v)$ points in the same direction as $u \times v$. What about the magnitude? Again we have a rule based on the determinant-in particular, in the special case of two orthonormal vectors $u_{1}, u_{2}$, we ask that
+
+$$
+\operatorname{det}\left(u_{1}, u_{2}, \star\left(u_{1} \wedge u_{2}\right)\right)=1 .
+$$
+
+Since vectors in $\mathbb{R}^{n}$ can always be expressed in an orthonormal basis, this rule uniquely pins down the Hodge star for any 2-vector. In particular, we now really have $\star(u \wedge v)=u \times v$, i.e., for two vectors in Euclidean $\mathbb{R}^{3}$ applying the wedge and then the star is equivalent to taking the cross product. (But it will not be this easy in general!)
+
+More generally, suppose $e_{1}, \ldots, e_{n}$ is an orthonormal basis for $\mathbb{R}^{n}$. If we start out with $k$ orthonormal vectors $u_{1}, \ldots, u_{k}$, then the Hodge star is uniquely determined by the relationship
+
+$$
+\left(u_{1} \wedge \cdots \wedge u_{k}\right) \wedge \star\left(u_{1} \wedge \cdots \wedge u_{k}\right)=e_{1} \wedge \cdots \wedge e_{n} .
+$$
+
+In short: if we wedge together a $k$-dimensional "unit volume" with the complementary $(n-k)$ -dimensional unit volume," we should get the one and only $n$-dimensional unit volume on $\mathbb{R}^{n}$.
+
+An important special case (especially for thinking about surfaces) is the Hodge star of 1-vectors in $\mathbb{R}^{2}$, i.e., the Hodge star of ordinary vectors in the plane. Here things are easy to visualize: if we have a 1-vector $u$, then its Hodge star ★ $u$ will be an $(n-k)$-vector. But since $n-k=2-1=1$, we just get another 1 -vector, orthogonal to $u$. For instance, if $u$ points "east" on a map, then $\star u$ will point "north":\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-30_594_594_529_766}
+
+As we continue to apply the Hodge star, we get a vector that points west, then south, then back to east again. In other words, in 2D the Hodge star is just a quarter-rotation in the counter-clockwise direction.
+
+Finally, we can think about the interaction between the Hodge star and the wedge product. For instance, for two 1-vectors $u, v$ in $\mathbb{R}^{3}$, we have
+
+$$
+\star(u+v)=\star u+\star v,
+$$
+
+since adding two vectors and then rotating them by 90 degrees is no different from rotating them each individually and then adding them. More generally, this same identity holds for any two $k$-vectors in any dimension, i.e., the Hodge star distributes over addition (can you draw other pictures that make this idea clearer?).
+
+\subsection*{4.2. Examples of Wedge and Star in $\mathbb{R}^{n}$}
+To make all these ideas a bit more concrete, let's consider some concrete examples. These examples aren't meant to be particularly "deep," but rather just demonstrate the basic mechanics of doing calculations with $k$-vectors. (You'll see some more interesting examples in your homework!) Here we'll express (1-)vectors $v$ in an orthonormal basis $e_{1}, \ldots, e_{n}$. For instance, in 2D $v:=e_{1}+e_{2}$ is a vector of length $\sqrt{2}$ making a 45° angle with the horizontal.
+
+EXAMPLE 1. Let $u:=e_{1}+2 e_{2}$ and $v:=e_{1}+e_{2}-e_{3}$ be 1-vectors in $\mathbb{R}^{3}$. Then their wedge product is given by
+
+$$
+\begin{aligned}
+u \wedge v & =\left(e_{1}+2 e_{2}\right) \wedge\left(e_{1}+e_{2}-e_{3}\right) \\
+& =e_{1} \wedge\left(e_{1}+e_{2}-e_{3}\right)+2 e_{2} \wedge\left(e_{1}+e_{2}-e_{3}\right) \\
+& =e_{1} \wedge e_{1}+0 e_{1} \wedge e_{2}-e_{1} \wedge e_{3}+2 e_{2} \wedge e_{1}+2 e_{2} \wedge e_{2}-0 \\
+& =e_{1} \wedge e_{2}-2 e_{2} \wedge e_{3} \\
+& =-e_{1} \wedge e_{2}-e_{1} \wedge e_{3}-2 e_{2} \wedge e_{3} .
+\end{aligned}
+$$
+
+There are a couple things to notice in this calculation. First, any term $e_{i} \wedge e_{i}$ cancels to zero. Do you remember why? It's essentially because the parallelogram spanned by two copies of the same vector has zero area. Also notice that at one point we replace $2 e_{2} \wedge e_{1}$ with $-2 e_{1} \wedge e_{2}$. Why did we do that? Because $e_{1} \wedge e_{2}$ and $e_{2} \wedge e_{1}$ describe the same 2-vector, but with opposite orientation.
+
+EXAMPLE 2. Let $w:=-e_{1} \wedge e_{2}-e_{1} \wedge e_{3}-2 e_{2} \wedge e_{3}$ be the 2-vector from the previous example. Its Hodge star is given by
+
+$$
+\begin{aligned}
+\star w & =\star\left(-e_{1} \wedge e_{2}-e_{1} \wedge e_{3}-2 e_{2} \wedge e_{3}\right) \\
+& =-\star\left(e_{1} \wedge e_{2}\right)-\star\left(e_{1} \wedge e_{3}\right)-2 \star\left(e_{2} \wedge e_{3}\right) \\
+& =-e_{3}-\left(-e_{2}\right)-2 e_{1} \\
+& =-2 e_{1}+e_{2}-e_{3} .
+\end{aligned}
+$$
+
+The main thing we did here was use the right hand rule to determine which direction the wedge of two basis vectors points. For instance, just as $e_{1} \times e_{2}=e_{3}$ when working with the cross product, $\star\left(e_{1} \wedge e_{2}\right)=e_{3}$ when working with the wedge product and the Hodge star. A more detailed discussion of these relationships, and about bases in exterior algebra, can be found in Section 4.5.1.
+
+EXAMPLE 3. Let $u:=e_{1}+e_{2}+e_{3}, v:=e_{1}+2 e_{2}+3 e_{3}$, and $w:=e_{1}-e_{3}$ be 1-vectors in $\mathbb{R}^{3}$, and suppose we want to compute $u \wedge v \wedge w$. Since the wedge product is associative, we can start out by just computing either $u \wedge v$ or $v \wedge w$, and then wedging the result with the remaining 1-vector. For instance, we have
+
+$$
+\begin{aligned}
+v \wedge w & =\left(e_{1}+2 e_{2}+3 e_{3}\right) \wedge\left(e_{1}-e_{3}\right) \\
+& =e_{1} \wedge e_{1} \stackrel{\circ}{0} e_{1} \wedge e_{3}+2 e_{2} \wedge e_{1}-2 e_{2} \wedge e_{3}+3 e_{3} \wedge e_{1}-3 e_{3} \wedge e_{3} 0 \\
+& =-2 e_{1} \wedge e_{2}-4 e_{1} \wedge e_{3}-2 e_{2} \wedge e_{3} .
+\end{aligned}
+$$
+
+Wedging with $u$ then yields
+
+$$
+\begin{aligned}
+u \wedge(v \wedge w) & =\left(e_{1}+e_{2}+e_{3}\right) \wedge\left(-2 e_{1} \wedge e_{2}-4 e_{1} \wedge e_{3}-2 e_{2} \wedge e_{3}\right) \\
+& =-2 e_{1} \wedge e_{2} \wedge e_{3}-4 e_{2} \wedge e_{1} \wedge e_{3}-2 e_{3} \wedge e_{1} \wedge e_{2} \\
+& =-2 e_{1} \wedge e_{2} \wedge e_{3}+4 e_{1} \wedge e_{2} \wedge e_{3}-2 e_{1} \wedge e_{2} \wedge e_{3} \\
+& =0 .
+\end{aligned}
+$$
+
+In the second calculation we avoided a lot of work by noticing that any term involving multiple copies of the same basis 1-vector (e.g., $e_{1} \wedge e_{1} \wedge e_{2}$ ) would have zero volume, since two of the edges of the corresponding little parallelepiped would be parallel. Hence, we can just write down the three remaining terms where all three bases show up (e.g., $e_{2} \wedge e_{3} \wedge e_{1}$ ). By repeatedly swapping pairs of bases, we can put all such 3-vectors into a canonical form (e.g., $e_{2} \wedge e_{3} \wedge e_{1}=-e_{2} \wedge e_{1} \wedge e_{3}=$ $e_{1} \wedge e_{2} \wedge e_{3}$ ), at which point we just have several copies of the unit 3-vector $e_{1} \wedge e_{2} \wedge e_{3}$ scaled by some magnitude. In this case, the magnitudes of all the terms summed to zero. What does that mean geometrically? It must mean that our original 1-vectors $u, v$, and $w$ are not linearly independent, i.e., they describe a "flat" 3-vector with zero volume.
+
+\subsection*{4.3. Vectors and 1-Forms}
+Now that we have a basic language for working with "little volumes," we continue with the second part of our story, about exterior calculus.
+
+Once upon a time there was a vector named $v$ :\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-32_200_203_604_960}
+
+What information does $v$ encode? One way to inspect a vector is to determine its extent or length along a given direction. For instance, we can pick some arbitrary direction $\alpha$ and record the length of the shadow cast by $v$ along $\alpha$ :\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-32_271_316_1069_903}
+
+The result is simply a number, which we can denote $\alpha(v)$. The notation here is meant to emphasize the idea that $\alpha$ is a function: in particular, it's a linear function that eats a vector and produces a scalar. Any such function is called a 1-form (also known as a covector).
+
+Of course, it's clear from the picture that the space of all 1-forms looks a lot like the space of all vectors: we just had to pick some direction to measure along. But often there is good reason to distinguish between vectors and 1-forms-the distinction is not unlike the one made between row vectors and column vectors in linear algebra. For instance, even though rows and column both represent "vectors," we only allow ourselves to multiply rows with columns:
+
+$$
+\left[\begin{array}{lll}
+\alpha_{1} & \cdots & \alpha_{n}
+\end{array}\right]\left[\begin{array}{c}
+v^{1} \\
+\vdots \\
+v^{n}
+\end{array}\right] .
+$$
+
+If we wanted to multiply, say, two column vectors, we would first have to take the transpose of one of them to convert it into a row:
+
+$$
+v^{T} v=\left[\begin{array}{lll}
+v^{1} & \cdots & v^{n}
+\end{array}\right]\left[\begin{array}{c}
+v^{1} \\
+\vdots \\
+v^{n}
+\end{array}\right] .
+$$
+
+Same deal with vectors and 1-forms, except that now we have two different operations: sharp $(\sharp)$, which converts a 1-form into a vector, and flat (b) which converts a vector into a 1-form. For instance, it's perfectly valid to write $v^{b}(v)$ or $\alpha\left(\alpha^{\sharp}\right)$, since in either case we're feeding a vector to a 1-form. The operations \# and b are called the musical isomorphisms.
+
+All this fuss over 1-forms versus vectors (or even row versus column vectors) may seem like much ado about nothing. And indeed, in a flat space like the plane, the difference between the two is pretty superficial. In curved spaces, however, there's an important distinction between vectors and 1-forms-in particular, we want to make sure that we're taking "measurements" in the right space. For instance, suppose we want to measure the length of a vector $v$ along the direction of another vector $u$. It's important to remember that tangent vectors get stretched out by the map $f: \mathbb{R}^{2} \supset M \rightarrow \mathbb{R}^{3}$ that takes us from the plane to some surface in $\mathbb{R}^{3}$. Therefore, the operations $\sharp$ and $b$ should satisfy relationships like
+
+$$
+u^{b}(v)=g(u, v)
+$$
+
+where $g$ is the metric induced by $f$. This way we're really measuring how things behave in the "stretched out" space rather than the initial domain $M$.\\
+4.3.1. Coordinates. Until now we've intentionally avoided the use of coordinates-in other words, we've tried to express geometric relationships without reference to any particular coordinate system $x_{1}, \ldots, x_{n}$. Why avoid coordinates? Several reasons are often cited (people will mumble something about "invariance"), but the real reason is quite simply that coordinate-free expressions tend to be shorter, sweeter, and easier to extract meaning from. This approach is also particularly valuable in geometry processing, because many coordinate-free expressions translate naturally to basic operations on meshes.
+
+Yet coordinates are still quite valuable in a number of situations. Sometimes there's a special coordinate basis that greatly simplifies analysis-recall our discussion of principal curvature directions, for instance. At other times there's simply no obvious way to prove something without coordinates. For now we're going to grind out a few basic facts about exterior calculus in coordinates; at the end of the day we'll keep whatever nice coordinate-free expressions we find and politely forget that coordinates ever existed!\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-33_364_789_1534_689}
+
+Let's setup our coordinate system. For reasons that will become clear later, we're going to use the symbols $\frac{\partial}{\partial x^{1}}, \ldots, \frac{\partial}{\partial x^{n}}$ to represent an orthonormal basis for vectors in $\mathbb{R}^{n}$, and use $d x^{1}, \ldots, d x^{n}$ to denote the corresponding 1-form basis. In other words, any vector $v$ can be written as a linear combination
+
+$$
+v=v^{1} \frac{\partial}{\partial x^{1}}+\cdots+v^{n} \frac{\partial}{\partial x^{n}},
+$$
+
+and any 1-form can be written as a linear combination
+
+$$
+\alpha=\alpha_{1} d x^{1}+\cdots+\alpha_{n} d x^{n} .
+$$
+
+To keep yourself sane at this point, you should completely ignore the fact that the symbols $\frac{\partial}{\partial x^{i}}$ and $d x^{i}$ look like derivatives-they're simply collections of unit-length orthogonal bases, as depicted above.
+
+The two bases $d x^{i}$ and $\frac{\partial}{\partial x^{i}}$ are often referred to as dual bases, meaning they satisfy the relationship
+
+$$
+d x^{i}\left(\frac{\partial}{\partial x^{j}}\right)=\delta_{j}^{i}= \begin{cases}1, & i=j \\ 0, & \text { otherwise } .\end{cases}
+$$
+
+This relationship captures precisely the behavior we're looking for: a vector $\frac{\partial}{\partial x^{i}}$ "casts a shadow" on the 1-form $d x^{j}$ only if the two bases point in the same direction. Using this relationship, we can work out that
+
+$$
+\alpha(v)=\sum_{i} \alpha_{i} d x^{i}\left(\sum_{j} v^{j} \frac{\partial}{\partial x^{j}}\right)=\sum_{i} \alpha_{i} v^{i}
+$$
+
+i.e., the pairing of a vector and a 1-form looks just like the standard Euclidean inner product.\\
+4.3.2. Notation. It's worth saying a few words about notation. First, vectors and vector fields tend to be represented by letters from the end of the Roman alphabet ( $u, v, w$ or $X, Y, Z$, respectively), whereas 1-forms are given lowercase letters from the beginning of the Greek alphabet ( $\alpha, \beta, \gamma$, etc.). Although one often makes a linguistic distinction between a "vector" (meaning a single arrow) and a "vector field" (meaning an arrow glued to every point of a space), there's an unfortunate precedent to use the term "1-form" to refer to both ideas-sadly, nobody ever says "1-form field!" Scalar fields or 0-forms are often given letters from the middle of the Roman alphabet $(f, g, h)$ or maybe lowercase Greek letters from somewhere near the end $(\phi, \psi$, etc.).
+
+You may also notice that we've been very particular about the placement of indices: coefficients $v^{i}$ of vectors have indices up, coefficients $\alpha_{i}$ of 1-forms have indices down. Similarly, vector bases $\frac{\partial}{\partial x^{i}}$ have indices down (they're in the denominator), and 1-form bases $d x^{i}$ have indices up. The reason for being so neurotic is to take advantage of Einstein summation notation: any time a pair of variables is indexed by the same letter $i$ in both the "up" and "down" position, we interpret this as a sum over all possible values of $i$ :
+
+$$
+\alpha_{i} v^{i}=\sum_{i} \alpha_{i} v^{i} .
+$$
+
+The placement of indices also provides a cute mnemonic for the musical isomorphisms \# and b. In musical notation \# indicates a half-step increase in pitch, corresponding to an upward movement on the staff. For instance, both notes below correspond to a "C" with the same pitch ${ }^{3}$ :\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-34_133_219_1849_956}
+
+Therefore, to go from a 1-form to a vector we raise the indices. For instance, in a flat space we don't have to worry about the metric and so a 1 -form
+
+$$
+\alpha=\alpha_{1} d x^{1}+\cdots+\alpha_{n} d x^{n}
+$$
+
+becomes a vector
+
+$$
+\alpha^{\sharp}=\alpha^{1} \frac{\partial}{\partial x^{1}}+\cdots+\alpha^{n} \frac{\partial}{\partial x^{n}} .
+$$
+
+Similarly, $b$ indicates a decrease in pitch and a downward motion on the staff:
+
+\footnotetext{${ }^{3}$ At least on a tempered instrument!
+}
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-35_133_220_253_950}\\
+and so $b$ lowers the indices of a vector to give us a 1-form-e.g.,
+$$
+v=v^{1} \frac{\partial}{\partial x^{1}}+\cdots+v^{n} \frac{\partial}{\partial x^{n}} .
+$$
+becomes
+$$
+v^{b}=v_{1} d x^{1}+\cdots+v_{n} d x^{n} .
+$$
+
+\subsection*{4.4. Differential Forms and the Wedge Product}
+In the last subsection we measured the length of a vector by projecting it onto different coordinate axes; this measurement process effectively defined what we call a 1-form. But what happens if we have a collection of vectors? For instance, consider a pair of vectors $u, v$ sitting in $\mathbb{R}^{3}$ :\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-36_228_232_553_947}
+
+We can think of these vectors as defining a parallelogram, and much like we did with a single vector we can measure this parallelogram by measuring the size of the "shadow" it casts on some plane:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-36_514_624_1040_759}
+
+For instance, suppose we represent this plane via a pair of unit orthogonal 1-forms $\alpha$ and $\beta$. Then the projected vectors have components
+
+$$
+\begin{aligned}
+& u^{\prime}=(\alpha(u), \beta(u))^{T}, \\
+& v^{\prime}=(\alpha(v), \beta(v))^{T},
+\end{aligned}
+$$
+
+hence the (signed) projected area is given by the cross product
+
+$$
+u^{\prime} \times v^{\prime}=\alpha(u) \beta(v)-\alpha(v) \beta(u) .
+$$
+
+Since we want to measure a lot of projected volumes in the future, we'll give this operation the special name " $\alpha \wedge \beta^{\prime \prime}$ :
+
+$$
+\alpha \wedge \beta(u, v):=\alpha(u) \beta(v)-\alpha(v) \beta(u) .
+$$
+
+As you may have already guessed, $\alpha \wedge \beta$ is what we call a 2-form. Ultimately we'll interpret the symbol $\wedge$ (pronounced "wedge") as a binary operation on differential forms called the wedge product. Algebraic properties of the wedge product follow directly from the way signed volumes behave. For instance, notice that if we reverse the order of our axes $\alpha, \beta$ the sign of the area changes. In other words, the wedge product is antisymmetric:
+
+$$
+\alpha \wedge \beta=-\beta \wedge \alpha .
+$$
+
+An important consequence of antisymmetry is that the wedge of any 1-form with itself is zero:
+
+$$
+\begin{aligned}
+& \alpha \wedge \alpha=-\alpha \wedge \alpha \\
+& \Rightarrow \alpha \wedge \alpha=0 .
+\end{aligned}
+$$
+
+But don't let this statement become a purely algebraic fact! Geometrically, why should the wedge of two 1-forms be zero? Quite simply because it represents projection onto a plane of zero area! (I.e., the plane spanned by $\alpha$ and $\alpha$.)
+
+Next, consider the projection onto two different planes spanned by $\alpha, \beta$ and $\alpha, \gamma$. The sum of the projected areas can be written as
+
+$$
+\begin{aligned}
+\alpha \wedge \beta(u, v)+\alpha \wedge \gamma(u, v) & =\alpha(u) \beta(v)-\alpha(v) \beta(u)+\alpha(u) \gamma(v)-\alpha(v) \gamma(u) \\
+& =\alpha(u)(\beta(v)+\gamma(v))-\alpha(v)(\beta(u)+\gamma(u)) \\
+& =(\alpha \wedge(\beta+\gamma))(u, v),
+\end{aligned}
+$$
+
+or in other words $\wedge$ distributes over + :
+
+$$
+\alpha \wedge(\beta+\gamma)=\alpha \wedge \beta+\alpha \wedge \gamma .
+$$
+
+Finally, consider three vectors $u, v, w$ that span a volume in $\mathbb{R}^{3}$ :\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-37_407_410_1411_861}
+
+We'd like to consider the projection of this volume onto the volume spanned by three 1-forms $\alpha, \beta$, and $\gamma$, but the projection of one volume onto another is a bit difficult to visualize! For now you can just cheat and imagine that $\alpha=d x^{1}, \beta=d x^{2}$, and $\gamma=d x^{3}$ so that the mental picture for the projected volume looks just like the volume depicted above. One way to write the projected volume is as the determinant of the projected vectors $u^{\prime}, v^{\prime}$, and $w^{\prime}$ :
+
+$$
+\alpha \wedge \beta \wedge \gamma(u, v, w):=\operatorname{det}\left(\left[\begin{array}{lll}
+u^{\prime} & v^{\prime} & w^{\prime}
+\end{array}\right]\right)=\operatorname{det}\left(\left[\begin{array}{lll}
+\alpha(u) & \alpha(v) & \alpha(w) \\
+\beta(u) & \beta(v) & \beta(w) \\
+\gamma(u) & \gamma(v) & \gamma(w)
+\end{array}\right]\right) .
+$$
+
+(Did you notice that the determinant of the upper-left 2×2 submatrix also gives us the wedge product of two 1-forms?) Alternatively, we could express the volume as the area of one of the faces times the length of the remaining edge:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-38_414_1125_243_503}
+
+Thinking about things this way, we might come up with an alternative definition of the wedge product in terms of the triple product:
+
+$$
+\begin{aligned}
+\alpha \wedge \beta \wedge \gamma(u, v, w) & =\left(u^{\prime} \times v^{\prime}\right) \cdot w^{\prime} \\
+& =\left(v^{\prime} \times w^{\prime}\right) \cdot u^{\prime} \\
+& =\left(w^{\prime} \times u^{\prime}\right) \cdot v^{\prime}
+\end{aligned}
+$$
+
+The important thing to notice here is that order is not important-we always get the same volume, regardless of which face we pick (though we still have to be a bit careful about sign). A more algebraic way of saying this is that the wedge product is associative:
+
+$$
+(\alpha \wedge \beta) \wedge \gamma=\alpha \wedge(\beta \wedge \gamma) .
+$$
+
+In summary, the wedge product of $k 1$-forms gives us a $k$-form, which measures the projected volume of a collection of $k$ vectors. As a result, the wedge product has the following properties for any $k$-form $\alpha, l$-form $\beta$, and $m$-form $\gamma$ :
+
+\begin{itemize}
+  \item[-] Antisymmetry: $\alpha \wedge \beta=(-1)^{k l} \beta \wedge \alpha$
+  \item[-] Associativity: $\alpha \wedge(\beta \wedge \gamma)=(\alpha \wedge \beta) \wedge \gamma$
+\end{itemize}
+
+and in the case where $\beta$ and $\gamma$ have the same degree (i.e., $l=m$ ) we have
+
+\begin{itemize}
+  \item[-] Distributivity: $\alpha \wedge(\beta+\gamma)=\alpha \wedge \beta+\alpha \wedge \gamma$
+\end{itemize}
+
+A separate fact is that a $k$-form is antisymmetric in its arguments-in other words, swapping the relative order of two "input" vectors changes only the sign of the volume. For instance, if $\alpha$ is a 2-form then $\alpha(u, v)=-\alpha(v, u)$. In general, an even number of swaps will preserve the sign; an odd number of swaps will negate it. (One way to convince yourself is to consider what happens to the determinant of a matrix when you exchange two of its columns.) Finally, you'll often hear people say that $k$-forms are "multilinear"-all this means is that if you keep all but one of the vectors fixed, then a $k$-form looks like a linear map. Geometrically this makes sense: $k$-forms are built up from $k$ linear measurements of length (essentially just $k$ different dot products).\\
+4.4.1. Vector-Valued Forms. Up to this point we've considered only real-valued $k$-forms-for instance, $\alpha(u)$ represents the length of the vector $u$ along the direction $\alpha$, which can be expressed as a single real number. In general, however, a $k$-form can "spit out" all kinds of different values. For instance, we might want to deal with quantities that are described by complex numbers ( $\mathbb{C}$ ) or vectors in some larger vector space (e.g., $\mathbb{R}^{n}$ ).
+
+A good example of a vector-valued $k$-form is our map $f: M \rightarrow \mathbb{R}^{3}$ which represents the geometry of a surface. In the language of exterior calculus, $f$ is an $\mathbb{R}^{3}$-valued 0 -form: at each point $p$ of $M$, it takes zero vectors as input and produces a point $f(p)$ in $\mathbb{R}^{3}$ as output. Similarly, the differential $d f$ is an $\mathbb{R}^{3}$-valued 1-form: it takes one vector (some direction $u$ in the plane) and maps it to a value $d f(u)$ in $\mathbb{R}^{3}$ (representing the "stretched out" version of $u$ ).
+
+More generally, if $E$ is a vector space then an $E$-valued $k$-form takes $k$ vectors to a single value in $E$. However, we have to be a bit careful here. For instance, think about our definition of a 2-form:
+
+$$
+\alpha \wedge \beta(u, v):=\alpha(u) \beta(v)-\alpha(v) \beta(u) .
+$$
+
+If $\alpha$ and $\beta$ are both $E$-valued 1-forms, then $\alpha(u)$ and $\beta(v)$ are both vectors in $E$. But how do you multiply two vectors? In general there may be no good answer: not every vector space comes with a natural notion of multiplication.
+
+However, there are plenty of spaces that do come with a well-defined product-for instance, the product of two complex numbers $a+b i$ and $c+d i$ is given by $(a c-b d)+(a d+b c) i$, so we have no trouble explicitly evaluating the expression above. In other cases we simply have to say which product we want to use-in $\mathbb{R}^{3}$ for instance we could use the cross product ×, in which case an $\mathbb{R}^{3}$-valued 2-form looks like this:
+
+$$
+\alpha \wedge \beta(u, v):=\alpha(u) \times \beta(v)-\alpha(v) \times \beta(u) .
+$$
+
+\subsection*{4.5. Hodge Duality}
+\begin{center}
+\includegraphics[max width=\textwidth, alt={}]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-40_516_626_363_757}
+\end{center}
+
+Previously we saw that a $k$-form measures the (signed) projected volume of a $k$-dimensional parallelepiped. For instance, a 2-form measures the area of a parallelogram projected onto some plane, as depicted above. But here's a nice observation: a plane in $\mathbb{R}^{3}$ can be described either by a pair of basis directions $(\alpha, \beta)$, or by a normal direction $\gamma$. So rather than measuring projected area, we could instead measure how well the normal of a parallelogram $(u, v)$ lines up with the normal of our plane. In other words, we could look for a 1-form $\gamma$ such that
+
+$$
+\gamma(u \times v)=\alpha \wedge \beta(u, v) .
+$$
+
+This observation captures the idea behind Hodge duality: a $k$-dimensional volume in an $n$-dimensional space can be specified either by $k$ directions or by a complementary set of $(n-k)$ directions. There should therefore be some kind of natural correspondence between $k$-forms and ( $n-k$ )-forms.\\
+4.5.1. Differential Forms and the Hodge Star. Let's investigate this idea further by constructing an explicit basis for the space of 0-forms, 1-forms, 2-forms, etc.-to keep things manageable we'll work with $\mathbb{R}^{3}$ and its standard coordinate system $\left(x^{1}, x^{2}, x^{3}\right)$. 0-forms are easy: any 0-form can be thought of as some function times the constant 0-form, which we'll denote "1." We've already seen the 1-form basis $d x^{1}, d x^{2}, d x^{3}$, which looks like the standard orthonormal basis of a vector space:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-40_567_720_1933_697}
+
+What about 2-forms? Well, consider that any 2-form can be expressed as the wedge of two 1 -forms:
+
+$$
+\alpha \wedge \beta=\left(\alpha_{i} d x^{i}\right) \wedge\left(\beta_{j} d x^{j}\right)=\alpha_{i} \beta_{j} d x^{i} \wedge d x^{j} .
+$$
+
+In other words, any 2 -form looks like some linear combination of the basis 2 -forms $d x^{i} \wedge d x^{j}$. How many of these bases are there? Initially it looks like there are a bunch of possibilities:
+
+$$
+\begin{array}{lll}
+d x^{1} \wedge d x^{1} & d x^{1} \wedge d x^{2} & d x^{1} \wedge d x^{3} \\
+d x^{2} \wedge d x^{1} & d x^{2} \wedge d x^{2} & d x^{2} \wedge d x^{3} \\
+d x^{3} \wedge d x^{1} & d x^{3} \wedge d x^{2} & d x^{3} \wedge d x^{3}
+\end{array}
+$$
+
+But of course, not all of these guys are distinct: remember that the wedge product is antisymmetric $(\alpha \wedge \beta=-\beta \wedge \alpha)$, which has the important consequence $\alpha \wedge \alpha=0$. So really our table looks more like this:
+
+$$
+\begin{array}{ccc}
+0 & d x^{1} \wedge d x^{2} & -d x^{3} \wedge d x^{1} \\
+-d x^{1} \wedge d x^{2} & 0 & d x^{2} \wedge d x^{3} \\
+d x^{3} \wedge d x^{1} & -d x^{2} \wedge d x^{3} & 0
+\end{array}
+$$
+
+and we're left with only three distinct bases: $d x^{2} \wedge d x^{3}, d x^{3} \wedge d x^{1}$, and $d x^{1} \wedge d x^{2}$. Geometrically all we've said is that there are three linearly-independent "planes" in $\mathbb{R}^{3}$ :\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-41_707_725_1329_700}
+
+How about 3 -form bases? We certainly have at least one:
+
+$$
+d x^{1} \wedge d x^{2} \wedge d x^{3} .
+$$
+
+Are there any others? Again the antisymmetry of $\wedge$ comes into play: many potential bases are just permutations of this first one:
+
+$$
+d x^{2} \wedge d x^{3} \wedge d x^{1}=-d x^{2} \wedge d x^{1} \wedge d x^{3}=d x^{1} \wedge d x^{2} \wedge d x^{3},
+$$
+
+and the rest vanish due to the appearance of repeated 1-forms:
+
+$$
+d x^{2} \wedge d x^{1} \wedge d x^{2}=-d x^{2} \wedge d x^{2} \wedge d x^{1}=0 \wedge d x^{1}=0 .
+$$
+
+In general there is only one basis $n$-form $d x^{1} \wedge \cdots \wedge d x^{n}$, which measures the usual Euclidean volume of a parallelpiped:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-42_708_726_421_700}
+
+Finally, what about 4-forms on $\mathbb{R}^{3}$ ? At this point it's probably pretty easy to see that there are none, since we'd need to pick four distinct 1-form bases from a collection of only three. Geometrically: there are no four-dimensional volumes contained in $\mathbb{R}^{3}$ ! (Or volumes of any greater dimension, for that matter.) The complete list of $k$-form bases on $\mathbb{R}^{3}$ is then
+
+\begin{itemize}
+  \item[-] 0-form bases: 1
+  \item[-] 1-form bases: $d x^{1}, d x^{2}, d x^{3}$
+  \item[-] 2-form bases: $d x^{2} \wedge d x^{3}, d x^{3} \wedge d x^{1}, d x^{1} \wedge d x^{2}$
+  \item[-] 3-form bases: $d x^{1} \wedge d x^{2} \wedge d x^{3}$,
+\end{itemize}
+
+which means the number of bases is 1, 3, 3, 1. In fact you may see a more general pattern here: the number of $k$-form bases on an $n$-dimensional space is given by the binomial coefficient
+
+$$
+\binom{n}{k}=\frac{n!}{k!(n-k)!}
+$$
+
+(i.e., " $n$ choose $k^{\prime \prime}$ ), since we want to pick $k$ distinct 1 -form bases and don't care about the order. An important identity here is
+
+$$
+\binom{n}{k}=\binom{n}{n-k},
+$$
+
+which, as anticipated, means that we have a one-to-one relationship between $k$-forms and $(n-k)$ - forms. In particular, we can identify any $k$-form with its complement. For example, on $\mathbb{R}^{3}$ we have
+
+$$
+\begin{aligned}
+\star 1 & =d x^{1} \wedge d x^{2} \wedge d x^{3} \\
+\star d x^{1} & =d x^{2} \wedge d x^{3} \\
+\star d x^{2} & =d x^{3} \wedge d x^{1} \\
+\star d x^{3} & =d x^{1} \wedge d x^{2} \\
+\star\left(d x^{1} \wedge d x^{2}\right) & =d x^{3} \\
+\star\left(d x^{2} \wedge d x^{3}\right) & =d x^{1} \\
+\star\left(d x^{3} \wedge d x^{1}\right) & =d x^{2} \\
+\star\left(d x^{1} \wedge d x^{2} \wedge d x^{3}\right) & =1
+\end{aligned}
+$$
+
+The map ★ (pronounced "star") is called the Hodge star and captures this idea that planes can be identified with their normals and so forth. More generally, on any flat space we have
+
+$$
+\star\left(d x^{i_{1}} \wedge d x^{i_{2}} \wedge \cdots \wedge d x^{i_{k}}\right)=d x^{i_{k+1}} \wedge d x^{i_{k+2}} \wedge \cdots \wedge d x^{i_{n}},
+$$
+
+where $\left(i_{1}, i_{2}, \ldots, i_{n}\right)$ is any even permutation of $(1,2, \ldots, n)$.
+
+\subsection*{4.5.2. The Volume Form.}
+\begin{center}
+\includegraphics[max width=\textwidth, alt={}]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-43_337_1042_1148_541}
+\end{center}
+
+So far we've been talking about measuring volumes in flat spaces like $\mathbb{R}^{n}$. But how do we take measurements in a curved space? Let's think about our usual example of a surface $f: \mathbb{R}^{2} \supset M \rightarrow$ $\mathbb{R}^{3}$. If we consider a region of our surface spanned by a pair of orthogonal unit vectors $u, v \in \mathbb{R}^{2}$, it's clear that we don't want the area $d x^{1} \wedge d x^{2}(u, v)=1$ since that just gives us the area in the plane. What we really want is the area of this region after it's been "stretched-out" by the map $f$. In other words, we want the size of the corresponding parallelogram in $\mathbb{R}^{3}$, spanned by the vectors $d f(u)$ and $d f(v)$.
+
+Exercise 4.1\\
+Letting $u, v \in \mathbb{R}^{2}$ be orthonormal (as above), show that
+
+$$
+|d f(u) \times d f(v)|=\sqrt{\operatorname{det}(g)},
+$$
+
+i.e., show that the "stretching factor" as we go from the plane to the surface is given by the square root of the determinant of the metric
+
+$$
+\operatorname{det}(g):=g(u, u) g(v, v)-g(u, v)^{2} .
+$$
+
+Hint: remember that the induced metric is just the usual Fuclidean dot product of the embedded vectors: $g(u, v):=d f(u) \cdot d f(v)$.
+
+Therefore, we can measure the area of any little region on our surface by simply scaling the volume in the plane by the determinant of the metric, i.e., by applying the 2-form $\sqrt{\operatorname{det}(g)} d x^{1} \wedge d x^{2}$ to two vectors $u, v$ spanning the region of interest. More generally, the $n$-form
+
+$$
+\omega:=\sqrt{\operatorname{det}(g)} d x^{1} \wedge \cdots \wedge d x^{n}
+$$
+
+is called the volume form, and will play a key role when we talk about integration.\\
+On curved spaces, we'd also like the Hodge star to capture the fact that volumes have been stretched out. For instance, it makes a certain amount of sense to identify the constant function 1 with the volume form $\omega$, since $\omega$ really represents unit volume on the curved space:
+
+$$
+\star 1=\omega
+$$
+
+4.5.3. The Inner Product on $k$-Forms. More generally we'll ask that any $n$-form constructed from a pair of $k$-forms $\alpha$ and $\beta$ satisfies
+
+$$
+\alpha \wedge \star \beta=\langle\langle\alpha, \beta\rangle\rangle \omega,
+$$
+
+where $\langle\langle\alpha, \beta\rangle\rangle=\sum_{i} \alpha_{i} \beta_{i}$ is the inner product on $k$-forms. In fact, some authors use this relationship as the definition of the wedge product-in other words, they'll start with something like, "the wedge product is the unique binary operation on $k$-forms such that $\alpha \wedge \star \beta=\langle\langle\alpha, \beta\rangle\rangle \omega$," and from there derive all the properties we've established above. This treatment is a bit abstract, and makes it far too easy to forget that the wedge product has an extraordinarily concrete geometric meaning. (It's certainly not the way Hermann Grassmann thought about it when he invented exterior algebra!). In practice, however, this identity is quite useful. For instance, if $u$ and $v$ are vectors in $\mathbb{R}^{3}$, then we can write
+
+$$
+u \cdot v=\star\left(u^{b} \wedge \star v^{b}\right),
+$$
+
+i.e., on a flat space we can express the usual Euclidean inner product via the wedge product. Is it clear geometrically that this identity is true? Think about what it says: the Hodge star turns $v$ into a plane with $v$ as a normal. We then build a volume by extruding this plane along the direction $u$. If $u$ and $v$ are nearly parallel the volume will be fairly large; if they're nearly orthogonal the volume will be quite shallow. (But to be sure we really got it right, you should try verifying this identity in coordinates!) Similarly, we can express the Euclidean cross product as just
+
+$$
+u \times v=\left(\star\left(u^{b} \wedge v^{b}\right)\right)^{\sharp},
+$$
+
+i.e., we can create a plane with normal $u \times v$ by wedging together the two basis vectors $u$ and $v$. (Again, working this fact out in coordinates may help soothe your paranoia.)
+
+\subsection*{4.6. Differential Operators}
+Originally we set out to develop exterior calculus. The objects we've looked at so far- $k$-forms, the wedge product $\wedge$ and the Hodge star ★-actually describe a more general structure called an exterior algebra. To turn our algebra into a calculus, we also need to know how quantities change, as well as how to measure quantities. In other words, we need some tools for differentiation and integration. Let's start with differentiation.
+
+In our discussion of surfaces we briefly looked at the differential $d f$ of a surface $f: M \rightarrow \mathbb{R}^{3}$, which tells us something about the way tangent vectors get "stretched out" as we move from the domain $M$ to a curved surface sitting in $\mathbb{R}^{3}$. More generally $d$ is called the exterior derivative and is responsible for building up many of the differential operators in exterior calculus. The basic idea is that $d$ tells us how quickly a $k$-form changes along every possible direction. But how exactly is it defined? So far we've seen only a high-level geometric description.\\
+4.6.1. Div, Grad, and Curl. Before jumping into the exterior derivative, it's worth reviewing what the basic vector derivatives div, grad, and curl do, and more importantly, what they look like. The key player here is the operator ∇ (pronounced "nabla") which can be expressed in coordinates as the vector of all partial derivatives:
+
+$$
+\nabla:=\left(\frac{\partial}{\partial x^{1}}, \ldots, \frac{\partial}{\partial x^{n}}\right)^{T} .
+$$
+
+For instance, applying ∇ to a scalar function $\phi: \mathbb{R}^{n} \rightarrow \mathbb{R}$ yields the gradient
+
+$$
+\nabla \phi=\left(\frac{\partial f}{\partial x^{1}}, \ldots, \frac{\partial f}{\partial x^{n}}\right)^{T},
+$$
+
+which can be visualized as the direction of steepest ascent on some terrain:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-45_626_623_1624_752}
+
+We can also apply ∇ to a vector field $X$ in two different ways. The dot product gives us the divergence
+
+$$
+\nabla \cdot X=\frac{\partial X^{1}}{\partial x^{1}}+\cdots+\frac{\partial X^{n}}{\partial x^{n}}
+$$
+
+which measures how quickly the vector field is "spreading out", and on $\mathbb{R}^{3}$ the cross product gives us the curl
+
+$$
+\nabla \times X=\left(\frac{\partial X^{3}}{\partial x^{2}}-\frac{\partial X^{2}}{\partial x^{3}}, \frac{\partial X^{1}}{\partial x^{3}}-\frac{\partial X^{3}}{\partial x^{1}}, \frac{\partial X^{2}}{\partial x^{1}}-\frac{\partial X^{1}}{\partial x^{2}}\right),
+$$
+
+which indicates how much a vector field is "spinning around." For instance, here's a pair of vector fields with a lot of divergence and a lot of curl, respectively:\\
+(Note that in this case one field is just a 90-degree rotation of the other!) On a typical day it's a lot more useful to think of div, grad and curl in terms of these kinds of pictures rather than the ugly expressions above.\\
+4.6.2. Think Differential. Not surprisingly, we can express similar notions using exterior calculus. However, these notions will be a bit easier to generalize (for instance, what does "curl" mean for a vector field in $\mathbb{R}^{4}$, where no cross product is defined?). Let's first take a look at the exterior derivative of 0 -forms (i.e., functions), which is often just called the differential. To keep things simple, we'll start with real-valued functions $\phi: \mathbb{R}^{n} \rightarrow \mathbb{R}$. In coordinates, the differential is defined as
+
+$$
+d \phi:=\frac{\partial \phi}{\partial x^{1}} d x^{1}+\cdots+\frac{\partial \phi}{\partial x^{n}} d x^{n} .
+$$
+
+It's important to note that the terms $\frac{\partial \phi}{\partial x^{i}}$ actually correspond to partial derivatives of our function $\phi$, whereas the terms $d x^{i}$ simply denote an orthonormal basis for $\mathbb{R}^{n}$. In other words, you can think of $d \phi$ as just a list of all the partial derivatives of $\phi$. Of course, this object looks a lot like the gradient $\nabla \phi$ we saw just a moment ago. And indeed the two are closely related, except for the fact that $\nabla \phi$ is a vector field and $d \phi$ is a 1-form. More precisely,
+
+$$
+\nabla \phi=(d \phi)^{\sharp} .
+$$
+
+4.6.3. Directional Derivatives. Another way to investigate the behavior of the exterior derivative is to see what happens when we stick a vector $u$ into the 1-form $d f$. In coordinates we get something that looks like a dot product between the gradient of $f$ and the vector $u$ :
+
+$$
+d f(u)=\frac{\partial f}{\partial x^{1}} u^{1}+\cdots+\frac{\partial f}{\partial x^{n}} u^{n} .
+$$
+
+For instance, in $\mathbb{R}^{2}$ we could stick in the unit vector $u=(1,0)$ to get the partial derivative $\frac{\partial f}{\partial x^{1}}$ along the first coordinate axis:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-47_627_623_402_752}\\
+(Compare this picture to the picture of the gradient we saw above.) In general, $d f(u)$ represents the directional derivative of $f$ along the direction $u$. In other words, it tells us how quickly $f$ changes if we take a short walk in the direction $u$. Returning again to vector calculus notation, we have
+
+$$
+d f(u)=u \cdot \nabla f .
+$$
+
+4.6.4. Properties of the Exterior Derivative. How do derivatives of arbitrary $k$-forms behave? For one thing, we expect $d$ to be linear-after all, a derivative is just the limit of a difference, and differences are certainly linear! What about the derivative of a wedge of two forms? Harkening back to good old-fashioned calculus, here's a picture that explains the typical product rule $\frac{\partial}{\partial x}(f(x) g(x))=f^{\prime}(x) g(x)+f(x) g^{\prime}(x)$ :\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-47_637_1044_1669_537}
+
+The dark region represents the value of $f g$ at $x$; the light blue region represents the change in this value as we move $x$ some small distance $h$. As $h$ gets smaller and smaller, the contribution of the upper-right quadrant becomes negligible and we can write the derivative as the change in\\
+$f$ times $g$ plus the change in $g$ times $f$. (Can you make this argument more rigorous?) Since a $k$-form also measures a (signed) volume, this intuition also carries over to the exterior derivative of a wedge product. In particular, if $\alpha$ is a $k$-form then $d$ obeys the rule
+
+$$
+d(\alpha \wedge \beta)=d \alpha \wedge \beta+(-1)^{k} \alpha \wedge d \beta .
+$$
+
+which says that the rate of change of the overall volume can be expressed in terms of changes in the constituent volumes, exactly as in the picture above.\\
+4.6.5. Exterior Derivative of 1-Forms. To be a little more concrete, let's see what happens when we differentiate a 1 -form on $\mathbb{R}^{3}$. Working things out in coordinates turns out to be a total mess, but in the end you may be pleasantly surprised with the simplicity of the outcome! (Later on we'll see that these ideas can also be expressed quite nicely without coordinates using Stokes' theorem, which paves the way to differentiation in the discrete setting.) Applying the linearity of $d$, we have
+
+$$
+\begin{aligned}
+d \alpha & =d\left(\alpha_{1} d x^{1}+\alpha_{2} d x^{2}+\alpha_{3} d x^{3}\right) \\
+& =d\left(\alpha_{1} d x^{1}\right)+d\left(\alpha_{2} d x^{2}\right)+d\left(\alpha_{3} d x^{3}\right) .
+\end{aligned}
+$$
+
+Each term $\alpha_{j} d x^{j}$ can really be thought of a wedge product $\alpha_{j} \wedge d x^{j}$ between a 0 -form $\alpha_{j}$ and the corresponding basis 1-form $d x^{j}$. Applying the exterior derivative to one of these terms we get
+
+$$
+d\left(\alpha_{j} \wedge d x^{j}\right)=\left(d \alpha_{j}\right) \wedge d x^{j}+\alpha_{j} \wedge \underbrace{\left(d d x^{j}\right)}_{=0}=\frac{\partial \alpha_{j}}{\partial x^{i}} d x^{i} \wedge d x^{j} .
+$$
+
+To keep things short we used the Einstein summation convention here, but let's really write out all the terms:
+
+$$
+\begin{aligned}
+d \alpha= & \frac{\partial \alpha_{1}}{\partial x^{1}} d x^{1} \wedge d x^{1}+\frac{\partial \alpha_{1}}{\partial x^{2}} d x^{2} \wedge d x^{1}+\frac{\partial \alpha_{1}}{\partial x^{3}} d x^{3} \wedge d x^{1}+ \\
+& \frac{\partial \alpha_{2}}{\partial x^{1}} d x^{1} \wedge d x^{2}+\frac{\partial \alpha_{2}}{\partial x^{2}} d x^{2} \wedge d x^{2}+\frac{\partial \alpha_{2}}{\partial x^{3}} d x^{3} \wedge d x^{2}+ \\
+& \frac{\partial \alpha_{3}}{\partial x^{1}} d x^{1} \wedge d x^{3}+\frac{\partial \alpha_{3}}{\partial x^{2}} d x^{2} \wedge d x^{3}+\frac{\partial \alpha_{3}}{\partial x^{3}} d x^{3} \wedge d x^{3} .
+\end{aligned}
+$$
+
+Using the fact that $\alpha \wedge \beta=-\beta \wedge \alpha$, we get a much simpler expression
+
+$$
+\begin{aligned}
+d \alpha= & \left(\frac{\partial \alpha_{3}}{\partial x^{2}}-\frac{\partial \alpha_{2}}{\partial x^{3}}\right) d x^{2} \wedge d x^{3}+ \\
+& \left(\frac{\partial \alpha_{1}}{\partial x^{3}}-\frac{\partial \alpha_{3}}{\partial x^{1}}\right) d x^{3} \wedge d x^{1}+ \\
+& \left(\frac{\partial \alpha_{2}}{\partial x^{1}}-\frac{\partial \alpha_{1}}{\partial x^{2}}\right) d x^{1} \wedge d x^{2} .
+\end{aligned}
+$$
+
+Does this expression look familiar? If you look again at our review of vector derivatives, you'll recognize that $d \alpha$ basically looks like the curl of $\alpha^{\sharp}$, except that it's expressed as a 2-form instead of a vector field. Also remember (from our discussion of Hodge duality) that a 2-form and a 1-form are not so different here-geometrically they both specify some direction in $\mathbb{R}^{3}$. Therefore, we can express the curl of any vector field $X$ as
+
+$$
+\nabla \times X=\left(\star d X^{b}\right)^{\#} .
+$$
+
+It's worth stepping through the sequence of operations here to check that everything makes sense: $b$ converts the vector field $X$ into a 1-form $X^{b}$; $d$ computes something that looks like the curl, but\\
+expressed as a 2-form $d X^{b}$; ★ turns this 2-form into a 1-form ★ $d X^{b}$; and finally ♯ converts this 1-form back into the vector field $\left(\star d X^{b}\right)$. The take-home message here, though, is that the exterior derivative of a 1-form looks like the curl of a vector field.
+
+So far we know how to express the gradient and the curl using $d$. What about our other favorite vector derivative, the divergence? Instead of grinding through another tedious derivation, let's make a simple geometric observation: in $\mathbb{R}^{2}$ at least, we can determine the divergence of a vector field by rotating it by 90 degrees and computing its curl (consider the example we saw earlier). Moreover, in $\mathbb{R}^{2}$ the Hodge star on 1-forms represents a rotation by 90 degrees, since it identifies any line with the direction orthogonal to that line:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-49_289_411_793_861}
+
+Therefore, we might suspect that divergence can be computed by first applying the Hodge star, then applying the exterior derivative:
+
+$$
+\nabla \cdot X=\star d \star X^{b} .
+$$
+
+The leftmost Hodge star accounts for the fact that $d \star X^{b}$ is an $n$-form instead of a 0 -form-in vector calculus divergence is viewed as a scalar quantity. Does this definition really work? Let's give it a try in coordinates on $\mathbb{R}^{3}$. First, we have
+
+$$
+\begin{aligned}
+\star X^{b} & =\star\left(X_{1} d x^{1}+X_{2} d x^{2}+X_{3} d x^{3}\right) \\
+& =X_{1} d x^{2} \wedge d x^{3}+X_{2} d x^{3} \wedge d x^{1}+X_{3} d x^{1} \wedge d x^{2} .
+\end{aligned}
+$$
+
+Differentiating we get
+
+$$
+\begin{aligned}
+d \star X^{b}= & \frac{\partial X_{1}}{\partial x^{1}} d x^{1} \wedge d x^{2} \wedge d x^{3}+ \\
+& \frac{\partial X_{2}}{\partial x^{2}} d x^{2} \wedge d x^{3} \wedge d x^{1}+ \\
+& \frac{\partial X_{3}}{\partial x^{3}} d x^{3} \wedge d x^{1} \wedge d x^{2},
+\end{aligned}
+$$
+
+but of course we can rearrange these wedge products to simply
+
+$$
+d \star X^{b}=\left(\frac{\partial X_{1}}{\partial x^{1}}+\frac{\partial X_{2}}{\partial x^{2}}+\frac{\partial X_{3}}{\partial x^{3}}\right) d x^{1} \wedge d x^{2} \wedge d x^{3} .
+$$
+
+A final application of the Hodge star gives us the divergence
+
+$$
+\star d \star X^{b}=\frac{\partial X^{1}}{\partial x^{1}}+\frac{\partial X^{2}}{\partial x^{2}}+\frac{\partial X^{3}}{\partial x^{3}}
+$$
+
+as desired.\\
+In summary, for any scalar field $\phi$ and vector field $X$ we have
+
+$$
+\begin{aligned}
+\nabla \phi & =(d \phi)^{\sharp} \\
+\nabla \times X & =\left(\star d X^{b}\right)^{\#} \\
+\nabla \cdot X & =\star d \star X^{b}
+\end{aligned}
+$$
+
+One cute thing to notice here is that (in $\mathbb{R}^{3}$ ) grad, curl, and div are just $d$ applied to a 0-, 1- and 2- form, respectively.\\
+4.6.6. The Laplacian. Another key differential operator from vector calculus is the scalar Laplacian which (confusingly!) is often denoted by $\Delta$ or $\nabla^{2}$, and is defined as
+
+$$
+\Delta:=\nabla \cdot \nabla,
+$$
+
+i.e., the divergence of the gradient. Although the Laplacian may seem like yet another in a long list of derivatives, it deserves your utmost respect: the Laplacian is central to fundamental physical laws (any diffusion process and all forms of wave propagation, including the Schrödinger equation); its eigenvalues capture almost everything there is to know about a given piece of geometry (can you hear the shape of a drum?). Heavy tomes and entire lives have been devoted to the Laplacian, and in the discrete setting we'll see that this one simple operator can be applied to a diverse array of tasks (surface parameterization, surface smoothing, vector field design and decomposition, distance computation, fluid simulation... you name it, we got it!).
+
+Fortunately, now that we know how to write div, grad and curl using exterior calculus, expressing the scalar Laplacian is straightforward: $\Delta=\star d \star d$. More generally, the $k$-form Laplacian is given by
+
+$$
+\Delta:=\star d \star d+d \star d \star .
+$$
+
+The name "Laplace-Beltrami" is used merely to indicate that the domain may have some amount of curvature (encapsulated by the Hodge star). Some people like to define the operator $\delta:=\star d \star$, called the codifferential, and write the Laplacian as $\Delta=\delta d+d \delta$.
+
+One question you might ask is: why is the Laplacian for 0-forms different from the general $k$-form Laplacian? Actually, it's not-consider what happens when we apply the term $d \star d \star$ to a 0 -form $\phi: \star \phi$ is an $n$-form, and so $d \star \phi$ must be an $(n+1)$-form. But there are no $(n+1)$-forms on an $n$-dimensional space! So this term is often omitted when writing the scalar Laplacian.
+
+\subsection*{4.7. Integration and Stokes' Theorem}
+In the previous section we talked about how to differentiate $k$-forms using the exterior derivative $d$. We'd also like some way to integrate forms. Actually, there's surprisingly little to say about integration given the setup we already have. Suppose we want to compute the total area $A_{\Omega}$ of a region $\Omega$ in the plane:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-51_665_581_596_772}
+
+If you remember back to calculus class, the basic idea was to break up the domain into a bunch of little pieces that are easy to measure (like squares) and add up their areas:
+
+$$
+A_{\Omega} \approx \sum_{i} A_{i} .
+$$
+
+As these squares get smaller and smaller we get a better and better approximation, ultimately achieving the true area
+
+$$
+A_{\Omega}=\int_{\Omega} d A .
+$$
+
+Alternatively, we could write the individual areas using differential forms-in particular, $A_{i}=$ $d x^{1} \wedge d x^{2}(u, v)$. Therefore, the area element $d A$ is really nothing more than the standard volume form $d x^{1} \wedge d x^{2}$ on $\mathbb{R}^{2}$. (Not too surprising, since the whole point of $k$-forms was to measure volume!)
+
+To make things more interesting, let's say that the contribution of each little square is weighted by some scalar function $\phi$. In this case we get the quantity
+
+$$
+\int_{\Omega} \phi d A=\int_{\Omega} \phi d x^{1} \wedge d x^{2} .
+$$
+
+Again the integrand $\phi d x^{1} \wedge d x^{2}$ can be thought of as a 2-form. In other words, you've been working with differential forms your whole life, even if you didn't realize it! More generally, integrands on an $n$-dimensional space are always $n$-forms, since we need to "plug in" $n$ orthogonal vectors representing the local volume. For now, however, looking at surfaces (i.e., 2-manifolds) will give us all the intuition we need.\\
+4.7.1. Integration on Surfaces.\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-52_338_1043_350_541}
+
+If you think back to our discussion of the Hodge star, you'll remember the volume form
+
+$$
+\omega=\sqrt{\operatorname{det}(g)} d x^{1} \wedge d x^{2},
+$$
+
+which measures the area of little parallelograms on our surface. The factor $\sqrt{\operatorname{det}(g)}$ reminds us that we can't simply measure the volume in the domain $M$-we also have to take into account any "stretching" induced by the map $f: M \rightarrow \mathbb{R}^{2}$. Of course, when we integrate a function on a surface, we should also take this stretching into account. For instance, to integrate a function $\phi: M \rightarrow \mathbb{R}$, we would write
+
+$$
+\int_{\Omega} \phi \omega=\int_{\Omega} \phi \sqrt{\operatorname{det}(g)} d x^{1} \wedge d x^{2} .
+$$
+
+In the case of a conformal parameterization things become even simpler-since $\sqrt{\operatorname{det}(g)}=a$ we have just
+
+$$
+\int_{\Omega} \phi a d x^{1} \wedge d x^{2},
+$$
+
+where $a: M \rightarrow \mathbb{R}$ is the scaling factor. In other words, we scale the value of $\phi$ up or down depending on the amount by which the surface locally "inflates" or "deflates." In fact, this whole story gives a nice geometric interpretation to good old-fashioned integrals: you can imagine that $\int_{\Omega} \phi d A$ represents the area of some suitably deformed version of the initially planar region $\Omega$.\\
+4.7.2. Stokes' Theorem. The main reason for studying integration on manifolds is to take advantage of the world's most powerful tool: Stokes' theorem. Without further ado, Stokes' theorem says that
+
+$$
+\int_{\Omega} d \alpha=\int_{\partial \Omega} \alpha,
+$$
+
+where $\alpha$ is any $n-1$-form on an $n$-dimensional domain $\Omega$. In other words, integrating a differential form over the boundary of a manifold is the same as integrating its derivative over the entire domain.
+
+If this trick sounds familiar to you, it's probably because you've seen it time and again in different contexts and under different names: the divergence theorem, Green's theorem, the fundamental theorem of calculus, Cauchy's integral formula, etc. Picking apart these special cases will really help us understand the more general meaning of Stokes' theorem.\\
+4.7.3. Divergence Theorem. Let's start with the divergence theorem from vector calculus, which says that
+
+$$
+\int_{\Omega} \nabla \cdot X d A=\int_{\partial \Omega} n \cdot X d \ell
+$$
+
+where $X$ is a vector field on $\Omega$ and $n$ represents the unit normal field along the boundary of $\Omega$. A better name for this theorem might have been the "what goes in must come out theorem", because if you think about $X$ as the flow of water throughout the domain $\Omega$ then it's clear that the amount of water being pumped into $\Omega$ (via pipes in the ground) must be the same as the amount flowing out of its boundary at any moment in time:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-53_603_589_531_761}
+
+Let's try writing this theorem using exterior calculus. First, remember that we can write the divergence of $X$ as $\nabla \cdot X=\star d \star X^{b}$. It's a bit harder to see how to write the right-hand side of the divergence theorem, but think about what integration does here: it takes tangents to the boundary and sticks them into a 1-form. For instance, $\int_{\partial \Omega} X^{b}$ "adds up" the tangential components of $X$. To get the normal component we could rotate $X^{p}$ by a quarter turn, which conveniently enough is achieved by hitting it with the Hodge star. Overall we get
+
+$$
+\int_{\Omega} d \star X^{b}=\int_{\partial \Omega} \star X^{b},
+$$
+
+which, as promised, is just a special case of Stokes' theorem. Alternatively, we can use Stokes' theorem to provide a more geometric interpretation of the divergence operator itself: when integrated over any region $\Omega$-no matter how small-the divergence operator gives the total flux through the region boundary. In the discrete case we'll see that this boundary flux interpretation is the only notion of divergence-in other words, there's no concept of divergence at a single point.
+
+By the way, why does $d \star X^{b}$ appear on the left-hand side instead of $\star d \star X^{b}$ ? The reason is that $\star d \star X^{\mathrm{b}}$ is a 0-form, so we have to hit it with another Hodge star to turn it into an object that measures areas (i.e., a 2-form). Applying this transformation is no different from appending $d A$ to $\nabla \cdot X$-we're specifying how volume should be measured on our domain.
+
+Exercise 4.2\\
+Show that Stokes' theorem also implies Green's theorem, which says that
+
+$$
+\int_{\Omega} \nabla \times X d A=\int_{\partial \Omega} t \cdot X d \ell
+$$
+
+where $\Omega$ is a region in the plane and $t$ is a continuous unit vector field tangent to its boundary $\partial \Omega$.\\
+4.7.4. Fundamental Theorem of Calculus. The fundamental theorem of calculus is in fact so fundamental that you may not even remember what it is. It basically says that for a real-valued function $\phi: \mathbb{R} \rightarrow \mathbb{R}$ on the real line
+
+$$
+\int_{a}^{b} \frac{\partial \phi}{\partial x} d x=\phi(b)-\phi(a) .
+$$
+
+In other words, the total change over an interval $[a, b]$ is (as you might expect) how much you end up with minus how much you started with. But soft, behold! All we've done is written Stokes' theorem once again:
+
+$$
+\int_{[a, b]} d \phi=\int_{\partial[a, b]} \phi,
+$$
+
+since the boundary of the interval $[a, b]$ consists only of the two endpoints $a$ and $b$.\\
+Hopefully these two examples give you a good feel for what Stokes' theorem says. In the end, it reads almost like a Zen kōan: what happens on the outside is purely a function of the change within. (Perhaps it is Stokes' that deserves the name, "fundamental theorem of calculus!")\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-54_331_343_1025_890}
+
+\subsection*{4.8. Discrete Exterior Calculus}
+\begin{center}
+\includegraphics[max width=\textwidth, alt={}]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-55_436_1212_355_455}
+\end{center}
+
+So far we've been exploring exterior calculus purely in the smooth setting. Unfortunately this theory was developed by some old-timers who did not know anything about computers, hence it cannot be used directly by machines that store only a finite amount of information. For instance, if we have a smooth vector field or a smooth 1-form we can't possibly store the direction of every little "arrow" at each point-there are far too many of them! Instead, we need to keep track of a discrete (or really, finite) number of pieces of information that capture the essential behavior of the objects we're working with; we call this scheme discrete exterior calculus (or DEC for short). The big secret about DEC is that it's literally nothing more than the good-old fashioned (continuous) exterior calculus we've been learning about, except that we integrate differential forms over elements of our mesh.\\
+4.8.1. Discrete Differential Forms. One way to encode a 1-form might be to store a finite collection of "arrows" associated with some subset of points. Instead, we're going to do something a bit different: we're going to integrate our 1-form over each edge of a mesh, and store the resulting numbers (remember that the integral of an $n$-form always spits out a single number) on the corresponding edges. In other words, if $\alpha$ is a 1-form and $e$ is an edge, then we'll associate the number
+
+$$
+\hat{\alpha}_{e}:=\int_{e} \alpha
+$$
+
+with $e$, where the (\^{}) is meant to suggest a discrete quantity (not to be confused with a unit-length vector).
+
+Does this procedure seem a bit abstract to you? It shouldn't! Think about what this integral represents: it tells us how strongly the 1-form $\alpha$ "flows along" the edge $e$ on average. More specifically, remember how integration of a 1-form works: at each point along the edge we take the vector tangent to the edge, stick it into the 1-form $\alpha$, and sum up the resulting values-each value tells us something about how well $\alpha$ "lines up" with the direction of the edge. For instance, we could approximate the integral via the sum
+
+$$
+\int_{e} \alpha \approx|e|\left(\frac{1}{N} \sum_{i=1}^{N} \alpha_{p_{i}}(u)\right),
+$$
+
+where $|e|$ denotes the length of the edge, $\left\{p_{i}\right\}$ is a sequence of points along the edge, and $u:=e /|e|$ is a unit vector tangent to the edge:\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-56_279_553_247_788}
+
+Of course, this quantity tells us absolutely nothing about the strength of the "flow" orthogonal to the edge: it could be zero, it could be enormous! We don't really know, because we didn't take any measurements along the orthogonal direction. However, the hope is that some of this information will still be captured by nearby edges (which are most likely not parallel to $e$ ).
+
+More generally, a $k$-form that has been integrated over each $k$-dimensional cell (edges in 1D, faces in 2D, etc.) is called a discrete differential $k$-form. (If you ever find the distinction confusing, you might find it helpful to substitute the word "integrated" for the word "discrete.") In practice, however, not every discrete differential form has to originate from a continuous one-for instance, a bunch of arbitrary values assigned to each edge of a mesh is a perfectly good discrete 1-form.\\
+4.8.2. Orientation. One thing you may have noticed in all of our illustrations so far is that each edge is marked with a little arrow. Why? Well, one thing to remember is that direction matters when you integrate. For instance, the fundamental theorem of calculus (and common sense) tells us that the total change as you go from $a$ to $b$ is the opposite of the total change as you go from $b$ to $a$ :
+
+$$
+\int_{a}^{b} \frac{\partial \phi}{\partial x} d x=\phi(b)-\phi(a)=-(\phi(a)-\phi(b))=-\int_{b}^{a} \frac{\partial \phi}{\partial x} d x .
+$$
+
+Said in a much less fancy way: the elevation gain as you go from Pasadena to Altadena is 151 meters, so the elevation "gain" in the other direction must be -151 meters! Just keeping track of the number 151 does you little good-you have to say what that quantity represents.\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-56_398_670_1685_727}
+
+Therefore, when we store a discrete differential form it's not enough to just store a number: we also have to specify a canonical orientation for each element of our mesh, corresponding to the orientation we used during integration. For an edge we've already seen that we can think about orientation as a little arrow pointing from one vertex to another-we could also just think of an edge as an ordered pair $(i, j)$, meaning that we always integrate from $i$ to $j$.
+
+More generally, suppose that each element of our mesh is an oriented $k$-simplex $\sigma$, i.e., a collection of $k+1$ vertices $p_{i} \in \mathbb{R}^{n}$ given in some fixed order ( $p_{1}, \ldots, p_{k+1}$ ). The geometry associated with $\sigma$\\
+is the convex combination of these points:
+
+$$
+\left\{\sum_{i=1}^{k+1} \lambda_{i} p_{i} \mid \sum_{i=1}^{k+1} \lambda_{i}=1, \lambda_{i} \geq 0\right\} \subset \mathbb{R}^{n}
+$$
+
+(Convince yourself that a 0 -simplex is a vertex, a 1 -simplex is an edge, a 2 -simplex is a triangle, and a 3-simplex is a tetrahedron.)\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-57_444_1002_654_565}
+
+Two oriented $k$-simplices have the same orientation if and only if the vertices of one are an even permutation of the vertices of another. For instance, the triangles $\left(p_{1}, p_{2}, p_{3}\right)$ and $\left(p_{2}, p_{3}, p_{1}\right)$ have the same orientation; $\left(p_{1}, p_{2}, p_{3}\right)$ and $\left(p_{2}, p_{1}, p_{3}\right)$ have opposite orientation.\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-57_286_267_1405_742}\\
+\includegraphics[max width=\textwidth, alt={}, center]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-57_284_266_1406_1114}
+
+If a simplex $\sigma_{1}$ is a (not necessarily proper) subset of another simplex $\sigma_{2}$, then we say that $\sigma_{1}$ is a face of $\sigma_{2}$. For instance, every vertex, edge, and triangle of a tetrahedron $\sigma$ is a face of $\sigma$; as is $\sigma$ itself! Moreover, the orientation of a simplex agrees with the orientation of one of its faces as long as we see an even permutation on the shared vertices. For instance, the orientations of the edge $\left(p_{2}, p_{1}\right)$ and the triangle $\left(p_{1}, p_{3}, p_{2}\right)$ agree. Geometrically all we're saying is that the two "point" in the same direction (as depicted above, right). To keep yourself sane while working with meshes, the most important thing is to pick an orientation and stick with it!
+
+So in general, how do we integrate a $k$-form over an oriented $k$-simplex? Remember that a $k$-form is going to "eat" $k$ vectors at each point and spit out a number-a good canonical choice is to take the ordered collection of edge vectors $\left(p_{2}-p_{1}, \ldots, p_{k+1}-p_{1}\right)$ and orthonormalize them (using, say the Gram-Schmidt algorithm) to get vectors $\left(u_{1}, \ldots, u_{k}\right)$. This way the sign of the integrand changes whenever the orientation changes. Numerically, we can then approximate the integral via a sum
+
+$$
+\int_{\sigma} \alpha \approx \frac{|\sigma|}{N} \sum_{i=1}^{N} \alpha_{p_{i}}\left(u_{1}, \ldots, u_{k}\right)
+$$
+
+where $\left\{p_{i}\right\}$ is a (usually carefully-chosen) collection of sample points. (Can you see why the orientation of $\sigma$ affects the sign of the integrand?) Sounds like a lot of work, but in practice one rarely constructs discrete differential forms via integration: more often, discrete forms are constructed via input data that is already discrete (e.g., vertex positions in a triangle mesh).
+
+By the way, what's a discrete 0-form? Give up? Well, it must be a 0-form (i.e., a function) that's been integrated over every 0 -simplex $v_{i}$ (i.e., vertex) of a mesh:
+
+$$
+\hat{\phi}_{i}=\int_{v_{i}} \phi
+$$
+
+By convention, the integral of a function over a zero-dimensional set is simply the value of the function at that point: $\hat{\phi}_{i}=\phi\left(v_{i}\right)$. In other words, in the case of 0-forms there is no difference between storing point samples and storing integrated quantities: the two coincide. Note that the orientation of a 0 -simplex is always positive, since the identity map on one vertex is an even permutation.
+
+It's also important to remember that differential forms don't have to be real-valued. For instance, we can think of a map $f: M \rightarrow \mathbb{R}^{3}$ that encodes the geometry of a surface as an $\mathbb{R}^{3}$-valued 0-form; its differential $d f$ is then an $\mathbb{R}^{3}$-valued 1-form, etc. Likewise, when we say that a discrete differential form is a number stored on every mesh element, the word "number" is used in a fairly loose sense: a number could be a real value, a vector, a complex number, a quaternion, etc. For instance, the collection of $(x, y, z)$ vertex coordinates of a mesh can be viewed as an $\mathbb{R}^{3}$-valued discrete 0-form (namely, one that discretizes the map $f$ ). The only requirement, of course, is that we store the same type of number on each mesh element.\\
+4.8.3. The Discrete Exterior Derivative. One of the main advantages of working with integrated (i.e., "discrete") differential forms instead of point samples is that we can easily take advantage of Stokes' theorem. Remember that Stokes' theorem says
+
+$$
+\int_{\Omega} d \alpha=\int_{\partial \Omega} \alpha,
+$$
+
+for any $k$-form $\alpha$ and $k+1$-dimensional domain $\Omega$. In other words, we can integrate the derivative of a differential form as long as we know its integral along the boundary. But that's exactly the kind of information encoded by a discrete differential form! For instance, if $\hat{\alpha}$ is a discrete 1-form stored on the three edges of a triangle $\sigma$, then we have
+
+$$
+\int_{\sigma} d \alpha=\int_{\partial \sigma} \alpha=\sum_{i=1}^{3} \int_{e_{i}} \alpha=\sum_{i=1}^{3} \hat{\alpha}_{i} .
+$$
+
+\begin{center}
+\includegraphics[max width=\textwidth, alt={}]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-58_252_241_2000_942}
+\end{center}
+
+In other words, we can exactly evaluate the integral on the left by just adding up three numbers. Pretty cool! In fact, the thing on the left is also a discrete differential form: it's the 2-form $d \alpha$ integrated over the only triangle in our mesh. So for convenience, we'll call this guy " $\hat{d} \hat{\alpha}^{\prime}$ ", and we'll call the operation $\hat{d}$ the discrete exterior derivative. (In the future we will drop the hats from our\\
+notation when the meaning is clear from context.) In other words, the discrete exterior derivative takes a $k$-form that has already been integrated over each $k$-simplex and applies Stokes' theorem to get the integral of the derivative over each $k+1$-simplex.
+
+In practice (i.e., in code) you can see how this operation might be implemented by simply taking local sums over the appropriate mesh elements. However, in the example above we made life particularly easy on ourselves by giving each edge an orientation that agrees with the orientation of the triangle. Unfortunately assigning a consistent orientation to every simplex is not always possible, and in general we need to be more careful about sign when adding up our piecewise integrals. For instance, in the example below we'd have
+
+$$
+(\hat{d} \hat{\alpha})_{1}=\hat{\alpha}_{1}+\hat{\alpha}_{2}+\hat{\alpha}_{3}
+$$
+
+and
+
+$$
+(\hat{d} \hat{\alpha})_{2}=\hat{\alpha}_{4}+\hat{\alpha}_{5}-\hat{\alpha}_{2} .
+$$
+
+\begin{center}
+\includegraphics[max width=\textwidth, alt={}]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-59_241_400_932_861}
+\end{center}
+
+\subsection*{4.8.4. Discrete Hodge Star.}
+\begin{center}
+\includegraphics[max width=\textwidth, alt={}]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-59_638_1136_1358_494}
+\end{center}
+
+As hinted at above, a discrete $k$-form captures the behavior of a continuous $k$-form along $k$ directions, but not along the remaining $n-k$ directions-for instance, a discrete 1-form in 2D captures the flow along edges but not in the orthogonal direction. If you paid close attention to the discussion of Hodge duality, this story starts to sound familiar! To capture Hodge duality in the discrete setting, we'll need to define a dual mesh. In general, the dual of an $n$-dimensional simplicial mesh identifies every $k$-simplex in the primal (i.e., original) mesh with a unique $(n-k)$-cell in the dual mesh. In a two-dimensional simplicial mesh, for instance, primal vertices are identified with dual faces, primal edges are identified with dual edges, and primal faces are identified with dual vertices. Note, however, that the dual cells are not always simplices! (See above.) A dual mesh is an orthogonal dual if primal and dual elements are contained in orthogonal linear subspaces. For\\
+instance, on a planar triangle mesh a dual edge would make a right angle with the corresponding primal edge. For curved domains, we ask only that primal and dual elements be orthogonal intrinsically, e.g., if one rigidly unfolds a pair of neighboring triangles into the plane, the primal and dual edges should again be orthogonal.
+
+The fact that dual mesh elements are contained in orthogonal linear subspaces leads naturally to a notion of Hodge duality in the discrete setting. In particular, the discrete Hodge dual of a (discrete) $k$-form on the primal mesh is an ( $n-k$ )-form on the dual mesh. Similarly, the Hodge dual of an $k$-form on the dual mesh is an ( $n-k$ )-form on the primal mesh. Discrete forms on the primal mesh are called primal forms and discrete forms on the dual mesh are called dual forms. Given a discrete form $\hat{\alpha}$ (whether primal or dual), we'll write its Hodge dual as $\hat{\star} \hat{\alpha}$.
+
+\begin{figure}[h]
+\begin{center}
+  \includegraphics[alt={},max width=\textwidth]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-60_611_471_807_566}
+\captionsetup{labelformat=empty}
+\caption{primal 1-form (circulation)}
+\end{center}
+\end{figure}
+
+\begin{figure}[h]
+\begin{center}
+  \includegraphics[alt={},max width=\textwidth]{5ca462c8-87f1-4b78-bcfe-c2b572a4db96-60_610_471_807_1215}
+\captionsetup{labelformat=empty}
+\caption{dual 1-form (flux)}
+\end{center}
+\end{figure}
+
+Unlike continuous forms, discrete primal and dual forms live in different places (so for instance, discrete primal $k$-forms and dual $k$-forms cannot be added to each other). In fact, primal and dual forms often have different physical interpretations. For instance, a primal 1-form might represent the total circulation along edges of the primal mesh, whereas in the same context a dual 1-form might represent the total flux through the corresponding dual edges (see illustration above).
+
+Of course, these two quantities (flux and circulation) are closely related, and naturally leads into one definition for a discrete Hodge star called the diagonal Hodge star. Consider a primal $k$-form $\alpha$. If $\hat{\alpha}_{i}$ is the value of $\hat{\alpha}$ on the $k$-simplex $\sigma_{i}$, then the diagonal Hodge star is defined by
+
+$$
+\hat{\star} \hat{\alpha}_{i}=\frac{\left|\sigma_{i}^{\star}\right|}{\left|\sigma_{i}\right|} \hat{\alpha}_{i}
+$$
+
+for all $i$, where $|\sigma|$ indicates the (unsigned) volume of $\sigma$ (which by convention equals one for a vertex!) and $\left|\sigma^{\star}\right|$ is the volume of the corresponding dual cell. In other words, to compute the dual form we simply multiply the scalar value stored on each cell by the ratio of corresponding dual and primal volumes.
+
+If we remember that a discrete form can be thought of as a continuous form integrated over each cell, this definition for the Hodge star makes perfect sense: the primal and dual quantities should have the same density, but we need to account for the fact that they are integrated over cells of different volume. We therefore normalize by a ratio of volumes when mapping between primal\\
+and dual. This particular Hodge star is called diagonal since the $i$ th element of the dual differential form depends only on the $i$ th element of the primal differential form. It's not hard to see, then, that Hodge star taking dual forms to primal forms (the dual Hodge star) is the inverse of the one that takes primal to dual (the primal Hodge star).\\
+4.8.5. That's All, Folks! Hey, wait a minute, what about our other operations, like the wedge product ( $\wedge$ )? These operations can certainly be defined in the discrete setting, but we won't go into detail here-the basic recipe is to integrate, integrate, integrate. Actually, even in continuous exterior calculus we omitted a couple operations like the Lie derivative $\left(\mathcal{L}_{X}\right)$ and the interior product $\left(i_{\alpha}\right)$. Coming up with a complete discrete calculus where the whole cast of characters $d, \wedge, \star, \mathcal{L}_{X}, i_{\alpha}$, etc., plays well together is an active and ongoing area of research.
+
+
+\end{document}

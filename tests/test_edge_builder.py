@@ -21,6 +21,7 @@ TEX = r"""
 \documentclass{article}
 \newtheorem{proposition}{Proposition}
 \newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
 \begin{document}
 \section{Rules}
 \begin{proposition}\label{p:one}
@@ -46,6 +47,15 @@ Compact sets are closed.
 \end{theorem}
 \begin{proof}
 By Theorem~\ref{t:main} the claim follows.
+\end{proof}
+\begin{lemma}\label{l:aux}
+Closed subsets of compact sets are compact.
+\end{lemma}
+\begin{theorem}\label{t:own}
+Continuous images of compact sets are compact.
+\end{theorem}
+\begin{proof}
+Theorem~\ref{t:own} follows from Lemma~\ref{l:aux}.
 \end{proof}
 \end{document}
 """
@@ -92,6 +102,15 @@ ment = [e for e in d["edges"] if e.get("mention")]
 check(any(e["source"] == late for e in ment), "references to t:late are mentions")
 check(not reasoning_cycles(d["nodes"], d["edges"]),
       "no cycle: t:late uses t:main, t:main only mentions t:late")
+
+# A proof that names the result it proves ("Theorem \ref{t:own} follows from ...") still
+# proves it: the reference is not a use (it used to close a 2-cycle with 'proves', and the
+# cycle breaker dropped 'proves', which cut Lemma l:aux off from the theorem).
+own, aux = by_label["t:own"], by_label["l:aux"]
+check(proved.count(own) == 1, "the last proof proves t:own, got %s" % proves)
+pf = next(p for p, r in proves.items() if r == own)
+check(not any(e["source"] == own and e["target"] == pf for e in d["edges"]), "t:own is not used by its own proof")
+check(any(e["source"] == aux and e["target"] == pf for e in d["edges"]), "l:aux is used by the proof of t:own")
 print("all edge-builder checks pass")
 
 # The learned definition -> user edges (alg3/edges.py) are opt-in: the parser's own edges

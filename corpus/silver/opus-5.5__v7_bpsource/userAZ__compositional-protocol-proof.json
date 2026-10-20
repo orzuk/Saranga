@@ -1,0 +1,2936 @@
+{
+ "metadata": {
+  "title": "A Formally Verified Foundation for Compositional Heterogeneous Coherence",
+  "arxiv_id": "userAZ__compositional-protocol-proof__source",
+  "annotator": "agent-extraction",
+  "model": "claude-opus-5-5",
+  "effort": "default",
+  "prompt_version": "v7-86dcfbecdc4d78a5-46cf397",
+  "extraction_date": "2026-10-20",
+  "rigor_nonformal_count": 3,
+  "paper_style": [
+   "formal",
+   "modeling"
+  ],
+  "extraction_notes": [
+   {
+    "category": "source_problem",
+    "nodes": [],
+    "note": "Mathpix conversion: no theorem environments, labels or refs; Definitions 5.1-5.5 and Theorem 6.1 are plain paragraphs, so every node is a prose node. Fullwidth punctuation and missing spaces after periods in Sec. 5.2 forced some spans to start at paragraph beginnings."
+   },
+   {
+    "category": "unexpected_construct",
+    "nodes": [
+     "AssumP5",
+     "AssumP6",
+     "AssumP7",
+     "AssumP8",
+     "AssumP10",
+     "AssumP11",
+     "AssumP12",
+     "AssumP13",
+     "AssumP14"
+    ],
+    "note": "The verification axioms are inference rules in figure displays (Figs. 4-7); each axiom is an assumption node on its prose description, with its figure rule in also_stated_at where it could be isolated (the shim rules in Fig. 7 are garbled)."
+   },
+   {
+    "category": "source_problem",
+    "nodes": [
+     "AssumP14",
+     "DP36"
+    ],
+    "note": "Table 1 (event abbreviations) was placed by Mathpix inside the To-cluster-shim item list, so it is contained in AssumP14's span; DP36 holds only the prose sentences introducing the abbreviations."
+   },
+   {
+    "category": "rule_conflict",
+    "nodes": [
+     "PP1"
+    ],
+    "note": "Sec. 6.4 is a proof sketch whose full proof exists only in the Lean development, not in the paper; it is the sole proof node; the proof-sketch rule asks for rigor semi_formal but the finishing step rejects rigor on proofs, so PP1 carries none and no alternative flag."
+   },
+   {
+    "category": "type_uncertain",
+    "nodes": [
+     "TP2"
+    ],
+    "note": "The Lean theorem enforce_compound_consistency is called the final statement of the main theorem but states the pairwise linearization-order lemma used in PP1, so it is its own theorem node rather than a copy of TP1."
+   },
+   {
+    "category": "not_extracted",
+    "nodes": [],
+    "note": "Equation (1) (\\tag{1} inside equation*) is not a parser fact and is kept inside DP17 rather than as an equation node; model-checking statistics and Lean mechanization lessons were left out."
+   }
+  ],
+  "extraction_comment": "Theorem 6.1 is proved only in Lean; the paper gives a sketch plus a worked case (Acquire then Load).",
+  "labels": {},
+  "unresolved_refs": []
+ },
+ "nodes": [
+  {
+   "id": "ExP1",
+   "type": "example",
+   "name": "Message Passing litmus test on Apple M1 (ARM/TSO mixed)",
+   "statement": "Consider the \"Message Passing\" (MP) litmus test shown above, where thread T1 is mapped to an ARM core and T2 is mapped to a TSO core. Can thread T2 ever observe the value r1 = 1 and the value r2 = 0? The compound MCM [17, 32] of ARMv8 and TSO- the natural composition of the two MCMs -would disallow this behavior. Nevertheless, we observed this unexpected behavior on the M1 mini!",
+   "section": "2 Motivating Case Study: Checking Compound Consistency in Apple M-Series Chips",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "On an Apple M1, an ARM producer and TSO-mode consumer exhibit the MP outcome r1=1, r2=0 forbidden by the ARMv8/TSO compound MCM.",
+   "tags": [
+    "litmus_test",
+    "counterexample"
+   ]
+  },
+  {
+   "id": "DP1",
+   "type": "definition",
+   "name": "Cluster",
+   "statement": "Consider a heterogeneous computer (Figure 1) which includes some number of clusters-a cluster can be a chiplet, socket, or a chip-connected using a global coherence interconnect to expose unified shared memory. A cluster represents a self-contained processing unit, such as a multi-core CPU or a GPU.",
+   "section": "3.1 System Model",
+   "origin": "paper",
+   "confidence": 0.75,
+   "definiendum": "cluster",
+   "genus": "self-contained processing unit"
+  },
+  {
+   "id": "DP2",
+   "type": "definition",
+   "name": "Global coherence interconnect",
+   "statement": "The device clusters are linked by a global coherence interconnect that enables communication and sharing between the clusters by keeping the last-level-caches of each cluster coherent.",
+   "section": "3.1 System Model",
+   "origin": "paper",
+   "confidence": 0.75,
+   "definiendum": "global coherence interconnect"
+  },
+  {
+   "id": "DP3",
+   "type": "definition",
+   "name": "Single-Writer-Multiple-Reader (SWMR) invariant",
+   "statement": "This guarantee, which is satisfied by existing standards like CXL [2] and CHI [1], ensures that at any point in time, a memory address can have at most one writer or, in the absence of a writer, multiple readers.",
+   "section": "3.1 System Model",
+   "origin": "external",
+   "confidence": 0.8,
+   "origin_citation": "Sorin et al. [29]",
+   "definiendum": "Single-Writer-Multiple-Reader (SWMR) invariant",
+   "tags": [
+    "coherence"
+   ]
+  },
+  {
+   "id": "DP4",
+   "type": "definition",
+   "name": "Shim",
+   "statement": "To bridge the semantic gap between the diverse internal protocols and the unified global protocol, each cluster interfaces with the interconnect through a dedicated shim. This shim logic is responsible for translating coherence requests between the cluster's private domain and the global SWMR domain, and it is where the Synchronous Propagation rule is implemented.",
+   "section": "3.1 System Model",
+   "origin": "paper",
+   "confidence": 0.75,
+   "definiendum": "shim",
+   "genus": "interface logic",
+   "differentia": [
+    "translating coherence requests between the cluster's private domain and the global SWMR domain"
+   ]
+  },
+  {
+   "id": "DP5",
+   "type": "definition",
+   "name": "Stable and transient states",
+   "statement": "Here, we distinguish between stable states, where the cache has completed all previous requests, and transient states, which indicate the cache is still waiting for a request to be fulfilled.",
+   "section": "3.2 Coherence Protocols",
+   "origin": "external",
+   "confidence": 0.75,
+   "origin_citation": "standard (uncited)",
+   "definiendum": [
+    "stable states",
+    "transient states"
+   ]
+  },
+  {
+   "id": "DP6",
+   "type": "definition",
+   "name": "RCC (Release-Consistency-directed-Coherence)",
+   "statement": "Protocols that enforce Release Consistency are, in particular, commonly employed in GPUs, and variants of these protocols are called RCC (Release-Consistency-directed-Coherence) [29].",
+   "section": "3.2 Coherence Protocols",
+   "origin": "external",
+   "confidence": 0.8,
+   "origin_citation": "Sorin et al. [29]",
+   "definiendum": "RCC",
+   "genus": "Protocols that enforce Release Consistency"
+  },
+  {
+   "id": "DP7",
+   "type": "definition",
+   "name": "Denovo",
+   "statement": "For example, Denovo [12] is an RCC variant that obtains exclusive ownership on writes, but does not send invalidations to other cores, relying instead on software-directed self-invalidation.",
+   "section": "3.2 Coherence Protocols",
+   "origin": "external",
+   "confidence": 0.75,
+   "origin_citation": "Denovo [12]",
+   "definiendum": "Denovo",
+   "genus": "RCC variant",
+   "differentia": [
+    "obtains exclusive ownership on writes, but does not send invalidations to other cores"
+   ]
+  },
+  {
+   "id": "DP8",
+   "type": "definition",
+   "name": "Lazy Release Consistency Coherence (L-RCC)",
+   "statement": "Another variant, Lazy Release Consistency Coherence (L-RCC) [6], optimizes write propagation by delaying it until a remote acquire is detected, as opposed to eagerly propagating writes on a release.",
+   "section": "3.2 Coherence Protocols",
+   "origin": "external",
+   "confidence": 0.75,
+   "origin_citation": "L-RCC [6]",
+   "definiendum": "L-RCC",
+   "genus": "RCC variant"
+  },
+  {
+   "id": "AssumP1",
+   "type": "assumption",
+   "name": "Directory-based SWMR protocols",
+   "statement": "For CPU-style SWMR protocols, we model directory-based designs, as they represent the de facto scalable design pattern for modern many-core chips.",
+   "section": "3.2 Coherence Protocols",
+   "origin": "paper",
+   "confidence": 0.75
+  },
+  {
+   "id": "AssumP2",
+   "type": "assumption",
+   "name": "No intra-cluster scope hierarchy",
+   "statement": "However, since our work's focus is on the mechanism of inter-cluster coherence, which is governed by operations that propagate to the most inclusive scope (cf. system scope), we do not explicitly model the intra-cluster scope hierarchy.",
+   "section": "3.2 Coherence Protocols",
+   "origin": "paper",
+   "confidence": 0.7
+  },
+  {
+   "id": "AssumP3",
+   "type": "assumption",
+   "name": "Multi-copy atomicity (MCA)",
+   "statement": "Furthermore, the protocols we have modeled are multi-copy-atomic (MCA).",
+   "section": "3.2 Coherence Protocols",
+   "origin": "paper",
+   "confidence": 0.8
+  },
+  {
+   "id": "DP9",
+   "type": "definition",
+   "name": "Principle of Synchronous Propagation",
+   "statement": "These systems are all underpinned by a common design pattern for this translation, which we call the Principle of Synchronous Propagation: \\begin{itemize} \\item[-] Outgoing Requests: A memory request originating from a core within a cluster is propagated to the global interconnect if and only if that request reaches that cluster's main coherence point (e.g., its directory or last-level cache) and the cluster does not already hold sufficient permissions to service the request locally. This propagation is synchronous: the local request encapsulates the global request within it, ensuring the two are tightly coupled. Requests handled entirely within a core's private caches (e.g., a write to a line in the 'Modified' state), or serviced at the directory with existing permissions are not propagated globally. \\item[-] Incoming Requests: A request arriving from the global interconnect (e.g., an invalidation or a forwarded read request) is injected into the target cluster's internal protocol as if it were a local request originating from a pseudo-core at the cluster's boundary. Again, this injection happens synchronously.",
+   "section": "3.3 Synchronous Propagation",
+   "origin": "paper",
+   "confidence": 0.85,
+   "definiendum": "Principle of Synchronous Propagation",
+   "statement_short": "Shim rule: an outgoing request reaching the cluster directory without sufficient permissions is synchronously propagated globally; incoming global requests are injected as pseudo-core local requests.",
+   "also_stated_at": [
+    "We call it the Principle of Synchronous Propagation: When a device-internal protocol propagates a memory operation to other threads within that device, leverage the global protocol to also propagate it to other devices within the system."
+   ]
+  },
+  {
+   "id": "DP10",
+   "type": "definition",
+   "name": "Compound Memory Consistency Model (CMCM)",
+   "statement": "The formal answer to this question is the Compound Memory Consistency Model (CMCM) [17, 32]. A correct execution trace under CMCM, when projected onto the threads of a single device, remains a valid execution under that device's native MCM.",
+   "section": "3.4 Correctness Condition: Compound Consistency",
+   "origin": "external",
+   "confidence": 0.85,
+   "origin_citation": "[17, 32]",
+   "definiendum": "Compound Memory Consistency Model (CMCM)"
+  },
+  {
+   "id": "DP11",
+   "type": "definition",
+   "name": "Memory events",
+   "statement": "Memory events are reads, writes, and memory fences in each of the threads.",
+   "section": "3.4 Correctness Condition: Compound Consistency",
+   "origin": "external",
+   "confidence": 0.8,
+   "origin_citation": "standard (uncited)",
+   "definiendum": "memory events"
+  },
+  {
+   "id": "DP12",
+   "type": "definition",
+   "name": "rf relation (reads-from)",
+   "statement": "Between these events, the rf relation (\"reads\\\\ from\") relates a write event $w$ with every read event $r$ that sees the written value.",
+   "section": "3.4 Correctness Condition: Compound Consistency",
+   "origin": "external",
+   "confidence": 0.85,
+   "origin_citation": "standard axiomatic models [5]",
+   "definiendum": "rf"
+  },
+  {
+   "id": "DP13",
+   "type": "definition",
+   "name": "co relation (coherence)",
+   "statement": "The co relation (\"coherence\") relates two writes to the same location by the order in which they are observed.",
+   "section": "3.4 Correctness Condition: Compound Consistency",
+   "origin": "external",
+   "confidence": 0.85,
+   "origin_citation": "standard axiomatic models [5]",
+   "definiendum": "co"
+  },
+  {
+   "id": "DP14",
+   "type": "definition",
+   "name": "po and ppo relations",
+   "statement": "Finally, the po relation orders all events in every thread by their program order, and ppo is the subset of po that is preserved by the memory model.",
+   "section": "3.4 Correctness Condition: Compound Consistency",
+   "origin": "external",
+   "confidence": 0.85,
+   "origin_citation": "standard axiomatic models [5]",
+   "definiendum": [
+    "po",
+    "ppo"
+   ]
+  },
+  {
+   "id": "DP15",
+   "type": "definition",
+   "name": "fr relation (from-reads)",
+   "statement": "The fr relation (\"from-reads\") is defined as $\\mathrm{fr}=\\mathrm{rf}^{-1}$; co, where ${ }^{-1}$ denotes the inverse relation and ; the sequential composition. It relates all read events with the write that overwrites the value they saw.",
+   "section": "3.4 Correctness Condition: Compound Consistency",
+   "origin": "external",
+   "confidence": 0.85,
+   "origin_citation": "standard axiomatic models [5]",
+   "definiendum": "fr"
+  },
+  {
+   "id": "DP16",
+   "type": "definition",
+   "name": "rfe relation (external reads-from)",
+   "statement": "Similarly, if we restrict the rf relation to \"external\" events, i.e. where the read and write are in different threads, we get rfe = rf \\textbackslash same-thread.",
+   "section": "3.4 Correctness Condition: Compound Consistency",
+   "origin": "external",
+   "confidence": 0.85,
+   "origin_citation": "standard axiomatic models [5]",
+   "definiendum": "rfe"
+  },
+  {
+   "id": "DP17",
+   "type": "definition",
+   "name": "MCA consistency axiom (Axiom 1)",
+   "statement": "Memory models are then defined by predicates on these relations. For an MCA memory model, the defining \"axiom\" states that the union of these relations is acyclic: \\begin{equation*} \\text { acyclic(ppo } \\cup \\text { rfe } \\cup \\text { fr } \\cup \\text { co }) \\tag{1} \\end{equation*}",
+   "section": "3.4 Correctness Condition: Compound Consistency",
+   "origin": "external",
+   "confidence": 0.8,
+   "origin_citation": "standard axiomatic models [5]",
+   "definiendum": "MCA memory model axiom",
+   "statement_short": "An MCA memory model requires acyclicity of ppo ∪ rfe ∪ fr ∪ co."
+  },
+  {
+   "id": "DP18",
+   "type": "definition",
+   "name": "Compound ppo",
+   "statement": "For a compound memory model (in the MCA case) thus, the memory-model-specific relation ppo is defined as $\\mathrm{ppo}=\\cup_{i} \\mathrm{ppo}_{i}$, where $\\mathrm{ppo}_{i}$ is the ppo of the memory model on thread $i$ [32].",
+   "section": "3.4 Correctness Condition: Compound Consistency",
+   "origin": "external",
+   "confidence": 0.8,
+   "origin_citation": "[32]",
+   "definiendum": "ppo"
+  },
+  {
+   "id": "DP19",
+   "type": "definition",
+   "name": "Coherence-box consistency (enforce SC / enforce RC)",
+   "statement": "Consider a simplified pipeline-coherence interface modeled as delivering memory operations to the coherence box one at a time and in program order. Thus, an SWMR-enforcing protocol is said to \"enforce SC\", and an RCC protocol is said to \"enforce RC\".",
+   "section": "3.5 Defining the Proof Scope: The Coherence Box",
+   "origin": "external",
+   "confidence": 0.75,
+   "origin_citation": "Sorin et al. [29]",
+   "definiendum": [
+    "enforce SC",
+    "enforce RC"
+   ]
+  },
+  {
+   "id": "ExP2",
+   "type": "example",
+   "name": "Message Passing litmus test (CPU MSI / GPU RCC)",
+   "statement": "Our system fuses a CPU cluster $\\left(C_{C P U}\\right)$ implementing a directory-based MSI (SWMR) protocol with a GPU cluster $\\left(C_{\\text {GPU }}\\right)$ implementing a basic RCC protocol. The global interconnect is also MSI-based. We analyze the \"message passing\" (MP) litmus test shown below (a variant of the test from Section 2). A thread $T_{1}$ on $C_{\\text {CPU }}$ writes data and then a flag, while a thread $T_{2}$ on $C_{\\text {GPU }}$ waits to read the flag before reading the data. Initially, data and flag are both 0. \\begin{verbatim} // T1 on CPU (SC) // T2 on GPU (RC) m1: store(data, 1) m3: r1 = load.acq(flag) m2: store(flag, 1) m4: r2 = load(data) \\end{verbatim} The CMCM correctness condition requires that if m3 reads the new value 1, then m4 must also read 1. The outcome where $\\mathrm{r} 1=1$ and $\\mathrm{r} 2=0$ must be forbidden. Our goal is to show how Synchronous Propagation guarantees this.",
+   "section": "4.1 A Motivating Example: Message Passing",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "MP litmus test across a CPU MSI cluster and a GPU RCC cluster; CMCM forbids r1=1, r2=0."
+  },
+  {
+   "id": "ExP3",
+   "type": "example",
+   "name": "Asynchronous invalidation counterexample",
+   "statement": "To appreciate the subtlety inherent in shim design, consider a naive but plausible performance optimization. An architect might reason that invalidations from the CPU to the GPU are potentially too slow and should be sent \"off the critical path\"-that is, buffered and sent asynchronously without requiring immediate acknowledgment. This seemingly reasonable design can violate the litmus test. Assume data and flag are initially in a readable state in both clusters. If a CPU writes to data and then to flag, the invalidation for flag could arrive at the GPU before the invalidation for data due to network reordering. A GPU thread could then suffer a cache miss on flag, fetch its new value (1), but immediately after, hit on its still-present stale copy of data, incorrectly reading 0. This forbidden outcome demonstrates that intuitive optimizations can be wrong, proving that the precise timing and ordering guarantees of the shim-which we now analyze-are essential for correctness.",
+   "section": "4.1 A Motivating Example: Message Passing",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Sending CPU-to-GPU invalidations asynchronously lets them reorder, so the GPU can read new flag but stale data, violating MP.",
+   "tags": [
+    "counterexample"
+   ]
+  },
+  {
+   "id": "ExP4",
+   "type": "example",
+   "name": "MP trace under Synchronous Propagation",
+   "statement": "Let's again assume both data and flag are initially in a readable state in both clusters. When $T_{1}$ executes m1 (write data), its L1 has the line in state $S$. The request must go to the $C_{\\text {CPU }}$ directory to get exclusive ownership. Per the Synchronous Propagation (Outgoing) rule, this cluster-level event triggers a global request that invalidates the copy of data in $C_{G P U}$ 's L2 cache. When this global invalidation reaches $C_{G P U}$, the Incoming Request rule is invoked, treating the event as stimulus to the cluster's internal RCC protocol. However, because a typical RCC protocol does not eagerly forward invalidations on a write, no further coherence action is taken within the cluster at this time. The line is invalidated at the cluster's L2, but any copies residing in the GPU's L1 caches may persist until a future synchronization operation. Importantly, because the propagation happens synchronously, the GPU cluster's copy of data is invalidated before m1 completes. A similar sequence occurs for m2 (write flag), causing the copy of flag in $C_{\\text {GPU }}$ 's L2 cache to be invalidated before m2 completes. Later, when $T_{2}$ executes its acquire read of flag, the acquire forces the L1 cache to be bypassed, and also causes the self-invalidation of the L1 and so data is self-invalidated in the GPU's L1. So when data is accessed, it misses the L1 and the subsequent miss in its L2 triggers a global read request; when the global read reaches $C_{\\text {CPU }}$ 's L2, the Incoming rule is invoked causing a forwarded read request in the MSI protocol that eventually returns the value 1 from the CPU. It is important that T2 uses an acquire read for flag. A regular read could hit the stale copy of flag still in the L1 since the global invalidation only reached the L2, observing the old value-or worse, it could fetch the updated flag from L2 while data remains stale in the L1. But note, this behavior does not violate RC. Regular reads carry no ordering guarantee; the programmer must use an Acquire read for flag to guarantee that the subsequent read to data observes the updated value.",
+   "section": "4.2 Linearization Points",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Walk-through of the MP test: synchronous global invalidations reach the GPU L2 before each write completes; the acquire self-invalidates the L1."
+  },
+  {
+   "id": "DP20",
+   "type": "definition",
+   "name": "Linearization point (informal)",
+   "statement": "This motivates the first component of our abstraction: linearization points, which are logical times at which an operation's effects become visible to a set of threads.",
+   "section": "4.2 Linearization Points",
+   "origin": "paper",
+   "confidence": 0.75,
+   "definiendum": "linearization point"
+  },
+  {
+   "id": "RP1",
+   "type": "remark",
+   "name": "Synchronous Propagation as a linearization constraint",
+   "statement": "The key insight is to distinguish between local and global visibility. An operation like m1 achieves its local linearization point within $C_{\\text {CPU }}$ when it is ordered by its cluster directory. It also achieves a global linearization point when its effects are made visible to all clusters. The Principle of Synchronous Propagation can now be elegantly modeled as a formal constraint relating these two points: for an outgoing request, its global linearization must occur no later than its local linearization. Since both m1 and m2 are ordered by the $C_{\\text {CPU }}$ directory, we know that m1 is locally linearized before m2. Because the Synchronous Propagation rule creates this tight coupling between local and global linearization for both operations, it follows that m1 is also globally linearized before m2. It is\\\\ this formal reasoning about the ordering of linearization points that allows us to prove the local ordering is reflected globally, which is precisely what CMCM requires.",
+   "section": "4.2 Linearization Points",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Synchronous Propagation means global linearization occurs no later than local linearization, so local order of m1, m2 is reflected globally."
+  },
+  {
+   "id": "RP2",
+   "type": "remark",
+   "name": "Abstract state as cached proof of global linearization",
+   "statement": "Now consider a harder case: what if data and flag were already in an writable (Modified) state in $T_{1}$ 's L1 cache? In this scenario, both m1 and m2 are local L1 hits. They do not generate traffic to the $C_{C P U}$ directory, so per Synchronous Propagation, no global invalidations are sent. How can we prove that the order between m1 and m2 is preserved globally? This motivates the second part of our abstraction: tracking an abstract state (e.g., read-coherent, write-coherent) for each memory location. The key insight is that for $T_{1}$ to have acquired Modified status for a line, it must have previously issued a local coherence request-and consequently owing to the Outgoing Request rule of Synchronous Propagation-a global coherence request. The abstract state of the line itself-in this case, write-coherent-is effectively a cached proof of prior global linearization. Thus, even though the writes m1 and m2 are local, we can reason that the lines they modify were made globally exclusive before the writes occurred, preserving the necessary ordering. This explains why we employ abstract coherence states in our abstraction.",
+   "section": "4.3 The Challenge of Locality and Abstract State",
+   "origin": "paper",
+   "confidence": 0.7,
+   "statement_short": "Local L1 hits generate no global traffic, but holding a write-coherent state certifies a prior global linearization, preserving order."
+  },
+  {
+   "id": "DP21",
+   "type": "definition",
+   "name": "Abstract states (informal)",
+   "statement": "This gives us four abstract states: \\begin{itemize} \\item[-] Write-Coherent: Grants permission to write to a local copy. The protocol guarantees that this write is immediately made visible to all other threads it manages (e.g., by invalidating their copies). This corresponds to a Modified state in an MSI protocol, as well as Exclusive state in an MESI protocol. \\item[-] Read-Coherent: Grants permission to read from a local copy that is consistent with the latest visible write within the protocol's domain. This corresponds to a Shared state in an MSI protocol, as well as Owned state in an MOSI protocol. \\item[-] Write-Non-Coherent: Grants permission to write to a local copy, but the protocol does not guarantee immediate visibility to other threads. The updated value is buffered locally, and its effects are only propagated by a subsequent, explicit synchronization operation. This state is essential for modeling weak stores in RCC protocols. \\item[-] Read-Non-Coherent: Grants permission to read from a local copy, but the value is not guaranteed to be consistent with the latest visible write within the protocol. This allows for relaxed/weak reads, while stronger operations (like an acquire read) must bypass a copy in this state. Weak writes to a cache entry on Read-Non-Coherent silently upgrade to Write-Non-Coherent.",
+   "section": "5.1 Abstract Protocol State",
+   "origin": "paper",
+   "confidence": 0.8,
+   "definiendum": [
+    "Write-Coherent",
+    "Read-Coherent",
+    "Write-Non-Coherent",
+    "Read-Non-Coherent"
+   ],
+   "statement_short": "Four abstract cache-line states: read/write permission crossed with whether accesses are immediately visible (coherent) in the protocol's domain."
+  },
+  {
+   "id": "DP22",
+   "type": "definition",
+   "name": "State",
+   "statement": "Definition 5.1 (State). 〈permissions, coherent〉\\\\ We define our abstract states using a tuple: \\begin{itemize} \\item[-] permission is a set with a total order: none < read-only < read-write. \\item[-] coherence is a boolean with the order: non-coherent < coherent. \\end{itemize} Using this formalism, we can precisely define our four abstract states: \\begin{itemize} \\item[-] Write-Coherent $\\triangleq\\langle$ read-write, coherent $\\rangle$ \\item[-] Read-Coherent $\\triangleq\\langle$ read-only , coherent $\\rangle$ \\item[-] Write-Non-Coherent $\\triangleq\\langle$ read-write, non-coherent $\\rangle$ \\item[-] Read-Non-Coherent $\\triangleq\\langle$ read-only , non-coherent $\\rangle$ \\end{itemize}",
+   "section": "5.1 Abstract Protocol State",
+   "origin": "paper",
+   "confidence": 0.95,
+   "definiendum": "abstract state",
+   "genus": "tuple",
+   "differentia": [
+    "permission is a set with a total order: none < read-only < read-write.",
+    "coherence is a boolean with the order: non-coherent < coherent."
+   ],
+   "statement_short": "An abstract state is a pair (permission, coherence); the four states are the read-only/read-write × coherent/non-coherent combinations."
+  },
+  {
+   "id": "DP23",
+   "type": "definition",
+   "name": "Partial order on states (state lattice)",
+   "statement": "This structure defines a state lattice (Figure 3). We define a partial order $(\\leq)$ on states such that for any two states $s_{1}, s_{2}$, we have $s_{1} \\leq s_{2}$ if $s_{1}$.permission $\\leq s_{2}$.permission and $s_{1}$.coherence $\\leq$ $s_{2}$.coherence.",
+   "section": "5.1 Abstract Protocol State",
+   "origin": "paper",
+   "confidence": 0.9,
+   "definiendum": "$(\\leq)$",
+   "statement_short": "States are ordered componentwise by permission and coherence."
+  },
+  {
+   "id": "DP24",
+   "type": "definition",
+   "name": "Minimal required state",
+   "statement": "We use this partial order to determine whether a cache line has sufficient state to satisfy a given request. For each request type, we can define a minimal required state; any state greater than\\\\ or equal to that minimum in the partial order can also satisfy the request locally.For example, a request to read data in an MSI protocol requires at least the Read－Coherent state.Since our partial order defines that Read－Coherent $\\leq$ Write－Coherent, a read request can also be satisfied locally if the cache line is already in the Write－Coherent state.",
+   "section": "5.1 Abstract Protocol State",
+   "origin": "paper",
+   "confidence": 0.75,
+   "definiendum": "minimal required state",
+   "statement_short": "Each request type has a minimal required state; any state at least as large in the order serves the request locally."
+  },
+  {
+   "id": "DP25",
+   "type": "definition",
+   "name": "Consistency labels",
+   "statement": "Next, we define the abstract requests that protocols issue.The core of our abstraction is the consistency label assigned to each request, which acts as a formal contract specifying the ordering guarantees that request must provide.We consider the following: \\begin{itemize} \\item[] －SC－Read and SC－Write: These capture the strong ordering semantics of typical SWMR protocols. \\item[] －RC－Acquire, RC－Release, Weak－Read, and Weak－Write: These capture the more relaxed ordering semantics of RCC protocols. \\end{itemize}",
+   "section": "5.2 Abstract Requests and Consistency Labels",
+   "origin": "paper",
+   "confidence": 0.85,
+   "definiendum": "consistency label",
+   "also_stated_at": [
+    "Instead of reasoning about individual litmus tests, we associate every protocol request (e.g., a GetModified in MSI) with a label (e.g., SC-write) that formally specifies its required consistency semantics. These labels serve as a comprehensive specification of the entire set of orderings that a protocol must preserve."
+   ],
+   "statement_short": "Each request carries a consistency label (SC-Read/Write, RC-Acquire/Release, Weak-Read/Write) specifying its required ordering."
+  },
+  {
+   "id": "DP26",
+   "type": "definition",
+   "name": "Abstract Request",
+   "statement": "Definition 5.2 (Abstract Request).〈op, label, coherent〉where: \\begin{itemize} \\item[] －op $\\in$｛read, write\\} \\item[] －label $\\in$｛SC, Acquire, Release, Weak\\} \\item[] －coherent $\\in$｛true, false\\} \\end{itemize}",
+   "section": "5.2 Abstract Requests and Consistency Labels",
+   "origin": "paper",
+   "confidence": 0.95,
+   "definiendum": "Abstract Request",
+   "genus": "tuple",
+   "statement_short": "An abstract request is a triple (op ∈ {read, write}, label ∈ {SC, Acquire, Release, Weak}, coherent ∈ {true, false})."
+  },
+  {
+   "id": "DP27",
+   "type": "definition",
+   "name": "Valid abstract requests",
+   "statement": "Not all combinations of the 〈op, label, coherent〉 tuple are meaningful.The set of valid abstract requests is constrained by the underlying semantics of the consistency labels and the coherence property itself. First, Release is a property of writes and Acquire is a property of reads; this invalidates com－ binations such as 〈write, Acquire, ...〉.Second, non－coherent requests buffer operations whose visibility is delayed, which is characteristic of RCC protocols; these requests cannot carry an SC label, which demands immediate visibility.This leaves Weak and Release as the valid labels for non－coherent writes, and Weak and Acquire as the valid labels for non－coherent reads.",
+   "section": "5.2 Abstract Requests and Consistency Labels",
+   "origin": "paper",
+   "confidence": 0.8,
+   "definiendum": "valid abstract requests",
+   "statement_short": "Release only on writes, Acquire only on reads, and non-coherent requests never carry SC."
+  },
+  {
+   "id": "RP3",
+   "type": "remark",
+   "name": "Coherent requests in advanced RCC variants",
+   "statement": "Conversely, coherent requests(coherent＝true)represent operations that are immediately visible.While typically associated with SWMR protocols and their SC labels, they can also model synchronizing operations in advanced RCC variants.For example, a Release in a protocol like L－RCC that obtains coherent permissions, or a write in an ownership－based protocol like RCC－O, would be modeled as a coherent request(e.g., 〈write, Release, true〉).",
+   "section": "5.2 Abstract Requests and Consistency Labels",
+   "origin": "paper",
+   "confidence": 0.7
+  },
+  {
+   "id": "DP28",
+   "type": "definition",
+   "name": "Request's Required State",
+   "statement": "Definition 5.3 (Request＇s Required State).For any abstract request $r$ : \\begin{itemize} \\item[] －For a coherent write, the ReqState is Write－Coherent. \\item[] －For a coherent read, the ReqState is Read－Coherent. \\item[] －For a non－coherent Release write or Acquire read, the ReqState is still Write－Coherent or Read－Coherent, respectively.Because simple RCC protocols typically hold lines in non－coherent states, these synchronizing operations are forced to the cluster directory. \\item[] －For non－coherent weak operations, the ReqState is Read－Non－Coherent, as they can act on locally cached, potentially stale data. \\end{itemize}",
+   "section": "5.2 Abstract Requests and Consistency Labels",
+   "origin": "paper",
+   "confidence": 0.95,
+   "definiendum": "ReqState",
+   "statement_short": "ReqState: Write-/Read-Coherent for coherent and synchronizing writes/reads; Read-Non-Coherent for weak non-coherent operations."
+  },
+  {
+   "id": "DP29",
+   "type": "definition",
+   "name": "Local Linearization Point",
+   "statement": "Definition 5.4 (Local Linearization Point). For a request $r$ on a line held in abstract state $s$ by its local cache: \\begin{itemize} \\item[(1)] The operation is linearized at the cache if and only if the state $s$ is sufficient for the request and s.coherence is true (i.e., the state is Write-Coherent or Read-Coherent). \\item[(2)] The operation is linearized at the cluster directory if the request must be sent to the cluster directory to be serviced. This includes both requests on insufficient states (e.g., a write to a Read-Coherent line) and strongly consistent requests (e.g., RC-Acquire, RC-Release). \\item[(3)] The linearization of a Weak-Write to a non-coherent state is deferred to a subsequent synchronizing operation (e.g., RC-Release) that makes its value visible at the directory. Similarly, a Weak-Read on Write-Non-Coherent state reads a value that will be made visible later, and its linearization is deferred. \\item[(4)] The linearization of a Weak-Read from a Read-Non-Coherent state is defined as the linearization point of the preceding operation that brought the line into that state. \\end{itemize}",
+   "section": "5.3 Linearization Points and Visibility",
+   "origin": "paper",
+   "confidence": 0.95,
+   "definiendum": "local linearization point",
+   "statement_short": "A request linearizes at the cache on a sufficient coherent state, at the directory if sent there, deferred for weak non-coherent writes/reads, or inherited for weak reads on Read-Non-Coherent."
+  },
+  {
+   "id": "DP30",
+   "type": "definition",
+   "name": "Global Linearization Point",
+   "statement": "Definition 5.5 (Global Linearization Point). For a request $r$ : \\begin{itemize} \\item[(1)] If $r$ 's local linearization is at the cache, its global linearization point is also at the cache. \\item[(2)] If $r$ 's local linearization is at the cluster directory, its global linearization point is when the corresponding global request, triggered by Synchronous Propagation, is serviced by the global protocol. \\end{itemize}",
+   "section": "5.3 Linearization Points and Visibility",
+   "origin": "paper",
+   "confidence": 0.95,
+   "definiendum": "global linearization point",
+   "statement_short": "Cache-linearized requests linearize globally at the cache; directory-linearized ones when their Synchronous-Propagation global request is serviced."
+  },
+  {
+   "id": "ClP1",
+   "type": "claim",
+   "name": "Locally coherent states are globally consistent",
+   "statement": "The validity of Case 1 in Definition 5.5 is a key consequence of our model. The global SWMR invariant, in combination with the Synchronous Propagation shim rules, guarantees that if a cluster holds a line in a locally coherent state (e.g., Write-Coherent), that state is consistent with the global state of the system.",
+   "section": "5.3 Linearization Points and Visibility",
+   "origin": "paper",
+   "confidence": 0.75,
+   "assumptions": [
+    "The global SWMR invariant, in combination with the Synchronous Propagation shim rules",
+    "a cluster holds a line in a locally coherent state (e.g., Write-Coherent)"
+   ],
+   "conclusions": [
+    "that state is consistent with the global state of the system"
+   ],
+   "statement_short": "Under global SWMR and Synchronous Propagation, a locally coherent cache state agrees with the global state, justifying Definition 5.5(1).",
+   "rigor": "semi_formal"
+  },
+  {
+   "id": "ExP5",
+   "type": "example",
+   "name": "Linearization in the MSI protocol",
+   "statement": "MSI Protocol. For a write request in our MSI example, the linearization point is determined by the cache state. If the line is held in the Modified state (Write-Coherent), the state is sufficient and coherent. Per Definition 5.4(1), the write is locally linearized at the cache. Its global linearization point is also at the cache, as per Definition 5.5(1). If the line is Shared (Read-Coherent), the state is insufficient for a write. Per Definition 5.4(2), the request is sent to the directory and is locally linearized at the cluster directory, which in turn triggers a global request that is globally linearized at the global protocol.",
+   "section": "5.3 Linearization Points and Visibility",
+   "origin": "paper",
+   "confidence": 0.8
+  },
+  {
+   "id": "ExP6",
+   "type": "example",
+   "name": "Linearization in the RCC protocol",
+   "statement": "RCC Protocol. The RCC example highlights the importance of the deferred linearization rule. Consider a Weak-Write that hits a Read-Coherent line, transitioning it to Write-Non-Coherent. Because this is a weak operation whose resulting state is not coherent, per Definition 5.4(3), its local linearization is deferred. The effects of this write only become ordered with respect to other threads upon a subsequent RC-Release operation, which is linearized at the directory. In contrast, an RC-Acquire read is a strong synchronizing operation. Per Definition 5.4(2), it is always linearized at the directory, ensuring it observes the effects of all previously linearized writes.",
+   "section": "5.3 Linearization Points and Visibility",
+   "origin": "paper",
+   "confidence": 0.8
+  },
+  {
+   "id": "AssumP4",
+   "type": "assumption",
+   "name": "Protocols as labeled transition systems",
+   "statement": "For this, we assume that the individual protocols are given as state machines or, more precisely, labeled transition systems [8], describing their specification. The concrete states in the protocol should then be mapped to the abstract states specified in Section 5.1.",
+   "section": "6 A Compositional Verification Framework",
+   "origin": "paper",
+   "confidence": 0.8
+  },
+  {
+   "id": "DP31",
+   "type": "definition",
+   "name": "Fused system",
+   "statement": "The fused system is a state machine (more precisely, a labeled transition system) whose state includes the abstract states of all memory locations in all clusters, as defined in Section 5.1. The transitions of this machine are driven by abstract coherence requests.",
+   "section": "6.1 Modeling Temporal Relationships",
+   "origin": "paper",
+   "confidence": 0.8,
+   "definiendum": "fused system",
+   "genus": "labeled transition system"
+  },
+  {
+   "id": "DP32",
+   "type": "definition",
+   "name": "Execution history of Events",
+   "statement": "To reason about the composed system dynamically, we model an execution as a history of Events, where each event represents a discrete protocol action (e.g., a Cache Event or a Directory Event). The relationships between these events are governed by two key relations: Ordered-Before, which models their temporal sequence, and Encapsulates, which models a causal dependency through temporal containment.",
+   "section": "6.1 Modeling Temporal Relationships",
+   "origin": "paper",
+   "confidence": 0.8,
+   "definiendum": "Events"
+  },
+  {
+   "id": "DP33",
+   "type": "definition",
+   "name": "Event as time interval",
+   "statement": "Formally, we model each event $e$ as a time interval $\\left(t_{\\text {start }}, t_{\\text {end }}\\right)$. The two key relations are then defined over these intervals for any two events $e_{1}, e_{2}$ :",
+   "section": "6.1 Modeling Temporal Relationships",
+   "origin": "paper",
+   "confidence": 0.8,
+   "definiendum": "event"
+  },
+  {
+   "id": "DP34",
+   "type": "definition",
+   "name": "Ordered-Before and Encapsulates",
+   "statement": "\\item[-] Ordered-Before: Event $e_{1}$ is ordered before $e_{2}$, written $e_{1} \\prec_{\\mathrm{OB}} e_{2}$, if and only if $e_{1} . t_{\\text {end }}<e_{2} . t_{\\text {start }}$. \\item[-] Encapsulates: Event $e_{1}$ encapsulates $e_{2}$, written $e_{1} \\supset e_{2}$, if and only if $e_{1} . t_{\\text {start }}<e_{2} . t_{\\text {start }}$ and $e_{2} . t_{\\text {end }}<e_{1} . t_{\\text {end }}$.",
+   "section": "6.1 Modeling Temporal Relationships",
+   "origin": "paper",
+   "confidence": 0.85,
+   "definiendum": [
+    "Ordered-Before",
+    "Encapsulates"
+   ],
+   "statement_short": "e1 ≺OB e2 iff e1 ends before e2 starts; e1 ⊃ e2 iff e2's interval lies strictly inside e1's."
+  },
+  {
+   "id": "DP35",
+   "type": "definition",
+   "name": "Verification axiom categories",
+   "statement": "The formal guarantees of correct composition are based on a set of axioms of the cluster protocol and shim designs that fall into four main categories. \\begin{itemize} \\item[-] Well-Formedness Axioms: These are basic sanity checks on the transition system of the protocol, ensuring that events are correctly ordered and structured. For example, we require that events at a single directory entry are ordered. \\item[-] Abstract State Invariants: These axioms ensure that the protocol's use of abstract states is consistent with their definitions. For instance, an SWMR protocol must verify that at most one cache can hold a line in the Write-Coherent state at any time. \\item[-] Consistency Label Axioms: These are the most critical axioms, connecting coherence actions to consistency semantics. They specify the behavior required for each consistency label. For example, a protocol using a Non-Coherent Release must verify that this operation forces all prior Write-Non-Coherent entries to be written back to the directory before it can linearize. \\end{itemize} \\begin{itemize} \\item[-] Shim Correctness Axioms: These axioms verify that the shim logic correctly implements the two rules of Synchronous Propagation. \\end{itemize}",
+   "section": "6.2 The Verification Axioms",
+   "origin": "paper",
+   "confidence": 0.8,
+   "definiendum": [
+    "Well-Formedness Axioms",
+    "Abstract State Invariants",
+    "Consistency Label Axioms",
+    "Shim Correctness Axioms"
+   ],
+   "statement_short": "The axioms fall into four categories: well-formedness, abstract-state invariants, consistency-label axioms and shim-correctness axioms."
+  },
+  {
+   "id": "DP36",
+   "type": "definition",
+   "name": "Event abbreviations (Table 1)",
+   "statement": "We first define abbreviations to aid in the definition of the Axioms. Our abbreviations in Table 1a and 1b state properties of an event, and relations between events.",
+   "section": "6.2 The Verification Axioms",
+   "origin": "paper",
+   "confidence": 0.7,
+   "definiendum": "abbreviations"
+  },
+  {
+   "id": "AssumP5",
+   "type": "assumption",
+   "name": "Axiom Cache-to-Dir",
+   "statement": "Well-Formedness Axioms. Axiom Cache-to-Dir in Figure 4 captures the property that if an operation (cache event) $e_{\\$}$ does not have a sufficiently strong state, then $e_{\\$}$ accesses the directory through a directory event $e_{\\text {dir }}$. This models the directory-based nature of the protocol.",
+   "section": "6.2 The Verification Axioms",
+   "origin": "paper",
+   "confidence": 0.85,
+   "also_stated_at": [
+    "\\frac{e_{\\$} \\cdot \\mathrm{MRS} \\not \\leq e_{\\$} \\cdot \\text { prevState }}{\\exists e_{\\mathrm{dir}}: e_{\\mathrm{dir}} \\in \\operatorname{Dir} \\wedge e_{\\mathrm{dir} \\cdot} \\cdot \\mathrm{req}=e_{\\$} \\cdot \\text { req } \\wedge e_{\\$} \\supset e_{\\mathrm{dir}}} \\text { Cache-to-Dir }"
+   ]
+  },
+  {
+   "id": "AssumP6",
+   "type": "assumption",
+   "name": "Axiom Inv.-Read",
+   "statement": "Similarly, Axiom Inv.-Read captures an RCC-style property. After an inval(idation) $e_{\\text {inval }}$ at a cache entry, for any subsequent read $e_{\\text {read }}, e_{\\text {read }}$ linearizes after $e_{\\text {inval }}$.",
+   "section": "6.2 The Verification Axioms",
+   "origin": "paper",
+   "confidence": 0.85,
+   "also_stated_at": [
+    "\\frac{e_{\\text {inval.inval } \\text { eread.read }} e_{\\mathrm{inval}} \\text { sameCacheEntry } e_{\\text {read }} \\quad e_{\\text {inval }} \\prec_{\\mathrm{OB}} e_{\\text {read }}}{\\exists e_{\\text {read_lin }}: e \\text { linAt } e_{\\text {read_lin }} \\wedge e_{\\text {inval }} \\prec_{\\mathrm{OB}} e_{\\text {read_lin }}} \\text { Inv.-Read }"
+   ]
+  },
+  {
+   "id": "AssumP7",
+   "type": "assumption",
+   "name": "Axiom Dir-WCoherent-W",
+   "statement": "Abstract State Invariants. Axiom Dir-WCoherent-W in Figure 5 is an example of a SWMR-style property. It states if a directory event $e_{\\text {dir }}$ arrives on Write-Coherent state, then $e_{\\text {dir }}$ encapsulates a downgrade to the owner, enforcing the \"Single-Writer\" part of SWMR.",
+   "section": "6.2 The Verification Axioms",
+   "origin": "paper",
+   "confidence": 0.85,
+   "also_stated_at": [
+    "\\frac{e_{\\text {dir }} \\cdot \\text { prevState }=\\text { Write-Coherent } \\quad e_{\\text {dir }} \\cdot \\text { req.coh }=\\text { Write-Coherent }}{\\exists e_{\\text {down }}: e_{\\text {down }} \\cdot \\text { down }, e_{\\text {down }} \\cdot \\text { req }=e_{\\text {dir }} \\cdot \\text { req }, e_{\\text {dir }} \\supset e_{\\text {down }}, e_{\\text {down }} \\cdot \\text { id }=e_{\\text {dir }} \\cdot \\text { owner }} \\text { Dir-WCoherent-W }"
+   ]
+  },
+  {
+   "id": "AssumP8",
+   "type": "assumption",
+   "name": "Axiom Write-lin",
+   "statement": "Axiom Write-lin is an example of one abstract state invariant that captures an RCC-style property. Specifically, it states that a write operation $e_{\\text {write }}$ doesn't linearize before $e_{\\text {lin }}$. This captures the behavior of write-through and write-back writes in RCC-style protocols.",
+   "section": "6.2 The Verification Axioms",
+   "origin": "paper",
+   "confidence": 0.85,
+   "also_stated_at": [
+    "\\frac{e_{\\text {write }} \\cdot \\text { write } e_{\\text {write }} \\text { linAt } e_{\\text {lin }}}{e_{\\text {write }} \\nprec O B e_{\\text {lin }}} \\text { Write-lin }"
+   ]
+  },
+  {
+   "id": "AssumP9",
+   "type": "assumption",
+   "name": "Global interconnect enforces SWMR",
+   "statement": "We use our SWMR-property Abstract State Invariants to capture the behavior of the global interconnect. The global interconnect's role is specifically to enforce the Single-Writer-Multiple-Reader (SWMR) invariant. For any given memory address, the global protocol guarantees that either (a) at most one cluster has write permission (holding the line in a Write-Coherent state), or (b) any number of clusters have read permission (holding the line in a Read-Coherent state), but never both simultaneously.",
+   "section": "6.2 The Verification Axioms",
+   "origin": "paper",
+   "confidence": 0.85,
+   "also_stated_at": [
+    "We assume this interconnect provides the Single-Writer-Multiple-Reader (SWMR) invariant for any given memory location [29].",
+    "Our framework currently requires the global interconnect to enforce SWMR."
+   ]
+  },
+  {
+   "id": "AssumP10",
+   "type": "assumption",
+   "name": "Axiom Acquire",
+   "statement": "Consistency Axioms. Axiom Acquire in Figure 6 captures an RCC style property. Acquire states that for an Acquire operation $e_{\\text {acquire }}$ that accesses the directory in $e_{\\text {dir }}, e_{\\text {acquire }}$ subsequently invals other cache entries in $e_{\\text {inval }}$ after $e_{\\text {dir }}$.",
+   "section": "6.2 The Verification Axioms",
+   "origin": "paper",
+   "confidence": 0.85,
+   "also_stated_at": [
+    "\\frac{e_{\\mathrm{acq}} \\cdot \\mathrm{acq} \\quad e_{\\mathrm{dir}} \\in \\operatorname{Dir} \\quad e_{\\mathrm{acq}} \\supset e_{\\mathrm{dir}} \\quad a \\neq e_{\\mathrm{acq}} \\cdot \\mathrm{addr}}{\\exists e_{\\mathrm{inval}}: e_{\\mathrm{inval}} \\cdot \\mathrm{inval} \\wedge e_{\\mathrm{inval}} \\cdot \\mathrm{addr}=a \\wedge e_{\\mathrm{acq}} \\supset e_{\\mathrm{inval}} \\wedge e_{\\mathrm{dir}} \\prec_{O B} e_{\\mathrm{inval}}} \\text { Acquire }"
+   ]
+  },
+  {
+   "id": "AssumP11",
+   "type": "assumption",
+   "name": "Axiom Release",
+   "statement": "Similarly, Axiom Release captures when a Release operation $e_{\\text {Release }}$ writes back all other cache entries in Write-Non-Coherent state before writing to the directory.",
+   "section": "6.2 The Verification Axioms",
+   "origin": "paper",
+   "confidence": 0.85,
+   "also_stated_at": [
+    "\\frac{e_{\\mathrm{rel}} \\cdot \\mathrm{rel} \\quad e_{\\mathrm{dir}} \\in \\operatorname{Dir} \\quad e_{\\mathrm{rel}} \\supset e_{\\mathrm{dir}} \\quad a \\neq e_{\\mathrm{rel}} \\cdot \\mathrm{addr}}{\\exists e_{\\mathrm{wb}}: e_{\\mathrm{wb}} \\cdot \\mathrm{wb} \\wedge e_{\\mathrm{wb}} \\cdot \\mathrm{addr}=a \\wedge e_{\\mathrm{wb}} \\supset e_{\\mathrm{dir}} \\wedge e_{\\mathrm{rel}} \\supset e_{\\mathrm{wb}} \\wedge e_{\\mathrm{wb}} \\prec O B e_{\\mathrm{dir}}} \\text { Release }"
+   ]
+  },
+  {
+   "id": "AssumP12",
+   "type": "assumption",
+   "name": "Axiom L-RCC",
+   "statement": "Axiom L-RCC captures L-RCC's behavior that writes back Write-Non-Coherent cache entries upon a downgrade to a cache entry in O state.",
+   "section": "6.2 The Verification Axioms",
+   "origin": "paper",
+   "confidence": 0.85,
+   "also_stated_at": [
+    "\\frac{e_{\\mathrm{down}} \\cdot \\mathrm{prevState}=\\text { Write-Coherent } \\quad a \\neq e_{\\mathrm{down}} \\cdot \\mathrm{addr}}{\\exists e_{\\mathrm{down}}, e_{\\mathrm{wb}}: e_{\\mathrm{down}} \\cdot \\mathrm{down} \\wedge e_{\\mathrm{wb}} \\cdot \\mathrm{wb} \\wedge e_{\\mathrm{wb}} \\cdot \\mathrm{addr}=a \\wedge e_{\\mathrm{down}} \\supset e_{\\mathrm{wb}}} \\text { L-RCC }"
+   ]
+  },
+  {
+   "id": "AssumP13",
+   "type": "assumption",
+   "name": "Axiom To-global-shim",
+   "statement": "To-global-shim captures that if any directory access event $e_{\\text {dir }}$ has insufficient permissions, it is translated to an access $\\left(e_{\\text {greq }}\\right)$ in its corresponding global cache. The key insight it captures is that any request reaching the global interconnect must be translated into an SC operation to comply with the global SWMR invariant.",
+   "section": "6.2 The Verification Axioms",
+   "origin": "paper",
+   "confidence": 0.85
+  },
+  {
+   "id": "AssumP14",
+   "type": "assumption",
+   "name": "Axiom To-cluster-shim",
+   "statement": "To-cluster-shim captures that any global coherence event sent to a global cache is then translated to an appropriate local proxyReq cluster event. In our abstraction, the proxyReq is generated from a fictitious \"proxy core\" at the cluster boundary. The translated proxyReq depends on the local protocol's type: \\begin{itemize} \\item[-] Translation to an SWMR cluster: \\begin{itemize} \\item[-] A global write-downgrade (invalidation) event $e_{\\text {gdown }}$ is translated into a local Coherent SC-Write event from the proxy core. This naturally triggers the protocol's internal invalidation mechanism. Formally: $e_{\\text {gdown }} \\supset e_{\\text {local-write }}$. \\end{itemize} \\end{itemize} \\begin{table}[h] \\begin{center} \\captionsetup{labelformat=empty} \\caption{Table 1. Abbreviations of event properties and relations.} \\begin{tabular}[t]{|l|l|} \\hline Abbrev & Description \\\\ \\hline down & Indicates $e$ is a downgrade. \\\\ \\hline req & Refer to $e$ 's request. \\\\ \\hline MRS & Refer to e.req's minimal required state (from Section 5.1). \\\\ \\hline prevState & Refers to the state before $e$. i.e. the state $e$ 's request is made on. \\\\ \\hline nextState & Refers to the state after $e$. i.e. the state resulting from $e$ 's request. \\\\ \\hline gcacheState & For a directory event $e_{\\mathrm{dir}}$, refers to the state of the global cache corresponding to $e_{\\text {dir }}$. \\\\ \\hline d\\_id & An auxiliary field of an event $e$. If an event results from a directory event de, e.d\\_id = de.d\\_id. \\\\ \\hline weak & A proposition on an event $e . e$ has consistency label Weak. \\\\ \\hline release & A proposition on an event $e . e$ has consistency label Release. \\\\ \\hline acquire & A proposition on an event $e . e$ has consistency label Acquire. \\\\ \\hline write & A proposition on an event $e . e$ has label of Weak and op of Write. \\\\ \\hline read & A proposition on an event $e . e$ has consistency label Weak and op of Read. \\\\ \\hline wb & A proposition on an event e. e evicts a Write-Non-Coherent cache entry. e.down and e.write. \\\\ \\hline inval & A proposition on an event $e . e$ evicts a Read-Non-Coherent cache entry. e.down and e.read \\\\ \\hline \\end{tabular} \\end{center} \\end{table} (a) Property abbreviations on a single event $e$. \\begin{center} \\begin{tabular}[t]{|l|l|} \\hline Relation & Description \\\\ \\hline y & Events $e_{1}$ and $e_{2}$ are either $e_{1} \\prec_{O B} e_{2}$ or $e_{2} \\prec_{O B} e_{1}$. \\\\ \\hline linAt & For events $e_{1}$ and $e_{2}, e_{1}$ linAt $e_{2}$ indicates $e_{2}$ is $e_{1}$ 's linearization event. \\\\ \\hline sameCacheEntry & For events $e_{1}$ and $e_{2}, e_{1}$ sameCacheEntry $e_{2}$ indicates $e_{1}$ and $e_{2}$ are both at the same cache entry. \\\\ \\hline proxyReq & For events $e_{1}$ and $e_{2}$, where $e_{2} \\in$ Global, $e_{1}$.ProxyReq $e_{2}$ indicates $e_{1}$.req corresponds to $e_{2}$ 's global request and $e_{1}$ 's cluster. $e_{1}$.req is elaborated on below in the description of the Shim Axioms. \\\\ \\hline \\end{tabular} \\end{center} (b) Relation abbreviations between two events $e_{1} e_{2}$. \\begin{itemize} \\item[] \\begin{itemize} \\item[-] A global read-downgrade is translated into a local Coherent SC-Read, which correctly transitions local Write-Coherent lines to Read-Coherent. \\end{itemize} \\item[-] Translation to an RCC cluster: \\begin{itemize} \\item[-] A global write-downgrade (invalidation) event $e_{\\text {gdown }}$ is translated into a local Non-Coherent Acquire Read event from the proxy core. In advanced RCC protocols such as RCC-O and L-RCC, caches may hold blocks in a Write-Coherent state. When a global invalidation arrives, these Write-Coherent permissions must be relinquished. Translating the invalidation into a local Acquire triggers the protocol's native state-downgrade sequence, which revokes Write-Coherent permissions. Thus: $e_{\\text {gdown }} \\supset e_{\\text {local-acquire }}$. \\item[-] A global read-downgrade is also translated into a local Non-Coherent Acquire Read for the same reason. \\end{itemize} \\end{itemize}",
+   "section": "6.2 The Verification Axioms",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "Global downgrades are injected as proxy-core requests: SC-Write/SC-Read in SWMR clusters, Non-Coherent Acquire Read in RCC clusters."
+  },
+  {
+   "id": "TP1",
+   "type": "theorem",
+   "name": "Correctness of Synchronous Propagation",
+   "statement": "Theorem 6.1 (Correctness of Synchronous Propagation). For any two protocols, $P_{1}$ and $P_{2}$, that are valid instantiations of our abstraction with corresponding consistency models $M_{1}$ and $M_{2}$, their composition using a Synchronous Propagation shim over a global interconnect satisfying the SWMR invariant correctly enforces the Compound Memory Consistency Model of $M_{1}$ composed with $M_{2}, \\operatorname{CMCM}\\left(M_{1}, M_{2}\\right)$.",
+   "section": "6.3 The Main Theorem",
+   "origin": "paper",
+   "confidence": 0.95,
+   "main": true,
+   "assumptions": [
+    "$P_{1}$ and $P_{2}$, that are valid instantiations of our abstraction with corresponding consistency models $M_{1}$ and $M_{2}$",
+    "their composition using a Synchronous Propagation shim over a global interconnect satisfying the SWMR invariant"
+   ],
+   "conclusions": [
+    "correctly enforces the Compound Memory Consistency Model of $M_{1}$ composed with $M_{2}, \\operatorname{CMCM}\\left(M_{1}, M_{2}\\right)$"
+   ],
+   "also_stated_at": [
+    "Using this abstraction, we prove our central theorem: for any device protocol that satisfies our abstract axioms, its composition using Synchronous Propagation over a global interconnect that satisfies the SWMR invariant (such as CXL or CHI), is guaranteed to enforce CMCM.",
+    "To be precise, the central goal we must prove is that for any cluster protocol from the SWMR or RCC classes, its composition with a global SWMR protocol via a shim satisfying the Principle of Synchronous Propagation is sufficient to enforce the corresponding Compound Memory Consistency Model (CMCM)."
+   ],
+   "statement_short": "Composing two protocols satisfying the abstraction's axioms via Synchronous Propagation over a global SWMR interconnect enforces their CMCM."
+  },
+  {
+   "id": "PP1",
+   "type": "proof",
+   "name": "Proof sketch of Theorem 6.1",
+   "statement": "Here, we provide a high-level sketch of the argument. The proof's core strategy is to show that the ordering of global linearization points always respects the ordering requirements dictated by the consistency labels of the original requests. This is sufficient because the sequence of global linearization points defines the system's unified, global execution trace. By proving that this trace respects the consistency contract of every individual operation, we guarantee that any projection of the trace onto a single device will be a valid execution under its native memory model-which is the core property of Compound Consistency [17, 32]. More precisely, assuming a contradiction to Axiom 1, there is a cycle among the linearization points (abbreviated to LPs) in ppo $\\cup$ rfe $\\cup$ fr $\\cup$ co. We define a relation between the LPs called the Linearization-Link (abbreviated Lin-Link, as $\\leadsto$ ), defining a Global Memory Order (GMO) between them. Lin-Link is the irreflexive subset of the union of $\\prec_{O B}, \\supset, \\subset . e_{1} \\subset e_{2}$ is the reverse direction of $\\supset$, where $e_{2} \\supset e_{1}=e_{1} \\subset e_{2}$. We prove this cannot happen by contradiction, by showing that ppo $\\cup$ rfe $\\cup$ fr $\\cup$ co $\\subseteq \\leadsto$, i.e. these relations respect the linearization order $\\leadsto$. Since rfe, fr and co are model-independent observations in the execution and are ordered by assumption, showing they are in → is a straight-forward sanity-check on the formalism. We thus need to show that ppo $\\subseteq \\rightarrow$, which is the memory-model-specific part of the relation. The main theorem shows ppo related request events' LPs are $\\prec_{O B}$. By definition, $\\prec_{O B} \\subseteq \\leadsto$, meaning it is satisfied.\\\\ The proof proceeds by analyzing the two ways an operation can be locally linearized, as defined in Section 5.4.\\\\ Case 1: Directory-Linearized Operations. For an operation that is linearized at its cluster directory (e.g., a cache miss or an RC-Acquire), the Synchronous Propagation rule dictates that the local directory Event encapsulates a corresponding global Event. Note that the local protocol correctly orders its directory events according to its consistency labels. Because of the tight causal link from encapsulation, this correct local ordering is directly translated into a correct global ordering of the corresponding global linearization points.\\\\ Case 2: Cache-Linearized Operations. For an operation linearized at a local cache, no new global event is generated. This can only occur if the cache line is already in a coherent abstract state (e.g., Write-Coherent). The key invariant we prove is that, due to the interplay between Synchronous Propagation and the global SWMR protocol, a locally coherent state is a faithful reflection of a globally consistent reality. Therefore, an operation's linearization against this state correctly places it on the global timeline relative to the prior event that established that coherent state. Our full proof demonstrates the validity of this argument by applying this two-case logic to an exhaustive analysis of every required ordering pair for each protocol variant we consider, confirming the theorem holds universally. To illustrate our proof's structure, let's consider a pair of operations from the litmus test in Section 4.1. Let's show the GPU thread's operations (an Acquire on flag followed by a Load on data) linearize in order. First we consider the local linearization events $e_{\\text {acq_lin }}$ and $e_{\\text {load_lin }}$ of the Acquire $e_{\\text {acq }}$ and Load $e_{\\text {load }}$ respectively:\\\\ $e_{\\text {acq_lin }}$ either linearizes at the directory, or cache. In the case where $e_{\\text {acq_lin }}$ linearizes in cache, it has coherent permissions. With coherent permissions, there is no consistency ordering to guarantee, as no other cache has updated the entry. So we are left with the case where $e_{\\text {acq_lin }}$ is at the directory. Similarly in our GPU's RCC protocol, $e_{\\text {load_lin }}$ will linearize at the directory. Now that we know $e_{\\text {acq_lin }}$ and $e_{\\text {load_lin }}$ linearize at the directory, we show they are ordered $\\left(e_{\\text {acq_lin }} \\prec_{O B} e_{\\text {load_lin }}\\right)$. By Def 5.4, we know that $e_{\\text {acq }} \\supset e_{\\text {acq_lin }}$ (case 2 in Def 5.4). Then, again by Def 5.4, we see that either (1) $e_{\\text {load_lin }} \\prec_{O B} e_{\\text {load }}$ (case 4 in Def 5.4), (2) $e_{\\text {load }} \\supset e_{\\text {load_lin }}$ (case 2 in Def 5.4), or (3) $e_{\\text {load }} \\prec_{O B} e_{\\text {load_lin }}$ (case 3 in Def 5.4).\\\\ $e_{\\text {load_lin }}$ 's case (2) and (3) are trivial. Because $e_{\\text {acq }} \\prec_{O B} e_{\\text {load }}$, and $e_{\\text {acq }} \\supset e_{\\text {acq } \\_ \\text {lin }}$, we know transitively $e_{\\text {acq_lin }} \\prec_{O B} e_{\\text {load_lin }}$. Then by Axiom To-global-shim, we know the local linearization events encapsulate global linearization events. Transitively, the encapsulated global linearization events are still ordered. We proceed to prove case (1) by using Axiom Acquire and Inv.-Read. By Axiom Acquire, because we have an Acquire operation $e_{\\text {acquire }}$ we know: $e_{\\text {acq }} \\supset e_{\\text {inval }}$ and $e_{\\text {acq_lin }} \\prec_{O B} e_{\\text {inval }}$. By Axiom Inv. -Read we know from $e_{\\text {inval }} \\prec_{O B} e_{\\text {load }}$ that $e_{\\text {inval }} \\prec_{O B} e_{\\text {load_lin }}$. Then again by transitivity, because $e_{\\text {acq_lin }} \\prec_{O B} e_{\\text {inval }}$ and $e_{\\text {inval }} \\prec_{O B} e_{\\text {load_lin }}$ we know $e_{\\text {acq_lin }} \\prec_{O B} e_{\\text {load_lin }}$. Again, by Axiom To-global-shim, the local linearization events result in ordered global linearization events. The rest of the proof proceeds with the same style of reasoning.",
+   "section": "6.4 Proof Sketch",
+   "origin": "paper",
+   "confidence": 0.8,
+   "proof_strategy": [
+    "contradiction",
+    "case_analysis"
+   ],
+   "statement_short": "Contradiction: a cycle in ppo ∪ rfe ∪ fr ∪ co is impossible since all lie in the Lin-Link order. Key step: ppo-related events' linearization points are ordered, by cases directory- vs cache-linearized.",
+   "proves": "TP1"
+  },
+  {
+   "id": "PSP1",
+   "type": "proof_step",
+   "name": "Reduce CMCM to ordering of global linearization points",
+   "statement": "Here, we provide a high-level sketch of the argument. The proof's core strategy is to show that the ordering of global linearization points always respects the ordering requirements dictated by the consistency labels of the original requests. This is sufficient because the sequence of global linearization points defines the system's unified, global execution trace. By proving that this trace respects the consistency contract of every individual operation, we guarantee that any projection of the trace onto a single device will be a valid execution under its native memory model-which is the core property of Compound Consistency [17, 32].",
+   "section": "6.4 Proof Sketch",
+   "origin": "paper",
+   "confidence": 0.75,
+   "parent_id": "PP1",
+   "step_order": 1,
+   "subclass": "setup",
+   "statement_short": "Reduce CMCM to ordering of global linearization points"
+  },
+  {
+   "id": "PSP2",
+   "type": "proof_step",
+   "name": "Assume a cycle violating Axiom 1",
+   "statement": "More precisely, assuming a contradiction to Axiom 1, there is a cycle among the linearization points (abbreviated to LPs) in ppo $\\cup$ rfe $\\cup$ fr $\\cup$ co.",
+   "section": "6.4 Proof Sketch",
+   "origin": "paper",
+   "confidence": 0.75,
+   "parent_id": "PP1",
+   "step_order": 2,
+   "subclass": "contradiction_setup",
+   "statement_short": "Assume a cycle violating Axiom 1"
+  },
+  {
+   "id": "PSP3",
+   "type": "proof_step",
+   "name": "Define the Lin-Link relation (Global Memory Order)",
+   "statement": "We define a relation between the LPs called the Linearization-Link (abbreviated Lin-Link, as $\\leadsto$ ), defining a Global Memory Order (GMO) between them. Lin-Link is the irreflexive subset of the union of $\\prec_{O B}, \\supset, \\subset . e_{1} \\subset e_{2}$ is the reverse direction of $\\supset$, where $e_{2} \\supset e_{1}=e_{1} \\subset e_{2}$.",
+   "section": "6.4 Proof Sketch",
+   "origin": "paper",
+   "confidence": 0.75,
+   "parent_id": "PP1",
+   "step_order": 3,
+   "subclass": "introduce_variable",
+   "statement_short": "Define the Lin-Link relation (Global Memory Order)"
+  },
+  {
+   "id": "PSP4",
+   "type": "proof_step",
+   "name": "Reduce to showing ppo is contained in Lin-Link",
+   "statement": "We prove this cannot happen by contradiction, by showing that ppo $\\cup$ rfe $\\cup$ fr $\\cup$ co $\\subseteq \\leadsto$, i.e. these relations respect the linearization order $\\leadsto$. Since rfe, fr and co are model-independent observations in the execution and are ordered by assumption, showing they are in → is a straight-forward sanity-check on the formalism. We thus need to show that ppo $\\subseteq \\rightarrow$, which is the memory-model-specific part of the relation.",
+   "section": "6.4 Proof Sketch",
+   "origin": "paper",
+   "confidence": 0.75,
+   "parent_id": "PP1",
+   "step_order": 4,
+   "subclass": "setup",
+   "statement_short": "Reduce to showing ppo is contained in Lin-Link"
+  },
+  {
+   "id": "PSP5",
+   "type": "proof_step",
+   "name": "Apply the main theorem: ppo-related LPs are ordered-before",
+   "statement": "The main theorem shows ppo related request events' LPs are $\\prec_{O B}$. By definition, $\\prec_{O B} \\subseteq \\leadsto$, meaning it is satisfied.",
+   "section": "6.4 Proof Sketch",
+   "origin": "paper",
+   "confidence": 0.75,
+   "parent_id": "PP1",
+   "step_order": 5,
+   "subclass": "apply_lemma",
+   "statement_short": "Apply the main theorem: ppo-related LPs are ordered-before"
+  },
+  {
+   "id": "PSP6",
+   "type": "proof_step",
+   "name": "Split on how an operation is locally linearized",
+   "statement": "The proof proceeds by analyzing the two ways an operation can be locally linearized, as defined in Section 5.4.",
+   "section": "6.4 Proof Sketch",
+   "origin": "paper",
+   "confidence": 0.75,
+   "parent_id": "PP1",
+   "step_order": 6,
+   "subclass": "setup",
+   "statement_short": "Split on how an operation is locally linearized"
+  },
+  {
+   "id": "PSP7",
+   "type": "proof_step",
+   "name": "Case 1: directory-linearized operations",
+   "statement": "Case 1: Directory-Linearized Operations. For an operation that is linearized at its cluster directory (e.g., a cache miss or an RC-Acquire), the Synchronous Propagation rule dictates that the local directory Event encapsulates a corresponding global Event. Note that the local protocol correctly orders its directory events according to its consistency labels. Because of the tight causal link from encapsulation, this correct local ordering is directly translated into a correct global ordering of the corresponding global linearization points.",
+   "section": "6.4 Proof Sketch",
+   "origin": "paper",
+   "confidence": 0.95,
+   "parent_id": "PP1",
+   "step_order": 7,
+   "subclass": "case_split",
+   "statement_short": "Case 1: directory-linearized operations"
+  },
+  {
+   "id": "PSP8",
+   "type": "proof_step",
+   "name": "Case 2: cache-linearized operations",
+   "statement": "Case 2: Cache-Linearized Operations. For an operation linearized at a local cache, no new global event is generated. This can only occur if the cache line is already in a coherent abstract state (e.g., Write-Coherent). The key invariant we prove is that, due to the interplay between Synchronous Propagation and the global SWMR protocol, a locally coherent state is a faithful reflection of a globally consistent reality. Therefore, an operation's linearization against this state correctly places it on the global timeline relative to the prior event that established that coherent state.",
+   "section": "6.4 Proof Sketch",
+   "origin": "paper",
+   "confidence": 0.95,
+   "parent_id": "PP1",
+   "step_order": 8,
+   "subclass": "case_split",
+   "statement_short": "Case 2: cache-linearized operations"
+  },
+  {
+   "id": "PSP9",
+   "type": "proof_step",
+   "name": "Exhaustive analysis over ordering pairs",
+   "statement": "Our full proof demonstrates the validity of this argument by applying this two-case logic to an exhaustive analysis of every required ordering pair for each protocol variant we consider, confirming the theorem holds universally.",
+   "section": "6.4 Proof Sketch",
+   "origin": "paper",
+   "confidence": 0.75,
+   "parent_id": "PP1",
+   "step_order": 9,
+   "subclass": "conclude",
+   "statement_short": "Exhaustive analysis over ordering pairs"
+  },
+  {
+   "id": "PSP10",
+   "type": "proof_step",
+   "name": "Illustration: Acquire then Load on the GPU linearize in order",
+   "statement": "To illustrate our proof's structure, let's consider a pair of operations from the litmus test in Section 4.1. Let's show the GPU thread's operations (an Acquire on flag followed by a Load on data) linearize in order. First we consider the local linearization events $e_{\\text {acq_lin }}$ and $e_{\\text {load_lin }}$ of the Acquire $e_{\\text {acq }}$ and Load $e_{\\text {load }}$ respectively:\\\\ $e_{\\text {acq_lin }}$ either linearizes at the directory, or cache. In the case where $e_{\\text {acq_lin }}$ linearizes in cache, it has coherent permissions. With coherent permissions, there is no consistency ordering to guarantee, as no other cache has updated the entry. So we are left with the case where $e_{\\text {acq_lin }}$ is at the directory. Similarly in our GPU's RCC protocol, $e_{\\text {load_lin }}$ will linearize at the directory. Now that we know $e_{\\text {acq_lin }}$ and $e_{\\text {load_lin }}$ linearize at the directory, we show they are ordered $\\left(e_{\\text {acq_lin }} \\prec_{O B} e_{\\text {load_lin }}\\right)$. By Def 5.4, we know that $e_{\\text {acq }} \\supset e_{\\text {acq_lin }}$ (case 2 in Def 5.4). Then, again by Def 5.4, we see that either (1) $e_{\\text {load_lin }} \\prec_{O B} e_{\\text {load }}$ (case 4 in Def 5.4), (2) $e_{\\text {load }} \\supset e_{\\text {load_lin }}$ (case 2 in Def 5.4), or (3) $e_{\\text {load }} \\prec_{O B} e_{\\text {load_lin }}$ (case 3 in Def 5.4).\\\\ $e_{\\text {load_lin }}$ 's case (2) and (3) are trivial. Because $e_{\\text {acq }} \\prec_{O B} e_{\\text {load }}$, and $e_{\\text {acq }} \\supset e_{\\text {acq } \\_ \\text {lin }}$, we know transitively $e_{\\text {acq_lin }} \\prec_{O B} e_{\\text {load_lin }}$. Then by Axiom To-global-shim, we know the local linearization events encapsulate global linearization events. Transitively, the encapsulated global linearization events are still ordered. We proceed to prove case (1) by using Axiom Acquire and Inv.-Read. By Axiom Acquire, because we have an Acquire operation $e_{\\text {acquire }}$ we know: $e_{\\text {acq }} \\supset e_{\\text {inval }}$ and $e_{\\text {acq_lin }} \\prec_{O B} e_{\\text {inval }}$. By Axiom Inv. -Read we know from $e_{\\text {inval }} \\prec_{O B} e_{\\text {load }}$ that $e_{\\text {inval }} \\prec_{O B} e_{\\text {load_lin }}$. Then again by transitivity, because $e_{\\text {acq_lin }} \\prec_{O B} e_{\\text {inval }}$ and $e_{\\text {inval }} \\prec_{O B} e_{\\text {load_lin }}$ we know $e_{\\text {acq_lin }} \\prec_{O B} e_{\\text {load_lin }}$. Again, by Axiom To-global-shim, the local linearization events result in ordered global linearization events. The rest of the proof proceeds with the same style of reasoning.",
+   "section": "6.4 Proof Sketch",
+   "origin": "paper",
+   "confidence": 0.75,
+   "parent_id": "PP1",
+   "step_order": 10,
+   "subclass": "other",
+   "statement_short": "Illustration: Acquire then Load on the GPU linearize in order"
+  },
+  {
+   "id": "PSP11",
+   "type": "proof_step",
+   "name": "Introduce local linearization events of Acquire and Load",
+   "statement": "First we consider the local linearization events $e_{\\text {acq_lin }}$ and $e_{\\text {load_lin }}$ of the Acquire $e_{\\text {acq }}$ and Load $e_{\\text {load }}$ respectively:",
+   "section": "6.4 Proof Sketch",
+   "origin": "paper",
+   "confidence": 0.75,
+   "parent_id": "PSP10",
+   "step_order": 1,
+   "subclass": "introduce_variable",
+   "statement_short": "Introduce local linearization events of Acquire and Load"
+  },
+  {
+   "id": "PSP12",
+   "type": "proof_step",
+   "name": "Reduce to directory-linearized Acquire and Load",
+   "statement": "$e_{\\text {acq_lin }}$ either linearizes at the directory, or cache. In the case where $e_{\\text {acq_lin }}$ linearizes in cache, it has coherent permissions. With coherent permissions, there is no consistency ordering to guarantee, as no other cache has updated the entry. So we are left with the case where $e_{\\text {acq_lin }}$ is at the directory. Similarly in our GPU's RCC protocol, $e_{\\text {load_lin }}$ will linearize at the directory.",
+   "section": "6.4 Proof Sketch",
+   "origin": "paper",
+   "confidence": 0.75,
+   "parent_id": "PSP10",
+   "step_order": 2,
+   "subclass": "case_split",
+   "statement_short": "Reduce to directory-linearized Acquire and Load"
+  },
+  {
+   "id": "PSP13",
+   "type": "proof_step",
+   "name": "Case analysis on Load linearization by Def 5.4",
+   "statement": "Now that we know $e_{\\text {acq_lin }}$ and $e_{\\text {load_lin }}$ linearize at the directory, we show they are ordered $\\left(e_{\\text {acq_lin }} \\prec_{O B} e_{\\text {load_lin }}\\right)$. By Def 5.4, we know that $e_{\\text {acq }} \\supset e_{\\text {acq_lin }}$ (case 2 in Def 5.4). Then, again by Def 5.4, we see that either (1) $e_{\\text {load_lin }} \\prec_{O B} e_{\\text {load }}$ (case 4 in Def 5.4), (2) $e_{\\text {load }} \\supset e_{\\text {load_lin }}$ (case 2 in Def 5.4), or (3) $e_{\\text {load }} \\prec_{O B} e_{\\text {load_lin }}$ (case 3 in Def 5.4).",
+   "section": "6.4 Proof Sketch",
+   "origin": "paper",
+   "confidence": 0.75,
+   "parent_id": "PSP10",
+   "step_order": 3,
+   "subclass": "case_split",
+   "statement_short": "Case analysis on Load linearization by Def 5.4"
+  },
+  {
+   "id": "PSP14",
+   "type": "proof_step",
+   "name": "Cases (2),(3): transitivity and To-global-shim",
+   "statement": "$e_{\\text {load_lin }}$ 's case (2) and (3) are trivial. Because $e_{\\text {acq }} \\prec_{O B} e_{\\text {load }}$, and $e_{\\text {acq }} \\supset e_{\\text {acq } \\_ \\text {lin }}$, we know transitively $e_{\\text {acq_lin }} \\prec_{O B} e_{\\text {load_lin }}$. Then by Axiom To-global-shim, we know the local linearization events encapsulate global linearization events. Transitively, the encapsulated global linearization events are still ordered.",
+   "section": "6.4 Proof Sketch",
+   "origin": "paper",
+   "confidence": 0.75,
+   "parent_id": "PSP10",
+   "step_order": 4,
+   "subclass": "bound_estimate",
+   "statement_short": "Cases (2),(3): transitivity and To-global-shim"
+  },
+  {
+   "id": "PSP15",
+   "type": "proof_step",
+   "name": "Case (1): Axioms Acquire and Inv.-Read",
+   "statement": "We proceed to prove case (1) by using Axiom Acquire and Inv.-Read. By Axiom Acquire, because we have an Acquire operation $e_{\\text {acquire }}$ we know: $e_{\\text {acq }} \\supset e_{\\text {inval }}$ and $e_{\\text {acq_lin }} \\prec_{O B} e_{\\text {inval }}$. By Axiom Inv. -Read we know from $e_{\\text {inval }} \\prec_{O B} e_{\\text {load }}$ that $e_{\\text {inval }} \\prec_{O B} e_{\\text {load_lin }}$. Then again by transitivity, because $e_{\\text {acq_lin }} \\prec_{O B} e_{\\text {inval }}$ and $e_{\\text {inval }} \\prec_{O B} e_{\\text {load_lin }}$ we know $e_{\\text {acq_lin }} \\prec_{O B} e_{\\text {load_lin }}$. Again, by Axiom To-global-shim, the local linearization events result in ordered global linearization events.",
+   "section": "6.4 Proof Sketch",
+   "origin": "paper",
+   "confidence": 0.75,
+   "parent_id": "PSP10",
+   "step_order": 5,
+   "subclass": "apply_lemma",
+   "statement_short": "Case (1): Axioms Acquire and Inv.-Read"
+  },
+  {
+   "id": "PSP16",
+   "type": "proof_step",
+   "name": "Remaining pairs analogous",
+   "statement": "The rest of the proof proceeds with the same style of reasoning.",
+   "section": "6.4 Proof Sketch",
+   "origin": "paper",
+   "confidence": 0.75,
+   "parent_id": "PSP10",
+   "step_order": 6,
+   "subclass": "conclude",
+   "statement_short": "Remaining pairs analogous"
+  },
+  {
+   "id": "TP2",
+   "type": "theorem",
+   "name": "CompoundProtocol.enforce_compound_consistency",
+   "statement": "The final statement of our main theorem, which proves that the required linearization order holds for any two events that have a required ordering, is shown below: \\begin{lstlisting}[mathescape=true] theorem CompoundProtocol.enforce_compound_consistency {b : Behaviour n} { $\\mathrm{e}_{1} \\mathrm{e}_{2}$ : Event n} {init : InitialSystemState n} (cmp : CompoundProtocol n) (hsame_protocol : $\\mathrm{e}_{1}$.sameProtocol n $\\mathrm{e}_{2}$ ) (he ${ }_{1}$ _not_downgrade : $\\neg \\mathrm{e}_{1}$.down) (he $\\mathrm{e}_{2}$ _not_downgrade : $\\neg \\mathrm{e}_{2}$.down) ( $\\mathrm{he}_{1}$ _cache : $\\mathrm{e}_{1}$.isCacheEvent) (he $\\mathrm{e}_{2}$ _cache : $\\mathrm{e}_{2}$.isCacheEvent) (he ${ }_{1}$ _in_b : $\\mathrm{e}_{1} \\in \\mathrm{~b}$ ) ( $\\mathrm{he}_{2}$ _in_b : $\\mathrm{e}_{2} \\in \\mathrm{~b}$ ) (hsame_cache : $\\mathrm{e}_{1}$.cid = $\\mathrm{e}_{2}$.cid) (hdiff_addr : $\\mathrm{e}_{1}$.addr $\\neq \\mathrm{e}_{2}$.addr) : $\\mathrm{e}_{1}$.OrderedBefore n $\\mathrm{e}_{2} \\rightarrow \\mathrm{cmp}$.CompoundLinearizationOrder n b init $\\mathrm{e}_{1} \\mathrm{e}_{2}$ \\end{lstlisting} This theorem states that for any two events, e1 and e2, in an execution history b, if a set of preconditions hold, then their temporal ordering (e1.OrderedBefore) implies that their formal linearization order (CompoundLinearizationOrder) is also correct. The block of hypotheses (hsame\\_protocol, hdiff\\_addr, etc.) constrains the theorem to a key scenario: two distinct cache events within the same cluster.",
+   "section": "6.5 Mechanization in Lean",
+   "origin": "paper",
+   "confidence": 0.85,
+   "main": true,
+   "assumptions": [
+    "if a set of preconditions hold",
+    "two distinct cache events within the same cluster"
+   ],
+   "conclusions": [
+    "their temporal ordering (e1.OrderedBefore) implies that their formal linearization order (CompoundLinearizationOrder) is also correct"
+   ],
+   "statement_short": "Lean statement: for two non-downgrade cache events of the same cache on different addresses, OrderedBefore implies the compound linearization order."
+  },
+  {
+   "id": "ClP2",
+   "type": "claim",
+   "name": "Correctness of the CXL+RCC-O composition",
+   "statement": "While each case study individually verifies one protocol class (CXL for SWMR; RCC-O\\\\ for RC), the heterogeneous composition CXL+RCC-O is formally covered by construction through Theorem 6.1.",
+   "section": "7 Applying the Framework: Case Studies",
+   "origin": "paper",
+   "confidence": 0.75,
+   "conclusions": [
+    "the heterogeneous composition CXL+RCC-O is formally covered by construction through Theorem 6.1"
+   ]
+  },
+  {
+   "id": "PP2",
+   "type": "proof",
+   "name": "Proof of CXL+RCC-O composition correctness",
+   "statement": "The theorem is universally quantified over all combinations of protocol instances satisfying our abstraction axioms. Therefore, proving CXL and RCC-O each satisfy the axioms independently is sufficient to guarantee correctness of their heterogeneous composition.",
+   "section": "7 Applying the Framework: Case Studies",
+   "origin": "paper",
+   "confidence": 0.7,
+   "proves": "ClP2",
+   "proof_strategy": [
+    "direct"
+   ],
+   "statement_short": "Instantiate the universally quantified Theorem 6.1 with CXL and RCC-O, each verified against the axioms."
+  },
+  {
+   "id": "DP37",
+   "type": "definition",
+   "name": "CXL.cache request subset",
+   "statement": "We choose a subset of the CXL protocol family (CXL.cache) that provides a strongly ordered write and read, and forwarded requests. \\begin{itemize} \\item[-] RdOwn: request coherent read-write permissions in Exclusive or Modified state. \\item[-] RdShared: request coherent read Shared permissions. \\item[-] SnpData: forwarded RdShared downgrade to the owner. \\item[-] SnpInvM: forwarded RdOwn downgrade to the owner. \\item[-] SnpInvS: forwarded RdOwn downgrade to sharers. \\end{itemize}",
+   "section": "7 Applying the Framework: Case Studies",
+   "origin": "external",
+   "confidence": 0.75,
+   "origin_citation": "CXL specification [2]",
+   "definiendum": [
+    "RdOwn",
+    "RdShared",
+    "SnpData",
+    "SnpInvM",
+    "SnpInvS"
+   ]
+  },
+  {
+   "id": "ExP7",
+   "type": "example",
+   "name": "CXL mapping to the abstraction",
+   "statement": "We map the key requests of our CXL subset to our abstraction. A RdOwn request, which seeks exclusive read-write permissions, is modeled as a Coherent SC Write. A RdShared request, which seeks shared read-only permissions, is modeled as a Coherent SC Read. Consequently, the concrete CXL states map directly to our abstract states: the Exclusive and Modified states map to Write-Coherent, while the Shared state maps to Read-Coherent.",
+   "section": "7 Applying the Framework: Case Studies",
+   "origin": "paper",
+   "confidence": 0.75,
+   "statement_short": "RdOwn is a Coherent SC Write and RdShared a Coherent SC Read; E/M map to Write-Coherent, Shared to Read-Coherent."
+  },
+  {
+   "id": "ClP3",
+   "type": "claim",
+   "name": "CXL subset satisfies the SWMR axioms",
+   "statement": "We verify in the Murphi model checker [16] that our CXL subset passes all well-formed sanity checks, and enforces SWMR. Lastly, we verify our CXL shim translations are fit to use CXL as a cluster and global protocol. We verify directory accesses produce correct global requests, global downgrades reduce CXL cluster protocol state accordingly, and produce correct global to cluster requests.",
+   "section": "7 Applying the Framework: Case Studies",
+   "origin": "paper",
+   "confidence": 0.7,
+   "rigor": "numerical",
+   "conclusions": [
+    "our CXL subset passes all well-formed sanity checks, and enforces SWMR"
+   ],
+   "statement_short": "Murphi model checking shows the CXL subset and its shims satisfy the well-formedness, SWMR and shim axioms."
+  },
+  {
+   "id": "TP3",
+   "type": "theorem",
+   "name": "Single-address sufficiency for SWMR verification",
+   "statement": "A single-address model is sufficient for verifying SWMR protocols [29].",
+   "section": "7 Applying the Framework: Case Studies",
+   "origin": "external",
+   "confidence": 0.75,
+   "origin_citation": "Sorin et al. [29]",
+   "conclusions": [
+    "A single-address model is sufficient for verifying SWMR protocols"
+   ]
+  },
+  {
+   "id": "DP38",
+   "type": "definition",
+   "name": "RCC-O",
+   "statement": "As opposed to the baseline RCC protocol, RCC-O utilizes an exclusive ownership (O) state that indicates it has the sole copy of a cache line. If a line is in O state, Acquire requests can enjoy the optimization of not invalidating cache entries in Valid state. This is possible because O state indicates no other cache has written a new value to the cache line.",
+   "section": "7 Applying the Framework: Case Studies",
+   "origin": "paper",
+   "confidence": 0.75,
+   "definiendum": "RCC-O",
+   "genus": "RCC protocol",
+   "differentia": [
+    "utilizes an exclusive ownership (O) state that indicates it has the sole copy of a cache line"
+   ]
+  },
+  {
+   "id": "ExP8",
+   "type": "example",
+   "name": "RCC-O mapping to abstract requests",
+   "statement": "For verification, we map RCC-O's requests to our abstract requests: \\begin{itemize} \\item[-] Release $\\triangleq$ Coherent Release Write \\item[-] Write $\\triangleq$ Coherent Weak Write \\item[-] Acquire $\\triangleq$ Non-Coherent Acquire Read \\item[-] Read $\\triangleq$ Non-Coherent Weak Read \\end{itemize}",
+   "section": "7 Applying the Framework: Case Studies",
+   "origin": "paper",
+   "confidence": 0.75
+  },
+  {
+   "id": "ClP4",
+   "type": "claim",
+   "name": "RCC-O satisfies the abstraction axioms",
+   "statement": "We verify RCC-O cache and directory events are well-formed. From our mapping, RCC-O uses Write-Coherent and Read-Non-Coherent states from its write and read requests respectively. As such, we verify RCC-O enforces SW instead of SWMR. As RCC-O uses an acquire request, we verify it accesses the directory on non-O state, followed by invalidating any Read-Non-Coherent cache entries. Lastly, we verify our shims correctly translate local directory accesses to global cache requests, and downgrades reduce protocol state, ensuring SW (Single-Writer).",
+   "section": "7 Applying the Framework: Case Studies",
+   "origin": "paper",
+   "confidence": 0.7,
+   "rigor": "numerical",
+   "statement_short": "Murphi model checking shows RCC-O is well-formed, enforces Single-Writer, satisfies the acquire axiom and has correct shims."
+  }
+ ],
+ "edges": [
+  {
+   "source": "DP1",
+   "target": "DP2",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "DP4",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "DP9",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "DP10",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "DP31",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "AssumP9",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "TP2",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "AssumP14",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP2",
+   "target": "DP3",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP2",
+   "target": "DP4",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP2",
+   "target": "AssumP9",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP2",
+   "target": "TP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP3",
+   "target": "AssumP9",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP3",
+   "target": "DP4",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP3",
+   "target": "ClP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP3",
+   "target": "TP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP3",
+   "target": "AssumP7",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP3",
+   "target": "ClP3",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP3",
+   "target": "TP3",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP3",
+   "target": "AssumP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP3",
+   "target": "AssumP13",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP4",
+   "target": "DP9",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP4",
+   "target": "AssumP13",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP4",
+   "target": "AssumP14",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP4",
+   "target": "PP2",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP4",
+   "target": "ClP3",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP4",
+   "target": "ClP4",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP5",
+   "target": "ExP7",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP5",
+   "target": "DP38",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP6",
+   "target": "DP7",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP6",
+   "target": "DP8",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP6",
+   "target": "DP19",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP6",
+   "target": "ExP2",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP6",
+   "target": "DP21",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP6",
+   "target": "DP27",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP6",
+   "target": "AssumP6",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP6",
+   "target": "AssumP8",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP6",
+   "target": "DP38",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP6",
+   "target": "ExP6",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP6",
+   "target": "AssumP14",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP7",
+   "target": "DP38",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP8",
+   "target": "RP3",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP8",
+   "target": "AssumP12",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP8",
+   "target": "AssumP14",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP9",
+   "target": "ExP3",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP9",
+   "target": "ExP4",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP9",
+   "target": "RP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP9",
+   "target": "RP2",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP9",
+   "target": "DP30",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP9",
+   "target": "ClP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP9",
+   "target": "TP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP9",
+   "target": "AssumP13",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP9",
+   "target": "AssumP14",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP9",
+   "target": "DP35",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP9",
+   "target": "PP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP10",
+   "target": "ExP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term",
+   "backward": true
+  },
+  {
+   "source": "DP10",
+   "target": "ExP2",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP10",
+   "target": "RP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP10",
+   "target": "TP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP10",
+   "target": "PP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP11",
+   "target": "DP12",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP11",
+   "target": "DP13",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP11",
+   "target": "DP14",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP12",
+   "target": "DP17",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "term"
+  },
+  {
+   "source": "DP13",
+   "target": "DP17",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "term"
+  },
+  {
+   "source": "DP14",
+   "target": "DP17",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "term"
+  },
+  {
+   "source": "DP12",
+   "target": "DP15",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "term"
+  },
+  {
+   "source": "DP12",
+   "target": "DP16",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "term"
+  },
+  {
+   "source": "DP13",
+   "target": "DP15",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "term"
+  },
+  {
+   "source": "DP16",
+   "target": "DP17",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "term"
+  },
+  {
+   "source": "DP15",
+   "target": "DP17",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "term"
+  },
+  {
+   "source": "DP14",
+   "target": "DP18",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "term"
+  },
+  {
+   "source": "DP17",
+   "target": "DP18",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP17",
+   "target": "PP1",
+   "type": "uses",
+   "confidence": 0.9,
+   "basis": "named"
+  },
+  {
+   "source": "DP18",
+   "target": "PP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP19",
+   "target": "TP1",
+   "type": "uses",
+   "confidence": 0.65,
+   "basis": "term"
+  },
+  {
+   "source": "DP20",
+   "target": "RP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP20",
+   "target": "DP29",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP20",
+   "target": "DP30",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP21",
+   "target": "DP22",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP21",
+   "target": "RP2",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term",
+   "backward": true
+  },
+  {
+   "source": "DP21",
+   "target": "DP24",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP21",
+   "target": "DP28",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP21",
+   "target": "ExP5",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP21",
+   "target": "ExP6",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP21",
+   "target": "AssumP7",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP21",
+   "target": "AssumP9",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP21",
+   "target": "ExP7",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP21",
+   "target": "DP31",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP22",
+   "target": "DP23",
+   "type": "uses",
+   "confidence": 0.9,
+   "basis": "term"
+  },
+  {
+   "source": "DP23",
+   "target": "DP24",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "term"
+  },
+  {
+   "source": "DP22",
+   "target": "DP28",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP22",
+   "target": "DP29",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP22",
+   "target": "AssumP4",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP22",
+   "target": "DP31",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP24",
+   "target": "DP28",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP24",
+   "target": "AssumP5",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP24",
+   "target": "DP36",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP23",
+   "target": "AssumP5",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP25",
+   "target": "DP26",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP25",
+   "target": "DP27",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP25",
+   "target": "DP29",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP25",
+   "target": "PP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP25",
+   "target": "AssumP10",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP25",
+   "target": "AssumP11",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP25",
+   "target": "TP2",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP26",
+   "target": "DP27",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "term"
+  },
+  {
+   "source": "DP26",
+   "target": "RP3",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP26",
+   "target": "DP28",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "term"
+  },
+  {
+   "source": "DP26",
+   "target": "DP31",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP26",
+   "target": "ExP7",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP26",
+   "target": "ExP8",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP26",
+   "target": "AssumP13",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP26",
+   "target": "AssumP14",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP27",
+   "target": "RP3",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP28",
+   "target": "DP29",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP28",
+   "target": "AssumP5",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP28",
+   "target": "DP36",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP29",
+   "target": "DP30",
+   "type": "uses",
+   "confidence": 0.9,
+   "basis": "term"
+  },
+  {
+   "source": "DP29",
+   "target": "ExP5",
+   "type": "illustrates",
+   "confidence": 0.9,
+   "basis": "named"
+  },
+  {
+   "source": "DP30",
+   "target": "ExP5",
+   "type": "illustrates",
+   "confidence": 0.9,
+   "basis": "named"
+  },
+  {
+   "source": "DP29",
+   "target": "ExP6",
+   "type": "illustrates",
+   "confidence": 0.9,
+   "basis": "named"
+  },
+  {
+   "source": "DP30",
+   "target": "ExP6",
+   "type": "illustrates",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP30",
+   "target": "ClP1",
+   "type": "uses",
+   "confidence": 0.9,
+   "basis": "named"
+  },
+  {
+   "source": "DP29",
+   "target": "PP1",
+   "type": "uses",
+   "confidence": 0.9,
+   "basis": "named"
+  },
+  {
+   "source": "DP30",
+   "target": "PP1",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP29",
+   "target": "AssumP6",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP29",
+   "target": "AssumP8",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP32",
+   "target": "DP33",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP31",
+   "target": "DP32",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP33",
+   "target": "DP34",
+   "type": "uses",
+   "confidence": 0.9,
+   "basis": "term"
+  },
+  {
+   "source": "DP34",
+   "target": "AssumP5",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP34",
+   "target": "AssumP6",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP34",
+   "target": "AssumP7",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP34",
+   "target": "AssumP8",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP34",
+   "target": "AssumP10",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP34",
+   "target": "AssumP11",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP34",
+   "target": "AssumP12",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP34",
+   "target": "AssumP13",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP34",
+   "target": "AssumP14",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP34",
+   "target": "PP1",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP34",
+   "target": "TP2",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP32",
+   "target": "DP36",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP32",
+   "target": "AssumP5",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP32",
+   "target": "TP2",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP32",
+   "target": "PP1",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP35",
+   "target": "AssumP5",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP35",
+   "target": "AssumP6",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP35",
+   "target": "AssumP7",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP35",
+   "target": "AssumP8",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP35",
+   "target": "AssumP9",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP35",
+   "target": "AssumP10",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP35",
+   "target": "AssumP11",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP35",
+   "target": "AssumP12",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP35",
+   "target": "AssumP13",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP35",
+   "target": "AssumP14",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP36",
+   "target": "AssumP5",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP36",
+   "target": "AssumP6",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP36",
+   "target": "AssumP7",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP36",
+   "target": "AssumP8",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP36",
+   "target": "AssumP10",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP36",
+   "target": "AssumP11",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP36",
+   "target": "AssumP12",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP36",
+   "target": "AssumP13",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP36",
+   "target": "AssumP14",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP10",
+   "target": "ExP1",
+   "type": "illustrates",
+   "confidence": 0.8,
+   "basis": "inferred"
+  },
+  {
+   "source": "DP10",
+   "target": "ExP2",
+   "type": "illustrates",
+   "confidence": 0.85,
+   "basis": "named"
+  },
+  {
+   "source": "DP9",
+   "target": "ExP3",
+   "type": "illustrates",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "DP9",
+   "target": "ExP4",
+   "type": "illustrates",
+   "confidence": 0.85,
+   "basis": "named"
+  },
+  {
+   "source": "DP26",
+   "target": "ExP7",
+   "type": "illustrates",
+   "confidence": 0.8,
+   "basis": "inferred"
+  },
+  {
+   "source": "DP26",
+   "target": "ExP8",
+   "type": "illustrates",
+   "confidence": 0.85,
+   "basis": "inferred"
+  },
+  {
+   "source": "DP37",
+   "target": "ExP7",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP38",
+   "target": "ExP8",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "DP38",
+   "target": "ClP4",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "term"
+  },
+  {
+   "source": "ExP2",
+   "target": "ExP4",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "inferred"
+  },
+  {
+   "source": "ExP4",
+   "target": "RP1",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "inferred"
+  },
+  {
+   "source": "ExP2",
+   "target": "RP2",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "inferred"
+  },
+  {
+   "source": "AssumP3",
+   "target": "TP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "AssumP4",
+   "target": "TP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "AssumP9",
+   "target": "TP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "AssumP13",
+   "target": "TP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "AssumP14",
+   "target": "TP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "DP35",
+   "target": "TP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "AssumP9",
+   "target": "ClP1",
+   "type": "uses",
+   "confidence": 0.85,
+   "basis": "term",
+   "backward": true
+  },
+  {
+   "source": "AssumP1",
+   "target": "AssumP5",
+   "type": "uses",
+   "confidence": 0.65,
+   "basis": "inferred"
+  },
+  {
+   "source": "AssumP10",
+   "target": "PP1",
+   "type": "uses",
+   "confidence": 0.9,
+   "basis": "named"
+  },
+  {
+   "source": "AssumP6",
+   "target": "PP1",
+   "type": "uses",
+   "confidence": 0.9,
+   "basis": "named"
+  },
+  {
+   "source": "AssumP13",
+   "target": "PP1",
+   "type": "uses",
+   "confidence": 0.9,
+   "basis": "named"
+  },
+  {
+   "source": "ClP1",
+   "target": "PP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "TP2",
+   "target": "PP1",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "named",
+   "backward": true
+  },
+  {
+   "source": "PP1",
+   "target": "TP1",
+   "type": "proves",
+   "confidence": 0.85,
+   "basis": "named"
+  },
+  {
+   "source": "PSP2",
+   "target": "PSP4",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "PSP3",
+   "target": "PSP4",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "PSP4",
+   "target": "PSP5",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "PSP3",
+   "target": "PSP5",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "PSP6",
+   "target": "PSP7",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "PSP6",
+   "target": "PSP8",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "PSP11",
+   "target": "PSP12",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "PSP12",
+   "target": "PSP13",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "PSP13",
+   "target": "PSP14",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "PSP13",
+   "target": "PSP15",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "inferred"
+  },
+  {
+   "source": "TP1",
+   "target": "ClP2",
+   "type": "uses",
+   "confidence": 0.9,
+   "basis": "named"
+  },
+  {
+   "source": "TP1",
+   "target": "PP2",
+   "type": "uses",
+   "confidence": 0.9,
+   "basis": "named"
+  },
+  {
+   "source": "ClP3",
+   "target": "PP2",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "inferred",
+   "backward": true
+  },
+  {
+   "source": "ClP4",
+   "target": "PP2",
+   "type": "uses",
+   "confidence": 0.8,
+   "basis": "inferred",
+   "backward": true
+  },
+  {
+   "source": "PP2",
+   "target": "ClP2",
+   "type": "proves",
+   "confidence": 0.7,
+   "basis": "inferred"
+  },
+  {
+   "source": "DP37",
+   "target": "ClP3",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP35",
+   "target": "ClP3",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP35",
+   "target": "ClP4",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "AssumP10",
+   "target": "ClP4",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "inferred"
+  },
+  {
+   "source": "TP3",
+   "target": "ClP3",
+   "type": "uses",
+   "confidence": 0.6,
+   "basis": "inferred",
+   "backward": true
+  },
+  {
+   "source": "DP1",
+   "target": "ExP2",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "ExP3",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "ExP4",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "RP1",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "DP28",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "DP29",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "DP30",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "ClP1",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "ExP5",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "DP35",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "PP1",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP1",
+   "target": "ClP3",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP4",
+   "target": "ExP3",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP4",
+   "target": "ClP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP4",
+   "target": "DP35",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP4",
+   "target": "TP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP20",
+   "target": "ExP5",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP20",
+   "target": "PP1",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP22",
+   "target": "DP35",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP22",
+   "target": "AssumP8",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP22",
+   "target": "PP1",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP22",
+   "target": "ExP7",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP21",
+   "target": "DP29",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP21",
+   "target": "ClP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP21",
+   "target": "DP35",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP21",
+   "target": "AssumP14",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP21",
+   "target": "PP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP21",
+   "target": "ClP4",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP21",
+   "target": "AssumP11",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP21",
+   "target": "AssumP12",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP24",
+   "target": "AssumP14",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP25",
+   "target": "DP35",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP25",
+   "target": "AssumP14",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP32",
+   "target": "DP35",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP32",
+   "target": "AssumP14",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP32",
+   "target": "ClP4",
+   "type": "uses",
+   "confidence": 0.7,
+   "basis": "term"
+  },
+  {
+   "source": "DP33",
+   "target": "DP36",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP33",
+   "target": "AssumP5",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP33",
+   "target": "AssumP7",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP33",
+   "target": "AssumP13",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP33",
+   "target": "AssumP14",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP33",
+   "target": "PP1",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  },
+  {
+   "source": "DP33",
+   "target": "TP2",
+   "type": "uses",
+   "confidence": 0.75,
+   "basis": "term"
+  }
+ ]
+}

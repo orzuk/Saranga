@@ -29,6 +29,8 @@ Options
                    reference annotates: a blueprint has no equation nodes)
   gold_kinds       reference edges scored, by kind: a blueprint's "uses" (declared) and "ref" (named in
                    the text only); None: all
+  copies           also match reference nodes that are copies of a matched prediction (copy_matches): a
+                   result the reference states twice and the prediction keeps once (v7: also_stated_at)
 
 Edges point from the result used to the result that uses it (source -> target).
 """
@@ -48,12 +50,12 @@ PRESETS = {
     "author": dict(node_metric="m1g", match="label", edges=True, edge_recall="path",
                    precision_scope="gold", skip_tags=("section", "non_result")),
     "blueprint": dict(node_metric="m1g", match="label", edges=True, edge_recall="direct",
-                      precision_scope="all", pred_types="gold"),                         # gold: \\uses and the results the text names
+                      precision_scope="all", pred_types="gold", copies=True),            # gold: \\uses and the results the text names
     "author_inv": dict(node_metric="m1g", match="label", edges=True, edge_mode="invariant", skip_tags=("section", "non_result"),
                        precision_scope="gold"),
-    "blueprint_inv": dict(node_metric="m1g", match="label", edges=True, edge_mode="invariant", pred_types="gold"),
+    "blueprint_inv": dict(node_metric="m1g", match="label", edges=True, edge_mode="invariant", pred_types="gold", copies=True),
     "blueprint_uses": dict(node_metric="m1g", match="label", edges=True, edge_recall="direct",
-                           precision_scope="all", pred_types="gold", gold_kinds=("uses",)),   # gold: \\uses only
+                           precision_scope="all", pred_types="gold", gold_kinds=("uses",), copies=True),   # gold: \\uses only
 }
 _WEIGHT = {"m1g": ns.type_compat, "m1": lambda a, b: 1.0 if a == b else 0.0}
 _RESULT_EDGES = ("uses", "proves", "generalizes", "specializes")
@@ -68,6 +70,11 @@ def _labels(n):
     """A node's LaTeX labels: its own `label`, the `labels` a reference box cites (score() adds
     those a graph keeps in metadata.labels, as the rule-based parser does)."""
     return set(n.get("labels") or []) | ({n["label"]} if n.get("label") else set())
+
+
+def _label_order(n):
+    """_labels(n) in a fixed order, the node's own label first (a set's order varies from run to run)."""
+    return ([n["label"]] if n.get("label") else []) + sorted(_labels(n) - {n.get("label")})
 
 
 def _with_labels(g):
@@ -89,13 +96,34 @@ def match_nodes(pred, gold, node_metric="m1g", match="text", threshold=NM.THRESH
     if match == "label":
         owner = {lab: j for j, g in enumerate(gold) for lab in _labels(g)}
         for i, p in enumerate(pred):
-            j = next((owner[lab] for lab in _labels(p) if lab in owner), None)
+            j = next((owner[lab] for lab in _label_order(p) if lab in owner), None)
             if j is not None and j not in {v[0] for v in out.values()}:
                 out[i] = (j, w(p.get("type"), gold[j].get("type")))
     taken = {v[0] for v in out.values()}
     rest_p, rest_g = [i for i in range(len(pred)) if i not in out], [j for j in range(len(gold)) if j not in taken]
     tok = lambda xs, ix: [(xs[k].get("type"), mm.tokens(_text(xs[k]))) for k in ix]
     out |= {rest_p[a]: (rest_g[b], c) for a, (b, c) in NM._one_to_one(tok(pred, rest_p), tok(gold, rest_g), w, threshold).items()}
+    return out
+
+
+def copy_matches(pred, gold, m, threshold=NM.THRESHOLD):
+    """{gold index: pred index} for reference nodes the one-to-one matching m left out that copy a prediction:
+    they carry one of its labels (a label defined twice, a result stated twice), or their text is one of the
+    restatements it lists in also_stated_at (the v7 prompt keeps one node per result)."""
+    taken, owner, out = {j for j, _ in m.values()}, defaultdict(list), {}
+    for j, g in enumerate(gold):
+        for lab in _labels(g):
+            owner[lab].append(j)
+    for i, p in enumerate(pred):
+        for j in (j for lab in _label_order(p) for j in owner.get(lab, ())):
+            if j not in taken:
+                out.setdefault(j, i)
+    alts = [(i, mm.tokens(s if isinstance(s, str) else _text(s))) for i, p in enumerate(pred) for s in p.get("also_stated_at") or []]
+    for j in (j for j in range(len(gold)) if j not in taken and j not in out):
+        b = mm.tokens(_text(gold[j]))
+        ov, i = max(((mm.sym_containment(a, b), i) for i, a in alts), default=(0.0, None))
+        if ov >= threshold:
+            out[j] = i
     return out
 
 
@@ -142,7 +170,7 @@ def _implied(deps):
 
 def score(pred: dict, gold: dict, node_metric="m1g", match="text", edges=True, edge_recall="direct",
           precision_scope="all", skip_tags=(), threshold=NM.THRESHOLD, cover=NM.COVER, gold_kinds=None,
-          pred_types="all", edge_mode="structure") -> dict:
+          pred_types="all", edge_mode="structure", copies=False) -> dict:
     """Counts for one paper. Nodes: P = node_p_credit / node_p_n, R = node_g_credit / node_g_n;
     edges (dependencies between results) likewise. Pool over papers with pooled()."""
     gn = [n for n in _with_labels(gold) if not set(n.get("tags") or []) & set(skip_tags)]
@@ -153,31 +181,42 @@ def score(pred: dict, gold: dict, node_metric="m1g", match="text", edges=True, e
         pc, gc = NM.score([(n.get("type"), _text(n)) for n in pn], [(n.get("type"), _text(n)) for n in gn], "m3", threshold, cover)
         return {"node_p_credit": sum(pc), "node_p_n": len(pn), "node_g_credit": sum(gc), "node_g_n": len(gn)}
     m = match_nodes(pn, gn, node_metric, match, threshold)
+    cm = copy_matches(pn, gn, m, threshold) if copies else {}
     credit = sum(c for _, c in m.values())
     out = {"node_p_credit": credit, "node_p_n": len(pn) if precision_scope == "all" else len(m),
-           "node_g_credit": credit, "node_g_n": len(gn)}
+           "node_g_credit": credit + sum(_WEIGHT[node_metric](pn[i].get("type"), gn[j].get("type")) for j, i in cm.items()),
+           "node_g_n": len(gn)}
     if not edges:
         return out
-    p2g = {pn[i]["id"]: gn[j]["id"] for i, (j, _) in m.items()}
+    p2g = defaultdict(list)            # a prediction -> the reference nodes it stands for (one, or with its copies)
+    for i, (j, _) in m.items():
+        p2g[pn[i]["id"]].append(gn[j]["id"])
+    for j, i in cm.items():
+        p2g[pn[i]["id"]].append(gn[j]["id"])
     if edge_mode == "invariant":       # the results both name, through anything in between, reduced
-        gm = {g for g in p2g.values() if gtype_of(gn, g) not in _NOT_RESULTS}
+        gm = {g for gs in p2g.values() for g in gs if gtype_of(gn, g) not in _NOT_RESULTS}
         gk = [e for e in gold["edges"] if not gold_kinds or e.get("kind", "uses") in gold_kinds or e["type"] != "uses"]
         ge = reduction(dependencies(gn, gk, gm))
-        pe = reduction({(p2g[a], p2g[b]) for a, b in dependencies(pn, pred["edges"], {a for a, b in p2g.items() if b in gm})})
+        pe = reduction({(x, y) for a, b in dependencies(pn, pred["edges"], {a for a, gs in p2g.items() if set(gs) & gm})
+                        for x in p2g[a] if x in gm for y in p2g[b] if y in gm and x != y})
         return out | {"edge_p_credit": len(pe & ge), "edge_p_n": len(pe), "edge_g_credit": len(pe & ge), "edge_g_n": len(ge)}
     gres = {n["id"] for n in gn if n.get("type") not in _NOT_RESULTS}
     gdep = dependencies(gn, [e for e in gold["edges"] if not gold_kinds or e.get("kind", "uses") in gold_kinds or e["type"] != "uses"], gres)
     # results only on both sides: a matched proof is collapsed like any proof, never an endpoint
     presults = {n["id"] for n in pn if n.get("type") not in _NOT_RESULTS}
-    pdep = {(p2g[a], p2g[b]) for a, b in dependencies(pn, pred["edges"], presults) if p2g.get(a) in gres and p2g.get(b) in gres}
     # an arrow the authors drew as an equivalence (A <=> B) is matched in either direction
     geq = {(e["source"], e["target"]) for e in gold["edges"] if e.get("equivalence")}
-    pdep = {(b, a) if (b, a) in geq and (a, b) not in gdep else (a, b) for a, b in pdep}
+    flip = lambda a, b: (b, a) if (b, a) in geq and (a, b) not in gdep else (a, b)
+    ppairs = dependencies(pn, pred["edges"], presults)
+    by_pair = {(a, b): {flip(x, y) for x in p2g.get(a, ()) if x in gres for y in p2g.get(b, ()) if y in gres and x != y}
+               for a, b in ppairs}
+    pdep = set().union(*by_pair.values())
     p_found = _implied(pdep) if edge_recall == "path" else pdep
     if precision_scope == "gold":       # only among the drawn results; implied by the drawing: not an error
         p_ok, p_n = len(pdep & _implied(gdep)), len(pdep)
     else:
-        p_ok, p_n = len(pdep & gdep), len(dependencies(pn, pred["edges"], presults))
+        # one credit per predicted dependency (a copy can give it several reference pairs), per reference pair
+        p_ok, p_n = len({min(s & gdep) for s in by_pair.values() if s & gdep}), len(ppairs)
     gtype = {n["id"]: n.get("type") for n in gn}
     gdef = {d for d in gdep if gtype.get(d[0]) == "definition"}     # recall split: dependencies on definitions
     return out | {"edge_p_credit": p_ok, "edge_p_n": p_n, "edge_g_credit": len(gdep & p_found), "edge_g_n": len(gdep),
