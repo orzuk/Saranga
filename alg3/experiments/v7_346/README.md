@@ -38,7 +38,7 @@ gold-author test papers against the AUTHORS' diagrams (graph_score preset `autho
 - Edges: retraining on v7 adds nothing (T-A − v6 release +0.002 [−0.003, +0.008]).
 - E-D: every rule-based arm is ≈ 0.46, the base parser included.
 
-## Error analysis (VAL only, `analysis` via analyze_v7.py)
+## Error analysis (VAL only; full reports in analysis/, made with analyze_v7.py)
 
 - T-A's node gain is recall (silver val R 0.630 → 0.664, gold val 0.716 → 0.734).
 - Weak types: claim F1 0.26 (silver) / 0.41 (gold), definition 0.67, assumption 0.45 / 0.63; environment
