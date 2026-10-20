@@ -10,7 +10,7 @@
 Per item: scores.json ({extractor: {preset: counts and P/R/F1}}). Per set: scores_summary.json, pooled over
 items with 95% bootstrap intervals (items resampled). The portals show both.
 
-    score_gold.py [--sets author,blueprint] [--extractors rules,tagger] [--jobs 6] [--redo]
+    score_gold.py [--sets author,blueprint] [--extractors rules,tagger] [--jobs 6] [--redo] [--redetect]
 """
 import argparse
 import json
@@ -75,7 +75,7 @@ def direction(gold, rules):
 
 
 def one(job):
-    name, d, extractors, redo = job
+    name, d, extractors, redo, redetect = job
     from math_paper_parser import parse_to_unified
     _, _, gold_file, presets = SETS[name]
     gold = json.loads((d / gold_file).read_text())
@@ -83,17 +83,25 @@ def one(job):
         rules_f = d / "rules.json"
         if redo or not rules_f.is_file():
             rules_f.write_text((d / "full.json").read_text())
-        # the arrows' direction: the reviewer's answer, else detected from the paper's own references
-        verdict, fwd, back = direction(gold, json.loads(rules_f.read_text()))
+        # the arrows' direction: the reviewer's answer, else detected from the paper's own references. The
+        # detection is part of the gold, so it is made once and kept in meta.json: re-detecting with another
+        # parser would change the gold under the extractors it scores (--redetect to make it again)
         review = json.loads((d / "review.json").read_text()) if (d / "review.json").is_file() else {}
         said = {"B uses A (reversed)": "reversed", "A used for B": "forward",          # older wording too
             "B is used to prove A (reversed)": "reversed", "A is used to prove B": "forward"}.get(review.get("arrow_meaning"))
+        meta = json.loads((d / "meta.json").read_text())
+        kept = meta.get("direction") if not redetect else None
+        if kept and "detected" in kept:
+            verdict, fwd, back = kept["detected"], kept.get("agree"), kept.get("reversed")
+        else:
+            verdict, fwd, back = direction(gold, json.loads(rules_f.read_text()))
         flip = (said or verdict) == "reversed"
         if flip:
             gold["edges"] = [dict(e, source=e["target"], target=e["source"]) for e in gold["edges"]]
-        meta = json.loads((d / "meta.json").read_text())
-        meta["direction"] = {"detected": verdict, "agree": fwd, "reversed": back, "reviewer": said, "scored_reversed": flip}
-        (d / "meta.json").write_text(json.dumps(meta, indent=1))
+        new = {"detected": verdict, "agree": fwd, "reversed": back, "reviewer": said, "scored_reversed": flip}
+        if new != kept:
+            meta["direction"] = new
+            (d / "meta.json").write_text(json.dumps(meta, indent=1))
     out = {}
     for x in extractors:
         f = d / f"{x}.json"
@@ -130,10 +138,11 @@ def main():
     ap.add_argument("--extractors", default="rules,tagger")
     ap.add_argument("--jobs", type=int, default=6)
     ap.add_argument("--redo", action="store_true")
+    ap.add_argument("--redetect", action="store_true", help="author: detect the diagrams' direction again (changes the gold)")
     a = ap.parse_args()
     ex = a.extractors.split(",")
     for name in a.sets.split(","):
-        jobs = [(name, d, ex, a.redo) for d in items(name)]
+        jobs = [(name, d, ex, a.redo, a.redetect) for d in items(name)]
         with ProcessPoolExecutor(a.jobs) as pool:
             results = dict(pool.map(one, jobs))
         s = summary(results, ex, SETS[name][3])
