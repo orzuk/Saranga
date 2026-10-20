@@ -51,3 +51,19 @@ gold-author test papers against the AUTHORS' diagrams (graph_score preset `autho
   result → result dependencies, which neither the tagger nor the edge model produces.
 
 Not released: the T-* models stay in alg3/runs/v7_346/ (gitignored); the website keeps the v6 release.
+
+## After Or's parser fix (3ce77a9a, proof's \ref to its own result; parser at 2ef5e47f)
+
+All arms re-parsed (nodes identical in every paper; edges differ in ~10% of papers) and the T-A edge
+model retrained (`VARIANTS=A run.sh`; T-S/T-G edges not re-run). Full tables: `RESULTS_test_parserfix.md`.
+
+| arm | edges L1 F1 E-A | E-D edge F1 (before fix) |
+|---|---|---|
+| base parser | 0.286 | 0.534 (0.456) |
+| units + edges_stack | 0.431 | 0.547 (0.468) |
+| alg3 v6 release + edges_stack | 0.442 | 0.548 (0.466) |
+| **alg3 T-A + edges (retrained)** | 0.440 | **0.553** (0.470) |
+
+The fix lifts every arm on the author diagrams by ~0.08; retraining the edge model adds nothing
+(T-A − v6 release −0.002 [−0.008, +0.006] on E-A). Released as
+`extractors/rules/silver_v7__sentence_tagger__2026-10` + `extractors/edges/silver_v7__edges_stack__2026-10`.

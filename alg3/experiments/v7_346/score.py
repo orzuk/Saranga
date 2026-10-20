@@ -78,7 +78,10 @@ def edge_counts(pids):
     for arm, d in EDGE_ARMS:
         if not (G / d).is_dir():
             continue
-        out[arm] = {p: EM.score_paper(G / d / f"{p}.json", C / "silver" / f"{p}.json") for p in pids}
+        out[arm] = {}
+        for p in pids:                      # keep only what F1 needs: the bootstrap sums these 1000s of times
+            c = EM.score_paper(G / d / f"{p}.json", C / "silver" / f"{p}.json")
+            out[arm][p] = Counter({k: c[k] for k in ("tp", "pred", "ref")})
     return out
 
 
