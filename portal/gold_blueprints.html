@@ -83,7 +83,9 @@ function scoreTable(s, title) {
 async function getJSON(u) { const r = await fetch(u, {cache:"no-store"}); if (!r.ok) throw new Error(u); return r.json(); }
 
 async function listView() {
-  const [all, reviews] = await Promise.all([getJSON(D + "index.json"), getJSON("/gold/reviews?set=bp")]);
+  const [all, reviews, qual] = await Promise.all([getJSON(D + "index.json"), getJSON("/gold/reviews?set=bp"),
+    getJSON(D + "quality.json").catch(() => [])]);
+  const Q = Object.fromEntries(qual.map(q => [q.id, q]));
   const list = await pick(all);
   const n = k => k === prov ? list.length : k === "sample" ? 20 : all.filter(b => b.provenance === k).length;
   const rows = list.map((b, i) => {
@@ -94,7 +96,7 @@ async function listView() {
       <td>${esc(b.title)}</td><td>${esc(b.area)}</td>
       <td>${b.arxiv ? `<a href="https://arxiv.org/abs/${esc(b.arxiv)}" target="_blank" onclick="event.stopPropagation()">${esc(b.arxiv)}</a>` : ""}</td>
       <td>${esc((b.source_type || "").replace("_", " "))}${b.source_latex && b.source_latex !== "unknown" ? ` <span class="small muted">(LaTeX: ${esc(b.source_latex === "none" ? "PDF only" : b.source_latex)})</span>` : ""}</td>
-      <td>${b.statements ?? ""}</td><td>${b.uses_edges ?? ""}</td><td>${esc(b.year)}</td><td>${st}</td></tr>`;
+      <td>${b.statements ?? ""}</td><td>${b.uses_edges ?? ""}</td><td>${esc(b.year)}</td><td>${flagCell(Q[b.id])}</td><td>${st}</td></tr>`;
   }).join("");
   const ss = await getJSON(D + "scores_summary.json").then(s => {
     const o = {}; for (const [k, v] of Object.entries(s)) { const [x, p] = k.split("/"); (o[x] = o[x] || {})[p] = v; } return o; }).catch(() => null);
@@ -104,7 +106,21 @@ async function listView() {
     <p class="muted small">Provenance is a heuristic label from the commit history (contributors, AI co-author lines, agent files, pace).
       Ordered by the number of statements carrying \\uses. "arXiv" = the paper the blueprint follows, where checked.</p>
     <table><tr><th>#</th><th>Repository</th><th>Title</th><th>Area</th><th>arXiv</th><th>Source</th><th>Statements</th>
-      <th>\\uses edges</th><th>Year</th><th>Review</th></tr>${rows}</table>`;
+      <th>\\uses edges</th><th>Year</th><th>Problems</th><th>Review</th></tr>${rows}</table>
+    <p class="muted small">Problems (scripts/gold_candidates/blueprint_quality.py): <b>drop</b> most statements have no text
+      (a skeleton generated from Lean); <b>nodeps</b> no declared dependency; <b>empty</b> most proofs are empty placeholders;
+      <b>partial</b> some \\input files missing from the download; <b>sparse</b> under a third of the statements in any
+      dependency; <b>dangling</b> dependencies on no statement; <b>huge</b> over 300 KB. Hover for the counts.</p>`;
+}
+
+const FLAG_CLASS = {drop: "no", nodeps: "no", empty: "partly", sparse: "partly", dangling: "partly", partial: "", huge: ""};
+function flagCell(q) {
+  if (!q) return '<span class="muted">–</span>';
+  if (!q.flags.length) return '<span class="muted small">ok</span>';
+  const tip = `${q.statements} statements (${q.empty_statements} with no text), ${q.proofs} proofs (${q.empty_proofs} empty), ` +
+    `${q.deps} dependencies (${q.deps_in_empty_proofs} declared in empty proofs), ${q.isolated_statements} statements in no dependency, ` +
+    `${q.missing_inputs} missing \\input files, ${q.kb} KB`;
+  return `<span title="${esc(tip)}">${q.flags.map(f => `<span class="pill ${FLAG_CLASS[f] || ""}">${esc(f)}</span>`).join(" ")}</span>`;
 }
 
 function tabs(el, items) {
@@ -123,7 +139,9 @@ async function bpView() {
   const k = list.findIndex(b => b.id === bid), prev = list[k-1], next = list[k+1];
   $("#nav").innerHTML = `<a href="gold_blueprints.html?prov=${prov}">list</a> ` + (prev ? `<a href="?id=${prev.id}${provQ()}">← prev</a>` : "") +
     ` <span class="muted">${k+1} / ${list.length} ${esc(prov)}</span> ` + (next ? `<a href="?id=${next.id}${provQ()}">next →</a>` : "");
-  $("#sub").innerHTML = `<a href="${esc(m.links.repo)}" target="_blank">${esc(m.repo)}</a> · ${esc(m.title)} · <span class="muted">${esc(m.area)}</span>`;
+  const q = await getJSON(D + "quality.json").then(a => a.find(x => x.id === bid)).catch(() => null);
+  $("#sub").innerHTML = `<a href="${esc(m.links.repo)}" target="_blank">${esc(m.repo)}</a> · ${esc(m.title)} · <span class="muted">${esc(m.area)}</span>` +
+    (q ? ` · problems: ${flagCell(q)} <span class="muted small">(${q.statements} statements, ${q.empty_statements} with no text; ${q.proofs} proofs, ${q.empty_proofs} empty; ${q.deps} dependencies, ${q.deps_in_empty_proofs} in empty proofs)</span>` : "");
   const S = m.source || {};
   const srcLine = S.type ? `<p class="small"><b>Source (${esc(S.type.replace("_", " "))}):</b>
       ${S.url ? `<a href="${esc(S.url)}" target="_blank">${esc(S.citation || S.url)}</a>` : esc(S.citation || "")}

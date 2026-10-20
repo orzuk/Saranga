@@ -26,7 +26,8 @@ import score_gold                                       # noqa: E402
 AUTHOR = ("paper.tex", "gold.json", "meta.json", "figure.json", "graph_tikz.json", "rules.json")
 BLUEPRINT = ("all.tex", "macros.tex", "graph.json", "meta.json", "rules.json")
 TOP = {"author": ("index.json", "review_sample.json", "scores_summary.json", "eval_subset.txt"),
-       "blueprint": ("index.json", "scores_summary.json", "paper_pairs_summary.json", "SOURCES_TO_CONVERT.md")}
+       "blueprint": ("index.json", "scores_summary.json", "paper_pairs_summary.json", "SOURCES_TO_CONVERT.md",
+                     "excluded.json", "quality.json")}
 ARROWS_PER_KB = 0.05
 
 
