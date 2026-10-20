@@ -167,7 +167,7 @@ def build(work: Path, paper_id: str, title: str = "") -> dict:
     main = find_main_tex(work / "source")
     title = title or _title_from_tex(main) or paper_id
     d = parse_to_unified(main, paper_id, str(RULES_DIR))
-    learned_edges.add_edges(d, _edge_model())
+    learned_edges.add_edges(d, _edge_model(), tex=Path(main).read_text(encoding="utf-8", errors="ignore"))
     md = d.setdefault("metadata", {})
     md.update({"title": title, "paper_id": paper_id,
                "extractor": f"rules (parser + alg3 sentence tagger {RULES_DIR.name} + learned edges {EDGE_MODEL.name})"})

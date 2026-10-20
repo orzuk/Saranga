@@ -136,7 +136,7 @@ def _parse_one(job):
                 d = PaperParser(paper_id=pid, extraction_mode="rules",
                                 rules_dir=_W["rules"]).parse_file(str(main)).to_unified_dict()
             if _W["edges"]:
-                _W["edges"][0].add_edges(d, _W["edges"][1])
+                _W["edges"][0].add_edges(d, _W["edges"][1], tex=Path(main).read_text(encoding="utf-8", errors="ignore"))
         except Exception as e:                                    # noqa: BLE001
             print(f"  [warn] parse failed for {pid}: {type(e).__name__}: {e}", flush=True)
     Path(out).write_text(json.dumps(d), encoding="utf-8")

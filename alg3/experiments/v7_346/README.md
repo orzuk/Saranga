@@ -67,3 +67,15 @@ model retrained (`VARIANTS=A run.sh`; T-S/T-G edges not re-run). Full tables: `R
 The fix lifts every arm on the author diagrams by ~0.08; retraining the edge model adds nothing
 (T-A − v6 release −0.002 [−0.008, +0.006] on E-A). Released as
 `extractors/rules/silver_v7__sentence_tagger__2026-10` + `extractors/edges/silver_v7__edges_stack__2026-10`.
+
+## All-kinds edge model (`alg3/edges_all.py`, released as `extractors/edges/silver_v7__edges_allpairs__2026-10`)
+
+The v7 prompt fixes how silver edges are made, and each edge records its `basis`: term 61% (definition →
+every later user of its definiendum/symbol), ref 26%, syntax 4%, named 4%, inferred 5%. The old edge
+model only added definition edges by literal term match and ordered nodes by list position. The new
+model scores candidates of every kind with true document order, an exact `\ref` rule and a wider,
+document-aware definiendum model. Test (68): edge F1 0.457 vs 0.440 (T-A + edges_stack),
++0.017 [+0.007, +0.024]; author diagrams 0.573 vs 0.553. Val analysis scripts in `edges/`
+(diag.py: channel coverage; bybasis.py: recall by silver basis; bychannel.py: precision by channel).
+v6-vs-v7 silver edge agreement (same 160 papers): F1 0.738, so the labels are consistent; the remaining
+gap is mostly node-side (spurious tagger definitions, prose proofs/claims missing as nodes).

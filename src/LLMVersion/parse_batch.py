@@ -258,7 +258,7 @@ def run_batch(
         json_path = day_dir / "json" / f"{versioned_id}_{suffix}.json"
         d = graph.to_unified_dict()
         if edges:
-            edges[0].add_edges(d, edges[1])
+            edges[0].add_edges(d, edges[1], tex=Path(tex_path).read_text(encoding="utf-8", errors="ignore"))
         json_path.write_text(json.dumps(d, indent=2), encoding="utf-8")
         print(f"[OK]   Saved {json_path}")
         if draw_graphs:

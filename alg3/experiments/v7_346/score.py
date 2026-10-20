@@ -27,9 +27,11 @@ G = REPO / "alg3/runs/v7_346/graphs"
 NODE_ARMS = ["base", "units_v6", "alg3_v6", "alg3_TS", "alg3_TG", "alg3_TA"]
 EDGE_ARMS = [("base", "base"), ("units_v6", "units"), ("units_v6+stack", "units+stack"),
              ("alg3_v6", "release_v2b"), ("alg3_v6+stack", "release_v2b+stack"),
-             ("alg3_TS+edges", "T-S+edges"), ("alg3_TG+edges", "T-G+edges"), ("alg3_TA+edges", "T-A+edges")]
+             ("alg3_TS+edges", "T-S+edges"), ("alg3_TG+edges", "T-G+edges"), ("alg3_TA+edges", "T-A+edges"),
+             ("alg3_TA+allpairs", "T-A+allpairs")]
 PAIRS = [("alg3_TA", "alg3_TS"), ("alg3_TA", "alg3_TG"), ("alg3_TA", "alg3_v6"), ("alg3_TA", "units_v6"),
-         ("alg3_TA+edges", "alg3_TS+edges"), ("alg3_TA+edges", "alg3_v6+stack"), ("alg3_TA+edges", "units_v6+stack")]
+         ("alg3_TA+edges", "alg3_TS+edges"), ("alg3_TA+edges", "alg3_v6+stack"), ("alg3_TA+edges", "units_v6+stack"),
+         ("alg3_TA+allpairs", "alg3_TA+edges"), ("alg3_TA+allpairs", "alg3_v6+stack")]
 N_BOOT = 1000
 
 

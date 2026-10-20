@@ -413,6 +413,12 @@ class EdgeModel:
     """A trained model directory (extractors/edges/<id>/model.json)."""
     def __init__(self, model_dir):
         d = json.load(open(Path(model_dir) / "model.json", encoding="utf-8"))
+        self.allpairs = None
+        if d.get("kind") == "allpairs":                 # alg3/edges_all.py: every edge kind, needs the .tex
+            import edges_all
+            self.allpairs = edges_all.Model(model_dir)
+            self.id, self.threshold = self.allpairs.id, self.allpairs.threshold
+            return
         self.dmodel, self.pmodel = LR(d["definiendum"]), LR(d["pairs"])
         self.threshold, self.id = d["threshold"], d.get("id", Path(model_dir).name)
         self.filter = LR(d["filter"]) if d.get("filter") else None     # keep/drop the parser's edges
@@ -420,10 +426,17 @@ class EdgeModel:
         self.stack = LR(d["stack"]) if d.get("stack") else None
 
 
-def add_edges(graph: dict, model: EdgeModel, threshold: float | None = None) -> int:
+def add_edges(graph: dict, model: EdgeModel, threshold: float | None = None, tex: str | None = None) -> int:
     """Drop the parser edges the filter rejects (if the model has one), then add the model's
     definition -> user `uses` edges to a unified graph dict, in place; pairs already linked
-    (either direction) are left alone. Returns the number added."""
+    (either direction) are left alone. Returns the number added. An all-pairs model
+    (alg3/edges_all.py) instead sets the graph's edges to its scored candidates and uses `tex`,
+    the paper's main LaTeX source, for document order (without it: the graph's list order)."""
+    if model.allpairs is not None:
+        import edges_all
+        n0 = len(graph.get("edges", []))
+        edges_all.apply(graph, tex, model.allpairs, threshold)
+        return len(graph.get("edges", [])) - n0
     th = model.threshold if threshold is None else threshold
     if model.filter is not None:
         filter_edges(graph, [model.filter.p(f) for _e, f in parser_edge_rows(graph)], model.drop_below)
