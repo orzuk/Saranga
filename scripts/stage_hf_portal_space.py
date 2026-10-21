@@ -21,8 +21,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 SILVER = "corpus/silver/opus-5.5__v6/"     # LLM graphs; rules_v6/ holds the rule graphs
-RULES = "extractors/rules/silver_v6__sentence_tagger__2026-10/"   # alg3, the "Your paper" rule-based extractor
-EDGES = "extractors/edges/silver_v6__edges_stack__2026-10/"       # its learned edges (alg3/edges.py)
+RULES = "extractors/rules/silver_v7__sentence_tagger__2026-10/"   # alg3, the "Your paper" rule-based extractor
+EDGES = "extractors/edges/silver_v7__edges_allpairs__2026-10/"    # its learned edges (alg3/edges.py)
 SKIP = ("portal/graphs/", "portal/data/tier2/", "portal/data/tier2_tex/", "portal/data/tier3-sample",
         "portal/gold_", "portal/run_local.sh")
 
@@ -43,8 +43,8 @@ def main(out):
     for f in tracked:
         p = Path(f)
         if (f.startswith("portal/") and not f.startswith(SKIP)
-                or f.startswith(RULES) or f.startswith(EDGES) or f == "alg3/edges.py"
-                or f == "scripts/opus_extract_prompt_v6.md"                           # LLM agent prompt
+                or f.startswith(RULES) or f.startswith(EDGES) or f in ("alg3/edges.py", "alg3/edges_all.py")
+                or f == "scripts/opus_extract_prompt_v7.md"                           # LLM agent prompt
                 or p.suffix == ".py" and str(p.parent) in ("src", "src/LLMVersion")
                 or str(p.parent) == "src/graph_view" and p.suffix in (".py", ".html", ".js", ".css")):
             copy(f, out / f)

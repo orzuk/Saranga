@@ -26,8 +26,8 @@ import zipfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-RULES_DIR = REPO / "extractors" / "rules" / "silver_v6__sentence_tagger__2026-10"     # alg3, the main method
-EDGE_MODEL = REPO / "extractors" / "edges" / "silver_v6__edges_stack__2026-10"      # learned edges (alg3/edges.py)
+RULES_DIR = REPO / "extractors" / "rules" / "silver_v7__sentence_tagger__2026-10"     # alg3, the main method
+EDGE_MODEL = REPO / "extractors" / "edges" / "silver_v7__edges_allpairs__2026-10"   # learned edges (alg3/edges.py, edges_all.py)
 GRAPH_BUILD = REPO / "src" / "graph_view" / "build.py"
 sys.path[:0] = [str(REPO / "src" / "LLMVersion"), str(REPO / "src"), str(REPO / "alg3")]
 import latex_facts                                  # noqa: E402

@@ -1,7 +1,7 @@
-"""'Your paper' with an LLM: the v6 agent extraction, run on the user's own Anthropic key.
+"""'Your paper' with an LLM: the v7 agent extraction, run on the user's own Anthropic key.
 
-This is the extraction that built the silver corpus: the v6 prompt
-(scripts/opus_extract_prompt_v6.md) given to a Claude Code agent, which runs
+This is the extraction that built the silver corpus: the v7 prompt
+(scripts/opus_extract_prompt_v7.md) given to a Claude Code agent, which runs
 latex_facts.py, writes and runs its own build script, calls finalize() until the
 graph validates and writes the JSON. Here the agent is the Claude Agent SDK, with
 the model the user picks and the key they paste.
@@ -43,7 +43,7 @@ import yours
 
 REPO = yours.REPO
 SRC = REPO / "src"
-PROMPT = REPO / "scripts" / "opus_extract_prompt_v6.md"
+PROMPT = REPO / "scripts" / "opus_extract_prompt_v7.md"
 MODELS = {                      # what the page offers; the first is the default
     "claude-opus-5-5": "Claude Opus 5.5 (the silver corpus model)",
     "claude-sonnet-5-5": "Claude Sonnet 5.5",
@@ -97,7 +97,7 @@ def render_prompt(main_tex: Path, out_json: Path, paper_id: str, title: str, mod
     values = {"BID": paper_id, "TITLE": title or "(see the source)", "AUTHORS": "(see the source)",
               "YEAR": "(see the source)", "TEX_SOURCE": str(main_tex), "OUTPUT_JSON": str(out_json),
               "REPO": str(REPO), "MODEL": model, "EFFORT": "default",
-              "PROMPT_VERSION": f"v6-{sha}-{commit}"}
+              "PROMPT_VERSION": f"v7-{sha}-{commit}"}
     text = template
     for k, v in values.items():
         text = text.replace("{" + k + "}", v)
@@ -113,7 +113,7 @@ def _stage(job: dict, pct: int, text: str) -> None:
 
 
 def _on_tool(job: dict, name: str, inp: dict, out_json: Path) -> None:
-    """Map the agent's tool calls to progress milestones (the v6 workflow order)."""
+    """Map the agent's tool calls to progress milestones (the v7 workflow order)."""
     cmd = inp.get("command", "") if name == "Bash" else ""
     target = inp.get("file_path", "")
     if "latex_facts.py" in cmd:
@@ -226,7 +226,7 @@ def _worker(job: dict, key: str, model: str, budget: float, work: Path, paper_id
         main = yours.find_main_tex(work / "source")
         title = title or yours._title_from_tex(main) or paper_id
         prompt = render_prompt(main, out_json, paper_id, title, model)
-        m = re.search(r"v6-[0-9a-f]{16}-[0-9A-Za-z]+", prompt)
+        m = re.search(r"v7-[0-9a-f]{16}-[0-9A-Za-z]+", prompt)
         job["prompt_version"] = m.group(0) if m else None
         _stage(job, 3, "Starting the agent")
         res = asyncio.run(asyncio.wait_for(
@@ -238,7 +238,7 @@ def _worker(job: dict, key: str, model: str, budget: float, work: Path, paper_id
             raise yours.YoursError(f"No graph was written: {why}.")
         d = json.loads(out_json.read_text())
         d.setdefault("metadata", {}).update({"title": title, "paper_id": paper_id,
-                                             "extractor": f"LLM agent (v6 prompt, {model})"})
+                                             "extractor": f"LLM agent (v7 prompt, {model})"})
         out_json.write_text(json.dumps(d))
         _stage(job, 95, "Building the viewer page")
         r = subprocess.run([sys.executable, str(yours.GRAPH_BUILD), str(out_json), "-o", str(work),
