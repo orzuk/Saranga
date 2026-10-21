@@ -1976,10 +1976,14 @@ Respond ONLY with JSON array."""
             ...
             \\end{proof}
 
-        The optional argument is used to guess the parent theorem label via
-        the first \\ref/\\eqref/\\autoref that appears in it. That label is
-        stored in proof._target_theorem_label and later used by
-        _link_proofs_to_theorems.
+        The proved result where the text names it, in this order: the first
+        reference in the optional argument; a reference that opens the body
+        ("(of \\cref{x})", "\\paragraph{Proof of Lemma~\\ref{x}:}"); a reference
+        in a "proof of ... / we prove ..." phrase or heading just before the
+        proof, after the last environment that ends there; then latex_facts'
+        `proves` (a proof right after its theorem). These labels are stored in
+        proof._target_theorem_labels and the first one that names a
+        theorem-like object is used by _link_proofs_to_theorems.
         """
         found = self._extract_envs(text, {"proof"})
 
@@ -1988,7 +1992,18 @@ Respond ONLY with JSON array."""
 
         # If the optional proof header includes something like \ref{thm:main},
         # we want to capture that label.
-        header_ref_pattern = re.compile(r"\\(?:ref|eqref|autoref)\{([^}]+)\}")
+        ref = r"\\(?:[cC]ref|ref|eqref|autoref|labelcref)\*?\{([^},]+)|\\hyperref\[([^\]]+)\]"
+        header_ref_pattern = re.compile(ref)
+        # "(of \cref{x})", "\paragraph{Proof of Lemma~\ref{x}:}", "\textbf{Proof of Theorem \ref{x}.}"
+        body_open_pattern = re.compile(
+            r"\s*(?:[(\[]\s*)?(?:\\(?:paragraph|subparagraph|textbf|textit|emph|textsc|noindent|it|bf|em)\b\*?\s*\{?\s*)*"
+            r"(?:proof\s+)?of\b[^.;\n]{0,60}?(?:" + ref + ")", re.IGNORECASE)
+        # "Proof of Theorem~\ref{x}" / "we now prove Proposition~\ref{x}" just before the proof
+        before_pattern = re.compile(
+            r"(?:proof\s+of|we\s+(?:now\s+|next\s+|first\s+)?(?:prove|establish|show)|proving)\b"
+            r"[^.;\n]{0,60}?(?:" + ref + ")", re.IGNORECASE)
+        not_naming_pattern = re.compile(r"\b(?:the|a|from|in|see|by|to|as|of|with|like)\s+$", re.IGNORECASE)
+        before_window = 400
 
         for env_name, opt_name, body, source_pos, source_end, fact in found:
             idx += 1
@@ -2009,18 +2024,28 @@ Respond ONLY with JSON array."""
             proof._source_pos = source_pos
             proof._source_end = source_end
 
-            # The proved result where syntax states it: \begin{proof}[Proof of
-            # Theorem~\ref{x}], else latex_facts' `proves` (a proof right after
-            # its theorem). Stored as that theorem's label for the linker.
+            # The proved result where the text names it (see the docstring), as
+            # candidate labels for the linker. Not a dataclass field.
+            targets: List[str] = []
             if opt_name:
                 m = header_ref_pattern.search(opt_name)
                 if m:
-                    # Not a dataclass field; just an auxiliary attribute.
-                    setattr(proof, "_target_theorem_label", m.group(1))
-            if getattr(proof, "_target_theorem_label", None) is None and fact.get("proves"):
+                    targets.append(m.group(1) or m.group(2))
+            m = body_open_pattern.match(body[:200])
+            if m:
+                targets.append(m.group(1) or m.group(2))
+            before = text[max(0, source_pos - before_window):source_pos]
+            before = before[before.rfind("\\end{") + 1:] if "\\end{" in before else before
+            # not a mention of another proof: "follows from the proof of \cref{x}"
+            ms = [m for m in before_pattern.finditer(before)
+                  if not not_naming_pattern.search(before[max(0, m.start() - 20):m.start()])]
+            if ms:
+                targets.append(ms[-1].group(1) or ms[-1].group(2))
+            if fact.get("proves"):
                 target = self._label(self._fact_by_id(fact["proves"]))
                 if target:
-                    setattr(proof, "_target_theorem_label", target)
+                    targets.append(target)
+            setattr(proof, "_target_theorem_labels", [x.strip() for x in targets if x])
 
             objects.append(proof)
 
@@ -2205,8 +2230,9 @@ Respond ONLY with JSON array."""
           1. Build a mapping label -> object_id for theorem-like objects
              (using their \\label{...}).
           2. For each proof, in this order:
-             a) proof._target_theorem_label (from the proof header, or
-                latex_facts' proof-right-after-its-theorem);
+             a) proof._target_theorem_labels (the result the text names: the
+                proof's header, the opening of its body, a phrase or heading
+                just before it; or latex_facts' proof-right-after-its-theorem);
              b) adjacency: the proof is the first proof after a theorem-like
                 object, with only equations / tables / distilled prose
                 fragments in between;
@@ -2273,12 +2299,13 @@ Respond ONLY with JSON array."""
             parent_id: Optional[str] = getattr(obj, "parent_id", None)
             parent_source: Optional[str] = getattr(obj, "_parent_link_source", None)
 
-            # (a) From header-based target label: proof._target_theorem_label
+            # (a) The result the text names: proof._target_theorem_labels
             if parent_id is None:
-                target_label = getattr(obj, "_target_theorem_label", None)
-                if target_label and target_label in label_to_theorem_id:
-                    parent_id = label_to_theorem_id[target_label]
-                    parent_source = "header_label"
+                for target_label in getattr(obj, "_target_theorem_labels", None) or []:
+                    if target_label in label_to_theorem_id:
+                        parent_id = label_to_theorem_id[target_label]
+                        parent_source = "header_label"
+                        break
 
             # (b) The first proof right after a result proves that result
             if parent_id is None:

@@ -48,6 +48,9 @@ Compact sets are closed.
 \begin{proof}
 By Theorem~\ref{t:main} the claim follows.
 \end{proof}
+\begin{lemma}\label{l:far}
+Bounded closed sets are compact.
+\end{lemma}
 \begin{lemma}\label{l:aux}
 Closed subsets of compact sets are compact.
 \end{lemma}
@@ -56,6 +59,17 @@ Continuous images of compact sets are compact.
 \end{theorem}
 \begin{proof}
 Theorem~\ref{t:own} follows from Lemma~\ref{l:aux}.
+\end{proof}
+\section{Proof of Lemma~\ref{l:far}}
+\begin{proof}
+By Lemma~\ref{l:aux} the claim holds.
+\end{proof}
+\begin{lemma}\label{l:two}
+Finite sets are compact.
+\end{lemma}
+The claim follows from the proof of Lemma~\ref{l:far}.
+\begin{proof}
+Direct.
 \end{proof}
 \end{document}
 """
@@ -111,6 +125,13 @@ check(proved.count(own) == 1, "the last proof proves t:own, got %s" % proves)
 pf = next(p for p, r in proves.items() if r == own)
 check(not any(e["source"] == own and e["target"] == pf for e in d["edges"]), "t:own is not used by its own proof")
 check(any(e["source"] == aux and e["target"] == pf for e in d["edges"]), "l:aux is used by the proof of t:own")
+
+# A proof deferred under a heading that names its result ("\section{Proof of Lemma \ref{l:far}}")
+# proves that result, not the first result its body cites; "follows from the proof of
+# Lemma \ref{l:far}" before a proof is a mention, and the proof proves the lemma right before it.
+far, two = by_label["l:far"], by_label["l:two"]
+check(far in proved, "the deferred proof proves l:far, got %s" % proves)
+check(two in proved, "the proof after 'follows from the proof of' proves l:two, got %s" % proves)
 print("all edge-builder checks pass")
 
 # The learned definition -> user edges (alg3/edges.py) are opt-in: the parser's own edges
