@@ -8,7 +8,12 @@
            per-category corpus_stats.csv of a parse run. The main manifest no
            longer lists Tier-3 papers (too many for one file).
 
+  cases    the paper's worked examples (manifest papers.tiercases), each graph and its viewer page in
+           data/cases/, opened as paper.html?tier=cases&id=<id>: the v7 extractions of Candes-Tao and Donoho
+           and the course graphs of Sinkhorn, VAE and GAN.
+
     python3 portal/build_portal_v6.py silver
+    python3 portal/build_portal_v6.py cases
     python3 portal/build_portal_v6.py tier3 --stats <dir with <cat>/corpus_stats.csv> [--titles <csv>]
 """
 import argparse
@@ -116,13 +121,53 @@ def tier3(args):
     print(f"tier3: {sum(c['count'] for c in cats)} papers in {len(cats)} categories")
 
 
+CASES = {   # id -> (graph JSON, title); ARXIV: its arXiv id ("" when not on arXiv)
+    "candes_tao_2005": ("corpus/silver/opus-5.5__v7_cases/candes_tao_2005.json", "Decoding by Linear Programming (Candes & Tao 2005)"),
+    "donoho_2006": ("corpus/silver/opus-5.5__v7_cases/donoho_2006.json", "Compressed Sensing (Donoho 2006)"),
+    "sinkhorn_2013": ("portal/data/tier2/paper005.json", "Sinkhorn Distances (Cuturi 2013)"),
+    "vae_2014": ("portal/data/tier2/paper014.json", "Auto-Encoding Variational Bayes (Kingma & Welling 2014)"),
+    "gan_2014": ("portal/data/tier2/paper015.json", "Generative Adversarial Nets (Goodfellow et al. 2014)"),
+}
+
+
+ARXIV = {"candes_tao_2005": "math/0502327", "donoho_2006": "", "sinkhorn_2013": "1306.0895",
+         "vae_2014": "1312.6114", "gan_2014": "1406.2661"}
+
+
+def cases(args):
+    import subprocess
+    import sys
+    out = PORTAL / "data" / "cases"
+    out.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for cid, (src, title) in CASES.items():
+        d = json.load(open(REPO / src, encoding="utf-8"))
+        d.setdefault("metadata", {})["title"] = title
+        (out / f"{cid}.json").write_text(json.dumps(d), encoding="utf-8")
+        subprocess.run([sys.executable, str(REPO / "src/graph_view/build.py"), str(out / f"{cid}.json"), "-o", str(out),
+                        "--suffix", "_new", "--libs", "cdn"], check=True, capture_output=True)
+        tc = {}
+        for n in d.get("nodes", []):
+            tc[n.get("type")] = tc.get(n.get("type"), 0) + 1
+        rows.append({"paper_id": cid, "display_id": cid, "title": title,
+                     "n_nodes": len(d.get("nodes", [])), "n_edges": len(d.get("edges", [])),
+                     "type_counts": tc, "buckets": buckets(tc),
+                     "top_node_types": sorted(tc.items(), key=lambda x: -x[1])[:6], "tier": "cases", "arxiv": ARXIV[cid],
+                     "json_path": f"data/cases/{cid}.json", "graph_path": f"data/cases/{cid}_new.html"})
+    m = load_manifest()
+    m["papers"]["tiercases"] = rows
+    save_manifest(m)
+    print(f"cases: {len(rows)} worked examples in {out}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("silver"); a.add_argument("--silver", default="corpus/silver/opus-5.5__v6")
     b = sub.add_parser("tier3"); b.add_argument("--stats", required=True); b.add_argument("--titles")
+    sub.add_parser("cases")
     args = ap.parse_args()
-    {"silver": silver, "tier3": tier3}[args.cmd](args)
+    {"silver": silver, "tier3": tier3, "cases": cases}[args.cmd](args)
 
 
 if __name__ == "__main__":

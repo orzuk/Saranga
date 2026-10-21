@@ -107,10 +107,10 @@
     }
     pair("Annotator", esc(meta.annotator || meta.model || ""));
     if (meta.extraction_date) pair("Extracted", esc(meta.extraction_date));
-    const link = arxivLink(meta.paper_id || paperId);
+    const arx = (manifestEntry && "arxiv" in manifestEntry) ? manifestEntry.arxiv : (meta.paper_id || paperId);
+    const link = arxivLink(arx);
     if (link) {
-      pair("arXiv", '<a href="' + link + '" target="_blank" rel="noopener">' +
-        esc(meta.paper_id || paperId) + "</a>");
+      pair("arXiv", '<a href="' + link + '" target="_blank" rel="noopener">' + esc(arx) + "</a>");
     }
     if (meta.abstract) pair("Abstract", esc(meta.abstract));
     root.appendChild(dl);
@@ -308,8 +308,8 @@
     const subtitleEl = document.getElementById("paper-subtitle");
 
     // Wire breadcrumb + back link to the originating tier listing.
-    const tierListUrl = "papers_tier" + tier + ".html";
-    const tierLabel = "Tier " + tier;
+    const tierListUrl = tier === "cases" ? "index.html" : "papers_tier" + tier + ".html";
+    const tierLabel = tier === "cases" ? "Case studies" : "Tier " + tier;
     const backCrumb = document.getElementById("back-to-tier");
     if (backCrumb) { backCrumb.href = tierListUrl; backCrumb.textContent = tierLabel; }
     const backLink = document.getElementById("back-link");
@@ -356,9 +356,11 @@
     const norm = normalizeNodes(data);
 
     titleEl.textContent = meta.title || id;
-    const link = arxivLink(meta.paper_id || id);
+    // a case study names its arXiv id in the manifest ("" when the paper is not on arXiv)
+    const arx = (manifestEntry && "arxiv" in manifestEntry) ? manifestEntry.arxiv : (meta.paper_id || id);
+    const link = arxivLink(arx);
     subtitleEl.innerHTML =
-      "Tier " + esc(tier) + " &middot; " + norm.nodes.length + " nodes" +
+      tierLabel + " &middot; " + norm.nodes.length + " nodes" +
       (link ? ' &middot; <a href="' + link + '" target="_blank" rel="noopener">arXiv</a>' : "");
 
     renderOverview(meta, norm.nodes, id, manifestEntry);
