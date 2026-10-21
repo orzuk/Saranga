@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import bisect
 import re
 import sys
 
@@ -1364,7 +1365,16 @@ def _bare_displays(source: str, start: int, facts: list[dict]) -> list[dict]:
             toks.append((start + m.start(), "$$"))
         elif len(m.group(1)) % 2 == 1:
             toks.append((start + m.end() - 2, "\\" + m.group(2)))
-    eqs = [(f["outer_start"], f["outer_end"]) for f in facts if f["kind"] == "equation"]
+    eqs = sorted((f["outer_start"], f["outer_end"]) for f in facts if f["kind"] == "equation")
+    eq_starts = [a for a, _b in eqs]
+    eq_reach, r = [], -1                             # the farthest end among equations starting <= each start
+    for _a, b in eqs:
+        r = max(r, b)
+        eq_reach.append(r)
+
+    def in_equation(a, b):                           # some equation spans [a, b]
+        k = bisect.bisect_right(eq_starts, a)
+        return k > 0 and eq_reach[k - 1] >= b
     out, opened = [], None
     for pos, tok in toks:
         if opened is None:
@@ -1373,8 +1383,7 @@ def _bare_displays(source: str, start: int, facts: list[dict]) -> list[dict]:
             continue
         o_pos, o_tok = opened
         if (o_tok, tok) in (("\\[", "\\]"), ("$$", "$$")):
-            if "\n\n" not in source[o_pos + 2:pos].strip() and not any(
-                    a <= o_pos and pos + 2 <= b for a, b in eqs):
+            if "\n\n" not in source[o_pos + 2:pos].strip() and not in_equation(o_pos, pos + 2):
                 body = source[o_pos + 2:pos]
                 out.append({"env": o_tok, "start": o_pos + 2, "end": pos,
                             "outer_start": o_pos, "outer_end": pos + 2,

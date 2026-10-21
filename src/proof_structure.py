@@ -69,6 +69,12 @@ _OPENER = re.compile(r"(?:\\begin\s*\{[^{}]*\}(?:\s*\[[^\]]*\])?|\\label\s*\{[^{
                      r"|\\[a-zA-Z]+\*?(?![a-zA-Z{])|\((?:[^()$]|\$[^$]*\$){1,60}\))\s*$")
 
 
+# The checks below look back from a position. They read only the last _WINDOW characters
+# before it (the whole prefix made them quadratic in a long proof) and fall back to the whole
+# prefix whenever fewer than _MARGIN characters remain to look at, so the answer is the same.
+_WINDOW, _MARGIN = 6000, 2000
+
+
 def _sentence_initial(text: str, pos: int) -> bool:
     """Is `pos` at the start of a sentence, line-label or list item?
 
@@ -79,10 +85,14 @@ def _sentence_initial(text: str, pos: int) -> bool:
     while True:
         if _sentence_initial_at(text, cut):
             return True
-        m = _OPENER.search(text[:cut].rstrip())
+        lo = max(0, cut - _WINDOW)
+        before = text[lo:cut].rstrip()
+        if lo and len(before) < _MARGIN:
+            lo, before = 0, text[:cut].rstrip()
+        m = _OPENER.search(before)
         if not m:
             return False
-        cut = m.start()
+        cut = lo + m.start()
 
 
 # closing markup peeled before looking for a sentence end; a display's closer
@@ -95,10 +105,21 @@ _SPACING_CMD = re.compile(r"\\(?:[vh]space\*?\s*\{[^{}]*\}|[vh]skip\s*-?[\d.]+\s
 
 
 def _sentence_initial_at(text: str, pos: int) -> bool:
-    before = text[:pos]
+    if pos > _WINDOW:
+        r = _sentence_initial_at_from(text, pos, text[pos - _WINDOW:pos], True)
+        if r is not None:
+            return r
+    return _sentence_initial_at_from(text, pos, text[:pos], False)
+
+
+def _sentence_initial_at_from(text: str, pos: int, before: str, windowed: bool):
+    """_sentence_initial_at on `before`, the text before pos (all of it, or its last
+    _WINDOW characters); None when a window leaves too little to decide."""
     stripped = before.rstrip()
     while _SPACING_CMD.search(stripped):      # \vspace*{-3pt}, \medskip, \noindent are layout
         stripped = _SPACING_CMD.sub("", stripped).rstrip()
+    if windowed and len(stripped) < _MARGIN:
+        return None
     if not stripped or re.search(r"\\footnote(?:text)?\s*(?:\[[^\]]*\])?\s*\{$", stripped):
         return True                           # a footnote starts its own text
     if re.search(r"\n\s*\n\s*$", before):
@@ -121,6 +142,8 @@ def _sentence_initial_at(text: str, pos: int) -> bool:
         prev = stripped
         after_display = after_display or bool(_DISPLAY_CLOSER.search(stripped))
         stripped = _TAIL.sub("", stripped).rstrip()
+    if windowed and len(stripped) < _MARGIN:
+        return None
     if stripped and stripped[-1] in ".!?:":
         return True
     nxt = text[pos:pos + 12].lstrip()
@@ -221,6 +244,10 @@ def _nested_blocks(body: str) -> list[tuple[int, int]]:
     return out
 
 
+_LAYOUT_END = re.compile(r"(\\end\{[a-zA-Z*]+\}|\\\]|\$\$)$")
+_LAYOUT_START = re.compile(r"(\\begin\{|\\\[|\$\$)")
+
+
 def detect(body: str, nested_proof_offsets: list[int] = ()) -> dict:
     """Structure of one proof body. Offsets are relative to `body`.
 
@@ -276,13 +303,18 @@ def detect(body: str, nested_proof_offsets: list[int] = ()) -> dict:
               if _sentence_initial(body, m.start()) and not _inside(m.start(), spans)]
 
     breaks = []
+    last = len(body.rstrip())                 # text after `last` is whitespace
     for m in re.finditer(r"\n[ \t]*\n\s*", body):
-        before, after = body[:m.start()].rstrip(), body[m.end():]
-        if not before or not after.strip():
+        e = m.start()                          # body[:e].rstrip() ends at e
+        while e and body[e - 1].isspace():
+            e -= 1
+        if not e or m.end() >= last:
             continue
-        layout = bool(re.search(r"(\\end\{[a-zA-Z*]+\}|\\\]|\$\$)$", before)
-                      or re.match(r"(\\begin\{|\\\[|\$\$)", after))
-        if not layout and before[-1] in ".!?:":
+        lo = max(0, e - _WINDOW)
+        if lo and e - lo < _MARGIN:
+            lo = 0
+        layout = bool(_LAYOUT_END.search(body[lo:e]) or _LAYOUT_START.match(body, m.end()))
+        if not layout and body[e - 1] in ".!?:":
             breaks.append(m.end())
     return {"labels": labels, "claims": claims, "paragraph_breaks": breaks}
 

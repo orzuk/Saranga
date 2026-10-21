@@ -1152,7 +1152,11 @@ _COMMENT = re.compile(r"(?<!\\)((?:\\\\)*)%[^\n]*")
 
 def strip_comments(src):
     """Drop % comments: % starts one unless escaped (\\%); \\\\% is a line break, then a comment."""
-    return _COMMENT.sub(r"\1", src)
+    if "%" not in src:
+        return src
+    # line by line, regex only where a % is: a match never crosses a newline, and the
+    # lookbehind at a line start sees the newline, so this is the same as one pass
+    return "\n".join(_COMMENT.sub(r"\1", line) if "%" in line else line for line in src.split("\n"))
 
 
 def group(s, i, open_="{", close="}"):
