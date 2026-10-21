@@ -10,7 +10,7 @@
 Per item: scores.json ({extractor: {preset: counts and P/R/F1}}). Per set: scores_summary.json, pooled over
 items with 95% bootstrap intervals (items resampled). The portals show both.
 
-    score_gold.py [--sets author,blueprint] [--extractors rules,tagger] [--jobs 6] [--redo] [--redetect]
+    score_gold.py [--sets author,blueprint] [--extractors rules,tagger,ta] [--jobs 6] [--redo] [--redetect]
 """
 import argparse
 import json
@@ -25,7 +25,9 @@ sys.path[:0] = [str(REPO / "src" / "LLMVersion"), str(REPO / "src"), str(Path(__
 import graph_score as GS                                # noqa: E402
 
 EXTRACTORS = {"rules": REPO / "extractors/rules/silver_v6__sentence_rules_haiku__2026-10",
-              "tagger": REPO / "extractors/rules/silver_v6__sentence_tagger__2026-10"}
+              "tagger": REPO / "extractors/rules/silver_v6__sentence_tagger__2026-10",
+              "ta": REPO / "extractors/rules/silver_v7__sentence_tagger__2026-10"}      # alg3 T-A, with EDGES
+EDGES = {"ta": REPO / "extractors/edges/silver_v7__edges_allpairs__2026-10"}   # learned edges (alg3/edges.py)
 SETS = {"author": (REPO / "corpus/gold_candidates", "papers", "gold.json", ("author", "author_inv")),
         "blueprint": (REPO / "corpus/gold_blueprints", "", "graph.json", ("blueprint", "blueprint_uses", "blueprint_inv"))}
 _ENVS = ("theorem", "lemma", "proposition", "corollary", "definition", "remark", "example", "claim", "conjecture",
@@ -120,7 +122,13 @@ def one(job):
                 f.write_text((d / "full.json").read_text())        # the review pages' extraction, same rule set
             else:
                 tex = d / "paper.tex" if name == "author" else blueprint_tex(d)
-                f.write_text(json.dumps(parse_to_unified(str(tex), d.name, str(EXTRACTORS[x]))))
+                g = parse_to_unified(str(tex), d.name, str(EXTRACTORS[x]))
+                if x in EDGES:
+                    sys.path.insert(0, str(REPO / "alg3"))
+                    import edges as learned_edges
+                    learned_edges.add_edges(g, learned_edges.EdgeModel(EDGES[x]),
+                                            tex=Path(tex).read_text(encoding="utf-8", errors="ignore"))
+                f.write_text(json.dumps(g))
         pred = json.loads(f.read_text())
         out[x] = {p: (c := GS.score(pred, gold, **GS.PRESETS[p])) | GS.pooled([c]) for p in presets}
     import gold_macros                                 # the pages expand raw_latex from metadata.macros

@@ -4,7 +4,8 @@
     python3 docs/v7_handoff/gold_eval_v7.py [--out docs/v7_handoff/gold_eval_v7.json]
 
 Per paper and pooled (95% bootstrap over papers): node P/R, edge P/R/F1 (graph_score preset
-'author', diagram direction as scored by score_gold.py), for v7 and the rule-based extractor.
+'author', diagram direction as scored by score_gold.py), for v7, the rule-based extractor (rules.json) and alg3 T-A with the all-pairs edges (ta.json,
+score_gold.py --extractors rules,tagger,ta).
 Breakdown of the diagram arrows v7 misses: reversed (v7 has the opposite dependency), endpoint
 unmatched (a box matched to no v7 node), and missed between matched results; and of v7's extra
 dependencies among drawn results.
@@ -70,7 +71,7 @@ def main():
     ap.add_argument("--out", default=str(REPO / "docs/v7_handoff/gold_eval_v7.json"))
     a = ap.parse_args()
     ids = sorted(p.stem for p in V7.glob("*.json"))
-    rows, cv, cr = [], [], []
+    rows, cv, cr, ct = [], [], [], []
     for i in ids:
         d = PAPERS / i
         gold = gold_of(d)
@@ -79,10 +80,13 @@ def main():
         r = GS.score(json.loads((d / "rules.json").read_text()), gold, **GS.PRESETS["author"])
         cv.append(c)
         cr.append(r)
+        t = GS.score(json.loads((d / "ta.json").read_text()), gold, **GS.PRESETS["author"])
+        ct.append(t)
         rows.append({"paper": i, "v7": {k: round(GS.pooled([c])[k], 3) for k in K},
-                     "rules": {k: round(GS.pooled([r])[k], 3) for k in K}, **breakdown(pred, gold)})
+                     "rules": {k: round(GS.pooled([r])[k], 3) for k in K},
+                     "ta": {k: round(GS.pooled([t])[k], 3) for k in K}, **breakdown(pred, gold)})
     summary = {x: {"pooled": {k: round(GS.pooled(c)[k], 3) for k in K}, "ci95": boot(c)}
-               for x, c in (("v7", cv), ("rules", cr))}
+               for x, c in (("v7", cv), ("rules", cr), ("ta", ct))}
     tot = {k: sum(len(r[k]) for r in rows) for k in ("missed_reversed", "missed_unmatched_end", "missed_other", "extra")}
     tot["arrows"] = sum(r["arrows"] for r in rows)
     tot["boxes"], tot["boxes_unmatched"] = sum(r["gold_boxes"] for r in rows), sum(len(r["boxes_unmatched"]) for r in rows)

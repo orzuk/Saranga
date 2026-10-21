@@ -7,7 +7,7 @@ For each blueprint with an extraction in corpus/silver/opus-5.5__v7_blueprint/<i
 without \\uses, \\lean, \\leanok, \\proves), scored against corpus/gold_blueprints/<id>/graph.json with the presets of
 scripts/gold_candidates/score_gold.py: 'blueprint' (declared + cited dependencies), 'blueprint_uses' (declared
 only), 'blueprint_inv' (hierarchy-invariant). The rule-based extractions of the same blueprints (rules.json,
-tagger.json, made by score_gold.py) are scored on the same blueprints for comparison. Pooled P/R/F1 with 95%
+tagger.json, ta.json = alg3 T-A with the all-pairs edges, made by score_gold.py) are scored on the same blueprints for comparison. Pooled P/R/F1 with 95%
 bootstrap intervals over blueprints, as in score_gold.summary. Blueprints in corpus/gold_blueprints/excluded.json
 are skipped. --text-only scores against the gold without empty proofs and statements (see text_only).
 """
@@ -51,10 +51,10 @@ def main():
         if a.text_only:
             gold = text_only(gold)
         preds = {"v7": json.loads(f.read_text())}
-        preds |= {x: json.loads((d / f"{x}.json").read_text()) for x in ("rules", "tagger") if (d / f"{x}.json").is_file()}
+        preds |= {x: json.loads((d / f"{x}.json").read_text()) for x in ("rules", "tagger", "ta") if (d / f"{x}.json").is_file()}
         results[f.stem] = {x: {p: (c := GS.score(pred, gold, **GS.PRESETS[p])) | GS.pooled([c]) for p in PRESETS}
                            for x, pred in preds.items()}
-    extractors = [x for x in ("v7", "rules", "tagger") if all(x in r for r in results.values())]
+    extractors = [x for x in ("v7", "rules", "tagger", "ta") if all(x in r for r in results.values())]
     summary = SG.summary(results, extractors, PRESETS)
     Path(a.out).write_text(json.dumps({"blueprints": len(results), "summary": summary, "per_item": results}, indent=1))
     print(len(results), "blueprints")
