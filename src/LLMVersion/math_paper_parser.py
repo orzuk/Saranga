@@ -58,6 +58,10 @@ if _SRC_DIR not in _sys.path:
     _sys.path.insert(0, _SRC_DIR)
 import latex_facts  # noqa: E402
 
+
+class _GuardOff(Exception):
+    """PaperParser.REGEX_GUARD is off: skip installing rule_guard."""
+
 log = logging.getLogger("saranga.parser")   # info: progress; warnings: what went wrong
 
 # Rule modules are loaded once per process. The parser asks for a rule module
@@ -467,6 +471,8 @@ class PaperParser:
         # pattern is judged on this paper, not on the accumulated total of
         # every paper the process has seen. Quarantines are NOT reset.
         try:
+            if not self.REGEX_GUARD:
+                raise _GuardOff
             import rule_guard
             # install_global, not just guard_module. guard_module wraps only
             # module-level compiled patterns; generated rule files also call
@@ -480,6 +486,8 @@ class PaperParser:
             rule_guard.install_global(threshold=self.DISTILLED_RULE_TIMEOUT_S,
                                       budget=self.DISTILLED_RULE_BUDGET_S)
             rule_guard.new_document()
+        except _GuardOff:
+            pass
         except Exception as _e:
             # NOT a silent pass. This swallowed a TypeError from a wrong
             # keyword once, so the guard was never installed at all -- and the
@@ -1242,6 +1250,13 @@ class PaperParser:
     #: what actually stalled the v5.1 run. 0 disables.
     DISTILLED_RULE_BUDGET_S = 10.0
 
+    #: Run every regex under rule_guard (the two budgets above). Needed while
+    #: distillation writes new rules; a released rule set's patterns are fixed,
+    #: and the guard costs about a third of the parse (a timer per match), so a
+    #: batch run of one may turn it off and bound each paper by a timeout instead
+    #: (parse_batch.py --no-regex-guard --safeguard). The output is the same.
+    REGEX_GUARD = os.environ.get("SARANGA_REGEX_GUARD", "1") != "0"
+
     APPLY_SIMPLEENV_DISTILLED = True
 
     _DISTILLED_TYPE_MAP = {
@@ -1360,10 +1375,14 @@ class PaperParser:
         # the composed function only tells you the group was slow, which is how
         # 26 good definition rules were once thrown away for one bad one.
         try:
+            if not self.REGEX_GUARD:
+                raise _GuardOff
             import rule_guard
             rule_guard.configure(threshold=self.DISTILLED_RULE_TIMEOUT_S,
                                  budget=self.DISTILLED_RULE_BUDGET_S)
             rule_guard.guard_module(mod, source_path=str(rules_path))
+        except _GuardOff:
+            pass
         except Exception as e:
             log.warning(f"rule_guard unavailable ({e}); "
                   f"distilled rules run unguarded")

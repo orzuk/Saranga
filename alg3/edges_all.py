@@ -164,7 +164,9 @@ class View:
                 self.parser.setdefault((e["source"], e["target"]), e)
 
     def rare_score(self, a, b) -> float:
-        return sum(self.idf[w] for w in self.rare[a] & self.rare[b])
+        # summed in a fixed order: a set's order changes between runs (string hashing), and
+        # so did the float sum's last bits, which reordered near-ties among t's rare sources
+        return sum(self.idf[w] for w in sorted(self.rare[a] & self.rare[b]))
 
 
 
@@ -268,7 +270,7 @@ def candidates(v: View, dmodel) -> list:
         for lab, n in rc.items():
             own = owner.get(lab, ())
             inner = min((len(v.txt[o]) for o in own), default=0)
-            for s in own:
+            for s in sorted(own):                    # a fixed order: it sets the candidates' order (rank ties)
                 if s != t:
                     tag = "inner" if len(v.txt[s]) == inner else "outer"
                     C[(s, t)]["ch:ref"] = 1.0
@@ -295,10 +297,16 @@ def candidates(v: View, dmodel) -> list:
                     C[(o[r - k], t)]["ch:proof_of_back"] = 1.0
                     break
     ids = [n["id"] for n in v.nodes]
+    post = collections.defaultdict(set)              # rare token -> the nodes holding it
+    for s in ids:
+        for w in v.rare[s]:
+            post[w].add(s)
     for t in ids:
         if not v.rare[t]:
             continue
-        sc = sorted(((v.rare_score(s, t), s) for s in ids if s != t and v.rare[s]), reverse=True)[:3]
+        # only nodes sharing a rare token can score > 0, and only those (>= 3) are kept
+        share = set().union(*(post[w] for w in v.rare[t])) - {t}
+        sc = sorted(((v.rare_score(s, t), s) for s in share), reverse=True)[:3]
         for r, (x, s) in enumerate(sc):
             if x >= 3:
                 C[(s, t)][f"ch:rare{r}"] = 1.0

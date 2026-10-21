@@ -241,6 +241,9 @@ def run_batch(
                                 llm_chunk_chars=llm_chunk_chars, llm_provider=llm_provider,
                                 custom_prompt_file=prompt_file, structure_types=structure_types,
                                 rules_dir=rules_dir).parse_file(tex_path)
+            d = graph.to_unified_dict()
+            if edges:                                           # under the same timeout
+                edges[0].add_edges(d, edges[1], tex=Path(tex_path).read_text(encoding="utf-8", errors="ignore"))
             status = "OK"
         except _ParseTimeout:
             graph, status = None, f"TIMEOUT: exceeded {safeguard_timeout}s"
@@ -256,9 +259,6 @@ def run_batch(
             return
         (day_dir / "json").mkdir(parents=True, exist_ok=True)
         json_path = day_dir / "json" / f"{versioned_id}_{suffix}.json"
-        d = graph.to_unified_dict()
-        if edges:
-            edges[0].add_edges(d, edges[1], tex=Path(tex_path).read_text(encoding="utf-8", errors="ignore"))
         json_path.write_text(json.dumps(d, indent=2), encoding="utf-8")
         print(f"[OK]   Saved {json_path}")
         if draw_graphs:
@@ -530,8 +530,18 @@ def main():
              "Defaults to 90s if flag is given without a value.",
     )
 
+    parser.add_argument(
+        "--no-regex-guard",
+        action="store_true",
+        help="Run a released rule set's regexes without rule_guard's per-match timer (about a third "
+             "faster, same output); bound each paper with --safeguard instead.",
+    )
+
     args = parser.parse_args()
     print(f"[DEBUG] Parsed args: {args}")
+    if args.no_regex_guard:
+        from math_paper_parser import PaperParser as _PP
+        _PP.REGEX_GUARD = False
 
     start_date, end_date = compute_date_range(
         args.start_date,

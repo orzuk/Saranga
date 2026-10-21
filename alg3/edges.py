@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import collections
 import datetime
+import functools
 import json
 import math
 import re
@@ -166,20 +167,26 @@ def math_regions(text: str) -> str:
                     for m in MATH.finditer(text or ""))
 
 
+@functools.lru_cache(maxsize=1 << 16)
+def _rx(pattern: str) -> re.Pattern:
+    return re.compile(pattern)
+
+
 def uses(c: dict, text: str, math_norm: str, words: str) -> str | None:
-    """How a node's text uses candidate c: 'exact', 'head', 'word' or None."""
+    """How a node's text uses candidate c: 'exact', 'head', 'word' or None. (Each regex runs only
+    where its literal occurs: a match implies the substring, so the answer is the same, faster.)"""
     if c["math"]:
         if c["key"] and c["key"] in math_norm:
             return "exact"
         h = c["head"]
-        if h:
+        if h and h in math_norm:
             if h.startswith("\\"):
-                if re.search(re.escape(h) + r"(?![A-Za-z])", math_norm):
+                if _rx(re.escape(h) + r"(?![A-Za-z])").search(math_norm):
                     return "head"
-            elif re.search(r"(?<![A-Za-z\\])" + re.escape(h) + r"(?![A-Za-z])", math_norm):
+            elif _rx(r"(?<![A-Za-z\\])" + re.escape(h) + r"(?![A-Za-z])").search(math_norm):
                 return "head"
         return None
-    if re.search(r"\b" + re.escape(c["key"]) + r"(?:s|es)?\b", words):
+    if c["key"] in words and _rx(r"\b" + re.escape(c["key"]) + r"(?:s|es)?\b").search(words):
         return "word"
     return None
 
