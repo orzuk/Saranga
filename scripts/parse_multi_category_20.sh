@@ -130,6 +130,9 @@ HTML_ONLY=${HTML_ONLY:-0}
 # extractors/rules/silver_v6__sentence_rules_haiku__2026-10 (relative to the repo
 # root or absolute). Unset: whatever rules are installed under src/LLMVersion.
 RULES_DIR=${RULES_DIR:-}
+# Optional: a learned edge model applied after parsing, e.g.
+# extractors/edges/silver_v7__edges_allpairs__2026-10 (relative to the repo root or absolute).
+EDGE_MODEL=${EDGE_MODEL:-}
 # Optional: split every category over SHARDS parallel array tasks (default 1).
 SHARDS=${SHARDS:-1}
 
@@ -271,6 +274,7 @@ for CATEGORY in "${RUN_CATEGORIES[@]}"; do
     fi
     echo "  EXTRACTION_MODE = $EXTRACTION_MODE"
     echo "  RULES_DIR       = ${RULES_DIR:-<installed>}"
+    echo "  EDGE_MODEL      = ${EDGE_MODEL:-<none>}"
     echo "  OPERATIONS      = $OPERATIONS"
     echo "  OUT_DIR         = $OUT_DIR"
     echo "  PYTHON          = $PYTHON"
@@ -311,6 +315,10 @@ for CATEGORY in "${RUN_CATEGORIES[@]}"; do
     if [ -n "$RULES_DIR" ]; then
         case "$RULES_DIR" in /*) RD="$RULES_DIR" ;; *) RD="$REPO_ROOT/$RULES_DIR" ;; esac
         CMD+=(--rules-dir "$RD")
+    fi
+    if [ -n "$EDGE_MODEL" ]; then
+        case "$EDGE_MODEL" in /*) EM="$EDGE_MODEL" ;; *) EM="$REPO_ROOT/$EDGE_MODEL" ;; esac
+        CMD+=(--edge-model "$EM")
     fi
 
     "${CMD[@]}"
