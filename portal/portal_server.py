@@ -5,7 +5,8 @@
 Routes besides the static files:
     /silver_v6/...        Tier-2 silver pages (prebuilt, corpus/silver/opus-5.5__v6/graphs)
     /render3?cat=&id=     a Tier-3 (100K) paper's viewer page, built from its JSON on first
-                          request and cached (the JSON is fetched by SARANGA_T3_REMOTE if absent)
+                          request and cached (the JSON is fetched from SARANGA_T3_BUNDLES or by
+                          SARANGA_T3_REMOTE if absent)
     /t3json?cat=&id=      that paper's JSON
     /render_alignment     pair-alignment pages (visualize_alignment.py)
     /yours/arxiv, /yours/upload   "Your paper": a graph from an arXiv id or uploaded LaTeX
@@ -21,6 +22,8 @@ import subprocess
 import sys
 import time
 import urllib.parse
+import urllib.request
+import zlib
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
@@ -50,6 +53,10 @@ GRAPH_BUILD = REPO_DIR / "src" / "graph_view" / "build.py"
 # The page is then built with the v2 viewer and cached.
 T3_DIR = DATA_DIR / "tier3_v6"
 T3_REMOTE = os.environ.get("SARANGA_T3_REMOTE", "")
+# or, tried first, the base URL of the bundled corpus (portal/bundle_t3.py): the paper's
+# bytes are fetched by a range request from <base>/<cat>/<month>.json.gz, located through
+# that month's index <base>/<cat>/<month>.idx.json (downloaded once and cached)
+T3_BUNDLES = os.environ.get("SARANGA_T3_BUNDLES", "").rstrip("/")
 T3_CACHE = CACHE_DIR / "tier3_v6"
 # "Your paper": graphs built on demand from an arXiv id or an upload (see yours.py).
 YOURS_DIR = CACHE_DIR / "yours"
@@ -462,17 +469,46 @@ def with_title(path: Path, cat: str, pid: str) -> Path:
     return path
 
 
+def _get(url: str, headers: dict | None = None) -> bytes:
+    with urllib.request.urlopen(urllib.request.Request(url, headers=headers or {}), timeout=60) as r:
+        return r.read()
+
+
+def t3_from_bundle(cat: str, pid: str, dst: Path) -> bool:
+    """Fetch a paper's JSON from its month's bundle under T3_BUNDLES into dst."""
+    from bundle_t3 import bundle_month          # portal/, next to this script
+    month = bundle_month(pid)
+    idx_path = T3_CACHE / cat / f"_{month}.idx.json"
+    try:
+        if not idx_path.is_file():
+            idx_path.write_bytes(_get(f"{T3_BUNDLES}/{cat}/{month}.idx.json"))
+        entry = json.loads(idx_path.read_text()).get(pid)
+        if not entry:
+            return False
+        off, n = entry
+        blob = _get(f"{T3_BUNDLES}/{cat}/{month}.json.gz", {"Range": f"bytes={off}-{off + n - 1}"})
+        if len(blob) != n:                      # the host ignored the range
+            blob = blob[off:off + n]
+        dst.write_bytes(gzip.decompress(blob))
+        return True
+    except (OSError, ValueError, EOFError, zlib.error) as e:
+        sys.stderr.write(f"[t3] bundle fetch failed for {cat}/{pid}: {e}\n")
+        return False
+
+
 def t3_json(cat: str, pid: str) -> Path | None:
-    """The paper's JSON: the local sample, the cache, or fetched by T3_REMOTE."""
+    """The paper's JSON: the local sample, the cache, or fetched from T3_BUNDLES or by T3_REMOTE."""
     if not (_SAFE.match(cat) and _SAFE.match(pid)):
         return None
     for p in (T3_DIR / cat / "json" / f"{pid}.json", T3_CACHE / cat / f"{pid}.json"):
         if p.is_file():
             return with_title(p, cat, pid)
-    if not T3_REMOTE:
-        return None
     dst = T3_CACHE / cat / f"{pid}.json"
     dst.parent.mkdir(parents=True, exist_ok=True)
+    if T3_BUNDLES and t3_from_bundle(cat, pid, dst):
+        return with_title(dst, cat, pid)
+    if not T3_REMOTE:
+        return None
     cmd = T3_REMOTE.format(cat=cat, id=pid)
     try:
         out = subprocess.run(cmd, shell=True, capture_output=True, timeout=120)
