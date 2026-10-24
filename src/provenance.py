@@ -82,8 +82,9 @@ def parse_bibliography(text: str) -> dict:
 
 
 def _sources(tex_path: Path, tex: str, src_dir: Path | None = None) -> list[str]:
-    """The texts that may hold the bibliography: the .tex, its .bbl / .bib, and the paper's source tarball
-    (beside the .tex, or in src_dir: a folder holding only this paper's source, e.g. its arXiv tree folder)."""
+    """The texts that may hold the bibliography: the .tex, its .bbl / .bib, and the paper's original source
+    (its tarball beside the .tex, or src_dir: a folder holding only this paper's source, e.g. its arXiv tree
+    folder), whose .tex files count too, since a flattened .tex may have lost its thebibliography."""
     d, stem = tex_path.parent, tex_path.stem
     names = {f"{stem}.bbl", f"{stem}.bib"}
     for m in re.finditer(r"\\(?:bibliography|addbibresource)\s*\{([^}]+)\}", tex):
@@ -98,7 +99,7 @@ def _sources(tex_path: Path, tex: str, src_dir: Path | None = None) -> list[str]
     tarballs = sorted(d.glob(f"{stem}*.tar.gz")) + sorted(d.glob(f"{stem}*.tgz"))
     if src_dir is not None and Path(src_dir).is_dir():
         for p in sorted(Path(src_dir).iterdir()):
-            if p.suffix.lower() in (".bbl", ".bib") and p.stat().st_size < 20_000_000:
+            if p.suffix.lower() in (".bbl", ".bib", ".tex") and p.stat().st_size < 20_000_000:
                 texts.append(p.read_text(encoding="utf-8", errors="ignore"))
             elif p.name.endswith((".tar.gz", ".tgz")):
                 tarballs.append(p)
@@ -106,7 +107,7 @@ def _sources(tex_path: Path, tex: str, src_dir: Path | None = None) -> list[str]
         try:
             with tarfile.open(tgz) as t:
                 for m in t.getmembers():
-                    if m.isfile() and m.name.lower().endswith((".bbl", ".bib")) and m.size < 20_000_000:
+                    if m.isfile() and m.name.lower().endswith((".bbl", ".bib", ".tex")) and m.size < 20_000_000:
                         texts.append(t.extractfile(m).read().decode("utf-8", "ignore"))
         except (OSError, tarfile.TarError, EOFError):
             pass
