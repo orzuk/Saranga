@@ -14,6 +14,8 @@ silver_v6/graphs/ (the 200 silver papers, LLM and rule pages, built here). Only 
 tracked by git are staged (never untracked data, the gold candidates or run_local.sh), so
 any clone stages the same Space.
 """
+import datetime
+import json
 import shutil
 import subprocess
 import sys
@@ -52,6 +54,10 @@ def main(out):
     sys.path.insert(0, str(REPO / "src"))
     from provenance import code_commit
     (out / "COMMIT").write_text(code_commit(7, dirty=False))
+    # the portal footer's "updated <date> · version <commit>"
+
+    (out / "portal/version.json").write_text(json.dumps({"commit": code_commit(7, dirty=False),
+                                                         "date": datetime.date.today().isoformat()}))
     # the 200 silver papers' pages, built here from the JSONs in git (LLM and rule graphs)
     g = out / "silver_v6/graphs"
     g.mkdir(parents=True)
