@@ -475,20 +475,29 @@ def _get(url: str, headers: dict | None = None) -> bytes:
 
 
 def t3_from_bundle(cat: str, pid: str, dst: Path) -> bool:
-    """Fetch a paper's JSON from its month's bundle under T3_BUNDLES into dst."""
+    """Fetch a paper's JSON from its month's bundle under T3_BUNDLES (a URL, or a folder shipped with the
+    portal) into dst: the month's index gives the paper's bytes, read by a range request or a seek."""
     from bundle_t3 import bundle_month          # portal/, next to this script
     month = bundle_month(pid)
-    idx_path = T3_CACHE / cat / f"_{month}.idx.json"
+    local = not T3_BUNDLES.startswith(("http://", "https://"))
+    idx_path = (Path(T3_BUNDLES) / cat / f"{month}.idx.json") if local else T3_CACHE / cat / f"_{month}.idx.json"
     try:
         if not idx_path.is_file():
+            if local:
+                return False
             idx_path.write_bytes(_get(f"{T3_BUNDLES}/{cat}/{month}.idx.json"))
         entry = json.loads(idx_path.read_text()).get(pid)
         if not entry:
             return False
         off, n = entry
-        blob = _get(f"{T3_BUNDLES}/{cat}/{month}.json.gz", {"Range": f"bytes={off}-{off + n - 1}"})
-        if len(blob) != n:                      # the host ignored the range
-            blob = blob[off:off + n]
+        if local:
+            with open(Path(T3_BUNDLES) / cat / f"{month}.json.gz", "rb") as fh:
+                fh.seek(off)
+                blob = fh.read(n)
+        else:
+            blob = _get(f"{T3_BUNDLES}/{cat}/{month}.json.gz", {"Range": f"bytes={off}-{off + n - 1}"})
+            if len(blob) != n:                  # the host ignored the range
+                blob = blob[off:off + n]
         dst.write_bytes(gzip.decompress(blob))
         return True
     except (OSError, ValueError, EOFError, zlib.error) as e:

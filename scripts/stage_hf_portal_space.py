@@ -25,6 +25,9 @@ REPO = Path(__file__).resolve().parents[1]
 SILVER = "corpus/silver/opus-5.5__v6/"     # LLM graphs; rules_v6/ holds the rule graphs
 RULES = "extractors/rules/silver_v7__sentence_tagger__2026-10/"   # alg3, the "Your paper" rule-based extractor
 EDGES = "extractors/edges/silver_v7__edges_allpairs__2026-10/"    # its learned edges (alg3/edges.py)
+sys.path.insert(0, str(REPO / "src"))
+from config import DATA_DIR                 # noqa: E402
+T3_BUNDLES = DATA_DIR / "tier3_bundles" / "v6"   # portal/bundle_t3.py output for the portal's 100K corpus
 SKIP = ("portal/graphs/", "portal/data/tier2/", "portal/data/tier2_tex/", "portal/data/tier3-sample",
         "portal/gold_", "portal/run_local.sh")
 
@@ -51,11 +54,9 @@ def main(out):
                 or str(p.parent) == "src/graph_view" and p.suffix in (".py", ".html", ".js", ".css")):
             copy(f, out / f)
     # no git in the container: the LLM runs' prompt version
-    sys.path.insert(0, str(REPO / "src"))
     from provenance import code_commit
     (out / "COMMIT").write_text(code_commit(7, dirty=False))
     # the portal footer's "updated <date> · version <commit>"
-
     (out / "portal/version.json").write_text(json.dumps({"commit": code_commit(7, dirty=False),
                                                          "date": datetime.date.today().isoformat()}))
     # the 200 silver papers' pages, built here from the JSONs in git (LLM and rule graphs)
@@ -69,6 +70,12 @@ def main(out):
         print(f"  {suffix}: " + (r.stdout.strip().splitlines() or ["?"])[-1])
         if r.returncode:
             sys.exit(r.stderr[-1000:])
+    # the 100K corpus as bundles (portal/bundle_t3.py), read by the server from t3_bundles/ (Dockerfile)
+    if T3_BUNDLES.is_dir():
+        shutil.copytree(T3_BUNDLES, out / "t3_bundles")
+        print(f"  100K bundles: {sum(1 for _ in (out / 't3_bundles').rglob('*.json.gz'))} from {T3_BUNDLES}")
+    else:
+        print(f"  no 100K bundles at {T3_BUNDLES}: the portal fetches each paper from the dataset (SARANGA_T3_REMOTE)")
     files = [x for x in out.rglob("*") if x.is_file()]
     print(f"staged {len(files)} files, {sum(x.stat().st_size for x in files) / 2**20:.0f} MB, in {out}")
 
