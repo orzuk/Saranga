@@ -8,8 +8,9 @@ Decided 2026-10-24 (Or). Code: `portal/bundle_t3.py` (writes and reads), `portal
 - The corpus is stored on the Hugging Face dataset `RHCPP/saranga` (free for public data), not on
   Google Cloud (the portal's billing account is Yaron's) and not inside the portal container.
   The Cloud Run portal reads one paper at a time from there.
-- One bundle per (category, year), not one file per paper: 100K papers give 211 bundles (422 files
-  with the indexes); all of arXiv about 5K bundles. One file per paper would be 2.5M files, far over
+- One bundle per (category, year), not one file per paper: 100K papers give 211 bundles, 1.9 GB (422 files
+  with the indexes; the per-paper JSON is 21.6 GB, the old per-month gzip bundles were 3.3 GB);
+  all of arXiv about 5K bundles, about 45 GB. One file per paper would be 2.5M files, far over
   Hugging Face's ~100K files per repository. Per month would be 2,411 bundles for the 100K; per
   (category, year) keeps the count low and a paper's bundle is still found from its id alone.
 - **Nothing is dropped.** The stored form is lossless; every paper is unpacked and compared with the
