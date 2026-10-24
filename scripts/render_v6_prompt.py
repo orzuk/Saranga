@@ -15,13 +15,13 @@ import csv
 import json
 import hashlib
 import re
-import subprocess
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 from schema_for_prompts import render_prompt  # noqa: E402
+from provenance import code_commit  # noqa: E402
 
 PROMPTS = {v: REPO / "scripts" / f"opus_extract_prompt_{v}.md" for v in ("v6", "v7")}
 PLACEHOLDERS = ("BID", "TITLE", "AUTHORS", "YEAR", "TEX_SOURCE", "OUTPUT_JSON",
@@ -54,8 +54,7 @@ def main():
     template = render_prompt(PROMPTS[a.prompt].read_text())
     Path(a.prompt_dir).mkdir(parents=True, exist_ok=True)
     sha = hashlib.sha256(template.encode()).hexdigest()[:16]
-    commit = subprocess.run(["git", "-C", str(REPO), "rev-parse", "--short", "HEAD"],
-                            capture_output=True, text=True).stdout.strip() or "unknown"
+    commit = code_commit(7, dirty=False)
     version = f"{a.prompt}-{sha}-{commit}"     # the exact prompt and code of this run
     print(f"prompt sha256 {sha}  version {version}")
     for bid in a.bids:

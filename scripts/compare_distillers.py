@@ -256,14 +256,9 @@ def train_arm(cfg, name, arm, force: bool) -> None:
 # ---------------------------------------------------------------------------
 
 def code_version() -> dict:
-    try:
-        head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=REPO,
-                              capture_output=True, text=True).stdout.strip()
-        dirty = bool(subprocess.run(["git", "status", "--porcelain", "--", "src", "scripts"],
-                                    cwd=REPO, capture_output=True, text=True).stdout.strip())
-    except OSError:
-        head, dirty = "", None
-    return {"git": head, "dirty": dirty}
+    from provenance import code_commit
+    c = code_commit(7, paths=("src", "scripts"))
+    return {"git": c.split("-dirty")[0], "dirty": c.endswith("-dirty")}
 
 
 def scorer_version() -> str:

@@ -34,6 +34,7 @@ except ImportError:
 sys.path.insert(0, str(Path(__file__).parent))
 from visualize_annotation import draw_dag
 from validate_annotation import validate
+import provenance as PV
 # Runtime prompt assembly (Option B). render_prompt substitutes
 # {{SCHEMA_BLOCK}} and {{TAGS_FOR_THIS_TYPE}} placeholders against the
 # canonical schema in src/node_types.py + src/edge_types.py.
@@ -197,6 +198,7 @@ def process_chapter(client, chapter_num, chapters_dir, out_dir, gold_json_str=No
     data["metadata"]["chapter_title"] = title
     data["metadata"]["source"] = "Foundations of Data Science, BHK (2020)"
     data["metadata"]["annotator"] = f"LLM ({model})"
+    PV.stamp(data, extractor="llm", tool="extract_all_chapters", model=model)
 
     # Save JSON
     with open(json_out, "w", encoding="utf-8") as f:

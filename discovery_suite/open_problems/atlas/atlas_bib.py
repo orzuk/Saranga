@@ -5,16 +5,17 @@ an explicit arXiv id or by title (+ first author's surname). Also step 1: keep o
 
     python3 atlas_bib.py [--limit N]        -> atlas_bib.json
 """
-import argparse, collections, glob, json, os, re, sys, tarfile, unicodedata
+import argparse, collections, json, re, sys, unicodedata
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
+import provenance as PV                   # bibliography parsing, arXiv ids in entries, the arXiv tree index  # noqa: E402
 
 AX = "/sci/labs/orzuk/orzuk/teaching/big_data_project_52017/2024_25/arxiv_data"
 PAPERS = f"{AX}/all_arxiv_papers"
 META = f"{AX}/arxiv-metadata-oai-snapshot.json"
 OPEN = re.compile(r"\bopen\b|unsolved|unknown|remains|\bconjectur|question of|asked (?:whether|if)|\bwe ask\b|"
                   r"it would be interesting|not known|is there\b|does there exist|\?", re.I)
-NEW_ID = re.compile(r"(?:arxiv[:\s/.]*|abs/|arxiv\.org/(?:abs|pdf)/)\s*(\d{4}\.\d{4,5})", re.I)
-OLD_ID = re.compile(r"\b((?:math|math-ph|hep-th|hep-ph|quant-ph|cs|nlin|gr-qc|cond-mat|stat|q-alg|alg-geom|dg-ga|funct-an)"
-                    r"(?:\.[A-Z]{2})?/\d{7})")
 BARE_NEW = re.compile(r"\b(\d{4}\.\d{4,5})(?:v\d+)?\b")
 strip_v = lambda a: re.sub(r"v\d+$", "", a)
 
@@ -23,47 +24,6 @@ def norm(s):
     s = re.sub(r"\\[a-zA-Z]+\*?", " ", s or "")
     s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
     return " ".join(re.sub(r"[^a-z0-9]+", " ", s.lower()).split())
-
-
-def bib_entries(text):
-    """{key: entry text} from \\bibitem lists and from .bib records."""
-    out = {}
-    for m in re.finditer(r"\\bibitem\s*(?:\[[^\]]*(?:\[[^\]]*\][^\]]*)*\])?\s*\{([^}]+)\}(.*?)(?=\\bibitem|\\end\{thebibliography\}|$)",
-                         text, re.S):
-        out.setdefault(m.group(1).strip(), m.group(2)[:2000])
-    for m in re.finditer(r"@\w+\s*\{\s*([^,\s]+)\s*,(.*?)(?=\n\s*@\w+\s*\{|$)", text, re.S):
-        out.setdefault(m.group(1).strip(), m.group(2)[:3000])
-    return out
-
-
-def paper_dirs():
-    """arXiv id (no version) -> its folder under all_arxiv_papers/YYYY/MM/DD/<id>/."""
-    out = {}
-    for day in glob.glob(f"{PAPERS}/*/*/*"):
-        try:
-            for e in os.scandir(day):
-                out[strip_v(e.name)] = e.path
-        except OSError:
-            pass
-    return out
-
-
-def paper_bib(path):
-    text = []
-    for f in glob.glob(f"{path}/*.tex"):
-        try:
-            text.append(open(f, errors="ignore").read())
-        except OSError:
-            pass
-    for f in glob.glob(f"{path}/*.tar.gz"):
-        try:
-            with tarfile.open(f) as t:
-                for m in t.getmembers():
-                    if m.isfile() and m.name.lower().endswith((".bbl", ".bib")) and m.size < 5_000_000:
-                        text.append(t.extractfile(m).read().decode("utf-8", "ignore"))
-        except Exception:
-            pass
-    return bib_entries("\n".join(text))
 
 
 def segments(entry):
@@ -111,14 +71,16 @@ def main():
             date[r["id"]] = (v[0].get("created") or "")[5:16]
     print(len(titles), "arXiv titles", flush=True)
 
-    dirs = paper_dirs()
+    dirs = PV.arxiv_source_dirs(PAPERS)
     print(len(dirs), "paper folders", flush=True)
     resolved, how, info = {}, collections.Counter(), {}
     for i, (p, keys) in enumerate(need.items()):
         if p not in dirs:
             how["no_source"] += len(keys)
             continue
-        bib = paper_bib(dirs[p])
+        src = dirs[p]
+        tex = next(iter(sorted(src.glob("*.tex"))), src / "_")
+        bib = {k: v["text"] for k, v in PV.bibliography(tex, src_dir=src).items()}
         for k in keys:
             e = bib.get(k)
             if e is None:
@@ -126,8 +88,8 @@ def main():
                 continue
             ys = [int(y) for y in re.findall(r"(?<!\d)((?:18|19|20)\d\d)(?!\d)", e) if 1850 <= int(y) <= 2026]
             info[(p, k)] = {"bib_year": ys[-1] if ys else None, "entry": " ".join(e.split())[:300]}
-            m = NEW_ID.search(e) or OLD_ID.search(e) or BARE_NEW.search(e)
-            aid = m.group(1) if m else None
+            m = BARE_NEW.search(e)
+            aid = PV.arxiv_id_in(e) or (m.group(1) if m else None)
             if aid and aid in surname:
                 resolved[(p, k)] = (aid, "id")
                 how["by_id"] += 1

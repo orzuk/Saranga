@@ -76,15 +76,9 @@ def _inside(path: str, roots: list[Path]) -> bool:
 
 def _commit() -> str:
     """The code version: git where there is a checkout, else the COMMIT file staging writes."""
-    try:
-        c = subprocess.run(["git", "-C", str(REPO), "rev-parse", "--short", "HEAD"],
-                           capture_output=True, text=True, timeout=10).stdout.strip()
-        if c:
-            return c
-    except (OSError, subprocess.SubprocessError):
-        pass
-    f = REPO / "COMMIT"
-    return f.read_text().strip() if f.is_file() else "portal"
+    sys.path.insert(0, str(SRC))
+    from provenance import code_commit                       # noqa: E402
+    return code_commit(7, dirty=False)
 
 
 def render_prompt(main_tex: Path, out_json: Path, paper_id: str, title: str, model: str) -> str:

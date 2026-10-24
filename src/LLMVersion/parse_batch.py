@@ -62,6 +62,7 @@ def _timeout_handler(signum, frame):
     raise _ParseTimeout
 
 from config import FULL_PAPERS_DIR
+from provenance import stamp
 
 # Import from your parser module
 from math_paper_parser import PaperParser
@@ -244,6 +245,13 @@ def run_batch(
             d = graph.to_unified_dict()
             if edges:                                           # under the same timeout
                 edges[0].add_edges(d, edges[1], tex=Path(tex_path).read_text(encoding="utf-8", errors="ignore"))
+            try:                                                # what made this JSON, and the paper's references
+                stamp(d, tex_path, extractor=extraction_mode, tool="parse_batch",
+                      model=llm_model if extraction_mode != "rules" else None,
+                      prompt_file=Path(prompt_file).name if prompt_file and extraction_mode != "rules" else None,
+                      edge_model=Path(edge_model).name if edge_model else None, rules_dir=rules_dir)
+            except Exception as e:                              # noqa: BLE001  (never fail a paper over metadata)
+                d.setdefault("metadata", {})["provenance_error"] = str(e)
             status = "OK"
         except _ParseTimeout:
             graph, status = None, f"TIMEOUT: exceeded {safeguard_timeout}s"

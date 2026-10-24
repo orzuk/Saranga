@@ -49,7 +49,9 @@ def main(out):
                 or str(p.parent) == "src/graph_view" and p.suffix in (".py", ".html", ".js", ".css")):
             copy(f, out / f)
     # no git in the container: the LLM runs' prompt version
-    (out / "COMMIT").write_text(git("rev-parse", "--short", "HEAD").strip() or "unknown")
+    sys.path.insert(0, str(REPO / "src"))
+    from provenance import code_commit
+    (out / "COMMIT").write_text(code_commit(7, dirty=False))
     # the 200 silver papers' pages, built here from the JSONs in git (LLM and rule graphs)
     g = out / "silver_v6/graphs"
     g.mkdir(parents=True)

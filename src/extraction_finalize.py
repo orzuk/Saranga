@@ -47,6 +47,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import edge_types as ET                                   # noqa: E402
 import node_types as NT                                   # noqa: E402
+import provenance as PV                                   # noqa: E402
 from algorithm_lines import fill_source_line_labels      # noqa: E402
 from latex_facts import extract_facts, read_tex, _REF, _REF_CMDS   # noqa: E402
 from latex_macros import LABEL_OR_INDEX, span_key as _key      # noqa: E402
@@ -1066,6 +1067,10 @@ def main():
     for w in rep["warnings"][:20]:
         print("  warning", w)
     if args.write and not rep["errors"]:
+        md = graph.get("metadata") or {}                  # the LLM extraction: model and prompt from the agent
+        PV.stamp(graph, args.tex, tex=tex, extractor="llm", tool="agent + extraction_finalize",
+                 model=md.get("model"), prompt_version=md.get("prompt_version"), effort=md.get("effort"),
+                 date=md.get("extraction_date"))
         tmp = args.json + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(graph, f, ensure_ascii=False, indent=1)
