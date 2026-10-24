@@ -69,11 +69,31 @@ def arxiv_id_in(entry: str):
     return m.group(1) if m else None
 
 
+def _biblatex_entry(body: str) -> str:
+    """A biblatex .bbl entry as plain text: authors, title, venue, year, eprint."""
+    f = dict(re.findall(r"\\field\{(title|journaltitle|booktitle|year|eprint|eprinttype|doi)\}\{((?:[^{}]|\{[^{}]*\})*)\}",
+                        body))
+    f.update(re.findall(r"\\verb\{(doi|eprint)\}\s*\\verb ([^\s]+)", body))
+    authors = ", ".join(re.findall(r"family=\{([^{}]*)\}", body))
+    parts = [authors, f.get("title"), f.get("journaltitle") or f.get("booktitle"), f.get("year")]
+    if f.get("eprint"):
+        parts.append(("arXiv:" if (f.get("eprinttype") or "").lower() == "arxiv" else "eprint ") + f["eprint"])
+    if f.get("doi"):
+        parts.append("doi:" + f["doi"])
+    return ". ".join(x for x in parts if x)
+
+
 def parse_bibliography(text: str) -> dict:
-    """{key: entry text} of the \\bibitem lists and .bib records in text."""
+    """{key: entry text} of the \\bibitem and \\harvarditem lists, biblatex .bbl entries and .bib records."""
     out = {}
+    for m in re.finditer(r"\\entry\{([^}]+)\}\{\w+\}\{[^}]*\}(.*?)\\endentry", text, re.S):
+        out.setdefault(m.group(1).strip(), _biblatex_entry(m.group(2))[:_MAX_ENTRY])
     for m in re.finditer(r"\\bibitem\s*(?:\[[^\]]*(?:\[[^\]]*\][^\]]*)*\])?\s*\{([^}]+)\}(.*?)"
                          r"(?=\\bibitem|\\end\{thebibliography\}|$)", text, re.S):
+        out.setdefault(m.group(1).strip(), " ".join(m.group(2).split())[:_MAX_ENTRY])
+    _arg = r"\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}"           # one braced argument, two levels of nesting
+    for m in re.finditer(r"\\harvarditem\s*(?:\[[^\]]*\])?\s*" + _arg + r"\s*" + _arg + r"\s*\{([^}]+)\}(.*?)"
+                         r"(?=\\harvarditem|\\end\{thebibliography\}|$)", text, re.S):
         out.setdefault(m.group(1).strip(), " ".join(m.group(2).split())[:_MAX_ENTRY])
     for m in re.finditer(r"@(\w+)\s*\{\s*([^,\s]+)\s*,(.*?)(?=\n\s*@\w+\s*\{|$)", text, re.S):
         if m.group(1).lower() not in ("string", "comment", "preamble"):
