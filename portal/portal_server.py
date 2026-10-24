@@ -15,6 +15,7 @@ The same script runs the Hugging Face / Cloud Run Docker Space.
 """
 import gzip
 import json
+import lzma
 import os
 import re
 import shutil
@@ -23,7 +24,6 @@ import sys
 import time
 import urllib.parse
 import urllib.request
-import zlib
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
@@ -54,8 +54,8 @@ GRAPH_BUILD = REPO_DIR / "src" / "graph_view" / "build.py"
 T3_DIR = DATA_DIR / "tier3_v6"
 T3_REMOTE = os.environ.get("SARANGA_T3_REMOTE", "")
 # or, tried first, the base URL of the bundled corpus (portal/bundle_t3.py): the paper's
-# bytes are fetched by a range request from <base>/<cat>/<month>.json.gz, located through
-# that month's index <base>/<cat>/<month>.idx.json (downloaded once and cached)
+# bytes are fetched by a range request from <base>/<cat>/<year>.json.xz, located through
+# that bundle's index <base>/<cat>/<year>.idx.json (downloaded once and cached)
 T3_BUNDLES = os.environ.get("SARANGA_T3_BUNDLES", "").rstrip("/")
 T3_CACHE = CACHE_DIR / "tier3_v6"
 # "Your paper": graphs built on demand from an arXiv id or an upload (see yours.py).
@@ -475,32 +475,32 @@ def _get(url: str, headers: dict | None = None) -> bytes:
 
 
 def t3_from_bundle(cat: str, pid: str, dst: Path) -> bool:
-    """Fetch a paper's JSON from its month's bundle under T3_BUNDLES (a URL, or a folder shipped with the
-    portal) into dst: the month's index gives the paper's bytes, read by a range request or a seek."""
-    from bundle_t3 import bundle_month          # portal/, next to this script
-    month = bundle_month(pid)
+    """Fetch a paper's JSON from its bundle under T3_BUNDLES (a URL, or a local folder) into dst:
+    the bundle's index gives the paper's bytes, read by a range request or a seek."""
+    from bundle_t3 import bundle_key, unpack    # portal/, next to this script
+    key = bundle_key(pid)
     local = not T3_BUNDLES.startswith(("http://", "https://"))
-    idx_path = (Path(T3_BUNDLES) / cat / f"{month}.idx.json") if local else T3_CACHE / cat / f"_{month}.idx.json"
+    idx_path = (Path(T3_BUNDLES) / cat / f"{key}.idx.json") if local else T3_CACHE / cat / f"_{key}.idx.json"
     try:
         if not idx_path.is_file():
             if local:
                 return False
-            idx_path.write_bytes(_get(f"{T3_BUNDLES}/{cat}/{month}.idx.json"))
+            idx_path.write_bytes(_get(f"{T3_BUNDLES}/{cat}/{key}.idx.json"))
         entry = json.loads(idx_path.read_text()).get(pid)
         if not entry:
             return False
-        off, n = entry
+        off, n = entry[:2]
         if local:
-            with open(Path(T3_BUNDLES) / cat / f"{month}.json.gz", "rb") as fh:
+            with open(Path(T3_BUNDLES) / cat / f"{key}.json.xz", "rb") as fh:
                 fh.seek(off)
                 blob = fh.read(n)
         else:
-            blob = _get(f"{T3_BUNDLES}/{cat}/{month}.json.gz", {"Range": f"bytes={off}-{off + n - 1}"})
+            blob = _get(f"{T3_BUNDLES}/{cat}/{key}.json.xz", {"Range": f"bytes={off}-{off + n - 1}"})
             if len(blob) != n:                  # the host ignored the range
                 blob = blob[off:off + n]
-        dst.write_bytes(gzip.decompress(blob))
+        dst.write_text(json.dumps(unpack(blob, entry), ensure_ascii=False))
         return True
-    except (OSError, ValueError, EOFError, zlib.error) as e:
+    except (OSError, ValueError, EOFError, lzma.LZMAError) as e:
         sys.stderr.write(f"[t3] bundle fetch failed for {cat}/{pid}: {e}\n")
         return False
 
