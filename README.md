@@ -1,6 +1,6 @@
 # Saranga
 
-**Dataset (bulk download):** https://huggingface.co/datasets/RHCPP/saranga
+**Dataset (bulk download):** https://huggingface.co/datasets/saranga-project/saranga
 **Interactive portal:** https://huggingface.co/spaces/RHCPP/saranga
 
 Tools for downloading, parsing, and structuring mathematical knowledge from arXiv papers and textbooks. Extracts typed knowledge graphs (definitions, theorems, lemmas, proofs, and their dependencies) from LaTeX sources, links them to a foundation graph of ~298K well-known results (NaturalProofs + LeanDojo/Herald + Mathlib4), and provides validation, visualization, and evaluation tools.

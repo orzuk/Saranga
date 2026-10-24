@@ -3,7 +3,7 @@
 
     python3 scripts/stage_hf_portal_space.py /tmp/saranga_portal_space
     (cd /tmp/saranga_portal_space && PORT=7860 SARANGA_SILVER_DIR=$PWD/silver_v6 \
-        SARANGA_T3_REMOTE="curl -sfL https://huggingface.co/datasets/RHCPP/saranga/resolve/main/{cat}/json/{id}.json" \
+        SARANGA_T3_REMOTE="curl -sfL https://huggingface.co/datasets/saranga-project/saranga/resolve/main/{cat}/json/{id}.json" \
         python3 portal/portal_server.py)          # test locally
     huggingface-cli upload RHCPP/saranga /tmp/saranga_portal_space . --repo-type=space \
         --delete="*"                              # replaces the old static Space's files

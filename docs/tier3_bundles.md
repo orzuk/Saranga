@@ -5,7 +5,7 @@ Decided 2026-10-24 (Or). Code: `portal/bundle_t3.py` (writes and reads), `portal
 
 ## Decision
 
-- The corpus is stored on the Hugging Face dataset `RHCPP/saranga` (free for public data), not on
+- The corpus is stored on the Hugging Face dataset `saranga-project/saranga` (free for public data), not on
   Google Cloud (the portal's billing account is Yaron's) and not inside the portal container.
   The Cloud Run portal reads one paper at a time from there.
 - One bundle per (category, year), not one file per paper: 100K papers give 211 bundles, 1.9 GB (422 files

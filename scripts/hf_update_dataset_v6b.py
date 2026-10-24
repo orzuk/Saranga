@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replace the 100K corpus on the Hugging Face dataset RHCPP/saranga with the v6b run.
+"""Replace the 100K corpus on the Hugging Face dataset saranga-project/saranga with the v6b run.
 
 Run ON THE CLUSTER (where the run lives), logged in to Hugging Face with a write token:
 
@@ -16,7 +16,7 @@ from pathlib import Path
 
 from huggingface_hub import HfApi
 
-REPO = "RHCPP/saranga"
+REPO = "saranga-project/saranga"
 CATS = ["cs_CC", "cs_DS", "cs_IT", "cs_LG", "math_AG", "math_AP", "math_AT", "math_CA", "math_CO", "math_DG",
         "math_FA", "math_GR", "math_LO", "math_NA", "math_NT", "math_OC", "math_PR", "math_RT", "math_ph", "stat_TH"]
 

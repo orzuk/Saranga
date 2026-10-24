@@ -6,7 +6,7 @@ Goal: keep the same addresses, replace the old content.
   pages, old version). It becomes a *Docker* Space running `portal/portal_server.py`: all
   tiers, 100K pages built on the fly, and "Your paper" (graph from any arXiv id or uploaded
   LaTeX, rule-based, a few seconds).
-- Data: https://huggingface.co/datasets/RHCPP/saranga — today the old (v4) 100K graphs plus
+- Data: https://huggingface.co/datasets/saranga-project/saranga — today the old (v4) 100K graphs plus
   pre-built pages. It gets the v6b graphs; the pre-built pages are dropped.
 
 Everything below was tested locally (the staged Space, with 100K JSONs read from the dataset).

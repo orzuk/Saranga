@@ -10,7 +10,7 @@ COPY --chown=user . .
 USER user
 ENV PORT=7860 MPLBACKEND=Agg SARANGA_LIBS_CDN=1 \
     SARANGA_SILVER_DIR=/home/user/app/silver_v6 \
-    SARANGA_T3_BUNDLES=https://huggingface.co/datasets/RHCPP/saranga/resolve/main/v6 \
-    SARANGA_T3_REMOTE="curl -sfL https://huggingface.co/datasets/RHCPP/saranga/resolve/main/{cat}/json/{id}.json"
+    SARANGA_T3_BUNDLES=https://huggingface.co/datasets/saranga-project/saranga/resolve/main/v6 \
+    SARANGA_T3_REMOTE="curl -sfL https://huggingface.co/datasets/saranga-project/saranga/resolve/main/{cat}/json/{id}.json"
 EXPOSE 7860
 CMD ["python3", "portal/portal_server.py"]

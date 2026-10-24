@@ -145,7 +145,7 @@ ALIGNMENT_MANIFEST   = MANIFESTS_DIR / 'alignment.csv'
 PORTAL_URL = 'https://saranga-portal-1043069375918.europe-west1.run.app'
 
 # Hugging Face is no longer used (dropped for the Cloud Run portal); kept for old scripts only.
-HF_DATASET_REPO = 'RHCPP/saranga'   # huggingface.co/datasets/<HF_DATASET_REPO>
+HF_DATASET_REPO = 'saranga-project/saranga'   # huggingface.co/datasets/<HF_DATASET_REPO>
 HF_PORTAL_SPACE = 'RHCPP/saranga'   # huggingface.co/spaces/<HF_PORTAL_SPACE>
 
 # =============================================================================
