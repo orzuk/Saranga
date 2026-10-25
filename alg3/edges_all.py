@@ -454,11 +454,54 @@ def apply(graph: dict, tex: str | None, m: Model, threshold: float | None = None
                 and _sq(ED.node_text(eq)) and _sq(ED.node_text(eq)) in _sq(ED.node_text(box)):
             eq["parent_id"] = box["id"]
     pmap = {(s, t): p for s, t, p in scored}
-    for s, t in sorted(keep, key=lambda k: -pmap[k]):
+    succ = collections.defaultdict(set)                 # the kept edges so far (the parser's are acyclic)
+    for e in new:
+        succ[e["source"]].add(e["target"])
+    for s, t in sorted(keep, key=lambda k: (-pmap[k], k)):
+        if _reaches(succ, t, s):                       # would close a cycle: the graph stays a DAG
+            continue
+        succ[s].add(t)
         typ = "proves" if v.by[s]["type"] == "proof" and kind(v.by[t]["type"]) == "result" else "uses"
         new.append({"source": s, "target": t, "type": typ, "confidence": round(pmap[(s, t)], 3), "provenance": m.id})
     graph["edges"] = new
     return graph
+
+
+def _reaches(succ: dict, a, b) -> bool:
+    """Is there a path a -> ... -> b over succ?"""
+    if a == b:
+        return True
+    seen, stack = {a}, [a]
+    while stack:
+        for y in succ.get(stack.pop(), ()):
+            if y == b:
+                return True
+            if y not in seen:
+                seen.add(y)
+                stack.append(y)
+    return False
+
+
+def make_acyclic(graph: dict) -> int:
+    """For graphs written before the cycle check: keep the parser's edges, re-add the learned ones
+    (those with a provenance) by decreasing confidence, skipping any that would close a cycle.
+    Returns the number of learned edges dropped."""
+    edges = graph.get("edges", [])
+    base = [e for e in edges if not e.get("provenance")]
+    learned = sorted((e for e in edges if e.get("provenance")),
+                     key=lambda e: (-e.get("confidence", 0), e["source"], e["target"]))
+    succ = collections.defaultdict(set)
+    for e in base:
+        succ[e["source"]].add(e["target"])
+    out, dropped = list(base), 0
+    for e in learned:
+        if _reaches(succ, e["target"], e["source"]):
+            dropped += 1
+            continue
+        succ[e["source"]].add(e["target"])
+        out.append(e)
+    graph["edges"] = out
+    return dropped
 
 
 # ── training ────────────────────────────────────────────────────────────────
