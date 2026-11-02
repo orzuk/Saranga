@@ -247,6 +247,9 @@ def expand_macros(source: str) -> str:
             continue                                    # TeX internals: keep the call
         if re.search(r"\\" + re.escape(name) + r"(?![A-Za-z@])", body):
             continue                                    # self-referencing
+        if re.search(r"\\" + re.escape(name) + r"@", source):
+            continue                                    # \acts with its internal \acts@draw: the
+                                                        # expander would match \acts inside it
         discard = not body.strip() and d["arity"] > 0
         if discard and not _uses_braced(source, name, d["arity"]):
             continue                                    # internal or bare-argument use: keep
