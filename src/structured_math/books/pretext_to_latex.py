@@ -125,7 +125,9 @@ def conv(e: ET.Element) -> str:
     elif tag == "men":
         out = "\\begin{equation}" + (e.text or "") + (f"\\label{{{e.get(XI)}}}" if e.get(XI) else "") + "\\end{equation}"
     elif tag in ("md", "mdn"):
-        rows = [(r.text or "") + (f"\\label{{{r.get(XI)}}}" if r.get(XI) else "") for r in e if r.tag.endswith("mrow")]
+        rows = ["".join(r.itertext()) + (f"\\label{{{r.get(XI)}}}" if r.get(XI) else "") for r in e if r.tag.endswith("mrow")]
+        if not rows:                                            # a one-line display written without <mrow>
+            rows = ["".join(e.itertext())]
         out = "\\begin{align*}" + "\\\\\n".join(rows) + "\\end{align*}"
     elif tag == "xref":
         out = _xref(e)

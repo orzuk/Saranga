@@ -181,10 +181,24 @@ def _inline_sty(pre: str, base: Path, seen: set) -> str:
     return _STY.sub(one, pre)
 
 
+_REFMAC = re.compile(r"\\(?:re)?newcommand\*?\{?\\([A-Za-z]+)\}?\[1\]\{(?:\\hyperref\[#1\]\{)?([^{}\\]*?)~?(\\S)?\s*\\ref\*?\{#1\}")
+
+
+def _ref_macros(pre: str, body: str) -> str:
+    """A book's reference wrappers (\\propref{x} for "Proposition~\\ref{x}") written out, so the
+    \\ref is seen and its word kept."""
+    for m in _REFMAC.finditer(pre):
+        word = (m.group(2) or "").strip() + ("\\S" if m.group(3) else "")
+        body = re.sub(r"\\%s(?![A-Za-z])\s*\{([^{}]*)\}" % m.group(1),
+                      lambda x, w=word: (w + "~" if w and w != "\\S" else w) + "\\ref{" + x.group(1) + "}", body)
+    return body
+
+
 def latex_book(main: Path, level: str = "chapter") -> tuple[str, list[tuple[str, str]]]:
     tex = read_tex(str(main))
     i = tex.find("\\begin{document}")
     pre, body = _inline_sty(tex[:i], main.parent, set()), tex[i + len("\\begin{document}"):]
+    body = _ref_macros(pre, body)
     unit = re.compile(_UNIT % level)
     starts = [m.start() for m in unit.finditer(body)]
     end = _END.search(body, starts[-1]) if starts else None
