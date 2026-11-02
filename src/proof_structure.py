@@ -101,7 +101,7 @@ _TAIL = re.compile(r"(?:\\end\{[a-zA-Z*]+\}|\\\]|\$\$?|\\(?:label|tag)\{[^{}]*\}
 _DISPLAY_CLOSER = re.compile(r"(?:\\end\{[a-zA-Z*]+\}|\\\]|\$\$)$")
 
 
-_SPACING_CMD = re.compile(r"\\(?:[vh]space\*?\s*\{[^{}]*\}|[vh]skip\s*-?[\d.]+\s*[a-z]{2}|(?:small|med|big)skip|noindent|par|(?:page|line)break\s*(?:\[\d\])?|newpage|clearpage)(?![a-zA-Z])\s*$")
+_SPACING_CMD = re.compile(r"\\(?:[vh]space\*?\s*\{[^{}]*\}|[vh]skip\s*-?[\d.]+\s*[a-z]{2}|(?:small|med|big)skip|noindent|par|(?:page|line)break\s*(?:\[\d\])?|newpage|clearpage|index\s*\{(?:[^{}]|\{[^{}]*\})*\})(?![a-zA-Z])\s*$")
 
 
 def _sentence_initial_at(text: str, pos: int) -> bool:
