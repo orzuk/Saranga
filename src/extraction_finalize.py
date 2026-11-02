@@ -949,6 +949,11 @@ def validate(graph: dict, source: str, report: dict, parent: dict | None = None)
     for n in graph["nodes"]:
         if "main" in n and (n["main"] is not True or n.get("type") not in _RESULTS | {"algorithm"}):
             err.append(f"{n['id']}: `main` is only `true`, on a result or an algorithm")
+    bad_names = [n["id"] for n in graph["nodes"] if isinstance(n.get("name"), str)
+                 and (not n["name"].strip() or n["name"].strip() == n["id"])]
+    if bad_names:
+        warn.append(f"{len(bad_names)} nodes have an empty name or their id as name; name what each is: "
+                    + ", ".join(bad_names[:10]) + (" ..." if len(bad_names) > 10 else ""))
         eq = n.get("equivalent_conditions")
         if eq is not None and (n.get("type") not in _RESULTS | {"conjecture"} or not isinstance(eq, list)
                                or len(eq) < 2):

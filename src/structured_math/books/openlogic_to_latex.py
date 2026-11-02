@@ -59,7 +59,9 @@ def _args(s: str, i: int, spec: str):
             i += out[-1]
         else:
             g, j = group(s, i, *("[]" if c == "o" else "{}"))
-            if g is None and c == "t":                          # an unbraced argument: one token
+            if g is None and c == "t" and re.compile(r"[ \t]*\n[ \t]*\n").match(s, i):
+                g, j = "\\par", i                               # a blank line is the token \par
+            elif g is None and c == "t":                        # an unbraced argument: one token
                 m = re.compile(r"\s*(\\[A-Za-z@]+|\\.|[^\s{}])").match(s, i)
                 g, j = (m.group(1), m.end()) if m else (None, i)
             if g is None and c in "mt":
@@ -98,6 +100,116 @@ def _sub_env(s: str, env: str, nargs: int, fn) -> str:
             depth, p = (depth + 1, nb + len(b)) if 0 <= nb < ne else (depth - 1, ne + len(e))
         s, i = s[:k] + fn(a, s[j:p - len(e)]) + s[p:], k
     return s
+
+
+_XDEF = re.compile(r"\\(?:DeclareDocumentCommand|NewDocumentCommand|RenewDocumentCommand)\s*\{?\\([A-Za-z]+)\}?")
+_IF = re.compile(r"\\If(NoValue|Value|Boolean)(TF|T|F)(?![A-Za-z@])")
+
+
+def _xspec(spec: str) -> list[tuple]:
+    """xparse argument letters as [(kind, open, close, default)]: s, t<token>, o, O{d}, m, d<oc>, r<oc>."""
+    out, i = [], 0
+    while i < len(spec):
+        c = spec[i]
+        if c in " \t\n":
+            i += 1
+        elif c == "t":
+            tok, j = group(spec, i + 1)
+            tok, i = (tok, j) if tok is not None else (spec[i + 1], i + 2)
+            out.append(("t", tok, None, None))
+        elif c == "O":
+            d, i = group(spec, i + 1)
+            out.append(("o", "[", "]", d))
+        elif c in "dr":
+            out.append(("o" if c == "d" else "m", spec[i + 1], spec[i + 2], None))
+            i += 3
+        else:
+            out.append({"s": ("t", "*", None, None), "o": ("o", "[", "]", None)}.get(c, ("m", "{", "}", None)))
+            i += 1
+    return out
+
+
+def xparse_macros(pre: str) -> dict:
+    """{name: (argument spec, body)} of the preamble's \\DeclareDocumentCommand macros."""
+    out = {}
+    for m in _XDEF.finditer(pre):
+        spec, j = group(pre, m.end())
+        body, _ = group(pre, j) if spec is not None else (None, j)
+        if body is not None:
+            out[m.group(1)] = (_xspec(spec), body)
+    return out
+
+
+def _branch(s: str, i: int):
+    """A conditional's branch: a group, or one token."""
+    g, j = group(s, i)
+    if g is not None:
+        return g, j
+    m = re.compile(r"\s*(\\[A-Za-z@]+|\\.|[^\s{}])").match(s, i)
+    return (m.group(1), m.end()) if m else ("", i)
+
+
+def _ifs(body: str, vals: list) -> str:
+    """\\IfNoValueTF{#k}{..}{..} and its kin decided by the call's arguments."""
+    i = 0
+    while m := _IF.search(body, i):
+        a, j = _branch(body, m.end())
+        k = re.fullmatch(r"\s*#(\d)\s*", a)
+        if not k:
+            i = m.end()
+            continue
+        v = vals[int(k.group(1)) - 1]
+        yes = {"NoValue": v is None, "Value": v is not None, "Boolean": v is True}[m.group(1)]
+        t, j = _branch(body, j) if "T" in m.group(2) else ("", j)
+        f, j = _branch(body, j) if "F" in m.group(2) else ("", j)
+        body, i = body[:m.start()] + (t if yes else f) + body[j:], m.start()
+    return body
+
+
+def _call(s: str, i: int, spec: list):
+    """The values of a call's arguments after s[i] (True/False for flags, None for an absent optional), and the end."""
+    vals = []
+    for kind, o, c, d in spec:
+        if kind == "t":
+            m = re.compile(r"\s*" + re.escape(o)).match(s, i)
+            vals.append(bool(m))
+            i = m.end() if m else i
+            continue
+        g, j = group(s, i, o, c)
+        if g is None and kind == "m" and o == "{":
+            m = re.compile(r"\s*(\\[A-Za-z@]+|\\.|[^\s{}])").match(s, i)
+            g, j = (m.group(1), m.end()) if m else (None, i)
+        if g is None and kind == "m":
+            return None, i
+        vals.append(g if g is not None else d)
+        i = j
+    return vals, i
+
+
+def expand_xparse(text: str, macros: dict, passes: int = 8) -> str:
+    """The book's xparse macros (optional and flag arguments, which MathJax cannot read) expanded
+    in text; the plain \\newcommand macros stay, as in papers (metadata.macros)."""
+    if not macros:
+        return text
+    pat = re.compile(r"\\(%s)(?![A-Za-z@])" % "|".join(sorted(macros, key=len, reverse=True)))
+    for _ in range(passes):
+        out, i, changed = [], 0, False
+        while m := pat.search(text, i):
+            spec, body = macros[m.group(1)]
+            vals, j = _call(text, m.end(), spec)
+            if vals is None:
+                out.append(text[i:m.end()])
+                i = m.end()
+                continue
+            x = _ifs(body, vals)
+            x = re.sub(r"#(\d)", lambda k: "" if not isinstance(v := vals[int(k.group(1)) - 1], str) else v, x)
+            x = re.sub(r"\\relax(?![A-Za-z@])", "", x)
+            out.append(text[i:m.start()] + " " + re.sub(r"\s+", " ", x).strip() + " ")
+            i, changed = j, True
+        text = "".join(out) + text[i:]
+        if not changed:
+            break
+    return text
 
 
 def _name(s: str, i: int):
@@ -377,7 +489,9 @@ def write_book(out: Path, pre: str, chs: list[dict], main: str):
     for f in out.glob("ch[0-9][0-9].tex"):                       # a previous run's chapters
         f.unlink()
     labels, toc, n_main, n_apx = {}, [], 0, 0
+    xmac = xparse_macros(pre)
     for k, c in enumerate(chs, 1):
+        c["body"] = expand_xparse(c["body"], xmac)
         if c["appendix"]:
             n_apx += 1
             num = "\\appendix\n\\setcounter{chapter}{%d}" % (n_apx - 1)

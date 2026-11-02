@@ -109,10 +109,22 @@ v7 rules they name.
    the chapter's definitions and results (skip everyday terms: "set",
    "function", "integer" are not prior terms unless the book defines them).
 
-Also: `main: true` goes on the chapter's central named results (the ones the
-chapter is about, as its introduction or title says), not on every theorem.
-`paper_style` is usually `["theorem_proof"]`, or `["expository"]` for a chapter
-that mostly computes and illustrates.
+Also:
+- `main: true` goes on the chapter's central named results (the ones the
+  chapter is about, as its introduction or title says), not on every theorem;
+  never on a definition.
+- Every node has a `name` that says what it is ("Cosets partition the group");
+  a proof without a heading is named after what it proves ("Proof of Lagrange's
+  Theorem"), never left empty or set to the node's id.
+- A `generalizes` or `specializes` edge only when the text says that one
+  statement is a special case or a generalization of the other ("as a special
+  case", "more generally", "this extends Theorem 2"); otherwise the edge is
+  `uses`.
+- An axiom, axiom scheme or principle the book adopts (an axiom of ZF, the
+  principle of induction, the well-ordering principle) is an `assumption`,
+  `origin: "paper"`, whether or not the book argues for it.
+- `paper_style` is usually `["theorem_proof"]`, or `["expository"]` for a chapter
+  that mostly computes and illustrates.
 
 ## Two layers: LaTeX facts first, then your judgment
 
@@ -675,7 +687,7 @@ remark or problem stated in running text), the `statement` is:
   a copy's `\label` to the kept node; add nothing by hand. A copy that differs
   in content (a special case, a weaker form) is not a repeat: it is its own node.
 - **A proof sketch.** An informal sketch or "proof idea" of a result the paper
-  proves in full elsewhere is a `proof` node with `rigor: semi_formal`, and its
+  proves in full elsewhere is a `proof` node (with no `rigor`: proofs carry none), and its
   `proves` edge carries `alternative: true` (one node per part when the sketch is
   split across sections).
 - **Parts proved separately are claims.** When the paper proves the parts of a

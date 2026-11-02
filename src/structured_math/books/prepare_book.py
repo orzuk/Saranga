@@ -12,6 +12,7 @@ is resolved from it when the book is assembled.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import re
 import sys
@@ -21,7 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from latex_facts import extract_facts, read_tex          # noqa: E402
-from structured_math.books.pretext_to_latex import PREAMBLE, conv, conv_title   # noqa: E402
+from structured_math.books.pretext_to_latex import PREAMBLE, conv, conv_title, index_targets   # noqa: E402
 
 _UNIT = r"\\%s\*?\s*(?:\[[^\]]*\])?\s*\{"            # a chapter, or a section of a book in sections
 _END = re.compile(r"\\(?:appendix|backmatter|end\{document\}|printbibliography|bibliography\{)")
@@ -55,7 +56,10 @@ def pretext_book(main: Path) -> tuple[str, list[tuple[str, str]]]:
     EI.include(root, loader=loader, base_url=str(main.resolve()), max_depth=10)
     pre = PREAMBLE
     if any(e.tag == "acroref" for e in root.iter()):
-        pre += _beezer_dialect(root)
+        pre += _beezer_dialect(root, main.parent)
+    _group_intros(root)
+    _webwork_statics(root, main)
+    index_targets(root)
     chapters = [e for e in root.iter() if e.tag.split("}")[-1] == "chapter"]
     out = []
     for c in chapters:
@@ -64,11 +68,64 @@ def pretext_book(main: Path) -> tuple[str, list[tuple[str, str]]]:
     return pre, out
 
 
-def _beezer_dialect(root: ET.Element) -> str:
-    """Rewrite Beezer's older dialect (acro ids, acroref, $ math, alignmath, define) as PreTeXt
-    in place; returns its LaTeX macros for the preamble."""
+def _group_intros(root: ET.Element) -> None:
+    """An exercise group's instructions ("For C10-C19, find all solutions ...") copied into each
+    of its exercises, which are otherwise bare systems or matrices."""
+    for g in root.iter("exercisegroup"):
+        intro = [c for c in g if c.tag in ("introduction", "p")]
+        for c in intro:
+            g.remove(c)
+        for ex in (c for c in g if c.tag == "exercise"):
+            at = 1 if len(ex) and ex[0].tag == "title" else 0
+            for i, c in enumerate(intro):
+                c = copy.deepcopy(c)
+                c.tail = None
+                ex.insert(at + i, c)
+
+
+def _webwork_statics(root: ET.Element, main: Path) -> None:
+    """A WeBWorK exercise that names a server problem (<webwork source="....pg"/>) gets the
+    problem's text from the static version PreTeXt generated (generated-assets/.../webwork-representations.xml)."""
+    reps = next((f for d in list(main.parents)[:3]
+                 for f in sorted(d.glob("generated-assets/*/webwork/webwork-representations.xml"))), None)
+    if reps is None:
+        return
+    static = {st.get("source"): st for st in ET.parse(reps).getroot().iter("static") if st.get("source")}
+    for w in root.iter("webwork"):
+        st = static.get(w.get("source"))
+        if st is not None and not len(w):
+            w.extend(copy.deepcopy(list(st)))
+
+
+def _archetype_parts(root: ET.Element, src: Path) -> None:
+    """<archetypepart acro="A" part="augmented"/> replaced by that part of Archetype A
+    (archetypes.xml, not included in the book's chapters)."""
+    f = src / "archetypes.xml"
+    if not f.is_file():
+        return
+    arch = {a.get("acro"): a for a in ET.parse(f).getroot().iter("archetype")}
+    for parent in list(root.iter()):
+        for c in parent:
+            if c.tag != "archetypepart":
+                continue
+            part = arch.get(c.get("acro"))
+            part = part.find(c.get("part")) if part is not None else None
+            tail = c.tail
+            c.clear()
+            c.tag, c.tail = "span", tail
+            if part is not None:
+                c.text = part.text
+                c.extend(copy.deepcopy(list(part)))
+
+
+def _beezer_dialect(root: ET.Element, src: Path) -> str:
+    """Rewrite Beezer's older dialect (acro ids, acroref, $ math, alignmath, define, archetypes)
+    as PreTeXt in place; returns its LaTeX macros for the preamble. Ids are the acronym with the
+    kind ("theorem-RREF"), because sections, definitions and theorems reuse acronyms."""
     import structured_math.books.pretext_to_latex as P
     P.DOLLAR_MATH = True
+    _archetype_parts(root, src)
+    kind = {"sageadvice": "sage"}
     macros = "".join(x.text or "" for m in root.iter("macros") for x in m.iter("latex"))
     for parent in list(root.iter()):
         for e in list(parent):
@@ -78,17 +135,20 @@ def _beezer_dialect(root: ET.Element) -> str:
     parent = {c: e for e in root.iter() for c in e}
     parent_tag = {c: e.tag for c, e in parent.items()}
     for e in root.iter():
-        if e.get("acro") and not e.get(P.XI) and e.tag != "archetype":
-            e.set(P.XI, e.get("acro"))
-        if e.tag == "acroref":                  # archetypes A-W reuse letters that are other labels
-            ref = ("archetype-" if e.get("type") == "archetype" else "") + e.get("acro", "")
-            e.tag, e.attrib = "xref", {"ref": ref}
-        elif e.tag == "archetype" and e.get("acro"):
-            e.set(P.XI, "archetype-" + e.get("acro"))
+        if e.get("acro") and not e.get(P.XI) and e.tag not in ("acroref", "exercise"):
+            e.set(P.XI, kind.get(e.tag, e.tag) + "-" + e.get("acro"))
+        if e.tag == "acroref" and e.get("type") == "archetype":     # the archetypes are not in the book
+            e.tag, e.text, e.attrib = "span", "Archetype " + e.get("acro", ""), {}
+        elif e.tag == "acroref":
+            t = {"solution": "exercise"}.get(e.get("type"), e.get("type"))
+            e.tag, e.attrib = "xref", {"ref": f"{t}-{e.get('acro', '')}", "kind": {"sage": "sageadvice"}.get(t, t)}
+        elif e.tag == "miscref":
+            e.tag, e.text, e.attrib = "span", e.get("text", ""), {}
         elif e.tag == "problem" and parent_tag.get(e) == "exercise":
             e.tag = "span"                       # the exercise is the environment, not its problem
         elif e.tag in ("alignmath", "equation"):
-            body = (e.text or "") + "".join((f"\\ref{{{c.get('acro')}}}" if c.tag == "acroref" else "")
+            body = (e.text or "") + "".join((f"\\ref{{{c.get('type')}-{c.get('acro')}}}" if c.tag == "acroref"
+                                             else "".join(c.itertext()) if c.tag == "span" else "")
                                             + (c.tail or "") for c in e)
             for c in list(e):
                 e.remove(c)
@@ -103,7 +163,7 @@ def _beezer_dialect(root: ET.Element) -> str:
             while sec is not None and sec.tag != "section":
                 sec = parent.get(sec)
             pre = (sec.get("acro") + ".") if sec is not None and sec.get("acro") else ""
-            e.set(P.XI, pre + e.get("type", "") + e.get("number"))    # the book cites SSLE.M40
+            e.set(P.XI, "exercise-" + pre + e.get("type", "") + e.get("number"))    # the book cites SSLE.M40
     return "\n" + macros + "\n"
 
 
