@@ -33,6 +33,12 @@ Decided 2026-10-24 (Or). Code: `portal/bundle_t3.py` (writes and reads), `portal
 Reading one paper: download the bundle's index once, then an HTTP range request for the paper's
 bytes (about 25 KB), then `unpack(blob, entry)`. Measured from WSL against Hugging Face: 0.2-0.4 s.
 
+Analysis code reads bundles through `src/discovery/common/corpus_io.py`, as it reads per-paper JSONs:
+`walk(root)` yields one path per paper (`<cat>/<year>.json.xz#<id>`), `read_json` / `read_paper` /
+`iter_papers` read it. So a task runs the same on a folder of JSONs or of bundles; only `--root` changes.
+For all of arXiv only the bundles are kept (2.5M JSON files would strain the cluster's inode quota);
+the 100K keeps its per-paper JSONs too, which the extractor's stats and validation steps read.
+
 ## Why not smaller
 
 Measured on 60 papers of the 100K (10.1 MB of JSON as stored):

@@ -7,10 +7,14 @@ Links collected per paper of the corpus:
             \\cite{key}", "answers a question of", "a counterexample to", ...)
   edge      a resolves edge of the extraction (problem -> result), with the problem's citations if any
 """
-import csv, glob, json, os, re, sys, collections
+import csv, json, os, re, sys, collections
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src/discovery/common"))
+from corpus_io import walk, read_json      # per-paper JSONs or bundles
 csv.field_size_limit(10**9)
 TG = "/sci/labs/orzuk/orzuk/projects/Authomathics/theoremgraph"
-CORPUS = "/sci/labs/orzuk/orzuk/teaching/big_data_project_52017/2024_25/arxiv_data/parsed_100k_v7"
+CORPUS = sys.argv[1] if len(sys.argv) > 1 else \
+    "/sci/labs/orzuk/orzuk/teaching/big_data_project_52017/2024_25/arxiv_data/parsed_100k_v7"
 PROB = {"conjecture", "open_problem", "problem"}
 RESULT = {"theorem", "lemma", "proposition", "corollary", "claim"}
 CITE = re.compile(r"\\cite[a-zA-Z]*\*?\s*(?:\[([^\]]*)\])?\s*(?:\[([^\]]*)\])?\s*\{([^}]*)\}")
@@ -30,14 +34,14 @@ def cites(tex):
 
 # 1. the corpus papers and what they cite
 papers = {}                                   # arxiv id (no version) -> category
-for f in glob.glob(f"{CORPUS}/*/json/*.json"):
-    a = os.path.basename(f).replace("_rules.json", "").replace(".json", "")
+for f in walk(Path(CORPUS)):
+    a = f.name.split("#")[-1].replace("_rules.json", "").replace("_rules", "").replace(".json", "")
     papers[strip_v(a)] = (f, a)
 print(len(papers), "corpus papers", flush=True)
 links, stats = [], collections.Counter()
 for a0, (f, a) in papers.items():
     try:
-        d = json.load(open(f))
+        d = read_json(f)
     except Exception:
         stats["unreadable"] += 1
         continue

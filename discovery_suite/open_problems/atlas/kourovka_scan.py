@@ -1,13 +1,16 @@
 """Corpus nodes that mention the Kourovka Notebook, with the problem number when given."""
-import glob, json, re
-C = "/sci/labs/orzuk/orzuk/teaching/big_data_project_52017/2024_25/arxiv_data/parsed_100k_v7"
+import json, re, sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src/discovery/common"))
+from corpus_io import walk, read_json      # per-paper JSONs or bundles
+C = sys.argv[1] if len(sys.argv) > 1 else \
+    "/sci/labs/orzuk/orzuk/teaching/big_data_project_52017/2024_25/arxiv_data/parsed_100k_v7"
 NUM = re.compile(r"(?:problem|question|conjecture)s?\s*~?\s*(\d{1,2}\.\d{1,3})|(\d{1,2}\.\d{1,3})\s*(?:\]|\}|\)|of|in)", re.I)
 out, papers = [], set()
-for f in glob.glob(f"{C}/*/json/*.json"):
-    s = open(f, errors="ignore").read()
-    if "ourovka" not in s:
+for f in walk(Path(C)):
+    d = read_json(f)
+    if "ourovka" not in json.dumps(d, ensure_ascii=False):
         continue
-    d = json.loads(s)
     a = d["metadata"]["paper_id"]
     papers.add(a)
     for n in d["nodes"]:
