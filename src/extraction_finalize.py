@@ -117,6 +117,23 @@ def match_nodes_to_facts(graph: dict, facts: dict) -> dict[str, str]:
                 f = pick[-1]
                 out[n["id"]] = f["id"]
                 taken.add(f["id"])
+    # a short body ("Exercise.", "$A^c$"): the environment of the node's type with that text
+    # between the node's neighbours, the first one not yet taken
+    short: dict[str, list[dict]] = {}
+    for f in facts["facts"]:
+        k = _key(f["statement"])
+        if 0 < len(k) <= 10:
+            short.setdefault(k, []).append(f)
+    for n in level1:
+        cands = short.get(_key(n.get("statement")))
+        if n["id"] in out or not cands:
+            continue
+        lo, hi = _neighbour_bounds(level1, n["id"], out, fact)
+        f = next((f for f in cands if f["id"] not in taken and f.get("type") == n.get("type")
+                  and lo <= f["start"] <= hi), None)
+        if f is not None:
+            out[n["id"]] = f["id"]
+            taken.add(f["id"])
     return out
 
 

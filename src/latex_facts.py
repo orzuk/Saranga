@@ -136,18 +136,19 @@ def clean_source(tex: str) -> str:
 _INPUT = re.compile(r"(?<!\\)\\(input|include|subfile)\s*\{([^{}#]+)\}")
 
 
-def read_tex(path: str, root=None, _depth: int = 0) -> str:
+def read_tex(path: str, root=None, _depth: int = 0, code_spans: bool = False) -> str:
     """The paper's source with every \\input / \\include / \\subfile inlined.
 
     Comments are removed first, so a commented-out \\input is not inlined.
     Files are looked up relative to the main file's folder (as LaTeX does) and
     then the including file's: as given, then with .tex and .txt appended. An
-    unresolvable file is left as the command, so nothing is invented.
+    unresolvable file is left as the command, so nothing is invented. code_spans: a % inside
+    #...# is text (latex_macros.strip_comments).
     """
     from pathlib import Path
     p = Path(path)
     root = root or p.parent
-    text = strip_comments(p.read_text(encoding="utf-8", errors="replace"))
+    text = strip_comments(p.read_text(encoding="utf-8", errors="replace"), code_spans)
     if _depth >= 8:
         return text
 
@@ -156,7 +157,7 @@ def read_tex(path: str, root=None, _depth: int = 0) -> str:
         for base in dict.fromkeys((root, p.parent)):
             for cand in (base / name, base / f"{name}.tex", base / f"{name}.txt"):
                 if cand.is_file():
-                    return read_tex(str(cand), root, _depth + 1)
+                    return read_tex(str(cand), root, _depth + 1, code_spans)
         return m.group(0)
     return _INPUT.sub(inline, text)
 
@@ -887,7 +888,7 @@ def extract_facts(tex: str) -> dict:
         if short is not None:
             k = k2
         title, _ = _group(source, k)
-        if title is None or "#" in title:              # no title, or a macro's body
+        if title is None or re.search(r"#\d", title):   # no title, or a macro's body (#1)
             return
         number = None
         if not starred and level >= (0 if chaptered else 1):

@@ -1,13 +1,15 @@
 """A textbook's source as one LaTeX file per chapter, plus the book's label table, for the
 v7-books extractor (scripts/opus_extract_prompt_v7_books.md).
 
-    python -m structured_math.books.prepare_book SRC OUT [--main FILE]
+    python -m structured_math.books.prepare_book SRC OUT [--main FILE] [--code-spans] [--drop-env answer]
 
 SRC is a PreTeXt book (the .ptx/.xml file whose root holds <book>, found when --main is not
 given) or a LaTeX book (--main main.tex). OUT gets chNN.tex (the book's preamble, the chapter,
 \\setcounter so the chapter prints its own number) and labels.json, which maps every \\label of
 the book to {chapter, number, kind, type, display, name}; a chapter's \\ref to another chapter
-is resolved from it when the book is assembled.
+is resolved from it when the book is assembled. --code-spans: the book writes inline code as
+#...# (Open Data Structures), so a % there is text and is written \\%. --drop-env: environments
+left out (Hefferon's in-text exercise answers).
 """
 from __future__ import annotations
 
@@ -261,11 +263,28 @@ def _petrunin(pre: str, body: str) -> tuple[str, str]:
     return pre + "\n\\theoremstyle{plain}\n" + decl, body
 
 
-def latex_book(main: Path, level: str = "chapter") -> tuple[str, list[tuple[str, str]]]:
-    tex = read_tex(str(main))
+def _code_percent(body: str) -> str:
+    """A % inside #...# inline code written \\%, so it survives comment stripping."""
+    return re.sub(r"(?<!\\)#(?![\d#])([^#\n]*)(?<!\\)#",
+                  lambda m: "#" + re.sub(r"(?<!\\)%", r"\\%", m.group(1)) + "#", body)
+
+
+def _drop_envs(body: str, names: list[str]) -> str:
+    for name in names:
+        body = re.sub(r"\\begin\{%s\}.*?\\end\{%s\}" % (re.escape(name), re.escape(name)), "", body, flags=re.S)
+    return body
+
+
+def latex_book(main: Path, level: str = "chapter", code_spans: bool = False,
+               drop_envs: list[str] = ()) -> tuple[str, list[tuple[str, str]]]:
+    tex = read_tex(str(main), code_spans=code_spans)
     i = tex.find("\\begin{document}")
     pre, body = _inline_sty(tex[:i], main.parent, set()), tex[i + len("\\begin{document}"):]
-    body = _ref_macros(pre, body)
+    body = _drop_envs(_code_percent(body) if code_spans else body, drop_envs)
+    # reference wrappers may be defined in style files anywhere in the source tree (Hefferon's
+    # sty/bookjhconcrete.sty: \\nearbylemma{x} is Lemma~\\ref{x}); only those are taken from them
+    stys = "\n".join(read_tex(str(f)) for f in sorted(main.parent.rglob("*.sty")))
+    body = _ref_macros(pre + "\n" + stys, body)
     pre, body = _petrunin(pre, body)
     unit = re.compile(_UNIT % level)
     starts = [m.start() for m in unit.finditer(body)]
@@ -288,10 +307,13 @@ def main():
     ap.add_argument("out")
     ap.add_argument("--main", help="the main .tex (LaTeX book) or .ptx (PreTeXt book)")
     ap.add_argument("--level", default="chapter", help="LaTeX unit to split at: chapter, or section")
+    ap.add_argument("--code-spans", action="store_true", help="#...# is inline code (a %% in it is text)")
+    ap.add_argument("--drop-env", action="append", default=[], help="an environment to leave out")
     a = ap.parse_args()
     src, out = Path(a.src), Path(a.out)
     main_f = Path(a.main) if a.main else find_pretext_main(src)
-    pre, chapters = latex_book(main_f, a.level) if main_f.suffix == ".tex" else pretext_book(main_f)
+    pre, chapters = (latex_book(main_f, a.level, a.code_spans, a.drop_env) if main_f.suffix == ".tex"
+                     else pretext_book(main_f))
     out.mkdir(parents=True, exist_ok=True)
     labels, toc = {}, []
     for k, (title, body) in enumerate(chapters, 1):

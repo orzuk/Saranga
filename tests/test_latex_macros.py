@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from latex_macros import (normalize_for_mathtext, expand_macros,   # noqa: E402
                           brace_normalize, resolve_references,
-                          resolve_text_fonts, strip_text_environments)
+                          resolve_text_fonts, strip_text_environments, strip_comments)
 
 FAILS = []
 
@@ -94,6 +94,18 @@ check(resolve_text_fonts(r"\begin{itemize}\item a\end{itemize}"),
       r"\begin{itemize}\item a\end{itemize}",
       "`\\item` must survive the `\\it` declaration rule")
 check(resolve_text_fonts(r"(resp.\ $w$)"), "(resp. $w$)", "control space")
+
+# ── Comments: a % is text inside verbatim code, as LaTeX reads it.
+check(strip_comments("50\\% done % note"), "50\\% done ", "escaped % kept, comment dropped")
+check(strip_comments("a\\\\% note"), "a\\\\", "\\\\ is a line break, then a comment")
+check(strip_comments("\\begin{lstlisting}\nif (n%x==0)\n\\end{lstlisting} % c"),
+      "\\begin{lstlisting}\nif (n%x==0)\n\\end{lstlisting} ", "% in a listing is code")
+check(strip_comments("% \\begin{verbatim}\nx%y"), "\nx", "a commented-out verbatim does not open")
+check(strip_comments("\\verb|a%b| % c"), "\\verb|a%b| ", "% in \\verb is text")
+check(strip_comments("#a[(j+n)%a.length]# % c", code_spans=True), "#a[(j+n)%a.length]# ",
+      "code_spans: % in #...# is text")
+check(strip_comments("\\def\\x#1{#1% c\n}", code_spans=True), "\\def\\x#1{#1\n}",
+      "code_spans: #1 is a macro argument, not code")
 
 if FAILS:
     print("FAILED %d:" % len(FAILS))

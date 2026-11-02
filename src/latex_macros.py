@@ -1147,16 +1147,61 @@ STRUCT = re.compile(r'\\(label|index|textbf|emph|textit|section|subsection|'
 PRESENT = re.compile(r'\\(textcolor|color|colorbox|hl|st|sout|uline)\b')
 
 
-_COMMENT = re.compile(r"(?<!\\)((?:\\\\)*)%[^\n]*")
+_VERB_ENVS = ("lstlisting", "verbatim", "Verbatim", "BVerbatim", "LVerbatim", "minted")
+_VERB_HINT = re.compile(r"\\begin\s*\{(?:" + "|".join(_VERB_ENVS) + r")\*?\}")
+_SCAN = r"\\begin\s*\{(?P<env>(?:" + "|".join(_VERB_ENVS) + r")\*?)\}|\\(?:verb\*?|lstinline)(?P<delim>[^\sA-Za-z{\[*])"
+_COMMENT_SCAN = re.compile(_SCAN + r"|(?P<bs>(?<!\\)(?:\\\\)*)%")
+_COMMENT_SCAN_HASH = re.compile(_SCAN + r"|(?P<bs>(?<!\\)(?:\\\\)*)%|(?P<hash>(?<!\\)#(?![\d#]))")
 
 
-def strip_comments(src):
-    """Drop % comments: % starts one unless escaped (\\%); \\\\% is a line break, then a comment."""
+def strip_comments(src, code_spans=False):
+    """Drop % comments: % starts one unless escaped (\\%); \\\\% is a line break, then a comment.
+    A % inside a verbatim environment (lstlisting, verbatim, minted) or \\verb|..| is text,
+    as LaTeX reads it. With code_spans, so is a % inside #...# (Open Data Structures' inline
+    code, #a[(j+n)%a.length]#; a # before a digit is a macro argument)."""
     if "%" not in src:
         return src
-    # line by line, regex only where a % is: a match never crosses a newline, and the
-    # lookbehind at a line start sees the newline, so this is the same as one pass
-    return "\n".join(_COMMENT.sub(r"\1", line) if "%" in line else line for line in src.split("\n"))
+    scan = _COMMENT_SCAN_HASH if code_spans else _COMMENT_SCAN
+    out, env = [], None
+    # line by line, the scan only where a % or a verbatim environment is
+    for line in src.split("\n"):
+        head = ""
+        if env is not None:                   # inside a verbatim environment
+            e = line.find("\\end{%s}" % env)
+            if e < 0:
+                out.append(line)
+                continue
+            cut = e + len(env) + 6
+            head, line, env = line[:cut], line[cut:], None
+        if "%" not in line and not _VERB_HINT.search(line):
+            out.append(head + line)
+            continue
+        res, i = [head], 0
+        while True:
+            m = scan.search(line, i)
+            if m is None:
+                res.append(line[i:])
+                break
+            if m.group("env"):
+                e = line.find("\\end{%s}" % m.group("env"), m.end())
+                if e < 0:
+                    res.append(line[i:])
+                    env = m.group("env")
+                    break
+                j = e + len(m.group("env")) + 6
+            elif m.group("delim"):
+                e = line.find(m.group("delim"), m.end())
+                j = len(line) if e < 0 else e + 1
+            elif code_spans and m.group("hash"):
+                e = re.compile(r"(?<!\\)#").search(line, m.end())
+                j = m.end() if e is None else e.end()
+            else:                             # a comment: the rest of the line goes
+                res.append(line[i:m.start()] + m.group("bs"))
+                break
+            res.append(line[i:j])
+            i = j
+        out.append("".join(res))
+    return "\n".join(out)
 
 
 def group(s, i, open_="{", close="}"):

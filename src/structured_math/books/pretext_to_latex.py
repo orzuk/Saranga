@@ -21,11 +21,14 @@ SECTIONS = {"chapter": "chapter", "section": "section", "subsection": "subsectio
 DROP = {"sage", "idx", "index", "hint", "answer", "solution", "notation", "pg-code", "setup", "pg-macros", "image", "video",
         "interactive", "input", "output", "commentary", "fn", "feedback", "shortsummary"}
 # blocks PreTeXt books use for student work, as the environment the extractor knows
-ALIAS = {"activity": "exercise", "exploration": "exercise", "project": "exercise", "investigation": "problem"}
+ALIAS = {"activity": "exercise", "exploration": "exercise", "project": "exercise", "worksheet": "exercise",
+         "investigation": "problem"}
 INLINE = {"em": "\\emph{%s}", "term": "\\textbf{%s}", "alert": "\\textbf{%s}", "q": "``%s''",
           "c": "\\texttt{%s}", "i": "\\textit{%s}", "b": "\\textbf{%s}"}
 CHARS = {"mdash": "---", "ndash": "--", "nbsp": "~", "ellipsis": "\\ldots{}", "lq": "``", "rq": "''",
-         "times": "$\\times$", "copyleft": "", "TeX": "\\TeX{}", "LaTeX": "\\LaTeX{}"}
+         "times": "$\\times$", "copyleft": "", "TeX": "\\TeX{}", "LaTeX": "\\LaTeX{}",
+         "ie": "i.e.", "eg": "e.g.", "etc": "etc.", "vs": "vs.", "nb": "N.B.", "viz": "viz.",
+         "etal": "et al.", "ca": "ca.", "ps": "PS", "ad": "AD", "am": "a.m.", "pm": "p.m.", "bc": "BC"}
 
 
 DOLLAR_MATH = False      # the source writes inline math as $...$ in the text (Beezer's older dialect)
@@ -77,7 +80,8 @@ def _kids(e: ET.Element, f=None, skip=()) -> str:
         if c.tag in skip:
             continue
         if c.tag == "task":
-            tasks.append("\\item " + (_text(c.text) + "".join(conv(x) for x in c)).strip() + "\n")
+            lab = f"\\label{{{c.get(XI)}}} " if c.get(XI) else ""      # a part's own label (exer_515a)
+            tasks.append("\\item " + lab + (_text(c.text) + "".join(conv(x) for x in c)).strip() + "\n")
             continue
         if tasks:
             out.append("\n\\begin{enumerate}\n" + "".join(tasks) + "\\end{enumerate}\n")
@@ -165,7 +169,7 @@ def conv(e: ET.Element) -> str:
         env = "enumerate" if tag == "ol" else "itemize"
         out = f"\n\\begin{{{env}}}\n" + "".join(conv(c) for c in e if c.tag == "li") + f"\\end{{{env}}}\n"
     elif tag == "li":
-        out = "\\item " + inner().strip() + "\n"
+        out = "\\item " + (f"\\label{{{e.get(XI)}}} " if e.get(XI) else "") + inner().strip() + "\n"
     else:                                                       # statement, introduction, task, ...
         out = inner()
     return out + _text(e.tail)
