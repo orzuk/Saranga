@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from latex_facts import extract_facts, read_tex          # noqa: E402
 from structured_math.books.pretext_to_latex import PREAMBLE, conv, conv_title   # noqa: E402
 
-_CHAPTER = re.compile(r"\\chapter\*?\s*(?:\[[^\]]*\])?\s*\{")
+_UNIT = r"\\%s\*?\s*(?:\[[^\]]*\])?\s*\{"            # a chapter, or a section of a book in sections
 _END = re.compile(r"\\(?:appendix|backmatter|end\{document\}|printbibliography|bibliography\{)")
 _STY = re.compile(r"\\(?:usepackage|RequirePackage)(?:\[[^\]]*\])?\{([^}]*)\}")
 
@@ -53,12 +53,58 @@ def pretext_book(main: Path) -> tuple[str, list[tuple[str, str]]]:
             print("missing include:", href, file=sys.stderr)
             return ET.Element("missing") if parse == "xml" else ""
     EI.include(root, loader=loader, base_url=str(main.resolve()), max_depth=10)
+    pre = PREAMBLE
+    if any(e.tag == "acroref" for e in root.iter()):
+        pre += _beezer_dialect(root)
     chapters = [e for e in root.iter() if e.tag.split("}")[-1] == "chapter"]
     out = []
     for c in chapters:
         t = c.find("title")
         out.append((conv_title(t), re.sub(r"\n{3,}", "\n\n", conv(c))))
-    return PREAMBLE, out
+    return pre, out
+
+
+def _beezer_dialect(root: ET.Element) -> str:
+    """Rewrite Beezer's older dialect (acro ids, acroref, $ math, alignmath, define) as PreTeXt
+    in place; returns its LaTeX macros for the preamble."""
+    import structured_math.books.pretext_to_latex as P
+    P.DOLLAR_MATH = True
+    macros = "".join(x.text or "" for m in root.iter("macros") for x in m.iter("latex"))
+    for parent in list(root.iter()):
+        for e in list(parent):
+            if e.tag == "macros":
+                parent.remove(e)
+    rel = {"implyforward": "($\\Rightarrow$) ", "implyreverse": "($\\Leftarrow$) ", "ie": "i.e.", "eg": "e.g."}
+    parent = {c: e for e in root.iter() for c in e}
+    parent_tag = {c: e.tag for c, e in parent.items()}
+    for e in root.iter():
+        if e.get("acro") and not e.get(P.XI) and e.tag != "archetype":
+            e.set(P.XI, e.get("acro"))
+        if e.tag == "acroref":                  # archetypes A-W reuse letters that are other labels
+            ref = ("archetype-" if e.get("type") == "archetype" else "") + e.get("acro", "")
+            e.tag, e.attrib = "xref", {"ref": ref}
+        elif e.tag == "archetype" and e.get("acro"):
+            e.set(P.XI, "archetype-" + e.get("acro"))
+        elif e.tag == "problem" and parent_tag.get(e) == "exercise":
+            e.tag = "span"                       # the exercise is the environment, not its problem
+        elif e.tag in ("alignmath", "equation"):
+            body = (e.text or "") + "".join((f"\\ref{{{c.get('acro')}}}" if c.tag == "acroref" else "")
+                                            + (c.tail or "") for c in e)
+            for c in list(e):
+                e.remove(c)
+            e.text = "\\begin{aligned}" + body + "\\end{aligned}" if e.tag == "alignmath" else body
+            e.tag = "men" if e.get(P.XI) else "me"
+        elif e.tag == "define":
+            e.tag = "term"
+        elif e.tag in rel:
+            e.text, e.tag = rel[e.tag], "span"
+        elif e.tag == "exercise" and e.get("number") and not e.get(P.XI):
+            sec = e
+            while sec is not None and sec.tag != "section":
+                sec = parent.get(sec)
+            pre = (sec.get("acro") + ".") if sec is not None and sec.get("acro") else ""
+            e.set(P.XI, pre + e.get("type", "") + e.get("number"))    # the book cites SSLE.M40
+    return "\n" + macros + "\n"
 
 
 def _inline_sty(pre: str, base: Path, seen: set) -> str:
@@ -74,16 +120,17 @@ def _inline_sty(pre: str, base: Path, seen: set) -> str:
     return _STY.sub(one, pre)
 
 
-def latex_book(main: Path) -> tuple[str, list[tuple[str, str]]]:
+def latex_book(main: Path, level: str = "chapter") -> tuple[str, list[tuple[str, str]]]:
     tex = read_tex(str(main))
     i = tex.find("\\begin{document}")
     pre, body = _inline_sty(tex[:i], main.parent, set()), tex[i + len("\\begin{document}"):]
-    starts = [m.start() for m in _CHAPTER.finditer(body)]
+    unit = re.compile(_UNIT % level)
+    starts = [m.start() for m in unit.finditer(body)]
     end = _END.search(body, starts[-1]) if starts else None
     bounds = starts + [end.start() if end else len(body)]
     out = []
     for a, b in zip(bounds, bounds[1:]):
-        m = _CHAPTER.match(body, a)
+        m = unit.match(body, a)
         depth, j = 1, m.end()
         while depth and j < len(body):
             depth += {"{": 1, "}": -1}.get(body[j], 0)
@@ -97,15 +144,16 @@ def main():
     ap.add_argument("src")
     ap.add_argument("out")
     ap.add_argument("--main", help="the main .tex (LaTeX book) or .ptx (PreTeXt book)")
+    ap.add_argument("--level", default="chapter", help="LaTeX unit to split at: chapter, or section")
     a = ap.parse_args()
     src, out = Path(a.src), Path(a.out)
     main_f = Path(a.main) if a.main else find_pretext_main(src)
-    pre, chapters = (latex_book if main_f.suffix == ".tex" else pretext_book)(main_f)
+    pre, chapters = latex_book(main_f, a.level) if main_f.suffix == ".tex" else pretext_book(main_f)
     out.mkdir(parents=True, exist_ok=True)
     labels, toc = {}, []
     for k, (title, body) in enumerate(chapters, 1):
         f = out / f"ch{k:02d}.tex"
-        f.write_text(f"{pre}\n\\begin{{document}}\n\\setcounter{{chapter}}{{{k - 1}}}\n{body}\n\\end{{document}}\n",
+        f.write_text(f"{pre}\n\\begin{{document}}\n\\setcounter{{{a.level}}}{{{k - 1}}}\n{body}\n\\end{{document}}\n",
                      encoding="utf-8")
         facts = extract_facts(read_tex(str(f)))
         by_label = {lab: x for x in facts["facts"] for lab in x["labels"]}

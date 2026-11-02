@@ -14,10 +14,11 @@ from pathlib import Path
 
 XI = "{http://www.w3.org/XML/1998/namespace}id"
 ENVS = {"theorem", "lemma", "proposition", "corollary", "claim", "conjecture", "definition", "example",
-        "remark", "exercise", "algorithm", "axiom", "fact", "observation", "note", "question", "problem"}
+        "remark", "exercise", "algorithm", "axiom", "fact", "observation", "note", "question", "problem",
+        "principle", "assemblage"}                  # assemblage: a boxed key statement
 SECTIONS = {"chapter": "chapter", "section": "section", "subsection": "subsection",
             "subsubsection": "subsubsection", "exercises": "section*", "paragraphs": "paragraph"}
-DROP = {"sage", "idx", "index", "hint", "answer", "solution", "notation", "image", "figure", "video",
+DROP = {"sage", "idx", "index", "hint", "answer", "solution", "notation", "pg-code", "setup", "pg-macros", "image", "figure", "video",
         "interactive", "input", "output", "commentary", "fn"}
 INLINE = {"em": "\\emph{%s}", "term": "\\textbf{%s}", "alert": "\\textbf{%s}", "q": "``%s''",
           "c": "\\texttt{%s}", "i": "\\textit{%s}", "b": "\\textbf{%s}"}
@@ -25,8 +26,14 @@ CHARS = {"mdash": "---", "ndash": "--", "nbsp": "~", "ellipsis": "\\ldots{}", "l
          "times": "$\\times$", "copyleft": "", "TeX": "\\TeX{}", "LaTeX": "\\LaTeX{}"}
 
 
+DOLLAR_MATH = False      # the source writes inline math as $...$ in the text (Beezer's older dialect)
+
+
 def _text(s: str | None) -> str:
-    return re.sub(r"([#%&_])", r"\\\1", s or "")
+    esc = lambda x: re.sub(r"([#%&_])", r"\\\1", x)      # noqa: E731
+    if not DOLLAR_MATH:
+        return esc(s or "")
+    return "".join(x if i % 2 else esc(x) for i, x in enumerate(re.split(r"(\$[^$]*\$)", s or "")))
 
 
 def conv(e: ET.Element) -> str:
@@ -35,6 +42,8 @@ def conv(e: ET.Element) -> str:
         return _text(e.tail)
     inner = lambda: _text(e.text) + "".join(conv(c) for c in e)    # noqa: E731
     out: str
+    if tag == "webwork":                                        # only the question, never the PG program
+        return "".join(conv(c) for c in e if c.tag.split("}")[-1] == "statement") + _text(e.tail)
     if tag == "m":
         out = "$" + (e.text or "") + "$"
     elif tag == "me":
@@ -62,7 +71,9 @@ def conv(e: ET.Element) -> str:
         t = e.find("title")
         opt = f"[{conv_title(t)}]" if t is not None else ""
         lab = f"\\label{{{e.get(XI)}}}" if e.get(XI) else ""
-        body = "".join(conv(c) for c in e if c.tag not in ("proof", "title"))
+        # an example's worked solution is part of the example (an exercise's solution is dropped)
+        sol = lambda c: (_text(c.text) + "".join(conv(x) for x in c) + _text(c.tail)) if c.tag == "solution" and tag == "example" else conv(c)  # noqa: E731
+        body = _text(e.text) + "".join(sol(c) for c in e if c.tag not in ("proof", "title"))
         proofs = "".join(conv(c) for c in e if c.tag == "proof")
         out = f"\n\\begin{{{tag}}}{opt}{lab}\n{body.strip()}\n\\end{{{tag}}}\n{proofs}"
     elif tag == "proof":
