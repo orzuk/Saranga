@@ -213,11 +213,56 @@ def _ref_macros(pre: str, body: str) -> str:
     return body
 
 
+_PET_TYPES = ("exercise", "lemma", "corollary", "proposition", "definition", "theorem", "observation",
+              "claim", "example", "conjecture", "problem", "remark")
+
+
+def _petrunin(pre: str, body: str) -> tuple[str, str]:
+    """Petrunin's books write every statement as \\begin{thm}{Word} (one generic environment) and a
+    proof as the text between a statement and \\qeds. Each Word becomes its own theorem
+    environment (a word that is not a type, "Lens lemma", becomes the optional name) and a
+    "Proof." paragraph up to its \\qeds a proof environment, so the facts carry the right types
+    and proofs."""
+    if not re.search(r"\\newenvironment\{thm\}\{\\claim\}", pre):
+        return pre, body
+    def env(word: str) -> tuple[str, str]:
+        w = word.strip().lower()
+        t = next((t for t in _PET_TYPES if t in w), "theorem")
+        t = "claim" if t == "observation" else t
+        return "pet" + t, ("" if w.rstrip("s") in (t, "advanced " + t, "proof-guided " + t) else word.strip())
+    out, i = [], 0
+    for m in re.finditer(r"\\begin\{thm\}\{([^{}]*)\}|\\end\{thm\}", body):
+        out.append(body[i:m.start()])
+        if m.group(1) is not None:
+            e, name = env(m.group(1))
+            out.append(f"\\begin{{{e}}}" + (f"[{name}]" if name else ""))
+            out.append(f"%%PETENV:{e}%%")
+        else:
+            out.append("\\end{thm}")
+        i = m.end()
+    out.append(body[i:])
+    body, stack, res = "".join(out), [], []
+    for part in re.split(r"(%%PETENV:\w+%%|\\end\{thm\})", body):           # close each with its own name
+        if part.startswith("%%PETENV:"):
+            stack.append(part[9:-2])
+        elif part == "\\end{thm}":
+            res.append(f"\\end{{{stack.pop() if stack else 'thm'}}}")
+        else:
+            res.append(part)
+    body = "".join(res)
+    # a proof: from its "Proof." heading to the next \qeds (headings and statements end it unclosed)
+    body = re.sub(r"\\par(?:bf|it)\{Proof[^{}]*\}((?:(?!\\begin\{pet|\\(?:sub)*section\b|\\chapter\b|\\par(?:bf|it)\{Proof).)*?)\\qeds?f?\b",
+                  lambda m: "\\begin{proof}" + m.group(1) + "\n\\end{proof}", body, flags=re.S)
+    decl = "".join(f"\\newtheorem{{pet{t}}}{{{t.capitalize()}}}[chapter]\n" for t in _PET_TYPES if t != "observation")
+    return pre + "\n\\theoremstyle{plain}\n" + decl, body
+
+
 def latex_book(main: Path, level: str = "chapter") -> tuple[str, list[tuple[str, str]]]:
     tex = read_tex(str(main))
     i = tex.find("\\begin{document}")
     pre, body = _inline_sty(tex[:i], main.parent, set()), tex[i + len("\\begin{document}"):]
     body = _ref_macros(pre, body)
+    pre, body = _petrunin(pre, body)
     unit = re.compile(_UNIT % level)
     starts = [m.start() for m in unit.finditer(body)]
     end = _END.search(body, starts[-1]) if starts else None
