@@ -754,6 +754,10 @@ def extract_facts(tex: str) -> dict:
     cites: list[dict] = []
 
     sec_ctr = {0: 0, 1: 0, 2: 0, 3: 0}
+    # one chapter of a book on its own: \setcounter{chapter}{5} before it (prepare_book.py)
+    first = re.search(r"\\setcounter\s*\{chapter\}\s*\{\s*(\d+)\s*\}", source[body_start:body_start + 300])
+    if first:
+        sec_ctr[0] = int(first.group(1))
     in_appendix = False
     # a book or report: chapters are numbered, sections are chapter.section, and the
     # class numbers equations within chapters
