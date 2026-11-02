@@ -36,7 +36,10 @@ from structured_math.books.concepts import RESULT_NAME, words         # noqa: E4
 _GENERIC = set("theorem lemma proposition corollary definition proof example remark claim exercise "
                "problem conjecture equation algorithm section chapter case step result notation".split()) | {
     "well defined", "well-defined", "uniquely determined", "if and only if", "such that",
-    "without loss of generality"}
+    "without loss of generality", "left hand", "right hand", "left hand side", "right hand side",
+    "last term", "less than or equal", "greater than or equal", "sufficient condition", "necessary condition",
+    "first order", "second order", "infinite length", "finite length"}
+_ROMAN = {"i", "ii", "iii", "iv", "v", "vi"}            # "type II" (a domain in one book, a tail in a paper)
 _MAX_N = 6                                     # longest term, in words
 _EDGE_WORDS = set("of from to at in on by for with and or the a an between under over into onto than "
                   "is are".split())                       # "path from $u$ to $v$", "distance between"
@@ -115,7 +118,8 @@ def load_index(concepts_path: Path) -> tuple[dict, dict]:
                 continue
             k = _key(t)
             # a term is words: at least one word of 3+ letters, not a structural word
-            if k and len(k) <= _MAX_N and any(len(w) >= 3 for w in k) and " ".join(k) not in _GENERIC:
+            if (k and len(k) <= _MAX_N and any(len(w) >= 3 for w in k) and " ".join(k) not in _GENERIC
+                    and not _ROMAN & set(k)):
                 keys.add(k)
         for k in keys:
             index[k].append(c["id"])
@@ -126,7 +130,9 @@ def load_index(concepts_path: Path) -> tuple[dict, dict]:
                 cats = cats | (_MATH | _CS | {"stat_TH"} if TOPIC_CATS.get(t, _ALL) == _ALL else TOPIC_CATS[t])
         info[c["id"]] = {"term": c["term"], "name": c["name"], "kind": c["kind"], "books": c["books"],
                          "cats": cats, "words": set().union(*(words(m["statement"]) for m in c["members"])),
-                         "keys": keys}
+                         "keys": keys,
+                         # known only from reference subpages ("Prism/Height"): too narrow for a one-word term
+                         "subpage_only": all("/" in (m.get("name") or "") for m in c["members"])}
     # a concept's cue words: its statements' words that few concepts use ("memory", "bits" for a
     # memory cell; not "set" or "let") and that are not its own term
     common = Counter(w for v in info.values() for w in v["words"])
@@ -170,7 +176,7 @@ def _paper_hits(nodes: list, index: dict, category: str = "") -> tuple[list, set
             cands = index[k]
             if len(k) == 1:
                 cands = [c for c in cands if (not category or category in _INFO[c]["cats"])
-                         and len(_INFO[c]["cues"] & node_words) >= 3]
+                         and not _INFO[c]["subpage_only"] and len(_INFO[c]["cues"] & node_words) >= 3]
             if cands:
                 hits.append((n["id"], k, cands, k in defined))
     return hits, paper_words, used

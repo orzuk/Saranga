@@ -107,7 +107,11 @@ def build(books: list[dict], min_sim: float = 0.2) -> dict:
     concepts, member_of = [], defaultdict(set)          # (book, node) -> concept ids
     for root, ks in sorted(groups.items(), key=lambda kv: (items[kv[0]]["key"], -len(kv[1]))):
         key = items[ks[0]]["key"]
-        names = sorted({items[k]["name"] for k in ks if items[k]["name"]}, key=len)
+        # the name that is the term itself, then a book's name before a reference page's
+        # ("Topological space", not "Open Set/Topology"), then the shortest
+        names = sorted({items[k]["name"] for k in ks if items[k]["name"]},
+                       key=lambda x: (norm_term(x) != key,
+                                      all(items[k]["book"] in reference for k in ks if items[k]["name"] == x), len(x)))
         cid = f"C{len(concepts) + 1}"
         concepts.append({"id": cid, "term": key, "name": names[0] if names else items[ks[0]]["term"],
                          "kind": "result" if all(items[k]["type"] != "definition" for k in ks) else "definition",

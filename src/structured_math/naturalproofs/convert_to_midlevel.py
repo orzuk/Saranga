@@ -383,8 +383,11 @@ def to_unified(result: dict, source_name: str) -> dict:
                 continue
             term, sense = _term_and_sense(title)
             # a subpage defines the words it sets in bold ("Operation/Arity" defines '''arity''')
+            # (a bold word that shares no word with the page's title is a side remark)
+            title_words = set(re.findall(r"[a-z]+", title.lower()))
             bold = [b.strip() for b in re.findall(r"'''(.+?)'''", o.clean_text or "")
-                    if 1 < len(b.strip()) <= 60 and "$" not in b]
+                    if 1 < len(b.strip()) <= 60 and "$" not in b
+                    and title_words & set(re.findall(r"[a-z]+", b.lower()))]
             definiendum = bold if "/" in title and bold else term
             nodes.append({"id": oid, "type": "definition", "name": re.sub(r"^Definition:", "", title),
                           "statement": o.clean_text, "definiendum": definiendum, "sense": sense,
