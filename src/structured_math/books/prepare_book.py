@@ -231,7 +231,7 @@ def _petrunin(pre: str, body: str) -> tuple[str, str]:
         t = "claim" if t == "observation" else t
         return "pet" + t, ("" if w.rstrip("s") in (t, "advanced " + t, "proof-guided " + t) else word.strip())
     out, i = [], 0
-    for m in re.finditer(r"\\begin\{thm\}\{([^{}]*)\}|\\end\{thm\}", body):
+    for m in re.finditer(r"\\begin\{thm\}(?:\[[^\]]*\])?\{([^{}]*)\}|\\end\{thm\}", body):   # [\\abs]: a marker
         out.append(body[i:m.start()])
         if m.group(1) is not None:
             e, name = env(m.group(1))
