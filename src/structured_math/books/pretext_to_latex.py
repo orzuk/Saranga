@@ -120,6 +120,8 @@ def conv(e: ET.Element) -> str:
         out = "\n"
     elif tag == "m":
         out = "$" + (e.text or "") + "$"
+    elif tag == "me" and e.get(XI):                             # a labelled display is numbered so its \ref resolves
+        out = "\\begin{equation}" + "".join(e.itertext()) + f"\\label{{{e.get(XI)}}}" + "\\end{equation}"
     elif tag == "me":
         out = "\\[" + (e.text or "") + "\\]"
     elif tag == "men":
@@ -128,6 +130,8 @@ def conv(e: ET.Element) -> str:
         rows = ["".join(r.itertext()) + (f"\\label{{{r.get(XI)}}}" if r.get(XI) else "") for r in e if r.tag.endswith("mrow")]
         if not rows:                                            # a one-line display written without <mrow>
             rows = ["".join(e.itertext())]
+        if e.get(XI):                                           # the display's own label, on its last row
+            rows[-1] += f"\\label{{{e.get(XI)}}}"
         out = "\\begin{align*}" + "\\\\\n".join(rows) + "\\end{align*}"
     elif tag == "xref":
         out = _xref(e)

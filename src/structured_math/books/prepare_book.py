@@ -54,6 +54,7 @@ def pretext_book(main: Path) -> tuple[str, list[tuple[str, str]]]:
             print("missing include:", href, file=sys.stderr)
             return ET.Element("missing") if parse == "xml" else ""
     EI.include(root, loader=loader, base_url=str(main.resolve()), max_depth=10)
+    _one_version(root)
     pre = PREAMBLE
     if any(e.tag == "acroref" for e in root.iter()):
         pre += _beezer_dialect(root, main.parent)
@@ -66,6 +67,20 @@ def pretext_book(main: Path) -> tuple[str, list[tuple[str, str]]]:
         t = c.find("title")
         out.append((conv_title(t), re.sub(r"\n{3,}", "\n\n", conv(c))))
     return pre, out
+
+
+def _one_version(root: ET.Element) -> None:
+    """One copy of each xml:id: a book that ships versions of a block for several outputs
+    (Active Calculus: WeBWorK, Doenet and Runestone copies of each exercise set) keeps the first."""
+    import structured_math.books.pretext_to_latex as P
+    seen = set()
+    for parent in list(root.iter()):
+        for c in list(parent):
+            i = c.get(P.XI)
+            if i and i in seen:
+                parent.remove(c)
+            elif i:
+                seen.add(i)
 
 
 def _group_intros(root: ET.Element) -> None:
