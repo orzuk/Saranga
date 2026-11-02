@@ -104,6 +104,12 @@ def conv(e: ET.Element) -> str:
         rest = "".join(conv(c) for c in e if c.tag not in ("caption", "title"))
         out = f"\n\\begin{{{'table' if tag == 'table' else 'figure'}}}\n" + rest.strip() + (
             f"\n\\caption{{{conv_title(cap)}}}" if cap is not None else "") + f"\n\\end{{{'table' if tag == 'table' else 'figure'}}}\n"
+    elif tag == "propertylist":                                 # Beezer's named properties inside a theorem
+        out = "\n\\begin{enumerate}\n" + "".join(
+            "\\item " + (f"\\textbf{{{conv_title(c.find('title'))}.}} " if c.find("title") is not None else "")
+            + (f"\\label{{{c.get(XI)}}} " if c.get(XI) else "")
+            + "".join(conv(x) for x in c if x.tag != "title").strip() + "\n"
+            for c in e if c.tag == "property") + "\\end{enumerate}\n"
     elif tag == "tabular":
         out = _tabular(e)
     elif tag == "caption":
