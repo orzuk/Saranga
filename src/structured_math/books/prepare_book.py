@@ -253,6 +253,10 @@ def _petrunin(pre: str, body: str) -> tuple[str, str]:
     # a proof: from its "Proof." heading to the next \qeds (headings and statements end it unclosed)
     body = re.sub(r"\\par(?:bf|it)\{Proof[^{}]*\}((?:(?!\\begin\{pet|\\(?:sub)*section\b|\\chapter\b|\\par(?:bf|it)\{Proof).)*?)\\qeds?f?\b",
                   lambda m: "\\begin{proof}" + m.group(1) + "\n\\end{proof}", body, flags=re.S)
+    # a display numbered by \\eqlbl{x} (\\leqno) is a numbered equation with label x
+    eq = lambda m: "\\begin{equation}" + m.group(1) + m.group(3) + "\\label{" + m.group(2) + "}\\end{equation}"   # noqa: E731
+    body = re.sub(r"\\\[((?:(?!\\\]).)*?)\\eqlbl\{([^{}]*)\}((?:(?!\\\]).)*?)\\\]", eq, body, flags=re.S)
+    body = re.sub(r"\$\$((?:(?!\$\$).)*?)\\eqlbl\{([^{}]*)\}((?:(?!\$\$).)*?)\$\$", eq, body, flags=re.S)
     decl = "".join(f"\\newtheorem{{pet{t}}}{{{t.capitalize()}}}[chapter]\n" for t in _PET_TYPES if t != "observation")
     return pre + "\n\\theoremstyle{plain}\n" + decl, body
 
