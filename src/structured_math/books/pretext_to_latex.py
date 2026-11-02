@@ -95,7 +95,9 @@ def conv(e: ET.Element) -> str:
         return _text(e.tail)
     inner = lambda: _text(e.text) + _kids(e)    # noqa: E731
     out: str
-    if tag == "var":                                            # a WeBWorK answer blank; name is the answer
+    if tag == "webwork" and re.search(r"DBsubject\(|DOCUMENT\(\)", e.text or ""):   # a PG program included as text
+        return _kids(e) + _text(e.tail)
+    if tag == "var":                                          # a WeBWorK answer blank; name is the answer
         out = "\\underline{\\hspace{2em}}"
     elif tag == "choices":                                      # multiple choice, without which is correct
         out = "\n\\begin{enumerate}\n" + "".join("\\item " + conv_title(c) + "\n" for c in e if c.tag == "choice") + "\\end{enumerate}\n"

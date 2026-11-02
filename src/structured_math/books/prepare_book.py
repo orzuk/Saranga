@@ -90,7 +90,8 @@ def _webwork_statics(root: ET.Element, main: Path) -> None:
                  for f in sorted(d.glob("generated-assets/*/webwork/webwork-representations.xml"))), None)
     if reps is None:
         return
-    static = {st.get("source"): st for st in ET.parse(reps).getroot().iter("static") if st.get("source")}
+    static = {st.get("source"): st for st in ET.parse(reps).getroot().iter("static")   # not a raw PG program
+              if st.get("source") and "DBsubject(" not in "".join(st.itertext())}
     for w in root.iter("webwork"):
         st = static.get(w.get("source"))
         if st is not None and not len(w):
