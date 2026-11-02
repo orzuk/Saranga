@@ -125,13 +125,79 @@ def build(books: list[dict], min_sim: float = 0.2) -> dict:
             "concepts": concepts, "edges": edges, "homonyms": homonyms}
 
 
+_SYMBOLS = {"emptyset": "empty set", "varnothing": "empty set", "mathbb n": "natural number",
+            "mathbb z": "integer", "mathbb q": "rational number", "mathbb r": "real number",
+            "mathbb c": "complex number"}
+
+
+def stem(key: str) -> str:
+    """A rough stem for spotting word-form variants: bijection / bijective / bijectivity."""
+    key = _SYMBOLS.get(key, key)
+    return " ".join(re.sub(r"(?:ization|isation|ivity|ation|ition|ness|ence|ance|ity|ive|ion|ing|al|ic|ed)$", "", w)
+                    for w in key.split())
+
+
+def candidates(g: dict) -> list[dict]:
+    """Groups of concepts an LLM should look at: one term split into several concepts, and
+    concepts whose terms differ only by word form or symbol. Each group lists its concepts
+    with up to two member statements."""
+    by_stem = defaultdict(list)
+    for c in g["concepts"]:
+        by_stem[stem(c["term"])].append(c)
+    out = []
+    for st, cs in sorted(by_stem.items()):
+        if len(cs) < 2:
+            continue
+        out.append({"group": st, "concepts": [
+            {"id": c["id"], "term": c["term"], "name": c["name"], "books": c["books"],
+             "statements": [m["statement"][:220] for m in c["members"][:2]]} for c in cs]})
+    return out
+
+
+def merge(g: dict, merges: list[list[str]]) -> dict:
+    """Merge the listed concept ids (each list becomes its first concept); edges are remapped
+    and their book sets joined."""
+    C = {c["id"]: c for c in g["concepts"]}
+    to = {}
+    for ids in merges:
+        ids = [i for i in ids if i in C]
+        for i in ids[1:]:
+            to[i] = ids[0]
+            C[ids[0]]["members"] += C[i]["members"]
+            C[ids[0]]["books"] = sorted(set(C[ids[0]]["books"]) | set(C[i]["books"]))
+            C[ids[0]].setdefault("aliases", []).append(C[i]["term"])
+    g["concepts"] = [c for c in g["concepts"] if c["id"] not in to]
+    pre = defaultdict(set)
+    for e in g["edges"]:
+        a, b = to.get(e["source"], e["source"]), to.get(e["target"], e["target"])
+        if a != b:
+            pre[(a, b)] |= set(e["books"])
+    g["edges"] = [{"source": a, "target": b, "type": "prerequisite", "books": sorted(bs), "n_books": len(bs)}
+                  for (a, b), bs in sorted(pre.items())]
+    terms = defaultdict(list)
+    for c in g["concepts"]:
+        terms[c["term"]].append(c["id"])
+    g["homonyms"] = {t: ids for t, ids in terms.items() if len(ids) > 1}
+    g["metadata"].update(concepts=len(g["concepts"]), multi_book=sum(len(c["books"]) > 1 for c in g["concepts"]),
+                         homonym_terms=len(g["homonyms"]), edges=len(g["edges"]), merged=len(to))
+    return g
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out", default=str(ROOT / "concepts.json"))
     ap.add_argument("--min-sim", type=float, default=0.2)
+    ap.add_argument("--candidates", help="write the groups for an LLM to judge to this file")
+    ap.add_argument("--merges", help="a JSON list of concept-id lists to merge (the LLM's judgments)")
     a = ap.parse_args()
     books = [json.loads(f.read_text()) for f in sorted((ROOT / "assembled").glob("*.json"))]
     g = build(books, a.min_sim)
+    if a.merges:
+        g = merge(g, json.loads(Path(a.merges).read_text()))
+    if a.candidates:
+        cand = candidates(g)
+        Path(a.candidates).write_text(json.dumps(cand, ensure_ascii=False, indent=1))
+        print(len(cand), "candidate groups ->", a.candidates)
     Path(a.out).write_text(json.dumps(g, ensure_ascii=False))
     print(json.dumps(g["metadata"]), "->", a.out)
 
