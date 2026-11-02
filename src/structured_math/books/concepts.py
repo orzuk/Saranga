@@ -155,12 +155,15 @@ def candidates(g: dict) -> list[dict]:
 
 
 def merge(g: dict, merges: list[list[str]]) -> dict:
-    """Merge the listed concept ids (each list becomes its first concept); edges are remapped
-    and their book sets joined."""
+    """Merge the listed concepts (each list becomes its first concept), named by concept id or,
+    stable across rebuilds, by a member "book:node:term"; edges are remapped and their book
+    sets joined."""
     C = {c["id"]: c for c in g["concepts"]}
+    by_member = {f'{m["book"]}:{m["node"]}:{norm_term(m["term"])}': c["id"] for c in g["concepts"] for m in c["members"]}
     to = {}
-    for ids in merges:
-        ids = [i for i in ids if i in C]
+    for ids in merges:                       # concept ids, or stable member refs "book:node:term"
+        ids = list(dict.fromkeys(by_member.get(i, i) for i in ids))
+        ids = [i for i in ids if i in C and i not in to]
         for i in ids[1:]:
             to[i] = ids[0]
             C[ids[0]]["members"] += C[i]["members"]
