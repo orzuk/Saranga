@@ -3,7 +3,9 @@ per notion, merged across books, with prerequisite edges between concepts.
 
 A concept is a defined term (each definiendum of a definition node) or a main named result.
 Nodes with the same term key (assemble_book.norm_term) are one concept when they come from the
-same book, carry the same name or genus, or their statements share enough content words; a term
+same book (and the same `sense`, which a reference source such as ProofWiki gives to its pages
+"Ring (Abstract Algebra)" and "Ring (Set Theory)"), carry the same name or genus, or their
+statements share enough content words; a term
 whose nodes split into several concepts is a homonym ("complete": graph, theory). An edge
 A -> B between book nodes (uses, specializes, generalizes; not mentions) becomes a prerequisite
 edge between their concepts, with the books that state it.
@@ -27,6 +29,9 @@ _STOP = set("a an the of and or to in on for is are be by with that this which i
             "we let such any every each some all there from into called said say define defined denote "
             "write where when not no".split())
 _PREREQ = {"uses", "specializes", "generalizes"}
+# a result's title that is a name ("Hall's theorem", "Banach fixed point theorem"), not a label
+# for it (Beezer's "Four Subsets"); a statement-title ("Union is Associative") is not one either
+RESULT_NAME = re.compile(r"(?i)\b(theorem|lemma|inequality|formula|principle|law|conjecture|identity|criterion)\b")
 
 
 def words(s: str) -> set:
@@ -55,6 +60,7 @@ class _UF:
 
 def build(books: list[dict], min_sim: float = 0.2) -> dict:
     items = {}                                         # (book, node id, term) -> info
+    reference = {g["metadata"]["book_id"] for g in books if g["metadata"].get("kind") == "reference"}
     for g in books:
         bk = g["metadata"]["book_id"]
         for n in g["nodes"]:
@@ -70,6 +76,7 @@ def build(books: list[dict], min_sim: float = 0.2) -> dict:
                     items[(bk, n["id"], key)] = {"book": bk, "node": n["id"], "term": t, "key": key,
                                                  "type": n["type"], "name": n.get("name") or "",
                                                  "genus": norm_term(n.get("genus") or ""),
+                                                 "sense": n.get("sense"),
                                                  "words": words(n.get("statement", "")),
                                                  "statement": (n.get("statement") or "")[:300]}
     by_key = defaultdict(list)
@@ -81,12 +88,19 @@ def build(books: list[dict], min_sim: float = 0.2) -> dict:
             uf.find(a)
             for b in ks[i + 1:]:
                 x, y = items[a], items[b]
-                same = (x["book"] == y["book"]
+                same = ((x["book"] == y["book"] and x["sense"] == y["sense"])
                         or (x["name"] and norm_term(x["name"]) == norm_term(y["name"]))
                         or (x["genus"] and x["genus"] == y["genus"])
                         or jaccard(x["words"], y["words"]) >= min_sim)
                 if same:
                     uf.union(a, b)
+        # a reference source's page for the term itself (no sense: ProofWiki's "Group") is the
+        # term's common meaning: it joins the books' concept when the books have only one
+        ref = [k for k in ks if items[k]["book"] in reference and items[k]["sense"] is None]
+        rest = {uf.find(k) for k in ks if items[k]["book"] not in reference}
+        if ref and len(rest) == 1:
+            for k in ref:
+                uf.union(k, next(iter(rest)))
     groups = defaultdict(list)
     for k in items:
         groups[uf.find(k)].append(k)
@@ -152,6 +166,14 @@ def candidates(g: dict) -> list[dict]:
             {"id": c["id"], "term": c["term"], "name": c["name"], "books": c["books"],
              "statements": [m["statement"][:220] for m in c["members"][:2]]} for c in cs]})
     return out
+
+
+def member_refs(g: dict, merges: list[list[str]]) -> list[list[str]]:
+    """Merge lists of concept ids of the build `g` as stable member refs "book:node:term" (each
+    concept by its first member), so they still apply after the concepts are rebuilt."""
+    C = {c["id"]: c for c in g["concepts"]}
+    ref = lambda m: f'{m["book"]}:{m["node"]}:{norm_term(m["term"])}'     # noqa: E731
+    return [[ref(C[i]["members"][0]) for i in ids if i in C] for ids in merges]
 
 
 def merge(g: dict, merges: list[list[str]]) -> dict:

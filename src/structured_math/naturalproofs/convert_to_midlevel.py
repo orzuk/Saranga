@@ -14,6 +14,8 @@ Output per source file:
   - {source}_midlevel.json   : full PaperGraph-compatible JSON (objects + relations)
   - {source}_index.json      : lightweight search index (id, name, type, categories)
   - {source}_stats.json      : summary statistics
+  - with --unified FILE: the definitions and named results as one unified graph (book format,
+    {metadata, nodes, edges}) for the textbook concept layer (structured_math/books/concepts.py)
 
 Usage:
     # Convert all files in a directory:
@@ -22,10 +24,15 @@ Usage:
     # Convert a single file:
     python convert_to_midlevel.py --input-file naturalproofs_proofwiki.json --output-dir ./output/
 
+    # ProofWiki definitions and named results for the book concept layer:
+    python convert_to_midlevel.py --input-file naturalproofs_proofwiki.json --output-dir ./output/ \
+        --unified $DATA/foundation/books_v7b/assembled/proofwiki.json
+
     # Test on first N entries per type:
     python convert_to_midlevel.py --input-file naturalproofs_proofwiki.json --output-dir ./output/ --limit 50
 """
 
+import ast
 import json
 import re
 import os
@@ -41,6 +48,8 @@ sys.path.insert(0, str(REPO_ROOT / 'src' / 'LLMVersion'))
 from math_classes import (
     TheoremLike, Definition, Proof, Relation, PaperGraph, MathObject
 )
+sys.path.insert(0, str(REPO_ROOT / 'src'))
+from structured_math.books.concepts import RESULT_NAME  # noqa: E402
 
 
 # ============================================================================
@@ -332,6 +341,67 @@ def convert_naturalproofs_file(input_path: str, source_name: str,
 
 
 # ============================================================================
+# Unified graph for the concept layer
+# ============================================================================
+
+# pages that are about words, history or notation, not mathematics ("Left Hand Side")
+SKIP_CATEGORIES = {"Definitions/Language Definitions", "Definitions/Philosophy", "Historical Notes",
+                   "Linguistic Notes", "Definitions/Branches of Mathematics"}
+SKIP_SUBPAGES = {"Historical Note", "Linguistic Note", "Also known as", "Also defined as", "Examples",
+                 "Notation", "Technical Note", "Mistake", "Symbol"}
+
+
+def _term_and_sense(title: str) -> tuple:
+    """"Definition:Ring (Abstract Algebra)/Definition 2" -> ("Ring", "Abstract Algebra"); a subpage
+    that is not a numbered variant names the sense too ("Continuous Mapping/Metric Space")."""
+    parts = re.sub(r"^Definition:", "", title).split("/")
+    m = re.match(r"(.*?)\s*\(([^()]*)\)\s*$", parts[0])
+    term, senses = (m.group(1), [m.group(2)]) if m else (parts[0], [])
+    senses += [x for x in parts[1:] if not re.match(r"Definition \d+$|General Definition$", x)]
+    return term.strip(), " / ".join(senses) or None
+
+
+def to_unified(result: dict, source_name: str) -> dict:
+    """The definitions and the named results of a converted source as a unified graph: a
+    definition node per page (definiendum = its title's term, sense = its qualifier), a theorem
+    node with `main` for a result whose title is a name ("Pythagoras's Theorem"), and a `uses`
+    edge for each reference between kept nodes. Proofs, unnamed results and pages about words,
+    history or notation are left out."""
+    cats = {e["id"]: e["categories"] for e in result["index"]}
+    def categories(oid):
+        c = cats.get(oid) or []
+        return ast.literal_eval(c) if isinstance(c, str) else c     # the Zenodo file stores lists as their repr
+    by_title = {o.name: oid for oid, o in result["objects"].items()}
+    nodes = []
+    for oid, o in result["objects"].items():
+        title = o.name or ""
+        if isinstance(o, Definition):
+            if title.split("/")[-1] in SKIP_SUBPAGES or not (o.clean_text or "").strip():
+                continue                       # an empty page lists its subpages (disambiguation)
+            parent = by_title.get(title.split("/")[0], oid)   # a subpage inherits the page's categories
+            if SKIP_CATEGORIES & set(categories(oid) or categories(parent)):
+                continue
+            term, sense = _term_and_sense(title)
+            # a subpage defines the words it sets in bold ("Operation/Arity" defines '''arity''')
+            bold = [b.strip() for b in re.findall(r"'''(.+?)'''", o.clean_text or "")
+                    if 1 < len(b.strip()) <= 60 and "$" not in b]
+            definiendum = bold if "/" in title and bold else term
+            nodes.append({"id": oid, "type": "definition", "name": re.sub(r"^Definition:", "", title),
+                          "statement": o.clean_text, "definiendum": definiendum, "sense": sense,
+                          "origin": "external", "origin_citation": f"ProofWiki: {title}"})
+        elif isinstance(o, TheoremLike) and o.kind == "theorem" and "/" not in title and RESULT_NAME.search(title):
+            nodes.append({"id": oid, "type": "theorem", "name": title, "main": True,
+                          "statement": o.clean_text, "origin": "external", "origin_citation": f"ProofWiki: {title}"})
+    kept = {n["id"] for n in nodes}
+    edges = [{"source": r.target_id, "target": r.source_id, "type": "uses", "basis": "named",
+              "confidence": 0.9} for r in result["relations"]
+             if r.relation_type == "uses" and r.source_id in kept and r.target_id in kept]
+    meta = {"book_id": source_name, "title": f"NaturalProofs: {source_name}", "kind": "reference",
+            "license": "CC BY-SA 3.0" if source_name == "proofwiki" else None, "chapters": []}
+    return {"metadata": meta, "nodes": nodes, "edges": edges}
+
+
+# ============================================================================
 # Output
 # ============================================================================
 
@@ -384,6 +454,8 @@ def main():
                         help='Output directory')
     parser.add_argument('--limit', type=int, default=None,
                         help='Max entries per type (for testing)')
+    parser.add_argument('--unified', default=None,
+                        help='also write the definitions and named results as a unified graph (with --input-file)')
 
     args = parser.parse_args()
 
@@ -392,6 +464,11 @@ def main():
         print(f"Converting {args.input_file} (source: {source})...")
         result = convert_naturalproofs_file(args.input_file, source, limit=args.limit)
         write_output(result, source, args.output_dir)
+        if args.unified:
+            g = to_unified(result, source)
+            Path(args.unified).parent.mkdir(parents=True, exist_ok=True)
+            Path(args.unified).write_text(json.dumps(g, ensure_ascii=False), encoding='utf-8')
+            print(f"  Unified: {args.unified} ({len(g['nodes'])} nodes, {len(g['edges'])} edges)")
 
     elif args.input_dir:
         for fname in sorted(os.listdir(args.input_dir)):

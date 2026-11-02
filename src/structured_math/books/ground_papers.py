@@ -31,15 +31,12 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[1]))
 sys.path.insert(0, str(HERE.parents[1] / "discovery" / "common"))
 from structured_math.books.assemble_book import ROOT, norm_term      # noqa: E402
-from structured_math.books.concepts import words                      # noqa: E402
+from structured_math.books.concepts import RESULT_NAME, words         # noqa: E402
 
 _GENERIC = set("theorem lemma proposition corollary definition proof example remark claim exercise "
                "problem conjecture equation algorithm section chapter case step result notation".split()) | {
     "well defined", "well-defined", "uniquely determined", "if and only if", "such that",
     "without loss of generality"}
-# a result is found by its name only when the name is a name ("Hall's theorem", "Banach fixed
-# point theorem"), not a book's label for it (Beezer's "Four Subsets")
-_RESULT_WORDS = re.compile(r"(?i)\b(theorem|lemma|inequality|formula|principle|law|conjecture|identity|criterion)\b")
 _MAX_N = 6                                     # longest term, in words
 _EDGE_WORDS = set("of from to at in on by for with and or the a an between under over into onto than "
                   "is are".split())                       # "path from $u$ to $v$", "distance between"
@@ -111,7 +108,7 @@ def load_index(concepts_path: Path) -> tuple[dict, dict]:
     for c in g["concepts"]:
         terms = {m["term"] for m in c["members"]}       # as the books write them (math still marked)
         if c["kind"] == "result":
-            terms = {t for t in terms | {m["name"] for m in c["members"] if m.get("name")} if _RESULT_WORDS.search(t)}
+            terms = {t for t in terms | {m["name"] for m in c["members"] if m.get("name")} if RESULT_NAME.search(t)}
         keys = set()
         for t in terms:
             if re.search(r"\d", re.sub(r"\$[^$]*\$", "", t)):    # an instance ("cyclic group of order 12")
@@ -124,7 +121,8 @@ def load_index(concepts_path: Path) -> tuple[dict, dict]:
             index[k].append(c["id"])
         cats = set()
         for b in c["books"]:
-            for t in cat.get(b, {}).get("topics", []):
+            # a reference source (ProofWiki) is not in the book catalogue: it serves every field
+            for t in cat[b].get("topics", []) if b in cat else ["all fields"]:
                 cats = cats | (_MATH | _CS | {"stat_TH"} if TOPIC_CATS.get(t, _ALL) == _ALL else TOPIC_CATS[t])
         info[c["id"]] = {"term": c["term"], "name": c["name"], "kind": c["kind"], "books": c["books"],
                          "cats": cats, "words": set().union(*(words(m["statement"]) for m in c["members"])),
