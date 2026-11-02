@@ -3,10 +3,11 @@
 
   silver   Tier 2 = the 200 v6 silver papers (LLM pages <id>_new.html and
            rule-based pages <id>_rules.html, already built next to the JSON).
-  tier3    Tier 3 = the 100K corpus: data/tier3_v6/index.json (categories) and
-           data/tier3_v6/<cat>/index.json (one row per paper), built from the
-           per-category corpus_stats.csv of a parse run. The main manifest no
-           longer lists Tier-3 papers (too many for one file).
+  tier3    Tier 3 = the 100K corpus: data/tier3_<version>/index.json (categories) and
+           data/tier3_<version>/<cat>/index.json (one row per paper), built from the
+           per-category corpus_stats.csv of a parse run; the manifest's tier3_index names
+           it, and the pages and portal_server read the corpus from there. The main
+           manifest no longer lists Tier-3 papers (too many for one file).
 
   cases    the paper's worked examples (manifest papers.tiercases), each graph and its viewer page in
            data/cases/, opened as paper.html?tier=cases&id=<id>: the v7 extractions of Candes-Tao and Donoho
@@ -14,7 +15,7 @@
 
     python3 portal/build_portal_v6.py silver
     python3 portal/build_portal_v6.py cases
-    python3 portal/build_portal_v6.py tier3 --stats <dir with <cat>/corpus_stats.csv> [--titles <csv>]
+    python3 portal/build_portal_v6.py tier3 --stats <dir with <cat>/corpus_stats.csv> [--titles <csv>] [--version v7]
 """
 import argparse
 import csv
@@ -25,7 +26,6 @@ from pathlib import Path
 PORTAL = Path(__file__).resolve().parent
 REPO = PORTAL.parent
 MANIFEST = PORTAL / "data" / "manifest.json"
-T3 = PORTAL / "data" / "tier3_v6"
 BUCKETS = {
     "def": ["definition"],
     "thm": ["theorem", "lemma", "proposition", "corollary", "claim", "conjecture"],
@@ -85,6 +85,7 @@ def silver(args):
 
 def tier3(args):
     stats = Path(args.stats)
+    T3 = PORTAL / "data" / f"tier3_{args.version}"
     titles = {}
     if args.titles:
         for r in csv.DictReader(open(args.titles, encoding="utf-8", errors="replace")):
@@ -116,7 +117,7 @@ def tier3(args):
     (T3 / "index.json").write_text(json.dumps({"source": str(stats), "categories": cats}, indent=1), encoding="utf-8")
     m = load_manifest()
     m["papers"]["tier3"] = []
-    m["tier3_index"] = "data/tier3_v6/index.json"
+    m["tier3_index"] = f"data/{T3.name}/index.json"
     save_manifest(m)
     print(f"tier3: {sum(c['count'] for c in cats)} papers in {len(cats)} categories")
 
@@ -165,6 +166,7 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("silver"); a.add_argument("--silver", default="corpus/silver/opus-5.5__v6")
     b = sub.add_parser("tier3"); b.add_argument("--stats", required=True); b.add_argument("--titles")
+    b.add_argument("--version", default="v7", help="the run: data/tier3_<version>/, and the bundles' <version>/")
     sub.add_parser("cases")
     args = ap.parse_args()
     {"silver": silver, "tier3": tier3, "cases": cases}[args.cmd](args)

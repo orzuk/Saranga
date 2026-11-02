@@ -45,17 +45,18 @@
       let rows = (manifest.papers && manifest.papers[tierKey]) || [];
       if (cfg.tier === 1) rows = collapseTier1Versions(rows);
 
-      // Tier 3 (100K): an index per category, data/tier3_v6/<cat>/index.json;
-      // the category grid comes from data/tier3_v6/index.json.
+      // Tier 3 (100K): the category grid from manifest.tier3_index (data/tier3_<version>/index.json),
+      // an index per category next to it, <cat>/index.json.
       if (cfg.tier === 3) {
+        var t3Index = manifest.tier3_index || "data/tier3_v7/index.json";
         var catParam = new URL(window.location.href).searchParams.get("cat");
         if (!catParam) {
-          Authomathics.fetchJson(manifest.tier3_index || "data/tier3_v6/index.json").then(function (ix) {
+          Authomathics.fetchJson(t3Index).then(function (ix) {
             renderCategoryGrid(ix.categories || []);
           });
           return;
         }
-        Authomathics.fetchJson("data/tier3_v6/" + encodeURIComponent(catParam) + "/index.json").then(function (r3) {
+        Authomathics.fetchJson(t3Index.replace(/index\.json$/, "") + encodeURIComponent(catParam) + "/index.json").then(function (r3) {
           allRows = r3;
           sortKey = "paper_id";
           renderPapers();

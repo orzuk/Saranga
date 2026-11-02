@@ -329,7 +329,8 @@
       const cat = Authomathics.getQueryParam("cat");
       let list;
       if (tier === "3" && cat) {
-        list = await Authomathics.fetchJson("data/tier3_v6/" + encodeURIComponent(cat) + "/index.json");
+        const t3Index = (await Authomathics.loadManifest()).tier3_index || "data/tier3_v7/index.json";
+        list = await Authomathics.fetchJson(t3Index.replace(/index\.json$/, "") + encodeURIComponent(cat) + "/index.json");
       } else {
         const manifest = await Authomathics.loadManifest();
         list = (manifest.papers && manifest.papers["tier" + tier]) || [];

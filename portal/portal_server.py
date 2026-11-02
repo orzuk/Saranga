@@ -45,19 +45,22 @@ RENDER_TIMEOUT_SEC = 180
 REPO_DIR = PORTAL_DIR.parent
 SILVER_DIR = Path(os.environ.get("SARANGA_SILVER_DIR", REPO_DIR / "corpus/silver/opus-5.5__v6"))
 GRAPH_BUILD = REPO_DIR / "src" / "graph_view" / "build.py"
-# Tier 3 = the 100K corpus: an index of every paper (data/tier3_v6/<cat>/index.json),
-# a local sample of JSONs (data/tier3_v6/<cat>/json/<id>.json), and, for any
+# Tier 3 = the 100K corpus, in the folder the manifest's tier3_index names (data/tier3_<version>/,
+# portal/build_portal_v6.py tier3): an index of every paper (<cat>/index.json),
+# a local sample of JSONs (<cat>/json/<id>.json), and, for any
 # other paper, the JSON fetched on first click by SARANGA_T3_REMOTE, a command
 # with {cat} and {id} placeholders that prints the JSON, e.g.
 #   ssh orzuk@moriah-gw.cs.huji.ac.il cat /sci/.../parsed_100k_v6b/{cat}/json/{id}_rules.json
 # The page is then built with the v2 viewer and cached.
-T3_DIR = DATA_DIR / "tier3_v6"
+T3_NAME = Path(json.loads(MANIFEST_PATH.read_text(encoding="utf-8")).get(
+    "tier3_index", "data/tier3_v7/index.json")).parent.name
+T3_DIR = DATA_DIR / T3_NAME
 T3_REMOTE = os.environ.get("SARANGA_T3_REMOTE", "")
 # or, tried first, the base URL of the bundled corpus (portal/bundle_t3.py): the paper's
 # bytes are fetched by a range request from <base>/<cat>/<year>.json.xz, located through
 # that bundle's index <base>/<cat>/<year>.idx.json (downloaded once and cached)
 T3_BUNDLES = os.environ.get("SARANGA_T3_BUNDLES", "").rstrip("/")
-T3_CACHE = CACHE_DIR / "tier3_v6"
+T3_CACHE = CACHE_DIR / T3_NAME
 # "Your paper": graphs built on demand from an arXiv id or an upload (see yours.py).
 YOURS_DIR = CACHE_DIR / "yours"
 GOLD_DIR = REPO_DIR / "corpus" / "gold_candidates"     # author-diagram gold candidates (review)
