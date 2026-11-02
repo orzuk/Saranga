@@ -97,7 +97,7 @@ def _sentence_initial(text: str, pos: int) -> bool:
 
 # closing markup peeled before looking for a sentence end; a display's closer
 _TAIL = re.compile(r"(?:\\end\{[a-zA-Z*]+\}|\\\]|\$\$?|\\(?:label|tag)\{[^{}]*\}"
-                   r"|\\[a-zA-Z]+\*?|\\[,;! ]|\\\\|\\|[})\s~&])$")
+                   r"|\\[a-zA-Z]+\*?|\\[,;! ]|\\\\|\\|''|[})\s~&'\"])$")
 _DISPLAY_CLOSER = re.compile(r"(?:\\end\{[a-zA-Z*]+\}|\\\]|\$\$)$")
 
 
