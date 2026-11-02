@@ -199,12 +199,16 @@ def _inline_sty(pre: str, base: Path, seen: set) -> str:
 _REFMAC = re.compile(r"\\(?:re)?newcommand\*?\{?\\([A-Za-z]+)\}?\[1\]\{(?:\\hyperref\[#1\]\{)?([^{}\\]*?)~?(\\S)?\s*\\ref\*?\{#1\}")
 
 
+_REFMAC2 = re.compile(r"\\(?:re)?newcommand\*?\{?\\([A-Za-z]+)\}?\[1\]\{\\[A-Za-z]*ref\{([^{}]*)\}\{#1\}\}")
+
+
 def _ref_macros(pre: str, body: str) -> str:
     """A book's reference wrappers (\\propref{x} for "Proposition~\\ref{x}") written out, so the
     \\ref is seen and its word kept."""
-    for m in _REFMAC.finditer(pre):
-        word = (m.group(2) or "").strip() + ("\\S" if m.group(3) else "")
-        body = re.sub(r"\\%s(?![A-Za-z])\s*\{([^{}]*)\}" % m.group(1),
+    found = [(m.group(1), (m.group(2) or "").strip() + ("\\S" if m.group(3) else "")) for m in _REFMAC.finditer(pre)]
+    found += [(m.group(1), m.group(2).strip()) for m in _REFMAC2.finditer(pre)]     # \myvref{Theorem}{#1}
+    for name, word in found:
+        body = re.sub(r"\\%s(?![A-Za-z])\s*\{([^{}]*)\}" % name,
                       lambda x, w=word: (w + "~" if w and w != "\\S" else w) + "\\ref{" + x.group(1) + "}", body)
     return body
 
