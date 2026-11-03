@@ -87,7 +87,7 @@ def _build_graph(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]):
 
 def detect_anomalies_for_paper(
     paper_id: str, data: Dict[str, Any],
-    max_cycles_to_report: int = 50,
+    max_cycles_to_report: int = 50, cycles: bool = True,
 ) -> Tuple[List[AnomalyRecord], Dict[str, Any]]:
     """Run all category A/B/C rules on one paper's JSON.
 
@@ -153,8 +153,9 @@ def detect_anomalies_for_paper(
                         f"{n_nodes} nodes but 0 edges — no connectivity detected"))
         details.append({"rule": "no_edges", "severity": "high"})
 
-    # A4: DAG has cycles
-    if _HAS_NETWORKX and n_edges > 0 and n_nodes >= 2:
+    # A4: DAG has cycles (cycles=False skips it: enumerating cycles is slow at corpus scale,
+    # and corpus_stats.py computes acyclicity with the validator's check)
+    if cycles and _HAS_NETWORKX and n_edges > 0 and n_nodes >= 2:
         g = _build_graph(nodes, [e for e in edges if not e.get("backward")])   # as validate_annotation (graph_checks)
         if g is not None and g.number_of_nodes() > 0 and not nx.is_directed_acyclic_graph(g):
             # Collect actual cycles with their lengths and edges

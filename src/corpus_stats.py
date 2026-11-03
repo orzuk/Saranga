@@ -35,7 +35,7 @@ import csv
 import json
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from graph_io import load_graph
 
 try:                                    # the validator's cycle check (same definition)
@@ -93,7 +93,7 @@ STAT_COLUMNS = [
     "n_proves_edges", "n_illustrates_edges",
     "n_tests_edges", "n_resolves_edges",
     "n_dependency_edges", "n_structural_edges",
-    "n_orphan_proofs", "n_isolated_nodes",
+    "n_orphan_proofs", "n_isolated_nodes", "n_unnamed_nodes",
     "n_foundation_edges", "n_grounded_to", "n_mentions_concept",
     "n_distinct_foundation_targets",
     "n_foundation_specific", "n_foundation_generic",
@@ -101,9 +101,17 @@ STAT_COLUMNS = [
 ]
 
 
+# Edges into the foundation graph: counted only in the foundation columns. Every other
+# statistic (edges, edge types, isolated nodes, DAG acyclicity and depth) is about the
+# paper's own graph.
+FOUNDATION_EDGE_TYPES = {"grounded_to", "mentions_concept"}
+
+
 def compute_paper_stats(paper_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
     """Compute all per-paper statistics from a single JSON. Returns a dict."""
-    nodes, edges = load_graph(data)
+    nodes, all_edges = load_graph(data)
+    found_edges = [e for e in all_edges if (e.get("type") or "") in FOUNDATION_EDGE_TYPES]
+    edges = [e for e in all_edges if (e.get("type") or "") not in FOUNDATION_EDGE_TYPES]
 
     n_nodes = len(nodes)
     n_edges = len(edges)
@@ -213,17 +221,18 @@ def compute_paper_stats(paper_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         if n.get("id") and n["id"] not in connected
     )
 
+    stats["n_unnamed_nodes"] = sum(1 for n in nodes if not str(n.get("name") or "").strip())
+
     # Foundation graph links
     # These are populated by the `link` operation (link_to_foundation.py).
     # If `link` hasn't been run, all counts are 0 — which is informative.
-    FOUNDATION_EDGE_TYPES = {"grounded_to", "mentions_concept"}
     foundation_targets = set()
     foundation_targets_specific = set()
     n_grounded = 0
     n_mentions = 0
     n_generic = 0
     n_specific = 0
-    for e in edges:
+    for e in found_edges:
         etype = e.get("type") or ""
         if etype in FOUNDATION_EDGE_TYPES:
             t = e.get("target")
@@ -434,6 +443,48 @@ def print_summary(stats_list: List[Dict[str, Any]]) -> None:
         print(f"  Foundation links:         0   (run --operations link to populate)")
 
 
+# --- bundled corpus (tier3_bundles/<version>/<cat>/<year>.json.xz) --------------
+
+def _bundle_category(job: Tuple[str, str, str, Optional[str]]) -> Tuple[str, int]:
+    """One category of a corpus root read through corpus_io (files or bundles): writes
+    <out>/<cat>/corpus_stats.csv and <out>/<cat>/anomalies_report.csv (the anomaly rules
+    without the slow cycle enumeration; acyclicity is the dag_acyclic column). With a grounding
+    directory (<dir>/<cat>.jsonl, one {paper_id, edges} line per paper), its edges replace the
+    foundation edges stored in the papers."""
+    root, cat, out, grounding = job
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "discovery" / "common"))
+    from corpus_io import iter_papers, _strip_known_suffix
+    from anomaly_detection import detect_anomalies_for_paper, write_anomalies_report
+    ground = None
+    if grounding:
+        ground = {}
+        with open(Path(grounding) / f"{cat}.jsonl", encoding="utf-8") as fh:
+            for line in fh:
+                d = json.loads(line)
+                ground[d["paper_id"]] = d.get("edges") or []
+    rows, records = [], []
+    for p in iter_papers(root=Path(root), categories=[cat]):
+        pid = _strip_known_suffix(p.path.name.split("#", 1)[1] if "#" in p.path.name else p.path.stem)
+        own = [e for e in p.edges if (e.get("type") or "") not in FOUNDATION_EDGE_TYPES]
+        found = ground.get(p.paper_id, []) if ground is not None else \
+            [e for e in p.edges if (e.get("type") or "") in FOUNDATION_EDGE_TYPES]
+        rows.append(compute_paper_stats(pid, {"nodes": p.nodes, "edges": own + found}))
+        records.extend(detect_anomalies_for_paper(pid, {"nodes": p.nodes, "edges": own}, cycles=False)[0])
+    (Path(out) / cat).mkdir(parents=True, exist_ok=True)
+    write_corpus_stats(rows, str(Path(out) / cat / "corpus_stats.csv"))
+    write_anomalies_report(records, str(Path(out) / cat / "anomalies_report.csv"))
+    return cat, len(rows)
+
+
+def compute_bundle_stats(root: str, out_dir: str, workers: int = 4, grounding: Optional[str] = None) -> None:
+    from multiprocessing import Pool
+    cats = sorted(d.name for d in Path(root).iterdir() if d.is_dir())
+    with Pool(workers) as pool:
+        for cat, n in pool.imap_unordered(_bundle_category, [(root, c, out_dir, grounding) for c in cats]):
+            print(f"[stats] {cat}: {n} papers", flush=True)
+
+
 # --- standalone CLI -----------------------------------------------------------
 
 def main():
@@ -441,12 +492,24 @@ def main():
         description="Compute per-paper statistics from extracted JSONs."
     )
     parser.add_argument("--out-dir", required=True,
-                        help="Directory containing JSONs to scan.")
+                        help="Directory containing JSONs to scan (with --bundle-root: where "
+                             "the per-category CSVs are written).")
+    parser.add_argument("--bundle-root", default=None,
+                        help="A corpus root read through corpus_io (e.g. tier3_bundles/v7): "
+                             "writes OUT_DIR/<cat>/corpus_stats.csv and anomalies_report.csv, "
+                             "the layout scripts/generate_paper_tables.py reads.")
+    parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--grounding", default=None,
+                        help="With --bundle-root: a grounding run (<dir>/<cat>.jsonl) whose edges "
+                             "replace the papers' stored foundation edges in the foundation columns.")
     parser.add_argument("--report-path", default=None,
                         help="Output CSV path (default: OUT_DIR/corpus_stats.csv).")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
+    if args.bundle_root:
+        compute_bundle_stats(args.bundle_root, args.out_dir, args.workers, args.grounding)
+        return
     stats_list, n_scanned = compute_corpus_stats(args.out_dir, verbose=args.verbose)
 
     report_path = args.report_path or str(Path(args.out_dir) / "corpus_stats.csv")

@@ -29,6 +29,17 @@ CATEGORIES_STATS = ["math.OC", "math.NA", "stat.TH"]
 
 ALL_CATEGORIES = CATEGORIES_PURE_MATH + CATEGORIES_CS + CATEGORIES_STATS
 
+# High-severity anomaly rules that mean the extraction failed (empty or degenerate output).
+# has_cycles is high severity too, but acyclicity is its own column (dag_acyclic).
+FAILURE_RULES = {"empty_json", "json_parse_error", "tiny_paper", "no_edges", "all_isolated"}
+EXTRACTOR = "the T3 extractor (sentence tagger and edge model, edges made acyclic; Section~\\ref{sec:ntred})"
+TARGET_PER_CATEGORY = 5000
+
+
+def failed_papers(anomaly_rows: list[dict]) -> set:
+    return {r.get("paper_id", "") for r in anomaly_rows
+            if r.get("rule", "") in FAILURE_RULES and (r.get("severity", "") or "").strip().lower() == "high"} - {""}
+
 
 def cat_to_dirname(cat: str) -> str:
     """math.CO -> math_CO, math-ph -> math_ph"""
@@ -110,18 +121,7 @@ def compute_category_stats(stats_rows: list[dict], anomaly_rows: list[dict]) -> 
     # % failed (papers with a high-severity anomaly = genuine extraction failure:
     # empty_json / tiny_paper / no_edges). Low/medium rules (missing_names,
     # flat_dag, zero_equations, ...) are cosmetic or structural, not failures.
-    if anomaly_rows:
-        flagged_papers = set()
-        for row in anomaly_rows:
-            rule = row.get("rule", "")
-            severity = (row.get("severity", "") or "").strip().lower()
-            if rule != "pass" and severity == "high":
-                pid = row.get("paper_id", "")
-                if pid:
-                    flagged_papers.add(pid)
-        pct_anom = len(flagged_papers) / n_papers * 100
-    else:
-        pct_anom = 0.0
+    pct_anom = len(failed_papers(anomaly_rows)) / n_papers * 100
 
     # Average specific (non-generic) foundation edges per paper
     avg_foundation_specific = (
@@ -158,6 +158,10 @@ def compute_scale_stats(stats_rows: list[dict], anomaly_rows: list[dict]) -> dic
     n_lemmas = total("n_lemmas")
     n_propositions = total("n_propositions")
     n_corollaries = total("n_corollaries")
+    n_claims = total("n_claims")
+    n_assumptions = total("n_assumptions")
+    n_conjectures = total("n_conjectures")
+    n_open_problems = total("n_open_problems")
     n_theorem_like = total("n_theorem_like")
     n_definitions = total("n_definitions")
     n_proofs = total("n_proofs")
@@ -190,15 +194,7 @@ def compute_scale_stats(stats_rows: list[dict], anomaly_rows: list[dict]) -> dic
     n_distinct_targets = total("n_distinct_foundation_targets")
 
     # Anomalies (high-severity only = genuine extraction failures)
-    if anomaly_rows:
-        flagged_papers = set()
-        for row in anomaly_rows:
-            severity = (row.get("severity", "") or "").strip().lower()
-            if row.get("rule", "") != "pass" and severity == "high":
-                flagged_papers.add(row.get("paper_id", ""))
-        n_anomalous = len(flagged_papers)
-    else:
-        n_anomalous = 0
+    n_anomalous = len(failed_papers(anomaly_rows))
 
     return {
         "n_papers": n_papers,
@@ -208,6 +204,10 @@ def compute_scale_stats(stats_rows: list[dict], anomaly_rows: list[dict]) -> dic
         "n_lemmas": n_lemmas,
         "n_propositions": n_propositions,
         "n_corollaries": n_corollaries,
+        "n_claims": n_claims,
+        "n_assumptions": n_assumptions,
+        "n_conjectures": n_conjectures,
+        "n_open_problems": n_open_problems,
         "n_theorem_like": n_theorem_like,
         "n_definitions": n_definitions,
         "n_proofs": n_proofs,
@@ -258,9 +258,8 @@ def generate_cross_category_tex(all_stats: dict[str, dict], num_tier_three: str 
     lines.append("\\begin{table}[h]")
     lines.append("\\centering")
     lines.append("\\footnotesize")
-    lines.append(f"\\caption{{Per-category extraction statistics on the T3 {num_tier_three} corpus "
-                 "(post-fix rules and assumption/conclusion splitter). "
-                 "Categories sorted by predicted extraction quality (acyclicity proxy).}")
+    lines.append(f"\\caption{{Per-category extraction statistics on the T3 {num_tier_three} corpus, "
+                 f"extracted with {EXTRACTOR}.}}")
     lines.append("\\label{tab:cross-category}")
     lines.append("\\renewcommand{\\arraystretch}{1.05}")
     lines.append("")
@@ -318,12 +317,13 @@ def generate_cross_category_tex(all_stats: dict[str, dict], num_tier_three: str 
     lines.append("")
     lines.append("\\vspace{0.4em}")
     lines.append("\\footnotesize")
-    lines.append("nodes/p, edges/p = average per paper. depth = average DAG depth. "
-                 "\\% acyc = fraction of papers with acyclic extracted graph. "
+    lines.append("nodes/p, edges/p = average per paper, in the paper's own graph (grounding edges excluded). depth = average DAG depth. "
+                 "\\% acyc = fraction of papers whose extracted dependency graph passes the validator's cycle check "
+                 "(papers with a cycle are traced to proof attachment, Section~\\ref{sec:cross-category}). "
                  "\\% concl = fraction of theorem-like nodes with non-empty conclusion field after splitter. "
-                 "\\% fail = fraction of papers with a high-severity extraction failure "
-                 "(empty output, degenerate size, or no edges); low/medium structural flags are excluded. "
-                 "found/p = average specific (IDF $\\leq$ 10\\%) foundation-graph edges per paper.")
+                 "\\% fail = fraction of papers with an extraction failure "
+                 "(empty or degenerate output: fewer than 3 nodes, or no edges). "
+                 "found/p = grounding edges per paper into the foundation concepts (Section~\\ref{sec:foundation}).")
     lines.append("\\end{table}")
 
     return "\n".join(lines)
@@ -342,9 +342,8 @@ def generate_scale_tex(s: dict, category: str) -> str:
     lines.append("\\begin{table}[h]")
     lines.append("\\centering")
     lines.append("\\small")
-    lines.append(f"\\caption{{Large-scale extraction: {fmt_num(n)} \\texttt{{{category}}} papers, "
-                 "T3 (rule-based) mode. Extraction completed on a single cluster node "
-                 "(zero API cost).}")
+    lines.append(f"\\caption{{Large-scale extraction: {fmt_num(TARGET_PER_CATEGORY)} \\texttt{{{category}}} papers, "
+                 f"extracted with {EXTRACTOR} at zero API cost.}}")
     lines.append("\\label{tab:scale}")
     lines.append("\\begin{tabular}{lr@{\\hspace{1em}}l}")
     lines.append("\\toprule")
@@ -352,7 +351,8 @@ def generate_scale_tex(s: dict, category: str) -> str:
     lines.append("\\midrule")
 
     # Data rows
-    lines.append(f"Papers extracted (of {fmt_num(n)}) & {fmt_num(n)} & 100\\% success \\\\")
+    lines.append(f"Papers extracted (of {fmt_num(TARGET_PER_CATEGORY)}) & {fmt_num(n)} & "
+                 f"{n / TARGET_PER_CATEGORY * 100:.1f}\\% success \\\\")
     lines.append(f"Total nodes & {fmt_num(s['n_nodes'])} & {fmt_float(s['n_nodes']/n)} \\\\")
     lines.append(f"Total edges & {fmt_num(s['n_edges'])} & {fmt_float(s['n_edges']/n)} \\\\")
     lines.append("\\midrule")
@@ -361,11 +361,15 @@ def generate_scale_tex(s: dict, category: str) -> str:
     lines.append(f"\\quad lemmas & {fmt_num(s['n_lemmas'])} & {fmt_float(s['n_lemmas']/n)} \\\\")
     lines.append(f"\\quad propositions & {fmt_num(s['n_propositions'])} & {fmt_float(s['n_propositions']/n)} \\\\")
     lines.append(f"\\quad corollaries & {fmt_num(s['n_corollaries'])} & {fmt_float(s['n_corollaries']/n)} \\\\")
+    lines.append(f"\\quad claims & {fmt_num(s['n_claims'])} & {fmt_float(s['n_claims']/n)} \\\\")
     lines.append(f"Definitions & {fmt_num(s['n_definitions'])} & {fmt_float(s['n_definitions']/n)} \\\\")
+    lines.append(f"Assumptions & {fmt_num(s['n_assumptions'])} & {fmt_float(s['n_assumptions']/n)} \\\\")
+    lines.append(f"Conjectures / open problems & {fmt_num(s['n_conjectures'])} / {fmt_num(s['n_open_problems'])} & "
+                 f"{fmt_float(s['n_conjectures']/n)} / {fmt_float(s['n_open_problems']/n)} \\\\")
     lines.append(f"Proofs & {fmt_num(s['n_proofs'])} & {fmt_float(s['n_proofs']/n)} \\\\")
     lines.append(f"Equations & {fmt_num(s['n_equations'])} & {fmt_float(s['n_equations']/n)} \\\\")
     lines.append("\\midrule")
-    lines.append(f"DAG acyclic & {s['n_acyclic']}/{n} & \\textbf{{{fmt_pct(s['n_acyclic']/n*100)}}} \\\\")
+    lines.append(f"DAG acyclic (validator) & {fmt_num(s['n_acyclic'])}/{fmt_num(n)} & \\textbf{{{fmt_pct(s['n_acyclic']/n*100)}}} \\\\")
     lines.append(f"DAG depth & max {s['max_depth']} & avg {fmt_float(s['avg_depth'])} \\\\")
     lines.append(f"Isolated nodes & {fmt_num(s['n_isolated'])} & {fmt_pct(s['pct_isolated'])} of all nodes \\\\")
     lines.append("\\midrule")
@@ -375,12 +379,10 @@ def generate_scale_tex(s: dict, category: str) -> str:
     lines.append(f"\\quad avg assumptions/thm & {fmt_float(s['avg_assumptions_per_thm'])} & \\\\")
     lines.append(f"\\quad avg conclusions/thm & {fmt_float(s['avg_conclusions_per_thm'])} & \\\\")
     lines.append("\\midrule")
-    lines.append(f"\\multicolumn{{3}}{{l}}{{\\textit{{Foundation graph linking:}}}} \\\\")
-    lines.append(f"\\quad Papers linked & {s['n_papers_linked']}/{n} & \\textbf{{{fmt_pct(s['n_papers_linked']/n*100)}}} \\\\")
-    lines.append(f"\\quad Foundation edges (total) & {fmt_num(s['n_foundation_edges'])} & {fmt_float(s['n_foundation_edges']/n)} \\\\")
-    lines.append(f"\\quad \\quad specific (IDF $\\leq$ 10\\%) & {fmt_num(s['n_foundation_specific'])} & {fmt_float(s['n_foundation_specific']/n)} \\\\")
-    lines.append(f"\\quad \\quad generic (IDF $>$ 10\\%) & {fmt_num(s['n_foundation_generic'])} & {fmt_float(s['n_foundation_generic']/n)} \\\\")
-    lines.append(f"\\quad Distinct terms matched & {fmt_num(s['n_distinct_targets'])} & \\\\")
+    lines.append(f"\\multicolumn{{3}}{{l}}{{\\textit{{Grounding in the foundation graph (Section~\\ref{{sec:foundation}}):}}}} \\\\")
+    lines.append(f"\\quad Papers grounded & {fmt_num(s['n_papers_linked'])}/{fmt_num(n)} & \\textbf{{{fmt_pct(s['n_papers_linked']/n*100)}}} \\\\")
+    lines.append(f"\\quad Grounding edges & {fmt_num(s['n_foundation_edges'])} & {fmt_float(s['n_foundation_edges']/n)} \\\\")
+    lines.append(f"\\quad Distinct concepts per paper & {fmt_num(s['n_distinct_targets'])} & {fmt_float(s['n_distinct_targets']/n)} \\\\")
 
     # Table closing
     lines.append("\\bottomrule")
@@ -445,6 +447,8 @@ def main():
         default="math.CO",
         help="Category to use for the detailed scale table (default: math.CO)",
     )
+    parser.add_argument("--suffix", default="",
+                        help="Appended to the output names (e.g. _v7 -> cross_category_table_v7.tex)")
     args = parser.parse_args()
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
@@ -485,7 +489,7 @@ def main():
 
     # Generate cross-category table (self-contained \begin{table}...\end{table})
     cross_cat_tex = generate_cross_category_tex(all_stats)
-    out_path = args.out_dir / "cross_category_table.tex"
+    out_path = args.out_dir / f"cross_category_table{args.suffix}.tex"
     with open(out_path, "w") as f:
         f.write(cross_cat_tex)
         f.write("\n")
@@ -494,7 +498,7 @@ def main():
     # Generate scale table (self-contained \begin{table}...\end{table})
     if all_scale_stats:
         scale_tex = generate_scale_tex(all_scale_stats, args.scale_category)
-        out_path = args.out_dir / "scale_table.tex"
+        out_path = args.out_dir / f"scale_table{args.suffix}.tex"
         with open(out_path, "w") as f:
             f.write(scale_tex)
             f.write("\n")
@@ -502,7 +506,13 @@ def main():
 
     # Generate macros
     macros_tex = generate_macros_tex(all_stats, all_scale_stats)
-    out_path = args.out_dir / "macros.tex"
+    # Per-category values for figures/generate_100k_viz.py (and the text)
+    import json
+    out_path = args.out_dir / f"cross_category_stats{args.suffix}.json"
+    out_path.write_text(json.dumps({"categories": all_stats, "scale": {args.scale_category: all_scale_stats}}, indent=1))
+    print(f"Wrote: {out_path}")
+
+    out_path = args.out_dir / f"macros{args.suffix}.tex"
     with open(out_path, "w") as f:
         f.write(macros_tex)
     print(f"Wrote: {out_path}")
