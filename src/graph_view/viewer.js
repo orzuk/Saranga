@@ -130,6 +130,12 @@ window.dispId = window.dispId || function (id) {
     return n.sub ? [n.top, n.sub] : [n.top];
   }
 
+  // Display name of a node id: its paper number when it has one (Thm 1.1), else the id form (Thm 3).
+  function dispNum(id) {
+    var d = window.dispId ? dispId(id) : String(id), n = NODE[id];
+    return (n && n.num && /\d+$/.test(d)) ? d.replace(/\d+$/, n.num) : d;
+  }
+
   function dependencyAdj(ids) {        // forward dependency edges among ids
     var up = {}, down = {};
     G.edges.forEach(function (e) {
@@ -147,13 +153,16 @@ window.dispId = window.dispId || function (id) {
     var ids = {};
     base.forEach(function (n) { ids[n.id] = true; });
     var adj = dependencyAdj(ids), keep = {};
-    if (S.focus.mode === 'main') {
-      // Only what the main results rest on: a claim stated inside a kept theorem
-      // stays only if something on the path uses it.
-      var stack = G.main.filter(function (i) { return ids[i]; });
+    if (S.focus.mode === 'main' || S.focus.mode === 'up' || S.focus.mode === 'down') {
+      // One walk from the seeds: 'main' and 'up' keep everything the seeds rest on
+      // (only that: a claim stated inside a kept theorem stays only if something on
+      // the path uses it); 'down' keeps everything that rests on the seed.
+      var seeds = S.focus.mode === 'main' ? G.main : [S.focus.id];
+      var next = S.focus.mode === 'down' ? adj.down : adj.up;
+      var stack = seeds.filter(function (i) { return ids[i]; });
       stack.forEach(function (i) { keep[i] = true; });
       while (stack.length) {
-        (adj.up[stack.pop()] || []).forEach(function (p) {
+        (next[stack.pop()] || []).forEach(function (p) {
           if (!keep[p]) { keep[p] = true; stack.push(p); }
         });
       }
@@ -296,8 +305,7 @@ window.dispId = window.dispId || function (id) {
     function headOf(n) {
       var dm = /^DIST_[A-Z_]+?(\d+)$/.exec(n.id);
       var nm = (n.name && n.name !== n.id) ? n.name : '';
-      var did = window.dispId ? dispId(n.id) : n.id;     // the paper's number (Thm 1.1) when the node has one
-      if (n.num && window.dispId && /\d+$/.test(did)) did = did.replace(/\d+$/, n.num);
+      var did = dispNum(n.id);                           // the paper's number (Thm 1.1) when the node has one
       return { nm: nm, did: did, head: (MAIN[n.id] ? '\u2605 ' : '') +
         (dm ? n.type.replace(/_/g, ' ') + ' ' + dm[1] + ' (rule)' + (nm ? ': ' + nm : '') : did + ': ' + (nm || n.type)) };
     }
@@ -407,7 +415,7 @@ window.dispId = window.dispId || function (id) {
         regular.push({ key: 'o:' + ks[ks.length - 1] + '\u2192' + p, s: ks[ks.length - 1], t: p, type: 'order', order: 1 });
       }
     });
-    var hidden = (S.tred || (S.focus && S.focus.mode === 'main'))
+    var hidden = (S.tred || (S.focus && S.focus.mode !== 'nbhd'))
       ? reduce(regular.filter(function (r) { return !r.order && !(r.e && (r.e.back || r.e.mention)); }))
       : {};
     var nEdges = 0;
@@ -874,7 +882,10 @@ window.dispId = window.dispId || function (id) {
   function status(dt) {
     var lv = level(), nb = cy.nodes().filter(function (n) { return !n.isParent(); }).length;
     var txt = { overview: 'Overview', results: 'Results', full: 'Full' }[lv];
-    if (S.focus) txt += S.focus.mode === 'main' ? ' · path to main results' : ' · neighbourhood of ' + S.focus.id + ' (' + S.k + ' step' + (S.k > 1 ? 's' : '') + ')';
+    if (S.focus) txt += S.focus.mode === 'main' ? ' · path to main results'
+      : S.focus.mode === 'up' ? ' · what ' + dispNum(S.focus.id) + ' rests on'
+      : S.focus.mode === 'down' ? ' · what rests on ' + dispNum(S.focus.id)
+      : ' · neighbourhood of ' + S.focus.id + ' (' + S.k + ' step' + (S.k > 1 ? 's' : '') + ')';
     txt += ' · ' + nb + ' boxes, ' + cy.edges().length + ' edges · layout ' + Math.round(dt) + ' ms';
     if (lastNote) txt += ' · ' + lastNote;
     if (lv === 'overview') txt += ' · click a section to open it, its frame to close it';
@@ -1021,15 +1032,18 @@ window.dispId = window.dispId || function (id) {
       S.focus = (S.focus && S.focus.mode === 'main') ? null : { mode: 'main' };
       render();
     };
-    document.getElementById('nbhd-btn').onclick = function () {
-      var on = S.focus && S.focus.mode === 'nbhd';
-      if (on && S.focus.id === S.selected) { S.focus = null; render(); return; }
-      if (!S.selected || !NODE[S.selected]) {
-        document.getElementById('status').textContent = 'Select a node first (click it), then Neighbourhood.';
-        return;
-      }
-      S.focus = { mode: 'nbhd', id: S.selected }; render();
-    };
+    // Focus on the selected node: its neighbourhood, everything it rests on, everything that rests on it.
+    [['nbhd-btn', 'nbhd', 'Neighbourhood'], ['up-btn', 'up', 'Path to this'], ['down-btn', 'down', 'Depends on this']].forEach(function (p) {
+      document.getElementById(p[0]).onclick = function () {
+        var on = S.focus && S.focus.mode === p[1];
+        if (on && S.focus.id === S.selected) { S.focus = null; render(); return; }
+        if (!S.selected || !NODE[S.selected]) {
+          document.getElementById('status').textContent = 'Select a node first (click it), then ' + p[2] + '.';
+          return;
+        }
+        S.focus = { mode: p[1], id: S.selected }; render();
+      };
+    });
     document.getElementById('hop-minus').onclick = function () { if (S.k > 1) { S.k--; if (S.focus && S.focus.mode === 'nbhd') render(); else syncControls(); } };
     document.getElementById('hop-plus').onclick = function () { if (S.k < 9) { S.k++; if (S.focus && S.focus.mode === 'nbhd') render(); else syncControls(); } };
     document.getElementById('fit-btn').onclick = function () { cy.fit(cy.elements(), 30); };
@@ -1097,6 +1111,8 @@ window.dispId = window.dispId || function (id) {
     document.getElementById('tg-tred').dataset.showing = S.tred ? '1' : '0';
     document.getElementById('main-btn').dataset.showing = (S.focus && S.focus.mode === 'main') ? '1' : '0';
     document.getElementById('nbhd-btn').dataset.showing = (S.focus && S.focus.mode === 'nbhd') ? '1' : '0';
+    document.getElementById('up-btn').dataset.showing = (S.focus && S.focus.mode === 'up') ? '1' : '0';
+    document.getElementById('down-btn').dataset.showing = (S.focus && S.focus.mode === 'down') ? '1' : '0';
     document.getElementById('hop-k').textContent = S.k;
   }
 
@@ -1190,7 +1206,7 @@ window.dispId = window.dispId || function (id) {
       var n = NODE[other];
       var flags = (e.back ? ' backward' : '') + (e.mention ? ' mention' : '') + (e.implied ? ' implied' : '');
       return '<div>&bull; <span class="nodelink" data-nid="' + escAttr(other) + '" onclick="showDetail(this.dataset.nid)">' +
-        esc((window.dispId ? dispId(other) : other) + ': ' + (n ? n.name || n.type : '')) + '</span> <span style="color:#888;">' + esc(e.type + flags) +
+        esc(dispNum(other) + ': ' + (n ? n.name || n.type : '')) + '</span> <span style="color:#888;">' + esc(e.type + flags) +
         (e.conf !== undefined && e.conf !== null ? ', conf ' + Number(e.conf).toFixed(2) : '') + '</span></div>';
     };
     var h = '';
@@ -1204,7 +1220,9 @@ window.dispId = window.dispId || function (id) {
     if (panel.className !== 'open' || _lastDetailNode !== id) return;
     var n = NODE[id], acts = '';
     if (n && n.nsteps) acts += '<button data-act="proof">' + (S.proofs[id] ? 'Close proof' : 'Open proof (' + n.nsteps + ' steps)') + '</button>';
-    if (n) acts += '<button data-act="nbhd">Neighbourhood</button>';
+    if (n) acts += '<button data-act="up" title="Everything this node rests on">Path to this</button>' +
+      '<button data-act="down" title="Everything that rests on this node">Depends on this</button>' +
+      '<button data-act="nbhd">Neighbourhood</button>';
     if (n) acts += '<span style="font-size:11px;color:#777;align-self:center;">importance ' + n.imp.toFixed(1) +
       (MAIN[id] ? ' · ★ main result' : '') + ' · ' + n.desc + ' build on it</span>';
     var div = document.createElement('div');
@@ -1215,7 +1233,7 @@ window.dispId = window.dispId || function (id) {
     div.querySelectorAll('button').forEach(function (b) {
       b.onclick = function () {
         if (b.dataset.act === 'proof') toggleProof(id);
-        else { S.focus = { mode: 'nbhd', id: id }; render(); }
+        else { S.focus = { mode: b.dataset.act, id: id }; render(); }
       };
     });
     var ed = document.createElement('div');
@@ -1438,6 +1456,7 @@ window.dispId = window.dispId || function (id) {
       else if (k === 'bare' && v === '1') document.body.classList.add('bare');   // figure mode: graph only
       else if (k === 'select') sel = v;
       else if (k === 'focus' && v === 'main') S.focus = { mode: 'main' };
+      else if (k === 'focus' && /^(up|down):/.test(v) && NODE[v.slice(v.indexOf(':') + 1)]) S.focus = { mode: v.split(':')[0], id: v.slice(v.indexOf(':') + 1) };
       else if (k === 'focus' && NODE[v]) S.focus = { mode: 'nbhd', id: v };
     });
     return sel;
