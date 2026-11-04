@@ -44,6 +44,10 @@ LIBS = [
     ("elk.bundled.js", "elkjs 0.9.3",
      "https://cdn.jsdelivr.net/npm/elkjs@0.9.3/lib/elk.bundled.js"),
 ]
+# Standalone pages inline this self-contained MathJax (SVG output, every TeX extension), so the
+# formulas render without a network; the other modes load MathJax from the CDN, as the classic pages do.
+MATHJAX_LIB = ("tex-svg-full.js", "MathJax 3.2.2 (tex-svg-full)",
+               "https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg-full.js")
 from node_types import PROVABLE as THEOREM_LIKE, ID_SHORT  # noqa: E402
 RESULT_TYPES = {"definition", "theorem", "lemma", "proposition", "corollary",
                 "claim", "conjecture", "algorithm"}
@@ -631,6 +635,12 @@ def render_page(model, panel_vars, funcs, css, mathjax, libs_mode, lib_dir):
                  '<a href="%s" target="_blank" rel="noopener">PDF</a>'
                  % (escape(aid), u % "abs", u % "pdf"))
     panel_js = "".join("var %s = %s;\n" % (k, _script_json(v)) for k, v in panel_vars.items())
+    if libs_mode == "standalone":                                   # MathJax inline: formulas without a network
+        mjp = Path(lib_dir) / MATHJAX_LIB[0]
+        if not mjp.exists():
+            mjp = ensure_lib(Path.home() / ".cache" / "saranga_graph_view" / "lib") / MATHJAX_LIB[0]
+        mj = mjp.read_text(encoding="utf-8").replace("</script", "<\\/script")
+        mathjax = re.sub(r'<script src="[^"]*mathjax[^"]*"></script>', lambda m: "<script>" + mj + "</script>", mathjax)
     rep = {
         "{{TITLE}}": escape(model["title"]),
         "{{MATHJAX}}": mathjax,
@@ -649,7 +659,7 @@ def render_page(model, panel_vars, funcs, css, mathjax, libs_mode, lib_dir):
 def ensure_lib(lib_dir, src_dir=None):
     """Make sure lib_dir holds the pinned libraries (copied, or downloaded once)."""
     lib_dir.mkdir(parents=True, exist_ok=True)
-    for fname, ver, url in LIBS:
+    for fname, ver, url in LIBS + [MATHJAX_LIB]:
         dst = lib_dir / fname
         if dst.exists():
             continue

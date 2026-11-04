@@ -133,7 +133,9 @@ window.dispId = window.dispId || function (id) {
   function dependencyAdj(ids) {        // forward dependency edges among ids
     var up = {}, down = {};
     G.edges.forEach(function (e) {
-      if (e.mention || e.back || !ids[e.s] || !ids[e.t]) return;
+      // resolves (a problem settled by a result) and illustrates (an example of it) are not
+      // dependencies: the result does not rest on the problem or the example
+      if (e.mention || e.back || e.type === 'resolves' || e.type === 'illustrates' || !ids[e.s] || !ids[e.t]) return;
       (up[e.t] = up[e.t] || []).push(e.s);
       (down[e.s] = down[e.s] || []).push(e.t);
     });
@@ -146,6 +148,8 @@ window.dispId = window.dispId || function (id) {
     base.forEach(function (n) { ids[n.id] = true; });
     var adj = dependencyAdj(ids), keep = {};
     if (S.focus.mode === 'main') {
+      // Only what the main results rest on: a claim stated inside a kept theorem
+      // stays only if something on the path uses it.
       var stack = G.main.filter(function (i) { return ids[i]; });
       stack.forEach(function (i) { keep[i] = true; });
       while (stack.length) {
