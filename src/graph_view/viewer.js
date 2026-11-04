@@ -1220,9 +1220,9 @@ window.dispId = window.dispId || function (id) {
     if (panel.className !== 'open' || _lastDetailNode !== id) return;
     var n = NODE[id], acts = '';
     if (n && n.nsteps) acts += '<button data-act="proof">' + (S.proofs[id] ? 'Close proof' : 'Open proof (' + n.nsteps + ' steps)') + '</button>';
-    if (n) acts += '<button data-act="up" title="Everything this node rests on: its incoming paths">\u2192\u25CF Rests on</button>' +
-      '<button data-act="down" title="Everything that rests on this node: its outgoing paths">\u25CF\u2192 Depends on it</button>' +
-      '<button data-act="nbhd" title="What it uses and what uses it, k steps each way">\u2192\u25CF\u2192 Neighbourhood</button>';
+    if (n) acts += '<button data-act="up" title="Everything this node rests on, all the way down">\u22EF\u2192\u25CF Rests on</button>' +
+      '<button data-act="down" title="Everything that rests on this node, all the way up">\u25CF\u2192\u22EF Depends on it</button>' +
+      '<button data-act="nbhd" title="What it uses and what uses it, only k steps each way">\u2192\u25CF\u2192 Neighbourhood (' + S.k + ')</button>';
     if (n) acts += '<span style="font-size:11px;color:#777;align-self:center;">importance ' + n.imp.toFixed(1) +
       (MAIN[id] ? ' · ★ main result' : '') + ' · ' + n.desc + ' build on it</span>';
     var div = document.createElement('div');
