@@ -57,7 +57,7 @@ window.dispId = window.dispId || function (id) {
 
   var S = {
     level: G.level, open: {}, proofs: {}, focus: null, k: 1, selected: null,
-    show: { ext: false, aux: true, ghosts: false, low: true, implied: true,
+    show: { ext: false, extdef: true, aux: true, ghosts: false, low: true, implied: true,
             back: true, mention: true, nested: true },
     tred: false, search: '', openOrder: [], ctx: null, ctxNow: true, ctxN: 0,
     authors: true                                    // gold pages: the authors' layout first, where the figure gives it
@@ -118,7 +118,7 @@ window.dispId = window.dispId || function (id) {
   function level() { return S.level === 'overview' && S.focus ? 'full' : S.level; }
 
   function shownBase(n) {
-    if (n.origin === 'external' && !S.show.ext) return false;
+    if (n.origin === 'external' && !(n.type === 'definition' ? S.show.extdef : S.show.ext)) return false;
     if (AUX[n.type] && !S.show.aux) return false;
     if (n.inside && !S.show.nested) return false;
     if (level() === 'results' && !n.res) return false;
@@ -281,6 +281,23 @@ window.dispId = window.dispId || function (id) {
       return 'pf:' + id;
     }
 
+    // A statement with results stated inside it (a "Moreover" clause made a
+    // claim of its own, a lemma inside a theorem) is drawn as one frame holding
+    // its own box and theirs, so edges land on the part they support.
+    var partsOf = {};
+    base.forEach(function (n) {
+      if (!n.inside || rep[n.id] !== n.id || !shown[n.inside] || rep[n.inside] !== n.inside) return;
+      (partsOf[n.inside] = partsOf[n.inside] || []).push(n.id);
+    });
+    function headOf(n) {
+      var dm = /^DIST_[A-Z_]+?(\d+)$/.exec(n.id);
+      var nm = (n.name && n.name !== n.id) ? n.name : '';
+      var did = window.dispId ? dispId(n.id) : n.id;     // the paper's number (Thm 1.1) when the node has one
+      if (n.num && window.dispId && /\d+$/.test(did)) did = did.replace(/\d+$/, n.num);
+      return { nm: nm, did: did, head: (MAIN[n.id] ? '\u2605 ' : '') +
+        (dm ? n.type.replace(/_/g, ' ') + ' ' + dm[1] + ' (rule)' + (nm ? ': ' + nm : '') : did + ': ' + (nm || n.type)) };
+    }
+    var partFrame = {};
     // Base nodes drawn as themselves.
     base.forEach(function (n) {
       if (rep[n.id] !== n.id) return;
@@ -290,18 +307,20 @@ window.dispId = window.dispId || function (id) {
         var path = groupPath(n);
         par = path[path.length - 1];
       }
+      if (n.inside && partFrame[n.inside]) par = partFrame[n.inside];
       var open = S.proofs[n.id] && n.nsteps > 0;
       if (open) par = frame(n.id, par, 'proof of ' + n.id);
+      if (partsOf[n.id]) {
+        var hp = headOf(n);
+        els.push({ group: 'nodes', data: { id: 'pt:' + n.id, kind: 'partframe', of: n.id, parent: par,
+          label: hp.head, hc: c.header } });
+        partFrame[n.id] = par = 'pt:' + n.id;
+      }
       // Nodes made by a distilled sentence rule (DIST_DEFINITION7) carry no
       // name of their own: show "definition 7 (rule)" rather than the id twice.
-      var dm = /^DIST_[A-Z_]+?(\d+)$/.exec(n.id);
-      var nm = (n.name && n.name !== n.id) ? n.name : '';
-      // Box head: the paper's own number when it has one (Thm 1.1), else the node id (Thm 3).
-      var did = window.dispId ? dispId(n.id) : n.id;
-      if (n.num && window.dispId && /\d+$/.test(did)) did = did.replace(/\d+$/, n.num);
-      var head = (MAIN[n.id] ? '\u2605 ' : '') +
-        (dm ? n.type.replace(/_/g, ' ') + ' ' + dm[1] + ' (rule)' + (nm ? ': ' + nm : '')
-            : did + ': ' + (nm || n.type));
+      var h0 = headOf(n), nm = h0.nm;
+      // Inside its own part frame the statement's box is its main part: the frame carries the head.
+      var head = partsOf[n.id] ? h0.did + ': main statement' : h0.head;
       var extra = n.nsteps ? (open ? '\u25be proof open (' + n.nsteps + ' steps)' : '\u25b8 proof: ' + n.nsteps + ' step' + (n.nsteps > 1 ? 's' : '')) : '';
       var b = box(head, n.short, extra, n.imp, n.imp >= 4 ? 4 : 3);
       var d = { id: n.id, kind: 'node', type: n.type, parent: par,
@@ -420,6 +439,7 @@ window.dispId = window.dispId || function (id) {
     // "Stated inside": a dotted line from a nested result to the box it is in.
     base.forEach(function (n) {
       if (!n.inside || rep[n.id] !== n.id || !shown[n.inside] || rep[n.inside] !== n.inside) return;
+      if (partFrame[n.inside]) return;                 // drawn inside the statement's frame instead
       els.push({ group: 'edges', classes: 'inside', data: { id: 'in:' + n.id, source: n.inside,
         target: n.id, lay: 0 } });
     });
@@ -478,6 +498,11 @@ window.dispId = window.dispId || function (id) {
       'border-width': 2, 'border-style': 'dashed', 'color': '#37474F' } },
     { selector: 'node[kind = "proofframe"]', style: { 'background-color': '#F7F1FA', 'border-color': '#A569BD',
       'border-width': 1.5, 'border-style': 'dashed', 'font-size': 11, 'color': '#6C3483', 'padding': 10 } },
+    { selector: 'node[kind = "partframe"]', style: { 'background-color': '#FFFFFF', 'border-color': 'data(hc)',
+      'border-width': 2.5, 'border-style': 'solid', 'font-size': 12, 'font-weight': 'bold', 'color': '#1d1d1d',
+      'padding': 8, 'text-valign': 'top', 'text-halign': 'center', 'text-margin-y': -4,
+      'text-background-color': '#FFFFFF', 'text-background-opacity': 1, 'text-background-padding': 3,
+      'text-background-shape': 'roundrectangle', 'z-index': 2 } },
     { selector: 'node.match', style: { 'overlay-color': '#FFEB3B', 'overlay-opacity': 0.45, 'overlay-padding': 6 } },
     { selector: 'node:selected', style: { 'overlay-color': '#1E88E5', 'overlay-opacity': 0.22, 'overlay-padding': 7 } },
     { selector: '.dim', style: { 'opacity': 0.25 } },
@@ -670,7 +695,7 @@ window.dispId = window.dispId || function (id) {
           if (n.isChild()) { n.move({ parent: null }); moved = true; }
         });
       }
-      cy.nodes('[kind = "secopen"], [kind = "proofframe"]').remove();
+      cy.nodes('[kind = "secopen"], [kind = "proofframe"], [kind = "partframe"]').remove();
     });
     paintNodes();
   }
@@ -942,7 +967,8 @@ window.dispId = window.dispId || function (id) {
   var TOGGLES = [
     ['ghosts', 'Foundations', function () { return G.ghosts.length; }, G.grounded ? 'Textbook and ProofWiki concepts the nodes are grounded to' : 'External results from the foundation graph that nodes rely on'],
     ['aux', 'Examples & Remarks', function () { return G.nodes.filter(function (n) { return AUX[n.type]; }).length; }, ''],
-    ['ext', 'Cited Results', function () { return G.nodes.filter(function (n) { return n.origin === 'external'; }).length; }, 'Results the paper cites rather than proves (dashed boxes)'],
+    ['extdef', 'Cited definitions', function () { return G.nodes.filter(function (n) { return n.origin === 'external' && n.type === 'definition'; }).length; }, 'Standard or cited definitions the paper recalls (dashed boxes): the vocabulary its results use'],
+    ['ext', 'Cited results', function () { return G.nodes.filter(function (n) { return n.origin === 'external' && n.type !== 'definition'; }).length; }, 'Results the paper cites rather than proves (dashed boxes)'],
     ['low', 'Low-confidence edges', function () { return G.edges.filter(function (e) { return e.low; }).length; }, ''],
     ['implied', 'Implied edges', function () { return G.edges.filter(function (e) { return e.implied; }).length; }, 'Edges also reachable by a longer path, in the whole graph (classic)'],
     ['back', 'Backward edges', function () { return G.edges.filter(function (e) { return e.back; }).length; }, 'Dependencies that point against paper order (dash-dotted)'],
@@ -1269,7 +1295,8 @@ window.dispId = window.dispId || function (id) {
     var need = false;
     if (n && cy.getElementById(host).empty()) {
       if (S.focus) { S.focus = null; need = true; }
-      if (n.origin === 'external' && !S.show.ext) { S.show.ext = true; need = true; }
+      if (n.origin === 'external' && n.type === 'definition' && !S.show.extdef) { S.show.extdef = true; need = true; }
+      if (n.origin === 'external' && n.type !== 'definition' && !S.show.ext) { S.show.ext = true; need = true; }
       if (AUX[n.type] && !S.show.aux) { S.show.aux = true; need = true; }
       if (n.inside && !S.show.nested) { S.show.nested = true; need = true; }
       if (S.level === 'results' && !n.res) { S.level = 'full'; need = true; }
@@ -1317,7 +1344,7 @@ window.dispId = window.dispId || function (id) {
       if (kind === 'secbox') { S.open[n.id()] = true; S.openOrder.push(n.id()); openSubsIfSmall(n.id()); render(null, n.id()); return; }
       if (kind === 'secopen') { closeGroup(n.id()); render(); return; }
       if (kind === 'ghost') { _lastDetailNode = null; showGhostDetail(n.data('name')); return; }
-      if (kind === 'proofframe') { select(n.data('of')); return; }
+      if (kind === 'proofframe' || kind === 'partframe') { select(n.data('of')); return; }
       select(n.id());
     });
     cy.on('tap', function (ev) { if (ev.target === cy) closePanel(); });   // a click on the empty canvas
