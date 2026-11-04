@@ -1033,7 +1033,7 @@ window.dispId = window.dispId || function (id) {
       render();
     };
     // Focus on the selected node: its neighbourhood, everything it rests on, everything that rests on it.
-    [['nbhd-btn', 'nbhd', 'Neighbourhood'], ['up-btn', 'up', 'Path to this'], ['down-btn', 'down', 'Depends on this']].forEach(function (p) {
+    [['nbhd-btn', 'nbhd', 'Neighbourhood'], ['up-btn', 'up', 'Rests on'], ['down-btn', 'down', 'Depends on it']].forEach(function (p) {
       document.getElementById(p[0]).onclick = function () {
         var on = S.focus && S.focus.mode === p[1];
         if (on && S.focus.id === S.selected) { S.focus = null; render(); return; }
@@ -1220,15 +1220,19 @@ window.dispId = window.dispId || function (id) {
     if (panel.className !== 'open' || _lastDetailNode !== id) return;
     var n = NODE[id], acts = '';
     if (n && n.nsteps) acts += '<button data-act="proof">' + (S.proofs[id] ? 'Close proof' : 'Open proof (' + n.nsteps + ' steps)') + '</button>';
-    if (n) acts += '<button data-act="up" title="Everything this node rests on">Path to this</button>' +
-      '<button data-act="down" title="Everything that rests on this node">Depends on this</button>' +
-      '<button data-act="nbhd">Neighbourhood</button>';
+    if (n) acts += '<button data-act="up" title="Everything this node rests on: its incoming paths">\u2192\u25CF Rests on</button>' +
+      '<button data-act="down" title="Everything that rests on this node: its outgoing paths">\u25CF\u2192 Depends on it</button>' +
+      '<button data-act="nbhd" title="What it uses and what uses it, k steps each way">\u2192\u25CF\u2192 Neighbourhood</button>';
     if (n) acts += '<span style="font-size:11px;color:#777;align-self:center;">importance ' + n.imp.toFixed(1) +
       (MAIN[id] ? ' · ★ main result' : '') + ' · ' + n.desc + ' build on it</span>';
     var div = document.createElement('div');
     div.className = 'v2-actions';
     div.innerHTML = acts;
     var h3 = panel.querySelector('h3');
+    if (h3 && window.dispId && dispId(id) !== dispNum(id)) {          // the heading with the paper's number, like the box
+      var tn = h3.firstChild;
+      if (tn && tn.nodeType === 3 && tn.textContent.indexOf(dispId(id)) === 0) tn.textContent = dispNum(id) + tn.textContent.slice(dispId(id).length);
+    }
     if (h3 && h3.nextSibling) panel.insertBefore(div, h3.nextSibling.nextSibling); else panel.prepend(div);
     div.querySelectorAll('button').forEach(function (b) {
       b.onclick = function () {
