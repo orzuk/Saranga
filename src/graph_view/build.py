@@ -401,8 +401,66 @@ def _gid(s, t):
     return "edge_%s__to__%s" % (str(s).replace(" ", "_"), str(t).replace(" ", "_"))
 
 
-def paper_model(data, stem):
-    """The JSON object a v2 page embeds, plus the classic panel pieces."""
+def grounding_ghosts(grounding, nodes, base_ids, concepts_path=None):
+    """Foundation boxes from a grounding layer (ground_papers output), one per concept.
+
+    `grounding` is the paper's row of the layer: {"paper_id", "edges": [{source,
+    target (concept id), term, basis, confidence, concept_name?}]}. Concept names
+    missing from the edges are read from concepts.json (books_v7b). A source that
+    is not a base node (a proof, a step, an equation) is lifted to the result it
+    belongs to, as the classic panel does for name-linker matches.
+    Returns (ghost_list, ghost_refs): the viewer's list and the panel's name->refs.
+    """
+    by = {n["id"]: n for n in nodes}
+    names = {}
+    need = {e["target"] for e in grounding.get("edges", []) if not e.get("concept_name")}
+    if need:
+        cp = Path(concepts_path) if concepts_path else None
+        if cp is None:
+            try:
+                sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+                from config import FOUNDATION_DIR
+                cp = Path(FOUNDATION_DIR) / "books_v7b" / "concepts.json"
+            except Exception:
+                cp = None
+        if cp and cp.exists():
+            for c in json.loads(cp.read_text(encoding="utf-8")).get("concepts", []):
+                if c["id"] in need:
+                    names[c["id"]] = c.get("name") or c["id"]
+
+    def lift(i):
+        seen = set()
+        while i in by and i not in base_ids and i not in seen:
+            seen.add(i)
+            n = by[i]
+            pv = n.get("proves")
+            if isinstance(pv, (list, tuple)):
+                pv = pv[0] if pv else None
+            i = n.get("parent_id") or n.get("parent_proof") or pv
+        return i if i in base_ids else None
+
+    refs, terms = defaultdict(set), defaultdict(set)
+    for e in grounding.get("edges", []):
+        t = lift(e["source"])
+        if not t:
+            continue
+        nm = e.get("concept_name") or names.get(e["target"]) or e["target"]
+        refs[nm].add(t)
+        if e.get("term"):
+            terms[nm].add(e["term"])
+    order = sorted(refs, key=lambda k: (-len(refs[k]), k))
+    ghost_list = [{"name": k, "refs": sorted(refs[k]), "book": 1,
+                   "terms": sorted(terms[k])} for k in order]
+    return ghost_list, {k: sorted(refs[k]) for k in order}
+
+
+def paper_model(data, stem, grounding=None, concepts_path=None):
+    """The JSON object a v2 page embeds, plus the classic panel pieces.
+
+    With `grounding` (the paper's row of a ground_papers layer), the Foundations
+    boxes (the Foundations toggle, off by default as on every page) are its
+    concepts instead of the classic name-linker matches.
+    """
     jsvars, funcs, css, mathjax = classic_panel(copy.deepcopy(data), stem)
     nodes = data.get("nodes", []) or []
     edges = data.get("edges", []) or []
@@ -485,6 +543,7 @@ def paper_model(data, stem):
             "top": top_of.get(i, ""), "sub": sub_of.get(i, ""),
             "inside": n.get("inside", ""), "origin": n.get("origin", "paper"),
             "conf": n.get("confidence"), "imp": imp[i], "desc": ndesc[i],
+            "num": str(n.get("number") or ""),            # the paper's own number (Theorem 1.1), shown in the box head
             "res": 1 if (n.get("type") in RESULT_TYPES and not n.get("inside")) else 0,
             "nsteps": len(steps.get(i, [])),
         })
@@ -501,6 +560,11 @@ def paper_model(data, stem):
     ghost_list = [{"name": g, "refs": [r for r in refs if r in base_ids],
                    "book": 1 if gi in book else 0}
                   for gi, (g, refs) in enumerate(sorted(ghosts.items()))]
+    grounded = False
+    if grounding is not None:
+        ghost_list, ghost_refs = grounding_ghosts(grounding, nodes, base_ids, concepts_path)
+        jsvars["GHOSTS"] = ghost_refs
+        grounded = True
 
     md = metadata
     title = md.get("title") or stem
@@ -516,7 +580,7 @@ def paper_model(data, stem):
         "low_conf": va.LOW_CONF_THRESHOLD,
         "sections": sections, "subsections": subsections,
         "nodes": out_nodes, "edges": out_edges, "steps": steps,
-        "step_edges": step_edges, "main": main, "ghosts": ghost_list,
+        "step_edges": step_edges, "main": main, "ghosts": ghost_list, "grounded": grounded,
         "n_notes": len((jsvars.get("PAPER_INFO") or {}).get("extraction_notes") or []),
     }
     # The panel data without its duplicates (viewer.js restores them):
@@ -633,6 +697,26 @@ def target_path(out_dir, stem, suffix="_new"):
     return p
 
 
+def load_grounding(spec, stem, data):
+    """The paper's grounding row for --grounding (see main); None if not found."""
+    path = Path(spec.replace("{stem}", stem))
+    if not path.exists():
+        print("  grounding file not found: %s" % path)
+        return None
+    if path.suffix == ".jsonl":
+        ids = {stem, str((data.get("metadata") or {}).get("arxiv_id") or "")}
+        with path.open(encoding="utf-8") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                if row.get("paper_id") in ids:
+                    return row
+        print("  no grounding row for %s in %s" % (stem, path))
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("inputs", nargs="+", help="silver JSON file(s), directories or globs")
@@ -648,6 +732,14 @@ def main():
                          "SARANGA_LIBS_CDN is set, as on the public Space: no lib copy)")
     ap.add_argument("--lib-source", default=None,
                     help="folder holding already-downloaded library files")
+    ap.add_argument("--grounding", default=None,
+                    help="grounding of the paper(s) in the foundation concept layer: a JSON row of "
+                         "ground_papers ({paper_id, edges}), a .jsonl layer file (the row whose paper_id "
+                         "is the input's stem or arxiv id), or a path with {stem}; the Foundations boxes "
+                         "(the Foundations toggle) then show its concepts")
+    ap.add_argument("--concepts", default=None,
+                    help="concepts.json naming the grounding's concept ids "
+                         "(default: <FOUNDATION_DIR>/books_v7b/concepts.json)")
     args = ap.parse_args()
 
     files = va.resolve_paths(args.inputs)
@@ -668,7 +760,8 @@ def main():
             if not data.get("nodes"):
                 print("[%d/%d] %s: no nodes, skipped" % (k + 1, len(files), stem))
                 continue
-            model, pv, funcs, css, mj = paper_model(data, stem)
+            grounding = load_grounding(args.grounding, stem, data) if args.grounding else None
+            model, pv, funcs, css, mj = paper_model(data, stem, grounding, args.concepts)
             html = render_page(model, pv, funcs, css, mj, mode, lib_dir)
         except Exception as e:                                   # keep the batch going
             print("[%d/%d] %s: FAILED %s: %s" % (k + 1, len(files), stem, type(e).__name__, e))

@@ -296,9 +296,12 @@ window.dispId = window.dispId || function (id) {
       // name of their own: show "definition 7 (rule)" rather than the id twice.
       var dm = /^DIST_[A-Z_]+?(\d+)$/.exec(n.id);
       var nm = (n.name && n.name !== n.id) ? n.name : '';
+      // Box head: the paper's own number when it has one (Thm 1.1), else the node id (Thm 3).
+      var did = window.dispId ? dispId(n.id) : n.id;
+      if (n.num && window.dispId && /\d+$/.test(did)) did = did.replace(/\d+$/, n.num);
       var head = (MAIN[n.id] ? '\u2605 ' : '') +
         (dm ? n.type.replace(/_/g, ' ') + ' ' + dm[1] + ' (rule)' + (nm ? ': ' + nm : '')
-            : (window.dispId ? dispId(n.id) : n.id) + ': ' + (nm || n.type));
+            : did + ': ' + (nm || n.type));
       var extra = n.nsteps ? (open ? '\u25be proof open (' + n.nsteps + ' steps)' : '\u25b8 proof: ' + n.nsteps + ' step' + (n.nsteps > 1 ? 's' : '')) : '';
       var b = box(head, n.short, extra, n.imp, n.imp >= 4 ? 4 : 3);
       var d = { id: n.id, kind: 'node', type: n.type, parent: par,
@@ -385,10 +388,18 @@ window.dispId = window.dispId || function (id) {
       ? reduce(regular.filter(function (r) { return !r.order && !(r.e && (r.e.back || r.e.mention)); }))
       : {};
     var nEdges = 0;
+    // A node whose only shown edges are mentions (its supports are hidden, e.g.
+    // cited nodes) would float as an isolated component at the top left; let a
+    // mention edge place such a node below the node that mentions it.
+    var hasLay = {};
+    regular.forEach(function (r) {
+      var e = r.e || {};
+      if (!hidden[r.key] && !(e.back || e.mention)) { hasLay[r.s] = true; hasLay[r.t] = true; }
+    });
     regular.forEach(function (r) {
       if (hidden[r.key]) return;
       var e = r.e || {}, cls = [];
-      var lay = !(e.back || e.mention);
+      var lay = !(e.back || e.mention) || (e.mention && !e.back && !(hasLay[r.s] && hasLay[r.t]));
       if (r.order) cls.push('order');
       if (e.back) cls.push('back');
       if (e.mention) cls.push('mention');
@@ -929,7 +940,7 @@ window.dispId = window.dispId || function (id) {
 
   // ── Controls ──────────────────────────────────────────────────────────
   var TOGGLES = [
-    ['ghosts', 'Foundations', function () { return G.ghosts.length; }, 'External results from the foundation graph that nodes rely on'],
+    ['ghosts', 'Foundations', function () { return G.ghosts.length; }, G.grounded ? 'Textbook and ProofWiki concepts the nodes are grounded to' : 'External results from the foundation graph that nodes rely on'],
     ['aux', 'Examples & Remarks', function () { return G.nodes.filter(function (n) { return AUX[n.type]; }).length; }, ''],
     ['ext', 'Cited Results', function () { return G.nodes.filter(function (n) { return n.origin === 'external'; }).length; }, 'Results the paper cites rather than proves (dashed boxes)'],
     ['low', 'Low-confidence edges', function () { return G.edges.filter(function (e) { return e.low; }).length; }, ''],
