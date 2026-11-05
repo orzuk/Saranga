@@ -1391,7 +1391,7 @@ window.dispId = window.dispId || function (id) {
     var lastTap = null;
     cy.on('tap', 'node', function (ev) {
       // A tap on a node inside a compound bubbles up to the compound: once only.
-      if (lastTap === ev.originalEvent) return;
+      if (ev.originalEvent && lastTap === ev.originalEvent) return;   // a programmatic tap has none
       lastTap = ev.originalEvent;
       var n = ev.target, kind = n.data('kind');
       if (kind === 'secbox') { S.open[n.id()] = true; S.openOrder.push(n.id()); openSubsIfSmall(n.id()); render(null, n.id()); return; }
@@ -1447,6 +1447,17 @@ window.dispId = window.dispId || function (id) {
       function () { S.focus = G.main.length ? { mode: 'main' } : null; },
       function () { S.focus = null; S.tred = true; },
       function () { S.tred = false; Object.keys(S.show).forEach(function (k) { S.show[k] = true; }); },
+      function () {                      // a tap on a foundation box and on a definition, through the tap handler
+        var p = document.getElementById('detail-panel');
+        var g = cy.nodes('[kind = "ghost"]')[0];
+        var d = cy.nodes().filter(function (n) { return NODE[n.id()] && NODE[n.id()].type === 'definition'; })[0];
+        [g, d].forEach(function (n) {
+          if (!n) return;
+          closePanel(); n.emit('tap');
+          if (p.className !== 'open') throw new Error('tap on ' + n.id() + ' left the panel closed');
+        });
+        closePanel();
+      },
       function () { S.show.ghosts = false; S.level = 'overview'; },
       function () { var g = G.sections[0]; if (g) { S.open[g.id] = true; openSubsIfSmall(g.id); } },
       function () { S.level = 'overview'; S.open = {}; var g = G.sections[0]; if (g) { S.open[g.id] = true; S.openOrder.push(g.id); } },
@@ -1464,6 +1475,33 @@ window.dispId = window.dispId || function (id) {
       try { steps[i](); } catch (err) { console.log('V2_SELFTEST error step=' + i + ' ' + err.message); return; }
       render(function () { next(i + 1); });
     })(0);
+  }
+
+  // #mousetest=1: synthetic mouse presses on a foundation box and a paper box (debug).
+  function mousetest() {
+    S.show.ghosts = true; S.level = 'full';
+    render(function () {
+      var canvas = cy.container().querySelector('canvas:last-child') || cy.container();
+      function press(n, jitter, label) {
+        var bb = n.renderedBoundingBox(), cr = cy.container().getBoundingClientRect();
+        var x = cr.left + (bb.x1 + bb.x2) / 2, y = cr.top + (bb.y1 + bb.y2) / 2;
+        var p0 = JSON.stringify(n.position());
+        var top = document.elementFromPoint(x, y);
+        function ev(type, tgt, dx) { tgt.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x + (dx || 0), clientY: y, button: 0, buttons: type === 'mouseup' ? 0 : 1, view: window })); }
+        ev('mousedown', canvas); if (jitter) ev('mousemove', window, jitter); ev('mouseup', window, jitter);
+        var panel = document.getElementById('detail-panel');
+        console.log('V2_MOUSETEST ' + label + ' jitter=' + jitter + ' top=' + (top ? top.tagName + '#' + top.id + '.' + top.className : 'none') +
+          ' panel=' + (panel.className || 'closed') + ' grabbed=' + n.grabbed() + ' moved=' + (JSON.stringify(n.position()) !== p0) + ' pos=' + p0);
+        ev('mousemove', window, 40);
+        console.log('V2_MOUSETEST ' + label + ' after-move grabbed=' + n.grabbed() + ' moved=' + (JSON.stringify(n.position()) !== p0));
+        closePanel();
+      }
+      var g = cy.nodes('[kind = "ghost"]')[0], r = cy.nodes().filter(function (n) { return NODE[n.id()]; })[0];
+      if (!g) { console.log('V2_MOUSETEST no ghost'); return; }
+      cy.fit(g.union(r), 40);
+      press(r, 0, 'paper'); press(g, 0, 'ghost'); press(r, 2, 'paper'); press(g, 2, 'ghost');
+      console.log('V2_MOUSETEST done');
+    });
   }
 
   // State from the URL hash, e.g. #level=full&open=sec:3&proof=TP2&focus=main&select=TP2
@@ -1506,6 +1544,7 @@ window.dispId = window.dispId || function (id) {
     buildControls();
     var after = sel ? function () { window.showDetail(sel); } : null;
     if (/(^|[#&])selftest=1/.test(location.hash)) after = selftest;
+    if (/(^|[#&])mousetest=1/.test(location.hash)) after = mousetest;
     render(after, hashFocus);
   }
   if (typeof cytoscape === 'undefined' || typeof ELK === 'undefined') {
