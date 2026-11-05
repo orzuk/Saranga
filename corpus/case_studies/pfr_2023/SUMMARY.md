@@ -89,7 +89,7 @@ Concepts: books_v7b concepts with ProofWiki. Each graph was grounded together wi
 
 | | grounded_to edges | Paper nodes | Concepts |
 |---|---|---|---|
-| LLM graph | 72 | 43 | 23 |
+| LLM graph | 71 | 43 | 22 |
 | Rules graph | 44 | 32 | 15 |
 
 LLM concepts, by number of paper nodes grounded to them:

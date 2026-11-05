@@ -38,7 +38,13 @@ _GENERIC = set("theorem lemma proposition corollary definition proof example rem
     "well defined", "well-defined", "uniquely determined", "if and only if", "such that",
     "without loss of generality", "left hand", "right hand", "left hand side", "right hand side",
     "last term", "less than or equal", "greater than or equal", "sufficient condition", "necessary condition",
-    "first order", "second order", "infinite length", "finite length"}
+    "first order", "second order", "infinite length", "finite length",
+    # how a text argues, not what it is about (a proof "by contradiction" does not rest on the concept)
+    "direct proof", "indirect proof", "proof by contradiction", "proof by induction", "proof by cases",
+    "mathematical induction", "strong induction", "induction hypothesis", "inductive step", "base case",
+    "contrapositive", "contradiction", "counterexample", "constructive proof", "existence proof",
+    "uniqueness proof", "argument", "statement", "conditional statement", "hypothesis", "conclusion",
+    "assumption", "axiom", "notation", "proof technique"}
 _ROMAN = {"i", "ii", "iii", "iv", "v", "vi"}            # "type II" (a domain in one book, a tail in a paper)
 _MAX_N = 6                                     # longest term, in words
 _EDGE_WORDS = set("of from to at in on by for with and or the a an between under over into onto than "

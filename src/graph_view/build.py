@@ -405,19 +405,105 @@ def _gid(s, t):
     return "edge_%s__to__%s" % (str(s).replace(" ", "_"), str(t).replace(" ", "_"))
 
 
-_TEXT_CMD = re.compile(r"\\(?:textbf|textit|emph|key|textsc|underline|index)\{([^{}]*)\}")
+def _book_registry():
+    """The foundation books registry rows (id, title, prepared source folder)."""
+    try:
+        reg = json.loads((Path(__file__).resolve().parents[1] / "structured_math" / "books" /
+                          "foundation_books.json").read_text(encoding="utf-8"))
+        rows = reg.get("books") if isinstance(reg, dict) else reg
+        return [b for b in rows or [] if isinstance(b, dict) and b.get("id")]
+    except Exception:
+        return []
 
 
-def plain_def(st):
-    """A textbook definition for the panel: text-mode markup to words, math kept for MathJax."""
-    st = re.sub(r"\\marginnote\{[^{}]*\}", "", st)
-    for _ in range(2):
-        st = _TEXT_CMD.sub(r"\1", st)
-    st = re.sub(r"\{\\(?:em|bf|it)\s+([^{}]*)\}", r"\1", st)
-    st = re.sub(r"'{3}([^']*)'{3}", r"\1", st)           # ProofWiki bold
-    st = re.sub(r"'{2}([^']*)'{2}", r"\1", st)             # ProofWiki italics
-    st = st.replace("\\par", " ").replace("\\\\", " ")
-    return re.sub(r"\s+", " ", st).strip()
+def _books_root():
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from config import FOUNDATION_DIR
+        return Path(FOUNDATION_DIR) / "books_v7b"
+    except Exception:
+        return None
+
+
+_BOOK_NODES, _BOOK_MACROS = {}, {}
+
+
+def _book_node(book, nid):
+    """A node of an assembled foundation book (full statement, genus, differentia)."""
+    if book not in _BOOK_NODES:
+        _BOOK_NODES[book] = {}
+        root = _books_root()
+        f = root / "assembled" / f"{book}.json" if root else None
+        if f and f.exists():
+            _BOOK_NODES[book] = {n["id"]: n for n in json.loads(f.read_text(encoding="utf-8")).get("nodes", [])}
+    return _BOOK_NODES[book].get(nid)
+
+
+def _book_macros(book, nid):
+    """The macros a book chapter defines (its prepared LaTeX preamble), read like a paper's."""
+    if book == "proofwiki":
+        return va.latex_macros.PROOFWIKI_MACROS
+    ch = nid.split(":")[0] if ":" in nid else ""
+    key = (book, ch)
+    if key not in _BOOK_MACROS:
+        root = _books_root()
+        row = next((b for b in _book_registry() if b["id"] == book), {})
+        pd, src_dir = row.get("prepared"), row.get("src")
+        macros = {}
+        # the book's own source macros (a PreTeXt macros.ptx / macros.xml), then the first chapter's
+        # preamble (a LaTeX book's \newcommands), then this chapter's: later definitions win
+        files = []
+        if src_dir:
+            sd = Path(__file__).resolve().parents[2] / "textbooks" / "source" / src_dir
+            files += sorted(sd.glob("**/macros.ptx")) + sorted(sd.glob("**/macros.xml")) if sd.exists() else []
+        if root and pd:
+            files += [root / "prepared" / pd / c for c in ("ch01.tex", f"{ch}.tex") if c != "ch01.tex" or ch != "ch01"]
+        for f in files:
+            if f.exists():
+                # the whole file: a prepared chapter may define its macros after \begin{document}
+                macros.update(va.latex_macros.read_definitions(f.read_text(encoding="utf-8", errors="replace")))
+        _BOOK_MACROS[key] = va.latex_macros.renderable(macros)
+    return _BOOK_MACROS[key]
+
+
+def _list_field(v):
+    """genus / differentia as the assembled books store them (a list, a string, or a list printed as a string)."""
+    if isinstance(v, list):
+        return [str(x) for x in v if x]
+    v = str(v or "").strip()
+    if v.startswith("[") and v.endswith("]"):
+        try:
+            import ast
+            return [str(x) for x in ast.literal_eval(v) if x]
+        except Exception:
+            pass
+    return [v] if v else []
+
+
+def concept_defs(concept, titles):
+    """The textbook definitions a concept is made of, one per book, rendered as the panel
+    renders a paper statement: the book's macros expanded, text commands to words, math kept
+    for MathJax (ProofWiki: its markup removed and its macros expanded). A member whose page
+    only transcludes sub-definitions (no text) is left out."""
+    defs, seen = [], set()
+    for m in concept.get("members", []):
+        book, nid = m.get("book") or "", m.get("node") or ""
+        if book in seen:
+            continue
+        n = _book_node(book, nid) or {}
+        text = n.get("raw_latex") or n.get("statement") or m.get("statement") or ""
+        if book == "proofwiki":
+            text = va.latex_macros.wiki_tex(text)
+        text = va.latex_macros.display_tex(va.latex_macros.normalize_for_mathtext(text, _book_macros(book, nid)))
+        text = re.sub(r"\s+", " ", text or "").strip()
+        if not re.search(r"[A-Za-z]{3}", re.sub(r"\$[^$]*\$", "", text)):
+            continue
+        seen.add(book)
+        genus = _list_field(n.get("genus"))
+        defs.append({"book": titles.get(book, book), "where": nid, "name": m.get("name") or n.get("name") or "",
+                     "statement": text, "genus": genus[0] if genus else "",
+                     "differentia": _list_field(n.get("differentia"))})
+    return defs
 
 
 def book_titles():
@@ -493,16 +579,8 @@ def grounding_ghosts(grounding, nodes, base_ids, concepts_path=None):
     ghost_defs = {}
     for k in order:
         c = recs.get(cid.get(k)) or {}
-        defs, seen = [], set()
-        for m in c.get("members", []):          # one definition per book, the statement as written there
-            st = (m.get("statement") or "").strip()
-            if not st or m.get("book") in seen:
-                continue
-            seen.add(m.get("book"))
-            defs.append({"book": titles.get(m.get("book"), m.get("book") or ""),
-                         "where": m.get("node") or "", "name": m.get("name") or "", "statement": plain_def(st)})
         ghost_defs[k] = {"id": cid.get(k, ""), "kind": c.get("kind") or "", "terms": sorted(terms[k]),
-                         "books": [titles.get(b, b) for b in c.get("books", [])], "defs": defs}
+                         "books": [titles.get(b, b) for b in c.get("books", [])], "defs": concept_defs(c, titles)}
     return ghost_list, {k: sorted(refs[k]) for k in order}, ghost_defs
 
 

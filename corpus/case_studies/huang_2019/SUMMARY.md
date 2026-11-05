@@ -20,6 +20,9 @@ Grounding note: `ground_papers` calls a term generic when more than 10% of the r
 weights confidence by idf, so one paper alone grounds nothing. The temp root therefore held the 100K v7
 bundles (`tier3_bundles/v7`, 99,988 papers, symlinked) plus the two Huang graphs under `math_CO/`, which
 reproduces the df background of the 100K grounding layer (342 generic terms, as in that run).
+Proof-discourse terms ("direct proof", "contrapositive", ...) were added to the extractor's generic list on
+2026-11-05 and the case files filtered accordingly (one edge each in the Huang files and the PFR LLM file);
+the 100K layer still carries them until it is rerun.
 
 ## Counts
 
@@ -29,7 +32,7 @@ reproduces the df background of the 100K grounding layer (342 generic terms, as 
 | Edges | 98: 86 uses, 7 proves, 2 generalizes, 1 specializes, 1 resolves, 1 illustrates | 45: 41 uses, 4 proves (8 parser, 37 learned) |
 | Level-1 by origin | 19 paper, 24 external | 40 paper, 4 external |
 | Edge basis (LLM) | 54 term, 20 inferred, 11 named, 10 ref, 3 syntax | |
-| Grounding | 41 edges, 29 nodes, 15 concepts | 30 edges, 21 nodes, 15 concepts |
+| Grounding | 40 edges, 28 nodes, 14 concepts | 29 edges, 20 nodes, 14 concepts |
 
 ## 1. The whole proof as a graph
 

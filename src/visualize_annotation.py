@@ -2624,6 +2624,9 @@ def generate_interactive_html(data, svg_path, html_path):
             "origin_citation": n.get("origin_citation", ""),
             "assumptions": n.get("assumptions", []),
             "conclusions": n.get("conclusions", []),
+            # a definition's structure (genus + differentia), shown as its reading
+            "genus": n.get("genus", ""),
+            "differentia": _as_list(n.get("differentia")),
             "proof_info": n.get("proof_info", []),
             "input": n.get("input", []),
             "output": n.get("output", []),
@@ -3030,6 +3033,10 @@ function showDetail(nodeId) {{
     eqsByCtx.statement.forEach(function(e) {{ h += eqBlock(e); }});
     h += '</div>';
   }}
+  if (d.type === 'definition') {{
+    var gl = defGloss(d);
+    if (gl) h += '<div class="detail-section"><h4>Reads as</h4><div style="font-size:13px;">' + gl + '</div></div>';
+  }}
   // Short summary: statement_short, or (older files) a statement_clean that
   // actually differs from the statement.
   var summary = d.statement_short || (d.statement_clean !== d.statement ? d.statement_clean : '');
@@ -3359,9 +3366,11 @@ function showGhostDetail(nameOrEl) {{
     if (gd.defs && gd.defs.length) {{
       h += '<div class="detail-section"><h4>Definition' + (gd.defs.length > 1 ? 's' : '') + '</h4>';
       gd.defs.forEach(function(d) {{
+        var gl = defGloss(d);
         h += '<div style="font-size:13px;padding:4px 0 6px 10px;border-left:3px solid #D7CCC8;margin-bottom:6px;">' +
              '<div style="font-size:11px;color:#8D6E63;margin-bottom:2px;">' + esc(d.book) + (d.where ? ' <span style="color:#aaa;">' + esc(d.where) + '</span>' : '') + '</div>' +
-             '<div>' + esc(d.statement) + '</div></div>';
+             '<div>' + esc(d.statement) + '</div>' +
+             (gl ? '<div style="font-size:12px;color:#555;margin-top:3px;">reads as ' + gl + '</div>' : '') + '</div>';
       }});
       h += '</div>';
     }} else {{
@@ -3388,6 +3397,14 @@ function toggleEqPanel(el) {{
   if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
 }}
 function esc(t) {{ return t ? t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;") : ""; }}
+// The structured reading of a definition, from its genus and differentia: "a matching: contains all nodes".
+function defGloss(d) {{
+  var g = d.genus; if (Array.isArray(g)) g = g.join(', ');
+  var df = (d.differentia || []).map(function (x) {{ return String(x); }}).filter(Boolean);
+  if (!g && !df.length) return '';
+  var head = g ? (/^(an?|the)\\s/i.test(String(g)) ? '' : 'a ') + esc(String(g)) : '';
+  return head + (head && df.length ? ': ' : '') + df.map(esc).join('; ');
+}}
 function escAttr(t) {{ return esc(String(t || "")).replace(/"/g, "&quot;"); }}
 // An equation node's statement is bare TeX (no $): display it as math.
 function eqTex(t) {{ t = String(t || "").trim(); if (!t || t.indexOf("$") >= 0) return esc(t); if (/^\\\\begin\\{{(equation|align|gather|multline|eqnarray|flalign|alignat)\\*?\\}}[\\s\\S]*\\\\end\\{{\\1\\*?\\}}$/.test(t)) return esc(t); t = t.replace(/\\\\(nonumber|notag)(?![A-Za-z])/g, ""); var top = t.replace(/\\\\begin\\{{([a-z]+\\*?)\\}}[\\s\\S]*?\\\\end\\{{\\1\\}}/g, ""); if (/&|\\\\\\\\/.test(top)) t = "\\\\begin{{aligned}}" + t + "\\\\end{{aligned}}"; return "$$" + esc(t) + "$$"; }}

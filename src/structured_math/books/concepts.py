@@ -212,13 +212,39 @@ def merge(g: dict, merges: list[list[str]]) -> dict:
     return g
 
 
+_HEADING = re.compile(r"=+[^=]*=+")
+
+
+def prune_stubs(g: dict) -> dict:
+    """Drop members whose statement holds no text: a ProofWiki page that only transcludes its
+    sub-definitions ("=== Definition 1 === === Definition 2 ==="). Ids and books are kept, so a
+    grounding layer built on the concepts stays valid."""
+    n = 0
+    for c in g["concepts"]:
+        keep = [m for m in c["members"] if re.search(r"[A-Za-z]{3}", _HEADING.sub("", m.get("statement") or ""))]
+        n += len(c["members"]) - len(keep)
+        c["members"] = keep
+    g["metadata"]["stub_members_pruned"] = g["metadata"].get("stub_members_pruned", 0) + n
+    return g
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out", default=str(ROOT / "concepts.json"))
+    ap.add_argument("--prune-stubs", metavar="CONCEPTS", help="drop text-less members from this concepts.json in place (a .bak is kept)")
     ap.add_argument("--min-sim", type=float, default=0.2)
     ap.add_argument("--candidates", help="write the groups for an LLM to judge to this file")
     ap.add_argument("--merges", help="a JSON list of concept-id lists to merge (the LLM's judgments)")
     a = ap.parse_args()
+    if a.prune_stubs:
+        f = Path(a.prune_stubs)
+        g = json.loads(f.read_text(encoding="utf-8"))
+        before = sum(len(c["members"]) for c in g["concepts"])
+        g = prune_stubs(g)
+        f.with_suffix(".json.bak").write_bytes(f.read_bytes())
+        f.write_text(json.dumps(g, ensure_ascii=False), encoding="utf-8")
+        print(before - sum(len(c["members"]) for c in g["concepts"]), "stub members dropped ->", f)
+        return
     books = [json.loads(f.read_text()) for f in sorted((ROOT / "assembled").glob("*.json"))]
     g = build(books, a.min_sim)
     if a.merges:

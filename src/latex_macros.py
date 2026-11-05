@@ -1240,7 +1240,7 @@ def _is_operator(form):
 
 
 _LOW_LEVEL = re.compile(r"\\(?:if[a-zA-Z]*|else|fi|usefont|fontencoding|selectfont|raise|lower|mathchoice|[hv]box|kern|"
-                        r"[hv]skip|setbox|csname|expandafter|relax|protect|scalebox|raisebox|rotatebox|reflectbox|"
+                        r"[hv]skip|setbox|csname|expandafter|relax|scalebox|raisebox|rotatebox|reflectbox|"
                         r"resizebox|CYR[A-Z]+)(?![a-zA-Z])|@")
 
 
@@ -1356,3 +1356,50 @@ def read_definitions(src, clean=True, spans=False):
     for k in [k for k, v in out.items() if re.fullmatch(r"\\%s\s*" % re.escape(k), v.get("expansion") or "")]:
         del out[k]
     return out
+
+
+# ===========================================================================
+# ProofWiki
+# ===========================================================================
+# The macros ProofWiki defines for MathJax, in read_definitions' format, so a ProofWiki
+# statement goes through normalize_for_mathtext like a paper's (\map f x -> f(x)).
+def _pw(expansion, arity=0):
+    return {"expansion": expansion, "kind": "notational", "arity": arity}
+
+
+PROOFWIKI_MACROS = {
+    "map": _pw(r"#1 \left({#2}\right)", 2), "struct": _pw(r"\left({#1}\right)", 1),
+    "set": _pw(r"\left\{ {#1} \right\}", 1), "paren": _pw(r"\left({#1}\right)", 1),
+    "tuple": _pw(r"\left({#1}\right)", 1), "sequence": _pw(r"\left\langle {#1} \right\rangle", 1),
+    "family": _pw(r"\left\langle {#1} \right\rangle", 1), "sqbrk": _pw(r"\left[{#1}\right]", 1),
+    "size": _pw(r"\left\lvert {#1} \right\rvert", 1), "cmod": _pw(r"\left\lvert {#1} \right\rvert", 1),
+    "card": _pw(r"\left\lvert {#1} \right\rvert", 1), "bigsize": _pw(r"\Big\lvert {#1} \Big\rvert", 1),
+    "norm": _pw(r"\left\lVert {#1} \right\rVert", 1), "floor": _pw(r"\left\lfloor {#1} \right\rfloor", 1),
+    "ceiling": _pw(r"\left\lceil {#1} \right\rceil", 1), "powerset": _pw(r"\mathcal P \left({#1}\right)", 1),
+    "closedint": _pw(r"\left[{#1 \,.\,.\, #2}\right]", 2), "openint": _pw(r"\left({#1 \,.\,.\, #2}\right)", 2),
+    "hointl": _pw(r"\left({#1 \,.\,.\, #2}\right]", 2), "hointr": _pw(r"\left[{#1 \,.\,.\, #2}\right)", 2),
+    "innerprod": _pw(r"\left\langle {#1}, {#2} \right\rangle", 2), "ideal": _pw(r"\left\langle {#1} \right\rangle", 1),
+    "divides": _pw(r"\mathrel{\backslash}"), "leadstoandfrom": _pw(r"\quad \Longleftrightarrow \quad"),
+    "RR": _pw(r"\mathbb R"), "NN": _pw(r"\mathbb N"), "ZZ": _pw(r"\mathbb Z"), "QQ": _pw(r"\mathbb Q"),
+    "CC": _pw(r"\mathbb C"), "FF": _pw(r"\mathbb F"), "BB": _pw(r"\mathbb B"), "LL": _pw(r"\mathcal L"),
+    "MM": _pw(r"\mathcal M"), "O": _pw(r"\mathcal O"), "Bbb": _pw(r"\mathbb{#1}", 1),
+    "rd": _pw(r"\mathrm d"), "d": _pw(r"\mathrm d"), "ds": _pw(r"\displaystyle"),
+}
+
+_WIKI_HEADING = re.compile(r"^\s*=+[^=\n]*=+\s*$", re.M)
+_WIKI_INDENT = re.compile(r"^[:;*#]+\s*", re.M)
+
+
+def wiki_tex(text):
+    """A ProofWiki statement as TeX text: wiki markup (bold, links, templates, headings, list
+    indents) removed by the scraper's own cleaner, line breaks folded into spaces."""
+    if not text:
+        return text
+    t = _WIKI_HEADING.sub(" ", str(text))
+    try:
+        from proofwiki_scraper import clean_wikitext
+        t = clean_wikitext(t)
+    except Exception:
+        t = re.sub("'{2,3}", "", t)
+    t = _WIKI_INDENT.sub("", t)
+    return re.sub(r"\s+", " ", t).strip()
