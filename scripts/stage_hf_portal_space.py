@@ -22,7 +22,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-SILVER = "corpus/silver/opus-5.5__v6/"     # LLM graphs; rules_v6/ holds the rule graphs
+SILVER = "corpus/silver/opus-5.5__v7/"     # LLM graphs; rules_units/ holds the rule graphs
 RULES = "extractors/rules/silver_v7__sentence_tagger__2026-10/"   # alg3, the "Your paper" rule-based extractor
 EDGES = "extractors/edges/silver_v7__edges_allpairs__2026-10/"    # its learned edges (alg3/edges.py)
 sys.path.insert(0, str(REPO / "src"))
@@ -61,7 +61,7 @@ def main(out):
     g = out / "silver_v6/graphs"
     g.mkdir(parents=True)
     build = [sys.executable, str(REPO / "src/graph_view/build.py")]
-    for d, suffix in ((SILVER, "_new"), (SILVER + "rules_v6/", "_rules")):
+    for d, suffix in ((SILVER, "_new"), (SILVER + "rules_units/", "_rules")):
         jsons = [str(REPO / f) for f in tracked if f.startswith(d) and f.endswith(".json") and "/" not in f[len(d):]]
         r = subprocess.run(build + jsons + ["-o", str(g), "--suffix", suffix],
                            capture_output=True, text=True)
