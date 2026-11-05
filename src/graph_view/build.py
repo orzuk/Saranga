@@ -669,7 +669,8 @@ def paper_model(data, stem, grounding=None, concepts_path=None):
         x = {"s": e["source"], "t": e["target"], "type": str(e.get("type") or "uses"),
              "conf": conf}
         for k, on in (("back", g in back), ("mention", e.get("mention") or g in mention), ("both", e.get("equivalence")),
-                      ("implied", g in implied), ("low", conf < va.LOW_CONF_THRESHOLD)):
+                      ("implied", g in implied), ("low", conf < va.LOW_CONF_THRESHOLD),
+                      ("lean", e.get("lean")), ("mismatch", e.get("mismatch"))):
             if on:
                 x[k] = 1
         out_edges.append(x)
@@ -736,6 +737,8 @@ def paper_model(data, stem, grounding=None, concepts_path=None):
         })
         if isinstance(n.get("pos"), list) and len(n["pos"]) >= 2:   # the box's place in the authors' drawing
             out_nodes[-1]["pos"] = n["pos"]
+        if isinstance(n.get("lean"), dict):                          # a Lean blueprint statement (merge_lean.py)
+            out_nodes[-1]["lean"] = n["lean"].get("status") or "node"
         tex = box_tex(va._statement_render_source(n) or body)     # raw_latex when it has TeX: statement may be de-TeX'd
         tex_name = box_tex(n.get("name") or "", 80)
         if tex or tex_name:
@@ -893,6 +896,22 @@ def target_path(out_dir, stem, suffix="_new"):
     return p
 
 
+def with_tex_macros(data, tex_path):
+    """The paper's \\newcommands (read from its source) resolved in every node text, as the
+    classic page does when the JSON carries metadata.macros; the metadata gets them too, so
+    the panel's own pass sees the same table."""
+    if not tex_path.exists():
+        print("  tex source not found: %s" % tex_path)
+        return data
+    macros = va.latex_macros.renderable(va.latex_macros.read_definitions(
+        tex_path.read_text(encoding="utf-8", errors="replace")))
+    md = data.setdefault("metadata", {})
+    if not md.get("macros"):
+        md["macros"] = macros
+        data["nodes"] = va._resolve_nodes(data["nodes"], macros)
+    return data
+
+
 def load_grounding(spec, stem, data):
     """The paper's grounding row for --grounding (see main); None if not found."""
     path = Path(spec.replace("{stem}", stem))
@@ -920,6 +939,9 @@ def main():
                     help="output folder (default: <input dir>/graphs)")
     ap.add_argument("--suffix", default="_new",
                     help="page name suffix: <id><suffix>.html (e.g. _rules for rule-based graphs)")
+    ap.add_argument("--tex", default=None,
+                    help="the paper's LaTeX source ({stem} allowed): its \\newcommands are expanded in boxes "
+                         "and panel when the JSON carries no macros")
     ap.add_argument("--standalone", action="store_true",
                     help="inline the libraries: one self-contained file per paper")
     ap.add_argument("--libs", choices=["local", "cdn"],
@@ -953,6 +975,8 @@ def main():
             data = json.loads(path.read_text(encoding="utf-8"))
             with contextlib.redirect_stdout(io.StringIO()):
                 data = va._normalize_schema(data, source_path=path)
+            if args.tex:
+                data = with_tex_macros(data, Path(args.tex.replace("{stem}", stem)))
             if not data.get("nodes"):
                 print("[%d/%d] %s: no nodes, skipped" % (k + 1, len(files), stem))
                 continue

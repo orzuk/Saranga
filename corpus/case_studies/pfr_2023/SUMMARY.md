@@ -8,6 +8,7 @@
 |---|---|
 | `corpus/silver/opus-5.5__v7_cases/pfr_2023.json` (+ `_new.html`) | LLM graph: frozen v7 prompt (sha `86dcfbecdc4d78a5`), extracted by a Claude Opus 5.5 agent, finalize 0 errors / 0 warnings |
 | `pfr_2023_rules.json` (+ `_new.html`) | Rules graph: alg3 (v7 sentence tagger + all-pairs edge model, acyclic) |
+| `pfr_2023_lean.json` (+ `_new.html`) | **One graph of paper and blueprint** (`scripts/merge_lean.py`, 2026-11-05): the LLM graph with the 84 core blueprint statements placed inside the paper result that states them, folklore and cited ones apart; see below |
 | `grounding_llm.json`, `grounding_rules.json` | `grounded_to` edges into the books_v7b + ProofWiki concept layer |
 | `blueprint_scores_llm.json`, `blueprint_scores_rules.json` | papers-vs-blueprint scorer (`scripts/gold_candidates/score_bp_papers.one`) |
 | `blueprint_manual_alignment.json` | Hand alignment of the blueprint's PFR core to the LLM graph |
@@ -176,6 +177,21 @@ Of the 60 blueprint dependencies between distinct aligned nodes, the LLM graph h
   - the existence of independent copies and of uniform distributions;
   - the concavity behind "by Jensen".
 - **The contrapositive is made explicit.** The blueprint's τ-decrement (`de-prop`) is stated as "τ-minimisers have d = 0". The paper states the direct form (Prop 2.1) and proves the contrapositive in prose.
+
+## One graph: the paper with its blueprint inside it
+
+`pfr_2023_lean_new.html` (built from `pfr_2023_lean.json`, the output of `scripts/merge_lean.py`, with
+`--tex paper.tex` so the paper's macros render). The viewer's "Lean blueprint" toggle adds the 84 core
+blueprint statements (ancestors of `pfr`, proofs folded) as blue-edged boxes: the 65 the paper states (43 as
+a result, 22 inside a proof) sit inside the frame of that result, so a frame's size shows how many lemmas
+the formalisers cut one argument into (Proposition 2.1 and the first estimate hold 7 each, Theorem 1.8 four,
+Theorem 1.2 three). The 13 folklore statements (orange band) and 6 re-proved cited results (purple band) stand
+apart. A paper result with no Lean counterpart is greyed (the corollaries 1.4 to 1.7, the cited history, the
+heuristic plan). Blueprint dependencies are thin blue edges; an edge is drawn orange when the other side has
+no counterpart: 17 Lean dependencies run between paper results with no paper path between them, and 12 paper
+dependencies join results whose Lean statements have no Lean path. Lean statements follow their host into
+the Rests-on and Neighbourhood views, so one step from Proposition 2.1 shows its inputs with their Lean
+versions inside. The earlier two-panel page `pfr_2023_vs_blueprint.html` is superseded by this one.
 
 ## Three findings for the talk
 

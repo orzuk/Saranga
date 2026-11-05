@@ -58,7 +58,7 @@ window.dispId = window.dispId || function (id) {
   var S = {
     level: G.level, open: {}, proofs: {}, focus: null, k: 1, selected: null,
     show: { ext: false, extdef: true, aux: true, ghosts: false, low: true, implied: true,
-            back: true, mention: true, nested: true },
+            back: true, mention: true, nested: true, lean: true },
     tred: false, search: '', openOrder: [], ctx: null, ctxNow: true, ctxN: 0,
     authors: true                                    // gold pages: the authors' layout first, where the figure gives it
   };
@@ -135,12 +135,17 @@ window.dispId = window.dispId || function (id) {
 
   // ── Visibility ────────────────────────────────────────────────────────
   function level() { return S.level === 'overview' && S.focus ? 'full' : S.level; }
+  // Paper nodes that hold a Lean statement (the merged paper + blueprint graph, merge_lean.py).
+  var HAS_LEAN = { any: false };
+  G.nodes.forEach(function (n) { if (n.lean) { HAS_LEAN.any = true; if (n.inside) HAS_LEAN[n.inside] = true; } });
 
   function shownBase(n) {
     if (n.origin === 'external' && !(n.type === 'definition' ? S.show.extdef : S.show.ext)) return false;
     if (AUX[n.type] && !S.show.aux) return false;
-    if (n.inside && !S.show.nested) return false;
-    if (level() === 'results' && !n.res) return false;
+    if (n.lean && !S.show.lean) return false;
+    if (n.lean && n.inside && NODE[n.inside] && !shownBase(NODE[n.inside])) return false;   // with its host
+    if (n.inside && !n.lean && !S.show.nested) return false;
+    if (level() === 'results' && !n.res && !n.lean) return false;
     return true;
   }
 
@@ -266,7 +271,10 @@ window.dispId = window.dispId || function (id) {
     var lv = level(), els = [], nodesOut = {};
     var base = G.nodes.filter(shownBase);
     var fset = focusSet(base);
-    if (fset) base = base.filter(function (n) { return fset[n.id]; });
+    if (fset) {
+      base.forEach(function (n) { if (n.lean && n.inside && fset[n.inside]) fset[n.id] = true; });   // with its host
+      base = base.filter(function (n) { return fset[n.id]; });
+    }
     var shown = {};
     base.forEach(function (n) { shown[n.id] = true; });
 
@@ -347,7 +355,7 @@ window.dispId = window.dispId || function (id) {
     function headOf(n) {
       var dm = /^DIST_[A-Z_]+?(\d+)$/.exec(n.id);
       var nm = (n.name && n.name !== n.id) ? n.name : '';
-      var did = dispNum(n.id);                           // the paper's number (Thm 1.1) when the node has one
+      var did = n.lean ? 'Lean' : dispNum(n.id);        // the paper's number (Thm 1.1) when the node has one
       return { nm: nm, did: did, head: (MAIN[n.id] ? '\u2605 ' : '') +
         (dm ? n.type.replace(/_/g, ' ') + ' ' + dm[1] + ' (rule)' + (nm ? ': ' + nm : '') : did + ': ' + (nm || n.type)) };
     }
@@ -381,6 +389,8 @@ window.dispId = window.dispId || function (id) {
         hc: c.header, bc: c.body, band_c: mix(c.header, 0.38), imp: n.imp,
         ext: n.origin === 'external' ? 1 : 0, main: MAIN[n.id] ? 1 : 0,
         label: b.label, w: b.w, h: b.h, fs: b.fs, band: b.band };
+      if (n.lean) d.lean = n.lean;                                   // a Lean blueprint statement: its status
+      else if (HAS_LEAN.any && S.show.lean && n.origin !== 'external' && !AUX[n.type] && !n.inside && !HAS_LEAN[n.id]) d.nolean = 1;
       if (n.pos) d.pos = n.pos;          // [x, y, drawing]: where the authors drew it
       if (n.tex) {                       // typeset by MathJax in the math layer, not on the canvas
         d.tex = 1;
@@ -479,6 +489,8 @@ window.dispId = window.dispId || function (id) {
       if (e.low) cls.push('low');
       if (e.both) cls.push('both');                   // drawn <=> by the authors: equivalent statements
       if (r.type === 'resolves') cls.push('resolves');
+      if (e.lean) cls.push('lean');                   // a dependency of the Lean blueprint
+      if (e.mismatch) cls.push('mismatch');           // the other side has no counterpart
       els.push({ group: 'edges', classes: cls.join(' '), data: { id: r.key, source: r.s, target: r.t,
         etype: r.type, color: G.edge_colors[r.type] || G.default_edge_color, lay: lay ? 1 : 0,
         conf: e.conf } });
@@ -533,6 +545,13 @@ window.dispId = window.dispId || function (id) {
     { selector: 'node[bc]', style: { 'background-color': 'data(bc)' } },
     { selector: 'node[hc]', style: { 'border-color': 'data(hc)' } },
     { selector: 'node[ext = 1]', style: { 'border-style': 'dashed', 'border-width': 2, 'background-opacity': 0.9 } },
+    // The Lean blueprint layer: its statements blue-edged; folklore and cited ones apart in their own colours;
+    // a paper result with no Lean counterpart greyed with a double border.
+    { selector: 'node[lean = "node"], node[lean = "inside"]', style: { 'border-color': '#1565C0', 'border-width': 2.2 } },
+    { selector: 'node[lean = "implicit"]', style: { 'background-color': '#FFF3E0', 'border-color': '#EF6C00', 'border-width': 2.5 } },
+    { selector: 'node[lean = "cited"]', style: { 'background-color': '#F3E5F5', 'border-color': '#6A1B9A', 'border-width': 2.5, 'border-style': 'dashed' } },
+    { selector: 'node[lean = "unaligned"]', style: { 'background-color': '#ECEFF1', 'border-color': '#B71C1C', 'border-width': 2.5 } },
+    { selector: 'node[nolean = 1]', style: { 'background-color': '#ECEFF1', 'border-color': '#90A4AE', 'border-style': 'double', 'border-width': 4 } },
     { selector: 'node[main = 1]', style: { 'border-width': 3.5, 'underlay-color': '#FFD54F', 'underlay-opacity': 0.55, 'underlay-padding': 5, 'underlay-shape': 'round-rectangle' } },
     // #mark=ID,ID[&markc=#hex]: circle nodes (e.g. the ones another extraction missed)
     { selector: 'node.marked', style: { 'underlay-color': 'data(mk)', 'underlay-opacity': 0.9, 'underlay-padding': 7, 'underlay-shape': 'round-rectangle' } },
@@ -588,6 +607,8 @@ window.dispId = window.dispId || function (id) {
       'line-style': 'dashed', 'line-dash-pattern': [8, 6] } },
     { selector: 'edge.ghostbook', style: { 'line-color': '#8D6E63', 'target-arrow-color': '#8D6E63', 'width': 1,
       'line-style': 'dashed', 'line-dash-pattern': [3, 3] } },
+    { selector: 'edge.lean', style: { 'line-color': '#1565C0', 'target-arrow-color': '#1565C0', 'width': 1.2, 'opacity': 0.75 } },
+    { selector: 'edge.mismatch', style: { 'line-color': '#E65100', 'target-arrow-color': '#E65100', 'width': 2.6, 'opacity': 1 } },
     { selector: 'edge.hl', style: { 'width': 3.2, 'opacity': 1, 'z-index': 999 } },
     { selector: 'edge.summary.hl', style: { 'width': 'data(wd)', 'line-color': '#37474F', 'target-arrow-color': '#37474F' } },
     { selector: 'node.hl', style: { 'border-width': 3 } }
@@ -754,6 +775,10 @@ window.dispId = window.dispId || function (id) {
     paintNodes();
   }
 
+  // Body and band colours of the Lean layer: a statement the paper never writes down, one it only
+  // cites, one the hand alignment missed, and a paper result with no Lean counterpart.
+  var LEAN_FILL = { implicit: ['#FFFFFF', '#FFB74D'], cited: ['#FFFFFF', '#BA68C8'],
+                    unaligned: ['#FFFFFF', '#E57373'], nolean: ['#ECEFF1', '#CFD8DC'] };
   function paintNodes() {
     cy.batch(function () {
       cy.nodes().forEach(function (n) {
@@ -761,6 +786,8 @@ window.dispId = window.dispId || function (id) {
         var band = n.data('band') || 30, bc = n.data('bc') || '#F4F6F7';
         var hc = n.data('band_c') || mix(n.data('hc') || '#546E7A', 0.25);
         if (n.data('kind') === 'secbox') hc = '#CFD8DC';
+        var lk = LEAN_FILL[n.data('nolean') ? 'nolean' : n.data('lean')];     // the Lean layer's own fills
+        if (lk) { bc = lk[0]; hc = lk[1]; }
         n.style({ 'background-gradient-stop-colors': [hc, hc, bc, bc].join(' '),
                   'background-gradient-stop-positions': '0 ' + band + ' ' + band + ' 100' });
       });
@@ -1031,7 +1058,8 @@ window.dispId = window.dispId || function (id) {
     ['implied', 'Implied edges', function () { return G.edges.filter(function (e) { return e.implied; }).length; }, 'Edges also reachable by a longer path, in the whole graph (classic)'],
     ['back', 'Backward edges', function () { return G.edges.filter(function (e) { return e.back; }).length; }, 'Dependencies that point against paper order (dash-dotted)'],
     ['mention', 'Mentions', function () { return G.edges.filter(function (e) { return e.mention; }).length; }, 'References that do not rely on the source (thin, light dashes)'],
-    ['nested', 'Nested results', function () { return G.nodes.filter(function (n) { return n.inside; }).length; }, 'Results stated inside a proof or another result']
+    ['nested', 'Nested results', function () { return G.nodes.filter(function (n) { return n.inside && !n.lean; }).length; }, 'Results stated inside a proof or another result'],
+    ['lean', 'Lean blueprint', function () { return G.nodes.filter(function (n) { return n.lean; }).length; }, 'The statements of the Lean blueprint: inside the paper result that states them, apart when the paper never states them (folklore, orange) or only cites them (purple); a paper result with no Lean counterpart is greyed']
   ];
 
   function buildControls() {
@@ -1188,6 +1216,14 @@ window.dispId = window.dispId || function (id) {
     h += legendLine('#7F8C8D', 2, '1,1.5', 'stated inside');
     h += '<div class="legend-item"><div class="legend-color" style="background:#fff;border:3px solid #C0392B;box-shadow:0 0 0 3px #FFE082;"></div>&#9733; main result</div>';
     h += '<div class="legend-item"><div class="legend-color" style="background:#fff;border:1.5px dashed #777;"></div>cited (external)</div>';
+    if (HAS_LEAN.any) {
+      h += '<div class="legend-item" style="margin-left:12px;"><div class="legend-color" style="background:#fff;border:2px solid #1565C0;"></div>Lean statement</div>';
+      h += '<div class="legend-item"><div class="legend-color" style="background:#fff;border:2px solid #EF6C00;"></div>Lean only: never stated in the paper</div>';
+      h += '<div class="legend-item"><div class="legend-color" style="background:#fff;border:2px dashed #6A1B9A;"></div>Lean only: cited by the paper</div>';
+      h += '<div class="legend-item"><div class="legend-color" style="background:#ECEFF1;border:3px double #90A4AE;"></div>no Lean counterpart</div>';
+      h += legendLine('#1565C0', 1.5, '', 'Lean dependency');
+      h += legendLine('#E65100', 2.5, '', 'dependency the other side lacks');
+    }
     h += '<div class="legend-item" title="Box size grows with importance: how much of the paper builds on the node">box size = importance</div>';
     document.getElementById('legend').innerHTML = h;
   }
