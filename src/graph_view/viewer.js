@@ -173,6 +173,21 @@ window.dispId = window.dispId || function (id) {
         });
         front = nxt;
       }
+      // Definitions are free: the step count bounds results, and every kept node
+      // pulls in the definitions its statement needs (and theirs), so a bounded
+      // view can be read on its own. Not for 'down': definitions are upstream.
+      if (limit && S.focus.mode === 'up') {
+        var dfront = Object.keys(keep);
+        while (dfront.length) {
+          var dnxt = [];
+          dfront.forEach(function (x) {
+            (adj.up[x] || []).forEach(function (p) {
+              if (!keep[p] && NODE[p] && NODE[p].type === 'definition') { keep[p] = true; dnxt.push(p); }
+            });
+          });
+          dfront = dnxt;
+        }
+      }
       return keep;
     }
     // neighbourhood: k steps up and k steps down, over every shown edge
@@ -1232,7 +1247,7 @@ window.dispId = window.dispId || function (id) {
     var n = NODE[id], acts = '';
     if (n && n.nsteps) acts += '<button data-act="proof">' + (S.proofs[id] ? 'Close proof' : 'Open proof (' + n.nsteps + ' steps)') + '</button>';
     var ks = S.k === 0 ? '\u221E' : S.k;
-    if (n) acts += '<button data-act="up" title="What this node rests on, the number of steps set in the toolbar (1 = its immediate inputs, \u221E = all the way)">\u22EF\u2192\u25CF Rests on (' + ks + ')</button>' +
+    if (n) acts += '<button data-act="up" title="What this node rests on, the number of steps set in the toolbar (1 = its immediate inputs, \u221E = all the way); the definitions those need come along at any step">\u22EF\u2192\u25CF Rests on (' + ks + ')</button>' +
       '<button data-act="down" title="What rests on this node, the number of steps set in the toolbar (\u221E = all the way)">\u25CF\u2192\u22EF Depends on it (' + ks + ')</button>' +
       '<button data-act="nbhd" title="What it uses and what uses it, the number of steps set in the toolbar, each way">\u2192\u25CF\u2192 Neighbourhood (' + ks + ')</button>';
     if (n) acts += '<span style="font-size:11px;color:#777;align-self:center;">importance ' + n.imp.toFixed(1) +
