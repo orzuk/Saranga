@@ -70,19 +70,24 @@ window.dispId = window.dispId || function (id) {
 
   function wrap(text, px, maxW, maxLines) {
     ctx.font = px + 'px ' + FONT;
-    var words = String(text || '').split(/\s+/).filter(Boolean), lines = [], cur = '';
-    for (var i = 0; i < words.length; i++) {
-      var w = words[i];
-      while (ctx.measureText(w).width > maxW && w.length > 4) {        // very long token
-        var cut = Math.max(3, Math.floor(w.length * maxW / ctx.measureText(w).width) - 1);
-        if (cur) { lines.push(cur); cur = ''; }
-        lines.push(w.slice(0, cut)); w = w.slice(cut);
+    // A token marked by unbreakMath is a formula: typeset wider than the same characters in text.
+    var mw = function (s) { return ctx.measureText(s).width * (s.indexOf('\u2060') >= 0 ? 1.7 : 1); };
+    var lines = [];
+    String(text || '').split('\n').forEach(function (para) {           // "\n": a display formula on its own line
+      var words = para.split(/\s+/).filter(Boolean), cur = '';
+      for (var i = 0; i < words.length; i++) {
+        var w = words[i];
+        while (mw(w) > maxW && w.length > 4) {        // very long token
+          var cut = Math.max(3, Math.floor(w.length * maxW / mw(w)) - 1);
+          if (cur) { lines.push(cur); cur = ''; }
+          lines.push(w.slice(0, cut)); w = w.slice(cut);
+        }
+        var t = cur ? cur + ' ' + w : w;
+        if (mw(t) <= maxW) cur = t;
+        else { if (cur) lines.push(cur); cur = w; }
       }
-      var t = cur ? cur + ' ' + w : w;
-      if (ctx.measureText(t).width <= maxW) cur = t;
-      else { if (cur) lines.push(cur); cur = w; }
-    }
-    if (cur) lines.push(cur);
+      if (cur) lines.push(cur);
+    });
     if (lines.length > maxLines) {
       lines = lines.slice(0, maxLines);
       var last = lines[maxLines - 1];
@@ -98,9 +103,11 @@ window.dispId = window.dispId || function (id) {
     infty: '\u221e', cdot: '\u00b7', Delta: '\u0394', Gamma: '\u0393', lambda: '\u03bb', alpha: '\u03b1', beta: '\u03b2',
     epsilon: '\u03b5', sum: '\u2211', in: '\u2208', subseteq: '\u2286', to: '\u2192', max: 'max', min: 'min', deg: 'deg', log: 'log' };
   function unbreakMath(t) {
-    return String(t || '').replace(/\$\$?([\s\S]*?)\$\$?/g, function (_, m) {
-      return m.replace(/\\([a-zA-Z]+)/g, function (_, c) { return TEXSYM[c] || ''; })
-              .replace(/[{}^_]/g, '').replace(/\s+/g, '\u2060');
+    return String(t || '').replace(/(\$\$|\\\[)([\s\S]*?)(\$\$|\\\])|\$([^$]*)\$/g, function (_, o, disp, c, inl) {
+      var m = (disp !== undefined ? disp : inl || '').replace(/\\([a-zA-Z]+)/g, function (_, c) { return TEXSYM[c] || ''; })
+              .replace(/[{}^_\\]/g, '').replace(/\s+/g, '\u2060');
+      m = '\u2060' + m + '\u2060';                       // marked as a formula for wrap()
+      return disp !== undefined ? '\n' + m + '\n' : m;    // display math: its own line
     });
   }
 
