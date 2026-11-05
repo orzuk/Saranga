@@ -3350,7 +3350,26 @@ function showGhostDetail(nameOrEl) {{
   var panel = document.getElementById("detail-panel");
   var refs = GHOSTS[name] || [];
   var h = '<h3 style="margin:0 0 8px;font-size:16px;">' + esc(name) + '</h3>';
-  h += '<div style="font-size:12px;color:#795548;margin-bottom:10px;">External dependency (from Foundation Graph)</div>';
+  var gd = (typeof GHOST_DEFS !== 'undefined' && GHOST_DEFS[name]) || null;
+  if (gd) {{
+    // A grounded concept: the textbook definitions it is made of, each from its book.
+    h += '<div style="font-size:12px;color:#795548;margin-bottom:10px;">Foundation concept' + (gd.kind ? ' (' + esc(gd.kind) + ')' : '') +
+         (gd.books && gd.books.length ? ' in ' + gd.books.length + (gd.books.length > 1 ? ' sources' : ' source') : '') +
+         (gd.terms && gd.terms.length ? ' &middot; matched on &ldquo;' + gd.terms.map(esc).join('&rdquo;, &ldquo;') + '&rdquo;' : '') + '</div>';
+    if (gd.defs && gd.defs.length) {{
+      h += '<div class="detail-section"><h4>Definition' + (gd.defs.length > 1 ? 's' : '') + '</h4>';
+      gd.defs.forEach(function(d) {{
+        h += '<div style="font-size:13px;padding:4px 0 6px 10px;border-left:3px solid #D7CCC8;margin-bottom:6px;">' +
+             '<div style="font-size:11px;color:#8D6E63;margin-bottom:2px;">' + esc(d.book) + (d.where ? ' <span style="color:#aaa;">' + esc(d.where) + '</span>' : '') + '</div>' +
+             '<div>' + esc(d.statement) + '</div></div>';
+      }});
+      h += '</div>';
+    }} else {{
+      h += '<div style="font-size:12px;color:#888;margin-bottom:10px;">No definition text in the concept record.</div>';
+    }}
+  }} else {{
+    h += '<div style="font-size:12px;color:#795548;margin-bottom:10px;">External dependency (from Foundation Graph)</div>';
+  }}
   h += '<div class="detail-section"><h4>Referenced by</h4>';
   refs.forEach(function(nid) {{
     var d = DETAILS[nid];
@@ -3360,6 +3379,7 @@ function showGhostDetail(nameOrEl) {{
   h += '</div>';
   panel.innerHTML = h;
   panel.className = "open";
+  if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([panel]).catch(function () {{}});   // TeX in the definitions
 }}
 
 

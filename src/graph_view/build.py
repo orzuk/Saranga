@@ -405,19 +405,51 @@ def _gid(s, t):
     return "edge_%s__to__%s" % (str(s).replace(" ", "_"), str(t).replace(" ", "_"))
 
 
+_TEXT_CMD = re.compile(r"\\(?:textbf|textit|emph|key|textsc|underline|index)\{([^{}]*)\}")
+
+
+def plain_def(st):
+    """A textbook definition for the panel: text-mode markup to words, math kept for MathJax."""
+    st = re.sub(r"\\marginnote\{[^{}]*\}", "", st)
+    for _ in range(2):
+        st = _TEXT_CMD.sub(r"\1", st)
+    st = re.sub(r"\{\\(?:em|bf|it)\s+([^{}]*)\}", r"\1", st)
+    st = re.sub(r"'{3}([^']*)'{3}", r"\1", st)           # ProofWiki bold
+    st = re.sub(r"'{2}([^']*)'{2}", r"\1", st)             # ProofWiki italics
+    st = st.replace("\\par", " ").replace("\\\\", " ")
+    return re.sub(r"\s+", " ", st).strip()
+
+
+def book_titles():
+    """Book id -> short title, from the foundation books registry (ProofWiki added)."""
+    out = {"proofwiki": "ProofWiki"}
+    try:
+        reg = json.loads((Path(__file__).resolve().parents[1] / "structured_math" / "books" /
+                          "foundation_books.json").read_text(encoding="utf-8"))
+        rows = reg.get("books") if isinstance(reg, dict) else reg
+        for b in rows or []:
+            if isinstance(b, dict) and b.get("id"):
+                out[b["id"]] = b.get("title") or b["id"]
+    except Exception:
+        pass
+    return out
+
+
 def grounding_ghosts(grounding, nodes, base_ids, concepts_path=None):
     """Foundation boxes from a grounding layer (ground_papers output), one per concept.
 
     `grounding` is the paper's row of the layer: {"paper_id", "edges": [{source,
-    target (concept id), term, basis, confidence, concept_name?}]}. Concept names
-    missing from the edges are read from concepts.json (books_v7b). A source that
+    target (concept id), term, basis, confidence, concept_name?}]}. The concept
+    records (name, kind, and the textbook definitions that make up the concept,
+    each with its book) are read from concepts.json (books_v7b). A source that
     is not a base node (a proof, a step, an equation) is lifted to the result it
     belongs to, as the classic panel does for name-linker matches.
-    Returns (ghost_list, ghost_refs): the viewer's list and the panel's name->refs.
+    Returns (ghost_list, ghost_refs, ghost_defs): the viewer's list, the panel's
+    name->refs, and the panel's name->{id, kind, terms, defs:[{book, where, statement}]}.
     """
     by = {n["id"]: n for n in nodes}
-    names = {}
-    need = {e["target"] for e in grounding.get("edges", []) if not e.get("concept_name")}
+    names, recs = {}, {}
+    need = {e["target"] for e in grounding.get("edges", [])}
     if need:
         cp = Path(concepts_path) if concepts_path else None
         if cp is None:
@@ -431,6 +463,7 @@ def grounding_ghosts(grounding, nodes, base_ids, concepts_path=None):
             for c in json.loads(cp.read_text(encoding="utf-8")).get("concepts", []):
                 if c["id"] in need:
                     names[c["id"]] = c.get("name") or c["id"]
+                    recs[c["id"]] = c
 
     def lift(i):
         seen = set()
@@ -443,19 +476,34 @@ def grounding_ghosts(grounding, nodes, base_ids, concepts_path=None):
             i = n.get("parent_id") or n.get("parent_proof") or pv
         return i if i in base_ids else None
 
-    refs, terms = defaultdict(set), defaultdict(set)
+    refs, terms, cid = defaultdict(set), defaultdict(set), {}
     for e in grounding.get("edges", []):
         t = lift(e["source"])
         if not t:
             continue
         nm = e.get("concept_name") or names.get(e["target"]) or e["target"]
         refs[nm].add(t)
+        cid.setdefault(nm, e["target"])
         if e.get("term"):
             terms[nm].add(e["term"])
     order = sorted(refs, key=lambda k: (-len(refs[k]), k))
     ghost_list = [{"name": k, "refs": sorted(refs[k]), "book": 1,
                    "terms": sorted(terms[k])} for k in order]
-    return ghost_list, {k: sorted(refs[k]) for k in order}
+    titles = book_titles()
+    ghost_defs = {}
+    for k in order:
+        c = recs.get(cid.get(k)) or {}
+        defs, seen = [], set()
+        for m in c.get("members", []):          # one definition per book, the statement as written there
+            st = (m.get("statement") or "").strip()
+            if not st or m.get("book") in seen:
+                continue
+            seen.add(m.get("book"))
+            defs.append({"book": titles.get(m.get("book"), m.get("book") or ""),
+                         "where": m.get("node") or "", "name": m.get("name") or "", "statement": plain_def(st)})
+        ghost_defs[k] = {"id": cid.get(k, ""), "kind": c.get("kind") or "", "terms": sorted(terms[k]),
+                         "books": [titles.get(b, b) for b in c.get("books", [])], "defs": defs}
+    return ghost_list, {k: sorted(refs[k]) for k in order}, ghost_defs
 
 
 def paper_model(data, stem, grounding=None, concepts_path=None):
@@ -566,8 +614,9 @@ def paper_model(data, stem, grounding=None, concepts_path=None):
                   for gi, (g, refs) in enumerate(sorted(ghosts.items()))]
     grounded = False
     if grounding is not None:
-        ghost_list, ghost_refs = grounding_ghosts(grounding, nodes, base_ids, concepts_path)
+        ghost_list, ghost_refs, ghost_defs = grounding_ghosts(grounding, nodes, base_ids, concepts_path)
         jsvars["GHOSTS"] = ghost_refs
+        jsvars["GHOST_DEFS"] = ghost_defs
         grounded = True
 
     md = metadata
@@ -601,6 +650,8 @@ def paper_model(data, stem, grounding=None, concepts_path=None):
                 d.pop(k, None)
     panel_vars = {k: jsvars.get(k) for k in ("DETAILS", "ORPHANS", "GHOSTS",
                                              "PAPER_INFO", "FOLDED_HOST")} | {"ID_SHORT": ID_SHORT}
+    if grounded:
+        panel_vars["GHOST_DEFS"] = jsvars.get("GHOST_DEFS") or {}
     return model, panel_vars, funcs, css, mathjax
 
 
