@@ -3364,14 +3364,19 @@ function showGhostDetail(nameOrEl) {{
          (gd.books && gd.books.length ? ' in ' + gd.books.length + (gd.books.length > 1 ? ' sources' : ' source') : '') +
          (gd.terms && gd.terms.length ? ' &middot; matched on &ldquo;' + gd.terms.map(esc).join('&rdquo;, &ldquo;') + '&rdquo;' : '') + '</div>';
     if (gd.defs && gd.defs.length) {{
-      h += '<div class="detail-section"><h4>Definition' + (gd.defs.length > 1 ? 's' : '') + '</h4>';
-      gd.defs.forEach(function(d) {{
+      // The best-ranked definition (build.py def_rank) is shown; the other books' versions open on request.
+      var more = gd.defs.length - 1;
+      h += '<div class="detail-section"><h4>Definition' + (more ? ' <span style="font-weight:normal;color:#888;">(' + esc(gd.defs[0].book) + ')</span>' : '') + '</h4>';
+      gd.defs.forEach(function(d, i) {{
         var gl = defGloss(d);
-        h += '<div style="font-size:13px;padding:4px 0 6px 10px;border-left:3px solid #D7CCC8;margin-bottom:6px;">' +
+        h += '<div class="gdef' + (i ? ' gdef-more' : '') + '" style="font-size:13px;padding:4px 0 6px 10px;border-left:3px solid #D7CCC8;margin-bottom:6px;' + (i ? 'display:none;' : '') + '">' +
              '<div style="font-size:11px;color:#8D6E63;margin-bottom:2px;">' + esc(d.book) + (d.where ? ' <span style="color:#aaa;">' + esc(d.where) + '</span>' : '') + '</div>' +
              '<div>' + esc(d.statement) + '</div>' +
-             (gl ? '<div style="font-size:12px;color:#555;margin-top:3px;">reads as ' + gl + '</div>' : '') + '</div>';
+             (gl ? '<div style="font-size:12px;color:#555;margin-top:3px;">reads as ' + gl + '</div>' : '') +
+             (d.weak ? '<div style="font-size:11px;color:#B71C1C;margin-top:3px;">This sentence uses the term rather than defining it.</div>' : '') + '</div>';
       }});
+      if (more) h += '<a href="#" class="gdef-toggle" style="font-size:12px;color:#2471A3;" onclick="return toggleGhostDefs(this)">' +
+                     'Show all ' + gd.defs.length + ' sources</a>';
       h += '</div>';
     }} else {{
       h += '<div style="font-size:12px;color:#888;margin-bottom:10px;">No definition text in the concept record.</div>';
@@ -3392,6 +3397,14 @@ function showGhostDetail(nameOrEl) {{
 }}
 
 
+function toggleGhostDefs(a) {{
+  var sec = a.parentNode, open = a.textContent.indexOf('Show') === 0;
+  sec.querySelectorAll('.gdef-more').forEach(function (d) {{ d.style.display = open ? '' : 'none'; }});
+  a.textContent = open ? 'Show one source' : a.textContent.replace('Show one source', 'Show all');
+  if (open) {{ a.textContent = 'Show one source'; if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([sec]).catch(function () {{}}); }}
+  else a.textContent = 'Show all ' + sec.querySelectorAll('.gdef').length + ' sources';
+  return false;
+}}
 function toggleEqPanel(el) {{
   var panel = el.nextElementSibling;
   if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';

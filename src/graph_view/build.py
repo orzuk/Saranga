@@ -328,7 +328,7 @@ def importance_and_main(base_nodes, layout_edges, numbered):
 # ── Classic side panel, reused as-is ──────────────────────────────────────
 _PANEL_FUNCS = ("showDetail", "resetView", "toggleOrphans", "showGhostDetail",
                 "toggleEqPanel", "esc", "escAttr", "eqTex", "rigorBadge", "confBadge",
-                "nodeLink", "noteBlock", "toggleStepKids", "showPaperInfo", "defGloss")
+                "nodeLink", "noteBlock", "toggleStepKids", "showPaperInfo", "defGloss", "toggleGhostDefs")
 
 
 def _js_function(src, name):
@@ -480,7 +480,58 @@ def _list_field(v):
     return [v] if v else []
 
 
-def concept_defs(concept, titles):
+def _ods_code(text):
+    """Open Data Structures writes code tokens as #i#, #n#\\times#n#: inside math they become
+    \\mathtt, outside math a run of them is typeset as math."""
+    if "#" not in text:
+        return text
+    text = re.sub(r"#([^#$]{1,40})#", r"\\mathtt{\1}", text)
+    run = r"\\mathtt\{[^}]*\}(?:(?:\\times|\\cdot|\^|_|[0-9+\-*/=])+\\mathtt\{[^}]*\})*"
+    return va.latex_macros._outside_math(text, lambda u: re.sub(run, lambda m: "$" + m.group(0) + "$", u))
+
+
+_CONTEXT_PHRASES = re.compile(r"\b(in the following|in this (section|chapter|book|exercise)|exercises?|we (will|shall|now)|"
+                              r"recall|as (we )?(saw|defined)|presented as|can be represented)\b", re.I)
+
+
+def def_rank(d, concept_name, terms):
+    """How good a book's definition is as the one to show first: self-contained, readable, and
+    about the concept itself. Higher is better. Favours a statement whose subject is the bare
+    term ("A submatrix of A is ..." over "the submatrix A(i|j) is ..."), a recovered genus,
+    a moderate length; penalises leftover markup, context-dependent phrasing, and a very long
+    or very short text."""
+    words = re.sub(r"\$[^$]*\$", " MATH ", d["statement"] or "")      # a formula in the subject breaks the pattern
+    words = re.sub(r"\s+", " ", words).strip()
+    names = [t for t in {concept_name, d.get("name") or ""} | set(terms or []) if t]
+    score, defined = 0.0, False
+    low = words.lower()
+    for t in names:
+        tt = re.escape(t.strip().lower())
+        # "A submatrix of A is ...", "The absolute value or modulus of z is ..."
+        if re.search(r"\b(?:an?|the)\s+" + tt + r"s?\b\s+(?:(?:or|and)\s+\w+\s+)?(?:of\b[^.,;]{0,40})?\b(?:is|are|means)\b", low):
+            score += 3; defined = True; break
+        if re.search(r"\b" + tt + r"s?\b", low):
+            score = max(score, 1)
+            # a definition by formula or naming: "we define |x|, called the absolute value of x, by ..."
+            if re.search(r"\b(?:define[ds]?|denoted?|called|is said to be|:=)\b", low):
+                score += 2; defined = True; break
+    words = words.replace(" MATH ", " ")
+    if d.get("genus"):
+        score += 1
+    n = len(d["statement"] or "")
+    if n > 600: score -= 2
+    elif n > 350: score -= 1
+    elif n < 30: score -= 1
+    if re.search(r"#|\\marginnote|\\amp|\\key\b|\\protect|\\(?:begin|end)\{(?:itemize|enumerate|tabular)", d["statement"] or ""):
+        score -= 2
+    if _CONTEXT_PHRASES.search(words):            # tied to its surroundings ("In the following exercises, ...")
+        score -= 2
+    if d["statement"].count("$") > 24:              # a wall of formulas
+        score -= 1
+    return score, defined
+
+
+def concept_defs(concept, titles, terms=None):
     """The textbook definitions a concept is made of, one per book, rendered as the panel
     renders a paper statement: the book's macros expanded, text commands to words, math kept
     for MathJax (ProofWiki: its markup removed and its macros expanded). A member whose page
@@ -494,6 +545,7 @@ def concept_defs(concept, titles):
         text = n.get("raw_latex") or n.get("statement") or m.get("statement") or ""
         if book == "proofwiki":
             text = va.latex_macros.wiki_tex(text)
+        text = _ods_code(text)
         text = va.latex_macros.display_tex(va.latex_macros.normalize_for_mathtext(text, _book_macros(book, nid)))
         text = re.sub(r"\s+", " ", text or "").strip()
         if not re.search(r"[A-Za-z]{3}", re.sub(r"\$[^$]*\$", "", text)):
@@ -503,7 +555,12 @@ def concept_defs(concept, titles):
         defs.append({"book": titles.get(book, book), "where": nid, "name": m.get("name") or n.get("name") or "",
                      "statement": text, "genus": genus[0] if genus else "",
                      "differentia": _list_field(n.get("differentia"))})
-    return defs
+    # best first: the panel shows the first and keeps the rest behind "show all"
+    for d in defs:
+        d["rank"], defined = def_rank(d, concept.get("name") or "", terms)
+        if not defined:                   # the sentence uses the term rather than defining it
+            d["weak"] = True
+    return sorted(defs, key=lambda d: (-d["rank"], len(d["statement"])))     # ties: the shorter one
 
 
 def book_titles():
@@ -580,7 +637,7 @@ def grounding_ghosts(grounding, nodes, base_ids, concepts_path=None):
     for k in order:
         c = recs.get(cid.get(k)) or {}
         ghost_defs[k] = {"id": cid.get(k, ""), "kind": c.get("kind") or "", "terms": sorted(terms[k]),
-                         "books": [titles.get(b, b) for b in c.get("books", [])], "defs": concept_defs(c, titles)}
+                         "books": [titles.get(b, b) for b in c.get("books", [])], "defs": concept_defs(c, titles, terms[k])}
     return ghost_list, {k: sorted(refs[k]) for k in order}, ghost_defs
 
 

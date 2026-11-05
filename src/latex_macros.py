@@ -633,7 +633,7 @@ _DISPLAY_MATH = re.compile(r"(\\begin\{(equation|align|gather|multline|eqnarray|
 
 _INLINE_TIKZ = re.compile(r"\\tikz\b(?:\s*\[[^\]]*\])?\s*(?:\{(?:[^{}]|\{[^{}]*\})*\}|[^;$]*;)")
 _DIAGRAM_ENV = re.compile(r"\\begin\{(tikzpicture|tikzcd|picture|diagram|CD)\}.*?\\end\{\1\}", re.S)
-_DROP_ARG = re.compile(r"\\(?:label|index|footnote|footnotemark|marginpar|hypertarget|phantomsection)\s*(?:\[[^\]]*\])?\s*"
+_DROP_ARG = re.compile(r"\\(?:label|index|footnote|footnotemark|marginpar|marginnote|hypertarget|phantomsection)\s*(?:\[[^\]]*\])?\s*"
                        r"(?:\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})?")
 
 
@@ -647,6 +647,7 @@ def display_tex(text):
     if not text:
         return text
     t = _DROP_ARG.sub(" ", str(text))
+    t = re.sub(r"\\amp(?![A-Za-z])", "&", t)                   # PreTeXt's alignment ampersand
     t = _DIAGRAM_ENV.sub(" [diagram] ", t)
     t = _INLINE_TIKZ.sub(" [figure] ", t)
     if "\\xymatrix" in t:                                 # a formula holding an xymatrix: the whole formula
