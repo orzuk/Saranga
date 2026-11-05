@@ -1341,10 +1341,11 @@ import graph_checks  # noqa: E402
 _ID_RE = _re.compile(r"^(%s)(\d+)$" % "|".join(sorted(_ID_SHORT, key=len, reverse=True)))
 
 
-def display_id(nid):
-    """`TP5` -> "Thm 5", `PSP12` -> "Step 12" (display only; same table as dispId in the JS)."""
+def display_id(nid, number=None):
+    """`TP5` -> "Thm 5", `PSP12` -> "Step 12" (display only; same table as dispId in the JS).
+    With the paper's own number, "Thm 1.1" (what a \\ref to the node should read as)."""
     m = _ID_RE.match(str(nid))
-    return "%s %s" % (_ID_SHORT[m.group(1)], m.group(2)) if m else str(nid)
+    return "%s %s" % (_ID_SHORT[m.group(1)], number or m.group(2)) if m else str(nid)
 
 
 def _resolve_nodes(nodes, macros):
@@ -1372,7 +1373,7 @@ def _resolve_nodes(nodes, macros):
     for n in nodes:
         for k in str(n.get("label") or "").split(","):
             if k.strip() and n.get("id"):
-                labels.setdefault(k.strip(), display_id(n["id"]))
+                labels.setdefault(k.strip(), display_id(n["id"], n.get("number")))
 
     def _resolve(v):
         if isinstance(v, str):
@@ -3046,14 +3047,14 @@ function showDetail(nodeId) {{
   // Assumptions + inline assumption equations
   if ((d.assumptions && d.assumptions.length > 0) || eqsByCtx.assumption.length > 0) {{
     h += '<div class="detail-section"><h4>Assumptions</h4>';
-    if (d.assumptions) d.assumptions.forEach(function(a) {{ h += '<div style="font-size:13px;padding:2px 0 2px 10px;">&bull; ' + esc(a) + '</div>'; }});
+    if (d.assumptions) d.assumptions.forEach(function(a) {{ h += listItem(a); }});
     eqsByCtx.assumption.forEach(function(e) {{ h += eqBlock(e); }});
     h += '</div>';
   }}
   // Conclusions + inline conclusion equations
   if ((d.conclusions && d.conclusions.length > 0) || eqsByCtx.conclusion.length > 0) {{
     h += '<div class="detail-section"><h4>Conclusions</h4>';
-    if (d.conclusions) d.conclusions.forEach(function(c) {{ h += '<div style="font-size:13px;padding:2px 0 2px 10px;">&bull; ' + esc(c) + '</div>'; }});
+    if (d.conclusions) d.conclusions.forEach(function(c) {{ h += listItem(c); }});
     eqsByCtx.conclusion.forEach(function(e) {{ h += eqBlock(e); }});
     h += '</div>';
   }}
@@ -3145,7 +3146,7 @@ function showDetail(nodeId) {{
       }});
       return out;
     }};
-    h += '<div class="detail-section"><h4>Decomposition (' + d.steps.length + ' steps)</h4>' + renderSteps('') + '</div>';
+    h += '<div class="detail-section"><h4>Decomposition (' + d.steps.length + (d.steps.length === 1 ? ' step' : ' steps') + ')</h4>' + renderSteps('') + '</div>';
   }}
   // Equations whose step was not rendered, proof equations without a proof
   // entry, and contained results not placed under a step: never drop them.
@@ -3410,6 +3411,12 @@ function toggleEqPanel(el) {{
   if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
 }}
 function esc(t) {{ return t ? t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;") : ""; }}
+// An assumption or conclusion: a bullet and the text, or a display formula on its own line.
+function listItem(t) {{
+  t = String(t || '').trim(); if (!t) return '';
+  var display = /^(\\$\\$[\\s\\S]*\\$\\$|\\\\\\[[\\s\\S]*\\\\\\])$/.test(t);
+  return '<div style="font-size:13px;padding:2px 0 2px 10px;">' + (display ? '' : '&bull; ') + esc(t) + '</div>';
+}}
 // The structured reading of a definition, from its genus and differentia: "a matching: contains all nodes".
 function defGloss(d) {{
   var g = d.genus; if (Array.isArray(g)) g = g.join(', ');

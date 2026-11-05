@@ -328,7 +328,7 @@ def importance_and_main(base_nodes, layout_edges, numbered):
 # ── Classic side panel, reused as-is ──────────────────────────────────────
 _PANEL_FUNCS = ("showDetail", "resetView", "toggleOrphans", "showGhostDetail",
                 "toggleEqPanel", "esc", "escAttr", "eqTex", "rigorBadge", "confBadge",
-                "nodeLink", "noteBlock", "toggleStepKids", "showPaperInfo", "defGloss", "toggleGhostDefs")
+                "nodeLink", "noteBlock", "toggleStepKids", "showPaperInfo", "defGloss", "toggleGhostDefs", "listItem")
 
 
 def _js_function(src, name):

@@ -612,7 +612,27 @@ def resolve_references(text, labels=None):
     text = _CITE_RE.sub(lambda m: _fmt_keys(m, "[", "]", text), text)
     text = _EQREF_RE.sub(lambda m: _fmt_keys(m, "(", ")", text, labels), text)
     text = _REF_RE.sub(lambda m: _fmt_keys(m, "", "", text, labels), text)
-    return text
+    return _collapse_doubled_type(text)
+
+
+def _abbreviates(short, word):
+    """"Thm" abbreviates "Theorem": same initial, letters in order."""
+    i, w = 0, word.lower()
+    for ch in short.lower():
+        i = w.find(ch, i)
+        if i < 0:
+            return False
+        i += 1
+    return short[0].lower() == word[0].lower()
+
+
+_DOUBLED_TYPE = re.compile(r"\b([A-Z][a-z]{2,})s?[~\s]+([A-Z][a-z]{1,5}) +(?=\d)")
+
+
+def _collapse_doubled_type(text):
+    """"Theorem~\\ref{thm}" resolved to "Theorem Thm 1.1": the paper names the type already,
+    so keep its word and the number ("Theorem 1.1")."""
+    return _DOUBLED_TYPE.sub(lambda m: (m.group(1) + " ") if _abbreviates(m.group(2), m.group(1)) else m.group(0), text)
 
 
 _TEXT_SYMBOLS = [

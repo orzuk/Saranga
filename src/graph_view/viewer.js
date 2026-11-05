@@ -92,6 +92,18 @@ window.dispId = window.dispId || function (id) {
     return lines;
   }
 
+  // For measuring a box: each formula as one unbreakable token of about its typeset width
+  // (MathJax never breaks inline math, so "Let $\\Gamma(H)=\\max\\{...\\}$" needs a second line).
+  var TEXSYM = { sqrt: '\u221a', le: '\u2264', ge: '\u2265', leq: '\u2264', geq: '\u2265', ne: '\u2260', times: '\u00d7',
+    infty: '\u221e', cdot: '\u00b7', Delta: '\u0394', Gamma: '\u0393', lambda: '\u03bb', alpha: '\u03b1', beta: '\u03b2',
+    epsilon: '\u03b5', sum: '\u2211', in: '\u2208', subseteq: '\u2286', to: '\u2192', max: 'max', min: 'min', deg: 'deg', log: 'log' };
+  function unbreakMath(t) {
+    return String(t || '').replace(/\$\$?([\s\S]*?)\$\$?/g, function (_, m) {
+      return m.replace(/\\([a-zA-Z]+)/g, function (_, c) { return TEXSYM[c] || ''; })
+              .replace(/[{}^_]/g, '').replace(/\s+/g, '\u2060');
+    });
+  }
+
   function mix(hex, f) {          // hex colour blended with white, f = share of colour
     var c = parseInt(hex.slice(1), 16), r = c >> 16, g = (c >> 8) & 255, b = c & 255;
     var m = function (v) { return Math.round(255 - (255 - v) * f); };
@@ -357,7 +369,7 @@ window.dispId = window.dispId || function (id) {
       // Inside its own part frame the statement's box is its main part: the frame carries the head.
       var head = partsOf[n.id] ? h0.did + ': main statement' : h0.head;
       var extra = n.nsteps ? (open ? '\u25be proof open (' + n.nsteps + ' steps)' : '\u25b8 proof: ' + n.nsteps + ' step' + (n.nsteps > 1 ? 's' : '')) : '';
-      var b = box(head, n.short, extra, n.imp, n.imp >= 4 ? 4 : 3);
+      var b = box(head, n.tex ? unbreakMath(n.tex) : n.short, extra, n.imp, n.imp >= 4 ? 4 : 3);
       var d = { id: n.id, kind: 'node', type: n.type, parent: par,
         hc: c.header, bc: c.body, band_c: mix(c.header, 0.38), imp: n.imp,
         ext: n.origin === 'external' ? 1 : 0, main: MAIN[n.id] ? 1 : 0,
