@@ -1491,8 +1491,15 @@ window.dispId = window.dispId || function (id) {
       function () { S.level = 'full'; },
       function () { if (withSteps) S.proofs[withSteps.id] = true; },
       function () { if (deep) { S.proofs[STEP_HOST[deep]] = true; S.proofs[deep] = true; } },
-      function () { if (some) window.showDetail(some); },
+      function () {                      // open what hides the node here, so showDetail below needs no render of its own
+        if (!some) return;
+        var n = NODE[some];
+        if (S.level === 'overview') groupPath(n).forEach(function (g) { S.open[g] = true; });
+        if (n.inside) S.show.nested = true;
+        if (n.origin === 'external') { S.show.ext = true; S.show.extdef = true; }
+      },
       function () {
+        if (some) window.showDetail(some);   // the node is shown, so this selects it synchronously
         var p = document.getElementById('detail-panel'), b = p.querySelector('.v2-close');
         if (some && (p.className !== 'open' || !b)) throw new Error('panel without a close button');
         if (b) { b.click(); if (p.className === 'open') throw new Error('close button left the panel open'); }
