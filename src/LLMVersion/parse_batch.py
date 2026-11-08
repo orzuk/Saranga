@@ -62,6 +62,9 @@ def _timeout_handler(signum, frame):
     raise _ParseTimeout
 
 from config import FULL_PAPERS_DIR
+# src/provenance.py: src/ goes AFTER LLMVersion/ on the path, so LLMVersion's own modules
+# (config, math_classes, ...) still win; run_pipeline runs this script with cwd=LLMVersion/.
+sys.path.append(str(Path(__file__).resolve().parents[1]))
 from provenance import stamp
 
 # Import from your parser module

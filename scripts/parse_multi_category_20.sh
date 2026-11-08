@@ -142,6 +142,15 @@ SHARDS=${SHARDS:-1}
 # If not set: default FETCH mode (fetch from arxiv by category + date range + top-k).
 TEX_SRC_BASE=${TEX_SRC_BASE:-}
 
+# Optional DATE mode (the whole-arXiv tree, laid out by date: $TEX_SRC_BASE/YYYY/MM/DD/<id>/<id>.tex):
+# DATE_LIST is a file with one date folder per line (YYYY/MM/DD), and array task i takes line
+# DATE_OFFSET+i instead of category i (DATE_OFFSET splits a list longer than MaxArraySize over several
+# arrays). Output goes to $BASE_OUT_DIR/YYYY/MM/DD, packed into $BASE_OUT_DIR/YYYY/MM/DD.tar.gz at the
+# end (the loose files are removed); a date whose archive exists is skipped. Make the list with
+#   (cd $TEX_SRC_BASE && find . -mindepth 3 -maxdepth 3 -type d | sed 's|^\./||' | sort) > dates.txt
+DATE_LIST=${DATE_LIST:-}
+DATE_OFFSET=${DATE_OFFSET:-0}
+
 # Base output directory. Each category gets a subdirectory.
 # Override via BASE_OUT_DIR env var (different default per mode).
 if [ -n "$TEX_SRC_BASE" ]; then
@@ -208,7 +217,13 @@ fi
 # Pick category for this array task (or loop all if not in SLURM)
 # ============================================================================
 
-if [ -n "${SLURM_ARRAY_TASK_ID:-}" ]; then
+if [ -n "$DATE_LIST" ]; then
+    # DATE mode: one date folder per task (see DATE_LIST above)
+    _D=$(sed -n "$(( DATE_OFFSET + ${SLURM_ARRAY_TASK_ID:-0} + 1 ))p" "$DATE_LIST")
+    if [ -z "$_D" ]; then echo "No line $(( DATE_OFFSET + ${SLURM_ARRAY_TASK_ID:-0} + 1 )) in $DATE_LIST: nothing to do"; exit 0; fi
+    if [ -s "$BASE_OUT_DIR/$_D.tar.gz" ]; then echo "$BASE_OUT_DIR/$_D.tar.gz exists: skipped"; exit 0; fi
+    RUN_CATEGORIES=("$_D")
+elif [ -n "${SLURM_ARRAY_TASK_ID:-}" ]; then
     # SLURM array mode: process one category per task
     # SHARDS=N splits each category over N tasks: task = category * N + shard,
     # so --array=0-$((20*N-1)). Shards only parse (each paper is its own
@@ -243,10 +258,13 @@ for CATEGORY in "${RUN_CATEGORIES[@]}"; do
     CAT_SAFE="${CATEGORY//./_}"        # math.CO -> math_CO
     CAT_SAFE="${CAT_SAFE//-/_}"        # math-ph -> math_ph
     OUT_DIR="${BASE_OUT_DIR}/${CAT_SAFE}"
+    [ -n "$DATE_LIST" ] && OUT_DIR="${BASE_OUT_DIR}/${CATEGORY}"     # DATE mode: CATEGORY holds YYYY/MM/DD
 
     # Resolve tex-dir for this category when in LOCAL mode
     TEX_DIR=""
-    if [ -n "$TEX_SRC_BASE" ]; then
+    if [ -n "$DATE_LIST" ]; then
+        TEX_DIR="$TEX_SRC_BASE/$CATEGORY"
+    elif [ -n "$TEX_SRC_BASE" ]; then
         # Try $CATEGORY (math.CO) first, then $CAT_SAFE (math_CO)
         if [ -d "$TEX_SRC_BASE/$CATEGORY" ]; then
             TEX_DIR="$TEX_SRC_BASE/$CATEGORY"
@@ -286,11 +304,11 @@ for CATEGORY in "${RUN_CATEGORIES[@]}"; do
     CMD=(
         "$PYTHON" run_pipeline.py
         --operations "$OPERATIONS"
-        --category "$CATEGORY"
         --extraction-mode "$EXTRACTION_MODE"
         --out-dir "$OUT_DIR"
         --verbose
     )
+    [ -z "$DATE_LIST" ] && CMD+=(--category "$CATEGORY")
     if [ -n "$TEX_SRC_BASE" ]; then
         # LOCAL mode: point at pre-downloaded tex; no fetch-related args
         CMD+=(--tex-dir "$TEX_DIR")
@@ -337,6 +355,10 @@ for CATEGORY in "${RUN_CATEGORIES[@]}"; do
             N_FLAGGED=$(grep -vc "pass\|paper_id" "$OUT_DIR/anomalies_report.csv" 2>/dev/null || echo "0")
             echo "  Anomalies flagged: $N_FLAGGED"
         fi
+    fi
+    if [ -n "$DATE_LIST" ] && [ "$RC" -eq 0 ] && [ -d "$OUT_DIR" ]; then
+        tar -czf "$OUT_DIR.tar.gz.part" -C "$OUT_DIR" . && mv "$OUT_DIR.tar.gz.part" "$OUT_DIR.tar.gz" \
+            && rm -rf "$OUT_DIR" && echo "  Packed: $OUT_DIR.tar.gz"
     fi
     echo
 done
