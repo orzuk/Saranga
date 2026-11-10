@@ -60,6 +60,9 @@ T3_REMOTE = os.environ.get("SARANGA_T3_REMOTE", "")
 # bytes are fetched by a range request from <base>/<cat>/<year>.json.xz, located through
 # that bundle's index <base>/<cat>/<year>.idx.json (downloaded once and cached)
 T3_BUNDLES = os.environ.get("SARANGA_T3_BUNDLES", "").rstrip("/")
+# the textbook concept layer the papers' grounded_to edges point to (books_v7b/concepts.json):
+# the viewer's Foundation panel shows each concept's definitions from it
+CONCEPTS = os.environ.get("SARANGA_CONCEPTS", "")
 T3_CACHE = CACHE_DIR / T3_NAME
 # "Your paper": graphs built on demand from an arXiv id or an upload (see yours.py).
 YOURS_DIR = CACHE_DIR / "yours"
@@ -558,7 +561,8 @@ def serve_render3(handler, query) -> None:
     page = out_dir / f"{pid}_new.html"
     if not page.is_file() or page.stat().st_mtime < src.stat().st_mtime:
         out_dir.mkdir(parents=True, exist_ok=True)
-        r = subprocess.run([PYTHON, str(GRAPH_BUILD), str(src), "-o", str(out_dir)],
+        concepts = ["--concepts", CONCEPTS] if CONCEPTS and Path(CONCEPTS).is_file() else []
+        r = subprocess.run([PYTHON, str(GRAPH_BUILD), str(src), "-o", str(out_dir)] + concepts,
                            capture_output=True, text=True, timeout=RENDER_TIMEOUT_SEC)
         if r.returncode != 0 or not page.is_file():
             handler.send_error(500, f"build failed: {r.stderr[-500:]}")

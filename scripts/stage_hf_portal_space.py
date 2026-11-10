@@ -7,6 +7,8 @@
         python3 portal/portal_server.py)          # test locally
     huggingface-cli upload RHCPP/saranga /tmp/saranga_portal_space . --repo-type=space \
         --delete="*"                              # replaces the old static Space's files
+    (the online portal is the same staged folder deployed to Google Cloud Run: gcloud run deploy
+     saranga-portal --source /tmp/saranga_portal_space --region europe-west1 ...)
 
 Layout: portal/ (pages, js, css, vendor, data), src/ (parser, viewer), extractors/rules/ and
 extractors/edges/ (the alg3 extractor and its edge model, alg3/edges.py),
@@ -25,6 +27,7 @@ REPO = Path(__file__).resolve().parents[1]
 SILVER = "corpus/silver/opus-5.5__v7/"     # LLM graphs; rules_units/ holds the rule graphs
 RULES = "extractors/rules/silver_v7__sentence_tagger__2026-10/"   # alg3, the "Your paper" rule-based extractor
 EDGES = "extractors/edges/silver_v7__edges_allpairs__2026-10/"    # its learned edges (alg3/edges.py)
+CONCEPTS_URL = "https://huggingface.co/datasets/saranga-project/saranga/resolve/main/foundation/books_v7b/concepts.json"
 sys.path.insert(0, str(REPO / "src"))
 SKIP = ("portal/graphs/", "portal/data/tier2/", "portal/data/tier2_tex/", "portal/data/tier3-sample",
         "portal/gold_", "portal/run_local.sh")
@@ -51,6 +54,13 @@ def main(out):
                 or p.suffix == ".py" and str(p.parent) in ("src", "src/LLMVersion")
                 or str(p.parent) == "src/graph_view" and p.suffix in (".py", ".html", ".js", ".css")):
             copy(f, out / f)
+    copy("src/structured_math/books/foundation_books.json", out / "src/structured_math/books/foundation_books.json")
+    # the textbook concept layer (18 MB, not in git): from the dataset, where the bundles' grounding points
+    import urllib.request
+    cp = out / "foundation/concepts.json"
+    cp.parent.mkdir(parents=True, exist_ok=True)
+    urllib.request.urlretrieve(CONCEPTS_URL, cp)
+    print(f"  concepts.json: {cp.stat().st_size / 2**20:.1f} MB")
     # no git in the container: the LLM runs' prompt version
     from provenance import code_commit
     (out / "COMMIT").write_text(code_commit(7, dirty=False))
