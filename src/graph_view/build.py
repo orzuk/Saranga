@@ -578,6 +578,17 @@ def book_titles():
     return out
 
 
+def grounding_in_json(data):
+    """The paper's book grounding when it is written in the JSON (bundle_t3 --grounding copies the
+    layer's edges in: node -> concept id, with term, basis, confidence and concept_name), as the row
+    the layer would give; None when the JSON holds no such edge."""
+    edges = [e for e in data.get("edges", []) or []
+             if e.get("type") == "grounded_to" and "basis" in e]
+    if not edges:
+        return None
+    return {"paper_id": (data.get("metadata") or {}).get("paper_id", ""), "edges": edges}
+
+
 def grounding_ghosts(grounding, nodes, base_ids, concepts_path=None):
     """Foundation boxes from a grounding layer (ground_papers output), one per concept.
 
@@ -648,9 +659,12 @@ def paper_model(data, stem, grounding=None, concepts_path=None):
     boxes (the Foundations toggle, off by default as on every page) are its
     concepts instead of the classic name-linker matches.
     """
-    jsvars, funcs, css, mathjax = classic_panel(copy.deepcopy(data), stem)
     nodes = data.get("nodes", []) or []
     edges = data.get("edges", []) or []
+    if grounding is None:
+        grounding = grounding_in_json(data)
+    va.NAME_LINKER = grounding is None       # the old name linker only where no book grounding exists
+    jsvars, funcs, css, mathjax = classic_panel(copy.deepcopy(data), stem)
     metadata = data.get("metadata", {}) or {}
     base_nodes, base_edges, step_chains, _eq, _orph = va._classify_and_merge(
         copy.deepcopy(nodes), edges)

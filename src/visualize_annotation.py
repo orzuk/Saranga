@@ -1051,6 +1051,9 @@ def _resolve_foundation_path(foundation_path=None):
     return None  # will fall back to built-in WELL_KNOWN
 
 
+NAME_LINKER = True      # graph_view/build.py turns it off when a paper carries a book grounding
+
+
 def compute_foundation_links(nodes_raw, base_ids, foundation_path=None):
     """Compute foundation ghost map: foundation_name -> list of base node IDs.
 
@@ -1070,6 +1073,8 @@ def compute_foundation_links(nodes_raw, base_ids, foundation_path=None):
                         — per-ghost provenance, used to differentiate book vs.
                           mathlib/proofwiki/herald entries in the renderer.
     """
+    if not NAME_LINKER:
+        return {}, {}, {}
     from link_to_foundation import build_foundation_index, link_paper
     try:
         from link_to_foundation import _build_automaton  # type: ignore

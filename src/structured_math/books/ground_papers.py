@@ -15,12 +15,21 @@ paper definition of the term itself (the term in its \\emph / \\textbf / \\texti
 
 ROOT holds the paper graphs (corpus_io layout or bundles). OUT gets <category>.jsonl, one line per
 paper with grounding edges ({paper_id, edges}), and summary.json.
+
+The full-arXiv parse (ROOT/YYYY/MM/DD.tar.gz, a category per paper from an id table) runs as one
+task per year, then one pooling step, so the common-vocabulary cut sees the whole corpus:
+
+    python -m structured_math.books.ground_papers ROOT --out DIR --cats cats.tsv.gz --years 2019 --scan-only 2019
+    ...                                                                     (one per year, a SLURM array)
+    python -m structured_math.books.ground_papers --out DIR --finalize
 """
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import math
+import pickle
 import re
 import sys
 from collections import Counter, defaultdict
@@ -189,6 +198,7 @@ def _paper_hits(nodes: list, index: dict, category: str = "") -> tuple[list, set
 
 
 _INDEX = _INFO = None
+_KNOWN_CATS = _MATH | _CS | {"stat_TH"}        # the categories TOPIC_CATS knows; any other is unrestricted
 
 
 def _init(concepts_path):
@@ -196,13 +206,23 @@ def _init(concepts_path):
     _INDEX, _INFO = load_index(concepts_path)
 
 
-def _scan_category(args) -> tuple[str, list, Counter]:
-    """One category: per paper its grounding candidates (node, term, concept, confidence, defines),
-    and how many papers hold each term."""
-    root, cat, min_margin = args
-    from corpus_io import iter_papers
+def _papers_of(root: Path, unit: str):
+    """The papers of one work unit: a category (category-folder or bundle layout) or a day archive
+    (<root>/YYYY/MM/DD.tar.gz, the full-arXiv layout; the category comes from the id table)."""
+    from corpus_io import iter_papers, read_papers
+    if unit.endswith(".tar.gz"):
+        yield from read_papers(Path(unit + "#*"), root)
+    else:
+        yield from iter_papers(root, categories=[unit])
+
+
+def _scan_unit(args) -> tuple[list, Counter]:
+    """One unit: per paper (id, category, grounding candidates (node, term, concept, confidence,
+    defines), ambiguous count), and how many papers hold each term."""
+    root, unit, min_margin = args
     papers, df = [], Counter()
-    for p in iter_papers(Path(root), categories=[cat]):
+    for p in _papers_of(Path(root), unit):
+        cat = p.category if p.category in _KNOWN_CATS else ""
         hits, pw, used = _paper_hits(p.nodes, _INDEX, cat)
         df.update(used)                       # every use counts: "sum" is common in any sense
         found, ambiguous = [], 0
@@ -212,8 +232,8 @@ def _scan_category(args) -> tuple[str, list, Counter]:
                 ambiguous += 1
             else:
                 found.append((nid, k, cid, conf, defines))
-        papers.append((p.paper_id, found, ambiguous))
-    return cat, papers, df
+        papers.append((p.paper_id, p.category or "unknown", found, ambiguous))
+    return papers, df
 
 
 def _choose(cands: list, paper_words: set, min_margin: float):
@@ -229,22 +249,50 @@ def _choose(cands: list, paper_words: set, min_margin: float):
     return c1, round(1 - s2 / s1, 2)
 
 
-def ground(root: Path, out: Path, categories=None, jobs: int = 8, max_df: float = 0.10,
-           min_margin: float = 0.25, concepts_path: Path = ROOT / "concepts.json") -> dict:
+def work_units(root: Path, categories=None, years=None) -> list[str]:
+    """Categories (category layout) or day archives (full-arXiv layout, optionally some years)."""
     from corpus_io import walk, _category_from_path
-    root, out = Path(root), Path(out)
-    cats = categories or sorted({_category_from_path(p, root) for p in walk(root)})
+    archives = []
+    cats = set()
+    for p in walk(root):
+        if p.name.endswith("#*"):
+            archives.append(str(p)[:-2])
+        else:
+            cats.add(_category_from_path(p, root))
+    if archives:
+        if years:
+            years = {str(y) for y in years}
+            archives = [a for a in archives if Path(a).relative_to(root).parts[0] in years]
+        return archives
+    return sorted(categories or cats)
+
+
+def scan(root: Path, units: list, jobs: int, min_margin: float, concepts_path: Path) -> tuple[list, Counter]:
+    """All units, in parallel: the per-paper candidates and the pooled term document frequencies."""
+    papers, df = [], Counter()
     with Pool(jobs, initializer=_init, initargs=(concepts_path,)) as pool:
-        scanned = pool.map(_scan_category, [(str(root), c, min_margin) for c in cats])
+        for ps, d in pool.imap_unordered(_scan_unit, [(str(root), u, min_margin) for u in units]):
+            papers.extend(ps)
+            df.update(d)
+    return papers, df
+
+
+def finalize(scans, df: Counter, n_papers: int, out: Path, max_df: float, min_margin: float,
+             concepts_path: Path) -> dict:
+    """Generic terms from the pooled frequencies, then one <category>.jsonl of grounding edges and
+    summary.json. `scans` yields lists of scanned papers (one list per scan file), streamed, so the
+    whole arXiv is never in memory at once."""
     _init(concepts_path)
-    n_papers = sum(len(p) for _, p, _ in scanned)
-    df = sum((d for _, _, d in scanned), Counter())
     generic = {k for k, v in df.items() if v > max_df * n_papers}
     out.mkdir(parents=True, exist_ok=True)
-    stats, used = Counter(), Counter()
-    for cat, papers, _ in scanned:
-        with open(out / f"{cat}.jsonl", "w", encoding="utf-8") as fh:
-            for pid, found, ambiguous in papers:
+    stats, used, cats = Counter(), Counter(), set()
+    files = {}
+    try:
+        for papers in scans:
+            for pid, cat, found, ambiguous in sorted(papers, key=lambda p: (p[1], p[0])):
+                if cat not in files:
+                    files[cat] = open(out / f"{cat}.jsonl", "w", encoding="utf-8")
+                    cats.add(cat)
                 stats["ambiguous"] += ambiguous
                 edges, seen = [], set()
                 for nid, k, cid, conf, defines in found:
@@ -261,8 +309,11 @@ def ground(root: Path, out: Path, categories=None, jobs: int = 8, max_df: float 
                     used[cid] += 1
                 stats["edges"] += len(edges)
                 stats["papers_grounded"] += bool(edges)
-                fh.write(json.dumps({"paper_id": pid, "edges": edges}, ensure_ascii=False) + "\n")
-    summary = {"concepts": str(concepts_path), "papers": n_papers, "categories": cats,
+                files[cat].write(json.dumps({"paper_id": pid, "edges": edges}, ensure_ascii=False) + "\n")
+    finally:
+        for fh in files.values():
+            fh.close()
+    summary = {"concepts": str(concepts_path), "papers": n_papers, "categories": sorted(cats),
                "max_df": max_df, "min_margin": min_margin, "generic_terms": len(generic),
                **stats, "concepts_used": len(used),
                "top_generic": [" ".join(k) for k, _ in sorted(((k, df[k]) for k in generic), key=lambda x: -x[1])[:60]],
@@ -271,16 +322,69 @@ def ground(root: Path, out: Path, categories=None, jobs: int = 8, max_df: float 
     return summary
 
 
+def ground(root: Path, out: Path, categories=None, jobs: int = 8, max_df: float = 0.10,
+           min_margin: float = 0.25, concepts_path: Path = ROOT / "concepts.json", years=None) -> dict:
+    """Scan and finalize in one go (the 100K: ~12 min on 8 cores)."""
+    root, out = Path(root), Path(out)
+    units = work_units(root, categories, years)
+    papers, df = scan(root, units, jobs, min_margin, concepts_path)
+    return finalize([papers], df, len(papers), out, max_df, min_margin, concepts_path)
+
+
+def _scan_paths(out: Path, name: str) -> tuple[Path, Path]:
+    """A scan's two files: its term frequencies (small) and its papers (large, read once at the end)."""
+    return out / "scan" / f"{name}.df.pkl.gz", out / "scan" / f"{name}.papers.pkl.gz"
+
+
+def _load(p: Path):
+    with gzip.open(p, "rb") as fh:
+        return pickle.load(fh)
+
+
+def _dump(obj, p: Path) -> None:
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with gzip.open(p, "wb") as fh:
+        pickle.dump(obj, fh, protocol=pickle.HIGHEST_PROTOCOL)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("root", help="paper graphs (corpus_io layout or bundles)")
+    ap.add_argument("root", nargs="?", help="paper graphs (corpus_io layout, bundles, or the full-arXiv day archives)")
     ap.add_argument("--out", default=str(ROOT / "grounding"))
     ap.add_argument("--categories", nargs="*")
+    ap.add_argument("--years", nargs="*", help="day-archive layout: only these years (one SLURM task per year)")
+    ap.add_argument("--cats", default=None, help="id -> category table (.tsv[.gz]) for the day-archive layout")
+    ap.add_argument("--scan-only", default=None, metavar="NAME",
+                    help="write the scan to <out>/scan/NAME.pkl.gz and stop (pool the scans with --finalize)")
+    ap.add_argument("--finalize", action="store_true", help="pool every <out>/scan/*.pkl.gz and write the edges")
     ap.add_argument("--jobs", type=int, default=8)
     ap.add_argument("--max-df", type=float, default=0.10, help="a term in more of the papers is common vocabulary")
     ap.add_argument("--min-margin", type=float, default=0.25, help="how much closer the chosen homonym must be")
+    ap.add_argument("--concepts", default=str(ROOT / "concepts.json"))
     a = ap.parse_args()
-    s = ground(Path(a.root), Path(a.out), a.categories, a.jobs, a.max_df, a.min_margin)
+    out, concepts = Path(a.out), Path(a.concepts)
+    if a.cats:
+        from corpus_io import set_categories
+        print(f"[ground] {set_categories(a.cats)} ids in the category table", file=sys.stderr)
+    if a.finalize:
+        names = sorted(p.name[:-len(".df.pkl.gz")] for p in (out / "scan").glob("*.df.pkl.gz"))
+        df, n_papers = Counter(), 0
+        for name in names:
+            d, n = _load(_scan_paths(out, name)[0])
+            df.update(d)
+            n_papers += n
+            print(f"[ground] {name}: {n} papers", file=sys.stderr)
+        scans = (_load(_scan_paths(out, name)[1]) for name in names)
+        s = finalize(scans, df, n_papers, out, a.max_df, a.min_margin, concepts)
+    elif a.scan_only:
+        units = work_units(Path(a.root), a.categories, a.years)
+        papers, df = scan(Path(a.root), units, a.jobs, a.min_margin, concepts)
+        pdf, pp = _scan_paths(out, a.scan_only)
+        _dump((df, len(papers)), pdf)
+        _dump(papers, pp)
+        s = {"scan": str(pp), "units": len(units), "papers": len(papers), "terms": len(df)}
+    else:
+        s = ground(Path(a.root), out, a.categories, a.jobs, a.max_df, a.min_margin, concepts, a.years)
     print(json.dumps({k: v for k, v in s.items() if not k.startswith("top_")}))
 
 
