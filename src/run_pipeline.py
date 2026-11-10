@@ -21,8 +21,6 @@ Operations:
                  Uses src/validate_annotation.py.
   visualize    : JSON -> PNG + interactive HTML
                  Uses src/visualize_annotation.py.
-  link         : JSON -> JSON augmented with foundation-graph links
-                 Uses src/link_to_foundation.py.
   evaluate     : JSON -> precision/recall/F1 against a gold standard
                  Uses src/evaluate_extraction.py.
   anomalies    : JSON -> anomalies_report.csv flagging structural / content
@@ -94,7 +92,6 @@ KNOWN_OPERATIONS = [
     "parse",
     "validate",
     "visualize",
-    "link",
     "anomalies",
     "stats",
     "consensus",
@@ -106,6 +103,10 @@ KNOWN_OPERATIONS = [
 def _parse_operations(ops_arg: str) -> List[str]:
     """Parse comma-separated --operations and validate."""
     ops = [o.strip() for o in ops_arg.split(",") if o.strip()]
+    if "link" in ops:
+        raise ValueError("The 'link' operation (NaturalProofs name index) was removed: ground the papers in the "
+                         "textbook concept layer with structured_math.books.ground_papers "
+                         "(whole arXiv: scripts/ground_all_arxiv.sh).")
     unknown = [o for o in ops if o not in KNOWN_OPERATIONS]
     if unknown:
         raise ValueError(
@@ -510,166 +511,6 @@ def op_visualize(args) -> None:
 # OPERATION: link (JSON -> JSON with foundation-graph links)
 # =============================================================================
 
-def op_link(args) -> None:
-    """Augment JSONs IN-PLACE with foundation-graph links.
-
-    Uses the same build_foundation_index + link_paper functions that the
-    interactive HTML visualization uses (ghost nodes). Adds matched
-    foundation entries as 'grounded_to' edges in the JSON, so that
-    downstream operations (stats, anomalies) can count them.
-    """
-    try:
-        from link_to_foundation import (build_foundation_index, link_paper,
-                                          _build_automaton, compute_idf, filter_by_idf)
-    except ImportError as e:
-        print(f"[pipeline] link: cannot import link_to_foundation: {e}")
-        return
-
-    json_paths = _list_jsons(args.out_dir)
-    if not json_paths:
-        print(f"[pipeline] link: no JSON files found under {args.out_dir}")
-        return
-
-    # Foundation index path comes from config.FOUNDATION_INDEX_PATH so the
-    # active index file is declared in one place (see src/config.py).
-    try:
-        from config import FOUNDATION_INDEX_PATH, NATURALPROOFS_DIR
-    except ImportError:
-        FOUNDATION_INDEX_PATH = None
-        NATURALPROOFS_DIR = None
-
-    foundation_paths = []
-    if FOUNDATION_INDEX_PATH and Path(FOUNDATION_INDEX_PATH).exists():
-        foundation_paths.append(str(FOUNDATION_INDEX_PATH))
-        print(f"[pipeline] link: using foundation index: {FOUNDATION_INDEX_PATH}")
-    elif NATURALPROOFS_DIR and Path(NATURALPROOFS_DIR).exists():
-        # Fallback: raw NaturalProofs files
-        np_dir = Path(NATURALPROOFS_DIR) / "raw"
-        if np_dir.exists():
-            for np_file in sorted(np_dir.glob("naturalproofs_*.json")):
-                foundation_paths.append(str(np_file))
-    if not foundation_paths:
-        print(f"[pipeline] link: no foundation files found at {FOUNDATION_INDEX_PATH}; "
-              f"using built-in 53 well-known terms only")
-
-    # Build the foundation index once (shared across all papers)
-    print(f"[pipeline] link: building foundation index from {len(foundation_paths)} files...")
-    try:
-        index = build_foundation_index(foundation_paths or None)
-    except Exception as e:
-        print(f"[pipeline] link: failed to build foundation index: {e}")
-        return
-
-    # Build Aho-Corasick automaton for fast multi-pattern matching
-    automaton, term_map = _build_automaton(index, min_term_len=5)
-    if automaton:
-        print(f"[pipeline] link: using Aho-Corasick (fast, single-pass)")
-    else:
-        print(f"[pipeline] link: pyahocorasick not installed, using slow regex fallback")
-
-    n_total = len(json_paths)
-
-    # ── Pass 1: match all papers, collect per-paper matches ──
-    per_paper = []  # list of (json_path, data_dict, matches_list)
-    all_matches_flat = []  # for IDF computation
-
-    for i, jp in enumerate(json_paths, start=1):
-        try:
-            with open(jp, "r", encoding="utf-8") as f:
-                data = json.load(f)
-
-            nodes = data.get("nodes", [])
-
-            # Remove any previous foundation edges (re-linking is idempotent)
-            data["edges"] = [e for e in data.get("edges", [])
-                             if e.get("type") not in ("grounded_to", "mentions_concept")]
-
-            # Run foundation matching
-            matches = link_paper(nodes, index, min_term_len=5,
-                                 automaton=automaton, term_map=term_map)
-
-            # Tag each match with paper index (for IDF computation)
-            for m in matches:
-                m["_paper_idx"] = i
-
-            per_paper.append((jp, data, matches))
-            all_matches_flat.extend(matches)
-
-        except Exception as e:
-            print(f"[pipeline] link: {jp.name}: FAILED reading: {e}")
-
-    # ── Compute IDF across corpus ──
-    idf_scores = compute_idf(all_matches_flat, n_total)
-    high_df_terms = {term for term, s in idf_scores.items() if s["df_frac"] > 0.10}
-    if high_df_terms:
-        print(f"[pipeline] link: {len(high_df_terms)} high-frequency terms "
-              f"(df>10%, tagged as generic):")
-        for term in sorted(high_df_terms,
-                           key=lambda t: -idf_scores[t]["df"])[:20]:
-            s = idf_scores[term]
-            print(f"    {s['df']:>4} papers ({s['df_frac']:.0%}): {term}")
-        if len(high_df_terms) > 20:
-            print(f"    ... and {len(high_df_terms) - 20} more")
-
-    # ── Pass 2: write ALL edges with IDF tags ──
-    n_linked = 0
-    total_matches = 0
-    n_specific = 0  # edges with df <= 10%
-
-    for jp, data, matches in per_paper:
-        try:
-            edges = data["edges"]
-            seen = set()
-            for m in matches:
-                key = (m["node_id"], m["foundation_name"])
-                if key in seen:
-                    continue
-                seen.add(key)
-                fname = m["foundation_name"]
-                idf_info = idf_scores.get(fname, {})
-                df_frac = idf_info.get("df_frac", 0)
-                is_generic = fname in high_df_terms
-                edges.append({
-                    "source": fname,
-                    "target": m["node_id"],
-                    "type": "grounded_to",
-                    "note": f"matched term: {m['matched_term']}",
-                    "df": idf_info.get("df", 0),
-                    "df_frac": round(df_frac, 4),
-                    "idf": round(idf_info.get("idf", 0), 3),
-                    "generic": is_generic,
-                })
-                if not is_generic:
-                    n_specific += 1
-
-            n_new = len(seen)
-            if n_new > 0:
-                n_linked += 1
-                total_matches += n_new
-
-            data["edges"] = edges
-            with open(jp, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-
-        except Exception as e:
-            print(f"[pipeline] link: {jp.name}: FAILED writing: {e}")
-
-    print(f"[pipeline] link: {n_linked}/{n_total} papers linked, "
-          f"{total_matches} total foundation edges "
-          f"({n_specific} specific + {total_matches - n_specific} generic)")
-
-
-# =============================================================================
-# OPERATION: evaluate (JSON -> P/R/F1 vs gold)
-# =============================================================================
-    # ... in-process evaluation would go here if evaluate_pair is importable
-    # (deferred: the current evaluate_extraction.py CLI is a reasonable fallback)
-
-
-# =============================================================================
-# OPERATION: anomalies (JSON -> anomalies_report.csv)
-# =============================================================================
-
 def op_anomalies(args) -> None:
     """Run anomaly detection on all JSONs under out_dir. Writes report CSV.
 
@@ -919,7 +760,6 @@ def main():
         "parse": op_parse,
         "validate": op_validate,
         "visualize": op_visualize,
-        "link": op_link,
         "anomalies": op_anomalies,
         "stats": op_stats,
         "consensus": op_consensus,

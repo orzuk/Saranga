@@ -24,7 +24,7 @@ MODELS_CONFIG=${MODELS_CONFIG:-$REPO_ROOT/scripts/silver_gold/example_config.yam
 PROMPT_FILE=${PROMPT_FILE:-$REPO_ROOT/scripts/paper_extraction_prompt.txt}
 OUT_DIR=${OUT_DIR:-$BASE_DIR}
 LIMIT=${LIMIT:-20}
-OPERATIONS=${OPERATIONS:-parse,validate,anomalies,link,visualize}
+OPERATIONS=${OPERATIONS:-parse,validate,anomalies,visualize}
 PYTHON=${PYTHON:-python3}
 
 CMD=(

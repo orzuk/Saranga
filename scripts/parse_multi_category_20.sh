@@ -123,7 +123,7 @@ PAPERS_PER_CAT=${PAPERS_PER_CAT:-5000}
 START_DATE=${START_DATE:-}
 END_DATE=${END_DATE:-}
 EXTRACTION_MODE=${EXTRACTION_MODE:-rules}
-OPERATIONS=${OPERATIONS:-parse,validate,link,anomalies,stats}
+OPERATIONS=${OPERATIONS:-parse,validate,anomalies,stats}
 HTML=${HTML:-0}
 HTML_ONLY=${HTML_ONLY:-0}
 # Optional: the distilled rule set to parse with, an extractor directory such as
@@ -228,7 +228,7 @@ elif [ -n "${SLURM_ARRAY_TASK_ID:-}" ]; then
     # SHARDS=N splits each category over N tasks: task = category * N + shard,
     # so --array=0-$((20*N-1)). Shards only parse (each paper is its own
     # JSON); run the per-category reports afterwards with SHARDS unset and
-    # OPERATIONS=validate,link,anomalies,stats (see FINISH below).
+    # OPERATIONS=validate,anomalies,stats (see FINISH below).
     TASK_ID=$SLURM_ARRAY_TASK_ID
     SHARD=$(( TASK_ID % SHARDS ))
     TASK_ID=$(( TASK_ID / SHARDS ))

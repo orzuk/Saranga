@@ -224,8 +224,9 @@ def compute_paper_stats(paper_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
     stats["n_unnamed_nodes"] = sum(1 for n in nodes if not str(n.get("name") or "").strip())
 
     # Foundation graph links
-    # These are populated by the `link` operation (link_to_foundation.py).
-    # If `link` hasn't been run, all counts are 0 — which is informative.
+    # grounded_to edges inside the paper JSON (the removed `link` operation wrote them; the textbook
+    # grounding of structured_math.books.ground_papers is a separate layer, copied in by
+    # portal/bundle_t3.py --grounding). Without them all counts are 0.
     foundation_targets = set()
     foundation_targets_specific = set()
     n_grounded = 0

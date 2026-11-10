@@ -27,7 +27,7 @@ REGISTRY=${REGISTRY:-$BASE_DIR/paper_registry.csv}
 MODELS_CONFIG=${MODELS_CONFIG:-$REPO_ROOT/scripts/silver_gold/example_config.yaml}
 PROMPT_FILE=${PROMPT_FILE:-$REPO_ROOT/scripts/paper_extraction_prompt.txt}
 OUT_DIR=${OUT_DIR:-$BASE_DIR}
-OPERATIONS=${OPERATIONS:-parse,validate,anomalies,link,visualize,consensus}
+OPERATIONS=${OPERATIONS:-parse,validate,anomalies,visualize,consensus}
 PYTHON=${PYTHON:-python3}
 
 CMD=(
