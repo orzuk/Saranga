@@ -59,7 +59,7 @@ window.dispId = window.dispId || function (id) {
     level: G.level, open: {}, proofs: {}, focus: null, k: 1, selected: null,
     show: { ext: false, extdef: true, aux: true, ghosts: false, low: true, implied: true,
             back: true, mention: true, nested: true, lean: true },
-    tred: false, search: '', openOrder: [], ctx: null, ctxNow: true, ctxN: 0,
+    tred: true,   search: '', openOrder: [], ctx: null, ctxNow: true, ctxN: 0,
     authors: true                                    // gold pages: the authors' layout first, where the figure gives it
   };
   var cy = null, firstDone = false, layoutSeq = 0, lastNote = '';
