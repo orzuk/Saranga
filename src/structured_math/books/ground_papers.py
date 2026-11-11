@@ -124,7 +124,8 @@ def load_index(concepts_path: Path) -> tuple[dict, dict]:
     cat = {b["id"]: b for b in json.loads((HERE / "foundation_books.json").read_text())["books"]}
     index, info = defaultdict(list), {}
     for c in g["concepts"]:
-        terms = {m["term"] for m in c["members"]}       # as the books write them (math still marked)
+        # as the books write them (math still marked); a symbol for the concept is not a name for it
+        terms = {m["term"] for m in c["members"] if not m.get("notation")}
         if c["kind"] == "result":
             terms = {t for t in terms | {m["name"] for m in c["members"] if m.get("name")} if RESULT_NAME.search(t)}
         keys = set()

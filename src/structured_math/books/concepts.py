@@ -111,7 +111,7 @@ def build(books: list[dict], min_sim: float = 0.2) -> dict:
         # ("Topological space", not "Open Set/Topology"), then the shortest
         names = sorted({items[k]["name"] for k in ks if items[k]["name"]},
                        key=lambda x: (norm_term(x) != key,
-                                      all(items[k]["book"] in reference for k in ks if items[k]["name"] == x), len(x)))
+                                      all(items[k]["book"] in reference for k in ks if items[k]["name"] == x), len(x), x))
         cid = f"C{len(concepts) + 1}"
         concepts.append({"id": cid, "term": key, "name": names[0] if names else items[ks[0]]["term"],
                          "kind": "result" if all(items[k]["type"] != "definition" for k in ks) else "definition",
@@ -180,21 +180,39 @@ def member_refs(g: dict, merges: list[list[str]]) -> list[list[str]]:
     return [[ref(C[i]["members"][0]) for i in ids if i in C] for ids in merges]
 
 
-def merge(g: dict, merges: list[list[str]]) -> dict:
+def merge(g: dict, merges: list[list[str]], notation: list[str] = ()) -> dict:
     """Merge the listed concepts (each list becomes its first concept), named by concept id or,
     stable across rebuilds, by a member "book:node:term"; edges are remapped and their book
-    sets joined."""
+    sets joined. A merged concept's term becomes an alias of the concept it joins. The concepts
+    listed in `notation` are symbols for the concept they join ("$M_i(k)$" for an elementary
+    reduction matrix), not names: their terms go to the concept's `notation` and their members
+    are marked `notation`, which ground_papers does not match in papers (a symbol means
+    different things in different papers)."""
     C = {c["id"]: c for c in g["concepts"]}
     by_member = {f'{m["book"]}:{m["node"]}:{norm_term(m["term"])}': c["id"] for c in g["concepts"] for m in c["members"]}
+    symbols = {by_member.get(i, i) for i in notation}
     to = {}
     for ids in merges:                       # concept ids, or stable member refs "book:node:term"
         ids = list(dict.fromkeys(by_member.get(i, i) for i in ids))
-        ids = [i for i in ids if i in C and i not in to]
+        ids = [to.get(i, i) for i in ids]                # a concept merged earlier stands for its target
+        ids = [i for i in dict.fromkeys(ids) if i in C and i not in to]
         for i in ids[1:]:
             to[i] = ids[0]
+            for j, t in list(to.items()):                # concepts merged into i earlier follow it
+                if t == i:
+                    to[j] = ids[0]
+            if i in symbols:
+                for m in C[i]["members"]:
+                    m["notation"] = True
             C[ids[0]]["members"] += C[i]["members"]
             C[ids[0]]["books"] = sorted(set(C[ids[0]]["books"]) | set(C[i]["books"]))
-            C[ids[0]].setdefault("aliases", []).append(C[i]["term"])
+            C[ids[0]].setdefault("notation" if i in symbols else "aliases", []).append(C[i]["term"])
+            for f in ("aliases", "notation"):
+                if C[i].get(f):
+                    C[ids[0]].setdefault(f, []).extend(C[i][f])
+            for f in ("aliases", "notation"):
+                if C[ids[0]].get(f):
+                    C[ids[0]][f] = list(dict.fromkeys(C[ids[0]][f]))
     g["concepts"] = [c for c in g["concepts"] if c["id"] not in to]
     pre = defaultdict(set)
     for e in g["edges"]:
@@ -235,6 +253,7 @@ def main():
     ap.add_argument("--min-sim", type=float, default=0.2)
     ap.add_argument("--candidates", help="write the groups for an LLM to judge to this file")
     ap.add_argument("--merges", help="a JSON list of concept-id lists to merge (the LLM's judgments)")
+    ap.add_argument("--notation", help="a JSON list of the merged concepts that are symbols for the concept they join")
     a = ap.parse_args()
     if a.prune_stubs:
         f = Path(a.prune_stubs)
@@ -248,7 +267,8 @@ def main():
     books = [json.loads(f.read_text()) for f in sorted((ROOT / "assembled").glob("*.json"))]
     g = build(books, a.min_sim)
     if a.merges:
-        g = merge(g, json.loads(Path(a.merges).read_text()))
+        g = merge(g, json.loads(Path(a.merges).read_text()),
+                  json.loads(Path(a.notation).read_text()) if a.notation else ())
     if a.candidates:
         cand = candidates(g)
         Path(a.candidates).write_text(json.dumps(cand, ensure_ascii=False, indent=1))
