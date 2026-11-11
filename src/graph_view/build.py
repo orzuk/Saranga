@@ -57,7 +57,6 @@ TYPE_WEIGHT = {"theorem": 1.0, "proposition": 0.75, "corollary": 0.6,
                "open_problem": 0.4, "problem": 0.4, "definition": 0.3,
                "claim": 0.2}
 MAIN_TYPES = ("theorem", "proposition", "corollary")
-OVERVIEW_ABOVE = 50          # top-level nodes above which the page opens at Overview
 SHORT_CHARS = 150            # box text, in characters
 
 
@@ -779,7 +778,7 @@ def paper_model(data, stem, grounding=None, concepts_path=None):
     n_top = len(out_nodes)
     model = {
         "id": stem, "title": title, "arxiv": aid,
-        "n_top": n_top, "level": "overview" if n_top > OVERVIEW_ABOVE else "full",
+        "n_top": n_top, "level": "full",         # every page opens at Full; Overview stays one click away
         "colors": va.NODE_COLORS, "default_color": va.DEFAULT_COLOR,
         "edge_colors": va.EDGE_COLORS, "default_edge_color": va.DEFAULT_EDGE_COLOR,
         "low_conf": va.LOW_CONF_THRESHOLD,
