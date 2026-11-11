@@ -69,16 +69,19 @@ def panel(ax, title, hit, extra):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out", required=True)
+    ap.add_argument("--panel-a", help="the authors' diagram already cropped (default: cropped from figpage2.png)")
+    ap.add_argument("--rules", help="the T3 graph of the paper (default: the gold candidate's rules.json, the sentence rules); "
+                    "the paper's figure uses the released extractor, alg3/runs/v7_346/graphs/T-A+allpairs_dag/2510.25963.json")
     a = ap.parse_args()
     d = REPO / "corpus" / "gold_candidates" / "papers" / PAPER
     gold = json.loads((d / "gold.json").read_text())
     v7 = json.loads((REPO / "corpus" / "silver" / "opus-5.5__v7_gold" / f"{PAPER}.json").read_text())
-    rules = json.loads((d / "rules.json").read_text())
+    rules = json.loads(Path(a.rules or d / "rules.json").read_text())
     fig, axs = plt.subplots(1, 3, figsize=(12, 3.2), gridspec_kw={"width_ratios": [1.25, 1, 1]})
-    axs[0].imshow(Image.open(d / "figpage2.png").crop(CROP))
+    axs[0].imshow(Image.open(a.panel_a) if a.panel_a else Image.open(d / "figpage2.png").crop(CROP))
     axs[0].axis("off")
     axs[0].set_title("(a) the authors' diagram", fontsize=10)
-    for ax, (title, pred) in zip(axs[1:], (("(b) LLM extractor", v7), ("(c) rule-based extractor", rules))):
+    for ax, (title, pred) in zip(axs[1:], (("(b) LLM extractor", v7), ("(c) T3 extractor", rules))):
         hit, extra = found(pred, gold)
         panel(ax, f"{title}: {len(hit)}/{len(DRAWN)} arrows", hit, extra)
     fig.tight_layout()
