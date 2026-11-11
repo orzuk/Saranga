@@ -4,7 +4,7 @@
 
 Routes besides the static files:
     /silver_v6/...        Tier-2 silver pages (prebuilt, corpus/silver/opus-5.5__v6/graphs)
-    /render3?cat=&id=     a Tier-3 (100K) paper's viewer page, built from its JSON on first
+    /render3?cat=&id=     a Tier-3 (arXiv corpus) paper's viewer page, built from its JSON on first
                           request and cached (the JSON is fetched from SARANGA_T3_BUNDLES or by
                           SARANGA_T3_REMOTE if absent)
     /t3json?cat=&id=      that paper's JSON
@@ -53,7 +53,7 @@ GRAPH_BUILD = REPO_DIR / "src" / "graph_view" / "build.py"
 #   ssh orzuk@moriah-gw.cs.huji.ac.il cat /sci/.../parsed_100k_v6b/{cat}/json/{id}_rules.json
 # The page is then built with the v2 viewer and cached.
 T3_NAME = Path(json.loads(MANIFEST_PATH.read_text(encoding="utf-8")).get(
-    "tier3_index", "data/tier3_v7/index.json")).parent.name
+    "tier3_index", "data/tier3_all/index.json")).parent.name
 T3_DIR = DATA_DIR / T3_NAME
 T3_REMOTE = os.environ.get("SARANGA_T3_REMOTE", "")
 # or, tried first, the base URL of the bundled corpus (portal/bundle_t3.py): the paper's
@@ -64,6 +64,12 @@ T3_BUNDLES = os.environ.get("SARANGA_T3_BUNDLES", "").rstrip("/")
 # the viewer's Foundation panel shows each concept's definitions from it
 CONCEPTS = os.environ.get("SARANGA_CONCEPTS", "")
 T3_CACHE = CACHE_DIR / T3_NAME
+# the per-year paper lists of the categories (<cat>/<year>.json) and the id -> category map (_ids.tsv.gz) are
+# too large for the image: they are fetched on first use from SARANGA_T3_INDEX (by default the index folder
+# next to the bundles) into T3_DIR, which ships only the category index.json
+T3_INDEX = os.environ.get("SARANGA_T3_INDEX", f"{T3_BUNDLES}/_portal_index" if T3_BUNDLES else "").rstrip("/")
+# bundle folders of the pre-1998 archives and of stat.TH (arXiv's math.ST) listed under their modern category
+T3_LEGACY = {"alg-geom": "math.AG", "dg-ga": "math.DG", "funct-an": "math.FA", "q-alg": "math.QA", "math_ST": "stat.TH"}
 # "Your paper": graphs built on demand from an arXiv id or an upload (see yours.py).
 YOURS_DIR = CACHE_DIR / "yours"
 GOLD_DIR = REPO_DIR / "corpus" / "gold_candidates"     # author-diagram gold candidates (review)
@@ -448,15 +454,41 @@ _SAFE = re.compile(r"^[A-Za-z0-9._\-]+$")
 _T3_TITLES: dict[str, dict[str, str]] = {}
 
 
+def t3_index_file(rel: str) -> Path | None:
+    """A file of the Tier-3 index folder (rel = '<cat>/<year>.json', '_ids.tsv.gz'), fetched from T3_INDEX
+    on first use; None if it is neither local nor fetchable."""
+    p = (T3_DIR / rel).resolve()
+    if not str(p).startswith(str(T3_DIR.resolve())):
+        return None
+    if p.is_file():
+        return p
+    if not T3_INDEX:
+        return None
+    try:
+        data = _get(f"{T3_INDEX}/{urllib.parse.quote(rel)}")
+    except (OSError, ValueError) as e:
+        sys.stderr.write(f"[t3] index fetch failed for {rel}: {e}\n")
+        return None
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(p.suffix + ".part")
+    tmp.write_bytes(data)
+    tmp.replace(p)
+    return p
+
+
 def t3_title(cat: str, pid: str) -> str:
-    """The paper's title from its category index (the rule JSONs carry none)."""
-    if cat not in _T3_TITLES:
+    """The paper's title from the year list of its category (the rule JSONs carry none);
+    cat is the paper's bundle folder."""
+    from bundle_t3 import bundle_key
+    rel = f"{T3_LEGACY.get(cat) or cat.replace('_', '.', 1)}/{bundle_key(pid)}.json"
+    if rel not in _T3_TITLES:
+        f = t3_index_file(rel)
         try:
-            rows = json.loads((T3_DIR / cat / "index.json").read_text(encoding="utf-8"))
-            _T3_TITLES[cat] = {r["paper_id"]: r.get("title", "") for r in rows}
+            rows = json.loads(f.read_text(encoding="utf-8")) if f else []
+            _T3_TITLES[rel] = {r["paper_id"]: r.get("title", "") for r in rows}
         except (OSError, ValueError):
-            _T3_TITLES[cat] = {}
-    return _T3_TITLES[cat].get(pid.removesuffix("_rules"), "")
+            _T3_TITLES[rel] = {}
+    return _T3_TITLES[rel].get(pid.removesuffix("_rules"), "")
 
 
 def with_title(path: Path, cat: str, pid: str) -> Path:
@@ -551,7 +583,7 @@ def serve_t3_json(handler, query) -> None:
 
 
 def serve_render3(handler, query) -> None:
-    """Build (once) the v2 viewer page of a 100K paper and redirect to it."""
+    """Build (once) the v2 viewer page of a Tier-3 paper and redirect to it."""
     cat, pid = (query.get("cat") or [""])[0], (query.get("id") or [""])[0]
     src = t3_json(cat, pid)
     if not src:
@@ -594,6 +626,8 @@ class PortalHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path.startswith(f"/data/{T3_NAME}/") and parsed.path.endswith(".json"):
+            t3_index_file(urllib.parse.unquote(parsed.path[len(f"/data/{T3_NAME}/"):]))   # fetched on first use
         if parsed.path in ("/render3", "/t3json"):
             query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
             (serve_render3 if parsed.path == "/render3" else serve_t3_json)(self, query)
@@ -666,16 +700,20 @@ _EXISTING = {}
 
 
 def existing_url(aid: str, mode: str) -> str | None:
-    """The page of a paper SARANGA already has, for "Your paper": rules -> its 100K graph (else
+    """The page of a paper SARANGA already has, for "Your paper": rules -> its Tier-3 graph (else
     its silver rules graph); llm -> its silver LLM graph. None if we do not have it."""
     if not _EXISTING:
         for r in json.loads(MANIFEST_PATH.read_text()).get("papers", {}).get("tier2", []):
             b = re.sub(r"v\d+$", "", r["paper_id"])
             _EXISTING.setdefault(("llm", b), r.get("graph_path"))
             _EXISTING.setdefault(("rules", b), r.get("graph_rules_path"))
-        for f in T3_DIR.glob("*/index.json"):
-            for r in json.loads(f.read_text()):
-                _EXISTING[("rules", re.sub(r"v\d+$", "", r["paper_id"]))] = r["graph_path"]
+        f = t3_index_file("_ids.tsv.gz")         # arXiv id (no version, / as _) -> bundle folder, versioned stem
+        if f:
+            import gzip
+            with gzip.open(f, "rt", encoding="utf-8") as fh:
+                for line in fh:
+                    k, c, stem = line.rstrip("\n").split("\t")
+                    _EXISTING[("rules", k)] = f"render3?cat={c}&id={stem}"
     return _EXISTING.get((mode, re.sub(r"v\d+$", "", aid.replace("/", "_"))))
 
 

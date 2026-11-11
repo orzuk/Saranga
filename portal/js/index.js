@@ -15,11 +15,13 @@
     setText("count-tier1", uniqueTier1 + "");
     setText("count-tier2", t2 + "");
     setText("count-tier3", t3 > 0 ? t3 + "" : "—");
-    if (manifest.tier3_index) {                     // v6: the 100K is indexed per category
+    if (manifest.tier3_index) {                     // the whole-arXiv categories, indexed per category and year
       Authomathics.fetchJson(manifest.tier3_index).then(function (ix) {
-        var n = (ix.categories || []).reduce(function (s, c) { return s + c.count; }, 0);
-        setText("count-tier3", "100,000");
-        setText("blurb-tier3", n.toLocaleString() + " of 100,000 extracted: arXiv math/CS, " + (ix.categories || []).length + " categories, distilled rules; graphs built on click");
+        var cats = ix.categories || [];
+        var n = cats.reduce(function (s, c) { return s + c.count; }, 0);
+        setText("count-tier3", n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : Math.round(n / 1000) + "K");
+        setText("count-tier3-home", Math.round(n / 1000) + "K");
+        setText("blurb-tier3", n.toLocaleString() + " arXiv papers in " + cats.length + " categories of mathematics, statistics and the mathematical parts of CS, physics, economics and finance; graphs built on click");
       });
     }
 

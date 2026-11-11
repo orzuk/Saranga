@@ -329,8 +329,14 @@
       const cat = Authomathics.getQueryParam("cat");
       let list;
       if (tier === "3" && cat) {
-        const t3Index = (await Authomathics.loadManifest()).tier3_index || "data/tier3_v7/index.json";
-        list = await Authomathics.fetchJson(t3Index.replace(/index\.json$/, "") + encodeURIComponent(cat) + "/index.json");
+        const t3Index = (await Authomathics.loadManifest()).tier3_index || "data/tier3_all/index.json";
+        // the category's papers are indexed per year (the arXiv id's year, as in portal/bundle_t3.bundle_key)
+        let year = Authomathics.getQueryParam("year");
+        if (!year) {
+          const m = /^(\d{2})\d{2}\./.exec(id) || /_(\d{2})\d{5}/.exec(id);
+          if (m) year = String((+m[1] < 91 ? 2000 : 1900) + +m[1]);
+        }
+        list = await Authomathics.fetchJson(t3Index.replace(/index\.json$/, "") + encodeURIComponent(cat) + "/" + year + ".json");
       } else {
         const manifest = await Authomathics.loadManifest();
         list = (manifest.papers && manifest.papers["tier" + tier]) || [];

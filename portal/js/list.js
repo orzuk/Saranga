@@ -45,21 +45,27 @@
       let rows = (manifest.papers && manifest.papers[tierKey]) || [];
       if (cfg.tier === 1) rows = collapseTier1Versions(rows);
 
-      // Tier 3 (100K): the category grid from manifest.tier3_index (data/tier3_<version>/index.json),
-      // an index per category next to it, <cat>/index.json.
+      // Tier 3 (whole arXiv): the category grid from manifest.tier3_index (data/tier3_<version>/index.json),
+      // grouped by field; a category's papers are listed one year at a time, <cat>/<year>.json next to it.
       if (cfg.tier === 3) {
-        var t3Index = manifest.tier3_index || "data/tier3_v7/index.json";
-        var catParam = new URL(window.location.href).searchParams.get("cat");
-        if (!catParam) {
-          Authomathics.fetchJson(t3Index).then(function (ix) {
-            renderCategoryGrid(ix.categories || []);
+        var t3Index = manifest.tier3_index || "data/tier3_all/index.json";
+        var here = new URL(window.location.href).searchParams;
+        var catParam = here.get("cat");
+        Authomathics.fetchJson(t3Index).then(function (ix) {
+          var cats = ix.categories || [];
+          if (!catParam) { renderCategoryGrid(cats); return; }
+          var info = cats.find(function (c) { return c.category === catParam; });
+          var years = info && info.years ? Object.keys(info.years).sort() : [];
+          // default: the latest year with a full list (the last bundle year holds a handful of early papers)
+          var full = years.filter(function (y) { return info.years[y] >= 100; });
+          var year = here.get("year") || (full.length ? full[full.length - 1] : years[years.length - 1]);
+          renderYearBar(catParam, years, year, info ? info.years : {});
+          if (!year) return;
+          Authomathics.fetchJson(t3Index.replace(/index\.json$/, "") + encodeURIComponent(catParam) + "/" + year + ".json").then(function (r3) {
+            allRows = r3;
+            sortKey = "paper_id";
+            renderPapers();
           });
-          return;
-        }
-        Authomathics.fetchJson(t3Index.replace(/index\.json$/, "") + encodeURIComponent(catParam) + "/index.json").then(function (r3) {
-          allRows = r3;
-          sortKey = "paper_id";
-          renderPapers();
         });
         return;
       }
@@ -91,44 +97,71 @@
     }
   }
 
+  function renderYearBar(cat, years, year, counts) {
+    var bar = document.getElementById("t3-years");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "t3-years";
+      bar.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px;font-size:13px;";
+      var listing = document.getElementById("listing");
+      listing.parentNode.insertBefore(bar, listing);
+    }
+    bar.innerHTML = years.map(function (y) {
+      var on = y === year;
+      return '<a href="papers_tier3.html?cat=' + encodeURIComponent(cat) + '&year=' + y + '" title="' + counts[y] + ' papers" style="padding:3px 8px;border-radius:4px;text-decoration:none;' +
+        (on ? 'background:#34495e;color:#fff' : 'background:#eef1f4;color:#34495e') + '">' + y + '</a>';
+    }).join("");
+  }
+
   function renderCategoryGrid(rows, page, allKey) {
     page = page || "papers_tier3.html";
     var main = document.getElementById("listing");
     if (!main) return;
     main.innerHTML = "";
 
-    // rows: [{category, count, avg_nodes}] from the Tier-3 index
-    var cats = {}, total = 0;
+    // rows: [{category, count, avg_nodes, field?}] from the Tier-3 index
+    var total = 0, fields = {};
     for (var i = 0; i < rows.length; i++) {
-      cats[rows[i].category] = { count: rows[i].count, nodes: rows[i].avg_nodes * rows[i].count };
+      var f = rows[i].field || "";
+      (fields[f] = fields[f] || []).push(rows[i]);
       total += rows[i].count;
     }
-    var catNames = Object.keys(cats).sort();
-
     var heading = document.createElement("p");
     heading.style.cssText = "color:#6a6a6a;font-size:14px;margin-bottom:18px";
-    heading.innerHTML = catNames.length + " categories, " + total + " papers total" +
+    heading.innerHTML = rows.length + " categories, " + total.toLocaleString() + " papers total" +
       (allKey ? ' &middot; <a href="' + page + '?cat=' + allKey + '">show all</a>' : "");
     main.appendChild(heading);
 
-    var grid = document.createElement("div");
-    grid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;";
-
-    for (var ci = 0; ci < catNames.length; ci++) {
-      var name = catNames[ci];
-      var info = cats[name];
-      var card = document.createElement("a");
-      card.href = page + "?cat=" + encodeURIComponent(name);
-      card.style.cssText = "display:block;padding:16px;background:#fff;border:1px solid #e0e0e0;border-radius:8px;text-decoration:none;color:inherit;transition:box-shadow 0.15s;";
-      card.onmouseover = function() { this.style.boxShadow = "0 2px 8px rgba(0,0,0,0.12)"; };
-      card.onmouseout = function() { this.style.boxShadow = "none"; };
-      card.innerHTML =
-        '<div style="font-size:18px;font-weight:600;color:#2c3e50;margin-bottom:4px;">' + esc(name) + '</div>' +
-        '<div style="font-size:13px;color:#888;">' + info.count + ' papers &middot; ' +
-        Math.round(info.nodes / info.count) + ' avg nodes</div>';
-      grid.appendChild(card);
-    }
-    main.appendChild(grid);
+    var order = Object.keys(fields).sort(function (a, b) {
+      var na = fields[a].reduce(function (s, r) { return s + r.count; }, 0);
+      var nb = fields[b].reduce(function (s, r) { return s + r.count; }, 0);
+      return nb - na;
+    });
+    order.forEach(function (f) {
+      var list = fields[f].slice().sort(function (a, b) { return a.category < b.category ? -1 : 1; });
+      if (f) {
+        var h = document.createElement("h3");
+        var n = list.reduce(function (s, r) { return s + r.count; }, 0);
+        h.style.cssText = "font-size:16px;color:#2c3e50;margin:22px 0 10px;";
+        h.innerHTML = esc(f) + ' <span style="font-weight:400;font-size:13px;color:#888">' + list.length + " categories &middot; " + n.toLocaleString() + " papers</span>";
+        main.appendChild(h);
+      }
+      var grid = document.createElement("div");
+      grid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;";
+      list.forEach(function (r) {
+        var card = document.createElement("a");
+        card.href = page + "?cat=" + encodeURIComponent(r.category);
+        card.style.cssText = "display:block;padding:16px;background:#fff;border:1px solid #e0e0e0;border-radius:8px;text-decoration:none;color:inherit;transition:box-shadow 0.15s;";
+        card.onmouseover = function() { this.style.boxShadow = "0 2px 8px rgba(0,0,0,0.12)"; };
+        card.onmouseout = function() { this.style.boxShadow = "none"; };
+        card.innerHTML =
+          '<div style="font-size:18px;font-weight:600;color:#2c3e50;margin-bottom:4px;">' + esc(r.category) + '</div>' +
+          '<div style="font-size:13px;color:#888;">' + r.count.toLocaleString() + ' papers &middot; ' +
+          Math.round(r.avg_nodes) + ' avg nodes</div>';
+        grid.appendChild(card);
+      });
+      main.appendChild(grid);
+    });
   }
 
   // Tier 1 ships three extractions per paper (manual / anthropic / openai)
@@ -284,10 +317,20 @@
     }
     function fmt(n) { return (n && n > 0) ? String(n) : '<span style="color:#bbb">&ndash;</span>'; }
     function paperUrl(id) {
-      var catq = (cfg.tier === 3) ? "&cat=" + encodeURIComponent(new URL(window.location.href).searchParams.get("cat") || "") : "";
+      var catq = "";
+      if (cfg.tier === 3) {
+        var sp = new URL(window.location.href).searchParams;
+        catq = "&cat=" + encodeURIComponent(sp.get("cat") || "") + (sp.get("year") ? "&year=" + sp.get("year") : "");
+      }
       return "paper.html?tier=" + cfg.tier + "&id=" + encodeURIComponent(id) + catq;
     }
-    for (const r of view) {
+    const MAX_ROWS = 2000;                 // a year of a large category has tens of thousands of papers
+    if (view.length > MAX_ROWS) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = '<td colspan="' + colspan + '" class="empty">Showing the first ' + MAX_ROWS + ' of ' + view.length.toLocaleString() + ' papers; search to narrow the list.</td>';
+      tbody.appendChild(tr);
+    }
+    for (const r of view.slice(0, MAX_ROWS)) {
       const tr = document.createElement("tr");
       // Tier 1: paper_id link points to the manual version (the gold reference);
       // Versions column links each of the three extractions independently.
@@ -455,7 +498,13 @@
                 legacyId || "?";
       return esc(t);
     }
-    for (const r of view) {
+    const MAX_ROWS = 2000;                 // a year of a large category has tens of thousands of papers
+    if (view.length > MAX_ROWS) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = '<td colspan="' + colspan + '" class="empty">Showing the first ' + MAX_ROWS + ' of ' + view.length.toLocaleString() + ' papers; search to narrow the list.</td>';
+      tbody.appendChild(tr);
+    }
+    for (const r of view.slice(0, MAX_ROWS)) {
       const tr = document.createElement("tr");
       const url = "pair.html?id=" + encodeURIComponent(r.pair_id);
       const status = r.status || (r.alignment_available ? "annotated" : "");

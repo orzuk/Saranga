@@ -30,6 +30,7 @@ EDGES = "extractors/edges/silver_v7__edges_allpairs__2026-10/"    # its learned 
 CONCEPTS_URL = "https://huggingface.co/datasets/saranga-project/saranga/resolve/main/foundation/books_v7b/concepts.json"
 sys.path.insert(0, str(REPO / "src"))
 SKIP = ("portal/graphs/", "portal/data/tier2/", "portal/data/tier2_tex/", "portal/data/tier3-sample",
+        "portal/data/tier3_v7/",                 # the 100K listing, replaced by data/tier3_all (whole arXiv)
         "portal/gold_", "portal/run_local.sh")
 
 
