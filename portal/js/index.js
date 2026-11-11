@@ -26,7 +26,7 @@
     }
 
     setText("blurb-tier1", uniqueTier1 + " manual gold papers");
-    setText("blurb-tier2", t2 + " papers (10 per category): Claude Opus graph and distilled-rule graph side by side");
+    setText("blurb-tier2", t2 + " papers (10 per category): Claude Opus graph and rule-based graph side by side");
 
 
     setText("count-pairs", pairs.length + "");
