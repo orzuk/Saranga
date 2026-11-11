@@ -604,11 +604,31 @@ def serve_render3(handler, query) -> None:
     handler.end_headers()
 
 
+def serve_gzip_json(handler, f: Path) -> None:
+    """A JSON file gzipped (cached next to it as <name>.gz)."""
+    gz = f.with_name(f.name + ".gz")
+    if not gz.is_file() or gz.stat().st_mtime < f.stat().st_mtime:
+        tmp = gz.with_name(gz.name + ".part")
+        tmp.write_bytes(gzip.compress(f.read_bytes(), 6))
+        tmp.replace(gz)
+    data = gz.read_bytes()
+    handler.send_response(200)
+    handler.send_header("Content-Type", "application/json")
+    handler.send_header("Content-Encoding", "gzip")
+    handler.send_header("Content-Length", str(len(data)))
+    handler.send_header("Last-Modified", handler.date_time_string(f.stat().st_mtime))
+    handler.end_headers()
+    handler.wfile.write(data)
+
+
 class PortalHandler(SimpleHTTPRequestHandler):
     def end_headers(self):
         # gold pages and review pages change with every rebuild: never serve them from the browser cache
         if self.path.split("?")[0].startswith(("/gold_data/", "/gold_bp/", "/gold_review", "/gold_blueprints")):
             self.send_header("Cache-Control", "no-store")
+        elif self.path.split("?")[0].endswith((".html", ".js", ".css", ".json", "/")):
+            # pages, scripts and data change with every deploy: browsers revalidate them (Last-Modified)
+            self.send_header("Cache-Control", "no-cache")
         super().end_headers()
 
     def __init__(self, *args, **kwargs):
@@ -627,7 +647,10 @@ class PortalHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path.startswith(f"/data/{T3_NAME}/") and parsed.path.endswith(".json"):
-            t3_index_file(urllib.parse.unquote(parsed.path[len(f"/data/{T3_NAME}/"):]))   # fetched on first use
+            f = t3_index_file(urllib.parse.unquote(parsed.path[len(f"/data/{T3_NAME}/"):]))   # fetched on first use
+            if f and "gzip" in self.headers.get("Accept-Encoding", ""):
+                serve_gzip_json(self, f)                # a year of cs.LG is ~7 MB of JSON, ~1 MB gzipped
+                return
         if parsed.path in ("/render3", "/t3json"):
             query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
             (serve_render3 if parsed.path == "/render3" else serve_t3_json)(self, query)

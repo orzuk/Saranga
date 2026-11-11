@@ -36,6 +36,8 @@
   let sortKey = null;
   let sortDir = 1;
   let filterText = "";
+  const PAGE_SIZE = 50;
+  let page = 0;
   let filterRel = "all";
   let filterStatus = "all";
 
@@ -255,6 +257,7 @@
   function setSort(k) {
     if (sortKey === k) sortDir = -sortDir;
     else { sortKey = k; sortDir = 1; }
+    page = 0;
     sortView();
     if (cfg.mode === "papers") renderPapersBody();
     else renderPairsBody();
@@ -297,12 +300,37 @@
     });
     document.getElementById("q").addEventListener("input", function (e) {
       filterText = e.target.value;
+      page = 0;
       applyFilter();
       renderPapersBody();
     });
 
     applyFilter();
     renderPapersBody();
+  }
+
+  function renderPager(pages) {
+    let bar = document.getElementById("pager");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "pager";
+      bar.style.cssText = "display:flex;gap:10px;align-items:center;justify-content:flex-end;margin:10px 0;font-size:13px;color:#555;";
+      const tbl = document.querySelector("#listing table.listing");
+      tbl.parentNode.insertBefore(bar, tbl.nextSibling);
+    }
+    bar.style.display = pages > 1 ? "flex" : "none";
+    const btn = function (label, to, on) {
+      return '<button data-p="' + to + '"' + (on ? "" : " disabled") + ' style="padding:3px 10px;border:1px solid #ccc;border-radius:4px;background:#fff;cursor:pointer">' + label + "</button>";
+    };
+    bar.innerHTML = btn("&laquo; Prev", page - 1, page > 0) +
+      "<span>Page " + (page + 1) + " of " + pages.toLocaleString() + "</span>" + btn("Next &raquo;", page + 1, page < pages - 1);
+    bar.querySelectorAll("button").forEach(function (b) {
+      b.addEventListener("click", function () {
+        page = +b.getAttribute("data-p");
+        renderPapersBody();
+        window.scrollTo(0, document.getElementById("listing").offsetTop);
+      });
+    });
   }
 
   function renderPapersBody() {
@@ -324,13 +352,11 @@
       }
       return "paper.html?tier=" + cfg.tier + "&id=" + encodeURIComponent(id) + catq;
     }
-    const MAX_ROWS = 2000;                 // a year of a large category has tens of thousands of papers
-    if (view.length > MAX_ROWS) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = '<td colspan="' + colspan + '" class="empty">Showing the first ' + MAX_ROWS + ' of ' + view.length.toLocaleString() + ' papers; search to narrow the list.</td>';
-      tbody.appendChild(tr);
-    }
-    for (const r of view.slice(0, MAX_ROWS)) {
+    // one page of PAGE_SIZE rows (a year of a large category holds tens of thousands of papers)
+    const pages = Math.max(1, Math.ceil(view.length / PAGE_SIZE));
+    if (page >= pages) page = pages - 1;
+    renderPager(pages);
+    for (const r of view.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)) {
       const tr = document.createElement("tr");
       // Tier 1: paper_id link points to the manual version (the gold reference);
       // Versions column links each of the three extractions independently.
@@ -411,7 +437,7 @@
       tbody.appendChild(tr);
     }
     document.getElementById("count-line").textContent =
-      view.length + " of " + allRows.length + " papers";
+      view.length.toLocaleString() + " of " + allRows.length.toLocaleString() + " papers";
     if (Authomathics.renderMath) Authomathics.renderMath(tbody);   // $...$ in titles
   }
 
@@ -498,13 +524,7 @@
                 legacyId || "?";
       return esc(t);
     }
-    const MAX_ROWS = 2000;                 // a year of a large category has tens of thousands of papers
-    if (view.length > MAX_ROWS) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = '<td colspan="' + colspan + '" class="empty">Showing the first ' + MAX_ROWS + ' of ' + view.length.toLocaleString() + ' papers; search to narrow the list.</td>';
-      tbody.appendChild(tr);
-    }
-    for (const r of view.slice(0, MAX_ROWS)) {
+    for (const r of view) {
       const tr = document.createElement("tr");
       const url = "pair.html?id=" + encodeURIComponent(r.pair_id);
       const status = r.status || (r.alignment_available ? "annotated" : "");
