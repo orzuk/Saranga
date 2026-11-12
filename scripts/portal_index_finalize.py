@@ -13,7 +13,7 @@ LEGACY = {"alg-geom": "math.AG", "dg-ga": "math.DG", "funct-an": "math.FA", "q-a
 FIELD = [("math", "Mathematics"), ("cs", "Computer Science"), ("stat", "Statistics"), ("econ", "Economics"),
          ("eess", "Electrical Engineering and Systems Science"), ("q-fin", "Quantitative Finance"), ("nlin", "Physics")]
 def display(c): return LEGACY.get(c) or c.replace("_", ".", 1)
-def field(c): return next(f for p, f in FIELD if c.startswith(p))
+def field(c): return "Physics" if c == "math-ph" else next(f for p, f in FIELD if c.startswith(p))  # math-ph is a physics archive on arXiv
 rows = []
 for p in sorted((D / "parts").glob("*.jsonl")):
     bc = p.stem
